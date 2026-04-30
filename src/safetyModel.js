@@ -162,6 +162,7 @@ export const DOCUMENT_TEMPLATE_TYPE_OPTIONS = [
   { value: "Ponuda", label: "Ponuda" },
   { value: "Radni nalog", label: "Radni nalog" },
   { value: "Zapisnik", label: "Zapisnik" },
+  { value: "IS ZNR", label: "IS ZNR" },
 ];
 
 export const DOCUMENT_TEMPLATE_SECTION_TYPE_OPTIONS = [

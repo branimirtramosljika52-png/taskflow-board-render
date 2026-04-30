@@ -1618,6 +1618,7 @@ const state = {
     message: "",
     tone: "",
   },
+  workOrderRowMenu: null,
   documentTemplateRuntime: {
     mode: "builder",
     source: "",
@@ -4230,12 +4231,19 @@ function applyWorkOrderListColumnWidths(mode = getWorkOrderListColumnMode()) {
 
   const widths = getWorkOrderListColumnWidths(mode);
   const layout = getWorkOrderListColumnLayout(mode);
-  const minWidth = widths.reduce((total, width) => total + width, 0)
-    + Math.max(0, layout.length - 1) * 14
-    + 28;
+  const template = layout.map((column, index) => {
+    const width = Math.max(
+      column.minWidth || 1,
+      Math.round(Number(widths[index]) || column.defaultWidth || 1),
+    );
+    if (column.resizable === false) {
+      return `${width}px`;
+    }
+    return `minmax(0, ${width}fr)`;
+  }).join(" ");
 
-  workOrdersTableWrap.style.setProperty("--work-order-list-grid-template", widths.map((width) => `${width}px`).join(" "));
-  workOrdersTableWrap.style.setProperty("--work-order-list-min-width", `${minWidth}px`);
+  workOrdersTableWrap.style.setProperty("--work-order-list-grid-template", template);
+  workOrdersTableWrap.style.setProperty("--work-order-list-min-width", "100%");
 }
 
 function startWorkOrderListColumnResize(mode, columnIndex, pointerX, pointerId, handle) {
@@ -26206,6 +26214,7 @@ function normalizeMeasurementQuickRoomDraft(room = {}) {
   return {
     id: String(room.id || createMeasurementQuickDraftId("room")),
     name: String(room.name ?? ""),
+    collapsed: Boolean(room.collapsed),
     items,
   };
 }
@@ -26221,6 +26230,7 @@ function normalizeMeasurementQuickFloorDraft(floor = {}) {
   return {
     id: String(floor.id || createMeasurementQuickDraftId("floor")),
     name: String(floor.name ?? ""),
+    collapsed: Boolean(floor.collapsed),
     rooms,
   };
 }
@@ -26238,6 +26248,24 @@ function normalizeMeasurementQuickFillStructure(structure = {}) {
 
 function createDefaultMeasurementQuickFillStructure() {
   return normalizeMeasurementQuickFillStructure();
+}
+
+function cloneMeasurementQuickItemDraftForNewRoom(item = {}) {
+  const normalizedItem = normalizeMeasurementQuickItemDraft(item);
+  return normalizeMeasurementQuickItemDraft({
+    name: normalizedItem.name,
+    count: normalizedItem.count,
+    settings: new Map(normalizedItem.settings),
+  });
+}
+
+function cloneMeasurementQuickRoomDraftForNewRoom(room = {}) {
+  const normalizedRoom = normalizeMeasurementQuickRoomDraft(room);
+  return normalizeMeasurementQuickRoomDraft({
+    name: "",
+    collapsed: false,
+    items: normalizedRoom.items.map((item) => cloneMeasurementQuickItemDraftForNewRoom(item)),
+  });
 }
 
 function collectMeasurementQuickFillColumnSettings(root = null) {
@@ -26411,6 +26439,8 @@ function collectMeasurementQuickFillStructure() {
           return normalizeMeasurementQuickRoomDraft({
             id: roomElement.dataset.measurementQuickRoomId,
             name: roomNameInput instanceof HTMLInputElement ? roomNameInput.value : "",
+            collapsed: roomElement.dataset.measurementQuickCollapsed === "true"
+              || roomElement.classList.contains("is-collapsed"),
             items,
           });
         });
@@ -26418,6 +26448,8 @@ function collectMeasurementQuickFillStructure() {
       return normalizeMeasurementQuickFloorDraft({
         id: floorElement.dataset.measurementQuickFloorId,
         name: floorNameInput instanceof HTMLInputElement ? floorNameInput.value : "",
+        collapsed: floorElement.dataset.measurementQuickCollapsed === "true"
+          || floorElement.classList.contains("is-collapsed"),
         rooms,
       });
     });
@@ -26467,9 +26499,13 @@ function renderMeasurementQuickRoomCard(room = {}) {
   const card = document.createElement("section");
   card.className = "measurement-quick-room-card";
   card.dataset.measurementQuickRoomId = normalizedRoom.id;
+  card.dataset.measurementQuickCollapsed = normalizedRoom.collapsed ? "true" : "false";
+  card.classList.toggle("is-collapsed", normalizedRoom.collapsed);
 
   const head = document.createElement("div");
   head.className = "measurement-quick-card-head";
+  head.dataset.measurementQuickToggleHeader = "room";
+  head.title = normalizedRoom.collapsed ? "Klikni za prikaz prostorije" : "Klikni za sakriti prostoriju";
 
   const roomNameInput = createMeasurementQuickTextInput(
     normalizedRoom.name,
@@ -26480,6 +26516,11 @@ function renderMeasurementQuickRoomCard(room = {}) {
 
   const actions = document.createElement("div");
   actions.className = "measurement-quick-card-actions";
+  const collapseButton = document.createElement("button");
+  collapseButton.type = "button";
+  collapseButton.className = "ghost-button measurement-quick-collapse";
+  collapseButton.dataset.measurementQuickAction = "toggle-room";
+  collapseButton.textContent = normalizedRoom.collapsed ? "Prikaži" : "Sakrij";
   const addItemButton = document.createElement("button");
   addItemButton.type = "button";
   addItemButton.className = "ghost-button";
@@ -26490,7 +26531,7 @@ function renderMeasurementQuickRoomCard(room = {}) {
   removeRoomButton.className = "ghost-button measurement-quick-danger";
   removeRoomButton.dataset.measurementQuickAction = "remove-room";
   removeRoomButton.textContent = "Ukloni prostoriju";
-  actions.append(addItemButton, removeRoomButton);
+  actions.append(collapseButton, addItemButton, removeRoomButton);
   head.append(actions);
 
   const itemList = document.createElement("div");
@@ -26509,9 +26550,13 @@ function renderMeasurementQuickFloorCard(floor = {}) {
   const card = document.createElement("section");
   card.className = "measurement-quick-floor-card";
   card.dataset.measurementQuickFloorId = normalizedFloor.id;
+  card.dataset.measurementQuickCollapsed = normalizedFloor.collapsed ? "true" : "false";
+  card.classList.toggle("is-collapsed", normalizedFloor.collapsed);
 
   const head = document.createElement("div");
   head.className = "measurement-quick-card-head";
+  head.dataset.measurementQuickToggleHeader = "floor";
+  head.title = normalizedFloor.collapsed ? "Klikni za prikaz etaže" : "Klikni za sakriti etažu";
 
   const floorNameInput = createMeasurementQuickTextInput(
     normalizedFloor.name,
@@ -26522,6 +26567,11 @@ function renderMeasurementQuickFloorCard(floor = {}) {
 
   const actions = document.createElement("div");
   actions.className = "measurement-quick-card-actions";
+  const collapseButton = document.createElement("button");
+  collapseButton.type = "button";
+  collapseButton.className = "ghost-button measurement-quick-collapse";
+  collapseButton.dataset.measurementQuickAction = "toggle-floor";
+  collapseButton.textContent = normalizedFloor.collapsed ? "Prikaži" : "Sakrij";
   const addRoomButton = document.createElement("button");
   addRoomButton.type = "button";
   addRoomButton.className = "ghost-button";
@@ -26532,7 +26582,7 @@ function renderMeasurementQuickFloorCard(floor = {}) {
   removeFloorButton.className = "ghost-button measurement-quick-danger";
   removeFloorButton.dataset.measurementQuickAction = "remove-floor";
   removeFloorButton.textContent = "Ukloni etažu";
-  actions.append(addRoomButton, removeFloorButton);
+  actions.append(collapseButton, addRoomButton, removeFloorButton);
   head.append(actions);
 
   const roomList = document.createElement("div");
@@ -56830,7 +56880,7 @@ function renderClientPortalModule() {
 }
 
 function getCompanyTemplateAssignmentServices() {
-  const serviceRows = sortServiceCatalogItems(state.serviceCatalog ?? []).map((service) => ({
+  return sortServiceCatalogItems(state.serviceCatalog ?? []).map((service) => ({
     key: `service:${String(service.id || service.serviceCode || service.name || "").trim()}`,
     kind: "service",
     serviceId: String(service.id || ""),
@@ -56838,18 +56888,6 @@ function getCompanyTemplateAssignmentServices() {
     serviceName: String(service.name || service.serviceCode || "Usluga").trim(),
     label: [service.serviceCode, service.name].filter(Boolean).join(" · ") || "Usluga",
   })).filter((entry) => entry.key !== "service:");
-
-  return [
-    ...serviceRows,
-    {
-      key: "kind:is_znr",
-      kind: "is_znr",
-      serviceId: "",
-      serviceCode: "IS ZNR",
-      serviceName: "IS ZNR",
-      label: "IS ZNR",
-    },
-  ];
 }
 
 function getCompanyTemplateAssignmentTemplateOptions() {
@@ -56925,7 +56963,7 @@ function renderCompanyTemplateAssignments(assignments = []) {
     replaceSelectOptions(
       select,
       [
-        { value: "", label: templateOptions.length ? "Bez templatea" : "Nema spremljenih templatea" },
+        { value: "", label: templateOptions.length ? "Koristi opći template za ovu uslugu" : "Nema spremljenih templatea" },
         ...templateOptions.map((option) => ({ value: option.value, label: option.label })),
       ],
       assignment?.templateId || "",
@@ -71797,6 +71835,237 @@ async function applyWorkOrderBatchUpdate(bodyOrBuilder, { successMessage = "" } 
   }
 }
 
+function closeWorkOrderRowMenu() {
+  const menuElement = state.workOrderRowMenu?.element;
+  if (menuElement instanceof HTMLElement) {
+    menuElement.remove();
+  }
+  state.workOrderRowMenu = null;
+}
+
+function getWorkOrderRowMenuTargets(workOrder = {}) {
+  const selectedWorkOrders = getAllSelectedWorkOrdersForDocumentWizard();
+  if (selectedWorkOrders.length > 0) {
+    return selectedWorkOrders;
+  }
+  return workOrder?.id ? [workOrder] : [];
+}
+
+function getWorkOrderSharedValue(items = [], resolver = (item) => item) {
+  const shared = getSharedWorkOrderBatchValue(items, resolver);
+  return {
+    value: shared.value,
+    mixed: shared.mixed,
+  };
+}
+
+function getWorkOrderFinishedPatch(workOrder = {}, finished = false) {
+  if (finished) {
+    return {
+      completedBy: getUserDocumentDisplayName(state.user),
+      status: isClosedWorkOrder(workOrder.status) ? workOrder.status : "Gotov RN",
+    };
+  }
+
+  return {
+    completedBy: "",
+    status: String(workOrder.status || "") === "Gotov RN" ? "Otvoreni RN" : workOrder.status,
+  };
+}
+
+async function applyWorkOrderRowMenuUpdate(targets = [], bodyBuilder = () => ({})) {
+  const workOrders = targets.filter((item) => item?.id);
+  if (!workOrders.length) {
+    return false;
+  }
+
+  state.workOrderBatch.pending = true;
+  state.workOrderBatch.message = `Ažuriram ${formatWorkOrderSelectionCountLabel(workOrders.length).toLowerCase()}...`;
+  state.workOrderBatch.tone = "pending";
+  renderWorkOrderBatchBar();
+
+  try {
+    let hasChanges = false;
+    for (const workOrder of workOrders) {
+      const body = bodyBuilder(workOrder);
+      if (!body || Object.keys(body).length === 0) {
+        continue;
+      }
+      hasChanges = true;
+      await apiRequest(`/work-orders/${workOrder.id}`, {
+        method: "PATCH",
+        body,
+      });
+    }
+
+    if (hasChanges) {
+      await refreshSnapshot();
+    }
+
+    state.workOrderBatch.message = hasChanges
+      ? `Ažurirano ${formatWorkOrderSelectionCountLabel(workOrders.length).toLowerCase()}.`
+      : "Nema promjena za spremanje.";
+    state.workOrderBatch.tone = hasChanges ? "success" : "";
+    closeWorkOrderRowMenu();
+    return true;
+  } catch (error) {
+    if (error.statusCode === 401) {
+      state.user = null;
+      renderAuthState();
+      setSyncError("");
+      return false;
+    }
+
+    state.workOrderBatch.message = error.message || "Brza promjena RN-a nije uspjela.";
+    state.workOrderBatch.tone = "error";
+    setSyncError(error.message || "Brza promjena RN-a nije uspjela.");
+    return false;
+  } finally {
+    state.workOrderBatch.pending = false;
+    renderWorkOrderBatchBar();
+  }
+}
+
+function openWorkOrderRowMenu(workOrder = {}, pointerX = 0, pointerY = 0) {
+  const targets = getWorkOrderRowMenuTargets(workOrder);
+  if (!targets.length) {
+    return;
+  }
+
+  closeOpenWorkOrderStatusMenus();
+  closeWorkOrderRowMenu();
+
+  const invoiceDate = getWorkOrderSharedValue(targets, (item) => item.invoiceDate);
+  const invoiceNote = getWorkOrderSharedValue(targets, (item) => item.invoiceNote);
+  const amount = getWorkOrderSharedValue(targets, (item) => item.weight);
+  const finishedValues = targets.map((item) => Boolean(item.completedBy || String(item.status || "") === "Gotov RN"));
+  const finishedMixed = finishedValues.some((value) => value !== finishedValues[0]);
+
+  const menu = document.createElement("form");
+  menu.className = "work-order-row-context-menu";
+  menu.setAttribute("role", "menu");
+  menu.dataset.preventRowOpen = "true";
+
+  const header = document.createElement("div");
+  header.className = "work-order-row-context-head";
+  const title = document.createElement("strong");
+  title.textContent = "Faktura i završetak";
+  const subtitle = document.createElement("span");
+  subtitle.textContent = targets.length > 1
+    ? `Primjenjuje se na ${targets.length} odabrana RN-a`
+    : `RN ${workOrder.workOrderNumber || ""}`.trim();
+  header.append(title, subtitle);
+
+  const createTextField = (labelText, value = "", placeholder = "") => {
+    const label = document.createElement("label");
+    label.className = "work-order-row-context-field";
+    const labelNode = document.createElement("span");
+    labelNode.textContent = labelText;
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = value;
+    input.placeholder = placeholder;
+    input.dataset.dirty = "false";
+    input.addEventListener("input", () => {
+      input.dataset.dirty = "true";
+    });
+    label.append(labelNode, input);
+    return { label, input };
+  };
+
+  const dateField = createTextField(
+    "Datum fakture",
+    invoiceDate.mixed ? "" : formatDateInputDisplayValue(invoiceDate.value),
+    invoiceDate.mixed ? "Različiti datumi" : "dd.mm.yyyy",
+  );
+  const noteField = createTextField(
+    "Broj fakture",
+    invoiceNote.mixed ? "" : invoiceNote.value,
+    invoiceNote.mixed ? "Različiti brojevi" : "npr. 2026-001",
+  );
+  const amountField = createTextField(
+    "Iznos",
+    amount.mixed ? "" : amount.value,
+    amount.mixed ? "Različiti iznosi" : "npr. 250,00",
+  );
+
+  const finishedLabel = document.createElement("label");
+  finishedLabel.className = "work-order-row-context-check";
+  const finishedInput = document.createElement("input");
+  finishedInput.type = "checkbox";
+  finishedInput.checked = finishedValues[0] && !finishedMixed;
+  finishedInput.indeterminate = finishedMixed;
+  finishedInput.dataset.dirty = "false";
+  finishedInput.addEventListener("change", () => {
+    finishedInput.dataset.dirty = "true";
+    finishedInput.indeterminate = false;
+  });
+  const finishedText = document.createElement("span");
+  finishedText.textContent = "RN završio";
+  finishedLabel.append(finishedInput, finishedText);
+
+  const fields = document.createElement("div");
+  fields.className = "work-order-row-context-grid";
+  fields.append(dateField.label, noteField.label, amountField.label, finishedLabel);
+
+  const actions = document.createElement("div");
+  actions.className = "work-order-row-context-actions";
+  const cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.className = "ghost-button";
+  cancelButton.textContent = "Zatvori";
+  cancelButton.addEventListener("click", () => {
+    closeWorkOrderRowMenu();
+  });
+  const saveButton = document.createElement("button");
+  saveButton.type = "submit";
+  saveButton.className = "primary-button";
+  saveButton.textContent = "Primijeni";
+  actions.append(cancelButton, saveButton);
+
+  menu.append(header, fields, actions);
+  menu.addEventListener("click", (event) => {
+    event.stopPropagation();
+  });
+  menu.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  });
+  menu.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const dateDirty = dateField.input.dataset.dirty === "true";
+    const noteDirty = noteField.input.dataset.dirty === "true";
+    const amountDirty = amountField.input.dataset.dirty === "true";
+    const finishedDirty = finishedInput.dataset.dirty === "true";
+
+    void applyWorkOrderRowMenuUpdate(targets, (targetWorkOrder) => {
+      const body = {};
+      if (dateDirty) {
+        body.invoiceDate = normalizeDateInputValue(dateField.input.value);
+      }
+      if (noteDirty) {
+        body.invoiceNote = noteField.input.value;
+      }
+      if (amountDirty) {
+        body.weight = amountField.input.value;
+      }
+      if (finishedDirty) {
+        Object.assign(body, getWorkOrderFinishedPatch(targetWorkOrder, finishedInput.checked));
+      }
+      return body;
+    });
+  });
+
+  document.body.append(menu);
+  const rect = menu.getBoundingClientRect();
+  const left = Math.min(Math.max(pointerX + 8, 12), Math.max(12, window.innerWidth - rect.width - 12));
+  const top = Math.min(Math.max(pointerY + 8, 12), Math.max(12, window.innerHeight - rect.height - 12));
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+  state.workOrderRowMenu = { element: menu, workOrderId: String(workOrder.id || "") };
+  dateField.input.focus({ preventScroll: true });
+}
+
 function setWorkOrderBulkExecutorTriggerContent(trigger, values = [], { mixed = false } = {}) {
   if (!(trigger instanceof HTMLButtonElement)) {
     return;
@@ -77464,6 +77733,14 @@ function renderCompactWorkOrdersList() {
           hydrateWorkOrderForm(item);
         }
       });
+      rowCard.addEventListener("contextmenu", (event) => {
+        if (isInteractiveWorkOrderTarget(event.target)) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        openWorkOrderRowMenu(item, event.clientX, event.clientY);
+      });
       bindWorkOrderRowDocumentDropTarget(rowCard, item);
 
       const selectionCell = document.createElement("div");
@@ -79612,45 +79889,70 @@ measurementQuickAddFloorButton?.addEventListener("click", () => {
 measurementQuickAddRoomButton?.addEventListener("click", () => {
   mutateMeasurementQuickStructure((structure) => {
     let targetFloor = structure.floors.find((floor) => !String(floor.name || "").trim());
+    let createdFloor = false;
     if (!targetFloor) {
       targetFloor = normalizeMeasurementQuickFloorDraft({ name: "" });
       structure.floors.push(targetFloor);
+      createdFloor = true;
     }
-    targetFloor.rooms.push(normalizeMeasurementQuickRoomDraft());
+    if (!createdFloor) {
+      const sourceRoom = targetFloor.rooms.at(-1);
+      targetFloor.rooms.push(sourceRoom
+        ? cloneMeasurementQuickRoomDraftForNewRoom(sourceRoom)
+        : normalizeMeasurementQuickRoomDraft());
+    }
+    targetFloor.collapsed = false;
   });
 });
 measurementQuickStructure?.addEventListener("click", (event) => {
   const actionButton = event.target instanceof HTMLElement
     ? event.target.closest("[data-measurement-quick-action]")
     : null;
-  if (!(actionButton instanceof HTMLElement)) {
+  const toggleHeader = event.target instanceof HTMLElement
+    ? event.target.closest("[data-measurement-quick-toggle-header]")
+    : null;
+  const isInteractiveTarget = event.target instanceof HTMLElement
+    && Boolean(event.target.closest("button, input, select, textarea, a"));
+
+  if (!(actionButton instanceof HTMLElement) && !(toggleHeader instanceof HTMLElement && !isInteractiveTarget)) {
     return;
   }
 
   event.preventDefault();
   event.stopPropagation();
-  const action = String(actionButton.dataset.measurementQuickAction || "");
+  const action = actionButton instanceof HTMLElement
+    ? String(actionButton.dataset.measurementQuickAction || "")
+    : `toggle-${String(toggleHeader.dataset.measurementQuickToggleHeader || "")}`;
   const {
     structure,
     floorIndex,
     roomIndex,
     itemIndex,
-  } = getMeasurementQuickStructureIndexes(actionButton);
+  } = getMeasurementQuickStructureIndexes(actionButton instanceof HTMLElement ? actionButton : toggleHeader);
 
   if (!structure) {
     return;
   }
 
   if (action === "add-room" && floorIndex >= 0) {
-    structure.floors[floorIndex].rooms.push(normalizeMeasurementQuickRoomDraft());
+    const sourceRoom = structure.floors[floorIndex].rooms.at(-1);
+    structure.floors[floorIndex].rooms.push(sourceRoom
+      ? cloneMeasurementQuickRoomDraftForNewRoom(sourceRoom)
+      : normalizeMeasurementQuickRoomDraft());
+    structure.floors[floorIndex].collapsed = false;
   } else if (action === "remove-floor" && floorIndex >= 0) {
     structure.floors.splice(floorIndex, 1);
   } else if (action === "add-item" && floorIndex >= 0 && roomIndex >= 0) {
+    structure.floors[floorIndex].rooms[roomIndex].collapsed = false;
     structure.floors[floorIndex].rooms[roomIndex].items.push(normalizeMeasurementQuickItemDraft());
   } else if (action === "remove-room" && floorIndex >= 0 && roomIndex >= 0) {
     structure.floors[floorIndex].rooms.splice(roomIndex, 1);
   } else if (action === "remove-item" && floorIndex >= 0 && roomIndex >= 0 && itemIndex >= 0) {
     structure.floors[floorIndex].rooms[roomIndex].items.splice(itemIndex, 1);
+  } else if (action === "toggle-floor" && floorIndex >= 0) {
+    structure.floors[floorIndex].collapsed = !structure.floors[floorIndex].collapsed;
+  } else if (action === "toggle-room" && floorIndex >= 0 && roomIndex >= 0) {
+    structure.floors[floorIndex].rooms[roomIndex].collapsed = !structure.floors[floorIndex].rooms[roomIndex].collapsed;
   }
 
   renderMeasurementQuickFillStructure(structure);
@@ -82721,6 +83023,11 @@ document.addEventListener("keydown", (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
+  if (state.workOrderRowMenu && event.key === "Escape") {
+    closeWorkOrderRowMenu();
+    return;
+  }
+
   if (state.chat.contextMenu && event.key === "Escape") {
     closeChatConversationMenu();
     return;
@@ -83035,6 +83342,13 @@ document.addEventListener("click", (event) => {
     }
   }
 
+  if (state.workOrderRowMenu && event.target instanceof Node) {
+    const clickedWorkOrderRowMenu = state.workOrderRowMenu.element?.contains(event.target);
+    if (!clickedWorkOrderRowMenu) {
+      closeWorkOrderRowMenu();
+    }
+  }
+
   if (
     state.workOrderFilters.builderOpen
     && !targetElement?.closest(".work-order-filter-shell")
@@ -83136,6 +83450,7 @@ document.addEventListener("click", (event) => {
 
 window.addEventListener("resize", () => {
   closeOpenWorkOrderStatusMenus();
+  closeWorkOrderRowMenu();
   if (notificationsMenuOpen) {
     setNotificationsMenuOpen(false);
   }
