@@ -874,18 +874,6 @@ const MEASUREMENT_ROW_BATCH_SIZE = 48;
 const MIN_VISIBLE_MEASUREMENT_ROWS = 120;
 const MEASUREMENT_COMPUTE_DEBOUNCE_MS = 90;
 const MEASUREMENT_COLUMN_MIN_WIDTH = 32;
-const MEASUREMENT_FORMULA_SUGGESTION_LIST_ID = "measurement-formula-suggestions";
-const MEASUREMENT_FORMULA_SUGGESTIONS = Object.freeze([
-  Object.freeze({ value: "=RANDBETWEEN(1;100)", label: "RANDBETWEEN - slučajni cijeli broj" }),
-  Object.freeze({ value: "=IF(A1>0;\"DA\";\"NE\")", label: "IF - uvjetni rezultat" }),
-  Object.freeze({ value: "=IFERROR(A1/B1;\"\")", label: "IFERROR - fallback kada formula ne uspije" }),
-  Object.freeze({ value: "=SUM(A1:A10)", label: "SUM - zbroj raspona" }),
-  Object.freeze({ value: "=AVERAGE(A1:A10)", label: "AVERAGE - prosjek raspona" }),
-  Object.freeze({ value: "=MIN(A1:A10)", label: "MIN - najmanja vrijednost" }),
-  Object.freeze({ value: "=MAX(A1:A10)", label: "MAX - najveća vrijednost" }),
-  Object.freeze({ value: "=COUNT(A1:A10)", label: "COUNT - broj numeričkih vrijednosti" }),
-  Object.freeze({ value: "=VLOOKUP(A1;A1:B10;2;FALSE)", label: "VLOOKUP - dohvat iz raspona" }),
-]);
 const COMPANIES_SEARCH_DEBOUNCE_MS = 140;
 const LOCATIONS_SEARCH_DEBOUNCE_MS = 140;
 const WORK_ORDER_VIEW_MODES = [
@@ -26556,28 +26544,8 @@ function isMeasurementValidationValueAllowed(column = null, value = "") {
   return options.some((option) => String(option).trim().toLowerCase() === normalizedValue.toLowerCase());
 }
 
-function renderMeasurementFormulaSuggestions() {
-  const dataList = document.getElementById(MEASUREMENT_FORMULA_SUGGESTION_LIST_ID);
-  if (!(dataList instanceof HTMLDataListElement)) {
-    return;
-  }
-
-  dataList.replaceChildren(...MEASUREMENT_FORMULA_SUGGESTIONS.map((suggestion) => {
-    const option = document.createElement("option");
-    option.value = suggestion.value;
-    option.label = suggestion.label;
-    option.textContent = suggestion.label;
-    return option;
-  }));
-}
-
 function syncMeasurementInputListSource(input) {
   if (!(input instanceof HTMLInputElement)) {
-    return;
-  }
-
-  if (isMeasurementFormula(input.value)) {
-    input.setAttribute("list", MEASUREMENT_FORMULA_SUGGESTION_LIST_ID);
     return;
   }
 
@@ -26901,11 +26869,7 @@ function createMeasurementQuickFillColumnMapElement(previousSettings = new Map()
       row.classList.toggle("uses-formula", select.value === "formula");
       customInput.disabled = !isCustom;
       customInput.placeholder = getMeasurementQuickFillColumnPlaceholder(select.value, column);
-      if (select.value === "formula") {
-        customInput.setAttribute("list", MEASUREMENT_FORMULA_SUGGESTION_LIST_ID);
-      } else {
-        customInput.removeAttribute("list");
-      }
+      customInput.removeAttribute("list");
     };
     select.addEventListener("change", () => {
       syncCustomVisibility();
@@ -80641,7 +80605,6 @@ measurementSheetOpenButton?.addEventListener("click", () => {
 });
 measurementSheetCloseButton?.addEventListener("click", closeMeasurementSheet);
 measurementSheetBackdrop?.addEventListener("click", closeMeasurementSheet);
-renderMeasurementFormulaSuggestions();
 measurementSheetPresetSelect?.addEventListener("change", () => {
   renderMeasurementSheetPresetLibrary();
 });
