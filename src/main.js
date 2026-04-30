@@ -868,11 +868,24 @@ let workOrderLeafletClusterLayer = null;
 let workOrderLeafletMarkers = new Map();
 let workOrderCalendarShellHeightFrame = 0;
 let periodicsCalendarShellHeightFrame = 0;
+let measurementQuickFillDraftCounter = 0;
 const DEFAULT_MEASUREMENT_ROW_COUNT = 72;
 const MEASUREMENT_ROW_BATCH_SIZE = 48;
 const MIN_VISIBLE_MEASUREMENT_ROWS = 120;
 const MEASUREMENT_COMPUTE_DEBOUNCE_MS = 90;
 const MEASUREMENT_COLUMN_MIN_WIDTH = 32;
+const MEASUREMENT_FORMULA_SUGGESTION_LIST_ID = "measurement-formula-suggestions";
+const MEASUREMENT_FORMULA_SUGGESTIONS = Object.freeze([
+  Object.freeze({ value: "=RANDBETWEEN(1;100)", label: "RANDBETWEEN - slučajni cijeli broj" }),
+  Object.freeze({ value: "=IF(A1>0;\"DA\";\"NE\")", label: "IF - uvjetni rezultat" }),
+  Object.freeze({ value: "=IFERROR(A1/B1;\"\")", label: "IFERROR - fallback kada formula ne uspije" }),
+  Object.freeze({ value: "=SUM(A1:A10)", label: "SUM - zbroj raspona" }),
+  Object.freeze({ value: "=AVERAGE(A1:A10)", label: "AVERAGE - prosjek raspona" }),
+  Object.freeze({ value: "=MIN(A1:A10)", label: "MIN - najmanja vrijednost" }),
+  Object.freeze({ value: "=MAX(A1:A10)", label: "MAX - najveća vrijednost" }),
+  Object.freeze({ value: "=COUNT(A1:A10)", label: "COUNT - broj numeričkih vrijednosti" }),
+  Object.freeze({ value: "=VLOOKUP(A1;A1:B10;2;FALSE)", label: "VLOOKUP - dohvat iz raspona" }),
+]);
 const COMPANIES_SEARCH_DEBOUNCE_MS = 140;
 const LOCATIONS_SEARCH_DEBOUNCE_MS = 140;
 const WORK_ORDER_VIEW_MODES = [
@@ -4002,12 +4015,10 @@ const measurementAiValidationRulesInput = document.querySelector("#measurement-a
 const measurementQuickFillButton = document.querySelector("#measurement-quick-fill-button");
 const measurementQuickFillPopover = document.querySelector("#measurement-quick-fill-popover");
 const measurementQuickFillCloseButton = document.querySelector("#measurement-quick-fill-close");
-const measurementQuickFloorInput = document.querySelector("#measurement-quick-floor");
-const measurementQuickRoomInput = document.querySelector("#measurement-quick-room");
-const measurementQuickItemNameInput = document.querySelector("#measurement-quick-item-name");
-const measurementQuickItemCountInput = document.querySelector("#measurement-quick-item-count");
 const measurementQuickStartRowInput = document.querySelector("#measurement-quick-start-row");
-const measurementQuickColumnMap = document.querySelector("#measurement-quick-column-map");
+const measurementQuickAddFloorButton = document.querySelector("#measurement-quick-add-floor");
+const measurementQuickAddRoomButton = document.querySelector("#measurement-quick-add-room");
+const measurementQuickStructure = document.querySelector("#measurement-quick-structure");
 const measurementQuickGenerateButton = document.querySelector("#measurement-quick-generate");
 const measurementFormatFontFamilyInput = document.querySelector("#measurement-format-font-family");
 const measurementFormatFontSizeInput = document.querySelector("#measurement-format-font-size");
@@ -25996,6 +26007,40 @@ function isMeasurementValidationValueAllowed(column = null, value = "") {
   return options.some((option) => String(option).trim().toLowerCase() === normalizedValue.toLowerCase());
 }
 
+function renderMeasurementFormulaSuggestions() {
+  const dataList = document.getElementById(MEASUREMENT_FORMULA_SUGGESTION_LIST_ID);
+  if (!(dataList instanceof HTMLDataListElement)) {
+    return;
+  }
+
+  dataList.replaceChildren(...MEASUREMENT_FORMULA_SUGGESTIONS.map((suggestion) => {
+    const option = document.createElement("option");
+    option.value = suggestion.value;
+    option.label = suggestion.label;
+    option.textContent = suggestion.label;
+    return option;
+  }));
+}
+
+function syncMeasurementInputListSource(input) {
+  if (!(input instanceof HTMLInputElement)) {
+    return;
+  }
+
+  if (isMeasurementFormula(input.value)) {
+    input.setAttribute("list", MEASUREMENT_FORMULA_SUGGESTION_LIST_ID);
+    return;
+  }
+
+  const validationListId = String(input.dataset.measurementValidationListId || "").trim();
+  if (validationListId) {
+    input.setAttribute("list", validationListId);
+    return;
+  }
+
+  input.removeAttribute("list");
+}
+
 function applyMeasurementValidationToColumns(validationPatch = {}) {
   const targetIndexes = getMeasurementValidationTargetColumnIndexes();
   if (targetIndexes.length === 0) {
@@ -26125,9 +26170,80 @@ function normalizeMeasurementQuickFillFormula(value = "") {
     .replace(/RANDBE+TWIN/gi, "RANDBETWEEN");
 }
 
-function collectMeasurementQuickFillColumnSettings() {
+function createMeasurementQuickDraftId(prefix = "quick") {
+  measurementQuickFillDraftCounter += 1;
+  return `${prefix}-${Date.now().toString(36)}-${measurementQuickFillDraftCounter}`;
+}
+
+function getMeasurementQuickEditableColumns() {
+  return state.measurementSheet.columns.filter((column) => !column.computed);
+}
+
+function getMeasurementQuickEditableColumnSignature() {
+  return getMeasurementQuickEditableColumns()
+    .map((column) => `${column.id}:${column.label || ""}`)
+    .join("|");
+}
+
+function normalizeMeasurementQuickItemDraft(item = {}) {
+  const count = Math.max(1, Math.min(500, Number.parseInt(String(item.count ?? "1"), 10) || 1));
+  return {
+    id: String(item.id || createMeasurementQuickDraftId("item")),
+    name: String(item.name ?? item.itemName ?? ""),
+    count,
+    settings: item.settings instanceof Map ? item.settings : new Map(),
+  };
+}
+
+function normalizeMeasurementQuickRoomDraft(room = {}) {
+  const items = Array.isArray(room.items)
+    ? room.items.map((item) => normalizeMeasurementQuickItemDraft(item))
+    : [];
+  if (!items.length) {
+    items.push(normalizeMeasurementQuickItemDraft());
+  }
+
+  return {
+    id: String(room.id || createMeasurementQuickDraftId("room")),
+    name: String(room.name ?? ""),
+    items,
+  };
+}
+
+function normalizeMeasurementQuickFloorDraft(floor = {}) {
+  const rooms = Array.isArray(floor.rooms)
+    ? floor.rooms.map((room) => normalizeMeasurementQuickRoomDraft(room))
+    : [];
+  if (!rooms.length) {
+    rooms.push(normalizeMeasurementQuickRoomDraft());
+  }
+
+  return {
+    id: String(floor.id || createMeasurementQuickDraftId("floor")),
+    name: String(floor.name ?? ""),
+    rooms,
+  };
+}
+
+function normalizeMeasurementQuickFillStructure(structure = {}) {
+  const floors = Array.isArray(structure.floors)
+    ? structure.floors.map((floor) => normalizeMeasurementQuickFloorDraft(floor))
+    : [];
+  if (!floors.length) {
+    floors.push(normalizeMeasurementQuickFloorDraft());
+  }
+
+  return { floors };
+}
+
+function createDefaultMeasurementQuickFillStructure() {
+  return normalizeMeasurementQuickFillStructure();
+}
+
+function collectMeasurementQuickFillColumnSettings(root = null) {
   const settings = new Map();
-  measurementQuickColumnMap
+  const source = root instanceof HTMLElement ? root : measurementQuickStructure;
+  source
     ?.querySelectorAll("[data-measurement-quick-column-id]")
     .forEach((row) => {
       if (!(row instanceof HTMLElement)) {
@@ -26147,31 +26263,29 @@ function collectMeasurementQuickFillColumnSettings() {
   return settings;
 }
 
-function renderMeasurementQuickFillColumnMap() {
-  if (!measurementQuickColumnMap || !state.measurementSheet.quickFillPopoverOpen) {
-    return;
-  }
+function createMeasurementQuickFillColumnMapElement(previousSettings = new Map()) {
+  const map = document.createElement("div");
+  map.className = "measurement-quick-column-map";
+  map.dataset.measurementQuickColumnMap = "true";
 
-  const previousSettings = collectMeasurementQuickFillColumnSettings();
-  const editableColumns = state.measurementSheet.columns.filter((column) => !column.computed);
+  const editableColumns = getMeasurementQuickEditableColumns();
   if (editableColumns.length === 0) {
     const empty = document.createElement("p");
     empty.className = "helper-copy module-copy";
     empty.textContent = "Dodaj barem jednu kolonu u Excel tablicu.";
-    measurementQuickColumnMap.replaceChildren(empty);
-    return;
+    map.append(empty);
+    return map;
   }
 
-  const fragment = document.createDocumentFragment();
   const title = document.createElement("div");
   title.className = "measurement-quick-column-map-title";
   title.textContent = "Vrijednosti po kolonama";
-  fragment.append(title);
+  map.append(title);
 
   const subtitle = document.createElement("p");
   subtitle.className = "measurement-quick-column-map-copy";
   subtitle.textContent = "Odaberi redni broj, formulu ili fiksnu vrijednost za svaku kolonu. Formula može biti Excel stil, npr. =RANDBETWEEN(1;100).";
-  fragment.append(subtitle);
+  map.append(subtitle);
 
   const header = document.createElement("div");
   header.className = "measurement-quick-column-grid-head";
@@ -26180,7 +26294,7 @@ function renderMeasurementQuickFillColumnMap() {
     item.textContent = label;
     header.append(item);
   });
-  fragment.append(header);
+  map.append(header);
 
   editableColumns.forEach((column) => {
     const row = document.createElement("div");
@@ -26218,6 +26332,11 @@ function renderMeasurementQuickFillColumnMap() {
       row.classList.toggle("uses-formula", select.value === "formula");
       customInput.disabled = !isCustom;
       customInput.placeholder = getMeasurementQuickFillColumnPlaceholder(select.value, column);
+      if (select.value === "formula") {
+        customInput.setAttribute("list", MEASUREMENT_FORMULA_SUGGESTION_LIST_ID);
+      } else {
+        customInput.removeAttribute("list");
+      }
     };
     select.addEventListener("change", () => {
       syncCustomVisibility();
@@ -26228,10 +26347,274 @@ function renderMeasurementQuickFillColumnMap() {
     syncCustomVisibility();
 
     row.append(label, select, customInput);
-    fragment.append(row);
+    map.append(row);
   });
 
-  measurementQuickColumnMap.replaceChildren(fragment);
+  return map;
+}
+
+function createMeasurementQuickField(labelText, input) {
+  const label = document.createElement("label");
+  label.className = "measurement-quick-field-line";
+  const labelSpan = document.createElement("span");
+  labelSpan.textContent = labelText;
+  label.append(labelSpan, input);
+  return label;
+}
+
+function createMeasurementQuickTextInput(value = "", placeholder = "") {
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = value;
+  input.placeholder = placeholder;
+  return input;
+}
+
+function createMeasurementQuickNumberInput(value = 1) {
+  const input = document.createElement("input");
+  input.type = "number";
+  input.min = "1";
+  input.max = "500";
+  input.step = "1";
+  input.value = String(Math.max(1, Math.min(500, Number.parseInt(String(value || "1"), 10) || 1)));
+  return input;
+}
+
+function collectMeasurementQuickFillStructure() {
+  if (!(measurementQuickStructure instanceof HTMLElement)) {
+    return createDefaultMeasurementQuickFillStructure();
+  }
+
+  const floors = Array.from(measurementQuickStructure.children)
+    .filter((floorElement) => floorElement instanceof HTMLElement && floorElement.matches("[data-measurement-quick-floor-id]"))
+    .map((floorElement) => {
+      const floorNameInput = floorElement.querySelector("[data-measurement-quick-floor-name]");
+      const roomList = floorElement.querySelector("[data-measurement-quick-room-list]");
+      const rooms = Array.from(roomList?.children ?? [])
+        .filter((roomElement) => roomElement instanceof HTMLElement && roomElement.matches("[data-measurement-quick-room-id]"))
+        .map((roomElement) => {
+          const roomNameInput = roomElement.querySelector("[data-measurement-quick-room-name]");
+          const itemList = roomElement.querySelector("[data-measurement-quick-item-list]");
+          const items = Array.from(itemList?.children ?? [])
+            .filter((itemElement) => itemElement instanceof HTMLElement && itemElement.matches("[data-measurement-quick-item-id]"))
+            .map((itemElement) => {
+              const itemNameInput = itemElement.querySelector("[data-measurement-quick-item-name]");
+              const itemCountInput = itemElement.querySelector("[data-measurement-quick-item-count]");
+              return normalizeMeasurementQuickItemDraft({
+                id: itemElement.dataset.measurementQuickItemId,
+                name: itemNameInput instanceof HTMLInputElement ? itemNameInput.value : "",
+                count: itemCountInput instanceof HTMLInputElement ? itemCountInput.value : "1",
+                settings: collectMeasurementQuickFillColumnSettings(itemElement),
+              });
+            });
+
+          return normalizeMeasurementQuickRoomDraft({
+            id: roomElement.dataset.measurementQuickRoomId,
+            name: roomNameInput instanceof HTMLInputElement ? roomNameInput.value : "",
+            items,
+          });
+        });
+
+      return normalizeMeasurementQuickFloorDraft({
+        id: floorElement.dataset.measurementQuickFloorId,
+        name: floorNameInput instanceof HTMLInputElement ? floorNameInput.value : "",
+        rooms,
+      });
+    });
+
+  return normalizeMeasurementQuickFillStructure({ floors });
+}
+
+function renderMeasurementQuickItemCard(item = {}) {
+  const normalizedItem = normalizeMeasurementQuickItemDraft(item);
+  const card = document.createElement("article");
+  card.className = "measurement-quick-item-card";
+  card.dataset.measurementQuickItemId = normalizedItem.id;
+
+  const head = document.createElement("div");
+  head.className = "measurement-quick-card-head";
+
+  const fields = document.createElement("div");
+  fields.className = "measurement-quick-item-fields";
+
+  const itemNameInput = createMeasurementQuickTextInput(
+    normalizedItem.name,
+    "Utičnica 230 V, RCD, panik svjetiljka...",
+  );
+  itemNameInput.dataset.measurementQuickItemName = "true";
+  fields.append(createMeasurementQuickField("Što unosim", itemNameInput));
+
+  const countInput = createMeasurementQuickNumberInput(normalizedItem.count);
+  countInput.dataset.measurementQuickItemCount = "true";
+  fields.append(createMeasurementQuickField("Količina", countInput));
+
+  const actions = document.createElement("div");
+  actions.className = "measurement-quick-card-actions";
+  const removeButton = document.createElement("button");
+  removeButton.type = "button";
+  removeButton.className = "ghost-button measurement-quick-danger";
+  removeButton.dataset.measurementQuickAction = "remove-item";
+  removeButton.textContent = "Ukloni stavku";
+  actions.append(removeButton);
+
+  head.append(fields, actions);
+  card.append(head, createMeasurementQuickFillColumnMapElement(normalizedItem.settings));
+  return card;
+}
+
+function renderMeasurementQuickRoomCard(room = {}) {
+  const normalizedRoom = normalizeMeasurementQuickRoomDraft(room);
+  const card = document.createElement("section");
+  card.className = "measurement-quick-room-card";
+  card.dataset.measurementQuickRoomId = normalizedRoom.id;
+
+  const head = document.createElement("div");
+  head.className = "measurement-quick-card-head";
+
+  const roomNameInput = createMeasurementQuickTextInput(
+    normalizedRoom.name,
+    "Hodnik, ured 12, prodajni prostor...",
+  );
+  roomNameInput.dataset.measurementQuickRoomName = "true";
+  head.append(createMeasurementQuickField("Prostorija", roomNameInput));
+
+  const actions = document.createElement("div");
+  actions.className = "measurement-quick-card-actions";
+  const addItemButton = document.createElement("button");
+  addItemButton.type = "button";
+  addItemButton.className = "ghost-button";
+  addItemButton.dataset.measurementQuickAction = "add-item";
+  addItemButton.textContent = "+ Stavka";
+  const removeRoomButton = document.createElement("button");
+  removeRoomButton.type = "button";
+  removeRoomButton.className = "ghost-button measurement-quick-danger";
+  removeRoomButton.dataset.measurementQuickAction = "remove-room";
+  removeRoomButton.textContent = "Ukloni prostoriju";
+  actions.append(addItemButton, removeRoomButton);
+  head.append(actions);
+
+  const itemList = document.createElement("div");
+  itemList.className = "measurement-quick-item-list";
+  itemList.dataset.measurementQuickItemList = "true";
+  normalizedRoom.items.forEach((item) => {
+    itemList.append(renderMeasurementQuickItemCard(item));
+  });
+
+  card.append(head, itemList);
+  return card;
+}
+
+function renderMeasurementQuickFloorCard(floor = {}) {
+  const normalizedFloor = normalizeMeasurementQuickFloorDraft(floor);
+  const card = document.createElement("section");
+  card.className = "measurement-quick-floor-card";
+  card.dataset.measurementQuickFloorId = normalizedFloor.id;
+
+  const head = document.createElement("div");
+  head.className = "measurement-quick-card-head";
+
+  const floorNameInput = createMeasurementQuickTextInput(
+    normalizedFloor.name,
+    "Opcionalno: prizemlje, 1. kat...",
+  );
+  floorNameInput.dataset.measurementQuickFloorName = "true";
+  head.append(createMeasurementQuickField("Etaža", floorNameInput));
+
+  const actions = document.createElement("div");
+  actions.className = "measurement-quick-card-actions";
+  const addRoomButton = document.createElement("button");
+  addRoomButton.type = "button";
+  addRoomButton.className = "ghost-button";
+  addRoomButton.dataset.measurementQuickAction = "add-room";
+  addRoomButton.textContent = "+ Prostorija";
+  const removeFloorButton = document.createElement("button");
+  removeFloorButton.type = "button";
+  removeFloorButton.className = "ghost-button measurement-quick-danger";
+  removeFloorButton.dataset.measurementQuickAction = "remove-floor";
+  removeFloorButton.textContent = "Ukloni etažu";
+  actions.append(addRoomButton, removeFloorButton);
+  head.append(actions);
+
+  const roomList = document.createElement("div");
+  roomList.className = "measurement-quick-room-list";
+  roomList.dataset.measurementQuickRoomList = "true";
+  normalizedFloor.rooms.forEach((room) => {
+    roomList.append(renderMeasurementQuickRoomCard(room));
+  });
+
+  card.append(head, roomList);
+  return card;
+}
+
+function renderMeasurementQuickFillStructure(structure = null) {
+  if (!(measurementQuickStructure instanceof HTMLElement)) {
+    return;
+  }
+
+  const editableColumns = getMeasurementQuickEditableColumns();
+  measurementQuickStructure.dataset.columnSignature = getMeasurementQuickEditableColumnSignature();
+  if (!editableColumns.length) {
+    const empty = document.createElement("p");
+    empty.className = "measurement-quick-empty";
+    empty.textContent = "Dodaj barem jednu kolonu u Excel tablicu prije brzog generiranja redova.";
+    measurementQuickStructure.replaceChildren(empty);
+    return;
+  }
+
+  const normalizedStructure = normalizeMeasurementQuickFillStructure(structure || createDefaultMeasurementQuickFillStructure());
+  const fragment = document.createDocumentFragment();
+  normalizedStructure.floors.forEach((floor) => {
+    fragment.append(renderMeasurementQuickFloorCard(floor));
+  });
+  measurementQuickStructure.replaceChildren(fragment);
+}
+
+function renderMeasurementQuickFillColumnMap() {
+  if (!(measurementQuickStructure instanceof HTMLElement) || !state.measurementSheet.quickFillPopoverOpen) {
+    return;
+  }
+
+  const signature = getMeasurementQuickEditableColumnSignature();
+  const hasRenderedDraft = Boolean(measurementQuickStructure.querySelector("[data-measurement-quick-floor-id]"));
+  if (hasRenderedDraft && measurementQuickStructure.dataset.columnSignature === signature) {
+    return;
+  }
+
+  const currentDraft = hasRenderedDraft
+    ? collectMeasurementQuickFillStructure()
+    : createDefaultMeasurementQuickFillStructure();
+  renderMeasurementQuickFillStructure(currentDraft);
+}
+
+function mutateMeasurementQuickStructure(mutator) {
+  const structure = collectMeasurementQuickFillStructure();
+  mutator(structure);
+  renderMeasurementQuickFillStructure(structure);
+}
+
+function getMeasurementQuickStructureIndexes(target) {
+  if (!(target instanceof HTMLElement)) {
+    return { floorIndex: -1, roomIndex: -1, itemIndex: -1 };
+  }
+
+  const floorElement = target.closest("[data-measurement-quick-floor-id]");
+  const roomElement = target.closest("[data-measurement-quick-room-id]");
+  const itemElement = target.closest("[data-measurement-quick-item-id]");
+  const structure = collectMeasurementQuickFillStructure();
+  const floorIndex = structure.floors.findIndex((floor) => floor.id === floorElement?.dataset.measurementQuickFloorId);
+  const roomIndex = floorIndex >= 0
+    ? structure.floors[floorIndex].rooms.findIndex((room) => room.id === roomElement?.dataset.measurementQuickRoomId)
+    : -1;
+  const itemIndex = floorIndex >= 0 && roomIndex >= 0
+    ? structure.floors[floorIndex].rooms[roomIndex].items.findIndex((item) => item.id === itemElement?.dataset.measurementQuickItemId)
+    : -1;
+
+  return {
+    structure,
+    floorIndex,
+    roomIndex,
+    itemIndex,
+  };
 }
 
 function createMeasurementQuickHeaderRow(label = "", fillColor = "#edf7f1") {
@@ -26301,15 +26684,11 @@ function buildMeasurementQuickDataRows(settings = [], count = 1, context = {}) {
 
 function generateMeasurementQuickFillRows() {
   ensureMeasurementSheetStructure();
-  const editableColumns = state.measurementSheet.columns.filter((column) => !column.computed);
+  const editableColumns = getMeasurementQuickEditableColumns();
   if (!editableColumns.length) {
     return;
   }
 
-  const floor = String(measurementQuickFloorInput?.value || "").trim();
-  const room = String(measurementQuickRoomInput?.value || "").trim();
-  const itemName = String(measurementQuickItemNameInput?.value || "").trim();
-  const count = Math.max(1, Math.min(500, Number.parseInt(String(measurementQuickItemCountInput?.value || "1"), 10) || 1));
   const requestedStartRow = Math.max(
     1,
     Math.min(
@@ -26318,21 +26697,46 @@ function generateMeasurementQuickFillRows() {
         || getMeasurementQuickDefaultStartRowNumber(),
     ),
   );
-  const previousSettings = collectMeasurementQuickFillColumnSettings();
-  const settings = editableColumns.map((column) => ({
-    columnId: column.id,
-    mode: previousSettings.get(column.id)?.mode || getDefaultMeasurementQuickFillColumnMode(column),
-    customValue: previousSettings.get(column.id)?.customValue || "",
-  }));
-
+  const structure = collectMeasurementQuickFillStructure();
   const rowsToInsert = [];
-  if (floor) {
-    rowsToInsert.push(createMeasurementQuickHeaderRow(`Etaža: ${floor}`, "#eef7ff"));
+  let dataRowCount = 0;
+
+  structure.floors.forEach((floorDraft) => {
+    const floor = String(floorDraft.name || "").trim();
+    if (floor) {
+      rowsToInsert.push(createMeasurementQuickHeaderRow(`Etaža: ${floor}`, "#eef7ff"));
+    }
+
+    floorDraft.rooms.forEach((roomDraft) => {
+      const room = String(roomDraft.name || "").trim();
+      if (room) {
+        rowsToInsert.push(createMeasurementQuickHeaderRow(`Prostorija: ${room}`, "#f0fbf4"));
+      }
+
+      roomDraft.items.forEach((itemDraft) => {
+        const itemName = String(itemDraft.name || "").trim();
+        const count = Math.max(1, Math.min(500, Number.parseInt(String(itemDraft.count || "1"), 10) || 1));
+        const settings = editableColumns.map((column) => ({
+          columnId: column.id,
+          mode: itemDraft.settings.get(column.id)?.mode || getDefaultMeasurementQuickFillColumnMode(column),
+          customValue: itemDraft.settings.get(column.id)?.customValue || "",
+        }));
+
+        const itemRows = buildMeasurementQuickDataRows(settings, count, {
+          floor,
+          room,
+          itemName,
+          count,
+        });
+        rowsToInsert.push(...itemRows);
+        dataRowCount += itemRows.length;
+      });
+    });
+  });
+
+  if (!dataRowCount) {
+    return;
   }
-  if (room) {
-    rowsToInsert.push(createMeasurementQuickHeaderRow(`Prostorija: ${room}`, "#f0fbf4"));
-  }
-  rowsToInsert.push(...buildMeasurementQuickDataRows(settings, count, { floor, room, itemName, count }));
 
   const insertionIndex = Math.max(0, requestedStartRow - 1);
   if (insertionIndex > 0) {
@@ -29750,11 +30154,12 @@ function renderMeasurementSheet() {
           option.value = optionValue;
           dataList.append(option);
         });
-        input.setAttribute("list", dataListId);
+        input.dataset.measurementValidationListId = dataListId;
         shell.append(dataList);
       } else {
-        input.removeAttribute("list");
+        delete input.dataset.measurementValidationListId;
       }
+      syncMeasurementInputListSource(input);
       input.addEventListener("focus", () => {
         state.measurementSheet.editingCell = {
           rowId: row.id,
@@ -29762,6 +30167,7 @@ function renderMeasurementSheet() {
         };
         state.measurementSheet.editorSource = "cell";
         syncMeasurementFormulaEditState();
+        syncMeasurementInputListSource(input);
 
         if (state.measurementSheet.activeCell?.rowId === row.id
           && state.measurementSheet.activeCell?.columnId === column.id) {
@@ -29786,6 +30192,7 @@ function renderMeasurementSheet() {
         };
         state.measurementSheet.editorSource = "cell";
         setMeasurementCellRawValue(row.id, column.id, event.currentTarget.value);
+        syncMeasurementInputListSource(input);
         syncMeasurementFormulaEditState();
         updateMeasurementEditingCellPreview(row.id, column.id);
         scheduleMeasurementSheetComputedRefresh();
@@ -39381,7 +39788,8 @@ function getMeasurementSheetPreviewCellVisualFormat(sheet, rowIndex, column = nu
 
   const row = sheet?.rows?.[rowIndex];
   const format = normalizeMeasurementCellFormat(row?.formats?.[column.id]);
-  const isFilled = String(row?.cells?.[column.id] ?? "").trim().length > 0;
+  const rawValue = row?.cells?.[column.id] ?? "";
+  const isFilled = String(rawValue).trim().length > 0 && !isMeasurementFormula(rawValue);
   return resolveMeasurementConditionalFormat(format, isFilled);
 }
 
@@ -43730,7 +44138,14 @@ function syncDocumentTemplateRuntimeSaveProgressButtons({ fillMode = isDocumentT
   syncDocumentTemplateRuntimeResumeButton();
 }
 
-async function createLocationObjectFromTemplateRuntime(workOrder = getDocumentTemplateRuntimeActiveWorkOrder(), { suggestedName = "" } = {}) {
+async function createLocationObjectFromTemplateRuntime(
+  workOrder = getDocumentTemplateRuntimeActiveWorkOrder(),
+  {
+    suggestedName = "",
+    name = "",
+    skipPrompt = false,
+  } = {},
+) {
   if (!workOrder?.companyId || !workOrder?.locationId) {
     setDocumentTemplateMessage("Prvo odaberi RN s tvrtkom i lokacijom.");
     return null;
@@ -43738,8 +44153,9 @@ async function createLocationObjectFromTemplateRuntime(workOrder = getDocumentTe
 
   const existingCount = getLocationObjectsForWorkOrder(workOrder).length;
   const defaultName = suggestedName || `Objekt ${existingCount + 1}`;
-  const name = String(window.prompt("Naziv novog objekta na lokaciji", defaultName) || "").trim();
-  if (!name) {
+  const resolvedName = String(name || "").trim()
+    || (skipPrompt ? "" : String(window.prompt("Naziv novog objekta na lokaciji", defaultName) || "").trim());
+  if (!resolvedName) {
     return null;
   }
 
@@ -43748,7 +44164,7 @@ async function createLocationObjectFromTemplateRuntime(workOrder = getDocumentTe
     body: {
       companyId: workOrder.companyId,
       locationId: workOrder.locationId,
-      name,
+      name: resolvedName,
     },
   });
 
@@ -43757,8 +44173,287 @@ async function createLocationObjectFromTemplateRuntime(workOrder = getDocumentTe
   }
 
   return getLocationObjectsForWorkOrder(workOrder).find((item) => (
-    normalizeLooseName(item.name) === normalizeLooseName(name)
+    normalizeLooseName(item.name) === normalizeLooseName(resolvedName)
   )) ?? null;
+}
+
+function getDocumentTemplateRuntimeObjectIdsInUse(workOrder = {}, template = buildDocumentTemplateDraft()) {
+  const sequenceState = getDocumentTemplateRuntimeSequenceState();
+  if (!sequenceState || !Array.isArray(sequenceState.entries)) {
+    return new Set();
+  }
+
+  const activeTemplateId = getDocumentTemplateRuntimeTemplateId(template);
+  return new Set(
+    sequenceState.entries
+      .filter((entry) => (
+        String(entry.workOrderId || "") === String(workOrder?.id || "")
+        && String(entry.templateId || "") === String(activeTemplateId)
+      ))
+      .map((entry) => String(entry.objectId || "").trim())
+      .filter(Boolean),
+  );
+}
+
+function openDocumentTemplateRuntimeDuplicateObjectPicker(workOrder = {}, template = buildDocumentTemplateDraft()) {
+  return new Promise((resolve) => {
+    const company = getCompany(workOrder.companyId);
+    const location = getLocation(workOrder.locationId);
+    const objects = getLocationObjectsForWorkOrder(workOrder);
+    const currentObjectId = getDocumentTemplateRuntimeSelectedObjectId(workOrder);
+    const usedObjectIds = getDocumentTemplateRuntimeObjectIdsInUse(workOrder, template);
+    const selectableObjects = objects.filter((item) => (
+      !usedObjectIds.has(String(item.id || ""))
+      && String(item.id || "") !== currentObjectId
+    ));
+    const defaultNewName = `Objekt ${objects.length + 1}`;
+    let selectedValue = selectableObjects[0]?.id ? String(selectableObjects[0].id) : "__add_new__";
+    let isClosed = false;
+
+    const backdrop = document.createElement("div");
+    backdrop.className = "document-template-object-picker-backdrop";
+    backdrop.tabIndex = -1;
+
+    const dialog = document.createElement("section");
+    dialog.className = "document-template-object-picker-dialog";
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    dialog.setAttribute("aria-labelledby", "document-template-object-picker-title");
+
+    const head = document.createElement("div");
+    head.className = "document-template-object-picker-head";
+    const titleWrap = document.createElement("div");
+    const kicker = document.createElement("span");
+    kicker.className = "section-kicker";
+    kicker.textContent = "Poduplaj zapisnik";
+    const title = document.createElement("h3");
+    title.id = "document-template-object-picker-title";
+    title.textContent = "Odaberi objekt za novi zapisnik";
+    const subtitle = document.createElement("p");
+    subtitle.textContent = "Izaberi postojeći objekt na ovoj lokaciji ili odmah dodaj novi.";
+    titleWrap.append(kicker, title, subtitle);
+    const closeButton = document.createElement("button");
+    closeButton.type = "button";
+    closeButton.className = "ghost-button";
+    closeButton.textContent = "Zatvori";
+    head.append(titleWrap, closeButton);
+
+    const context = document.createElement("div");
+    context.className = "document-template-object-picker-context";
+    [
+      { label: "RN", value: workOrder.workOrderNumber || "Bez broja" },
+      { label: "Tvrtka", value: company?.name || workOrder.companyName || "-" },
+      { label: "Lokacija", value: location?.name || workOrder.locationName || "Sve lokacije" },
+    ].forEach((item) => {
+      const chip = document.createElement("span");
+      chip.innerHTML = `<small>${escapeHtml(item.label)}</small><strong>${escapeHtml(item.value)}</strong>`;
+      context.append(chip);
+    });
+
+    const list = document.createElement("div");
+    list.className = "document-template-object-picker-list";
+
+    const newObjectInput = document.createElement("input");
+    newObjectInput.type = "text";
+    newObjectInput.value = defaultNewName;
+    newObjectInput.placeholder = "Naziv novog objekta";
+    newObjectInput.className = "document-template-object-picker-new-input";
+
+    const error = document.createElement("p");
+    error.className = "document-template-object-picker-error";
+    error.hidden = true;
+
+    const syncSelection = () => {
+      list.querySelectorAll("[data-object-picker-value]").forEach((card) => {
+        if (!(card instanceof HTMLElement)) {
+          return;
+        }
+        card.classList.toggle("is-selected", card.dataset.objectPickerValue === selectedValue);
+      });
+      list.querySelectorAll("input[type='radio']").forEach((input) => {
+        if (input instanceof HTMLInputElement) {
+          input.checked = input.value === selectedValue;
+        }
+      });
+      if (selectedValue === "__add_new__") {
+        newObjectInput.focus({ preventScroll: true });
+        newObjectInput.select();
+      }
+    };
+
+    const createObjectCard = (object) => {
+      const objectId = String(object.id || "");
+      const isCurrent = objectId === currentObjectId;
+      const isUsed = usedObjectIds.has(objectId) || isCurrent;
+      const card = document.createElement("label");
+      card.className = "document-template-object-picker-card";
+      card.dataset.objectPickerValue = objectId;
+      card.classList.toggle("is-disabled", isUsed);
+
+      const radio = document.createElement("input");
+      radio.type = "radio";
+      radio.name = "document-template-object-picker";
+      radio.value = objectId;
+      radio.disabled = isUsed;
+      radio.addEventListener("change", () => {
+        if (radio.checked && !radio.disabled) {
+          selectedValue = objectId;
+          syncSelection();
+        }
+      });
+
+      const copy = document.createElement("span");
+      copy.className = "document-template-object-picker-card-copy";
+      const name = document.createElement("strong");
+      name.textContent = object.name || "Objekt bez naziva";
+      const meta = document.createElement("span");
+      meta.textContent = [
+        object.code ? `Šifra ${object.code}` : "",
+        object.description || "",
+      ].filter(Boolean).join(" · ") || "Postojeći objekt na ovoj lokaciji";
+      copy.append(name, meta);
+
+      const badges = document.createElement("span");
+      badges.className = "document-template-object-picker-badges";
+      if (isCurrent) {
+        const badge = document.createElement("em");
+        badge.textContent = "Trenutni";
+        badges.append(badge);
+      }
+      if (isUsed) {
+        const badge = document.createElement("em");
+        badge.textContent = "Već u timelineu";
+        badges.append(badge);
+      }
+
+      card.append(radio, copy, badges);
+      return card;
+    };
+
+    objects.forEach((object) => {
+      list.append(createObjectCard(object));
+    });
+
+    const addNewCard = document.createElement("label");
+    addNewCard.className = "document-template-object-picker-card is-new";
+    addNewCard.dataset.objectPickerValue = "__add_new__";
+    const addNewRadio = document.createElement("input");
+    addNewRadio.type = "radio";
+    addNewRadio.name = "document-template-object-picker";
+    addNewRadio.value = "__add_new__";
+    addNewRadio.addEventListener("change", () => {
+      if (addNewRadio.checked) {
+        selectedValue = "__add_new__";
+        syncSelection();
+      }
+    });
+    const addNewCopy = document.createElement("span");
+    addNewCopy.className = "document-template-object-picker-card-copy";
+    const addNewTitle = document.createElement("strong");
+    addNewTitle.textContent = "+ Novi objekt";
+    const addNewMeta = document.createElement("span");
+    addNewMeta.textContent = "Upiši naziv i sustav će ga dodati na lokaciju prije dupliranja.";
+    addNewCopy.append(addNewTitle, addNewMeta, newObjectInput);
+    addNewCard.append(addNewRadio, addNewCopy);
+    addNewCard.addEventListener("click", () => {
+      selectedValue = "__add_new__";
+      syncSelection();
+    });
+    newObjectInput.addEventListener("focus", () => {
+      selectedValue = "__add_new__";
+      syncSelection();
+    });
+    list.append(addNewCard);
+
+    const actions = document.createElement("div");
+    actions.className = "document-template-object-picker-actions";
+    const cancelButton = document.createElement("button");
+    cancelButton.type = "button";
+    cancelButton.className = "ghost-button";
+    cancelButton.textContent = "Odustani";
+    const confirmButton = document.createElement("button");
+    confirmButton.type = "button";
+    confirmButton.className = "primary-button";
+    confirmButton.textContent = "Poduplaj zapisnik";
+    actions.append(cancelButton, confirmButton);
+
+    const close = (result = null) => {
+      if (isClosed) {
+        return;
+      }
+      isClosed = true;
+      document.removeEventListener("keydown", handleKeyDown);
+      backdrop.remove();
+      resolve(result);
+    };
+
+    const setError = (message = "") => {
+      error.textContent = message;
+      error.hidden = !message;
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        close(null);
+      }
+    };
+
+    closeButton.addEventListener("click", () => close(null));
+    cancelButton.addEventListener("click", () => close(null));
+    backdrop.addEventListener("pointerdown", (event) => {
+      if (event.target === backdrop) {
+        close(null);
+      }
+    });
+    dialog.addEventListener("pointerdown", (event) => {
+      event.stopPropagation();
+    });
+    confirmButton.addEventListener("click", async () => {
+      setError("");
+      confirmButton.disabled = true;
+      try {
+        if (selectedValue === "__add_new__") {
+          const objectName = String(newObjectInput.value || "").trim();
+          if (!objectName) {
+            setError("Upiši naziv novog objekta.");
+            confirmButton.disabled = false;
+            newObjectInput.focus({ preventScroll: true });
+            return;
+          }
+          const createdObject = await createLocationObjectFromTemplateRuntime(workOrder, {
+            name: objectName,
+            skipPrompt: true,
+          });
+          if (!createdObject) {
+            setError("Novi objekt nije dodan.");
+            confirmButton.disabled = false;
+            return;
+          }
+          close(createdObject);
+          return;
+        }
+
+        const selectedObject = getLocationObject(selectedValue);
+        if (!selectedObject) {
+          setError("Odaberi objekt za novi zapisnik.");
+          confirmButton.disabled = false;
+          return;
+        }
+        close(selectedObject);
+      } catch (errorObject) {
+        console.error("Ne mogu pripremiti objekt za dupliranje zapisnika.", errorObject);
+        setError(errorObject?.message || "Ne mogu pripremiti objekt za dupliranje.");
+        confirmButton.disabled = false;
+      }
+    });
+
+    dialog.append(head, context, list, error, actions);
+    backdrop.append(dialog);
+    document.body.append(backdrop);
+    document.addEventListener("keydown", handleKeyDown);
+    syncSelection();
+  });
 }
 
 function buildDocumentTemplateRuntimeObjectSelectBadge(workOrder, template) {
@@ -43819,8 +44514,8 @@ async function duplicateActiveDocumentTemplateRuntimeForNewObject() {
   }
 
   try {
-    const createdObject = await createLocationObjectFromTemplateRuntime(activeWorkOrder);
-    if (!createdObject) {
+    const targetObject = await openDocumentTemplateRuntimeDuplicateObjectPicker(activeWorkOrder, template);
+    if (!targetObject) {
       return;
     }
 
@@ -43859,8 +44554,8 @@ async function duplicateActiveDocumentTemplateRuntimeForNewObject() {
       });
       const duplicateEntry = {
         ...activeEntry,
-        objectId: String(createdObject.id),
-        objectName: String(createdObject.name || ""),
+        objectId: String(targetObject.id),
+        objectName: String(targetObject.name || ""),
         objectSequence: nextSequence,
       };
       normalizedEntries.splice(activeIndex + 1, 0, duplicateEntry);
@@ -43869,14 +44564,14 @@ async function duplicateActiveDocumentTemplateRuntimeForNewObject() {
       state.documentTemplateRuntime.activeWorkOrderId = String(activeWorkOrder.id || "").trim();
       syncDocumentTemplateRuntimeObjectSelectionFromEntry(duplicateEntry);
     } else {
-      setDocumentTemplateRuntimeObjectSelection(activeWorkOrder.id, createdObject.id);
+      setDocumentTemplateRuntimeObjectSelection(activeWorkOrder.id, targetObject.id);
     }
 
     saveDocumentTemplateRuntimeLocalDraft({ syncButton: true });
     renderDocumentTemplateRuntimeContext();
     renderDocumentTemplateFieldRows();
     renderDocumentTemplatePreviewContent();
-    setDocumentTemplateMessage(`Zapisnik je podupljan za objekt "${createdObject.name}".`, { type: "success" });
+    setDocumentTemplateMessage(`Zapisnik je podupljan za objekt "${targetObject.name}".`, { type: "success" });
   } catch (error) {
     console.error("Ne mogu poduplati zapisnik za novi objekt.", error);
     setDocumentTemplateMessage(error?.message || "Ne mogu poduplati zapisnik za novi objekt.");
@@ -78477,6 +79172,7 @@ measurementSheetOpenButton?.addEventListener("click", () => {
 });
 measurementSheetCloseButton?.addEventListener("click", closeMeasurementSheet);
 measurementSheetBackdrop?.addEventListener("click", closeMeasurementSheet);
+renderMeasurementFormulaSuggestions();
 measurementSheetPresetSelect?.addEventListener("change", () => {
   renderMeasurementSheetPresetLibrary();
 });
@@ -78907,6 +79603,57 @@ measurementQuickFillPopover?.addEventListener("click", (event) => {
 measurementQuickFillCloseButton?.addEventListener("click", () => {
   state.measurementSheet.quickFillPopoverOpen = false;
   syncMeasurementToolbar();
+});
+measurementQuickAddFloorButton?.addEventListener("click", () => {
+  mutateMeasurementQuickStructure((structure) => {
+    structure.floors.push(normalizeMeasurementQuickFloorDraft());
+  });
+});
+measurementQuickAddRoomButton?.addEventListener("click", () => {
+  mutateMeasurementQuickStructure((structure) => {
+    let targetFloor = structure.floors.find((floor) => !String(floor.name || "").trim());
+    if (!targetFloor) {
+      targetFloor = normalizeMeasurementQuickFloorDraft({ name: "" });
+      structure.floors.push(targetFloor);
+    }
+    targetFloor.rooms.push(normalizeMeasurementQuickRoomDraft());
+  });
+});
+measurementQuickStructure?.addEventListener("click", (event) => {
+  const actionButton = event.target instanceof HTMLElement
+    ? event.target.closest("[data-measurement-quick-action]")
+    : null;
+  if (!(actionButton instanceof HTMLElement)) {
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+  const action = String(actionButton.dataset.measurementQuickAction || "");
+  const {
+    structure,
+    floorIndex,
+    roomIndex,
+    itemIndex,
+  } = getMeasurementQuickStructureIndexes(actionButton);
+
+  if (!structure) {
+    return;
+  }
+
+  if (action === "add-room" && floorIndex >= 0) {
+    structure.floors[floorIndex].rooms.push(normalizeMeasurementQuickRoomDraft());
+  } else if (action === "remove-floor" && floorIndex >= 0) {
+    structure.floors.splice(floorIndex, 1);
+  } else if (action === "add-item" && floorIndex >= 0 && roomIndex >= 0) {
+    structure.floors[floorIndex].rooms[roomIndex].items.push(normalizeMeasurementQuickItemDraft());
+  } else if (action === "remove-room" && floorIndex >= 0 && roomIndex >= 0) {
+    structure.floors[floorIndex].rooms.splice(roomIndex, 1);
+  } else if (action === "remove-item" && floorIndex >= 0 && roomIndex >= 0 && itemIndex >= 0) {
+    structure.floors[floorIndex].rooms[roomIndex].items.splice(itemIndex, 1);
+  }
+
+  renderMeasurementQuickFillStructure(structure);
 });
 measurementQuickGenerateButton?.addEventListener("click", () => {
   generateMeasurementQuickFillRows();

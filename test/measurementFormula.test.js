@@ -75,6 +75,30 @@ test("measurement formulas support RANDBETWEEN and localized formatting", () => 
   assert.equal(formatMeasurementFormulaResult(true), "TRUE");
 });
 
+test("measurement formulas support aggregate functions over ranges", () => {
+  const values = new Map([
+    ["A1", 4],
+    ["A2", 6],
+    ["A3", 10],
+  ]);
+  const context = {
+    resolveCellReference(reference) {
+      return values.get(reference) ?? "";
+    },
+    resolveRange(startReference, endReference) {
+      assert.equal(startReference, "A1");
+      assert.equal(endReference, "A3");
+      return [["4"], ["6"], ["10"]];
+    },
+  };
+
+  assert.equal(evaluateMeasurementFormula("=SUM(A1:A3)", context), 20);
+  assert.equal(evaluateMeasurementFormula("=AVERAGE(A1:A3)", context), 20 / 3);
+  assert.equal(evaluateMeasurementFormula("=MIN(A1:A3)", context), 4);
+  assert.equal(evaluateMeasurementFormula("=MAX(A1:A3)", context), 10);
+  assert.equal(evaluateMeasurementFormula("=COUNT(A1:A3)", context), 3);
+});
+
 test("formula helpers list and shift references for fill-down behavior", () => {
   assert.deepEqual(
     listMeasurementFormulaReferences('=IF(A1>10;"A1 je velik";B2+C3)'),

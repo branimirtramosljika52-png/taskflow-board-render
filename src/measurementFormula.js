@@ -392,6 +392,21 @@ function evaluateVLookup(node, context) {
   throw new MeasurementFormulaError("VLOOKUP nije pronasao trazenu vrijednost.");
 }
 
+function flattenFormulaValue(value) {
+  if (isMeasurementRangeMatrix(value)) {
+    return value.flatMap((row) => row);
+  }
+
+  return [value];
+}
+
+function collectFormulaNumberArguments(node, context) {
+  return node.args
+    .flatMap((argument) => flattenFormulaValue(evaluateFormulaAst(argument, context)))
+    .filter((value) => String(value ?? "").trim() !== "")
+    .map((value) => coerceToNumber(value));
+}
+
 function evaluateFormulaAst(node, context) {
   switch (node.type) {
     case "number":
@@ -500,6 +515,34 @@ function evaluateFormulaAst(node, context) {
         const random = context.randomBetween ?? ((start, end) =>
           Math.floor(Math.random() * (end - start + 1)) + start);
         return random(min, max);
+      }
+
+      if (["SUM", "AVERAGE", "MIN", "MAX", "COUNT"].includes(node.name)) {
+        const values = collectFormulaNumberArguments(node, context);
+
+        if (node.name === "SUM") {
+          return values.reduce((total, value) => total + value, 0);
+        }
+
+        if (node.name === "COUNT") {
+          return values.length;
+        }
+
+        if (!values.length) {
+          throw new MeasurementFormulaError(`${node.name} trazi barem jednu brojcanu vrijednost.`);
+        }
+
+        if (node.name === "AVERAGE") {
+          return values.reduce((total, value) => total + value, 0) / values.length;
+        }
+
+        if (node.name === "MIN") {
+          return Math.min(...values);
+        }
+
+        if (node.name === "MAX") {
+          return Math.max(...values);
+        }
       }
 
       if (node.name === "VLOOKUP") {
