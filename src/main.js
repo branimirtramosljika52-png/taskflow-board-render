@@ -872,6 +872,7 @@ const DEFAULT_MEASUREMENT_ROW_COUNT = 72;
 const MEASUREMENT_ROW_BATCH_SIZE = 48;
 const MIN_VISIBLE_MEASUREMENT_ROWS = 120;
 const MEASUREMENT_COMPUTE_DEBOUNCE_MS = 90;
+const MEASUREMENT_COLUMN_MIN_WIDTH = 32;
 const COMPANIES_SEARCH_DEBOUNCE_MS = 140;
 const LOCATIONS_SEARCH_DEBOUNCE_MS = 140;
 const WORK_ORDER_VIEW_MODES = [
@@ -24906,7 +24907,7 @@ function normalizeMeasurementSheetColumnSnapshotLocal(column = {}, index = 0) {
     id: columnId,
     label: String(column?.label || `Kolona ${index + 1}`).trim() || `Kolona ${index + 1}`,
     placeholder: String(column?.placeholder || "").trim(),
-    width: Number.isFinite(width) ? Math.min(640, Math.max(72, Math.round(width))) : 160,
+    width: Number.isFinite(width) ? Math.min(640, Math.max(MEASUREMENT_COLUMN_MIN_WIDTH, Math.round(width))) : 160,
     computed: typeof column?.computed === "string" && column.computed ? column.computed : null,
     readonly: Boolean(column?.readonly),
     validation: normalizeMeasurementSheetColumnValidationSnapshotLocal(
@@ -25726,7 +25727,10 @@ function isMeasurementCellFilled(rowIndex, columnIndex) {
     return false;
   }
 
-  return String(row.cells?.[column.id] ?? "").trim().length > 0;
+  const rawValue = row.cells?.[column.id] ?? "";
+  const valueText = String(rawValue).trim();
+
+  return valueText.length > 0 && !isMeasurementFormula(rawValue);
 }
 
 function resolveMeasurementConditionalFormat(format = {}, isFilled = false) {
@@ -27027,7 +27031,7 @@ function syncMeasurementToolbar() {
   }
 
   if (measurementConditionalFillColorInput instanceof HTMLInputElement) {
-    measurementConditionalFillColorInput.value = activeConditional.fillColor || "#d9ead3";
+    measurementConditionalFillColorInput.value = activeConditional.fillColor || "#b6d7a8";
     measurementConditionalFillColorInput.disabled = !state.measurementSheet.activeCell || !activeConditional.filled;
   }
 
@@ -29737,6 +29741,7 @@ function renderMeasurementSheet() {
         column.id,
       );
       if (validation.type === "list" && validationOptions.length > 0) {
+        td.classList.add("has-validation-list-cell");
         const dataList = document.createElement("datalist");
         const dataListId = `measurement-validation-${String(row.id || "row").replace(/[^a-z0-9_-]/gi, "-")}-${String(column.id || "column").replace(/[^a-z0-9_-]/gi, "-")}`;
         dataList.id = dataListId;
@@ -30329,7 +30334,7 @@ function updateMeasurementColumnWidth(pointerX) {
     return;
   }
 
-  column.width = Math.max(90, resizeState.startWidth + (pointerX - resizeState.startX));
+  column.width = Math.max(MEASUREMENT_COLUMN_MIN_WIDTH, resizeState.startWidth + (pointerX - resizeState.startX));
   renderMeasurementSheet();
 }
 
@@ -34880,11 +34885,11 @@ function buildDocumentTemplateToolFieldDraft(tool = "text") {
   if (safeTool === "signature") {
     return createEmptyDocumentTemplateFieldDraft(
       {
-        label: "Ispitivači",
-        wordLabel: "Ispitivači panik rasvjete",
+        label: "Osobe koje sudjeluju u ispitivanju",
+        wordLabel: "Osobe koje sudjeluju u ispitivanju",
         type: "qualified_inspectors",
         signatureArea: "elektro",
-        helpText: "Povlači odabrane ispitivače za traženu uslugu i odmah rezervira njihova mjesta potpisa.",
+        helpText: "Povlači odabrane osobe za traženu uslugu i odmah rezervira njihova mjesta potpisa.",
       },
       baseIndex,
     );
@@ -34909,11 +34914,11 @@ function buildDocumentTemplateToolFieldDraft(tool = "text") {
   if (safeTool === "qualified_inspector") {
     return createEmptyDocumentTemplateFieldDraft(
       {
-        label: "Ispitivači",
-        wordLabel: "Ispitivači panik rasvjete",
+        label: "Osobe koje sudjeluju u ispitivanju",
+        wordLabel: "Osobe koje sudjeluju u ispitivanju",
         type: "qualified_inspectors",
         signatureArea: "elektro",
-        helpText: "Povlači odabrane ispitivače za traženu uslugu i odmah slaže njihove potpise u isti blok.",
+        helpText: "Povlači odabrane osobe za traženu uslugu i odmah slaže njihove potpise u isti blok.",
       },
       baseIndex,
     );
@@ -38246,7 +38251,7 @@ function setWorkOrderDocumentSignaturePersonTriggerContent(
   const defaultEmptyLabel = emptyLabel || (
     normalizedCapability === "authorize"
       ? "Odaberi odgovornu osobu"
-      : "Odaberi ispitivače"
+      : "Odaberi osobe"
   );
   const labelText = selectedUsers.length === 0
     ? defaultEmptyLabel
@@ -38376,7 +38381,7 @@ function createWorkOrderDocumentSignaturePersonPicker({
       "aria-label",
       normalizedCapability === "authorize"
         ? `Odabir odgovorne osobe za ${getSignatureAreaLabel(normalizedArea)}`
-        : `Odabir ispitivača za ${getSignatureAreaLabel(normalizedArea)}`,
+        : `Odabir osoba za ${getSignatureAreaLabel(normalizedArea)}`,
     );
 
     ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
@@ -38463,7 +38468,7 @@ function createWorkOrderDocumentSignaturePersonPicker({
         empty.className = "work-order-calendar-executor-selection-empty";
         empty.textContent = normalizedCapability === "authorize"
           ? "Nema odabrane odgovorne osobe."
-          : "Odaberi jednog ili više ispitivača.";
+          : "Odaberi jednu ili više osoba.";
         selection.append(empty);
         return;
       }
@@ -38572,7 +38577,7 @@ function createWorkOrderDocumentSignaturePersonPicker({
       renderOptions();
       clearButton.hidden = draftValues.length === 0;
       helper.textContent = multiple
-        ? `Odaberi jednog ili više ispitivača za ${getSignatureAreaLabel(normalizedArea)}.`
+        ? `Odaberi jednu ili više osoba za ${getSignatureAreaLabel(normalizedArea)}.`
         : `Odaberi jednu odgovornu osobu za ${getSignatureAreaLabel(normalizedArea)}.`;
     };
 
@@ -38624,7 +38629,7 @@ function createWorkOrderDocumentSignaturePersonPicker({
       trigger.focus({ preventScroll: true });
     });
 
-    actions.append(clearButton, doneButton);
+    actions.append(clearButton);
     menu.append(searchWrap, selection, helper, optionsList, actions);
     syncMenuState();
 
@@ -40110,7 +40115,7 @@ function buildDocumentTemplateMeasurementTableExportModel(field = {}, context = 
   return {
     title: field.label || field.wordLabel || "Excel tablica",
     columns: previewTable.columns.map((column) => column.label || column.id),
-    columnWidths: previewTable.columns.map((column) => Math.max(90, Number(column.width) || 140)),
+    columnWidths: previewTable.columns.map((column) => Math.max(MEASUREMENT_COLUMN_MIN_WIDTH, Number(column.width) || 140)),
     headerRows: headerRows.length > 0
       ? headerRows
       : [previewTable.columns.map((column) => column.label || column.id)],
@@ -40158,7 +40163,7 @@ function buildDocumentTemplateMeasurementTableWordPlaceholder(field = {}, contex
     columns: previewTable.columns.map((column, index) => ({
       id: column.id || `column-${index + 1}`,
       label: column.label || column.id || `Kolona ${index + 1}`,
-      width: Math.max(90, Number(column.width) || 140),
+      width: Math.max(MEASUREMENT_COLUMN_MIN_WIDTH, Number(column.width) || 140),
     })),
     rows: previewTable.rows.map((row, rowIndex) => ({
       id: row.id || `row-${rowIndex + 1}`,
@@ -50629,7 +50634,9 @@ function renderDocumentTemplateRuntimeFieldRows() {
     const wrapper = document.createElement("label");
     wrapper.className = "field field-span-full";
     const title = document.createElement("span");
-    title.textContent = createFieldTitle(field, 0);
+    title.textContent = field.type === "qualified_inspectors"
+      ? "Osobe koje sudjeluju u ispitivanju"
+      : createFieldTitle(field, 0);
     appendDocumentTemplateRuntimeTitleAiPill(title, field, workOrder?.id);
     const area = field.signatureArea || "elektro";
     const { role, allowMultiple } = getDocumentTemplateSignatureFieldConfig(field);
@@ -50647,7 +50654,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
       signatureArea: area,
       multiple,
       value: currentValue,
-      emptyLabel: capability === "authorize" ? "Odaberi nositelja ovlaštenja" : "Odaberi ispitivače",
+      emptyLabel: capability === "authorize" ? "Odaberi nositelja ovlaštenja" : "Odaberi osobe",
       onChange: (nextValues) => {
         const normalizedValues = normalizeQualifiedUserIdList(nextValues);
         const patch = {
@@ -78701,14 +78708,14 @@ measurementConditionalFilledInput?.addEventListener("change", () => {
   applyMeasurementConditionalToolbarFormat({
     filled: shouldEnable,
     ...(shouldEnable && !hasMeasurementConditionalFormat({ conditional: activeConditional })
-      ? { fillColor: measurementConditionalFillColorInput?.value || "#d9ead3" }
+      ? { fillColor: measurementConditionalFillColorInput?.value || "#b6d7a8" }
       : {}),
   });
 });
 measurementConditionalFillColorInput?.addEventListener("input", () => {
   applyMeasurementConditionalToolbarFormat({
     filled: true,
-    fillColor: measurementConditionalFillColorInput.value || "#d9ead3",
+    fillColor: measurementConditionalFillColorInput.value || "#b6d7a8",
   });
 });
 measurementConditionalBorderInput?.addEventListener("change", () => {

@@ -1,5 +1,7 @@
 import { normalizeMeasurementCellFormat } from "./measurementFormatting.js";
 
+const MEASUREMENT_COLUMN_MIN_WIDTH = 32;
+
 export const WORK_ORDER_STATUS_OPTIONS = [
   { value: "Otvoreni RN", label: "Otvoreni RN" },
   { value: "Gotov RN", label: "Gotov RN" },
@@ -1506,7 +1508,7 @@ function normalizeMeasurementSheetColumnSnapshot(input = {}, index = 0) {
     id: normalizeText(input?.id) || `measurement-column-${index + 1}`,
     label: normalizeText(input?.label) || `Kolona ${index + 1}`,
     placeholder: normalizeText(input?.placeholder),
-    width: Number.isFinite(width) ? Math.min(640, Math.max(72, Math.round(width))) : 160,
+    width: Number.isFinite(width) ? Math.min(640, Math.max(MEASUREMENT_COLUMN_MIN_WIDTH, Math.round(width))) : 160,
     computed: computed || null,
     readonly: normalizeBoolean(input?.readonly, false),
     validation: normalizeMeasurementSheetColumnValidationSnapshot(input?.validation, new Set(), normalizeText(input?.id) || `measurement-column-${index + 1}`),

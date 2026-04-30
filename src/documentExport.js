@@ -47,6 +47,7 @@ const SOFFICE_CONVERSION_TIMEOUT_MS = Math.max(
   30000,
   Number(process.env.SOFFICE_CONVERSION_TIMEOUT_MS || 180000) || 180000,
 );
+const MEASUREMENT_COLUMN_MIN_WIDTH = 32;
 let sofficeCommandPromise = null;
 let sofficeProfileReadyPromise = null;
 let sofficeConversionQueue = Promise.resolve();
@@ -505,7 +506,7 @@ function normalizeDocxSpecialPlaceholderValue(value) {
         return {
           id: clean(column.id) || `column-${index + 1}`,
           label: clean(column.label) || clean(column.id) || `Kolona ${index + 1}`,
-          width: Number.isFinite(width) ? Math.max(90, width) : 140,
+          width: Number.isFinite(width) ? Math.max(MEASUREMENT_COLUMN_MIN_WIDTH, width) : 140,
         };
       }
 
@@ -791,12 +792,12 @@ function buildWordTableXml(table = {}) {
   }
 
   const totalGridWidth = 9360;
-  const rawWidths = columns.map((column) => Math.max(90, Number(column.width) || 140));
+  const rawWidths = columns.map((column) => Math.max(MEASUREMENT_COLUMN_MIN_WIDTH, Number(column.width) || 140));
   const rawTotalWidth = rawWidths.reduce((sum, value) => sum + value, 0) || (columns.length * 140);
-  const columnWidths = rawWidths.map((value) => Math.max(480, Math.round((value / rawTotalWidth) * totalGridWidth)));
+  const columnWidths = rawWidths.map((value) => Math.max(240, Math.round((value / rawTotalWidth) * totalGridWidth)));
   const widthAdjustment = totalGridWidth - columnWidths.reduce((sum, value) => sum + value, 0);
   if (widthAdjustment !== 0 && columnWidths.length > 0) {
-    columnWidths[columnWidths.length - 1] = Math.max(480, columnWidths[columnWidths.length - 1] + widthAdjustment);
+    columnWidths[columnWidths.length - 1] = Math.max(240, columnWidths[columnWidths.length - 1] + widthAdjustment);
   }
 
   const rowIndexById = new Map(rows.map((row, rowIndex) => [clean(row.id), rowIndex]));

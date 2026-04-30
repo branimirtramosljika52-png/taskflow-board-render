@@ -50,7 +50,7 @@ function clampMeasurementFontSize(value) {
     return DEFAULT_MEASUREMENT_FORMAT.fontSize;
   }
 
-  return Math.min(40, Math.max(10, parsed));
+  return Math.min(40, Math.max(8, parsed));
 }
 
 function normalizeMeasurementFontFamily(value) {
