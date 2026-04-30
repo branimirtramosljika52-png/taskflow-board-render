@@ -14979,6 +14979,9 @@ function getDrawingCadVersionLabel(buffer = null, dwgModule = null) {
 
 function getDrawingCadErrorMessage(error = null) {
   const rawMessage = String(error?.message || error || "CAD datoteku nije moguće učitati.").trim();
+  if (rawMessage.includes("Failed to fetch")) {
+    return "CAD datoteku nije moguće pročitati iz spremljene podloge. Pokušaj ponovno učitati datoteku.";
+  }
   if (rawMessage.includes("too old")) {
     return "DWG je prestar za pregled u browseru. Spremi ga kao noviji DWG ili ASCII DXF i pokušaj ponovno.";
   }
@@ -15025,6 +15028,28 @@ function getDrawingCadLoadedSummaryText(meta = null) {
   ].filter(Boolean).join(" · ");
 }
 
+function readDrawingDataUrlAsArrayBuffer(dataUrl = "") {
+  const source = String(dataUrl || "").trim();
+  const commaIndex = source.indexOf(",");
+  if (!source.startsWith("data:") || commaIndex < 0) {
+    throw new Error("CAD data URL nije ispravan.");
+  }
+
+  const header = source.slice(0, commaIndex);
+  const payload = source.slice(commaIndex + 1);
+  if (/;base64/i.test(header)) {
+    const cleanPayload = payload.replace(/\s+/g, "");
+    const binary = atob(cleanPayload);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    return bytes.buffer;
+  }
+
+  return new TextEncoder().encode(decodeURIComponent(payload)).buffer;
+}
+
 async function readDrawingReferenceArrayBuffer(reference = null) {
   if (!reference) {
     throw new Error("Nema aktivne CAD podloge.");
@@ -15039,8 +15064,7 @@ async function readDrawingReferenceArrayBuffer(reference = null) {
     : {};
 
   if (dataUrl.startsWith("data:")) {
-    const response = await fetch(dataUrl);
-    return response.arrayBuffer();
+    return readDrawingDataUrlAsArrayBuffer(dataUrl);
   }
 
   if (drawingId && referenceId) {

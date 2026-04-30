@@ -4674,7 +4674,10 @@ body.is-location-editor-open {
 .company-list-logo img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  display: block;
+  padding: 6px;
+  box-sizing: border-box;
 }
 
 .company-selection-preview {
@@ -13828,8 +13831,10 @@ body.is-document-template-editor-open .chat-dock {
 .work-order-document-company-logo img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   display: block;
+  padding: 4px;
+  box-sizing: border-box;
 }
 
 .work-order-document-company-copy {
@@ -14297,8 +14302,10 @@ body.is-document-template-editor-open .chat-dock {
 .work-order-document-selection-company-logo img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   display: block;
+  padding: 4px;
+  box-sizing: border-box;
 }
 
 .work-order-document-selection-company-copy {
