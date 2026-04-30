@@ -34869,7 +34869,7 @@ const DOCUMENT_TEMPLATE_SOURCE_OPTIONS = [
   { value: "WORK_ORDER_DUE_DATE", label: "Radni nalog - datum" },
   { value: "WORK_ORDER_INSPECTION_DATE", label: "Dokument - datum ispitivanja" },
   { value: "WORK_ORDER_ISSUED_DATE", label: "Dokument - datum izdavanja" },
-  { value: "WORK_ORDER_VALID_UNTIL", label: "Dokument - vrijedi do" },
+  { value: "WORK_ORDER_VALID_UNTIL", label: "Dokument - zapisnik vrijedi do" },
   { value: "WORK_ORDER_VALIDITY_MONTHS", label: "Dokument - rok važenja (mjeseci)" },
   { value: "WORK_ORDER_ISSUED_PLACE", label: "Dokument - mjesto izdavanja" },
   { value: "WORK_ORDER_DOCUMENT_NOTE", label: "Dokument - napomena" },
@@ -34879,7 +34879,9 @@ const DOCUMENT_TEMPLATE_SOURCE_OPTIONS = [
   { value: "WORK_ORDER_WEATHER", label: "Dokument - vrijeme" },
   { value: "WORK_ORDER_GROUND_CONDITION", label: "Dokument - stanje tla" },
   { value: "WORK_ORDER_GROUND_RESISTANCE", label: "Dokument - otpor tla" },
+  { value: "WORK_ORDER_PANIC_VALID_UNTIL", label: "Dokument - panik rasvjeta vrijedi do" },
   { value: "WORK_ORDER_PANIC_VALIDITY_MONTHS", label: "Dokument - panik rasvjeta (mjeseci)" },
+  { value: "WORK_ORDER_TIPKALO_VALID_UNTIL", label: "Dokument - tipkalo vrijedi do" },
   { value: "WORK_ORDER_TIPKALO_VALIDITY_MONTHS", label: "Dokument - tipkalo (mjeseci)" },
   { value: "WORK_ORDER_EXECUTORS", label: "Izvršitelji - puni naziv" },
   { value: "WORK_ORDER_TEAM", label: "Tim" },
@@ -39798,6 +39800,18 @@ function resolveDocumentTemplateRuntimeValidUntil(workOrder = {}) {
   return addMonthsToDateKey(inspectionDate, resolveDocumentTemplateRuntimeValidityMonths(workOrder));
 }
 
+function resolveDocumentTemplateRuntimeValidUntilForMonthsField(workOrder = {}, fieldName = "") {
+  const workOrderId = String(workOrder?.id || "").trim();
+  if (!workOrderId) {
+    return "";
+  }
+
+  const inspectionDate = getDocumentTemplateRuntimeValue(workOrderId, "inspectionDate");
+  const validityMonths = normalizeValidityMonthsValue(getDocumentTemplateRuntimeValue(workOrderId, fieldName))
+    || resolveDocumentTemplateRuntimeValidityMonths(workOrder);
+  return addMonthsToDateKey(inspectionDate, validityMonths);
+}
+
 function getDocumentTemplateLookupSourcePreviewValue(source, context = {}) {
   const safeSource = String(source || "").trim().toUpperCase();
   const workOrder = context.sampleWorkOrder;
@@ -39819,6 +39833,8 @@ function getDocumentTemplateLookupSourcePreviewValue(source, context = {}) {
   const runtimeValidUntil = resolveDocumentTemplateRuntimeValidUntil(workOrder);
   const runtimeElectricalValidityMonths = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "electricalValidityMonths") : "";
   const runtimeTipkaloValidityMonths = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "tipkaloValidityMonths") : "";
+  const runtimeElectricalValidUntil = resolveDocumentTemplateRuntimeValidUntilForMonthsField(workOrder, "electricalValidityMonths");
+  const runtimeTipkaloValidUntil = resolveDocumentTemplateRuntimeValidUntilForMonthsField(workOrder, "tipkaloValidityMonths");
   const executorNames = Array.isArray(workOrder?.executors) && workOrder.executors.length > 0
     ? workOrder.executors.join(", ")
     : [workOrder?.executor1, workOrder?.executor2].filter(Boolean).join(", ");
@@ -39865,7 +39881,9 @@ function getDocumentTemplateLookupSourcePreviewValue(source, context = {}) {
     WORK_ORDER_WEATHER: runtimeWeather,
     WORK_ORDER_GROUND_CONDITION: runtimeGroundCondition,
     WORK_ORDER_GROUND_RESISTANCE: runtimeGroundResistance,
+    WORK_ORDER_PANIC_VALID_UNTIL: runtimeElectricalValidUntil ? formatCompactDate(runtimeElectricalValidUntil) : "",
     WORK_ORDER_PANIC_VALIDITY_MONTHS: runtimeElectricalValidityMonths,
+    WORK_ORDER_TIPKALO_VALID_UNTIL: runtimeTipkaloValidUntil ? formatCompactDate(runtimeTipkaloValidUntil) : "",
     WORK_ORDER_TIPKALO_VALIDITY_MONTHS: runtimeTipkaloValidityMonths,
     WORK_ORDER_EXECUTORS: executorNames,
     WORK_ORDER_TEAM: workOrder?.assignedTeam || "",
@@ -39975,6 +39993,8 @@ function getDocumentTemplateLookupSourceRuntimeValue(source, context = {}) {
   const runtimeValidUntil = resolveDocumentTemplateRuntimeValidUntil(workOrder);
   const runtimeElectricalValidityMonths = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "electricalValidityMonths") : "";
   const runtimeTipkaloValidityMonths = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "tipkaloValidityMonths") : "";
+  const runtimeElectricalValidUntil = resolveDocumentTemplateRuntimeValidUntilForMonthsField(workOrder, "electricalValidityMonths");
+  const runtimeTipkaloValidUntil = resolveDocumentTemplateRuntimeValidUntilForMonthsField(workOrder, "tipkaloValidityMonths");
   const executorNames = Array.isArray(workOrder?.executors) && workOrder.executors.length > 0
     ? workOrder.executors.join(", ")
     : [workOrder?.executor1, workOrder?.executor2].filter(Boolean).join(", ");
@@ -40021,7 +40041,9 @@ function getDocumentTemplateLookupSourceRuntimeValue(source, context = {}) {
     WORK_ORDER_WEATHER: runtimeWeather || "",
     WORK_ORDER_GROUND_CONDITION: runtimeGroundCondition || "",
     WORK_ORDER_GROUND_RESISTANCE: runtimeGroundResistance || "",
+    WORK_ORDER_PANIC_VALID_UNTIL: runtimeElectricalValidUntil || "",
     WORK_ORDER_PANIC_VALIDITY_MONTHS: runtimeElectricalValidityMonths || "",
+    WORK_ORDER_TIPKALO_VALID_UNTIL: runtimeTipkaloValidUntil || "",
     WORK_ORDER_TIPKALO_VALIDITY_MONTHS: runtimeTipkaloValidityMonths || "",
     WORK_ORDER_EXECUTORS: executorNames,
     WORK_ORDER_TEAM: workOrder?.assignedTeam || "",
