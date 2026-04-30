@@ -33778,9 +33778,9 @@ const DOCUMENT_TEMPLATE_SOURCE_OPTIONS = [
   { value: "LOCATION_NAME", label: "Lokacija - naziv" },
   { value: "LOCATION_REGION", label: "Lokacija - regija" },
   { value: "LOCATION_COORDINATES", label: "Lokacija - koordinate" },
-  { value: "OBJECT_NAME", label: "Objekt - naziv" },
-  { value: "OBJECT_CODE", label: "Objekt - sifra" },
-  { value: "OBJECT_DESCRIPTION", label: "Objekt - opis" },
+  { value: "OBJECT_NAME", label: "Objekt na lokaciji - odabrani objekt" },
+  { value: "OBJECT_CODE", label: "Objekt na lokaciji - sifra" },
+  { value: "OBJECT_DESCRIPTION", label: "Objekt na lokaciji - opis" },
   { value: "WORK_ORDER_NUMBER", label: "Radni nalog - broj" },
   { value: "WORK_ORDER_STATUS", label: "Radni nalog - status" },
   { value: "WORK_ORDER_DUE_DATE", label: "Radni nalog - datum" },
@@ -33813,6 +33813,20 @@ const DOCUMENT_TEMPLATE_SOURCE_OPTIONS = [
   { value: "CONTACT_PHONE", label: "Kontakt - telefon" },
   { value: "CONTACT_EMAIL", label: "Kontakt - email" },
 ];
+
+const DOCUMENT_TEMPLATE_OBJECT_SOURCE_PRESETS = [
+  { value: "OBJECT_NAME", label: "Objekt: naziv", key: "OBJEKT", wordLabel: "Objekt" },
+  { value: "OBJECT_CODE", label: "Objekt: sifra", key: "SIFRA_OBJEKTA", wordLabel: "Sifra objekta" },
+  { value: "OBJECT_DESCRIPTION", label: "Objekt: opis", key: "OPIS_OBJEKTA", wordLabel: "Opis objekta" },
+];
+
+const DOCUMENT_TEMPLATE_OBJECT_SOURCE_VALUES = new Set(
+  DOCUMENT_TEMPLATE_OBJECT_SOURCE_PRESETS.map((entry) => entry.value),
+);
+
+const DOCUMENT_TEMPLATE_OBJECT_PLACEHOLDER_KEYS = new Set(
+  DOCUMENT_TEMPLATE_OBJECT_SOURCE_PRESETS.map((entry) => entry.key),
+);
 
 const DOCUMENT_TEMPLATE_DATABASE_TABLE_DEFINITIONS = {
   radni_nalozi: {
@@ -51831,6 +51845,54 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
     });
     sourceField.append(sourceSpan, sourceSelect);
 
+    const activeFieldSource = String(field.source || "").trim().toUpperCase();
+    const fieldLooksLikeObject = [
+      field.label,
+      field.wordLabel,
+      field.key,
+      activeFieldSource,
+    ].some((value) => {
+      const normalized = normalizeLooseName(value);
+      return normalized.includes("objekt") || normalized.includes("object");
+    });
+    const objectPresetField = document.createElement("div");
+    objectPresetField.className = "field field-span-full document-template-object-source-presets";
+    objectPresetField.hidden = isSpecialType
+      || (!fieldLooksLikeObject && !DOCUMENT_TEMPLATE_OBJECT_SOURCE_VALUES.has(activeFieldSource));
+    const objectPresetTitle = document.createElement("span");
+    objectPresetTitle.textContent = "Objekt na lokaciji";
+    const objectPresetButtons = document.createElement("div");
+    objectPresetButtons.className = "document-template-object-source-buttons";
+    DOCUMENT_TEMPLATE_OBJECT_SOURCE_PRESETS.forEach((preset) => {
+      const presetButton = document.createElement("button");
+      presetButton.type = "button";
+      presetButton.className = "ghost-button document-template-object-source-button";
+      presetButton.classList.toggle("is-active", activeFieldSource === preset.value);
+      presetButton.textContent = preset.label;
+      presetButton.addEventListener("click", () => {
+        const draft = documentTemplateFieldDrafts[draftIndex];
+        const currentKey = String(draft.key || "").trim().toUpperCase();
+        draft.source = preset.value;
+        draft.previousDocumentMode = "NONE";
+        if (!draft.label || /^polje\s+\d+$/i.test(draft.label)) {
+          draft.label = preset.wordLabel;
+        }
+        if (!draft.wordLabel || /^polje\s+\d+$/i.test(draft.wordLabel)) {
+          draft.wordLabel = preset.wordLabel;
+        }
+        if (!currentKey || /^FIELD_\d+$/i.test(currentKey) || DOCUMENT_TEMPLATE_OBJECT_PLACEHOLDER_KEYS.has(currentKey)) {
+          draft.key = preset.key;
+        }
+        ensureDocumentTemplateDatabaseLookupDraft(draft);
+        renderDocumentTemplateFieldRows({ supportImmediate: true });
+      });
+      objectPresetButtons.append(presetButton);
+    });
+    const objectPresetHint = document.createElement("small");
+    objectPresetHint.className = "document-template-source-config-hint";
+    objectPresetHint.textContent = "Ovo se puni iz objekta koji odaberes u zaglavlju izrade zapisnika. Novi objekt dodajes tamo kroz dropdown + Add New.";
+    objectPresetField.append(objectPresetTitle, objectPresetButtons, objectPresetHint);
+
     const sourceConfigField = document.createElement("div");
     sourceConfigField.className = "field field-span-full document-template-source-config";
     sourceConfigField.hidden = isSpecialType;
@@ -51841,7 +51903,9 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
     const sourceConfigGrid = document.createElement("div");
     sourceConfigGrid.className = "form-grid document-template-inline-grid document-template-source-config-grid";
     const isDatabaseLookup = String(field.source || "").trim().toUpperCase() === "DATABASE_LOOKUP";
+    const isObjectSource = DOCUMENT_TEMPLATE_OBJECT_SOURCE_VALUES.has(activeFieldSource);
     const lookupMode = getDocumentTemplateLookupMode(field);
+    sourceConfigTitle.textContent = isObjectSource ? "Odabrani objekt" : "Lookup i fallback";
 
     if (isDatabaseLookup) {
       const lookupModeField = document.createElement("label");
@@ -51944,7 +52008,9 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
 
     const sourceConfigHint = document.createElement("small");
     sourceConfigHint.className = "document-template-source-config-hint";
-    if (isDatabaseLookup && lookupMode === "PREVIOUS_DOCUMENT_LOCATION") {
+    if (isObjectSource) {
+      sourceConfigHint.textContent = "Ovo polje prikazuje odabrani objekt na lokaciji. U izradi zapisnika prvo odaberi objekt u zaglavlju; ako ga nema, dodaj ga s + Add New objekt.";
+    } else if (isDatabaseLookup && lookupMode === "PREVIOUS_DOCUMENT_LOCATION") {
       sourceConfigHint.textContent = "Uzet ce zadnji zapisnik za istu tvrtku i istu lokaciju. Ako ga nema, ostaje vrijednost iz templatea.";
     } else if (isDatabaseLookup) {
       const tableLabel = field.sourceTable || "radni_nalozi";
@@ -52334,9 +52400,9 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
     } else if (isSpecialType) {
       grid.append(specialInfoField);
     } else if (field.type === "dropdown") {
-      grid.append(dropdownOptionsField, sourceField, sourceConfigField);
+      grid.append(dropdownOptionsField, objectPresetField, sourceField, sourceConfigField);
     } else {
-      grid.append(sourceField, sourceConfigField);
+      grid.append(objectPresetField, sourceField, sourceConfigField);
     }
 
     if (field.type === "chapter") {
