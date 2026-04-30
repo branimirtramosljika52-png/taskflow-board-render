@@ -15001,7 +15001,12 @@ function getDrawingCadErrorMessage(error = null) {
   return rawMessage.replace(/^@cadview\/dwg:\s*/i, "");
 }
 
-function getDrawingCadLoadedSummary(viewer = null, reference = null, elapsedMs = 0) {
+function getDrawingCadViewerEntityCount(viewer = null) {
+  const entities = typeof viewer?.getEntities === "function" ? viewer.getEntities() : [];
+  return Array.isArray(entities) ? entities.length : 0;
+}
+
+function getDrawingCadLoadedSummary(viewer = null, reference = null, elapsedMs = 0, extra = {}) {
   const entities = typeof viewer?.getEntities === "function" ? viewer.getEntities() : [];
   const layers = typeof viewer?.getLayers === "function" ? viewer.getLayers() : [];
   const entityCount = Array.isArray(entities) ? entities.length : 0;
@@ -15012,6 +15017,7 @@ function getDrawingCadLoadedSummary(viewer = null, reference = null, elapsedMs =
     entityCount,
     layerCount,
     elapsedMs: Math.max(0, Math.round(Number(elapsedMs) || 0)),
+    ...extra,
   };
 }
 
@@ -15024,8 +15030,378 @@ function getDrawingCadLoadedSummaryText(meta = null) {
     `${meta.kind || "CAD"} pregled spreman`,
     `${meta.entityCount || 0} entiteta`,
     `${meta.layerCount || 0} slojeva`,
+    meta.note || "",
     meta.elapsedMs ? `${(meta.elapsedMs / 1000).toFixed(meta.elapsedMs >= 10000 ? 0 : 1)} s` : "",
   ].filter(Boolean).join(" · ");
+}
+
+function parseDrawingDxfPairs(dxfText = "") {
+  const lines = String(dxfText || "").replace(/\r/g, "").split("\n");
+  const pairs = [];
+  for (let index = 0; index < lines.length - 1; index += 2) {
+    pairs.push({
+      code: String(lines[index] || "").trim(),
+      value: String(lines[index + 1] || "").trim(),
+    });
+  }
+  return pairs;
+}
+
+function readDrawingDxfNumber(rawValue = "", fallback = 0) {
+  const number = Number.parseFloat(String(rawValue || "").trim().replace(",", "."));
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function readDrawingDxfFirstValue(pairs = [], code = "") {
+  return pairs.find((pair) => pair.code === code)?.value ?? "";
+}
+
+function readDrawingDxfFirstNumber(pairs = [], code = "", fallback = 0) {
+  return readDrawingDxfNumber(readDrawingDxfFirstValue(pairs, code), fallback);
+}
+
+function readDrawingDxfPoints(pairs = []) {
+  const points = [];
+  let pendingPoint = null;
+  pairs.forEach((pair) => {
+    if (pair.code === "10") {
+      pendingPoint = { x: readDrawingDxfNumber(pair.value), y: 0 };
+      points.push(pendingPoint);
+    } else if (pair.code === "20" && pendingPoint) {
+      pendingPoint.y = readDrawingDxfNumber(pair.value);
+      pendingPoint = null;
+    }
+  });
+  return points.filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
+}
+
+function getDrawingDxfTextValue(pairs = []) {
+  const chunks = pairs
+    .filter((pair) => pair.code === "1" || pair.code === "3")
+    .map((pair) => String(pair.value || "").trim())
+    .filter(Boolean);
+  return chunks.join(" ").replace(/%%U/gi, "").replace(/\\P/gi, " ").trim();
+}
+
+function createDrawingDxfPrimitive(rawEntity = null) {
+  if (!rawEntity?.type) {
+    return null;
+  }
+
+  const pairs = Array.isArray(rawEntity.pairs) ? rawEntity.pairs : [];
+  const layer = String(readDrawingDxfFirstValue(pairs, "8") || rawEntity.layer || "0").trim() || "0";
+  const base = { type: rawEntity.type, layer };
+  if (rawEntity.type === "LINE") {
+    return {
+      ...base,
+      x1: readDrawingDxfFirstNumber(pairs, "10"),
+      y1: readDrawingDxfFirstNumber(pairs, "20"),
+      x2: readDrawingDxfFirstNumber(pairs, "11"),
+      y2: readDrawingDxfFirstNumber(pairs, "21"),
+    };
+  }
+  if (rawEntity.type === "CIRCLE") {
+    return {
+      ...base,
+      x: readDrawingDxfFirstNumber(pairs, "10"),
+      y: readDrawingDxfFirstNumber(pairs, "20"),
+      radius: Math.max(0.01, readDrawingDxfFirstNumber(pairs, "40", 1)),
+    };
+  }
+  if (rawEntity.type === "ARC") {
+    return {
+      ...base,
+      x: readDrawingDxfFirstNumber(pairs, "10"),
+      y: readDrawingDxfFirstNumber(pairs, "20"),
+      radius: Math.max(0.01, readDrawingDxfFirstNumber(pairs, "40", 1)),
+      startAngle: readDrawingDxfFirstNumber(pairs, "50"),
+      endAngle: readDrawingDxfFirstNumber(pairs, "51"),
+    };
+  }
+  if (rawEntity.type === "TEXT" || rawEntity.type === "MTEXT") {
+    const text = getDrawingDxfTextValue(pairs);
+    if (!text) {
+      return null;
+    }
+    return {
+      ...base,
+      type: "TEXT",
+      x: readDrawingDxfFirstNumber(pairs, "10"),
+      y: readDrawingDxfFirstNumber(pairs, "20"),
+      height: Math.max(1, readDrawingDxfFirstNumber(pairs, "40", 12)),
+      rotation: readDrawingDxfFirstNumber(pairs, "50"),
+      text,
+    };
+  }
+  if (rawEntity.type === "LWPOLYLINE") {
+    const points = readDrawingDxfPoints(pairs);
+    if (points.length < 2) {
+      return null;
+    }
+    return {
+      ...base,
+      type: "LWPOLYLINE",
+      points,
+      closed: (Math.trunc(readDrawingDxfFirstNumber(pairs, "70")) & 1) === 1,
+    };
+  }
+
+  return null;
+}
+
+function getDrawingDxfPrimitiveBounds(primitive = null) {
+  if (!primitive) {
+    return null;
+  }
+  if (primitive.type === "LINE") {
+    return {
+      minX: Math.min(primitive.x1, primitive.x2),
+      minY: Math.min(primitive.y1, primitive.y2),
+      maxX: Math.max(primitive.x1, primitive.x2),
+      maxY: Math.max(primitive.y1, primitive.y2),
+    };
+  }
+  if (primitive.type === "CIRCLE" || primitive.type === "ARC") {
+    return {
+      minX: primitive.x - primitive.radius,
+      minY: primitive.y - primitive.radius,
+      maxX: primitive.x + primitive.radius,
+      maxY: primitive.y + primitive.radius,
+    };
+  }
+  if (primitive.type === "TEXT") {
+    const width = Math.max(primitive.height, String(primitive.text || "").length * primitive.height * 0.62);
+    return {
+      minX: primitive.x,
+      minY: primitive.y,
+      maxX: primitive.x + width,
+      maxY: primitive.y + primitive.height,
+    };
+  }
+  if (primitive.type === "LWPOLYLINE") {
+    const xs = primitive.points.map((point) => point.x);
+    const ys = primitive.points.map((point) => point.y);
+    return {
+      minX: Math.min(...xs),
+      minY: Math.min(...ys),
+      maxX: Math.max(...xs),
+      maxY: Math.max(...ys),
+    };
+  }
+  return null;
+}
+
+function mergeDrawingDxfBounds(boundsList = []) {
+  const visibleBounds = boundsList.filter(Boolean);
+  if (!visibleBounds.length) {
+    return null;
+  }
+  return visibleBounds.reduce((result, bounds) => ({
+    minX: Math.min(result.minX, bounds.minX),
+    minY: Math.min(result.minY, bounds.minY),
+    maxX: Math.max(result.maxX, bounds.maxX),
+    maxY: Math.max(result.maxY, bounds.maxY),
+  }), { ...visibleBounds[0] });
+}
+
+function translateDrawingDxfPrimitive(primitive = null, dx = 0, dy = 0) {
+  if (!primitive) {
+    return null;
+  }
+  if (primitive.type === "LINE") {
+    return { ...primitive, x1: primitive.x1 + dx, y1: primitive.y1 + dy, x2: primitive.x2 + dx, y2: primitive.y2 + dy };
+  }
+  if (primitive.type === "CIRCLE" || primitive.type === "ARC" || primitive.type === "TEXT") {
+    return { ...primitive, x: primitive.x + dx, y: primitive.y + dy };
+  }
+  if (primitive.type === "LWPOLYLINE") {
+    return { ...primitive, points: primitive.points.map((point) => ({ x: point.x + dx, y: point.y + dy })) };
+  }
+  return primitive;
+}
+
+function escapeDrawingDxfText(text = "") {
+  return String(text || "").replace(/[\r\n]+/g, " ").replace(/[^\S ]+/g, " ").trim();
+}
+
+function renderDrawingDxfPrimitiveMarkup(primitive = null) {
+  if (!primitive) {
+    return "";
+  }
+  const layer = escapeDrawingDxfText(primitive.layer || "0") || "0";
+  if (primitive.type === "LINE") {
+    return `0\nLINE\n8\n${layer}\n10\n${primitive.x1}\n20\n${primitive.y1}\n30\n0\n11\n${primitive.x2}\n21\n${primitive.y2}\n31\n0\n62\n7\n`;
+  }
+  if (primitive.type === "CIRCLE") {
+    return `0\nCIRCLE\n8\n${layer}\n10\n${primitive.x}\n20\n${primitive.y}\n30\n0\n40\n${primitive.radius}\n62\n7\n`;
+  }
+  if (primitive.type === "ARC") {
+    return `0\nARC\n8\n${layer}\n10\n${primitive.x}\n20\n${primitive.y}\n30\n0\n40\n${primitive.radius}\n50\n${primitive.startAngle}\n51\n${primitive.endAngle}\n62\n7\n`;
+  }
+  if (primitive.type === "TEXT") {
+    return `0\nTEXT\n8\n${layer}\n10\n${primitive.x}\n20\n${primitive.y}\n30\n0\n40\n${primitive.height}\n1\n${escapeDrawingDxfText(primitive.text)}\n50\n${primitive.rotation || 0}\n62\n7\n`;
+  }
+  if (primitive.type === "LWPOLYLINE") {
+    const pointsMarkup = primitive.points
+      .map((point) => `10\n${point.x}\n20\n${point.y}`)
+      .join("\n");
+    return `0\nLWPOLYLINE\n8\n${layer}\n90\n${primitive.points.length}\n70\n${primitive.closed ? 1 : 0}\n${pointsMarkup}\n62\n7\n`;
+  }
+  return "";
+}
+
+function createDrawingDxfBlockPreview(dxfText = "") {
+  const pairs = parseDrawingDxfPairs(dxfText);
+  const supportedEntityTypes = new Set(["LINE", "CIRCLE", "ARC", "TEXT", "MTEXT", "LWPOLYLINE"]);
+  const blocks = [];
+  let inBlocksSection = false;
+  let waitingForSectionName = false;
+  let currentBlock = null;
+  let currentEntity = null;
+
+  const finishEntity = () => {
+    if (currentBlock && currentEntity && supportedEntityTypes.has(currentEntity.type)) {
+      const primitive = createDrawingDxfPrimitive(currentEntity);
+      if (primitive) {
+        currentBlock.primitives.push(primitive);
+      }
+    }
+    currentEntity = null;
+  };
+
+  const finishBlock = () => {
+    finishEntity();
+    if (currentBlock?.name && !currentBlock.name.startsWith("*") && currentBlock.primitives.length) {
+      currentBlock.bounds = mergeDrawingDxfBounds(currentBlock.primitives.map(getDrawingDxfPrimitiveBounds));
+      if (currentBlock.bounds) {
+        blocks.push(currentBlock);
+      }
+    }
+    currentBlock = null;
+  };
+
+  pairs.forEach((pair) => {
+    const code = pair.code;
+    const value = String(pair.value || "").trim();
+    const upperValue = value.toUpperCase();
+
+    if (waitingForSectionName && code === "2") {
+      inBlocksSection = upperValue === "BLOCKS";
+      waitingForSectionName = false;
+      return;
+    }
+
+    if (code === "0" && upperValue === "SECTION") {
+      finishBlock();
+      waitingForSectionName = true;
+      inBlocksSection = false;
+      return;
+    }
+
+    if (code === "0" && upperValue === "ENDSEC") {
+      finishBlock();
+      inBlocksSection = false;
+      waitingForSectionName = false;
+      return;
+    }
+
+    if (!inBlocksSection) {
+      return;
+    }
+
+    if (code === "0" && upperValue === "BLOCK") {
+      finishBlock();
+      currentBlock = { name: "", primitives: [] };
+      return;
+    }
+
+    if (!currentBlock) {
+      return;
+    }
+
+    if (code === "0" && upperValue === "ENDBLK") {
+      finishBlock();
+      return;
+    }
+
+    if (code === "0" && supportedEntityTypes.has(upperValue)) {
+      finishEntity();
+      currentEntity = { type: upperValue, pairs: [] };
+      return;
+    }
+
+    if (code === "0") {
+      finishEntity();
+      return;
+    }
+
+    if (!currentBlock.name && code === "2") {
+      currentBlock.name = value;
+    }
+
+    if (currentEntity) {
+      currentEntity.pairs.push(pair);
+    }
+  });
+  finishBlock();
+
+  if (!blocks.length) {
+    return null;
+  }
+
+  const maxWidth = Math.max(...blocks.map((block) => Math.max(1, block.bounds.maxX - block.bounds.minX)), 120);
+  const maxHeight = Math.max(...blocks.map((block) => Math.max(1, block.bounds.maxY - block.bounds.minY)), 120);
+  const gap = Math.max(80, Math.max(maxWidth, maxHeight) * 0.35);
+  const columns = Math.max(1, Math.ceil(Math.sqrt(blocks.length)));
+  const cellWidth = maxWidth + gap;
+  const cellHeight = maxHeight + gap;
+  const primitives = [];
+
+  blocks.forEach((block, index) => {
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    const originX = column * cellWidth;
+    const originY = row * cellHeight;
+    const dx = originX - block.bounds.minX;
+    const dy = originY - block.bounds.minY;
+    block.primitives.forEach((primitive) => {
+      primitives.push(translateDrawingDxfPrimitive(primitive, dx, dy));
+    });
+    primitives.push({
+      type: "TEXT",
+      layer: "BLOCK_PREVIEW",
+      x: originX,
+      y: originY + maxHeight + Math.max(20, gap * 0.18),
+      height: Math.max(12, Math.min(28, maxHeight * 0.08)),
+      rotation: 0,
+      text: block.name,
+    });
+  });
+
+  const layerNames = Array.from(new Set([
+    "0",
+    "BLOCK_PREVIEW",
+    ...primitives.map((primitive) => String(primitive?.layer || "0").trim() || "0"),
+  ]));
+  const layerTable = [
+    "0\nSECTION\n2\nTABLES",
+    `0\nTABLE\n2\nLAYER\n70\n${layerNames.length}`,
+    layerNames.map((layerName) => `0\nLAYER\n2\n${escapeDrawingDxfText(layerName) || "0"}\n70\n0\n62\n7\n6\nContinuous`).join("\n"),
+    "0\nENDTAB\n0\nENDSEC",
+  ].join("\n");
+  const dxf = [
+    layerTable,
+    "0\nSECTION\n2\nENTITIES",
+    primitives.map(renderDrawingDxfPrimitiveMarkup).join(""),
+    "0\nENDSEC\n0\nEOF",
+  ].join("\n");
+
+  return {
+    dxfText: dxf,
+    blockCount: blocks.length,
+    entityCount: primitives.length,
+    blockNames: blocks.map((block) => block.name),
+  };
 }
 
 function readDrawingDataUrlAsArrayBuffer(dataUrl = "") {
@@ -15178,6 +15554,8 @@ async function renderDrawingCadReference(reference = null) {
 
   if (drawingCadViewerState.activeKey !== previewKey) {
     const startedAt = performance.now();
+    let dxfText = "";
+    let fallbackPreview = null;
     showDrawingCadStatus(`Pripremam ${getDrawingCadKindLabel(reference)} podlogu ${String(reference.fileName || "").trim() || "datoteka"}...`, "info");
     const buffer = await readDrawingReferenceArrayBuffer(reference);
     if (generation !== drawingCadViewerState.loadGeneration) {
@@ -15186,6 +15564,7 @@ async function renderDrawingCadReference(reference = null) {
 
     if (isDrawingDxfReference(reference)) {
       showDrawingCadStatus("Učitavam DXF geometriju...", "info");
+      dxfText = new TextDecoder().decode(buffer.slice(0));
       await viewer.loadBuffer(buffer.slice(0));
     } else {
       const dwgModule = drawingCadViewerState.dwgModule;
@@ -15198,10 +15577,11 @@ async function renderDrawingCadReference(reference = null) {
         `Konvertiram DWG${versionLabel ? ` (${versionLabel})` : ""} u browseru...`,
         "info",
       );
-      const dxfText = await dwgModule.convertDwgToDxf(buffer.slice(0), {
+      const convertedDxfText = await dwgModule.convertDwgToDxf(buffer.slice(0), {
         wasmUrl: getDrawingCadWasmUrl(),
         timeout: 60000,
       });
+      dxfText = convertedDxfText;
       if (generation !== drawingCadViewerState.loadGeneration) {
         return;
       }
@@ -15210,13 +15590,22 @@ async function renderDrawingCadReference(reference = null) {
       const dxfBuffer = new TextEncoder().encode(dxfText).buffer;
       await viewer.loadBuffer(dxfBuffer);
     }
+    if (!getDrawingCadViewerEntityCount(viewer) && dxfText) {
+      fallbackPreview = createDrawingDxfBlockPreview(dxfText);
+      if (fallbackPreview?.dxfText) {
+        showDrawingCadStatus("Model Space je prazan, prikazujem blokove iz DWG templatea...", "info");
+        await viewer.loadBuffer(new TextEncoder().encode(fallbackPreview.dxfText).buffer);
+      }
+    }
     if (generation !== drawingCadViewerState.loadGeneration) {
       return;
     }
     viewer.resize?.();
     viewer.fitToView();
     drawingCadViewerState.activeKey = previewKey;
-    drawingCadViewerState.meta = getDrawingCadLoadedSummary(viewer, reference, performance.now() - startedAt);
+    drawingCadViewerState.meta = getDrawingCadLoadedSummary(viewer, reference, performance.now() - startedAt, fallbackPreview
+      ? { note: `${fallbackPreview.blockCount} blokova iz templatea` }
+      : {});
     reference.previewStatus = "ready";
     reference.previewError = "";
   } else {
