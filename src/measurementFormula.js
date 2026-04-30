@@ -408,6 +408,27 @@ function collectFormulaNumberArguments(node, context) {
     .map((value) => coerceToNumber(value));
 }
 
+function evaluateRowsFunction(node, context) {
+  if (node.args.length !== 1) {
+    throw new MeasurementFormulaError("ROWS trazi 1 argument.");
+  }
+
+  const argument = node.args[0];
+
+  if (argument.type === "cell") {
+    return 1;
+  }
+
+  if (argument.type === "range") {
+    const start = parseMeasurementCellReference(argument.startReference);
+    const end = parseMeasurementCellReference(argument.endReference);
+    return Math.abs(end.rowIndex - start.rowIndex) + 1;
+  }
+
+  const value = evaluateFormulaAst(argument, context);
+  return isMeasurementRangeMatrix(value) ? value.length : 1;
+}
+
 function evaluateFormulaAst(node, context) {
   switch (node.type) {
     case "number":
@@ -547,12 +568,7 @@ function evaluateFormulaAst(node, context) {
       }
 
       if (node.name === "ROWS") {
-        if (node.args.length !== 1) {
-          throw new MeasurementFormulaError("ROWS trazi 1 argument.");
-        }
-
-        const value = evaluateFormulaAst(node.args[0], context);
-        return isMeasurementRangeMatrix(value) ? value.length : 1;
+        return evaluateRowsFunction(node, context);
       }
 
       if (node.name === "VLOOKUP") {
