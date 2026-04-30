@@ -33722,6 +33722,34 @@ body.is-document-template-resizing-diagonal * {
   border-radius: 14px;
 }
 
+.document-template-field-inspector .document-template-inline-checkbox-field {
+  align-self: start;
+}
+
+.document-template-field-inspector .document-template-inline-checkbox-body {
+  display: inline-flex;
+  justify-content: flex-start;
+  width: fit-content;
+  min-height: 30px;
+  padding: 5px 8px;
+  border-radius: 11px;
+}
+
+.document-template-field-inspector .document-template-inline-checkbox-body input[type="checkbox"] {
+  width: 14px !important;
+  min-width: 14px !important;
+  max-width: 14px;
+  height: 14px !important;
+  min-height: 14px !important;
+  max-height: 14px;
+  flex: 0 0 14px;
+}
+
+.document-template-field-inspector .document-template-inline-checkbox-body strong {
+  font-size: 0.74rem;
+  line-height: 1;
+}
+
 .document-template-field-inspector .field select[multiple] {
   min-height: 132px;
   padding-block: 8px;
