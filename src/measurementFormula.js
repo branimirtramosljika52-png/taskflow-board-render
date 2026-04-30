@@ -545,6 +545,15 @@ function evaluateFormulaAst(node, context) {
         }
       }
 
+      if (node.name === "ROWS") {
+        if (node.args.length !== 1) {
+          throw new MeasurementFormulaError("ROWS trazi 1 argument.");
+        }
+
+        const value = evaluateFormulaAst(node.args[0], context);
+        return isMeasurementRangeMatrix(value) ? value.length : 1;
+      }
+
       if (node.name === "VLOOKUP") {
         return evaluateVLookup(node, context);
       }

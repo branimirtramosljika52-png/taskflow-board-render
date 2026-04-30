@@ -26267,6 +26267,18 @@ function hasMeasurementConditionalFormat(format = {}) {
   );
 }
 
+function isMeasurementFillValuePresent(value) {
+  if (value === null || value === undefined) {
+    return false;
+  }
+
+  if (typeof value === "number") {
+    return Number.isFinite(value);
+  }
+
+  return String(value).trim().length > 0;
+}
+
 function isMeasurementCellFilled(rowIndex, columnIndex) {
   const row = state.measurementSheet.rows[rowIndex];
   const column = state.measurementSheet.columns[columnIndex];
@@ -26276,9 +26288,16 @@ function isMeasurementCellFilled(rowIndex, columnIndex) {
   }
 
   const rawValue = row.cells?.[column.id] ?? "";
-  const valueText = String(rawValue).trim();
 
-  return valueText.length > 0 && !isMeasurementFormula(rawValue);
+  if (isMeasurementFormula(rawValue)) {
+    try {
+      return isMeasurementFillValuePresent(getMeasurementCellComputedValue(rowIndex, columnIndex));
+    } catch {
+      return false;
+    }
+  }
+
+  return isMeasurementFillValuePresent(rawValue);
 }
 
 function resolveMeasurementConditionalFormat(format = {}, isFilled = false) {
@@ -40422,7 +40441,21 @@ function getMeasurementSheetPreviewCellVisualFormat(sheet, rowIndex, column = nu
   const row = sheet?.rows?.[rowIndex];
   const format = normalizeMeasurementCellFormat(row?.formats?.[column.id]);
   const rawValue = row?.cells?.[column.id] ?? "";
-  const isFilled = String(rawValue).trim().length > 0 && !isMeasurementFormula(rawValue);
+  let isFilled = false;
+
+  if (isMeasurementFormula(rawValue)) {
+    try {
+      const sheetColumnIndex = (sheet?.columns ?? []).findIndex((entry) => String(entry?.id) === String(column.id));
+      isFilled = isMeasurementFillValuePresent(
+        getMeasurementSheetPreviewCellRawValue(sheet, rowIndex, sheetColumnIndex, new Set()),
+      );
+    } catch {
+      isFilled = false;
+    }
+  } else {
+    isFilled = isMeasurementFillValuePresent(rawValue);
+  }
+
   return resolveMeasurementConditionalFormat(format, isFilled);
 }
 

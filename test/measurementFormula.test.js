@@ -127,6 +127,26 @@ test("measurement formulas support aggregate functions over ranges", () => {
   assert.equal(evaluateMeasurementFormula("=COUNT(A1:A3)", context), 3);
 });
 
+test("measurement formulas support ROWS over ranges and cells", () => {
+  const context = {
+    resolveCellReference() {
+      return "value";
+    },
+    resolveRange(startReference, endReference) {
+      assert.equal(startReference, "A1");
+      assert.equal(endReference, "B3");
+      return [
+        ["A1", "B1"],
+        ["A2", "B2"],
+        ["A3", "B3"],
+      ];
+    },
+  };
+
+  assert.equal(evaluateMeasurementFormula("=ROWS(A1:B3)", context), 3);
+  assert.equal(evaluateMeasurementFormula("=ROWS(A1)", context), 1);
+});
+
 test("formula helpers list and shift references for fill-down behavior", () => {
   assert.deepEqual(
     listMeasurementFormulaReferences('=IF(A1>10;"A1 je velik";B2+C3)'),
