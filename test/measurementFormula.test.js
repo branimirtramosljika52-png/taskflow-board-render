@@ -199,6 +199,39 @@ test("formula helpers list and shift references for fill-down behavior", () => {
   );
 });
 
+test("measurement formulas support references to other Excel tables", () => {
+  const context = {
+    resolveCellReference(reference) {
+      if (reference?.sheetName === "Sheet 2" && reference.reference === "A1") {
+        return 7;
+      }
+      if (reference?.sheetName === "{{EXCEL_TABLICA}}" && reference.reference === "C3") {
+        return 11;
+      }
+      return 3;
+    },
+    resolveRange(startReference, endReference) {
+      assert.equal(startReference.sheetName, "Sheet 2");
+      assert.equal(endReference.sheetName, "Sheet 2");
+      assert.equal(startReference.reference, "A1");
+      assert.equal(endReference.reference, "A3");
+      return [[1], [2], [3]];
+    },
+  };
+
+  assert.equal(evaluateMeasurementFormula("='Sheet 2'!A1+ROWS(A3)", context), 10);
+  assert.equal(evaluateMeasurementFormula("=SUM('Sheet 2'!A1:A3)", context), 6);
+  assert.equal(evaluateMeasurementFormula("={{EXCEL_TABLICA}}!C3", context), 11);
+  assert.deepEqual(
+    listMeasurementFormulaReferences("='Sheet 2'!A1+Sheet1!B2+{{EXCEL_TABLICA}}!C3"),
+    ["Sheet 2!A1", "Sheet1!B2", "{{EXCEL_TABLICA}}!C3"],
+  );
+  assert.equal(
+    shiftMeasurementFormulaReferences("=A1+'Sheet 2'!B2", 1, 1),
+    "=B2+'Sheet 2'!B2",
+  );
+});
+
 test("measurement formulas support VLOOKUP over cell ranges", () => {
   const values = new Map([
     ["A1", "SPR"],

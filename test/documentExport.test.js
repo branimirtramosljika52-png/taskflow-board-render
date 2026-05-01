@@ -46,3 +46,34 @@ test("docx export removes an empty optional media placeholder with its standalon
   assert.match(outputXml, /Uvod/);
   assert.match(outputXml, /Nastavak/);
 });
+
+test("docx export renders signature group placeholders as visible signature blocks", async () => {
+  const templateBuffer = buildMinimalDocxBuffer(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:body>
+        <w:p><w:r><w:t>{{POTPISI}}</w:t></w:r></w:p>
+        <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>
+      </w:body>
+    </w:document>`);
+
+  const outputBuffer = await buildDocxFromTemplateBuffer(templateBuffer, {
+    POTPISI: {
+      __docxBlockType: "signature_group",
+      items: [
+        {
+          role: "Ispitivac",
+          name: "Ana Savanovic",
+          metaLines: ["Klasa 1"],
+          signatureMode: "digital",
+        },
+      ],
+    },
+  });
+  const outputXml = new PizZip(outputBuffer).file("word/document.xml").asText();
+
+  assert.equal(outputXml.includes("{{POTPISI}}"), false);
+  assert.equal(outputXml.includes("__TASKFLOW_DOCX_BLOCK"), false);
+  assert.match(outputXml, /Ana Savanovic/);
+  assert.match(outputXml, /Digitalni potpis/);
+  assert.match(outputXml, /______________________________/);
+});

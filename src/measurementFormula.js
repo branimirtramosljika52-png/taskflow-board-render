@@ -1,5 +1,6 @@
 const CELL_REFERENCE_PATTERN = /^(\$?)([A-Z]+)(\$?)(\d+)$/;
 const CELL_REFERENCE_TOKEN_PATTERN = /^\$?[A-Za-z]+\$?[0-9]+/;
+const UNQUOTED_SHEET_REFERENCE_PATTERN = /^([A-Za-z_][A-Za-z0-9_. -]{0,120})!(\$?[A-Za-z]+\$?[0-9]+)/;
 
 class MeasurementFormulaError extends Error {
   constructor(message) {
@@ -83,6 +84,14 @@ function tokenizeFormulaExpression(expression) {
       continue;
     }
 
+    const sheetReferenceMatch = readMeasurementSheetReferenceToken(expression, index);
+
+    if (sheetReferenceMatch) {
+      tokens.push({ type: "cell", value: sheetReferenceMatch.value });
+      index += sheetReferenceMatch.length;
+      continue;
+    }
+
     const referenceMatch = expression.slice(index).match(CELL_REFERENCE_TOKEN_PATTERN);
 
     if (referenceMatch) {
@@ -103,6 +112,118 @@ function tokenizeFormulaExpression(expression) {
   }
 
   return tokens;
+}
+
+function readMeasurementSheetReferenceToken(expression = "", startIndex = 0) {
+  const text = String(expression ?? "");
+  const source = text.slice(startIndex);
+
+  if (source.startsWith("'")) {
+    let sheetName = "";
+    let index = 1;
+
+    while (index < source.length) {
+      const current = source[index];
+
+      if (current === "'") {
+        if (source[index + 1] === "'") {
+          sheetName += "'";
+          index += 2;
+          continue;
+        }
+
+        index += 1;
+        break;
+      }
+
+      sheetName += current;
+      index += 1;
+    }
+
+    if (!sheetName || source[index] !== "!") {
+      return null;
+    }
+
+    const referenceMatch = source.slice(index + 1).match(CELL_REFERENCE_TOKEN_PATTERN);
+    if (!referenceMatch) {
+      return null;
+    }
+
+    return {
+      length: index + 1 + referenceMatch[0].length,
+      value: createMeasurementFormulaReference(referenceMatch[0], sheetName),
+    };
+  }
+
+  if (source.startsWith("{{")) {
+    const endIndex = source.indexOf("}}");
+    if (endIndex > 2 && source[endIndex + 2] === "!") {
+      const sheetName = source.slice(0, endIndex + 2);
+      const referenceMatch = source.slice(endIndex + 3).match(CELL_REFERENCE_TOKEN_PATTERN);
+      if (referenceMatch) {
+        return {
+          length: endIndex + 3 + referenceMatch[0].length,
+          value: createMeasurementFormulaReference(referenceMatch[0], sheetName),
+        };
+      }
+    }
+  }
+
+  const unquotedMatch = source.match(UNQUOTED_SHEET_REFERENCE_PATTERN);
+  if (!unquotedMatch) {
+    return null;
+  }
+
+  return {
+    length: unquotedMatch[0].length,
+    value: createMeasurementFormulaReference(unquotedMatch[2], unquotedMatch[1]),
+  };
+}
+
+function createMeasurementFormulaReference(reference = "", sheetName = "") {
+  const normalizedReference = String(reference ?? "").trim().toUpperCase();
+  const normalizedSheetName = String(sheetName ?? "").trim();
+  if (!normalizedSheetName) {
+    return normalizedReference;
+  }
+
+  return {
+    reference: normalizedReference,
+    sheetName: normalizedSheetName,
+  };
+}
+
+function getMeasurementFormulaReferenceCell(reference) {
+  if (reference && typeof reference === "object" && !Array.isArray(reference)) {
+    return String(reference.reference ?? reference.cell ?? "").trim().toUpperCase();
+  }
+
+  return String(reference ?? "").trim().toUpperCase();
+}
+
+function getMeasurementFormulaReferenceSheet(reference) {
+  if (reference && typeof reference === "object" && !Array.isArray(reference)) {
+    return String(reference.sheetName ?? reference.sheet ?? "").trim();
+  }
+
+  return "";
+}
+
+function inheritMeasurementFormulaReferenceSheet(reference, sourceReference) {
+  if (getMeasurementFormulaReferenceSheet(reference) || !getMeasurementFormulaReferenceSheet(sourceReference)) {
+    return reference;
+  }
+
+  return createMeasurementFormulaReference(
+    getMeasurementFormulaReferenceCell(reference),
+    getMeasurementFormulaReferenceSheet(sourceReference),
+  );
+}
+
+function formatMeasurementFormulaReferenceForList(reference) {
+  const cell = getMeasurementFormulaReferenceCell(reference);
+  const sheet = getMeasurementFormulaReferenceSheet(reference);
+  return sheet ? `${sheet}!${cell}` : cell;
 }
 
 function createFormulaParser(tokens) {
@@ -214,7 +335,7 @@ function createFormulaParser(tokens) {
 
       if (peek()?.type === "range") {
         consume("range");
-        const endReference = consume("cell").value;
+        const endReference = inheritMeasurementFormulaReferenceSheet(consume("cell").value, startReference);
         return {
           type: "range",
           startReference,
@@ -587,7 +708,7 @@ export function isMeasurementFormula(value) {
 }
 
 export function parseMeasurementCellReference(reference) {
-  const normalizedReference = String(reference ?? "").trim().toUpperCase();
+  const normalizedReference = getMeasurementFormulaReferenceCell(reference);
   const match = normalizedReference.match(CELL_REFERENCE_PATTERN);
 
   if (!match) {
@@ -608,7 +729,7 @@ export function parseMeasurementCellReference(reference) {
 }
 
 function parseMeasurementFormulaCellReferenceToken(reference) {
-  const normalizedReference = String(reference ?? "").trim().toUpperCase();
+  const normalizedReference = getMeasurementFormulaReferenceCell(reference);
   const match = normalizedReference.match(CELL_REFERENCE_PATTERN);
 
   if (!match) {
@@ -648,6 +769,16 @@ export function formatMeasurementCellReference(rowIndex, columnIndex) {
 
 export function listMeasurementFormulaReferences(formulaText) {
   const text = String(formulaText ?? "");
+  const expression = text.trim().replace(/^=/, "");
+
+  try {
+    return tokenizeFormulaExpression(expression)
+      .filter((token) => token.type === "cell")
+      .map((token) => formatMeasurementFormulaReferenceForList(token.value));
+  } catch {
+    // Fall back to the legacy scanner while the user is typing an incomplete formula.
+  }
+
   const references = [];
   let index = 0;
 
@@ -671,6 +802,14 @@ export function listMeasurementFormulaReferences(formulaText) {
         index += 1;
       }
 
+      continue;
+    }
+
+    const sheetReferenceMatch = readMeasurementSheetReferenceToken(text, index);
+
+    if (sheetReferenceMatch) {
+      references.push(formatMeasurementFormulaReferenceForList(sheetReferenceMatch.value));
+      index += sheetReferenceMatch.length;
       continue;
     }
 
@@ -717,6 +856,14 @@ export function shiftMeasurementFormulaReferences(formulaText, rowOffset = 0, co
         index += 1;
       }
 
+      continue;
+    }
+
+    const sheetReferenceMatch = readMeasurementSheetReferenceToken(text, index);
+
+    if (sheetReferenceMatch) {
+      result += text.slice(index, index + sheetReferenceMatch.length);
+      index += sheetReferenceMatch.length;
       continue;
     }
 

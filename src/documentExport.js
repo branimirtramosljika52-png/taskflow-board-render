@@ -1397,7 +1397,12 @@ export async function buildDocxFromTemplateBuffer(templateBuffer, placeholders =
 
         const specialValue = normalizeDocxSpecialPlaceholderValue(value);
         if (specialValue) {
-          if (specialValue.type === "table" || specialValue.type === "system_description" || specialValue.type === "optional_empty") {
+          if (
+            specialValue.type === "table"
+            || specialValue.type === "system_description"
+            || specialValue.type === "signature_group"
+            || specialValue.type === "optional_empty"
+          ) {
             const sentinel = `__TASKFLOW_DOCX_BLOCK_${index}_${Date.now()}__`;
             specialPlaceholders.set(sentinel, specialValue);
             return [safeKey, sentinel];

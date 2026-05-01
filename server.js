@@ -1509,6 +1509,72 @@ function formatOfferTemplateMoney(value = 0, currency = "EUR") {
   }
 }
 
+function buildCommercialItemsTablePlaceholder(items = [], currency = "EUR", { fallbackTitle = "Stavke" } = {}) {
+  const safeItems = Array.isArray(items) ? items : [];
+  const columns = [
+    { id: "number", label: "R.br.", width: 52 },
+    { id: "description", label: fallbackTitle, width: 260 },
+    { id: "quantity", label: "Kolicina", width: 92 },
+    { id: "unit_price", label: "Jed. cijena", width: 110 },
+    { id: "breakdown", label: "Razrada", width: 190 },
+    { id: "total", label: "Ukupno", width: 120 },
+  ];
+  const rows = [
+    {
+      id: "header",
+      header: true,
+      cells: columns.map((column) => ({
+        text: column.label,
+        format: {
+          bold: true,
+          fillColor: "#F1F7F4",
+          border: "all",
+        },
+      })),
+    },
+  ];
+
+  if (safeItems.length === 0) {
+    rows.push({
+      id: "empty",
+      cells: [
+        { text: "" },
+        { text: "Nema dodanih stavki." },
+        { text: "" },
+        { text: "" },
+        { text: "" },
+        { text: "" },
+      ],
+    });
+  }
+
+  safeItems.forEach((item, index) => {
+    const breakdowns = Array.isArray(item?.breakdowns) ? item.breakdowns : [];
+    const breakdownSummary = breakdowns.length > 0
+      ? breakdowns.map((entry) => `${entry.label || "Razrada"}: ${formatOfferTemplateMoney(entry.amount || 0, currency)}`).join("\n")
+      : "";
+    rows.push({
+      id: `item-${index + 1}`,
+      cells: [
+        { text: String(index + 1) },
+        { text: item?.description || "Stavka" },
+        { text: `${item?.quantity || 0}${item?.unit ? ` ${item.unit}` : ""}` },
+        { text: formatOfferTemplateMoney(item?.unitPrice || 0, currency) },
+        { text: breakdownSummary },
+        { text: formatOfferTemplateMoney(item?.totalPrice || 0, currency) },
+      ],
+    });
+  });
+
+  return {
+    __docxBlockType: "table",
+    columns,
+    rows,
+    headerRows: ["header"],
+    merges: [],
+  };
+}
+
 function getOfferStatusLabel(value = "") {
   const normalized = String(value ?? "").trim().toLowerCase();
   if (normalized === "sent") {
@@ -1694,7 +1760,7 @@ function buildOfferTemplatePlaceholderPayload(offer = {}) {
   const itemsSummary = items
     .map((item, index) => `${index + 1}. ${item.description || "Stavka"}${item.unit ? ` · ${item.quantity || 0} ${item.unit}` : ""}${Number(item.totalPrice || 0) > 0 ? ` · ${formatOfferTemplateMoney(item.totalPrice || 0, currency)}` : ""}`)
     .join("\n");
-  const itemsTable = items
+  const itemsTableText = items
     .map((item, index) => {
       const breakdownText = Array.isArray(item.breakdowns) && item.breakdowns.length > 0
         ? `\n${item.breakdowns.map((entry) => `   - ${entry.label || "Razrada"}: ${formatOfferTemplateMoney(entry.amount || 0, currency)}`).join("\n")}`
@@ -1702,6 +1768,7 @@ function buildOfferTemplatePlaceholderPayload(offer = {}) {
       return `${index + 1}. ${item.description || "Stavka"} | ${item.quantity || 0} ${item.unit || ""} | ${formatOfferTemplateMoney(item.totalPrice || 0, currency)}${breakdownText}`;
     })
     .join("\n");
+  const itemsTable = buildCommercialItemsTablePlaceholder(items, currency, { fallbackTitle: "Opis stavke" });
 
   return {
     OFFER_NUMBER: normalizedOffer.offerNumber || "Dodijeljen nakon spremanja",
@@ -1721,6 +1788,7 @@ function buildOfferTemplatePlaceholderPayload(offer = {}) {
     CONTACT_EMAIL: normalizedOffer.contactEmail || "",
     SERVICE_LINE: normalizedOffer.serviceLine || "",
     ITEMS_TABLE: itemsTable,
+    ITEMS_TABLE_TEXT: itemsTableText,
     ITEMS_SUMMARY: itemsSummary,
     NOTE: normalizedOffer.note || "",
     SUBTOTAL: formatOfferTemplateMoney(normalizedOffer.subtotal || 0, currency),
@@ -1739,7 +1807,7 @@ function buildPurchaseOrderTemplatePlaceholderPayload(purchaseOrder = {}) {
   const itemsSummary = items
     .map((item, index) => `${index + 1}. ${item.description || "Stavka"}${item.unit ? ` · ${item.quantity || 0} ${item.unit}` : ""}${Number(item.totalPrice || 0) > 0 ? ` · ${formatOfferTemplateMoney(item.totalPrice || 0, currency)}` : ""}`)
     .join("\n");
-  const itemsTable = items
+  const itemsTableText = items
     .map((item, index) => {
       const breakdownText = Array.isArray(item.breakdowns) && item.breakdowns.length > 0
         ? `\n${item.breakdowns.map((entry) => `   - ${entry.label || "Razrada"}: ${formatOfferTemplateMoney(entry.amount || 0, currency)}`).join("\n")}`
@@ -1747,6 +1815,7 @@ function buildPurchaseOrderTemplatePlaceholderPayload(purchaseOrder = {}) {
       return `${index + 1}. ${item.description || "Stavka"} | ${item.quantity || 0} ${item.unit || ""} | ${formatOfferTemplateMoney(item.totalPrice || 0, currency)}${breakdownText}`;
     })
     .join("\n");
+  const itemsTable = buildCommercialItemsTablePlaceholder(items, currency, { fallbackTitle: "Opis narudzbe" });
 
   return {
     PURCHASE_ORDER_NUMBER: normalizedPurchaseOrder.purchaseOrderNumber || "Dodijeljen nakon spremanja",
@@ -1768,6 +1837,7 @@ function buildPurchaseOrderTemplatePlaceholderPayload(purchaseOrder = {}) {
     CONTACT_EMAIL: normalizedPurchaseOrder.contactEmail || "",
     SERVICE_LINE: normalizedPurchaseOrder.serviceLine || "",
     ITEMS_TABLE: itemsTable,
+    ITEMS_TABLE_TEXT: itemsTableText,
     ITEMS_SUMMARY: itemsSummary,
     NOTE: normalizedPurchaseOrder.note || "",
     SUBTOTAL: formatOfferTemplateMoney(normalizedPurchaseOrder.subtotal || 0, currency),

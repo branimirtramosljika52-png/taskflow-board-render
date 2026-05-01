@@ -493,6 +493,7 @@ const OFFER_TEMPLATE_PLACEHOLDER_DEFINITIONS = Object.freeze([
   Object.freeze({ key: "CONTACT_EMAIL", label: "Kontakt email", description: "Email kontakta." }),
   Object.freeze({ key: "SERVICE_LINE", label: "Vrsta usluge", description: "Glavna vrsta usluge za ponudu." }),
   Object.freeze({ key: "ITEMS_TABLE", label: "Tablica stavki", description: "Sve stavke ponude s količinama, razradom i iznosima." }),
+  Object.freeze({ key: "ITEMS_TABLE_TEXT", label: "Tablica stavki - tekst", description: "Tekstualna verzija tablice ako ne želiš Word tablicu." }),
   Object.freeze({ key: "ITEMS_SUMMARY", label: "Sažetak stavki", description: "Jednostavni tekstualni popis stavki." }),
   Object.freeze({ key: "NOTE", label: "Napomena", description: "Napomena i dodatni uvjeti." }),
   Object.freeze({ key: "SUBTOTAL", label: "Međuzbroj", description: "Iznos prije rabata i PDV-a." }),
@@ -520,6 +521,7 @@ const PURCHASE_ORDER_TEMPLATE_PLACEHOLDER_DEFINITIONS = Object.freeze([
   Object.freeze({ key: "CONTACT_EMAIL", label: "Kontakt email", description: "Email kontakta." }),
   Object.freeze({ key: "SERVICE_LINE", label: "Vrsta usluge", description: "Glavna vrsta usluge ili tip narudžbe." }),
   Object.freeze({ key: "ITEMS_TABLE", label: "Tablica stavki", description: "Sve stavke narudžbenice s količinama, razradom i iznosima." }),
+  Object.freeze({ key: "ITEMS_TABLE_TEXT", label: "Tablica stavki - tekst", description: "Tekstualna verzija tablice ako ne želiš Word tablicu." }),
   Object.freeze({ key: "ITEMS_SUMMARY", label: "Sažetak stavki", description: "Jednostavni tekstualni popis stavki." }),
   Object.freeze({ key: "NOTE", label: "Napomena", description: "Napomena i dodatni uvjeti." }),
   Object.freeze({ key: "SUBTOTAL", label: "Međuzbroj", description: "Iznos prije rabata i PDV-a." }),
@@ -23490,9 +23492,7 @@ function buildPeriodicsInspectionEntries(records = getPeriodicsDocumentRecords()
 
   (Array.isArray(records) ? records : []).forEach((record) => {
     const dueDates = extractPeriodicsDocumentDueDates(record);
-    if (dueDates.length === 0) {
-      return;
-    }
+    const inspectionDueDates = dueDates.length > 0 ? dueDates : [""];
 
     const extractedWorkOrderNumber = extractDocumentsExplorerWorkOrderNumber(record);
     const linkedWorkOrder = resolveDocumentsExplorerWorkOrder(record, extractedWorkOrderNumber);
@@ -23565,17 +23565,18 @@ function buildPeriodicsInspectionEntries(records = getPeriodicsDocumentRecords()
     const templateLabel = String(record?.templateTitle || record?.documentType || "Zapisnik").trim() || "Zapisnik";
     const workOrderNumber = String(linkedWorkOrder?.workOrderNumber || extractedWorkOrderNumber || "").trim();
 
-    dueDates.forEach((dueDate, index) => {
+    inspectionDueDates.forEach((dueDate, index) => {
+      const dueKey = dueDate || "bez-roka";
       const dedupeKey = [
         String(record?.id || ""),
         companyId,
         locationId,
         objectId || objectName,
         serviceLabel,
-        dueDate,
+        dueKey,
         index,
       ].join("|");
-      if (!dueDate || seenKeys.has(dedupeKey)) {
+      if (seenKeys.has(dedupeKey)) {
         return;
       }
       seenKeys.add(dedupeKey);
@@ -23593,7 +23594,7 @@ function buildPeriodicsInspectionEntries(records = getPeriodicsDocumentRecords()
       ].filter(Boolean).join(" ");
 
       rows.push({
-        id: `periodics-inspection-${String(record?.id || crypto.randomUUID())}-${dueDate}-${index}`,
+        id: `periodics-inspection-${String(record?.id || crypto.randomUUID())}-${dueKey}-${index}`,
         dueDate,
         dueState,
         companyName,
@@ -23610,7 +23611,7 @@ function buildPeriodicsInspectionEntries(records = getPeriodicsDocumentRecords()
   });
 
   return rows.sort((left, right) => (
-    String(left.dueDate || "").localeCompare(String(right.dueDate || ""))
+    String(left.dueDate || "9999-12-31").localeCompare(String(right.dueDate || "9999-12-31"))
     || String(left.companyName || "").localeCompare(String(right.companyName || ""), "hr")
     || String(left.locationName || "").localeCompare(String(right.locationName || ""), "hr")
   ));
@@ -25355,7 +25356,7 @@ function renderPeriodicsModule() {
     periodicsInspectionsEmpty.hidden = state.periodicsFeed.loading || inspectionEntries.length > 0;
     periodicsInspectionsEmpty.textContent = state.periodicsFeed.error
       ? "Zapisnici trenutno nisu učitani. Klikni osvježi ili provjeri dokumente."
-      : "Nema zapisa s poljem \"vrijedi do\" za odabrane filtere.";
+      : "Nema zapisnika za odabrane filtere.";
   }
   if (periodicsVehiclesEmpty) {
     periodicsVehiclesEmpty.hidden = vehicleEntries.length > 0;
@@ -25375,7 +25376,7 @@ function renderPeriodicsModule() {
     } else if (state.periodicsFeed.error && allEntries.length === 0) {
       periodicsHelper.textContent = state.periodicsFeed.error;
     } else if (allEntries.length === 0) {
-      periodicsHelper.textContent = "Nema periodičkih obveza za odabrane filtere. Dodaj datum \"vrijedi do\" u zapisniku, vozilu, korisničkoj ovlasti ili mjernoj opremi.";
+      periodicsHelper.textContent = "Nema periodičkih obveza za odabrane filtere. Zapisnici bez roka prikazuju se s oznakom \"Bez roka\".";
     } else if (state.periodicsFeed.error) {
       periodicsHelper.textContent = `Prikazano ${allEntries.length} stavki (zapisnici trenutno nisu učitani) · Vozila ${vehicleEntries.length} · Ljudi ${peopleEntries.length} · Oprema ${equipmentEntries.length}.`;
     } else {
@@ -25983,6 +25984,279 @@ function normalizeMeasurementLiteralValue(rawValue) {
   }
 
   return rawValue ?? "";
+}
+
+function getMeasurementFormulaReferenceSheetName(reference = "") {
+  if (reference && typeof reference === "object" && !Array.isArray(reference)) {
+    return String(reference.sheetName ?? reference.sheet ?? "").trim();
+  }
+
+  return "";
+}
+
+function normalizeMeasurementSheetFormulaLookupKey(value = "") {
+  return normalizeLooseName(
+    String(value ?? "")
+      .replace(/^\'+|\'+$/g, "")
+      .replace(/[{}]/g, " ")
+      .trim(),
+  );
+}
+
+function addMeasurementFormulaSheetAlias(lookup, alias = "", entry = null) {
+  if (!lookup || !entry) {
+    return;
+  }
+
+  const rawAlias = String(alias ?? "").trim();
+  const keys = Array.from(new Set([
+    rawAlias.toLowerCase(),
+    normalizeMeasurementSheetFormulaLookupKey(rawAlias),
+    normalizeMeasurementSheetFormulaLookupKey(rawAlias.replace(/[{}]/g, "")),
+  ].filter(Boolean)));
+
+  keys.forEach((key) => {
+    if (!lookup.has(key)) {
+      lookup.set(key, entry);
+    }
+  });
+}
+
+function getDocumentTemplateMeasurementFieldAliases(field = {}, fieldIndex = 0, excelIndex = 0) {
+  const token = getDocumentTemplateFieldToken(field, fieldIndex);
+  return [
+    field.id,
+    field.key,
+    field.label,
+    field.wordLabel,
+    token,
+    String(token || "").replace(/[{}]/g, ""),
+    `Sheet${excelIndex + 1}`,
+    `Sheet ${excelIndex + 1}`,
+    `Excel${excelIndex + 1}`,
+    `Excel ${excelIndex + 1}`,
+    `Excel tablica ${excelIndex + 1}`,
+  ].filter(Boolean);
+}
+
+function buildCurrentMeasurementSheetFormulaSnapshot() {
+  return {
+    columns: state.measurementSheet.columns,
+    rows: state.measurementSheet.rows,
+    merges: state.measurementSheet.merges,
+    headerRows: state.measurementSheet.headerRows,
+  };
+}
+
+function buildDocumentTemplateMeasurementFormulaContext({
+  fields = documentTemplateFieldDrafts,
+  currentFieldId = "",
+  currentSheet = null,
+  workOrderId = "",
+} = {}) {
+  const lookup = new Map();
+  const entries = [];
+  let currentEntry = null;
+  let excelIndex = 0;
+
+  (Array.isArray(fields) ? fields : []).forEach((field, fieldIndex) => {
+    if (String(field?.type || "").trim().toLowerCase() !== "measurement_table") {
+      return;
+    }
+
+    const fieldId = String(field?.id || "").trim();
+    const isCurrentField = fieldId && fieldId === String(currentFieldId || "").trim();
+    const sheet = isCurrentField && currentSheet
+      ? currentSheet
+      : (workOrderId
+        ? getDocumentTemplateRuntimeMeasurementSheet(workOrderId, field)
+        : ensureDocumentTemplateMeasurementFieldSheet(field));
+
+    if (!sheet?.columns?.length) {
+      excelIndex += 1;
+      return;
+    }
+
+    const key = fieldId || `measurement-sheet-${excelIndex + 1}`;
+    const entry = {
+      key,
+      fieldId,
+      field,
+      sheet,
+      index: excelIndex,
+    };
+
+    entries.push(entry);
+    if (isCurrentField || (!currentEntry && currentSheet && sheet === currentSheet)) {
+      currentEntry = entry;
+    }
+
+    getDocumentTemplateMeasurementFieldAliases(field, fieldIndex, excelIndex)
+      .forEach((alias) => addMeasurementFormulaSheetAlias(lookup, alias, entry));
+    excelIndex += 1;
+  });
+
+  if (!currentEntry && currentSheet?.columns?.length) {
+    currentEntry = {
+      key: "current",
+      fieldId: String(currentFieldId || "").trim(),
+      field: null,
+      sheet: currentSheet,
+      index: -1,
+    };
+    addMeasurementFormulaSheetAlias(lookup, "Current", currentEntry);
+    addMeasurementFormulaSheetAlias(lookup, "Sheet", currentEntry);
+  }
+
+  return {
+    entries,
+    lookup,
+    current: currentEntry,
+  };
+}
+
+function buildActiveMeasurementSheetFormulaContext() {
+  const currentSheet = buildCurrentMeasurementSheetFormulaSnapshot();
+  const ownerKind = String(state.measurementSheet.ownerKind || "").trim();
+  if (ownerKind !== "template_field" && ownerKind !== "document_template_runtime_field") {
+    return buildDocumentTemplateMeasurementFormulaContext({
+      fields: [],
+      currentFieldId: "",
+      currentSheet,
+      workOrderId: "",
+    });
+  }
+
+  return buildDocumentTemplateMeasurementFormulaContext({
+    fields: documentTemplateFieldDrafts,
+    currentFieldId: state.measurementSheet.ownerFieldId,
+    currentSheet,
+    workOrderId: ownerKind === "document_template_runtime_field"
+      ? (state.measurementSheet.ownerRuntimeWorkOrderId || state.documentTemplateRuntime.activeWorkOrderId || "")
+      : "",
+  });
+}
+
+function resolveMeasurementFormulaSheetEntry(reference, formulaContext = null, currentEntry = null) {
+  const sheetName = getMeasurementFormulaReferenceSheetName(reference);
+  const context = formulaContext || {};
+  const fallbackEntry = currentEntry || context.current || null;
+  if (!sheetName) {
+    return fallbackEntry;
+  }
+
+  const lookupKey = normalizeMeasurementSheetFormulaLookupKey(sheetName);
+  return context.lookup?.get(lookupKey)
+    || context.lookup?.get(String(sheetName).trim().toLowerCase())
+    || fallbackEntry;
+}
+
+function getMeasurementSheetFormulaComputedRawValue(sheet, rowIndex, columnIndex, stack = new Set(), formulaContext = null, sheetEntry = null) {
+  const currentSheet = sheet || sheetEntry?.sheet || null;
+  const currentEntry = sheetEntry || formulaContext?.current || {
+    key: "current",
+    sheet: currentSheet,
+  };
+  const row = currentSheet?.rows?.[rowIndex];
+  const column = currentSheet?.columns?.[columnIndex];
+
+  if (!row || !column) {
+    return "";
+  }
+
+  if (column.computed === "average") {
+    return getMeasurementAverageValue(row) ?? "";
+  }
+
+  const rawValue = row.cells?.[column.id] ?? "";
+
+  if (!isMeasurementFormula(rawValue)) {
+    return normalizeMeasurementLiteralValue(rawValue);
+  }
+
+  const cellKey = `${currentEntry?.key || "current"}:${rowIndex}:${columnIndex}`;
+
+  if (stack.has(cellKey)) {
+    throw new Error("Kruzna referenca u formuli.");
+  }
+
+  stack.add(cellKey);
+
+  try {
+    return evaluateMeasurementFormula(rawValue, {
+      resolveCellReference(reference) {
+        const targetEntry = resolveMeasurementFormulaSheetEntry(reference, formulaContext, currentEntry);
+        const targetSheet = targetEntry?.sheet || currentSheet;
+        const { rowIndex: referenceRowIndex, columnIndex: referenceColumnIndex } =
+          parseMeasurementCellReference(reference);
+
+        if (
+          referenceRowIndex < 0
+          || referenceColumnIndex < 0
+          || referenceRowIndex >= (targetSheet?.rows?.length || 0)
+          || referenceColumnIndex >= (targetSheet?.columns?.length || 0)
+        ) {
+          throw new Error(`Referenca nije valjana.`);
+        }
+
+        return getMeasurementSheetFormulaComputedRawValue(
+          targetSheet,
+          referenceRowIndex,
+          referenceColumnIndex,
+          stack,
+          formulaContext,
+          targetEntry || currentEntry,
+        );
+      },
+      resolveRange(startReference, endReference) {
+        const startEntry = resolveMeasurementFormulaSheetEntry(startReference, formulaContext, currentEntry);
+        const endEntry = resolveMeasurementFormulaSheetEntry(endReference, formulaContext, currentEntry);
+        const targetEntry = startEntry || currentEntry;
+        const targetSheet = targetEntry?.sheet || currentSheet;
+
+        if ((startEntry?.key || currentEntry?.key) !== (endEntry?.key || currentEntry?.key)) {
+          throw new Error("Raspon kroz vise Excel tablica nije podrzan. Koristi raspon unutar jedne tablice.");
+        }
+
+        const start = parseMeasurementCellReference(startReference);
+        const end = parseMeasurementCellReference(endReference);
+        const startRowIndex = Math.max(0, Math.min(start.rowIndex, end.rowIndex));
+        const endRowIndex = Math.max(start.rowIndex, end.rowIndex);
+        const startColumnIndex = Math.max(0, Math.min(start.columnIndex, end.columnIndex));
+        const endColumnIndex = Math.max(start.columnIndex, end.columnIndex);
+        const matrix = [];
+
+        for (let referenceRowIndex = startRowIndex; referenceRowIndex <= endRowIndex; referenceRowIndex += 1) {
+          const rowValues = [];
+          for (let referenceColumnIndex = startColumnIndex; referenceColumnIndex <= endColumnIndex; referenceColumnIndex += 1) {
+            if (
+              referenceRowIndex < 0
+              || referenceColumnIndex < 0
+              || referenceRowIndex >= (targetSheet?.rows?.length || 0)
+              || referenceColumnIndex >= (targetSheet?.columns?.length || 0)
+            ) {
+              rowValues.push("");
+              continue;
+            }
+
+            rowValues.push(getMeasurementSheetFormulaComputedRawValue(
+              targetSheet,
+              referenceRowIndex,
+              referenceColumnIndex,
+              stack,
+              formulaContext,
+              targetEntry,
+            ));
+          }
+          matrix.push(rowValues);
+        }
+
+        return matrix;
+      },
+    });
+  } finally {
+    stack.delete(cellKey);
+  }
 }
 
 function getMeasurementAverageValue(row) {
@@ -28677,79 +28951,15 @@ function isMeasurementFormulaBarEditingCell(rowId, columnId) {
 }
 
 function getMeasurementCellComputedValue(rowIndex, columnIndex, stack = new Set()) {
-  const row = state.measurementSheet.rows[rowIndex];
-  const column = state.measurementSheet.columns[columnIndex];
-
-  if (!row || !column) {
-    return "";
-  }
-
-  if (column.computed === "average") {
-    return getMeasurementAverageValue(row) ?? "";
-  }
-
-  const rawValue = row.cells?.[column.id] ?? "";
-
-  if (!isMeasurementFormula(rawValue)) {
-    return normalizeMeasurementLiteralValue(rawValue);
-  }
-
-  const cellKey = `${rowIndex}:${columnIndex}`;
-
-  if (stack.has(cellKey)) {
-    throw new Error("Kruzna referenca u formuli.");
-  }
-
-  stack.add(cellKey);
-
-  try {
-    return evaluateMeasurementFormula(rawValue, {
-      resolveCellReference(reference) {
-        const { rowIndex: referenceRowIndex, columnIndex: referenceColumnIndex } =
-          parseMeasurementCellReference(reference);
-
-        if (referenceRowIndex < 0
-          || referenceColumnIndex < 0
-          || referenceRowIndex >= state.measurementSheet.rows.length
-          || referenceColumnIndex >= state.measurementSheet.columns.length) {
-          throw new Error(`Referenca ${reference} nije valjana.`);
-        }
-
-        return getMeasurementCellComputedValue(referenceRowIndex, referenceColumnIndex, stack);
-      },
-      resolveRange(startReference, endReference) {
-        const start = parseMeasurementCellReference(startReference);
-        const end = parseMeasurementCellReference(endReference);
-        const startRowIndex = Math.max(0, Math.min(start.rowIndex, end.rowIndex));
-        const endRowIndex = Math.max(start.rowIndex, end.rowIndex);
-        const startColumnIndex = Math.max(0, Math.min(start.columnIndex, end.columnIndex));
-        const endColumnIndex = Math.max(start.columnIndex, end.columnIndex);
-        const matrix = [];
-
-        for (let referenceRowIndex = startRowIndex; referenceRowIndex <= endRowIndex; referenceRowIndex += 1) {
-          const rowValues = [];
-          for (let referenceColumnIndex = startColumnIndex; referenceColumnIndex <= endColumnIndex; referenceColumnIndex += 1) {
-            if (
-              referenceRowIndex < 0
-              || referenceColumnIndex < 0
-              || referenceRowIndex >= state.measurementSheet.rows.length
-              || referenceColumnIndex >= state.measurementSheet.columns.length
-            ) {
-              rowValues.push("");
-              continue;
-            }
-
-            rowValues.push(getMeasurementCellComputedValue(referenceRowIndex, referenceColumnIndex, stack));
-          }
-          matrix.push(rowValues);
-        }
-
-        return matrix;
-      },
-    });
-  } finally {
-    stack.delete(cellKey);
-  }
+  const formulaContext = buildActiveMeasurementSheetFormulaContext();
+  return getMeasurementSheetFormulaComputedRawValue(
+    buildCurrentMeasurementSheetFormulaSnapshot(),
+    rowIndex,
+    columnIndex,
+    stack,
+    formulaContext,
+    formulaContext.current,
+  );
 }
 
 function getMeasurementCellDisplayText(rowIndex, columnIndex) {
@@ -34626,6 +34836,85 @@ function buildOfferDraftPreviewData() {
   };
 }
 
+function buildCommercialItemsTablePlaceholderPreview(items = [], currency = "EUR", { fallbackTitle = "Opis stavke" } = {}) {
+  const safeItems = Array.isArray(items) ? items : [];
+  const columns = [
+    { id: "number", label: "R.br.", width: 52 },
+    { id: "description", label: fallbackTitle, width: 260 },
+    { id: "quantity", label: "Količina", width: 92 },
+    { id: "unit_price", label: "Jed. cijena", width: 110 },
+    { id: "breakdown", label: "Razrada", width: 190 },
+    { id: "total", label: "Ukupno", width: 120 },
+  ];
+  const rows = [
+    {
+      id: "header",
+      header: true,
+      cells: columns.map((column) => ({
+        text: column.label,
+        format: {
+          bold: true,
+          fillColor: "#F1F7F4",
+          border: "all",
+        },
+      })),
+    },
+  ];
+
+  if (safeItems.length === 0) {
+    rows.push({
+      id: "empty",
+      cells: [
+        { text: "" },
+        { text: "Nema dodanih stavki." },
+        { text: "" },
+        { text: "" },
+        { text: "" },
+        { text: "" },
+      ],
+    });
+  }
+
+  safeItems.forEach((item, index) => {
+    const breakdowns = Array.isArray(item?.breakdowns) ? item.breakdowns : [];
+    const breakdownSummary = breakdowns.length > 0
+      ? breakdowns.map((entry) => `${entry.label || "Razrada"}: ${formatCurrencyAmount(entry.amount || 0, currency)}`).join("\n")
+      : "";
+    rows.push({
+      id: `item-${index + 1}`,
+      cells: [
+        { text: String(index + 1) },
+        { text: item?.description || "Stavka" },
+        { text: `${item?.quantity || 0}${item?.unit ? ` ${item.unit}` : ""}` },
+        { text: formatCurrencyAmount(item?.unitPrice || 0, currency) },
+        { text: breakdownSummary },
+        { text: formatCurrencyAmount(item?.totalPrice || 0, currency) },
+      ],
+    });
+  });
+
+  return {
+    __docxBlockType: "table",
+    columns,
+    rows,
+    headerRows: ["header"],
+    merges: [],
+  };
+}
+
+function formatCommercialTemplatePlaceholderPreviewValue(value) {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    if (String(value.__docxBlockType || value.type || "").trim().toLowerCase() === "table") {
+      const rows = Array.isArray(value.rows) ? value.rows : [];
+      const bodyRows = rows.filter((row) => !row?.header);
+      return `${bodyRows.length} redaka Word tablice`;
+    }
+    return "";
+  }
+
+  return String(value ?? "");
+}
+
 function buildOfferTemplatePlaceholderPayload(offer = buildOfferDraftPreviewData()) {
   const normalizedOffer = offer || {};
   const isPurchaseOrder = isPurchaseOrdersContextActive()
@@ -34635,7 +34924,7 @@ function buildOfferTemplatePlaceholderPayload(offer = buildOfferDraftPreviewData
   const itemsSummary = (normalizedOffer.items ?? [])
     .map((item, index) => `${index + 1}. ${item.description || "Stavka"}${item.unit ? ` · ${item.quantity} ${item.unit}` : ""}${Number(item.totalPrice || 0) > 0 ? ` · ${formatCurrencyAmount(item.totalPrice || 0, normalizedOffer.currency || "EUR")}` : ""}`)
     .join("\n");
-  const itemsTable = (normalizedOffer.items ?? [])
+  const itemsTableText = (normalizedOffer.items ?? [])
     .map((item, index) => {
       const breakdownText = Array.isArray(item.breakdowns) && item.breakdowns.length > 0
         ? `\n${item.breakdowns.map((entry) => `   - ${entry.label || "Razrada"}: ${formatCurrencyAmount(entry.amount || 0, normalizedOffer.currency || "EUR")}`).join("\n")}`
@@ -34643,6 +34932,11 @@ function buildOfferTemplatePlaceholderPayload(offer = buildOfferDraftPreviewData
       return `${index + 1}. ${item.description || "Stavka"} | ${item.quantity || 0} ${item.unit || ""} | ${formatCurrencyAmount(item.totalPrice || 0, normalizedOffer.currency || "EUR")}${breakdownText}`;
     })
     .join("\n");
+  const itemsTable = buildCommercialItemsTablePlaceholderPreview(
+    normalizedOffer.items ?? [],
+    normalizedOffer.currency || "EUR",
+    { fallbackTitle: isPurchaseOrder ? "Opis narudžbe" : "Opis stavke" },
+  );
 
   const sharedPayload = {
     VALID_UNTIL: normalizedOffer.validUntil ? formatDate(normalizedOffer.validUntil) : "",
@@ -34656,6 +34950,7 @@ function buildOfferTemplatePlaceholderPayload(offer = buildOfferDraftPreviewData
     CONTACT_EMAIL: normalizedOffer.contactEmail || "",
     SERVICE_LINE: normalizedOffer.serviceLine || "",
     ITEMS_TABLE: itemsTable,
+    ITEMS_TABLE_TEXT: itemsTableText,
     ITEMS_SUMMARY: itemsSummary,
     NOTE: normalizedOffer.note || "",
     SUBTOTAL: formatCurrencyAmount(normalizedOffer.subtotal || 0, normalizedOffer.currency || "EUR"),
@@ -34697,7 +34992,7 @@ function buildOfferTemplatePlaceholderWordMarkup(offer = buildOfferDraftPreviewD
       <td>{{${escapeHtml(entry.key)}}}</td>
       <td>${escapeHtml(entry.label)}</td>
       <td>${escapeHtml(entry.description)}</td>
-      <td>${escapeHtml(payload[entry.key] || "")}</td>
+      <td>${escapeHtml(formatCommercialTemplatePlaceholderPreviewValue(payload[entry.key]))}</td>
     </tr>
   `).join("");
 
@@ -41766,72 +42061,23 @@ function buildDocumentTemplatePreviewContext(template = buildDocumentTemplateDra
   };
 }
 
-function getMeasurementSheetPreviewCellRawValue(sheet, rowIndex, columnIndex, stack = new Set()) {
-  const row = sheet?.rows?.[rowIndex];
-  const column = sheet?.columns?.[columnIndex];
-
-  if (!row || !column) {
-    return "";
-  }
-
-  if (column.computed === "average") {
-    return getMeasurementAverageValue(row);
-  }
-
-  const rawValue = row.cells?.[column.id] ?? "";
-
-  if (!isMeasurementFormula(rawValue)) {
-    return normalizeMeasurementLiteralValue(rawValue);
-  }
-
-  const key = `${rowIndex}:${columnIndex}`;
-  if (stack.has(key)) {
-    throw new Error("Circular measurement formula.");
-  }
-
-  stack.add(key);
-  try {
-    return evaluateMeasurementFormula(rawValue, {
-      resolveCellReference(reference) {
-        const resolved = parseMeasurementCellReference(reference);
-
-        if (!resolved) {
-          return "";
-        }
-
-        return getMeasurementSheetPreviewCellRawValue(
-          sheet,
-          resolved.rowIndex,
-          resolved.columnIndex,
-          stack,
-        );
-      },
-      resolveRange(startReference, endReference) {
-        const start = parseMeasurementCellReference(startReference);
-        const end = parseMeasurementCellReference(endReference);
-        const startRowIndex = Math.max(0, Math.min(start.rowIndex, end.rowIndex));
-        const endRowIndex = Math.max(start.rowIndex, end.rowIndex);
-        const startColumnIndex = Math.max(0, Math.min(start.columnIndex, end.columnIndex));
-        const endColumnIndex = Math.max(start.columnIndex, end.columnIndex);
-        const matrix = [];
-
-        for (let rowIndex = startRowIndex; rowIndex <= endRowIndex; rowIndex += 1) {
-          const rowValues = [];
-          for (let columnIndex = startColumnIndex; columnIndex <= endColumnIndex; columnIndex += 1) {
-            rowValues.push(getMeasurementSheetPreviewCellRawValue(sheet, rowIndex, columnIndex, stack));
-          }
-          matrix.push(rowValues);
-        }
-
-        return matrix;
-      },
-    });
-  } finally {
-    stack.delete(key);
-  }
+function getMeasurementSheetPreviewCellRawValue(sheet, rowIndex, columnIndex, stack = new Set(), formulaContext = null) {
+  const context = formulaContext || buildDocumentTemplateMeasurementFormulaContext({
+    fields: [],
+    currentFieldId: "",
+    currentSheet: sheet,
+  });
+  return getMeasurementSheetFormulaComputedRawValue(
+    sheet,
+    rowIndex,
+    columnIndex,
+    stack,
+    context,
+    context.current,
+  );
 }
 
-function getMeasurementSheetPreviewCellValue(sheet, rowIndex, columnIndex) {
+function getMeasurementSheetPreviewCellValue(sheet, rowIndex, columnIndex, formulaContext = null) {
   const row = sheet?.rows?.[rowIndex];
   const column = sheet?.columns?.[columnIndex];
 
@@ -41852,7 +42098,7 @@ function getMeasurementSheetPreviewCellValue(sheet, rowIndex, columnIndex) {
 
   try {
     return formatMeasurementComputedDisplayValue(
-      getMeasurementSheetPreviewCellRawValue(sheet, rowIndex, columnIndex, new Set()),
+      getMeasurementSheetPreviewCellRawValue(sheet, rowIndex, columnIndex, new Set(), formulaContext),
       format,
     );
   } catch {
@@ -41878,7 +42124,7 @@ function isMeasurementPreviewIndexColumn(column = {}, columnIndex = 0) {
     || labelText === "pozicija";
 }
 
-function getMeasurementSheetPreviewCellPrintableValue(sheet, rowIndex, columnIndex) {
+function getMeasurementSheetPreviewCellPrintableValue(sheet, rowIndex, columnIndex, formulaContext = null) {
   const row = sheet?.rows?.[rowIndex];
   const column = sheet?.columns?.[columnIndex];
 
@@ -41892,31 +42138,31 @@ function getMeasurementSheetPreviewCellPrintableValue(sheet, rowIndex, columnInd
   }
 
   try {
-    return getMeasurementSheetPreviewCellRawValue(sheet, rowIndex, columnIndex, new Set());
+    return getMeasurementSheetPreviewCellRawValue(sheet, rowIndex, columnIndex, new Set(), formulaContext);
   } catch {
     return "";
   }
 }
 
-function isMeasurementSheetPreviewRowPopulated(sheet, rowIndex, { includeIndexColumns = true } = {}) {
+function isMeasurementSheetPreviewRowPopulated(sheet, rowIndex, { includeIndexColumns = true, formulaContext = null } = {}) {
   return (sheet?.columns ?? []).some((column, columnIndex) => {
     if (!includeIndexColumns && isMeasurementPreviewIndexColumn(column, columnIndex)) {
       return false;
     }
 
     return isMeasurementFillValuePresent(
-      getMeasurementSheetPreviewCellPrintableValue(sheet, rowIndex, columnIndex),
+      getMeasurementSheetPreviewCellPrintableValue(sheet, rowIndex, columnIndex, formulaContext),
     );
   });
 }
 
-function getMeasurementSheetPreviewLastPopulatedRowIndex(sheet = null) {
+function getMeasurementSheetPreviewLastPopulatedRowIndex(sheet = null, formulaContext = null) {
   if (!sheet?.rows?.length || !sheet?.columns?.length) {
     return -1;
   }
 
   const lastContentRowIndex = sheet.rows.reduce((lastIndex, row, rowIndex) => (
-    isMeasurementSheetPreviewRowPopulated(sheet, rowIndex, { includeIndexColumns: false })
+    isMeasurementSheetPreviewRowPopulated(sheet, rowIndex, { includeIndexColumns: false, formulaContext })
       ? rowIndex
       : lastIndex
   ), -1);
@@ -41926,13 +42172,13 @@ function getMeasurementSheetPreviewLastPopulatedRowIndex(sheet = null) {
   }
 
   return sheet.rows.reduce((lastIndex, row, rowIndex) => (
-    isMeasurementSheetPreviewRowPopulated(sheet, rowIndex, { includeIndexColumns: true })
+    isMeasurementSheetPreviewRowPopulated(sheet, rowIndex, { includeIndexColumns: true, formulaContext })
       ? rowIndex
       : lastIndex
   ), -1);
 }
 
-function getMeasurementSheetPreviewCellVisualFormat(sheet, rowIndex, column = null) {
+function getMeasurementSheetPreviewCellVisualFormat(sheet, rowIndex, column = null, formulaContext = null) {
   if (!column || column.computed === "average") {
     return normalizeMeasurementCellFormat();
   }
@@ -41946,7 +42192,7 @@ function getMeasurementSheetPreviewCellVisualFormat(sheet, rowIndex, column = nu
     try {
       const sheetColumnIndex = (sheet?.columns ?? []).findIndex((entry) => String(entry?.id) === String(column.id));
       isFilled = isMeasurementFillValuePresent(
-        getMeasurementSheetPreviewCellRawValue(sheet, rowIndex, sheetColumnIndex, new Set()),
+        getMeasurementSheetPreviewCellRawValue(sheet, rowIndex, sheetColumnIndex, new Set(), formulaContext),
       );
     } catch {
       isFilled = false;
@@ -41978,7 +42224,13 @@ function buildMeasurementSheetPreviewTable(field = {}, context = {}) {
     return null;
   }
 
-  const lastMeaningfulRowIndex = getMeasurementSheetPreviewLastPopulatedRowIndex(snapshot);
+  const formulaContext = buildDocumentTemplateMeasurementFormulaContext({
+    fields: context.template?.customFields || documentTemplateFieldDrafts,
+    currentFieldId: field.id,
+    currentSheet: snapshot,
+    workOrderId: runtimeWorkOrderId,
+  });
+  const lastMeaningfulRowIndex = getMeasurementSheetPreviewLastPopulatedRowIndex(snapshot, formulaContext);
   const fallbackRowCount = Math.max(1, Math.min(40, Number(field.rowCount) || 12));
   const visibleRows = snapshot.rows.slice(0, lastMeaningfulRowIndex >= 0 ? lastMeaningfulRowIndex + 1 : fallbackRowCount);
   const visibleRowIds = new Set(visibleRows.map((row) => String(row?.id || "").trim()).filter(Boolean));
@@ -41986,6 +42238,7 @@ function buildMeasurementSheetPreviewTable(field = {}, context = {}) {
   return {
     columns: snapshot.columns,
     rows: visibleRows.length > 0 ? visibleRows : [normalizeMeasurementSheetRowSnapshotLocal({}, snapshot.columns, 0)],
+    formulaContext,
     merges: (snapshot.merges ?? [])
       .filter((merge) => visibleRowIds.has(String(merge?.rowId || "").trim()))
       .map((merge) => ({ ...merge })),
@@ -42006,7 +42259,7 @@ function buildMeasurementSheetPreviewTable(field = {}, context = {}) {
   };
 }
 
-function buildMeasurementSheetPreviewCellInlineStyle(sheet, rowIndex, column) {
+function buildMeasurementSheetPreviewCellInlineStyle(sheet, rowIndex, column, formulaContext = null) {
   if (!column) {
     return "";
   }
@@ -42015,7 +42268,7 @@ function buildMeasurementSheetPreviewCellInlineStyle(sheet, rowIndex, column) {
     return "text-align:right";
   }
 
-  const format = getMeasurementSheetPreviewCellVisualFormat(sheet, rowIndex, column);
+  const format = getMeasurementSheetPreviewCellVisualFormat(sheet, rowIndex, column, formulaContext);
   const styleConfig = getMeasurementCellStyleConfig(format);
   const styles = [];
 
@@ -42464,12 +42717,12 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
       }, [])
       : [];
     const head = headerRowIndexes.length > 0
-      ? renderMeasurementSheetPreviewRows(previewTable, headerRowIndexes, { header: true })
+      ? renderMeasurementSheetPreviewRows(previewTable, headerRowIndexes, { header: true, formulaContext: previewTable?.formulaContext })
       : `<tr>${columns.map((column) => `<th>${escapeHtml(column)}</th>`).join("")}</tr>`;
     const rows = placeholderMode
       ? `<tr><td colspan="${columns.length}">${escapeHtml(token)}</td></tr>`
       : previewTable
-        ? renderMeasurementSheetPreviewRows(previewTable, bodyRowIndexes)
+        ? renderMeasurementSheetPreviewRows(previewTable, bodyRowIndexes, { formulaContext: previewTable?.formulaContext })
         : Array.from({ length: rowCount }, (_, rowIndex) => (
           `<tr>${columns.map((column, columnIndex) => `<td>${columnIndex === 0 ? escapeHtml(String(rowIndex + 1)) : "&nbsp;"}</td>`).join("")}</tr>`
         )).join("");
@@ -42687,7 +42940,7 @@ function buildDocumentTemplateMeasurementTableExportModel(field = {}, context = 
       }
 
       return previewTable.columns.map((column, columnIndex) => (
-        getMeasurementSheetPreviewCellValue(previewTable, rowIndex, columnIndex)
+        getMeasurementSheetPreviewCellValue(previewTable, rowIndex, columnIndex, previewTable.formulaContext)
       ));
     })
     .filter(Boolean);
@@ -42696,7 +42949,7 @@ function buildDocumentTemplateMeasurementTableExportModel(field = {}, context = 
     .map((row) => {
       const rowIndex = rowIndexById.get(row.id);
       return previewTable.columns.map((column, columnIndex) => (
-        getMeasurementSheetPreviewCellValue(previewTable, rowIndex, columnIndex)
+        getMeasurementSheetPreviewCellValue(previewTable, rowIndex, columnIndex, previewTable.formulaContext)
       ));
     });
 
@@ -42757,7 +43010,7 @@ function buildDocumentTemplateMeasurementTableWordPlaceholder(field = {}, contex
       id: row.id || `row-${rowIndex + 1}`,
       header: headerRowIds.includes(row.id),
       cells: previewTable.columns.map((column, columnIndex) => ({
-        text: getMeasurementSheetPreviewCellValue(previewTable, rowIndex, columnIndex),
+        text: getMeasurementSheetPreviewCellValue(previewTable, rowIndex, columnIndex, previewTable.formulaContext),
         format: normalizeMeasurementCellFormat(row.formats?.[column.id]),
       })),
     })),
@@ -42910,6 +43163,20 @@ function buildDocumentTemplateFieldWordPlaceholderValue(field = {}, context = {}
     const mediaText = buildDocumentTemplateFieldExportText(field, context, index);
     return mediaText || {
       __docxBlockType: "optional_empty",
+    };
+  }
+
+  if (isDocumentTemplatePersonSignatureFieldType(field.type)) {
+    return {
+      __docxBlockType: "signature_group",
+      items: buildDocumentTemplateQualifiedInspectorEntries(field, context),
+    };
+  }
+
+  if (field.type === "digital_signature") {
+    return {
+      __docxBlockType: "signature_group",
+      items: buildDocumentTemplateDigitalSignatureEntries(field, context),
     };
   }
 
@@ -43448,7 +43715,7 @@ function buildMeasurementSheetSectionMergeMaps(sheet, rowIndexes = []) {
 }
 
 function renderMeasurementSheetPreviewRows(sheet, rowIndexes = [], options = {}) {
-  const { header = false } = options;
+  const { header = false, formulaContext = sheet?.formulaContext || null } = options;
   const merges = buildMeasurementSheetSectionMergeMaps(sheet, rowIndexes);
 
   return rowIndexes.map((globalRowIndex, localRowIndex) => {
@@ -43459,8 +43726,8 @@ function renderMeasurementSheetPreviewRows(sheet, rowIndexes = [], options = {})
       }
 
       const merge = merges.anchors.get(`${localRowIndex}:${columnIndex}`) ?? null;
-      const value = getMeasurementSheetPreviewCellValue(sheet, globalRowIndex, columnIndex);
-      const inlineStyle = buildMeasurementSheetPreviewCellInlineStyle(sheet, globalRowIndex, column);
+      const value = getMeasurementSheetPreviewCellValue(sheet, globalRowIndex, columnIndex, formulaContext);
+      const inlineStyle = buildMeasurementSheetPreviewCellInlineStyle(sheet, globalRowIndex, column, formulaContext);
       const safeValue = value ? escapeHtml(value) : "&nbsp;";
       const rowSpanAttr = merge?.rowSpan > 1 ? ` rowspan="${merge.rowSpan}"` : "";
       const colSpanAttr = merge?.colSpan > 1 ? ` colspan="${merge.colSpan}"` : "";
@@ -67731,7 +67998,7 @@ function renderOffersModule() {
     offerOpenFormButton.hidden = !canEditCommercialDocuments;
   }
   if (offerOpenTemplateButton) {
-    offerOpenTemplateButton.hidden = !canEditCommercialDocuments;
+    offerOpenTemplateButton.hidden = !canEditCommercialDocuments || activeDirection === "incoming";
   }
 
   if (lastCommercialDocumentContextKey !== contextKey) {
@@ -83993,7 +84260,7 @@ offerEditorBackdrop?.addEventListener("click", () => {
 });
 
 offerOpenTemplateButton?.addEventListener("click", () => {
-  if (!getCanEditOperationalData()) {
+  if (!getCanEditOperationalData() || getActiveCommercialDocumentDirection() === "incoming") {
     return;
   }
 
