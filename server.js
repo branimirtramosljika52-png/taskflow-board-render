@@ -3071,6 +3071,320 @@ function buildPeopleTrainingImportRecords(body = {}, scopedSnapshot = {}) {
   }).filter(Boolean);
 }
 
+const PEOPLE_TRAINING_IMPORT_ACTION_LABELS = Object.freeze({
+  create: "Novi zaposlenik",
+  update: "Promjena podataka",
+  departure: "Odlazak",
+  skipped: "Preskočeno",
+  unchanged: "Bez promjene",
+});
+
+const PEOPLE_TRAINING_IMPORT_MODE_LABELS = Object.freeze({
+  new: "Import za nove zaposlenike",
+  departures: "Import za odlaske",
+  changes: "Import za promjene",
+});
+
+const PEOPLE_TRAINING_IMPORT_COMPARE_FIELDS = Object.freeze([
+  { field: "companyId", label: "Tvrtka" },
+  { field: "locationId", label: "Lokacija" },
+  { field: "firstName", label: "Ime" },
+  { field: "lastName", label: "Prezime" },
+  { field: "fatherName", label: "Ime oca" },
+  { field: "oib", label: "OIB" },
+  { field: "language", label: "Jezik" },
+  { field: "birthDate", label: "Datum rođenja" },
+  { field: "birthCountry", label: "Država rođenja" },
+  { field: "birthPlace", label: "Mjesto rođenja" },
+  { field: "arrivalDate", label: "Datum dolaska" },
+  { field: "workPlace", label: "Mjesto rada" },
+  { field: "activityStatus", label: "Aktivnost" },
+  { field: "email", label: "Email" },
+  { field: "phone", label: "Mobitel" },
+  { field: "jobTitle", label: "Radno mjesto" },
+  { field: "note", label: "Napomena" },
+]);
+
+function normalizePeopleTrainingImportMode(value = "") {
+  const normalized = normalizeInputValue(value).toLowerCase();
+  if (["departures", "departure", "leavers", "leaver", "odlasci", "odlazak", "inactive", "out"].includes(normalized)) {
+    return "departures";
+  }
+  if (["changes", "change", "updates", "update", "promjene", "promjena"].includes(normalized)) {
+    return "changes";
+  }
+  return "new";
+}
+
+function resolvePeopleTrainingImportCompanyName(record = {}, scopedSnapshot = {}) {
+  const company = (scopedSnapshot.companies ?? []).find((item) => String(item.id) === String(record.companyId));
+  return normalizeInputValue(record.companyName || company?.name);
+}
+
+function resolvePeopleTrainingImportLocationName(record = {}, scopedSnapshot = {}) {
+  const location = (scopedSnapshot.locations ?? []).find((item) => String(item.id) === String(record.locationId));
+  return normalizeInputValue(record.locationName || location?.name);
+}
+
+function summarizePeopleTrainingImportTrainingItem(item = {}) {
+  const label = normalizeInputValue(item.shortLabel || item.serviceCode || item.label || item.serviceName || item.type);
+  const details = [
+    item.issuedOn ? `izdano ${item.issuedOn}` : "",
+    item.validUntil ? `vrijedi do ${item.validUntil}` : "",
+    item.validForever ? "trajno" : "",
+    item.certificateNumber ? `broj ${item.certificateNumber}` : "",
+    item.provider ? `ustanova ${item.provider}` : "",
+    item.workOrderNumber ? `RN ${item.workOrderNumber}` : "",
+  ].filter(Boolean);
+  const extraDetails = Object.entries(item.details ?? {})
+    .filter(([, value]) => normalizeInputValue(value))
+    .slice(0, 4)
+    .map(([key, value]) => `${key}: ${normalizeInputValue(value)}`);
+  if (!label && details.length === 0 && extraDetails.length === 0) {
+    return "";
+  }
+  return [label, [...details, ...extraDetails].join(", ")].filter(Boolean).join(" - ");
+}
+
+function summarizePeopleTrainingImportTrainingItems(items = []) {
+  return (items ?? [])
+    .map((item) => summarizePeopleTrainingImportTrainingItem(item))
+    .filter(Boolean)
+    .join("; ");
+}
+
+function normalizePeopleTrainingImportComparableValue(value) {
+  if (Array.isArray(value)) {
+    return JSON.stringify(value.map((item) => normalizePeopleTrainingImportComparableValue(item)));
+  }
+  if (value && typeof value === "object") {
+    return JSON.stringify(Object.keys(value).sort().reduce((accumulator, key) => {
+      accumulator[key] = normalizePeopleTrainingImportComparableValue(value[key]);
+      return accumulator;
+    }, {}));
+  }
+  return normalizeInputValue(value);
+}
+
+function getPeopleTrainingImportFieldDisplayValue(record = {}, field = "", scopedSnapshot = {}) {
+  if (field === "companyId") {
+    return resolvePeopleTrainingImportCompanyName(record, scopedSnapshot) || normalizeInputValue(record.companyId);
+  }
+  if (field === "locationId") {
+    return resolvePeopleTrainingImportLocationName(record, scopedSnapshot) || "Sve lokacije";
+  }
+  return normalizePeopleTrainingImportComparableValue(record[field]);
+}
+
+function buildPeopleTrainingImportFieldChanges(current = {}, next = {}, scopedSnapshot = {}) {
+  const changes = PEOPLE_TRAINING_IMPORT_COMPARE_FIELDS
+    .map(({ field, label }) => {
+      const before = getPeopleTrainingImportFieldDisplayValue(current, field, scopedSnapshot);
+      const after = getPeopleTrainingImportFieldDisplayValue(next, field, scopedSnapshot);
+      return before === after ? null : {
+        field,
+        label,
+        before: before || "prazno",
+        after: after || "prazno",
+      };
+    })
+    .filter(Boolean);
+
+  const beforeTraining = summarizePeopleTrainingImportTrainingItems(current.trainingItems ?? []);
+  const afterTraining = summarizePeopleTrainingImportTrainingItems(next.trainingItems ?? []);
+  if (beforeTraining !== afterTraining) {
+    changes.push({
+      field: "trainingItems",
+      label: "Osposobljavanja",
+      before: beforeTraining || "prazno",
+      after: afterTraining || "prazno",
+    });
+  }
+
+  return changes;
+}
+
+function findPeopleTrainingImportExistingRecord(records = [], record = {}) {
+  const normalizedOib = normalizeLookupKey(record.oib);
+  const normalizedName = normalizeLookupKey(record.fullName);
+  return records.find((item) => (
+    String(item.companyId) === String(record.companyId)
+    && (
+      (normalizedOib && normalizeLookupKey(item.oib) === normalizedOib)
+      || (!normalizedOib && normalizedName && normalizeLookupKey(item.fullName) === normalizedName)
+    )
+  )) ?? null;
+}
+
+function buildPeopleTrainingImportRowPreview(row = {}, scopedSnapshot = {}, index = 0) {
+  const personName = normalizeInputValue(row.nextRecord?.fullName || row.record?.fullName || row.currentRecord?.fullName);
+  const oib = normalizeInputValue(row.nextRecord?.oib || row.record?.oib || row.currentRecord?.oib);
+  const companyName = resolvePeopleTrainingImportCompanyName(row.nextRecord || row.record || row.currentRecord || {}, scopedSnapshot)
+    || resolvePeopleTrainingImportCompanyName(row.currentRecord || {}, scopedSnapshot);
+  const locationName = resolvePeopleTrainingImportLocationName(row.nextRecord || row.record || row.currentRecord || {}, scopedSnapshot)
+    || resolvePeopleTrainingImportLocationName(row.currentRecord || {}, scopedSnapshot)
+    || "Sve lokacije";
+  const actionLabel = PEOPLE_TRAINING_IMPORT_ACTION_LABELS[row.action] || row.action;
+  return {
+    index: index + 1,
+    action: row.action,
+    actionLabel,
+    tone: row.tone,
+    canApply: Boolean(row.canApply),
+    personName: personName || "Bez imena",
+    oib,
+    companyName,
+    locationName,
+    message: row.message || "",
+    changes: row.changes ?? [],
+  };
+}
+
+function summarizePeopleTrainingImportPlan(rows = [], mode = "new") {
+  const totals = {
+    total: rows.length,
+    create: 0,
+    update: 0,
+    departure: 0,
+    skipped: 0,
+    unchanged: 0,
+    applicable: 0,
+  };
+
+  rows.forEach((row) => {
+    if (row.action === "create") totals.create += 1;
+    if (row.action === "update") totals.update += 1;
+    if (row.action === "departure") totals.departure += 1;
+    if (row.action === "skipped") totals.skipped += 1;
+    if (row.action === "unchanged") totals.unchanged += 1;
+    if (row.canApply) totals.applicable += 1;
+  });
+
+  return {
+    mode,
+    modeLabel: PEOPLE_TRAINING_IMPORT_MODE_LABELS[mode] || PEOPLE_TRAINING_IMPORT_MODE_LABELS.new,
+    totals,
+  };
+}
+
+function buildPeopleTrainingImportPlan(records = [], scopedSnapshot = {}, modeInput = "new") {
+  const mode = normalizePeopleTrainingImportMode(modeInput);
+  const currentRecords = [...(scopedSnapshot.peopleTrainingRecords ?? [])];
+  const rows = records.map((record) => {
+    const existing = findPeopleTrainingImportExistingRecord(currentRecords, record);
+
+    if (mode === "new") {
+      if (existing) {
+        return {
+          action: "skipped",
+          tone: "muted",
+          canApply: false,
+          record,
+          currentRecord: existing,
+          message: "Osoba već postoji u evidenciji, zato se ne dodaje kao nova.",
+          changes: [],
+        };
+      }
+      return {
+        action: "create",
+        tone: "success",
+        canApply: true,
+        record,
+        nextRecord: record,
+        message: "Dodaje se nova osoba u evidenciju.",
+        changes: buildPeopleTrainingImportFieldChanges({}, record, scopedSnapshot),
+      };
+    }
+
+    if (!existing) {
+      return {
+        action: "skipped",
+        tone: "warning",
+        canApply: false,
+        record,
+        message: mode === "departures"
+          ? "Osoba nije pronađena u evidenciji, pa se odlazak ne može označiti."
+          : "Osoba nije pronađena u evidenciji, pa se promjena ne može primijeniti.",
+        changes: [],
+      };
+    }
+
+    if (mode === "departures") {
+      const nextRecord = {
+        activityStatus: "NE",
+        note: record.note || existing.note || "",
+      };
+      const changes = buildPeopleTrainingImportFieldChanges(existing, {
+        ...existing,
+        ...nextRecord,
+      }, scopedSnapshot);
+      if (changes.length === 0) {
+        return {
+          action: "unchanged",
+          tone: "muted",
+          canApply: false,
+          record,
+          currentRecord: existing,
+          nextRecord,
+          message: "Osoba je već označena kao neaktivna/odlazak.",
+          changes,
+        };
+      }
+      return {
+        action: "departure",
+        tone: "danger",
+        canApply: true,
+        record,
+        currentRecord: existing,
+        existingId: existing.id,
+        nextRecord,
+        message: "Označava se odlazak i osoba postaje neaktivna.",
+        changes,
+      };
+    }
+
+    const changes = buildPeopleTrainingImportFieldChanges(existing, record, scopedSnapshot);
+    if (changes.length === 0) {
+      return {
+        action: "unchanged",
+        tone: "muted",
+        canApply: false,
+        record,
+        currentRecord: existing,
+        nextRecord: record,
+        message: "Excel ne donosi promjenu u odnosu na postojeću evidenciju.",
+        changes,
+      };
+    }
+    return {
+      action: "update",
+      tone: "info",
+      canApply: true,
+      record,
+      currentRecord: existing,
+      existingId: existing.id,
+      nextRecord: record,
+      message: "Ažuriraju se podaci osobe iz Excel tablice.",
+      changes,
+    };
+  });
+
+  return {
+    ...summarizePeopleTrainingImportPlan(rows, mode),
+    rows,
+  };
+}
+
+function serializePeopleTrainingImportPlan(plan = {}, scopedSnapshot = {}) {
+  const rows = (plan.rows ?? []).map((row, index) => buildPeopleTrainingImportRowPreview(row, scopedSnapshot, index));
+  return {
+    mode: plan.mode || "new",
+    modeLabel: plan.modeLabel || PEOPLE_TRAINING_IMPORT_MODE_LABELS.new,
+    totals: plan.totals ?? summarizePeopleTrainingImportPlan(rows, plan.mode).totals,
+    rows,
+  };
+}
+
 function findPeopleTrainingServiceForItem(item = {}, scopedSnapshot = {}) {
   const services = scopedSnapshot.serviceCatalog ?? [];
   const serviceId = normalizeInputValue(item.serviceId || item.serviceCatalogId);
@@ -4740,37 +5054,62 @@ async function handleApiRequest(request, response, url) {
         return true;
       }
 
-      const currentRecords = [...(scopedSnapshot.peopleTrainingRecords ?? [])];
+      const importMode = normalizePeopleTrainingImportMode(body.importMode || body.mode);
+      const importPlan = buildPeopleTrainingImportPlan(records, scopedSnapshot, importMode);
+      const previewPayload = serializePeopleTrainingImportPlan(importPlan, scopedSnapshot);
+      if (body.previewOnly || body.dryRun || body.preview === true) {
+        sendJson(response, 200, {
+          ok: true,
+          preview: previewPayload,
+        });
+        return true;
+      }
+
+      if ((importPlan.totals?.applicable ?? 0) === 0) {
+        sendError(response, 400, "Nema promjena za potvrdu u odabranoj vrsti importa.");
+        return true;
+      }
+
       let createdCount = 0;
       let updatedCount = 0;
+      let departureCount = 0;
+      let skippedCount = 0;
 
-      for (const record of records) {
-        const existing = currentRecords.find((item) => (
-          String(item.companyId) === String(record.companyId)
-          && (
-            (record.oib && String(item.oib || "") === String(record.oib))
-            || (!record.oib && normalizeLookupKey(item.fullName) === normalizeLookupKey(record.fullName))
-          )
-        ));
+      for (const row of importPlan.rows ?? []) {
+        if (!row.canApply) {
+          skippedCount += 1;
+          continue;
+        }
 
-        if (existing) {
-          const updated = await domainRepository.updatePersonTrainingRecord(existing.id, record);
+        if (row.action === "create") {
+          const created = await domainRepository.createPersonTrainingRecord(row.nextRecord || row.record);
+          await persistPeopleTrainingCertificates(created, scopedSnapshot);
+          createdCount += 1;
+          continue;
+        }
+
+        if ((row.action === "update" || row.action === "departure") && row.existingId) {
+          const updated = await domainRepository.updatePersonTrainingRecord(row.existingId, row.nextRecord || row.record);
           if (updated) {
             await persistPeopleTrainingCertificates(updated, scopedSnapshot);
             updatedCount += 1;
-            const index = currentRecords.findIndex((item) => String(item.id) === String(existing.id));
-            currentRecords[index] = updated;
+            if (row.action === "departure") {
+              departureCount += 1;
+            }
           }
           continue;
         }
 
-        const created = await domainRepository.createPersonTrainingRecord(record);
-        await persistPeopleTrainingCertificates(created, scopedSnapshot);
-        createdCount += 1;
-        currentRecords.push(created);
+        skippedCount += 1;
       }
 
-      response.setHeader("X-People-Training-Import", JSON.stringify({ created: createdCount, updated: updatedCount }));
+      response.setHeader("X-People-Training-Import", JSON.stringify({
+        mode: importMode,
+        created: createdCount,
+        updated: updatedCount,
+        departures: departureCount,
+        skipped: skippedCount,
+      }));
       await writeSnapshot(response, user, request, 201);
       return true;
     }

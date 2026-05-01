@@ -11198,26 +11198,409 @@ function renderPeopleTrainingModule() {
   renderPeopleTrainingList();
 }
 
+const PEOPLE_TRAINING_IMPORT_MODE_OPTIONS = Object.freeze([
+  {
+    value: "new",
+    title: "Novi zaposlenici",
+    eyebrow: "Import za nove",
+    description: "Dodaje samo osobe koje još ne postoje u evidenciji.",
+  },
+  {
+    value: "departures",
+    title: "Odlasci",
+    eyebrow: "Import za odlaske",
+    description: "Pronađene osobe označava kao odlazak/neaktivne.",
+  },
+  {
+    value: "changes",
+    title: "Promjene",
+    eyebrow: "Import za promjene",
+    description: "Ažurira postojeće osobe i prije potvrde pokaže svaku razliku.",
+  },
+]);
+
+const peopleTrainingImportDraft = {
+  open: false,
+  mode: "new",
+  fileName: "",
+  dataUrl: "",
+  preview: null,
+  busy: false,
+  applying: false,
+  error: "",
+};
+
+let peopleTrainingImportKeydownHandler = null;
+
+function getPeopleTrainingImportModeOption(mode = peopleTrainingImportDraft.mode) {
+  return PEOPLE_TRAINING_IMPORT_MODE_OPTIONS.find((option) => option.value === mode)
+    ?? PEOPLE_TRAINING_IMPORT_MODE_OPTIONS[0];
+}
+
+function resetPeopleTrainingImportDraft({ keepMode = false } = {}) {
+  const nextMode = keepMode ? peopleTrainingImportDraft.mode : "new";
+  peopleTrainingImportDraft.open = false;
+  peopleTrainingImportDraft.mode = nextMode;
+  peopleTrainingImportDraft.fileName = "";
+  peopleTrainingImportDraft.dataUrl = "";
+  peopleTrainingImportDraft.preview = null;
+  peopleTrainingImportDraft.busy = false;
+  peopleTrainingImportDraft.applying = false;
+  peopleTrainingImportDraft.error = "";
+}
+
+function getPeopleTrainingImportRequestBody({ previewOnly = false } = {}) {
+  const selectedCompanyId = state.peopleTrainingFilters.companyId !== "all" ? state.peopleTrainingFilters.companyId : "";
+  const selectedLocationId = state.peopleTrainingFilters.locationId !== "all" ? state.peopleTrainingFilters.locationId : "";
+  return {
+    fileName: peopleTrainingImportDraft.fileName,
+    dataUrl: peopleTrainingImportDraft.dataUrl,
+    companyId: selectedCompanyId,
+    locationId: selectedLocationId,
+    importMode: peopleTrainingImportDraft.mode,
+    previewOnly,
+  };
+}
+
+function closePeopleTrainingImportDialog({ reset = true } = {}) {
+  document.querySelector(".people-training-import-backdrop")?.remove();
+  if (peopleTrainingImportKeydownHandler) {
+    document.removeEventListener("keydown", peopleTrainingImportKeydownHandler, true);
+    peopleTrainingImportKeydownHandler = null;
+  }
+  document.body.classList.remove("modal-open");
+  if (reset) {
+    resetPeopleTrainingImportDraft({ keepMode: true });
+  } else {
+    peopleTrainingImportDraft.open = false;
+  }
+}
+
+function openPeopleTrainingImportDialog() {
+  resetPeopleTrainingImportDraft({ keepMode: true });
+  peopleTrainingImportDraft.open = true;
+  renderPeopleTrainingImportDialog();
+}
+
+function createPeopleTrainingImportModeButton(option = {}) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "people-training-import-mode";
+  button.classList.toggle("is-active", option.value === peopleTrainingImportDraft.mode);
+  button.dataset.peopleTrainingImportMode = option.value;
+  const eyebrow = document.createElement("span");
+  eyebrow.textContent = option.eyebrow;
+  const title = document.createElement("strong");
+  title.textContent = option.title;
+  const description = document.createElement("small");
+  description.textContent = option.description;
+  button.append(eyebrow, title, description);
+  button.addEventListener("click", () => {
+    peopleTrainingImportDraft.mode = option.value;
+    peopleTrainingImportDraft.preview = null;
+    peopleTrainingImportDraft.error = "";
+    renderPeopleTrainingImportDialog();
+  });
+  return button;
+}
+
+function createPeopleTrainingImportStat(label = "", value = 0, className = "") {
+  const stat = document.createElement("article");
+  stat.className = `people-training-import-stat ${className}`.trim();
+  const valueNode = document.createElement("strong");
+  valueNode.textContent = String(value ?? 0);
+  const labelNode = document.createElement("span");
+  labelNode.textContent = label;
+  stat.append(valueNode, labelNode);
+  return stat;
+}
+
+function createPeopleTrainingImportChangeChip(change = {}) {
+  const chip = document.createElement("span");
+  chip.className = "people-training-import-change";
+  const label = document.createElement("strong");
+  label.textContent = change.label || "Polje";
+  const value = document.createElement("span");
+  const before = String(change.before || "prazno");
+  const after = String(change.after || "prazno");
+  value.textContent = `${before} → ${after}`;
+  value.title = value.textContent;
+  chip.append(label, value);
+  return chip;
+}
+
+function createPeopleTrainingImportPreviewRow(row = {}) {
+  const item = document.createElement("article");
+  item.className = `people-training-import-row is-${row.action || "skipped"}`;
+
+  const status = document.createElement("span");
+  status.className = "people-training-import-row-status";
+  status.textContent = row.actionLabel || "Status";
+
+  const person = document.createElement("div");
+  person.className = "people-training-import-person";
+  const name = document.createElement("strong");
+  name.textContent = row.personName || "Bez imena";
+  const meta = document.createElement("span");
+  meta.textContent = [
+    row.oib ? `OIB ${row.oib}` : "",
+    row.companyName || "",
+    row.locationName || "",
+  ].filter(Boolean).join(" · ");
+  person.append(name, meta);
+
+  const changes = document.createElement("div");
+  changes.className = "people-training-import-changes";
+  const changeItems = row.changes ?? [];
+  if (changeItems.length) {
+    changeItems.slice(0, 6).forEach((change) => {
+      changes.append(createPeopleTrainingImportChangeChip(change));
+    });
+    if (changeItems.length > 6) {
+      const more = document.createElement("span");
+      more.className = "people-training-import-change is-more";
+      more.textContent = `+ ${changeItems.length - 6} promjena`;
+      changes.append(more);
+    }
+  } else {
+    const message = document.createElement("span");
+    message.className = "people-training-import-row-message";
+    message.textContent = row.message || "Nema promjena za ovaj red.";
+    changes.append(message);
+  }
+
+  item.append(status, person, changes);
+  return item;
+}
+
+function renderPeopleTrainingImportPreview(container) {
+  container.replaceChildren();
+  const preview = peopleTrainingImportDraft.preview;
+  if (!preview) {
+    const empty = document.createElement("div");
+    empty.className = "people-training-import-empty";
+    empty.innerHTML = `
+      <strong>Još nema pregleda.</strong>
+      <span>Odaberi vrstu importa i učitaj Excel. Sustav će prvo pokazati što se dodaje, mijenja ili označava kao odlazak.</span>
+    `;
+    container.append(empty);
+    return;
+  }
+
+  const totals = preview.totals ?? {};
+  const stats = document.createElement("div");
+  stats.className = "people-training-import-stats";
+  stats.append(
+    createPeopleTrainingImportStat("Novi", totals.create, "is-create"),
+    createPeopleTrainingImportStat("Promjene", totals.update, "is-update"),
+    createPeopleTrainingImportStat("Odlasci", totals.departure, "is-departure"),
+    createPeopleTrainingImportStat("Preskočeno", (totals.skipped ?? 0) + (totals.unchanged ?? 0), "is-muted"),
+  );
+
+  const table = document.createElement("div");
+  table.className = "people-training-import-table";
+  const header = document.createElement("div");
+  header.className = "people-training-import-row is-head";
+  ["Status", "Osoba / tvrtka", "Što se mijenja"].forEach((label) => {
+    const cell = document.createElement("strong");
+    cell.textContent = label;
+    header.append(cell);
+  });
+  table.append(header);
+  (preview.rows ?? []).forEach((row) => {
+    table.append(createPeopleTrainingImportPreviewRow(row));
+  });
+
+  container.append(stats, table);
+}
+
+function renderPeopleTrainingImportDialog() {
+  if (!peopleTrainingImportDraft.open) {
+    return;
+  }
+
+  document.querySelector(".people-training-import-backdrop")?.remove();
+
+  const backdrop = document.createElement("div");
+  backdrop.className = "people-training-import-backdrop";
+  backdrop.addEventListener("click", (event) => {
+    if (event.target === backdrop && !peopleTrainingImportDraft.busy && !peopleTrainingImportDraft.applying) {
+      closePeopleTrainingImportDialog();
+    }
+  });
+
+  const modal = document.createElement("section");
+  modal.className = "people-training-import-modal";
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-modal", "true");
+  modal.setAttribute("aria-label", "Import Excel osposobljavanja");
+
+  const header = document.createElement("div");
+  header.className = "people-training-import-head";
+  const copy = document.createElement("div");
+  const kicker = document.createElement("p");
+  kicker.className = "section-kicker";
+  kicker.textContent = "Excel import";
+  const title = document.createElement("h3");
+  title.textContent = "Pregled prije upisa u evidenciju";
+  const summary = document.createElement("span");
+  const modeOption = getPeopleTrainingImportModeOption();
+  const applicable = peopleTrainingImportDraft.preview?.totals?.applicable ?? 0;
+  summary.textContent = peopleTrainingImportDraft.preview
+    ? `${modeOption.eyebrow} · ${peopleTrainingImportDraft.preview.rows?.length ?? 0} redaka · ${applicable} za potvrdu.`
+    : `${modeOption.eyebrow} · učitaj Excel za pregled promjena.`;
+  copy.append(kicker, title, summary);
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.className = "ghost-button";
+  closeButton.textContent = "Zatvori";
+  closeButton.disabled = peopleTrainingImportDraft.busy || peopleTrainingImportDraft.applying;
+  closeButton.addEventListener("click", () => closePeopleTrainingImportDialog());
+  header.append(copy, closeButton);
+
+  const body = document.createElement("div");
+  body.className = "people-training-import-body";
+
+  const modeGrid = document.createElement("div");
+  modeGrid.className = "people-training-import-modes";
+  PEOPLE_TRAINING_IMPORT_MODE_OPTIONS.forEach((option) => {
+    modeGrid.append(createPeopleTrainingImportModeButton(option));
+  });
+
+  const upload = document.createElement("button");
+  upload.type = "button";
+  upload.className = "people-training-import-upload";
+  upload.disabled = peopleTrainingImportDraft.busy || peopleTrainingImportDraft.applying;
+  const uploadTitle = document.createElement("strong");
+  uploadTitle.textContent = peopleTrainingImportDraft.fileName || "Odaberi Excel datoteku";
+  const uploadHint = document.createElement("span");
+  uploadHint.textContent = peopleTrainingImportDraft.busy
+    ? "Čitam Excel i pripremam pregled..."
+    : "Klikni ili povuci .xlsx/.xls/.csv ovdje. Ništa se ne sprema prije potvrde.";
+  upload.append(uploadTitle, uploadHint);
+  upload.addEventListener("click", () => peopleTrainingImportInput?.click());
+  upload.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    upload.classList.add("is-drag-over");
+  });
+  upload.addEventListener("dragleave", () => upload.classList.remove("is-drag-over"));
+  upload.addEventListener("drop", (event) => {
+    event.preventDefault();
+    upload.classList.remove("is-drag-over");
+    const [file] = Array.from(event.dataTransfer?.files ?? []);
+    if (file) {
+      void importPeopleTrainingExcel(file);
+    }
+  });
+
+  const previewWrap = document.createElement("div");
+  previewWrap.className = "people-training-import-preview";
+  renderPeopleTrainingImportPreview(previewWrap);
+
+  const error = document.createElement("p");
+  error.className = "inline-message";
+  error.hidden = !peopleTrainingImportDraft.error;
+  error.textContent = peopleTrainingImportDraft.error;
+
+  body.append(modeGrid, upload, error, previewWrap);
+
+  const actions = document.createElement("div");
+  actions.className = "people-training-import-actions";
+  const cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.className = "ghost-button";
+  cancelButton.textContent = "Odustani";
+  cancelButton.disabled = peopleTrainingImportDraft.busy || peopleTrainingImportDraft.applying;
+  cancelButton.addEventListener("click", () => closePeopleTrainingImportDialog());
+  const confirmButton = document.createElement("button");
+  confirmButton.type = "button";
+  confirmButton.className = "primary-button";
+  confirmButton.textContent = peopleTrainingImportDraft.applying ? "Spremam..." : "Potvrdi import";
+  confirmButton.disabled = peopleTrainingImportDraft.busy
+    || peopleTrainingImportDraft.applying
+    || !peopleTrainingImportDraft.preview
+    || (peopleTrainingImportDraft.preview?.totals?.applicable ?? 0) <= 0;
+  confirmButton.addEventListener("click", () => {
+    void applyPeopleTrainingImportPreview();
+  });
+  actions.append(cancelButton, confirmButton);
+
+  modal.append(header, body, actions);
+  backdrop.append(modal);
+  document.body.append(backdrop);
+  document.body.classList.add("modal-open");
+
+  if (peopleTrainingImportKeydownHandler) {
+    document.removeEventListener("keydown", peopleTrainingImportKeydownHandler, true);
+  }
+  peopleTrainingImportKeydownHandler = (event) => {
+    if (event.key === "Escape" && document.body.contains(backdrop) && !peopleTrainingImportDraft.busy && !peopleTrainingImportDraft.applying) {
+      closePeopleTrainingImportDialog();
+    }
+  };
+  document.addEventListener("keydown", peopleTrainingImportKeydownHandler, true);
+}
+
 async function importPeopleTrainingExcel(file) {
   if (!file) {
     return;
   }
-  const dataUrl = await readFileAsDataUrl(file, "Ne mogu učitati Excel tablicu.");
-  const selectedCompanyId = state.peopleTrainingFilters.companyId !== "all" ? state.peopleTrainingFilters.companyId : "";
-  const selectedLocationId = state.peopleTrainingFilters.locationId !== "all" ? state.peopleTrainingFilters.locationId : "";
-  const success = await runMutation(() => apiRequest("/people-training-records/import", {
-    method: "POST",
-    body: {
-      fileName: file.name,
-      dataUrl,
-      companyId: selectedCompanyId,
-      locationId: selectedLocationId,
-    },
-  }), peopleTrainingFormFeedback);
+  peopleTrainingImportDraft.open = true;
+  peopleTrainingImportDraft.fileName = file.name;
+  peopleTrainingImportDraft.preview = null;
+  peopleTrainingImportDraft.error = "";
+  peopleTrainingImportDraft.busy = true;
+  renderPeopleTrainingImportDialog();
 
-  if (success) {
-    setPeopleTrainingFeedback("Excel import je završen. Pregled je osvježen.", "success");
+  try {
+    peopleTrainingImportDraft.dataUrl = await readFileAsDataUrl(file, "Ne mogu učitati Excel tablicu.");
+    const payload = await apiRequest("/people-training-records/import", {
+      method: "POST",
+      body: getPeopleTrainingImportRequestBody({ previewOnly: true }),
+    });
+    peopleTrainingImportDraft.preview = payload.preview ?? null;
+    peopleTrainingImportDraft.error = "";
+  } catch (error) {
+    peopleTrainingImportDraft.preview = null;
+    peopleTrainingImportDraft.error = error?.message || "Ne mogu pripremiti pregled importa.";
+  } finally {
+    peopleTrainingImportDraft.busy = false;
+    renderPeopleTrainingImportDialog();
+  }
+}
+
+async function applyPeopleTrainingImportPreview() {
+  if (!peopleTrainingImportDraft.dataUrl || !peopleTrainingImportDraft.preview) {
+    peopleTrainingImportDraft.error = "Prvo učitaj Excel i provjeri pregled promjena.";
+    renderPeopleTrainingImportDialog();
+    return;
+  }
+
+  peopleTrainingImportDraft.applying = true;
+  peopleTrainingImportDraft.error = "";
+  renderPeopleTrainingImportDialog();
+
+  try {
+    const payload = await apiRequest("/people-training-records/import", {
+      method: "POST",
+      body: getPeopleTrainingImportRequestBody({ previewOnly: false }),
+    });
+    if (payload && typeof payload === "object" && Object.prototype.hasOwnProperty.call(payload, "storage")) {
+      applySnapshot(payload);
+    }
+    const totals = peopleTrainingImportDraft.preview?.totals ?? {};
+    const summary = [
+      totals.create ? `${totals.create} novih` : "",
+      totals.update ? `${totals.update} promjena` : "",
+      totals.departure ? `${totals.departure} odlazaka` : "",
+    ].filter(Boolean).join(", ");
+    closePeopleTrainingImportDialog();
+    setPeopleTrainingFeedback(summary ? `Excel import je potvrđen: ${summary}.` : "Excel import je potvrđen.", "success");
     renderPeopleTrainingModule();
+  } catch (error) {
+    peopleTrainingImportDraft.error = error?.message || "Ne mogu potvrditi import.";
+    peopleTrainingImportDraft.applying = false;
+    renderPeopleTrainingImportDialog();
   }
 }
 
@@ -87420,7 +87803,7 @@ peopleTrainingNewButton?.addEventListener("click", (event) => {
 });
 
 peopleTrainingImportButton?.addEventListener("click", () => {
-  peopleTrainingImportInput?.click();
+  openPeopleTrainingImportDialog();
 });
 
 peopleTrainingDownloadTemplateButton?.addEventListener("click", () => {
