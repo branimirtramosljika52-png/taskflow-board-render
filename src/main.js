@@ -41411,6 +41411,67 @@ function getDocumentTemplateToggleConditionalText(field = {}, value = false) {
   ).trim();
 }
 
+function getDocumentTemplateInlinePlaceholderKey(value = "") {
+  return normalizeDocumentTemplateFieldKeyDraft(
+    String(value ?? "")
+      .replace(/^\s*\{\{\s*/, "")
+      .replace(/\s*\}\}\s*$/, ""),
+    "",
+  );
+}
+
+function formatDocumentTemplateInlinePlaceholderValue(value) {
+  if (value && typeof value === "object" && value.__docxBlockType) {
+    return "";
+  }
+  return formatDocumentTemplateLookupResolvedValue(value);
+}
+
+function setDocumentTemplateInlinePlaceholderValue(lookup, keyOrToken = "", value = "") {
+  const key = getDocumentTemplateInlinePlaceholderKey(keyOrToken);
+  if (!key) {
+    return;
+  }
+  lookup.set(key, formatDocumentTemplateInlinePlaceholderValue(value));
+}
+
+function buildDocumentTemplateInlinePlaceholderLookup(template = buildDocumentTemplateDraft(), context = buildDocumentTemplatePreviewContext(template)) {
+  const lookup = new Map();
+
+  getDocumentTemplateSystemPlaceholderDefinitions(template, context).forEach((definition) => {
+    setDocumentTemplateInlinePlaceholderValue(lookup, definition.token, definition.value);
+  });
+
+  (Array.isArray(template.customFields) ? template.customFields : []).forEach((field, index) => {
+    if (!field || String(field.type || "").trim().toLowerCase() === "chapter") {
+      return;
+    }
+
+    setDocumentTemplateInlinePlaceholderValue(
+      lookup,
+      getDocumentTemplateFieldTokenKey(field, index),
+      buildDocumentTemplateFieldExportText(field, context, index),
+    );
+  });
+
+  return lookup;
+}
+
+function resolveDocumentTemplateInlinePlaceholders(text = "", lookup = new Map()) {
+  const rawText = String(text ?? "");
+  if (!rawText || !(lookup instanceof Map) || lookup.size === 0) {
+    return rawText;
+  }
+
+  return rawText.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (match, tokenName) => {
+    const key = getDocumentTemplateInlinePlaceholderKey(tokenName);
+    if (!key || !lookup.has(key)) {
+      return match;
+    }
+    return lookup.get(key);
+  });
+}
+
 function getDocumentTemplateTogglePreviewState(field = {}, context = {}) {
   const runtimeWorkOrderId = String(context.sampleWorkOrder?.id || "").trim();
   if (runtimeWorkOrderId) {
@@ -41425,10 +41486,14 @@ function getDocumentTemplateTogglePreviewState(field = {}, context = {}) {
   return true;
 }
 
-function buildDocumentTemplateToggleDerivedValues(field = {}, context = {}) {
+function buildDocumentTemplateToggleDerivedValues(field = {}, context = {}, placeholderLookup = null) {
   const selected = getDocumentTemplateTogglePreviewState(field, context);
   const statusText = getDocumentTemplateBooleanDisplayValue(field, selected);
-  const extraText = getDocumentTemplateToggleConditionalText(field, selected);
+  const rawExtraText = getDocumentTemplateToggleConditionalText(field, selected);
+  const lookup = placeholderLookup instanceof Map
+    ? placeholderLookup
+    : buildDocumentTemplateInlinePlaceholderLookup(context.template, context);
+  const extraText = resolveDocumentTemplateInlinePlaceholders(rawExtraText, lookup);
   const fullText = [statusText, extraText].filter(Boolean).join(" ");
   return {
     selected,
@@ -41641,6 +41706,7 @@ function getDocumentTemplateSystemPlaceholderDefinitions(template = buildDocumen
 
 function getDocumentTemplatePlaceholderDefinitions(template = buildDocumentTemplateDraft()) {
   const context = buildDocumentTemplatePreviewContext(template);
+  const placeholderLookup = buildDocumentTemplateInlinePlaceholderLookup(template, context);
   return [
     ...getDocumentTemplateSystemPlaceholderDefinitions(template, context),
     ...(template.customFields ?? []).flatMap((field, index) => {
@@ -41658,7 +41724,7 @@ function getDocumentTemplatePlaceholderDefinitions(template = buildDocumentTempl
         return [baseDefinition];
       }
 
-      const toggleValues = buildDocumentTemplateToggleDerivedValues(field, context);
+      const toggleValues = buildDocumentTemplateToggleDerivedValues(field, context, placeholderLookup);
       return [
         baseDefinition,
         {
@@ -43070,6 +43136,8 @@ function buildDocumentTemplateRuntimePlaceholderPayload(template = buildDocument
     ISPITIVACI_POPIS_IMENA: inspectorNameList,
   };
 
+  const placeholderLookup = buildDocumentTemplateInlinePlaceholderLookup(template, context);
+
   (Array.isArray(template.customFields) ? template.customFields : []).forEach((field, index) => {
     if (!field || String(field.type || "").trim().toLowerCase() === "chapter") {
       return;
@@ -43078,7 +43146,7 @@ function buildDocumentTemplateRuntimePlaceholderPayload(template = buildDocument
     const fieldKey = getDocumentTemplateFieldTokenKey(field, index);
     placeholders[fieldKey] = buildDocumentTemplateFieldWordPlaceholderValue(field, context, index);
     if (String(field.type || "").trim().toLowerCase() === "toggle") {
-      const toggleValues = buildDocumentTemplateToggleDerivedValues(field, context);
+      const toggleValues = buildDocumentTemplateToggleDerivedValues(field, context, placeholderLookup);
       placeholders[`${fieldKey}_DODATNI_TEKST`] = toggleValues.extraText;
       placeholders[`${fieldKey}_PUNI_TEKST`] = toggleValues.fullText;
     }
@@ -55487,7 +55555,7 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
 
     const toggleLabelsHint = document.createElement("small");
     toggleLabelsHint.className = "document-template-source-config-hint";
-    toggleLabelsHint.textContent = "Osnovni placeholder upisuje status. U Wordu mozes koristiti jos _DODATNI_TEKST za uvjetni tekst ili _PUNI_TEKST za status i tekst zajedno.";
+    toggleLabelsHint.textContent = "Osnovni placeholder upisuje status. U dodatnom tekstu mozes koristiti ranije placeholdere, npr. Vrijedi do {{VRIJEDI_DO}}. U Wordu postoje jos _DODATNI_TEKST i _PUNI_TEKST.";
     toggleLabelsField.append(toggleLabelsTitle, toggleLabelsGrid, toggleLabelsHint);
 
     const removeButton = createActionButton("Ukloni", "card-button card-danger", () => {
