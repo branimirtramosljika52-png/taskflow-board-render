@@ -275,7 +275,7 @@ function buildOpenAiLiveContextPayload(body = {}, user = null, selectedModel = "
   const columns = Array.isArray(body.columns) ? body.columns : [];
   return {
     language: "hr-HR",
-    instruction: "Vrati iskljucivo JSON koji aplikacija moze parsirati. Ne izmisljaj vrijednosti ako nisu vidljive u izvoru. Za Excel tablice koristi tocne fieldId i columnId vrijednosti iz measurementColumns.",
+    instruction: "Vrati iskljucivo JSON koji aplikacija moze parsirati. Ne izmisljaj vrijednosti ako nisu vidljive u izvoru. Za Excel tablice koristi tocne fieldId i columnId vrijednosti iz measurementColumns. measurementColumns sadrzi samo kolone koje AI smije popuniti.",
     purpose: String(body.purpose || "document-template-runtime-ai-prefill").slice(0, 120),
     organizationId: String(body.organizationId || ""),
     templateId: String(body.templateId || ""),
@@ -326,9 +326,9 @@ function buildOpenAiLiveContextPayload(body = {}, user = null, selectedModel = "
           rows: [
             {
               values: {
-                "tocan columnId ili key iz measurementColumns": "vrijednost za tu kolonu",
+                "tocan columnId ili key iz measurementColumns": "vrijednost za tu AI kolonu",
               },
-              orderedValues: ["alternativa: vrijednosti istim redoslijedom kao measurementColumns za taj fieldId"],
+              orderedValues: ["alternativa: vrijednosti istim redoslijedom kao AI kolone iz measurementColumns za taj fieldId"],
               confidence: "high | medium | low",
               sourceFile: "ime datoteke",
             },
@@ -458,7 +458,7 @@ async function buildOpenAiLivePlan(body = {}, user = null) {
       "Ti si AI asistent za SafeNexus zapisnike.",
       "Analiziras stare zapisnike, PDF-ove, slike i tekst te predlazes vrijednosti za web polja i Excel tablice.",
       "Odgovori samo validnim JSON objektom. Ako nisi siguran, confidence mora biti low i vrijednost ne smije biti izmisljena.",
-      "Za Excel tablice measurementSuggestions.fieldId mora biti tocno jedan fieldId iz measurementColumns, a kljucevi u rows[].values moraju biti tocni columnId ili key iz measurementColumns. Nemoj vracati genericki kljuc columnKey.",
+      "Za Excel tablice measurementSuggestions.fieldId mora biti tocno jedan fieldId iz measurementColumns, a kljucevi u rows[].values moraju biti tocni columnId ili key iz measurementColumns. Popunjavaj samo kolone navedene u measurementColumns; sve druge kolone, formule i rucni unos ignoriraj. Nemoj vracati genericki kljuc columnKey.",
       "Za hrvatske poslovne dokumente koristi hrvatski jezik i zadrzi strucne nazive.",
     ].join(" "),
     input: [

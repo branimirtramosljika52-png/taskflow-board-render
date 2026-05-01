@@ -36735,6 +36735,9 @@ function getDocumentTemplateRuntimeAiMeasurementColumns(template = {}) {
       .filter((column) => !column?.computed)
       .forEach((column, columnIndex) => {
         const aiMapping = normalizeMeasurementSheetColumnAiMappingSnapshotLocal(column?.aiMapping ?? column?.ai);
+        if (!hasMeasurementColumnAiMapping(aiMapping)) {
+          return;
+        }
         columns.push({
           fieldId: String(field?.id || ""),
           fieldKey: String(field?.key || ""),
@@ -37096,12 +37099,16 @@ function extractDocumentTemplateRuntimeAiCellValue(value) {
 
 function getDocumentTemplateRuntimeAiMeasurementColumnLookupValues(column = {}, columnIndex = -1) {
   const aiMapping = normalizeMeasurementSheetColumnAiMappingSnapshotLocal(column?.aiMapping ?? column?.ai);
+  const sheetColumnIndex = Number(column?.aiSheetColumnIndex);
+  const targetColumnIndex = Number(column?.aiTargetColumnIndex);
   return new Set([
     column?.id,
     column?.key,
     column?.label,
     column?.placeholder,
     Number.isInteger(columnIndex) && columnIndex >= 0 ? getSpreadsheetColumnLabel(columnIndex) : "",
+    Number.isInteger(sheetColumnIndex) && sheetColumnIndex >= 0 ? getSpreadsheetColumnLabel(sheetColumnIndex) : "",
+    Number.isInteger(targetColumnIndex) && targetColumnIndex >= 0 ? getSpreadsheetColumnLabel(targetColumnIndex) : "",
     aiMapping.key,
     aiMapping.label,
     aiMapping.placeholder,
@@ -37168,11 +37175,25 @@ function getDocumentTemplateRuntimeAiSuggestionCellValue(values = {}, column = {
     return extractDocumentTemplateRuntimeAiCellValue(matchedEntry[1]);
   }
 
-  const orderedEntries = entries.filter(([key]) => (
-    !isDocumentTemplateRuntimeAiMeasurementMetaKey(key)
-    && !getDocumentTemplateRuntimeAiLookupKeyVariants(key).some((variant) => variant.replace(/\s+/g, "") === "columnkey")
-  ));
-  return orderedEntries[columnIndex] ? extractDocumentTemplateRuntimeAiCellValue(orderedEntries[columnIndex][1]) : "";
+  return "";
+}
+
+function getDocumentTemplateRuntimeAiMeasurementTargetColumns(sheet = {}) {
+  return (Array.isArray(sheet?.columns) ? sheet.columns : [])
+    .map((column, sheetColumnIndex) => ({ column, sheetColumnIndex }))
+    .filter(({ column }) => (
+      !column?.computed
+      && hasMeasurementColumnAiMapping(column?.aiMapping ?? column?.ai)
+    ))
+    .map(({ column, sheetColumnIndex }, targetColumnIndex) => ({
+      column: {
+        ...column,
+        aiSheetColumnIndex: sheetColumnIndex,
+        aiTargetColumnIndex: targetColumnIndex,
+      },
+      sheetColumnIndex,
+      targetColumnIndex,
+    }));
 }
 
 function buildDocumentTemplateRuntimeAiMeasurementRows(workOrder = {}, field = {}, suggestion = {}, suggestionIndex = 0) {
@@ -37192,22 +37213,25 @@ function buildDocumentTemplateRuntimeAiMeasurementRows(workOrder = {}, field = {
     return null;
   }
 
-  const editableColumns = normalizedSheet.columns.filter((column) => !column.computed);
+  const targetColumns = getDocumentTemplateRuntimeAiMeasurementTargetColumns(normalizedSheet);
+  if (!targetColumns.length) {
+    return null;
+  }
   const incomingRows = rows.map((row, rowIndex) => {
-    const values = getDocumentTemplateRuntimeAiSuggestionRowValues(row, editableColumns);
+    const values = getDocumentTemplateRuntimeAiSuggestionRowValues(row, targetColumns.map(({ column }) => column));
     const cells = {};
     const formats = {};
-    editableColumns.forEach((column, columnIndex) => {
-      const cellValue = getDocumentTemplateRuntimeAiSuggestionCellValue(values, column, columnIndex);
+    targetColumns.forEach(({ column, sheetColumnIndex }, targetColumnIndex) => {
+      const cellValue = getDocumentTemplateRuntimeAiSuggestionCellValue(values, column, targetColumnIndex);
       cells[column.id] = cellValue == null ? "" : String(cellValue);
-      formats[column.id] = normalizeMeasurementCellFormat(row?.formats?.[column.id]);
+      formats[column.id] = normalizeMeasurementCellFormat(row?.formats?.[column.id] ?? row?.formats?.[sheetColumnIndex]);
     });
     return normalizeMeasurementSheetRowSnapshotLocal({
       id: `measurement-ai-${Date.now()}-${suggestionIndex + 1}-${rowIndex + 1}`,
       cells,
       formats,
     }, normalizedSheet.columns, normalizedSheet.rows.length + rowIndex);
-  }).filter((row) => isMeasurementSheetRowMeaningful(row, normalizedSheet.columns));
+  }).filter((row) => isMeasurementSheetRowMeaningful(row, targetColumns.map(({ column }) => column)));
 
   if (!incomingRows.length) {
     return null;
@@ -37216,6 +37240,7 @@ function buildDocumentTemplateRuntimeAiMeasurementRows(workOrder = {}, field = {
   return {
     sheet: normalizedSheet,
     rows: incomingRows,
+    targetColumns,
   };
 }
 
@@ -37260,19 +37285,45 @@ function applyDocumentTemplateRuntimeAiMeasurementSuggestion(payload = {}, workO
 
   const existingRows = [...(measurementPatch.sheet.rows ?? [])];
   const headerRowIds = new Set((measurementPatch.sheet.headerRows ?? []).map((rowId) => String(rowId || "")));
+  const aiColumns = measurementPatch.targetColumns.map(({ column }) => column);
+  const aiColumnIds = new Set(aiColumns.map((column) => String(column.id || "")));
   measurementPatch.rows.forEach((incomingRow) => {
     const blankIndex = existingRows.findIndex((row) => (
       !headerRowIds.has(String(row?.id || ""))
       &&
-      isDocumentTemplateRuntimeAiWritableBlankMeasurementRow(row, measurementPatch.sheet.columns)
+      isDocumentTemplateRuntimeAiWritableBlankMeasurementRow(row, aiColumns)
     ));
     if (blankIndex >= 0) {
+      const existingRow = existingRows[blankIndex];
+      const nextCells = { ...(existingRow?.cells ?? {}) };
+      const nextFormats = { ...(existingRow?.formats ?? {}) };
+      aiColumnIds.forEach((columnId) => {
+        nextCells[columnId] = incomingRow?.cells?.[columnId] ?? "";
+        nextFormats[columnId] = normalizeMeasurementCellFormat(incomingRow?.formats?.[columnId]);
+      });
       existingRows[blankIndex] = {
-        ...incomingRow,
-        id: existingRows[blankIndex].id,
+        ...existingRow,
+        id: existingRow.id,
+        cells: nextCells,
+        formats: nextFormats,
       };
     } else {
-      existingRows.push(incomingRow);
+      const blankRow = normalizeMeasurementSheetRowSnapshotLocal({
+        id: incomingRow.id,
+        cells: {},
+        formats: {},
+      }, measurementPatch.sheet.columns, existingRows.length);
+      const nextCells = { ...(blankRow.cells ?? {}) };
+      const nextFormats = { ...(blankRow.formats ?? {}) };
+      aiColumnIds.forEach((columnId) => {
+        nextCells[columnId] = incomingRow?.cells?.[columnId] ?? "";
+        nextFormats[columnId] = normalizeMeasurementCellFormat(incomingRow?.formats?.[columnId]);
+      });
+      existingRows.push({
+        ...blankRow,
+        cells: nextCells,
+        formats: nextFormats,
+      });
     }
   });
 
