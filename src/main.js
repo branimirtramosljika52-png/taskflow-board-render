@@ -11231,6 +11231,7 @@ const peopleTrainingImportDraft = {
 };
 
 let peopleTrainingImportKeydownHandler = null;
+let peopleTrainingImportModeMenuCloseHandler = null;
 
 function getPeopleTrainingImportModeOption(mode = peopleTrainingImportDraft.mode) {
   return PEOPLE_TRAINING_IMPORT_MODE_OPTIONS.find((option) => option.value === mode)
@@ -11280,6 +11281,63 @@ function openPeopleTrainingImportDialog() {
   resetPeopleTrainingImportDraft({ keepMode: true });
   peopleTrainingImportDraft.open = true;
   renderPeopleTrainingImportDialog();
+}
+
+function closePeopleTrainingImportModeMenu() {
+  document.querySelector(".people-training-import-mode-menu")?.remove();
+  if (peopleTrainingImportModeMenuCloseHandler) {
+    document.removeEventListener("pointerdown", peopleTrainingImportModeMenuCloseHandler, true);
+    peopleTrainingImportModeMenuCloseHandler = null;
+  }
+}
+
+function openPeopleTrainingImportModeMenu(anchor) {
+  closePeopleTrainingImportModeMenu();
+  if (!(anchor instanceof HTMLElement)) {
+    return;
+  }
+
+  const menu = document.createElement("div");
+  menu.className = "people-training-import-mode-menu";
+  menu.setAttribute("role", "menu");
+  const anchorRect = anchor.getBoundingClientRect();
+  menu.style.setProperty("--menu-top", `${Math.round(anchorRect.bottom + 8)}px`);
+  menu.style.setProperty("--menu-right", `${Math.max(12, Math.round(window.innerWidth - anchorRect.right))}px`);
+
+  PEOPLE_TRAINING_IMPORT_MODE_OPTIONS.forEach((option) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "people-training-import-mode-menu-item";
+    item.setAttribute("role", "menuitem");
+    const title = document.createElement("strong");
+    title.textContent = option.title;
+    const description = document.createElement("span");
+    description.textContent = option.description;
+    item.append(title, description);
+    item.addEventListener("click", () => {
+      peopleTrainingImportDraft.mode = option.value;
+      peopleTrainingImportDraft.fileName = "";
+      peopleTrainingImportDraft.dataUrl = "";
+      peopleTrainingImportDraft.preview = null;
+      peopleTrainingImportDraft.error = "";
+      closePeopleTrainingImportModeMenu();
+      if (peopleTrainingImportInput) {
+        peopleTrainingImportInput.value = "";
+        peopleTrainingImportInput.click();
+      }
+    });
+    menu.append(item);
+  });
+
+  document.body.append(menu);
+  requestAnimationFrame(() => {
+    peopleTrainingImportModeMenuCloseHandler = (event) => {
+      if (!menu.contains(event.target) && event.target !== anchor) {
+        closePeopleTrainingImportModeMenu();
+      }
+    };
+    document.addEventListener("pointerdown", peopleTrainingImportModeMenuCloseHandler, true);
+  });
 }
 
 function createPeopleTrainingImportModeButton(option = {}) {
@@ -11375,13 +11433,26 @@ function createPeopleTrainingImportPreviewRow(row = {}) {
 
 function renderPeopleTrainingImportPreview(container) {
   container.replaceChildren();
+  if (peopleTrainingImportDraft.busy) {
+    const loading = document.createElement("div");
+    loading.className = "people-training-import-empty is-loading";
+    const title = document.createElement("strong");
+    title.textContent = "Pripremam pregled importa...";
+    const copy = document.createElement("span");
+    copy.textContent = peopleTrainingImportDraft.fileName
+      ? `Čitam ${peopleTrainingImportDraft.fileName} i uspoređujem s evidencijom.`
+      : "Čitam Excel i uspoređujem s evidencijom.";
+    loading.append(title, copy);
+    container.append(loading);
+    return;
+  }
   const preview = peopleTrainingImportDraft.preview;
   if (!preview) {
     const empty = document.createElement("div");
     empty.className = "people-training-import-empty";
     empty.innerHTML = `
-      <strong>Još nema pregleda.</strong>
-      <span>Odaberi vrstu importa i učitaj Excel. Sustav će prvo pokazati što se dodaje, mijenja ili označava kao odlazak.</span>
+      <strong>Nema pregleda za prikaz.</strong>
+      <span>Vrati se na Import Excel, odaberi vrstu importa i učitaj datoteku ponovno.</span>
     `;
     container.append(empty);
     return;
@@ -11461,38 +11532,6 @@ function renderPeopleTrainingImportDialog() {
   const body = document.createElement("div");
   body.className = "people-training-import-body";
 
-  const modeGrid = document.createElement("div");
-  modeGrid.className = "people-training-import-modes";
-  PEOPLE_TRAINING_IMPORT_MODE_OPTIONS.forEach((option) => {
-    modeGrid.append(createPeopleTrainingImportModeButton(option));
-  });
-
-  const upload = document.createElement("button");
-  upload.type = "button";
-  upload.className = "people-training-import-upload";
-  upload.disabled = peopleTrainingImportDraft.busy || peopleTrainingImportDraft.applying;
-  const uploadTitle = document.createElement("strong");
-  uploadTitle.textContent = peopleTrainingImportDraft.fileName || "Odaberi Excel datoteku";
-  const uploadHint = document.createElement("span");
-  uploadHint.textContent = peopleTrainingImportDraft.busy
-    ? "Čitam Excel i pripremam pregled..."
-    : "Klikni ili povuci .xlsx/.xls/.csv ovdje. Ništa se ne sprema prije potvrde.";
-  upload.append(uploadTitle, uploadHint);
-  upload.addEventListener("click", () => peopleTrainingImportInput?.click());
-  upload.addEventListener("dragover", (event) => {
-    event.preventDefault();
-    upload.classList.add("is-drag-over");
-  });
-  upload.addEventListener("dragleave", () => upload.classList.remove("is-drag-over"));
-  upload.addEventListener("drop", (event) => {
-    event.preventDefault();
-    upload.classList.remove("is-drag-over");
-    const [file] = Array.from(event.dataTransfer?.files ?? []);
-    if (file) {
-      void importPeopleTrainingExcel(file);
-    }
-  });
-
   const previewWrap = document.createElement("div");
   previewWrap.className = "people-training-import-preview";
   renderPeopleTrainingImportPreview(previewWrap);
@@ -11502,7 +11541,7 @@ function renderPeopleTrainingImportDialog() {
   error.hidden = !peopleTrainingImportDraft.error;
   error.textContent = peopleTrainingImportDraft.error;
 
-  body.append(modeGrid, upload, error, previewWrap);
+  body.append(error, previewWrap);
 
   const actions = document.createElement("div");
   actions.className = "people-training-import-actions";
@@ -11512,6 +11551,18 @@ function renderPeopleTrainingImportDialog() {
   cancelButton.textContent = "Odustani";
   cancelButton.disabled = peopleTrainingImportDraft.busy || peopleTrainingImportDraft.applying;
   cancelButton.addEventListener("click", () => closePeopleTrainingImportDialog());
+  const reselectButton = document.createElement("button");
+  reselectButton.type = "button";
+  reselectButton.className = "ghost-button";
+  reselectButton.textContent = "Drugi Excel";
+  reselectButton.disabled = peopleTrainingImportDraft.busy || peopleTrainingImportDraft.applying;
+  reselectButton.addEventListener("click", () => {
+    closePeopleTrainingImportDialog({ reset: false });
+    if (peopleTrainingImportInput) {
+      peopleTrainingImportInput.value = "";
+      peopleTrainingImportInput.click();
+    }
+  });
   const confirmButton = document.createElement("button");
   confirmButton.type = "button";
   confirmButton.className = "primary-button";
@@ -11523,7 +11574,7 @@ function renderPeopleTrainingImportDialog() {
   confirmButton.addEventListener("click", () => {
     void applyPeopleTrainingImportPreview();
   });
-  actions.append(cancelButton, confirmButton);
+  actions.append(cancelButton, reselectButton, confirmButton);
 
   modal.append(header, body, actions);
   backdrop.append(modal);
@@ -87803,7 +87854,7 @@ peopleTrainingNewButton?.addEventListener("click", (event) => {
 });
 
 peopleTrainingImportButton?.addEventListener("click", () => {
-  openPeopleTrainingImportDialog();
+  openPeopleTrainingImportModeMenu(peopleTrainingImportButton);
 });
 
 peopleTrainingDownloadTemplateButton?.addEventListener("click", () => {
