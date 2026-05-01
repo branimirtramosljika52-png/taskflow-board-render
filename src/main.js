@@ -49,7 +49,6 @@
   filterLearningTests,
   filterMeasurementEquipmentItems,
   filterOffers,
-  filterPersonTrainingRecords,
   filterPurchaseOrders,
   filterAbsenceEntries,
   filterReminders,
@@ -7068,6 +7067,31 @@ function replaceSelectOptions(select, options, selectedValue = "") {
   }
 }
 
+function getSelectOptionsSignature(options = []) {
+  return options
+    .map((option) => [
+      option.value,
+      option.label,
+      option.data ? JSON.stringify(option.data) : "",
+    ].map((value) => String(value ?? "")).join("::"))
+    .join("||");
+}
+
+function replaceSelectOptionsIfChanged(select, options, selectedValue = "") {
+  if (!(select instanceof HTMLSelectElement)) {
+    return;
+  }
+  const signature = getSelectOptionsSignature(options);
+  const selected = String(selectedValue ?? "");
+  if (select.dataset.optionsSignature !== signature) {
+    replaceSelectOptions(select, options, selected);
+    select.dataset.optionsSignature = signature;
+    return;
+  }
+  const hasSelectedValue = options.some((option) => String(option.value) === selected);
+  select.value = hasSelectedValue ? selected : String(options[0]?.value ?? "");
+}
+
 function getPeopleTrainingStatusOption(status = "") {
   const normalized = String(status ?? "").trim().toLowerCase();
   return PERSON_TRAINING_STATUS_OPTIONS.find((option) => option.value === normalized)
@@ -7251,7 +7275,12 @@ function buildPeopleTrainingShortLabel(label = "", fallback = "OS") {
 }
 
 function getPeopleTrainingServiceTypeOptions() {
-  return sortServiceCatalogItems(state.serviceCatalog ?? [])
+  const signature = getPeopleTrainingServiceCatalogSignature();
+  if (peopleTrainingUiCache.serviceOptionsSignature === signature) {
+    return peopleTrainingUiCache.serviceOptions;
+  }
+
+  peopleTrainingUiCache.serviceOptions = sortServiceCatalogItems(state.serviceCatalog ?? [])
     .filter((item) => (
       Boolean(item.isTraining)
       && normalizeServiceCatalogTypeUi(item.serviceType, "inspection") === "znr"
@@ -7272,6 +7301,8 @@ function getPeopleTrainingServiceTypeOptions() {
         linkedLearningTestTitles: Array.isArray(item.linkedLearningTestTitles) ? item.linkedLearningTestTitles.map(String).filter(Boolean) : [],
       };
     });
+  peopleTrainingUiCache.serviceOptionsSignature = signature;
+  return peopleTrainingUiCache.serviceOptions;
 }
 
 function normalizePeopleTrainingSourceItems(items = []) {
@@ -7291,7 +7322,143 @@ const PEOPLE_TRAINING_EDITOR_FALLBACK_OPTIONS = Object.freeze([
   Object.freeze({ value: "adr", label: "ADR", shortLabel: "ADR" }),
 ]);
 
+const peopleTrainingUiCache = {
+  serviceOptionsSignature: "",
+  serviceOptions: [],
+  serviceLookupSignature: "",
+  serviceLookup: { byId: new Map(), byText: new Map() },
+  staticTypeOptions: null,
+  normalizedItems: new WeakMap(),
+  normalizedItemsFallback: new Map(),
+  learningTestMapSignature: "",
+  learningTestMap: new Map(),
+};
+
+function getPeopleTrainingServiceCatalogSignature() {
+  return (state.serviceCatalog ?? [])
+    .map((item) => [
+      item?.id,
+      item?.isTraining === true ? "1" : "0",
+      normalizeServiceCatalogTypeUi(item?.serviceType, "inspection"),
+      item?.name,
+      item?.serviceCode,
+      Array.isArray(item?.linkedTemplateIds) ? item.linkedTemplateIds.join(",") : item?.linkedTemplateIds,
+      Array.isArray(item?.linkedTemplateTitles) ? item.linkedTemplateTitles.join(",") : item?.linkedTemplateTitles,
+      Array.isArray(item?.linkedLearningTestIds) ? item.linkedLearningTestIds.join(",") : item?.linkedLearningTestIds,
+      Array.isArray(item?.linkedLearningTestTitles) ? item.linkedLearningTestTitles.join(",") : item?.linkedLearningTestTitles,
+      item?.trainingCertificateTemplate?.fileName,
+      item?.trainingCertificateTemplate?.storageKey,
+      item?.trainingCertificateTemplate?.storageUrl,
+      item?.updatedAt,
+    ].map((value) => String(value ?? "")).join("~"))
+    .join("|");
+}
+
+function getPeopleTrainingServiceLookup() {
+  const signature = getPeopleTrainingServiceCatalogSignature();
+  if (peopleTrainingUiCache.serviceLookupSignature === signature) {
+    return peopleTrainingUiCache.serviceLookup;
+  }
+
+  const byId = new Map();
+  const byText = new Map();
+  (state.serviceCatalog ?? []).forEach((service) => {
+    if (!service?.isTraining || normalizeServiceCatalogTypeUi(service.serviceType, "inspection") !== "znr") {
+      return;
+    }
+    const serviceId = String(service.id || "").trim();
+    if (serviceId) {
+      byId.set(serviceId, service);
+    }
+    [
+      service.serviceCode,
+      service.name,
+    ].map((value) => String(value || "").trim().toLowerCase())
+      .filter(Boolean)
+      .forEach((key) => {
+        if (!byText.has(key)) {
+          byText.set(key, service);
+        }
+      });
+  });
+
+  peopleTrainingUiCache.serviceLookupSignature = signature;
+  peopleTrainingUiCache.serviceLookup = { byId, byText };
+  return peopleTrainingUiCache.serviceLookup;
+}
+
+function getPeopleTrainingSourceSignature(source = []) {
+  return source
+    .map((item) => [
+      item?.type,
+      item?.serviceId,
+      item?.serviceCatalogId,
+      item?.serviceCode,
+      item?.shortLabel,
+      item?.label,
+      item?.serviceName,
+      item?.status,
+      item?.validUntil,
+      item?.validTo,
+      item?.expiresOn,
+      item?.validForever,
+      item?.issuedOn,
+      item?.issuedDate,
+      item?.passedOn,
+      item?.passedDate,
+      item?.certificateNumber,
+      item?.documentNumber,
+      item?.number,
+      item?.recordNumber,
+      item?.zapisnikNumber,
+      item?.workOrderId,
+      item?.workOrderNumber,
+      item?.learningTestId,
+      item?.learningTestTitle,
+      item?.certificateStatus,
+      item?.certificateDocumentId,
+      item?.isActive,
+      item?.activeFrom,
+      item?.activeUntil,
+      item?.archivedAt,
+      item?.note,
+      item?.details ? JSON.stringify(item.details) : "",
+      Array.isArray(item?.history) ? item.history.length : "",
+    ].map((value) => String(value ?? "")).join("~"))
+    .join("|");
+}
+
+function getPeopleTrainingLearningTestSignature() {
+  return (state.learningTests ?? [])
+    .map((test) => [
+      test?.id,
+      test?.updatedAt,
+      Array.isArray(test?.assignmentItems) ? test.assignmentItems.length : 0,
+    ].map((value) => String(value ?? "")).join("::"))
+    .join("|");
+}
+
+function getPeopleTrainingLearningTestMap() {
+  const signature = getPeopleTrainingLearningTestSignature();
+  if (peopleTrainingUiCache.learningTestMapSignature === signature) {
+    return peopleTrainingUiCache.learningTestMap;
+  }
+  const map = new Map();
+  (state.learningTests ?? []).forEach((test) => {
+    const id = String(test?.id || "").trim();
+    if (id) {
+      map.set(id, test);
+    }
+  });
+  peopleTrainingUiCache.learningTestMapSignature = signature;
+  peopleTrainingUiCache.learningTestMap = map;
+  return map;
+}
+
 function getPeopleTrainingStaticTypeOptions() {
+  if (peopleTrainingUiCache.staticTypeOptions) {
+    return peopleTrainingUiCache.staticTypeOptions;
+  }
   const byValue = new Map();
   [...PERSON_TRAINING_TYPE_OPTIONS, ...PEOPLE_TRAINING_EDITOR_FALLBACK_OPTIONS].forEach((option) => {
     const value = String(option?.value || "").trim();
@@ -7299,7 +7466,8 @@ function getPeopleTrainingStaticTypeOptions() {
       byValue.set(value, option);
     }
   });
-  return [...byValue.values()];
+  peopleTrainingUiCache.staticTypeOptions = [...byValue.values()];
+  return peopleTrainingUiCache.staticTypeOptions;
 }
 
 function getPeopleTrainingTypeOptions(items = []) {
@@ -7317,8 +7485,9 @@ function getPeopleTrainingTypeOption(value = "", items = []) {
 
 function getPeopleTrainingServiceForItemUi(item = {}) {
   const serviceId = String(item.serviceId || item.serviceCatalogId || "").trim();
+  const lookup = getPeopleTrainingServiceLookup();
   if (serviceId) {
-    const match = (state.serviceCatalog ?? []).find((service) => String(service.id) === serviceId);
+    const match = lookup.byId.get(serviceId);
     if (match) {
       return match;
     }
@@ -7331,17 +7500,14 @@ function getPeopleTrainingServiceForItemUi(item = {}) {
     item.label,
   ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
 
-  return (state.serviceCatalog ?? []).find((service) => {
-    if (!service?.isTraining || normalizeServiceCatalogTypeUi(service.serviceType, "inspection") !== "znr") {
-      return false;
+  for (const value of lookupValues) {
+    const match = lookup.byText.get(value);
+    if (match) {
+      return match;
     }
-    return [
-      service.serviceCode,
-      service.name,
-    ].map((value) => String(value || "").trim().toLowerCase())
-      .filter(Boolean)
-      .some((value) => lookupValues.includes(value));
-  }) ?? null;
+  }
+
+  return null;
 }
 
 function getPeopleTrainingCompanyTemplateAssignmentForItem(record = {}, item = {}) {
@@ -7396,6 +7562,28 @@ function hasPeopleTrainingCertificateTemplateForItem(item = {}, record = {}) {
 
 function normalizePeopleTrainingItemsForUi(items = []) {
   const source = normalizePeopleTrainingSourceItems(items);
+  const serviceSignature = getPeopleTrainingServiceCatalogSignature();
+  const sourceKey = items && typeof items === "object" ? items : null;
+  const cached = sourceKey
+    ? peopleTrainingUiCache.normalizedItems.get(sourceKey)
+    : null;
+  if (
+    cached?.serviceSignature === serviceSignature
+    && cached?.sourceRef === source
+    && cached?.sourceLength === source.length
+  ) {
+    return cached.items;
+  }
+
+  const sourceSignature = getPeopleTrainingSourceSignature(source);
+  const fallbackCached = sourceKey ? null : peopleTrainingUiCache.normalizedItemsFallback.get(sourceSignature);
+  if (
+    (cached?.sourceSignature === sourceSignature && cached?.serviceSignature === serviceSignature)
+    || (fallbackCached?.sourceSignature === sourceSignature && fallbackCached?.serviceSignature === serviceSignature)
+  ) {
+    return (cached ?? fallbackCached).items;
+  }
+
   const byType = new Map(source.map((item) => [String(item?.type ?? "").trim().toLowerCase(), item]));
   const byServiceId = new Map(source
     .map((item) => [String(item?.serviceId || item?.serviceCatalogId || "").trim(), item])
@@ -7414,7 +7602,7 @@ function normalizePeopleTrainingItemsForUi(items = []) {
       });
   });
 
-  return getPeopleTrainingTypeOptions(source).map((typeOption) => {
+  const normalized = getPeopleTrainingTypeOptions(source).map((typeOption) => {
     const sourceItem = byType.get(String(typeOption.value || "").trim().toLowerCase())
       ?? byServiceId.get(String(typeOption.serviceId || "").trim())
       ?? byServiceCode.get(String(typeOption.serviceCode || typeOption.shortLabel || "").trim().toLowerCase())
@@ -7463,10 +7651,26 @@ function normalizePeopleTrainingItemsForUi(items = []) {
       status: getPeopleTrainingItemStatus(item),
     };
   });
+  const cacheEntry = {
+    sourceSignature,
+    serviceSignature,
+    sourceRef: source,
+    sourceLength: source.length,
+    items: normalized,
+  };
+  if (sourceKey) {
+    peopleTrainingUiCache.normalizedItems.set(sourceKey, cacheEntry);
+  } else {
+    peopleTrainingUiCache.normalizedItemsFallback.set(sourceSignature, cacheEntry);
+    if (peopleTrainingUiCache.normalizedItemsFallback.size > 100) {
+      peopleTrainingUiCache.normalizedItemsFallback.clear();
+    }
+  }
+  return normalized;
 }
 
-function getPeopleTrainingOverallStatus(record = {}) {
-  const statuses = normalizePeopleTrainingItemsForUi(record.trainingItems).map((item) => item.status);
+function getPeopleTrainingOverallStatusFromItems(items = []) {
+  const statuses = items.map((item) => item.status);
   if (statuses.some((status) => status === "expired")) {
     return "expired";
   }
@@ -7477,6 +7681,10 @@ function getPeopleTrainingOverallStatus(record = {}) {
     return "valid";
   }
   return "missing";
+}
+
+function getPeopleTrainingOverallStatus(record = {}) {
+  return getPeopleTrainingOverallStatusFromItems(normalizePeopleTrainingItemsForUi(record.trainingItems));
 }
 
 function getPeopleTrainingStatusClass(status = "") {
@@ -7505,27 +7713,96 @@ function getPeopleTrainingLocation(locationId = "") {
   return state.locations.find((item) => String(item.id) === String(locationId)) ?? null;
 }
 
+function getPeopleTrainingRecordFilterHaystack(record = {}, trainingItems = []) {
+  const company = getPeopleTrainingCompany(record.companyId);
+  const location = getPeopleTrainingLocation(record.locationId);
+  const attachments = Array.isArray(record.attachments) ? record.attachments : [];
+  return normalizeLooseName([
+    getPeopleTrainingRecordDisplayName(record),
+    record.firstName,
+    record.lastName,
+    record.oib,
+    record.email,
+    record.mobile,
+    record.jobTitle,
+    record.companyName,
+    company?.name,
+    company?.oib,
+    record.locationName,
+    location?.name,
+    location?.address,
+    location?.city,
+    record.note,
+    ...attachments.flatMap((attachment) => [
+      attachment?.fileName,
+      attachment?.category,
+      attachment?.note,
+    ]),
+    ...trainingItems.flatMap((item) => [
+      item.label,
+      item.serviceName,
+      item.serviceCode,
+      item.shortLabel,
+      item.certificateNumber,
+      item.recordNumber,
+      item.provider,
+      item.workOrderNumber,
+      item.learningTestTitle,
+      item.note,
+      ...Object.values(item.details ?? {}),
+    ]),
+  ].filter(Boolean).join(" "));
+}
+
+function doesPeopleTrainingRecordMatchFilters(record = {}, filters = {}) {
+  const selectedCompanyId = String(filters.companyId || "all").trim();
+  if (selectedCompanyId && selectedCompanyId !== "all" && String(record.companyId || "") !== selectedCompanyId) {
+    return false;
+  }
+
+  const selectedLocationId = String(filters.locationId || "all").trim();
+  if (selectedLocationId && selectedLocationId !== "all" && String(record.locationId || "") !== selectedLocationId) {
+    return false;
+  }
+
+  const selectedType = String(filters.trainingType || "all").trim().toLowerCase();
+  const selectedStatus = String(filters.status || "all").trim().toLowerCase();
+  const query = normalizeLooseName(filters.query || "");
+  const needsTrainingItems = Boolean(
+    (selectedType && selectedType !== "all")
+    || (selectedStatus && selectedStatus !== "all")
+    || query,
+  );
+
+  if (!needsTrainingItems) {
+    return true;
+  }
+
+  const trainingItems = normalizePeopleTrainingItemsForUi(record.trainingItems);
+
+  if (selectedType && selectedType !== "all") {
+    const selected = trainingItems.find((item) => item.type === selectedType);
+    if (!selected) {
+      return false;
+    }
+    if (selectedStatus && selectedStatus !== "all" && selected.status !== selectedStatus) {
+      return false;
+    }
+  } else if (selectedStatus && selectedStatus !== "all" && !trainingItems.some((item) => item.status === selectedStatus)) {
+    return false;
+  }
+
+  if (query && !getPeopleTrainingRecordFilterHaystack(record, trainingItems).includes(query)) {
+    return false;
+  }
+
+  return true;
+}
+
 function getPeopleTrainingFilteredRecords() {
   const filters = state.peopleTrainingFilters ?? {};
-  const records = filterPersonTrainingRecords(state.peopleTrainingRecords, {
-    ...filters,
-    trainingType: "all",
-    status: "all",
-  }).filter((record) => {
-    const trainingItems = normalizePeopleTrainingItemsForUi(record.trainingItems);
-    const selectedType = String(filters.trainingType || "all").trim().toLowerCase();
-    const selectedStatus = String(filters.status || "all").trim().toLowerCase();
-
-    if (selectedType && selectedType !== "all") {
-      const selected = trainingItems.find((item) => item.type === selectedType);
-      if (!selected) {
-        return false;
-      }
-      return !selectedStatus || selectedStatus === "all" || selected.status === selectedStatus;
-    }
-
-    return !selectedStatus || selectedStatus === "all" || trainingItems.some((item) => item.status === selectedStatus);
-  });
+  const records = (state.peopleTrainingRecords ?? [])
+    .filter((record) => doesPeopleTrainingRecordMatchFilters(record, filters));
 
   return sortPersonTrainingRecords(records);
 }
@@ -7633,7 +7910,7 @@ function buildPeopleTrainingLocationOptions({ companyId = "", includeAll = false
 
 function syncPeopleTrainingSelectOptions() {
   if (peopleTrainingCompanyFilterInput instanceof HTMLSelectElement) {
-    replaceSelectOptions(
+    replaceSelectOptionsIfChanged(
       peopleTrainingCompanyFilterInput,
       buildPeopleTrainingCompanyOptions({ includeAll: true }),
       state.peopleTrainingFilters.companyId || "all",
@@ -7642,7 +7919,7 @@ function syncPeopleTrainingSelectOptions() {
   }
 
   if (peopleTrainingLocationFilterInput instanceof HTMLSelectElement) {
-    replaceSelectOptions(
+    replaceSelectOptionsIfChanged(
       peopleTrainingLocationFilterInput,
       buildPeopleTrainingLocationOptions({
         companyId: state.peopleTrainingFilters.companyId,
@@ -7654,7 +7931,7 @@ function syncPeopleTrainingSelectOptions() {
   }
 
   if (peopleTrainingTypeFilterInput instanceof HTMLSelectElement) {
-    replaceSelectOptions(
+    replaceSelectOptionsIfChanged(
       peopleTrainingTypeFilterInput,
       [
         { value: "all", label: "Sve vrste" },
@@ -7669,7 +7946,7 @@ function syncPeopleTrainingSelectOptions() {
   }
 
   if (peopleTrainingStatusFilterInput instanceof HTMLSelectElement) {
-    replaceSelectOptions(
+    replaceSelectOptionsIfChanged(
       peopleTrainingStatusFilterInput,
       [
         { value: "all", label: "Svi statusi" },
@@ -7685,7 +7962,7 @@ function syncPeopleTrainingSelectOptions() {
     || state.companies[0]?.id
     || "";
   if (peopleTrainingCompanyInput instanceof HTMLSelectElement) {
-    replaceSelectOptions(
+    replaceSelectOptionsIfChanged(
       peopleTrainingCompanyInput,
       buildPeopleTrainingCompanyOptions({ selectedValue: selectedCompanyId }),
       selectedCompanyId,
@@ -7693,7 +7970,7 @@ function syncPeopleTrainingSelectOptions() {
   }
 
   if (peopleTrainingLocationInput instanceof HTMLSelectElement) {
-    replaceSelectOptions(
+    replaceSelectOptionsIfChanged(
       peopleTrainingLocationInput,
       buildPeopleTrainingLocationOptions({
         companyId: peopleTrainingCompanyInput?.value || selectedCompanyId,
@@ -7799,8 +8076,10 @@ function getPeopleTrainingItemLearningAssignments(record = {}, item = {}) {
   const recordEmail = String(record.email || "").trim().toLowerCase();
   const recordOib = String(record.oib || "").trim();
   const recordName = getPeopleTrainingRecordDisplayName(record).toLowerCase();
-  return (state.learningTests ?? []).flatMap((test) => {
-    if (!linkedIds.has(String(test.id || ""))) {
+  const testsById = getPeopleTrainingLearningTestMap();
+  return [...linkedIds].flatMap((testId) => {
+    const test = testsById.get(String(testId || "").trim());
+    if (!test) {
       return [];
     }
     return (test.assignmentItems ?? [])
@@ -7836,11 +8115,7 @@ function getPeopleTrainingItemExamProgress(record = {}, item = {}) {
 }
 
 function getPeopleTrainingExamOverviewRows(selection = "all", mode = "passed") {
-  const records = sortPersonTrainingRecords(filterPersonTrainingRecords(state.peopleTrainingRecords, {
-    ...state.peopleTrainingFilters,
-    trainingType: "all",
-    status: "all",
-  }));
+  const records = sortPersonTrainingRecords(state.peopleTrainingRecords ?? []);
   const normalizedSelection = String(selection || "all").trim();
   const [selectionKind, selectionId = ""] = normalizedSelection.split(":");
 
@@ -7970,13 +8245,7 @@ function getPeopleTrainingTrackingLocationName(row = {}) {
 }
 
 function getPeopleTrainingExamTrackingRecords() {
-  return sortPersonTrainingRecords(filterPersonTrainingRecords(state.peopleTrainingRecords, {
-    query: "",
-    companyId: "all",
-    locationId: "all",
-    trainingType: "all",
-    status: "all",
-  }));
+  return sortPersonTrainingRecords(state.peopleTrainingRecords ?? []);
 }
 
 function doesPeopleTrainingExamRowMatchQuery(row = {}, query = "") {
@@ -8425,7 +8694,7 @@ function syncPeopleTrainingExamOverviewOptions() {
   const selectedValue = options.some((option) => option.value === state.peopleTrainingExamSelection)
     ? state.peopleTrainingExamSelection
     : "rn";
-  replaceSelectOptions(peopleTrainingExamSelect, options, selectedValue);
+  replaceSelectOptionsIfChanged(peopleTrainingExamSelect, options, selectedValue);
   state.peopleTrainingExamSelection = peopleTrainingExamSelect.value || "rn";
 }
 
@@ -11309,11 +11578,13 @@ function createPeopleTrainingAttachmentQuickActions(record = {}) {
 }
 
 function createPeopleTrainingRecordCard(record = {}) {
+  const trainingItems = normalizePeopleTrainingItemsForUi(record.trainingItems);
+  const overallStatus = getPeopleTrainingOverallStatusFromItems(trainingItems);
   const shell = document.createElement("div");
   shell.className = "people-training-row-shell";
 
   const card = document.createElement("article");
-  card.className = `people-training-person-row ${getPeopleTrainingStatusClass(getPeopleTrainingOverallStatus(record))}`;
+  card.className = `people-training-person-row ${getPeopleTrainingStatusClass(overallStatus)}`;
   card.tabIndex = 0;
   card.dataset.peopleTrainingRecordId = String(record.id || "");
 
@@ -11367,8 +11638,8 @@ function createPeopleTrainingRecordCard(record = {}) {
   const overview = document.createElement("div");
   overview.className = "people-training-person-overview";
   const overallPill = document.createElement("span");
-  overallPill.className = `people-training-status-chip ${getPeopleTrainingStatusClass(getPeopleTrainingOverallStatus(record))}`;
-  overallPill.textContent = getPeopleTrainingStatusLabel(getPeopleTrainingOverallStatus(record));
+  overallPill.className = `people-training-status-chip ${getPeopleTrainingStatusClass(overallStatus)}`;
+  overallPill.textContent = getPeopleTrainingStatusLabel(overallStatus);
   overview.append(overallPill);
   const attachmentActions = createPeopleTrainingAttachmentQuickActions(record);
   if (attachmentActions) {
@@ -11376,7 +11647,6 @@ function createPeopleTrainingRecordCard(record = {}) {
   }
   top.append(identity, overview);
 
-  const trainingItems = normalizePeopleTrainingItemsForUi(record.trainingItems);
   const statuses = document.createElement("div");
   statuses.className = "people-training-person-statuses";
   statuses.replaceChildren(...trainingItems.map((item) => createPeopleTrainingCertificatePill(record, item)));
@@ -11438,6 +11708,29 @@ function createPeopleTrainingRecordCard(record = {}) {
   card.append(top, footer);
   shell.append(selection, card);
   return shell;
+}
+
+let peopleTrainingListRenderFrame = 0;
+let peopleTrainingExamRenderFrame = 0;
+
+function schedulePeopleTrainingListRender() {
+  if (peopleTrainingListRenderFrame) {
+    cancelAnimationFrame(peopleTrainingListRenderFrame);
+  }
+  peopleTrainingListRenderFrame = requestAnimationFrame(() => {
+    peopleTrainingListRenderFrame = 0;
+    renderPeopleTrainingList();
+  });
+}
+
+function schedulePeopleTrainingExamRender() {
+  if (peopleTrainingExamRenderFrame) {
+    cancelAnimationFrame(peopleTrainingExamRenderFrame);
+  }
+  peopleTrainingExamRenderFrame = requestAnimationFrame(() => {
+    peopleTrainingExamRenderFrame = 0;
+    renderPeopleTrainingExamOverview();
+  });
 }
 
 function renderPeopleTrainingList() {
@@ -88398,35 +88691,33 @@ peopleTrainingList?.addEventListener("click", (event) => {
 
 peopleTrainingSearchInput?.addEventListener("input", () => {
   state.peopleTrainingFilters.query = peopleTrainingSearchInput.value.trim();
-  renderPeopleTrainingList();
+  schedulePeopleTrainingListRender();
 });
 
 peopleTrainingExamSearchInput?.addEventListener("input", () => {
   state.peopleTrainingExamQuery = peopleTrainingExamSearchInput.value.trim();
-  renderPeopleTrainingExamOverview();
+  schedulePeopleTrainingExamRender();
 });
 
 peopleTrainingCompanyFilterInput?.addEventListener("change", () => {
   state.peopleTrainingFilters.companyId = peopleTrainingCompanyFilterInput.value || "all";
   state.peopleTrainingFilters.locationId = "all";
-  renderPeopleTrainingModule();
+  syncPeopleTrainingSelectOptions();
+  renderPeopleTrainingList();
 });
 
 peopleTrainingLocationFilterInput?.addEventListener("change", () => {
   state.peopleTrainingFilters.locationId = peopleTrainingLocationFilterInput.value || "all";
-  renderPeopleTrainingExamOverview();
   renderPeopleTrainingList();
 });
 
 peopleTrainingTypeFilterInput?.addEventListener("change", () => {
   state.peopleTrainingFilters.trainingType = peopleTrainingTypeFilterInput.value || "all";
-  renderPeopleTrainingExamOverview();
   renderPeopleTrainingList();
 });
 
 peopleTrainingStatusFilterInput?.addEventListener("change", () => {
   state.peopleTrainingFilters.status = peopleTrainingStatusFilterInput.value || "all";
-  renderPeopleTrainingExamOverview();
   renderPeopleTrainingList();
 });
 
