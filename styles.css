@@ -39457,14 +39457,15 @@ button.work-order-editor-section-head {
   z-index: 2210;
   display: grid;
   place-items: center;
-  padding: 22px;
+  padding: 14px;
   background: rgba(15, 23, 42, 0.38);
   backdrop-filter: blur(9px);
 }
 
 .people-training-import-modal {
-  width: min(1380px, 100%);
-  max-height: min(880px, calc(100vh - 44px));
+  width: calc(100vw - 28px);
+  height: calc(100vh - 28px);
+  max-height: none;
   overflow: hidden;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
@@ -39697,7 +39698,7 @@ button.work-order-editor-section-head {
 }
 
 .people-training-import-table {
-  min-width: 840px;
+  min-width: 100%;
   overflow: hidden;
   border: 1px solid rgba(191, 219, 254, 0.72);
   border-radius: 14px;
@@ -39706,7 +39707,7 @@ button.work-order-editor-section-head {
 
 .people-training-import-row {
   display: grid;
-  grid-template-columns: minmax(130px, 0.18fr) minmax(260px, 0.34fr) minmax(0, 1fr);
+  grid-template-columns: minmax(150px, 0.16fr) minmax(340px, 0.28fr) minmax(0, 1fr);
   gap: 12px;
   align-items: center;
   padding: 11px 12px;
@@ -39746,9 +39747,9 @@ button.work-order-editor-section-head {
 }
 
 .people-training-import-row.is-update .people-training-import-row-status {
-  border-color: rgba(59, 130, 246, 0.5);
-  background: rgba(219, 234, 254, 0.88);
-  color: #1d4ed8;
+  border-color: rgba(248, 113, 113, 0.56);
+  background: rgba(254, 226, 226, 0.9);
+  color: #b91c1c;
 }
 
 .people-training-import-row.is-departure .people-training-import-row-status {
@@ -39797,6 +39798,23 @@ button.work-order-editor-section-head {
   background: rgba(248, 250, 252, 0.94);
   color: #475569;
   font-size: 0.74rem;
+}
+
+.people-training-import-row.is-update .people-training-import-change:not(.is-more),
+.people-training-import-row.is-departure .people-training-import-change:not(.is-more) {
+  border-color: rgba(248, 113, 113, 0.58);
+  background: rgba(255, 241, 242, 0.96);
+  color: #9f1239;
+}
+
+.people-training-import-row.is-update .people-training-import-change:not(.is-more) strong,
+.people-training-import-row.is-departure .people-training-import-change:not(.is-more) strong {
+  color: #be123c;
+}
+
+.people-training-import-row.is-create .people-training-import-row-message {
+  color: #15803d;
+  font-weight: 800;
 }
 
 .people-training-import-change strong {

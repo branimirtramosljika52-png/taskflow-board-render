@@ -3291,8 +3291,8 @@ function buildPeopleTrainingImportPlan(records = [], scopedSnapshot = {}, modeIn
         canApply: true,
         record,
         nextRecord: record,
-        message: "Dodaje se nova osoba u evidenciju.",
-        changes: buildPeopleTrainingImportFieldChanges({}, record, scopedSnapshot),
+        message: "Dodaje se nova osoba u evidenciju. Nema usporedbe jer osoba još ne postoji.",
+        changes: [],
       };
     }
 

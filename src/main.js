@@ -11423,7 +11423,9 @@ function createPeopleTrainingImportPreviewRow(row = {}) {
   } else {
     const message = document.createElement("span");
     message.className = "people-training-import-row-message";
-    message.textContent = row.message || "Nema promjena za ovaj red.";
+    message.textContent = row.message || (row.action === "create"
+      ? "Dodaje se kao nova osoba, bez usporedbe s postojećom evidencijom."
+      : "Nema promjena za ovaj red.");
     changes.append(message);
   }
 
@@ -11472,7 +11474,7 @@ function renderPeopleTrainingImportPreview(container) {
   table.className = "people-training-import-table";
   const header = document.createElement("div");
   header.className = "people-training-import-row is-head";
-  ["Status", "Osoba / tvrtka", "Što se mijenja"].forEach((label) => {
+  ["Status", "Osoba / tvrtka", "Pregled"].forEach((label) => {
     const cell = document.createElement("strong");
     cell.textContent = label;
     header.append(cell);
