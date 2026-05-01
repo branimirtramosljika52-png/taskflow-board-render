@@ -635,7 +635,13 @@ test("document templates keep nested builder data and support filtering", () => 
         },
         { label: "Mjesto pregleda", key: "mjesto_pregleda", source: "LOCATION_NAME", defaultValue: "Stubiste A" },
         { label: "Ispitano", key: "ispitano", type: "checkbox" },
-        { label: "Alarm aktivan", key: "alarm_aktivan", type: "toggle" },
+        {
+          label: "Alarm aktivan",
+          key: "alarm_aktivan",
+          type: "toggle",
+          toggleTrueLabel: "Zadovoljava",
+          toggleFalseLabel: "Ne zadovoljava",
+        },
         {
           label: "Potpis ispitivaca",
           wordLabel: "Potpis ispitivaca elektro",
@@ -749,6 +755,8 @@ test("document templates keep nested builder data and support filtering", () => 
   assert.deepEqual(template.customFields[0].ai.aiLookFor, ["naziv tvrtke", "narucitelj"]);
   assert.equal(template.customFields[2].type, "checkbox");
   assert.equal(template.customFields[3].type, "toggle");
+  assert.equal(template.customFields[3].toggleTrueLabel, "Zadovoljava");
+  assert.equal(template.customFields[3].toggleFalseLabel, "Ne zadovoljava");
   assert.equal(template.customFields[4].type, "inspector_signature");
   assert.equal(template.customFields[4].signatureArea, "elektro");
   assert.equal(template.customFields[4].fieldHeight, 6);

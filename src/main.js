@@ -39026,6 +39026,8 @@ function buildDocumentTemplateDraft() {
       previousDocumentMode: String(field.previousDocumentMode || "NONE").trim().toUpperCase() || "NONE",
       defaultValue: String(field.defaultValue || "").trim(),
       helpText: String(field.helpText || "").trim(),
+      toggleTrueLabel: String(field.toggleTrueLabel || "").trim().slice(0, 120),
+      toggleFalseLabel: String(field.toggleFalseLabel || "").trim().slice(0, 120),
       textListStyle: isDocumentTemplateTextListStyleField(field.type)
         ? normalizeDocumentTemplateTextListStyleLocal(field.textListStyle ?? field.listStyle)
         : "none",
@@ -55328,6 +55330,60 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
     dropdownOptionsHint.textContent = "U izradi zapisnika korisnik će moći odabrati samo jednu od ovih vrijednosti.";
     dropdownOptionsField.append(dropdownOptionsSpan, dropdownOptionsInput, dropdownOptionsHint);
 
+    const toggleLabelsField = document.createElement("div");
+    toggleLabelsField.className = "field field-span-full document-template-toggle-labels-config";
+    toggleLabelsField.hidden = field.type !== "toggle";
+    const toggleLabelsTitle = document.createElement("span");
+    toggleLabelsTitle.textContent = "Tekst po izboru";
+    const toggleLabelsGrid = document.createElement("div");
+    toggleLabelsGrid.className = "form-grid document-template-inline-grid document-template-toggle-labels-grid";
+
+    const createToggleLabelInputField = ({
+      labelText,
+      placeholder,
+      value,
+      property,
+    }) => {
+      const inputField = document.createElement("label");
+      inputField.className = "field";
+      const inputLabel = document.createElement("span");
+      inputLabel.textContent = labelText;
+      const input = document.createElement("input");
+      input.type = "text";
+      input.maxLength = 120;
+      input.placeholder = placeholder;
+      input.value = value || "";
+      input.addEventListener("input", (event) => {
+        documentTemplateFieldDrafts[draftIndex][property] = String(event.currentTarget.value || "").slice(0, 120);
+        invalidateDocumentTemplateDraftCache();
+        refreshEditorSupport();
+        renderDocumentTemplatePreviewContent();
+      });
+      input.addEventListener("focus", () => rememberDocumentTemplateTextTarget(input, `field-toggle-label:${field.id}:${property}`));
+      inputField.append(inputLabel, input);
+      return inputField;
+    };
+
+    toggleLabelsGrid.append(
+      createToggleLabelInputField({
+        labelText: "Kad je odabrano",
+        placeholder: "npr. Zadovoljava",
+        value: field.toggleTrueLabel || "",
+        property: "toggleTrueLabel",
+      }),
+      createToggleLabelInputField({
+        labelText: "Kad nije odabrano",
+        placeholder: "npr. Ne zadovoljava",
+        value: field.toggleFalseLabel || "",
+        property: "toggleFalseLabel",
+      }),
+    );
+
+    const toggleLabelsHint = document.createElement("small");
+    toggleLabelsHint.className = "document-template-source-config-hint";
+    toggleLabelsHint.textContent = "Ovaj tekst se prikazuje na gumbu u zapisniku i upisuje u Word/PDF. Ako ostane prazno, koristi se Da ili Ne.";
+    toggleLabelsField.append(toggleLabelsTitle, toggleLabelsGrid, toggleLabelsHint);
+
     const removeButton = createActionButton("Ukloni", "card-button card-danger", () => {
       clearDocumentTemplateFieldDragState();
       if (field.type === "chapter") {
@@ -55352,6 +55408,9 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
       }
       if (!textListStyleField.hidden) {
         grid.append(textListStyleField);
+      }
+      if (!toggleLabelsField.hidden) {
+        grid.append(toggleLabelsField);
       }
     }
 

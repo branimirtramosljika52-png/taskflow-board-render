@@ -30313,6 +30313,22 @@ body.is-measurement-equipment-export-open {
   line-height: 1.5;
 }
 
+.document-template-toggle-labels-config {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px dashed rgba(47, 104, 84, 0.2);
+  border-radius: 18px;
+  background: rgba(248, 251, 249, 0.92);
+}
+
+.document-template-toggle-labels-config > span {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #4d7165;
+}
+
 .document-template-item-head {
   display: flex;
   flex-wrap: wrap;
