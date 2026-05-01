@@ -40669,6 +40669,78 @@ function getMeasurementSheetPreviewCellValue(sheet, rowIndex, columnIndex) {
   }
 }
 
+function isMeasurementPreviewIndexColumn(column = {}, columnIndex = 0) {
+  if (columnIndex !== 0) {
+    return false;
+  }
+
+  const labelText = normalizeLooseName([
+    column.label,
+    column.placeholder,
+    column.id,
+  ].filter(Boolean).join(" "));
+
+  return labelText === "r br"
+    || labelText === "rbr"
+    || labelText.includes("redni broj")
+    || labelText.includes("r br")
+    || labelText === "pozicija";
+}
+
+function getMeasurementSheetPreviewCellPrintableValue(sheet, rowIndex, columnIndex) {
+  const row = sheet?.rows?.[rowIndex];
+  const column = sheet?.columns?.[columnIndex];
+
+  if (!row || !column || column.computed) {
+    return "";
+  }
+
+  const rawValue = row.cells?.[column.id] ?? "";
+  if (!isMeasurementFormula(rawValue)) {
+    return rawValue;
+  }
+
+  try {
+    return getMeasurementSheetPreviewCellRawValue(sheet, rowIndex, columnIndex, new Set());
+  } catch {
+    return "";
+  }
+}
+
+function isMeasurementSheetPreviewRowPopulated(sheet, rowIndex, { includeIndexColumns = true } = {}) {
+  return (sheet?.columns ?? []).some((column, columnIndex) => {
+    if (!includeIndexColumns && isMeasurementPreviewIndexColumn(column, columnIndex)) {
+      return false;
+    }
+
+    return isMeasurementFillValuePresent(
+      getMeasurementSheetPreviewCellPrintableValue(sheet, rowIndex, columnIndex),
+    );
+  });
+}
+
+function getMeasurementSheetPreviewLastPopulatedRowIndex(sheet = null) {
+  if (!sheet?.rows?.length || !sheet?.columns?.length) {
+    return -1;
+  }
+
+  const lastContentRowIndex = sheet.rows.reduce((lastIndex, row, rowIndex) => (
+    isMeasurementSheetPreviewRowPopulated(sheet, rowIndex, { includeIndexColumns: false })
+      ? rowIndex
+      : lastIndex
+  ), -1);
+
+  if (lastContentRowIndex >= 0) {
+    return lastContentRowIndex;
+  }
+
+  return sheet.rows.reduce((lastIndex, row, rowIndex) => (
+    isMeasurementSheetPreviewRowPopulated(sheet, rowIndex, { includeIndexColumns: true })
+      ? rowIndex
+      : lastIndex
+  ), -1);
+}
+
 function getMeasurementSheetPreviewCellVisualFormat(sheet, rowIndex, column = null) {
   if (!column || column.computed === "average") {
     return normalizeMeasurementCellFormat();
@@ -40715,16 +40787,17 @@ function buildMeasurementSheetPreviewTable(field = {}, context = {}) {
     return null;
   }
 
-  const lastMeaningfulRowIndex = snapshot.rows.reduce((lastIndex, row, index) => (
-    isMeasurementSheetRowMeaningful(row, snapshot.columns) ? index : lastIndex
-  ), -1);
+  const lastMeaningfulRowIndex = getMeasurementSheetPreviewLastPopulatedRowIndex(snapshot);
   const fallbackRowCount = Math.max(1, Math.min(40, Number(field.rowCount) || 12));
   const visibleRows = snapshot.rows.slice(0, lastMeaningfulRowIndex >= 0 ? lastMeaningfulRowIndex + 1 : fallbackRowCount);
+  const visibleRowIds = new Set(visibleRows.map((row) => String(row?.id || "").trim()).filter(Boolean));
 
   return {
     columns: snapshot.columns,
     rows: visibleRows.length > 0 ? visibleRows : [normalizeMeasurementSheetRowSnapshotLocal({}, snapshot.columns, 0)],
-    merges: (snapshot.merges ?? []).map((merge) => ({ ...merge })),
+    merges: (snapshot.merges ?? [])
+      .filter((merge) => visibleRowIds.has(String(merge?.rowId || "").trim()))
+      .map((merge) => ({ ...merge })),
     headerRows: normalizeMeasurementSheetHeaderRowsSnapshotLocal(snapshot.headerRows, visibleRows),
     sourceLabel: directRuntimeSnapshot
       ? "Podaci iz ispunjenog Excel bloka"
@@ -50126,22 +50199,87 @@ function getDocumentTemplateRuntimeCommonDateInitialValue(field = {}, workOrderI
   return normalizeDocumentTemplateRuntimeFieldValueByType(field, value);
 }
 
+function getDocumentTemplateRuntimeCommonValidityFieldName(field = {}) {
+  const type = String(field?.type || "text").trim().toLowerCase();
+  const source = String(field?.source || getDocumentTemplateDefaultFieldSource(type)).trim().toUpperCase();
+  if (!["text", "number", "dropdown"].includes(type) || source !== "CUSTOM_VALUE") {
+    return "";
+  }
+
+  const labelText = normalizeLooseName([
+    field.label,
+    field.wordLabel,
+    field.name,
+    field.key,
+    field.token,
+    field.placeholder,
+  ].filter(Boolean).join(" "));
+
+  if (!labelText || labelText.includes("vrijedi do")) {
+    return "";
+  }
+
+  const mentionsValidityMonths = labelText.includes("rok vazenja")
+    || labelText.includes("vazenje")
+    || labelText.includes("vrijedi mjes")
+    || labelText.includes("vrijedi mj")
+    || labelText.includes("koliko vrijedi")
+    || (labelText.includes("rok") && labelText.includes("mjes"));
+
+  if (!mentionsValidityMonths) {
+    return "";
+  }
+
+  if (labelText.includes("tipkalo") || labelText.includes("isklop")) {
+    return "tipkaloValidityMonths";
+  }
+
+  if (labelText.includes("panik") || labelText.includes("rasvjet")) {
+    return "electricalValidityMonths";
+  }
+
+  return "validityMonths";
+}
+
+function getDocumentTemplateRuntimeCommonValidityInitialValue(field = {}, workOrderId = "") {
+  const commonValidityFieldName = getDocumentTemplateRuntimeCommonValidityFieldName(field);
+  if (!commonValidityFieldName) {
+    return undefined;
+  }
+
+  const normalizedWorkOrderId = String(workOrderId || state.documentTemplateRuntime.activeWorkOrderId || "").trim();
+  const workOrder = normalizedWorkOrderId
+    ? getDocumentTemplateRuntimeWorkOrderById(normalizedWorkOrderId)
+    : null;
+  const value = commonValidityFieldName === "validityMonths" && workOrder
+    ? resolveDocumentTemplateRuntimeValidityMonths(workOrder)
+    : normalizeValidityMonthsValue(getDocumentTemplateRuntimeValue(normalizedWorkOrderId, commonValidityFieldName));
+
+  if (!value) {
+    return undefined;
+  }
+
+  return normalizeDocumentTemplateRuntimeFieldValueByType(field, value);
+}
+
 function getDocumentTemplateRuntimeInitialValue(field = {}, workOrderId = "") {
   const normalizedWorkOrderId = String(workOrderId || state.documentTemplateRuntime.activeWorkOrderId || "").trim();
   const workOrder = (state.workOrders ?? []).find((item) => String(item.id) === normalizedWorkOrderId) ?? null;
   const template = buildDocumentTemplateDraft();
   const sourceId = getDocumentTemplateRuntimeFieldSource(normalizedWorkOrderId, field.id);
   const commonDateValue = getDocumentTemplateRuntimeCommonDateInitialValue(field, normalizedWorkOrderId);
+  const commonValidityValue = getDocumentTemplateRuntimeCommonValidityInitialValue(field, normalizedWorkOrderId);
+  const commonFieldValue = commonDateValue !== undefined ? commonDateValue : commonValidityValue;
   const runtimeValue = getDocumentTemplateRuntimeFieldValue(normalizedWorkOrderId, field.id);
   if (runtimeValue !== undefined) {
-    return commonDateValue !== undefined && !hasMeaningfulDocumentRecordValue(runtimeValue)
-      ? commonDateValue
+    return commonFieldValue !== undefined && !hasMeaningfulDocumentRecordValue(runtimeValue)
+      ? commonFieldValue
       : runtimeValue;
   }
 
   if (sourceId === "blank") {
-    if (commonDateValue !== undefined) {
-      return commonDateValue;
+    if (commonFieldValue !== undefined) {
+      return commonFieldValue;
     }
     if (String(field?.type || "").trim().toLowerCase() === "system_description") {
       return createDocumentTemplateSystemDescriptionBlankValue(field);
@@ -50149,8 +50287,8 @@ function getDocumentTemplateRuntimeInitialValue(field = {}, workOrderId = "") {
     return field.type === "checkbox" || field.type === "toggle" ? false : "";
   }
 
-  if (commonDateValue !== undefined) {
-    return commonDateValue;
+  if (commonFieldValue !== undefined) {
+    return commonFieldValue;
   }
 
   if (workOrder && sourceId === "template") {
