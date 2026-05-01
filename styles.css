@@ -34845,6 +34845,7 @@ body.is-global-loading {
   justify-content: space-between;
   gap: 12px;
   min-width: 0;
+  cursor: pointer;
 }
 
 .people-training-exam-head h4 {
@@ -34857,10 +34858,11 @@ body.is-global-loading {
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  min-width: min(100%, 520px);
+  min-width: min(100%, 760px);
 }
 
-.people-training-exam-controls select {
+.people-training-exam-controls select,
+.people-training-exam-search-label input {
   flex: 1 1 280px;
   min-width: 220px;
   min-height: 42px;
@@ -34870,6 +34872,39 @@ body.is-global-loading {
   background: rgba(255, 255, 255, 0.96);
   color: #172743;
   font-weight: 850;
+}
+
+.people-training-exam-search-label {
+  display: grid;
+  gap: 4px;
+  flex: 1 1 230px;
+  min-width: 210px;
+  cursor: default;
+}
+
+.people-training-exam-search-label span {
+  color: #657891;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.people-training-collapse-button {
+  min-width: 42px;
+  width: 42px;
+  padding-inline: 0;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.people-training-exam-overview-card.is-collapsed {
+  gap: 0;
+  padding-block: 12px;
+}
+
+.people-training-exam-overview-card.is-collapsed .people-training-exam-head {
+  align-items: center;
 }
 
 .people-training-exam-list {
@@ -36289,6 +36324,114 @@ body.is-global-loading {
 .people-training-item-menu-icon svg {
   width: 16px;
   height: 16px;
+}
+
+.people-training-service-launch-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 135;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(24, 35, 55, 0.34);
+  backdrop-filter: blur(7px);
+}
+
+.people-training-service-launch-modal {
+  display: grid;
+  gap: 14px;
+  width: min(760px, calc(100vw - 32px));
+  padding: 18px;
+  border: 1px solid rgba(190, 204, 232, 0.86);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at top right, rgba(47, 111, 237, 0.12), transparent 34%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.99), rgba(247, 250, 255, 0.95));
+  box-shadow: 0 28px 72px rgba(22, 35, 62, 0.24);
+}
+
+.people-training-service-launch-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(218, 225, 239, 0.84);
+}
+
+.people-training-service-launch-head h4 {
+  margin: 0;
+  color: #172743;
+}
+
+.people-training-service-launch-head span {
+  display: block;
+  margin-top: 4px;
+  color: #657891;
+  font-size: 0.82rem;
+  font-weight: 760;
+}
+
+.people-training-service-launch-choices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.people-training-service-launch-choice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 10px;
+  align-items: center;
+  min-height: 102px;
+  padding: 14px;
+  border: 1px solid rgba(178, 198, 230, 0.9);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #172743;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 16px 34px rgba(35, 54, 98, 0.08);
+}
+
+.people-training-service-launch-choice:hover,
+.people-training-service-launch-choice:focus-visible {
+  border-color: rgba(47, 111, 237, 0.72);
+  outline: none;
+  box-shadow:
+    inset 0 0 0 2px rgba(47, 111, 237, 0.12),
+    0 20px 40px rgba(35, 54, 98, 0.13);
+}
+
+.people-training-service-launch-icon {
+  grid-row: span 2;
+  display: inline-grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(47, 111, 237, 0.14), rgba(216, 77, 193, 0.12));
+  color: #2f6fed;
+}
+
+.people-training-service-launch-icon svg {
+  width: 19px;
+  height: 19px;
+}
+
+.people-training-service-launch-choice strong {
+  font-size: 0.94rem;
+}
+
+.people-training-service-launch-choice small {
+  color: #657891;
+  font-size: 0.78rem;
+  font-weight: 760;
+}
+
+.people-training-service-existing-button {
+  grid-column: 1 / -1;
+  justify-self: end;
 }
 
 .client-portal-preview-row.is-training {

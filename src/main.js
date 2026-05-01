@@ -1474,6 +1474,8 @@ const state = {
     status: "all",
   },
   peopleTrainingExamSelection: "rn",
+  peopleTrainingExamQuery: "",
+  peopleTrainingExamCollapsed: false,
   peopleTrainingSelectedRecordIds: new Set(),
   activePeopleTrainingRecordId: "",
   peopleTrainingEditorOpen: false,
@@ -4613,6 +4615,8 @@ const peopleTrainingOpenExamButton = document.querySelector("#people-training-op
 const peopleTrainingExamSummary = document.querySelector("#people-training-exam-summary");
 const peopleTrainingExamList = document.querySelector("#people-training-exam-list");
 const peopleTrainingExamEmpty = document.querySelector("#people-training-exam-empty");
+const peopleTrainingExamSearchInput = document.querySelector("#people-training-exam-search");
+const peopleTrainingExamCollapseButton = document.querySelector("#people-training-exam-collapse");
 const peopleTrainingSearchInput = document.querySelector("#people-training-search");
 const peopleTrainingCompanyFilterInput = document.querySelector("#people-training-company-filter");
 const peopleTrainingLocationFilterInput = document.querySelector("#people-training-location-filter");
@@ -7095,15 +7099,18 @@ function getPeopleTrainingItemStatus(item = {}) {
   if (explicitStatus === "not_required") {
     return "not_required";
   }
-  if (item?.validForever === true || String(item?.validForever) === "true") {
-    return "valid";
-  }
 
   const validUntil = normalizePeopleTrainingDate(item?.validUntil ?? item?.validTo ?? item?.expiresOn);
   const issuedOn = normalizePeopleTrainingDate(item?.issuedOn ?? item?.issuedDate);
+  const passedOn = normalizePeopleTrainingDate(item?.passedOn ?? item?.passedDate);
   const certificateNumber = String(item?.certificateNumber ?? item?.documentNumber ?? item?.number ?? "").trim();
-  if (!validUntil && !issuedOn && !certificateNumber) {
+  const recordNumber = String(item?.recordNumber ?? item?.zapisnikNumber ?? "").trim();
+  const hasCompletedEvidence = Boolean(issuedOn || passedOn || certificateNumber || recordNumber);
+  if (!hasCompletedEvidence) {
     return "missing";
+  }
+  if (item?.validForever === true || String(item?.validForever) === "true") {
+    return "valid";
   }
   if (!validUntil) {
     return "valid";
@@ -7275,13 +7282,35 @@ function normalizePeopleTrainingSourceItems(items = []) {
   return source;
 }
 
+const PEOPLE_TRAINING_EDITOR_FALLBACK_OPTIONS = Object.freeze([
+  Object.freeze({ value: "safe_work", label: "Rad na siguran način", shortLabel: "ZNR" }),
+  Object.freeze({ value: "authorized_training", label: "Osposobljavanje ovlaštenika/povjerenika", shortLabel: "OVL" }),
+  Object.freeze({ value: "evacuation_rescue", label: "Osposobljavanje za evakuacije i spašavanje", shortLabel: "EV" }),
+  Object.freeze({ value: "fire_initial", label: "Početno gašenje požara", shortLabel: "PGP" }),
+  Object.freeze({ value: "flammable_storage", label: "Skladištenje zapaljivih tekućina i plinova", shortLabel: "SPZTP" }),
+  Object.freeze({ value: "adr", label: "ADR", shortLabel: "ADR" }),
+]);
+
+function getPeopleTrainingStaticTypeOptions() {
+  const byValue = new Map();
+  [...PERSON_TRAINING_TYPE_OPTIONS, ...PEOPLE_TRAINING_EDITOR_FALLBACK_OPTIONS].forEach((option) => {
+    const value = String(option?.value || "").trim();
+    if (value && !byValue.has(value)) {
+      byValue.set(value, option);
+    }
+  });
+  return [...byValue.values()];
+}
+
 function getPeopleTrainingTypeOptions(items = []) {
   return getPeopleTrainingServiceTypeOptions();
 }
 
 function getPeopleTrainingTypeOption(value = "", items = []) {
   const normalized = String(value || "").trim().toLowerCase();
-  return getPeopleTrainingTypeOptions(items).find((option) => String(option.value).trim().toLowerCase() === normalized)
+  const serviceOptions = getPeopleTrainingTypeOptions(items);
+  return serviceOptions.find((option) => String(option.value).trim().toLowerCase() === normalized)
+    ?? getPeopleTrainingStaticTypeOptions().find((option) => String(option.value).trim().toLowerCase() === normalized)
     ?? getPeopleTrainingTypeOptions()[0]
     ?? PERSON_TRAINING_TYPE_OPTIONS[0];
 }
@@ -7438,7 +7467,7 @@ function normalizePeopleTrainingItemsForUi(items = []) {
 
 function getPeopleTrainingOverallStatus(record = {}) {
   const statuses = normalizePeopleTrainingItemsForUi(record.trainingItems).map((item) => item.status);
-  if (statuses.some((status) => status === "expired" || status === "missing")) {
+  if (statuses.some((status) => status === "expired")) {
     return "expired";
   }
   if (statuses.some((status) => status === "expiring")) {
@@ -7715,7 +7744,7 @@ function renderPeopleTrainingStats() {
       accumulator.valid += 1;
     } else if (status === "expiring") {
       accumulator.expiring += 1;
-    } else {
+    } else if (status === "expired") {
       accumulator.expired += 1;
     }
     return accumulator;
@@ -7751,6 +7780,7 @@ function isPeopleTrainingItemPassed(item = {}) {
     item.passedOn
       || item.issuedOn
       || item.certificateNumber
+      || item.recordNumber
       || item.certificateStatus === "ready"
       || item.certificateStatus === "issued",
   );
@@ -7939,12 +7969,50 @@ function getPeopleTrainingTrackingLocationName(row = {}) {
     || "Sve lokacije";
 }
 
-function getPeopleTrainingExamTrackingRowsByWorkOrder() {
-  const records = sortPersonTrainingRecords(filterPersonTrainingRecords(state.peopleTrainingRecords, {
-    ...state.peopleTrainingFilters,
+function getPeopleTrainingExamTrackingRecords() {
+  return sortPersonTrainingRecords(filterPersonTrainingRecords(state.peopleTrainingRecords, {
+    query: "",
+    companyId: "all",
+    locationId: "all",
     trainingType: "all",
     status: "all",
   }));
+}
+
+function doesPeopleTrainingExamRowMatchQuery(row = {}, query = "") {
+  const normalizedQuery = normalizeLooseName(query);
+  if (!normalizedQuery) {
+    return true;
+  }
+  const record = row.record ?? {};
+  const item = row.item ?? {};
+  const haystack = normalizeLooseName([
+    getPeopleTrainingRecordDisplayName(record),
+    record.oib,
+    record.jobTitle,
+    record.companyName || getPeopleTrainingTrackingCompanyName(row),
+    record.locationName || getPeopleTrainingTrackingLocationName(row),
+    row.workOrderNumber,
+    row.workOrder?.workOrderNumber,
+    item.label,
+    item.serviceName,
+    item.serviceCode,
+    item.shortLabel,
+    item.certificateNumber,
+    item.recordNumber,
+    ...(row.testTitles ?? []),
+    getPeopleTrainingExamTrackingProgressLabel(row),
+  ].filter(Boolean).join(" "));
+  return haystack.includes(normalizedQuery);
+}
+
+function filterPeopleTrainingExamTrackingRows(rows = []) {
+  const query = state.peopleTrainingExamQuery || "";
+  return rows.filter((row) => doesPeopleTrainingExamRowMatchQuery(row, query));
+}
+
+function getPeopleTrainingExamTrackingRowsByWorkOrder() {
+  const records = getPeopleTrainingExamTrackingRecords();
 
   return records.flatMap((record) => normalizePeopleTrainingItemsForUi(record.trainingItems)
     .map((item) => {
@@ -7990,11 +8058,7 @@ function getPeopleTrainingExamTrackingRowsByWorkOrder() {
 }
 
 function getPeopleTrainingExamTrackingRowsByPerson() {
-  const records = sortPersonTrainingRecords(filterPersonTrainingRecords(state.peopleTrainingRecords, {
-    ...state.peopleTrainingFilters,
-    trainingType: "all",
-    status: "all",
-  }));
+  const records = getPeopleTrainingExamTrackingRecords();
 
   return records.flatMap((record) => normalizePeopleTrainingItemsForUi(record.trainingItems)
     .map((item) => {
@@ -8372,12 +8436,42 @@ function renderPeopleTrainingExamOverview() {
 
   if (peopleTrainingExamOverviewCard) {
     peopleTrainingExamOverviewCard.hidden = false;
+    peopleTrainingExamOverviewCard.classList.toggle("is-collapsed", Boolean(state.peopleTrainingExamCollapsed));
+  }
+  if (peopleTrainingExamSearchInput && peopleTrainingExamSearchInput.value !== (state.peopleTrainingExamQuery || "")) {
+    peopleTrainingExamSearchInput.value = state.peopleTrainingExamQuery || "";
+  }
+  if (peopleTrainingExamCollapseButton) {
+    peopleTrainingExamCollapseButton.textContent = state.peopleTrainingExamCollapsed ? "+" : "−";
+    peopleTrainingExamCollapseButton.setAttribute("aria-expanded", state.peopleTrainingExamCollapsed ? "false" : "true");
+    peopleTrainingExamCollapseButton.setAttribute(
+      "aria-label",
+      state.peopleTrainingExamCollapsed ? "Otvori praćenje ispita" : "Minimiziraj praćenje ispita",
+    );
   }
   syncPeopleTrainingExamOverviewOptions();
+  if (state.peopleTrainingExamCollapsed) {
+    if (peopleTrainingExamSummary) {
+      peopleTrainingExamSummary.hidden = true;
+    }
+    if (peopleTrainingExamList) {
+      peopleTrainingExamList.hidden = true;
+    }
+    if (peopleTrainingExamEmpty) {
+      peopleTrainingExamEmpty.hidden = true;
+    }
+    return;
+  }
+  if (peopleTrainingExamSummary) {
+    peopleTrainingExamSummary.hidden = false;
+  }
+  if (peopleTrainingExamList) {
+    peopleTrainingExamList.hidden = false;
+  }
   const selection = state.peopleTrainingExamSelection || "rn";
   peopleTrainingExamList.classList.toggle("is-rn-tracking", selection === "rn");
   if (selection === "rn") {
-    const trackingRows = getPeopleTrainingExamTrackingRowsByWorkOrder();
+    const trackingRows = filterPeopleTrainingExamTrackingRows(getPeopleTrainingExamTrackingRowsByWorkOrder());
     const trackingGroups = groupPeopleTrainingExamTrackingRowsByWorkOrder(trackingRows);
     const activeRows = trackingRows.filter((row) => row.progress === "pending" || row.progress === "in_progress");
     const completedRows = trackingRows.filter((row) => row.progress === "completed");
@@ -8399,7 +8493,7 @@ function renderPeopleTrainingExamOverview() {
     peopleTrainingOpenExamButton.hidden = true;
     peopleTrainingOpenExamButton.disabled = true;
   }
-  const rows = getPeopleTrainingExamTrackingRowsByPerson();
+  const rows = filterPeopleTrainingExamTrackingRows(getPeopleTrainingExamTrackingRowsByPerson());
   const completedRows = rows.filter((row) => row.progress === "completed");
   const activeRows = rows.filter((row) => row.progress === "pending" || row.progress === "in_progress");
   const missingRows = rows.filter((row) => row.progress === "missing");
@@ -8431,11 +8525,11 @@ function openSelectedPeopleTrainingExam() {
 }
 
 const PEOPLE_TRAINING_FORM_SECTION_CONFIGS = Object.freeze([
-  Object.freeze({ key: "safe-work", number: "02", title: "Osposobljavanje za rad na siguran način" }),
-  Object.freeze({ key: "authorized", number: "03", title: "Osposobljavanje ovlaštenika/povjerenika" }),
-  Object.freeze({ key: "evacuation", number: "04", title: "Osposobljavanje za evakuacije i spašavanje" }),
-  Object.freeze({ key: "fire", number: "05", title: "Početno gašenje požara" }),
-  Object.freeze({ key: "dangerous-goods", number: "06", title: "Skladištenje zapaljivih tekućina i plinova i ADR" }),
+  Object.freeze({ key: "safe-work", number: "02", title: "Osposobljavanje za rad na siguran način", fallbackTypes: ["safe_work"] }),
+  Object.freeze({ key: "authorized", number: "03", title: "Osposobljavanje ovlaštenika/povjerenika", fallbackTypes: ["authorized_training"] }),
+  Object.freeze({ key: "evacuation", number: "04", title: "Osposobljavanje za evakuacije i spašavanje", fallbackTypes: ["evacuation_rescue"] }),
+  Object.freeze({ key: "fire", number: "05", title: "Početno gašenje požara", fallbackTypes: ["fire_initial"] }),
+  Object.freeze({ key: "dangerous-goods", number: "06", title: "Skladištenje zapaljivih tekućina i plinova i ADR", fallbackTypes: ["flammable_storage", "adr"] }),
 ]);
 
 function getPeopleTrainingFormSectionKey(item = {}) {
@@ -8531,6 +8625,78 @@ function getPeopleTrainingFormSectionBrief(items = []) {
     .join("  |  ");
 }
 
+function getPeopleTrainingRawSourceItemForType(record = {}, typeOption = {}) {
+  const normalizedType = String(typeOption.value || "").trim().toLowerCase();
+  const normalizedCode = String(typeOption.serviceCode || typeOption.shortLabel || "").trim().toLowerCase();
+  return normalizePeopleTrainingSourceItems(record?.trainingItems ?? []).find((item) => {
+    const sourceType = String(item?.type || "").trim().toLowerCase();
+    if (sourceType && sourceType === normalizedType) {
+      return true;
+    }
+    const sourceCodes = [
+      item?.serviceCode,
+      item?.shortLabel,
+      item?.label,
+      item?.serviceName,
+    ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
+    return normalizedCode && sourceCodes.includes(normalizedCode);
+  }) ?? {};
+}
+
+function createPeopleTrainingFallbackItemForSection(typeValue = "", record = {}) {
+  const typeOption = getPeopleTrainingTypeOption(typeValue, record?.trainingItems ?? []);
+  const sourceItem = getPeopleTrainingRawSourceItemForType(record, typeOption);
+  const validForever = sourceItem?.validForever === true || String(sourceItem?.validForever) === "true";
+  const passedOn = normalizePeopleTrainingDate(sourceItem?.passedOn ?? sourceItem?.passedDate);
+  const issuedOn = normalizePeopleTrainingDate(sourceItem?.issuedOn ?? sourceItem?.issuedDate) || passedOn;
+  const item = {
+    type: String(typeOption.value || typeValue || "").trim(),
+    label: String(sourceItem?.label || typeOption.label || "").trim(),
+    shortLabel: String(sourceItem?.shortLabel || typeOption.shortLabel || "").trim(),
+    serviceId: String(sourceItem?.serviceId || sourceItem?.serviceCatalogId || typeOption.serviceId || "").trim(),
+    serviceName: String(sourceItem?.serviceName || typeOption.serviceName || "").trim(),
+    serviceCode: String(sourceItem?.serviceCode || typeOption.serviceCode || "").trim(),
+    linkedTemplateIds: Array.isArray(sourceItem?.linkedTemplateIds) ? sourceItem.linkedTemplateIds : (typeOption.linkedTemplateIds ?? []),
+    linkedTemplateTitles: Array.isArray(sourceItem?.linkedTemplateTitles) ? sourceItem.linkedTemplateTitles : (typeOption.linkedTemplateTitles ?? []),
+    linkedLearningTestIds: Array.isArray(sourceItem?.linkedLearningTestIds) ? sourceItem.linkedLearningTestIds : (typeOption.linkedLearningTestIds ?? []),
+    linkedLearningTestTitles: Array.isArray(sourceItem?.linkedLearningTestTitles) ? sourceItem.linkedLearningTestTitles : (typeOption.linkedLearningTestTitles ?? []),
+    issuedOn,
+    passedOn,
+    validUntil: validForever ? "" : normalizePeopleTrainingDate(sourceItem?.validUntil ?? sourceItem?.validTo ?? sourceItem?.expiresOn),
+    validForever,
+    certificateNumber: String(sourceItem?.certificateNumber ?? sourceItem?.documentNumber ?? sourceItem?.number ?? "").trim(),
+    recordNumber: String(sourceItem?.recordNumber ?? sourceItem?.zapisnikNumber ?? "").trim(),
+    provider: String(sourceItem?.provider ?? sourceItem?.institution ?? sourceItem?.organizer ?? "").trim(),
+    examMode: String(sourceItem?.examMode ?? sourceItem?.sourceMode ?? "").trim(),
+    workOrderId: String(sourceItem?.workOrderId ?? "").trim(),
+    workOrderNumber: String(sourceItem?.workOrderNumber ?? "").trim(),
+    learningTestId: String(sourceItem?.learningTestId ?? "").trim(),
+    learningTestTitle: String(sourceItem?.learningTestTitle ?? "").trim(),
+    certificateStatus: String(sourceItem?.certificateStatus ?? "").trim(),
+    certificateDocumentId: String(sourceItem?.certificateDocumentId ?? "").trim(),
+    details: sourceItem?.details && typeof sourceItem.details === "object" && !Array.isArray(sourceItem.details)
+      ? { ...sourceItem.details }
+      : {},
+    isActive: sourceItem?.isActive !== false,
+    activeFrom: normalizePeopleTrainingDate(sourceItem?.activeFrom),
+    activeUntil: normalizePeopleTrainingDate(sourceItem?.activeUntil),
+    archivedAt: String(sourceItem?.archivedAt ?? "").trim(),
+    history: Array.isArray(sourceItem?.history) ? sourceItem.history : [],
+    note: String(sourceItem?.note ?? "").trim(),
+    status: String(sourceItem?.status ?? "").trim().toLowerCase(),
+  };
+  return {
+    ...item,
+    status: getPeopleTrainingItemStatus(item),
+  };
+}
+
+function getPeopleTrainingFallbackItemsForSection(config = {}, record = {}) {
+  return (config.fallbackTypes ?? [])
+    .map((typeValue) => createPeopleTrainingFallbackItemForSection(typeValue, record))
+    .filter((item) => item.type);
+}
+
 function createPeopleTrainingSectionSummary({ number = "", title = "", brief = "", statusClass = "" } = {}) {
   const summary = document.createElement("summary");
   summary.className = "people-training-section-summary";
@@ -8602,7 +8768,9 @@ function createPeopleTrainingTypeCardActions(record = {}, item = {}) {
   actions.className = "people-training-type-actions";
 
   const certificateDocument = getPeopleTrainingCertificateDocument(record, item);
-  const hasTemplate = hasPeopleTrainingCertificateTemplateForItem(item, personRecord);
+  const hasTemplate = hasPeopleTrainingCertificateTemplateForItem(item, record);
+  const assignment = getPeopleTrainingCompanyTemplateAssignmentForItem(record, item);
+  const usesIsZnr = String(assignment?.kind || "") === "is_znr";
   const historyCount = Array.isArray(item.history) ? item.history.length : 0;
 
   const status = document.createElement("span");
@@ -8610,8 +8778,10 @@ function createPeopleTrainingTypeCardActions(record = {}, item = {}) {
   status.textContent = certificateDocument
     ? "Aktivni PDF spreman"
     : hasTemplate
-      ? "PDF predložak spreman"
-      : "Nema PDF predloška";
+      ? "Word predložak spreman"
+      : usesIsZnr
+        ? "IS ZNR odabran"
+        : "Predložak ili IS ZNR se bira u List of services";
 
   const button = document.createElement("button");
   button.type = "button";
@@ -8620,7 +8790,7 @@ function createPeopleTrainingTypeCardActions(record = {}, item = {}) {
   button.disabled = !record?.id || !hasTemplate;
   button.title = hasTemplate
     ? "Izradi novi aktivni PDF iz Word predloška. Stari PDF ostaje u arhivi."
-    : "U List of services dodaj Word predložak uvjerenja za ovu uslugu.";
+    : "Za PDF dodaj Word predložak u List of services; za IS ZNR ovaj gumb nije potreban.";
   button.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -8728,7 +8898,8 @@ function createPeopleTrainingTypeCard(item = {}, record = {}) {
 
 function createPeopleTrainingFormSection(config = {}, items = [], index = 0, record = {}) {
   const details = document.createElement("details");
-  const statusClass = getPeopleTrainingFormSectionStatusClass(items);
+  const effectiveItems = items.length ? items : getPeopleTrainingFallbackItemsForSection(config, record);
+  const statusClass = getPeopleTrainingFormSectionStatusClass(effectiveItems);
   details.className = `people-training-editor-section people-training-training-section ${statusClass}`;
   details.open = index === 0;
   details.dataset.trainingSection = config.key || "";
@@ -8736,18 +8907,18 @@ function createPeopleTrainingFormSection(config = {}, items = [], index = 0, rec
   details.append(createPeopleTrainingSectionSummary({
     number: config.number,
     title: config.title,
-    brief: getPeopleTrainingFormSectionBrief(items),
+    brief: getPeopleTrainingFormSectionBrief(effectiveItems),
     statusClass,
   }));
 
   const body = document.createElement("div");
   body.className = "people-training-section-body";
-  if (items.length) {
-    body.replaceChildren(...items.map((item) => createPeopleTrainingTypeCard(item, record)));
+  if (effectiveItems.length) {
+    body.replaceChildren(...effectiveItems.map((item) => createPeopleTrainingTypeCard(item, record)));
   } else {
     const empty = document.createElement("p");
     empty.className = "empty-state";
-    empty.textContent = "U List of services trenutno nema usluge koja pripada ovom bloku.";
+    empty.textContent = "Dodaj ili odaberi podatke za ovaj blok.";
     body.append(empty);
   }
   details.append(body);
@@ -8937,7 +9108,10 @@ function readPeopleTrainingGridItems() {
     oib: peopleTrainingOibInput?.value || activeRecord?.oib || "",
   };
   const existingByType = new Map(
-    normalizePeopleTrainingItemsForUi(activeRecord?.trainingItems ?? [])
+    [
+      ...PEOPLE_TRAINING_FORM_SECTION_CONFIGS.flatMap((config) => getPeopleTrainingFallbackItemsForSection(config, activeRecord ?? {})),
+      ...normalizePeopleTrainingItemsForUi(activeRecord?.trainingItems ?? []),
+    ]
       .map((item) => [item.type, item]),
   );
   return Array.from(peopleTrainingFormTrainingGrid.querySelectorAll("[data-training-type]")).map((card) => {
@@ -10202,7 +10376,10 @@ function buildPeopleTrainingWorkOrderPayload(group = {}, selection = {}) {
   const serviceItems = serviceEntries
     .map((entry) => buildPeopleTrainingWorkOrderServiceItem(entry.typeOption, entry.item))
     .filter(Boolean);
+  const company = getPeopleTrainingCompany(group.companyId);
   const location = group.locationId ? getPeopleTrainingLocation(group.locationId) : null;
+  const openingExecutor = getUserDisplayLabel(state.user || {});
+  const locationName = location?.name || company?.headquarters || "Sjedište";
   const peopleLines = records
     .map((record) => {
       const recordEntries = entries.filter((entry) => String(entry.record?.id) === String(record.id));
@@ -10227,14 +10404,15 @@ function buildPeopleTrainingWorkOrderPayload(group = {}, selection = {}) {
     teamLabel: "Osposobljavanje ljudi",
     companyId: group.companyId || "",
     locationId: group.locationId || "",
+    locationName,
     coordinates: location?.coordinates || "",
     region: location?.region || "",
     contactSlot: "",
-    contactName: "",
-    contactPhone: "",
-    contactEmail: "",
-    executors: [],
-    executor1: "",
+    contactName: company?.representative || "",
+    contactPhone: company?.contactPhone || "",
+    contactEmail: company?.contactEmail || "",
+    executors: openingExecutor ? [openingExecutor] : [],
+    executor1: openingExecutor || "",
     executor2: "",
     measurementSheet: null,
     serviceItems,
@@ -10372,12 +10550,12 @@ async function assignPeopleTrainingLearningTestsForWorkOrder(records = [], typeO
   return true;
 }
 
-async function linkPeopleTrainingRecordsToWorkOrder(records = [], typeOption = {}, workOrder = {}) {
+async function linkPeopleTrainingRecordsToWorkOrder(records = [], typeOption = {}, workOrder = {}, options = {}) {
   const entries = getPeopleTrainingBulkSelectedEntries(records, typeOption);
-  return linkPeopleTrainingEntriesToWorkOrder(entries, workOrder);
+  return linkPeopleTrainingEntriesToWorkOrder(entries, workOrder, options);
 }
 
-async function linkPeopleTrainingEntriesToWorkOrder(entries = [], workOrder = {}) {
+async function linkPeopleTrainingEntriesToWorkOrder(entries = [], workOrder = {}, options = {}) {
   if (!workOrder?.id || !entries.length) {
     return false;
   }
@@ -10402,8 +10580,15 @@ async function linkPeopleTrainingEntriesToWorkOrder(entries = [], workOrder = {}
       }
       const typeOption = entry.typeOption ?? {};
       const linkedLearningTests = getPeopleTrainingLinkedLearningTests(typeOption);
-      const primaryLearningTest = linkedLearningTests[0] ?? null;
       const alreadyPassed = isPeopleTrainingItemPassed(item);
+      const requestedExamMode = ["online", "live"].includes(String(options.examMode || "").trim().toLowerCase())
+        ? String(options.examMode || "").trim().toLowerCase()
+        : "";
+      const useOnlineExam = requestedExamMode
+        ? requestedExamMode === "online"
+        : linkedLearningTests.length > 0 && !alreadyPassed;
+      const primaryLearningTest = useOnlineExam ? (linkedLearningTests[0] ?? null) : null;
+      const assignOnlineTest = Boolean(primaryLearningTest && !alreadyPassed);
       return {
         ...item,
         label: typeOption.label || item.label || "",
@@ -10415,12 +10600,12 @@ async function linkPeopleTrainingEntriesToWorkOrder(entries = [], workOrder = {}
         linkedTemplateTitles: typeOption.linkedTemplateTitles || item.linkedTemplateTitles || [],
         linkedLearningTestIds: typeOption.linkedLearningTestIds || item.linkedLearningTestIds || [],
         linkedLearningTestTitles: typeOption.linkedLearningTestTitles || item.linkedLearningTestTitles || [],
-        examMode: linkedLearningTests.length > 0 && !alreadyPassed ? "online" : "live",
+        examMode: requestedExamMode || (useOnlineExam ? "online" : "live"),
         workOrderId: String(workOrder.id || ""),
         workOrderNumber: String(workOrder.workOrderNumber || ""),
-        learningTestId: primaryLearningTest && !alreadyPassed ? String(primaryLearningTest.id || "") : item.learningTestId,
-        learningTestTitle: primaryLearningTest && !alreadyPassed ? String(primaryLearningTest.title || "") : item.learningTestTitle,
-        certificateStatus: linkedLearningTests.length > 0 && !alreadyPassed ? "assigned" : item.certificateStatus,
+        learningTestId: assignOnlineTest ? String(primaryLearningTest.id || "") : item.learningTestId,
+        learningTestTitle: assignOnlineTest ? String(primaryLearningTest.title || "") : item.learningTestTitle,
+        certificateStatus: assignOnlineTest ? "assigned" : item.certificateStatus,
         status: "",
       };
     });
@@ -10467,7 +10652,7 @@ async function assignPeopleTrainingLearningTestsForEntries(entries = [], workOrd
   return true;
 }
 
-async function createPeopleTrainingWorkOrdersForRecords(records = [], selection = {}) {
+async function createPeopleTrainingWorkOrdersForRecords(records = [], selection = {}, options = {}) {
   if (!getCanEditOperationalData()) {
     setPeopleTrainingFeedback("Nemaš pravo otvarati radne naloge.", "error");
     return [];
@@ -10501,13 +10686,15 @@ async function createPeopleTrainingWorkOrdersForRecords(records = [], selection 
     const created = findCreatedWorkOrderMatch(previousIds, payload);
     if (created) {
       createdWorkOrders.push(created);
-      const linked = await linkPeopleTrainingEntriesToWorkOrder(group.entries, created);
+      const linked = await linkPeopleTrainingEntriesToWorkOrder(group.entries, created, options);
       if (!linked) {
         return createdWorkOrders;
       }
-      const assigned = await assignPeopleTrainingLearningTestsForEntries(group.entries, created);
-      if (!assigned) {
-        return createdWorkOrders;
+      if (String(options.examMode || "").trim().toLowerCase() !== "live") {
+        const assigned = await assignPeopleTrainingLearningTestsForEntries(group.entries, created);
+        if (!assigned) {
+          return createdWorkOrders;
+        }
       }
       queueGeneratedWorkOrderPdfSave(created.id);
     }
@@ -10516,7 +10703,18 @@ async function createPeopleTrainingWorkOrdersForRecords(records = [], selection 
   return createdWorkOrders;
 }
 
-async function openPeopleTrainingForService(record = {}, item = {}) {
+function closePeopleTrainingServiceLaunchDialog(dialog = null) {
+  const target = dialog || document.querySelector(".people-training-service-launch-backdrop");
+  if (target instanceof HTMLElement) {
+    if (target.peopleTrainingLaunchKeydownHandler) {
+      document.removeEventListener("keydown", target.peopleTrainingLaunchKeydownHandler, true);
+    }
+    target.remove();
+  }
+  document.body.classList.remove("modal-open");
+}
+
+async function startPeopleTrainingServiceMode(record = {}, item = {}, mode = "online", dialog = null) {
   if (!record?.id) {
     return;
   }
@@ -10526,19 +10724,133 @@ async function openPeopleTrainingForService(record = {}, item = {}) {
     : null;
 
   if (existingWorkOrder) {
+    closePeopleTrainingServiceLaunchDialog(dialog);
     hydrateWorkOrderForm(existingWorkOrder);
     setPeopleTrainingFeedback(`Otvoren je RN ${existingWorkOrder.workOrderNumber || ""} za ovu uslugu.`.trim(), "success");
     return;
   }
 
   const typeOption = getPeopleTrainingTypeOption(item.type, record.trainingItems);
-  const created = await createPeopleTrainingWorkOrdersForRecords([record], typeOption);
+  const created = await createPeopleTrainingWorkOrdersForRecords([record], typeOption, { examMode: mode });
+  closePeopleTrainingServiceLaunchDialog(dialog);
   renderPeopleTrainingModule();
 
   if (created[0]) {
     hydrateWorkOrderForm(created[0]);
-    setPeopleTrainingFeedback(`Otvoren je RN ${created[0].workOrderNumber || ""} za ${typeOption.label || "osposobljavanje"}.`.trim(), "success");
+    const modeLabel = mode === "live" ? "uživo osposobljavanje" : "online osposobljavanje";
+    setPeopleTrainingFeedback(`Otvoren je RN ${created[0].workOrderNumber || ""} za ${modeLabel}: ${typeOption.label || "osposobljavanje"}.`.trim(), "success");
   }
+}
+
+function openPeopleTrainingForService(record = {}, item = {}) {
+  if (!record?.id) {
+    return;
+  }
+
+  const typeOption = getPeopleTrainingTypeOption(item.type, record.trainingItems);
+  const existingWorkOrder = item.workOrderId
+    ? state.workOrders.find((workOrder) => String(workOrder.id) === String(item.workOrderId))
+    : null;
+
+  closePeopleTrainingServiceLaunchDialog();
+  const backdrop = document.createElement("div");
+  backdrop.className = "people-training-service-launch-backdrop";
+  backdrop.setAttribute("role", "presentation");
+
+  const modal = document.createElement("section");
+  modal.className = "people-training-service-launch-modal";
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-modal", "true");
+  modal.setAttribute("aria-label", "Odabir načina osposobljavanja");
+
+  const head = document.createElement("div");
+  head.className = "people-training-service-launch-head";
+  const copy = document.createElement("div");
+  const kicker = document.createElement("p");
+  kicker.className = "section-kicker";
+  kicker.textContent = "Osposobljavanje";
+  const title = document.createElement("h4");
+  title.textContent = typeOption.label || item.label || "Odaberi način";
+  const subtitle = document.createElement("span");
+  subtitle.textContent = [
+    getPeopleTrainingRecordDisplayName(record),
+    record.companyName || getPeopleTrainingCompany(record.companyId)?.name || "",
+    record.locationName || getPeopleTrainingLocation(record.locationId)?.name || "Sjedište / sve lokacije",
+  ].filter(Boolean).join(" · ");
+  copy.append(kicker, title, subtitle);
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.className = "ghost-button";
+  closeButton.textContent = "Zatvori";
+  closeButton.addEventListener("click", () => closePeopleTrainingServiceLaunchDialog(backdrop));
+  head.append(copy, closeButton);
+
+  const choices = document.createElement("div");
+  choices.className = "people-training-service-launch-choices";
+
+  const createChoice = ({ mode, title: choiceTitle, text, icon }) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "people-training-service-launch-choice";
+    const iconNode = document.createElement("span");
+    iconNode.className = "people-training-service-launch-icon";
+    iconNode.innerHTML = getWorkOrderIconMarkup(icon);
+    const label = document.createElement("strong");
+    label.textContent = choiceTitle;
+    const helper = document.createElement("small");
+    helper.textContent = text;
+    button.append(iconNode, label, helper);
+    button.addEventListener("click", () => {
+      void startPeopleTrainingServiceMode(record, item, mode, backdrop);
+    });
+    return button;
+  };
+
+  choices.append(
+    createChoice({
+      mode: "online",
+      title: "Online osposobljavanje",
+      text: "Otvori RN i dodijeli povezani online ispit ako postoji.",
+      icon: "service",
+    }),
+    createChoice({
+      mode: "live",
+      title: "Uživo / live osposobljavanje",
+      text: "Otvori RN bez automatskog slanja online testa.",
+      icon: "team",
+    }),
+  );
+
+  if (existingWorkOrder) {
+    const existing = document.createElement("button");
+    existing.type = "button";
+    existing.className = "ghost-button people-training-service-existing-button";
+    existing.textContent = `Otvori postojeći RN ${existingWorkOrder.workOrderNumber || ""}`.trim();
+    existing.addEventListener("click", () => {
+      void startPeopleTrainingServiceMode(record, item, "online", backdrop);
+    });
+    choices.append(existing);
+  }
+
+  modal.append(head, choices);
+  backdrop.append(modal);
+  backdrop.addEventListener("click", (event) => {
+    if (event.target === backdrop) {
+      closePeopleTrainingServiceLaunchDialog(backdrop);
+    }
+  });
+  const handleKeydown = (event) => {
+    if (event.key === "Escape" && document.body.contains(backdrop)) {
+      closePeopleTrainingServiceLaunchDialog(backdrop);
+    }
+  };
+  backdrop.peopleTrainingLaunchKeydownHandler = handleKeydown;
+  document.addEventListener("keydown", handleKeydown, true);
+  document.body.append(backdrop);
+  document.body.classList.add("modal-open");
+  requestAnimationFrame(() => {
+    choices.querySelector("button")?.focus({ preventScroll: true });
+  });
 }
 
 function buildPeopleTrainingWorkOrderOptions(record = {}) {
@@ -11186,6 +11498,9 @@ function renderPeopleTrainingModule() {
   syncPeopleTrainingActionAccess();
   if (peopleTrainingSearchInput && peopleTrainingSearchInput.value !== state.peopleTrainingFilters.query) {
     peopleTrainingSearchInput.value = state.peopleTrainingFilters.query || "";
+  }
+  if (peopleTrainingExamSearchInput && peopleTrainingExamSearchInput.value !== (state.peopleTrainingExamQuery || "")) {
+    peopleTrainingExamSearchInput.value = state.peopleTrainingExamQuery || "";
   }
   syncPeopleTrainingSelectOptions();
   renderPeopleTrainingStats();
@@ -88083,8 +88398,12 @@ peopleTrainingList?.addEventListener("click", (event) => {
 
 peopleTrainingSearchInput?.addEventListener("input", () => {
   state.peopleTrainingFilters.query = peopleTrainingSearchInput.value.trim();
-  renderPeopleTrainingExamOverview();
   renderPeopleTrainingList();
+});
+
+peopleTrainingExamSearchInput?.addEventListener("input", () => {
+  state.peopleTrainingExamQuery = peopleTrainingExamSearchInput.value.trim();
+  renderPeopleTrainingExamOverview();
 });
 
 peopleTrainingCompanyFilterInput?.addEventListener("change", () => {
@@ -88114,6 +88433,25 @@ peopleTrainingStatusFilterInput?.addEventListener("change", () => {
 peopleTrainingExamSelect?.addEventListener("change", () => {
   state.peopleTrainingExamSelection = peopleTrainingExamSelect.value || "rn";
   renderPeopleTrainingExamOverview();
+});
+
+function togglePeopleTrainingExamCollapsed() {
+  state.peopleTrainingExamCollapsed = !state.peopleTrainingExamCollapsed;
+  renderPeopleTrainingExamOverview();
+}
+
+peopleTrainingExamCollapseButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  togglePeopleTrainingExamCollapsed();
+});
+
+peopleTrainingExamOverviewCard?.querySelector(".people-training-exam-head")?.addEventListener("click", (event) => {
+  const target = event.target instanceof Element ? event.target : null;
+  if (target?.closest("button, input, select, label, a")) {
+    return;
+  }
+  togglePeopleTrainingExamCollapsed();
 });
 
 peopleTrainingOpenExamButton?.addEventListener("click", () => {

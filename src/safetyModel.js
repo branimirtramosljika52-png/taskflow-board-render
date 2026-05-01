@@ -5726,16 +5726,18 @@ function getPersonTrainingItemStatus(item = {}, today = todayString()) {
   if (normalizeText(item.status) === "not_required") {
     return "not_required";
   }
-  if (normalizeBoolean(item.validForever, false)) {
-    return "valid";
-  }
 
   const validUntil = normalizeOptionalDate(item.validUntil);
   const issuedOn = normalizeOptionalDate(item.issuedOn);
+  const passedOn = normalizeOptionalDate(item.passedOn ?? item.passedDate);
   const certificateNumber = normalizeText(item.certificateNumber);
+  const recordNumber = normalizeText(item.recordNumber ?? item.zapisnikNumber);
 
-  if (!validUntil && !issuedOn && !certificateNumber) {
+  if (!issuedOn && !passedOn && !certificateNumber && !recordNumber) {
     return "missing";
+  }
+  if (normalizeBoolean(item.validForever, false)) {
+    return "valid";
   }
   if (!validUntil) {
     return "valid";
@@ -6357,6 +6359,7 @@ function hydrateWorkOrderCore(base, company, location) {
     ? getWorkOrderServiceItems(base)
     : getWorkOrderServiceItems(base);
   const measurementSheet = normalizeWorkOrderMeasurementSheet(base?.measurementSheet);
+  const locationSnapshot = resolveLocationSnapshot(location);
   const trainingContext = {
     name: normalizeText(base?.trainingContext?.name),
     role: normalizeText(base?.trainingContext?.role),
@@ -6376,7 +6379,10 @@ function hydrateWorkOrderCore(base, company, location) {
       ? serviceItems.map((item) => item.name || item.serviceCode).filter(Boolean).join(" · ")
       : normalizeText(base?.serviceLine),
     ...resolveCompanySnapshot(company),
-    ...resolveLocationSnapshot(location),
+    ...locationSnapshot,
+    locationName: locationSnapshot.locationName || normalizeText(base?.locationName),
+    coordinates: locationSnapshot.coordinates || normalizeText(base?.coordinates),
+    region: locationSnapshot.region || normalizeText(base?.region),
   };
 }
 

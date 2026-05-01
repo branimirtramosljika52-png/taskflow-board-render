@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260501i" />
+    <link rel="stylesheet" href="/styles.css?v=20260501j" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -3758,37 +3758,19 @@
                   <h4 id="people-training-exam-title">Praćenje polaganja po RN-u</h4>
                 </div>
                 <div class="people-training-exam-controls">
+                  <label class="people-training-exam-search-label">
+                    <span>Pretraga</span>
+                    <input id="people-training-exam-search" type="search" placeholder="RN, osoba, usluga..." />
+                  </label>
                   <select id="people-training-exam-select" aria-label="Odaberi ispit za pregled"></select>
                   <button id="people-training-open-exam" type="button" class="ghost-button">Otvori ispit</button>
+                  <button id="people-training-exam-collapse" type="button" class="ghost-button people-training-collapse-button" aria-expanded="true" aria-label="Minimiziraj praćenje ispita">−</button>
                 </div>
               </div>
               <p id="people-training-exam-summary" class="helper-copy module-copy">Prati po radnom nalogu tko polaže, tko čeka i tko je završio ispit.</p>
               <div id="people-training-exam-list" class="people-training-exam-list"></div>
               <p id="people-training-exam-empty" class="empty-state" hidden>Nema osoba za odabrani ispit.</p>
             </section>
-
-            <div class="people-training-toolbar">
-              <label>
-                <span>Pretraga</span>
-                <input id="people-training-search" type="search" placeholder="Ime, OIB, tvrtka, potvrda..." />
-              </label>
-              <label>
-                <span>Tvrtka</span>
-                <select id="people-training-company-filter"></select>
-              </label>
-              <label>
-                <span>Lokacija</span>
-                <select id="people-training-location-filter"></select>
-              </label>
-              <label>
-                <span>Vrsta</span>
-                <select id="people-training-type-filter"></select>
-              </label>
-              <label>
-                <span>Status</span>
-                <select id="people-training-status-filter"></select>
-              </label>
-            </div>
 
             <div id="people-training-editor-backdrop" class="offer-editor-backdrop people-training-editor-backdrop" hidden></div>
             <div class="people-training-layout">
@@ -3905,6 +3887,28 @@
                     <button id="people-training-bulk-open-button" type="button" class="primary-button" disabled>Masovno osposobljavanje</button>
                     <span id="people-training-list-count" class="soft-pill">0 zapisa</span>
                   </div>
+                </div>
+                <div class="people-training-toolbar">
+                  <label>
+                    <span>Pretraga</span>
+                    <input id="people-training-search" type="search" placeholder="Ime, OIB, tvrtka, potvrda..." />
+                  </label>
+                  <label>
+                    <span>Tvrtka</span>
+                    <select id="people-training-company-filter"></select>
+                  </label>
+                  <label>
+                    <span>Lokacija</span>
+                    <select id="people-training-location-filter"></select>
+                  </label>
+                  <label>
+                    <span>Vrsta</span>
+                    <select id="people-training-type-filter"></select>
+                  </label>
+                  <label>
+                    <span>Status</span>
+                    <select id="people-training-status-filter"></select>
+                  </label>
                 </div>
                 <div id="people-training-list" class="people-training-list"></div>
                 <p id="people-training-empty" class="empty-state" hidden>Nema evidentiranih osposobljavanja za odabrane filtere.</p>
@@ -7358,6 +7362,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260501r"></script>
+    <script type="module" src="/src/main.js?v=20260501s"></script>
   </body>
 </html>
