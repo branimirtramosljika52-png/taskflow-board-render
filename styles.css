@@ -39637,6 +39637,8 @@ button.work-order-editor-section-head {
 
 .people-training-import-preview {
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  align-content: start;
   gap: 12px;
 }
 
@@ -39657,27 +39659,30 @@ button.work-order-editor-section-head {
 .people-training-import-stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  align-self: start;
+  gap: 6px;
 }
 
 .people-training-import-stat {
-  display: grid;
-  gap: 2px;
-  padding: 10px 12px;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
   border: 1px solid rgba(213, 222, 238, 0.84);
-  border-radius: 12px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.9);
 }
 
 .people-training-import-stat strong {
   color: #17213a;
-  font-size: 1.35rem;
+  font-size: 1.05rem;
   line-height: 1;
 }
 
 .people-training-import-stat span {
   color: #64748b;
-  font-size: 0.76rem;
+  font-size: 0.66rem;
   font-weight: 800;
   text-transform: uppercase;
 }
@@ -39782,34 +39787,33 @@ button.work-order-editor-section-head {
 .people-training-import-changes {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
 .people-training-import-change {
-  max-width: min(420px, 100%);
+  max-width: min(320px, 100%);
+  min-width: 170px;
   display: inline-grid;
-  grid-template-columns: auto minmax(0, 1fr);
   gap: 5px;
-  align-items: center;
-  padding: 5px 8px;
+  padding: 6px;
   border: 1px solid rgba(203, 213, 225, 0.75);
-  border-radius: 999px;
+  border-radius: 12px;
   background: rgba(248, 250, 252, 0.94);
   color: #475569;
-  font-size: 0.74rem;
+  font-size: 0.72rem;
 }
 
 .people-training-import-row.is-update .people-training-import-change:not(.is-more),
 .people-training-import-row.is-departure .people-training-import-change:not(.is-more) {
-  border-color: rgba(248, 113, 113, 0.58);
-  background: rgba(255, 241, 242, 0.96);
-  color: #9f1239;
+  border-color: rgba(34, 197, 94, 0.4);
+  background: rgba(240, 253, 244, 0.62);
+  color: #14532d;
 }
 
 .people-training-import-row.is-update .people-training-import-change:not(.is-more) strong,
 .people-training-import-row.is-departure .people-training-import-change:not(.is-more) strong {
-  color: #be123c;
+  color: #14532d;
 }
 
 .people-training-import-row.is-create .people-training-import-row-message {
@@ -39817,20 +39821,72 @@ button.work-order-editor-section-head {
   font-weight: 800;
 }
 
-.people-training-import-change strong {
+.people-training-import-change-label {
   color: #1f2d48;
+  font-size: 0.7rem;
+  line-height: 1;
+  text-transform: uppercase;
 }
 
-.people-training-import-change span {
+.people-training-import-change-flow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+}
+
+.people-training-import-change-value {
   min-width: 0;
+  display: block;
+  padding: 5px 7px;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  border-radius: 10px;
   overflow: hidden;
+  background: rgba(226, 232, 240, 0.72);
+  color: #475569;
+  font-weight: 850;
+  line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.people-training-import-change-value.is-after {
+  border-color: rgba(22, 163, 74, 0.55);
+  background: rgba(34, 197, 94, 0.88);
+  color: #ffffff;
+  box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.36);
+  animation: peopleTrainingImportPulse 1.7s ease-in-out infinite;
+}
+
+.people-training-import-change-arrow {
+  color: #0f172a;
+  font-size: 0.9rem;
+  font-weight: 950;
+}
+
 .people-training-import-change.is-more {
   display: inline-flex;
+  min-width: 0;
+  align-items: center;
   font-weight: 800;
+}
+
+@keyframes peopleTrainingImportPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.36);
+  }
+  70% {
+    box-shadow: 0 0 0 7px rgba(34, 197, 94, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .people-training-import-change-value.is-after {
+    animation: none;
+  }
 }
 
 .people-training-bulk-preview-table-wrap,

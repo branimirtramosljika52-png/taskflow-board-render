@@ -11377,13 +11377,25 @@ function createPeopleTrainingImportChangeChip(change = {}) {
   const chip = document.createElement("span");
   chip.className = "people-training-import-change";
   const label = document.createElement("strong");
+  label.className = "people-training-import-change-label";
   label.textContent = change.label || "Polje";
-  const value = document.createElement("span");
   const before = String(change.before || "prazno");
   const after = String(change.after || "prazno");
-  value.textContent = `${before} → ${after}`;
-  value.title = value.textContent;
-  chip.append(label, value);
+  const flow = document.createElement("span");
+  flow.className = "people-training-import-change-flow";
+  const beforeNode = document.createElement("span");
+  beforeNode.className = "people-training-import-change-value is-before";
+  beforeNode.textContent = before;
+  beforeNode.title = before;
+  const arrow = document.createElement("span");
+  arrow.className = "people-training-import-change-arrow";
+  arrow.textContent = "→";
+  const afterNode = document.createElement("span");
+  afterNode.className = "people-training-import-change-value is-after";
+  afterNode.textContent = after;
+  afterNode.title = after;
+  flow.append(beforeNode, arrow, afterNode);
+  chip.append(label, flow);
   return chip;
 }
 
