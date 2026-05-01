@@ -1589,6 +1589,7 @@ const state = {
       validityMonths: "12",
       electricalValidityMonths: "12",
       tipkaloValidityMonths: "12",
+      serviceValidityMonths: {},
       inspectorUserIds: [],
       inspectorUserId: "",
       authorizationHolderUserId: "",
@@ -1639,6 +1640,7 @@ const state = {
       validityMonths: "12",
       electricalValidityMonths: "12",
       tipkaloValidityMonths: "12",
+      serviceValidityMonths: {},
       inspectorUserIds: [],
       inspectorUserId: "",
       authorizationHolderUserId: "",
@@ -3702,9 +3704,7 @@ const workOrderDocumentCommonWeatherInput = document.querySelector("#work-order-
 const workOrderDocumentCommonGroundConditionInput = document.querySelector("#work-order-document-common-ground-condition");
 const workOrderDocumentCommonGroundResistanceInput = document.querySelector("#work-order-document-common-ground-resistance");
 const workOrderDocumentCommonRandomizeEnvironmentInput = document.querySelector("#work-order-document-common-randomize-environment");
-const workOrderDocumentCommonValidityMonthsInput = document.querySelector("#work-order-document-common-validity-months");
-const workOrderDocumentCommonElectricalValidityMonthsInput = document.querySelector("#work-order-document-common-electrical-validity-months");
-const workOrderDocumentCommonTipkaloValidityMonthsInput = document.querySelector("#work-order-document-common-tipkalo-validity-months");
+const workOrderDocumentServiceValidityGrid = document.querySelector("#work-order-document-service-validity-grid");
 
 if (dashboardBuilderPanel?.parentElement !== document.body) {
   document.body.append(dashboardBuilderPanel);
@@ -11943,6 +11943,140 @@ function getWorkOrderServiceValidityMonths(service = {}) {
     || normalizeValidityMonthsValue(service?.validityMonths);
 }
 
+function normalizeWorkOrderServiceValidityKey(value = "") {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function normalizeWorkOrderServiceValidityMap(value = {}) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([key, entryValue]) => [
+        normalizeWorkOrderServiceValidityKey(key),
+        normalizeValidityMonthsValue(entryValue),
+      ])
+      .filter(([key]) => Boolean(key)),
+  );
+}
+
+function getWorkOrderServiceValidityKey(service = {}) {
+  const catalogItem = getServiceCatalogItemForWorkOrderService(service);
+  const serviceId = String(
+    catalogItem?.id
+    ?? service?.serviceId
+    ?? service?.id
+    ?? "",
+  ).trim();
+  if (serviceId) {
+    return normalizeWorkOrderServiceValidityKey(`service:${serviceId}`);
+  }
+
+  const serviceCode = normalizeLooseName(catalogItem?.serviceCode ?? service?.serviceCode ?? "");
+  if (serviceCode) {
+    return normalizeWorkOrderServiceValidityKey(`code:${serviceCode}`);
+  }
+
+  const serviceName = normalizeLooseName(catalogItem?.name ?? service?.name ?? service?.serviceName ?? "");
+  if (serviceName) {
+    return normalizeWorkOrderServiceValidityKey(`name:${serviceName}`);
+  }
+
+  return "";
+}
+
+function getWorkOrderServiceValidityLabel(service = {}) {
+  const catalogItem = getServiceCatalogItemForWorkOrderService(service);
+  const serviceCode = String(catalogItem?.serviceCode ?? service?.serviceCode ?? "").trim();
+  const serviceName = String(catalogItem?.name ?? service?.name ?? service?.serviceName ?? "").trim();
+  if (serviceCode && serviceName && normalizeLooseName(serviceCode) !== normalizeLooseName(serviceName)) {
+    return `${serviceCode} - ${serviceName}`;
+  }
+  return serviceName || serviceCode || "Ispitna usluga";
+}
+
+function createWorkOrderServiceValidityDefinition(service = {}) {
+  const catalogItem = getServiceCatalogItemForWorkOrderService(service);
+  const source = catalogItem ?? service;
+  if (getWorkOrderServiceType(source) !== "inspection") {
+    return null;
+  }
+
+  const key = getWorkOrderServiceValidityKey(service);
+  if (!key) {
+    return null;
+  }
+
+  return {
+    key,
+    label: getWorkOrderServiceValidityLabel(service),
+    code: String(source?.serviceCode ?? service?.serviceCode ?? "").trim(),
+    name: String(source?.name ?? service?.name ?? service?.serviceName ?? "").trim(),
+    serviceId: String(source?.id ?? service?.serviceId ?? service?.id ?? "").trim(),
+    validityMonths: getWorkOrderServiceValidityMonths(service),
+  };
+}
+
+function getWorkOrderServiceValidityDefinitionsFromServices(services = []) {
+  const definitions = new Map();
+  (Array.isArray(services) ? services : []).forEach((service) => {
+    const definition = createWorkOrderServiceValidityDefinition(service);
+    if (!definition) {
+      return;
+    }
+    const existing = definitions.get(definition.key);
+    definitions.set(definition.key, {
+      ...definition,
+      validityMonths: existing?.validityMonths || definition.validityMonths,
+    });
+  });
+  return [...definitions.values()];
+}
+
+function getWorkOrderDocumentServiceValidityDefinitions(workOrders = []) {
+  return getWorkOrderServiceValidityDefinitionsFromServices(
+    (Array.isArray(workOrders) ? workOrders : [])
+      .flatMap((workOrder) => getWorkOrderDocumentWizardResolvedServiceItems(workOrder)),
+  );
+}
+
+function getInspectionServiceCatalogValidityDefinitions() {
+  return getWorkOrderServiceValidityDefinitionsFromServices(
+    sortServiceCatalogItems(state.serviceCatalog ?? [])
+      .filter((service) => getWorkOrderServiceType(service) === "inspection"),
+  );
+}
+
+function getServiceCatalogItemByValidityKey(key = "") {
+  const normalizedKey = normalizeWorkOrderServiceValidityKey(key);
+  if (!normalizedKey) {
+    return null;
+  }
+
+  return (state.serviceCatalog ?? []).find((service) => (
+    getWorkOrderServiceValidityKey(service) === normalizedKey
+  )) ?? null;
+}
+
+function findServiceItemByValidityKey(services = [], key = "") {
+  const normalizedKey = normalizeWorkOrderServiceValidityKey(key);
+  if (!normalizedKey) {
+    return null;
+  }
+
+  return (Array.isArray(services) ? services : []).find((service) => (
+    getWorkOrderServiceValidityKey(service) === normalizedKey
+  )) ?? null;
+}
+
+function getWorkOrderServiceValiditySourceValue(kind = "SERVICE_VALIDITY_MONTHS", key = "") {
+  const normalizedKind = String(kind || "SERVICE_VALIDITY_MONTHS").trim().toUpperCase();
+  const normalizedKey = normalizeWorkOrderServiceValidityKey(key).toUpperCase();
+  return normalizedKey ? `${normalizedKind}::${normalizedKey}` : normalizedKind;
+}
+
 function resolveServiceItemsDefaultValidityMonths(serviceItems = [], { fallback = "" } = {}) {
   const validityMonths = (Array.isArray(serviceItems) ? serviceItems : [])
     .map((item) => getWorkOrderServiceValidityMonths(item))
@@ -19912,6 +20046,9 @@ function createWorkOrderDocumentWizardServicePicker(workOrder = {}) {
       setWorkOrderDocumentWizardOverride(workOrder.id, {
         serviceItems: nextItems,
         ...(nextValidityMonths ? { validityMonths: nextValidityMonths } : {}),
+      });
+      syncWorkOrderDocumentWizardValidityFromServices(getAllSelectedWorkOrdersForDocumentWizard(), {
+        preserveExisting: true,
       });
       setCurrentItems(nextItems);
       renderWorkOrderDocumentWizard();
@@ -34925,6 +35062,65 @@ const DOCUMENT_TEMPLATE_SOURCE_OPTIONS = [
   { value: "CONTACT_EMAIL", label: "Kontakt - email" },
 ];
 
+function parseDocumentTemplateServiceValiditySource(value = "") {
+  const raw = String(value || "").trim();
+  const upper = raw.toUpperCase();
+  const monthsPrefix = "SERVICE_VALIDITY_MONTHS::";
+  const validUntilPrefix = "SERVICE_VALID_UNTIL::";
+
+  if (upper.startsWith(monthsPrefix)) {
+    return {
+      kind: "SERVICE_VALIDITY_MONTHS",
+      key: normalizeWorkOrderServiceValidityKey(raw.slice(monthsPrefix.length)),
+    };
+  }
+
+  if (upper.startsWith(validUntilPrefix)) {
+    return {
+      kind: "SERVICE_VALID_UNTIL",
+      key: normalizeWorkOrderServiceValidityKey(raw.slice(validUntilPrefix.length)),
+    };
+  }
+
+  return null;
+}
+
+function getDocumentTemplateDynamicServiceValiditySourceOptions() {
+  const definitions = getInspectionServiceCatalogValidityDefinitions();
+  if (definitions.length === 0) {
+    return [];
+  }
+
+  return definitions.flatMap((definition) => [
+    {
+      value: getWorkOrderServiceValiditySourceValue("SERVICE_VALID_UNTIL", definition.key),
+      label: `Dokument Vrijedi do - ${definition.label}`,
+    },
+    {
+      value: getWorkOrderServiceValiditySourceValue("SERVICE_VALIDITY_MONTHS", definition.key),
+      label: `Dokument ${definition.label} (mjeseci)`,
+    },
+  ]);
+}
+
+function getDocumentTemplateSourceOptions(selectedValue = "") {
+  const dynamicOptions = getDocumentTemplateDynamicServiceValiditySourceOptions();
+  const options = [...DOCUMENT_TEMPLATE_SOURCE_OPTIONS, ...dynamicOptions];
+  const selected = String(selectedValue || "").trim();
+  if (selected && !options.some((option) => String(option.value) === selected)) {
+    const parsedSource = parseDocumentTemplateServiceValiditySource(selected);
+    if (parsedSource) {
+      options.push({
+        value: selected,
+        label: parsedSource.kind === "SERVICE_VALID_UNTIL"
+          ? "Dokument Vrijedi do - odabrana usluga"
+          : "Dokument odabrana usluga (mjeseci)",
+      });
+    }
+  }
+  return options;
+}
+
 const DOCUMENT_TEMPLATE_OBJECT_SOURCE_VALUES = new Set([
   "OBJECT_NAME",
   "OBJECT_CODE",
@@ -35267,7 +35463,16 @@ function isDocumentTemplateMediaFileAllowed(type = "image_upload", file = null) 
 }
 
 function getDocumentTemplateFieldSourceLabel(value) {
-  return getOptionLabel(DOCUMENT_TEMPLATE_SOURCE_OPTIONS, String(value || "").trim().toUpperCase() || "CUSTOM_VALUE");
+  const normalizedValue = String(value || "").trim().toUpperCase() || "CUSTOM_VALUE";
+  const parsedSource = parseDocumentTemplateServiceValiditySource(normalizedValue);
+  if (parsedSource) {
+    const service = getServiceCatalogItemByValidityKey(parsedSource.key);
+    const serviceLabel = service ? getWorkOrderServiceValidityLabel(service) : "odabrana usluga";
+    return parsedSource.kind === "SERVICE_VALID_UNTIL"
+      ? `Dokument Vrijedi do - ${serviceLabel}`
+      : `Dokument ${serviceLabel} (mjeseci)`;
+  }
+  return getOptionLabel(getDocumentTemplateSourceOptions(normalizedValue), normalizedValue);
 }
 
 function getDocumentTemplateDatabaseTableLabel(value) {
@@ -39240,12 +39445,6 @@ const WORK_ORDER_DOCUMENT_RANDOMIZED_ENVIRONMENT_FORMAT = {
   groundResistance: { decimals: 0 },
 };
 
-const WORK_ORDER_DOCUMENT_COMMON_VALIDITY_FIELDS = [
-  ["validityMonths", "Rok važenja zapisnika"],
-  ["electricalValidityMonths", "Panik rasvjeta"],
-  ["tipkaloValidityMonths", "Tipkalo za isklop napona"],
-];
-
 function getStableStringHash(value = "") {
   const normalizedValue = String(value || "");
   let hash = 0;
@@ -39825,6 +40024,62 @@ function getDocumentTemplateFieldToken(field = {}, index = 0) {
   return `{{${normalizeDocumentTemplateFieldKeyDraft(field.key || field.wordLabel || field.label, `FIELD_${index + 1}`)}}}`;
 }
 
+function getDocumentTemplateRuntimeServiceValidityMap(workOrderId = "") {
+  const normalizedId = String(workOrderId || "").trim();
+  const record = normalizedId ? getDocumentTemplateRuntimeOverrideRecord(normalizedId) : null;
+  return {
+    ...normalizeWorkOrderServiceValidityMap(state.workOrderDocumentWizard.common?.serviceValidityMonths ?? {}),
+    ...normalizeWorkOrderServiceValidityMap(state.documentTemplateRuntime.common?.serviceValidityMonths ?? {}),
+    ...normalizeWorkOrderServiceValidityMap(record?.serviceValidityMonths ?? {}),
+  };
+}
+
+function resolveDocumentTemplateRuntimeServiceValidityMonthsByKey(workOrder = {}, serviceKey = "") {
+  const normalizedKey = normalizeWorkOrderServiceValidityKey(serviceKey);
+  if (!normalizedKey) {
+    return "";
+  }
+
+  const workOrderId = String(workOrder?.id || "").trim();
+  const validityMap = getDocumentTemplateRuntimeServiceValidityMap(workOrderId);
+  if (Object.prototype.hasOwnProperty.call(validityMap, normalizedKey)) {
+    return normalizeValidityMonthsValue(validityMap[normalizedKey]);
+  }
+
+  const service = findServiceItemByValidityKey(
+    getDocumentTemplateRuntimeResolvedServiceItems(workOrder),
+    normalizedKey,
+  ) || getServiceCatalogItemByValidityKey(normalizedKey);
+  return service ? getWorkOrderServiceValidityMonths(service) : "";
+}
+
+function resolveDocumentTemplateRuntimeServiceValidityMonthsForService(workOrder = {}, service = null) {
+  const serviceKey = service ? getWorkOrderServiceValidityKey(service) : "";
+  if (!serviceKey) {
+    return "";
+  }
+  return resolveDocumentTemplateRuntimeServiceValidityMonthsByKey(workOrder, serviceKey)
+    || getWorkOrderServiceValidityMonths(service);
+}
+
+function resolveDocumentTemplateRuntimeServiceValidityMonthsByLabel(workOrder = {}, needles = []) {
+  const normalizedNeedles = (Array.isArray(needles) ? needles : [needles])
+    .map((value) => normalizeLooseName(value))
+    .filter(Boolean);
+  if (normalizedNeedles.length === 0) {
+    return "";
+  }
+
+  const definition = getWorkOrderServiceValidityDefinitionsFromServices(
+    getDocumentTemplateRuntimeResolvedServiceItems(workOrder),
+  ).find((item) => {
+    const labelText = normalizeLooseName([item.code, item.name, item.label].filter(Boolean).join(" "));
+    return normalizedNeedles.some((needle) => labelText.includes(needle));
+  });
+
+  return definition ? resolveDocumentTemplateRuntimeServiceValidityMonthsByKey(workOrder, definition.key) : "";
+}
+
 function resolveDocumentTemplateRuntimeValidityMonths(workOrder = {}) {
   const workOrderId = String(workOrder?.id || "").trim();
   const record = workOrderId ? getDocumentTemplateRuntimeOverrideRecord(workOrderId) : null;
@@ -39836,7 +40091,7 @@ function resolveDocumentTemplateRuntimeValidityMonths(workOrder = {}) {
   }
 
   const serviceValue = getDocumentTemplateRuntimeResolvedServiceItems(workOrder)
-    .map((item) => getWorkOrderServiceValidityMonths(item))
+    .map((item) => resolveDocumentTemplateRuntimeServiceValidityMonthsForService(workOrder, item))
     .find(Boolean);
   if (serviceValue) {
     return serviceValue;
@@ -39867,7 +40122,7 @@ function resolveDocumentTemplateRuntimeServiceValidityMonths(workOrder = {}, tem
   const primaryService = getDocumentTemplateRuntimePrimaryServiceItem(workOrder, template)
     || getDocumentTemplateRuntimeResolvedServiceItems(workOrder)[0]
     || null;
-  return getWorkOrderServiceValidityMonths(primaryService)
+  return resolveDocumentTemplateRuntimeServiceValidityMonthsForService(workOrder, primaryService)
     || resolveDocumentTemplateRuntimeValidityMonths(workOrder);
 }
 
@@ -39889,8 +40144,36 @@ function resolveDocumentTemplateRuntimeValidUntilForMonthsField(workOrder = {}, 
   return addMonthsToDateKey(inspectionDate, validityMonths);
 }
 
+function resolveDocumentTemplateRuntimeServiceValiditySourceValue(source = "", context = {}, { preview = false } = {}) {
+  const parsedSource = parseDocumentTemplateServiceValiditySource(source);
+  if (!parsedSource) {
+    return "";
+  }
+
+  const workOrder = context.sampleWorkOrder || {};
+  const workOrderId = String(workOrder?.id || "").trim();
+  const service = findServiceItemByValidityKey(
+    getDocumentTemplateRuntimeResolvedServiceItems(workOrder),
+    parsedSource.key,
+  ) || getServiceCatalogItemByValidityKey(parsedSource.key);
+  const validityMonths = resolveDocumentTemplateRuntimeServiceValidityMonthsByKey(workOrder, parsedSource.key)
+    || (service ? getWorkOrderServiceValidityMonths(service) : "");
+
+  if (parsedSource.kind === "SERVICE_VALIDITY_MONTHS") {
+    return validityMonths;
+  }
+
+  const inspectionDate = workOrderId ? getDocumentTemplateRuntimeValue(workOrderId, "inspectionDate") : "";
+  const validUntil = addMonthsToDateKey(inspectionDate, validityMonths);
+  return preview && validUntil ? formatCompactDate(validUntil) : validUntil;
+}
+
 function getDocumentTemplateLookupSourcePreviewValue(source, context = {}) {
   const safeSource = String(source || "").trim().toUpperCase();
+  const serviceValiditySourceValue = resolveDocumentTemplateRuntimeServiceValiditySourceValue(safeSource, context, { preview: true });
+  if (serviceValiditySourceValue) {
+    return serviceValiditySourceValue;
+  }
   const workOrder = context.sampleWorkOrder;
   const company = context.company;
   const location = context.location;
@@ -39910,10 +40193,14 @@ function getDocumentTemplateLookupSourcePreviewValue(source, context = {}) {
   const runtimeValidUntil = resolveDocumentTemplateRuntimeValidUntil(workOrder);
   const runtimeServiceValidityMonths = resolveDocumentTemplateRuntimeServiceValidityMonths(workOrder, context.template);
   const runtimeServiceValidUntil = resolveDocumentTemplateRuntimeServiceValidUntil(workOrder, context.template);
-  const runtimeElectricalValidityMonths = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "electricalValidityMonths") : "";
-  const runtimeTipkaloValidityMonths = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "tipkaloValidityMonths") : "";
-  const runtimeElectricalValidUntil = resolveDocumentTemplateRuntimeValidUntilForMonthsField(workOrder, "electricalValidityMonths");
-  const runtimeTipkaloValidUntil = resolveDocumentTemplateRuntimeValidUntilForMonthsField(workOrder, "tipkaloValidityMonths");
+  const runtimeElectricalValidityMonths = resolveDocumentTemplateRuntimeServiceValidityMonthsByLabel(workOrder, ["panik", "rasvjet"])
+    || (workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "electricalValidityMonths") : "");
+  const runtimeTipkaloValidityMonths = resolveDocumentTemplateRuntimeServiceValidityMonthsByLabel(workOrder, ["tipkalo", "isklop"])
+    || (workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "tipkaloValidityMonths") : "");
+  const runtimeElectricalValidUntil = addMonthsToDateKey(runtimeInspectionDate, runtimeElectricalValidityMonths)
+    || resolveDocumentTemplateRuntimeValidUntilForMonthsField(workOrder, "electricalValidityMonths");
+  const runtimeTipkaloValidUntil = addMonthsToDateKey(runtimeInspectionDate, runtimeTipkaloValidityMonths)
+    || resolveDocumentTemplateRuntimeValidUntilForMonthsField(workOrder, "tipkaloValidityMonths");
   const executorNames = Array.isArray(workOrder?.executors) && workOrder.executors.length > 0
     ? workOrder.executors.join(", ")
     : [workOrder?.executor1, workOrder?.executor2].filter(Boolean).join(", ");
@@ -40055,6 +40342,10 @@ function getDocumentTemplateAdvancedLookupRuntimeValue(field = {}, context = {})
 
 function getDocumentTemplateLookupSourceRuntimeValue(source, context = {}) {
   const safeSource = String(source || "").trim().toUpperCase();
+  const serviceValiditySourceValue = resolveDocumentTemplateRuntimeServiceValiditySourceValue(safeSource, context, { preview: false });
+  if (serviceValiditySourceValue) {
+    return serviceValiditySourceValue;
+  }
   const workOrder = context.sampleWorkOrder;
   const company = context.company;
   const location = context.location;
@@ -40074,10 +40365,14 @@ function getDocumentTemplateLookupSourceRuntimeValue(source, context = {}) {
   const runtimeValidUntil = resolveDocumentTemplateRuntimeValidUntil(workOrder);
   const runtimeServiceValidityMonths = resolveDocumentTemplateRuntimeServiceValidityMonths(workOrder, context.template);
   const runtimeServiceValidUntil = resolveDocumentTemplateRuntimeServiceValidUntil(workOrder, context.template);
-  const runtimeElectricalValidityMonths = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "electricalValidityMonths") : "";
-  const runtimeTipkaloValidityMonths = workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "tipkaloValidityMonths") : "";
-  const runtimeElectricalValidUntil = resolveDocumentTemplateRuntimeValidUntilForMonthsField(workOrder, "electricalValidityMonths");
-  const runtimeTipkaloValidUntil = resolveDocumentTemplateRuntimeValidUntilForMonthsField(workOrder, "tipkaloValidityMonths");
+  const runtimeElectricalValidityMonths = resolveDocumentTemplateRuntimeServiceValidityMonthsByLabel(workOrder, ["panik", "rasvjet"])
+    || (workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "electricalValidityMonths") : "");
+  const runtimeTipkaloValidityMonths = resolveDocumentTemplateRuntimeServiceValidityMonthsByLabel(workOrder, ["tipkalo", "isklop"])
+    || (workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "tipkaloValidityMonths") : "");
+  const runtimeElectricalValidUntil = addMonthsToDateKey(runtimeInspectionDate, runtimeElectricalValidityMonths)
+    || resolveDocumentTemplateRuntimeValidUntilForMonthsField(workOrder, "electricalValidityMonths");
+  const runtimeTipkaloValidUntil = addMonthsToDateKey(runtimeInspectionDate, runtimeTipkaloValidityMonths)
+    || resolveDocumentTemplateRuntimeValidUntilForMonthsField(workOrder, "tipkaloValidityMonths");
   const executorNames = Array.isArray(workOrder?.executors) && workOrder.executors.length > 0
     ? workOrder.executors.join(", ")
     : [workOrder?.executor1, workOrder?.executor2].filter(Boolean).join(", ");
@@ -50199,7 +50494,7 @@ function getDocumentTemplateRuntimeCommonDateInitialValue(field = {}, workOrderI
   return normalizeDocumentTemplateRuntimeFieldValueByType(field, value);
 }
 
-function getDocumentTemplateRuntimeCommonValidityFieldName(field = {}) {
+function getDocumentTemplateRuntimeCommonValidityServiceKey(field = {}, workOrder = null) {
   const type = String(field?.type || "text").trim().toLowerCase();
   const source = String(field?.source || getDocumentTemplateDefaultFieldSource(type)).trim().toUpperCase();
   if (!["text", "number", "dropdown"].includes(type) || source !== "CUSTOM_VALUE") {
@@ -50230,30 +50525,44 @@ function getDocumentTemplateRuntimeCommonValidityFieldName(field = {}) {
     return "";
   }
 
-  if (labelText.includes("tipkalo") || labelText.includes("isklop")) {
-    return "tipkaloValidityMonths";
+  const runtimeDefinitions = workOrder
+    ? getWorkOrderServiceValidityDefinitionsFromServices(getDocumentTemplateRuntimeResolvedServiceItems(workOrder))
+    : [];
+  const catalogDefinitions = getInspectionServiceCatalogValidityDefinitions();
+  const definitions = [...runtimeDefinitions, ...catalogDefinitions]
+    .filter((definition, index, items) => (
+      definition?.key && items.findIndex((item) => item.key === definition.key) === index
+    ));
+
+  const matchedDefinition = definitions.find((definition) => {
+    const needles = [
+      definition.code,
+      definition.name,
+      definition.label,
+    ].map((value) => normalizeLooseName(value)).filter((value) => value.length >= 2);
+    return needles.some((needle) => labelText.includes(needle));
+  });
+
+  if (matchedDefinition) {
+    return matchedDefinition.key;
   }
 
-  if (labelText.includes("panik") || labelText.includes("rasvjet")) {
-    return "electricalValidityMonths";
-  }
-
-  return "validityMonths";
+  return runtimeDefinitions.length === 1 ? runtimeDefinitions[0].key : "";
 }
 
 function getDocumentTemplateRuntimeCommonValidityInitialValue(field = {}, workOrderId = "") {
-  const commonValidityFieldName = getDocumentTemplateRuntimeCommonValidityFieldName(field);
-  if (!commonValidityFieldName) {
-    return undefined;
-  }
-
   const normalizedWorkOrderId = String(workOrderId || state.documentTemplateRuntime.activeWorkOrderId || "").trim();
   const workOrder = normalizedWorkOrderId
     ? getDocumentTemplateRuntimeWorkOrderById(normalizedWorkOrderId)
     : null;
-  const value = commonValidityFieldName === "validityMonths" && workOrder
-    ? resolveDocumentTemplateRuntimeValidityMonths(workOrder)
-    : normalizeValidityMonthsValue(getDocumentTemplateRuntimeValue(normalizedWorkOrderId, commonValidityFieldName));
+  const serviceKey = getDocumentTemplateRuntimeCommonValidityServiceKey(field, workOrder);
+  if (!serviceKey) {
+    return undefined;
+  }
+
+  const value = workOrder
+    ? resolveDocumentTemplateRuntimeServiceValidityMonthsByKey(workOrder, serviceKey)
+    : normalizeValidityMonthsValue(getDocumentTemplateRuntimeServiceValidityMap()[serviceKey]);
 
   if (!value) {
     return undefined;
@@ -53985,7 +54294,8 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
     sourceSpan.textContent = "Veza iz baze";
     const sourceSelect = document.createElement("select");
     sourceSelect.className = "document-template-source-select";
-    replaceSelectOptions(sourceSelect, DOCUMENT_TEMPLATE_SOURCE_OPTIONS, field.source || getDocumentTemplateDefaultFieldSource(field.type));
+    const selectedSource = String(field.source || getDocumentTemplateDefaultFieldSource(field.type)).trim().toUpperCase();
+    replaceSelectOptions(sourceSelect, getDocumentTemplateSourceOptions(selectedSource), selectedSource);
     sourceSelect.addEventListener("change", () => {
       documentTemplateFieldDrafts[draftIndex].source = sourceSelect.value || "CUSTOM_VALUE";
       ensureDocumentTemplateDatabaseLookupDraft(documentTemplateFieldDrafts[draftIndex]);
@@ -74768,6 +75078,7 @@ function clearWorkOrderDocumentSelection({ closeWizard = true } = {}) {
     validityMonths: "12",
     electricalValidityMonths: "12",
     tipkaloValidityMonths: "12",
+    serviceValidityMonths: {},
     inspectorUserIds: [],
     inspectorUserId: "",
     authorizationHolderUserId: "",
@@ -74875,6 +75186,67 @@ function markWorkOrderDocumentWizardRequiredField(target, missing = false) {
   input.setAttribute("aria-required", "true");
 }
 
+function renderWorkOrderDocumentServiceValidityFields(workOrders = getAllSelectedWorkOrdersForDocumentWizard()) {
+  if (!workOrderDocumentServiceValidityGrid) {
+    return;
+  }
+
+  const selectedWorkOrders = Array.isArray(workOrders) ? workOrders : [];
+  syncWorkOrderDocumentWizardValidityFromServices(selectedWorkOrders, { preserveExisting: true });
+  const definitions = getWorkOrderDocumentServiceValidityDefinitions(selectedWorkOrders);
+  const validityMap = getWorkOrderDocumentWizardServiceValidityMap();
+  workOrderDocumentServiceValidityGrid.replaceChildren();
+
+  if (definitions.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "work-order-document-wizard-empty-note field-span-full";
+    empty.textContent = "Nema ispitnih usluga na odabranim RN-ovima.";
+    workOrderDocumentServiceValidityGrid.append(empty);
+    return;
+  }
+
+  definitions.forEach((definition) => {
+    const field = document.createElement("label");
+    field.className = "field";
+
+    const label = document.createElement("span");
+    label.textContent = definition.label;
+
+    const input = document.createElement("input");
+    input.type = "number";
+    input.min = "0";
+    input.step = "1";
+    input.inputMode = "numeric";
+    input.dataset.serviceValidityKey = definition.key;
+    input.value = normalizeValidityMonthsValue(validityMap[definition.key]) || definition.validityMonths || "";
+    input.placeholder = definition.validityMonths || "mjeseci";
+
+    const updateValue = ({ renderCommon = false } = {}) => {
+      const key = normalizeWorkOrderServiceValidityKey(input.dataset.serviceValidityKey || "");
+      const nextMap = getWorkOrderDocumentWizardServiceValidityMap();
+      nextMap[key] = normalizeValidityMonthsValue(input.value);
+      state.workOrderDocumentWizard.common.serviceValidityMonths = nextMap;
+      state.workOrderDocumentWizard.common.validityMonths = Object.values(nextMap).find(Boolean) || "";
+      if (renderCommon) {
+        renderWorkOrderDocumentWizardCommonSection();
+      }
+      renderWorkOrderDocumentWizardWorkOrders(getAllSelectedWorkOrdersForDocumentWizard());
+      if (state.workOrderDocumentWizard.step === "templates") {
+        renderWorkOrderDocumentWizardTemplates(getAllSelectedWorkOrdersForDocumentWizard());
+      }
+    };
+
+    input.addEventListener("input", () => updateValue());
+    input.addEventListener("change", () => {
+      input.value = normalizeValidityMonthsValue(input.value);
+      updateValue({ renderCommon: true });
+    });
+
+    field.append(label, input);
+    workOrderDocumentServiceValidityGrid.append(field);
+  });
+}
+
 function syncWorkOrderDocumentWizardCommonInputs() {
   const selectedWorkOrders = getAllSelectedWorkOrdersForDocumentWizard();
   const mode = state.workOrderDocumentWizard.mode || getSelectedWorkOrderDocumentMode() || "inspection";
@@ -74923,17 +75295,7 @@ function syncWorkOrderDocumentWizardCommonInputs() {
   if (workOrderDocumentCommonRandomizeEnvironmentInput) {
     workOrderDocumentCommonRandomizeEnvironmentInput.checked = Boolean(state.workOrderDocumentWizard.common.randomizeEnvironment);
   }
-  if (workOrderDocumentCommonValidityMonthsInput) {
-    workOrderDocumentCommonValidityMonthsInput.value = normalizeValidityMonthsValue(state.workOrderDocumentWizard.common.validityMonths)
-      || resolveWorkOrderDocumentDefaultValidityMonths(selectedWorkOrders, { fallback: "12" })
-      || "12";
-  }
-  if (workOrderDocumentCommonElectricalValidityMonthsInput) {
-    workOrderDocumentCommonElectricalValidityMonthsInput.value = state.workOrderDocumentWizard.common.electricalValidityMonths || "12";
-  }
-  if (workOrderDocumentCommonTipkaloValidityMonthsInput) {
-    workOrderDocumentCommonTipkaloValidityMonthsInput.value = state.workOrderDocumentWizard.common.tipkaloValidityMonths || "12";
-  }
+  renderWorkOrderDocumentServiceValidityFields(selectedWorkOrders);
 
   const relevantAreaSet = new Set(getWorkOrderDocumentWizardRelevantAreasForBatch(selectedWorkOrders));
   workOrderDocumentWizardCommonPeopleBody
@@ -75229,23 +75591,27 @@ function syncWorkOrderDocumentWizardModal() {
   document.body.classList.toggle("is-work-order-document-wizard-open", isOpen);
 }
 
-function syncWorkOrderDocumentWizardValidityFromServices(workOrders = getAllSelectedWorkOrdersForDocumentWizard()) {
+function getWorkOrderDocumentWizardServiceValidityMap() {
+  return normalizeWorkOrderServiceValidityMap(state.workOrderDocumentWizard.common?.serviceValidityMonths ?? {});
+}
+
+function syncWorkOrderDocumentWizardValidityFromServices(
+  workOrders = getAllSelectedWorkOrdersForDocumentWizard(),
+  { preserveExisting = false } = {},
+) {
   const selectedWorkOrders = Array.isArray(workOrders) ? workOrders : [];
-  const batchValidityMonths = resolveWorkOrderDocumentDefaultValidityMonths(selectedWorkOrders, { fallback: "12" });
-  if (batchValidityMonths) {
-    state.workOrderDocumentWizard.common.validityMonths = batchValidityMonths;
-  }
+  const currentMap = getWorkOrderDocumentWizardServiceValidityMap();
+  const nextMap = {};
 
-  selectedWorkOrders.forEach((workOrder) => {
-    const serviceValidityMonths = resolveWorkOrderDocumentValidityMonthsForWorkOrder(workOrder, { fallback: "" });
-    if (!serviceValidityMonths || !workOrder?.id) {
-      return;
-    }
-
-    setWorkOrderDocumentWizardOverride(workOrder.id, {
-      validityMonths: serviceValidityMonths,
-    });
+  getWorkOrderDocumentServiceValidityDefinitions(selectedWorkOrders).forEach((definition) => {
+    const currentValue = normalizeValidityMonthsValue(currentMap[definition.key]);
+    nextMap[definition.key] = preserveExisting && currentValue
+      ? currentValue
+      : (definition.validityMonths || currentValue || "");
   });
+
+  state.workOrderDocumentWizard.common.serviceValidityMonths = nextMap;
+  state.workOrderDocumentWizard.common.validityMonths = Object.values(nextMap).find(Boolean) || "";
 }
 
 function setWorkOrderDocumentWizardStep(step = "details", { render = true } = {}) {
@@ -75544,6 +75910,7 @@ function normalizeDocumentTemplateRuntimeOverrideRecord(record = {}) {
     validityMonths: normalizeValidityMonthsValue(source.validityMonths),
     electricalValidityMonths: String(source.electricalValidityMonths ?? "").trim(),
     tipkaloValidityMonths: String(source.tipkaloValidityMonths ?? "").trim(),
+    serviceValidityMonths: normalizeWorkOrderServiceValidityMap(source.serviceValidityMonths ?? {}),
     inspectorUserIds: normalizeQualifiedUserIdList(source.inspectorUserIds ?? []),
     inspectorUserId: String(source.inspectorUserId ?? "").trim(),
     authorizationHolderUserId: String(source.authorizationHolderUserId ?? "").trim(),
@@ -75981,6 +76348,9 @@ function updateDocumentTemplateRuntimeCommon(patch = {}, { render = true } = {})
     tipkaloValidityMonths: Object.prototype.hasOwnProperty.call(patch, "tipkaloValidityMonths")
       ? String(patch.tipkaloValidityMonths ?? "").trim()
       : String(state.documentTemplateRuntime.common?.tipkaloValidityMonths ?? "").trim(),
+    serviceValidityMonths: Object.prototype.hasOwnProperty.call(patch, "serviceValidityMonths")
+      ? normalizeWorkOrderServiceValidityMap(patch.serviceValidityMonths ?? {})
+      : normalizeWorkOrderServiceValidityMap(state.documentTemplateRuntime.common?.serviceValidityMonths ?? {}),
     inspectorUserIds: hasInspectorIdsPatch
       ? normalizeQualifiedUserIdList(patch.inspectorUserIds ?? [])
       : normalizeQualifiedUserIdList(state.documentTemplateRuntime.common?.inspectorUserIds ?? []),
@@ -76090,6 +76460,9 @@ function updateDocumentTemplateRuntimeOverride(workOrderId, patch = {}, { render
     tipkaloValidityMonths: Object.prototype.hasOwnProperty.call(patch, "tipkaloValidityMonths")
       ? String(patch.tipkaloValidityMonths ?? "").trim()
       : String(record.tipkaloValidityMonths ?? "").trim(),
+    serviceValidityMonths: Object.prototype.hasOwnProperty.call(patch, "serviceValidityMonths")
+      ? normalizeWorkOrderServiceValidityMap(patch.serviceValidityMonths ?? {})
+      : normalizeWorkOrderServiceValidityMap(record.serviceValidityMonths ?? {}),
     inspectorUserIds: hasInspectorIdsPatch
       ? normalizeQualifiedUserIdList(patch.inspectorUserIds ?? [])
       : normalizeQualifiedUserIdList(record.inspectorUserIds ?? []),
@@ -76160,6 +76533,7 @@ function clearDocumentTemplateRuntimeContext({ render = true } = {}) {
       validityMonths: "12",
       electricalValidityMonths: "12",
       tipkaloValidityMonths: "12",
+      serviceValidityMonths: {},
       inspectorUserIds: [],
       inspectorUserId: "",
       authorizationHolderUserId: "",
@@ -76298,6 +76672,7 @@ function normalizeDocumentTemplateRuntimeCommonDraft(common = {}) {
     validityMonths: normalizeValidityMonthsValue(source.validityMonths ?? "12") || "12",
     electricalValidityMonths: String(source.electricalValidityMonths ?? "12").trim(),
     tipkaloValidityMonths: String(source.tipkaloValidityMonths ?? "12").trim(),
+    serviceValidityMonths: normalizeWorkOrderServiceValidityMap(source.serviceValidityMonths ?? {}),
     inspectorUserIds,
     inspectorUserId: String(source.inspectorUserId ?? inspectorUserIds[0] ?? "").trim(),
     authorizationHolderUserId: String(source.authorizationHolderUserId ?? "").trim(),
@@ -76640,6 +77015,9 @@ function setDocumentTemplateRuntimeFromWizard(workOrders = getAllSelectedWorkOrd
     .map((item) => String(item?.id ?? "").trim())
     .filter(Boolean);
   const defaultValidityMonths = resolveWorkOrderDocumentDefaultValidityMonths(workOrders, { fallback: "12" });
+  const serviceValidityMonths = normalizeWorkOrderServiceValidityMap(
+    state.workOrderDocumentWizard.common?.serviceValidityMonths ?? {},
+  );
 
   state.documentTemplateRuntime = {
     mode: "fill",
@@ -76667,10 +77045,12 @@ function setDocumentTemplateRuntimeFromWizard(workOrders = getAllSelectedWorkOrd
       randomizeEnvironment: Boolean(state.workOrderDocumentWizard.common?.randomizeEnvironment),
       signatureMode: normalizeDocumentTemplateSignatureMethod(state.workOrderDocumentWizard.common?.signatureMode),
       validityMonths: normalizeValidityMonthsValue(state.workOrderDocumentWizard.common?.validityMonths ?? "")
+        || Object.values(serviceValidityMonths).find(Boolean)
         || defaultValidityMonths
         || "12",
       electricalValidityMonths: String(state.workOrderDocumentWizard.common?.electricalValidityMonths ?? "").trim(),
       tipkaloValidityMonths: String(state.workOrderDocumentWizard.common?.tipkaloValidityMonths ?? "").trim(),
+      serviceValidityMonths,
       inspectorUserIds: normalizeQualifiedUserIdList(state.workOrderDocumentWizard.common?.inspectorUserIds ?? []),
       inspectorUserId: String(state.workOrderDocumentWizard.common?.inspectorUserId ?? "").trim(),
       authorizationHolderUserId: String(
@@ -80787,9 +81167,6 @@ workOrderDocumentWizardNextButton?.addEventListener("click", (event) => {
   [workOrderDocumentCommonWeatherInput, "weather"],
   [workOrderDocumentCommonGroundConditionInput, "groundCondition"],
   [workOrderDocumentCommonGroundResistanceInput, "groundResistance"],
-  [workOrderDocumentCommonValidityMonthsInput, "validityMonths"],
-  [workOrderDocumentCommonElectricalValidityMonthsInput, "electricalValidityMonths"],
-  [workOrderDocumentCommonTipkaloValidityMonthsInput, "tipkaloValidityMonths"],
 ].forEach(([input, fieldName, isDateField = false]) => {
   input?.addEventListener("input", () => {
     state.workOrderDocumentWizard.common[fieldName] = input.value || "";
