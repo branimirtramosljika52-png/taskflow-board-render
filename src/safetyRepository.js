@@ -586,6 +586,8 @@ export function mapStoredDocumentTemplateCustomField(field = {}) {
     ai: parseJsonObject(source.ai ?? source.aiConfig, {}),
     toggleTrueLabel: dbString(source.toggleTrueLabel),
     toggleFalseLabel: dbString(source.toggleFalseLabel),
+    toggleTrueText: dbString(source.toggleTrueText ?? source.toggleTrueDetailText),
+    toggleFalseText: dbString(source.toggleFalseText ?? source.toggleFalseDetailText),
     dropdownOptions: parseJsonArray(source.dropdownOptions ?? source.options ?? source.choices)
       .map((entry) => dbString(entry))
       .filter(Boolean),

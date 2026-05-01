@@ -2150,6 +2150,8 @@ function normalizeDocumentTemplateFields(fields = []) {
       }),
       toggleTrueLabel: normalizeText(field?.toggleTrueLabel).slice(0, 120),
       toggleFalseLabel: normalizeText(field?.toggleFalseLabel).slice(0, 120),
+      toggleTrueText: normalizeText(field?.toggleTrueText ?? field?.toggleTrueDetailText).slice(0, 500),
+      toggleFalseText: normalizeText(field?.toggleFalseText ?? field?.toggleFalseDetailText).slice(0, 500),
       dropdownOptions: type === "dropdown"
         ? normalizeDocumentTemplateDropdownOptions(field?.dropdownOptions ?? field?.options ?? field?.choices)
         : [],
@@ -6286,6 +6288,10 @@ export function filterDocumentTemplates(
         field.defaultValue,
         field.helpText,
         field.source,
+        field.toggleTrueLabel,
+        field.toggleFalseLabel,
+        field.toggleTrueText,
+        field.toggleFalseText,
         ...(field.columns ?? []),
       ]),
       ...(item.equipmentItems ?? []).flatMap((equipment) => [equipment.name, equipment.code, equipment.note]),

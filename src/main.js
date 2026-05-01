@@ -38213,6 +38213,8 @@ function createEmptyDocumentTemplateFieldDraft(initial = {}, index = 0) {
     }),
     toggleTrueLabel: String(initial.toggleTrueLabel ?? "").trim(),
     toggleFalseLabel: String(initial.toggleFalseLabel ?? "").trim(),
+    toggleTrueText: String(initial.toggleTrueText ?? initial.toggleTrueDetailText ?? "").trim(),
+    toggleFalseText: String(initial.toggleFalseText ?? initial.toggleFalseDetailText ?? "").trim(),
     dropdownOptions: type === "dropdown"
       ? normalizeDocumentTemplateDropdownOptionsLocal(initial.dropdownOptions ?? initial.options ?? initial.choices)
       : [],
@@ -39028,6 +39030,8 @@ function buildDocumentTemplateDraft() {
       helpText: String(field.helpText || "").trim(),
       toggleTrueLabel: String(field.toggleTrueLabel || "").trim().slice(0, 120),
       toggleFalseLabel: String(field.toggleFalseLabel || "").trim().slice(0, 120),
+      toggleTrueText: String(field.toggleTrueText ?? field.toggleTrueDetailText ?? "").trim().slice(0, 500),
+      toggleFalseText: String(field.toggleFalseText ?? field.toggleFalseDetailText ?? "").trim().slice(0, 500),
       textListStyle: isDocumentTemplateTextListStyleField(field.type)
         ? normalizeDocumentTemplateTextListStyleLocal(field.textListStyle ?? field.listStyle)
         : "none",
@@ -40782,8 +40786,14 @@ function createWorkOrderDocumentSignaturePersonPicker({
   return wrapper;
 }
 
-function getDocumentTemplateFieldToken(field = {}, index = 0) {
-  return `{{${normalizeDocumentTemplateFieldKeyDraft(field.key || field.wordLabel || field.label, `FIELD_${index + 1}`)}}}`;
+function getDocumentTemplateFieldToken(field = {}, index = 0, suffix = "") {
+  const tokenKey = getDocumentTemplateFieldTokenKey(field, index);
+  const suffixKey = String(suffix || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9_]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return `{{${suffixKey ? `${tokenKey}_${suffixKey}` : tokenKey}}}`;
 }
 
 function getDocumentTemplateRuntimeServiceValidityMap(workOrderId = "") {
@@ -41392,6 +41402,42 @@ function getDocumentTemplateBooleanDisplayValue(field = {}, value = false) {
   return truthy ? (trueLabel || "Da") : (falseLabel || "Ne");
 }
 
+function getDocumentTemplateToggleConditionalText(field = {}, value = false) {
+  const truthy = Boolean(value);
+  return String(
+    truthy
+      ? (field?.toggleTrueText ?? field?.toggleTrueDetailText ?? "")
+      : (field?.toggleFalseText ?? field?.toggleFalseDetailText ?? ""),
+  ).trim();
+}
+
+function getDocumentTemplateTogglePreviewState(field = {}, context = {}) {
+  const runtimeWorkOrderId = String(context.sampleWorkOrder?.id || "").trim();
+  if (runtimeWorkOrderId) {
+    return Boolean(getDocumentTemplateRuntimeInitialValue(field, runtimeWorkOrderId));
+  }
+
+  const explicit = String(field.defaultValue ?? "").trim();
+  if (explicit) {
+    return ["1", "true", "da", "yes", "on"].includes(explicit.toLowerCase());
+  }
+
+  return true;
+}
+
+function buildDocumentTemplateToggleDerivedValues(field = {}, context = {}) {
+  const selected = getDocumentTemplateTogglePreviewState(field, context);
+  const statusText = getDocumentTemplateBooleanDisplayValue(field, selected);
+  const extraText = getDocumentTemplateToggleConditionalText(field, selected);
+  const fullText = [statusText, extraText].filter(Boolean).join(" ");
+  return {
+    selected,
+    statusText,
+    extraText,
+    fullText,
+  };
+}
+
 function getDocumentTemplateTextListLines(field = {}, value = "") {
   if (!isDocumentTemplateTextListStyleField(field?.type)) {
     return [];
@@ -41597,14 +41643,36 @@ function getDocumentTemplatePlaceholderDefinitions(template = buildDocumentTempl
   const context = buildDocumentTemplatePreviewContext(template);
   return [
     ...getDocumentTemplateSystemPlaceholderDefinitions(template, context),
-    ...(template.customFields ?? []).map((field, index) => ({
-    token: getDocumentTemplateFieldToken(field, index),
-    label: field.wordLabel || field.label || `Polje ${index + 1}`,
-    value: formatDocumentTemplateTextListValue(
-      field,
-      getDocumentTemplateFieldPreviewValue(field, context, index, { placeholderMode: false }),
-    ),
-    })),
+    ...(template.customFields ?? []).flatMap((field, index) => {
+      const label = field.wordLabel || field.label || `Polje ${index + 1}`;
+      const baseDefinition = {
+        token: getDocumentTemplateFieldToken(field, index),
+        label,
+        value: formatDocumentTemplateTextListValue(
+          field,
+          getDocumentTemplateFieldPreviewValue(field, context, index, { placeholderMode: false }),
+        ),
+      };
+
+      if (String(field?.type || "").trim().toLowerCase() !== "toggle") {
+        return [baseDefinition];
+      }
+
+      const toggleValues = buildDocumentTemplateToggleDerivedValues(field, context);
+      return [
+        baseDefinition,
+        {
+          token: getDocumentTemplateFieldToken(field, index, "DODATNI_TEKST"),
+          label: `${label} - dodatni tekst po izboru`,
+          value: toggleValues.extraText,
+        },
+        {
+          token: getDocumentTemplateFieldToken(field, index, "PUNI_TEKST"),
+          label: `${label} - status i dodatni tekst`,
+          value: toggleValues.fullText,
+        },
+      ];
+    }),
   ];
 }
 
@@ -42464,7 +42532,16 @@ function buildDocumentTemplatePlaceholderWordMarkup(template = buildDocumentTemp
   const customMarkup = pages.map((page) => {
     const tokens = (page.fields ?? [])
       .filter(({ field }) => field?.type !== "chapter")
-      .map(({ field, index }) => getDocumentTemplateFieldToken(field, index))
+      .flatMap(({ field, index }) => {
+        const baseTokens = [getDocumentTemplateFieldToken(field, index)];
+        if (String(field?.type || "").trim().toLowerCase() === "toggle") {
+          baseTokens.push(
+            getDocumentTemplateFieldToken(field, index, "DODATNI_TEKST"),
+            getDocumentTemplateFieldToken(field, index, "PUNI_TEKST"),
+          );
+        }
+        return baseTokens;
+      })
       .filter(Boolean);
 
     if (tokens.length === 0) {
@@ -42998,7 +43075,13 @@ function buildDocumentTemplateRuntimePlaceholderPayload(template = buildDocument
       return;
     }
 
-    placeholders[getDocumentTemplateFieldTokenKey(field, index)] = buildDocumentTemplateFieldWordPlaceholderValue(field, context, index);
+    const fieldKey = getDocumentTemplateFieldTokenKey(field, index);
+    placeholders[fieldKey] = buildDocumentTemplateFieldWordPlaceholderValue(field, context, index);
+    if (String(field.type || "").trim().toLowerCase() === "toggle") {
+      const toggleValues = buildDocumentTemplateToggleDerivedValues(field, context);
+      placeholders[`${fieldKey}_DODATNI_TEKST`] = toggleValues.extraText;
+      placeholders[`${fieldKey}_PUNI_TEKST`] = toggleValues.fullText;
+    }
   });
 
   return placeholders;
@@ -55343,18 +55426,25 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
       placeholder,
       value,
       property,
+      multiline = false,
+      maxLength = 120,
     }) => {
       const inputField = document.createElement("label");
       inputField.className = "field";
       const inputLabel = document.createElement("span");
       inputLabel.textContent = labelText;
-      const input = document.createElement("input");
-      input.type = "text";
-      input.maxLength = 120;
+      const input = multiline ? document.createElement("textarea") : document.createElement("input");
+      if (input instanceof HTMLInputElement) {
+        input.type = "text";
+      }
+      if (input instanceof HTMLTextAreaElement) {
+        input.rows = 2;
+      }
+      input.maxLength = maxLength;
       input.placeholder = placeholder;
       input.value = value || "";
       input.addEventListener("input", (event) => {
-        documentTemplateFieldDrafts[draftIndex][property] = String(event.currentTarget.value || "").slice(0, 120);
+        documentTemplateFieldDrafts[draftIndex][property] = String(event.currentTarget.value || "").slice(0, maxLength);
         invalidateDocumentTemplateDraftCache();
         refreshEditorSupport();
         renderDocumentTemplatePreviewContent();
@@ -55366,22 +55456,38 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
 
     toggleLabelsGrid.append(
       createToggleLabelInputField({
-        labelText: "Kad je odabrano",
+        labelText: "Status kad je odabrano",
         placeholder: "npr. Zadovoljava",
         value: field.toggleTrueLabel || "",
         property: "toggleTrueLabel",
       }),
       createToggleLabelInputField({
-        labelText: "Kad nije odabrano",
+        labelText: "Dodatni tekst kad je odabrano",
+        placeholder: "npr. Vrijedi do",
+        value: field.toggleTrueText ?? field.toggleTrueDetailText ?? "",
+        property: "toggleTrueText",
+        multiline: true,
+        maxLength: 500,
+      }),
+      createToggleLabelInputField({
+        labelText: "Status kad nije odabrano",
         placeholder: "npr. Ne zadovoljava",
         value: field.toggleFalseLabel || "",
         property: "toggleFalseLabel",
+      }),
+      createToggleLabelInputField({
+        labelText: "Dodatni tekst kad nije odabrano",
+        placeholder: "npr. Obaviti ispitivanje nakon otklona.",
+        value: field.toggleFalseText ?? field.toggleFalseDetailText ?? "",
+        property: "toggleFalseText",
+        multiline: true,
+        maxLength: 500,
       }),
     );
 
     const toggleLabelsHint = document.createElement("small");
     toggleLabelsHint.className = "document-template-source-config-hint";
-    toggleLabelsHint.textContent = "Ovaj tekst se prikazuje na gumbu u zapisniku i upisuje u Word/PDF. Ako ostane prazno, koristi se Da ili Ne.";
+    toggleLabelsHint.textContent = "Osnovni placeholder upisuje status. U Wordu mozes koristiti jos _DODATNI_TEKST za uvjetni tekst ili _PUNI_TEKST za status i tekst zajedno.";
     toggleLabelsField.append(toggleLabelsTitle, toggleLabelsGrid, toggleLabelsHint);
 
     const removeButton = createActionButton("Ukloni", "card-button card-danger", () => {

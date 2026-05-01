@@ -274,6 +274,10 @@ test("stored document template field mapping preserves AI and builder metadata",
       confidenceRequired: "high",
     },
     dropdownOptions: ["DA", "NE"],
+    toggleTrueLabel: "Zadovoljava",
+    toggleFalseLabel: "Ne zadovoljava",
+    toggleTrueText: "Vrijedi do",
+    toggleFalseText: "Obaviti ispitivanje nakon otklona.",
     legalFrameworkIds: ["legal-1"],
     defaultLegalFrameworkIds: ["legal-1"],
     columns: ["Pozicija", "Opis"],
@@ -283,6 +287,10 @@ test("stored document template field mapping preserves AI and builder metadata",
   assert.equal(mapped.ai.confidenceRequired, "high");
   assert.deepEqual(mapped.ai.aiLookFor, ["projekt", "dokumentacija"]);
   assert.deepEqual(mapped.dropdownOptions, ["DA", "NE"]);
+  assert.equal(mapped.toggleTrueLabel, "Zadovoljava");
+  assert.equal(mapped.toggleFalseLabel, "Ne zadovoljava");
+  assert.equal(mapped.toggleTrueText, "Vrijedi do");
+  assert.equal(mapped.toggleFalseText, "Obaviti ispitivanje nakon otklona.");
   assert.deepEqual(mapped.legalFrameworkIds, ["legal-1"]);
   assert.deepEqual(mapped.defaultLegalFrameworkIds, ["legal-1"]);
   assert.deepEqual(mapped.columns, ["Pozicija", "Opis"]);

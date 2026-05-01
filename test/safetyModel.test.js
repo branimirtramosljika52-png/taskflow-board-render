@@ -641,6 +641,8 @@ test("document templates keep nested builder data and support filtering", () => 
           type: "toggle",
           toggleTrueLabel: "Zadovoljava",
           toggleFalseLabel: "Ne zadovoljava",
+          toggleTrueText: "Vrijedi do",
+          toggleFalseText: "Obaviti ispitivanje nakon otklona.",
         },
         {
           label: "Potpis ispitivaca",
@@ -757,6 +759,8 @@ test("document templates keep nested builder data and support filtering", () => 
   assert.equal(template.customFields[3].type, "toggle");
   assert.equal(template.customFields[3].toggleTrueLabel, "Zadovoljava");
   assert.equal(template.customFields[3].toggleFalseLabel, "Ne zadovoljava");
+  assert.equal(template.customFields[3].toggleTrueText, "Vrijedi do");
+  assert.equal(template.customFields[3].toggleFalseText, "Obaviti ispitivanje nakon otklona.");
   assert.equal(template.customFields[4].type, "inspector_signature");
   assert.equal(template.customFields[4].signatureArea, "elektro");
   assert.equal(template.customFields[4].fieldHeight, 6);
