@@ -36807,8 +36807,14 @@ function normalizeDocumentTemplateRuntimeAiLookupKey(value = "") {
   return String(value ?? "").trim().toLowerCase();
 }
 
+function getDocumentTemplateRuntimeAiLookupKeyVariants(value = "") {
+  const normalizedValue = normalizeDocumentTemplateRuntimeAiLookupKey(value);
+  const looseValue = normalizeLooseName(value);
+  return [normalizedValue, looseValue].filter(Boolean);
+}
+
 function getDocumentTemplateRuntimeAiSuggestionLookupValues(suggestion = {}) {
-  return [
+  return Array.from(new Set([
     suggestion?.fieldId,
     suggestion?.field_id,
     suggestion?.fieldKey,
@@ -36818,13 +36824,13 @@ function getDocumentTemplateRuntimeAiSuggestionLookupValues(suggestion = {}) {
     suggestion?.fieldLabel,
     suggestion?.field_label,
   ]
-    .map(normalizeDocumentTemplateRuntimeAiLookupKey)
-    .filter(Boolean);
+    .flatMap(getDocumentTemplateRuntimeAiLookupKeyVariants)
+    .filter(Boolean)));
 }
 
 function getDocumentTemplateRuntimeAiFieldLookupValues(candidate = {}) {
   const aiConfig = normalizeDocumentTemplateFieldAiConfig(candidate?.ai ?? candidate?.aiConfig, candidate);
-  return [
+  return Array.from(new Set([
     candidate?.id,
     candidate?.key,
     candidate?.wordLabel,
@@ -36832,8 +36838,8 @@ function getDocumentTemplateRuntimeAiFieldLookupValues(candidate = {}) {
     aiConfig.key,
     aiConfig.label,
   ]
-    .map(normalizeDocumentTemplateRuntimeAiLookupKey)
-    .filter(Boolean);
+    .flatMap(getDocumentTemplateRuntimeAiLookupKeyVariants)
+    .filter(Boolean)));
 }
 
 function getDocumentTemplateRuntimeAiMatchedFields(fields = [], suggestion = {}) {
@@ -36849,6 +36855,33 @@ function getDocumentTemplateRuntimeAiMatchedFields(fields = [], suggestion = {})
 
 function findDocumentTemplateRuntimeAiField(fields = [], suggestion = {}) {
   return getDocumentTemplateRuntimeAiMatchedFields(fields, suggestion)[0] ?? null;
+}
+
+function findDocumentTemplateRuntimeAiMeasurementField(fields = [], suggestion = {}) {
+  const allFields = Array.isArray(fields) ? fields : [];
+  const matchedFields = getDocumentTemplateRuntimeAiMatchedFields(allFields, suggestion);
+  const directMeasurementField = matchedFields.find((field) => (
+    String(field?.type || "").trim().toLowerCase() === "measurement_table"
+  ));
+  if (directMeasurementField) {
+    return directMeasurementField;
+  }
+
+  for (const matchedField of matchedFields) {
+    if (String(matchedField?.type || "").trim().toLowerCase() !== "chapter") {
+      continue;
+    }
+    const childMeasurementFields = getDocumentTemplateRuntimeChapterChildFields(allFields, matchedField)
+      .filter((field) => String(field?.type || "").trim().toLowerCase() === "measurement_table");
+    if (childMeasurementFields.length === 1) {
+      return childMeasurementFields[0];
+    }
+  }
+
+  const measurementFields = allFields.filter((field) => (
+    String(field?.type || "").trim().toLowerCase() === "measurement_table"
+  ));
+  return measurementFields.length === 1 ? measurementFields[0] : null;
 }
 
 function isDocumentTemplateRuntimeAiWritableField(field = {}) {
@@ -36951,22 +36984,130 @@ function applyDocumentTemplateRuntimeAiFieldSuggestion(payload = {}, workOrder =
   return true;
 }
 
-function getDocumentTemplateRuntimeAiSuggestionCellValue(values = {}, column = {}) {
+function getDocumentTemplateRuntimeAiSuggestionRows(suggestion = {}) {
+  const sources = [
+    suggestion?.rows,
+    suggestion?.tableRows,
+    suggestion?.table_rows,
+    suggestion?.values,
+    suggestion?.value,
+  ];
+  const rows = sources.find((source) => Array.isArray(source));
+  return Array.isArray(rows) ? rows : [];
+}
+
+function getDocumentTemplateRuntimeAiSuggestionRowValues(row = {}, editableColumns = []) {
+  if (Array.isArray(row)) {
+    return row;
+  }
+  if (row?.values && (typeof row.values === "object" || Array.isArray(row.values))) {
+    return row.values;
+  }
+  if (row?.cells && (typeof row.cells === "object" || Array.isArray(row.cells))) {
+    return row.cells;
+  }
+  if (row && typeof row === "object") {
+    return row;
+  }
+  const firstColumn = editableColumns[0];
+  return firstColumn ? { [firstColumn.id]: row } : {};
+}
+
+function getDocumentTemplateRuntimeAiSuggestionCellValue(values = {}, column = {}, columnIndex = 0) {
+  if (Array.isArray(values)) {
+    return values[columnIndex] ?? "";
+  }
   if (!values || typeof values !== "object") {
     return "";
   }
   const aiMapping = normalizeMeasurementSheetColumnAiMappingSnapshotLocal(column?.aiMapping ?? column?.ai);
-  const keys = [
+  const keys = new Set([
     column?.id,
     column?.key,
     column?.label,
     aiMapping.key,
     aiMapping.label,
   ]
-    .map(normalizeDocumentTemplateRuntimeAiLookupKey)
-    .filter(Boolean);
-  const matchedEntry = Object.entries(values).find(([key]) => keys.includes(normalizeDocumentTemplateRuntimeAiLookupKey(key)));
+    .flatMap(getDocumentTemplateRuntimeAiLookupKeyVariants)
+    .filter(Boolean));
+  const matchedEntry = Object.entries(values).find(([key]) => (
+    getDocumentTemplateRuntimeAiLookupKeyVariants(key).some((variant) => keys.has(variant))
+  ));
   return matchedEntry ? matchedEntry[1] : "";
+}
+
+function buildDocumentTemplateRuntimeAiMeasurementRows(workOrder = {}, field = {}, suggestion = {}, suggestionIndex = 0) {
+  if (!workOrder?.id || !field || String(field.type || "").trim().toLowerCase() !== "measurement_table") {
+    return null;
+  }
+
+  const rows = getDocumentTemplateRuntimeAiSuggestionRows(suggestion);
+  if (!rows.length) {
+    return null;
+  }
+
+  const sheet = getDocumentTemplateRuntimeMeasurementSheet(workOrder.id, field)
+    ?? ensureDocumentTemplateMeasurementFieldSheet(field);
+  const normalizedSheet = normalizeWorkOrderMeasurementSheet(sheet);
+  if (!normalizedSheet?.columns?.length) {
+    return null;
+  }
+
+  const editableColumns = normalizedSheet.columns.filter((column) => !column.computed);
+  const incomingRows = rows.map((row, rowIndex) => {
+    const values = getDocumentTemplateRuntimeAiSuggestionRowValues(row, editableColumns);
+    const cells = {};
+    const formats = {};
+    editableColumns.forEach((column, columnIndex) => {
+      const cellValue = getDocumentTemplateRuntimeAiSuggestionCellValue(values, column, columnIndex);
+      cells[column.id] = cellValue == null ? "" : String(cellValue);
+      formats[column.id] = normalizeMeasurementCellFormat(row?.formats?.[column.id]);
+    });
+    return normalizeMeasurementSheetRowSnapshotLocal({
+      id: `measurement-ai-${Date.now()}-${suggestionIndex + 1}-${rowIndex + 1}`,
+      cells,
+      formats,
+    }, normalizedSheet.columns, normalizedSheet.rows.length + rowIndex);
+  }).filter((row) => isMeasurementSheetRowMeaningful(row, normalizedSheet.columns));
+
+  if (!incomingRows.length) {
+    return null;
+  }
+
+  return {
+    sheet: normalizedSheet,
+    rows: incomingRows,
+  };
+}
+
+function applyDocumentTemplateRuntimeAiMeasurementSuggestion(payload = {}, workOrder = {}, suggestion = {}, field = null, suggestionIndex = 0) {
+  const measurementPatch = buildDocumentTemplateRuntimeAiMeasurementRows(workOrder, field, suggestion, suggestionIndex);
+  if (!measurementPatch) {
+    return { applied: false, rowCount: 0 };
+  }
+
+  const existingRows = [...(measurementPatch.sheet.rows ?? [])];
+  measurementPatch.rows.forEach((incomingRow) => {
+    const blankIndex = existingRows.findIndex((row) => !isMeasurementSheetRowMeaningful(row, measurementPatch.sheet.columns));
+    if (blankIndex >= 0) {
+      existingRows[blankIndex] = {
+        ...incomingRow,
+        id: existingRows[blankIndex].id,
+      };
+    } else {
+      existingRows.push(incomingRow);
+    }
+  });
+
+  setDocumentTemplateRuntimeMeasurementSheet(workOrder.id, field.id, {
+    ...measurementPatch.sheet,
+    rows: existingRows,
+  }, { render: false });
+
+  return {
+    applied: true,
+    rowCount: measurementPatch.rows.length,
+  };
 }
 
 function applyDocumentTemplateRuntimeAiSuggestions(payload = {}, template = {}, workOrder = {}) {
@@ -36991,61 +37132,11 @@ function applyDocumentTemplateRuntimeAiSuggestions(payload = {}, template = {}, 
   });
 
   measurementSuggestions.forEach((suggestion, suggestionIndex) => {
-    const field = findDocumentTemplateRuntimeAiField(fields, suggestion);
-    if (!field || String(field.type || "").trim().toLowerCase() !== "measurement_table") {
-      return;
+    const field = findDocumentTemplateRuntimeAiMeasurementField(fields, suggestion);
+    const applied = applyDocumentTemplateRuntimeAiMeasurementSuggestion(payload, workOrder, suggestion, field, suggestionIndex);
+    if (applied.applied) {
+      measurementCount += 1;
     }
-    const rows = Array.isArray(suggestion?.rows)
-      ? suggestion.rows
-      : (Array.isArray(suggestion?.values) ? suggestion.values : []);
-    if (!rows.length) {
-      return;
-    }
-    const sheet = getDocumentTemplateRuntimeMeasurementSheet(workOrder.id, field)
-      ?? ensureDocumentTemplateMeasurementFieldSheet(field);
-    const normalizedSheet = normalizeWorkOrderMeasurementSheet(sheet);
-    if (!normalizedSheet?.columns?.length) {
-      return;
-    }
-    const editableColumns = normalizedSheet.columns.filter((column) => !column.computed);
-    const incomingRows = rows.map((row, rowIndex) => {
-      const values = row?.values && typeof row.values === "object" ? row.values : row;
-      const cells = {};
-      const formats = {};
-      editableColumns.forEach((column) => {
-        const cellValue = getDocumentTemplateRuntimeAiSuggestionCellValue(values, column);
-        cells[column.id] = cellValue == null ? "" : String(cellValue);
-        formats[column.id] = normalizeMeasurementCellFormat(row?.formats?.[column.id]);
-      });
-      return normalizeMeasurementSheetRowSnapshotLocal({
-        id: `measurement-ai-${Date.now()}-${suggestionIndex + 1}-${rowIndex + 1}`,
-        cells,
-        formats,
-      }, normalizedSheet.columns, normalizedSheet.rows.length + rowIndex);
-    }).filter((row) => isMeasurementSheetRowMeaningful(row, normalizedSheet.columns));
-
-    if (!incomingRows.length) {
-      return;
-    }
-
-    const existingRows = [...(normalizedSheet.rows ?? [])];
-    incomingRows.forEach((incomingRow) => {
-      const blankIndex = existingRows.findIndex((row) => !isMeasurementSheetRowMeaningful(row, normalizedSheet.columns));
-      if (blankIndex >= 0) {
-        existingRows[blankIndex] = {
-          ...incomingRow,
-          id: existingRows[blankIndex].id,
-        };
-      } else {
-        existingRows.push(incomingRow);
-      }
-    });
-
-    setDocumentTemplateRuntimeMeasurementSheet(workOrder.id, field.id, {
-      ...normalizedSheet,
-      rows: existingRows,
-    }, { render: false });
-    measurementCount += 1;
   });
 
   if (fieldCount > 0 || measurementCount > 0) {
@@ -37192,13 +37283,15 @@ function createDocumentTemplateRuntimeAiSuggestionsPanel(payload = {}, template 
   });
 
   measurementSuggestions.forEach((suggestion, index) => {
-    const field = findDocumentTemplateRuntimeAiField(fields, suggestion);
-    const rows = Array.isArray(suggestion?.rows)
-      ? suggestion.rows
-      : (Array.isArray(suggestion?.values) ? suggestion.values : []);
+    const field = findDocumentTemplateRuntimeAiMeasurementField(fields, suggestion);
+    const rows = getDocumentTemplateRuntimeAiSuggestionRows(suggestion);
+    const preparedRows = field
+      ? buildDocumentTemplateRuntimeAiMeasurementRows(workOrder, field, suggestion, index)
+      : null;
+    const canApply = Boolean(field && preparedRows?.rows?.length);
     const card = document.createElement("article");
     card.className = "document-template-runtime-ai-suggestion";
-    card.classList.toggle("is-unmatched", !field);
+    card.classList.toggle("is-unmatched", !canApply);
 
     const cardHead = document.createElement("div");
     cardHead.className = "document-template-runtime-ai-suggestion-head";
@@ -37212,13 +37305,17 @@ function createDocumentTemplateRuntimeAiSuggestionsPanel(payload = {}, template 
       || `Excel prijedlog ${index + 1}`,
     ).trim();
     const status = document.createElement("span");
-    status.textContent = field ? "Excel prijedlog povezan" : "Nije povezan s Excel poljem";
+    status.textContent = canApply
+      ? `Spremno za upis: ${preparedRows.rows.length} redaka`
+      : (field ? "Excel povezan, ali nema redaka za upis" : "Nije povezan s Excel poljem");
     cardHead.append(cardTitle, status);
 
     const valueNode = document.createElement("p");
     valueNode.className = "document-template-runtime-ai-suggestion-value";
-    valueNode.textContent = rows.length
-      ? `${rows.length} redaka spremno za pregled.`
+    valueNode.textContent = preparedRows?.rows?.length
+      ? `${preparedRows.rows.length} redaka spremno za upis u dokument.`
+      : rows.length
+        ? `${rows.length} redaka je stiglo od AI-ja, ali kolone nisu prepoznate za upis.`
       : "Nema redaka u ovom prijedlogu.";
 
     const footer = document.createElement("div");
@@ -37226,6 +37323,24 @@ function createDocumentTemplateRuntimeAiSuggestionsPanel(payload = {}, template 
     const confidence = document.createElement("small");
     confidence.textContent = getDocumentTemplateRuntimeAiSuggestionConfidenceLabel(suggestion);
     footer.append(confidence);
+    if (canApply) {
+      const applyButton = document.createElement("button");
+      applyButton.type = "button";
+      applyButton.className = "primary-button compact-button document-template-runtime-ai-suggestion-apply";
+      applyButton.textContent = "Upiši u Excel";
+      applyButton.addEventListener("click", () => {
+        const applied = applyDocumentTemplateRuntimeAiMeasurementSuggestion(payload, workOrder, suggestion, field, index);
+        if (!applied.applied) {
+          status.textContent = "Nije upisano";
+          return;
+        }
+        status.textContent = `Upisano ${applied.rowCount} redaka`;
+        scheduleDocumentTemplateRuntimeAutosave();
+        renderDocumentTemplateFieldRows();
+        renderDocumentTemplatePreviewContent();
+      });
+      footer.append(applyButton);
+    }
 
     card.append(cardHead, valueNode, footer);
     list.append(card);
