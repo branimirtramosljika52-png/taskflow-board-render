@@ -27688,6 +27688,16 @@ body.is-measurement-equipment-export-open {
   color: #5f6e8b;
   font-size: 0.8rem;
   font-weight: 800;
+  cursor: pointer;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.document-template-runtime-ai-assistant-togglebar:hover,
+.document-template-runtime-ai-assistant-togglebar:focus-visible {
+  outline: none;
+  transform: translateY(-1px);
+  border-color: rgba(95, 132, 225, 0.52);
+  box-shadow: 0 12px 24px rgba(73, 91, 143, 0.1);
 }
 
 .document-template-runtime-ai-assistant::before {
@@ -27733,6 +27743,21 @@ body.is-measurement-equipment-export-open {
   grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 12px;
   align-items: start;
+}
+
+.document-template-runtime-ai-collapsible-head {
+  margin: -4px;
+  padding: 4px;
+  border-radius: 18px;
+  cursor: pointer;
+  transition: background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.document-template-runtime-ai-collapsible-head:hover,
+.document-template-runtime-ai-collapsible-head:focus-visible {
+  outline: none;
+  background: rgba(239, 246, 255, 0.72);
+  box-shadow: inset 0 0 0 1px rgba(99, 140, 226, 0.18);
 }
 
 .document-template-runtime-ai-hide {
@@ -28015,6 +28040,113 @@ body.is-measurement-equipment-export-open {
 
 .document-template-runtime-ai-assistant.is-error .document-template-runtime-ai-message {
   color: #b4232c;
+}
+
+.document-template-runtime-ai-suggestions {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(88, 145, 214, 0.28);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow: 0 10px 22px rgba(63, 82, 128, 0.06);
+}
+
+.document-template-runtime-ai-suggestions-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.document-template-runtime-ai-suggestions-head strong {
+  color: #17213a;
+  font-size: 0.92rem;
+}
+
+.document-template-runtime-ai-suggestions-head span {
+  color: #64738f;
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.document-template-runtime-ai-suggestions-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 8px;
+}
+
+.document-template-runtime-ai-suggestion {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(79, 171, 119, 0.28);
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(244, 253, 248, 0.94), rgba(255, 255, 255, 0.96));
+}
+
+.document-template-runtime-ai-suggestion.is-unmatched {
+  border-color: rgba(218, 150, 47, 0.36);
+  background: linear-gradient(135deg, rgba(255, 250, 239, 0.96), rgba(255, 255, 255, 0.96));
+}
+
+.document-template-runtime-ai-suggestion-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.document-template-runtime-ai-suggestion-head strong {
+  min-width: 0;
+  color: #17213a;
+  font-size: 0.84rem;
+  line-height: 1.25;
+}
+
+.document-template-runtime-ai-suggestion-head span {
+  flex: 0 0 auto;
+  max-width: 46%;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(237, 246, 255, 0.9);
+  color: #315f9c;
+  font-size: 0.66rem;
+  font-weight: 850;
+  line-height: 1.25;
+  text-align: right;
+}
+
+.document-template-runtime-ai-suggestion-value {
+  margin: 0;
+  padding: 8px 9px;
+  border-radius: 12px;
+  background: rgba(245, 248, 255, 0.78);
+  color: #21314f;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.document-template-runtime-ai-suggestion-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.document-template-runtime-ai-suggestion-footer small {
+  color: #66758e;
+  font-size: 0.68rem;
+  line-height: 1.3;
+}
+
+.document-template-runtime-ai-suggestion-copy {
+  margin-left: auto;
+  min-height: 28px;
+  padding: 0 9px;
 }
 
 @media (max-width: 1180px) {

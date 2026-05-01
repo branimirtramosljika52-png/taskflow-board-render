@@ -36938,6 +36938,166 @@ function applyDocumentTemplateRuntimeAiSuggestions(payload = {}, template = {}, 
   return { fieldCount, measurementCount };
 }
 
+function formatDocumentTemplateRuntimeAiSuggestionValue(value = "") {
+  if (value == null) {
+    return "";
+  }
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+  return String(value);
+}
+
+function getDocumentTemplateRuntimeAiSuggestionConfidenceLabel(suggestion = {}) {
+  const confidence = normalizeAiConfidenceLevelLocal(suggestion?.confidence, "");
+  if (confidence === "high") {
+    return "Visoka sigurnost";
+  }
+  if (confidence === "medium") {
+    return "Srednja sigurnost";
+  }
+  if (confidence === "low") {
+    return "Niska sigurnost";
+  }
+  return "Bez ocjene sigurnosti";
+}
+
+function createDocumentTemplateRuntimeAiSuggestionsPanel(payload = {}, template = {}, workOrder = {}) {
+  const result = getDocumentTemplateRuntimeAiResultObject(payload);
+  const fieldSuggestions = getDocumentTemplateRuntimeAiSuggestionArray(result, "fieldSuggestions", "field_suggestions");
+  const measurementSuggestions = getDocumentTemplateRuntimeAiSuggestionArray(result, "measurementSuggestions", "measurement_suggestions");
+  if (!fieldSuggestions.length && !measurementSuggestions.length) {
+    return null;
+  }
+
+  const fields = Array.isArray(template?.customFields) && template.customFields.length > 0
+    ? template.customFields
+    : documentTemplateFieldDrafts;
+  const panel = document.createElement("section");
+  panel.className = "document-template-runtime-ai-suggestions";
+
+  const head = document.createElement("div");
+  head.className = "document-template-runtime-ai-suggestions-head";
+  const title = document.createElement("strong");
+  title.textContent = "AI prijedlozi";
+  const meta = document.createElement("span");
+  meta.textContent = `${fieldSuggestions.length} polja · ${measurementSuggestions.length} Excel tablica`;
+  head.append(title, meta);
+
+  const list = document.createElement("div");
+  list.className = "document-template-runtime-ai-suggestions-list";
+
+  fieldSuggestions.forEach((suggestion, index) => {
+    const field = findDocumentTemplateRuntimeAiField(fields, suggestion);
+    const rawValue = getDocumentTemplateRuntimeAiSuggestionValue(suggestion);
+    const value = formatDocumentTemplateRuntimeAiSuggestionValue(rawValue);
+    const canApply = Boolean(field && isDocumentTemplateRuntimePersistedField(field) && String(field.type || "").trim().toLowerCase() !== "measurement_table");
+    const card = document.createElement("article");
+    card.className = "document-template-runtime-ai-suggestion";
+    card.classList.toggle("is-unmatched", !canApply);
+
+    const cardHead = document.createElement("div");
+    cardHead.className = "document-template-runtime-ai-suggestion-head";
+    const cardTitle = document.createElement("strong");
+    cardTitle.textContent = String(
+      suggestion?.fieldLabel
+      || suggestion?.field_label
+      || suggestion?.label
+      || field?.label
+      || field?.wordLabel
+      || `Prijedlog ${index + 1}`,
+    ).trim();
+    const status = document.createElement("span");
+    status.textContent = canApply
+      ? "Povezano s poljem"
+      : (field ? "Polje nije za automatski upis" : "Nije povezano s template poljem");
+    cardHead.append(cardTitle, status);
+
+    const valueNode = document.createElement("p");
+    valueNode.className = "document-template-runtime-ai-suggestion-value";
+    valueNode.textContent = value || "Prazna vrijednost";
+
+    const footer = document.createElement("div");
+    footer.className = "document-template-runtime-ai-suggestion-footer";
+    const confidence = document.createElement("small");
+    confidence.textContent = getDocumentTemplateRuntimeAiSuggestionConfidenceLabel(suggestion);
+    const reasonText = String(suggestion?.reason ?? suggestion?.explanation ?? "").trim();
+    const reason = document.createElement("small");
+    reason.textContent = reasonText ? `Razlog: ${reasonText}` : "";
+    const copyButton = document.createElement("button");
+    copyButton.type = "button";
+    copyButton.className = "ghost-button compact-button document-template-runtime-ai-suggestion-copy";
+    copyButton.textContent = "Kopiraj";
+    copyButton.disabled = !value;
+    copyButton.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard?.writeText(value);
+        copyButton.textContent = "Kopirano";
+        window.setTimeout(() => {
+          copyButton.textContent = "Kopiraj";
+        }, 1300);
+      } catch {
+        copyButton.textContent = "Označi tekst";
+      }
+    });
+    footer.append(confidence);
+    if (reasonText) {
+      footer.append(reason);
+    }
+    footer.append(copyButton);
+
+    card.append(cardHead, valueNode, footer);
+    list.append(card);
+  });
+
+  measurementSuggestions.forEach((suggestion, index) => {
+    const field = findDocumentTemplateRuntimeAiField(fields, suggestion);
+    const rows = Array.isArray(suggestion?.rows)
+      ? suggestion.rows
+      : (Array.isArray(suggestion?.values) ? suggestion.values : []);
+    const card = document.createElement("article");
+    card.className = "document-template-runtime-ai-suggestion";
+    card.classList.toggle("is-unmatched", !field);
+
+    const cardHead = document.createElement("div");
+    cardHead.className = "document-template-runtime-ai-suggestion-head";
+    const cardTitle = document.createElement("strong");
+    cardTitle.textContent = String(
+      suggestion?.fieldLabel
+      || suggestion?.field_label
+      || suggestion?.label
+      || field?.label
+      || field?.wordLabel
+      || `Excel prijedlog ${index + 1}`,
+    ).trim();
+    const status = document.createElement("span");
+    status.textContent = field ? "Excel prijedlog povezan" : "Nije povezan s Excel poljem";
+    cardHead.append(cardTitle, status);
+
+    const valueNode = document.createElement("p");
+    valueNode.className = "document-template-runtime-ai-suggestion-value";
+    valueNode.textContent = rows.length
+      ? `${rows.length} redaka spremno za pregled.`
+      : "Nema redaka u ovom prijedlogu.";
+
+    const footer = document.createElement("div");
+    footer.className = "document-template-runtime-ai-suggestion-footer";
+    const confidence = document.createElement("small");
+    confidence.textContent = getDocumentTemplateRuntimeAiSuggestionConfidenceLabel(suggestion);
+    footer.append(confidence);
+
+    card.append(cardHead, valueNode, footer);
+    list.append(card);
+  });
+
+  panel.append(head, list);
+  return panel;
+}
+
 async function runDocumentTemplateRuntimeAiAssistant(template = {}, workOrder = {}) {
   const assistant = getDocumentTemplateRuntimeAiAssistantState(template, workOrder);
   const modelOption = getDocumentTemplateRuntimeAiModelTierOption(assistant.modelTier);
@@ -36987,6 +37147,8 @@ async function runDocumentTemplateRuntimeAiAssistant(template = {}, workOrder = 
     const result = getDocumentTemplateRuntimeAiResultObject(payload);
     const fieldSuggestionCount = getDocumentTemplateRuntimeAiSuggestionArray(result, "fieldSuggestions", "field_suggestions").length;
     const measurementSuggestionCount = getDocumentTemplateRuntimeAiSuggestionArray(result, "measurementSuggestions", "measurement_suggestions").length;
+    const fieldSuggestionLabel = fieldSuggestionCount === 1 ? "1 polje" : `${fieldSuggestionCount} polja`;
+    const measurementSuggestionLabel = measurementSuggestionCount === 1 ? "1 Excel tablica" : `${measurementSuggestionCount} Excel tablica`;
     if (payload?.dryRun) {
       assistant.message = `Dry-run je prošao za model ${payload?.modelLabel || modelOption.label}. Live poziv još nije uključen na serveru.`;
     } else {
@@ -36996,7 +37158,7 @@ async function runDocumentTemplateRuntimeAiAssistant(template = {}, workOrder = 
           ? `AI je popunio ${appliedCount} polja i ${appliedMeasurementCount} Excel tablica. Boja AI oznake pokazuje sigurnost.`
           : "AI je vratio prijedloge, ali nema polja koja se mogu automatski upisati.",
         fieldSuggestionCount || measurementSuggestionCount
-          ? `Prijedlozi: ${fieldSuggestionCount} polja, ${measurementSuggestionCount} Excel tablica.`
+          ? `Prijedlozi su prikazani ispod AI kontrole: ${fieldSuggestionLabel}, ${measurementSuggestionLabel}.`
           : "",
       ].filter(Boolean).join(" ");
     }
@@ -37023,6 +37185,9 @@ function createDocumentTemplateRuntimeAiAssistantPanel(template = {}, workOrder 
   if (state.documentTemplateRuntime.aiAssistantHidden) {
     const collapsedPanel = document.createElement("section");
     collapsedPanel.className = "document-template-runtime-ai-assistant-togglebar";
+    collapsedPanel.tabIndex = 0;
+    collapsedPanel.setAttribute("role", "button");
+    collapsedPanel.setAttribute("aria-label", "Prikaži AI asistent");
     const copy = document.createElement("span");
     copy.textContent = "AI asistent je sakriven za ovaj unos.";
     const showButton = document.createElement("button");
@@ -37030,6 +37195,19 @@ function createDocumentTemplateRuntimeAiAssistantPanel(template = {}, workOrder 
     showButton.className = "ghost-button compact-button";
     showButton.textContent = "Prikaži AI";
     showButton.addEventListener("click", () => {
+      setDocumentTemplateRuntimeAiAssistantHidden(false);
+    });
+    collapsedPanel.addEventListener("click", (event) => {
+      if (event.target instanceof HTMLElement && event.target.closest("button")) {
+        return;
+      }
+      setDocumentTemplateRuntimeAiAssistantHidden(false);
+    });
+    collapsedPanel.addEventListener("keydown", (event) => {
+      if (!["Enter", " "].includes(event.key)) {
+        return;
+      }
+      event.preventDefault();
       setDocumentTemplateRuntimeAiAssistantHidden(false);
     });
     collapsedPanel.append(copy, showButton);
@@ -37054,7 +37232,10 @@ function createDocumentTemplateRuntimeAiAssistantPanel(template = {}, workOrder 
   const intro = document.createElement("div");
   intro.className = "document-template-runtime-ai-intro";
   const introHead = document.createElement("div");
-  introHead.className = "document-template-runtime-ai-head";
+  introHead.className = "document-template-runtime-ai-head document-template-runtime-ai-collapsible-head";
+  introHead.tabIndex = 0;
+  introHead.setAttribute("role", "button");
+  introHead.setAttribute("aria-label", "Sakrij AI asistent");
   const mark = document.createElement("span");
   mark.className = "document-template-runtime-ai-mark";
   mark.innerHTML = getWorkOrderIconMarkup("document");
@@ -37083,6 +37264,19 @@ function createDocumentTemplateRuntimeAiAssistantPanel(template = {}, workOrder 
     setDocumentTemplateRuntimeAiAssistantHidden(true);
   });
   introHead.append(hideButton);
+  introHead.addEventListener("click", (event) => {
+    if (event.target instanceof HTMLElement && event.target.closest("button, input, select, textarea, a")) {
+      return;
+    }
+    setDocumentTemplateRuntimeAiAssistantHidden(true);
+  });
+  introHead.addEventListener("keydown", (event) => {
+    if (!["Enter", " "].includes(event.key)) {
+      return;
+    }
+    event.preventDefault();
+    setDocumentTemplateRuntimeAiAssistantHidden(true);
+  });
   intro.append(introHead);
 
   const uploadWrap = document.createElement("div");
@@ -37233,7 +37427,11 @@ function createDocumentTemplateRuntimeAiAssistantPanel(template = {}, workOrder 
   status.textContent = assistant.message || "Upload starog zapisnika pa pokreni AI pripremu.";
   action.append(actionTitle, actionMeta, modelPicker, runButton, status);
 
+  const suggestionsPanel = createDocumentTemplateRuntimeAiSuggestionsPanel(assistant.lastPlan, template, workOrder);
   panel.append(intro, uploadWrap, action);
+  if (suggestionsPanel) {
+    panel.append(suggestionsPanel);
+  }
   return panel;
 }
 
@@ -39502,6 +39700,76 @@ function getWorkOrderDocumentSignaturePersonListFieldName(capability = "inspect"
       && entry.signatureArea === normalizedArea
       && entry.listFieldName
   ))?.listFieldName || "";
+}
+
+function buildWorkOrderDocumentSignaturePersonPatch({
+  capability = "inspect",
+  signatureArea = "elektro",
+  value = "",
+  multiple = false,
+} = {}) {
+  const normalizedCapability = capability === "authorize" ? "authorize" : "inspect";
+  const normalizedArea = normalizeQualificationAreaKey(signatureArea);
+  const normalizedValues = multiple
+    ? normalizeQualifiedUserIdList(value)
+    : normalizeQualifiedUserIdList([value]).slice(0, 1);
+  const fieldName = getWorkOrderDocumentSignaturePersonFieldName(normalizedCapability, normalizedArea);
+  const listFieldName = getWorkOrderDocumentSignaturePersonListFieldName(normalizedCapability, normalizedArea);
+  const patch = {
+    [fieldName]: normalizedValues[0] || "",
+  };
+
+  if (multiple && listFieldName) {
+    patch[listFieldName] = normalizedValues;
+  }
+
+  if (normalizedCapability === "inspect") {
+    patch.inspectorUserIds = normalizedValues;
+    patch.inspectorUserId = normalizedValues[0] || "";
+  } else {
+    patch.authorizationHolderUserId = normalizedValues[0] || "";
+  }
+
+  return patch;
+}
+
+function applyWorkOrderDocumentWizardCommonSignaturePersonPatch({
+  capability = "inspect",
+  signatureArea = "elektro",
+  value = "",
+  multiple = false,
+} = {}) {
+  const normalizedArea = normalizeQualificationAreaKey(signatureArea);
+  const patch = buildWorkOrderDocumentSignaturePersonPatch({
+    capability,
+    signatureArea: normalizedArea,
+    value,
+    multiple,
+  });
+
+  state.workOrderDocumentWizard.common = {
+    ...state.workOrderDocumentWizard.common,
+    ...patch,
+  };
+
+  getAllSelectedWorkOrdersForDocumentWizard().forEach((workOrder) => {
+    if (!workOrder?.id || !getWorkOrderDocumentWizardRelevantAreasForWorkOrder(workOrder).includes(normalizedArea)) {
+      return;
+    }
+    setWorkOrderDocumentWizardOverride(workOrder.id, patch);
+  });
+
+  if (isDocumentTemplateRuntimeFillMode()) {
+    updateDocumentTemplateRuntimeCommon(patch, { render: false });
+    getDocumentTemplateRuntimeWorkOrders().forEach((workOrder) => {
+      if (!workOrder?.id || !getWorkOrderDocumentWizardRelevantAreasForWorkOrder(workOrder).includes(normalizedArea)) {
+        return;
+      }
+      updateDocumentTemplateRuntimeOverride(workOrder.id, patch, { render: false });
+    });
+    renderDocumentTemplateRuntimeContext();
+    renderDocumentTemplatePreviewContent();
+  }
 }
 
 function getWorkOrderDocumentSignaturePersonOptions(capability = "inspect", signatureArea = "elektro", options = {}) {
@@ -75327,16 +75595,20 @@ function syncWorkOrderDocumentWizardCommonInputs() {
         : String(state.workOrderDocumentWizard.common?.[fieldName] ?? "").trim(),
       emptyLabel: capability === "authorize" ? "Odaberi odgovornu osobu" : "Odaberi ispitivače",
       onChange: (nextValue, meta = {}) => {
-        if (multiple) {
-          state.workOrderDocumentWizard.common[listFieldName] = normalizeQualifiedUserIdList(nextValue);
-          state.workOrderDocumentWizard.common[fieldName] = state.workOrderDocumentWizard.common[listFieldName][0] || "";
-        } else {
-          state.workOrderDocumentWizard.common[fieldName] = String(nextValue || "").trim();
-        }
+        applyWorkOrderDocumentWizardCommonSignaturePersonPatch({
+          capability,
+          signatureArea,
+          value: nextValue,
+          multiple,
+        });
 
         if (meta.keepMenuOpen) {
           syncWorkOrderDocumentWizardCommonSummaryText();
           renderWorkOrderDocumentWizardCommonPeopleSection();
+          renderWorkOrderDocumentWizardWorkOrders(getAllSelectedWorkOrdersForDocumentWizard());
+          if (state.workOrderDocumentWizard.step === "templates") {
+            renderWorkOrderDocumentWizardTemplates(getAllSelectedWorkOrdersForDocumentWizard());
+          }
           return;
         }
 
