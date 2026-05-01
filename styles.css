@@ -39759,8 +39759,23 @@ button.work-order-editor-section-head {
   box-shadow: inset 5px 0 0 rgba(203, 213, 225, 0.78);
 }
 
+.people-training-import-row.is-decision.is-skipped {
+  background:
+    linear-gradient(90deg, rgba(245, 158, 11, 0.15), rgba(255, 251, 235, 0.96) 44%);
+  box-shadow:
+    inset 5px 0 0 rgba(245, 158, 11, 0.86),
+    0 8px 22px rgba(245, 158, 11, 0.08);
+}
+
 .people-training-import-row:not(.is-head):hover {
   transform: translateY(-1px);
+}
+
+.people-training-import-status-cell {
+  min-width: 0;
+  display: grid;
+  justify-items: start;
+  gap: 6px;
 }
 
 .people-training-import-row-status {
@@ -39793,6 +39808,46 @@ button.work-order-editor-section-head {
   border-color: rgba(251, 113, 133, 0.55);
   background: rgba(255, 228, 230, 0.9);
   color: #be123c;
+}
+
+.people-training-import-row.is-decision.is-skipped .people-training-import-row-status {
+  border-color: rgba(245, 158, 11, 0.5);
+  background: rgba(254, 243, 199, 0.92);
+  color: #92400e;
+}
+
+.people-training-import-row-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid rgba(203, 213, 225, 0.82);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.people-training-import-row-choice-button {
+  min-height: 24px;
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #64748b;
+  font-size: 0.7rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.people-training-import-row-choice-button:hover,
+.people-training-import-row-choice-button:focus-visible {
+  background: rgba(226, 232, 240, 0.82);
+  color: #1e293b;
+}
+
+.people-training-import-row-choice-button.is-active {
+  background: linear-gradient(135deg, #2f80ed, #1d4ed8);
+  color: #ffffff;
+  box-shadow: 0 6px 14px rgba(37, 99, 235, 0.18);
 }
 
 .people-training-import-person,

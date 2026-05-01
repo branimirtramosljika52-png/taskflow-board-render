@@ -11219,12 +11219,21 @@ const PEOPLE_TRAINING_IMPORT_MODE_OPTIONS = Object.freeze([
   },
 ]);
 
+const PEOPLE_TRAINING_IMPORT_ACTION_LABELS = Object.freeze({
+  create: "Novi zaposlenik",
+  update: "Promjena podataka",
+  departure: "Odlazak",
+  skipped: "Preskočeno",
+  unchanged: "Bez promjene",
+});
+
 const peopleTrainingImportDraft = {
   open: false,
   mode: "new",
   fileName: "",
   dataUrl: "",
   preview: null,
+  rowDecisions: {},
   busy: false,
   applying: false,
   error: "",
@@ -11245,6 +11254,7 @@ function resetPeopleTrainingImportDraft({ keepMode = false } = {}) {
   peopleTrainingImportDraft.fileName = "";
   peopleTrainingImportDraft.dataUrl = "";
   peopleTrainingImportDraft.preview = null;
+  peopleTrainingImportDraft.rowDecisions = {};
   peopleTrainingImportDraft.busy = false;
   peopleTrainingImportDraft.applying = false;
   peopleTrainingImportDraft.error = "";
@@ -11259,6 +11269,7 @@ function getPeopleTrainingImportRequestBody({ previewOnly = false } = {}) {
     companyId: selectedCompanyId,
     locationId: selectedLocationId,
     importMode: peopleTrainingImportDraft.mode,
+    rowDecisions: peopleTrainingImportDraft.rowDecisions,
     previewOnly,
   };
 }
@@ -11319,6 +11330,7 @@ function openPeopleTrainingImportModeMenu(anchor) {
       peopleTrainingImportDraft.fileName = "";
       peopleTrainingImportDraft.dataUrl = "";
       peopleTrainingImportDraft.preview = null;
+      peopleTrainingImportDraft.rowDecisions = {};
       peopleTrainingImportDraft.error = "";
       closePeopleTrainingImportModeMenu();
       if (peopleTrainingImportInput) {
@@ -11356,6 +11368,7 @@ function createPeopleTrainingImportModeButton(option = {}) {
   button.addEventListener("click", () => {
     peopleTrainingImportDraft.mode = option.value;
     peopleTrainingImportDraft.preview = null;
+    peopleTrainingImportDraft.rowDecisions = {};
     peopleTrainingImportDraft.error = "";
     renderPeopleTrainingImportDialog();
   });
@@ -11399,13 +11412,99 @@ function createPeopleTrainingImportChangeChip(change = {}) {
   return chip;
 }
 
+function getPeopleTrainingImportActionLabel(action = "") {
+  return PEOPLE_TRAINING_IMPORT_ACTION_LABELS[action] || action || "Status";
+}
+
+function recalculatePeopleTrainingImportPreviewTotals(preview = {}) {
+  const totals = {
+    total: preview.rows?.length ?? 0,
+    create: 0,
+    update: 0,
+    departure: 0,
+    skipped: 0,
+    unchanged: 0,
+    applicable: 0,
+  };
+  (preview.rows ?? []).forEach((row) => {
+    if (row.action === "create") totals.create += 1;
+    if (row.action === "update") totals.update += 1;
+    if (row.action === "departure") totals.departure += 1;
+    if (row.action === "skipped") totals.skipped += 1;
+    if (row.action === "unchanged") totals.unchanged += 1;
+    if (row.canApply) totals.applicable += 1;
+  });
+  preview.totals = totals;
+}
+
+function setPeopleTrainingImportRowDecision(rowIndex, decision) {
+  const preview = peopleTrainingImportDraft.preview;
+  const normalizedIndex = String(rowIndex || "");
+  const row = (preview?.rows ?? []).find((item) => String(item.index) === normalizedIndex);
+  if (!row || row.decisionKind !== "missing-in-changes") {
+    return;
+  }
+
+  const nextDecision = decision === "create" ? "create" : "skipped";
+  peopleTrainingImportDraft.rowDecisions[normalizedIndex] = nextDecision;
+  row.decisionValue = nextDecision;
+  if (nextDecision === "create") {
+    row.action = "create";
+    row.actionLabel = getPeopleTrainingImportActionLabel("create");
+    row.tone = "success";
+    row.canApply = true;
+    row.message = "Osoba nije pronađena u evidenciji, ali označena je za unos kao novi zaposlenik.";
+  } else {
+    row.action = "skipped";
+    row.actionLabel = getPeopleTrainingImportActionLabel("skipped");
+    row.tone = "warning";
+    row.canApply = false;
+    row.message = "Osoba nije pronađena u evidenciji. U importu promjena ostaje preskočena dok ne odabereš Unesi.";
+  }
+  recalculatePeopleTrainingImportPreviewTotals(preview);
+  renderPeopleTrainingImportDialog();
+}
+
+function createPeopleTrainingImportRowDecisionControl(row = {}) {
+  if (row.decisionKind !== "missing-in-changes" || !Array.isArray(row.decisionOptions) || row.decisionOptions.length === 0) {
+    return null;
+  }
+
+  const control = document.createElement("div");
+  control.className = "people-training-import-row-choice";
+  const activeDecision = peopleTrainingImportDraft.rowDecisions[String(row.index)]
+    || row.decisionValue
+    || (row.action === "create" ? "create" : "skipped");
+  row.decisionOptions.forEach((option) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "people-training-import-row-choice-button";
+    button.classList.toggle("is-active", option.value === activeDecision);
+    button.textContent = option.label || option.value;
+    button.disabled = peopleTrainingImportDraft.busy || peopleTrainingImportDraft.applying;
+    button.addEventListener("click", () => {
+      setPeopleTrainingImportRowDecision(row.index, option.value);
+    });
+    control.append(button);
+  });
+  return control;
+}
+
 function createPeopleTrainingImportPreviewRow(row = {}) {
   const item = document.createElement("article");
   item.className = `people-training-import-row is-${row.action || "skipped"}`;
+  item.classList.toggle("is-decision", row.decisionKind === "missing-in-changes");
 
+  const statusCell = document.createElement("div");
+  statusCell.className = "people-training-import-status-cell";
   const status = document.createElement("span");
   status.className = "people-training-import-row-status";
   status.textContent = row.actionLabel || "Status";
+  statusCell.append(status);
+  const decisionControl = createPeopleTrainingImportRowDecisionControl(row);
+  if (decisionControl) {
+    statusCell.append(decisionControl);
+  }
 
   const person = document.createElement("div");
   person.className = "people-training-import-person";
@@ -11441,7 +11540,7 @@ function createPeopleTrainingImportPreviewRow(row = {}) {
     changes.append(message);
   }
 
-  item.append(status, person, changes);
+  item.append(statusCell, person, changes);
   return item;
 }
 
@@ -11613,6 +11712,7 @@ async function importPeopleTrainingExcel(file) {
   peopleTrainingImportDraft.open = true;
   peopleTrainingImportDraft.fileName = file.name;
   peopleTrainingImportDraft.preview = null;
+  peopleTrainingImportDraft.rowDecisions = {};
   peopleTrainingImportDraft.error = "";
   peopleTrainingImportDraft.busy = true;
   renderPeopleTrainingImportDialog();

@@ -3116,6 +3116,34 @@ function normalizePeopleTrainingImportMode(value = "") {
   return "new";
 }
 
+function normalizePeopleTrainingImportRowDecision(value = "") {
+  const normalized = normalizeInputValue(value).toLowerCase();
+  if (["create", "insert", "add", "new", "unos", "unesi", "dodaj", "import"].includes(normalized)) {
+    return "create";
+  }
+  if (["skip", "skipped", "preskoci", "preskoči", "preskoceno", "preskočeno"].includes(normalized)) {
+    return "skipped";
+  }
+  return "";
+}
+
+function getPeopleTrainingImportRowDecision(rowDecisions = {}, rowIndex = 0) {
+  if (!rowDecisions || typeof rowDecisions !== "object") {
+    return "";
+  }
+
+  if (Array.isArray(rowDecisions)) {
+    return normalizePeopleTrainingImportRowDecision(rowDecisions[rowIndex] ?? rowDecisions[rowIndex + 1]);
+  }
+
+  return normalizePeopleTrainingImportRowDecision(
+    rowDecisions[String(rowIndex + 1)]
+    ?? rowDecisions[String(rowIndex)]
+    ?? rowDecisions[rowIndex + 1]
+    ?? rowDecisions[rowIndex],
+  );
+}
+
 function resolvePeopleTrainingImportCompanyName(record = {}, scopedSnapshot = {}) {
   const company = (scopedSnapshot.companies ?? []).find((item) => String(item.id) === String(record.companyId));
   return normalizeInputValue(record.companyName || company?.name);
@@ -3237,6 +3265,9 @@ function buildPeopleTrainingImportRowPreview(row = {}, scopedSnapshot = {}, inde
     locationName,
     message: row.message || "",
     changes: row.changes ?? [],
+    decisionKind: row.decisionKind || "",
+    decisionValue: row.decisionValue || "",
+    decisionOptions: row.decisionOptions ?? [],
   };
 }
 
@@ -3267,11 +3298,12 @@ function summarizePeopleTrainingImportPlan(rows = [], mode = "new") {
   };
 }
 
-function buildPeopleTrainingImportPlan(records = [], scopedSnapshot = {}, modeInput = "new") {
+function buildPeopleTrainingImportPlan(records = [], scopedSnapshot = {}, modeInput = "new", rowDecisions = {}) {
   const mode = normalizePeopleTrainingImportMode(modeInput);
   const currentRecords = [...(scopedSnapshot.peopleTrainingRecords ?? [])];
-  const rows = records.map((record) => {
+  const rows = records.map((record, rowIndex) => {
     const existing = findPeopleTrainingImportExistingRecord(currentRecords, record);
+    const rowDecision = getPeopleTrainingImportRowDecision(rowDecisions, rowIndex);
 
     if (mode === "new") {
       if (existing) {
@@ -3312,6 +3344,26 @@ function buildPeopleTrainingImportPlan(records = [], scopedSnapshot = {}, modeIn
     }
 
     if (!existing) {
+      if (mode === "changes") {
+        const createFromChangeImport = rowDecision === "create";
+        return {
+          action: createFromChangeImport ? "create" : "skipped",
+          tone: createFromChangeImport ? "success" : "warning",
+          canApply: createFromChangeImport,
+          record,
+          nextRecord: record,
+          decisionKind: "missing-in-changes",
+          decisionValue: createFromChangeImport ? "create" : "skipped",
+          decisionOptions: [
+            { value: "skipped", label: "Preskoči" },
+            { value: "create", label: "Unesi" },
+          ],
+          message: createFromChangeImport
+            ? "Osoba nije pronađena u evidenciji, ali označena je za unos kao novi zaposlenik."
+            : "Osoba nije pronađena u evidenciji. U importu promjena ostaje preskočena dok ne odabereš Unesi.",
+          changes: [],
+        };
+      }
       return {
         action: "skipped",
         tone: "warning",
@@ -5070,7 +5122,7 @@ async function handleApiRequest(request, response, url) {
       }
 
       const importMode = normalizePeopleTrainingImportMode(body.importMode || body.mode);
-      const importPlan = buildPeopleTrainingImportPlan(records, scopedSnapshot, importMode);
+      const importPlan = buildPeopleTrainingImportPlan(records, scopedSnapshot, importMode, body.rowDecisions);
       const previewPayload = serializePeopleTrainingImportPlan(importPlan, scopedSnapshot);
       if (body.previewOnly || body.dryRun || body.preview === true) {
         sendJson(response, 200, {
