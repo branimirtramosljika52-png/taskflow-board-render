@@ -34825,6 +34825,30 @@ function isDocumentTemplateSystemDescriptionValue(value = null) {
 }
 
 function normalizeDocumentTemplateSystemDescriptionRuntimeValue(field = {}, value = null) {
+  if (!isDocumentTemplateSystemDescriptionValue(value) && hasMeaningfulDocumentRecordValue(value)) {
+    const textValue = Array.isArray(value)
+      ? value.map((entry) => String(entry ?? "").trim()).filter(Boolean).join("\n")
+      : String(value ?? "").trim();
+    const nextValue = normalizeDocumentTemplateSystemDescriptionRuntimeValue(field);
+    const firstBlock = nextValue.blocks[0] ?? createDocumentTemplateSystemDescriptionBlockDraft({}, field, 0);
+    const firstRow = firstBlock.rows[0] ?? createEmptyDocumentTemplateSystemDescriptionRowDraft({}, 0);
+    return {
+      blocks: [
+        {
+          ...firstBlock,
+          rows: [
+            {
+              ...firstRow,
+              description: textValue,
+            },
+            ...(Array.isArray(firstBlock.rows) ? firstBlock.rows.slice(1) : []),
+          ],
+        },
+        ...(Array.isArray(nextValue.blocks) ? nextValue.blocks.slice(1) : []),
+      ],
+    };
+  }
+
   const source = isDocumentTemplateSystemDescriptionValue(value) ? value : {};
   return {
     blocks: normalizeDocumentTemplateSystemDescriptionBlocks(source, field, { ensureOne: true }),
@@ -35320,6 +35344,17 @@ const DOCUMENT_TEMPLATE_REQUIRED_TOGGLE_FIELD_TYPES = new Set([
   "number",
   "legal_list",
   "equipment_list",
+]);
+
+const DOCUMENT_TEMPLATE_RUNTIME_AI_WRITABLE_FIELD_TYPES = new Set([
+  "system_description",
+  "text",
+  "longtext",
+  "dropdown",
+  "date",
+  "number",
+  "checkbox",
+  "toggle",
 ]);
 
 const DOCUMENT_TEMPLATE_MEDIA_FIELD_TYPES = new Set([
@@ -36772,8 +36807,8 @@ function normalizeDocumentTemplateRuntimeAiLookupKey(value = "") {
   return String(value ?? "").trim().toLowerCase();
 }
 
-function findDocumentTemplateRuntimeAiField(fields = [], suggestion = {}) {
-  const lookupValues = [
+function getDocumentTemplateRuntimeAiSuggestionLookupValues(suggestion = {}) {
+  return [
     suggestion?.fieldId,
     suggestion?.field_id,
     suggestion?.fieldKey,
@@ -36785,25 +36820,101 @@ function findDocumentTemplateRuntimeAiField(fields = [], suggestion = {}) {
   ]
     .map(normalizeDocumentTemplateRuntimeAiLookupKey)
     .filter(Boolean);
+}
 
-  if (!lookupValues.length) {
-    return null;
+function getDocumentTemplateRuntimeAiFieldLookupValues(candidate = {}) {
+  const aiConfig = normalizeDocumentTemplateFieldAiConfig(candidate?.ai ?? candidate?.aiConfig, candidate);
+  return [
+    candidate?.id,
+    candidate?.key,
+    candidate?.wordLabel,
+    candidate?.label,
+    aiConfig.key,
+    aiConfig.label,
+  ]
+    .map(normalizeDocumentTemplateRuntimeAiLookupKey)
+    .filter(Boolean);
+}
+
+function getDocumentTemplateRuntimeAiMatchedFields(fields = [], suggestion = {}) {
+  const lookupValues = new Set(getDocumentTemplateRuntimeAiSuggestionLookupValues(suggestion));
+  if (!lookupValues.size) {
+    return [];
   }
 
-  return fields.find((candidate) => {
-    const candidateValues = [
-      candidate?.id,
-      candidate?.key,
-      candidate?.wordLabel,
-      candidate?.label,
-      normalizeDocumentTemplateFieldAiConfig(candidate?.ai ?? candidate?.aiConfig, candidate).key,
-      normalizeDocumentTemplateFieldAiConfig(candidate?.ai ?? candidate?.aiConfig, candidate).label,
-    ]
-      .map(normalizeDocumentTemplateRuntimeAiLookupKey)
-      .filter(Boolean);
+  return (Array.isArray(fields) ? fields : []).filter((candidate) => (
+    getDocumentTemplateRuntimeAiFieldLookupValues(candidate).some((value) => lookupValues.has(value))
+  ));
+}
 
-    return candidateValues.some((value) => lookupValues.includes(value));
-  }) ?? null;
+function findDocumentTemplateRuntimeAiField(fields = [], suggestion = {}) {
+  return getDocumentTemplateRuntimeAiMatchedFields(fields, suggestion)[0] ?? null;
+}
+
+function isDocumentTemplateRuntimeAiWritableField(field = {}) {
+  const type = String(field?.type || "text").trim().toLowerCase();
+  if (!field || !DOCUMENT_TEMPLATE_RUNTIME_AI_WRITABLE_FIELD_TYPES.has(type)) {
+    return false;
+  }
+  return isDocumentTemplateRuntimePersistedField(field)
+    || hasDocumentTemplateFieldAiConfig(field.ai ?? field.aiConfig, field);
+}
+
+function getDocumentTemplateRuntimeChapterChildFields(fields = [], chapterField = {}) {
+  const allFields = Array.isArray(fields) ? fields : [];
+  const chapterId = String(chapterField?.id || "").trim();
+  const chapterIndex = allFields.findIndex((field) => String(field?.id || "").trim() === chapterId);
+  if (chapterIndex < 0) {
+    return [];
+  }
+
+  const childFields = [];
+  for (let index = chapterIndex + 1; index < allFields.length; index += 1) {
+    const field = allFields[index];
+    const type = String(field?.type || "").trim().toLowerCase();
+    if (type === "chapter" || type === "page_break") {
+      break;
+    }
+    childFields.push(field);
+  }
+  return childFields;
+}
+
+function findDocumentTemplateRuntimeAiWritableField(fields = [], suggestion = {}) {
+  const matchedFields = getDocumentTemplateRuntimeAiMatchedFields(fields, suggestion);
+  const directWritableField = matchedFields.find(isDocumentTemplateRuntimeAiWritableField);
+  if (directWritableField) {
+    return directWritableField;
+  }
+
+  const lookupValues = new Set(getDocumentTemplateRuntimeAiSuggestionLookupValues(suggestion));
+  for (const matchedField of matchedFields) {
+    if (String(matchedField?.type || "").trim().toLowerCase() !== "chapter") {
+      continue;
+    }
+    const childFields = getDocumentTemplateRuntimeChapterChildFields(fields, matchedField)
+      .filter(isDocumentTemplateRuntimeAiWritableField);
+    const exactChild = childFields.find((childField) => (
+      getDocumentTemplateRuntimeAiFieldLookupValues(childField).some((value) => lookupValues.has(value))
+    ));
+    if (exactChild) {
+      return exactChild;
+    }
+    const aiChildren = childFields.filter((childField) => (
+      hasDocumentTemplateFieldAiConfig(childField.ai ?? childField.aiConfig, childField)
+    ));
+    if (aiChildren.length === 1) {
+      return aiChildren[0];
+    }
+    if (childFields.length === 1) {
+      return childFields[0];
+    }
+    if (aiChildren.length > 0) {
+      return aiChildren[0];
+    }
+  }
+
+  return null;
 }
 
 function getDocumentTemplateRuntimeAiSuggestionValue(suggestion = {}) {
@@ -36812,6 +36923,32 @@ function getDocumentTemplateRuntimeAiSuggestionValue(suggestion = {}) {
     ?? suggestion?.suggested_value
     ?? suggestion?.text
     ?? "";
+}
+
+function applyDocumentTemplateRuntimeAiFieldSuggestion(payload = {}, workOrder = {}, suggestion = {}, field = null) {
+  const rawValue = getDocumentTemplateRuntimeAiSuggestionValue(suggestion);
+  if (!workOrder?.id || !field || !isDocumentTemplateRuntimeAiWritableField(field) || !hasMeaningfulDocumentRecordValue(rawValue)) {
+    return false;
+  }
+
+  const confidence = normalizeAiConfidenceLevelLocal(suggestion?.confidence, "low");
+  const normalizedValue = normalizeDocumentTemplateRuntimeFieldValueByType(field, rawValue);
+  if (!hasMeaningfulDocumentRecordValue(normalizedValue)) {
+    return false;
+  }
+
+  setDocumentTemplateRuntimeFieldValue(workOrder.id, field.id, normalizedValue, {
+    render: false,
+    source: "ai",
+    aiMeta: {
+      confidence,
+      reason: suggestion?.reason ?? suggestion?.explanation ?? "",
+      sourceFile: suggestion?.sourceFile ?? suggestion?.source_file ?? "",
+      sourcePage: suggestion?.sourcePage ?? suggestion?.source_page ?? "",
+      model: payload?.model || payload?.modelLabel || "",
+    },
+  });
+  return true;
 }
 
 function getDocumentTemplateRuntimeAiSuggestionCellValue(values = {}, column = {}) {
@@ -36847,31 +36984,10 @@ function applyDocumentTemplateRuntimeAiSuggestions(payload = {}, template = {}, 
   let measurementCount = 0;
 
   fieldSuggestions.forEach((suggestion) => {
-    const confidence = normalizeAiConfidenceLevelLocal(suggestion?.confidence, "low");
-    const rawValue = getDocumentTemplateRuntimeAiSuggestionValue(suggestion);
-    if (rawValue == null || String(rawValue).trim() === "") {
-      return;
+    const field = findDocumentTemplateRuntimeAiWritableField(fields, suggestion);
+    if (applyDocumentTemplateRuntimeAiFieldSuggestion(payload, workOrder, suggestion, field)) {
+      fieldCount += 1;
     }
-    const field = findDocumentTemplateRuntimeAiField(fields, suggestion);
-    if (!field || String(field.type || "").trim().toLowerCase() === "measurement_table") {
-      return;
-    }
-    if (!isDocumentTemplateRuntimePersistedField(field)) {
-      return;
-    }
-    const normalizedValue = normalizeDocumentTemplateRuntimeFieldValueByType(field, rawValue);
-    setDocumentTemplateRuntimeFieldValue(workOrder.id, field.id, normalizedValue, {
-      render: false,
-      source: "ai",
-      aiMeta: {
-        confidence,
-        reason: suggestion?.reason ?? suggestion?.explanation ?? "",
-        sourceFile: suggestion?.sourceFile ?? suggestion?.source_file ?? "",
-        sourcePage: suggestion?.sourcePage ?? suggestion?.source_page ?? "",
-        model: payload?.model || payload?.modelLabel || "",
-      },
-    });
-    fieldCount += 1;
   });
 
   measurementSuggestions.forEach((suggestion, suggestionIndex) => {
@@ -36992,10 +37108,11 @@ function createDocumentTemplateRuntimeAiSuggestionsPanel(payload = {}, template 
   list.className = "document-template-runtime-ai-suggestions-list";
 
   fieldSuggestions.forEach((suggestion, index) => {
-    const field = findDocumentTemplateRuntimeAiField(fields, suggestion);
+    const matchedField = findDocumentTemplateRuntimeAiField(fields, suggestion);
+    const field = findDocumentTemplateRuntimeAiWritableField(fields, suggestion);
     const rawValue = getDocumentTemplateRuntimeAiSuggestionValue(suggestion);
     const value = formatDocumentTemplateRuntimeAiSuggestionValue(rawValue);
-    const canApply = Boolean(field && isDocumentTemplateRuntimePersistedField(field) && String(field.type || "").trim().toLowerCase() !== "measurement_table");
+    const canApply = Boolean(field && isDocumentTemplateRuntimeAiWritableField(field));
     const card = document.createElement("article");
     card.className = "document-template-runtime-ai-suggestion";
     card.classList.toggle("is-unmatched", !canApply);
@@ -37012,9 +37129,10 @@ function createDocumentTemplateRuntimeAiSuggestionsPanel(payload = {}, template 
       || `Prijedlog ${index + 1}`,
     ).trim();
     const status = document.createElement("span");
+    const resolvedFieldLabel = String(field?.label || field?.wordLabel || "").trim();
     status.textContent = canApply
-      ? "Povezano s poljem"
-      : (field ? "Polje nije za automatski upis" : "Nije povezano s template poljem");
+      ? (resolvedFieldLabel ? `Povezano: ${resolvedFieldLabel}` : "Povezano s poljem")
+      : (matchedField ? "Polje nije za automatski upis" : "Nije povezano s template poljem");
     cardHead.append(cardTitle, status);
 
     const valueNode = document.createElement("p");
@@ -37047,6 +37165,25 @@ function createDocumentTemplateRuntimeAiSuggestionsPanel(payload = {}, template 
     footer.append(confidence);
     if (reasonText) {
       footer.append(reason);
+    }
+    if (canApply) {
+      const applyButton = document.createElement("button");
+      applyButton.type = "button";
+      applyButton.className = "primary-button compact-button document-template-runtime-ai-suggestion-apply";
+      applyButton.textContent = "Upiši";
+      applyButton.disabled = !hasMeaningfulDocumentRecordValue(rawValue);
+      applyButton.addEventListener("click", () => {
+        const applied = applyDocumentTemplateRuntimeAiFieldSuggestion(payload, workOrder, suggestion, field);
+        if (!applied) {
+          status.textContent = "Nije upisano";
+          return;
+        }
+        status.textContent = "Upisano u polje";
+        scheduleDocumentTemplateRuntimeAutosave();
+        renderDocumentTemplateFieldRows();
+        renderDocumentTemplatePreviewContent();
+      });
+      footer.append(applyButton);
     }
     footer.append(copyButton);
 
@@ -77378,6 +77515,13 @@ function isDocumentTemplateRuntimePersistedField(field = {}) {
   }
 
   if (isDocumentTemplatePreviousDocumentLookupField(field)) {
+    return true;
+  }
+
+  if (
+    DOCUMENT_TEMPLATE_RUNTIME_AI_WRITABLE_FIELD_TYPES.has(type)
+    && hasDocumentTemplateFieldAiConfig(field.ai ?? field.aiConfig, field)
+  ) {
     return true;
   }
 
