@@ -3275,14 +3275,29 @@ function buildPeopleTrainingImportPlan(records = [], scopedSnapshot = {}, modeIn
 
     if (mode === "new") {
       if (existing) {
+        const changes = buildPeopleTrainingImportFieldChanges(existing, record, scopedSnapshot);
+        if (changes.length > 0) {
+          return {
+            action: "update",
+            tone: "info",
+            canApply: true,
+            record,
+            currentRecord: existing,
+            existingId: existing.id,
+            nextRecord: record,
+            message: "Osoba već postoji u evidenciji, ali Excel donosi promjene koje se mogu ažurirati.",
+            changes,
+          };
+        }
         return {
-          action: "skipped",
+          action: "unchanged",
           tone: "muted",
           canApply: false,
           record,
           currentRecord: existing,
-          message: "Osoba već postoji u evidenciji, zato se ne dodaje kao nova.",
-          changes: [],
+          nextRecord: record,
+          message: "Osoba već postoji u evidenciji i Excel ne donosi promjenu.",
+          changes,
         };
       }
       return {
