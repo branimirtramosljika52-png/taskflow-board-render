@@ -36729,22 +36729,29 @@ function getDocumentTemplateRuntimeAiMeasurementColumns(template = {}) {
     if (String(field?.type || "").trim() !== "measurement_table") {
       return;
     }
-    const sheet = field?.sheet ?? ensureDocumentTemplateMeasurementFieldSheet(field);
-    (Array.isArray(sheet?.columns) ? sheet.columns : []).forEach((column) => {
-      const aiMapping = normalizeMeasurementSheetColumnAiMappingSnapshotLocal(column?.aiMapping ?? column?.ai);
-      if (!hasMeasurementColumnAiMapping(aiMapping)) {
-        return;
-      }
-      columns.push({
-        fieldId: String(field?.id || ""),
-        fieldLabel: String(field?.label || field?.wordLabel || "Mjerenje"),
-        columnId: String(column?.id || ""),
-        key: aiMapping.key || String(column?.id || ""),
-        label: aiMapping.label || String(column?.label || column?.id || "Kolona"),
-        type: aiMapping.type || aiMapping.format || "text",
-        aiMapping,
+    const sheet = ensureDocumentTemplateMeasurementFieldSheet(field);
+    const fieldAi = normalizeDocumentTemplateFieldAiConfig(field?.ai ?? field?.aiConfig, field);
+    (Array.isArray(sheet?.columns) ? sheet.columns : [])
+      .filter((column) => !column?.computed)
+      .forEach((column, columnIndex) => {
+        const aiMapping = normalizeMeasurementSheetColumnAiMappingSnapshotLocal(column?.aiMapping ?? column?.ai);
+        columns.push({
+          fieldId: String(field?.id || ""),
+          fieldKey: String(field?.key || ""),
+          fieldLabel: String(field?.label || field?.wordLabel || "Mjerenje"),
+          fieldDescription: fieldAi.aiDescription || fieldAi.description || String(field?.helpText || ""),
+          columnId: String(column?.id || ""),
+          columnIndex,
+          columnLetter: getSpreadsheetColumnLabel(columnIndex),
+          key: aiMapping.key || String(column?.id || ""),
+          label: aiMapping.label || String(column?.label || column?.placeholder || column?.id || "Kolona"),
+          type: aiMapping.type || aiMapping.format || "text",
+          required: Boolean(aiMapping.required),
+          placeholder: String(column?.placeholder || aiMapping.placeholder || ""),
+          helpText: aiMapping.helpText || aiMapping.description || aiMapping.aiDescription || "",
+          aiMapping,
+        });
       });
-    });
   });
   return columns;
 }
@@ -36990,22 +36997,41 @@ function getDocumentTemplateRuntimeAiSuggestionRows(suggestion = {}) {
     suggestion?.rows,
     suggestion?.tableRows,
     suggestion?.table_rows,
+    suggestion?.dataRows,
+    suggestion?.data_rows,
+    suggestion?.items,
+    suggestion?.records,
     suggestion?.values,
     suggestion?.value,
   ];
   const rows = sources.find((source) => Array.isArray(source));
-  return Array.isArray(rows) ? rows : [];
+  if (Array.isArray(rows)) {
+    return rows;
+  }
+  const singleRow = sources.find((source) => (
+    source && typeof source === "object" && !Array.isArray(source)
+  ));
+  return singleRow ? [singleRow] : [];
 }
 
 function getDocumentTemplateRuntimeAiSuggestionRowValues(row = {}, editableColumns = []) {
   if (Array.isArray(row)) {
     return row;
   }
+  if (row?.data && (typeof row.data === "object" || Array.isArray(row.data))) {
+    return row.data;
+  }
   if (row?.values && (typeof row.values === "object" || Array.isArray(row.values))) {
     return row.values;
   }
+  if (Array.isArray(row?.orderedValues) || Array.isArray(row?.ordered_values)) {
+    return row.orderedValues ?? row.ordered_values;
+  }
   if (row?.cells && (typeof row.cells === "object" || Array.isArray(row.cells))) {
     return row.cells;
+  }
+  if (row?.columns && (typeof row.columns === "object" || Array.isArray(row.columns))) {
+    return row.columns;
   }
   if (row && typeof row === "object") {
     return row;
@@ -37014,27 +37040,139 @@ function getDocumentTemplateRuntimeAiSuggestionRowValues(row = {}, editableColum
   return firstColumn ? { [firstColumn.id]: row } : {};
 }
 
+const DOCUMENT_TEMPLATE_RUNTIME_AI_MEASUREMENT_META_KEYS = new Set([
+  "confidence",
+  "sourcefile",
+  "source_file",
+  "sourcepage",
+  "source_page",
+  "reason",
+  "explanation",
+  "note",
+  "notes",
+  "warning",
+  "warnings",
+  "fieldid",
+  "field_id",
+  "fieldkey",
+  "field_key",
+  "fieldlabel",
+  "field_label",
+  "row",
+  "rowindex",
+  "row_index",
+  "id",
+]);
+
+function isDocumentTemplateRuntimeAiMeasurementMetaKey(key = "") {
+  return getDocumentTemplateRuntimeAiLookupKeyVariants(key)
+    .some((variant) => DOCUMENT_TEMPLATE_RUNTIME_AI_MEASUREMENT_META_KEYS.has(variant.replace(/\s+/g, "")));
+}
+
+function extractDocumentTemplateRuntimeAiCellValue(value) {
+  if (value == null) {
+    return "";
+  }
+  if (typeof value !== "object") {
+    return value;
+  }
+  const preferredKeys = [
+    "value",
+    "text",
+    "content",
+    "cellValue",
+    "cell_value",
+    "suggestedValue",
+    "suggested_value",
+    "result",
+  ];
+  for (const key of preferredKeys) {
+    if (Object.prototype.hasOwnProperty.call(value, key)) {
+      return value[key] ?? "";
+    }
+  }
+  return "";
+}
+
+function getDocumentTemplateRuntimeAiMeasurementColumnLookupValues(column = {}, columnIndex = -1) {
+  const aiMapping = normalizeMeasurementSheetColumnAiMappingSnapshotLocal(column?.aiMapping ?? column?.ai);
+  return new Set([
+    column?.id,
+    column?.key,
+    column?.label,
+    column?.placeholder,
+    Number.isInteger(columnIndex) && columnIndex >= 0 ? getSpreadsheetColumnLabel(columnIndex) : "",
+    aiMapping.key,
+    aiMapping.label,
+    aiMapping.placeholder,
+    ...(Array.isArray(aiMapping.synonyms) ? aiMapping.synonyms : []),
+    ...(Array.isArray(aiMapping.aiLookFor) ? aiMapping.aiLookFor : []),
+  ]
+    .flatMap(getDocumentTemplateRuntimeAiLookupKeyVariants)
+    .filter(Boolean));
+}
+
+function getDocumentTemplateRuntimeAiCellReferenceValues(value = {}) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return [];
+  }
+  return [
+    value.columnId,
+    value.column_id,
+    value.columnKey,
+    value.column_key,
+    value.columnLabel,
+    value.column_label,
+    value.column,
+    value.key,
+    value.id,
+    value.label,
+    value.name,
+    value.header,
+  ].flatMap(getDocumentTemplateRuntimeAiLookupKeyVariants).filter(Boolean);
+}
+
+function doesDocumentTemplateRuntimeAiCellReferenceColumn(value = {}, column = {}, columnIndex = -1) {
+  const columnKeys = getDocumentTemplateRuntimeAiMeasurementColumnLookupValues(column, columnIndex);
+  return getDocumentTemplateRuntimeAiCellReferenceValues(value).some((variant) => columnKeys.has(variant));
+}
+
+function getDocumentTemplateRuntimeAiSuggestionArrayCellValue(values = [], column = {}, columnIndex = 0) {
+  const objectMatch = values.find((entry) => (
+    entry && typeof entry === "object" && !Array.isArray(entry)
+    && doesDocumentTemplateRuntimeAiCellReferenceColumn(entry, column, columnIndex)
+  ));
+  if (objectMatch) {
+    return extractDocumentTemplateRuntimeAiCellValue(objectMatch);
+  }
+  return extractDocumentTemplateRuntimeAiCellValue(values[columnIndex]);
+}
+
 function getDocumentTemplateRuntimeAiSuggestionCellValue(values = {}, column = {}, columnIndex = 0) {
   if (Array.isArray(values)) {
-    return values[columnIndex] ?? "";
+    return getDocumentTemplateRuntimeAiSuggestionArrayCellValue(values, column, columnIndex);
   }
   if (!values || typeof values !== "object") {
     return "";
   }
-  const aiMapping = normalizeMeasurementSheetColumnAiMappingSnapshotLocal(column?.aiMapping ?? column?.ai);
-  const keys = new Set([
-    column?.id,
-    column?.key,
-    column?.label,
-    aiMapping.key,
-    aiMapping.label,
-  ]
-    .flatMap(getDocumentTemplateRuntimeAiLookupKeyVariants)
-    .filter(Boolean));
-  const matchedEntry = Object.entries(values).find(([key]) => (
-    getDocumentTemplateRuntimeAiLookupKeyVariants(key).some((variant) => keys.has(variant))
+  if (doesDocumentTemplateRuntimeAiCellReferenceColumn(values, column, columnIndex)) {
+    return extractDocumentTemplateRuntimeAiCellValue(values);
+  }
+  const keys = getDocumentTemplateRuntimeAiMeasurementColumnLookupValues(column, columnIndex);
+  const entries = Object.entries(values);
+  const matchedEntry = entries.find(([key]) => (
+    !isDocumentTemplateRuntimeAiMeasurementMetaKey(key)
+    && getDocumentTemplateRuntimeAiLookupKeyVariants(key).some((variant) => keys.has(variant))
   ));
-  return matchedEntry ? matchedEntry[1] : "";
+  if (matchedEntry) {
+    return extractDocumentTemplateRuntimeAiCellValue(matchedEntry[1]);
+  }
+
+  const orderedEntries = entries.filter(([key]) => (
+    !isDocumentTemplateRuntimeAiMeasurementMetaKey(key)
+    && !getDocumentTemplateRuntimeAiLookupKeyVariants(key).some((variant) => variant.replace(/\s+/g, "") === "columnkey")
+  ));
+  return orderedEntries[columnIndex] ? extractDocumentTemplateRuntimeAiCellValue(orderedEntries[columnIndex][1]) : "";
 }
 
 function buildDocumentTemplateRuntimeAiMeasurementRows(workOrder = {}, field = {}, suggestion = {}, suggestionIndex = 0) {
@@ -37081,6 +37219,39 @@ function buildDocumentTemplateRuntimeAiMeasurementRows(workOrder = {}, field = {
   };
 }
 
+const DOCUMENT_TEMPLATE_RUNTIME_AI_EMPTY_MEASUREMENT_CELL_HINTS = new Set([
+  "pozicija",
+  "opis",
+  "vrijednost",
+  "granica",
+  "napomena",
+  "unos",
+  "mjerno mjesto",
+  "oznaka",
+  "jedinica",
+  "min",
+  "max",
+  "0,00",
+]);
+
+function isDocumentTemplateRuntimeAiBlankMeasurementCell(value = "", column = {}) {
+  const normalizedValue = String(value ?? "").trim().toLowerCase();
+  if (!normalizedValue) {
+    return true;
+  }
+  const normalizedLabel = String(column?.label || "").trim().toLowerCase();
+  const normalizedPlaceholder = String(column?.placeholder || "").trim().toLowerCase();
+  return normalizedValue === normalizedLabel
+    || normalizedValue === normalizedPlaceholder
+    || DOCUMENT_TEMPLATE_RUNTIME_AI_EMPTY_MEASUREMENT_CELL_HINTS.has(normalizedValue);
+}
+
+function isDocumentTemplateRuntimeAiWritableBlankMeasurementRow(row = {}, columns = []) {
+  return (Array.isArray(columns) ? columns : [])
+    .filter((column) => !column?.computed)
+    .every((column) => isDocumentTemplateRuntimeAiBlankMeasurementCell(row?.cells?.[column.id], column));
+}
+
 function applyDocumentTemplateRuntimeAiMeasurementSuggestion(payload = {}, workOrder = {}, suggestion = {}, field = null, suggestionIndex = 0) {
   const measurementPatch = buildDocumentTemplateRuntimeAiMeasurementRows(workOrder, field, suggestion, suggestionIndex);
   if (!measurementPatch) {
@@ -37088,8 +37259,13 @@ function applyDocumentTemplateRuntimeAiMeasurementSuggestion(payload = {}, workO
   }
 
   const existingRows = [...(measurementPatch.sheet.rows ?? [])];
+  const headerRowIds = new Set((measurementPatch.sheet.headerRows ?? []).map((rowId) => String(rowId || "")));
   measurementPatch.rows.forEach((incomingRow) => {
-    const blankIndex = existingRows.findIndex((row) => !isMeasurementSheetRowMeaningful(row, measurementPatch.sheet.columns));
+    const blankIndex = existingRows.findIndex((row) => (
+      !headerRowIds.has(String(row?.id || ""))
+      &&
+      isDocumentTemplateRuntimeAiWritableBlankMeasurementRow(row, measurementPatch.sheet.columns)
+    ));
     if (blankIndex >= 0) {
       existingRows[blankIndex] = {
         ...incomingRow,
@@ -37100,10 +37276,22 @@ function applyDocumentTemplateRuntimeAiMeasurementSuggestion(payload = {}, workO
     }
   });
 
-  setDocumentTemplateRuntimeMeasurementSheet(workOrder.id, field.id, {
+  const nextSheet = {
     ...measurementPatch.sheet,
     rows: existingRows,
-  }, { render: false });
+  };
+  setDocumentTemplateRuntimeMeasurementSheet(workOrder.id, field.id, nextSheet, { render: false });
+
+  const isOpenSameRuntimeSheet = state.measurementSheet.isOpen
+    && state.measurementSheet.ownerKind === "document_template_runtime_field"
+    && String(state.measurementSheet.ownerFieldId || "") === String(field.id || "")
+    && String(state.measurementSheet.ownerRuntimeWorkOrderId || "") === String(workOrder.id || "");
+  if (isOpenSameRuntimeSheet) {
+    applyMeasurementSheetSnapshot(nextSheet);
+    syncMeasurementSheetHeaderFromWorkOrder();
+    renderMeasurementSheet();
+    syncMeasurementToolbar();
+  }
 
   return {
     applied: true,
