@@ -3104,6 +3104,7 @@ const serviceCatalogCertificateTemplateSection = document.querySelector("#servic
 const serviceCatalogTemplateList = document.querySelector("#service-catalog-template-list");
 const serviceCatalogLearningTestList = document.querySelector("#service-catalog-learning-test-list");
 const serviceCatalogCertificateTemplateInput = document.querySelector("#service-catalog-certificate-template-input");
+const serviceCatalogCertificateTemplateSelect = document.querySelector("#service-catalog-certificate-template-select");
 const serviceCatalogCertificateTemplateUploadButton = document.querySelector("#service-catalog-certificate-template-upload");
 const serviceCatalogCertificateTemplateDownloadButton = document.querySelector("#service-catalog-certificate-template-download");
 const serviceCatalogCertificateTemplatePlaceholdersButton = document.querySelector("#service-catalog-certificate-template-placeholders");
@@ -42521,6 +42522,13 @@ function buildDocumentTemplateFieldWordPlaceholderValue(field = {}, context = {}
     return buildDocumentTemplateSystemDescriptionWordPlaceholder(field, context, index);
   }
 
+  if (isDocumentTemplateMediaFieldType(field.type)) {
+    const mediaText = buildDocumentTemplateFieldExportText(field, context, index);
+    return mediaText || {
+      __docxBlockType: "optional_empty",
+    };
+  }
+
   return buildDocumentTemplateFieldExportText(field, context, index);
 }
 
@@ -47380,6 +47388,81 @@ function renderServiceCatalogLearningTestChecklist(selectedIds = []) {
   }));
 }
 
+function isServiceCatalogWordReferenceDocument(document = {}) {
+  const fileName = String(document?.fileName || document?.storageKey || "").trim().toLowerCase();
+  const fileType = String(document?.fileType || "").trim().toLowerCase();
+  return fileName.endsWith(".doc")
+    || fileName.endsWith(".docx")
+    || fileName.endsWith(".dotx")
+    || fileType.includes("wordprocessingml")
+    || fileType.includes("msword");
+}
+
+function getServiceCatalogIsZnrTemplateOptions() {
+  return sortDocumentTemplates(state.documentTemplates ?? [])
+    .filter((template) => (
+      normalizeLooseName(template.documentType || "") === normalizeLooseName("IS ZNR")
+      && isServiceCatalogWordReferenceDocument(template.referenceDocument)
+    ))
+    .map((template) => {
+      const document = template.referenceDocument ?? {};
+      return {
+        value: String(template.id || ""),
+        label: [
+          template.title || "IS ZNR template",
+          document.fileName ? `(${document.fileName})` : "",
+        ].filter(Boolean).join(" "),
+        template,
+      };
+    })
+    .filter((option) => option.value);
+}
+
+function buildServiceCatalogCertificateTemplateDraftFromDocumentTemplate(template = null) {
+  if (!template?.referenceDocument || !isServiceCatalogWordReferenceDocument(template.referenceDocument)) {
+    return null;
+  }
+
+  const document = createModuleAttachmentDraft(template.referenceDocument);
+  return {
+    ...document,
+    sourceDocumentId: String(template.id || document.sourceDocumentId || "").trim(),
+    documentCategory: "Predložak uvjerenja",
+    description: `IS ZNR template: ${template.title || template.documentType || document.fileName || "Word predložak"}`,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function getServiceCatalogSelectedCertificateTemplateId() {
+  const sourceId = String(serviceCatalogCertificateTemplateDraft?.sourceDocumentId || "").trim();
+  if (!sourceId) {
+    return "";
+  }
+  return getServiceCatalogIsZnrTemplateOptions().some((option) => option.value === sourceId) ? sourceId : "";
+}
+
+function renderServiceCatalogCertificateTemplateSelect() {
+  if (!serviceCatalogCertificateTemplateSelect) {
+    return;
+  }
+
+  const options = getServiceCatalogIsZnrTemplateOptions();
+  replaceSelectOptions(
+    serviceCatalogCertificateTemplateSelect,
+    [
+      {
+        value: "",
+        label: options.length
+          ? "Ručni upload ili bez IS ZNR templatea"
+          : "Nema IS ZNR Word templatea u Template Developmentu",
+      },
+      ...options.map((option) => ({ value: option.value, label: option.label })),
+    ],
+    getServiceCatalogSelectedCertificateTemplateId(),
+  );
+  serviceCatalogCertificateTemplateSelect.disabled = !getCanManageMasterData();
+}
+
 function getPeopleTrainingCertificatePlaceholderToken(entry = {}) {
   return entry.token || `{{${entry.key}}}`;
 }
@@ -47426,7 +47509,7 @@ function renderServiceCatalogCertificateTemplateMeta() {
   card.className = "offer-template-reference-card";
   const badge = document.createElement("span");
   badge.className = "soft-pill";
-  badge.textContent = "Word";
+  badge.textContent = getServiceCatalogSelectedCertificateTemplateId() ? "IS ZNR" : "Word";
   const title = document.createElement("strong");
   title.textContent = serviceCatalogCertificateTemplateDraft.fileName || "Predložak uvjerenja";
   const meta = document.createElement("span");
@@ -47478,11 +47561,13 @@ async function setServiceCatalogCertificateTemplateFile(file) {
     fileType: file.type || "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     fileSize: file.size || 0,
     documentCategory: "Predložak uvjerenja",
+    sourceDocumentId: "",
     description: "Word predložak za PDF uvjerenja osposobljavanja.",
     dataUrl: await readFileAsDataUrl(file, "Ne mogu učitati Word predložak."),
     createdAt: serviceCatalogCertificateTemplateDraft?.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
+  renderServiceCatalogCertificateTemplateSelect();
   renderServiceCatalogCertificateTemplateMeta();
 }
 
@@ -47514,6 +47599,7 @@ function syncServiceCatalogTrainingSections({ source = "" } = {}) {
   if (serviceCatalogCertificateTemplateSection) {
     serviceCatalogCertificateTemplateSection.hidden = !isPeopleService;
   }
+  renderServiceCatalogCertificateTemplateSelect();
   renderServiceCatalogCertificateTemplateMeta();
   renderServiceCatalogCertificatePlaceholderList();
 }
@@ -58805,7 +58891,7 @@ function renderClientPortalModule() {
 }
 
 function getCompanyTemplateAssignmentServices() {
-  return sortServiceCatalogItems(state.serviceCatalog ?? []).map((service) => ({
+  const serviceRows = sortServiceCatalogItems(state.serviceCatalog ?? []).map((service) => ({
     key: `service:${String(service.id || service.serviceCode || service.name || "").trim()}`,
     kind: "service",
     serviceId: String(service.id || ""),
@@ -58813,6 +58899,17 @@ function getCompanyTemplateAssignmentServices() {
     serviceName: String(service.name || service.serviceCode || "Usluga").trim(),
     label: [service.serviceCode, service.name].filter(Boolean).join(" · ") || "Usluga",
   })).filter((entry) => entry.key !== "service:");
+  return [
+    ...serviceRows,
+    {
+      key: "kind:is_znr",
+      kind: "is_znr",
+      serviceId: "",
+      serviceCode: "IS ZNR",
+      serviceName: "IS ZNR",
+      label: "IS ZNR",
+    },
+  ];
 }
 
 function getCompanyTemplateAssignmentTemplateOptions() {
@@ -84406,6 +84503,22 @@ serviceCatalogCertificateTemplateInput?.addEventListener("change", () => {
   });
 });
 
+serviceCatalogCertificateTemplateSelect?.addEventListener("change", () => {
+  const selectedId = String(serviceCatalogCertificateTemplateSelect.value || "").trim();
+  if (!selectedId) {
+    serviceCatalogCertificateTemplateDraft = null;
+    renderServiceCatalogCertificateTemplateSelect();
+    renderServiceCatalogCertificateTemplateMeta();
+    return;
+  }
+
+  const template = getServiceCatalogIsZnrTemplateOptions()
+    .find((option) => option.value === selectedId)?.template ?? null;
+  serviceCatalogCertificateTemplateDraft = buildServiceCatalogCertificateTemplateDraftFromDocumentTemplate(template);
+  renderServiceCatalogCertificateTemplateSelect();
+  renderServiceCatalogCertificateTemplateMeta();
+});
+
 serviceCatalogCertificateTemplateDownloadButton?.addEventListener("click", () => {
   if (serviceCatalogCertificateTemplateDraft) {
     triggerModuleAttachmentDownload(serviceCatalogCertificateTemplateDraft);
@@ -84420,6 +84533,7 @@ serviceCatalogCertificateTemplateRemoveButton?.addEventListener("click", () => {
     return;
   }
   serviceCatalogCertificateTemplateDraft = null;
+  renderServiceCatalogCertificateTemplateSelect();
   renderServiceCatalogCertificateTemplateMeta();
 });
 

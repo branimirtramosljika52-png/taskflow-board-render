@@ -433,12 +433,98 @@ function escapeRegex(value = "") {
   return String(value ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function getDocxParagraphRanges(xml = "") {
+  const ranges = [];
+  const paragraphPattern = /<w:p\b[\s\S]*?<\/w:p>/g;
+  let match = null;
+
+  while ((match = paragraphPattern.exec(xml)) !== null) {
+    ranges.push({
+      start: match.index,
+      end: match.index + match[0].length,
+      xml: match[0],
+    });
+  }
+
+  return ranges;
+}
+
+function getDocxParagraphPlainText(paragraphXml = "") {
+  return Array.from(paragraphXml.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g))
+    .map((match) => match[1] || "")
+    .join("")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, "\"")
+    .replace(/&apos;/g, "'");
+}
+
+function isDocxPageBreakOnlyParagraph(paragraphXml = "") {
+  const hasPageBreak = /<w:br\b[^>]*w:type=["']page["'][^>]*\/?>/i.test(paragraphXml)
+    || /<w:pageBreakBefore\b[^>]*\/?>/i.test(paragraphXml);
+  if (!hasPageBreak) {
+    return false;
+  }
+
+  const plainText = getDocxParagraphPlainText(paragraphXml).replace(/\s+/g, "");
+  const hasEmbeddedObject = /<(?:w:drawing|w:pict|w:object)\b/i.test(paragraphXml);
+  return !plainText && !hasEmbeddedObject;
+}
+
+function removeDocxOptionalPlaceholderBlock(xml = "", sentinel = "") {
+  if (!xml || !sentinel || !xml.includes(sentinel)) {
+    return xml;
+  }
+
+  const ranges = getDocxParagraphRanges(xml);
+  if (ranges.length === 0) {
+    return xml.replace(new RegExp(escapeRegex(sentinel), "g"), "");
+  }
+
+  const removeIndexes = new Set();
+  ranges.forEach((range, index) => {
+    if (!range.xml.includes(sentinel)) {
+      return;
+    }
+
+    removeIndexes.add(index);
+    if (index > 0 && isDocxPageBreakOnlyParagraph(ranges[index - 1].xml)) {
+      removeIndexes.add(index - 1);
+    }
+    if (index < ranges.length - 1 && isDocxPageBreakOnlyParagraph(ranges[index + 1].xml)) {
+      removeIndexes.add(index + 1);
+    }
+  });
+
+  if (removeIndexes.size === 0) {
+    return xml.replace(new RegExp(escapeRegex(sentinel), "g"), "");
+  }
+
+  let nextXml = xml;
+  [...removeIndexes]
+    .sort((left, right) => right - left)
+    .forEach((index) => {
+      const range = ranges[index];
+      nextXml = `${nextXml.slice(0, range.start)}${nextXml.slice(range.end)}`;
+    });
+
+  return nextXml.replace(new RegExp(escapeRegex(sentinel), "g"), "");
+}
+
 function normalizeDocxSpecialPlaceholderValue(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
   }
 
   const blockType = clean(value.__docxBlockType || value.type).toLowerCase();
+  if (blockType === "optional_empty" || blockType === "optional_blank") {
+    return {
+      type: "optional_empty",
+    };
+  }
+
   if (blockType === "system_description") {
     const legacyRows = Array.isArray(value.rows) ? value.rows : [];
     const rawBlocks = Array.isArray(value.blocks)
@@ -1127,6 +1213,10 @@ function buildDocxSpecialPlaceholderXml(value) {
     return buildWordTableXml(value);
   }
 
+  if (value.type === "optional_empty") {
+    return "";
+  }
+
   return "";
 }
 
@@ -1155,6 +1245,11 @@ function applyDocxSpecialPlaceholders(zip, specialPlaceholders = new Map()) {
 
       const replacementXml = buildDocxSpecialPlaceholderXml(value);
       if (!replacementXml) {
+        const nextXml = removeDocxOptionalPlaceholderBlock(xml, sentinel);
+        if (nextXml !== xml) {
+          xml = nextXml;
+          changed = true;
+        }
         return;
       }
 
@@ -1302,7 +1397,7 @@ export async function buildDocxFromTemplateBuffer(templateBuffer, placeholders =
 
         const specialValue = normalizeDocxSpecialPlaceholderValue(value);
         if (specialValue) {
-          if (specialValue.type === "table" || specialValue.type === "system_description") {
+          if (specialValue.type === "table" || specialValue.type === "system_description" || specialValue.type === "optional_empty") {
             const sentinel = `__TASKFLOW_DOCX_BLOCK_${index}_${Date.now()}__`;
             specialPlaceholders.set(sentinel, specialValue);
             return [safeKey, sentinel];
