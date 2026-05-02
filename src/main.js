@@ -4707,7 +4707,9 @@ const riskAssessmentRevisionDateInput = document.querySelector("#risk-assessment
 const riskAssessmentTeamLeadInput = document.querySelector("#risk-assessment-team-lead");
 const riskAssessmentCollaboratorsInput = document.querySelector("#risk-assessment-collaborators");
 const riskAssessmentIntroInput = document.querySelector("#risk-assessment-intro");
+const riskAssessmentIntroEditor = document.querySelector('[data-risk-rich-editor="intro"]');
 const riskAssessmentWorkProcessInput = document.querySelector("#risk-assessment-work-process");
+const riskAssessmentWorkProcessEditor = document.querySelector('[data-risk-rich-editor="process"]');
 const riskAssessmentGeneralDataInput = document.querySelector("#risk-assessment-general-data");
 const riskAssessmentComputerWorkplacesInput = document.querySelector("#risk-assessment-computer-workplaces");
 const riskAssessmentBasicRulesInput = document.querySelector("#risk-assessment-basic-rules");
@@ -4727,6 +4729,8 @@ const riskAssessmentDeleteButton = document.querySelector("#risk-assessment-dele
 let riskAssessmentMeasureDrafts = [];
 let riskAssessmentJobDrafts = [];
 let riskAssessmentActiveBlock = "basic";
+let riskAssessmentActiveRichEditorKey = "";
+let riskAssessmentRichEditorSelection = null;
 let closePeopleTrainingItemMenuHandler = null;
 let peopleTrainingLastBulkOpenSummary = {
   assignedTests: 0,
@@ -86144,6 +86148,12 @@ riskAssessmentAddJobButton?.addEventListener("click", () => {
 riskAssessmentJobsList?.addEventListener("input", handleRiskAssessmentJobsListInput);
 riskAssessmentJobsList?.addEventListener("change", handleRiskAssessmentJobsListInput);
 riskAssessmentJobsList?.addEventListener("click", handleRiskAssessmentJobsListClick);
+riskAssessmentForm?.addEventListener("input", handleRiskAssessmentRichEditorInput);
+riskAssessmentForm?.addEventListener("click", handleRiskAssessmentRichEditorClick);
+riskAssessmentForm?.addEventListener("change", handleRiskAssessmentRichEditorFileChange);
+riskAssessmentForm?.addEventListener("keyup", handleRiskAssessmentRichEditorSelectionChange);
+riskAssessmentForm?.addEventListener("mouseup", handleRiskAssessmentRichEditorSelectionChange);
+riskAssessmentForm?.addEventListener("focusin", handleRiskAssessmentRichEditorSelectionChange);
 
 riskAssessmentResetButton?.addEventListener("click", () => {
   resetRiskAssessmentForm();
@@ -88619,6 +88629,243 @@ function setRiskAssessmentActiveBlock(blockKey = "basic", { resetScroll = false 
   }
 }
 
+function getRiskAssessmentRichEditor(key = "") {
+  if (key === "intro") {
+    return riskAssessmentIntroEditor;
+  }
+  if (key === "process") {
+    return riskAssessmentWorkProcessEditor;
+  }
+  return riskAssessmentForm?.querySelector(`[data-risk-rich-editor="${String(key).replace(/["\\]/g, "\\$&")}"]`) ?? null;
+}
+
+function getRiskAssessmentRichInput(key = "") {
+  if (key === "intro") {
+    return riskAssessmentIntroInput;
+  }
+  if (key === "process") {
+    return riskAssessmentWorkProcessInput;
+  }
+  return null;
+}
+
+function looksLikeRiskAssessmentRichHtml(value = "") {
+  return /<\/?(p|div|br|ul|ol|li|strong|b|em|i|u|h[1-6]|img)\b/i.test(String(value || ""));
+}
+
+function sanitizeRiskAssessmentImageSrc(value = "") {
+  const src = String(value || "").trim();
+  if (/^data:image\/(?:png|jpe?g|gif|webp|svg\+xml);base64,/i.test(src)) {
+    return src;
+  }
+  if (/^https?:\/\//i.test(src)) {
+    return src;
+  }
+  return "";
+}
+
+function normalizeRiskAssessmentRichHtml(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "";
+  }
+  const source = looksLikeRiskAssessmentRichHtml(raw)
+    ? raw
+    : raw
+      .split(/\r?\n/)
+      .map((line) => line.trim() ? `<p>${escapeHtml(line)}</p>` : "<p><br></p>")
+      .join("");
+  const parser = new DOMParser();
+  const documentFragment = parser.parseFromString(`<div>${source}</div>`, "text/html").body.firstElementChild;
+  const allowedTags = new Set(["P", "DIV", "BR", "UL", "OL", "LI", "STRONG", "B", "EM", "I", "U", "H3", "H4", "IMG"]);
+
+  const sanitizeNode = (node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      return document.createTextNode(node.textContent || "");
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+      return document.createDocumentFragment();
+    }
+
+    const tagName = node.tagName.toUpperCase();
+    if (!allowedTags.has(tagName)) {
+      const fragment = document.createDocumentFragment();
+      Array.from(node.childNodes).forEach((childNode) => {
+        fragment.appendChild(sanitizeNode(childNode));
+      });
+      return fragment;
+    }
+
+    if (tagName === "IMG") {
+      const src = sanitizeRiskAssessmentImageSrc(node.getAttribute("src") || "");
+      if (!src) {
+        return document.createDocumentFragment();
+      }
+      const image = document.createElement("img");
+      image.src = src;
+      image.alt = String(node.getAttribute("alt") || "Slika procjene rizika").slice(0, 160);
+      image.loading = "lazy";
+      return image;
+    }
+
+    const nextNode = document.createElement(tagName.toLowerCase());
+    Array.from(node.childNodes).forEach((childNode) => {
+      nextNode.appendChild(sanitizeNode(childNode));
+    });
+    return nextNode;
+  };
+
+  const cleanRoot = document.createElement("div");
+  Array.from(documentFragment?.childNodes ?? []).forEach((childNode) => {
+    cleanRoot.appendChild(sanitizeNode(childNode));
+  });
+  return cleanRoot.innerHTML.trim();
+}
+
+function setRiskAssessmentRichValue(key = "", value = "") {
+  const editor = getRiskAssessmentRichEditor(key);
+  const input = getRiskAssessmentRichInput(key);
+  const html = normalizeRiskAssessmentRichHtml(value);
+  if (input) {
+    input.value = html;
+  }
+  if (editor) {
+    editor.innerHTML = html;
+  }
+}
+
+function syncRiskAssessmentRichValue(key = "") {
+  const editor = getRiskAssessmentRichEditor(key);
+  const input = getRiskAssessmentRichInput(key);
+  if (!editor || !input) {
+    return "";
+  }
+  const html = normalizeRiskAssessmentRichHtml(editor.innerHTML);
+  input.value = html;
+  return html;
+}
+
+function syncRiskAssessmentRichValues() {
+  syncRiskAssessmentRichValue("intro");
+  syncRiskAssessmentRichValue("process");
+}
+
+function rememberRiskAssessmentRichEditorSelection(editor = null) {
+  if (!(editor instanceof HTMLElement)) {
+    return;
+  }
+  const key = editor.dataset.riskRichEditor || "";
+  const selection = window.getSelection?.();
+  if (!key || !selection || selection.rangeCount === 0 || !editor.contains(selection.anchorNode)) {
+    return;
+  }
+  riskAssessmentActiveRichEditorKey = key;
+  riskAssessmentRichEditorSelection = selection.getRangeAt(0).cloneRange();
+}
+
+function restoreRiskAssessmentRichEditorSelection(key = "") {
+  const editor = getRiskAssessmentRichEditor(key || riskAssessmentActiveRichEditorKey);
+  if (!editor) {
+    return null;
+  }
+  editor.focus({ preventScroll: true });
+  if (riskAssessmentRichEditorSelection && editor.contains(riskAssessmentRichEditorSelection.commonAncestorContainer)) {
+    const selection = window.getSelection?.();
+    selection?.removeAllRanges();
+    selection?.addRange(riskAssessmentRichEditorSelection);
+  }
+  return editor;
+}
+
+function insertRiskAssessmentRichHtml(key = "", html = "") {
+  const editor = restoreRiskAssessmentRichEditorSelection(key);
+  if (!editor || !html) {
+    return;
+  }
+  document.execCommand("insertHTML", false, html);
+  rememberRiskAssessmentRichEditorSelection(editor);
+  syncRiskAssessmentRichValue(editor.dataset.riskRichEditor || key);
+}
+
+function handleRiskAssessmentRichEditorInput(event) {
+  const editor = event.target?.closest?.("[data-risk-rich-editor]");
+  if (!editor) {
+    return;
+  }
+  rememberRiskAssessmentRichEditorSelection(editor);
+  syncRiskAssessmentRichValue(editor.dataset.riskRichEditor || "");
+}
+
+function handleRiskAssessmentRichEditorSelectionChange(event) {
+  const editor = event.target?.closest?.("[data-risk-rich-editor]");
+  if (editor) {
+    rememberRiskAssessmentRichEditorSelection(editor);
+  }
+}
+
+function handleRiskAssessmentRichEditorClick(event) {
+  const commandButton = event.target?.closest?.("[data-risk-rich-command]");
+  if (commandButton) {
+    event.preventDefault();
+    const toolbar = commandButton.closest("[data-risk-rich-toolbar]");
+    const key = toolbar?.dataset.riskRichToolbar || riskAssessmentActiveRichEditorKey || "intro";
+    const editor = restoreRiskAssessmentRichEditorSelection(key);
+    if (!editor) {
+      return;
+    }
+    const command = commandButton.dataset.riskRichCommand || "";
+    const value = commandButton.dataset.riskRichValue || null;
+    document.execCommand(command, false, value);
+    rememberRiskAssessmentRichEditorSelection(editor);
+    syncRiskAssessmentRichValue(key);
+    return;
+  }
+
+  const imageButton = event.target?.closest?.("[data-risk-rich-image]");
+  if (!imageButton) {
+    return;
+  }
+  event.preventDefault();
+  const toolbar = imageButton.closest("[data-risk-rich-toolbar]");
+  const key = toolbar?.dataset.riskRichToolbar || riskAssessmentActiveRichEditorKey || "intro";
+  restoreRiskAssessmentRichEditorSelection(key);
+  if (imageButton.dataset.riskRichImage === "file") {
+    toolbar?.querySelector(`[data-risk-rich-file="${key}"]`)?.click();
+    return;
+  }
+  const src = sanitizeRiskAssessmentImageSrc(window.prompt("URL slike za umetanje u tekst") || "");
+  if (src) {
+    insertRiskAssessmentRichHtml(key, `<img src="${escapeHtml(src)}" alt="Slika procjene rizika">`);
+  }
+}
+
+async function handleRiskAssessmentRichEditorFileChange(event) {
+  const input = event.target?.closest?.("[data-risk-rich-file]");
+  if (!input || !(input instanceof HTMLInputElement)) {
+    return;
+  }
+  const key = input.dataset.riskRichFile || riskAssessmentActiveRichEditorKey || "intro";
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file) {
+    return;
+  }
+  if (!String(file.type || "").startsWith("image/")) {
+    if (riskAssessmentError) {
+      riskAssessmentError.textContent = "Možeš umetnuti samo sliku.";
+    }
+    return;
+  }
+  try {
+    const dataUrl = await readFileAsDataUrl(file, `Ne mogu učitati sliku ${file.name}.`);
+    insertRiskAssessmentRichHtml(key, `<img src="${escapeHtml(dataUrl)}" alt="${escapeHtml(file.name || "Slika procjene rizika")}">`);
+  } catch (error) {
+    if (riskAssessmentError) {
+      riskAssessmentError.textContent = error?.message || "Ne mogu učitati sliku.";
+    }
+  }
+}
+
 function setRiskAssessmentEditorOpen(open) {
   state.riskAssessmentEditorOpen = Boolean(open);
   document.body.classList.toggle("is-offer-editor-open", Boolean(open));
@@ -88668,6 +88915,8 @@ function resetRiskAssessmentForm() {
   if (riskAssessmentDeleteButton) {
     riskAssessmentDeleteButton.hidden = true;
   }
+  setRiskAssessmentRichValue("intro", "");
+  setRiskAssessmentRichValue("process", "");
   renderRiskAssessmentMeasures();
   renderRiskAssessmentJobs();
   setRiskAssessmentActiveBlock("basic");
@@ -88690,8 +88939,8 @@ function hydrateRiskAssessmentForm(item = {}) {
   riskAssessmentRevisionDateInput.value = item.revisionDate || "";
   riskAssessmentTeamLeadInput.value = item.teamLead || "";
   riskAssessmentCollaboratorsInput.value = item.collaborators || "";
-  riskAssessmentIntroInput.value = item.intro || "";
-  riskAssessmentWorkProcessInput.value = item.workProcessDescription || "";
+  setRiskAssessmentRichValue("intro", item.intro || "");
+  setRiskAssessmentRichValue("process", item.workProcessDescription || "");
   riskAssessmentGeneralDataInput.value = item.generalData || "";
   riskAssessmentComputerWorkplacesInput.value = item.computerWorkplaces || "";
   riskAssessmentBasicRulesInput.value = item.basicRules || "";
@@ -89624,14 +89873,11 @@ function renderRiskAssessmentJobs() {
         ${(item.riskRows ?? []).map((risk, riskIndex) => `
           <div class="risk-assessment-armor-row">
             <div class="risk-assessment-risk-identity">
-              <label class="risk-assessment-risk-field is-title">
-                <span>Naslov</span>
-                <input data-risk-row-index="${riskIndex}" data-risk-row-field="category" value="${escapeHtml(risk.category || "")}" placeholder="I. OPASNOSTI" />
-              </label>
-              <label class="risk-assessment-risk-field is-subtitle">
-                <span>Podnaslov</span>
-                <input data-risk-row-index="${riskIndex}" data-risk-row-field="group" value="${escapeHtml(risk.group || "")}" placeholder="1. Mehaničke opasnosti" />
-              </label>
+              <div class="risk-assessment-risk-heading">
+                <span>${escapeHtml(risk.topCategory || risk.category || "ARMOR")}</span>
+                <strong>${escapeHtml(risk.category || "Bez naslova")}</strong>
+                <small>${escapeHtml(risk.group || "Bez podnaslova")}</small>
+              </div>
               <label class="risk-assessment-risk-field is-code">
                 <span>Broj</span>
                 <input data-risk-row-index="${riskIndex}" data-risk-row-field="code" value="${escapeHtml(risk.code || "")}" placeholder="1.1.1" />
@@ -89664,6 +89910,7 @@ function buildRiskAssessmentPayload() {
       clientNote: riskAssessmentClientNoteInput?.value || "",
     };
   }
+  syncRiskAssessmentRichValues();
 
   return {
     companyId: riskAssessmentCompanyInput?.value || "",

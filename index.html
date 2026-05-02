@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260502h" />
+    <link rel="stylesheet" href="/styles.css?v=20260502i" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -4026,9 +4026,24 @@
                       </div>
                       <p>Polazni tekst procjene, pravna osnova i kontekst izrade.</p>
                     </div>
-                    <label class="field field-span-full">
+                    <label class="field field-span-full risk-assessment-rich-field">
                       <span>Uvod</span>
-                      <textarea id="risk-assessment-intro" rows="5"></textarea>
+                      <div class="risk-assessment-rich-editor">
+                        <div class="risk-assessment-rich-toolbar" data-risk-rich-toolbar="intro" aria-label="Alati za uređivanje uvoda">
+                          <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h3">Naslov</button>
+                          <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h4">Podnaslov</button>
+                          <button type="button" data-risk-rich-command="bold"><strong>B</strong></button>
+                          <button type="button" data-risk-rich-command="italic"><em>I</em></button>
+                          <button type="button" data-risk-rich-command="underline"><u>U</u></button>
+                          <button type="button" data-risk-rich-command="insertUnorderedList">• Lista</button>
+                          <button type="button" data-risk-rich-command="insertOrderedList">1. Lista</button>
+                          <button type="button" data-risk-rich-image="file">Slika</button>
+                          <button type="button" data-risk-rich-image="url">URL slike</button>
+                          <input type="file" accept="image/*" data-risk-rich-file="intro" hidden />
+                        </div>
+                        <div id="risk-assessment-intro-editor" class="risk-assessment-rich-surface" data-risk-rich-editor="intro" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Uvod"></div>
+                        <textarea id="risk-assessment-intro" class="risk-assessment-rich-value" hidden></textarea>
+                      </div>
                     </label>
                   </section>
 
@@ -4040,9 +4055,24 @@
                       </div>
                       <p>Kako se posao odvija, gdje se radi i koji su bitni tehnološki koraci.</p>
                     </div>
-                    <label class="field field-span-full">
+                    <label class="field field-span-full risk-assessment-rich-field">
                       <span>Opis radnog procesa</span>
-                      <textarea id="risk-assessment-work-process" rows="5"></textarea>
+                      <div class="risk-assessment-rich-editor">
+                        <div class="risk-assessment-rich-toolbar" data-risk-rich-toolbar="process" aria-label="Alati za uređivanje opisa procesa">
+                          <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h3">Naslov</button>
+                          <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h4">Podnaslov</button>
+                          <button type="button" data-risk-rich-command="bold"><strong>B</strong></button>
+                          <button type="button" data-risk-rich-command="italic"><em>I</em></button>
+                          <button type="button" data-risk-rich-command="underline"><u>U</u></button>
+                          <button type="button" data-risk-rich-command="insertUnorderedList">• Lista</button>
+                          <button type="button" data-risk-rich-command="insertOrderedList">1. Lista</button>
+                          <button type="button" data-risk-rich-image="file">Slika</button>
+                          <button type="button" data-risk-rich-image="url">URL slike</button>
+                          <input type="file" accept="image/*" data-risk-rich-file="process" hidden />
+                        </div>
+                        <div id="risk-assessment-work-process-editor" class="risk-assessment-rich-surface" data-risk-rich-editor="process" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Opis radnog procesa"></div>
+                        <textarea id="risk-assessment-work-process" class="risk-assessment-rich-value" hidden></textarea>
+                      </div>
                     </label>
                   </section>
 
@@ -7630,6 +7660,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260502h"></script>
+    <script type="module" src="/src/main.js?v=20260502i"></script>
   </body>
 </html>
