@@ -1551,7 +1551,7 @@ function buildCommercialItemsTablePlaceholder(items = [], currency = "EUR", { fa
   safeItems.forEach((item, index) => {
     const breakdowns = Array.isArray(item?.breakdowns) ? item.breakdowns : [];
     const breakdownSummary = breakdowns.length > 0
-      ? breakdowns.map((entry) => `${entry.label || "Razrada"}: ${formatOfferTemplateMoney(entry.amount || 0, currency)}`).join("\n")
+      ? breakdowns.map((entry) => `${formatCommercialBreakdownLabel(entry)}: ${formatOfferTemplateMoney(entry.amount || 0, currency)}`).join("\n")
       : "";
     rows.push({
       id: `item-${index + 1}`,
@@ -1573,6 +1573,14 @@ function buildCommercialItemsTablePlaceholder(items = [], currency = "EUR", { fa
     headerRows: ["header"],
     merges: [],
   };
+}
+
+function formatCommercialBreakdownLabel(entry = {}) {
+  const recordLabel = String(entry?.recordLabel || entry?.label || "Razrada").trim() || "Razrada";
+  const measurementFrom = String(entry?.measurementFrom || "").trim();
+  const measurementTo = String(entry?.measurementTo || "").trim();
+  const measurementRange = [measurementFrom, measurementTo].filter(Boolean).join(" - ");
+  return measurementRange ? `${recordLabel} - mjerno mjesto ${measurementRange}` : recordLabel;
 }
 
 function getOfferStatusLabel(value = "") {
@@ -1763,7 +1771,7 @@ function buildOfferTemplatePlaceholderPayload(offer = {}) {
   const itemsTableText = items
     .map((item, index) => {
       const breakdownText = Array.isArray(item.breakdowns) && item.breakdowns.length > 0
-        ? `\n${item.breakdowns.map((entry) => `   - ${entry.label || "Razrada"}: ${formatOfferTemplateMoney(entry.amount || 0, currency)}`).join("\n")}`
+        ? `\n${item.breakdowns.map((entry) => `   - ${formatCommercialBreakdownLabel(entry)}: ${formatOfferTemplateMoney(entry.amount || 0, currency)}`).join("\n")}`
         : "";
       return `${index + 1}. ${item.description || "Stavka"} | ${item.quantity || 0} ${item.unit || ""} | ${formatOfferTemplateMoney(item.totalPrice || 0, currency)}${breakdownText}`;
     })
@@ -1810,7 +1818,7 @@ function buildPurchaseOrderTemplatePlaceholderPayload(purchaseOrder = {}) {
   const itemsTableText = items
     .map((item, index) => {
       const breakdownText = Array.isArray(item.breakdowns) && item.breakdowns.length > 0
-        ? `\n${item.breakdowns.map((entry) => `   - ${entry.label || "Razrada"}: ${formatOfferTemplateMoney(entry.amount || 0, currency)}`).join("\n")}`
+        ? `\n${item.breakdowns.map((entry) => `   - ${formatCommercialBreakdownLabel(entry)}: ${formatOfferTemplateMoney(entry.amount || 0, currency)}`).join("\n")}`
         : "";
       return `${index + 1}. ${item.description || "Stavka"} | ${item.quantity || 0} ${item.unit || ""} | ${formatOfferTemplateMoney(item.totalPrice || 0, currency)}${breakdownText}`;
     })
@@ -4397,9 +4405,11 @@ async function handleApiRequest(request, response, url) {
     const dashboardWidgetMatch = url.pathname.match(/^\/api\/dashboard-widgets\/([^/]+)$/);
     const reminderMatch = url.pathname.match(/^\/api\/reminders\/([^/]+)$/);
     const offerMatch = url.pathname.match(/^\/api\/offers\/([^/]+)$/);
+    const offerPdfDraftExportMatch = url.pathname === "/api/offers/export-pdf-draft";
     const offerPdfExportMatch = url.pathname.match(/^\/api\/offers\/([^/]+)\/export-pdf$/);
     const offerEmailMatch = url.pathname.match(/^\/api\/offers\/([^/]+)\/email$/);
     const purchaseOrderMatch = url.pathname.match(/^\/api\/purchase-orders\/([^/]+)$/);
+    const purchaseOrderPdfDraftExportMatch = url.pathname === "/api/purchase-orders/export-pdf-draft";
     const purchaseOrderPdfExportMatch = url.pathname.match(/^\/api\/purchase-orders\/([^/]+)\/export-pdf$/);
     const purchaseOrderEmailMatch = url.pathname.match(/^\/api\/purchase-orders\/([^/]+)\/email$/);
     const riskAssessmentMatch = url.pathname.match(/^\/api\/risk-assessments\/([^/]+)$/);
@@ -6706,6 +6716,26 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (offerPdfDraftExportMatch && request.method === "POST") {
+      if (!canManageWorkOrders(user) && !isClientPortalUser(user)) {
+        sendError(response, 403, "Nemate pravo generirati PDF ponude.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const draftOffer = {
+        ...(body?.document ?? {}),
+        organizationId: scopedSnapshot.activeOrganizationId,
+      };
+      const { pdfBuffer, fileName } = await buildOfferPdfExportPayload(draftOffer, scopedSnapshot.activeOrganizationId);
+      sendBinary(response, 200, pdfBuffer, {
+        contentType: "application/pdf",
+        fileName,
+      });
+      return true;
+    }
+
     if (offerPdfExportMatch && request.method === "POST") {
       if (!canManageWorkOrders(user) && !isClientPortalUser(user)) {
         sendError(response, 403, "Nemate pravo generirati PDF ponude.");
@@ -6715,6 +6745,26 @@ async function handleApiRequest(request, response, url) {
       const { scopedSnapshot } = await getScopedState(user, request);
       const offer = assertInScope(scopedSnapshot.offers, offerPdfExportMatch[1], "Ponuda nije pronađena.");
       const { pdfBuffer, fileName } = await buildOfferPdfExportPayload(offer, scopedSnapshot.activeOrganizationId);
+      sendBinary(response, 200, pdfBuffer, {
+        contentType: "application/pdf",
+        fileName,
+      });
+      return true;
+    }
+
+    if (purchaseOrderPdfDraftExportMatch && request.method === "POST") {
+      if (!canManageWorkOrders(user) && !isClientPortalUser(user)) {
+        sendError(response, 403, "Nemate pravo generirati PDF narudzbenice.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const draftPurchaseOrder = {
+        ...(body?.document ?? {}),
+        organizationId: scopedSnapshot.activeOrganizationId,
+      };
+      const { pdfBuffer, fileName } = await buildPurchaseOrderPdfExportPayload(draftPurchaseOrder, scopedSnapshot.activeOrganizationId);
       sendBinary(response, 200, pdfBuffer, {
         contentType: "application/pdf",
         fileName,
@@ -6780,6 +6830,7 @@ async function handleApiRequest(request, response, url) {
       const { scopedSnapshot } = await getScopedState(user, request);
       const offer = assertInScope(scopedSnapshot.offers, offerEmailMatch[1], "Ponuda nije pronađena.");
       const to = String(body?.to ?? "").trim();
+      const cc = String(body?.cc ?? "").trim();
 
       if (!to) {
         sendError(response, 400, "Email primatelja je obavezan.");
@@ -6794,6 +6845,7 @@ async function handleApiRequest(request, response, url) {
         : "<div>U privitku saljemo trazenu ponudu.</div>";
       const result = await sendMail({
         to,
+        cc: cc || undefined,
         subject,
         text: message || `U privitku saljemo ponudu ${offer.offerNumber || ""}.`,
         html: `
@@ -6833,6 +6885,7 @@ async function handleApiRequest(request, response, url) {
       const { scopedSnapshot } = await getScopedState(user, request);
       const purchaseOrder = assertInScope(scopedSnapshot.purchaseOrders, purchaseOrderEmailMatch[1], "Narudzbenica nije pronađena.");
       const to = String(body?.to ?? "").trim();
+      const cc = String(body?.cc ?? "").trim();
 
       if (!to) {
         sendError(response, 400, "Email primatelja je obavezan.");
@@ -6847,6 +6900,7 @@ async function handleApiRequest(request, response, url) {
         : "<div>U privitku saljemo trazenu narudzbenicu.</div>";
       const result = await sendMail({
         to,
+        cc: cc || undefined,
         subject,
         text: message || `U privitku saljemo narudzbenicu ${purchaseOrder.purchaseOrderNumber || ""}.`,
         html: `

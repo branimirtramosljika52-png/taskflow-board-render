@@ -2296,13 +2296,19 @@ function normalizeOfferBreakdowns(breakdowns = []) {
   return breakdowns
     .map((entry) => {
       const amount = roundCurrencyAmount(Math.max(0, normalizeFiniteNumber(entry?.amount, 0)));
+      const recordLabel = normalizeText(entry?.recordLabel ?? entry?.reportLabel ?? entry?.label);
+      const measurementFrom = normalizeText(entry?.measurementFrom ?? entry?.measurementFromNumber ?? entry?.from);
+      const measurementTo = normalizeText(entry?.measurementTo ?? entry?.measurementToNumber ?? entry?.to);
 
       return {
-        label: normalizeText(entry?.label),
+        label: recordLabel,
+        recordLabel,
+        measurementFrom,
+        measurementTo,
         amount,
       };
     })
-    .filter((entry) => entry.label || entry.amount);
+    .filter((entry) => entry.recordLabel || entry.measurementFrom || entry.measurementTo || entry.amount);
 }
 
 function normalizeCommercialDocumentMode(value = "", fallback = "app") {

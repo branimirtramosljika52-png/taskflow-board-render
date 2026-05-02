@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260502i" />
+    <link rel="stylesheet" href="/styles.css?v=20260502j" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -5113,7 +5113,7 @@
                         </label>
                         <label class="field">
                           <span id="offer-date-label">Datum ponude</span>
-                          <input id="offer-date" type="date" />
+                          <input id="offer-date" type="date" lang="hr-HR" />
                         </label>
                         <label class="checkbox-field commercial-standalone-upload-field">
                           <input id="commercial-standalone-upload" type="checkbox" />
@@ -5174,6 +5174,10 @@
                         <label class="field">
                           <span id="offer-service-line-label">Vrsta usluge</span>
                           <input id="offer-service-line" list="offer-service-line-options" maxlength="180" placeholder="Fixed Fee, Base fee + variable fee, Offer..." required />
+                        </label>
+                        <label id="offer-upload-amount-field" class="field" hidden>
+                          <span>Iznos ponude</span>
+                          <input id="offer-upload-amount" inputmode="decimal" placeholder="0,00 EUR" />
                         </label>
                         <label id="purchase-order-external-number-field" class="field" hidden>
                           <span>Broj klijentove narudžbenice</span>
@@ -5310,6 +5314,45 @@
 
                     <p id="offer-template-error" class="form-error" aria-live="polite"></p>
                   </div>
+                </section>
+
+                <div id="offer-email-backdrop" class="offer-editor-backdrop offer-email-backdrop" hidden></div>
+                <section id="offer-email-panel" class="panel offer-email-panel" hidden>
+                  <div class="section-heading offers-section-heading">
+                    <div>
+                      <p id="offer-email-kicker" class="section-kicker">Email</p>
+                      <h3 id="offer-email-title">Pošalji ponudu</h3>
+                    </div>
+                    <button id="offer-email-close" type="button" class="ghost-button">Zatvori</button>
+                  </div>
+                  <form id="offer-email-form" class="offer-email-form">
+                    <label class="field field-span-full">
+                      <span>Prima</span>
+                      <input id="offer-email-to" type="email" placeholder="kontakt@tvrtka.hr" required />
+                    </label>
+                    <label class="field field-span-full">
+                      <span>CC</span>
+                      <input id="offer-email-cc" type="text" placeholder="tvoj@email.hr" />
+                    </label>
+                    <label class="field field-span-full">
+                      <span>Naslov</span>
+                      <input id="offer-email-subject" type="text" maxlength="220" placeholder="Ponuda..." required />
+                    </label>
+                    <label class="field field-span-full">
+                      <span>Poruka</span>
+                      <textarea id="offer-email-message" rows="7" placeholder="Poštovani,..."></textarea>
+                    </label>
+                    <div class="offer-email-preview-card">
+                      <strong id="offer-email-document-name">Ponuda</strong>
+                      <span id="offer-email-document-meta">PDF ide kao privitak. Ako ponuda još nije spremljena, sustav će je spremiti prije slanja.</span>
+                    </div>
+                    <p id="offer-email-error" class="form-error" aria-live="polite"></p>
+                    <div class="form-actions">
+                      <button id="offer-email-preview" type="button" class="ghost-button">Preview PDF</button>
+                      <button id="offer-email-download" type="button" class="ghost-button">Download PDF</button>
+                      <button id="offer-email-submit" type="submit" class="primary-button">Pošalji email</button>
+                    </div>
+                  </form>
                 </section>
               </div>
             </section>
@@ -7660,6 +7703,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260502i"></script>
+    <script type="module" src="/src/main.js?v=20260502j"></script>
   </body>
 </html>

@@ -2806,6 +2806,8 @@ const offerContactSlotInput = document.querySelector("#offer-contact-slot");
 const offerServiceLineInput = document.querySelector("#offer-service-line");
 const offerServiceLineLabel = document.querySelector("#offer-service-line-label");
 const offerItemServiceOptions = document.querySelector("#offer-item-service-options");
+const offerUploadAmountField = document.querySelector("#offer-upload-amount-field");
+const offerUploadAmountInput = document.querySelector("#offer-upload-amount");
 const offerStatusInput = document.querySelector("#offer-status");
 const offerDateLabel = document.querySelector("#offer-date-label");
 const offerDateInput = document.querySelector("#offer-date");
@@ -2850,6 +2852,19 @@ const offerDiscountRateInput = document.querySelector("#offer-discount-rate");
 const offerPreviewButton = document.querySelector("#offer-preview");
 const offerDownloadPdfButton = document.querySelector("#offer-download-pdf");
 const offerSendEmailButton = document.querySelector("#offer-send-email");
+const offerEmailBackdrop = document.querySelector("#offer-email-backdrop");
+const offerEmailPanel = document.querySelector("#offer-email-panel");
+const offerEmailCloseButton = document.querySelector("#offer-email-close");
+const offerEmailForm = document.querySelector("#offer-email-form");
+const offerEmailToInput = document.querySelector("#offer-email-to");
+const offerEmailCcInput = document.querySelector("#offer-email-cc");
+const offerEmailSubjectInput = document.querySelector("#offer-email-subject");
+const offerEmailMessageInput = document.querySelector("#offer-email-message");
+const offerEmailDocumentName = document.querySelector("#offer-email-document-name");
+const offerEmailDocumentMeta = document.querySelector("#offer-email-document-meta");
+const offerEmailPreviewButton = document.querySelector("#offer-email-preview");
+const offerEmailDownloadButton = document.querySelector("#offer-email-download");
+const offerEmailError = document.querySelector("#offer-email-error");
 const offerError = document.querySelector("#offer-error");
 const offerResetButton = document.querySelector("#offer-reset");
 const offerDeleteButton = document.querySelector("#offer-delete");
@@ -3369,6 +3384,7 @@ let offerFormSelectedLocationIds = [];
 let offerTemplateReferenceDraft = null;
 let purchaseOrderTemplateReferenceDraft = null;
 let purchaseOrderDocumentDrafts = [];
+let offerEmailModalOpen = false;
 let contractAnnexDrafts = [];
 let contractTemplateReferenceDraft = null;
 let serviceCatalogCertificateTemplateDraft = null;
@@ -15978,6 +15994,7 @@ function renderModuleView() {
   const moduleHeading = moduleViewKicker?.closest(".section-heading");
   const shouldShowGenericModuleHeader = !isTemplateDevelopmentModule
     && !isDocumentsModule
+    && !isOffersModule
     && !isLegalFrameworkModule
     && !isMeasurementEquipmentModule
     && !isContractModule
@@ -35144,6 +35161,8 @@ function openOfferEditor() {
 
 function closeOfferEditor({ reset = false } = {}) {
   state.offerEditorOpen = false;
+  offerEmailModalOpen = false;
+  syncOfferEmailModal();
   syncOfferEditorModal();
 
   if (reset) {
@@ -36034,7 +36053,12 @@ function buildOfferDraftPreviewData() {
   const company = state.companies.find((item) => String(item.id) === companyId) ?? null;
   const locationSelection = buildOfferLocationSummaryFromSelection(offerFormSelectedLocationIds, companyId);
   const contactSnapshot = getSelectedOfferContactSnapshot();
-  const totals = getOfferDraftTotals();
+  const quickMode = isCommercialQuickUploadMode();
+  const outgoingStandaloneOffer = isOutgoingStandaloneOfferMode();
+  const documentItems = buildOfferDocumentItemsForPayload();
+  const totals = quickMode
+    ? calculateOfferTotalsForSerializedItems(documentItems, 0, 0)
+    : getOfferDraftTotals();
   const currentNumber = String(offerNumberPreview?.textContent || "").trim();
   const documentDrafts = purchaseOrderDocumentDrafts.map((entry) => serializeModuleAttachmentDraft(entry));
   const currentDate = String(offerDateInput?.value || "").trim();
@@ -36060,10 +36084,16 @@ function buildOfferDraftPreviewData() {
     contactName: contactSnapshot.contactName || "",
     contactPhone: contactSnapshot.contactPhone || "",
     contactEmail: contactSnapshot.contactEmail || "",
-    serviceLine: String((isCommercialQuickUploadMode() ? offerTitleInput?.value : offerServiceLineInput?.value) || "").trim(),
+    serviceLine: String((quickMode && !outgoingStandaloneOffer ? offerTitleInput?.value : offerServiceLineInput?.value) || "").trim(),
     note: String(offerNoteInput?.value || "").trim(),
     orderDirection: isPurchaseOrder ? activeDirection : "",
-    externalDocumentNumber: isPurchaseOrder ? String(purchaseOrderExternalNumberInput?.value || "").trim() : "",
+    documentMode: quickMode ? "upload" : "app",
+    internalDocumentNumber: outgoingStandaloneOffer ? "" : String(commercialInternalNumberInput?.value || "").trim(),
+    externalDocumentNumber: outgoingStandaloneOffer
+      ? ""
+      : (isPurchaseOrder
+        ? String(commercialExternalNumberInput?.value || purchaseOrderExternalNumberInput?.value || "").trim()
+        : String(commercialExternalNumberInput?.value || "").trim()),
     documents: includeUploadedDocuments ? documentDrafts : [],
     currency: "EUR",
     taxRate: totals.taxRate,
@@ -36073,20 +36103,23 @@ function buildOfferDraftPreviewData() {
     taxableSubtotal: totals.taxableSubtotal,
     taxTotal: totals.taxTotal,
     total: totals.total,
-    showTotalAmount: isOfferTotalVisible(),
-    items: offerFormItems.map((item) => ({
+    showTotalAmount: quickMode ? false : isOfferTotalVisible(),
+    items: (quickMode ? documentItems : serializeOfferItemsForPayload()).map((item) => ({
       description: String(item?.description || "").trim(),
       unit: String(item?.unit || "").trim(),
       quantity: parseOfferMoneyInput(item?.quantity, 0),
       unitPrice: parseOfferMoneyInput(item?.unitPrice, 0),
       breakdowns: Array.isArray(item?.breakdowns)
         ? item.breakdowns.map((entry) => ({
-          label: String(entry?.label || "").trim(),
+          recordLabel: String(entry?.recordLabel || entry?.label || "").trim(),
+          measurementFrom: String(entry?.measurementFrom || "").trim(),
+          measurementTo: String(entry?.measurementTo || "").trim(),
+          label: String(entry?.label || entry?.recordLabel || "").trim(),
           amount: parseOfferMoneyInput(entry?.amount, 0),
-        })).filter((entry) => entry.label || entry.amount)
+        })).filter((entry) => entry.recordLabel || entry.measurementFrom || entry.measurementTo || entry.amount)
         : [],
       discountRate: parseOfferMoneyInput(item?.discountRate, 0),
-      totalPrice: getOfferLineTotal(item),
+      totalPrice: calculateOfferTotalsForSerializedItems([item], 0, 0).subtotal,
     })),
   };
 }
@@ -36133,7 +36166,7 @@ function buildCommercialItemsTablePlaceholderPreview(items = [], currency = "EUR
   safeItems.forEach((item, index) => {
     const breakdowns = Array.isArray(item?.breakdowns) ? item.breakdowns : [];
     const breakdownSummary = breakdowns.length > 0
-      ? breakdowns.map((entry) => `${entry.label || "Razrada"}: ${formatCurrencyAmount(entry.amount || 0, currency)}`).join("\n")
+      ? breakdowns.map((entry) => `${getOfferBreakdownDisplayLabel(entry)}: ${formatCurrencyAmount(entry.amount || 0, currency)}`).join("\n")
       : "";
     rows.push({
       id: `item-${index + 1}`,
@@ -36174,15 +36207,14 @@ function buildOfferTemplatePlaceholderPayload(offer = buildOfferDraftPreviewData
   const normalizedOffer = offer || {};
   const isPurchaseOrder = isPurchaseOrdersContextActive()
     || Boolean(normalizedOffer.purchaseOrderNumber)
-    || Boolean(normalizedOffer.orderDirection)
-    || Array.isArray(normalizedOffer.documents);
+    || Boolean(normalizedOffer.orderDirection);
   const itemsSummary = (normalizedOffer.items ?? [])
     .map((item, index) => `${index + 1}. ${item.description || "Stavka"}${item.unit ? ` · ${item.quantity} ${item.unit}` : ""}${Number(item.totalPrice || 0) > 0 ? ` · ${formatCurrencyAmount(item.totalPrice || 0, normalizedOffer.currency || "EUR")}` : ""}`)
     .join("\n");
   const itemsTableText = (normalizedOffer.items ?? [])
     .map((item, index) => {
       const breakdownText = Array.isArray(item.breakdowns) && item.breakdowns.length > 0
-        ? `\n${item.breakdowns.map((entry) => `   - ${entry.label || "Razrada"}: ${formatCurrencyAmount(entry.amount || 0, normalizedOffer.currency || "EUR")}`).join("\n")}`
+        ? `\n${item.breakdowns.map((entry) => `   - ${getOfferBreakdownDisplayLabel(entry)}: ${formatCurrencyAmount(entry.amount || 0, normalizedOffer.currency || "EUR")}`).join("\n")}`
         : "";
       return `${index + 1}. ${item.description || "Stavka"} | ${item.quantity || 0} ${item.unit || ""} | ${formatCurrencyAmount(item.totalPrice || 0, normalizedOffer.currency || "EUR")}${breakdownText}`;
     })
@@ -67598,12 +67630,18 @@ function getCommercialDocumentDirectionForItem(item = {}, contextKey = getActive
     : normalizeCommercialDocumentDirection(item?.offerDirection, "outgoing");
 }
 
-function isCommercialQuickUploadMode() {
-  if (commercialStandaloneUploadInput) {
-    return commercialStandaloneUploadInput.checked;
-  }
-
+function isCommercialIncomingMode() {
   return getActiveCommercialDocumentDirection() === "incoming";
+}
+
+function isOutgoingStandaloneOfferMode() {
+  return !isPurchaseOrdersContextActive()
+    && getActiveCommercialDocumentDirection() === "outgoing"
+    && Boolean(commercialStandaloneUploadInput?.checked);
+}
+
+function isCommercialQuickUploadMode() {
+  return isCommercialIncomingMode() || Boolean(commercialStandaloneUploadInput?.checked);
 }
 
 function shouldShowCommercialDocumentUploadSection() {
@@ -67617,7 +67655,7 @@ function getCommercialDocumentUploadCategoryLabel() {
       : "Zaprimljena narudžbenica";
   }
 
-  return "Zaprimljena ponuda";
+  return isOutgoingStandaloneOfferMode() ? "Samostalna ponuda" : "Zaprimljena ponuda";
 }
 
 function serializeModuleAttachmentDraft(document = {}) {
@@ -67656,10 +67694,22 @@ function buildCommercialFilterStatusOptions(options = getActiveCommercialStatusO
 }
 
 function syncCommercialQuickUploadMode() {
+  const isPurchaseOrder = isPurchaseOrdersContextActive();
+  const activeDirection = getActiveCommercialDocumentDirection();
+  const incomingMode = activeDirection === "incoming";
+  const outgoingStandaloneOffer = isOutgoingStandaloneOfferMode();
   const quickMode = isCommercialQuickUploadMode();
   const shouldShowUploads = shouldShowCommercialDocumentUploadSection();
-  const quickTitleLabel = isPurchaseOrdersContextActive() ? "Što je naručeno" : "Što je ponuđeno";
+  const quickTitleLabel = isPurchaseOrder ? "Što je naručeno" : (incomingMode ? "Što je ponuđeno" : "Naziv ponude");
+  const standaloneToggleField = commercialStandaloneUploadInput?.closest(".commercial-standalone-upload-field");
   offerForm?.classList.toggle("is-commercial-quick-upload", quickMode);
+  offerForm?.classList.toggle("is-commercial-standalone-offer", outgoingStandaloneOffer);
+  if (standaloneToggleField) {
+    standaloneToggleField.hidden = incomingMode;
+  }
+  if (incomingMode && commercialStandaloneUploadInput) {
+    commercialStandaloneUploadInput.checked = true;
+  }
   if (quickMode) {
     if (offerTitleLabel) {
       offerTitleLabel.textContent = quickTitleLabel;
@@ -67667,51 +67717,80 @@ function syncCommercialQuickUploadMode() {
     if (offerTitleInput) {
       offerTitleInput.placeholder = isPurchaseOrdersContextActive()
         ? "Npr. narudžbenica za servis, opremu ili ispitivanje..."
-        : "Npr. ponuda dobavljača za umjernicu, opremu ili uslugu...";
+        : (incomingMode
+          ? "Npr. ponuda dobavljača za umjernicu, opremu ili uslugu..."
+          : "Npr. godišnje održavanje, ispitivanje, servis...");
+    }
+  } else {
+    const config = getActiveCommercialDocumentConfig();
+    if (offerTitleLabel) {
+      offerTitleLabel.textContent = config.titleLabel;
+    }
+    if (offerTitleInput) {
+      offerTitleInput.placeholder = config.titlePlaceholder;
     }
   }
-  offerServiceLineInput?.closest(".field")?.toggleAttribute("hidden", quickMode);
+  offerServiceLineInput?.closest(".field")?.toggleAttribute("hidden", quickMode && !outgoingStandaloneOffer);
   if (offerServiceLineInput) {
-    offerServiceLineInput.required = !quickMode;
-    offerServiceLineInput.disabled = quickMode;
+    offerServiceLineInput.required = !quickMode || outgoingStandaloneOffer;
+    offerServiceLineInput.disabled = quickMode && !outgoingStandaloneOffer;
+  }
+  if (offerServiceLineLabel) {
+    offerServiceLineLabel.textContent = outgoingStandaloneOffer ? "Vrsta ponude" : getActiveCommercialDocumentConfig().serviceLineLabel;
+  }
+  if (offerUploadAmountField) {
+    offerUploadAmountField.hidden = !outgoingStandaloneOffer;
   }
   offerTaxRateInput?.closest(".offer-tax-field")?.toggleAttribute("hidden", quickMode);
   offerAddItemButton?.closest(".offers-items-head")?.toggleAttribute("hidden", quickMode);
   offerItems?.toggleAttribute("hidden", quickMode);
   offerTotalsCard?.toggleAttribute("hidden", quickMode);
-  offerPreviewButton?.closest(".offers-editor-meta-actions")?.toggleAttribute("hidden", quickMode);
+  offerPreviewButton?.closest(".offers-editor-meta-actions")?.toggleAttribute("hidden", false);
   if (offerTotalPreviewBlock) {
     offerTotalPreviewBlock.hidden = quickMode || !isOfferTotalVisible();
   }
+  const showCommercialNumberFields = quickMode && !outgoingStandaloneOffer;
   if (commercialInternalNumberField) {
-    commercialInternalNumberField.hidden = !quickMode;
+    commercialInternalNumberField.hidden = !showCommercialNumberFields;
   }
   if (commercialExternalNumberField) {
-    commercialExternalNumberField.hidden = !quickMode;
+    commercialExternalNumberField.hidden = !showCommercialNumberFields;
   }
   if (commercialInternalNumberLabel) {
-    commercialInternalNumberLabel.textContent = isPurchaseOrdersContextActive()
+    commercialInternalNumberLabel.textContent = isPurchaseOrder
       ? "Interni broj narudžbenice"
-      : "Interni broj ponude";
+      : "Broj ponude";
   }
   if (commercialExternalNumberLabel) {
-    commercialExternalNumberLabel.textContent = isPurchaseOrdersContextActive()
+    commercialExternalNumberLabel.textContent = isPurchaseOrder
       ? "Broj narudžbenice"
-      : "Broj ponude";
+      : "Broj ponude klijenta";
+  }
+  if (commercialInternalNumberInput) {
+    commercialInternalNumberInput.placeholder = isPurchaseOrder
+      ? "Naš interni broj..."
+      : "Broj ponude...";
+  }
+  if (commercialExternalNumberInput) {
+    commercialExternalNumberInput.placeholder = isPurchaseOrder
+      ? "Broj s dokumenta..."
+      : "Broj ponude klijenta...";
   }
 
   if (purchaseOrderDocumentsSection) {
     purchaseOrderDocumentsSection.hidden = !shouldShowUploads;
   }
   if (purchaseOrderDocumentsTitle) {
-    purchaseOrderDocumentsTitle.textContent = isPurchaseOrdersContextActive()
+    purchaseOrderDocumentsTitle.textContent = isPurchaseOrder
       ? "Dokumenti narudžbenice"
-      : "Dokumenti zaprimljene ponude";
+      : (outgoingStandaloneOffer ? "Dokumenti samostalne ponude" : "Dokumenti primljene ponude");
   }
   if (purchaseOrderDocumentsHelp) {
-    purchaseOrderDocumentsHelp.textContent = isPurchaseOrdersContextActive()
+    purchaseOrderDocumentsHelp.textContent = isPurchaseOrder
       ? "Odaberi tvrtku, upiši što je naručeno i učitaj PDF, sken ili zaprimljenu narudžbenicu."
-      : "Odaberi tvrtku, upiši što je ponuđeno i učitaj PDF ili sken ponude koja je došla prema nama.";
+      : (outgoingStandaloneOffer
+        ? "Ponuda je izrađena izvan aplikacije. Učitaj gotov PDF ili Word i upiši iznos za evidenciju."
+        : "Odaberi tvrtku, upiši što je ponuđeno i učitaj PDF ili sken ponude koja je došla prema nama.");
   }
 }
 
@@ -68007,10 +68086,7 @@ function createEmptyOfferItemDraft(item = {}) {
     discountRate: String(item?.discountRate ?? ""),
     breakdowns: Array.isArray(item?.breakdowns)
       ? item.breakdowns
-        .map((entry) => ({
-          label: String(entry?.label ?? ""),
-          amount: String(entry?.amount ?? ""),
-        }))
+        .map((entry) => createEmptyOfferBreakdownDraft(entry))
       : [],
     showDiscount: Number(item?.discountRate ?? 0) > 0,
     showBreakdowns: Array.isArray(item?.breakdowns) && item.breakdowns.length > 0,
@@ -68097,6 +68173,97 @@ function getOfferDraftTotals() {
     taxTotal,
     total: roundMoneyAmount(taxableSubtotal + taxTotal),
   };
+}
+
+function calculateOfferTotalsForSerializedItems(items = [], taxRateValue = 25, discountRateValue = 0) {
+  const subtotal = roundMoneyAmount((Array.isArray(items) ? items : []).reduce((sum, item) => {
+    const breakdownTotal = (item.breakdowns ?? []).reduce((entrySum, entry) => (
+      entrySum + Math.max(0, parseOfferMoneyInput(entry.amount, 0))
+    ), 0);
+    const grossTotal = breakdownTotal > 0
+      ? breakdownTotal
+      : Math.max(0, parseOfferMoneyInput(item.quantity, 0)) * Math.max(0, parseOfferMoneyInput(item.unitPrice, 0));
+    const itemDiscountRate = Math.max(0, Math.min(100, parseOfferMoneyInput(item.discountRate, 0)));
+    return sum + Math.max(0, grossTotal - (grossTotal * (itemDiscountRate / 100)));
+  }, 0));
+  const discountRate = Math.max(0, Math.min(100, parseOfferMoneyInput(discountRateValue, 0)));
+  const discountTotal = roundMoneyAmount(subtotal * (discountRate / 100));
+  const taxableSubtotal = roundMoneyAmount(Math.max(0, subtotal - discountTotal));
+  const taxRate = Math.max(0, parseOfferMoneyInput(taxRateValue, 25));
+  const taxTotal = roundMoneyAmount(taxableSubtotal * (taxRate / 100));
+
+  return {
+    subtotal,
+    discountRate,
+    discountTotal,
+    taxableSubtotal,
+    taxRate,
+    taxTotal,
+    total: roundMoneyAmount(taxableSubtotal + taxTotal),
+  };
+}
+
+function serializeOfferBreakdownsForPayload(breakdowns = []) {
+  return (Array.isArray(breakdowns) ? breakdowns : [])
+    .map((entry) => {
+      const recordLabel = String(entry?.recordLabel || entry?.label || "").trim();
+      const measurementFrom = String(entry?.measurementFrom || "").trim();
+      const measurementTo = String(entry?.measurementTo || "").trim();
+
+      return {
+        recordLabel,
+        measurementFrom,
+        measurementTo,
+        label: recordLabel,
+        amount: entry?.amount ?? "",
+      };
+    })
+    .filter((entry) => entry.recordLabel || entry.measurementFrom || entry.measurementTo || String(entry.amount || "").trim());
+}
+
+function serializeOfferItemsForPayload() {
+  return offerFormItems.map((item) => ({
+    serviceCatalogId: item.serviceCatalogId || "",
+    serviceCode: item.serviceCode || "",
+    description: item.description,
+    unit: item.unit,
+    quantity: item.quantity,
+    unitPrice: item.unitPrice,
+    discountRate: item.showDiscount ? item.discountRate : "",
+    breakdowns: item.showBreakdowns ? serializeOfferBreakdownsForPayload(item.breakdowns ?? []) : [],
+  }));
+}
+
+function buildStandaloneOfferUploadItems() {
+  if (!isOutgoingStandaloneOfferMode()) {
+    return [];
+  }
+
+  const amountValue = String(offerUploadAmountInput?.value || "").trim();
+  const numericAmount = parseOfferMoneyInput(amountValue, 0);
+
+  if (!amountValue && numericAmount <= 0) {
+    return [];
+  }
+
+  return [{
+    serviceCatalogId: "",
+    serviceCode: "",
+    description: String(offerServiceLineInput?.value || offerTitleInput?.value || "Samostalna ponuda").trim(),
+    unit: "kom",
+    quantity: "1",
+    unitPrice: amountValue || String(numericAmount),
+    discountRate: "",
+    breakdowns: [],
+  }];
+}
+
+function buildOfferDocumentItemsForPayload() {
+  if (isCommercialQuickUploadMode()) {
+    return buildStandaloneOfferUploadItems();
+  }
+
+  return serializeOfferItemsForPayload();
 }
 
 function syncOfferNumberPreview() {
@@ -68245,23 +68412,40 @@ function previewBlobInNewTab(blob, fallbackFileName = "preview.pdf") {
 }
 
 function syncOfferActionButtons() {
-  const isSavedOffer = Boolean(String(offerIdInput?.value || "").trim());
-  const currentItem = getCurrentCommercialDocumentById(offerIdInput?.value || "");
-  const hasContactEmail = Boolean((currentItem?.contactEmail || getSelectedOfferContactSnapshot().contactEmail || "").trim());
-
-  [offerPreviewButton, offerDownloadPdfButton, offerSendEmailButton].forEach((button) => {
+  [offerPreviewButton, offerDownloadPdfButton].forEach((button) => {
     if (!button) {
       return;
     }
 
-    button.disabled = !isSavedOffer;
-    button.classList.toggle("is-disabled", !isSavedOffer);
+    button.disabled = false;
+    button.classList.toggle("is-disabled", false);
   });
 
   if (offerSendEmailButton) {
-    offerSendEmailButton.disabled = !isSavedOffer || !hasContactEmail;
-    offerSendEmailButton.classList.toggle("is-disabled", offerSendEmailButton.disabled);
+    offerSendEmailButton.disabled = false;
+    offerSendEmailButton.classList.toggle("is-disabled", false);
   }
+}
+
+function createEmptyOfferBreakdownDraft(entry = {}) {
+  const recordLabel = String(entry?.recordLabel ?? entry?.reportLabel ?? entry?.label ?? "");
+
+  return {
+    recordLabel,
+    measurementFrom: String(entry?.measurementFrom ?? entry?.measurementFromNumber ?? entry?.from ?? ""),
+    measurementTo: String(entry?.measurementTo ?? entry?.measurementToNumber ?? entry?.to ?? ""),
+    label: String(entry?.label ?? recordLabel),
+    amount: String(entry?.amount ?? ""),
+  };
+}
+
+function getOfferBreakdownDisplayLabel(entry = {}) {
+  const recordLabel = String(entry?.recordLabel || entry?.label || "").trim();
+  const measurementFrom = String(entry?.measurementFrom || "").trim();
+  const measurementTo = String(entry?.measurementTo || "").trim();
+  const range = [measurementFrom, measurementTo].filter(Boolean).join(" - ");
+
+  return [recordLabel || "Zapisnik", range ? `mjerno mjesto ${range}` : ""].filter(Boolean).join(" · ");
 }
 
 function setOfferFormItems(items = [], { ensureOne = true } = {}) {
@@ -68320,10 +68504,7 @@ function addOfferFormBreakdown(index) {
 
     const nextBreakdowns = [...(item.breakdowns ?? [])];
 
-    nextBreakdowns.push({
-      label: "",
-      amount: "",
-    });
+    nextBreakdowns.push(createEmptyOfferBreakdownDraft());
 
     return {
       ...item,
@@ -68385,7 +68566,7 @@ function toggleOfferItemBreakdowns(index) {
     return {
       ...item,
       showBreakdowns: true,
-      breakdowns: item.breakdowns?.length ? item.breakdowns : [{ label: "", amount: "" }],
+      breakdowns: item.breakdowns?.length ? item.breakdowns : [createEmptyOfferBreakdownDraft()],
     };
   });
   renderOfferItemRows();
@@ -68591,27 +68772,57 @@ function renderOfferItemRows() {
         const breakdownRow = document.createElement("div");
         breakdownRow.className = "offer-item-breakdown-row";
 
-        const labelField = document.createElement("label");
-        labelField.className = "field";
-        const labelSpan = document.createElement("span");
-        labelSpan.textContent = "Opis";
-        const labelInput = document.createElement("input");
-        labelInput.type = "text";
-        labelInput.placeholder = "npr. do 5 mm";
-        labelInput.value = entry.label ?? "";
-        labelInput.addEventListener("input", (event) => {
-          updateOfferFormBreakdown(index, breakdownIndex, "label", event.currentTarget.value);
+        const recordField = document.createElement("label");
+        recordField.className = "field";
+        const recordSpan = document.createElement("span");
+        recordSpan.textContent = "Zapisnik";
+        const recordInput = document.createElement("input");
+        recordInput.type = "text";
+        recordInput.placeholder = "npr. SPR, EL, PGP";
+        recordInput.value = entry.recordLabel ?? entry.label ?? "";
+        recordInput.addEventListener("input", (event) => {
+          const nextValue = event.currentTarget.value;
+          updateOfferFormBreakdown(index, breakdownIndex, "recordLabel", nextValue);
+          updateOfferFormBreakdown(index, breakdownIndex, "label", nextValue);
         });
-        labelField.append(labelSpan, labelInput);
+        recordField.append(recordSpan, recordInput);
+
+        const fromField = document.createElement("label");
+        fromField.className = "field";
+        const fromSpan = document.createElement("span");
+        fromSpan.textContent = "Mjerno mjesto od";
+        const fromInput = document.createElement("input");
+        fromInput.type = "text";
+        fromInput.inputMode = "numeric";
+        fromInput.placeholder = "1";
+        fromInput.value = entry.measurementFrom ?? "";
+        fromInput.addEventListener("input", (event) => {
+          updateOfferFormBreakdown(index, breakdownIndex, "measurementFrom", event.currentTarget.value);
+        });
+        fromField.append(fromSpan, fromInput);
+
+        const toField = document.createElement("label");
+        toField.className = "field";
+        const toSpan = document.createElement("span");
+        toSpan.textContent = "Mjerno mjesto do";
+        const toInput = document.createElement("input");
+        toInput.type = "text";
+        toInput.inputMode = "numeric";
+        toInput.placeholder = "10";
+        toInput.value = entry.measurementTo ?? "";
+        toInput.addEventListener("input", (event) => {
+          updateOfferFormBreakdown(index, breakdownIndex, "measurementTo", event.currentTarget.value);
+        });
+        toField.append(toSpan, toInput);
 
         const amountField = document.createElement("label");
         amountField.className = "field";
         const amountSpan = document.createElement("span");
-        amountSpan.textContent = "Iznos";
+        amountSpan.textContent = "Iznos EUR";
         const amountInput = document.createElement("input");
         amountInput.type = "text";
         amountInput.inputMode = "decimal";
-        amountInput.placeholder = "0,00";
+        amountInput.placeholder = "0,00 EUR";
         amountInput.value = entry.amount ?? "";
         amountInput.addEventListener("input", (event) => {
           updateOfferFormBreakdown(index, breakdownIndex, "amount", event.currentTarget.value);
@@ -68626,7 +68837,7 @@ function renderOfferItemRows() {
           },
         );
 
-        breakdownRow.append(labelField, amountField, breakdownRemoveButton);
+        breakdownRow.append(recordField, fromField, toField, amountField, breakdownRemoveButton);
         breakdownList.append(breakdownRow);
       });
 
@@ -68932,10 +69143,12 @@ function buildOfferPayload() {
   const isPurchaseOrder = isPurchaseOrdersContextActive();
   const activeDirection = getActiveCommercialDocumentDirection();
   const quickMode = isCommercialQuickUploadMode();
+  const outgoingStandaloneOffer = isOutgoingStandaloneOfferMode();
   const includeUploadedDocuments = shouldShowCommercialDocumentUploadSection();
   const companyId = String(offerCompanyIdInput?.value || "").trim();
   const locationSelection = buildOfferLocationSummaryFromSelection(offerFormSelectedLocationIds, companyId);
   const contactSnapshot = getSelectedOfferContactSnapshot();
+  const documentItems = buildOfferDocumentItemsForPayload();
 
   const payload = {
     title: offerTitleInput.value,
@@ -68947,30 +69160,16 @@ function buildOfferPayload() {
     contactName: contactSnapshot.contactName,
     contactPhone: contactSnapshot.contactPhone,
     contactEmail: contactSnapshot.contactEmail,
-    serviceLine: quickMode ? offerTitleInput.value : offerServiceLineInput.value,
+    serviceLine: quickMode && !outgoingStandaloneOffer ? offerTitleInput.value : offerServiceLineInput.value,
     status: offerStatusInput.value,
     showTotalAmount: quickMode ? false : isOfferTotalVisible(),
-    taxRate: offerTaxRateInput.value,
+    taxRate: quickMode ? "0" : offerTaxRateInput.value,
     discountRate: isOfferDiscountVisible() ? offerDiscountRateInput?.value || "" : "",
     note: offerNoteInput.value,
     documentMode: quickMode ? "upload" : "app",
-    internalDocumentNumber: commercialInternalNumberInput?.value || "",
-    externalDocumentNumber: commercialExternalNumberInput?.value || "",
-    items: quickMode ? [] : offerFormItems.map((item) => ({
-      serviceCatalogId: item.serviceCatalogId || "",
-      serviceCode: item.serviceCode || "",
-      description: item.description,
-      unit: item.unit,
-      quantity: item.quantity,
-      unitPrice: item.unitPrice,
-      discountRate: item.showDiscount ? item.discountRate : "",
-      breakdowns: item.showBreakdowns
-        ? (item.breakdowns ?? []).map((entry) => ({
-          label: entry.label,
-          amount: entry.amount,
-        }))
-        : [],
-    })),
+    internalDocumentNumber: outgoingStandaloneOffer ? "" : commercialInternalNumberInput?.value || "",
+    externalDocumentNumber: outgoingStandaloneOffer ? "" : commercialExternalNumberInput?.value || "",
+    items: documentItems,
   };
 
   if (isPurchaseOrder) {
@@ -69031,6 +69230,9 @@ function resetOfferForm() {
   }
   if (commercialStandaloneUploadInput) {
     commercialStandaloneUploadInput.checked = activeDirection === "incoming";
+  }
+  if (offerUploadAmountInput) {
+    offerUploadAmountInput.value = "";
   }
   if (commercialInternalNumberInput) {
     commercialInternalNumberInput.value = "";
@@ -69116,6 +69318,12 @@ function hydrateOfferForm(offer) {
     contactEmail: offer.contactEmail || "",
   });
   offerServiceLineInput.value = offer.serviceLine || "";
+  if (offerUploadAmountInput) {
+    const firstItem = Array.isArray(offer.items) ? offer.items[0] : null;
+    offerUploadAmountInput.value = firstItem?.unitPrice
+      ? String(firstItem.unitPrice)
+      : (Number(offer.total ?? 0) > 0 ? String(offer.total) : "");
+  }
   offerStatusInput.value = offer.status || config.defaultStatus;
   syncOfferStatusTheme();
   offerDateInput.value = getCommercialDocumentDateValue(offer) || String(offer.createdAt ?? "").slice(0, 10) || new Date().toISOString().slice(0, 10);
@@ -69284,9 +69492,14 @@ async function removeOfferTemplateReference() {
 }
 
 async function downloadOfferPdf(offerId, { preview = false, apiBasePath = getActiveCommercialApiBasePath() } = {}) {
-  const response = await apiBinaryRequest(`${apiBasePath}/${offerId}/export-pdf`, {
+  const normalizedOfferId = String(offerId || "").trim();
+  const response = await apiBinaryRequest(
+    normalizedOfferId ? `${apiBasePath}/${normalizedOfferId}/export-pdf` : `${apiBasePath}/export-pdf-draft`,
+    {
     method: "POST",
-  });
+    body: normalizedOfferId ? undefined : { document: buildOfferDraftPreviewData() },
+    },
+  );
 
   if (preview) {
     previewBlobInNewTab(response.blob, response.fileName || "dokument.pdf");
@@ -69296,42 +69509,142 @@ async function downloadOfferPdf(offerId, { preview = false, apiBasePath = getAct
   triggerBlobDownload(response.blob, response.fileName || "dokument.pdf");
 }
 
-async function sendOfferByEmail(offer) {
+function getCurrentUserEmailAddress() {
+  return String(state.user?.email || state.user?.username || "").trim();
+}
+
+function buildOfferEmailDefaults(offer = buildOfferDraftPreviewData()) {
   const config = getActiveCommercialDocumentConfig();
-  const apiBasePath = getActiveCommercialApiBasePath();
   const documentNumber = getCommercialDocumentIdentifierText(offer);
   const documentTitle = getCommercialDocumentDisplayName(offer);
-  const initialTo = String(offer?.contactEmail || "").trim();
-  const to = window.prompt(config.emailPromptLabel, initialTo);
+
+  return {
+    to: String(offer?.contactEmail || getSelectedOfferContactSnapshot().contactEmail || "").trim(),
+    cc: getCurrentUserEmailAddress(),
+    subject: `${documentNumber} · ${documentTitle || offer?.companyName || "SafeNexus"}`,
+    message: `Poštovani,\n\nu privitku šaljemo ${config.emailDocumentLabel} ${documentNumber || ""}.\n\nLijep pozdrav,\nSafeNexus`,
+    documentNumber,
+    documentTitle,
+  };
+}
+
+function syncOfferEmailModal() {
+  if (offerEmailPanel) {
+    offerEmailPanel.hidden = !offerEmailModalOpen;
+    offerEmailPanel.classList.toggle("is-modal-open", offerEmailModalOpen);
+    offerEmailPanel.setAttribute("aria-hidden", String(!offerEmailModalOpen));
+  }
+
+  if (offerEmailBackdrop) {
+    offerEmailBackdrop.hidden = !offerEmailModalOpen;
+    offerEmailBackdrop.classList.toggle("is-modal-open", offerEmailModalOpen);
+  }
+
+  document.body.classList.toggle("is-offer-email-open", offerEmailModalOpen);
+}
+
+function openOfferEmailModal(offer = buildOfferDraftPreviewData()) {
+  const config = getActiveCommercialDocumentConfig();
+  const defaults = buildOfferEmailDefaults(offer);
+  offerEmailModalOpen = true;
+
+  if (offerEmailToInput) {
+    offerEmailToInput.value = defaults.to;
+  }
+  if (offerEmailCcInput) {
+    offerEmailCcInput.value = defaults.cc;
+  }
+  if (offerEmailSubjectInput) {
+    offerEmailSubjectInput.value = defaults.subject;
+  }
+  if (offerEmailMessageInput) {
+    offerEmailMessageInput.value = defaults.message;
+  }
+  if (offerEmailDocumentName) {
+    offerEmailDocumentName.textContent = `${config.emailDocumentLabel} ${defaults.documentNumber || ""}`.trim();
+  }
+  if (offerEmailDocumentMeta) {
+    offerEmailDocumentMeta.textContent = defaults.to
+      ? `PDF ide na ${defaults.to}. Pošiljatelj je u CC.`
+      : "PDF ide kao privitak. Upiši email primatelja ili odaberi kontakt na ponudi.";
+  }
+  if (offerEmailError) {
+    offerEmailError.textContent = "";
+  }
+
+  syncOfferEmailModal();
+  requestAnimationFrame(() => {
+    (offerEmailToInput || offerEmailSubjectInput)?.focus({ preventScroll: true });
+  });
+}
+
+function closeOfferEmailModal() {
+  offerEmailModalOpen = false;
+  if (offerEmailError) {
+    offerEmailError.textContent = "";
+  }
+  syncOfferEmailModal();
+}
+
+async function ensureCurrentCommercialDocumentSaved() {
+  const apiBasePath = getActiveCommercialApiBasePath();
+  const existingId = String(offerIdInput?.value || "").trim();
+  const beforeIds = new Set(getActiveCommercialDocumentCollection().map((item) => String(item.id)));
+  const payload = await apiRequest(existingId ? `${apiBasePath}/${existingId}` : apiBasePath, {
+    method: existingId ? "PATCH" : "POST",
+    body: buildOfferPayload(),
+  });
+
+  if (payload && typeof payload === "object" && Object.prototype.hasOwnProperty.call(payload, "storage")) {
+    applySnapshot(payload);
+  }
+
+  const collection = getActiveCommercialDocumentCollection();
+  const saved = existingId
+    ? collection.find((item) => String(item.id) === existingId)
+    : collection.find((item) => !beforeIds.has(String(item.id)));
+
+  if (saved?.id && offerIdInput) {
+    offerIdInput.value = saved.id;
+  }
+
+  syncOfferNumberPreview();
+  syncOfferActionButtons();
+  renderOffersModule();
+  return saved ?? null;
+}
+
+async function sendOfferEmailFromModal() {
+  const config = getActiveCommercialDocumentConfig();
+  const to = String(offerEmailToInput?.value || "").trim();
+  const cc = String(offerEmailCcInput?.value || "").trim();
+  const subject = String(offerEmailSubjectInput?.value || "").trim();
+  const message = String(offerEmailMessageInput?.value || "").trim();
+
   if (!to) {
-    return;
+    throw new Error("Upiši email primatelja.");
   }
 
-  const subject = window.prompt(
-    config.emailSubjectLabel,
-    `${documentNumber} · ${documentTitle || offer?.companyName || "SafeNexus"}`,
-  );
-  if (!subject) {
-    return;
+  const savedDocument = await ensureCurrentCommercialDocumentSaved();
+  if (!savedDocument?.id) {
+    throw new Error("Dokument nije spremljen.");
   }
 
-  const message = window.prompt(
-    config.emailMessageLabel,
-    `Poštovani,\n\nu privitku šaljemo ${config.emailDocumentLabel} ${documentNumber || ""}.\n\nLijep pozdrav,\nSafeNexus`,
-  );
-
-  const payload = await apiRequest(`${apiBasePath}/${offer.id}/email`, {
+  const apiBasePath = getActiveCommercialApiBasePath();
+  const payload = await apiRequest(`${apiBasePath}/${savedDocument.id}/email`, {
     method: "POST",
     body: {
       to,
+      cc,
       subject,
-      message: message || "",
+      message,
     },
   });
 
   if (offerError) {
     offerError.textContent = payload?.message || `${config.emailSuccessLabel} ${to}.`;
   }
+  closeOfferEmailModal();
 }
 
 function renderOffersModule() {
@@ -85546,6 +85859,13 @@ commercialStandaloneUploadInput?.addEventListener("change", () => {
   syncOfferTotals();
 });
 
+offerUploadAmountInput?.addEventListener("input", () => {
+  syncOfferTotals();
+  if (state.offerTemplateModalOpen) {
+    renderOfferTemplatePlaceholderList();
+  }
+});
+
 commercialInternalNumberInput?.addEventListener("input", () => {
   if (state.offerTemplateModalOpen) {
     renderOfferTemplatePlaceholderList();
@@ -85713,27 +86033,37 @@ offerTemplateRemoveButton?.addEventListener("click", () => {
 });
 
 offerPreviewButton?.addEventListener("click", () => {
-  const offerId = String(offerIdInput?.value || "").trim();
-  if (!offerId) {
-    return;
-  }
-  void runMutation(() => downloadOfferPdf(offerId, { preview: true }), offerError);
+  void runMutation(() => downloadOfferPdf("", { preview: true }), offerError);
 });
 
 offerDownloadPdfButton?.addEventListener("click", () => {
-  const offerId = String(offerIdInput?.value || "").trim();
-  if (!offerId) {
-    return;
-  }
-  void runMutation(() => downloadOfferPdf(offerId), offerError);
+  void runMutation(() => downloadOfferPdf(""), offerError);
 });
 
 offerSendEmailButton?.addEventListener("click", () => {
   const offer = getCurrentCommercialDocumentById(offerIdInput?.value || "");
-  if (!offer) {
-    return;
-  }
-  void runMutation(() => sendOfferByEmail(offer), offerError);
+  openOfferEmailModal(offer || buildOfferDraftPreviewData());
+});
+
+offerEmailCloseButton?.addEventListener("click", () => {
+  closeOfferEmailModal();
+});
+
+offerEmailBackdrop?.addEventListener("click", () => {
+  closeOfferEmailModal();
+});
+
+offerEmailPreviewButton?.addEventListener("click", () => {
+  void runMutation(() => downloadOfferPdf("", { preview: true }), offerEmailError);
+});
+
+offerEmailDownloadButton?.addEventListener("click", () => {
+  void runMutation(() => downloadOfferPdf(""), offerEmailError);
+});
+
+offerEmailForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void runMutation(() => sendOfferEmailFromModal(), offerEmailError);
 });
 
 purchaseOrderDocumentsUploadButton?.addEventListener("click", () => {

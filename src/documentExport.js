@@ -2733,8 +2733,14 @@ export async function buildOfferPdfBuffer(offer = {}, options = {}) {
 
       let contentY = startY + 48;
       breakdowns.forEach((entry) => {
+        const recordLabel = clean(entry.recordLabel || entry.label) || "Razrada";
+        const measurementRange = normalizePdfLines([
+          clean(entry.measurementFrom),
+          clean(entry.measurementTo),
+        ]).join(" - ");
+        const breakdownLabel = measurementRange ? `${recordLabel} - MM ${measurementRange}` : recordLabel;
         doc.font("dejavu").fontSize(9.5).fillColor("#334155").text(
-          `• ${normalizePdfText(entry.label)}`,
+          `• ${normalizePdfText(breakdownLabel)}`,
           doc.page.margins.left + 18,
           contentY,
           { width: cardWidth - 170 },
@@ -2768,38 +2774,32 @@ export async function buildOfferPdfBuffer(offer = {}, options = {}) {
     });
   }
 
-  helpers.ensureSpace(150);
-  doc.moveDown(0.25);
-  drawOfferPdfSectionTitle(doc, "Ukupni iznosi");
-  writeOfferPdfMetaRow(doc, "Meduzbroj", formatOfferPdfCurrency(offer.subtotal ?? 0, currency), {
-    labelWidth: 130,
-    valueWidth: 240,
-  });
-  if (hasDiscount) {
-    writeOfferPdfMetaRow(doc, "Rabat", formatOfferPdfCurrency(offer.discountTotal ?? 0, currency), {
+  if (offer.showTotalAmount !== false) {
+    helpers.ensureSpace(150);
+    doc.moveDown(0.25);
+    drawOfferPdfSectionTitle(doc, "Ukupni iznosi");
+    writeOfferPdfMetaRow(doc, "Meduzbroj", formatOfferPdfCurrency(offer.subtotal ?? 0, currency), {
       labelWidth: 130,
       valueWidth: 240,
     });
-    writeOfferPdfMetaRow(doc, "Osnovica", formatOfferPdfCurrency(offer.taxableSubtotal ?? 0, currency), {
+    if (hasDiscount) {
+      writeOfferPdfMetaRow(doc, "Rabat", formatOfferPdfCurrency(offer.discountTotal ?? 0, currency), {
+        labelWidth: 130,
+        valueWidth: 240,
+      });
+      writeOfferPdfMetaRow(doc, "Osnovica", formatOfferPdfCurrency(offer.taxableSubtotal ?? 0, currency), {
+        labelWidth: 130,
+        valueWidth: 240,
+      });
+    }
+    writeOfferPdfMetaRow(doc, "PDV", formatOfferPdfCurrency(offer.taxTotal ?? 0, currency), {
       labelWidth: 130,
       valueWidth: 240,
     });
-  }
-  writeOfferPdfMetaRow(doc, "PDV", formatOfferPdfCurrency(offer.taxTotal ?? 0, currency), {
-    labelWidth: 130,
-    valueWidth: 240,
-  });
-  writeOfferPdfMetaRow(doc, "Ukupno", formatOfferPdfCurrency(offer.total ?? 0, currency), {
-    labelWidth: 130,
-    valueWidth: 240,
-  });
-
-  if (offer.showTotalAmount === false) {
-    doc.moveDown(0.35);
-    doc.font("dejavu-italic").fontSize(9).fillColor("#64748b").text(
-      "Ukupni iznos je skriven u ponudi; prikazana je interna kalkulacija radi pregleda.",
-      { width: helpers.availableWidth },
-    );
+    writeOfferPdfMetaRow(doc, "Ukupno", formatOfferPdfCurrency(offer.total ?? 0, currency), {
+      labelWidth: 130,
+      valueWidth: 240,
+    });
   }
 
   return pdfBufferFromDocument(doc);

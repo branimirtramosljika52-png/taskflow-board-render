@@ -2982,7 +2982,7 @@ body.is-offer-editor-open {
 
 .offer-item-breakdown-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(120px, 0.7fr) auto;
+  grid-template-columns: minmax(140px, 1.25fr) minmax(112px, 0.7fr) minmax(112px, 0.7fr) minmax(130px, 0.72fr) auto;
   gap: 8px;
   align-items: end;
 }
@@ -4958,6 +4958,10 @@ body.is-location-editor-open {
   }
 
   .offer-item-breakdown-row {
+    grid-template-columns: 1fr;
+  }
+
+  .offer-email-form {
     grid-template-columns: 1fr;
   }
 
@@ -36764,6 +36768,59 @@ body.is-global-loading {
 .offers-editor-panel.is-modal-open,
 .offers-template-panel.is-modal-open {
   width: min(1320px, calc(100vw - 24px));
+}
+
+.offer-email-backdrop.is-modal-open {
+  z-index: 72;
+}
+
+.offer-email-panel {
+  display: grid;
+  gap: 16px;
+  padding: 22px;
+  background:
+    radial-gradient(circle at top right, rgba(45, 111, 219, 0.08), transparent 38%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 250, 255, 0.96));
+}
+
+.offer-email-panel.is-modal-open {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 73;
+  width: min(820px, calc(100vw - 28px));
+  max-height: min(760px, calc(100vh - 28px));
+  overflow: auto;
+  transform: translate(-50%, -50%);
+  border: 1px solid rgba(190, 204, 230, 0.92);
+  border-radius: 24px;
+  box-shadow: 0 30px 96px rgba(31, 48, 84, 0.26);
+}
+
+.offer-email-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.offer-email-preview-card {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 4px;
+  padding: 13px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(185, 201, 230, 0.78);
+  background: rgba(245, 249, 255, 0.86);
+  color: var(--text);
+}
+
+.offer-email-preview-card span {
+  color: var(--muted);
+  font-size: 0.83rem;
+}
+
+body.is-offer-email-open {
+  overflow: hidden;
 }
 
 .offers-template-panel {
