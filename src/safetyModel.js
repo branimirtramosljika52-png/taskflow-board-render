@@ -598,6 +598,30 @@ function normalizeOptionalDate(value) {
     return raw;
   }
 
+  const croatianDateMatch = raw.match(/^(\d{1,2})\s*[./]\s*(\d{1,2})\s*[./]\s*(\d{4})\.?$/);
+  if (croatianDateMatch) {
+    const day = Number.parseInt(croatianDateMatch[1], 10);
+    const month = Number.parseInt(croatianDateMatch[2], 10);
+    const year = Number.parseInt(croatianDateMatch[3], 10);
+    const date = new Date(year, month - 1, day, 12, 0, 0, 0);
+
+    if (
+      Number.isFinite(day)
+      && Number.isFinite(month)
+      && Number.isFinite(year)
+      && !Number.isNaN(date.getTime())
+      && date.getFullYear() === year
+      && date.getMonth() === month - 1
+      && date.getDate() === day
+    ) {
+      return [
+        String(year).padStart(4, "0"),
+        String(month).padStart(2, "0"),
+        String(day).padStart(2, "0"),
+      ].join("-");
+    }
+  }
+
   const date = new Date(raw);
   return Number.isNaN(date.getTime()) ? null : date.toISOString().slice(0, 10);
 }

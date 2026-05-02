@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260502j" />
+    <link rel="stylesheet" href="/styles.css?v=20260502k" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -5111,9 +5111,13 @@
                           <span>Status</span>
                           <select id="offer-status" class="work-item-status-select"></select>
                         </label>
-                        <label class="field">
+                        <label class="field offer-date-field">
                           <span id="offer-date-label">Datum ponude</span>
-                          <input id="offer-date" type="date" lang="hr-HR" />
+                          <span class="commercial-date-control">
+                            <input id="offer-date" type="text" inputmode="numeric" autocomplete="off" placeholder="dd.mm.yyyy" />
+                            <button id="offer-date-picker-button" type="button" class="commercial-date-picker-button" aria-label="Odaberi datum">Datum</button>
+                            <input id="offer-date-picker" class="commercial-date-native" type="date" lang="hr-HR" tabindex="-1" aria-hidden="true" />
+                          </span>
                         </label>
                         <label class="checkbox-field commercial-standalone-upload-field">
                           <input id="commercial-standalone-upload" type="checkbox" />
@@ -5175,9 +5179,9 @@
                           <span id="offer-service-line-label">Vrsta usluge</span>
                           <input id="offer-service-line" list="offer-service-line-options" maxlength="180" placeholder="Fixed Fee, Base fee + variable fee, Offer..." required />
                         </label>
-                        <label id="offer-upload-amount-field" class="field" hidden>
+                        <label id="offer-upload-amount-field" class="field is-currency-field" hidden>
                           <span>Iznos ponude</span>
-                          <input id="offer-upload-amount" inputmode="decimal" placeholder="0,00 EUR" />
+                          <input id="offer-upload-amount" inputmode="decimal" placeholder="0,00" />
                         </label>
                         <label id="purchase-order-external-number-field" class="field" hidden>
                           <span>Broj klijentove narudžbenice</span>
@@ -7703,6 +7707,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260502j"></script>
+    <script type="module" src="/src/main.js?v=20260502k"></script>
   </body>
 </html>

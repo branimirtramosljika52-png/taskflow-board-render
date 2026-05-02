@@ -150,6 +150,23 @@ async function ensureColumnExists(pool, tableName, columnName, definition) {
   }
 }
 
+async function ensureVarcharColumnLength(pool, tableName, columnName, minLength, definition) {
+  const [rows] = await pool.query(`SHOW COLUMNS FROM ${tableName} LIKE ?`, [columnName]);
+
+  if (rows.length === 0) {
+    await pool.query(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+    return;
+  }
+
+  const currentType = String(rows[0]?.Type ?? "");
+  const match = currentType.match(/^varchar\((\d+)\)/i);
+  const currentLength = match ? Number.parseInt(match[1], 10) : 0;
+
+  if (!Number.isFinite(currentLength) || currentLength < minLength) {
+    await pool.query(`ALTER TABLE ${tableName} MODIFY COLUMN ${columnName} ${definition}`);
+  }
+}
+
 async function ensureCompanyRolePermissionScopeSchema(pool) {
   await ensureColumnExists(
     pool,
@@ -6271,7 +6288,7 @@ export class MySqlSafetyRepository {
         grand_total_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
         items_json LONGTEXT NULL,
         documents_json LONGTEXT NULL,
-        contact_slot VARCHAR(16) NOT NULL DEFAULT '',
+        contact_slot VARCHAR(128) NOT NULL DEFAULT '',
         contact_name VARCHAR(160) NOT NULL DEFAULT '',
         contact_phone VARCHAR(80) NOT NULL DEFAULT '',
         contact_email VARCHAR(180) NOT NULL DEFAULT '',
@@ -6329,7 +6346,7 @@ export class MySqlSafetyRepository {
         grand_total_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
         items_json LONGTEXT NULL,
         documents_json LONGTEXT NULL,
-        contact_slot VARCHAR(16) NOT NULL DEFAULT '',
+        contact_slot VARCHAR(128) NOT NULL DEFAULT '',
         contact_name VARCHAR(160) NOT NULL DEFAULT '',
         contact_phone VARCHAR(80) NOT NULL DEFAULT '',
         contact_email VARCHAR(180) NOT NULL DEFAULT '',
@@ -7064,7 +7081,7 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_offers", "taxable_subtotal_amount", "DECIMAL(12, 2) NOT NULL DEFAULT 0.00 AFTER discount_total_amount");
     await ensureColumnExists(this.pool, "web_offers", "show_total_amount", "TINYINT(1) NOT NULL DEFAULT 1 AFTER taxable_subtotal_amount");
     await ensureColumnExists(this.pool, "web_offers", "documents_json", "LONGTEXT NULL AFTER items_json");
-    await ensureColumnExists(this.pool, "web_offers", "contact_slot", "VARCHAR(16) NOT NULL DEFAULT '' AFTER documents_json");
+    await ensureVarcharColumnLength(this.pool, "web_offers", "contact_slot", 128, "VARCHAR(128) NOT NULL DEFAULT ''");
     await ensureColumnExists(this.pool, "web_offers", "contact_name", "VARCHAR(160) NOT NULL DEFAULT '' AFTER contact_slot");
     await ensureColumnExists(this.pool, "web_offers", "contact_phone", "VARCHAR(80) NOT NULL DEFAULT '' AFTER contact_name");
     await ensureColumnExists(this.pool, "web_offers", "contact_email", "VARCHAR(180) NOT NULL DEFAULT '' AFTER contact_phone");
@@ -7081,7 +7098,7 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_purchase_orders", "taxable_subtotal_amount", "DECIMAL(12, 2) NOT NULL DEFAULT 0.00 AFTER discount_total_amount");
     await ensureColumnExists(this.pool, "web_purchase_orders", "show_total_amount", "TINYINT(1) NOT NULL DEFAULT 1 AFTER taxable_subtotal_amount");
     await ensureColumnExists(this.pool, "web_purchase_orders", "documents_json", "LONGTEXT NULL AFTER items_json");
-    await ensureColumnExists(this.pool, "web_purchase_orders", "contact_slot", "VARCHAR(16) NOT NULL DEFAULT '' AFTER documents_json");
+    await ensureVarcharColumnLength(this.pool, "web_purchase_orders", "contact_slot", 128, "VARCHAR(128) NOT NULL DEFAULT ''");
     await ensureColumnExists(this.pool, "web_purchase_orders", "contact_name", "VARCHAR(160) NOT NULL DEFAULT '' AFTER contact_slot");
     await ensureColumnExists(this.pool, "web_purchase_orders", "contact_phone", "VARCHAR(80) NOT NULL DEFAULT '' AFTER contact_name");
     await ensureColumnExists(this.pool, "web_purchase_orders", "contact_email", "VARCHAR(180) NOT NULL DEFAULT '' AFTER contact_phone");

@@ -2217,25 +2217,34 @@ export async function buildPdfFromRenderModel(renderModel = {}) {
 function formatOfferPdfDate(value = "") {
   const normalized = clean(value);
   const match = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) {
+  if (match) {
+    return `${match[3]}.${match[2]}.${match[1]}`;
+  }
+
+  const localizedMatch = normalized.match(/^(\d{1,2})\s*[./]\s*(\d{1,2})\s*[./]\s*(\d{4})\.?$/);
+  if (!localizedMatch) {
     return normalized || "—";
   }
 
-  return `${match[3]}.${match[2]}.${match[1]}`;
+  return [
+    localizedMatch[1].padStart(2, "0"),
+    localizedMatch[2].padStart(2, "0"),
+    localizedMatch[3],
+  ].join(".");
 }
 
 function formatOfferPdfCurrency(value = 0, currency = "EUR") {
   const amount = Number(value ?? 0) || 0;
+  const currencyCode = (clean(currency) || "EUR").toUpperCase();
 
   try {
-    return new Intl.NumberFormat("hr-HR", {
-      style: "currency",
-      currency: clean(currency) || "EUR",
+    const formattedAmount = new Intl.NumberFormat("hr-HR", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(amount);
+    return `${formattedAmount} ${currencyCode}`;
   } catch {
-    return `${amount.toFixed(2)} ${(clean(currency) || "EUR").toUpperCase()}`;
+    return `${amount.toFixed(2)} ${currencyCode}`;
   }
 }
 

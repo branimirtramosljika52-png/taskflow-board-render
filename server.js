@@ -1487,25 +1487,34 @@ async function generatePdfBuffersForTemplateEntries(entries = [], scopedSnapshot
 function formatOfferDocumentDate(value = "") {
   const normalized = String(value ?? "").trim();
   const match = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) {
+  if (match) {
+    return `${match[3]}.${match[2]}.${match[1]}`;
+  }
+
+  const localizedMatch = normalized.match(/^(\d{1,2})\s*[./]\s*(\d{1,2})\s*[./]\s*(\d{4})\.?$/);
+  if (!localizedMatch) {
     return normalized;
   }
 
-  return `${match[3]}.${match[2]}.${match[1]}`;
+  return [
+    localizedMatch[1].padStart(2, "0"),
+    localizedMatch[2].padStart(2, "0"),
+    localizedMatch[3],
+  ].join(".");
 }
 
 function formatOfferTemplateMoney(value = 0, currency = "EUR") {
   const numeric = Number(value ?? 0) || 0;
+  const currencyCode = String(currency || "EUR").trim().toUpperCase() || "EUR";
 
   try {
-    return new Intl.NumberFormat("hr-HR", {
-      style: "currency",
-      currency: String(currency || "EUR").trim() || "EUR",
+    const formattedAmount = new Intl.NumberFormat("hr-HR", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(numeric);
+    return `${formattedAmount} ${currencyCode}`;
   } catch {
-    return `${numeric.toFixed(2)} ${String(currency || "EUR").trim().toUpperCase() || "EUR"}`;
+    return `${numeric.toFixed(2)} ${currencyCode}`;
   }
 }
 
@@ -1939,18 +1948,22 @@ async function buildOfferPdfExportPayload(offer = {}, organizationId = "") {
   });
 
   if (offerTemplateSettings?.referenceDocument && isWordTemplateFile(offerTemplateSettings.referenceDocument)) {
-    const referenceDocument = await readStoredDocumentBuffer(offerTemplateSettings.referenceDocument);
-    const pdfBuffer = await buildPdfFromTemplateBuffer(
-      referenceDocument.buffer,
-      buildOfferTemplatePlaceholderPayload(offer),
-      {
-        fileName: sanitizeGeneratedDocumentFileName(baseName, {
-          fallback: "ponuda",
-          extension: "docx",
-        }),
-      },
-    );
-    return { pdfBuffer, fileName };
+    try {
+      const referenceDocument = await readStoredDocumentBuffer(offerTemplateSettings.referenceDocument);
+      const pdfBuffer = await buildPdfFromTemplateBuffer(
+        referenceDocument.buffer,
+        buildOfferTemplatePlaceholderPayload(offer),
+        {
+          fileName: sanitizeGeneratedDocumentFileName(baseName, {
+            fallback: "ponuda",
+            extension: "docx",
+          }),
+        },
+      );
+      return { pdfBuffer, fileName };
+    } catch (error) {
+      console.warn("Offer template PDF export failed, falling back to generated PDF.", error);
+    }
   }
 
   const pdfBuffer = await buildOfferPdfBuffer(offer, { currency: offer.currency || "EUR" });
@@ -1970,18 +1983,22 @@ async function buildPurchaseOrderPdfExportPayload(purchaseOrder = {}, organizati
   });
 
   if (purchaseOrderTemplateSettings?.referenceDocument && isWordTemplateFile(purchaseOrderTemplateSettings.referenceDocument)) {
-    const referenceDocument = await readStoredDocumentBuffer(purchaseOrderTemplateSettings.referenceDocument);
-    const pdfBuffer = await buildPdfFromTemplateBuffer(
-      referenceDocument.buffer,
-      buildPurchaseOrderTemplatePlaceholderPayload(purchaseOrder),
-      {
-        fileName: sanitizeGeneratedDocumentFileName(baseName, {
-          fallback: "narudzbenica",
-          extension: "docx",
-        }),
-      },
-    );
-    return { pdfBuffer, fileName };
+    try {
+      const referenceDocument = await readStoredDocumentBuffer(purchaseOrderTemplateSettings.referenceDocument);
+      const pdfBuffer = await buildPdfFromTemplateBuffer(
+        referenceDocument.buffer,
+        buildPurchaseOrderTemplatePlaceholderPayload(purchaseOrder),
+        {
+          fileName: sanitizeGeneratedDocumentFileName(baseName, {
+            fallback: "narudzbenica",
+            extension: "docx",
+          }),
+        },
+      );
+      return { pdfBuffer, fileName };
+    } catch (error) {
+      console.warn("Purchase order template PDF export failed, falling back to generated PDF.", error);
+    }
   }
 
   const pdfBuffer = await buildPurchaseOrderPdfBuffer(purchaseOrder, { currency: purchaseOrder.currency || "EUR" });

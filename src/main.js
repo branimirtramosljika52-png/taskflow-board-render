@@ -2811,6 +2811,8 @@ const offerUploadAmountInput = document.querySelector("#offer-upload-amount");
 const offerStatusInput = document.querySelector("#offer-status");
 const offerDateLabel = document.querySelector("#offer-date-label");
 const offerDateInput = document.querySelector("#offer-date");
+const offerDatePickerButton = document.querySelector("#offer-date-picker-button");
+const offerDatePickerInput = document.querySelector("#offer-date-picker");
 const offerTaxRateInput = document.querySelector("#offer-tax-rate");
 const offerNoteInput = document.querySelector("#offer-note");
 const purchaseOrderDirectionField = document.querySelector("#purchase-order-direction-field");
@@ -19436,7 +19438,7 @@ function formatDateInputDisplayValue(value) {
     return "";
   }
 
-  const normalizedRawValue = rawValue.replace(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/, "$1.$2.$3");
+  const normalizedRawValue = rawValue.replace(/^(\d{1,2})\s*\/\s*(\d{1,2})\s*\/\s*(\d{4})$/, "$1.$2.$3");
   const looksLikeCompleteDate = /^\d{4}-\d{2}-\d{2}$/.test(normalizedRawValue)
     || /^\d{1,2}\.\d{1,2}\.\d{4}\.?$/.test(normalizedRawValue);
   if (!looksLikeCompleteDate) {
@@ -19453,7 +19455,7 @@ function normalizeDateInputValue(value) {
     return "";
   }
 
-  const normalizedRawValue = rawValue.replace(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/, "$1.$2.$3");
+  const normalizedRawValue = rawValue.replace(/^(\d{1,2})\s*\/\s*(\d{1,2})\s*\/\s*(\d{4})$/, "$1.$2.$3");
   const looksLikeCompleteDate = /^\d{4}-\d{2}-\d{2}$/.test(normalizedRawValue)
     || /^\d{1,2}\.\d{1,2}\.\d{4}\.?$/.test(normalizedRawValue);
   if (!looksLikeCompleteDate) {
@@ -27557,12 +27559,13 @@ function formatMeasurementAverage(row) {
 }
 
 function formatCurrencyAmount(value, currency = "EUR") {
-  return new Intl.NumberFormat("hr-HR", {
-    style: "currency",
-    currency,
+  const currencyCode = String(currency || "EUR").trim().toUpperCase() || "EUR";
+  const formattedAmount = new Intl.NumberFormat("hr-HR", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(Number(value ?? 0) || 0);
+
+  return `${formattedAmount} ${currencyCode}`;
 }
 
 function roundMoneyAmount(value) {
@@ -36061,7 +36064,7 @@ function buildOfferDraftPreviewData() {
     : getOfferDraftTotals();
   const currentNumber = String(offerNumberPreview?.textContent || "").trim();
   const documentDrafts = purchaseOrderDocumentDrafts.map((entry) => serializeModuleAttachmentDraft(entry));
-  const currentDate = String(offerDateInput?.value || "").trim();
+  const currentDate = getOfferDateFieldValue();
 
   return {
     id: String(offerIdInput?.value || "").trim(),
@@ -67610,6 +67613,52 @@ function getCommercialDocumentDateValue(item = {}) {
     : String(item.offerDate || "").trim();
 }
 
+function getOfferDateFieldValue() {
+  return normalizeDateInputValue(offerDateInput?.value || "");
+}
+
+function setOfferDateFieldValue(value = "") {
+  const normalizedValue = normalizeDateInputValue(value) || toDateKey(value) || "";
+  if (offerDateInput) {
+    offerDateInput.value = normalizedValue ? formatDateInputDisplayValue(normalizedValue) : "";
+  }
+  if (offerDatePickerInput) {
+    offerDatePickerInput.value = normalizedValue || "";
+  }
+}
+
+function normalizeOfferDateFieldDisplay() {
+  const normalizedValue = getOfferDateFieldValue();
+  if (offerDateInput) {
+    offerDateInput.value = normalizedValue ? formatDateInputDisplayValue(normalizedValue) : String(offerDateInput.value || "").trim();
+  }
+  if (offerDatePickerInput) {
+    offerDatePickerInput.value = normalizedValue || "";
+  }
+  return normalizedValue;
+}
+
+function openOfferDatePicker() {
+  if (!offerDatePickerInput) {
+    offerDateInput?.focus({ preventScroll: true });
+    return;
+  }
+
+  offerDatePickerInput.value = getOfferDateFieldValue() || new Date().toISOString().slice(0, 10);
+
+  if (typeof offerDatePickerInput.showPicker === "function") {
+    try {
+      offerDatePickerInput.showPicker();
+      return;
+    } catch {
+      // Browser can block showPicker on visually hidden inputs; the click fallback still keeps the date field usable.
+    }
+  }
+
+  offerDatePickerInput.focus({ preventScroll: true });
+  offerDatePickerInput.click();
+}
+
 function getCommercialDocumentDisplayName(item = {}) {
   const config = getActiveCommercialDocumentConfig();
   return String(item.title || "").trim() || config.untitledLabel;
@@ -68726,7 +68775,7 @@ function renderOfferItemRows() {
       inputMode: "decimal",
       hidden: item.showBreakdowns,
     });
-    priceField.classList.add("offer-item-field", "is-price");
+    priceField.classList.add("offer-item-field", "is-price", "is-currency-field");
 
     const content = document.createElement("div");
     content.className = "offer-item-main-grid";
@@ -68816,13 +68865,13 @@ function renderOfferItemRows() {
         toField.append(toSpan, toInput);
 
         const amountField = document.createElement("label");
-        amountField.className = "field";
+        amountField.className = "field is-currency-field";
         const amountSpan = document.createElement("span");
-        amountSpan.textContent = "Iznos EUR";
+        amountSpan.textContent = "Iznos";
         const amountInput = document.createElement("input");
         amountInput.type = "text";
         amountInput.inputMode = "decimal";
-        amountInput.placeholder = "0,00 EUR";
+        amountInput.placeholder = "0,00";
         amountInput.value = entry.amount ?? "";
         amountInput.addEventListener("input", (event) => {
           updateOfferFormBreakdown(index, breakdownIndex, "amount", event.currentTarget.value);
@@ -69043,6 +69092,18 @@ function setOfferSelectedLocationIds(selectedIds = []) {
   rebuildOfferContactOptions(offerContactSlotInput?.value || "", getSelectedOfferContactSnapshot());
 }
 
+function buildOfferContactOptionValue(contact = {}) {
+  const locationId = String(contact.locationId || "").trim();
+  const slot = String(contact.slot || "").trim();
+  return [locationId, slot].filter(Boolean).join(":").slice(0, 128);
+}
+
+function normalizeOfferContactSlotValue(value = "") {
+  const rawValue = String(value || "").trim();
+  const legacyMatch = rawValue.match(/^([^:]+):([^:]+)/);
+  return legacyMatch ? `${legacyMatch[1]}:${legacyMatch[2]}` : rawValue.slice(0, 128);
+}
+
 function rebuildOfferContactOptions(selectedSlot = "", snapshot = {}) {
   if (!offerContactSlotInput) {
     return;
@@ -69087,9 +69148,11 @@ function rebuildOfferContactOptions(selectedSlot = "", snapshot = {}) {
   ).values());
   const options = [];
 
+  const normalizedSelectedSlot = normalizeOfferContactSlotValue(selectedSlot);
+
   if (uniqueContacts.length === 0 && snapshot.contactName) {
     options.push({
-      value: snapshot.contactSlot || "",
+      value: normalizeOfferContactSlotValue(snapshot.contactSlot || ""),
       label: `${snapshot.contactName} (snapshot)`,
       data: {
         contactName: snapshot.contactName,
@@ -69111,7 +69174,7 @@ function rebuildOfferContactOptions(selectedSlot = "", snapshot = {}) {
 
   uniqueContacts.forEach((contact) => {
     options.push({
-      value: `${contact.locationId}:${contact.slot}:${contact.email || contact.phone || contact.name}`,
+      value: buildOfferContactOptionValue(contact),
       label: [contact.name || `Kontakt ${contact.slot}`, contact.locationName].filter(Boolean).join(" · "),
       data: {
         contactName: contact.name || `Kontakt ${contact.slot}`,
@@ -69121,7 +69184,7 @@ function rebuildOfferContactOptions(selectedSlot = "", snapshot = {}) {
     });
   });
 
-  replaceSelectOptions(offerContactSlotInput, options, selectedSlot);
+  replaceSelectOptions(offerContactSlotInput, options, normalizedSelectedSlot);
   offerContactSlotInput.disabled = false;
   if (state.offerTemplateModalOpen) {
     renderOfferTemplatePlaceholderList();
@@ -69132,7 +69195,7 @@ function getSelectedOfferContactSnapshot() {
   const selectedOption = offerContactSlotInput?.selectedOptions?.[0];
 
   return {
-    contactSlot: offerContactSlotInput?.value || "",
+    contactSlot: normalizeOfferContactSlotValue(offerContactSlotInput?.value || ""),
     contactName: selectedOption?.dataset.contactName || "",
     contactPhone: selectedOption?.dataset.contactPhone || "",
     contactEmail: selectedOption?.dataset.contactEmail || "",
@@ -69175,7 +69238,7 @@ function buildOfferPayload() {
   if (isPurchaseOrder) {
     return {
       ...payload,
-      purchaseOrderDate: offerDateInput.value,
+      purchaseOrderDate: getOfferDateFieldValue(),
       orderDirection: activeDirection,
       externalDocumentNumber: commercialExternalNumberInput?.value || purchaseOrderExternalNumberInput?.value || "",
       documents: includeUploadedDocuments
@@ -69186,7 +69249,7 @@ function buildOfferPayload() {
 
   return {
     ...payload,
-    offerDate: offerDateInput.value,
+    offerDate: getOfferDateFieldValue(),
     offerDirection: activeDirection,
     documents: includeUploadedDocuments
       ? purchaseOrderDocumentDrafts.map((entry) => serializeModuleAttachmentDraft(entry))
@@ -69211,7 +69274,7 @@ function resetOfferForm() {
   }
   syncOfferStatusTheme();
   if (offerDateInput) {
-    offerDateInput.value = new Date().toISOString().slice(0, 10);
+    setOfferDateFieldValue(new Date().toISOString().slice(0, 10));
   }
   if (offerTaxRateInput) {
     offerTaxRateInput.value = "25";
@@ -69326,7 +69389,7 @@ function hydrateOfferForm(offer) {
   }
   offerStatusInput.value = offer.status || config.defaultStatus;
   syncOfferStatusTheme();
-  offerDateInput.value = getCommercialDocumentDateValue(offer) || String(offer.createdAt ?? "").slice(0, 10) || new Date().toISOString().slice(0, 10);
+  setOfferDateFieldValue(getCommercialDocumentDateValue(offer) || String(offer.createdAt ?? "").slice(0, 10) || new Date().toISOString().slice(0, 10));
   offerTaxRateInput.value = String(offer.taxRate ?? 25);
   offerNoteInput.value = offer.note || config.defaultNote;
   if (purchaseOrderDirectionInput) {
@@ -85817,6 +85880,29 @@ offerLocationTrigger?.addEventListener("click", () => {
 
 offerStatusInput?.addEventListener("change", () => {
   syncOfferStatusTheme();
+  if (state.offerTemplateModalOpen) {
+    renderOfferTemplatePlaceholderList();
+  }
+});
+
+offerDateInput?.addEventListener("change", () => {
+  normalizeOfferDateFieldDisplay();
+  if (state.offerTemplateModalOpen) {
+    renderOfferTemplatePlaceholderList();
+  }
+});
+
+offerDateInput?.addEventListener("blur", () => {
+  normalizeOfferDateFieldDisplay();
+});
+
+offerDatePickerButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  openOfferDatePicker();
+});
+
+offerDatePickerInput?.addEventListener("change", () => {
+  setOfferDateFieldValue(offerDatePickerInput.value);
   if (state.offerTemplateModalOpen) {
     renderOfferTemplatePlaceholderList();
   }
