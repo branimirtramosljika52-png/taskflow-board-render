@@ -15938,6 +15938,15 @@ function ensurePeopleTrainingPanelInModuleView() {
   }
 }
 
+function ensureRiskAssessmentModuleInModuleView() {
+  if (!riskAssessmentModule || !workspaceViews.module) {
+    return;
+  }
+  if (riskAssessmentModule.parentElement !== workspaceViews.module) {
+    workspaceViews.module.append(riskAssessmentModule);
+  }
+}
+
 function renderModuleView() {
   const moduleDefinitionKey = state.activeModuleItem === "offers" && state.activeSidebarItem === "purchase-orders"
     ? "purchase-orders"
@@ -15977,7 +15986,7 @@ function renderModuleView() {
     && !isRiskAssessmentModule;
 
   if (modulePanel) {
-    modulePanel.hidden = isPeopleTrainingModule;
+    modulePanel.hidden = isPeopleTrainingModule || isRiskAssessmentModule;
   }
 
   if (moduleViewKicker) {
@@ -16037,6 +16046,9 @@ function renderModuleView() {
   }
 
   if (riskAssessmentModule) {
+    if (isRiskAssessmentModule) {
+      ensureRiskAssessmentModuleInModuleView();
+    }
     riskAssessmentModule.hidden = !isRiskAssessmentModule;
   }
 
