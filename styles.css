@@ -41087,6 +41087,26 @@ button.work-order-editor-section-head {
   scroll-margin-top: 18px;
 }
 
+.risk-assessment-editor-section[hidden] {
+  display: none;
+}
+
+.risk-assessment-editor-section.is-active {
+  animation: riskAssessmentPaneIn 0.16s ease-out;
+}
+
+@keyframes riskAssessmentPaneIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .risk-assessment-editor-section + .risk-assessment-editor-section {
   margin-top: 12px;
 }

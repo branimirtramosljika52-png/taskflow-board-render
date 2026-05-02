@@ -4726,6 +4726,7 @@ const riskAssessmentResetButton = document.querySelector("#risk-assessment-reset
 const riskAssessmentDeleteButton = document.querySelector("#risk-assessment-delete");
 let riskAssessmentMeasureDrafts = [];
 let riskAssessmentJobDrafts = [];
+let riskAssessmentActiveBlock = "basic";
 let closePeopleTrainingItemMenuHandler = null;
 let peopleTrainingLastBulkOpenSummary = {
   assignedTests: 0,
@@ -86118,14 +86119,12 @@ riskAssessmentEditorBackdrop?.addEventListener("click", () => {
   setRiskAssessmentEditorOpen(false);
 });
 
-riskAssessmentEditorBody?.addEventListener("scroll", queueRiskAssessmentDockActiveSync, { passive: true });
-
 riskAssessmentDock?.addEventListener("click", (event) => {
   const button = event.target?.closest?.("[data-risk-assessment-jump]");
   if (!button) {
     return;
   }
-  scrollRiskAssessmentToBlock(button.dataset.riskAssessmentJump || "");
+  setRiskAssessmentActiveBlock(button.dataset.riskAssessmentJump || "basic", { resetScroll: true });
 });
 
 riskAssessmentCompanyInput?.addEventListener("change", () => {
@@ -88589,8 +88588,6 @@ function buildRiskAssessmentLocationOptions(companyId = "") {
   return [{ value: "", label: "Sve lokacije / nije vezano" }, ...options];
 }
 
-let riskAssessmentDockSyncFrame = 0;
-
 function getRiskAssessmentEditorBlocks() {
   return Array.from(riskAssessmentForm?.querySelectorAll("[data-risk-assessment-block]") ?? []);
 }
@@ -88602,49 +88599,24 @@ function setRiskAssessmentDockActive(blockKey = "basic") {
   });
 }
 
-function syncRiskAssessmentDockActive() {
-  riskAssessmentDockSyncFrame = 0;
-  if (!riskAssessmentEditorBody || !riskAssessmentDock || riskAssessmentEditorPanel?.hidden) {
-    return;
-  }
+function setRiskAssessmentActiveBlock(blockKey = "basic", { resetScroll = false } = {}) {
   const blocks = getRiskAssessmentEditorBlocks();
   if (!blocks.length) {
     setRiskAssessmentDockActive("basic");
     return;
   }
-  const bodyRect = riskAssessmentEditorBody.getBoundingClientRect();
-  if (riskAssessmentEditorBody.scrollTop + riskAssessmentEditorBody.clientHeight >= riskAssessmentEditorBody.scrollHeight - 4) {
-    setRiskAssessmentDockActive(blocks.at(-1)?.dataset.riskAssessmentBlock || "basic");
-    return;
-  }
-  let activeKey = blocks[0].dataset.riskAssessmentBlock || "basic";
-  let activeDistance = Number.POSITIVE_INFINITY;
+  const knownKeys = new Set(blocks.map((block) => block.dataset.riskAssessmentBlock).filter(Boolean));
+  const activeKey = knownKeys.has(blockKey) ? blockKey : "basic";
+  riskAssessmentActiveBlock = activeKey;
   blocks.forEach((block) => {
-    const blockRect = block.getBoundingClientRect();
-    const distance = Math.abs(blockRect.top - bodyRect.top - 72);
-    if (distance < activeDistance && blockRect.bottom > bodyRect.top + 20) {
-      activeDistance = distance;
-      activeKey = block.dataset.riskAssessmentBlock || activeKey;
-    }
+    const isActive = block.dataset.riskAssessmentBlock === activeKey;
+    block.hidden = !isActive;
+    block.classList.toggle("is-active", isActive);
   });
   setRiskAssessmentDockActive(activeKey);
-}
-
-function queueRiskAssessmentDockActiveSync() {
-  if (riskAssessmentDockSyncFrame) {
-    return;
+  if (resetScroll && riskAssessmentEditorBody) {
+    riskAssessmentEditorBody.scrollTo({ top: 0, behavior: "smooth" });
   }
-  riskAssessmentDockSyncFrame = requestAnimationFrame(syncRiskAssessmentDockActive);
-}
-
-function scrollRiskAssessmentToBlock(blockKey = "") {
-  const safeBlockKey = globalThis.CSS?.escape ? CSS.escape(blockKey) : String(blockKey).replace(/["\\]/g, "\\$&");
-  const block = riskAssessmentForm?.querySelector(`[data-risk-assessment-block="${safeBlockKey}"]`);
-  if (!block) {
-    return;
-  }
-  block.scrollIntoView({ block: "start", behavior: "smooth" });
-  setRiskAssessmentDockActive(blockKey);
 }
 
 function setRiskAssessmentEditorOpen(open) {
@@ -88664,7 +88636,7 @@ function setRiskAssessmentEditorOpen(open) {
         riskAssessmentEditorBody.scrollTop = 0;
       }
       riskAssessmentEditorBody?.focus({ preventScroll: true });
-      syncRiskAssessmentDockActive();
+      setRiskAssessmentActiveBlock(riskAssessmentActiveBlock || "basic");
     });
   }
 }
@@ -88698,6 +88670,7 @@ function resetRiskAssessmentForm() {
   }
   renderRiskAssessmentMeasures();
   renderRiskAssessmentJobs();
+  setRiskAssessmentActiveBlock("basic");
   syncRiskAssessmentEditorAccess();
 }
 
@@ -88737,6 +88710,7 @@ function hydrateRiskAssessmentForm(item = {}) {
   }
   renderRiskAssessmentMeasures();
   renderRiskAssessmentJobs();
+  setRiskAssessmentActiveBlock("basic");
   setRiskAssessmentEditorOpen(true);
   syncRiskAssessmentEditorAccess();
 }
@@ -89681,7 +89655,7 @@ function renderRiskAssessmentJobs() {
     `;
     return row;
   }));
-  queueRiskAssessmentDockActiveSync();
+  setRiskAssessmentActiveBlock(riskAssessmentActiveBlock || "basic");
 }
 
 function buildRiskAssessmentPayload() {
