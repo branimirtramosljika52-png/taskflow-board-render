@@ -88576,13 +88576,16 @@ function buildRiskAssessmentLocationOptions(companyId = "") {
 
 function setRiskAssessmentEditorOpen(open) {
   state.riskAssessmentEditorOpen = Boolean(open);
+  document.body.classList.toggle("is-offer-editor-open", Boolean(open));
   if (riskAssessmentEditorBackdrop) {
     riskAssessmentEditorBackdrop.hidden = !open;
   }
   if (riskAssessmentEditorPanel) {
     riskAssessmentEditorPanel.hidden = !open;
+    riskAssessmentEditorPanel.classList.toggle("is-modal-open", Boolean(open));
   }
   if (open) {
+    ensureRiskAssessmentModuleInModuleView();
     requestAnimationFrame(() => riskAssessmentEditorBody?.focus({ preventScroll: true }));
   }
 }
