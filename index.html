@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260502f" />
+    <link rel="stylesheet" href="/styles.css?v=20260502g" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -3970,85 +3970,154 @@
               <div class="offers-editor-body risk-assessment-editor-body" tabindex="-1">
                 <form id="risk-assessment-form" class="entity-form">
                   <input id="risk-assessment-id" type="hidden" />
-                  <div class="form-grid offers-form-grid">
-                    <label class="field">
-                      <span>Tvrtka</span>
-                      <select id="risk-assessment-company" required></select>
-                    </label>
-                    <label class="field">
-                      <span>Lokacija</span>
-                      <select id="risk-assessment-location"></select>
-                    </label>
-                    <label class="field">
-                      <span>Broj procjene</span>
-                      <input id="risk-assessment-number" type="text" placeholder="Dodjeljuje se automatski" />
-                    </label>
-                    <label class="field">
-                      <span>Status</span>
-                      <select id="risk-assessment-status"></select>
-                    </label>
-                    <label class="field field-span-full">
-                      <span>Naziv</span>
-                      <input id="risk-assessment-title" type="text" maxlength="220" placeholder="Procjena rizika za tvrtku..." required />
-                    </label>
-                    <label class="field">
-                      <span>Datum procjene</span>
-                      <input id="risk-assessment-date" type="date" />
-                    </label>
-                    <label class="field">
-                      <span>Revizija</span>
-                      <input id="risk-assessment-revision-date" type="date" />
-                    </label>
-                    <label class="field">
-                      <span>Voditelj izrade</span>
-                      <input id="risk-assessment-team-lead" type="text" maxlength="180" />
-                    </label>
-                    <label class="field">
-                      <span>Suradnici</span>
-                      <input id="risk-assessment-collaborators" type="text" placeholder="Ime, ime..." />
-                    </label>
-                  </div>
+                  <section id="risk-assessment-block-basic" class="risk-assessment-editor-section" data-risk-assessment-block="basic">
+                    <div class="risk-assessment-editor-section-head">
+                      <div>
+                        <span>01</span>
+                        <strong>Osnovni podaci</strong>
+                      </div>
+                      <p>Tvrtka, lokacija, broj, status, naziv, datumi i osobe koje su izradile procjenu.</p>
+                    </div>
+                    <div class="form-grid offers-form-grid">
+                      <label class="field">
+                        <span>Tvrtka</span>
+                        <select id="risk-assessment-company" required></select>
+                      </label>
+                      <label class="field">
+                        <span>Lokacija</span>
+                        <select id="risk-assessment-location"></select>
+                      </label>
+                      <label class="field">
+                        <span>Broj procjene</span>
+                        <input id="risk-assessment-number" type="text" placeholder="Dodjeljuje se automatski" />
+                      </label>
+                      <label class="field">
+                        <span>Status</span>
+                        <select id="risk-assessment-status"></select>
+                      </label>
+                      <label class="field field-span-full">
+                        <span>Naziv</span>
+                        <input id="risk-assessment-title" type="text" maxlength="220" placeholder="Procjena rizika za tvrtku..." required />
+                      </label>
+                      <label class="field">
+                        <span>Datum procjene</span>
+                        <input id="risk-assessment-date" type="date" />
+                      </label>
+                      <label class="field">
+                        <span>Revizija</span>
+                        <input id="risk-assessment-revision-date" type="date" />
+                      </label>
+                      <label class="field">
+                        <span>Voditelj izrade</span>
+                        <input id="risk-assessment-team-lead" type="text" maxlength="180" />
+                      </label>
+                      <label class="field">
+                        <span>Suradnici</span>
+                        <input id="risk-assessment-collaborators" type="text" placeholder="Ime, ime..." />
+                      </label>
+                    </div>
+                  </section>
 
-                  <div class="risk-assessment-section-grid">
-                    <label class="field">
+                  <section id="risk-assessment-block-intro" class="risk-assessment-editor-section" data-risk-assessment-block="intro">
+                    <div class="risk-assessment-editor-section-head">
+                      <div>
+                        <span>02</span>
+                        <strong>Uvod</strong>
+                      </div>
+                      <p>Polazni tekst procjene, pravna osnova i kontekst izrade.</p>
+                    </div>
+                    <label class="field field-span-full">
                       <span>Uvod</span>
-                      <textarea id="risk-assessment-intro" rows="4"></textarea>
+                      <textarea id="risk-assessment-intro" rows="5"></textarea>
                     </label>
-                    <label class="field">
-                      <span>Opis radnog procesa</span>
-                      <textarea id="risk-assessment-work-process" rows="4"></textarea>
-                    </label>
-                    <label class="field">
-                      <span>Opći podaci</span>
-                      <textarea id="risk-assessment-general-data" rows="4"></textarea>
-                    </label>
-                    <label class="field">
-                      <span>Radna mjesta s računalom</span>
-                      <textarea id="risk-assessment-computer-workplaces" rows="4"></textarea>
-                    </label>
-                    <label class="field">
-                      <span>Osnovna pravila ZNR</span>
-                      <textarea id="risk-assessment-basic-rules" rows="4"></textarea>
-                    </label>
-                    <label class="field">
-                      <span>Posebna pravila ZNR</span>
-                      <textarea id="risk-assessment-special-rules" rows="4"></textarea>
-                    </label>
-                    <label class="field">
-                      <span>Propusti - osnovna pravila</span>
-                      <textarea id="risk-assessment-omissions-basic" rows="4"></textarea>
-                    </label>
-                    <label class="field">
-                      <span>Propusti - posebna pravila</span>
-                      <textarea id="risk-assessment-omissions-special" rows="4"></textarea>
-                    </label>
-                    <label class="field field-span-full">
-                      <span>Zaključak</span>
-                      <textarea id="risk-assessment-conclusion" rows="4"></textarea>
-                    </label>
-                  </div>
+                  </section>
 
-                  <section class="risk-assessment-subpanel">
+                  <section id="risk-assessment-block-process" class="risk-assessment-editor-section" data-risk-assessment-block="process">
+                    <div class="risk-assessment-editor-section-head">
+                      <div>
+                        <span>03</span>
+                        <strong>Opis radnog procesa</strong>
+                      </div>
+                      <p>Kako se posao odvija, gdje se radi i koji su bitni tehnološki koraci.</p>
+                    </div>
+                    <label class="field field-span-full">
+                      <span>Opis radnog procesa</span>
+                      <textarea id="risk-assessment-work-process" rows="5"></textarea>
+                    </label>
+                  </section>
+
+                  <section id="risk-assessment-block-general" class="risk-assessment-editor-section" data-risk-assessment-block="general">
+                    <div class="risk-assessment-editor-section-head">
+                      <div>
+                        <span>04</span>
+                        <strong>Opći podaci</strong>
+                      </div>
+                      <p>Opći uvjeti rada i posebna napomena za radna mjesta s računalom.</p>
+                    </div>
+                    <div class="risk-assessment-section-grid">
+                      <label class="field">
+                        <span>Opći podaci</span>
+                        <textarea id="risk-assessment-general-data" rows="4"></textarea>
+                      </label>
+                      <label class="field">
+                        <span>Radna mjesta s računalom</span>
+                        <textarea id="risk-assessment-computer-workplaces" rows="4"></textarea>
+                      </label>
+                    </div>
+                  </section>
+
+                  <section id="risk-assessment-block-rules" class="risk-assessment-editor-section" data-risk-assessment-block="rules">
+                    <div class="risk-assessment-editor-section-head">
+                      <div>
+                        <span>05</span>
+                        <strong>Pravila zaštite na radu</strong>
+                      </div>
+                      <p>Osnovna i posebna pravila koja se primjenjuju na poslove i radni prostor.</p>
+                    </div>
+                    <div class="risk-assessment-section-grid">
+                      <label class="field">
+                        <span>Osnovna pravila ZNR</span>
+                        <textarea id="risk-assessment-basic-rules" rows="4"></textarea>
+                      </label>
+                      <label class="field">
+                        <span>Posebna pravila ZNR</span>
+                        <textarea id="risk-assessment-special-rules" rows="4"></textarea>
+                      </label>
+                    </div>
+                  </section>
+
+                  <section id="risk-assessment-block-findings" class="risk-assessment-editor-section" data-risk-assessment-block="findings">
+                    <div class="risk-assessment-editor-section-head">
+                      <div>
+                        <span>06</span>
+                        <strong>Propusti i zaključak</strong>
+                      </div>
+                      <p>Uočeni propusti osnovnih i posebnih pravila te završni zaključak procjene.</p>
+                    </div>
+                    <div class="risk-assessment-section-grid">
+                      <label class="field">
+                        <span>Propusti - osnovna pravila</span>
+                        <textarea id="risk-assessment-omissions-basic" rows="4"></textarea>
+                      </label>
+                      <label class="field">
+                        <span>Propusti - posebna pravila</span>
+                        <textarea id="risk-assessment-omissions-special" rows="4"></textarea>
+                      </label>
+                      <label class="field field-span-full">
+                        <span>Zaključak</span>
+                        <textarea id="risk-assessment-conclusion" rows="4"></textarea>
+                      </label>
+                    </div>
+                  </section>
+
+                  <section id="risk-assessment-block-measures" class="risk-assessment-editor-section risk-assessment-subpanel" data-risk-assessment-block="measures">
+                    <div class="risk-assessment-editor-section-head">
+                      <div>
+                        <span>07</span>
+                        <strong>Plan mjera</strong>
+                      </div>
+                      <p>Mjera, rok, odgovorna osoba i način kontrole.</p>
+                    </div>
                     <div class="offers-items-head">
                       <div>
                         <strong>Plan mjera</strong>
@@ -4059,7 +4128,14 @@
                     <div id="risk-assessment-measures" class="risk-assessment-repeat-list"></div>
                   </section>
 
-                  <section class="risk-assessment-subpanel">
+                  <section id="risk-assessment-block-jobs" class="risk-assessment-editor-section risk-assessment-subpanel" data-risk-assessment-block="jobs">
+                    <div class="risk-assessment-editor-section-head">
+                      <div>
+                        <span>08</span>
+                        <strong>Poslovi i rizici</strong>
+                      </div>
+                      <p>Obrada po poslovima, katalog opasnosti, procjena rizika i mjere po Prilogu 7.</p>
+                    </div>
                     <div class="offers-items-head">
                       <div>
                         <strong>Obrada po poslovima</strong>
@@ -4068,12 +4144,12 @@
                       <button id="risk-assessment-add-job" type="button" class="ghost-button">+ Posao</button>
                     </div>
                     <div id="risk-assessment-jobs" class="risk-assessment-repeat-list"></div>
-                  </section>
 
-                  <label class="field field-span-full">
-                    <span>Poruka / napomena klijenta</span>
-                    <textarea id="risk-assessment-client-note" rows="3" placeholder="Vidljivo i u klijentskom pristupu."></textarea>
-                  </label>
+                    <label class="field field-span-full">
+                      <span>Poruka / napomena klijenta</span>
+                      <textarea id="risk-assessment-client-note" rows="3" placeholder="Vidljivo i u klijentskom pristupu."></textarea>
+                    </label>
+                  </section>
 
                   <p id="risk-assessment-error" class="form-error" aria-live="polite"></p>
                   <div class="form-actions">
@@ -4083,6 +4159,16 @@
                   </div>
                 </form>
               </div>
+              <nav id="risk-assessment-dock" class="risk-assessment-dock" aria-label="Navigacija procjene rizika">
+                <button type="button" class="is-active" data-risk-assessment-jump="basic"><strong>Osnovno</strong><span>Tvrtka i datumi</span></button>
+                <button type="button" data-risk-assessment-jump="intro"><strong>Uvod</strong><span>Pravna osnova</span></button>
+                <button type="button" data-risk-assessment-jump="process"><strong>Proces</strong><span>Radni proces</span></button>
+                <button type="button" data-risk-assessment-jump="general"><strong>Opći</strong><span>Uvjeti rada</span></button>
+                <button type="button" data-risk-assessment-jump="rules"><strong>Pravila</strong><span>ZNR pravila</span></button>
+                <button type="button" data-risk-assessment-jump="findings"><strong>Propusti</strong><span>Zaključak</span></button>
+                <button type="button" data-risk-assessment-jump="measures"><strong>Mjere</strong><span>Plan mjera</span></button>
+                <button type="button" data-risk-assessment-jump="jobs"><strong>Poslovi</strong><span>Rizici i ARMOR</span></button>
+              </nav>
             </section>
           </section>
 
@@ -7544,6 +7630,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260502f"></script>
+    <script type="module" src="/src/main.js?v=20260502g"></script>
   </body>
 </html>

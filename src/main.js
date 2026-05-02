@@ -4692,6 +4692,7 @@ const riskAssessmentEmpty = document.querySelector("#risk-assessment-empty");
 const riskAssessmentEditorBackdrop = document.querySelector("#risk-assessment-editor-backdrop");
 const riskAssessmentEditorPanel = document.querySelector("#risk-assessment-editor-panel");
 const riskAssessmentEditorBody = riskAssessmentEditorPanel?.querySelector(".risk-assessment-editor-body");
+const riskAssessmentDock = document.querySelector("#risk-assessment-dock");
 const riskAssessmentEditorTitle = document.querySelector("#risk-assessment-editor-title");
 const riskAssessmentCloseButton = document.querySelector("#risk-assessment-close");
 const riskAssessmentForm = document.querySelector("#risk-assessment-form");
@@ -86117,6 +86118,16 @@ riskAssessmentEditorBackdrop?.addEventListener("click", () => {
   setRiskAssessmentEditorOpen(false);
 });
 
+riskAssessmentEditorBody?.addEventListener("scroll", queueRiskAssessmentDockActiveSync, { passive: true });
+
+riskAssessmentDock?.addEventListener("click", (event) => {
+  const button = event.target?.closest?.("[data-risk-assessment-jump]");
+  if (!button) {
+    return;
+  }
+  scrollRiskAssessmentToBlock(button.dataset.riskAssessmentJump || "");
+});
+
 riskAssessmentCompanyInput?.addEventListener("change", () => {
   replaceSelectOptions(riskAssessmentLocationInput, buildRiskAssessmentLocationOptions(riskAssessmentCompanyInput.value), "");
 });
@@ -88578,6 +88589,64 @@ function buildRiskAssessmentLocationOptions(companyId = "") {
   return [{ value: "", label: "Sve lokacije / nije vezano" }, ...options];
 }
 
+let riskAssessmentDockSyncFrame = 0;
+
+function getRiskAssessmentEditorBlocks() {
+  return Array.from(riskAssessmentForm?.querySelectorAll("[data-risk-assessment-block]") ?? []);
+}
+
+function setRiskAssessmentDockActive(blockKey = "basic") {
+  const buttons = Array.from(riskAssessmentDock?.querySelectorAll("[data-risk-assessment-jump]") ?? []);
+  buttons.forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.riskAssessmentJump === blockKey);
+  });
+}
+
+function syncRiskAssessmentDockActive() {
+  riskAssessmentDockSyncFrame = 0;
+  if (!riskAssessmentEditorBody || !riskAssessmentDock || riskAssessmentEditorPanel?.hidden) {
+    return;
+  }
+  const blocks = getRiskAssessmentEditorBlocks();
+  if (!blocks.length) {
+    setRiskAssessmentDockActive("basic");
+    return;
+  }
+  const bodyRect = riskAssessmentEditorBody.getBoundingClientRect();
+  if (riskAssessmentEditorBody.scrollTop + riskAssessmentEditorBody.clientHeight >= riskAssessmentEditorBody.scrollHeight - 4) {
+    setRiskAssessmentDockActive(blocks.at(-1)?.dataset.riskAssessmentBlock || "basic");
+    return;
+  }
+  let activeKey = blocks[0].dataset.riskAssessmentBlock || "basic";
+  let activeDistance = Number.POSITIVE_INFINITY;
+  blocks.forEach((block) => {
+    const blockRect = block.getBoundingClientRect();
+    const distance = Math.abs(blockRect.top - bodyRect.top - 72);
+    if (distance < activeDistance && blockRect.bottom > bodyRect.top + 20) {
+      activeDistance = distance;
+      activeKey = block.dataset.riskAssessmentBlock || activeKey;
+    }
+  });
+  setRiskAssessmentDockActive(activeKey);
+}
+
+function queueRiskAssessmentDockActiveSync() {
+  if (riskAssessmentDockSyncFrame) {
+    return;
+  }
+  riskAssessmentDockSyncFrame = requestAnimationFrame(syncRiskAssessmentDockActive);
+}
+
+function scrollRiskAssessmentToBlock(blockKey = "") {
+  const safeBlockKey = globalThis.CSS?.escape ? CSS.escape(blockKey) : String(blockKey).replace(/["\\]/g, "\\$&");
+  const block = riskAssessmentForm?.querySelector(`[data-risk-assessment-block="${safeBlockKey}"]`);
+  if (!block) {
+    return;
+  }
+  block.scrollIntoView({ block: "start", behavior: "smooth" });
+  setRiskAssessmentDockActive(blockKey);
+}
+
 function setRiskAssessmentEditorOpen(open) {
   state.riskAssessmentEditorOpen = Boolean(open);
   document.body.classList.toggle("is-offer-editor-open", Boolean(open));
@@ -88590,7 +88659,13 @@ function setRiskAssessmentEditorOpen(open) {
   }
   if (open) {
     ensureRiskAssessmentModuleInModuleView();
-    requestAnimationFrame(() => riskAssessmentEditorBody?.focus({ preventScroll: true }));
+    requestAnimationFrame(() => {
+      if (riskAssessmentEditorBody) {
+        riskAssessmentEditorBody.scrollTop = 0;
+      }
+      riskAssessmentEditorBody?.focus({ preventScroll: true });
+      syncRiskAssessmentDockActive();
+    });
   }
 }
 
@@ -88831,30 +88906,104 @@ function getRiskAssessmentTemplateMatchKey(row = {}) {
   return `${String(row.group || "").trim()}::${String(row.code || "").trim()}`;
 }
 
+function getRiskAssessmentCatalogHierarchy(row = {}) {
+  const category = String(row.category || "Ostalo").trim() || "Ostalo";
+  const group = String(row.group || "Općenito").trim() || "Općenito";
+  const code = String(row.code || "").trim();
+  const groupLower = group.toLocaleLowerCase("hr");
+
+  if (category === "I. OPASNOSTI") {
+    if (groupLower.includes("mehani") || group.startsWith("1.") || code.startsWith("1.")) {
+      let subgroup = "1. MEHANIČKE OPASNOSTI";
+      if (code.startsWith("1.1.")) {
+        subgroup = "1.1. alati";
+      } else if (code === "1.2" || code.startsWith("1.2.")) {
+        subgroup = "1.2. strojevi i oprema";
+      } else if (group.startsWith("1.3") || code.startsWith("1.3.")) {
+        subgroup = "1.3. sredstva za horizontalni prijenos";
+      } else if (group.startsWith("1.4") || code.startsWith("1.4.")) {
+        subgroup = "1.4. sredstva za vertikalni prijenos";
+      } else if (code === "1.5" || code.startsWith("1.5.")) {
+        subgroup = "1.5. rukovanje predmetima";
+      } else if (code === "1.6" || code.startsWith("1.6.")) {
+        subgroup = "1.6. ostale mehaničke opasnosti";
+      }
+      return { category, family: "1. MEHANIČKE OPASNOSTI", subgroup };
+    }
+
+    if (groupLower.includes("pad") || code.startsWith("2.")) {
+      return { category, family: "2. OPASNOST OD PADOVA", subgroup: group };
+    }
+    if (groupLower.includes("elektr") || code.startsWith("3.")) {
+      return { category, family: "3. ELEKTRIČNA STRUJA", subgroup: group };
+    }
+    if (groupLower.includes("požar") || groupLower.includes("eksploz") || code.startsWith("4.")) {
+      return { category, family: "4. POŽAR I EKSPLOZIJA", subgroup: group };
+    }
+    if (groupLower.includes("termi") || code.startsWith("5.")) {
+      return { category, family: "5. TERMIČKE OPASNOSTI", subgroup: group };
+    }
+  }
+
+  if (category === "II. ŠTETNOSTI") {
+    if (group.startsWith("1.") || group.startsWith("1 ")) {
+      return { category, family: "1. KEMIJSKE ŠTETNOSTI", subgroup: group };
+    }
+    if (group.startsWith("2.") || group.startsWith("2 ")) {
+      return { category, family: "2. BIOLOŠKE ŠTETNOSTI", subgroup: group };
+    }
+    if (group.startsWith("3.") || group.startsWith("3 ")) {
+      return { category, family: "3. FIZIKALNE ŠTETNOSTI", subgroup: group };
+    }
+  }
+
+  if (category === "III. NAPORI") {
+    if (group.startsWith("1.") || group.startsWith("1 ")) {
+      return { category, family: "1. STATODINAMIČKI NAPORI", subgroup: group };
+    }
+    if (group.startsWith("2.") || group.startsWith("2 ")) {
+      return { category, family: "2. PSIHOFIZIOLOŠKI NAPORI", subgroup: group };
+    }
+    if (group.startsWith("3.") || group.startsWith("3 ") || code === "4") {
+      return { category, family: "3. NAPORI VIDA I GOVORA", subgroup: group };
+    }
+  }
+
+  return { category, family: group, subgroup: group };
+}
+
 function getRiskAssessmentCatalogSections() {
   const sections = [];
   const sectionMap = new Map();
 
   RISK_ASSESSMENT_CATALOG_ROWS.forEach((row, index) => {
-    const category = String(row.category || "Ostalo").trim() || "Ostalo";
-    const group = String(row.group || "Općenito").trim() || "Općenito";
+    const { category, family, subgroup } = getRiskAssessmentCatalogHierarchy(row);
     if (!sectionMap.has(category)) {
-      const section = { category, groups: [], groupMap: new Map() };
+      const section = { category, families: [], familyMap: new Map() };
       sections.push(section);
       sectionMap.set(category, section);
     }
     const section = sectionMap.get(category);
-    if (!section.groupMap.has(group)) {
-      const groupEntry = { group, rows: [] };
-      section.groups.push(groupEntry);
-      section.groupMap.set(group, groupEntry);
+    if (!section.familyMap.has(family)) {
+      const familyEntry = { family, subgroups: [], subgroupMap: new Map() };
+      section.families.push(familyEntry);
+      section.familyMap.set(family, familyEntry);
     }
-    section.groupMap.get(group).rows.push({ ...row, catalogIndex: index });
+    const familyEntry = section.familyMap.get(family);
+    if (!familyEntry.subgroupMap.has(subgroup)) {
+      const subgroupEntry = { subgroup, rows: [] };
+      familyEntry.subgroups.push(subgroupEntry);
+      familyEntry.subgroupMap.set(subgroup, subgroupEntry);
+    }
+    familyEntry.subgroupMap.get(subgroup).rows.push({ ...row, catalogIndex: index, catalogFamily: family, catalogSubgroup: subgroup });
   });
 
   return sections.map((section) => ({
     category: section.category,
-    groups: section.groups,
+    families: section.families.map((family) => ({
+      family: family.family,
+      subgroups: family.subgroups,
+    })),
   }));
 }
 
@@ -88876,29 +89025,43 @@ function renderRiskAssessmentCatalogPicker(job = {}) {
         <details class="risk-assessment-catalog-section" ${section.category === "I. OPASNOSTI" ? "open" : ""}>
           <summary>
             <strong>${escapeHtml(section.category)}</strong>
-            <span>${section.groups.reduce((sum, group) => sum + group.rows.length, 0)} stavki</span>
+            <span>${section.families.reduce((sum, family) => sum + family.subgroups.reduce((groupSum, subgroup) => groupSum + subgroup.rows.length, 0), 0)} stavki</span>
           </summary>
-          <div class="risk-assessment-catalog-groups">
-            ${section.groups.map((group) => {
-              const groupKey = `${section.category}||${group.group}`;
-              const groupOpen = group.group.includes("Mehaničke") || group.group.includes("1.3") || group.group.includes("1.4");
+          <div class="risk-assessment-catalog-families">
+            ${section.families.map((family) => {
+              const familyKey = `${section.category}||${family.family}`;
+              const familyOpen = family.family.includes("MEHANIČKE") || section.category === "I. OPASNOSTI";
               return `
-                <details class="risk-assessment-catalog-group" ${groupOpen ? "open" : ""}>
+                <details class="risk-assessment-catalog-family" ${familyOpen ? "open" : ""}>
                   <summary>
-                    <strong>${escapeHtml(group.group)}</strong>
-                    <button type="button" class="ghost-button" data-risk-catalog-group="${escapeHtml(groupKey)}">Dodaj skupinu</button>
+                    <strong>${escapeHtml(family.family)}</strong>
+                    <button type="button" class="ghost-button" data-risk-catalog-family="${escapeHtml(familyKey)}">Dodaj naslov</button>
                   </summary>
-                  <div class="risk-assessment-catalog-items">
-                    ${group.rows.map((catalogRow) => {
-                      const isSelected = selectedKeys.has(getRiskAssessmentRiskRowKey(catalogRow));
+                  <div class="risk-assessment-catalog-groups">
+                    ${family.subgroups.map((subgroup) => {
+                      const groupKey = `${section.category}||${family.family}||${subgroup.subgroup}`;
+                      const groupOpen = subgroup.subgroup.includes("1.1") || subgroup.subgroup.includes("1.2") || subgroup.subgroup.includes("1.3") || subgroup.subgroup.includes("1.4");
                       return `
-                        <button type="button" class="risk-assessment-catalog-item ${isSelected ? "is-selected" : ""}" data-risk-catalog-row="${catalogRow.catalogIndex}" ${isSelected ? "disabled" : ""}>
-                          <span>
-                            <strong>${escapeHtml(catalogRow.code || "-")} ${escapeHtml(catalogRow.hazard || "")}</strong>
-                            <small>${escapeHtml(catalogRow.group || "")}</small>
-                          </span>
-                          <em>${escapeHtml(catalogRow.riskLevel || "Odaberi")}</em>
-                        </button>
+                        <details class="risk-assessment-catalog-group" ${groupOpen ? "open" : ""}>
+                          <summary>
+                            <strong>${escapeHtml(subgroup.subgroup)}</strong>
+                            <button type="button" class="ghost-button" data-risk-catalog-group="${escapeHtml(groupKey)}">Dodaj podnaslov</button>
+                          </summary>
+                          <div class="risk-assessment-catalog-items">
+                            ${subgroup.rows.map((catalogRow) => {
+                              const isSelected = selectedKeys.has(getRiskAssessmentRiskRowKey(catalogRow));
+                              return `
+                                <button type="button" class="risk-assessment-catalog-item ${isSelected ? "is-selected" : ""}" data-risk-catalog-row="${catalogRow.catalogIndex}" ${isSelected ? "disabled" : ""}>
+                                  <span>
+                                    <strong>${escapeHtml(catalogRow.code || "-")} ${escapeHtml(catalogRow.hazard || "")}</strong>
+                                    <small>${escapeHtml(catalogRow.catalogSubgroup || catalogRow.group || "")}</small>
+                                  </span>
+                                  <em>${escapeHtml(catalogRow.riskLevel || "Odaberi")}</em>
+                                </button>
+                              `;
+                            }).join("")}
+                          </div>
+                        </details>
                       `;
                     }).join("")}
                   </div>
@@ -88923,11 +89086,16 @@ function createRiskAssessmentEligibilityDraft(initial = {}) {
 }
 
 function createRiskAssessmentRiskRowDraft(initial = {}) {
+  const rawCategory = String(initial.category || "").trim();
+  const rawGroup = String(initial.group || "").trim();
+  const hierarchy = getRiskAssessmentCatalogHierarchy(initial);
+  const hasCatalogCategory = ["I. OPASNOSTI", "II. ŠTETNOSTI", "III. NAPORI"].includes(rawCategory);
   return {
     id: String(initial.id || crypto.randomUUID()),
     code: String(initial.code || ""),
-    category: String(initial.category || ""),
-    group: String(initial.group || ""),
+    topCategory: String(initial.topCategory || (hasCatalogCategory ? rawCategory : "")),
+    category: String(initial.displayCategory || initial.family || (hasCatalogCategory ? hierarchy.family : rawCategory)),
+    group: String(initial.displayGroup || initial.subgroup || (hasCatalogCategory ? hierarchy.subgroup : rawGroup)),
     hazard: String(initial.hazard || ""),
     probability: String(initial.probability || ""),
     consequence: String(initial.consequence || ""),
@@ -88978,18 +89146,26 @@ function getRiskAssessmentFilledRiskRowCount(job = {}) {
 }
 
 function getRiskAssessmentRiskRowKey(row = {}) {
+  const hierarchy = getRiskAssessmentCatalogHierarchy(row);
+  const code = String(row.code || "").trim();
+  const hazard = String(row.hazard || "").trim();
+  const rawGroup = String(row.group || "").trim();
+  const group = code || hazard ? (hierarchy.subgroup || rawGroup) : rawGroup;
   return [
-    row.code,
-    row.group,
-    row.hazard,
+    code,
+    group,
+    hazard,
   ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean).join("::");
 }
 
 function mergeRiskAssessmentRiskRows(currentRows = [], incomingRows = []) {
-  const rows = currentRows.map((row) => createRiskAssessmentRiskRowDraft(row));
+  const incoming = incomingRows.map((row) => createRiskAssessmentRiskRowDraft(row));
+  const hasIncoming = incoming.some((row) => getRiskAssessmentRiskRowKey(row));
+  const rows = currentRows
+    .map((row) => createRiskAssessmentRiskRowDraft(row))
+    .filter((row) => !hasIncoming || getRiskAssessmentRiskRowKey(row) || row.measures || row.workNote);
   const seen = new Set(rows.map((row) => getRiskAssessmentRiskRowKey(row)).filter(Boolean));
-  incomingRows.forEach((row) => {
-    const draft = createRiskAssessmentRiskRowDraft(row);
+  incoming.forEach((draft) => {
     const key = getRiskAssessmentRiskRowKey(draft);
     if (!key || !seen.has(key)) {
       rows.push(draft);
@@ -89309,8 +89485,28 @@ function handleRiskAssessmentJobsListClick(event) {
   if (button.matches("[data-risk-catalog-group]")) {
     event.preventDefault();
     event.stopPropagation();
-    const [category, group] = String(button.dataset.riskCatalogGroup || "").split("||");
-    const catalogRows = RISK_ASSESSMENT_CATALOG_ROWS.filter((row) => row.category === category && row.group === group);
+    const [category, family, subgroup] = String(button.dataset.riskCatalogGroup || "").split("||");
+    const catalogRows = RISK_ASSESSMENT_CATALOG_ROWS.filter((row) => {
+      const hierarchy = getRiskAssessmentCatalogHierarchy(row);
+      return hierarchy.category === category && hierarchy.family === family && hierarchy.subgroup === subgroup;
+    });
+    riskAssessmentJobDrafts[jobIndex] = {
+      ...riskAssessmentJobDrafts[jobIndex],
+      riskRows: mergeRiskAssessmentRiskRows(riskAssessmentJobDrafts[jobIndex].riskRows, catalogRows),
+      catalogOpen: true,
+    };
+    renderRiskAssessmentJobs();
+    return;
+  }
+
+  if (button.matches("[data-risk-catalog-family]")) {
+    event.preventDefault();
+    event.stopPropagation();
+    const [category, family] = String(button.dataset.riskCatalogFamily || "").split("||");
+    const catalogRows = RISK_ASSESSMENT_CATALOG_ROWS.filter((row) => {
+      const hierarchy = getRiskAssessmentCatalogHierarchy(row);
+      return hierarchy.category === category && hierarchy.family === family;
+    });
     riskAssessmentJobDrafts[jobIndex] = {
       ...riskAssessmentJobDrafts[jobIndex],
       riskRows: mergeRiskAssessmentRiskRows(riskAssessmentJobDrafts[jobIndex].riskRows, catalogRows),
@@ -89454,10 +89650,22 @@ function renderRiskAssessmentJobs() {
         ${(item.riskRows ?? []).map((risk, riskIndex) => `
           <div class="risk-assessment-armor-row">
             <div class="risk-assessment-risk-identity">
-              <input data-risk-row-index="${riskIndex}" data-risk-row-field="code" value="${escapeHtml(risk.code || "")}" placeholder="Šifra" />
-              <input data-risk-row-index="${riskIndex}" data-risk-row-field="category" value="${escapeHtml(risk.category || "")}" placeholder="I. OPASNOSTI" />
-              <input data-risk-row-index="${riskIndex}" data-risk-row-field="group" value="${escapeHtml(risk.group || "")}" placeholder="Skupina" />
-              <textarea data-risk-row-index="${riskIndex}" data-risk-row-field="hazard" rows="2" placeholder="Naziv opasnosti, štetnosti ili napora">${escapeHtml(risk.hazard || "")}</textarea>
+              <label class="risk-assessment-risk-field is-title">
+                <span>Naslov</span>
+                <input data-risk-row-index="${riskIndex}" data-risk-row-field="category" value="${escapeHtml(risk.category || "")}" placeholder="I. OPASNOSTI" />
+              </label>
+              <label class="risk-assessment-risk-field is-subtitle">
+                <span>Podnaslov</span>
+                <input data-risk-row-index="${riskIndex}" data-risk-row-field="group" value="${escapeHtml(risk.group || "")}" placeholder="1. Mehaničke opasnosti" />
+              </label>
+              <label class="risk-assessment-risk-field is-code">
+                <span>Broj</span>
+                <input data-risk-row-index="${riskIndex}" data-risk-row-field="code" value="${escapeHtml(risk.code || "")}" placeholder="1.1.1" />
+              </label>
+              <label class="risk-assessment-risk-field is-item">
+                <span>Stavka</span>
+                <textarea data-risk-row-index="${riskIndex}" data-risk-row-field="hazard" rows="2" placeholder="Naziv opasnosti, štetnosti ili napora">${escapeHtml(risk.hazard || "")}</textarea>
+              </label>
             </div>
             <div class="risk-assessment-risk-rating">
               <select data-risk-row-index="${riskIndex}" data-risk-row-field="probability">${renderRiskAssessmentOptions(RISK_ASSESSMENT_PROBABILITY_OPTIONS, risk.probability || "")}</select>
@@ -89473,6 +89681,7 @@ function renderRiskAssessmentJobs() {
     `;
     return row;
   }));
+  queueRiskAssessmentDockActiveSync();
 }
 
 function buildRiskAssessmentPayload() {
