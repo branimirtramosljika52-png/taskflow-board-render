@@ -86131,6 +86131,10 @@ riskAssessmentAddJobButton?.addEventListener("click", () => {
   renderRiskAssessmentJobs();
 });
 
+riskAssessmentJobsList?.addEventListener("input", handleRiskAssessmentJobsListInput);
+riskAssessmentJobsList?.addEventListener("change", handleRiskAssessmentJobsListInput);
+riskAssessmentJobsList?.addEventListener("click", handleRiskAssessmentJobsListClick);
+
 riskAssessmentResetButton?.addEventListener("click", () => {
   resetRiskAssessmentForm();
 });
@@ -88658,8 +88662,8 @@ function hydrateRiskAssessmentForm(item = {}) {
   }
   renderRiskAssessmentMeasures();
   renderRiskAssessmentJobs();
-  syncRiskAssessmentEditorAccess();
   setRiskAssessmentEditorOpen(true);
+  syncRiskAssessmentEditorAccess();
 }
 
 function createRiskAssessmentMeasureDraft() {
@@ -88911,6 +88915,10 @@ function getCanManageRiskAssessments() {
 }
 
 function syncRiskAssessmentEditorAccess() {
+  if (!state.riskAssessmentEditorOpen && riskAssessmentEditorPanel?.hidden) {
+    return;
+  }
+
   const canManage = getCanManageRiskAssessments();
   const canComment = isClientPortalUser(state.user);
   const allowClientNote = canManage || canComment;
@@ -88988,6 +88996,176 @@ function renderRiskAssessmentMeasures() {
   }));
 }
 
+function getRiskAssessmentJobIndexFromElement(element) {
+  const row = element?.closest?.("[data-risk-job-index]");
+  const index = Number(row?.dataset?.riskJobIndex);
+  return Number.isInteger(index) && index >= 0 ? index : -1;
+}
+
+function updateRiskAssessmentJobDraftField(jobIndex, field, value) {
+  const current = riskAssessmentJobDrafts[jobIndex];
+  if (!current || !field) {
+    return;
+  }
+
+  riskAssessmentJobDrafts[jobIndex] = {
+    ...current,
+    [field]: value,
+  };
+
+  if (field === "specialWorkReason") {
+    riskAssessmentJobDrafts[jobIndex].specialConditions = value;
+  }
+  if (field === "requiredQualification") {
+    riskAssessmentJobDrafts[jobIndex].qualifications = value;
+  }
+  if (field === "workOrganization") {
+    riskAssessmentJobDrafts[jobIndex].organization = value;
+  }
+}
+
+function updateRiskAssessmentRiskRowDraftField(jobIndex, riskIndex, field, value) {
+  const current = riskAssessmentJobDrafts[jobIndex];
+  if (!current || !field || !Number.isInteger(riskIndex) || riskIndex < 0) {
+    return;
+  }
+
+  const riskRows = [...(current.riskRows ?? [])];
+  riskRows[riskIndex] = {
+    ...(riskRows[riskIndex] ?? { id: crypto.randomUUID() }),
+    [field]: value,
+  };
+  if (field === "workNote") {
+    riskRows[riskIndex].note = value;
+  }
+
+  riskAssessmentJobDrafts[jobIndex] = {
+    ...current,
+    riskRows,
+  };
+}
+
+function updateRiskAssessmentEligibilityDraftField(jobIndex, key, field, value) {
+  const current = riskAssessmentJobDrafts[jobIndex];
+  if (!current || !key || !field) {
+    return;
+  }
+
+  const currentEligibility = current.eligibility || createRiskAssessmentEligibilityDraft();
+  riskAssessmentJobDrafts[jobIndex] = {
+    ...current,
+    eligibility: {
+      ...currentEligibility,
+      [key]: {
+        ...(currentEligibility[key] ?? { allowed: "np", note: "" }),
+        [field]: value,
+      },
+    },
+  };
+}
+
+function handleRiskAssessmentJobsListInput(event) {
+  const target = event.target;
+  if (!(
+    target instanceof HTMLInputElement
+    || target instanceof HTMLTextAreaElement
+    || target instanceof HTMLSelectElement
+  )) {
+    return;
+  }
+  if (event.type === "input" && target instanceof HTMLSelectElement) {
+    return;
+  }
+  if (event.type === "change" && !(target instanceof HTMLSelectElement)) {
+    return;
+  }
+
+  const jobIndex = getRiskAssessmentJobIndexFromElement(target);
+  if (jobIndex < 0) {
+    return;
+  }
+
+  if (target.dataset.riskJobField) {
+    updateRiskAssessmentJobDraftField(jobIndex, target.dataset.riskJobField, target.value);
+    return;
+  }
+
+  if (target.dataset.riskRowField) {
+    updateRiskAssessmentRiskRowDraftField(
+      jobIndex,
+      Number(target.dataset.riskRowIndex),
+      target.dataset.riskRowField,
+      target.value,
+    );
+    return;
+  }
+
+  if (target.dataset.riskEligibilityKey) {
+    updateRiskAssessmentEligibilityDraftField(
+      jobIndex,
+      target.dataset.riskEligibilityKey,
+      target.dataset.riskEligibilityField,
+      target.value,
+    );
+  }
+}
+
+function handleRiskAssessmentJobsListClick(event) {
+  const button = event.target?.closest?.("button");
+  if (!(button instanceof HTMLButtonElement)) {
+    return;
+  }
+
+  const jobIndex = getRiskAssessmentJobIndexFromElement(button);
+  if (jobIndex < 0) {
+    return;
+  }
+
+  if (button.matches("[data-risk-job-remove]")) {
+    event.preventDefault();
+    riskAssessmentJobDrafts.splice(jobIndex, 1);
+    renderRiskAssessmentJobs();
+    return;
+  }
+
+  if (button.matches("[data-risk-row-add]")) {
+    event.preventDefault();
+    riskAssessmentJobDrafts[jobIndex] = {
+      ...riskAssessmentJobDrafts[jobIndex],
+      riskRows: [
+        ...(riskAssessmentJobDrafts[jobIndex].riskRows ?? []),
+        createRiskAssessmentRiskRowDraft(),
+      ],
+    };
+    renderRiskAssessmentJobs();
+    return;
+  }
+
+  if (button.matches("[data-risk-job-template]")) {
+    event.preventDefault();
+    applyRiskAssessmentArmorTemplateRows(jobIndex);
+    return;
+  }
+
+  if (button.matches("[data-risk-job-ai]")) {
+    event.preventDefault();
+    applyRiskAssessmentAiDraft(jobIndex);
+    return;
+  }
+
+  if (button.matches("[data-risk-row-remove]")) {
+    event.preventDefault();
+    const riskIndex = Number(button.dataset.riskRowRemove);
+    const riskRows = [...(riskAssessmentJobDrafts[jobIndex].riskRows ?? [])];
+    riskRows.splice(riskIndex, 1);
+    riskAssessmentJobDrafts[jobIndex] = {
+      ...riskAssessmentJobDrafts[jobIndex],
+      riskRows: riskRows.length > 0 ? riskRows : [createRiskAssessmentRiskRowDraft()],
+    };
+    renderRiskAssessmentJobs();
+  }
+}
+
 function renderRiskAssessmentJobs() {
   if (!riskAssessmentJobsList) {
     return;
@@ -89004,6 +89182,7 @@ function renderRiskAssessmentJobs() {
   riskAssessmentJobsList.replaceChildren(...riskAssessmentJobDrafts.map((item, index) => {
     const row = document.createElement("div");
     row.className = "risk-assessment-repeat-row is-job";
+    row.dataset.riskJobIndex = String(index);
     const riskCount = getRiskAssessmentFilledRiskRowCount(item);
     const selectedJobTitle = item.jobTitle || `Radno mjesto ${index + 1}`;
     row.innerHTML = `
@@ -89090,89 +89269,6 @@ function renderRiskAssessmentJobs() {
         `).join("")}
       </div>
     `;
-    row.querySelectorAll("[data-risk-job-field]").forEach((input) => {
-      const updateJobField = () => {
-        const field = input.dataset.riskJobField;
-        riskAssessmentJobDrafts[index] = {
-          ...riskAssessmentJobDrafts[index],
-          [field]: input.value,
-        };
-        if (field === "specialWorkReason") {
-          riskAssessmentJobDrafts[index].specialConditions = input.value;
-        }
-        if (field === "requiredQualification") {
-          riskAssessmentJobDrafts[index].qualifications = input.value;
-        }
-        if (field === "workOrganization") {
-          riskAssessmentJobDrafts[index].organization = input.value;
-        }
-      };
-      input.addEventListener(input instanceof HTMLSelectElement ? "change" : "input", updateJobField);
-    });
-    row.querySelectorAll("[data-risk-row-field]").forEach((input) => {
-      const updateRiskRowField = () => {
-        const riskIndex = Number(input.dataset.riskRowIndex);
-        const riskRows = [...(riskAssessmentJobDrafts[index].riskRows ?? [])];
-        riskRows[riskIndex] = {
-          ...(riskRows[riskIndex] ?? { id: crypto.randomUUID() }),
-          [input.dataset.riskRowField]: input.value,
-        };
-        if (input.dataset.riskRowField === "workNote") {
-          riskRows[riskIndex].note = input.value;
-        }
-        riskAssessmentJobDrafts[index] = {
-          ...riskAssessmentJobDrafts[index],
-          riskRows,
-        };
-      };
-      input.addEventListener(input instanceof HTMLSelectElement ? "change" : "input", updateRiskRowField);
-    });
-    row.querySelectorAll("[data-risk-eligibility-key]").forEach((input) => {
-      const updateEligibilityField = () => {
-        const key = input.dataset.riskEligibilityKey;
-        const field = input.dataset.riskEligibilityField;
-        const currentEligibility = riskAssessmentJobDrafts[index].eligibility || createRiskAssessmentEligibilityDraft();
-        riskAssessmentJobDrafts[index] = {
-          ...riskAssessmentJobDrafts[index],
-          eligibility: {
-            ...currentEligibility,
-            [key]: {
-              ...(currentEligibility[key] ?? { allowed: "np", note: "" }),
-              [field]: input.value,
-            },
-          },
-        };
-      };
-      input.addEventListener(input instanceof HTMLSelectElement ? "change" : "input", updateEligibilityField);
-    });
-    row.querySelector("[data-risk-job-remove]")?.addEventListener("click", () => {
-      riskAssessmentJobDrafts.splice(index, 1);
-      renderRiskAssessmentJobs();
-    });
-    row.querySelector("[data-risk-row-add]")?.addEventListener("click", () => {
-      riskAssessmentJobDrafts[index] = {
-        ...riskAssessmentJobDrafts[index],
-        riskRows: [
-          ...(riskAssessmentJobDrafts[index].riskRows ?? []),
-          createRiskAssessmentRiskRowDraft(),
-        ],
-      };
-      renderRiskAssessmentJobs();
-    });
-    row.querySelector("[data-risk-job-template]")?.addEventListener("click", () => applyRiskAssessmentArmorTemplateRows(index));
-    row.querySelector("[data-risk-job-ai]")?.addEventListener("click", () => applyRiskAssessmentAiDraft(index));
-    row.querySelectorAll("[data-risk-row-remove]").forEach((button) => {
-      button.addEventListener("click", () => {
-        const riskIndex = Number(button.dataset.riskRowRemove);
-        const riskRows = [...(riskAssessmentJobDrafts[index].riskRows ?? [])];
-        riskRows.splice(riskIndex, 1);
-        riskAssessmentJobDrafts[index] = {
-          ...riskAssessmentJobDrafts[index],
-          riskRows: riskRows.length > 0 ? riskRows : [createRiskAssessmentRiskRowDraft()],
-        };
-        renderRiskAssessmentJobs();
-      });
-    });
     return row;
   }));
 }

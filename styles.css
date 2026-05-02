@@ -41039,6 +41039,12 @@ button.work-order-editor-section-head {
 .risk-assessment-editor-panel {
   grid-template-rows: auto minmax(0, 1fr);
   padding: 0;
+  contain: layout paint;
+}
+
+#risk-assessment-editor-backdrop.offer-editor-backdrop {
+  background: rgba(17, 21, 31, 0.18);
+  backdrop-filter: none;
 }
 
 .risk-assessment-editor-panel.is-modal-open,
@@ -41057,7 +41063,9 @@ button.work-order-editor-section-head {
 .risk-assessment-editor-body {
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
   padding: 16px 20px 20px;
+  scrollbar-gutter: stable;
 }
 
 .risk-assessment-section-grid {
@@ -41092,6 +41100,12 @@ button.work-order-editor-section-head {
 .risk-assessment-repeat-row.is-measure {
   grid-template-columns: minmax(240px, 1.5fr) minmax(120px, 0.7fr) minmax(180px, 1fr) minmax(180px, 1fr) auto;
   align-items: end;
+}
+
+.risk-assessment-repeat-row.is-job {
+  contain: layout paint style;
+  content-visibility: auto;
+  contain-intrinsic-size: 820px;
 }
 
 .risk-assessment-repeat-row label {
@@ -41256,6 +41270,9 @@ button.work-order-editor-section-head {
   border: 1px solid rgba(203, 213, 225, 0.68);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.94);
+  contain: layout paint style;
+  content-visibility: auto;
+  contain-intrinsic-size: 116px;
 }
 
 .risk-assessment-risk-identity {
