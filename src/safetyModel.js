@@ -4522,13 +4522,61 @@ function normalizeRiskAssessmentRiskRows(items = []) {
 
   return items.map((item) => ({
     id: normalizeId(item?.id) || crypto.randomUUID(),
+    code: normalizeText(item?.code),
     category: normalizeText(item?.category),
+    group: normalizeText(item?.group),
     hazard: normalizeText(item?.hazard),
+    probability: normalizeText(item?.probability),
+    consequence: normalizeText(item?.consequence),
+    riskCode: normalizeText(item?.riskCode),
     riskLevel: normalizeText(item?.riskLevel),
     likelihoodConsequence: normalizeText(item?.likelihoodConsequence),
+    workNote: normalizeText(item?.workNote ?? item?.jobsNote ?? item?.posloviNote),
     note: normalizeText(item?.note),
     measures: normalizeText(item?.measures),
-  })).filter((item) => item.category || item.hazard || item.riskLevel || item.note || item.measures);
+  })).filter((item) => (
+    item.code
+    || item.category
+    || item.group
+    || item.hazard
+    || item.riskLevel
+    || item.workNote
+    || item.note
+    || item.measures
+  ));
+}
+
+function normalizeRiskAssessmentYesNo(value, fallback = "np") {
+  const normalized = normalizeText(value).toLowerCase();
+  if (["da", "yes", "true", "1"].includes(normalized)) {
+    return "da";
+  }
+  if (["ne", "no", "false", "0"].includes(normalized)) {
+    return "ne";
+  }
+  if (["np", "n/p", "nije primjenjivo"].includes(normalized)) {
+    return "np";
+  }
+  return fallback;
+}
+
+function normalizeRiskAssessmentEligibilityItem(item = {}) {
+  return {
+    allowed: normalizeRiskAssessmentYesNo(item?.allowed, "np"),
+    note: normalizeText(item?.note),
+  };
+}
+
+function normalizeRiskAssessmentEligibility(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  return {
+    minorWorkers: normalizeRiskAssessmentEligibilityItem(source.minorWorkers),
+    pregnantWorkers: normalizeRiskAssessmentEligibilityItem(source.pregnantWorkers),
+    recentBirthWorkers: normalizeRiskAssessmentEligibilityItem(source.recentBirthWorkers),
+    breastfeedingWorkers: normalizeRiskAssessmentEligibilityItem(source.breastfeedingWorkers),
+    occupationalDiseaseWorkers: normalizeRiskAssessmentEligibilityItem(source.occupationalDiseaseWorkers),
+    reducedAbilityWorkers: normalizeRiskAssessmentEligibilityItem(source.reducedAbilityWorkers),
+  };
 }
 
 function normalizeRiskAssessmentJobs(items = []) {
@@ -4536,18 +4584,44 @@ function normalizeRiskAssessmentJobs(items = []) {
     return [];
   }
 
-  return items.map((item, index) => ({
-    id: normalizeId(item?.id) || crypto.randomUUID(),
-    order: Number.isFinite(Number(item?.order)) ? Number(item.order) : index + 1,
-    jobTitle: normalizeText(item?.jobTitle),
-    workerCount: normalizeText(item?.workerCount),
-    specialConditions: normalizeText(item?.specialConditions),
-    qualifications: normalizeText(item?.qualifications),
-    organization: normalizeText(item?.organization),
-    description: normalizeText(item?.description),
-    tasks: normalizeText(item?.tasks),
-    riskRows: normalizeRiskAssessmentRiskRows(item?.riskRows ?? []),
-  })).filter((item) => item.jobTitle || item.description || item.tasks || item.riskRows.length > 0);
+  return items.map((item, index) => {
+    const specialConditions = normalizeText(item?.specialConditions ?? item?.specialWorkReason);
+    const qualifications = normalizeText(item?.qualifications ?? item?.requiredQualification);
+    const organization = normalizeText(item?.organization ?? item?.workOrganization);
+
+    return {
+      id: normalizeId(item?.id) || crypto.randomUUID(),
+      order: Number.isFinite(Number(item?.order)) ? Number(item.order) : index + 1,
+      jobTitle: normalizeText(item?.jobTitle),
+      workerCount: normalizeText(item?.workerCount),
+      alcoholLimit: normalizeText(item?.alcoholLimit),
+      specialWorkConditions: normalizeRiskAssessmentYesNo(item?.specialWorkConditions, ""),
+      specialWorkReason: normalizeText(item?.specialWorkReason ?? specialConditions),
+      specialConditions,
+      note: normalizeText(item?.note),
+      increasedInsurance: normalizeRiskAssessmentYesNo(item?.increasedInsurance, ""),
+      requiredQualification: normalizeText(item?.requiredQualification ?? qualifications),
+      qualifications,
+      workOrganization: normalizeText(item?.workOrganization ?? organization),
+      organization,
+      description: normalizeText(item?.description),
+      tasks: normalizeText(item?.tasks),
+      workEquipment: normalizeText(item?.workEquipment),
+      workplaces: normalizeText(item?.workplaces),
+      workplaceArrangement: normalizeText(item?.workplaceArrangement),
+      harmfulSources: normalizeText(item?.harmfulSources),
+      eligibility: normalizeRiskAssessmentEligibility(item?.eligibility),
+      riskRows: normalizeRiskAssessmentRiskRows(item?.riskRows ?? []),
+    };
+  }).filter((item) => (
+    item.jobTitle
+    || item.description
+    || item.tasks
+    || item.workEquipment
+    || item.workplaces
+    || item.harmfulSources
+    || item.riskRows.length > 0
+  ));
 }
 
 function normalizeRiskAssessmentComments(items = []) {
@@ -7331,9 +7405,30 @@ export function filterRiskAssessments(
       ...(item.measures ?? []).flatMap((entry) => [entry.measure, entry.responsiblePerson, entry.deadline]),
       ...(item.jobs ?? []).flatMap((entry) => [
         entry.jobTitle,
+        entry.workerCount,
+        entry.alcoholLimit,
         entry.description,
         entry.tasks,
-        ...(entry.riskRows ?? []).flatMap((risk) => [risk.category, risk.hazard, risk.riskLevel, risk.measures]),
+        entry.specialWorkReason,
+        entry.requiredQualification,
+        entry.workOrganization,
+        entry.workEquipment,
+        entry.workplaces,
+        entry.workplaceArrangement,
+        entry.harmfulSources,
+        ...(Object.values(entry.eligibility ?? {}).flatMap((eligibility) => [eligibility?.allowed, eligibility?.note])),
+        ...(entry.riskRows ?? []).flatMap((risk) => [
+          risk.code,
+          risk.category,
+          risk.group,
+          risk.hazard,
+          risk.probability,
+          risk.consequence,
+          risk.riskLevel,
+          risk.workNote,
+          risk.note,
+          risk.measures,
+        ]),
       ]),
     ].join(" ").toLowerCase();
 

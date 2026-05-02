@@ -41114,12 +41114,168 @@ button.work-order-editor-section-head {
 }
 
 .risk-assessment-job-head {
-  grid-template-columns: minmax(240px, 1fr) minmax(120px, 0.25fr) auto;
-  align-items: end;
+  grid-template-columns: minmax(240px, 1fr) auto;
+  align-items: start;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(203, 213, 225, 0.72);
+}
+
+.risk-assessment-job-head > div:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.risk-assessment-job-head strong {
+  color: #172033;
+  font-size: 1rem;
+}
+
+.risk-assessment-job-head small {
+  color: #64748b;
+  font-weight: 750;
+}
+
+.risk-assessment-job-tools {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.risk-assessment-job-tools .ghost-button,
+.risk-assessment-armor-row .ghost-button {
+  min-height: 34px;
+  padding: 7px 11px;
 }
 
 .risk-assessment-risk-line {
   grid-template-columns: minmax(180px, 1fr) minmax(120px, 0.45fr) minmax(180px, 1fr);
+}
+
+.risk-assessment-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.risk-assessment-detail-grid label {
+  align-content: start;
+}
+
+.risk-assessment-detail-grid textarea,
+.risk-assessment-armor-row textarea {
+  min-height: 0;
+  resize: vertical;
+}
+
+.risk-assessment-detail-grid .field-span-full {
+  grid-column: 1 / -1;
+}
+
+.risk-assessment-eligibility-block,
+.risk-assessment-armor-table {
+  display: grid;
+  gap: 8px;
+}
+
+.risk-assessment-mini-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.risk-assessment-mini-title strong {
+  color: #172033;
+  font-size: 0.86rem;
+}
+
+.risk-assessment-mini-title span {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 780;
+}
+
+.risk-assessment-eligibility-table {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.risk-assessment-eligibility-row {
+  display: grid;
+  grid-template-columns: minmax(190px, 1fr) 92px minmax(160px, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid rgba(191, 219, 254, 0.88);
+  border-radius: 10px;
+  background: rgba(248, 251, 255, 0.9);
+}
+
+.risk-assessment-eligibility-row > span {
+  min-width: 0;
+  color: #334155;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.risk-assessment-armor-table {
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid rgba(191, 219, 254, 0.88);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(248, 251, 255, 0.96), rgba(255, 255, 255, 0.92));
+}
+
+.risk-assessment-armor-head,
+.risk-assessment-armor-row {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.15fr) minmax(170px, 0.55fr) minmax(220px, 0.95fr) minmax(280px, 1.1fr) 44px;
+  gap: 8px;
+  min-width: 1080px;
+  align-items: start;
+}
+
+.risk-assessment-armor-head {
+  align-items: center;
+  padding: 7px 9px;
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  border-radius: 9px;
+  background: rgba(226, 232, 240, 0.74);
+}
+
+.risk-assessment-armor-row {
+  padding: 8px;
+  border: 1px solid rgba(203, 213, 225, 0.68);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.risk-assessment-risk-identity {
+  display: grid;
+  grid-template-columns: 76px minmax(120px, 0.9fr) minmax(160px, 1fr);
+  gap: 6px;
+}
+
+.risk-assessment-risk-identity textarea {
+  grid-column: 1 / -1;
+}
+
+.risk-assessment-risk-rating {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.risk-assessment-risk-rating select:last-child {
+  grid-column: 1 / -1;
 }
 
 .risk-assessment-editor-panel.is-client-note-mode .risk-assessment-subpanel,
@@ -41175,9 +41331,19 @@ button.work-order-editor-section-head {
   .risk-assessment-section-grid,
   .risk-assessment-repeat-row.is-measure,
   .risk-assessment-job-head,
+  .risk-assessment-detail-grid,
+  .risk-assessment-eligibility-table,
   .risk-assessment-risk-line,
   .risk-assessment-card {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .risk-assessment-job-tools {
+    justify-content: start;
+  }
+
+  .risk-assessment-mini-title {
+    display: grid;
   }
 
   .risk-assessment-card-meta {

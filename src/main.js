@@ -88649,10 +88649,7 @@ function hydrateRiskAssessmentForm(item = {}) {
   riskAssessmentConclusionInput.value = item.conclusion || "";
   riskAssessmentClientNoteInput.value = item.clientNote || "";
   riskAssessmentMeasureDrafts = (item.measures ?? []).map((entry) => ({ ...entry }));
-  riskAssessmentJobDrafts = (item.jobs ?? []).map((entry) => ({
-    ...entry,
-    riskRows: (entry.riskRows ?? []).map((risk) => ({ ...risk })),
-  }));
+  riskAssessmentJobDrafts = (item.jobs ?? []).map((entry) => createRiskAssessmentJobDraft(entry));
   if (riskAssessmentEditorTitle) {
     riskAssessmentEditorTitle.textContent = item.title || "Procjena rizika";
   }
@@ -88676,26 +88673,237 @@ function createRiskAssessmentMeasureDraft() {
   };
 }
 
-function createRiskAssessmentJobDraft() {
+const RISK_ASSESSMENT_YES_NO_OPTIONS = Object.freeze([
+  { value: "", label: "Odaberi" },
+  { value: "da", label: "Da" },
+  { value: "ne", label: "Ne" },
+  { value: "np", label: "N/P" },
+]);
+
+const RISK_ASSESSMENT_ELIGIBILITY_ROWS = Object.freeze([
+  { key: "minorWorkers", label: "Maloljetni radnici" },
+  { key: "pregnantWorkers", label: "Trudne radnice" },
+  { key: "recentBirthWorkers", label: "Radnice koje su nedavno rodile" },
+  { key: "breastfeedingWorkers", label: "Radnice koje doje" },
+  { key: "occupationalDiseaseWorkers", label: "Radnici oboljeli od profesionalne bolesti" },
+  { key: "reducedAbilityWorkers", label: "Radnici smanjene/preostale radne sposobnosti" },
+]);
+
+const RISK_ASSESSMENT_PROBABILITY_OPTIONS = Object.freeze([
+  { value: "", label: "-" },
+  { value: "mv", label: "mv" },
+  { value: "v", label: "v" },
+  { value: "vv", label: "vv" },
+]);
+
+const RISK_ASSESSMENT_CONSEQUENCE_OPTIONS = Object.freeze([
+  { value: "", label: "-" },
+  { value: "mš", label: "mš" },
+  { value: "sš", label: "sš" },
+  { value: "iš", label: "iš" },
+]);
+
+const RISK_ASSESSMENT_RISK_LEVEL_OPTIONS = Object.freeze([
+  { value: "", label: "Odaberi" },
+  { value: "Mali rizik", label: "Mali rizik" },
+  { value: "Srednji rizik", label: "Srednji rizik" },
+  { value: "Veliki rizik", label: "Veliki rizik" },
+  { value: "N/P", label: "N/P" },
+]);
+
+const RISK_ASSESSMENT_ARMOR_TEMPLATE_ROWS = Object.freeze([
+  { category: "I. OPASNOSTI", group: "1. Mehaničke opasnosti", code: "1.1.1", hazard: "Ručni alati", probability: "mv", consequence: "sš", riskLevel: "Mali rizik", measures: "Koristiti ispravan alat, osposobiti radnike za rad na siguran način i po potrebi koristiti propisanu osobnu zaštitnu opremu." },
+  { category: "I. OPASNOSTI", group: "1. Mehaničke opasnosti", code: "1.1.2", hazard: "Mehanizirani alati", probability: "v", consequence: "sš", riskLevel: "Srednji rizik", measures: "Provjeravati ispravnost alata, koristiti ga prema uputama proizvođača i zabraniti rad neosposobljenim osobama." },
+  { category: "I. OPASNOSTI", group: "1. Mehaničke opasnosti", code: "1.2", hazard: "Strojevi i oprema", probability: "v", consequence: "iš", riskLevel: "Veliki rizik", measures: "Raditi samo na ispravnoj opremi sa zaštitnim napravama, provoditi redovite preglede i odmah ukloniti neispravnosti." },
+  { category: "I. OPASNOSTI", group: "1. Mehaničke opasnosti", code: "1.3.2", hazard: "Viličari i transportna sredstva", probability: "v", consequence: "iš", riskLevel: "Veliki rizik", measures: "Odvojiti pješačke i transportne putove, ograničiti brzinu i dopustiti upravljanje samo ovlaštenim osobama." },
+  { category: "I. OPASNOSTI", group: "1. Mehaničke opasnosti", code: "1.5", hazard: "Rukovanje predmetima", probability: "v", consequence: "sš", riskLevel: "Srednji rizik", measures: "Primijeniti sigurne tehnike ručnog prenošenja, koristiti pomoćna sredstva i organizirati rad tako da se smanji opterećenje." },
+  { category: "I. OPASNOSTI", group: "2. Opasnost od padova", code: "2.1", hazard: "Pad na istoj razini", probability: "v", consequence: "sš", riskLevel: "Srednji rizik", measures: "Održavati prohodne, suhe i označene komunikacije, uklanjati zapreke i osigurati prikladnu obuću." },
+  { category: "I. OPASNOSTI", group: "2. Opasnost od padova", code: "2.2", hazard: "Pad u dubinu", probability: "v", consequence: "iš", riskLevel: "Veliki rizik", measures: "Zaštititi otvore, koristiti ograde i zabraniti pristup neosiguranim rubovima." },
+  { category: "I. OPASNOSTI", group: "2. Opasnost od padova", code: "2.3", hazard: "Pad s visine", probability: "v", consequence: "iš", riskLevel: "Veliki rizik", measures: "Koristiti sigurne ljestve/skelu, zaštitu od pada i provoditi rad prema pisanom postupku." },
+  { category: "I. OPASNOSTI", group: "2. Opasnost od padova", code: "2.5", hazard: "Pad predmeta", probability: "v", consequence: "sš", riskLevel: "Srednji rizik", measures: "Osigurati stabilno slaganje, označiti zone opasnosti i koristiti zaštitu glave gdje je potrebno." },
+  { category: "I. OPASNOSTI", group: "3. Električna struja", code: "3.1", hazard: "Izravni dodir dijelova pod naponom", probability: "mv", consequence: "iš", riskLevel: "Srednji rizik", measures: "Rad na električnim instalacijama dopustiti samo ovlaštenim osobama, koristiti zaštitne uređaje i provoditi periodička ispitivanja." },
+  { category: "I. OPASNOSTI", group: "3. Električna struja", code: "3.2", hazard: "Neizravni dodir i kvar opreme", probability: "v", consequence: "sš", riskLevel: "Srednji rizik", measures: "Osigurati zaštitu od indirektnog dodira, ispravne priključke i prijavu svake neispravnosti." },
+  { category: "I. OPASNOSTI", group: "4. Požar i eksplozija", code: "4.1", hazard: "Eksplozivne ili zapaljive smjese", probability: "vv", consequence: "iš", riskLevel: "Veliki rizik", measures: "Spriječiti izvore paljenja, provoditi ventilaciju, označiti zone i raditi prema postupcima zaštite od požara i eksplozije." },
+  { category: "I. OPASNOSTI", group: "4. Požar i eksplozija", code: "4.2", hazard: "Zapaljive tvari", probability: "v", consequence: "iš", riskLevel: "Veliki rizik", measures: "Skladištiti u propisanim spremnicima, ograničiti količine na radnom mjestu i osigurati sredstva za gašenje." },
+  { category: "I. OPASNOSTI", group: "5. Termičke opasnosti", code: "5.1", hazard: "Vruće tvari i površine", probability: "v", consequence: "sš", riskLevel: "Srednji rizik", measures: "Označiti vruće površine, koristiti zaštitne rukavice i spriječiti slučajni dodir." },
+  { category: "I. OPASNOSTI", group: "5. Termičke opasnosti", code: "5.2", hazard: "Hladne tvari i kriogeni mediji", probability: "vv", consequence: "sš", riskLevel: "Veliki rizik", measures: "Koristiti kriogenu osobnu zaštitnu opremu, spriječiti dodir s kožom i osigurati ventilaciju prostora." },
+  { category: "II. ŠTETNOSTI", group: "1. Kemijske štetnosti", code: "1.1", hazard: "Opasne kemikalije", probability: "v", consequence: "sš", riskLevel: "Srednji rizik", measures: "Primjenjivati sigurnosno-tehničke listove, označiti kemikalije i osigurati odgovarajuću ventilaciju i OZO." },
+  { category: "II. ŠTETNOSTI", group: "1. Kemijske štetnosti", code: "1.4.1", hazard: "Inertni zagušljivci", probability: "vv", consequence: "sš", riskLevel: "Veliki rizik", measures: "Osigurati nadzor atmosfere, ventilaciju, upozorenja i zabranu ulaska u prostor bez provjere." },
+  { category: "II. ŠTETNOSTI", group: "2. Biološke štetnosti", code: "2.1", hazard: "Biološki agensi i kontaminacija", probability: "mv", consequence: "sš", riskLevel: "Mali rizik", measures: "Primjenjivati higijenske mjere, pranje ruku i postupke za kontaminirani materijal." },
+  { category: "II. ŠTETNOSTI", group: "3. Fizikalne štetnosti", code: "3.1", hazard: "Buka", probability: "v", consequence: "sš", riskLevel: "Srednji rizik", measures: "Smanjiti izloženost buci, provoditi mjerenja i koristiti zaštitu sluha ako je potrebna." },
+  { category: "II. ŠTETNOSTI", group: "3. Fizikalne štetnosti", code: "3.4", hazard: "Mikroklima i rad na otvorenom", probability: "v", consequence: "sš", riskLevel: "Srednji rizik", measures: "Organizirati rad prema vremenskim uvjetima, osigurati odmor, vodu i zaštitu od hladnoće/topline." },
+  { category: "II. ŠTETNOSTI", group: "3. Fizikalne štetnosti", code: "3.5", hazard: "Neodgovarajuća osvijetljenost", probability: "mv", consequence: "sš", riskLevel: "Mali rizik", measures: "Osigurati dovoljnu i ravnomjernu rasvjetu te održavati rasvjetna tijela." },
+  { category: "III. NAPORI", group: "1. Statodinamički napori", code: "1.1.1", hazard: "Dugotrajno sjedenje ili stajanje", probability: "v", consequence: "mš", riskLevel: "Mali rizik", measures: "Omogućiti promjenu položaja tijela, kratke pauze i ergonomsko uređenje mjesta rada." },
+  { category: "III. NAPORI", group: "2. Psihofiziološki napori", code: "2.1", hazard: "Stres, odgovornost i radni ritam", probability: "v", consequence: "sš", riskLevel: "Srednji rizik", measures: "Jasno rasporediti odgovornosti, planirati opterećenje i omogućiti komunikaciju s nadređenima." },
+  { category: "III. NAPORI", group: "3. Napori vida i govora", code: "3.1", hazard: "Naprezanje vida pri radu s dokumentacijom/zaslonom", probability: "v", consequence: "mš", riskLevel: "Mali rizik", measures: "Osigurati odgovarajuću rasvjetu, pauze i ergonomski položaj zaslona." },
+]);
+
+function renderRiskAssessmentOptions(options, selectedValue = "") {
+  return options.map((option) => (
+    `<option value="${escapeHtml(option.value)}"${String(option.value) === String(selectedValue ?? "") ? " selected" : ""}>${escapeHtml(option.label)}</option>`
+  )).join("");
+}
+
+function getRiskAssessmentTemplateMatchKey(row = {}) {
+  return `${String(row.group || "").trim()}::${String(row.code || "").trim()}`;
+}
+
+function createRiskAssessmentEligibilityDraft(initial = {}) {
+  return Object.fromEntries(RISK_ASSESSMENT_ELIGIBILITY_ROWS.map((row) => {
+    const entry = initial?.[row.key] ?? {};
+    return [row.key, {
+      allowed: String(entry.allowed || "np"),
+      note: String(entry.note || ""),
+    }];
+  }));
+}
+
+function createRiskAssessmentRiskRowDraft(initial = {}) {
   return {
-    id: crypto.randomUUID(),
-    jobTitle: "",
-    workerCount: "",
-    description: "",
-    tasks: "",
-    specialConditions: "",
-    qualifications: "",
-    organization: "",
-    riskRows: [
-      {
-        id: crypto.randomUUID(),
-        category: "",
-        hazard: "",
-        riskLevel: "",
-        measures: "",
-      },
-    ],
+    id: String(initial.id || crypto.randomUUID()),
+    code: String(initial.code || ""),
+    category: String(initial.category || ""),
+    group: String(initial.group || ""),
+    hazard: String(initial.hazard || ""),
+    probability: String(initial.probability || ""),
+    consequence: String(initial.consequence || ""),
+    riskCode: String(initial.riskCode || ""),
+    riskLevel: String(initial.riskLevel || ""),
+    likelihoodConsequence: String(initial.likelihoodConsequence || ""),
+    workNote: String(initial.workNote || initial.jobsNote || ""),
+    note: String(initial.note || ""),
+    measures: String(initial.measures || ""),
   };
+}
+
+function createRiskAssessmentJobDraft(initial = {}) {
+  const riskRows = Array.isArray(initial.riskRows)
+    ? initial.riskRows.map((risk) => createRiskAssessmentRiskRowDraft(risk))
+    : [];
+
+  return {
+    id: String(initial.id || crypto.randomUUID()),
+    order: initial.order || "",
+    jobTitle: String(initial.jobTitle || ""),
+    workerCount: String(initial.workerCount || ""),
+    alcoholLimit: String(initial.alcoholLimit || ""),
+    specialWorkConditions: String(initial.specialWorkConditions || ""),
+    specialWorkReason: String(initial.specialWorkReason || initial.specialConditions || ""),
+    specialConditions: String(initial.specialConditions || initial.specialWorkReason || ""),
+    note: String(initial.note || ""),
+    increasedInsurance: String(initial.increasedInsurance || ""),
+    requiredQualification: String(initial.requiredQualification || initial.qualifications || ""),
+    qualifications: String(initial.qualifications || initial.requiredQualification || ""),
+    workOrganization: String(initial.workOrganization || initial.organization || ""),
+    organization: String(initial.organization || initial.workOrganization || ""),
+    description: String(initial.description || ""),
+    tasks: String(initial.tasks || ""),
+    workEquipment: String(initial.workEquipment || ""),
+    workplaces: String(initial.workplaces || ""),
+    workplaceArrangement: String(initial.workplaceArrangement || ""),
+    harmfulSources: String(initial.harmfulSources || ""),
+    eligibility: createRiskAssessmentEligibilityDraft(initial.eligibility || {}),
+    riskRows: riskRows.length > 0 ? riskRows : [createRiskAssessmentRiskRowDraft()],
+  };
+}
+
+function getRiskAssessmentFilledRiskRowCount(job = {}) {
+  return (job.riskRows ?? []).filter((risk) => (
+    risk.code || risk.category || risk.group || risk.hazard || risk.riskLevel || risk.workNote || risk.measures
+  )).length;
+}
+
+function getRiskAssessmentRiskRowKey(row = {}) {
+  return [
+    row.code,
+    row.group,
+    row.hazard,
+  ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean).join("::");
+}
+
+function mergeRiskAssessmentRiskRows(currentRows = [], incomingRows = []) {
+  const rows = currentRows.map((row) => createRiskAssessmentRiskRowDraft(row));
+  const seen = new Set(rows.map((row) => getRiskAssessmentRiskRowKey(row)).filter(Boolean));
+  incomingRows.forEach((row) => {
+    const draft = createRiskAssessmentRiskRowDraft(row);
+    const key = getRiskAssessmentRiskRowKey(draft);
+    if (!key || !seen.has(key)) {
+      rows.push(draft);
+      if (key) {
+        seen.add(key);
+      }
+    }
+  });
+  return rows.filter((row, index) => index === 0 || getRiskAssessmentRiskRowKey(row) || row.measures || row.workNote);
+}
+
+function applyRiskAssessmentArmorTemplateRows(jobIndex) {
+  const job = riskAssessmentJobDrafts[jobIndex];
+  if (!job) {
+    return;
+  }
+  riskAssessmentJobDrafts[jobIndex] = {
+    ...job,
+    riskRows: mergeRiskAssessmentRiskRows(job.riskRows, RISK_ASSESSMENT_ARMOR_TEMPLATE_ROWS),
+  };
+  renderRiskAssessmentJobs();
+}
+
+function buildRiskAssessmentAiRiskSuggestions(job = {}) {
+  const text = [
+    job.jobTitle,
+    job.description,
+    job.tasks,
+    job.workEquipment,
+    job.workplaces,
+    job.harmfulSources,
+  ].join(" ").toLowerCase();
+  const matchers = [
+    { terms: ["vilič", "vilicar", "transport", "palet"], keys: ["1. Mehaničke opasnosti::1.3.2", "1. Mehaničke opasnosti::1.5", "2. Opasnost od padova::2.1"] },
+    { terms: ["plin", "kisik", "dušik", "dusik", "argon", "co2", "zaguš", "zagush"], keys: ["1. Kemijske štetnosti::1.4.1", "4. Požar i eksplozija::4.1", "4. Požar i eksplozija::4.2", "5. Termičke opasnosti::5.2"] },
+    { terms: ["kem", "otapal", "kisel", "luž", "luz"], keys: ["1. Kemijske štetnosti::1.1", "4. Požar i eksplozija::4.2"] },
+    { terms: ["alat", "bušil", "brus", "rez"], keys: ["1. Mehaničke opasnosti::1.1.1", "1. Mehaničke opasnosti::1.1.2", "1. Mehaničke opasnosti::1.2"] },
+    { terms: ["visin", "ljest", "skel", "krov"], keys: ["2. Opasnost od padova::2.2", "2. Opasnost od padova::2.3", "2. Opasnost od padova::2.5"] },
+    { terms: ["struj", "napon", "elektr"], keys: ["3. Električna struja::3.1", "3. Električna struja::3.2"] },
+    { terms: ["buka", "kompres", "agregat"], keys: ["3. Fizikalne štetnosti::3.1"] },
+    { terms: ["ured", "računal", "racunal", "monitor"], keys: ["1. Statodinamički napori::1.1.1", "3. Napori vida i govora::3.1"] },
+  ];
+  const keys = new Set();
+  matchers.forEach((matcher) => {
+    if (matcher.terms.some((term) => text.includes(term))) {
+      matcher.keys.forEach((key) => keys.add(key));
+    }
+  });
+  if (keys.size === 0) {
+    [
+      "1. Mehaničke opasnosti::1.1.1",
+      "1. Mehaničke opasnosti::1.5",
+      "2. Opasnost od padova::2.1",
+      "3. Električna struja::3.2",
+      "2. Psihofiziološki napori::2.1",
+    ].forEach((key) => keys.add(key));
+  }
+  return RISK_ASSESSMENT_ARMOR_TEMPLATE_ROWS
+    .filter((row) => keys.has(getRiskAssessmentTemplateMatchKey(row)))
+    .map((row) => ({
+      ...row,
+      workNote: job.tasks || job.description || "",
+    }));
+}
+
+function applyRiskAssessmentAiDraft(jobIndex) {
+  const job = riskAssessmentJobDrafts[jobIndex];
+  if (!job) {
+    return;
+  }
+  const suggestions = buildRiskAssessmentAiRiskSuggestions(job);
+  riskAssessmentJobDrafts[jobIndex] = {
+    ...job,
+    workplaceArrangement: job.workplaceArrangement || "Mjesto rada urediti i održavati tako da komunikacije budu prohodne, označene i bez prepreka.",
+    workOrganization: job.workOrganization || job.organization || "Rad se organizira prema rasporedu poslodavca, uz primjenu uputa za rad na siguran način.",
+    riskRows: mergeRiskAssessmentRiskRows(job.riskRows, suggestions),
+  };
+  renderRiskAssessmentJobs();
 }
 
 function getCanManageRiskAssessments() {
@@ -88796,45 +89004,174 @@ function renderRiskAssessmentJobs() {
   riskAssessmentJobsList.replaceChildren(...riskAssessmentJobDrafts.map((item, index) => {
     const row = document.createElement("div");
     row.className = "risk-assessment-repeat-row is-job";
-    const firstRisk = item.riskRows?.[0] ?? {};
+    const riskCount = getRiskAssessmentFilledRiskRowCount(item);
+    const selectedJobTitle = item.jobTitle || `Radno mjesto ${index + 1}`;
     row.innerHTML = `
       <div class="risk-assessment-job-head">
-        <label><span>Radno mjesto / posao</span><input data-risk-job-field="jobTitle" value="${escapeHtml(item.jobTitle || "")}" /></label>
-        <label><span>Broj radnika</span><input data-risk-job-field="workerCount" value="${escapeHtml(item.workerCount || "")}" /></label>
-        <button type="button" class="ghost-button card-danger" data-risk-job-remove="${index}">Ukloni</button>
+        <div>
+          <span class="section-kicker">Prilog 7 / ARMOR obrazac</span>
+          <strong>${escapeHtml(selectedJobTitle)}</strong>
+          <small>${escapeHtml(riskCount ? `${riskCount} redaka opasnosti, štetnosti i napora` : "Dodaj rizike ili pokreni AI nacrt.")}</small>
+        </div>
+        <div class="risk-assessment-job-tools">
+          <button type="button" class="ghost-button" data-risk-job-ai="${index}">AI nacrt</button>
+          <button type="button" class="ghost-button" data-risk-job-template="${index}">ARMOR retci</button>
+          <button type="button" class="ghost-button" data-risk-row-add="${index}">+ Rizik</button>
+          <button type="button" class="ghost-button card-danger" data-risk-job-remove="${index}">Ukloni</button>
+        </div>
       </div>
-      <label><span>Opis poslova</span><textarea data-risk-job-field="description" rows="2">${escapeHtml(item.description || "")}</textarea></label>
-      <label><span>Poslovi / aktivnosti</span><textarea data-risk-job-field="tasks" rows="2">${escapeHtml(item.tasks || "")}</textarea></label>
-      <div class="risk-assessment-risk-line">
-        <label><span>Opasnost / štetnost</span><input data-risk-row-field="hazard" value="${escapeHtml(firstRisk.hazard || "")}" /></label>
-        <label><span>Razina rizika</span><input data-risk-row-field="riskLevel" value="${escapeHtml(firstRisk.riskLevel || "")}" placeholder="Mali / Srednji / Veliki" /></label>
-        <label><span>Mjere</span><input data-risk-row-field="measures" value="${escapeHtml(firstRisk.measures || "")}" /></label>
+
+      <div class="risk-assessment-detail-grid">
+        <label><span>Radno mjesto</span><input data-risk-job-field="jobTitle" value="${escapeHtml(item.jobTitle || "")}" placeholder="npr. ASU operater" /></label>
+        <label><span>Broj radnika</span><input data-risk-job-field="workerCount" value="${escapeHtml(item.workerCount || "")}" /></label>
+        <label><span>Alkohol u krvi</span><input data-risk-job-field="alcoholLimit" value="${escapeHtml(item.alcoholLimit || "")}" placeholder="0,00 g/kg" /></label>
+        <label><span>Posebni uvjeti rada</span><select data-risk-job-field="specialWorkConditions">${renderRiskAssessmentOptions(RISK_ASSESSMENT_YES_NO_OPTIONS, item.specialWorkConditions || "")}</select></label>
+        <label><span>Povećani staž</span><select data-risk-job-field="increasedInsurance">${renderRiskAssessmentOptions(RISK_ASSESSMENT_YES_NO_OPTIONS, item.increasedInsurance || "")}</select></label>
+        <label class="field-span-full"><span>Poslovi</span><textarea data-risk-job-field="tasks" rows="3" placeholder="Jedan posao po retku ili u punom opisu.">${escapeHtml(item.tasks || "")}</textarea></label>
+        <label class="field-span-full"><span>Opis poslova i aktivnosti</span><textarea data-risk-job-field="description" rows="4" placeholder="Detaljno opiši što radnik radi na tom radnom mjestu.">${escapeHtml(item.description || "")}</textarea></label>
+        <label class="field-span-full"><span>Ako DA, zbog kojih okolnosti / napomena za posebne uvjete</span><textarea data-risk-job-field="specialWorkReason" rows="2">${escapeHtml(item.specialWorkReason || item.specialConditions || "")}</textarea></label>
+        <label><span>Stručna sprema / osposobljenost</span><textarea data-risk-job-field="requiredQualification" rows="2">${escapeHtml(item.requiredQualification || item.qualifications || "")}</textarea></label>
+        <label><span>Organizacija rada i radno vrijeme</span><textarea data-risk-job-field="workOrganization" rows="2">${escapeHtml(item.workOrganization || item.organization || "")}</textarea></label>
+        <label><span>Popis radne opreme</span><textarea data-risk-job-field="workEquipment" rows="2">${escapeHtml(item.workEquipment || "")}</textarea></label>
+        <label><span>Mjesta rada</span><textarea data-risk-job-field="workplaces" rows="2">${escapeHtml(item.workplaces || "")}</textarea></label>
+        <label><span>Uređenje mjesta rada</span><textarea data-risk-job-field="workplaceArrangement" rows="2">${escapeHtml(item.workplaceArrangement || "")}</textarea></label>
+        <label><span>Izvori fizikalnih, kemijskih i bioloških štetnosti</span><textarea data-risk-job-field="harmfulSources" rows="2">${escapeHtml(item.harmfulSources || "")}</textarea></label>
+        <label class="field-span-full"><span>Napomena</span><textarea data-risk-job-field="note" rows="2">${escapeHtml(item.note || "")}</textarea></label>
+      </div>
+
+      <div class="risk-assessment-eligibility-block">
+        <div class="risk-assessment-mini-title">
+          <strong>Tko smije raditi na poslovima</strong>
+          <span>Da / Ne / N/P i napomena</span>
+        </div>
+        <div class="risk-assessment-eligibility-table">
+          ${RISK_ASSESSMENT_ELIGIBILITY_ROWS.map((eligibilityRow) => {
+            const eligibility = item.eligibility?.[eligibilityRow.key] ?? { allowed: "np", note: "" };
+            return `
+              <div class="risk-assessment-eligibility-row">
+                <span>${escapeHtml(eligibilityRow.label)}</span>
+                <select data-risk-eligibility-key="${escapeHtml(eligibilityRow.key)}" data-risk-eligibility-field="allowed">${renderRiskAssessmentOptions(RISK_ASSESSMENT_YES_NO_OPTIONS, eligibility.allowed || "np")}</select>
+                <input data-risk-eligibility-key="${escapeHtml(eligibilityRow.key)}" data-risk-eligibility-field="note" value="${escapeHtml(eligibility.note || "")}" placeholder="Napomena" />
+              </div>
+            `;
+          }).join("")}
+        </div>
+      </div>
+
+      <div class="risk-assessment-mini-title">
+        <strong>Opasnosti, štetnosti, napori i mjere</strong>
+        <span>Tablica se sprema strukturirano za kasniji dokument.</span>
+      </div>
+      <div class="risk-assessment-armor-table">
+        <div class="risk-assessment-armor-head">
+          <span>Opasnost / štetnost / napor</span>
+          <span>V/P: rizik</span>
+          <span>Poslovi / napomena</span>
+          <span>Mjere</span>
+          <span></span>
+        </div>
+        ${(item.riskRows ?? []).map((risk, riskIndex) => `
+          <div class="risk-assessment-armor-row">
+            <div class="risk-assessment-risk-identity">
+              <input data-risk-row-index="${riskIndex}" data-risk-row-field="code" value="${escapeHtml(risk.code || "")}" placeholder="Šifra" />
+              <input data-risk-row-index="${riskIndex}" data-risk-row-field="category" value="${escapeHtml(risk.category || "")}" placeholder="I. OPASNOSTI" />
+              <input data-risk-row-index="${riskIndex}" data-risk-row-field="group" value="${escapeHtml(risk.group || "")}" placeholder="Skupina" />
+              <textarea data-risk-row-index="${riskIndex}" data-risk-row-field="hazard" rows="2" placeholder="Naziv opasnosti, štetnosti ili napora">${escapeHtml(risk.hazard || "")}</textarea>
+            </div>
+            <div class="risk-assessment-risk-rating">
+              <select data-risk-row-index="${riskIndex}" data-risk-row-field="probability">${renderRiskAssessmentOptions(RISK_ASSESSMENT_PROBABILITY_OPTIONS, risk.probability || "")}</select>
+              <select data-risk-row-index="${riskIndex}" data-risk-row-field="consequence">${renderRiskAssessmentOptions(RISK_ASSESSMENT_CONSEQUENCE_OPTIONS, risk.consequence || "")}</select>
+              <select data-risk-row-index="${riskIndex}" data-risk-row-field="riskLevel">${renderRiskAssessmentOptions(RISK_ASSESSMENT_RISK_LEVEL_OPTIONS, risk.riskLevel || "")}</select>
+            </div>
+            <textarea data-risk-row-index="${riskIndex}" data-risk-row-field="workNote" rows="3" placeholder="Poslovi, izloženost ili napomena">${escapeHtml(risk.workNote || risk.note || "")}</textarea>
+            <textarea data-risk-row-index="${riskIndex}" data-risk-row-field="measures" rows="3" placeholder="Pravila, mjere, postupci i aktivnosti za smanjivanje rizika">${escapeHtml(risk.measures || "")}</textarea>
+            <button type="button" class="ghost-button card-danger" data-risk-row-remove="${riskIndex}">×</button>
+          </div>
+        `).join("")}
       </div>
     `;
     row.querySelectorAll("[data-risk-job-field]").forEach((input) => {
-      input.addEventListener("input", () => {
+      const updateJobField = () => {
+        const field = input.dataset.riskJobField;
         riskAssessmentJobDrafts[index] = {
           ...riskAssessmentJobDrafts[index],
-          [input.dataset.riskJobField]: input.value,
+          [field]: input.value,
         };
-      });
+        if (field === "specialWorkReason") {
+          riskAssessmentJobDrafts[index].specialConditions = input.value;
+        }
+        if (field === "requiredQualification") {
+          riskAssessmentJobDrafts[index].qualifications = input.value;
+        }
+        if (field === "workOrganization") {
+          riskAssessmentJobDrafts[index].organization = input.value;
+        }
+      };
+      input.addEventListener(input instanceof HTMLSelectElement ? "change" : "input", updateJobField);
     });
     row.querySelectorAll("[data-risk-row-field]").forEach((input) => {
-      input.addEventListener("input", () => {
+      const updateRiskRowField = () => {
+        const riskIndex = Number(input.dataset.riskRowIndex);
         const riskRows = [...(riskAssessmentJobDrafts[index].riskRows ?? [])];
-        riskRows[0] = {
-          ...(riskRows[0] ?? { id: crypto.randomUUID() }),
+        riskRows[riskIndex] = {
+          ...(riskRows[riskIndex] ?? { id: crypto.randomUUID() }),
           [input.dataset.riskRowField]: input.value,
         };
+        if (input.dataset.riskRowField === "workNote") {
+          riskRows[riskIndex].note = input.value;
+        }
         riskAssessmentJobDrafts[index] = {
           ...riskAssessmentJobDrafts[index],
           riskRows,
         };
-      });
+      };
+      input.addEventListener(input instanceof HTMLSelectElement ? "change" : "input", updateRiskRowField);
+    });
+    row.querySelectorAll("[data-risk-eligibility-key]").forEach((input) => {
+      const updateEligibilityField = () => {
+        const key = input.dataset.riskEligibilityKey;
+        const field = input.dataset.riskEligibilityField;
+        const currentEligibility = riskAssessmentJobDrafts[index].eligibility || createRiskAssessmentEligibilityDraft();
+        riskAssessmentJobDrafts[index] = {
+          ...riskAssessmentJobDrafts[index],
+          eligibility: {
+            ...currentEligibility,
+            [key]: {
+              ...(currentEligibility[key] ?? { allowed: "np", note: "" }),
+              [field]: input.value,
+            },
+          },
+        };
+      };
+      input.addEventListener(input instanceof HTMLSelectElement ? "change" : "input", updateEligibilityField);
     });
     row.querySelector("[data-risk-job-remove]")?.addEventListener("click", () => {
       riskAssessmentJobDrafts.splice(index, 1);
       renderRiskAssessmentJobs();
+    });
+    row.querySelector("[data-risk-row-add]")?.addEventListener("click", () => {
+      riskAssessmentJobDrafts[index] = {
+        ...riskAssessmentJobDrafts[index],
+        riskRows: [
+          ...(riskAssessmentJobDrafts[index].riskRows ?? []),
+          createRiskAssessmentRiskRowDraft(),
+        ],
+      };
+      renderRiskAssessmentJobs();
+    });
+    row.querySelector("[data-risk-job-template]")?.addEventListener("click", () => applyRiskAssessmentArmorTemplateRows(index));
+    row.querySelector("[data-risk-job-ai]")?.addEventListener("click", () => applyRiskAssessmentAiDraft(index));
+    row.querySelectorAll("[data-risk-row-remove]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const riskIndex = Number(button.dataset.riskRowRemove);
+        const riskRows = [...(riskAssessmentJobDrafts[index].riskRows ?? [])];
+        riskRows.splice(riskIndex, 1);
+        riskAssessmentJobDrafts[index] = {
+          ...riskAssessmentJobDrafts[index],
+          riskRows: riskRows.length > 0 ? riskRows : [createRiskAssessmentRiskRowDraft()],
+        };
+        renderRiskAssessmentJobs();
+      });
     });
     return row;
   }));

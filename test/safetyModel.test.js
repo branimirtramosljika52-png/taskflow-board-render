@@ -24,6 +24,7 @@ import {
   createOffer,
   createPersonTrainingRecord,
   createPurchaseOrder,
+  createRiskAssessment,
   createReminder,
   createSafetyAuthorization,
   createServiceCatalogItem,
@@ -44,6 +45,7 @@ import {
   filterOffers,
   filterPersonTrainingRecords,
   filterPurchaseOrders,
+  filterRiskAssessments,
   filterSafetyAuthorizations,
   filterServiceCatalogItems,
   filterTodoTasks,
@@ -155,6 +157,62 @@ function buildState() {
     activeOrganizationId: "org-1",
   };
 }
+
+test("risk assessments keep detailed ARMOR job rows and eligibility data", () => {
+  const state = buildState();
+  const assessment = createRiskAssessment(
+    {
+      organizationId: "org-1",
+      companyId: "company-1",
+      locationId: "location-1",
+      title: "Procjena rizika - pogon",
+      jobs: [
+        {
+          jobTitle: "ASU operater",
+          workerCount: "3",
+          alcoholLimit: "0,00",
+          specialWorkConditions: "da",
+          specialWorkReason: "Rad s postrojenjem i plinovima.",
+          increasedInsurance: "ne",
+          requiredQualification: "Osposobljenost za rad na siguran način.",
+          workOrganization: "Smjenski rad.",
+          workEquipment: "Postrojenje, ručni alat, transportna sredstva.",
+          workplaces: "Pogon, skladište i vanjski plato.",
+          workplaceArrangement: "Prohodne komunikacije i označene zone.",
+          harmfulSources: "Kisik, dušik, buka i mikroklima.",
+          eligibility: {
+            pregnantWorkers: { allowed: "ne", note: "Nije dopušten rad u zoni plinova." },
+            minorWorkers: { allowed: "np", note: "" },
+          },
+          riskRows: [
+            {
+              code: "1.4.1",
+              category: "II. ŠTETNOSTI",
+              group: "1. Kemijske štetnosti",
+              hazard: "Inertni zagušljivci",
+              probability: "vv",
+              consequence: "sš",
+              riskLevel: "Veliki rizik",
+              workNote: "Rad u blizini spremnika i instalacija.",
+              measures: "Osigurati ventilaciju i nadzor atmosfere.",
+            },
+          ],
+        },
+      ],
+    },
+    state,
+    () => "risk-1",
+    () => "2026-05-02T08:00:00.000Z",
+  );
+
+  assert.equal(assessment.jobs[0].specialWorkConditions, "da");
+  assert.equal(assessment.jobs[0].eligibility.pregnantWorkers.allowed, "ne");
+  assert.equal(assessment.jobs[0].riskRows[0].group, "1. Kemijske štetnosti");
+  assert.equal(assessment.jobs[0].riskRows[0].workNote, "Rad u blizini spremnika i instalacija.");
+
+  const filtered = filterRiskAssessments([assessment], { query: "zagušljivci" });
+  assert.equal(filtered.length, 1);
+});
 
 test("createCompany blocks duplicate OIB values", () => {
   const existing = [
