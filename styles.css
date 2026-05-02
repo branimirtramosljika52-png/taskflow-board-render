@@ -41037,9 +41037,12 @@ button.work-order-editor-section-head {
 }
 
 .risk-assessment-editor-panel {
+  display: grid;
   grid-template-rows: auto minmax(0, 1fr);
+  align-content: stretch;
   padding: 0;
   contain: layout paint;
+  isolation: isolate;
 }
 
 #risk-assessment-editor-backdrop.offer-editor-backdrop {
@@ -41062,10 +41065,14 @@ button.work-order-editor-section-head {
 
 .risk-assessment-editor-body {
   min-height: 0;
+  height: auto;
   overflow: auto;
+  overflow-x: hidden;
   overscroll-behavior: contain;
   padding: 16px 20px 20px;
   scrollbar-gutter: stable;
+  transform: translateZ(0);
+  will-change: scroll-position;
 }
 
 .risk-assessment-section-grid {
@@ -41081,6 +41088,7 @@ button.work-order-editor-section-head {
   border: 1px solid rgba(190, 204, 232, 0.78);
   border-radius: 16px;
   background: rgba(248, 251, 255, 0.7);
+  contain: layout paint;
 }
 
 .risk-assessment-repeat-list {
@@ -41103,9 +41111,7 @@ button.work-order-editor-section-head {
 }
 
 .risk-assessment-repeat-row.is-job {
-  contain: layout paint style;
-  content-visibility: auto;
-  contain-intrinsic-size: 820px;
+  contain: layout paint;
 }
 
 .risk-assessment-repeat-row label {
@@ -41214,13 +41220,28 @@ button.work-order-editor-section-head {
 
 .risk-assessment-catalog-picker {
   display: grid;
+  align-content: start;
   gap: 10px;
+  max-height: min(58vh, 620px);
+  overflow: auto;
+  overscroll-behavior: contain;
   padding: 12px;
   border: 1px solid rgba(147, 197, 253, 0.62);
   border-radius: 14px;
   background:
     linear-gradient(135deg, rgba(239, 246, 255, 0.94), rgba(255, 255, 255, 0.92));
-  contain: layout paint style;
+  contain: layout paint;
+  scrollbar-gutter: stable;
+}
+
+.risk-assessment-catalog-intro {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: -12px -12px 0;
+  padding: 12px;
+  border-bottom: 1px solid rgba(191, 219, 254, 0.72);
+  background: rgba(248, 251, 255, 0.96);
 }
 
 .risk-assessment-catalog-intro,
@@ -41258,6 +41279,7 @@ button.work-order-editor-section-head {
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.86);
   overflow: hidden;
+  contain: layout paint;
 }
 
 .risk-assessment-catalog-section > summary,
@@ -41397,9 +41419,7 @@ button.work-order-editor-section-head {
   border: 1px solid rgba(203, 213, 225, 0.68);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.94);
-  contain: layout paint style;
-  content-visibility: auto;
-  contain-intrinsic-size: 116px;
+  contain: layout paint;
 }
 
 .risk-assessment-risk-identity {
