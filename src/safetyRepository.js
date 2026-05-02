@@ -25,6 +25,7 @@ import {
   createOffer,
   createPersonTrainingRecord,
   createPurchaseOrder,
+  createRiskAssessment,
   createReminder,
   createSafetyAuthorization,
   createServiceCatalogItem,
@@ -57,6 +58,7 @@ import {
   updateOffer,
   updatePersonTrainingRecord,
   updatePurchaseOrder,
+  updateRiskAssessment,
   updateReminder,
   updateSafetyAuthorization,
   updateServiceCatalogItem,
@@ -1717,6 +1719,59 @@ function mapPurchaseOrderTemplateSettingsEntry(row = {}) {
   };
 }
 
+function mapRiskAssessmentEntry(row = {}, companiesById = new Map(), locationsById = new Map()) {
+  const id = dbString(row.id);
+  const organizationId = dbString(row.organization_id);
+  const companyId = dbString(row.company_id);
+  if (!id || !organizationId || !companyId) {
+    return null;
+  }
+
+  const company = companiesById.get(companyId);
+  const location = locationsById.get(dbString(row.location_id));
+
+  return {
+    id,
+    organizationId,
+    companyId,
+    companyName: company?.name ?? row.company_name ?? "",
+    companyOib: company?.oib ?? row.company_oib ?? "",
+    headquarters: company?.headquarters ?? row.headquarters ?? "",
+    locationId: dbString(row.location_id),
+    locationName: location?.name ?? row.location_name ?? "",
+    region: location?.region ?? "",
+    coordinates: location?.coordinates ?? "",
+    assessmentNumber: row.assessment_number ?? "",
+    title: row.title ?? "",
+    status: row.status ?? "draft",
+    assessmentDate: normalizeDateOnly(row.assessment_date),
+    revisionDate: normalizeDateOnly(row.revision_date),
+    assessmentType: row.assessment_type ?? "Procjena rizika",
+    teamLead: row.team_lead ?? "",
+    collaborators: row.collaborators ?? "",
+    intro: row.intro_text ?? "",
+    workProcessDescription: row.work_process_description ?? "",
+    generalData: row.general_data ?? "",
+    computerWorkplaces: row.computer_workplaces ?? "",
+    basicRules: row.basic_rules ?? "",
+    specialRules: row.special_rules ?? "",
+    omissionsBasic: row.omissions_basic ?? "",
+    omissionsSpecial: row.omissions_special ?? "",
+    conclusion: row.conclusion_text ?? "",
+    clientNote: row.client_note ?? "",
+    measures: parseJsonArray(row.measures_json),
+    jobs: parseJsonArray(row.jobs_json),
+    attachments: parseJsonArray(row.attachments_json)
+      .map((document) => mapStoredAttachmentDocument(document))
+      .filter((document) => document.fileName && (document.dataUrl || document.storageUrl)),
+    comments: parseJsonArray(row.comments_json),
+    createdByUserId: dbString(row.created_by_user_id),
+    createdByLabel: row.created_by_label ?? "",
+    createdAt: normalizeTimestamp(row.created_at),
+    updatedAt: normalizeTimestamp(row.updated_at),
+  };
+}
+
 function mapContractTemplateEntry(row = {}) {
   const organizationId = dbString(row.organization_id);
   const id = dbString(row.id);
@@ -2964,6 +3019,7 @@ async function fetchSnapshotFromConnection(connection) {
   const [offerRows] = await connection.query(`
     SELECT id, organization_id, company_id, location_id, location_scope, offer_number, offer_year, offer_sequence,
            offer_initials, title, service_line, status, offer_direction, offer_date, valid_until, note, currency_code,
+           document_mode, internal_document_number, external_document_number,
            tax_rate, discount_rate, subtotal_amount, discount_total_amount, taxable_subtotal_amount,
            show_total_amount, location_ids_json, location_names_json,
            tax_total_amount, grand_total_amount, items_json, documents_json, contact_slot, contact_name, contact_phone,
@@ -3048,6 +3104,9 @@ async function fetchSnapshotFromConnection(connection) {
       offerSequence: Number(row.offer_sequence ?? 0) || null,
       offerInitials: row.offer_initials ?? "",
       offerDirection: dbString(row.offer_direction) || "outgoing",
+      documentMode: dbString(row.document_mode) || "app",
+      internalDocumentNumber: row.internal_document_number ?? "",
+      externalDocumentNumber: row.external_document_number ?? "",
       title: row.title ?? "",
       serviceLine: row.service_line ?? "",
       status: row.status ?? "draft",
@@ -3078,7 +3137,7 @@ async function fetchSnapshotFromConnection(connection) {
     SELECT id, organization_id, company_id, location_id, location_scope, location_ids_json, location_names_json,
            purchase_order_number, purchase_order_year, purchase_order_sequence,
            title, service_line, status, order_direction, purchase_order_date, valid_until,
-           external_document_number, note, currency_code, tax_rate, discount_rate, subtotal_amount,
+           document_mode, internal_document_number, external_document_number, note, currency_code, tax_rate, discount_rate, subtotal_amount,
            discount_total_amount, taxable_subtotal_amount, show_total_amount, tax_total_amount,
            grand_total_amount, items_json, documents_json, contact_slot, contact_name, contact_phone,
            contact_email, created_by_user_id, created_by_label, created_at, updated_at
@@ -3161,6 +3220,8 @@ async function fetchSnapshotFromConnection(connection) {
       purchaseOrderNumber: row.purchase_order_number ?? "",
       purchaseOrderYear: Number(row.purchase_order_year ?? 0) || null,
       purchaseOrderSequence: Number(row.purchase_order_sequence ?? 0) || null,
+      documentMode: dbString(row.document_mode) || "app",
+      internalDocumentNumber: row.internal_document_number ?? "",
       title: row.title ?? "",
       serviceLine: row.service_line ?? "",
       status: row.status ?? "draft",
@@ -3188,6 +3249,31 @@ async function fetchSnapshotFromConnection(connection) {
       updatedAt: normalizeTimestamp(row.updated_at),
     };
   });
+
+  const [riskAssessmentRows] = await connection.query(`
+    SELECT id, organization_id, company_id, location_id, assessment_number, title, status,
+           assessment_date, revision_date, assessment_type, team_lead, collaborators,
+           intro_text, work_process_description, general_data, computer_workplaces,
+           basic_rules, special_rules, omissions_basic, omissions_special, conclusion_text,
+           client_note, measures_json, jobs_json, attachments_json, comments_json,
+           created_by_user_id, created_by_label, created_at, updated_at
+    FROM web_risk_assessments
+    ORDER BY
+      CASE status
+        WHEN 'draft' THEN 0
+        WHEN 'in_review' THEN 1
+        WHEN 'active' THEN 2
+        WHEN 'archived' THEN 3
+        ELSE 9
+      END ASC,
+      assessment_date DESC,
+      updated_at DESC,
+      id DESC
+  `);
+
+  const riskAssessments = riskAssessmentRows
+    .map((row) => mapRiskAssessmentEntry(row, companiesById, locationsById))
+    .filter(Boolean);
 
   const [vehicleRows] = await connection.query(`
     SELECT id, organization_id, name, plate_number, vin_number, make_name, model_name, category, model_year,
@@ -3857,6 +3943,7 @@ async function fetchSnapshotFromConnection(connection) {
     offerTemplateSettings,
     purchaseOrders,
     purchaseOrderTemplateSettings,
+    riskAssessments,
     contracts,
     contractTemplates,
     drawings,
@@ -3958,6 +4045,7 @@ export class InMemorySafetyRepository {
       todoTasks: [],
       offers: [],
       purchaseOrders: [],
+      riskAssessments: [],
       contracts: [],
       contractTemplates: [],
       drawings: [],
@@ -4093,6 +4181,7 @@ export class InMemorySafetyRepository {
           ...entry,
           breakdowns: (entry.breakdowns ?? []).map((detail) => ({ ...detail })),
         })),
+        documents: (item.documents ?? []).map((document) => ({ ...document })),
       })),
       purchaseOrders: this.snapshot.purchaseOrders.map((item) => ({
         ...item,
@@ -4103,6 +4192,16 @@ export class InMemorySafetyRepository {
           breakdowns: (entry.breakdowns ?? []).map((detail) => ({ ...detail })),
         })),
         documents: (item.documents ?? []).map((document) => ({ ...document })),
+      })),
+      riskAssessments: this.snapshot.riskAssessments.map((item) => ({
+        ...item,
+        measures: (item.measures ?? []).map((entry) => ({ ...entry })),
+        jobs: (item.jobs ?? []).map((entry) => ({
+          ...entry,
+          riskRows: (entry.riskRows ?? []).map((risk) => ({ ...risk })),
+        })),
+        attachments: (item.attachments ?? []).map((document) => ({ ...document })),
+        comments: (item.comments ?? []).map((comment) => ({ ...comment })),
       })),
       contracts: this.snapshot.contracts.map((item) => ({
         ...item,
@@ -4866,6 +4965,38 @@ export class InMemorySafetyRepository {
     const before = this.snapshot.purchaseOrders.length;
     this.snapshot.purchaseOrders = this.snapshot.purchaseOrders.filter((item) => item.id !== id);
     return this.snapshot.purchaseOrders.length !== before;
+  }
+
+  async createRiskAssessment(input, actor = null) {
+    const item = createRiskAssessment({
+      ...input,
+      createdByUserId: String(actor?.id ?? input.createdByUserId ?? ""),
+      createdByLabel: actor?.fullName || actor?.username || input.createdByLabel || "Safety360",
+    }, this.snapshot, () => crypto.randomUUID(), () => new Date().toISOString());
+    this.snapshot.riskAssessments = [item, ...this.snapshot.riskAssessments];
+    return item;
+  }
+
+  async updateRiskAssessment(id, patch, actor = null) {
+    const current = this.snapshot.riskAssessments.find((item) => item.id === id);
+
+    if (!current) {
+      return null;
+    }
+
+    const next = updateRiskAssessment(current, {
+      ...patch,
+      createdByUserId: current.createdByUserId || String(actor?.id ?? ""),
+      createdByLabel: current.createdByLabel || actor?.fullName || actor?.username || "Safety360",
+    }, this.snapshot, () => new Date().toISOString());
+    this.snapshot.riskAssessments = this.snapshot.riskAssessments.map((item) => (item.id === id ? next : item));
+    return next;
+  }
+
+  async deleteRiskAssessment(id) {
+    const before = this.snapshot.riskAssessments.length;
+    this.snapshot.riskAssessments = this.snapshot.riskAssessments.filter((item) => item.id !== id);
+    return this.snapshot.riskAssessments.length !== before;
   }
 
   async getPurchaseOrderTemplateSettings(organizationId = "") {
@@ -6119,6 +6250,9 @@ export class MySqlSafetyRepository {
         offer_year INT NOT NULL,
         offer_sequence INT NOT NULL,
         offer_initials VARCHAR(16) NOT NULL DEFAULT '',
+        document_mode VARCHAR(16) NOT NULL DEFAULT 'app',
+        internal_document_number VARCHAR(160) NOT NULL DEFAULT '',
+        external_document_number VARCHAR(160) NOT NULL DEFAULT '',
         title VARCHAR(180) NOT NULL,
         service_line VARCHAR(180) NOT NULL DEFAULT '',
         status VARCHAR(24) NOT NULL DEFAULT 'draft',
@@ -6174,6 +6308,8 @@ export class MySqlSafetyRepository {
         purchase_order_number VARCHAR(64) NOT NULL,
         purchase_order_year INT NOT NULL,
         purchase_order_sequence INT NOT NULL,
+        document_mode VARCHAR(16) NOT NULL DEFAULT 'app',
+        internal_document_number VARCHAR(160) NOT NULL DEFAULT '',
         title VARCHAR(180) NOT NULL,
         service_line VARCHAR(180) NOT NULL DEFAULT '',
         status VARCHAR(24) NOT NULL DEFAULT 'draft',
@@ -6206,6 +6342,44 @@ export class MySqlSafetyRepository {
         INDEX idx_web_purchase_orders_company (company_id),
         INDEX idx_web_purchase_orders_location (location_id),
         INDEX idx_web_purchase_orders_valid_until (valid_until)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_risk_assessments (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        company_id INT NOT NULL,
+        location_id INT NULL,
+        assessment_number VARCHAR(80) NOT NULL,
+        title VARCHAR(220) NOT NULL,
+        status VARCHAR(24) NOT NULL DEFAULT 'draft',
+        assessment_date DATE NULL,
+        revision_date DATE NULL,
+        assessment_type VARCHAR(120) NOT NULL DEFAULT 'Procjena rizika',
+        team_lead VARCHAR(180) NOT NULL DEFAULT '',
+        collaborators TEXT NOT NULL,
+        intro_text LONGTEXT NULL,
+        work_process_description LONGTEXT NULL,
+        general_data LONGTEXT NULL,
+        computer_workplaces LONGTEXT NULL,
+        basic_rules LONGTEXT NULL,
+        special_rules LONGTEXT NULL,
+        omissions_basic LONGTEXT NULL,
+        omissions_special LONGTEXT NULL,
+        conclusion_text LONGTEXT NULL,
+        client_note TEXT NOT NULL,
+        measures_json LONGTEXT NULL,
+        jobs_json LONGTEXT NULL,
+        attachments_json LONGTEXT NULL,
+        comments_json LONGTEXT NULL,
+        created_by_user_id INT NULL,
+        created_by_label VARCHAR(160) NOT NULL DEFAULT '',
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_web_risk_assessments_org_number (organization_id, assessment_number),
+        INDEX idx_web_risk_assessments_company (company_id),
+        INDEX idx_web_risk_assessments_location (location_id),
+        INDEX idx_web_risk_assessments_status (organization_id, status)
       )
     `);
     await this.pool.query(`
@@ -6882,6 +7056,9 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_offers", "location_names_json", "LONGTEXT NULL AFTER location_ids_json");
     await ensureColumnExists(this.pool, "web_offers", "offer_direction", "VARCHAR(16) NOT NULL DEFAULT 'outgoing' AFTER status");
     await ensureColumnExists(this.pool, "web_offers", "offer_date", "DATE NULL AFTER offer_direction");
+    await ensureColumnExists(this.pool, "web_offers", "document_mode", "VARCHAR(16) NOT NULL DEFAULT 'app' AFTER offer_initials");
+    await ensureColumnExists(this.pool, "web_offers", "internal_document_number", "VARCHAR(160) NOT NULL DEFAULT '' AFTER document_mode");
+    await ensureColumnExists(this.pool, "web_offers", "external_document_number", "VARCHAR(160) NOT NULL DEFAULT '' AFTER internal_document_number");
     await ensureColumnExists(this.pool, "web_offers", "discount_rate", "DECIMAL(10, 2) NOT NULL DEFAULT 0.00 AFTER tax_rate");
     await ensureColumnExists(this.pool, "web_offers", "discount_total_amount", "DECIMAL(12, 2) NOT NULL DEFAULT 0.00 AFTER subtotal_amount");
     await ensureColumnExists(this.pool, "web_offers", "taxable_subtotal_amount", "DECIMAL(12, 2) NOT NULL DEFAULT 0.00 AFTER discount_total_amount");
@@ -6895,6 +7072,8 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_purchase_orders", "location_scope", "VARCHAR(16) NOT NULL DEFAULT 'single' AFTER location_id");
     await ensureColumnExists(this.pool, "web_purchase_orders", "location_ids_json", "LONGTEXT NULL AFTER location_scope");
     await ensureColumnExists(this.pool, "web_purchase_orders", "location_names_json", "LONGTEXT NULL AFTER location_ids_json");
+    await ensureColumnExists(this.pool, "web_purchase_orders", "document_mode", "VARCHAR(16) NOT NULL DEFAULT 'app' AFTER purchase_order_sequence");
+    await ensureColumnExists(this.pool, "web_purchase_orders", "internal_document_number", "VARCHAR(160) NOT NULL DEFAULT '' AFTER document_mode");
     await ensureColumnExists(this.pool, "web_purchase_orders", "purchase_order_date", "DATE NULL AFTER order_direction");
     await ensureColumnExists(this.pool, "web_purchase_orders", "external_document_number", "VARCHAR(160) NOT NULL DEFAULT '' AFTER valid_until");
     await ensureColumnExists(this.pool, "web_purchase_orders", "discount_rate", "DECIMAL(10, 2) NOT NULL DEFAULT 0.00 AFTER tax_rate");
@@ -7313,9 +7492,13 @@ export class MySqlSafetyRepository {
         "SELECT COUNT(*) AS total FROM web_drawings WHERE company_id = ?",
         [Number(id)],
       );
+      const [[riskAssessmentCount]] = await connection.query(
+        "SELECT COUNT(*) AS total FROM web_risk_assessments WHERE company_id = ?",
+        [Number(id)],
+      );
 
-      if (locationCount.total > 0 || workOrderCount.total > 0 || reminderCount.total > 0 || todoTaskCount.total > 0 || offerCount.total > 0 || purchaseOrderCount.total > 0 || contractCount.total > 0 || drawingCount.total > 0) {
-        throw new Error("Tvrtka je vec povezana s lokacijama, ponudama, narudzbenicama, ugovorima, crtezima ili radnim nalozima.");
+      if (locationCount.total > 0 || workOrderCount.total > 0 || reminderCount.total > 0 || todoTaskCount.total > 0 || offerCount.total > 0 || purchaseOrderCount.total > 0 || contractCount.total > 0 || drawingCount.total > 0 || riskAssessmentCount.total > 0) {
+        throw new Error("Tvrtka je vec povezana s lokacijama, ponudama, narudzbenicama, ugovorima, crtezima, procjenama rizika ili radnim nalozima.");
       }
 
       const [result] = await connection.query("DELETE FROM firme WHERE id = ?", [Number(id)]);
@@ -7546,10 +7729,14 @@ export class MySqlSafetyRepository {
         "SELECT COUNT(*) AS total FROM web_drawings WHERE location_id = ?",
         [Number(id)],
       );
+      const [[riskAssessmentCount]] = await connection.query(
+        "SELECT COUNT(*) AS total FROM web_risk_assessments WHERE location_id = ?",
+        [Number(id)],
+      );
 
-      if (workOrderCount.total > 0 || reminderCount.total > 0 || todoTaskCount.total > 0 || offerCount.total > 0 || purchaseOrderCount.total > 0 || drawingCount.total > 0) {
+      if (workOrderCount.total > 0 || reminderCount.total > 0 || todoTaskCount.total > 0 || offerCount.total > 0 || purchaseOrderCount.total > 0 || drawingCount.total > 0 || riskAssessmentCount.total > 0) {
         await connection.rollback();
-        throw new Error("Lokacija je vec povezana s ponudama, narudzbenicama, crtezima ili radnim nalozima.");
+        throw new Error("Lokacija je vec povezana s ponudama, narudzbenicama, crtezima, procjenama rizika ili radnim nalozima.");
       }
 
       await connection.query("DELETE FROM web_location_contacts WHERE location_id = ?", [Number(id)]);
@@ -8484,11 +8671,12 @@ export class MySqlSafetyRepository {
           INSERT INTO web_offers
             (organization_id, company_id, location_id, location_scope, location_ids_json, location_names_json,
              offer_number, offer_year, offer_sequence,
-             offer_initials, title, service_line, status, offer_direction, offer_date, valid_until, note, currency_code,
+             offer_initials, document_mode, internal_document_number, external_document_number,
+             title, service_line, status, offer_direction, offer_date, valid_until, note, currency_code,
              tax_rate, discount_rate, subtotal_amount, discount_total_amount, taxable_subtotal_amount,
              show_total_amount, tax_total_amount, grand_total_amount, items_json, contact_slot, contact_name,
              documents_json, contact_phone, contact_email, created_by_user_id, created_by_label)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
@@ -8501,6 +8689,9 @@ export class MySqlSafetyRepository {
           Number(draft.offerYear),
           Number(draft.offerSequence),
           draft.offerInitials,
+          draft.documentMode || "app",
+          draft.internalDocumentNumber ?? "",
+          draft.externalDocumentNumber ?? "",
           draft.title,
           draft.serviceLine,
           draft.status,
@@ -8573,7 +8764,8 @@ export class MySqlSafetyRepository {
         `
           UPDATE web_offers
           SET company_id = ?, location_id = ?, location_scope = ?, location_ids_json = ?, location_names_json = ?,
-              title = ?, service_line = ?, status = ?, offer_direction = ?,
+              title = ?, service_line = ?, status = ?, offer_direction = ?, document_mode = ?,
+              internal_document_number = ?, external_document_number = ?,
               offer_date = ?, valid_until = ?, note = ?, currency_code = ?, tax_rate = ?, discount_rate = ?,
               subtotal_amount = ?, discount_total_amount = ?, taxable_subtotal_amount = ?, show_total_amount = ?,
               tax_total_amount = ?, grand_total_amount = ?, items_json = ?, documents_json = ?, contact_slot = ?, contact_name = ?,
@@ -8590,6 +8782,9 @@ export class MySqlSafetyRepository {
           next.serviceLine,
           next.status,
           next.offerDirection || "outgoing",
+          next.documentMode || "app",
+          next.internalDocumentNumber ?? "",
+          next.externalDocumentNumber ?? "",
           next.offerDate,
           next.validUntil,
           next.note,
@@ -8819,12 +9014,12 @@ export class MySqlSafetyRepository {
           INSERT INTO web_purchase_orders
             (organization_id, company_id, location_id, location_scope, location_ids_json, location_names_json,
              purchase_order_number, purchase_order_year, purchase_order_sequence,
-             title, service_line, status, order_direction, purchase_order_date, valid_until,
+             document_mode, internal_document_number, title, service_line, status, order_direction, purchase_order_date, valid_until,
              external_document_number, note, currency_code, tax_rate, discount_rate, subtotal_amount,
              discount_total_amount, taxable_subtotal_amount, show_total_amount, tax_total_amount, grand_total_amount,
              items_json, documents_json, contact_slot, contact_name, contact_phone, contact_email,
              created_by_user_id, created_by_label)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
@@ -8836,6 +9031,8 @@ export class MySqlSafetyRepository {
           draft.purchaseOrderNumber,
           Number(draft.purchaseOrderYear),
           Number(draft.purchaseOrderSequence),
+          draft.documentMode || "app",
+          draft.internalDocumentNumber ?? "",
           draft.title,
           draft.serviceLine,
           draft.status,
@@ -8909,7 +9106,8 @@ export class MySqlSafetyRepository {
         `
           UPDATE web_purchase_orders
           SET company_id = ?, location_id = ?, location_scope = ?, location_ids_json = ?, location_names_json = ?,
-              title = ?, service_line = ?, status = ?, order_direction = ?, purchase_order_date = ?, valid_until = ?,
+              title = ?, service_line = ?, status = ?, order_direction = ?, document_mode = ?, internal_document_number = ?,
+              purchase_order_date = ?, valid_until = ?,
               external_document_number = ?, note = ?, currency_code = ?, tax_rate = ?, discount_rate = ?,
               subtotal_amount = ?, discount_total_amount = ?, taxable_subtotal_amount = ?, show_total_amount = ?,
               tax_total_amount = ?, grand_total_amount = ?, items_json = ?, documents_json = ?, contact_slot = ?,
@@ -8926,6 +9124,8 @@ export class MySqlSafetyRepository {
           next.serviceLine,
           next.status,
           next.orderDirection,
+          next.documentMode || "app",
+          next.internalDocumentNumber ?? "",
           next.purchaseOrderDate,
           next.validUntil,
           next.externalDocumentNumber ?? "",
@@ -8984,6 +9184,185 @@ export class MySqlSafetyRepository {
         .filter((document) => document.storageKey);
 
       const [result] = await connection.query("DELETE FROM web_purchase_orders WHERE id = ?", [Number(id)]);
+      await connection.commit();
+      await cleanupStoredObjects(staleDocuments);
+      return result.affectedRows > 0;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async createRiskAssessment(input, actor = null) {
+    const connection = await this.pool.getConnection();
+    let staleDocuments = [];
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const draft = createRiskAssessment({
+        ...input,
+        createdByUserId: String(actor?.id ?? input.createdByUserId ?? ""),
+        createdByLabel: actor?.fullName || actor?.username || input.createdByLabel || "Safety360",
+      }, snapshot, () => "pending", () => new Date().toISOString());
+      const preparedDocuments = await prepareStoredAttachmentDocuments(draft.attachments ?? [], {
+        keyPrefix: `risk-assessments/${draft.organizationId}/documents`,
+        currentDocuments: [],
+      });
+      staleDocuments = preparedDocuments.staleDocuments ?? [];
+
+      const [result] = await connection.query(
+        `
+          INSERT INTO web_risk_assessments
+            (organization_id, company_id, location_id, assessment_number, title, status, assessment_date,
+             revision_date, assessment_type, team_lead, collaborators, intro_text, work_process_description,
+             general_data, computer_workplaces, basic_rules, special_rules, omissions_basic, omissions_special,
+             conclusion_text, client_note, measures_json, jobs_json, attachments_json, comments_json,
+             created_by_user_id, created_by_label)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          Number(draft.organizationId),
+          Number(draft.companyId),
+          parseNullableInteger(draft.locationId),
+          draft.assessmentNumber,
+          draft.title,
+          draft.status,
+          draft.assessmentDate,
+          draft.revisionDate,
+          draft.assessmentType,
+          draft.teamLead,
+          draft.collaborators,
+          draft.intro,
+          draft.workProcessDescription,
+          draft.generalData,
+          draft.computerWorkplaces,
+          draft.basicRules,
+          draft.specialRules,
+          draft.omissionsBasic,
+          draft.omissionsSpecial,
+          draft.conclusion,
+          draft.clientNote,
+          JSON.stringify(draft.measures ?? []),
+          JSON.stringify(draft.jobs ?? []),
+          JSON.stringify(preparedDocuments.nextDocuments ?? []),
+          JSON.stringify(draft.comments ?? []),
+          parseNullableInteger(draft.createdByUserId),
+          draft.createdByLabel,
+        ],
+      );
+
+      await connection.commit();
+      await cleanupStoredObjects(staleDocuments);
+      return {
+        ...draft,
+        id: String(result.insertId),
+        attachments: preparedDocuments.nextDocuments ?? [],
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updateRiskAssessment(id, patch, actor = null) {
+    const connection = await this.pool.getConnection();
+    let staleDocuments = [];
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const current = snapshot.riskAssessments.find((item) => item.id === id);
+
+      if (!current) {
+        await connection.rollback();
+        return null;
+      }
+
+      const next = updateRiskAssessment(current, {
+        ...patch,
+        createdByUserId: current.createdByUserId || String(actor?.id ?? ""),
+        createdByLabel: current.createdByLabel || actor?.fullName || actor?.username || "Safety360",
+      }, snapshot, () => new Date().toISOString());
+      const preparedDocuments = await prepareStoredAttachmentDocuments(next.attachments ?? [], {
+        keyPrefix: `risk-assessments/${next.organizationId}/documents`,
+        currentDocuments: current.attachments ?? [],
+      });
+      staleDocuments = preparedDocuments.staleDocuments ?? [];
+
+      await connection.query(
+        `
+          UPDATE web_risk_assessments
+          SET company_id = ?, location_id = ?, assessment_number = ?, title = ?, status = ?, assessment_date = ?,
+              revision_date = ?, assessment_type = ?, team_lead = ?, collaborators = ?, intro_text = ?,
+              work_process_description = ?, general_data = ?, computer_workplaces = ?, basic_rules = ?,
+              special_rules = ?, omissions_basic = ?, omissions_special = ?, conclusion_text = ?,
+              client_note = ?, measures_json = ?, jobs_json = ?, attachments_json = ?, comments_json = ?
+          WHERE id = ?
+        `,
+        [
+          Number(next.companyId),
+          parseNullableInteger(next.locationId),
+          next.assessmentNumber,
+          next.title,
+          next.status,
+          next.assessmentDate,
+          next.revisionDate,
+          next.assessmentType,
+          next.teamLead,
+          next.collaborators,
+          next.intro,
+          next.workProcessDescription,
+          next.generalData,
+          next.computerWorkplaces,
+          next.basicRules,
+          next.specialRules,
+          next.omissionsBasic,
+          next.omissionsSpecial,
+          next.conclusion,
+          next.clientNote,
+          JSON.stringify(next.measures ?? []),
+          JSON.stringify(next.jobs ?? []),
+          JSON.stringify(preparedDocuments.nextDocuments ?? []),
+          JSON.stringify(next.comments ?? []),
+          Number(id),
+        ],
+      );
+
+      await connection.commit();
+      await cleanupStoredObjects(staleDocuments);
+      return {
+        ...next,
+        attachments: preparedDocuments.nextDocuments ?? [],
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async deleteRiskAssessment(id) {
+    const connection = await this.pool.getConnection();
+    let staleDocuments = [];
+
+    try {
+      await connection.beginTransaction();
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const current = snapshot.riskAssessments.find((item) => item.id === id);
+
+      if (current?.attachments?.length) {
+        staleDocuments = current.attachments;
+      }
+
+      const [result] = await connection.query("DELETE FROM web_risk_assessments WHERE id = ?", [Number(id)]);
       await connection.commit();
       await cleanupStoredObjects(staleDocuments);
       return result.affectedRows > 0;

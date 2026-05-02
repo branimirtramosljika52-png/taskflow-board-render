@@ -287,7 +287,7 @@
               </span>
               <span class="rail-label">DOCUMENTS</span>
             </button>
-            <button type="button" class="rail-button" data-sidebar-group="learning" title="Learning" aria-label="Learning">
+            <button type="button" class="rail-button" data-sidebar-group="learning" title="Health And Safety" aria-label="Health And Safety">
               <span class="rail-icon" aria-hidden="true">
                 <svg class="icon-svg" viewBox="0 0 24 24">
                   <path d="M3 8.5 12 4l9 4.5-9 4.5-9-4.5Z"></path>
@@ -295,7 +295,7 @@
                   <path d="M19 10v5"></path>
                 </svg>
               </span>
-              <span class="rail-label">LEARNING</span>
+              <span class="rail-label">H&S</span>
             </button>
           </nav>
         </aside>
@@ -724,7 +724,7 @@
                     <path d="M19 10v5"></path>
                   </svg>
                 </span>
-                <span class="sidebar-group-label">Learning</span>
+                <span class="sidebar-group-label">Health And Safety</span>
                 <span class="sidebar-group-caret" aria-hidden="true">&#9662;</span>
               </button>
               <div class="tab-strip sidebar-group-items">
@@ -747,6 +747,15 @@
                     </svg>
                   </span>
                   <strong>Osposobljavanja</strong>
+                </button>
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="risk-assessment">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <path d="M12 3 4.5 6v5.5c0 4.1 3 7.6 7.5 9.5 4.5-1.9 7.5-5.4 7.5-9.5V6L12 3Z"></path>
+                      <path d="M9 12l2 2 4-5"></path>
+                    </svg>
+                  </span>
+                  <strong>Risk Assessment</strong>
                 </button>
               </div>
             </section>
@@ -3198,11 +3207,10 @@
               <table class="data-table">
                 <thead>
                   <tr>
+                    <th>Tvrtka</th>
                     <th>Lokacija</th>
-                    <th>Regija i karta</th>
-                    <th>Kontakti</th>
+                    <th>Kontakt</th>
                     <th>Status</th>
-                    <th>Akcije</th>
                   </tr>
                 </thead>
                 <tbody id="locations-body"></tbody>
@@ -3739,7 +3747,7 @@
           <section id="people-training-panel" class="panel people-training-panel" hidden>
             <div class="section-heading offers-section-heading">
               <div>
-                <p class="section-kicker">Learning</p>
+                <p class="section-kicker">Health And Safety</p>
                 <h3>Osposobljavanja ljudi</h3>
               </div>
               <div class="vehicles-panel-head-actions">
@@ -3914,6 +3922,168 @@
                 <p id="people-training-empty" class="empty-state" hidden>Nema evidentiranih osposobljavanja za odabrane filtere.</p>
               </section>
             </div>
+          </section>
+
+          <section id="risk-assessment-module" class="risk-assessment-module" hidden>
+            <section class="panel risk-assessment-list-panel">
+              <div class="section-heading offers-section-heading">
+                <div>
+                  <p class="section-kicker">Health And Safety</p>
+                  <h3>Risk Assessment</h3>
+                </div>
+                <div class="vehicles-panel-head-actions">
+                  <button id="risk-assessment-new" type="button" class="primary-button">+ Nova procjena</button>
+                </div>
+              </div>
+
+              <div class="offers-filters risk-assessment-filters">
+                <label class="field">
+                  <span>Pretraga</span>
+                  <input id="risk-assessment-search" type="search" placeholder="Tvrtka, broj, posao, mjera..." />
+                </label>
+                <label class="field">
+                  <span>Tvrtka</span>
+                  <select id="risk-assessment-company-filter"></select>
+                </label>
+                <label class="field">
+                  <span>Status</span>
+                  <select id="risk-assessment-status-filter"></select>
+                </label>
+              </div>
+
+              <div id="risk-assessment-list" class="risk-assessment-list"></div>
+              <p id="risk-assessment-empty" class="empty-state" hidden>Nema procjena rizika za odabrane filtere.</p>
+            </section>
+
+            <div id="risk-assessment-editor-backdrop" class="offer-editor-backdrop" hidden></div>
+            <section id="risk-assessment-editor-panel" class="panel risk-assessment-editor-panel" hidden>
+              <div class="offers-editor-fixed-head">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Procjena rizika</p>
+                    <h3 id="risk-assessment-editor-title">Nova procjena</h3>
+                  </div>
+                  <button id="risk-assessment-close" type="button" class="ghost-button">Zatvori</button>
+                </div>
+              </div>
+
+              <div class="offers-editor-body risk-assessment-editor-body" tabindex="-1">
+                <form id="risk-assessment-form" class="entity-form">
+                  <input id="risk-assessment-id" type="hidden" />
+                  <div class="form-grid offers-form-grid">
+                    <label class="field">
+                      <span>Tvrtka</span>
+                      <select id="risk-assessment-company" required></select>
+                    </label>
+                    <label class="field">
+                      <span>Lokacija</span>
+                      <select id="risk-assessment-location"></select>
+                    </label>
+                    <label class="field">
+                      <span>Broj procjene</span>
+                      <input id="risk-assessment-number" type="text" placeholder="Dodjeljuje se automatski" />
+                    </label>
+                    <label class="field">
+                      <span>Status</span>
+                      <select id="risk-assessment-status"></select>
+                    </label>
+                    <label class="field field-span-full">
+                      <span>Naziv</span>
+                      <input id="risk-assessment-title" type="text" maxlength="220" placeholder="Procjena rizika za tvrtku..." required />
+                    </label>
+                    <label class="field">
+                      <span>Datum procjene</span>
+                      <input id="risk-assessment-date" type="date" />
+                    </label>
+                    <label class="field">
+                      <span>Revizija</span>
+                      <input id="risk-assessment-revision-date" type="date" />
+                    </label>
+                    <label class="field">
+                      <span>Voditelj izrade</span>
+                      <input id="risk-assessment-team-lead" type="text" maxlength="180" />
+                    </label>
+                    <label class="field">
+                      <span>Suradnici</span>
+                      <input id="risk-assessment-collaborators" type="text" placeholder="Ime, ime..." />
+                    </label>
+                  </div>
+
+                  <div class="risk-assessment-section-grid">
+                    <label class="field">
+                      <span>Uvod</span>
+                      <textarea id="risk-assessment-intro" rows="4"></textarea>
+                    </label>
+                    <label class="field">
+                      <span>Opis radnog procesa</span>
+                      <textarea id="risk-assessment-work-process" rows="4"></textarea>
+                    </label>
+                    <label class="field">
+                      <span>Opći podaci</span>
+                      <textarea id="risk-assessment-general-data" rows="4"></textarea>
+                    </label>
+                    <label class="field">
+                      <span>Radna mjesta s računalom</span>
+                      <textarea id="risk-assessment-computer-workplaces" rows="4"></textarea>
+                    </label>
+                    <label class="field">
+                      <span>Osnovna pravila ZNR</span>
+                      <textarea id="risk-assessment-basic-rules" rows="4"></textarea>
+                    </label>
+                    <label class="field">
+                      <span>Posebna pravila ZNR</span>
+                      <textarea id="risk-assessment-special-rules" rows="4"></textarea>
+                    </label>
+                    <label class="field">
+                      <span>Propusti - osnovna pravila</span>
+                      <textarea id="risk-assessment-omissions-basic" rows="4"></textarea>
+                    </label>
+                    <label class="field">
+                      <span>Propusti - posebna pravila</span>
+                      <textarea id="risk-assessment-omissions-special" rows="4"></textarea>
+                    </label>
+                    <label class="field field-span-full">
+                      <span>Zaključak</span>
+                      <textarea id="risk-assessment-conclusion" rows="4"></textarea>
+                    </label>
+                  </div>
+
+                  <section class="risk-assessment-subpanel">
+                    <div class="offers-items-head">
+                      <div>
+                        <strong>Plan mjera</strong>
+                        <p class="inline-help">Mjera, rok, odgovorna osoba i način kontrole.</p>
+                      </div>
+                      <button id="risk-assessment-add-measure" type="button" class="ghost-button">+ Mjera</button>
+                    </div>
+                    <div id="risk-assessment-measures" class="risk-assessment-repeat-list"></div>
+                  </section>
+
+                  <section class="risk-assessment-subpanel">
+                    <div class="offers-items-head">
+                      <div>
+                        <strong>Obrada po poslovima</strong>
+                        <p class="inline-help">Radno mjesto, opis poslova i najvažnije opasnosti/štetnosti.</p>
+                      </div>
+                      <button id="risk-assessment-add-job" type="button" class="ghost-button">+ Posao</button>
+                    </div>
+                    <div id="risk-assessment-jobs" class="risk-assessment-repeat-list"></div>
+                  </section>
+
+                  <label class="field field-span-full">
+                    <span>Poruka / napomena klijenta</span>
+                    <textarea id="risk-assessment-client-note" rows="3" placeholder="Vidljivo i u klijentskom pristupu."></textarea>
+                  </label>
+
+                  <p id="risk-assessment-error" class="form-error" aria-live="polite"></p>
+                  <div class="form-actions">
+                    <button id="risk-assessment-submit" type="submit" class="primary-button">Spremi procjenu</button>
+                    <button id="risk-assessment-reset" type="button" class="ghost-button">Nova procjena</button>
+                    <button id="risk-assessment-delete" type="button" class="card-button card-danger" hidden>Obriši</button>
+                  </div>
+                </form>
+              </div>
+            </section>
           </section>
 
           <section id="absence-module" class="absence-module" hidden>
@@ -4829,6 +4999,10 @@
                           <span id="offer-date-label">Datum ponude</span>
                           <input id="offer-date" type="date" />
                         </label>
+                        <label class="checkbox-field commercial-standalone-upload-field">
+                          <input id="commercial-standalone-upload" type="checkbox" />
+                          <span>Samostalni upload</span>
+                        </label>
                       </div>
 
                       <div class="offers-editor-meta">
@@ -4888,6 +5062,14 @@
                         <label id="purchase-order-external-number-field" class="field" hidden>
                           <span>Broj klijentove narudžbenice</span>
                           <input id="purchase-order-external-number" maxlength="160" placeholder="PO-2026-0042, interni broj klijenta..." />
+                        </label>
+                        <label id="commercial-internal-number-field" class="field" hidden>
+                          <span id="commercial-internal-number-label">Interni broj ponude</span>
+                          <input id="commercial-internal-number" maxlength="160" placeholder="Naš interni broj..." />
+                        </label>
+                        <label id="commercial-external-number-field" class="field" hidden>
+                          <span id="commercial-external-number-label">Broj ponude</span>
+                          <input id="commercial-external-number" maxlength="160" placeholder="Broj s dokumenta..." />
                         </label>
                         <label class="field offer-tax-field">
                           <span>PDV %</span>

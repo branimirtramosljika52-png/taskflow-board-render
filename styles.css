@@ -40948,3 +40948,240 @@ button.work-order-editor-section-head {
     min-width: 0;
   }
 }
+
+.risk-assessment-module {
+  display: grid;
+  gap: 16px;
+}
+
+.risk-assessment-list-panel {
+  display: grid;
+  gap: 14px;
+  background:
+    radial-gradient(circle at top right, rgba(219, 234, 254, 0.62), transparent 34%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(244, 250, 248, 0.94));
+}
+
+.risk-assessment-filters {
+  grid-template-columns: minmax(260px, 1fr) minmax(220px, 0.5fr) minmax(180px, 0.4fr);
+}
+
+.risk-assessment-list {
+  display: grid;
+  gap: 10px;
+}
+
+.risk-assessment-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 16px;
+  border: 1px solid rgba(176, 196, 232, 0.74);
+  border-left: 5px solid rgba(88, 115, 180, 0.72);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 12px 26px rgba(49, 69, 105, 0.08);
+  cursor: pointer;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.risk-assessment-card:hover,
+.risk-assessment-card:focus-visible {
+  border-color: rgba(68, 112, 221, 0.5);
+  box-shadow: 0 18px 34px rgba(49, 69, 105, 0.14);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.risk-assessment-card.is-active {
+  border-left-color: #2fb36d;
+}
+
+.risk-assessment-card.is-in_review {
+  border-left-color: #f0b429;
+}
+
+.risk-assessment-card.is-archived {
+  border-left-color: #94a3b8;
+}
+
+.risk-assessment-card-main,
+.risk-assessment-card-meta {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.risk-assessment-card-main strong,
+.risk-assessment-card-main span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.risk-assessment-card-main strong {
+  color: #17233f;
+  font-size: 0.96rem;
+}
+
+.risk-assessment-card-main span:not(.section-kicker) {
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
+.risk-assessment-card-meta {
+  grid-auto-flow: column;
+  align-items: center;
+  justify-content: end;
+}
+
+.risk-assessment-editor-panel {
+  grid-template-rows: auto minmax(0, 1fr);
+  padding: 0;
+}
+
+.risk-assessment-editor-panel.is-modal-open,
+.risk-assessment-editor-panel:not([hidden]) {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  bottom: 14px;
+  left: 14px;
+  z-index: 150;
+  width: auto;
+  max-width: none;
+  overflow: hidden;
+}
+
+.risk-assessment-editor-body {
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 20px 20px;
+}
+
+.risk-assessment-section-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.risk-assessment-subpanel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(190, 204, 232, 0.78);
+  border-radius: 16px;
+  background: rgba(248, 251, 255, 0.7);
+}
+
+.risk-assessment-repeat-list {
+  display: grid;
+  gap: 10px;
+}
+
+.risk-assessment-repeat-row {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(203, 213, 225, 0.82);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.risk-assessment-repeat-row.is-measure {
+  grid-template-columns: minmax(240px, 1.5fr) minmax(120px, 0.7fr) minmax(180px, 1fr) minmax(180px, 1fr) auto;
+  align-items: end;
+}
+
+.risk-assessment-repeat-row label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.risk-assessment-repeat-row label span {
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.risk-assessment-job-head,
+.risk-assessment-risk-line {
+  display: grid;
+  gap: 10px;
+}
+
+.risk-assessment-job-head {
+  grid-template-columns: minmax(240px, 1fr) minmax(120px, 0.25fr) auto;
+  align-items: end;
+}
+
+.risk-assessment-risk-line {
+  grid-template-columns: minmax(180px, 1fr) minmax(120px, 0.45fr) minmax(180px, 1fr);
+}
+
+.risk-assessment-editor-panel.is-client-note-mode .risk-assessment-subpanel,
+.risk-assessment-editor-panel.is-client-note-mode .risk-assessment-section-grid,
+.risk-assessment-editor-panel.is-client-note-mode .offers-form-grid {
+  opacity: 0.72;
+}
+
+.client-portal-preview-row.is-risk-assessment {
+  border-color: rgba(83, 149, 194, 0.34);
+  background:
+    linear-gradient(135deg, rgba(240, 249, 255, 0.96), rgba(255, 255, 255, 0.94));
+}
+
+.client-portal-preview-row-badge.is-risk-assessment {
+  border-color: rgba(83, 149, 194, 0.44);
+  background: rgba(234, 246, 253, 0.94);
+  color: #245f83;
+}
+
+.client-portal-preview-row-badge.is-risk-assessment.is-active {
+  border-color: rgba(57, 173, 114, 0.44);
+  background: rgba(233, 250, 240, 0.94);
+  color: #247a4d;
+}
+
+.client-portal-preview-row-badge.is-risk-assessment.is-in_review {
+  border-color: rgba(210, 151, 33, 0.42);
+  background: rgba(255, 247, 225, 0.96);
+  color: #99620e;
+}
+
+.client-portal-risk-note {
+  grid-column: 1 / -1;
+  padding: 9px 11px;
+  border: 1px solid rgba(190, 204, 232, 0.72);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.82);
+  color: #475569;
+  font-size: 0.82rem;
+}
+
+.list-row.is-clickable:hover td {
+  background: rgba(239, 246, 255, 0.82);
+}
+
+.list-row.is-clickable:hover td:first-child {
+  box-shadow: inset 4px 0 0 rgba(37, 99, 235, 0.38);
+}
+
+@media (max-width: 980px) {
+  .risk-assessment-filters,
+  .risk-assessment-section-grid,
+  .risk-assessment-repeat-row.is-measure,
+  .risk-assessment-job-head,
+  .risk-assessment-risk-line,
+  .risk-assessment-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .risk-assessment-card-meta {
+    grid-auto-flow: row;
+    justify-content: start;
+  }
+}

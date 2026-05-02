@@ -46,6 +46,13 @@ export const PURCHASE_ORDER_STATUS_OPTIONS = [
   { value: "closed", label: "Zatvorena" },
 ];
 
+export const RISK_ASSESSMENT_STATUS_OPTIONS = [
+  { value: "draft", label: "Skica" },
+  { value: "in_review", label: "U pregledu" },
+  { value: "active", label: "Aktivna" },
+  { value: "archived", label: "Arhivirana" },
+];
+
 export const CONTRACT_STATUS_OPTIONS = [
   { value: "draft", label: "Skica" },
   { value: "pending_signature", label: "Na potpisu" },
@@ -431,6 +438,7 @@ const REMINDER_STATUS_SET = new Set(REMINDER_STATUS_OPTIONS.map((option) => opti
 const TODO_TASK_STATUS_SET = new Set(TODO_TASK_STATUS_OPTIONS.map((option) => option.value));
 const OFFER_STATUS_SET = new Set(OFFER_STATUS_OPTIONS.map((option) => option.value));
 const PURCHASE_ORDER_STATUS_SET = new Set(PURCHASE_ORDER_STATUS_OPTIONS.map((option) => option.value));
+const RISK_ASSESSMENT_STATUS_SET = new Set(RISK_ASSESSMENT_STATUS_OPTIONS.map((option) => option.value));
 const CONTRACT_STATUS_SET = new Set(CONTRACT_STATUS_OPTIONS.map((option) => option.value));
 const CONTRACT_TEMPLATE_STATUS_SET = new Set(CONTRACT_TEMPLATE_STATUS_OPTIONS.map((option) => option.value));
 const VEHICLE_STATUS_SET = new Set(VEHICLE_STATUS_OPTIONS.map((option) => option.value));
@@ -493,6 +501,12 @@ const PURCHASE_ORDER_STATUS_RANK = {
   issued: 2,
   confirmed: 3,
   closed: 4,
+};
+const RISK_ASSESSMENT_STATUS_RANK = {
+  draft: 0,
+  in_review: 1,
+  active: 2,
+  archived: 3,
 };
 const CONTRACT_STATUS_RANK = {
   draft: 0,
@@ -745,6 +759,11 @@ function normalizeOfferStatus(value) {
 function normalizePurchaseOrderStatus(value, fallback = "draft") {
   const status = normalizeText(value).toLowerCase();
   return PURCHASE_ORDER_STATUS_SET.has(status) ? status : fallback;
+}
+
+function normalizeRiskAssessmentStatus(value, fallback = "draft") {
+  const status = normalizeText(value).toLowerCase();
+  return RISK_ASSESSMENT_STATUS_SET.has(status) ? status : fallback;
 }
 
 function normalizeVehicleStatus(value) {
@@ -2286,7 +2305,16 @@ function normalizeOfferBreakdowns(breakdowns = []) {
     .filter((entry) => entry.label || entry.amount);
 }
 
-function normalizeOfferItems(items = []) {
+function normalizeCommercialDocumentMode(value = "", fallback = "app") {
+  const normalized = normalizeText(value).toLowerCase();
+  return normalized === "upload" || normalized === "standalone" || normalized === "manual"
+    ? "upload"
+    : fallback === "upload"
+      ? "upload"
+      : "app";
+}
+
+function normalizeOfferItems(items = [], { allowEmpty = false } = {}) {
   if (!Array.isArray(items)) {
     throw new Error("Stavke ponude moraju biti lista.");
   }
@@ -2328,6 +2356,10 @@ function normalizeOfferItems(items = []) {
     ));
 
   if (normalizedItems.length === 0) {
+    if (allowEmpty) {
+      return [];
+    }
+
     throw new Error("Dodaj barem jednu stavku ponude.");
   }
 
@@ -2941,8 +2973,11 @@ function hydrateOfferCore({
   const showTotalAmount = hasOwn(input, "showTotalAmount")
     ? normalizeBoolean(input.showTotalAmount, true)
     : normalizeBoolean(current?.showTotalAmount, true);
+  const documentMode = hasOwn(input, "documentMode")
+    ? normalizeCommercialDocumentMode(input.documentMode, current?.documentMode ?? "app")
+    : normalizeCommercialDocumentMode(current?.documentMode, "app");
   const items = hasOwn(input, "items")
-    ? normalizeOfferItems(input.items)
+    ? normalizeOfferItems(input.items, { allowEmpty: documentMode === "upload" })
     : (current?.items ?? []);
   const totals = calculateOfferTotals(items, taxRate, discountRate);
   const offerDirection = hasOwn(input, "offerDirection")
@@ -3019,8 +3054,17 @@ function hydrateOfferCore({
     offerSequence: Number(offerSequence) || 0,
     offerInitials: deriveOfferInitials(offerInitials),
     offerDirection,
+    documentMode,
+    internalDocumentNumber: hasOwn(input, "internalDocumentNumber")
+      ? normalizeText(input.internalDocumentNumber)
+      : normalizeText(current?.internalDocumentNumber),
+    externalDocumentNumber: hasOwn(input, "externalDocumentNumber")
+      ? normalizeText(input.externalDocumentNumber)
+      : normalizeText(current?.externalDocumentNumber),
     title: hasOwn(input, "title") ? requireText(input.title, "Naziv ponude") : current?.title ?? "",
-    serviceLine: hasOwn(input, "serviceLine") ? requireText(input.serviceLine, "Vrsta usluge") : current?.serviceLine ?? "",
+    serviceLine: hasOwn(input, "serviceLine")
+      ? (documentMode === "upload" ? normalizeText(input.serviceLine || input.title) : requireText(input.serviceLine, "Vrsta usluge"))
+      : current?.serviceLine ?? "",
     status: hasOwn(input, "status") ? normalizeOfferStatus(input.status) : normalizeOfferStatus(current?.status),
     offerDate,
     validUntil: hasOwn(input, "validUntil")
@@ -4330,8 +4374,11 @@ function hydratePurchaseOrderCore({
   const showTotalAmount = hasOwn(input, "showTotalAmount")
     ? normalizeBoolean(input.showTotalAmount, true)
     : normalizeBoolean(current?.showTotalAmount, true);
+  const documentMode = hasOwn(input, "documentMode")
+    ? normalizeCommercialDocumentMode(input.documentMode, current?.documentMode ?? "app")
+    : normalizeCommercialDocumentMode(current?.documentMode, "app");
   const items = hasOwn(input, "items")
-    ? normalizeOfferItems(input.items)
+    ? normalizeOfferItems(input.items, { allowEmpty: documentMode === "upload" })
     : (current?.items ?? []);
   const totals = calculateOfferTotals(items, taxRate, discountRate);
   const fallbackPurchaseOrderDate = current?.purchaseOrderDate ?? timestamp.slice(0, 10);
@@ -4410,8 +4457,14 @@ function hydratePurchaseOrderCore({
     purchaseOrderNumber: requireText(purchaseOrderNumber || current?.purchaseOrderNumber, "Broj narudzbenice"),
     purchaseOrderYear: Number(purchaseOrderYear) || Number(timestamp.slice(0, 4)),
     purchaseOrderSequence: Number(purchaseOrderSequence) || 0,
+    documentMode,
+    internalDocumentNumber: hasOwn(input, "internalDocumentNumber")
+      ? normalizeText(input.internalDocumentNumber)
+      : normalizeText(current?.internalDocumentNumber),
     title: hasOwn(input, "title") ? requireText(input.title, "Naziv narudzbenice") : current?.title ?? "",
-    serviceLine: hasOwn(input, "serviceLine") ? requireText(input.serviceLine, "Vrsta usluge") : current?.serviceLine ?? "",
+    serviceLine: hasOwn(input, "serviceLine")
+      ? (documentMode === "upload" ? normalizeText(input.serviceLine || input.title) : requireText(input.serviceLine, "Vrsta usluge"))
+      : current?.serviceLine ?? "",
     status,
     orderDirection,
     purchaseOrderDate,
@@ -4435,6 +4488,180 @@ function hydratePurchaseOrderCore({
     total: totals.total,
     items: items.map((item) => ({ ...item })),
     documents: documents.map((document) => ({ ...document })),
+    createdByUserId: hasOwn(input, "createdByUserId")
+      ? normalizeText(input.createdByUserId)
+      : (current?.createdByUserId ?? ""),
+    createdByLabel: hasOwn(input, "createdByLabel")
+      ? normalizeText(input.createdByLabel)
+      : (current?.createdByLabel ?? ""),
+    createdAt: current?.createdAt ?? timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+function normalizeRiskAssessmentMeasureItems(items = []) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items.map((item, index) => ({
+    id: normalizeId(item?.id) || crypto.randomUUID(),
+    order: Number.isFinite(Number(item?.order)) ? Number(item.order) : index + 1,
+    measure: normalizeText(item?.measure),
+    deadline: normalizeText(item?.deadline),
+    responsiblePerson: normalizeText(item?.responsiblePerson),
+    controlMethod: normalizeText(item?.controlMethod),
+    status: normalizeText(item?.status || "open"),
+  })).filter((item) => item.measure || item.deadline || item.responsiblePerson || item.controlMethod);
+}
+
+function normalizeRiskAssessmentRiskRows(items = []) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items.map((item) => ({
+    id: normalizeId(item?.id) || crypto.randomUUID(),
+    category: normalizeText(item?.category),
+    hazard: normalizeText(item?.hazard),
+    riskLevel: normalizeText(item?.riskLevel),
+    likelihoodConsequence: normalizeText(item?.likelihoodConsequence),
+    note: normalizeText(item?.note),
+    measures: normalizeText(item?.measures),
+  })).filter((item) => item.category || item.hazard || item.riskLevel || item.note || item.measures);
+}
+
+function normalizeRiskAssessmentJobs(items = []) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items.map((item, index) => ({
+    id: normalizeId(item?.id) || crypto.randomUUID(),
+    order: Number.isFinite(Number(item?.order)) ? Number(item.order) : index + 1,
+    jobTitle: normalizeText(item?.jobTitle),
+    workerCount: normalizeText(item?.workerCount),
+    specialConditions: normalizeText(item?.specialConditions),
+    qualifications: normalizeText(item?.qualifications),
+    organization: normalizeText(item?.organization),
+    description: normalizeText(item?.description),
+    tasks: normalizeText(item?.tasks),
+    riskRows: normalizeRiskAssessmentRiskRows(item?.riskRows ?? []),
+  })).filter((item) => item.jobTitle || item.description || item.tasks || item.riskRows.length > 0);
+}
+
+function normalizeRiskAssessmentComments(items = []) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items.map((item) => ({
+    id: normalizeId(item?.id) || crypto.randomUUID(),
+    authorLabel: normalizeText(item?.authorLabel),
+    message: normalizeText(item?.message),
+    visibility: normalizeText(item?.visibility || "shared"),
+    createdAt: normalizeOptionalDateTime(item?.createdAt) ?? isoNow(),
+  })).filter((item) => item.message);
+}
+
+function nextRiskAssessmentNumber(items = [], timestamp = isoNow()) {
+  const year = Number(String(timestamp).slice(0, 4)) || new Date().getFullYear();
+  const prefix = `PR-${String(year)}`;
+  const sequence = (items ?? [])
+    .filter((item) => String(item.assessmentNumber || "").includes(String(year)))
+    .reduce((max, item) => {
+      const match = String(item.assessmentNumber || "").match(/(\d+)(?!.*\d)/);
+      return Math.max(max, match ? Number(match[1]) || 0 : 0);
+    }, 0) + 1;
+
+  return `${prefix}-${String(sequence).padStart(4, "0")}`;
+}
+
+function hydrateRiskAssessmentCore({
+  current = null,
+  state,
+  input,
+  timestamp,
+  assessmentNumber = current?.assessmentNumber ?? "",
+}) {
+  const organizationId = hasOwn(input, "organizationId")
+    ? requireText(input.organizationId, "Organizacija")
+    : requireText(current?.organizationId, "Organizacija");
+  const companyId = hasOwn(input, "companyId")
+    ? requireText(input.companyId, "Tvrtka")
+    : requireText(current?.companyId, "Tvrtka");
+  const company = findOfferCompany(state, companyId);
+
+  if (!company) {
+    throw new Error("Odabrana tvrtka ne postoji.");
+  }
+
+  const locationId = hasOwn(input, "locationId")
+    ? normalizeId(input.locationId)
+    : normalizeId(current?.locationId);
+  const location = locationId ? findOfferLocation(state, locationId, companyId) : null;
+
+  if (locationId && !location) {
+    throw new Error("Odabrana lokacija ne pripada tvrtki.");
+  }
+
+  const resolvedNumber = normalizeText(
+    hasOwn(input, "assessmentNumber")
+      ? input.assessmentNumber
+      : assessmentNumber || current?.assessmentNumber,
+  ) || nextRiskAssessmentNumber(state.riskAssessments ?? [], timestamp);
+
+  return {
+    id: current?.id ?? "",
+    organizationId,
+    companyId,
+    companyName: company.name ?? "",
+    companyOib: company.oib ?? "",
+    headquarters: company.headquarters ?? "",
+    locationId,
+    locationName: location?.name ?? "",
+    region: location?.region ?? "",
+    coordinates: location?.coordinates ?? "",
+    assessmentNumber: resolvedNumber,
+    title: hasOwn(input, "title")
+      ? (normalizeText(input.title) || `Procjena rizika - ${company.name}`)
+      : (current?.title || `Procjena rizika - ${company.name}`),
+    status: hasOwn(input, "status")
+      ? normalizeRiskAssessmentStatus(input.status)
+      : normalizeRiskAssessmentStatus(current?.status),
+    assessmentDate: hasOwn(input, "assessmentDate")
+      ? (normalizeOptionalDate(input.assessmentDate) ?? timestamp.slice(0, 10))
+      : (normalizeOptionalDate(current?.assessmentDate) ?? timestamp.slice(0, 10)),
+    revisionDate: hasOwn(input, "revisionDate")
+      ? normalizeOptionalDate(input.revisionDate)
+      : normalizeOptionalDate(current?.revisionDate),
+    assessmentType: hasOwn(input, "assessmentType") ? normalizeText(input.assessmentType) : current?.assessmentType ?? "Procjena rizika",
+    teamLead: hasOwn(input, "teamLead") ? normalizeText(input.teamLead) : current?.teamLead ?? "",
+    collaborators: hasOwn(input, "collaborators") ? normalizeText(input.collaborators) : current?.collaborators ?? "",
+    intro: hasOwn(input, "intro") ? normalizeText(input.intro) : current?.intro ?? "",
+    workProcessDescription: hasOwn(input, "workProcessDescription")
+      ? normalizeText(input.workProcessDescription)
+      : current?.workProcessDescription ?? "",
+    generalData: hasOwn(input, "generalData") ? normalizeText(input.generalData) : current?.generalData ?? "",
+    computerWorkplaces: hasOwn(input, "computerWorkplaces") ? normalizeText(input.computerWorkplaces) : current?.computerWorkplaces ?? "",
+    basicRules: hasOwn(input, "basicRules") ? normalizeText(input.basicRules) : current?.basicRules ?? "",
+    specialRules: hasOwn(input, "specialRules") ? normalizeText(input.specialRules) : current?.specialRules ?? "",
+    omissionsBasic: hasOwn(input, "omissionsBasic") ? normalizeText(input.omissionsBasic) : current?.omissionsBasic ?? "",
+    omissionsSpecial: hasOwn(input, "omissionsSpecial") ? normalizeText(input.omissionsSpecial) : current?.omissionsSpecial ?? "",
+    conclusion: hasOwn(input, "conclusion") ? normalizeText(input.conclusion) : current?.conclusion ?? "",
+    clientNote: hasOwn(input, "clientNote") ? normalizeText(input.clientNote) : current?.clientNote ?? "",
+    measures: hasOwn(input, "measures")
+      ? normalizeRiskAssessmentMeasureItems(input.measures)
+      : normalizeRiskAssessmentMeasureItems(current?.measures ?? []),
+    jobs: hasOwn(input, "jobs")
+      ? normalizeRiskAssessmentJobs(input.jobs)
+      : normalizeRiskAssessmentJobs(current?.jobs ?? []),
+    attachments: hasOwn(input, "attachments")
+      ? normalizeAttachmentDocuments(input.attachments)
+      : normalizeAttachmentDocuments(current?.attachments ?? []),
+    comments: hasOwn(input, "comments")
+      ? normalizeRiskAssessmentComments(input.comments)
+      : normalizeRiskAssessmentComments(current?.comments ?? []),
     createdByUserId: hasOwn(input, "createdByUserId")
       ? normalizeText(input.createdByUserId)
       : (current?.createdByUserId ?? ""),
@@ -6758,6 +6985,37 @@ export function updatePurchaseOrder(current, patch, state, now = isoNow) {
   });
 }
 
+export function createRiskAssessment(
+  input,
+  state,
+  createId = () => crypto.randomUUID(),
+  now = isoNow,
+) {
+  const timestamp = now();
+  const item = hydrateRiskAssessmentCore({
+    state,
+    input,
+    timestamp,
+    assessmentNumber: nextRiskAssessmentNumber(state.riskAssessments ?? [], timestamp),
+  });
+
+  return {
+    ...item,
+    id: createId(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+export function updateRiskAssessment(current, patch, state, now = isoNow) {
+  return hydrateRiskAssessmentCore({
+    current,
+    state,
+    input: patch,
+    timestamp: now(),
+  });
+}
+
 export function createContractTemplate(
   input,
   state,
@@ -6978,6 +7236,8 @@ export function filterOffers(
 
     const haystack = [
       item.offerNumber,
+      item.internalDocumentNumber,
+      item.externalDocumentNumber,
       item.title,
       item.companyName,
       item.locationName,
@@ -7015,6 +7275,7 @@ export function filterPurchaseOrders(
 
     const haystack = [
       item.purchaseOrderNumber,
+      item.internalDocumentNumber,
       item.externalDocumentNumber,
       item.title,
       item.companyName,
@@ -7029,6 +7290,51 @@ export function filterPurchaseOrders(
       ...(item.items ?? []).map((entry) => entry.serviceCode),
       ...(item.items ?? []).flatMap((entry) => (entry.breakdowns ?? []).map((detail) => detail.label)),
       ...(item.documents ?? []).map((document) => document.fileName),
+    ].join(" ").toLowerCase();
+
+    return haystack.includes(normalizedQuery);
+  });
+}
+
+export function filterRiskAssessments(
+  riskAssessments,
+  { query = "", status = "all", companyId = "all" } = {},
+) {
+  const normalizedQuery = normalizeText(query).toLowerCase();
+  const normalizedCompanyId = normalizeText(companyId);
+
+  return (riskAssessments ?? []).filter((item) => {
+    if (status !== "all" && item.status !== status) {
+      return false;
+    }
+
+    if (normalizedCompanyId && normalizedCompanyId !== "all" && String(item.companyId) !== normalizedCompanyId) {
+      return false;
+    }
+
+    if (!normalizedQuery) {
+      return true;
+    }
+
+    const haystack = [
+      item.assessmentNumber,
+      item.title,
+      item.companyName,
+      item.companyOib,
+      item.headquarters,
+      item.locationName,
+      item.teamLead,
+      item.collaborators,
+      item.intro,
+      item.workProcessDescription,
+      item.clientNote,
+      ...(item.measures ?? []).flatMap((entry) => [entry.measure, entry.responsiblePerson, entry.deadline]),
+      ...(item.jobs ?? []).flatMap((entry) => [
+        entry.jobTitle,
+        entry.description,
+        entry.tasks,
+        ...(entry.riskRows ?? []).flatMap((risk) => [risk.category, risk.hazard, risk.riskLevel, risk.measures]),
+      ]),
     ].join(" ").toLowerCase();
 
     return haystack.includes(normalizedQuery);
@@ -7184,6 +7490,26 @@ export function sortPurchaseOrders(purchaseOrders) {
 
     if (!left.purchaseOrderDate && right.purchaseOrderDate) {
       return 1;
+    }
+
+    return String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? ""));
+  });
+}
+
+export function sortRiskAssessments(riskAssessments) {
+  return [...(riskAssessments ?? [])].sort((left, right) => {
+    const leftRank = RISK_ASSESSMENT_STATUS_RANK[left.status] ?? Number.MAX_SAFE_INTEGER;
+    const rightRank = RISK_ASSESSMENT_STATUS_RANK[right.status] ?? Number.MAX_SAFE_INTEGER;
+
+    if (leftRank !== rightRank) {
+      return leftRank - rightRank;
+    }
+
+    const leftDate = left.assessmentDate || left.updatedAt || "";
+    const rightDate = right.assessmentDate || right.updatedAt || "";
+
+    if (leftDate && rightDate && leftDate !== rightDate) {
+      return rightDate.localeCompare(leftDate);
     }
 
     return String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? ""));

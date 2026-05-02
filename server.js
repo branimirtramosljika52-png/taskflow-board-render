@@ -4402,6 +4402,7 @@ async function handleApiRequest(request, response, url) {
     const purchaseOrderMatch = url.pathname.match(/^\/api\/purchase-orders\/([^/]+)$/);
     const purchaseOrderPdfExportMatch = url.pathname.match(/^\/api\/purchase-orders\/([^/]+)\/export-pdf$/);
     const purchaseOrderEmailMatch = url.pathname.match(/^\/api\/purchase-orders\/([^/]+)\/email$/);
+    const riskAssessmentMatch = url.pathname.match(/^\/api\/risk-assessments\/([^/]+)$/);
     const contractTemplateMatch = url.pathname.match(/^\/api\/contract-templates\/([^/]+)$/);
     const contractMatch = url.pathname.match(/^\/api\/contracts\/([^/]+)$/);
     const appCapabilitiesPdfExportMatch = url.pathname === "/api/app-capabilities/export-pdf";
@@ -4904,6 +4905,24 @@ async function handleApiRequest(request, response, url) {
       assertCompanyPayloadInScope(scopedSnapshot, body);
       assertLocationPayloadInScope(scopedSnapshot, body);
       await domainRepository.createPurchaseOrder({
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      }, user);
+      await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/risk-assessments") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati procjenama rizika.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertCompanyPayloadInScope(scopedSnapshot, body);
+      assertLocationPayloadInScope(scopedSnapshot, body);
+      await domainRepository.createRiskAssessment({
         ...body,
         organizationId: scopedSnapshot.activeOrganizationId,
       }, user);
@@ -6546,6 +6565,34 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (riskAssessmentMatch && request.method === "PATCH") {
+      if (!canManageWorkOrders(user) && !isClientPortalUser(user)) {
+        sendError(response, 403, "Nemate pravo upravljati procjenama rizika.");
+        return true;
+      }
+
+      const rawBody = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const currentRiskAssessment = assertInScope(scopedSnapshot.riskAssessments ?? [], riskAssessmentMatch[1], "Procjena rizika nije pronađena.");
+      const body = !canManageWorkOrders(user) && isClientPortalUser(user)
+        ? { clientNote: String(rawBody?.clientNote ?? currentRiskAssessment.clientNote ?? "").trim() }
+        : rawBody;
+      assertCompanyPayloadInScope(scopedSnapshot, body);
+      assertLocationPayloadInScope(scopedSnapshot, body);
+      const updated = await domainRepository.updateRiskAssessment(riskAssessmentMatch[1], {
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      }, user);
+
+      if (!updated) {
+        sendError(response, 404, "Procjena rizika nije pronađena.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
     if (contractTemplateMatch && request.method === "PATCH") {
       if (!canManageWorkOrders(user)) {
         sendError(response, 403, "Nemate pravo upravljati templateima ugovora.");
@@ -7282,6 +7329,25 @@ async function handleApiRequest(request, response, url) {
 
       if (!deleted) {
         sendError(response, 404, "Narudzbenica nije pronađena.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (riskAssessmentMatch && request.method === "DELETE") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo brisati procjene rizika.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.riskAssessments ?? [], riskAssessmentMatch[1], "Procjena rizika nije pronađena.");
+      const deleted = await domainRepository.deleteRiskAssessment(riskAssessmentMatch[1]);
+
+      if (!deleted) {
+        sendError(response, 404, "Procjena rizika nije pronađena.");
         return true;
       }
 

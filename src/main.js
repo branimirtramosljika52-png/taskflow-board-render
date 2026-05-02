@@ -25,6 +25,7 @@
   PERSON_TRAINING_STATUS_OPTIONS,
   PERSON_TRAINING_TYPE_OPTIONS,
   PURCHASE_ORDER_STATUS_OPTIONS,
+  RISK_ASSESSMENT_STATUS_OPTIONS,
   REMINDER_STATUS_OPTIONS,
   PRIORITY_OPTIONS,
   SERVICE_CATALOG_STATUS_OPTIONS,
@@ -50,6 +51,7 @@
   filterMeasurementEquipmentItems,
   filterOffers,
   filterPurchaseOrders,
+  filterRiskAssessments,
   filterAbsenceEntries,
   filterReminders,
   filterSafetyAuthorizations,
@@ -76,6 +78,7 @@
   groupWorkOrdersByExecutorSet,
   sortOffers,
   sortPurchaseOrders,
+  sortRiskAssessments,
   sortReminders,
   sortDashboardWidgets,
   sortDocumentTemplates,
@@ -1126,22 +1129,28 @@ const MODULE_VIEW_DEFINITIONS = {
     chips: ["Files", "Templates", "Evidence"],
   },
   tests: {
-    kicker: "Learning",
+    kicker: "Health And Safety",
     title: "Tests",
     description: "Mjesto za testove, provjere znanja i internu edukaciju zaposlenika po organizacijama.",
     chips: ["Knowledge checks", "Exams", "Progress"],
   },
   "people-training": {
-    kicker: "Learning",
+    kicker: "Health And Safety",
     title: "Osposobljavanja",
     description: "Evidencija osposobljavanja po osobi, tvrtki, RN-u, online testu i uvjerenjima za klijentski portal.",
     chips: ["RN", "Ispiti", "Uvjerenja"],
   },
   "learning-people": {
-    kicker: "Learning",
+    kicker: "Health And Safety",
     title: "People",
     description: "Pregled polaznika, statusa edukacija i napretka po zaposlenicima i timovima.",
     chips: ["Learners", "Status", "Certificates"],
+  },
+  "risk-assessment": {
+    kicker: "Health And Safety",
+    title: "Risk Assessment",
+    description: "Procjene rizika po tvrtkama, lokacijama, poslovima, planu mjera i komunikaciji s klijentom.",
+    chips: ["Procjena rizika", "Plan mjera", "Klijent"],
   },
 };
 const SIDEBAR_ITEM_CONFIG = {
@@ -1175,6 +1184,7 @@ const SIDEBAR_ITEM_CONFIG = {
   documents: { group: "documents", view: "module", module: "documents" },
   tests: { group: "learning", view: "module", module: "tests" },
   "people-training": { group: "learning", view: "module", module: "people-training" },
+  "risk-assessment": { group: "learning", view: "module", module: "risk-assessment" },
   "learning-people": { group: "learning", view: "module", module: "learning-people" },
 };
 const SIDEBAR_GROUP_DEFAULT_ITEM = {
@@ -1193,7 +1203,7 @@ const SIDEBAR_GROUP_LABELS = {
   company: "Company",
   locations: "Locations",
   documents: "Documents",
-  learning: "Learning",
+  learning: "Health And Safety",
 };
 const SIDEBAR_ITEM_LABELS = {
   dashboard: "Dashboard",
@@ -1226,6 +1236,7 @@ const SIDEBAR_ITEM_LABELS = {
   documents: "Documents",
   tests: "Test",
   "people-training": "Osposobljavanja",
+  "risk-assessment": "Risk Assessment",
   "learning-people": "People",
 };
 const PEOPLE_WORKSPACE_TAB_DEFINITIONS = Object.freeze({
@@ -1306,6 +1317,7 @@ const state = {
   todoTasks: [],
   offers: [],
   purchaseOrders: [],
+  riskAssessments: [],
   contracts: [],
   drawings: [],
   contractTemplates: [],
@@ -1369,6 +1381,7 @@ const state = {
   activeSafetyAuthorizationId: "",
   activeAbsenceId: "",
   activeDrawingId: "",
+  activeRiskAssessmentId: "",
   activeDocumentTemplateId: "",
   appCapabilitiesDialog: {
     open: false,
@@ -1478,6 +1491,12 @@ const state = {
   peopleTrainingSelectedRecordIds: new Set(),
   activePeopleTrainingRecordId: "",
   peopleTrainingEditorOpen: false,
+  riskAssessmentFilters: {
+    query: "",
+    status: "all",
+    companyId: "all",
+  },
+  riskAssessmentEditorOpen: false,
   absenceReportMonth: new Date().toISOString().slice(0, 7),
   absenceReportFilters: {
     userId: "all",
@@ -1515,6 +1534,7 @@ const state = {
     workOrders: false,
     documents: false,
     trainings: false,
+    riskAssessments: false,
   },
   periodicsFeed: {
     organizationId: "",
@@ -2795,6 +2815,13 @@ const purchaseOrderDirectionField = document.querySelector("#purchase-order-dire
 const purchaseOrderDirectionInput = document.querySelector("#purchase-order-direction");
 const purchaseOrderExternalNumberField = document.querySelector("#purchase-order-external-number-field");
 const purchaseOrderExternalNumberInput = document.querySelector("#purchase-order-external-number");
+const commercialStandaloneUploadInput = document.querySelector("#commercial-standalone-upload");
+const commercialInternalNumberField = document.querySelector("#commercial-internal-number-field");
+const commercialInternalNumberLabel = document.querySelector("#commercial-internal-number-label");
+const commercialInternalNumberInput = document.querySelector("#commercial-internal-number");
+const commercialExternalNumberField = document.querySelector("#commercial-external-number-field");
+const commercialExternalNumberLabel = document.querySelector("#commercial-external-number-label");
+const commercialExternalNumberInput = document.querySelector("#commercial-external-number");
 const purchaseOrderDocumentsSection = document.querySelector("#purchase-order-documents-section");
 const purchaseOrderDocumentsTitle = document.querySelector("#purchase-order-documents-title");
 const purchaseOrderDocumentsHelp = document.querySelector("#purchase-order-documents-help");
@@ -4655,6 +4682,49 @@ const peopleTrainingBulkOpenButton = document.querySelector("#people-training-bu
 const peopleTrainingListCount = document.querySelector("#people-training-list-count");
 const peopleTrainingList = document.querySelector("#people-training-list");
 const peopleTrainingEmpty = document.querySelector("#people-training-empty");
+const riskAssessmentModule = document.querySelector("#risk-assessment-module");
+const riskAssessmentNewButton = document.querySelector("#risk-assessment-new");
+const riskAssessmentSearchInput = document.querySelector("#risk-assessment-search");
+const riskAssessmentCompanyFilterInput = document.querySelector("#risk-assessment-company-filter");
+const riskAssessmentStatusFilterInput = document.querySelector("#risk-assessment-status-filter");
+const riskAssessmentList = document.querySelector("#risk-assessment-list");
+const riskAssessmentEmpty = document.querySelector("#risk-assessment-empty");
+const riskAssessmentEditorBackdrop = document.querySelector("#risk-assessment-editor-backdrop");
+const riskAssessmentEditorPanel = document.querySelector("#risk-assessment-editor-panel");
+const riskAssessmentEditorBody = riskAssessmentEditorPanel?.querySelector(".risk-assessment-editor-body");
+const riskAssessmentEditorTitle = document.querySelector("#risk-assessment-editor-title");
+const riskAssessmentCloseButton = document.querySelector("#risk-assessment-close");
+const riskAssessmentForm = document.querySelector("#risk-assessment-form");
+const riskAssessmentIdInput = document.querySelector("#risk-assessment-id");
+const riskAssessmentCompanyInput = document.querySelector("#risk-assessment-company");
+const riskAssessmentLocationInput = document.querySelector("#risk-assessment-location");
+const riskAssessmentNumberInput = document.querySelector("#risk-assessment-number");
+const riskAssessmentStatusInput = document.querySelector("#risk-assessment-status");
+const riskAssessmentTitleInput = document.querySelector("#risk-assessment-title");
+const riskAssessmentDateInput = document.querySelector("#risk-assessment-date");
+const riskAssessmentRevisionDateInput = document.querySelector("#risk-assessment-revision-date");
+const riskAssessmentTeamLeadInput = document.querySelector("#risk-assessment-team-lead");
+const riskAssessmentCollaboratorsInput = document.querySelector("#risk-assessment-collaborators");
+const riskAssessmentIntroInput = document.querySelector("#risk-assessment-intro");
+const riskAssessmentWorkProcessInput = document.querySelector("#risk-assessment-work-process");
+const riskAssessmentGeneralDataInput = document.querySelector("#risk-assessment-general-data");
+const riskAssessmentComputerWorkplacesInput = document.querySelector("#risk-assessment-computer-workplaces");
+const riskAssessmentBasicRulesInput = document.querySelector("#risk-assessment-basic-rules");
+const riskAssessmentSpecialRulesInput = document.querySelector("#risk-assessment-special-rules");
+const riskAssessmentOmissionsBasicInput = document.querySelector("#risk-assessment-omissions-basic");
+const riskAssessmentOmissionsSpecialInput = document.querySelector("#risk-assessment-omissions-special");
+const riskAssessmentConclusionInput = document.querySelector("#risk-assessment-conclusion");
+const riskAssessmentMeasuresList = document.querySelector("#risk-assessment-measures");
+const riskAssessmentAddMeasureButton = document.querySelector("#risk-assessment-add-measure");
+const riskAssessmentJobsList = document.querySelector("#risk-assessment-jobs");
+const riskAssessmentAddJobButton = document.querySelector("#risk-assessment-add-job");
+const riskAssessmentClientNoteInput = document.querySelector("#risk-assessment-client-note");
+const riskAssessmentError = document.querySelector("#risk-assessment-error");
+const riskAssessmentSubmitButton = document.querySelector("#risk-assessment-submit");
+const riskAssessmentResetButton = document.querySelector("#risk-assessment-reset");
+const riskAssessmentDeleteButton = document.querySelector("#risk-assessment-delete");
+let riskAssessmentMeasureDrafts = [];
+let riskAssessmentJobDrafts = [];
 let closePeopleTrainingItemMenuHandler = null;
 let peopleTrainingLastBulkOpenSummary = {
   assignedTests: 0,
@@ -6723,6 +6793,7 @@ function applySnapshot(payload) {
   state.todoTasks = payload.todoTasks ?? [];
   state.offers = payload.offers ?? [];
   state.purchaseOrders = payload.purchaseOrders ?? [];
+  state.riskAssessments = payload.riskAssessments ?? [];
   state.contracts = payload.contracts ?? [];
   state.drawings = payload.drawings ?? [];
   state.contractTemplates = payload.contractTemplates ?? [];
@@ -15884,6 +15955,7 @@ function renderModuleView() {
   const isLegalFrameworkModule = state.activeModuleItem === "legal-framework";
   const isLearningTestsModule = state.activeModuleItem === "tests";
   const isPeopleTrainingModule = state.activeModuleItem === "people-training";
+  const isRiskAssessmentModule = state.activeModuleItem === "risk-assessment";
   const isLearningPeopleModule = state.activeModuleItem === "learning-people";
   const isServiceCatalogModule = state.activeModuleItem === "services-catalog";
   const isSafetyAuthorizationModule = state.activeModuleItem === "safety-authorization";
@@ -15901,7 +15973,8 @@ function renderModuleView() {
     && !isPeriodicsModule
     && !isDrawingStudioModule
     && !isVehiclesModule
-    && !isPeopleTrainingModule;
+    && !isPeopleTrainingModule
+    && !isRiskAssessmentModule;
 
   if (modulePanel) {
     modulePanel.hidden = isPeopleTrainingModule;
@@ -15961,6 +16034,10 @@ function renderModuleView() {
       ensurePeopleTrainingPanelInModuleView();
     }
     peopleTrainingPanel.hidden = !isPeopleTrainingModule;
+  }
+
+  if (riskAssessmentModule) {
+    riskAssessmentModule.hidden = !isRiskAssessmentModule;
   }
 
   if (learningPeopleModule) {
@@ -16025,6 +16102,10 @@ function renderModuleView() {
 
   if (isPeopleTrainingModule) {
     renderPeopleTrainingModule();
+  }
+
+  if (isRiskAssessmentModule) {
+    renderRiskAssessmentModule();
   }
 
   if (isLearningPeopleModule) {
@@ -60656,6 +60737,54 @@ function createClientPortalTrainingPreviewRow(record = {}) {
   return row;
 }
 
+function createClientPortalRiskAssessmentPreviewRow(item = {}) {
+  const row = document.createElement("article");
+  row.className = "client-portal-preview-row is-risk-assessment";
+
+  const status = getRiskAssessmentStatusOption(item.status);
+  const main = document.createElement("div");
+  main.className = "client-portal-preview-row-main";
+  const number = document.createElement("strong");
+  number.textContent = item.assessmentNumber || "Procjena bez broja";
+  const date = document.createElement("span");
+  date.textContent = item.assessmentDate ? formatCompactDate(item.assessmentDate) : "Bez datuma";
+  main.append(number, date);
+
+  const copy = document.createElement("div");
+  copy.className = "client-portal-preview-row-copy";
+  const title = document.createElement("strong");
+  title.textContent = item.title || "Procjena rizika";
+  const location = document.createElement("span");
+  location.textContent = [
+    item.companyName || "Tvrtka",
+    item.locationName || "Sve lokacije",
+  ].filter(Boolean).join(" · ");
+  copy.append(title, location);
+
+  const meta = document.createElement("div");
+  meta.className = "client-portal-preview-row-meta";
+  const jobs = document.createElement("span");
+  jobs.textContent = `${(item.jobs ?? []).length} poslova`;
+  const measures = document.createElement("span");
+  measures.textContent = `${(item.measures ?? []).length} mjera`;
+  meta.append(jobs, measures);
+
+  const badge = document.createElement("span");
+  badge.className = `client-portal-preview-row-badge is-risk-assessment is-${item.status || "draft"}`;
+  badge.textContent = status.label;
+
+  if (item.clientNote) {
+    const note = document.createElement("div");
+    note.className = "client-portal-risk-note";
+    note.textContent = item.clientNote;
+    row.append(main, copy, meta, badge, note);
+    return row;
+  }
+
+  row.append(main, copy, meta, badge);
+  return row;
+}
+
 function renderClientPortalPreview() {
   const companyId = getClientPortalSelectedCompanyId();
   const company = getCompany(companyId);
@@ -60693,10 +60822,16 @@ function renderClientPortalPreview() {
     companyId,
     selectedLocationIds,
   ));
+  const scopedRiskAssessments = sortRiskAssessments(filterClientPortalRecordsByScope(
+    state.riskAssessments,
+    companyId,
+    selectedLocationIds,
+  ));
 
   const workOrderRows = scopedWorkOrders.map(createClientPortalWorkOrderPreviewRow);
   const documentRows = scopedDocumentRecords.map(createClientPortalDocumentPreviewRow);
   const trainingRows = scopedTrainingRecords.map(createClientPortalTrainingPreviewRow);
+  const riskAssessmentRows = scopedRiskAssessments.map(createClientPortalRiskAssessmentPreviewRow);
   const documentsLoading = Boolean(companyId && state.documentsExplorer.loading);
   const recordsCopy = documentsLoading
     ? "Ucitavam spremljene zapisnike za odabrani opseg."
@@ -60723,8 +60858,15 @@ function renderClientPortalPreview() {
     rows: trainingRows,
     emptyMessage: companyId ? "Nema evidentiranih osposobljavanja za odabrani opseg." : "Odaberi tvrtku za preview osposobljavanja.",
   });
+  const riskAssessmentSection = createClientPortalPreviewSection({
+    key: "riskAssessments",
+    title: "Procjene rizika",
+    subtitle: "Klijent vidi procjene rizika i može vratiti napomenu kroz isti zapis.",
+    rows: riskAssessmentRows,
+    emptyMessage: companyId ? "Nema procjena rizika za odabrani opseg." : "Odaberi tvrtku za preview procjena rizika.",
+  });
 
-  clientPortalPreviewList.replaceChildren(workOrdersSection, documentsSection, trainingsSection);
+  clientPortalPreviewList.replaceChildren(workOrdersSection, documentsSection, trainingsSection, riskAssessmentSection);
 }
 
 function renderClientPortalModule() {
@@ -67439,11 +67581,15 @@ function getCommercialDocumentDirectionForItem(item = {}, contextKey = getActive
 }
 
 function isCommercialQuickUploadMode() {
+  if (commercialStandaloneUploadInput) {
+    return commercialStandaloneUploadInput.checked;
+  }
+
   return getActiveCommercialDocumentDirection() === "incoming";
 }
 
 function shouldShowCommercialDocumentUploadSection() {
-  return isPurchaseOrdersContextActive() || getActiveCommercialDocumentDirection() === "incoming";
+  return isCommercialQuickUploadMode() || isPurchaseOrdersContextActive() || getActiveCommercialDocumentDirection() === "incoming";
 }
 
 function getCommercialDocumentUploadCategoryLabel() {
@@ -67511,8 +67657,6 @@ function syncCommercialQuickUploadMode() {
     offerServiceLineInput.required = !quickMode;
     offerServiceLineInput.disabled = quickMode;
   }
-  offerLocationTrigger?.closest(".offer-location-field")?.toggleAttribute("hidden", quickMode);
-  offerContactSlotInput?.closest(".offer-contact-field")?.toggleAttribute("hidden", quickMode);
   offerTaxRateInput?.closest(".offer-tax-field")?.toggleAttribute("hidden", quickMode);
   offerAddItemButton?.closest(".offers-items-head")?.toggleAttribute("hidden", quickMode);
   offerItems?.toggleAttribute("hidden", quickMode);
@@ -67520,6 +67664,22 @@ function syncCommercialQuickUploadMode() {
   offerPreviewButton?.closest(".offers-editor-meta-actions")?.toggleAttribute("hidden", quickMode);
   if (offerTotalPreviewBlock) {
     offerTotalPreviewBlock.hidden = quickMode || !isOfferTotalVisible();
+  }
+  if (commercialInternalNumberField) {
+    commercialInternalNumberField.hidden = !quickMode;
+  }
+  if (commercialExternalNumberField) {
+    commercialExternalNumberField.hidden = !quickMode;
+  }
+  if (commercialInternalNumberLabel) {
+    commercialInternalNumberLabel.textContent = isPurchaseOrdersContextActive()
+      ? "Interni broj narudžbenice"
+      : "Interni broj ponude";
+  }
+  if (commercialExternalNumberLabel) {
+    commercialExternalNumberLabel.textContent = isPurchaseOrdersContextActive()
+      ? "Broj narudžbenice"
+      : "Broj ponude";
   }
 
   if (purchaseOrderDocumentsSection) {
@@ -67665,7 +67825,7 @@ function applyCommercialDocumentUiConfig() {
     purchaseOrderDirectionField.hidden = true;
   }
   if (purchaseOrderExternalNumberField) {
-    purchaseOrderExternalNumberField.hidden = !isPurchaseOrdersContextActive() || activeDirection !== "incoming";
+    purchaseOrderExternalNumberField.hidden = true;
   }
   syncCommercialQuickUploadMode();
 }
@@ -68775,6 +68935,9 @@ function buildOfferPayload() {
     taxRate: offerTaxRateInput.value,
     discountRate: isOfferDiscountVisible() ? offerDiscountRateInput?.value || "" : "",
     note: offerNoteInput.value,
+    documentMode: quickMode ? "upload" : "app",
+    internalDocumentNumber: commercialInternalNumberInput?.value || "",
+    externalDocumentNumber: commercialExternalNumberInput?.value || "",
     items: quickMode ? [] : offerFormItems.map((item) => ({
       serviceCatalogId: item.serviceCatalogId || "",
       serviceCode: item.serviceCode || "",
@@ -68797,7 +68960,7 @@ function buildOfferPayload() {
       ...payload,
       purchaseOrderDate: offerDateInput.value,
       orderDirection: activeDirection,
-      externalDocumentNumber: purchaseOrderExternalNumberInput?.value || "",
+      externalDocumentNumber: commercialExternalNumberInput?.value || purchaseOrderExternalNumberInput?.value || "",
       documents: includeUploadedDocuments
         ? purchaseOrderDocumentDrafts.map((entry) => serializeModuleAttachmentDraft(entry))
         : [],
@@ -68847,6 +69010,15 @@ function resetOfferForm() {
   }
   if (purchaseOrderExternalNumberInput) {
     purchaseOrderExternalNumberInput.value = "";
+  }
+  if (commercialStandaloneUploadInput) {
+    commercialStandaloneUploadInput.checked = activeDirection === "incoming";
+  }
+  if (commercialInternalNumberInput) {
+    commercialInternalNumberInput.value = "";
+  }
+  if (commercialExternalNumberInput) {
+    commercialExternalNumberInput.value = "";
   }
   purchaseOrderDocumentDrafts = [];
   renderPurchaseOrderDocuments();
@@ -68933,6 +69105,16 @@ function hydrateOfferForm(offer) {
   offerNoteInput.value = offer.note || config.defaultNote;
   if (purchaseOrderDirectionInput) {
     purchaseOrderDirectionInput.value = getActiveCommercialDocumentDirection();
+  }
+  if (commercialStandaloneUploadInput) {
+    commercialStandaloneUploadInput.checked = String(offer.documentMode || "").toLowerCase() === "upload"
+      || (getActiveCommercialDocumentDirection() === "incoming" && (offer.items ?? []).length === 0);
+  }
+  if (commercialInternalNumberInput) {
+    commercialInternalNumberInput.value = offer.internalDocumentNumber || "";
+  }
+  if (commercialExternalNumberInput) {
+    commercialExternalNumberInput.value = offer.externalDocumentNumber || "";
   }
   if (purchaseOrderExternalNumberInput) {
     purchaseOrderExternalNumberInput.value = offer.externalDocumentNumber || "";
@@ -69228,13 +69410,15 @@ function renderOffersModule() {
       ...(offer.serviceLine ? [createMetaPill(offer.serviceLine)] : []),
       ...(getCommercialDocumentDateValue(offer) ? [createMetaPill(formatDate(getCommercialDocumentDateValue(offer)), "is-muted")] : []),
       ...(offer.items?.length ? [createMetaPill(`${offer.items.length} stavki`, "is-muted")] : []),
+      ...(offer.documentMode === "upload" ? [createMetaPill("Samostalni upload", "is-success")] : []),
+      ...(offer.internalDocumentNumber ? [createMetaPill(`Interno ${offer.internalDocumentNumber}`, "is-muted")] : []),
       ...(Number(offer.discountRate ?? 0) > 0 ? [createMetaPill(`Rabat ${offer.discountRate}%`, "is-attention")] : []),
     ];
 
     if (isPurchaseOrdersContextActive()) {
       chipNodes.push(createMetaPill(getCommercialDocumentDirectionLabel(offer.orderDirection), offer.orderDirection === "outgoing" ? "is-attention" : "is-success"));
       if (offer.externalDocumentNumber) {
-        chipNodes.push(createMetaPill(offer.externalDocumentNumber, "is-muted"));
+        chipNodes.push(createMetaPill(`Broj ${offer.externalDocumentNumber}`, "is-muted"));
       }
       if (offer.documents?.length) {
         chipNodes.push(createMetaPill(`${offer.documents.length} dok.`, "is-muted"));
@@ -69246,6 +69430,9 @@ function renderOffersModule() {
       ));
       if (offer.documents?.length) {
         chipNodes.push(createMetaPill(`${offer.documents.length} dok.`, "is-muted"));
+      }
+      if (offer.externalDocumentNumber) {
+        chipNodes.push(createMetaPill(`Broj ${offer.externalDocumentNumber}`, "is-muted"));
       }
     }
 
@@ -82734,50 +82921,54 @@ function renderLocations() {
   const fragment = document.createDocumentFragment();
   visibleLocations.forEach((location) => {
     const row = document.createElement("tr");
-    row.className = "list-row";
-    const companyName = getCompany(location.companyId)?.name ?? "Nepoznata tvrtka";
+    row.className = "list-row is-clickable";
+    row.tabIndex = 0;
+    const company = getCompany(location.companyId);
+    const companyName = company?.name ?? "Nepoznata tvrtka";
     const contacts = buildLocationContacts(location);
-    const contactSummary = contacts
-      .map((item) => item.name || item.phone || item.email)
-      .filter(Boolean)
-      .join(", ") || "Bez kontakata";
-    const actionsCell = document.createElement("td");
-    actionsCell.className = "table-actions";
-    if (canManageMasterData) {
-      actionsCell.append(
-        createActionButton("Uredi", "card-button", () => hydrateLocationForm(location)),
-        createActionButton("Obriši", "card-button card-danger", () => {
-          if (!window.confirm(`Obrisati lokaciju ${location.name}?`)) {
-            return;
-          }
-
-          void runMutation(() => apiRequest(`/locations/${location.id}`, { method: "DELETE" }));
-        }),
-      );
-    }
+    const primaryContact = contacts[0] ?? {};
+    const openLocation = () => {
+      if (canManageMasterData) {
+        hydrateLocationForm(location);
+      }
+    };
+    row.addEventListener("click", (event) => {
+      if (event.target.closest("button, a, input, select, textarea")) {
+        return;
+      }
+      openLocation();
+    });
+    row.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openLocation();
+      }
+    });
 
     row.append(
       createStackCell({
-        eyebrow: companyName,
-        title: location.name,
-        subtitle: location.representative || "Bez predstavnika",
-        meta: location.period ? [`Periodika: ${location.period}`] : [],
+        eyebrow: "Tvrtka",
+        title: companyName,
+        subtitle: company?.headquarters || "Bez sjedišta",
+        meta: company?.oib ? [`OIB ${company.oib}`] : [],
       }),
       createStackCell({
-        title: location.region || "Bez regije",
+        eyebrow: "Lokacija",
+        title: location.name || "Bez naziva",
         subtitle: location.coordinates || "Bez koordinata",
-        tertiary: location.note ? "Ima internu napomenu" : "",
+        meta: [location.region || "Bez regije"].filter(Boolean),
       }),
       createStackCell({
-        title: contactSummary,
-        subtitle: contacts.length > 0 ? `${contacts.length} kontakta` : "Nema kontakata",
+        eyebrow: "Kontakt",
+        title: primaryContact.name || location.representative || "Bez kontakt osobe",
+        subtitle: [primaryContact.email, primaryContact.phone].filter(Boolean).join(" · ") || "Bez emaila i telefona",
+        meta: contacts.length > 1 ? [`+${contacts.length - 1} dodatnih`] : [],
       }),
       createStackCell({
         title: location.isActive ? "Aktivna lokacija" : "Neaktivna lokacija",
-        subtitle: companyName,
+        subtitle: location.period ? `Periodika: ${location.period}` : "Bez periodike",
         meta: [createStatusPill(location.isActive ? "Aktivno" : "Neaktivno", location.isActive)],
       }),
-      actionsCell,
     );
 
     fragment.append(row);
@@ -85331,6 +85522,24 @@ purchaseOrderExternalNumberInput?.addEventListener("input", () => {
   }
 });
 
+commercialStandaloneUploadInput?.addEventListener("change", () => {
+  syncCommercialQuickUploadMode();
+  setOfferFormItems(offerFormItems, { ensureOne: !isCommercialQuickUploadMode() });
+  syncOfferTotals();
+});
+
+commercialInternalNumberInput?.addEventListener("input", () => {
+  if (state.offerTemplateModalOpen) {
+    renderOfferTemplatePlaceholderList();
+  }
+});
+
+commercialExternalNumberInput?.addEventListener("input", () => {
+  if (state.offerTemplateModalOpen) {
+    renderOfferTemplatePlaceholderList();
+  }
+});
+
 offerDiscountRateInput?.addEventListener("input", () => {
   syncOfferTotals();
 });
@@ -85866,6 +86075,88 @@ learningTestsSearchInput?.addEventListener("input", () => {
 learningTestsFilterStatusInput?.addEventListener("change", () => {
   state.learningTestsFilters.status = learningTestsFilterStatusInput.value || "all";
   renderLearningTestsModule();
+});
+
+riskAssessmentSearchInput?.addEventListener("input", () => {
+  state.riskAssessmentFilters.query = riskAssessmentSearchInput.value.trim();
+  renderRiskAssessmentModule();
+});
+
+riskAssessmentCompanyFilterInput?.addEventListener("change", () => {
+  state.riskAssessmentFilters.companyId = riskAssessmentCompanyFilterInput.value || "all";
+  renderRiskAssessmentModule();
+});
+
+riskAssessmentStatusFilterInput?.addEventListener("change", () => {
+  state.riskAssessmentFilters.status = riskAssessmentStatusFilterInput.value || "all";
+  renderRiskAssessmentModule();
+});
+
+riskAssessmentNewButton?.addEventListener("click", () => {
+  resetRiskAssessmentForm();
+  setRiskAssessmentEditorOpen(true);
+});
+
+riskAssessmentCloseButton?.addEventListener("click", () => {
+  setRiskAssessmentEditorOpen(false);
+});
+
+riskAssessmentEditorBackdrop?.addEventListener("click", () => {
+  setRiskAssessmentEditorOpen(false);
+});
+
+riskAssessmentCompanyInput?.addEventListener("change", () => {
+  replaceSelectOptions(riskAssessmentLocationInput, buildRiskAssessmentLocationOptions(riskAssessmentCompanyInput.value), "");
+});
+
+riskAssessmentAddMeasureButton?.addEventListener("click", () => {
+  riskAssessmentMeasureDrafts.push(createRiskAssessmentMeasureDraft());
+  renderRiskAssessmentMeasures();
+});
+
+riskAssessmentAddJobButton?.addEventListener("click", () => {
+  riskAssessmentJobDrafts.push(createRiskAssessmentJobDraft());
+  renderRiskAssessmentJobs();
+});
+
+riskAssessmentResetButton?.addEventListener("click", () => {
+  resetRiskAssessmentForm();
+});
+
+riskAssessmentDeleteButton?.addEventListener("click", () => {
+  const id = riskAssessmentIdInput?.value || "";
+  if (!id || !window.confirm("Obrisati procjenu rizika?")) {
+    return;
+  }
+
+  void runMutation(() => apiRequest(`/risk-assessments/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  }), riskAssessmentError).then((success) => {
+    if (success) {
+      setRiskAssessmentEditorOpen(false);
+      resetRiskAssessmentForm();
+      renderRiskAssessmentModule();
+    }
+  });
+});
+
+riskAssessmentForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const id = riskAssessmentIdInput?.value || "";
+  const isEditing = Boolean(id);
+  const path = isEditing ? `/risk-assessments/${encodeURIComponent(id)}` : "/risk-assessments";
+  const method = isEditing ? "PATCH" : "POST";
+
+  void runMutation(() => apiRequest(path, {
+    method,
+    body: buildRiskAssessmentPayload(),
+  }), riskAssessmentError).then((success) => {
+    if (success) {
+      setRiskAssessmentEditorOpen(false);
+      resetRiskAssessmentForm();
+      renderRiskAssessmentModule();
+    }
+  });
 });
 
 learningTestOpenFormButton?.addEventListener("click", () => {
@@ -88237,6 +88528,397 @@ async function handleLoginSubmit(event) {
     renderAuthState();
   } finally {
     setLoginBusy(false);
+  }
+}
+
+function getRiskAssessmentStatusOption(status = "") {
+  const normalized = String(status || "").trim().toLowerCase();
+  return RISK_ASSESSMENT_STATUS_OPTIONS.find((option) => option.value === normalized)
+    ?? RISK_ASSESSMENT_STATUS_OPTIONS[0];
+}
+
+function buildRiskAssessmentCompanyOptions(includeAll = false) {
+  const companyOptions = [...(state.companies ?? [])]
+    .sort((left, right) => String(left.name || "").localeCompare(String(right.name || ""), "hr", { sensitivity: "base" }))
+    .map((company) => ({
+      value: String(company.id),
+      label: company.name || `Tvrtka ${company.id}`,
+    }));
+
+  return includeAll
+    ? [{ value: "all", label: "Sve tvrtke" }, ...companyOptions]
+    : [{ value: "", label: "Odaberi tvrtku" }, ...companyOptions];
+}
+
+function buildRiskAssessmentLocationOptions(companyId = "") {
+  const options = (state.locations ?? [])
+    .filter((location) => String(location.companyId) === String(companyId))
+    .sort((left, right) => String(left.name || "").localeCompare(String(right.name || ""), "hr", { sensitivity: "base" }))
+    .map((location) => ({
+      value: String(location.id),
+      label: location.name || `Lokacija ${location.id}`,
+    }));
+
+  return [{ value: "", label: "Sve lokacije / nije vezano" }, ...options];
+}
+
+function setRiskAssessmentEditorOpen(open) {
+  state.riskAssessmentEditorOpen = Boolean(open);
+  if (riskAssessmentEditorBackdrop) {
+    riskAssessmentEditorBackdrop.hidden = !open;
+  }
+  if (riskAssessmentEditorPanel) {
+    riskAssessmentEditorPanel.hidden = !open;
+  }
+  if (open) {
+    requestAnimationFrame(() => riskAssessmentEditorBody?.focus({ preventScroll: true }));
+  }
+}
+
+function resetRiskAssessmentForm() {
+  if (!riskAssessmentForm) {
+    return;
+  }
+
+  riskAssessmentForm.reset();
+  state.activeRiskAssessmentId = "";
+  riskAssessmentMeasureDrafts = [];
+  riskAssessmentJobDrafts = [];
+  replaceSelectOptions(riskAssessmentCompanyInput, buildRiskAssessmentCompanyOptions(false), "");
+  replaceSelectOptions(riskAssessmentLocationInput, buildRiskAssessmentLocationOptions(""), "");
+  replaceSelectOptions(riskAssessmentStatusInput, RISK_ASSESSMENT_STATUS_OPTIONS, "draft");
+  if (riskAssessmentDateInput) {
+    riskAssessmentDateInput.value = new Date().toISOString().slice(0, 10);
+  }
+  if (riskAssessmentNumberInput) {
+    riskAssessmentNumberInput.value = "";
+  }
+  if (riskAssessmentEditorTitle) {
+    riskAssessmentEditorTitle.textContent = "Nova procjena";
+  }
+  if (riskAssessmentError) {
+    riskAssessmentError.textContent = "";
+  }
+  if (riskAssessmentDeleteButton) {
+    riskAssessmentDeleteButton.hidden = true;
+  }
+  renderRiskAssessmentMeasures();
+  renderRiskAssessmentJobs();
+  syncRiskAssessmentEditorAccess();
+}
+
+function hydrateRiskAssessmentForm(item = {}) {
+  if (!riskAssessmentForm) {
+    return;
+  }
+
+  state.activeRiskAssessmentId = String(item.id || "");
+  replaceSelectOptions(riskAssessmentCompanyInput, buildRiskAssessmentCompanyOptions(false), item.companyId || "");
+  replaceSelectOptions(riskAssessmentLocationInput, buildRiskAssessmentLocationOptions(item.companyId || ""), item.locationId || "");
+  replaceSelectOptions(riskAssessmentStatusInput, RISK_ASSESSMENT_STATUS_OPTIONS, item.status || "draft");
+  riskAssessmentIdInput.value = item.id || "";
+  riskAssessmentNumberInput.value = item.assessmentNumber || "";
+  riskAssessmentTitleInput.value = item.title || "";
+  riskAssessmentDateInput.value = item.assessmentDate || "";
+  riskAssessmentRevisionDateInput.value = item.revisionDate || "";
+  riskAssessmentTeamLeadInput.value = item.teamLead || "";
+  riskAssessmentCollaboratorsInput.value = item.collaborators || "";
+  riskAssessmentIntroInput.value = item.intro || "";
+  riskAssessmentWorkProcessInput.value = item.workProcessDescription || "";
+  riskAssessmentGeneralDataInput.value = item.generalData || "";
+  riskAssessmentComputerWorkplacesInput.value = item.computerWorkplaces || "";
+  riskAssessmentBasicRulesInput.value = item.basicRules || "";
+  riskAssessmentSpecialRulesInput.value = item.specialRules || "";
+  riskAssessmentOmissionsBasicInput.value = item.omissionsBasic || "";
+  riskAssessmentOmissionsSpecialInput.value = item.omissionsSpecial || "";
+  riskAssessmentConclusionInput.value = item.conclusion || "";
+  riskAssessmentClientNoteInput.value = item.clientNote || "";
+  riskAssessmentMeasureDrafts = (item.measures ?? []).map((entry) => ({ ...entry }));
+  riskAssessmentJobDrafts = (item.jobs ?? []).map((entry) => ({
+    ...entry,
+    riskRows: (entry.riskRows ?? []).map((risk) => ({ ...risk })),
+  }));
+  if (riskAssessmentEditorTitle) {
+    riskAssessmentEditorTitle.textContent = item.title || "Procjena rizika";
+  }
+  if (riskAssessmentDeleteButton) {
+    riskAssessmentDeleteButton.hidden = false;
+  }
+  renderRiskAssessmentMeasures();
+  renderRiskAssessmentJobs();
+  syncRiskAssessmentEditorAccess();
+  setRiskAssessmentEditorOpen(true);
+}
+
+function createRiskAssessmentMeasureDraft() {
+  return {
+    id: crypto.randomUUID(),
+    measure: "",
+    deadline: "",
+    responsiblePerson: "",
+    controlMethod: "",
+    status: "open",
+  };
+}
+
+function createRiskAssessmentJobDraft() {
+  return {
+    id: crypto.randomUUID(),
+    jobTitle: "",
+    workerCount: "",
+    description: "",
+    tasks: "",
+    specialConditions: "",
+    qualifications: "",
+    organization: "",
+    riskRows: [
+      {
+        id: crypto.randomUUID(),
+        category: "",
+        hazard: "",
+        riskLevel: "",
+        measures: "",
+      },
+    ],
+  };
+}
+
+function getCanManageRiskAssessments() {
+  return getCanEditOperationalData();
+}
+
+function syncRiskAssessmentEditorAccess() {
+  const canManage = getCanManageRiskAssessments();
+  const canComment = isClientPortalUser(state.user);
+  const allowClientNote = canManage || canComment;
+
+  riskAssessmentForm?.querySelectorAll("input, select, textarea, button").forEach((control) => {
+    if (!(control instanceof HTMLElement)) {
+      return;
+    }
+
+    if (control === riskAssessmentClientNoteInput || control === riskAssessmentSubmitButton) {
+      control.disabled = !allowClientNote;
+      return;
+    }
+
+    control.disabled = !canManage;
+  });
+
+  if (riskAssessmentSubmitButton) {
+    riskAssessmentSubmitButton.textContent = canManage ? "Spremi procjenu" : "Pošalji napomenu";
+    riskAssessmentSubmitButton.hidden = !allowClientNote;
+  }
+  if (riskAssessmentResetButton) {
+    riskAssessmentResetButton.hidden = !canManage;
+  }
+  if (riskAssessmentAddMeasureButton) {
+    riskAssessmentAddMeasureButton.hidden = !canManage;
+  }
+  if (riskAssessmentAddJobButton) {
+    riskAssessmentAddJobButton.hidden = !canManage;
+  }
+  if (riskAssessmentDeleteButton) {
+    riskAssessmentDeleteButton.hidden = !canManage || !riskAssessmentIdInput?.value;
+  }
+  if (riskAssessmentEditorPanel) {
+    riskAssessmentEditorPanel.classList.toggle("is-client-note-mode", !canManage && canComment);
+  }
+}
+
+function renderRiskAssessmentMeasures() {
+  if (!riskAssessmentMeasuresList) {
+    return;
+  }
+
+  if (riskAssessmentMeasureDrafts.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "inline-help";
+    empty.textContent = "Dodaj mjere iz plana mjera procjene rizika.";
+    riskAssessmentMeasuresList.replaceChildren(empty);
+    return;
+  }
+
+  riskAssessmentMeasuresList.replaceChildren(...riskAssessmentMeasureDrafts.map((item, index) => {
+    const row = document.createElement("div");
+    row.className = "risk-assessment-repeat-row is-measure";
+    row.innerHTML = `
+      <label><span>Mjera</span><input data-risk-measure-field="measure" value="${escapeHtml(item.measure || "")}" placeholder="Plan mjera" /></label>
+      <label><span>Rok</span><input data-risk-measure-field="deadline" value="${escapeHtml(item.deadline || "")}" placeholder="npr. odmah / 30 dana" /></label>
+      <label><span>Odgovorna osoba</span><input data-risk-measure-field="responsiblePerson" value="${escapeHtml(item.responsiblePerson || "")}" /></label>
+      <label><span>Kontrola</span><input data-risk-measure-field="controlMethod" value="${escapeHtml(item.controlMethod || "")}" /></label>
+      <button type="button" class="ghost-button card-danger" data-risk-measure-remove="${index}">Ukloni</button>
+    `;
+    row.querySelectorAll("[data-risk-measure-field]").forEach((input) => {
+      input.addEventListener("input", () => {
+        riskAssessmentMeasureDrafts[index] = {
+          ...riskAssessmentMeasureDrafts[index],
+          [input.dataset.riskMeasureField]: input.value,
+        };
+      });
+    });
+    row.querySelector("[data-risk-measure-remove]")?.addEventListener("click", () => {
+      riskAssessmentMeasureDrafts.splice(index, 1);
+      renderRiskAssessmentMeasures();
+    });
+    return row;
+  }));
+}
+
+function renderRiskAssessmentJobs() {
+  if (!riskAssessmentJobsList) {
+    return;
+  }
+
+  if (riskAssessmentJobDrafts.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "inline-help";
+    empty.textContent = "Dodaj poslove/radna mjesta i opasnosti za ARMOR/IOR obradu.";
+    riskAssessmentJobsList.replaceChildren(empty);
+    return;
+  }
+
+  riskAssessmentJobsList.replaceChildren(...riskAssessmentJobDrafts.map((item, index) => {
+    const row = document.createElement("div");
+    row.className = "risk-assessment-repeat-row is-job";
+    const firstRisk = item.riskRows?.[0] ?? {};
+    row.innerHTML = `
+      <div class="risk-assessment-job-head">
+        <label><span>Radno mjesto / posao</span><input data-risk-job-field="jobTitle" value="${escapeHtml(item.jobTitle || "")}" /></label>
+        <label><span>Broj radnika</span><input data-risk-job-field="workerCount" value="${escapeHtml(item.workerCount || "")}" /></label>
+        <button type="button" class="ghost-button card-danger" data-risk-job-remove="${index}">Ukloni</button>
+      </div>
+      <label><span>Opis poslova</span><textarea data-risk-job-field="description" rows="2">${escapeHtml(item.description || "")}</textarea></label>
+      <label><span>Poslovi / aktivnosti</span><textarea data-risk-job-field="tasks" rows="2">${escapeHtml(item.tasks || "")}</textarea></label>
+      <div class="risk-assessment-risk-line">
+        <label><span>Opasnost / štetnost</span><input data-risk-row-field="hazard" value="${escapeHtml(firstRisk.hazard || "")}" /></label>
+        <label><span>Razina rizika</span><input data-risk-row-field="riskLevel" value="${escapeHtml(firstRisk.riskLevel || "")}" placeholder="Mali / Srednji / Veliki" /></label>
+        <label><span>Mjere</span><input data-risk-row-field="measures" value="${escapeHtml(firstRisk.measures || "")}" /></label>
+      </div>
+    `;
+    row.querySelectorAll("[data-risk-job-field]").forEach((input) => {
+      input.addEventListener("input", () => {
+        riskAssessmentJobDrafts[index] = {
+          ...riskAssessmentJobDrafts[index],
+          [input.dataset.riskJobField]: input.value,
+        };
+      });
+    });
+    row.querySelectorAll("[data-risk-row-field]").forEach((input) => {
+      input.addEventListener("input", () => {
+        const riskRows = [...(riskAssessmentJobDrafts[index].riskRows ?? [])];
+        riskRows[0] = {
+          ...(riskRows[0] ?? { id: crypto.randomUUID() }),
+          [input.dataset.riskRowField]: input.value,
+        };
+        riskAssessmentJobDrafts[index] = {
+          ...riskAssessmentJobDrafts[index],
+          riskRows,
+        };
+      });
+    });
+    row.querySelector("[data-risk-job-remove]")?.addEventListener("click", () => {
+      riskAssessmentJobDrafts.splice(index, 1);
+      renderRiskAssessmentJobs();
+    });
+    return row;
+  }));
+}
+
+function buildRiskAssessmentPayload() {
+  if (!getCanManageRiskAssessments() && isClientPortalUser(state.user)) {
+    return {
+      clientNote: riskAssessmentClientNoteInput?.value || "",
+    };
+  }
+
+  return {
+    companyId: riskAssessmentCompanyInput?.value || "",
+    locationId: riskAssessmentLocationInput?.value || "",
+    assessmentNumber: riskAssessmentNumberInput?.value || "",
+    status: riskAssessmentStatusInput?.value || "draft",
+    title: riskAssessmentTitleInput?.value || "",
+    assessmentDate: riskAssessmentDateInput?.value || "",
+    revisionDate: riskAssessmentRevisionDateInput?.value || "",
+    teamLead: riskAssessmentTeamLeadInput?.value || "",
+    collaborators: riskAssessmentCollaboratorsInput?.value || "",
+    intro: riskAssessmentIntroInput?.value || "",
+    workProcessDescription: riskAssessmentWorkProcessInput?.value || "",
+    generalData: riskAssessmentGeneralDataInput?.value || "",
+    computerWorkplaces: riskAssessmentComputerWorkplacesInput?.value || "",
+    basicRules: riskAssessmentBasicRulesInput?.value || "",
+    specialRules: riskAssessmentSpecialRulesInput?.value || "",
+    omissionsBasic: riskAssessmentOmissionsBasicInput?.value || "",
+    omissionsSpecial: riskAssessmentOmissionsSpecialInput?.value || "",
+    conclusion: riskAssessmentConclusionInput?.value || "",
+    clientNote: riskAssessmentClientNoteInput?.value || "",
+    measures: riskAssessmentMeasureDrafts,
+    jobs: riskAssessmentJobDrafts,
+  };
+}
+
+function renderRiskAssessmentCard(item = {}) {
+  const card = document.createElement("article");
+  card.className = `risk-assessment-card is-${item.status || "draft"}`;
+  card.tabIndex = 0;
+  const status = getRiskAssessmentStatusOption(item.status);
+  const measuresOpen = (item.measures ?? []).filter((entry) => String(entry.status || "open") !== "done").length;
+  const jobsCount = (item.jobs ?? []).length;
+  const locationText = item.locationName || "Sve lokacije / nije vezano";
+  card.innerHTML = `
+    <div class="risk-assessment-card-main">
+      <span class="section-kicker">${escapeHtml(status.label)}</span>
+      <strong>${escapeHtml(item.assessmentNumber || "Bez broja")} · ${escapeHtml(item.title || "Procjena rizika")}</strong>
+      <span>${escapeHtml(item.companyName || "Tvrtka")} · ${escapeHtml(locationText)}</span>
+    </div>
+    <div class="risk-assessment-card-meta">
+      <span class="soft-pill">${jobsCount} poslova</span>
+      <span class="soft-pill">${measuresOpen} mjera</span>
+      <span class="soft-pill">${escapeHtml(item.assessmentDate || "Bez datuma")}</span>
+    </div>
+  `;
+  card.addEventListener("click", () => hydrateRiskAssessmentForm(item));
+  card.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      hydrateRiskAssessmentForm(item);
+    }
+  });
+  return card;
+}
+
+function renderRiskAssessmentModule() {
+  if (!riskAssessmentModule) {
+    return;
+  }
+
+  const canManage = getCanManageRiskAssessments();
+  if (riskAssessmentNewButton) {
+    riskAssessmentNewButton.hidden = !canManage;
+    riskAssessmentNewButton.disabled = !canManage;
+  }
+  syncRiskAssessmentEditorAccess();
+
+  const filters = {
+    query: riskAssessmentSearchInput?.value?.trim() || state.riskAssessmentFilters.query || "",
+    status: riskAssessmentStatusFilterInput?.value || state.riskAssessmentFilters.status || "all",
+    companyId: riskAssessmentCompanyFilterInput?.value || state.riskAssessmentFilters.companyId || "all",
+  };
+  state.riskAssessmentFilters = filters;
+  replaceSelectOptionsIfChanged(riskAssessmentCompanyFilterInput, buildRiskAssessmentCompanyOptions(true), filters.companyId);
+  replaceSelectOptionsIfChanged(riskAssessmentStatusFilterInput, [
+    { value: "all", label: "Svi statusi" },
+    ...RISK_ASSESSMENT_STATUS_OPTIONS,
+  ], filters.status);
+
+  if (riskAssessmentSearchInput && riskAssessmentSearchInput.value !== filters.query) {
+    riskAssessmentSearchInput.value = filters.query;
+  }
+
+  const visible = sortRiskAssessments(filterRiskAssessments(state.riskAssessments ?? [], filters));
+  riskAssessmentList?.replaceChildren(...visible.map((item) => renderRiskAssessmentCard(item)));
+  if (riskAssessmentEmpty) {
+    riskAssessmentEmpty.hidden = visible.length > 0;
   }
 }
 
