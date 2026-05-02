@@ -2683,7 +2683,7 @@ export async function buildOfferPdfBuffer(offer = {}, options = {}) {
   writeOfferPdfMetaRow(doc, "Broj ponude", offerNumber);
   writeOfferPdfMetaRow(doc, "Datum ponude", formatOfferPdfDate(offer.offerDate));
   writeOfferPdfMetaRow(doc, "Vrijedi do", formatOfferPdfDate(offer.validUntil));
-  writeOfferPdfMetaRow(doc, "Vrsta usluge", offer.serviceLine || "—");
+  writeOfferPdfMetaRow(doc, "Vrsta ponude", offer.serviceLine || "—");
 
   doc.moveDown(0.45);
   drawOfferPdfSectionTitle(doc, "Narucitelj");

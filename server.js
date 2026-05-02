@@ -1804,6 +1804,7 @@ function buildOfferTemplatePlaceholderPayload(offer = {}) {
     CONTACT_PHONE: normalizedOffer.contactPhone || "",
     CONTACT_EMAIL: normalizedOffer.contactEmail || "",
     SERVICE_LINE: normalizedOffer.serviceLine || "",
+    OFFER_TYPE: normalizedOffer.serviceLine || "",
     ITEMS_TABLE: itemsTable,
     ITEMS_TABLE_TEXT: itemsTableText,
     ITEMS_SUMMARY: itemsSummary,

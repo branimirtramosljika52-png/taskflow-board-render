@@ -493,7 +493,8 @@ const OFFER_TEMPLATE_PLACEHOLDER_DEFINITIONS = Object.freeze([
   Object.freeze({ key: "CONTACT_NAME", label: "Kontakt osoba", description: "Ime odabranog kontakta." }),
   Object.freeze({ key: "CONTACT_PHONE", label: "Kontakt telefon", description: "Telefon kontakta." }),
   Object.freeze({ key: "CONTACT_EMAIL", label: "Kontakt email", description: "Email kontakta." }),
-  Object.freeze({ key: "SERVICE_LINE", label: "Vrsta usluge", description: "Glavna vrsta usluge za ponudu." }),
+  Object.freeze({ key: "SERVICE_LINE", label: "Vrsta ponude", description: "Tip ponude ili glavna vrsta usluge za ponudu." }),
+  Object.freeze({ key: "OFFER_TYPE", label: "Vrsta ponude", description: "Alias za vrstu ponude, za predloške gdje želiš odvojeno ime placeholdera." }),
   Object.freeze({ key: "ITEMS_TABLE", label: "Tablica stavki", description: "Sve stavke ponude s količinama, razradom i iznosima." }),
   Object.freeze({ key: "ITEMS_TABLE_TEXT", label: "Tablica stavki - tekst", description: "Tekstualna verzija tablice ako ne želiš Word tablicu." }),
   Object.freeze({ key: "ITEMS_SUMMARY", label: "Sažetak stavki", description: "Jednostavni tekstualni popis stavki." }),
@@ -533,10 +534,51 @@ const PURCHASE_ORDER_TEMPLATE_PLACEHOLDER_DEFINITIONS = Object.freeze([
   Object.freeze({ key: "TAX_TOTAL", label: "PDV iznos", description: "Ukupni iznos PDV-a." }),
   Object.freeze({ key: "TOTAL", label: "Ukupno", description: "Ukupni iznos narudžbenice." }),
 ]);
-const OFFER_SERVICE_LINE_OPTIONS = Object.freeze([
-  "Fixed Fee",
-  "Base fee + variable fee",
-  "Offer",
+const OFFER_PLAN_TYPE_DEFINITIONS = Object.freeze([
+  Object.freeze({
+    value: "Fixed Plan",
+    label: "Fixed Plan",
+    help: "Jedan fiksni iznos bez razrade po stavkama.",
+    itemsTitle: "Fiksni plan",
+    addButtonLabel: "+ Dodaj stavku",
+    allowBreakdowns: false,
+    allowMultipleItems: false,
+  }),
+  Object.freeze({
+    value: "Hybrid Plan",
+    label: "Hybrid Plan",
+    help: "Mjesečni iznos plus razrada usluga po zapisniku ili mjernim mjestima.",
+    itemsTitle: "Mjesečni iznos i usluge",
+    addButtonLabel: "+ Dodaj uslugu",
+    allowBreakdowns: true,
+    allowMultipleItems: true,
+  }),
+  Object.freeze({
+    value: "One-Time Service",
+    label: "One-Time Service",
+    help: "Jednokratna usluga s cijenom, količinom i po potrebi razradom.",
+    itemsTitle: "Jednokratne usluge",
+    addButtonLabel: "+ Dodaj uslugu",
+    allowBreakdowns: true,
+    allowMultipleItems: true,
+  }),
+  Object.freeze({
+    value: "Per Employee Plan",
+    label: "Per Employee Plan",
+    help: "Cijena po zaposleniku, bez razrade po mjernim mjestima.",
+    itemsTitle: "Cijena po zaposleniku",
+    addButtonLabel: "+ Dodaj stavku",
+    allowBreakdowns: false,
+    allowMultipleItems: false,
+  }),
+]);
+const OFFER_SERVICE_LINE_OPTIONS = Object.freeze(OFFER_PLAN_TYPE_DEFINITIONS.map((entry) => entry.value));
+const OFFER_PLAN_DEFAULT_ITEM_LABELS = Object.freeze([
+  "Fixed Plan",
+  "Mjesečni iznos",
+  "Usluge po izvršenju",
+  "One-Time Service",
+  "Per Employee Plan",
 ]);
 const COMMERCIAL_DOCUMENT_MODULE_CONFIG = Object.freeze({
   offers: Object.freeze({
@@ -558,8 +600,8 @@ const COMMERCIAL_DOCUMENT_MODULE_CONFIG = Object.freeze({
     totalLabel: "Ukupno",
     titleLabel: "Naziv ponude",
     titlePlaceholder: "Godišnje održavanje, dopuna usluga...",
-    serviceLineLabel: "Vrsta usluge",
-    serviceLinePlaceholder: "Fixed Fee, Base fee + variable fee, Offer...",
+    serviceLineLabel: "Vrsta ponude",
+    serviceLinePlaceholder: "Fixed Plan, Hybrid Plan, One-Time Service, Per Employee Plan...",
     notePlaceholder: "Dodatne napomene, rok izvedbe, uvjeti plaćanja...",
     itemsTitle: "Stavke ponude",
     itemsHelp: "Dodaj uslugu, količinu, cijenu ili razradu po stavci.",
@@ -36065,6 +36107,10 @@ function buildOfferDraftPreviewData() {
   const currentNumber = String(offerNumberPreview?.textContent || "").trim();
   const documentDrafts = purchaseOrderDocumentDrafts.map((entry) => serializeModuleAttachmentDraft(entry));
   const currentDate = getOfferDateFieldValue();
+  const rawServiceLine = String((quickMode && !outgoingStandaloneOffer ? offerTitleInput?.value : offerServiceLineInput?.value) || "").trim();
+  const serviceLine = !isPurchaseOrder && activeDirection === "outgoing"
+    ? normalizeOfferPlanTypeValue(rawServiceLine)
+    : rawServiceLine;
 
   return {
     id: String(offerIdInput?.value || "").trim(),
@@ -36087,7 +36133,7 @@ function buildOfferDraftPreviewData() {
     contactName: contactSnapshot.contactName || "",
     contactPhone: contactSnapshot.contactPhone || "",
     contactEmail: contactSnapshot.contactEmail || "",
-    serviceLine: String((quickMode && !outgoingStandaloneOffer ? offerTitleInput?.value : offerServiceLineInput?.value) || "").trim(),
+    serviceLine,
     note: String(offerNoteInput?.value || "").trim(),
     orderDirection: isPurchaseOrder ? activeDirection : "",
     documentMode: quickMode ? "upload" : "app",
@@ -36239,6 +36285,7 @@ function buildOfferTemplatePlaceholderPayload(offer = buildOfferDraftPreviewData
     CONTACT_PHONE: normalizedOffer.contactPhone || "",
     CONTACT_EMAIL: normalizedOffer.contactEmail || "",
     SERVICE_LINE: normalizedOffer.serviceLine || "",
+    OFFER_TYPE: normalizedOffer.serviceLine || "",
     ITEMS_TABLE: itemsTable,
     ITEMS_TABLE_TEXT: itemsTableText,
     ITEMS_SUMMARY: itemsSummary,
@@ -67697,6 +67744,185 @@ function shouldShowCommercialDocumentUploadSection() {
   return isCommercialQuickUploadMode() || isPurchaseOrdersContextActive() || getActiveCommercialDocumentDirection() === "incoming";
 }
 
+function normalizeOfferPlanTypeValue(value = "") {
+  const rawValue = String(value || "").trim();
+  const normalizedValue = normalizeLooseName(rawValue);
+  const legacyMap = new Map([
+    ["fixed fee", "Fixed Plan"],
+    ["flat plan", "Fixed Plan"],
+    ["fixed plan", "Fixed Plan"],
+    ["base fee variable fee", "Hybrid Plan"],
+    ["base fee plus variable fee", "Hybrid Plan"],
+    ["monthly per services", "Hybrid Plan"],
+    ["hybrid plan", "Hybrid Plan"],
+    ["one time", "One-Time Service"],
+    ["one time service", "One-Time Service"],
+    ["one-time", "One-Time Service"],
+    ["one-time service", "One-Time Service"],
+    ["per employee", "Per Employee Plan"],
+    ["per employee plan", "Per Employee Plan"],
+  ]);
+
+  const directMatch = OFFER_PLAN_TYPE_DEFINITIONS.find((entry) => normalizeLooseName(entry.value) === normalizedValue);
+  return directMatch?.value || legacyMap.get(normalizedValue) || rawValue;
+}
+
+function getOfferPlanTypeDefinition(value = "") {
+  const normalizedValue = normalizeOfferPlanTypeValue(value);
+  return OFFER_PLAN_TYPE_DEFINITIONS.find((entry) => entry.value === normalizedValue)
+    || OFFER_PLAN_TYPE_DEFINITIONS[0];
+}
+
+function isOfferPlanEditorActive() {
+  return !isPurchaseOrdersContextActive()
+    && getActiveCommercialDocumentDirection() === "outgoing"
+    && !isCommercialQuickUploadMode();
+}
+
+function getActiveOfferPlanTypeDefinition() {
+  return getOfferPlanTypeDefinition(offerServiceLineInput?.value || "");
+}
+
+function shouldOfferPlanAllowBreakdowns() {
+  return !isOfferPlanEditorActive() || getActiveOfferPlanTypeDefinition().allowBreakdowns !== false;
+}
+
+function shouldOfferPlanAllowMultipleItems() {
+  return !isOfferPlanEditorActive() || getActiveOfferPlanTypeDefinition().allowMultipleItems !== false;
+}
+
+function hasMeaningfulOfferItemDraft(item = {}) {
+  return Boolean(
+    String(item.description || "").trim()
+      || String(item.unit || "").trim()
+      || String(item.quantity || "").trim()
+      || String(item.unitPrice || "").trim()
+      || String(item.discountRate || "").trim()
+      || (Array.isArray(item.breakdowns) && item.breakdowns.some((entry) => (
+        String(entry.recordLabel || entry.label || "").trim()
+        || String(entry.measurementFrom || "").trim()
+        || String(entry.measurementTo || "").trim()
+        || String(entry.amount || "").trim()
+      ))),
+  );
+}
+
+function isOfferFormUsingPlanDefaults() {
+  if (!Array.isArray(offerFormItems) || offerFormItems.length === 0) {
+    return true;
+  }
+
+  const defaultLabels = new Set(OFFER_PLAN_DEFAULT_ITEM_LABELS.map((label) => normalizeLooseName(label)));
+  return offerFormItems.every((item) => {
+    const description = normalizeLooseName(item.description || "");
+    const hasMoney = parseOfferMoneyInput(item.unitPrice, 0) > 0
+      || parseOfferMoneyInput(item.discountRate, 0) > 0
+      || (Array.isArray(item.breakdowns) && item.breakdowns.some((entry) => parseOfferMoneyInput(entry.amount, 0) > 0));
+    return !hasMoney && (!description || defaultLabels.has(description));
+  });
+}
+
+function buildOfferPlanDefaultItems(planDefinition = getActiveOfferPlanTypeDefinition()) {
+  switch (planDefinition.value) {
+    case "Hybrid Plan":
+      return [
+        createEmptyOfferItemDraft({
+          description: "Mjesečni iznos",
+          unit: "mj",
+          quantity: "1",
+          unitPrice: "",
+          breakdowns: [],
+        }),
+        createEmptyOfferItemDraft({
+          description: "Usluge po izvršenju",
+          unit: "usluga",
+          quantity: "1",
+          unitPrice: "",
+          breakdowns: [
+            {
+              recordLabel: "Zapisnik",
+              measurementFrom: "",
+              measurementTo: "",
+              amount: "",
+            },
+          ],
+        }),
+      ];
+    case "One-Time Service":
+      return [
+        createEmptyOfferItemDraft({
+          description: "One-Time Service",
+          unit: "kom",
+          quantity: "1",
+          unitPrice: "",
+        }),
+      ];
+    case "Per Employee Plan":
+      return [
+        createEmptyOfferItemDraft({
+          description: "Per Employee Plan",
+          unit: "zaposlenik",
+          quantity: "",
+          unitPrice: "",
+        }),
+      ];
+    case "Fixed Plan":
+    default:
+      return [
+        createEmptyOfferItemDraft({
+          description: "Fixed Plan",
+          unit: "mj",
+          quantity: "1",
+          unitPrice: "",
+        }),
+      ];
+  }
+}
+
+function sanitizeOfferItemsForCurrentPlan(items = offerFormItems) {
+  if (shouldOfferPlanAllowBreakdowns()) {
+    return items;
+  }
+
+  return items.map((item) => ({
+    ...item,
+    breakdowns: [],
+    showBreakdowns: false,
+  }));
+}
+
+function applyOfferPlanTypeToForm({ forceDefaults = false } = {}) {
+  if (!isOfferPlanEditorActive()) {
+    return;
+  }
+
+  const planDefinition = getActiveOfferPlanTypeDefinition();
+  if (offerServiceLineInput) {
+    offerServiceLineInput.value = planDefinition.value;
+  }
+
+  const shouldUseDefaults = forceDefaults
+    || offerFormItems.length === 0
+    || offerFormItems.every((item) => !hasMeaningfulOfferItemDraft(item))
+    || isOfferFormUsingPlanDefaults();
+
+  if (shouldUseDefaults) {
+    offerFormItems = buildOfferPlanDefaultItems(planDefinition);
+    renderOfferItemRows();
+    return;
+  }
+
+  const sanitizedItems = sanitizeOfferItemsForCurrentPlan(offerFormItems);
+  const changed = sanitizedItems.some((item, index) => item !== offerFormItems[index]);
+  if (changed) {
+    offerFormItems = sanitizedItems;
+    renderOfferItemRows();
+  } else {
+    syncCommercialQuickUploadMode();
+    syncOfferTotals();
+  }
+}
+
 function getCommercialDocumentUploadCategoryLabel() {
   if (isPurchaseOrdersContextActive()) {
     return getActiveCommercialDocumentDirection() === "outgoing"
@@ -67748,11 +67974,15 @@ function syncCommercialQuickUploadMode() {
   const incomingMode = activeDirection === "incoming";
   const outgoingStandaloneOffer = isOutgoingStandaloneOfferMode();
   const quickMode = isCommercialQuickUploadMode();
+  const offerPlanEditorActive = isOfferPlanEditorActive();
+  const offerPlanDefinition = getActiveOfferPlanTypeDefinition();
   const shouldShowUploads = shouldShowCommercialDocumentUploadSection();
   const quickTitleLabel = isPurchaseOrder ? "Što je naručeno" : (incomingMode ? "Što je ponuđeno" : "Naziv ponude");
   const standaloneToggleField = commercialStandaloneUploadInput?.closest(".commercial-standalone-upload-field");
   offerForm?.classList.toggle("is-commercial-quick-upload", quickMode);
   offerForm?.classList.toggle("is-commercial-standalone-offer", outgoingStandaloneOffer);
+  offerForm?.classList.toggle("is-offer-plan-no-breakdowns", offerPlanEditorActive && offerPlanDefinition.allowBreakdowns === false);
+  offerForm?.classList.toggle("is-offer-plan-hybrid", offerPlanEditorActive && offerPlanDefinition.value === "Hybrid Plan");
   if (standaloneToggleField) {
     standaloneToggleField.hidden = incomingMode;
   }
@@ -67785,13 +68015,33 @@ function syncCommercialQuickUploadMode() {
     offerServiceLineInput.disabled = quickMode && !outgoingStandaloneOffer;
   }
   if (offerServiceLineLabel) {
-    offerServiceLineLabel.textContent = outgoingStandaloneOffer ? "Vrsta ponude" : getActiveCommercialDocumentConfig().serviceLineLabel;
+    offerServiceLineLabel.textContent = (outgoingStandaloneOffer || offerPlanEditorActive)
+      ? "Vrsta ponude"
+      : getActiveCommercialDocumentConfig().serviceLineLabel;
+  }
+  if (offerPlanEditorActive && offerServiceLineInput) {
+    offerServiceLineInput.placeholder = "Fixed Plan, Hybrid Plan, One-Time Service, Per Employee Plan...";
   }
   if (offerUploadAmountField) {
     offerUploadAmountField.hidden = !outgoingStandaloneOffer;
   }
   offerTaxRateInput?.closest(".offer-tax-field")?.toggleAttribute("hidden", quickMode);
   offerAddItemButton?.closest(".offers-items-head")?.toggleAttribute("hidden", quickMode);
+  if (offerPlanEditorActive) {
+    if (offerItemsTitle) {
+      offerItemsTitle.textContent = offerPlanDefinition.itemsTitle;
+    }
+    if (offerItemsHelp) {
+      offerItemsHelp.textContent = offerPlanDefinition.help;
+    }
+    if (offerAddItemButton) {
+      offerAddItemButton.hidden = offerPlanDefinition.allowMultipleItems === false;
+      offerAddItemButton.textContent = offerPlanDefinition.addButtonLabel;
+    }
+  } else if (offerAddItemButton) {
+    offerAddItemButton.hidden = false;
+    offerAddItemButton.textContent = isPurchaseOrder ? "+ Dodaj stavku" : "+ Dodaj uslugu";
+  }
   offerItems?.toggleAttribute("hidden", quickMode);
   offerTotalsCard?.toggleAttribute("hidden", quickMode);
   offerPreviewButton?.closest(".offers-editor-meta-actions")?.toggleAttribute("hidden", false);
@@ -68271,7 +68521,7 @@ function serializeOfferBreakdownsForPayload(breakdowns = []) {
 }
 
 function serializeOfferItemsForPayload() {
-  return offerFormItems.map((item) => ({
+  return sanitizeOfferItemsForCurrentPlan(offerFormItems).map((item) => ({
     serviceCatalogId: item.serviceCatalogId || "",
     serviceCode: item.serviceCode || "",
     description: item.description,
@@ -68501,6 +68751,7 @@ function setOfferFormItems(items = [], { ensureOne = true } = {}) {
   offerFormItems = Array.isArray(items) && items.length > 0
     ? items.map((item) => createEmptyOfferItemDraft(item))
     : (ensureOne ? [createEmptyOfferItemDraft()] : []);
+  offerFormItems = sanitizeOfferItemsForCurrentPlan(offerFormItems);
   renderOfferItemRows();
 }
 
@@ -68599,6 +68850,10 @@ function toggleOfferItemDiscount(index) {
 }
 
 function toggleOfferItemBreakdowns(index) {
+  if (!shouldOfferPlanAllowBreakdowns()) {
+    return;
+  }
+
   offerFormItems = offerFormItems.map((item, itemIndex) => {
     if (itemIndex !== index) {
       return item;
@@ -68642,10 +68897,14 @@ function renderOfferItemRows() {
     return;
   }
 
+  const allowBreakdowns = shouldOfferPlanAllowBreakdowns();
+  const allowMultipleItems = shouldOfferPlanAllowMultipleItems();
+
   offerItems.replaceChildren(...offerFormItems.map((item, index) => {
+    const itemShowsBreakdowns = allowBreakdowns && Boolean(item.showBreakdowns);
     const row = document.createElement("div");
     row.className = "offer-item-row";
-    row.classList.toggle("has-breakdown", Boolean(item.showBreakdowns));
+    row.classList.toggle("has-breakdown", itemShowsBreakdowns);
     row.classList.toggle("has-discount", Boolean(item.showDiscount));
 
     const matchedService = state.serviceCatalog.find((entry) => (
@@ -68755,7 +69014,19 @@ function renderOfferItemRows() {
     const removeButton = createActionButton("Ukloni", "card-button card-danger offer-item-remove", () => {
       removeOfferFormItem(index);
     });
-    headActions.append(discountButton, breakdownButton, removeButton);
+    if (!allowBreakdowns) {
+      breakdownButton.hidden = true;
+      breakdownButton.disabled = true;
+    }
+    if (!allowMultipleItems && offerFormItems.length <= 1) {
+      removeButton.hidden = true;
+      removeButton.disabled = true;
+    }
+    headActions.append(discountButton);
+    if (allowBreakdowns) {
+      headActions.append(breakdownButton);
+    }
+    headActions.append(removeButton);
     head.append(titleMeta, headActions);
 
     const descriptionField = createInputField("Usluga", "description", {
@@ -68773,7 +69044,7 @@ function renderOfferItemRows() {
     const priceField = createInputField("Cijena", "unitPrice", {
       placeholder: "0,00",
       inputMode: "decimal",
-      hidden: item.showBreakdowns,
+      hidden: itemShowsBreakdowns,
     });
     priceField.classList.add("offer-item-field", "is-price", "is-currency-field");
 
@@ -68794,7 +69065,7 @@ function renderOfferItemRows() {
       optionalFields.append(discountField);
     }
 
-    if (item.showBreakdowns) {
+    if (itemShowsBreakdowns) {
       const breakdownBlock = document.createElement("div");
       breakdownBlock.className = "offer-item-breakdowns";
 
@@ -69212,6 +69483,10 @@ function buildOfferPayload() {
   const locationSelection = buildOfferLocationSummaryFromSelection(offerFormSelectedLocationIds, companyId);
   const contactSnapshot = getSelectedOfferContactSnapshot();
   const documentItems = buildOfferDocumentItemsForPayload();
+  const rawServiceLine = String((quickMode && !outgoingStandaloneOffer ? offerTitleInput.value : offerServiceLineInput.value) || "").trim();
+  const serviceLine = !isPurchaseOrder && activeDirection === "outgoing"
+    ? normalizeOfferPlanTypeValue(rawServiceLine)
+    : rawServiceLine;
 
   const payload = {
     title: offerTitleInput.value,
@@ -69223,7 +69498,7 @@ function buildOfferPayload() {
     contactName: contactSnapshot.contactName,
     contactPhone: contactSnapshot.contactPhone,
     contactEmail: contactSnapshot.contactEmail,
-    serviceLine: quickMode && !outgoingStandaloneOffer ? offerTitleInput.value : offerServiceLineInput.value,
+    serviceLine,
     status: offerStatusInput.value,
     showTotalAmount: quickMode ? false : isOfferTotalVisible(),
     taxRate: quickMode ? "0" : offerTaxRateInput.value,
@@ -69303,6 +69578,11 @@ function resetOfferForm() {
   if (commercialExternalNumberInput) {
     commercialExternalNumberInput.value = "";
   }
+  if (offerServiceLineInput) {
+    offerServiceLineInput.value = !isPurchaseOrdersContextActive() && activeDirection === "outgoing"
+      ? OFFER_PLAN_TYPE_DEFINITIONS[0].value
+      : "";
+  }
   purchaseOrderDocumentDrafts = [];
   renderPurchaseOrderDocuments();
   if (purchaseOrderDocumentsInput) {
@@ -69325,7 +69605,12 @@ function resetOfferForm() {
     offerCompanyPreviewName,
     offerCompanyPreviewMeta,
   );
-  setOfferFormItems([], { ensureOne: !isCommercialQuickUploadMode() });
+  if (isOfferPlanEditorActive()) {
+    setOfferFormItems([], { ensureOne: false });
+    applyOfferPlanTypeToForm({ forceDefaults: true });
+  } else {
+    setOfferFormItems([], { ensureOne: !isCommercialQuickUploadMode() });
+  }
   if (offerDeleteButton) {
     offerDeleteButton.hidden = true;
   }
@@ -69380,7 +69665,9 @@ function hydrateOfferForm(offer) {
     contactPhone: offer.contactPhone || "",
     contactEmail: offer.contactEmail || "",
   });
-  offerServiceLineInput.value = offer.serviceLine || "";
+  offerServiceLineInput.value = !isPurchaseOrder && getActiveCommercialDocumentDirection() === "outgoing"
+    ? normalizeOfferPlanTypeValue(offer.serviceLine || OFFER_PLAN_TYPE_DEFINITIONS[0].value)
+    : (offer.serviceLine || "");
   if (offerUploadAmountInput) {
     const firstItem = Array.isArray(offer.items) ? offer.items[0] : null;
     offerUploadAmountInput.value = firstItem?.unitPrice
@@ -69416,6 +69703,7 @@ function hydrateOfferForm(offer) {
   setOfferDiscountVisibility(Number(offer.discountRate ?? 0) > 0);
   setOfferTotalVisibility(offer.showTotalAmount !== false);
   setOfferFormItems(offer.items ?? [], { ensureOne: !isCommercialQuickUploadMode() });
+  applyOfferPlanTypeToForm({ forceDefaults: false });
   offerError.textContent = "";
   if (offerDeleteButton) {
     offerDeleteButton.hidden = false;
@@ -85885,6 +86173,25 @@ offerStatusInput?.addEventListener("change", () => {
   }
 });
 
+offerServiceLineInput?.addEventListener("input", () => {
+  syncCommercialQuickUploadMode();
+  if (state.offerTemplateModalOpen) {
+    renderOfferTemplatePlaceholderList();
+  }
+});
+
+offerServiceLineInput?.addEventListener("change", () => {
+  if (isOfferPlanEditorActive()) {
+    applyOfferPlanTypeToForm({ forceDefaults: isOfferFormUsingPlanDefaults() });
+  } else {
+    syncCommercialQuickUploadMode();
+    syncOfferTotals();
+  }
+  if (state.offerTemplateModalOpen) {
+    renderOfferTemplatePlaceholderList();
+  }
+});
+
 offerDateInput?.addEventListener("change", () => {
   normalizeOfferDateFieldDisplay();
   if (state.offerTemplateModalOpen) {
@@ -85941,7 +86248,11 @@ purchaseOrderExternalNumberInput?.addEventListener("input", () => {
 
 commercialStandaloneUploadInput?.addEventListener("change", () => {
   syncCommercialQuickUploadMode();
-  setOfferFormItems(offerFormItems, { ensureOne: !isCommercialQuickUploadMode() });
+  if (isOfferPlanEditorActive()) {
+    applyOfferPlanTypeToForm({ forceDefaults: offerFormItems.length === 0 || offerFormItems.every((item) => !hasMeaningfulOfferItemDraft(item)) });
+  } else {
+    setOfferFormItems(offerFormItems, { ensureOne: !isCommercialQuickUploadMode() });
+  }
   syncOfferTotals();
 });
 

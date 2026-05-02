@@ -301,9 +301,10 @@ export function normalizeDocumentTemplateFieldHeight(value = 0, type = "text") {
 }
 
 export const OFFER_SERVICE_LINE_SUGGESTIONS = [
-  "Flat plan",
-  "One-Time",
-  "Monthly+Per Services",
+  "Fixed Plan",
+  "Hybrid Plan",
+  "One-Time Service",
+  "Per Employee Plan",
 ];
 
 export const DASHBOARD_WIDGET_SOURCE_OPTIONS = [
