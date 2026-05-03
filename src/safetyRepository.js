@@ -3035,7 +3035,8 @@ async function fetchSnapshotFromConnection(connection) {
 
   const [offerRows] = await connection.query(`
     SELECT id, organization_id, company_id, location_id, location_scope, offer_number, offer_year, offer_sequence,
-           offer_initials, title, service_line, status, offer_direction, offer_date, valid_until, note, currency_code,
+           offer_initials, title, service_line, status, offer_direction, offer_date, valid_until, note,
+           text_block_1, text_block_2, currency_code,
            document_mode, internal_document_number, external_document_number,
            tax_rate, discount_rate, subtotal_amount, discount_total_amount, taxable_subtotal_amount,
            show_total_amount, location_ids_json, location_names_json,
@@ -3084,6 +3085,11 @@ async function fetchSnapshotFromConnection(connection) {
       unitPrice: Number(item.unitPrice ?? 0) || 0,
       breakdowns: parseJsonArray(item.breakdowns).map((entry) => ({
         label: dbString(entry.label),
+        priceKind: dbString(entry.priceKind),
+        unitLabel: dbString(entry.unitLabel),
+        recordLabel: dbString(entry.recordLabel ?? entry.label),
+        measurementFrom: dbString(entry.measurementFrom),
+        measurementTo: dbString(entry.measurementTo),
         amount: Number(entry.amount ?? 0) || 0,
       })),
       breakdownTotal: Number(item.breakdownTotal ?? 0) || 0,
@@ -3202,6 +3208,11 @@ async function fetchSnapshotFromConnection(connection) {
       unitPrice: Number(item.unitPrice ?? 0) || 0,
       breakdowns: parseJsonArray(item.breakdowns).map((entry) => ({
         label: dbString(entry.label),
+        priceKind: dbString(entry.priceKind),
+        unitLabel: dbString(entry.unitLabel),
+        recordLabel: dbString(entry.recordLabel ?? entry.label),
+        measurementFrom: dbString(entry.measurementFrom),
+        measurementTo: dbString(entry.measurementTo),
         amount: Number(entry.amount ?? 0) || 0,
       })),
       breakdownTotal: Number(item.breakdownTotal ?? 0) || 0,
@@ -3247,6 +3258,8 @@ async function fetchSnapshotFromConnection(connection) {
       validUntil: normalizeDateOnly(row.valid_until),
       externalDocumentNumber: row.external_document_number ?? "",
       note: row.note ?? "",
+      textBlock1: row.text_block_1 ?? "",
+      textBlock2: row.text_block_2 ?? "",
       currency: row.currency_code ?? "EUR",
       taxRate: Number(row.tax_rate ?? 0) || 0,
       discountRate: Number(row.discount_rate ?? 0) || 0,
@@ -6277,6 +6290,8 @@ export class MySqlSafetyRepository {
         offer_date DATE NULL,
         valid_until DATE NULL,
         note TEXT NOT NULL,
+        text_block_1 LONGTEXT NULL,
+        text_block_2 LONGTEXT NULL,
         currency_code VARCHAR(12) NOT NULL DEFAULT 'EUR',
         tax_rate DECIMAL(10, 2) NOT NULL DEFAULT 25.00,
         discount_rate DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
@@ -6288,7 +6303,7 @@ export class MySqlSafetyRepository {
         grand_total_amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
         items_json LONGTEXT NULL,
         documents_json LONGTEXT NULL,
-        contact_slot VARCHAR(128) NOT NULL DEFAULT '',
+        contact_slot VARCHAR(255) NOT NULL DEFAULT '',
         contact_name VARCHAR(160) NOT NULL DEFAULT '',
         contact_phone VARCHAR(80) NOT NULL DEFAULT '',
         contact_email VARCHAR(180) NOT NULL DEFAULT '',
@@ -7080,8 +7095,10 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_offers", "discount_total_amount", "DECIMAL(12, 2) NOT NULL DEFAULT 0.00 AFTER subtotal_amount");
     await ensureColumnExists(this.pool, "web_offers", "taxable_subtotal_amount", "DECIMAL(12, 2) NOT NULL DEFAULT 0.00 AFTER discount_total_amount");
     await ensureColumnExists(this.pool, "web_offers", "show_total_amount", "TINYINT(1) NOT NULL DEFAULT 1 AFTER taxable_subtotal_amount");
+    await ensureColumnExists(this.pool, "web_offers", "text_block_1", "LONGTEXT NULL AFTER note");
+    await ensureColumnExists(this.pool, "web_offers", "text_block_2", "LONGTEXT NULL AFTER text_block_1");
     await ensureColumnExists(this.pool, "web_offers", "documents_json", "LONGTEXT NULL AFTER items_json");
-    await ensureVarcharColumnLength(this.pool, "web_offers", "contact_slot", 128, "VARCHAR(128) NOT NULL DEFAULT ''");
+    await ensureVarcharColumnLength(this.pool, "web_offers", "contact_slot", 255, "VARCHAR(255) NOT NULL DEFAULT ''");
     await ensureColumnExists(this.pool, "web_offers", "contact_name", "VARCHAR(160) NOT NULL DEFAULT '' AFTER contact_slot");
     await ensureColumnExists(this.pool, "web_offers", "contact_phone", "VARCHAR(80) NOT NULL DEFAULT '' AFTER contact_name");
     await ensureColumnExists(this.pool, "web_offers", "contact_email", "VARCHAR(180) NOT NULL DEFAULT '' AFTER contact_phone");
@@ -8689,11 +8706,11 @@ export class MySqlSafetyRepository {
             (organization_id, company_id, location_id, location_scope, location_ids_json, location_names_json,
              offer_number, offer_year, offer_sequence,
              offer_initials, document_mode, internal_document_number, external_document_number,
-             title, service_line, status, offer_direction, offer_date, valid_until, note, currency_code,
+             title, service_line, status, offer_direction, offer_date, valid_until, note, text_block_1, text_block_2, currency_code,
              tax_rate, discount_rate, subtotal_amount, discount_total_amount, taxable_subtotal_amount,
              show_total_amount, tax_total_amount, grand_total_amount, items_json, contact_slot, contact_name,
              documents_json, contact_phone, contact_email, created_by_user_id, created_by_label)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
@@ -8716,6 +8733,8 @@ export class MySqlSafetyRepository {
           draft.offerDate,
           draft.validUntil,
           draft.note,
+          draft.textBlock1 ?? "",
+          draft.textBlock2 ?? "",
           draft.currency,
           parseNullableDecimal(draft.taxRate) ?? 0,
           parseNullableDecimal(draft.discountRate) ?? 0,
@@ -8783,7 +8802,7 @@ export class MySqlSafetyRepository {
           SET company_id = ?, location_id = ?, location_scope = ?, location_ids_json = ?, location_names_json = ?,
               title = ?, service_line = ?, status = ?, offer_direction = ?, document_mode = ?,
               internal_document_number = ?, external_document_number = ?,
-              offer_date = ?, valid_until = ?, note = ?, currency_code = ?, tax_rate = ?, discount_rate = ?,
+              offer_date = ?, valid_until = ?, note = ?, text_block_1 = ?, text_block_2 = ?, currency_code = ?, tax_rate = ?, discount_rate = ?,
               subtotal_amount = ?, discount_total_amount = ?, taxable_subtotal_amount = ?, show_total_amount = ?,
               tax_total_amount = ?, grand_total_amount = ?, items_json = ?, documents_json = ?, contact_slot = ?, contact_name = ?,
               contact_phone = ?, contact_email = ?
@@ -8805,6 +8824,8 @@ export class MySqlSafetyRepository {
           next.offerDate,
           next.validUntil,
           next.note,
+          next.textBlock1 ?? "",
+          next.textBlock2 ?? "",
           next.currency,
           parseNullableDecimal(next.taxRate) ?? 0,
           parseNullableDecimal(next.discountRate) ?? 0,

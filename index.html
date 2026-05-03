@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260502l" />
+    <link rel="stylesheet" href="/styles.css?v=20260503a" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -5099,12 +5099,6 @@
                     <form id="offer-form" class="entity-form">
                       <input id="offer-id" type="hidden" />
 
-                      <datalist id="offer-service-line-options">
-                        <option value="Fixed Plan"></option>
-                        <option value="Hybrid Plan"></option>
-                        <option value="One-Time Service"></option>
-                        <option value="Per Employee Plan"></option>
-                      </datalist>
                       <datalist id="offer-item-service-options"></datalist>
 
                       <div class="offers-editor-topline">
@@ -5138,7 +5132,7 @@
                         <div class="offers-editor-meta-actions">
                           <button id="offer-preview" type="button" class="ghost-button offer-icon-button" aria-label="Pregled ponude" title="Pregled ponude"></button>
                           <button id="offer-download-pdf" type="button" class="ghost-button offer-icon-button" aria-label="Preuzmi PDF" title="Preuzmi PDF"></button>
-                          <button id="offer-send-email" type="button" class="ghost-button offer-icon-button" aria-label="Pošalji email" title="Pošalji email"></button>
+                          <button id="offer-send-email" type="button" class="ghost-button offer-icon-button has-label" aria-label="Preview i email" title="Preview i email"></button>
                         </div>
                       </div>
 
@@ -5178,7 +5172,12 @@
                         </label>
                         <label class="field">
                           <span id="offer-service-line-label">Vrsta ponude</span>
-                          <input id="offer-service-line" list="offer-service-line-options" maxlength="180" placeholder="Fixed Plan, Hybrid Plan, One-Time Service, Per Employee Plan..." required />
+                          <select id="offer-service-line" required>
+                            <option value="Fixed Plan">Fixed Plan</option>
+                            <option value="Hybrid Plan">Hybrid Plan</option>
+                            <option value="One-Time Service">One-Time Service</option>
+                            <option value="Per Employee Plan">Per Employee Plan</option>
+                          </select>
                         </label>
                         <label id="offer-upload-amount-field" class="field is-currency-field" hidden>
                           <span>Iznos ponude</span>
@@ -5206,6 +5205,16 @@
                         <span>Napomena</span>
                         <textarea id="offer-note" rows="3" placeholder="Dodatne napomene, rok izvedbe, uvjeti plaćanja..."></textarea>
                       </label>
+                      <div class="offer-text-blocks">
+                        <label class="field offer-text-block-field">
+                          <span>Tekst za template 1</span>
+                          <textarea id="offer-text-block-1" rows="4" placeholder="Npr. zakonska osnova, obuhvat ponude, uvjeti..."></textarea>
+                        </label>
+                        <label class="field offer-text-block-field">
+                          <span>Tekst za template 2</span>
+                          <textarea id="offer-text-block-2" rows="4" placeholder="Dodatni tekst za Word predložak ili posebne napomene..."></textarea>
+                        </label>
+                      </div>
 
                       <section id="purchase-order-documents-section" class="purchase-order-documents-section" hidden>
                         <div class="offers-items-head">
@@ -5224,7 +5233,10 @@
                           <strong id="offer-items-title">Stavke ponude</strong>
                           <p id="offer-items-help" class="inline-help">Dodaj uslugu, količinu, cijenu ili razradu po stavci.</p>
                         </div>
-                        <button id="offer-add-item" type="button" class="ghost-button">+ Dodaj uslugu</button>
+                        <div class="offers-items-actions">
+                          <button id="offer-copy-pricing" type="button" class="ghost-button">Kopiraj iz ranije ponude</button>
+                          <button id="offer-add-item" type="button" class="ghost-button">+ Dodaj uslugu</button>
+                        </div>
                       </div>
 
                       <div id="offer-items" class="offer-items"></div>
@@ -7708,6 +7720,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260502l"></script>
+    <script type="module" src="/src/main.js?v=20260503a"></script>
   </body>
 </html>

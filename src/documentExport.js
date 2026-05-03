@@ -2706,6 +2706,21 @@ export async function buildOfferPdfBuffer(offer = {}, options = {}) {
     });
   }
 
+  [
+    ["Dodatni tekst 1", offer.textBlock1],
+    ["Dodatni tekst 2", offer.textBlock2],
+  ].forEach(([title, body]) => {
+    if (!clean(body)) {
+      return;
+    }
+    doc.moveDown(0.45);
+    drawOfferPdfSectionTitle(doc, title);
+    doc.font("dejavu").fontSize(10.5).fillColor("#1f2937").text(normalizePdfText(body), {
+      width: helpers.availableWidth,
+      lineGap: 2,
+    });
+  });
+
   doc.moveDown(0.45);
   drawOfferPdfSectionTitle(doc, "Stavke ponude");
 
@@ -2742,7 +2757,7 @@ export async function buildOfferPdfBuffer(offer = {}, options = {}) {
 
       let contentY = startY + 48;
       breakdowns.forEach((entry) => {
-        const recordLabel = clean(entry.recordLabel || entry.label) || "Razrada";
+        const recordLabel = clean(entry.unitLabel || entry.recordLabel || entry.label) || "Razrada";
         const measurementRange = normalizePdfLines([
           clean(entry.measurementFrom),
           clean(entry.measurementTo),

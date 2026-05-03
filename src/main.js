@@ -495,6 +495,8 @@ const OFFER_TEMPLATE_PLACEHOLDER_DEFINITIONS = Object.freeze([
   Object.freeze({ key: "CONTACT_EMAIL", label: "Kontakt email", description: "Email kontakta." }),
   Object.freeze({ key: "SERVICE_LINE", label: "Vrsta ponude", description: "Tip ponude ili glavna vrsta usluge za ponudu." }),
   Object.freeze({ key: "OFFER_TYPE", label: "Vrsta ponude", description: "Alias za vrstu ponude, za predloške gdje želiš odvojeno ime placeholdera." }),
+  Object.freeze({ key: "OFFER_TEXT_1", label: "Tekst ponude 1", description: "Prvi slobodni tekst za zakone, obuhvat, uvjete ili posebni dio Word predloška." }),
+  Object.freeze({ key: "OFFER_TEXT_2", label: "Tekst ponude 2", description: "Drugi slobodni tekst za dodatne uvjete ili posebni dio Word predloška." }),
   Object.freeze({ key: "ITEMS_TABLE", label: "Tablica stavki", description: "Sve stavke ponude s količinama, razradom i iznosima." }),
   Object.freeze({ key: "ITEMS_TABLE_TEXT", label: "Tablica stavki - tekst", description: "Tekstualna verzija tablice ako ne želiš Word tablicu." }),
   Object.freeze({ key: "ITEMS_SUMMARY", label: "Sažetak stavki", description: "Jednostavni tekstualni popis stavki." }),
@@ -539,10 +541,10 @@ const OFFER_PLAN_TYPE_DEFINITIONS = Object.freeze([
     value: "Fixed Plan",
     label: "Fixed Plan",
     help: "Jedan fiksni iznos bez razrade po stavkama.",
-    itemsTitle: "Fiksni plan",
-    addButtonLabel: "+ Dodaj stavku",
+    itemsTitle: "Fiksni plan i ukljucene usluge",
+    addButtonLabel: "+ Dodaj ukljucenu uslugu",
     allowBreakdowns: false,
-    allowMultipleItems: false,
+    allowMultipleItems: true,
   }),
   Object.freeze({
     value: "Hybrid Plan",
@@ -573,6 +575,13 @@ const OFFER_PLAN_TYPE_DEFINITIONS = Object.freeze([
   }),
 ]);
 const OFFER_SERVICE_LINE_OPTIONS = Object.freeze(OFFER_PLAN_TYPE_DEFINITIONS.map((entry) => entry.value));
+const OFFER_BREAKDOWN_PRICE_KIND_OPTIONS = Object.freeze([
+  Object.freeze({ value: "report", label: "Zapisnik", defaultLabel: "zapisnik" }),
+  Object.freeze({ value: "measurement", label: "Mjerno mjesto", defaultLabel: "mjerno mjesto" }),
+  Object.freeze({ value: "measurement_range", label: "Mjerno mjesto od-do", defaultLabel: "mjerno mjesto" }),
+  Object.freeze({ value: "next_measurement", label: "Svaki iduci", defaultLabel: "svaki iduci" }),
+  Object.freeze({ value: "custom", label: "Ostalo", defaultLabel: "" }),
+]);
 const OFFER_PLAN_DEFAULT_ITEM_LABELS = Object.freeze([
   "Fixed Plan",
   "Mjesečni iznos",
@@ -2857,6 +2866,8 @@ const offerDatePickerButton = document.querySelector("#offer-date-picker-button"
 const offerDatePickerInput = document.querySelector("#offer-date-picker");
 const offerTaxRateInput = document.querySelector("#offer-tax-rate");
 const offerNoteInput = document.querySelector("#offer-note");
+const offerTextBlock1Input = document.querySelector("#offer-text-block-1");
+const offerTextBlock2Input = document.querySelector("#offer-text-block-2");
 const purchaseOrderDirectionField = document.querySelector("#purchase-order-direction-field");
 const purchaseOrderDirectionInput = document.querySelector("#purchase-order-direction");
 const purchaseOrderExternalNumberField = document.querySelector("#purchase-order-external-number-field");
@@ -2875,6 +2886,7 @@ const purchaseOrderDocumentsUploadButton = document.querySelector("#purchase-ord
 const purchaseOrderDocumentsInput = document.querySelector("#purchase-order-documents-input");
 const purchaseOrderDocumentsList = document.querySelector("#purchase-order-documents-list");
 const offerAddItemButton = document.querySelector("#offer-add-item");
+const offerCopyPricingButton = document.querySelector("#offer-copy-pricing");
 const offerItemsTitle = document.querySelector("#offer-items-title");
 const offerItemsHelp = document.querySelector("#offer-items-help");
 const offerItems = document.querySelector("#offer-items");
@@ -35230,19 +35242,21 @@ function closeOfferTemplateModal() {
   syncOfferTemplateModal();
 }
 
-function decorateOfferActionIcon(button, iconName) {
+function decorateOfferActionIcon(button, iconName, label = "") {
   if (!(button instanceof HTMLButtonElement) || button.dataset.decorated === "true") {
     return;
   }
 
-  button.innerHTML = getWorkOrderIconMarkup(iconName);
+  button.innerHTML = label
+    ? `${getWorkOrderIconMarkup(iconName)}<span>${escapeHtml(label)}</span>`
+    : getWorkOrderIconMarkup(iconName);
   button.dataset.decorated = "true";
 }
 
 function enhanceOfferChrome() {
   decorateOfferActionIcon(offerPreviewButton, "preview");
   decorateOfferActionIcon(offerDownloadPdfButton, "download");
-  decorateOfferActionIcon(offerSendEmailButton, "mail");
+  decorateOfferActionIcon(offerSendEmailButton, "mail", "Preview i email");
   decorateOfferActionIcon(contractDownloadPdfButton, "download");
   decorateOfferActionIcon(contractDownloadWordButton, "document");
 }
@@ -36135,6 +36149,8 @@ function buildOfferDraftPreviewData() {
     contactEmail: contactSnapshot.contactEmail || "",
     serviceLine,
     note: String(offerNoteInput?.value || "").trim(),
+    textBlock1: String(offerTextBlock1Input?.value || "").trim(),
+    textBlock2: String(offerTextBlock2Input?.value || "").trim(),
     orderDirection: isPurchaseOrder ? activeDirection : "",
     documentMode: quickMode ? "upload" : "app",
     internalDocumentNumber: outgoingStandaloneOffer ? "" : String(commercialInternalNumberInput?.value || "").trim(),
@@ -36160,12 +36176,14 @@ function buildOfferDraftPreviewData() {
       unitPrice: parseOfferMoneyInput(item?.unitPrice, 0),
       breakdowns: Array.isArray(item?.breakdowns)
         ? item.breakdowns.map((entry) => ({
+          priceKind: String(entry?.priceKind || "").trim(),
+          unitLabel: String(entry?.unitLabel || "").trim(),
           recordLabel: String(entry?.recordLabel || entry?.label || "").trim(),
           measurementFrom: String(entry?.measurementFrom || "").trim(),
           measurementTo: String(entry?.measurementTo || "").trim(),
-          label: String(entry?.label || entry?.recordLabel || "").trim(),
+          label: String(entry?.label || entry?.unitLabel || entry?.recordLabel || "").trim(),
           amount: parseOfferMoneyInput(entry?.amount, 0),
-        })).filter((entry) => entry.recordLabel || entry.measurementFrom || entry.measurementTo || entry.amount)
+        })).filter((entry) => entry.recordLabel || entry.unitLabel || entry.measurementFrom || entry.measurementTo || entry.amount)
         : [],
       discountRate: parseOfferMoneyInput(item?.discountRate, 0),
       totalPrice: calculateOfferTotalsForSerializedItems([item], 0, 0).subtotal,
@@ -36286,6 +36304,8 @@ function buildOfferTemplatePlaceholderPayload(offer = buildOfferDraftPreviewData
     CONTACT_EMAIL: normalizedOffer.contactEmail || "",
     SERVICE_LINE: normalizedOffer.serviceLine || "",
     OFFER_TYPE: normalizedOffer.serviceLine || "",
+    OFFER_TEXT_1: normalizedOffer.textBlock1 || "",
+    OFFER_TEXT_2: normalizedOffer.textBlock2 || "",
     ITEMS_TABLE: itemsTable,
     ITEMS_TABLE_TEXT: itemsTableText,
     ITEMS_SUMMARY: itemsSummary,
@@ -67799,7 +67819,7 @@ function hasMeaningfulOfferItemDraft(item = {}) {
       || String(item.unitPrice || "").trim()
       || String(item.discountRate || "").trim()
       || (Array.isArray(item.breakdowns) && item.breakdowns.some((entry) => (
-        String(entry.recordLabel || entry.label || "").trim()
+        String(entry.recordLabel || entry.label || entry.unitLabel || "").trim()
         || String(entry.measurementFrom || "").trim()
         || String(entry.measurementTo || "").trim()
         || String(entry.amount || "").trim()
@@ -67840,7 +67860,25 @@ function buildOfferPlanDefaultItems(planDefinition = getActiveOfferPlanTypeDefin
           unitPrice: "",
           breakdowns: [
             {
+              priceKind: "report",
+              unitLabel: "zapisnik",
               recordLabel: "Zapisnik",
+              measurementFrom: "",
+              measurementTo: "",
+              amount: "",
+            },
+            {
+              priceKind: "measurement_range",
+              unitLabel: "mjerno mjesto do",
+              recordLabel: "Mjerno mjesto",
+              measurementFrom: "",
+              measurementTo: "",
+              amount: "",
+            },
+            {
+              priceKind: "next_measurement",
+              unitLabel: "svaki iduci",
+              recordLabel: "Svaki iduci",
               measurementFrom: "",
               measurementTo: "",
               amount: "",
@@ -67877,6 +67915,35 @@ function buildOfferPlanDefaultItems(planDefinition = getActiveOfferPlanTypeDefin
         }),
       ];
   }
+}
+
+function createOfferAdditionalItemDraftForCurrentPlan() {
+  const planDefinition = getActiveOfferPlanTypeDefinition();
+
+  if (isOfferPlanEditorActive() && planDefinition.value === "Fixed Plan") {
+    return createEmptyOfferItemDraft({
+      description: "",
+      unit: "ukljuceno",
+      quantity: "1",
+      unitPrice: "",
+    });
+  }
+
+  if (isOfferPlanEditorActive() && planDefinition.value === "Hybrid Plan") {
+    return createEmptyOfferItemDraft({
+      description: "",
+      unit: "usluga",
+      quantity: "1",
+      unitPrice: "",
+      breakdowns: [
+        { priceKind: "report", unitLabel: "zapisnik", recordLabel: "Zapisnik", amount: "" },
+        { priceKind: "measurement_range", unitLabel: "mjerno mjesto do", recordLabel: "Mjerno mjesto", measurementTo: "", amount: "" },
+        { priceKind: "next_measurement", unitLabel: "svaki iduci", recordLabel: "Svaki iduci", amount: "" },
+      ],
+    });
+  }
+
+  return createEmptyOfferItemDraft();
 }
 
 function sanitizeOfferItemsForCurrentPlan(items = offerFormItems) {
@@ -68020,11 +68087,16 @@ function syncCommercialQuickUploadMode() {
       : getActiveCommercialDocumentConfig().serviceLineLabel;
   }
   if (offerPlanEditorActive && offerServiceLineInput) {
-    offerServiceLineInput.placeholder = "Fixed Plan, Hybrid Plan, One-Time Service, Per Employee Plan...";
+    if ("placeholder" in offerServiceLineInput) {
+      offerServiceLineInput.placeholder = "Fixed Plan, Hybrid Plan, One-Time Service, Per Employee Plan...";
+    }
   }
   if (offerUploadAmountField) {
     offerUploadAmountField.hidden = !outgoingStandaloneOffer;
   }
+  [offerTextBlock1Input, offerTextBlock2Input].forEach((input) => {
+    input?.closest(".offer-text-block-field")?.toggleAttribute("hidden", isPurchaseOrder);
+  });
   offerTaxRateInput?.closest(".offer-tax-field")?.toggleAttribute("hidden", quickMode);
   offerAddItemButton?.closest(".offers-items-head")?.toggleAttribute("hidden", quickMode);
   if (offerPlanEditorActive) {
@@ -68038,9 +68110,15 @@ function syncCommercialQuickUploadMode() {
       offerAddItemButton.hidden = offerPlanDefinition.allowMultipleItems === false;
       offerAddItemButton.textContent = offerPlanDefinition.addButtonLabel;
     }
+    if (offerCopyPricingButton) {
+      offerCopyPricingButton.hidden = false;
+    }
   } else if (offerAddItemButton) {
     offerAddItemButton.hidden = false;
     offerAddItemButton.textContent = isPurchaseOrder ? "+ Dodaj stavku" : "+ Dodaj uslugu";
+    if (offerCopyPricingButton) {
+      offerCopyPricingButton.hidden = isPurchaseOrder || quickMode;
+    }
   }
   offerItems?.toggleAttribute("hidden", quickMode);
   offerTotalsCard?.toggleAttribute("hidden", quickMode);
@@ -68154,7 +68232,9 @@ function applyCommercialDocumentUiConfig() {
     offerServiceLineLabel.textContent = config.serviceLineLabel;
   }
   if (offerServiceLineInput) {
-    offerServiceLineInput.placeholder = config.serviceLinePlaceholder;
+    if ("placeholder" in offerServiceLineInput) {
+      offerServiceLineInput.placeholder = config.serviceLinePlaceholder;
+    }
   }
   if (offerNoteInput) {
     offerNoteInput.placeholder = config.notePlaceholder;
@@ -68192,8 +68272,9 @@ function applyCommercialDocumentUiConfig() {
     offerDownloadPdfButton.setAttribute("aria-label", config.downloadButtonLabel);
   }
   if (offerSendEmailButton) {
-    offerSendEmailButton.title = config.emailButtonLabel;
-    offerSendEmailButton.setAttribute("aria-label", config.emailButtonLabel);
+    const emailButtonLabel = isPurchaseOrdersContextActive() ? config.emailButtonLabel : "Preview i email";
+    offerSendEmailButton.title = emailButtonLabel;
+    offerSendEmailButton.setAttribute("aria-label", emailButtonLabel);
   }
 
   if (offersFilterStatusInput) {
@@ -68506,18 +68587,22 @@ function serializeOfferBreakdownsForPayload(breakdowns = []) {
   return (Array.isArray(breakdowns) ? breakdowns : [])
     .map((entry) => {
       const recordLabel = String(entry?.recordLabel || entry?.label || "").trim();
+      const priceKind = String(entry?.priceKind || "").trim();
+      const unitLabel = String(entry?.unitLabel || "").trim();
       const measurementFrom = String(entry?.measurementFrom || "").trim();
       const measurementTo = String(entry?.measurementTo || "").trim();
 
       return {
+        priceKind,
+        unitLabel,
         recordLabel,
         measurementFrom,
         measurementTo,
-        label: recordLabel,
+        label: unitLabel || recordLabel,
         amount: entry?.amount ?? "",
       };
     })
-    .filter((entry) => entry.recordLabel || entry.measurementFrom || entry.measurementTo || String(entry.amount || "").trim());
+    .filter((entry) => entry.recordLabel || entry.unitLabel || entry.measurementFrom || entry.measurementTo || String(entry.amount || "").trim());
 }
 
 function serializeOfferItemsForPayload() {
@@ -68697,6 +68782,126 @@ function setOfferTotalVisibility(visible) {
   syncOfferTotals();
 }
 
+let offerPricingCopyMenu = null;
+
+function closeOfferPricingCopyMenu() {
+  if (offerPricingCopyMenu) {
+    offerPricingCopyMenu.remove();
+    offerPricingCopyMenu = null;
+  }
+}
+
+function getOfferPricingCopyCandidates() {
+  const currentId = String(offerIdInput?.value || "").trim();
+  const currentCompanyId = String(offerCompanyIdInput?.value || "").trim();
+  const currentPlan = normalizeOfferPlanTypeValue(offerServiceLineInput?.value || "");
+
+  return (state.offers ?? [])
+    .filter((offer) => (
+      String(offer.id) !== currentId
+      && Array.isArray(offer.items)
+      && offer.items.length > 0
+      && String(offer.offerDirection || "outgoing") === "outgoing"
+    ))
+    .sort((left, right) => {
+      const leftScore = (String(left.companyId) === currentCompanyId ? 20 : 0)
+        + (normalizeOfferPlanTypeValue(left.serviceLine || "") === currentPlan ? 10 : 0);
+      const rightScore = (String(right.companyId) === currentCompanyId ? 20 : 0)
+        + (normalizeOfferPlanTypeValue(right.serviceLine || "") === currentPlan ? 10 : 0);
+      if (leftScore !== rightScore) {
+        return rightScore - leftScore;
+      }
+      return String(right.updatedAt || right.createdAt || "").localeCompare(String(left.updatedAt || left.createdAt || ""));
+    })
+    .slice(0, 8);
+}
+
+function copyOfferPricingFromOffer(sourceOffer = {}) {
+  if (!sourceOffer || !Array.isArray(sourceOffer.items) || sourceOffer.items.length === 0) {
+    return;
+  }
+
+  const sourcePlan = normalizeOfferPlanTypeValue(sourceOffer.serviceLine || "");
+  if (sourcePlan && offerServiceLineInput) {
+    offerServiceLineInput.value = getOfferPlanTypeDefinition(sourcePlan).value;
+  }
+  if (offerTaxRateInput) {
+    offerTaxRateInput.value = String(sourceOffer.taxRate ?? 25);
+  }
+  if (offerDiscountRateInput) {
+    offerDiscountRateInput.value = Number(sourceOffer.discountRate ?? 0) > 0 ? String(sourceOffer.discountRate) : "";
+  }
+  setOfferDiscountVisibility(Number(sourceOffer.discountRate ?? 0) > 0);
+  setOfferTotalVisibility(sourceOffer.showTotalAmount !== false);
+  setOfferFormItems(sourceOffer.items, { ensureOne: true });
+  applyOfferPlanTypeToForm({ forceDefaults: false });
+  setInlineMessage(
+    offerError,
+    `Kopirana razrada i cijene iz ponude ${sourceOffer.offerNumber || sourceOffer.title || "bez broja"}.`,
+    "success",
+  );
+}
+
+function openOfferPricingCopyMenu(anchorButton = offerCopyPricingButton) {
+  closeOfferPricingCopyMenu();
+
+  if (!(anchorButton instanceof HTMLElement)) {
+    return;
+  }
+
+  const candidates = getOfferPricingCopyCandidates();
+  const menu = document.createElement("div");
+  menu.className = "offer-pricing-copy-menu";
+  menu.setAttribute("role", "menu");
+
+  if (candidates.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "offer-pricing-copy-empty";
+    empty.textContent = "Nema ranijih ponuda s razradom za kopiranje.";
+    menu.append(empty);
+  } else {
+    candidates.forEach((offer) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "offer-pricing-copy-option";
+      button.setAttribute("role", "menuitem");
+
+      const title = document.createElement("strong");
+      title.textContent = offer.offerNumber || offer.title || "Ponuda bez broja";
+      const meta = document.createElement("span");
+      meta.textContent = [
+        offer.companyName || "",
+        normalizeOfferPlanTypeValue(offer.serviceLine || ""),
+        formatCurrencyAmount(offer.total || 0, offer.currency || "EUR"),
+      ].filter(Boolean).join(" · ");
+      button.append(title, meta);
+      button.addEventListener("click", () => {
+        copyOfferPricingFromOffer(offer);
+        closeOfferPricingCopyMenu();
+      });
+      menu.append(button);
+    });
+  }
+
+  document.body.append(menu);
+  const rect = anchorButton.getBoundingClientRect();
+  const menuWidth = Math.min(360, window.innerWidth - 24);
+  menu.style.width = `${menuWidth}px`;
+  menu.style.left = `${Math.min(window.innerWidth - menuWidth - 12, Math.max(12, rect.right - menuWidth))}px`;
+  menu.style.top = `${Math.min(window.innerHeight - 20, rect.bottom + 8)}px`;
+  offerPricingCopyMenu = menu;
+
+  const closeOnOutside = (event) => {
+    if (offerPricingCopyMenu && !offerPricingCopyMenu.contains(event.target) && event.target !== anchorButton) {
+      closeOfferPricingCopyMenu();
+      document.removeEventListener("pointerdown", closeOnOutside, true);
+    }
+  };
+  requestAnimationFrame(() => {
+    document.addEventListener("pointerdown", closeOnOutside, true);
+  });
+}
+
 function previewBlobInNewTab(blob, fallbackFileName = "preview.pdf") {
   const url = URL.createObjectURL(blob);
   const opened = window.open(url, "_blank", "noopener,noreferrer");
@@ -68728,23 +68933,31 @@ function syncOfferActionButtons() {
 
 function createEmptyOfferBreakdownDraft(entry = {}) {
   const recordLabel = String(entry?.recordLabel ?? entry?.reportLabel ?? entry?.label ?? "");
+  const priceKind = String(entry?.priceKind ?? entry?.type ?? entry?.kind ?? "report");
+  const unitLabel = String(entry?.unitLabel ?? entry?.description ?? entry?.priceLabel ?? "");
 
   return {
+    priceKind,
+    unitLabel,
     recordLabel,
     measurementFrom: String(entry?.measurementFrom ?? entry?.measurementFromNumber ?? entry?.from ?? ""),
     measurementTo: String(entry?.measurementTo ?? entry?.measurementToNumber ?? entry?.to ?? ""),
-    label: String(entry?.label ?? recordLabel),
+    label: String(entry?.label ?? unitLabel ?? recordLabel),
     amount: String(entry?.amount ?? ""),
   };
 }
 
 function getOfferBreakdownDisplayLabel(entry = {}) {
+  const priceKind = String(entry?.priceKind || "").trim();
+  const kindDefinition = OFFER_BREAKDOWN_PRICE_KIND_OPTIONS.find((option) => option.value === priceKind);
+  const unitLabel = String(entry?.unitLabel || "").trim();
   const recordLabel = String(entry?.recordLabel || entry?.label || "").trim();
   const measurementFrom = String(entry?.measurementFrom || "").trim();
   const measurementTo = String(entry?.measurementTo || "").trim();
   const range = [measurementFrom, measurementTo].filter(Boolean).join(" - ");
+  const baseLabel = unitLabel || recordLabel || kindDefinition?.defaultLabel || kindDefinition?.label || "Razrada";
 
-  return [recordLabel || "Zapisnik", range ? `mjerno mjesto ${range}` : ""].filter(Boolean).join(" · ");
+  return [baseLabel, range ? `mjerno mjesto ${range}` : ""].filter(Boolean).join(" · ");
 }
 
 function setOfferFormItems(items = [], { ensureOne = true } = {}) {
@@ -68899,13 +69112,18 @@ function renderOfferItemRows() {
 
   const allowBreakdowns = shouldOfferPlanAllowBreakdowns();
   const allowMultipleItems = shouldOfferPlanAllowMultipleItems();
+  const activePlanDefinition = getActiveOfferPlanTypeDefinition();
 
   offerItems.replaceChildren(...offerFormItems.map((item, index) => {
     const itemShowsBreakdowns = allowBreakdowns && Boolean(item.showBreakdowns);
+    const isFixedIncludedService = isOfferPlanEditorActive()
+      && activePlanDefinition.value === "Fixed Plan"
+      && index > 0;
     const row = document.createElement("div");
     row.className = "offer-item-row";
     row.classList.toggle("has-breakdown", itemShowsBreakdowns);
     row.classList.toggle("has-discount", Boolean(item.showDiscount));
+    row.classList.toggle("is-included-service", isFixedIncludedService);
 
     const matchedService = state.serviceCatalog.find((entry) => (
       String(entry.id) === String(item.serviceCatalogId)
@@ -68972,7 +69190,7 @@ function renderOfferItemRows() {
 
     const title = document.createElement("strong");
     title.className = "offer-item-head-title";
-    title.textContent = `Stavka ${index + 1}`;
+    title.textContent = isFixedIncludedService ? `Uključena usluga ${index}` : `Stavka ${index + 1}`;
 
     const titleMeta = document.createElement("div");
     titleMeta.className = "offer-item-head-copy";
@@ -69018,6 +69236,10 @@ function renderOfferItemRows() {
       breakdownButton.hidden = true;
       breakdownButton.disabled = true;
     }
+    if (isFixedIncludedService) {
+      discountButton.hidden = true;
+      discountButton.disabled = true;
+    }
     if (!allowMultipleItems && offerFormItems.length <= 1) {
       removeButton.hidden = true;
       removeButton.disabled = true;
@@ -69035,16 +69257,16 @@ function renderOfferItemRows() {
     });
     descriptionField.classList.add("offer-item-field", "is-description");
 
-    const unitField = createInputField("Jedinica", "unit", { placeholder: "kom, sat, mj..." });
+    const unitField = createInputField("Jedinica", "unit", { placeholder: "kom, sat, mj...", hidden: isFixedIncludedService });
     unitField.classList.add("offer-item-field", "is-unit");
 
-    const quantityField = createInputField("Količina", "quantity", { placeholder: "1", inputMode: "decimal" });
+    const quantityField = createInputField("Količina", "quantity", { placeholder: "1", inputMode: "decimal", hidden: isFixedIncludedService });
     quantityField.classList.add("offer-item-field", "is-quantity");
 
     const priceField = createInputField("Cijena", "unitPrice", {
       placeholder: "0,00",
       inputMode: "decimal",
-      hidden: itemShowsBreakdowns,
+      hidden: itemShowsBreakdowns || isFixedIncludedService,
     });
     priceField.classList.add("offer-item-field", "is-price", "is-currency-field");
 
@@ -69092,17 +69314,41 @@ function renderOfferItemRows() {
         const breakdownRow = document.createElement("div");
         breakdownRow.className = "offer-item-breakdown-row";
 
+        const typeField = document.createElement("label");
+        typeField.className = "field";
+        const typeSpan = document.createElement("span");
+        typeSpan.textContent = "Vrsta cijene";
+        const typeSelect = document.createElement("select");
+        replaceSelectOptions(
+          typeSelect,
+          OFFER_BREAKDOWN_PRICE_KIND_OPTIONS.map((option) => ({
+            value: option.value,
+            label: option.label,
+          })),
+          entry.priceKind || "report",
+        );
+        typeSelect.addEventListener("change", (event) => {
+          const nextValue = event.currentTarget.value;
+          const kindDefinition = OFFER_BREAKDOWN_PRICE_KIND_OPTIONS.find((option) => option.value === nextValue);
+          updateOfferFormBreakdown(index, breakdownIndex, "priceKind", nextValue);
+          if (!String(entry.unitLabel || "").trim() && kindDefinition?.defaultLabel) {
+            updateOfferFormBreakdown(index, breakdownIndex, "unitLabel", kindDefinition.defaultLabel);
+          }
+          renderOfferItemRows();
+        });
+        typeField.append(typeSpan, typeSelect);
+
         const recordField = document.createElement("label");
         recordField.className = "field";
         const recordSpan = document.createElement("span");
-        recordSpan.textContent = "Zapisnik";
+        recordSpan.textContent = "Opis cijene";
         const recordInput = document.createElement("input");
         recordInput.type = "text";
-        recordInput.placeholder = "npr. SPR, EL, PGP";
-        recordInput.value = entry.recordLabel ?? entry.label ?? "";
+        recordInput.placeholder = "zapisnik, sustav do 20 javljača, svaki naredni...";
+        recordInput.value = entry.unitLabel || entry.recordLabel || entry.label || "";
         recordInput.addEventListener("input", (event) => {
           const nextValue = event.currentTarget.value;
-          updateOfferFormBreakdown(index, breakdownIndex, "recordLabel", nextValue);
+          updateOfferFormBreakdown(index, breakdownIndex, "unitLabel", nextValue);
           updateOfferFormBreakdown(index, breakdownIndex, "label", nextValue);
         });
         recordField.append(recordSpan, recordInput);
@@ -69157,7 +69403,7 @@ function renderOfferItemRows() {
           },
         );
 
-        breakdownRow.append(recordField, fromField, toField, amountField, breakdownRemoveButton);
+        breakdownRow.append(typeField, recordField, fromField, toField, amountField, breakdownRemoveButton);
         breakdownList.append(breakdownRow);
       });
 
@@ -69167,7 +69413,9 @@ function renderOfferItemRows() {
 
     const actions = document.createElement("div");
     actions.className = "offer-item-actions";
-    actions.append(total);
+    if (!isFixedIncludedService) {
+      actions.append(total);
+    }
 
     row.append(head, content);
 
@@ -69504,6 +69752,8 @@ function buildOfferPayload() {
     taxRate: quickMode ? "0" : offerTaxRateInput.value,
     discountRate: isOfferDiscountVisible() ? offerDiscountRateInput?.value || "" : "",
     note: offerNoteInput.value,
+    textBlock1: offerTextBlock1Input?.value || "",
+    textBlock2: offerTextBlock2Input?.value || "",
     documentMode: quickMode ? "upload" : "app",
     internalDocumentNumber: outgoingStandaloneOffer ? "" : commercialInternalNumberInput?.value || "",
     externalDocumentNumber: outgoingStandaloneOffer ? "" : commercialExternalNumberInput?.value || "",
@@ -69556,6 +69806,12 @@ function resetOfferForm() {
   }
   if (offerNoteInput) {
     offerNoteInput.value = config.defaultNote;
+  }
+  if (offerTextBlock1Input) {
+    offerTextBlock1Input.value = "";
+  }
+  if (offerTextBlock2Input) {
+    offerTextBlock2Input.value = "";
   }
   if (offerDiscountRateInput) {
     offerDiscountRateInput.value = "";
@@ -69679,6 +69935,12 @@ function hydrateOfferForm(offer) {
   setOfferDateFieldValue(getCommercialDocumentDateValue(offer) || String(offer.createdAt ?? "").slice(0, 10) || new Date().toISOString().slice(0, 10));
   offerTaxRateInput.value = String(offer.taxRate ?? 25);
   offerNoteInput.value = offer.note || config.defaultNote;
+  if (offerTextBlock1Input) {
+    offerTextBlock1Input.value = offer.textBlock1 || "";
+  }
+  if (offerTextBlock2Input) {
+    offerTextBlock2Input.value = offer.textBlock2 || "";
+  }
   if (purchaseOrderDirectionInput) {
     purchaseOrderDirectionInput.value = getActiveCommercialDocumentDirection();
   }
@@ -72889,14 +73151,12 @@ function renderSharedOptions() {
     }));
   }
   if (offerServiceLineInput) {
-    const serviceLineDatalist = document.querySelector("#offer-service-line-options");
-    if (serviceLineDatalist) {
-      serviceLineDatalist.replaceChildren(...OFFER_SERVICE_LINE_OPTIONS.map((value) => {
-        const option = document.createElement("option");
-        option.value = value;
-        option.label = value;
-        return option;
-      }));
+    if (offerServiceLineInput instanceof HTMLSelectElement) {
+      replaceSelectOptions(
+        offerServiceLineInput,
+        OFFER_SERVICE_LINE_OPTIONS.map((value) => ({ value, label: value })),
+        offerServiceLineInput.value || OFFER_SERVICE_LINE_OPTIONS[0],
+      );
     }
   }
   rebuildDocumentTemplateCompanyOptions(documentTemplateCompanyIdInput?.value || "");
@@ -86182,7 +86442,7 @@ offerServiceLineInput?.addEventListener("input", () => {
 
 offerServiceLineInput?.addEventListener("change", () => {
   if (isOfferPlanEditorActive()) {
-    applyOfferPlanTypeToForm({ forceDefaults: isOfferFormUsingPlanDefaults() });
+    applyOfferPlanTypeToForm({ forceDefaults: true });
   } else {
     syncCommercialQuickUploadMode();
     syncOfferTotals();
@@ -86288,11 +86548,16 @@ offerToggleTotalButton?.addEventListener("click", () => {
 });
 
 offerAddItemButton?.addEventListener("click", () => {
-  addOfferFormItem();
+  addOfferFormItem(createOfferAdditionalItemDraftForCurrentPlan());
   const lastDescriptionInput = offerItems?.querySelector(".offer-item-row:last-child input");
   if (lastDescriptionInput instanceof HTMLElement) {
     lastDescriptionInput.focus({ preventScroll: true });
   }
+});
+
+offerCopyPricingButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  openOfferPricingCopyMenu(offerCopyPricingButton);
 });
 
 offerResetButton?.addEventListener("click", () => {

@@ -1585,7 +1585,7 @@ function buildCommercialItemsTablePlaceholder(items = [], currency = "EUR", { fa
 }
 
 function formatCommercialBreakdownLabel(entry = {}) {
-  const recordLabel = String(entry?.recordLabel || entry?.label || "Razrada").trim() || "Razrada";
+  const recordLabel = String(entry?.unitLabel || entry?.recordLabel || entry?.label || "Razrada").trim() || "Razrada";
   const measurementFrom = String(entry?.measurementFrom || "").trim();
   const measurementTo = String(entry?.measurementTo || "").trim();
   const measurementRange = [measurementFrom, measurementTo].filter(Boolean).join(" - ");
@@ -1805,6 +1805,8 @@ function buildOfferTemplatePlaceholderPayload(offer = {}) {
     CONTACT_EMAIL: normalizedOffer.contactEmail || "",
     SERVICE_LINE: normalizedOffer.serviceLine || "",
     OFFER_TYPE: normalizedOffer.serviceLine || "",
+    OFFER_TEXT_1: normalizedOffer.textBlock1 || "",
+    OFFER_TEXT_2: normalizedOffer.textBlock2 || "",
     ITEMS_TABLE: itemsTable,
     ITEMS_TABLE_TEXT: itemsTableText,
     ITEMS_SUMMARY: itemsSummary,

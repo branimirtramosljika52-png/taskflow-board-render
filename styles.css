@@ -2873,36 +2873,39 @@ body.is-offer-editor-open {
 
 .commercial-date-control {
   position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 6px;
-  align-items: center;
+  display: block;
   min-width: 0;
 }
 
 .commercial-date-control input[type="text"] {
   min-width: 0;
+  width: 100%;
+  padding-right: 48px;
 }
 
 .commercial-date-picker-button {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
   display: inline-grid;
   place-items: center;
-  width: 42px;
-  min-width: 42px;
-  height: 42px;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
   border: 1px solid rgba(181, 198, 231, 0.95);
-  border-radius: 12px;
+  border-radius: 10px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(245, 248, 255, 0.94));
   color: transparent;
   font-size: 0;
-  box-shadow: 0 10px 22px rgba(47, 84, 142, 0.1);
+  box-shadow: none;
   cursor: pointer;
 }
 
 .commercial-date-picker-button::before {
   content: "";
-  width: 17px;
-  height: 17px;
+  width: 15px;
+  height: 15px;
   border: 2px solid #315fc5;
   border-top-width: 4px;
   border-radius: 4px;
@@ -3062,7 +3065,7 @@ body.is-offer-editor-open {
 
 .offer-item-breakdown-row {
   display: grid;
-  grid-template-columns: minmax(140px, 1.25fr) minmax(112px, 0.7fr) minmax(112px, 0.7fr) minmax(130px, 0.72fr) auto;
+  grid-template-columns: minmax(140px, 0.85fr) minmax(220px, 1.35fr) minmax(92px, 0.55fr) minmax(92px, 0.55fr) minmax(120px, 0.65fr) auto;
   gap: 8px;
   align-items: end;
 }
@@ -36937,7 +36940,7 @@ body.is-offer-template-open {
 
 .offers-editor-meta-actions {
   display: grid;
-  grid-template-columns: repeat(3, 40px);
+  grid-template-columns: 40px 40px minmax(132px, auto);
   gap: 8px;
   justify-content: end;
   align-items: stretch;
@@ -36952,14 +36955,84 @@ body.is-offer-template-open {
   padding: 0;
 }
 
+.offer-icon-button.has-label {
+  display: inline-flex;
+  width: auto;
+  min-width: 0;
+  gap: 8px;
+  padding: 0 14px;
+  font-weight: 700;
+}
+
 .offer-icon-button svg {
   width: 16px;
   height: 16px;
 }
 
+.offer-icon-button.has-label svg {
+  flex: 0 0 auto;
+}
+
 .offers-form-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
+}
+
+.offer-text-blocks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.offer-text-block-field textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.offers-items-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.offer-pricing-copy-menu {
+  position: fixed;
+  z-index: 1200;
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 16px;
+  border: 1px solid rgba(190, 204, 230, 0.92);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 20px 44px rgba(34, 47, 82, 0.2);
+}
+
+.offer-pricing-copy-option {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid rgba(205, 216, 235, 0.82);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 250, 255, 0.94));
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.offer-pricing-copy-option:hover {
+  border-color: rgba(79, 125, 230, 0.52);
+  background: #ffffff;
+}
+
+.offer-pricing-copy-option span,
+.offer-pricing-copy-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
 }
 
 .offer-location-field {
@@ -37514,6 +37587,7 @@ body.is-offer-template-open {
   .offers-form-grid,
   .offers-filters,
   .offer-item-main-grid,
+  .offer-text-blocks,
   .offer-item-metrics {
     grid-template-columns: 1fr;
   }

@@ -1869,6 +1869,8 @@ test("offers support location scope, contact snapshots, discounts and breakdown 
       offerDate: "2026-03-29",
       showTotalAmount: false,
       discountRate: 10,
+      textBlock1: "Zakonska osnova i obuhvat ponude.",
+      textBlock2: "Posebni uvjeti za klijenta.",
       items: [
         {
           description: "Panik rasvjeta",
@@ -1877,8 +1879,8 @@ test("offers support location scope, contact snapshots, discounts and breakdown 
           unitPrice: 100,
           discountRate: 10,
           breakdowns: [
-            { label: "do 5 mm", amount: 10 },
-            { label: "do 20 mm", amount: 18 },
+            { priceKind: "report", unitLabel: "zapisnik", recordLabel: "Zapisnik", amount: 10 },
+            { priceKind: "measurement_range", unitLabel: "mjerno mjesto do", measurementTo: "20", amount: 18 },
             { label: "do 40 mm", amount: 32 },
             { label: "do 80 mm", amount: 58 },
             { label: "do 120 mm", amount: 72 },
@@ -1927,7 +1929,13 @@ test("offers support location scope, contact snapshots, discounts and breakdown 
   assert.equal(detailedOffer.contactName, "Iva Novak");
   assert.equal(detailedOffer.offerDate, "2026-03-29");
   assert.equal(detailedOffer.showTotalAmount, false);
+  assert.equal(detailedOffer.textBlock1, "Zakonska osnova i obuhvat ponude.");
+  assert.equal(detailedOffer.textBlock2, "Posebni uvjeti za klijenta.");
   assert.equal(detailedOffer.items[0].breakdowns.length, 6);
+  assert.equal(detailedOffer.items[0].breakdowns[0].priceKind, "report");
+  assert.equal(detailedOffer.items[0].breakdowns[0].unitLabel, "zapisnik");
+  assert.equal(detailedOffer.items[0].breakdowns[1].priceKind, "measurement_range");
+  assert.equal(detailedOffer.items[0].breakdowns[1].measurementTo, "20");
   assert.equal(detailedOffer.items[0].breakdownTotal, 286);
   assert.equal(detailedOffer.items[0].totalPrice, 257.4);
   assert.equal(detailedOffer.subtotal, 257.4);

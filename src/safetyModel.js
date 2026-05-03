@@ -2322,18 +2322,23 @@ function normalizeOfferBreakdowns(breakdowns = []) {
     .map((entry) => {
       const amount = roundCurrencyAmount(Math.max(0, normalizeFiniteNumber(entry?.amount, 0)));
       const recordLabel = normalizeText(entry?.recordLabel ?? entry?.reportLabel ?? entry?.label);
+      const priceKind = normalizeText(entry?.priceKind ?? entry?.type ?? entry?.kind);
+      const unitLabel = normalizeText(entry?.unitLabel ?? entry?.description ?? entry?.priceLabel);
       const measurementFrom = normalizeText(entry?.measurementFrom ?? entry?.measurementFromNumber ?? entry?.from);
       const measurementTo = normalizeText(entry?.measurementTo ?? entry?.measurementToNumber ?? entry?.to);
+      const label = normalizeText(entry?.label) || unitLabel || recordLabel;
 
       return {
-        label: recordLabel,
+        label,
+        priceKind,
+        unitLabel,
         recordLabel,
         measurementFrom,
         measurementTo,
         amount,
       };
     })
-    .filter((entry) => entry.recordLabel || entry.measurementFrom || entry.measurementTo || entry.amount);
+    .filter((entry) => entry.recordLabel || entry.unitLabel || entry.measurementFrom || entry.measurementTo || entry.amount);
 }
 
 function normalizeCommercialDocumentMode(value = "", fallback = "app") {
@@ -3102,6 +3107,8 @@ function hydrateOfferCore({
       ? normalizeOptionalDate(input.validUntil)
       : normalizeOptionalDate(current?.validUntil),
     note: hasOwn(input, "note") ? normalizeText(input.note) : current?.note ?? "",
+    textBlock1: hasOwn(input, "textBlock1") ? normalizeText(input.textBlock1) : current?.textBlock1 ?? "",
+    textBlock2: hasOwn(input, "textBlock2") ? normalizeText(input.textBlock2) : current?.textBlock2 ?? "",
     currency: hasOwn(input, "currency")
       ? (normalizeText(input.currency).toUpperCase() || "EUR")
       : (normalizeText(current?.currency).toUpperCase() || "EUR"),
