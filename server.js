@@ -1620,22 +1620,55 @@ function buildCommercialItemAmountText(item = {}, currency = "EUR") {
   return getCommercialMoneyText(unitPrice, currency);
 }
 
+function getCommercialOfferMonthlyItems(items = [], offerType = "") {
+  const planType = normalizeCommercialOfferPlanType(offerType);
+  const safeItems = Array.isArray(items) ? items : [];
+  if (planType === "Hybrid Plan") {
+    return safeItems.filter((item) => !hasCommercialBreakdownRows(item));
+  }
+  if (planType === "Fixed Plan") {
+    return safeItems;
+  }
+  return [];
+}
+
+function getCommercialOfferServicePricingItems(items = [], offerType = "") {
+  const planType = normalizeCommercialOfferPlanType(offerType);
+  const safeItems = Array.isArray(items) ? items : [];
+  if (planType === "Fixed Plan") {
+    return [];
+  }
+  if (planType === "Hybrid Plan") {
+    return safeItems.filter((item) => hasCommercialBreakdownRows(item));
+  }
+  return safeItems;
+}
+
 function buildCommercialItemsTablePlaceholder(items = [], currency = "EUR", {
   fallbackTitle = "Stavke",
   offerType = "",
   showTotalAmount = true,
+  section = "all",
+  includeHeader = true,
+  emptyMessage = "Nema dodanih stavki.",
 } = {}) {
-  const safeItems = Array.isArray(items) ? items : [];
+  const allItems = Array.isArray(items) ? items : [];
   const planType = normalizeCommercialOfferPlanType(offerType);
   const isFixedPlan = planType === "Fixed Plan";
   const isHybridPlan = planType === "Hybrid Plan";
+  const safeItems = section === "monthly"
+    ? getCommercialOfferMonthlyItems(allItems, offerType)
+    : section === "services"
+      ? getCommercialOfferServicePricingItems(allItems, offerType)
+      : allItems;
   const columns = [
     { id: "description", label: fallbackTitle, width: 520 },
     { id: "amount", label: "Iznos", width: 120 },
   ];
   const merges = [];
-  const rows = [
-    {
+  const rows = [];
+  if (includeHeader) {
+    rows.push({
       id: "header",
       header: true,
       cells: columns.map((column) => buildCommercialTableCell(column.label, {
@@ -1643,8 +1676,8 @@ function buildCommercialItemsTablePlaceholder(items = [], currency = "EUR", {
         fillColor: "#F3F4F6",
         align: column.id === "amount" ? "right" : "left",
       })),
-    },
-  ];
+    });
+  }
 
   const pushRow = (id, description = "", amount = "", format = {}) => {
     rows.push({
@@ -1679,14 +1712,36 @@ function buildCommercialItemsTablePlaceholder(items = [], currency = "EUR", {
       .forEach((entry, breakdownIndex) => {
         pushRow(
           `item-${itemIndex + 1}-breakdown-${breakdownIndex + 1}`,
-          getCommercialBreakdownDocumentLabel(entry),
+          `- ${getCommercialBreakdownDocumentLabel(entry)}`,
           getCommercialMoneyText(entry?.amount, currency),
         );
       });
   };
 
   if (safeItems.length === 0) {
-    pushRow("empty", "Nema dodanih stavki.", "");
+    pushRow("empty", emptyMessage, "");
+  } else if (section === "monthly") {
+    safeItems.forEach((item, index) => {
+      pushRow(
+        `monthly-fee-${index + 1}`,
+        item?.description || "Mjesečna naknada",
+        buildCommercialItemAmountText(item, currency),
+      );
+    });
+  } else if (section === "services") {
+    safeItems.forEach((item, index) => {
+      const hasBreakdowns = hasCommercialBreakdownRows(item);
+      if (hasBreakdowns) {
+        pushMergedRow(`service-item-${index + 1}`, item?.description || "Usluga", { fillColor: "#FFFFFF" });
+        pushBreakdownRows(item, index);
+      } else {
+        pushRow(
+          `service-item-${index + 1}`,
+          item?.description || "Usluga",
+          !showTotalAmount ? "" : buildCommercialItemAmountText(item, currency),
+        );
+      }
+    });
   } else if (isFixedPlan) {
     safeItems.forEach((item, index) => {
       pushRow(
@@ -1701,8 +1756,8 @@ function buildCommercialItemsTablePlaceholder(items = [], currency = "EUR", {
       pushRow("fixed-total", "Ukupno", getCommercialMoneyText(fixedTotal, currency, { showZero: true }), { fillColor: "#F8FAFC" });
     }
   } else if (isHybridPlan) {
-    const feeItems = safeItems.filter((item) => !hasCommercialBreakdownRows(item));
-    const serviceItems = safeItems.filter((item) => hasCommercialBreakdownRows(item));
+    const feeItems = getCommercialOfferMonthlyItems(safeItems, offerType);
+    const serviceItems = getCommercialOfferServicePricingItems(safeItems, offerType);
 
     if (feeItems.length > 0) {
       pushMergedRow("monthly-fees-section", "Mjesečne naknade", { fillColor: "#F8FAFC" });
@@ -1744,7 +1799,7 @@ function buildCommercialItemsTablePlaceholder(items = [], currency = "EUR", {
     __docxBlockType: "table",
     columns,
     rows,
-    headerRows: ["header"],
+    headerRows: includeHeader ? ["header"] : [],
     merges,
   };
 }
@@ -1965,6 +2020,28 @@ function buildOfferTemplatePlaceholderPayload(offer = {}) {
     offerType: normalizedOffer.serviceLine || "",
     showTotalAmount: normalizedOffer.showTotalAmount !== false,
   });
+  const monthlyItems = getCommercialOfferMonthlyItems(items, normalizedOffer.serviceLine || "");
+  const servicePricingItems = getCommercialOfferServicePricingItems(items, normalizedOffer.serviceLine || "");
+  const monthlyFeesTable = monthlyItems.length > 0
+    ? buildCommercialItemsTablePlaceholder(items, currency, {
+      fallbackTitle: "Mjesečne naknade",
+      offerType: normalizedOffer.serviceLine || "",
+      showTotalAmount: normalizedOffer.showTotalAmount !== false,
+      section: "monthly",
+      includeHeader: false,
+      emptyMessage: "",
+    })
+    : "";
+  const servicePricingTable = servicePricingItems.length > 0
+    ? buildCommercialItemsTablePlaceholder(items, currency, {
+      fallbackTitle: "Cjenik usluga",
+      offerType: normalizedOffer.serviceLine || "",
+      showTotalAmount: normalizedOffer.showTotalAmount !== false,
+      section: "services",
+      includeHeader: false,
+      emptyMessage: "",
+    })
+    : "";
   const preparedBy = String(normalizedOffer.preparedByLabel || normalizedOffer.preparedBy || normalizedOffer.createdByLabel || "").trim();
   const offerItemsSummary = items
     .map((item, index) => {
@@ -2003,6 +2080,8 @@ function buildOfferTemplatePlaceholderPayload(offer = {}) {
     OFFER_TEXT_1: normalizedOffer.textBlock1 || "",
     OFFER_TEXT_2: normalizedOffer.textBlock2 || "",
     ITEMS_TABLE: itemsTable,
+    MONTHLY_FEES_TABLE: monthlyFeesTable,
+    SERVICE_PRICING_TABLE: servicePricingTable,
     ITEMS_TABLE_TEXT: itemsTableText,
     ITEMS_SUMMARY: offerItemsSummary || itemsSummary,
     NOTE: normalizedOffer.note || "",
