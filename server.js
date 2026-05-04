@@ -1519,69 +1519,196 @@ function formatOfferTemplateMoney(value = 0, currency = "EUR") {
   }
 }
 
-function buildCommercialItemsTablePlaceholder(items = [], currency = "EUR", { fallbackTitle = "Stavke" } = {}) {
+function normalizeCommercialOfferPlanType(value = "") {
+  const normalized = String(value || "").trim().toLowerCase().replace(/[\s_-]+/g, " ");
+  if (["fixed plan", "fixed fee", "flat plan"].includes(normalized)) {
+    return "Fixed Plan";
+  }
+  if (["hybrid plan", "base fee variable fee", "base fee plus variable fee", "monthly per services"].includes(normalized)) {
+    return "Hybrid Plan";
+  }
+  if (["one time", "one time service", "one-time", "one-time service"].includes(normalized)) {
+    return "One-Time Service";
+  }
+  if (["per employee", "per employee plan"].includes(normalized)) {
+    return "Per Employee Plan";
+  }
+  return "";
+}
+
+function hasCommercialBreakdownRows(item = {}) {
+  return Array.isArray(item?.breakdowns) && item.breakdowns.some((entry) => (
+    String(entry?.recordLabel || entry?.label || entry?.unitLabel || "").trim()
+      || String(entry?.measurementFrom || "").trim()
+      || String(entry?.measurementTo || "").trim()
+      || Number(entry?.amount || 0) > 0
+  ));
+}
+
+function buildCommercialTableCell(text = "", format = {}) {
+  return {
+    text: String(text ?? ""),
+    format: {
+      border: { top: true, right: true, bottom: true, left: true },
+      ...format,
+    },
+  };
+}
+
+function getCommercialQuantityText(item = {}) {
+  const quantity = String(item?.quantity ?? "").trim();
+  const unit = String(item?.unit || "").trim();
+  if (!quantity && !unit) {
+    return "";
+  }
+  return [quantity || "1", unit].filter(Boolean).join(" ");
+}
+
+function getCommercialMoneyText(value = 0, currency = "EUR", { showZero = false } = {}) {
+  const numeric = Number(value ?? 0) || 0;
+  if (!showZero && numeric === 0) {
+    return "";
+  }
+  return formatOfferTemplateMoney(numeric, currency);
+}
+
+function buildCommercialItemsTablePlaceholder(items = [], currency = "EUR", {
+  fallbackTitle = "Stavke",
+  offerType = "",
+  showTotalAmount = true,
+} = {}) {
   const safeItems = Array.isArray(items) ? items : [];
+  const planType = normalizeCommercialOfferPlanType(offerType);
+  const isFixedPlan = planType === "Fixed Plan";
+  const isHybridPlan = planType === "Hybrid Plan";
   const columns = [
     { id: "number", label: "R.br.", width: 52 },
-    { id: "description", label: fallbackTitle, width: 260 },
+    { id: "description", label: fallbackTitle, width: 300 },
     { id: "quantity", label: "Kolicina", width: 92 },
     { id: "unit_price", label: "Jed. cijena", width: 110 },
-    { id: "breakdown", label: "Razrada", width: 190 },
+    { id: "breakdown", label: "Razrada / napomena", width: 210 },
     { id: "total", label: "Ukupno", width: 120 },
   ];
+  const merges = [];
   const rows = [
     {
       id: "header",
       header: true,
-      cells: columns.map((column) => ({
-        text: column.label,
-        format: {
-          bold: true,
-          fillColor: "#F1F7F4",
-          border: "all",
-        },
+      cells: columns.map((column) => buildCommercialTableCell(column.label, {
+        bold: true,
+        fillColor: "#EAF2FF",
+        align: column.id === "description" ? "left" : "center",
       })),
     },
   ];
 
-  if (safeItems.length === 0) {
+  const pushRow = (id, cells, format = {}) => {
     rows.push({
-      id: "empty",
+      id,
+      cells: columns.map((column, index) => buildCommercialTableCell(cells[index] ?? "", format)),
+    });
+  };
+
+  const pushSectionRow = (id, label) => {
+    rows.push({
+      id,
       cells: [
-        { text: "" },
-        { text: "Nema dodanih stavki." },
-        { text: "" },
-        { text: "" },
-        { text: "" },
-        { text: "" },
+        buildCommercialTableCell(""),
+        buildCommercialTableCell(label, { bold: true, fillColor: "#F6F1FF" }),
+        buildCommercialTableCell("", { fillColor: "#F6F1FF" }),
+        buildCommercialTableCell("", { fillColor: "#F6F1FF" }),
+        buildCommercialTableCell("", { fillColor: "#F6F1FF" }),
+        buildCommercialTableCell("", { fillColor: "#F6F1FF" }),
       ],
     });
+    merges.push({ rowId: id, columnId: "description", colSpan: 5 });
+  };
+
+  const pushBreakdownRows = (item, itemIndex) => {
+    const breakdowns = Array.isArray(item?.breakdowns) ? item.breakdowns : [];
+    breakdowns
+      .filter((entry) => (
+        String(entry?.recordLabel || entry?.label || entry?.unitLabel || "").trim()
+          || String(entry?.measurementFrom || "").trim()
+          || String(entry?.measurementTo || "").trim()
+          || Number(entry?.amount || 0) > 0
+      ))
+      .forEach((entry, breakdownIndex) => {
+        pushRow(`item-${itemIndex + 1}-breakdown-${breakdownIndex + 1}`, [
+          "",
+          `- ${formatCommercialBreakdownLabel(entry)}`,
+          "",
+          getCommercialMoneyText(entry?.amount, currency),
+          "Razrada stavke",
+          "",
+        ]);
+      });
+  };
+
+  if (safeItems.length === 0) {
+    pushRow("empty", ["", "Nema dodanih stavki.", "", "", "", ""]);
   }
 
-  safeItems.forEach((item, index) => {
-    const breakdowns = Array.isArray(item?.breakdowns) ? item.breakdowns : [];
-    const breakdownSummary = breakdowns.length > 0
-      ? breakdowns.map((entry) => `${formatCommercialBreakdownLabel(entry)}: ${formatOfferTemplateMoney(entry.amount || 0, currency)}`).join("\n")
-      : "";
-    rows.push({
-      id: `item-${index + 1}`,
-      cells: [
-        { text: String(index + 1) },
-        { text: item?.description || "Stavka" },
-        { text: `${item?.quantity || 0}${item?.unit ? ` ${item.unit}` : ""}` },
-        { text: formatOfferTemplateMoney(item?.unitPrice || 0, currency) },
-        { text: breakdownSummary },
-        { text: formatOfferTemplateMoney(item?.totalPrice || 0, currency) },
-      ],
+  if (isFixedPlan && safeItems.length > 0) {
+    const monthlyItem = safeItems[0] || {};
+    pushRow("fixed-monthly", [
+      "1",
+      monthlyItem.description && monthlyItem.description !== "Fixed Plan" ? monthlyItem.description : "Mjesecni pausal",
+      getCommercialQuantityText(monthlyItem) || "1 mj",
+      getCommercialMoneyText(monthlyItem.unitPrice || monthlyItem.totalPrice, currency),
+      "Mjesecni iznos",
+      "",
+    ], { bold: true, fillColor: "#FFF7E8" });
+
+    const includedItems = safeItems.slice(1);
+    if (includedItems.length > 0) {
+      pushSectionRow("fixed-included-section", "Ukljuceno u pausal");
+      includedItems.forEach((item, index) => {
+        pushRow(`fixed-included-${index + 1}`, [
+          String(index + 2),
+          item?.description || "Ukljucena usluga",
+          getCommercialQuantityText(item),
+          "Ukljuceno",
+          "",
+          "",
+        ]);
+      });
+    }
+  } else {
+    let hybridSectionInserted = false;
+    safeItems.forEach((item, index) => {
+      const hasBreakdowns = hasCommercialBreakdownRows(item);
+      const isHybridMonthly = isHybridPlan && index === 0 && !hasBreakdowns;
+      if (isHybridPlan && index > 0 && !hybridSectionInserted) {
+        pushSectionRow("hybrid-services-section", "Usluge po izvrsenju");
+        hybridSectionInserted = true;
+      }
+
+      const rowFormat = hasBreakdowns || isHybridMonthly
+        ? { bold: true, fillColor: isHybridMonthly ? "#FFF7E8" : "#F3F7FF" }
+        : {};
+      pushRow(`item-${index + 1}`, [
+        String(index + 1),
+        item?.description || (isHybridMonthly ? "Mjesecni iznos" : "Stavka"),
+        getCommercialQuantityText(item),
+        hasBreakdowns ? "" : getCommercialMoneyText(item?.unitPrice, currency),
+        hasBreakdowns ? "Razrada u nastavku" : (isHybridMonthly ? "Mjesecni iznos" : ""),
+        hasBreakdowns || isHybridPlan || !showTotalAmount
+          ? ""
+          : getCommercialMoneyText(item?.totalPrice, currency),
+      ], rowFormat);
+      if (hasBreakdowns) {
+        pushBreakdownRows(item, index);
+      }
     });
-  });
+  }
 
   return {
     __docxBlockType: "table",
     columns,
     rows,
     headerRows: ["header"],
-    merges: [],
+    merges,
   };
 }
 
@@ -1775,6 +1902,10 @@ function buildOfferTemplatePlaceholderPayload(offer = {}) {
   const normalizedOffer = offer && typeof offer === "object" ? offer : {};
   const currency = String(normalizedOffer.currency || "EUR").trim() || "EUR";
   const items = Array.isArray(normalizedOffer.items) ? normalizedOffer.items : [];
+  const planType = normalizeCommercialOfferPlanType(normalizedOffer.serviceLine || "");
+  const suppressItemTotals = planType === "Fixed Plan"
+    || planType === "Hybrid Plan"
+    || items.some((item) => hasCommercialBreakdownRows(item));
   const itemsSummary = items
     .map((item, index) => `${index + 1}. ${item.description || "Stavka"}${item.unit ? ` · ${item.quantity || 0} ${item.unit}` : ""}${Number(item.totalPrice || 0) > 0 ? ` · ${formatOfferTemplateMoney(item.totalPrice || 0, currency)}` : ""}`)
     .join("\n");
@@ -1783,10 +1914,30 @@ function buildOfferTemplatePlaceholderPayload(offer = {}) {
       const breakdownText = Array.isArray(item.breakdowns) && item.breakdowns.length > 0
         ? `\n${item.breakdowns.map((entry) => `   - ${formatCommercialBreakdownLabel(entry)}: ${formatOfferTemplateMoney(entry.amount || 0, currency)}`).join("\n")}`
         : "";
-      return `${index + 1}. ${item.description || "Stavka"} | ${item.quantity || 0} ${item.unit || ""} | ${formatOfferTemplateMoney(item.totalPrice || 0, currency)}${breakdownText}`;
+      const amountText = suppressItemTotals
+        ? formatOfferTemplateMoney(item.unitPrice || 0, currency)
+        : formatOfferTemplateMoney(item.totalPrice || 0, currency);
+      return `${index + 1}. ${item.description || "Stavka"} | ${item.quantity || 0} ${item.unit || ""} | ${amountText}${breakdownText}`;
     })
     .join("\n");
-  const itemsTable = buildCommercialItemsTablePlaceholder(items, currency, { fallbackTitle: "Opis stavke" });
+  const itemsTable = buildCommercialItemsTablePlaceholder(items, currency, {
+    fallbackTitle: "Opis stavke",
+    offerType: normalizedOffer.serviceLine || "",
+    showTotalAmount: normalizedOffer.showTotalAmount !== false,
+  });
+  const preparedBy = String(normalizedOffer.preparedByLabel || normalizedOffer.preparedBy || normalizedOffer.createdByLabel || "").trim();
+  const offerItemsSummary = items
+    .map((item, index) => {
+      const summaryParts = [
+        `${index + 1}. ${item.description || "Stavka"}`,
+        getCommercialQuantityText(item),
+      ].filter(Boolean);
+      if (!suppressItemTotals && Number(item.totalPrice || 0) > 0) {
+        summaryParts.push(formatOfferTemplateMoney(item.totalPrice || 0, currency));
+      }
+      return summaryParts.join(" | ");
+    })
+    .join("\n");
 
   return {
     OFFER_NUMBER: normalizedOffer.offerNumber || "Dodijeljen nakon spremanja",
@@ -1804,13 +1955,16 @@ function buildOfferTemplatePlaceholderPayload(offer = {}) {
     CONTACT_NAME: normalizedOffer.contactName || "",
     CONTACT_PHONE: normalizedOffer.contactPhone || "",
     CONTACT_EMAIL: normalizedOffer.contactEmail || "",
+    OFFER_PREPARED_BY: preparedBy,
+    PREPARED_BY: preparedBy,
+    CREATED_BY: preparedBy,
     SERVICE_LINE: normalizedOffer.serviceLine || "",
     OFFER_TYPE: normalizedOffer.serviceLine || "",
     OFFER_TEXT_1: normalizedOffer.textBlock1 || "",
     OFFER_TEXT_2: normalizedOffer.textBlock2 || "",
     ITEMS_TABLE: itemsTable,
     ITEMS_TABLE_TEXT: itemsTableText,
-    ITEMS_SUMMARY: itemsSummary,
+    ITEMS_SUMMARY: offerItemsSummary || itemsSummary,
     NOTE: normalizedOffer.note || "",
     SUBTOTAL: formatOfferTemplateMoney(normalizedOffer.subtotal || 0, currency),
     DISCOUNT_RATE: Number(normalizedOffer.discountRate || 0) > 0 ? `${normalizedOffer.discountRate}%` : "",

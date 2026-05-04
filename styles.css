@@ -37079,7 +37079,16 @@ body.is-offer-template-open {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
-  margin-top: 12px;
+  margin-top: 8px;
+}
+
+.offer-extra-text-toggle {
+  width: fit-content;
+  min-height: 38px;
+  padding-inline: 14px;
+  margin-top: 4px;
+  border-color: rgba(197, 209, 230, 0.9);
+  background: rgba(255, 255, 255, 0.86);
 }
 
 .offer-text-block-field textarea {
