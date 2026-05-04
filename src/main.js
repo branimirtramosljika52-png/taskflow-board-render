@@ -478,7 +478,7 @@ const MEASUREMENT_EQUIPMENT_SORT_OPTIONS = Object.freeze([
 const MEASUREMENT_EQUIPMENT_COMMENT_NOTE_PREFIX = "[KOMENTAR]";
 const DEFAULT_OFFER_NOTE = "Ponuda vrijedi 30 dana, rok plaćanja 30 dana od slanja računa.";
 const DEFAULT_PURCHASE_ORDER_NOTE = "";
-const OFFER_TEMPLATE_ACCEPT_LABEL = ".doc,.docx,.dot,.dotx";
+const OFFER_TEMPLATE_ACCEPT_LABEL = ".docx,.dotx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.wordprocessingml.template";
 const OFFER_TEMPLATE_PLACEHOLDER_DEFINITIONS = Object.freeze([
   Object.freeze({ key: "OFFER_NUMBER", label: "Broj ponude", description: "Generirani broj ponude nakon spremanja." }),
   Object.freeze({ key: "OFFER_TITLE", label: "Naziv ponude", description: "Naslov ponude." }),
@@ -70078,6 +70078,13 @@ async function loadOfferTemplateSettings({ force = false } = {}) {
 
 async function saveOfferTemplateReference(file) {
   const apiBasePath = getActiveCommercialApiBasePath();
+  const fileName = String(file?.name || "").trim();
+  const fileType = String(file?.type || "").trim();
+  const isSupportedWordTemplate = /\.(docx|dotx)$/i.test(fileName)
+    || /officedocument\.wordprocessingml\.(document|template)/i.test(fileType);
+  if (!isSupportedWordTemplate) {
+    throw new Error("Template ponude mora biti .docx ili .dotx Word predložak.");
+  }
   const dataUrl = await readFileAsDataUrl(file, `Ne mogu učitati datoteku ${file.name}.`);
   const payload = await apiRequest(`${apiBasePath}/template-settings`, {
     method: "POST",

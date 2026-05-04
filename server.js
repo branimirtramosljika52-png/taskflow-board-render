@@ -1944,15 +1944,20 @@ function buildOfferExportBaseName(offer = {}) {
 
 async function buildOfferPdfExportPayload(offer = {}, organizationId = "") {
   const offerTemplateSettings = await domainRepository.getOfferTemplateSettings(organizationId).catch(() => null);
+  const offerTemplateDocument = offerTemplateSettings?.referenceDocument ?? null;
   const baseName = buildOfferExportBaseName(offer);
   const fileName = sanitizeGeneratedDocumentFileName(baseName, {
     fallback: "ponuda",
     extension: "pdf",
   });
 
-  if (offerTemplateSettings?.referenceDocument && isWordTemplateFile(offerTemplateSettings.referenceDocument)) {
+  if (offerTemplateDocument) {
+    if (!isWordTemplateFile(offerTemplateDocument)) {
+      throw new Error("Uploadani template ponude mora biti .docx ili .dotx Word predložak.");
+    }
+
     try {
-      const referenceDocument = await readStoredDocumentBuffer(offerTemplateSettings.referenceDocument);
+      const referenceDocument = await readStoredDocumentBuffer(offerTemplateDocument);
       const pdfBuffer = await buildPdfFromTemplateBuffer(
         referenceDocument.buffer,
         buildOfferTemplatePlaceholderPayload(offer),
@@ -1965,7 +1970,8 @@ async function buildOfferPdfExportPayload(offer = {}, organizationId = "") {
       );
       return { pdfBuffer, fileName };
     } catch (error) {
-      console.warn("Offer template PDF export failed, falling back to generated PDF.", error);
+      console.error("Offer template PDF export failed.", error);
+      throw new Error(`Ne mogu generirati PDF iz uploadanog templatea ponude: ${error?.message || "nepoznata greška"}`);
     }
   }
 
