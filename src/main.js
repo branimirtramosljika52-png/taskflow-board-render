@@ -84921,6 +84921,7 @@ function getHelpTourLayer() {
   layer.hidden = true;
   layer.innerHTML = `
     <div class="help-tour-scrim" aria-hidden="true"></div>
+    <div class="help-tour-focus-clone" aria-hidden="true"></div>
     <div class="help-tour-spotlight" aria-hidden="true"></div>
     <section class="help-tour-card" role="dialog" aria-modal="true" aria-live="polite" aria-labelledby="help-tour-title">
       <div class="help-tour-card-glow" aria-hidden="true"></div>
@@ -85049,6 +85050,88 @@ function getHelpTourTarget(step = getCurrentHelpTourStep()) {
   return target;
 }
 
+function syncHelpTourCloneControls(source, clone) {
+  const sourceControls = Array.from(source.querySelectorAll("input, textarea, select"));
+  const cloneControls = Array.from(clone.querySelectorAll("input, textarea, select"));
+  cloneControls.forEach((control, index) => {
+    const sourceControl = sourceControls[index];
+    if (!sourceControl) {
+      return;
+    }
+    if (control instanceof HTMLInputElement && sourceControl instanceof HTMLInputElement) {
+      control.checked = sourceControl.checked;
+      control.value = sourceControl.value;
+      return;
+    }
+    if (control instanceof HTMLTextAreaElement && sourceControl instanceof HTMLTextAreaElement) {
+      control.value = sourceControl.value;
+      return;
+    }
+    if (control instanceof HTMLSelectElement && sourceControl instanceof HTMLSelectElement) {
+      control.selectedIndex = sourceControl.selectedIndex;
+      control.value = sourceControl.value;
+    }
+  });
+}
+
+function sanitizeHelpTourCloneElement(clone) {
+  clone.removeAttribute("id");
+  clone.removeAttribute("for");
+  clone.removeAttribute("name");
+  clone.removeAttribute("aria-controls");
+  clone.removeAttribute("aria-describedby");
+  clone.removeAttribute("aria-labelledby");
+  clone.removeAttribute("tabindex");
+  clone.querySelectorAll("[id], [for], [name], [aria-controls], [aria-describedby], [aria-labelledby], [tabindex]").forEach((element) => {
+    element.removeAttribute("id");
+    element.removeAttribute("for");
+    element.removeAttribute("name");
+    element.removeAttribute("aria-controls");
+    element.removeAttribute("aria-describedby");
+    element.removeAttribute("aria-labelledby");
+    element.removeAttribute("tabindex");
+  });
+  clone.querySelectorAll("button, a, input, select, textarea").forEach((element) => {
+    element.setAttribute("tabindex", "-1");
+    element.setAttribute("aria-hidden", "true");
+  });
+}
+
+function renderHelpTourFocusClone(layer, target, frame = {}) {
+  const focusClone = layer.querySelector(".help-tour-focus-clone");
+  if (!(focusClone instanceof HTMLElement)) {
+    return;
+  }
+
+  if (!(target instanceof HTMLElement)) {
+    focusClone.hidden = true;
+    focusClone.replaceChildren();
+    return;
+  }
+
+  const rect = frame.rect ?? target.getBoundingClientRect();
+  const clone = target.cloneNode(true);
+  if (!(clone instanceof HTMLElement)) {
+    focusClone.hidden = true;
+    focusClone.replaceChildren();
+    return;
+  }
+
+  syncHelpTourCloneControls(target, clone);
+  sanitizeHelpTourCloneElement(clone);
+  clone.classList.add("help-tour-focus-surface");
+  clone.style.width = `${Math.max(1, rect.width)}px`;
+  clone.style.minWidth = `${Math.max(1, rect.width)}px`;
+  clone.style.margin = "0";
+
+  focusClone.hidden = false;
+  focusClone.style.left = `${frame.safeLeft ?? Math.max(8, rect.left - 12)}px`;
+  focusClone.style.top = `${frame.safeTop ?? Math.max(8, rect.top - 12)}px`;
+  focusClone.style.width = `${frame.safeWidth ?? rect.width + 24}px`;
+  focusClone.style.height = `${frame.safeHeight ?? rect.height + 24}px`;
+  focusClone.replaceChildren(clone);
+}
+
 function prepareHelpTourStep(step = getCurrentHelpTourStep()) {
   if (!step) {
     return;
@@ -85079,6 +85162,7 @@ function prepareHelpTourStep(step = getCurrentHelpTourStep()) {
 function positionHelpTourCard(layer, step = getCurrentHelpTourStep()) {
   const card = layer.querySelector(".help-tour-card");
   const spotlight = layer.querySelector(".help-tour-spotlight");
+  const focusClone = layer.querySelector(".help-tour-focus-clone");
   if (!(card instanceof HTMLElement) || !(spotlight instanceof HTMLElement)) {
     return;
   }
@@ -85090,6 +85174,10 @@ function positionHelpTourCard(layer, step = getCurrentHelpTourStep()) {
 
   if (!target) {
     spotlight.hidden = true;
+    if (focusClone instanceof HTMLElement) {
+      focusClone.hidden = true;
+      focusClone.replaceChildren();
+    }
     card.classList.add("is-centered");
     card.style.left = "";
     card.style.top = "";
@@ -85107,6 +85195,13 @@ function positionHelpTourCard(layer, step = getCurrentHelpTourStep()) {
   layer.style.setProperty("--tour-y", `${safeTop}px`);
   layer.style.setProperty("--tour-w", `${Math.max(72, safeWidth)}px`);
   layer.style.setProperty("--tour-h", `${Math.max(42, safeHeight)}px`);
+  renderHelpTourFocusClone(layer, target, {
+    rect,
+    safeLeft,
+    safeTop,
+    safeWidth: Math.max(72, safeWidth),
+    safeHeight: Math.max(42, safeHeight),
+  });
 
   const cardRect = card.getBoundingClientRect();
   const preferredRight = rect.right + 22;
@@ -85170,10 +85265,15 @@ function renderWelcomeHelpTour(layer) {
   const back = layer.querySelector("#help-tour-back");
   const next = layer.querySelector("#help-tour-next");
   const spotlight = layer.querySelector(".help-tour-spotlight");
+  const focusClone = layer.querySelector(".help-tour-focus-clone");
   const card = layer.querySelector(".help-tour-card");
   layer.classList.add("is-welcome");
   layer.classList.remove("is-guided");
   spotlight.hidden = true;
+  if (focusClone instanceof HTMLElement) {
+    focusClone.hidden = true;
+    focusClone.replaceChildren();
+  }
   card?.classList.add("is-centered", "is-welcome-card");
   if (kicker) {
     kicker.textContent = "Dobrodošli";

@@ -1251,8 +1251,41 @@ body.is-app-capabilities-open {
   animation: help-tour-scrim-in 180ms ease-out both;
 }
 
+.help-tour-focus-clone {
+  position: fixed;
+  z-index: 1;
+  display: grid;
+  place-items: start;
+  padding: 12px;
+  overflow: hidden;
+  border-radius: 18px;
+  pointer-events: none;
+  isolation: isolate;
+  background:
+    radial-gradient(circle at 24px 18px, rgba(255, 255, 255, 0.42), transparent 54%),
+    rgba(255, 255, 255, 0.04);
+  box-shadow: 0 18px 58px rgba(42, 81, 184, 0.22);
+  animation: help-tour-focus-in 180ms ease-out both;
+}
+
+.help-tour-focus-clone[hidden] {
+  display: none;
+}
+
+.help-tour-focus-surface {
+  pointer-events: none !important;
+  transform-origin: top left;
+  filter: none !important;
+}
+
+.help-tour-focus-surface,
+.help-tour-focus-surface * {
+  animation-play-state: paused !important;
+}
+
 .help-tour-spotlight {
   position: fixed;
+  z-index: 2;
   left: var(--tour-x);
   top: var(--tour-y);
   width: var(--tour-w);
@@ -1271,6 +1304,7 @@ body.is-app-capabilities-open {
 
 .help-tour-card {
   position: fixed;
+  z-index: 3;
   left: 24px;
   top: 24px;
   width: min(410px, calc(100vw - 28px));
@@ -1454,6 +1488,17 @@ body.is-help-tour-open .help-tour-layer {
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes help-tour-focus-in {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
   }
 }
 
