@@ -36353,6 +36353,19 @@ function getCommercialBreakdownDocumentLabel(entry = {}) {
   return label;
 }
 
+function buildCommercialItemAmountText(item = {}, currency = "EUR") {
+  const total = parseOfferMoneyInput(item?.totalPrice, 0);
+  if (total > 0) {
+    return getCommercialTableMoneyText(total, currency);
+  }
+  const quantity = Math.max(0, parseOfferMoneyInput(item?.quantity, 0));
+  const unitPrice = Math.max(0, parseOfferMoneyInput(item?.unitPrice, 0));
+  if (quantity > 0 && unitPrice > 0) {
+    return getCommercialTableMoneyText(quantity * unitPrice, currency);
+  }
+  return getCommercialTableMoneyText(unitPrice, currency);
+}
+
 function buildCommercialItemsTablePlaceholderPreview(items = [], currency = "EUR", {
   fallbackTitle = "Opis stavke",
   offerType = "",
@@ -36361,10 +36374,12 @@ function buildCommercialItemsTablePlaceholderPreview(items = [], currency = "EUR
   const safeItems = Array.isArray(items) ? items : [];
   const planType = getCommercialItemsTablePlanType(offerType);
   const isFixedPlan = planType === "Fixed Plan";
+  const isHybridPlan = planType === "Hybrid Plan";
   const columns = [
     { id: "description", label: fallbackTitle, width: 520 },
     { id: "amount", label: "Iznos", width: 120 },
   ];
+  const merges = [];
   const rows = [
     {
       id: "header",
@@ -36387,6 +36402,17 @@ function buildCommercialItemsTablePlaceholderPreview(items = [], currency = "EUR
     });
   };
 
+  const pushMergedRow = (id, description = "", format = {}) => {
+    rows.push({
+      id,
+      cells: [
+        buildCommercialTableCellPreview(description, { align: "left", ...format }),
+        buildCommercialTableCellPreview("", { align: "right", ...format }),
+      ],
+    });
+    merges.push({ rowId: id, columnId: "description", colSpan: 2 });
+  };
+
   const pushBreakdownRows = (item, itemIndex) => {
     const breakdowns = Array.isArray(item?.breakdowns) ? item.breakdowns : [];
     breakdowns
@@ -36407,15 +36433,13 @@ function buildCommercialItemsTablePlaceholderPreview(items = [], currency = "EUR
 
   if (safeItems.length === 0) {
     pushRow("empty", "Nema dodanih stavki.", "");
-  }
-
-  if (isFixedPlan && safeItems.length > 0) {
+  } else if (isFixedPlan) {
     const fixedItems = safeItems;
     fixedItems.forEach((item, index) => {
       pushRow(
         `fixed-item-${index + 1}`,
         item?.description || "Stavka",
-        getCommercialTableMoneyText(item?.totalPrice || (Number(item?.quantity || 0) * Number(item?.unitPrice || 0)), currency),
+        buildCommercialItemAmountText(item, currency),
       );
     });
 
@@ -36423,17 +36447,40 @@ function buildCommercialItemsTablePlaceholderPreview(items = [], currency = "EUR
       const fixedTotal = fixedItems.reduce((sum, item) => sum + parseOfferMoneyInput(item?.totalPrice || getOfferLineTotal(item), 0), 0);
       pushRow("fixed-total", "Ukupno", getCommercialTableMoneyText(fixedTotal, currency, { showZero: true }), { fillColor: "#F8FAFC" });
     }
+  } else if (isHybridPlan) {
+    const feeItems = safeItems.filter((item) => !hasCommercialItemBreakdownRows(item));
+    const serviceItems = safeItems.filter((item) => hasCommercialItemBreakdownRows(item));
+
+    if (feeItems.length > 0) {
+      pushMergedRow("monthly-fees-section", "Mjesečne naknade", { fillColor: "#F8FAFC" });
+      feeItems.forEach((item, index) => {
+        pushRow(
+          `monthly-fee-${index + 1}`,
+          item?.description || "Mjesečna naknada",
+          buildCommercialItemAmountText(item, currency),
+        );
+      });
+    }
+
+    if (serviceItems.length > 0) {
+      pushMergedRow("service-pricing-section", "Cjenik usluga", { fillColor: "#F8FAFC" });
+      serviceItems.forEach((item, index) => {
+        pushMergedRow(`service-item-${index + 1}`, item?.description || "Usluga", { fillColor: "#FFFFFF" });
+        pushBreakdownRows(item, index);
+      });
+    }
   } else {
     safeItems.forEach((item, index) => {
       const hasBreakdowns = hasCommercialItemBreakdownRows(item);
-      pushRow(
-        `item-${index + 1}`,
-        item?.description || "Stavka",
-        hasBreakdowns || !showTotalAmount
-          ? ""
-          : getCommercialTableMoneyText(item?.totalPrice || item?.unitPrice, currency),
-        hasBreakdowns ? { fillColor: "#F8FAFC" } : {},
-      );
+      if (hasBreakdowns) {
+        pushMergedRow(`item-${index + 1}`, item?.description || "Usluga", { fillColor: "#F8FAFC" });
+      } else {
+        pushRow(
+          `item-${index + 1}`,
+          item?.description || "Stavka",
+          !showTotalAmount ? "" : buildCommercialItemAmountText(item, currency),
+        );
+      }
       if (hasBreakdowns) {
         pushBreakdownRows(item, index);
       }
@@ -36445,7 +36492,7 @@ function buildCommercialItemsTablePlaceholderPreview(items = [], currency = "EUR
     columns,
     rows,
     headerRows: ["header"],
-    merges: [],
+    merges,
   };
 }
 
@@ -68130,6 +68177,17 @@ function createOfferMainFeeDraft() {
   });
 }
 
+function isOfferMainFeeItemDraft(item = {}) {
+  const unit = String(item?.unit || "").trim().toLowerCase();
+  const description = String(item?.description || "").trim().toLowerCase();
+  return unit === "mj"
+    || unit === "mjesec"
+    || unit === "mjesečno"
+    || description.includes("mjese")
+    || description.includes("paušal")
+    || description.includes("pausal");
+}
+
 function createOfferAdditionalItemDraftForCurrentPlan() {
   const planDefinition = getActiveOfferPlanTypeDefinition();
 
@@ -68156,7 +68214,11 @@ function createOfferAdditionalItemDraftForCurrentPlan() {
 
 function sanitizeOfferItemsForCurrentPlan(items = offerFormItems) {
   if (shouldOfferPlanAllowBreakdowns()) {
-    return items;
+    return items.map((item) => (
+      isOfferMainFeeItemDraft(item)
+        ? { ...item, breakdowns: [], showBreakdowns: false }
+        : item
+    ));
   }
 
   return items.map((item) => ({
@@ -68840,7 +68902,9 @@ function serializeOfferItemsForPayload() {
     quantity: item.quantity,
     unitPrice: item.unitPrice,
     discountRate: item.showDiscount ? item.discountRate : "",
-    breakdowns: item.showBreakdowns ? serializeOfferBreakdownsForPayload(item.breakdowns ?? []) : [],
+    breakdowns: item.showBreakdowns && !isOfferMainFeeItemDraft(item)
+      ? serializeOfferBreakdownsForPayload(item.breakdowns ?? [])
+      : [],
   }));
 }
 
@@ -69488,13 +69552,15 @@ function renderOfferItemRows() {
   const activePlanDefinition = getActiveOfferPlanTypeDefinition();
 
   offerItems.replaceChildren(...offerFormItems.map((item, index) => {
-    const itemShowsBreakdowns = allowBreakdowns && Boolean(item.showBreakdowns);
+    const isMainFeeItem = isOfferMainFeeItemDraft(item);
+    const itemShowsBreakdowns = allowBreakdowns && !isMainFeeItem && Boolean(item.showBreakdowns);
     const isFixedIncludedService = false;
     const row = document.createElement("div");
     row.className = "offer-item-row";
     row.classList.toggle("has-breakdown", itemShowsBreakdowns);
     row.classList.toggle("has-discount", Boolean(item.showDiscount));
     row.classList.toggle("is-included-service", isFixedIncludedService);
+    row.classList.toggle("is-main-fee", isMainFeeItem);
 
     const matchedService = state.serviceCatalog.find((entry) => (
       String(entry.id) === String(item.serviceCatalogId)
@@ -69561,7 +69627,9 @@ function renderOfferItemRows() {
 
     const title = document.createElement("strong");
     title.className = "offer-item-head-title";
-    title.textContent = `Stavka ${index + 1}`;
+    title.textContent = isMainFeeItem
+      ? `Glavna naknada ${index + 1}`
+      : (itemShowsBreakdowns ? `Usluga ${index + 1}` : `Stavka ${index + 1}`);
 
     const titleMeta = document.createElement("div");
     titleMeta.className = "offer-item-head-copy";
@@ -69603,7 +69671,7 @@ function renderOfferItemRows() {
     const removeButton = createActionButton("Ukloni", "card-button card-danger offer-item-remove", () => {
       removeOfferFormItem(index);
     });
-    if (!allowBreakdowns) {
+    if (!allowBreakdowns || isMainFeeItem) {
       breakdownButton.hidden = true;
       breakdownButton.disabled = true;
     }
@@ -69622,16 +69690,16 @@ function renderOfferItemRows() {
     headActions.append(removeButton);
     head.append(titleMeta, headActions);
 
-    const descriptionField = createInputField("Usluga", "description", {
-      placeholder: "Opis usluge ili stavke",
+    const descriptionField = createInputField(isMainFeeItem ? "Naknada" : "Usluga", "description", {
+      placeholder: isMainFeeItem ? "Npr. mjesečni paušal" : "Opis usluge ili stavke",
       list: "offer-item-service-options",
     });
     descriptionField.classList.add("offer-item-field", "is-description");
 
-    const unitField = createInputField("Jedinica", "unit", { placeholder: "kom, sat, mj...", hidden: isFixedIncludedService });
+    const unitField = createInputField("Jedinica", "unit", { placeholder: "kom, sat, mj...", hidden: isFixedIncludedService || itemShowsBreakdowns });
     unitField.classList.add("offer-item-field", "is-unit");
 
-    const quantityField = createInputField("Količina", "quantity", { placeholder: "1", inputMode: "decimal", hidden: isFixedIncludedService });
+    const quantityField = createInputField("Količina", "quantity", { placeholder: "1", inputMode: "decimal", hidden: isFixedIncludedService || itemShowsBreakdowns });
     quantityField.classList.add("offer-item-field", "is-quantity");
 
     const priceField = createInputField("Cijena", "unitPrice", {
@@ -69646,8 +69714,13 @@ function renderOfferItemRows() {
 
     const metrics = document.createElement("div");
     metrics.className = "offer-item-metrics";
-    metrics.append(unitField, quantityField, priceField);
-    content.append(descriptionField, metrics);
+    [unitField, quantityField, priceField].filter((field) => !field.hidden).forEach((field) => {
+      metrics.append(field);
+    });
+    content.append(descriptionField);
+    if (metrics.childNodes.length > 0) {
+      content.append(metrics);
+    }
 
     const optionalFields = document.createElement("div");
     optionalFields.className = "offer-item-optionals";
@@ -69665,10 +69738,10 @@ function renderOfferItemRows() {
       const breakdownHead = document.createElement("div");
       breakdownHead.className = "offer-item-breakdowns-head";
       const breakdownTitle = document.createElement("strong");
-      breakdownTitle.textContent = "Razrada stavke";
+      breakdownTitle.textContent = "Cjenik usluge";
       const breakdownHint = document.createElement("span");
       breakdownHint.className = "inline-help";
-      breakdownHint.textContent = `${item.breakdowns?.length ?? 0} redaka, informativno.`;
+      breakdownHint.hidden = true;
       const breakdownAddButton = createActionButton(
         "+ Dodaj red",
         "ghost-button offer-item-mini-action is-breakdown",
@@ -69688,7 +69761,7 @@ function renderOfferItemRows() {
         const typeField = document.createElement("label");
         typeField.className = "field";
         const typeSpan = document.createElement("span");
-        typeSpan.textContent = "Vrsta cijene";
+        typeSpan.textContent = "Cijena za";
         const typeSelect = document.createElement("select");
         replaceSelectOptions(
           typeSelect,
@@ -69728,7 +69801,7 @@ function renderOfferItemRows() {
         fromField.className = "field";
         fromField.hidden = !visibleRangeFields.has("from");
         const fromSpan = document.createElement("span");
-        fromSpan.textContent = "Od mj. mjesta";
+        fromSpan.textContent = "Od";
         const fromInput = document.createElement("input");
         fromInput.type = "text";
         fromInput.inputMode = "numeric";
@@ -69743,7 +69816,7 @@ function renderOfferItemRows() {
         toField.className = "field";
         toField.hidden = !visibleRangeFields.has("to");
         const toSpan = document.createElement("span");
-        toSpan.textContent = activeKindDefinition.value === "measurement" ? "Do mj. mjesta" : "Do mj. mjesta";
+        toSpan.textContent = "Do";
         const toInput = document.createElement("input");
         toInput.type = "text";
         toInput.inputMode = "numeric";
@@ -69757,7 +69830,7 @@ function renderOfferItemRows() {
         const amountField = document.createElement("label");
         amountField.className = "field is-currency-field";
         const amountSpan = document.createElement("span");
-        amountSpan.textContent = "Iznos";
+        amountSpan.textContent = "Cijena";
         const amountInput = document.createElement("input");
         amountInput.type = "text";
         amountInput.inputMode = "decimal";

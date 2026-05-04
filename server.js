@@ -1602,9 +1602,22 @@ function getCommercialBreakdownDocumentLabel(entry = {}) {
     return range ? `Od ${range} mjernog mjesta` : label;
   }
   if (priceKind === "next_measurement") {
-    return "Svako iduce mjerno mjesto";
+    return "Svako iduće mjerno mjesto";
   }
   return label;
+}
+
+function buildCommercialItemAmountText(item = {}, currency = "EUR") {
+  const total = Number(item?.totalPrice ?? 0) || 0;
+  if (total > 0) {
+    return getCommercialMoneyText(total, currency);
+  }
+  const quantity = Number(item?.quantity ?? 0) || 0;
+  const unitPrice = Number(item?.unitPrice ?? 0) || 0;
+  if (quantity > 0 && unitPrice > 0) {
+    return getCommercialMoneyText(quantity * unitPrice, currency);
+  }
+  return getCommercialMoneyText(unitPrice, currency);
 }
 
 function buildCommercialItemsTablePlaceholder(items = [], currency = "EUR", {
@@ -1615,10 +1628,12 @@ function buildCommercialItemsTablePlaceholder(items = [], currency = "EUR", {
   const safeItems = Array.isArray(items) ? items : [];
   const planType = normalizeCommercialOfferPlanType(offerType);
   const isFixedPlan = planType === "Fixed Plan";
+  const isHybridPlan = planType === "Hybrid Plan";
   const columns = [
     { id: "description", label: fallbackTitle, width: 520 },
     { id: "amount", label: "Iznos", width: 120 },
   ];
+  const merges = [];
   const rows = [
     {
       id: "header",
@@ -1641,6 +1656,17 @@ function buildCommercialItemsTablePlaceholder(items = [], currency = "EUR", {
     });
   };
 
+  const pushMergedRow = (id, description = "", format = {}) => {
+    rows.push({
+      id,
+      cells: [
+        buildCommercialTableCell(description, { align: "left", ...format }),
+        buildCommercialTableCell("", { align: "right", ...format }),
+      ],
+    });
+    merges.push({ rowId: id, columnId: "description", colSpan: 2 });
+  };
+
   const pushBreakdownRows = (item, itemIndex) => {
     const breakdowns = Array.isArray(item?.breakdowns) ? item.breakdowns : [];
     breakdowns
@@ -1661,14 +1687,12 @@ function buildCommercialItemsTablePlaceholder(items = [], currency = "EUR", {
 
   if (safeItems.length === 0) {
     pushRow("empty", "Nema dodanih stavki.", "");
-  }
-
-  if (isFixedPlan && safeItems.length > 0) {
+  } else if (isFixedPlan) {
     safeItems.forEach((item, index) => {
       pushRow(
         `fixed-item-${index + 1}`,
         item?.description || "Stavka",
-        getCommercialMoneyText(item?.totalPrice || (Number(item?.quantity || 0) * Number(item?.unitPrice || 0)), currency),
+        buildCommercialItemAmountText(item, currency),
       );
     });
 
@@ -1676,17 +1700,40 @@ function buildCommercialItemsTablePlaceholder(items = [], currency = "EUR", {
       const fixedTotal = safeItems.reduce((sum, item) => sum + (Number(item?.totalPrice ?? 0) || ((Number(item?.quantity ?? 0) || 0) * (Number(item?.unitPrice ?? 0) || 0))), 0);
       pushRow("fixed-total", "Ukupno", getCommercialMoneyText(fixedTotal, currency, { showZero: true }), { fillColor: "#F8FAFC" });
     }
+  } else if (isHybridPlan) {
+    const feeItems = safeItems.filter((item) => !hasCommercialBreakdownRows(item));
+    const serviceItems = safeItems.filter((item) => hasCommercialBreakdownRows(item));
+
+    if (feeItems.length > 0) {
+      pushMergedRow("monthly-fees-section", "Mjesečne naknade", { fillColor: "#F8FAFC" });
+      feeItems.forEach((item, index) => {
+        pushRow(
+          `monthly-fee-${index + 1}`,
+          item?.description || "Mjesečna naknada",
+          buildCommercialItemAmountText(item, currency),
+        );
+      });
+    }
+
+    if (serviceItems.length > 0) {
+      pushMergedRow("service-pricing-section", "Cjenik usluga", { fillColor: "#F8FAFC" });
+      serviceItems.forEach((item, index) => {
+        pushMergedRow(`service-item-${index + 1}`, item?.description || "Usluga", { fillColor: "#FFFFFF" });
+        pushBreakdownRows(item, index);
+      });
+    }
   } else {
     safeItems.forEach((item, index) => {
       const hasBreakdowns = hasCommercialBreakdownRows(item);
-      pushRow(
-        `item-${index + 1}`,
-        item?.description || "Stavka",
-        hasBreakdowns || !showTotalAmount
-          ? ""
-          : getCommercialMoneyText(item?.totalPrice || item?.unitPrice, currency),
-        hasBreakdowns ? { fillColor: "#F8FAFC" } : {},
-      );
+      if (hasBreakdowns) {
+        pushMergedRow(`item-${index + 1}`, item?.description || "Usluga", { fillColor: "#F8FAFC" });
+      } else {
+        pushRow(
+          `item-${index + 1}`,
+          item?.description || "Stavka",
+          !showTotalAmount ? "" : buildCommercialItemAmountText(item, currency),
+        );
+      }
       if (hasBreakdowns) {
         pushBreakdownRows(item, index);
       }
@@ -1698,7 +1745,7 @@ function buildCommercialItemsTablePlaceholder(items = [], currency = "EUR", {
     columns,
     rows,
     headerRows: ["header"],
-    merges: [],
+    merges,
   };
 }
 
