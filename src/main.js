@@ -3839,6 +3839,14 @@ if (offerEditorPanel?.parentElement !== document.body) {
   document.body.append(offerEditorPanel);
 }
 
+if (offerEmailBackdrop?.parentElement !== document.body) {
+  document.body.append(offerEmailBackdrop);
+}
+
+if (offerEmailPanel?.parentElement !== document.body) {
+  document.body.append(offerEmailPanel);
+}
+
 if (offerTemplateBackdrop?.parentElement !== document.body) {
   document.body.append(offerTemplateBackdrop);
 }
