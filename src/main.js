@@ -542,9 +542,9 @@ const OFFER_PLAN_TYPE_DEFINITIONS = Object.freeze([
   Object.freeze({
     value: "Fixed Plan",
     label: "Fixed Plan",
-    help: "Jedan fiksni iznos bez razrade po stavkama.",
-    itemsTitle: "Fiksni plan i ukljucene usluge",
-    addButtonLabel: "+ Dodaj ukljucenu uslugu",
+    help: "Više fiksnih stavki s ukupnim iznosom ponude.",
+    itemsTitle: "Fiksne stavke ponude",
+    addButtonLabel: "+ Dodaj uslugu",
     allowBreakdowns: false,
     allowMultipleItems: true,
   }),
@@ -578,11 +578,10 @@ const OFFER_PLAN_TYPE_DEFINITIONS = Object.freeze([
 ]);
 const OFFER_SERVICE_LINE_OPTIONS = Object.freeze(OFFER_PLAN_TYPE_DEFINITIONS.map((entry) => entry.value));
 const OFFER_BREAKDOWN_PRICE_KIND_OPTIONS = Object.freeze([
-  Object.freeze({ value: "report", label: "Zapisnik", defaultLabel: "zapisnik" }),
-  Object.freeze({ value: "measurement", label: "Mjerno mjesto", defaultLabel: "mjerno mjesto" }),
-  Object.freeze({ value: "measurement_range", label: "Mjerno mjesto od-do", defaultLabel: "mjerno mjesto" }),
-  Object.freeze({ value: "next_measurement", label: "Svaki iduci", defaultLabel: "svaki iduci" }),
-  Object.freeze({ value: "custom", label: "Ostalo", defaultLabel: "" }),
+  Object.freeze({ value: "report", label: "Zapisnik", defaultLabel: "Zapisnik", fields: [] }),
+  Object.freeze({ value: "measurement", label: "DO mjernih mjesta", defaultLabel: "DO mjernih mjesta", fields: ["to"] }),
+  Object.freeze({ value: "measurement_range", label: "OD do mjernih mjesta", defaultLabel: "OD do mjernih mjesta", fields: ["from", "to"] }),
+  Object.freeze({ value: "next_measurement", label: "Svako iduće mj. mjesto", defaultLabel: "Svako iduće mj. mjesto", fields: [] }),
 ]);
 const OFFER_PLAN_DEFAULT_ITEM_LABELS = Object.freeze([
   "Fixed Plan",
@@ -3460,6 +3459,7 @@ let contractAnnexDrafts = [];
 let contractTemplateReferenceDraft = null;
 let serviceCatalogCertificateTemplateDraft = null;
 let lastCommercialDocumentContextKey = "offers";
+let offerServiceAddMenu = null;
 let documentTemplateFieldDrafts = [];
 let documentTemplateEquipmentDrafts = [];
 let documentTemplateSectionDrafts = [];
@@ -36170,7 +36170,10 @@ function shouldShowOfferTotalAmountOnDocument({
   }
 
   const planType = getCommercialItemsTablePlanType(serviceLine);
-  if (planType === "Fixed Plan" || planType === "Hybrid Plan" || hasSerializedCommercialBreakdowns(items)) {
+  if (planType === "Fixed Plan") {
+    return true;
+  }
+  if (planType === "Hybrid Plan" || hasSerializedCommercialBreakdowns(items)) {
     return false;
   }
   return isOfferTotalVisible();
@@ -36315,6 +36318,19 @@ function getCommercialTableMoneyText(value, currency = "EUR", { showZero = false
   return formatCurrencyAmount(numeric, currency);
 }
 
+function getCommercialBreakdownRangeText(entry = {}) {
+  const priceKind = String(entry?.priceKind || "").trim();
+  const measurementFrom = String(entry?.measurementFrom || "").trim();
+  const measurementTo = String(entry?.measurementTo || "").trim();
+  if (priceKind === "measurement") {
+    return measurementTo ? `do ${measurementTo}` : "";
+  }
+  if (priceKind === "measurement_range") {
+    return [measurementFrom, measurementTo].filter(Boolean).join(" - ");
+  }
+  return "";
+}
+
 function buildCommercialItemsTablePlaceholderPreview(items = [], currency = "EUR", {
   fallbackTitle = "Opis stavke",
   offerType = "",
@@ -36326,11 +36342,11 @@ function buildCommercialItemsTablePlaceholderPreview(items = [], currency = "EUR
   const isHybridPlan = planType === "Hybrid Plan";
   const columns = [
     { id: "number", label: "R.br.", width: 52 },
-    { id: "description", label: fallbackTitle, width: 300 },
+    { id: "description", label: fallbackTitle, width: 320 },
     { id: "quantity", label: "Količina", width: 92 },
-    { id: "unit_price", label: "Jed. cijena", width: 110 },
-    { id: "breakdown", label: "Razrada / napomena", width: 210 },
-    { id: "total", label: "Ukupno", width: 120 },
+    { id: "price_type", label: "Vrsta cijene", width: 150 },
+    { id: "range", label: "Mj. mjesta", width: 120 },
+    { id: "amount", label: "Iznos", width: 120 },
   ];
   const merges = [];
   const rows = [
@@ -36379,11 +36395,11 @@ function buildCommercialItemsTablePlaceholderPreview(items = [], currency = "EUR
       .forEach((entry, breakdownIndex) => {
         pushRow(`item-${itemIndex + 1}-breakdown-${breakdownIndex + 1}`, [
           "",
-          `- ${getOfferBreakdownDisplayLabel(entry)}`,
           "",
+          "",
+          getOfferBreakdownDisplayLabel(entry),
+          getCommercialBreakdownRangeText(entry),
           getCommercialTableMoneyText(entry?.amount, currency),
-          "Razrada stavke",
-          "",
         ], { fillColor: "#FFFFFF" });
       });
   };
@@ -36394,28 +36410,32 @@ function buildCommercialItemsTablePlaceholderPreview(items = [], currency = "EUR
 
   if (isFixedPlan && safeItems.length > 0) {
     const monthlyItem = safeItems[0] || {};
-    pushRow("fixed-monthly", [
-      "1",
-      monthlyItem.description && monthlyItem.description !== "Fixed Plan" ? monthlyItem.description : "Mjesečni paušal",
-      getCommercialTableQuantityText(monthlyItem) || "1 mj",
-      getCommercialTableMoneyText(monthlyItem.unitPrice || monthlyItem.totalPrice, currency),
-      "Mjesečni iznos",
-      "",
-    ], { bold: true, fillColor: "#FFF7E8" });
+    const fixedItems = monthlyItem ? safeItems : [];
+    fixedItems.forEach((item, index) => {
+      pushRow(`fixed-item-${index + 1}`, [
+        String(index + 1),
+        item?.description || "Stavka",
+        getCommercialTableQuantityText(item),
+        "Fiksna cijena",
+        "",
+        getCommercialTableMoneyText(item?.totalPrice || (Number(item?.quantity || 0) * Number(item?.unitPrice || 0)), currency),
+      ], index === 0 ? { bold: true, fillColor: "#FFF7E8" } : {});
+    });
 
-    const includedItems = safeItems.slice(1);
-    if (includedItems.length > 0) {
-      pushSectionRow("fixed-included-section", "Uključeno u paušal");
-      includedItems.forEach((item, index) => {
-        pushRow(`fixed-included-${index + 1}`, [
-          String(index + 2),
-          item?.description || "Uključena usluga",
-          getCommercialTableQuantityText(item),
-          "Uključeno",
-          "",
-          "",
-        ]);
+    if (showTotalAmount && fixedItems.length > 0) {
+      const fixedTotal = fixedItems.reduce((sum, item) => sum + parseOfferMoneyInput(item?.totalPrice || getOfferLineTotal(item), 0), 0);
+      rows.push({
+        id: "fixed-total",
+        cells: [
+          buildCommercialTableCellPreview(""),
+          buildCommercialTableCellPreview("Ukupno", { bold: true, fillColor: "#F1F7F4" }),
+          buildCommercialTableCellPreview("", { fillColor: "#F1F7F4" }),
+          buildCommercialTableCellPreview("", { fillColor: "#F1F7F4" }),
+          buildCommercialTableCellPreview("", { fillColor: "#F1F7F4" }),
+          buildCommercialTableCellPreview(getCommercialTableMoneyText(fixedTotal, currency, { showZero: true }), { bold: true, fillColor: "#F1F7F4", align: "right" }),
+        ],
       });
+      merges.push({ rowId: "fixed-total", columnId: "description", colSpan: 4 });
     }
   } else {
     let hybridSectionInserted = false;
@@ -36434,11 +36454,11 @@ function buildCommercialItemsTablePlaceholderPreview(items = [], currency = "EUR
         String(index + 1),
         item?.description || (isHybridMonthly ? "Mjesečni iznos" : "Stavka"),
         getCommercialTableQuantityText(item),
-        hasBreakdowns ? "" : getCommercialTableMoneyText(item?.unitPrice, currency),
-        hasBreakdowns ? "Razrada u nastavku" : (isHybridMonthly ? "Mjesečni iznos" : ""),
+        hasBreakdowns ? "" : (isHybridMonthly ? "Mjesečni iznos" : "Fiksna cijena"),
+        "",
         hasBreakdowns || isHybridPlan || !showTotalAmount
           ? ""
-          : getCommercialTableMoneyText(item?.totalPrice, currency),
+          : getCommercialTableMoneyText(item?.totalPrice || item?.unitPrice, currency),
       ], rowFormat);
       if (hasBreakdowns) {
         pushBreakdownRows(item, index);
@@ -36476,7 +36496,7 @@ function buildOfferTemplatePlaceholderPayload(offer = buildOfferDraftPreviewData
   const currency = normalizedOffer.currency || "EUR";
   const planType = getCommercialItemsTablePlanType(normalizedOffer.serviceLine || "");
   const suppressItemTotals = !isPurchaseOrder
-    && (planType === "Fixed Plan" || planType === "Hybrid Plan" || hasSerializedCommercialBreakdowns(normalizedOffer.items ?? []));
+    && (planType === "Hybrid Plan" || hasSerializedCommercialBreakdowns(normalizedOffer.items ?? []));
   const itemsSummary = (normalizedOffer.items ?? [])
     .map((item, index) => `${index + 1}. ${item.description || "Stavka"}${item.unit ? ` · ${item.quantity} ${item.unit}` : ""}${!suppressItemTotals && Number(item.totalPrice || 0) > 0 ? ` · ${formatCurrencyAmount(item.totalPrice || 0, currency)}` : ""}`)
     .join("\n");
@@ -68076,24 +68096,24 @@ function buildOfferPlanDefaultItems(planDefinition = getActiveOfferPlanTypeDefin
           breakdowns: [
             {
               priceKind: "report",
-              unitLabel: "zapisnik",
+              unitLabel: "Zapisnik",
               recordLabel: "Zapisnik",
               measurementFrom: "",
               measurementTo: "",
               amount: "",
             },
             {
-              priceKind: "measurement_range",
-              unitLabel: "mjerno mjesto do",
-              recordLabel: "Mjerno mjesto",
+              priceKind: "measurement",
+              unitLabel: "DO mjernih mjesta",
+              recordLabel: "DO mjernih mjesta",
               measurementFrom: "",
               measurementTo: "",
               amount: "",
             },
             {
               priceKind: "next_measurement",
-              unitLabel: "svaki iduci",
-              recordLabel: "Svaki iduci",
+              unitLabel: "Svako iduće mj. mjesto",
+              recordLabel: "Svako iduće mj. mjesto",
               measurementFrom: "",
               measurementTo: "",
               amount: "",
@@ -68151,9 +68171,9 @@ function createOfferAdditionalItemDraftForCurrentPlan() {
       quantity: "1",
       unitPrice: "",
       breakdowns: [
-        { priceKind: "report", unitLabel: "zapisnik", recordLabel: "Zapisnik", amount: "" },
-        { priceKind: "measurement_range", unitLabel: "mjerno mjesto do", recordLabel: "Mjerno mjesto", measurementTo: "", amount: "" },
-        { priceKind: "next_measurement", unitLabel: "svaki iduci", recordLabel: "Svaki iduci", amount: "" },
+        { priceKind: "report", unitLabel: "Zapisnik", recordLabel: "Zapisnik", amount: "" },
+        { priceKind: "measurement", unitLabel: "DO mjernih mjesta", recordLabel: "DO mjernih mjesta", measurementTo: "", amount: "" },
+        { priceKind: "next_measurement", unitLabel: "Svako iduće mj. mjesto", recordLabel: "Svako iduće mj. mjesto", amount: "" },
       ],
     });
   }
@@ -68269,8 +68289,9 @@ function syncCommercialQuickUploadMode() {
   const quickMode = isCommercialQuickUploadMode();
   const offerPlanEditorActive = isOfferPlanEditorActive();
   const offerPlanDefinition = getActiveOfferPlanTypeDefinition();
+  const forceOfferTotalForFixed = offerPlanEditorActive && offerPlanDefinition.value === "Fixed Plan";
   const suppressOfferTotalForPlan = offerPlanEditorActive
-    && (offerPlanDefinition.value === "Fixed Plan" || offerPlanDefinition.value === "Hybrid Plan");
+    && offerPlanDefinition.value === "Hybrid Plan";
   const shouldShowUploads = shouldShowCommercialDocumentUploadSection();
   const quickTitleLabel = isPurchaseOrder ? "Što je naručeno" : (incomingMode ? "Što je ponuđeno" : "Naziv ponude");
   const standaloneToggleField = commercialStandaloneUploadInput?.closest(".commercial-standalone-upload-field");
@@ -68348,9 +68369,12 @@ function syncCommercialQuickUploadMode() {
   }
   offerItems?.toggleAttribute("hidden", quickMode);
   offerTotalsCard?.toggleAttribute("hidden", quickMode || suppressOfferTotalForPlan);
+  if (forceOfferTotalForFixed && !isOfferTotalVisible()) {
+    setOfferTotalVisibility(true);
+  }
   offerPreviewButton?.closest(".offers-editor-meta-actions")?.toggleAttribute("hidden", false);
   if (offerTotalPreviewBlock) {
-    offerTotalPreviewBlock.hidden = quickMode || suppressOfferTotalForPlan || !isOfferTotalVisible();
+    offerTotalPreviewBlock.hidden = quickMode || suppressOfferTotalForPlan || (!forceOfferTotalForFixed && !isOfferTotalVisible());
   }
   const showCommercialNumberFields = quickMode && !outgoingStandaloneOffer;
   if (commercialInternalNumberField) {
@@ -69163,14 +69187,20 @@ function syncOfferActionButtons() {
 function createEmptyOfferBreakdownDraft(entry = {}) {
   const recordLabel = String(entry?.recordLabel ?? entry?.reportLabel ?? entry?.label ?? "");
   const priceKind = String(entry?.priceKind ?? entry?.type ?? entry?.kind ?? "report");
-  const unitLabel = String(entry?.unitLabel ?? entry?.description ?? entry?.priceLabel ?? "");
+  const kindDefinition = OFFER_BREAKDOWN_PRICE_KIND_OPTIONS.find((option) => option.value === priceKind)
+    || OFFER_BREAKDOWN_PRICE_KIND_OPTIONS[0];
+  const unitLabel = String(entry?.unitLabel ?? entry?.description ?? entry?.priceLabel ?? kindDefinition?.defaultLabel ?? "");
 
   return {
     priceKind,
     unitLabel,
     recordLabel,
-    measurementFrom: String(entry?.measurementFrom ?? entry?.measurementFromNumber ?? entry?.from ?? ""),
-    measurementTo: String(entry?.measurementTo ?? entry?.measurementToNumber ?? entry?.to ?? ""),
+    measurementFrom: kindDefinition?.fields?.includes("from")
+      ? String(entry?.measurementFrom ?? entry?.measurementFromNumber ?? entry?.from ?? "")
+      : "",
+    measurementTo: kindDefinition?.fields?.includes("to")
+      ? String(entry?.measurementTo ?? entry?.measurementToNumber ?? entry?.to ?? "")
+      : "",
     label: String(entry?.label ?? unitLabel ?? recordLabel),
     amount: String(entry?.amount ?? ""),
   };
@@ -69181,12 +69211,9 @@ function getOfferBreakdownDisplayLabel(entry = {}) {
   const kindDefinition = OFFER_BREAKDOWN_PRICE_KIND_OPTIONS.find((option) => option.value === priceKind);
   const unitLabel = String(entry?.unitLabel || "").trim();
   const recordLabel = String(entry?.recordLabel || entry?.label || "").trim();
-  const measurementFrom = String(entry?.measurementFrom || "").trim();
-  const measurementTo = String(entry?.measurementTo || "").trim();
-  const range = [measurementFrom, measurementTo].filter(Boolean).join(" - ");
-  const baseLabel = unitLabel || recordLabel || kindDefinition?.defaultLabel || kindDefinition?.label || "Razrada";
+  const baseLabel = unitLabel || recordLabel || kindDefinition?.defaultLabel || kindDefinition?.label || "Stavka";
 
-  return [baseLabel, range ? `mjerno mjesto ${range}` : ""].filter(Boolean).join(" · ");
+  return baseLabel;
 }
 
 function setOfferFormItems(items = [], { ensureOne = true } = {}) {
@@ -69236,6 +69263,140 @@ function updateOfferFormBreakdown(index, breakdownIndex, key, value) {
 function addOfferFormItem(item = createEmptyOfferItemDraft()) {
   offerFormItems = [...offerFormItems, createEmptyOfferItemDraft(item)];
   renderOfferItemRows();
+}
+
+function addOfferFormItems(items = []) {
+  const nextItems = (Array.isArray(items) ? items : [])
+    .map((item) => createEmptyOfferItemDraft(item))
+    .filter((item) => hasMeaningfulOfferItemDraft(item));
+  if (nextItems.length === 0) {
+    return;
+  }
+  offerFormItems = [...offerFormItems, ...nextItems];
+  renderOfferItemRows();
+}
+
+function getOfferServiceCatalogChoices() {
+  return sortServiceCatalogItems(state.serviceCatalog ?? [])
+    .filter((service) => String(service?.status || "active").toLowerCase() !== "inactive")
+    .map((service) => ({
+      id: String(service.id || ""),
+      code: String(service.serviceCode || "").trim(),
+      name: String(service.name || service.serviceCode || "Usluga").trim(),
+      service,
+    }))
+    .filter((entry) => entry.name || entry.code);
+}
+
+function createOfferItemDraftFromService(service = {}) {
+  const base = createOfferAdditionalItemDraftForCurrentPlan();
+  return createEmptyOfferItemDraft({
+    ...base,
+    description: service.name || service.serviceCode || "",
+    serviceCatalogId: service.id ? String(service.id) : "",
+    serviceCode: service.serviceCode || "",
+  });
+}
+
+function closeOfferServiceAddMenu() {
+  offerServiceAddMenu?.remove();
+  offerServiceAddMenu = null;
+}
+
+function openOfferServiceAddMenu(anchorButton = offerAddItemButton) {
+  closeOfferServiceAddMenu();
+  const choices = getOfferServiceCatalogChoices();
+  if (!anchorButton || choices.length === 0) {
+    addOfferFormItem(createOfferAdditionalItemDraftForCurrentPlan());
+    return;
+  }
+
+  const menu = document.createElement("div");
+  menu.className = "offer-service-add-menu";
+  menu.setAttribute("role", "dialog");
+
+  const head = document.createElement("div");
+  head.className = "offer-service-add-head";
+  const title = document.createElement("strong");
+  title.textContent = "Dodaj usluge";
+  const selectAllButton = createActionButton("Odaberi sve", "ghost-button offer-service-add-small", () => {
+    menu.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
+      checkbox.checked = true;
+    });
+  });
+  head.append(title, selectAllButton);
+
+  const search = document.createElement("input");
+  search.type = "search";
+  search.className = "offer-service-add-search";
+  search.placeholder = "Pretraži šifru ili naziv usluge...";
+
+  const list = document.createElement("div");
+  list.className = "offer-service-add-list";
+
+  const renderChoices = () => {
+    const query = normalizeLooseName(search.value || "");
+    const filtered = choices.filter((choice) => (
+      !query || normalizeLooseName(`${choice.code} ${choice.name}`).includes(query)
+    ));
+    list.replaceChildren(...filtered.map((choice) => {
+      const option = document.createElement("label");
+      option.className = "offer-service-add-option";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.value = choice.id;
+      const copy = document.createElement("span");
+      const name = document.createElement("strong");
+      name.textContent = choice.name;
+      const meta = document.createElement("small");
+      meta.textContent = choice.code || "Bez šifre";
+      copy.append(name, meta);
+      option.append(checkbox, copy);
+      return option;
+    }));
+  };
+  renderChoices();
+  search.addEventListener("input", renderChoices);
+
+  const footer = document.createElement("div");
+  footer.className = "offer-service-add-footer";
+  const emptyButton = createActionButton("+ Prazna stavka", "ghost-button offer-service-add-small", () => {
+    addOfferFormItem(createOfferAdditionalItemDraftForCurrentPlan());
+    closeOfferServiceAddMenu();
+  });
+  const addButton = createActionButton("Dodaj odabrane", "primary-button offer-service-add-confirm", () => {
+    const selectedIds = Array.from(menu.querySelectorAll('input[type="checkbox"]:checked'))
+      .map((checkbox) => checkbox.value);
+    const selectedChoices = choices.filter((choice) => selectedIds.includes(choice.id));
+    if (selectedChoices.length === 0) {
+      addOfferFormItem(createOfferAdditionalItemDraftForCurrentPlan());
+    } else {
+      addOfferFormItems(selectedChoices.map((choice) => createOfferItemDraftFromService(choice.service)));
+    }
+    closeOfferServiceAddMenu();
+  });
+  footer.append(emptyButton, addButton);
+
+  menu.append(head, search, list, footer);
+  document.body.append(menu);
+
+  const rect = anchorButton.getBoundingClientRect();
+  const menuWidth = Math.min(420, window.innerWidth - 24);
+  menu.style.width = `${menuWidth}px`;
+  menu.style.left = `${Math.min(window.innerWidth - menuWidth - 12, Math.max(12, rect.right - menuWidth))}px`;
+  menu.style.top = `${Math.min(window.innerHeight - menu.offsetHeight - 12, rect.bottom + 8)}px`;
+  offerServiceAddMenu = menu;
+  search.focus({ preventScroll: true });
+
+  const closeOnOutside = (event) => {
+    if (offerServiceAddMenu && !offerServiceAddMenu.contains(event.target) && event.target !== anchorButton) {
+      closeOfferServiceAddMenu();
+      document.removeEventListener("pointerdown", closeOnOutside, true);
+    }
+  };
+  requestAnimationFrame(() => {
+    document.addEventListener("pointerdown", closeOnOutside, true);
+  });
 }
 
 function addOfferFormBreakdown(index) {
@@ -69345,9 +69506,7 @@ function renderOfferItemRows() {
 
   offerItems.replaceChildren(...offerFormItems.map((item, index) => {
     const itemShowsBreakdowns = allowBreakdowns && Boolean(item.showBreakdowns);
-    const isFixedIncludedService = isOfferPlanEditorActive()
-      && activePlanDefinition.value === "Fixed Plan"
-      && index > 0;
+    const isFixedIncludedService = false;
     const row = document.createElement("div");
     row.className = "offer-item-row";
     row.classList.toggle("has-breakdown", itemShowsBreakdowns);
@@ -69419,7 +69578,7 @@ function renderOfferItemRows() {
 
     const title = document.createElement("strong");
     title.className = "offer-item-head-title";
-    title.textContent = isFixedIncludedService ? `Uključena usluga ${index}` : `Stavka ${index + 1}`;
+    title.textContent = `Stavka ${index + 1}`;
 
     const titleMeta = document.createElement("div");
     titleMeta.className = "offer-item-head-copy";
@@ -69560,32 +69719,27 @@ function renderOfferItemRows() {
           const nextValue = event.currentTarget.value;
           const kindDefinition = OFFER_BREAKDOWN_PRICE_KIND_OPTIONS.find((option) => option.value === nextValue);
           updateOfferFormBreakdown(index, breakdownIndex, "priceKind", nextValue);
-          if (!String(entry.unitLabel || "").trim() && kindDefinition?.defaultLabel) {
-            updateOfferFormBreakdown(index, breakdownIndex, "unitLabel", kindDefinition.defaultLabel);
+          updateOfferFormBreakdown(index, breakdownIndex, "unitLabel", kindDefinition?.defaultLabel || "");
+          updateOfferFormBreakdown(index, breakdownIndex, "label", kindDefinition?.defaultLabel || "");
+          if (!kindDefinition?.fields?.includes("from")) {
+            updateOfferFormBreakdown(index, breakdownIndex, "measurementFrom", "");
+          }
+          if (!kindDefinition?.fields?.includes("to")) {
+            updateOfferFormBreakdown(index, breakdownIndex, "measurementTo", "");
           }
           renderOfferItemRows();
         });
         typeField.append(typeSpan, typeSelect);
 
-        const recordField = document.createElement("label");
-        recordField.className = "field";
-        const recordSpan = document.createElement("span");
-        recordSpan.textContent = "Opis cijene";
-        const recordInput = document.createElement("input");
-        recordInput.type = "text";
-        recordInput.placeholder = "zapisnik, sustav do 20 javljača, svaki naredni...";
-        recordInput.value = entry.unitLabel || entry.recordLabel || entry.label || "";
-        recordInput.addEventListener("input", (event) => {
-          const nextValue = event.currentTarget.value;
-          updateOfferFormBreakdown(index, breakdownIndex, "unitLabel", nextValue);
-          updateOfferFormBreakdown(index, breakdownIndex, "label", nextValue);
-        });
-        recordField.append(recordSpan, recordInput);
+        const activeKindDefinition = OFFER_BREAKDOWN_PRICE_KIND_OPTIONS.find((option) => option.value === (entry.priceKind || "report"))
+          || OFFER_BREAKDOWN_PRICE_KIND_OPTIONS[0];
+        const visibleRangeFields = new Set(activeKindDefinition.fields ?? []);
 
         const fromField = document.createElement("label");
         fromField.className = "field";
+        fromField.hidden = !visibleRangeFields.has("from");
         const fromSpan = document.createElement("span");
-        fromSpan.textContent = "Mjerno mjesto od";
+        fromSpan.textContent = "Od mj. mjesta";
         const fromInput = document.createElement("input");
         fromInput.type = "text";
         fromInput.inputMode = "numeric";
@@ -69598,8 +69752,9 @@ function renderOfferItemRows() {
 
         const toField = document.createElement("label");
         toField.className = "field";
+        toField.hidden = !visibleRangeFields.has("to");
         const toSpan = document.createElement("span");
-        toSpan.textContent = "Mjerno mjesto do";
+        toSpan.textContent = activeKindDefinition.value === "measurement" ? "Do mj. mjesta" : "Do mj. mjesta";
         const toInput = document.createElement("input");
         toInput.type = "text";
         toInput.inputMode = "numeric";
@@ -69632,7 +69787,7 @@ function renderOfferItemRows() {
           },
         );
 
-        breakdownRow.append(typeField, recordField, fromField, toField, amountField, breakdownRemoveButton);
+        breakdownRow.append(typeField, fromField, toField, amountField, breakdownRemoveButton);
         breakdownList.append(breakdownRow);
       });
 
@@ -86875,11 +87030,7 @@ offerToggleTotalButton?.addEventListener("click", () => {
 });
 
 offerAddItemButton?.addEventListener("click", () => {
-  addOfferFormItem(createOfferAdditionalItemDraftForCurrentPlan());
-  const lastDescriptionInput = offerItems?.querySelector(".offer-item-row:last-child input");
-  if (lastDescriptionInput instanceof HTMLElement) {
-    lastDescriptionInput.focus({ preventScroll: true });
-  }
+  openOfferServiceAddMenu(offerAddItemButton);
 });
 
 offerCopyPricingButton?.addEventListener("click", (event) => {

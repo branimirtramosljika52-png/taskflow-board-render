@@ -1572,6 +1572,19 @@ function getCommercialMoneyText(value = 0, currency = "EUR", { showZero = false 
   return formatOfferTemplateMoney(numeric, currency);
 }
 
+function getCommercialBreakdownRangeText(entry = {}) {
+  const priceKind = String(entry?.priceKind || "").trim();
+  const measurementFrom = String(entry?.measurementFrom || "").trim();
+  const measurementTo = String(entry?.measurementTo || "").trim();
+  if (priceKind === "measurement") {
+    return measurementTo ? `do ${measurementTo}` : "";
+  }
+  if (priceKind === "measurement_range") {
+    return [measurementFrom, measurementTo].filter(Boolean).join(" - ");
+  }
+  return "";
+}
+
 function buildCommercialItemsTablePlaceholder(items = [], currency = "EUR", {
   fallbackTitle = "Stavke",
   offerType = "",
@@ -1583,11 +1596,11 @@ function buildCommercialItemsTablePlaceholder(items = [], currency = "EUR", {
   const isHybridPlan = planType === "Hybrid Plan";
   const columns = [
     { id: "number", label: "R.br.", width: 52 },
-    { id: "description", label: fallbackTitle, width: 300 },
+    { id: "description", label: fallbackTitle, width: 320 },
     { id: "quantity", label: "Kolicina", width: 92 },
-    { id: "unit_price", label: "Jed. cijena", width: 110 },
-    { id: "breakdown", label: "Razrada / napomena", width: 210 },
-    { id: "total", label: "Ukupno", width: 120 },
+    { id: "price_type", label: "Vrsta cijene", width: 150 },
+    { id: "range", label: "Mj. mjesta", width: 120 },
+    { id: "amount", label: "Iznos", width: 120 },
   ];
   const merges = [];
   const rows = [
@@ -1636,11 +1649,11 @@ function buildCommercialItemsTablePlaceholder(items = [], currency = "EUR", {
       .forEach((entry, breakdownIndex) => {
         pushRow(`item-${itemIndex + 1}-breakdown-${breakdownIndex + 1}`, [
           "",
-          `- ${formatCommercialBreakdownLabel(entry)}`,
           "",
+          "",
+          formatCommercialBreakdownLabel(entry),
+          getCommercialBreakdownRangeText(entry),
           getCommercialMoneyText(entry?.amount, currency),
-          "Razrada stavke",
-          "",
         ]);
       });
   };
@@ -1650,29 +1663,31 @@ function buildCommercialItemsTablePlaceholder(items = [], currency = "EUR", {
   }
 
   if (isFixedPlan && safeItems.length > 0) {
-    const monthlyItem = safeItems[0] || {};
-    pushRow("fixed-monthly", [
-      "1",
-      monthlyItem.description && monthlyItem.description !== "Fixed Plan" ? monthlyItem.description : "Mjesecni pausal",
-      getCommercialQuantityText(monthlyItem) || "1 mj",
-      getCommercialMoneyText(monthlyItem.unitPrice || monthlyItem.totalPrice, currency),
-      "Mjesecni iznos",
-      "",
-    ], { bold: true, fillColor: "#FFF7E8" });
+    safeItems.forEach((item, index) => {
+      pushRow(`fixed-item-${index + 1}`, [
+        String(index + 1),
+        item?.description || "Stavka",
+        getCommercialQuantityText(item),
+        "Fiksna cijena",
+        "",
+        getCommercialMoneyText(item?.totalPrice || (Number(item?.quantity || 0) * Number(item?.unitPrice || 0)), currency),
+      ], index === 0 ? { bold: true, fillColor: "#FFF7E8" } : {});
+    });
 
-    const includedItems = safeItems.slice(1);
-    if (includedItems.length > 0) {
-      pushSectionRow("fixed-included-section", "Ukljuceno u pausal");
-      includedItems.forEach((item, index) => {
-        pushRow(`fixed-included-${index + 1}`, [
-          String(index + 2),
-          item?.description || "Ukljucena usluga",
-          getCommercialQuantityText(item),
-          "Ukljuceno",
-          "",
-          "",
-        ]);
+    if (showTotalAmount && safeItems.length > 0) {
+      const fixedTotal = safeItems.reduce((sum, item) => sum + (Number(item?.totalPrice ?? 0) || ((Number(item?.quantity ?? 0) || 0) * (Number(item?.unitPrice ?? 0) || 0))), 0);
+      rows.push({
+        id: "fixed-total",
+        cells: [
+          buildCommercialTableCell(""),
+          buildCommercialTableCell("Ukupno", { bold: true, fillColor: "#F1F7F4" }),
+          buildCommercialTableCell("", { fillColor: "#F1F7F4" }),
+          buildCommercialTableCell("", { fillColor: "#F1F7F4" }),
+          buildCommercialTableCell("", { fillColor: "#F1F7F4" }),
+          buildCommercialTableCell(getCommercialMoneyText(fixedTotal, currency, { showZero: true }), { bold: true, fillColor: "#F1F7F4", align: "right" }),
+        ],
       });
+      merges.push({ rowId: "fixed-total", columnId: "description", colSpan: 4 });
     }
   } else {
     let hybridSectionInserted = false;
@@ -1691,11 +1706,11 @@ function buildCommercialItemsTablePlaceholder(items = [], currency = "EUR", {
         String(index + 1),
         item?.description || (isHybridMonthly ? "Mjesecni iznos" : "Stavka"),
         getCommercialQuantityText(item),
-        hasBreakdowns ? "" : getCommercialMoneyText(item?.unitPrice, currency),
-        hasBreakdowns ? "Razrada u nastavku" : (isHybridMonthly ? "Mjesecni iznos" : ""),
+        hasBreakdowns ? "" : (isHybridMonthly ? "Mjesecni iznos" : "Fiksna cijena"),
+        "",
         hasBreakdowns || isHybridPlan || !showTotalAmount
           ? ""
-          : getCommercialMoneyText(item?.totalPrice, currency),
+          : getCommercialMoneyText(item?.totalPrice || item?.unitPrice, currency),
       ], rowFormat);
       if (hasBreakdowns) {
         pushBreakdownRows(item, index);
@@ -1713,11 +1728,15 @@ function buildCommercialItemsTablePlaceholder(items = [], currency = "EUR", {
 }
 
 function formatCommercialBreakdownLabel(entry = {}) {
-  const recordLabel = String(entry?.unitLabel || entry?.recordLabel || entry?.label || "Razrada").trim() || "Razrada";
-  const measurementFrom = String(entry?.measurementFrom || "").trim();
-  const measurementTo = String(entry?.measurementTo || "").trim();
-  const measurementRange = [measurementFrom, measurementTo].filter(Boolean).join(" - ");
-  return measurementRange ? `${recordLabel} - mjerno mjesto ${measurementRange}` : recordLabel;
+  const defaultLabels = new Map([
+    ["report", "Zapisnik"],
+    ["measurement", "DO mjernih mjesta"],
+    ["measurement_range", "OD do mjernih mjesta"],
+    ["next_measurement", "Svako iduce mj. mjesto"],
+  ]);
+  const priceKind = String(entry?.priceKind || "").trim();
+  const recordLabel = String(entry?.unitLabel || entry?.recordLabel || entry?.label || defaultLabels.get(priceKind) || "Stavka").trim() || "Stavka";
+  return recordLabel;
 }
 
 function getOfferStatusLabel(value = "") {
@@ -1903,8 +1922,7 @@ function buildOfferTemplatePlaceholderPayload(offer = {}) {
   const currency = String(normalizedOffer.currency || "EUR").trim() || "EUR";
   const items = Array.isArray(normalizedOffer.items) ? normalizedOffer.items : [];
   const planType = normalizeCommercialOfferPlanType(normalizedOffer.serviceLine || "");
-  const suppressItemTotals = planType === "Fixed Plan"
-    || planType === "Hybrid Plan"
+  const suppressItemTotals = planType === "Hybrid Plan"
     || items.some((item) => hasCommercialBreakdownRows(item));
   const itemsSummary = items
     .map((item, index) => `${index + 1}. ${item.description || "Stavka"}${item.unit ? ` · ${item.quantity || 0} ${item.unit}` : ""}${Number(item.totalPrice || 0) > 0 ? ` · ${formatOfferTemplateMoney(item.totalPrice || 0, currency)}` : ""}`)
