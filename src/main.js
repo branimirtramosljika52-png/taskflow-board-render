@@ -1356,6 +1356,8 @@ const AUTH_RETRY_EXCLUDED_PATHS = new Set([
   "/auth/session",
   "/health",
 ]);
+const HELP_TOUR_VERSION = "2026-05-04-offers";
+const HELP_TOUR_STORAGE_PREFIX = "safenexus.helpTour";
 
 const state = {
   storage: "memory",
@@ -1441,6 +1443,12 @@ const state = {
   appCapabilitiesDialog: {
     open: false,
     modules: [],
+  },
+  helpTour: {
+    open: false,
+    kind: "",
+    stepIndex: 0,
+    startedFromWelcome: false,
   },
   userEditorOpen: false,
   userManagementScope: "people",
@@ -2834,6 +2842,7 @@ const offersFilterStatusInput = document.querySelector("#offers-filter-status");
 const offersHelper = document.querySelector("#offers-helper");
 const offersList = document.querySelector("#offers-list");
 const offersEmpty = document.querySelector("#offers-empty");
+const offerHelpTourButton = document.querySelector("#offer-help-tour");
 const offerOpenFormButton = document.querySelector("#offer-open-form");
 const offerOpenTemplateButton = document.querySelector("#offer-open-template");
 const offerEditorBackdrop = document.querySelector("#offer-editor-backdrop");
@@ -84875,6 +84884,478 @@ function renderManagement() {
   renderLoginContentItems();
 }
 
+let helpTourAutoWelcomeQueued = false;
+let helpTourRafId = 0;
+
+function getHelpTourStorageKey(kind = "welcome") {
+  const userKey = state.user?.id || state.user?.email || "anonymous";
+  const organizationKey = state.activeOrganizationId || "global";
+  return `${HELP_TOUR_STORAGE_PREFIX}.${HELP_TOUR_VERSION}.${organizationKey}.${userKey}.${kind}`;
+}
+
+function hasCompletedHelpTour(kind = "welcome") {
+  try {
+    return window.localStorage.getItem(getHelpTourStorageKey(kind)) === "done";
+  } catch {
+    return false;
+  }
+}
+
+function markHelpTourCompleted(kind = "welcome") {
+  try {
+    window.localStorage.setItem(getHelpTourStorageKey(kind), "done");
+  } catch {
+    return;
+  }
+}
+
+function getHelpTourLayer() {
+  let layer = document.querySelector("#help-tour-layer");
+  if (layer) {
+    return layer;
+  }
+
+  layer = document.createElement("div");
+  layer.id = "help-tour-layer";
+  layer.className = "help-tour-layer";
+  layer.hidden = true;
+  layer.innerHTML = `
+    <div class="help-tour-scrim" aria-hidden="true"></div>
+    <div class="help-tour-spotlight" aria-hidden="true"></div>
+    <section class="help-tour-card" role="dialog" aria-modal="true" aria-live="polite" aria-labelledby="help-tour-title">
+      <div class="help-tour-card-glow" aria-hidden="true"></div>
+      <div class="help-tour-card-head">
+        <span id="help-tour-kicker" class="section-kicker">Help</span>
+        <button id="help-tour-skip" type="button" class="ghost-button help-tour-skip-button">Preskoči</button>
+      </div>
+      <h3 id="help-tour-title"></h3>
+      <p id="help-tour-body" class="help-tour-body"></p>
+      <div id="help-tour-points" class="help-tour-points"></div>
+      <div id="help-tour-progress" class="help-tour-progress"></div>
+      <div class="help-tour-actions">
+        <button id="help-tour-back" type="button" class="ghost-button">Natrag</button>
+        <button id="help-tour-next" type="button" class="primary-button">OK, dalje</button>
+      </div>
+    </section>
+  `;
+  document.body.append(layer);
+  layer.querySelector("#help-tour-skip")?.addEventListener("click", () => {
+    closeHelpTour({ markCompleted: true });
+  });
+  layer.querySelector("#help-tour-back")?.addEventListener("click", () => {
+    moveHelpTourStep(-1);
+  });
+  layer.querySelector("#help-tour-next")?.addEventListener("click", () => {
+    moveHelpTourStep(1);
+  });
+  return layer;
+}
+
+function getOffersHelpTourSteps() {
+  return [
+    {
+      title: "Ulaz u ponude",
+      body: "Ovdje vodiš sve ponude prema klijentima i zaprimljene ponude. Tour te vodi kroz najčešći tijek rada, bez spremanja podataka.",
+      target: "#offers-module .offers-list-panel",
+      points: ["Lista, filteri i akcije ostaju u jednom radnom prostoru.", "Kad trebaš urediti ponudu, klik na karticu otvara isti editor."],
+      prepare: "offers",
+    },
+    {
+      title: "Navigacija do modula",
+      body: "Offers se nalazi u Operations grupi. Ako si u drugom modulu, sustav te može vratiti ovdje jednim klikom.",
+      target: '[data-sidebar-item="offers"]',
+      points: ["Lijeva navigacija mijenja radni modul.", "Aktivni modul dobije naglašenu pozadinu."],
+      prepare: "offers",
+    },
+    {
+      title: "Smjer ponude",
+      body: "Prema klijentu su ponude koje ti šalješ. Primljene ponude su dokumenti koje dobiješ od drugih dobavljača ili partnera.",
+      target: "#offer-direction-tabs",
+      points: ["Smjer mijenja polja, brojeve i dostupne akcije.", "Za klijentske ponude ostaje preview, PDF i email tijek."],
+      prepare: "offers",
+    },
+    {
+      title: "Pretraga i status",
+      body: "Pretraga hvata broj ponude, tvrtku, lokaciju i uslugu. Status filter služi za brzi pregled skica, poslanih i prihvaćenih ponuda.",
+      target: ".offers-filters",
+      points: ["Koristi pretragu kao radni inbox.", "Statusi pomažu da odmah vidiš što čeka slanje ili odluku."],
+      prepare: "offers",
+    },
+    {
+      title: "Popis ponuda",
+      body: "Svaka ponuda je kartica s brojem, tvrtkom, kontaktom, statusom i PDF akcijom. Klik na karticu otvara editor.",
+      target: "#offers-list",
+      points: ["PDF možeš preuzeti direktno iz liste.", "Kartice su složene za brzo skeniranje bez otvaranja detalja."],
+      prepare: "offers",
+    },
+    {
+      title: "Word predložak",
+      body: "Ovdje se podešava Word template i placeholderi. Tamo dodaješ tablice za mjesečne naknade, cjenik usluga, tekstove i ostale podatke.",
+      target: "#offer-open-template",
+      points: ["Template koristi tvoje Word dokumente.", "Placeholderi se kopiraju direktno u predložak."],
+      prepare: "offers",
+    },
+    {
+      title: "Nova ponuda",
+      body: "Ovaj gumb otvara editor ponude. U touru ću ga otvoriti automatski u sljedećem koraku, samo kao prikaz rada.",
+      target: "#offer-open-form",
+      points: ["Ništa se ne sprema dok sam ne klikneš Spremi ponudu.", "Editor je veliki popup da imaš više prostora za rad."],
+      prepare: "offers",
+    },
+    {
+      title: "Osnovni podaci",
+      body: "U editoru biraš status, datum, naziv, tvrtku, lokacije, kontakt osobu i vrstu ponude. To je temelj iz kojeg se puni Word i PDF.",
+      target: ".offers-form-grid",
+      points: ["Kontakt email kasnije se predlaže za slanje.", "Vrsta ponude mijenja prikaz stavki i razrade."],
+      prepare: "offer-editor",
+    },
+    {
+      title: "Stavke i razrada",
+      body: "Ovdje dodaješ fiksne stavke, mjesečne naknade ili razradu usluga po zapisniku i mjernim mjestima. Kod Fixed Plana stavke su ručni unosi.",
+      target: ".offers-items-head",
+      points: ["Hybrid odvaja mjesečni dio od cjenika usluga.", "Word export sada može koristiti odvojene tablice."],
+      prepare: "offer-editor",
+    },
+    {
+      title: "Preview, PDF i email",
+      body: "Na kraju možeš napraviti preview iz Word templatea, preuzeti PDF ili otvoriti email prozor. Osoba koja radi ponudu ostaje zapisana kao autor.",
+      target: ".offers-editor-meta-actions",
+      points: ["Preview provjeri prije slanja.", "Email se šalje kontakt osobi, a pošiljatelj ide u CC."],
+      prepare: "offer-editor",
+    },
+  ];
+}
+
+function getCurrentHelpTourStep() {
+  if (state.helpTour.kind === "offers") {
+    return getOffersHelpTourSteps()[state.helpTour.stepIndex] ?? null;
+  }
+  return null;
+}
+
+function getHelpTourTarget(step = getCurrentHelpTourStep()) {
+  const selector = step?.target || "";
+  if (!selector) {
+    return null;
+  }
+  const target = document.querySelector(selector);
+  if (!(target instanceof HTMLElement) || target.hidden) {
+    return null;
+  }
+  const style = window.getComputedStyle(target);
+  if (style.display === "none" || style.visibility === "hidden") {
+    return null;
+  }
+  return target;
+}
+
+function prepareHelpTourStep(step = getCurrentHelpTourStep()) {
+  if (!step) {
+    return;
+  }
+
+  if (step.prepare === "offers" || step.prepare === "offer-editor") {
+    if (state.activeView !== "module" || state.activeModuleItem !== "offers") {
+      activateSidebarItem("offers", { expandSidebar: true });
+    }
+    ensureCommercialDocumentDirectionState();
+    if (state.commercialDocumentDirections.offers !== "outgoing") {
+      state.commercialDocumentDirections.offers = "outgoing";
+      renderOffersModule();
+    }
+  }
+
+  if (step.prepare === "offer-editor") {
+    if (!state.offerEditorOpen) {
+      resetOfferForm();
+      renderOffersModule();
+      openOfferEditor();
+    }
+  } else if (state.offerEditorOpen && step.prepare === "offers") {
+    closeOfferEditor({ reset: false });
+  }
+}
+
+function positionHelpTourCard(layer, step = getCurrentHelpTourStep()) {
+  const card = layer.querySelector(".help-tour-card");
+  const spotlight = layer.querySelector(".help-tour-spotlight");
+  if (!(card instanceof HTMLElement) || !(spotlight instanceof HTMLElement)) {
+    return;
+  }
+
+  const target = getHelpTourTarget(step);
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1200;
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 800;
+  const padding = 12;
+
+  if (!target) {
+    spotlight.hidden = true;
+    card.classList.add("is-centered");
+    card.style.left = "";
+    card.style.top = "";
+    return;
+  }
+
+  spotlight.hidden = false;
+  card.classList.remove("is-centered");
+  const rect = target.getBoundingClientRect();
+  const safeLeft = Math.max(8, rect.left - padding);
+  const safeTop = Math.max(8, rect.top - padding);
+  const safeWidth = Math.min(viewportWidth - safeLeft - 8, rect.width + (padding * 2));
+  const safeHeight = Math.min(viewportHeight - safeTop - 8, rect.height + (padding * 2));
+  layer.style.setProperty("--tour-x", `${safeLeft}px`);
+  layer.style.setProperty("--tour-y", `${safeTop}px`);
+  layer.style.setProperty("--tour-w", `${Math.max(72, safeWidth)}px`);
+  layer.style.setProperty("--tour-h", `${Math.max(42, safeHeight)}px`);
+
+  const cardRect = card.getBoundingClientRect();
+  const preferredRight = rect.right + 22;
+  const preferredLeft = rect.left - cardRect.width - 22;
+  let left = preferredRight + cardRect.width <= viewportWidth - 14
+    ? preferredRight
+    : preferredLeft >= 14
+      ? preferredLeft
+      : Math.min(Math.max(14, rect.left), viewportWidth - cardRect.width - 14);
+  let top = rect.top + Math.min(28, Math.max(0, rect.height / 2 - 120));
+
+  if (top + cardRect.height > viewportHeight - 14) {
+    top = viewportHeight - cardRect.height - 14;
+  }
+  if (top < 14) {
+    top = 14;
+  }
+  if (left < 14) {
+    left = 14;
+  }
+
+  card.style.left = `${left}px`;
+  card.style.top = `${top}px`;
+}
+
+function renderHelpTourProgress(layer, totalSteps = 0, currentIndex = 0) {
+  const progress = layer.querySelector("#help-tour-progress");
+  if (!progress) {
+    return;
+  }
+
+  progress.replaceChildren(...Array.from({ length: totalSteps }, (_, index) => {
+    const dot = document.createElement("span");
+    dot.className = "help-tour-progress-dot";
+    dot.classList.toggle("is-active", index === currentIndex);
+    dot.classList.toggle("is-done", index < currentIndex);
+    dot.textContent = String(index + 1);
+    return dot;
+  }));
+}
+
+function renderHelpTourPoints(layer, points = []) {
+  const pointsWrap = layer.querySelector("#help-tour-points");
+  if (!pointsWrap) {
+    return;
+  }
+  const safePoints = Array.isArray(points) ? points.filter(Boolean) : [];
+  pointsWrap.hidden = safePoints.length === 0;
+  pointsWrap.replaceChildren(...safePoints.map((point) => {
+    const item = document.createElement("span");
+    item.textContent = point;
+    return item;
+  }));
+}
+
+function renderWelcomeHelpTour(layer) {
+  const title = layer.querySelector("#help-tour-title");
+  const body = layer.querySelector("#help-tour-body");
+  const kicker = layer.querySelector("#help-tour-kicker");
+  const skip = layer.querySelector("#help-tour-skip");
+  const back = layer.querySelector("#help-tour-back");
+  const next = layer.querySelector("#help-tour-next");
+  const spotlight = layer.querySelector(".help-tour-spotlight");
+  const card = layer.querySelector(".help-tour-card");
+  layer.classList.add("is-welcome");
+  layer.classList.remove("is-guided");
+  spotlight.hidden = true;
+  card?.classList.add("is-centered", "is-welcome-card");
+  if (kicker) {
+    kicker.textContent = "Dobrodošli";
+  }
+  if (title) {
+    title.textContent = "Dobrodošli u SafeNexus";
+  }
+  if (body) {
+    body.textContent = "SafeNexus je radni prostor za tvrtke, lokacije, radne naloge, ponude, dokumente, osposobljavanja i procjene rizika. Krenut ćemo s kratkim vodičem kroz Ponude, korak po korak.";
+  }
+  renderHelpTourPoints(layer, [
+    "Prozor se prikazuje samo prvi put za ovog korisnika i organizaciju.",
+    "Svaki korak možeš potvrditi kada si spreman.",
+    "Tour možeš ponovno pokrenuti iz gumba Pomoć u Ponudama.",
+  ]);
+  renderHelpTourProgress(layer, 0, 0);
+  if (skip) {
+    skip.textContent = "Kasnije";
+  }
+  if (back) {
+    back.hidden = true;
+  }
+  if (next) {
+    next.textContent = "Kreni kroz ponude";
+  }
+  positionHelpTourCard(layer, null);
+}
+
+function renderGuidedHelpTour(layer) {
+  const steps = getOffersHelpTourSteps();
+  const step = getCurrentHelpTourStep();
+  if (!step) {
+    closeHelpTour({ markCompleted: true });
+    return;
+  }
+  const title = layer.querySelector("#help-tour-title");
+  const body = layer.querySelector("#help-tour-body");
+  const kicker = layer.querySelector("#help-tour-kicker");
+  const skip = layer.querySelector("#help-tour-skip");
+  const back = layer.querySelector("#help-tour-back");
+  const next = layer.querySelector("#help-tour-next");
+  layer.classList.remove("is-welcome");
+  layer.classList.add("is-guided");
+  layer.querySelector(".help-tour-card")?.classList.remove("is-welcome-card");
+  if (kicker) {
+    kicker.textContent = `Ponude · korak ${state.helpTour.stepIndex + 1} od ${steps.length}`;
+  }
+  if (title) {
+    title.textContent = step.title;
+  }
+  if (body) {
+    body.textContent = step.body;
+  }
+  if (skip) {
+    skip.textContent = "Preskoči";
+  }
+  if (back) {
+    back.hidden = state.helpTour.stepIndex <= 0;
+  }
+  if (next) {
+    next.textContent = state.helpTour.stepIndex >= steps.length - 1 ? "Završi" : "OK, dalje";
+  }
+  renderHelpTourPoints(layer, step.points);
+  renderHelpTourProgress(layer, steps.length, state.helpTour.stepIndex);
+
+  const target = getHelpTourTarget(step);
+  target?.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
+  window.setTimeout(() => {
+    positionHelpTourCard(layer, step);
+  }, 180);
+}
+
+function renderHelpTour() {
+  const layer = getHelpTourLayer();
+  const isOpen = Boolean(state.helpTour.open && state.user);
+  layer.hidden = !isOpen;
+  document.body.classList.toggle("is-help-tour-open", isOpen);
+  if (!isOpen) {
+    return;
+  }
+
+  if (helpTourRafId) {
+    window.cancelAnimationFrame(helpTourRafId);
+  }
+
+  prepareHelpTourStep(getCurrentHelpTourStep());
+  helpTourRafId = window.requestAnimationFrame(() => {
+    helpTourRafId = 0;
+    if (state.helpTour.kind === "welcome") {
+      renderWelcomeHelpTour(layer);
+      return;
+    }
+    renderGuidedHelpTour(layer);
+  });
+}
+
+function openWelcomeHelpTour({ force = false } = {}) {
+  if (!state.user || (!force && hasCompletedHelpTour("welcome"))) {
+    return;
+  }
+  state.helpTour = {
+    open: true,
+    kind: "welcome",
+    stepIndex: 0,
+    startedFromWelcome: false,
+  };
+  renderHelpTour();
+}
+
+function openOffersHelpTour({ fromWelcome = false } = {}) {
+  if (!state.user) {
+    return;
+  }
+  if (fromWelcome) {
+    markHelpTourCompleted("welcome");
+  }
+  state.helpTour = {
+    open: true,
+    kind: "offers",
+    stepIndex: 0,
+    startedFromWelcome: Boolean(fromWelcome),
+  };
+  renderHelpTour();
+}
+
+function closeHelpTour({ markCompleted = false } = {}) {
+  const previousKind = state.helpTour.kind;
+  if (markCompleted && previousKind) {
+    markHelpTourCompleted(previousKind);
+    if (previousKind === "welcome") {
+      markHelpTourCompleted("offers");
+    }
+  }
+  state.helpTour = {
+    open: false,
+    kind: "",
+    stepIndex: 0,
+    startedFromWelcome: false,
+  };
+  renderHelpTour();
+}
+
+function moveHelpTourStep(direction = 1) {
+  if (!state.helpTour.open) {
+    return;
+  }
+  if (state.helpTour.kind === "welcome") {
+    if (direction > 0) {
+      openOffersHelpTour({ fromWelcome: true });
+    } else {
+      closeHelpTour({ markCompleted: true });
+    }
+    return;
+  }
+
+  const steps = getOffersHelpTourSteps();
+  const nextIndex = state.helpTour.stepIndex + direction;
+  if (nextIndex < 0) {
+    return;
+  }
+  if (nextIndex >= steps.length) {
+    closeHelpTour({ markCompleted: true });
+    return;
+  }
+  state.helpTour.stepIndex = nextIndex;
+  renderHelpTour();
+}
+
+function queueWelcomeHelpTourIfNeeded() {
+  if (!state.user || helpTourAutoWelcomeQueued || state.helpTour.open || hasCompletedHelpTour("welcome")) {
+    return;
+  }
+  helpTourAutoWelcomeQueued = true;
+  window.setTimeout(() => {
+    helpTourAutoWelcomeQueued = false;
+    if (!state.user || state.helpTour.open || hasCompletedHelpTour("welcome")) {
+      return;
+    }
+    openWelcomeHelpTour();
+  }, 700);
+}
+
 function render() {
   renderAuthState();
   renderLoginContent();
@@ -84904,6 +85385,8 @@ function render() {
   renderActiveView();
   renderChatDock();
   renderAppCapabilitiesDialog();
+  renderHelpTour();
+  queueWelcomeHelpTourIfNeeded();
 }
 
 sidebarNavItems.forEach((button) => {
@@ -86853,6 +87336,10 @@ offerOpenFormButton?.addEventListener("click", () => {
   requestAnimationFrame(() => {
     offerTitleInput?.focus({ preventScroll: true });
   });
+});
+
+offerHelpTourButton?.addEventListener("click", () => {
+  openOffersHelpTour();
 });
 
 offerDirectionOutgoingButton?.addEventListener("click", () => {
@@ -90016,6 +90503,9 @@ document.addEventListener("click", (event) => {
 window.addEventListener("resize", () => {
   closeOpenWorkOrderStatusMenus();
   closeWorkOrderRowMenu();
+  if (state.helpTour.open) {
+    renderHelpTour();
+  }
   if (notificationsMenuOpen) {
     setNotificationsMenuOpen(false);
   }
@@ -92763,6 +93253,12 @@ document.addEventListener("pointermove", handleDrawingStagePointerMove);
 document.addEventListener("pointerup", handleDrawingStagePointerUp);
 
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && state.helpTour.open) {
+    event.preventDefault();
+    closeHelpTour({ markCompleted: false });
+    return;
+  }
+
   if (event.key === "Escape" && state.workOrderDocumentWizard.open) {
     closeWorkOrderDocumentWizard();
     return;
