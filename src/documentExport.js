@@ -633,7 +633,7 @@ function normalizeDocxSpecialPlaceholderValue(value) {
                   ? clean(format.type).toLowerCase()
                   : "general",
                 fontFamily: clean(format.fontFamily).toLowerCase(),
-                fontSize: Number.isFinite(Number(format.fontSize)) ? Math.max(10, Math.min(40, Number(format.fontSize))) : 14,
+                fontSize: Number.isFinite(Number(format.fontSize)) ? Math.max(9, Math.min(40, Number(format.fontSize))) : 14,
                 bold: Boolean(format.bold),
                 italic: Boolean(format.italic),
                 underline: Boolean(format.underline),
@@ -796,7 +796,7 @@ function getWordTableCellAlign(format = {}) {
 function getWordTableCellFontSize(format = {}, columnCount = 1) {
   const explicitSize = Number(format.fontSize);
   if (Number.isFinite(explicitSize)) {
-    return Math.max(16, Math.min(44, Math.round(explicitSize * 1.6)));
+    return Math.max(12, Math.min(88, Math.round(explicitSize * 2)));
   }
   if (columnCount >= 8) {
     return 16;
