@@ -633,7 +633,7 @@ const COMMERCIAL_DOCUMENT_MODULE_CONFIG = Object.freeze({
     emailSubjectLabel: "Naslov emaila",
     emailMessageLabel: "Poruka emaila",
     emailSuccessLabel: "Ponuda je poslana na",
-    previewButtonLabel: "Pregled ponude",
+    previewButtonLabel: "Preview Word templatea",
     downloadButtonLabel: "Preuzmi PDF",
     emailButtonLabel: "Pošalji email",
   }),
@@ -2944,6 +2944,14 @@ const offerTemplateTitle = document.querySelector("#offer-template-title");
 const offerTemplateWordTitle = document.querySelector("#offer-template-word-title");
 const offerTemplatePlaceholderTitle = document.querySelector("#offer-template-placeholder-title");
 const offerTemplateCopy = document.querySelector("#offer-template-copy");
+const offerHtmlPreviewBackdrop = document.querySelector("#offer-html-preview-backdrop");
+const offerHtmlPreviewPanel = document.querySelector("#offer-html-preview-panel");
+const offerHtmlPreviewCloseButton = document.querySelector("#offer-html-preview-close");
+const offerHtmlPreviewTitle = document.querySelector("#offer-html-preview-title");
+const offerHtmlPreviewMeta = document.querySelector("#offer-html-preview-meta");
+const offerHtmlPreviewContent = document.querySelector("#offer-html-preview-content");
+const offerHtmlPreviewMessages = document.querySelector("#offer-html-preview-messages");
+const offerEmailTemplatePreviewButton = document.querySelector("#offer-email-template-preview");
 const contractModule = document.querySelector("#contract-module");
 const contractSearchInput = document.querySelector("#contract-search");
 const contractFilterStatusInput = document.querySelector("#contract-filter-status");
@@ -3441,6 +3449,8 @@ let offerTemplateReferenceDraft = null;
 let purchaseOrderTemplateReferenceDraft = null;
 let purchaseOrderDocumentDrafts = [];
 let offerEmailModalOpen = false;
+let offerHtmlPreviewModalOpen = false;
+let offerHtmlPreviewPayload = null;
 let contractAnnexDrafts = [];
 let contractTemplateReferenceDraft = null;
 let serviceCatalogCertificateTemplateDraft = null;
@@ -3835,6 +3845,14 @@ if (offerTemplateBackdrop?.parentElement !== document.body) {
 
 if (offerTemplatePanel?.parentElement !== document.body) {
   document.body.append(offerTemplatePanel);
+}
+
+if (offerHtmlPreviewBackdrop?.parentElement !== document.body) {
+  document.body.append(offerHtmlPreviewBackdrop);
+}
+
+if (offerHtmlPreviewPanel?.parentElement !== document.body) {
+  document.body.append(offerHtmlPreviewPanel);
 }
 
 if (vehicleEditorBackdrop?.parentElement !== document.body) {
@@ -35219,6 +35237,7 @@ function openOfferEditor() {
 function closeOfferEditor({ reset = false } = {}) {
   state.offerEditorOpen = false;
   offerEmailModalOpen = false;
+  closeOfferHtmlPreviewModal();
   syncOfferEmailModal();
   syncOfferEditorModal();
 
@@ -60149,6 +60168,8 @@ function closeClientPortalAccessModal() {
 }
 
 function closeTransientNavigationOverlays() {
+  closeOfferHtmlPreviewModal();
+
   if (state.clientPortalAccessModalOpen) {
     closeClientPortalAccessModal();
   }
@@ -68276,6 +68297,9 @@ function applyCommercialDocumentUiConfig() {
     offerSendEmailButton.title = emailButtonLabel;
     offerSendEmailButton.setAttribute("aria-label", emailButtonLabel);
   }
+  if (offerEmailTemplatePreviewButton) {
+    offerEmailTemplatePreviewButton.hidden = isPurchaseOrdersContextActive();
+  }
 
   if (offersFilterStatusInput) {
     replaceSelectOptions(
@@ -70116,8 +70140,8 @@ async function downloadOfferPdf(offerId, { preview = false, apiBasePath = getAct
   const response = await apiBinaryRequest(
     normalizedOfferId ? `${apiBasePath}/${normalizedOfferId}/export-pdf` : `${apiBasePath}/export-pdf-draft`,
     {
-    method: "POST",
-    body: normalizedOfferId ? undefined : { document: buildOfferDraftPreviewData() },
+      method: "POST",
+      body: normalizedOfferId ? undefined : { document: buildOfferDraftPreviewData() },
     },
   );
 
@@ -70127,6 +70151,77 @@ async function downloadOfferPdf(offerId, { preview = false, apiBasePath = getAct
   }
 
   triggerBlobDownload(response.blob, response.fileName || "dokument.pdf");
+}
+
+function renderOfferHtmlPreviewModal() {
+  const isOpen = Boolean(offerHtmlPreviewModalOpen);
+  if (offerHtmlPreviewPanel) {
+    offerHtmlPreviewPanel.hidden = !isOpen;
+    offerHtmlPreviewPanel.classList.toggle("is-modal-open", isOpen);
+    offerHtmlPreviewPanel.setAttribute("aria-hidden", String(!isOpen));
+  }
+  if (offerHtmlPreviewBackdrop) {
+    offerHtmlPreviewBackdrop.hidden = !isOpen;
+    offerHtmlPreviewBackdrop.classList.toggle("is-modal-open", isOpen);
+  }
+
+  document.body.classList.toggle("is-offer-html-preview-open", isOpen);
+
+  if (!isOpen) {
+    return;
+  }
+
+  const payload = offerHtmlPreviewPayload && typeof offerHtmlPreviewPayload === "object"
+    ? offerHtmlPreviewPayload
+    : {};
+  const messages = Array.isArray(payload.messages) ? payload.messages : [];
+  if (offerHtmlPreviewTitle) {
+    offerHtmlPreviewTitle.textContent = "Preview ponude iz Word templatea";
+  }
+  if (offerHtmlPreviewMeta) {
+    const templateName = String(payload.templateFileName || "").trim();
+    offerHtmlPreviewMeta.textContent = templateName
+      ? `Mammoth HTML preview iz predloška: ${templateName}. PDF izvoz i dalje koristi Word konverziju.`
+      : "Mammoth HTML preview iz uploadanog Word predloška. PDF izvoz i dalje koristi Word konverziju.";
+  }
+  if (offerHtmlPreviewContent) {
+    const html = String(payload.html || "").trim();
+    offerHtmlPreviewContent.innerHTML = html || "<p>Predložak je učitan, ali Mammoth nije vratio vidljiv sadržaj.</p>";
+  }
+  if (offerHtmlPreviewMessages) {
+    offerHtmlPreviewMessages.hidden = messages.length === 0;
+    offerHtmlPreviewMessages.innerHTML = messages
+      .map((message) => `
+        <div class="offer-html-preview-message is-${escapeHtml(slugifyValue(message.type || "info"))}">
+          <strong>${escapeHtml(message.type || "Info")}</strong>
+          <span>${escapeHtml(message.message || "")}</span>
+        </div>
+      `)
+      .join("");
+  }
+}
+
+function closeOfferHtmlPreviewModal() {
+  offerHtmlPreviewModalOpen = false;
+  offerHtmlPreviewPayload = null;
+  renderOfferHtmlPreviewModal();
+}
+
+async function openOfferHtmlPreview(offerId = "", { apiBasePath = "/offers" } = {}) {
+  const normalizedOfferId = String(offerId || "").trim();
+  const payload = await apiRequest(
+    normalizedOfferId ? `${apiBasePath}/${encodeURIComponent(normalizedOfferId)}/preview-html` : `${apiBasePath}/preview-html-draft`,
+    {
+      method: "POST",
+      body: normalizedOfferId ? undefined : { document: buildOfferDraftPreviewData() },
+    },
+  );
+  offerHtmlPreviewPayload = payload?.item ?? null;
+  offerHtmlPreviewModalOpen = true;
+  renderOfferHtmlPreviewModal();
+  requestAnimationFrame(() => {
+    offerHtmlPreviewPanel?.focus?.({ preventScroll: true });
+  });
 }
 
 function getCurrentUserEmailAddress() {
@@ -86702,7 +86797,12 @@ offerTemplateRemoveButton?.addEventListener("click", () => {
 });
 
 offerPreviewButton?.addEventListener("click", () => {
-  void runMutation(() => downloadOfferPdf("", { preview: true }), offerError);
+  if (isPurchaseOrdersContextActive()) {
+    void runMutation(() => downloadOfferPdf("", { preview: true }), offerError);
+    return;
+  }
+
+  void runMutation(() => openOfferHtmlPreview("", { apiBasePath: "/offers" }), offerError);
 });
 
 offerDownloadPdfButton?.addEventListener("click", () => {
@@ -86722,8 +86822,25 @@ offerEmailBackdrop?.addEventListener("click", () => {
   closeOfferEmailModal();
 });
 
+offerHtmlPreviewCloseButton?.addEventListener("click", () => {
+  closeOfferHtmlPreviewModal();
+});
+
+offerHtmlPreviewBackdrop?.addEventListener("click", () => {
+  closeOfferHtmlPreviewModal();
+});
+
 offerEmailPreviewButton?.addEventListener("click", () => {
   void runMutation(() => downloadOfferPdf("", { preview: true }), offerEmailError);
+});
+
+offerEmailTemplatePreviewButton?.addEventListener("click", () => {
+  if (isPurchaseOrdersContextActive()) {
+    void runMutation(() => downloadOfferPdf("", { preview: true }), offerEmailError);
+    return;
+  }
+
+  void runMutation(() => openOfferHtmlPreview("", { apiBasePath: "/offers" }), offerEmailError);
 });
 
 offerEmailDownloadButton?.addEventListener("click", () => {

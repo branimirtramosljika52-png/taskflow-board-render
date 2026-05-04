@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260504a" />
+    <link rel="stylesheet" href="/styles.css?v=20260504b" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -5365,11 +5365,26 @@
                     </div>
                     <p id="offer-email-error" class="form-error" aria-live="polite"></p>
                     <div class="form-actions">
+                      <button id="offer-email-template-preview" type="button" class="ghost-button">Preview Word</button>
                       <button id="offer-email-preview" type="button" class="ghost-button">Preview PDF</button>
                       <button id="offer-email-download" type="button" class="ghost-button">Download PDF</button>
                       <button id="offer-email-submit" type="submit" class="primary-button">Pošalji email</button>
                     </div>
                   </form>
+                </section>
+
+                <div id="offer-html-preview-backdrop" class="offer-editor-backdrop offer-html-preview-backdrop" hidden></div>
+                <section id="offer-html-preview-panel" class="panel offer-html-preview-panel" tabindex="-1" hidden>
+                  <div class="section-heading offers-section-heading">
+                    <div>
+                      <p class="section-kicker">Mammoth preview</p>
+                      <h3 id="offer-html-preview-title">Preview ponude iz Word templatea</h3>
+                    </div>
+                    <button id="offer-html-preview-close" type="button" class="ghost-button">Zatvori</button>
+                  </div>
+                  <p id="offer-html-preview-meta" class="helper-copy module-copy"></p>
+                  <div id="offer-html-preview-content" class="offer-html-preview-content"></div>
+                  <div id="offer-html-preview-messages" class="offer-html-preview-messages" hidden></div>
                 </section>
               </div>
             </section>
@@ -7720,6 +7735,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260504a"></script>
+    <script type="module" src="/src/main.js?v=20260504b"></script>
   </body>
 </html>

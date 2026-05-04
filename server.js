@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
 import { gzipSync } from "node:zlib";
 import JSZip from "jszip";
+import mammoth from "mammoth";
 import * as XLSX from "xlsx";
 
 import {
@@ -1938,6 +1939,17 @@ function escapeEmailHtml(value = "") {
     .replace(/'/g, "&#39;");
 }
 
+function sanitizeMammothPreviewHtml(html = "") {
+  return String(html ?? "")
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<iframe[\s\S]*?<\/iframe>/gi, "")
+    .replace(/<object[\s\S]*?<\/object>/gi, "")
+    .replace(/<embed[\s\S]*?>/gi, "")
+    .replace(/\son\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+    .replace(/\s(href|src)\s*=\s*(["'])\s*javascript:[\s\S]*?\2/gi, "");
+}
+
 function buildOfferExportBaseName(offer = {}) {
   return offer.offerNumber || offer.title || offer.companyName || "ponuda";
 }
@@ -1977,6 +1989,57 @@ async function buildOfferPdfExportPayload(offer = {}, organizationId = "") {
 
   const pdfBuffer = await buildOfferPdfBuffer(offer, { currency: offer.currency || "EUR" });
   return { pdfBuffer, fileName };
+}
+
+async function buildOfferHtmlPreviewPayload(offer = {}, organizationId = "") {
+  const offerTemplateSettings = await domainRepository.getOfferTemplateSettings(organizationId).catch(() => null);
+  const offerTemplateDocument = offerTemplateSettings?.referenceDocument ?? null;
+  const baseName = buildOfferExportBaseName(offer);
+
+  if (!offerTemplateDocument) {
+    throw new Error("Za Mammoth preview prvo uploadaj .docx ili .dotx Word predložak ponude.");
+  }
+
+  if (!isWordTemplateFile(offerTemplateDocument)) {
+    throw new Error("Uploadani template ponude mora biti .docx ili .dotx Word predložak.");
+  }
+
+  try {
+    const referenceDocument = await readStoredDocumentBuffer(offerTemplateDocument);
+    const docxBuffer = await buildDocxFromTemplateBuffer(
+      referenceDocument.buffer,
+      buildOfferTemplatePlaceholderPayload(offer),
+      {
+        fileName: sanitizeGeneratedDocumentFileName(baseName, {
+          fallback: "ponuda",
+          extension: "docx",
+        }),
+      },
+    );
+    const preview = await mammoth.convertToHtml({ buffer: docxBuffer }, {
+      convertImage: mammoth.images.imgElement((image) => image.read("base64").then((imageBuffer) => ({
+        src: `data:${image.contentType};base64,${imageBuffer}`,
+      }))),
+    });
+
+    return {
+      html: sanitizeMammothPreviewHtml(preview?.value || ""),
+      messages: (Array.isArray(preview?.messages) ? preview.messages : [])
+        .map((message) => ({
+          type: String(message?.type || "info"),
+          message: String(message?.message || "").trim(),
+        }))
+        .filter((message) => message.message),
+      fileName: sanitizeGeneratedDocumentFileName(baseName, {
+        fallback: "ponuda",
+        extension: "html",
+      }),
+      templateFileName: offerTemplateDocument.fileName || offerTemplateDocument.name || "",
+    };
+  } catch (error) {
+    console.error("Offer template HTML preview failed.", error);
+    throw new Error(`Ne mogu napraviti Mammoth preview iz uploadanog templatea ponude: ${error?.message || "nepoznata greška"}`);
+  }
 }
 
 function buildPurchaseOrderExportBaseName(purchaseOrder = {}) {
@@ -4431,6 +4494,8 @@ async function handleApiRequest(request, response, url) {
     const dashboardWidgetMatch = url.pathname.match(/^\/api\/dashboard-widgets\/([^/]+)$/);
     const reminderMatch = url.pathname.match(/^\/api\/reminders\/([^/]+)$/);
     const offerMatch = url.pathname.match(/^\/api\/offers\/([^/]+)$/);
+    const offerHtmlDraftPreviewMatch = url.pathname === "/api/offers/preview-html-draft";
+    const offerHtmlPreviewMatch = url.pathname.match(/^\/api\/offers\/([^/]+)\/preview-html$/);
     const offerPdfDraftExportMatch = url.pathname === "/api/offers/export-pdf-draft";
     const offerPdfExportMatch = url.pathname.match(/^\/api\/offers\/([^/]+)\/export-pdf$/);
     const offerEmailMatch = url.pathname.match(/^\/api\/offers\/([^/]+)\/email$/);
@@ -6739,6 +6804,36 @@ async function handleApiRequest(request, response, url) {
       assertInScope(scopedSnapshot.drawings ?? [], drawingProjectMatch[1], "Crtez nije pronaden.");
       await domainRepository.deleteDrawingProject(drawingProjectMatch[1]);
       await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (offerHtmlDraftPreviewMatch && request.method === "POST") {
+      if (!canManageWorkOrders(user) && !isClientPortalUser(user)) {
+        sendError(response, 403, "Nemate pravo pregledavati ponude.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const draftOffer = {
+        ...(body?.document ?? {}),
+        organizationId: scopedSnapshot.activeOrganizationId,
+      };
+      const preview = await buildOfferHtmlPreviewPayload(draftOffer, scopedSnapshot.activeOrganizationId);
+      sendJson(response, 200, { item: preview });
+      return true;
+    }
+
+    if (offerHtmlPreviewMatch && request.method === "POST") {
+      if (!canManageWorkOrders(user) && !isClientPortalUser(user)) {
+        sendError(response, 403, "Nemate pravo pregledavati ponude.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const offer = assertInScope(scopedSnapshot.offers, offerHtmlPreviewMatch[1], "Ponuda nije pronađena.");
+      const preview = await buildOfferHtmlPreviewPayload(offer, scopedSnapshot.activeOrganizationId);
+      sendJson(response, 200, { item: preview });
       return true;
     }
 
