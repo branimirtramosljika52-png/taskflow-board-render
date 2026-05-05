@@ -3002,6 +3002,19 @@ test("dashboard widget data supports KPI, chart and list outputs with filters", 
     () => "2026-03-28T09:11:00.000Z",
   );
 
+  const statusBarWidget = updateDashboardWidget(
+    metricWidget,
+    {
+      visualization: "bar",
+      metricKey: "status",
+      size: "full",
+      limit: 50,
+      filters: {},
+    },
+    { dashboardWidgets: [metricWidget] },
+    () => "2026-03-28T09:11:30.000Z",
+  );
+
   const listWidget = updateDashboardWidget(
     metricWidget,
     {
@@ -3038,6 +3051,7 @@ test("dashboard widget data supports KPI, chart and list outputs with filters", 
 
   const metricData = getDashboardWidgetData(snapshot, metricWidget, { userId: "22" }, "2026-03-28");
   const chartData = getDashboardWidgetData(snapshot, chartWidget, { userId: "22" }, "2026-03-28");
+  const statusBarData = getDashboardWidgetData(snapshot, statusBarWidget, { userId: "22" }, "2026-03-28");
   const listData = getDashboardWidgetData(snapshot, listWidget, { userId: "22" }, "2026-03-28");
   const statusGroupData = getDashboardWidgetData(snapshot, statusGroupWidget, { userId: "22" }, "2026-03-28");
 
@@ -3046,6 +3060,11 @@ test("dashboard widget data supports KPI, chart and list outputs with filters", 
   assert.equal(chartData.kind, "donut");
   assert.equal(chartData.items[0].label, "Otvoreni RN");
   assert.equal(chartData.items[0].count, 1);
+  assert.equal(statusBarData.kind, "bar");
+  assert.equal(statusBarData.items.length, 5);
+  assert.deepEqual(statusBarData.items.map((item) => item.label), ["Otvoreni RN", "Gotov RN", "Ovjeren RN", "Fakturiran RN", "Storno RN"]);
+  assert.equal(statusBarData.items.find((item) => item.label === "Gotov RN")?.count, 0);
+  assert.equal(statusBarData.items.find((item) => item.label === "Fakturiran RN")?.count, 1);
   assert.equal(listData.kind, "list");
   assert.equal(listData.items[0].title, "RN-10001");
   assert.equal(statusGroupData.kind, "list");

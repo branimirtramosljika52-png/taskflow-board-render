@@ -9437,10 +9437,16 @@ function buildDashboardDistributionItems(widget, items) {
   }
 
   if (widget.metricKey === "status") {
-    return WORK_ORDER_STATUS_OPTIONS.map((option) => ({
+    const statusItems = WORK_ORDER_STATUS_OPTIONS.map((option) => ({
       label: option.label,
       count: items.filter((item) => item.status === option.value).length,
-    })).filter((item) => item.count > 0).slice(0, widget.limit);
+    }));
+
+    if (widget.visualization === "bar") {
+      return statusItems.slice(0, widget.limit);
+    }
+
+    return statusItems.filter((item) => item.count > 0).slice(0, widget.limit);
   }
 
   if (widget.metricKey === "priority") {
