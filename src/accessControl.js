@@ -42,6 +42,37 @@ const COMPANY_PERMISSIONS_FULL = Object.freeze({
 });
 export const COMPANY_PERMISSION_SCOPE_GENERAL = "__general__";
 
+export const APP_ROLE_PERMISSION_DEFINITIONS = Object.freeze([
+  Object.freeze({ key: "settings.manage", label: "Promjene podataka u Settings" }),
+  Object.freeze({ key: "measurementEquipment.view", label: "Prikaz mjerne opreme" }),
+  Object.freeze({ key: "measurementEquipment.create", label: "Dodavanje mjerne opreme" }),
+  Object.freeze({ key: "measurementEquipment.edit", label: "Uredivanje mjerne opreme" }),
+  Object.freeze({ key: "vehicles.reserve", label: "Rezerviranje automobila" }),
+  Object.freeze({ key: "vehicles.create", label: "Dodavanje automobila" }),
+  Object.freeze({ key: "vehicles.view", label: "Prikaz automobila" }),
+  Object.freeze({ key: "legalFramework.view", label: "Prikaz zakonske regulative" }),
+  Object.freeze({ key: "legalFramework.edit", label: "Uredivanje regulative" }),
+  Object.freeze({ key: "serviceCatalog.view", label: "Prikaz usluga" }),
+  Object.freeze({ key: "serviceCatalog.create", label: "Dodavanje novih usluga" }),
+  Object.freeze({ key: "documentTemplates.create", label: "Izrada Template" }),
+  Object.freeze({ key: "people.manage", label: "Uredivanje ljudskih resursa" }),
+  Object.freeze({ key: "safetyAuthorizations.manage", label: "Uredivanje ovlastenja" }),
+]);
+export const APP_ROLE_PERMISSION_KEYS = Object.freeze(APP_ROLE_PERMISSION_DEFINITIONS.map((entry) => entry.key));
+const APP_PERMISSION_KEYS_SET = new Set(APP_ROLE_PERMISSION_KEYS);
+const APP_PERMISSIONS_NONE = Object.freeze(Object.fromEntries(
+  APP_ROLE_PERMISSION_KEYS.map((key) => [key, false]),
+));
+const APP_PERMISSIONS_FULL = Object.freeze(Object.fromEntries(
+  APP_ROLE_PERMISSION_KEYS.map((key) => [key, true]),
+));
+const APP_PROFILE_DEFAULT_VIEW_PERMISSION_KEYS = Object.freeze([
+  "measurementEquipment.view",
+  "vehicles.view",
+  "legalFramework.view",
+  "serviceCatalog.view",
+]);
+
 function normalizeText(value) {
   return String(value ?? "").trim();
 }
@@ -159,16 +190,20 @@ export function canManageOrganizationUsers(actor, organizationId, targetRole = R
     return true;
   }
 
-  if (actorRole !== ROLE_ADMIN) {
-    return false;
-  }
-
   if (targetNormalizedRole !== ROLE_USER) {
     return false;
   }
 
   if (targetOrganizationIds.length === 0) {
     return false;
+  }
+
+  if (actorRole !== ROLE_ADMIN) {
+    const canManagePeople = actorRole === ROLE_USER
+      && Boolean(actor?.appPermissions?.["people.manage"]);
+    if (!canManagePeople) {
+      return false;
+    }
   }
 
   if (!targetOrganizationIds.every((id) => hasOrganizationAccess(actor, id))) {
@@ -208,6 +243,121 @@ export function resolveEffectiveOrganizationId(actor, requestedOrganizationId, o
 export function canManageMasterData(actor) {
   const actorRole = normalizeRole(actor?.role);
   return actorRole === ROLE_SUPER_ADMIN || actorRole === ROLE_ADMIN;
+}
+
+function normalizeAppPermissionKey(value = "") {
+  const normalized = normalizeText(value);
+  return APP_PERMISSION_KEYS_SET.has(normalized) ? normalized : "";
+}
+
+function getDefaultAppPermissionFlagsForProfileRole(profileRole = "new_user") {
+  const normalizedProfileRole = normalizeUserProfileRole(profileRole);
+
+  if (normalizedProfileRole === "admin") {
+    return { ...APP_PERMISSIONS_FULL };
+  }
+
+  if (normalizedProfileRole === "client_user") {
+    return { ...APP_PERMISSIONS_NONE };
+  }
+
+  return {
+    ...APP_PERMISSIONS_NONE,
+    ...Object.fromEntries(APP_PROFILE_DEFAULT_VIEW_PERMISSION_KEYS.map((key) => [key, true])),
+  };
+}
+
+function normalizeAppPermissionFlags(value = {}, fallbackFlags = APP_PERMISSIONS_NONE) {
+  const source = value && typeof value === "object"
+    ? value
+    : {};
+  const nestedPermissions = source.permissions && typeof source.permissions === "object"
+    ? source.permissions
+    : {};
+
+  return Object.fromEntries(APP_ROLE_PERMISSION_KEYS.map((key) => [
+    key,
+    toBooleanFlag(
+      nestedPermissions[key] ?? source[key],
+      Boolean(fallbackFlags[key]),
+    ),
+  ]));
+}
+
+export function normalizeAppRolePermissionEntry(entry = {}, fallbackProfileRole = "new_user") {
+  const source = entry && typeof entry === "object"
+    ? entry
+    : {};
+  const profileRole = normalizeUserProfileRole(
+    source.profileRole ?? source.profile_role ?? source.role,
+    fallbackProfileRole,
+  );
+
+  return {
+    profileRole,
+    isExplicit: source.isExplicit !== false,
+    ...normalizeAppPermissionFlags(
+      source,
+      getDefaultAppPermissionFlagsForProfileRole(profileRole),
+    ),
+  };
+}
+
+export function normalizeAppRolePermissions(entries = []) {
+  const list = Array.isArray(entries) ? entries : [];
+  const byRole = new Map();
+
+  USER_PROFILE_ROLE_VALUES.forEach((profileRole) => {
+    byRole.set(profileRole, {
+      profileRole,
+      isExplicit: false,
+      ...getDefaultAppPermissionFlagsForProfileRole(profileRole),
+    });
+  });
+
+  list.forEach((entry) => {
+    const normalized = normalizeAppRolePermissionEntry(entry);
+    byRole.set(normalized.profileRole, normalized);
+  });
+
+  return USER_PROFILE_ROLE_VALUES.map((profileRole) => ({
+    ...(byRole.get(profileRole) ?? {
+      profileRole,
+      isExplicit: false,
+      ...getDefaultAppPermissionFlagsForProfileRole(profileRole),
+    }),
+  }));
+}
+
+export function resolveAppPermissionsForActor(actor, rolePermissions = []) {
+  const actorRole = normalizeRole(actor?.role);
+
+  if (actorRole === ROLE_SUPER_ADMIN || actorRole === ROLE_ADMIN) {
+    return { ...APP_PERMISSIONS_FULL };
+  }
+
+  if (isClientPortalUser(actor)) {
+    return { ...APP_PERMISSIONS_NONE };
+  }
+
+  const profileRole = normalizeUserProfileRole(actor?.profileRole ?? actor?.profile_role, "new_user");
+  const normalizedPermissions = normalizeAppRolePermissions(rolePermissions);
+  const entry = normalizedPermissions.find((item) => item.profileRole === profileRole)
+    ?? {
+      profileRole,
+      ...getDefaultAppPermissionFlagsForProfileRole(profileRole),
+    };
+
+  return Object.fromEntries(APP_ROLE_PERMISSION_KEYS.map((key) => [key, Boolean(entry[key])]));
+}
+
+export function hasAppPermission(actor, rolePermissions = [], permissionKey = "") {
+  const normalizedPermissionKey = normalizeAppPermissionKey(permissionKey);
+  if (!normalizedPermissionKey) {
+    return false;
+  }
+
+  return Boolean(resolveAppPermissionsForActor(actor, rolePermissions)[normalizedPermissionKey]);
 }
 
 function normalizeCompanyPermissionFlags(value = {}, options = {}) {

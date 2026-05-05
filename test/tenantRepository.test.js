@@ -157,6 +157,57 @@ test("memory tenant repository resolves company permissions by profile role", as
   assert.equal(scoped.companies[0].id, "company-77");
 });
 
+test("memory tenant repository scopes module data by app role permissions", async () => {
+  const repository = new MemoryTenantRepository();
+  await repository.init();
+
+  const superAdmin = await repository.authenticateUser("admin@local.test", "admin");
+  const organization = await repository.createOrganization(superAdmin, { name: "App Perm Org" });
+  await repository.assignCompanyToOrganization(organization.id, "company-88");
+
+  const manager = await repository.createUser(superAdmin, {
+    organizationId: organization.id,
+    firstName: "Role",
+    lastName: "Manager",
+    email: "role-manager@example.com",
+    password: "Secret123",
+    role: "user",
+    profileRole: "manager",
+  });
+
+  const scoped = await repository.getSnapshot(manager, organization.id, {
+    companies: [{ id: "company-88", name: "Alpha" }],
+    appRolePermissions: [
+      {
+        organizationId: organization.id,
+        profileRole: "manager",
+        "measurementEquipment.view": true,
+        "vehicles.view": false,
+        "legalFramework.view": false,
+        "serviceCatalog.view": true,
+        "people.manage": true,
+        "safetyAuthorizations.manage": false,
+        "documentTemplates.create": false,
+      },
+    ],
+    vehicles: [{ id: "vehicle-1", organizationId: organization.id, name: "Auto" }],
+    legalFrameworks: [{ id: "legal-1", organizationId: organization.id, title: "Zakon" }],
+    serviceCatalog: [{ id: "service-1", organizationId: organization.id, title: "Usluga" }],
+    measurementEquipment: [{ id: "equipment-1", organizationId: organization.id, name: "Mjerni uredaj" }],
+    safetyAuthorizations: [{ id: "authorization-1", organizationId: organization.id, title: "Ovlastenje" }],
+    documentTemplates: [{ id: "template-1", organizationId: organization.id, title: "Template", customFields: [] }],
+  });
+
+  assert.equal(scoped.appPermissions["people.manage"], true);
+  assert.equal(scoped.appPermissions["vehicles.view"], false);
+  assert.deepEqual(scoped.vehicles, []);
+  assert.deepEqual(scoped.legalFrameworks, []);
+  assert.deepEqual(scoped.safetyAuthorizations, []);
+  assert.deepEqual(scoped.documentTemplates, []);
+  assert.deepEqual(scoped.serviceCatalog.map((item) => item.id), ["service-1"]);
+  assert.deepEqual(scoped.measurementEquipment.map((item) => item.id), ["equipment-1"]);
+});
+
 test("memory tenant repository collapses legacy scoped company permissions into general access", async () => {
   const repository = new MemoryTenantRepository();
   await repository.init();

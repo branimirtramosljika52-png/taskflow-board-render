@@ -15,6 +15,7 @@ import {
   canDeleteWorkOrders,
   canManageMasterData,
   canManageWorkOrders,
+  hasAppPermission,
   isClientPortalUser,
 } from "./src/accessControl.js";
 import {
@@ -537,6 +538,26 @@ function canUseOpenAiIntegration(user) {
 
 function canManagePeopleTrainingRecords(user) {
   return canManageMasterData(user) || isClientPortalUser(user);
+}
+
+async function canUseScopedAppPermission(user, request, permissionKey = "") {
+  if (canManageMasterData(user)) {
+    return true;
+  }
+
+  const { scopedSnapshot } = await getScopedState(user, request);
+  return Boolean(scopedSnapshot.appPermissions?.[permissionKey])
+    || hasAppPermission(user, scopedSnapshot.appRolePermissions ?? [], permissionKey);
+}
+
+async function getActorWithScopedAppPermissions(user, request) {
+  const { scopedSnapshot } = await getScopedState(user, request);
+  return {
+    ...user,
+    appPermissions: {
+      ...(scopedSnapshot.appPermissions ?? {}),
+    },
+  };
 }
 
 function sleep(durationMs) {
@@ -4938,13 +4959,15 @@ async function handleApiRequest(request, response, url) {
 
     if (request.method === "POST" && url.pathname === "/api/users") {
       const body = await readJsonBody(request);
-      await handleEntityMutation(response, user, request, () => tenantRepository.createUser(user, body), 201);
+      const scopedActor = await getActorWithScopedAppPermissions(user, request);
+      await handleEntityMutation(response, scopedActor, request, () => tenantRepository.createUser(scopedActor, body), 201);
       return true;
     }
 
     if (userMatch && request.method === "PATCH") {
       const body = await readJsonBody(request);
-      const updated = await tenantRepository.updateUser(user, userMatch[1], body);
+      const scopedActor = await getActorWithScopedAppPermissions(user, request);
+      const updated = await tenantRepository.updateUser(scopedActor, userMatch[1], body);
 
       if (!updated) {
         sendError(response, 404, "Korisnik nije pronađen.");
@@ -5236,7 +5259,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "POST" && url.pathname === "/api/vehicles") {
-      if (!canManageMasterData(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "vehicles.create"))) {
         sendError(response, 403, "Nemate pravo upravljati vozilima.");
         return true;
       }
@@ -5252,7 +5275,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "POST" && url.pathname === "/api/legal-frameworks") {
-      if (!canManageMasterData(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "legalFramework.edit"))) {
         sendError(response, 403, "Nemate pravo upravljati propisima.");
         return true;
       }
@@ -5429,7 +5452,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "POST" && url.pathname === "/api/measurement-equipment") {
-      if (!canManageMasterData(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "measurementEquipment.create"))) {
         sendError(response, 403, "Nemate pravo upravljati mjernom opremom.");
         return true;
       }
@@ -5446,7 +5469,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "POST" && url.pathname === "/api/service-catalog") {
-      if (!canManageMasterData(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "serviceCatalog.create"))) {
         sendError(response, 403, "Nemate pravo upravljati uslugama.");
         return true;
       }
@@ -5463,7 +5486,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "POST" && url.pathname === "/api/safety-authorizations") {
-      if (!canManageMasterData(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "safetyAuthorizations.manage"))) {
         sendError(response, 403, "Nemate pravo upravljati ovlaštenjima.");
         return true;
       }
@@ -5480,7 +5503,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "GET" && url.pathname === "/api/people-training-records/import-template") {
-      if (!canManagePeopleTrainingRecords(user)) {
+      if (!canManagePeopleTrainingRecords(user) && !(await canUseScopedAppPermission(user, request, "people.manage"))) {
         sendError(response, 403, "Nemate pravo upravljati osposobljavanjima.");
         return true;
       }
@@ -5498,7 +5521,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "POST" && url.pathname === "/api/people-training-records/import") {
-      if (!canManagePeopleTrainingRecords(user)) {
+      if (!canManagePeopleTrainingRecords(user) && !(await canUseScopedAppPermission(user, request, "people.manage"))) {
         sendError(response, 403, "Nemate pravo upravljati osposobljavanjima.");
         return true;
       }
@@ -5575,7 +5598,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "POST" && url.pathname === "/api/people-training-records") {
-      if (!canManagePeopleTrainingRecords(user)) {
+      if (!canManagePeopleTrainingRecords(user) && !(await canUseScopedAppPermission(user, request, "people.manage"))) {
         sendError(response, 403, "Nemate pravo upravljati osposobljavanjima.");
         return true;
       }
@@ -5594,7 +5617,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (peopleTrainingGenerateDocumentsMatch && request.method === "POST") {
-      if (!canManageMasterData(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "people.manage"))) {
         sendError(response, 403, "Nemate pravo generirati dokumente osposobljavanja.");
         return true;
       }
@@ -5632,7 +5655,7 @@ async function handleApiRequest(request, response, url) {
 
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
-      const isAdmin = canManageMasterData(user);
+      const isAdmin = canManageMasterData(user) || Boolean(scopedSnapshot.appPermissions?.["people.manage"]);
       const requestedUserId = normalizeInputValue(body.userId) || String(user.id);
 
       if (!isAdmin && requestedUserId !== String(user.id)) {
@@ -5668,7 +5691,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "POST" && url.pathname === "/api/absence-balances") {
-      if (!canManageMasterData(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "people.manage"))) {
         sendError(response, 403, "Nemate pravo uređivati saldo odsutnosti.");
         return true;
       }
@@ -5705,7 +5728,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "POST" && url.pathname === "/api/measurement-equipment/card-template") {
-      if (!canManageMasterData(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "measurementEquipment.edit"))) {
         sendError(response, 403, "Nemate pravo spremati karton template.");
         return true;
       }
@@ -5735,7 +5758,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "POST" && url.pathname === "/api/measurement-equipment/notification-settings") {
-      if (!canManageMasterData(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "settings.manage"))) {
         sendError(response, 403, "Nemate pravo spremati postavke notifikacija.");
         return true;
       }
@@ -5754,7 +5777,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "POST" && url.pathname === "/api/vehicles/notification-settings") {
-      if (!canManageMasterData(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "settings.manage"))) {
         sendError(response, 403, "Nemate pravo spremati postavke notifikacija vozila.");
         return true;
       }
@@ -5775,7 +5798,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "POST" && url.pathname === "/api/safety-authorizations/notification-settings") {
-      if (!canManageMasterData(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "settings.manage"))) {
         sendError(response, 403, "Nemate pravo spremati postavke notifikacija ovlastenja.");
         return true;
       }
@@ -5794,7 +5817,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "POST" && url.pathname === "/api/absence/notification-settings") {
-      if (!canManageMasterData(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "settings.manage"))) {
         sendError(response, 403, "Nemate pravo spremati postavke notifikacija odsutnosti.");
         return true;
       }
@@ -5813,7 +5836,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "POST" && url.pathname === "/api/periodics/visual-settings") {
-      if (!canManageMasterData(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "settings.manage"))) {
         sendError(response, 403, "Nemate pravo spremati postavke periodike.");
         return true;
       }
@@ -5861,6 +5884,27 @@ async function handleApiRequest(request, response, url) {
       }
 
       await domainRepository.upsertCompanyRolePermissions({
+        organizationId: scopedSnapshot.activeOrganizationId,
+        rolePermissions: body?.rolePermissions,
+      });
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/app-role-permissions") {
+      if (!canManageMasterData(user)) {
+        sendError(response, 403, "Nemate pravo spremati role permissions.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      if (!scopedSnapshot.activeOrganizationId) {
+        sendError(response, 400, "Aktivna organizacija je obavezna.");
+        return true;
+      }
+
+      await domainRepository.upsertAppRolePermissions({
         organizationId: scopedSnapshot.activeOrganizationId,
         rolePermissions: body?.rolePermissions,
       });
@@ -5977,7 +6021,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "POST" && url.pathname === "/api/measurement-sheet-presets") {
-      if (!canManageMasterData(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "documentTemplates.create"))) {
         sendError(response, 403, "Nemate pravo spremati Excel presete.");
         return true;
       }
@@ -5998,7 +6042,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "POST" && url.pathname === "/api/document-templates") {
-      if (!canManageMasterData(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "documentTemplates.create"))) {
         sendError(response, 403, "Nemate pravo upravljati templateima.");
         return true;
       }
@@ -6017,7 +6061,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (measurementEquipmentExcelExportMatch && request.method === "POST") {
-      if (!canManageMasterData(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "measurementEquipment.view"))) {
         sendError(response, 403, "Nemate pravo izvoziti popis mjerne opreme.");
         return true;
       }
@@ -6091,7 +6135,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (measurementEquipmentZipExportMatch && request.method === "POST") {
-      if (!canManageMasterData(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "measurementEquipment.view"))) {
         sendError(response, 403, "Nemate pravo izvoziti datoteke mjerne opreme.");
         return true;
       }
@@ -6243,7 +6287,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (measurementEquipmentWordExportMatch && request.method === "POST") {
-      if (!canManageMasterData(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "measurementEquipment.view"))) {
         sendError(response, 403, "Nemate pravo generirati karton uređaja.");
         return true;
       }
@@ -6281,7 +6325,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (measurementEquipmentPdfExportMatch && request.method === "POST") {
-      if (!canManageMasterData(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "measurementEquipment.view"))) {
         sendError(response, 403, "Nemate pravo generirati karton uređaja.");
         return true;
       }
@@ -6446,7 +6490,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (vehicleReservationsCollectionMatch && request.method === "POST") {
-      if (!canManageMasterData(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "vehicles.reserve"))) {
         sendError(response, 403, "Nemate pravo rezervirati vozila.");
         return true;
       }
@@ -6556,7 +6600,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (peopleTrainingRecordMatch && request.method === "PATCH") {
-      if (!canManagePeopleTrainingRecords(user)) {
+      if (!canManagePeopleTrainingRecords(user) && !(await canUseScopedAppPermission(user, request, "people.manage"))) {
         sendError(response, 403, "Nemate pravo upravljati osposobljavanjima.");
         return true;
       }
@@ -6581,7 +6625,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (peopleTrainingRecordMatch && request.method === "DELETE") {
-      if (!canManageMasterData(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "people.manage"))) {
         sendError(response, 403, "Nemate pravo upravljati osposobljavanjima.");
         return true;
       }
@@ -7325,7 +7369,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (vehicleMatch && request.method === "PATCH") {
-      if (!canManageMasterData(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "vehicles.create"))) {
         sendError(response, 403, "Nemate pravo upravljati vozilima.");
         return true;
       }
@@ -7348,7 +7392,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (legalFrameworkMatch && request.method === "PATCH") {
-      if (!canManageMasterData(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "legalFramework.edit"))) {
         sendError(response, 403, "Nemate pravo upravljati propisima.");
         return true;
       }
@@ -7461,7 +7505,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (measurementEquipmentMatch && request.method === "PATCH") {
-      if (!canManageMasterData(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "measurementEquipment.edit"))) {
         sendError(response, 403, "Nemate pravo upravljati mjernom opremom.");
         return true;
       }
@@ -7485,7 +7529,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (serviceCatalogMatch && request.method === "PATCH") {
-      if (!canManageMasterData(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "serviceCatalog.create"))) {
         sendError(response, 403, "Nemate pravo upravljati uslugama.");
         return true;
       }
@@ -7509,7 +7553,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (safetyAuthorizationMatch && request.method === "PATCH") {
-      if (!canManageMasterData(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "safetyAuthorizations.manage"))) {
         sendError(response, 403, "Nemate pravo upravljati ovlaštenjima.");
         return true;
       }
@@ -7542,12 +7586,12 @@ async function handleApiRequest(request, response, url) {
       const { scopedSnapshot } = await getScopedState(user, request);
       const current = assertInScope(scopedSnapshot.absenceEntries ?? [], absenceEntryMatch[1], "Odsutnost nije pronađena.");
 
-      if (!canManageAbsenceEntry(user, current)) {
+      if (!canManageAbsenceEntry(user, current) && !scopedSnapshot.appPermissions?.["people.manage"]) {
         sendError(response, 403, "Nemate pravo uređivati ovu odsutnost.");
         return true;
       }
 
-      const isAdmin = canManageMasterData(user);
+      const isAdmin = canManageMasterData(user) || Boolean(scopedSnapshot.appPermissions?.["people.manage"]);
       const requestedUserId = isAdmin
         ? (normalizeInputValue(body.userId) || String(current.userId))
         : String(current.userId);
@@ -7600,7 +7644,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (documentTemplateMatch && request.method === "PATCH") {
-      if (!canManageMasterData(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "documentTemplates.create"))) {
         sendError(response, 403, "Nemate pravo upravljati templateima.");
         return true;
       }
@@ -7626,7 +7670,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (vehicleReservationMatch && request.method === "PATCH") {
-      if (!canManageMasterData(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "vehicles.reserve"))) {
         sendError(response, 403, "Nemate pravo upravljati rezervacijama vozila.");
         return true;
       }
@@ -7804,7 +7848,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (vehicleMatch && request.method === "DELETE") {
-      if (!canManageMasterData(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "vehicles.create"))) {
         sendError(response, 403, "Nemate pravo brisati vozila.");
         return true;
       }
@@ -7823,7 +7867,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (legalFrameworkMatch && request.method === "DELETE") {
-      if (!canManageMasterData(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "legalFramework.edit"))) {
         sendError(response, 403, "Nemate pravo brisati propise.");
         return true;
       }
@@ -7861,7 +7905,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (measurementEquipmentMatch && request.method === "DELETE") {
-      if (!canManageMasterData(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "measurementEquipment.edit"))) {
         sendError(response, 403, "Nemate pravo brisati mjernu opremu.");
         return true;
       }
@@ -7880,7 +7924,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (serviceCatalogMatch && request.method === "DELETE") {
-      if (!canManageMasterData(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "serviceCatalog.create"))) {
         sendError(response, 403, "Nemate pravo brisati usluge.");
         return true;
       }
@@ -7899,7 +7943,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (safetyAuthorizationMatch && request.method === "DELETE") {
-      if (!canManageMasterData(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "safetyAuthorizations.manage"))) {
         sendError(response, 403, "Nemate pravo brisati ovlaštenja.");
         return true;
       }
@@ -7928,7 +7972,7 @@ async function handleApiRequest(request, response, url) {
       const canDeleteOwnPending = String(current.userId ?? "") === String(user.id ?? "")
         && String(current.status ?? "").toLowerCase() === "pending";
 
-      if (!canManageMasterData(user) && !canDeleteOwnPending) {
+      if (!canManageMasterData(user) && !scopedSnapshot.appPermissions?.["people.manage"] && !canDeleteOwnPending) {
         sendError(response, 403, "Nemate pravo brisati ovu odsutnost.");
         return true;
       }
@@ -7945,7 +7989,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (documentTemplateMatch && request.method === "DELETE") {
-      if (!canManageMasterData(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "documentTemplates.create"))) {
         sendError(response, 403, "Nemate pravo brisati templatee.");
         return true;
       }
@@ -7964,7 +8008,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (vehicleReservationMatch && request.method === "DELETE") {
-      if (!canManageMasterData(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "vehicles.reserve"))) {
         sendError(response, 403, "Nemate pravo brisati rezervacije vozila.");
         return true;
       }

@@ -127,9 +127,12 @@ import {
   replaceEmojiShortcuts,
 } from "./chatMessageFormat.js";
 import {
+  APP_ROLE_PERMISSION_KEYS,
   COMPANY_PERMISSION_SCOPE_GENERAL,
+  normalizeAppRolePermissions,
   normalizeCompanyRolePermissionEntry,
   normalizeCompanyRolePermissions,
+  resolveAppPermissionsForActor,
   resolveCompanyPermissionsForActor,
 } from "./accessControl.js";
 
@@ -872,7 +875,88 @@ const COMPANY_PERMISSION_MODULES = Object.freeze([
     key: "company",
     title: "Tvrtka",
     description: "Pregled, unos, uredivanje i brisanje tvrtki.",
+    type: "company",
     rows: COMPANY_PERMISSION_ROWS,
+  },
+]);
+const APP_ROLE_PERMISSION_MODULES = Object.freeze([
+  {
+    key: "settings",
+    title: "Settings",
+    description: "Promjene opcih postavki i pravila aplikacije.",
+    type: "app",
+    rows: [
+      { key: "settings.manage", label: "Promjene podataka u Settings" },
+    ],
+  },
+  {
+    key: "measurement-equipment",
+    title: "Mjerna oprema",
+    description: "Pregled, dodavanje i uredivanje mjerne opreme.",
+    type: "app",
+    rows: [
+      { key: "measurementEquipment.view", label: "Prikaz mjerne opreme" },
+      { key: "measurementEquipment.create", label: "Dodavanje mjerne opreme" },
+      { key: "measurementEquipment.edit", label: "Uredivanje mjerne opreme" },
+    ],
+  },
+  {
+    key: "vehicles",
+    title: "Automobili",
+    description: "Pregled, dodavanje i rezerviranje vozila.",
+    type: "app",
+    rows: [
+      { key: "vehicles.reserve", label: "Rezerviranje automobila" },
+      { key: "vehicles.create", label: "Dodavanje automobila" },
+      { key: "vehicles.view", label: "Prikaz automobila" },
+    ],
+  },
+  {
+    key: "legal-framework",
+    title: "Zakonska regulativa",
+    description: "Pregled propisa i uredivanje regulative.",
+    type: "app",
+    rows: [
+      { key: "legalFramework.view", label: "Prikaz zakonske regulative" },
+      { key: "legalFramework.edit", label: "Uredivanje regulative" },
+    ],
+  },
+  {
+    key: "service-catalog",
+    title: "Usluge",
+    description: "Pregled usluga i dodavanje novih usluga.",
+    type: "app",
+    rows: [
+      { key: "serviceCatalog.view", label: "Prikaz usluga" },
+      { key: "serviceCatalog.create", label: "Dodavanje novih usluga" },
+    ],
+  },
+  {
+    key: "document-templates",
+    title: "Template",
+    description: "Izrada i uredivanje templatea.",
+    type: "app",
+    rows: [
+      { key: "documentTemplates.create", label: "Izrada Template" },
+    ],
+  },
+  {
+    key: "people",
+    title: "Ljudski resursi",
+    description: "Korisnici, osposobljavanja i evidencije zaposlenika.",
+    type: "app",
+    rows: [
+      { key: "people.manage", label: "Uredivanje ljudskih resursa" },
+    ],
+  },
+  {
+    key: "safety-authorizations",
+    title: "Ovlastenja",
+    description: "Uredivanje sigurnosnih i strucnih ovlastenja.",
+    type: "app",
+    rows: [
+      { key: "safetyAuthorizations.manage", label: "Uredivanje ovlastenja" },
+    ],
   },
 ]);
 const VEHICLE_SERVICE_RESERVATION_MESSAGE = "Vozilo je na servisu i nije dostupno za novu rezervaciju.";
@@ -1402,6 +1486,8 @@ const state = {
     ...DEFAULT_PERIODICS_VISUAL_SETTINGS,
   },
   appCapabilities: [],
+  appRolePermissions: normalizeAppRolePermissions([]),
+  appPermissions: {},
   companyRolePermissions: normalizeCompanyRolePermissions([]),
   companyPermissions: {
     ...DEFAULT_COMPANY_PERMISSIONS,
@@ -6112,7 +6198,7 @@ function getCanEditOperationalData() {
 }
 
 function getCanEditPeopleTrainingData() {
-  return getCanManageMasterData() || isClientPortalUser(state.user);
+  return getCanManagePeople() || isClientPortalUser(state.user);
 }
 
 function syncWorkOrderEditorAccess() {
@@ -6164,6 +6250,22 @@ function normalizeCompanyPermissionFlags(value = {}) {
   };
 }
 
+function normalizeAppPermissionFlags(value = {}) {
+  const source = value && typeof value === "object"
+    ? value
+    : {};
+
+  return Object.fromEntries(APP_ROLE_PERMISSION_KEYS.map((key) => [key, Boolean(source[key])]));
+}
+
+function materializeAppRolePermissionDraft(entries = []) {
+  return normalizeAppRolePermissions(entries).map((entry) => ({
+    ...normalizeAppPermissionFlags(entry),
+    profileRole: normalizeUserProfileRoleValue(entry.profileRole),
+    isExplicit: entry.isExplicit !== false,
+  }));
+}
+
 function materializeCompanyRolePermissionDraft(entries = []) {
   const normalizedEntries = (Array.isArray(entries) ? entries : [])
     .map((entry) => normalizeCompanyRolePermissionEntry(entry));
@@ -6204,6 +6306,106 @@ function materializeCompanyRolePermissionDraft(entries = []) {
 
 function createCompanyRolePermissionDraftKey(profileRole = "new_user") {
   return `${COMPANY_PERMISSION_SCOPE_GENERAL}::${normalizeUserProfileRoleValue(profileRole)}`;
+}
+
+function createAppRolePermissionDraftKey(profileRole = "new_user") {
+  return normalizeUserProfileRoleValue(profileRole);
+}
+
+function getAppRolePermissionsDraft() {
+  return materializeAppRolePermissionDraft(state.appRolePermissions ?? []);
+}
+
+function setAppRolePermissionDraft(profileRole = "", permissionKey = "", nextValue = false) {
+  const normalizedProfileRole = normalizeUserProfileRoleValue(profileRole);
+  if (!normalizedProfileRole || !APP_ROLE_PERMISSION_KEYS.includes(permissionKey)) {
+    return;
+  }
+
+  const draft = getAppRolePermissionsDraft().map((entry) => ({ ...entry }));
+  const target = draft.find((entry) => entry.profileRole === normalizedProfileRole);
+  if (!target) {
+    return;
+  }
+
+  target[permissionKey] = Boolean(nextValue);
+  state.appRolePermissions = materializeAppRolePermissionDraft(draft);
+}
+
+function getAppPermissions() {
+  if (getCanManageMasterData()) {
+    return Object.fromEntries(APP_ROLE_PERMISSION_KEYS.map((key) => [key, true]));
+  }
+
+  if (!state.user) {
+    return Object.fromEntries(APP_ROLE_PERMISSION_KEYS.map((key) => [key, false]));
+  }
+
+  return normalizeAppPermissionFlags(
+    state.appPermissions && Object.keys(state.appPermissions).length > 0
+      ? state.appPermissions
+      : resolveAppPermissionsForActor(state.user, getAppRolePermissionsDraft()),
+  );
+}
+
+function hasAppPermissionClient(permissionKey = "") {
+  return Boolean(getAppPermissions()[permissionKey]);
+}
+
+function getCanManageSettings() {
+  return hasAppPermissionClient("settings.manage");
+}
+
+function getCanViewMeasurementEquipment() {
+  return hasAppPermissionClient("measurementEquipment.view");
+}
+
+function getCanCreateMeasurementEquipment() {
+  return hasAppPermissionClient("measurementEquipment.create");
+}
+
+function getCanEditMeasurementEquipment() {
+  return hasAppPermissionClient("measurementEquipment.edit");
+}
+
+function getCanViewVehicles() {
+  return hasAppPermissionClient("vehicles.view");
+}
+
+function getCanManageVehicles() {
+  return hasAppPermissionClient("vehicles.create");
+}
+
+function getCanReserveVehicles() {
+  return hasAppPermissionClient("vehicles.reserve");
+}
+
+function getCanViewLegalFramework() {
+  return hasAppPermissionClient("legalFramework.view");
+}
+
+function getCanEditLegalFramework() {
+  return hasAppPermissionClient("legalFramework.edit");
+}
+
+function getCanViewServiceCatalog() {
+  return hasAppPermissionClient("serviceCatalog.view");
+}
+
+function getCanManageServiceCatalog() {
+  return hasAppPermissionClient("serviceCatalog.create");
+}
+
+function getCanManageDocumentTemplates() {
+  return hasAppPermissionClient("documentTemplates.create");
+}
+
+function getCanManagePeople() {
+  return hasAppPermissionClient("people.manage");
+}
+
+function getCanManageSafetyAuthorizations() {
+  return hasAppPermissionClient("safetyAuthorizations.manage");
 }
 
 function getCompanyPermissions() {
@@ -6708,7 +6910,7 @@ function canManageRenderedUser(user) {
     return !isSystemPrivilegedRole(user?.role);
   }
 
-  return false;
+  return getCanManagePeople() && !isSystemPrivilegedRole(user?.role);
 }
 
 async function requestTokenRefresh() {
@@ -6948,6 +7150,11 @@ function applySnapshot(payload) {
   if (state.appCapabilitiesDialog.open) {
     state.appCapabilitiesDialog.modules = cloneAppCapabilityModules(state.appCapabilities);
   }
+  state.appRolePermissions = materializeAppRolePermissionDraft(payload.appRolePermissions ?? []);
+  state.appPermissions = normalizeAppPermissionFlags(
+    payload.appPermissions
+      ?? resolveAppPermissionsForActor(payload.user ?? state.user ?? {}, state.appRolePermissions),
+  );
   state.companyRolePermissions = materializeCompanyRolePermissionDraft(
     payload.companyRolePermissions ?? [],
   );
@@ -9438,7 +9645,7 @@ function resetPeopleTrainingForm() {
   }
   if (peopleTrainingDeleteButton) {
     peopleTrainingDeleteButton.hidden = true;
-    peopleTrainingDeleteButton.disabled = !getCanManageMasterData();
+    peopleTrainingDeleteButton.disabled = !getCanManagePeople();
   }
   syncPeopleTrainingPersonalSummary();
   renderPeopleTrainingGrid(null);
@@ -9511,8 +9718,8 @@ function populatePeopleTrainingForm(record = {}) {
     peopleTrainingNoteInput.value = record.note || "";
   }
   if (peopleTrainingDeleteButton) {
-    peopleTrainingDeleteButton.hidden = !record.id || !getCanManageMasterData();
-    peopleTrainingDeleteButton.disabled = !getCanManageMasterData();
+    peopleTrainingDeleteButton.hidden = !record.id || !getCanManagePeople();
+    peopleTrainingDeleteButton.disabled = !getCanManagePeople();
   }
   syncPeopleTrainingPersonalSummary();
   renderPeopleTrainingGrid(record);
@@ -11642,7 +11849,7 @@ function selectVisiblePeopleTrainingRecords(records = getPeopleTrainingFilteredR
 function syncPeopleTrainingBulkActions(records = getPeopleTrainingFilteredRecords()) {
   const selectedCount = getSelectedPeopleTrainingRecords().length;
   const selectedTypeOption = getPeopleTrainingSelectedTypeOption();
-  const canBulk = getCanManageMasterData();
+  const canBulk = getCanManagePeople();
   const canOpen = canBulk && selectedCount > 0;
 
   if (peopleTrainingBulkOpenButton) {
@@ -11796,8 +12003,8 @@ function createPeopleTrainingRecordCard(record = {}) {
   selectionInput.type = "checkbox";
   selectionInput.checked = isPeopleTrainingRecordSelected(record.id);
   selectionInput.setAttribute("aria-label", `Odaberi ${record.fullName || "osobu"}`);
-  selection.hidden = !getCanManageMasterData();
-  selectionInput.disabled = !getCanManageMasterData();
+  selection.hidden = !getCanManagePeople();
+  selectionInput.disabled = !getCanManagePeople();
   const selectionVisual = document.createElement("span");
   selectionVisual.setAttribute("aria-hidden", "true");
   selection.append(selectionInput, selectionVisual);
@@ -11949,7 +12156,7 @@ function renderPeopleTrainingList() {
 
 function syncPeopleTrainingActionAccess() {
   const canEditPeopleTraining = getCanEditPeopleTrainingData();
-  const canManageTemplates = getCanManageMasterData();
+  const canManageTemplates = getCanManagePeople();
   [
     peopleTrainingDownloadTemplateButton,
     peopleTrainingImportButton,
@@ -11974,8 +12181,8 @@ function syncPeopleTrainingActionAccess() {
     peopleTrainingResetButton.disabled = !canEditPeopleTraining;
   }
   if (peopleTrainingDeleteButton) {
-    peopleTrainingDeleteButton.hidden = !getCanManageMasterData() || !peopleTrainingIdInput?.value;
-    peopleTrainingDeleteButton.disabled = !getCanManageMasterData();
+    peopleTrainingDeleteButton.hidden = !getCanManagePeople() || !peopleTrainingIdInput?.value;
+    peopleTrainingDeleteButton.disabled = !getCanManagePeople();
   }
 }
 
@@ -24197,7 +24404,7 @@ function renderSettingsModule() {
     return;
   }
 
-  const canManageSettings = getCanManageMasterData();
+  const canManageSettings = getCanManageSettings();
   const measurementNotificationSettings = getMeasurementEquipmentNotificationSettings();
   const safetyAuthorizationNotificationSettings = getSafetyAuthorizationNotificationSettings();
   const absenceNotificationSettings = getAbsenceNotificationSettings();
@@ -24317,7 +24524,7 @@ async function saveMeasurementEquipmentNotificationSettings(options = {}) {
     ? options.successMessage.trim()
     : "Postavke su spremljene.";
 
-  if (!getCanManageMasterData()) {
+  if (!getCanManageSettings()) {
     if (settingsNotificationsFeedback) {
       settingsNotificationsFeedback.textContent = "Nemate pravo spremati postavke.";
     }
@@ -24362,7 +24569,7 @@ async function saveSafetyAuthorizationNotificationSettings(options = {}) {
     ? options.successMessage.trim()
     : "Postavke su spremljene.";
 
-  if (!getCanManageMasterData()) {
+  if (!getCanManageSettings()) {
     if (settingsSafetyAuthorizationNotificationsFeedback) {
       settingsSafetyAuthorizationNotificationsFeedback.textContent = "Nemate pravo spremati postavke.";
     }
@@ -24407,7 +24614,7 @@ async function saveAbsenceNotificationSettings(options = {}) {
     ? options.successMessage.trim()
     : "Postavke su spremljene.";
 
-  if (!getCanManageMasterData()) {
+  if (!getCanManageSettings()) {
     if (settingsAbsenceNotificationsFeedback) {
       settingsAbsenceNotificationsFeedback.textContent = "Nemate pravo spremati postavke.";
     }
@@ -24452,7 +24659,7 @@ async function saveVehicleNotificationSettings(options = {}) {
     ? options.successMessage.trim()
     : "Postavke su spremljene.";
 
-  if (!getCanManageMasterData()) {
+  if (!getCanManageSettings()) {
     if (settingsVehicleNotificationsFeedback) {
       settingsVehicleNotificationsFeedback.textContent = "Nemate pravo spremati postavke.";
     }
@@ -24515,7 +24722,7 @@ async function savePeriodicsVisualSettings(options = {}) {
     ? options.successMessage.trim()
     : "Postavke su spremljene.";
 
-  if (!getCanManageMasterData()) {
+  if (!getCanManageSettings()) {
     if (settingsPeriodicsVisualFeedback) {
       settingsPeriodicsVisualFeedback.textContent = "Nemate pravo spremati postavke.";
     }
@@ -24559,11 +24766,11 @@ async function savePeriodicsVisualSettings(options = {}) {
 async function saveCompanyRolePermissions(options = {}) {
   const successMessage = typeof options.successMessage === "string" && options.successMessage.trim()
     ? options.successMessage.trim()
-    : "Company ovlaštenja su spremljena.";
+    : "Role ovlaštenja su spremljena.";
 
   if (!getCanManageMasterData()) {
     if (dashboardCompanyPermissionsFeedback) {
-      dashboardCompanyPermissionsFeedback.textContent = "Nemate pravo spremati Company ovlaštenja.";
+      dashboardCompanyPermissionsFeedback.textContent = "Nemate pravo spremati role ovlaštenja.";
     }
     return false;
   }
@@ -24572,12 +24779,20 @@ async function saveCompanyRolePermissions(options = {}) {
     dashboardCompanyPermissionsSaveButton.disabled = true;
   }
 
-  const success = await runMutation(() => apiRequest("/company-role-permissions", {
-    method: "POST",
-    body: {
-      rolePermissions: getCompanyRolePermissionsDraft(),
-    },
-  }), dashboardCompanyPermissionsFeedback);
+  const success = await runMutation(async () => {
+    await apiRequest("/company-role-permissions", {
+      method: "POST",
+      body: {
+        rolePermissions: getCompanyRolePermissionsDraft(),
+      },
+    });
+    return apiRequest("/app-role-permissions", {
+      method: "POST",
+      body: {
+        rolePermissions: getAppRolePermissionsDraft(),
+      },
+    });
+  }, dashboardCompanyPermissionsFeedback);
 
   if (dashboardCompanyPermissionsSaveButton) {
     dashboardCompanyPermissionsSaveButton.disabled = false;
@@ -41553,10 +41768,18 @@ async function persistDocumentTemplateDraft({
 }
 
 function saveDocumentTemplate() {
+  if (!getCanManageDocumentTemplates()) {
+    setDocumentTemplateMessage("Nemate pravo spremati templatee.");
+    return;
+  }
   void persistDocumentTemplateDraft();
 }
 
 function deleteDocumentTemplate(templateOrId = "", { closeEditorOnSuccess = false } = {}) {
+  if (!getCanManageDocumentTemplates()) {
+    setDocumentTemplateMessage("Nemate pravo brisati templatee.");
+    return;
+  }
   const templateId = String(typeof templateOrId === "object" ? templateOrId?.id : templateOrId || "").trim();
   if (!templateId) {
     return;
@@ -41860,7 +42083,8 @@ function getActiveOrganizationUsers() {
     ));
 }
 
-function renderCompanyPermissionModuleBlock(module, draftByKey) {
+function renderCompanyPermissionModuleBlock(module, draftByKey, appDraftByKey = new Map()) {
+  const isAppModule = module.type === "app";
   const block = document.createElement("details");
   block.className = "dashboard-company-permission-block";
   block.open = true;
@@ -41926,17 +42150,27 @@ function renderCompanyPermissionModuleBlock(module, draftByKey) {
     row.append(actionCell);
 
     USER_PROFILE_ROLE_OPTIONS.forEach((role) => {
+      const isAdminRole = role.value === "admin";
+      const permissionEntry = isAppModule
+        ? appDraftByKey.get(createAppRolePermissionDraftKey(role.value))
+        : draftByKey.get(createCompanyRolePermissionDraftKey(role.value));
       const cell = document.createElement("div");
       cell.className = "dashboard-company-permission-grid-cell";
       const label = document.createElement("label");
       label.className = "dashboard-company-permission-checkbox";
       const checkbox = document.createElement("input");
       checkbox.type = "checkbox";
-      checkbox.checked = Boolean(
-        draftByKey.get(createCompanyRolePermissionDraftKey(role.value))?.[permissionRow.key],
-      );
+      checkbox.checked = isAdminRole || Boolean(permissionEntry?.[permissionRow.key]);
+      checkbox.disabled = isAdminRole;
+      if (isAdminRole) {
+        label.title = "Admin ima sva ovlastenja unutar svoje firme.";
+      }
       checkbox.addEventListener("change", () => {
-        setCompanyRolePermissionDraft(role.value, permissionRow.key, checkbox.checked);
+        if (isAppModule) {
+          setAppRolePermissionDraft(role.value, permissionRow.key, checkbox.checked);
+        } else {
+          setCompanyRolePermissionDraft(role.value, permissionRow.key, checkbox.checked);
+        }
         if (dashboardCompanyPermissionsFeedback) {
           dashboardCompanyPermissionsFeedback.textContent = "";
         }
@@ -41968,8 +42202,13 @@ function renderDashboardCompanyPermissionsPanel() {
   }
 
   const rolePermissions = getCompanyRolePermissionsDraft();
+  const appRolePermissions = getAppRolePermissionsDraft();
+  const permissionModules = [
+    ...COMPANY_PERMISSION_MODULES,
+    ...APP_ROLE_PERMISSION_MODULES,
+  ];
   if (dashboardCompanyPermissionsCount) {
-    dashboardCompanyPermissionsCount.textContent = `${COMPANY_PERMISSION_MODULES.length} blok`;
+    dashboardCompanyPermissionsCount.textContent = `${permissionModules.length} blokova`;
   }
 
   if (dashboardCompanyPermissionsSaveButton) {
@@ -41987,10 +42226,16 @@ function renderDashboardCompanyPermissionsPanel() {
       entry,
     ]),
   );
+  const appDraftByKey = new Map(
+    appRolePermissions.map((entry) => [
+      createAppRolePermissionDraftKey(entry.profileRole),
+      entry,
+    ]),
+  );
   const moduleList = document.createElement("div");
   moduleList.className = "dashboard-company-permission-block-list";
   moduleList.replaceChildren(
-    ...COMPANY_PERMISSION_MODULES.map((module) => renderCompanyPermissionModuleBlock(module, draftByKey)),
+    ...permissionModules.map((module) => renderCompanyPermissionModuleBlock(module, draftByKey, appDraftByKey)),
   );
 
   dashboardCompanyPermissionsBody.replaceChildren(moduleList);
@@ -45920,7 +46165,7 @@ function renderServiceCatalogUsageChecklist(container, {
     return;
   }
 
-  const canManageMasterData = getCanManageMasterData();
+  const canManageMasterData = getCanManageSafetyAuthorizations();
   const selectedSet = new Set(selectedIds.map((value) => String(value)));
   const services = sortServiceCatalogItems((state.serviceCatalog ?? []).filter((item) => (
     String(item.serviceType || (item.isTraining ? "znr" : "inspection")) === "inspection"
@@ -47813,7 +48058,10 @@ function buildMeasurementEquipmentCardExportFileBaseNameForItem(item = {}) {
 }
 
 function getMeasurementEquipmentExportItems() {
-  return sortMeasurementEquipmentItems(state.measurementEquipment ?? []);
+  const canViewEquipment = getCanViewMeasurementEquipment()
+    || getCanCreateMeasurementEquipment()
+    || getCanEditMeasurementEquipment();
+  return canViewEquipment ? sortMeasurementEquipmentItems(state.measurementEquipment ?? []) : [];
 }
 
 function getMeasurementEquipmentZipCategoryOptions() {
@@ -48006,11 +48254,14 @@ function resolveMeasurementEquipmentExportDialogDocumentCategories(options = [])
 function syncMeasurementEquipmentExportActionControls() {
   const hasItems = getMeasurementEquipmentExportItems().length > 0;
   const isBusy = measurementEquipmentCardExporting || measurementEquipmentBulkExporting;
+  const canViewEquipment = getCanViewMeasurementEquipment()
+    || getCanCreateMeasurementEquipment()
+    || getCanEditMeasurementEquipment();
   if (measurementEquipmentExportExcelButton) {
-    measurementEquipmentExportExcelButton.disabled = !hasItems || isBusy;
+    measurementEquipmentExportExcelButton.disabled = !canViewEquipment || !hasItems || isBusy;
   }
   if (measurementEquipmentExportZipButton) {
-    measurementEquipmentExportZipButton.disabled = !hasItems || isBusy;
+    measurementEquipmentExportZipButton.disabled = !canViewEquipment || !hasItems || isBusy;
   }
   syncMeasurementEquipmentExportDialogControls();
 }
@@ -48018,13 +48269,17 @@ function syncMeasurementEquipmentExportActionControls() {
 function syncMeasurementEquipmentCardTemplateControls() {
   const templateDocument = getMeasurementEquipmentCardTemplateDocument();
   const isBusy = measurementEquipmentCardExporting || measurementEquipmentBulkExporting;
+  const canViewEquipment = getCanViewMeasurementEquipment()
+    || getCanCreateMeasurementEquipment()
+    || getCanEditMeasurementEquipment();
+  const canEditEquipment = getCanEditMeasurementEquipment();
   if (measurementEquipmentCardTemplateMeta) {
     measurementEquipmentCardTemplateMeta.textContent = templateDocument?.fileName
       ? `Template: ${templateDocument.fileName}${templateDocument.updatedAt ? ` · ažurirano ${formatCompactDateTime(templateDocument.updatedAt)}` : ""}`
       : "Nema učitanog templatea kartona. Učitaj .docx/.dotx pa preuzmi Word/PDF.";
   }
 
-  const isDisabled = !templateDocument || measurementEquipmentCardExporting;
+  const isDisabled = !canViewEquipment || !templateDocument || measurementEquipmentCardExporting;
   if (measurementEquipmentCardExportWordButton) {
     measurementEquipmentCardExportWordButton.disabled = isDisabled;
   }
@@ -48032,7 +48287,10 @@ function syncMeasurementEquipmentCardTemplateControls() {
     measurementEquipmentCardExportPdfButton.disabled = isDisabled;
   }
   if (measurementEquipmentCardExportPlaceholdersWordButton) {
-    measurementEquipmentCardExportPlaceholdersWordButton.disabled = isBusy;
+    measurementEquipmentCardExportPlaceholdersWordButton.disabled = !canViewEquipment || isBusy;
+  }
+  if (measurementEquipmentCardTemplateUploadButton) {
+    measurementEquipmentCardTemplateUploadButton.disabled = !canEditEquipment || isBusy;
   }
   syncMeasurementEquipmentExportActionControls();
 }
@@ -49444,11 +49702,11 @@ function syncDocumentTemplateEditorChrome() {
   }
 
   if (documentTemplateDeleteButton) {
-    documentTemplateDeleteButton.hidden = fillMode || !documentTemplateIdInput?.value;
+    documentTemplateDeleteButton.hidden = fillMode || !documentTemplateIdInput?.value || !getCanManageDocumentTemplates();
   }
 
   if (documentTemplateSaveButton) {
-    documentTemplateSaveButton.hidden = fillMode;
+    documentTemplateSaveButton.hidden = fillMode || !getCanManageDocumentTemplates();
   }
   if (documentTemplateOpenPdfPreviewButton) {
     documentTemplateOpenPdfPreviewButton.hidden = fillMode;
@@ -49677,8 +49935,17 @@ function renderLegalFrameworkModule() {
   };
   state.legalFrameworkFilters = filters;
 
-  const allItems = sortLegalFrameworks(state.legalFrameworks ?? []);
-  const visibleItems = sortLegalFrameworks(filterLegalFrameworks(state.legalFrameworks ?? [], filters));
+  const canEditLegalFramework = getCanEditLegalFramework();
+  const canAccessLegalFramework = getCanViewLegalFramework() || canEditLegalFramework;
+  const legalFrameworkItems = canAccessLegalFramework ? (state.legalFrameworks ?? []) : [];
+  const allItems = sortLegalFrameworks(legalFrameworkItems);
+  const visibleItems = sortLegalFrameworks(filterLegalFrameworks(legalFrameworkItems, filters));
+  if (legalFrameworkOpenFormButton) {
+    legalFrameworkOpenFormButton.hidden = !canEditLegalFramework;
+  }
+  if (legalFrameworkDeleteButton) {
+    legalFrameworkDeleteButton.hidden = !legalFrameworkIdInput?.value || !canEditLegalFramework;
+  }
   if (legalFrameworkHelper) {
     legalFrameworkHelper.textContent = visibleItems.length === allItems.length
       ? `Prikazano ${visibleItems.length} propisa.`
@@ -49688,8 +49955,10 @@ function renderLegalFrameworkModule() {
   legalFrameworkList.replaceChildren(...visibleItems.map((item) => {
     const card = document.createElement("article");
     card.className = `legal-framework-card is-${slugifyValue(item.status || "active")}`;
-    card.tabIndex = 0;
-    card.setAttribute("role", "button");
+    if (canEditLegalFramework) {
+      card.tabIndex = 0;
+      card.setAttribute("role", "button");
+    }
     if (String(item.id) === String(legalFrameworkIdInput?.value || "")) {
       card.classList.add("is-active");
     }
@@ -49744,16 +50013,21 @@ function renderLegalFrameworkModule() {
     card.append(head, note, footer);
 
     const openCard = () => {
-      hydrateLegalFrameworkForm(item);
-    };
-    card.addEventListener("click", openCard);
-    card.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter" && event.key !== " ") {
+      if (!canEditLegalFramework) {
         return;
       }
-      event.preventDefault();
-      openCard();
-    });
+      hydrateLegalFrameworkForm(item);
+    };
+    if (canEditLegalFramework) {
+      card.addEventListener("click", openCard);
+      card.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") {
+          return;
+        }
+        event.preventDefault();
+        openCard();
+      });
+    }
     return card;
   }));
 
@@ -49798,7 +50072,7 @@ function renderServiceCatalogTemplateChecklist(selectedIds = []) {
     return;
   }
 
-  const canManageMasterData = getCanManageMasterData();
+  const canManageMasterData = getCanManageServiceCatalog();
   const selectedSet = new Set(selectedIds.map((value) => String(value)));
   const templates = sortDocumentTemplates(state.documentTemplates ?? []);
 
@@ -49845,7 +50119,7 @@ function renderServiceCatalogLearningTestChecklist(selectedIds = []) {
     return;
   }
 
-  const canManageMasterData = getCanManageMasterData();
+  const canManageMasterData = getCanManageServiceCatalog();
   const selectedSet = new Set(selectedIds.map((value) => String(value)));
   const tests = sortLearningTests(state.learningTests ?? []);
 
@@ -49958,7 +50232,7 @@ function renderServiceCatalogCertificateTemplateSelect() {
     ],
     getServiceCatalogSelectedCertificateTemplateId(),
   );
-  serviceCatalogCertificateTemplateSelect.disabled = !getCanManageMasterData();
+  serviceCatalogCertificateTemplateSelect.disabled = !getCanManageServiceCatalog();
 }
 
 function getPeopleTrainingCertificatePlaceholderToken(entry = {}) {
@@ -50177,7 +50451,7 @@ function hydrateServiceCatalogForm(item) {
     serviceCatalogError.textContent = "";
   }
   if (serviceCatalogDeleteButton) {
-    serviceCatalogDeleteButton.hidden = !getCanManageMasterData();
+    serviceCatalogDeleteButton.hidden = !getCanManageServiceCatalog();
   }
   if (serviceCatalogEditorTitle) {
     serviceCatalogEditorTitle.textContent = `Uredi uslugu · ${item.name || item.serviceCode || "Usluga"}`;
@@ -50207,15 +50481,17 @@ function renderServiceCatalogModule() {
     return;
   }
 
-  const canManageMasterData = getCanManageMasterData();
+  const canManageMasterData = getCanManageServiceCatalog();
+  const canAccessServiceCatalog = getCanViewServiceCatalog() || canManageMasterData;
   const filters = {
     query: serviceCatalogSearchInput?.value?.trim() || state.serviceCatalogFilters.query || "",
     status: serviceCatalogFilterStatusInput?.value || state.serviceCatalogFilters.status || "all",
   };
   state.serviceCatalogFilters = filters;
 
-  const allItems = sortServiceCatalogItems(state.serviceCatalog ?? []);
-  const visibleItems = sortServiceCatalogItems(filterServiceCatalogItems(state.serviceCatalog ?? [], filters));
+  const serviceCatalogItems = canAccessServiceCatalog ? (state.serviceCatalog ?? []) : [];
+  const allItems = sortServiceCatalogItems(serviceCatalogItems);
+  const visibleItems = sortServiceCatalogItems(filterServiceCatalogItems(serviceCatalogItems, filters));
 
   if (serviceCatalogOpenFormButton) {
     serviceCatalogOpenFormButton.hidden = !canManageMasterData;
@@ -51870,24 +52146,30 @@ function renderMeasurementEquipmentModule() {
     return;
   }
 
-  const canManageMasterData = getCanManageMasterData();
+  const canCreateMeasurementEquipment = getCanCreateMeasurementEquipment();
+  const canEditMeasurementEquipment = getCanEditMeasurementEquipment();
+  const canManageMasterData = canEditMeasurementEquipment;
+  const canAccessMeasurementEquipment = getCanViewMeasurementEquipment()
+    || canCreateMeasurementEquipment
+    || canEditMeasurementEquipment;
   const filters = {
     query: measurementEquipmentSearchInput?.value?.trim() || state.measurementEquipmentFilters.query || "",
     sort: measurementEquipmentSortInput?.value || state.measurementEquipmentFilters.sort || "due-asc",
   };
   state.measurementEquipmentFilters = filters;
 
-  const allItems = [...(state.measurementEquipment ?? [])];
+  const measurementEquipmentItems = canAccessMeasurementEquipment ? (state.measurementEquipment ?? []) : [];
+  const allItems = [...measurementEquipmentItems];
   const visibleItems = sortMeasurementEquipmentItemsForList(
-    filterMeasurementEquipmentItems(state.measurementEquipment ?? [], { query: filters.query }),
+    filterMeasurementEquipmentItems(measurementEquipmentItems, { query: filters.query }),
     filters.sort,
   );
 
   if (measurementEquipmentOpenFormButton) {
-    measurementEquipmentOpenFormButton.hidden = !canManageMasterData;
+    measurementEquipmentOpenFormButton.hidden = !canCreateMeasurementEquipment;
   }
   if (measurementEquipmentDeleteButton) {
-    measurementEquipmentDeleteButton.hidden = !measurementEquipmentIdInput?.value || !canManageMasterData;
+    measurementEquipmentDeleteButton.hidden = !measurementEquipmentIdInput?.value || !canEditMeasurementEquipment;
   }
   if (measurementEquipmentTotalCount) {
     measurementEquipmentTotalCount.textContent = String(allItems.length);
@@ -52060,7 +52342,7 @@ function renderMeasurementEquipmentModule() {
   if (visibleItems.length === 0) {
     const empty = document.createElement("div");
     empty.className = "offers-empty-card";
-    empty.textContent = canManageMasterData
+    empty.textContent = canCreateMeasurementEquipment || canEditMeasurementEquipment
       ? "Nema opreme za ove filtere. Dodaj prvu stavku opreme i povezi je s uslugama."
       : "Nema opreme za prikaz u odabranoj organizaciji.";
     measurementEquipmentList.replaceChildren(empty);
@@ -52329,14 +52611,15 @@ function renderSafetyAuthorizationModule() {
     return;
   }
 
-  const canManageMasterData = getCanManageMasterData();
+  const canManageMasterData = getCanManageSafetyAuthorizations();
   const filters = {
     query: safetyAuthorizationSearchInput?.value?.trim() || state.safetyAuthorizationFilters.query || "",
   };
   state.safetyAuthorizationFilters = filters;
 
-  const allItems = sortSafetyAuthorizations(state.safetyAuthorizations ?? []);
-  const visibleItems = sortSafetyAuthorizations(filterSafetyAuthorizations(state.safetyAuthorizations ?? [], filters));
+  const safetyAuthorizationItems = canManageMasterData ? (state.safetyAuthorizations ?? []) : [];
+  const allItems = sortSafetyAuthorizations(safetyAuthorizationItems);
+  const visibleItems = sortSafetyAuthorizations(filterSafetyAuthorizations(safetyAuthorizationItems, filters));
   const today = new Date(new Date().setHours(0, 0, 0, 0));
   const activeItems = allItems.filter((item) => (
     item.validForever
@@ -59002,6 +59285,7 @@ function renderDocumentTemplateModule() {
   }
 
   syncDocumentTemplateEditorModal();
+  const canManageDocumentTemplates = getCanManageDocumentTemplates();
 
   const filters = {
     query: documentTemplateSearchInput?.value?.trim() || state.documentTemplateFilters.query || "",
@@ -59009,8 +59293,13 @@ function renderDocumentTemplateModule() {
   };
   state.documentTemplateFilters = filters;
 
-  const allItems = sortDocumentTemplates(state.documentTemplates ?? []);
-  const visibleItems = sortDocumentTemplates(filterDocumentTemplates(state.documentTemplates ?? [], filters));
+  const documentTemplateItems = canManageDocumentTemplates ? (state.documentTemplates ?? []) : [];
+  const allItems = sortDocumentTemplates(documentTemplateItems);
+  const visibleItems = sortDocumentTemplates(filterDocumentTemplates(documentTemplateItems, filters));
+
+  if (documentTemplateOpenFormButton) {
+    documentTemplateOpenFormButton.hidden = !canManageDocumentTemplates;
+  }
 
   if (documentTemplateTotalCount) {
     documentTemplateTotalCount.textContent = String(allItems.length);
@@ -59027,8 +59316,10 @@ function renderDocumentTemplateModule() {
   documentTemplateList.replaceChildren(...visibleItems.map((template) => {
     const card = document.createElement("article");
     card.className = `document-template-card is-${slugifyValue(template.status || "draft")}`;
-    card.tabIndex = 0;
-    card.setAttribute("role", "button");
+    if (canManageDocumentTemplates) {
+      card.tabIndex = 0;
+      card.setAttribute("role", "button");
+    }
     if (String(template.id) === String(documentTemplateIdInput?.value || "")) {
       card.classList.add("is-active");
     }
@@ -59084,13 +59375,18 @@ function renderDocumentTemplateModule() {
     actions.addEventListener("keydown", (event) => {
       event.stopPropagation();
     });
-    actions.append(createActionButton("Obriši", "ghost-button document-template-card-action is-danger", (event) => {
-      event.stopPropagation();
-      deleteDocumentTemplate(template);
-    }));
+    if (canManageDocumentTemplates) {
+      actions.append(createActionButton("Obriši", "ghost-button document-template-card-action is-danger", (event) => {
+        event.stopPropagation();
+        deleteDocumentTemplate(template);
+      }));
+    }
     footer.append(updated, actions);
 
     const openCard = () => {
+      if (!canManageDocumentTemplates) {
+        return;
+      }
       hydrateDocumentTemplateForm(template);
     };
 
@@ -59099,14 +59395,16 @@ function renderDocumentTemplateModule() {
       card.append(description);
     }
     card.append(footer);
-    card.addEventListener("click", openCard);
-    card.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter" && event.key !== " ") {
-        return;
-      }
-      event.preventDefault();
-      openCard();
-    });
+    if (canManageDocumentTemplates) {
+      card.addEventListener("click", openCard);
+      card.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") {
+          return;
+        }
+        event.preventDefault();
+        openCard();
+      });
+    }
     return card;
   }));
 
@@ -62915,6 +63213,7 @@ function syncUserManagementListChrome() {
 
   if (userOpenFormButton) {
     userOpenFormButton.textContent = scopeConfig.createButtonLabel;
+    userOpenFormButton.hidden = !getCanManagePeople();
   }
 
   if (usersProfileHeader) {
@@ -72516,7 +72815,7 @@ function syncVehicleEditorSummary() {
   setVehicleAvailabilityPreview(previewStatus);
 
   if (vehicleDeleteButton) {
-    vehicleDeleteButton.hidden = !activeVehicle;
+    vehicleDeleteButton.hidden = !activeVehicle || !getCanManageVehicles();
   }
 
   if (vehicleReservationsTitle) {
@@ -72526,7 +72825,7 @@ function syncVehicleEditorSummary() {
       : "Rezervacije";
   }
 
-  setVehicleReservationFormDisabled(!getVehicleFromReservationEditor() && state.vehicles.length === 0);
+  setVehicleReservationFormDisabled(!getCanReserveVehicles() || (!getVehicleFromReservationEditor() && state.vehicles.length === 0));
   syncVehicleEditorSections();
 }
 
@@ -73612,13 +73911,22 @@ function renderVehiclesModule() {
 
   syncVehicleModuleSections();
   const nowValue = new Date().toISOString();
-  const allVehicles = sortVehicles(state.vehicles ?? [], nowValue);
-  const visibleVehicles = sortVehicles(filterVehicles(state.vehicles ?? [], {
+  const canViewVehicles = getCanViewVehicles();
+  const canManageVehicles = getCanManageVehicles();
+  const canReserveVehicles = getCanReserveVehicles();
+  const canAccessVehicles = canViewVehicles || canManageVehicles || canReserveVehicles;
+  const vehicleItems = canAccessVehicles ? (state.vehicles ?? []) : [];
+  const allVehicles = sortVehicles(vehicleItems, nowValue);
+  const visibleVehicles = sortVehicles(filterVehicles(vehicleItems, {
     query: vehiclesSearchInput?.value || "",
     status: vehiclesFilterStatusInput?.value || "all",
     nowValue,
   }), nowValue);
   const reservableVehicles = allVehicles.filter((vehicle) => !isVehicleServiceOnlyStatus(vehicle));
+
+  if (vehicleOpenFormButton) {
+    vehicleOpenFormButton.hidden = !canManageVehicles;
+  }
 
   if (vehiclesTotalCount) {
     vehiclesTotalCount.textContent = String(allVehicles.length);
@@ -73637,7 +73945,8 @@ function renderVehiclesModule() {
   }
 
   if (vehicleOpenReservationButton) {
-    vehicleOpenReservationButton.disabled = reservableVehicles.length === 0;
+    vehicleOpenReservationButton.hidden = !canReserveVehicles;
+    vehicleOpenReservationButton.disabled = !canReserveVehicles || reservableVehicles.length === 0;
   }
 
   rebuildVehicleReservationVehicleOptions(vehicleReservationVehicleIdInput?.value || state.activeVehicleId || "");
@@ -73648,9 +73957,11 @@ function renderVehiclesModule() {
     const isServiceVehicle = isVehicleServiceOnlyStatus(vehicle);
     const card = document.createElement("article");
     card.className = `vehicle-list-row ${getVehicleStatusToneClass(availabilityStatus)}`;
-    card.tabIndex = 0;
-    card.setAttribute("role", "button");
-    card.setAttribute("aria-label", `Otvori uređivanje za ${vehicle.name || vehicle.plateNumber || "vozilo"}`);
+    if (canManageVehicles) {
+      card.tabIndex = 0;
+      card.setAttribute("role", "button");
+      card.setAttribute("aria-label", `Otvori uređivanje za ${vehicle.name || vehicle.plateNumber || "vozilo"}`);
+    }
     if (String(vehicle.id) === String(state.activeVehicleId)) {
       card.classList.add("is-active");
     }
@@ -73685,7 +73996,10 @@ function renderVehiclesModule() {
     const statusBadge = document.createElement("span");
     statusBadge.className = `vehicle-status-badge ${getVehicleStatusToneClass(availabilityStatus)}`;
     statusBadge.textContent = getVehicleStatusLabel(availabilityStatus);
-    head.append(statusBadge, titleWrap, createVehicleInlineStatusSelect(vehicle));
+    head.append(statusBadge, titleWrap);
+    if (canManageVehicles) {
+      head.append(createVehicleInlineStatusSelect(vehicle));
+    }
 
     const actions = document.createElement("div");
     actions.className = "vehicle-card-actions";
@@ -73693,7 +74007,8 @@ function renderVehiclesModule() {
     reserveButton.type = "button";
     reserveButton.className = "ghost-button";
     reserveButton.textContent = isServiceVehicle ? "Servis" : "Rezerviraj";
-    reserveButton.disabled = isServiceVehicle;
+    reserveButton.hidden = !canReserveVehicles;
+    reserveButton.disabled = !canReserveVehicles || isServiceVehicle;
     reserveButton.addEventListener("click", (event) => {
       event.stopPropagation();
       if (isServiceVehicle) {
@@ -73709,29 +74024,34 @@ function renderVehiclesModule() {
     head.append(actions);
 
     const openVehicle = () => {
+      if (!canManageVehicles) {
+        return;
+      }
       hydrateVehicleForm(vehicle);
     };
 
     card.append(head);
-    card.addEventListener("click", (event) => {
-      if (isInteractiveWorkOrderTarget(event.target)) {
-        return;
-      }
+    if (canManageVehicles) {
+      card.addEventListener("click", (event) => {
+        if (isInteractiveWorkOrderTarget(event.target)) {
+          return;
+        }
 
-      openVehicle();
-    });
-    card.addEventListener("keydown", (event) => {
-      if (isInteractiveWorkOrderTarget(event.target)) {
-        return;
-      }
+        openVehicle();
+      });
+      card.addEventListener("keydown", (event) => {
+        if (isInteractiveWorkOrderTarget(event.target)) {
+          return;
+        }
 
-      if (event.key !== "Enter" && event.key !== " ") {
-        return;
-      }
+        if (event.key !== "Enter" && event.key !== " ") {
+          return;
+        }
 
-      event.preventDefault();
-      openVehicle();
-    });
+        event.preventDefault();
+        openVehicle();
+      });
+    }
     return card;
   }));
 
@@ -73739,7 +74059,9 @@ function renderVehiclesModule() {
   if (visibleVehicles.length === 0) {
     const emptyCard = document.createElement("div");
     emptyCard.className = "offers-empty-card";
-    emptyCard.textContent = "Nema vozila za odabrane filtere. Dodaj novo vozilo ili prosiri pretragu.";
+    emptyCard.textContent = canManageVehicles
+      ? "Nema vozila za odabrane filtere. Dodaj novo vozilo ili prosiri pretragu."
+      : "Nema vozila za prikaz u odabranoj organizaciji.";
     vehiclesList.replaceChildren(emptyCard);
   }
 
@@ -73771,8 +74093,10 @@ function renderVehiclesModule() {
       head.append(
         copy,
         createVehicleReservationExecutorList(getVehicleReservationAssigneeLabels(reservation), { compact: true }),
-        createVehicleReservationInlineStatusSelect(reservationVehicle, reservation),
       );
+      if (canReserveVehicles) {
+        head.append(createVehicleReservationInlineStatusSelect(reservationVehicle, reservation));
+      }
 
       const windowLabel = document.createElement("p");
       windowLabel.className = "vehicle-reservation-item-window";
@@ -73806,7 +74130,9 @@ function renderVehiclesModule() {
           }
         });
       });
-      actions.append(editButton, deleteButton);
+      if (canReserveVehicles) {
+        actions.append(editButton, deleteButton);
+      }
 
       item.append(head, windowLabel, actions);
       return item;
@@ -88421,6 +88747,9 @@ document.addEventListener("keydown", (event) => {
 });
 
 vehicleOpenFormButton?.addEventListener("click", () => {
+  if (!getCanManageVehicles()) {
+    return;
+  }
   resetVehicleForm();
   renderVehiclesModule();
   openVehicleEditor();
@@ -88518,6 +88847,9 @@ vehicleEditorBackdrop?.addEventListener("click", () => {
 });
 
 vehicleDeleteButton?.addEventListener("click", () => {
+  if (!getCanManageVehicles()) {
+    return;
+  }
   const vehicleId = vehicleIdInput?.value || "";
 
   if (!vehicleId) {
@@ -88542,10 +88874,13 @@ vehicleDeleteButton?.addEventListener("click", () => {
 
 vehicleForm?.addEventListener("submit", (event) => {
   event.preventDefault();
+  const isEditing = Boolean(vehicleIdInput?.value);
+  if ((isEditing && !getCanManageVehicles()) || (!isEditing && !getCanManageVehicles())) {
+    return;
+  }
 
   const payload = buildVehiclePayload();
   const previousIds = new Set(state.vehicles.map((item) => String(item.id)));
-  const isEditing = Boolean(vehicleIdInput?.value);
   const path = isEditing ? `/vehicles/${vehicleIdInput.value}` : "/vehicles";
   const method = isEditing ? "PATCH" : "POST";
 
@@ -88574,6 +88909,9 @@ vehicleForm?.addEventListener("submit", (event) => {
 });
 
 vehicleOpenReservationButton?.addEventListener("click", () => {
+  if (!getCanReserveVehicles()) {
+    return;
+  }
   const activeVehicle = getActiveVehicle();
   const reservationVehicleId = activeVehicle && !isVehicleServiceOnlyStatus(activeVehicle)
     ? activeVehicle.id
@@ -88652,6 +88990,9 @@ vehicleScheduleDateInput?.addEventListener("change", () => {
 
 vehicleReservationForm?.addEventListener("submit", (event) => {
   event.preventDefault();
+  if (!getCanReserveVehicles()) {
+    return;
+  }
 
   const activeVehicle = getVehicleFromReservationEditor();
 
@@ -89536,6 +89877,9 @@ legalFrameworkFilterStatusInput?.addEventListener("change", () => {
 });
 
 legalFrameworkOpenFormButton?.addEventListener("click", () => {
+  if (!getCanEditLegalFramework()) {
+    return;
+  }
   resetLegalFrameworkForm();
   renderLegalFrameworkModule();
   openLegalFrameworkEditor();
@@ -89569,12 +89913,18 @@ legalFrameworkEditorBackdrop?.addEventListener("click", () => {
 });
 
 legalFrameworkResetButton?.addEventListener("click", () => {
+  if (!getCanEditLegalFramework()) {
+    return;
+  }
   resetLegalFrameworkForm();
   renderLegalFrameworkModule();
   openLegalFrameworkEditor();
 });
 
 legalFrameworkDeleteButton?.addEventListener("click", () => {
+  if (!getCanEditLegalFramework()) {
+    return;
+  }
   const legalFrameworkId = legalFrameworkIdInput?.value || "";
 
   if (!legalFrameworkId || !window.confirm("Obrisati ovaj propis?")) {
@@ -89597,6 +89947,9 @@ legalFrameworkForm?.addEventListener("input", () => {
 
 legalFrameworkForm?.addEventListener("submit", (event) => {
   event.preventDefault();
+  if (!getCanEditLegalFramework()) {
+    return;
+  }
 
   const isEditing = Boolean(legalFrameworkIdInput?.value);
   const path = isEditing ? `/legal-frameworks/${legalFrameworkIdInput.value}` : "/legal-frameworks";
@@ -90004,6 +90357,9 @@ measurementEquipmentSideActivityCommentInput?.addEventListener("keydown", (event
 });
 
 measurementEquipmentOpenFormButton?.addEventListener("click", () => {
+  if (!getCanCreateMeasurementEquipment()) {
+    return;
+  }
   resetMeasurementEquipmentForm();
   renderMeasurementEquipmentModule();
   openMeasurementEquipmentEditor();
@@ -90062,12 +90418,18 @@ measurementEquipmentExportForm?.addEventListener("submit", (event) => {
 });
 
 measurementEquipmentResetButton?.addEventListener("click", () => {
+  if (!getCanCreateMeasurementEquipment()) {
+    return;
+  }
   resetMeasurementEquipmentForm();
   renderMeasurementEquipmentModule();
   openMeasurementEquipmentEditor();
 });
 
 measurementEquipmentDeleteButton?.addEventListener("click", () => {
+  if (!getCanEditMeasurementEquipment()) {
+    return;
+  }
   const equipmentId = measurementEquipmentIdInput?.value || "";
 
   if (!equipmentId || !window.confirm("Obrisati ovu stavku opreme?")) {
@@ -90144,6 +90506,9 @@ measurementEquipmentDocumentsInput?.addEventListener("change", () => {
 });
 
 measurementEquipmentCardTemplateUploadButton?.addEventListener("click", () => {
+  if (!getCanEditMeasurementEquipment()) {
+    return;
+  }
   measurementEquipmentCardTemplateInput?.click();
 });
 
@@ -90184,6 +90549,9 @@ measurementEquipmentForm?.addEventListener("submit", (event) => {
   event.preventDefault();
 
   const isEditing = Boolean(measurementEquipmentIdInput?.value);
+  if ((isEditing && !getCanEditMeasurementEquipment()) || (!isEditing && !getCanCreateMeasurementEquipment())) {
+    return;
+  }
   const path = isEditing ? `/measurement-equipment/${measurementEquipmentIdInput.value}` : "/measurement-equipment";
   const method = isEditing ? "PATCH" : "POST";
 
@@ -90209,6 +90577,9 @@ serviceCatalogFilterStatusInput?.addEventListener("change", () => {
 });
 
 serviceCatalogOpenFormButton?.addEventListener("click", () => {
+  if (!getCanManageServiceCatalog()) {
+    return;
+  }
   resetServiceCatalogForm();
   renderServiceCatalogModule();
   openServiceCatalogEditor();
@@ -90226,6 +90597,9 @@ serviceCatalogEditorBackdrop?.addEventListener("click", () => {
 });
 
 serviceCatalogResetButton?.addEventListener("click", () => {
+  if (!getCanManageServiceCatalog()) {
+    return;
+  }
   resetServiceCatalogForm();
   renderServiceCatalogModule();
   openServiceCatalogEditor();
@@ -90295,6 +90669,9 @@ serviceCatalogCertificateTemplatePlaceholdersButton?.addEventListener("click", (
 });
 
 serviceCatalogDeleteButton?.addEventListener("click", () => {
+  if (!getCanManageServiceCatalog()) {
+    return;
+  }
   const serviceCatalogId = serviceCatalogIdInput?.value || "";
 
   if (!serviceCatalogId || !window.confirm("Obrisati ovu uslugu?")) {
@@ -90315,6 +90692,9 @@ serviceCatalogDeleteButton?.addEventListener("click", () => {
 
 serviceCatalogForm?.addEventListener("submit", (event) => {
   event.preventDefault();
+  if (!getCanManageServiceCatalog()) {
+    return;
+  }
 
   const isEditing = Boolean(serviceCatalogIdInput?.value);
   const path = isEditing ? `/service-catalog/${serviceCatalogIdInput.value}` : "/service-catalog";
@@ -90339,6 +90719,9 @@ safetyAuthorizationSearchInput?.addEventListener("input", () => {
 });
 
 safetyAuthorizationOpenFormButton?.addEventListener("click", () => {
+  if (!getCanManageSafetyAuthorizations()) {
+    return;
+  }
   resetSafetyAuthorizationForm();
   renderSafetyAuthorizationModule();
   openSafetyAuthorizationEditor();
@@ -90356,12 +90739,18 @@ safetyAuthorizationEditorBackdrop?.addEventListener("click", () => {
 });
 
 safetyAuthorizationResetButton?.addEventListener("click", () => {
+  if (!getCanManageSafetyAuthorizations()) {
+    return;
+  }
   resetSafetyAuthorizationForm();
   renderSafetyAuthorizationModule();
   openSafetyAuthorizationEditor();
 });
 
 safetyAuthorizationDeleteButton?.addEventListener("click", () => {
+  if (!getCanManageSafetyAuthorizations()) {
+    return;
+  }
   const authorizationId = safetyAuthorizationIdInput?.value || "";
 
   if (!authorizationId || !window.confirm("Obrisati ovo ovlaštenje?")) {
@@ -90404,6 +90793,9 @@ safetyAuthorizationForm?.addEventListener("input", () => {
 
 safetyAuthorizationForm?.addEventListener("submit", (event) => {
   event.preventDefault();
+  if (!getCanManageSafetyAuthorizations()) {
+    return;
+  }
 
   const isEditing = Boolean(safetyAuthorizationIdInput?.value);
   const path = isEditing ? `/safety-authorizations/${safetyAuthorizationIdInput.value}` : "/safety-authorizations";
@@ -90458,7 +90850,7 @@ absenceOpenFormButton?.addEventListener("click", () => {
 });
 
 absenceOpenBalancesButton?.addEventListener("click", () => {
-  if (!getCanManageMasterData()) {
+  if (!getCanManagePeople()) {
     return;
   }
   resetAbsenceBalanceDrafts();
@@ -90617,6 +91009,9 @@ documentTemplateFilterStatusInput?.addEventListener("change", () => {
 });
 
 documentTemplateOpenFormButton?.addEventListener("click", () => {
+  if (!getCanManageDocumentTemplates()) {
+    return;
+  }
   resetDocumentTemplateForm();
   renderDocumentTemplateModule();
   openDocumentTemplateEditor();
@@ -93722,6 +94117,8 @@ function resetAuthenticatedWorkspaceState() {
   state.periodicsVisualSettings = {
     ...DEFAULT_PERIODICS_VISUAL_SETTINGS,
   };
+  state.appRolePermissions = normalizeAppRolePermissions([]);
+  state.appPermissions = {};
   measurementEquipmentSideComments = [];
   state.measurementEquipmentActivityFeed = {
     organizationId: "",
@@ -93873,6 +94270,9 @@ organizationResetButton?.addEventListener("click", () => {
 });
 
 userOpenFormButton?.addEventListener("click", () => {
+  if (!getCanManagePeople()) {
+    return;
+  }
   resetUserForm();
   openUserEditor();
   requestAnimationFrame(() => {

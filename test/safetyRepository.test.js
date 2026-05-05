@@ -296,6 +296,57 @@ test("stored document template field mapping preserves AI and builder metadata",
   assert.deepEqual(mapped.columns, ["Pozicija", "Opis"]);
 });
 
+test("in-memory safety repository stores app role permissions per organization", async () => {
+  const repository = new InMemorySafetyRepository();
+  await repository.init();
+
+  const saved = await repository.upsertAppRolePermissions({
+    organizationId: "org-1",
+    rolePermissions: [
+      {
+        profileRole: "manager",
+        "people.manage": true,
+        "vehicles.reserve": true,
+        "settings.manage": false,
+      },
+    ],
+  });
+
+  assert.equal(saved.length, 7);
+  assert.equal(saved.find((entry) => entry.profileRole === "manager")?.["people.manage"], true);
+  assert.equal(saved.find((entry) => entry.profileRole === "manager")?.["vehicles.reserve"], true);
+  assert.equal(saved.find((entry) => entry.profileRole === "manager")?.["settings.manage"], false);
+
+  await repository.upsertAppRolePermissions({
+    organizationId: "org-2",
+    rolePermissions: [
+      {
+        profileRole: "junior_user",
+        "serviceCatalog.create": true,
+      },
+    ],
+  });
+  await repository.upsertAppRolePermissions({
+    organizationId: "org-1",
+    rolePermissions: [
+      {
+        profileRole: "manager",
+        "settings.manage": true,
+      },
+    ],
+  });
+
+  const snapshot = await repository.getSnapshot();
+  const orgOneEntries = snapshot.appRolePermissions.filter((entry) => entry.organizationId === "org-1");
+  const orgTwoEntries = snapshot.appRolePermissions.filter((entry) => entry.organizationId === "org-2");
+
+  assert.equal(orgOneEntries.length, 7);
+  assert.equal(orgTwoEntries.length, 7);
+  assert.equal(orgOneEntries.find((entry) => entry.profileRole === "manager")?.["settings.manage"], true);
+  assert.equal(orgOneEntries.find((entry) => entry.profileRole === "manager")?.["vehicles.reserve"], false);
+  assert.equal(orgTwoEntries.find((entry) => entry.profileRole === "junior_user")?.["serviceCatalog.create"], true);
+});
+
 test("learning test scoring supports single, multiple and ordered answers", async () => {
   const repository = new InMemorySafetyRepository();
   await repository.init();

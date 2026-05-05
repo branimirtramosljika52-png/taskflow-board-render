@@ -10,8 +10,10 @@ import {
   canManageLoginContent,
   canManageOrganizations,
   canManageOrganizationUsers,
+  normalizeAppRolePermissions,
   normalizeCompanyRolePermissions,
   normalizeRole,
+  resolveAppPermissionsForActor,
   resolveCompanyPermissionsForActor,
   pickLoginContent,
   resolveEffectiveOrganizationId,
@@ -1722,6 +1724,21 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
     )),
   );
   const companyGeneralPermissions = resolveCompanyPermissionsForActor(actor, companyRolePermissions);
+  const appRolePermissions = normalizeAppRolePermissions(
+    (rawSnapshot.appRolePermissions ?? []).filter((item) => (
+      String(item.organizationId) === String(organizationId)
+    )),
+  );
+  const appPermissions = resolveAppPermissionsForActor(actor, appRolePermissions);
+  const hasAppPermission = (permissionKey = "") => Boolean(appPermissions[permissionKey]);
+  const canViewDocumentTemplates = [
+    "documentTemplates.create",
+    "measurementEquipment.create",
+    "measurementEquipment.edit",
+    "legalFramework.edit",
+    "serviceCatalog.create",
+    "safetyAuthorizations.manage",
+  ].some((permissionKey) => hasAppPermission(permissionKey));
   const clientPortalScope = buildClientPortalScope(actor, assignedCompanyIds, rawSnapshot);
   const visibleCompanyIds = new Set(
     clientPortalScope.isClientPortal
@@ -1782,6 +1799,8 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
   };
 
   return {
+    appRolePermissions: appRolePermissions.map((item) => ({ ...item })),
+    appPermissions: { ...appPermissions },
     companyRolePermissions: companyRolePermissions.map((item) => ({ ...item })),
     companyGeneralPermissions: {
       canView: Boolean(companyGeneralPermissions.canView),
@@ -1871,7 +1890,7 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       ...item,
       referenceDocument: item.referenceDocument ? { ...item.referenceDocument } : null,
     })),
-    vehicles: (rawSnapshot.vehicles ?? []).filter((item) => (
+    vehicles: (hasAppPermission("vehicles.view") ? (rawSnapshot.vehicles ?? []) : []).filter((item) => (
       String(item.organizationId) === String(organizationId)
     )).map((item) => ({
       ...item,
@@ -1881,7 +1900,7 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
         reservedForLabels: [...(reservation.reservedForLabels ?? [])],
       })),
     })),
-    legalFrameworks: (rawSnapshot.legalFrameworks ?? []).filter((item) => (
+    legalFrameworks: (hasAppPermission("legalFramework.view") ? (rawSnapshot.legalFrameworks ?? []) : []).filter((item) => (
       String(item.organizationId) === String(organizationId)
     )).map((item) => ({
       ...item,
@@ -1890,7 +1909,7 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       linkedTemplateIds: [...(item.linkedTemplateIds ?? [])],
       linkedTemplateTitles: [...(item.linkedTemplateTitles ?? [])],
     })),
-    documentTemplates: (rawSnapshot.documentTemplates ?? []).filter((item) => (
+    documentTemplates: (canViewDocumentTemplates ? (rawSnapshot.documentTemplates ?? []) : []).filter((item) => (
       String(item.organizationId) === String(organizationId)
     )).map((item) => ({
       ...item,
@@ -1925,14 +1944,14 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
           .map((attempt) => ({ ...attempt })),
       };
     }),
-    serviceCatalog: (rawSnapshot.serviceCatalog ?? []).filter((item) => (
+    serviceCatalog: (hasAppPermission("serviceCatalog.view") ? (rawSnapshot.serviceCatalog ?? []) : []).filter((item) => (
       String(item.organizationId) === String(organizationId)
     )).map((item) => ({
       ...item,
       linkedTemplateIds: [...(item.linkedTemplateIds ?? [])],
       linkedTemplateTitles: [...(item.linkedTemplateTitles ?? [])],
     })),
-    measurementEquipment: (rawSnapshot.measurementEquipment ?? []).filter((item) => (
+    measurementEquipment: (hasAppPermission("measurementEquipment.view") ? (rawSnapshot.measurementEquipment ?? []) : []).filter((item) => (
       String(item.organizationId) === String(organizationId)
     )).map((item) => ({
       ...item,
@@ -2080,7 +2099,7 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
         }))
         : [];
     })(),
-    safetyAuthorizations: (rawSnapshot.safetyAuthorizations ?? []).filter((item) => (
+    safetyAuthorizations: (hasAppPermission("safetyAuthorizations.manage") ? (rawSnapshot.safetyAuthorizations ?? []) : []).filter((item) => (
       String(item.organizationId) === String(organizationId)
     )).map((item) => ({
       ...item,
@@ -2650,6 +2669,7 @@ export class MemoryTenantRepository {
     vehicleNotificationSettings: [],
     periodicsVisualSettings: [],
     appCapabilities: [],
+    appRolePermissions: [],
     companyRolePermissions: [],
     safetyAuthorizations: [],
     absenceEntries: [],
@@ -3493,6 +3513,7 @@ export class MySqlTenantRepository {
     vehicleNotificationSettings: [],
     periodicsVisualSettings: [],
     appCapabilities: [],
+    appRolePermissions: [],
     companyRolePermissions: [],
     safetyAuthorizations: [],
     absenceEntries: [],
@@ -3508,6 +3529,8 @@ export class MySqlTenantRepository {
       const scopedSnapshot = context.activeOrganizationId
         ? buildScopedSnapshot(rawSnapshot, context.activeOrganizationId, assignments, actor)
         : {
+          appRolePermissions: normalizeAppRolePermissions([]),
+          appPermissions: {},
           companyRolePermissions: normalizeCompanyRolePermissions([]),
           companyGeneralPermissions: {
             canView: false,

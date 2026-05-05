@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  APP_ROLE_PERMISSION_KEYS,
   ROLE_ADMIN,
   ROLE_SUPER_ADMIN,
   ROLE_USER,
@@ -15,11 +16,14 @@ import {
   canManageOrganizations,
   canManageWorkOrders,
   canViewCompanies,
+  hasAppPermission,
   isClientPortalUser,
+  normalizeAppRolePermissions,
   normalizeCompanyRolePermissions,
   normalizeRole,
   normalizeUserProfileRole,
   pickLoginContent,
+  resolveAppPermissionsForActor,
   resolveCompanyPermissionsForActor,
   resolveEffectiveOrganizationId,
   splitFullName,
@@ -146,6 +150,60 @@ test("client portal users get read-only company access", () => {
   assert.equal(canViewCompanies(client, []), true);
   assert.equal(canCreateCompanies(client, []), false);
   assert.equal(canManageWorkOrders(client), false);
+});
+
+test("app role permissions keep super admin and admin fully privileged", () => {
+  const disabledRolePermissions = normalizeAppRolePermissions([
+    {
+      profileRole: "manager",
+      permissions: Object.fromEntries(APP_ROLE_PERMISSION_KEYS.map((key) => [key, false])),
+    },
+  ]);
+  const superAdmin = { role: ROLE_SUPER_ADMIN, profileRole: "manager" };
+  const admin = { role: ROLE_ADMIN, profileRole: "manager" };
+
+  assert.deepEqual(
+    Object.values(resolveAppPermissionsForActor(superAdmin, disabledRolePermissions)),
+    APP_ROLE_PERMISSION_KEYS.map(() => true),
+  );
+  assert.deepEqual(
+    Object.values(resolveAppPermissionsForActor(admin, disabledRolePermissions)),
+    APP_ROLE_PERMISSION_KEYS.map(() => true),
+  );
+  assert.equal(hasAppPermission(admin, disabledRolePermissions, "settings.manage"), true);
+});
+
+test("app role permissions resolve module access by profile role", () => {
+  const rolePermissions = normalizeAppRolePermissions([
+    {
+      profileRole: "manager",
+      "people.manage": true,
+      "vehicles.reserve": true,
+      "vehicles.create": false,
+      "settings.manage": false,
+    },
+  ]);
+  const manager = {
+    role: ROLE_USER,
+    profileRole: "manager",
+    organizationId: "5",
+    organizationIds: ["5"],
+  };
+  const junior = { role: ROLE_USER, profileRole: "junior_user" };
+  const client = { role: ROLE_USER, profileRole: "client_user" };
+
+  assert.equal(hasAppPermission(manager, rolePermissions, "people.manage"), true);
+  assert.equal(hasAppPermission(manager, rolePermissions, "vehicles.reserve"), true);
+  assert.equal(hasAppPermission(manager, rolePermissions, "vehicles.create"), false);
+  assert.equal(hasAppPermission(manager, rolePermissions, "settings.manage"), false);
+  assert.equal(canManageOrganizationUsers(manager, "5", ROLE_USER), false);
+  assert.equal(canManageOrganizationUsers({
+    ...manager,
+    appPermissions: resolveAppPermissionsForActor(manager, rolePermissions),
+  }, "5", ROLE_USER), true);
+  assert.equal(hasAppPermission(junior, rolePermissions, "measurementEquipment.view"), true);
+  assert.equal(hasAppPermission(junior, rolePermissions, "measurementEquipment.edit"), false);
+  assert.equal(hasAppPermission(client, rolePermissions, "serviceCatalog.view"), false);
 });
 
 test("company permissions can be scoped per company while create stays general", () => {

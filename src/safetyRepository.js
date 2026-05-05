@@ -1,7 +1,9 @@
 import mysql from "mysql2/promise";
 import {
+  APP_ROLE_PERMISSION_KEYS,
   COMPANY_PERMISSION_SCOPE_GENERAL,
   normalizeCompanyPermissionScopeId,
+  normalizeAppRolePermissions,
   normalizeCompanyRolePermissions,
 } from "./accessControl.js";
 
@@ -1996,6 +1998,30 @@ function mapAppCapabilitySettingsEntry(row = {}) {
   };
 }
 
+function mapAppRolePermissionEntry(row = {}) {
+  const organizationId = dbString(row.organization_id);
+  const profileRole = dbString(row.profile_role).toLowerCase();
+  if (!organizationId || !profileRole) {
+    return null;
+  }
+
+  const normalized = normalizeAppRolePermissions([{
+    profileRole,
+    permissions: parseJsonObject(row.permissions_json),
+  }]).find((entry) => entry.profileRole === profileRole);
+
+  return {
+    organizationId,
+    ...(normalized ?? { profileRole }),
+    createdAt: normalizeTimestamp(row.created_at),
+    updatedAt: normalizeTimestamp(row.updated_at),
+  };
+}
+
+function pickAppRolePermissionFlags(entry = {}) {
+  return Object.fromEntries(APP_ROLE_PERMISSION_KEYS.map((key) => [key, Boolean(entry?.[key])]));
+}
+
 function mapCompanyRolePermissionEntry(row = {}) {
   const organizationId = dbString(row.organization_id);
   if (!organizationId) {
@@ -3830,6 +3856,16 @@ async function fetchSnapshotFromConnection(connection) {
     .map((row) => mapAppCapabilitySettingsEntry(row))
     .filter(Boolean);
 
+  const [appRolePermissionRows] = await connection.query(`
+    SELECT organization_id, profile_role, permissions_json, created_at, updated_at
+    FROM web_app_role_permissions
+    ORDER BY organization_id ASC, profile_role ASC
+  `);
+
+  const appRolePermissions = appRolePermissionRows
+    .map((row) => mapAppRolePermissionEntry(row))
+    .filter(Boolean);
+
   const [companyRolePermissionRows] = await connection.query(`
     SELECT organization_id, company_id, profile_role, can_view, can_create, can_edit, can_delete, created_at, updated_at
     FROM web_company_role_permissions
@@ -3990,6 +4026,7 @@ async function fetchSnapshotFromConnection(connection) {
     vehicleNotificationSettings,
     periodicsVisualSettings,
     appCapabilities,
+    appRolePermissions,
     companyRolePermissions,
     safetyAuthorizations,
     absenceEntries,
@@ -4095,6 +4132,7 @@ export class InMemorySafetyRepository {
       vehicleNotificationSettings: [],
       periodicsVisualSettings: [],
       appCapabilities: [],
+      appRolePermissions: [],
       companyRolePermissions: [],
       safetyAuthorizations: [],
       absenceEntries: [],
@@ -4332,6 +4370,9 @@ export class InMemorySafetyRepository {
       appCapabilities: this.snapshot.appCapabilities.map((item) => ({
         ...item,
         modules: cloneJsonValue(item.modules ?? []),
+      })),
+      appRolePermissions: this.snapshot.appRolePermissions.map((item) => ({
+        ...item,
       })),
       companyRolePermissions: this.snapshot.companyRolePermissions.map((item) => ({
         ...item,
@@ -5763,6 +5804,40 @@ export class InMemorySafetyRepository {
     )) ?? nextEntry;
   }
 
+  async upsertAppRolePermissions({ organizationId = "", rolePermissions = [] } = {}) {
+    const safeOrganizationId = dbString(organizationId);
+    if (!safeOrganizationId) {
+      throw new Error("Organizacija je obavezna za app role permissions.");
+    }
+
+    const normalizedPermissions = normalizeAppRolePermissions(rolePermissions);
+    const timestamp = new Date().toISOString();
+    const previousByRole = new Map(
+      this.snapshot.appRolePermissions
+        .filter((entry) => String(entry.organizationId) === safeOrganizationId)
+        .map((entry) => [String(entry.profileRole || "").toLowerCase(), entry]),
+    );
+    const nextEntries = normalizedPermissions.map((entry) => {
+      const profileRole = String(entry.profileRole || "").toLowerCase();
+      const previous = previousByRole.get(profileRole) ?? null;
+      return {
+        organizationId: safeOrganizationId,
+        profileRole,
+        isExplicit: true,
+        ...pickAppRolePermissionFlags(entry),
+        createdAt: previous?.createdAt || timestamp,
+        updatedAt: timestamp,
+      };
+    });
+
+    this.snapshot.appRolePermissions = [
+      ...this.snapshot.appRolePermissions.filter((entry) => String(entry.organizationId) !== safeOrganizationId),
+      ...nextEntries,
+    ];
+
+    return nextEntries;
+  }
+
   async upsertCompanyRolePermissions({ organizationId = "", rolePermissions = [] } = {}) {
     const safeOrganizationId = dbString(organizationId);
     if (!safeOrganizationId) {
@@ -6648,6 +6723,17 @@ export class MySqlSafetyRepository {
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         UNIQUE KEY uniq_web_app_capability_settings_org (organization_id)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_app_role_permissions (
+        organization_id INT NOT NULL,
+        profile_role VARCHAR(32) NOT NULL,
+        permissions_json LONGTEXT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (organization_id, profile_role),
+        INDEX idx_web_app_role_permissions_org (organization_id)
       )
     `);
     await this.pool.query(`
@@ -10763,6 +10849,53 @@ export class MySqlSafetyRepository {
       organizationId: String(safeOrganizationId),
       modules: cloneJsonValue(normalizedModules),
     };
+  }
+
+  async upsertAppRolePermissions({ organizationId = "", rolePermissions = [] } = {}) {
+    const safeOrganizationId = Number(organizationId);
+    if (!Number.isFinite(safeOrganizationId) || safeOrganizationId <= 0) {
+      throw new Error("Organizacija je obavezna za app role permissions.");
+    }
+
+    const normalizedPermissions = normalizeAppRolePermissions(rolePermissions);
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+      await connection.query(
+        "DELETE FROM web_app_role_permissions WHERE organization_id = ?",
+        [safeOrganizationId],
+      );
+
+      for (const entry of normalizedPermissions) {
+        await connection.query(
+          `
+            INSERT INTO web_app_role_permissions
+              (organization_id, profile_role, permissions_json)
+            VALUES (?, ?, ?)
+          `,
+          [
+            safeOrganizationId,
+            String(entry.profileRole || "").trim().toLowerCase(),
+            JSON.stringify(pickAppRolePermissionFlags(entry)),
+          ],
+        );
+      }
+
+      await connection.commit();
+
+      return normalizedPermissions.map((entry) => ({
+        organizationId: String(safeOrganizationId),
+        profileRole: String(entry.profileRole || "").trim().toLowerCase(),
+        isExplicit: true,
+        ...pickAppRolePermissionFlags(entry),
+      }));
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
   }
 
   async updateMeasurementEquipmentItem(id, patch) {
