@@ -51,6 +51,35 @@ test("memory tenant repository prefers exact email over legacy username collisio
   assert.equal(authenticated.email, "collision@example.com");
 });
 
+test("memory tenant repository saves profile report schedule", async () => {
+  const repository = new MemoryTenantRepository();
+  await repository.init();
+
+  const superAdmin = await repository.authenticateUser("admin@local.test", "admin");
+  assert.ok(superAdmin);
+
+  const updated = await repository.updateOwnReportSchedule(superAdmin, {
+    enabled: true,
+    time: "08:30",
+  });
+
+  assert.equal(updated.reportEmailEnabled, true);
+  assert.equal(updated.reportEmailTime, "08:30");
+
+  const scheduledUsers = await repository.listUsersWithReportSchedule();
+  assert.deepEqual(scheduledUsers.map((user) => user.id), [superAdmin.id]);
+
+  const marked = await repository.markProfileReportSent(superAdmin.id, "2026-05-05");
+  assert.equal(marked.reportEmailLastSentOn, "2026-05-05");
+
+  const disabled = await repository.updateOwnReportSchedule(superAdmin, {
+    enabled: false,
+    time: "08:30",
+  });
+  assert.equal(disabled.reportEmailEnabled, false);
+  assert.equal(disabled.reportEmailLastSentOn, "");
+});
+
 test("memory tenant repository scopes snapshot by assigned companies", async () => {
   const repository = new MemoryTenantRepository();
   await repository.init();

@@ -2490,6 +2490,52 @@ body.is-profile-modal-open {
   flex-wrap: wrap;
 }
 
+.profile-report-schedule {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(191, 205, 230, 0.92);
+  border-radius: 14px;
+  background: rgba(248, 251, 255, 0.86);
+}
+
+.profile-report-sentence {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: #1f2940;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.profile-report-sentence input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: #1d74f5;
+}
+
+.profile-report-sentence input[type="time"] {
+  width: 116px;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid rgba(184, 202, 231, 0.95);
+  border-radius: 10px;
+  background: #ffffff;
+  color: #15213a;
+  font: inherit;
+}
+
+.profile-report-sentence input[type="time"]:disabled {
+  color: #71819f;
+  background: #eef3fb;
+}
+
+.profile-report-actions {
+  align-items: stretch;
+}
+
 #profile-feedback,
 #profile-password-feedback {
   min-height: 1.1rem;

@@ -3,7 +3,10 @@ import test from "node:test";
 
 import PizZip from "pizzip";
 
-import { buildDocxFromTemplateBuffer } from "../src/documentExport.js";
+import {
+  buildDashboardCalendarReportPdfBuffer,
+  buildDocxFromTemplateBuffer,
+} from "../src/documentExport.js";
 
 function buildMinimalDocxBuffer(documentXml = "") {
   const zip = new PizZip();
@@ -76,4 +79,39 @@ test("docx export renders signature group placeholders as visible signature bloc
   assert.match(outputXml, /Ana Savanovic/);
   assert.match(outputXml, /Digitalni potpis/);
   assert.match(outputXml, /______________________________/);
+});
+
+test("dashboard calendar report export returns a PDF buffer", async () => {
+  const outputBuffer = await buildDashboardCalendarReportPdfBuffer({
+    user: {
+      firstName: "Ana",
+      lastName: "Ivic",
+      email: "ana@example.com",
+      organizationName: "Test Org",
+    },
+    organizationName: "Test Org",
+    todayKey: "2026-05-05",
+    scopedSnapshot: {
+      currentOrganization: { name: "Test Org" },
+      companies: [{ id: "company-1", name: "Alpha" }],
+      locations: [{ id: "location-1", companyId: "company-1", name: "Zagreb" }],
+      workOrders: [
+        {
+          id: "wo-1",
+          workOrderNumber: "26-001",
+          status: "Otvoreni RN",
+          priority: "Urgent",
+          dueDate: "2026-05-06",
+          companyName: "Alpha",
+          locationName: "Zagreb",
+          executors: ["Ana Ivic"],
+        },
+      ],
+      reminders: [{ id: "rem-1", title: "Provjera", status: "active", dueDate: "2026-05-07" }],
+      todoTasks: [{ id: "todo-1", title: "Nazovi klijenta", status: "open", dueDate: "2026-05-08" }],
+    },
+  });
+
+  assert.equal(outputBuffer.subarray(0, 4).toString("utf8"), "%PDF");
+  assert.ok(outputBuffer.length > 1000);
 });

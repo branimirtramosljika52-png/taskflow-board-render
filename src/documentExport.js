@@ -10,6 +10,13 @@ import { PDFDocument as PdfLibDocument } from "pdf-lib";
 import PDFDocument from "pdfkit";
 import PizZip from "pizzip";
 
+import {
+  WORK_ORDER_STATUS_OPTIONS,
+  getDashboardInsights,
+  getDashboardStats,
+  getWorkOrderExecutors,
+} from "./safetyModel.js";
+
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 const DEJAVU_FONT_DIR = resolve(moduleDir, "..", "node_modules", "dejavu-fonts-ttf", "ttf");
 const PDF_FONTS = {
@@ -2246,6 +2253,368 @@ function formatOfferPdfCurrency(value = 0, currency = "EUR") {
   } catch {
     return `${amount.toFixed(2)} ${currencyCode}`;
   }
+}
+
+const REPORT_STATUS_BAR_COLORS = ["#2563eb", "#16a34a", "#d97706", "#0f766e", "#64748b", "#7c3aed"];
+
+function addDaysToReportDateKey(dateKey = "", days = 0) {
+  const normalized = clean(dateKey);
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    return "";
+  }
+
+  const date = new Date(`${normalized}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function getReportDateKey(value = "") {
+  const normalized = clean(value);
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    return normalized;
+  }
+
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
+}
+
+function formatReportDateTime(value = "") {
+  const parsed = value ? new Date(value) : new Date();
+
+  try {
+    return new Intl.DateTimeFormat("hr-HR", {
+      dateStyle: "medium",
+      timeStyle: "short",
+      timeZone: "Europe/Zagreb",
+    }).format(Number.isNaN(parsed.getTime()) ? new Date() : parsed);
+  } catch {
+    return formatOfferPdfDate(getReportDateKey(value));
+  }
+}
+
+function getReportArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function countReportItems(items = [], predicate = () => true) {
+  return getReportArray(items).filter(predicate).length;
+}
+
+function renderReportSectionTitle(doc, helpers, title, subtitle = "") {
+  helpers.ensureSpace(subtitle ? 48 : 32);
+  doc.font("dejavu-bold").fontSize(13).fillColor("#111827").text(title, {
+    width: helpers.availableWidth,
+  });
+
+  if (subtitle) {
+    doc.moveDown(0.12);
+    doc.font("dejavu").fontSize(9.5).fillColor("#64748b").text(subtitle, {
+      width: helpers.availableWidth,
+    });
+  }
+
+  doc.moveDown(0.5);
+}
+
+function renderReportMetricGrid(doc, helpers, metrics = []) {
+  const safeMetrics = getReportArray(metrics).filter((item) => clean(item?.label));
+  const gap = 10;
+  const columns = 4;
+  const cardWidth = (helpers.availableWidth - gap * (columns - 1)) / columns;
+  const cardHeight = 62;
+
+  for (let index = 0; index < safeMetrics.length; index += columns) {
+    const rowItems = safeMetrics.slice(index, index + columns);
+    helpers.ensureSpace(cardHeight + 12);
+    const y = doc.y;
+
+    rowItems.forEach((metric, columnIndex) => {
+      const x = doc.page.margins.left + columnIndex * (cardWidth + gap);
+      doc.roundedRect(x, y, cardWidth, cardHeight, 10).fillAndStroke("#f8fbff", "#d8e4f5");
+      doc.font("dejavu").fontSize(8.5).fillColor("#64748b").text(clean(metric.label).toUpperCase(), x + 10, y + 10, {
+        width: cardWidth - 20,
+      });
+      doc.font("dejavu-bold").fontSize(18).fillColor("#0f172a").text(String(metric.value ?? 0), x + 10, y + 28, {
+        width: cardWidth - 20,
+      });
+    });
+
+    doc.y = y + cardHeight + 12;
+  }
+}
+
+function renderReportStatusBars(doc, helpers, statusRows = []) {
+  const safeRows = getReportArray(statusRows);
+  const total = safeRows.reduce((sum, item) => sum + (Number(item.count) || 0), 0);
+  const labelWidth = 132;
+  const countWidth = 70;
+  const barWidth = helpers.availableWidth - labelWidth - countWidth - 18;
+
+  renderReportSectionTitle(doc, helpers, "Status radnih naloga", "Bar prikaz broja RN po statusu.");
+
+  safeRows.forEach((row, index) => {
+    const count = Number(row.count) || 0;
+    const percent = total > 0 ? count / total : 0;
+    helpers.ensureSpace(28);
+    const y = doc.y;
+    doc.font("dejavu").fontSize(9.5).fillColor("#334155").text(clean(row.label), doc.page.margins.left, y + 3, {
+      width: labelWidth,
+    });
+    doc.roundedRect(doc.page.margins.left + labelWidth, y + 4, barWidth, 9, 5).fill("#e8eef7");
+    if (count > 0) {
+      doc.roundedRect(doc.page.margins.left + labelWidth, y + 4, Math.max(8, barWidth * percent), 9, 5)
+        .fill(REPORT_STATUS_BAR_COLORS[index % REPORT_STATUS_BAR_COLORS.length]);
+    }
+    doc.font("dejavu-bold").fontSize(9.5).fillColor("#0f172a").text(`${count} (${Math.round(percent * 100)}%)`, doc.page.margins.left + labelWidth + barWidth + 12, y + 1, {
+      width: countWidth,
+      align: "right",
+    });
+    doc.y = y + 24;
+  });
+
+  doc.moveDown(0.45);
+}
+
+function renderReportTable(doc, helpers, title, columns = [], rows = [], { emptyMessage = "Nema podataka." } = {}) {
+  const safeColumns = getReportArray(columns).filter((column) => clean(column?.label));
+  const safeRows = getReportArray(rows);
+
+  renderReportSectionTitle(doc, helpers, title);
+
+  if (safeRows.length === 0 || safeColumns.length === 0) {
+    renderPdfFieldCard(doc, helpers, title, emptyMessage);
+    return;
+  }
+
+  const totalExplicitWidth = safeColumns.reduce((sum, column) => sum + (Number(column.width) || 0), 0);
+  const columnWidths = safeColumns.map((column) => (
+    Number(column.width) > 0
+      ? Number(column.width)
+      : Math.max(70, (helpers.availableWidth - totalExplicitWidth) / safeColumns.length)
+  ));
+  const scale = helpers.availableWidth / columnWidths.reduce((sum, value) => sum + value, 0);
+  const widths = columnWidths.map((value) => value * scale);
+  const rowPaddingY = 7;
+
+  helpers.ensureSpace(30);
+  let x = doc.page.margins.left;
+  const headerY = doc.y;
+  doc.roundedRect(doc.page.margins.left, headerY, helpers.availableWidth, 25, 8).fill("#eef5ff");
+  safeColumns.forEach((column, index) => {
+    doc.font("dejavu-bold").fontSize(8.5).fillColor("#315174").text(clean(column.label).toUpperCase(), x + 7, headerY + 8, {
+      width: widths[index] - 14,
+    });
+    x += widths[index];
+  });
+  doc.y = headerY + 27;
+
+  safeRows.forEach((row, rowIndex) => {
+    const values = safeColumns.map((column, index) => normalizePdfText(row?.[column.key] ?? row?.[index] ?? ""));
+    const textHeights = values.map((value, index) => doc.heightOfString(value, {
+      width: widths[index] - 14,
+      lineGap: 1,
+    }));
+    const rowHeight = Math.max(30, Math.max(...textHeights) + rowPaddingY * 2);
+    helpers.ensureSpace(rowHeight + 4);
+    const y = doc.y;
+    doc.roundedRect(doc.page.margins.left, y, helpers.availableWidth, rowHeight, 7)
+      .fill(rowIndex % 2 === 0 ? "#fbfdff" : "#f6f9fd");
+
+    x = doc.page.margins.left;
+    values.forEach((value, index) => {
+      doc.font(index === 0 ? "dejavu-bold" : "dejavu").fontSize(8.8).fillColor(index === 0 ? "#0f172a" : "#334155").text(value, x + 7, y + rowPaddingY, {
+        width: widths[index] - 14,
+        lineGap: 1,
+      });
+      x += widths[index];
+    });
+    doc.y = y + rowHeight + 4;
+  });
+
+  doc.moveDown(0.4);
+}
+
+export async function buildDashboardCalendarReportPdfBuffer({
+  user = {},
+  organizationName = "",
+  scopedSnapshot = {},
+  generatedAt = new Date().toISOString(),
+  todayKey = "",
+} = {}) {
+  const doc = new PDFDocument({
+    autoFirstPage: true,
+    size: "A4",
+    layout: "portrait",
+    margins: {
+      top: 38,
+      bottom: 38,
+      left: 42,
+      right: 42,
+    },
+    bufferPages: true,
+    info: {
+      Title: "SafeNexus dnevni izvjestaj",
+      Author: "SafeNexus",
+    },
+  });
+
+  doc.registerFont("dejavu", PDF_FONTS.regular);
+  doc.registerFont("dejavu-bold", PDF_FONTS.bold);
+  doc.registerFont("dejavu-italic", PDF_FONTS.italic);
+  doc.font("dejavu");
+
+  const helpers = createPdfLayoutHelpers(doc);
+  const reportTodayKey = getReportDateKey(todayKey) || getReportDateKey(generatedAt) || new Date().toISOString().slice(0, 10);
+  const reportEndKey = addDaysToReportDateKey(reportTodayKey, 14);
+  const workOrders = getReportArray(scopedSnapshot.workOrders);
+  const reminders = getReportArray(scopedSnapshot.reminders);
+  const todoTasks = getReportArray(scopedSnapshot.todoTasks);
+  const dashboardStats = getDashboardStats(scopedSnapshot, reportTodayKey);
+  const dashboardInsights = getDashboardInsights(scopedSnapshot, reportTodayKey);
+  const personName = clean(user.fullName) || [user.firstName, user.lastName].map(clean).filter(Boolean).join(" ") || clean(user.email) || "Korisnik";
+  const safeOrganizationName = clean(organizationName) || clean(scopedSnapshot.currentOrganization?.name) || clean(user.organizationName) || "SafeNexus";
+  const activeReminders = countReportItems(reminders, (item) => !["done", "completed", "closed"].includes(clean(item?.status).toLowerCase()));
+  const openTodo = countReportItems(todoTasks, (item) => !["done", "completed", "closed"].includes(clean(item?.status).toLowerCase()));
+  const statusRows = WORK_ORDER_STATUS_OPTIONS.map((option) => ({
+    label: option.label,
+    count: workOrders.filter((item) => item.status === option.value).length,
+  }));
+  const metrics = [
+    { label: "Tvrtke", value: dashboardStats.companies },
+    { label: "Lokacije", value: dashboardStats.locations },
+    { label: "Aktivni RN", value: dashboardStats.activeWorkOrders },
+    { label: "Zavrseni RN", value: dashboardStats.completedWorkOrders },
+    { label: "RN u kasnjenju", value: dashboardStats.overdueWorkOrders },
+    { label: "Hitni RN", value: dashboardInsights.urgentWorkOrders },
+    { label: "Aktivni reminders", value: activeReminders },
+    { label: "Otvoreni ToDo", value: openTodo },
+    { label: "Ponude", value: getReportArray(scopedSnapshot.offers).length },
+    { label: "Narudzbenice", value: getReportArray(scopedSnapshot.purchaseOrders).length },
+    { label: "Vozila", value: getReportArray(scopedSnapshot.vehicles).length },
+    { label: "Mjerna oprema", value: getReportArray(scopedSnapshot.measurementEquipment).length },
+  ];
+
+  helpers.ensureSpace(102);
+  doc.font("dejavu-bold").fontSize(10).fillColor("#2563eb").text("SAFE NEXUS - DNEVNI IZVJESTAJ");
+  doc.moveDown(0.25);
+  doc.font("dejavu-bold").fontSize(22).fillColor("#111827").text("Dashboard i kalendar", {
+    width: helpers.availableWidth,
+  });
+  doc.moveDown(0.25);
+  doc.font("dejavu").fontSize(10).fillColor("#475569").text([
+    safeOrganizationName,
+    personName,
+    `Generirano ${formatReportDateTime(generatedAt)}`,
+  ].filter(Boolean).join(" · "), {
+    width: helpers.availableWidth,
+  });
+  doc.moveDown(1);
+
+  renderReportSectionTitle(doc, helpers, "Dashboard sazetak", `Pregled za ${formatOfferPdfDate(reportTodayKey)}.`);
+  renderReportMetricGrid(doc, helpers, metrics);
+  renderReportStatusBars(doc, helpers, statusRows);
+
+  renderReportTable(
+    doc,
+    helpers,
+    "Opterecenje izvrsitelja",
+    [
+      { key: "label", label: "Izvrsitelj", width: 260 },
+      { key: "count", label: "RN", width: 80 },
+    ],
+    getReportArray(dashboardInsights.executorLoad).map((item) => ({
+      label: item.label,
+      count: item.count,
+    })),
+    { emptyMessage: "Nema dodijeljenih izvrsitelja." },
+  );
+
+  helpers.setLayout("landscape", { forceNewPage: true });
+  const calendarWorkOrders = workOrders
+    .filter((item) => {
+      const dueDate = getReportDateKey(item.dueDate);
+      return dueDate && dueDate >= reportTodayKey && dueDate <= reportEndKey;
+    })
+    .sort((left, right) => (
+      String(left.dueDate || "").localeCompare(String(right.dueDate || ""), "hr")
+      || String(left.workOrderNumber || "").localeCompare(String(right.workOrderNumber || ""), "hr", { numeric: true })
+    ))
+    .map((item) => ({
+      date: formatOfferPdfDate(item.dueDate),
+      number: item.workOrderNumber || "Bez broja",
+      status: item.status || "Bez statusa",
+      client: [item.companyName, item.locationName].filter(Boolean).join(" · ") || "Bez klijenta",
+      executors: getWorkOrderExecutors(item).join(", ") || "Bez izvrsitelja",
+    }));
+
+  renderReportTable(
+    doc,
+    helpers,
+    `Kalendar RN (${formatOfferPdfDate(reportTodayKey)} - ${formatOfferPdfDate(reportEndKey)})`,
+    [
+      { key: "date", label: "Datum", width: 80 },
+      { key: "number", label: "RN", width: 82 },
+      { key: "status", label: "Status", width: 110 },
+      { key: "client", label: "Klijent / lokacija", width: 260 },
+      { key: "executors", label: "Izvrsitelji", width: 185 },
+    ],
+    calendarWorkOrders,
+    { emptyMessage: "Nema RN rokova u narednih 14 dana." },
+  );
+
+  const reminderTodoRows = [
+    ...reminders.map((item) => ({ ...item, reportType: "Reminder" })),
+    ...todoTasks.map((item) => ({ ...item, reportType: "ToDo" })),
+  ]
+    .filter((item) => {
+      const dueDate = getReportDateKey(item.dueDate);
+      const status = clean(item.status).toLowerCase();
+      return dueDate
+        && dueDate >= reportTodayKey
+        && dueDate <= reportEndKey
+        && !["done", "completed", "closed"].includes(status);
+    })
+    .sort((left, right) => String(left.dueDate || "").localeCompare(String(right.dueDate || ""), "hr"))
+    .map((item) => ({
+      date: formatOfferPdfDate(item.dueDate),
+      type: item.reportType,
+      title: item.title || item.name || "Bez naslova",
+      status: item.status || "",
+      context: [item.companyName, item.locationName, item.workOrderNumber].filter(Boolean).join(" · "),
+    }));
+
+  renderReportTable(
+    doc,
+    helpers,
+    "Reminder i ToDo rokovi",
+    [
+      { key: "date", label: "Datum", width: 82 },
+      { key: "type", label: "Tip", width: 82 },
+      { key: "title", label: "Naslov", width: 250 },
+      { key: "status", label: "Status", width: 90 },
+      { key: "context", label: "Veza", width: 220 },
+    ],
+    reminderTodoRows,
+    { emptyMessage: "Nema otvorenih reminders/ToDo rokova u narednih 14 dana." },
+  );
+
+  const range = doc.bufferedPageRange();
+  for (let index = range.start; index < range.start + range.count; index += 1) {
+    doc.switchToPage(index);
+    doc.font("dejavu").fontSize(8).fillColor("#94a3b8").text(
+      `SafeNexus · ${index + 1 - range.start}/${range.count}`,
+      doc.page.margins.left,
+      doc.page.height - 26,
+      {
+        width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
+        align: "right",
+      },
+    );
+  }
+
+  return pdfBufferFromDocument(doc);
 }
 
 function writeOfferPdfMetaRow(doc, label, value, {

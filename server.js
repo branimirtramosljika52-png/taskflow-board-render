@@ -20,6 +20,7 @@ import {
 } from "./src/accessControl.js";
 import {
   buildAppCapabilitiesPdfBuffer,
+  buildDashboardCalendarReportPdfBuffer,
   buildOfferPdfBuffer,
   buildPurchaseOrderPdfBuffer,
   buildWorkOrderPdfBuffer,
@@ -2362,20 +2363,68 @@ function buildOwnProfileReportEmail(user = {}, scopedSnapshot = {}) {
   `).join("");
 
   return {
-    subject: `SafeNexus izvještaj · ${titleName}`,
-    text: `SafeNexus izvještaj\n\nProfil\n${profileText || "Nema dodatnih profilnih podataka."}\n\nSažetak\n${summaryText}${statusText}\n\nSafeNexus`,
+    subject: `SafeNexus dnevni izvjestaj - ${titleName}`,
+    text: `SafeNexus dnevni izvjestaj\n\nU privitku je PDF pregled Dashboarda i kalendara.\n\nProfil\n${profileText || "Nema dodatnih profilnih podataka."}\n\nSazetak\n${summaryText}${statusText}\n\nSafeNexus`,
     html: `
       <div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.55;color:#0f172a;">
-        <h2 style="margin:0 0 12px;">SafeNexus izvještaj</h2>
-        <p style="margin:0 0 16px;color:#475569;">Kratki pregled profila i operativnih stavki.</p>
+        <h2 style="margin:0 0 12px;">SafeNexus dnevni izvjestaj</h2>
+        <p style="margin:0 0 16px;color:#475569;">U privitku je PDF pregled Dashboarda i kalendara.</p>
         <h3 style="margin:16px 0 8px;">Profil</h3>
         <table style="width:100%;border-collapse:collapse;">${renderHtmlRows(profileRows)}</table>
-        <h3 style="margin:18px 0 8px;">Sažetak</h3>
+        <h3 style="margin:18px 0 8px;">Sazetak</h3>
         <table style="width:100%;border-collapse:collapse;">${renderHtmlRows(summaryRows)}</table>
         ${statusLines.length ? `<h3 style="margin:18px 0 8px;">Statusi RN</h3><div>${statusLines.map((line) => `<div>${escapeEmailHtml(line)}</div>`).join("")}</div>` : ""}
         <div style="margin-top:18px;color:#64748b;">SafeNexus</div>
       </div>
     `,
+  };
+}
+
+function buildProfileReportPdfFileName(user = {}, todayKey = "") {
+  const baseName = [
+    "dashboard-kalendar",
+    user.fullName || [user.firstName, user.lastName].filter(Boolean).join("-") || user.email || "izvjestaj",
+    todayKey,
+  ].filter(Boolean).join("-");
+
+  return sanitizeGeneratedDocumentFileName(baseName, {
+    fallback: "dashboard-kalendar-izvjestaj",
+    extension: "pdf",
+  });
+}
+
+async function sendDashboardCalendarProfileReport(reportUser = {}, scopedSnapshot = {}, {
+  generatedAt = new Date().toISOString(),
+  todayKey = "",
+} = {}) {
+  const organizationName = scopedSnapshot.currentOrganization?.name || reportUser.organizationName || "";
+  const reportEmail = buildOwnProfileReportEmail(reportUser, scopedSnapshot);
+  const fileName = buildProfileReportPdfFileName(reportUser, todayKey);
+  const pdfBuffer = await buildDashboardCalendarReportPdfBuffer({
+    user: reportUser,
+    organizationName,
+    scopedSnapshot,
+    generatedAt,
+    todayKey,
+  });
+
+  const result = await sendMail({
+    to: reportUser.email,
+    subject: reportEmail.subject,
+    text: reportEmail.text,
+    html: reportEmail.html,
+    attachments: [
+      {
+        filename: fileName,
+        content: pdfBuffer,
+        contentType: "application/pdf",
+      },
+    ],
+  });
+
+  return {
+    ...result,
+    fileName,
   };
 }
 
@@ -2956,6 +3005,134 @@ async function getScopedState(user, request) {
     rawSnapshot,
     scopedSnapshot,
   };
+}
+
+const REPORT_SCHEDULE_TIME_ZONE = "Europe/Zagreb";
+const REPORT_SCHEDULE_POLL_MS = 60_000;
+const REPORT_SCHEDULE_GRACE_MINUTES = 10;
+let scheduledProfileReportsTimer = null;
+let scheduledProfileReportsRunning = false;
+
+function getScheduledReportClock(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: REPORT_SCHEDULE_TIME_ZONE,
+    weekday: "short",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now).reduce((accumulator, part) => {
+    accumulator[part.type] = part.value;
+    return accumulator;
+  }, {});
+  const hour = Number(parts.hour);
+  const minute = Number(parts.minute);
+  const dateKey = `${parts.year}-${parts.month}-${parts.day}`;
+
+  return {
+    dateKey,
+    weekday: parts.weekday,
+    hour: Number.isFinite(hour) ? hour : 0,
+    minute: Number.isFinite(minute) ? minute : 0,
+  };
+}
+
+function parseReportScheduleMinutes(time = "07:00") {
+  const match = String(time ?? "").trim().match(/^(\d{2}):(\d{2})$/);
+
+  if (!match) {
+    return 7 * 60;
+  }
+
+  return (Number(match[1]) * 60) + Number(match[2]);
+}
+
+function shouldSendScheduledProfileReport(user = {}, clock = getScheduledReportClock()) {
+  if (!user.reportEmailEnabled || !user.email) {
+    return false;
+  }
+
+  if (!["Mon", "Tue", "Wed", "Thu", "Fri"].includes(clock.weekday)) {
+    return false;
+  }
+
+  if (String(user.reportEmailLastSentOn || "") === clock.dateKey) {
+    return false;
+  }
+
+  const currentMinutes = (clock.hour * 60) + clock.minute;
+  const scheduledMinutes = parseReportScheduleMinutes(user.reportEmailTime);
+  return currentMinutes >= scheduledMinutes
+    && currentMinutes < scheduledMinutes + REPORT_SCHEDULE_GRACE_MINUTES;
+}
+
+async function runScheduledProfileReports() {
+  if (scheduledProfileReportsRunning || typeof tenantRepository.listUsersWithReportSchedule !== "function") {
+    return;
+  }
+
+  const clock = getScheduledReportClock();
+  if (!["Mon", "Tue", "Wed", "Thu", "Fri"].includes(clock.weekday)) {
+    return;
+  }
+
+  scheduledProfileReportsRunning = true;
+  try {
+    const users = await tenantRepository.listUsersWithReportSchedule();
+    const dueUsers = users.filter((reportUser) => shouldSendScheduledProfileReport(reportUser, clock));
+
+    if (dueUsers.length === 0) {
+      return;
+    }
+
+    const rawSnapshot = await domainRepository.getSnapshot();
+
+    for (const reportUser of dueUsers) {
+      try {
+        const scopedSnapshot = await tenantRepository.getSnapshot(reportUser, reportUser.organizationId, rawSnapshot);
+        const result = await sendDashboardCalendarProfileReport(reportUser, scopedSnapshot, {
+          generatedAt: new Date().toISOString(),
+          todayKey: clock.dateKey,
+        });
+
+        if (!result.ok) {
+          console.warn("Scheduled dashboard report email failed.", {
+            userId: reportUser.id,
+            email: reportUser.email,
+            error: result.error,
+          });
+          continue;
+        }
+
+        await tenantRepository.markProfileReportSent(reportUser.id, clock.dateKey);
+      } catch (error) {
+        console.warn("Scheduled dashboard report job failed for user.", {
+          userId: reportUser.id,
+          email: reportUser.email,
+          error: error?.message || error,
+        });
+      }
+    }
+  } finally {
+    scheduledProfileReportsRunning = false;
+  }
+}
+
+function startScheduledProfileReports() {
+  if (scheduledProfileReportsTimer) {
+    return;
+  }
+
+  scheduledProfileReportsTimer = setInterval(() => {
+    void runScheduledProfileReports();
+  }, REPORT_SCHEDULE_POLL_MS);
+  scheduledProfileReportsTimer.unref?.();
+
+  setTimeout(() => {
+    void runScheduledProfileReports();
+  }, 5_000).unref?.();
 }
 
 function assertInScope(collection, id, message) {
@@ -4975,6 +5152,20 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (request.method === "PATCH" && url.pathname === "/api/auth/profile/report-schedule") {
+      const body = await readJsonBody(request);
+      const updatedUser = await tenantRepository.updateOwnReportSchedule(user, body);
+
+      if (!updatedUser) {
+        sendError(response, 404, "Korisnik nije pronađen.");
+        return true;
+      }
+
+      request[requestUserSymbol] = updatedUser;
+      await writeSnapshot(response, updatedUser, request);
+      return true;
+    }
+
     if (request.method === "POST" && url.pathname === "/api/auth/profile/report-email") {
       const reportUser = await tenantRepository.getUserById(user.id) ?? user;
 
@@ -4984,12 +5175,8 @@ async function handleApiRequest(request, response, url) {
       }
 
       const { scopedSnapshot } = await getScopedState(reportUser, request);
-      const reportEmail = buildOwnProfileReportEmail(reportUser, scopedSnapshot);
-      const result = await sendMail({
-        to: reportUser.email,
-        subject: reportEmail.subject,
-        text: reportEmail.text,
-        html: reportEmail.html,
+      const result = await sendDashboardCalendarProfileReport(reportUser, scopedSnapshot, {
+        generatedAt: new Date().toISOString(),
       });
 
       if (!result.ok) {
@@ -4999,7 +5186,8 @@ async function handleApiRequest(request, response, url) {
 
       sendJson(response, 200, {
         ok: true,
-        message: `Izvještaj je poslan na ${reportUser.email}.`,
+        message: `PDF izvještaj je poslan na ${reportUser.email}.`,
+        fileName: result.fileName,
       });
       return true;
     }
@@ -8619,6 +8807,10 @@ async function shutdown(signal) {
 
   shuttingDown = true;
   console.log(`Received ${signal}, shutting down...`);
+  if (scheduledProfileReportsTimer) {
+    clearInterval(scheduledProfileReportsTimer);
+    scheduledProfileReportsTimer = null;
+  }
 
   server.close(async () => {
     try {
@@ -8641,6 +8833,8 @@ process.on("SIGINT", () => {
 process.on("SIGTERM", () => {
   void shutdown("SIGTERM");
 });
+
+startScheduledProfileReports();
 
 server.listen(port, () => {
   console.log(`SelfDash workspace live at http://localhost:${port} (${domainRepository.kind})`);

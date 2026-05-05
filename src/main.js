@@ -2664,6 +2664,9 @@ const profileEducationInput = document.querySelector("#profile-education");
 const profileTitleInput = document.querySelector("#profile-title");
 const profileAddressInput = document.querySelector("#profile-address");
 const profileSaveButton = document.querySelector("#profile-save-button");
+const profileReportEnabledInput = document.querySelector("#profile-report-enabled");
+const profileReportTimeInput = document.querySelector("#profile-report-time");
+const profileReportSaveButton = document.querySelector("#profile-report-save");
 const profileSendReportButton = document.querySelector("#profile-send-report");
 const profileFeedback = document.querySelector("#profile-feedback");
 const profilePasswordForm = document.querySelector("#profile-password-form");
@@ -14111,6 +14114,12 @@ function getProfileDialogUser() {
   return state.users.find((item) => String(item.id) === String(state.user.id)) ?? state.user;
 }
 
+function syncProfileReportScheduleControl() {
+  if (profileReportTimeInput) {
+    profileReportTimeInput.disabled = !profileReportEnabledInput?.checked;
+  }
+}
+
 function syncProfileAvatarPreview() {
   const currentUser = getProfileDialogUser();
   const firstName = String(profileFirstNameInput?.value ?? currentUser.firstName ?? "").trim();
@@ -14170,10 +14179,17 @@ function populateProfileForm() {
   if (profileAvatarFileInput) {
     profileAvatarFileInput.value = "";
   }
+  if (profileReportEnabledInput) {
+    profileReportEnabledInput.checked = Boolean(currentUser.reportEmailEnabled);
+  }
+  if (profileReportTimeInput) {
+    profileReportTimeInput.value = currentUser.reportEmailTime || "07:00";
+  }
 
   profilePasswordForm?.reset();
   setInlineMessage(profileFeedback, "");
   setInlineMessage(profilePasswordFeedback, "");
+  syncProfileReportScheduleControl();
   syncProfileAvatarPreview();
 }
 
@@ -14229,6 +14245,13 @@ function buildProfilePayload() {
   };
 }
 
+function buildProfileReportSchedulePayload() {
+  return {
+    enabled: Boolean(profileReportEnabledInput?.checked),
+    time: String(profileReportTimeInput?.value || "07:00").trim() || "07:00",
+  };
+}
+
 function setProfileFormBusy(isBusy) {
   profileForm?.classList.toggle("is-submitting", isBusy);
   profileForm?.querySelectorAll("input, textarea, button").forEach((control) => {
@@ -14238,12 +14261,28 @@ function setProfileFormBusy(isBusy) {
   if (profileSaveButton) {
     profileSaveButton.textContent = isBusy ? "Spremam..." : "Spremi profil";
   }
+  if (!isBusy) {
+    syncProfileReportScheduleControl();
+  }
 }
 
 function setProfileReportBusy(isBusy) {
   if (profileSendReportButton) {
     profileSendReportButton.disabled = isBusy;
-    profileSendReportButton.textContent = isBusy ? "Šaljem..." : "Pošalji izvještaj na email";
+    profileSendReportButton.textContent = isBusy ? "Šaljem PDF..." : "Pošalji odmah";
+  }
+}
+
+function setProfileReportScheduleBusy(isBusy) {
+  if (profileReportSaveButton) {
+    profileReportSaveButton.disabled = isBusy;
+    profileReportSaveButton.textContent = isBusy ? "Spremam..." : "Spremi automatsko slanje";
+  }
+  if (profileReportEnabledInput) {
+    profileReportEnabledInput.disabled = isBusy;
+  }
+  if (profileReportTimeInput) {
+    profileReportTimeInput.disabled = isBusy || !profileReportEnabledInput?.checked;
   }
 }
 
@@ -14283,11 +14322,37 @@ async function handleProfileSendReport() {
     const payload = await apiRequest("/auth/profile/report-email", {
       method: "POST",
     });
-    setInlineMessage(profileFeedback, payload.message || "Izvještaj je poslan na email.", "success");
+    setInlineMessage(profileFeedback, payload.message || "PDF izvještaj je poslan na email.", "success");
   } catch (error) {
     setInlineMessage(profileFeedback, error?.message || "Slanje izvještaja trenutno nije uspjelo.");
   } finally {
     setProfileReportBusy(false);
+  }
+}
+
+async function handleProfileReportScheduleSave() {
+  const payload = buildProfileReportSchedulePayload();
+  setInlineMessage(profileFeedback, "");
+  setProfileReportScheduleBusy(true);
+
+  try {
+    const success = await runMutation(() => apiRequest("/auth/profile/report-schedule", {
+      method: "PATCH",
+      body: payload,
+    }), profileFeedback);
+
+    if (success) {
+      populateProfileForm();
+      setInlineMessage(
+        profileFeedback,
+        payload.enabled
+          ? `Automatsko slanje je uključeno svaki radni dan u ${payload.time} sati.`
+          : "Automatsko slanje izvještaja je isključeno.",
+        "success",
+      );
+    }
+  } finally {
+    setProfileReportScheduleBusy(false);
   }
 }
 
@@ -93316,6 +93381,12 @@ profileAvatarFileInput?.addEventListener("change", () => {
 
 profileForm?.addEventListener("submit", (event) => {
   void handleProfileSubmit(event);
+});
+
+profileReportEnabledInput?.addEventListener("change", syncProfileReportScheduleControl);
+
+profileReportSaveButton?.addEventListener("click", () => {
+  void handleProfileReportScheduleSave();
 });
 
 profileSendReportButton?.addEventListener("click", () => {

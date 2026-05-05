@@ -85,6 +85,36 @@ function dbString(value) {
   return String(value ?? "").trim();
 }
 
+function normalizeReportEmailTime(value = "07:00", fallback = "07:00") {
+  const normalized = dbString(value);
+
+  if (/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(normalized)) {
+    return normalized;
+  }
+
+  return /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(fallback) ? fallback : "07:00";
+}
+
+function normalizeReportEmailDateKey(value = "") {
+  const normalized = dbString(value);
+  return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : "";
+}
+
+function normalizeReportScheduleInput(input = {}, current = {}) {
+  const enabledSource = input.enabled ?? input.reportEmailEnabled ?? input.report_email_enabled;
+  const timeSource = input.time ?? input.reportEmailTime ?? input.report_email_time;
+  const lastSentSource = input.reportEmailLastSentOn
+    ?? input.report_email_last_sent_on
+    ?? current.reportEmailLastSentOn
+    ?? current.report_email_last_sent_on;
+
+  return {
+    reportEmailEnabled: toBooleanFlag(enabledSource, false),
+    reportEmailTime: normalizeReportEmailTime(timeSource, current.reportEmailTime ?? current.report_email_time ?? "07:00"),
+    reportEmailLastSentOn: normalizeReportEmailDateKey(lastSentSource),
+  };
+}
+
 function resolveAppUrl() {
   return dbString(process.env.PUBLIC_APP_URL) || dbString(process.env.APP_URL) || "https://safe-nexus.org";
 }
@@ -1028,6 +1058,11 @@ function sanitizeUser(row) {
     phone: row.phone ?? "",
     address: row.address ?? "",
     education: row.education ?? "",
+    reportEmailEnabled: row.report_email_enabled === undefined
+      ? toBooleanFlag(row.reportEmailEnabled, false)
+      : Boolean(Number(row.report_email_enabled)),
+    reportEmailTime: normalizeReportEmailTime(row.report_email_time ?? row.reportEmailTime ?? "07:00"),
+    reportEmailLastSentOn: normalizeReportEmailDateKey(row.report_email_last_sent_on ?? row.reportEmailLastSentOn),
     clientCompanyIds: normalizeClientScopeIds(row.client_company_ids_json ?? row.clientCompanyIds),
     clientLocationIds: normalizeClientScopeIds(row.client_location_ids_json ?? row.clientLocationIds),
     clientAccessAllLocations: row.client_access_all_locations === undefined
@@ -1356,6 +1391,9 @@ async function ensureSchema(connection) {
       phone VARCHAR(64) NOT NULL DEFAULT '',
       address VARCHAR(255) NOT NULL DEFAULT '',
       education VARCHAR(255) NOT NULL DEFAULT '',
+      report_email_enabled TINYINT(1) NOT NULL DEFAULT 0,
+      report_email_time VARCHAR(5) NOT NULL DEFAULT '07:00',
+      report_email_last_sent_on VARCHAR(10) NOT NULL DEFAULT '',
       client_company_ids_json TEXT NULL,
       client_location_ids_json TEXT NULL,
       client_access_all_locations TINYINT(1) NOT NULL DEFAULT 1,
@@ -1510,8 +1548,26 @@ async function ensureSchema(connection) {
   await ensureColumn(
     connection,
     "app_users",
+    "report_email_enabled",
+    "TINYINT(1) NOT NULL DEFAULT 0 AFTER education",
+  );
+  await ensureColumn(
+    connection,
+    "app_users",
+    "report_email_time",
+    "VARCHAR(5) NOT NULL DEFAULT '07:00' AFTER report_email_enabled",
+  );
+  await ensureColumn(
+    connection,
+    "app_users",
+    "report_email_last_sent_on",
+    "VARCHAR(10) NOT NULL DEFAULT '' AFTER report_email_time",
+  );
+  await ensureColumn(
+    connection,
+    "app_users",
     "client_company_ids_json",
-    "TEXT NULL AFTER education",
+    "TEXT NULL AFTER report_email_last_sent_on",
   );
   await ensureColumn(
     connection,
@@ -1622,6 +1678,7 @@ async function fetchUsers(connection, actor, effectiveOrganizationId, accessible
   const accessibleOrganizationIds = new Set(accessibleOrganizations.map((organization) => String(organization.id)));
   const [rows] = await connection.query(`
     SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.display_name, u.title, u.profile_role, u.oib, u.phone, u.address, u.education,
+           u.report_email_enabled, u.report_email_time, u.report_email_last_sent_on,
            u.client_company_ids_json, u.client_location_ids_json, u.client_access_all_locations, u.avatar_data_url,
            u.avatar_storage_provider, u.avatar_storage_bucket, u.avatar_storage_key, u.avatar_storage_url,
            u.electrical_qualification_json, u.user_documents_json,
@@ -2581,6 +2638,9 @@ export class MemoryTenantRepository {
         phone: "",
         address: "",
         education: "",
+        reportEmailEnabled: false,
+        reportEmailTime: "07:00",
+        reportEmailLastSentOn: "",
         avatarDataUrl: "",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -2873,6 +2933,9 @@ export class MemoryTenantRepository {
       phone: normalized.phone,
       address: normalized.address,
       education: normalized.education,
+      reportEmailEnabled: false,
+      reportEmailTime: "07:00",
+      reportEmailLastSentOn: "",
       clientCompanyIds: [...(normalized.clientCompanyIds ?? [])],
       clientLocationIds: [...(normalized.clientLocationIds ?? [])],
       clientAccessAllLocations: Boolean(normalized.clientAccessAllLocations),
@@ -3072,6 +3135,51 @@ export class MemoryTenantRepository {
     return this.getUserById(current.id);
   }
 
+  async updateOwnReportSchedule(actor, input = {}) {
+    const current = this.users.find((item) => item.id === String(actor?.id));
+
+    if (!current) {
+      return null;
+    }
+
+    const normalized = normalizeReportScheduleInput(input, current);
+    const previousEnabled = Boolean(current.reportEmailEnabled);
+    const previousTime = normalizeReportEmailTime(current.reportEmailTime);
+    current.reportEmailEnabled = normalized.reportEmailEnabled;
+    current.reportEmailTime = normalized.reportEmailTime;
+    if (previousEnabled !== current.reportEmailEnabled || previousTime !== current.reportEmailTime) {
+      current.reportEmailLastSentOn = "";
+    } else {
+      current.reportEmailLastSentOn = normalized.reportEmailLastSentOn;
+    }
+    current.updatedAt = new Date().toISOString();
+    return this.getUserById(current.id);
+  }
+
+  async listUsersWithReportSchedule() {
+    const users = this.users
+      .filter((item) => item.isActive && item.email && item.reportEmailEnabled)
+      .map((item) => ({
+        ...item,
+        reportEmailTime: normalizeReportEmailTime(item.reportEmailTime),
+        reportEmailLastSentOn: normalizeReportEmailDateKey(item.reportEmailLastSentOn),
+      }));
+
+    return decorateUsersWithOrganizations(users, this.organizations);
+  }
+
+  async markProfileReportSent(userId, dateKey) {
+    const current = this.users.find((item) => item.id === String(userId));
+
+    if (!current) {
+      return null;
+    }
+
+    current.reportEmailLastSentOn = normalizeReportEmailDateKey(dateKey);
+    current.updatedAt = new Date().toISOString();
+    return this.getUserById(current.id);
+  }
+
   async createLoginContent(actor, input) {
     if (!canManageLoginContent(actor)) {
       throw createHttpError(403, "Nemate pravo upravljati login sadrzajem.");
@@ -3236,6 +3344,9 @@ export class MemoryTenantRepository {
       phone: request.phone,
       address: "",
       education: "",
+      reportEmailEnabled: false,
+      reportEmailTime: "07:00",
+      reportEmailLastSentOn: "",
       avatarDataUrl: "",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -3360,6 +3471,7 @@ export class MySqlTenantRepository {
       const [rows] = await connection.query(
         `
           SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.display_name, u.title, u.profile_role, u.oib, u.phone, u.address, u.education,
+                 u.report_email_enabled, u.report_email_time, u.report_email_last_sent_on,
                  u.client_company_ids_json, u.client_location_ids_json, u.client_access_all_locations, u.avatar_data_url,
                  u.avatar_storage_provider, u.avatar_storage_bucket, u.avatar_storage_key, u.avatar_storage_url,
                  u.electrical_qualification_json, u.user_documents_json,
@@ -3393,6 +3505,7 @@ export class MySqlTenantRepository {
       const [rows] = await connection.query(
         `
           SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.display_name, u.title, u.profile_role, u.oib, u.phone, u.address, u.education,
+                 u.report_email_enabled, u.report_email_time, u.report_email_last_sent_on,
                  u.client_company_ids_json, u.client_location_ids_json, u.client_access_all_locations, u.avatar_data_url,
                  u.avatar_storage_provider, u.avatar_storage_bucket, u.avatar_storage_key, u.avatar_storage_url,
                  u.electrical_qualification_json, u.user_documents_json,
@@ -3493,7 +3606,8 @@ export class MySqlTenantRepository {
 
       const [rows] = await connection.query(
         `
-          SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.display_name, u.title, u.profile_role, u.oib, u.phone, u.address, u.education, u.avatar_data_url,
+          SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.display_name, u.title, u.profile_role, u.oib, u.phone, u.address, u.education,
+                 u.report_email_enabled, u.report_email_time, u.report_email_last_sent_on, u.avatar_data_url,
                  u.avatar_storage_provider, u.avatar_storage_bucket, u.avatar_storage_key, u.avatar_storage_url,
                  u.electrical_qualification_json, u.user_documents_json,
                  u.email, u.legacy_username,
@@ -4388,6 +4502,103 @@ export class MySqlTenantRepository {
     } catch (error) {
       await cleanupStoredAssets(preparedAvatar?.storedAvatar?.storageKey ? [preparedAvatar.storedAvatar] : []);
       rethrowDatabaseError(error, "Korisnik s tim emailom vec postoji.");
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updateOwnReportSchedule(actor, input = {}) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const [rows] = await connection.query(
+        `
+          SELECT report_email_enabled, report_email_time, report_email_last_sent_on
+          FROM app_users
+          WHERE id = ?
+          LIMIT 1
+        `,
+        [Number(actor?.id)],
+      );
+      const current = rows[0];
+
+      if (!current) {
+        return null;
+      }
+
+      const normalized = normalizeReportScheduleInput(input, current);
+      const previousEnabled = Boolean(Number(current.report_email_enabled));
+      const previousTime = normalizeReportEmailTime(current.report_email_time);
+      const shouldResetLastSent = previousEnabled !== normalized.reportEmailEnabled
+        || previousTime !== normalized.reportEmailTime;
+
+      await connection.query(
+        `
+          UPDATE app_users
+          SET report_email_enabled = ?,
+              report_email_time = ?,
+              report_email_last_sent_on = ?,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `,
+        [
+          normalized.reportEmailEnabled ? 1 : 0,
+          normalized.reportEmailTime,
+          shouldResetLastSent ? "" : normalized.reportEmailLastSentOn,
+          Number(actor?.id),
+        ],
+      );
+
+      return this.getUserById(actor.id);
+    } finally {
+      connection.release();
+    }
+  }
+
+  async listUsersWithReportSchedule() {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const [rows] = await connection.query(
+        `
+          SELECT u.*, o.name AS organization_name
+          FROM app_users u
+          LEFT JOIN organizations o ON o.id = u.organization_id
+          WHERE u.is_active = 1
+            AND u.report_email_enabled = 1
+            AND COALESCE(u.email, '') <> ''
+          ORDER BY u.report_email_time ASC, u.id ASC
+        `,
+      );
+      const users = rows.map(sanitizeUser);
+      const organizationIds = Array.from(new Set(users.flatMap((user) => user.organizationIds)));
+      const organizations = await fetchOrganizations(connection, organizationIds);
+      return decorateUsersWithOrganizations(users, organizations);
+    } finally {
+      connection.release();
+    }
+  }
+
+  async markProfileReportSent(userId, dateKey) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const normalizedDateKey = normalizeReportEmailDateKey(dateKey);
+      const [result] = await connection.query(
+        `
+          UPDATE app_users
+          SET report_email_last_sent_on = ?,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `,
+        [normalizedDateKey, Number(userId)],
+      );
+
+      if (result.affectedRows === 0) {
+        return null;
+      }
+
+      return this.getUserById(userId);
     } finally {
       connection.release();
     }

@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260505o" />
+    <link rel="stylesheet" href="/styles.css?v=20260505p" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -1006,9 +1006,21 @@
                 </label>
               </div>
 
+              <section class="profile-report-schedule" aria-label="Automatsko slanje izvještaja">
+                <label class="profile-report-sentence">
+                  <input id="profile-report-enabled" type="checkbox" />
+                  <span>Pošalji izvještaj svaki radni dan u</span>
+                  <input id="profile-report-time" type="time" value="07:00" />
+                  <span>sati</span>
+                </label>
+                <div class="profile-modal-actions profile-report-actions">
+                  <button id="profile-report-save" type="button" class="ghost-button">Spremi automatsko slanje</button>
+                  <button id="profile-send-report" type="button" class="ghost-button">Pošalji odmah</button>
+                </div>
+              </section>
+
               <div class="profile-modal-actions">
                 <button id="profile-save-button" type="submit" class="primary-button">Spremi profil</button>
-                <button id="profile-send-report" type="button" class="ghost-button">Pošalji izvještaj na email</button>
               </div>
               <p id="profile-feedback" class="form-error" aria-live="polite"></p>
             </form>
@@ -7849,6 +7861,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260505n"></script>
+    <script type="module" src="/src/main.js?v=20260505o"></script>
   </body>
 </html>
