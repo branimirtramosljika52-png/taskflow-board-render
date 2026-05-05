@@ -8156,10 +8156,12 @@ body.is-todo-editor-open {
 .dashboard-widget-card {
   position: relative;
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 14px;
   min-width: 0;
   min-height: 0;
   height: 100%;
+  overflow: hidden;
   padding: 18px;
   border-radius: 24px;
   border: 1px solid rgba(177, 141, 238, 0.42);
@@ -8264,7 +8266,28 @@ body.is-dragging-dashboard-widget * {
   min-height: 0;
   display: grid;
   align-content: start;
-  overflow: hidden;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(154, 166, 196, 0.72) transparent;
+}
+
+.dashboard-widget-body::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+.dashboard-widget-body::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(154, 166, 196, 0.72);
+  background-clip: padding-box;
+}
+
+.dashboard-widget-body::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .dashboard-widget-metric-value {
