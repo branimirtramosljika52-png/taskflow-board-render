@@ -2352,6 +2352,7 @@ let notificationsMenuOpen = false;
 let remindersShortcutMenuOpen = false;
 let todoShortcutMenuOpen = false;
 let topbarHelpMenuOpen = false;
+let topbarHelpMenuSignature = "";
 let chatPollTimerId = null;
 let chatLastPresenceSyncAt = 0;
 let chatLastPresenceValue = "";
@@ -2442,7 +2443,7 @@ const topbarShortcutCapabilitiesButton = document.querySelector("#topbar-shortcu
 const topbarShortcutSettingsButton = document.querySelector("#topbar-shortcut-settings");
 const topbarHelpButton = document.querySelector("#topbar-help-trigger");
 const topbarHelpPanel = document.querySelector("#topbar-help-panel");
-const topbarHelpOptions = Array.from(document.querySelectorAll("[data-help-tour-kind]"));
+const topbarHelpOptionsContainer = document.querySelector("#topbar-help-options");
 const topbarShortcutRemindersCount = document.querySelector("#topbar-shortcut-reminders-count");
 const topbarShortcutTodoCount = document.querySelector("#topbar-shortcut-todo-count");
 const topbarRemindersPanel = document.querySelector("#topbar-reminders-panel");
@@ -20872,10 +20873,76 @@ function setTodoShortcutMenuOpen(isOpen, { closeOthers = true } = {}) {
   }
 }
 
+function createTopbarHelpMenuOption(item = {}) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "topbar-help-option";
+  button.dataset.helpTourKind = item.kind;
+
+  const title = document.createElement("strong");
+  title.textContent = item.label;
+
+  const description = document.createElement("span");
+  description.textContent = item.description;
+
+  button.append(title, description);
+  return button;
+}
+
+function renderTopbarHelpMenuOptions() {
+  if (!topbarHelpOptionsContainer) {
+    return;
+  }
+
+  const groups = getHelpTourMenuGroups()
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => isHelpTourMenuItemVisible(item.kind)),
+    }))
+    .filter((group) => group.items.length > 0);
+  const signature = JSON.stringify(groups.map((group) => [
+    group.label,
+    group.items.map((item) => item.kind),
+  ]));
+
+  if (signature === topbarHelpMenuSignature && topbarHelpOptionsContainer.childElementCount > 0) {
+    return;
+  }
+
+  topbarHelpMenuSignature = signature;
+  topbarHelpOptionsContainer.replaceChildren();
+
+  if (groups.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "topbar-help-empty";
+    empty.textContent = "Nema dostupnih vodiča za tvoj trenutni pristup.";
+    topbarHelpOptionsContainer.append(empty);
+    return;
+  }
+
+  groups.forEach((group) => {
+    const section = document.createElement("section");
+    section.className = "topbar-help-group";
+
+    const title = document.createElement("span");
+    title.className = "topbar-help-group-title";
+    title.textContent = group.label;
+
+    const list = document.createElement("div");
+    list.className = "topbar-help-group-list";
+    list.append(...group.items.map(createTopbarHelpMenuOption));
+
+    section.append(title, list);
+    topbarHelpOptionsContainer.append(section);
+  });
+}
+
 function renderTopbarHelpMenu() {
   if (!state.user && topbarHelpMenuOpen) {
     topbarHelpMenuOpen = false;
   }
+
+  renderTopbarHelpMenuOptions();
 
   if (topbarHelpPanel) {
     topbarHelpPanel.hidden = !topbarHelpMenuOpen;
@@ -20886,13 +20953,6 @@ function renderTopbarHelpMenu() {
     topbarHelpButton.classList.toggle("is-open", topbarHelpMenuOpen);
   }
 
-  topbarHelpOptions.forEach((button) => {
-    if (!(button instanceof HTMLElement)) {
-      return;
-    }
-    const kind = button.dataset.helpTourKind || "";
-    button.hidden = kind === "control-panel" && !getCanManageMasterData();
-  });
 }
 
 function setTopbarHelpMenuOpen(isOpen, { closeOthers = true } = {}) {
@@ -85464,6 +85524,601 @@ function getSettingsHelpTourSteps() {
   ];
 }
 
+const HELP_TOUR_MENU_GROUPS = [
+  {
+    label: "Općenito",
+    items: [
+      { kind: "general", label: "Opći pregled", description: "Navigacija, brze ikone i korisnički meni." },
+    ],
+  },
+  {
+    label: "Home",
+    items: [
+      { kind: "dashboard", label: "Dashboard", description: "Kartice, builder, veličine i scroll u widgetima." },
+      { kind: "control-panel", label: "Control panel", description: "Administracija platforme i ovlaštenja." },
+      { kind: "reminders", label: "Reminders", description: "Podsjetnici, statusi i brzi pregled." },
+      { kind: "todo", label: "ToDo", description: "Teme, zaduženja, pozvani i filteri." },
+      { kind: "notifications", label: "Notifications", description: "Aktivne obavijesti, razine i izvori." },
+      { kind: "settings", label: "Settings", description: "Pragovi, ponavljanja i spremanje postavki." },
+    ],
+  },
+  {
+    label: "Organisations",
+    items: [
+      { kind: "measurement-equipment", label: "Measurement Equipment", description: "Mjerna oprema, umjernice, dokumenti i aktivnosti." },
+      { kind: "vehicles", label: "Vehicles", description: "Vozila, rezervacije i servisni rokovi." },
+      { kind: "legal-framework", label: "Legal Framework", description: "Propisi, PDF dokumenti i poveznice na usluge." },
+      { kind: "list-of-services", label: "List Of Services", description: "Katalog usluga, šifre, zapisnici i edukacije." },
+      { kind: "template-development", label: "Template Development", description: "Word templatei, placeholderi i predlošci zapisnika." },
+      { kind: "people", label: "People", description: "Korisnici, role, dokumenti i ovlaštenja." },
+      { kind: "annual-leave", label: "Godišnji odmori", description: "Zahtjevi, statusi i saldo dana." },
+      { kind: "sick-leave", label: "Bolovanja", description: "Bolovanja, dokumenti i opravdani izostanci." },
+      { kind: "absence-report", label: "Mjesečni report", description: "Mjesečni pregled rada i odsutnosti." },
+      { kind: "safety-authorization", label: "Safety Authorization", description: "Ovlaštenja, rokovi i povezane usluge." },
+    ],
+  },
+  {
+    label: "Operations",
+    items: [
+      { kind: "rn", label: "RN", description: "Radni nalozi, filteri, kalendar, mapa i dokumenti." },
+      { kind: "offers", label: "Offers", description: "Lista, editor, Word template i PDF tijek." },
+      { kind: "purchase-orders", label: "Purchase Orders", description: "Narudžbenice, smjer dokumenta i PDF prilozi." },
+      { kind: "periodics", label: "Periodics", description: "Istekli rokovi, kalendar i periodični pregledi." },
+      { kind: "drawing-studio", label: "Drawing Studio", description: "Crteži, podloge, layeri, blokovi i PDF izvoz." },
+    ],
+  },
+  {
+    label: "Company",
+    items: [
+      { kind: "list-company", label: "List Company", description: "Popis tvrtki, pretraga, statusi i povezani podaci." },
+      { kind: "add-company", label: "Add New Company", description: "Unos nove tvrtke, kontakti, portal i predlošci." },
+      { kind: "client-portal", label: "Client Portal", description: "Pristupi klijenata po tvrtki i lokaciji." },
+      { kind: "contract", label: "Contract", description: "Ugovori, aneksi, templatei i statusi." },
+    ],
+  },
+  {
+    label: "Locations",
+    items: [
+      { kind: "list-location", label: "List Location", description: "Popis lokacija, tvrtke, kontakti i povezani RN." },
+      { kind: "add-location", label: "Add New Location", description: "Unos lokacije, kontakti i klijentski pristupi." },
+    ],
+  },
+  {
+    label: "Documents",
+    items: [
+      { kind: "documents", label: "Documents", description: "Kategorije, folderi, vrste datoteka i pretraga." },
+    ],
+  },
+  {
+    label: "Health And Safety",
+    items: [
+      { kind: "tests", label: "Test", description: "Grupe edukacija, materijali, pitanja i live preview." },
+      { kind: "people-training", label: "Osposobljavanja", description: "Evidencija po osobama, RN ispiti i uvjerenja." },
+      { kind: "risk-assessment", label: "Risk Assessment", description: "Procjene rizika, mjere i klijentski status." },
+    ],
+  },
+];
+
+const MODULE_HELP_TOUR_DEFINITIONS = {
+  rn: {
+    navItem: "rn",
+    title: "RN",
+    body: "RN je operativni inbox za radne naloge. Ovdje pratiš otvorene naloge, rokove, tvrtke, lokacije, usluge i dokumente koji iz njih nastaju.",
+    target: "#work-order-list-panel",
+    primaryActionTarget: "#work-order-open-form",
+    primaryActionTitle: "Novi RN",
+    primaryActionBody: "Gumb otvara editor radnog naloga. U njemu biraš klijenta, lokaciju, uslugu, tim, rokove, dokumente i aktivnost.",
+    filtersTarget: ".work-order-filter-shell",
+    filtersBody: "Pretraga i builder filtera rade zajedno. Možeš tražiti po RN-u, tvrtki, lokaciji, regiji i dodatnim uvjetima.",
+    listTarget: "#work-orders-body",
+    listBody: "Lista grupira radne naloge za brzo skeniranje. Prebacivanje na kalendar ili mapu koristi isti set podataka i filtera.",
+    secondaryTarget: ".work-order-template-strip",
+    secondaryTitle: "Zapisnici i dokumenti",
+    secondaryBody: "RN je polazna točka za zapisnike, dokumente, activity timeline i kasniju evidenciju po uslugama.",
+    points: ["Lista, kalendar i mapa koriste isti radni kontekst.", "Klik na RN otvara detalje bez gubljenja filtera."],
+  },
+  "purchase-orders": {
+    navItem: "purchase-orders",
+    title: "Purchase Orders",
+    body: "Purchase Orders koristi isti komercijalni workspace kao ponude, ali s narudžbenicama, smjerom dokumenta i prilozima.",
+    target: "#offers-module .offers-list-panel",
+    primaryActionTarget: "#offer-open-form",
+    primaryActionTitle: "Nova narudžbenica",
+    primaryActionBody: "Gumb otvara editor narudžbenice. Smjer dokumenta i datumi prilagođeni su Purchase Orders kontekstu.",
+    filtersTarget: "#offers-search-field",
+    filtersBody: "Pretraga hvata broj, tvrtku, lokaciju i stavke dokumenta. Status filter odvaja skice, zaprimljene i obrađene dokumente.",
+    listTarget: "#offers-list",
+    listBody: "Kartice u listi prikazuju najvažnije podatke narudžbenice i otvaraju editor jednim klikom.",
+    secondaryTarget: "#purchase-order-documents-section",
+    secondaryTitle: "PDF prilozi",
+    secondaryBody: "U editoru možeš dodati zaprimljene PDF-ove i druge dokumente koji pripadaju narudžbenici.",
+    points: ["Smjer narudžbenice odvaja ulazne i izlazne dokumente.", "PDF prilozi ostaju vezani uz isti zapis."],
+  },
+  "measurement-equipment": {
+    navItem: "measurement-equipment",
+    title: "Measurement Equipment",
+    body: "Measurement Equipment je registar mjerne opreme, umjernica, rokova, dokumenata i aktivnosti po organizaciji.",
+    target: "#measurement-equipment-module",
+    primaryActionTarget: "#measurement-equipment-open-form",
+    primaryActionTitle: "Nova oprema",
+    primaryActionBody: "Ovim gumbom otvaraš editor opreme, gdje upisuješ proizvođača, tip, serijski broj, datume i dokumentaciju.",
+    filtersTarget: ".measurement-equipment-filters",
+    filtersBody: "Pretraga brzo nalazi opremu po nazivu, proizvođaču, tipu, serijskom ili inventarnom broju.",
+    listTarget: "#measurement-equipment-list",
+    listBody: "Lista je centralno mjesto za pregled opreme, rokova umjernice i statusa. Klik na stavku otvara puni editor.",
+    secondaryTarget: "#measurement-equipment-side-activity-list",
+    secondaryTitle: "Activity timeline",
+    secondaryBody: "Kad otvoriš opremu, desni activity panel prikazuje promjene, komentare, dokumente i korištenje u zapisnicima.",
+    points: ["Rokovi iz opreme hrane Notifications i Periodics.", "Dokumenti ostaju uz opremu za kasniji pregled."],
+  },
+  vehicles: {
+    navItem: "vehicles",
+    title: "Vehicles",
+    body: "Vehicles vodi vozni park, raspoloživost, registraciju, servisne datume, dokumente i rezervacije.",
+    target: ".vehicles-list-panel",
+    primaryActionTarget: "#vehicle-open-form",
+    primaryActionTitle: "Novo vozilo",
+    primaryActionBody: "Editor vozila služi za osnovne podatke, registraciju, servis, aktivnost i dokumente vozila.",
+    filtersTarget: ".vehicles-inline-toolbar",
+    filtersBody: "Pretraga i status filter pomažu brzo naći vozilo po nazivu, registraciji, šasiji, marki ili vozaču.",
+    listTarget: "#vehicles-list",
+    listBody: "Lista prikazuje vozila aktivne organizacije, njihovu raspoloživost i ključne rokove.",
+    secondaryTarget: ".vehicle-schedule-panel",
+    secondaryTitle: "Raspored vozila",
+    secondaryBody: "Raspored daje dnevni pregled rezervacija i zauzetosti po satima.",
+    points: ["Rezervacija vozila je odvojena od samog editora vozila.", "Rokovi registracije i guma mogu pokretati obavijesti."],
+  },
+  "legal-framework": {
+    navItem: "legal-framework",
+    title: "Legal Framework",
+    body: "Legal Framework je registar zakona, pravilnika, normi i internih propisa koje povezuješ s uslugama i zapisnicima.",
+    target: ".legal-framework-list-panel",
+    primaryActionTarget: "#legal-framework-open-form",
+    primaryActionTitle: "Novi propis",
+    primaryActionBody: "Editor propisa prima naziv, status, napomenu, PDF dokumente i poveznice na usluge u kojima se propis koristi.",
+    filtersTarget: ".legal-framework-filters",
+    filtersBody: "Pretraga pronalazi propis po nazivu, zapisniku, dokumentu ili napomeni, a status odvaja aktivne od neaktivnih.",
+    listTarget: "#legal-framework-list",
+    listBody: "Lista je brzi registar propisa po organizaciji. Klik na propis otvara dokumente i povezanost s uslugama.",
+    secondaryTarget: "#legal-framework-helper",
+    secondaryTitle: "Veza prema uslugama",
+    secondaryBody: "Propisi koje povežeš s uslugama kasnije se mogu koristiti u zapisnicima i predlošcima.",
+    points: ["PDF propisi ostaju uz zapis u registru.", "Povezivanje s uslugama smanjuje ručno traženje propisa."],
+  },
+  "list-of-services": {
+    navItem: "list-of-services",
+    activeItem: "list-of-services",
+    title: "List Of Services",
+    body: "List Of Services je katalog usluga koje se kasnije biraju u RN-u, ponudama, zapisnicima i edukacijama.",
+    target: ".service-catalog-list-panel",
+    primaryActionTarget: "#service-catalog-open-form",
+    primaryActionTitle: "Nova usluga",
+    primaryActionBody: "Editor usluge sprema naziv, šifru, status, vrstu, rok važenja, povezane zapisnike, propise i edukacije.",
+    filtersTarget: ".service-catalog-filters",
+    filtersBody: "Pretraga hvata ime usluge, šifru ili povezani zapisnik. Status filter odvaja aktivne usluge od arhive.",
+    listTarget: "#service-catalog-list",
+    listBody: "Lista usluga je izvor za operativne module. Klik na uslugu otvara njezine predloške i pravila.",
+    secondaryTarget: "#service-catalog-helper",
+    secondaryTitle: "Zapisnici i edukacije",
+    secondaryBody: "Usluga može imati povezane Word zapisnike i eLearning testove, pa se kasnije nude u RN tijeku.",
+    points: ["Šifra usluge ostaje dosljedna kroz module.", "Rok važenja ulazi u Periodics kada dokument ima datum isteka."],
+  },
+  "template-development": {
+    navItem: "template-development",
+    title: "Template Development",
+    body: "Template Development je prostor za izradu i održavanje Word predložaka, placeholdera i zapisnika.",
+    target: ".template-development-list-panel",
+    primaryActionTarget: "#document-template-open-form",
+    primaryActionTitle: "Novi template",
+    primaryActionBody: "Ovim gumbom otvaraš editor predloška. Tamo dodaješ Word datoteku, placeholder liste i pravila za podatke iz baze.",
+    filtersTarget: ".template-development-list-toolbar",
+    filtersBody: "Pretraga pronalazi template po nazivu, tipu, placeholderu ili opremi, a status odvaja aktivne i radne verzije.",
+    listTarget: "#document-template-list",
+    listBody: "Lista templatea služi kao knjižnica zapisnika i Word predložaka koje koristi RN i drugi moduli.",
+    secondaryTarget: "#document-template-list",
+    secondaryTitle: "Placeholderi",
+    secondaryBody: "Placeholderi se koriste u Wordu u obliku oznaka i pune se podacima iz odabranog RN-a ili modula.",
+    points: ["Templatei povezuju Word dokumente s podacima aplikacije.", "Status pomaže držati radne verzije odvojene od produkcijskih."],
+  },
+  people: {
+    navItem: "people",
+    title: "People",
+    body: "People okuplja korisnike, role, pristupe, dokumente, potpise i ovlaštenja po organizaciji.",
+    target: "#people-users-panel",
+    primaryActionTarget: "#user-open-form",
+    primaryActionTitle: "Novi korisnik",
+    primaryActionBody: "Editor korisnika sprema osobne podatke, email, role, organizacijski pristup, status, dokumente i ovlaštenja.",
+    filtersTarget: "#people-workspace-tabs",
+    filtersBody: "Tabovi na vrhu prebacuju People između korisnika, godišnjih, bolovanja i mjesečnog reporta.",
+    listTarget: "#users-body",
+    listBody: "Lista korisnika prikazuje profil, organizaciju, rolu, aktivnost i ovlaštenja. Klik na red otvara editor.",
+    secondaryTarget: "#user-management-note",
+    secondaryTitle: "Role i prava",
+    secondaryBody: "People je povezan s pristupima kroz aplikaciju, zato se role i aktivnost odmah odražavaju na dostupne module.",
+    points: ["Korisnik može imati više organizacijskih pristupa.", "Dokumenti i potpisi ostaju uz korisnički zapis."],
+  },
+  "annual-leave": {
+    navItem: "annual-leave",
+    title: "Godišnji odmori",
+    body: "Godišnji odmori vode zahtjeve za GO, plaćene i druge dopuste, uz statuse i saldo dana.",
+    target: "#absence-module",
+    primaryActionTarget: "#absence-open-form",
+    primaryActionTitle: "Novi zahtjev",
+    primaryActionBody: "Editor zahtjeva prima korisnika, vrstu odsutnosti, status, početak, završetak, dokumente i napomenu.",
+    filtersTarget: ".absence-toolbar",
+    filtersBody: "Filteri po korisniku, statusu i vrsti brzo odvajaju otvorene zahtjeve od odobrenih i arhive.",
+    listTarget: "#absence-list",
+    listBody: "Lista prikazuje zahtjeve i njihove statuse. Klik na stavku otvara detalje i dokumentaciju.",
+    secondaryTarget: "#absence-open-balances",
+    secondaryTitle: "Saldo dana",
+    secondaryBody: "Saldo dana je odvojen panel za početna stanja, kako bi godišnji imali točan obračun.",
+    points: ["Zahtjevi mogu imati dokumente i napomene.", "Odsutnosti se kasnije vide u mjesečnom reportu i periodici."],
+  },
+  "sick-leave": {
+    navItem: "sick-leave",
+    title: "Bolovanja",
+    body: "Bolovanja koriste isti Absence modul, ali su fokusirana na medicinske i druge opravdane izostanke.",
+    target: "#absence-module",
+    primaryActionTarget: "#absence-open-form",
+    primaryActionTitle: "Novo bolovanje",
+    primaryActionBody: "U editoru biraš korisnika, vrstu odsutnosti, datume, status, dokumentaciju i napomenu.",
+    filtersTarget: ".absence-toolbar",
+    filtersBody: "Filteri pomažu odvojiti otvorena, odobrena i završena bolovanja po korisniku i vrsti.",
+    listTarget: "#absence-list",
+    listBody: "Lista prikazuje sva bolovanja za aktivni prikaz. Klik otvara zapis i priložene dokumente.",
+    secondaryTarget: "#absence-module-copy",
+    secondaryTitle: "Dokumentacija",
+    secondaryBody: "Za bolovanja možeš dodati datoteke i napomene koje ostaju vezane uz zahtjev.",
+    points: ["Bolovanja ulaze u mjesečni report.", "Statusi pomažu razlikovati zahtjev, odobrenje i završetak."],
+  },
+  "absence-report": {
+    navItem: "absence-report",
+    title: "Mjesečni report",
+    body: "Mjesečni report prikazuje rad, godišnje, bolovanja i druge odsutnosti po korisniku za odabrani mjesec.",
+    target: "#absence-report-module",
+    primaryActionTarget: "#absence-report-export",
+    primaryActionTitle: "CSV izvoz",
+    primaryActionBody: "Preuzmi CSV izvoz za daljnji obračun ili arhivu mjesečnog pregleda.",
+    filtersTarget: ".vehicle-schedule-toolbar",
+    filtersBody: "Mjesec, navigacija i korisnik rade zajedno. Možeš gledati sve korisnike ili samo jednu osobu.",
+    listTarget: "#absence-report-list",
+    listBody: "Lista prikazuje dane, statuse i sažetak rada za odabrani mjesec.",
+    secondaryTarget: "#absence-report-summary",
+    secondaryTitle: "Sažetak",
+    secondaryBody: "Sažetak odmah pokazuje ima li podataka za odabrani mjesec i filter korisnika.",
+    points: ["Report se oslanja na Absence zapise.", "CSV je praktičan za obračun i provjeru."],
+  },
+  "safety-authorization": {
+    navItem: "safety-authorization",
+    title: "Safety Authorization",
+    body: "Safety Authorization vodi ovlaštenja, opsege, rokove, PDF rješenja i povezanost s uslugama.",
+    target: ".safety-authorization-list-panel",
+    primaryActionTarget: "#safety-authorization-open-form",
+    primaryActionTitle: "Novo ovlaštenje",
+    primaryActionBody: "Editor sprema ime ovlaštenja, opseg, datum izdavanja, vrijedi do, dokumente i usluge u kojima se ovlaštenje koristi.",
+    filtersTarget: ".safety-authorization-filters",
+    filtersBody: "Pretraga brzo pronalazi ovlaštenje po nazivu, opsegu ili PDF dokumentu.",
+    listTarget: "#safety-authorization-list",
+    listBody: "Lista prikazuje ovlaštenja i rokove. Klik otvara detalje, dokumente i povezanost s uslugama.",
+    secondaryTarget: "#safety-authorization-helper",
+    secondaryTitle: "Rokovi i periodika",
+    secondaryBody: "Rok važenja može hraniti Notifications i Periodics kako bi se ovlaštenja obnovila na vrijeme.",
+    points: ["Ovlaštenje može vrijediti trajno ili imati rok.", "PDF rješenja ostaju dostupna iz istog zapisa."],
+  },
+  periodics: {
+    navItem: "periodics",
+    title: "Periodics",
+    body: "Periodics objedinjuje rokove iz ispitivanja, vozila, ljudi, opreme i odsutnosti.",
+    target: "#periodics-module",
+    primaryActionTarget: "#periodics-refresh",
+    primaryActionTitle: "Osvježi prikaz",
+    primaryActionBody: "Osvježavanje ponovno izračunava prikaz prema trenutno dostupnim podacima i filterima.",
+    filtersTarget: ".periodics-filters",
+    filtersBody: "Pretraga i rok filter sužavaju sve sekcije. Možeš gledati isteklo, kritično ili širi period.",
+    listTarget: "#periodics-list-view",
+    listBody: "Lista je podijeljena po izvorima: ispitivanja, vozila, ljudi i oprema. Svaka sekcija ima svoje brojače.",
+    secondaryTarget: ".periodics-summary-grid",
+    secondaryTitle: "Sažetak rokova",
+    secondaryBody: "Gornje KPI kartice odmah pokazuju ukupno, isteklo, skoro i kritično prema postavkama u Settingsu.",
+    points: ["Periodics ne stvara podatke, nego ih okuplja iz drugih modula.", "Kalendar daje drugi pogled na iste rokove."],
+  },
+  "drawing-studio": {
+    navItem: "drawing-studio",
+    title: "Drawing Studio",
+    body: "Drawing Studio je CAD-like prostor za crteže, podloge, layere, simbole, kote i PDF/SVG izvoz.",
+    target: "#drawing-studio-module",
+    primaryActionTarget: "#drawing-open-form",
+    primaryActionTitle: "Novi crtež",
+    primaryActionBody: "Gumb priprema novi crtež. Desno uređuješ workspace, alate, podlogu, layer i metapodatke.",
+    filtersTarget: ".drawing-studio-filters",
+    filtersBody: "Pretraga i filteri u listi nalaze crteže po nazivu, tvrtki, lokaciji, podlozi i statusu.",
+    listTarget: "#drawing-list",
+    listBody: "Lista čuva spremljene crteže. Klik na crtež učitava ga u workspace za nastavak rada.",
+    secondaryTarget: ".drawing-studio-shell",
+    secondaryTitle: "CAD workspace",
+    secondaryBody: "Workspace sadrži platno, alate, zoom, grid, snap, layer panel, blokove, podloge i inspector.",
+    points: ["Upload podloge može biti PDF, DWG, DXF ili slika.", "Izvoz je dostupan kao SVG ili PDF/ispis."],
+  },
+  "list-company": {
+    navItem: "list-company",
+    title: "List Company",
+    body: "List Company je glavni pregled tvrtki s ugovorima, kontaktima, statusima i povezanim podacima.",
+    target: "#companies-view",
+    primaryActionTarget: "#company-open-form",
+    primaryActionTitle: "Nova tvrtka",
+    primaryActionBody: "Gumb otvara editor za unos nove tvrtke. Isti editor se otvara klikom na postojeći red.",
+    filtersTarget: "#companies-view .companies-filters-block",
+    filtersBody: "Pretraga i filteri hvataju naziv, OIB, ugovor, kontakt, adresu, razdoblje i aktivnost.",
+    listTarget: "#companies-body",
+    listBody: "Tablica je radni popis tvrtki. Klik na red otvara detalje, kontakte, ugovore, lokacije i activity.",
+    secondaryTarget: "#companies-view .table-wrap",
+    secondaryTitle: "Povezani podaci",
+    secondaryBody: "Tvrtka je čvor za lokacije, ugovore, client portal, predloške i radne naloge.",
+    points: ["Filteri ne brišu podatke, samo sužavaju prikaz.", "Tvrtka povezuje veliki dio aplikacije."],
+  },
+  "add-company": {
+    navItem: "add-company",
+    title: "Add New Company",
+    body: "Add New Company otvara isti editor tvrtke, ali odmah u modu za novi unos.",
+    target: "#company-editor-panel",
+    primaryActionTarget: "#company-form",
+    primaryActionTitle: "Podaci tvrtke",
+    primaryActionBody: "U formi upisuješ naziv, OIB, adresu, kontakte, ugovorne podatke i status.",
+    filtersTarget: "#company-client-location-list",
+    filtersBody: "Ako tvrtka koristi client portal, ovdje kasnije možeš povezati lokacije dostupne klijentu.",
+    listTarget: "#company-template-map-list",
+    listBody: "Template mapiranja povezuju tvrtku s predlošcima i pravilima koja se koriste u dokumentima.",
+    secondaryTarget: "#company-activity-list",
+    secondaryTitle: "Activity tvrtke",
+    secondaryBody: "Activity prikazuje promjene i povezane događaje nakon što je tvrtka spremljena.",
+    points: ["Ništa se ne sprema dok ne potvrdiš formu.", "Editor je isti za novi unos i uređivanje postojećeg zapisa."],
+  },
+  "client-portal": {
+    navItem: "client-portal",
+    title: "Client Portal",
+    body: "Client Portal dodjeljuje klijentske pristupe po tvrtki i lokacijama, uz slanje privremene lozinke emailom.",
+    target: "#client-portal-module",
+    primaryActionTarget: "#client-portal-open-access",
+    primaryActionTitle: "Novi pristup",
+    primaryActionBody: "Modal za novi pristup prima ime, email, OIB i lokacije koje korisnik smije vidjeti u portalu.",
+    filtersTarget: "#client-portal-search",
+    filtersBody: "Pretraga filtrira aktivne klijentske korisnike po imenu, emailu ili lokaciji.",
+    listTarget: "#client-portal-users-list",
+    listBody: "Lista prikazuje pristupe za odabranu tvrtku i pomaže brzo provjeriti tko ima portal.",
+    secondaryTarget: "#client-portal-preview-list",
+    secondaryTitle: "Preview portala",
+    secondaryBody: "Preview pokazuje kako će klijent vidjeti dokumente i lokacije za odabrani scope.",
+    points: ["Prvo biraš tvrtku, zatim dodaješ pristup.", "Lokacije mogu biti sve ili ručno odabrane."],
+  },
+  contract: {
+    navItem: "contract",
+    title: "Contract",
+    body: "Contract vodi ugovore, anekse, statuse, povezane tvrtke i Word templatee.",
+    target: "#contract-module .offers-list-panel",
+    primaryActionTarget: "#contract-open-form",
+    primaryActionTitle: "Novi ugovor",
+    primaryActionBody: "Editor ugovora prima broj, tvrtku, status, predmet, datume, anekse i dodatne dokumente.",
+    filtersTarget: ".contract-filters",
+    filtersBody: "Pretraga, status i tvrtka filtriraju ugovore po broju, predmetu, templateu i klijentu.",
+    listTarget: "#contract-list",
+    listBody: "Lista ugovora služi za brzi pregled i otvaranje editora.",
+    secondaryTarget: "#contract-template-list",
+    secondaryTitle: "Templatei ugovora",
+    secondaryBody: "Template dio koristi Word predloške i placeholder liste za ugovorne dokumente.",
+    points: ["Aneksi ostaju povezani s ugovorom.", "Status pomaže odvojiti aktivne, nacrte i arhivu."],
+  },
+  "list-location": {
+    navItem: "list-location",
+    title: "List Location",
+    body: "List Location prikazuje lokacije po tvrtki, regiji, kontaktima i povezanim radnim nalozima.",
+    target: "#locations-view",
+    primaryActionTarget: "#location-open-form",
+    primaryActionTitle: "Nova lokacija",
+    primaryActionBody: "Gumb otvara editor lokacije. Isti editor se koristi za uređivanje postojeće lokacije iz liste.",
+    filtersTarget: "#locations-view .companies-filters-block",
+    filtersBody: "Pretraga pronalazi lokacije po nazivu, tvrtki, regiji i kontaktu.",
+    listTarget: "#locations-body",
+    listBody: "Tablica lokacija je grupirani list view. Klik na red otvara kontakte, portal pristupe i povezane RN-ove.",
+    secondaryTarget: "#locations-helper",
+    secondaryTitle: "Veza s tvrtkom",
+    secondaryBody: "Lokacija uvijek pripada tvrtki i koristi se u RN-u, ponudama, client portalu i dokumentima.",
+    points: ["Lokacije pomažu precizno vezati rad na terenu.", "Pretraga je najbrži ulaz kada ih ima puno."],
+  },
+  "add-location": {
+    navItem: "add-location",
+    title: "Add New Location",
+    body: "Add New Location odmah otvara editor za unos nove lokacije.",
+    target: "#location-editor-panel",
+    primaryActionTarget: "#location-form",
+    primaryActionTitle: "Podaci lokacije",
+    primaryActionBody: "U editoru biraš tvrtku, naziv lokacije, adresu, regiju, kontakt podatke i napomene.",
+    filtersTarget: "#location-contacts-list",
+    filtersBody: "Kontakti lokacije ostaju odvojeni od glavnih podataka i mogu se koristiti u operativnim modulima.",
+    listTarget: "#location-linked-work-orders-list",
+    listBody: "Nakon spremanja lokacija može prikazati povezane radne naloge i client portal pristupe.",
+    secondaryTarget: "#location-client-users-list",
+    secondaryTitle: "Client portal",
+    secondaryBody: "Lokaciju možeš povezati s klijentskim korisnicima koji smiju vidjeti njezine dokumente.",
+    points: ["Ništa se ne sprema dok ne potvrdiš formu.", "Lokacija se kasnije bira u RN-u, ponudama i dokumentima."],
+  },
+  documents: {
+    navItem: "documents",
+    title: "Documents",
+    body: "Documents je centralni dokumentni pregled za priloge, PDF-ove, Word datoteke, slike i zapisnike.",
+    target: "#documents-module",
+    primaryActionTarget: "#documents-refresh",
+    primaryActionTitle: "Osvježi dokumente",
+    primaryActionBody: "Osvježavanje ponovno učitava centralni pregled foldera i datoteka iz modula.",
+    filtersTarget: ".documents-filters",
+    filtersBody: "Pretraga i filter vrste sužavaju dokumente po nazivu, folderu, tvrtki, opremi, ponudi ili tipu datoteke.",
+    listTarget: "#documents-folder-list",
+    listBody: "Folderi grupiraju dokumente po izvoru i kontekstu, pa ne moraš ručno tražiti po modulima.",
+    secondaryTarget: "#documents-category-list",
+    secondaryTitle: "Kategorije",
+    secondaryBody: "Kategorije lijevo služe za brzo skakanje između skupina dokumenata.",
+    points: ["Documents je pregled, a datoteke nastaju u modulima.", "Filter vrste odvaja PDF, Word, slike, zapisnike i ostalo."],
+  },
+  tests: {
+    navItem: "tests",
+    title: "Test",
+    body: "Test vodi grupe edukacija, materijale, pitanja i preview kako će polaznik vidjeti edukaciju.",
+    target: "#learning-tests-module",
+    primaryActionTarget: "#learning-test-open-form",
+    primaryActionTitle: "Nova grupa",
+    primaryActionBody: "Editor testova počinje grupom edukacije, zatim prelazi na pitanja i materijale.",
+    filtersTarget: ".learning-tests-list-toolbar",
+    filtersBody: "Pretraga i status filter brzo nalaze test po nazivu, opisu ili grupi pitanja.",
+    listTarget: "#learning-tests-list",
+    listBody: "Lista prikazuje testove i edukacijske grupe po organizaciji. Klik otvara editor.",
+    secondaryTarget: "#learning-tests-helper",
+    secondaryTitle: "Materijali i pitanja",
+    secondaryBody: "U editoru dodaješ PDF, slike, video, prezentacije i pitanja koja se mogu uvoziti iz Excela.",
+    points: ["Live preview pokazuje iskustvo polaznika.", "Test se može povezati s uslugom osposobljavanja."],
+  },
+  "people-training": {
+    navItem: "people-training",
+    title: "Osposobljavanja",
+    body: "Osposobljavanja vode evidenciju po osobama, tvrtki, lokaciji, RN-u, online testu i uvjerenjima.",
+    target: "#people-training-panel",
+    primaryActionTarget: "#people-training-new-button",
+    primaryActionTitle: "Nova osoba",
+    primaryActionBody: "Editor osobe sprema osobne podatke, tvrtku, lokaciju, OIB i vrste osposobljavanja.",
+    filtersTarget: ".people-training-toolbar",
+    filtersBody: "Pretraga i filteri po tvrtki, lokaciji, vrsti i statusu sužavaju evidenciju po osobama.",
+    listTarget: "#people-training-list",
+    listBody: "Lista je pregled svih osposobljavanja po osobama. Odabir više redaka služi za masovne radnje.",
+    secondaryTarget: ".people-training-list-head-actions",
+    secondaryTitle: "Masovno osposobljavanje",
+    secondaryBody: "Odaberi prikazane ili pojedinačne osobe, pa koristi masovno osposobljavanje za brži rad.",
+    points: ["Excel import/export ubrzava veće evidencije.", "Uvjerenja se vežu uz Word template i usluge."],
+  },
+  "risk-assessment": {
+    navItem: "risk-assessment",
+    title: "Risk Assessment",
+    body: "Risk Assessment vodi procjene rizika po tvrtki, lokaciji, poslu, mjerama i statusu komunikacije s klijentom.",
+    target: "#risk-assessment-module",
+    primaryActionTarget: "#risk-assessment-new",
+    primaryActionTitle: "Nova procjena",
+    primaryActionBody: "Editor procjene rizika sprema osnovne podatke, poslove, opasnosti, mjere i plan komunikacije.",
+    filtersTarget: ".risk-assessment-filters",
+    filtersBody: "Pretraga, tvrtka i status filter pomažu brzo naći procjenu po klijentu, broju, poslu ili mjeri.",
+    listTarget: "#risk-assessment-list",
+    listBody: "Lista prikazuje procjene rizika i otvara editor za detaljnu razradu.",
+    secondaryTarget: "#risk-assessment-empty",
+    secondaryTitle: "Plan mjera",
+    secondaryBody: "Procjena rizika se dalje razrađuje kroz mjere, odgovornosti i status prema klijentu.",
+    points: ["Status pomaže pratiti tijek izrade.", "Procjena je vezana uz tvrtku i radni kontekst."],
+  },
+};
+
+function getHelpTourMenuGroups() {
+  return HELP_TOUR_MENU_GROUPS;
+}
+
+function isHelpTourMenuItemVisible(kind = "") {
+  const tourKind = String(kind || "").trim();
+  if (!tourKind || getHelpTourSteps(tourKind).length === 0) {
+    return false;
+  }
+  if (tourKind === "general") {
+    return true;
+  }
+  if (tourKind === "control-panel" && !getCanManageMasterData()) {
+    return false;
+  }
+
+  const sidebarButton = sidebarNavItems.find((button) => button.dataset.sidebarItem === tourKind);
+  if (sidebarButton instanceof HTMLElement) {
+    if (sidebarButton.hidden) {
+      return false;
+    }
+    const style = window.getComputedStyle(sidebarButton);
+    if (style.display === "none" || style.visibility === "hidden") {
+      return false;
+    }
+  }
+  return true;
+}
+
+function getModuleHelpTourDefinition(kind = "") {
+  return MODULE_HELP_TOUR_DEFINITIONS[String(kind || "").trim()] ?? null;
+}
+
+function createModuleHelpTourStep({
+  title,
+  body,
+  target,
+  points = [],
+  prepare,
+} = {}) {
+  if (!title || !body) {
+    return null;
+  }
+  return {
+    title,
+    body,
+    target,
+    points: Array.isArray(points) ? points.filter(Boolean) : [],
+    prepare,
+  };
+}
+
+function getModuleHelpTourSteps(kind = "") {
+  const tourKind = String(kind || "").trim();
+  const definition = getModuleHelpTourDefinition(tourKind);
+  if (!definition) {
+    return [];
+  }
+
+  const navItem = definition.navItem || tourKind;
+  const activeItem = definition.activeItem || navItem;
+  const prepare = `sidebar:${activeItem}`;
+  return [
+    createModuleHelpTourStep({
+      title: definition.title || getHelpTourKindLabel(tourKind),
+      body: definition.body,
+      target: definition.target,
+      points: definition.points,
+      prepare,
+    }),
+    createModuleHelpTourStep({
+      title: "Ulaz iz navigacije",
+      body: `${definition.title || getHelpTourKindLabel(tourKind)} otvaraš iz lijevog sidebar-a. Aktivna stavka ostaje označena dok radiš u tom modulu.`,
+      target: `[data-sidebar-item="${navItem}"]`,
+      points: ["Sidebar grupa se automatski širi ako je potrebno.", "Pomoć koristi isti ulaz kao stvarni rad u aplikaciji."],
+      prepare,
+    }),
+    createModuleHelpTourStep({
+      title: definition.primaryActionTitle || "Glavna akcija",
+      body: definition.primaryActionBody,
+      target: definition.primaryActionTarget,
+      points: definition.primaryActionPoints || ["Akcija otvara editor ili pokreće glavni radni tijek modula.", "Podaci se spremaju tek kada potvrdiš formu."],
+      prepare,
+    }),
+    createModuleHelpTourStep({
+      title: definition.filtersTitle || "Pretraga i filteri",
+      body: definition.filtersBody,
+      target: definition.filtersTarget,
+      points: definition.filtersPoints || ["Filteri ne brišu podatke, samo sužavaju prikaz.", "Pretraga je najbrži način rada kad lista naraste."],
+      prepare,
+    }),
+    createModuleHelpTourStep({
+      title: definition.listTitle || "Lista i radni prostor",
+      body: definition.listBody,
+      target: definition.listTarget,
+      points: definition.listPoints || ["Klik na stavku najčešće otvara editor ili detalje.", "Lista ostaje radni pregled za trenutni filter."],
+      prepare,
+    }),
+    createModuleHelpTourStep({
+      title: definition.secondaryTitle || "Dodatni blok",
+      body: definition.secondaryBody,
+      target: definition.secondaryTarget,
+      points: definition.secondaryPoints || ["Ovaj dio modula drži kontekst koji se koristi u drugim ekranima.", "Ako blok nema podataka, prikazat će prazno stanje."],
+      prepare,
+    }),
+  ].filter(Boolean);
+}
+
 function getHelpTourSteps(kind = state.helpTour.kind) {
   const tourKind = String(kind || "").trim();
   const stepFactories = {
@@ -85476,7 +86131,7 @@ function getHelpTourSteps(kind = state.helpTour.kind) {
     settings: getSettingsHelpTourSteps,
     offers: getOffersHelpTourSteps,
   };
-  return stepFactories[tourKind]?.() ?? [];
+  return stepFactories[tourKind]?.() ?? getModuleHelpTourSteps(tourKind);
 }
 
 function getHelpTourKindLabel(kind = state.helpTour.kind) {
@@ -85490,7 +86145,11 @@ function getHelpTourKindLabel(kind = state.helpTour.kind) {
     settings: "Settings",
     offers: "Ponude",
   };
-  return labels[String(kind || "").trim()] || "Pomoć";
+  const tourKind = String(kind || "").trim();
+  const menuItem = HELP_TOUR_MENU_GROUPS
+    .flatMap((group) => group.items)
+    .find((item) => item.kind === tourKind);
+  return labels[tourKind] || menuItem?.label || SIDEBAR_ITEM_LABELS[tourKind] || "Pomoć";
 }
 
 function getCurrentHelpTourStep() {
@@ -85504,6 +86163,9 @@ function getHelpTourTarget(step = getCurrentHelpTourStep()) {
   }
   const target = document.querySelector(selector);
   if (!(target instanceof HTMLElement) || target.hidden) {
+    return null;
+  }
+  if (target.closest("[hidden]")) {
     return null;
   }
   const style = window.getComputedStyle(target);
@@ -85612,6 +86274,20 @@ function closeDashboardBuilderForHelpTour() {
 
 function prepareHelpTourStep(step = getCurrentHelpTourStep()) {
   if (!step) {
+    return;
+  }
+
+  const prepareKey = String(step.prepare || "").trim();
+  if (prepareKey.startsWith("sidebar:")) {
+    const itemName = prepareKey.slice("sidebar:".length).trim();
+    if (itemName) {
+      activateSidebarItem(itemName, { expandSidebar: true });
+      closeDashboardBuilderForHelpTour();
+      if (itemName === "purchase-orders") {
+        ensureCommercialDocumentDirectionState();
+        renderOffersModule();
+      }
+    }
     return;
   }
 
@@ -90579,14 +91255,19 @@ topbarHelpButton?.addEventListener("click", (event) => {
   setTopbarHelpMenuOpen(!topbarHelpMenuOpen);
 });
 
-topbarHelpOptions.forEach((button) => {
-  button.addEventListener("click", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const kind = button.dataset.helpTourKind || "";
-    setTopbarHelpMenuOpen(false);
-    openHelpTour(kind);
-  });
+topbarHelpOptionsContainer?.addEventListener("click", (event) => {
+  const button = event.target instanceof Element
+    ? event.target.closest("[data-help-tour-kind]")
+    : null;
+  if (!(button instanceof HTMLElement)) {
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+  const kind = button.dataset.helpTourKind || "";
+  setTopbarHelpMenuOpen(false);
+  openHelpTour(kind);
 });
 
 dashboardOpenPeopleButton?.addEventListener("click", () => {

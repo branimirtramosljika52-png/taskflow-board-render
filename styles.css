@@ -1124,7 +1124,7 @@ fieldset {
 }
 
 .topbar-help-panel {
-  width: min(360px, calc(100vw - 28px));
+  width: min(420px, calc(100vw - 28px));
   gap: 12px;
 }
 
@@ -1146,10 +1146,28 @@ fieldset {
 
 .topbar-help-options {
   display: grid;
-  gap: 8px;
+  gap: 12px;
   max-height: min(58vh, 460px);
   overflow-y: auto;
   padding-right: 2px;
+}
+
+.topbar-help-group {
+  display: grid;
+  gap: 7px;
+}
+
+.topbar-help-group-title {
+  color: #7c879d;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.topbar-help-group-list {
+  display: grid;
+  gap: 7px;
 }
 
 .topbar-help-option {
@@ -1185,6 +1203,13 @@ fieldset {
 
 .topbar-help-option[hidden] {
   display: none;
+}
+
+.topbar-help-empty {
+  margin: 0;
+  color: #6f7a92;
+  font-size: 0.82rem;
+  line-height: 1.4;
 }
 
 .topbar-shortcut-preview-row {
@@ -18864,7 +18889,7 @@ body.is-resizing-work-order-column {
   }
 
   .topbar-help-panel {
-    width: min(100%, 360px);
+    width: min(100%, 420px);
   }
 
   .avatar-upload-row,
