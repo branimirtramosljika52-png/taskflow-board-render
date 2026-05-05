@@ -1025,6 +1025,9 @@ function sanitizeUser(row) {
     ),
     title: row.title ?? "",
     oib: row.oib ?? "",
+    phone: row.phone ?? "",
+    address: row.address ?? "",
+    education: row.education ?? "",
     clientCompanyIds: normalizeClientScopeIds(row.client_company_ids_json ?? row.clientCompanyIds),
     clientLocationIds: normalizeClientScopeIds(row.client_location_ids_json ?? row.clientLocationIds),
     clientAccessAllLocations: row.client_access_all_locations === undefined
@@ -1136,6 +1139,9 @@ function normalizeUserInput(input = {}) {
     ),
     title: dbString(input.title),
     oib: normalizeOib(input.oib),
+    phone: dbString(input.phone),
+    address: dbString(input.address),
+    education: dbString(input.education),
     clientCompanyIds: normalizeClientScopeIds(input.clientCompanyIds ?? input.client_company_ids_json),
     clientLocationIds: normalizeClientScopeIds(input.clientLocationIds ?? input.client_location_ids_json),
     clientAccessAllLocations: toBooleanFlag(input.clientAccessAllLocations ?? input.client_access_all_locations, true),
@@ -1150,6 +1156,29 @@ function normalizeUserInput(input = {}) {
     documents,
     electricalQualification,
   };
+}
+
+const OWN_PROFILE_FIELD_KEYS = Object.freeze([
+  "firstName",
+  "lastName",
+  "displayName",
+  "title",
+  "oib",
+  "phone",
+  "email",
+  "education",
+  "address",
+  "avatarDataUrl",
+]);
+
+function pickOwnProfilePatch(input = {}) {
+  const source = input && typeof input === "object" ? input : {};
+  return OWN_PROFILE_FIELD_KEYS.reduce((patch, key) => {
+    if (Object.prototype.hasOwnProperty.call(source, key)) {
+      patch[key] = source[key];
+    }
+    return patch;
+  }, {});
 }
 
 function normalizeLoginContentInput(input = {}) {
@@ -1324,6 +1353,9 @@ async function ensureSchema(connection) {
       title VARCHAR(160) NOT NULL DEFAULT '',
       profile_role VARCHAR(64) NOT NULL DEFAULT 'new_user',
       oib VARCHAR(32) NOT NULL DEFAULT '',
+      phone VARCHAR(64) NOT NULL DEFAULT '',
+      address VARCHAR(255) NOT NULL DEFAULT '',
+      education VARCHAR(255) NOT NULL DEFAULT '',
       client_company_ids_json TEXT NULL,
       client_location_ids_json TEXT NULL,
       client_access_all_locations TINYINT(1) NOT NULL DEFAULT 1,
@@ -1460,8 +1492,26 @@ async function ensureSchema(connection) {
   await ensureColumn(
     connection,
     "app_users",
+    "phone",
+    "VARCHAR(64) NOT NULL DEFAULT '' AFTER oib",
+  );
+  await ensureColumn(
+    connection,
+    "app_users",
+    "address",
+    "VARCHAR(255) NOT NULL DEFAULT '' AFTER phone",
+  );
+  await ensureColumn(
+    connection,
+    "app_users",
+    "education",
+    "VARCHAR(255) NOT NULL DEFAULT '' AFTER address",
+  );
+  await ensureColumn(
+    connection,
+    "app_users",
     "client_company_ids_json",
-    "TEXT NULL AFTER oib",
+    "TEXT NULL AFTER education",
   );
   await ensureColumn(
     connection,
@@ -1571,7 +1621,7 @@ async function fetchUsers(connection, actor, effectiveOrganizationId, accessible
   const activeOrganizationId = dbString(effectiveOrganizationId);
   const accessibleOrganizationIds = new Set(accessibleOrganizations.map((organization) => String(organization.id)));
   const [rows] = await connection.query(`
-    SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.display_name, u.title, u.profile_role, u.oib,
+    SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.display_name, u.title, u.profile_role, u.oib, u.phone, u.address, u.education,
            u.client_company_ids_json, u.client_location_ids_json, u.client_access_all_locations, u.avatar_data_url,
            u.avatar_storage_provider, u.avatar_storage_bucket, u.avatar_storage_key, u.avatar_storage_url,
            u.electrical_qualification_json, u.user_documents_json,
@@ -2528,6 +2578,9 @@ export class MemoryTenantRepository {
         isActive: true,
         title: "",
         oib: "",
+        phone: "",
+        address: "",
+        education: "",
         avatarDataUrl: "",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -2817,6 +2870,9 @@ export class MemoryTenantRepository {
       profileRole: normalized.profileRole,
       title: normalized.title,
       oib: normalized.oib,
+      phone: normalized.phone,
+      address: normalized.address,
+      education: normalized.education,
       clientCompanyIds: [...(normalized.clientCompanyIds ?? [])],
       clientLocationIds: [...(normalized.clientLocationIds ?? [])],
       clientAccessAllLocations: Boolean(normalized.clientAccessAllLocations),
@@ -2870,6 +2926,9 @@ export class MemoryTenantRepository {
     current.profileRole = normalized.profileRole;
     current.title = normalized.title;
     current.oib = normalized.oib;
+    current.phone = normalized.phone;
+    current.address = normalized.address;
+    current.education = normalized.education;
     current.clientCompanyIds = [...(normalized.clientCompanyIds ?? [])];
     current.clientLocationIds = [...(normalized.clientLocationIds ?? [])];
     current.clientAccessAllLocations = Boolean(normalized.clientAccessAllLocations);
@@ -2969,6 +3028,46 @@ export class MemoryTenantRepository {
     }
 
     current.avatarDataUrl = dbString(avatarDataUrl);
+    current.updatedAt = new Date().toISOString();
+    return this.getUserById(current.id);
+  }
+
+  async updateOwnProfile(actor, patch = {}) {
+    const current = this.users.find((item) => item.id === String(actor?.id));
+
+    if (!current) {
+      return null;
+    }
+
+    const normalized = normalizeUserInput({
+      ...current,
+      ...pickOwnProfilePatch(patch),
+      organizationId: current.organizationId,
+      organizationIds: current.organizationIds,
+      profileRole: current.profileRole,
+      role: current.role,
+      isActive: current.isActive,
+      legacyUsername: current.legacyUsername,
+    });
+
+    assertText(normalized.email, "Email je obavezan.");
+
+    if (this.users.some((item) => item.id !== current.id && item.email.toLowerCase() === normalized.email)) {
+      throw createHttpError(400, "Korisnik s tim emailom vec postoji.");
+    }
+
+    current.firstName = normalized.firstName;
+    current.lastName = normalized.lastName;
+    current.fullName = [normalized.firstName, normalized.lastName].filter(Boolean).join(" ");
+    current.displayName = normalized.displayName;
+    current.title = normalized.title;
+    current.oib = normalized.oib;
+    current.phone = normalized.phone;
+    current.address = normalized.address;
+    current.education = normalized.education;
+    current.email = normalized.email;
+    current.username = current.legacyUsername || current.email;
+    current.avatarDataUrl = normalized.avatarDataUrl;
     current.updatedAt = new Date().toISOString();
     return this.getUserById(current.id);
   }
@@ -3134,6 +3233,9 @@ export class MemoryTenantRepository {
       isActive: true,
       title: "",
       oib: "",
+      phone: request.phone,
+      address: "",
+      education: "",
       avatarDataUrl: "",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -3257,7 +3359,7 @@ export class MySqlTenantRepository {
     try {
       const [rows] = await connection.query(
         `
-          SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.display_name, u.title, u.profile_role, u.oib,
+          SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.display_name, u.title, u.profile_role, u.oib, u.phone, u.address, u.education,
                  u.client_company_ids_json, u.client_location_ids_json, u.client_access_all_locations, u.avatar_data_url,
                  u.avatar_storage_provider, u.avatar_storage_bucket, u.avatar_storage_key, u.avatar_storage_url,
                  u.electrical_qualification_json, u.user_documents_json,
@@ -3290,7 +3392,7 @@ export class MySqlTenantRepository {
       const needle = dbString(identifier).toLowerCase();
       const [rows] = await connection.query(
         `
-          SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.display_name, u.title, u.profile_role, u.oib,
+          SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.display_name, u.title, u.profile_role, u.oib, u.phone, u.address, u.education,
                  u.client_company_ids_json, u.client_location_ids_json, u.client_access_all_locations, u.avatar_data_url,
                  u.avatar_storage_provider, u.avatar_storage_bucket, u.avatar_storage_key, u.avatar_storage_url,
                  u.electrical_qualification_json, u.user_documents_json,
@@ -3391,7 +3493,7 @@ export class MySqlTenantRepository {
 
       const [rows] = await connection.query(
         `
-          SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.display_name, u.title, u.profile_role, u.oib, u.avatar_data_url,
+          SELECT u.id, u.organization_id, u.organization_ids_csv, u.first_name, u.last_name, u.display_name, u.title, u.profile_role, u.oib, u.phone, u.address, u.education, u.avatar_data_url,
                  u.avatar_storage_provider, u.avatar_storage_bucket, u.avatar_storage_key, u.avatar_storage_url,
                  u.electrical_qualification_json, u.user_documents_json,
                  u.email, u.legacy_username,
@@ -3762,11 +3864,11 @@ export class MySqlTenantRepository {
       const [result] = await connection.query(
         `
           INSERT INTO app_users
-            (organization_id, organization_ids_csv, first_name, last_name, display_name, title, profile_role, oib,
+            (organization_id, organization_ids_csv, first_name, last_name, display_name, title, profile_role, oib, phone, address, education,
              client_company_ids_json, client_location_ids_json, client_access_all_locations, avatar_data_url,
              avatar_storage_provider, avatar_storage_bucket, avatar_storage_key, avatar_storage_url,
              electrical_qualification_json, user_documents_json, email, legacy_username, password_hash, must_change_password, role, is_active)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(targetOrganizationId),
@@ -3777,6 +3879,9 @@ export class MySqlTenantRepository {
           normalized.title,
           normalized.profileRole,
           normalized.oib,
+          normalized.phone,
+          normalized.address,
+          normalized.education,
           JSON.stringify(normalized.clientCompanyIds ?? []),
           JSON.stringify(normalized.clientLocationIds ?? []),
           normalized.clientAccessAllLocations ? 1 : 0,
@@ -3911,6 +4016,9 @@ export class MySqlTenantRepository {
         "title = ?",
         "profile_role = ?",
         "oib = ?",
+        "phone = ?",
+        "address = ?",
+        "education = ?",
         "client_company_ids_json = ?",
         "client_location_ids_json = ?",
         "client_access_all_locations = ?",
@@ -3935,6 +4043,9 @@ export class MySqlTenantRepository {
         normalized.title,
         normalized.profileRole,
         normalized.oib,
+        normalized.phone,
+        normalized.address,
+        normalized.education,
         JSON.stringify(normalized.clientCompanyIds ?? []),
         JSON.stringify(normalized.clientLocationIds ?? []),
         normalized.clientAccessAllLocations ? 1 : 0,
@@ -4184,6 +4295,99 @@ export class MySqlTenantRepository {
 
       await cleanupStoredAssets(preparedAvatar.previousStoredAvatar ? [preparedAvatar.previousStoredAvatar] : []);
       return this.getUserById(actor.id);
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updateOwnProfile(actor, patch = {}) {
+    const connection = await this.pool.getConnection();
+    let preparedAvatar = null;
+
+    try {
+      const [rows] = await connection.query(
+        `
+          SELECT u.*, o.name AS organization_name
+          FROM app_users u
+          LEFT JOIN organizations o ON o.id = u.organization_id
+          WHERE u.id = ?
+          LIMIT 1
+        `,
+        [Number(actor?.id)],
+      );
+      const current = rows[0];
+
+      if (!current) {
+        return null;
+      }
+
+      const normalized = normalizeUserInput({
+        ...sanitizeUser(current),
+        ...pickOwnProfilePatch(patch),
+        organizationId: current.organization_id ? String(current.organization_id) : "",
+        organizationIds: mergePrimaryOrganization(current.organization_id, current.organization_ids_csv),
+        profileRole: current.profile_role,
+        role: current.role,
+        isActive: Boolean(Number(current.is_active)),
+        legacyUsername: current.legacy_username ?? "",
+      });
+      assertText(normalized.email, "Email je obavezan.");
+
+      preparedAvatar = await prepareStoredUserAvatar({
+        currentUser: current,
+        userId: current.id,
+        fullName: [normalized.firstName, normalized.lastName].filter(Boolean).join(" "),
+        avatarDataUrl: normalized.avatarDataUrl,
+      });
+
+      const [result] = await connection.query(
+        `
+          UPDATE app_users
+          SET first_name = ?,
+              last_name = ?,
+              display_name = ?,
+              title = ?,
+              oib = ?,
+              phone = ?,
+              address = ?,
+              education = ?,
+              email = ?,
+              avatar_data_url = ?,
+              avatar_storage_provider = ?,
+              avatar_storage_bucket = ?,
+              avatar_storage_key = ?,
+              avatar_storage_url = ?,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `,
+        [
+          normalized.firstName,
+          normalized.lastName,
+          normalized.displayName,
+          normalized.title,
+          normalized.oib,
+          normalized.phone,
+          normalized.address,
+          normalized.education,
+          normalized.email,
+          preparedAvatar.storedAvatar.dataUrl || null,
+          preparedAvatar.storedAvatar.storageProvider || null,
+          preparedAvatar.storedAvatar.storageBucket || null,
+          preparedAvatar.storedAvatar.storageKey || null,
+          preparedAvatar.storedAvatar.storageUrl || null,
+          Number(actor?.id),
+        ],
+      );
+
+      if (result.affectedRows === 0) {
+        return null;
+      }
+
+      await cleanupStoredAssets(preparedAvatar.previousStoredAvatar ? [preparedAvatar.previousStoredAvatar] : []);
+      return this.getUserById(actor.id);
+    } catch (error) {
+      await cleanupStoredAssets(preparedAvatar?.storedAvatar?.storageKey ? [preparedAvatar.storedAvatar] : []);
+      rethrowDatabaseError(error, "Korisnik s tim emailom vec postoji.");
     } finally {
       connection.release();
     }
@@ -4458,8 +4662,8 @@ export class MySqlTenantRepository {
       const [userResult] = await connection.query(
         `
           INSERT INTO app_users
-            (organization_id, organization_ids_csv, first_name, last_name, display_name, profile_role, avatar_data_url, email, password_hash, role, is_active)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+            (organization_id, organization_ids_csv, first_name, last_name, display_name, profile_role, phone, avatar_data_url, email, password_hash, role, is_active)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
         `,
         [
           Number(organizationId),
@@ -4468,6 +4672,7 @@ export class MySqlTenantRepository {
           request.lastName,
           approvedDisplayName,
           approvedRole === ROLE_ADMIN ? "admin" : "new_user",
+          request.phone,
           null,
           request.email,
           current.password_hash,

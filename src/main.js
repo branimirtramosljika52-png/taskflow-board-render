@@ -1597,6 +1597,10 @@ const state = {
     open: false,
     modules: [],
   },
+  profileDialog: {
+    open: false,
+  },
+  dashboardCompanyPermissionsCollapsed: false,
   helpTour: {
     open: false,
     kind: "",
@@ -2023,6 +2027,7 @@ const state = {
 
 const workOrderPdfSaveTimers = new Map();
 const workOrderPdfSaveInFlight = new Set();
+const dashboardCompanyPermissionBlockOpenState = new Map();
 
 function readSidebarCollapsedPreference() {
   try {
@@ -2639,9 +2644,33 @@ const userMenuPresenceMenu = document.querySelector("#user-menu-presence-menu");
 const userMenuActiveOrg = document.querySelector("#user-menu-active-org");
 const userMenuOrgCount = document.querySelector("#user-menu-org-count");
 const userMenuLastLogin = document.querySelector("#user-menu-last-login");
-const userMenuAvatarButton = document.querySelector("#user-menu-avatar-button");
-const userMenuAvatarFileInput = document.querySelector("#user-menu-avatar-file");
+const userMenuProfileButton = document.querySelector("#user-menu-profile-button");
 const userMenuError = document.querySelector("#user-menu-error");
+const profileModalBackdrop = document.querySelector("#profile-modal-backdrop");
+const profileModal = document.querySelector("#profile-modal");
+const profileModalCloseButton = document.querySelector("#profile-modal-close");
+const profileForm = document.querySelector("#profile-form");
+const profileAvatarPreview = document.querySelector("#profile-avatar-preview");
+const profileAvatarName = document.querySelector("#profile-avatar-name");
+const profileAvatarButton = document.querySelector("#profile-avatar-button");
+const profileAvatarFileInput = document.querySelector("#profile-avatar-file");
+const profileAvatarDataUrlInput = document.querySelector("#profile-avatar-data-url");
+const profileFirstNameInput = document.querySelector("#profile-first-name");
+const profileLastNameInput = document.querySelector("#profile-last-name");
+const profileOibInput = document.querySelector("#profile-oib");
+const profilePhoneInput = document.querySelector("#profile-phone");
+const profileEmailInput = document.querySelector("#profile-email");
+const profileEducationInput = document.querySelector("#profile-education");
+const profileTitleInput = document.querySelector("#profile-title");
+const profileAddressInput = document.querySelector("#profile-address");
+const profileSaveButton = document.querySelector("#profile-save-button");
+const profileSendReportButton = document.querySelector("#profile-send-report");
+const profileFeedback = document.querySelector("#profile-feedback");
+const profilePasswordForm = document.querySelector("#profile-password-form");
+const profilePasswordNewInput = document.querySelector("#profile-password-new");
+const profilePasswordConfirmInput = document.querySelector("#profile-password-confirm");
+const profilePasswordSubmitButton = document.querySelector("#profile-password-submit");
+const profilePasswordFeedback = document.querySelector("#profile-password-feedback");
 const logoutButton = document.querySelector("#logout-button");
 const chatDock = document.querySelector("#chat-dock");
 const chatToast = document.querySelector("#chat-toast");
@@ -3737,7 +3766,10 @@ const dashboardPeopleCount = document.querySelector("#dashboard-people-count");
 const dashboardPeopleOrganization = document.querySelector("#dashboard-people-organization");
 const dashboardOpenPeopleButton = document.querySelector("#dashboard-open-people");
 const dashboardCompanyPermissionsPanel = document.querySelector("#dashboard-company-permissions-panel");
+const dashboardCompanyPermissionsHead = document.querySelector("#dashboard-company-permissions-head");
+const dashboardCompanyPermissionsContent = document.querySelector("#dashboard-company-permissions-content");
 const dashboardCompanyPermissionsCount = document.querySelector("#dashboard-company-permissions-count");
+const dashboardCompanyPermissionsToggle = document.querySelector("#dashboard-company-permissions-toggle");
 const dashboardCompanyPermissionsBody = document.querySelector("#dashboard-company-permissions-body");
 const dashboardCompanyPermissionsSaveButton = document.querySelector("#dashboard-company-permissions-save");
 const dashboardCompanyPermissionsFeedback = document.querySelector("#dashboard-company-permissions-feedback");
@@ -14068,9 +14100,257 @@ function setUserMenuOpen(isOpen) {
   if (!userMenuOpen) {
     setUserPresenceMenuOpen(false);
     setUserMenuError("");
-    if (userMenuAvatarFileInput) {
-      userMenuAvatarFileInput.value = "";
+  }
+}
+
+function getProfileDialogUser() {
+  if (!state.user?.id) {
+    return state.user ?? {};
+  }
+
+  return state.users.find((item) => String(item.id) === String(state.user.id)) ?? state.user;
+}
+
+function syncProfileAvatarPreview() {
+  const currentUser = getProfileDialogUser();
+  const firstName = String(profileFirstNameInput?.value ?? currentUser.firstName ?? "").trim();
+  const lastName = String(profileLastNameInput?.value ?? currentUser.lastName ?? "").trim();
+  const email = String(profileEmailInput?.value ?? currentUser.email ?? "").trim();
+  const avatarDataUrl = String(profileAvatarDataUrlInput?.value ?? currentUser.avatarDataUrl ?? "").trim();
+  const fullName = [firstName, lastName].filter(Boolean).join(" ");
+
+  renderAvatar(profileAvatarPreview, {
+    ...currentUser,
+    firstName,
+    lastName,
+    fullName: fullName || currentUser.fullName || email,
+    email,
+    avatarDataUrl,
+  });
+
+  if (profileAvatarButton) {
+    profileAvatarButton.textContent = avatarDataUrl ? "Promijeni profilnu sliku" : "Dodaj profilnu sliku";
+  }
+
+  if (profileAvatarName) {
+    profileAvatarName.textContent = fullName || currentUser.displayName || currentUser.fullName || email || "Moj profil";
+  }
+}
+
+function populateProfileForm() {
+  const currentUser = getProfileDialogUser();
+
+  if (profileFirstNameInput) {
+    profileFirstNameInput.value = currentUser.firstName || "";
+  }
+  if (profileLastNameInput) {
+    profileLastNameInput.value = currentUser.lastName || "";
+  }
+  if (profileOibInput) {
+    profileOibInput.value = currentUser.oib || "";
+  }
+  if (profilePhoneInput) {
+    profilePhoneInput.value = currentUser.phone || "";
+  }
+  if (profileEmailInput) {
+    profileEmailInput.value = currentUser.email || "";
+  }
+  if (profileEducationInput) {
+    profileEducationInput.value = currentUser.education || "";
+  }
+  if (profileTitleInput) {
+    profileTitleInput.value = currentUser.title || "";
+  }
+  if (profileAddressInput) {
+    profileAddressInput.value = currentUser.address || "";
+  }
+  if (profileAvatarDataUrlInput) {
+    profileAvatarDataUrlInput.value = currentUser.avatarDataUrl || "";
+  }
+  if (profileAvatarFileInput) {
+    profileAvatarFileInput.value = "";
+  }
+
+  profilePasswordForm?.reset();
+  setInlineMessage(profileFeedback, "");
+  setInlineMessage(profilePasswordFeedback, "");
+  syncProfileAvatarPreview();
+}
+
+function renderProfileDialog() {
+  const isOpen = Boolean(state.profileDialog.open && state.user);
+  if (profileModalBackdrop) {
+    profileModalBackdrop.hidden = !isOpen;
+  }
+  if (profileModal) {
+    profileModal.hidden = !isOpen;
+  }
+  document.body.classList.toggle("is-profile-modal-open", isOpen);
+}
+
+function openProfileDialog() {
+  if (!state.user) {
+    return;
+  }
+
+  state.profileDialog.open = true;
+  setUserMenuOpen(false);
+  populateProfileForm();
+  renderProfileDialog();
+  window.requestAnimationFrame(() => {
+    profileFirstNameInput?.focus({ preventScroll: true });
+  });
+}
+
+function closeProfileDialog() {
+  state.profileDialog.open = false;
+  profileForm?.reset();
+  profilePasswordForm?.reset();
+  setInlineMessage(profileFeedback, "");
+  setInlineMessage(profilePasswordFeedback, "");
+  renderProfileDialog();
+}
+
+function buildProfilePayload() {
+  const firstName = String(profileFirstNameInput?.value ?? "").trim();
+  const lastName = String(profileLastNameInput?.value ?? "").trim();
+
+  return {
+    firstName,
+    lastName,
+    displayName: [firstName, lastName].filter(Boolean).join(" "),
+    oib: String(profileOibInput?.value ?? "").trim(),
+    phone: String(profilePhoneInput?.value ?? "").trim(),
+    email: String(profileEmailInput?.value ?? "").trim(),
+    education: String(profileEducationInput?.value ?? "").trim(),
+    title: String(profileTitleInput?.value ?? "").trim(),
+    address: String(profileAddressInput?.value ?? "").trim(),
+    avatarDataUrl: String(profileAvatarDataUrlInput?.value ?? "").trim(),
+  };
+}
+
+function setProfileFormBusy(isBusy) {
+  profileForm?.classList.toggle("is-submitting", isBusy);
+  profileForm?.querySelectorAll("input, textarea, button").forEach((control) => {
+    control.disabled = isBusy;
+  });
+
+  if (profileSaveButton) {
+    profileSaveButton.textContent = isBusy ? "Spremam..." : "Spremi profil";
+  }
+}
+
+function setProfileReportBusy(isBusy) {
+  if (profileSendReportButton) {
+    profileSendReportButton.disabled = isBusy;
+    profileSendReportButton.textContent = isBusy ? "Šaljem..." : "Pošalji izvještaj na email";
+  }
+}
+
+async function handleProfileSubmit(event) {
+  event.preventDefault();
+  const payload = buildProfilePayload();
+
+  setInlineMessage(profileFeedback, "");
+
+  if (!payload.email) {
+    setInlineMessage(profileFeedback, "Email je obavezan.");
+    return;
+  }
+
+  setProfileFormBusy(true);
+  try {
+    const success = await runMutation(() => apiRequest("/auth/profile", {
+      method: "PATCH",
+      body: payload,
+    }), profileFeedback);
+
+    if (success) {
+      populateProfileForm();
+      setInlineMessage(profileFeedback, "Profil je spremljen.", "success");
     }
+  } finally {
+    setProfileFormBusy(false);
+    syncProfileAvatarPreview();
+  }
+}
+
+async function handleProfileSendReport() {
+  setInlineMessage(profileFeedback, "");
+  setProfileReportBusy(true);
+
+  try {
+    const payload = await apiRequest("/auth/profile/report-email", {
+      method: "POST",
+    });
+    setInlineMessage(profileFeedback, payload.message || "Izvještaj je poslan na email.", "success");
+  } catch (error) {
+    setInlineMessage(profileFeedback, error?.message || "Slanje izvještaja trenutno nije uspjelo.");
+  } finally {
+    setProfileReportBusy(false);
+  }
+}
+
+function setProfilePasswordBusy(isBusy) {
+  profilePasswordForm?.classList.toggle("is-submitting", isBusy);
+  profilePasswordForm?.querySelectorAll("input, button").forEach((control) => {
+    control.disabled = isBusy;
+  });
+
+  if (profilePasswordSubmitButton) {
+    profilePasswordSubmitButton.textContent = isBusy ? "Spremam..." : "Promijeni lozinku";
+  }
+}
+
+async function handleProfilePasswordSubmit(event) {
+  event.preventDefault();
+
+  const newPassword = String(profilePasswordNewInput?.value ?? "");
+  const confirmPassword = String(profilePasswordConfirmInput?.value ?? "");
+  const targetEmail = state.user?.email || String(profileEmailInput?.value ?? "").trim();
+  setInlineMessage(profilePasswordFeedback, "");
+
+  if (!newPassword) {
+    setInlineMessage(profilePasswordFeedback, "Unesi novu lozinku.");
+    return;
+  }
+
+  if (!meetsPasswordPolicy(newPassword)) {
+    setInlineMessage(profilePasswordFeedback, PASSWORD_POLICY_MESSAGE);
+    return;
+  }
+
+  if (newPassword !== confirmPassword) {
+    setInlineMessage(profilePasswordFeedback, "Nova lozinka i potvrda moraju biti iste.");
+    return;
+  }
+
+  setProfilePasswordBusy(true);
+
+  try {
+    await withGlobalLoading("Spremam novu lozinku...", async () => {
+      const payload = await apiRequest("/auth/change-password", {
+        method: "POST",
+        body: {
+          newPassword,
+        },
+      });
+
+      closeProfileDialog();
+      resetAuthenticatedWorkspaceState();
+      if (loginEmailInput) {
+        loginEmailInput.value = payload.email || targetEmail;
+      }
+      setInlineMessage(loginError, "Lozinka je promijenjena. Prijavi se ponovno novom lozinkom.", "success");
+      renderAuthState();
+    }, { immediate: true });
+  } catch (error) {
+    setInlineMessage(
+      profilePasswordFeedback,
+      error?.message || "Spremanje nove lozinke trenutno nije uspjelo. Pokušaj ponovno.",
+    );
+  } finally {
+    setProfilePasswordBusy(false);
   }
 }
 
@@ -42331,9 +42611,15 @@ function getActiveOrganizationUsers() {
 
 function renderCompanyPermissionModuleBlock(module, draftByKey, appDraftByKey = new Map()) {
   const isAppModule = module.type === "app";
+  const blockKey = `${module.type || "company"}:${module.key || module.title || ""}`;
   const block = document.createElement("details");
   block.className = "dashboard-company-permission-block";
-  block.open = true;
+  block.open = dashboardCompanyPermissionBlockOpenState.has(blockKey)
+    ? Boolean(dashboardCompanyPermissionBlockOpenState.get(blockKey))
+    : true;
+  block.addEventListener("toggle", () => {
+    dashboardCompanyPermissionBlockOpenState.set(blockKey, block.open);
+  });
 
   const summary = document.createElement("summary");
   summary.className = "dashboard-company-permission-block-summary";
@@ -42413,7 +42699,7 @@ function renderCompanyPermissionModuleBlock(module, draftByKey, appDraftByKey = 
       if (isAdminRole) {
         cell.classList.add("is-permission-admin");
         label.classList.add("is-locked");
-        label.title = "Admin ima sva ovlastenja unutar svoje firme.";
+        label.title = "Admin rola je zakljucana.";
       }
       checkbox.addEventListener("change", () => {
         if (isAppModule) {
@@ -42441,6 +42727,11 @@ function renderCompanyPermissionModuleBlock(module, draftByKey, appDraftByKey = 
   return block;
 }
 
+function setDashboardCompanyPermissionsCollapsed(isCollapsed) {
+  state.dashboardCompanyPermissionsCollapsed = Boolean(isCollapsed);
+  renderDashboardCompanyPermissionsPanel();
+}
+
 function renderDashboardCompanyPermissionsPanel() {
   const canManageMasterData = getCanManageMasterData();
   if (dashboardCompanyPermissionsPanel) {
@@ -42449,6 +42740,20 @@ function renderDashboardCompanyPermissionsPanel() {
 
   if (!canManageMasterData) {
     return;
+  }
+
+  const isCollapsed = Boolean(state.dashboardCompanyPermissionsCollapsed);
+  if (dashboardCompanyPermissionsPanel) {
+    dashboardCompanyPermissionsPanel.classList.toggle("is-collapsed", isCollapsed);
+  }
+  if (dashboardCompanyPermissionsHead) {
+    dashboardCompanyPermissionsHead.setAttribute("aria-expanded", isCollapsed ? "false" : "true");
+  }
+  if (dashboardCompanyPermissionsContent) {
+    dashboardCompanyPermissionsContent.hidden = isCollapsed;
+  }
+  if (dashboardCompanyPermissionsToggle) {
+    dashboardCompanyPermissionsToggle.textContent = isCollapsed ? "Prikaži" : "Sakrij";
   }
 
   const rolePermissions = getCompanyRolePermissionsDraft();
@@ -86167,7 +86472,7 @@ function getControlPanelHelpTourSteps() {
   return [
     {
       title: "Control panel",
-      body: "Control panel je administracijski dio za platformu, pristupne zahtjeve i sadržaje početnog ekrana.",
+      body: "Control panel okuplja postavke, role i operativne administracijske blokove.",
       target: "#dashboard-control-panel",
       points: ["Ovaj dio vide korisnici s administracijskim pravima.", "Sve je smješteno u Home grupi da je brzo dostupno."],
       prepare: "control-panel",
@@ -86346,7 +86651,7 @@ const HELP_TOUR_MENU_GROUPS = [
     label: "Home",
     items: [
       { kind: "dashboard", label: "Dashboard", description: "Kartice, builder, veličine i scroll u widgetima." },
-      { kind: "control-panel", label: "Control panel", description: "Administracija platforme i ovlaštenja." },
+      { kind: "control-panel", label: "Control panel", description: "Role, postavke i administracijski blokovi." },
       { kind: "reminders", label: "Reminders", description: "Podsjetnici, statusi i brzi pregled." },
       { kind: "todo", label: "ToDo", description: "Teme, zaduženja, pozvani i filteri." },
       { kind: "notifications", label: "Notifications", description: "Aktivne obavijesti, razine i izvori." },
@@ -87522,6 +87827,7 @@ function render() {
   renderActiveView();
   renderChatDock();
   renderAppCapabilitiesDialog();
+  renderProfileDialog();
   renderTopbarHelpMenu();
   renderHelpTour();
   queueWelcomeHelpTourIfNeeded();
@@ -92256,6 +92562,19 @@ dashboardCompanyPermissionsSaveButton?.addEventListener("click", () => {
   void saveCompanyRolePermissions();
 });
 
+dashboardCompanyPermissionsHead?.addEventListener("click", () => {
+  setDashboardCompanyPermissionsCollapsed(!state.dashboardCompanyPermissionsCollapsed);
+});
+
+dashboardCompanyPermissionsHead?.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" && event.key !== " ") {
+    return;
+  }
+
+  event.preventDefault();
+  setDashboardCompanyPermissionsCollapsed(!state.dashboardCompanyPermissionsCollapsed);
+});
+
 topbarShortcutRemindersButton?.addEventListener("click", (event) => {
   event.stopPropagation();
   setRemindersShortcutMenuOpen(!remindersShortcutMenuOpen);
@@ -92951,44 +93270,67 @@ userAvatarFileInput?.addEventListener("change", () => {
   });
 });
 
-userMenuAvatarButton?.addEventListener("click", () => {
-  userMenuAvatarFileInput?.click();
+userMenuProfileButton?.addEventListener("click", () => {
+  openProfileDialog();
 });
 
-userMenuAvatarFileInput?.addEventListener("change", () => {
-  const file = userMenuAvatarFileInput.files?.[0];
+profileModalBackdrop?.addEventListener("click", () => {
+  closeProfileDialog();
+});
 
-  if (!file || !state.user?.id) {
+profileModalCloseButton?.addEventListener("click", () => {
+  closeProfileDialog();
+});
+
+profileAvatarButton?.addEventListener("click", () => {
+  profileAvatarFileInput?.click();
+});
+
+profileAvatarFileInput?.addEventListener("change", () => {
+  const file = profileAvatarFileInput.files?.[0];
+
+  if (!file) {
     return;
   }
 
   if (file.size > 2 * 1024 * 1024) {
-    setUserMenuError("Avatar image must be smaller than 2 MB.");
-    userMenuAvatarFileInput.value = "";
+    setInlineMessage(profileFeedback, "Avatar image must be smaller than 2 MB.");
+    profileAvatarFileInput.value = "";
     return;
   }
 
-  setUserMenuError("");
-  userMenuAvatarButton.disabled = true;
-  userMenuAvatarButton.textContent = "Spremanje...";
+  void readAvatarFileAsDataUrl(file).then((avatarDataUrl) => {
+    if (profileAvatarDataUrlInput) {
+      profileAvatarDataUrlInput.value = avatarDataUrl;
+    }
+    setInlineMessage(profileFeedback, "");
+    syncProfileAvatarPreview();
+  }).catch(() => {
+    setInlineMessage(profileFeedback, "Ne mogu učitati sliku.");
+  });
+});
 
-  void readAvatarFileAsDataUrl(file)
-    .then((avatarDataUrl) => runMutation(() => apiRequest("/auth/profile/avatar", {
-      method: "PATCH",
-      body: {
-        avatarDataUrl,
-      },
-    }), userMenuError))
-    .then(() => {
-      userMenuAvatarFileInput.value = "";
-    })
-    .catch(() => {
-      setUserMenuError("Ne mogu učitati sliku.");
-    })
-    .finally(() => {
-      userMenuAvatarButton.disabled = false;
-      userMenuAvatarButton.textContent = "Promijeni profilnu sliku";
-    });
+[profileFirstNameInput, profileLastNameInput, profileEmailInput].forEach((input) => {
+  input?.addEventListener("input", syncProfileAvatarPreview);
+});
+
+profileForm?.addEventListener("submit", (event) => {
+  void handleProfileSubmit(event);
+});
+
+profileSendReportButton?.addEventListener("click", () => {
+  void handleProfileSendReport();
+});
+
+profilePasswordForm?.addEventListener("submit", (event) => {
+  void handleProfilePasswordSubmit(event);
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && state.profileDialog.open) {
+    event.preventDefault();
+    closeProfileDialog();
+  }
 });
 
 async function handleLoginSubmit(event) {
@@ -94620,6 +94962,7 @@ function resetAuthenticatedWorkspaceState() {
   state.user = null;
   state.authView = "login";
   state.authResetEmail = "";
+  state.profileDialog.open = false;
   state.userManagementScope = "people";
   state.organizations = [];
   state.workOrders = [];

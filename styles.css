@@ -2368,6 +2368,152 @@ body.is-help-tour-open .help-tour-layer {
   margin: 0;
 }
 
+body.is-profile-modal-open {
+  overflow: hidden;
+}
+
+.profile-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 82;
+  border: 0;
+  padding: 0;
+  background: rgba(16, 25, 52, 0.42);
+  cursor: pointer;
+}
+
+.profile-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 83;
+  width: min(920px, calc(100vw - 28px));
+  max-height: min(820px, calc(100dvh - 28px));
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+  transform: translate(-50%, -50%);
+  background:
+    radial-gradient(circle at top right, rgba(45, 111, 219, 0.08), transparent 36%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(247, 250, 255, 0.96));
+}
+
+.profile-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 22px 16px;
+  border-bottom: 1px solid rgba(219, 226, 242, 0.88);
+}
+
+.profile-modal-head h3,
+.profile-password-head h4 {
+  margin: 0;
+}
+
+.profile-modal-body {
+  min-height: 0;
+  display: grid;
+  gap: 16px;
+  overflow: auto;
+  padding: 18px 22px 22px;
+}
+
+.profile-form,
+.profile-password-form {
+  display: grid;
+  gap: 16px;
+}
+
+.profile-password-form {
+  padding-top: 16px;
+  border-top: 1px solid rgba(219, 226, 242, 0.88);
+}
+
+.profile-avatar-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.profile-avatar-preview {
+  width: 64px;
+  min-width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  color: #1e4f91;
+  font-weight: 800;
+  background: linear-gradient(135deg, rgba(239, 246, 255, 0.98), rgba(249, 250, 255, 0.94));
+  border: 1px solid rgba(196, 210, 233, 0.9);
+}
+
+.profile-avatar-preview.has-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.profile-avatar-copy {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.profile-avatar-copy strong {
+  color: #1f2940;
+  font-size: 0.98rem;
+}
+
+.profile-form-grid,
+.profile-password-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.profile-form-grid .field-span-full {
+  grid-column: 1 / -1;
+}
+
+.profile-modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+#profile-feedback,
+#profile-password-feedback {
+  min-height: 1.1rem;
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  .profile-modal {
+    width: calc(100vw - 16px);
+    max-height: calc(100dvh - 16px);
+  }
+
+  .profile-modal-head,
+  .profile-modal-body {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .profile-form-grid,
+  .profile-password-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .hero {
   display: flex;
   justify-content: space-between;
@@ -5837,12 +5983,67 @@ body.is-location-editor-open {
   border-bottom: 1px solid rgba(229, 221, 239, 0.84);
 }
 
+.dashboard-control-card-head-toggle {
+  cursor: pointer;
+  border-radius: 18px;
+  margin: -4px -6px 0;
+  padding: 10px 12px 16px;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+
+.dashboard-control-card-head-toggle:hover,
+.dashboard-control-card-head-toggle:focus-visible {
+  background: rgba(240, 245, 255, 0.62);
+  outline: none;
+}
+
 .dashboard-control-card-head h3 {
   margin: 0;
 }
 
 .dashboard-control-card-head .section-kicker {
   margin-bottom: 6px;
+}
+
+.dashboard-control-card-head-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dashboard-control-card-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(214, 224, 241, 0.96);
+  background: rgba(255, 255, 255, 0.95);
+  color: #566275;
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.dashboard-company-permissions-content {
+  display: grid;
+  gap: 16px;
+}
+
+.dashboard-control-card.is-collapsed {
+  gap: 0;
+}
+
+.dashboard-control-card.is-collapsed .dashboard-control-card-head {
+  margin-bottom: 0;
+  padding-bottom: 10px;
+  border-bottom-color: transparent;
+}
+
+.dashboard-control-card.is-collapsed .dashboard-company-permissions-content {
+  display: none;
 }
 
 .dashboard-control-badge,

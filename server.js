@@ -46,7 +46,11 @@ import {
   resolveJwtSecret,
   verifyToken,
 } from "./src/webAuth.js";
-import { PERSON_TRAINING_TYPE_OPTIONS, doesAbsenceTypeRequireApproval } from "./src/safetyModel.js";
+import {
+  PERSON_TRAINING_TYPE_OPTIONS,
+  WORK_ORDER_STATUS_OPTIONS,
+  doesAbsenceTypeRequireApproval,
+} from "./src/safetyModel.js";
 
 const port = Number(process.env.PORT || 3000);
 const rootDir = resolve(process.cwd());
@@ -2301,6 +2305,78 @@ function escapeEmailHtml(value = "") {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+const WORK_ORDER_STATUS_EMAIL_LABELS = new Map(
+  WORK_ORDER_STATUS_OPTIONS.map((option) => [String(option.value), option.label]),
+);
+
+function buildProfileReportRows(user = {}) {
+  return [
+    ["Ime i prezime", user.fullName || [user.firstName, user.lastName].filter(Boolean).join(" ") || ""],
+    ["Email", user.email || ""],
+    ["Kontakt broj", user.phone || ""],
+    ["OIB", user.oib || ""],
+    ["Obrazovanje", user.education || ""],
+    ["Radno mjesto", user.title || ""],
+    ["Adresa", user.address || ""],
+    ["Organizacija", user.organizationName || ""],
+  ].filter(([, value]) => String(value ?? "").trim());
+}
+
+function buildOwnProfileReportEmail(user = {}, scopedSnapshot = {}) {
+  const workOrders = Array.isArray(scopedSnapshot.workOrders) ? scopedSnapshot.workOrders : [];
+  const reminders = Array.isArray(scopedSnapshot.reminders) ? scopedSnapshot.reminders : [];
+  const todoTasks = Array.isArray(scopedSnapshot.todoTasks) ? scopedSnapshot.todoTasks : [];
+  const statusCounts = workOrders.reduce((counts, workOrder) => {
+    const status = String(workOrder?.status || "unknown");
+    counts.set(status, (counts.get(status) ?? 0) + 1);
+    return counts;
+  }, new Map());
+  const statusLines = Array.from(statusCounts.entries())
+    .sort((left, right) => String(left[0]).localeCompare(String(right[0]), "hr"))
+    .map(([status, count]) => `${WORK_ORDER_STATUS_EMAIL_LABELS.get(status) || status}: ${count}`);
+  const activeReminders = reminders.filter((item) => !["done", "completed", "closed"].includes(String(item?.status || "").toLowerCase())).length;
+  const openTodo = todoTasks.filter((item) => !["done", "completed", "closed"].includes(String(item?.status || "").toLowerCase())).length;
+  const profileRows = buildProfileReportRows(user);
+  const generatedAt = new Date().toLocaleString("hr-HR", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Europe/Zagreb",
+  });
+  const titleName = user.fullName || [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "korisnik";
+  const summaryRows = [
+    ["Radni nalozi", String(workOrders.length)],
+    ["Aktivni reminders", String(activeReminders)],
+    ["Otvoreni ToDo", String(openTodo)],
+    ["Generirano", generatedAt],
+  ];
+  const profileText = profileRows.map(([label, value]) => `${label}: ${value}`).join("\n");
+  const summaryText = summaryRows.map(([label, value]) => `${label}: ${value}`).join("\n");
+  const statusText = statusLines.length ? `\n\nStatusi RN:\n${statusLines.join("\n")}` : "";
+  const renderHtmlRows = (rows) => rows.map(([label, value]) => `
+    <tr>
+      <td style="padding:7px 10px;color:#64748b;border-bottom:1px solid #e2e8f0;">${escapeEmailHtml(label)}</td>
+      <td style="padding:7px 10px;color:#0f172a;border-bottom:1px solid #e2e8f0;font-weight:600;">${escapeEmailHtml(value)}</td>
+    </tr>
+  `).join("");
+
+  return {
+    subject: `SafeNexus izvještaj · ${titleName}`,
+    text: `SafeNexus izvještaj\n\nProfil\n${profileText || "Nema dodatnih profilnih podataka."}\n\nSažetak\n${summaryText}${statusText}\n\nSafeNexus`,
+    html: `
+      <div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.55;color:#0f172a;">
+        <h2 style="margin:0 0 12px;">SafeNexus izvještaj</h2>
+        <p style="margin:0 0 16px;color:#475569;">Kratki pregled profila i operativnih stavki.</p>
+        <h3 style="margin:16px 0 8px;">Profil</h3>
+        <table style="width:100%;border-collapse:collapse;">${renderHtmlRows(profileRows)}</table>
+        <h3 style="margin:18px 0 8px;">Sažetak</h3>
+        <table style="width:100%;border-collapse:collapse;">${renderHtmlRows(summaryRows)}</table>
+        ${statusLines.length ? `<h3 style="margin:18px 0 8px;">Statusi RN</h3><div>${statusLines.map((line) => `<div>${escapeEmailHtml(line)}</div>`).join("")}</div>` : ""}
+        <div style="margin-top:18px;color:#64748b;">SafeNexus</div>
+      </div>
+    `,
+  };
 }
 
 function sanitizeMammothPreviewHtml(html = "") {
@@ -4882,6 +4958,49 @@ async function handleApiRequest(request, response, url) {
 
     if (request.method === "GET" && url.pathname === "/api/bootstrap") {
       await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (request.method === "PATCH" && url.pathname === "/api/auth/profile") {
+      const body = await readJsonBody(request);
+      const updatedUser = await tenantRepository.updateOwnProfile(user, body);
+
+      if (!updatedUser) {
+        sendError(response, 404, "Korisnik nije pronađen.");
+        return true;
+      }
+
+      request[requestUserSymbol] = updatedUser;
+      await writeSnapshot(response, updatedUser, request);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/auth/profile/report-email") {
+      const reportUser = await tenantRepository.getUserById(user.id) ?? user;
+
+      if (!reportUser?.email) {
+        sendError(response, 400, "Profil nema email za slanje izvještaja.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(reportUser, request);
+      const reportEmail = buildOwnProfileReportEmail(reportUser, scopedSnapshot);
+      const result = await sendMail({
+        to: reportUser.email,
+        subject: reportEmail.subject,
+        text: reportEmail.text,
+        html: reportEmail.html,
+      });
+
+      if (!result.ok) {
+        sendError(response, 400, result.error || "Slanje izvještaja nije uspjelo.");
+        return true;
+      }
+
+      sendJson(response, 200, {
+        ok: true,
+        message: `Izvještaj je poslan na ${reportUser.email}.`,
+      });
       return true;
     }
 

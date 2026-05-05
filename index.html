@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260505m" />
+    <link rel="stylesheet" href="/styles.css?v=20260505n" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -936,9 +936,8 @@
                   </div>
                 </div>
                 <div class="user-menu-actions">
-                  <input id="user-menu-avatar-file" type="file" accept="image/*" hidden />
-                  <button id="user-menu-avatar-button" type="button" class="user-menu-link-button">
-                    Promijeni profilnu sliku
+                  <button id="user-menu-profile-button" type="button" class="user-menu-link-button">
+                    Moj profil
                   </button>
                   <button id="logout-button" type="button" class="user-menu-link-button user-menu-link-danger">Odjava</button>
                   <p id="user-menu-error" class="form-error user-menu-error" aria-live="polite"></p>
@@ -947,6 +946,95 @@
             </div>
           </div>
         </div>
+
+        <button id="profile-modal-backdrop" type="button" class="profile-modal-backdrop" aria-label="Zatvori moj profil" hidden></button>
+        <section id="profile-modal" class="profile-modal panel" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title" hidden>
+          <div class="profile-modal-head">
+            <div>
+              <p class="section-kicker">Account</p>
+              <h3 id="profile-modal-title">Moj profil</h3>
+            </div>
+            <button id="profile-modal-close" type="button" class="module-attachment-action-button" aria-label="Zatvori">
+              <span aria-hidden="true">&times;</span>
+            </button>
+          </div>
+
+          <div class="profile-modal-body">
+            <form id="profile-form" class="profile-form">
+              <div class="profile-avatar-row">
+                <div id="profile-avatar-preview" class="profile-avatar-preview" aria-hidden="true"></div>
+                <div class="profile-avatar-copy">
+                  <strong id="profile-avatar-name"></strong>
+                  <button id="profile-avatar-button" type="button" class="ghost-button">Dodaj profilnu sliku</button>
+                  <input id="profile-avatar-file" type="file" accept="image/*" hidden />
+                  <input id="profile-avatar-data-url" type="hidden" />
+                </div>
+              </div>
+
+              <div class="profile-form-grid">
+                <label class="field">
+                  <span>Ime</span>
+                  <input id="profile-first-name" type="text" autocomplete="given-name" />
+                </label>
+                <label class="field">
+                  <span>Prezime</span>
+                  <input id="profile-last-name" type="text" autocomplete="family-name" />
+                </label>
+                <label class="field">
+                  <span>OIB</span>
+                  <input id="profile-oib" type="text" inputmode="numeric" maxlength="11" />
+                </label>
+                <label class="field">
+                  <span>Kontakt broj</span>
+                  <input id="profile-phone" type="tel" autocomplete="tel" />
+                </label>
+                <label class="field">
+                  <span>Email</span>
+                  <input id="profile-email" type="email" autocomplete="email" />
+                </label>
+                <label class="field">
+                  <span>Obrazovanje</span>
+                  <input id="profile-education" type="text" />
+                </label>
+                <label class="field">
+                  <span>Radno mjesto</span>
+                  <input id="profile-title" type="text" />
+                </label>
+                <label class="field field-span-full">
+                  <span>Adresa</span>
+                  <textarea id="profile-address" rows="2"></textarea>
+                </label>
+              </div>
+
+              <div class="profile-modal-actions">
+                <button id="profile-save-button" type="submit" class="primary-button">Spremi profil</button>
+                <button id="profile-send-report" type="button" class="ghost-button">Pošalji izvještaj na email</button>
+              </div>
+              <p id="profile-feedback" class="form-error" aria-live="polite"></p>
+            </form>
+
+            <form id="profile-password-form" class="profile-password-form">
+              <div class="profile-password-head">
+                <p class="section-kicker">Security</p>
+                <h4>Promjena lozinke</h4>
+              </div>
+              <div class="profile-password-grid">
+                <label class="field">
+                  <span>Nova lozinka</span>
+                  <input id="profile-password-new" type="password" autocomplete="new-password" />
+                </label>
+                <label class="field">
+                  <span>Potvrda lozinke</span>
+                  <input id="profile-password-confirm" type="password" autocomplete="new-password" />
+                </label>
+              </div>
+              <div class="profile-modal-actions">
+                <button id="profile-password-submit" type="submit" class="ghost-button">Promijeni lozinku</button>
+              </div>
+              <p id="profile-password-feedback" class="form-error" aria-live="polite"></p>
+            </form>
+          </div>
+        </section>
 
         <header class="hero">
           <div class="hero-copy hero-copy-minimal">
@@ -1563,30 +1651,36 @@
                 <p class="section-kicker">Home</p>
                 <h2>Control panel</h2>
               </div>
-              <p class="helper-copy dashboard-control-copy">
-                Administracija platforme, pristupnih zahtjeva i sadržaja početnog ekrana na jednom mjestu.
-              </p>
             </div>
 
             <div id="dashboard-control-grid" class="dashboard-control-grid">
               <section id="dashboard-company-permissions-panel" class="panel dashboard-control-card" hidden>
-                <div class="dashboard-control-card-head">
+                <div
+                  id="dashboard-company-permissions-head"
+                  class="dashboard-control-card-head dashboard-control-card-head-toggle"
+                  role="button"
+                  tabindex="0"
+                  aria-expanded="true"
+                  aria-controls="dashboard-company-permissions-content"
+                >
                   <div>
                     <p class="section-kicker">Access</p>
                     <h3>Role permissions</h3>
                   </div>
-                  <span id="dashboard-company-permissions-count" class="dashboard-control-badge">0 rola</span>
+                  <div class="dashboard-control-card-head-actions">
+                    <span id="dashboard-company-permissions-count" class="dashboard-control-badge">0 rola</span>
+                    <span id="dashboard-company-permissions-toggle" class="dashboard-control-card-toggle">Sakrij</span>
+                  </div>
                 </div>
-                <p class="helper-copy">
-                  Super Admin ima sve, Admin ima sva ovlastenja unutar svoje firme, a ostale role se podešavaju po modulima.
-                </p>
-                <div id="dashboard-company-permissions-body" class="dashboard-company-permissions-body"></div>
-                <div class="dashboard-control-card-actions dashboard-company-permissions-actions">
-                  <button id="dashboard-company-permissions-save" type="button" class="primary-button">
-                    Spremi Role ovlaštenja
-                  </button>
+                <div id="dashboard-company-permissions-content" class="dashboard-company-permissions-content">
+                  <div id="dashboard-company-permissions-body" class="dashboard-company-permissions-body"></div>
+                  <div class="dashboard-control-card-actions dashboard-company-permissions-actions">
+                    <button id="dashboard-company-permissions-save" type="button" class="primary-button">
+                      Spremi Role ovlaštenja
+                    </button>
+                  </div>
+                  <p id="dashboard-company-permissions-feedback" class="form-error" aria-live="polite"></p>
                 </div>
-                <p id="dashboard-company-permissions-feedback" class="form-error" aria-live="polite"></p>
               </section>
             </div>
           </section>
@@ -7755,6 +7849,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260505m"></script>
+    <script type="module" src="/src/main.js?v=20260505n"></script>
   </body>
 </html>

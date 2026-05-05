@@ -439,6 +439,39 @@ test("memory tenant repository lets a signed-in user update their own avatar", a
   assert.equal(updated.avatarDataUrl, "data:image/png;base64,avatar");
 });
 
+test("memory tenant repository lets a signed-in user update their own profile", async () => {
+  const repository = new MemoryTenantRepository();
+  await repository.init();
+
+  const superAdmin = await repository.authenticateUser("admin@local.test", "admin");
+  assert.ok(superAdmin);
+
+  const updated = await repository.updateOwnProfile(superAdmin, {
+    firstName: "Branimir",
+    lastName: "Profil",
+    email: "branimir.profile@example.com",
+    oib: "12345678901",
+    phone: "+385 91 123 4567",
+    education: "VSS",
+    title: "Direktor",
+    address: "Adresa 1, Zagreb",
+    avatarDataUrl: "data:image/png;base64,profile",
+    role: "user",
+  });
+
+  assert.ok(updated);
+  assert.equal(updated.firstName, "Branimir");
+  assert.equal(updated.lastName, "Profil");
+  assert.equal(updated.email, "branimir.profile@example.com");
+  assert.equal(updated.oib, "12345678901");
+  assert.equal(updated.phone, "+385 91 123 4567");
+  assert.equal(updated.education, "VSS");
+  assert.equal(updated.title, "Direktor");
+  assert.equal(updated.address, "Adresa 1, Zagreb");
+  assert.equal(updated.avatarDataUrl, "data:image/png;base64,profile");
+  assert.equal(updated.role, "super_admin");
+});
+
 test("memory tenant repository keeps generic user documents separate from panic qualification", async () => {
   const repository = new MemoryTenantRepository();
   await repository.init();
