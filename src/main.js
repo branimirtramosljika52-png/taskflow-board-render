@@ -3585,6 +3585,7 @@ const dashboardWidgetGrid = document.querySelector("#dashboard-widget-grid");
 const dashboardWidgetEmpty = document.querySelector("#dashboard-widget-empty");
 const dashboardAddWidgetButton = document.querySelector("#dashboard-add-widget");
 const dashboardSeedLayoutButton = document.querySelector("#dashboard-seed-layout");
+const dashboardHelpTourButton = document.querySelector("#dashboard-help-tour");
 const dashboardBuilderPanel = document.querySelector("#dashboard-builder-panel");
 const dashboardBuilderBackdrop = document.querySelector("#dashboard-builder-backdrop");
 const dashboardBuilderClose = document.querySelector("#dashboard-builder-close");
@@ -85140,11 +85141,93 @@ function getOffersHelpTourSteps() {
   ];
 }
 
-function getCurrentHelpTourStep() {
-  if (state.helpTour.kind === "offers") {
-    return getOffersHelpTourSteps()[state.helpTour.stepIndex] ?? null;
+function getDashboardHelpTourSteps() {
+  return [
+    {
+      title: "Ulaz u Dashboard",
+      body: "Dashboard je početna ploča za kartice, KPI-jeve, grafove i liste. Složiš ga po sebi, a svaki widget ostaje unutar istog grid rasporeda.",
+      target: "#dashboard-overview-panel",
+      points: ["Ovdje vidiš sve kartice aktivne organizacije.", "Kartice možeš širiti, smanjivati i premještati bez ulaska u druge module."],
+      prepare: "dashboard",
+    },
+    {
+      title: "Brze akcije",
+      body: "U gornjem desnom dijelu su pomoć, starter layout i dodavanje nove kartice. Starter layout je najbrži početak kad je Dashboard prazan.",
+      target: ".dashboard-builder-actions",
+      points: ["Pomoć uvijek ponovno pokreće ovaj vodič.", "Starter layout dodaje početni set kartica, a Add card otvara builder."],
+      prepare: "dashboard",
+    },
+    {
+      title: "Dodavanje kartice",
+      body: "Add card otvara builder za novu karticu. Tamo biraš predložak, izvor podataka, prikaz, veličinu, visinu i filtre.",
+      target: "#dashboard-add-widget",
+      points: ["Kartica se sprema tek kad potvrdiš formu u builderu.", "Možeš dodati KPI, listu, donut graf ili stupčasti graf."],
+      prepare: "dashboard",
+    },
+    {
+      title: "Grid i postojeće kartice",
+      body: "Ovo je canvas Dashboarda. Kartice se slažu u 12 stupaca, a oznaka na kartici pokazuje koliko stupaca i redova zauzima.",
+      target: "#dashboard-widget-grid",
+      points: ["Povuci ručkicu s točkicama za premještanje.", "Povuci donji desni kut kartice za promjenu veličine."],
+      prepare: "dashboard",
+    },
+    {
+      title: "Scroll unutar kartice",
+      body: "Ako sadržaj ne stane u visinu kartice, kartica se više ne reže. Unutrašnjost dobiva vlastiti scroll za liste, metric, donut i bar prikaze.",
+      target: "#dashboard-widget-grid",
+      points: ["Header i footer kartice ostaju stabilni.", "Scroll je samo u sadržaju kartice, da se cijeli Dashboard ne razbije."],
+      prepare: "dashboard",
+    },
+    {
+      title: "Predlošci kartica",
+      body: "Builder počinje od predložaka. Odaberi početak koji najviše liči na ono što želiš pratiti, pa ga odmah prilagodi desno u formi.",
+      target: "#dashboard-widget-template-grid",
+      points: ["Pretraga sužava predloške po tipu ili nazivu.", "Kategorije sa strane pomažu kad ima puno izvora podataka."],
+      prepare: "dashboard-builder",
+    },
+    {
+      title: "Postavke kartice",
+      body: "Forma određuje naslov, vizualizaciju, podatke i KPI ili grupiranje. Ovo je mjesto gdje karticu pretvaraš iz predloška u stvarni radni prikaz.",
+      target: "#dashboard-widget-form",
+      points: ["Vizualizacija mijenja dostupne metrike.", "Izvor podataka određuje koje filtre i statuse možeš koristiti."],
+      prepare: "dashboard-builder",
+    },
+    {
+      title: "Veličina, visina i filtri",
+      body: "Ovdje biraš koliko prostora kartica zauzima. Ako kasnije staviš puno podataka u manju visinu, sadržaj će imati scroll unutar kartice.",
+      target: "#dashboard-widget-height",
+      points: ["Širina prati 12 stupaca Dashboarda.", "Limit i filtri pomažu da kartice ostanu pregledne."],
+      prepare: "dashboard-builder",
+    },
+    {
+      title: "Preview prije spremanja",
+      body: "Preview pokazuje kako će kartica izgledati prije spremanja. Iskoristi ga za provjeru naslova, prikaza i filtera.",
+      target: "#dashboard-widget-preview",
+      points: ["Preview ne mijenja postojeći Dashboard dok ne spremiš.", "Edit postojeće kartice koristi isti builder."],
+      prepare: "dashboard-builder",
+    },
+  ];
+}
+
+function getHelpTourSteps(kind = state.helpTour.kind) {
+  if (kind === "offers") {
+    return getOffersHelpTourSteps();
   }
-  return null;
+  if (kind === "dashboard") {
+    return getDashboardHelpTourSteps();
+  }
+  return [];
+}
+
+function getHelpTourKindLabel(kind = state.helpTour.kind) {
+  if (kind === "dashboard") {
+    return "Dashboard";
+  }
+  return "Ponude";
+}
+
+function getCurrentHelpTourStep() {
+  return getHelpTourSteps()[state.helpTour.stepIndex] ?? null;
 }
 
 function getHelpTourTarget(step = getCurrentHelpTourStep()) {
@@ -85248,6 +85331,22 @@ function renderHelpTourFocusClone(layer, target, frame = {}) {
 function prepareHelpTourStep(step = getCurrentHelpTourStep()) {
   if (!step) {
     return;
+  }
+
+  if (step.prepare === "dashboard" || step.prepare === "dashboard-builder") {
+    if (state.activeView !== "selfdash" || !isDashboardOverviewItem()) {
+      activateSidebarItem("dashboard", { expandSidebar: true });
+    }
+
+    if (step.prepare === "dashboard-builder") {
+      if (!state.dashboardBuilder.open) {
+        openDashboardBuilder();
+        renderDashboardOverview();
+      }
+    } else if (state.dashboardBuilder.open) {
+      closeDashboardBuilder();
+      renderDashboardOverview();
+    }
   }
 
   if (step.prepare === "offers" || step.prepare === "offer-editor") {
@@ -85416,7 +85515,7 @@ function renderWelcomeHelpTour(layer) {
 }
 
 function renderGuidedHelpTour(layer) {
-  const steps = getOffersHelpTourSteps();
+  const steps = getHelpTourSteps();
   const step = getCurrentHelpTourStep();
   if (!step) {
     closeHelpTour({ markCompleted: true });
@@ -85432,7 +85531,7 @@ function renderGuidedHelpTour(layer) {
   layer.classList.add("is-guided");
   layer.querySelector(".help-tour-card")?.classList.remove("is-welcome-card");
   if (kicker) {
-    kicker.textContent = `Ponude · korak ${state.helpTour.stepIndex + 1} od ${steps.length}`;
+    kicker.textContent = `${getHelpTourKindLabel()} · korak ${state.helpTour.stepIndex + 1} od ${steps.length}`;
   }
   if (title) {
     title.textContent = step.title;
@@ -85512,6 +85611,19 @@ function openOffersHelpTour({ fromWelcome = false } = {}) {
   renderHelpTour();
 }
 
+function openDashboardHelpTour() {
+  if (!state.user) {
+    return;
+  }
+  state.helpTour = {
+    open: true,
+    kind: "dashboard",
+    stepIndex: 0,
+    startedFromWelcome: false,
+  };
+  renderHelpTour();
+}
+
 function closeHelpTour({ markCompleted = false } = {}) {
   const previousKind = state.helpTour.kind;
   if (markCompleted && previousKind) {
@@ -85542,7 +85654,7 @@ function moveHelpTourStep(direction = 1) {
     return;
   }
 
-  const steps = getOffersHelpTourSteps();
+  const steps = getHelpTourSteps();
   const nextIndex = state.helpTour.stepIndex + direction;
   if (nextIndex < 0) {
     return;
@@ -93081,6 +93193,10 @@ loginContentResetButton?.addEventListener("click", resetLoginContentForm);
 dashboardAddWidgetButton?.addEventListener("click", () => {
   openDashboardBuilder();
   renderDashboardOverview();
+});
+
+dashboardHelpTourButton?.addEventListener("click", () => {
+  openDashboardHelpTour();
 });
 
 dashboardSeedLayoutButton?.addEventListener("click", () => {
