@@ -46304,6 +46304,7 @@ function buildDocumentTemplateRuntimePdfPayloadFromEntry(exportEntry = null) {
 
   return {
     fileName: exportEntry.pdfFileName,
+    fastPdf: true,
     placeholders: exportEntry.placeholders,
     renderModel: exportEntry.renderModel,
   };
@@ -46325,11 +46326,6 @@ async function exportDocumentTemplatePdf() {
 
   if (!templateId || !workOrder) {
     setDocumentTemplateMessage("Odaberi aktivni zapisnik i RN prije PDF exporta.");
-    return;
-  }
-
-  if (!doesDocumentTemplateHaveReferenceWordTemplate(template)) {
-    setDocumentTemplateMessage("Za PDF i Word export prvo učitaj gotovi .docx/.dotx Word predložak u Template Development.");
     return;
   }
 
@@ -46623,11 +46619,6 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
         continue;
       }
 
-      if (!doesDocumentTemplateHaveReferenceWordTemplate(template)) {
-        setDocumentTemplateMessage(`Template "${template.title || template.documentType || "Zapisnik"}" nema učitan .docx/.dotx Word predložak. Batch PDF mora koristiti isti Word predložak kao i Word export.`);
-        return;
-      }
-
       syncDocumentTemplateRuntimeObjectSelectionFromEntry(sequenceEntry);
       state.documentTemplateRuntime.sequenceIndex = sequenceEntries.findIndex((entry) => entry === sequenceEntry);
       await persistDocumentTemplateRuntimeRecordFor(template, workOrder);
@@ -46652,6 +46643,7 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
       method: "POST",
       body: {
         fileName: `zapisnici-${new Date().toISOString().slice(0, 10)}.pdf`,
+        fastPdf: true,
         entries: exportEntries.map((entry) => ({
           templateId: entry.templateId,
           fileName: entry.wordFileName,
@@ -56293,7 +56285,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     exportCardTitle.textContent = "Preuzimanje";
     const exportCardMeta = document.createElement("p");
     exportCardMeta.className = "helper-copy module-copy";
-    exportCardMeta.textContent = "Word i PDF koriste isti Word predložak. Završni export radi tek nakon što pregledaš sve zapisnike.";
+    exportCardMeta.textContent = "Brzi PDF koristi podatke s ekrana, a Word export koristi učitani Word predložak.";
     const exportActions = document.createElement("div");
     exportActions.className = "document-template-runtime-summary-actions";
     const wordButton = document.createElement("button");
@@ -56307,7 +56299,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     const pdfButton = document.createElement("button");
     pdfButton.type = "button";
     pdfButton.className = "ghost-button";
-    pdfButton.textContent = "Preuzmi PDF";
+    pdfButton.textContent = "Brzi PDF";
     pdfButton.disabled = exportableEntries.length === 0;
     pdfButton.addEventListener("click", () => {
       if (sequenceState.itemTotal > 1) {

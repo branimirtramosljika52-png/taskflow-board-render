@@ -24,6 +24,7 @@ import {
   buildOfferPdfBuffer,
   buildPurchaseOrderPdfBuffer,
   buildWorkOrderPdfBuffer,
+  buildPdfFromRenderModel,
   buildPdfFromTemplateBuffer,
   buildDocxFromTemplateBuffer,
   convertDocxBuffersToPdfBuffers,
@@ -1543,6 +1544,30 @@ async function generatePdfBufferForTemplate(template = {}, {
   return await buildPdfFromTemplateBuffer(referenceDocument.buffer, placeholders, {
     fileName: fileName || template.outputFileName || template.title || "zapisnik.docx",
   });
+}
+
+function hasTemplateRenderPdfModel(value = null) {
+  return Boolean(
+    value
+    && typeof value === "object"
+    && !Array.isArray(value)
+    && (
+      Array.isArray(value.blocks)
+      || String(value.title || value.documentType || value.workOrderNumber || "").trim()
+    ),
+  );
+}
+
+function shouldUseFastTemplateRenderPdf(body = {}) {
+  if (!hasTemplateRenderPdfModel(body?.renderModel)) {
+    return false;
+  }
+
+  const engine = String(body?.pdfEngine || "").trim().toLowerCase();
+  return body?.fastPdf !== false
+    && body?.useTemplatePdf !== true
+    && engine !== "template"
+    && engine !== "word";
 }
 
 async function generatePdfBuffersForTemplateEntries(entries = [], scopedSnapshot = {}) {
@@ -6959,14 +6984,16 @@ async function handleApiRequest(request, response, url) {
         "Template nije pronađen.",
       );
 
-      const pdfBuffer = await generatePdfBufferForTemplate(template, {
-        placeholders: body.placeholders ?? {},
-        fileName: body.fileName || template.outputFileName || template.title || "zapisnik.docx",
-      });
       const fileName = sanitizeGeneratedDocumentFileName(
         body.fileName || template.outputFileName || template.title || "zapisnik",
         { fallback: "zapisnik", extension: "pdf" },
       );
+      const pdfBuffer = shouldUseFastTemplateRenderPdf(body)
+        ? await buildPdfFromRenderModel(body.renderModel)
+        : await generatePdfBufferForTemplate(template, {
+          placeholders: body.placeholders ?? {},
+          fileName: body.fileName || template.outputFileName || template.title || "zapisnik.docx",
+        });
 
       sendBinary(response, 200, pdfBuffer, {
         contentType: "application/pdf",
@@ -6990,7 +7017,13 @@ async function handleApiRequest(request, response, url) {
         return true;
       }
 
-      const pdfBuffers = await generatePdfBuffersForTemplateEntries(entries, scopedSnapshot);
+      const canUseFastPdf = body?.fastPdf !== false
+        && body?.useTemplatePdf !== true
+        && String(body?.pdfEngine || "").trim().toLowerCase() !== "template"
+        && entries.every((entry) => hasTemplateRenderPdfModel(entry?.renderModel));
+      const pdfBuffers = canUseFastPdf
+        ? await Promise.all(entries.map((entry) => buildPdfFromRenderModel(entry.renderModel)))
+        : await generatePdfBuffersForTemplateEntries(entries, scopedSnapshot);
 
       const mergedPdf = await mergePdfBuffers(pdfBuffers);
       const fileName = sanitizeGeneratedDocumentFileName(

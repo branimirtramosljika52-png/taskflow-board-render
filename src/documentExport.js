@@ -1,5 +1,6 @@
 import { Buffer } from "node:buffer";
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, resolve } from "node:path";
@@ -54,10 +55,20 @@ const SOFFICE_CONVERSION_TIMEOUT_MS = Math.max(
   30000,
   Number(process.env.SOFFICE_CONVERSION_TIMEOUT_MS || 180000) || 180000,
 );
+const SOFFICE_PDF_CACHE_MAX_ENTRIES = Math.max(
+  0,
+  Number(process.env.SOFFICE_PDF_CACHE_MAX_ENTRIES || 60) || 60,
+);
+const SOFFICE_PDF_CACHE_MAX_BYTES = Math.max(
+  0,
+  Number(process.env.SOFFICE_PDF_CACHE_MAX_BYTES || 64 * 1024 * 1024) || 64 * 1024 * 1024,
+);
 const MEASUREMENT_COLUMN_MIN_WIDTH = 32;
 let sofficeCommandPromise = null;
 let sofficeProfileReadyPromise = null;
 let sofficeConversionQueue = Promise.resolve();
+let sofficePdfCacheSizeBytes = 0;
+const sofficePdfCache = new Map();
 
 function clean(value = "") {
   return String(value ?? "").trim();
@@ -328,6 +339,70 @@ function enqueueSofficeConversion(task) {
     .then(task);
   sofficeConversionQueue = queued.catch(() => {});
   return queued;
+}
+
+function buildSofficePdfCacheKey(item = {}) {
+  const hash = createHash("sha256");
+  hash.update("docx-pdf-v2");
+  hash.update("\0");
+  hash.update(clean(item.fileName || ""));
+  hash.update("\0");
+  hash.update(Buffer.isBuffer(item.buffer) ? item.buffer : Buffer.from(item.buffer ?? []));
+  return hash.digest("hex");
+}
+
+function getCachedSofficePdfBuffer(cacheKey = "") {
+  if (!SOFFICE_PDF_CACHE_MAX_ENTRIES || !SOFFICE_PDF_CACHE_MAX_BYTES) {
+    return null;
+  }
+
+  const entry = sofficePdfCache.get(cacheKey);
+  if (!entry) {
+    return null;
+  }
+
+  sofficePdfCache.delete(cacheKey);
+  sofficePdfCache.set(cacheKey, entry);
+  return Buffer.from(entry.buffer);
+}
+
+function cacheSofficePdfBuffer(cacheKey = "", buffer = Buffer.alloc(0)) {
+  if (
+    !SOFFICE_PDF_CACHE_MAX_ENTRIES
+    || !SOFFICE_PDF_CACHE_MAX_BYTES
+    || !cacheKey
+    || !Buffer.isBuffer(buffer)
+    || buffer.length <= 0
+    || buffer.length > SOFFICE_PDF_CACHE_MAX_BYTES
+  ) {
+    return;
+  }
+
+  const existing = sofficePdfCache.get(cacheKey);
+  if (existing) {
+    sofficePdfCacheSizeBytes -= existing.size;
+    sofficePdfCache.delete(cacheKey);
+  }
+
+  const cachedBuffer = Buffer.from(buffer);
+  sofficePdfCache.set(cacheKey, {
+    buffer: cachedBuffer,
+    size: cachedBuffer.length,
+  });
+  sofficePdfCacheSizeBytes += cachedBuffer.length;
+
+  while (
+    sofficePdfCache.size > SOFFICE_PDF_CACHE_MAX_ENTRIES
+    || sofficePdfCacheSizeBytes > SOFFICE_PDF_CACHE_MAX_BYTES
+  ) {
+    const oldestKey = sofficePdfCache.keys().next().value;
+    if (!oldestKey) {
+      break;
+    }
+    const oldest = sofficePdfCache.get(oldestKey);
+    sofficePdfCacheSizeBytes -= oldest?.size || 0;
+    sofficePdfCache.delete(oldestKey);
+  }
 }
 
 async function findSofficeCommandInDirectory(rootDirectory = "", depth = 0, maxDepth = 5) {
@@ -1528,16 +1603,54 @@ export async function convertDocxBuffersToPdfBuffers(items = []) {
     throw new Error("Nema Word dokumenata za PDF konverziju.");
   }
 
+  const orderedItems = sourceItems.map((item) => ({
+    ...item,
+    cacheKey: buildSofficePdfCacheKey(item),
+  }));
+  const orderedPdfBuffers = new Array(orderedItems.length).fill(null);
+  const uncachedItems = [];
+
+  orderedItems.forEach((item, index) => {
+    const cachedPdfBuffer = getCachedSofficePdfBuffer(item.cacheKey);
+    if (cachedPdfBuffer) {
+      orderedPdfBuffers[index] = cachedPdfBuffer;
+      return;
+    }
+
+    uncachedItems.push({
+      ...item,
+      sourceIndex: index,
+    });
+  });
+
+  if (uncachedItems.length === 0) {
+    return orderedPdfBuffers;
+  }
+
   const sofficeCommand = await resolveSofficeCommandCached();
   if (!sofficeCommand) {
     throw new Error("LibreOffice nije dostupan na serveru za Word -> PDF konverziju.");
   }
 
   return await enqueueSofficeConversion(async () => {
+    const stillUncachedItems = [];
+    uncachedItems.forEach((item) => {
+      const cachedPdfBuffer = getCachedSofficePdfBuffer(item.cacheKey);
+      if (cachedPdfBuffer) {
+        orderedPdfBuffers[item.sourceIndex] = cachedPdfBuffer;
+        return;
+      }
+      stillUncachedItems.push(item);
+    });
+
+    if (stillUncachedItems.length === 0) {
+      return orderedPdfBuffers;
+    }
+
     const tempRoot = await mkdtemp(join(tmpdir(), "taskflow-docx-"));
     const officeProfileDir = await getSharedSofficeProfileDir();
     const usedNames = new Set();
-    const preparedItems = sourceItems.map((item, index) => {
+    const preparedItems = stillUncachedItems.map((item, index) => {
       const inputBaseName = makeUniqueSofficeInputFileName(item.fileName, index, usedNames);
       return {
         ...item,
@@ -1590,7 +1703,16 @@ export async function convertDocxBuffersToPdfBuffers(items = []) {
         pdfBuffers.push(await readFile(resolvedOutputPath));
       }
 
-      return pdfBuffers;
+      pdfBuffers.forEach((pdfBuffer, index) => {
+        const item = preparedItems[index];
+        if (!item) {
+          return;
+        }
+        cacheSofficePdfBuffer(item.cacheKey, pdfBuffer);
+        orderedPdfBuffers[item.sourceIndex] = Buffer.from(pdfBuffer);
+      });
+
+      return orderedPdfBuffers;
     } finally {
       await rm(tempRoot, { recursive: true, force: true }).catch(() => {});
     }

@@ -6,6 +6,7 @@ import PizZip from "pizzip";
 import {
   buildDashboardCalendarReportPdfBuffer,
   buildDocxFromTemplateBuffer,
+  buildPdfFromRenderModel,
 } from "../src/documentExport.js";
 
 function buildMinimalDocxBuffer(documentXml = "") {
@@ -110,6 +111,35 @@ test("dashboard calendar report export returns a PDF buffer", async () => {
       reminders: [{ id: "rem-1", title: "Provjera", status: "active", dueDate: "2026-05-07" }],
       todoTasks: [{ id: "todo-1", title: "Nazovi klijenta", status: "open", dueDate: "2026-05-08" }],
     },
+  });
+
+  assert.equal(outputBuffer.subarray(0, 4).toString("utf8"), "%PDF");
+  assert.ok(outputBuffer.length > 1000);
+});
+
+test("render model export returns a direct PDF buffer", async () => {
+  const outputBuffer = await buildPdfFromRenderModel({
+    title: "Zapisnik pregleda",
+    documentType: "Zapisnik",
+    workOrderNumber: "RN-1/2026",
+    company: {
+      name: "Alpha d.o.o.",
+      oib: "12345678901",
+      headquarters: "Zagreb",
+    },
+    location: {
+      name: "Pogon 1",
+      region: "Zagreb",
+    },
+    blocks: [
+      {
+        title: "Osnovni podaci",
+        items: [
+          { type: "field", title: "Status", value: "Ispravno" },
+          { type: "text", title: "Napomena", body: "Nema uocenih nedostataka." },
+        ],
+      },
+    ],
   });
 
   assert.equal(outputBuffer.subarray(0, 4).toString("utf8"), "%PDF");
