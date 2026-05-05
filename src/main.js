@@ -932,6 +932,42 @@ const APP_ROLE_PERMISSION_MODULES = Object.freeze([
     ],
   },
   {
+    key: "work-orders",
+    title: "Radni nalozi",
+    description: "Otvaranje, statusi, storno i fakturiranje radnih naloga.",
+    type: "app",
+    rows: [
+      { key: "workOrders.create", label: "Otvaranje radnih naloga" },
+      { key: "workOrders.changeStatus", label: "Promjena statusa radnih naloga" },
+      { key: "workOrders.cancel", label: "Storno radnih naloga" },
+      { key: "workOrders.restoreCancelled", label: "Vracanje radnih naloga iz storna" },
+      { key: "workOrders.markInvoiced", label: "Promjena statusa u Fakturiran" },
+      { key: "workOrders.billing.write", label: "Upisivanje u fakturiranje" },
+    ],
+  },
+  {
+    key: "offers",
+    title: "Ponude",
+    description: "Izrada, pregled i uredivanje ponuda.",
+    type: "app",
+    rows: [
+      { key: "offers.create", label: "Izrada ponuda" },
+      { key: "offers.view", label: "Pregled ponuda" },
+      { key: "offers.edit", label: "Uredivanje ponuda" },
+    ],
+  },
+  {
+    key: "purchase-orders",
+    title: "Narudzbenice",
+    description: "Izrada, pregled i uredivanje narudzbenica.",
+    type: "app",
+    rows: [
+      { key: "purchaseOrders.create", label: "Izrada narudzbenica" },
+      { key: "purchaseOrders.view", label: "Pregled narudzbenica" },
+      { key: "purchaseOrders.edit", label: "Uredivanje narudzbenice" },
+    ],
+  },
+  {
     key: "document-templates",
     title: "Template",
     description: "Izrada i uredivanje templatea.",
@@ -6203,6 +6239,13 @@ function getCanEditPeopleTrainingData() {
 
 function syncWorkOrderEditorAccess() {
   const canEdit = getCanEditOperationalData();
+  const canCreate = getCanCreateWorkOrders();
+  const isEditing = Boolean(workOrderIdInput?.value);
+  const currentStatus = workOrderStatusInput?.value || "Otvoreni RN";
+  const canChangeStatus = isEditing
+    ? getCanChangeAnyWorkOrderStatus(currentStatus)
+    : getCanSetWorkOrderStatus("Otvoreni RN", currentStatus);
+  const canWriteBilling = getCanWriteWorkOrderBilling();
   if (workOrderForm) {
     workOrderForm.querySelectorAll("input, select, textarea, button").forEach((control) => {
       if (control.matches("[data-work-order-section-toggle]")) {
@@ -6212,6 +6255,22 @@ function syncWorkOrderEditorAccess() {
       control.disabled = !canEdit;
     });
   }
+
+  if (workOrderStatusInput) {
+    workOrderStatusInput.disabled = !canEdit || !canChangeStatus;
+    workOrderStatusInput.title = canChangeStatus ? "" : "Nemas ovlastenje za promjenu statusa RN.";
+  }
+  [
+    workOrderWeightInput,
+    workOrderInvoiceDateInput,
+    workOrderInvoiceNoteInput,
+  ].forEach((control) => {
+    if (!control) {
+      return;
+    }
+    control.disabled = !canEdit || !canWriteBilling;
+    control.title = canWriteBilling ? "" : "Nemas ovlastenje za upisivanje u fakturiranje.";
+  });
 
   [
     workOrderDocumentDropzone,
@@ -6229,7 +6288,7 @@ function syncWorkOrderEditorAccess() {
     workOrderResetButton.disabled = !canEdit;
   }
   if (workOrderOpenFormButton) {
-    workOrderOpenFormButton.hidden = !canEdit;
+    workOrderOpenFormButton.hidden = !canCreate;
   }
   if (workOrderOpenDocumentsButton) {
     workOrderOpenDocumentsButton.hidden = !canEdit;
@@ -6406,6 +6465,109 @@ function getCanManagePeople() {
 
 function getCanManageSafetyAuthorizations() {
   return hasAppPermissionClient("safetyAuthorizations.manage");
+}
+
+function getCanCreateWorkOrders() {
+  return hasAppPermissionClient("workOrders.create");
+}
+
+function getCanChangeWorkOrderStatus() {
+  return hasAppPermissionClient("workOrders.changeStatus");
+}
+
+function getCanCancelWorkOrders() {
+  return hasAppPermissionClient("workOrders.cancel");
+}
+
+function getCanRestoreCancelledWorkOrders() {
+  return hasAppPermissionClient("workOrders.restoreCancelled");
+}
+
+function getCanMarkWorkOrdersInvoiced() {
+  return hasAppPermissionClient("workOrders.markInvoiced");
+}
+
+function getCanWriteWorkOrderBilling() {
+  return hasAppPermissionClient("workOrders.billing.write");
+}
+
+function getCanSetWorkOrderStatus(currentStatus = "", nextStatus = "") {
+  const current = String(currentStatus || "Otvoreni RN").trim() || "Otvoreni RN";
+  const next = String(nextStatus || "Otvoreni RN").trim() || "Otvoreni RN";
+
+  if (current === next) {
+    return true;
+  }
+
+  if (current === "Storno RN" && next !== "Storno RN" && !getCanRestoreCancelledWorkOrders()) {
+    return false;
+  }
+
+  if (next === "Storno RN" && !getCanCancelWorkOrders()) {
+    return false;
+  }
+
+  if (next === "Fakturiran RN" && !getCanMarkWorkOrdersInvoiced()) {
+    return false;
+  }
+
+  if (!["Storno RN", "Fakturiran RN"].includes(next) && !(current === "Storno RN" && next !== "Storno RN")) {
+    return getCanChangeWorkOrderStatus();
+  }
+
+  return true;
+}
+
+function getCanChangeAnyWorkOrderStatus(currentStatus = "") {
+  return WORK_ORDER_STATUS_OPTIONS.some((option) => (
+    String(option.value) !== String(currentStatus || "Otvoreni RN")
+    && getCanSetWorkOrderStatus(currentStatus, option.value)
+  ));
+}
+
+function getCanViewOffers() {
+  return hasAppPermissionClient("offers.view") || getCanCreateOffers() || getCanEditOffers();
+}
+
+function getCanCreateOffers() {
+  return hasAppPermissionClient("offers.create");
+}
+
+function getCanEditOffers() {
+  return hasAppPermissionClient("offers.edit");
+}
+
+function getCanViewPurchaseOrders() {
+  return hasAppPermissionClient("purchaseOrders.view") || getCanCreatePurchaseOrders() || getCanEditPurchaseOrders();
+}
+
+function getCanCreatePurchaseOrders() {
+  return hasAppPermissionClient("purchaseOrders.create");
+}
+
+function getCanEditPurchaseOrders() {
+  return hasAppPermissionClient("purchaseOrders.edit");
+}
+
+function getCommercialDocumentPermissionKey(contextKey = getActiveCommercialDocumentKey(), action = "view") {
+  const normalizedContext = contextKey === "purchase-orders" ? "purchaseOrders" : "offers";
+  return `${normalizedContext}.${action}`;
+}
+
+function getCanViewCommercialDocuments(contextKey = getActiveCommercialDocumentKey()) {
+  return [
+    getCommercialDocumentPermissionKey(contextKey, "view"),
+    getCommercialDocumentPermissionKey(contextKey, "create"),
+    getCommercialDocumentPermissionKey(contextKey, "edit"),
+  ].some((permissionKey) => hasAppPermissionClient(permissionKey));
+}
+
+function getCanCreateCommercialDocuments(contextKey = getActiveCommercialDocumentKey()) {
+  return hasAppPermissionClient(getCommercialDocumentPermissionKey(contextKey, "create"));
+}
+
+function getCanEditCommercialDocuments(contextKey = getActiveCommercialDocumentKey()) {
+  return hasAppPermissionClient(getCommercialDocumentPermissionKey(contextKey, "edit"));
 }
 
 function getCompanyPermissions() {
@@ -11326,7 +11488,7 @@ async function assignPeopleTrainingLearningTestsForEntries(entries = [], workOrd
 }
 
 async function createPeopleTrainingWorkOrdersForRecords(records = [], selection = {}, options = {}) {
-  if (!getCanEditOperationalData()) {
+  if (!getCanEditOperationalData() || !getCanCreateWorkOrders()) {
     setPeopleTrainingFeedback("Nemaš pravo otvarati radne naloge.", "error");
     return [];
   }
@@ -20313,6 +20475,12 @@ async function persistWorkOrderAutoSave({ immediate = false } = {}) {
     return false;
   }
 
+  if (!workOrderIdInput.value && !getCanCreateWorkOrders()) {
+    state.workOrderAutoSave.dirty = false;
+    setWorkOrderSaveState("blocked", "Nemas ovlastenje za otvaranje radnih naloga.");
+    return false;
+  }
+
   if (state.workOrderAutoSave.saving) {
     state.workOrderAutoSave.dirty = true;
     state.workOrderAutoSave.timerId = window.setTimeout(() => {
@@ -20394,6 +20562,13 @@ function queueWorkOrderAutoSave() {
     clearWorkOrderAutoSaveTimer();
     state.workOrderAutoSave.dirty = false;
     setWorkOrderSaveState("saved", "Samo pregled za klijentski portal.");
+    return;
+  }
+
+  if (!workOrderIdInput.value && !getCanCreateWorkOrders()) {
+    clearWorkOrderAutoSaveTimer();
+    state.workOrderAutoSave.dirty = false;
+    setWorkOrderSaveState("blocked", "Nemas ovlastenje za otvaranje radnih naloga.");
     return;
   }
 
@@ -59600,7 +59775,7 @@ function closeWorkOrderEditor({ reset = false } = {}) {
 }
 
 function focusWorkOrderComposer(prefill = {}) {
-  if (!getCanEditOperationalData()) {
+  if (!getCanEditOperationalData() || !getCanCreateWorkOrders()) {
     return;
   }
 
@@ -59802,7 +59977,7 @@ function renderAuthState() {
       companyClientPortalNavItem.hidden = !canViewCompanies;
     }
     if (workOrderOpenFormButton) {
-      workOrderOpenFormButton.hidden = !getCanEditOperationalData();
+      workOrderOpenFormButton.hidden = !getCanCreateWorkOrders();
     }
     syncWorkOrderEditorAccess();
     if (!canManageMasterData && isDashboardControlPanelItem()) {
@@ -69207,7 +69382,7 @@ function createOfferStatusBadge(status = "draft") {
 function createOfferStatusDropdown(item) {
   const statusOptions = getActiveCommercialStatusOptions();
   const apiBasePath = getActiveCommercialApiBasePath();
-  const canEditCommercialDocuments = getCanEditOperationalData();
+  const canEditCommercialDocuments = getCanEditCommercialDocuments();
   const wrapper = document.createElement("div");
   wrapper.className = "work-item-status-dropdown";
   wrapper.dataset.preventRowOpen = "true";
@@ -69834,18 +70009,23 @@ function previewBlobInNewTab(blob, fallbackFileName = "preview.pdf") {
 }
 
 function syncOfferActionButtons() {
+  const isEditing = Boolean(offerIdInput?.value);
+  const canPreviewOrDownload = isEditing
+    ? (getCanViewCommercialDocuments() || getCanEditCommercialDocuments())
+    : (getCanCreateCommercialDocuments() || getCanEditCommercialDocuments());
   [offerPreviewButton, offerDownloadPdfButton].forEach((button) => {
     if (!button) {
       return;
     }
 
-    button.disabled = false;
-    button.classList.toggle("is-disabled", false);
+    button.disabled = !canPreviewOrDownload;
+    button.classList.toggle("is-disabled", !canPreviewOrDownload);
   });
 
   if (offerSendEmailButton) {
-    offerSendEmailButton.disabled = false;
-    offerSendEmailButton.classList.toggle("is-disabled", false);
+    const canSend = getCanEditCommercialDocuments();
+    offerSendEmailButton.disabled = !canSend;
+    offerSendEmailButton.classList.toggle("is-disabled", !canSend);
   }
 }
 
@@ -71025,11 +71205,13 @@ function hydrateOfferForm(offer) {
   const configKey = isPurchaseOrder ? "purchase-orders" : "offers";
   const config = COMMERCIAL_DOCUMENT_MODULE_CONFIG[configKey];
 
-  if (!getCanEditOperationalData()) {
-    void runMutation(() => downloadOfferPdf(offer.id, {
-      preview: true,
-      apiBasePath: config.apiBasePath || "/offers",
-    }), offerError);
+  if (!getCanEditCommercialDocuments(configKey)) {
+    if (getCanViewCommercialDocuments(configKey)) {
+      void runMutation(() => downloadOfferPdf(offer.id, {
+        preview: true,
+        apiBasePath: config.apiBasePath || "/offers",
+      }), offerError);
+    }
     return;
   }
 
@@ -71497,15 +71679,17 @@ function renderOffersModule() {
 
   const config = getActiveCommercialDocumentConfig();
   const contextKey = getActiveCommercialDocumentKey();
-  const activeItems = getActiveCommercialDocumentCollection();
+  const canViewCommercialDocuments = getCanViewCommercialDocuments(contextKey);
+  const canCreateCommercialDocuments = getCanCreateCommercialDocuments(contextKey);
+  const canEditCommercialDocuments = getCanEditCommercialDocuments(contextKey);
+  const activeItems = canViewCommercialDocuments ? getActiveCommercialDocumentCollection() : [];
   const sortItems = isPurchaseOrdersContextActive() ? sortPurchaseOrders : sortOffers;
   const filterItems = isPurchaseOrdersContextActive() ? filterPurchaseOrders : filterOffers;
   const activeStatusOptions = getActiveCommercialStatusOptions();
   const activeDirection = getActiveCommercialDocumentDirection();
-  const canEditCommercialDocuments = getCanEditOperationalData();
 
   if (offerOpenFormButton) {
-    offerOpenFormButton.hidden = !canEditCommercialDocuments;
+    offerOpenFormButton.hidden = !canCreateCommercialDocuments;
   }
   if (offerOpenTemplateButton) {
     offerOpenTemplateButton.hidden = !canEditCommercialDocuments || activeDirection === "incoming";
@@ -71645,7 +71829,7 @@ function renderOffersModule() {
     const openOffer = () => {
       if (canEditCommercialDocuments) {
         hydrateOfferForm(offer);
-      } else {
+      } else if (canViewCommercialDocuments) {
         void runMutation(() => downloadOfferPdf(offer.id, { preview: true }), offerError);
       }
     };
@@ -71676,7 +71860,9 @@ function renderOffersModule() {
   if (visibleOffers.length === 0) {
     const emptyCard = document.createElement("div");
     emptyCard.className = "offers-empty-card";
-    emptyCard.textContent = config.listEmptyText;
+    emptyCard.textContent = canViewCommercialDocuments
+      ? config.listEmptyText
+      : "Nemas ovlastenje za pregled ovog modula.";
     offersList.replaceChildren(emptyCard);
   }
 
@@ -76555,10 +76741,13 @@ function buildWorkOrderLeafletPopup(marker) {
     const node = document.createElement("option");
     node.value = option.value;
     node.textContent = option.label;
+    node.disabled = !getCanSetWorkOrderStatus(workOrder.status || marker.status || "Otvoreni RN", option.value);
     statusSelect.append(node);
   });
 
   statusSelect.value = workOrder.status || marker.status || "Otvoreni RN";
+  statusSelect.disabled = !getCanChangeAnyWorkOrderStatus(statusSelect.value);
+  statusSelect.title = statusSelect.disabled ? "Nemas ovlastenje za promjenu statusa RN." : "";
   updateWorkOrderStatusSelectTheme(statusSelect, statusSelect.value);
 
   ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
@@ -76570,6 +76759,11 @@ function buildWorkOrderLeafletPopup(marker) {
   statusSelect.addEventListener("change", () => {
     const previousValue = workOrder.status || marker.status || "Otvoreni RN";
     const nextValue = statusSelect.value;
+    if (!getCanSetWorkOrderStatus(previousValue, nextValue)) {
+      statusSelect.value = previousValue;
+      updateWorkOrderStatusSelectTheme(statusSelect, previousValue);
+      return;
+    }
     updateWorkOrderStatusSelectTheme(statusSelect, nextValue);
     statusSelect.disabled = true;
     state.workOrderMap.popupWorkOrderId = workOrder.id || marker.workOrderId;
@@ -76578,11 +76772,12 @@ function buildWorkOrderLeafletPopup(marker) {
       method: "PATCH",
       body: { status: nextValue },
     })).then((success) => {
-      statusSelect.disabled = false;
       if (!success) {
         statusSelect.value = previousValue;
         updateWorkOrderStatusSelectTheme(statusSelect, previousValue);
       }
+      statusSelect.disabled = !getCanChangeAnyWorkOrderStatus(statusSelect.value);
+      statusSelect.title = statusSelect.disabled ? "Nemas ovlastenje za promjenu statusa RN." : "";
     });
   });
 
@@ -77741,6 +77936,7 @@ function renderWorkOrders() {
     groupActions.type = "button";
     groupActions.className = "work-group-add-inline";
     groupActions.textContent = "+ Add task";
+    groupActions.hidden = !getCanCreateWorkOrders();
     groupActions.addEventListener("click", () => {
       focusWorkOrderComposer({ status: group.status });
     });
@@ -77850,6 +78046,7 @@ function renderWorkOrders() {
     addRow.type = "button";
     addRow.className = "work-group-add-row";
     addRow.textContent = "+ Add task";
+    addRow.hidden = !getCanCreateWorkOrders();
     addRow.addEventListener("click", () => {
       focusWorkOrderComposer({ status: group.status });
     });
@@ -79027,12 +79224,14 @@ function createWorkOrderBulkChoicePicker({
       optionButton.textContent = option.label;
       optionButton.setAttribute("role", "menuitem");
       optionButton.classList.toggle("is-selected", !isMixed && option.value === currentValue);
+      optionButton.disabled = Boolean(option.disabled);
+      optionButton.title = option.disabled ? (option.disabledTitle || "Nemas ovlastenje za ovu promjenu.") : "";
 
       optionButton.addEventListener("click", (event) => {
         event.stopPropagation();
         closeOpenWorkOrderStatusMenus();
 
-        if (state.workOrderBatch.pending) {
+        if (state.workOrderBatch.pending || option.disabled) {
           return;
         }
 
@@ -79445,6 +79644,11 @@ function renderWorkOrderBatchBar() {
   const sharedStatus = getSharedWorkOrderBatchValue(selectedWorkOrders, (item) => item.status || "Otvoreni RN");
   const sharedPriority = getSharedWorkOrderBatchValue(selectedWorkOrders, (item) => item.priority || "Normal");
   const sharedDueDate = getSharedWorkOrderBatchValue(selectedWorkOrders, (item) => item.dueDate || "");
+  const allowedStatusOptions = WORK_ORDER_STATUS_OPTIONS.map((option) => ({
+    ...option,
+    disabled: selectedWorkOrders.some((item) => !getCanSetWorkOrderStatus(item.status || "Otvoreni RN", option.value)),
+    disabledTitle: "Nemas ovlastenje za ovaj status na svim odabranim RN-ovima.",
+  }));
 
   if (workOrderBulkCountLabel) {
     workOrderBulkCountLabel.textContent = formatWorkOrderSelectionCountLabel(selectedCount);
@@ -79457,7 +79661,7 @@ function renderWorkOrderBatchBar() {
       emptyLabel: "Status",
       value: sharedStatus.value,
       mixed: sharedStatus.mixed,
-      options: WORK_ORDER_STATUS_OPTIONS,
+      options: allowedStatusOptions,
       pending: state.workOrderBatch.pending,
       onSelect: (nextValue) => applyWorkOrderBatchUpdate({ status: nextValue }, {
         successMessage: `Status je ažuriran za ${formatWorkOrderSelectionCountLabel(getAllSelectedWorkOrdersForDocumentWizard().length).toLowerCase()}.`,
@@ -80245,13 +80449,18 @@ function syncWorkOrderDocumentWizardCommonInputs() {
 
   if (workOrderDocumentCommonStatusSlot) {
     const sharedStatus = getSharedWorkOrderBatchValue(selectedWorkOrders, (item) => item.status || "Otvoreni RN");
+    const allowedStatusOptions = WORK_ORDER_STATUS_OPTIONS.map((option) => ({
+      ...option,
+      disabled: selectedWorkOrders.some((item) => !getCanSetWorkOrderStatus(item.status || "Otvoreni RN", option.value)),
+      disabledTitle: "Nemas ovlastenje za ovaj status na svim odabranim RN-ovima.",
+    }));
     workOrderDocumentCommonStatusSlot.replaceChildren(createWorkOrderBulkChoicePicker({
       type: "status",
       iconName: "status",
       emptyLabel: "Status",
       value: sharedStatus.value,
       mixed: sharedStatus.mixed,
-      options: WORK_ORDER_STATUS_OPTIONS,
+      options: allowedStatusOptions,
       pending: state.workOrderBatch.pending,
       onSelect: async (nextValue) => {
         const success = await applyWorkOrderBatchUpdate({ status: nextValue }, {
@@ -83921,6 +84130,7 @@ function closeOpenWorkOrderStatusMenus(except = null) {
 
 function createWorkOrderStatusDropdown(item, options = {}) {
   const { className = "" } = options;
+  let currentStatusValue = item.status || "Otvoreni RN";
   const wrapper = document.createElement("div");
   wrapper.className = ["work-item-status-dropdown", className].filter(Boolean).join(" ");
   wrapper.dataset.preventRowOpen = "true";
@@ -83928,19 +84138,25 @@ function createWorkOrderStatusDropdown(item, options = {}) {
   const trigger = document.createElement("button");
   trigger.type = "button";
   trigger.className = "work-item-status-trigger";
-  trigger.dataset.status = slugifyValue(item.status || "Otvoreni RN");
-  trigger.textContent = item.status || "Otvoreni RN";
+  trigger.dataset.status = slugifyValue(currentStatusValue);
+  trigger.textContent = currentStatusValue;
   trigger.setAttribute("aria-haspopup", "menu");
   trigger.setAttribute("aria-expanded", "false");
+  trigger.disabled = !getCanChangeAnyWorkOrderStatus(currentStatusValue);
+  trigger.title = trigger.disabled ? "Nemas ovlastenje za promjenu statusa RN." : "";
 
   const setPendingState = (isPending) => {
     wrapper.classList.toggle("is-pending", isPending);
-    trigger.disabled = isPending;
+    trigger.disabled = isPending || !getCanChangeAnyWorkOrderStatus(currentStatusValue);
+    trigger.title = trigger.disabled && !isPending ? "Nemas ovlastenje za promjenu statusa RN." : "";
   };
 
   const setCurrentStatus = (value) => {
-    trigger.dataset.status = slugifyValue(value);
-    trigger.textContent = value;
+    currentStatusValue = value || "Otvoreni RN";
+    trigger.dataset.status = slugifyValue(currentStatusValue);
+    trigger.textContent = currentStatusValue;
+    trigger.disabled = !getCanChangeAnyWorkOrderStatus(currentStatusValue);
+    trigger.title = trigger.disabled ? "Nemas ovlastenje za promjenu statusa RN." : "";
   };
 
   const positionMenuPortal = (menu) => {
@@ -83983,22 +84199,25 @@ function createWorkOrderStatusDropdown(item, options = {}) {
     });
 
     WORK_ORDER_STATUS_OPTIONS.forEach((option) => {
+      const canUseOption = getCanSetWorkOrderStatus(currentStatusValue, option.value);
       const optionButton = document.createElement("button");
       optionButton.type = "button";
       optionButton.className = "work-item-status-option";
       optionButton.dataset.status = slugifyValue(option.value);
       optionButton.textContent = option.label;
       optionButton.setAttribute("role", "menuitem");
+      optionButton.disabled = !canUseOption;
+      optionButton.title = canUseOption ? "" : "Nemas ovlastenje za ovaj status.";
 
       optionButton.addEventListener("click", (event) => {
         event.stopPropagation();
         closeOpenWorkOrderStatusMenus();
 
-        if (option.value === (item.status || "Otvoreni RN")) {
+        if (!getCanSetWorkOrderStatus(currentStatusValue, option.value) || option.value === currentStatusValue) {
           return;
         }
 
-        const previousValue = item.status || "Otvoreni RN";
+        const previousValue = currentStatusValue;
         setCurrentStatus(option.value);
         setPendingState(true);
 
@@ -84037,6 +84256,9 @@ function createWorkOrderStatusDropdown(item, options = {}) {
 
   trigger.addEventListener("click", (event) => {
     event.stopPropagation();
+    if (!getCanChangeAnyWorkOrderStatus(currentStatusValue)) {
+      return;
+    }
     if (wrapper.classList.contains("is-open")) {
       closeOpenWorkOrderStatusMenus();
       return;
@@ -84099,6 +84321,7 @@ function renderGroupedWorkOrdersList() {
     groupActions.type = "button";
     groupActions.className = "work-group-add-inline";
     groupActions.textContent = "+ Add task";
+    groupActions.hidden = !getCanCreateWorkOrders();
     groupActions.addEventListener("click", () => {
       focusWorkOrderComposer({ status: group.status });
     });
@@ -84316,6 +84539,7 @@ function renderGroupedWorkOrdersList() {
     addRow.type = "button";
     addRow.className = "work-group-add-row";
     addRow.textContent = "+ Add task";
+    addRow.hidden = !getCanCreateWorkOrders();
     addRow.addEventListener("click", () => {
       focusWorkOrderComposer({ status: group.status });
     });
@@ -89051,7 +89275,7 @@ vehicleReservationForm?.addEventListener("submit", (event) => {
 });
 
 offerOpenFormButton?.addEventListener("click", () => {
-  if (!getCanEditOperationalData()) {
+  if (!getCanCreateCommercialDocuments()) {
     return;
   }
   resetOfferForm();
@@ -89433,7 +89657,7 @@ offerDeleteButton?.addEventListener("click", () => {
   const config = getActiveCommercialDocumentConfig();
   const apiBasePath = getActiveCommercialApiBasePath();
 
-  if (!offerId) {
+  if (!offerId || !getCanEditCommercialDocuments()) {
     return;
   }
 
@@ -89454,12 +89678,16 @@ offerDeleteButton?.addEventListener("click", () => {
 offerForm?.addEventListener("submit", (event) => {
   event.preventDefault();
 
-  if (!getCanEditOperationalData()) {
-    setInlineMessage(offerError, "Klijentski portal ima pregled bez uređivanja.");
+  const isEditing = Boolean(offerIdInput.value);
+  const canSave = isEditing ? getCanEditCommercialDocuments() : getCanCreateCommercialDocuments();
+
+  if (!canSave) {
+    setInlineMessage(offerError, isEditing
+      ? "Nemas ovlastenje za uredivanje ovog dokumenta."
+      : "Nemas ovlastenje za izradu ovog dokumenta.");
     return;
   }
 
-  const isEditing = Boolean(offerIdInput.value);
   const apiBasePath = getActiveCommercialApiBasePath();
   const path = isEditing ? `${apiBasePath}/${offerIdInput.value}` : apiBasePath;
   const method = isEditing ? "PATCH" : "POST";
@@ -89484,7 +89712,7 @@ offerEditorBackdrop?.addEventListener("click", () => {
 });
 
 offerOpenTemplateButton?.addEventListener("click", () => {
-  if (!getCanEditOperationalData() || getActiveCommercialDocumentDirection() === "incoming") {
+  if (!getCanEditCommercialDocuments() || getActiveCommercialDocumentDirection() === "incoming") {
     return;
   }
 
@@ -89554,6 +89782,14 @@ offerTemplateRemoveButton?.addEventListener("click", () => {
 });
 
 offerPreviewButton?.addEventListener("click", () => {
+  const isEditing = Boolean(offerIdInput?.value);
+  const canPreview = isEditing
+    ? (getCanViewCommercialDocuments() || getCanEditCommercialDocuments())
+    : (getCanCreateCommercialDocuments() || getCanEditCommercialDocuments());
+  if (!canPreview) {
+    return;
+  }
+
   if (isPurchaseOrdersContextActive()) {
     void runMutation(() => downloadOfferPdf("", { preview: true }), offerError);
     return;
@@ -89563,10 +89799,20 @@ offerPreviewButton?.addEventListener("click", () => {
 });
 
 offerDownloadPdfButton?.addEventListener("click", () => {
+  const isEditing = Boolean(offerIdInput?.value);
+  const canDownload = isEditing
+    ? (getCanViewCommercialDocuments() || getCanEditCommercialDocuments())
+    : (getCanCreateCommercialDocuments() || getCanEditCommercialDocuments());
+  if (!canDownload) {
+    return;
+  }
   void runMutation(() => downloadOfferPdf(""), offerError);
 });
 
 offerSendEmailButton?.addEventListener("click", () => {
+  if (!getCanEditCommercialDocuments()) {
+    return;
+  }
   const offer = getCurrentCommercialDocumentById(offerIdInput?.value || "");
   openOfferEmailModal(offer || buildOfferDraftPreviewData());
 });
@@ -89588,10 +89834,17 @@ offerHtmlPreviewBackdrop?.addEventListener("click", () => {
 });
 
 offerEmailPreviewButton?.addEventListener("click", () => {
+  if (!getCanEditCommercialDocuments()) {
+    return;
+  }
   void runMutation(() => downloadOfferPdf("", { preview: true }), offerEmailError);
 });
 
 offerEmailTemplatePreviewButton?.addEventListener("click", () => {
+  if (!getCanEditCommercialDocuments()) {
+    return;
+  }
+
   if (isPurchaseOrdersContextActive()) {
     void runMutation(() => downloadOfferPdf("", { preview: true }), offerEmailError);
     return;
@@ -89601,21 +89854,38 @@ offerEmailTemplatePreviewButton?.addEventListener("click", () => {
 });
 
 offerEmailDownloadButton?.addEventListener("click", () => {
+  if (!getCanEditCommercialDocuments()) {
+    return;
+  }
   void runMutation(() => downloadOfferPdf(""), offerEmailError);
 });
 
 offerEmailForm?.addEventListener("submit", (event) => {
   event.preventDefault();
+  if (!getCanEditCommercialDocuments()) {
+    return;
+  }
   void runMutation(() => sendOfferEmailFromModal(), offerEmailError);
 });
 
 purchaseOrderDocumentsUploadButton?.addEventListener("click", () => {
+  const isEditing = Boolean(offerIdInput?.value);
+  const canAttach = isEditing ? getCanEditCommercialDocuments() : getCanCreateCommercialDocuments();
+  if (!canAttach) {
+    return;
+  }
   purchaseOrderDocumentsInput?.click();
 });
 
 purchaseOrderDocumentsInput?.addEventListener("change", () => {
   const files = Array.from(purchaseOrderDocumentsInput.files ?? []);
   if (files.length === 0) {
+    return;
+  }
+  const isEditing = Boolean(offerIdInput?.value);
+  const canAttach = isEditing ? getCanEditCommercialDocuments() : getCanCreateCommercialDocuments();
+  if (!canAttach) {
+    purchaseOrderDocumentsInput.value = "";
     return;
   }
 

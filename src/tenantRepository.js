@@ -1731,6 +1731,11 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
   );
   const appPermissions = resolveAppPermissionsForActor(actor, appRolePermissions);
   const hasAppPermission = (permissionKey = "") => Boolean(appPermissions[permissionKey]);
+  const actorIsClientPortal = isClientPortalProfileRole(actor?.profileRole ?? actor?.profile_role);
+  const canViewOffers = actorIsClientPortal
+    || ["offers.view", "offers.create", "offers.edit"].some((permissionKey) => hasAppPermission(permissionKey));
+  const canViewPurchaseOrders = actorIsClientPortal
+    || ["purchaseOrders.view", "purchaseOrders.create", "purchaseOrders.edit"].some((permissionKey) => hasAppPermission(permissionKey));
   const canViewDocumentTemplates = [
     "documentTemplates.create",
     "measurementEquipment.create",
@@ -1844,13 +1849,13 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       ...item,
       comments: (item.comments ?? []).map((comment) => ({ ...comment })),
     })),
-    offers: (rawSnapshot.offers ?? []).filter(isOrganizationOrCompanyItemVisible).map((item) => ({
+    offers: (canViewOffers ? (rawSnapshot.offers ?? []) : []).filter(isOrganizationOrCompanyItemVisible).map((item) => ({
       ...item,
       selectedLocationIds: [...(item.selectedLocationIds ?? [])],
       selectedLocationNames: [...(item.selectedLocationNames ?? [])],
       items: (item.items ?? []).map((entry) => ({ ...entry })),
     })),
-    purchaseOrders: (rawSnapshot.purchaseOrders ?? []).filter(isOrganizationOrCompanyItemVisible).map((item) => ({
+    purchaseOrders: (canViewPurchaseOrders ? (rawSnapshot.purchaseOrders ?? []) : []).filter(isOrganizationOrCompanyItemVisible).map((item) => ({
       ...item,
       selectedLocationIds: [...(item.selectedLocationIds ?? [])],
       selectedLocationNames: [...(item.selectedLocationNames ?? [])],

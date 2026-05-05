@@ -57,6 +57,18 @@ export const APP_ROLE_PERMISSION_DEFINITIONS = Object.freeze([
   Object.freeze({ key: "documentTemplates.create", label: "Izrada Template" }),
   Object.freeze({ key: "people.manage", label: "Uredivanje ljudskih resursa" }),
   Object.freeze({ key: "safetyAuthorizations.manage", label: "Uredivanje ovlastenja" }),
+  Object.freeze({ key: "workOrders.create", label: "Otvaranje radnih naloga" }),
+  Object.freeze({ key: "workOrders.changeStatus", label: "Promjena statusa radnih naloga" }),
+  Object.freeze({ key: "workOrders.cancel", label: "Storno radnih naloga" }),
+  Object.freeze({ key: "workOrders.restoreCancelled", label: "Vracanje radnih naloga iz storna" }),
+  Object.freeze({ key: "workOrders.markInvoiced", label: "Promjena statusa u Fakturiran" }),
+  Object.freeze({ key: "workOrders.billing.write", label: "Upisivanje u fakturiranje" }),
+  Object.freeze({ key: "offers.create", label: "Izrada ponuda" }),
+  Object.freeze({ key: "offers.view", label: "Pregled ponuda" }),
+  Object.freeze({ key: "offers.edit", label: "Uredivanje ponuda" }),
+  Object.freeze({ key: "purchaseOrders.create", label: "Izrada narudzbenica" }),
+  Object.freeze({ key: "purchaseOrders.view", label: "Pregled narudzbenica" }),
+  Object.freeze({ key: "purchaseOrders.edit", label: "Uredivanje narudzbenice" }),
 ]);
 export const APP_ROLE_PERMISSION_KEYS = Object.freeze(APP_ROLE_PERMISSION_DEFINITIONS.map((entry) => entry.key));
 const APP_PERMISSION_KEYS_SET = new Set(APP_ROLE_PERMISSION_KEYS);
@@ -71,6 +83,20 @@ const APP_PROFILE_DEFAULT_VIEW_PERMISSION_KEYS = Object.freeze([
   "vehicles.view",
   "legalFramework.view",
   "serviceCatalog.view",
+]);
+const APP_PROFILE_DEFAULT_OPERATION_PERMISSION_KEYS = Object.freeze([
+  "workOrders.create",
+  "workOrders.changeStatus",
+  "workOrders.cancel",
+  "workOrders.restoreCancelled",
+  "workOrders.markInvoiced",
+  "workOrders.billing.write",
+  "offers.create",
+  "offers.view",
+  "offers.edit",
+  "purchaseOrders.create",
+  "purchaseOrders.view",
+  "purchaseOrders.edit",
 ]);
 
 function normalizeText(value) {
@@ -264,6 +290,7 @@ function getDefaultAppPermissionFlagsForProfileRole(profileRole = "new_user") {
   return {
     ...APP_PERMISSIONS_NONE,
     ...Object.fromEntries(APP_PROFILE_DEFAULT_VIEW_PERMISSION_KEYS.map((key) => [key, true])),
+    ...Object.fromEntries(APP_PROFILE_DEFAULT_OPERATION_PERMISSION_KEYS.map((key) => [key, true])),
   };
 }
 

@@ -546,8 +546,78 @@ async function canUseScopedAppPermission(user, request, permissionKey = "") {
   }
 
   const { scopedSnapshot } = await getScopedState(user, request);
-  return Boolean(scopedSnapshot.appPermissions?.[permissionKey])
-    || hasAppPermission(user, scopedSnapshot.appRolePermissions ?? [], permissionKey);
+  return canUseScopedSnapshotAppPermission(user, scopedSnapshot, permissionKey);
+}
+
+function canUseScopedSnapshotAppPermission(user, scopedSnapshot, permissionKey = "") {
+  return canManageMasterData(user)
+    || Boolean(scopedSnapshot?.appPermissions?.[permissionKey])
+    || hasAppPermission(user, scopedSnapshot?.appRolePermissions ?? [], permissionKey);
+}
+
+function canUseAnyScopedSnapshotAppPermission(user, scopedSnapshot, permissionKeys = []) {
+  return (Array.isArray(permissionKeys) ? permissionKeys : [permissionKeys])
+    .filter(Boolean)
+    .some((permissionKey) => canUseScopedSnapshotAppPermission(user, scopedSnapshot, permissionKey));
+}
+
+async function canUseAnyScopedAppPermission(user, request, permissionKeys = []) {
+  if (canManageMasterData(user)) {
+    return true;
+  }
+
+  const { scopedSnapshot } = await getScopedState(user, request);
+  return canUseAnyScopedSnapshotAppPermission(user, scopedSnapshot, permissionKeys);
+}
+
+function getMissingScopedSnapshotAppPermissions(user, scopedSnapshot, permissionKeys = []) {
+  return Array.from(new Set(Array.isArray(permissionKeys) ? permissionKeys : [permissionKeys]))
+    .filter(Boolean)
+    .filter((permissionKey) => !canUseScopedSnapshotAppPermission(user, scopedSnapshot, permissionKey));
+}
+
+function normalizeWorkOrderStatusForPermission(value = "") {
+  return dbString(value) || "Otvoreni RN";
+}
+
+function getWorkOrderStatusPermissionKeys(currentStatus = "", nextStatus = "") {
+  const current = normalizeWorkOrderStatusForPermission(currentStatus);
+  const next = normalizeWorkOrderStatusForPermission(nextStatus);
+
+  if (current === next) {
+    return [];
+  }
+
+  const permissionKeys = [];
+  if (current === "Storno RN" && next !== "Storno RN") {
+    permissionKeys.push("workOrders.restoreCancelled");
+  }
+  if (next === "Storno RN") {
+    permissionKeys.push("workOrders.cancel");
+  }
+  if (next === "Fakturiran RN") {
+    permissionKeys.push("workOrders.markInvoiced");
+  }
+  if (permissionKeys.length === 0) {
+    permissionKeys.push("workOrders.changeStatus");
+  }
+
+  return Array.from(new Set(permissionKeys));
+}
+
+function bodyHasOwnField(body = {}, fieldName = "") {
+  return Object.prototype.hasOwnProperty.call(body, fieldName);
+}
+
+function workOrderFieldChanged(currentWorkOrder = {}, body = {}, fieldName = "") {
+  return bodyHasOwnField(body, fieldName)
+    && dbString(body[fieldName]) !== dbString(currentWorkOrder?.[fieldName]);
+}
+
+function getWorkOrderBillingPermissionKeys(currentWorkOrder = {}, body = {}) {
+  return ["invoiceDate", "invoiceNote", "weight"].some((fieldName) => workOrderFieldChanged(currentWorkOrder, body, fieldName))
+    ? ["workOrders.billing.write"]
+    : [];
 }
 
 async function getActorWithScopedAppPermissions(user, request) {
@@ -5092,13 +5162,30 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "POST" && url.pathname === "/api/work-orders") {
-      if (!canManageWorkOrders(user)) {
-        sendError(response, 403, "Nemate pravo upravljati radnim nalozima.");
-        return true;
-      }
-
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
+      if (!canUseScopedSnapshotAppPermission(user, scopedSnapshot, "workOrders.create")) {
+        sendError(response, 403, "Nemate pravo otvarati radne naloge.");
+        return true;
+      }
+      const missingStatusPermissions = getMissingScopedSnapshotAppPermissions(
+        user,
+        scopedSnapshot,
+        getWorkOrderStatusPermissionKeys("Otvoreni RN", body.status),
+      );
+      if (missingStatusPermissions.length > 0) {
+        sendError(response, 403, "Nemate pravo postaviti taj status radnog naloga.");
+        return true;
+      }
+      const missingBillingPermissions = getMissingScopedSnapshotAppPermissions(
+        user,
+        scopedSnapshot,
+        getWorkOrderBillingPermissionKeys({}, body),
+      );
+      if (missingBillingPermissions.length > 0) {
+        sendError(response, 403, "Nemate pravo upisivati podatke za fakturiranje.");
+        return true;
+      }
       assertCompanyPayloadInScope(scopedSnapshot, body);
       assertLocationPayloadInScope(scopedSnapshot, body);
       assertServiceCatalogIdsPayloadInScope(scopedSnapshot, body);
@@ -5153,8 +5240,8 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "GET" && url.pathname === "/api/offers/template-settings") {
-      if (!canManageWorkOrders(user)) {
-        sendError(response, 403, "Nemate pravo upravljati ponudama.");
+      if (!(await canUseAnyScopedAppPermission(user, request, ["offers.view", "offers.create", "offers.edit"]))) {
+        sendError(response, 403, "Nemate pravo pregledavati ponude.");
         return true;
       }
 
@@ -5167,8 +5254,8 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "POST" && url.pathname === "/api/offers/template-settings") {
-      if (!canManageWorkOrders(user)) {
-        sendError(response, 403, "Nemate pravo upravljati ponudama.");
+      if (!(await canUseScopedAppPermission(user, request, "offers.edit"))) {
+        sendError(response, 403, "Nemate pravo uredivati ponude.");
         return true;
       }
 
@@ -5185,8 +5272,8 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "DELETE" && url.pathname === "/api/offers/template-settings") {
-      if (!canManageWorkOrders(user)) {
-        sendError(response, 403, "Nemate pravo upravljati ponudama.");
+      if (!(await canUseScopedAppPermission(user, request, "offers.edit"))) {
+        sendError(response, 403, "Nemate pravo uredivati ponude.");
         return true;
       }
 
@@ -5197,8 +5284,8 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "GET" && url.pathname === "/api/purchase-orders/template-settings") {
-      if (!canManageWorkOrders(user)) {
-        sendError(response, 403, "Nemate pravo upravljati narudzbenicama.");
+      if (!(await canUseAnyScopedAppPermission(user, request, ["purchaseOrders.view", "purchaseOrders.create", "purchaseOrders.edit"]))) {
+        sendError(response, 403, "Nemate pravo pregledavati narudzbenice.");
         return true;
       }
 
@@ -5211,8 +5298,8 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "POST" && url.pathname === "/api/purchase-orders/template-settings") {
-      if (!canManageWorkOrders(user)) {
-        sendError(response, 403, "Nemate pravo upravljati narudzbenicama.");
+      if (!(await canUseScopedAppPermission(user, request, "purchaseOrders.edit"))) {
+        sendError(response, 403, "Nemate pravo uredivati narudzbenice.");
         return true;
       }
 
@@ -5229,8 +5316,8 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "DELETE" && url.pathname === "/api/purchase-orders/template-settings") {
-      if (!canManageWorkOrders(user)) {
-        sendError(response, 403, "Nemate pravo upravljati narudzbenicama.");
+      if (!(await canUseScopedAppPermission(user, request, "purchaseOrders.edit"))) {
+        sendError(response, 403, "Nemate pravo uredivati narudzbenice.");
         return true;
       }
 
@@ -5241,8 +5328,8 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "POST" && url.pathname === "/api/offers") {
-      if (!canManageWorkOrders(user)) {
-        sendError(response, 403, "Nemate pravo upravljati ponudama.");
+      if (!(await canUseScopedAppPermission(user, request, "offers.create"))) {
+        sendError(response, 403, "Nemate pravo izradivati ponude.");
         return true;
       }
 
@@ -5292,8 +5379,8 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "POST" && url.pathname === "/api/purchase-orders") {
-      if (!canManageWorkOrders(user)) {
-        sendError(response, 403, "Nemate pravo upravljati narudzbenicama.");
+      if (!(await canUseScopedAppPermission(user, request, "purchaseOrders.create"))) {
+        sendError(response, 403, "Nemate pravo izradivati narudzbenice.");
         return true;
       }
 
@@ -6843,7 +6930,18 @@ async function handleApiRequest(request, response, url) {
 
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
-      assertInScope(scopedSnapshot.workOrders, workOrderMatch[1], "Radni nalog nije pronađen.");
+      const currentWorkOrder = assertInScope(scopedSnapshot.workOrders, workOrderMatch[1], "Radni nalog nije pronađen.");
+      const requestedStatus = bodyHasOwnField(body, "status")
+        ? normalizeWorkOrderStatusForPermission(body.status)
+        : normalizeWorkOrderStatusForPermission(currentWorkOrder.status);
+      const missingPermissions = getMissingScopedSnapshotAppPermissions(user, scopedSnapshot, [
+        ...getWorkOrderStatusPermissionKeys(currentWorkOrder.status, requestedStatus),
+        ...getWorkOrderBillingPermissionKeys(currentWorkOrder, body),
+      ]);
+      if (missingPermissions.length > 0) {
+        sendError(response, 403, "Nemate ovlastenje za trazenu promjenu radnog naloga.");
+        return true;
+      }
       assertCompanyPayloadInScope(scopedSnapshot, body);
       assertLocationPayloadInScope(scopedSnapshot, body);
       assertServiceCatalogIdsPayloadInScope(scopedSnapshot, body);
@@ -6934,8 +7032,8 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (offerMatch && request.method === "PATCH") {
-      if (!canManageWorkOrders(user)) {
-        sendError(response, 403, "Nemate pravo upravljati ponudama.");
+      if (!(await canUseScopedAppPermission(user, request, "offers.edit"))) {
+        sendError(response, 403, "Nemate pravo uredivati ponude.");
         return true;
       }
 
@@ -6959,8 +7057,8 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (purchaseOrderMatch && request.method === "PATCH") {
-      if (!canManageWorkOrders(user)) {
-        sendError(response, 403, "Nemate pravo upravljati narudzbenicama.");
+      if (!(await canUseScopedAppPermission(user, request, "purchaseOrders.edit"))) {
+        sendError(response, 403, "Nemate pravo uredivati narudzbenice.");
         return true;
       }
 
@@ -7125,7 +7223,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (offerHtmlDraftPreviewMatch && request.method === "POST") {
-      if (!canManageWorkOrders(user) && !isClientPortalUser(user)) {
+      if (!(await canUseAnyScopedAppPermission(user, request, ["offers.create", "offers.edit"]))) {
         sendError(response, 403, "Nemate pravo pregledavati ponude.");
         return true;
       }
@@ -7142,7 +7240,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (offerHtmlPreviewMatch && request.method === "POST") {
-      if (!canManageWorkOrders(user) && !isClientPortalUser(user)) {
+      if (!(await canUseAnyScopedAppPermission(user, request, ["offers.view", "offers.edit"])) && !isClientPortalUser(user)) {
         sendError(response, 403, "Nemate pravo pregledavati ponude.");
         return true;
       }
@@ -7155,7 +7253,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (offerPdfDraftExportMatch && request.method === "POST") {
-      if (!canManageWorkOrders(user) && !isClientPortalUser(user)) {
+      if (!(await canUseAnyScopedAppPermission(user, request, ["offers.create", "offers.edit"]))) {
         sendError(response, 403, "Nemate pravo generirati PDF ponude.");
         return true;
       }
@@ -7175,7 +7273,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (offerPdfExportMatch && request.method === "POST") {
-      if (!canManageWorkOrders(user) && !isClientPortalUser(user)) {
+      if (!(await canUseAnyScopedAppPermission(user, request, ["offers.view", "offers.edit"])) && !isClientPortalUser(user)) {
         sendError(response, 403, "Nemate pravo generirati PDF ponude.");
         return true;
       }
@@ -7191,7 +7289,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (purchaseOrderPdfDraftExportMatch && request.method === "POST") {
-      if (!canManageWorkOrders(user) && !isClientPortalUser(user)) {
+      if (!(await canUseAnyScopedAppPermission(user, request, ["purchaseOrders.create", "purchaseOrders.edit"]))) {
         sendError(response, 403, "Nemate pravo generirati PDF narudzbenice.");
         return true;
       }
@@ -7211,7 +7309,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (purchaseOrderPdfExportMatch && request.method === "POST") {
-      if (!canManageWorkOrders(user) && !isClientPortalUser(user)) {
+      if (!(await canUseAnyScopedAppPermission(user, request, ["purchaseOrders.view", "purchaseOrders.edit"])) && !isClientPortalUser(user)) {
         sendError(response, 403, "Nemate pravo generirati PDF narudzbenice.");
         return true;
       }
@@ -7259,7 +7357,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (offerEmailMatch && request.method === "POST") {
-      if (!canManageWorkOrders(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "offers.edit"))) {
         sendError(response, 403, "Nemate pravo slati ponude emailom.");
         return true;
       }
@@ -7314,7 +7412,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (purchaseOrderEmailMatch && request.method === "POST") {
-      if (!canManageWorkOrders(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "purchaseOrders.edit"))) {
         sendError(response, 403, "Nemate pravo slati narudzbenice emailom.");
         return true;
       }
@@ -7791,7 +7889,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (offerMatch && request.method === "DELETE") {
-      if (!canManageWorkOrders(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "offers.edit"))) {
         sendError(response, 403, "Nemate pravo brisati ponude.");
         return true;
       }
@@ -7810,7 +7908,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (purchaseOrderMatch && request.method === "DELETE") {
-      if (!canManageWorkOrders(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "purchaseOrders.edit"))) {
         sendError(response, 403, "Nemate pravo brisati narudzbenice.");
         return true;
       }

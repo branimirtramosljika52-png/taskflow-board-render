@@ -188,6 +188,12 @@ test("memory tenant repository scopes module data by app role permissions", asyn
         "people.manage": true,
         "safetyAuthorizations.manage": false,
         "documentTemplates.create": false,
+        "offers.view": false,
+        "offers.create": false,
+        "offers.edit": false,
+        "purchaseOrders.view": true,
+        "purchaseOrders.create": false,
+        "purchaseOrders.edit": false,
       },
     ],
     vehicles: [{ id: "vehicle-1", organizationId: organization.id, name: "Auto" }],
@@ -196,14 +202,20 @@ test("memory tenant repository scopes module data by app role permissions", asyn
     measurementEquipment: [{ id: "equipment-1", organizationId: organization.id, name: "Mjerni uredaj" }],
     safetyAuthorizations: [{ id: "authorization-1", organizationId: organization.id, title: "Ovlastenje" }],
     documentTemplates: [{ id: "template-1", organizationId: organization.id, title: "Template", customFields: [] }],
+    offers: [{ id: "offer-1", organizationId: organization.id, companyId: "company-88", title: "Ponuda", items: [] }],
+    purchaseOrders: [{ id: "po-1", organizationId: organization.id, companyId: "company-88", title: "Narudzbenica", items: [] }],
   });
 
   assert.equal(scoped.appPermissions["people.manage"], true);
   assert.equal(scoped.appPermissions["vehicles.view"], false);
+  assert.equal(scoped.appPermissions["offers.view"], false);
+  assert.equal(scoped.appPermissions["purchaseOrders.view"], true);
   assert.deepEqual(scoped.vehicles, []);
   assert.deepEqual(scoped.legalFrameworks, []);
   assert.deepEqual(scoped.safetyAuthorizations, []);
   assert.deepEqual(scoped.documentTemplates, []);
+  assert.deepEqual(scoped.offers, []);
+  assert.deepEqual(scoped.purchaseOrders.map((item) => item.id), ["po-1"]);
   assert.deepEqual(scoped.serviceCatalog.map((item) => item.id), ["service-1"]);
   assert.deepEqual(scoped.measurementEquipment.map((item) => item.id), ["equipment-1"]);
 });
