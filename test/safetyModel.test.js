@@ -3049,10 +3049,12 @@ test("dashboard widget data supports KPI, chart and list outputs with filters", 
   assert.equal(listData.kind, "list");
   assert.equal(listData.items[0].title, "RN-10001");
   assert.equal(statusGroupData.kind, "list");
-  assert.equal(statusGroupData.items[0].type, "group");
+  assert.equal(statusGroupData.items[0].type, "status_count");
   assert.equal(statusGroupData.items[0].title, "Otvoreni RN");
-  assert.equal(statusGroupData.items[1].title, "RN-10001");
-  assert.ok(statusGroupData.items.some((item) => item.type === "group" && item.title === "Fakturiran RN"));
+  assert.equal(statusGroupData.items[0].count, 1);
+  assert.equal(statusGroupData.items[1].title, "Gotov RN");
+  assert.equal(statusGroupData.items[1].count, 0);
+  assert.ok(statusGroupData.items.some((item) => item.type === "status_count" && item.title === "Fakturiran RN" && item.count === 1));
 });
 
 test("createReminder can link to a work order and inherit company context", () => {

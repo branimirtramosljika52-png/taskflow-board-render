@@ -8564,6 +8564,39 @@ body.is-dragging-dashboard-widget * {
   white-space: nowrap;
 }
 
+.dashboard-widget-status-count {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(190, 207, 237, 0.88);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(246, 250, 255, 0.9));
+}
+
+.dashboard-widget-status-value {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  justify-content: flex-end;
+  min-width: 72px;
+  color: #13244a;
+}
+
+.dashboard-widget-status-value strong {
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.dashboard-widget-status-value span {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
 .dashboard-widget-list-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

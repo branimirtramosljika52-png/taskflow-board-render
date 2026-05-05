@@ -367,7 +367,7 @@ export const DASHBOARD_WIDGET_DEFINITIONS = {
       { value: "tag", label: "Tag" },
     ],
     lists: [
-      { value: "status_groups", label: "RN po statusu" },
+      { value: "status_groups", label: "Broj RN po statusu" },
       { value: "upcoming_due", label: "Sljedeći rokovi" },
       { value: "overdue", label: "RN kojima je istekao rok" },
       { value: "urgent_open", label: "Urgent otvoreni RN" },
@@ -9611,41 +9611,23 @@ function mapDashboardListItem(entry, type) {
   };
 }
 
-function buildDashboardWorkOrderStatusGroupItems(items, limit = 100) {
-  const normalizedLimit = Math.max(3, Math.min(100, Number.parseInt(String(limit ?? 100), 10) || 100));
-  let remaining = normalizedLimit;
-  const result = [];
-  const sortedItems = [...items].sort((left, right) => {
-    if (left.dueDate && right.dueDate && left.dueDate !== right.dueDate) {
-      return String(left.dueDate).localeCompare(String(right.dueDate));
-    }
+function buildDashboardWorkOrderStatusGroupItems(items) {
+  const totalCount = items.length;
 
-    return String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? ""));
-  });
+  return WORK_ORDER_STATUS_OPTIONS.map((option) => {
+    const count = items.filter((item) => item.status === option.value).length;
+    const percentage = totalCount > 0 ? Math.round((count / totalCount) * 100) : 0;
 
-  WORK_ORDER_STATUS_OPTIONS.forEach((option) => {
-    if (remaining <= 0) {
-      return;
-    }
-
-    const statusItems = sortedItems.filter((item) => item.status === option.value);
-    if (statusItems.length === 0) {
-      return;
-    }
-
-    const visibleItems = statusItems.slice(0, remaining);
-    result.push({
+    return {
       id: `work-order-status-${option.value}`,
-      type: "group",
+      type: "status_count",
       title: option.label,
-      count: statusItems.length,
-      visibleCount: visibleItems.length,
-    });
-    result.push(...visibleItems.map((item) => mapDashboardListItem(item, "work_orders")));
-    remaining -= visibleItems.length;
+      count,
+      totalCount,
+      meta: `${percentage}% od ukupno`,
+      status: option.value,
+    };
   });
-
-  return result;
 }
 
 function buildDashboardListItems(widget, items, context = {}, today = todayString()) {
@@ -9705,7 +9687,7 @@ function buildDashboardListItems(widget, items, context = {}, today = todayStrin
   let nextItems = [...items];
 
   if (widget.metricKey === "status_groups") {
-    return buildDashboardWorkOrderStatusGroupItems(nextItems, widget.limit);
+    return buildDashboardWorkOrderStatusGroupItems(nextItems);
   }
 
   if (widget.metricKey === "upcoming_due") {
