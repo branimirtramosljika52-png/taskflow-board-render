@@ -2915,6 +2915,89 @@ function assertLocationPayloadInScope(scopedSnapshot, body = {}) {
   });
 }
 
+function normalizeRequestIdList(values = []) {
+  const entries = Array.isArray(values) ? values : [values];
+  return Array.from(new Set(
+    entries
+      .map((value) => String(value ?? "").trim())
+      .filter(Boolean),
+  ));
+}
+
+function normalizeRequestBoolean(value, fallback = false) {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  if (["false", "0", "no", "ne"].includes(normalized)) {
+    return false;
+  }
+  if (["true", "1", "yes", "da"].includes(normalized)) {
+    return true;
+  }
+  return Boolean(value);
+}
+
+function isClientPortalUserPayload(body = {}) {
+  const profileRole = String(body.profileRole ?? body.profile_role ?? "").trim().toLowerCase();
+  return profileRole === "client_user"
+    || Object.prototype.hasOwnProperty.call(body, "clientCompanyIds")
+    || Object.prototype.hasOwnProperty.call(body, "client_company_ids_json")
+    || Object.prototype.hasOwnProperty.call(body, "clientLocationIds")
+    || Object.prototype.hasOwnProperty.call(body, "client_location_ids_json")
+    || Object.prototype.hasOwnProperty.call(body, "clientAccessAllLocations")
+    || Object.prototype.hasOwnProperty.call(body, "client_access_all_locations");
+}
+
+function assertClientPortalUserPayloadInScope(scopedSnapshot, body = {}) {
+  const companyIds = normalizeRequestIdList(body.clientCompanyIds ?? body.client_company_ids_json);
+  if (companyIds.length === 0) {
+    const error = new Error("Odaberi tvrtku za klijentski portal.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  companyIds.forEach((companyId) => {
+    assertInScope(scopedSnapshot.companies ?? [], companyId, "Tvrtka nije dostupna za klijentski portal.");
+  });
+
+  const accessAllLocations = normalizeRequestBoolean(
+    body.clientAccessAllLocations ?? body.client_access_all_locations,
+    true,
+  );
+  if (accessAllLocations) {
+    return;
+  }
+
+  const locationIds = normalizeRequestIdList(body.clientLocationIds ?? body.client_location_ids_json);
+  if (locationIds.length === 0) {
+    const error = new Error("Odaberi barem jednu lokaciju za klijentski portal.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const companyIdSet = new Set(companyIds.map((companyId) => String(companyId)));
+  locationIds.forEach((locationId) => {
+    const location = assertInScope(scopedSnapshot.locations ?? [], locationId, "Lokacija nije dostupna za klijentski portal.");
+    if (!companyIdSet.has(String(location.companyId))) {
+      const error = new Error("Lokacija ne pripada odabranoj tvrtki.");
+      error.statusCode = 400;
+      throw error;
+    }
+  });
+}
+
+function withClientPortalUserManagementPermission(actor = {}) {
+  return {
+    ...actor,
+    appPermissions: {
+      ...(actor.appPermissions ?? {}),
+      "people.manage": true,
+    },
+  };
+}
+
 function assertLocationObjectPayloadInScope(scopedSnapshot, body = {}) {
   if (!body.objectId) {
     return null;
@@ -5029,15 +5112,64 @@ async function handleApiRequest(request, response, url) {
 
     if (request.method === "POST" && url.pathname === "/api/users") {
       const body = await readJsonBody(request);
-      const scopedActor = await getActorWithScopedAppPermissions(user, request);
-      await handleEntityMutation(response, scopedActor, request, () => tenantRepository.createUser(scopedActor, body), 201);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const scopedActor = {
+        ...user,
+        appPermissions: {
+          ...(scopedSnapshot.appPermissions ?? {}),
+        },
+      };
+      const isClientPortalPayload = isClientPortalUserPayload(body);
+      let mutationActor = scopedActor;
+      let mutationBody = body;
+      if (isClientPortalPayload) {
+        if (!canUseScopedSnapshotAppPermission(user, scopedSnapshot, "clientPortal.manage")) {
+          sendError(response, 403, "Nemate pravo upravljati klijentskim portalom.");
+          return true;
+        }
+        assertClientPortalUserPayloadInScope(scopedSnapshot, body);
+        mutationActor = withClientPortalUserManagementPermission(scopedActor);
+        mutationBody = {
+          ...body,
+          role: "user",
+          profileRole: "client_user",
+        };
+      }
+      await tenantRepository.createUser(mutationActor, mutationBody);
+      await writeSnapshot(response, scopedActor, request, 201);
       return true;
     }
 
     if (userMatch && request.method === "PATCH") {
       const body = await readJsonBody(request);
-      const scopedActor = await getActorWithScopedAppPermissions(user, request);
-      const updated = await tenantRepository.updateUser(scopedActor, userMatch[1], body);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const scopedActor = {
+        ...user,
+        appPermissions: {
+          ...(scopedSnapshot.appPermissions ?? {}),
+        },
+      };
+      const targetUser = assertInScope(scopedSnapshot.users ?? [], userMatch[1], "Korisnik nije pronađen.");
+      const isClientPortalPayload = isClientPortalUserPayload(body) || isClientPortalUser(targetUser);
+      let mutationActor = scopedActor;
+      let mutationBody = body;
+      if (isClientPortalPayload) {
+        if (!canUseScopedSnapshotAppPermission(user, scopedSnapshot, "clientPortal.manage")) {
+          sendError(response, 403, "Nemate pravo upravljati klijentskim portalom.");
+          return true;
+        }
+        assertClientPortalUserPayloadInScope(scopedSnapshot, {
+          ...targetUser,
+          ...body,
+        });
+        mutationActor = withClientPortalUserManagementPermission(scopedActor);
+        mutationBody = {
+          ...body,
+          role: "user",
+          profileRole: "client_user",
+        };
+      }
+      const updated = await tenantRepository.updateUser(mutationActor, userMatch[1], mutationBody);
 
       if (!updated) {
         sendError(response, 404, "Korisnik nije pronađen.");
@@ -5119,13 +5251,12 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "POST" && url.pathname === "/api/locations") {
-      if (!canManageMasterData(user)) {
-        sendError(response, 403, "Nemate pravo upravljati lokacijama.");
-        return true;
-      }
-
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
+      if (!canUseScopedSnapshotAppPermission(user, scopedSnapshot, "locations.create")) {
+        sendError(response, 403, "Nemate pravo dodavati lokacije.");
+        return true;
+      }
       assertCompanyPayloadInScope(scopedSnapshot, body);
       await domainRepository.createLocation(body);
       await writeSnapshot(response, user, request, 201);
@@ -5415,13 +5546,12 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "POST" && url.pathname === "/api/contract-templates") {
-      if (!canManageWorkOrders(user)) {
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      if (!canUseScopedSnapshotAppPermission(user, scopedSnapshot, "contracts.create")) {
         sendError(response, 403, "Nemate pravo upravljati templateima ugovora.");
         return true;
       }
-
-      const body = await readJsonBody(request);
-      const { scopedSnapshot } = await getScopedState(user, request);
       await domainRepository.createContractTemplate({
         ...body,
         organizationId: scopedSnapshot.activeOrganizationId,
@@ -5431,13 +5561,12 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "POST" && url.pathname === "/api/contracts") {
-      if (!canManageWorkOrders(user)) {
-        sendError(response, 403, "Nemate pravo upravljati ugovorima.");
-        return true;
-      }
-
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
+      if (!canUseScopedSnapshotAppPermission(user, scopedSnapshot, "contracts.create")) {
+        sendError(response, 403, "Nemate pravo dodavati ugovore.");
+        return true;
+      }
       assertCompanyPayloadInScope(scopedSnapshot, body);
       assertContractTemplatePayloadInScope(scopedSnapshot, body);
       assertOfferIdsPayloadInScope(scopedSnapshot, body);
@@ -5803,14 +5932,30 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (userPasswordResetMatch && request.method === "POST") {
-      const updated = await tenantRepository.sendUserPasswordReset(user, userPasswordResetMatch[1]);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const scopedActor = {
+        ...user,
+        appPermissions: {
+          ...(scopedSnapshot.appPermissions ?? {}),
+        },
+      };
+      const targetUser = assertInScope(scopedSnapshot.users ?? [], userPasswordResetMatch[1], "Korisnik nije pronađen.");
+      let mutationActor = scopedActor;
+      if (isClientPortalUser(targetUser)) {
+        if (!canUseScopedSnapshotAppPermission(user, scopedSnapshot, "clientPortal.manage")) {
+          sendError(response, 403, "Nemate pravo upravljati klijentskim portalom.");
+          return true;
+        }
+        mutationActor = withClientPortalUserManagementPermission(scopedActor);
+      }
+      const updated = await tenantRepository.sendUserPasswordReset(mutationActor, userPasswordResetMatch[1]);
 
       if (!updated) {
         sendError(response, 404, "Korisnik nije pronaÄ‘en.");
         return true;
       }
 
-      await writeSnapshot(response, user, request);
+      await writeSnapshot(response, scopedActor, request);
       return true;
     }
 
@@ -6647,13 +6792,12 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (locationMatch && request.method === "PATCH") {
-      if (!canManageMasterData(user)) {
-        sendError(response, 403, "Nemate pravo upravljati lokacijama.");
-        return true;
-      }
-
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
+      if (!canUseScopedSnapshotAppPermission(user, scopedSnapshot, "locations.edit")) {
+        sendError(response, 403, "Nemate pravo urediti lokaciju.");
+        return true;
+      }
       assertInScope(scopedSnapshot.locations, locationMatch[1], "Lokacija nije pronađena.");
       assertCompanyPayloadInScope(scopedSnapshot, body);
       const updated = await domainRepository.updateLocation(locationMatch[1], body);
@@ -7110,13 +7254,12 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (contractTemplateMatch && request.method === "PATCH") {
-      if (!canManageWorkOrders(user)) {
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      if (!canUseScopedSnapshotAppPermission(user, scopedSnapshot, "contracts.create")) {
         sendError(response, 403, "Nemate pravo upravljati templateima ugovora.");
         return true;
       }
-
-      const body = await readJsonBody(request);
-      const { scopedSnapshot } = await getScopedState(user, request);
       assertInScope(scopedSnapshot.contractTemplates ?? [], contractTemplateMatch[1], "Template ugovora nije pronađen.");
       const updated = await domainRepository.updateContractTemplate(contractTemplateMatch[1], {
         ...body,
@@ -7133,12 +7276,12 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (contractTemplateMatch && request.method === "DELETE") {
-      if (!canManageWorkOrders(user)) {
+      const { scopedSnapshot } = await getScopedState(user, request);
+      if (!canUseScopedSnapshotAppPermission(user, scopedSnapshot, "contracts.create")) {
         sendError(response, 403, "Nemate pravo upravljati templateima ugovora.");
         return true;
       }
 
-      const { scopedSnapshot } = await getScopedState(user, request);
       assertInScope(scopedSnapshot.contractTemplates ?? [], contractTemplateMatch[1], "Template ugovora nije pronađen.");
       await domainRepository.deleteContractTemplate(contractTemplateMatch[1]);
       await writeSnapshot(response, user, request);
@@ -7146,13 +7289,12 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (contractMatch && request.method === "PATCH") {
-      if (!canManageWorkOrders(user)) {
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      if (!canUseScopedSnapshotAppPermission(user, scopedSnapshot, "contracts.create")) {
         sendError(response, 403, "Nemate pravo upravljati ugovorima.");
         return true;
       }
-
-      const body = await readJsonBody(request);
-      const { scopedSnapshot } = await getScopedState(user, request);
       assertInScope(scopedSnapshot.contracts ?? [], contractMatch[1], "Ugovor nije pronađen.");
       assertCompanyPayloadInScope(scopedSnapshot, body);
       assertContractTemplatePayloadInScope(scopedSnapshot, body);
@@ -7172,12 +7314,12 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (contractMatch && request.method === "DELETE") {
-      if (!canManageWorkOrders(user)) {
+      const { scopedSnapshot } = await getScopedState(user, request);
+      if (!canUseScopedSnapshotAppPermission(user, scopedSnapshot, "contracts.create")) {
         sendError(response, 403, "Nemate pravo upravljati ugovorima.");
         return true;
       }
 
-      const { scopedSnapshot } = await getScopedState(user, request);
       assertInScope(scopedSnapshot.contracts ?? [], contractMatch[1], "Ugovor nije pronađen.");
       await domainRepository.deleteContract(contractMatch[1]);
       await writeSnapshot(response, user, request);
@@ -7325,12 +7467,11 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (contractWordExportMatch && request.method === "POST") {
-      if (!canManageWorkOrders(user)) {
+      const { scopedSnapshot } = await getScopedState(user, request);
+      if (!canUseAnyScopedSnapshotAppPermission(user, scopedSnapshot, ["contracts.view", "contracts.create"])) {
         sendError(response, 403, "Nemate pravo generirati Word ugovora.");
         return true;
       }
-
-      const { scopedSnapshot } = await getScopedState(user, request);
       const contract = assertInScope(scopedSnapshot.contracts ?? [], contractWordExportMatch[1], "Ugovor nije pronađen.");
       const { docxBuffer, fileName } = await buildContractWordExportPayload(contract, scopedSnapshot.activeOrganizationId);
       sendBinary(response, 200, docxBuffer, {
@@ -7341,12 +7482,11 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (contractPdfExportMatch && request.method === "POST") {
-      if (!canManageWorkOrders(user) && !isClientPortalUser(user)) {
+      const { scopedSnapshot } = await getScopedState(user, request);
+      if (!canUseAnyScopedSnapshotAppPermission(user, scopedSnapshot, ["contracts.view", "contracts.create"]) && !isClientPortalUser(user)) {
         sendError(response, 403, "Nemate pravo generirati PDF ugovora.");
         return true;
       }
-
-      const { scopedSnapshot } = await getScopedState(user, request);
       const contract = assertInScope(scopedSnapshot.contracts ?? [], contractPdfExportMatch[1], "Ugovor nije pronađen.");
       const { pdfBuffer, fileName } = await buildContractPdfExportPayload(contract, scopedSnapshot.activeOrganizationId);
       sendBinary(response, 200, pdfBuffer, {

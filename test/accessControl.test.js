@@ -208,8 +208,17 @@ test("app role permissions resolve module access by profile role", () => {
   assert.equal(hasAppPermission(junior, rolePermissions, "workOrders.billing.write"), true);
   assert.equal(hasAppPermission(junior, rolePermissions, "offers.view"), true);
   assert.equal(hasAppPermission(junior, rolePermissions, "purchaseOrders.create"), true);
+  assert.equal(hasAppPermission(junior, rolePermissions, "locations.view"), true);
+  assert.equal(hasAppPermission(junior, rolePermissions, "locations.create"), true);
+  assert.equal(hasAppPermission(junior, rolePermissions, "locations.edit"), true);
+  assert.equal(hasAppPermission(junior, rolePermissions, "contracts.view"), true);
+  assert.equal(hasAppPermission(junior, rolePermissions, "contracts.create"), true);
+  assert.equal(hasAppPermission(junior, rolePermissions, "clientPortal.manage"), true);
   assert.equal(hasAppPermission(client, rolePermissions, "serviceCatalog.view"), false);
   assert.equal(hasAppPermission(client, rolePermissions, "offers.view"), false);
+  assert.equal(hasAppPermission(client, rolePermissions, "locations.view"), false);
+  assert.equal(hasAppPermission(client, rolePermissions, "contracts.view"), false);
+  assert.equal(hasAppPermission(client, rolePermissions, "clientPortal.manage"), false);
 });
 
 test("company permissions can be scoped per company while create stays general", () => {

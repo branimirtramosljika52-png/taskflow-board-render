@@ -194,8 +194,16 @@ test("memory tenant repository scopes module data by app role permissions", asyn
         "purchaseOrders.view": true,
         "purchaseOrders.create": false,
         "purchaseOrders.edit": false,
+        "locations.view": false,
+        "locations.create": false,
+        "locations.edit": false,
+        "contracts.view": false,
+        "contracts.create": false,
+        "clientPortal.manage": false,
       },
     ],
+    locations: [{ id: "location-1", companyId: "company-88", name: "Lokacija" }],
+    locationObjects: [{ id: "object-1", companyId: "company-88", locationId: "location-1", name: "Objekt" }],
     vehicles: [{ id: "vehicle-1", organizationId: organization.id, name: "Auto" }],
     legalFrameworks: [{ id: "legal-1", organizationId: organization.id, title: "Zakon" }],
     serviceCatalog: [{ id: "service-1", organizationId: organization.id, title: "Usluga" }],
@@ -204,6 +212,7 @@ test("memory tenant repository scopes module data by app role permissions", asyn
     documentTemplates: [{ id: "template-1", organizationId: organization.id, title: "Template", customFields: [] }],
     offers: [{ id: "offer-1", organizationId: organization.id, companyId: "company-88", title: "Ponuda", items: [] }],
     purchaseOrders: [{ id: "po-1", organizationId: organization.id, companyId: "company-88", title: "Narudzbenica", items: [] }],
+    contracts: [{ id: "contract-1", organizationId: organization.id, companyId: "company-88", title: "Ugovor" }],
   });
 
   assert.equal(scoped.appPermissions["people.manage"], true);
@@ -215,6 +224,9 @@ test("memory tenant repository scopes module data by app role permissions", asyn
   assert.deepEqual(scoped.safetyAuthorizations, []);
   assert.deepEqual(scoped.documentTemplates, []);
   assert.deepEqual(scoped.offers, []);
+  assert.deepEqual(scoped.locations, []);
+  assert.deepEqual(scoped.locationObjects, []);
+  assert.deepEqual(scoped.contracts, []);
   assert.deepEqual(scoped.purchaseOrders.map((item) => item.id), ["po-1"]);
   assert.deepEqual(scoped.serviceCatalog.map((item) => item.id), ["service-1"]);
   assert.deepEqual(scoped.measurementEquipment.map((item) => item.id), ["equipment-1"]);

@@ -1736,6 +1736,10 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
     || ["offers.view", "offers.create", "offers.edit"].some((permissionKey) => hasAppPermission(permissionKey));
   const canViewPurchaseOrders = actorIsClientPortal
     || ["purchaseOrders.view", "purchaseOrders.create", "purchaseOrders.edit"].some((permissionKey) => hasAppPermission(permissionKey));
+  const canViewLocations = actorIsClientPortal
+    || ["locations.view", "locations.create", "locations.edit", "clientPortal.manage"].some((permissionKey) => hasAppPermission(permissionKey));
+  const canViewContracts = actorIsClientPortal
+    || ["contracts.view", "contracts.create"].some((permissionKey) => hasAppPermission(permissionKey));
   const canViewDocumentTemplates = [
     "documentTemplates.create",
     "measurementEquipment.create",
@@ -1831,11 +1835,11 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       canDelete: Boolean(companyGeneralPermissions.canDelete),
     },
     companies: (rawSnapshot.companies ?? []).filter((item) => visibleCompanyIds.has(String(item.id))),
-    locations: (rawSnapshot.locations ?? []).filter((item) => (
+    locations: (canViewLocations ? (rawSnapshot.locations ?? []) : []).filter((item) => (
       visibleCompanyIds.has(String(item.companyId))
       && (!clientPortalScope.isClientPortal || clientPortalScope.locationIds.has(String(item.id)))
     )),
-    locationObjects: (rawSnapshot.locationObjects ?? []).filter((item) => (
+    locationObjects: (canViewLocations ? (rawSnapshot.locationObjects ?? []) : []).filter((item) => (
       visibleCompanyIds.has(String(item.companyId))
       && (!clientPortalScope.isClientPortal || clientPortalScope.locationIds.has(String(item.locationId)))
     )),
@@ -1872,7 +1876,7 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       attachments: (item.attachments ?? []).map((document) => ({ ...document })),
       comments: (item.comments ?? []).map((comment) => ({ ...comment })),
     })),
-    contracts: (rawSnapshot.contracts ?? []).filter(isOrganizationOrCompanyItemVisible).map((item) => ({
+    contracts: (canViewContracts ? (rawSnapshot.contracts ?? []) : []).filter(isOrganizationOrCompanyItemVisible).map((item) => ({
       ...item,
       linkedOfferIds: [...(item.linkedOfferIds ?? [])],
       linkedOfferNumbers: [...(item.linkedOfferNumbers ?? [])],

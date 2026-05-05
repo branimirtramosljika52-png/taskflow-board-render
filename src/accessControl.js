@@ -69,6 +69,12 @@ export const APP_ROLE_PERMISSION_DEFINITIONS = Object.freeze([
   Object.freeze({ key: "purchaseOrders.create", label: "Izrada narudzbenica" }),
   Object.freeze({ key: "purchaseOrders.view", label: "Pregled narudzbenica" }),
   Object.freeze({ key: "purchaseOrders.edit", label: "Uredivanje narudzbenice" }),
+  Object.freeze({ key: "locations.view", label: "Pregled lokacije" }),
+  Object.freeze({ key: "locations.create", label: "Dodavanje nove lokacije" }),
+  Object.freeze({ key: "locations.edit", label: "Uredivanje lokacije" }),
+  Object.freeze({ key: "contracts.create", label: "Dodavanje ugovora" }),
+  Object.freeze({ key: "contracts.view", label: "Pregled ugovora" }),
+  Object.freeze({ key: "clientPortal.manage", label: "Klijentski portal" }),
 ]);
 export const APP_ROLE_PERMISSION_KEYS = Object.freeze(APP_ROLE_PERMISSION_DEFINITIONS.map((entry) => entry.key));
 const APP_PERMISSION_KEYS_SET = new Set(APP_ROLE_PERMISSION_KEYS);
@@ -97,6 +103,12 @@ const APP_PROFILE_DEFAULT_OPERATION_PERMISSION_KEYS = Object.freeze([
   "purchaseOrders.create",
   "purchaseOrders.view",
   "purchaseOrders.edit",
+  "locations.view",
+  "locations.create",
+  "locations.edit",
+  "contracts.create",
+  "contracts.view",
+  "clientPortal.manage",
 ]);
 
 function normalizeText(value) {

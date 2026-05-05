@@ -968,6 +968,36 @@ const APP_ROLE_PERMISSION_MODULES = Object.freeze([
     ],
   },
   {
+    key: "locations",
+    title: "Lokacije",
+    description: "Pregled, dodavanje i uredivanje lokacija.",
+    type: "app",
+    rows: [
+      { key: "locations.view", label: "Pregled lokacije" },
+      { key: "locations.create", label: "Dodavanje nove lokacije" },
+      { key: "locations.edit", label: "Uredivanje lokacije" },
+    ],
+  },
+  {
+    key: "contracts",
+    title: "Ugovori",
+    description: "Dodavanje i pregled ugovora.",
+    type: "app",
+    rows: [
+      { key: "contracts.create", label: "Dodavanje ugovora" },
+      { key: "contracts.view", label: "Pregled ugovora" },
+    ],
+  },
+  {
+    key: "client-portal",
+    title: "Klijentski portal",
+    description: "Dodjela klijentskih pristupa po tvrtki i lokacijama.",
+    type: "app",
+    rows: [
+      { key: "clientPortal.manage", label: "Klijentski portal" },
+    ],
+  },
+  {
     key: "document-templates",
     title: "Template",
     description: "Izrada i uredivanje templatea.",
@@ -2665,6 +2695,9 @@ const controlPanelNavItem = document.querySelector('[data-sidebar-item="control-
 const companyListNavItem = document.querySelector('[data-sidebar-item="list-company"]');
 const companyAddNavItem = document.querySelector('[data-sidebar-item="add-company"]');
 const companyClientPortalNavItem = document.querySelector('[data-sidebar-item="client-portal"]');
+const companyContractNavItem = document.querySelector('[data-sidebar-item="contract"]');
+const locationListNavItem = document.querySelector('[data-sidebar-item="list-location"]');
+const locationAddNavItem = document.querySelector('[data-sidebar-item="add-location"]');
 const organizationContext = document.querySelector("#organization-context");
 const organizationSwitcherWrap = document.querySelector("#organization-switcher-wrap");
 const organizationSwitcher = document.querySelector("#organization-switcher");
@@ -6547,6 +6580,30 @@ function getCanCreatePurchaseOrders() {
 
 function getCanEditPurchaseOrders() {
   return hasAppPermissionClient("purchaseOrders.edit");
+}
+
+function getCanViewLocations() {
+  return hasAppPermissionClient("locations.view") || getCanCreateLocations() || getCanEditLocations();
+}
+
+function getCanCreateLocations() {
+  return hasAppPermissionClient("locations.create");
+}
+
+function getCanEditLocations() {
+  return hasAppPermissionClient("locations.edit");
+}
+
+function getCanViewContracts() {
+  return hasAppPermissionClient("contracts.view") || getCanCreateContracts();
+}
+
+function getCanCreateContracts() {
+  return hasAppPermissionClient("contracts.create");
+}
+
+function getCanManageClientPortal() {
+  return hasAppPermissionClient("clientPortal.manage");
 }
 
 function getCommercialDocumentPermissionKey(contextKey = getActiveCommercialDocumentKey(), action = "view") {
@@ -19471,6 +19528,10 @@ function isSidebarGroupAccessible(groupName) {
     return getCanViewCompanies();
   }
 
+  if (groupName === "locations") {
+    return getCanViewLocations();
+  }
+
   return ALL_SIDEBAR_GROUPS.includes(groupName);
 }
 
@@ -19577,6 +19638,10 @@ function focusCompanyArea(target = "list") {
 }
 
 function focusLocationArea(target = "list") {
+  if (!getCanViewLocations()) {
+    return;
+  }
+
   const wasLocationsView = state.activeView === "locations";
   state.activeView = "locations";
   if (target !== "form" && !wasLocationsView) {
@@ -19587,7 +19652,7 @@ function focusLocationArea(target = "list") {
 
   window.requestAnimationFrame(() => {
     if (target === "form") {
-      if (getCanManageMasterData() && state.companies.length > 0) {
+      if (getCanCreateLocations() && state.companies.length > 0) {
         resetLocationForm();
         openLocationEditor();
         locationNameInput?.focus({ preventScroll: true });
@@ -19623,6 +19688,12 @@ function activateSidebarItem(itemName, options = {}) {
   }
 
   if (itemConfig.view === "module") {
+    if (itemConfig.module === "contract" && !getCanViewContracts()) {
+      return;
+    }
+    if (itemConfig.module === "client-portal" && !getCanManageClientPortal()) {
+      return;
+    }
     state.activeModuleItem = itemConfig.module;
     state.activeView = "module";
     renderModuleView();
@@ -59974,7 +60045,16 @@ function renderAuthState() {
       companyAddNavItem.hidden = !canCreateCompany;
     }
     if (companyClientPortalNavItem) {
-      companyClientPortalNavItem.hidden = !canViewCompanies;
+      companyClientPortalNavItem.hidden = !getCanManageClientPortal();
+    }
+    if (companyContractNavItem) {
+      companyContractNavItem.hidden = !getCanViewContracts();
+    }
+    if (locationListNavItem) {
+      locationListNavItem.hidden = !getCanViewLocations();
+    }
+    if (locationAddNavItem) {
+      locationAddNavItem.hidden = !getCanCreateLocations();
     }
     if (workOrderOpenFormButton) {
       workOrderOpenFormButton.hidden = !getCanCreateWorkOrders();
@@ -59985,6 +60065,23 @@ function renderAuthState() {
     }
     if (!canViewCompanies && (state.activeView === "companies" || isCompanySidebarItem())) {
       state.activeView = "selfdash";
+      state.activeSidebarItem = "dashboard";
+      state.activeSidebarGroup = "home";
+    }
+    if (!getCanViewLocations() && state.activeView === "locations") {
+      state.activeView = "selfdash";
+      state.activeSidebarItem = "dashboard";
+      state.activeSidebarGroup = "home";
+    }
+    if (!getCanManageClientPortal() && state.activeView === "module" && state.activeModuleItem === "client-portal") {
+      state.activeView = "selfdash";
+      state.activeModuleItem = "";
+      state.activeSidebarItem = "dashboard";
+      state.activeSidebarGroup = "home";
+    }
+    if (!getCanViewContracts() && state.activeView === "module" && state.activeModuleItem === "contract") {
+      state.activeView = "selfdash";
+      state.activeModuleItem = "";
       state.activeSidebarItem = "dashboard";
       state.activeSidebarGroup = "home";
     }
@@ -60031,6 +60128,18 @@ function renderAuthState() {
     }
     if (companyAddNavItem) {
       companyAddNavItem.hidden = true;
+    }
+    if (companyClientPortalNavItem) {
+      companyClientPortalNavItem.hidden = true;
+    }
+    if (companyContractNavItem) {
+      companyContractNavItem.hidden = true;
+    }
+    if (locationListNavItem) {
+      locationListNavItem.hidden = true;
+    }
+    if (locationAddNavItem) {
+      locationAddNavItem.hidden = true;
     }
     if (sidebarActiveOrganization) {
       sidebarActiveOrganization.textContent = "Workspace";
@@ -60950,7 +61059,7 @@ function renderCompanyClientPortalPanel() {
   }
 
   const companyId = String(companyIdInput?.value || "").trim();
-  const canManageClientAccess = Boolean(companyId && getCanEditCompany(companyId));
+  const canManageClientAccess = Boolean(companyId && getCanEditCompany(companyId) && getCanManageClientPortal());
   companyClientPortalCard.hidden = !canManageClientAccess;
   if (!canManageClientAccess) {
     companyClientUsersList?.replaceChildren();
@@ -61037,6 +61146,10 @@ function buildCompanyClientUserPayload() {
 
 async function createCompanyClientUser() {
   const companyId = String(companyIdInput?.value || "").trim();
+  if (!getCanManageClientPortal()) {
+    setInlineMessage(companyClientFeedback, "Nemas ovlastenje za klijentski portal.");
+    return false;
+  }
   if (!companyId || !getCanEditCompany(companyId)) {
     setInlineMessage(companyClientFeedback, "Prvo spremi ili otvori tvrtku za koju dodaješ klijenta.");
     return false;
@@ -61090,7 +61203,7 @@ function syncClientPortalAccessModal() {
 
 function openClientPortalAccessModal() {
   const companyId = getClientPortalSelectedCompanyId();
-  if (!companyId || !getCanEditCompany(companyId)) {
+  if (!getCanManageClientPortal() || !companyId || !getCanEditCompany(companyId)) {
     return;
   }
 
@@ -61396,6 +61509,10 @@ function buildClientPortalUserPayload() {
 
 async function createClientPortalUserFromModule() {
   const companyId = getClientPortalSelectedCompanyId();
+  if (!getCanManageClientPortal()) {
+    setInlineMessage(clientPortalFeedback, "Nemas ovlastenje za klijentski portal.");
+    return false;
+  }
   if (!companyId || !getCanEditCompany(companyId)) {
     setInlineMessage(clientPortalFeedback, "Odaberi tvrtku za koju dodaješ klijenta.");
     return false;
@@ -61954,6 +62071,36 @@ function renderClientPortalPreview() {
 function renderClientPortalModule() {
   if (!clientPortalModule) {
     return;
+  }
+
+  if (!getCanManageClientPortal()) {
+    if (clientPortalOpenAccessButton) {
+      clientPortalOpenAccessButton.hidden = true;
+      clientPortalOpenAccessButton.disabled = true;
+    }
+    if (clientPortalCreateUserButton) {
+      clientPortalCreateUserButton.disabled = true;
+    }
+    if (clientPortalOpenCompanyButton) {
+      clientPortalOpenCompanyButton.disabled = true;
+    }
+    clientPortalUsersList?.replaceChildren();
+    if (clientPortalUsersEmpty) {
+      clientPortalUsersEmpty.hidden = false;
+      clientPortalUsersEmpty.textContent = "Nemas ovlastenje za klijentski portal.";
+    }
+    [clientPortalTotalUsers, clientPortalCompanyCount, clientPortalLocationScopedCount, clientPortalAllLocationsCount, clientPortalSelectedUsersCount]
+      .forEach((element) => {
+        if (element) {
+          element.textContent = "0";
+        }
+      });
+    closeClientPortalAccessModal();
+    return;
+  }
+
+  if (clientPortalOpenAccessButton) {
+    clientPortalOpenAccessButton.hidden = false;
   }
 
   const companyId = rebuildClientPortalCompanyOptions();
@@ -72458,7 +72605,7 @@ function hydrateContractForm(contract) {
     contractCompanyPreviewMeta,
   );
   if (contractDeleteButton) {
-    contractDeleteButton.hidden = false;
+    contractDeleteButton.hidden = !getCanCreateContracts();
   }
   if (contractDownloadPdfButton) {
     contractDownloadPdfButton.disabled = false;
@@ -72542,12 +72689,39 @@ function renderContractModule() {
     return;
   }
 
+  const canViewContracts = getCanViewContracts();
+  const canCreateContracts = getCanCreateContracts();
+  if (contractOpenFormButton) {
+    contractOpenFormButton.hidden = !canCreateContracts;
+  }
+  if (contractOpenTemplateButton) {
+    contractOpenTemplateButton.hidden = !canCreateContracts;
+  }
+
   if (contractSearchInput && contractSearchInput.value !== (state.contractFilters.query || "")) {
     contractSearchInput.value = state.contractFilters.query || "";
   }
   rebuildContractFilterOptions();
   rebuildContractCompanyOptions(contractCompanyIdInput?.value || "");
   rebuildContractTemplateOptions(contractTemplateIdInput?.value || "");
+
+  if (!canViewContracts) {
+    contractList.replaceChildren();
+    contractEmpty.hidden = false;
+    contractEmpty.textContent = "Nemas ovlastenje za pregled ugovora.";
+    if (contractDeleteButton) {
+      contractDeleteButton.hidden = true;
+    }
+    if (contractDownloadPdfButton) {
+      contractDownloadPdfButton.disabled = true;
+    }
+    if (contractDownloadWordButton) {
+      contractDownloadWordButton.disabled = true;
+    }
+    closeContractEditor({ reset: false });
+    closeContractTemplateModal();
+    return;
+  }
 
   const visibleContracts = sortContracts(filterContracts(state.contracts ?? [], {
     query: state.contractFilters.query || "",
@@ -72559,8 +72733,10 @@ function renderContractModule() {
     const card = document.createElement("article");
     card.className = "offer-list-card contract-list-card";
     card.classList.add(`is-${slugifyValue(contract.status || "draft")}`);
-    card.tabIndex = 0;
-    card.setAttribute("role", "button");
+    if (canCreateContracts) {
+      card.tabIndex = 0;
+      card.setAttribute("role", "button");
+    }
 
     const head = document.createElement("div");
     head.className = "offer-list-card-head";
@@ -72617,7 +72793,9 @@ function renderContractModule() {
     card.append(head, footer);
 
     const openContract = () => {
-      hydrateContractForm(contract);
+      if (canCreateContracts) {
+        hydrateContractForm(contract);
+      }
     };
 
     card.addEventListener("click", (event) => {
@@ -72627,6 +72805,9 @@ function renderContractModule() {
       openContract();
     });
     card.addEventListener("keydown", (event) => {
+      if (!canCreateContracts) {
+        return;
+      }
       if (event.key !== "Enter" && event.key !== " ") {
         return;
       }
@@ -72640,7 +72821,9 @@ function renderContractModule() {
   if (visibleContracts.length === 0) {
     const emptyCard = document.createElement("div");
     emptyCard.className = "offers-empty-card";
-    emptyCard.textContent = "Nema ugovora za odabrane filtere. Otvori novi ugovor ili proširi pretragu.";
+    emptyCard.textContent = canCreateContracts
+      ? "Nema ugovora za odabrane filtere. Otvori novi ugovor ili prosiri pretragu."
+      : "Nema ugovora za odabrane filtere.";
     contractList.replaceChildren(emptyCard);
   }
 
@@ -72648,7 +72831,7 @@ function renderContractModule() {
   renderContractTemplateReferenceMeta();
   renderContractTemplatePlaceholderList();
   if (contractDeleteButton) {
-    contractDeleteButton.hidden = !String(contractIdInput?.value || "").trim();
+    contractDeleteButton.hidden = !String(contractIdInput?.value || "").trim() || !canCreateContracts;
   }
   if (contractDownloadPdfButton) {
     contractDownloadPdfButton.disabled = !String(contractIdInput?.value || "").trim();
@@ -85308,15 +85491,31 @@ function renderLocations() {
   const filteredLocations = sortedLocations.filter((location) => matchesLocationSearch(location, queryNeedle));
   const renderLimit = Math.max(LOCATION_LIST_BATCH_SIZE, Number(state.locationRenderLimit) || LOCATION_LIST_BATCH_SIZE);
   const visibleLocations = filteredLocations.slice(0, renderLimit);
-  const canManageMasterData = getCanManageMasterData();
+  const canViewLocations = getCanViewLocations();
+  const canCreateLocations = getCanCreateLocations();
+  const canEditLocations = getCanEditLocations();
 
   if (locationOpenFormButton) {
-    locationOpenFormButton.hidden = !canManageMasterData;
+    locationOpenFormButton.hidden = !canCreateLocations;
     locationOpenFormButton.disabled = state.companies.length === 0;
   }
 
   if (locationsSearchInput && locationsSearchInput.value !== state.locationFilters.query) {
     locationsSearchInput.value = state.locationFilters.query;
+  }
+
+  if (!canViewLocations) {
+    locationsBody.replaceChildren();
+    locationsEmpty.hidden = false;
+    locationsEmpty.textContent = "Nemas ovlastenje za pregled lokacija.";
+    if (locationsHelper) {
+      locationsHelper.textContent = "Pregled lokacija je dostupan samo rolama s ovlastenjem.";
+    }
+    if (locationsLoadMoreButton) {
+      locationsLoadMoreButton.hidden = true;
+    }
+    closeLocationEditor({ reset: false });
+    return;
   }
 
   if (locationsHelper) {
@@ -85336,14 +85535,17 @@ function renderLocations() {
   const fragment = document.createDocumentFragment();
   visibleLocations.forEach((location) => {
     const row = document.createElement("tr");
-    row.className = "list-row is-clickable";
-    row.tabIndex = 0;
+    row.className = "list-row";
+    if (canEditLocations) {
+      row.classList.add("is-clickable");
+      row.tabIndex = 0;
+    }
     const company = getCompany(location.companyId);
     const companyName = company?.name ?? "Nepoznata tvrtka";
     const contacts = buildLocationContacts(location);
     const primaryContact = contacts[0] ?? {};
     const openLocation = () => {
-      if (canManageMasterData) {
+      if (canEditLocations) {
         hydrateLocationForm(location);
       }
     };
@@ -85354,6 +85556,9 @@ function renderLocations() {
       openLocation();
     });
     row.addEventListener("keydown", (event) => {
+      if (!canEditLocations) {
+        return;
+      }
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
         openLocation();
@@ -89895,6 +90100,9 @@ purchaseOrderDocumentsInput?.addEventListener("change", () => {
 });
 
 contractOpenFormButton?.addEventListener("click", () => {
+  if (!getCanCreateContracts()) {
+    return;
+  }
   resetContractForm();
   renderContractModule();
   openContractEditor();
@@ -89945,11 +90153,17 @@ contractForm?.addEventListener("input", () => {
 });
 
 contractAddAnnexButton?.addEventListener("click", () => {
+  if (!getCanCreateContracts()) {
+    return;
+  }
   contractAnnexDrafts.push(createEmptyContractAnnexDraft({}));
   renderContractAnnexList();
 });
 
 contractResetButton?.addEventListener("click", () => {
+  if (!getCanCreateContracts()) {
+    return;
+  }
   resetContractForm();
   renderContractModule();
   openContractEditor();
@@ -89958,6 +90172,12 @@ contractResetButton?.addEventListener("click", () => {
 contractForm?.addEventListener("submit", (event) => {
   event.preventDefault();
   const isEditing = Boolean(contractIdInput?.value);
+  if (!getCanCreateContracts()) {
+    setInlineMessage(contractError, isEditing
+      ? "Nemas ovlastenje za uredivanje ugovora."
+      : "Nemas ovlastenje za dodavanje ugovora.");
+    return;
+  }
   const path = isEditing ? `/contracts/${contractIdInput.value}` : "/contracts";
   const method = isEditing ? "PATCH" : "POST";
 
@@ -89974,6 +90194,10 @@ contractForm?.addEventListener("submit", (event) => {
 
 contractDeleteButton?.addEventListener("click", () => {
   const contractId = String(contractIdInput?.value || "").trim();
+  if (!getCanCreateContracts()) {
+    setInlineMessage(contractError, "Nemas ovlastenje za brisanje ugovora.");
+    return;
+  }
   if (!contractId || !window.confirm("Obrisati ovaj ugovor?")) {
     return;
   }
@@ -89998,7 +90222,7 @@ contractEditorBackdrop?.addEventListener("click", () => {
 
 contractDownloadPdfButton?.addEventListener("click", () => {
   const contractId = String(contractIdInput?.value || "").trim();
-  if (!contractId) {
+  if (!contractId || !getCanViewContracts()) {
     return;
   }
   void runMutation(() => downloadContractPdf(contractId), contractError);
@@ -90006,13 +90230,16 @@ contractDownloadPdfButton?.addEventListener("click", () => {
 
 contractDownloadWordButton?.addEventListener("click", () => {
   const contractId = String(contractIdInput?.value || "").trim();
-  if (!contractId) {
+  if (!contractId || !getCanViewContracts()) {
     return;
   }
   void runMutation(() => downloadContractWord(contractId), contractError);
 });
 
 contractOpenTemplateButton?.addEventListener("click", () => {
+  if (!getCanCreateContracts()) {
+    return;
+  }
   if (contractTemplateError) {
     contractTemplateError.textContent = "";
   }
@@ -90039,11 +90266,17 @@ contractTemplateToggleReferenceButton?.addEventListener("click", () => {
 });
 
 contractTemplateResetButton?.addEventListener("click", () => {
+  if (!getCanCreateContracts()) {
+    return;
+  }
   state.activeContractTemplateId = "";
   resetContractTemplateForm();
 });
 
 contractTemplateUploadButton?.addEventListener("click", () => {
+  if (!getCanCreateContracts()) {
+    return;
+  }
   if (contractTemplateFileInput) {
     contractTemplateFileInput.accept = OFFER_TEMPLATE_ACCEPT_LABEL;
     contractTemplateFileInput.click();
@@ -90053,6 +90286,10 @@ contractTemplateUploadButton?.addEventListener("click", () => {
 contractTemplateFileInput?.addEventListener("change", () => {
   const [file] = Array.from(contractTemplateFileInput.files ?? []);
   if (!file) {
+    return;
+  }
+  if (!getCanCreateContracts()) {
+    contractTemplateFileInput.value = "";
     return;
   }
 
@@ -90068,12 +90305,19 @@ contractTemplateDownloadButton?.addEventListener("click", () => {
 });
 
 contractTemplateRemoveButton?.addEventListener("click", () => {
+  if (!getCanCreateContracts()) {
+    return;
+  }
   contractTemplateReferenceDraft = null;
   renderContractTemplateReferenceMeta();
 });
 
 contractTemplateDeleteButton?.addEventListener("click", () => {
   const templateId = String(contractTemplateIdField?.value || "").trim();
+  if (!getCanCreateContracts()) {
+    setInlineMessage(contractTemplateError, "Nemas ovlastenje za uredivanje templatea ugovora.");
+    return;
+  }
   if (!templateId || !window.confirm("Obrisati ovaj template ugovora?")) {
     return;
   }
@@ -90091,6 +90335,10 @@ contractTemplateDeleteButton?.addEventListener("click", () => {
 
 contractTemplateForm?.addEventListener("submit", (event) => {
   event.preventDefault();
+  if (!getCanCreateContracts()) {
+    setInlineMessage(contractTemplateError, "Nemas ovlastenje za spremanje templatea ugovora.");
+    return;
+  }
   const templateId = String(contractTemplateIdField?.value || "").trim();
   const isEditing = Boolean(templateId);
   const path = isEditing ? `/contract-templates/${templateId}` : "/contract-templates";
@@ -91878,7 +92126,7 @@ companyDeleteButton?.addEventListener("click", () => {
 });
 
 locationOpenFormButton?.addEventListener("click", () => {
-  if (state.companies.length === 0) {
+  if (!getCanCreateLocations() || state.companies.length === 0) {
     return;
   }
 
@@ -91920,6 +92168,11 @@ locationForm.addEventListener("submit", (event) => {
   event.preventDefault();
 
   const isEditing = Boolean(locationIdInput.value);
+  const canSave = isEditing ? getCanEditLocations() : getCanCreateLocations();
+  if (!canSave) {
+    setInlineMessage(locationError, "Nemas ovlastenje za spremanje lokacije.");
+    return;
+  }
   const path = isEditing ? `/locations/${locationIdInput.value}` : "/locations";
   const method = isEditing ? "PATCH" : "POST";
 
@@ -91938,6 +92191,9 @@ locationAddContactButton?.addEventListener("click", () => {
 });
 
 locationResetButton.addEventListener("click", () => {
+  if (!getCanCreateLocations()) {
+    return;
+  }
   resetLocationForm();
   openLocationEditor();
   requestAnimationFrame(() => {
