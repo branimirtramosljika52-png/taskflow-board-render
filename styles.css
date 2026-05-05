@@ -37657,6 +37657,13 @@ body.is-offer-template-open {
     linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 252, 249, 0.94));
 }
 
+.offer-item-row.is-included-service {
+  border-color: rgba(86, 162, 116, 0.38);
+  background:
+    radial-gradient(circle at top right, rgba(87, 181, 127, 0.06), transparent 30%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 252, 249, 0.94));
+}
+
 .offer-item-head-copy {
   display: flex;
   align-items: center;
@@ -37707,9 +37714,12 @@ body.is-offer-template-open {
 
 .offer-item-breakdowns {
   gap: 8px;
+  margin-left: -8px;
+  margin-right: -2px;
   padding: 12px;
   border-radius: 16px;
   border-color: rgba(198, 210, 230, 0.72);
+  border-left: 4px solid rgba(99, 102, 241, 0.42);
   background:
     radial-gradient(circle at top left, rgba(125, 105, 255, 0.07), transparent 32%),
     linear-gradient(180deg, rgba(250, 251, 255, 0.96), rgba(245, 248, 255, 0.9));
@@ -37784,6 +37794,15 @@ body.is-offer-template-open {
   max-height: 300px;
   overflow: auto;
   padding-right: 2px;
+}
+
+.offer-service-add-empty {
+  margin: 0;
+  padding: 10px;
+  border: 1px dashed rgba(188, 205, 229, 0.92);
+  border-radius: 12px;
+  color: #65728b;
+  font-size: 0.78rem;
 }
 
 .offer-service-add-option {

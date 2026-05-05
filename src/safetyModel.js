@@ -966,13 +966,32 @@ function normalizeId(value) {
 }
 
 function normalizeFiniteNumber(value, fallback = 0) {
-  const raw = normalizeText(value).replace(/\s+/g, "").replace(",", ".");
+  const raw = normalizeText(value).replace(/\s+/g, "").replace(/[^\d,.-]/g, "");
 
   if (!raw) {
     return fallback;
   }
 
-  const numeric = Number(raw);
+  const lastCommaIndex = raw.lastIndexOf(",");
+  const lastDotIndex = raw.lastIndexOf(".");
+  let normalized = raw;
+
+  if (lastCommaIndex !== -1 && lastDotIndex !== -1) {
+    const decimalIndex = Math.max(lastCommaIndex, lastDotIndex);
+    normalized = raw.replace(/[,.]/g, (match, offset) => (offset === decimalIndex ? "." : ""));
+  } else if (lastCommaIndex !== -1) {
+    normalized = raw.replace(/,/g, (match, offset) => (offset === lastCommaIndex ? "." : ""));
+  } else if (lastDotIndex !== -1) {
+    const dotParts = raw.split(".");
+    const isLikelyThousandsFormat = dotParts.length === 2
+      && dotParts[1].length === 3
+      && dotParts.every((part) => /^-?\d+$/.test(part));
+    normalized = isLikelyThousandsFormat
+      ? raw.replace(/\./g, "")
+      : raw.replace(/\./g, (match, offset) => (offset === lastDotIndex ? "." : ""));
+  }
+
+  const numeric = Number(normalized);
   return Number.isFinite(numeric) ? numeric : fallback;
 }
 
@@ -2357,26 +2376,30 @@ function normalizeOfferItems(items = [], { allowEmpty = false } = {}) {
 
   const normalizedItems = items
     .map((item) => {
-      const quantity = roundCurrencyAmount(Math.max(0, normalizeFiniteNumber(item?.quantity, 0)));
-      const unitPrice = roundCurrencyAmount(Math.max(0, normalizeFiniteNumber(item?.unitPrice, 0)));
+      const isIncludedService = Boolean(item?.isIncludedService || item?.includedService || item?.includedInPlan || item?.included);
+      const quantity = isIncludedService ? 0 : roundCurrencyAmount(Math.max(0, normalizeFiniteNumber(item?.quantity, 0)));
+      const unitPrice = isIncludedService ? 0 : roundCurrencyAmount(Math.max(0, normalizeFiniteNumber(item?.unitPrice, 0)));
       const breakdowns = normalizeOfferBreakdowns(item?.breakdowns);
       const breakdownTotal = roundCurrencyAmount(
         breakdowns.reduce((sum, entry) => sum + roundCurrencyAmount(entry.amount), 0),
       );
-      const grossTotal = breakdowns.length > 0
+      const grossTotal = isIncludedService
+        ? 0
+        : breakdowns.length > 0
         ? breakdownTotal
         : roundCurrencyAmount(quantity * unitPrice);
-      const discountRate = normalizeOfferDiscountRate(item?.discountRate);
+      const discountRate = isIncludedService ? 0 : normalizeOfferDiscountRate(item?.discountRate);
       const discountTotal = roundCurrencyAmount(grossTotal * (discountRate / 100));
 
       return {
         serviceCatalogId: normalizeText(item?.serviceCatalogId),
         serviceCode: normalizeText(item?.serviceCode),
         description: normalizeText(item?.description),
-        unit: normalizeText(item?.unit),
+        unit: isIncludedService ? "" : normalizeText(item?.unit),
         quantity,
         unitPrice,
-        breakdowns,
+        isIncludedService,
+        breakdowns: isIncludedService ? [] : breakdowns,
         breakdownTotal,
         discountRate,
         discountTotal,
@@ -2388,6 +2411,7 @@ function normalizeOfferItems(items = [], { allowEmpty = false } = {}) {
       || item.quantity
       || item.unitPrice
       || item.breakdowns.length > 0
+      || item.isIncludedService
       || item.discountRate > 0
     ));
 
@@ -7581,6 +7605,21 @@ export function filterDrawingProjects(
 
 export function sortOffers(offers) {
   return [...offers].sort((left, right) => {
+    const leftDate = normalizeText(left.offerDate || left.createdAt || left.updatedAt);
+    const rightDate = normalizeText(right.offerDate || right.createdAt || right.updatedAt);
+
+    if (leftDate && rightDate && leftDate !== rightDate) {
+      return leftDate.localeCompare(rightDate);
+    }
+
+    if (leftDate && !rightDate) {
+      return -1;
+    }
+
+    if (!leftDate && rightDate) {
+      return 1;
+    }
+
     const leftRank = OFFER_STATUS_RANK[left.status] ?? Number.MAX_SAFE_INTEGER;
     const rightRank = OFFER_STATUS_RANK[right.status] ?? Number.MAX_SAFE_INTEGER;
 
@@ -7588,19 +7627,7 @@ export function sortOffers(offers) {
       return leftRank - rightRank;
     }
 
-    if (left.offerDate && right.offerDate && left.offerDate !== right.offerDate) {
-      return right.offerDate.localeCompare(left.offerDate);
-    }
-
-    if (left.offerDate && !right.offerDate) {
-      return -1;
-    }
-
-    if (!left.offerDate && right.offerDate) {
-      return 1;
-    }
-
-    return String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? ""));
+    return String(left.updatedAt ?? "").localeCompare(String(right.updatedAt ?? ""));
   });
 }
 

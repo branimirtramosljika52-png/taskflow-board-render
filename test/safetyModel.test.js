@@ -1854,6 +1854,38 @@ test("offers update totals and support filtering and sorting", () => {
   );
 });
 
+test("offers keep included fixed plan services and localized euro amounts", () => {
+  const state = buildState();
+  const offer = createOffer(
+    {
+      organizationId: "55",
+      companyId: "company-1",
+      title: "Pausalni paket",
+      serviceLine: "Fixed Plan",
+      items: [
+        { description: "Pausalni ugovor", unit: "mj", quantity: "2", unitPrice: "1.234,50" },
+        { description: "Zapisnik ukljucen u plan", isIncludedService: true, unitPrice: "999" },
+      ],
+    },
+    state,
+    () => "offer-fixed",
+    {
+      offerNumber: "2026-AA-003",
+      offerYear: 2026,
+      offerSequence: 3,
+      offerInitials: "AA",
+    },
+    () => "2026-03-28T08:00:00.000Z",
+  );
+
+  assert.equal(offer.items[0].unitPrice, 1234.5);
+  assert.equal(offer.items[0].totalPrice, 2469);
+  assert.equal(offer.items[1].isIncludedService, true);
+  assert.equal(offer.items[1].unitPrice, 0);
+  assert.equal(offer.items[1].totalPrice, 0);
+  assert.equal(offer.subtotal, 2469);
+});
+
 test("offers support location scope, contact snapshots, discounts and breakdown rows", () => {
   const state = buildState();
 
