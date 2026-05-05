@@ -908,6 +908,7 @@ const DASHBOARD_WIDGET_TEMPLATES = [
   { key: "wo-overdue", category: "work_orders", source: "work_orders", visualization: "metric", metricKey: "overdue", title: "RN u kasnjenju", description: "Otvoreni RN kojima je rok već prošao.", size: "small", gridWidth: 3, gridHeight: 2, limit: 6 },
   { key: "wo-region-bar", category: "work_orders", source: "work_orders", visualization: "bar", metricKey: "region", title: "RN po regiji", description: "Bar chart raspodjele po regijama.", size: "full", gridWidth: 12, gridHeight: 4, limit: 6 },
   { key: "wo-executor-donut", category: "work_orders", source: "work_orders", visualization: "donut", metricKey: "executor", title: "Opterećenje izvršitelja", description: "Tko trenutno nosi najviše RN-a.", size: "large", gridWidth: 6, gridHeight: 4, limit: 6 },
+  { key: "wo-status-evidence", category: "work_orders", source: "work_orders", visualization: "list", metricKey: "status_groups", title: "RN evidencija po statusu", description: "Lista radnih naloga grupirana po statusima za pregled svih aktivnih zapisa.", size: "full", gridWidth: 12, gridHeight: 5, limit: 50 },
   { key: "reminders-active", category: "reminders", source: "reminders", visualization: "metric", metricKey: "active", title: "Aktivni reminders", description: "Broj otvorenih reminders stavki.", size: "small", gridWidth: 3, gridHeight: 2, limit: 6 },
   { key: "reminders-status", category: "reminders", source: "reminders", visualization: "donut", metricKey: "status", title: "Reminder statusi", description: "Kako su reminders raspoređeni po statusu.", size: "large", gridWidth: 6, gridHeight: 4, limit: 6 },
   { key: "reminders-due", category: "reminders", source: "reminders", visualization: "list", metricKey: "due_soon", title: "Reminder rokovi", description: "Što uskoro dolazi na red.", size: "large", gridWidth: 6, gridHeight: 4, limit: 6 },
@@ -64327,6 +64328,25 @@ function createDashboardList(data) {
   }
 
   data.items.forEach((item) => {
+    if (item.type === "group") {
+      const group = document.createElement("div");
+      group.className = "dashboard-widget-list-group";
+
+      const title = document.createElement("strong");
+      title.textContent = item.title || "Status";
+
+      const count = document.createElement("span");
+      const visibleCount = Number(item.visibleCount ?? item.count ?? 0);
+      const totalCount = Number(item.count ?? visibleCount);
+      count.textContent = visibleCount === totalCount
+        ? `${totalCount} RN`
+        : `${visibleCount} od ${totalCount} RN`;
+
+      group.append(title, count);
+      list.append(group);
+      return;
+    }
+
     const row = document.createElement(item.workOrderId ? "button" : "div");
     row.className = "dashboard-widget-list-row";
 

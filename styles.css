@@ -8536,6 +8536,34 @@ body.is-dragging-dashboard-widget * {
   gap: 10px;
 }
 
+.dashboard-widget-list-group {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 4px;
+  padding: 8px 2px 2px;
+  color: #51607c;
+  border-bottom: 1px solid rgba(214, 220, 234, 0.86);
+}
+
+.dashboard-widget-list-group:first-child {
+  margin-top: 0;
+}
+
+.dashboard-widget-list-group strong {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.dashboard-widget-list-group span {
+  color: #7a86a3;
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .dashboard-widget-list-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

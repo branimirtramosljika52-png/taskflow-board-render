@@ -2929,7 +2929,7 @@ test("dashboard widgets normalize settings and keep deterministic ordering", () 
   );
 
   assert.equal(widgetA.title, "Otvoreni RN");
-  assert.equal(widgetA.limit, 12);
+  assert.equal(widgetA.limit, 99);
   assert.equal(updated.visualization, "bar");
   assert.equal(updated.metricKey, "region");
   assert.equal(updated.size, "full");
@@ -3015,6 +3015,19 @@ test("dashboard widget data supports KPI, chart and list outputs with filters", 
     () => "2026-03-28T09:12:00.000Z",
   );
 
+  const statusGroupWidget = updateDashboardWidget(
+    metricWidget,
+    {
+      visualization: "list",
+      metricKey: "status_groups",
+      size: "full",
+      limit: 50,
+      filters: {},
+    },
+    { dashboardWidgets: [metricWidget] },
+    () => "2026-03-28T09:13:00.000Z",
+  );
+
   const snapshot = {
     ...state,
     workOrders,
@@ -3026,6 +3039,7 @@ test("dashboard widget data supports KPI, chart and list outputs with filters", 
   const metricData = getDashboardWidgetData(snapshot, metricWidget, { userId: "22" }, "2026-03-28");
   const chartData = getDashboardWidgetData(snapshot, chartWidget, { userId: "22" }, "2026-03-28");
   const listData = getDashboardWidgetData(snapshot, listWidget, { userId: "22" }, "2026-03-28");
+  const statusGroupData = getDashboardWidgetData(snapshot, statusGroupWidget, { userId: "22" }, "2026-03-28");
 
   assert.equal(metricData.kind, "metric");
   assert.equal(metricData.value, 1);
@@ -3034,6 +3048,11 @@ test("dashboard widget data supports KPI, chart and list outputs with filters", 
   assert.equal(chartData.items[0].count, 1);
   assert.equal(listData.kind, "list");
   assert.equal(listData.items[0].title, "RN-10001");
+  assert.equal(statusGroupData.kind, "list");
+  assert.equal(statusGroupData.items[0].type, "group");
+  assert.equal(statusGroupData.items[0].title, "Otvoreni RN");
+  assert.equal(statusGroupData.items[1].title, "RN-10001");
+  assert.ok(statusGroupData.items.some((item) => item.type === "group" && item.title === "Fakturiran RN"));
 });
 
 test("createReminder can link to a work order and inherit company context", () => {

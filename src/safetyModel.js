@@ -367,6 +367,7 @@ export const DASHBOARD_WIDGET_DEFINITIONS = {
       { value: "tag", label: "Tag" },
     ],
     lists: [
+      { value: "status_groups", label: "RN po statusu" },
       { value: "upcoming_due", label: "Sljedeći rokovi" },
       { value: "overdue", label: "RN kojima je istekao rok" },
       { value: "urgent_open", label: "Urgent otvoreni RN" },
@@ -8992,7 +8993,7 @@ function normalizeDashboardWidgetLimit(value) {
     return 6;
   }
 
-  return Math.min(12, Math.max(3, parsed));
+  return Math.min(100, Math.max(3, parsed));
 }
 
 function getDashboardWidgetOptionsFor(source, visualization) {
@@ -9610,6 +9611,43 @@ function mapDashboardListItem(entry, type) {
   };
 }
 
+function buildDashboardWorkOrderStatusGroupItems(items, limit = 100) {
+  const normalizedLimit = Math.max(3, Math.min(100, Number.parseInt(String(limit ?? 100), 10) || 100));
+  let remaining = normalizedLimit;
+  const result = [];
+  const sortedItems = [...items].sort((left, right) => {
+    if (left.dueDate && right.dueDate && left.dueDate !== right.dueDate) {
+      return String(left.dueDate).localeCompare(String(right.dueDate));
+    }
+
+    return String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? ""));
+  });
+
+  WORK_ORDER_STATUS_OPTIONS.forEach((option) => {
+    if (remaining <= 0) {
+      return;
+    }
+
+    const statusItems = sortedItems.filter((item) => item.status === option.value);
+    if (statusItems.length === 0) {
+      return;
+    }
+
+    const visibleItems = statusItems.slice(0, remaining);
+    result.push({
+      id: `work-order-status-${option.value}`,
+      type: "group",
+      title: option.label,
+      count: statusItems.length,
+      visibleCount: visibleItems.length,
+    });
+    result.push(...visibleItems.map((item) => mapDashboardListItem(item, "work_orders")));
+    remaining -= visibleItems.length;
+  });
+
+  return result;
+}
+
 function buildDashboardListItems(widget, items, context = {}, today = todayString()) {
   const todayKey = dateValueToKey(today);
 
@@ -9665,6 +9703,10 @@ function buildDashboardListItems(widget, items, context = {}, today = todayStrin
   }
 
   let nextItems = [...items];
+
+  if (widget.metricKey === "status_groups") {
+    return buildDashboardWorkOrderStatusGroupItems(nextItems, widget.limit);
+  }
 
   if (widget.metricKey === "upcoming_due") {
     nextItems = nextItems
