@@ -2384,17 +2384,17 @@ body.is-profile-modal-open {
 
 .profile-modal {
   position: fixed;
-  top: 50%;
+  top: 24px;
   left: 50%;
   z-index: 83;
   width: min(920px, calc(100vw - 28px));
-  max-height: min(820px, calc(100dvh - 28px));
+  max-height: calc(100dvh - 48px);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   gap: 0;
   padding: 0;
   overflow: hidden;
-  transform: translate(-50%, -50%);
+  transform: translateX(-50%);
   background:
     radial-gradient(circle at top right, rgba(45, 111, 219, 0.08), transparent 36%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(247, 250, 255, 0.96));
@@ -2498,6 +2498,7 @@ body.is-profile-modal-open {
 
 @media (max-width: 720px) {
   .profile-modal {
+    top: 8px;
     width: calc(100vw - 16px);
     max-height: calc(100dvh - 16px);
   }
