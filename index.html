@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260505d" />
+    <link rel="stylesheet" href="/styles.css?v=20260505e" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -848,6 +848,55 @@
                   <path d="M10 21h4"></path>
                 </svg>
               </button>
+              <div class="topbar-shortcut-menu topbar-help-menu">
+                <button id="topbar-help-trigger" type="button" class="topbar-shortcut-button topbar-help-trigger" aria-label="Pomoć" aria-expanded="false" title="Pomoć">
+                  <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="12" cy="12" r="9"></circle>
+                    <path d="M9.5 9.2a2.7 2.7 0 0 1 5.1 1.25c0 1.85-2.4 2.2-2.4 4.05"></path>
+                    <path d="M12.2 17.7h.01"></path>
+                  </svg>
+                </button>
+                <div id="topbar-help-panel" class="topbar-help-panel notifications-panel" hidden>
+                  <div class="topbar-help-panel-head">
+                    <strong>Što želiš naučiti?</strong>
+                    <span>Odaberi vodič kroz aplikaciju.</span>
+                  </div>
+                  <div class="topbar-help-options">
+                    <button type="button" class="topbar-help-option" data-help-tour-kind="general">
+                      <strong>Opći pregled</strong>
+                      <span>Navigacija, brze ikone i korisnički meni.</span>
+                    </button>
+                    <button type="button" class="topbar-help-option" data-help-tour-kind="dashboard">
+                      <strong>Dashboard</strong>
+                      <span>Kartice, builder, veličine i scroll u widgetima.</span>
+                    </button>
+                    <button type="button" class="topbar-help-option" data-help-tour-kind="control-panel">
+                      <strong>Control panel</strong>
+                      <span>Administracija platforme i ovlaštenja.</span>
+                    </button>
+                    <button type="button" class="topbar-help-option" data-help-tour-kind="reminders">
+                      <strong>Reminders</strong>
+                      <span>Podsjetnici, statusi i brzi pregled.</span>
+                    </button>
+                    <button type="button" class="topbar-help-option" data-help-tour-kind="todo">
+                      <strong>ToDo</strong>
+                      <span>Teme, zaduženja, pozvani i filteri.</span>
+                    </button>
+                    <button type="button" class="topbar-help-option" data-help-tour-kind="notifications">
+                      <strong>Notifications</strong>
+                      <span>Aktivne obavijesti, razine i izvori.</span>
+                    </button>
+                    <button type="button" class="topbar-help-option" data-help-tour-kind="settings">
+                      <strong>Settings</strong>
+                      <span>Pragovi, ponavljanja i spremanje postavki.</span>
+                    </button>
+                    <button type="button" class="topbar-help-option" data-help-tour-kind="offers">
+                      <strong>Ponude</strong>
+                      <span>Lista, editor, Word template i PDF tijek.</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
               <button id="topbar-shortcut-settings" type="button" class="topbar-shortcut-button" aria-label="Settings">
                 <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M12 8.75a3.25 3.25 0 1 1 0 6.5 3.25 3.25 0 0 1 0-6.5Z"></path>
@@ -1370,7 +1419,6 @@
             </div>
 
             <div class="dashboard-builder-actions">
-              <button id="dashboard-help-tour" type="button" class="ghost-button dashboard-help-tour-button">Pomoć</button>
               <button id="dashboard-seed-layout" type="button" class="ghost-button">Starter layout</button>
               <button id="dashboard-add-widget" type="button" class="primary-button">+ Add card</button>
             </div>
@@ -5059,7 +5107,6 @@
                       <h3 id="offers-list-title">Popis ponuda</h3>
                     </div>
                     <div class="offers-panel-actions">
-                      <button id="offer-help-tour" type="button" class="ghost-button offer-help-tour-button">Pomoć</button>
                       <button id="offer-open-template" type="button" class="ghost-button">Novi template</button>
                       <button id="offer-open-form" type="button" class="primary-button">+ Nova ponuda</button>
                     </div>
@@ -7741,6 +7788,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260505d"></script>
+    <script type="module" src="/src/main.js?v=20260505e"></script>
   </body>
 </html>

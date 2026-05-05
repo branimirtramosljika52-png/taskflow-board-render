@@ -2351,6 +2351,7 @@ let userPresenceMenuOpen = false;
 let notificationsMenuOpen = false;
 let remindersShortcutMenuOpen = false;
 let todoShortcutMenuOpen = false;
+let topbarHelpMenuOpen = false;
 let chatPollTimerId = null;
 let chatLastPresenceSyncAt = 0;
 let chatLastPresenceValue = "";
@@ -2439,6 +2440,9 @@ const topbarShortcutRuntimeSaveButton = document.querySelector("#topbar-shortcut
 const topbarShortcutRuntimeResumeButton = document.querySelector("#topbar-shortcut-runtime-resume");
 const topbarShortcutCapabilitiesButton = document.querySelector("#topbar-shortcut-capabilities");
 const topbarShortcutSettingsButton = document.querySelector("#topbar-shortcut-settings");
+const topbarHelpButton = document.querySelector("#topbar-help-trigger");
+const topbarHelpPanel = document.querySelector("#topbar-help-panel");
+const topbarHelpOptions = Array.from(document.querySelectorAll("[data-help-tour-kind]"));
 const topbarShortcutRemindersCount = document.querySelector("#topbar-shortcut-reminders-count");
 const topbarShortcutTodoCount = document.querySelector("#topbar-shortcut-todo-count");
 const topbarRemindersPanel = document.querySelector("#topbar-reminders-panel");
@@ -2842,7 +2846,6 @@ const offersFilterStatusInput = document.querySelector("#offers-filter-status");
 const offersHelper = document.querySelector("#offers-helper");
 const offersList = document.querySelector("#offers-list");
 const offersEmpty = document.querySelector("#offers-empty");
-const offerHelpTourButton = document.querySelector("#offer-help-tour");
 const offerOpenFormButton = document.querySelector("#offer-open-form");
 const offerOpenTemplateButton = document.querySelector("#offer-open-template");
 const offerEditorBackdrop = document.querySelector("#offer-editor-backdrop");
@@ -3585,7 +3588,6 @@ const dashboardWidgetGrid = document.querySelector("#dashboard-widget-grid");
 const dashboardWidgetEmpty = document.querySelector("#dashboard-widget-empty");
 const dashboardAddWidgetButton = document.querySelector("#dashboard-add-widget");
 const dashboardSeedLayoutButton = document.querySelector("#dashboard-seed-layout");
-const dashboardHelpTourButton = document.querySelector("#dashboard-help-tour");
 const dashboardBuilderPanel = document.querySelector("#dashboard-builder-panel");
 const dashboardBuilderBackdrop = document.querySelector("#dashboard-builder-backdrop");
 const dashboardBuilderClose = document.querySelector("#dashboard-builder-close");
@@ -5529,6 +5531,7 @@ function openAppCapabilitiesDialog() {
   setNotificationsMenuOpen(false);
   setRemindersShortcutMenuOpen(false);
   setTodoShortcutMenuOpen(false);
+  setTopbarHelpMenuOpen(false);
   setUserMenuOpen(false);
   state.appCapabilitiesDialog.open = true;
   state.appCapabilitiesDialog.modules = cloneAppCapabilityModules(state.appCapabilities);
@@ -13631,6 +13634,7 @@ function setUserMenuOpen(isOpen) {
     setNotificationsMenuOpen(false);
     setRemindersShortcutMenuOpen(false);
     setTodoShortcutMenuOpen(false);
+    setTopbarHelpMenuOpen(false, { closeOthers: false });
   }
 
   if (!userMenuOpen) {
@@ -20843,6 +20847,7 @@ function setRemindersShortcutMenuOpen(isOpen, { closeOthers = true } = {}) {
   if (remindersShortcutMenuOpen && closeOthers) {
     setTodoShortcutMenuOpen(false, { closeOthers: false });
     setNotificationsMenuOpen(false, { closeOthers: false });
+    setTopbarHelpMenuOpen(false, { closeOthers: false });
     setUserMenuOpen(false);
   }
 }
@@ -20862,6 +20867,42 @@ function setTodoShortcutMenuOpen(isOpen, { closeOthers = true } = {}) {
   if (todoShortcutMenuOpen && closeOthers) {
     setRemindersShortcutMenuOpen(false, { closeOthers: false });
     setNotificationsMenuOpen(false, { closeOthers: false });
+    setTopbarHelpMenuOpen(false, { closeOthers: false });
+    setUserMenuOpen(false);
+  }
+}
+
+function renderTopbarHelpMenu() {
+  if (!state.user && topbarHelpMenuOpen) {
+    topbarHelpMenuOpen = false;
+  }
+
+  if (topbarHelpPanel) {
+    topbarHelpPanel.hidden = !topbarHelpMenuOpen;
+  }
+
+  if (topbarHelpButton) {
+    topbarHelpButton.setAttribute("aria-expanded", topbarHelpMenuOpen ? "true" : "false");
+    topbarHelpButton.classList.toggle("is-open", topbarHelpMenuOpen);
+  }
+
+  topbarHelpOptions.forEach((button) => {
+    if (!(button instanceof HTMLElement)) {
+      return;
+    }
+    const kind = button.dataset.helpTourKind || "";
+    button.hidden = kind === "control-panel" && !getCanManageMasterData();
+  });
+}
+
+function setTopbarHelpMenuOpen(isOpen, { closeOthers = true } = {}) {
+  topbarHelpMenuOpen = Boolean(isOpen && state.user);
+  renderTopbarHelpMenu();
+
+  if (topbarHelpMenuOpen && closeOthers) {
+    setRemindersShortcutMenuOpen(false, { closeOthers: false });
+    setTodoShortcutMenuOpen(false, { closeOthers: false });
+    setNotificationsMenuOpen(false, { closeOthers: false });
     setUserMenuOpen(false);
   }
 }
@@ -20879,6 +20920,7 @@ function setNotificationsMenuOpen(isOpen, { closeOthers = true } = {}) {
   if (notificationsMenuOpen && closeOthers) {
     setRemindersShortcutMenuOpen(false, { closeOthers: false });
     setTodoShortcutMenuOpen(false, { closeOthers: false });
+    setTopbarHelpMenuOpen(false, { closeOthers: false });
     setUserMenuOpen(false);
   }
 }
@@ -60529,6 +60571,7 @@ function closeClientPortalAccessModal() {
 
 function closeTransientNavigationOverlays() {
   closeOfferHtmlPreviewModal();
+  setTopbarHelpMenuOpen(false, { closeOthers: false });
 
   if (state.clientPortalAccessModalOpen) {
     closeClientPortalAccessModal();
@@ -85152,9 +85195,9 @@ function getDashboardHelpTourSteps() {
     },
     {
       title: "Brze akcije",
-      body: "U gornjem desnom dijelu su pomoć, starter layout i dodavanje nove kartice. Starter layout je najbrži početak kad je Dashboard prazan.",
+      body: "U gornjem desnom dijelu su starter layout i dodavanje nove kartice. Starter layout je najbrži početak kad je Dashboard prazan.",
       target: ".dashboard-builder-actions",
-      points: ["Pomoć uvijek ponovno pokreće ovaj vodič.", "Starter layout dodaje početni set kartica, a Add card otvara builder."],
+      points: ["Ovaj vodič se ponovno pokreće iz ikone pomoći u gornjoj traci.", "Starter layout dodaje početni set kartica, a Add card otvara builder."],
       prepare: "dashboard",
     },
     {
@@ -85209,21 +85252,245 @@ function getDashboardHelpTourSteps() {
   ];
 }
 
+function getGeneralHelpTourSteps() {
+  return [
+    {
+      title: "Opći pregled aplikacije",
+      body: "SafeNexus je složen oko lijeve navigacije, gornjih brzih ikona i radnog prostora u sredini. Ovaj vodič pokazuje gdje se krećeš po cijeloj aplikaciji.",
+      target: ".topbar-actions",
+      points: ["Gornja traka drži brze module, pomoć, notifikacije i korisnički profil.", "Radni prostor se mijenja prema odabranom modulu."],
+      prepare: "general",
+    },
+    {
+      title: "Lijeva navigacija",
+      body: "Lijevo biraš grupe modula: Home, Operations, Company, Locations, Documents i Health And Safety. Aktivna stavka uvijek pokazuje gdje se nalaziš.",
+      target: "#app-sidebar",
+      points: ["Klik na grupu otvara njezine module.", "Ako je sidebar minimiziran, vodič ga širi dok traje objašnjenje."],
+      prepare: "general",
+    },
+    {
+      title: "Brze ikone",
+      body: "Ove ikone su najkraći put do Dashboarda, Remindersa, ToDo tema, nastavka rada, product boarda, pomoći i Settingsa.",
+      target: ".topbar-shortcuts",
+      points: ["Reminders i ToDo imaju brojače kada ima aktivnih stavki.", "Pomoć je sada jedno mjesto za sve vodiče."],
+      prepare: "general",
+    },
+    {
+      title: "Notifications",
+      body: "Zvono otvara brzi pregled aktivnih obavijesti. Iz tog panela možeš skočiti na puni Notifications ekran.",
+      target: "#notifications-trigger",
+      points: ["Brojač pokazuje koliko stavki traži pažnju.", "Puni ekran ima filtere po vrsti, razini i statusu."],
+      prepare: "general",
+    },
+    {
+      title: "Korisnički meni",
+      body: "Ovdje vidiš prijavljenog korisnika, status i osobne opcije. Koristi ga za profil i radne postavke korisnika.",
+      target: "#user-badge",
+      points: ["Profil ostaje desno kako ne bi smetao glavnom radu.", "Organizacijski kontekst je vezan uz prijavljenog korisnika."],
+      prepare: "general",
+    },
+  ];
+}
+
+function getControlPanelHelpTourSteps() {
+  return [
+    {
+      title: "Control panel",
+      body: "Control panel je administracijski dio za platformu, pristupne zahtjeve i sadržaje početnog ekrana.",
+      target: "#dashboard-control-panel",
+      points: ["Ovaj dio vide korisnici s administracijskim pravima.", "Sve je smješteno u Home grupi da je brzo dostupno."],
+      prepare: "control-panel",
+    },
+    {
+      title: "Ulaz iz navigacije",
+      body: "Control panel je zasebna stavka u Home grupi. Kada želiš administraciju, ne moraš ulaziti kroz Dashboard kartice.",
+      target: '[data-sidebar-item="control-panel"]',
+      points: ["Aktivna stavka u sidebaru ostaje označena.", "Ako nemaš pravo pristupa, stavka se ne prikazuje."],
+      prepare: "control-panel",
+    },
+    {
+      title: "Administracijske kartice",
+      body: "Kartice unutar panela grupiraju administracijske blokove. Kako dodaješ nove postavke, ovdje ostaju kao zasebni blokovi.",
+      target: "#dashboard-control-grid",
+      points: ["Svaki blok ima svoj opis i akcije.", "Kartice su zamišljene za stvari koje mijenjaju ponašanje aplikacije."],
+      prepare: "control-panel",
+    },
+    {
+      title: "Company ovlaštenja",
+      body: "Role permissions određuju što pojedina rola može raditi u Company modulu. Nakon izmjene koristi spremanje na dnu kartice.",
+      target: "#dashboard-company-permissions-panel",
+      points: ["Blokovi su grupirani po funkcionalnim područjima.", "Promjene ovdje utječu na pristup korisnika."],
+      prepare: "control-panel",
+    },
+  ];
+}
+
+function getRemindersHelpTourSteps() {
+  return [
+    {
+      title: "Reminders ekran",
+      body: "Reminders služi za podsjetnike, follow-upove i rokove koje želiš pratiti uz radne naloge, tvrtke ili interne zadatke.",
+      target: "#reminders-view",
+      points: ["Ekran ima dio za novi reminder i dio za listu.", "Statusi pomažu odvojiti aktivno od završeno."],
+      prepare: "reminders",
+    },
+    {
+      title: "Novi reminder",
+      body: "Add Reminder otvara editor u kojem upisuješ naslov, datum, status, ponavljanje, RN, tvrtku i bilješku.",
+      target: ".reminders-composer-card",
+      points: ["Klik na postojeći reminder otvara isti editor.", "Ponavljanje u danima koristi se za redovne podsjetnike."],
+      prepare: "reminders",
+    },
+    {
+      title: "Pretraga i statusi",
+      body: "Lista ima pretragu i status filter. Tako brzo nađeš podsjetnik po naslovu, radnom nalogu, klijentu ili bilješci.",
+      target: ".reminders-list-card",
+      points: ["Filter ne briše podatke, samo sužava prikaz.", "Prazno stanje odmah kaže da za taj filter nema stavki."],
+      prepare: "reminders",
+    },
+    {
+      title: "Brzi pregled gore",
+      body: "Ikona u gornjoj traci prikazuje aktivne reminderse bez napuštanja trenutnog ekrana. Prikaži sve otvara cijeli Reminders modul.",
+      target: "#topbar-shortcut-reminders",
+      points: ["Brojač se pojavljuje kada postoje aktivni podsjetnici.", "Panel je za brzu provjeru, ekran za ozbiljniji rad."],
+      prepare: "reminders",
+    },
+  ];
+}
+
+function getTodoHelpTourSteps() {
+  return [
+    {
+      title: "ToDo teme",
+      body: "ToDo je za teme, dogovore i zadatke koje možeš dodijeliti sebi ili kolegama, uz pozivanje dodatnih sudionika.",
+      target: "#todo-view",
+      points: ["Tema može imati nositelja, pozvane ljude, rok, status i prioritet.", "Komentari i pozvani korisnici drže dogovor na jednom mjestu."],
+      prepare: "todo",
+    },
+    {
+      title: "Nova tema",
+      body: "Nova tema otvara editor u kojem definiraš naslov, nositelja, pozvane, rok, status, prioritet i opis.",
+      target: "#todo-open-composer",
+      points: ["Tema se sprema tek kad potvrdiš editor.", "Može se povezati s radnim nalogom kada je potrebno."],
+      prepare: "todo",
+    },
+    {
+      title: "Inbox i filteri",
+      body: "U listi koristiš pretragu, pogled i status. Pogled odvaja sve teme, moje zadatke, pozive, otvorene od mene i nezaduženo.",
+      target: ".todo-workspace-panel",
+      points: ["Filteri pomažu da ToDo ostane pregledan.", "Klik na temu otvara detalje i komentare."],
+      prepare: "todo",
+    },
+    {
+      title: "ToDo u gornjoj traci",
+      body: "Gornja ikona daje brzi pregled aktivnih ToDo tema i prečac do cijelog ToDo ekrana.",
+      target: "#topbar-shortcut-todo",
+      points: ["Brojač prati aktivne teme.", "Panel je koristan dok radiš u drugim modulima."],
+      prepare: "todo",
+    },
+  ];
+}
+
+function getNotificationsHelpTourSteps() {
+  return [
+    {
+      title: "Notifications ekran",
+      body: "Notifications okuplja aktivne obavijesti iz remindersa, mjerne opreme, ovlaštenja, odsutnosti, vozila i komentara.",
+      target: "#notifications-view",
+      points: ["Ekran je za pregled svega što traži pažnju.", "Razine pomažu razlikovati kritično, upozorenje i info."],
+      prepare: "notifications",
+    },
+    {
+      title: "Filteri obavijesti",
+      body: "Pretraga, vrsta, razina i status rade zajedno. Tako možeš odmah suziti samo kritične stavke ili samo određeni izvor.",
+      target: ".notifications-filter-row",
+      points: ["Aktivne, riješene i sve stavke su odvojene statusom.", "Vrsta govori iz kojeg modula dolazi obavijest."],
+      prepare: "notifications",
+    },
+    {
+      title: "Lista obavijesti",
+      body: "Svaka obavijest u listi nosi naslov, kontekst i razinu. Kada nema rezultata, prazno stanje potvrđuje da filter nema aktivnih stavki.",
+      target: "#notifications-body",
+      points: ["Lista je namijenjena brzom skeniranju.", "Kritične stavke se čitaju prve."],
+      prepare: "notifications",
+    },
+    {
+      title: "Zvono u topbaru",
+      body: "Zvono je globalni prečac za najnovije notifikacije. Otvara mali panel, a Prikaži sve vodi na ovaj puni ekran.",
+      target: "#notifications-trigger",
+      points: ["Radi iz bilo kojeg modula.", "Brojač se skriva kada nema aktivnih stavki."],
+      prepare: "notifications",
+    },
+  ];
+}
+
+function getSettingsHelpTourSteps() {
+  return [
+    {
+      title: "Settings",
+      body: "Settings je mjesto za pragove i ponavljanja obavijesti. Ovdje podešavaš kada aplikacija treba početi upozoravati.",
+      target: "#settings-module",
+      points: ["Postavke su podijeljene po temama.", "Na kraju se spremaju zajedničkim gumbom."],
+      prepare: "settings",
+    },
+    {
+      title: "Mjerna oprema",
+      body: "Ovo polje određuje koliko dana prije isteka umjernice kreću obavijesti za mjernu opremu.",
+      target: "#settings-measurement-lead-days",
+      points: ["Ponavljanje je u susjednom polju.", "Vrijednosti su broj dana."],
+      prepare: "settings",
+    },
+    {
+      title: "Vozila",
+      body: "Za vozila odvojeno podešavaš registraciju i promjenu guma. Lead days kaže koliko ranije želiš podsjetnik.",
+      target: "#settings-vehicle-registration-lead-days",
+      points: ["Registracija i gume imaju svoje ponavljanje.", "Ove postavke hrane Notifications."],
+      prepare: "settings",
+    },
+    {
+      title: "Periodics pragovi",
+      body: "Periodics koristi pragove za boje statusa po danima do isteka. Kritično i upozorenje možeš podešavati odvojeno.",
+      target: "#settings-periodics-critical-days",
+      points: ["Kritično je najbliže isteku.", "Upozorenje pokriva širi vremenski prozor."],
+      prepare: "settings",
+    },
+    {
+      title: "Spremanje postavki",
+      body: "Kada promijeniš brojeve, Spremi postavke šalje sve blokove odjednom. Tako se promjene odmah primjenjuju u aplikaciji.",
+      target: "#settings-save-all",
+      points: ["Ako nešto nije valjano, poruka se prikaže uz odgovarajući blok.", "Nakon spremanja koristi iste vrijednosti za buduće obavijesti."],
+      prepare: "settings",
+    },
+  ];
+}
+
 function getHelpTourSteps(kind = state.helpTour.kind) {
-  if (kind === "offers") {
-    return getOffersHelpTourSteps();
-  }
-  if (kind === "dashboard") {
-    return getDashboardHelpTourSteps();
-  }
-  return [];
+  const tourKind = String(kind || "").trim();
+  const stepFactories = {
+    general: getGeneralHelpTourSteps,
+    dashboard: getDashboardHelpTourSteps,
+    "control-panel": getControlPanelHelpTourSteps,
+    reminders: getRemindersHelpTourSteps,
+    todo: getTodoHelpTourSteps,
+    notifications: getNotificationsHelpTourSteps,
+    settings: getSettingsHelpTourSteps,
+    offers: getOffersHelpTourSteps,
+  };
+  return stepFactories[tourKind]?.() ?? [];
 }
 
 function getHelpTourKindLabel(kind = state.helpTour.kind) {
-  if (kind === "dashboard") {
-    return "Dashboard";
-  }
-  return "Ponude";
+  const labels = {
+    general: "Opći vodič",
+    dashboard: "Dashboard",
+    "control-panel": "Control panel",
+    reminders: "Reminders",
+    todo: "ToDo",
+    notifications: "Notifications",
+    settings: "Settings",
+    offers: "Ponude",
+  };
+  return labels[String(kind || "").trim()] || "Pomoć";
 }
 
 function getCurrentHelpTourStep() {
@@ -85328,9 +85595,66 @@ function renderHelpTourFocusClone(layer, target, frame = {}) {
   focusClone.replaceChildren(clone);
 }
 
+function closeDashboardBuilderForHelpTour() {
+  if (!state.dashboardBuilder?.open) {
+    if (dashboardBuilderPanel && state.activeView !== "selfdash") {
+      dashboardBuilderPanel.hidden = true;
+    }
+    return;
+  }
+  closeDashboardBuilder();
+  renderDashboardOverview();
+  if (dashboardBuilderPanel && state.activeView !== "selfdash") {
+    dashboardBuilderPanel.hidden = true;
+  }
+  document.body.classList.remove("is-dashboard-builder-open");
+}
+
 function prepareHelpTourStep(step = getCurrentHelpTourStep()) {
   if (!step) {
     return;
+  }
+
+  if (step.prepare === "general") {
+    if (state.activeView !== "selfdash" || !isDashboardOverviewItem()) {
+      activateSidebarItem("dashboard", { expandSidebar: true });
+    }
+    closeDashboardBuilderForHelpTour();
+  }
+
+  if (step.prepare === "control-panel") {
+    if (state.activeView !== "selfdash" || !isDashboardControlPanelItem()) {
+      activateSidebarItem("control-panel", { expandSidebar: true });
+    }
+    closeDashboardBuilderForHelpTour();
+  }
+
+  if (step.prepare === "reminders") {
+    if (state.activeView !== "reminders") {
+      activateSidebarItem("reminders", { expandSidebar: true });
+    }
+    closeDashboardBuilderForHelpTour();
+  }
+
+  if (step.prepare === "todo") {
+    if (state.activeView !== "todo") {
+      activateSidebarItem("todo", { expandSidebar: true });
+    }
+    closeDashboardBuilderForHelpTour();
+  }
+
+  if (step.prepare === "notifications") {
+    if (state.activeView !== "notifications") {
+      activateSidebarItem("notifications", { expandSidebar: true });
+    }
+    closeDashboardBuilderForHelpTour();
+  }
+
+  if (step.prepare === "settings") {
+    if (state.activeView !== "module" || state.activeModuleItem !== "settings") {
+      activateSidebarItem("settings", { expandSidebar: true });
+    }
+    closeDashboardBuilderForHelpTour();
   }
 
   if (step.prepare === "dashboard" || step.prepare === "dashboard-builder") {
@@ -85350,6 +85674,7 @@ function prepareHelpTourStep(step = getCurrentHelpTourStep()) {
   }
 
   if (step.prepare === "offers" || step.prepare === "offer-editor") {
+    closeDashboardBuilderForHelpTour();
     if (state.activeView !== "module" || state.activeModuleItem !== "offers") {
       activateSidebarItem("offers", { expandSidebar: true });
     }
@@ -85494,12 +85819,12 @@ function renderWelcomeHelpTour(layer) {
     title.textContent = "Dobrodošli u SafeNexus";
   }
   if (body) {
-    body.textContent = "SafeNexus je radni prostor za tvrtke, lokacije, radne naloge, ponude, dokumente, osposobljavanja i procjene rizika. Krenut ćemo s kratkim vodičem kroz Ponude, korak po korak.";
+    body.textContent = "SafeNexus je radni prostor za tvrtke, lokacije, radne naloge, ponude, dokumente, osposobljavanja i procjene rizika. Krenut ćemo s kratkim općim vodičem kroz aplikaciju, korak po korak.";
   }
   renderHelpTourPoints(layer, [
     "Prozor se prikazuje samo prvi put za ovog korisnika i organizaciju.",
     "Svaki korak možeš potvrditi kada si spreman.",
-    "Tour možeš ponovno pokrenuti iz gumba Pomoć u Ponudama.",
+    "Sve vodiče možeš ponovno pokrenuti iz ikone pomoći u gornjoj traci.",
   ]);
   renderHelpTourProgress(layer, 0, 0);
   if (skip) {
@@ -85509,7 +85834,7 @@ function renderWelcomeHelpTour(layer) {
     back.hidden = true;
   }
   if (next) {
-    next.textContent = "Kreni kroz ponude";
+    next.textContent = "Kreni kroz app";
   }
   positionHelpTourCard(layer, null);
 }
@@ -85595,33 +85920,33 @@ function openWelcomeHelpTour({ force = false } = {}) {
   renderHelpTour();
 }
 
-function openOffersHelpTour({ fromWelcome = false } = {}) {
+function openHelpTour(kind, { fromWelcome = false } = {}) {
   if (!state.user) {
+    return;
+  }
+  const tourKind = String(kind || "").trim();
+  if (getHelpTourSteps(tourKind).length === 0) {
     return;
   }
   if (fromWelcome) {
     markHelpTourCompleted("welcome");
   }
+  setTopbarHelpMenuOpen(false, { closeOthers: false });
   state.helpTour = {
     open: true,
-    kind: "offers",
+    kind: tourKind,
     stepIndex: 0,
     startedFromWelcome: Boolean(fromWelcome),
   };
   renderHelpTour();
 }
 
+function openOffersHelpTour({ fromWelcome = false } = {}) {
+  openHelpTour("offers", { fromWelcome });
+}
+
 function openDashboardHelpTour() {
-  if (!state.user) {
-    return;
-  }
-  state.helpTour = {
-    open: true,
-    kind: "dashboard",
-    stepIndex: 0,
-    startedFromWelcome: false,
-  };
-  renderHelpTour();
+  openHelpTour("dashboard");
 }
 
 function closeHelpTour({ markCompleted = false } = {}) {
@@ -85629,7 +85954,7 @@ function closeHelpTour({ markCompleted = false } = {}) {
   if (markCompleted && previousKind) {
     markHelpTourCompleted(previousKind);
     if (previousKind === "welcome") {
-      markHelpTourCompleted("offers");
+      markHelpTourCompleted("general");
     }
   }
   state.helpTour = {
@@ -85647,7 +85972,7 @@ function moveHelpTourStep(direction = 1) {
   }
   if (state.helpTour.kind === "welcome") {
     if (direction > 0) {
-      openOffersHelpTour({ fromWelcome: true });
+      openHelpTour("general", { fromWelcome: true });
     } else {
       closeHelpTour({ markCompleted: true });
     }
@@ -85710,6 +86035,7 @@ function render() {
   renderActiveView();
   renderChatDock();
   renderAppCapabilitiesDialog();
+  renderTopbarHelpMenu();
   renderHelpTour();
   queueWelcomeHelpTourIfNeeded();
 }
@@ -87661,10 +87987,6 @@ offerOpenFormButton?.addEventListener("click", () => {
   requestAnimationFrame(() => {
     offerTitleInput?.focus({ preventScroll: true });
   });
-});
-
-offerHelpTourButton?.addEventListener("click", () => {
-  openOffersHelpTour();
 });
 
 offerDirectionOutgoingButton?.addEventListener("click", () => {
@@ -90252,6 +90574,21 @@ topbarShortcutCapabilitiesButton?.addEventListener("click", (event) => {
   openAppCapabilitiesDialog();
 });
 
+topbarHelpButton?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  setTopbarHelpMenuOpen(!topbarHelpMenuOpen);
+});
+
+topbarHelpOptions.forEach((button) => {
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const kind = button.dataset.helpTourKind || "";
+    setTopbarHelpMenuOpen(false);
+    openHelpTour(kind);
+  });
+});
+
 dashboardOpenPeopleButton?.addEventListener("click", () => {
   setUserManagementScope("control-panel");
   activateSidebarItem("people", { expandSidebar: state.sidebarCollapsed });
@@ -90809,6 +91146,14 @@ document.addEventListener("click", (event) => {
     }
   }
 
+  if (topbarHelpMenuOpen && event.target instanceof Node) {
+    const clickedHelpControl = topbarHelpButton?.contains(event.target)
+      || topbarHelpPanel?.contains(event.target);
+    if (!clickedHelpControl) {
+      setTopbarHelpMenuOpen(false);
+    }
+  }
+
   if (!userMenuOpen) {
     return;
   }
@@ -90847,6 +91192,9 @@ window.addEventListener("resize", () => {
   }
   if (todoShortcutMenuOpen) {
     setTodoShortcutMenuOpen(false);
+  }
+  if (topbarHelpMenuOpen) {
+    setTopbarHelpMenuOpen(false);
   }
   if (state.vehicleReservationAssigneePickerOpen) {
     setVehicleReservationAssigneePickerOpen(false);
@@ -93195,10 +93543,6 @@ dashboardAddWidgetButton?.addEventListener("click", () => {
   renderDashboardOverview();
 });
 
-dashboardHelpTourButton?.addEventListener("click", () => {
-  openDashboardHelpTour();
-});
-
 dashboardSeedLayoutButton?.addEventListener("click", () => {
   void createSuggestedDashboardLayout();
 });
@@ -93590,6 +93934,12 @@ document.addEventListener("pointermove", handleDrawingStagePointerMove);
 document.addEventListener("pointerup", handleDrawingStagePointerUp);
 
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && topbarHelpMenuOpen) {
+    event.preventDefault();
+    setTopbarHelpMenuOpen(false);
+    return;
+  }
+
   if (event.key === "Escape" && state.helpTour.open) {
     event.preventDefault();
     closeHelpTour({ markCompleted: false });
