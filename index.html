@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260504j" />
+    <link rel="stylesheet" href="/styles.css?v=20260505a" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -5070,11 +5070,11 @@
                   </div>
 
                   <div class="offers-filters">
-                    <label class="field">
+                    <label id="offers-search-field" class="field">
                       <span>Pretraga</span>
                       <input id="offers-search" type="search" placeholder="Broj ponude, tvrtka, lokacija, usluga..." />
                     </label>
-                    <label class="field">
+                    <label id="offers-status-filter-field" class="field">
                       <span>Status</span>
                       <select id="offers-filter-status"></select>
                     </label>
@@ -5102,12 +5102,12 @@
 
                       <datalist id="offer-item-service-options"></datalist>
 
-                      <div class="offers-editor-topline">
+                      <div id="offer-editor-topline" class="offers-editor-topline">
                         <label class="field offer-status-field">
                           <span>Status</span>
                           <select id="offer-status" class="work-item-status-select"></select>
                         </label>
-                        <label class="field offer-date-field">
+                        <label id="offer-date-field" class="field offer-date-field">
                           <span id="offer-date-label">Datum ponude</span>
                           <span class="commercial-date-control">
                             <input id="offer-date" type="text" inputmode="numeric" autocomplete="off" placeholder="dd.mm.yyyy" />
@@ -5130,7 +5130,7 @@
                           <span id="offer-total-label" class="offers-editor-meta-label">Ukupno</span>
                           <strong id="offer-total-preview" class="offers-editor-meta-value">0,00 EUR</strong>
                         </div>
-                        <div class="offers-editor-meta-actions">
+                        <div id="offer-editor-meta-actions" class="offers-editor-meta-actions">
                           <button id="offer-preview" type="button" class="ghost-button offer-icon-button" aria-label="Pregled ponude" title="Pregled ponude"></button>
                           <button id="offer-download-pdf" type="button" class="ghost-button offer-icon-button" aria-label="Preuzmi PDF" title="Preuzmi PDF"></button>
                           <button id="offer-send-email" type="button" class="ghost-button offer-icon-button has-label" aria-label="Preview i email" title="Preview i email"></button>
@@ -5233,7 +5233,7 @@
                         <div id="purchase-order-documents-list" class="purchase-order-documents-list"></div>
                       </section>
 
-                      <div class="offers-items-head">
+                      <div id="offer-items-head" class="offers-items-head">
                         <div>
                           <strong id="offer-items-title">Stavke ponude</strong>
                           <p id="offer-items-help" class="inline-help">Dodaj uslugu, količinu, cijenu ili razradu po stavci.</p>
@@ -7740,6 +7740,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260504j"></script>
+    <script type="module" src="/src/main.js?v=20260505a"></script>
   </body>
 </html>

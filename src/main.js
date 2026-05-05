@@ -1356,7 +1356,7 @@ const AUTH_RETRY_EXCLUDED_PATHS = new Set([
   "/auth/session",
   "/health",
 ]);
-const HELP_TOUR_VERSION = "2026-05-04-offers";
+const HELP_TOUR_VERSION = "2026-05-05-offers";
 const HELP_TOUR_STORAGE_PREFIX = "safenexus.helpTour";
 
 const state = {
@@ -19408,10 +19408,36 @@ function parseDateValue(value) {
   }
 
   const rawValue = String(value).trim();
-  const directDate = new Date(rawValue);
+  const createLocalDate = (year, month, day) => {
+    if (
+      !Number.isFinite(day)
+      || !Number.isFinite(month)
+      || !Number.isFinite(year)
+      || day < 1
+      || day > 31
+      || month < 1
+      || month > 12
+    ) {
+      return null;
+    }
+    const parsed = new Date(year, month - 1, day, 12, 0, 0, 0);
+    if (
+      Number.isNaN(parsed.getTime())
+      || parsed.getFullYear() !== year
+      || parsed.getMonth() !== month - 1
+      || parsed.getDate() !== day
+    ) {
+      return null;
+    }
+    return parsed;
+  };
 
-  if (!Number.isNaN(directDate.getTime())) {
-    return directDate;
+  const isoDateOnlyMatch = rawValue.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (isoDateOnlyMatch) {
+    const year = Number(isoDateOnlyMatch[1]);
+    const month = Number(isoDateOnlyMatch[2]);
+    const day = Number(isoDateOnlyMatch[3]);
+    return createLocalDate(year, month, day);
   }
 
   const croatianDateMatch = rawValue.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})\.?$/);
@@ -19419,20 +19445,13 @@ function parseDateValue(value) {
     const day = Number(croatianDateMatch[1]);
     const month = Number(croatianDateMatch[2]);
     const year = Number(croatianDateMatch[3]);
-    if (
-      Number.isFinite(day)
-      && Number.isFinite(month)
-      && Number.isFinite(year)
-      && day >= 1
-      && day <= 31
-      && month >= 1
-      && month <= 12
-    ) {
-      const normalizedCroatianDate = new Date(year, month - 1, day, 12, 0, 0, 0);
-      if (!Number.isNaN(normalizedCroatianDate.getTime())) {
-        return normalizedCroatianDate;
-      }
-    }
+    return createLocalDate(year, month, day);
+  }
+
+  const directDate = new Date(rawValue);
+
+  if (!Number.isNaN(directDate.getTime())) {
+    return directDate;
   }
 
   const normalizedDateOnly = new Date(`${rawValue.slice(0, 10)}T12:00:00`);
@@ -68065,7 +68084,7 @@ function openOfferDatePicker() {
     return;
   }
 
-  offerDatePickerInput.value = getOfferDateFieldValue() || new Date().toISOString().slice(0, 10);
+  offerDatePickerInput.value = getOfferDateFieldValue() || toDateKey(new Date());
 
   if (typeof offerDatePickerInput.showPicker === "function") {
     try {
@@ -70371,7 +70390,7 @@ function resetOfferForm() {
   }
   syncOfferStatusTheme();
   if (offerDateInput) {
-    setOfferDateFieldValue(new Date().toISOString().slice(0, 10));
+    setOfferDateFieldValue(toDateKey(new Date()));
   }
   if (offerTaxRateInput) {
     offerTaxRateInput.value = "25";
@@ -84976,10 +84995,10 @@ function getOffersHelpTourSteps() {
       prepare: "offers",
     },
     {
-      title: "Pretraga i status",
-      body: "Pretraga hvata broj ponude, tvrtku, lokaciju i uslugu. Status filter služi za brzi pregled skica, poslanih i prihvaćenih ponuda.",
-      target: ".offers-filters",
-      points: ["Koristi pretragu kao radni inbox.", "Statusi pomažu da odmah vidiš što čeka slanje ili odluku."],
+      title: "Pretraga ponuda",
+      body: "Pretraga je u listi ponuda i hvata broj ponude, tvrtku, lokaciju i uslugu. Status filter je odmah desno za brzi pregled skica, poslanih i prihvaćenih ponuda.",
+      target: "#offers-search-field",
+      points: ["Koristi pretragu kao radni inbox.", "Status filter je uz pretragu i odmah sužava listu."],
       prepare: "offers",
     },
     {
@@ -85005,22 +85024,22 @@ function getOffersHelpTourSteps() {
     },
     {
       title: "Osnovni podaci",
-      body: "U editoru biraš status, datum, naziv, tvrtku, lokacije, kontakt osobu i vrstu ponude. To je temelj iz kojeg se puni Word i PDF.",
-      target: ".offers-form-grid",
-      points: ["Kontakt email kasnije se predlaže za slanje.", "Vrsta ponude mijenja prikaz stavki i razrade."],
+      body: "U gornjem redu editora biraš status i datum ponude. Ispod toga su naziv, tvrtka, lokacije, kontakt osoba i vrsta ponude za Word i PDF.",
+      target: "#offer-date-field",
+      points: ["Datum ponude ostaje u hrvatskom formatu i sprema se kao ispravan ISO datum.", "Kontakt email kasnije se predlaže za slanje."],
       prepare: "offer-editor",
     },
     {
       title: "Stavke i razrada",
       body: "Ovdje dodaješ fiksne stavke, mjesečne naknade ili razradu usluga po zapisniku i mjernim mjestima. Kod Fixed Plana stavke su ručni unosi.",
-      target: ".offers-items-head",
+      target: "#offer-items-head",
       points: ["Hybrid odvaja mjesečni dio od cjenika usluga.", "Word export sada može koristiti odvojene tablice."],
       prepare: "offer-editor",
     },
     {
       title: "Preview, PDF i email",
       body: "Na kraju možeš napraviti preview iz Word templatea, preuzeti PDF ili otvoriti email prozor. Osoba koja radi ponudu ostaje zapisana kao autor.",
-      target: ".offers-editor-meta-actions",
+      target: "#offer-editor-meta-actions",
       points: ["Preview provjeri prije slanja.", "Email se šalje kontakt osobi, a pošiljatelj ide u CC."],
       prepare: "offer-editor",
     },
@@ -85340,10 +85359,10 @@ function renderGuidedHelpTour(layer) {
   renderHelpTourProgress(layer, steps.length, state.helpTour.stepIndex);
 
   const target = getHelpTourTarget(step);
-  target?.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
-  window.setTimeout(() => {
+  target?.scrollIntoView({ block: "center", inline: "nearest", behavior: "auto" });
+  window.requestAnimationFrame(() => {
     positionHelpTourCard(layer, step);
-  }, 180);
+  });
 }
 
 function renderHelpTour() {
