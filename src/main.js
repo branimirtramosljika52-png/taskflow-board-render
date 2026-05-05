@@ -851,7 +851,7 @@ const USER_PROFILE_ROLE_OPTIONS = Object.freeze([
   { value: "new_user", label: "New User" },
   { value: "junior_user", label: "Junior User" },
   { value: "senior_user", label: "Senior User" },
-  { value: "leand_user", label: "Leand User" },
+  { value: "leand_user", label: "Lead User" },
   { value: "manager", label: "Manager" },
   { value: "admin", label: "Admin" },
 ]);
@@ -42132,7 +42132,7 @@ function renderCompanyPermissionModuleBlock(module, draftByKey, appDraftByKey = 
     const headerTitle = document.createElement("strong");
     headerTitle.textContent = role.label;
     const headerMeta = document.createElement("span");
-    headerMeta.textContent = role.value;
+    headerMeta.textContent = role.value === "leand_user" ? "lead_user" : role.value;
     header.append(headerTitle, headerMeta);
     headRow.append(header);
   });
@@ -42162,7 +42162,11 @@ function renderCompanyPermissionModuleBlock(module, draftByKey, appDraftByKey = 
       checkbox.type = "checkbox";
       checkbox.checked = isAdminRole || Boolean(permissionEntry?.[permissionRow.key]);
       checkbox.disabled = isAdminRole;
+      cell.classList.add(checkbox.checked ? "is-permission-on" : "is-permission-off");
+      label.classList.add(checkbox.checked ? "is-checked" : "is-unchecked");
       if (isAdminRole) {
+        cell.classList.add("is-permission-admin");
+        label.classList.add("is-locked");
         label.title = "Admin ima sva ovlastenja unutar svoje firme.";
       }
       checkbox.addEventListener("change", () => {
