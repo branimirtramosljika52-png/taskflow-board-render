@@ -2475,8 +2475,6 @@ async function readOfferHtmlTemplateReference(referenceDocument = null) {
 }
 
 async function buildOfferPdfExportPayload(offer = {}, organizationId = "", options = {}) {
-  const offerTemplateSettings = await domainRepository.getOfferTemplateSettings(organizationId).catch(() => null);
-  const offerTemplateDocument = offerTemplateSettings?.referenceDocument ?? null;
   const baseName = buildOfferExportBaseName(offer);
   const fileName = sanitizeGeneratedDocumentFileName(baseName, {
     fallback: "ponuda",
@@ -2485,6 +2483,15 @@ async function buildOfferPdfExportPayload(offer = {}, organizationId = "", optio
 
   const pdfEngine = String(options?.pdfEngine || options?.engine || "").trim().toLowerCase();
   const useWordTemplate = ["word", "docx", "template", "libreoffice"].includes(pdfEngine);
+  const useHtmlTemplate = ["html", "html-pdf", "chromium"].includes(pdfEngine);
+
+  if (!useWordTemplate && !useHtmlTemplate) {
+    const pdfBuffer = await buildOfferPdfBuffer(offer, { currency: offer.currency || "EUR" });
+    return { pdfBuffer, fileName };
+  }
+
+  const offerTemplateSettings = await domainRepository.getOfferTemplateSettings(organizationId).catch(() => null);
+  const offerTemplateDocument = offerTemplateSettings?.referenceDocument ?? null;
 
   if (useWordTemplate && offerTemplateDocument) {
     if (!isWordTemplateFile(offerTemplateDocument)) {
@@ -2510,22 +2517,24 @@ async function buildOfferPdfExportPayload(offer = {}, organizationId = "", optio
     }
   }
 
-  const { templateHtml } = await readOfferHtmlTemplateReference(offerTemplateDocument).catch((error) => {
-    console.warn("Offer HTML template reference could not be read; using bundled HTML template.", error);
-    return {
-      templateHtml: "",
-      templateFileName: "",
-    };
-  });
-
-  try {
-    const pdfBuffer = await buildOfferHtmlPdfBuffer(offer, {
-      currency: offer.currency || "EUR",
-      templateHtml,
+  if (useHtmlTemplate) {
+    const { templateHtml } = await readOfferHtmlTemplateReference(offerTemplateDocument).catch((error) => {
+      console.warn("Offer HTML template reference could not be read; using bundled HTML template.", error);
+      return {
+        templateHtml: "",
+        templateFileName: "",
+      };
     });
-    return { pdfBuffer, fileName };
-  } catch (error) {
-    console.warn("Offer HTML PDF export failed, falling back to native PDF.", error);
+
+    try {
+      const pdfBuffer = await buildOfferHtmlPdfBuffer(offer, {
+        currency: offer.currency || "EUR",
+        templateHtml,
+      });
+      return { pdfBuffer, fileName };
+    } catch (error) {
+      console.warn("Offer HTML PDF export failed, falling back to native PDF.", error);
+    }
   }
 
   const pdfBuffer = await buildOfferPdfBuffer(offer, { currency: offer.currency || "EUR" });

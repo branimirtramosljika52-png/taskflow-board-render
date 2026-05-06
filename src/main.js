@@ -628,7 +628,7 @@ const COMMERCIAL_DOCUMENT_MODULE_CONFIG = Object.freeze({
     templateTitle: "HTML template za ponude",
     templateWordTitle: "Aktivni HTML predložak",
     templatePlaceholderTitle: "Tokeni za HTML",
-    templateCopy: "PDF ponude sada se generira iz HTML predloška i ide direktno u HTML-to-PDF.",
+    templateCopy: "HTML predložak služi za preview ponude, a PDF se radi najbržim native rendererom bez čekanja browsera.",
     templatePlaceholderDocTitle: "SafeNexus · Offer placeholderi",
     templatePlaceholderDocName: "safe-nexus-offer-placeholderi",
     templateEmptyText: "Ugrađeni HTML predložak Ponuda v1.0.0 je aktivan.",
@@ -72031,8 +72031,8 @@ function renderOfferHtmlPreviewModal() {
   if (offerHtmlPreviewMeta) {
     const templateName = String(payload.templateFileName || "").trim();
     offerHtmlPreviewMeta.textContent = templateName
-      ? `HTML predložak "${templateName}" je aktivan. PDF se generira kroz HTML-to-PDF.`
-      : "Ugrađeni HTML predložak je aktivan. PDF se generira kroz HTML-to-PDF.";
+      ? `HTML predložak "${templateName}" je aktivan za preview. PDF se generira brzim native rendererom.`
+      : "Ugrađeni HTML predložak je aktivan za preview. PDF se generira brzim native rendererom.";
   }
   if (offerHtmlPreviewContent) {
     const html = String(payload.html || "").trim();
@@ -86414,7 +86414,7 @@ function getOffersHelpTourSteps() {
     },
     {
       title: "HTML predložak",
-      body: "Ponude sada imaju brzi HTML preview i brzi PDF. Word dio ostaje samo kao fallback za ručne predloške i placeholder tokene.",
+      body: "Ponude sada imaju brzi HTML preview i najbrži PDF bez čekanja browsera. Word dio ostaje samo kao ručni fallback.",
       target: "#offer-open-template",
       points: ["Preview više ne čeka Word konverziju.", "PDF koristi podatke iz editora, stavke i razradu."],
       prepare: "offers",
