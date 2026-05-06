@@ -1714,11 +1714,11 @@
             </div>
 
             <section class="work-order-template-strip">
-              <input id="work-order-template-file-input" type="file" accept=".docx,.dotx" hidden />
+              <input id="work-order-template-file-input" type="file" accept=".html,.htm,text/html" hidden />
               <div class="work-order-template-copy">
                 <p class="section-kicker">RN template</p>
                 <h3>Predložak za radni nalog</h3>
-                <span id="work-order-template-meta">Dodaj Word template ili preuzmi popis placeholdera za PDF.</span>
+                <span id="work-order-template-meta">Dodaj HTML template ili preuzmi popis placeholdera za PDF.</span>
                 <label class="work-order-template-select-field">
                   <span>Aktivni template</span>
                   <select id="work-order-template-select"></select>
@@ -7469,7 +7469,6 @@
                         <button id="document-template-runtime-send-signature" type="button" class="ghost-button" hidden>Pošalji na digitalni potpis</button>
                         <button id="document-template-runtime-print-all" type="button" class="ghost-button" hidden>Ispiši sve</button>
                         <button id="document-template-open-pdf-preview" type="button" class="ghost-button" hidden>Preview</button>
-                        <button id="document-template-export-preview" type="button" class="ghost-button" hidden>Preuzmi Word</button>
                         <button id="document-template-save" type="button" class="primary-button">Spremi template</button>
                         <button id="document-template-editor-close" type="button" class="ghost-button">Zatvori</button>
                       </div>
@@ -7508,7 +7507,7 @@
 
                     <div class="document-template-builder-shell">
                       <aside class="document-template-builder-sidebar">
-                        <section class="document-template-block document-template-sidebar-block document-template-word-block">
+                        <section class="document-template-block document-template-sidebar-block document-template-html-block">
                           <div class="document-template-sidebar-block-head">
                             <div>
                               <p class="section-kicker">HTML predložak</p>
@@ -7525,21 +7524,21 @@
                             </button>
                           </div>
                           <div id="document-template-reference-panel-body" class="document-template-sidebar-block-body">
-                            <div class="document-template-word-flow">
-                              <article class="document-template-word-step">
+                            <div class="document-template-html-flow">
+                              <article class="document-template-html-step">
                                 <strong>1</strong>
                                 <span>Builder</span>
                               </article>
-                              <article class="document-template-word-step">
+                              <article class="document-template-html-step">
                                 <strong>2</strong>
                                 <span>Preuzmi HTML</span>
                               </article>
-                              <article class="document-template-word-step">
+                              <article class="document-template-html-step">
                                 <strong>3</strong>
                                 <span>Upload ili zalijepi</span>
                               </article>
                             </div>
-                            <input id="document-template-reference-file-input" type="file" accept=".html,.htm,text/html,.docx,.dotx" hidden />
+                            <input id="document-template-reference-file-input" type="file" accept=".html,.htm,text/html" hidden />
                             <label class="field field-span-full document-template-html-code-field">
                               <span>HTML kod predloška</span>
                               <textarea id="document-template-html-code" rows="9" spellcheck="false" placeholder="Zalijepi HTML s tokenima, npr. {{DOCUMENT_TITLE}} i {{BROJ_RADNOG_NALOGA}}"></textarea>
@@ -7699,8 +7698,7 @@
                         <button id="document-template-runtime-dock-send-signature" type="button" class="ghost-button" hidden>Pošalji na digitalni potpis</button>
                         <button id="document-template-runtime-dock-print-all" type="button" class="ghost-button" hidden>Ispiši sve</button>
                         <button id="document-template-runtime-dock-duplicate-object" type="button" class="ghost-button">Poduplaj</button>
-                        <button id="document-template-runtime-dock-pdf" type="button" class="ghost-button">Brzi PDF</button>
-                        <button id="document-template-runtime-dock-word" type="button" class="ghost-button">Preuzmi Word</button>
+                        <button id="document-template-runtime-dock-pdf" type="button" class="ghost-button">PDF iz HTML-a</button>
                       </div>
                     </section>
 
