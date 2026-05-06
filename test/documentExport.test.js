@@ -182,6 +182,53 @@ test("offer HTML template renders escaped commercial data", () => {
   assert.match(html, /26,43 EUR/);
 });
 
+test("hybrid offer HTML separates monthly fees from service pricing", () => {
+  const html = buildOfferHtmlTemplate({
+    title: "Hybrid ponuda",
+    offerNumber: "26-AG-HYB",
+    offerDate: "2026-05-06",
+    companyName: "Alpha d.o.o.",
+    companyOib: "12345678901",
+    headquarters: "Zagreb",
+    locationName: "Pogon 1",
+    serviceLine: "Hybrid Plan",
+    showTotalAmount: false,
+    items: [
+      {
+        description: "Mjesečni iznos",
+        unit: "mj",
+        quantity: 1,
+        unitPrice: 142,
+        totalPrice: 142,
+      },
+      {
+        description: "Usluge po izvršenju",
+        unit: "usluga",
+        quantity: 1,
+        unitPrice: 0,
+        totalPrice: 0,
+        breakdowns: [
+          { priceKind: "record", recordLabel: "Zapisnik", amount: 0 },
+          { priceKind: "measurement", measurementTo: "10", amount: "0" },
+          { priceKind: "measurement_range", measurementFrom: "11", measurementTo: "20", amount: 0 },
+          { priceKind: "next_measurement", amount: 24 },
+        ],
+      },
+    ],
+  });
+
+  assert.match(html, /Mjesečne naknade/);
+  assert.match(html, /Cjenik usluga/);
+  assert.match(html, /Mjesečni iznos/);
+  assert.match(html, /Usluge po izvršenju/);
+  assert.match(html, /Do 10 mjernih mjesta/);
+  assert.match(html, /Od 11 do 20 mjernog mjesta/);
+  assert.match(html, /Svako iduće mjerno mjesto/);
+  assert.match(html, /142,00 EUR/);
+  assert.match(html, /24,00 EUR/);
+  assert.doesNotMatch(html, /MM 11 - 20/);
+});
+
 test("offer export returns a direct PDF buffer", async () => {
   const outputBuffer = await buildOfferPdfBuffer({
     title: "Ponuda mjerenja",
