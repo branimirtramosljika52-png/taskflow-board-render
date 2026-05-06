@@ -7511,8 +7511,8 @@
                         <section class="document-template-block document-template-sidebar-block document-template-word-block">
                           <div class="document-template-sidebar-block-head">
                             <div>
-                              <p class="section-kicker">Word predložak</p>
-                              <h3>Word datoteka</h3>
+                              <p class="section-kicker">HTML predložak</p>
+                              <h3>HTML kod</h3>
                             </div>
                             <button
                               id="document-template-reference-toggle"
@@ -7532,22 +7532,27 @@
                               </article>
                               <article class="document-template-word-step">
                                 <strong>2</strong>
-                                <span>Preuzmi</span>
+                                <span>Preuzmi HTML</span>
                               </article>
                               <article class="document-template-word-step">
                                 <strong>3</strong>
-                                <span>Vrati .docx</span>
+                                <span>Upload ili zalijepi</span>
                               </article>
                             </div>
-                            <input id="document-template-reference-file-input" type="file" accept=".docx,.dotx" hidden />
+                            <input id="document-template-reference-file-input" type="file" accept=".html,.htm,text/html,.docx,.dotx" hidden />
+                            <label class="field field-span-full document-template-html-code-field">
+                              <span>HTML kod predloška</span>
+                              <textarea id="document-template-html-code" rows="9" spellcheck="false" placeholder="Zalijepi HTML s tokenima, npr. {{DOCUMENT_TITLE}} i {{BROJ_RADNOG_NALOGA}}"></textarea>
+                            </label>
                             <div class="document-template-reference-actions document-template-reference-actions--stack">
-                              <button id="document-template-export-placeholder" type="button" class="ghost-button">Preuzmi Word s placeholderima</button>
-                              <button id="document-template-reference-upload" type="button" class="ghost-button">Upload gotovog Worda</button>
-                              <button id="document-template-reference-download" type="button" class="ghost-button" hidden>Preuzmi spremljeni Word</button>
-                              <button id="document-template-reference-remove" type="button" class="ghost-button" hidden>Makni Word</button>
+                              <button id="document-template-html-save" type="button" class="ghost-button">Spremi HTML kod</button>
+                              <button id="document-template-export-placeholder" type="button" class="ghost-button">Preuzmi HTML s tokenima</button>
+                              <button id="document-template-reference-upload" type="button" class="ghost-button">Upload HTML datoteke</button>
+                              <button id="document-template-reference-download" type="button" class="ghost-button" hidden>Preuzmi spremljeni HTML</button>
+                              <button id="document-template-reference-remove" type="button" class="ghost-button" hidden>Makni HTML</button>
                             </div>
                             <div id="document-template-reference-meta" class="document-template-reference-meta">
-                              Nema spremljenog Word predloška.
+                              Nema spremljenog HTML predloška.
                             </div>
                           </div>
                         </section>
@@ -7556,7 +7561,7 @@
                           <div class="document-template-sidebar-block-head document-template-placeholder-panel-head">
                             <div>
                               <p class="section-kicker">Placeholderi</p>
-                              <h4>Tokeni za Word</h4>
+                              <h4>Tokeni za HTML</h4>
                             </div>
                             <button
                               id="document-template-placeholder-toggle"

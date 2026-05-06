@@ -25,6 +25,7 @@ import {
   buildOfferPdfBuffer,
   buildPurchaseOrderPdfBuffer,
   buildWorkOrderPdfBuffer,
+  buildPdfFromHtmlTemplateBuffer,
   buildPdfFromRenderModel,
   buildPdfFromTemplateBuffer,
   buildDocxFromTemplateBuffer,
@@ -1535,17 +1536,24 @@ async function generatePdfBufferForTemplate(template = {}, {
   fileName = "",
 } = {}) {
   if (!template.referenceDocument) {
-    throw new Error("Template još nema učitan Word predložak. PDF i Word moraju koristiti isti .docx predložak.");
-  }
-
-  if (!isWordTemplateFile(template.referenceDocument)) {
-    throw new Error("Za PDF export učitaj .docx ili .dotx Word predložak. PDF i Word moraju koristiti isti predložak.");
+    throw new Error("Template još nema učitan HTML ili Word predložak.");
   }
 
   const referenceDocument = await readStoredDocumentBuffer(template.referenceDocument);
-  return await buildPdfFromTemplateBuffer(referenceDocument.buffer, placeholders, {
-    fileName: fileName || template.outputFileName || template.title || "zapisnik.docx",
-  });
+  if (isHtmlTemplateFile(template.referenceDocument)) {
+    return await buildPdfFromHtmlTemplateBuffer(referenceDocument.buffer, placeholders, {
+      fileName: fileName || template.outputFileName || template.title || "zapisnik.html",
+      title: template.title || template.documentType || "Zapisnik",
+    });
+  }
+
+  if (isWordTemplateFile(template.referenceDocument)) {
+    return await buildPdfFromTemplateBuffer(referenceDocument.buffer, placeholders, {
+      fileName: fileName || template.outputFileName || template.title || "zapisnik.docx",
+    });
+  }
+
+  throw new Error("Za PDF export učitaj .html/.htm ili .docx/.dotx predložak.");
 }
 
 function hasTemplateRenderPdfModel(value = null) {
@@ -1569,15 +1577,17 @@ function shouldUseFastTemplateRenderPdf(body = {}) {
   return body?.fastPdf !== false
     && body?.useTemplatePdf !== true
     && engine !== "template"
-    && engine !== "word";
+    && engine !== "word"
+    && engine !== "html";
 }
 
 async function generatePdfBuffersForTemplateEntries(entries = [], scopedSnapshot = {}) {
   const documentTemplates = scopedSnapshot.documentTemplates ?? [];
   const referenceDocumentCache = new Map();
   const docxItems = [];
+  const pdfBuffers = [];
 
-  for (const entry of Array.isArray(entries) ? entries : []) {
+  for (const [entryIndex, entry] of (Array.isArray(entries) ? entries : []).entries()) {
     const template = assertInScope(
       documentTemplates,
       entry?.templateId,
@@ -1585,27 +1595,48 @@ async function generatePdfBuffersForTemplateEntries(entries = [], scopedSnapshot
     );
 
     if (!template.referenceDocument) {
-      throw new Error("Template još nema učitan Word predložak. PDF i Word moraju koristiti isti .docx predložak.");
+      if (hasTemplateRenderPdfModel(entry?.renderModel)) {
+        pdfBuffers[entryIndex] = await buildPdfFromRenderModel(entry.renderModel);
+        continue;
+      }
+      throw new Error("Template još nema učitan HTML ili Word predložak.");
     }
 
-    if (!isWordTemplateFile(template.referenceDocument)) {
-      throw new Error("Za PDF export učitaj .docx ili .dotx Word predložak. PDF i Word moraju koristiti isti predložak.");
-    }
-
-    const cacheKey = String(template.id || entry?.templateId || docxItems.length);
+    const cacheKey = String(template.id || entry?.templateId || entryIndex);
     let referenceDocument = referenceDocumentCache.get(cacheKey);
     if (!referenceDocument) {
       referenceDocument = await readStoredDocumentBuffer(template.referenceDocument);
       referenceDocumentCache.set(cacheKey, referenceDocument);
     }
 
-    docxItems.push({
-      buffer: await buildDocxFromTemplateBuffer(referenceDocument.buffer, entry?.placeholders ?? {}),
-      fileName: entry?.fileName || template.outputFileName || template.title || "zapisnik.docx",
+    if (isHtmlTemplateFile(template.referenceDocument)) {
+      pdfBuffers[entryIndex] = await buildPdfFromHtmlTemplateBuffer(referenceDocument.buffer, entry?.placeholders ?? {}, {
+        fileName: entry?.fileName || template.outputFileName || template.title || "zapisnik.html",
+        title: template.title || template.documentType || "Zapisnik",
+      });
+      continue;
+    }
+
+    if (isWordTemplateFile(template.referenceDocument)) {
+      docxItems.push({
+        entryIndex,
+        buffer: await buildDocxFromTemplateBuffer(referenceDocument.buffer, entry?.placeholders ?? {}),
+        fileName: entry?.fileName || template.outputFileName || template.title || "zapisnik.docx",
+      });
+      continue;
+    }
+
+    throw new Error("Za PDF export učitaj .html/.htm ili .docx/.dotx predložak.");
+  }
+
+  if (docxItems.length > 0) {
+    const convertedDocxPdfBuffers = await convertDocxBuffersToPdfBuffers(docxItems);
+    docxItems.forEach((item, index) => {
+      pdfBuffers[item.entryIndex] = convertedDocxPdfBuffers[index];
     });
   }
 
-  return await convertDocxBuffersToPdfBuffers(docxItems);
+  return pdfBuffers.filter(Boolean);
 }
 
 function formatOfferDocumentDate(value = "") {
@@ -2060,15 +2091,19 @@ async function buildWorkOrderPdfExportPayload(workOrder = {}, scopedSnapshot = {
       "RN template nije pronaden.",
     );
 
-    if (!template.referenceDocument || !isWordTemplateFile(template.referenceDocument)) {
-      throw new Error("RN template mora imati .docx ili .dotx Word predlozak.");
+    if (
+      !template.referenceDocument
+      || (!isWordTemplateFile(template.referenceDocument) && !isHtmlTemplateFile(template.referenceDocument))
+    ) {
+      throw new Error("RN template mora imati .html/.htm ili .docx/.dotx predložak.");
     }
 
+    const referenceExtension = isHtmlTemplateFile(template.referenceDocument) ? "html" : "docx";
     const pdfBuffer = await generatePdfBufferForTemplate(template, {
       placeholders: buildWorkOrderTemplatePlaceholderPayload(workOrder),
       fileName: sanitizeGeneratedDocumentFileName(
         workOrder.workOrderNumber || workOrder.companyName || "radni-nalog",
-        { fallback: "radni-nalog", extension: "docx" },
+        { fallback: "radni-nalog", extension: referenceExtension },
       ),
     });
     return { pdfBuffer, fileName };
@@ -6970,7 +7005,7 @@ async function handleApiRequest(request, response, url) {
       }
 
       if (!isWordTemplateFile(template.referenceDocument)) {
-        sendError(response, 400, "Za Word export učitaj .docx ili .dotx predložak.");
+        sendError(response, 400, "HTML predložak se generira kao PDF. Za Word export učitaj .docx ili .dotx predložak.");
         return true;
       }
 
@@ -7037,7 +7072,7 @@ async function handleApiRequest(request, response, url) {
 
       const canUseFastPdf = body?.fastPdf !== false
         && body?.useTemplatePdf !== true
-        && String(body?.pdfEngine || "").trim().toLowerCase() !== "template"
+        && !["template", "word", "html"].includes(String(body?.pdfEngine || "").trim().toLowerCase())
         && entries.every((entry) => hasTemplateRenderPdfModel(entry?.renderModel));
       const pdfBuffers = canUseFastPdf
         ? await Promise.all(entries.map((entry) => buildPdfFromRenderModel(entry.renderModel)))

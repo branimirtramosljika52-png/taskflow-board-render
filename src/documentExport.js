@@ -1780,6 +1780,312 @@ export async function buildPdfFromTemplateBuffer(templateBuffer, placeholders = 
   return convertDocxBufferToPdfBuffer(generatedWord, options);
 }
 
+function escapeTemplateHtml(value = "") {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function formatTemplateHtmlText(value = "", fallback = "") {
+  const text = String(value ?? "").replace(/\r\n/g, "\n");
+  return clean(text) ? escapeTemplateHtml(text).replace(/\n/g, "<br>") : fallback;
+}
+
+function buildHtmlTemplateDefaultStyles() {
+  return `
+    <style data-safe-nexus-template-style>
+      .safe-nexus-template-body{font-family:Arial,sans-serif;color:#1f2937;line-height:1.45}
+      .safe-nexus-template-table{width:100%;border-collapse:collapse;margin:12px 0 18px;table-layout:fixed}
+      .safe-nexus-template-table th,
+      .safe-nexus-template-table td{border:1px solid #cad8d1;padding:7px 9px;text-align:left;vertical-align:top;word-break:break-word;overflow-wrap:anywhere}
+      .safe-nexus-template-table th{background:#eef5f2;font-weight:700}
+      .safe-nexus-template-signatures{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:28px;margin:24px 0 8px}
+      .safe-nexus-template-signature{min-height:116px;text-align:right}
+      .safe-nexus-template-signature strong{display:block;margin-top:3px}
+      .safe-nexus-template-signature small{display:block;color:#667085;margin-top:2px}
+      .safe-nexus-template-signature-line{border-top:1px solid #95aea3;margin-top:42px;padding-top:6px;color:#667085;font-size:12px}
+      .safe-nexus-template-system-block{margin:14px 0 20px}
+      .safe-nexus-template-system-block h3{margin:0 0 8px;padding:7px 9px;background:#e5e7eb;color:#111827;font-size:15px;text-transform:uppercase}
+      .safe-nexus-template-system-block p{margin:6px 0}
+      .safe-nexus-template-system-row{margin:8px 0;text-align:center}
+      .safe-nexus-template-system-row strong{font-weight:700}
+      @media print{.safe-nexus-template-signatures{break-inside:avoid}.safe-nexus-template-system-block,.safe-nexus-template-table{break-inside:auto}}
+    </style>
+  `.trim();
+}
+
+function injectHtmlTemplateDefaultStyles(html = "") {
+  const source = String(html ?? "");
+  const styles = buildHtmlTemplateDefaultStyles();
+  if (/<style\b[^>]*data-safe-nexus-template-style/i.test(source)) {
+    return source;
+  }
+
+  if (/<\/head>/i.test(source)) {
+    return source.replace(/<\/head>/i, `${styles}\n</head>`);
+  }
+
+  return `${styles}\n${source}`;
+}
+
+function getHtmlTemplateCellAlign(format = {}) {
+  const explicitAlign = clean(format.align).toLowerCase();
+  if (["left", "center", "right"].includes(explicitAlign)) {
+    return explicitAlign;
+  }
+  return ["number", "integer", "percent"].includes(clean(format.type).toLowerCase()) ? "right" : "left";
+}
+
+function buildHtmlTemplateCellStyle(format = {}, { header = false } = {}) {
+  const styles = [`text-align:${getHtmlTemplateCellAlign(format)}`];
+  const fontSize = Number(format.fontSize);
+  if (Number.isFinite(fontSize)) {
+    styles.push(`font-size:${Math.max(9, Math.min(40, fontSize))}px`);
+  }
+  if (format.bold || header) {
+    styles.push("font-weight:700");
+  }
+  if (format.italic) {
+    styles.push("font-style:italic");
+  }
+  if (format.underline) {
+    styles.push("text-decoration:underline");
+  }
+  if (/^#[0-9a-f]{6}$/i.test(clean(format.fillColor))) {
+    styles.push(`background:${clean(format.fillColor)}`);
+  }
+  const fontFamily = clean(format.fontFamily);
+  if (fontFamily && fontFamily !== "default") {
+    styles.push(`font-family:${escapeTemplateHtml(fontFamily)}, Arial, sans-serif`);
+  }
+  return styles.join(";");
+}
+
+function buildHtmlTemplateTablePlaceholder(table = {}) {
+  const columns = Array.isArray(table.columns) ? table.columns : [];
+  const rows = Array.isArray(table.rows) ? table.rows : [];
+  if (columns.length === 0 || rows.length === 0) {
+    return "";
+  }
+
+  const rowIndexById = new Map(rows.map((row, rowIndex) => [clean(row.id), rowIndex]));
+  const columnIndexById = new Map(columns.map((column, columnIndex) => [clean(column.id), columnIndex]));
+  const headerRowSet = new Set(
+    (Array.isArray(table.headerRows) ? table.headerRows : [])
+      .map((entry) => clean(entry))
+      .filter(Boolean),
+  );
+  rows.forEach((row) => {
+    if (row?.header) {
+      headerRowSet.add(clean(row.id));
+    }
+  });
+
+  const mergeAnchors = new Map();
+  const skipCells = new Set();
+  (Array.isArray(table.merges) ? table.merges : []).forEach((merge) => {
+    const rowIndex = rowIndexById.get(clean(merge?.rowId));
+    const columnIndex = columnIndexById.get(clean(merge?.columnId));
+    if (!Number.isInteger(rowIndex) || !Number.isInteger(columnIndex)) {
+      return;
+    }
+
+    const rowSpan = Math.max(1, Math.min(Number.parseInt(merge.rowSpan, 10) || 1, rows.length - rowIndex));
+    const colSpan = Math.max(1, Math.min(Number.parseInt(merge.colSpan, 10) || 1, columns.length - columnIndex));
+    if (rowSpan <= 1 && colSpan <= 1) {
+      return;
+    }
+
+    mergeAnchors.set(`${rowIndex}:${columnIndex}`, { rowSpan, colSpan });
+    for (let currentRow = rowIndex; currentRow < rowIndex + rowSpan; currentRow += 1) {
+      for (let currentColumn = columnIndex; currentColumn < columnIndex + colSpan; currentColumn += 1) {
+        if (currentRow === rowIndex && currentColumn === columnIndex) {
+          continue;
+        }
+        skipCells.add(`${currentRow}:${currentColumn}`);
+      }
+    }
+  });
+
+  const colgroup = columns.map((column) => (
+    `<col style="width:${Math.max(MEASUREMENT_COLUMN_MIN_WIDTH, Number(column.width) || 140)}px">`
+  )).join("");
+  const rowHtml = rows.map((row, rowIndex) => {
+    const isHeader = headerRowSet.has(clean(row.id));
+    const tagName = isHeader ? "th" : "td";
+    const cells = Array.isArray(row.cells) ? row.cells : [];
+    const cellHtml = [];
+
+    for (let columnIndex = 0; columnIndex < columns.length; columnIndex += 1) {
+      const cellKey = `${rowIndex}:${columnIndex}`;
+      if (skipCells.has(cellKey)) {
+        continue;
+      }
+
+      const rawCell = cells[columnIndex] && typeof cells[columnIndex] === "object"
+        ? cells[columnIndex]
+        : { text: String(cells[columnIndex] ?? ""), format: {} };
+      const mergeAnchor = mergeAnchors.get(cellKey);
+      const style = buildHtmlTemplateCellStyle(rawCell.format ?? {}, { header: isHeader });
+      const attributes = [
+        mergeAnchor?.rowSpan > 1 ? `rowspan="${mergeAnchor.rowSpan}"` : "",
+        mergeAnchor?.colSpan > 1 ? `colspan="${mergeAnchor.colSpan}"` : "",
+        style ? `style="${style}"` : "",
+      ].filter(Boolean).join(" ");
+      cellHtml.push(`<${tagName}${attributes ? ` ${attributes}` : ""}>${formatTemplateHtmlText(rawCell.text || "")}</${tagName}>`);
+    }
+
+    return `<tr>${cellHtml.join("")}</tr>`;
+  }).join("");
+
+  return `<table class="safe-nexus-template-table">${colgroup ? `<colgroup>${colgroup}</colgroup>` : ""}<tbody>${rowHtml}</tbody></table>`;
+}
+
+function buildHtmlTemplateSignatureGroupPlaceholder(items = []) {
+  const safeItems = Array.isArray(items) ? items.filter(Boolean) : [];
+  if (safeItems.length === 0) {
+    return `<p style="text-align:right;color:#667085"><em>Nema odabranih osoba.</em></p>`;
+  }
+
+  const itemHtml = safeItems.map((item) => {
+    const signatureLabel = item.signatureMode === "digital" ? "Digitalni potpis" : "Scan potpisa";
+    const metaLines = (Array.isArray(item.metaLines) ? item.metaLines : [])
+      .map((line) => clean(line))
+      .filter(Boolean)
+      .map((line) => `<small>${escapeTemplateHtml(line)}</small>`)
+      .join("");
+    return `
+      <section class="safe-nexus-template-signature">
+        <span>${escapeTemplateHtml(clean(item.role) || "Osoba")}</span>
+        <strong>${escapeTemplateHtml(clean(item.name) || "Potpisnik")}</strong>
+        ${metaLines}
+        <div class="safe-nexus-template-signature-line">${escapeTemplateHtml(signatureLabel)}</div>
+      </section>
+    `.trim();
+  }).join("");
+
+  return `<div class="safe-nexus-template-signatures">${itemHtml}</div>`;
+}
+
+function buildHtmlTemplateSystemDescriptionPlaceholder(value = {}) {
+  const blocks = Array.isArray(value.blocks) ? value.blocks : [];
+  if (blocks.length === 0) {
+    return "";
+  }
+
+  return blocks.map((block) => {
+    const rows = Array.isArray(block?.rows) ? block.rows : [];
+    const rowsHtml = rows.length > 0
+      ? rows.map((row) => {
+        const subtitle = clean(row?.subtitle);
+        const description = formatTemplateHtmlText(row?.description || "");
+        return `
+          <p class="safe-nexus-template-system-row">
+            ${subtitle ? `<strong>${escapeTemplateHtml(`${subtitle}: `)}</strong>` : ""}
+            <span>${description}</span>
+          </p>
+        `.trim();
+      }).join("")
+      : "<p>&nbsp;</p>";
+
+    return `
+      <section class="safe-nexus-template-system-block">
+        <h3>${escapeTemplateHtml(clean(block?.title) || "Opis sustava")}</h3>
+        ${clean(block?.subtitle) ? `<p><em>${escapeTemplateHtml(block.subtitle)}</em></p>` : ""}
+        ${rowsHtml}
+      </section>
+    `.trim();
+  }).join("");
+}
+
+function buildHtmlTemplateSpecialPlaceholder(value) {
+  const specialValue = normalizeDocxSpecialPlaceholderValue(value);
+  if (!specialValue) {
+    return null;
+  }
+
+  if (specialValue.type === "optional_empty") {
+    return "";
+  }
+  if (specialValue.type === "table") {
+    return buildHtmlTemplateTablePlaceholder(specialValue);
+  }
+  if (specialValue.type === "signature_group") {
+    return buildHtmlTemplateSignatureGroupPlaceholder(specialValue.items);
+  }
+  if (specialValue.type === "system_description") {
+    return buildHtmlTemplateSystemDescriptionPlaceholder(specialValue);
+  }
+
+  return "";
+}
+
+function buildHtmlTemplateDocument(html = "", { title = "Zapisnik" } = {}) {
+  const safeHtml = injectHtmlTemplateDefaultStyles(String(html ?? "").trim());
+  if (/<!doctype\s+html|<html[\s>]/i.test(safeHtml)) {
+    return safeHtml;
+  }
+
+  return `<!doctype html>
+<html lang="hr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeTemplateHtml(title || "Zapisnik")}</title>
+</head>
+<body class="safe-nexus-template-body">
+${safeHtml}
+</body>
+</html>`;
+}
+
+export function buildHtmlFromTemplateBuffer(templateBuffer, placeholders = {}, options = {}) {
+  const safeBuffer = Buffer.isBuffer(templateBuffer)
+    ? templateBuffer
+    : Buffer.from(templateBuffer ?? []);
+
+  if (safeBuffer.length === 0) {
+    throw new Error("HTML predložak je prazan.");
+  }
+
+  const safePlaceholders = placeholders && typeof placeholders === "object" && !Array.isArray(placeholders)
+    ? placeholders
+    : {};
+  const lookup = new Map(
+    Object.entries(safePlaceholders)
+      .map(([key, value]) => [clean(key), value])
+      .filter(([key]) => Boolean(key)),
+  );
+  const templateHtml = safeBuffer.toString("utf8").replace(/^\uFEFF/, "");
+  const renderedHtml = templateHtml.replace(/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g, (match, token) => {
+    const key = clean(token);
+    if (!lookup.has(key)) {
+      return "";
+    }
+
+    const value = lookup.get(key);
+    const specialHtml = buildHtmlTemplateSpecialPlaceholder(value);
+    return specialHtml === null ? formatTemplateHtmlText(value) : specialHtml;
+  });
+
+  return buildHtmlTemplateDocument(renderedHtml, {
+    title: options.title || options.fileName || "Zapisnik",
+  });
+}
+
+export async function buildPdfFromHtmlTemplateBuffer(templateBuffer, placeholders = {}, options = {}) {
+  const html = buildHtmlFromTemplateBuffer(templateBuffer, placeholders, options);
+  return convertHtmlToPdfBuffer(html, {
+    fileName: sanitizeGeneratedDocumentFileName(
+      options.fileName || options.title || "zapisnik",
+      { fallback: "zapisnik", extension: "html" },
+    ),
+    title: options.title || options.fileName || "Zapisnik",
+  });
+}
+
 function pdfBufferFromDocument(doc) {
   return new Promise((resolvePromise, rejectPromise) => {
     const chunks = [];

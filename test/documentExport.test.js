@@ -6,6 +6,7 @@ import PizZip from "pizzip";
 import {
   buildDashboardCalendarReportPdfBuffer,
   buildDocxFromTemplateBuffer,
+  buildHtmlFromTemplateBuffer,
   buildOfferHtmlTemplate,
   buildOfferPdfBuffer,
   buildPdfFromRenderModel,
@@ -82,6 +83,53 @@ test("docx export renders signature group placeholders as visible signature bloc
   assert.match(outputXml, /Ana Savanovic/);
   assert.match(outputXml, /Digitalni potpis/);
   assert.match(outputXml, /______________________________/);
+});
+
+test("HTML template export renders escaped placeholders and special table blocks", () => {
+  const html = buildHtmlFromTemplateBuffer(Buffer.from(`
+    <main>
+      <h1>{{DOCUMENT_TITLE}}</h1>
+      <p>{{NAPOMENA}}</p>
+      {{TABLICA}}
+      {{POTPISI}}
+    </main>
+  `, "utf8"), {
+    DOCUMENT_TITLE: "Zapisnik <script>alert(1)</script>",
+    NAPOMENA: "Prvi red\nDrugi red & znak",
+    TABLICA: {
+      __docxBlockType: "table",
+      columns: [
+        { id: "c1", label: "Naziv", width: 160 },
+        { id: "c2", label: "Vrijednost", width: 120 },
+      ],
+      rows: [
+        {
+          id: "h1",
+          header: true,
+          cells: [{ text: "Parametar" }, { text: "Rezultat" }],
+        },
+        {
+          id: "r1",
+          cells: [{ text: "Otpor" }, { text: "1,2 Ω" }],
+        },
+      ],
+    },
+    POTPISI: {
+      __docxBlockType: "signature_group",
+      items: [{ role: "Ispitivač", name: "Ana Ivić", signatureMode: "digital" }],
+    },
+  }, {
+    title: "HTML zapisnik",
+  });
+
+  assert.match(html, /<!doctype html>/i);
+  assert.match(html, /safe-nexus-template-table/);
+  assert.match(html, /Zapisnik &lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  assert.match(html, /Prvi red<br>Drugi red &amp; znak/);
+  assert.match(html, /Ana Ivić/);
+  assert.match(html, /Digitalni potpis/);
+  assert.doesNotMatch(html, /<script>alert/);
+  assert.doesNotMatch(html, /\{\{DOCUMENT_TITLE\}\}/);
 });
 
 test("dashboard calendar report export returns a PDF buffer", async () => {

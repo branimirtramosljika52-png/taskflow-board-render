@@ -28197,6 +28197,14 @@ body.is-measurement-equipment-export-open {
   overflow-wrap: anywhere;
 }
 
+.document-template-html-code-field textarea {
+  min-height: 172px;
+  resize: vertical;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
 .document-template-tool-button {
   border: 1px solid rgba(47, 104, 84, 0.14);
   border-radius: 18px;

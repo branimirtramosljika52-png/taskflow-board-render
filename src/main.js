@@ -1266,8 +1266,8 @@ const MODULE_VIEW_DEFINITIONS = {
   "template-development": {
     kicker: "Organisations",
     title: "Template Development",
-    description: "Builder za gotove Word predloske s placeholderima, blokovima i vezama na podatke iz baze.",
-    chips: ["Templates", "Word", "Placeholders"],
+    description: "Builder za HTML predloške s placeholderima, blokovima i vezama na podatke iz baze.",
+    chips: ["Templates", "HTML", "Placeholders"],
   },
   "safety-authorization": {
     kicker: "Organisations",
@@ -3385,6 +3385,8 @@ const documentTemplateReferenceUploadButton = document.querySelector("#document-
 const documentTemplateReferenceDownloadButton = document.querySelector("#document-template-reference-download");
 const documentTemplateReferenceRemoveButton = document.querySelector("#document-template-reference-remove");
 const documentTemplateReferenceMeta = document.querySelector("#document-template-reference-meta");
+const documentTemplateHtmlCodeInput = document.querySelector("#document-template-html-code");
+const documentTemplateHtmlSaveButton = document.querySelector("#document-template-html-save");
 const documentTemplateFormActions = documentTemplateEditorPanel?.querySelector(".form-actions");
 const documentTemplatePreviewBlock = document.querySelector("#document-template-preview-block");
 const documentTemplatePreview = document.querySelector("#document-template-preview");
@@ -37027,6 +37029,58 @@ function createWordHtmlBlob(title, bodyHtml) {
   });
 }
 
+function createStandaloneHtmlBlob(title, bodyHtml) {
+  const html = `<!DOCTYPE html>
+<html lang="hr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${escapeHtml(title)}</title>
+  <style>
+    body { font-family: Arial, sans-serif; color: #24362e; line-height: 1.5; margin: 28px; }
+    h1, h2, h3 { color: #1f4e42; margin-bottom: 12px; }
+    h1 { font-size: 26px; }
+    h2 { font-size: 20px; margin-top: 30px; }
+    h3 { font-size: 16px; margin-top: 20px; }
+    p { margin: 10px 0; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0 18px; }
+    th, td { border: 1px solid #cad8d1; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #eef5f2; }
+    .cover { border: 1px solid #cad8d1; border-radius: 18px; padding: 24px; background: #f7faf8; }
+    .signature-grid { display: table; width: 100%; table-layout: fixed; margin-top: 18px; }
+    .signature-cell { display: table-cell; width: 50%; padding-right: 18px; }
+    .signature-line { margin-top: 46px; border-top: 1px solid #95aea3; padding-top: 8px; }
+    .placeholder-table td:first-child { width: 32%; font-family: Consolas, monospace; }
+    .placeholder-page p { margin: 0 0 12px; font-family: Consolas, "Courier New", monospace; color: #24362e; }
+  </style>
+</head>
+<body>${bodyHtml}</body>
+</html>`;
+
+  return new Blob(["\ufeff", html], {
+    type: "text/html;charset=utf-8",
+  });
+}
+
+function textToDataUrl(text = "", mimeType = "text/html;charset=utf-8") {
+  const bytes = new TextEncoder().encode(String(text ?? ""));
+  const chunks = [];
+  const chunkSize = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    chunks.push(String.fromCharCode(...bytes.slice(index, index + chunkSize)));
+  }
+  return `data:${mimeType};base64,${btoa(chunks.join(""))}`;
+}
+
+async function readDataUrlAsText(dataUrl = "") {
+  const source = String(dataUrl || "").trim();
+  if (!source.startsWith("data:")) {
+    return "";
+  }
+  const response = await fetch(source);
+  return await response.text();
+}
+
 function buildOfferLocationSummaryFromSelection(locationIds = [], companyId = "") {
   const normalizedIds = Array.from(new Set(
     (Array.isArray(locationIds) ? locationIds : [])
@@ -41848,6 +41902,78 @@ function getSelectedDocumentTemplateLegalFrameworkIds() {
   ).map((input) => String(input.value || "")).filter(Boolean);
 }
 
+function isDocumentTemplateHtmlReferenceDocument(referenceDocument = {}) {
+  const fileName = String(referenceDocument?.fileName || referenceDocument?.name || referenceDocument?.storageKey || "").trim().toLowerCase();
+  const fileType = String(referenceDocument?.fileType || referenceDocument?.mimeType || "").trim().toLowerCase();
+  return fileName.endsWith(".html")
+    || fileName.endsWith(".htm")
+    || fileType.startsWith("text/html");
+}
+
+function isDocumentTemplateWordReferenceDocument(referenceDocument = {}) {
+  const fileName = String(referenceDocument?.fileName || referenceDocument?.name || referenceDocument?.storageKey || "").trim().toLowerCase();
+  const fileType = String(referenceDocument?.fileType || referenceDocument?.mimeType || "").trim().toLowerCase();
+  return fileName.endsWith(".docx")
+    || fileName.endsWith(".dotx")
+    || fileType.includes("wordprocessingml")
+    || fileType.includes("msword");
+}
+
+function getDocumentTemplateReferenceKind(referenceDocument = null) {
+  if (isDocumentTemplateHtmlReferenceDocument(referenceDocument)) {
+    return "html";
+  }
+  if (isDocumentTemplateWordReferenceDocument(referenceDocument)) {
+    return "word";
+  }
+  return "";
+}
+
+function getDocumentTemplateReferenceLabel(referenceDocument = null) {
+  const kind = getDocumentTemplateReferenceKind(referenceDocument);
+  if (kind === "html") {
+    return "HTML";
+  }
+  if (kind === "word") {
+    return "Word";
+  }
+  return "Predložak";
+}
+
+function syncDocumentTemplateHtmlCodeInputFromReference() {
+  if (!documentTemplateHtmlCodeInput) {
+    return;
+  }
+
+  const referenceDocument = documentTemplateReferenceDraft;
+  if (!referenceDocument) {
+    documentTemplateHtmlCodeInput.value = "";
+    documentTemplateHtmlCodeInput.placeholder = "Zalijepi HTML s tokenima, npr. {{DOCUMENT_TITLE}} i {{BROJ_RADNOG_NALOGA}}";
+    return;
+  }
+
+  if (!isDocumentTemplateHtmlReferenceDocument(referenceDocument)) {
+    documentTemplateHtmlCodeInput.value = "";
+    documentTemplateHtmlCodeInput.placeholder = "Trenutni predložak je Word. Za novi brzi tok zalijepi HTML kod ovdje.";
+    return;
+  }
+
+  documentTemplateHtmlCodeInput.placeholder = "HTML je spremljen. Ako želiš izmjenu, zalijepi novu verziju i klikni Spremi HTML kod.";
+  const dataUrl = String(referenceDocument.dataUrl || referenceDocument.inlineDataUrl || "").trim();
+  if (!dataUrl.startsWith("data:")) {
+    return;
+  }
+
+  void readDataUrlAsText(dataUrl)
+    .then((text) => {
+      const currentDataUrl = String(documentTemplateReferenceDraft?.dataUrl || documentTemplateReferenceDraft?.inlineDataUrl || "").trim();
+      if (currentDataUrl === dataUrl) {
+        documentTemplateHtmlCodeInput.value = text.replace(/^\uFEFF/, "");
+      }
+    })
+    .catch(() => {});
+}
+
 function renderDocumentTemplateReferenceMeta() {
   if (!documentTemplateReferenceMeta) {
     return;
@@ -41865,7 +41991,7 @@ function renderDocumentTemplateReferenceMeta() {
 
     const stateBadge = document.createElement("span");
     stateBadge.className = "document-template-reference-state is-missing";
-    stateBadge.textContent = "Word još nije vraćen";
+    stateBadge.textContent = "HTML još nije učitan";
 
     const readiness = document.createElement("span");
     readiness.className = "document-template-reference-note";
@@ -41874,10 +42000,10 @@ function renderDocumentTemplateReferenceMeta() {
     stateWrap.append(stateBadge, readiness);
 
     const empty = document.createElement("strong");
-    empty.textContent = "Preuzmi Word s placeholderima i vrati gotovi .docx kada završiš uređivanje.";
+    empty.textContent = "Preuzmi HTML s tokenima ili zalijepi vlastiti HTML kod.";
 
     const meta = document.createElement("span");
-    meta.textContent = "Builder definira tokene i raspored u aplikaciji. Uploadani Word postaje glavni predložak za kasniji zapisnik.";
+    meta.textContent = "PDF zapisnika koristi spremljeni HTML predložak, bez Word konverzije.";
 
     documentTemplateReferenceMeta.append(stateWrap, empty, meta);
     if (documentTemplateReferenceDownloadButton) {
@@ -41885,6 +42011,12 @@ function renderDocumentTemplateReferenceMeta() {
     }
     if (documentTemplateReferenceRemoveButton) {
       documentTemplateReferenceRemoveButton.hidden = true;
+    }
+    if (documentTemplateReferenceDownloadButton) {
+      documentTemplateReferenceDownloadButton.textContent = "Preuzmi spremljeni HTML";
+    }
+    if (documentTemplateReferenceRemoveButton) {
+      documentTemplateReferenceRemoveButton.textContent = "Makni HTML";
     }
     return;
   }
@@ -41894,7 +42026,9 @@ function renderDocumentTemplateReferenceMeta() {
 
   const stateBadge = document.createElement("span");
   stateBadge.className = "document-template-reference-state is-ready";
-  stateBadge.textContent = "Word povezan";
+  const referenceKind = getDocumentTemplateReferenceKind(documentTemplateReferenceDraft);
+  const referenceLabel = getDocumentTemplateReferenceLabel(documentTemplateReferenceDraft);
+  stateBadge.textContent = `${referenceLabel} povezan`;
 
   const readiness = document.createElement("span");
   readiness.className = "document-template-reference-note";
@@ -41902,7 +42036,7 @@ function renderDocumentTemplateReferenceMeta() {
   stateWrap.append(stateBadge, readiness);
 
   const title = document.createElement("strong");
-  title.textContent = documentTemplateReferenceDraft.fileName || "reference.doc";
+  title.textContent = documentTemplateReferenceDraft.fileName || (referenceKind === "html" ? "reference.html" : "reference.doc");
 
   const meta = document.createElement("span");
   meta.textContent = [
@@ -41911,15 +42045,19 @@ function renderDocumentTemplateReferenceMeta() {
   ].filter(Boolean).join(" · ");
 
   const note = document.createElement("span");
-  note.textContent = "Kasniji zapisnici koriste ovaj spremljeni Word kao referentni predložak.";
+  note.textContent = referenceKind === "html"
+    ? "Kasniji PDF zapisnici koriste ovaj HTML predložak."
+    : "Kasniji zapisnici koriste ovaj spremljeni Word kao legacy predložak.";
 
   documentTemplateReferenceMeta.append(stateWrap, title, meta, note);
 
   if (documentTemplateReferenceDownloadButton) {
     documentTemplateReferenceDownloadButton.hidden = false;
+    documentTemplateReferenceDownloadButton.textContent = referenceKind === "html" ? "Preuzmi spremljeni HTML" : "Preuzmi spremljeni Word";
   }
   if (documentTemplateReferenceRemoveButton) {
     documentTemplateReferenceRemoveButton.hidden = false;
+    documentTemplateReferenceRemoveButton.textContent = referenceKind === "html" ? "Makni HTML" : "Makni Word";
   }
 }
 
@@ -41930,9 +42068,15 @@ function setDocumentTemplateReferenceDocument(referenceDocument = null) {
       fileName: String(referenceDocument.fileName || referenceDocument.name || "").trim(),
       fileType: String(referenceDocument.fileType || referenceDocument.mimeType || "").trim(),
       dataUrl: String(referenceDocument.dataUrl || "").trim(),
+      inlineDataUrl: String(referenceDocument.inlineDataUrl || "").trim(),
+      storageUrl: String(referenceDocument.storageUrl || "").trim(),
+      storageKey: String(referenceDocument.storageKey || "").trim(),
+      url: String(referenceDocument.url || "").trim(),
+      fileSize: Number(referenceDocument.fileSize || 0) || 0,
       updatedAt: String(referenceDocument.updatedAt || new Date().toISOString()).trim(),
     }
     : null;
+  syncDocumentTemplateHtmlCodeInputFromReference();
   renderDocumentTemplateReferenceMeta();
   renderDocumentTemplatePreviewContent();
 }
@@ -45076,7 +45220,7 @@ function buildDocumentTemplatePreviewPageMarkup(
         <div>
           <p class="document-template-preview-eyebrow">${placeholderMode ? "{{DOCUMENT_TYPE}}" : escapeHtml(template.documentType || "Template")}</p>
           <h1>${placeholderMode ? "{{DOCUMENT_TITLE}}" : escapeHtml(template.title || "Bez naziva")}</h1>
-          <p class="document-template-preview-lead">${escapeHtml(template.description || "Word ostaje glavni predložak, a ovdje se definira raspored placeholdera i blokova.")}</p>
+          <p class="document-template-preview-lead">${escapeHtml(template.description || "HTML predložak je glavni izlaz, a ovdje se definira raspored placeholdera i blokova.")}</p>
         </div>
         <div class="document-template-preview-meta-grid">
           <div><span>${pageCount > 1 ? "Stranica" : "Raspored"}</span><strong>${pageTitle}</strong></div>
@@ -45095,8 +45239,8 @@ function buildDocumentTemplatePreviewPageMarkup(
       ${blocks}
       ${template.referenceDocument?.fileName ? `
         <section class="document-template-preview-section">
-          <h2>Word reference</h2>
-          <p class="document-template-preview-copy">Povezani Word predložak: <strong>${placeholderMode ? "{{REFERENCE_DOCUMENT_NAME}}" : escapeHtml(template.referenceDocument.fileName)}</strong>.</p>
+          <h2>${escapeHtml(getDocumentTemplateReferenceLabel(template.referenceDocument))} reference</h2>
+          <p class="document-template-preview-copy">Povezani predložak: <strong>${placeholderMode ? "{{REFERENCE_DOCUMENT_NAME}}" : escapeHtml(template.referenceDocument.fileName)}</strong>.</p>
         </section>
       ` : ""}
     </article>
@@ -46143,7 +46287,9 @@ function buildDocumentTemplateRuntimeExportEntry(
     templateId: runtimeTemplateId,
     workOrderId: String(workOrder.id || "").trim(),
     baseFileName,
+    templateReferenceKind: getDocumentTemplateReferenceKind(template.referenceDocument),
     wordFileName: `${baseFileName}.docx`,
+    htmlFileName: `${baseFileName}.html`,
     pdfFileName: `${baseFileName}.pdf`,
     placeholders: buildDocumentTemplateRuntimePlaceholderPayload(template, context),
     renderModel: {
@@ -46303,21 +46449,29 @@ function buildDocumentTemplateRuntimePdfPayloadFromEntry(exportEntry = null) {
     return null;
   }
 
+  const usesHtmlTemplate = exportEntry.templateReferenceKind === "html";
   return {
     fileName: exportEntry.pdfFileName,
-    fastPdf: true,
+    fastPdf: usesHtmlTemplate ? false : true,
+    useTemplatePdf: usesHtmlTemplate,
+    pdfEngine: usesHtmlTemplate ? "html" : "native",
     placeholders: exportEntry.placeholders,
     renderModel: exportEntry.renderModel,
   };
 }
 
-function doesDocumentTemplateHaveReferenceWordTemplate(template = buildDocumentTemplateDraft()) {
+function doesDocumentTemplateHaveReferenceTemplate(template = buildDocumentTemplateDraft()) {
   return Boolean(
     template?.referenceDocument?.inlineDataUrl
     || template?.referenceDocument?.dataUrl
     || template?.referenceDocument?.storageUrl
     || template?.referenceDocument?.url,
   );
+}
+
+function doesDocumentTemplateHaveReferenceWordTemplate(template = buildDocumentTemplateDraft()) {
+  return doesDocumentTemplateHaveReferenceTemplate(template)
+    && isDocumentTemplateWordReferenceDocument(template?.referenceDocument);
 }
 
 async function exportDocumentTemplatePdf() {
@@ -46528,7 +46682,11 @@ async function exportDocumentTemplateWord({ placeholderMode = false } = {}) {
     }
 
     if (!hasReferenceTemplate) {
-      setDocumentTemplateMessage("Za Word i PDF export prvo učitaj gotovi .docx/.dotx Word predložak u Template Development.");
+      setDocumentTemplateMessage(
+        isDocumentTemplateHtmlReferenceDocument(template.referenceDocument)
+          ? "Ovaj template je HTML i generira se kroz PDF export."
+          : "Za Word export prvo učitaj gotovi .docx/.dotx Word predložak.",
+      );
       return;
     }
 
@@ -46566,7 +46724,7 @@ async function exportDocumentTemplateWord({ placeholderMode = false } = {}) {
   }
 
   const fileName = placeholderMode
-    ? `${sanitizeDocumentTemplateFileName(template.title || "template-dokument")}-placeholder.doc`
+    ? `${sanitizeDocumentTemplateFileName(template.title || "template-dokument")}-placeholder.html`
     : `${sanitizeDocumentTemplateFileName(template.title || "zapisnik")}.doc`;
   const html = placeholderMode
     ? buildDocumentTemplatePlaceholderWordMarkup(template)
@@ -46574,7 +46732,12 @@ async function exportDocumentTemplateWord({ placeholderMode = false } = {}) {
       placeholderMode: false,
       sheetTabs: false,
     });
-  triggerBlobDownload(createWordHtmlBlob(template.title || "Template", html), fileName);
+  triggerBlobDownload(
+    placeholderMode
+      ? createStandaloneHtmlBlob(template.title || "Template", html)
+      : createWordHtmlBlob(template.title || "Template", html),
+    fileName,
+  );
 }
 
 function buildDocumentTemplateRuntimeBatchSequenceEntries() {
@@ -46640,14 +46803,17 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
   }
 
   try {
+    const usesHtmlTemplates = exportEntries.some((entry) => entry.templateReferenceKind === "html");
     const response = await apiBinaryRequest("/document-templates/export-pdf-batch", {
       method: "POST",
       body: {
         fileName: `zapisnici-${new Date().toISOString().slice(0, 10)}.pdf`,
-        fastPdf: true,
+        fastPdf: usesHtmlTemplates ? false : true,
+        useTemplatePdf: usesHtmlTemplates,
+        pdfEngine: usesHtmlTemplates ? "html" : "native",
         entries: exportEntries.map((entry) => ({
           templateId: entry.templateId,
-          fileName: entry.wordFileName,
+          fileName: entry.templateReferenceKind === "html" ? entry.htmlFileName : entry.wordFileName,
           placeholders: entry.placeholders,
           renderModel: entry.renderModel,
         })),
@@ -47073,7 +47239,7 @@ function renderTemplateSelectionChecklist(
     meta.textContent = [
       getDocumentTemplateTypeLabel(template.documentType),
       getDocumentTemplateStatusLabel(template.status),
-      template.referenceDocument?.fileName ? "Word ref" : "",
+      template.referenceDocument?.fileName ? `${getDocumentTemplateReferenceLabel(template.referenceDocument)} ref` : "",
     ].filter(Boolean).join(" | ");
 
     copy.append(title, meta);
@@ -50013,7 +50179,7 @@ function renderDocumentTemplateRuntimeContext() {
     documentTemplateRuntimeHelper.textContent = fillMode
       ? ""
       : (workOrders.length > 1
-        ? "Template trenutno čita zajedničke podatke iz batch odabira. Klikom na RN mijenjaš aktivni preview i Word export."
+        ? "Template trenutno čita zajedničke podatke iz batch odabira. Klikom na RN mijenjaš aktivni preview i PDF export."
         : "Template trenutno čita podatke iz odabranog RN-a i zajedničkih dokument podataka.");
     documentTemplateRuntimeHelper.hidden = fillMode;
   }
@@ -50718,7 +50884,7 @@ function renderServiceCatalogTemplateChecklist(selectedIds = []) {
     meta.textContent = [
       getDocumentTemplateTypeLabel(template.documentType),
       getDocumentTemplateStatusLabel(template.status),
-      template.referenceDocument?.fileName ? "Word ref" : "",
+      template.referenceDocument?.fileName ? `${getDocumentTemplateReferenceLabel(template.referenceDocument)} ref` : "",
     ].filter(Boolean).join(" | ");
 
     copy.append(title, meta);
@@ -54408,10 +54574,11 @@ function renderDocumentTemplateLinkSummary(template = buildDocumentTemplateDraft
 
   const wordCard = document.createElement("article");
   wordCard.className = `document-template-link-card ${template.referenceDocument?.fileName ? "is-ready" : "is-pending"}`;
+  const referenceLabel = getDocumentTemplateReferenceLabel(template.referenceDocument);
   wordCard.innerHTML = `
-    <span>Word</span>
+    <span>${escapeHtml(referenceLabel)}</span>
     <strong>${template.referenceDocument?.fileName ? "Spreman" : "Čeka upload"}</strong>
-    <p>${template.referenceDocument?.fileName ? escapeHtml(template.referenceDocument.fileName) : "Predložak još nije vraćen u app."}</p>
+    <p>${template.referenceDocument?.fileName ? escapeHtml(template.referenceDocument.fileName) : "Predložak još nije učitan u app."}</p>
   `;
 
   const legalCard = document.createElement("article");
@@ -56286,13 +56453,19 @@ function renderDocumentTemplateRuntimeFieldRows() {
     exportCardTitle.textContent = "Preuzimanje";
     const exportCardMeta = document.createElement("p");
     exportCardMeta.className = "helper-copy module-copy";
-    exportCardMeta.textContent = "Brzi PDF koristi podatke s ekrana, a Word export koristi učitani Word predložak.";
+    const hasHtmlReference = exportableEntries.some((entry) => (
+      isDocumentTemplateHtmlReferenceDocument(getDocumentTemplateById(entry.templateId)?.referenceDocument)
+    ));
+    exportCardMeta.textContent = hasHtmlReference
+      ? "PDF koristi učitani HTML predložak i podatke s ekrana."
+      : "Brzi PDF koristi podatke s ekrana, a Word export koristi učitani Word predložak.";
     const exportActions = document.createElement("div");
     exportActions.className = "document-template-runtime-summary-actions";
     const wordButton = document.createElement("button");
     wordButton.type = "button";
     wordButton.className = "ghost-button";
     wordButton.textContent = "Preuzmi Word";
+    wordButton.hidden = hasHtmlReference;
     wordButton.disabled = exportableEntries.length === 0;
     wordButton.addEventListener("click", () => {
       void exportDocumentTemplateWord({ placeholderMode: false });
@@ -56300,7 +56473,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     const pdfButton = document.createElement("button");
     pdfButton.type = "button";
     pdfButton.className = "ghost-button";
-    pdfButton.textContent = "Brzi PDF";
+    pdfButton.textContent = hasHtmlReference ? "PDF iz HTML-a" : "Brzi PDF";
     pdfButton.disabled = exportableEntries.length === 0;
     pdfButton.addEventListener("click", () => {
       if (sequenceState.itemTotal > 1) {
@@ -59759,6 +59932,7 @@ function resetDocumentTemplateForm() {
   activeDocumentTemplateInspectorFieldId = "";
   documentTemplateInspectorModalOpen = false;
   documentTemplateReferenceDraft = null;
+  syncDocumentTemplateHtmlCodeInputFromReference();
   state.documentTemplateSidebarPanels = {
     referenceCollapsed: false,
     placeholdersCollapsed: false,
@@ -59959,7 +60133,7 @@ function renderDocumentTemplateModule() {
       `${template.customFields?.length || 0} blokova`,
       linkedLegalCount > 0 ? `${linkedLegalCount} propisa` : "",
       linkedEquipmentCount > 0 ? `${linkedEquipmentCount} opreme` : "",
-      template.referenceDocument?.fileName ? "Word ref" : "",
+      template.referenceDocument?.fileName ? `${getDocumentTemplateReferenceLabel(template.referenceDocument)} ref` : "",
     ].filter(Boolean).join(" · ") || "Bez dodatnih veza";
     copy.append(title, meta);
     head.append(copy, badges);
@@ -62544,15 +62718,13 @@ function getCompanyTemplateAssignmentServices() {
 function getCompanyTemplateAssignmentTemplateOptions() {
   return sortDocumentTemplates(state.documentTemplates ?? []).filter((template) => {
     const document = template.referenceDocument ?? {};
-    const fileName = String(document.fileName || document.storageKey || "").trim().toLowerCase();
-    const fileType = String(document.fileType || "").trim().toLowerCase();
-    return fileName.endsWith(".doc") || fileName.endsWith(".docx") || fileType.includes("wordprocessingml") || fileType.includes("msword");
+    return isDocumentTemplateHtmlReferenceDocument(document) || isDocumentTemplateWordReferenceDocument(document);
   }).map((template) => {
     const documentName = template.referenceDocument?.fileName || "";
     return {
       value: String(template.id || ""),
       label: [
-        template.title || template.documentType || "Word template",
+        template.title || template.documentType || "Template",
         documentName ? `(${documentName})` : "",
       ].filter(Boolean).join(" "),
       template,
@@ -84571,7 +84743,9 @@ function renderWorkOrderDocumentWizardTemplates(workOrders = []) {
     meta.textContent = [
       getDocumentTemplateTypeLabel(entry.template.documentType),
       `${entry.workOrders.length} RN`,
-      entry.template.referenceDocument?.fileName ? "Word ref" : "Bez Worda",
+      entry.template.referenceDocument?.fileName
+        ? `${getDocumentTemplateReferenceLabel(entry.template.referenceDocument)} ref`
+        : "Bez predloška",
     ].filter(Boolean).join(" | ");
 
     copy.append(title, meta);
@@ -86755,7 +86929,7 @@ const HELP_TOUR_MENU_GROUPS = [
       { kind: "vehicles", label: "Vehicles", description: "Vozila, rezervacije i servisni rokovi." },
       { kind: "legal-framework", label: "Legal Framework", description: "Propisi, PDF dokumenti i poveznice na usluge." },
       { kind: "list-of-services", label: "List Of Services", description: "Katalog usluga, šifre, zapisnici i edukacije." },
-      { kind: "template-development", label: "Template Development", description: "Word templatei, placeholderi i predlošci zapisnika." },
+      { kind: "template-development", label: "Template Development", description: "HTML templatei, placeholderi i predlošci zapisnika." },
       { kind: "people", label: "People", description: "Korisnici, role, dokumenti i ovlaštenja." },
       { kind: "annual-leave", label: "Godišnji odmori", description: "Zahtjevi, statusi i saldo dana." },
       { kind: "sick-leave", label: "Bolovanja", description: "Bolovanja, dokumenti i opravdani izostanci." },
@@ -86912,19 +87086,19 @@ const MODULE_HELP_TOUR_DEFINITIONS = {
   "template-development": {
     navItem: "template-development",
     title: "Template Development",
-    body: "Template Development je prostor za izradu i održavanje Word predložaka, placeholdera i zapisnika.",
+    body: "Template Development je prostor za izradu i održavanje HTML predložaka, placeholdera i zapisnika.",
     target: ".template-development-list-panel",
     primaryActionTarget: "#document-template-open-form",
     primaryActionTitle: "Novi template",
-    primaryActionBody: "Ovim gumbom otvaraš editor predloška. Tamo dodaješ Word datoteku, placeholder liste i pravila za podatke iz baze.",
+    primaryActionBody: "Ovim gumbom otvaraš editor predloška. Tamo dodaješ HTML kod, placeholder liste i pravila za podatke iz baze.",
     filtersTarget: ".template-development-list-toolbar",
     filtersBody: "Pretraga pronalazi template po nazivu, tipu, placeholderu ili opremi, a status odvaja aktivne i radne verzije.",
     listTarget: "#document-template-list",
-    listBody: "Lista templatea služi kao knjižnica zapisnika i Word predložaka koje koristi RN i drugi moduli.",
+    listBody: "Lista templatea služi kao knjižnica zapisnika i HTML predložaka koje koristi RN i drugi moduli.",
     secondaryTarget: "#document-template-list",
     secondaryTitle: "Placeholderi",
-    secondaryBody: "Placeholderi se koriste u Wordu u obliku oznaka i pune se podacima iz odabranog RN-a ili modula.",
-    points: ["Templatei povezuju Word dokumente s podacima aplikacije.", "Status pomaže držati radne verzije odvojene od produkcijskih."],
+    secondaryBody: "Placeholderi se koriste u HTML-u u obliku oznaka i pune se podacima iz odabranog RN-a ili modula.",
+    points: ["Templatei povezuju HTML dokumente s podacima aplikacije.", "Status pomaže držati radne verzije odvojene od produkcijskih."],
   },
   people: {
     navItem: "people",
@@ -92108,6 +92282,27 @@ documentTemplateReferenceUploadButton?.addEventListener("click", () => {
   documentTemplateReferenceFileInput?.click();
 });
 
+documentTemplateHtmlSaveButton?.addEventListener("click", () => {
+  const htmlCode = String(documentTemplateHtmlCodeInput?.value || "").trim();
+  if (!htmlCode) {
+    setDocumentTemplateMessage("Zalijepi HTML kod predloška prije spremanja.");
+    return;
+  }
+
+  const baseName = sanitizeDocumentTemplateFileName(
+    documentTemplateTitleInput?.value || documentTemplateOutputFileNameInput?.value || "zapisnik-template",
+    "zapisnik-template",
+  ).replace(/\.(html?|docx?|pdf)$/i, "");
+  setDocumentTemplateReferenceDocument({
+    fileName: `${baseName}.html`,
+    fileType: "text/html",
+    fileSize: new TextEncoder().encode(htmlCode).length,
+    dataUrl: textToDataUrl(htmlCode),
+    updatedAt: new Date().toISOString(),
+  });
+  setDocumentTemplateMessage("HTML predložak je spremljen u template.", { type: "success" });
+});
+
 documentTemplateReferenceToggleButton?.addEventListener("click", () => {
   toggleDocumentTemplateSidebarPanel("referenceCollapsed");
 });
@@ -92123,7 +92318,7 @@ documentTemplateReferenceDownloadButton?.addEventListener("click", () => {
 
   triggerDataUrlDownload(
     documentTemplateReferenceDraft.dataUrl,
-    documentTemplateReferenceDraft.fileName || "template-reference.docx",
+    documentTemplateReferenceDraft.fileName || (isDocumentTemplateHtmlReferenceDocument(documentTemplateReferenceDraft) ? "template-reference.html" : "template-reference.docx"),
   );
 });
 
@@ -92138,15 +92333,24 @@ documentTemplateReferenceFileInput?.addEventListener("change", () => {
     return;
   }
 
-  void readFileAsDataUrl(file, "Ne mogu učitati Word predložak.")
+  const isHtmlFile = isDocumentTemplateHtmlReferenceDocument(file);
+  void readFileAsDataUrl(file, "Ne mogu učitati predložak.")
     .then((dataUrl) => {
       setDocumentTemplateReferenceDocument({
         fileName: file.name,
-        fileType: file.type || "application/octet-stream",
+        fileType: file.type || (isHtmlFile ? "text/html" : "application/octet-stream"),
+        fileSize: file.size || 0,
         dataUrl,
         updatedAt: new Date().toISOString(),
       });
-      setDocumentTemplateMessage("");
+      if (isHtmlFile && documentTemplateHtmlCodeInput) {
+        void file.text()
+          .then((text) => {
+            documentTemplateHtmlCodeInput.value = text.replace(/^\uFEFF/, "");
+          })
+          .catch(() => {});
+      }
+      setDocumentTemplateMessage("Predložak je učitan u draft. Spremi template kako bi ostao povezan.", { type: "success" });
     })
     .catch((error) => {
       setDocumentTemplateMessage(error.message);
