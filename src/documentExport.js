@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, resolve } from "node:path";
@@ -25,6 +26,7 @@ const PDF_FONTS = {
   bold: resolve(DEJAVU_FONT_DIR, "DejaVuSans-Bold.ttf"),
   italic: resolve(DEJAVU_FONT_DIR, "DejaVuSans-Oblique.ttf"),
 };
+const DEFAULT_OFFER_HTML_TEMPLATE_PATH = resolve(moduleDir, "templates", "offer-v1.0.0.html");
 const SOFFICE_CANDIDATES = [
   process.env.SOFFICE_PATH,
   process.env.LIBREOFFICE_PATH,
@@ -51,9 +53,28 @@ const SOFFICE_DISCOVERY_ROOTS = [
 ];
 const SOFFICE_BINARY_NAMES = new Set(["soffice", "libreoffice", "soffice.exe", "libreoffice.exe"]);
 const SOFFICE_PROFILE_DIR = join(tmpdir(), `taskflow-soffice-profile-${process.pid}`);
+const CHROMIUM_CANDIDATES = [
+  process.env.CHROMIUM_PATH,
+  process.env.CHROME_PATH,
+  "chromium",
+  "chromium-browser",
+  "google-chrome",
+  "google-chrome-stable",
+  "/usr/bin/chromium",
+  "/usr/bin/chromium-browser",
+  "/usr/bin/google-chrome",
+  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+  "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+].filter(Boolean);
 const SOFFICE_CONVERSION_TIMEOUT_MS = Math.max(
   30000,
   Number(process.env.SOFFICE_CONVERSION_TIMEOUT_MS || 180000) || 180000,
+);
+const HTML_PDF_CONVERSION_TIMEOUT_MS = Math.max(
+  20000,
+  Number(process.env.HTML_PDF_CONVERSION_TIMEOUT_MS || 90000) || 90000,
 );
 const SOFFICE_PDF_CACHE_MAX_ENTRIES = Math.max(
   0,
@@ -67,6 +88,7 @@ const MEASUREMENT_COLUMN_MIN_WIDTH = 32;
 let sofficeCommandPromise = null;
 let sofficeProfileReadyPromise = null;
 let sofficeConversionQueue = Promise.resolve();
+let chromiumCommandPromise = null;
 let sofficePdfCacheSizeBytes = 0;
 const sofficePdfCache = new Map();
 
@@ -322,6 +344,40 @@ async function resolveSofficeCommandCached() {
   }
 
   return await sofficeCommandPromise;
+}
+
+async function resolveChromiumCommand() {
+  for (const candidate of CHROMIUM_CANDIDATES) {
+    const safeCandidate = clean(candidate);
+    if (!safeCandidate) {
+      continue;
+    }
+
+    if (/^[A-Za-z]:\\/i.test(safeCandidate) || safeCandidate.startsWith("/")) {
+      if (!await fileExists(safeCandidate)) {
+        continue;
+      }
+    }
+
+    try {
+      await runCommand(safeCandidate, ["--version"], {
+        timeoutMs: 10000,
+      });
+      return safeCandidate;
+    } catch {
+      continue;
+    }
+  }
+
+  return "";
+}
+
+async function resolveChromiumCommandCached() {
+  if (!chromiumCommandPromise) {
+    chromiumCommandPromise = resolveChromiumCommand();
+  }
+
+  return await chromiumCommandPromise;
 }
 
 async function getSharedSofficeProfileDir() {
@@ -3141,8 +3197,177 @@ function getOfferHtmlStatusLabel(value = "") {
   return "Skica";
 }
 
+function getDefaultOfferHtmlTemplate() {
+  try {
+    return readFileSync(DEFAULT_OFFER_HTML_TEMPLATE_PATH, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+function buildOfferHtmlItemsTable(offer = {}, currency = "EUR") {
+  const items = Array.isArray(offer.items) ? offer.items : [];
+  if (items.length === 0) {
+    return `<p class="offer-html-empty">Ponuda nema dodanih stavki.</p>`;
+  }
+
+  const showTotalAmount = offer.showTotalAmount !== false;
+  const hasDiscount = Number(offer.discountRate ?? 0) > 0 || Number(offer.discountTotal ?? 0) > 0;
+  const itemRows = items.map((item, index) => {
+    const breakdowns = Array.isArray(item.breakdowns) ? item.breakdowns : [];
+    const breakdownText = breakdowns.map((entry) => {
+      const recordLabel = clean(entry.unitLabel || entry.recordLabel || entry.label) || "Razrada";
+      const measurementRange = normalizePdfLines([
+        clean(entry.measurementFrom),
+        clean(entry.measurementTo),
+      ]).join(" - ");
+      const label = measurementRange ? `${recordLabel} - MM ${measurementRange}` : recordLabel;
+      return `${label}: ${formatOfferPdfCurrency(entry.amount ?? 0, currency)}`;
+    }).join("\n");
+
+    return `
+      <tr>
+        <td>${index + 1}</td>
+        <td>${formatOfferHtmlText(item.description || item.serviceCode || "Stavka")}${breakdownText ? `<br><small>${formatOfferHtmlText(breakdownText)}</small>` : ""}</td>
+        <td>${formatOfferHtmlText(item.unit || "")}</td>
+        <td>${formatOfferHtmlText(item.quantity ?? "")}</td>
+        <td>${escapeOfferHtml(formatOfferPdfCurrency(item.unitPrice ?? 0, currency))}</td>
+        <td>${escapeOfferHtml(formatOfferPdfCurrency(item.totalPrice ?? 0, currency))}</td>
+      </tr>
+    `;
+  }).join("");
+
+  return `
+    <table class="offer-html-items-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Opis</th>
+          <th>Jed.</th>
+          <th>Kol.</th>
+          <th>Cijena</th>
+          <th>Ukupno</th>
+        </tr>
+      </thead>
+      <tbody>${itemRows}</tbody>
+      ${showTotalAmount ? `
+        <tfoot>
+          <tr>
+            <td colspan="5">Međuzbroj</td>
+            <td>${escapeOfferHtml(formatOfferPdfCurrency(offer.subtotal ?? 0, currency))}</td>
+          </tr>
+          ${hasDiscount ? `
+            <tr>
+              <td colspan="5">Rabat</td>
+              <td>${escapeOfferHtml(formatOfferPdfCurrency(offer.discountTotal ?? 0, currency))}</td>
+            </tr>
+            <tr>
+              <td colspan="5">Osnovica</td>
+              <td>${escapeOfferHtml(formatOfferPdfCurrency(offer.taxableSubtotal ?? 0, currency))}</td>
+            </tr>
+          ` : ""}
+          <tr>
+            <td colspan="5">PDV</td>
+            <td>${escapeOfferHtml(formatOfferPdfCurrency(offer.taxTotal ?? 0, currency))}</td>
+          </tr>
+          <tr class="offer-html-total-row">
+            <td colspan="5">Ukupno</td>
+            <td>${escapeOfferHtml(formatOfferPdfCurrency(offer.total ?? 0, currency))}</td>
+          </tr>
+        </tfoot>
+      ` : ""}
+    </table>
+  `;
+}
+
+function buildOfferHtmlPlaceholderMap(offer = {}, currency = "EUR") {
+  const locationNames = normalizePdfLines(offer.selectedLocationNames || offer.locationName || "");
+  const locationHtml = locationNames.length > 0
+    ? locationNames.map((entry) => formatOfferHtmlText(entry, "")).join("<br>")
+    : formatOfferHtmlText(clean(offer.locationName) || "Bez lokacije", "");
+  const offerNumber = clean(offer.offerNumber) || "Nacrt ponude";
+  const preparedBy = clean(offer.preparedByLabel || offer.preparedBy || offer.ownerName || "");
+  const itemsTable = buildOfferHtmlItemsTable(offer, currency);
+  const note = clean(offer.note) || "";
+
+  return new Map(Object.entries({
+    OFFER_NUMBER: offerNumber,
+    OFFER_TITLE: clean(offer.title) || "Ponuda",
+    OFFER_STATUS: getOfferHtmlStatusLabel(offer.status || "draft"),
+    OFFER_DATE: formatOfferPdfDate(offer.offerDate),
+    VALID_UNTIL: formatOfferPdfDate(offer.validUntil),
+    COMPANY_NAME: clean(offer.companyName),
+    COMPANY_OIB: clean(offer.companyOib),
+    COMPANY_HEADQUARTERS: clean(offer.headquarters),
+    LOCATION_SUMMARY: locationNames[0] || clean(offer.locationName) || "Bez lokacije",
+    LOCATION_LIST: locationHtml,
+    CONTACT_NAME: clean(offer.contactName),
+    CONTACT_PHONE: clean(offer.contactPhone),
+    CONTACT_EMAIL: clean(offer.contactEmail),
+    OFFER_PREPARED_BY: preparedBy,
+    SERVICE_LINE: clean(offer.serviceLine),
+    OFFER_TYPE: clean(offer.serviceLine),
+    OFFER_TEXT_1: clean(offer.textBlock1),
+    OFFER_TEXT_2: clean(offer.textBlock2),
+    ITEMS_TABLE: itemsTable,
+    ITEMS_SUMMARY: buildOfferHtmlItemsTable(offer, currency),
+    NOTE: note,
+    SUBTOTAL: formatOfferPdfCurrency(offer.subtotal ?? 0, currency),
+    DISCOUNT_RATE: Number(offer.discountRate || 0) > 0 ? `${offer.discountRate}%` : "",
+    DISCOUNT_TOTAL: formatOfferPdfCurrency(offer.discountTotal ?? 0, currency),
+    TAX_RATE: `${offer.taxRate || 0}%`,
+    TAX_TOTAL: formatOfferPdfCurrency(offer.taxTotal ?? 0, currency),
+    TOTAL: formatOfferPdfCurrency(offer.total ?? 0, currency),
+  }));
+}
+
+function renderOfferHtmlTemplatePlaceholders(templateHtml = "", offer = {}, currency = "EUR") {
+  const placeholderMap = buildOfferHtmlPlaceholderMap(offer, currency);
+  return String(templateHtml || "").replace(/\{\{\s*([A-Z0-9_]+)\s*\}\}/g, (match, key) => {
+    const value = placeholderMap.get(String(key || "").trim());
+    if (value == null) {
+      return "";
+    }
+    if (["ITEMS_TABLE", "ITEMS_SUMMARY", "LOCATION_LIST"].includes(key)) {
+      return String(value);
+    }
+    return formatOfferHtmlText(value, "");
+  });
+}
+
 export function buildOfferHtmlTemplate(offer = {}, options = {}) {
   const currency = clean(options.currency || offer.currency || "EUR") || "EUR";
+  const templateHtml = clean(options.templateHtml) || getDefaultOfferHtmlTemplate();
+  if (templateHtml) {
+    const renderedTemplate = renderOfferHtmlTemplatePlaceholders(templateHtml, offer, currency);
+    if (/<!doctype\s+html|<html[\s>]/i.test(renderedTemplate)) {
+      return renderedTemplate;
+    }
+
+    return `
+      <style>
+        .safe-offer-html-template{font-family:Arial,sans-serif;color:#172033;background:#fff;max-width:900px;margin:0 auto;padding:38px;border:1px solid #d9e3f3;border-radius:12px;box-shadow:0 16px 38px rgba(15,23,42,.07);font-size:13.5px;line-height:1.5}
+        .safe-offer-html-template p{margin:0 0 10px}
+        .safe-offer-html-template table{width:100%;border-collapse:collapse;margin:10px 0 16px}
+        .safe-offer-html-template td,.safe-offer-html-template th{border:1px solid #d9e3f3;padding:8px 9px;vertical-align:top}
+        .safe-offer-html-template th{background:#f1f6ff;color:#1e3a8a;text-align:left;font-weight:700}
+        .safe-offer-html-template tfoot td{background:#f8fafc;font-weight:700;text-align:right}
+        .safe-offer-html-template tfoot .offer-html-total-row td{background:#eff6ff;color:#0f3f91;font-size:14px}
+        .safe-offer-html-template strong{color:#0f172a}
+        .safe-offer-html-template small{display:block;color:#64748b;white-space:pre-line;margin-top:4px}
+        .offer-html-items-table th:nth-child(1),.offer-html-items-table td:nth-child(1){width:34px;text-align:center}
+        .offer-html-items-table th:nth-child(3),.offer-html-items-table td:nth-child(3),.offer-html-items-table th:nth-child(4),.offer-html-items-table td:nth-child(4){width:58px;text-align:center}
+        .offer-html-items-table th:nth-child(5),.offer-html-items-table td:nth-child(5),.offer-html-items-table th:nth-child(6),.offer-html-items-table td:nth-child(6){width:110px;text-align:right}
+        .offer-html-empty{border:1px dashed #cbd5e1;border-radius:10px;padding:12px;color:#64748b;background:#f8fafc}
+        @page{size:A4;margin:14mm}
+        @media print{body{margin:0}.safe-offer-html-template{max-width:none;margin:0;padding:0;border:0;border-radius:0;box-shadow:none}.safe-offer-html-template table{break-inside:auto}.safe-offer-html-template tr{break-inside:avoid;break-after:auto}}
+      </style>
+      <article class="safe-offer-html-template">
+        ${renderedTemplate}
+      </article>
+    `;
+  }
+
   const title = clean(offer.title) || "Ponuda";
   const offerNumber = clean(offer.offerNumber) || "Nacrt ponude";
   const locationNames = normalizePdfLines(offer.selectedLocationNames || offer.locationName || "");
@@ -3296,6 +3521,140 @@ export function buildOfferHtmlTemplate(offer = {}, options = {}) {
       ${totalsHtml}
     </article>
   `;
+}
+
+function buildHtmlPdfDocument(html = "", { title = "Ponuda" } = {}) {
+  const safeHtml = String(html ?? "").trim();
+  if (/<!doctype\s+html|<html[\s>]/i.test(safeHtml)) {
+    return safeHtml;
+  }
+
+  return `<!doctype html>
+<html lang="hr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeOfferHtml(title || "Ponuda")}</title>
+  <style>
+    html{background:#fff}
+    body{margin:0;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    *{box-sizing:border-box}
+  </style>
+</head>
+<body>
+${safeHtml}
+</body>
+</html>`;
+}
+
+function buildChromiumRuntimeEnv(tempRoot = "") {
+  const additionalPathEntries = process.platform === "win32"
+    ? []
+    : [
+      "/usr/bin",
+      "/usr/local/bin",
+      "/app/.apt/usr/bin",
+      "/app/.apt/bin",
+      "/layers/digitalocean_apt/apt/usr/bin",
+      "/layers/digitalocean_apt/apt/bin",
+    ];
+  const pathDelimiter = process.platform === "win32" ? ";" : ":";
+
+  return {
+    ...process.env,
+    PATH: [process.env.PATH, ...additionalPathEntries].filter(Boolean).join(pathDelimiter),
+    HOME: process.env.HOME || tempRoot || process.cwd(),
+    TMPDIR: tempRoot || process.env.TMPDIR || process.cwd(),
+    TMP: tempRoot || process.env.TMP || process.cwd(),
+    TEMP: tempRoot || process.env.TEMP || process.cwd(),
+    LANG: process.env.LANG || "C.UTF-8",
+    LC_ALL: process.env.LC_ALL || "C.UTF-8",
+  };
+}
+
+export async function convertHtmlToPdfBuffer(html = "", {
+  fileName = "ponuda.html",
+  title = "Ponuda",
+} = {}) {
+  const chromiumCommand = await resolveChromiumCommandCached();
+  if (!chromiumCommand) {
+    throw new Error("Chromium nije dostupan na serveru za HTML -> PDF konverziju.");
+  }
+
+  const tempRoot = await mkdtemp(join(tmpdir(), "taskflow-html-pdf-"));
+  const sourceBaseName = clean(fileName).replace(/\.(html?|pdf)$/i, "");
+  const htmlBaseName = sanitizeGeneratedDocumentFileName(sourceBaseName, {
+    fallback: "ponuda",
+    extension: "html",
+  });
+  const pdfBaseName = sanitizeGeneratedDocumentFileName(htmlBaseName.replace(/\.html?$/i, ""), {
+    fallback: "ponuda",
+    extension: "pdf",
+  });
+  const inputPath = join(tempRoot, htmlBaseName);
+  const outputPath = join(tempRoot, pdfBaseName);
+
+  try {
+    await writeFile(inputPath, buildHtmlPdfDocument(html, { title }), "utf8");
+    const commandResult = await runCommand(chromiumCommand, [
+      "--headless",
+      "--disable-gpu",
+      "--no-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-background-networking",
+      "--disable-default-apps",
+      "--disable-extensions",
+      "--disable-sync",
+      "--metrics-recording-only",
+      "--no-first-run",
+      "--no-pdf-header-footer",
+      "--print-to-pdf-no-header",
+      `--print-to-pdf=${outputPath}`,
+      pathToFileURL(inputPath).href,
+    ], {
+      cwd: tempRoot,
+      env: buildChromiumRuntimeEnv(tempRoot),
+      timeoutMs: HTML_PDF_CONVERSION_TIMEOUT_MS,
+    });
+
+    if (!await fileExists(outputPath)) {
+      const directoryEntries = await readdir(tempRoot).catch(() => []);
+      const details = [
+        "Chromium nije vratio PDF datoteku.",
+        clean(commandResult.stdout) ? `STDOUT: ${clean(commandResult.stdout)}` : "",
+        clean(commandResult.stderr) ? `STDERR: ${clean(commandResult.stderr)}` : "",
+        directoryEntries.length > 0 ? `Sadrzaj temp direktorija: ${directoryEntries.join(", ")}` : "",
+      ].filter(Boolean).join(" ");
+      throw new Error(details || "Chromium nije vratio PDF datoteku.");
+    }
+
+    const pdfBuffer = await readFile(outputPath);
+    if (pdfBuffer.subarray(0, 4).toString("utf8") !== "%PDF") {
+      throw new Error("Chromium je vratio neispravnu PDF datoteku.");
+    }
+
+    return pdfBuffer;
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+export async function buildOfferHtmlPdfBuffer(offer = {}, options = {}) {
+  const currency = clean(options.currency || offer.currency || "EUR") || "EUR";
+  const html = buildOfferHtmlTemplate(offer, {
+    ...options,
+    currency,
+  });
+  return convertHtmlToPdfBuffer(html, {
+    fileName: sanitizeGeneratedDocumentFileName(
+      clean(offer.offerNumber || offer.title || offer.companyName) || "ponuda",
+      {
+        fallback: "ponuda",
+        extension: "html",
+      },
+    ),
+    title: clean(offer.title || offer.offerNumber) || "Ponuda",
+  });
 }
 
 export async function buildOfferPdfBuffer(offer = {}, options = {}) {
@@ -3743,4 +4102,13 @@ export function isWordTemplateFile(referenceDocument = {}) {
 
   return [".docx", ".dotx"].includes(extension)
     || /officedocument\.wordprocessingml\.(document|template)/i.test(fileType);
+}
+
+export function isHtmlTemplateFile(referenceDocument = {}) {
+  const fileName = clean(referenceDocument.fileName || referenceDocument.name || "");
+  const fileType = clean(referenceDocument.fileType || referenceDocument.mimeType || "");
+  const extension = extname(fileName).toLowerCase();
+
+  return [".html", ".htm"].includes(extension)
+    || /^text\/html\b/i.test(fileType);
 }

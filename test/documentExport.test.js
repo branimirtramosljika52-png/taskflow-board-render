@@ -172,10 +172,13 @@ test("offer HTML template renders escaped commercial data", () => {
   });
 
   assert.match(html, /safe-offer-html-template/);
+  assert.match(html, /PONUDA/);
+  assert.match(html, /Poštovani/);
   assert.match(html, /26-AG-001/);
+  assert.match(html, /06\.05\.2026/);
   assert.match(html, /Alpha &amp; Beta/);
-  assert.match(html, /Ponuda &lt;script&gt;alert\(1\)&lt;\/script&gt;/);
   assert.doesNotMatch(html, /<script>alert/);
+  assert.doesNotMatch(html, /\{\{OFFER_NUMBER\}\}/);
   assert.match(html, /26,43 EUR/);
 });
 

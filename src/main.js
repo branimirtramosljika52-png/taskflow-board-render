@@ -481,6 +481,7 @@ const MEASUREMENT_EQUIPMENT_SORT_OPTIONS = Object.freeze([
 const MEASUREMENT_EQUIPMENT_COMMENT_NOTE_PREFIX = "[KOMENTAR]";
 const DEFAULT_OFFER_NOTE = "Ponuda vrijedi 30 dana, rok plaćanja 30 dana od slanja računa.";
 const DEFAULT_PURCHASE_ORDER_NOTE = "";
+const OFFER_HTML_TEMPLATE_ACCEPT_LABEL = ".html,.htm,text/html";
 const OFFER_TEMPLATE_ACCEPT_LABEL = ".docx,.dotx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.wordprocessingml.template";
 const OFFER_TEMPLATE_PLACEHOLDER_DEFINITIONS = Object.freeze([
   Object.freeze({ key: "OFFER_NUMBER", label: "Broj ponude", description: "Generirani broj ponude nakon spremanja." }),
@@ -500,12 +501,12 @@ const OFFER_TEMPLATE_PLACEHOLDER_DEFINITIONS = Object.freeze([
   Object.freeze({ key: "PREPARED_BY", label: "Izradio", description: "Alias za osobu koja je izradila ponudu." }),
   Object.freeze({ key: "SERVICE_LINE", label: "Vrsta ponude", description: "Tip ponude ili glavna vrsta usluge za ponudu." }),
   Object.freeze({ key: "OFFER_TYPE", label: "Vrsta ponude", description: "Alias za vrstu ponude, za predloške gdje želiš odvojeno ime placeholdera." }),
-  Object.freeze({ key: "OFFER_TEXT_1", label: "Tekst ponude 1", description: "Prvi slobodni tekst za zakone, obuhvat, uvjete ili posebni dio Word predloška." }),
-  Object.freeze({ key: "OFFER_TEXT_2", label: "Tekst ponude 2", description: "Drugi slobodni tekst za dodatne uvjete ili posebni dio Word predloška." }),
+  Object.freeze({ key: "OFFER_TEXT_1", label: "Tekst ponude 1", description: "Prvi slobodni tekst za zakone, obuhvat, uvjete ili posebni dio HTML predloška." }),
+  Object.freeze({ key: "OFFER_TEXT_2", label: "Tekst ponude 2", description: "Drugi slobodni tekst za dodatne uvjete ili posebni dio HTML predloška." }),
   Object.freeze({ key: "ITEMS_TABLE", label: "Tablica stavki", description: "Sve stavke ponude s količinama, razradom i iznosima." }),
-  Object.freeze({ key: "MONTHLY_FEES_TABLE", label: "Mjesečne naknade", description: "Posebna Word tablica samo za mjesečni/fiksni dio ponude." }),
-  Object.freeze({ key: "SERVICE_PRICING_TABLE", label: "Cjenik usluga", description: "Posebna Word tablica samo za dodatne usluge i razradu po zapisniku ili mjernim mjestima." }),
-  Object.freeze({ key: "ITEMS_TABLE_TEXT", label: "Tablica stavki - tekst", description: "Tekstualna verzija tablice ako ne želiš Word tablicu." }),
+  Object.freeze({ key: "MONTHLY_FEES_TABLE", label: "Mjesečne naknade", description: "Posebna tablica samo za mjesečni/fiksni dio ponude." }),
+  Object.freeze({ key: "SERVICE_PRICING_TABLE", label: "Cjenik usluga", description: "Posebna tablica samo za dodatne usluge i razradu po zapisniku ili mjernim mjestima." }),
+  Object.freeze({ key: "ITEMS_TABLE_TEXT", label: "Tablica stavki - tekst", description: "Tekstualna verzija tablice ako ne želiš HTML tablicu." }),
   Object.freeze({ key: "ITEMS_SUMMARY", label: "Sažetak stavki", description: "Jednostavni tekstualni popis stavki." }),
   Object.freeze({ key: "NOTE", label: "Napomena", description: "Napomena i dodatni uvjeti." }),
   Object.freeze({ key: "SUBTOTAL", label: "Međuzbroj", description: "Iznos prije rabata i PDV-a." }),
@@ -624,14 +625,14 @@ const COMMERCIAL_DOCUMENT_MODULE_CONFIG = Object.freeze({
     submitLabel: "Spremi ponudu",
     deleteConfirmLabel: "Obrisati ovu ponudu?",
     templateKicker: "Template",
-    templateTitle: "HTML template i Word fallback",
-    templateWordTitle: "Brzi HTML predložak",
-    templatePlaceholderTitle: "Tokeni za Word fallback",
-    templateCopy: "PDF sada koristi brzi HTML predložak. Word tokeni ostaju za ručni Word/fallback predložak.",
+    templateTitle: "HTML template za ponude",
+    templateWordTitle: "Aktivni HTML predložak",
+    templatePlaceholderTitle: "Tokeni za HTML",
+    templateCopy: "PDF ponude sada se generira iz HTML predloška i ide direktno u HTML-to-PDF.",
     templatePlaceholderDocTitle: "SafeNexus · Offer placeholderi",
     templatePlaceholderDocName: "safe-nexus-offer-placeholderi",
-    templateEmptyText: "Brzi HTML predložak je aktivan i bez uploada Worda.",
-    templateRemoveConfirm: "Maknuti Word predložak za ponude?",
+    templateEmptyText: "Ugrađeni HTML predložak Ponuda v1.0.0 je aktivan.",
+    templateRemoveConfirm: "Maknuti ručno učitani HTML predložak za ponude?",
     numberFallback: "Bez broja",
     untitledLabel: "Nova ponuda",
     noContactLabel: "Bez odabranog kontakta",
@@ -71845,7 +71846,7 @@ function renderOfferTemplateReferenceMeta() {
 
   const card = document.createElement("article");
   card.className = "offer-template-reference-card";
-  const badge = createMetaPill("Word povezan", "is-success");
+  const badge = createMetaPill(isPurchaseOrdersContextActive() ? "Word povezan" : "HTML povezan", "is-success");
   const title = document.createElement("strong");
   title.textContent = entry.fileName;
   const meta = document.createElement("span");
@@ -71859,6 +71860,32 @@ function renderOfferTemplateReferenceMeta() {
   if (offerTemplateRemoveButton) {
     offerTemplateRemoveButton.disabled = false;
   }
+}
+
+function formatOfferTemplatePlaceholderPreviewValue(value) {
+  if (value === null || value === undefined || value === "") {
+    return "—";
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => formatOfferTemplatePlaceholderPreviewValue(entry)).join("\n");
+  }
+  if (value && typeof value === "object") {
+    if (value.__docxBlockType === "table" && Array.isArray(value.rows)) {
+      const lines = value.rows
+        .map((row) => (Array.isArray(row?.cells) ? row.cells : [])
+          .map((cell) => String(cell?.text ?? "").trim())
+          .filter(Boolean)
+          .join(" | "))
+        .filter(Boolean);
+      return lines.join("\n") || "Tablica";
+    }
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return "Objekt";
+    }
+  }
+  return String(value);
 }
 
 function renderOfferTemplatePlaceholderList(offer = buildOfferDraftPreviewData()) {
@@ -71894,7 +71921,7 @@ function renderOfferTemplatePlaceholderList(offer = buildOfferDraftPreviewData()
 
     const preview = document.createElement("code");
     preview.className = "offer-template-placeholder-preview";
-    preview.textContent = payload[entry.key] || "—";
+    preview.textContent = formatOfferTemplatePlaceholderPreviewValue(payload[entry.key]);
     button.append(preview);
     return button;
   }));
@@ -71922,9 +71949,14 @@ async function saveOfferTemplateReference(file) {
   const apiBasePath = getActiveCommercialApiBasePath();
   const fileName = String(file?.name || "").trim();
   const fileType = String(file?.type || "").trim();
+  const isOfferTemplate = !isPurchaseOrdersContextActive();
+  const isSupportedHtmlTemplate = /\.(html|htm)$/i.test(fileName) || /^text\/html\b/i.test(fileType);
   const isSupportedWordTemplate = /\.(docx|dotx)$/i.test(fileName)
     || /officedocument\.wordprocessingml\.(document|template)/i.test(fileType);
-  if (!isSupportedWordTemplate) {
+  if (isOfferTemplate && !isSupportedHtmlTemplate) {
+    throw new Error("Template ponude mora biti .html ili .htm HTML predložak.");
+  }
+  if (!isOfferTemplate && !isSupportedWordTemplate) {
     throw new Error("Template ponude mora biti .docx ili .dotx Word predložak.");
   }
   const dataUrl = await readFileAsDataUrl(file, `Ne mogu učitati datoteku ${file.name}.`);
@@ -71933,7 +71965,7 @@ async function saveOfferTemplateReference(file) {
     body: {
       referenceDocument: {
         fileName: file.name,
-        fileType: file.type || "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        fileType: file.type || (isOfferTemplate ? "text/html" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
         dataUrl,
       },
     },
@@ -71999,12 +72031,12 @@ function renderOfferHtmlPreviewModal() {
   if (offerHtmlPreviewMeta) {
     const templateName = String(payload.templateFileName || "").trim();
     offerHtmlPreviewMeta.textContent = templateName
-      ? `Brzi HTML predložak je aktivan. Word predložak "${templateName}" ostaje spremljen kao fallback.`
-      : "Brzi HTML predložak je aktivan. PDF se generira bez Word konverzije.";
+      ? `HTML predložak "${templateName}" je aktivan. PDF se generira kroz HTML-to-PDF.`
+      : "Ugrađeni HTML predložak je aktivan. PDF se generira kroz HTML-to-PDF.";
   }
   if (offerHtmlPreviewContent) {
     const html = String(payload.html || "").trim();
-    offerHtmlPreviewContent.innerHTML = html || "<p>Predložak je učitan, ali Mammoth nije vratio vidljiv sadržaj.</p>";
+    offerHtmlPreviewContent.innerHTML = html || "<p>HTML predložak je učitan, ali nema vidljiv sadržaj.</p>";
   }
   if (offerHtmlPreviewMessages) {
     offerHtmlPreviewMessages.hidden = messages.length === 0;
@@ -90318,7 +90350,9 @@ offerTemplateDownloadPlaceholdersButton?.addEventListener("click", () => {
 
 offerTemplateUploadButton?.addEventListener("click", () => {
   if (offerTemplateFileInput) {
-    offerTemplateFileInput.accept = OFFER_TEMPLATE_ACCEPT_LABEL;
+    offerTemplateFileInput.accept = isPurchaseOrdersContextActive()
+      ? OFFER_TEMPLATE_ACCEPT_LABEL
+      : OFFER_HTML_TEMPLATE_ACCEPT_LABEL;
     offerTemplateFileInput.click();
   }
 });

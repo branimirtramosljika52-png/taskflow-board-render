@@ -20,6 +20,7 @@ import {
 import {
   buildAppCapabilitiesPdfBuffer,
   buildDashboardCalendarReportPdfBuffer,
+  buildOfferHtmlPdfBuffer,
   buildOfferHtmlTemplate,
   buildOfferPdfBuffer,
   buildPurchaseOrderPdfBuffer,
@@ -28,6 +29,7 @@ import {
   buildPdfFromTemplateBuffer,
   buildDocxFromTemplateBuffer,
   convertDocxBuffersToPdfBuffers,
+  isHtmlTemplateFile,
   isWordTemplateFile,
   mergePdfBuffers,
   readStoredDocumentBuffer,
@@ -2457,6 +2459,21 @@ function buildOfferExportBaseName(offer = {}) {
   return offer.offerNumber || offer.title || offer.companyName || "ponuda";
 }
 
+async function readOfferHtmlTemplateReference(referenceDocument = null) {
+  if (!referenceDocument || !isHtmlTemplateFile(referenceDocument)) {
+    return {
+      templateHtml: "",
+      templateFileName: "",
+    };
+  }
+
+  const storedDocument = await readStoredDocumentBuffer(referenceDocument);
+  return {
+    templateHtml: storedDocument.buffer.toString("utf8"),
+    templateFileName: referenceDocument.fileName || referenceDocument.name || "",
+  };
+}
+
 async function buildOfferPdfExportPayload(offer = {}, organizationId = "", options = {}) {
   const offerTemplateSettings = await domainRepository.getOfferTemplateSettings(organizationId).catch(() => null);
   const offerTemplateDocument = offerTemplateSettings?.referenceDocument ?? null;
@@ -2493,6 +2510,24 @@ async function buildOfferPdfExportPayload(offer = {}, organizationId = "", optio
     }
   }
 
+  const { templateHtml } = await readOfferHtmlTemplateReference(offerTemplateDocument).catch((error) => {
+    console.warn("Offer HTML template reference could not be read; using bundled HTML template.", error);
+    return {
+      templateHtml: "",
+      templateFileName: "",
+    };
+  });
+
+  try {
+    const pdfBuffer = await buildOfferHtmlPdfBuffer(offer, {
+      currency: offer.currency || "EUR",
+      templateHtml,
+    });
+    return { pdfBuffer, fileName };
+  } catch (error) {
+    console.warn("Offer HTML PDF export failed, falling back to native PDF.", error);
+  }
+
   const pdfBuffer = await buildOfferPdfBuffer(offer, { currency: offer.currency || "EUR" });
   return { pdfBuffer, fileName };
 }
@@ -2501,68 +2536,33 @@ async function buildOfferHtmlPreviewPayload(offer = {}, organizationId = "") {
   const offerTemplateSettings = await domainRepository.getOfferTemplateSettings(organizationId).catch(() => null);
   const offerTemplateDocument = offerTemplateSettings?.referenceDocument ?? null;
   const baseName = buildOfferExportBaseName(offer);
-  const templateFileName = offerTemplateDocument?.fileName || offerTemplateDocument?.name || "";
+  const templateReference = await readOfferHtmlTemplateReference(offerTemplateDocument).catch((error) => {
+    console.warn("Offer HTML template preview reference could not be read; using bundled HTML template.", error);
+    return {
+      templateHtml: "",
+      templateFileName: "",
+      warning: error?.message || "HTML template se ne može pročitati.",
+    };
+  });
 
   return {
-    html: buildOfferHtmlTemplate(offer, { currency: offer.currency || "EUR" }),
-    messages: templateFileName
+    html: buildOfferHtmlTemplate(offer, {
+      currency: offer.currency || "EUR",
+      templateHtml: templateReference.templateHtml,
+    }),
+    messages: templateReference.warning
       ? [{
-        type: "info",
-        message: "PDF ponude sada koristi brzi HTML/native template. Word predlozak ostaje spremljen za rucni Word/fallback izvoz.",
+        type: "warning",
+        message: templateReference.warning,
       }]
       : [],
     fileName: sanitizeGeneratedDocumentFileName(baseName, {
       fallback: "ponuda",
       extension: "html",
     }),
-    templateFileName,
+    templateFileName: templateReference.templateFileName || "offer-v1.0.0.html",
     templateEngine: "html",
   };
-
-  if (!offerTemplateDocument) {
-    throw new Error("Za Mammoth preview prvo uploadaj .docx ili .dotx Word predložak ponude.");
-  }
-
-  if (!isWordTemplateFile(offerTemplateDocument)) {
-    throw new Error("Uploadani template ponude mora biti .docx ili .dotx Word predložak.");
-  }
-
-  try {
-    const referenceDocument = await readStoredDocumentBuffer(offerTemplateDocument);
-    const docxBuffer = await buildDocxFromTemplateBuffer(
-      referenceDocument.buffer,
-      buildOfferTemplatePlaceholderPayload(offer),
-      {
-        fileName: sanitizeGeneratedDocumentFileName(baseName, {
-          fallback: "ponuda",
-          extension: "docx",
-        }),
-      },
-    );
-    const preview = await mammoth.convertToHtml({ buffer: docxBuffer }, {
-      convertImage: mammoth.images.imgElement((image) => image.read("base64").then((imageBuffer) => ({
-        src: `data:${image.contentType};base64,${imageBuffer}`,
-      }))),
-    });
-
-    return {
-      html: sanitizeMammothPreviewHtml(preview?.value || ""),
-      messages: (Array.isArray(preview?.messages) ? preview.messages : [])
-        .map((message) => ({
-          type: String(message?.type || "info"),
-          message: String(message?.message || "").trim(),
-        }))
-        .filter((message) => message.message),
-      fileName: sanitizeGeneratedDocumentFileName(baseName, {
-        fallback: "ponuda",
-        extension: "html",
-      }),
-      templateFileName: offerTemplateDocument.fileName || offerTemplateDocument.name || "",
-    };
-  } catch (error) {
-    console.error("Offer template HTML preview failed.", error);
-    throw new Error(`Ne mogu napraviti Mammoth preview iz uploadanog templatea ponude: ${error?.message || "nepoznata greška"}`);
-  }
 }
 
 function buildPurchaseOrderExportBaseName(purchaseOrder = {}) {
