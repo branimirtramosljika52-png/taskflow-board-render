@@ -5,7 +5,6 @@ import { readFile } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
 import { gzipSync } from "node:zlib";
 import JSZip from "jszip";
-import mammoth from "mammoth";
 import * as XLSX from "xlsx";
 
 import {
@@ -21,6 +20,7 @@ import {
 import {
   buildAppCapabilitiesPdfBuffer,
   buildDashboardCalendarReportPdfBuffer,
+  buildOfferHtmlTemplate,
   buildOfferPdfBuffer,
   buildPurchaseOrderPdfBuffer,
   buildWorkOrderPdfBuffer,
@@ -2453,22 +2453,11 @@ async function sendDashboardCalendarProfileReport(reportUser = {}, scopedSnapsho
   };
 }
 
-function sanitizeMammothPreviewHtml(html = "") {
-  return String(html ?? "")
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/<iframe[\s\S]*?<\/iframe>/gi, "")
-    .replace(/<object[\s\S]*?<\/object>/gi, "")
-    .replace(/<embed[\s\S]*?>/gi, "")
-    .replace(/\son\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
-    .replace(/\s(href|src)\s*=\s*(["'])\s*javascript:[\s\S]*?\2/gi, "");
-}
-
 function buildOfferExportBaseName(offer = {}) {
   return offer.offerNumber || offer.title || offer.companyName || "ponuda";
 }
 
-async function buildOfferPdfExportPayload(offer = {}, organizationId = "") {
+async function buildOfferPdfExportPayload(offer = {}, organizationId = "", options = {}) {
   const offerTemplateSettings = await domainRepository.getOfferTemplateSettings(organizationId).catch(() => null);
   const offerTemplateDocument = offerTemplateSettings?.referenceDocument ?? null;
   const baseName = buildOfferExportBaseName(offer);
@@ -2477,7 +2466,10 @@ async function buildOfferPdfExportPayload(offer = {}, organizationId = "") {
     extension: "pdf",
   });
 
-  if (offerTemplateDocument) {
+  const pdfEngine = String(options?.pdfEngine || options?.engine || "").trim().toLowerCase();
+  const useWordTemplate = ["word", "docx", "template", "libreoffice"].includes(pdfEngine);
+
+  if (useWordTemplate && offerTemplateDocument) {
     if (!isWordTemplateFile(offerTemplateDocument)) {
       throw new Error("Uploadani template ponude mora biti .docx ili .dotx Word predložak.");
     }
@@ -2509,6 +2501,23 @@ async function buildOfferHtmlPreviewPayload(offer = {}, organizationId = "") {
   const offerTemplateSettings = await domainRepository.getOfferTemplateSettings(organizationId).catch(() => null);
   const offerTemplateDocument = offerTemplateSettings?.referenceDocument ?? null;
   const baseName = buildOfferExportBaseName(offer);
+  const templateFileName = offerTemplateDocument?.fileName || offerTemplateDocument?.name || "";
+
+  return {
+    html: buildOfferHtmlTemplate(offer, { currency: offer.currency || "EUR" }),
+    messages: templateFileName
+      ? [{
+        type: "info",
+        message: "PDF ponude sada koristi brzi HTML/native template. Word predlozak ostaje spremljen za rucni Word/fallback izvoz.",
+      }]
+      : [],
+    fileName: sanitizeGeneratedDocumentFileName(baseName, {
+      fallback: "ponuda",
+      extension: "html",
+    }),
+    templateFileName,
+    templateEngine: "html",
+  };
 
   if (!offerTemplateDocument) {
     throw new Error("Za Mammoth preview prvo uploadaj .docx ili .dotx Word predložak ponude.");
@@ -7746,7 +7755,9 @@ async function handleApiRequest(request, response, url) {
         ...(body?.document ?? {}),
         organizationId: scopedSnapshot.activeOrganizationId,
       };
-      const { pdfBuffer, fileName } = await buildOfferPdfExportPayload(draftOffer, scopedSnapshot.activeOrganizationId);
+      const { pdfBuffer, fileName } = await buildOfferPdfExportPayload(draftOffer, scopedSnapshot.activeOrganizationId, {
+        pdfEngine: body?.pdfEngine,
+      });
       sendBinary(response, 200, pdfBuffer, {
         contentType: "application/pdf",
         fileName,
@@ -7760,9 +7771,12 @@ async function handleApiRequest(request, response, url) {
         return true;
       }
 
+      const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
       const offer = assertInScope(scopedSnapshot.offers, offerPdfExportMatch[1], "Ponuda nije pronađena.");
-      const { pdfBuffer, fileName } = await buildOfferPdfExportPayload(offer, scopedSnapshot.activeOrganizationId);
+      const { pdfBuffer, fileName } = await buildOfferPdfExportPayload(offer, scopedSnapshot.activeOrganizationId, {
+        pdfEngine: body?.pdfEngine,
+      });
       sendBinary(response, 200, pdfBuffer, {
         contentType: "application/pdf",
         fileName,

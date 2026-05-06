@@ -3110,6 +3110,194 @@ export async function buildAppCapabilitiesPdfBuffer({
   return pdfBufferFromDocument(doc);
 }
 
+function escapeOfferHtml(value = "") {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function formatOfferHtmlText(value = "", fallback = "—") {
+  const text = clean(value);
+  return text ? escapeOfferHtml(text).replace(/\r?\n/g, "<br>") : fallback;
+}
+
+function getOfferHtmlStatusLabel(value = "") {
+  const status = clean(value).toLowerCase();
+  if (["sent", "poslana"].includes(status)) {
+    return "Poslana";
+  }
+  if (["accepted", "prihvacena", "prihvaćena"].includes(status)) {
+    return "Prihvaćena";
+  }
+  if (["rejected", "odbijena"].includes(status)) {
+    return "Odbijena";
+  }
+  if (["expired", "istekla"].includes(status)) {
+    return "Istekla";
+  }
+  return "Skica";
+}
+
+export function buildOfferHtmlTemplate(offer = {}, options = {}) {
+  const currency = clean(options.currency || offer.currency || "EUR") || "EUR";
+  const title = clean(offer.title) || "Ponuda";
+  const offerNumber = clean(offer.offerNumber) || "Nacrt ponude";
+  const locationNames = normalizePdfLines(offer.selectedLocationNames || offer.locationName || "");
+  const items = Array.isArray(offer.items) ? offer.items : [];
+  const hasDiscount = Number(offer.discountRate ?? 0) > 0 || Number(offer.discountTotal ?? 0) > 0;
+  const showTotalAmount = offer.showTotalAmount !== false;
+  const extraTextBlocks = [
+    ["Dodatni tekst 1", offer.textBlock1],
+    ["Dodatni tekst 2", offer.textBlock2],
+  ].filter(([, value]) => clean(value));
+  const metaRows = [
+    ["Broj ponude", offerNumber],
+    ["Datum ponude", formatOfferPdfDate(offer.offerDate)],
+    ["Vrijedi do", formatOfferPdfDate(offer.validUntil)],
+    ["Vrsta ponude", offer.serviceLine || "—"],
+  ];
+  const customerRows = [
+    ["Tvrtka", offer.companyName || "—"],
+    ["OIB", offer.companyOib || "—"],
+    ["Sjedište", offer.headquarters || "—"],
+    ["Lokacije", locationNames.join(", ") || offer.locationName || "Bez lokacije"],
+    ["Kontakt", offer.contactName || "—"],
+    ["Telefon", offer.contactPhone || "—"],
+    ["Email", offer.contactEmail || "—"],
+  ];
+
+  const itemRows = items.length
+    ? items.map((item, index) => {
+      const breakdowns = Array.isArray(item.breakdowns) ? item.breakdowns : [];
+      const metrics = normalizePdfLines([
+        item.serviceCode ? `Šifra: ${item.serviceCode}` : "",
+        item.unit ? `Jedinica: ${item.unit}` : "",
+        item.quantity != null ? `Količina: ${item.quantity}` : "",
+        breakdowns.length === 0 ? `Cijena: ${formatOfferPdfCurrency(item.unitPrice ?? 0, currency)}` : "Razrada aktivna",
+      ]);
+      const breakdownHtml = breakdowns.length
+        ? `<div class="offer-html-breakdowns">${breakdowns.map((entry) => {
+          const recordLabel = clean(entry.unitLabel || entry.recordLabel || entry.label) || "Razrada";
+          const measurementRange = normalizePdfLines([
+            clean(entry.measurementFrom),
+            clean(entry.measurementTo),
+          ]).join(" - ");
+          const breakdownLabel = measurementRange ? `${recordLabel} - MM ${measurementRange}` : recordLabel;
+          return `
+            <div class="offer-html-breakdown-row">
+              <span>${formatOfferHtmlText(breakdownLabel)}</span>
+              <strong>${escapeOfferHtml(formatOfferPdfCurrency(entry.amount ?? 0, currency))}</strong>
+            </div>
+          `;
+        }).join("")}</div>`
+        : "";
+      const discountHtml = Number(item.discountRate ?? 0) > 0
+        ? `<div class="offer-html-item-discount">Rabat stavke: ${escapeOfferHtml(`${Number(item.discountRate ?? 0)}%`)}</div>`
+        : "";
+
+      return `
+        <article class="offer-html-item">
+          <div class="offer-html-item-main">
+            <div>
+              <span class="offer-html-item-index">${index + 1}</span>
+              <h4>${formatOfferHtmlText(item.description || item.serviceCode || "Stavka")}</h4>
+              <p>${metrics.map((entry) => escapeOfferHtml(entry)).join(" · ")}</p>
+            </div>
+            <strong>${escapeOfferHtml(formatOfferPdfCurrency(item.totalPrice ?? 0, currency))}</strong>
+          </div>
+          ${breakdownHtml}
+          ${discountHtml}
+        </article>
+      `;
+    }).join("")
+    : `<div class="offer-html-empty">Ponuda još nema dodanih stavki.</div>`;
+
+  const totalsHtml = showTotalAmount ? `
+    <section class="offer-html-section offer-html-totals">
+      <h3>Ukupni iznosi</h3>
+      <div><span>Međuzbroj</span><strong>${escapeOfferHtml(formatOfferPdfCurrency(offer.subtotal ?? 0, currency))}</strong></div>
+      ${hasDiscount ? `
+        <div><span>Rabat</span><strong>${escapeOfferHtml(formatOfferPdfCurrency(offer.discountTotal ?? 0, currency))}</strong></div>
+        <div><span>Osnovica</span><strong>${escapeOfferHtml(formatOfferPdfCurrency(offer.taxableSubtotal ?? 0, currency))}</strong></div>
+      ` : ""}
+      <div><span>PDV</span><strong>${escapeOfferHtml(formatOfferPdfCurrency(offer.taxTotal ?? 0, currency))}</strong></div>
+      <div class="is-grand"><span>Ukupno</span><strong>${escapeOfferHtml(formatOfferPdfCurrency(offer.total ?? 0, currency))}</strong></div>
+    </section>
+  ` : "";
+
+  return `
+    <style>
+      .safe-offer-html-template{font-family:Inter,Arial,sans-serif;color:#172033;background:#fff;max-width:920px;margin:0 auto;padding:34px;border:1px solid #d9e3f3;border-radius:18px;box-shadow:0 18px 45px rgba(15,23,42,.08)}
+      .offer-html-hero{display:grid;grid-template-columns:minmax(0,1fr) 150px;gap:20px;align-items:start;border-bottom:1px solid #dbe6f6;padding-bottom:22px;margin-bottom:22px}
+      .offer-html-kicker{margin:0 0 8px;color:#2563eb;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+      .offer-html-hero h2{margin:0;color:#0f172a;font-size:30px;line-height:1.12;letter-spacing:0}
+      .offer-html-hero p{margin:8px 0 0;color:#64748b;font-size:14px;line-height:1.5}
+      .offer-html-status{border:1px solid #bfdbfe;background:#eff6ff;border-radius:16px;padding:12px;text-align:center;color:#1d4ed8}
+      .offer-html-status span{display:block;font-size:11px;font-weight:800;text-transform:uppercase;color:#2563eb}
+      .offer-html-status strong{display:block;margin-top:5px;color:#0f172a;font-size:16px}
+      .offer-html-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-bottom:20px}
+      .offer-html-section{border:1px solid #dbe6f6;border-radius:16px;padding:16px;background:#fbfdff;margin-bottom:18px}
+      .offer-html-section h3{margin:0 0 12px;color:#2563eb;font-size:13px;text-transform:uppercase;letter-spacing:.08em}
+      .offer-html-row,.offer-html-totals div{display:grid;grid-template-columns:145px minmax(0,1fr);gap:14px;padding:8px 0;border-top:1px solid #e7eef8}
+      .offer-html-row:first-of-type,.offer-html-totals div:first-of-type{border-top:0}
+      .offer-html-row span,.offer-html-totals span{color:#64748b;font-size:13px}
+      .offer-html-row strong,.offer-html-totals strong{color:#0f172a;font-size:13px;word-break:break-word}
+      .offer-html-note{line-height:1.58;color:#1f2937;font-size:14px}
+      .offer-html-items{display:grid;gap:10px}
+      .offer-html-item{border:1px solid #cfd8ea;border-radius:16px;padding:14px;background:#fff}
+      .offer-html-item-main{display:grid;grid-template-columns:minmax(0,1fr) 140px;gap:14px;align-items:start}
+      .offer-html-item-index{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:999px;background:#eaf2ff;color:#2563eb;font-weight:800;font-size:12px;margin-right:8px;vertical-align:middle}
+      .offer-html-item h4{display:inline;margin:0;color:#0f172a;font-size:15px;line-height:1.35}
+      .offer-html-item p{margin:8px 0 0;color:#64748b;font-size:12.5px;line-height:1.45}
+      .offer-html-item-main>strong{color:#1d4ed8;font-size:15px;text-align:right;white-space:nowrap}
+      .offer-html-breakdowns{margin-top:12px;border-top:1px solid #e7eef8;padding-top:8px;display:grid;gap:7px}
+      .offer-html-breakdown-row{display:grid;grid-template-columns:minmax(0,1fr) 128px;gap:10px;color:#334155;font-size:13px}
+      .offer-html-breakdown-row strong{text-align:right;color:#0f172a}
+      .offer-html-item-discount{margin-top:8px;color:#b45309;font-size:12.5px}
+      .offer-html-totals{max-width:430px;margin-left:auto;background:#f8fbf8;border-color:#bfe2cb}
+      .offer-html-totals div{grid-template-columns:minmax(0,1fr) 145px}
+      .offer-html-totals strong{text-align:right}
+      .offer-html-totals .is-grand strong,.offer-html-totals .is-grand span{color:#08783f;font-size:16px}
+      .offer-html-empty{border:1px dashed #cbd5e1;border-radius:14px;padding:18px;color:#64748b;background:#f8fafc}
+      @media(max-width:760px){.safe-offer-html-template{padding:22px}.offer-html-hero,.offer-html-grid,.offer-html-item-main,.offer-html-breakdown-row{grid-template-columns:1fr}.offer-html-status{text-align:left}.offer-html-item-main>strong,.offer-html-breakdown-row strong,.offer-html-totals strong{text-align:left}.offer-html-totals{max-width:none}.offer-html-row,.offer-html-totals div{grid-template-columns:1fr;gap:4px}}
+    </style>
+    <article class="safe-offer-html-template">
+      <header class="offer-html-hero">
+        <div>
+          <p class="offer-html-kicker">SafeNexus · Ponuda</p>
+          <h2>${formatOfferHtmlText(title)}</h2>
+          <p>${[offerNumber, offer.companyName || "", formatOfferPdfDate(offer.offerDate)].filter(Boolean).map((entry) => escapeOfferHtml(entry)).join(" · ")}</p>
+        </div>
+        <div class="offer-html-status"><span>Status</span><strong>${escapeOfferHtml(getOfferHtmlStatusLabel(offer.status || "draft"))}</strong></div>
+      </header>
+
+      <div class="offer-html-grid">
+        <section class="offer-html-section">
+          <h3>Podaci o ponudi</h3>
+          ${metaRows.map(([label, value]) => `<div class="offer-html-row"><span>${escapeOfferHtml(label)}</span><strong>${formatOfferHtmlText(value)}</strong></div>`).join("")}
+        </section>
+        <section class="offer-html-section">
+          <h3>Naručitelj</h3>
+          ${customerRows.map(([label, value]) => `<div class="offer-html-row"><span>${escapeOfferHtml(label)}</span><strong>${formatOfferHtmlText(value)}</strong></div>`).join("")}
+        </section>
+      </div>
+
+      ${clean(offer.note) ? `<section class="offer-html-section offer-html-note"><h3>Napomena</h3>${formatOfferHtmlText(offer.note)}</section>` : ""}
+      ${extraTextBlocks.map(([blockTitle, body]) => `<section class="offer-html-section offer-html-note"><h3>${escapeOfferHtml(blockTitle)}</h3>${formatOfferHtmlText(body)}</section>`).join("")}
+
+      <section class="offer-html-section">
+        <h3>Stavke ponude</h3>
+        <div class="offer-html-items">${itemRows}</div>
+      </section>
+
+      ${totalsHtml}
+    </article>
+  `;
+}
+
 export async function buildOfferPdfBuffer(offer = {}, options = {}) {
   const doc = new PDFDocument({
     autoFirstPage: true,

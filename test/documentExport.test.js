@@ -6,6 +6,8 @@ import PizZip from "pizzip";
 import {
   buildDashboardCalendarReportPdfBuffer,
   buildDocxFromTemplateBuffer,
+  buildOfferHtmlTemplate,
+  buildOfferPdfBuffer,
   buildPdfFromRenderModel,
 } from "../src/documentExport.js";
 
@@ -140,6 +142,64 @@ test("render model export returns a direct PDF buffer", async () => {
         ],
       },
     ],
+  });
+
+  assert.equal(outputBuffer.subarray(0, 4).toString("utf8"), "%PDF");
+  assert.ok(outputBuffer.length > 1000);
+});
+
+test("offer HTML template renders escaped commercial data", () => {
+  const html = buildOfferHtmlTemplate({
+    title: "Ponuda <script>alert(1)</script>",
+    offerNumber: "26-AG-001",
+    offerDate: "2026-05-06",
+    companyName: "Alpha & Beta d.o.o.",
+    companyOib: "12345678901",
+    headquarters: "Zagreb",
+    serviceLine: "Fixed Plan",
+    items: [
+      {
+        description: "Mjerenje <b>opreme</b>",
+        unit: "kom",
+        quantity: 2,
+        unitPrice: 13.215,
+        totalPrice: 26.43,
+      },
+    ],
+    subtotal: 26.43,
+    taxTotal: 6.61,
+    total: 33.04,
+  });
+
+  assert.match(html, /safe-offer-html-template/);
+  assert.match(html, /26-AG-001/);
+  assert.match(html, /Alpha &amp; Beta/);
+  assert.match(html, /Ponuda &lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  assert.doesNotMatch(html, /<script>alert/);
+  assert.match(html, /26,43 EUR/);
+});
+
+test("offer export returns a direct PDF buffer", async () => {
+  const outputBuffer = await buildOfferPdfBuffer({
+    title: "Ponuda mjerenja",
+    offerNumber: "26-AG-001",
+    offerDate: "2026-05-06",
+    companyName: "Alpha d.o.o.",
+    companyOib: "12345678901",
+    headquarters: "Zagreb",
+    serviceLine: "Fixed Plan",
+    items: [
+      {
+        description: "Mjerenje opreme",
+        unit: "kom",
+        quantity: 2,
+        unitPrice: 13.215,
+        totalPrice: 26.43,
+      },
+    ],
+    subtotal: 26.43,
+    taxTotal: 6.61,
+    total: 33.04,
   });
 
   assert.equal(outputBuffer.subarray(0, 4).toString("utf8"), "%PDF");

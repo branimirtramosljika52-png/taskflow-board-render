@@ -624,13 +624,13 @@ const COMMERCIAL_DOCUMENT_MODULE_CONFIG = Object.freeze({
     submitLabel: "Spremi ponudu",
     deleteConfirmLabel: "Obrisati ovu ponudu?",
     templateKicker: "Template",
-    templateTitle: "Predložak za ponude",
-    templateWordTitle: "Predložak za ponude",
-    templatePlaceholderTitle: "Tokeni za Word",
-    templateCopy: "Klikni placeholder da ga kopiraš u Word.",
+    templateTitle: "HTML template i Word fallback",
+    templateWordTitle: "Brzi HTML predložak",
+    templatePlaceholderTitle: "Tokeni za Word fallback",
+    templateCopy: "PDF sada koristi brzi HTML predložak. Word tokeni ostaju za ručni Word/fallback predložak.",
     templatePlaceholderDocTitle: "SafeNexus · Offer placeholderi",
     templatePlaceholderDocName: "safe-nexus-offer-placeholderi",
-    templateEmptyText: "Još nema učitanog Word predloška za ponude.",
+    templateEmptyText: "Brzi HTML predložak je aktivan i bez uploada Worda.",
     templateRemoveConfirm: "Maknuti Word predložak za ponude?",
     numberFallback: "Bez broja",
     untitledLabel: "Nova ponuda",
@@ -640,8 +640,8 @@ const COMMERCIAL_DOCUMENT_MODULE_CONFIG = Object.freeze({
     emailSubjectLabel: "Naslov emaila",
     emailMessageLabel: "Poruka emaila",
     emailSuccessLabel: "Ponuda je poslana na",
-    previewButtonLabel: "Preview Word templatea",
-    downloadButtonLabel: "Preuzmi PDF",
+    previewButtonLabel: "Preview HTML ponude",
+    downloadButtonLabel: "Brzi PDF",
     emailButtonLabel: "Pošalji email",
   }),
   "purchase-orders": Object.freeze({
@@ -69845,6 +69845,7 @@ function applyCommercialDocumentUiConfig() {
   }
   if (offerEmailTemplatePreviewButton) {
     offerEmailTemplatePreviewButton.hidden = isPurchaseOrdersContextActive();
+    offerEmailTemplatePreviewButton.textContent = config.previewButtonLabel;
   }
 
   if (offersFilterStatusInput) {
@@ -71993,13 +71994,13 @@ function renderOfferHtmlPreviewModal() {
     : {};
   const messages = Array.isArray(payload.messages) ? payload.messages : [];
   if (offerHtmlPreviewTitle) {
-    offerHtmlPreviewTitle.textContent = "Preview ponude iz Word templatea";
+    offerHtmlPreviewTitle.textContent = "Preview HTML ponude";
   }
   if (offerHtmlPreviewMeta) {
     const templateName = String(payload.templateFileName || "").trim();
     offerHtmlPreviewMeta.textContent = templateName
-      ? `Mammoth HTML preview iz predloška: ${templateName}. PDF izvoz i dalje koristi Word konverziju.`
-      : "Mammoth HTML preview iz uploadanog Word predloška. PDF izvoz i dalje koristi Word konverziju.";
+      ? `Brzi HTML predložak je aktivan. Word predložak "${templateName}" ostaje spremljen kao fallback.`
+      : "Brzi HTML predložak je aktivan. PDF se generira bez Word konverzije.";
   }
   if (offerHtmlPreviewContent) {
     const html = String(payload.html || "").trim();
@@ -86380,10 +86381,10 @@ function getOffersHelpTourSteps() {
       prepare: "offers",
     },
     {
-      title: "Word predložak",
-      body: "Ovdje se podešava Word template i placeholderi. Tamo dodaješ tablice za mjesečne naknade, cjenik usluga, tekstove i ostale podatke.",
+      title: "HTML predložak",
+      body: "Ponude sada imaju brzi HTML preview i brzi PDF. Word dio ostaje samo kao fallback za ručne predloške i placeholder tokene.",
       target: "#offer-open-template",
-      points: ["Template koristi tvoje Word dokumente.", "Placeholderi se kopiraju direktno u predložak."],
+      points: ["Preview više ne čeka Word konverziju.", "PDF koristi podatke iz editora, stavke i razradu."],
       prepare: "offers",
     },
     {
@@ -86395,7 +86396,7 @@ function getOffersHelpTourSteps() {
     },
     {
       title: "Osnovni podaci",
-      body: "U gornjem redu editora biraš status i datum ponude. Ispod toga su naziv, tvrtka, lokacije, kontakt osoba i vrsta ponude za Word i PDF.",
+      body: "U gornjem redu editora biraš status i datum ponude. Ispod toga su naziv, tvrtka, lokacije, kontakt osoba i vrsta ponude za HTML preview i PDF.",
       target: "#offer-date-field",
       points: ["Datum ponude ostaje u hrvatskom formatu i sprema se kao ispravan ISO datum.", "Kontakt email kasnije se predlaže za slanje."],
       prepare: "offer-editor",
@@ -86404,12 +86405,12 @@ function getOffersHelpTourSteps() {
       title: "Stavke i razrada",
       body: "Ovdje dodaješ fiksne stavke, mjesečne naknade ili razradu usluga po zapisniku i mjernim mjestima. Kod Fixed Plana stavke su ručni unosi.",
       target: "#offer-items-head",
-      points: ["Hybrid odvaja mjesečni dio od cjenika usluga.", "Word export sada može koristiti odvojene tablice."],
+      points: ["Hybrid odvaja mjesečni dio od cjenika usluga.", "Brzi PDF odmah koristi unesene stavke i razradu."],
       prepare: "offer-editor",
     },
     {
       title: "Preview, PDF i email",
-      body: "Na kraju možeš napraviti preview iz Word templatea, preuzeti PDF ili otvoriti email prozor. Osoba koja radi ponudu ostaje zapisana kao autor.",
+      body: "Na kraju možeš napraviti HTML preview, preuzeti brzi PDF ili otvoriti email prozor. Osoba koja radi ponudu ostaje zapisana kao autor.",
       target: "#offer-editor-meta-actions",
       points: ["Preview provjeri prije slanja.", "Email se šalje kontakt osobi, a pošiljatelj ide u CC."],
       prepare: "offer-editor",

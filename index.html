@@ -5329,7 +5329,7 @@
                       </label>
                       <label class="checkbox-field offer-extra-text-toggle">
                         <input id="offer-extra-text-enabled" type="checkbox" />
-                        <span>Dodaj dodatne tekstove u Word predložak</span>
+                        <span>Dodaj dodatne tekstove u HTML/PDF predložak</span>
                       </label>
                       <div id="offer-text-blocks" class="offer-text-blocks" hidden>
                         <label class="field offer-text-block-field">
@@ -5338,7 +5338,7 @@
                         </label>
                         <label class="field offer-text-block-field">
                           <span>Tekst za template 2</span>
-                          <textarea id="offer-text-block-2" rows="4" placeholder="Dodatni tekst za Word predložak ili posebne napomene..."></textarea>
+                          <textarea id="offer-text-block-2" rows="4" placeholder="Dodatni tekst za HTML/PDF predložak ili posebne napomene..."></textarea>
                         </label>
                       </div>
 
@@ -5415,7 +5415,7 @@
                     <div class="section-heading offers-section-heading">
                       <div>
                         <p id="offer-template-kicker" class="section-kicker">Offer template</p>
-                        <h3 id="offer-template-title">Word template i placeholderi</h3>
+                        <h3 id="offer-template-title">HTML template i Word fallback</h3>
                       </div>
                       <button id="offer-template-close" type="button" class="ghost-button">Zatvori</button>
                     </div>
@@ -5426,15 +5426,15 @@
                       <section class="offer-template-card">
                         <div class="offer-template-card-head">
                           <div>
-                            <p class="section-kicker">Word template</p>
-                            <h4 id="offer-template-word-title">Predložak za ponude</h4>
+                            <p class="section-kicker">HTML template</p>
+                            <h4 id="offer-template-word-title">Brzi HTML predložak</h4>
                           </div>
                           <button id="offer-template-toggle-reference" type="button" class="ghost-button">Sakrij</button>
                         </div>
                         <div id="offer-template-reference-body" class="offer-template-reference-body">
                           <div class="offer-template-actions">
                             <button id="offer-template-download-placeholders" type="button" class="ghost-button">Placeholderi</button>
-                            <button id="offer-template-upload" type="button" class="ghost-button">Upload Word</button>
+                            <button id="offer-template-upload" type="button" class="ghost-button">Upload Word fallback</button>
                             <button id="offer-template-download" type="button" class="ghost-button">Preuzmi Word</button>
                             <button id="offer-template-remove" type="button" class="ghost-button card-danger">Makni Word</button>
                           </div>
@@ -5446,11 +5446,11 @@
                       <section class="offer-template-card">
                         <div class="offer-template-card-head">
                           <div>
-                            <p class="section-kicker">Placeholderi</p>
-                            <h4 id="offer-template-placeholder-title">Tokeni za Word</h4>
+                            <p class="section-kicker">Fallback</p>
+                            <h4 id="offer-template-placeholder-title">Tokeni za Word fallback</h4>
                           </div>
                         </div>
-                        <p id="offer-template-copy" class="helper-copy module-copy offer-template-copy">Klikni placeholder da ga kopiraš u Word.</p>
+                        <p id="offer-template-copy" class="helper-copy module-copy offer-template-copy">PDF sada koristi brzi HTML predložak. Word tokeni ostaju za ručni Word/fallback predložak.</p>
                         <div id="offer-template-placeholder-list" class="offer-template-placeholder-list"></div>
                       </section>
                     </div>
@@ -5491,7 +5491,7 @@
                     </div>
                     <p id="offer-email-error" class="form-error" aria-live="polite"></p>
                     <div class="form-actions">
-                      <button id="offer-email-template-preview" type="button" class="ghost-button">Preview Word</button>
+                      <button id="offer-email-template-preview" type="button" class="ghost-button">Preview HTML</button>
                       <button id="offer-email-preview" type="button" class="ghost-button">Preview PDF</button>
                       <button id="offer-email-download" type="button" class="ghost-button">Download PDF</button>
                       <button id="offer-email-submit" type="submit" class="primary-button">Pošalji email</button>
@@ -5503,8 +5503,8 @@
                 <section id="offer-html-preview-panel" class="panel offer-html-preview-panel" tabindex="-1" hidden>
                   <div class="section-heading offers-section-heading">
                     <div>
-                      <p class="section-kicker">Mammoth preview</p>
-                      <h3 id="offer-html-preview-title">Preview ponude iz Word templatea</h3>
+                      <p class="section-kicker">HTML preview</p>
+                      <h3 id="offer-html-preview-title">Preview HTML ponude</h3>
                     </div>
                     <button id="offer-html-preview-close" type="button" class="ghost-button">Zatvori</button>
                   </div>
