@@ -1642,6 +1642,14 @@ function mapStoredAttachmentDocument(document = {}) {
   };
 }
 
+function isDocumentTemplateHtmlReferenceDocument(document = {}) {
+  const fileName = dbString(document.fileName ?? document.name ?? document.storageKey).toLowerCase();
+  const fileType = dbString(document.fileType ?? document.mimeType).toLowerCase();
+  return fileName.endsWith(".html")
+    || fileName.endsWith(".htm")
+    || fileType.startsWith("text/html");
+}
+
 function normalizeMeasurementEquipmentSpecRow(entry = {}) {
   const quantity = dbString(entry.quantity ?? entry.measurementQuantity ?? entry.mjernaVelicina).slice(0, 140);
   const range = dbString(entry.range ?? entry.raspon).slice(0, 140);
@@ -3489,7 +3497,7 @@ async function fetchSnapshotFromConnection(connection) {
         storageUrl: row.reference_document_url ?? "",
       });
 
-      return dbString(row.reference_document_name) && dbString(storedReference.dataUrl)
+      const referenceDocument = dbString(row.reference_document_name) && dbString(storedReference.dataUrl)
         ? {
           fileName: row.reference_document_name ?? "",
           fileType: row.reference_document_type ?? "",
@@ -3500,6 +3508,9 @@ async function fetchSnapshotFromConnection(connection) {
           storageUrl: storedReference.storageUrl,
           updatedAt: normalizeTimestamp(row.updated_at),
         }
+        : null;
+      return referenceDocument && isDocumentTemplateHtmlReferenceDocument(referenceDocument)
+        ? referenceDocument
         : null;
     })(),
     createdByUserId: dbString(row.created_by_user_id),

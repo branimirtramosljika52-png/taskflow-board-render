@@ -799,9 +799,9 @@ test("document templates keep nested builder data and support filtering", () => 
         { type: "measurement_table", title: "Mjerenja", columns: ["Pozicija", "Vrijednost"], rowCount: 8 },
       ],
       referenceDocument: {
-        fileName: "zapisnik-reference.docx",
-        fileType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        dataUrl: "data:application/octet-stream;base64,AAA",
+        fileName: "zapisnik-reference.html",
+        fileType: "text/html",
+        dataUrl: "data:text/html;base64,PGgxPlRlc3Q8L2gxPg==",
       },
       createdByUserId: "user-1",
       createdByLabel: "Ana Admin",
@@ -845,7 +845,7 @@ test("document templates keep nested builder data and support filtering", () => 
   assert.deepEqual(template.customFields[8].dropdownOptions, ["Ispravno", "Neispravno"]);
   assert.equal(template.equipmentItems.length, 1);
   assert.equal(template.sections[1].rowCount, 8);
-  assert.equal(template.referenceDocument?.fileName, "zapisnik-reference.docx");
+  assert.equal(template.referenceDocument?.fileName, "zapisnik-reference.html");
 
   const updated = updateDocumentTemplate(
     template,
@@ -876,6 +876,48 @@ test("document templates keep nested builder data and support filtering", () => 
 
   const sorted = sortDocumentTemplates([updated]);
   assert.equal(sorted[0].id, "template-1");
+});
+
+test("document templates drop legacy Word reference documents", () => {
+  const state = buildState();
+  const template = createDocumentTemplate(
+    {
+      organizationId: state.activeOrganizationId,
+      title: "Legacy Word zapisnik",
+      customFields: [{ label: "Tvrtka", key: "COMPANY_NAME", type: "text" }],
+      referenceDocument: {
+        fileName: "zapisnik-reference.docx",
+        fileType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        dataUrl: "data:application/octet-stream;base64,AAA",
+      },
+      createdByUserId: "user-1",
+      createdByLabel: "Ana Admin",
+    },
+    state,
+    () => "template-legacy",
+    () => "2026-03-31T12:00:00.000Z",
+  );
+
+  assert.equal(template.referenceDocument, null);
+
+  const updated = updateDocumentTemplate(
+    {
+      ...template,
+      referenceDocument: {
+        fileName: "stari-template.docx",
+        fileType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        dataUrl: "data:application/octet-stream;base64,BBB",
+      },
+    },
+    { title: "Legacy Word zapisnik 2" },
+    {
+      ...state,
+      documentTemplates: [template],
+    },
+    () => "2026-03-31T13:00:00.000Z",
+  );
+
+  assert.equal(updated.referenceDocument, null);
 });
 
 test("document template AI field settings survive custom field only updates", () => {

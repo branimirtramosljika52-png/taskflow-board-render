@@ -7422,7 +7422,7 @@ function applySnapshot(payload) {
   state.absenceEntries = payload.absenceEntries ?? [];
   state.peopleTrainingRecords = payload.peopleTrainingRecords ?? [];
   state.absenceBalances = payload.absenceBalances ?? [];
-  state.documentTemplates = payload.documentTemplates ?? [];
+  state.documentTemplates = normalizeDocumentTemplateHtmlReferences(payload.documentTemplates ?? []);
   state.dashboardWidgets = normalizeDashboardWidgetPositionsByGrid(payload.dashboardWidgets ?? []);
   state.expandedWorkOrderIds = new Set(
     [...state.expandedWorkOrderIds].filter((id) => state.workOrders.some((item) => String(item.id) === String(id))),
@@ -41908,6 +41908,36 @@ function isDocumentTemplateHtmlReferenceDocument(referenceDocument = {}) {
     || fileType.startsWith("text/html");
 }
 
+function normalizeDocumentTemplateHtmlReferenceDocument(referenceDocument = null) {
+  if (!referenceDocument || typeof referenceDocument !== "object" || !isDocumentTemplateHtmlReferenceDocument(referenceDocument)) {
+    return null;
+  }
+
+  const dataUrl = String(referenceDocument.dataUrl || referenceDocument.inlineDataUrl || referenceDocument.storageUrl || "").trim();
+  if (!dataUrl) {
+    return null;
+  }
+
+  return {
+    fileName: String(referenceDocument.fileName || referenceDocument.name || "template-reference.html").trim(),
+    fileType: String(referenceDocument.fileType || referenceDocument.mimeType || "text/html").trim(),
+    dataUrl,
+    inlineDataUrl: String(referenceDocument.inlineDataUrl || "").trim(),
+    storageUrl: String(referenceDocument.storageUrl || "").trim(),
+    storageKey: String(referenceDocument.storageKey || "").trim(),
+    url: String(referenceDocument.url || "").trim(),
+    fileSize: Number(referenceDocument.fileSize || 0) || 0,
+    updatedAt: String(referenceDocument.updatedAt || new Date().toISOString()).trim(),
+  };
+}
+
+function normalizeDocumentTemplateHtmlReferences(templates = []) {
+  return (Array.isArray(templates) ? templates : []).map((template) => ({
+    ...template,
+    referenceDocument: normalizeDocumentTemplateHtmlReferenceDocument(template?.referenceDocument),
+  }));
+}
+
 function getDocumentTemplateReferenceKind(referenceDocument = null) {
   if (isDocumentTemplateHtmlReferenceDocument(referenceDocument)) {
     return "html";
@@ -41978,7 +42008,7 @@ function renderDocumentTemplateReferenceMeta() {
 
     const readiness = document.createElement("span");
     readiness.className = "document-template-reference-note";
-    readiness.textContent = `${blockCount} blokova · ${placeholderCount} placeholdera spremno za export`;
+    readiness.textContent = `${blockCount} blokova · ${placeholderCount} placeholdera spremno za HTML/PDF`;
 
     stateWrap.append(stateBadge, readiness);
 
@@ -42046,19 +42076,7 @@ function renderDocumentTemplateReferenceMeta() {
 
 function setDocumentTemplateReferenceDocument(referenceDocument = null) {
   invalidateDocumentTemplateDraftCache();
-  documentTemplateReferenceDraft = referenceDocument
-    ? {
-      fileName: String(referenceDocument.fileName || referenceDocument.name || "").trim(),
-      fileType: String(referenceDocument.fileType || referenceDocument.mimeType || "").trim(),
-      dataUrl: String(referenceDocument.dataUrl || "").trim(),
-      inlineDataUrl: String(referenceDocument.inlineDataUrl || "").trim(),
-      storageUrl: String(referenceDocument.storageUrl || "").trim(),
-      storageKey: String(referenceDocument.storageKey || "").trim(),
-      url: String(referenceDocument.url || "").trim(),
-      fileSize: Number(referenceDocument.fileSize || 0) || 0,
-      updatedAt: String(referenceDocument.updatedAt || new Date().toISOString()).trim(),
-    }
-    : null;
+  documentTemplateReferenceDraft = normalizeDocumentTemplateHtmlReferenceDocument(referenceDocument);
   syncDocumentTemplateHtmlCodeInputFromReference();
   renderDocumentTemplateReferenceMeta();
   renderDocumentTemplatePreviewContent();
@@ -92204,13 +92222,15 @@ documentTemplatePlaceholderToggleButton?.addEventListener("click", () => {
 });
 
 documentTemplateReferenceDownloadButton?.addEventListener("click", () => {
-  if (!documentTemplateReferenceDraft?.dataUrl) {
+  const referenceDocument = normalizeDocumentTemplateHtmlReferenceDocument(documentTemplateReferenceDraft);
+  if (!referenceDocument?.dataUrl) {
+    setDocumentTemplateMessage("Nema spremljenog HTML predloška za preuzimanje.");
     return;
   }
 
   triggerDataUrlDownload(
-    documentTemplateReferenceDraft.dataUrl,
-    documentTemplateReferenceDraft.fileName || "template-reference.html",
+    referenceDocument.dataUrl,
+    referenceDocument.fileName || "template-reference.html",
   );
 });
 

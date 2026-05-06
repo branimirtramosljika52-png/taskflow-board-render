@@ -2120,15 +2120,20 @@ function normalizeDocumentTemplateReferenceDocument(value, fallback = null) {
   }
 
   if (!value || typeof value !== "object") {
-    return fallback ? { ...fallback } : null;
+    return fallback ? normalizeDocumentTemplateReferenceDocument(fallback, null) : null;
   }
 
   const fileName = normalizeText(value.fileName ?? value.name);
   const fileType = normalizeText(value.fileType ?? value.mimeType);
   const dataUrl = normalizeText(value.dataUrl);
+  const lowerFileName = fileName.toLowerCase();
+  const lowerFileType = fileType.toLowerCase();
+  const isHtmlReference = lowerFileName.endsWith(".html")
+    || lowerFileName.endsWith(".htm")
+    || lowerFileType.startsWith("text/html");
 
-  if (!fileName || !dataUrl) {
-    return fallback ? { ...fallback } : null;
+  if (!fileName || !dataUrl || !isHtmlReference) {
+    return fallback ? normalizeDocumentTemplateReferenceDocument(fallback, null) : null;
   }
 
   return {
@@ -6619,7 +6624,7 @@ export function updateDocumentTemplate(current, patch, state, now = isoNow) {
       : cloneJsonArray(current.sections),
     referenceDocument: hasOwn(patch, "referenceDocument")
       ? normalizeDocumentTemplateReferenceDocument(patch.referenceDocument, current.referenceDocument)
-      : (current.referenceDocument ? { ...current.referenceDocument } : null),
+      : normalizeDocumentTemplateReferenceDocument(current.referenceDocument),
     createdByUserId: hasOwn(patch, "createdByUserId") ? normalizeText(patch.createdByUserId) : current.createdByUserId,
     createdByLabel: hasOwn(patch, "createdByLabel") ? normalizeText(patch.createdByLabel) : current.createdByLabel,
     updatedAt: now(),
