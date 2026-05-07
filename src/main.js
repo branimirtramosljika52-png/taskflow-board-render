@@ -93597,10 +93597,16 @@ async function convertDocumentTemplateWordFileToHtml(file) {
     });
     renderDocumentTemplateHtmlPreviewContent();
     const warningCount = Array.isArray(payload?.messages) ? payload.messages.length : 0;
+    const engine = String(payload?.engine || "").trim().toLowerCase();
+    const conversionLabel = engine === "libreoffice"
+      ? "Word je pretvoren u HTML s očuvanim layoutom"
+      : engine === "mammoth"
+        ? "Word je pretvoren u HTML tekstualnim fallbackom"
+        : "Word je pretvoren u HTML";
     setDocumentTemplateMessage(
       warningCount > 0
-        ? `Word je pretvoren u HTML. Provjeri ${warningCount} napomena iz konverzije prije spremanja.`
-        : "Word je pretvoren u HTML i spreman je za preview.",
+        ? `${conversionLabel}. Provjeri ${warningCount} napomena iz konverzije prije spremanja.`
+        : `${conversionLabel} i spreman je za preview.`,
       { type: "success" },
     );
   } catch (error) {

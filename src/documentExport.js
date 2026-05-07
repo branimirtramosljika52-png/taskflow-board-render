@@ -8,6 +8,7 @@ import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import Docxtemplater from "docxtemplater";
+import mammoth from "mammoth";
 import { PDFDocument as PdfLibDocument } from "pdf-lib";
 import PDFDocument from "pdfkit";
 import PizZip from "pizzip";
@@ -84,6 +85,25 @@ const SOFFICE_PDF_CACHE_MAX_BYTES = Math.max(
   0,
   Number(process.env.SOFFICE_PDF_CACHE_MAX_BYTES || 64 * 1024 * 1024) || 64 * 1024 * 1024,
 );
+const WORD_HTML_STYLE_MAP = [
+  "p[style-name='Title'] => h1:fresh",
+  "p[style-name='Naslov'] => h1:fresh",
+  "p[style-name='Subtitle'] => p.sn-word-subtitle:fresh",
+  "p[style-name='Podnaslov'] => p.sn-word-subtitle:fresh",
+  "p[style-name='Heading 1'] => h1:fresh",
+  "p[style-name='Naslov 1'] => h1:fresh",
+  "p[style-name='Heading 2'] => h2:fresh",
+  "p[style-name='Naslov 2'] => h2:fresh",
+  "p[style-name='Heading 3'] => h3:fresh",
+  "p[style-name='Naslov 3'] => h3:fresh",
+  "p[style-name='Body Text'] => p:fresh",
+  "p[style-name='Table Paragraph'] => p:fresh",
+  "p[style-name='Quote'] => blockquote:fresh",
+  "p[style-name='Citat'] => blockquote:fresh",
+  "r[style-name='Strong'] => strong",
+  "r[style-name='Emphasis'] => em",
+  "r[style-name='Naglašeno'] => em",
+].join("\n");
 const MEASUREMENT_COLUMN_MIN_WIDTH = 32;
 let sofficeCommandPromise = null;
 let sofficeProfileReadyPromise = null;
@@ -2039,6 +2059,475 @@ function buildHtmlTemplateDocument(html = "", { title = "Zapisnik" } = {}) {
 ${safeHtml}
 </body>
 </html>`;
+}
+
+function detectHtmlBufferCharset(buffer = Buffer.alloc(0)) {
+  const head = Buffer.isBuffer(buffer)
+    ? buffer.subarray(0, Math.min(buffer.length, 4096)).toString("latin1")
+    : "";
+  const charset = clean(
+    head.match(/<meta\b[^>]*charset\s*=\s*["']?\s*([A-Za-z0-9._-]+)/i)?.[1]
+    || head.match(/charset\s*=\s*([A-Za-z0-9._-]+)/i)?.[1]
+    || "utf-8",
+  ).toLowerCase();
+  return charset.replace(/^utf8$/, "utf-8");
+}
+
+function decodeHtmlBuffer(buffer = Buffer.alloc(0)) {
+  const safeBuffer = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer ?? []);
+  const charset = detectHtmlBufferCharset(safeBuffer);
+  try {
+    return new TextDecoder(charset).decode(safeBuffer);
+  } catch {
+    return safeBuffer.toString("utf8");
+  }
+}
+
+function getMimeTypeForPath(filePath = "") {
+  const extension = extname(filePath).toLowerCase();
+  if (extension === ".png") return "image/png";
+  if (extension === ".jpg" || extension === ".jpeg") return "image/jpeg";
+  if (extension === ".gif") return "image/gif";
+  if (extension === ".svg") return "image/svg+xml";
+  if (extension === ".webp") return "image/webp";
+  if (extension === ".bmp") return "image/bmp";
+  return "application/octet-stream";
+}
+
+async function replaceAsync(source = "", pattern, replacer) {
+  const parts = [];
+  let lastIndex = 0;
+  const regex = new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`);
+  for (const match of String(source ?? "").matchAll(regex)) {
+    parts.push(String(source ?? "").slice(lastIndex, match.index));
+    parts.push(await replacer(...match));
+    lastIndex = Number(match.index) + match[0].length;
+  }
+  parts.push(String(source ?? "").slice(lastIndex));
+  return parts.join("");
+}
+
+function resolveLibreOfficeHtmlAssetPath(rawSource = "", htmlPath = "", tempRoot = "") {
+  const source = clean(rawSource).replace(/&amp;/g, "&");
+  if (!source || /^(data:|https?:|mailto:|#)/i.test(source)) {
+    return "";
+  }
+
+  let normalizedSource = source.split(/[?#]/)[0];
+  if (/^file:/i.test(normalizedSource)) {
+    try {
+      normalizedSource = fileURLToPath(normalizedSource);
+    } catch {
+      normalizedSource = normalizedSource.replace(/^file:\/+/i, "");
+    }
+  }
+
+  try {
+    normalizedSource = decodeURIComponent(normalizedSource);
+  } catch {
+    // Keep the original value when LibreOffice writes a non URI-encoded file name.
+  }
+
+  const resolvedPath = resolve(dirname(htmlPath), normalizedSource);
+  const safeRoot = resolve(tempRoot);
+  if (resolvedPath !== safeRoot && !resolvedPath.startsWith(`${safeRoot}${sep}`)) {
+    return "";
+  }
+  return resolvedPath;
+}
+
+async function inlineLibreOfficeHtmlAssets(html = "", htmlPath = "", tempRoot = "") {
+  let inlinedHtml = await replaceAsync(
+    html,
+    /(<(?:img|image)\b[^>]*\bsrc\s*=\s*)(["'])([^"']+)\2/gi,
+    async (match, prefix, quote, source) => {
+      const assetPath = resolveLibreOfficeHtmlAssetPath(source, htmlPath, tempRoot);
+      if (!assetPath || !await fileExists(assetPath)) {
+        return match;
+      }
+      const assetBuffer = await readFile(assetPath);
+      return `${prefix}${quote}data:${getMimeTypeForPath(assetPath)};base64,${assetBuffer.toString("base64")}${quote}`;
+    },
+  );
+
+  inlinedHtml = await replaceAsync(
+    inlinedHtml,
+    /url\((["']?)(?!data:|https?:|#)([^"')]+)\1\)/gi,
+    async (match, quote, source) => {
+      const assetPath = resolveLibreOfficeHtmlAssetPath(source, htmlPath, tempRoot);
+      if (!assetPath || !await fileExists(assetPath)) {
+        return match;
+      }
+      const assetBuffer = await readFile(assetPath);
+      return `url(${quote}data:${getMimeTypeForPath(assetPath)};base64,${assetBuffer.toString("base64")}${quote})`;
+    },
+  );
+
+  return inlinedHtml;
+}
+
+function decodeBasicHtmlEntities(value = "") {
+  return String(value ?? "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#039;|&apos;/gi, "'")
+    .replace(/&#(\d+);/g, (match, code) => {
+      const valueCode = Number.parseInt(code, 10);
+      return Number.isFinite(valueCode) ? String.fromCodePoint(valueCode) : match;
+    });
+}
+
+function normalizeConvertedWordPlaceholders(html = "") {
+  return String(html ?? "").replace(/\{\{[\s\S]{0,240}?\}\}/g, (match) => {
+    const token = decodeBasicHtmlEntities(match.replace(/<[^>]*>/g, ""))
+      .replace(/\u00a0/g, " ")
+      .replace(/\s+/g, "");
+    return /^\{\{[A-Za-z0-9_]+\}\}$/.test(token) ? token : match;
+  });
+}
+
+function buildConvertedWordLayoutStyles(engine = "") {
+  return `
+  <style data-safe-nexus-word-conversion>
+    @page { size: A4; }
+    html { background: #f3f4f6; }
+    body {
+      background: #fff;
+      color: #111827;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    table { border-collapse: collapse; }
+    img { max-width: 100%; height: auto; }
+    .sn-word-document {
+      color: #172033;
+      font-family: Arial, "DejaVu Sans", sans-serif;
+      font-size: 13px;
+      line-height: 1.48;
+    }
+    .sn-word-document h1,
+    .sn-word-document h2,
+    .sn-word-document h3 {
+      margin: 12px 0 6px;
+      line-height: 1.22;
+      color: #111827;
+    }
+    .sn-word-document h1 { font-size: 24px; }
+    .sn-word-document h2 { font-size: 18px; }
+    .sn-word-document h3 { font-size: 15px; }
+    .sn-word-document p { margin: 0 0 7px; }
+    .sn-word-subtitle { color: #475569; font-size: 14px; }
+    .sn-word-document ul,
+    .sn-word-document ol { margin: 4px 0 9px 22px; padding: 0; }
+    .sn-word-document li { margin: 2px 0; }
+    .sn-word-document blockquote {
+      margin: 8px 0;
+      padding: 8px 12px;
+      border-left: 3px solid #94a3b8;
+      color: #475569;
+      background: #f8fafc;
+    }
+    .sn-word-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      margin: 8px 0 12px;
+    }
+    .sn-word-table th,
+    .sn-word-table td {
+      border: 1px solid #cbd5e1;
+      padding: 6px 8px;
+      vertical-align: top;
+      word-break: break-word;
+    }
+    .sn-word-table th {
+      background: #eef5f2;
+      font-weight: 700;
+    }
+    .sn-word-page-break {
+      break-before: page;
+      page-break-before: always;
+    }
+    @media print {
+      html { background: #fff; }
+      body { margin: 0; }
+    }
+  </style>
+  <!-- SafeNexus Word conversion engine: ${escapeTemplateHtml(engine || "unknown")} -->
+  `.trim();
+}
+
+function ensureConvertedWordHtmlDocument(html = "", {
+  fileName = "word-template.html",
+  engine = "",
+  messages = [],
+} = {}) {
+  const title = sanitizeGeneratedDocumentFileName(fileName || "word-template", {
+    fallback: "word-template",
+    extension: "html",
+  }).replace(/\.html?$/i, "");
+  const conversionNotes = (Array.isArray(messages) ? messages : [])
+    .map((message) => clean(message?.message || message))
+    .filter(Boolean)
+    .slice(0, 12);
+  const notesHtml = conversionNotes.length > 0
+    ? `<!-- Word conversion notes: ${conversionNotes.map(escapeTemplateHtml).join(" | ")} -->`
+    : "";
+  const layoutStyles = buildConvertedWordLayoutStyles(engine);
+  let source = normalizeConvertedWordPlaceholders(String(html ?? "").replace(/^\uFEFF/, "").trim());
+
+  if (!source) {
+    source = "<p>&nbsp;</p>";
+  }
+
+  if (!/<!doctype\s+html|<html[\s>]/i.test(source)) {
+    return `<!doctype html>
+<html lang="hr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeTemplateHtml(title || "Zapisnik")}</title>
+  ${buildHtmlTemplateDefaultStyles()}
+  ${notesHtml}
+  ${layoutStyles}
+</head>
+<body class="safe-nexus-template-body">
+${source}
+</body>
+</html>`;
+  }
+
+  source = source
+    .replace(/<meta\b[^>]*charset\s*=\s*["']?\s*[^"'>\s;]+[^>]*>/gi, "")
+    .replace(/charset\s*=\s*[^"'>\s;]+/gi, "charset=utf-8");
+
+  if (!/<head[\s>]/i.test(source)) {
+    source = source.replace(/<html\b([^>]*)>/i, `<html$1>\n<head></head>`);
+  }
+  if (/<head[\s>]/i.test(source)) {
+    source = source.replace(/<head\b([^>]*)>/i, `<head$1>\n<meta charset="utf-8">`);
+    if (!/<title[\s>]/i.test(source)) {
+      source = source.replace(/<\/head>/i, `<title>${escapeTemplateHtml(title)}</title>\n</head>`);
+    }
+    if (!/<style\b[^>]*data-safe-nexus-word-conversion/i.test(source)) {
+      source = source.replace(/<\/head>/i, `${notesHtml ? `${notesHtml}\n` : ""}${layoutStyles}\n</head>`);
+    } else if (notesHtml) {
+      source = source.replace(/<\/head>/i, `${notesHtml}\n</head>`);
+    }
+  }
+  if (/<html\b(?![^>]*\blang=)([^>]*)>/i.test(source)) {
+    source = source.replace(/<html\b([^>]*)>/i, `<html lang="hr"$1>`);
+  }
+  if (/<body\b([^>]*)class=(["'])(.*?)\2([^>]*)>/i.test(source)) {
+    source = source.replace(/<body\b([^>]*)class=(["'])(.*?)\2([^>]*)>/i, (match, before, quote, className, after) => {
+      const classes = String(className || "").split(/\s+/).filter(Boolean);
+      if (!classes.includes("safe-nexus-template-body")) {
+        classes.push("safe-nexus-template-body");
+      }
+      return `<body${before}class=${quote}${classes.join(" ")}${quote}${after}>`;
+    });
+  } else if (/<body\b/i.test(source)) {
+    source = source.replace(/<body\b([^>]*)>/i, `<body class="safe-nexus-template-body"$1>`);
+  }
+
+  return source;
+}
+
+function normalizeMammothConvertedWordHtmlFragment(html = "") {
+  return String(html || "")
+    .replace(/<a\b[^>]*\bid=(["'])(?:_?MON_[^"']+|_?GoBack)\1[^>]*>\s*<\/a>/gi, "")
+    .replace(/<p>\s*<\/p>/gi, "<p>&nbsp;</p>")
+    .replace(/<table\b([^>]*)>/gi, (match, attributes = "") => {
+      if (/\bclass\s*=/.test(attributes)) {
+        return `<table${attributes.replace(/\bclass\s*=\s*(["'])(.*?)\1/i, (classMatch, quote, className) => {
+          const nextClassName = String(className || "").split(/\s+/).includes("sn-word-table")
+            ? className
+            : `${className} sn-word-table`.trim();
+          return ` class=${quote}${nextClassName}${quote}`;
+        })}>`;
+      }
+      return `<table class="sn-word-table"${attributes}>`;
+    })
+    .trim();
+}
+
+function buildMammothConvertedWordHtmlDocument({
+  bodyHtml = "",
+  sourceFileName = "",
+  messages = [],
+} = {}) {
+  const safeBody = normalizeMammothConvertedWordHtmlFragment(bodyHtml);
+  const safeTitle = sanitizeGeneratedDocumentFileName(sourceFileName || "word-template", {
+    fallback: "word-template",
+    extension: "html",
+  }).replace(/\.html?$/i, "");
+  return ensureConvertedWordHtmlDocument(
+    `<section class="sn-word-document" data-source="${escapeTemplateHtml(safeTitle)}">
+${safeBody || "<p>&nbsp;</p>"}
+</section>`,
+    {
+      fileName: sourceFileName || "word-template.html",
+      engine: "mammoth",
+      messages,
+    },
+  );
+}
+
+async function resolveConvertedHtmlPath(tempRoot = "", inputBaseName = "", generatedHtmlEntries = []) {
+  const sourceBaseName = inputBaseName.replace(/\.(docx|dotx)$/i, "");
+  const expectedBaseName = sanitizeFileBaseName(sourceBaseName, "").toLowerCase();
+  const expectedNames = [".html", ".htm", ".xhtml"].map((extension) => join(
+    tempRoot,
+    sanitizeGeneratedDocumentFileName(sourceBaseName, {
+      fallback: "word-template",
+      extension: extension.slice(1),
+    }),
+  ));
+
+  for (const expectedPath of expectedNames) {
+    if (await fileExists(expectedPath)) {
+      return expectedPath;
+    }
+  }
+
+  return generatedHtmlEntries.find((candidatePath) => (
+    sanitizeFileBaseName(basename(candidatePath, extname(candidatePath)), "").toLowerCase() === expectedBaseName
+  )) || generatedHtmlEntries.find((candidatePath) => (
+    sanitizeFileBaseName(basename(candidatePath, extname(candidatePath)), "").toLowerCase().includes(expectedBaseName)
+  )) || generatedHtmlEntries[0] || "";
+}
+
+async function convertWordBufferToHtmlWithLibreOffice(buffer = Buffer.alloc(0), {
+  fileName = "word-template.docx",
+} = {}) {
+  const sofficeCommand = await resolveSofficeCommandCached();
+  if (!sofficeCommand) {
+    throw new Error("LibreOffice nije dostupan za Word -> HTML konverziju.");
+  }
+
+  return await enqueueSofficeConversion(async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "taskflow-word-html-"));
+    const officeProfileDir = await getSharedSofficeProfileDir();
+    const inputBaseName = makeUniqueSofficeInputFileName(fileName, 0, new Set());
+    const inputPath = join(tempRoot, inputBaseName);
+
+    try {
+      await writeFile(inputPath, buffer);
+      const commandResult = await runCommand(sofficeCommand, [
+        "--headless",
+        "--nologo",
+        "--nodefault",
+        "--nofirststartwizard",
+        `-env:UserInstallation=${pathToFileURL(officeProfileDir).href}`,
+        "--convert-to",
+        "html",
+        "--outdir",
+        tempRoot,
+        inputPath,
+      ], {
+        cwd: tempRoot,
+        env: buildSofficeRuntimeEnv(tempRoot),
+        timeoutMs: SOFFICE_CONVERSION_TIMEOUT_MS,
+      });
+      const generatedHtmlEntries = (await readdir(tempRoot, { withFileTypes: true }))
+        .filter((entry) => entry.isFile() && [".html", ".htm", ".xhtml"].includes(extname(entry.name).toLowerCase()))
+        .map((entry) => join(tempRoot, entry.name));
+      const outputPath = await resolveConvertedHtmlPath(tempRoot, inputBaseName, generatedHtmlEntries);
+
+      if (!outputPath || !await fileExists(outputPath)) {
+        const directoryEntries = await readdir(tempRoot).catch(() => []);
+        const details = [
+          "LibreOffice nije vratio HTML datoteku.",
+          clean(commandResult.stdout) ? `STDOUT: ${clean(commandResult.stdout)}` : "",
+          clean(commandResult.stderr) ? `STDERR: ${clean(commandResult.stderr)}` : "",
+          directoryEntries.length > 0 ? `Sadrzaj temp direktorija: ${directoryEntries.join(", ")}` : "",
+        ].filter(Boolean).join(" ");
+        throw new Error(details || "LibreOffice nije vratio HTML datoteku.");
+      }
+
+      const rawHtmlBuffer = await readFile(outputPath);
+      const inlinedHtml = await inlineLibreOfficeHtmlAssets(
+        decodeHtmlBuffer(rawHtmlBuffer),
+        outputPath,
+        tempRoot,
+      );
+      return {
+        html: ensureConvertedWordHtmlDocument(inlinedHtml, {
+          fileName,
+          engine: "libreoffice",
+          messages: [],
+        }),
+        engine: "libreoffice",
+        messages: [],
+      };
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true }).catch(() => {});
+    }
+  });
+}
+
+async function convertWordBufferToHtmlWithMammoth(buffer = Buffer.alloc(0), {
+  fileName = "word-template.docx",
+  extraMessages = [],
+} = {}) {
+  const result = await mammoth.convertToHtml(
+    { buffer },
+    {
+      styleMap: WORD_HTML_STYLE_MAP,
+      includeDefaultStyleMap: true,
+      includeEmbeddedStyleMap: true,
+      ignoreEmptyParagraphs: false,
+      convertImage: mammoth.images.inline(async (image) => {
+        const base64 = await image.read("base64");
+        return {
+          src: `data:${image.contentType};base64,${base64}`,
+        };
+      }),
+    },
+  );
+  const mammothMessages = (Array.isArray(result.messages) ? result.messages : [])
+    .map((message) => ({
+      type: clean(message?.type || "info"),
+      message: clean(message?.message || message),
+    }))
+    .filter((message) => message.message);
+  const messages = [...(Array.isArray(extraMessages) ? extraMessages : []), ...mammothMessages];
+  return {
+    html: buildMammothConvertedWordHtmlDocument({
+      bodyHtml: result.value,
+      sourceFileName: fileName,
+      messages,
+    }),
+    engine: "mammoth",
+    messages,
+  };
+}
+
+export async function convertWordBufferToHtmlTemplate(buffer = Buffer.alloc(0), {
+  fileName = "word-template.docx",
+} = {}) {
+  const safeBuffer = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer ?? []);
+  if (safeBuffer.length === 0) {
+    throw new Error("Word dokument je prazan ili nije dostupan.");
+  }
+
+  const safeFileName = fileName || "word-template.docx";
+  try {
+    return await convertWordBufferToHtmlWithLibreOffice(safeBuffer, { fileName: safeFileName });
+  } catch (error) {
+    const fallbackMessage = {
+      type: "warning",
+      message: `LibreOffice layout konverzija nije uspjela, korišten je tekstualni fallback: ${clean(error?.message) || "nepoznata greska"}`,
+    };
+    console.warn("LibreOffice Word -> HTML conversion failed, falling back to mammoth.", error);
+    return await convertWordBufferToHtmlWithMammoth(safeBuffer, {
+      fileName: safeFileName,
+      extraMessages: [fallbackMessage],
+    });
+  }
 }
 
 export function buildHtmlFromTemplateBuffer(templateBuffer, placeholders = {}, options = {}) {

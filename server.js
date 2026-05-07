@@ -6,7 +6,6 @@ import { extname, resolve, sep } from "node:path";
 import { gzipSync } from "node:zlib";
 import JSZip from "jszip";
 import * as XLSX from "xlsx";
-import mammoth from "mammoth";
 
 import {
   canCreateCompanies,
@@ -31,6 +30,7 @@ import {
   buildPdfFromTemplateBuffer,
   buildDocxFromTemplateBuffer,
   convertDocxBuffersToPdfBuffers,
+  convertWordBufferToHtmlTemplate,
   isHtmlTemplateFile,
   isWordTemplateFile,
   mergePdfBuffers,
@@ -103,23 +103,6 @@ const DOCUMENT_TEMPLATE_WORD_HTML_MAX_BYTES = Math.max(
   1024 * 1024,
   Number(process.env.DOCUMENT_TEMPLATE_WORD_HTML_MAX_BYTES || 28 * 1024 * 1024) || 28 * 1024 * 1024,
 );
-const DOCUMENT_TEMPLATE_WORD_HTML_STYLE_MAP = [
-  "p[style-name='Title'] => h1:fresh",
-  "p[style-name='Naslov'] => h1:fresh",
-  "p[style-name='Subtitle'] => p.sn-word-subtitle:fresh",
-  "p[style-name='Podnaslov'] => p.sn-word-subtitle:fresh",
-  "p[style-name='Heading 1'] => h1:fresh",
-  "p[style-name='Naslov 1'] => h1:fresh",
-  "p[style-name='Heading 2'] => h2:fresh",
-  "p[style-name='Naslov 2'] => h2:fresh",
-  "p[style-name='Heading 3'] => h3:fresh",
-  "p[style-name='Naslov 3'] => h3:fresh",
-  "p[style-name='Quote'] => blockquote:fresh",
-  "p[style-name='Citat'] => blockquote:fresh",
-  "r[style-name='Strong'] => strong",
-  "r[style-name='Emphasis'] => em",
-  "r[style-name='Naglašeno'] => em",
-].join("\n");
 const securityContentSecurityPolicy = [
   "default-src 'self'",
   "base-uri 'self'",
@@ -3441,121 +3424,6 @@ function normalizeInputValue(value) {
   return String(value ?? "").trim();
 }
 
-function escapeServerHtml(value = "") {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
-function normalizeConvertedWordHtmlFragment(html = "") {
-  return String(html || "")
-    .replace(/<a\b[^>]*\bid=(["'])(?:_?MON_[^"']+|_?GoBack)\1[^>]*>\s*<\/a>/gi, "")
-    .replace(/<p>\s*<\/p>/gi, "<p>&nbsp;</p>")
-    .replace(/<table\b([^>]*)>/gi, (match, attributes = "") => {
-      if (/\bclass\s*=/.test(attributes)) {
-        return `<table${attributes.replace(/\bclass\s*=\s*(["'])(.*?)\1/i, (classMatch, quote, className) => {
-          const nextClassName = String(className || "").split(/\s+/).includes("sn-word-table")
-            ? className
-            : `${className} sn-word-table`.trim();
-          return ` class=${quote}${nextClassName}${quote}`;
-        })}>`;
-      }
-      return `<table class="sn-word-table"${attributes}>`;
-    })
-    .trim();
-}
-
-function buildConvertedWordHtmlDocument({
-  bodyHtml = "",
-  sourceFileName = "",
-  messages = [],
-} = {}) {
-  const safeBody = normalizeConvertedWordHtmlFragment(bodyHtml);
-  const safeTitle = escapeServerHtml(
-    sanitizeGeneratedDocumentFileName(sourceFileName || "word-template", {
-      fallback: "word-template",
-      extension: "html",
-    }).replace(/\.html?$/i, ""),
-  );
-  const conversionNotes = (Array.isArray(messages) ? messages : [])
-    .map((message) => normalizeInputValue(message?.message || message))
-    .filter(Boolean)
-    .slice(0, 12);
-  const notesHtml = conversionNotes.length > 0
-    ? `<!-- Word conversion notes: ${conversionNotes.map(escapeServerHtml).join(" | ")} -->`
-    : "";
-
-  return `${notesHtml}
-<style>
-  @page { size: A4; margin: 16mm; }
-  .sn-word-document {
-    display: grid;
-    gap: 10px;
-    color: #172033;
-    font-family: Arial, "DejaVu Sans", sans-serif;
-    font-size: 13px;
-    line-height: 1.48;
-  }
-  .sn-word-document h1,
-  .sn-word-document h2,
-  .sn-word-document h3 {
-    margin: 12px 0 6px;
-    line-height: 1.22;
-    color: #111827;
-  }
-  .sn-word-document h1 { font-size: 24px; }
-  .sn-word-document h2 { font-size: 18px; }
-  .sn-word-document h3 { font-size: 15px; }
-  .sn-word-document p { margin: 0 0 7px; }
-  .sn-word-subtitle { color: #475569; font-size: 14px; }
-  .sn-word-document ul,
-  .sn-word-document ol { margin: 4px 0 9px 22px; padding: 0; }
-  .sn-word-document li { margin: 2px 0; }
-  .sn-word-document img {
-    max-width: 100%;
-    height: auto;
-    object-fit: contain;
-  }
-  .sn-word-document blockquote {
-    margin: 8px 0;
-    padding: 8px 12px;
-    border-left: 3px solid #94a3b8;
-    color: #475569;
-    background: #f8fafc;
-  }
-  .sn-word-table {
-    width: 100%;
-    border-collapse: collapse;
-    table-layout: fixed;
-    margin: 8px 0 12px;
-  }
-  .sn-word-table th,
-  .sn-word-table td {
-    border: 1px solid #cbd5e1;
-    padding: 6px 8px;
-    vertical-align: top;
-    word-break: break-word;
-  }
-  .sn-word-table th {
-    background: #eef5f2;
-    font-weight: 700;
-  }
-  .sn-word-page-break {
-    break-before: page;
-    page-break-before: always;
-  }
-  @media print {
-    .sn-word-document { font-size: 12px; }
-  }
-</style>
-<section class="sn-word-document" data-source="${safeTitle}">
-${safeBody || "<p>&nbsp;</p>"}
-</section>`;
-}
-
 async function convertWordTemplateReferenceToHtml(referenceDocument = {}) {
   if (!referenceDocument || typeof referenceDocument !== "object") {
     throw new Error("Priloži Word dokument za konverziju.");
@@ -3572,34 +3440,9 @@ async function convertWordTemplateReferenceToHtml(referenceDocument = {}) {
     throw new Error(`Word dokument je prevelik za konverziju (${Math.round(DOCUMENT_TEMPLATE_WORD_HTML_MAX_BYTES / 1024 / 1024)} MB max).`);
   }
 
-  const result = await mammoth.convertToHtml(
-    { buffer: storedDocument.buffer },
-    {
-      styleMap: DOCUMENT_TEMPLATE_WORD_HTML_STYLE_MAP,
-      includeDefaultStyleMap: true,
-      includeEmbeddedStyleMap: true,
-      ignoreEmptyParagraphs: false,
-      convertImage: mammoth.images.inline(async (image) => {
-        const base64 = await image.read("base64");
-        return {
-          src: `data:${image.contentType};base64,${base64}`,
-        };
-      }),
-    },
-  );
-  const messages = Array.isArray(result.messages) ? result.messages : [];
-  const html = buildConvertedWordHtmlDocument({
-    bodyHtml: result.value,
-    sourceFileName: referenceDocument.fileName || referenceDocument.name || "word-template.docx",
-    messages,
+  return await convertWordBufferToHtmlTemplate(storedDocument.buffer, {
+    fileName: referenceDocument.fileName || referenceDocument.name || "word-template.docx",
   });
-  return {
-    html,
-    messages: messages.map((message) => ({
-      type: normalizeInputValue(message?.type || "info"),
-      message: normalizeInputValue(message?.message || message),
-    })).filter((message) => message.message),
-  };
 }
 
 function normalizeLookupKey(value = "") {
@@ -6839,6 +6682,7 @@ async function handleApiRequest(request, response, url) {
           html: result.html,
           fileName,
           sourceFileName: normalizeInputValue(referenceDocument.fileName || referenceDocument.name),
+          engine: result.engine || "word-html",
           messages: result.messages,
         });
       } catch (error) {
