@@ -9,6 +9,7 @@ import line from "../blocks/line.js";
 import spacer from "../blocks/spacer.js";
 import divider from "../blocks/divider.js";
 import table from "../blocks/table.js";
+import grid from "../blocks/grid.js";
 import badge from "../blocks/badge.js";
 import status from "../blocks/status.js";
 import input from "../blocks/input.js";
@@ -38,6 +39,7 @@ const definitions = [
   spacer,
   divider,
   table,
+  grid,
   badge,
   status,
   input,

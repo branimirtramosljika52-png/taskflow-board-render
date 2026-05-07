@@ -14,6 +14,7 @@ const baseLayouts = {
   spacer: { x: 72, y: 240, width: 300, height: 32, rotation: 0 },
   divider: { x: 72, y: 240, width: 520, height: 8, rotation: 0 },
   table: { x: 72, y: 280, width: 620, height: 220, rotation: 0 },
+  grid: { x: 72, y: 280, width: 520, height: 240, rotation: 0 },
   badge: { x: 72, y: 250, width: 150, height: 34, rotation: 0 },
   status: { x: 246, y: 250, width: 170, height: 38, rotation: 0 },
   input: { x: 72, y: 310, width: 240, height: 42, rotation: 0 },
@@ -44,6 +45,17 @@ const baseStyles = {
   spacer: { backgroundColor: "transparent" },
   divider: { backgroundColor: "#cbd5e1" },
   table: { fontFamily: "Arial", fontSize: "11px", color: "#172033", borderColor: "#cbd5e1" },
+  grid: {
+    fontFamily: "Arial",
+    fontSize: "11px",
+    color: "#172033",
+    backgroundColor: "#ffffff",
+    borderColor: "#cbd5e1",
+    borderWidth: "0",
+    borderStyle: "solid",
+    gap: "0px",
+    padding: "0",
+  },
   badge: { backgroundColor: "#eaf2ff", color: "#1d4ed8", borderRadius: "999px", fontSize: "12px", fontWeight: "700", textAlign: "center" },
   status: { backgroundColor: "#ecfdf5", color: "#047857", borderRadius: "999px", fontSize: "12px", fontWeight: "700", textAlign: "center" },
   input: { backgroundColor: "#ffffff", color: "#172033", borderColor: "#cbd5e1", borderWidth: "1px", borderRadius: "6px", fontSize: "12px" },
@@ -80,6 +92,13 @@ const defaultProps = {
       ["2", "Napomena", ""],
     ],
     header: true,
+  },
+  grid: {
+    rows: 4,
+    columns: 4,
+    showBorders: true,
+    cellBackgroundColor: "#ffffff",
+    cells: [],
   },
   badge: { content: "Oznaka" },
   status: { content: "Status" },
@@ -155,6 +174,91 @@ function renderTable(block, context) {
   return table;
 }
 
+function normalizeGridDimension(value, fallback) {
+  return Math.max(1, Math.min(24, Math.round(Number(value) || fallback)));
+}
+
+function normalizeGridCell(cell = {}) {
+  if (typeof cell === "string") {
+    return { content: cell };
+  }
+  return {
+    content: String(cell?.content ?? ""),
+    backgroundColor: String(cell?.backgroundColor ?? ""),
+    color: String(cell?.color ?? ""),
+    textAlign: String(cell?.textAlign ?? ""),
+  };
+}
+
+function normalizeGridProps(props = {}) {
+  const rows = normalizeGridDimension(props.rows, defaultProps.grid.rows);
+  const columns = normalizeGridDimension(props.columns, defaultProps.grid.columns);
+  const rawCells = Array.isArray(props.cells) ? props.cells.map(normalizeGridCell) : [];
+  const cells = Array.from({ length: rows * columns }, (_, index) => rawCells[index] || normalizeGridCell());
+  return {
+    rows,
+    columns,
+    showBorders: props.showBorders !== false,
+    cellBackgroundColor: String(props.cellBackgroundColor || defaultProps.grid.cellBackgroundColor),
+    cells,
+  };
+}
+
+function gridCellStyle(block, props, cell) {
+  const preferredBorderWidth = String(block.styles?.borderWidth || "").trim();
+  const borderWidth = props.showBorders
+    ? (preferredBorderWidth && preferredBorderWidth !== "0" ? preferredBorderWidth : "1px")
+    : "0";
+  return {
+    backgroundColor: cell.backgroundColor || props.cellBackgroundColor || "transparent",
+    color: cell.color || block.styles?.color || "#172033",
+    textAlign: cell.textAlign || block.styles?.textAlign || "left",
+    borderColor: block.styles?.borderColor || "#cbd5e1",
+    borderWidth,
+    borderStyle: block.styles?.borderStyle || "solid",
+  };
+}
+
+function renderGrid(block, context) {
+  const props = normalizeGridProps(block.props);
+  const grid = el("div", {
+    className: "sn-builder-layout-grid",
+    style: {
+      gridTemplateColumns: `repeat(${props.columns}, minmax(0, 1fr))`,
+      gridTemplateRows: `repeat(${props.rows}, minmax(0, 1fr))`,
+      gap: block.styles?.gap || "0px",
+    },
+  });
+
+  props.cells.forEach((cell, index) => {
+    const node = el("div", {
+      className: "sn-builder-grid-cell",
+      contenteditable: "true",
+      spellcheck: "false",
+      style: gridCellStyle(block, props, cell),
+    }, cell.content || "");
+    node.addEventListener("blur", () => {
+      const nextCells = props.cells.map((entry) => ({ ...entry }));
+      nextCells[index] = {
+        ...nextCells[index],
+        content: node.innerText,
+      };
+      context.updateBlock(block.id, {
+        props: {
+          ...block.props,
+          rows: props.rows,
+          columns: props.columns,
+          cells: nextCells,
+        },
+      }, { history: false });
+      context.commitHistory();
+    });
+    grid.append(node);
+  });
+
+  return grid;
+}
+
 function renderByType(block, context) {
   const type = block.type;
   if (type === "heading") return editableText(block, "content", "NASLOV", context, "h1");
@@ -171,6 +275,7 @@ function renderByType(block, context) {
   }
   if (type === "line" || type === "divider" || type === "spacer" || type === "pagebreak") return el("div", { className: `sn-builder-${type}` });
   if (type === "table") return renderTable(block, context);
+  if (type === "grid") return renderGrid(block, context);
   if (type === "badge" || type === "status" || type === "stamp" || type === "icon") return editableText(block, "content", block.props?.icon || block.props?.content || type, context);
   if (["input", "textarea", "select", "date"].includes(type)) {
     return el("div", { className: "sn-builder-form-line" }, [
@@ -214,6 +319,30 @@ function tableToHtml(block) {
   }).join("")}</tr>`).join("")}</table>`;
 }
 
+function gridToHtml(block) {
+  const props = normalizeGridProps(block.props);
+  const gridStyle = inlineStyles({
+    display: "grid",
+    gridTemplateColumns: `repeat(${props.columns}, minmax(0, 1fr))`,
+    gridTemplateRows: `repeat(${props.rows}, minmax(0, 1fr))`,
+    gap: block.styles?.gap || "0px",
+    width: "100%",
+    height: "100%",
+  });
+  const cells = props.cells.map((cell) => {
+    const style = inlineStyles({
+      ...gridCellStyle(block, props, cell),
+      padding: block.styles?.padding || "6px",
+      minWidth: "0",
+      minHeight: "0",
+      overflow: "hidden",
+      whiteSpace: "pre-wrap",
+    });
+    return `<div class="sn-report-grid-cell" style="${style}">${escapeHtml(cell.content || "").replace(/\n/g, "<br>")}</div>`;
+  }).join("");
+  return `<div class="sn-report-layout-grid" style="${gridStyle}">${cells}</div>`;
+}
+
 function contentToHtml(block) {
   const type = block.type;
   if (type === "heading") return `<h1>${escapeHtml(block.props?.content || "NASLOV")}</h1>`;
@@ -223,6 +352,7 @@ function contentToHtml(block) {
   if (type === "line" || type === "divider") return "<hr>";
   if (type === "spacer") return "";
   if (type === "table") return tableToHtml(block);
+  if (type === "grid") return gridToHtml(block);
   if (type === "badge" || type === "status" || type === "stamp" || type === "icon") return `<span>${escapeHtml(block.props?.content || block.props?.icon || type)}</span>`;
   if (["input", "textarea", "select", "date"].includes(type)) return `<div><span>${escapeHtml(block.props?.label || "")}</span><strong>${escapeHtml(block.props?.value || "")}</strong></div>`;
   if (type === "checkbox" || type === "radio") return `<div>${block.props?.checked ? "[x]" : "[ ]"} ${escapeHtml(block.props?.label || "")}</div>`;

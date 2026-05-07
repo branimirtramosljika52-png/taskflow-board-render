@@ -14,11 +14,11 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260507k" />
+    <link rel="stylesheet" href="/styles.css?v=20260507l" />
     <link rel="stylesheet" href="/src/styles/variables.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/reset.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/builder.css?v=20260507a" />
-    <link rel="stylesheet" href="/src/styles/blocks.css?v=20260507a" />
+    <link rel="stylesheet" href="/src/styles/blocks.css?v=20260507b" />
     <link rel="stylesheet" href="/src/styles/editor.css?v=20260507a" />
   </head>
   <body class="auth-page">
@@ -4660,6 +4660,30 @@
             </section>
 
             <section id="settings-module" class="settings-module" hidden>
+              <section class="panel settings-notifications-panel settings-brand-panel">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Brand</p>
+                    <h3>Logo tvrtke</h3>
+                  </div>
+                </div>
+                <input id="settings-organization-logo-data-url" type="hidden" />
+                <input id="settings-organization-logo-file" type="file" accept="image/*" hidden />
+                <div class="settings-brand-layout">
+                  <div class="company-logo-upload-row">
+                    <div id="settings-organization-logo-preview" class="company-logo-avatar">SN</div>
+                    <div class="settings-brand-copy">
+                      <strong id="settings-organization-name">Aktivna organizacija</strong>
+                      <span>Ovaj logo ide u HTML predloške i PDF export kao logo tvoje tvrtke.</span>
+                    </div>
+                  </div>
+                  <div class="settings-brand-actions">
+                    <button id="settings-organization-logo-upload" type="button" class="ghost-button">Upload logo</button>
+                    <button id="settings-organization-logo-clear" type="button" class="ghost-button danger-ghost-button" hidden>Makni logo</button>
+                  </div>
+                </div>
+                <p id="settings-organization-feedback" class="form-error" aria-live="polite"></p>
+              </section>
               <section class="panel settings-notifications-panel">
                 <div class="section-heading offers-section-heading">
                   <div>
@@ -7955,6 +7979,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260507l"></script>
+    <script type="module" src="/src/main.js?v=20260507m"></script>
   </body>
 </html>

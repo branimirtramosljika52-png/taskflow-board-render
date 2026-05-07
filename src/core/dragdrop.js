@@ -119,8 +119,10 @@ export function attachDragDrop(root, store, options = {}) {
         const state = store.getState();
         const point = getPointInPage(event, page, state.zoom);
         const token = session.token || options.getTokenOptions?.()[0]?.value || "";
+        const defaultProps = options.getDefaultPropsForType?.(session.type) || {};
+        const explicitProps = session.type === "text" && token ? { content: token } : {};
         const block = createBlock(session.type, {
-          props: session.type === "text" && token ? { content: token } : {},
+          props: { ...defaultProps, ...explicitProps },
           layout: {
             x: Math.max(0, Math.min(A4_WIDTH_PX - 80, point.x - 60)),
             y: Math.max(0, Math.min(A4_HEIGHT_PX - 32, point.y - 20)),

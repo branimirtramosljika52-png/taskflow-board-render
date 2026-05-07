@@ -2928,6 +2928,56 @@ body.is-profile-modal-open {
   padding: 14px 16px;
 }
 
+.settings-brand-panel {
+  gap: 14px;
+}
+
+.settings-brand-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid rgba(47, 104, 84, 0.14);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.settings-brand-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.settings-brand-copy strong {
+  color: #172033;
+  font-size: 0.94rem;
+}
+
+.settings-brand-copy span {
+  color: #5c6a86;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.settings-brand-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.settings-brand-actions .ghost-button {
+  min-height: 36px;
+  white-space: nowrap;
+}
+
+.danger-ghost-button {
+  border-color: rgba(185, 28, 28, 0.26);
+  color: #a93131;
+  background: rgba(254, 242, 242, 0.76);
+}
+
 .settings-notification-stack {
   display: grid;
   gap: 12px;
@@ -2993,6 +3043,14 @@ body.is-profile-modal-open {
 @media (max-width: 900px) {
   .settings-notification-inline {
     grid-template-columns: 1fr;
+  }
+
+  .settings-brand-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-brand-actions {
+    justify-content: flex-start;
   }
 }
 

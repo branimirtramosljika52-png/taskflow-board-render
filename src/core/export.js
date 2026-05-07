@@ -69,6 +69,8 @@ export function buildBuilderHtmlFromDocument(document = [], options = {}) {
   .sn-report-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
   .sn-report-table th, .sn-report-table td { border: 1px solid #cbd5e1; padding: 6px 8px; vertical-align: top; }
   .sn-report-table th { background: #f1f5f9; font-weight: 700; }
+  .sn-report-layout-grid { min-width: 0; min-height: 0; }
+  .sn-report-grid-cell { min-width: 0; min-height: 0; }
   .sn-report-signature { display: grid; align-content: end; gap: 8px; height: 100%; text-align: center; }
   .sn-report-signature em { display: block; border-top: 1px solid #64748b; min-height: 1px; }
   .sn-report-chart { display: flex; gap: 8px; align-items: end; height: 100%; padding: 12px; }

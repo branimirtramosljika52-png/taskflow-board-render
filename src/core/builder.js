@@ -18,6 +18,8 @@ import { getTemplateById } from "../ui/templates.js";
 import { el, clear } from "../utils/dom.js";
 import { A4_HEIGHT_PX, A4_WIDTH_PX } from "../utils/math.js";
 
+const DOCUMENT_HEADER_OFFSET_PX = 151;
+
 function triggerTextDownload(text = "", fileName = "template.html") {
   const blob = new Blob([text], { type: "text/html;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -30,16 +32,48 @@ function triggerTextDownload(text = "", fileName = "template.html") {
   window.setTimeout(() => URL.revokeObjectURL(url), 500);
 }
 
-function defaultDocument() {
+function logoProps(logoDataUrl = "") {
+  return {
+    src: String(logoDataUrl || "").trim(),
+    alt: "Logo tvrtke",
+    autoLogo: true,
+  };
+}
+
+function applyDocumentBranding(document = [], logoDataUrl = "", options = {}) {
+  const logo = String(logoDataUrl || "").trim();
+  if (!Array.isArray(document)) {
+    return [];
+  }
+
+  const force = Boolean(options.force);
+  const decorate = (block = {}) => {
+    const next = {
+      ...block,
+      props: { ...(block.props || {}) },
+      styles: { ...(block.styles || {}) },
+      layout: { ...(block.layout || {}) },
+      children: Array.isArray(block.children) ? block.children.map(decorate) : [],
+    };
+    if (next.type === "logo" && (force || next.props.autoLogo || !next.props.src)) {
+      next.props = { ...next.props, ...logoProps(logo) };
+    }
+    return next;
+  };
+
+  return document.map(decorate);
+}
+
+function defaultDocument(logoDataUrl = "") {
   return [
     createBlock("page", {
       layout: { width: A4_WIDTH_PX, height: A4_HEIGHT_PX },
       children: [
-        createBlock("logo", { layout: { x: 56, y: 44, width: 150, height: 48 } }),
-        createBlock("heading", { props: { content: "NASLOV DOKUMENTA" }, layout: { x: 220, y: 52, width: 360, height: 44 }, styles: { textAlign: "center", fontSize: "22px" } }),
-        createBlock("line", { layout: { x: 56, y: 116, width: 682, height: 3 }, styles: { backgroundColor: "#006fc0" } }),
-        createBlock("text", { props: { content: "Tvrtka: {{TVRTKA}}\nLokacija: {{LOKACIJA}}\nRadni nalog: {{BROJ_RADNOG_NALOGA}}" }, layout: { x: 56, y: 148, width: 360, height: 92 } }),
-        createBlock("table", { layout: { x: 56, y: 280, width: 682, height: 260 } }),
+        createBlock("logo", { props: logoProps(logoDataUrl), layout: { x: 56, y: DOCUMENT_HEADER_OFFSET_PX, width: 150, height: 48 } }),
+        createBlock("heading", { props: { content: "NASLOV DOKUMENTA" }, layout: { x: 220, y: DOCUMENT_HEADER_OFFSET_PX + 8, width: 360, height: 44 }, styles: { textAlign: "center", fontSize: "22px" } }),
+        createBlock("line", { layout: { x: 56, y: DOCUMENT_HEADER_OFFSET_PX + 72, width: 682, height: 3 }, styles: { backgroundColor: "#006fc0" } }),
+        createBlock("text", { props: { content: "Tvrtka: {{TVRTKA}}\nLokacija: {{LOKACIJA}}\nRadni nalog: {{BROJ_RADNOG_NALOGA}}" }, layout: { x: 56, y: DOCUMENT_HEADER_OFFSET_PX + 104, width: 360, height: 92 } }),
+        createBlock("grid", { layout: { x: 56, y: DOCUMENT_HEADER_OFFSET_PX + 230, width: 682, height: 220 } }),
         createBlock("signature", { layout: { x: 440, y: 912, width: 260, height: 110 } }),
       ],
     }),
@@ -114,6 +148,8 @@ export function createLegacyBlocksFromBuilderDocument(document = []) {
         legacy.push({ id: block.id, type: "signature", leftText: block.props?.label || "Potpis", rightText: block.props?.name || "", align: block.styles?.textAlign || "left" });
       } else if (block.type === "table") {
         legacy.push({ id: block.id, type: "table", title: block.props?.title || "Tablica", token: "{{TABLE}}", align: block.styles?.textAlign || "left" });
+      } else if (block.type === "grid") {
+        legacy.push({ id: block.id, type: "table", title: "Grid", token: "{{GRID}}", align: block.styles?.textAlign || "left" });
       } else {
         legacy.push({ id: block.id, type: "paragraph", text: block.props?.content || block.props?.value || block.props?.label || block.type, align: block.styles?.textAlign || "left" });
       }
@@ -147,6 +183,7 @@ export function createDocumentReportBuilder({
   onChange = null,
   onMessage = null,
   onExportPdf = null,
+  getLogoDataUrl = () => "",
 } = {}) {
   if (!(mount instanceof HTMLElement)) {
     throw new Error("Builder mount nije dostupan.");
@@ -170,8 +207,12 @@ export function createDocumentReportBuilder({
   root.append(topbar, sidebar, workspace, inspector);
   mount.replaceChildren(root);
 
-  const store = createBuilderState({ document: defaultDocument() });
+  const store = createBuilderState({ document: defaultDocument(getLogoDataUrl()) });
   const canvas = createCanvas(canvasWrap, store, { getTokenOptions });
+
+  function getDefaultPropsForType(type = "") {
+    return type === "logo" ? logoProps(getLogoDataUrl()) : {};
+  }
 
   function emitChange() {
     const state = store.getState();
@@ -187,8 +228,9 @@ export function createDocumentReportBuilder({
     const page = state.document[Math.max(0, state.activePage - 1)] || state.document[0];
     const count = (page?.children || []).length;
     const normalizedType = mapLegacyType(type);
+    const explicitProps = normalizedType === "text" && token ? { content: token } : {};
     store.addBlock(normalizedType, {
-      props: normalizedType === "text" && token ? { content: token } : {},
+      props: { ...getDefaultPropsForType(normalizedType), ...explicitProps },
       layout: {
         x: 72 + ((count % 4) * 24),
         y: 112 + ((count % 12) * 42),
@@ -221,7 +263,7 @@ export function createDocumentReportBuilder({
       const template = getTemplateById(templateId);
       store.replaceState({
         ...store.getState(),
-        document: template.createDocument(),
+        document: applyDocumentBranding(template.createDocument(), getLogoDataUrl()),
         selectedIds: [],
         activePage: 1,
       }, "template");
@@ -231,7 +273,7 @@ export function createDocumentReportBuilder({
   renderPropertiesPanel(properties, store);
   renderLayersPanel(layers, store);
   attachSelection(canvas, store);
-  attachDragDrop(root, store, { getTokenOptions });
+  attachDragDrop(root, store, { getTokenOptions, getDefaultPropsForType });
   attachResize(root, store);
   attachKeyboard(root, store);
   attachContextMenu(root, store);
@@ -261,17 +303,25 @@ export function createDocumentReportBuilder({
         onAddBlock: addBlock,
         onLoadTemplate: (templateId) => {
           const template = getTemplateById(templateId);
-          store.replaceState({ ...store.getState(), document: template.createDocument(), selectedIds: [], activePage: 1 }, "template");
+          store.replaceState({ ...store.getState(), document: applyDocumentBranding(template.createDocument(), getLogoDataUrl()), selectedIds: [], activePage: 1 }, "template");
         },
       });
     },
     loadDocument(document = []) {
-      store.replaceState({ ...store.getState(), document: Array.isArray(document) && document.length ? document : defaultDocument(), selectedIds: [] }, "load");
+      const nextDocument = Array.isArray(document) && document.length ? document : defaultDocument(getLogoDataUrl());
+      store.replaceState({ ...store.getState(), document: applyDocumentBranding(nextDocument, getLogoDataUrl()), selectedIds: [] }, "load");
     },
     toHtml() {
       return buildBuilderHtmlFromDocument(store.getState().document);
     },
     addBlock,
+    refreshBranding(options = {}) {
+      store.replaceState({
+        ...store.getState(),
+        document: applyDocumentBranding(store.getState().document, getLogoDataUrl(), { force: Boolean(options.force) }),
+      }, "branding");
+      emitChange();
+    },
     deleteSelection() {
       store.removeBlock();
     },

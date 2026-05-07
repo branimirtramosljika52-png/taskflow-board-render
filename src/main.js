@@ -2777,6 +2777,14 @@ const settingsVehicleTireRepeatDaysInput = document.querySelector("#settings-veh
 const settingsPeriodicsCriticalDaysInput = document.querySelector("#settings-periodics-critical-days");
 const settingsPeriodicsWarningDaysInput = document.querySelector("#settings-periodics-warning-days");
 const settingsSaveAllButton = document.querySelector("#settings-save-all");
+const settingsOrganizationLogoDataUrlInput = document.querySelector("#settings-organization-logo-data-url");
+const settingsOrganizationLogoFileInput = document.querySelector("#settings-organization-logo-file");
+const settingsOrganizationLogoPreview = document.querySelector("#settings-organization-logo-preview");
+const settingsOrganizationLogoUploadButton = document.querySelector("#settings-organization-logo-upload");
+const settingsOrganizationLogoClearButton = document.querySelector("#settings-organization-logo-clear");
+const settingsOrganizationName = document.querySelector("#settings-organization-name");
+const settingsOrganizationFeedback = document.querySelector("#settings-organization-feedback");
+let settingsOrganizationLogoDraftTouched = false;
 const settingsNotificationsFeedback = document.querySelector("#settings-notifications-feedback");
 const settingsSafetyAuthorizationNotificationsFeedback = document.querySelector("#settings-safety-authorization-notifications-feedback");
 const settingsAbsenceNotificationsFeedback = document.querySelector("#settings-absence-notifications-feedback");
@@ -7580,6 +7588,7 @@ function applySnapshot(payload) {
   setConnectionStatus();
   setSyncError("");
   render();
+  syncDocumentTemplateHtmlBuilderBranding();
   ensureChatContext();
 }
 
@@ -25017,6 +25026,48 @@ function renderDocumentsLibraryFolders(model = buildDocumentsLibraryViewModel())
   documentsFolderList.replaceChildren(...nodes);
 }
 
+function getActiveOrganization() {
+  const activeId = String(state.activeOrganizationId || "").trim();
+  return state.organizations.find((item) => String(item.id) === activeId)
+    ?? state.organizations[0]
+    ?? null;
+}
+
+function syncSettingsOrganizationLogo() {
+  const organization = getActiveOrganization();
+  const canManageSettings = getCanManageSettings();
+  const logoDataUrl = organization?.logoDataUrl || "";
+  const previewLogoDataUrl = settingsOrganizationLogoDraftTouched
+    ? (settingsOrganizationLogoDataUrlInput?.value || "")
+    : logoDataUrl;
+
+  if (settingsOrganizationLogoDataUrlInput && !settingsOrganizationLogoDraftTouched && document.activeElement !== settingsOrganizationLogoDataUrlInput) {
+    settingsOrganizationLogoDataUrlInput.value = logoDataUrl;
+  }
+
+  if (settingsOrganizationName) {
+    settingsOrganizationName.textContent = organization?.name || "Aktivna organizacija";
+  }
+
+  renderCompanyLogo(settingsOrganizationLogoPreview, {
+    name: organization?.name || "Tvrtka",
+    logoDataUrl: previewLogoDataUrl,
+  });
+
+  if (settingsOrganizationLogoUploadButton) {
+    settingsOrganizationLogoUploadButton.disabled = !organization || !canManageSettings;
+  }
+
+  if (settingsOrganizationLogoClearButton) {
+    settingsOrganizationLogoClearButton.disabled = !organization || !canManageSettings;
+    settingsOrganizationLogoClearButton.hidden = !previewLogoDataUrl;
+  }
+
+  if (settingsOrganizationLogoFileInput) {
+    settingsOrganizationLogoFileInput.disabled = !organization || !canManageSettings;
+  }
+}
+
 function renderSettingsModule() {
   if (!settingsModule) {
     return;
@@ -25028,6 +25079,8 @@ function renderSettingsModule() {
   const absenceNotificationSettings = getAbsenceNotificationSettings();
   const vehicleNotificationSettings = getVehicleNotificationSettings();
   const periodicsVisualSettings = getPeriodicsVisualSettings();
+
+  syncSettingsOrganizationLogo();
 
   if (settingsMeasurementLeadDaysInput) {
     if (document.activeElement !== settingsMeasurementLeadDaysInput) {
@@ -25119,6 +25172,7 @@ function renderSettingsModule() {
   }
 
   [
+    settingsOrganizationFeedback,
     settingsNotificationsFeedback,
     settingsSafetyAuthorizationNotificationsFeedback,
     settingsAbsenceNotificationsFeedback,
@@ -25129,12 +25183,49 @@ function renderSettingsModule() {
       return;
     }
 
+    const permissionMessage = "Samo admin moze mijenjati ove postavke.";
     if (!canManageSettings) {
-      feedbackNode.textContent = "Samo admin moze mijenjati postavke slanja.";
-    } else if (feedbackNode.textContent === "Samo admin moze mijenjati postavke slanja.") {
+      feedbackNode.textContent = permissionMessage;
+    } else if (feedbackNode.textContent === permissionMessage || feedbackNode.textContent === "Samo admin moze mijenjati postavke slanja.") {
       feedbackNode.textContent = "";
     }
   });
+}
+
+async function saveOrganizationBrandSettings(options = {}) {
+  const successMessage = typeof options.successMessage === "string" && options.successMessage.trim()
+    ? options.successMessage.trim()
+    : "Logo tvrtke je spremljen.";
+  const organization = getActiveOrganization();
+
+  if (!getCanManageSettings()) {
+    setInlineMessage(settingsOrganizationFeedback, "Nemate pravo spremati logo tvrtke.");
+    return false;
+  }
+
+  if (!organization?.id) {
+    setInlineMessage(settingsOrganizationFeedback, "Odaberi organizaciju prije spremanja loga.");
+    return false;
+  }
+
+  const logoDataUrl = settingsOrganizationLogoDataUrlInput?.value || "";
+  const success = await runMutation(() => apiRequest(`/organizations/${organization.id}`, {
+    method: "PATCH",
+    body: { logoDataUrl },
+  }), settingsOrganizationFeedback);
+
+  if (success) {
+    const refreshedOrganization = state.organizations.find((item) => String(item.id) === String(organization.id));
+    if (settingsOrganizationLogoDataUrlInput) {
+      settingsOrganizationLogoDataUrlInput.value = refreshedOrganization?.logoDataUrl || logoDataUrl;
+    }
+    settingsOrganizationLogoDraftTouched = false;
+    syncSettingsOrganizationLogo();
+    syncDocumentTemplateHtmlBuilderBranding();
+    setInlineMessage(settingsOrganizationFeedback, successMessage, "success");
+  }
+
+  return success;
 }
 
 async function saveMeasurementEquipmentNotificationSettings(options = {}) {
@@ -25427,6 +25518,9 @@ async function saveCompanyRolePermissions(options = {}) {
 }
 
 async function saveAllSettingsBlocks() {
+  const brandSaved = await saveOrganizationBrandSettings({
+    successMessage: "Sve postavke su spremljene.",
+  });
   const measurementSaved = await saveMeasurementEquipmentNotificationSettings({
     successMessage: "Sve postavke su spremljene.",
   });
@@ -25442,7 +25536,7 @@ async function saveAllSettingsBlocks() {
   const periodicsSaved = await savePeriodicsVisualSettings({
     successMessage: "Sve postavke su spremljene.",
   });
-  return measurementSaved && safetyAuthorizationSaved && absenceSaved && vehicleSaved && periodicsSaved;
+  return brandSaved && measurementSaved && safetyAuthorizationSaved && absenceSaved && vehicleSaved && periodicsSaved;
 }
 
 function formatDocumentsRefreshTimestamp(value = "") {
@@ -41730,6 +41824,23 @@ function getDocumentTemplateHtmlBuilderFallbackToken() {
   return getDocumentTemplateHtmlBuilderTokenOptions()[0]?.value || "{{DOCUMENT_TITLE}}";
 }
 
+function getDocumentTemplateBuilderLogoDataUrl() {
+  if (settingsOrganizationLogoDraftTouched && settingsOrganizationLogoDataUrlInput) {
+    return settingsOrganizationLogoDataUrlInput.value || "";
+  }
+
+  return getActiveOrganization()?.logoDataUrl
+    || "";
+}
+
+function syncDocumentTemplateHtmlBuilderBranding({ force = false } = {}) {
+  if (!documentTemplateHtmlBuilderEngine?.refreshBranding) {
+    return;
+  }
+
+  documentTemplateHtmlBuilderEngine.refreshBranding({ force });
+}
+
 function ensureDocumentTemplateHtmlBuilderEngine() {
   if (documentTemplateHtmlBuilderEngine) {
     return documentTemplateHtmlBuilderEngine;
@@ -41744,6 +41855,7 @@ function ensureDocumentTemplateHtmlBuilderEngine() {
     legacyToolbox: documentTemplateHtmlBuilderToolbox,
     legacyActions,
     getTokenOptions: () => getDocumentTemplateHtmlBuilderTokenOptions(),
+    getLogoDataUrl: () => getDocumentTemplateBuilderLogoDataUrl(),
     onMessage: (message, options) => setDocumentTemplateMessage(message, options),
     onChange: ({ document: builderDocument, html }) => {
       documentTemplateHtmlBuilderBlocks = createLegacyBlocksFromBuilderDocument(builderDocument);
@@ -94397,6 +94509,52 @@ settingsSaveAllButton?.addEventListener("click", () => {
   void saveAllSettingsBlocks();
 });
 
+settingsOrganizationLogoUploadButton?.addEventListener("click", () => {
+  settingsOrganizationLogoFileInput?.click();
+});
+
+settingsOrganizationLogoClearButton?.addEventListener("click", () => {
+  settingsOrganizationLogoDraftTouched = true;
+  if (settingsOrganizationLogoDataUrlInput) {
+    settingsOrganizationLogoDataUrlInput.value = "";
+  }
+  if (settingsOrganizationLogoFileInput) {
+    settingsOrganizationLogoFileInput.value = "";
+  }
+  syncSettingsOrganizationLogo();
+  syncDocumentTemplateHtmlBuilderBranding();
+});
+
+settingsOrganizationLogoFileInput?.addEventListener("change", () => {
+  const file = settingsOrganizationLogoFileInput.files?.[0];
+
+  if (!file) {
+    return;
+  }
+
+  if (file.size > 2 * 1024 * 1024) {
+    setInlineMessage(settingsOrganizationFeedback, "Logo mora biti manji od 2 MB.");
+    settingsOrganizationLogoFileInput.value = "";
+    return;
+  }
+
+  void readAvatarFileAsDataUrl(file).then((logoDataUrl) => {
+    settingsOrganizationLogoDraftTouched = true;
+    if (settingsOrganizationLogoDataUrlInput) {
+      settingsOrganizationLogoDataUrlInput.value = logoDataUrl;
+    }
+    setInlineMessage(settingsOrganizationFeedback, "");
+    syncSettingsOrganizationLogo();
+    syncDocumentTemplateHtmlBuilderBranding();
+  }).catch((error) => {
+    setInlineMessage(settingsOrganizationFeedback, error.message);
+  }).finally(() => {
+    if (settingsOrganizationLogoFileInput) {
+      settingsOrganizationLogoFileInput.value = "";
+    }
+  });
+});
+
 settingsMeasurementLeadDaysInput?.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     event.preventDefault();
@@ -96878,6 +97036,7 @@ function runLogoutFlow(message = "") {
 
 organizationSwitcher?.addEventListener("change", () => {
   state.activeOrganizationId = organizationSwitcher.value;
+  settingsOrganizationLogoDraftTouched = false;
   state.chat.loaded = false;
   state.chat.lastOrganizationId = "";
   state.chat.activeConversationId = "";

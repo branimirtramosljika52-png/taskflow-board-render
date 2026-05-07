@@ -33,10 +33,76 @@ function colorInput(value, onInput) {
   return control;
 }
 
+function checkboxInput(value, onInput) {
+  const control = input({ type: "checkbox", checked: Boolean(value) });
+  control.addEventListener("change", () => onInput(control.checked));
+  return control;
+}
+
 function section(title, children = []) {
   return el("section", { className: "sn-builder-property-section" }, [
     el("h4", {}, title),
     ...children,
+  ]);
+}
+
+function clampGridCount(value, fallback) {
+  return Math.max(1, Math.min(24, Math.round(Number(value) || fallback)));
+}
+
+function normalizeGridCell(cell = {}) {
+  if (typeof cell === "string") {
+    return { content: cell };
+  }
+  return {
+    content: String(cell?.content ?? ""),
+    backgroundColor: String(cell?.backgroundColor ?? ""),
+    color: String(cell?.color ?? ""),
+    textAlign: String(cell?.textAlign ?? ""),
+  };
+}
+
+function resizeGridCells(block, nextRows, nextColumns) {
+  const previousRows = clampGridCount(block.props?.rows, 4);
+  const previousColumns = clampGridCount(block.props?.columns, 4);
+  const sourceCells = Array.isArray(block.props?.cells)
+    ? block.props.cells.map(normalizeGridCell)
+    : [];
+  return Array.from({ length: nextRows * nextColumns }, (_, index) => {
+    const row = Math.floor(index / nextColumns);
+    const column = index % nextColumns;
+    const previousIndex = row * previousColumns + column;
+    return row < previousRows && column < previousColumns
+      ? (sourceCells[previousIndex] || normalizeGridCell())
+      : normalizeGridCell();
+  });
+}
+
+function gridPropertySection(block, updateProps, updateStyles) {
+  if (block.type !== "grid") {
+    return null;
+  }
+
+  const rows = clampGridCount(block.props?.rows, 4);
+  const columns = clampGridCount(block.props?.columns, 4);
+  const showBorders = block.props?.showBorders !== false;
+  const cellBackgroundColor = block.props?.cellBackgroundColor || "#ffffff";
+
+  return section("Grid", [
+    el("div", { className: "sn-builder-property-grid" }, [
+      field("Rows", numberInput(rows, (value) => {
+        const nextRows = clampGridCount(value, rows);
+        updateProps({ rows: nextRows, columns, cells: resizeGridCells(block, nextRows, columns) });
+      })),
+      field("Columns", numberInput(columns, (value) => {
+        const nextColumns = clampGridCount(value, columns);
+        updateProps({ rows, columns: nextColumns, cells: resizeGridCells(block, rows, nextColumns) });
+      })),
+      field("Borders", checkboxInput(showBorders, (value) => updateProps({ showBorders: value }))),
+      field("Cell bg", colorInput(cellBackgroundColor, (value) => updateProps({ cellBackgroundColor: value }))),
+      field("Border", colorInput(block.styles?.borderColor || "#cbd5e1", (value) => updateStyles({ borderColor: value }))),
+      field("Gap", textInput(block.styles?.gap || "0px", (value) => updateStyles({ gap: value }))),
+    ]),
   ]);
 }
 
@@ -66,6 +132,7 @@ export function renderPropertiesPanel(container, store) {
           else updateProps({ content: value });
         })),
       ]),
+      gridPropertySection(block, updateProps, updateStyles),
       section("Layout", [
         el("div", { className: "sn-builder-property-grid" }, [
           field("X", numberInput(block.layout?.x, (value) => updateLayout({ x: value }))),

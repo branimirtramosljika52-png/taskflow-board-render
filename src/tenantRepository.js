@@ -1023,6 +1023,7 @@ function sanitizeOrganization(row) {
     country: row.country ?? "",
     contactEmail: row.contact_email ?? "",
     contactPhone: row.contact_phone ?? "",
+    logoDataUrl: row.logo_data_url ?? row.logoDataUrl ?? "",
     status: row.status ?? "active",
     createdAt: normalizeTimestamp(row.created_at),
     updatedAt: normalizeTimestamp(row.updated_at),
@@ -1148,6 +1149,7 @@ function normalizeOrganizationInput(input = {}) {
     country: dbString(input.country) || "Hrvatska",
     contactEmail: dbString(input.contactEmail),
     contactPhone: dbString(input.contactPhone),
+    logoDataUrl: dbString(input.logoDataUrl),
     status: dbString(input.status).toLowerCase() === "inactive" ? "inactive" : "active",
   };
 }
@@ -1370,12 +1372,20 @@ async function ensureSchema(connection) {
       country VARCHAR(120) NOT NULL DEFAULT 'Hrvatska',
       contact_email VARCHAR(255) NOT NULL DEFAULT '',
       contact_phone VARCHAR(64) NOT NULL DEFAULT '',
+      logo_data_url MEDIUMTEXT NULL,
       status ENUM('active', 'inactive') NOT NULL DEFAULT 'active',
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       UNIQUE KEY uniq_organizations_name (name)
     )
   `);
+
+  await ensureColumn(
+    connection,
+    "organizations",
+    "logo_data_url",
+    "MEDIUMTEXT NULL AFTER contact_phone",
+  );
 
   await connection.query(`
     CREATE TABLE IF NOT EXISTS app_users (
@@ -1656,7 +1666,7 @@ async function fetchOrganizations(connection, accessibleIds = null) {
   const [rows] = hasFilter
     ? await connection.query(
       `
-        SELECT id, name, oib, address, city, postal_code, country, contact_email, contact_phone, status, created_at, updated_at
+        SELECT id, name, oib, address, city, postal_code, country, contact_email, contact_phone, logo_data_url, status, created_at, updated_at
         FROM organizations
         WHERE id IN (?)
         ORDER BY name ASC
@@ -1664,7 +1674,7 @@ async function fetchOrganizations(connection, accessibleIds = null) {
       [ids],
     )
     : await connection.query(`
-        SELECT id, name, oib, address, city, postal_code, country, contact_email, contact_phone, status, created_at, updated_at
+        SELECT id, name, oib, address, city, postal_code, country, contact_email, contact_phone, logo_data_url, status, created_at, updated_at
         FROM organizations
         ORDER BY name ASC
       `);
@@ -2593,6 +2603,7 @@ export class MemoryTenantRepository {
         id: 1,
         name: DEFAULT_ORGANIZATION_NAME,
         country: "Hrvatska",
+        logo_data_url: "",
         status: "active",
       }),
     ];
@@ -3830,8 +3841,8 @@ export class MySqlTenantRepository {
       const [result] = await connection.query(
         `
           INSERT INTO organizations
-            (name, oib, address, city, postal_code, country, contact_email, contact_phone, status)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (name, oib, address, city, postal_code, country, contact_email, contact_phone, logo_data_url, status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           normalized.name,
@@ -3842,6 +3853,7 @@ export class MySqlTenantRepository {
           normalized.country,
           normalized.contactEmail,
           normalized.contactPhone,
+          normalized.logoDataUrl,
           normalized.status,
         ],
       );
@@ -3884,7 +3896,7 @@ export class MySqlTenantRepository {
         `
           UPDATE organizations
           SET name = ?, oib = ?, address = ?, city = ?, postal_code = ?, country = ?,
-              contact_email = ?, contact_phone = ?, status = ?
+              contact_email = ?, contact_phone = ?, logo_data_url = ?, status = ?
           WHERE id = ?
         `,
         [
@@ -3896,6 +3908,7 @@ export class MySqlTenantRepository {
           normalized.country,
           normalized.contactEmail,
           normalized.contactPhone,
+          normalized.logoDataUrl,
           normalized.status,
           Number(organizationId),
         ],
