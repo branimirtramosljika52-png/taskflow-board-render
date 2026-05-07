@@ -42511,6 +42511,15 @@ function isDocumentTemplateHtmlReferenceDocument(referenceDocument = {}) {
     || fileType.startsWith("text/html");
 }
 
+function isDocumentTemplateWordReferenceDocument(referenceDocument = {}) {
+  const fileName = String(referenceDocument?.fileName || referenceDocument?.name || referenceDocument?.storageKey || "").trim().toLowerCase();
+  const fileType = String(referenceDocument?.fileType || referenceDocument?.mimeType || "").trim().toLowerCase();
+  return fileName.endsWith(".docx")
+    || fileName.endsWith(".dotx")
+    || fileType.includes("wordprocessingml.document")
+    || fileType.includes("wordprocessingml.template");
+}
+
 function normalizeDocumentTemplateHtmlReferenceDocument(referenceDocument = null) {
   if (!referenceDocument || typeof referenceDocument !== "object" || !isDocumentTemplateHtmlReferenceDocument(referenceDocument)) {
     return null;
@@ -93544,6 +93553,67 @@ documentTemplateReferenceRemoveButton?.addEventListener("click", () => {
   setDocumentTemplateReferenceDocument(null);
 });
 
+async function convertDocumentTemplateWordFileToHtml(file) {
+  if (!(file instanceof File)) {
+    return;
+  }
+
+  if (documentTemplateReferenceUploadButton instanceof HTMLButtonElement) {
+    documentTemplateReferenceUploadButton.disabled = true;
+    documentTemplateReferenceUploadButton.classList.add("is-loading");
+  }
+  setDocumentTemplateMessage("Pretvaram Word u HTML...");
+
+  try {
+    const dataUrl = await readFileAsDataUrl(file, "Ne mogu učitati Word predložak.");
+    const payload = await apiRequest("/document-templates/convert-word-html", {
+      method: "POST",
+      body: {
+        referenceDocument: {
+          fileName: file.name,
+          fileType: file.type || "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          fileSize: file.size || 0,
+          dataUrl,
+        },
+      },
+    });
+    const htmlCode = String(payload?.html || "").trim();
+    if (!htmlCode) {
+      throw new Error("Konverzija nije vratila HTML kod.");
+    }
+
+    const fileName = String(payload?.fileName || sanitizeDocumentTemplateFileName(file.name || "word-template", "word-template").replace(/\.(docx|dotx)$/i, ".html")).trim()
+      || "word-template.html";
+    if (documentTemplateHtmlCodeInput instanceof HTMLTextAreaElement) {
+      documentTemplateHtmlCodeInput.value = htmlCode;
+    }
+    hydrateDocumentTemplateHtmlBuilderFromCode(htmlCode);
+    setDocumentTemplateReferenceDocument({
+      fileName,
+      fileType: "text/html",
+      fileSize: new TextEncoder().encode(htmlCode).length,
+      dataUrl: textToDataUrl(htmlCode),
+      updatedAt: new Date().toISOString(),
+    });
+    renderDocumentTemplateHtmlPreviewContent();
+    const warningCount = Array.isArray(payload?.messages) ? payload.messages.length : 0;
+    setDocumentTemplateMessage(
+      warningCount > 0
+        ? `Word je pretvoren u HTML. Provjeri ${warningCount} napomena iz konverzije prije spremanja.`
+        : "Word je pretvoren u HTML i spreman je za preview.",
+      { type: "success" },
+    );
+  } catch (error) {
+    console.error("Ne mogu pretvoriti Word u HTML.", error);
+    setDocumentTemplateMessage(error?.message || "Ne mogu pretvoriti Word u HTML.");
+  } finally {
+    if (documentTemplateReferenceUploadButton instanceof HTMLButtonElement) {
+      documentTemplateReferenceUploadButton.disabled = false;
+      documentTemplateReferenceUploadButton.classList.remove("is-loading");
+    }
+  }
+}
+
 documentTemplateReferenceFileInput?.addEventListener("change", () => {
   const file = documentTemplateReferenceFileInput.files?.[0];
 
@@ -93552,8 +93622,17 @@ documentTemplateReferenceFileInput?.addEventListener("change", () => {
   }
 
   const isHtmlFile = isDocumentTemplateHtmlReferenceDocument(file);
+  const isWordFile = isDocumentTemplateWordReferenceDocument(file);
+  if (isWordFile) {
+    void convertDocumentTemplateWordFileToHtml(file)
+      .finally(() => {
+        documentTemplateReferenceFileInput.value = "";
+      });
+    return;
+  }
+
   if (!isHtmlFile) {
-    setDocumentTemplateMessage("Template Development prima samo .html ili .htm predloške.");
+    setDocumentTemplateMessage("Template Development prima .html/.htm ili Word .docx/.dotx predloške.");
     documentTemplateReferenceFileInput.value = "";
     return;
   }

@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260507g" />
+    <link rel="stylesheet" href="/styles.css?v=20260507h" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -7693,7 +7693,7 @@
                             <div class="document-template-reference-actions document-template-html-workspace-actions">
                               <button id="document-template-html-save" type="button" class="ghost-button">Spremi HTML kod</button>
                               <button id="document-template-export-placeholder" type="button" class="ghost-button">Preuzmi HTML s tokenima</button>
-                              <button id="document-template-reference-upload" type="button" class="ghost-button">Upload HTML datoteke</button>
+                              <button id="document-template-reference-upload" type="button" class="ghost-button">Upload HTML / Word</button>
                               <button id="document-template-reference-download" type="button" class="ghost-button" hidden>Preuzmi spremljeni HTML</button>
                               <button id="document-template-reference-remove" type="button" class="ghost-button" hidden>Makni HTML</button>
                             </div>
@@ -7734,7 +7734,7 @@
                               </div>
                               <div id="document-template-html-builder-canvas" class="document-template-html-builder-canvas" aria-label="HTML layout builder canvas"></div>
                             </section>
-                            <input id="document-template-reference-file-input" type="file" accept=".html,.htm,text/html" hidden />
+                            <input id="document-template-reference-file-input" type="file" accept=".html,.htm,text/html,.docx,.dotx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.wordprocessingml.template" hidden />
                             <label class="field field-span-full document-template-html-code-field">
                               <span>HTML kod predloška</span>
                               <textarea id="document-template-html-code" rows="18" spellcheck="false" placeholder="Zalijepi HTML s tokenima, npr. {{DOCUMENT_TITLE}} i {{BROJ_RADNOG_NALOGA}}"></textarea>
@@ -7939,6 +7939,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260507g"></script>
+    <script type="module" src="/src/main.js?v=20260507h"></script>
   </body>
 </html>
