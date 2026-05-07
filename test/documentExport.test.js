@@ -13,7 +13,11 @@ import {
   convertWordBufferToHtmlTemplate,
 } from "../src/documentExport.js";
 
-function buildMinimalDocxBuffer(documentXml = "") {
+function buildMinimalDocxBuffer(documentXml = "", {
+  relationshipsXml = "",
+  numberingXml = "",
+  wordFiles = {},
+} = {}) {
   const zip = new PizZip();
   zip.file("[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
     <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -25,9 +29,16 @@ function buildMinimalDocxBuffer(documentXml = "") {
     <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
       <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
     </Relationships>`);
-  zip.folder("word").file("document.xml", documentXml);
-  zip.folder("word").folder("_rels").file("document.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  const wordFolder = zip.folder("word");
+  wordFolder.file("document.xml", documentXml);
+  wordFolder.folder("_rels").file("document.xml.rels", relationshipsXml || `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
     <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>`);
+  if (numberingXml) {
+    wordFolder.file("numbering.xml", numberingXml);
+  }
+  Object.entries(wordFiles || {}).forEach(([path, content]) => {
+    wordFolder.file(path.replace(/^word\//, ""), content);
+  });
   return zip.generate({ type: "nodebuffer", compression: "DEFLATE" });
 }
 
@@ -135,7 +146,7 @@ test("HTML template export renders escaped placeholders and special table blocks
 
 test("Word to HTML conversion preserves OOXML colors, alignment and tokens", async () => {
   const templateBuffer = buildMinimalDocxBuffer(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-    <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+    <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
       <w:body>
         <w:p>
           <w:pPr><w:jc w:val="center"/><w:spacing w:after="120"/></w:pPr>
@@ -155,10 +166,52 @@ test("Word to HTML conversion preserves OOXML colors, alignment and tokens", asy
               <w:p><w:r><w:t>Ćelija boje</w:t></w:r></w:p>
             </w:tc>
           </w:tr>
+          <w:tr>
+            <w:tc>
+              <w:tcPr><w:vAlign w:val="center"/></w:tcPr>
+              <w:p><w:pPr><w:shd w:fill="BEBEBE"/></w:pPr></w:p>
+            </w:tc>
+          </w:tr>
         </w:tbl>
-        <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720"/></w:sectPr>
+        <w:p>
+          <w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="42"/></w:numPr></w:pPr>
+          <w:r><w:t>Prva stavka</w:t></w:r>
+        </w:p>
+        <w:p>
+          <w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="42"/></w:numPr></w:pPr>
+          <w:r><w:t>Druga stavka</w:t></w:r>
+        </w:p>
+        <w:sectPr>
+          <w:headerReference w:type="default" r:id="rIdHeader"/>
+          <w:footerReference w:type="default" r:id="rIdFooter"/>
+          <w:pgSz w:w="11906" w:h="16838"/>
+          <w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720"/>
+        </w:sectPr>
       </w:body>
-    </w:document>`);
+    </w:document>`, {
+    relationshipsXml: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+      <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+        <Relationship Id="rIdHeader" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/>
+        <Relationship Id="rIdFooter" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>
+      </Relationships>`,
+    numberingXml: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+      <w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:abstractNum w:abstractNumId="7">
+          <w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/></w:lvl>
+        </w:abstractNum>
+        <w:num w:numId="42"><w:abstractNumId w:val="7"/></w:num>
+      </w:numbering>`,
+    wordFiles: {
+      "header1.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+          <w:p><w:r><w:t>SafeNexus Header</w:t></w:r></w:p>
+        </w:hdr>`,
+      "footer1.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+          <w:p><w:r><w:t>SPR-1/1</w:t></w:r></w:p>
+        </w:ftr>`,
+    },
+  });
   const previousWarn = console.warn;
   console.warn = () => {};
 
@@ -174,6 +227,16 @@ test("Word to HTML conversion preserves OOXML colors, alignment and tokens", asy
     assert.match(result.html, /background-color:#D9EAD3/);
     assert.match(result.html, /text-align:center/);
     assert.match(result.html, /Ćelija boje/);
+    assert.match(result.html, /sn-word-pages/);
+    assert.match(result.html, /sn-word-page/);
+    assert.match(result.html, /@page \{ size:/);
+    assert.match(result.html, /SafeNexus Header/);
+    assert.match(result.html, /SPR-1\/1/);
+    if (result.engine === "ooxml") {
+      assert.match(result.html, /sn-word-list-marker">1\.<\/span>[\s\S]*Prva stavka/);
+      assert.match(result.html, /sn-word-list-marker">2\.<\/span>[\s\S]*Druga stavka/);
+      assert.doesNotMatch(result.html, /background-color:#BEBEBE[^>]*>&nbsp;<\/p>/);
+    }
   } finally {
     console.warn = previousWarn;
   }

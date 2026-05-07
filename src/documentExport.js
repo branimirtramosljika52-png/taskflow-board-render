@@ -2348,6 +2348,11 @@ function cssLengthPt(value, fallback = "") {
   return Number.isFinite(numeric) ? `${Math.max(0, Math.round(numeric * 100) / 100)}pt` : fallback;
 }
 
+function emuToPt(value, fallback = null) {
+  const numeric = Number.parseFloat(value);
+  return Number.isFinite(numeric) ? numeric / 12700 : fallback;
+}
+
 function normalizeDocxHexColor(value = "") {
   const raw = clean(value).replace(/^#/, "");
   if (!raw || raw.toLowerCase() === "auto") {
@@ -2815,6 +2820,226 @@ function getDocxParagraphListInfo(pPr = "") {
   };
 }
 
+function parseDocxNumbering(numberingXml = "") {
+  const abstractNums = {};
+  getXmlElements(numberingXml, "w:abstractNum").forEach((abstractXml) => {
+    const startTag = abstractXml.match(/<w:abstractNum\b[^>]*>/i)?.[0] || "";
+    const abstractNumId = clean(getXmlAttribute(startTag, "w:abstractNumId") || getXmlAttribute(startTag, "abstractNumId"));
+    if (!abstractNumId) {
+      return;
+    }
+    const levels = {};
+    getXmlElements(abstractXml, "w:lvl").forEach((levelXml) => {
+      const levelStartTag = levelXml.match(/<w:lvl\b[^>]*>/i)?.[0] || "";
+      const level = Number.parseInt(getXmlAttribute(levelStartTag, "w:ilvl") || getXmlAttribute(levelStartTag, "ilvl") || "0", 10) || 0;
+      const numFmt = getXmlVal(getFirstXmlEmptyOrElement(levelXml, "w:numFmt"), "decimal");
+      levels[level] = {
+        level,
+        start: Math.max(1, Number.parseInt(getXmlVal(getFirstXmlEmptyOrElement(levelXml, "w:start"), "1"), 10) || 1),
+        numFmt,
+        lvlText: getXmlVal(getFirstXmlEmptyOrElement(levelXml, "w:lvlText"), numFmt.toLowerCase() === "bullet" ? "\u2022" : `%${level + 1}.`),
+      };
+    });
+    abstractNums[abstractNumId] = { id: abstractNumId, levels };
+  });
+
+  const nums = {};
+  getXmlElements(numberingXml, "w:num").forEach((numXml) => {
+    const startTag = numXml.match(/<w:num\b[^>]*>/i)?.[0] || "";
+    const numId = clean(getXmlAttribute(startTag, "w:numId") || getXmlAttribute(startTag, "numId"));
+    const abstractNumId = getXmlVal(getFirstXmlEmptyOrElement(numXml, "w:abstractNumId"));
+    if (numId && abstractNumId) {
+      nums[numId] = { id: numId, abstractNumId };
+    }
+  });
+
+  return { abstractNums, nums };
+}
+
+function getDocxNumberingLevel(numbering = {}, numId = "", level = 0) {
+  const num = numbering?.nums?.[numId];
+  const abstractNum = numbering?.abstractNums?.[num?.abstractNumId];
+  return abstractNum?.levels?.[level] || null;
+}
+
+function formatDocxLetterCounter(value = 1) {
+  let current = Math.max(1, Number.parseInt(value, 10) || 1);
+  let output = "";
+  while (current > 0) {
+    current -= 1;
+    output = `${String.fromCharCode(97 + (current % 26))}${output}`;
+    current = Math.floor(current / 26);
+  }
+  return output || "a";
+}
+
+function formatDocxRomanCounter(value = 1) {
+  let current = Math.max(1, Number.parseInt(value, 10) || 1);
+  const parts = [
+    [1000, "m"],
+    [900, "cm"],
+    [500, "d"],
+    [400, "cd"],
+    [100, "c"],
+    [90, "xc"],
+    [50, "l"],
+    [40, "xl"],
+    [10, "x"],
+    [9, "ix"],
+    [5, "v"],
+    [4, "iv"],
+    [1, "i"],
+  ];
+  let output = "";
+  parts.forEach(([number, symbol]) => {
+    while (current >= number) {
+      output += symbol;
+      current -= number;
+    }
+  });
+  return output || "i";
+}
+
+function formatDocxCounterValue(value = 1, format = "decimal") {
+  const safeFormat = clean(format).toLowerCase();
+  if (safeFormat === "lowerletter") return formatDocxLetterCounter(value);
+  if (safeFormat === "upperletter") return formatDocxLetterCounter(value).toUpperCase();
+  if (safeFormat === "lowerroman") return formatDocxRomanCounter(value);
+  if (safeFormat === "upperroman") return formatDocxRomanCounter(value).toUpperCase();
+  if (safeFormat === "decimalzero") return String(Math.max(0, Number.parseInt(value, 10) || 0)).padStart(2, "0");
+  return String(Math.max(0, Number.parseInt(value, 10) || 0));
+}
+
+function getDocxListMarker(listInfo = null, context = {}) {
+  if (!listInfo) {
+    return "";
+  }
+  const level = Math.max(0, Number.parseInt(listInfo.level, 10) || 0);
+  const numId = clean(listInfo.id) || "default";
+  const levelDefinition = getDocxNumberingLevel(context.numbering, numId, level);
+  const numFmt = clean(levelDefinition?.numFmt || "decimal").toLowerCase();
+  const lvlText = clean(levelDefinition?.lvlText || (numFmt === "bullet" ? "\u2022" : `%${level + 1}.`));
+  if (numFmt === "bullet") {
+    return lvlText && !/%\d+/g.test(lvlText) ? lvlText : "\u2022";
+  }
+
+  if (!context.numberingState) {
+    context.numberingState = new Map();
+  }
+  const counters = context.numberingState.get(numId) || [];
+  counters[level] = (Number.isFinite(counters[level]) ? counters[level] : (levelDefinition?.start || 1) - 1) + 1;
+  counters.length = level + 1;
+  context.numberingState.set(numId, counters);
+
+  return lvlText.replace(/%(\d+)/g, (match, rawIndex) => {
+    const index = Math.max(0, Number.parseInt(rawIndex, 10) - 1);
+    const value = counters[index];
+    if (!Number.isFinite(value)) {
+      return "0";
+    }
+    const definition = getDocxNumberingLevel(context.numbering, numId, index) || levelDefinition;
+    return formatDocxCounterValue(value, definition?.numFmt || "decimal");
+  });
+}
+
+function getDocxShapeFillColor(xml = "", themeColors = {}) {
+  const solidFill = getFirstXmlElement(xml, "a:solidFill");
+  const srgb = getFirstXmlEmptyOrElement(solidFill, "a:srgbClr") || getFirstXmlEmptyOrElement(xml, "a:srgbClr");
+  return normalizeDocxHexColor(getXmlAttribute(srgb, "val"))
+    || normalizeLegacyHtmlCssColor(getXmlAttribute(xml, "fillcolor"))
+    || resolveDocxThemeColor(srgb, themeColors);
+}
+
+function getDocxDrawingShapeMetrics(xml = "") {
+  const anchor = getFirstXmlElement(xml, "wp:anchor");
+  const extent = getFirstXmlEmptyOrElement(anchor || xml, "wp:extent") || getFirstXmlEmptyOrElement(xml, "a:ext");
+  const positionH = getFirstXmlElement(anchor, "wp:positionH");
+  const positionV = getFirstXmlElement(anchor, "wp:positionV");
+  return {
+    anchored: Boolean(anchor),
+    widthPt: emuToPt(getXmlAttribute(extent, "cx")),
+    heightPt: emuToPt(getXmlAttribute(extent, "cy")),
+    leftPt: emuToPt(clean(positionH.match(/<wp:posOffset\b[^>]*>([\s\S]*?)<\/wp:posOffset>/i)?.[1])),
+    topPt: emuToPt(clean(positionV.match(/<wp:posOffset\b[^>]*>([\s\S]*?)<\/wp:posOffset>/i)?.[1])),
+  };
+}
+
+function getVmlShapeMetrics(xml = "") {
+  const shape = getFirstXmlEmptyOrElement(xml, "v:shape") || getFirstXmlElement(xml, "v:shape");
+  const style = getHtmlAttribute(shape, "style");
+  const styleValue = (property = "") => {
+    const safeProperty = property.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return clean(style.match(new RegExp(`(?:^|;)\\s*${safeProperty}\\s*:\\s*([^;]+)`, "i"))?.[1]);
+  };
+  const lengthToPt = (value = "") => {
+    const raw = clean(value).toLowerCase();
+    const numeric = Number.parseFloat(raw);
+    if (!Number.isFinite(numeric)) return null;
+    if (raw.endsWith("px")) return numeric * 0.75;
+    if (raw.endsWith("in")) return numeric * 72;
+    if (raw.endsWith("cm")) return numeric * 28.3465;
+    if (raw.endsWith("mm")) return numeric * 2.83465;
+    return numeric;
+  };
+  return {
+    anchored: /position\s*:\s*absolute/i.test(style),
+    widthPt: lengthToPt(styleValue("width")),
+    heightPt: lengthToPt(styleValue("height")),
+    leftPt: lengthToPt(styleValue("margin-left")),
+    topPt: lengthToPt(styleValue("margin-top")),
+  };
+}
+
+function renderDocxFloatingShapeHtml(xml = "", context = {}) {
+  const fillColor = getDocxShapeFillColor(xml, context.themeColors);
+  if (!fillColor) {
+    return "";
+  }
+  const drawingMetrics = getDocxDrawingShapeMetrics(xml);
+  const vmlMetrics = getVmlShapeMetrics(xml);
+  const metrics = {
+    anchored: drawingMetrics.anchored || vmlMetrics.anchored,
+    widthPt: drawingMetrics.widthPt || vmlMetrics.widthPt,
+    heightPt: drawingMetrics.heightPt || vmlMetrics.heightPt,
+    leftPt: drawingMetrics.leftPt ?? vmlMetrics.leftPt,
+    topPt: drawingMetrics.topPt ?? vmlMetrics.topPt,
+  };
+  if (!Number.isFinite(metrics.widthPt) || !Number.isFinite(metrics.heightPt) || metrics.widthPt <= 0 || metrics.heightPt <= 0) {
+    return "";
+  }
+  const styles = [
+    metrics.anchored ? "position:absolute" : "display:inline-block",
+    metrics.anchored && Number.isFinite(metrics.leftPt) ? `left:${cssLengthPt(metrics.leftPt)}` : "",
+    metrics.anchored && Number.isFinite(metrics.topPt) ? `top:${cssLengthPt(metrics.topPt)}` : "",
+    `width:${cssLengthPt(metrics.widthPt)}`,
+    `height:${cssLengthPt(metrics.heightPt)}`,
+    `background-color:${fillColor}`,
+    "pointer-events:none",
+    "z-index:0",
+  ].filter(Boolean);
+  return `<span class="sn-word-shape${metrics.anchored ? " sn-word-floating-shape" : ""}"${cssListToStyleAttribute(styles)}></span>`;
+}
+
+function isHtmlVisuallyEmpty(html = "") {
+  if (/<(img|svg|canvas|table)\b/i.test(String(html || "")) || /\bsn-word-shape\b/i.test(String(html || ""))) {
+    return false;
+  }
+  const text = decodeBasicHtmlEntities(String(html || "")
+    .replace(/<br\s*\/?>/gi, "")
+    .replace(/<[^>]*>/g, " "))
+    .replace(/\u00a0/g, " ")
+    .trim();
+  return !text;
+}
+
+function withoutCssDeclarations(styles = [], names = []) {
+  const blocked = new Set((Array.isArray(names) ? names : [names]).map((entry) => clean(entry).toLowerCase()).filter(Boolean));
+  return (Array.isArray(styles) ? styles : []).filter((style) => {
+    const property = clean(style).split(":")[0].toLowerCase();
+    return property && !blocked.has(property);
+  });
+}
+
 async function renderDocxImageHtml(xml = "", context = {}) {
   const relId = clean(
     getXmlAttribute(xml, "r:embed")
@@ -2824,7 +3049,7 @@ async function renderDocxImageHtml(xml = "", context = {}) {
   const target = context.relationships?.[relId];
   const mediaPath = resolveDocxMediaPath(target);
   if (!mediaPath) {
-    return "";
+    return renderDocxFloatingShapeHtml(xml, context);
   }
   if (!context.imageCache) {
     context.imageCache = new Map();
@@ -2905,11 +3130,14 @@ async function renderDocxParagraphHtml(pXml = "", context = {}) {
     ...context,
     paragraphRunCss: rCss,
   });
+  const isBlankParagraph = isHtmlVisuallyEmpty(innerHtml);
+  const activeListInfo = isBlankParagraph ? null : listInfo;
   const classNames = ["sn-word-paragraph"];
   if (styleId) classNames.push(`sn-word-style-${styleId.replace(/[^A-Za-z0-9_-]/g, "-")}`);
-  if (listInfo) classNames.push("sn-word-list-line");
-  const listPrefix = listInfo ? `<span class="sn-word-list-marker">${escapeTemplateHtml(listInfo.id ? `${listInfo.level + 1}.` : "•")}</span>` : "";
-  return `<p class="${classNames.join(" ")}"${cssListToStyleAttribute(pCss)}>${listPrefix}${innerHtml}</p>`;
+  if (activeListInfo) classNames.push("sn-word-list-line");
+  const paragraphCss = isBlankParagraph ? withoutCssDeclarations(pCss, ["background-color"]) : pCss;
+  const listPrefix = activeListInfo ? `<span class="sn-word-list-marker">${escapeTemplateHtml(getDocxListMarker(activeListInfo, context))}</span>` : "";
+  return `<p class="${classNames.join(" ")}"${cssListToStyleAttribute(paragraphCss)}>${listPrefix}${innerHtml}</p>`;
 }
 
 function parseDocxTableRows(tblXml = "") {
@@ -2960,9 +3188,13 @@ function applyDocxVerticalMerges(rows = []) {
 
 async function renderDocxTableCellHtml(cell = {}, context = {}) {
   const blocks = extractDocxBodyBlocks(cell.xml.replace(getFirstXmlElement(cell.xml, "w:tcPr"), ""));
-  const content = (await Promise.all(blocks.map((block) => (
-    block.type === "tbl" ? renderDocxTableHtml(block.xml, context) : renderDocxParagraphHtml(block.xml, context)
-  )))).join("");
+  const contentBlocks = [];
+  for (const block of blocks) {
+    contentBlocks.push(block.type === "tbl"
+      ? await renderDocxTableHtml(block.xml, context)
+      : await renderDocxParagraphHtml(block.xml, context));
+  }
+  const content = contentBlocks.join("");
   const attrs = [
     cell.gridSpan > 1 ? ` colspan="${cell.gridSpan}"` : "",
     cell.rowSpan > 1 ? ` rowspan="${cell.rowSpan}"` : "",
@@ -2976,12 +3208,137 @@ async function renderDocxTableHtml(tblXml = "", context = {}) {
   const styleId = getXmlVal(getFirstXmlEmptyOrElement(tblPr, "w:tblStyle"));
   const tableStyle = getDocxStyle(context.styles, styleId, "table");
   const rows = applyDocxVerticalMerges(parseDocxTableRows(tblXml));
-  const rowHtml = await Promise.all(rows.map(async (row) => {
-    const cellHtml = await Promise.all(row.cells.filter((cell) => !cell.skip).map((cell) => renderDocxTableCellHtml(cell, context)));
-    return `<tr>${cellHtml.join("")}</tr>`;
-  }));
+  const rowHtml = [];
+  for (const row of rows) {
+    const cellHtml = [];
+    for (const cell of row.cells.filter((entry) => !entry.skip)) {
+      cellHtml.push(await renderDocxTableCellHtml(cell, context));
+    }
+    rowHtml.push(`<tr>${cellHtml.join("")}</tr>`);
+  }
   const css = mergeCssLists(tableStyle?.tblCss || [], docxTablePropertiesToCss(tblPr, context.themeColors));
   return `<table class="sn-word-table sn-word-ooxml-table"${cssListToStyleAttribute(css)}><tbody>${rowHtml.join("")}</tbody></table>`;
+}
+
+async function renderDocxBlocksHtml(xml = "", context = {}) {
+  const blocks = extractDocxBodyBlocks(xml);
+  const htmlBlocks = [];
+  for (const block of blocks) {
+    htmlBlocks.push(block.type === "tbl"
+      ? await renderDocxTableHtml(block.xml, context)
+      : await renderDocxParagraphHtml(block.xml, context));
+  }
+  return htmlBlocks.join("\n");
+}
+
+function getDocxPartReferences(sectPr = "", tagName = "") {
+  const safeTagName = String(tagName || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return Array.from(String(sectPr || "").matchAll(new RegExp(`<${safeTagName}\\b[^>]*(?:\\/>|>\\s*<\\/${safeTagName}>)`, "gi")))
+    .map((match) => ({
+      type: clean(getXmlAttribute(match[0], "w:type") || getXmlAttribute(match[0], "type") || "default").toLowerCase(),
+      relId: clean(getXmlAttribute(match[0], "r:id") || getXmlAttribute(match[0], "id")),
+    }))
+    .filter((reference) => reference.relId);
+}
+
+function chooseDocxSectionPartReference(references = [], preferFirst = false) {
+  const safeReferences = Array.isArray(references) ? references : [];
+  return (preferFirst ? safeReferences.find((reference) => reference.type === "first") : null)
+    || safeReferences.find((reference) => reference.type === "default")
+    || safeReferences.find((reference) => reference.type === "even")
+    || safeReferences[0]
+    || null;
+}
+
+function getPrimaryDocxSectionProperties(documentXml = "") {
+  const sections = getXmlElements(documentXml, "w:sectPr");
+  return sections.find((section) => hasXmlElement(section, "w:headerReference") || hasXmlElement(section, "w:footerReference"))
+    || sections[0]
+    || "";
+}
+
+async function renderDocxRelatedPartHtml(zip, target = "", context = {}, className = "") {
+  const partPath = resolveDocxMediaPath(target);
+  if (!partPath) {
+    return "";
+  }
+  const partXml = await readDocxZipText(zip, partPath);
+  if (!partXml) {
+    return "";
+  }
+  const partRelsXml = await readDocxZipText(zip, `word/_rels/${basename(partPath)}.rels`);
+  const partContext = {
+    ...context,
+    relationships: {
+      ...(context.relationships || {}),
+      ...parseDocxRelationships(partRelsXml),
+    },
+    numberingState: new Map(),
+  };
+  const content = await renderDocxBlocksHtml(partXml, partContext);
+  if (isHtmlVisuallyEmpty(content)) {
+    return "";
+  }
+  return `<section class="${className}">${content}</section>`;
+}
+
+async function buildDocxPageChromeHtml(zip, documentXml = "", context = {}) {
+  const sectPr = getPrimaryDocxSectionProperties(documentXml);
+  const preferFirst = hasXmlElement(sectPr, "w:titlePg");
+  const headerReference = chooseDocxSectionPartReference(getDocxPartReferences(sectPr, "w:headerReference"), preferFirst);
+  const footerReference = chooseDocxSectionPartReference(getDocxPartReferences(sectPr, "w:footerReference"), preferFirst);
+  const headerHtml = headerReference
+    ? await renderDocxRelatedPartHtml(zip, context.relationships?.[headerReference.relId], context, "sn-word-page-header")
+    : "";
+  const footerHtml = footerReference
+    ? await renderDocxRelatedPartHtml(zip, context.relationships?.[footerReference.relId], context, "sn-word-page-footer")
+    : "";
+  return { headerHtml, footerHtml };
+}
+
+async function extractDocxBodyFloatingShapesHtml(documentXml = "", context = {}) {
+  const bodyXml = getFirstXmlElement(documentXml, "w:body") || documentXml;
+  const shapes = [];
+  const shapeRegex = /<w:drawing\b[\s\S]*?<\/w:drawing>|<w:pict\b[\s\S]*?<\/w:pict>/gi;
+  let match;
+  while ((match = shapeRegex.exec(bodyXml))) {
+    const html = renderDocxFloatingShapeHtml(match[0], context);
+    if (html) {
+      shapes.push(html);
+    }
+  }
+  return shapes.join("\n");
+}
+
+async function extractWordDocumentChromeMetadata(buffer = Buffer.alloc(0), {
+  includeBodyFloatingShapes = false,
+} = {}) {
+  const zip = await JSZip.loadAsync(buffer);
+  const documentXml = await readDocxZipText(zip, "word/document.xml");
+  if (!documentXml) {
+    return {};
+  }
+  const [stylesXml, relsXml, numberingXml] = await Promise.all([
+    readDocxZipText(zip, "word/styles.xml"),
+    readDocxZipText(zip, "word/_rels/document.xml.rels"),
+    readDocxZipText(zip, "word/numbering.xml"),
+  ]);
+  const metadata = await extractWordDocumentMetadataFromZip(zip);
+  const context = {
+    zip,
+    metadata,
+    themeColors: metadata.themeColors || {},
+    styles: parseDocxStyles(stylesXml, metadata.themeColors || {}),
+    relationships: parseDocxRelationships(relsXml),
+    numbering: parseDocxNumbering(numberingXml),
+    numberingState: new Map(),
+    imageCache: new Map(),
+  };
+  const chrome = await buildDocxPageChromeHtml(zip, documentXml, context);
+  return {
+    ...chrome,
+    bodyFloatingShapesHtml: includeBodyFloatingShapes ? await extractDocxBodyFloatingShapesHtml(documentXml, context) : "",
+  };
 }
 
 async function convertWordBufferToHtmlWithDocxXml(buffer = Buffer.alloc(0), {
@@ -2993,9 +3350,10 @@ async function convertWordBufferToHtmlWithDocxXml(buffer = Buffer.alloc(0), {
   if (!documentXml) {
     throw new Error("Word dokument nema document.xml sadržaj.");
   }
-  const [stylesXml, relsXml] = await Promise.all([
+  const [stylesXml, relsXml, numberingXml] = await Promise.all([
     readDocxZipText(zip, "word/styles.xml"),
     readDocxZipText(zip, "word/_rels/document.xml.rels"),
+    readDocxZipText(zip, "word/numbering.xml"),
   ]);
   const metadata = await extractWordDocumentMetadataFromZip(zip);
   const context = {
@@ -3004,13 +3362,13 @@ async function convertWordBufferToHtmlWithDocxXml(buffer = Buffer.alloc(0), {
     themeColors: metadata.themeColors || {},
     styles: parseDocxStyles(stylesXml, metadata.themeColors || {}),
     relationships: parseDocxRelationships(relsXml),
+    numbering: parseDocxNumbering(numberingXml),
+    numberingState: new Map(),
     imageCache: new Map(),
   };
+  const chrome = await buildDocxPageChromeHtml(zip, documentXml, context);
   const bodyXml = getFirstXmlElement(documentXml, "w:body") || documentXml;
-  const blocks = extractDocxBodyBlocks(bodyXml);
-  const htmlBlocks = await Promise.all(blocks.map((block) => (
-    block.type === "tbl" ? renderDocxTableHtml(block.xml, context) : renderDocxParagraphHtml(block.xml, context)
-  )));
+  const bodyHtml = await renderDocxBlocksHtml(bodyXml, context);
   const messages = [
     ...(Array.isArray(extraMessages) ? extraMessages : []),
     {
@@ -3021,13 +3379,16 @@ async function convertWordBufferToHtmlWithDocxXml(buffer = Buffer.alloc(0), {
   return {
     html: ensureConvertedWordHtmlDocument(
       `<section class="sn-word-document sn-word-ooxml" data-source="${escapeTemplateHtml(fileName)}">
-${htmlBlocks.join("\n")}
+${bodyHtml || "<p>&nbsp;</p>"}
 </section>`,
       {
         fileName,
         engine: "ooxml",
         messages,
-        metadata,
+        metadata: {
+          ...metadata,
+          ...chrome,
+        },
       },
     ),
     engine: "ooxml",
@@ -3043,6 +3404,12 @@ function buildConvertedWordLayoutStyles(engine = "", metadata = {}) {
   const pageMargins = [page.marginTopPt, page.marginRightPt, page.marginBottomPt, page.marginLeftPt]
     .map((entry, index) => cssLengthPt(entry, index % 2 === 0 ? "16mm" : "16mm"))
     .join(" ");
+  const pageWidth = Number.isFinite(page.widthPt) ? cssLengthPt(page.widthPt) : "210mm";
+  const pageHeight = Number.isFinite(page.heightPt) ? cssLengthPt(page.heightPt) : "297mm";
+  const marginTop = cssLengthPt(page.marginTopPt, "16mm");
+  const marginRight = cssLengthPt(page.marginRightPt, "16mm");
+  const marginBottom = cssLengthPt(page.marginBottomPt, "16mm");
+  const marginLeft = cssLengthPt(page.marginLeftPt, "16mm");
   const defaultFont = clean(metadata?.defaultFont) || "Arial";
   const defaultFontSize = Number.isFinite(metadata?.defaultFontSize) ? cssLengthPt(metadata.defaultFontSize) : "11pt";
   return `
@@ -3050,20 +3417,68 @@ function buildConvertedWordLayoutStyles(engine = "", metadata = {}) {
     @page { size: ${pageSize}; margin: ${pageMargins}; }
     html { background: #f3f4f6; }
     body {
-      background: #fff;
+      background: #f3f4f6;
       color: #111827;
       margin: 0;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
+    :root {
+      --sn-word-page-width: ${pageWidth};
+      --sn-word-page-height: ${pageHeight};
+      --sn-word-page-margin-top: ${marginTop};
+      --sn-word-page-margin-right: ${marginRight};
+      --sn-word-page-margin-bottom: ${marginBottom};
+      --sn-word-page-margin-left: ${marginLeft};
+    }
     table { border-collapse: collapse; border-spacing: 0; }
     img { max-width: 100%; height: auto; }
+    .sn-word-pages {
+      background: #f3f4f6;
+      box-sizing: border-box;
+      min-height: 100vh;
+      padding: 24px;
+    }
+    .sn-word-page {
+      background: #fff;
+      box-shadow: 0 18px 50px rgba(15, 23, 42, 0.16);
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      margin: 0 auto 24px;
+      min-height: var(--sn-word-page-height);
+      overflow: visible;
+      padding: var(--sn-word-page-margin-top) var(--sn-word-page-margin-right) var(--sn-word-page-margin-bottom) var(--sn-word-page-margin-left);
+      position: relative;
+      width: var(--sn-word-page-width);
+    }
+    .sn-word-page:last-child { margin-bottom: 0; }
+    .sn-word-page-header,
+    .sn-word-page-footer {
+      flex: 0 0 auto;
+      position: relative;
+      z-index: 2;
+    }
+    .sn-word-page-header { margin-bottom: 12px; }
+    .sn-word-page-footer { margin-top: 12px; }
+    .sn-word-page-body {
+      flex: 1 1 auto;
+      min-height: 0;
+      position: relative;
+      z-index: 1;
+    }
+    .sn-word-page-body > .sn-word-document,
+    .sn-word-page-header > .sn-word-document,
+    .sn-word-page-footer > .sn-word-document {
+      margin: 0;
+      max-width: none;
+    }
     .sn-word-document {
       color: #172033;
       font-family: ${defaultFont}, Arial, "DejaVu Sans", sans-serif;
       font-size: ${defaultFontSize};
       line-height: 1.48;
-      max-width: ${Number.isFinite(page.widthPt) ? cssLengthPt(page.widthPt) : "210mm"};
+      max-width: 100%;
       margin: 0 auto;
       box-sizing: border-box;
     }
@@ -3078,7 +3493,7 @@ function buildConvertedWordLayoutStyles(engine = "", metadata = {}) {
     .sn-word-document h2 { font-size: 18px; }
     .sn-word-document h3 { font-size: 15px; }
     .sn-word-document p { margin: 0 0 7px; }
-    .sn-word-paragraph { min-height: 1em; overflow-wrap: anywhere; }
+    .sn-word-paragraph { min-height: 1em; overflow-wrap: anywhere; position: relative; }
     .sn-word-tab { display: inline-block; width: 2em; }
     .sn-word-hyperlink { color: #1155cc; text-decoration: underline; }
     .sn-word-list-line { display: flex; gap: 8px; align-items: baseline; }
@@ -3116,14 +3531,69 @@ function buildConvertedWordLayoutStyles(engine = "", metadata = {}) {
       break-before: page;
       page-break-before: always;
     }
+    .sn-word-floating-shape {
+      display: block;
+      position: absolute;
+    }
     @media print {
       html { background: #fff; }
       body { margin: 0; }
+      .sn-word-pages {
+        background: #fff;
+        min-height: 0;
+        padding: 0;
+      }
+      .sn-word-page {
+        box-shadow: none;
+        break-after: page;
+        margin: 0;
+        min-height: auto;
+        padding: 0;
+        width: auto;
+      }
+      .sn-word-page:last-child { break-after: auto; }
       .sn-word-document { max-width: none; margin: 0; }
     }
   </style>
   <!-- SafeNexus Word conversion engine: ${escapeTemplateHtml(engine || "unknown")} -->
   `.trim();
+}
+
+function splitConvertedWordSourceIntoPages(source = "") {
+  const parts = String(source || "")
+    .split(/<span\b[^>]*class\s*=\s*["'][^"']*\bsn-word-page-break\b[^"']*["'][^>]*>\s*<\/span>/gi)
+    .map((part) => clean(part))
+    .filter(Boolean);
+  return parts.length > 0 ? parts : [source || "<p>&nbsp;</p>"];
+}
+
+function wrapConvertedWordFragmentInPages(source = "", metadata = {}, engine = "") {
+  if (/\bsn-word-pages\b/i.test(source)) {
+    return source;
+  }
+  const headerHtml = clean(metadata?.headerHtml);
+  const footerHtml = clean(metadata?.footerHtml);
+  const floatingShapesHtml = clean(metadata?.bodyFloatingShapesHtml);
+  const pages = splitConvertedWordSourceIntoPages(source);
+  return `<main class="sn-word-pages" data-engine="${escapeTemplateHtml(engine || "unknown")}">
+${pages.map((pageContent, index) => `<section class="sn-word-page" data-page-index="${index + 1}">
+${index === 0 && floatingShapesHtml ? `${floatingShapesHtml}\n` : ""}${headerHtml}
+<div class="sn-word-page-body">
+${pageContent}
+</div>
+${footerHtml}
+</section>`).join("\n")}
+</main>`;
+}
+
+function wrapConvertedWordFullHtmlBodyInPages(source = "", metadata = {}, engine = "") {
+  if (/\bsn-word-pages\b/i.test(source)) {
+    return source;
+  }
+  return String(source || "").replace(/(<body\b[^>]*>)([\s\S]*?)(<\/body>)/i, (match, openBody, bodyContent, closeBody) => {
+    const wrappedBody = wrapConvertedWordFragmentInPages(clean(bodyContent) || "<p>&nbsp;</p>", metadata, engine);
+    return `${openBody}\n${wrappedBody}\n${closeBody}`;
+  });
 }
 
 function ensureConvertedWordHtmlDocument(html = "", {
@@ -3151,6 +3621,7 @@ function ensureConvertedWordHtmlDocument(html = "", {
   }
 
   if (!/<!doctype\s+html|<html[\s>]/i.test(source)) {
+    const pagedSource = wrapConvertedWordFragmentInPages(source, metadata, engine);
     return `<!doctype html>
 <html lang="hr">
 <head>
@@ -3162,7 +3633,7 @@ function ensureConvertedWordHtmlDocument(html = "", {
   ${layoutStyles}
 </head>
 <body class="safe-nexus-template-body">
-${source}
+${pagedSource}
 </body>
 </html>`;
   }
@@ -3200,7 +3671,7 @@ ${source}
     source = source.replace(/<body\b([^>]*)>/i, `<body class="safe-nexus-template-body"$1>`);
   }
 
-  return source;
+  return wrapConvertedWordFullHtmlBodyInPages(source, metadata, engine);
 }
 
 function normalizeMammothConvertedWordHtmlFragment(html = "") {
@@ -3325,12 +3796,18 @@ async function convertWordBufferToHtmlWithLibreOffice(buffer = Buffer.alloc(0), 
       );
       const polishedHtml = polishLibreOfficeConvertedHtml(inlinedHtml);
       const metadata = await extractWordDocumentMetadata(buffer);
+      const chromeMetadata = await extractWordDocumentChromeMetadata(buffer, {
+        includeBodyFloatingShapes: true,
+      }).catch(() => ({}));
       return {
         html: ensureConvertedWordHtmlDocument(polishedHtml, {
           fileName,
           engine: "libreoffice",
           messages: [],
-          metadata,
+          metadata: {
+            ...metadata,
+            ...chromeMetadata,
+          },
         }),
         engine: "libreoffice",
         messages: [],
