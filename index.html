@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260507a" />
+    <link rel="stylesheet" href="/styles.css?v=20260507b" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -7505,49 +7505,52 @@
                       <div id="document-template-runtime-common" class="document-template-runtime-common"></div>
                     </section>
 
+                    <section class="document-template-block document-template-html-workspace-block">
+                      <div class="document-template-sidebar-block-head document-template-html-workspace-head">
+                        <div>
+                          <p class="section-kicker">PDF dokument</p>
+                          <h3>HTML predložak gotovog dokumenta</h3>
+                          <p class="helper-copy module-copy">Ovo je završni izgled PDF-a. Tokeni iz HTML-a pune se podacima i poljima koja složiš u builderu za izradu zapisnika.</p>
+                        </div>
+                        <button
+                          id="document-template-reference-toggle"
+                          type="button"
+                          class="ghost-button document-template-sidebar-toggle"
+                          aria-expanded="true"
+                          aria-controls="document-template-reference-panel-body"
+                        >
+                          Sakrij
+                        </button>
+                      </div>
+                      <div id="document-template-reference-panel-body" class="document-template-sidebar-block-body document-template-html-workspace-body">
+                        <div class="document-template-html-workspace-controls">
+                          <div id="document-template-reference-meta" class="document-template-reference-meta">
+                            Nema spremljenog HTML predloška.
+                          </div>
+                          <div class="document-template-reference-actions document-template-html-workspace-actions">
+                            <button id="document-template-html-save" type="button" class="ghost-button">Spremi HTML kod</button>
+                            <button id="document-template-export-placeholder" type="button" class="ghost-button">Preuzmi HTML s tokenima</button>
+                            <button id="document-template-reference-upload" type="button" class="ghost-button">Upload HTML datoteke</button>
+                            <button id="document-template-reference-download" type="button" class="ghost-button" hidden>Preuzmi spremljeni HTML</button>
+                            <button id="document-template-reference-remove" type="button" class="ghost-button" hidden>Makni HTML</button>
+                          </div>
+                        </div>
+                        <input id="document-template-reference-file-input" type="file" accept=".html,.htm,text/html" hidden />
+                        <label class="field field-span-full document-template-html-code-field">
+                          <span>HTML kod predloška</span>
+                          <textarea id="document-template-html-code" rows="12" spellcheck="false" placeholder="Zalijepi HTML s tokenima, npr. {{DOCUMENT_TITLE}} i {{BROJ_RADNOG_NALOGA}}"></textarea>
+                        </label>
+                      </div>
+                    </section>
+
                     <div class="document-template-builder-shell">
                       <aside class="document-template-builder-sidebar">
                         <div class="document-template-sidebar-top-stack">
-                          <section class="document-template-block document-template-sidebar-block document-template-html-block">
-                            <div class="document-template-sidebar-block-head">
-                              <div>
-                                <p class="section-kicker">HTML predložak</p>
-                                <h3>Predložak i tokeni</h3>
-                              </div>
-                              <button
-                                id="document-template-reference-toggle"
-                                type="button"
-                                class="ghost-button document-template-sidebar-toggle"
-                                aria-expanded="true"
-                                aria-controls="document-template-reference-panel-body"
-                              >
-                                Sakrij
-                              </button>
-                            </div>
-                            <div id="document-template-reference-panel-body" class="document-template-sidebar-block-body">
-                              <div class="document-template-reference-actions document-template-reference-actions--stack">
-                                <button id="document-template-html-save" type="button" class="ghost-button">Spremi HTML kod</button>
-                                <button id="document-template-export-placeholder" type="button" class="ghost-button">Preuzmi HTML s tokenima</button>
-                                <button id="document-template-reference-upload" type="button" class="ghost-button">Upload HTML datoteke</button>
-                                <button id="document-template-reference-download" type="button" class="ghost-button" hidden>Preuzmi spremljeni HTML</button>
-                                <button id="document-template-reference-remove" type="button" class="ghost-button" hidden>Makni HTML</button>
-                              </div>
-                              <input id="document-template-reference-file-input" type="file" accept=".html,.htm,text/html" hidden />
-                              <div id="document-template-reference-meta" class="document-template-reference-meta">
-                                Nema spremljenog HTML predloška.
-                              </div>
-                              <label class="field field-span-full document-template-html-code-field">
-                                <span>HTML kod predloška</span>
-                                <textarea id="document-template-html-code" rows="7" spellcheck="false" placeholder="Zalijepi HTML s tokenima, npr. {{DOCUMENT_TITLE}} i {{BROJ_RADNOG_NALOGA}}"></textarea>
-                              </label>
-                            </div>
-                          </section>
-
                           <section class="document-template-block document-template-sidebar-block document-template-placeholder-panel">
                             <div class="document-template-sidebar-block-head document-template-placeholder-panel-head">
                               <div>
-                                <p class="section-kicker">Placeholderi</p>
-                                <h4>Tokeni za HTML</h4>
+                                <p class="section-kicker">Tokeni</p>
+                                <h4>Tokeni za spajanje</h4>
                               </div>
                               <button
                                 id="document-template-placeholder-toggle"
@@ -7568,11 +7571,11 @@
                         <section class="document-template-block document-template-sidebar-block document-template-toolbox-block">
                           <div class="document-template-sidebar-block-head">
                             <div>
-                              <p class="section-kicker">Alatna traka</p>
-                              <h3>Ubaci u template</h3>
+                              <p class="section-kicker">Izrada zapisnika</p>
+                              <h3>Polja za unos</h3>
                             </div>
                           </div>
-                          <p class="helper-copy module-copy">Odaberi polje koje želiš dodati u zapisnik.</p>
+                          <p class="helper-copy module-copy">Ova polja korisnik vidi i popunjava nakon odabira radnog naloga.</p>
                           <div id="document-template-toolbox" class="document-template-toolbox">
                             <button type="button" class="document-template-tool-button" data-template-tool="text" data-template-icon="T" draggable="true">
                               <strong>Tekst polje</strong>
@@ -7642,8 +7645,8 @@
                         <section class="document-template-block">
                           <div class="section-heading offers-section-heading">
                             <div>
-                              <p class="section-kicker">Canvas</p>
-                              <h3>Blokovi</h3>
+                              <p class="section-kicker">Izrada zapisnika</p>
+                              <h3>Raspored polja po A4 stranicama</h3>
                             </div>
                           </div>
                           <label class="field field-span-full">
@@ -7856,6 +7859,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260507a"></script>
+    <script type="module" src="/src/main.js?v=20260507b"></script>
   </body>
 </html>
