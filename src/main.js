@@ -1908,6 +1908,7 @@ const state = {
     referenceCollapsed: false,
     placeholdersCollapsed: false,
   },
+  documentTemplateWorkspaceTab: "builder",
   workOrderRenderLimit: WORK_ORDER_BATCH_SIZE,
   workOrderTemplateSettings: {
     storageScope: "",
@@ -3360,6 +3361,7 @@ const documentTemplateDescriptionField = documentTemplateDescriptionInput?.close
 const documentTemplateReferenceToggleButton = document.querySelector("#document-template-reference-toggle");
 const documentTemplateReferencePanelBody = document.querySelector("#document-template-reference-panel-body");
 const documentTemplatePlaceholderPalette = document.querySelector("#document-template-placeholder-palette");
+const documentTemplateHtmlPlaceholderPalette = document.querySelector("#document-template-html-placeholder-palette");
 const documentTemplatePlaceholderToggleButton = document.querySelector("#document-template-placeholder-toggle");
 const documentTemplatePlaceholderPanelBody = document.querySelector("#document-template-placeholder-panel-body");
 const documentTemplateCustomFields = document.querySelector("#document-template-custom-fields");
@@ -3371,6 +3373,9 @@ const documentTemplateBuilderShell = documentTemplateEditorPanel?.querySelector(
 const documentTemplateBuilderSidebar = documentTemplateEditorPanel?.querySelector(".document-template-builder-sidebar");
 const documentTemplateBuilderMain = documentTemplateEditorPanel?.querySelector(".document-template-builder-main");
 const documentTemplateBuilderInspector = documentTemplateEditorPanel?.querySelector(".document-template-builder-inspector");
+const documentTemplateWorkspaceTabs = document.querySelector("#document-template-workspace-tabs");
+const documentTemplateWorkspaceTabButtons = Array.from(document.querySelectorAll("[data-document-template-workspace-tab]"));
+const documentTemplateWorkspacePanels = Array.from(document.querySelectorAll("[data-document-template-workspace-panel]"));
 const documentTemplateFieldInspector = document.querySelector("#document-template-field-inspector");
 const documentTemplateLayoutActions = documentTemplateEditorPanel?.querySelector(".document-template-layout-actions");
 const documentTemplateLegalFrameworkList = document.querySelector("#document-template-legal-framework-list");
@@ -50826,12 +50831,14 @@ function syncDocumentTemplateEditorChrome() {
   }
 
   renderDocumentTemplateRuntimeContext();
+  syncDocumentTemplateWorkspaceTabs();
   if (!fillMode) {
     renderDocumentTemplateReferenceMeta();
     renderDocumentTemplatePlaceholderPalette();
   } else {
     documentTemplateReferenceMeta?.replaceChildren();
     documentTemplatePlaceholderPalette?.replaceChildren();
+    documentTemplateHtmlPlaceholderPalette?.replaceChildren();
   }
   syncDocumentTemplateSidebarPanels();
   renderDocumentTemplatePreviewContent();
@@ -50845,6 +50852,53 @@ function getDocumentTemplateSidebarPanelsState() {
     };
   }
   return state.documentTemplateSidebarPanels;
+}
+
+function normalizeDocumentTemplateWorkspaceTab(value = "") {
+  return String(value || "").trim().toLowerCase() === "html" ? "html" : "builder";
+}
+
+function getDocumentTemplateWorkspaceTab() {
+  return normalizeDocumentTemplateWorkspaceTab(state.documentTemplateWorkspaceTab || "builder");
+}
+
+function syncDocumentTemplateWorkspaceTabs() {
+  const fillMode = isDocumentTemplateRuntimeFillMode();
+  const activeTab = fillMode ? "builder" : getDocumentTemplateWorkspaceTab();
+
+  if (documentTemplateWorkspaceTabs instanceof HTMLElement) {
+    documentTemplateWorkspaceTabs.hidden = fillMode;
+  }
+
+  documentTemplateWorkspaceTabButtons.forEach((button) => {
+    if (!(button instanceof HTMLButtonElement)) {
+      return;
+    }
+    const tab = normalizeDocumentTemplateWorkspaceTab(button.dataset.documentTemplateWorkspaceTab);
+    const isActive = tab === activeTab;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-selected", String(isActive));
+    button.tabIndex = isActive ? 0 : -1;
+  });
+
+  documentTemplateWorkspacePanels.forEach((panel) => {
+    if (!(panel instanceof HTMLElement)) {
+      return;
+    }
+    const panelTab = normalizeDocumentTemplateWorkspaceTab(panel.dataset.documentTemplateWorkspacePanel);
+    const isActive = panelTab === activeTab;
+    panel.hidden = !isActive;
+    panel.classList.toggle("is-active", isActive);
+  });
+
+  if (activeTab === "html" && !fillMode) {
+    renderDocumentTemplateHtmlPreviewContent();
+  }
+}
+
+function setDocumentTemplateWorkspaceTab(tab = "builder") {
+  state.documentTemplateWorkspaceTab = normalizeDocumentTemplateWorkspaceTab(tab);
+  syncDocumentTemplateWorkspaceTabs();
 }
 
 function syncDocumentTemplateSidebarPanel(button, body, collapsed, {
@@ -54817,20 +54871,27 @@ function renderAbsenceReportModule() {
 }
 
 function renderDocumentTemplatePlaceholderPalette(template = buildDocumentTemplateDraft()) {
-  if (!documentTemplatePlaceholderPalette) {
+  const palettes = [
+    documentTemplatePlaceholderPalette,
+    documentTemplateHtmlPlaceholderPalette,
+  ].filter((palette) => palette instanceof HTMLElement);
+
+  if (palettes.length === 0) {
     return;
   }
 
   const definitions = getDocumentTemplatePlaceholderDefinitions(template);
   if (definitions.length === 0) {
-    const empty = document.createElement("p");
-    empty.className = "helper-copy module-copy";
-    empty.textContent = "Dodaj barem jedno polje ili Excel tablicu pa će se ovdje pojaviti HTML tokeni.";
-    documentTemplatePlaceholderPalette.replaceChildren(empty);
+    palettes.forEach((palette) => {
+      const empty = document.createElement("p");
+      empty.className = "helper-copy module-copy";
+      empty.textContent = "Dodaj barem jedno polje ili Excel tablicu pa će se ovdje pojaviti HTML tokeni.";
+      palette.replaceChildren(empty);
+    });
     return;
   }
 
-  documentTemplatePlaceholderPalette.replaceChildren(...definitions.map((entry) => {
+  const buildChip = (entry) => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "document-template-placeholder-chip";
@@ -54846,7 +54907,11 @@ function renderDocumentTemplatePlaceholderPalette(template = buildDocumentTempla
       insertTextIntoDocumentTemplateTarget(entry.token);
     });
     return button;
-  }));
+  };
+
+  palettes.forEach((palette) => {
+    palette.replaceChildren(...definitions.map((entry) => buildChip(entry)));
+  });
 }
 
 function renderDocumentTemplateLinkSummary(template = buildDocumentTemplateDraft()) {
@@ -60416,6 +60481,7 @@ function resetDocumentTemplateForm() {
   documentTemplateInspectorModalOpen = false;
   documentTemplateReferenceDraft = null;
   syncDocumentTemplateHtmlCodeInputFromReference();
+  state.documentTemplateWorkspaceTab = "builder";
   state.documentTemplateSidebarPanels = {
     referenceCollapsed: false,
     placeholdersCollapsed: false,
@@ -60474,6 +60540,7 @@ function hydrateDocumentTemplateForm(
   activeDocumentTemplateInspectorFieldId = "";
   documentTemplateInspectorModalOpen = false;
   collapsedDocumentTemplateChapterIds = new Set();
+  state.documentTemplateWorkspaceTab = "builder";
   state.documentTemplateSidebarPanels = {
     referenceCollapsed: false,
     placeholdersCollapsed: false,
@@ -92759,6 +92826,15 @@ documentTemplateToolbox?.addEventListener("dragend", () => {
   documentTemplateToolbox
     .querySelectorAll(".is-dragging-tool")
     .forEach((node) => node.classList.remove("is-dragging-tool"));
+});
+
+documentTemplateWorkspaceTabButtons.forEach((button) => {
+  if (!(button instanceof HTMLButtonElement)) {
+    return;
+  }
+  button.addEventListener("click", () => {
+    setDocumentTemplateWorkspaceTab(button.dataset.documentTemplateWorkspaceTab || "builder");
+  });
 });
 
 documentTemplatePreview?.addEventListener("click", (event) => {

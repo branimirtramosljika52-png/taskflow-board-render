@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260507c" />
+    <link rel="stylesheet" href="/styles.css?v=20260507d" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -7505,7 +7505,32 @@
                       <div id="document-template-runtime-common" class="document-template-runtime-common"></div>
                     </section>
 
-                    <section class="document-template-block document-template-program-workspace-block">
+                    <div id="document-template-workspace-tabs" class="document-template-workspace-tabs" role="tablist" aria-label="Template Development način rada">
+                      <button
+                        id="document-template-workspace-tab-builder"
+                        type="button"
+                        class="document-template-workspace-tab is-active"
+                        data-document-template-workspace-tab="builder"
+                        role="tab"
+                        aria-selected="true"
+                        aria-controls="document-template-program-workspace"
+                      >
+                        Forma zapisnika
+                      </button>
+                      <button
+                        id="document-template-workspace-tab-html"
+                        type="button"
+                        class="document-template-workspace-tab"
+                        data-document-template-workspace-tab="html"
+                        role="tab"
+                        aria-selected="false"
+                        aria-controls="document-template-html-workspace"
+                      >
+                        HTML builder
+                      </button>
+                    </div>
+
+                    <section id="document-template-program-workspace" class="document-template-block document-template-program-workspace-block is-active" data-document-template-workspace-panel="builder" role="tabpanel" aria-labelledby="document-template-workspace-tab-builder">
                       <div class="section-heading offers-section-heading document-template-program-workspace-head">
                         <div>
                           <p class="section-kicker">1 · Izrada zapisnika u programu</p>
@@ -7516,6 +7541,29 @@
 
                       <div class="document-template-builder-shell">
                         <aside class="document-template-builder-sidebar">
+                          <div class="document-template-sidebar-top-stack">
+                            <section class="document-template-block document-template-sidebar-block document-template-placeholder-panel">
+                              <div class="document-template-sidebar-block-head document-template-placeholder-panel-head">
+                                <div>
+                                  <p class="section-kicker">Placeholderi</p>
+                                  <h4>Tokeni za HTML</h4>
+                                </div>
+                                <button
+                                  id="document-template-placeholder-toggle"
+                                  type="button"
+                                  class="ghost-button document-template-sidebar-toggle"
+                                  aria-expanded="true"
+                                  aria-controls="document-template-placeholder-panel-body"
+                                >
+                                  Sakrij
+                                </button>
+                              </div>
+                              <div id="document-template-placeholder-panel-body" class="document-template-sidebar-block-body">
+                                <div id="document-template-placeholder-palette" class="document-template-placeholder-palette"></div>
+                              </div>
+                            </section>
+                          </div>
+
                           <section class="document-template-block document-template-sidebar-block document-template-toolbox-block">
                             <div class="document-template-sidebar-block-head">
                               <div>
@@ -7621,7 +7669,7 @@
                       </div>
                     </section>
 
-                    <section class="document-template-block document-template-html-workspace-block">
+                    <section id="document-template-html-workspace" class="document-template-block document-template-html-workspace-block" data-document-template-workspace-panel="html" role="tabpanel" aria-labelledby="document-template-workspace-tab-html" hidden>
                       <div class="document-template-sidebar-block-head document-template-html-workspace-head">
                         <div>
                           <p class="section-kicker">2 · Gotov HTML/PDF dokument</p>
@@ -7657,18 +7705,9 @@
                                   <p class="section-kicker">Tokeni</p>
                                   <h4>Tokeni za spajanje</h4>
                                 </div>
-                                <button
-                                  id="document-template-placeholder-toggle"
-                                  type="button"
-                                  class="ghost-button document-template-sidebar-toggle"
-                                  aria-expanded="true"
-                                  aria-controls="document-template-placeholder-panel-body"
-                                >
-                                  Sakrij
-                                </button>
                               </div>
-                              <div id="document-template-placeholder-panel-body" class="document-template-sidebar-block-body">
-                                <div id="document-template-placeholder-palette" class="document-template-placeholder-palette"></div>
+                              <div class="document-template-sidebar-block-body">
+                                <div id="document-template-html-placeholder-palette" class="document-template-placeholder-palette"></div>
                               </div>
                             </section>
                             <input id="document-template-reference-file-input" type="file" accept=".html,.htm,text/html" hidden />
@@ -7876,6 +7915,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260507c"></script>
+    <script type="module" src="/src/main.js?v=20260507d"></script>
   </body>
 </html>
