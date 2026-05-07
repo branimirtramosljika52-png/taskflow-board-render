@@ -8,6 +8,7 @@ import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import Docxtemplater from "docxtemplater";
+import JSZip from "jszip";
 import mammoth from "mammoth";
 import { PDFDocument as PdfLibDocument } from "pdf-lib";
 import PDFDocument from "pdfkit";
@@ -2166,6 +2167,103 @@ async function inlineLibreOfficeHtmlAssets(html = "", htmlPath = "", tempRoot = 
   return inlinedHtml;
 }
 
+function normalizeLegacyHtmlCssColor(value = "") {
+  const raw = clean(value).replace(/^["']|["']$/g, "");
+  if (!raw) {
+    return "";
+  }
+  if (/^#[0-9a-f]{3,8}$/i.test(raw)) {
+    return raw;
+  }
+  if (/^[0-9a-f]{6}$/i.test(raw)) {
+    return `#${raw}`;
+  }
+  if (/^[a-z]+$/i.test(raw)) {
+    return raw;
+  }
+  return "";
+}
+
+function normalizeLegacyHtmlCssLength(value = "") {
+  const raw = clean(value).replace(/^["']|["']$/g, "");
+  if (!raw) {
+    return "";
+  }
+  if (/^-?\d+(?:\.\d+)?%$/.test(raw)) {
+    return raw;
+  }
+  if (/^-?\d+(?:\.\d+)?(?:px|pt|cm|mm|in|em|rem|vw|vh)$/i.test(raw)) {
+    return raw;
+  }
+  if (/^-?\d+(?:\.\d+)?$/.test(raw)) {
+    return `${raw}px`;
+  }
+  return "";
+}
+
+function getHtmlAttribute(tag = "", name = "") {
+  const safeName = String(name || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = String(tag || "").match(new RegExp(`\\b${safeName}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i"));
+  return clean(match?.[1] || match?.[2] || match?.[3] || "");
+}
+
+function mergeStyleIntoHtmlTag(tag = "", styles = []) {
+  const cleanStyles = mergeCssLists(styles);
+  if (cleanStyles.length === 0 || /^<\//.test(tag) || /\/>$/.test(tag)) {
+    return tag;
+  }
+  const styleAttribute = getHtmlAttribute(tag, "style");
+  const merged = mergeCssLists(styleAttribute.split(";"), cleanStyles).join(";");
+  if (!merged) {
+    return tag;
+  }
+  if (/\bstyle\s*=/i.test(tag)) {
+    return tag.replace(/\bstyle\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i, `style="${escapeTemplateHtml(merged)}"`);
+  }
+  return tag.replace(/>$/, ` style="${escapeTemplateHtml(merged)}">`);
+}
+
+function polishLibreOfficeConvertedHtml(html = "") {
+  return String(html || "")
+    .replace(/<\s*font\b([^>]*)>/gi, (match, attributes = "") => {
+      const styles = [];
+      const color = normalizeLegacyHtmlCssColor(getHtmlAttribute(attributes, "color"));
+      const face = clean(getHtmlAttribute(attributes, "face"));
+      const size = Number.parseInt(getHtmlAttribute(attributes, "size"), 10);
+      if (color) styles.push(`color:${color}`);
+      if (face) styles.push(`font-family:${face}, Arial, sans-serif`);
+      if (Number.isFinite(size)) styles.push(`font-size:${Math.max(8, Math.min(30, 6 + size * 2))}pt`);
+      return `<span${cssListToStyleAttribute(styles)}>`;
+    })
+    .replace(/<\/\s*font\s*>/gi, "</span>")
+    .replace(/<(table|thead|tbody|tr|td|th|p|div|span|body)\b[^>]*>/gi, (tag, tagName) => {
+      const styles = [];
+      const align = clean(getHtmlAttribute(tag, "align")).toLowerCase();
+      const vAlign = clean(getHtmlAttribute(tag, "valign")).toLowerCase();
+      const bgcolor = normalizeLegacyHtmlCssColor(getHtmlAttribute(tag, "bgcolor"));
+      const color = normalizeLegacyHtmlCssColor(getHtmlAttribute(tag, "color") || getHtmlAttribute(tag, "text"));
+      const width = normalizeLegacyHtmlCssLength(getHtmlAttribute(tag, "width"));
+      const height = normalizeLegacyHtmlCssLength(getHtmlAttribute(tag, "height"));
+      const border = Number.parseFloat(getHtmlAttribute(tag, "border"));
+      const cellSpacing = normalizeLegacyHtmlCssLength(getHtmlAttribute(tag, "cellspacing"));
+      const cellPadding = normalizeLegacyHtmlCssLength(getHtmlAttribute(tag, "cellpadding"));
+      if (["left", "center", "right", "justify"].includes(align)) {
+        if (tagName.toLowerCase() === "table" && align === "center") styles.push("margin-left:auto;margin-right:auto");
+        else if (tagName.toLowerCase() === "table" && align === "right") styles.push("margin-left:auto;margin-right:0");
+        else styles.push(`text-align:${align}`);
+      }
+      if (["top", "middle", "bottom", "baseline"].includes(vAlign)) styles.push(`vertical-align:${vAlign}`);
+      if (bgcolor) styles.push(`background-color:${bgcolor}`);
+      if (color) styles.push(`color:${color}`);
+      if (width) styles.push(`width:${width}`);
+      if (height) styles.push(`height:${height}`);
+      if (Number.isFinite(border) && border > 0 && ["table", "td", "th"].includes(tagName.toLowerCase())) styles.push(`border:${Math.max(1, border)}px solid #111827`);
+      if (cellSpacing && tagName.toLowerCase() === "table") styles.push(`border-spacing:${cellSpacing}`);
+      if (cellPadding && ["td", "th"].includes(tagName.toLowerCase())) styles.push(`padding:${cellPadding}`);
+      return mergeStyleIntoHtmlTag(tag, styles);
+    });
+}
+
 function decodeBasicHtmlEntities(value = "") {
   return String(value ?? "")
     .replace(/&nbsp;/gi, " ")
@@ -2189,24 +2287,785 @@ function normalizeConvertedWordPlaceholders(html = "") {
   });
 }
 
-function buildConvertedWordLayoutStyles(engine = "") {
+function getXmlAttribute(tag = "", name = "") {
+  const safeName = String(name || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = String(tag || "").match(new RegExp(`\\b${safeName}\\s*=\\s*(["'])(.*?)\\1`, "i"));
+  return match ? decodeBasicHtmlEntities(match[2]) : "";
+}
+
+function getFirstXmlElement(xml = "", tagName = "") {
+  const safeTagName = String(tagName || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = String(xml || "").match(new RegExp(`<${safeTagName}\\b[\\s\\S]*?<\\/${safeTagName}>`, "i"));
+  return match?.[0] || "";
+}
+
+function getFirstXmlEmptyOrElement(xml = "", tagName = "") {
+  const safeTagName = String(tagName || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = String(xml || "").match(new RegExp(`<${safeTagName}\\b[^>]*(?:\\/>|>[\\s\\S]*?<\\/${safeTagName}>)`, "i"));
+  return match?.[0] || "";
+}
+
+function getXmlElements(xml = "", tagName = "") {
+  const safeTagName = String(tagName || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return Array.from(String(xml || "").matchAll(new RegExp(`<${safeTagName}\\b[\\s\\S]*?<\\/${safeTagName}>`, "gi")))
+    .map((match) => match[0]);
+}
+
+function getXmlVal(element = "", fallback = "") {
+  return clean(getXmlAttribute(element, "w:val") || getXmlAttribute(element, "val") || fallback);
+}
+
+function hasXmlElement(xml = "", tagName = "") {
+  const safeTagName = String(tagName || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`<${safeTagName}\\b`, "i").test(String(xml || ""));
+}
+
+function isDocxOnOff(element = "") {
+  if (!element) {
+    return false;
+  }
+  const value = getXmlVal(element, "true").toLowerCase();
+  return !["false", "0", "off", "none"].includes(value);
+}
+
+function twipsToPt(value, fallback = null) {
+  const numeric = Number.parseFloat(value);
+  return Number.isFinite(numeric) ? numeric / 20 : fallback;
+}
+
+function halfPointsToPt(value, fallback = null) {
+  const numeric = Number.parseFloat(value);
+  return Number.isFinite(numeric) ? numeric / 2 : fallback;
+}
+
+function eighthPointsToPt(value, fallback = null) {
+  const numeric = Number.parseFloat(value);
+  return Number.isFinite(numeric) ? numeric / 8 : fallback;
+}
+
+function cssLengthPt(value, fallback = "") {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? `${Math.max(0, Math.round(numeric * 100) / 100)}pt` : fallback;
+}
+
+function normalizeDocxHexColor(value = "") {
+  const raw = clean(value).replace(/^#/, "");
+  if (!raw || raw.toLowerCase() === "auto") {
+    return "";
+  }
+  if (/^[0-9a-f]{3}$/i.test(raw)) {
+    return `#${raw.split("").map((entry) => `${entry}${entry}`).join("").toUpperCase()}`;
+  }
+  if (/^[0-9a-f]{6}$/i.test(raw)) {
+    return `#${raw.toUpperCase()}`;
+  }
+  return "";
+}
+
+function resolveDocxThemeColor(element = "", themeColors = {}) {
+  const direct = normalizeDocxHexColor(getXmlAttribute(element, "w:color") || getXmlAttribute(element, "w:fill") || getXmlAttribute(element, "w:val"));
+  if (direct) {
+    return direct;
+  }
+  const themeName = clean(
+    getXmlAttribute(element, "w:themeColor")
+    || getXmlAttribute(element, "w:themeFill")
+    || getXmlAttribute(element, "themeColor")
+    || getXmlAttribute(element, "themeFill"),
+  );
+  if (themeName && themeColors[themeName]) {
+    return themeColors[themeName];
+  }
+  return "";
+}
+
+function parseDocxThemeColors(themeXml = "") {
+  const colors = {};
+  const aliases = {
+    dk1: "dark1",
+    lt1: "light1",
+    dk2: "dark2",
+    lt2: "light2",
+    accent1: "accent1",
+    accent2: "accent2",
+    accent3: "accent3",
+    accent4: "accent4",
+    accent5: "accent5",
+    accent6: "accent6",
+    hlink: "hyperlink",
+    folHlink: "followedHyperlink",
+  };
+  Object.entries(aliases).forEach(([xmlName, key]) => {
+    const element = getFirstXmlElement(themeXml, `a:${xmlName}`);
+    const raw = getXmlAttribute(element, "val") || getXmlAttribute(element, "lastClr");
+    const color = normalizeDocxHexColor(raw);
+    if (color) {
+      colors[key] = color;
+      colors[xmlName] = color;
+    }
+  });
+  return colors;
+}
+
+async function readDocxZipText(zip, path = "") {
+  const file = zip?.file(path);
+  return file ? await file.async("string") : "";
+}
+
+async function extractWordDocumentMetadataFromZip(zip) {
+  const [documentXml, themeXml, stylesXml] = await Promise.all([
+    readDocxZipText(zip, "word/document.xml"),
+    readDocxZipText(zip, "word/theme/theme1.xml"),
+    readDocxZipText(zip, "word/styles.xml"),
+  ]);
+  const themeColors = parseDocxThemeColors(themeXml);
+  const sectPr = getFirstXmlElement(documentXml, "w:sectPr");
+  const pgSz = getFirstXmlEmptyOrElement(sectPr, "w:pgSz");
+  const pgMar = getFirstXmlEmptyOrElement(sectPr, "w:pgMar");
+  const docDefaults = getFirstXmlElement(stylesXml, "w:docDefaults");
+  const defaultRPr = getFirstXmlElement(docDefaults, "w:rPrDefault");
+  const defaultPPr = getFirstXmlElement(docDefaults, "w:pPrDefault");
+  const rFonts = getFirstXmlEmptyOrElement(defaultRPr, "w:rFonts");
+  const sizeElement = getFirstXmlEmptyOrElement(defaultRPr, "w:sz");
+  const defaultFont = clean(
+    getXmlAttribute(rFonts, "w:ascii")
+    || getXmlAttribute(rFonts, "w:hAnsi")
+    || getXmlAttribute(rFonts, "w:cs")
+    || "Arial",
+  );
+  const defaultFontSize = halfPointsToPt(getXmlVal(sizeElement), 11);
+  const pageWidthPt = twipsToPt(getXmlAttribute(pgSz, "w:w"), 595.28);
+  const pageHeightPt = twipsToPt(getXmlAttribute(pgSz, "w:h"), 841.89);
+  const orient = clean(getXmlAttribute(pgSz, "w:orient")).toLowerCase();
+  const page = {
+    widthPt: orient === "landscape" ? Math.max(pageWidthPt, pageHeightPt) : pageWidthPt,
+    heightPt: orient === "landscape" ? Math.min(pageWidthPt, pageHeightPt) : pageHeightPt,
+    marginTopPt: twipsToPt(getXmlAttribute(pgMar, "w:top"), 72),
+    marginRightPt: twipsToPt(getXmlAttribute(pgMar, "w:right"), 72),
+    marginBottomPt: twipsToPt(getXmlAttribute(pgMar, "w:bottom"), 72),
+    marginLeftPt: twipsToPt(getXmlAttribute(pgMar, "w:left"), 72),
+    orientation: orient || "portrait",
+  };
+  return {
+    themeColors,
+    defaultFont,
+    defaultFontSize,
+    defaultParagraphCss: docxParagraphPropertiesToCss(getFirstXmlElement(defaultPPr, "w:pPr"), themeColors),
+    defaultRunCss: docxRunPropertiesToCss(getFirstXmlElement(defaultRPr, "w:rPr"), themeColors),
+    page,
+  };
+}
+
+async function extractWordDocumentMetadata(buffer = Buffer.alloc(0)) {
+  try {
+    const zip = await JSZip.loadAsync(buffer);
+    return await extractWordDocumentMetadataFromZip(zip);
+  } catch {
+    return {};
+  }
+}
+
+function docxHighlightToColor(value = "") {
+  const lookup = {
+    black: "#000000",
+    blue: "#0000FF",
+    cyan: "#00FFFF",
+    green: "#00FF00",
+    magenta: "#FF00FF",
+    red: "#FF0000",
+    yellow: "#FFFF00",
+    white: "#FFFFFF",
+    darkBlue: "#000080",
+    darkCyan: "#008080",
+    darkGreen: "#008000",
+    darkMagenta: "#800080",
+    darkRed: "#800000",
+    darkYellow: "#808000",
+    darkGray: "#808080",
+    lightGray: "#C0C0C0",
+  };
+  return lookup[clean(value)] || "";
+}
+
+function dedupeCssDeclarations(styles = []) {
+  const byName = new Map();
+  (Array.isArray(styles) ? styles : []).forEach((style) => {
+    const text = clean(style).replace(/;$/, "");
+    const separatorIndex = text.indexOf(":");
+    if (separatorIndex <= 0) {
+      return;
+    }
+    byName.set(text.slice(0, separatorIndex).trim(), text.slice(separatorIndex + 1).trim());
+  });
+  return Array.from(byName.entries()).map(([key, value]) => `${key}:${value}`);
+}
+
+function mergeCssLists(...lists) {
+  return dedupeCssDeclarations(lists.flat().filter(Boolean));
+}
+
+function cssListToStyleAttribute(styles = []) {
+  const css = mergeCssLists(styles).join(";");
+  return css ? ` style="${escapeTemplateHtml(css)}"` : "";
+}
+
+function docxRunPropertiesToCss(rPr = "", themeColors = {}) {
+  const styles = [];
+  if (!rPr) {
+    return styles;
+  }
+  if (isDocxOnOff(getFirstXmlEmptyOrElement(rPr, "w:b"))) styles.push("font-weight:700");
+  if (isDocxOnOff(getFirstXmlEmptyOrElement(rPr, "w:i"))) styles.push("font-style:italic");
+  if (isDocxOnOff(getFirstXmlEmptyOrElement(rPr, "w:caps"))) styles.push("text-transform:uppercase");
+  if (isDocxOnOff(getFirstXmlEmptyOrElement(rPr, "w:smallCaps"))) styles.push("font-variant:small-caps");
+  const textDecorations = [];
+  const underline = getFirstXmlEmptyOrElement(rPr, "w:u");
+  if (underline && !["none", "false", "0"].includes(getXmlVal(underline, "single").toLowerCase())) textDecorations.push("underline");
+  if (isDocxOnOff(getFirstXmlEmptyOrElement(rPr, "w:strike")) || isDocxOnOff(getFirstXmlEmptyOrElement(rPr, "w:dstrike"))) textDecorations.push("line-through");
+  if (textDecorations.length > 0) styles.push(`text-decoration:${textDecorations.join(" ")}`);
+  const color = resolveDocxThemeColor(getFirstXmlEmptyOrElement(rPr, "w:color"), themeColors);
+  if (color) styles.push(`color:${color}`);
+  const highlightColor = docxHighlightToColor(getXmlVal(getFirstXmlEmptyOrElement(rPr, "w:highlight")));
+  const shading = getFirstXmlEmptyOrElement(rPr, "w:shd");
+  const fillColor = highlightColor || normalizeDocxHexColor(getXmlAttribute(shading, "w:fill")) || resolveDocxThemeColor(shading, themeColors);
+  if (fillColor) styles.push(`background-color:${fillColor}`);
+  const size = halfPointsToPt(getXmlVal(getFirstXmlEmptyOrElement(rPr, "w:sz")));
+  if (size) styles.push(`font-size:${cssLengthPt(size)}`);
+  const spacing = twipsToPt(getXmlAttribute(getFirstXmlEmptyOrElement(rPr, "w:spacing"), "w:val"));
+  if (spacing) styles.push(`letter-spacing:${cssLengthPt(spacing)}`);
+  const position = halfPointsToPt(getXmlVal(getFirstXmlEmptyOrElement(rPr, "w:position")));
+  if (position) styles.push(`position:relative;top:${cssLengthPt(-position)}`);
+  const vertAlign = getXmlVal(getFirstXmlEmptyOrElement(rPr, "w:vertAlign")).toLowerCase();
+  if (vertAlign === "superscript") styles.push("vertical-align:super;font-size:80%");
+  if (vertAlign === "subscript") styles.push("vertical-align:sub;font-size:80%");
+  const fonts = getFirstXmlEmptyOrElement(rPr, "w:rFonts");
+  const fontFamily = clean(getXmlAttribute(fonts, "w:ascii") || getXmlAttribute(fonts, "w:hAnsi") || getXmlAttribute(fonts, "w:cs"));
+  if (fontFamily) styles.push(`font-family:${fontFamily}, Arial, sans-serif`);
+  return dedupeCssDeclarations(styles);
+}
+
+function docxBorderToCss(borderElement = "", themeColors = {}) {
+  if (!borderElement) {
+    return "";
+  }
+  const value = getXmlVal(borderElement, "single").toLowerCase();
+  if (["nil", "none", "false", "0"].includes(value)) {
+    return "";
+  }
+  const styleMap = {
+    single: "solid",
+    thick: "solid",
+    double: "double",
+    dotted: "dotted",
+    dashed: "dashed",
+    dotDash: "dashed",
+    dotDotDash: "dashed",
+    dashSmallGap: "dashed",
+  };
+  const width = Math.max(0.5, eighthPointsToPt(getXmlAttribute(borderElement, "w:sz"), 4 / 8) || 0.5);
+  const color = resolveDocxThemeColor(borderElement, themeColors) || "#111827";
+  return `${cssLengthPt(width)} ${styleMap[value] || "solid"} ${color}`;
+}
+
+function docxBordersToCss(parentXml = "", containerTagName = "", themeColors = {}) {
+  const borderContainer = getFirstXmlElement(parentXml, containerTagName);
+  if (!borderContainer) {
+    return [];
+  }
+  const sideMap = {
+    top: "border-top",
+    right: "border-right",
+    bottom: "border-bottom",
+    left: "border-left",
+    insideH: "border-bottom",
+    insideV: "border-right",
+  };
+  return Object.entries(sideMap).map(([side, cssName]) => {
+    const borderCss = docxBorderToCss(getFirstXmlEmptyOrElement(borderContainer, `w:${side}`), themeColors);
+    return borderCss ? `${cssName}:${borderCss}` : "";
+  }).filter(Boolean);
+}
+
+function docxParagraphPropertiesToCss(pPr = "", themeColors = {}) {
+  const styles = [];
+  if (!pPr) {
+    return styles;
+  }
+  const alignment = getXmlVal(getFirstXmlEmptyOrElement(pPr, "w:jc")).toLowerCase();
+  const alignmentMap = {
+    start: "left",
+    left: "left",
+    center: "center",
+    right: "right",
+    end: "right",
+    both: "justify",
+    distribute: "justify",
+  };
+  if (alignmentMap[alignment]) styles.push(`text-align:${alignmentMap[alignment]}`);
+  const spacing = getFirstXmlEmptyOrElement(pPr, "w:spacing");
+  const before = twipsToPt(getXmlAttribute(spacing, "w:before"));
+  const after = twipsToPt(getXmlAttribute(spacing, "w:after"));
+  const line = Number.parseFloat(getXmlAttribute(spacing, "w:line"));
+  const lineRule = clean(getXmlAttribute(spacing, "w:lineRule"));
+  if (before !== null) styles.push(`margin-top:${cssLengthPt(before)}`);
+  if (after !== null) styles.push(`margin-bottom:${cssLengthPt(after)}`);
+  if (Number.isFinite(line)) {
+    styles.push(lineRule === "exact" || lineRule === "atLeast" ? `line-height:${cssLengthPt(twipsToPt(line, 0))}` : `line-height:${Math.max(1, Math.round((line / 240) * 100) / 100)}`);
+  }
+  const indent = getFirstXmlEmptyOrElement(pPr, "w:ind");
+  const left = twipsToPt(getXmlAttribute(indent, "w:left"));
+  const right = twipsToPt(getXmlAttribute(indent, "w:right"));
+  const firstLine = twipsToPt(getXmlAttribute(indent, "w:firstLine"));
+  const hanging = twipsToPt(getXmlAttribute(indent, "w:hanging"));
+  if (left !== null) styles.push(`margin-left:${cssLengthPt(left)}`);
+  if (right !== null) styles.push(`margin-right:${cssLengthPt(right)}`);
+  if (firstLine !== null) styles.push(`text-indent:${cssLengthPt(firstLine)}`);
+  if (hanging !== null) styles.push(`text-indent:-${cssLengthPt(hanging)}`);
+  const shading = getFirstXmlEmptyOrElement(pPr, "w:shd");
+  const fillColor = normalizeDocxHexColor(getXmlAttribute(shading, "w:fill")) || resolveDocxThemeColor(shading, themeColors);
+  if (fillColor) styles.push(`background-color:${fillColor}`);
+  if (hasXmlElement(pPr, "w:pageBreakBefore")) styles.push("break-before:page;page-break-before:always");
+  styles.push(...docxBordersToCss(pPr, "w:pBdr", themeColors));
+  return dedupeCssDeclarations(styles);
+}
+
+function docxTablePropertiesToCss(tblPr = "", themeColors = {}) {
+  const styles = [];
+  if (!tblPr) {
+    return styles;
+  }
+  const tblW = getFirstXmlEmptyOrElement(tblPr, "w:tblW");
+  const widthType = clean(getXmlAttribute(tblW, "w:type")).toLowerCase();
+  const widthValue = Number.parseFloat(getXmlAttribute(tblW, "w:w"));
+  if (Number.isFinite(widthValue) && widthValue > 0) {
+    if (widthType === "pct") styles.push(`width:${Math.max(1, Math.min(100, widthValue / 50))}%`);
+    if (widthType === "dxa") styles.push(`width:${cssLengthPt(twipsToPt(widthValue, 0))}`);
+  }
+  const jc = getXmlVal(getFirstXmlEmptyOrElement(tblPr, "w:jc")).toLowerCase();
+  if (jc === "center") styles.push("margin-left:auto;margin-right:auto");
+  if (jc === "right") styles.push("margin-left:auto;margin-right:0");
+  const shading = getFirstXmlEmptyOrElement(tblPr, "w:shd");
+  const fillColor = normalizeDocxHexColor(getXmlAttribute(shading, "w:fill")) || resolveDocxThemeColor(shading, themeColors);
+  if (fillColor) styles.push(`background-color:${fillColor}`);
+  styles.push(...docxBordersToCss(tblPr, "w:tblBorders", themeColors));
+  return dedupeCssDeclarations(styles);
+}
+
+function docxCellPropertiesToCss(tcPr = "", themeColors = {}) {
+  const styles = [];
+  if (!tcPr) {
+    return styles;
+  }
+  const tcW = getFirstXmlEmptyOrElement(tcPr, "w:tcW");
+  const widthType = clean(getXmlAttribute(tcW, "w:type")).toLowerCase();
+  const widthValue = Number.parseFloat(getXmlAttribute(tcW, "w:w"));
+  if (Number.isFinite(widthValue) && widthValue > 0) {
+    if (widthType === "pct") styles.push(`width:${Math.max(1, Math.min(100, widthValue / 50))}%`);
+    if (widthType === "dxa") styles.push(`width:${cssLengthPt(twipsToPt(widthValue, 0))}`);
+  }
+  const shading = getFirstXmlEmptyOrElement(tcPr, "w:shd");
+  const fillColor = normalizeDocxHexColor(getXmlAttribute(shading, "w:fill")) || resolveDocxThemeColor(shading, themeColors);
+  if (fillColor) styles.push(`background-color:${fillColor}`);
+  const vAlign = getXmlVal(getFirstXmlEmptyOrElement(tcPr, "w:vAlign")).toLowerCase();
+  if (vAlign) styles.push(`vertical-align:${vAlign === "center" ? "middle" : vAlign}`);
+  styles.push(...docxBordersToCss(tcPr, "w:tcBorders", themeColors));
+  const margins = getFirstXmlElement(tcPr, "w:tcMar");
+  const marginMap = { top: "padding-top", right: "padding-right", bottom: "padding-bottom", left: "padding-left" };
+  Object.entries(marginMap).forEach(([side, cssName]) => {
+    const value = twipsToPt(getXmlAttribute(getFirstXmlEmptyOrElement(margins, `w:${side}`), "w:w"));
+    if (value !== null) styles.push(`${cssName}:${cssLengthPt(value)}`);
+  });
+  return dedupeCssDeclarations(styles);
+}
+
+function parseDocxRelationships(relsXml = "") {
+  const relationships = {};
+  Array.from(String(relsXml || "").matchAll(/<Relationship\b[^>]*\/?>/gi)).forEach((match) => {
+    const tag = match[0];
+    const id = clean(getXmlAttribute(tag, "Id"));
+    const target = clean(getXmlAttribute(tag, "Target"));
+    if (id && target) {
+      relationships[id] = target;
+    }
+  });
+  return relationships;
+}
+
+function resolveDocxMediaPath(target = "") {
+  const cleanTarget = clean(target).replace(/\\/g, "/").replace(/^\.\//, "");
+  if (!cleanTarget || /^(https?:|data:|mailto:)/i.test(cleanTarget)) {
+    return "";
+  }
+  return cleanTarget.startsWith("word/") ? cleanTarget : `word/${cleanTarget.replace(/^\.\.\//, "")}`;
+}
+
+function parseDocxStyles(stylesXml = "", themeColors = {}) {
+  const rawStyles = {};
+  getXmlElements(stylesXml, "w:style").forEach((styleXml) => {
+    const startTag = styleXml.match(/<w:style\b[^>]*>/i)?.[0] || "";
+    const styleId = clean(getXmlAttribute(startTag, "w:styleId"));
+    if (!styleId) {
+      return;
+    }
+    rawStyles[styleId] = {
+      id: styleId,
+      type: clean(getXmlAttribute(startTag, "w:type")).toLowerCase(),
+      name: getXmlVal(getFirstXmlEmptyOrElement(styleXml, "w:name"), styleId),
+      basedOn: getXmlVal(getFirstXmlEmptyOrElement(styleXml, "w:basedOn")),
+      pCss: docxParagraphPropertiesToCss(getFirstXmlElement(styleXml, "w:pPr"), themeColors),
+      rCss: docxRunPropertiesToCss(getFirstXmlElement(styleXml, "w:rPr"), themeColors),
+      tblCss: docxTablePropertiesToCss(getFirstXmlElement(styleXml, "w:tblPr"), themeColors),
+    };
+  });
+
+  const resolving = new Set();
+  const resolved = {};
+  const resolveStyle = (styleId = "") => {
+    if (!styleId || !rawStyles[styleId]) {
+      return null;
+    }
+    if (resolved[styleId]) {
+      return resolved[styleId];
+    }
+    if (resolving.has(styleId)) {
+      return rawStyles[styleId];
+    }
+    resolving.add(styleId);
+    const style = rawStyles[styleId];
+    const parent = resolveStyle(style.basedOn);
+    resolved[styleId] = {
+      ...style,
+      pCss: mergeCssLists(parent?.pCss || [], style.pCss),
+      rCss: mergeCssLists(parent?.rCss || [], style.rCss),
+      tblCss: mergeCssLists(parent?.tblCss || [], style.tblCss),
+    };
+    resolving.delete(styleId);
+    return resolved[styleId];
+  };
+
+  Object.keys(rawStyles).forEach(resolveStyle);
+  return resolved;
+}
+
+function getDocxStyle(styles = {}, styleId = "", type = "") {
+  const style = styles[styleId];
+  if (!style) {
+    return null;
+  }
+  return type && style.type && style.type !== type ? null : style;
+}
+
+function findMatchingXmlElement(xml = "", startIndex = 0, tagName = "") {
+  const source = String(xml || "");
+  const safeTagName = String(tagName || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const tokenRegex = new RegExp(`<\\/?${safeTagName}\\b[^>]*>`, "gi");
+  tokenRegex.lastIndex = startIndex;
+  let depth = 0;
+  let match;
+  while ((match = tokenRegex.exec(source))) {
+    const token = match[0];
+    if (token.startsWith(`</`)) {
+      depth -= 1;
+      if (depth <= 0) {
+        return tokenRegex.lastIndex;
+      }
+    } else if (!token.endsWith("/>")) {
+      depth += 1;
+    }
+  }
+  return -1;
+}
+
+function extractDocxBodyBlocks(bodyXml = "") {
+  const source = String(bodyXml || "");
+  const blocks = [];
+  let index = 0;
+  while (index < source.length) {
+    const paragraphIndex = source.indexOf("<w:p", index);
+    const tableIndex = source.indexOf("<w:tbl", index);
+    const candidates = [
+      paragraphIndex >= 0 ? { type: "p", index: paragraphIndex, tag: "w:p" } : null,
+      tableIndex >= 0 ? { type: "tbl", index: tableIndex, tag: "w:tbl" } : null,
+    ].filter(Boolean).sort((a, b) => a.index - b.index);
+    const next = candidates[0];
+    if (!next) {
+      break;
+    }
+    const end = findMatchingXmlElement(source, next.index, next.tag);
+    if (end <= next.index) {
+      break;
+    }
+    blocks.push({
+      type: next.type,
+      xml: source.slice(next.index, end),
+    });
+    index = end;
+  }
+  return blocks;
+}
+
+function getDocxParagraphListInfo(pPr = "") {
+  const numPr = getFirstXmlElement(pPr, "w:numPr");
+  if (!numPr) {
+    return null;
+  }
+  return {
+    level: Number.parseInt(getXmlVal(getFirstXmlEmptyOrElement(numPr, "w:ilvl"), "0"), 10) || 0,
+    id: getXmlVal(getFirstXmlEmptyOrElement(numPr, "w:numId"), "0"),
+  };
+}
+
+async function renderDocxImageHtml(xml = "", context = {}) {
+  const relId = clean(
+    getXmlAttribute(xml, "r:embed")
+    || getXmlAttribute(xml, "r:link")
+    || getXmlAttribute(xml, "embed"),
+  );
+  const target = context.relationships?.[relId];
+  const mediaPath = resolveDocxMediaPath(target);
+  if (!mediaPath) {
+    return "";
+  }
+  if (!context.imageCache) {
+    context.imageCache = new Map();
+  }
+  if (!context.imageCache.has(mediaPath)) {
+    const file = context.zip?.file(mediaPath);
+    context.imageCache.set(mediaPath, file ? await file.async("base64") : "");
+  }
+  const base64 = context.imageCache.get(mediaPath);
+  if (!base64) {
+    return "";
+  }
+  const extent = getFirstXmlEmptyOrElement(xml, "wp:extent") || getFirstXmlEmptyOrElement(xml, "a:ext");
+  const cx = Number.parseFloat(getXmlAttribute(extent, "cx"));
+  const cy = Number.parseFloat(getXmlAttribute(extent, "cy"));
+  const styles = [];
+  if (Number.isFinite(cx) && cx > 0) styles.push(`width:${Math.round((cx / 914400) * 96 * 100) / 100}px`);
+  if (Number.isFinite(cy) && cy > 0) styles.push(`height:${Math.round((cy / 914400) * 96 * 100) / 100}px`);
+  return `<img src="data:${getMimeTypeForPath(mediaPath)};base64,${base64}"${cssListToStyleAttribute(styles)}>`;
+}
+
+async function renderDocxRunHtml(runXml = "", context = {}) {
+  const rPr = getFirstXmlElement(runXml, "w:rPr");
+  const rStyleId = getXmlVal(getFirstXmlEmptyOrElement(rPr, "w:rStyle"));
+  const characterStyle = getDocxStyle(context.styles, rStyleId, "character");
+  const runCss = mergeCssLists(context.metadata?.defaultRunCss || [], context.paragraphRunCss || [], characterStyle?.rCss || [], docxRunPropertiesToCss(rPr, context.themeColors));
+  const chunks = [];
+  const tokenRegex = /<w:t\b[^>]*>[\s\S]*?<\/w:t>|<w:tab\b[^>]*\/>|<w:br\b[^>]*\/>|<w:drawing\b[\s\S]*?<\/w:drawing>|<w:pict\b[\s\S]*?<\/w:pict>|<w:sym\b[^>]*\/>/gi;
+  let match;
+  while ((match = tokenRegex.exec(runXml))) {
+    const token = match[0];
+    if (/^<w:t\b/i.test(token)) {
+      chunks.push(escapeTemplateHtml(decodeBasicHtmlEntities(token.replace(/^<w:t\b[^>]*>/i, "").replace(/<\/w:t>$/i, ""))));
+    } else if (/^<w:tab\b/i.test(token)) {
+      chunks.push('<span class="sn-word-tab"></span>');
+    } else if (/^<w:br\b/i.test(token)) {
+      const breakType = clean(getXmlAttribute(token, "w:type")).toLowerCase();
+      chunks.push(breakType === "page" ? '<span class="sn-word-page-break"></span>' : "<br>");
+    } else if (/^<w:sym\b/i.test(token)) {
+      const charCode = Number.parseInt(getXmlAttribute(token, "w:char"), 16);
+      chunks.push(Number.isFinite(charCode) ? escapeTemplateHtml(String.fromCodePoint(charCode)) : "");
+    } else {
+      chunks.push(await renderDocxImageHtml(token, context));
+    }
+  }
+  const html = chunks.join("");
+  if (!html) {
+    return "";
+  }
+  return runCss.length ? `<span${cssListToStyleAttribute(runCss)}>${html}</span>` : html;
+}
+
+async function renderDocxParagraphInnerHtml(pXml = "", context = {}) {
+  const pieces = [];
+  const inlineRegex = /<w:hyperlink\b[\s\S]*?<\/w:hyperlink>|<w:r\b[\s\S]*?<\/w:r>/gi;
+  let match;
+  while ((match = inlineRegex.exec(pXml))) {
+    const token = match[0];
+    if (/^<w:hyperlink\b/i.test(token)) {
+      const runs = getXmlElements(token, "w:r");
+      const text = (await Promise.all(runs.map((runXml) => renderDocxRunHtml(runXml, context)))).join("");
+      pieces.push(`<span class="sn-word-hyperlink">${text}</span>`);
+    } else {
+      pieces.push(await renderDocxRunHtml(token, context));
+    }
+  }
+  return pieces.join("") || "&nbsp;";
+}
+
+async function renderDocxParagraphHtml(pXml = "", context = {}) {
+  const pPr = getFirstXmlElement(pXml, "w:pPr");
+  const styleId = getXmlVal(getFirstXmlEmptyOrElement(pPr, "w:pStyle"));
+  const paragraphStyle = getDocxStyle(context.styles, styleId, "paragraph");
+  const pCss = mergeCssLists(context.metadata?.defaultParagraphCss || [], paragraphStyle?.pCss || [], docxParagraphPropertiesToCss(pPr, context.themeColors));
+  const rCss = mergeCssLists(paragraphStyle?.rCss || []);
+  const listInfo = getDocxParagraphListInfo(pPr);
+  const innerHtml = await renderDocxParagraphInnerHtml(pXml, {
+    ...context,
+    paragraphRunCss: rCss,
+  });
+  const classNames = ["sn-word-paragraph"];
+  if (styleId) classNames.push(`sn-word-style-${styleId.replace(/[^A-Za-z0-9_-]/g, "-")}`);
+  if (listInfo) classNames.push("sn-word-list-line");
+  const listPrefix = listInfo ? `<span class="sn-word-list-marker">${escapeTemplateHtml(listInfo.id ? `${listInfo.level + 1}.` : "•")}</span>` : "";
+  return `<p class="${classNames.join(" ")}"${cssListToStyleAttribute(pCss)}>${listPrefix}${innerHtml}</p>`;
+}
+
+function parseDocxTableRows(tblXml = "") {
+  return getXmlElements(tblXml, "w:tr").map((rowXml) => ({
+    xml: rowXml,
+    cells: getXmlElements(rowXml, "w:tc").map((cellXml) => {
+      const tcPr = getFirstXmlElement(cellXml, "w:tcPr");
+      const gridSpan = Math.max(1, Number.parseInt(getXmlVal(getFirstXmlEmptyOrElement(tcPr, "w:gridSpan"), "1"), 10) || 1);
+      const vMergeElement = getFirstXmlEmptyOrElement(tcPr, "w:vMerge");
+      const vMergeValue = vMergeElement ? (getXmlVal(vMergeElement, "continue") || "continue") : "";
+      return {
+        xml: cellXml,
+        tcPr,
+        gridSpan,
+        vMerge: vMergeValue,
+        rowSpan: 1,
+        skip: false,
+      };
+    }),
+  }));
+}
+
+function applyDocxVerticalMerges(rows = []) {
+  const active = new Map();
+  rows.forEach((row) => {
+    let columnIndex = 0;
+    row.cells.forEach((cell) => {
+      while (active.has(columnIndex) && active.get(columnIndex)?.closed) {
+        active.delete(columnIndex);
+      }
+      const mergeValue = clean(cell.vMerge).toLowerCase();
+      if (mergeValue && mergeValue !== "restart") {
+        const origin = active.get(columnIndex);
+        if (origin) {
+          origin.rowSpan += 1;
+          cell.skip = true;
+        }
+      } else if (mergeValue === "restart") {
+        active.set(columnIndex, cell);
+      } else {
+        active.delete(columnIndex);
+      }
+      columnIndex += cell.gridSpan;
+    });
+  });
+  return rows;
+}
+
+async function renderDocxTableCellHtml(cell = {}, context = {}) {
+  const blocks = extractDocxBodyBlocks(cell.xml.replace(getFirstXmlElement(cell.xml, "w:tcPr"), ""));
+  const content = (await Promise.all(blocks.map((block) => (
+    block.type === "tbl" ? renderDocxTableHtml(block.xml, context) : renderDocxParagraphHtml(block.xml, context)
+  )))).join("");
+  const attrs = [
+    cell.gridSpan > 1 ? ` colspan="${cell.gridSpan}"` : "",
+    cell.rowSpan > 1 ? ` rowspan="${cell.rowSpan}"` : "",
+    cssListToStyleAttribute(docxCellPropertiesToCss(cell.tcPr, context.themeColors)),
+  ].filter(Boolean).join("");
+  return `<td${attrs}>${content || "&nbsp;"}</td>`;
+}
+
+async function renderDocxTableHtml(tblXml = "", context = {}) {
+  const tblPr = getFirstXmlElement(tblXml, "w:tblPr");
+  const styleId = getXmlVal(getFirstXmlEmptyOrElement(tblPr, "w:tblStyle"));
+  const tableStyle = getDocxStyle(context.styles, styleId, "table");
+  const rows = applyDocxVerticalMerges(parseDocxTableRows(tblXml));
+  const rowHtml = await Promise.all(rows.map(async (row) => {
+    const cellHtml = await Promise.all(row.cells.filter((cell) => !cell.skip).map((cell) => renderDocxTableCellHtml(cell, context)));
+    return `<tr>${cellHtml.join("")}</tr>`;
+  }));
+  const css = mergeCssLists(tableStyle?.tblCss || [], docxTablePropertiesToCss(tblPr, context.themeColors));
+  return `<table class="sn-word-table sn-word-ooxml-table"${cssListToStyleAttribute(css)}><tbody>${rowHtml.join("")}</tbody></table>`;
+}
+
+async function convertWordBufferToHtmlWithDocxXml(buffer = Buffer.alloc(0), {
+  fileName = "word-template.docx",
+  extraMessages = [],
+} = {}) {
+  const zip = await JSZip.loadAsync(buffer);
+  const documentXml = await readDocxZipText(zip, "word/document.xml");
+  if (!documentXml) {
+    throw new Error("Word dokument nema document.xml sadržaj.");
+  }
+  const [stylesXml, relsXml] = await Promise.all([
+    readDocxZipText(zip, "word/styles.xml"),
+    readDocxZipText(zip, "word/_rels/document.xml.rels"),
+  ]);
+  const metadata = await extractWordDocumentMetadataFromZip(zip);
+  const context = {
+    zip,
+    metadata,
+    themeColors: metadata.themeColors || {},
+    styles: parseDocxStyles(stylesXml, metadata.themeColors || {}),
+    relationships: parseDocxRelationships(relsXml),
+    imageCache: new Map(),
+  };
+  const bodyXml = getFirstXmlElement(documentXml, "w:body") || documentXml;
+  const blocks = extractDocxBodyBlocks(bodyXml);
+  const htmlBlocks = await Promise.all(blocks.map((block) => (
+    block.type === "tbl" ? renderDocxTableHtml(block.xml, context) : renderDocxParagraphHtml(block.xml, context)
+  )));
+  const messages = [
+    ...(Array.isArray(extraMessages) ? extraMessages : []),
+    {
+      type: "info",
+      message: "Korišten je SafeNexus OOXML konverter za očuvanje Word boja, tablica i stilova.",
+    },
+  ];
+  return {
+    html: ensureConvertedWordHtmlDocument(
+      `<section class="sn-word-document sn-word-ooxml" data-source="${escapeTemplateHtml(fileName)}">
+${htmlBlocks.join("\n")}
+</section>`,
+      {
+        fileName,
+        engine: "ooxml",
+        messages,
+        metadata,
+      },
+    ),
+    engine: "ooxml",
+    messages,
+  };
+}
+
+function buildConvertedWordLayoutStyles(engine = "", metadata = {}) {
+  const page = metadata?.page && typeof metadata.page === "object" ? metadata.page : {};
+  const pageSize = Number.isFinite(page.widthPt) && Number.isFinite(page.heightPt)
+    ? `${cssLengthPt(page.widthPt)} ${cssLengthPt(page.heightPt)}`
+    : "A4";
+  const pageMargins = [page.marginTopPt, page.marginRightPt, page.marginBottomPt, page.marginLeftPt]
+    .map((entry, index) => cssLengthPt(entry, index % 2 === 0 ? "16mm" : "16mm"))
+    .join(" ");
+  const defaultFont = clean(metadata?.defaultFont) || "Arial";
+  const defaultFontSize = Number.isFinite(metadata?.defaultFontSize) ? cssLengthPt(metadata.defaultFontSize) : "11pt";
   return `
   <style data-safe-nexus-word-conversion>
-    @page { size: A4; }
+    @page { size: ${pageSize}; margin: ${pageMargins}; }
     html { background: #f3f4f6; }
     body {
       background: #fff;
       color: #111827;
+      margin: 0;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
-    table { border-collapse: collapse; }
+    table { border-collapse: collapse; border-spacing: 0; }
     img { max-width: 100%; height: auto; }
     .sn-word-document {
       color: #172033;
-      font-family: Arial, "DejaVu Sans", sans-serif;
-      font-size: 13px;
+      font-family: ${defaultFont}, Arial, "DejaVu Sans", sans-serif;
+      font-size: ${defaultFontSize};
       line-height: 1.48;
+      max-width: ${Number.isFinite(page.widthPt) ? cssLengthPt(page.widthPt) : "210mm"};
+      margin: 0 auto;
+      box-sizing: border-box;
     }
     .sn-word-document h1,
     .sn-word-document h2,
@@ -2219,6 +3078,11 @@ function buildConvertedWordLayoutStyles(engine = "") {
     .sn-word-document h2 { font-size: 18px; }
     .sn-word-document h3 { font-size: 15px; }
     .sn-word-document p { margin: 0 0 7px; }
+    .sn-word-paragraph { min-height: 1em; overflow-wrap: anywhere; }
+    .sn-word-tab { display: inline-block; width: 2em; }
+    .sn-word-hyperlink { color: #1155cc; text-decoration: underline; }
+    .sn-word-list-line { display: flex; gap: 8px; align-items: baseline; }
+    .sn-word-list-marker { min-width: 24px; color: inherit; }
     .sn-word-subtitle { color: #475569; font-size: 14px; }
     .sn-word-document ul,
     .sn-word-document ol { margin: 4px 0 9px 22px; padding: 0; }
@@ -2233,8 +3097,8 @@ function buildConvertedWordLayoutStyles(engine = "") {
     .sn-word-table {
       width: 100%;
       border-collapse: collapse;
-      table-layout: fixed;
       margin: 8px 0 12px;
+      break-inside: auto;
     }
     .sn-word-table th,
     .sn-word-table td {
@@ -2242,6 +3106,7 @@ function buildConvertedWordLayoutStyles(engine = "") {
       padding: 6px 8px;
       vertical-align: top;
       word-break: break-word;
+      overflow-wrap: anywhere;
     }
     .sn-word-table th {
       background: #eef5f2;
@@ -2254,6 +3119,7 @@ function buildConvertedWordLayoutStyles(engine = "") {
     @media print {
       html { background: #fff; }
       body { margin: 0; }
+      .sn-word-document { max-width: none; margin: 0; }
     }
   </style>
   <!-- SafeNexus Word conversion engine: ${escapeTemplateHtml(engine || "unknown")} -->
@@ -2264,6 +3130,7 @@ function ensureConvertedWordHtmlDocument(html = "", {
   fileName = "word-template.html",
   engine = "",
   messages = [],
+  metadata = {},
 } = {}) {
   const title = sanitizeGeneratedDocumentFileName(fileName || "word-template", {
     fallback: "word-template",
@@ -2276,7 +3143,7 @@ function ensureConvertedWordHtmlDocument(html = "", {
   const notesHtml = conversionNotes.length > 0
     ? `<!-- Word conversion notes: ${conversionNotes.map(escapeTemplateHtml).join(" | ")} -->`
     : "";
-  const layoutStyles = buildConvertedWordLayoutStyles(engine);
+  const layoutStyles = buildConvertedWordLayoutStyles(engine, metadata);
   let source = normalizeConvertedWordPlaceholders(String(html ?? "").replace(/^\uFEFF/, "").trim());
 
   if (!source) {
@@ -2358,6 +3225,7 @@ function buildMammothConvertedWordHtmlDocument({
   bodyHtml = "",
   sourceFileName = "",
   messages = [],
+  metadata = {},
 } = {}) {
   const safeBody = normalizeMammothConvertedWordHtmlFragment(bodyHtml);
   const safeTitle = sanitizeGeneratedDocumentFileName(sourceFileName || "word-template", {
@@ -2372,6 +3240,7 @@ ${safeBody || "<p>&nbsp;</p>"}
       fileName: sourceFileName || "word-template.html",
       engine: "mammoth",
       messages,
+      metadata,
     },
   );
 }
@@ -2454,11 +3323,14 @@ async function convertWordBufferToHtmlWithLibreOffice(buffer = Buffer.alloc(0), 
         outputPath,
         tempRoot,
       );
+      const polishedHtml = polishLibreOfficeConvertedHtml(inlinedHtml);
+      const metadata = await extractWordDocumentMetadata(buffer);
       return {
-        html: ensureConvertedWordHtmlDocument(inlinedHtml, {
+        html: ensureConvertedWordHtmlDocument(polishedHtml, {
           fileName,
           engine: "libreoffice",
           messages: [],
+          metadata,
         }),
         engine: "libreoffice",
         messages: [],
@@ -2473,6 +3345,7 @@ async function convertWordBufferToHtmlWithMammoth(buffer = Buffer.alloc(0), {
   fileName = "word-template.docx",
   extraMessages = [],
 } = {}) {
+  const metadata = await extractWordDocumentMetadata(buffer);
   const result = await mammoth.convertToHtml(
     { buffer },
     {
@@ -2500,6 +3373,7 @@ async function convertWordBufferToHtmlWithMammoth(buffer = Buffer.alloc(0), {
       bodyHtml: result.value,
       sourceFileName: fileName,
       messages,
+      metadata,
     }),
     engine: "mammoth",
     messages,
@@ -2517,16 +3391,28 @@ export async function convertWordBufferToHtmlTemplate(buffer = Buffer.alloc(0), 
   const safeFileName = fileName || "word-template.docx";
   try {
     return await convertWordBufferToHtmlWithLibreOffice(safeBuffer, { fileName: safeFileName });
-  } catch (error) {
-    const fallbackMessage = {
+  } catch (libreOfficeError) {
+    const layoutFallbackMessage = {
       type: "warning",
-      message: `LibreOffice layout konverzija nije uspjela, korišten je tekstualni fallback: ${clean(error?.message) || "nepoznata greska"}`,
+      message: `LibreOffice layout konverzija nije uspjela, korišten je SafeNexus OOXML konverter: ${clean(libreOfficeError?.message) || "nepoznata greska"}`,
     };
-    console.warn("LibreOffice Word -> HTML conversion failed, falling back to mammoth.", error);
-    return await convertWordBufferToHtmlWithMammoth(safeBuffer, {
-      fileName: safeFileName,
-      extraMessages: [fallbackMessage],
-    });
+    console.warn("LibreOffice Word -> HTML conversion failed, falling back to SafeNexus OOXML converter.", libreOfficeError);
+    try {
+      return await convertWordBufferToHtmlWithDocxXml(safeBuffer, {
+        fileName: safeFileName,
+        extraMessages: [layoutFallbackMessage],
+      });
+    } catch (ooxmlError) {
+      const mammothFallbackMessage = {
+        type: "warning",
+        message: `SafeNexus OOXML konverter nije uspio, korišten je Mammoth tekstualni fallback: ${clean(ooxmlError?.message) || "nepoznata greska"}`,
+      };
+      console.warn("SafeNexus OOXML Word -> HTML conversion failed, falling back to mammoth.", ooxmlError);
+      return await convertWordBufferToHtmlWithMammoth(safeBuffer, {
+        fileName: safeFileName,
+        extraMessages: [layoutFallbackMessage, mammothFallbackMessage],
+      });
+    }
   }
 }
 

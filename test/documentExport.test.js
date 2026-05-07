@@ -10,6 +10,7 @@ import {
   buildOfferHtmlTemplate,
   buildOfferPdfBuffer,
   buildPdfFromRenderModel,
+  convertWordBufferToHtmlTemplate,
 } from "../src/documentExport.js";
 
 function buildMinimalDocxBuffer(documentXml = "") {
@@ -130,6 +131,52 @@ test("HTML template export renders escaped placeholders and special table blocks
   assert.match(html, /Digitalni potpis/);
   assert.doesNotMatch(html, /<script>alert/);
   assert.doesNotMatch(html, /\{\{DOCUMENT_TITLE\}\}/);
+});
+
+test("Word to HTML conversion preserves OOXML colors, alignment and tokens", async () => {
+  const templateBuffer = buildMinimalDocxBuffer(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:body>
+        <w:p>
+          <w:pPr><w:jc w:val="center"/><w:spacing w:after="120"/></w:pPr>
+          <w:r>
+            <w:rPr><w:b/><w:color w:val="C00000"/><w:sz w:val="28"/></w:rPr>
+            <w:t>{{TVRTKA}}</w:t>
+          </w:r>
+        </w:p>
+        <w:tbl>
+          <w:tblPr>
+            <w:tblW w:w="5000" w:type="pct"/>
+            <w:tblBorders><w:top w:val="single" w:sz="12" w:color="222222"/></w:tblBorders>
+          </w:tblPr>
+          <w:tr>
+            <w:tc>
+              <w:tcPr><w:shd w:fill="D9EAD3"/><w:vAlign w:val="center"/></w:tcPr>
+              <w:p><w:r><w:t>Ćelija boje</w:t></w:r></w:p>
+            </w:tc>
+          </w:tr>
+        </w:tbl>
+        <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720"/></w:sectPr>
+      </w:body>
+    </w:document>`);
+  const previousWarn = console.warn;
+  console.warn = () => {};
+
+  try {
+    const result = await convertWordBufferToHtmlTemplate(templateBuffer, {
+      fileName: "styled-template.docx",
+    });
+
+    assert.match(result.html, /<!doctype html>/i);
+    assert.match(result.html, /<meta charset="utf-8">/i);
+    assert.match(result.html, /\{\{TVRTKA\}\}/);
+    assert.match(result.html, /color:#C00000/);
+    assert.match(result.html, /background-color:#D9EAD3/);
+    assert.match(result.html, /text-align:center/);
+    assert.match(result.html, /Ćelija boje/);
+  } finally {
+    console.warn = previousWarn;
+  }
 });
 
 test("dashboard calendar report export returns a PDF buffer", async () => {

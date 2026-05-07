@@ -93600,6 +93600,8 @@ async function convertDocumentTemplateWordFileToHtml(file) {
     const engine = String(payload?.engine || "").trim().toLowerCase();
     const conversionLabel = engine === "libreoffice"
       ? "Word je pretvoren u HTML s očuvanim layoutom"
+      : engine === "ooxml"
+        ? "Word je pretvoren u HTML s detaljnim Word stilovima"
       : engine === "mammoth"
         ? "Word je pretvoren u HTML tekstualnim fallbackom"
         : "Word je pretvoren u HTML";
