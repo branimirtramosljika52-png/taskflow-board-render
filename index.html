@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260507f" />
+    <link rel="stylesheet" href="/styles.css?v=20260507g" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -7708,6 +7708,32 @@
                                 <div id="document-template-html-placeholder-palette" class="document-template-placeholder-palette"></div>
                               </div>
                             </section>
+                            <section class="document-template-html-builder-panel">
+                              <div class="document-template-sidebar-block-head document-template-html-builder-head">
+                                <div>
+                                  <p class="section-kicker">HTML builder</p>
+                                  <h4>Elementi dokumenta</h4>
+                                </div>
+                                <div class="document-template-html-builder-actions" aria-label="Akcije za označene HTML blokove">
+                                  <button type="button" class="ghost-button" data-html-builder-align="left" title="Poravnaj lijevo">L</button>
+                                  <button type="button" class="ghost-button" data-html-builder-align="center" title="Poravnaj centar">C</button>
+                                  <button type="button" class="ghost-button" data-html-builder-align="right" title="Poravnaj desno">R</button>
+                                  <button id="document-template-html-builder-duplicate" type="button" class="ghost-button" title="Dupliciraj označeno">Kopiraj</button>
+                                  <button id="document-template-html-builder-delete" type="button" class="ghost-button" title="Obriši označeno">Obriši</button>
+                                </div>
+                              </div>
+                              <div id="document-template-html-builder-toolbox" class="document-template-html-builder-toolbox">
+                                <button type="button" class="document-template-html-builder-tool" data-html-builder-tool="heading" draggable="true">Naslov</button>
+                                <button type="button" class="document-template-html-builder-tool" data-html-builder-tool="paragraph" draggable="true">Tekst</button>
+                                <button type="button" class="document-template-html-builder-tool" data-html-builder-tool="placeholder" draggable="true">Placeholder</button>
+                                <button type="button" class="document-template-html-builder-tool" data-html-builder-tool="columns" draggable="true">2 stupca</button>
+                                <button type="button" class="document-template-html-builder-tool" data-html-builder-tool="table" draggable="true">Tablica</button>
+                                <button type="button" class="document-template-html-builder-tool" data-html-builder-tool="signature" draggable="true">Potpis</button>
+                                <button type="button" class="document-template-html-builder-tool" data-html-builder-tool="divider" draggable="true">Linija</button>
+                                <button type="button" class="document-template-html-builder-tool" data-html-builder-tool="page_break" draggable="true">Nova stranica</button>
+                              </div>
+                              <div id="document-template-html-builder-canvas" class="document-template-html-builder-canvas" aria-label="HTML layout builder canvas"></div>
+                            </section>
                             <input id="document-template-reference-file-input" type="file" accept=".html,.htm,text/html" hidden />
                             <label class="field field-span-full document-template-html-code-field">
                               <span>HTML kod predloška</span>
@@ -7717,41 +7743,8 @@
                           <div class="document-template-html-preview-panel">
                             <div class="section-heading offers-section-heading document-template-html-preview-head">
                               <div>
-                                <p class="section-kicker">A4 builder</p>
-                                <h3>Stranice i blokovi dokumenta</h3>
-                              </div>
-                            </div>
-                            <div class="document-template-html-toolbox">
-                              <button type="button" class="document-template-tool-button" data-template-tool="text" data-template-icon="T" draggable="true">
-                                <strong>Tekst polje</strong>
-                                <span>Kratki tekst ili vrijednost iz baze</span>
-                              </button>
-                              <button type="button" class="document-template-tool-button" data-template-tool="longtext" data-template-icon="¶" draggable="true">
-                                <strong>Tekst blok</strong>
-                                <span>Veći tekst, napomena ili odlomak</span>
-                              </button>
-                              <button type="button" class="document-template-tool-button" data-template-tool="chapter" data-template-icon="H" draggable="true">
-                                <strong>Naslov / poglavlje</strong>
-                                <span>Vizualni naslov sekcije</span>
-                              </button>
-                              <button type="button" class="document-template-tool-button" data-template-tool="image_upload" data-template-icon="IMG" draggable="true">
-                                <strong>Slika</strong>
-                                <span>Mjesto za sliku u dokumentu</span>
-                              </button>
-                              <button type="button" class="document-template-tool-button" data-template-tool="measurement_table" data-template-icon="XL" draggable="true">
-                                <strong>Excel tablica</strong>
-                                <span>Tablični blok za PDF</span>
-                              </button>
-                              <button type="button" class="document-template-tool-button" data-template-tool="page_break" data-template-icon="A4" draggable="true">
-                                <strong>Nova A4 stranica</strong>
-                                <span>Dodaje novu stranicu u PDF dokumentu</span>
-                              </button>
-                            </div>
-                            <div id="document-template-html-builder-canvas-mount" class="document-template-canvas-mount document-template-html-builder-canvas-mount"></div>
-                            <div class="section-heading offers-section-heading document-template-html-preview-head">
-                              <div>
-                                <p class="section-kicker">Preview</p>
-                                <h3>HTML/PDF prikaz</h3>
+                                <p class="section-kicker">Live preview</p>
+                                <h3>Kako će zapisnik izgledati</h3>
                               </div>
                             </div>
                             <iframe id="document-template-html-preview-frame" class="document-template-html-preview-frame" title="HTML/PDF preview predloška" sandbox=""></iframe>
@@ -7946,6 +7939,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260507f"></script>
+    <script type="module" src="/src/main.js?v=20260507g"></script>
   </body>
 </html>

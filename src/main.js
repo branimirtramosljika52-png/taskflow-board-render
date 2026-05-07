@@ -3377,7 +3377,6 @@ const documentTemplateWorkspaceTabs = document.querySelector("#document-template
 const documentTemplateWorkspaceTabButtons = Array.from(document.querySelectorAll("[data-document-template-workspace-tab]"));
 const documentTemplateWorkspacePanels = Array.from(document.querySelectorAll("[data-document-template-workspace-panel]"));
 const documentTemplateFormBuilderCanvasMount = document.querySelector("#document-template-form-builder-canvas-mount");
-const documentTemplateHtmlBuilderCanvasMount = document.querySelector("#document-template-html-builder-canvas-mount");
 const documentTemplateFieldInspector = document.querySelector("#document-template-field-inspector");
 const documentTemplateLayoutActions = documentTemplateEditorPanel?.querySelector(".document-template-layout-actions");
 const documentTemplateLegalFrameworkList = document.querySelector("#document-template-legal-framework-list");
@@ -3393,6 +3392,10 @@ const documentTemplateReferenceMeta = document.querySelector("#document-template
 const documentTemplateHtmlCodeInput = document.querySelector("#document-template-html-code");
 const documentTemplateHtmlSaveButton = document.querySelector("#document-template-html-save");
 const documentTemplateHtmlPreviewFrame = document.querySelector("#document-template-html-preview-frame");
+const documentTemplateHtmlBuilderToolbox = document.querySelector("#document-template-html-builder-toolbox");
+const documentTemplateHtmlBuilderCanvas = document.querySelector("#document-template-html-builder-canvas");
+const documentTemplateHtmlBuilderDuplicateButton = document.querySelector("#document-template-html-builder-duplicate");
+const documentTemplateHtmlBuilderDeleteButton = document.querySelector("#document-template-html-builder-delete");
 const documentTemplateFormActions = documentTemplateEditorPanel?.querySelector(".form-actions");
 const documentTemplatePreviewBlock = document.querySelector("#document-template-preview-block");
 const documentTemplatePreview = document.querySelector("#document-template-preview");
@@ -3688,6 +3691,9 @@ let documentTemplateDraftCache = null;
 let documentTemplateDraftCacheClearQueued = false;
 let documentTemplateReferenceDraft = null;
 let draggedDocumentTemplateFieldId = "";
+let documentTemplateHtmlBuilderBlocks = [];
+let selectedDocumentTemplateHtmlBuilderBlockIds = new Set();
+let draggedDocumentTemplateHtmlBuilderBlockId = "";
 let collapsedDocumentTemplateChapterIds = new Set();
 let documentTemplateMeasurementInlineHosts = new Map();
 let learningTestMaterialDrafts = [];
@@ -38417,6 +38423,10 @@ const DOCUMENT_TEMPLATE_HTML_STYLE_TEXT_SIZE_OPTIONS = [
 ];
 
 const DOCUMENT_TEMPLATE_TOOL_DRAG_MIME = "application/x-safenexus-template-tool";
+const DOCUMENT_TEMPLATE_HTML_BUILDER_TOOL_MIME = "application/x-safenexus-html-builder-tool";
+const DOCUMENT_TEMPLATE_HTML_BUILDER_BLOCK_MIME = "application/x-safenexus-html-builder-block";
+const DOCUMENT_TEMPLATE_HTML_BUILDER_TOKEN_MIME = "application/x-safenexus-html-builder-token";
+const DOCUMENT_TEMPLATE_HTML_BUILDER_METADATA_PREFIX = "SAFE_NEXUS_HTML_BUILDER:";
 
 const DOCUMENT_TEMPLATE_SYSTEM_DESCRIPTION_LINE_OPTIONS = Array.from({ length: 8 }, (_, index) => {
   const rows = index + 1;
@@ -41667,6 +41677,441 @@ function insertTextIntoDocumentTemplateTarget(text) {
   }
 }
 
+function normalizeDocumentTemplateHtmlBuilderAlign(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  return ["left", "center", "right"].includes(normalized) ? normalized : "left";
+}
+
+function getDocumentTemplateHtmlBuilderTypeLabel(type = "") {
+  const labels = {
+    heading: "Naslov",
+    paragraph: "Tekst",
+    placeholder: "Placeholder",
+    columns: "2 stupca",
+    table: "Tablica",
+    signature: "Potpis",
+    divider: "Linija",
+    spacer: "Razmak",
+    page_break: "Nova stranica",
+  };
+  return labels[String(type || "").trim().toLowerCase()] || "Element";
+}
+
+function getDocumentTemplateHtmlBuilderTokenOptions(template = buildDocumentTemplateDraft()) {
+  const definitions = getDocumentTemplatePlaceholderDefinitions(template);
+  const seen = new Set();
+  return definitions
+    .map((entry) => ({
+      value: String(entry.token || "").trim(),
+      label: `${entry.label || entry.token} ${entry.token || ""}`.trim(),
+    }))
+    .filter((entry) => {
+      if (!entry.value || seen.has(entry.value)) {
+        return false;
+      }
+      seen.add(entry.value);
+      return true;
+    });
+}
+
+function getDocumentTemplateHtmlBuilderFallbackToken() {
+  return getDocumentTemplateHtmlBuilderTokenOptions()[0]?.value || "{{DOCUMENT_TITLE}}";
+}
+
+function createDocumentTemplateHtmlBuilderBlock(type = "paragraph", initial = {}) {
+  const normalizedType = String(type || "paragraph").trim().toLowerCase();
+  const fallbackToken = getDocumentTemplateHtmlBuilderFallbackToken();
+  const id = String(initial.id || crypto.randomUUID());
+  const base = {
+    id,
+    type: normalizedType,
+    align: normalizeDocumentTemplateHtmlBuilderAlign(initial.align),
+  };
+
+  if (normalizedType === "heading") {
+    return {
+      ...base,
+      text: String(initial.text || "Naslov zapisnika").trim(),
+    };
+  }
+
+  if (normalizedType === "placeholder") {
+    return {
+      ...base,
+      label: String(initial.label || "Podatak").trim(),
+      token: String(initial.token || fallbackToken).trim(),
+    };
+  }
+
+  if (normalizedType === "columns") {
+    return {
+      ...base,
+      leftLabel: String(initial.leftLabel || "Podatak 1").trim(),
+      leftToken: String(initial.leftToken || fallbackToken).trim(),
+      rightLabel: String(initial.rightLabel || "Podatak 2").trim(),
+      rightToken: String(initial.rightToken || fallbackToken).trim(),
+    };
+  }
+
+  if (normalizedType === "table") {
+    return {
+      ...base,
+      title: String(initial.title || "Tablica").trim(),
+      token: String(initial.token || fallbackToken).trim(),
+    };
+  }
+
+  if (normalizedType === "signature") {
+    return {
+      ...base,
+      leftText: String(initial.leftText || "Izradio").trim(),
+      rightText: String(initial.rightText || "Odobrio").trim(),
+    };
+  }
+
+  if (normalizedType === "divider" || normalizedType === "page_break" || normalizedType === "spacer") {
+    return base;
+  }
+
+  return {
+    ...base,
+    type: "paragraph",
+    text: String(initial.text || "Tekst zapisnika").trim(),
+  };
+}
+
+function normalizeDocumentTemplateHtmlBuilderBlocks(blocks = []) {
+  return (Array.isArray(blocks) ? blocks : [])
+    .map((block) => createDocumentTemplateHtmlBuilderBlock(block?.type || "paragraph", block))
+    .filter((block) => block.id);
+}
+
+function encodeDocumentTemplateHtmlBuilderMetadata(blocks = []) {
+  try {
+    return window.btoa(encodeURIComponent(JSON.stringify(normalizeDocumentTemplateHtmlBuilderBlocks(blocks))));
+  } catch {
+    return "";
+  }
+}
+
+function decodeDocumentTemplateHtmlBuilderMetadata(payload = "") {
+  try {
+    return normalizeDocumentTemplateHtmlBuilderBlocks(JSON.parse(decodeURIComponent(window.atob(String(payload || "")))));
+  } catch {
+    return [];
+  }
+}
+
+function parseDocumentTemplateHtmlBuilderBlocksFromCode(html = "") {
+  const match = String(html || "").match(/<!--\s*SAFE_NEXUS_HTML_BUILDER:([A-Za-z0-9+/=]+)\s*-->/);
+  return match ? decodeDocumentTemplateHtmlBuilderMetadata(match[1]) : [];
+}
+
+function getDocumentTemplateHtmlBuilderSelectedBlocks() {
+  const selected = documentTemplateHtmlBuilderBlocks.filter((block) => selectedDocumentTemplateHtmlBuilderBlockIds.has(String(block.id)));
+  return selected.length > 0 ? selected : [];
+}
+
+function buildDocumentTemplateHtmlBuilderBlockHtml(block = {}) {
+  const align = normalizeDocumentTemplateHtmlBuilderAlign(block.align);
+  const alignStyle = `text-align:${align};`;
+  const token = String(block.token || "").trim();
+
+  if (block.type === "heading") {
+    return `<h1 style="${alignStyle}">${escapeHtml(block.text || "Naslov zapisnika")}</h1>`;
+  }
+
+  if (block.type === "paragraph") {
+    return `<p style="${alignStyle}">${escapeHtml(block.text || "Tekst zapisnika").replace(/\n/g, "<br>")}</p>`;
+  }
+
+  if (block.type === "placeholder") {
+    return `
+      <div class="sn-html-placeholder" style="${alignStyle}">
+        ${block.label ? `<span>${escapeHtml(block.label)}</span>` : ""}
+        <strong>${escapeHtml(token || "{{DOCUMENT_TITLE}}")}</strong>
+      </div>`;
+  }
+
+  if (block.type === "columns") {
+    return `
+      <div class="sn-html-columns">
+        <div class="sn-html-column">
+          <span>${escapeHtml(block.leftLabel || "Podatak 1")}</span>
+          <strong>${escapeHtml(block.leftToken || "{{DOCUMENT_TITLE}}")}</strong>
+        </div>
+        <div class="sn-html-column">
+          <span>${escapeHtml(block.rightLabel || "Podatak 2")}</span>
+          <strong>${escapeHtml(block.rightToken || "{{BROJ_RADNOG_NALOGA}}")}</strong>
+        </div>
+      </div>`;
+  }
+
+  if (block.type === "table") {
+    return `
+      <section class="sn-html-table-block" style="${alignStyle}">
+        <h2>${escapeHtml(block.title || "Tablica")}</h2>
+        ${escapeHtml(token || "{{DOCUMENT_TITLE}}")}
+      </section>`;
+  }
+
+  if (block.type === "signature") {
+    return `
+      <div class="sn-html-signatures">
+        <div><span>${escapeHtml(block.leftText || "Izradio")}</span><em></em></div>
+        <div><span>${escapeHtml(block.rightText || "Odobrio")}</span><em></em></div>
+      </div>`;
+  }
+
+  if (block.type === "divider") {
+    return `<hr class="sn-html-divider" />`;
+  }
+
+  if (block.type === "spacer") {
+    return `<div class="sn-html-spacer"></div>`;
+  }
+
+  if (block.type === "page_break") {
+    return `<div class="sn-html-page-break"></div>`;
+  }
+
+  return "";
+}
+
+function buildDocumentTemplateHtmlFromBuilderBlocks(blocks = documentTemplateHtmlBuilderBlocks) {
+  const normalizedBlocks = normalizeDocumentTemplateHtmlBuilderBlocks(blocks);
+  const metadata = encodeDocumentTemplateHtmlBuilderMetadata(normalizedBlocks);
+  const body = normalizedBlocks.map((block) => buildDocumentTemplateHtmlBuilderBlockHtml(block)).join("\n");
+  if (!body.trim()) {
+    return "";
+  }
+
+  return `<!-- ${DOCUMENT_TEMPLATE_HTML_BUILDER_METADATA_PREFIX}${metadata} -->
+<style>
+  .sn-html-document { display: grid; gap: 14px; color: #172033; font-family: Arial, sans-serif; }
+  .sn-html-document h1 { margin: 0 0 8px; font-size: 24px; line-height: 1.2; }
+  .sn-html-document h2 { margin: 0 0 8px; font-size: 16px; line-height: 1.25; }
+  .sn-html-document p { margin: 0; line-height: 1.55; }
+  .sn-html-placeholder { display: grid; gap: 4px; padding: 10px 12px; border: 1px solid #d8e2ef; border-radius: 10px; background: #f8fafc; }
+  .sn-html-placeholder span, .sn-html-column span { color: #64748b; font-size: 12px; }
+  .sn-html-placeholder strong, .sn-html-column strong { color: #172033; font-size: 14px; }
+  .sn-html-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .sn-html-column { display: grid; gap: 4px; padding: 10px 12px; border: 1px solid #d8e2ef; border-radius: 10px; background: #fff; }
+  .sn-html-table-block { display: grid; gap: 8px; }
+  .sn-html-signatures { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; margin-top: 24px; }
+  .sn-html-signatures div { min-height: 80px; display: grid; align-content: end; gap: 8px; }
+  .sn-html-signatures em { display: block; border-top: 1px solid #94a3b8; height: 1px; }
+  .sn-html-divider { border: 0; border-top: 1px solid #cbd5e1; margin: 8px 0; }
+  .sn-html-spacer { height: 24px; }
+  .sn-html-page-break { break-before: page; page-break-before: always; height: 0; }
+  @media print { .sn-html-page-break { break-before: page; page-break-before: always; } }
+</style>
+<section class="sn-html-document">
+${body}
+</section>`;
+}
+
+function syncDocumentTemplateHtmlBuilderCode({ renderPreview = true } = {}) {
+  if (documentTemplateHtmlCodeInput instanceof HTMLTextAreaElement) {
+    documentTemplateHtmlCodeInput.value = buildDocumentTemplateHtmlFromBuilderBlocks();
+  }
+  if (renderPreview) {
+    renderDocumentTemplateHtmlPreviewContent();
+  }
+}
+
+function setDocumentTemplateHtmlBuilderBlocks(blocks = [], { syncCode = false } = {}) {
+  documentTemplateHtmlBuilderBlocks = normalizeDocumentTemplateHtmlBuilderBlocks(blocks);
+  selectedDocumentTemplateHtmlBuilderBlockIds = new Set(
+    [...selectedDocumentTemplateHtmlBuilderBlockIds].filter((id) => (
+      documentTemplateHtmlBuilderBlocks.some((block) => String(block.id) === String(id))
+    )),
+  );
+  renderDocumentTemplateHtmlBuilderCanvas();
+  if (syncCode) {
+    syncDocumentTemplateHtmlBuilderCode();
+  }
+}
+
+function hydrateDocumentTemplateHtmlBuilderFromCode(html = "") {
+  setDocumentTemplateHtmlBuilderBlocks(parseDocumentTemplateHtmlBuilderBlocksFromCode(html), { syncCode: false });
+}
+
+function addDocumentTemplateHtmlBuilderBlock(type = "paragraph", { token = "", insertIndex = null } = {}) {
+  const block = createDocumentTemplateHtmlBuilderBlock(type, token ? { token } : {});
+  const safeIndex = Number.isInteger(insertIndex)
+    ? Math.max(0, Math.min(insertIndex, documentTemplateHtmlBuilderBlocks.length))
+    : documentTemplateHtmlBuilderBlocks.length;
+  documentTemplateHtmlBuilderBlocks = [
+    ...documentTemplateHtmlBuilderBlocks.slice(0, safeIndex),
+    block,
+    ...documentTemplateHtmlBuilderBlocks.slice(safeIndex),
+  ];
+  selectedDocumentTemplateHtmlBuilderBlockIds = new Set([block.id]);
+  renderDocumentTemplateHtmlBuilderCanvas();
+  syncDocumentTemplateHtmlBuilderCode();
+}
+
+function moveDocumentTemplateHtmlBuilderBlock(blockId = "", insertIndex = documentTemplateHtmlBuilderBlocks.length) {
+  const currentIndex = documentTemplateHtmlBuilderBlocks.findIndex((block) => String(block.id) === String(blockId));
+  if (currentIndex < 0) {
+    return;
+  }
+  const [block] = documentTemplateHtmlBuilderBlocks.splice(currentIndex, 1);
+  const safeIndex = Math.max(0, Math.min(insertIndex > currentIndex ? insertIndex - 1 : insertIndex, documentTemplateHtmlBuilderBlocks.length));
+  documentTemplateHtmlBuilderBlocks.splice(safeIndex, 0, block);
+  renderDocumentTemplateHtmlBuilderCanvas();
+  syncDocumentTemplateHtmlBuilderCode();
+}
+
+function getDocumentTemplateHtmlBuilderDropIndex(event) {
+  const targetCard = event.target instanceof HTMLElement
+    ? event.target.closest("[data-html-builder-block-id]")
+    : null;
+  if (!(targetCard instanceof HTMLElement) || !documentTemplateHtmlBuilderCanvas?.contains(targetCard)) {
+    return documentTemplateHtmlBuilderBlocks.length;
+  }
+  const blockId = String(targetCard.dataset.htmlBuilderBlockId || "");
+  const index = documentTemplateHtmlBuilderBlocks.findIndex((block) => String(block.id) === blockId);
+  return index >= 0 ? index : documentTemplateHtmlBuilderBlocks.length;
+}
+
+function createDocumentTemplateHtmlBuilderTokenSelect(value = "", onChange = null) {
+  const select = document.createElement("select");
+  const options = getDocumentTemplateHtmlBuilderTokenOptions();
+  const normalizedValue = String(value || options[0]?.value || "{{DOCUMENT_TITLE}}").trim();
+  const finalOptions = options.some((option) => option.value === normalizedValue)
+    ? options
+    : [{ value: normalizedValue, label: normalizedValue }, ...options];
+  replaceSelectOptions(select, finalOptions.length > 0 ? finalOptions : [{ value: "{{DOCUMENT_TITLE}}", label: "{{DOCUMENT_TITLE}}" }], normalizedValue);
+  select.addEventListener("change", () => {
+    onChange?.(select.value);
+    syncDocumentTemplateHtmlBuilderCode();
+  });
+  return select;
+}
+
+function createDocumentTemplateHtmlBuilderTextInput(value = "", onInput = null, { multiline = false } = {}) {
+  const input = multiline ? document.createElement("textarea") : document.createElement("input");
+  input.value = String(value || "");
+  if (multiline) {
+    input.rows = 3;
+  }
+  input.addEventListener("input", () => {
+    onInput?.(input.value);
+    syncDocumentTemplateHtmlBuilderCode();
+  });
+  return input;
+}
+
+function renderDocumentTemplateHtmlBuilderCanvas() {
+  if (!(documentTemplateHtmlBuilderCanvas instanceof HTMLElement)) {
+    return;
+  }
+
+  if (documentTemplateHtmlBuilderBlocks.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "document-template-html-builder-empty";
+    empty.textContent = "Povuci element ili placeholder ovdje.";
+    documentTemplateHtmlBuilderCanvas.replaceChildren(empty);
+    return;
+  }
+
+  const nodes = documentTemplateHtmlBuilderBlocks.map((block, index) => {
+    const card = document.createElement("article");
+    card.className = `document-template-html-builder-card${selectedDocumentTemplateHtmlBuilderBlockIds.has(block.id) ? " is-selected" : ""}`;
+    card.dataset.htmlBuilderBlockId = block.id;
+    card.draggable = true;
+
+    const head = document.createElement("div");
+    head.className = "document-template-html-builder-card-head";
+
+    const select = document.createElement("input");
+    select.type = "checkbox";
+    select.checked = selectedDocumentTemplateHtmlBuilderBlockIds.has(block.id);
+    select.addEventListener("change", () => {
+      if (select.checked) {
+        selectedDocumentTemplateHtmlBuilderBlockIds.add(block.id);
+      } else {
+        selectedDocumentTemplateHtmlBuilderBlockIds.delete(block.id);
+      }
+      renderDocumentTemplateHtmlBuilderCanvas();
+    });
+
+    const handle = document.createElement("span");
+    handle.className = "document-template-html-builder-handle";
+    handle.textContent = "⋮⋮";
+
+    const title = document.createElement("strong");
+    title.textContent = `${index + 1}. ${getDocumentTemplateHtmlBuilderTypeLabel(block.type)}`;
+
+    const align = document.createElement("select");
+    replaceSelectOptions(align, [
+      { value: "left", label: "Lijevo" },
+      { value: "center", label: "Centar" },
+      { value: "right", label: "Desno" },
+    ], block.align || "left");
+    align.addEventListener("change", () => {
+      block.align = normalizeDocumentTemplateHtmlBuilderAlign(align.value);
+      syncDocumentTemplateHtmlBuilderCode();
+    });
+
+    const remove = createActionButton("×", "ghost-button", () => {
+      documentTemplateHtmlBuilderBlocks = documentTemplateHtmlBuilderBlocks.filter((item) => String(item.id) !== String(block.id));
+      selectedDocumentTemplateHtmlBuilderBlockIds.delete(block.id);
+      renderDocumentTemplateHtmlBuilderCanvas();
+      syncDocumentTemplateHtmlBuilderCode();
+    });
+    remove.title = "Obriši blok";
+
+    head.append(select, handle, title, align, remove);
+
+    const body = document.createElement("div");
+    body.className = "document-template-html-builder-card-body";
+
+    if (block.type === "heading") {
+      body.append(createDocumentTemplateHtmlBuilderTextInput(block.text, (value) => { block.text = value; }));
+    } else if (block.type === "paragraph") {
+      body.append(createDocumentTemplateHtmlBuilderTextInput(block.text, (value) => { block.text = value; }, { multiline: true }));
+    } else if (block.type === "placeholder") {
+      body.append(
+        createDocumentTemplateHtmlBuilderTextInput(block.label, (value) => { block.label = value; }),
+        createDocumentTemplateHtmlBuilderTokenSelect(block.token, (value) => { block.token = value; }),
+      );
+    } else if (block.type === "columns") {
+      const grid = document.createElement("div");
+      grid.className = "document-template-html-builder-field-grid";
+      grid.append(
+        createDocumentTemplateHtmlBuilderTextInput(block.leftLabel, (value) => { block.leftLabel = value; }),
+        createDocumentTemplateHtmlBuilderTokenSelect(block.leftToken, (value) => { block.leftToken = value; }),
+        createDocumentTemplateHtmlBuilderTextInput(block.rightLabel, (value) => { block.rightLabel = value; }),
+        createDocumentTemplateHtmlBuilderTokenSelect(block.rightToken, (value) => { block.rightToken = value; }),
+      );
+      body.append(grid);
+    } else if (block.type === "table") {
+      body.append(
+        createDocumentTemplateHtmlBuilderTextInput(block.title, (value) => { block.title = value; }),
+        createDocumentTemplateHtmlBuilderTokenSelect(block.token, (value) => { block.token = value; }),
+      );
+    } else if (block.type === "signature") {
+      body.append(
+        createDocumentTemplateHtmlBuilderTextInput(block.leftText, (value) => { block.leftText = value; }),
+        createDocumentTemplateHtmlBuilderTextInput(block.rightText, (value) => { block.rightText = value; }),
+      );
+    } else {
+      const meta = document.createElement("p");
+      meta.className = "helper-copy module-copy";
+      meta.textContent = getDocumentTemplateHtmlBuilderTypeLabel(block.type);
+      body.append(meta);
+    }
+
+    card.append(head, body);
+    return card;
+  });
+
+  documentTemplateHtmlBuilderCanvas.replaceChildren(...nodes);
+}
+
 function getDocumentTemplateBuilderInspectorFieldId(visibleFields = []) {
   const safeFields = Array.isArray(visibleFields) ? visibleFields : [];
   const hasActive = safeFields.some((field) => String(field?.id || "") === String(activeDocumentTemplateInspectorFieldId || ""));
@@ -41902,6 +42347,7 @@ function flushDocumentTemplateEditorSupportRefresh() {
   const template = buildDocumentTemplateDraft();
   const context = buildDocumentTemplatePreviewContext(template);
   renderDocumentTemplatePlaceholderPalette(template);
+  renderDocumentTemplateHtmlBuilderCanvas();
   renderDocumentTemplateLinkSummary(template);
   renderDocumentTemplatePreviewContent(template, context);
 }
@@ -42119,12 +42565,14 @@ function syncDocumentTemplateHtmlCodeInputFromReference() {
   if (!referenceDocument) {
     documentTemplateHtmlCodeInput.value = "";
     documentTemplateHtmlCodeInput.placeholder = "Zalijepi HTML s tokenima, npr. {{DOCUMENT_TITLE}} i {{BROJ_RADNOG_NALOGA}}";
+    setDocumentTemplateHtmlBuilderBlocks([], { syncCode: false });
     return;
   }
 
   if (!isDocumentTemplateHtmlReferenceDocument(referenceDocument)) {
     documentTemplateHtmlCodeInput.value = "";
     documentTemplateHtmlCodeInput.placeholder = "Trenutni predložak nije HTML. Zalijepi HTML kod ovdje i spremi template.";
+    setDocumentTemplateHtmlBuilderBlocks([], { syncCode: false });
     return;
   }
 
@@ -42138,7 +42586,9 @@ function syncDocumentTemplateHtmlCodeInputFromReference() {
     .then((text) => {
       const currentDataUrl = String(documentTemplateReferenceDraft?.dataUrl || documentTemplateReferenceDraft?.inlineDataUrl || "").trim();
       if (currentDataUrl === dataUrl) {
-        documentTemplateHtmlCodeInput.value = text.replace(/^\uFEFF/, "");
+        const htmlText = text.replace(/^\uFEFF/, "");
+        documentTemplateHtmlCodeInput.value = htmlText;
+        hydrateDocumentTemplateHtmlBuilderFromCode(htmlText);
         renderDocumentTemplateHtmlPreviewContent();
       }
     })
@@ -50869,16 +51319,13 @@ function getDocumentTemplateWorkspaceTab() {
 function syncDocumentTemplateWorkspaceTabs() {
   const fillMode = isDocumentTemplateRuntimeFillMode();
   const activeTab = fillMode ? "builder" : getDocumentTemplateWorkspaceTab();
-  const targetCanvasMount = activeTab === "html" && !fillMode
-    ? documentTemplateHtmlBuilderCanvasMount
-    : documentTemplateFormBuilderCanvasMount;
 
   if (
-    targetCanvasMount instanceof HTMLElement
+    documentTemplateFormBuilderCanvasMount instanceof HTMLElement
     && documentTemplateCustomFields instanceof HTMLElement
-    && documentTemplateCustomFields.parentElement !== targetCanvasMount
+    && documentTemplateCustomFields.parentElement !== documentTemplateFormBuilderCanvasMount
   ) {
-    targetCanvasMount.append(documentTemplateCustomFields);
+    documentTemplateFormBuilderCanvasMount.append(documentTemplateCustomFields);
   }
 
   if (documentTemplateWorkspaceTabs instanceof HTMLElement) {
@@ -50907,6 +51354,7 @@ function syncDocumentTemplateWorkspaceTabs() {
   });
 
   if (activeTab === "html" && !fillMode) {
+    renderDocumentTemplateHtmlBuilderCanvas();
     renderDocumentTemplateHtmlPreviewContent();
   }
 }
@@ -54908,11 +55356,15 @@ function renderDocumentTemplatePlaceholderPalette(template = buildDocumentTempla
     return;
   }
 
-  const buildChip = (entry) => {
+  const buildChip = (entry, palette) => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "document-template-placeholder-chip";
     button.title = `${entry.label} | ${formatDocumentTemplateLookupResolvedValue(entry.value) || ""}`.trim();
+    button.dataset.documentTemplatePlaceholderToken = entry.token;
+    if (palette === documentTemplateHtmlPlaceholderPalette) {
+      button.draggable = true;
+    }
 
     const token = document.createElement("strong");
     token.textContent = entry.token;
@@ -54921,13 +55373,27 @@ function renderDocumentTemplatePlaceholderPalette(template = buildDocumentTempla
 
     button.append(token, label);
     button.addEventListener("click", () => {
+      if (palette === documentTemplateHtmlPlaceholderPalette && getDocumentTemplateWorkspaceTab() === "html" && activeDocumentTemplateTextTarget !== documentTemplateHtmlCodeInput) {
+        addDocumentTemplateHtmlBuilderBlock("placeholder", { token: entry.token });
+        return;
+      }
       insertTextIntoDocumentTemplateTarget(entry.token);
+    });
+    button.addEventListener("dragstart", (event) => {
+      if (palette !== documentTemplateHtmlPlaceholderPalette) {
+        return;
+      }
+      event.dataTransfer?.setData(DOCUMENT_TEMPLATE_HTML_BUILDER_TOKEN_MIME, entry.token);
+      event.dataTransfer?.setData("text/plain", entry.token);
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = "copy";
+      }
     });
     return button;
   };
 
   palettes.forEach((palette) => {
-    palette.replaceChildren(...definitions.map((entry) => buildChip(entry)));
+    palette.replaceChildren(...definitions.map((entry) => buildChip(entry, palette)));
   });
 }
 
@@ -60497,6 +60963,8 @@ function resetDocumentTemplateForm() {
   activeDocumentTemplateInspectorFieldId = "";
   documentTemplateInspectorModalOpen = false;
   documentTemplateReferenceDraft = null;
+  documentTemplateHtmlBuilderBlocks = [];
+  selectedDocumentTemplateHtmlBuilderBlockIds = new Set();
   syncDocumentTemplateHtmlCodeInputFromReference();
   state.documentTemplateWorkspaceTab = "builder";
   state.documentTemplateSidebarPanels = {
@@ -92849,6 +93317,140 @@ documentTemplateEditorPanel?.addEventListener("dragend", () => {
   documentTemplateEditorPanel
     .querySelectorAll(".is-dragging-tool")
     .forEach((node) => node.classList.remove("is-dragging-tool"));
+  draggedDocumentTemplateHtmlBuilderBlockId = "";
+});
+
+documentTemplateHtmlBuilderToolbox?.addEventListener("click", (event) => {
+  const button = event.target instanceof HTMLElement
+    ? event.target.closest("[data-html-builder-tool]")
+    : null;
+  if (!(button instanceof HTMLButtonElement)) {
+    return;
+  }
+  addDocumentTemplateHtmlBuilderBlock(button.dataset.htmlBuilderTool || "paragraph");
+});
+
+documentTemplateHtmlBuilderToolbox?.addEventListener("dragstart", (event) => {
+  const button = event.target instanceof HTMLElement
+    ? event.target.closest("[data-html-builder-tool]")
+    : null;
+  if (!(button instanceof HTMLButtonElement)) {
+    return;
+  }
+  const tool = String(button.dataset.htmlBuilderTool || "paragraph").trim().toLowerCase();
+  event.dataTransfer?.setData(DOCUMENT_TEMPLATE_HTML_BUILDER_TOOL_MIME, tool);
+  event.dataTransfer?.setData("text/plain", tool);
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = "copy";
+  }
+  button.classList.add("is-dragging-tool");
+});
+
+documentTemplateHtmlBuilderCanvas?.addEventListener("dragstart", (event) => {
+  const card = event.target instanceof HTMLElement
+    ? event.target.closest("[data-html-builder-block-id]")
+    : null;
+  if (!(card instanceof HTMLElement)) {
+    return;
+  }
+  const blockId = String(card.dataset.htmlBuilderBlockId || "");
+  draggedDocumentTemplateHtmlBuilderBlockId = blockId;
+  event.dataTransfer?.setData(DOCUMENT_TEMPLATE_HTML_BUILDER_BLOCK_MIME, blockId);
+  event.dataTransfer?.setData("text/plain", blockId);
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = "move";
+  }
+  card.classList.add("is-dragging");
+});
+
+documentTemplateHtmlBuilderCanvas?.addEventListener("dragover", (event) => {
+  const types = Array.from(event.dataTransfer?.types || []);
+  if (
+    types.includes(DOCUMENT_TEMPLATE_HTML_BUILDER_TOOL_MIME)
+    || types.includes(DOCUMENT_TEMPLATE_HTML_BUILDER_BLOCK_MIME)
+    || types.includes(DOCUMENT_TEMPLATE_HTML_BUILDER_TOKEN_MIME)
+  ) {
+    event.preventDefault();
+    documentTemplateHtmlBuilderCanvas.classList.add("is-drop-target");
+  }
+});
+
+documentTemplateHtmlBuilderCanvas?.addEventListener("dragleave", (event) => {
+  if (event.currentTarget === event.target) {
+    documentTemplateHtmlBuilderCanvas.classList.remove("is-drop-target");
+  }
+});
+
+documentTemplateHtmlBuilderCanvas?.addEventListener("drop", (event) => {
+  event.preventDefault();
+  documentTemplateHtmlBuilderCanvas.classList.remove("is-drop-target");
+  const insertIndex = getDocumentTemplateHtmlBuilderDropIndex(event);
+  const token = String(event.dataTransfer?.getData(DOCUMENT_TEMPLATE_HTML_BUILDER_TOKEN_MIME) || "").trim();
+  if (token) {
+    addDocumentTemplateHtmlBuilderBlock("placeholder", { token, insertIndex });
+    return;
+  }
+  const tool = String(event.dataTransfer?.getData(DOCUMENT_TEMPLATE_HTML_BUILDER_TOOL_MIME) || "").trim();
+  if (tool) {
+    addDocumentTemplateHtmlBuilderBlock(tool, { insertIndex });
+    return;
+  }
+  const blockId = String(event.dataTransfer?.getData(DOCUMENT_TEMPLATE_HTML_BUILDER_BLOCK_MIME) || draggedDocumentTemplateHtmlBuilderBlockId || "").trim();
+  if (blockId) {
+    moveDocumentTemplateHtmlBuilderBlock(blockId, insertIndex);
+  }
+});
+
+documentTemplateHtmlBuilderCanvas?.addEventListener("dragend", () => {
+  draggedDocumentTemplateHtmlBuilderBlockId = "";
+  documentTemplateHtmlBuilderCanvas
+    .querySelectorAll(".is-dragging")
+    .forEach((node) => node.classList.remove("is-dragging"));
+});
+
+documentTemplateHtmlBuilderDeleteButton?.addEventListener("click", () => {
+  const selectedIds = new Set(getDocumentTemplateHtmlBuilderSelectedBlocks().map((block) => String(block.id)));
+  if (selectedIds.size === 0) {
+    return;
+  }
+  documentTemplateHtmlBuilderBlocks = documentTemplateHtmlBuilderBlocks.filter((block) => !selectedIds.has(String(block.id)));
+  selectedDocumentTemplateHtmlBuilderBlockIds = new Set();
+  renderDocumentTemplateHtmlBuilderCanvas();
+  syncDocumentTemplateHtmlBuilderCode();
+});
+
+documentTemplateHtmlBuilderDuplicateButton?.addEventListener("click", () => {
+  const selectedBlocks = getDocumentTemplateHtmlBuilderSelectedBlocks();
+  if (selectedBlocks.length === 0) {
+    return;
+  }
+  const clones = selectedBlocks.map((block) => createDocumentTemplateHtmlBuilderBlock(block.type, {
+    ...block,
+    id: crypto.randomUUID(),
+  }));
+  documentTemplateHtmlBuilderBlocks = [...documentTemplateHtmlBuilderBlocks, ...clones];
+  selectedDocumentTemplateHtmlBuilderBlockIds = new Set(clones.map((block) => block.id));
+  renderDocumentTemplateHtmlBuilderCanvas();
+  syncDocumentTemplateHtmlBuilderCode();
+});
+
+documentTemplateEditorPanel?.addEventListener("click", (event) => {
+  const alignButton = event.target instanceof HTMLElement
+    ? event.target.closest("[data-html-builder-align]")
+    : null;
+  if (!(alignButton instanceof HTMLButtonElement)) {
+    return;
+  }
+  const align = normalizeDocumentTemplateHtmlBuilderAlign(alignButton.dataset.htmlBuilderAlign || "");
+  const selectedBlocks = getDocumentTemplateHtmlBuilderSelectedBlocks();
+  if (selectedBlocks.length === 0) {
+    return;
+  }
+  selectedBlocks.forEach((block) => {
+    block.align = align;
+  });
+  renderDocumentTemplateHtmlBuilderCanvas();
+  syncDocumentTemplateHtmlBuilderCode();
 });
 
 documentTemplateWorkspaceTabButtons.forEach((button) => {
@@ -92910,6 +93512,10 @@ documentTemplateHtmlSaveButton?.addEventListener("click", () => {
 });
 
 documentTemplateHtmlCodeInput?.addEventListener("input", () => {
+  const htmlCode = String(documentTemplateHtmlCodeInput.value || "");
+  if (htmlCode.includes(DOCUMENT_TEMPLATE_HTML_BUILDER_METADATA_PREFIX)) {
+    hydrateDocumentTemplateHtmlBuilderFromCode(htmlCode);
+  }
   renderDocumentTemplateHtmlPreviewContent();
 });
 
@@ -92964,7 +93570,9 @@ documentTemplateReferenceFileInput?.addEventListener("change", () => {
       if (isHtmlFile && documentTemplateHtmlCodeInput) {
         void file.text()
           .then((text) => {
-            documentTemplateHtmlCodeInput.value = text.replace(/^\uFEFF/, "");
+            const htmlText = text.replace(/^\uFEFF/, "");
+            documentTemplateHtmlCodeInput.value = htmlText;
+            hydrateDocumentTemplateHtmlBuilderFromCode(htmlText);
             renderDocumentTemplateHtmlPreviewContent();
           })
           .catch(() => {});
