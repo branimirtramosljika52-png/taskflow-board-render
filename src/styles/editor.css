@@ -1,0 +1,53 @@
+.sn-builder-app ::selection {
+  background: rgba(31, 122, 224, .18);
+}
+
+.sn-builder-app input:focus,
+.sn-builder-app select:focus,
+.sn-builder-app textarea:focus,
+.sn-builder-app button:focus-visible {
+  outline: 2px solid rgba(31, 122, 224, .35);
+  outline-offset: 2px;
+}
+
+.sn-builder-sidebar::-webkit-scrollbar,
+.sn-builder-inspector::-webkit-scrollbar,
+.sn-builder-canvas-viewport::-webkit-scrollbar,
+.sn-builder-token-grid::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.sn-builder-sidebar::-webkit-scrollbar-thumb,
+.sn-builder-inspector::-webkit-scrollbar-thumb,
+.sn-builder-canvas-viewport::-webkit-scrollbar-thumb,
+.sn-builder-token-grid::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: #adc0d5;
+  background-clip: padding-box;
+}
+
+.sn-builder-sidebar::-webkit-scrollbar-track,
+.sn-builder-inspector::-webkit-scrollbar-track,
+.sn-builder-canvas-viewport::-webkit-scrollbar-track,
+.sn-builder-token-grid::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sn-builder-tool:hover,
+.sn-builder-token-tool:hover,
+.sn-builder-template-card:hover {
+  border-color: var(--sn-builder-blue);
+  background: #f4f9ff;
+  transform: translateY(-1px);
+}
+
+.sn-builder-tool:active,
+.sn-builder-token-tool:active,
+.sn-builder-template-card:active,
+.sn-builder-button:active,
+.sn-builder-icon-button:active,
+.sn-builder-tool-button:active {
+  transform: translateY(0);
+}

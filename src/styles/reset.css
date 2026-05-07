@@ -1,0 +1,20 @@
+.sn-builder-app,
+.sn-builder-app * {
+  box-sizing: border-box;
+}
+
+.sn-builder-app button,
+.sn-builder-app input,
+.sn-builder-app select,
+.sn-builder-app textarea {
+  font: inherit;
+  letter-spacing: 0;
+}
+
+.sn-builder-app button {
+  cursor: pointer;
+}
+
+.sn-builder-app [hidden] {
+  display: none !important;
+}

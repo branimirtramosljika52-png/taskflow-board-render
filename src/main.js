@@ -135,6 +135,13 @@ import {
   resolveAppPermissionsForActor,
   resolveCompanyPermissionsForActor,
 } from "./accessControl.js";
+import {
+  buildBuilderHtmlFromDocument,
+  createBuilderDocumentFromLegacyBlocks,
+  createDocumentReportBuilder,
+  createLegacyBlocksFromBuilderDocument,
+  parseBuilderDocumentFromHtml,
+} from "./core/builder.js";
 
 const API_BASE = "/api";
 const WORK_ORDER_BATCH_SIZE = 60;
@@ -3694,6 +3701,7 @@ let draggedDocumentTemplateFieldId = "";
 let documentTemplateHtmlBuilderBlocks = [];
 let selectedDocumentTemplateHtmlBuilderBlockIds = new Set();
 let draggedDocumentTemplateHtmlBuilderBlockId = "";
+let documentTemplateHtmlBuilderEngine = null;
 let collapsedDocumentTemplateChapterIds = new Set();
 let documentTemplateMeasurementInlineHosts = new Map();
 let learningTestMaterialDrafts = [];
@@ -41718,6 +41726,48 @@ function getDocumentTemplateHtmlBuilderFallbackToken() {
   return getDocumentTemplateHtmlBuilderTokenOptions()[0]?.value || "{{DOCUMENT_TITLE}}";
 }
 
+function ensureDocumentTemplateHtmlBuilderEngine() {
+  if (documentTemplateHtmlBuilderEngine) {
+    return documentTemplateHtmlBuilderEngine;
+  }
+  if (!(documentTemplateHtmlBuilderCanvas instanceof HTMLElement)) {
+    return null;
+  }
+
+  const legacyActions = documentTemplateHtmlBuilderDuplicateButton?.closest(".document-template-html-builder-actions") || null;
+  documentTemplateHtmlBuilderEngine = createDocumentReportBuilder({
+    mount: documentTemplateHtmlBuilderCanvas,
+    legacyToolbox: documentTemplateHtmlBuilderToolbox,
+    legacyActions,
+    getTokenOptions: () => getDocumentTemplateHtmlBuilderTokenOptions(),
+    onMessage: (message, options) => setDocumentTemplateMessage(message, options),
+    onChange: ({ document: builderDocument, html }) => {
+      documentTemplateHtmlBuilderBlocks = createLegacyBlocksFromBuilderDocument(builderDocument);
+      selectedDocumentTemplateHtmlBuilderBlockIds = new Set();
+      if (documentTemplateHtmlCodeInput instanceof HTMLTextAreaElement && documentTemplateHtmlCodeInput.value !== html) {
+        documentTemplateHtmlCodeInput.value = html;
+      }
+      renderDocumentTemplateHtmlPreviewContent();
+    },
+    onExportPdf: async (html) => {
+      const baseName = sanitizeDocumentTemplateFileName(
+        documentTemplateTitleInput?.value || documentTemplateOutputFileNameInput?.value || "safenexus-template",
+        "safenexus-template",
+      ).replace(/\.(html?|pdf)$/i, "");
+      const response = await apiBinaryRequest("/document-templates/export-html-preview-pdf", {
+        method: "POST",
+        body: {
+          html,
+          fileName: `${baseName}.html`,
+          title: documentTemplateTitleInput?.value || "SafeNexus template",
+        },
+      });
+      triggerBlobDownload(response.blob, response.fileName || `${baseName}.pdf`);
+    },
+  });
+  return documentTemplateHtmlBuilderEngine;
+}
+
 function createDocumentTemplateHtmlBuilderBlock(type = "paragraph", initial = {}) {
   const normalizedType = String(type || "paragraph").trim().toLowerCase();
   const fallbackToken = getDocumentTemplateHtmlBuilderFallbackToken();
@@ -41808,6 +41858,9 @@ function parseDocumentTemplateHtmlBuilderBlocksFromCode(html = "") {
 }
 
 function getDocumentTemplateHtmlBuilderSelectedBlocks() {
+  if (documentTemplateHtmlBuilderEngine) {
+    return documentTemplateHtmlBuilderEngine.getSelectedBlocks();
+  }
   const selected = documentTemplateHtmlBuilderBlocks.filter((block) => selectedDocumentTemplateHtmlBuilderBlockIds.has(String(block.id)));
   return selected.length > 0 ? selected : [];
 }
@@ -41879,6 +41932,12 @@ function buildDocumentTemplateHtmlBuilderBlockHtml(block = {}) {
 }
 
 function buildDocumentTemplateHtmlFromBuilderBlocks(blocks = documentTemplateHtmlBuilderBlocks) {
+  if (documentTemplateHtmlBuilderEngine && blocks === documentTemplateHtmlBuilderBlocks) {
+    return documentTemplateHtmlBuilderEngine.toHtml();
+  }
+  if (blocks !== documentTemplateHtmlBuilderBlocks) {
+    return buildBuilderHtmlFromDocument(createBuilderDocumentFromLegacyBlocks(blocks));
+  }
   const normalizedBlocks = normalizeDocumentTemplateHtmlBuilderBlocks(blocks);
   const metadata = encodeDocumentTemplateHtmlBuilderMetadata(normalizedBlocks);
   const body = normalizedBlocks.map((block) => buildDocumentTemplateHtmlBuilderBlockHtml(block)).join("\n");
@@ -41912,6 +41971,7 @@ ${body}
 }
 
 function syncDocumentTemplateHtmlBuilderCode({ renderPreview = true } = {}) {
+  ensureDocumentTemplateHtmlBuilderEngine();
   if (documentTemplateHtmlCodeInput instanceof HTMLTextAreaElement) {
     documentTemplateHtmlCodeInput.value = buildDocumentTemplateHtmlFromBuilderBlocks();
   }
@@ -41921,23 +41981,39 @@ function syncDocumentTemplateHtmlBuilderCode({ renderPreview = true } = {}) {
 }
 
 function setDocumentTemplateHtmlBuilderBlocks(blocks = [], { syncCode = false } = {}) {
+  const engine = ensureDocumentTemplateHtmlBuilderEngine();
   documentTemplateHtmlBuilderBlocks = normalizeDocumentTemplateHtmlBuilderBlocks(blocks);
   selectedDocumentTemplateHtmlBuilderBlockIds = new Set(
     [...selectedDocumentTemplateHtmlBuilderBlockIds].filter((id) => (
       documentTemplateHtmlBuilderBlocks.some((block) => String(block.id) === String(id))
     )),
   );
-  renderDocumentTemplateHtmlBuilderCanvas();
+  engine?.loadDocument(createBuilderDocumentFromLegacyBlocks(documentTemplateHtmlBuilderBlocks));
+  if (!engine) {
+    renderDocumentTemplateHtmlBuilderCanvas();
+  }
   if (syncCode) {
     syncDocumentTemplateHtmlBuilderCode();
   }
 }
 
 function hydrateDocumentTemplateHtmlBuilderFromCode(html = "") {
+  const engine = ensureDocumentTemplateHtmlBuilderEngine();
+  const builderDocument = parseBuilderDocumentFromHtml(html);
+  if (engine && builderDocument) {
+    engine.loadDocument(builderDocument);
+    documentTemplateHtmlBuilderBlocks = createLegacyBlocksFromBuilderDocument(builderDocument);
+    return;
+  }
   setDocumentTemplateHtmlBuilderBlocks(parseDocumentTemplateHtmlBuilderBlocksFromCode(html), { syncCode: false });
 }
 
 function addDocumentTemplateHtmlBuilderBlock(type = "paragraph", { token = "", insertIndex = null } = {}) {
+  const engine = ensureDocumentTemplateHtmlBuilderEngine();
+  if (engine) {
+    engine.addBlock(type, token);
+    return;
+  }
   const block = createDocumentTemplateHtmlBuilderBlock(type, token ? { token } : {});
   const safeIndex = Number.isInteger(insertIndex)
     ? Math.max(0, Math.min(insertIndex, documentTemplateHtmlBuilderBlocks.length))
@@ -42006,6 +42082,11 @@ function createDocumentTemplateHtmlBuilderTextInput(value = "", onInput = null, 
 
 function renderDocumentTemplateHtmlBuilderCanvas() {
   if (!(documentTemplateHtmlBuilderCanvas instanceof HTMLElement)) {
+    return;
+  }
+  const engine = ensureDocumentTemplateHtmlBuilderEngine();
+  if (engine) {
+    engine.render();
     return;
   }
 
@@ -93326,10 +93407,18 @@ documentTemplateHtmlBuilderToolbox?.addEventListener("click", (event) => {
   if (!(button instanceof HTMLButtonElement)) {
     return;
   }
+  if (documentTemplateHtmlBuilderEngine) {
+    documentTemplateHtmlBuilderEngine.addBlock(button.dataset.htmlBuilderTool || "paragraph");
+    return;
+  }
   addDocumentTemplateHtmlBuilderBlock(button.dataset.htmlBuilderTool || "paragraph");
 });
 
 documentTemplateHtmlBuilderToolbox?.addEventListener("dragstart", (event) => {
+  if (documentTemplateHtmlBuilderEngine) {
+    event.preventDefault();
+    return;
+  }
   const button = event.target instanceof HTMLElement
     ? event.target.closest("[data-html-builder-tool]")
     : null;
@@ -93346,6 +93435,10 @@ documentTemplateHtmlBuilderToolbox?.addEventListener("dragstart", (event) => {
 });
 
 documentTemplateHtmlBuilderCanvas?.addEventListener("dragstart", (event) => {
+  if (documentTemplateHtmlBuilderEngine) {
+    event.preventDefault();
+    return;
+  }
   const card = event.target instanceof HTMLElement
     ? event.target.closest("[data-html-builder-block-id]")
     : null;
@@ -93363,6 +93456,9 @@ documentTemplateHtmlBuilderCanvas?.addEventListener("dragstart", (event) => {
 });
 
 documentTemplateHtmlBuilderCanvas?.addEventListener("dragover", (event) => {
+  if (documentTemplateHtmlBuilderEngine) {
+    return;
+  }
   const types = Array.from(event.dataTransfer?.types || []);
   if (
     types.includes(DOCUMENT_TEMPLATE_HTML_BUILDER_TOOL_MIME)
@@ -93375,12 +93471,18 @@ documentTemplateHtmlBuilderCanvas?.addEventListener("dragover", (event) => {
 });
 
 documentTemplateHtmlBuilderCanvas?.addEventListener("dragleave", (event) => {
+  if (documentTemplateHtmlBuilderEngine) {
+    return;
+  }
   if (event.currentTarget === event.target) {
     documentTemplateHtmlBuilderCanvas.classList.remove("is-drop-target");
   }
 });
 
 documentTemplateHtmlBuilderCanvas?.addEventListener("drop", (event) => {
+  if (documentTemplateHtmlBuilderEngine) {
+    return;
+  }
   event.preventDefault();
   documentTemplateHtmlBuilderCanvas.classList.remove("is-drop-target");
   const insertIndex = getDocumentTemplateHtmlBuilderDropIndex(event);
@@ -93401,6 +93503,9 @@ documentTemplateHtmlBuilderCanvas?.addEventListener("drop", (event) => {
 });
 
 documentTemplateHtmlBuilderCanvas?.addEventListener("dragend", () => {
+  if (documentTemplateHtmlBuilderEngine) {
+    return;
+  }
   draggedDocumentTemplateHtmlBuilderBlockId = "";
   documentTemplateHtmlBuilderCanvas
     .querySelectorAll(".is-dragging")
@@ -93408,6 +93513,10 @@ documentTemplateHtmlBuilderCanvas?.addEventListener("dragend", () => {
 });
 
 documentTemplateHtmlBuilderDeleteButton?.addEventListener("click", () => {
+  if (documentTemplateHtmlBuilderEngine) {
+    documentTemplateHtmlBuilderEngine.deleteSelection();
+    return;
+  }
   const selectedIds = new Set(getDocumentTemplateHtmlBuilderSelectedBlocks().map((block) => String(block.id)));
   if (selectedIds.size === 0) {
     return;
@@ -93419,6 +93528,10 @@ documentTemplateHtmlBuilderDeleteButton?.addEventListener("click", () => {
 });
 
 documentTemplateHtmlBuilderDuplicateButton?.addEventListener("click", () => {
+  if (documentTemplateHtmlBuilderEngine) {
+    documentTemplateHtmlBuilderEngine.duplicateSelection();
+    return;
+  }
   const selectedBlocks = getDocumentTemplateHtmlBuilderSelectedBlocks();
   if (selectedBlocks.length === 0) {
     return;
@@ -93441,6 +93554,10 @@ documentTemplateEditorPanel?.addEventListener("click", (event) => {
     return;
   }
   const align = normalizeDocumentTemplateHtmlBuilderAlign(alignButton.dataset.htmlBuilderAlign || "");
+  if (documentTemplateHtmlBuilderEngine) {
+    documentTemplateHtmlBuilderEngine.alignSelection(align);
+    return;
+  }
   const selectedBlocks = getDocumentTemplateHtmlBuilderSelectedBlocks();
   if (selectedBlocks.length === 0) {
     return;

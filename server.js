@@ -29,6 +29,7 @@ import {
   buildPdfFromRenderModel,
   buildPdfFromTemplateBuffer,
   buildDocxFromTemplateBuffer,
+  convertHtmlToPdfBuffer,
   convertDocxBuffersToPdfBuffers,
   convertWordBufferToHtmlTemplate,
   isHtmlTemplateFile,
@@ -5359,6 +5360,7 @@ async function handleApiRequest(request, response, url) {
     const documentTemplatePdfExportMatch = url.pathname.match(/^\/api\/document-templates\/([^/]+)\/export-pdf$/);
     const documentTemplateBatchPdfExportMatch = url.pathname === "/api/document-templates/export-pdf-batch";
     const documentTemplateWordHtmlConvertMatch = url.pathname === "/api/document-templates/convert-word-html";
+    const documentTemplateHtmlPreviewPdfExportMatch = url.pathname === "/api/document-templates/export-html-preview-pdf";
     const vehicleReservationsCollectionMatch = url.pathname.match(/^\/api\/vehicles\/([^/]+)\/reservations$/);
     const vehicleReservationMatch = url.pathname.match(/^\/api\/vehicles\/([^/]+)\/reservations\/([^/]+)$/);
     const vehicleMatch = url.pathname.match(/^\/api\/vehicles\/([^/]+)$/);
@@ -6689,6 +6691,35 @@ async function handleApiRequest(request, response, url) {
         console.error("Word -> HTML conversion failed.", error);
         sendError(response, 400, error?.message || "Ne mogu pretvoriti Word predložak u HTML.");
       }
+      return true;
+    }
+
+    if (documentTemplateHtmlPreviewPdfExportMatch && request.method === "POST") {
+      if (!(await canUseScopedAppPermission(user, request, "documentTemplates.create"))) {
+        sendError(response, 403, "Nemate pravo izvoziti HTML predlozak u PDF.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const html = String(body?.html || "").trim();
+      if (!html) {
+        sendError(response, 400, "HTML predlozak je prazan.");
+        return true;
+      }
+
+      const fileName = sanitizeGeneratedDocumentFileName(
+        body.fileName || body.title || "safenexus-template",
+        { fallback: "safenexus-template", extension: "pdf" },
+      );
+      const pdfBuffer = await convertHtmlToPdfBuffer(html, {
+        fileName: fileName.replace(/\.pdf$/i, ".html"),
+        title: body.title || "SafeNexus template",
+      });
+
+      sendBinary(response, 200, pdfBuffer, {
+        contentType: "application/pdf",
+        fileName,
+      });
       return true;
     }
 
