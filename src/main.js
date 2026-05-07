@@ -1915,6 +1915,7 @@ const state = {
     referenceCollapsed: false,
     placeholdersCollapsed: false,
   },
+  documentTemplateHtmlPreviewCollapsed: false,
   documentTemplateWorkspaceTab: "builder",
   workOrderRenderLimit: WORK_ORDER_BATCH_SIZE,
   workOrderTemplateSettings: {
@@ -3399,6 +3400,9 @@ const documentTemplateReferenceMeta = document.querySelector("#document-template
 const documentTemplateHtmlCodeInput = document.querySelector("#document-template-html-code");
 const documentTemplateHtmlSaveButton = document.querySelector("#document-template-html-save");
 const documentTemplateHtmlPreviewFrame = document.querySelector("#document-template-html-preview-frame");
+const documentTemplateHtmlPreviewToggleButton = document.querySelector("#document-template-html-preview-toggle");
+const documentTemplateHtmlPreviewPanel = document.querySelector("#document-template-html-preview-panel");
+const documentTemplateHtmlWorkbenchGrid = document.querySelector("#document-template-html-workbench-grid");
 const documentTemplateHtmlBuilderToolbox = document.querySelector("#document-template-html-builder-toolbox");
 const documentTemplateHtmlBuilderCanvas = document.querySelector("#document-template-html-builder-canvas");
 const documentTemplateHtmlBuilderDuplicateButton = document.querySelector("#document-template-html-builder-duplicate");
@@ -41747,7 +41751,9 @@ function ensureDocumentTemplateHtmlBuilderEngine() {
       if (documentTemplateHtmlCodeInput instanceof HTMLTextAreaElement && documentTemplateHtmlCodeInput.value !== html) {
         documentTemplateHtmlCodeInput.value = html;
       }
-      renderDocumentTemplateHtmlPreviewContent();
+      if (!state.documentTemplateHtmlPreviewCollapsed) {
+        renderDocumentTemplateHtmlPreviewContent();
+      }
     },
     onExportPdf: async (html) => {
       const baseName = sanitizeDocumentTemplateFileName(
@@ -41975,7 +41981,7 @@ function syncDocumentTemplateHtmlBuilderCode({ renderPreview = true } = {}) {
   if (documentTemplateHtmlCodeInput instanceof HTMLTextAreaElement) {
     documentTemplateHtmlCodeInput.value = buildDocumentTemplateHtmlFromBuilderBlocks();
   }
-  if (renderPreview) {
+  if (renderPreview && !state.documentTemplateHtmlPreviewCollapsed) {
     renderDocumentTemplateHtmlPreviewContent();
   }
 }
@@ -47398,6 +47404,9 @@ function renderDocumentTemplateHtmlPreviewContent(template = buildDocumentTempla
   if (!(documentTemplateHtmlPreviewFrame instanceof HTMLIFrameElement)) {
     return;
   }
+  if (state.documentTemplateHtmlPreviewCollapsed) {
+    return;
+  }
 
   const htmlCode = String(documentTemplateHtmlCodeInput?.value || "").trim();
   if (!htmlCode) {
@@ -51396,6 +51405,22 @@ function getDocumentTemplateWorkspaceTab() {
   return normalizeDocumentTemplateWorkspaceTab(state.documentTemplateWorkspaceTab || "builder");
 }
 
+function syncDocumentTemplateHtmlPreviewVisibility() {
+  const collapsed = Boolean(state.documentTemplateHtmlPreviewCollapsed);
+  if (documentTemplateHtmlWorkbenchGrid instanceof HTMLElement) {
+    documentTemplateHtmlWorkbenchGrid.classList.toggle("is-preview-hidden", collapsed);
+  }
+  if (documentTemplateHtmlPreviewPanel instanceof HTMLElement) {
+    documentTemplateHtmlPreviewPanel.hidden = collapsed;
+    documentTemplateHtmlPreviewPanel.setAttribute("aria-hidden", String(collapsed));
+  }
+  if (documentTemplateHtmlPreviewToggleButton instanceof HTMLButtonElement) {
+    documentTemplateHtmlPreviewToggleButton.textContent = collapsed ? "Prikaži pregled" : "Sakrij pregled";
+    documentTemplateHtmlPreviewToggleButton.setAttribute("aria-expanded", String(!collapsed));
+    documentTemplateHtmlPreviewToggleButton.classList.toggle("is-active", !collapsed);
+  }
+}
+
 function syncDocumentTemplateWorkspaceTabs() {
   const fillMode = isDocumentTemplateRuntimeFillMode();
   const activeTab = fillMode ? "builder" : getDocumentTemplateWorkspaceTab();
@@ -51434,8 +51459,11 @@ function syncDocumentTemplateWorkspaceTabs() {
   });
 
   if (activeTab === "html" && !fillMode) {
+    syncDocumentTemplateHtmlPreviewVisibility();
     renderDocumentTemplateHtmlBuilderCanvas();
-    renderDocumentTemplateHtmlPreviewContent();
+    if (!state.documentTemplateHtmlPreviewCollapsed) {
+      renderDocumentTemplateHtmlPreviewContent();
+    }
   }
 }
 
@@ -51469,6 +51497,7 @@ function syncDocumentTemplateSidebarPanels() {
     documentTemplateReferenceToggleButton,
     documentTemplateReferencePanelBody,
     panelState.referenceCollapsed,
+    { collapsedLabel: "Prikaži sve", expandedLabel: "Sakrij sve" },
   );
   syncDocumentTemplateSidebarPanel(
     documentTemplatePlaceholderToggleButton,
@@ -93632,7 +93661,17 @@ documentTemplateHtmlCodeInput?.addEventListener("input", () => {
   if (htmlCode.includes(DOCUMENT_TEMPLATE_HTML_BUILDER_METADATA_PREFIX)) {
     hydrateDocumentTemplateHtmlBuilderFromCode(htmlCode);
   }
-  renderDocumentTemplateHtmlPreviewContent();
+  if (!state.documentTemplateHtmlPreviewCollapsed) {
+    renderDocumentTemplateHtmlPreviewContent();
+  }
+});
+
+documentTemplateHtmlPreviewToggleButton?.addEventListener("click", () => {
+  state.documentTemplateHtmlPreviewCollapsed = !state.documentTemplateHtmlPreviewCollapsed;
+  syncDocumentTemplateHtmlPreviewVisibility();
+  if (!state.documentTemplateHtmlPreviewCollapsed) {
+    renderDocumentTemplateHtmlPreviewContent();
+  }
 });
 
 documentTemplateReferenceToggleButton?.addEventListener("click", () => {

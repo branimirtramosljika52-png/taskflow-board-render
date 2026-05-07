@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260507j" />
+    <link rel="stylesheet" href="/styles.css?v=20260507k" />
     <link rel="stylesheet" href="/src/styles/variables.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/reset.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/builder.css?v=20260507a" />
@@ -7679,18 +7679,29 @@
                           <h3>HTML predložak i live preview</h3>
                           <p class="helper-copy module-copy">Lijevo uređuješ HTML koji se sprema u template, desno vidiš kako će se tokeni prikazati u završnom dokumentu.</p>
                         </div>
-                        <button
-                          id="document-template-reference-toggle"
-                          type="button"
-                          class="ghost-button document-template-sidebar-toggle"
-                          aria-expanded="true"
-                          aria-controls="document-template-reference-panel-body"
-                        >
-                          Sakrij
-                        </button>
+                        <div class="document-template-html-workspace-head-actions">
+                          <button
+                            id="document-template-html-preview-toggle"
+                            type="button"
+                            class="ghost-button document-template-sidebar-toggle"
+                            aria-expanded="true"
+                            aria-controls="document-template-html-preview-panel"
+                          >
+                            Sakrij pregled
+                          </button>
+                          <button
+                            id="document-template-reference-toggle"
+                            type="button"
+                            class="ghost-button document-template-sidebar-toggle"
+                            aria-expanded="true"
+                            aria-controls="document-template-reference-panel-body"
+                          >
+                            Sakrij sve
+                          </button>
+                        </div>
                       </div>
                       <div id="document-template-reference-panel-body" class="document-template-sidebar-block-body document-template-html-workspace-body">
-                        <div class="document-template-html-workbench-grid">
+                        <div id="document-template-html-workbench-grid" class="document-template-html-workbench-grid">
                           <div class="document-template-html-editor-panel">
                             <div id="document-template-reference-meta" class="document-template-reference-meta">
                               Nema spremljenog HTML predloška.
@@ -7745,7 +7756,7 @@
                               <textarea id="document-template-html-code" rows="18" spellcheck="false" placeholder="Zalijepi HTML s tokenima, npr. {{DOCUMENT_TITLE}} i {{BROJ_RADNOG_NALOGA}}"></textarea>
                             </label>
                           </div>
-                          <div class="document-template-html-preview-panel">
+                          <div id="document-template-html-preview-panel" class="document-template-html-preview-panel">
                             <div class="section-heading offers-section-heading document-template-html-preview-head">
                               <div>
                                 <p class="section-kicker">Live preview</p>
@@ -7944,6 +7955,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260507k"></script>
+    <script type="module" src="/src/main.js?v=20260507l"></script>
   </body>
 </html>

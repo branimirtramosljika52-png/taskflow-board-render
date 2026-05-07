@@ -28277,6 +28277,14 @@ body.is-measurement-equipment-export-open {
   align-items: center;
 }
 
+.document-template-html-workspace-head-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .document-template-html-workspace-head > div {
   display: grid;
   gap: 4px;
@@ -28298,6 +28306,14 @@ body.is-measurement-equipment-export-open {
   gap: 14px;
   align-items: start;
   min-width: 0;
+}
+
+.document-template-html-workbench-grid.is-preview-hidden {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.document-template-html-workbench-grid.is-preview-hidden .document-template-html-preview-panel {
+  display: none;
 }
 
 .document-template-html-editor-panel,
