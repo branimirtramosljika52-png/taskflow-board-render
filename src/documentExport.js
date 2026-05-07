@@ -2460,6 +2460,8 @@ async function extractWordDocumentMetadataFromZip(zip) {
     marginRightPt: twipsToPt(getXmlAttribute(pgMar, "w:right"), 72),
     marginBottomPt: twipsToPt(getXmlAttribute(pgMar, "w:bottom"), 72),
     marginLeftPt: twipsToPt(getXmlAttribute(pgMar, "w:left"), 72),
+    headerTopPt: twipsToPt(getXmlAttribute(pgMar, "w:header"), 36),
+    footerBottomPt: twipsToPt(getXmlAttribute(pgMar, "w:footer"), 36),
     orientation: orient || "portrait",
   };
   return {
@@ -3607,20 +3609,19 @@ function buildConvertedWordLayoutStyles(engine = "", metadata = {}) {
   const pageSize = Number.isFinite(page.widthPt) && Number.isFinite(page.heightPt)
     ? `${cssLengthPt(page.widthPt)} ${cssLengthPt(page.heightPt)}`
     : "A4";
-  const pageMargins = [page.marginTopPt, page.marginRightPt, page.marginBottomPt, page.marginLeftPt]
-    .map((entry, index) => cssLengthPt(entry, index % 2 === 0 ? "16mm" : "16mm"))
-    .join(" ");
   const pageWidth = Number.isFinite(page.widthPt) ? cssLengthPt(page.widthPt) : "210mm";
   const pageHeight = Number.isFinite(page.heightPt) ? cssLengthPt(page.heightPt) : "297mm";
   const marginTop = cssLengthPt(page.marginTopPt, "16mm");
   const marginRight = cssLengthPt(page.marginRightPt, "16mm");
   const marginBottom = cssLengthPt(page.marginBottomPt, "16mm");
   const marginLeft = cssLengthPt(page.marginLeftPt, "16mm");
+  const headerTop = cssLengthPt(page.headerTopPt, "12mm");
+  const footerBottom = cssLengthPt(page.footerBottomPt, "12mm");
   const defaultFont = clean(metadata?.defaultFont) || "Arial";
   const defaultFontSize = Number.isFinite(metadata?.defaultFontSize) ? cssLengthPt(metadata.defaultFontSize) : "11pt";
   return `
   <style data-safe-nexus-word-conversion>
-    @page { size: ${pageSize}; margin: ${pageMargins}; }
+    @page { size: ${pageSize}; margin: 0; }
     html { background: #f3f4f6; }
     body {
       background: #f3f4f6;
@@ -3636,6 +3637,8 @@ function buildConvertedWordLayoutStyles(engine = "", metadata = {}) {
       --sn-word-page-margin-right: ${marginRight};
       --sn-word-page-margin-bottom: ${marginBottom};
       --sn-word-page-margin-left: ${marginLeft};
+      --sn-word-page-header-top: ${headerTop};
+      --sn-word-page-footer-bottom: ${footerBottom};
     }
     table { border-collapse: collapse; border-spacing: 0; }
     img { max-width: 100%; height: auto; }
@@ -3662,11 +3665,31 @@ function buildConvertedWordLayoutStyles(engine = "", metadata = {}) {
     .sn-word-page-header,
     .sn-word-page-footer {
       flex: 0 0 auto;
-      position: relative;
+      left: var(--sn-word-page-margin-left);
+      margin: 0;
+      position: absolute;
+      right: var(--sn-word-page-margin-right);
       z-index: 2;
     }
-    .sn-word-page-header { margin-bottom: 12px; }
-    .sn-word-page-footer { margin-top: 12px; }
+    .sn-word-page-header { top: var(--sn-word-page-header-top); }
+    .sn-word-page-footer { bottom: var(--sn-word-page-footer-bottom); }
+    .sn-word-page-header .sn-word-table,
+    .sn-word-page-footer .sn-word-table {
+      margin-bottom: 0;
+      margin-top: 0;
+    }
+    .sn-word-page-header .sn-word-paragraph,
+    .sn-word-page-footer .sn-word-paragraph,
+    .sn-word-page-header .sn-word-document p,
+    .sn-word-page-footer .sn-word-document p {
+      margin-bottom: 0;
+      margin-top: 0;
+      min-height: 0;
+    }
+    .sn-word-page-header img,
+    .sn-word-page-footer img {
+      display: block;
+    }
     .sn-word-page-body {
       flex: 1 1 auto;
       min-height: 0;
@@ -3769,9 +3792,9 @@ function buildConvertedWordLayoutStyles(engine = "", metadata = {}) {
         box-shadow: none;
         break-after: page;
         margin: 0;
-        min-height: auto;
-        padding: 0;
-        width: auto;
+        min-height: var(--sn-word-page-height);
+        padding: var(--sn-word-page-margin-top) var(--sn-word-page-margin-right) var(--sn-word-page-margin-bottom) var(--sn-word-page-margin-left);
+        width: var(--sn-word-page-width);
       }
       .sn-word-page:last-child { break-after: auto; }
       .sn-word-document { max-width: none; margin: 0; }

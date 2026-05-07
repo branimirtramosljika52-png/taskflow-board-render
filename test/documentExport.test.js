@@ -300,6 +300,10 @@ test("Word to HTML conversion preserves OOXML colors, alignment and tokens", asy
     assert.match(result.html, /SafeNexus Header/);
     assert.match(result.html, /SPR-1\/1/);
     if (result.engine === "ooxml") {
+      assert.match(result.html, /--sn-word-page-header-top:/);
+      assert.match(result.html, /--sn-word-page-footer-bottom:/);
+      assert.match(result.html, /\.sn-word-page-header \{ top: var\(--sn-word-page-header-top\); \}/);
+      assert.match(result.html, /\.sn-word-page-footer \{ bottom: var\(--sn-word-page-footer-bottom\); \}/);
       assert.match(result.html, /sn-word-list-marker">1\.<\/span>[\s\S]*Prva stavka/);
       assert.match(result.html, /sn-word-list-marker">2\.<\/span>[\s\S]*Druga stavka/);
       assert.doesNotMatch(result.html, /background-color:#BEBEBE[^>]*>&nbsp;<\/p>/);

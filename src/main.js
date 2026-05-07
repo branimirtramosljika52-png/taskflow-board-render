@@ -46294,7 +46294,7 @@ function buildDocumentTemplatePreviewMarkup(
     },
   ));
 
-  if (placeholderMode || !sheetTabs || pages.length <= 1) {
+  if (!sheetTabs || pages.length <= 1) {
     return pageMarkup.join("");
   }
 
@@ -47313,28 +47313,18 @@ function buildDocumentTemplateHtmlPreviewDocument(html = "", template = buildDoc
     </html>`;
 }
 
-function renderDocumentTemplateHtmlPreviewContent(template = buildDocumentTemplateDraft(), context = null) {
+function renderDocumentTemplateHtmlPreviewContent(template = buildDocumentTemplateDraft()) {
   if (!(documentTemplateHtmlPreviewFrame instanceof HTMLIFrameElement)) {
     return;
   }
 
-  const previewContext = context || buildDocumentTemplatePreviewContext(template);
   const htmlCode = String(documentTemplateHtmlCodeInput?.value || "").trim();
   if (!htmlCode) {
     documentTemplateHtmlPreviewFrame.srcdoc = buildDocumentTemplateHtmlPreviewEmptyDocument(template);
     return;
   }
 
-  const placeholders = buildDocumentTemplateRuntimePlaceholderPayload(template, previewContext);
-  const renderedHtml = htmlCode.replace(/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g, (match, token) => {
-    const key = String(token || "").trim().toUpperCase();
-    if (!Object.prototype.hasOwnProperty.call(placeholders, key)) {
-      return match;
-    }
-    return formatDocumentTemplateHtmlPreviewPlaceholderValue(placeholders[key]);
-  });
-
-  documentTemplateHtmlPreviewFrame.srcdoc = buildDocumentTemplateHtmlPreviewDocument(renderedHtml, template);
+  documentTemplateHtmlPreviewFrame.srcdoc = buildDocumentTemplateHtmlPreviewDocument(htmlCode, template);
 }
 
 function renderDocumentTemplatePreviewContent(template = buildDocumentTemplateDraft(), context = null) {
@@ -47353,7 +47343,7 @@ function renderDocumentTemplatePreviewContent(template = buildDocumentTemplateDr
   }
 
   documentTemplatePreview.innerHTML = buildDocumentTemplatePreviewMarkup(template, {
-    placeholderMode: false,
+    placeholderMode: true,
     sheetTabs: true,
     context: previewContext,
   });
@@ -93675,7 +93665,7 @@ documentTemplateReferenceFileInput?.addEventListener("change", () => {
 });
 
 documentTemplateOpenPdfPreviewButton?.addEventListener("click", () => {
-  openDocumentTemplatePreviewWindow({ placeholderMode: false });
+  openDocumentTemplatePreviewWindow({ placeholderMode: true });
 });
 
 documentTemplateExportPlaceholderButton?.addEventListener("click", () => {
