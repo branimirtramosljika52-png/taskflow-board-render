@@ -419,6 +419,27 @@
   gap: 8px;
 }
 
+.sn-builder-grid-selection-label {
+  min-height: 30px;
+  padding: 7px 9px;
+  border: 1px solid var(--sn-builder-line);
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.sn-builder-grid-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sn-builder-grid-action {
+  min-width: 44px;
+}
+
 .sn-builder-empty-state {
   border: 1px dashed var(--sn-builder-line-strong);
   border-radius: 8px;

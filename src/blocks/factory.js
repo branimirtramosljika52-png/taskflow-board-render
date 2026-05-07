@@ -14,7 +14,7 @@ const baseLayouts = {
   spacer: { x: 72, y: 240, width: 300, height: 32, rotation: 0 },
   divider: { x: 72, y: 240, width: 520, height: 8, rotation: 0 },
   table: { x: 72, y: 280, width: 620, height: 220, rotation: 0 },
-  grid: { x: 72, y: 280, width: 520, height: 240, rotation: 0 },
+  grid: { x: 56, y: 280, width: 682, height: 236, rotation: 0 },
   badge: { x: 72, y: 250, width: 150, height: 34, rotation: 0 },
   status: { x: 246, y: 250, width: 170, height: 38, rotation: 0 },
   input: { x: 72, y: 310, width: 240, height: 42, rotation: 0 },
@@ -50,9 +50,9 @@ const baseStyles = {
     fontSize: "11px",
     color: "#172033",
     backgroundColor: "#ffffff",
-    borderColor: "#cbd5e1",
+    borderColor: "#9ca3af",
     borderWidth: "0",
-    borderStyle: "solid",
+    borderStyle: "dashed",
     gap: "0px",
     padding: "0",
   },
@@ -94,11 +94,36 @@ const defaultProps = {
     header: true,
   },
   grid: {
-    rows: 4,
-    columns: 4,
+    rows: 7,
+    columns: 2,
+    columnWidths: ["22%", "78%"],
+    rowHeights: ["24px", "34px", "34px", "34px", "34px", "34px", "34px"],
     showBorders: true,
     cellBackgroundColor: "#ffffff",
-    cells: [],
+    selectedCellIds: [],
+    cells: [
+      {
+        content: "1.  OSNOVNI PODACI",
+        colSpan: 2,
+        backgroundColor: "#bfbfbf",
+        fontWeight: "700",
+        textAlign: "left",
+        padding: "3px 8px 3px 30px",
+      },
+      { hidden: true, masterIndex: 0 },
+      { content: "Naručitelj:", fontWeight: "700", padding: "8px 20px" },
+      { content: "{{TVRTKA}}; {{SJEDISTE}}; OIB: {{OIB}}", fontWeight: "700", padding: "8px 8px" },
+      { content: "Korisnik prostora:", fontWeight: "700", padding: "8px 20px" },
+      { content: "{{TVRTKA}}", padding: "8px 8px" },
+      { content: "Mjesto ispitivanja:", fontWeight: "700", padding: "8px 20px" },
+      { content: "{{MJESTO_ISPITIVANJA}}", fontWeight: "700", padding: "8px 8px" },
+      { content: "Objekt ispitivanja:", fontWeight: "700", padding: "8px 20px" },
+      { content: "{{OBJEKT}}", padding: "8px 8px" },
+      { content: "Vrsta ispitivanja:", fontWeight: "700", padding: "8px 20px" },
+      { content: "{{VRSTA_ISPITIVANJA}}", padding: "8px 8px" },
+      { content: "Datum ispitivanja:", fontWeight: "700", padding: "8px 20px" },
+      { content: "{{DATUM_ISPITIVANJA}}", padding: "8px 8px" },
+    ],
   },
   badge: { content: "Oznaka" },
   status: { content: "Status" },
@@ -187,7 +212,42 @@ function normalizeGridCell(cell = {}) {
     backgroundColor: String(cell?.backgroundColor ?? ""),
     color: String(cell?.color ?? ""),
     textAlign: String(cell?.textAlign ?? ""),
+    fontWeight: String(cell?.fontWeight ?? ""),
+    padding: String(cell?.padding ?? ""),
+    borderColor: String(cell?.borderColor ?? ""),
+    borderWidth: String(cell?.borderWidth ?? ""),
+    borderStyle: String(cell?.borderStyle ?? ""),
+    rowSpan: Math.max(1, Math.min(24, Math.round(Number(cell?.rowSpan) || 1))),
+    colSpan: Math.max(1, Math.min(24, Math.round(Number(cell?.colSpan) || 1))),
+    hidden: Boolean(cell?.hidden),
+    masterIndex: Number.isInteger(Number(cell?.masterIndex)) ? Number(cell.masterIndex) : null,
   };
+}
+
+function normalizeGridTrackList(value, count, fallback = "1fr") {
+  const source = Array.isArray(value)
+    ? value
+    : String(value || "")
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  return Array.from({ length: count }, (_, index) => String(source[index] || fallback).trim() || fallback);
+}
+
+function focusEditableCellAtEnd(blockId, cellIndex) {
+  requestAnimationFrame(() => {
+    const node = document.querySelector(`[data-builder-block-id="${blockId}"] [data-grid-cell-index="${cellIndex}"]`);
+    if (!(node instanceof HTMLElement)) {
+      return;
+    }
+    node.focus();
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    range.collapse(false);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  });
 }
 
 function normalizeGridProps(props = {}) {
@@ -198,8 +258,13 @@ function normalizeGridProps(props = {}) {
   return {
     rows,
     columns,
+    columnWidths: normalizeGridTrackList(props.columnWidths, columns, "1fr"),
+    rowHeights: normalizeGridTrackList(props.rowHeights, rows, "1fr"),
     showBorders: props.showBorders !== false,
     cellBackgroundColor: String(props.cellBackgroundColor || defaultProps.grid.cellBackgroundColor),
+    selectedCellIds: (Array.isArray(props.selectedCellIds) ? props.selectedCellIds : [])
+      .map((value) => Number.parseInt(value, 10))
+      .filter((value) => Number.isInteger(value) && value >= 0 && value < rows * columns),
     cells,
   };
 }
@@ -213,9 +278,11 @@ function gridCellStyle(block, props, cell) {
     backgroundColor: cell.backgroundColor || props.cellBackgroundColor || "transparent",
     color: cell.color || block.styles?.color || "#172033",
     textAlign: cell.textAlign || block.styles?.textAlign || "left",
-    borderColor: block.styles?.borderColor || "#cbd5e1",
-    borderWidth,
-    borderStyle: block.styles?.borderStyle || "solid",
+    fontWeight: cell.fontWeight || block.styles?.fontWeight || "",
+    padding: cell.padding || block.styles?.padding || "6px",
+    borderColor: cell.borderColor || block.styles?.borderColor || "#9ca3af",
+    borderWidth: cell.borderWidth || borderWidth,
+    borderStyle: cell.borderStyle || block.styles?.borderStyle || "dashed",
   };
 }
 
@@ -224,19 +291,65 @@ function renderGrid(block, context) {
   const grid = el("div", {
     className: "sn-builder-layout-grid",
     style: {
-      gridTemplateColumns: `repeat(${props.columns}, minmax(0, 1fr))`,
-      gridTemplateRows: `repeat(${props.rows}, minmax(0, 1fr))`,
+      gridTemplateColumns: props.columnWidths.join(" "),
+      gridTemplateRows: props.rowHeights.join(" "),
       gap: block.styles?.gap || "0px",
     },
   });
 
   props.cells.forEach((cell, index) => {
+    if (cell.hidden) {
+      return;
+    }
+    const row = Math.floor(index / props.columns);
+    const column = index % props.columns;
+    const rowSpan = Math.max(1, Math.min(props.rows - row, cell.rowSpan || 1));
+    const colSpan = Math.max(1, Math.min(props.columns - column, cell.colSpan || 1));
     const node = el("div", {
-      className: "sn-builder-grid-cell",
+      className: `sn-builder-grid-cell${props.selectedCellIds.includes(index) ? " is-selected" : ""}`,
       contenteditable: "true",
       spellcheck: "false",
-      style: gridCellStyle(block, props, cell),
+      dataset: {
+        gridCellIndex: index,
+        gridCellRow: row + 1,
+        gridCellColumn: column + 1,
+      },
+      style: {
+        ...gridCellStyle(block, props, cell),
+        gridColumn: `${column + 1} / span ${colSpan}`,
+        gridRow: `${row + 1} / span ${rowSpan}`,
+      },
     }, cell.content || "");
+    node.addEventListener("pointerdown", (event) => {
+      event.stopPropagation();
+      const isMultiSelection = event.shiftKey || event.ctrlKey || event.metaKey;
+      if (isMultiSelection) {
+        event.preventDefault();
+      }
+      const selected = new Set(props.selectedCellIds);
+      if (isMultiSelection) {
+        if (selected.has(index)) {
+          selected.delete(index);
+        } else {
+          selected.add(index);
+        }
+      } else {
+        selected.clear();
+        selected.add(index);
+      }
+      if (!context.state?.selectedIds?.includes(block.id)) {
+        context.selectBlock?.(block.id);
+      }
+      context.updateBlock(block.id, {
+        props: {
+          ...block.props,
+          selectedCellIds: [...selected],
+        },
+      }, { history: false });
+      if (!isMultiSelection) {
+        focusEditableCellAtEnd(block.id, index);
+      }
+    });
     node.addEventListener("blur", () => {
       const nextCells = props.cells.map((entry) => ({ ...entry }));
       nextCells[index] = {
@@ -323,16 +436,22 @@ function gridToHtml(block) {
   const props = normalizeGridProps(block.props);
   const gridStyle = inlineStyles({
     display: "grid",
-    gridTemplateColumns: `repeat(${props.columns}, minmax(0, 1fr))`,
-    gridTemplateRows: `repeat(${props.rows}, minmax(0, 1fr))`,
+    gridTemplateColumns: props.columnWidths.join(" "),
+    gridTemplateRows: props.rowHeights.join(" "),
     gap: block.styles?.gap || "0px",
     width: "100%",
     height: "100%",
   });
-  const cells = props.cells.map((cell) => {
+  const cells = props.cells.map((cell, index) => {
+    if (cell.hidden) {
+      return "";
+    }
+    const row = Math.floor(index / props.columns);
+    const column = index % props.columns;
     const style = inlineStyles({
       ...gridCellStyle(block, props, cell),
-      padding: block.styles?.padding || "6px",
+      gridColumn: `${column + 1} / span ${Math.max(1, Math.min(props.columns - column, cell.colSpan || 1))}`,
+      gridRow: `${row + 1} / span ${Math.max(1, Math.min(props.rows - row, cell.rowSpan || 1))}`,
       minWidth: "0",
       minHeight: "0",
       overflow: "hidden",

@@ -1,5 +1,5 @@
 import { getBlockById } from "../core/state.js";
-import { el, field, input, select, clear } from "../utils/dom.js";
+import { el, field, input, select, clear, button } from "../utils/dom.js";
 
 const FONT_WEIGHTS = [
   { value: "400", label: "Regular" },
@@ -59,7 +59,32 @@ function normalizeGridCell(cell = {}) {
     backgroundColor: String(cell?.backgroundColor ?? ""),
     color: String(cell?.color ?? ""),
     textAlign: String(cell?.textAlign ?? ""),
+    fontWeight: String(cell?.fontWeight ?? ""),
+    padding: String(cell?.padding ?? ""),
+    borderColor: String(cell?.borderColor ?? ""),
+    borderWidth: String(cell?.borderWidth ?? ""),
+    borderStyle: String(cell?.borderStyle ?? ""),
+    rowSpan: Math.max(1, Math.min(24, Math.round(Number(cell?.rowSpan) || 1))),
+    colSpan: Math.max(1, Math.min(24, Math.round(Number(cell?.colSpan) || 1))),
+    hidden: Boolean(cell?.hidden),
+    masterIndex: Number.isInteger(Number(cell?.masterIndex)) ? Number(cell.masterIndex) : null,
   };
+}
+
+function normalizeGridTrackList(value, count, fallback = "1fr") {
+  const source = Array.isArray(value)
+    ? value
+    : String(value || "")
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  return Array.from({ length: count }, (_, index) => String(source[index] || fallback).trim() || fallback);
+}
+
+function getGridSelectedCellIds(block = {}, rows = clampGridCount(block.props?.rows, 4), columns = clampGridCount(block.props?.columns, 4)) {
+  return (Array.isArray(block.props?.selectedCellIds) ? block.props.selectedCellIds : [])
+    .map((value) => Number.parseInt(value, 10))
+    .filter((value) => Number.isInteger(value) && value >= 0 && value < rows * columns);
 }
 
 function resizeGridCells(block, nextRows, nextColumns) {
@@ -78,6 +103,114 @@ function resizeGridCells(block, nextRows, nextColumns) {
   });
 }
 
+function resizeGridTracks(block, key, count, fallback = "1fr") {
+  return normalizeGridTrackList(block.props?.[key], count, fallback);
+}
+
+function getGridSelectionRect(selectedIds = [], columns = 1) {
+  if (!selectedIds.length) {
+    return null;
+  }
+  const coordinates = selectedIds.map((index) => ({
+    index,
+    row: Math.floor(index / columns),
+    column: index % columns,
+  }));
+  return {
+    minRow: Math.min(...coordinates.map((item) => item.row)),
+    maxRow: Math.max(...coordinates.map((item) => item.row)),
+    minColumn: Math.min(...coordinates.map((item) => item.column)),
+    maxColumn: Math.max(...coordinates.map((item) => item.column)),
+  };
+}
+
+function mergeGridCells(block, rows, columns) {
+  const cells = Array.isArray(block.props?.cells) ? block.props.cells.map(normalizeGridCell) : resizeGridCells(block, rows, columns);
+  const selectedIds = getGridSelectedCellIds(block, rows, columns).filter((index) => !cells[index]?.hidden);
+  const rect = getGridSelectionRect(selectedIds, columns);
+  if (!rect || selectedIds.length < 2) {
+    return null;
+  }
+
+  const anchorIndex = rect.minRow * columns + rect.minColumn;
+  const nextCells = cells.map((cell) => ({ ...cell, hidden: false, masterIndex: null, rowSpan: cell.rowSpan || 1, colSpan: cell.colSpan || 1 }));
+  for (let row = rect.minRow; row <= rect.maxRow; row += 1) {
+    for (let column = rect.minColumn; column <= rect.maxColumn; column += 1) {
+      const index = row * columns + column;
+      if (index === anchorIndex) {
+        continue;
+      }
+      nextCells[index] = {
+        ...nextCells[index],
+        hidden: true,
+        masterIndex: anchorIndex,
+        rowSpan: 1,
+        colSpan: 1,
+      };
+    }
+  }
+  nextCells[anchorIndex] = {
+    ...nextCells[anchorIndex],
+    hidden: false,
+    masterIndex: null,
+    rowSpan: rect.maxRow - rect.minRow + 1,
+    colSpan: rect.maxColumn - rect.minColumn + 1,
+  };
+  return {
+    cells: nextCells,
+    selectedCellIds: [anchorIndex],
+  };
+}
+
+function unmergeGridCells(block, rows, columns) {
+  const cells = Array.isArray(block.props?.cells) ? block.props.cells.map(normalizeGridCell) : resizeGridCells(block, rows, columns);
+  const selectedIds = getGridSelectedCellIds(block, rows, columns);
+  if (!selectedIds.length) {
+    return null;
+  }
+  const anchorIds = new Set(selectedIds.map((index) => (
+    cells[index]?.hidden && Number.isInteger(cells[index]?.masterIndex)
+      ? cells[index].masterIndex
+      : index
+  )));
+  const nextCells = cells.map((cell, index) => {
+    if (anchorIds.has(index)) {
+      return { ...cell, rowSpan: 1, colSpan: 1, hidden: false, masterIndex: null };
+    }
+    if (anchorIds.has(cell.masterIndex)) {
+      return { ...cell, rowSpan: 1, colSpan: 1, hidden: false, masterIndex: null };
+    }
+    return { ...cell };
+  });
+  return {
+    cells: nextCells,
+    selectedCellIds: [...anchorIds],
+  };
+}
+
+function patchSelectedGridCells(block, rows, columns, patch) {
+  const cells = Array.isArray(block.props?.cells) ? block.props.cells.map(normalizeGridCell) : resizeGridCells(block, rows, columns);
+  const selectedIds = getGridSelectedCellIds(block, rows, columns);
+  if (!selectedIds.length) {
+    return null;
+  }
+  const nextCells = cells.map((cell, index) => {
+    if (!selectedIds.includes(index)) {
+      return cell;
+    }
+    return { ...cell, ...patch };
+  });
+  return { cells: nextCells };
+}
+
+function createGridAction(label, title, onClick) {
+  return button(label, {
+    className: "sn-builder-tool-button sn-builder-grid-action",
+    title,
+    onclick: onClick,
+  });
+}
+
 function gridPropertySection(block, updateProps, updateStyles) {
   if (block.type !== "grid") {
     return null;
@@ -87,21 +220,96 @@ function gridPropertySection(block, updateProps, updateStyles) {
   const columns = clampGridCount(block.props?.columns, 4);
   const showBorders = block.props?.showBorders !== false;
   const cellBackgroundColor = block.props?.cellBackgroundColor || "#ffffff";
+  const selectedIds = getGridSelectedCellIds(block, rows, columns);
+  const selectedText = selectedIds.length
+    ? selectedIds.map((index) => `R${Math.floor(index / columns) + 1}C${(index % columns) + 1}`).join(", ")
+    : "Klikni celiju u gridu";
 
   return section("Grid", [
     el("div", { className: "sn-builder-property-grid" }, [
       field("Rows", numberInput(rows, (value) => {
         const nextRows = clampGridCount(value, rows);
-        updateProps({ rows: nextRows, columns, cells: resizeGridCells(block, nextRows, columns) });
+        updateProps({
+          rows: nextRows,
+          columns,
+          rowHeights: resizeGridTracks(block, "rowHeights", nextRows, "34px"),
+          cells: resizeGridCells(block, nextRows, columns),
+          selectedCellIds: [],
+        });
       })),
       field("Columns", numberInput(columns, (value) => {
         const nextColumns = clampGridCount(value, columns);
-        updateProps({ rows, columns: nextColumns, cells: resizeGridCells(block, rows, nextColumns) });
+        updateProps({
+          rows,
+          columns: nextColumns,
+          columnWidths: resizeGridTracks(block, "columnWidths", nextColumns, "1fr"),
+          cells: resizeGridCells(block, rows, nextColumns),
+          selectedCellIds: [],
+        });
       })),
       field("Borders", checkboxInput(showBorders, (value) => updateProps({ showBorders: value }))),
       field("Cell bg", colorInput(cellBackgroundColor, (value) => updateProps({ cellBackgroundColor: value }))),
       field("Border", colorInput(block.styles?.borderColor || "#cbd5e1", (value) => updateStyles({ borderColor: value }))),
       field("Gap", textInput(block.styles?.gap || "0px", (value) => updateStyles({ gap: value }))),
+    ]),
+    field("Column widths", textInput((block.props?.columnWidths || []).join(", "), (value) => {
+      updateProps({ columnWidths: normalizeGridTrackList(value, columns, "1fr") });
+    })),
+    field("Row heights", textInput((block.props?.rowHeights || []).join(", "), (value) => {
+      updateProps({ rowHeights: normalizeGridTrackList(value, rows, "34px") });
+    })),
+    el("div", { className: "sn-builder-grid-selection-label" }, selectedText),
+    el("div", { className: "sn-builder-grid-action-row" }, [
+      createGridAction("Merge", "Spoji označene ćelije", () => {
+        const patch = mergeGridCells(block, rows, columns);
+        if (patch) updateProps(patch);
+      }),
+      createGridAction("Unmerge", "Razdvoji spojenu ćeliju", () => {
+        const patch = unmergeGridCells(block, rows, columns);
+        if (patch) updateProps(patch);
+      }),
+      createGridAction("Bold", "Podebljaj označene ćelije", () => {
+        const patch = patchSelectedGridCells(block, rows, columns, { fontWeight: "700" });
+        if (patch) updateProps(patch);
+      }),
+      createGridAction("Normal", "Vrati običnu debljinu teksta", () => {
+        const patch = patchSelectedGridCells(block, rows, columns, { fontWeight: "400" });
+        if (patch) updateProps(patch);
+      }),
+      createGridAction("L", "Poravnaj tekst lijevo", () => {
+        const patch = patchSelectedGridCells(block, rows, columns, { textAlign: "left" });
+        if (patch) updateProps(patch);
+      }),
+      createGridAction("C", "Poravnaj tekst centar", () => {
+        const patch = patchSelectedGridCells(block, rows, columns, { textAlign: "center" });
+        if (patch) updateProps(patch);
+      }),
+      createGridAction("R", "Poravnaj tekst desno", () => {
+        const patch = patchSelectedGridCells(block, rows, columns, { textAlign: "right" });
+        if (patch) updateProps(patch);
+      }),
+      createGridAction("Gray", "Siva glava kao u Word tablici", () => {
+        const patch = patchSelectedGridCells(block, rows, columns, { backgroundColor: "#bfbfbf", fontWeight: "700" });
+        if (patch) updateProps(patch);
+      }),
+    ]),
+    el("div", { className: "sn-builder-property-grid" }, [
+      field("Selected bg", colorInput("#bfbfbf", (value) => {
+        const patch = patchSelectedGridCells(block, rows, columns, { backgroundColor: value });
+        if (patch) updateProps(patch);
+      })),
+      field("Selected color", colorInput(block.styles?.color || "#172033", (value) => {
+        const patch = patchSelectedGridCells(block, rows, columns, { color: value });
+        if (patch) updateProps(patch);
+      })),
+      field("Selected border", colorInput(block.styles?.borderColor || "#9ca3af", (value) => {
+        const patch = patchSelectedGridCells(block, rows, columns, { borderColor: value });
+        if (patch) updateProps(patch);
+      })),
+      field("Selected padding", textInput("8px", (value) => {
+        const patch = patchSelectedGridCells(block, rows, columns, { padding: value });
+        if (patch) updateProps(patch);
+      })),
     ]),
   ]);
 }

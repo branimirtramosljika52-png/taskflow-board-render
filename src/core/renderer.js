@@ -83,6 +83,7 @@ export function renderCanvas(container, store, options = {}) {
     state,
     updateBlock: store.updateBlock,
     commitHistory: store.commitHistory,
+    selectBlock: store.selectBlock,
     tokenOptions: options.getTokenOptions?.() || [],
   };
 
