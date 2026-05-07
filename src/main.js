@@ -3376,6 +3376,8 @@ const documentTemplateBuilderInspector = documentTemplateEditorPanel?.querySelec
 const documentTemplateWorkspaceTabs = document.querySelector("#document-template-workspace-tabs");
 const documentTemplateWorkspaceTabButtons = Array.from(document.querySelectorAll("[data-document-template-workspace-tab]"));
 const documentTemplateWorkspacePanels = Array.from(document.querySelectorAll("[data-document-template-workspace-panel]"));
+const documentTemplateFormBuilderCanvasMount = document.querySelector("#document-template-form-builder-canvas-mount");
+const documentTemplateHtmlBuilderCanvasMount = document.querySelector("#document-template-html-builder-canvas-mount");
 const documentTemplateFieldInspector = document.querySelector("#document-template-field-inspector");
 const documentTemplateLayoutActions = documentTemplateEditorPanel?.querySelector(".document-template-layout-actions");
 const documentTemplateLegalFrameworkList = document.querySelector("#document-template-legal-framework-list");
@@ -50865,6 +50867,17 @@ function getDocumentTemplateWorkspaceTab() {
 function syncDocumentTemplateWorkspaceTabs() {
   const fillMode = isDocumentTemplateRuntimeFillMode();
   const activeTab = fillMode ? "builder" : getDocumentTemplateWorkspaceTab();
+  const targetCanvasMount = activeTab === "html" && !fillMode
+    ? documentTemplateHtmlBuilderCanvasMount
+    : documentTemplateFormBuilderCanvasMount;
+
+  if (
+    targetCanvasMount instanceof HTMLElement
+    && documentTemplateCustomFields instanceof HTMLElement
+    && documentTemplateCustomFields.parentElement !== targetCanvasMount
+  ) {
+    targetCanvasMount.append(documentTemplateCustomFields);
+  }
 
   if (documentTemplateWorkspaceTabs instanceof HTMLElement) {
     documentTemplateWorkspaceTabs.hidden = fillMode;
@@ -50899,6 +50912,8 @@ function syncDocumentTemplateWorkspaceTabs() {
 function setDocumentTemplateWorkspaceTab(tab = "builder") {
   state.documentTemplateWorkspaceTab = normalizeDocumentTemplateWorkspaceTab(tab);
   syncDocumentTemplateWorkspaceTabs();
+  renderDocumentTemplateFieldRows({ renderSupport: false });
+  renderDocumentTemplatePreviewContent();
 }
 
 function syncDocumentTemplateSidebarPanel(button, body, collapsed, {
@@ -92791,7 +92806,7 @@ documentTemplateAddExcelButton?.addEventListener("click", () => {
   addDocumentTemplateBuilderBlock("measurement_table");
 });
 
-documentTemplateToolbox?.addEventListener("click", (event) => {
+documentTemplateEditorPanel?.addEventListener("click", (event) => {
   const button = event.target instanceof HTMLElement
     ? event.target.closest("[data-template-tool]")
     : null;
@@ -92799,17 +92814,23 @@ documentTemplateToolbox?.addEventListener("click", (event) => {
   if (!(button instanceof HTMLButtonElement)) {
     return;
   }
+  if (!documentTemplateEditorPanel.contains(button)) {
+    return;
+  }
 
   const tool = button.dataset.templateTool || "text";
   addDocumentTemplateBuilderBlock(tool);
 });
 
-documentTemplateToolbox?.addEventListener("dragstart", (event) => {
+documentTemplateEditorPanel?.addEventListener("dragstart", (event) => {
   const button = event.target instanceof HTMLElement
     ? event.target.closest("[data-template-tool]")
     : null;
 
   if (!(button instanceof HTMLButtonElement)) {
+    return;
+  }
+  if (!documentTemplateEditorPanel.contains(button)) {
     return;
   }
 
@@ -92822,8 +92843,8 @@ documentTemplateToolbox?.addEventListener("dragstart", (event) => {
   button.classList.add("is-dragging-tool");
 });
 
-documentTemplateToolbox?.addEventListener("dragend", () => {
-  documentTemplateToolbox
+documentTemplateEditorPanel?.addEventListener("dragend", () => {
+  documentTemplateEditorPanel
     .querySelectorAll(".is-dragging-tool")
     .forEach((node) => node.classList.remove("is-dragging-tool"));
 });

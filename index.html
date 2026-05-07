@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260507d" />
+    <link rel="stylesheet" href="/styles.css?v=20260507e" />
   </head>
   <body class="auth-page">
     <section id="auth-screen" class="auth-screen">
@@ -7613,10 +7613,6 @@
                                 <strong>Blok</strong>
                                 <span>Vizualno odvaja sekciju i grupira sve sljedeće stavke</span>
                               </button>
-                              <button type="button" class="document-template-tool-button" data-template-tool="page_break" data-template-icon="A4" draggable="true">
-                                <strong>Nova A4 stranica</strong>
-                                <span>Dodaje novu praznu stranicu u dokumentu</span>
-                              </button>
                               <button type="button" class="document-template-tool-button" data-template-tool="legal_list" data-template-icon="§" draggable="true">
                                 <strong>Ubaci pravilnike</strong>
                                 <span>Odaberi koje pravilnike prikazuje i koje označava unaprijed</span>
@@ -7642,14 +7638,16 @@
                             <div class="section-heading offers-section-heading">
                               <div>
                                 <p class="section-kicker">Ekran izrade</p>
-                                <h3>Raspored polja po A4 stranicama</h3>
+                                <h3>Raspored polja u formi</h3>
                               </div>
                             </div>
                             <label class="field field-span-full">
                               <span>Opis i svrha</span>
                               <textarea id="document-template-description" rows="3" placeholder="Što template generira, za koji zapisnik, za koju operativu..."></textarea>
                             </label>
-                            <div id="document-template-custom-fields" class="document-template-custom-fields"></div>
+                            <div id="document-template-form-builder-canvas-mount" class="document-template-canvas-mount">
+                              <div id="document-template-custom-fields" class="document-template-custom-fields"></div>
+                            </div>
                           </section>
                         </section>
 
@@ -7717,6 +7715,39 @@
                             </label>
                           </div>
                           <div class="document-template-html-preview-panel">
+                            <div class="section-heading offers-section-heading document-template-html-preview-head">
+                              <div>
+                                <p class="section-kicker">A4 builder</p>
+                                <h3>Stranice i blokovi dokumenta</h3>
+                              </div>
+                            </div>
+                            <div class="document-template-html-toolbox">
+                              <button type="button" class="document-template-tool-button" data-template-tool="text" data-template-icon="T" draggable="true">
+                                <strong>Tekst polje</strong>
+                                <span>Kratki tekst ili vrijednost iz baze</span>
+                              </button>
+                              <button type="button" class="document-template-tool-button" data-template-tool="longtext" data-template-icon="¶" draggable="true">
+                                <strong>Tekst blok</strong>
+                                <span>Veći tekst, napomena ili odlomak</span>
+                              </button>
+                              <button type="button" class="document-template-tool-button" data-template-tool="chapter" data-template-icon="H" draggable="true">
+                                <strong>Naslov / poglavlje</strong>
+                                <span>Vizualni naslov sekcije</span>
+                              </button>
+                              <button type="button" class="document-template-tool-button" data-template-tool="image_upload" data-template-icon="IMG" draggable="true">
+                                <strong>Slika</strong>
+                                <span>Mjesto za sliku u dokumentu</span>
+                              </button>
+                              <button type="button" class="document-template-tool-button" data-template-tool="measurement_table" data-template-icon="XL" draggable="true">
+                                <strong>Excel tablica</strong>
+                                <span>Tablični blok za PDF</span>
+                              </button>
+                              <button type="button" class="document-template-tool-button" data-template-tool="page_break" data-template-icon="A4" draggable="true">
+                                <strong>Nova A4 stranica</strong>
+                                <span>Dodaje novu stranicu u PDF dokumentu</span>
+                              </button>
+                            </div>
+                            <div id="document-template-html-builder-canvas-mount" class="document-template-canvas-mount document-template-html-builder-canvas-mount"></div>
                             <div class="section-heading offers-section-heading document-template-html-preview-head">
                               <div>
                                 <p class="section-kicker">Preview</p>
@@ -7915,6 +7946,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260507d"></script>
+    <script type="module" src="/src/main.js?v=20260507e"></script>
   </body>
 </html>

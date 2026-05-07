@@ -26792,6 +26792,8 @@ body.is-vehicle-reservation-open {
   position: fixed;
   inset: 10px;
   z-index: 210;
+  display: flex;
+  flex-direction: column;
   width: auto;
   height: auto;
   min-height: 0;
@@ -26806,10 +26808,13 @@ body.is-vehicle-reservation-open {
 }
 
 .document-template-editor-panel.is-workspace-open .document-template-editor-body {
+  flex: 1 1 auto;
+  height: 100%;
   padding: 0;
   overflow: auto;
   display: flex;
   min-height: 0;
+  overscroll-behavior: contain;
 }
 
 .document-template-editor-panel.is-fill-mode .document-template-editor-body {
@@ -26825,6 +26830,7 @@ body.is-vehicle-reservation-open {
   flex: 1 1 auto;
   min-height: 0;
   overflow: visible;
+  padding-bottom: 26px;
 }
 
 .document-template-editor-panel.is-fill-mode .document-template-form {
@@ -28206,6 +28212,50 @@ body.is-measurement-equipment-export-open {
   gap: 14px;
 }
 
+.document-template-canvas-mount {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.document-template-program-workspace-block .document-template-sheet-shell {
+  justify-items: stretch;
+}
+
+.document-template-program-workspace-block .document-template-page-toolbar,
+.document-template-program-workspace-block .document-template-a4-page-label {
+  display: none;
+}
+
+.document-template-program-workspace-block .document-template-a4-page-stack {
+  justify-items: stretch;
+  gap: 14px;
+  overflow: visible;
+  padding: 0;
+}
+
+.document-template-program-workspace-block .document-template-a4-page-wrap {
+  width: 100%;
+  justify-items: stretch;
+}
+
+.document-template-program-workspace-block .document-template-sheet-panel {
+  width: 100%;
+  min-height: 0;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.document-template-program-workspace-block .document-template-sheet-panel.is-drop-target {
+  outline-offset: 2px;
+  background: rgba(248, 251, 255, 0.76);
+}
+
 .document-template-program-workspace-head {
   align-items: start;
 }
@@ -28283,6 +28333,57 @@ body.is-measurement-equipment-export-open {
 .document-template-html-preview-panel {
   position: sticky;
   top: 8px;
+}
+
+.document-template-html-toolbox {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.document-template-html-toolbox .document-template-tool-button {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 8px;
+  min-height: 54px;
+  padding: 8px 9px;
+  border-radius: 14px;
+}
+
+.document-template-html-toolbox .document-template-tool-button::before {
+  content: attr(data-template-icon);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+  border: 1px solid rgba(53, 98, 196, 0.18);
+  background: rgba(239, 246, 255, 0.94);
+  color: #24529d;
+  font-size: 0.7rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.document-template-html-toolbox .document-template-tool-button strong {
+  grid-column: 2;
+  font-size: 0.78rem;
+  line-height: 1.18;
+}
+
+.document-template-html-toolbox .document-template-tool-button span {
+  grid-column: 2;
+  display: none;
+}
+
+.document-template-html-builder-canvas-mount {
+  min-width: 0;
+}
+
+.document-template-html-builder-canvas-mount .document-template-custom-fields {
+  width: 100%;
 }
 
 .document-template-html-preview-head {
