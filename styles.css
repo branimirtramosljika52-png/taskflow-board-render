@@ -35407,6 +35407,40 @@ body.is-document-template-resizing-diagonal * {
   }
 }
 
+.document-template-editor-panel.is-workspace-open:not(.is-fill-mode) {
+  display: block;
+  height: calc(100dvh - 20px);
+  max-height: calc(100dvh - 20px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-editor-body {
+  display: block;
+  height: auto;
+  min-height: 100%;
+  overflow: visible;
+}
+
+.document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-form {
+  height: auto;
+  min-height: 100%;
+}
+
+.document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-builder-shell {
+  min-height: 0;
+}
+
+.document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-builder-sidebar {
+  overscroll-behavior: contain;
+}
+
+.document-template-editor-panel.is-workspace-open:not(.is-fill-mode) .document-template-sidebar-top-stack {
+  max-height: 100%;
+  overscroll-behavior: contain;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;

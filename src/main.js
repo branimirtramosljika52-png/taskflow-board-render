@@ -36449,8 +36449,10 @@ function scrollLegalFrameworkEditorToTop() {
   legalFrameworkEditorBody?.scrollTo({ top: 0, left: 0, behavior: "auto" });
 }
 
-function scrollDocumentTemplateEditorToTop() {
-  documentTemplateEditorBody?.scrollTo({ top: 0, left: 0, behavior: "auto" });
+function scrollDocumentTemplateEditorToTop({ behavior = "auto" } = {}) {
+  const scrollOptions = { top: 0, left: 0, behavior };
+  documentTemplateEditorPanel?.scrollTo(scrollOptions);
+  documentTemplateEditorBody?.scrollTo(scrollOptions);
 }
 
 function scrollServiceCatalogEditorToTop() {
@@ -42582,7 +42584,7 @@ async function persistDocumentTemplateAiFieldConfig(
     }
     setDocumentTemplateMessage(successMessage, { type: "success" });
     if (scrollToTop) {
-      documentTemplateEditorBody?.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+      scrollDocumentTemplateEditorToTop({ behavior: "smooth" });
     }
     return true;
   } finally {
@@ -42650,7 +42652,7 @@ async function persistDocumentTemplateDraft({
     }
     setDocumentTemplateMessage(successMessage, { type: "success" });
     if (scrollToTop) {
-      documentTemplateEditorBody?.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+      scrollDocumentTemplateEditorToTop({ behavior: "smooth" });
     }
     return true;
   } finally {
