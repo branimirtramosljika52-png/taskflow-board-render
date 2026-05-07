@@ -38311,6 +38311,7 @@ const DOCUMENT_TEMPLATE_PREVIOUS_DOCUMENT_OPTIONS = [
 
 const DOCUMENT_TEMPLATE_SPECIAL_FIELD_TYPES = new Set([
   "chapter",
+  "page_break",
   "system_description",
   "qualified_inspectors",
   "sketch_upload",
@@ -38386,6 +38387,27 @@ const DOCUMENT_TEMPLATE_TEXT_LIST_STYLE_OPTIONS = [
   { value: "dash", label: "Crtice" },
 ];
 
+const DOCUMENT_TEMPLATE_HTML_STYLE_ALIGN_OPTIONS = [
+  { value: "left", label: "Lijevo" },
+  { value: "center", label: "Sredina" },
+  { value: "right", label: "Desno" },
+];
+
+const DOCUMENT_TEMPLATE_HTML_STYLE_TONE_OPTIONS = [
+  { value: "default", label: "Standard" },
+  { value: "soft", label: "Nježno" },
+  { value: "outline", label: "Okvir" },
+  { value: "plain", label: "Bez okvira" },
+];
+
+const DOCUMENT_TEMPLATE_HTML_STYLE_TEXT_SIZE_OPTIONS = [
+  { value: "small", label: "Malo" },
+  { value: "normal", label: "Normalno" },
+  { value: "large", label: "Veliko" },
+];
+
+const DOCUMENT_TEMPLATE_TOOL_DRAG_MIME = "application/x-safenexus-template-tool";
+
 const DOCUMENT_TEMPLATE_SYSTEM_DESCRIPTION_LINE_OPTIONS = Array.from({ length: 8 }, (_, index) => {
   const rows = index + 1;
   return {
@@ -38423,6 +38445,19 @@ function normalizeDocumentTemplateTextListStyleLocal(value = "") {
   return DOCUMENT_TEMPLATE_TEXT_LIST_STYLE_OPTIONS.some((option) => option.value === normalizedValue)
     ? normalizedValue
     : "none";
+}
+
+function normalizeDocumentTemplateHtmlStyleDraft(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  const align = String(source.align || "").trim().toLowerCase();
+  const tone = String(source.tone || "").trim().toLowerCase();
+  const textSize = String(source.textSize || "").trim().toLowerCase();
+
+  return {
+    align: DOCUMENT_TEMPLATE_HTML_STYLE_ALIGN_OPTIONS.some((option) => option.value === align) ? align : "left",
+    tone: DOCUMENT_TEMPLATE_HTML_STYLE_TONE_OPTIONS.some((option) => option.value === tone) ? tone : "default",
+    textSize: DOCUMENT_TEMPLATE_HTML_STYLE_TEXT_SIZE_OPTIONS.some((option) => option.value === textSize) ? textSize : "normal",
+  };
 }
 
 function isDocumentTemplateTextListStyleField(type = "text") {
@@ -39124,6 +39159,19 @@ function buildDocumentTemplateToolFieldDraft(tool = "text") {
     );
   }
 
+  if (safeTool === "page_break") {
+    const pageNumber = buildDocumentTemplateSheetGroups().length + 1;
+    return createEmptyDocumentTemplateFieldDraft(
+      {
+        label: `A4 stranica ${pageNumber}`,
+        wordLabel: `A4 stranica ${pageNumber}`,
+        type: "page_break",
+        defaultValue: "",
+      },
+      baseIndex,
+    );
+  }
+
   if (safeTool === "system_description") {
     return createEmptyDocumentTemplateFieldDraft(
       {
@@ -39333,14 +39381,26 @@ function buildDocumentTemplateToolFieldDraft(tool = "text") {
   );
 }
 
-function addDocumentTemplateBuilderBlock(tool = "text") {
+function addDocumentTemplateBuilderBlock(tool = "text", { pageIndex = activeDocumentTemplateSheetIndex, focus = true } = {}) {
   if (isDocumentTemplateRuntimeFillMode()) {
     return;
   }
   const safeTool = String(tool || "text").trim().toLowerCase();
 
   const fieldDraft = buildDocumentTemplateToolFieldDraft(safeTool);
-  insertDocumentTemplateFieldDraft(fieldDraft);
+  insertDocumentTemplateFieldDraft(fieldDraft, { pageIndex });
+  if (safeTool === "page_break") {
+    activeDocumentTemplateSheetIndex = Math.min(pageIndex + 1, buildDocumentTemplateSheetGroups().length - 1);
+    activeDocumentTemplateInspectorFieldId = "";
+    documentTemplateInspectorModalOpen = false;
+    renderDocumentTemplateFieldRows({ supportImmediate: true });
+    requestAnimationFrame(() => {
+      documentTemplateCustomFields
+        ?.querySelector(`[data-template-sheet-page="${activeDocumentTemplateSheetIndex}"]`)
+        ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
+    return;
+  }
   if (safeTool !== "chapter") {
     const insertedIndex = documentTemplateFieldDrafts.findIndex((field) => String(field.id) === String(fieldDraft.id));
     for (let index = insertedIndex - 1; index >= 0; index -= 1) {
@@ -39355,12 +39415,16 @@ function addDocumentTemplateBuilderBlock(tool = "text") {
   if (safeTool === "measurement_table") {
     requestAnimationFrame(() => {
       ensureTemplateMeasurementSheetForField(fieldDraft.id);
-      focusDocumentTemplateFieldLabel(fieldDraft.id);
+      if (focus) {
+        focusDocumentTemplateFieldLabel(fieldDraft.id);
+      }
     });
     return;
   }
 
-  focusDocumentTemplateFieldLabel(fieldDraft.id);
+  if (focus) {
+    focusDocumentTemplateFieldLabel(fieldDraft.id);
+  }
 }
 
 function normalizeDocumentTemplateFieldKeyDraft(value = "", fallback = "FIELD_1") {
@@ -41185,6 +41249,7 @@ function createEmptyDocumentTemplateFieldDraft(initial = {}, index = 0) {
     required: Boolean(initial.required),
     layoutWidth: normalizeDocumentTemplateFieldLayoutWidth(initial.layoutWidth, type),
     fieldHeight: normalizeDocumentTemplateFieldHeight(initial.fieldHeight, type),
+    htmlStyle: normalizeDocumentTemplateHtmlStyleDraft(initial.htmlStyle),
     source: String(initial.source ?? initial.bindingSource ?? getDocumentTemplateDefaultFieldSource(type)).trim().toUpperCase(),
     sourceTable: String(initial.sourceTable ?? "").trim().toLowerCase(),
     lookupColumn: String(initial.lookupColumn ?? "").trim().toLowerCase(),
@@ -41317,7 +41382,6 @@ function setDocumentTemplateFieldDrafts(fields = [], { ensureOne = false } = {})
   invalidateDocumentTemplateDraftCache();
   const nextDrafts = Array.isArray(fields)
     ? fields
-      .filter((field) => String(field?.type || "").trim().toLowerCase() !== "page_break")
       .map((field, index) => createEmptyDocumentTemplateFieldDraft(field, index))
     : [];
   documentTemplateFieldDrafts = nextDrafts.length > 0
@@ -41344,18 +41408,41 @@ function setDocumentTemplateSectionDrafts(sections = [], { ensureDefault = true 
 }
 
 function buildDocumentTemplateSheetGroups(fields = documentTemplateFieldDrafts) {
-  const source = (Array.isArray(fields) ? fields : []).filter((field) => field?.type !== "page_break");
-  return [{
+  const source = Array.isArray(fields) ? fields : [];
+  const pages = [{
     index: 0,
-    id: "template-layout",
-    title: "Template",
+    id: "template-layout-1",
+    title: "A4 stranica 1",
     breakField: null,
     breakIndex: -1,
-    fields: source.map((field, index) => ({
+    fields: [],
+  }];
+
+  source.forEach((field, index) => {
+    if (!field) {
+      return;
+    }
+
+    if (String(field.type || "").trim().toLowerCase() === "page_break") {
+      const pageNumber = pages.length + 1;
+      pages.push({
+        index: pages.length,
+        id: String(field.id || `template-layout-${pageNumber}`),
+        title: field.label || `A4 stranica ${pageNumber}`,
+        breakField: field,
+        breakIndex: index,
+        fields: [],
+      });
+      return;
+    }
+
+    pages[pages.length - 1].fields.push({
       field,
       index,
-    })),
-  }];
+    });
+  });
+
+  return pages;
 }
 
 function clampDocumentTemplateSheetIndex(pages = buildDocumentTemplateSheetGroups()) {
@@ -41384,6 +41471,21 @@ function insertDocumentTemplateFieldDraft(draft, { pageIndex = activeDocumentTem
   ];
 }
 
+function insertDocumentTemplateFieldDraftRelative(draft, targetFieldId, { placement = "after" } = {}) {
+  const targetIndex = documentTemplateFieldDrafts.findIndex((field) => String(field?.id || "") === String(targetFieldId || ""));
+  if (targetIndex < 0) {
+    insertDocumentTemplateFieldDraft(draft);
+    return;
+  }
+
+  const insertIndex = placement === "before" ? targetIndex : targetIndex + 1;
+  documentTemplateFieldDrafts = [
+    ...documentTemplateFieldDrafts.slice(0, insertIndex),
+    draft,
+    ...documentTemplateFieldDrafts.slice(insertIndex),
+  ];
+}
+
 function removeDocumentTemplateSheet(pageIndex) {
   const pages = buildDocumentTemplateSheetGroups();
   const targetPage = pages[pageIndex];
@@ -41394,6 +41496,39 @@ function removeDocumentTemplateSheet(pageIndex) {
 
   documentTemplateFieldDrafts = documentTemplateFieldDrafts.filter((field) => field.id !== targetPage.breakField.id);
   activeDocumentTemplateSheetIndex = Math.max(0, Math.min(pageIndex - 1, buildDocumentTemplateSheetGroups().length - 1));
+}
+
+function moveDocumentTemplateFieldDraftToPageEnd(draggedFieldId, pageIndex = activeDocumentTemplateSheetIndex) {
+  const safeDraggedId = String(draggedFieldId || "");
+  if (!safeDraggedId) {
+    return false;
+  }
+
+  const draggedIndex = documentTemplateFieldDrafts.findIndex((field) => String(field?.id || "") === safeDraggedId);
+  const draggedField = draggedIndex >= 0 ? documentTemplateFieldDrafts[draggedIndex] : null;
+  if (!draggedField || String(draggedField.type || "").trim().toLowerCase() === "page_break") {
+    return false;
+  }
+
+  const nextDrafts = documentTemplateFieldDrafts.filter((field) => String(field?.id || "") !== safeDraggedId);
+  const originalDrafts = documentTemplateFieldDrafts;
+  documentTemplateFieldDrafts = nextDrafts;
+  const pages = buildDocumentTemplateSheetGroups();
+  const safePageIndex = Math.max(0, Math.min(pageIndex, pages.length - 1));
+  const insertIndex = getDocumentTemplateSheetInsertIndex(safePageIndex);
+  documentTemplateFieldDrafts = [
+    ...nextDrafts.slice(0, insertIndex),
+    draggedField,
+    ...nextDrafts.slice(insertIndex),
+  ];
+
+  if (documentTemplateFieldDrafts.length !== originalDrafts.length) {
+    documentTemplateFieldDrafts = originalDrafts;
+    return false;
+  }
+
+  activeDocumentTemplateSheetIndex = safePageIndex;
+  return true;
 }
 
 function moveDocumentTemplateFieldDraft(
@@ -41411,19 +41546,15 @@ function moveDocumentTemplateFieldDraft(
     return false;
   }
 
-  const pages = buildDocumentTemplateSheetGroups();
-  const safePageIndex = Math.max(0, Math.min(pageIndex, pages.length - 1));
-  const pageFieldIds = new Set((pages[safePageIndex]?.fields ?? []).map(({ field }) => String(field.id)));
-
-  if (!pageFieldIds.has(safeDraggedId) || !pageFieldIds.has(safeTargetId)) {
-    return false;
-  }
-
   const nextDrafts = [...documentTemplateFieldDrafts];
   const draggedIndex = nextDrafts.findIndex((field) => String(field.id) === safeDraggedId);
   const targetIndex = nextDrafts.findIndex((field) => String(field.id) === safeTargetId);
 
   if (draggedIndex < 0 || targetIndex < 0 || draggedIndex === targetIndex) {
+    return false;
+  }
+
+  if (String(nextDrafts[draggedIndex]?.type || "").trim().toLowerCase() === "page_break") {
     return false;
   }
 
@@ -41440,7 +41571,23 @@ function moveDocumentTemplateFieldDraft(
 
   nextDrafts.splice(nextTargetIndex, 0, draggedField);
   documentTemplateFieldDrafts = nextDrafts;
+  const pages = buildDocumentTemplateSheetGroups();
+  activeDocumentTemplateSheetIndex = Math.max(0, Math.min(pageIndex, pages.length - 1));
   return true;
+}
+
+function getDocumentTemplateDraggedToolFromEvent(event) {
+  if (!event?.dataTransfer) {
+    return "";
+  }
+
+  return String(event.dataTransfer.getData(DOCUMENT_TEMPLATE_TOOL_DRAG_MIME) || "").trim().toLowerCase();
+}
+
+function hasDocumentTemplateToolDrag(event) {
+  const types = Array.from(event?.dataTransfer?.types ?? []);
+  return types.includes(DOCUMENT_TEMPLATE_TOOL_DRAG_MIME)
+    || Boolean(getDocumentTemplateDraggedToolFromEvent(event));
 }
 
 function focusDocumentTemplateFieldLabel(fieldId = "") {
@@ -42095,7 +42242,6 @@ function buildDocumentTemplateDraft() {
   });
 
   const customFields = documentTemplateFieldDrafts
-    .filter((field) => String(field?.type || "").trim().toLowerCase() !== "page_break")
     .map((field, index) => ({
       id: field.id || crypto.randomUUID(),
       key: normalizeDocumentTemplateFieldKeyDraft(field.key || field.wordLabel || field.label, `FIELD_${index + 1}`),
@@ -42105,6 +42251,7 @@ function buildDocumentTemplateDraft() {
       required: Boolean(field.required),
       layoutWidth: normalizeDocumentTemplateFieldLayoutWidth(field.layoutWidth, field.type || "text"),
       fieldHeight: normalizeDocumentTemplateFieldHeight(field.fieldHeight, field.type || "text"),
+      htmlStyle: normalizeDocumentTemplateHtmlStyleDraft(field.htmlStyle),
       source: String(field.source || getDocumentTemplateDefaultFieldSource(field.type || "text")).trim().toUpperCase(),
       sourceTable: String(field.sourceTable || "").trim().toLowerCase(),
       lookupColumn: String(field.lookupColumn || "").trim().toLowerCase(),
@@ -45258,10 +45405,21 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
   const sectionStyle = customHeightPx > 0 ? ` style="min-height:${customHeightPx}px"` : "";
   const previewValueHeightPx = getDocumentTemplateBuilderPreviewValueHeightPx(field);
   const fieldValueStyle = previewValueHeightPx > 0 ? ` style="min-height:${previewValueHeightPx}px"` : "";
+  const htmlStyle = normalizeDocumentTemplateHtmlStyleDraft(field.htmlStyle);
+  const sectionAttrs = (extraClass = "") => {
+    const classes = [
+      "document-template-preview-section",
+      `is-align-${htmlStyle.align}`,
+      `is-tone-${htmlStyle.tone}`,
+      `is-text-${htmlStyle.textSize}`,
+      extraClass,
+    ].filter(Boolean).join(" ");
+    return ` class="${classes}"${sectionStyle}`;
+  };
 
   if (field.type === "chapter") {
     return `
-      <section class="document-template-preview-section is-chapter"${sectionStyle}>
+      <section${sectionAttrs("is-chapter")}>
         <div class="document-template-preview-chapter">
           <span class="document-template-preview-chapter-line"></span>
           <div>
@@ -45312,7 +45470,7 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
     }).join("");
 
     return `
-      <section class="document-template-preview-section"${sectionStyle}>
+      <section${sectionAttrs()}>
         <div class="document-template-preview-system-stack">
           ${blocksMarkup}
         </div>
@@ -45341,7 +45499,7 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
       : escapeHtml(getDocumentTemplateMediaFieldSummary(mediaValue, field));
 
     return `
-      <section class="document-template-preview-section"${sectionStyle}>
+      <section${sectionAttrs()}>
         <div class="document-template-preview-field-head">
           <h2>${title}</h2>
           <span class="document-template-inline-token">${escapeHtml(mediaKind)}</span>
@@ -45396,7 +45554,7 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
       `;
 
     return `
-      <section class="document-template-preview-section"${sectionStyle}>
+      <section${sectionAttrs()}>
         <div class="document-template-preview-field-head">
           <h2>${title}</h2>
           <span class="document-template-inline-token">${escapeHtml(areaLabel)}</span>
@@ -45455,7 +45613,7 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
       `;
 
     return `
-      <section class="document-template-preview-section"${sectionStyle}>
+      <section${sectionAttrs()}>
         <div class="document-template-preview-field-head">
           <h2>${title}</h2>
           <span class="document-template-inline-token">${escapeHtml(areaLabel)}</span>
@@ -45496,7 +45654,7 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
       : "";
 
     return `
-      <section class="document-template-preview-section"${sectionStyle}>
+      <section${sectionAttrs()}>
         <div class="document-template-preview-field-head">
           <h2>${title}</h2>
           <span class="document-template-inline-token">${escapeHtml(getDocumentTemplateFieldTypeLabel(field.type))}</span>
@@ -45521,7 +45679,7 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
         : '<tr><td colspan="4">Nema povezane opreme za ovaj template.</td></tr>';
 
     return `
-      <section class="document-template-preview-section"${sectionStyle}>
+      <section${sectionAttrs()}>
         <div class="document-template-preview-field-head">
           <h2>${title}</h2>
           <span class="document-template-inline-token">${escapeHtml(getDocumentTemplateFieldTypeLabel(field.type))}</span>
@@ -45581,7 +45739,7 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
       : "";
 
     return `
-      <section class="document-template-preview-section">
+      <section${sectionAttrs()}>
         <div class="document-template-preview-field-head">
           <h2>${title}</h2>
           <span class="document-template-inline-token">${escapeHtml(getDocumentTemplateFieldTypeLabel(field.type))}</span>
@@ -45611,7 +45769,7 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
       ? `<p class="document-template-preview-muted">${escapeHtml(signaturePreview.summary)}</p>`
       : "";
     return `
-      <section class="document-template-preview-section"${sectionStyle}>
+      <section${sectionAttrs()}>
         <div class="document-template-preview-field-head">
           <h2>${title}</h2>
           <span class="document-template-inline-token">${escapeHtml(areaLabel)}</span>
@@ -45630,7 +45788,7 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
   const valueHtml = renderDocumentTemplateTextValueHtml(field, value);
 
   return `
-    <section class="document-template-preview-section"${sectionStyle}>
+    <section${sectionAttrs()}>
       <div class="document-template-preview-field-head">
         <h2>${title}</h2>
         <span class="document-template-inline-token">${escapeHtml(getDocumentTemplateFieldTypeLabel(field.type))}</span>
@@ -54448,7 +54606,7 @@ function renderDocumentTemplatePlaceholderPalette(template = buildDocumentTempla
   if (definitions.length === 0) {
     const empty = document.createElement("p");
     empty.className = "helper-copy module-copy";
-    empty.textContent = "Dodaj barem jedno polje ili Excel tablicu pa će se ovdje pojaviti tokeni za Word.";
+    empty.textContent = "Dodaj barem jedno polje ili Excel tablicu pa će se ovdje pojaviti HTML tokeni.";
     documentTemplatePlaceholderPalette.replaceChildren(empty);
     return;
   }
@@ -57917,7 +58075,26 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
     return;
   }
 
-  const visibleFields = documentTemplateFieldDrafts.filter((field) => field?.type !== "page_break");
+  const pages = buildDocumentTemplateSheetGroups();
+  const safeActivePageIndex = clampDocumentTemplateSheetIndex(pages);
+  const visibleFields = pages.flatMap((page) => (
+    (page.fields ?? []).map(({ field }) => field).filter(Boolean)
+  ));
+  const visibleFieldIndexById = new Map();
+  const fieldPageIndexById = new Map();
+  pages.forEach((page) => {
+    (page.fields ?? []).forEach(({ field }) => {
+      if (!field?.id) {
+        return;
+      }
+      fieldPageIndexById.set(String(field.id), page.index);
+    });
+  });
+  visibleFields.forEach((field, index) => {
+    if (field?.id) {
+      visibleFieldIndexById.set(String(field.id), index);
+    }
+  });
   const chapterIds = new Set(
     visibleFields
       .filter((field) => field?.type === "chapter")
@@ -57929,27 +58106,124 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
   );
   const chapterChildCounts = new Map();
   const chapterOwnerByFieldId = new Map();
-  let activeChapterId = "";
-  visibleFields.forEach((field) => {
-    const fieldId = String(field?.id || "");
-    if (field?.type === "chapter") {
-      activeChapterId = fieldId;
-      chapterChildCounts.set(fieldId, 0);
-      return;
-    }
-    chapterOwnerByFieldId.set(fieldId, activeChapterId);
-    if (activeChapterId) {
-      chapterChildCounts.set(activeChapterId, (chapterChildCounts.get(activeChapterId) || 0) + 1);
-    }
+  pages.forEach((page) => {
+    let activeChapterId = "";
+    (page.fields ?? []).forEach(({ field }) => {
+      const fieldId = String(field?.id || "");
+      if (field?.type === "chapter") {
+        activeChapterId = fieldId;
+        chapterChildCounts.set(fieldId, 0);
+        return;
+      }
+      chapterOwnerByFieldId.set(fieldId, activeChapterId);
+      if (activeChapterId) {
+        chapterChildCounts.set(activeChapterId, (chapterChildCounts.get(activeChapterId) || 0) + 1);
+      }
+    });
   });
   const shell = document.createElement("div");
   shell.className = "document-template-sheet-shell";
   const previewContext = buildDocumentTemplatePreviewContext(buildDocumentTemplateDraft());
   activeDocumentTemplateInspectorFieldId = getDocumentTemplateBuilderInspectorFieldId(visibleFields);
 
-  const pageBody = document.createElement("div");
-  pageBody.className = "document-template-sheet-panel";
+  const pageToolbar = document.createElement("div");
+  pageToolbar.className = "document-template-page-toolbar";
+  const pageToolbarCopy = document.createElement("div");
+  pageToolbarCopy.className = "document-template-page-toolbar-copy";
+  const pageToolbarTitle = document.createElement("strong");
+  pageToolbarTitle.textContent = "A4 stranice";
+  const pageToolbarMeta = document.createElement("span");
+  pageToolbarMeta.textContent = `${pages.length} ${pages.length === 1 ? "stranica" : "stranice"} u HTML dokumentu`;
+  pageToolbarCopy.append(pageToolbarTitle, pageToolbarMeta);
+  const pageTabs = document.createElement("div");
+  pageTabs.className = "document-template-sheet-tabs";
+  pages.forEach((page) => {
+    const tab = document.createElement("button");
+    tab.type = "button";
+    tab.className = `document-template-sheet-tab${page.index === safeActivePageIndex ? " is-active" : ""}`;
+    tab.dataset.templateSheetPage = String(page.index);
+    const tabTitle = document.createElement("strong");
+    tabTitle.textContent = page.title || `A4 stranica ${page.index + 1}`;
+    const tabMeta = document.createElement("span");
+    const fieldCount = (page.fields ?? []).length;
+    tabMeta.textContent = `${fieldCount} ${fieldCount === 1 ? "blok" : "blokova"}`;
+    tab.append(tabTitle, tabMeta);
+    tab.addEventListener("click", () => {
+      activeDocumentTemplateSheetIndex = page.index;
+      renderDocumentTemplateFieldRows({ renderSupport: false });
+      renderDocumentTemplatePreviewContent();
+      requestAnimationFrame(() => {
+        documentTemplateCustomFields
+          ?.querySelector(`[data-template-sheet-page="${page.index}"]`)
+          ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      });
+    });
+    pageTabs.append(tab);
+  });
+  const addPageButton = createActionButton("+ A4 stranica", "ghost-button document-template-page-add", () => {
+    addDocumentTemplateBuilderBlock("page_break", { pageIndex: activeDocumentTemplateSheetIndex, focus: false });
+  });
+  pageToolbar.append(pageToolbarCopy, pageTabs, addPageButton);
+  shell.append(pageToolbar);
+
+  const pagesStack = document.createElement("div");
+  pagesStack.className = "document-template-a4-page-stack";
+  const pageBodies = new Map();
   const chapterShells = new Map();
+  pages.forEach((page) => {
+    const pageWrap = document.createElement("section");
+    pageWrap.className = `document-template-a4-page-wrap${page.index === safeActivePageIndex ? " is-active" : ""}`;
+    pageWrap.dataset.templateSheetPage = String(page.index);
+
+    const pageLabel = document.createElement("div");
+    pageLabel.className = "document-template-a4-page-label";
+    const labelTitle = document.createElement("strong");
+    labelTitle.textContent = page.title || `A4 stranica ${page.index + 1}`;
+    const labelMeta = document.createElement("span");
+    const fieldCount = (page.fields ?? []).length;
+    labelMeta.textContent = fieldCount > 0
+      ? `${fieldCount} ${fieldCount === 1 ? "blok" : "blokova"}`
+      : "Prazna stranica";
+    pageLabel.append(labelTitle, labelMeta);
+
+    const pageBody = document.createElement("div");
+    pageBody.className = "document-template-sheet-panel";
+    pageBody.dataset.templateSheetPage = String(page.index);
+    pageBody.addEventListener("dragover", (event) => {
+      if (!draggedDocumentTemplateFieldId && !hasDocumentTemplateToolDrag(event)) {
+        return;
+      }
+      event.preventDefault();
+      pageBody.classList.add("is-drop-target");
+    });
+    pageBody.addEventListener("dragleave", (event) => {
+      if (event.currentTarget !== event.target) {
+        return;
+      }
+      pageBody.classList.remove("is-drop-target");
+    });
+    pageBody.addEventListener("drop", (event) => {
+      event.preventDefault();
+      const tool = getDocumentTemplateDraggedToolFromEvent(event);
+      pageBody.classList.remove("is-drop-target");
+      if (tool) {
+        activeDocumentTemplateSheetIndex = page.index;
+        addDocumentTemplateBuilderBlock(tool, { pageIndex: page.index, focus: true });
+        clearDocumentTemplateFieldDragState();
+        return;
+      }
+
+      const moved = moveDocumentTemplateFieldDraftToPageEnd(draggedDocumentTemplateFieldId, page.index);
+      clearDocumentTemplateFieldDragState();
+      if (moved) {
+        renderDocumentTemplateFieldRows({ supportImmediate: true });
+      }
+    });
+    pageBodies.set(page.index, pageBody);
+    pageWrap.append(pageLabel, pageBody);
+    pagesStack.append(pageWrap);
+  });
+  shell.append(pagesStack);
   const refreshEditorSupport = ({ immediate = false } = {}) => {
     scheduleDocumentTemplateEditorSupportRefresh({ immediate });
   };
@@ -57970,7 +58244,7 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
     const empty = document.createElement("p");
     empty.className = "helper-copy document-template-sheet-empty";
     empty.textContent = "Template je prazan. Dodaj blok, pravilnike, opremu ili Excel tablicu pa nastavi slagati raspored.";
-    pageBody.append(empty);
+    (pageBodies.get(safeActivePageIndex) || pageBodies.get(0))?.append(empty);
   }
 
   documentTemplateFieldDrafts.forEach((field, draftIndex) => {
@@ -57979,11 +58253,17 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
     }
 
     const fieldId = String(field.id || "");
+    const visibleFieldIndex = visibleFieldIndexById.get(fieldId) ?? 0;
+    const fieldPageIndex = fieldPageIndexById.get(fieldId) ?? safeActivePageIndex;
+    const pageBody = pageBodies.get(fieldPageIndex) || pageBodies.get(0);
+    if (!pageBody) {
+      return;
+    }
     const isInspectorActive = fieldId === activeDocumentTemplateInspectorFieldId;
     ensureDocumentTemplateDatabaseLookupDraft(field);
     const chapterOwnerId = field.type === "chapter" ? "" : (chapterOwnerByFieldId.get(fieldId) || "");
-    const previousField = visibleFields[draftIndex - 1] ?? null;
-    const nextField = visibleFields[draftIndex + 1] ?? null;
+    const previousField = visibleFields[visibleFieldIndex - 1] ?? null;
+    const nextField = visibleFields[visibleFieldIndex + 1] ?? null;
     const previousOwnerId = previousField && previousField.type !== "chapter"
       ? (chapterOwnerByFieldId.get(String(previousField.id || "")) || "")
       : "";
@@ -58122,7 +58402,11 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
     });
 
     row.addEventListener("dragover", (event) => {
-      if (!draggedDocumentTemplateFieldId || draggedDocumentTemplateFieldId === String(field.id || "")) {
+      const isToolDrag = hasDocumentTemplateToolDrag(event);
+      if (!draggedDocumentTemplateFieldId && !isToolDrag) {
+        return;
+      }
+      if (draggedDocumentTemplateFieldId && draggedDocumentTemplateFieldId === String(field.id || "")) {
         return;
       }
 
@@ -58148,11 +58432,29 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
     });
     row.addEventListener("drop", (event) => {
       event.preventDefault();
+      event.stopPropagation();
+      const tool = getDocumentTemplateDraggedToolFromEvent(event);
+      if (tool) {
+        const fieldDraft = buildDocumentTemplateToolFieldDraft(tool);
+        const placement = row.dataset.dropPlacement || "after";
+        insertDocumentTemplateFieldDraftRelative(fieldDraft, field.id, {
+          placement,
+        });
+        activeDocumentTemplateSheetIndex = tool === "page_break"
+          ? Math.min(fieldPageIndex + (placement === "after" ? 1 : 0), buildDocumentTemplateSheetGroups().length - 1)
+          : fieldPageIndex;
+        clearDocumentTemplateFieldDragState();
+        renderDocumentTemplateFieldRows({ supportImmediate: true });
+        if (tool !== "page_break") {
+          requestAnimationFrame(() => focusDocumentTemplateFieldLabel(fieldDraft.id));
+        }
+        return;
+      }
       const moved = moveDocumentTemplateFieldDraft(
         draggedDocumentTemplateFieldId,
         field.id,
         {
-          pageIndex: 0,
+          pageIndex: fieldPageIndex,
           placement: row.dataset.dropPlacement || "before",
         },
       );
@@ -58215,13 +58517,13 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
     wordLabelField.className = "field";
     const wordLabelSpan = document.createElement("span");
     wordLabelSpan.textContent = field.type === "chapter"
-      ? "Naslov u Wordu"
+      ? "Naslov u HTML-u"
       : field.type === "system_description"
-        ? "Placeholder bloka u Wordu"
-        : "Placeholder u Wordu";
+        ? "Placeholder bloka u HTML-u"
+        : "Placeholder u HTML-u";
     const wordLabelInput = document.createElement("input");
     wordLabelInput.type = "text";
-    wordLabelInput.placeholder = "Kako se placeholder zove u Wordu";
+    wordLabelInput.placeholder = "Kako se placeholder zove u HTML-u";
     wordLabelInput.value = field.wordLabel || field.label || "";
     wordLabelInput.dataset.templateFieldWordLabel = "true";
     wordLabelInput.addEventListener("input", (event) => {
@@ -58335,6 +58637,42 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
       renderDocumentTemplatePreviewContent();
     });
     textListStyleField.append(textListStyleSpan, textListStyleSelect);
+
+    const createHtmlStyleSelectField = (labelText, property, options) => {
+      const styleField = document.createElement("label");
+      styleField.className = "field";
+      const styleSpan = document.createElement("span");
+      styleSpan.textContent = labelText;
+      const styleSelect = document.createElement("select");
+      styleSelect.className = "document-template-source-select";
+      const currentStyle = normalizeDocumentTemplateHtmlStyleDraft(field.htmlStyle);
+      replaceSelectOptions(styleSelect, options, currentStyle[property]);
+      styleSelect.addEventListener("change", () => {
+        const nextStyle = normalizeDocumentTemplateHtmlStyleDraft(documentTemplateFieldDrafts[draftIndex].htmlStyle);
+        nextStyle[property] = styleSelect.value || nextStyle[property];
+        documentTemplateFieldDrafts[draftIndex].htmlStyle = normalizeDocumentTemplateHtmlStyleDraft(nextStyle);
+        renderDocumentTemplateFieldRows({ supportImmediate: true });
+        renderDocumentTemplatePreviewContent();
+      });
+      styleField.append(styleSpan, styleSelect);
+      return styleField;
+    };
+
+    const htmlAlignField = createHtmlStyleSelectField(
+      "Poravnanje",
+      "align",
+      DOCUMENT_TEMPLATE_HTML_STYLE_ALIGN_OPTIONS,
+    );
+    const htmlToneField = createHtmlStyleSelectField(
+      "Stil bloka",
+      "tone",
+      DOCUMENT_TEMPLATE_HTML_STYLE_TONE_OPTIONS,
+    );
+    const htmlTextSizeField = createHtmlStyleSelectField(
+      "Veličina teksta",
+      "textSize",
+      DOCUMENT_TEMPLATE_HTML_STYLE_TEXT_SIZE_OPTIONS,
+    );
 
     const createSignatureMetaField = () => {
       const metaField = document.createElement("div");
@@ -58640,7 +58978,7 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
 
     const toggleLabelsHint = document.createElement("small");
     toggleLabelsHint.className = "document-template-source-config-hint";
-    toggleLabelsHint.textContent = "Osnovni placeholder upisuje status. U dodatnom tekstu mozes koristiti ranije placeholdere, npr. Vrijedi do {{VRIJEDI_DO}}. U Wordu postoje jos _DODATNI_TEKST i _PUNI_TEKST.";
+    toggleLabelsHint.textContent = "Osnovni placeholder upisuje status. U dodatnom tekstu mozes koristiti ranije placeholdere, npr. Vrijedi do {{VRIJEDI_DO}}. U HTML-u postoje jos _DODATNI_TEKST i _PUNI_TEKST.";
     toggleLabelsField.append(toggleLabelsTitle, toggleLabelsGrid, toggleLabelsHint);
 
     const removeButton = createActionButton("Ukloni", "card-button card-danger", () => {
@@ -58672,6 +59010,8 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
         grid.append(toggleLabelsField);
       }
     }
+
+    grid.append(htmlAlignField, htmlToneField, htmlTextSizeField);
 
     if (field.type === "chapter") {
       specialInfoSpan.textContent = "Blok";
@@ -59504,12 +59844,19 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
     }
   });
 
-  if (visibleFields.length > 0) {
+  pages.forEach((page) => {
+    const pageBody = pageBodies.get(page.index);
+    if (!pageBody) {
+      return;
+    }
+
     const tailDropZone = document.createElement("div");
     tailDropZone.className = "document-template-drop-tail";
-    tailDropZone.textContent = "Povuci blok ovdje za kraj templatea";
+    tailDropZone.textContent = page.fields.length > 0
+      ? "Povuci blok ovdje za kraj ove A4 stranice"
+      : "Povuci blok ili alat ovdje za početak A4 stranice";
     tailDropZone.addEventListener("dragover", (event) => {
-      if (!draggedDocumentTemplateFieldId) {
+      if (!draggedDocumentTemplateFieldId && !hasDocumentTemplateToolDrag(event)) {
         return;
       }
 
@@ -59521,27 +59868,34 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
     });
     tailDropZone.addEventListener("drop", (event) => {
       event.preventDefault();
-      const lastField = visibleFields[visibleFields.length - 1];
+      const tool = getDocumentTemplateDraggedToolFromEvent(event);
+      tailDropZone.classList.remove("is-active");
+      if (tool) {
+        activeDocumentTemplateSheetIndex = page.index;
+        addDocumentTemplateBuilderBlock(tool, { pageIndex: page.index, focus: true });
+        clearDocumentTemplateFieldDragState();
+        return;
+      }
+
+      const lastField = (page.fields ?? []).at(-1)?.field ?? null;
       const moved = lastField
         ? moveDocumentTemplateFieldDraft(
           draggedDocumentTemplateFieldId,
           lastField.id,
           {
-            pageIndex: 0,
+            pageIndex: page.index,
             placement: "after",
           },
         )
-        : false;
-      tailDropZone.classList.remove("is-active");
+        : moveDocumentTemplateFieldDraftToPageEnd(draggedDocumentTemplateFieldId, page.index);
       clearDocumentTemplateFieldDragState();
       if (moved) {
         renderDocumentTemplateFieldRows({ supportImmediate: true });
       }
     });
     pageBody.append(tailDropZone);
-  }
+  });
 
-  shell.append(pageBody);
   documentTemplateCustomFields.replaceChildren(shell);
   if (documentTemplateFieldInspector) {
     documentTemplateFieldInspector.replaceChildren(inspectorShell);
@@ -92162,6 +92516,30 @@ documentTemplateToolbox?.addEventListener("click", (event) => {
 
   const tool = button.dataset.templateTool || "text";
   addDocumentTemplateBuilderBlock(tool);
+});
+
+documentTemplateToolbox?.addEventListener("dragstart", (event) => {
+  const button = event.target instanceof HTMLElement
+    ? event.target.closest("[data-template-tool]")
+    : null;
+
+  if (!(button instanceof HTMLButtonElement)) {
+    return;
+  }
+
+  const tool = String(button.dataset.templateTool || "text").trim().toLowerCase();
+  event.dataTransfer?.setData(DOCUMENT_TEMPLATE_TOOL_DRAG_MIME, tool);
+  event.dataTransfer?.setData("text/plain", tool);
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = "copy";
+  }
+  button.classList.add("is-dragging-tool");
+});
+
+documentTemplateToolbox?.addEventListener("dragend", () => {
+  documentTemplateToolbox
+    .querySelectorAll(".is-dragging-tool")
+    .forEach((node) => node.classList.remove("is-dragging-tool"));
 });
 
 documentTemplatePreview?.addEventListener("click", (event) => {

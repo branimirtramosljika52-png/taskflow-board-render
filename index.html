@@ -7507,75 +7507,63 @@
 
                     <div class="document-template-builder-shell">
                       <aside class="document-template-builder-sidebar">
-                        <section class="document-template-block document-template-sidebar-block document-template-html-block">
-                          <div class="document-template-sidebar-block-head">
-                            <div>
-                              <p class="section-kicker">HTML predložak</p>
-                              <h3>HTML kod</h3>
+                        <div class="document-template-sidebar-top-stack">
+                          <section class="document-template-block document-template-sidebar-block document-template-html-block">
+                            <div class="document-template-sidebar-block-head">
+                              <div>
+                                <p class="section-kicker">HTML predložak</p>
+                                <h3>Predložak i tokeni</h3>
+                              </div>
+                              <button
+                                id="document-template-reference-toggle"
+                                type="button"
+                                class="ghost-button document-template-sidebar-toggle"
+                                aria-expanded="true"
+                                aria-controls="document-template-reference-panel-body"
+                              >
+                                Sakrij
+                              </button>
                             </div>
-                            <button
-                              id="document-template-reference-toggle"
-                              type="button"
-                              class="ghost-button document-template-sidebar-toggle"
-                              aria-expanded="true"
-                              aria-controls="document-template-reference-panel-body"
-                            >
-                              Sakrij
-                            </button>
-                          </div>
-                          <div id="document-template-reference-panel-body" class="document-template-sidebar-block-body">
-                            <div class="document-template-html-flow">
-                              <article class="document-template-html-step">
-                                <strong>1</strong>
-                                <span>Builder</span>
-                              </article>
-                              <article class="document-template-html-step">
-                                <strong>2</strong>
-                                <span>Preuzmi HTML</span>
-                              </article>
-                              <article class="document-template-html-step">
-                                <strong>3</strong>
-                                <span>Upload ili zalijepi</span>
-                              </article>
+                            <div id="document-template-reference-panel-body" class="document-template-sidebar-block-body">
+                              <div class="document-template-reference-actions document-template-reference-actions--stack">
+                                <button id="document-template-html-save" type="button" class="ghost-button">Spremi HTML kod</button>
+                                <button id="document-template-export-placeholder" type="button" class="ghost-button">Preuzmi HTML s tokenima</button>
+                                <button id="document-template-reference-upload" type="button" class="ghost-button">Upload HTML datoteke</button>
+                                <button id="document-template-reference-download" type="button" class="ghost-button" hidden>Preuzmi spremljeni HTML</button>
+                                <button id="document-template-reference-remove" type="button" class="ghost-button" hidden>Makni HTML</button>
+                              </div>
+                              <input id="document-template-reference-file-input" type="file" accept=".html,.htm,text/html" hidden />
+                              <div id="document-template-reference-meta" class="document-template-reference-meta">
+                                Nema spremljenog HTML predloška.
+                              </div>
+                              <label class="field field-span-full document-template-html-code-field">
+                                <span>HTML kod predloška</span>
+                                <textarea id="document-template-html-code" rows="7" spellcheck="false" placeholder="Zalijepi HTML s tokenima, npr. {{DOCUMENT_TITLE}} i {{BROJ_RADNOG_NALOGA}}"></textarea>
+                              </label>
                             </div>
-                            <input id="document-template-reference-file-input" type="file" accept=".html,.htm,text/html" hidden />
-                            <label class="field field-span-full document-template-html-code-field">
-                              <span>HTML kod predloška</span>
-                              <textarea id="document-template-html-code" rows="9" spellcheck="false" placeholder="Zalijepi HTML s tokenima, npr. {{DOCUMENT_TITLE}} i {{BROJ_RADNOG_NALOGA}}"></textarea>
-                            </label>
-                            <div class="document-template-reference-actions document-template-reference-actions--stack">
-                              <button id="document-template-html-save" type="button" class="ghost-button">Spremi HTML kod</button>
-                              <button id="document-template-export-placeholder" type="button" class="ghost-button">Preuzmi HTML s tokenima</button>
-                              <button id="document-template-reference-upload" type="button" class="ghost-button">Upload HTML datoteke</button>
-                              <button id="document-template-reference-download" type="button" class="ghost-button" hidden>Preuzmi spremljeni HTML</button>
-                              <button id="document-template-reference-remove" type="button" class="ghost-button" hidden>Makni HTML</button>
-                            </div>
-                            <div id="document-template-reference-meta" class="document-template-reference-meta">
-                              Nema spremljenog HTML predloška.
-                            </div>
-                          </div>
-                        </section>
+                          </section>
 
-                        <section class="document-template-block document-template-sidebar-block document-template-placeholder-panel">
-                          <div class="document-template-sidebar-block-head document-template-placeholder-panel-head">
-                            <div>
-                              <p class="section-kicker">Placeholderi</p>
-                              <h4>Tokeni za HTML</h4>
+                          <section class="document-template-block document-template-sidebar-block document-template-placeholder-panel">
+                            <div class="document-template-sidebar-block-head document-template-placeholder-panel-head">
+                              <div>
+                                <p class="section-kicker">Placeholderi</p>
+                                <h4>Tokeni za HTML</h4>
+                              </div>
+                              <button
+                                id="document-template-placeholder-toggle"
+                                type="button"
+                                class="ghost-button document-template-sidebar-toggle"
+                                aria-expanded="true"
+                                aria-controls="document-template-placeholder-panel-body"
+                              >
+                                Sakrij
+                              </button>
                             </div>
-                            <button
-                              id="document-template-placeholder-toggle"
-                              type="button"
-                              class="ghost-button document-template-sidebar-toggle"
-                              aria-expanded="true"
-                              aria-controls="document-template-placeholder-panel-body"
-                            >
-                              Sakrij
-                            </button>
-                          </div>
-                          <div id="document-template-placeholder-panel-body" class="document-template-sidebar-block-body">
-                            <div id="document-template-placeholder-palette" class="document-template-placeholder-palette"></div>
-                          </div>
-                        </section>
+                            <div id="document-template-placeholder-panel-body" class="document-template-sidebar-block-body">
+                              <div id="document-template-placeholder-palette" class="document-template-placeholder-palette"></div>
+                            </div>
+                          </section>
+                        </div>
 
                         <section class="document-template-block document-template-sidebar-block document-template-toolbox-block">
                           <div class="document-template-sidebar-block-head">
@@ -7586,59 +7574,63 @@
                           </div>
                           <p class="helper-copy module-copy">Odaberi polje koje želiš dodati u zapisnik.</p>
                           <div id="document-template-toolbox" class="document-template-toolbox">
-                            <button type="button" class="document-template-tool-button" data-template-tool="text">
+                            <button type="button" class="document-template-tool-button" data-template-tool="text" data-template-icon="T" draggable="true">
                               <strong>Tekst polje</strong>
                               <span>Ručni unos ili vezano polje iz baze</span>
                             </button>
-                            <button type="button" class="document-template-tool-button" data-template-tool="longtext">
+                            <button type="button" class="document-template-tool-button" data-template-tool="longtext" data-template-icon="¶" draggable="true">
                               <strong>Dugačak tekst</strong>
                               <span>Napomena, opis, uvod ili zaključak</span>
                             </button>
-                            <button type="button" class="document-template-tool-button" data-template-tool="dropdown">
+                            <button type="button" class="document-template-tool-button" data-template-tool="dropdown" data-template-icon="▾" draggable="true">
                               <strong>Padajući izbor</strong>
                               <span>Definiraj opcije u templateu, a u zapisniku se bira jedna vrijednost</span>
                             </button>
-                            <button type="button" class="document-template-tool-button" data-template-tool="system_description">
+                            <button type="button" class="document-template-tool-button" data-template-tool="system_description" data-template-icon="§" draggable="true">
                               <strong>Opis sustava</strong>
                               <span>Naslovni blok s podnaslovima, opisima i podesivim brojem redova</span>
                             </button>
-                            <button type="button" class="document-template-tool-button" data-template-tool="date">
+                            <button type="button" class="document-template-tool-button" data-template-tool="date" data-template-icon="D" draggable="true">
                               <strong>Datum</strong>
                               <span>Za datum pregleda, izdavanja ili vrijedi do</span>
                             </button>
-                            <button type="button" class="document-template-tool-button" data-template-tool="checkbox">
+                            <button type="button" class="document-template-tool-button" data-template-tool="checkbox" data-template-icon="✓" draggable="true">
                               <strong>Kvačica</strong>
                               <span>Da / Ne oznaka</span>
                             </button>
-                            <button type="button" class="document-template-tool-button" data-template-tool="toggle">
+                            <button type="button" class="document-template-tool-button" data-template-tool="toggle" data-template-icon="ON" draggable="true">
                               <strong>Toggle</strong>
                               <span>Vizualni status ili potvrda</span>
                             </button>
-                            <button type="button" class="document-template-tool-button" data-template-tool="sketch_upload">
+                            <button type="button" class="document-template-tool-button" data-template-tool="sketch_upload" data-template-icon="⌖" draggable="true">
                               <strong>Tlocrt (skica)</strong>
                               <span>Dodaje polje za skicu ili tlocrt koji se kasnije učitava u zapisniku</span>
                             </button>
-                            <button type="button" class="document-template-tool-button" data-template-tool="image_upload">
+                            <button type="button" class="document-template-tool-button" data-template-tool="image_upload" data-template-icon="IMG" draggable="true">
                               <strong>Slika</strong>
                               <span>Dodaje polje za sliku koju korisnik učitava klikom ili drag and dropom</span>
                             </button>
-                            <button type="button" class="document-template-tool-button" data-template-tool="chapter">
+                            <button type="button" class="document-template-tool-button" data-template-tool="chapter" data-template-icon="H" draggable="true">
                               <strong>Blok</strong>
                               <span>Vizualno odvaja sekciju i grupira sve sljedeće stavke</span>
                             </button>
-                            <button type="button" class="document-template-tool-button" data-template-tool="legal_list">
+                            <button type="button" class="document-template-tool-button" data-template-tool="page_break" data-template-icon="A4" draggable="true">
+                              <strong>Nova A4 stranica</strong>
+                              <span>Dodaje novu praznu stranicu u dokumentu</span>
+                            </button>
+                            <button type="button" class="document-template-tool-button" data-template-tool="legal_list" data-template-icon="§" draggable="true">
                               <strong>Ubaci pravilnike</strong>
                               <span>Odaberi koje pravilnike prikazuje i koje označava unaprijed</span>
                             </button>
-                            <button type="button" class="document-template-tool-button" data-template-tool="equipment_list">
+                            <button type="button" class="document-template-tool-button" data-template-tool="equipment_list" data-template-icon="EQ" draggable="true">
                               <strong>Ubaci mjernu opremu</strong>
                               <span>Povuče povezanu opremu iz Measurement Equipment modula</span>
                             </button>
-                            <button type="button" class="document-template-tool-button" data-template-tool="measurement_table">
+                            <button type="button" class="document-template-tool-button" data-template-tool="measurement_table" data-template-icon="XL" draggable="true">
                               <strong>Ubaci Excel</strong>
                               <span>Odmah otvara excel-like tablicu za taj blok</span>
                             </button>
-                            <button type="button" class="document-template-tool-button" data-template-tool="qualified_inspector">
+                            <button type="button" class="document-template-tool-button" data-template-tool="qualified_inspector" data-template-icon="OS" draggable="true">
                               <strong>Osobe koje sudjeluju u ispitivanju</strong>
                               <span>Dodaje složeni blok svih odabranih osoba za traženi dio</span>
                             </button>

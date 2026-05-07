@@ -184,6 +184,7 @@ export const DOCUMENT_TEMPLATE_SECTION_TYPE_OPTIONS = [
 export const DOCUMENT_TEMPLATE_FIELD_TYPE_OPTIONS = [
   { value: "chapter", label: "Poglavlje" },
   { value: "system_description", label: "Opis sustava" },
+  { value: "page_break", label: "Nova A4 stranica" },
   { value: "text", label: "Tekst" },
   { value: "longtext", label: "Dugi tekst" },
   { value: "dropdown", label: "Padajući izbor" },
@@ -217,6 +218,22 @@ export const DOCUMENT_TEMPLATE_FIELD_WIDTH_OPTIONS = [
 const DOCUMENT_TEMPLATE_SIGNATURE_META_FIELD_VALUES = ["title", "oib", "classCode", "urbroj", "eBroj"];
 const DOCUMENT_TEMPLATE_SIGNATURE_META_FIELD_SET = new Set(DOCUMENT_TEMPLATE_SIGNATURE_META_FIELD_VALUES);
 const DOCUMENT_TEMPLATE_TEXT_LIST_STYLE_VALUES = new Set(["none", "bullet", "dash"]);
+const DOCUMENT_TEMPLATE_HTML_STYLE_ALIGN_VALUES = new Set(["left", "center", "right"]);
+const DOCUMENT_TEMPLATE_HTML_STYLE_TONE_VALUES = new Set(["default", "soft", "outline", "plain"]);
+const DOCUMENT_TEMPLATE_HTML_STYLE_TEXT_SIZE_VALUES = new Set(["small", "normal", "large"]);
+
+function normalizeDocumentTemplateHtmlStyle(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  const align = normalizeText(source.align).toLowerCase();
+  const tone = normalizeText(source.tone).toLowerCase();
+  const textSize = normalizeText(source.textSize).toLowerCase();
+
+  return {
+    align: DOCUMENT_TEMPLATE_HTML_STYLE_ALIGN_VALUES.has(align) ? align : "left",
+    tone: DOCUMENT_TEMPLATE_HTML_STYLE_TONE_VALUES.has(tone) ? tone : "default",
+    textSize: DOCUMENT_TEMPLATE_HTML_STYLE_TEXT_SIZE_VALUES.has(textSize) ? textSize : "normal",
+  };
+}
 
 function normalizeDocumentTemplateSignatureMetaFields(values = undefined) {
   if (!Array.isArray(values)) {
@@ -2145,8 +2162,7 @@ function normalizeDocumentTemplateReferenceDocument(value, fallback = null) {
 }
 
 function normalizeDocumentTemplateFields(fields = []) {
-  const source = (Array.isArray(fields) ? fields : [])
-    .filter((field) => normalizeText(field?.type).toLowerCase() !== "page_break");
+  const source = Array.isArray(fields) ? fields : [];
   const seenKeys = new Set();
 
   return source.map((field, index) => {
@@ -2184,6 +2200,7 @@ function normalizeDocumentTemplateFields(fields = []) {
       required: normalizeBoolean(field?.required, false),
       layoutWidth: normalizeDocumentTemplateFieldLayoutWidth(field?.layoutWidth, type),
       fieldHeight: normalizeDocumentTemplateFieldHeight(field?.fieldHeight, type),
+      htmlStyle: normalizeDocumentTemplateHtmlStyle(field?.htmlStyle),
       source: normalizeDocumentTemplateFieldSource(field?.source ?? field?.bindingSource),
       sourceTable: normalizeText(field?.sourceTable).toLowerCase().slice(0, 80),
       lookupColumn: normalizeText(field?.lookupColumn).toLowerCase().slice(0, 80),
