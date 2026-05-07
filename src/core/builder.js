@@ -69,12 +69,7 @@ function defaultDocument(logoDataUrl = "") {
     createBlock("page", {
       layout: { width: A4_WIDTH_PX, height: A4_HEIGHT_PX },
       children: [
-        createBlock("logo", { props: logoProps(logoDataUrl), layout: { x: 56, y: DOCUMENT_HEADER_OFFSET_PX, width: 150, height: 48 } }),
-        createBlock("heading", { props: { content: "NASLOV DOKUMENTA" }, layout: { x: 220, y: DOCUMENT_HEADER_OFFSET_PX + 8, width: 360, height: 44 }, styles: { textAlign: "center", fontSize: "22px" } }),
-        createBlock("line", { layout: { x: 56, y: DOCUMENT_HEADER_OFFSET_PX + 72, width: 682, height: 3 }, styles: { backgroundColor: "#006fc0" } }),
-        createBlock("text", { props: { content: "Tvrtka: {{TVRTKA}}\nLokacija: {{LOKACIJA}}\nRadni nalog: {{BROJ_RADNOG_NALOGA}}" }, layout: { x: 56, y: DOCUMENT_HEADER_OFFSET_PX + 104, width: 360, height: 92 } }),
-        createBlock("grid", { layout: { x: 56, y: DOCUMENT_HEADER_OFFSET_PX + 230, width: 682, height: 220 } }),
-        createBlock("signature", { layout: { x: 440, y: 912, width: 260, height: 110 } }),
+        createBlock("grid"),
       ],
     }),
   ];
@@ -229,12 +224,15 @@ export function createDocumentReportBuilder({
     const count = (page?.children || []).length;
     const normalizedType = mapLegacyType(type);
     const explicitProps = normalizedType === "text" && token ? { content: token } : {};
-    store.addBlock(normalizedType, {
-      props: { ...getDefaultPropsForType(normalizedType), ...explicitProps },
-      layout: {
+    const layout = normalizedType === "grid"
+      ? {}
+      : {
         x: 72 + ((count % 4) * 24),
         y: 112 + ((count % 12) * 42),
-      },
+      };
+    store.addBlock(normalizedType, {
+      props: { ...getDefaultPropsForType(normalizedType), ...explicitProps },
+      layout,
     });
   }
 

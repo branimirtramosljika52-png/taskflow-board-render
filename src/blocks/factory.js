@@ -2,6 +2,28 @@ import { el } from "../utils/dom.js";
 import { createId } from "../utils/ids.js";
 import { A4_HEIGHT_PX, A4_WIDTH_PX } from "../utils/math.js";
 
+const GRID_PAGE_MARGIN_PX = 48;
+const FULL_PAGE_GRID_ROWS = 36;
+const FULL_PAGE_GRID_COLUMNS = 24;
+const FULL_PAGE_GRID_LAYOUT = {
+  x: GRID_PAGE_MARGIN_PX,
+  y: GRID_PAGE_MARGIN_PX,
+  width: A4_WIDTH_PX - GRID_PAGE_MARGIN_PX * 2,
+  height: A4_HEIGHT_PX - GRID_PAGE_MARGIN_PX * 2,
+  rotation: 0,
+};
+
+function repeatedTrack(count, value = "1fr") {
+  return Array.from({ length: count }, () => value);
+}
+
+function blankGridCells(rows = FULL_PAGE_GRID_ROWS, columns = FULL_PAGE_GRID_COLUMNS) {
+  return Array.from({ length: rows * columns }, () => ({
+    content: "",
+    padding: "2px 4px",
+  }));
+}
+
 const baseLayouts = {
   page: { x: 0, y: 0, width: A4_WIDTH_PX, height: A4_HEIGHT_PX, rotation: 0 },
   section: { x: 56, y: 80, width: 682, height: 220, rotation: 0 },
@@ -14,7 +36,7 @@ const baseLayouts = {
   spacer: { x: 72, y: 240, width: 300, height: 32, rotation: 0 },
   divider: { x: 72, y: 240, width: 520, height: 8, rotation: 0 },
   table: { x: 72, y: 280, width: 620, height: 220, rotation: 0 },
-  grid: { x: 56, y: 280, width: 682, height: 236, rotation: 0 },
+  grid: FULL_PAGE_GRID_LAYOUT,
   badge: { x: 72, y: 250, width: 150, height: 34, rotation: 0 },
   status: { x: 246, y: 250, width: 170, height: 38, rotation: 0 },
   input: { x: 72, y: 310, width: 240, height: 42, rotation: 0 },
@@ -94,36 +116,14 @@ const defaultProps = {
     header: true,
   },
   grid: {
-    rows: 7,
-    columns: 2,
-    columnWidths: ["22%", "78%"],
-    rowHeights: ["24px", "34px", "34px", "34px", "34px", "34px", "34px"],
+    rows: FULL_PAGE_GRID_ROWS,
+    columns: FULL_PAGE_GRID_COLUMNS,
+    columnWidths: repeatedTrack(FULL_PAGE_GRID_COLUMNS),
+    rowHeights: repeatedTrack(FULL_PAGE_GRID_ROWS),
     showBorders: true,
     cellBackgroundColor: "#ffffff",
     selectedCellIds: [],
-    cells: [
-      {
-        content: "1.  OSNOVNI PODACI",
-        colSpan: 2,
-        backgroundColor: "#bfbfbf",
-        fontWeight: "700",
-        textAlign: "left",
-        padding: "3px 8px 3px 30px",
-      },
-      { hidden: true, masterIndex: 0 },
-      { content: "Naručitelj:", fontWeight: "700", padding: "8px 20px" },
-      { content: "{{TVRTKA}}; {{SJEDISTE}}; OIB: {{OIB}}", fontWeight: "700", padding: "8px 8px" },
-      { content: "Korisnik prostora:", fontWeight: "700", padding: "8px 20px" },
-      { content: "{{TVRTKA}}", padding: "8px 8px" },
-      { content: "Mjesto ispitivanja:", fontWeight: "700", padding: "8px 20px" },
-      { content: "{{MJESTO_ISPITIVANJA}}", fontWeight: "700", padding: "8px 8px" },
-      { content: "Objekt ispitivanja:", fontWeight: "700", padding: "8px 20px" },
-      { content: "{{OBJEKT}}", padding: "8px 8px" },
-      { content: "Vrsta ispitivanja:", fontWeight: "700", padding: "8px 20px" },
-      { content: "{{VRSTA_ISPITIVANJA}}", padding: "8px 8px" },
-      { content: "Datum ispitivanja:", fontWeight: "700", padding: "8px 20px" },
-      { content: "{{DATUM_ISPITIVANJA}}", padding: "8px 8px" },
-    ],
+    cells: blankGridCells(),
   },
   badge: { content: "Oznaka" },
   status: { content: "Status" },
@@ -200,7 +200,7 @@ function renderTable(block, context) {
 }
 
 function normalizeGridDimension(value, fallback) {
-  return Math.max(1, Math.min(24, Math.round(Number(value) || fallback)));
+  return Math.max(1, Math.min(48, Math.round(Number(value) || fallback)));
 }
 
 function normalizeGridCell(cell = {}) {
@@ -217,8 +217,8 @@ function normalizeGridCell(cell = {}) {
     borderColor: String(cell?.borderColor ?? ""),
     borderWidth: String(cell?.borderWidth ?? ""),
     borderStyle: String(cell?.borderStyle ?? ""),
-    rowSpan: Math.max(1, Math.min(24, Math.round(Number(cell?.rowSpan) || 1))),
-    colSpan: Math.max(1, Math.min(24, Math.round(Number(cell?.colSpan) || 1))),
+    rowSpan: Math.max(1, Math.min(48, Math.round(Number(cell?.rowSpan) || 1))),
+    colSpan: Math.max(1, Math.min(48, Math.round(Number(cell?.colSpan) || 1))),
     hidden: Boolean(cell?.hidden),
     masterIndex: Number.isInteger(Number(cell?.masterIndex)) ? Number(cell.masterIndex) : null,
   };
@@ -248,6 +248,24 @@ function focusEditableCellAtEnd(blockId, cellIndex) {
     selection?.removeAllRanges();
     selection?.addRange(range);
   });
+}
+
+function getGridRangeCellIds(startIndex, endIndex, columns) {
+  const startRow = Math.floor(startIndex / columns);
+  const endRow = Math.floor(endIndex / columns);
+  const startColumn = startIndex % columns;
+  const endColumn = endIndex % columns;
+  const minRow = Math.min(startRow, endRow);
+  const maxRow = Math.max(startRow, endRow);
+  const minColumn = Math.min(startColumn, endColumn);
+  const maxColumn = Math.max(startColumn, endColumn);
+  const ids = [];
+  for (let row = minRow; row <= maxRow; row += 1) {
+    for (let column = minColumn; column <= maxColumn; column += 1) {
+      ids.push(row * columns + column);
+    }
+  }
+  return ids;
 }
 
 function normalizeGridProps(props = {}) {
@@ -327,7 +345,15 @@ function renderGrid(block, context) {
         event.preventDefault();
       }
       const selected = new Set(props.selectedCellIds);
-      if (isMultiSelection) {
+      if (event.shiftKey && selected.size > 0) {
+        const anchorIndex = [...selected].at(-1);
+        if (!event.ctrlKey && !event.metaKey) {
+          selected.clear();
+        }
+        getGridRangeCellIds(anchorIndex, index, props.columns)
+          .filter((cellIndex) => !props.cells[cellIndex]?.hidden)
+          .forEach((cellIndex) => selected.add(cellIndex));
+      } else if (event.ctrlKey || event.metaKey) {
         if (selected.has(index)) {
           selected.delete(index);
         } else {

@@ -1,5 +1,17 @@
 import { getBlockById } from "../core/state.js";
 import { el, field, input, select, clear, button } from "../utils/dom.js";
+import { A4_HEIGHT_PX, A4_WIDTH_PX } from "../utils/math.js";
+
+const GRID_PAGE_MARGIN_PX = 48;
+const FULL_PAGE_GRID_ROWS = 36;
+const FULL_PAGE_GRID_COLUMNS = 24;
+const FULL_PAGE_GRID_LAYOUT = {
+  x: GRID_PAGE_MARGIN_PX,
+  y: GRID_PAGE_MARGIN_PX,
+  width: A4_WIDTH_PX - GRID_PAGE_MARGIN_PX * 2,
+  height: A4_HEIGHT_PX - GRID_PAGE_MARGIN_PX * 2,
+  rotation: 0,
+};
 
 const FONT_WEIGHTS = [
   { value: "400", label: "Regular" },
@@ -47,7 +59,7 @@ function section(title, children = []) {
 }
 
 function clampGridCount(value, fallback) {
-  return Math.max(1, Math.min(24, Math.round(Number(value) || fallback)));
+  return Math.max(1, Math.min(48, Math.round(Number(value) || fallback)));
 }
 
 function normalizeGridCell(cell = {}) {
@@ -64,8 +76,8 @@ function normalizeGridCell(cell = {}) {
     borderColor: String(cell?.borderColor ?? ""),
     borderWidth: String(cell?.borderWidth ?? ""),
     borderStyle: String(cell?.borderStyle ?? ""),
-    rowSpan: Math.max(1, Math.min(24, Math.round(Number(cell?.rowSpan) || 1))),
-    colSpan: Math.max(1, Math.min(24, Math.round(Number(cell?.colSpan) || 1))),
+    rowSpan: Math.max(1, Math.min(48, Math.round(Number(cell?.rowSpan) || 1))),
+    colSpan: Math.max(1, Math.min(48, Math.round(Number(cell?.colSpan) || 1))),
     hidden: Boolean(cell?.hidden),
     masterIndex: Number.isInteger(Number(cell?.masterIndex)) ? Number(cell.masterIndex) : null,
   };
@@ -105,6 +117,30 @@ function resizeGridCells(block, nextRows, nextColumns) {
 
 function resizeGridTracks(block, key, count, fallback = "1fr") {
   return normalizeGridTrackList(block.props?.[key], count, fallback);
+}
+
+function repeatedTrack(count, value = "1fr") {
+  return Array.from({ length: count }, () => value);
+}
+
+function createBlankGridCells(rows = FULL_PAGE_GRID_ROWS, columns = FULL_PAGE_GRID_COLUMNS) {
+  return Array.from({ length: rows * columns }, () => ({
+    content: "",
+    padding: "2px 4px",
+  }));
+}
+
+function createFullPageGridProps() {
+  return {
+    rows: FULL_PAGE_GRID_ROWS,
+    columns: FULL_PAGE_GRID_COLUMNS,
+    columnWidths: repeatedTrack(FULL_PAGE_GRID_COLUMNS),
+    rowHeights: repeatedTrack(FULL_PAGE_GRID_ROWS),
+    showBorders: true,
+    cellBackgroundColor: "#ffffff",
+    selectedCellIds: [],
+    cells: createBlankGridCells(),
+  };
 }
 
 function getGridSelectionRect(selectedIds = [], columns = 1) {
@@ -211,7 +247,7 @@ function createGridAction(label, title, onClick) {
   });
 }
 
-function gridPropertySection(block, updateProps, updateStyles) {
+function gridPropertySection(block, updateProps, updateStyles, updateLayout) {
   if (block.type !== "grid") {
     return null;
   }
@@ -226,6 +262,19 @@ function gridPropertySection(block, updateProps, updateStyles) {
     : "Klikni celiju u gridu";
 
   return section("Grid", [
+    el("div", { className: "sn-builder-grid-action-row" }, [
+      createGridAction("Puna A4 mreza", "Postavi praznu mrezu preko cijele A4 stranice unutar margina", () => {
+        updateLayout(FULL_PAGE_GRID_LAYOUT);
+        updateStyles({
+          borderColor: "#9ca3af",
+          borderStyle: "dashed",
+          borderWidth: "0",
+          gap: "0px",
+          padding: "0",
+        });
+        updateProps(createFullPageGridProps());
+      }),
+    ]),
     el("div", { className: "sn-builder-property-grid" }, [
       field("Rows", numberInput(rows, (value) => {
         const nextRows = clampGridCount(value, rows);
@@ -292,6 +341,14 @@ function gridPropertySection(block, updateProps, updateStyles) {
         const patch = patchSelectedGridCells(block, rows, columns, { backgroundColor: "#bfbfbf", fontWeight: "700" });
         if (patch) updateProps(patch);
       }),
+      createGridAction("No border", "Makni obrub na oznacenim celijama", () => {
+        const patch = patchSelectedGridCells(block, rows, columns, { borderWidth: "0" });
+        if (patch) updateProps(patch);
+      }),
+      createGridAction("Border", "Vrati iscrtani obrub na oznacenim celijama", () => {
+        const patch = patchSelectedGridCells(block, rows, columns, { borderWidth: "1px", borderStyle: "dashed", borderColor: "#9ca3af" });
+        if (patch) updateProps(patch);
+      }),
     ]),
     el("div", { className: "sn-builder-property-grid" }, [
       field("Selected bg", colorInput("#bfbfbf", (value) => {
@@ -340,7 +397,7 @@ export function renderPropertiesPanel(container, store) {
           else updateProps({ content: value });
         })),
       ]),
-      gridPropertySection(block, updateProps, updateStyles),
+      gridPropertySection(block, updateProps, updateStyles, updateLayout),
       section("Layout", [
         el("div", { className: "sn-builder-property-grid" }, [
           field("X", numberInput(block.layout?.x, (value) => updateLayout({ x: value }))),

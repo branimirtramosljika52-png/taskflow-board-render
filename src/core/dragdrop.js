@@ -121,12 +121,15 @@ export function attachDragDrop(root, store, options = {}) {
         const token = session.token || options.getTokenOptions?.()[0]?.value || "";
         const defaultProps = options.getDefaultPropsForType?.(session.type) || {};
         const explicitProps = session.type === "text" && token ? { content: token } : {};
-        const block = createBlock(session.type, {
-          props: { ...defaultProps, ...explicitProps },
-          layout: {
+        const layout = session.type === "grid"
+          ? {}
+          : {
             x: Math.max(0, Math.min(A4_WIDTH_PX - 80, point.x - 60)),
             y: Math.max(0, Math.min(A4_HEIGHT_PX - 32, point.y - 20)),
-          },
+          };
+        const block = createBlock(session.type, {
+          props: { ...defaultProps, ...explicitProps },
+          layout,
         });
         store.addBlock(block.type, block, { pageId: page.dataset.builderPageId });
       }

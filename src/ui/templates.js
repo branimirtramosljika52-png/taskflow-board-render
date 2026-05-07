@@ -62,6 +62,18 @@ export const DOCUMENT_BUILDER_TEMPLATES = [
     },
   },
   {
+    id: "prazna-a4-mreza",
+    label: "Prazna A4 mreza",
+    description: "Puna mreza preko A4 stranice unutar margina za rucno spajanje i bojanje celija.",
+    createDocument() {
+      return [
+        page([
+          createBlock("grid"),
+        ], "A4 mreza"),
+      ];
+    },
+  },
+  {
     id: "ex-zona",
     label: "EX zona",
     description: "Struktura za EX dokumentaciju i zone opasnosti.",
