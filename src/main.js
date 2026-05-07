@@ -93528,6 +93528,19 @@ documentTemplatePlaceholderToggleButton?.addEventListener("click", () => {
 
 documentTemplateReferenceDownloadButton?.addEventListener("click", () => {
   const referenceDocument = normalizeDocumentTemplateHtmlReferenceDocument(documentTemplateReferenceDraft);
+  const currentHtmlCode = String(documentTemplateHtmlCodeInput?.value || "").trim();
+  if (currentHtmlCode) {
+    const fallbackName = sanitizeDocumentTemplateFileName(
+      documentTemplateTitleInput?.value || documentTemplateOutputFileNameInput?.value || "template-reference",
+      "template-reference",
+    ).replace(/\.(docx|dotx|pdf|html?)$/i, "");
+    triggerDataUrlDownload(
+      textToDataUrl(currentHtmlCode),
+      referenceDocument?.fileName || `${fallbackName}.html`,
+    );
+    return;
+  }
+
   if (!referenceDocument?.dataUrl) {
     setDocumentTemplateMessage("Nema spremljenog HTML predloška za preuzimanje.");
     return;

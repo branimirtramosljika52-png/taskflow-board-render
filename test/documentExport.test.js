@@ -248,6 +248,10 @@ test("Word to HTML conversion preserves OOXML colors, alignment and tokens", asy
           <w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="42"/></w:numPr></w:pPr>
           <w:r><w:t>Druga stavka</w:t></w:r>
         </w:p>
+        <w:p>
+          <w:pPr><w:pageBreakBefore/></w:pPr>
+          <w:r><w:t>Nova stranica</w:t></w:r>
+        </w:p>
         <w:sectPr>
           <w:headerReference w:type="default" r:id="rIdHeader"/>
           <w:footerReference w:type="default" r:id="rIdFooter"/>
@@ -311,7 +315,11 @@ test("Word to HTML conversion preserves OOXML colors, alignment and tokens", asy
     assert.match(result.html, /sn-word-page/);
     assert.match(result.html, /@page \{ size:/);
     assert.match(result.html, /SafeNexus Header/);
-    assert.match(result.html, /SPR-[\s\S]*data-sn-word-field="PAGE">1<\/span>\/<span[\s\S]*data-sn-word-field="NUMPAGES">1<\/span>/);
+    assert.equal((result.html.match(/<section class="sn-word-page"/g) || []).length, 2);
+    assert.match(result.html, /data-page-index="2"[\s\S]*Nova stranica/);
+    assert.match(result.html, /SPR-[\s\S]*data-sn-word-field="PAGE">\{\{PAGE\}\}<\/span>\/<span[\s\S]*data-sn-word-field="NUMPAGES">\{\{NUMPAGES\}\}<\/span>/);
+    assert.doesNotMatch(result.html, /data-sn-word-field="PAGE">1<\/span>/);
+    assert.doesNotMatch(result.html, /data-sn-word-field="NUMPAGES">1<\/span>/);
     assert.doesNotMatch(result.html, /SPR-3\/5/);
     if (result.engine === "ooxml") {
       assert.match(result.html, /sn-word-page-footer has-generated-page-fields/);
@@ -320,6 +328,9 @@ test("Word to HTML conversion preserves OOXML colors, alignment and tokens", asy
       assert.match(result.html, /margin-top: calc\(var\(--sn-word-page-header-top\) - var\(--sn-word-page-margin-top\)\)/);
       assert.match(result.html, /\.sn-word-page-header[\s\S]*text-align: center;/);
       assert.match(result.html, /margin-bottom: calc\(var\(--sn-word-page-footer-bottom\) - var\(--sn-word-page-margin-bottom\)\)/);
+      assert.match(result.html, /\.sn-word-page-number:empty::before[\s\S]*content: "\{\{PAGE\}\}"/);
+      assert.match(result.html, /\.sn-word-page-count:empty::before[\s\S]*content: "\{\{NUMPAGES\}\}"/);
+      assert.doesNotMatch(result.html, /sn-word-page-footer\.has-generated-page-fields\s*\{\s*visibility:\s*hidden/i);
       assert.match(result.html, /sn-word-list-marker">1\.<\/span>[\s\S]*Prva stavka/);
       assert.match(result.html, /sn-word-list-marker">2\.<\/span>[\s\S]*Druga stavka/);
       assert.doesNotMatch(result.html, /background-color:#BEBEBE[^>]*>&nbsp;<\/p>/);

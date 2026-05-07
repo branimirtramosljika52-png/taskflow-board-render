@@ -3246,10 +3246,10 @@ function getDocxRunInstructionText(runXml = "") {
 function buildDocxFieldReplacementHtml(instruction = "") {
   const normalizedInstruction = clean(instruction).toUpperCase();
   if (/\bNUMPAGES\b/.test(normalizedInstruction)) {
-    return '<span class="sn-word-page-count" data-sn-word-field="NUMPAGES"></span>';
+    return '<span class="sn-word-page-count" data-sn-word-field="NUMPAGES">{{NUMPAGES}}</span>';
   }
   if (/\bPAGE\b/.test(normalizedInstruction)) {
-    return '<span class="sn-word-page-number" data-sn-word-field="PAGE"></span>';
+    return '<span class="sn-word-page-number" data-sn-word-field="PAGE">{{PAGE}}</span>';
   }
   return null;
 }
@@ -3776,6 +3776,17 @@ function buildConvertedWordLayoutStyles(engine = "", metadata = {}) {
       margin-left: auto;
       margin-right: auto;
     }
+    .sn-word-page-number,
+    .sn-word-page-count {
+      display: inline;
+      white-space: nowrap;
+    }
+    .sn-word-page-number:empty::before {
+      content: "{{PAGE}}";
+    }
+    .sn-word-page-count:empty::before {
+      content: "{{NUMPAGES}}";
+    }
     .sn-word-page-body {
       flex: 1 1 auto;
       min-height: 0;
@@ -3884,7 +3895,6 @@ function buildConvertedWordLayoutStyles(engine = "", metadata = {}) {
       }
       .sn-word-page-header { margin-top: 0; }
       .sn-word-page-footer { margin-bottom: 0; }
-      .sn-word-page-footer.has-generated-page-fields { visibility: hidden; }
       .sn-word-page:last-child { break-after: auto; }
       .sn-word-document { max-width: none; margin: 0; }
     }
@@ -3893,22 +3903,37 @@ function buildConvertedWordLayoutStyles(engine = "", metadata = {}) {
   `.trim();
 }
 
+function stripConvertedWordPageBreakBeforeStyle(openingTag = "") {
+  return String(openingTag || "").replace(/\sstyle\s*=\s*(["'])([\s\S]*?)\1/i, (match, quote, styleValue) => {
+    const nextStyle = String(styleValue || "")
+      .split(";")
+      .map((declaration) => declaration.trim())
+      .filter((declaration) => declaration && !/^(?:break-before|page-break-before)\s*:/i.test(declaration))
+      .join(";");
+    return nextStyle ? ` style=${quote}${nextStyle}${quote}` : "";
+  });
+}
+
+function normalizeConvertedWordPageBreaks(source = "") {
+  return String(source || "").replace(
+    /<(p|div|section|article|table|h[1-6]|ul|ol)\b[^>]*>/gi,
+    (openingTag) => {
+      const styleMatch = openingTag.match(/\bstyle\s*=\s*(["'])([\s\S]*?)\1/i);
+      const styleValue = styleMatch?.[2] || "";
+      if (!/(^|;)\s*(?:break-before\s*:\s*page|page-break-before\s*:\s*always)\b/i.test(styleValue)) {
+        return openingTag;
+      }
+      return `<span class="sn-word-page-break"></span>${stripConvertedWordPageBreakBeforeStyle(openingTag)}`;
+    },
+  );
+}
+
 function splitConvertedWordSourceIntoPages(source = "") {
-  const parts = String(source || "")
+  const parts = normalizeConvertedWordPageBreaks(source)
     .split(/<span\b[^>]*class\s*=\s*["'][^"']*\bsn-word-page-break\b[^"']*["'][^>]*>\s*<\/span>/gi)
     .map((part) => clean(part))
     .filter(Boolean);
   return parts.length > 0 ? parts : [source || "<p>&nbsp;</p>"];
-}
-
-function materializeConvertedWordPageFields(html = "", pageNumber = 1, pageCount = 1) {
-  return String(html || "").replace(
-    /<span\b([^>]*\bdata-sn-word-field\s*=\s*(["'])(PAGE|NUMPAGES)\2[^>]*)>[\s\S]*?<\/span>/gi,
-    (match, attributes = "", quote = "\"", field = "") => {
-      const value = String(field).toUpperCase() === "NUMPAGES" ? pageCount : pageNumber;
-      return `<span${attributes}>${escapeTemplateHtml(value)}</span>`;
-    },
-  );
 }
 
 function wrapConvertedWordFragmentInPages(source = "", metadata = {}, engine = "") {
@@ -3921,11 +3946,11 @@ function wrapConvertedWordFragmentInPages(source = "", metadata = {}, engine = "
   const pages = splitConvertedWordSourceIntoPages(source);
   return `<main class="sn-word-pages" data-engine="${escapeTemplateHtml(engine || "unknown")}">
 ${pages.map((pageContent, index) => `<section class="sn-word-page" data-page-index="${index + 1}">
-${index === 0 && floatingShapesHtml ? `${floatingShapesHtml}\n` : ""}${materializeConvertedWordPageFields(headerHtml, index + 1, pages.length)}
+${index === 0 && floatingShapesHtml ? `${floatingShapesHtml}\n` : ""}${headerHtml}
 <div class="sn-word-page-body">
 ${pageContent}
 </div>
-${materializeConvertedWordPageFields(footerHtml, index + 1, pages.length)}
+${footerHtml}
 </section>`).join("\n")}
 </main>`;
 }
@@ -4211,24 +4236,25 @@ export async function convertWordBufferToHtmlTemplate(buffer = Buffer.alloc(0), 
 
   const safeFileName = fileName || "word-template.docx";
   try {
-    return await convertWordBufferToHtmlWithLibreOffice(safeBuffer, { fileName: safeFileName });
-  } catch (libreOfficeError) {
+    return await convertWordBufferToHtmlWithDocxXml(safeBuffer, {
+      fileName: safeFileName,
+    });
+  } catch (ooxmlError) {
     const layoutFallbackMessage = {
       type: "warning",
-      message: `LibreOffice layout konverzija nije uspjela, korišten je SafeNexus OOXML konverter: ${clean(libreOfficeError?.message) || "nepoznata greska"}`,
+      message: `SafeNexus OOXML konverter nije uspio, koristen je LibreOffice layout fallback: ${clean(ooxmlError?.message) || "nepoznata greska"}`,
     };
-    console.warn("LibreOffice Word -> HTML conversion failed, falling back to SafeNexus OOXML converter.", libreOfficeError);
+    console.warn("SafeNexus OOXML Word -> HTML conversion failed, falling back to LibreOffice.", ooxmlError);
     try {
-      return await convertWordBufferToHtmlWithDocxXml(safeBuffer, {
+      return await convertWordBufferToHtmlWithLibreOffice(safeBuffer, {
         fileName: safeFileName,
-        extraMessages: [layoutFallbackMessage],
       });
-    } catch (ooxmlError) {
+    } catch (libreOfficeFallbackError) {
       const mammothFallbackMessage = {
         type: "warning",
-        message: `SafeNexus OOXML konverter nije uspio, korišten je Mammoth tekstualni fallback: ${clean(ooxmlError?.message) || "nepoznata greska"}`,
+        message: `LibreOffice layout fallback nije uspio, koristen je Mammoth tekstualni fallback: ${clean(libreOfficeFallbackError?.message) || "nepoznata greska"}`,
       };
-      console.warn("SafeNexus OOXML Word -> HTML conversion failed, falling back to mammoth.", ooxmlError);
+      console.warn("LibreOffice Word -> HTML conversion failed, falling back to mammoth.", libreOfficeFallbackError);
       return await convertWordBufferToHtmlWithMammoth(safeBuffer, {
         fileName: safeFileName,
         extraMessages: [layoutFallbackMessage, mammothFallbackMessage],
@@ -6269,6 +6295,22 @@ function htmlRequestsGeneratedPageNumbers(html = "") {
     && /\bdata-sn-word-field\s*=\s*(["'])NUMPAGES\1/i.test(String(html || ""));
 }
 
+function prepareHtmlForGeneratedPageNumberPdf(html = "") {
+  const source = String(html || "");
+  if (!htmlRequestsGeneratedPageNumbers(source) || /data-safe-nexus-generated-page-number-pdf/i.test(source)) {
+    return source;
+  }
+  const style = `<style data-safe-nexus-generated-page-number-pdf>
+    @media print {
+      .sn-word-page-footer.has-generated-page-fields { visibility: hidden !important; }
+    }
+  </style>`;
+  if (/<\/head>/i.test(source)) {
+    return source.replace(/<\/head>/i, `${style}\n</head>`);
+  }
+  return `${style}\n${source}`;
+}
+
 function stripHtmlToText(value = "") {
   return decodeBasicHtmlEntities(
     String(value || "")
@@ -6365,7 +6407,8 @@ export async function convertHtmlToPdfBuffer(html = "", {
 
   try {
     const pdfHtml = buildHtmlPdfDocument(html, { title });
-    await writeFile(inputPath, pdfHtml, "utf8");
+    const printableHtml = prepareHtmlForGeneratedPageNumberPdf(pdfHtml);
+    await writeFile(inputPath, printableHtml, "utf8");
     const commandResult = await runCommand(chromiumCommand, [
       "--headless",
       "--disable-gpu",
