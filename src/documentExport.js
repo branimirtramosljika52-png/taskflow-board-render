@@ -2354,6 +2354,11 @@ function cssLengthPt(value, fallback = "") {
   return Number.isFinite(numeric) ? `${Math.max(0, Math.round(numeric * 100) / 100)}pt` : fallback;
 }
 
+function cssSignedLengthPt(value, fallback = "") {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? `${Math.round(numeric * 100) / 100}pt` : fallback;
+}
+
 function emuToPt(value, fallback = null) {
   const numeric = Number.parseFloat(value);
   return Number.isFinite(numeric) ? numeric / 12700 : fallback;
@@ -3049,8 +3054,12 @@ function getDocxDrawingShapeMetrics(xml = "") {
   const extent = getFirstXmlEmptyOrElement(anchor || xml, "wp:extent") || getFirstXmlEmptyOrElement(xml, "a:ext");
   const positionH = getFirstXmlElement(anchor, "wp:positionH");
   const positionV = getFirstXmlElement(anchor, "wp:positionV");
+  const positionHTag = positionH.match(/<wp:positionH\b[^>]*>/i)?.[0] || "";
+  const positionVTag = positionV.match(/<wp:positionV\b[^>]*>/i)?.[0] || "";
   return {
     anchored: Boolean(anchor),
+    relativeH: clean(getXmlAttribute(positionHTag, "relativeFrom") || getXmlAttribute(positionHTag, "wp:relativeFrom")).toLowerCase(),
+    relativeV: clean(getXmlAttribute(positionVTag, "relativeFrom") || getXmlAttribute(positionVTag, "wp:relativeFrom")).toLowerCase(),
     widthPt: emuToPt(getXmlAttribute(extent, "cx")),
     heightPt: emuToPt(getXmlAttribute(extent, "cy")),
     leftPt: emuToPt(clean(positionH.match(/<wp:posOffset\b[^>]*>([\s\S]*?)<\/wp:posOffset>/i)?.[1])),
@@ -3077,6 +3086,8 @@ function getVmlShapeMetrics(xml = "") {
   };
   return {
     anchored: /position\s*:\s*absolute/i.test(style),
+    relativeH: styleValue("mso-position-horizontal-relative").toLowerCase(),
+    relativeV: styleValue("mso-position-vertical-relative").toLowerCase(),
     widthPt: lengthToPt(styleValue("width")),
     heightPt: lengthToPt(styleValue("height")),
     leftPt: lengthToPt(styleValue("margin-left")),
@@ -3093,18 +3104,27 @@ function renderDocxFloatingShapeHtml(xml = "", context = {}) {
   const vmlMetrics = getVmlShapeMetrics(xml);
   const metrics = {
     anchored: drawingMetrics.anchored || vmlMetrics.anchored,
+    relativeH: drawingMetrics.relativeH || vmlMetrics.relativeH || "",
+    relativeV: drawingMetrics.relativeV || vmlMetrics.relativeV || "",
     widthPt: drawingMetrics.widthPt || vmlMetrics.widthPt,
     heightPt: drawingMetrics.heightPt || vmlMetrics.heightPt,
     leftPt: drawingMetrics.leftPt ?? vmlMetrics.leftPt,
     topPt: drawingMetrics.topPt ?? vmlMetrics.topPt,
   };
+  const page = context.metadata?.page && typeof context.metadata.page === "object" ? context.metadata.page : {};
+  const leftPt = metrics.relativeH === "page" && Number.isFinite(page.marginLeftPt)
+    ? metrics.leftPt - page.marginLeftPt
+    : metrics.leftPt;
+  const topPt = metrics.relativeV === "page" && Number.isFinite(page.marginTopPt)
+    ? metrics.topPt - page.marginTopPt
+    : metrics.topPt;
   if (!Number.isFinite(metrics.widthPt) || !Number.isFinite(metrics.heightPt) || metrics.widthPt <= 0 || metrics.heightPt <= 0) {
     return "";
   }
   const styles = [
     metrics.anchored ? "position:absolute" : "display:inline-block",
-    metrics.anchored && Number.isFinite(metrics.leftPt) ? `left:${cssLengthPt(metrics.leftPt)}` : "",
-    metrics.anchored && Number.isFinite(metrics.topPt) ? `top:${cssLengthPt(metrics.topPt)}` : "",
+    metrics.anchored && Number.isFinite(leftPt) ? `left:${cssSignedLengthPt(leftPt)}` : "",
+    metrics.anchored && Number.isFinite(topPt) ? `top:${cssSignedLengthPt(topPt)}` : "",
     `width:${cssLengthPt(metrics.widthPt)}`,
     `height:${cssLengthPt(metrics.heightPt)}`,
     `background-color:${fillColor}`,
@@ -3172,6 +3192,7 @@ async function renderDocxRunHtml(runXml = "", context = {}) {
   const runCss = mergeCssLists(context.metadata?.defaultRunCss || [], context.paragraphRunCss || [], characterStyle?.rCss || [], docxRunPropertiesToCss(rPr, context.themeColors));
   const chunks = [];
   const tokenRegex = /<w:t\b[^>]*>[\s\S]*?<\/w:t>|<w:tab\b[^>]*\/>|<w:br\b[^>]*\/>|<w:drawing\b[\s\S]*?<\/w:drawing>|<w:pict\b[\s\S]*?<\/w:pict>|<w:sym\b[^>]*\/>/gi;
+  let renderedDrawingVisual = false;
   let match;
   while ((match = tokenRegex.exec(runXml))) {
     const token = match[0];
@@ -3186,7 +3207,16 @@ async function renderDocxRunHtml(runXml = "", context = {}) {
       const charCode = Number.parseInt(getXmlAttribute(token, "w:char"), 16);
       chunks.push(Number.isFinite(charCode) ? escapeTemplateHtml(String.fromCodePoint(charCode)) : "");
     } else {
-      chunks.push(await renderDocxImageHtml(token, context));
+      if (/^<w:pict\b/i.test(token) && renderedDrawingVisual) {
+        continue;
+      }
+      const visualHtml = await renderDocxImageHtml(token, context);
+      if (visualHtml) {
+        chunks.push(visualHtml);
+        if (/^<w:drawing\b/i.test(token)) {
+          renderedDrawingVisual = true;
+        }
+      }
     }
   }
   const html = chunks.join("");

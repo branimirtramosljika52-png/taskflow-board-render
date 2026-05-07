@@ -226,6 +226,21 @@ test("Word to HTML conversion preserves OOXML colors, alignment and tokens", asy
           </w:tr>
         </w:tbl>
         <w:p>
+          <w:r>
+            <w:drawing>
+              <wp:anchor>
+                <wp:positionH relativeFrom="page"><wp:posOffset>914400</wp:posOffset></wp:positionH>
+                <wp:positionV relativeFrom="paragraph"><wp:posOffset>50800</wp:posOffset></wp:positionV>
+                <wp:extent cx="47625" cy="1270000"/>
+                <a:graphic><a:graphicData><wps:wsp><wps:spPr><a:solidFill><a:srgbClr val="006FC0"/></a:solidFill></wps:spPr></wps:wsp></a:graphicData></a:graphic>
+              </wp:anchor>
+            </w:drawing>
+            <w:pict>
+              <v:shape style="position:absolute;margin-left:72pt;margin-top:4pt;width:3.75pt;height:100pt;mso-position-horizontal-relative:page;mso-position-vertical-relative:paragraph" fillcolor="#006fc0"/>
+            </w:pict>
+          </w:r>
+        </w:p>
+        <w:p>
           <w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="42"/></w:numPr></w:pPr>
           <w:r><w:t>Prva stavka</w:t></w:r>
         </w:p>
@@ -297,6 +312,8 @@ test("Word to HTML conversion preserves OOXML colors, alignment and tokens", asy
       assert.match(result.html, /<tr style="height:20pt;break-inside:avoid;page-break-inside:avoid">/);
       assert.match(result.html, /padding-top:2pt[^"]*padding-right:4pt[^"]*padding-bottom:3pt[^"]*padding-left:5pt/);
       assert.match(result.html, /\.sn-word-ooxml-table[\s\S]*border: none;[\s\S]*padding: 0;/);
+      assert.equal((result.html.match(/\bsn-word-shape\b/g) || []).length, 1);
+      assert.match(result.html, /left:36pt;top:4pt;width:3\.75pt;height:100pt;background-color:#006FC0/);
     }
   } finally {
     console.warn = previousWarn;
