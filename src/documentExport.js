@@ -10,7 +10,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import Docxtemplater from "docxtemplater";
 import JSZip from "jszip";
 import mammoth from "mammoth";
-import { PDFDocument as PdfLibDocument } from "pdf-lib";
+import { PDFDocument as PdfLibDocument, StandardFonts, rgb } from "pdf-lib";
 import PDFDocument from "pdfkit";
 import PizZip from "pizzip";
 
@@ -3228,9 +3228,48 @@ async function renderDocxRunHtml(runXml = "", context = {}) {
   return runCss.length ? `<span${cssListToStyleAttribute(runCss)}>${html}</span>` : html;
 }
 
+function getDocxRunFieldCharType(runXml = "") {
+  const fldChar = getFirstXmlEmptyOrElement(runXml, "w:fldChar");
+  return clean(getXmlAttribute(fldChar, "w:fldCharType")).toLowerCase();
+}
+
+function getDocxRunInstructionText(runXml = "") {
+  const instruction = getFirstXmlElement(runXml, "w:instrText");
+  if (!instruction) {
+    return "";
+  }
+  return decodeBasicHtmlEntities(
+    instruction.replace(/^<w:instrText\b[^>]*>/i, "").replace(/<\/w:instrText>$/i, ""),
+  );
+}
+
+function buildDocxFieldReplacementHtml(instruction = "") {
+  const normalizedInstruction = clean(instruction).toUpperCase();
+  if (/\bNUMPAGES\b/.test(normalizedInstruction)) {
+    return '<span class="sn-word-page-count" data-sn-word-field="NUMPAGES"></span>';
+  }
+  if (/\bPAGE\b/.test(normalizedInstruction)) {
+    return '<span class="sn-word-page-number" data-sn-word-field="PAGE"></span>';
+  }
+  return null;
+}
+
 async function renderDocxParagraphInnerHtml(pXml = "", context = {}) {
   const pieces = [];
   const inlineRegex = /<w:hyperlink\b[\s\S]*?<\/w:hyperlink>|<w:r\b[\s\S]*?<\/w:r>/gi;
+  let activeField = null;
+  const flushFieldResult = async () => {
+    if (!activeField) {
+      return;
+    }
+    const replacementHtml = buildDocxFieldReplacementHtml(activeField.instruction);
+    if (replacementHtml !== null) {
+      pieces.push(replacementHtml);
+    } else {
+      pieces.push(...await Promise.all(activeField.resultRuns.map((runXml) => renderDocxRunHtml(runXml, context))));
+    }
+    activeField = null;
+  };
   let match;
   while ((match = inlineRegex.exec(pXml))) {
     const token = match[0];
@@ -3239,9 +3278,37 @@ async function renderDocxParagraphInnerHtml(pXml = "", context = {}) {
       const text = (await Promise.all(runs.map((runXml) => renderDocxRunHtml(runXml, context)))).join("");
       pieces.push(`<span class="sn-word-hyperlink">${text}</span>`);
     } else {
+      const fieldCharType = getDocxRunFieldCharType(token);
+      if (fieldCharType === "begin") {
+        await flushFieldResult();
+        activeField = {
+          instruction: getDocxRunInstructionText(token),
+          resultRuns: [],
+          hasSeparate: false,
+        };
+        continue;
+      }
+
+      if (activeField) {
+        activeField.instruction += getDocxRunInstructionText(token);
+        if (fieldCharType === "separate") {
+          activeField.hasSeparate = true;
+          continue;
+        }
+        if (fieldCharType === "end") {
+          await flushFieldResult();
+          continue;
+        }
+        if (activeField.hasSeparate) {
+          activeField.resultRuns.push(token);
+        }
+        continue;
+      }
+
       pieces.push(await renderDocxRunHtml(token, context));
     }
   }
+  await flushFieldResult();
   return pieces.join("") || "&nbsp;";
 }
 
@@ -3487,7 +3554,12 @@ async function renderDocxRelatedPartHtml(zip, target = "", context = {}, classNa
   if (isHtmlVisuallyEmpty(content)) {
     return "";
   }
-  return `<section class="${className}">${content}</section>`;
+  const classNames = [className]
+    .filter(Boolean);
+  if (/\bdata-sn-word-field\s*=/i.test(content)) {
+    classNames.push("has-generated-page-fields");
+  }
+  return `<section class="${classNames.join(" ")}">${content}</section>`;
 }
 
 async function buildDocxPageChromeHtml(zip, documentXml = "", context = {}) {
@@ -3609,6 +3681,9 @@ function buildConvertedWordLayoutStyles(engine = "", metadata = {}) {
   const pageSize = Number.isFinite(page.widthPt) && Number.isFinite(page.heightPt)
     ? `${cssLengthPt(page.widthPt)} ${cssLengthPt(page.heightPt)}`
     : "A4";
+  const pageMargins = [page.marginTopPt, page.marginRightPt, page.marginBottomPt, page.marginLeftPt]
+    .map((entry, index) => cssLengthPt(entry, index % 2 === 0 ? "16mm" : "16mm"))
+    .join(" ");
   const pageWidth = Number.isFinite(page.widthPt) ? cssLengthPt(page.widthPt) : "210mm";
   const pageHeight = Number.isFinite(page.heightPt) ? cssLengthPt(page.heightPt) : "297mm";
   const marginTop = cssLengthPt(page.marginTopPt, "16mm");
@@ -3621,7 +3696,7 @@ function buildConvertedWordLayoutStyles(engine = "", metadata = {}) {
   const defaultFontSize = Number.isFinite(metadata?.defaultFontSize) ? cssLengthPt(metadata.defaultFontSize) : "11pt";
   return `
   <style data-safe-nexus-word-conversion>
-    @page { size: ${pageSize}; margin: 0; }
+    @page { size: ${pageSize}; margin: ${pageMargins}; }
     html { background: #f3f4f6; }
     body {
       background: #f3f4f6;
@@ -3664,15 +3739,21 @@ function buildConvertedWordLayoutStyles(engine = "", metadata = {}) {
     .sn-word-page:last-child { margin-bottom: 0; }
     .sn-word-page-header,
     .sn-word-page-footer {
+      align-self: stretch;
       flex: 0 0 auto;
-      left: var(--sn-word-page-margin-left);
       margin: 0;
-      position: absolute;
-      right: var(--sn-word-page-margin-right);
+      max-width: 100%;
+      position: relative;
       z-index: 2;
     }
-    .sn-word-page-header { top: var(--sn-word-page-header-top); }
-    .sn-word-page-footer { bottom: var(--sn-word-page-footer-bottom); }
+    .sn-word-page-header {
+      margin-top: calc(var(--sn-word-page-header-top) - var(--sn-word-page-margin-top));
+      text-align: center;
+    }
+    .sn-word-page-footer {
+      margin-bottom: calc(var(--sn-word-page-footer-bottom) - var(--sn-word-page-margin-bottom));
+      margin-top: auto;
+    }
     .sn-word-page-header .sn-word-table,
     .sn-word-page-footer .sn-word-table {
       margin-bottom: 0;
@@ -3689,6 +3770,11 @@ function buildConvertedWordLayoutStyles(engine = "", metadata = {}) {
     .sn-word-page-header img,
     .sn-word-page-footer img {
       display: block;
+      max-width: 100%;
+    }
+    .sn-word-page-header img {
+      margin-left: auto;
+      margin-right: auto;
     }
     .sn-word-page-body {
       flex: 1 1 auto;
@@ -3792,10 +3878,13 @@ function buildConvertedWordLayoutStyles(engine = "", metadata = {}) {
         box-shadow: none;
         break-after: page;
         margin: 0;
-        min-height: var(--sn-word-page-height);
-        padding: var(--sn-word-page-margin-top) var(--sn-word-page-margin-right) var(--sn-word-page-margin-bottom) var(--sn-word-page-margin-left);
-        width: var(--sn-word-page-width);
+        min-height: auto;
+        padding: 0;
+        width: auto;
       }
+      .sn-word-page-header { margin-top: 0; }
+      .sn-word-page-footer { margin-bottom: 0; }
+      .sn-word-page-footer.has-generated-page-fields { visibility: hidden; }
       .sn-word-page:last-child { break-after: auto; }
       .sn-word-document { max-width: none; margin: 0; }
     }
@@ -3812,6 +3901,16 @@ function splitConvertedWordSourceIntoPages(source = "") {
   return parts.length > 0 ? parts : [source || "<p>&nbsp;</p>"];
 }
 
+function materializeConvertedWordPageFields(html = "", pageNumber = 1, pageCount = 1) {
+  return String(html || "").replace(
+    /<span\b([^>]*\bdata-sn-word-field\s*=\s*(["'])(PAGE|NUMPAGES)\2[^>]*)>[\s\S]*?<\/span>/gi,
+    (match, attributes = "", quote = "\"", field = "") => {
+      const value = String(field).toUpperCase() === "NUMPAGES" ? pageCount : pageNumber;
+      return `<span${attributes}>${escapeTemplateHtml(value)}</span>`;
+    },
+  );
+}
+
 function wrapConvertedWordFragmentInPages(source = "", metadata = {}, engine = "") {
   if (/\bsn-word-pages\b/i.test(source)) {
     return source;
@@ -3822,11 +3921,11 @@ function wrapConvertedWordFragmentInPages(source = "", metadata = {}, engine = "
   const pages = splitConvertedWordSourceIntoPages(source);
   return `<main class="sn-word-pages" data-engine="${escapeTemplateHtml(engine || "unknown")}">
 ${pages.map((pageContent, index) => `<section class="sn-word-page" data-page-index="${index + 1}">
-${index === 0 && floatingShapesHtml ? `${floatingShapesHtml}\n` : ""}${headerHtml}
+${index === 0 && floatingShapesHtml ? `${floatingShapesHtml}\n` : ""}${materializeConvertedWordPageFields(headerHtml, index + 1, pages.length)}
 <div class="sn-word-page-body">
 ${pageContent}
 </div>
-${footerHtml}
+${materializeConvertedWordPageFields(footerHtml, index + 1, pages.length)}
 </section>`).join("\n")}
 </main>`;
 }
@@ -6165,6 +6264,58 @@ ${safeHtml}
 </html>`;
 }
 
+function htmlRequestsGeneratedPageNumbers(html = "") {
+  return /\bdata-sn-word-field\s*=\s*(["'])PAGE\1/i.test(String(html || ""))
+    && /\bdata-sn-word-field\s*=\s*(["'])NUMPAGES\1/i.test(String(html || ""));
+}
+
+function stripHtmlToText(value = "") {
+  return decodeBasicHtmlEntities(
+    String(value || "")
+      .replace(/<style\b[\s\S]*?<\/style>/gi, " ")
+      .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim(),
+  );
+}
+
+function getGeneratedPageNumberPrefixFromHtml(html = "") {
+  const source = String(html || "");
+  const footerMatch = source.match(/<section\b[^>]*\bsn-word-page-footer\b[^>]*\bhas-generated-page-fields\b[^>]*>[\s\S]*?<\/section>/i);
+  const footerHtml = footerMatch?.[0] || source;
+  const pageFieldIndex = footerHtml.search(/<span\b[^>]*\bdata-sn-word-field\s*=\s*(["'])PAGE\1/i);
+  if (pageFieldIndex < 0) {
+    return "";
+  }
+  return stripHtmlToText(footerHtml.slice(0, pageFieldIndex)).slice(-32);
+}
+
+async function applyGeneratedPageNumbersToPdfBuffer(pdfBuffer = Buffer.alloc(0), {
+  prefix = "",
+} = {}) {
+  const document = await PdfLibDocument.load(pdfBuffer);
+  const pages = document.getPages();
+  if (pages.length === 0) {
+    return pdfBuffer;
+  }
+  const font = await document.embedFont(StandardFonts.Helvetica);
+  const safePrefix = clean(prefix);
+  pages.forEach((page, index) => {
+    const { width } = page.getSize();
+    const label = `${safePrefix}${index + 1}/${pages.length}`;
+    page.drawText(label, {
+      x: 18,
+      y: 18,
+      size: 8,
+      font,
+      color: rgb(0.05, 0.09, 0.16),
+      maxWidth: Math.max(80, width - 36),
+    });
+  });
+  return Buffer.from(await document.save());
+}
+
 function buildChromiumRuntimeEnv(tempRoot = "") {
   const additionalPathEntries = process.platform === "win32"
     ? []
@@ -6213,7 +6364,8 @@ export async function convertHtmlToPdfBuffer(html = "", {
   const outputPath = join(tempRoot, pdfBaseName);
 
   try {
-    await writeFile(inputPath, buildHtmlPdfDocument(html, { title }), "utf8");
+    const pdfHtml = buildHtmlPdfDocument(html, { title });
+    await writeFile(inputPath, pdfHtml, "utf8");
     const commandResult = await runCommand(chromiumCommand, [
       "--headless",
       "--disable-gpu",
@@ -6246,9 +6398,15 @@ export async function convertHtmlToPdfBuffer(html = "", {
       throw new Error(details || "Chromium nije vratio PDF datoteku.");
     }
 
-    const pdfBuffer = await readFile(outputPath);
+    let pdfBuffer = await readFile(outputPath);
     if (pdfBuffer.subarray(0, 4).toString("utf8") !== "%PDF") {
       throw new Error("Chromium je vratio neispravnu PDF datoteku.");
+    }
+
+    if (htmlRequestsGeneratedPageNumbers(pdfHtml)) {
+      pdfBuffer = await applyGeneratedPageNumbersToPdfBuffer(pdfBuffer, {
+        prefix: getGeneratedPageNumberPrefixFromHtml(pdfHtml),
+      });
     }
 
     return pdfBuffer;

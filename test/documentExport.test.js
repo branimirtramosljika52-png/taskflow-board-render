@@ -275,7 +275,20 @@ test("Word to HTML conversion preserves OOXML colors, alignment and tokens", asy
         </w:hdr>`,
       "footer1.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
         <w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-          <w:p><w:r><w:t>SPR-1/1</w:t></w:r></w:p>
+          <w:p>
+            <w:r><w:t>SPR-</w:t></w:r>
+            <w:r><w:fldChar w:fldCharType="begin"/></w:r>
+            <w:r><w:instrText xml:space="preserve"> PAGE \\* MERGEFORMAT </w:instrText></w:r>
+            <w:r><w:fldChar w:fldCharType="separate"/></w:r>
+            <w:r><w:t>3</w:t></w:r>
+            <w:r><w:fldChar w:fldCharType="end"/></w:r>
+            <w:r><w:t>/</w:t></w:r>
+            <w:r><w:fldChar w:fldCharType="begin"/></w:r>
+            <w:r><w:instrText xml:space="preserve"> NUMPAGES \\* MERGEFORMAT </w:instrText></w:r>
+            <w:r><w:fldChar w:fldCharType="separate"/></w:r>
+            <w:r><w:t>5</w:t></w:r>
+            <w:r><w:fldChar w:fldCharType="end"/></w:r>
+          </w:p>
         </w:ftr>`,
     },
   });
@@ -298,12 +311,15 @@ test("Word to HTML conversion preserves OOXML colors, alignment and tokens", asy
     assert.match(result.html, /sn-word-page/);
     assert.match(result.html, /@page \{ size:/);
     assert.match(result.html, /SafeNexus Header/);
-    assert.match(result.html, /SPR-1\/1/);
+    assert.match(result.html, /SPR-[\s\S]*data-sn-word-field="PAGE">1<\/span>\/<span[\s\S]*data-sn-word-field="NUMPAGES">1<\/span>/);
+    assert.doesNotMatch(result.html, /SPR-3\/5/);
     if (result.engine === "ooxml") {
+      assert.match(result.html, /sn-word-page-footer has-generated-page-fields/);
       assert.match(result.html, /--sn-word-page-header-top:/);
       assert.match(result.html, /--sn-word-page-footer-bottom:/);
-      assert.match(result.html, /\.sn-word-page-header \{ top: var\(--sn-word-page-header-top\); \}/);
-      assert.match(result.html, /\.sn-word-page-footer \{ bottom: var\(--sn-word-page-footer-bottom\); \}/);
+      assert.match(result.html, /margin-top: calc\(var\(--sn-word-page-header-top\) - var\(--sn-word-page-margin-top\)\)/);
+      assert.match(result.html, /\.sn-word-page-header[\s\S]*text-align: center;/);
+      assert.match(result.html, /margin-bottom: calc\(var\(--sn-word-page-footer-bottom\) - var\(--sn-word-page-margin-bottom\)\)/);
       assert.match(result.html, /sn-word-list-marker">1\.<\/span>[\s\S]*Prva stavka/);
       assert.match(result.html, /sn-word-list-marker">2\.<\/span>[\s\S]*Druga stavka/);
       assert.doesNotMatch(result.html, /background-color:#BEBEBE[^>]*>&nbsp;<\/p>/);
