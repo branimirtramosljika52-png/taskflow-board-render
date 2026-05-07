@@ -3385,6 +3385,7 @@ const documentTemplateReferenceRemoveButton = document.querySelector("#document-
 const documentTemplateReferenceMeta = document.querySelector("#document-template-reference-meta");
 const documentTemplateHtmlCodeInput = document.querySelector("#document-template-html-code");
 const documentTemplateHtmlSaveButton = document.querySelector("#document-template-html-save");
+const documentTemplateHtmlPreviewFrame = document.querySelector("#document-template-html-preview-frame");
 const documentTemplateFormActions = documentTemplateEditorPanel?.querySelector(".form-actions");
 const documentTemplatePreviewBlock = document.querySelector("#document-template-preview-block");
 const documentTemplatePreview = document.querySelector("#document-template-preview");
@@ -42129,6 +42130,7 @@ function syncDocumentTemplateHtmlCodeInputFromReference() {
       const currentDataUrl = String(documentTemplateReferenceDraft?.dataUrl || documentTemplateReferenceDraft?.inlineDataUrl || "").trim();
       if (currentDataUrl === dataUrl) {
         documentTemplateHtmlCodeInput.value = text.replace(/^\uFEFF/, "");
+        renderDocumentTemplateHtmlPreviewContent();
       }
     })
     .catch(() => {});
@@ -46656,19 +46658,236 @@ async function exportDocumentTemplatePdf() {
   }
 }
 
-function renderDocumentTemplatePreviewContent(template = buildDocumentTemplateDraft(), context = null) {
-  if (!documentTemplatePreview) {
+function buildDocumentTemplateHtmlPreviewDefaultStyles() {
+  return `
+    <style>
+      @page { size: A4; margin: 16mm; }
+      html { background: #e9eef5; color: #172033; font-family: Arial, sans-serif; }
+      body { margin: 0; padding: 24px; }
+      .safe-nexus-preview-page {
+        width: min(794px, calc(100vw - 48px));
+        min-height: 1123px;
+        margin: 0 auto;
+        padding: 48px;
+        box-sizing: border-box;
+        background: #fff;
+        border: 1px solid #d8e2ef;
+        box-shadow: 0 22px 48px rgba(15, 23, 42, 0.12);
+      }
+      .safe-nexus-preview-empty {
+        display: grid;
+        gap: 12px;
+        place-items: center;
+        min-height: 520px;
+        color: #64748b;
+        text-align: center;
+      }
+      .safe-nexus-preview-empty strong { color: #172033; font-size: 22px; }
+      .safe-nexus-preview-table { width: 100%; border-collapse: collapse; margin: 12px 0 18px; table-layout: fixed; }
+      .safe-nexus-preview-table th,
+      .safe-nexus-preview-table td { border: 1px solid #cbd5e1; padding: 7px 9px; text-align: left; vertical-align: top; word-break: break-word; }
+      .safe-nexus-preview-table th { background: #eef5f2; font-weight: 700; }
+      .safe-nexus-preview-signatures { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; margin: 24px 0 8px; }
+      .safe-nexus-preview-signature { min-height: 116px; text-align: right; }
+      .safe-nexus-preview-signature strong { display: block; margin-top: 3px; }
+      .safe-nexus-preview-signature small { display: block; color: #667085; margin-top: 2px; }
+      .safe-nexus-preview-signature-line { border-top: 1px solid #95aea3; margin-top: 42px; padding-top: 6px; color: #667085; font-size: 12px; }
+      .safe-nexus-preview-system-block { margin: 14px 0 20px; }
+      .safe-nexus-preview-system-block h3 { margin: 0 0 8px; padding: 7px 9px; background: #e5e7eb; color: #111827; font-size: 15px; text-transform: uppercase; }
+      .safe-nexus-preview-system-block p { margin: 6px 0; }
+      .safe-nexus-preview-system-row { margin: 8px 0; text-align: center; }
+      .safe-nexus-preview-system-row strong { font-weight: 700; }
+      @media print {
+        html, body { background: #fff; padding: 0; }
+        .safe-nexus-preview-page { width: auto; min-height: 0; padding: 0; border: 0; box-shadow: none; }
+      }
+    </style>
+  `;
+}
+
+function buildDocumentTemplateHtmlPreviewEmptyDocument(template = buildDocumentTemplateDraft()) {
+  const title = escapeHtml(template.title || "HTML/PDF preview");
+  return `<!doctype html>
+    <html lang="hr">
+      <head>
+        <meta charset="utf-8" />
+        <title>${title}</title>
+        ${buildDocumentTemplateHtmlPreviewDefaultStyles()}
+      </head>
+      <body>
+        <main class="safe-nexus-preview-page">
+          <section class="safe-nexus-preview-empty">
+            <strong>HTML predložak još nije postavljen</strong>
+            <span>Zalijepi HTML kod ili učitaj .html datoteku za preview gotovog PDF dokumenta.</span>
+          </section>
+        </main>
+      </body>
+    </html>`;
+}
+
+function buildDocumentTemplateHtmlPreviewTable(value = {}) {
+  const rows = Array.isArray(value.rows) ? value.rows : [];
+  if (rows.length === 0) {
+    return "";
+  }
+
+  return `
+    <table class="safe-nexus-preview-table">
+      <tbody>
+        ${rows.map((row) => {
+          const tagName = row?.header ? "th" : "td";
+          const cells = Array.isArray(row?.cells) ? row.cells : [];
+          return `<tr>${cells.map((cell) => `<${tagName}>${escapeHtml(cell?.text || "").replace(/\n/g, "<br>") || "&nbsp;"}</${tagName}>`).join("")}</tr>`;
+        }).join("")}
+      </tbody>
+    </table>`;
+}
+
+function buildDocumentTemplateHtmlPreviewSignatureGroup(value = {}) {
+  const items = Array.isArray(value.items) ? value.items : [];
+  if (items.length === 0) {
+    return "";
+  }
+
+  return `
+    <div class="safe-nexus-preview-signatures">
+      ${items.map((item) => {
+        const metaLines = Array.isArray(item?.metaLines) ? item.metaLines : [];
+        return `
+          <section class="safe-nexus-preview-signature">
+            <span>${escapeHtml(item?.role || "Osoba")}</span>
+            <strong>${escapeHtml(item?.name || "Potpisnik")}</strong>
+            ${metaLines.map((line) => `<small>${escapeHtml(line)}</small>`).join("")}
+            <div class="safe-nexus-preview-signature-line">${item?.signatureMode === "digital" ? "Digitalni potpis" : "Potpis"}</div>
+          </section>`;
+      }).join("")}
+    </div>`;
+}
+
+function buildDocumentTemplateHtmlPreviewSystemDescription(value = {}) {
+  const blocks = Array.isArray(value.blocks) ? value.blocks : [];
+  if (blocks.length === 0) {
+    return "";
+  }
+
+  return blocks.map((block) => {
+    const rows = Array.isArray(block?.rows) ? block.rows : [];
+    const rowHtml = rows.length > 0
+      ? rows.map((row) => `
+        <p class="safe-nexus-preview-system-row">
+          ${row?.subtitle ? `<strong>${escapeHtml(`${row.subtitle}: `)}</strong>` : ""}
+          ${escapeHtml(row?.description || "").replace(/\n/g, "<br>")}
+        </p>`).join("")
+      : '<p class="safe-nexus-preview-system-row">&nbsp;</p>';
+    return `
+      <section class="safe-nexus-preview-system-block">
+        <h3>${escapeHtml(block?.title || "Opis sustava")}</h3>
+        ${block?.subtitle ? `<p><em>${escapeHtml(block.subtitle)}</em></p>` : ""}
+        ${rowHtml}
+      </section>`;
+  }).join("");
+}
+
+function formatDocumentTemplateHtmlPreviewPlaceholderValue(value) {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const blockType = String(value.__docxBlockType || value.type || "").trim().toLowerCase();
+    if (blockType === "optional_empty") {
+      return "";
+    }
+    if (blockType === "table") {
+      return buildDocumentTemplateHtmlPreviewTable(value);
+    }
+    if (blockType === "signature_group") {
+      return buildDocumentTemplateHtmlPreviewSignatureGroup(value);
+    }
+    if (blockType === "system_description") {
+      return buildDocumentTemplateHtmlPreviewSystemDescription(value);
+    }
+    try {
+      return escapeHtml(JSON.stringify(value, null, 2)).replace(/\n/g, "<br>");
+    } catch {
+      return "";
+    }
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => formatDocumentTemplateHtmlPreviewPlaceholderValue(entry)).join("<br>");
+  }
+
+  return escapeHtml(String(value ?? "")).replace(/\n/g, "<br>");
+}
+
+function buildDocumentTemplateHtmlPreviewDocument(html = "", template = buildDocumentTemplateDraft()) {
+  const source = String(html || "").trim();
+  if (!source) {
+    return buildDocumentTemplateHtmlPreviewEmptyDocument(template);
+  }
+
+  const title = escapeHtml(template.title || "HTML/PDF preview");
+  const defaultStyles = buildDocumentTemplateHtmlPreviewDefaultStyles();
+  if (/<!doctype\s+html|<html[\s>]/i.test(source)) {
+    if (/<head\b[^>]*>/i.test(source)) {
+      return source.replace(/<head\b([^>]*)>/i, `<head$1><meta charset="utf-8" />${defaultStyles}`);
+    }
+    return source.replace(/<html\b([^>]*)>/i, `<html$1><head><meta charset="utf-8" /><title>${title}</title>${defaultStyles}</head>`);
+  }
+
+  return `<!doctype html>
+    <html lang="hr">
+      <head>
+        <meta charset="utf-8" />
+        <title>${title}</title>
+        ${defaultStyles}
+      </head>
+      <body>
+        <main class="safe-nexus-preview-page">${source}</main>
+      </body>
+    </html>`;
+}
+
+function renderDocumentTemplateHtmlPreviewContent(template = buildDocumentTemplateDraft(), context = null) {
+  if (!(documentTemplateHtmlPreviewFrame instanceof HTMLIFrameElement)) {
     return;
   }
 
+  const previewContext = context || buildDocumentTemplatePreviewContext(template);
+  const htmlCode = String(documentTemplateHtmlCodeInput?.value || "").trim();
+  if (!htmlCode) {
+    documentTemplateHtmlPreviewFrame.srcdoc = buildDocumentTemplateHtmlPreviewEmptyDocument(template);
+    return;
+  }
+
+  const placeholders = buildDocumentTemplateRuntimePlaceholderPayload(template, previewContext);
+  const renderedHtml = htmlCode.replace(/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g, (match, token) => {
+    const key = String(token || "").trim().toUpperCase();
+    if (!Object.prototype.hasOwnProperty.call(placeholders, key)) {
+      return match;
+    }
+    return formatDocumentTemplateHtmlPreviewPlaceholderValue(placeholders[key]);
+  });
+
+  documentTemplateHtmlPreviewFrame.srcdoc = buildDocumentTemplateHtmlPreviewDocument(renderedHtml, template);
+}
+
+function renderDocumentTemplatePreviewContent(template = buildDocumentTemplateDraft(), context = null) {
   clampDocumentTemplateSheetIndex();
   const runtimeWorkOrder = isDocumentTemplateRuntimeFillMode()
     ? getDocumentTemplateRuntimeActiveWorkOrder()
     : null;
+  const previewContext = context || buildDocumentTemplatePreviewContext(
+    template,
+    runtimeWorkOrder ? { workOrder: runtimeWorkOrder } : {},
+  );
+  renderDocumentTemplateHtmlPreviewContent(template, previewContext);
+
+  if (!documentTemplatePreview) {
+    return;
+  }
+
   documentTemplatePreview.innerHTML = buildDocumentTemplatePreviewMarkup(template, {
     placeholderMode: false,
     sheetTabs: true,
-    context: context || buildDocumentTemplatePreviewContext(template, runtimeWorkOrder ? { workOrder: runtimeWorkOrder } : {}),
+    context: previewContext,
   });
 }
 
@@ -92591,6 +92810,10 @@ documentTemplateHtmlSaveButton?.addEventListener("click", () => {
   setDocumentTemplateMessage("HTML predložak je spremljen u template.", { type: "success" });
 });
 
+documentTemplateHtmlCodeInput?.addEventListener("input", () => {
+  renderDocumentTemplateHtmlPreviewContent();
+});
+
 documentTemplateReferenceToggleButton?.addEventListener("click", () => {
   toggleDocumentTemplateSidebarPanel("referenceCollapsed");
 });
@@ -92643,6 +92866,7 @@ documentTemplateReferenceFileInput?.addEventListener("change", () => {
         void file.text()
           .then((text) => {
             documentTemplateHtmlCodeInput.value = text.replace(/^\uFEFF/, "");
+            renderDocumentTemplateHtmlPreviewContent();
           })
           .catch(() => {});
       }

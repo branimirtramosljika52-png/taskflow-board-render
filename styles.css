@@ -28159,6 +28159,19 @@ body.is-measurement-equipment-export-open {
   gap: 10px;
 }
 
+.document-template-program-workspace-block {
+  gap: 14px;
+}
+
+.document-template-program-workspace-head {
+  align-items: start;
+}
+
+.document-template-program-workspace-head .helper-copy {
+  margin: 4px 0 0;
+  max-width: 980px;
+}
+
 .document-template-html-workspace-block {
   gap: 12px;
   border-color: rgba(34, 111, 235, 0.2);
@@ -28186,20 +28199,32 @@ body.is-measurement-equipment-export-open {
   gap: 12px;
 }
 
-.document-template-html-workspace-controls {
+.document-template-html-workbench-grid {
   display: grid;
-  grid-template-columns: minmax(240px, 0.72fr) minmax(360px, 1.28fr);
-  gap: 12px;
-  align-items: stretch;
+  grid-template-columns: minmax(360px, 0.92fr) minmax(420px, 1.08fr);
+  gap: 14px;
+  align-items: start;
   min-width: 0;
 }
 
+.document-template-html-editor-panel,
+.document-template-html-preview-panel {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  align-content: start;
+}
+
 .document-template-html-workspace-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
   align-content: start;
 }
 
 .document-template-html-workspace-actions > button {
   min-height: 42px;
+  width: 100%;
 }
 
 .document-template-html-workspace-block .document-template-html-code-field {
@@ -28208,8 +28233,29 @@ body.is-measurement-equipment-export-open {
 
 .document-template-html-workspace-block .document-template-html-code-field textarea {
   width: 100%;
-  min-height: clamp(250px, 30vh, 430px);
+  min-height: clamp(360px, 44vh, 680px);
   font-size: 0.82rem;
+}
+
+.document-template-html-preview-panel {
+  position: sticky;
+  top: 8px;
+}
+
+.document-template-html-preview-head {
+  margin: 0;
+  padding: 0 2px;
+}
+
+.document-template-html-preview-frame {
+  width: 100%;
+  min-height: clamp(420px, 58vh, 760px);
+  border: 1px solid rgba(53, 98, 196, 0.16);
+  border-radius: 22px;
+  background: #f8fafc;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.98),
+    0 20px 38px rgba(22, 45, 37, 0.1);
 }
 
 .document-template-html-flow {
@@ -32153,6 +32199,16 @@ body.is-measurement-equipment-export-open {
   border-top: none;
 }
 
+.document-template-html-token-panel {
+  padding-top: 12px;
+  border-top: 1px solid rgba(53, 98, 196, 0.12);
+}
+
+.document-template-html-token-panel .document-template-placeholder-palette {
+  max-height: 190px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
 .document-template-placeholder-panel-head {
   display: flex;
   align-items: flex-start;
@@ -33792,8 +33848,8 @@ body.is-measurement-equipment-export-open {
   top: 8px;
   align-self: start;
   max-height: calc(100dvh - 142px);
-  overflow: hidden;
-  grid-template-rows: minmax(0, 1fr) auto;
+  overflow: auto;
+  grid-template-rows: auto;
   padding-right: 0;
 }
 
@@ -35173,8 +35229,12 @@ body.is-document-template-resizing-diagonal * {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .document-template-html-workspace-controls {
+  .document-template-html-workbench-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .document-template-html-preview-panel {
+    position: static;
   }
 
   .document-template-page-toolbar {
