@@ -2311,6 +2311,12 @@ function getXmlElements(xml = "", tagName = "") {
     .map((match) => match[0]);
 }
 
+function getXmlEmptyOrElements(xml = "", tagName = "") {
+  const safeTagName = String(tagName || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return Array.from(String(xml || "").matchAll(new RegExp(`<${safeTagName}\\b[^>]*(?:\\/>|>[\\s\\S]*?<\\/${safeTagName}>)`, "gi")))
+    .map((match) => match[0]);
+}
+
 function getXmlVal(element = "", fallback = "") {
   return clean(getXmlAttribute(element, "w:val") || getXmlAttribute(element, "val") || fallback);
 }
@@ -2549,13 +2555,15 @@ function docxRunPropertiesToCss(rPr = "", themeColors = {}) {
   return dedupeCssDeclarations(styles);
 }
 
-function docxBorderToCss(borderElement = "", themeColors = {}) {
+function docxBorderToCss(borderElement = "", themeColors = {}, {
+  preserveNone = true,
+} = {}) {
   if (!borderElement) {
     return "";
   }
   const value = getXmlVal(borderElement, "single").toLowerCase();
   if (["nil", "none", "false", "0"].includes(value)) {
-    return "";
+    return preserveNone ? "none" : "";
   }
   const styleMap = {
     single: "solid",
@@ -2572,11 +2580,22 @@ function docxBorderToCss(borderElement = "", themeColors = {}) {
   return `${cssLengthPt(width)} ${styleMap[value] || "solid"} ${color}`;
 }
 
-function docxBordersToCss(parentXml = "", containerTagName = "", themeColors = {}) {
+function parseDocxBorders(parentXml = "", containerTagName = "", themeColors = {}, {
+  preserveNone = true,
+} = {}) {
   const borderContainer = getFirstXmlElement(parentXml, containerTagName);
   if (!borderContainer) {
-    return [];
+    return {};
   }
+  return ["top", "right", "bottom", "left", "insideH", "insideV"].reduce((borders, side) => {
+    const borderElement = getFirstXmlEmptyOrElement(borderContainer, `w:${side}`);
+    const borderCss = docxBorderToCss(borderElement, themeColors, { preserveNone });
+    return borderCss ? { ...borders, [side]: borderCss } : borders;
+  }, {});
+}
+
+function docxBordersToCss(parentXml = "", containerTagName = "", themeColors = {}, options = {}) {
+  const borderMap = parseDocxBorders(parentXml, containerTagName, themeColors, options);
   const sideMap = {
     top: "border-top",
     right: "border-right",
@@ -2585,10 +2604,9 @@ function docxBordersToCss(parentXml = "", containerTagName = "", themeColors = {
     insideH: "border-bottom",
     insideV: "border-right",
   };
-  return Object.entries(sideMap).map(([side, cssName]) => {
-    const borderCss = docxBorderToCss(getFirstXmlEmptyOrElement(borderContainer, `w:${side}`), themeColors);
-    return borderCss ? `${cssName}:${borderCss}` : "";
-  }).filter(Boolean);
+  return Object.entries(sideMap)
+    .map(([side, cssName]) => (borderMap[side] ? `${cssName}:${borderMap[side]}` : ""))
+    .filter(Boolean);
 }
 
 function docxParagraphPropertiesToCss(pPr = "", themeColors = {}) {
@@ -2634,17 +2652,98 @@ function docxParagraphPropertiesToCss(pPr = "", themeColors = {}) {
   return dedupeCssDeclarations(styles);
 }
 
-function docxTablePropertiesToCss(tblPr = "", themeColors = {}) {
+function docxWidthElementToCss(widthElement = "", {
+  pctMax = 100,
+} = {}) {
+  const widthType = clean(getXmlAttribute(widthElement, "w:type")).toLowerCase();
+  const widthValue = Number.parseFloat(getXmlAttribute(widthElement, "w:w"));
+  if (!Number.isFinite(widthValue) || widthValue <= 0) {
+    return "";
+  }
+  if (widthType === "pct") {
+    return `${Math.max(1, Math.min(pctMax, widthValue / 50))}%`;
+  }
+  if (widthType === "dxa" || !widthType) {
+    return cssLengthPt(twipsToPt(widthValue, 0));
+  }
+  return "";
+}
+
+function docxTableCellMarginsToCss(parentXml = "") {
+  const margins = getFirstXmlElement(parentXml, "w:tcMar") || getFirstXmlElement(parentXml, "w:tblCellMar");
+  const styles = [];
+  const marginMap = { top: "padding-top", right: "padding-right", bottom: "padding-bottom", left: "padding-left" };
+  Object.entries(marginMap).forEach(([side, cssName]) => {
+    const element = getFirstXmlEmptyOrElement(margins, `w:${side}`);
+    const value = twipsToPt(getXmlAttribute(element, "w:w"));
+    if (value !== null) styles.push(`${cssName}:${cssLengthPt(value)}`);
+  });
+  return styles;
+}
+
+function parseDocxTableGridWidths(tblXml = "") {
+  return getXmlEmptyOrElements(getFirstXmlElement(tblXml, "w:tblGrid"), "w:gridCol")
+    .map((gridCol) => twipsToPt(getXmlAttribute(gridCol, "w:w")))
+    .filter((width) => Number.isFinite(width) && width > 0);
+}
+
+function parseDocxTableCellWidthPt(tcPr = "") {
+  const tcW = getFirstXmlEmptyOrElement(tcPr, "w:tcW");
+  const widthType = clean(getXmlAttribute(tcW, "w:type")).toLowerCase();
+  if (widthType && widthType !== "dxa") {
+    return null;
+  }
+  const width = twipsToPt(getXmlAttribute(tcW, "w:w"));
+  return Number.isFinite(width) && width > 0 ? width : null;
+}
+
+function parseDocxTableCellGridWidths(tblXml = "") {
+  const widths = [];
+  parseDocxTableRows(tblXml).forEach((row) => {
+    row.cells.forEach((cell) => {
+      const width = parseDocxTableCellWidthPt(cell.tcPr);
+      if (!Number.isFinite(width) || width <= 0) {
+        return;
+      }
+      const span = Math.max(1, Number.parseInt(cell.gridSpan, 10) || 1);
+      const columnWidth = width / span;
+      for (let index = 0; index < span; index += 1) {
+        const columnIndex = cell.columnIndex + index;
+        widths[columnIndex] = Math.max(widths[columnIndex] || 0, columnWidth);
+      }
+    });
+  });
+  return widths.filter((width) => Number.isFinite(width) && width > 0);
+}
+
+function getDocxTableGridWidth(gridWidthsPt = []) {
+  const total = (Array.isArray(gridWidthsPt) ? gridWidthsPt : [])
+    .filter((width) => Number.isFinite(width) && width > 0)
+    .reduce((sum, width) => sum + width, 0);
+  return total > 0 ? total : null;
+}
+
+function docxTablePropertiesToCss(tblPr = "", themeColors = {}, {
+  gridWidthsPt = [],
+} = {}) {
   const styles = [];
   if (!tblPr) {
     return styles;
   }
   const tblW = getFirstXmlEmptyOrElement(tblPr, "w:tblW");
-  const widthType = clean(getXmlAttribute(tblW, "w:type")).toLowerCase();
-  const widthValue = Number.parseFloat(getXmlAttribute(tblW, "w:w"));
-  if (Number.isFinite(widthValue) && widthValue > 0) {
-    if (widthType === "pct") styles.push(`width:${Math.max(1, Math.min(100, widthValue / 50))}%`);
-    if (widthType === "dxa") styles.push(`width:${cssLengthPt(twipsToPt(widthValue, 0))}`);
+  const tableWidth = docxWidthElementToCss(tblW);
+  const gridWidth = getDocxTableGridWidth(gridWidthsPt);
+  if (tableWidth) styles.push(`width:${tableWidth}`);
+  else if (gridWidth) styles.push(`width:${cssLengthPt(gridWidth)}`);
+  const tblInd = getFirstXmlEmptyOrElement(tblPr, "w:tblInd");
+  const indent = docxWidthElementToCss(tblInd, { pctMax: 100 });
+  if (indent) styles.push(`margin-left:${indent}`);
+  const tblLayout = clean(getXmlVal(getFirstXmlEmptyOrElement(tblPr, "w:tblLayout"))).toLowerCase();
+  if (tblLayout === "fixed" || gridWidth) styles.push("table-layout:fixed");
+  const tblCellSpacing = docxWidthElementToCss(getFirstXmlEmptyOrElement(tblPr, "w:tblCellSpacing"));
+  if (tblCellSpacing) {
+    styles.push(`border-spacing:${tblCellSpacing}`);
+    styles.push("border-collapse:separate");
   }
   const jc = getXmlVal(getFirstXmlEmptyOrElement(tblPr, "w:jc")).toLowerCase();
   if (jc === "center") styles.push("margin-left:auto;margin-right:auto");
@@ -2666,7 +2765,7 @@ function docxCellPropertiesToCss(tcPr = "", themeColors = {}) {
   const widthValue = Number.parseFloat(getXmlAttribute(tcW, "w:w"));
   if (Number.isFinite(widthValue) && widthValue > 0) {
     if (widthType === "pct") styles.push(`width:${Math.max(1, Math.min(100, widthValue / 50))}%`);
-    if (widthType === "dxa") styles.push(`width:${cssLengthPt(twipsToPt(widthValue, 0))}`);
+    if (widthType === "dxa" || !widthType) styles.push(`width:${cssLengthPt(twipsToPt(widthValue, 0))}`);
   }
   const shading = getFirstXmlEmptyOrElement(tcPr, "w:shd");
   const fillColor = normalizeDocxHexColor(getXmlAttribute(shading, "w:fill")) || resolveDocxThemeColor(shading, themeColors);
@@ -2674,12 +2773,7 @@ function docxCellPropertiesToCss(tcPr = "", themeColors = {}) {
   const vAlign = getXmlVal(getFirstXmlEmptyOrElement(tcPr, "w:vAlign")).toLowerCase();
   if (vAlign) styles.push(`vertical-align:${vAlign === "center" ? "middle" : vAlign}`);
   styles.push(...docxBordersToCss(tcPr, "w:tcBorders", themeColors));
-  const margins = getFirstXmlElement(tcPr, "w:tcMar");
-  const marginMap = { top: "padding-top", right: "padding-right", bottom: "padding-bottom", left: "padding-left" };
-  Object.entries(marginMap).forEach(([side, cssName]) => {
-    const value = twipsToPt(getXmlAttribute(getFirstXmlEmptyOrElement(margins, `w:${side}`), "w:w"));
-    if (value !== null) styles.push(`${cssName}:${cssLengthPt(value)}`);
-  });
+  styles.push(...docxTableCellMarginsToCss(tcPr));
   return dedupeCssDeclarations(styles);
 }
 
@@ -3143,20 +3237,27 @@ async function renderDocxParagraphHtml(pXml = "", context = {}) {
 function parseDocxTableRows(tblXml = "") {
   return getXmlElements(tblXml, "w:tr").map((rowXml) => ({
     xml: rowXml,
-    cells: getXmlElements(rowXml, "w:tc").map((cellXml) => {
-      const tcPr = getFirstXmlElement(cellXml, "w:tcPr");
-      const gridSpan = Math.max(1, Number.parseInt(getXmlVal(getFirstXmlEmptyOrElement(tcPr, "w:gridSpan"), "1"), 10) || 1);
-      const vMergeElement = getFirstXmlEmptyOrElement(tcPr, "w:vMerge");
-      const vMergeValue = vMergeElement ? (getXmlVal(vMergeElement, "continue") || "continue") : "";
-      return {
-        xml: cellXml,
-        tcPr,
-        gridSpan,
-        vMerge: vMergeValue,
-        rowSpan: 1,
-        skip: false,
-      };
-    }),
+    trPr: getFirstXmlElement(rowXml, "w:trPr"),
+    cells: (() => {
+      let columnIndex = 0;
+      return getXmlElements(rowXml, "w:tc").map((cellXml) => {
+        const tcPr = getFirstXmlElement(cellXml, "w:tcPr");
+        const gridSpan = Math.max(1, Number.parseInt(getXmlVal(getFirstXmlEmptyOrElement(tcPr, "w:gridSpan"), "1"), 10) || 1);
+        const vMergeElement = getFirstXmlEmptyOrElement(tcPr, "w:vMerge");
+        const vMergeValue = vMergeElement ? (getXmlVal(vMergeElement, "continue") || "continue") : "";
+        const cell = {
+          xml: cellXml,
+          tcPr,
+          columnIndex,
+          gridSpan,
+          vMerge: vMergeValue,
+          rowSpan: 1,
+          skip: false,
+        };
+        columnIndex += gridSpan;
+        return cell;
+      });
+    })(),
   }));
 }
 
@@ -3186,7 +3287,76 @@ function applyDocxVerticalMerges(rows = []) {
   return rows;
 }
 
-async function renderDocxTableCellHtml(cell = {}, context = {}) {
+function docxTableRowPropertiesToCss(trPr = "") {
+  const styles = [];
+  const trHeight = getFirstXmlEmptyOrElement(trPr, "w:trHeight");
+  const height = twipsToPt(getXmlAttribute(trHeight, "w:val"));
+  const heightRule = clean(getXmlAttribute(trHeight, "w:hRule")).toLowerCase();
+  if (height !== null && height > 0 && heightRule !== "auto") {
+    styles.push(`height:${cssLengthPt(height)}`);
+  }
+  if (hasXmlElement(trPr, "w:cantSplit")) {
+    styles.push("break-inside:avoid");
+    styles.push("page-break-inside:avoid");
+  }
+  return dedupeCssDeclarations(styles);
+}
+
+function getDocxTableMetrics(tblXml = "", tblPr = "", themeColors = {}) {
+  const explicitGridWidthsPt = parseDocxTableGridWidths(tblXml);
+  const gridWidthsPt = explicitGridWidthsPt.length > 0 ? explicitGridWidthsPt : parseDocxTableCellGridWidths(tblXml);
+  const gridWidthPt = getDocxTableGridWidth(gridWidthsPt);
+  const tableBorders = parseDocxBorders(tblPr, "w:tblBorders", themeColors);
+  return {
+    gridWidthsPt,
+    gridWidthPt,
+    gridSource: explicitGridWidthsPt.length > 0 ? "tblGrid" : gridWidthsPt.length > 0 ? "tcW" : "",
+    columnCount: gridWidthsPt.length,
+    tableBorders,
+    defaultCellCss: docxTableCellMarginsToCss(tblPr),
+  };
+}
+
+function getDocxTableBorderCssForCell(cell = {}, rowIndex = 0, rowCount = 0, tableMetrics = {}) {
+  const borders = tableMetrics.tableBorders || {};
+  const columnCount = tableMetrics.columnCount || 0;
+  const cellStart = Math.max(0, Number.parseInt(cell.columnIndex, 10) || 0);
+  const cellEnd = cellStart + Math.max(1, Number.parseInt(cell.gridSpan, 10) || 1);
+  const styles = [];
+  if (borders.top && rowIndex === 0) styles.push(`border-top:${borders.top}`);
+  if (borders.bottom && rowIndex === rowCount - 1) styles.push(`border-bottom:${borders.bottom}`);
+  if (borders.left && cellStart === 0) styles.push(`border-left:${borders.left}`);
+  if (borders.right && (!columnCount || cellEnd >= columnCount)) styles.push(`border-right:${borders.right}`);
+  if (borders.insideH && rowIndex > 0) styles.push(`border-top:${borders.insideH}`);
+  if (borders.insideV && cellStart > 0) styles.push(`border-left:${borders.insideV}`);
+  return styles;
+}
+
+function buildDocxTableColGroupHtml(gridWidthsPt = []) {
+  const widths = (Array.isArray(gridWidthsPt) ? gridWidthsPt : [])
+    .filter((width) => Number.isFinite(width) && width > 0);
+  if (widths.length === 0) {
+    return "";
+  }
+  return `<colgroup>${widths.map((width) => `<col${cssListToStyleAttribute([`width:${cssLengthPt(width)}`])}>`).join("")}</colgroup>`;
+}
+
+function buildDocxTableDataAttributes(tableMetrics = {}) {
+  const attrs = [];
+  const gridWidths = (tableMetrics.gridWidthsPt || []).filter((width) => Number.isFinite(width) && width > 0);
+  if (gridWidths.length > 0) {
+    attrs.push(` data-word-grid="${escapeTemplateHtml(gridWidths.map((width) => cssLengthPt(width)).join(" "))}"`);
+  }
+  if (tableMetrics.gridSource) {
+    attrs.push(` data-word-grid-source="${escapeTemplateHtml(tableMetrics.gridSource)}"`);
+  }
+  if (Number.isFinite(tableMetrics.gridWidthPt) && tableMetrics.gridWidthPt > 0) {
+    attrs.push(` data-word-grid-width="${escapeTemplateHtml(cssLengthPt(tableMetrics.gridWidthPt))}"`);
+  }
+  return attrs.join("");
+}
+
+async function renderDocxTableCellHtml(cell = {}, context = {}, tableMetrics = {}, rowIndex = 0, rowCount = 0) {
   const blocks = extractDocxBodyBlocks(cell.xml.replace(getFirstXmlElement(cell.xml, "w:tcPr"), ""));
   const contentBlocks = [];
   for (const block of blocks) {
@@ -3198,7 +3368,11 @@ async function renderDocxTableCellHtml(cell = {}, context = {}) {
   const attrs = [
     cell.gridSpan > 1 ? ` colspan="${cell.gridSpan}"` : "",
     cell.rowSpan > 1 ? ` rowspan="${cell.rowSpan}"` : "",
-    cssListToStyleAttribute(docxCellPropertiesToCss(cell.tcPr, context.themeColors)),
+    cssListToStyleAttribute(mergeCssLists(
+      tableMetrics.defaultCellCss || [],
+      getDocxTableBorderCssForCell(cell, rowIndex, rowCount, tableMetrics),
+      docxCellPropertiesToCss(cell.tcPr, context.themeColors),
+    )),
   ].filter(Boolean).join("");
   return `<td${attrs}>${content || "&nbsp;"}</td>`;
 }
@@ -3207,17 +3381,19 @@ async function renderDocxTableHtml(tblXml = "", context = {}) {
   const tblPr = getFirstXmlElement(tblXml, "w:tblPr");
   const styleId = getXmlVal(getFirstXmlEmptyOrElement(tblPr, "w:tblStyle"));
   const tableStyle = getDocxStyle(context.styles, styleId, "table");
+  const tableMetrics = getDocxTableMetrics(tblXml, tblPr, context.themeColors);
   const rows = applyDocxVerticalMerges(parseDocxTableRows(tblXml));
   const rowHtml = [];
-  for (const row of rows) {
+  for (const [rowIndex, row] of rows.entries()) {
     const cellHtml = [];
     for (const cell of row.cells.filter((entry) => !entry.skip)) {
-      cellHtml.push(await renderDocxTableCellHtml(cell, context));
+      cellHtml.push(await renderDocxTableCellHtml(cell, context, tableMetrics, rowIndex, rows.length));
     }
-    rowHtml.push(`<tr>${cellHtml.join("")}</tr>`);
+    rowHtml.push(`<tr${cssListToStyleAttribute(docxTableRowPropertiesToCss(row.trPr))}>${cellHtml.join("")}</tr>`);
   }
-  const css = mergeCssLists(tableStyle?.tblCss || [], docxTablePropertiesToCss(tblPr, context.themeColors));
-  return `<table class="sn-word-table sn-word-ooxml-table"${cssListToStyleAttribute(css)}><tbody>${rowHtml.join("")}</tbody></table>`;
+  const css = mergeCssLists(tableStyle?.tblCss || [], docxTablePropertiesToCss(tblPr, context.themeColors, tableMetrics));
+  const colGroup = buildDocxTableColGroupHtml(tableMetrics.gridWidthsPt);
+  return `<table class="sn-word-table sn-word-ooxml-table"${buildDocxTableDataAttributes(tableMetrics)}${cssListToStyleAttribute(css)}>${colGroup}<tbody>${rowHtml.join("")}</tbody></table>`;
 }
 
 async function renderDocxBlocksHtml(xml = "", context = {}) {
@@ -3526,6 +3702,22 @@ function buildConvertedWordLayoutStyles(engine = "", metadata = {}) {
     .sn-word-table th {
       background: #eef5f2;
       font-weight: 700;
+    }
+    .sn-word-ooxml-table {
+      border-collapse: collapse;
+      margin: 0;
+      width: auto;
+    }
+    .sn-word-ooxml-table th,
+    .sn-word-ooxml-table td {
+      background: transparent;
+      border: none;
+      padding: 0;
+      vertical-align: top;
+    }
+    .sn-word-ooxml-table .sn-word-paragraph {
+      margin: 0;
+      min-height: 0;
     }
     .sn-word-page-break {
       break-before: page;

@@ -173,6 +173,58 @@ test("Word to HTML conversion preserves OOXML colors, alignment and tokens", asy
             </w:tc>
           </w:tr>
         </w:tbl>
+        <w:tbl>
+          <w:tblPr>
+            <w:tblW w:w="0" w:type="auto"/>
+            <w:tblInd w:w="300" w:type="dxa"/>
+            <w:tblLayout w:type="fixed"/>
+            <w:tblCellMar>
+              <w:top w:w="40" w:type="dxa"/>
+              <w:right w:w="80" w:type="dxa"/>
+              <w:bottom w:w="60" w:type="dxa"/>
+              <w:left w:w="100" w:type="dxa"/>
+            </w:tblCellMar>
+            <w:tblBorders>
+              <w:top w:val="nil"/>
+              <w:left w:val="nil"/>
+              <w:bottom w:val="nil"/>
+              <w:right w:val="nil"/>
+              <w:insideH w:val="nil"/>
+              <w:insideV w:val="nil"/>
+            </w:tblBorders>
+          </w:tblPr>
+          <w:tblGrid>
+            <w:gridCol w:w="1200"/>
+            <w:gridCol w:w="2400"/>
+          </w:tblGrid>
+          <w:tr>
+            <w:trPr><w:trHeight w:val="400" w:hRule="exact"/><w:cantSplit/></w:trPr>
+            <w:tc>
+              <w:tcPr><w:tcW w:w="1200" w:type="dxa"/></w:tcPr>
+              <w:p><w:r><w:t>Layout lijevo</w:t></w:r></w:p>
+            </w:tc>
+            <w:tc>
+              <w:tcPr><w:tcW w:w="2400" w:type="dxa"/></w:tcPr>
+              <w:p><w:r><w:t>Layout desno</w:t></w:r></w:p>
+            </w:tc>
+          </w:tr>
+        </w:tbl>
+        <w:tbl>
+          <w:tblPr>
+            <w:tblW w:w="0" w:type="auto"/>
+            <w:tblLayout w:type="fixed"/>
+          </w:tblPr>
+          <w:tr>
+            <w:tc>
+              <w:tcPr><w:tcW w:w="800" w:type="dxa"/></w:tcPr>
+              <w:p><w:r><w:t>Fallback stupac 1</w:t></w:r></w:p>
+            </w:tc>
+            <w:tc>
+              <w:tcPr><w:tcW w:w="1600" w:type="dxa"/></w:tcPr>
+              <w:p><w:r><w:t>Fallback stupac 2</w:t></w:r></w:p>
+            </w:tc>
+          </w:tr>
+        </w:tbl>
         <w:p>
           <w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="42"/></w:numPr></w:pPr>
           <w:r><w:t>Prva stavka</w:t></w:r>
@@ -236,6 +288,15 @@ test("Word to HTML conversion preserves OOXML colors, alignment and tokens", asy
       assert.match(result.html, /sn-word-list-marker">1\.<\/span>[\s\S]*Prva stavka/);
       assert.match(result.html, /sn-word-list-marker">2\.<\/span>[\s\S]*Druga stavka/);
       assert.doesNotMatch(result.html, /background-color:#BEBEBE[^>]*>&nbsp;<\/p>/);
+      assert.match(result.html, /data-word-grid="60pt 120pt"/);
+      assert.match(result.html, /data-word-grid-source="tblGrid"/);
+      assert.match(result.html, /data-word-grid-width="180pt"/);
+      assert.match(result.html, /data-word-grid="40pt 80pt" data-word-grid-source="tcW" data-word-grid-width="120pt"/);
+      assert.match(result.html, /<colgroup><col style="width:60pt"><col style="width:120pt"><\/colgroup>/);
+      assert.match(result.html, /style="[^"]*width:180pt[^"]*margin-left:15pt[^"]*table-layout:fixed/);
+      assert.match(result.html, /<tr style="height:20pt;break-inside:avoid;page-break-inside:avoid">/);
+      assert.match(result.html, /padding-top:2pt[^"]*padding-right:4pt[^"]*padding-bottom:3pt[^"]*padding-left:5pt/);
+      assert.match(result.html, /\.sn-word-ooxml-table[\s\S]*border: none;[\s\S]*padding: 0;/);
     }
   } finally {
     console.warn = previousWarn;
