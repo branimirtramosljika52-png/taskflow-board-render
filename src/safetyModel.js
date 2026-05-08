@@ -2131,6 +2131,20 @@ function createDefaultDocumentTemplateSections() {
   ];
 }
 
+function normalizeDocumentTemplateBuilderDocument(value = []) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  try {
+    return JSON.parse(JSON.stringify(value)).filter((page) => (
+      page && typeof page === "object" && String(page.type || "") === "page"
+    ));
+  } catch {
+    return [];
+  }
+}
+
 function normalizeDocumentTemplateReferenceDocument(value, fallback = null) {
   if (value === null) {
     return null;
@@ -2143,13 +2157,14 @@ function normalizeDocumentTemplateReferenceDocument(value, fallback = null) {
   const fileName = normalizeText(value.fileName ?? value.name);
   const fileType = normalizeText(value.fileType ?? value.mimeType);
   const dataUrl = normalizeText(value.dataUrl);
+  const builderDocument = normalizeDocumentTemplateBuilderDocument(value.builderDocument ?? value.builder_document);
   const lowerFileName = fileName.toLowerCase();
   const lowerFileType = fileType.toLowerCase();
   const isHtmlReference = lowerFileName.endsWith(".html")
     || lowerFileName.endsWith(".htm")
     || lowerFileType.startsWith("text/html");
 
-  if (!fileName || !dataUrl || !isHtmlReference) {
+  if (!fileName || (!dataUrl && builderDocument.length === 0) || !isHtmlReference) {
     return fallback ? normalizeDocumentTemplateReferenceDocument(fallback, null) : null;
   }
 
@@ -2157,6 +2172,7 @@ function normalizeDocumentTemplateReferenceDocument(value, fallback = null) {
     fileName: fileName.slice(0, 255),
     fileType: fileType.slice(0, 160),
     dataUrl,
+    builderDocument,
     updatedAt: normalizeOptionalDateTime(value.updatedAt) ?? isoNow(),
   };
 }

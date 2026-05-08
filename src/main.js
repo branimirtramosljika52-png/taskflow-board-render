@@ -37194,11 +37194,35 @@ function textToDataUrl(text = "", mimeType = "text/html;charset=utf-8") {
 
 async function readDataUrlAsText(dataUrl = "") {
   const source = String(dataUrl || "").trim();
-  if (!source.startsWith("data:")) {
+  if (!source) {
     return "";
   }
-  const response = await fetch(source);
-  return await response.text();
+
+  if (!source.startsWith("data:")) {
+    const response = await fetch(source, { credentials: "same-origin" });
+    if (!response.ok) {
+      throw new Error("HTML predložak nije moguće učitati.");
+    }
+    return await response.text();
+  }
+
+  const commaIndex = source.indexOf(",");
+  if (commaIndex < 0) {
+    return "";
+  }
+
+  const meta = source.slice(5, commaIndex).toLowerCase();
+  const payload = source.slice(commaIndex + 1);
+  if (!meta.includes(";base64")) {
+    return decodeURIComponent(payload);
+  }
+
+  const binary = atob(payload);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new TextDecoder("utf-8").decode(bytes);
 }
 
 function buildOfferLocationSummaryFromSelection(locationIds = [], companyId = "") {
@@ -42724,13 +42748,30 @@ function isDocumentTemplateWordReferenceDocument(referenceDocument = {}) {
     || fileType.includes("wordprocessingml.template");
 }
 
+function normalizeDocumentTemplateHtmlBuilderDocumentPayload(value = []) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  try {
+    return JSON.parse(JSON.stringify(value)).filter((page) => (
+      page && typeof page === "object" && String(page.type || "") === "page"
+    ));
+  } catch {
+    return [];
+  }
+}
+
 function normalizeDocumentTemplateHtmlReferenceDocument(referenceDocument = null) {
   if (!referenceDocument || typeof referenceDocument !== "object" || !isDocumentTemplateHtmlReferenceDocument(referenceDocument)) {
     return null;
   }
 
   const dataUrl = String(referenceDocument.dataUrl || referenceDocument.inlineDataUrl || referenceDocument.storageUrl || "").trim();
-  if (!dataUrl) {
+  const builderDocument = normalizeDocumentTemplateHtmlBuilderDocumentPayload(
+    referenceDocument.builderDocument ?? referenceDocument.builder_document,
+  );
+  if (!dataUrl && builderDocument.length === 0) {
     return null;
   }
 
@@ -42738,6 +42779,7 @@ function normalizeDocumentTemplateHtmlReferenceDocument(referenceDocument = null
     fileName: String(referenceDocument.fileName || referenceDocument.name || "template-reference.html").trim(),
     fileType: String(referenceDocument.fileType || referenceDocument.mimeType || "text/html").trim(),
     dataUrl,
+    builderDocument,
     inlineDataUrl: String(referenceDocument.inlineDataUrl || "").trim(),
     storageUrl: String(referenceDocument.storageUrl || "").trim(),
     storageKey: String(referenceDocument.storageKey || "").trim(),
@@ -42790,14 +42832,31 @@ function syncDocumentTemplateHtmlCodeInputFromReference() {
   }
 
   documentTemplateHtmlCodeInput.placeholder = "HTML je spremljen. Ako želiš izmjenu, zalijepi novu verziju i klikni Spremi HTML kod.";
-  const dataUrl = String(referenceDocument.dataUrl || referenceDocument.inlineDataUrl || "").trim();
-  if (!dataUrl.startsWith("data:")) {
+  const builderDocument = normalizeDocumentTemplateHtmlBuilderDocumentPayload(referenceDocument.builderDocument);
+  if (builderDocument.length > 0) {
+    const htmlText = buildBuilderHtmlFromDocument(builderDocument);
+    documentTemplateHtmlCodeInput.value = htmlText;
+    const engine = ensureDocumentTemplateHtmlBuilderEngine();
+    engine?.loadDocument(builderDocument);
+    documentTemplateHtmlBuilderBlocks = createLegacyBlocksFromBuilderDocument(builderDocument);
+    renderDocumentTemplateHtmlPreviewContent();
+    return;
+  }
+
+  const dataUrl = String(referenceDocument.dataUrl || referenceDocument.inlineDataUrl || referenceDocument.storageUrl || referenceDocument.url || "").trim();
+  if (!dataUrl) {
     return;
   }
 
   void readDataUrlAsText(dataUrl)
     .then((text) => {
-      const currentDataUrl = String(documentTemplateReferenceDraft?.dataUrl || documentTemplateReferenceDraft?.inlineDataUrl || "").trim();
+      const currentDataUrl = String(
+        documentTemplateReferenceDraft?.dataUrl
+        || documentTemplateReferenceDraft?.inlineDataUrl
+        || documentTemplateReferenceDraft?.storageUrl
+        || documentTemplateReferenceDraft?.url
+        || "",
+      ).trim();
       if (currentDataUrl === dataUrl) {
         const htmlText = text.replace(/^\uFEFF/, "");
         documentTemplateHtmlCodeInput.value = htmlText;
@@ -42913,12 +42972,23 @@ function getCurrentDocumentTemplateHtmlCodeForSave() {
     }
     return String(htmlCode || "").trim();
   }
+  const referenceBuilderDocument = normalizeDocumentTemplateHtmlBuilderDocumentPayload(documentTemplateReferenceDraft?.builderDocument);
+  if (referenceBuilderDocument.length > 0 && !String(documentTemplateHtmlCodeInput?.value || "").trim()) {
+    const htmlCode = buildBuilderHtmlFromDocument(referenceBuilderDocument);
+    if (documentTemplateHtmlCodeInput instanceof HTMLTextAreaElement) {
+      documentTemplateHtmlCodeInput.value = htmlCode;
+    }
+    return String(htmlCode || "").trim();
+  }
   return String(documentTemplateHtmlCodeInput?.value || "").trim();
 }
 
 function syncDocumentTemplateReferenceDocumentFromCurrentHtml({ render = false } = {}) {
   const htmlCode = getCurrentDocumentTemplateHtmlCodeForSave();
-  if (!htmlCode) {
+  const builderDocument = documentTemplateHtmlBuilderEngine
+    ? normalizeDocumentTemplateHtmlBuilderDocumentPayload(documentTemplateHtmlBuilderEngine.getDocument?.())
+    : normalizeDocumentTemplateHtmlBuilderDocumentPayload(documentTemplateReferenceDraft?.builderDocument);
+  if (!htmlCode && builderDocument.length === 0) {
     return false;
   }
 
@@ -42934,6 +43004,7 @@ function syncDocumentTemplateReferenceDocumentFromCurrentHtml({ render = false }
     previousReference
     && String(previousReference.fileName || "") === fileName
     && String(previousReference.dataUrl || previousReference.inlineDataUrl || "") === dataUrl
+    && JSON.stringify(previousReference.builderDocument || []) === JSON.stringify(builderDocument)
   ) {
     return false;
   }
@@ -42944,6 +43015,7 @@ function syncDocumentTemplateReferenceDocumentFromCurrentHtml({ render = false }
     fileType: "text/html",
     fileSize: new TextEncoder().encode(htmlCode).length,
     dataUrl,
+    builderDocument,
     updatedAt: new Date().toISOString(),
   });
 

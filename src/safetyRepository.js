@@ -1650,6 +1650,18 @@ function isDocumentTemplateHtmlReferenceDocument(document = {}) {
     || fileType.startsWith("text/html");
 }
 
+function normalizeStoredBuilderDocument(value = []) {
+  const source = Array.isArray(value) ? value : parseJsonArray(value);
+  return source.filter((page) => (
+    page && typeof page === "object" && dbString(page.type) === "page"
+  ));
+}
+
+function stringifyStoredBuilderDocument(value = []) {
+  const builderDocument = normalizeStoredBuilderDocument(value);
+  return builderDocument.length > 0 ? JSON.stringify(builderDocument) : null;
+}
+
 function normalizeMeasurementEquipmentSpecRow(entry = {}) {
   const quantity = dbString(entry.quantity ?? entry.measurementQuantity ?? entry.mjernaVelicina).slice(0, 140);
   const range = dbString(entry.range ?? entry.raspon).slice(0, 140);
@@ -3446,7 +3458,7 @@ async function fetchSnapshotFromConnection(connection) {
            custom_fields_json, equipment_items_json, sections_json,
            reference_document_name, reference_document_type, reference_document_data_url,
            reference_document_storage_provider, reference_document_storage_bucket,
-           reference_document_storage_key, reference_document_url,
+           reference_document_storage_key, reference_document_url, reference_document_builder_json,
            created_by_user_id, created_by_label, created_at, updated_at
     FROM web_document_templates
     ORDER BY
@@ -3496,12 +3508,14 @@ async function fetchSnapshotFromConnection(connection) {
         storageKey: row.reference_document_storage_key ?? "",
         storageUrl: row.reference_document_url ?? "",
       });
+      const builderDocument = normalizeStoredBuilderDocument(row.reference_document_builder_json);
 
-      const referenceDocument = dbString(row.reference_document_name) && dbString(storedReference.dataUrl)
+      const referenceDocument = dbString(row.reference_document_name) && (dbString(storedReference.dataUrl) || builderDocument.length > 0)
         ? {
           fileName: row.reference_document_name ?? "",
           fileType: row.reference_document_type ?? "",
           dataUrl: storedReference.dataUrl,
+          builderDocument,
           storageProvider: storedReference.storageProvider,
           storageBucket: storedReference.storageBucket,
           storageKey: storedReference.storageKey,
@@ -6981,6 +6995,7 @@ export class MySqlSafetyRepository {
         reference_document_storage_bucket VARCHAR(128) NULL,
         reference_document_storage_key VARCHAR(512) NULL,
         reference_document_url TEXT NULL,
+        reference_document_builder_json LONGTEXT NULL,
         created_by_user_id INT NULL,
         created_by_label VARCHAR(160) NOT NULL DEFAULT '',
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -7180,6 +7195,7 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_document_templates", "reference_document_storage_bucket", "VARCHAR(128) NULL AFTER reference_document_storage_provider");
     await ensureColumnExists(this.pool, "web_document_templates", "reference_document_storage_key", "VARCHAR(512) NULL AFTER reference_document_storage_bucket");
     await ensureColumnExists(this.pool, "web_document_templates", "reference_document_url", "TEXT NULL AFTER reference_document_storage_key");
+    await ensureColumnExists(this.pool, "web_document_templates", "reference_document_builder_json", "LONGTEXT NULL AFTER reference_document_url");
     await ensureColumnExists(this.pool, "web_offers", "location_scope", "VARCHAR(16) NOT NULL DEFAULT 'single' AFTER location_id");
     await ensureColumnExists(this.pool, "web_offers", "location_ids_json", "LONGTEXT NULL AFTER location_scope");
     await ensureColumnExists(this.pool, "web_offers", "location_names_json", "LONGTEXT NULL AFTER location_ids_json");
@@ -11623,9 +11639,9 @@ export class MySqlSafetyRepository {
              custom_fields_json, equipment_items_json, sections_json,
              reference_document_name, reference_document_type, reference_document_data_url,
              reference_document_storage_provider, reference_document_storage_bucket,
-             reference_document_storage_key, reference_document_url,
+             reference_document_storage_key, reference_document_url, reference_document_builder_json,
              created_by_user_id, created_by_label)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
@@ -11647,6 +11663,7 @@ export class MySqlSafetyRepository {
           persistedReference?.storageBucket ?? "",
           persistedReference?.storageKey ?? "",
           persistedReference?.storageUrl ?? null,
+          stringifyStoredBuilderDocument(persistedReference?.builderDocument),
           parseNullableInteger(draft.createdByUserId),
           draft.createdByLabel,
         ],
@@ -11704,7 +11721,7 @@ export class MySqlSafetyRepository {
               custom_fields_json = ?, equipment_items_json = ?, sections_json = ?,
               reference_document_name = ?, reference_document_type = ?, reference_document_data_url = ?,
               reference_document_storage_provider = ?, reference_document_storage_bucket = ?,
-              reference_document_storage_key = ?, reference_document_url = ?
+              reference_document_storage_key = ?, reference_document_url = ?, reference_document_builder_json = ?
           WHERE id = ?
         `,
         [
@@ -11726,6 +11743,7 @@ export class MySqlSafetyRepository {
           persistedReference?.storageBucket ?? "",
           persistedReference?.storageKey ?? "",
           persistedReference?.storageUrl ?? null,
+          stringifyStoredBuilderDocument(persistedReference?.builderDocument),
           Number(id),
         ],
       );

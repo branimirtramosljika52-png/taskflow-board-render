@@ -802,6 +802,32 @@ test("document templates keep nested builder data and support filtering", () => 
         fileName: "zapisnik-reference.html",
         fileType: "text/html",
         dataUrl: "data:text/html;base64,PGgxPlRlc3Q8L2gxPg==",
+        builderDocument: [
+          {
+            id: "page-1",
+            type: "page",
+            props: { headerEnabled: true },
+            layout: { width: 794, height: 1123 },
+            styles: {},
+            children: [
+              {
+                id: "grid-1",
+                type: "grid",
+                props: {
+                  rows: 6,
+                  columns: 8,
+                  merges: [{ row: 1, column: 1, rowSpan: 1, colSpan: 3 }],
+                  cells: {
+                    "1:1": { content: "{{TVRTKA}}", styles: { backgroundColor: "#e5e7eb" } },
+                  },
+                },
+                styles: {},
+                layout: { x: 40, y: 120, width: 700, height: 260 },
+                children: [],
+              },
+            ],
+          },
+        ],
       },
       createdByUserId: "user-1",
       createdByLabel: "Ana Admin",
@@ -846,6 +872,8 @@ test("document templates keep nested builder data and support filtering", () => 
   assert.equal(template.equipmentItems.length, 1);
   assert.equal(template.sections[1].rowCount, 8);
   assert.equal(template.referenceDocument?.fileName, "zapisnik-reference.html");
+  assert.equal(template.referenceDocument?.builderDocument?.[0]?.children?.[0]?.props?.merges?.[0]?.colSpan, 3);
+  assert.equal(template.referenceDocument?.builderDocument?.[0]?.children?.[0]?.props?.cells?.["1:1"]?.content, "{{TVRTKA}}");
 
   const updated = updateDocumentTemplate(
     template,
@@ -861,6 +889,7 @@ test("document templates keep nested builder data and support filtering", () => 
   );
 
   assert.equal(updated.status, "active");
+  assert.equal(updated.referenceDocument?.builderDocument?.[0]?.children?.[0]?.props?.merges?.[0]?.colSpan, 3);
 
   const filtered = filterDocumentTemplates([updated], {
     query: "Tvrtka u aplikaciji",
@@ -876,6 +905,25 @@ test("document templates keep nested builder data and support filtering", () => 
 
   const sorted = sortDocumentTemplates([updated]);
   assert.equal(sorted[0].id, "template-1");
+
+  const builderOnlyReference = updateDocumentTemplate(
+    updated,
+    {
+      referenceDocument: {
+        fileName: "builder-only.html",
+        fileType: "text/html",
+        builderDocument: template.referenceDocument.builderDocument,
+      },
+    },
+    {
+      ...state,
+      documentTemplates: [updated],
+    },
+    () => "2026-03-31T14:00:00.000Z",
+  );
+
+  assert.equal(builderOnlyReference.referenceDocument?.dataUrl, "");
+  assert.equal(builderOnlyReference.referenceDocument?.builderDocument?.[0]?.children?.[0]?.props?.merges?.[0]?.colSpan, 3);
 });
 
 test("document templates drop legacy Word reference documents", () => {
