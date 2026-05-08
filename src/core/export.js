@@ -111,12 +111,12 @@ export function buildBuilderHtmlFromDocument(document = [], options = {}) {
   .sn-report-document { display: grid; gap: 0; background: #fff; }
   .sn-report-page { position: relative; overflow: hidden; page-break-after: always; break-after: page; background: #fff; }
   .sn-report-page:last-child { page-break-after: auto; break-after: auto; }
-  .sn-report-page-header { position: absolute; z-index: 30; top: 24px; left: 48px; right: 48px; display: flex; align-items: center; gap: 18px; border-bottom: 2px solid #006fc0; pointer-events: none; }
+  .sn-report-page-header { position: absolute; z-index: 30; top: 24px; left: 48px; right: 48px; display: flex; align-items: center; gap: 18px; border: 1px solid rgba(0, 111, 192, .18); border-bottom: 3px solid #006fc0; border-radius: 7px; background: #fff; padding: 0 12px; pointer-events: none; }
   .sn-report-page-header-logo { flex: 0 0 160px; display: flex; align-items: center; height: 100%; }
   .sn-report-page-header-logo img { max-width: 150px; max-height: calc(100% - 10px); object-fit: contain; }
   .sn-report-page-header-logo-empty { display: inline-grid; place-items: center; width: 92px; height: 34px; border: 1px dashed #94a3b8; color: #64748b; font-size: 10px; text-transform: uppercase; }
   .sn-report-page-header-title { flex: 1; color: #172033; font-size: 13px; font-weight: 700; text-align: right; }
-  .sn-report-page-footer { position: absolute; z-index: 30; left: 48px; right: 48px; bottom: 24px; min-height: 24px; border-top: 1px solid #cbd5e1; padding-top: 6px; color: #475569; font-size: 10px; text-align: center; pointer-events: none; }
+  .sn-report-page-footer { position: absolute; z-index: 30; left: 48px; right: 48px; bottom: 24px; min-height: 34px; border: 1px solid rgba(0, 111, 192, .16); border-top: 2px solid #006fc0; border-radius: 7px; background: #fff; padding: 10px 12px 6px; color: #475569; font-size: 10px; text-align: center; pointer-events: none; }
   .sn-report-positioned { overflow: visible; }
   .sn-report-block { width: 100%; height: 100%; overflow: hidden; }
   .sn-report-block h1, .sn-report-block h2, .sn-report-block p { margin: 0; }

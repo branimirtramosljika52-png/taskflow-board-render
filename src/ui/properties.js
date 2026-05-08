@@ -3,13 +3,15 @@ import { el, field, input, select, clear, button } from "../utils/dom.js";
 import { A4_HEIGHT_PX, A4_WIDTH_PX } from "../utils/math.js";
 
 const GRID_PAGE_MARGIN_PX = 48;
+const GRID_CONTENT_TOP_PX = 112;
+const GRID_CONTENT_BOTTOM_PX = 96;
 const FULL_PAGE_GRID_ROWS = 36;
 const FULL_PAGE_GRID_COLUMNS = 24;
 const FULL_PAGE_GRID_LAYOUT = {
   x: GRID_PAGE_MARGIN_PX,
-  y: GRID_PAGE_MARGIN_PX,
+  y: GRID_CONTENT_TOP_PX,
   width: A4_WIDTH_PX - GRID_PAGE_MARGIN_PX * 2,
-  height: A4_HEIGHT_PX - GRID_PAGE_MARGIN_PX * 2,
+  height: A4_HEIGHT_PX - GRID_CONTENT_TOP_PX - GRID_CONTENT_BOTTOM_PX,
   rotation: 0,
 };
 
@@ -148,6 +150,25 @@ function createFullPageGridProps() {
     cellBackgroundColor: "#ffffff",
     selectedCellIds: [],
     cells: createBlankGridCells(),
+  };
+}
+
+function getGridLayoutForPageChrome(pageProps = {}) {
+  const headerHeight = pageProps.headerEnabled === false
+    ? 0
+    : Math.max(34, Math.min(140, Number(pageProps.headerHeight) || 64));
+  const top = pageProps.headerEnabled === false
+    ? GRID_PAGE_MARGIN_PX
+    : Math.max(GRID_CONTENT_TOP_PX, 24 + headerHeight + 24);
+  const bottom = pageProps.footerType === "none"
+    ? GRID_PAGE_MARGIN_PX
+    : GRID_CONTENT_BOTTOM_PX;
+  return {
+    x: GRID_PAGE_MARGIN_PX,
+    y: top,
+    width: A4_WIDTH_PX - GRID_PAGE_MARGIN_PX * 2,
+    height: Math.max(160, A4_HEIGHT_PX - top - bottom),
+    rotation: 0,
   };
 }
 
@@ -325,7 +346,7 @@ function pageSettingsSection(state, store) {
   ]);
 }
 
-function gridPropertySection(block, updateProps, updateStyles, updateLayout) {
+function gridPropertySection(block, updateProps, updateStyles, updateLayout, activePage) {
   if (block.type !== "grid") {
     return null;
   }
@@ -345,7 +366,7 @@ function gridPropertySection(block, updateProps, updateStyles, updateLayout) {
   return section("Grid", [
     el("div", { className: "sn-builder-grid-action-row" }, [
       createGridAction("Puna A4 mreza", "Postavi praznu mrezu preko cijele A4 stranice unutar margina", () => {
-        updateLayout(FULL_PAGE_GRID_LAYOUT);
+        updateLayout(getGridLayoutForPageChrome(activePage?.props || {}));
         updateStyles({
           borderColor: "#9ca3af",
           borderStyle: "dashed",
@@ -482,7 +503,7 @@ export function renderPropertiesPanel(container, store) {
           else updateProps({ content: value });
         })),
       ]),
-      gridPropertySection(block, updateProps, updateStyles, updateLayout),
+      gridPropertySection(block, updateProps, updateStyles, updateLayout, getActivePage(state)),
       section("Layout", [
         el("div", { className: "sn-builder-property-grid" }, [
           field("X", numberInput(block.layout?.x, (value) => updateLayout({ x: value }))),
