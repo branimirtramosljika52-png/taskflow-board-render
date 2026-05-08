@@ -3,7 +3,7 @@ import { el, field, input, select, clear, button } from "../utils/dom.js";
 import { A4_HEIGHT_PX, A4_WIDTH_PX } from "../utils/math.js";
 
 const GRID_PAGE_MARGIN_PX = 48;
-const GRID_CONTENT_TOP_PX = 112;
+const GRID_CONTENT_TOP_PX = 198;
 const GRID_CONTENT_BOTTOM_PX = 96;
 const FULL_PAGE_GRID_ROWS = 36;
 const FULL_PAGE_GRID_COLUMNS = 24;
@@ -162,10 +162,17 @@ function createFullPageGridProps() {
   };
 }
 
+function getPageHeaderHeight(props = {}) {
+  const hasWideLogo = props.headerLogoEnabled !== false && String(props.headerLogoDataUrl || "").trim();
+  const minimum = hasWideLogo ? 150 : 34;
+  const fallback = hasWideLogo ? 150 : 64;
+  return Math.max(minimum, Math.min(220, Number(props.headerHeight) || fallback));
+}
+
 function getGridLayoutForPageChrome(pageProps = {}) {
   const headerHeight = pageProps.headerEnabled === false
     ? 0
-    : Math.max(34, Math.min(140, Number(pageProps.headerHeight) || 64));
+    : getPageHeaderHeight(pageProps);
   const top = pageProps.headerEnabled === false
     ? GRID_PAGE_MARGIN_PX
     : Math.max(GRID_CONTENT_TOP_PX, 24 + headerHeight + 24);
@@ -427,6 +434,7 @@ function pageSettingsSection(state, store) {
       field("Header", checkboxInput(headerProps.headerEnabled !== false, (value) => updateHeaderProps({ headerEnabled: value }))),
       field("Header svugdje", checkboxInput(firstProps.headerSameEveryPage !== false, (value) => {
         const sourceProps = activePage.props || {};
+        const sharedHeaderProps = { ...firstProps, ...sourceProps };
         updatePageProps(firstPage, {
           headerSameEveryPage: value,
           ...(value ? {
@@ -435,12 +443,15 @@ function pageSettingsSection(state, store) {
             headerLogoDataUrl: sourceProps.headerLogoDataUrl || firstProps.headerLogoDataUrl || "",
             headerAutoLogo: sourceProps.headerAutoLogo !== false,
             headerTitle: sourceProps.headerTitle || "",
-            headerHeight: Number(sourceProps.headerHeight) || Number(firstProps.headerHeight) || 64,
+            headerHeight: getPageHeaderHeight(sharedHeaderProps),
           } : {}),
         });
       })),
       field("Logo", checkboxInput(headerProps.headerLogoEnabled !== false, (value) => updateHeaderProps({ headerLogoEnabled: value }))),
-      field("Header height", numberInput(headerProps.headerHeight || 64, (value) => updateHeaderProps({ headerHeight: Math.max(34, Math.min(140, value)) }))),
+      field("Header height", numberInput(getPageHeaderHeight(headerProps), (value) => {
+        const hasWideLogo = headerProps.headerLogoEnabled !== false && String(headerProps.headerLogoDataUrl || "").trim();
+        updateHeaderProps({ headerHeight: Math.max(hasWideLogo ? 150 : 34, Math.min(220, value)) });
+      })),
     ]),
     field("Header title", textInput(headerProps.headerTitle || "", (value) => updateHeaderProps({ headerTitle: value }))),
     el("div", { className: "sn-builder-property-grid" }, [

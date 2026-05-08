@@ -53,18 +53,26 @@ function getSharedPageProps(page = {}, firstPage = {}, group = "header") {
   return firstProps[sameKey] === false ? pageProps : { ...pageProps, ...firstProps };
 }
 
+function getPageHeaderHeight(props = {}) {
+  const hasWideLogo = props.headerLogoEnabled !== false && String(props.headerLogoDataUrl || "").trim();
+  const minimum = hasWideLogo ? 150 : 34;
+  const fallback = hasWideLogo ? 150 : 64;
+  return Math.max(minimum, Math.min(220, Number(props.headerHeight) || fallback));
+}
+
 function renderPageHeader(page = {}, firstPage = {}) {
   const props = getSharedPageProps(page, firstPage, "header");
   if (props.headerEnabled === false) return "";
-  const headerHeight = Math.max(34, Math.min(140, Number(props.headerHeight) || 64));
   const logoDataUrl = String(props.headerLogoDataUrl || "").trim();
+  const hasLogo = props.headerLogoEnabled !== false && Boolean(logoDataUrl);
+  const headerHeight = getPageHeaderHeight(props);
   const logo = props.headerLogoEnabled === false
     ? ""
     : logoDataUrl
       ? `<img src="${escapeHtml(logoDataUrl)}" alt="Logo tvrtke">`
       : `<span class="sn-report-page-header-logo-empty">Logo</span>`;
   const title = escapeHtml(String(props.headerTitle || "").trim());
-  return `<div class="sn-report-page-header" style="height:${headerHeight}px"><div class="sn-report-page-header-logo">${logo}</div><div class="sn-report-page-header-title">${title}</div></div>`;
+  return `<div class="sn-report-page-header${hasLogo ? " has-logo" : ""}${title ? " has-title" : ""}" style="height:${headerHeight}px"><div class="sn-report-page-header-logo">${logo}</div><div class="sn-report-page-header-title">${title}</div></div>`;
 }
 
 function getFooterContent(props = {}, pageIndex = 0, pageCount = 1) {
@@ -112,10 +120,15 @@ export function buildBuilderHtmlFromDocument(document = [], options = {}) {
   .sn-report-page { position: relative; overflow: hidden; page-break-after: always; break-after: page; background: #fff; }
   .sn-report-page:last-child { page-break-after: auto; break-after: auto; }
   .sn-report-page-header { position: absolute; z-index: 30; top: 24px; left: 48px; right: 48px; display: flex; align-items: center; gap: 18px; border: 1px solid rgba(0, 111, 192, .18); border-bottom: 3px solid #006fc0; border-radius: 7px; background: #fff; padding: 0 12px; pointer-events: none; }
+  .sn-report-page-header.has-logo { gap: 0; border: 0; border-radius: 0; background: transparent; padding: 0; }
   .sn-report-page-header-logo { flex: 0 0 160px; display: flex; align-items: center; height: 100%; }
+  .sn-report-page-header.has-logo .sn-report-page-header-logo { flex: 1 1 100%; width: 100%; justify-content: center; }
   .sn-report-page-header-logo img { max-width: 150px; max-height: calc(100% - 10px); object-fit: contain; }
+  .sn-report-page-header.has-logo .sn-report-page-header-logo img { width: 100%; height: 100%; max-width: none; max-height: none; object-fit: contain; object-position: center; }
   .sn-report-page-header-logo-empty { display: inline-grid; place-items: center; width: 92px; height: 34px; border: 1px dashed #94a3b8; color: #64748b; font-size: 10px; text-transform: uppercase; }
   .sn-report-page-header-title { flex: 1; color: #172033; font-size: 13px; font-weight: 700; text-align: right; }
+  .sn-report-page-header.has-logo .sn-report-page-header-title:empty { display: none; }
+  .sn-report-page-header.has-logo .sn-report-page-header-title:not(:empty) { position: absolute; right: 0; bottom: 0; background: rgba(255,255,255,.82); padding: 3px 6px; }
   .sn-report-page-footer { position: absolute; z-index: 30; left: 48px; right: 48px; bottom: 24px; min-height: 34px; border: 1px solid rgba(0, 111, 192, .16); border-top: 2px solid #006fc0; border-radius: 7px; background: #fff; padding: 10px 12px 6px; color: #475569; font-size: 10px; text-align: center; pointer-events: none; }
   .sn-report-positioned { overflow: visible; }
   .sn-report-block { width: 100%; height: 100%; overflow: hidden; }

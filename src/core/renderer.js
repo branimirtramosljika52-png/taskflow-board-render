@@ -102,13 +102,21 @@ function getSharedPageProps(page = {}, firstPage = {}, group = "header") {
   return firstProps[sameKey] === false ? pageProps : { ...pageProps, ...firstProps };
 }
 
+function getPageHeaderHeight(props = {}) {
+  const hasWideLogo = props.headerLogoEnabled !== false && String(props.headerLogoDataUrl || "").trim();
+  const minimum = hasWideLogo ? 150 : 34;
+  const fallback = hasWideLogo ? 150 : 64;
+  return Math.max(minimum, Math.min(220, Number(props.headerHeight) || fallback));
+}
+
 function renderPageHeader(page = {}, firstPage = {}) {
   const props = getSharedPageProps(page, firstPage, "header");
   if (props.headerEnabled === false) {
     return null;
   }
-  const headerHeight = Math.max(34, Math.min(140, Number(props.headerHeight) || 64));
   const logoDataUrl = String(props.headerLogoDataUrl || "").trim();
+  const hasLogo = props.headerLogoEnabled !== false && Boolean(logoDataUrl);
+  const headerHeight = getPageHeaderHeight(props);
   const logo = props.headerLogoEnabled === false
     ? null
     : logoDataUrl
@@ -116,7 +124,7 @@ function renderPageHeader(page = {}, firstPage = {}) {
       : el("span", { className: "sn-builder-page-header-logo-empty" }, "Logo");
   const title = String(props.headerTitle || "").trim();
   return el("div", {
-    className: "sn-builder-page-header",
+    className: `sn-builder-page-header${hasLogo ? " has-logo" : ""}${title ? " has-title" : ""}`,
     style: { height: `${headerHeight}px` },
   }, [
     el("div", { className: "sn-builder-page-header-logo" }, logo ? [logo] : []),

@@ -3,7 +3,7 @@ import { createId } from "../utils/ids.js";
 import { A4_HEIGHT_PX, A4_WIDTH_PX } from "../utils/math.js";
 
 const GRID_PAGE_MARGIN_PX = 48;
-const GRID_CONTENT_TOP_PX = 112;
+const GRID_CONTENT_TOP_PX = 198;
 const GRID_CONTENT_BOTTOM_PX = 96;
 const FULL_PAGE_GRID_ROWS = 36;
 const FULL_PAGE_GRID_COLUMNS = 24;
@@ -107,7 +107,7 @@ const defaultProps = {
     headerAutoLogo: true,
     headerLogoDataUrl: "",
     headerTitle: "",
-    headerHeight: 64,
+    headerHeight: 150,
     footerType: "page-number",
     footerSameEveryPage: true,
     footerText: "",
