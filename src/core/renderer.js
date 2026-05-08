@@ -43,6 +43,10 @@ function renderBlockNode(block = {}, context) {
   });
   applyLayout(node, block.layout || {});
   applyBlockStyles(node, block.styles || {});
+  if (block.type === "grid") {
+    node.style.backgroundColor = "transparent";
+    node.style.backgroundImage = "";
+  }
   if (block.props?.hidden) {
     node.classList.add("is-hidden-layer");
   }

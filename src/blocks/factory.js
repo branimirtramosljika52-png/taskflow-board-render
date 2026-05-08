@@ -338,7 +338,7 @@ function gridCellStyle(block, props, cell, options = {}) {
     : "0";
   const finalBorderWidth = isExport ? (explicitCellBorderWidth || "0") : (explicitCellBorderWidth || borderWidth);
   return {
-    backgroundColor: cell.backgroundColor || props.cellBackgroundColor || "transparent",
+    backgroundColor: cell.backgroundColor || "transparent",
     color: cell.color || block.styles?.color || "#172033",
     textAlign: cell.textAlign || block.styles?.textAlign || "left",
     fontWeight: cell.fontWeight || block.styles?.fontWeight || "",
@@ -635,7 +635,7 @@ export function createBlockDefinition({ type, label, category, icon }) {
     },
     toHtml(block) {
       const exportStyles = type === "grid"
-        ? { ...(block.styles || {}), borderWidth: "0" }
+        ? { ...(block.styles || {}), backgroundColor: "transparent", borderWidth: "0" }
         : (block.styles || {});
       const styles = inlineStyles(exportStyles);
       return `<div class="sn-report-block sn-report-${type}" style="${styles}">${contentToHtml(block)}</div>`;

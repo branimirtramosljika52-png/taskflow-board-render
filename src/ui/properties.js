@@ -366,8 +366,7 @@ function gridPropertySection(block, updateProps, updateStyles, updateLayout, act
   const normalizedCells = Array.isArray(block.props?.cells) ? block.props.cells.map(normalizeGridCell) : [];
   const selectedIds = getGridSelectedCellIds(block, rows, columns);
   const firstSelectedCell = selectedIds.length ? normalizedCells[selectedIds[0]] : null;
-  const cellBackgroundColor = block.props?.cellBackgroundColor || block.styles?.backgroundColor || "#ffffff";
-  const selectedBackgroundColor = firstSelectedCell?.backgroundColor || cellBackgroundColor || "#ffffff";
+  const selectedBackgroundColor = firstSelectedCell?.backgroundColor || "#ffffff";
   const selectedRect = getGridSelectionRect(selectedIds, columns);
   const selectedText = selectedIds.length && selectedRect
     ? selectedIds.length === 1
@@ -411,14 +410,10 @@ function gridPropertySection(block, updateProps, updateStyles, updateLayout, act
         });
       })),
       field("Linije pomoci", checkboxInput(showBorders, (value) => updateProps({ showBorders: value }))),
-      field("Pozadina celije", colorInput(cellBackgroundColor, (value) => {
-        updateProps({ cellBackgroundColor: value });
-        updateStyles({ backgroundColor: value });
-      })),
       field("Boja linija", colorInput(block.styles?.borderColor || "#cbd5e1", (value) => updateStyles({ borderColor: value }))),
       field("Gap", textInput(block.styles?.gap || "0px", (value) => updateStyles({ gap: value }))),
     ]),
-    el("p", { className: "sn-builder-helper-note" }, "Linije mreze su samo vizualna pomoc u builderu. U HTML/PDF ispisu se ne ispisuju kao kockice."),
+    el("p", { className: "sn-builder-helper-note" }, "Linije mreze su samo vizualna pomoc. Pozadina se mijenja samo na oznacenim celijama, ne na cijelom gridu."),
     field("Sirine stupaca", textInput((block.props?.columnWidths || []).join(", "), (value) => {
       updateProps({ columnWidths: normalizeGridTrackList(value, columns, "1fr") });
     })),
@@ -560,7 +555,7 @@ export function renderPropertiesPanel(container, store) {
         field("Color", colorInput(block.styles?.borderColor || "#cbd5e1", (value) => updateStyles({ borderColor: value }))),
         field("Radius", textInput(block.styles?.borderRadius || "0", (value) => updateStyles({ borderRadius: value }))),
       ]),
-      section("Background", [
+      block.type === "grid" ? el("template") : section("Background", [
         field("Color", colorInput(block.styles?.backgroundColor || "#ffffff", (value) => updateStyles({ backgroundColor: value }))),
         field("Gradient", textInput(block.styles?.backgroundImage || "", (value) => updateStyles({ backgroundImage: value }))),
         field("Opacity", textInput(block.styles?.opacity || "1", (value) => updateStyles({ opacity: value }))),
