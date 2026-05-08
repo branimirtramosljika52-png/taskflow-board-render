@@ -42904,20 +42904,16 @@ function setDocumentTemplateReferenceDocument(referenceDocument = null) {
 }
 
 function getCurrentDocumentTemplateHtmlCodeForSave() {
-  const currentCodeInputValue = String(documentTemplateHtmlCodeInput?.value || "");
-  const htmlCode = documentTemplateHtmlBuilderEngine
-    ? buildDocumentTemplateHtmlFromBuilderBlocks()
-    : currentCodeInputValue;
-  const codeInputHasManualChange = documentTemplateHtmlBuilderEngine
-    && currentCodeInputValue.trim()
-    && currentCodeInputValue.trim() !== String(htmlCode || "").trim();
-  if (codeInputHasManualChange) {
-    return currentCodeInputValue.trim();
+  if (documentTemplateHtmlBuilderEngine) {
+    const builderDocument = documentTemplateHtmlBuilderEngine.getDocument?.();
+    const htmlCode = buildBuilderHtmlFromDocument(builderDocument);
+    documentTemplateHtmlBuilderBlocks = createLegacyBlocksFromBuilderDocument(builderDocument);
+    if (documentTemplateHtmlCodeInput instanceof HTMLTextAreaElement && documentTemplateHtmlCodeInput.value !== htmlCode) {
+      documentTemplateHtmlCodeInput.value = htmlCode;
+    }
+    return String(htmlCode || "").trim();
   }
-  if (documentTemplateHtmlCodeInput instanceof HTMLTextAreaElement && documentTemplateHtmlCodeInput.value !== htmlCode) {
-    documentTemplateHtmlCodeInput.value = htmlCode;
-  }
-  return String(htmlCode || "").trim();
+  return String(documentTemplateHtmlCodeInput?.value || "").trim();
 }
 
 function syncDocumentTemplateReferenceDocumentFromCurrentHtml({ render = false } = {}) {
