@@ -652,10 +652,35 @@ function choicePropertySection(block, updateProps) {
   ]);
 }
 
+function getPropertiesScrollElement(container) {
+  let node = container;
+  while (node instanceof HTMLElement) {
+    const style = window.getComputedStyle(node);
+    const scrollable = /(auto|scroll)/.test(`${style.overflowY} ${style.overflow}`);
+    if (scrollable) {
+      return node;
+    }
+    node = node.parentElement;
+  }
+  return container;
+}
+
+function restoreScrollPosition(element, scrollTop) {
+  if (!(element instanceof HTMLElement)) {
+    return;
+  }
+  const maxScrollTop = Math.max(0, element.scrollHeight - element.clientHeight);
+  element.scrollTop = Math.min(Math.max(0, scrollTop), maxScrollTop);
+}
+
 export function renderPropertiesPanel(container, store) {
-  store.subscribe((state) => {
+  let lastSelectedId = "";
+  store.subscribe((state, reason) => {
+    const selectedId = state.selectedIds[0] || "";
+    const scrollElement = getPropertiesScrollElement(container);
+    const previousScrollTop = scrollElement.scrollTop;
+    const preserveScroll = reason !== "init" && selectedId === lastSelectedId;
     clear(container);
-    const selectedId = state.selectedIds[0];
     const block = selectedId ? getBlockById(state.document, selectedId) : null;
     container.append(el("div", { className: "sn-builder-panel-head" }, [
       el("span", {}, "Properties"),
@@ -667,6 +692,11 @@ export function renderPropertiesPanel(container, store) {
     }
     if (!block) {
       container.append(el("div", { className: "sn-builder-empty-state" }, "Oznaci element na stranici za uredjivanje blokova. Header i footer su iznad."));
+      if (preserveScroll) {
+        restoreScrollPosition(scrollElement, previousScrollTop);
+        requestAnimationFrame(() => restoreScrollPosition(scrollElement, previousScrollTop));
+      }
+      lastSelectedId = selectedId;
       return;
     }
 
@@ -728,5 +758,10 @@ export function renderPropertiesPanel(container, store) {
         field("Hidden", checkboxInput(block.props?.hidden, (value) => updateProps({ hidden: value }))),
       ]),
     );
+    if (preserveScroll) {
+      restoreScrollPosition(scrollElement, previousScrollTop);
+      requestAnimationFrame(() => restoreScrollPosition(scrollElement, previousScrollTop));
+    }
+    lastSelectedId = selectedId;
   });
 }
