@@ -687,6 +687,15 @@
   font-weight: 700;
 }
 
+.sn-builder-grid-cell-controls {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid rgba(31, 122, 224, .2);
+  border-radius: 8px;
+  background: rgba(239, 246, 255, .46);
+}
+
 .sn-builder-helper-note {
   margin: 0;
   border: 1px dashed rgba(37, 99, 235, .28);

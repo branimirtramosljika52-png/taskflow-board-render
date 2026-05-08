@@ -198,6 +198,111 @@ function getGridSelectionRect(selectedIds = [], columns = 1) {
   };
 }
 
+function parseCssLengthPx(value, relativeTo = 0, fallback = null) {
+  const text = String(value ?? "").trim().toLowerCase().replace(",", ".");
+  if (!text || text.endsWith("fr")) {
+    return fallback;
+  }
+  const number = Number.parseFloat(text);
+  if (!Number.isFinite(number)) {
+    return fallback;
+  }
+  if (text.endsWith("cm")) return number * 37.7952755906;
+  if (text.endsWith("mm")) return number * 3.7795275591;
+  if (text.endsWith("pt")) return number * 1.3333333333;
+  if (text.endsWith("in")) return number * 96;
+  if (text.endsWith("%")) return (Number(relativeTo) || 0) * (number / 100);
+  return number;
+}
+
+function getGridGapPixels(gap = "0px") {
+  const parts = String(gap || "0px").trim().split(/\s+/).filter(Boolean);
+  const rowGap = parseCssLengthPx(parts[0] || "0px", 0, 0) || 0;
+  const columnGap = parseCssLengthPx(parts[1] || parts[0] || "0px", 0, 0) || 0;
+  return { row: rowGap, column: columnGap };
+}
+
+function getGridTrackPixels(trackList = [], count = 1, totalSize = 1, gapSize = 0, fallback = "1fr") {
+  const tracks = normalizeGridTrackList(trackList, count, fallback);
+  const parsed = tracks.map((track) => {
+    const text = String(track || fallback).trim().toLowerCase().replace(",", ".");
+    const frMatch = text.match(/^([0-9]*\.?[0-9]+)?fr$/);
+    if (frMatch) {
+      return { type: "fr", value: Number.parseFloat(frMatch[1] || "1") || 1 };
+    }
+    const px = parseCssLengthPx(text, totalSize, null);
+    if (Number.isFinite(px)) {
+      return { type: "fixed", value: Math.max(1, px) };
+    }
+    return { type: "fr", value: 1 };
+  });
+  const gapTotal = Math.max(0, count - 1) * Math.max(0, Number(gapSize) || 0);
+  const fixedTotal = parsed
+    .filter((entry) => entry.type === "fixed")
+    .reduce((sum, entry) => sum + entry.value, 0);
+  const frTotal = parsed
+    .filter((entry) => entry.type === "fr")
+    .reduce((sum, entry) => sum + entry.value, 0);
+  const remaining = Math.max(1, (Number(totalSize) || 1) - gapTotal - fixedTotal);
+  const frUnit = frTotal > 0 ? remaining / frTotal : remaining / Math.max(1, count);
+  return parsed.map((entry) => (
+    entry.type === "fixed"
+      ? entry.value
+      : Math.max(1, entry.value * frUnit)
+  ));
+}
+
+function sumRange(values = [], start = 0, span = 1, gap = 0) {
+  const count = Math.max(1, Number(span) || 1);
+  let total = Math.max(0, count - 1) * Math.max(0, Number(gap) || 0);
+  for (let offset = 0; offset < count; offset += 1) {
+    total += Number(values[start + offset]) || 0;
+  }
+  return total;
+}
+
+function setGridTrackRangePixels(trackList = [], count = 1, start = 0, span = 1, totalPx = 1, gap = 0, fallback = "1fr") {
+  const next = normalizeGridTrackList(trackList, count, fallback);
+  const safeSpan = Math.max(1, Math.min(count - start, Number(span) || 1));
+  const innerSize = Math.max(4, (Number(totalPx) || 1) - Math.max(0, safeSpan - 1) * Math.max(0, Number(gap) || 0));
+  const perTrack = Math.max(4, Math.round(innerSize / safeSpan));
+  for (let offset = 0; offset < safeSpan; offset += 1) {
+    next[start + offset] = `${perTrack}px`;
+  }
+  return next;
+}
+
+function resetGridTrackRange(trackList = [], count = 1, start = 0, span = 1, fallback = "1fr") {
+  const next = normalizeGridTrackList(trackList, count, fallback);
+  const safeSpan = Math.max(1, Math.min(count - start, Number(span) || 1));
+  for (let offset = 0; offset < safeSpan; offset += 1) {
+    next[start + offset] = fallback;
+  }
+  return next;
+}
+
+function getSingleSelectedGridCell(block = {}, rows = 1, columns = 1, cells = []) {
+  const selectedIds = getGridSelectedCellIds(block, rows, columns);
+  if (selectedIds.length !== 1) {
+    return null;
+  }
+  let index = selectedIds[0];
+  if (cells[index]?.hidden && Number.isInteger(cells[index]?.masterIndex)) {
+    index = cells[index].masterIndex;
+  }
+  const cell = cells[index] || normalizeGridCell();
+  const row = Math.floor(index / columns);
+  const column = index % columns;
+  return {
+    index,
+    row,
+    column,
+    rowSpan: Math.max(1, Math.min(rows - row, cell.rowSpan || 1)),
+    colSpan: Math.max(1, Math.min(columns - column, cell.colSpan || 1)),
+    cell,
+  };
+}
+
 function mergeGridCells(block, rows, columns) {
   const cells = Array.isArray(block.props?.cells) ? block.props.cells.map(normalizeGridCell) : resizeGridCells(block, rows, columns);
   const selectedIds = getGridSelectedCellIds(block, rows, columns).filter((index) => !cells[index]?.hidden);
@@ -363,16 +468,75 @@ function gridPropertySection(block, updateProps, updateStyles, updateLayout, act
   const rows = clampGridCount(block.props?.rows, 4);
   const columns = clampGridCount(block.props?.columns, 4);
   const showBorders = block.props?.showBorders !== false;
-  const normalizedCells = Array.isArray(block.props?.cells) ? block.props.cells.map(normalizeGridCell) : [];
+  const normalizedCells = resizeGridCells(block, rows, columns);
   const selectedIds = getGridSelectedCellIds(block, rows, columns);
   const firstSelectedCell = selectedIds.length ? normalizedCells[selectedIds[0]] : null;
   const selectedBackgroundColor = firstSelectedCell?.backgroundColor || "#ffffff";
+  const selectedTextColor = firstSelectedCell?.color || block.styles?.color || "#172033";
+  const selectedBorderColor = firstSelectedCell?.borderColor || block.styles?.borderColor || "#9ca3af";
+  const selectedPadding = firstSelectedCell?.padding || block.styles?.padding || "6px";
   const selectedRect = getGridSelectionRect(selectedIds, columns);
   const selectedText = selectedIds.length && selectedRect
     ? selectedIds.length === 1
       ? `R${selectedRect.minRow + 1}C${selectedRect.minColumn + 1}`
       : `${selectedIds.length} celija: R${selectedRect.minRow + 1}C${selectedRect.minColumn + 1} - R${selectedRect.maxRow + 1}C${selectedRect.maxColumn + 1}`
-    : "Prvi klik oznaci grid, drugi klik bira celije";
+    : "Klikni celiju za njezinu sirinu, visinu i stil";
+  const selectedCell = getSingleSelectedGridCell(block, rows, columns, normalizedCells);
+  const gapPixels = getGridGapPixels(block.styles?.gap || "0px");
+  const columnPixels = getGridTrackPixels(block.props?.columnWidths, columns, Number(block.layout?.width) || FULL_PAGE_GRID_LAYOUT.width, gapPixels.column, "1fr");
+  const rowPixels = getGridTrackPixels(block.props?.rowHeights, rows, Number(block.layout?.height) || FULL_PAGE_GRID_LAYOUT.height, gapPixels.row, "1fr");
+  const selectedCellControls = selectedCell
+    ? el("div", { className: "sn-builder-grid-cell-controls" }, [
+      el("div", { className: "sn-builder-property-grid" }, [
+        field("Sirina celije", numberInput(
+          sumRange(columnPixels, selectedCell.column, selectedCell.colSpan, gapPixels.column),
+          (value) => {
+            updateProps({
+              columnWidths: setGridTrackRangePixels(
+                block.props?.columnWidths,
+                columns,
+                selectedCell.column,
+                selectedCell.colSpan,
+                Math.max(8, value),
+                gapPixels.column,
+                "1fr",
+              ),
+            });
+          },
+        )),
+        field("Visina celije", numberInput(
+          sumRange(rowPixels, selectedCell.row, selectedCell.rowSpan, gapPixels.row),
+          (value) => {
+            updateProps({
+              rowHeights: setGridTrackRangePixels(
+                block.props?.rowHeights,
+                rows,
+                selectedCell.row,
+                selectedCell.rowSpan,
+                Math.max(8, value),
+                gapPixels.row,
+                "1fr",
+              ),
+            });
+          },
+        )),
+      ]),
+      el("div", { className: "sn-builder-grid-action-row" }, [
+        createGridAction("Auto sirina", "Vrati sirinu odabrane celije u ravnomjerni grid", () => {
+          updateProps({
+            columnWidths: resetGridTrackRange(block.props?.columnWidths, columns, selectedCell.column, selectedCell.colSpan, "1fr"),
+          });
+        }),
+        createGridAction("Auto visina", "Vrati visinu odabrane celije u ravnomjerni grid", () => {
+          updateProps({
+            rowHeights: resetGridTrackRange(block.props?.rowHeights, rows, selectedCell.row, selectedCell.rowSpan, "1fr"),
+          });
+        }),
+      ]),
+    ])
+    : el("p", { className: "sn-builder-helper-note" }, selectedIds.length > 1
+      ? "Za tocnu sirinu i visinu oznaci jednu celiju. Merge i stilovi i dalje rade nad vise oznacenih celija."
+      : "Klikni jednu celiju na mrezi i ovdje ces dobiti njezinu sirinu i visinu.");
 
   return section("Pomocna mreza", [
     el("div", { className: "sn-builder-grid-action-row" }, [
@@ -413,14 +577,9 @@ function gridPropertySection(block, updateProps, updateStyles, updateLayout, act
       field("Boja linija", colorInput(block.styles?.borderColor || "#cbd5e1", (value) => updateStyles({ borderColor: value }))),
       field("Gap", textInput(block.styles?.gap || "0px", (value) => updateStyles({ gap: value }))),
     ]),
-    el("p", { className: "sn-builder-helper-note" }, "Linije mreze su samo vizualna pomoc. Pozadina se mijenja samo na oznacenim celijama, ne na cijelom gridu."),
-    field("Sirine stupaca", textInput((block.props?.columnWidths || []).join(", "), (value) => {
-      updateProps({ columnWidths: normalizeGridTrackList(value, columns, "1fr") });
-    })),
-    field("Visine redaka", textInput((block.props?.rowHeights || []).join(", "), (value) => {
-      updateProps({ rowHeights: normalizeGridTrackList(value, rows, "34px") });
-    })),
+    el("p", { className: "sn-builder-helper-note" }, "Linije mreze su samo vizualna pomoc. Sirina i visina se mijenjaju na odabranoj celiji, a pozadina samo na oznacenim celijama."),
     el("div", { className: "sn-builder-grid-selection-label" }, selectedText),
+    selectedCellControls,
     el("div", { className: "sn-builder-grid-action-row" }, [
       createGridAction("Merge", "Spoji označene ćelije", () => {
         const patch = mergeGridCells(block, rows, columns);
@@ -468,15 +627,15 @@ function gridPropertySection(block, updateProps, updateStyles, updateLayout, act
         const patch = patchSelectedGridCells(block, rows, columns, { backgroundColor: value });
         if (patch) updateProps(patch);
       })),
-      field("Tekst", colorInput(block.styles?.color || "#172033", (value) => {
+      field("Tekst", colorInput(selectedTextColor, (value) => {
         const patch = patchSelectedGridCells(block, rows, columns, { color: value });
         if (patch) updateProps(patch);
       })),
-      field("Obrub", colorInput(block.styles?.borderColor || "#9ca3af", (value) => {
+      field("Obrub", colorInput(selectedBorderColor, (value) => {
         const patch = patchSelectedGridCells(block, rows, columns, { borderColor: value });
         if (patch) updateProps(patch);
       })),
-      field("Padding", textInput("8px", (value) => {
+      field("Padding", textInput(selectedPadding, (value) => {
         const patch = patchSelectedGridCells(block, rows, columns, { padding: value });
         if (patch) updateProps(patch);
       })),

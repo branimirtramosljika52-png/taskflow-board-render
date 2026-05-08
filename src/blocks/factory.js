@@ -436,10 +436,6 @@ function renderGrid(block, context) {
 
     event.preventDefault();
     event.stopPropagation();
-    if (!context.state?.selectedIds?.includes(block.id)) {
-      context.selectBlock?.(block.id);
-      return;
-    }
     const anchorIndex = event.shiftKey && props.selectedCellIds.length > 0
       ? props.selectedCellIds.at(-1)
       : startIndex;
@@ -448,6 +444,7 @@ function renderGrid(block, context) {
       startIndex,
       anchorIndex,
       currentIndex: startIndex,
+      wasBlockSelected: context.state?.selectedIds?.includes(block.id),
       additive: event.ctrlKey || event.metaKey,
       dragged: false,
     };
@@ -474,7 +471,7 @@ function renderGrid(block, context) {
     const session = dragSession;
     const selectedCellIds = resolveDragSelection(session.currentIndex, true);
     dragSession = null;
-    if (!context.state?.selectedIds?.includes(block.id)) {
+    if (!session.wasBlockSelected) {
       context.selectBlock?.(block.id);
     }
     context.updateBlock(block.id, {
