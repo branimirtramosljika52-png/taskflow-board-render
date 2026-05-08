@@ -43412,6 +43412,12 @@ async function persistDocumentTemplateDraft({
   const method = isEditing ? "PATCH" : "POST";
   const currentId = String(documentTemplateIdInput?.value || "");
   const currentTitle = String(documentTemplateTitleInput?.value || "").trim();
+  const workspaceTabBeforeSave = state.documentTemplateWorkspaceTab || "builder";
+  const sidebarPanelsBeforeSave = {
+    referenceCollapsed: Boolean(state.documentTemplateSidebarPanels?.referenceCollapsed),
+    placeholdersCollapsed: Boolean(state.documentTemplateSidebarPanels?.placeholdersCollapsed),
+  };
+  const referenceDraftBeforeSave = normalizeDocumentTemplateHtmlReferenceDocument(documentTemplateReferenceDraft);
 
   setDocumentTemplateMessage("");
 
@@ -43432,9 +43438,29 @@ async function persistDocumentTemplateDraft({
     renderDocumentTemplateModule();
     const savedTemplate = resolveSavedDocumentTemplate({ currentId, title: currentTitle });
     if (savedTemplate) {
-      hydrateDocumentTemplateForm(savedTemplate, {
-        preserveRuntimeContext: hasDocumentTemplateRuntimeContext(),
-      });
+      state.activeDocumentTemplateId = String(savedTemplate.id || currentId || "");
+      if (documentTemplateIdInput) {
+        documentTemplateIdInput.value = state.activeDocumentTemplateId;
+      }
+
+      const savedReference = normalizeDocumentTemplateHtmlReferenceDocument(savedTemplate.referenceDocument);
+      const localReference = normalizeDocumentTemplateHtmlReferenceDocument(documentTemplateReferenceDraft) ?? referenceDraftBeforeSave;
+      if (localReference || savedReference) {
+        documentTemplateReferenceDraft = normalizeDocumentTemplateHtmlReferenceDocument({
+          ...(savedReference ?? {}),
+          ...(localReference ?? {}),
+          builderDocument: localReference?.builderDocument?.length
+            ? localReference.builderDocument
+            : (savedReference?.builderDocument ?? []),
+        });
+      }
+
+      state.documentTemplateWorkspaceTab = workspaceTabBeforeSave;
+      state.documentTemplateSidebarPanels = sidebarPanelsBeforeSave;
+      invalidateDocumentTemplateDraftCache();
+      renderDocumentTemplateReferenceMeta();
+      renderDocumentTemplatePreviewContent();
+      syncDocumentTemplateEditorChrome();
     } else {
       syncDocumentTemplateEditorChrome();
     }
