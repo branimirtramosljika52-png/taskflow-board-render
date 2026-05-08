@@ -7396,7 +7396,8 @@ async function apiBinaryRequest(path, options = {}, retryOnAuthFailure = true) {
   };
 }
 
-function applySnapshot(payload) {
+function applySnapshot(payload, options = {}) {
+  const preserveDocumentTemplateEditorDraft = options?.preserveDocumentTemplateEditorDraft ?? null;
   state.storage = payload.storage;
   state.organizations = payload.organizations ?? [];
   state.companies = payload.companies ?? [];
@@ -7588,6 +7589,7 @@ function applySnapshot(payload) {
   setConnectionStatus();
   setSyncError("");
   render();
+  restoreDocumentTemplateEditorDraftAfterSnapshot(preserveDocumentTemplateEditorDraft);
   syncDocumentTemplateHtmlBuilderBranding();
   ensureChatContext();
 }
@@ -7706,7 +7708,7 @@ function hasSessionIdleExpired() {
   return (Date.now() - sessionLastActivityAtMs) >= SESSION_IDLE_TIMEOUT_MS;
 }
 
-async function runMutation(callback, errorTarget) {
+async function runMutation(callback, errorTarget, options = {}) {
   try {
     if (errorTarget) {
       setInlineMessage(errorTarget, "");
@@ -7714,7 +7716,7 @@ async function runMutation(callback, errorTarget) {
 
     const payload = await callback();
     if (payload && typeof payload === "object" && Object.prototype.hasOwnProperty.call(payload, "storage")) {
-      applySnapshot(payload);
+      applySnapshot(payload, options);
     }
     return true;
   } catch (error) {
@@ -41885,6 +41887,19 @@ function ensureDocumentTemplateHtmlBuilderEngine() {
     getTokenOptions: () => getDocumentTemplateHtmlBuilderTokenOptions(),
     getLogoDataUrl: () => getDocumentTemplateBuilderLogoDataUrl(),
     onMessage: (message, options) => setDocumentTemplateMessage(message, options),
+    onSave: ({ document: builderDocument, html }) => {
+      invalidateDocumentTemplateDraftCache();
+      documentTemplateHtmlBuilderBlocks = createLegacyBlocksFromBuilderDocument(builderDocument);
+      selectedDocumentTemplateHtmlBuilderBlockIds = new Set();
+      if (documentTemplateHtmlCodeInput instanceof HTMLTextAreaElement && documentTemplateHtmlCodeInput.value !== html) {
+        documentTemplateHtmlCodeInput.value = html;
+      }
+      syncDocumentTemplateReferenceDocumentFromCurrentHtml({ render: true });
+      void persistDocumentTemplateDraft({
+        successMessage: "Template i HTML builder su spremljeni.",
+        scrollToTop: false,
+      });
+    },
     onChange: ({ document: builderDocument, html }) => {
       invalidateDocumentTemplateDraftCache();
       documentTemplateHtmlBuilderBlocks = createLegacyBlocksFromBuilderDocument(builderDocument);
@@ -43026,6 +43041,106 @@ function syncDocumentTemplateReferenceDocumentFromCurrentHtml({ render = false }
   return true;
 }
 
+function cloneDocumentTemplateBuilderDocument(document = []) {
+  return normalizeDocumentTemplateHtmlBuilderDocumentPayload(document);
+}
+
+function captureDocumentTemplateEditorDraftForSnapshot() {
+  if (!state.documentTemplateEditorOpen || isDocumentTemplateRuntimeFillMode()) {
+    return null;
+  }
+
+  const builderDocument = documentTemplateHtmlBuilderEngine
+    ? cloneDocumentTemplateBuilderDocument(documentTemplateHtmlBuilderEngine.getDocument?.())
+    : cloneDocumentTemplateBuilderDocument(documentTemplateReferenceDraft?.builderDocument);
+  const htmlCode = builderDocument.length > 0
+    ? buildBuilderHtmlFromDocument(builderDocument)
+    : String(documentTemplateHtmlCodeInput?.value || "").trim();
+  const referenceDraft = normalizeDocumentTemplateHtmlReferenceDocument(documentTemplateReferenceDraft);
+
+  return {
+    templateId: String(documentTemplateIdInput?.value || state.activeDocumentTemplateId || "").trim(),
+    title: String(documentTemplateTitleInput?.value || "").trim(),
+    workspaceTab: state.documentTemplateWorkspaceTab || "builder",
+    htmlPreviewCollapsed: Boolean(state.documentTemplateHtmlPreviewCollapsed),
+    sidebarPanels: {
+      referenceCollapsed: Boolean(state.documentTemplateSidebarPanels?.referenceCollapsed),
+      placeholdersCollapsed: Boolean(state.documentTemplateSidebarPanels?.placeholdersCollapsed),
+    },
+    referenceDraft,
+    builderDocument,
+    htmlCode,
+    editorScrollTop: Number(documentTemplateEditorBody?.scrollTop || 0),
+  };
+}
+
+function restoreDocumentTemplateEditorDraftAfterSnapshot(capture = null) {
+  if (!capture || !state.documentTemplateEditorOpen || isDocumentTemplateRuntimeFillMode()) {
+    return;
+  }
+
+  const builderDocument = cloneDocumentTemplateBuilderDocument(capture.builderDocument);
+  const htmlCode = builderDocument.length > 0
+    ? buildBuilderHtmlFromDocument(builderDocument)
+    : String(capture.htmlCode || "").trim();
+  const referenceDraft = normalizeDocumentTemplateHtmlReferenceDocument(capture.referenceDraft);
+  const baseName = sanitizeDocumentTemplateFileName(
+    capture.title || documentTemplateTitleInput?.value || documentTemplateOutputFileNameInput?.value || referenceDraft?.fileName || "zapisnik-template",
+    "zapisnik-template",
+  ).replace(/\.(html?|docx?|pdf)$/i, "");
+
+  if (capture.templateId && documentTemplateIdInput) {
+    documentTemplateIdInput.value = capture.templateId;
+    state.activeDocumentTemplateId = capture.templateId;
+  }
+
+  state.documentTemplateWorkspaceTab = capture.workspaceTab || "builder";
+  state.documentTemplateHtmlPreviewCollapsed = Boolean(capture.htmlPreviewCollapsed);
+  state.documentTemplateSidebarPanels = {
+    referenceCollapsed: Boolean(capture.sidebarPanels?.referenceCollapsed),
+    placeholdersCollapsed: Boolean(capture.sidebarPanels?.placeholdersCollapsed),
+  };
+
+  if (builderDocument.length > 0 || htmlCode) {
+    documentTemplateReferenceDraft = normalizeDocumentTemplateHtmlReferenceDocument({
+      ...(referenceDraft ?? {}),
+      fileName: referenceDraft?.fileName || `${baseName}.html`,
+      fileType: "text/html",
+      fileSize: new TextEncoder().encode(htmlCode).length,
+      dataUrl: htmlCode ? textToDataUrl(htmlCode) : (referenceDraft?.dataUrl || referenceDraft?.inlineDataUrl || ""),
+      builderDocument,
+      updatedAt: referenceDraft?.updatedAt || new Date().toISOString(),
+    });
+  }
+
+  documentTemplateHtmlBuilderBlocks = builderDocument.length > 0
+    ? createLegacyBlocksFromBuilderDocument(builderDocument)
+    : documentTemplateHtmlBuilderBlocks;
+  if (documentTemplateHtmlCodeInput instanceof HTMLTextAreaElement && htmlCode) {
+    documentTemplateHtmlCodeInput.value = htmlCode;
+  }
+  const engine = ensureDocumentTemplateHtmlBuilderEngine();
+  if (engine && builderDocument.length > 0) {
+    engine.loadDocument(builderDocument);
+  }
+
+  invalidateDocumentTemplateDraftCache();
+  syncDocumentTemplateWorkspaceTabs();
+  syncDocumentTemplateHtmlPreviewVisibility();
+  renderDocumentTemplateReferenceMeta();
+  renderDocumentTemplatePreviewContent();
+  syncDocumentTemplateEditorChrome();
+  if (documentTemplateEditorBody && Number.isFinite(capture.editorScrollTop)) {
+    documentTemplateEditorBody.scrollTop = Math.max(0, capture.editorScrollTop);
+    requestAnimationFrame(() => {
+      documentTemplateEditorBody.scrollTop = Math.max(0, capture.editorScrollTop);
+    });
+    window.setTimeout(() => {
+      documentTemplateEditorBody.scrollTop = Math.max(0, capture.editorScrollTop);
+    }, 0);
+  }
+}
+
 function buildDocumentTemplateDraft() {
   if (documentTemplateDraftCache) {
     return documentTemplateDraftCache;
@@ -43418,6 +43533,7 @@ async function persistDocumentTemplateDraft({
     placeholdersCollapsed: Boolean(state.documentTemplateSidebarPanels?.placeholdersCollapsed),
   };
   const referenceDraftBeforeSave = normalizeDocumentTemplateHtmlReferenceDocument(documentTemplateReferenceDraft);
+  const editorDraftBeforeSnapshot = captureDocumentTemplateEditorDraftForSnapshot();
 
   setDocumentTemplateMessage("");
 
@@ -43429,13 +43545,16 @@ async function persistDocumentTemplateDraft({
     const success = await runMutation(() => apiRequest(path, {
       method,
       body: buildDocumentTemplatePayload(),
-    }), documentTemplateError);
+    }), documentTemplateError, {
+      preserveDocumentTemplateEditorDraft: editorDraftBeforeSnapshot,
+    });
     if (!success) {
       scrollDocumentTemplateMessageIntoView();
       return false;
     }
 
     renderDocumentTemplateModule();
+    restoreDocumentTemplateEditorDraftAfterSnapshot(editorDraftBeforeSnapshot);
     const savedTemplate = resolveSavedDocumentTemplate({ currentId, title: currentTitle });
     if (savedTemplate) {
       state.activeDocumentTemplateId = String(savedTemplate.id || currentId || "");
@@ -43444,19 +43563,24 @@ async function persistDocumentTemplateDraft({
       }
 
       const savedReference = normalizeDocumentTemplateHtmlReferenceDocument(savedTemplate.referenceDocument);
-      const localReference = normalizeDocumentTemplateHtmlReferenceDocument(documentTemplateReferenceDraft) ?? referenceDraftBeforeSave;
+      const localReference = normalizeDocumentTemplateHtmlReferenceDocument(documentTemplateReferenceDraft)
+        ?? referenceDraftBeforeSave
+        ?? editorDraftBeforeSnapshot?.referenceDraft;
       if (localReference || savedReference) {
         documentTemplateReferenceDraft = normalizeDocumentTemplateHtmlReferenceDocument({
           ...(savedReference ?? {}),
           ...(localReference ?? {}),
-          builderDocument: localReference?.builderDocument?.length
-            ? localReference.builderDocument
-            : (savedReference?.builderDocument ?? []),
+          builderDocument: editorDraftBeforeSnapshot?.builderDocument?.length
+            ? editorDraftBeforeSnapshot.builderDocument
+            : localReference?.builderDocument?.length
+              ? localReference.builderDocument
+              : (savedReference?.builderDocument ?? []),
         });
       }
 
       state.documentTemplateWorkspaceTab = workspaceTabBeforeSave;
       state.documentTemplateSidebarPanels = sidebarPanelsBeforeSave;
+      restoreDocumentTemplateEditorDraftAfterSnapshot(editorDraftBeforeSnapshot);
       invalidateDocumentTemplateDraftCache();
       renderDocumentTemplateReferenceMeta();
       renderDocumentTemplatePreviewContent();

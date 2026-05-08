@@ -188,6 +188,7 @@ export function createDocumentReportBuilder({
   getTokenOptions = () => [],
   onChange = null,
   onMessage = null,
+  onSave = null,
   onExportPdf = null,
   getLogoDataUrl = () => "",
 } = {}) {
@@ -249,7 +250,13 @@ export function createDocumentReportBuilder({
 
   renderTopbar(topbar, store, {
     onSave: () => {
+      const state = store.getState();
+      const html = buildBuilderHtmlFromDocument(state.document);
       store.saveDocument();
+      if (onSave) {
+        onSave({ document: state.document, html });
+        return;
+      }
       onMessage?.("Builder dokument je spremljen lokalno.", { type: "success" });
     },
     onDownloadHtml: () => triggerTextDownload(buildBuilderHtmlFromDocument(store.getState().document), "safenexus-template.html"),
