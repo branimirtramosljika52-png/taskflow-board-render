@@ -41862,6 +41862,7 @@ function ensureDocumentTemplateHtmlBuilderEngine() {
     getLogoDataUrl: () => getDocumentTemplateBuilderLogoDataUrl(),
     onMessage: (message, options) => setDocumentTemplateMessage(message, options),
     onChange: ({ document: builderDocument, html }) => {
+      invalidateDocumentTemplateDraftCache();
       documentTemplateHtmlBuilderBlocks = createLegacyBlocksFromBuilderDocument(builderDocument);
       selectedDocumentTemplateHtmlBuilderBlockIds = new Set();
       if (documentTemplateHtmlCodeInput instanceof HTMLTextAreaElement && documentTemplateHtmlCodeInput.value !== html) {
@@ -42902,6 +42903,61 @@ function setDocumentTemplateReferenceDocument(referenceDocument = null) {
   renderDocumentTemplatePreviewContent();
 }
 
+function getCurrentDocumentTemplateHtmlCodeForSave() {
+  const currentCodeInputValue = String(documentTemplateHtmlCodeInput?.value || "");
+  const htmlCode = documentTemplateHtmlBuilderEngine
+    ? buildDocumentTemplateHtmlFromBuilderBlocks()
+    : currentCodeInputValue;
+  const codeInputHasManualChange = documentTemplateHtmlBuilderEngine
+    && currentCodeInputValue.trim()
+    && currentCodeInputValue.trim() !== String(htmlCode || "").trim();
+  if (codeInputHasManualChange) {
+    return currentCodeInputValue.trim();
+  }
+  if (documentTemplateHtmlCodeInput instanceof HTMLTextAreaElement && documentTemplateHtmlCodeInput.value !== htmlCode) {
+    documentTemplateHtmlCodeInput.value = htmlCode;
+  }
+  return String(htmlCode || "").trim();
+}
+
+function syncDocumentTemplateReferenceDocumentFromCurrentHtml({ render = false } = {}) {
+  const htmlCode = getCurrentDocumentTemplateHtmlCodeForSave();
+  if (!htmlCode) {
+    return false;
+  }
+
+  const previousReference = normalizeDocumentTemplateHtmlReferenceDocument(documentTemplateReferenceDraft);
+  const baseName = sanitizeDocumentTemplateFileName(
+    documentTemplateTitleInput?.value || documentTemplateOutputFileNameInput?.value || previousReference?.fileName || "zapisnik-template",
+    "zapisnik-template",
+  ).replace(/\.(html?|docx?|pdf)$/i, "");
+  const fileName = previousReference?.fileName || `${baseName}.html`;
+  const dataUrl = textToDataUrl(htmlCode);
+
+  if (
+    previousReference
+    && String(previousReference.fileName || "") === fileName
+    && String(previousReference.dataUrl || previousReference.inlineDataUrl || "") === dataUrl
+  ) {
+    return false;
+  }
+
+  invalidateDocumentTemplateDraftCache();
+  documentTemplateReferenceDraft = normalizeDocumentTemplateHtmlReferenceDocument({
+    fileName,
+    fileType: "text/html",
+    fileSize: new TextEncoder().encode(htmlCode).length,
+    dataUrl,
+    updatedAt: new Date().toISOString(),
+  });
+
+  if (render) {
+    renderDocumentTemplateReferenceMeta();
+    renderDocumentTemplatePreviewContent();
+  }
+  return true;
+}
+
 function buildDocumentTemplateDraft() {
   if (documentTemplateDraftCache) {
     return documentTemplateDraftCache;
@@ -43280,6 +43336,8 @@ async function persistDocumentTemplateDraft({
     scrollDocumentTemplateMessageIntoView();
     return false;
   }
+
+  syncDocumentTemplateReferenceDocumentFromCurrentHtml();
 
   const isEditing = Boolean(documentTemplateIdInput?.value);
   const path = isEditing ? `/document-templates/${documentTemplateIdInput.value}` : "/document-templates";
@@ -93752,27 +93810,17 @@ documentTemplateReferenceUploadButton?.addEventListener("click", () => {
 });
 
 documentTemplateHtmlSaveButton?.addEventListener("click", () => {
-  const htmlCode = String(documentTemplateHtmlCodeInput?.value || "").trim();
-  if (!htmlCode) {
+  if (!getCurrentDocumentTemplateHtmlCodeForSave()) {
     setDocumentTemplateMessage("Zalijepi HTML kod predloška prije spremanja.");
     return;
   }
 
-  const baseName = sanitizeDocumentTemplateFileName(
-    documentTemplateTitleInput?.value || documentTemplateOutputFileNameInput?.value || "zapisnik-template",
-    "zapisnik-template",
-  ).replace(/\.(html?|docx?|pdf)$/i, "");
-  setDocumentTemplateReferenceDocument({
-    fileName: `${baseName}.html`,
-    fileType: "text/html",
-    fileSize: new TextEncoder().encode(htmlCode).length,
-    dataUrl: textToDataUrl(htmlCode),
-    updatedAt: new Date().toISOString(),
-  });
-  setDocumentTemplateMessage("HTML predložak je spremljen u template.", { type: "success" });
+  syncDocumentTemplateReferenceDocumentFromCurrentHtml({ render: true });
+  setDocumentTemplateMessage("HTML predložak je spremljen u draft. Klikni Spremi template za trajno spremanje.", { type: "success" });
 });
 
 documentTemplateHtmlCodeInput?.addEventListener("input", () => {
+  invalidateDocumentTemplateDraftCache();
   const htmlCode = String(documentTemplateHtmlCodeInput.value || "");
   if (htmlCode.includes(DOCUMENT_TEMPLATE_HTML_BUILDER_METADATA_PREFIX)) {
     hydrateDocumentTemplateHtmlBuilderFromCode(htmlCode);
