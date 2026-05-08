@@ -66,19 +66,21 @@ function getGridEditTarget(block = {}) {
   const selectedIds = (Array.isArray(block.props?.selectedCellIds) ? block.props.selectedCellIds : [])
     .map((value) => Number.parseInt(value, 10))
     .filter((value) => Number.isInteger(value) && value >= 0 && value < rows * columns);
-  const selectedIndex = selectedIds.length ? selectedIds[0] : null;
-  if (selectedIndex == null) {
+  const fallbackIndex = cells.findIndex((cell) => !cell.hidden);
+  const selectedIndex = selectedIds.length ? selectedIds[0] : fallbackIndex;
+  if (selectedIndex == null || selectedIndex < 0) {
     return null;
   }
   const cellIndex = cells[selectedIndex]?.hidden && Number.isInteger(cells[selectedIndex]?.masterIndex)
     ? cells[selectedIndex].masterIndex
     : selectedIndex;
-  if (!cells[cellIndex] || cells[cellIndex].hidden) {
+  const visibleCellIndex = cells[cellIndex] && !cells[cellIndex].hidden ? cellIndex : fallbackIndex;
+  if (visibleCellIndex == null || visibleCellIndex < 0 || !cells[visibleCellIndex]) {
     return null;
   }
   return {
-    cellIndex,
-    selectedIds: selectedIds.length ? selectedIds : [cellIndex],
+    cellIndex: visibleCellIndex,
+    selectedIds: selectedIds.length ? selectedIds : [visibleCellIndex],
     cells,
     rows,
     columns,
@@ -117,9 +119,18 @@ function getTableEditTarget(block = {}) {
   }
   const rows = normalizeTableRows(block);
   const selected = block.props?.selectedCell || {};
-  const rowIndex = Number.parseInt(selected.rowIndex, 10);
-  const columnIndex = Number.parseInt(selected.columnIndex, 10);
-  if (!Number.isInteger(rowIndex) || !Number.isInteger(columnIndex) || rowIndex < 0 || columnIndex < 0) {
+  const parsedRowIndex = Number.parseInt(selected.rowIndex, 10);
+  const parsedColumnIndex = Number.parseInt(selected.columnIndex, 10);
+  const hasSelectedCell = Number.isInteger(parsedRowIndex)
+    && Number.isInteger(parsedColumnIndex)
+    && parsedRowIndex >= 0
+    && parsedColumnIndex >= 0
+    && rows[parsedRowIndex]
+    && parsedColumnIndex < rows[parsedRowIndex].length;
+  const firstRowIndex = rows.findIndex((row) => row.length > 0);
+  const rowIndex = hasSelectedCell ? parsedRowIndex : firstRowIndex;
+  const columnIndex = hasSelectedCell ? parsedColumnIndex : 0;
+  if (rowIndex < 0 || columnIndex < 0) {
     return null;
   }
   if (!rows[rowIndex] || columnIndex >= rows[rowIndex].length) {

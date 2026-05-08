@@ -425,6 +425,7 @@ function renderGrid(block, context) {
       className: `sn-builder-grid-cell${selectedSet.has(index) ? " is-selected" : ""}`,
       contenteditable: "true",
       spellcheck: "false",
+      tabindex: selectedSet.has(index) ? "0" : "-1",
       dataset: {
         gridCellIndex: index,
         gridCellRow: row + 1,
