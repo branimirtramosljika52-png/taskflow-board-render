@@ -100,6 +100,11 @@ const OPENAI_MODEL_TIERS = Object.freeze([
 const OPENAI_MAX_INLINE_FILE_COUNT = 5;
 const OPENAI_MAX_TEXT_FILE_CHARS = 60000;
 const OPENAI_MAX_CONTEXT_JSON_CHARS = 80000;
+const OPENWEATHER_DEFAULT_API_BASE_URL = "https://api.openweathermap.org/data/2.5";
+const OPENWEATHER_MAX_CITIES = 8;
+const OPENWEATHER_TIMEOUT_MS = 9000;
+const OPENWEATHER_STRONG_WIND_MS = 13.9;
+const OPENWEATHER_DANGEROUS_WIND_MS = 20.8;
 const DOCUMENT_TEMPLATE_WORD_HTML_MAX_BYTES = Math.max(
   1024 * 1024,
   Number(process.env.DOCUMENT_TEMPLATE_WORD_HTML_MAX_BYTES || 28 * 1024 * 1024) || 28 * 1024 * 1024,
@@ -188,6 +193,288 @@ function buildOpenAiStatusPayload() {
     modelTiers: buildOpenAiModelTierPayload(config),
     endpoint: config.endpoint,
     tokenSpend: config.liveCallsEnabled ? "enabled" : "disabled",
+  };
+}
+
+function getOpenWeatherRuntimeConfig() {
+  const apiBaseUrl = String(process.env.OPENWEATHER_API_BASE_URL || OPENWEATHER_DEFAULT_API_BASE_URL)
+    .trim()
+    .replace(/\/+$/, "");
+  const apiKey = String(process.env.OPENWEATHER_API_KEY || "").trim();
+  return {
+    apiBaseUrl,
+    apiKey,
+    keyConfigured: Boolean(apiKey),
+  };
+}
+
+function normalizeOpenWeatherCityName(value = "") {
+  return String(value ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, 80);
+}
+
+function getOpenWeatherRequestedCities(url) {
+  const repeatedCities = url.searchParams.getAll("city");
+  const packedCities = String(url.searchParams.get("cities") || "")
+    .split("|")
+    .map((item) => item.trim());
+  const seen = new Set();
+  return [...repeatedCities, ...packedCities]
+    .map(normalizeOpenWeatherCityName)
+    .filter((city) => {
+      const key = city.toLowerCase();
+      if (!city || seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    })
+    .slice(0, OPENWEATHER_MAX_CITIES);
+}
+
+function titleCaseOpenWeatherDescription(value = "") {
+  const text = String(value || "").trim();
+  if (!text) {
+    return "";
+  }
+  return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
+}
+
+function getOpenWeatherCondition(weather = {}) {
+  const weatherId = Number(weather.id);
+  const main = String(weather.main || "").trim().toLowerCase();
+  if (weatherId >= 200 && weatherId < 300) return "thunderstorm";
+  if (weatherId >= 300 && weatherId < 400) return "drizzle";
+  if (weatherId >= 500 && weatherId < 600) return "rain";
+  if (weatherId >= 600 && weatherId < 700) return "snow";
+  if (weatherId >= 700 && weatherId < 800) return main || "mist";
+  if (weatherId === 800 || main === "clear") return "clear";
+  if (weatherId > 800 || main === "clouds") return "clouds";
+  return main || "clear";
+}
+
+function buildOpenWeatherUrl(path, params = {}) {
+  const config = getOpenWeatherRuntimeConfig();
+  const url = new URL(`${config.apiBaseUrl}${path}`);
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") {
+      url.searchParams.set(key, String(value));
+    }
+  });
+  url.searchParams.set("appid", config.apiKey);
+  url.searchParams.set("units", "metric");
+  url.searchParams.set("lang", "hr");
+  return url;
+}
+
+async function fetchOpenWeatherJson(url) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), OPENWEATHER_TIMEOUT_MS);
+  try {
+    const result = await fetch(url, {
+      headers: { accept: "application/json" },
+      signal: controller.signal,
+    });
+    const responseText = await result.text();
+    let payload = null;
+    if (responseText) {
+      try {
+        payload = JSON.parse(responseText);
+      } catch {
+        payload = null;
+      }
+    }
+
+    if (!result.ok) {
+      const error = new Error(payload?.message || "OpenWeather poziv nije uspio.");
+      error.statusCode = result.status === 401 ? 503 : result.status || 502;
+      throw error;
+    }
+
+    return payload || {};
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      const timeoutError = new Error("OpenWeather se nije javio na vrijeme.");
+      timeoutError.statusCode = 504;
+      throw timeoutError;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function mapOpenWeatherCurrent(payload = {}) {
+  const weather = Array.isArray(payload.weather) ? payload.weather[0] || {} : {};
+  return {
+    condition: getOpenWeatherCondition(weather),
+    description: titleCaseOpenWeatherDescription(weather.description || weather.main || ""),
+    temp: Number(payload.main?.temp ?? 0),
+    feelsLike: Number(payload.main?.feels_like ?? payload.main?.temp ?? 0),
+    humidity: Number(payload.main?.humidity ?? 0),
+    pressure: Number(payload.main?.pressure ?? 0),
+    windSpeed: Number(payload.wind?.speed ?? 0),
+    windGust: Number(payload.wind?.gust ?? 0),
+    windDeg: Number(payload.wind?.deg ?? 0),
+    observedAt: payload.dt ? new Date(Number(payload.dt) * 1000).toISOString() : new Date().toISOString(),
+    weatherId: Number(weather.id ?? 0),
+  };
+}
+
+function mapOpenWeatherForecastItem(item = {}) {
+  const weather = Array.isArray(item.weather) ? item.weather[0] || {} : {};
+  return {
+    time: item.dt ? new Date(Number(item.dt) * 1000).toISOString() : "",
+    condition: getOpenWeatherCondition(weather),
+    description: titleCaseOpenWeatherDescription(weather.description || weather.main || ""),
+    temp: Number(item.main?.temp ?? 0),
+    feelsLike: Number(item.main?.feels_like ?? item.main?.temp ?? 0),
+    humidity: Number(item.main?.humidity ?? 0),
+    windSpeed: Number(item.wind?.speed ?? 0),
+    windGust: Number(item.wind?.gust ?? 0),
+    rainMm: Number(item.rain?.["3h"] ?? item.rain?.["1h"] ?? 0),
+    snowMm: Number(item.snow?.["3h"] ?? item.snow?.["1h"] ?? 0),
+    weatherId: Number(weather.id ?? 0),
+  };
+}
+
+function getOpenWeatherForecastItems(payload = {}) {
+  const list = Array.isArray(payload.list) ? payload.list : [];
+  return list
+    .slice(0, 16)
+    .map(mapOpenWeatherForecastItem)
+    .filter((item) => item.time)
+    .slice(0, 8);
+}
+
+function buildOpenWeatherAlerts(current = {}, forecast = []) {
+  const alerts = [];
+  const nextDayForecast = forecast.filter((item) => {
+    if (!item.time) {
+      return false;
+    }
+    return new Date(item.time).getTime() - Date.now() <= 24 * 60 * 60 * 1000;
+  });
+  const maxWind = Math.max(
+    Number(current.windSpeed || 0),
+    Number(current.windGust || 0),
+    ...nextDayForecast.flatMap((item) => [Number(item.windSpeed || 0), Number(item.windGust || 0)]),
+  );
+  const hasStorm = current.condition === "thunderstorm"
+    || nextDayForecast.some((item) => item.condition === "thunderstorm");
+
+  if (maxWind >= OPENWEATHER_DANGEROUS_WIND_MS) {
+    alerts.push({
+      type: "wind",
+      level: "danger",
+      title: "Opasan vjetar",
+      message: `U prognozi se pojavljuju udari do ${Math.round(maxWind * 3.6)} km/h.`,
+    });
+  } else if (maxWind >= OPENWEATHER_STRONG_WIND_MS) {
+    alerts.push({
+      type: "wind",
+      level: "warning",
+      title: "Jak vjetar",
+      message: `Očekuje se vjetar do ${Math.round(maxWind * 3.6)} km/h.`,
+    });
+  }
+
+  if (hasStorm) {
+    alerts.push({
+      type: "storm",
+      level: "danger",
+      title: "Moguća oluja",
+      message: "OpenWeather najavljuje grmljavinu u iduća 24 sata.",
+    });
+  }
+
+  return alerts.slice(0, 4);
+}
+
+function buildOpenWeatherSummary(current = {}, alerts = []) {
+  if (alerts.some((alert) => alert.type === "storm")) {
+    return "Prati razvoj vremena zbog moguće grmljavine i naglih promjena.";
+  }
+  if (alerts.some((alert) => alert.type === "wind")) {
+    return "Vrijeme je dobro pratiti zbog pojačanog vjetra.";
+  }
+  if (current.condition === "rain" || current.condition === "drizzle") {
+    return "Kiša je u fokusu, uz provjeru vjetra i vidljivosti prije izlaska na teren.";
+  }
+  if (current.condition === "snow") {
+    return "Snijeg i niže temperature mogu utjecati na izlazak na teren.";
+  }
+  if (["mist", "fog", "haze"].includes(current.condition)) {
+    return "Smanjena vidljivost može utjecati na put i rad na lokaciji.";
+  }
+  return "Trenutni uvjeti su stabilni za brzi pregled prije odlaska na teren.";
+}
+
+async function fetchOpenWeatherCity(city) {
+  const currentPayload = await fetchOpenWeatherJson(buildOpenWeatherUrl("/weather", { q: city }));
+  const forecastPayload = await fetchOpenWeatherJson(buildOpenWeatherUrl("/forecast", { q: city }));
+  const current = mapOpenWeatherCurrent(currentPayload);
+  const forecast = getOpenWeatherForecastItems(forecastPayload);
+  const alerts = buildOpenWeatherAlerts(current, forecast);
+
+  return {
+    query: city,
+    name: currentPayload.name || city,
+    country: currentPayload.sys?.country || forecastPayload.city?.country || "",
+    lat: Number(currentPayload.coord?.lat ?? forecastPayload.city?.coord?.lat ?? 0),
+    lon: Number(currentPayload.coord?.lon ?? forecastPayload.city?.coord?.lon ?? 0),
+    timezone: Number(currentPayload.timezone ?? forecastPayload.city?.timezone ?? 0),
+    current,
+    forecast,
+    alerts,
+    summary: buildOpenWeatherSummary(current, alerts),
+  };
+}
+
+async function buildOpenWeatherPayload(cities = []) {
+  const config = getOpenWeatherRuntimeConfig();
+  if (!config.keyConfigured) {
+    const error = new Error("OpenWeather API ključ nije postavljen na serveru.");
+    error.statusCode = 503;
+    throw error;
+  }
+
+  const normalizedCities = cities.slice(0, OPENWEATHER_MAX_CITIES);
+  if (normalizedCities.length === 0) {
+    const error = new Error("Odaberi barem jedan grad.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const settled = await Promise.allSettled(normalizedCities.map((city) => fetchOpenWeatherCity(city)));
+  const successfulCities = [];
+  const errors = [];
+  settled.forEach((result, index) => {
+    if (result.status === "fulfilled") {
+      successfulCities.push(result.value);
+      return;
+    }
+    errors.push({
+      city: normalizedCities[index],
+      message: result.reason?.message || "Vrijeme nije dostupno.",
+    });
+  });
+
+  if (successfulCities.length === 0) {
+    const error = new Error(errors[0]?.message || "Vrijeme trenutno nije dostupno.");
+    error.statusCode = Number(settled.find((item) => item.status === "rejected")?.reason?.statusCode || 502);
+    throw error;
+  }
+
+  return {
+    ok: true,
+    provider: "openweather",
+    generatedAt: new Date().toISOString(),
+    maxCities: OPENWEATHER_MAX_CITIES,
+    cities: successfulCities,
+    errors,
   };
 }
 
@@ -5213,6 +5500,15 @@ async function handleApiRequest(request, response, url) {
 
     if (request.method === "GET" && url.pathname === "/api/bootstrap") {
       await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/weather") {
+      try {
+        sendJson(response, 200, await buildOpenWeatherPayload(getOpenWeatherRequestedCities(url)));
+      } catch (error) {
+        sendError(response, Number(error?.statusCode || 502), error?.message || "Vrijeme trenutno nije dostupno.");
+      }
       return true;
     }
 

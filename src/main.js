@@ -809,6 +809,11 @@ const USER_PRESENCE_KEY_PREFIX = "s360-user-presence:";
 const WORK_ORDER_FILTER_STATE_KEY_PREFIX = "s360-work-order-filter-state:";
 const WORK_ORDER_FILTER_PRESETS_KEY_PREFIX = "s360-work-order-filter-presets:";
 const NOTIFICATIONS_RESOLVED_KEY_PREFIX = "s360-notifications-resolved:";
+const WEATHER_CITIES_STORAGE_PREFIX = "safenexus.weather.cities:";
+const WEATHER_ACTIVE_CITY_STORAGE_PREFIX = "safenexus.weather.activeCity:";
+const WEATHER_MAX_CITIES = 8;
+const WEATHER_REFRESH_INTERVAL_MS = 10 * 60 * 1000;
+const WEATHER_DEFAULT_CITIES = Object.freeze(["Zagreb"]);
 const DEFAULT_MEASUREMENT_EQUIPMENT_NOTIFICATION_SETTINGS = Object.freeze({
   leadDaysBeforeExpiry: 30,
   repeatEveryDays: 7,
@@ -2519,6 +2524,16 @@ let userPresenceMenuOpen = false;
 let notificationsMenuOpen = false;
 let remindersShortcutMenuOpen = false;
 let todoShortcutMenuOpen = false;
+let weatherMenuOpen = false;
+let weatherCities = [];
+let weatherActiveCity = "";
+let weatherItems = [];
+let weatherStatus = "idle";
+let weatherErrorMessage = "";
+let weatherLoadedAt = 0;
+let weatherRefreshTimerId = 0;
+let weatherPreferenceScope = "";
+let weatherAutoRefreshQueued = false;
 let topbarHelpMenuOpen = false;
 let topbarHelpMenuSignature = "";
 let chatPollTimerId = null;
@@ -2624,6 +2639,20 @@ const topbarTodoPanelMeta = document.querySelector("#topbar-todo-panel-meta");
 const topbarTodoPanelList = document.querySelector("#topbar-todo-panel-list");
 const topbarTodoPanelEmpty = document.querySelector("#topbar-todo-panel-empty");
 const topbarTodoOpenAllButton = document.querySelector("#topbar-todo-open-all");
+const weatherTrigger = document.querySelector("#weather-trigger");
+const weatherTriggerIcon = document.querySelector("#weather-trigger-icon");
+const weatherTriggerTemp = document.querySelector("#weather-trigger-temp");
+const weatherPanel = document.querySelector("#weather-panel");
+const weatherPanelMeta = document.querySelector("#weather-panel-meta");
+const weatherRefreshButton = document.querySelector("#weather-refresh-button");
+const weatherHero = document.querySelector("#weather-hero");
+const weatherCityForm = document.querySelector("#weather-city-form");
+const weatherCityInput = document.querySelector("#weather-city-input");
+const weatherCityLimit = document.querySelector("#weather-city-limit");
+const weatherCityList = document.querySelector("#weather-city-list");
+const weatherAlerts = document.querySelector("#weather-alerts");
+const weatherForecast = document.querySelector("#weather-forecast");
+const weatherError = document.querySelector("#weather-error");
 const appCapabilitiesModal = document.querySelector("#app-capabilities-modal");
 const appCapabilitiesBackdrop = document.querySelector("#app-capabilities-backdrop");
 const appCapabilitiesCloseButton = document.querySelector("#app-capabilities-close");
@@ -14135,6 +14164,7 @@ function setUserMenuOpen(isOpen) {
     setNotificationsMenuOpen(false);
     setRemindersShortcutMenuOpen(false);
     setTodoShortcutMenuOpen(false);
+    setWeatherMenuOpen(false, { closeOthers: false });
     setTopbarHelpMenuOpen(false, { closeOthers: false });
   }
 
@@ -21670,6 +21700,489 @@ function setWorkOrderServicePickerTriggerContent(trigger, items = []) {
   }
 }
 
+function normalizeWeatherCityName(value = "") {
+  return String(value ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, 80);
+}
+
+function getWeatherPreferenceScope() {
+  const userId = state.user?.id || state.user?.email || "guest";
+  const organizationId = state.activeOrganizationId || "global";
+  return `${userId}:${organizationId}`;
+}
+
+function getWeatherCitiesStorageKey() {
+  return `${WEATHER_CITIES_STORAGE_PREFIX}${getWeatherPreferenceScope()}`;
+}
+
+function getWeatherActiveCityStorageKey() {
+  return `${WEATHER_ACTIVE_CITY_STORAGE_PREFIX}${getWeatherPreferenceScope()}`;
+}
+
+function normalizeWeatherCityList(value = []) {
+  const seen = new Set();
+  return (Array.isArray(value) ? value : [])
+    .map(normalizeWeatherCityName)
+    .filter((city) => {
+      const key = city.toLowerCase();
+      if (!city || seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    })
+    .slice(0, WEATHER_MAX_CITIES);
+}
+
+function loadWeatherPreferences() {
+  const scope = getWeatherPreferenceScope();
+  if (weatherPreferenceScope === scope && weatherCities.length > 0) {
+    return;
+  }
+
+  weatherPreferenceScope = scope;
+  weatherCities = normalizeWeatherCityList(readJsonFromLocalStorage(getWeatherCitiesStorageKey(), WEATHER_DEFAULT_CITIES));
+  if (weatherCities.length === 0) {
+    weatherCities = [...WEATHER_DEFAULT_CITIES];
+  }
+  const storedActiveCity = normalizeWeatherCityName(window.localStorage?.getItem(getWeatherActiveCityStorageKey()) || "");
+  weatherActiveCity = weatherCities.find((city) => city.toLowerCase() === storedActiveCity.toLowerCase())
+    || weatherCities[0]
+    || "";
+  weatherItems = [];
+  weatherStatus = "idle";
+  weatherErrorMessage = "";
+  weatherLoadedAt = 0;
+  weatherAutoRefreshQueued = false;
+}
+
+function persistWeatherPreferences() {
+  if (!state.user) {
+    return;
+  }
+  writeJsonToLocalStorage(getWeatherCitiesStorageKey(), weatherCities);
+  try {
+    window.localStorage.setItem(getWeatherActiveCityStorageKey(), weatherActiveCity || "");
+  } catch {
+    // Ignore persistence failures.
+  }
+}
+
+function getWeatherConditionClass(condition = "") {
+  const normalized = String(condition || "").trim().toLowerCase();
+  if (["thunderstorm", "storm"].includes(normalized)) return "is-thunderstorm";
+  if (normalized === "rain" || normalized === "drizzle") return "is-rain";
+  if (normalized === "snow") return "is-snow";
+  if (["mist", "fog", "haze", "smoke", "dust", "sand", "ash", "squall", "tornado"].includes(normalized)) return "is-fog";
+  if (normalized === "clouds") return "is-clouds";
+  return "is-clear";
+}
+
+function getWeatherConditionLabel(condition = "") {
+  const map = {
+    clear: "Vedro",
+    clouds: "Oblačno",
+    rain: "Kiša",
+    drizzle: "Rosulja",
+    thunderstorm: "Oluja",
+    snow: "Snijeg",
+    mist: "Magla",
+    fog: "Magla",
+    haze: "Sumaglica",
+    smoke: "Dim",
+    dust: "Prašina",
+    sand: "Pijesak",
+    ash: "Pepeo",
+    squall: "Neverin",
+    tornado: "Tornado",
+  };
+  const key = String(condition || "").trim().toLowerCase();
+  return map[key] || "Vrijeme";
+}
+
+function formatWeatherTemperature(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return "--°";
+  }
+  return `${Math.round(number)}°`;
+}
+
+function formatWeatherSpeed(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return "-- km/h";
+  }
+  return `${Math.round(number * 3.6)} km/h`;
+}
+
+function formatWeatherTime(isoValue = "") {
+  if (!isoValue) {
+    return "";
+  }
+  const date = new Date(isoValue);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return new Intl.DateTimeFormat("hr-HR", {
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function createWeatherVisual(condition = "clear", className = "weather-mini-icon") {
+  const wrap = document.createElement("span");
+  wrap.className = `${className} ${getWeatherConditionClass(condition)}`;
+  wrap.setAttribute("aria-hidden", "true");
+  ["weather-sun", "weather-cloud", "weather-rain", "weather-snow", "weather-bolt", "weather-fog"].forEach((partClass) => {
+    const part = document.createElement("span");
+    part.className = partClass;
+    wrap.append(part);
+  });
+  return wrap;
+}
+
+function getActiveWeatherItem() {
+  if (!weatherItems.length) {
+    return null;
+  }
+  return weatherItems.find((item) => String(item.query || item.name || "").toLowerCase() === weatherActiveCity.toLowerCase())
+    || weatherItems[0]
+    || null;
+}
+
+function getWeatherAlertCount() {
+  return weatherItems.reduce((sum, item) => sum + (Array.isArray(item.alerts) ? item.alerts.length : 0), 0);
+}
+
+function renderWeatherTrigger() {
+  const activeItem = getActiveWeatherItem();
+  const condition = activeItem?.current?.condition || "clear";
+  if (weatherTrigger) {
+    weatherTrigger.hidden = !state.user;
+    weatherTrigger.setAttribute("aria-expanded", weatherMenuOpen ? "true" : "false");
+    weatherTrigger.classList.toggle("is-open", weatherMenuOpen);
+    weatherTrigger.classList.toggle("has-alert", getWeatherAlertCount() > 0);
+    weatherTrigger.classList.toggle("is-loading", weatherStatus === "loading");
+    weatherTrigger.title = activeItem
+      ? `${activeItem.name || weatherActiveCity}: ${formatWeatherTemperature(activeItem.current?.temp)}`
+      : "Vrijeme";
+  }
+  if (weatherTriggerIcon) {
+    weatherTriggerIcon.className = `weather-mini-icon ${getWeatherConditionClass(condition)}`;
+  }
+  if (weatherTriggerTemp) {
+    weatherTriggerTemp.hidden = !activeItem;
+    weatherTriggerTemp.textContent = formatWeatherTemperature(activeItem?.current?.temp);
+  }
+}
+
+function renderWeatherHero() {
+  if (!weatherHero) {
+    return;
+  }
+  const activeItem = getActiveWeatherItem();
+  weatherHero.replaceChildren();
+  if (!activeItem) {
+    const empty = document.createElement("div");
+    empty.className = "weather-loading";
+    empty.textContent = weatherStatus === "loading"
+      ? "Učitavam prognozu..."
+      : "Dodaj grad ili osvježi vrijeme.";
+    weatherHero.append(empty);
+    weatherHero.className = "weather-hero";
+    return;
+  }
+
+  const condition = activeItem.current?.condition || "clear";
+  weatherHero.className = `weather-hero ${getWeatherConditionClass(condition)}`;
+
+  const copy = document.createElement("div");
+  copy.className = "weather-hero-copy";
+
+  const location = document.createElement("span");
+  location.className = "weather-location";
+  location.textContent = [activeItem.name, activeItem.country].filter(Boolean).join(", ");
+
+  const description = document.createElement("div");
+  description.className = "weather-description";
+  const eyebrow = document.createElement("span");
+  eyebrow.textContent = "Prognoza vremena";
+  const title = document.createElement("strong");
+  title.textContent = activeItem.current?.description || getWeatherConditionLabel(condition);
+  const summary = document.createElement("p");
+  summary.textContent = activeItem.summary || "Trenutni uvjeti i kratka prognoza za odabrani grad.";
+  description.append(eyebrow, title, summary);
+
+  const metrics = document.createElement("div");
+  metrics.className = "weather-current-metrics";
+  [
+    `Vjetar ${formatWeatherSpeed(activeItem.current?.windSpeed)}`,
+    `Vlaga ${Math.round(Number(activeItem.current?.humidity) || 0)}%`,
+    `Tlak ${Math.round(Number(activeItem.current?.pressure) || 0)} hPa`,
+  ].forEach((text) => {
+    const metric = document.createElement("span");
+    metric.textContent = text;
+    metrics.append(metric);
+  });
+
+  copy.append(location, description, metrics);
+
+  const tempBlock = document.createElement("div");
+  tempBlock.className = "weather-temp-block";
+  tempBlock.append(
+    createWeatherVisual(condition, "weather-visual-icon"),
+    Object.assign(document.createElement("span"), {
+      className: "weather-temp-value",
+      textContent: formatWeatherTemperature(activeItem.current?.temp),
+    }),
+    Object.assign(document.createElement("span"), {
+      className: "weather-feels",
+      textContent: `Osjećaj ${formatWeatherTemperature(activeItem.current?.feelsLike)}`,
+    }),
+  );
+
+  weatherHero.append(copy, tempBlock);
+}
+
+function renderWeatherCities() {
+  if (weatherCityLimit) {
+    weatherCityLimit.textContent = `${weatherCities.length}/${WEATHER_MAX_CITIES} gradova`;
+  }
+  if (!weatherCityList) {
+    return;
+  }
+  weatherCityList.replaceChildren(...weatherCities.map((city) => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = `weather-city-chip${city.toLowerCase() === weatherActiveCity.toLowerCase() ? " is-active" : ""}`;
+    chip.dataset.weatherCity = city;
+
+    const label = document.createElement("span");
+    label.textContent = city;
+    chip.append(label);
+
+    const remove = document.createElement("span");
+    remove.className = "weather-remove-city";
+    remove.dataset.weatherRemoveCity = city;
+    remove.textContent = "x";
+    chip.append(remove);
+    return chip;
+  }));
+}
+
+function renderWeatherAlerts() {
+  if (!weatherAlerts) {
+    return;
+  }
+  weatherAlerts.replaceChildren();
+  const activeItem = getActiveWeatherItem();
+  const alerts = Array.isArray(activeItem?.alerts) ? activeItem.alerts : [];
+  alerts.slice(0, 4).forEach((alert) => {
+    const row = document.createElement("div");
+    row.className = `weather-alert${alert.level === "danger" ? " is-danger" : ""}`;
+    const icon = document.createElement("span");
+    icon.className = "weather-alert-icon";
+    icon.textContent = alert.type === "storm" ? "!" : "W";
+    const copy = document.createElement("span");
+    copy.className = "weather-alert-copy";
+    const title = document.createElement("strong");
+    title.textContent = alert.title || "Upozorenje";
+    const message = document.createElement("span");
+    message.textContent = alert.message || "";
+    copy.append(title, message);
+    row.append(icon, copy);
+    weatherAlerts.append(row);
+  });
+}
+
+function renderWeatherForecast() {
+  if (!weatherForecast) {
+    return;
+  }
+  weatherForecast.replaceChildren();
+  const activeItem = getActiveWeatherItem();
+  const entries = Array.isArray(activeItem?.forecast) ? activeItem.forecast.slice(0, 5) : [];
+  if (!entries.length) {
+    return;
+  }
+  const title = document.createElement("div");
+  title.className = "weather-forecast-title";
+  title.textContent = "Sljedeći termini";
+  weatherForecast.append(title);
+  entries.forEach((entry) => {
+    const row = document.createElement("div");
+    row.className = "weather-forecast-row";
+    row.append(
+      Object.assign(document.createElement("strong"), { textContent: formatWeatherTime(entry.time) || "Prognoza" }),
+      createWeatherVisual(entry.condition || "clear", "weather-mini-icon"),
+      Object.assign(document.createElement("span"), { textContent: entry.description || getWeatherConditionLabel(entry.condition) }),
+      Object.assign(document.createElement("span"), {
+        className: "weather-forecast-temp",
+        textContent: formatWeatherTemperature(entry.temp),
+      }),
+    );
+    weatherForecast.append(row);
+  });
+}
+
+function renderWeatherWidget() {
+  if (!weatherTrigger) {
+    return;
+  }
+  if (!state.user) {
+    weatherMenuOpen = false;
+    if (weatherPanel) {
+      weatherPanel.hidden = true;
+    }
+    weatherTrigger.hidden = true;
+    return;
+  }
+
+  loadWeatherPreferences();
+  const shouldAutoRefresh = weatherStatus === "idle" && weatherCities.length > 0 && !weatherAutoRefreshQueued;
+  if (weatherPanel) {
+    weatherPanel.hidden = !weatherMenuOpen;
+  }
+  if (weatherPanelMeta) {
+    if (weatherStatus === "loading") {
+      weatherPanelMeta.textContent = "Učitavam OpenWeather podatke...";
+    } else if (weatherLoadedAt) {
+      weatherPanelMeta.textContent = `Ažurirano ${formatDateTime(new Date(weatherLoadedAt).toISOString())}`;
+    } else {
+      weatherPanelMeta.textContent = "Do 8 gradova, s upozorenjima za vjetar i oluje.";
+    }
+  }
+  if (weatherRefreshButton) {
+    weatherRefreshButton.disabled = weatherStatus === "loading";
+  }
+  if (weatherError) {
+    weatherError.hidden = !weatherErrorMessage;
+    weatherError.textContent = weatherErrorMessage;
+  }
+  renderWeatherTrigger();
+  renderWeatherHero();
+  renderWeatherCities();
+  renderWeatherAlerts();
+  renderWeatherForecast();
+
+  if (shouldAutoRefresh) {
+    weatherAutoRefreshQueued = true;
+    window.setTimeout(() => {
+      weatherAutoRefreshQueued = false;
+      void refreshWeather();
+    }, 0);
+  }
+}
+
+async function refreshWeather({ force = false } = {}) {
+  if (!state.user || weatherStatus === "loading") {
+    return;
+  }
+  loadWeatherPreferences();
+  if (!force && weatherItems.length > 0 && Date.now() - weatherLoadedAt < WEATHER_REFRESH_INTERVAL_MS) {
+    renderWeatherWidget();
+    return;
+  }
+  weatherStatus = "loading";
+  weatherErrorMessage = "";
+  renderWeatherWidget();
+  try {
+    const params = new URLSearchParams({ cities: weatherCities.join("|") });
+    const payload = await apiRequest(`/weather?${params.toString()}`);
+    weatherItems = Array.isArray(payload.cities) ? payload.cities : [];
+    weatherLoadedAt = Date.now();
+    const cityErrors = Array.isArray(payload.errors) ? payload.errors : [];
+    weatherErrorMessage = cityErrors.length > 0
+      ? cityErrors.map((item) => `${item.city}: ${item.message || "nije dostupno"}`).join(" | ")
+      : "";
+    const activeStillAvailable = weatherItems.some((item) => String(item.query || item.name || "").toLowerCase() === weatherActiveCity.toLowerCase());
+    if (!activeStillAvailable && weatherItems[0]) {
+      weatherActiveCity = weatherItems[0].query || weatherItems[0].name || weatherActiveCity;
+      persistWeatherPreferences();
+    }
+    weatherStatus = "ready";
+  } catch (error) {
+    weatherStatus = "error";
+    weatherErrorMessage = error?.message || "Vrijeme trenutno nije dostupno.";
+  }
+  renderWeatherWidget();
+}
+
+function scheduleWeatherRefresh() {
+  if (weatherRefreshTimerId) {
+    window.clearInterval(weatherRefreshTimerId);
+  }
+  weatherRefreshTimerId = window.setInterval(() => {
+    if (state.user) {
+      void refreshWeather();
+    }
+  }, WEATHER_REFRESH_INTERVAL_MS);
+}
+
+function setWeatherMenuOpen(isOpen, { closeOthers = true } = {}) {
+  weatherMenuOpen = Boolean(isOpen && state.user);
+  renderWeatherWidget();
+
+  if (weatherMenuOpen) {
+    void refreshWeather();
+  }
+
+  if (weatherMenuOpen && closeOthers) {
+    setRemindersShortcutMenuOpen(false, { closeOthers: false });
+    setTodoShortcutMenuOpen(false, { closeOthers: false });
+    setNotificationsMenuOpen(false, { closeOthers: false });
+    setTopbarHelpMenuOpen(false, { closeOthers: false });
+    setUserMenuOpen(false);
+  }
+}
+
+function addWeatherCity(cityName = "") {
+  const city = normalizeWeatherCityName(cityName);
+  if (!city) {
+    weatherErrorMessage = "Upiši naziv grada.";
+    renderWeatherWidget();
+    return;
+  }
+  const exists = weatherCities.some((entry) => entry.toLowerCase() === city.toLowerCase());
+  if (exists) {
+    weatherActiveCity = weatherCities.find((entry) => entry.toLowerCase() === city.toLowerCase()) || city;
+    persistWeatherPreferences();
+    renderWeatherWidget();
+    return;
+  }
+  if (weatherCities.length >= WEATHER_MAX_CITIES) {
+    weatherErrorMessage = `Možeš pratiti najviše ${WEATHER_MAX_CITIES} gradova.`;
+    renderWeatherWidget();
+    return;
+  }
+  weatherCities = [...weatherCities, city];
+  weatherActiveCity = city;
+  weatherItems = weatherItems.filter((item) => weatherCities.some((entry) => entry.toLowerCase() === String(item.query || item.name || "").toLowerCase()));
+  weatherErrorMessage = "";
+  persistWeatherPreferences();
+  renderWeatherWidget();
+  void refreshWeather({ force: true });
+}
+
+function removeWeatherCity(cityName = "") {
+  const city = normalizeWeatherCityName(cityName);
+  weatherCities = weatherCities.filter((entry) => entry.toLowerCase() !== city.toLowerCase());
+  if (weatherCities.length === 0) {
+    weatherCities = [...WEATHER_DEFAULT_CITIES];
+  }
+  if (!weatherCities.some((entry) => entry.toLowerCase() === weatherActiveCity.toLowerCase())) {
+    weatherActiveCity = weatherCities[0] || "";
+  }
+  weatherItems = weatherItems.filter((item) => weatherCities.some((entry) => entry.toLowerCase() === String(item.query || item.name || "").toLowerCase()));
+  persistWeatherPreferences();
+  renderWeatherWidget();
+  void refreshWeather({ force: true });
+}
+
 function setRemindersShortcutMenuOpen(isOpen, { closeOthers = true } = {}) {
   remindersShortcutMenuOpen = Boolean(isOpen && state.user);
 
@@ -21685,6 +22198,7 @@ function setRemindersShortcutMenuOpen(isOpen, { closeOthers = true } = {}) {
   if (remindersShortcutMenuOpen && closeOthers) {
     setTodoShortcutMenuOpen(false, { closeOthers: false });
     setNotificationsMenuOpen(false, { closeOthers: false });
+    setWeatherMenuOpen(false, { closeOthers: false });
     setTopbarHelpMenuOpen(false, { closeOthers: false });
     setUserMenuOpen(false);
   }
@@ -21705,6 +22219,7 @@ function setTodoShortcutMenuOpen(isOpen, { closeOthers = true } = {}) {
   if (todoShortcutMenuOpen && closeOthers) {
     setRemindersShortcutMenuOpen(false, { closeOthers: false });
     setNotificationsMenuOpen(false, { closeOthers: false });
+    setWeatherMenuOpen(false, { closeOthers: false });
     setTopbarHelpMenuOpen(false, { closeOthers: false });
     setUserMenuOpen(false);
   }
@@ -21800,6 +22315,7 @@ function setTopbarHelpMenuOpen(isOpen, { closeOthers = true } = {}) {
     setRemindersShortcutMenuOpen(false, { closeOthers: false });
     setTodoShortcutMenuOpen(false, { closeOthers: false });
     setNotificationsMenuOpen(false, { closeOthers: false });
+    setWeatherMenuOpen(false, { closeOthers: false });
     setUserMenuOpen(false);
   }
 }
@@ -21817,6 +22333,7 @@ function setNotificationsMenuOpen(isOpen, { closeOthers = true } = {}) {
   if (notificationsMenuOpen && closeOthers) {
     setRemindersShortcutMenuOpen(false, { closeOthers: false });
     setTodoShortcutMenuOpen(false, { closeOthers: false });
+    setWeatherMenuOpen(false, { closeOthers: false });
     setTopbarHelpMenuOpen(false, { closeOthers: false });
     setUserMenuOpen(false);
   }
@@ -62045,6 +62562,7 @@ function renderAuthState() {
     resetDocumentTemplateForm();
     resetVehicleForm();
     resetChatState();
+    setWeatherMenuOpen(false, { closeOthers: false });
   }
 
   if (workspaceReady) {
@@ -89631,6 +90149,7 @@ function render() {
   renderChatDock();
   renderAppCapabilitiesDialog();
   renderProfileDialog();
+  renderWeatherWidget();
   renderTopbarHelpMenu();
   renderHelpTour();
   queueWelcomeHelpTourIfNeeded();
@@ -94732,6 +95251,49 @@ topbarShortcutTodoButton?.addEventListener("click", (event) => {
   setTodoShortcutMenuOpen(!todoShortcutMenuOpen);
 });
 
+weatherTrigger?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  setWeatherMenuOpen(!weatherMenuOpen);
+});
+
+weatherRefreshButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  void refreshWeather({ force: true });
+});
+
+weatherCityForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  addWeatherCity(weatherCityInput?.value || "");
+  if (weatherCityInput) {
+    weatherCityInput.value = "";
+    weatherCityInput.focus({ preventScroll: true });
+  }
+});
+
+weatherCityList?.addEventListener("click", (event) => {
+  const target = event.target instanceof Element ? event.target : null;
+  const removeTarget = target?.closest("[data-weather-remove-city]");
+  if (removeTarget instanceof HTMLElement) {
+    event.preventDefault();
+    event.stopPropagation();
+    removeWeatherCity(removeTarget.dataset.weatherRemoveCity || "");
+    return;
+  }
+
+  const chip = target?.closest("[data-weather-city]");
+  if (!(chip instanceof HTMLElement)) {
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+  weatherActiveCity = chip.dataset.weatherCity || weatherActiveCity;
+  weatherErrorMessage = "";
+  persistWeatherPreferences();
+  renderWeatherWidget();
+});
+
 topbarShortcutSettingsButton?.addEventListener("click", () => {
   activateSidebarItem("settings", { expandSidebar: state.sidebarCollapsed });
 });
@@ -95316,6 +95878,14 @@ document.addEventListener("click", (event) => {
     }
   }
 
+  if (weatherMenuOpen && event.target instanceof Node) {
+    const clickedWeatherControl = weatherTrigger?.contains(event.target)
+      || weatherPanel?.contains(event.target);
+    if (!clickedWeatherControl) {
+      setWeatherMenuOpen(false);
+    }
+  }
+
   if (topbarHelpMenuOpen && event.target instanceof Node) {
     const clickedHelpControl = topbarHelpButton?.contains(event.target)
       || topbarHelpPanel?.contains(event.target);
@@ -95365,6 +95935,9 @@ window.addEventListener("resize", () => {
   }
   if (topbarHelpMenuOpen) {
     setTopbarHelpMenuOpen(false);
+  }
+  if (weatherMenuOpen) {
+    setWeatherMenuOpen(false);
   }
   if (state.vehicleReservationAssigneePickerOpen) {
     setVehicleReservationAssigneePickerOpen(false);
@@ -98140,6 +98713,12 @@ document.addEventListener("pointermove", handleDrawingStagePointerMove);
 document.addEventListener("pointerup", handleDrawingStagePointerUp);
 
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && weatherMenuOpen) {
+    event.preventDefault();
+    setWeatherMenuOpen(false);
+    return;
+  }
+
   if (event.key === "Escape" && topbarHelpMenuOpen) {
     event.preventDefault();
     setTopbarHelpMenuOpen(false);
@@ -98251,6 +98830,7 @@ resetPeopleTrainingForm();
 resetLoginContentForm();
 renderActiveView();
 renderAuthState();
+scheduleWeatherRefresh();
 applyLoginRedirectState();
 syncPasswordToggleLabel();
 bindLoginInputAppearanceLock(loginEmailInput);

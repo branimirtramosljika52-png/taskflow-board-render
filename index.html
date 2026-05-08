@@ -876,6 +876,52 @@
                 </svg>
               </button>
             </div>
+            <div class="weather-menu">
+              <button
+                id="weather-trigger"
+                type="button"
+                class="weather-trigger topbar-shortcut-button"
+                aria-label="Vrijeme"
+                aria-expanded="false"
+                title="Vrijeme"
+              >
+                <span id="weather-trigger-icon" class="weather-mini-icon is-clear" aria-hidden="true">
+                  <span class="weather-sun"></span>
+                  <span class="weather-cloud"></span>
+                  <span class="weather-rain"></span>
+                  <span class="weather-snow"></span>
+                  <span class="weather-bolt"></span>
+                  <span class="weather-fog"></span>
+                </span>
+                <span id="weather-trigger-temp" class="weather-trigger-temp" hidden>--°</span>
+              </button>
+              <div id="weather-panel" class="weather-panel" hidden>
+                <div class="weather-panel-head">
+                  <div>
+                    <strong>Vrijeme</strong>
+                    <span id="weather-panel-meta">Odaberi grad za prognozu.</span>
+                  </div>
+                  <button id="weather-refresh-button" type="button" class="weather-icon-button" aria-label="Osvježi vrijeme" title="Osvježi">
+                    <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M20 11a8 8 0 1 0-2.34 5.66"></path>
+                      <path d="M20 4v7h-7"></path>
+                    </svg>
+                  </button>
+                </div>
+                <div id="weather-hero" class="weather-hero"></div>
+                <div class="weather-city-toolbar">
+                  <form id="weather-city-form" class="weather-city-form">
+                    <input id="weather-city-input" type="text" maxlength="80" placeholder="Dodaj grad" autocomplete="off" />
+                    <button type="submit" class="weather-add-button">Dodaj</button>
+                  </form>
+                  <span id="weather-city-limit" class="weather-city-limit">0/8 gradova</span>
+                </div>
+                <div id="weather-city-list" class="weather-city-list"></div>
+                <div id="weather-alerts" class="weather-alerts"></div>
+                <div id="weather-forecast" class="weather-forecast"></div>
+                <p id="weather-error" class="weather-error" hidden></p>
+              </div>
+            </div>
             <div class="notifications-menu">
               <button
                 id="notifications-trigger"
