@@ -310,16 +310,99 @@ function getSingleSelectedGridCell(block = {}, rows = 1, columns = 1, cells = []
   };
 }
 
+function getCellRect(index, cell = {}, rows = 1, columns = 1) {
+  const row = Math.floor(index / columns);
+  const column = index % columns;
+  return {
+    minRow: row,
+    maxRow: row + Math.max(1, Math.min(rows - row, cell.rowSpan || 1)) - 1,
+    minColumn: column,
+    maxColumn: column + Math.max(1, Math.min(columns - column, cell.colSpan || 1)) - 1,
+  };
+}
+
+function gridRectsIntersect(a = null, b = null) {
+  if (!a || !b) {
+    return false;
+  }
+  return a.minRow <= b.maxRow
+    && a.maxRow >= b.minRow
+    && a.minColumn <= b.maxColumn
+    && a.maxColumn >= b.minColumn;
+}
+
+function getCellIndexesInRect(rect = null, columns = 1) {
+  if (!rect) {
+    return [];
+  }
+  const indexes = [];
+  for (let row = rect.minRow; row <= rect.maxRow; row += 1) {
+    for (let column = rect.minColumn; column <= rect.maxColumn; column += 1) {
+      indexes.push(row * columns + column);
+    }
+  }
+  return indexes;
+}
+
+function resetGridMergeAt(cells = [], anchorIndex = 0) {
+  if (!cells[anchorIndex]) {
+    return;
+  }
+  cells[anchorIndex] = {
+    ...cells[anchorIndex],
+    hidden: false,
+    masterIndex: null,
+    rowSpan: 1,
+    colSpan: 1,
+  };
+  cells.forEach((cell, index) => {
+    if (index !== anchorIndex && cell?.masterIndex === anchorIndex) {
+      cells[index] = {
+        ...cell,
+        hidden: false,
+        masterIndex: null,
+        rowSpan: 1,
+        colSpan: 1,
+      };
+    }
+  });
+}
+
 function mergeGridCells(block, rows, columns) {
   const cells = Array.isArray(block.props?.cells) ? block.props.cells.map(normalizeGridCell) : resizeGridCells(block, rows, columns);
-  const selectedIds = getGridSelectedCellIds(block, rows, columns).filter((index) => !cells[index]?.hidden);
+  const selectedIds = [...new Set(getGridSelectedCellIds(block, rows, columns).map((index) => (
+    cells[index]?.hidden && Number.isInteger(cells[index]?.masterIndex)
+      ? cells[index].masterIndex
+      : index
+  )))].filter((index) => !cells[index]?.hidden);
   const rect = getGridSelectionRect(selectedIds, columns);
   if (!rect || selectedIds.length < 2) {
     return null;
   }
 
   const anchorIndex = rect.minRow * columns + rect.minColumn;
-  const nextCells = cells.map((cell) => ({ ...cell, hidden: false, masterIndex: null, rowSpan: cell.rowSpan || 1, colSpan: cell.colSpan || 1 }));
+  const nextCells = cells.map((cell) => ({ ...cell }));
+  const anchorsToReset = new Set();
+  cells.forEach((cell, index) => {
+    const realAnchorIndex = cell.hidden && Number.isInteger(cell.masterIndex)
+      ? cell.masterIndex
+      : index;
+    const anchorCell = cells[realAnchorIndex] || cell;
+    const cellRect = getCellRect(realAnchorIndex, anchorCell, rows, columns);
+    if (gridRectsIntersect(cellRect, rect)) {
+      anchorsToReset.add(realAnchorIndex);
+    }
+  });
+  anchorsToReset.forEach((index) => resetGridMergeAt(nextCells, index));
+  getCellIndexesInRect(rect, columns).forEach((index) => {
+    nextCells[index] = {
+      ...nextCells[index],
+      hidden: false,
+      masterIndex: null,
+      rowSpan: 1,
+      colSpan: 1,
+    };
+  });
   for (let row = rect.minRow; row <= rect.maxRow; row += 1) {
     for (let column = rect.minColumn; column <= rect.maxColumn; column += 1) {
       const index = row * columns + column;
