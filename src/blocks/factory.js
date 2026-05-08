@@ -289,7 +289,7 @@ function focusEditableNodeAtEnd(selector) {
     if (!(node instanceof HTMLElement)) {
       return;
     }
-    node.focus();
+    node.focus({ preventScroll: true });
     const range = document.createRange();
     range.selectNodeContents(node);
     range.collapse(false);
@@ -303,7 +303,7 @@ function focusBlockNode(blockId) {
   requestAnimationFrame(() => {
     const node = document.querySelector(`[data-builder-block-id="${blockId}"]`);
     if (node instanceof HTMLElement) {
-      node.focus();
+      node.focus({ preventScroll: true });
     }
   });
 }

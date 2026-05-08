@@ -13,7 +13,7 @@ function focusEditableNodeAtEnd(node) {
   if (!(node instanceof HTMLElement)) {
     return;
   }
-  node.focus();
+  node.focus({ preventScroll: true });
   const range = document.createRange();
   range.selectNodeContents(node);
   range.collapse(false);
