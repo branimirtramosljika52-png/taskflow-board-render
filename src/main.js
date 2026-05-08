@@ -2534,6 +2534,12 @@ let weatherLoadedAt = 0;
 let weatherRefreshTimerId = 0;
 let weatherPreferenceScope = "";
 let weatherAutoRefreshQueued = false;
+let weatherCitySuggestions = [];
+let weatherCitySuggestionsOpen = false;
+let weatherCitySearchStatus = "idle";
+let weatherCitySearchMessage = "";
+let weatherCitySearchTimerId = 0;
+let weatherCitySearchRequestId = 0;
 let topbarHelpMenuOpen = false;
 let topbarHelpMenuSignature = "";
 let chatPollTimerId = null;
@@ -2648,6 +2654,7 @@ const weatherRefreshButton = document.querySelector("#weather-refresh-button");
 const weatherHero = document.querySelector("#weather-hero");
 const weatherCityForm = document.querySelector("#weather-city-form");
 const weatherCityInput = document.querySelector("#weather-city-input");
+const weatherCitySuggestionsPanel = document.querySelector("#weather-city-suggestions");
 const weatherCityLimit = document.querySelector("#weather-city-limit");
 const weatherCityList = document.querySelector("#weather-city-list");
 const weatherAlerts = document.querySelector("#weather-alerts");
@@ -3434,6 +3441,7 @@ const documentTemplateReferenceUploadButton = document.querySelector("#document-
 const documentTemplateReferenceDownloadButton = document.querySelector("#document-template-reference-download");
 const documentTemplateReferenceRemoveButton = document.querySelector("#document-template-reference-remove");
 const documentTemplateReferenceMeta = document.querySelector("#document-template-reference-meta");
+const documentTemplateEngineInput = document.querySelector("#document-template-engine");
 const documentTemplateHtmlCodeInput = document.querySelector("#document-template-html-code");
 const documentTemplateHtmlSaveButton = document.querySelector("#document-template-html-save");
 const documentTemplateHtmlPreviewFrame = document.querySelector("#document-template-html-preview-frame");
@@ -21707,6 +21715,30 @@ function normalizeWeatherCityName(value = "") {
     .slice(0, 80);
 }
 
+function getWeatherCityKey(value = "") {
+  return normalizeWeatherCityName(value).toLowerCase();
+}
+
+function formatWeatherCityLabel(value = "") {
+  const normalized = normalizeWeatherCityName(value);
+  if (!normalized) {
+    return "";
+  }
+  const geoLabel = normalized.match(/^geo:[^:]+:(.+)$/i)?.[1];
+  if (geoLabel) {
+    return geoLabel
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .join(", ");
+  }
+  return normalized
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(", ");
+}
+
 function getWeatherPreferenceScope() {
   const userId = state.user?.id || state.user?.email || "guest";
   const organizationId = state.activeOrganizationId || "global";
@@ -21726,7 +21758,7 @@ function normalizeWeatherCityList(value = []) {
   return (Array.isArray(value) ? value : [])
     .map(normalizeWeatherCityName)
     .filter((city) => {
-      const key = city.toLowerCase();
+      const key = getWeatherCityKey(city);
       if (!city || seen.has(key)) {
         return false;
       }
@@ -21748,7 +21780,7 @@ function loadWeatherPreferences() {
     weatherCities = [...WEATHER_DEFAULT_CITIES];
   }
   const storedActiveCity = normalizeWeatherCityName(window.localStorage?.getItem(getWeatherActiveCityStorageKey()) || "");
-  weatherActiveCity = weatherCities.find((city) => city.toLowerCase() === storedActiveCity.toLowerCase())
+  weatherActiveCity = weatherCities.find((city) => getWeatherCityKey(city) === getWeatherCityKey(storedActiveCity))
     || weatherCities[0]
     || "";
   weatherItems = [];
@@ -21756,6 +21788,7 @@ function loadWeatherPreferences() {
   weatherErrorMessage = "";
   weatherLoadedAt = 0;
   weatherAutoRefreshQueued = false;
+  clearWeatherCitySuggestions();
 }
 
 function persistWeatherPreferences() {
@@ -21833,6 +21866,35 @@ function formatWeatherTime(isoValue = "") {
   }).format(date);
 }
 
+function formatWeatherForecastDay(isoValue = "") {
+  if (!isoValue) {
+    return "";
+  }
+  const date = new Date(isoValue);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return new Intl.DateTimeFormat("hr-HR", {
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
+  }).format(date);
+}
+
+function formatWeatherForecastHour(isoValue = "") {
+  if (!isoValue) {
+    return "";
+  }
+  const date = new Date(isoValue);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return new Intl.DateTimeFormat("hr-HR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
 function createWeatherVisual(condition = "clear", className = "weather-mini-icon") {
   const wrap = document.createElement("span");
   wrap.className = `${className} ${getWeatherConditionClass(condition)}`;
@@ -21849,7 +21911,7 @@ function getActiveWeatherItem() {
   if (!weatherItems.length) {
     return null;
   }
-  return weatherItems.find((item) => String(item.query || item.name || "").toLowerCase() === weatherActiveCity.toLowerCase())
+  return weatherItems.find((item) => getWeatherCityKey(item.query || item.name || "") === getWeatherCityKey(weatherActiveCity))
     || weatherItems[0]
     || null;
 }
@@ -21958,11 +22020,11 @@ function renderWeatherCities() {
   weatherCityList.replaceChildren(...weatherCities.map((city) => {
     const chip = document.createElement("button");
     chip.type = "button";
-    chip.className = `weather-city-chip${city.toLowerCase() === weatherActiveCity.toLowerCase() ? " is-active" : ""}`;
+    chip.className = `weather-city-chip${getWeatherCityKey(city) === getWeatherCityKey(weatherActiveCity) ? " is-active" : ""}`;
     chip.dataset.weatherCity = city;
 
     const label = document.createElement("span");
-    label.textContent = city;
+    label.textContent = formatWeatherCityLabel(city);
     chip.append(label);
 
     const remove = document.createElement("span");
@@ -21972,6 +22034,132 @@ function renderWeatherCities() {
     chip.append(remove);
     return chip;
   }));
+}
+
+function clearWeatherCitySuggestions({ render = true } = {}) {
+  if (weatherCitySearchTimerId) {
+    window.clearTimeout(weatherCitySearchTimerId);
+    weatherCitySearchTimerId = 0;
+  }
+  weatherCitySuggestions = [];
+  weatherCitySuggestionsOpen = false;
+  weatherCitySearchStatus = "idle";
+  weatherCitySearchMessage = "";
+  if (render) {
+    renderWeatherCitySuggestions();
+  }
+}
+
+function renderWeatherCitySuggestions() {
+  if (weatherCityInput) {
+    weatherCityInput.setAttribute("aria-expanded", weatherCitySuggestionsOpen ? "true" : "false");
+  }
+  if (!weatherCitySuggestionsPanel) {
+    return;
+  }
+
+  const query = normalizeWeatherCityName(weatherCityInput?.value || "");
+  const shouldShow = weatherMenuOpen
+    && weatherCitySuggestionsOpen
+    && (query.length >= 2 || weatherCitySearchStatus === "loading" || weatherCitySearchMessage);
+  weatherCitySuggestionsPanel.hidden = !shouldShow;
+  weatherCitySuggestionsPanel.replaceChildren();
+  if (!shouldShow) {
+    return;
+  }
+
+  if (weatherCitySearchStatus === "loading") {
+    const loading = document.createElement("div");
+    loading.className = "weather-city-suggestion-empty";
+    loading.textContent = "Tražim gradove...";
+    weatherCitySuggestionsPanel.append(loading);
+    return;
+  }
+
+  if (weatherCitySearchMessage) {
+    const message = document.createElement("div");
+    message.className = "weather-city-suggestion-empty";
+    message.textContent = weatherCitySearchMessage;
+    weatherCitySuggestionsPanel.append(message);
+    return;
+  }
+
+  if (weatherCitySuggestions.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "weather-city-suggestion-empty";
+    empty.textContent = "Nema prijedloga za upisani grad.";
+    weatherCitySuggestionsPanel.append(empty);
+    return;
+  }
+
+  weatherCitySuggestionsPanel.replaceChildren(...weatherCitySuggestions.map((city) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "weather-city-suggestion";
+    button.dataset.weatherSuggestion = city.query || city.label || city.name || "";
+
+    const main = document.createElement("strong");
+    main.textContent = city.name || city.label || "Grad";
+    const meta = document.createElement("span");
+    meta.textContent = [city.state, city.country].filter(Boolean).join(" | ") || "OpenWeather";
+    const badge = document.createElement("small");
+    badge.textContent = "Dodaj";
+
+    button.append(main, meta, badge);
+    return button;
+  }));
+}
+
+function scheduleWeatherCitySuggestions(query = weatherCityInput?.value || "") {
+  const normalizedQuery = normalizeWeatherCityName(query);
+  if (weatherCitySearchTimerId) {
+    window.clearTimeout(weatherCitySearchTimerId);
+    weatherCitySearchTimerId = 0;
+  }
+  weatherCitySuggestionsOpen = true;
+  weatherCitySearchMessage = "";
+  if (normalizedQuery.length < 2) {
+    weatherCitySuggestions = [];
+    weatherCitySearchStatus = "idle";
+    renderWeatherCitySuggestions();
+    return;
+  }
+  weatherCitySearchStatus = "loading";
+  renderWeatherCitySuggestions();
+  weatherCitySearchTimerId = window.setTimeout(() => {
+    weatherCitySearchTimerId = 0;
+    void loadWeatherCitySuggestions(normalizedQuery);
+  }, 220);
+}
+
+async function loadWeatherCitySuggestions(query = "") {
+  const normalizedQuery = normalizeWeatherCityName(query);
+  if (!state.user || normalizedQuery.length < 2) {
+    clearWeatherCitySuggestions();
+    return;
+  }
+  const requestId = ++weatherCitySearchRequestId;
+  weatherCitySearchStatus = "loading";
+  weatherCitySearchMessage = "";
+  renderWeatherCitySuggestions();
+  try {
+    const params = new URLSearchParams({ q: normalizedQuery });
+    const payload = await apiRequest(`/weather/cities?${params.toString()}`);
+    if (requestId !== weatherCitySearchRequestId) {
+      return;
+    }
+    weatherCitySuggestions = Array.isArray(payload.cities) ? payload.cities : [];
+    weatherCitySearchStatus = "ready";
+    weatherCitySearchMessage = "";
+  } catch (error) {
+    if (requestId !== weatherCitySearchRequestId) {
+      return;
+    }
+    weatherCitySuggestions = [];
+    weatherCitySearchStatus = "error";
+    weatherCitySearchMessage = error?.message || "Pretraga gradova trenutno nije dostupna.";
+  }
+  renderWeatherCitySuggestions();
 }
 
 function renderWeatherAlerts() {
@@ -22005,28 +22193,49 @@ function renderWeatherForecast() {
   }
   weatherForecast.replaceChildren();
   const activeItem = getActiveWeatherItem();
-  const entries = Array.isArray(activeItem?.forecast) ? activeItem.forecast.slice(0, 5) : [];
+  const entries = Array.isArray(activeItem?.forecast) ? activeItem.forecast.slice(0, 8) : [];
   if (!entries.length) {
     return;
   }
+  const head = document.createElement("div");
+  head.className = "weather-forecast-head";
   const title = document.createElement("div");
   title.className = "weather-forecast-title";
-  title.textContent = "Sljedeći termini";
-  weatherForecast.append(title);
-  entries.forEach((entry) => {
-    const row = document.createElement("div");
-    row.className = "weather-forecast-row";
-    row.append(
-      Object.assign(document.createElement("strong"), { textContent: formatWeatherTime(entry.time) || "Prognoza" }),
-      createWeatherVisual(entry.condition || "clear", "weather-mini-icon"),
-      Object.assign(document.createElement("span"), { textContent: entry.description || getWeatherConditionLabel(entry.condition) }),
-      Object.assign(document.createElement("span"), {
-        className: "weather-forecast-temp",
-        textContent: formatWeatherTemperature(entry.temp),
-      }),
-    );
-    weatherForecast.append(row);
+  title.textContent = "Satna linija";
+  const meta = document.createElement("span");
+  meta.textContent = "Dani i termini složeni redom za brzi pregled.";
+  head.append(title, meta);
+
+  const strip = document.createElement("div");
+  strip.className = "weather-forecast-strip";
+  entries.forEach((entry, index) => {
+    const card = document.createElement("article");
+    card.className = `weather-forecast-card ${getWeatherConditionClass(entry.condition || "clear")}${index === 0 ? " is-next" : ""}`;
+
+    const day = document.createElement("span");
+    day.className = "weather-forecast-day";
+    day.textContent = formatWeatherForecastDay(entry.time) || "Prognoza";
+
+    const hour = document.createElement("strong");
+    hour.className = "weather-forecast-hour";
+    hour.textContent = formatWeatherForecastHour(entry.time) || formatWeatherTime(entry.time) || "";
+
+    const description = document.createElement("span");
+    description.className = "weather-forecast-description";
+    description.textContent = entry.description || getWeatherConditionLabel(entry.condition);
+
+    const wind = document.createElement("span");
+    wind.className = "weather-forecast-wind";
+    wind.textContent = `Vjetar ${formatWeatherSpeed(entry.windSpeed)}`;
+
+    const temp = document.createElement("span");
+    temp.className = "weather-forecast-temp";
+    temp.textContent = formatWeatherTemperature(entry.temp);
+
+    card.append(day, hour, createWeatherVisual(entry.condition || "clear", "weather-mini-icon"), temp, description, wind);
+    strip.append(card);
   });
+  weatherForecast.append(head, strip);
 }
 
 function renderWeatherWidget() {
@@ -22039,6 +22248,7 @@ function renderWeatherWidget() {
       weatherPanel.hidden = true;
     }
     weatherTrigger.hidden = true;
+    clearWeatherCitySuggestions();
     return;
   }
 
@@ -22066,6 +22276,7 @@ function renderWeatherWidget() {
   renderWeatherTrigger();
   renderWeatherHero();
   renderWeatherCities();
+  renderWeatherCitySuggestions();
   renderWeatherAlerts();
   renderWeatherForecast();
 
@@ -22099,7 +22310,7 @@ async function refreshWeather({ force = false } = {}) {
     weatherErrorMessage = cityErrors.length > 0
       ? cityErrors.map((item) => `${item.city}: ${item.message || "nije dostupno"}`).join(" | ")
       : "";
-    const activeStillAvailable = weatherItems.some((item) => String(item.query || item.name || "").toLowerCase() === weatherActiveCity.toLowerCase());
+    const activeStillAvailable = weatherItems.some((item) => getWeatherCityKey(item.query || item.name || "") === getWeatherCityKey(weatherActiveCity));
     if (!activeStillAvailable && weatherItems[0]) {
       weatherActiveCity = weatherItems[0].query || weatherItems[0].name || weatherActiveCity;
       persistWeatherPreferences();
@@ -22125,6 +22336,9 @@ function scheduleWeatherRefresh() {
 
 function setWeatherMenuOpen(isOpen, { closeOthers = true } = {}) {
   weatherMenuOpen = Boolean(isOpen && state.user);
+  if (!weatherMenuOpen) {
+    clearWeatherCitySuggestions({ render: false });
+  }
   renderWeatherWidget();
 
   if (weatherMenuOpen) {
@@ -22147,9 +22361,9 @@ function addWeatherCity(cityName = "") {
     renderWeatherWidget();
     return;
   }
-  const exists = weatherCities.some((entry) => entry.toLowerCase() === city.toLowerCase());
+  const exists = weatherCities.some((entry) => getWeatherCityKey(entry) === getWeatherCityKey(city));
   if (exists) {
-    weatherActiveCity = weatherCities.find((entry) => entry.toLowerCase() === city.toLowerCase()) || city;
+    weatherActiveCity = weatherCities.find((entry) => getWeatherCityKey(entry) === getWeatherCityKey(city)) || city;
     persistWeatherPreferences();
     renderWeatherWidget();
     return;
@@ -22161,8 +22375,9 @@ function addWeatherCity(cityName = "") {
   }
   weatherCities = [...weatherCities, city];
   weatherActiveCity = city;
-  weatherItems = weatherItems.filter((item) => weatherCities.some((entry) => entry.toLowerCase() === String(item.query || item.name || "").toLowerCase()));
+  weatherItems = weatherItems.filter((item) => weatherCities.some((entry) => getWeatherCityKey(entry) === getWeatherCityKey(item.query || item.name || "")));
   weatherErrorMessage = "";
+  clearWeatherCitySuggestions({ render: false });
   persistWeatherPreferences();
   renderWeatherWidget();
   void refreshWeather({ force: true });
@@ -22170,14 +22385,14 @@ function addWeatherCity(cityName = "") {
 
 function removeWeatherCity(cityName = "") {
   const city = normalizeWeatherCityName(cityName);
-  weatherCities = weatherCities.filter((entry) => entry.toLowerCase() !== city.toLowerCase());
+  weatherCities = weatherCities.filter((entry) => getWeatherCityKey(entry) !== getWeatherCityKey(city));
   if (weatherCities.length === 0) {
     weatherCities = [...WEATHER_DEFAULT_CITIES];
   }
-  if (!weatherCities.some((entry) => entry.toLowerCase() === weatherActiveCity.toLowerCase())) {
+  if (!weatherCities.some((entry) => getWeatherCityKey(entry) === getWeatherCityKey(weatherActiveCity))) {
     weatherActiveCity = weatherCities[0] || "";
   }
-  weatherItems = weatherItems.filter((item) => weatherCities.some((entry) => entry.toLowerCase() === String(item.query || item.name || "").toLowerCase()));
+  weatherItems = weatherItems.filter((item) => weatherCities.some((entry) => getWeatherCityKey(entry) === getWeatherCityKey(item.query || item.name || "")));
   persistWeatherPreferences();
   renderWeatherWidget();
   void refreshWeather({ force: true });
@@ -42411,7 +42626,7 @@ function ensureDocumentTemplateHtmlBuilderEngine() {
       if (documentTemplateHtmlCodeInput instanceof HTMLTextAreaElement && documentTemplateHtmlCodeInput.value !== html) {
         documentTemplateHtmlCodeInput.value = html;
       }
-      syncDocumentTemplateReferenceDocumentFromCurrentHtml({ render: true });
+      syncDocumentTemplateReferenceDocumentFromCurrentHtml({ render: true, force: true });
       void persistDocumentTemplateDraft({
         successMessage: "Template i HTML builder su spremljeni.",
         scrollToTop: false,
@@ -43294,25 +43509,45 @@ function normalizeDocumentTemplateHtmlBuilderDocumentPayload(value = []) {
   }
 }
 
-function normalizeDocumentTemplateHtmlReferenceDocument(referenceDocument = null) {
-  if (!referenceDocument || typeof referenceDocument !== "object" || !isDocumentTemplateHtmlReferenceDocument(referenceDocument)) {
+function normalizeDocumentTemplateReferenceDocument(referenceDocument = null) {
+  if (!referenceDocument || typeof referenceDocument !== "object") {
     return null;
   }
 
-  const dataUrl = String(referenceDocument.dataUrl || referenceDocument.inlineDataUrl || referenceDocument.storageUrl || "").trim();
+  const isHtmlReference = isDocumentTemplateHtmlReferenceDocument(referenceDocument);
+  const isWordReference = isDocumentTemplateWordReferenceDocument(referenceDocument);
+  if (!isHtmlReference && !isWordReference) {
+    return null;
+  }
+
+  const dataUrl = String(
+    referenceDocument.dataUrl
+    || referenceDocument.inlineDataUrl
+    || referenceDocument.storageUrl
+    || referenceDocument.url
+    || "",
+  ).trim();
   const builderDocument = normalizeDocumentTemplateHtmlBuilderDocumentPayload(
     referenceDocument.builderDocument ?? referenceDocument.builder_document,
   );
-  if (!dataUrl && builderDocument.length === 0) {
+  if (!dataUrl && (!isHtmlReference || builderDocument.length === 0)) {
     return null;
   }
 
   return {
-    fileName: String(referenceDocument.fileName || referenceDocument.name || "template-reference.html").trim(),
-    fileType: String(referenceDocument.fileType || referenceDocument.mimeType || "text/html").trim(),
+    fileName: String(
+      referenceDocument.fileName
+      || referenceDocument.name
+      || (isWordReference ? "template-reference.docx" : "template-reference.html"),
+    ).trim(),
+    fileType: String(referenceDocument.fileType || referenceDocument.mimeType || (isWordReference
+      ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      : "text/html")).trim(),
     dataUrl,
-    builderDocument,
+    builderDocument: isHtmlReference ? builderDocument : [],
     inlineDataUrl: String(referenceDocument.inlineDataUrl || "").trim(),
+    storageProvider: String(referenceDocument.storageProvider || "").trim(),
+    storageBucket: String(referenceDocument.storageBucket || "").trim(),
     storageUrl: String(referenceDocument.storageUrl || "").trim(),
     storageKey: String(referenceDocument.storageKey || "").trim(),
     url: String(referenceDocument.url || "").trim(),
@@ -43321,16 +43556,23 @@ function normalizeDocumentTemplateHtmlReferenceDocument(referenceDocument = null
   };
 }
 
+function normalizeDocumentTemplateHtmlReferenceDocument(referenceDocument = null) {
+  return normalizeDocumentTemplateReferenceDocument(referenceDocument);
+}
+
 function normalizeDocumentTemplateHtmlReferences(templates = []) {
   return (Array.isArray(templates) ? templates : []).map((template) => ({
     ...template,
-    referenceDocument: normalizeDocumentTemplateHtmlReferenceDocument(template?.referenceDocument),
+    referenceDocument: normalizeDocumentTemplateReferenceDocument(template?.referenceDocument),
   }));
 }
 
 function getDocumentTemplateReferenceKind(referenceDocument = null) {
   if (isDocumentTemplateHtmlReferenceDocument(referenceDocument)) {
     return "html";
+  }
+  if (isDocumentTemplateWordReferenceDocument(referenceDocument)) {
+    return "word";
   }
   return "";
 }
@@ -43340,7 +43582,18 @@ function getDocumentTemplateReferenceLabel(referenceDocument = null) {
   if (kind === "html") {
     return "HTML";
   }
+  if (kind === "word") {
+    return "Word";
+  }
   return "Predložak";
+}
+
+function syncDocumentTemplateEngineInputFromReference(referenceDocument = documentTemplateReferenceDraft) {
+  if (!(documentTemplateEngineInput instanceof HTMLSelectElement)) {
+    return;
+  }
+  const kind = getDocumentTemplateReferenceKind(referenceDocument);
+  documentTemplateEngineInput.value = kind === "word" ? "word" : "html";
 }
 
 function syncDocumentTemplateHtmlCodeInputFromReference() {
@@ -43349,6 +43602,7 @@ function syncDocumentTemplateHtmlCodeInputFromReference() {
   }
 
   const referenceDocument = documentTemplateReferenceDraft;
+  syncDocumentTemplateEngineInputFromReference(referenceDocument);
   if (!referenceDocument) {
     documentTemplateHtmlCodeInput.value = "";
     documentTemplateHtmlCodeInput.placeholder = "Zalijepi HTML s tokenima, npr. {{DOCUMENT_TITLE}} i {{BROJ_RADNOG_NALOGA}}";
@@ -43358,7 +43612,7 @@ function syncDocumentTemplateHtmlCodeInputFromReference() {
 
   if (!isDocumentTemplateHtmlReferenceDocument(referenceDocument)) {
     documentTemplateHtmlCodeInput.value = "";
-    documentTemplateHtmlCodeInput.placeholder = "Trenutni predložak nije HTML. Zalijepi HTML kod ovdje i spremi template.";
+    documentTemplateHtmlCodeInput.placeholder = "Ovaj template trenutno koristi Word/PDF. Za HTML varijantu odaberi HTML / PDF, zalijepi kod ili učitaj .html datoteku.";
     setDocumentTemplateHtmlBuilderBlocks([], { syncCode: false });
     return;
   }
@@ -43411,24 +43665,25 @@ function renderDocumentTemplateReferenceMeta() {
   const placeholderCount = fields.filter((field) => String(field?.type || "").trim().toLowerCase() !== "chapter").length;
 
   if (!documentTemplateReferenceDraft) {
+    syncDocumentTemplateEngineInputFromReference(null);
     const stateWrap = document.createElement("div");
     stateWrap.className = "document-template-reference-status";
 
     const stateBadge = document.createElement("span");
     stateBadge.className = "document-template-reference-state is-missing";
-    stateBadge.textContent = "HTML još nije učitan";
+    stateBadge.textContent = "Predložak još nije učitan";
 
     const readiness = document.createElement("span");
     readiness.className = "document-template-reference-note";
-    readiness.textContent = `${blockCount} blokova · ${placeholderCount} placeholdera spremno za HTML/PDF`;
+    readiness.textContent = `${blockCount} blokova · ${placeholderCount} placeholdera spremno za HTML ili Word`;
 
     stateWrap.append(stateBadge, readiness);
 
     const empty = document.createElement("strong");
-    empty.textContent = "Preuzmi HTML s tokenima ili zalijepi vlastiti HTML kod.";
+    empty.textContent = "Odaberi HTML / PDF ili Word / PDF, pa učitaj predložak za ovaj template.";
 
     const meta = document.createElement("span");
-    meta.textContent = "PDF zapisnika koristi spremljeni HTML predložak, bez Word konverzije.";
+    meta.textContent = "HTML koristi live builder, a Word koristi .docx/.dotx s istim placeholderima.";
 
     documentTemplateReferenceMeta.append(stateWrap, empty, meta);
     if (documentTemplateReferenceDownloadButton) {
@@ -43438,10 +43693,10 @@ function renderDocumentTemplateReferenceMeta() {
       documentTemplateReferenceRemoveButton.hidden = true;
     }
     if (documentTemplateReferenceDownloadButton) {
-      documentTemplateReferenceDownloadButton.textContent = "Preuzmi spremljeni HTML";
+      documentTemplateReferenceDownloadButton.textContent = "Preuzmi predložak";
     }
     if (documentTemplateReferenceRemoveButton) {
-      documentTemplateReferenceRemoveButton.textContent = "Makni HTML";
+      documentTemplateReferenceRemoveButton.textContent = "Makni predložak";
     }
     return;
   }
@@ -43451,9 +43706,10 @@ function renderDocumentTemplateReferenceMeta() {
 
   const referenceKind = getDocumentTemplateReferenceKind(documentTemplateReferenceDraft);
   const referenceLabel = getDocumentTemplateReferenceLabel(documentTemplateReferenceDraft);
+  syncDocumentTemplateEngineInputFromReference(documentTemplateReferenceDraft);
   const stateBadge = document.createElement("span");
-  stateBadge.className = `document-template-reference-state ${referenceKind === "html" ? "is-ready" : "is-missing"}`;
-  stateBadge.textContent = referenceKind === "html" ? "HTML povezan" : "Zamijeni HTML-om";
+  stateBadge.className = `document-template-reference-state ${referenceKind ? "is-ready" : "is-missing"}`;
+  stateBadge.textContent = referenceKind === "word" ? "Word povezan" : "HTML povezan";
 
   const readiness = document.createElement("span");
   readiness.className = "document-template-reference-note";
@@ -43472,17 +43728,17 @@ function renderDocumentTemplateReferenceMeta() {
   const note = document.createElement("span");
   note.textContent = referenceKind === "html"
     ? "Kasniji PDF zapisnici koriste ovaj HTML predložak."
-    : "Ovaj zapis nije HTML predložak. Zalijepi ili učitaj HTML prije generiranja PDF-a.";
+    : "Kasniji PDF zapisnici koriste ovaj Word predložak i pretvaraju ga u PDF.";
 
   documentTemplateReferenceMeta.append(stateWrap, title, meta, note);
 
   if (documentTemplateReferenceDownloadButton) {
     documentTemplateReferenceDownloadButton.hidden = false;
-    documentTemplateReferenceDownloadButton.textContent = "Preuzmi spremljeni HTML";
+    documentTemplateReferenceDownloadButton.textContent = `Preuzmi spremljeni ${referenceLabel}`;
   }
   if (documentTemplateReferenceRemoveButton) {
     documentTemplateReferenceRemoveButton.hidden = false;
-    documentTemplateReferenceRemoveButton.textContent = "Makni HTML";
+    documentTemplateReferenceRemoveButton.textContent = `Makni ${referenceLabel}`;
   }
 }
 
@@ -43515,7 +43771,12 @@ function getCurrentDocumentTemplateHtmlCodeForSave() {
   return String(documentTemplateHtmlCodeInput?.value || "").trim();
 }
 
-function syncDocumentTemplateReferenceDocumentFromCurrentHtml({ render = false } = {}) {
+function syncDocumentTemplateReferenceDocumentFromCurrentHtml({ render = false, force = false } = {}) {
+  const previousKind = getDocumentTemplateReferenceKind(documentTemplateReferenceDraft);
+  if (previousKind === "word" && !force) {
+    return false;
+  }
+
   const htmlCode = getCurrentDocumentTemplateHtmlCodeForSave();
   const builderDocument = documentTemplateHtmlBuilderEngine
     ? normalizeDocumentTemplateHtmlBuilderDocumentPayload(documentTemplateHtmlBuilderEngine.getDocument?.())
@@ -43529,7 +43790,9 @@ function syncDocumentTemplateReferenceDocumentFromCurrentHtml({ render = false }
     documentTemplateTitleInput?.value || documentTemplateOutputFileNameInput?.value || previousReference?.fileName || "zapisnik-template",
     "zapisnik-template",
   ).replace(/\.(html?|docx?|pdf)$/i, "");
-  const fileName = previousReference?.fileName || `${baseName}.html`;
+  const fileName = previousKind === "html" && previousReference?.fileName
+    ? previousReference.fileName
+    : `${baseName}.html`;
   const dataUrl = textToDataUrl(htmlCode);
 
   if (
@@ -43567,13 +43830,16 @@ function captureDocumentTemplateEditorDraftForSnapshot() {
     return null;
   }
 
-  const builderDocument = documentTemplateHtmlBuilderEngine
-    ? cloneDocumentTemplateBuilderDocument(documentTemplateHtmlBuilderEngine.getDocument?.())
-    : cloneDocumentTemplateBuilderDocument(documentTemplateReferenceDraft?.builderDocument);
+  const referenceDraft = normalizeDocumentTemplateReferenceDocument(documentTemplateReferenceDraft);
+  const referenceKind = getDocumentTemplateReferenceKind(referenceDraft);
+  const builderDocument = referenceKind === "word"
+    ? []
+    : (documentTemplateHtmlBuilderEngine
+      ? cloneDocumentTemplateBuilderDocument(documentTemplateHtmlBuilderEngine.getDocument?.())
+      : cloneDocumentTemplateBuilderDocument(documentTemplateReferenceDraft?.builderDocument));
   const htmlCode = builderDocument.length > 0
     ? buildBuilderHtmlFromDocument(builderDocument)
-    : String(documentTemplateHtmlCodeInput?.value || "").trim();
-  const referenceDraft = normalizeDocumentTemplateHtmlReferenceDocument(documentTemplateReferenceDraft);
+    : (referenceKind === "word" ? "" : String(documentTemplateHtmlCodeInput?.value || "").trim());
 
   return {
     templateId: String(documentTemplateIdInput?.value || state.activeDocumentTemplateId || "").trim(),
@@ -43600,7 +43866,8 @@ function restoreDocumentTemplateEditorDraftAfterSnapshot(capture = null) {
   const htmlCode = builderDocument.length > 0
     ? buildBuilderHtmlFromDocument(builderDocument)
     : String(capture.htmlCode || "").trim();
-  const referenceDraft = normalizeDocumentTemplateHtmlReferenceDocument(capture.referenceDraft);
+  const referenceDraft = normalizeDocumentTemplateReferenceDocument(capture.referenceDraft);
+  const referenceKind = getDocumentTemplateReferenceKind(referenceDraft);
   const baseName = sanitizeDocumentTemplateFileName(
     capture.title || documentTemplateTitleInput?.value || documentTemplateOutputFileNameInput?.value || referenceDraft?.fileName || "zapisnik-template",
     "zapisnik-template",
@@ -43618,7 +43885,9 @@ function restoreDocumentTemplateEditorDraftAfterSnapshot(capture = null) {
     placeholdersCollapsed: Boolean(capture.sidebarPanels?.placeholdersCollapsed),
   };
 
-  if (builderDocument.length > 0 || htmlCode) {
+  if (referenceKind === "word" && referenceDraft) {
+    documentTemplateReferenceDraft = referenceDraft;
+  } else if (builderDocument.length > 0 || htmlCode) {
     documentTemplateReferenceDraft = normalizeDocumentTemplateHtmlReferenceDocument({
       ...(referenceDraft ?? {}),
       fileName: referenceDraft?.fileName || `${baseName}.html`,
@@ -43630,14 +43899,20 @@ function restoreDocumentTemplateEditorDraftAfterSnapshot(capture = null) {
     });
   }
 
-  documentTemplateHtmlBuilderBlocks = builderDocument.length > 0
-    ? createLegacyBlocksFromBuilderDocument(builderDocument)
-    : documentTemplateHtmlBuilderBlocks;
-  if (documentTemplateHtmlCodeInput instanceof HTMLTextAreaElement && htmlCode) {
+  documentTemplateHtmlBuilderBlocks = referenceKind === "word"
+    ? []
+    : (builderDocument.length > 0
+      ? createLegacyBlocksFromBuilderDocument(builderDocument)
+      : documentTemplateHtmlBuilderBlocks);
+  if (documentTemplateHtmlCodeInput instanceof HTMLTextAreaElement && referenceKind === "word") {
+    documentTemplateHtmlCodeInput.value = "";
+  } else if (documentTemplateHtmlCodeInput instanceof HTMLTextAreaElement && htmlCode) {
     documentTemplateHtmlCodeInput.value = htmlCode;
   }
   const engine = ensureDocumentTemplateHtmlBuilderEngine();
-  if (engine && builderDocument.length > 0) {
+  if (engine && referenceKind === "word") {
+    engine.loadDocument([]);
+  } else if (engine && builderDocument.length > 0) {
     engine.loadDocument(builderDocument);
   }
 
@@ -48073,12 +48348,15 @@ function buildDocumentTemplateRuntimePdfPayloadFromEntry(exportEntry = null) {
     return null;
   }
 
-  const usesHtmlTemplate = exportEntry.templateReferenceKind === "html";
+  const templateEngine = exportEntry.templateReferenceKind === "word"
+    ? "word"
+    : (exportEntry.templateReferenceKind === "html" ? "html" : "native");
+  const usesTemplateDocument = templateEngine === "html" || templateEngine === "word";
   return {
     fileName: exportEntry.pdfFileName,
-    fastPdf: usesHtmlTemplate ? false : true,
-    useTemplatePdf: usesHtmlTemplate,
-    pdfEngine: usesHtmlTemplate ? "html" : "native",
+    fastPdf: usesTemplateDocument ? false : true,
+    useTemplatePdf: usesTemplateDocument,
+    pdfEngine: templateEngine,
     placeholders: exportEntry.placeholders,
     renderModel: exportEntry.renderModel,
   };
@@ -48562,17 +48840,22 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
   }
 
   try {
-    const usesHtmlTemplates = exportEntries.some((entry) => entry.templateReferenceKind === "html");
+    const usesTemplateDocuments = exportEntries.some((entry) => (
+      entry.templateReferenceKind === "html" || entry.templateReferenceKind === "word"
+    ));
+    const batchEngine = exportEntries.some((entry) => entry.templateReferenceKind === "word")
+      ? "template"
+      : (exportEntries.some((entry) => entry.templateReferenceKind === "html") ? "html" : "native");
     const response = await apiBinaryRequest("/document-templates/export-pdf-batch", {
       method: "POST",
       body: {
         fileName: `zapisnici-${new Date().toISOString().slice(0, 10)}.pdf`,
-        fastPdf: usesHtmlTemplates ? false : true,
-        useTemplatePdf: usesHtmlTemplates,
-        pdfEngine: usesHtmlTemplates ? "html" : "native",
+        fastPdf: usesTemplateDocuments ? false : true,
+        useTemplatePdf: usesTemplateDocuments,
+        pdfEngine: batchEngine,
         entries: exportEntries.map((entry) => ({
           templateId: entry.templateId,
-        fileName: entry.htmlFileName,
+          fileName: entry.baseFileName,
           placeholders: entry.placeholders,
           renderModel: entry.renderModel,
         })),
@@ -94546,13 +94829,26 @@ documentTemplateReferenceUploadButton?.addEventListener("click", () => {
   documentTemplateReferenceFileInput?.click();
 });
 
+documentTemplateEngineInput?.addEventListener("change", () => {
+  const nextEngine = documentTemplateEngineInput.value === "word" ? "word" : "html";
+  const currentKind = getDocumentTemplateReferenceKind(documentTemplateReferenceDraft);
+  if (nextEngine === currentKind || !currentKind) {
+    return;
+  }
+  setDocumentTemplateMessage(
+    nextEngine === "word"
+      ? "Odabrano je Word / PDF. Učitaj .docx/.dotx predložak za ovaj template."
+      : "Odabrano je HTML / PDF. Učitaj .html ili klikni Spremi HTML kod za prebacivanje templatea.",
+  );
+});
+
 documentTemplateHtmlSaveButton?.addEventListener("click", () => {
   if (!getCurrentDocumentTemplateHtmlCodeForSave()) {
     setDocumentTemplateMessage("Zalijepi HTML kod predloška prije spremanja.");
     return;
   }
 
-  syncDocumentTemplateReferenceDocumentFromCurrentHtml({ render: true });
+  syncDocumentTemplateReferenceDocumentFromCurrentHtml({ render: true, force: true });
   setDocumentTemplateMessage("HTML predložak je spremljen u draft. Klikni Spremi template za trajno spremanje.", { type: "success" });
 });
 
@@ -94586,7 +94882,8 @@ documentTemplatePlaceholderToggleButton?.addEventListener("click", () => {
 documentTemplateReferenceDownloadButton?.addEventListener("click", () => {
   const referenceDocument = normalizeDocumentTemplateHtmlReferenceDocument(documentTemplateReferenceDraft);
   const currentHtmlCode = String(documentTemplateHtmlCodeInput?.value || "").trim();
-  if (currentHtmlCode) {
+  const referenceKind = getDocumentTemplateReferenceKind(referenceDocument);
+  if (currentHtmlCode && referenceKind !== "word") {
     const fallbackName = sanitizeDocumentTemplateFileName(
       documentTemplateTitleInput?.value || documentTemplateOutputFileNameInput?.value || "template-reference",
       "template-reference",
@@ -94598,15 +94895,12 @@ documentTemplateReferenceDownloadButton?.addEventListener("click", () => {
     return;
   }
 
-  if (!referenceDocument?.dataUrl) {
-    setDocumentTemplateMessage("Nema spremljenog HTML predloška za preuzimanje.");
+  if (!referenceDocument?.dataUrl && !referenceDocument?.storageUrl) {
+    setDocumentTemplateMessage("Nema spremljenog predloška za preuzimanje.");
     return;
   }
 
-  triggerDataUrlDownload(
-    referenceDocument.dataUrl,
-    referenceDocument.fileName || "template-reference.html",
-  );
+  triggerModuleAttachmentDownload(referenceDocument);
 });
 
 documentTemplateReferenceRemoveButton?.addEventListener("click", () => {
@@ -94682,6 +94976,39 @@ async function convertDocumentTemplateWordFileToHtml(file) {
   }
 }
 
+async function storeDocumentTemplateWordReferenceFile(file) {
+  if (!(file instanceof File)) {
+    return;
+  }
+
+  if (documentTemplateReferenceUploadButton instanceof HTMLButtonElement) {
+    documentTemplateReferenceUploadButton.disabled = true;
+    documentTemplateReferenceUploadButton.classList.add("is-loading");
+  }
+  setDocumentTemplateMessage("Učitavam Word predložak...");
+
+  try {
+    const dataUrl = await readFileAsDataUrl(file, "Ne mogu učitati Word predložak.");
+    setDocumentTemplateReferenceDocument({
+      fileName: file.name,
+      fileType: file.type || "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      fileSize: file.size || 0,
+      dataUrl,
+      builderDocument: [],
+      updatedAt: new Date().toISOString(),
+    });
+    setDocumentTemplateMessage("Word predložak je učitan u draft. Spremi template kako bi ostao povezan.", { type: "success" });
+  } catch (error) {
+    console.error("Ne mogu učitati Word predložak.", error);
+    setDocumentTemplateMessage(error?.message || "Ne mogu učitati Word predložak.");
+  } finally {
+    if (documentTemplateReferenceUploadButton instanceof HTMLButtonElement) {
+      documentTemplateReferenceUploadButton.disabled = false;
+      documentTemplateReferenceUploadButton.classList.remove("is-loading");
+    }
+  }
+}
+
 documentTemplateReferenceFileInput?.addEventListener("change", () => {
   const file = documentTemplateReferenceFileInput.files?.[0];
 
@@ -94692,7 +95019,13 @@ documentTemplateReferenceFileInput?.addEventListener("change", () => {
   const isHtmlFile = isDocumentTemplateHtmlReferenceDocument(file);
   const isWordFile = isDocumentTemplateWordReferenceDocument(file);
   if (isWordFile) {
-    void convertDocumentTemplateWordFileToHtml(file)
+    const selectedEngine = documentTemplateEngineInput instanceof HTMLSelectElement && documentTemplateEngineInput.value === "word"
+      ? "word"
+      : "html";
+    const task = selectedEngine === "word"
+      ? storeDocumentTemplateWordReferenceFile(file)
+      : convertDocumentTemplateWordFileToHtml(file);
+    void task
       .finally(() => {
         documentTemplateReferenceFileInput.value = "";
       });
@@ -95265,6 +95598,40 @@ weatherRefreshButton?.addEventListener("click", (event) => {
 weatherCityForm?.addEventListener("submit", (event) => {
   event.preventDefault();
   addWeatherCity(weatherCityInput?.value || "");
+  if (weatherCityInput) {
+    weatherCityInput.value = "";
+    weatherCityInput.focus({ preventScroll: true });
+  }
+});
+
+weatherCityInput?.addEventListener("input", () => {
+  scheduleWeatherCitySuggestions(weatherCityInput.value);
+});
+
+weatherCityInput?.addEventListener("focus", () => {
+  if (normalizeWeatherCityName(weatherCityInput.value).length >= 2) {
+    scheduleWeatherCitySuggestions(weatherCityInput.value);
+  }
+});
+
+weatherCityInput?.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && weatherCitySuggestionsOpen) {
+    event.preventDefault();
+    clearWeatherCitySuggestions();
+  }
+});
+
+weatherCitySuggestionsPanel?.addEventListener("click", (event) => {
+  const button = event.target instanceof Element
+    ? event.target.closest("[data-weather-suggestion]")
+    : null;
+  if (!(button instanceof HTMLElement)) {
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+  addWeatherCity(button.dataset.weatherSuggestion || "");
   if (weatherCityInput) {
     weatherCityInput.value = "";
     weatherCityInput.focus({ preventScroll: true });

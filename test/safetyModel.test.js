@@ -926,7 +926,7 @@ test("document templates keep nested builder data and support filtering", () => 
   assert.equal(builderOnlyReference.referenceDocument?.builderDocument?.[0]?.children?.[0]?.props?.merges?.[0]?.colSpan, 3);
 });
 
-test("document templates drop legacy Word reference documents", () => {
+test("document templates keep Word reference documents for template generation", () => {
   const state = buildState();
   const template = createDocumentTemplate(
     {
@@ -946,7 +946,8 @@ test("document templates drop legacy Word reference documents", () => {
     () => "2026-03-31T12:00:00.000Z",
   );
 
-  assert.equal(template.referenceDocument, null);
+  assert.equal(template.referenceDocument?.fileName, "zapisnik-reference.docx");
+  assert.equal(template.referenceDocument?.builderDocument?.length, 0);
 
   const updated = updateDocumentTemplate(
     {
@@ -965,7 +966,8 @@ test("document templates drop legacy Word reference documents", () => {
     () => "2026-03-31T13:00:00.000Z",
   );
 
-  assert.equal(updated.referenceDocument, null);
+  assert.equal(updated.referenceDocument?.fileName, "stari-template.docx");
+  assert.equal(updated.referenceDocument?.builderDocument?.length, 0);
 });
 
 test("document template AI field settings survive custom field only updates", () => {

@@ -101,7 +101,9 @@ const OPENAI_MAX_INLINE_FILE_COUNT = 5;
 const OPENAI_MAX_TEXT_FILE_CHARS = 60000;
 const OPENAI_MAX_CONTEXT_JSON_CHARS = 80000;
 const OPENWEATHER_DEFAULT_API_BASE_URL = "https://api.openweathermap.org/data/2.5";
+const OPENWEATHER_DEFAULT_GEO_BASE_URL = "https://api.openweathermap.org/geo/1.0";
 const OPENWEATHER_MAX_CITIES = 8;
+const OPENWEATHER_CITY_SEARCH_LIMIT = 8;
 const OPENWEATHER_TIMEOUT_MS = 9000;
 const OPENWEATHER_STRONG_WIND_MS = 13.9;
 const OPENWEATHER_DANGEROUS_WIND_MS = 20.8;
@@ -200,9 +202,13 @@ function getOpenWeatherRuntimeConfig() {
   const apiBaseUrl = String(process.env.OPENWEATHER_API_BASE_URL || OPENWEATHER_DEFAULT_API_BASE_URL)
     .trim()
     .replace(/\/+$/, "");
+  const geoBaseUrl = String(process.env.OPENWEATHER_GEO_BASE_URL || OPENWEATHER_DEFAULT_GEO_BASE_URL)
+    .trim()
+    .replace(/\/+$/, "");
   const apiKey = String(process.env.OPENWEATHER_API_KEY || "").trim();
   return {
     apiBaseUrl,
+    geoBaseUrl,
     apiKey,
     keyConfigured: Boolean(apiKey),
   };
@@ -213,6 +219,25 @@ function normalizeOpenWeatherCityName(value = "") {
     .trim()
     .replace(/\s+/g, " ")
     .slice(0, 80);
+}
+
+function parseOpenWeatherGeoCityToken(value = "") {
+  const normalized = normalizeOpenWeatherCityName(value);
+  const match = normalized.match(/^geo:([-+]?\d+(?:\.\d+)?),([-+]?\d+(?:\.\d+)?)(?::(.+))?$/i);
+  if (!match) {
+    return null;
+  }
+  const lat = Number(match[1]);
+  const lon = Number(match[2]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    return null;
+  }
+  return {
+    lat,
+    lon,
+    label: normalizeOpenWeatherCityName(match[3] || ""),
+    query: normalized,
+  };
 }
 
 function getOpenWeatherRequestedCities(url) {
@@ -269,6 +294,18 @@ function buildOpenWeatherUrl(path, params = {}) {
   return url;
 }
 
+function buildOpenWeatherGeoUrl(path, params = {}) {
+  const config = getOpenWeatherRuntimeConfig();
+  const url = new URL(`${config.geoBaseUrl}${path}`);
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") {
+      url.searchParams.set(key, String(value));
+    }
+  });
+  url.searchParams.set("appid", config.apiKey);
+  return url;
+}
+
 async function fetchOpenWeatherJson(url) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), OPENWEATHER_TIMEOUT_MS);
@@ -304,6 +341,72 @@ async function fetchOpenWeatherJson(url) {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function buildOpenWeatherCityLabel(city = {}) {
+  return [city.name, city.state, city.country]
+    .map((part) => normalizeOpenWeatherCityName(part))
+    .filter(Boolean)
+    .join(", ");
+}
+
+function mapOpenWeatherCitySuggestion(city = {}) {
+  const lat = Number(city.lat ?? 0);
+  const lon = Number(city.lon ?? 0);
+  const label = buildOpenWeatherCityLabel(city);
+  return {
+    name: normalizeOpenWeatherCityName(city.local_names?.hr || city.name || label || "Grad"),
+    state: normalizeOpenWeatherCityName(city.state || ""),
+    country: normalizeOpenWeatherCityName(city.country || ""),
+    label,
+    query: Number.isFinite(lat) && Number.isFinite(lon)
+      ? `geo:${lat},${lon}:${label}`
+      : [city.name, city.country].filter(Boolean).join(","),
+    lat,
+    lon,
+  };
+}
+
+async function buildOpenWeatherCitySuggestions(query = "") {
+  const config = getOpenWeatherRuntimeConfig();
+  if (!config.keyConfigured) {
+    const error = new Error("OpenWeather API ključ nije postavljen na serveru.");
+    error.statusCode = 503;
+    throw error;
+  }
+
+  const normalizedQuery = normalizeOpenWeatherCityName(query);
+  if (normalizedQuery.length < 2) {
+    return {
+      ok: true,
+      provider: "openweather",
+      cities: [],
+    };
+  }
+
+  const payload = await fetchOpenWeatherJson(buildOpenWeatherGeoUrl("/direct", {
+    q: normalizedQuery,
+    limit: OPENWEATHER_CITY_SEARCH_LIMIT,
+  }));
+  const seen = new Set();
+  const cities = (Array.isArray(payload) ? payload : [])
+    .map(mapOpenWeatherCitySuggestion)
+    .filter((city) => {
+      const key = `${city.name}|${city.state}|${city.country}|${city.lat}|${city.lon}`.toLowerCase();
+      if (!city.name || seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    })
+    .slice(0, OPENWEATHER_CITY_SEARCH_LIMIT);
+
+  return {
+    ok: true,
+    provider: "openweather",
+    generatedAt: new Date().toISOString(),
+    cities,
+  };
 }
 
 function mapOpenWeatherCurrent(payload = {}) {
@@ -413,15 +516,19 @@ function buildOpenWeatherSummary(current = {}, alerts = []) {
 }
 
 async function fetchOpenWeatherCity(city) {
-  const currentPayload = await fetchOpenWeatherJson(buildOpenWeatherUrl("/weather", { q: city }));
-  const forecastPayload = await fetchOpenWeatherJson(buildOpenWeatherUrl("/forecast", { q: city }));
+  const geoCity = parseOpenWeatherGeoCityToken(city);
+  const lookupParams = geoCity
+    ? { lat: geoCity.lat, lon: geoCity.lon }
+    : { q: city };
+  const currentPayload = await fetchOpenWeatherJson(buildOpenWeatherUrl("/weather", lookupParams));
+  const forecastPayload = await fetchOpenWeatherJson(buildOpenWeatherUrl("/forecast", lookupParams));
   const current = mapOpenWeatherCurrent(currentPayload);
   const forecast = getOpenWeatherForecastItems(forecastPayload);
   const alerts = buildOpenWeatherAlerts(current, forecast);
 
   return {
     query: city,
-    name: currentPayload.name || city,
+    name: currentPayload.name || geoCity?.label || city,
     country: currentPayload.sys?.country || forecastPayload.city?.country || "",
     lat: Number(currentPayload.coord?.lat ?? forecastPayload.city?.coord?.lat ?? 0),
     lon: Number(currentPayload.coord?.lon ?? forecastPayload.city?.coord?.lon ?? 0),
@@ -1829,7 +1936,7 @@ async function generatePdfBufferForTemplate(template = {}, {
   fileName = "",
 } = {}) {
   if (!template.referenceDocument) {
-    throw new Error("Template još nema učitan HTML predložak.");
+    throw new Error("Template još nema učitan HTML ili Word predložak.");
   }
 
   const referenceDocument = await readStoredDocumentBuffer(template.referenceDocument);
@@ -1840,7 +1947,20 @@ async function generatePdfBufferForTemplate(template = {}, {
     });
   }
 
-  throw new Error("Za Template Development učitaj .html ili .htm predložak.");
+  if (isWordTemplateFile(template.referenceDocument)) {
+    const sourceFileName = String(
+      fileName || template.outputFileName || template.title || template.referenceDocument.fileName || "zapisnik",
+    ).replace(/\.(html?|docx?|dotx|pdf)$/i, "");
+    const docxFileName = sanitizeGeneratedDocumentFileName(
+      sourceFileName,
+      { fallback: "zapisnik", extension: "docx" },
+    );
+    return await buildPdfFromTemplateBuffer(referenceDocument.buffer, placeholders, {
+      fileName: docxFileName,
+    });
+  }
+
+  throw new Error("Za Template Development učitaj .html/.htm ili .docx/.dotx predložak.");
 }
 
 function hasTemplateRenderPdfModel(value = null) {
@@ -1885,7 +2005,7 @@ async function generatePdfBuffersForTemplateEntries(entries = [], scopedSnapshot
         pdfBuffers[entryIndex] = await buildPdfFromRenderModel(entry.renderModel);
         continue;
       }
-      throw new Error("Template još nema učitan HTML predložak.");
+      throw new Error("Template još nema učitan HTML ili Word predložak.");
     }
 
     const cacheKey = String(template.id || entry?.templateId || entryIndex);
@@ -1903,7 +2023,21 @@ async function generatePdfBuffersForTemplateEntries(entries = [], scopedSnapshot
       continue;
     }
 
-    throw new Error("Za Template Development učitaj .html ili .htm predložak.");
+    if (isWordTemplateFile(template.referenceDocument)) {
+      const sourceFileName = String(
+        entry?.fileName || template.outputFileName || template.title || template.referenceDocument.fileName || "zapisnik",
+      ).replace(/\.(html?|docx?|dotx|pdf)$/i, "");
+      const docxFileName = sanitizeGeneratedDocumentFileName(
+        sourceFileName,
+        { fallback: "zapisnik", extension: "docx" },
+      );
+      pdfBuffers[entryIndex] = await buildPdfFromTemplateBuffer(referenceDocument.buffer, entry?.placeholders ?? {}, {
+        fileName: docxFileName,
+      });
+      continue;
+    }
+
+    throw new Error("Za Template Development učitaj .html/.htm ili .docx/.dotx predložak.");
   }
 
   return pdfBuffers.filter(Boolean);
@@ -5503,6 +5637,15 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (request.method === "GET" && url.pathname === "/api/weather/cities") {
+      try {
+        sendJson(response, 200, await buildOpenWeatherCitySuggestions(url.searchParams.get("q") || ""));
+      } catch (error) {
+        sendError(response, Number(error?.statusCode || 502), error?.message || "Pretraga gradova trenutno nije dostupna.");
+      }
+      return true;
+    }
+
     if (request.method === "GET" && url.pathname === "/api/weather") {
       try {
         sendJson(response, 200, await buildOpenWeatherPayload(getOpenWeatherRequestedCities(url)));
@@ -7364,7 +7507,11 @@ async function handleApiRequest(request, response, url) {
         body.fileName || template.outputFileName || template.title || "zapisnik",
         { fallback: "zapisnik", extension: "pdf" },
       );
-      const pdfBuffer = shouldUseFastTemplateRenderPdf(body) && !isHtmlTemplateFile(template.referenceDocument)
+      const hasStoredTemplateReference = Boolean(
+        template.referenceDocument
+        && (isHtmlTemplateFile(template.referenceDocument) || isWordTemplateFile(template.referenceDocument)),
+      );
+      const pdfBuffer = shouldUseFastTemplateRenderPdf(body) && !hasStoredTemplateReference
         ? await buildPdfFromRenderModel(body.renderModel)
         : await generatePdfBufferForTemplate(template, {
           placeholders: body.placeholders ?? {},
@@ -7393,9 +7540,21 @@ async function handleApiRequest(request, response, url) {
         return true;
       }
 
+      const documentTemplateById = new Map((scopedSnapshot.documentTemplates ?? []).map((template) => [
+        String(template.id),
+        template,
+      ]));
+      const entriesUseStoredTemplateReference = entries.some((entry) => {
+        const template = documentTemplateById.get(String(entry?.templateId || ""));
+        return Boolean(
+          template?.referenceDocument
+          && (isHtmlTemplateFile(template.referenceDocument) || isWordTemplateFile(template.referenceDocument)),
+        );
+      });
       const canUseFastPdf = body?.fastPdf !== false
         && body?.useTemplatePdf !== true
         && !["template", "word", "html"].includes(String(body?.pdfEngine || "").trim().toLowerCase())
+        && !entriesUseStoredTemplateReference
         && entries.every((entry) => hasTemplateRenderPdfModel(entry?.renderModel));
       const pdfBuffers = canUseFastPdf
         ? await Promise.all(entries.map((entry) => buildPdfFromRenderModel(entry.renderModel)))

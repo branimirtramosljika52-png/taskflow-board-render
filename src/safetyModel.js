@@ -2163,8 +2163,12 @@ function normalizeDocumentTemplateReferenceDocument(value, fallback = null) {
   const isHtmlReference = lowerFileName.endsWith(".html")
     || lowerFileName.endsWith(".htm")
     || lowerFileType.startsWith("text/html");
+  const isWordReference = lowerFileName.endsWith(".docx")
+    || lowerFileName.endsWith(".dotx")
+    || lowerFileType.includes("wordprocessingml.document")
+    || lowerFileType.includes("wordprocessingml.template");
 
-  if (!fileName || (!dataUrl && builderDocument.length === 0) || !isHtmlReference) {
+  if (!fileName || (!dataUrl && (!isHtmlReference || builderDocument.length === 0)) || (!isHtmlReference && !isWordReference)) {
     return fallback ? normalizeDocumentTemplateReferenceDocument(fallback, null) : null;
   }
 
@@ -2172,7 +2176,7 @@ function normalizeDocumentTemplateReferenceDocument(value, fallback = null) {
     fileName: fileName.slice(0, 255),
     fileType: fileType.slice(0, 160),
     dataUrl,
-    builderDocument,
+    builderDocument: isHtmlReference ? builderDocument : [],
     updatedAt: normalizeOptionalDateTime(value.updatedAt) ?? isoNow(),
   };
 }

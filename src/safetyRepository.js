@@ -1647,7 +1647,11 @@ function isDocumentTemplateHtmlReferenceDocument(document = {}) {
   const fileType = dbString(document.fileType ?? document.mimeType).toLowerCase();
   return fileName.endsWith(".html")
     || fileName.endsWith(".htm")
-    || fileType.startsWith("text/html");
+    || fileType.startsWith("text/html")
+    || fileName.endsWith(".docx")
+    || fileName.endsWith(".dotx")
+    || fileType.includes("wordprocessingml.document")
+    || fileType.includes("wordprocessingml.template");
 }
 
 function normalizeStoredBuilderDocument(value = []) {
