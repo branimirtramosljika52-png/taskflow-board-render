@@ -55,6 +55,13 @@ function applyDocumentBranding(document = [], logoDataUrl = "", options = {}) {
       layout: { ...(block.layout || {}) },
       children: Array.isArray(block.children) ? block.children.map(decorate) : [],
     };
+    if (next.type === "page" && (force || next.props.headerAutoLogo || !next.props.headerLogoDataUrl)) {
+      next.props = {
+        ...next.props,
+        headerAutoLogo: true,
+        headerLogoDataUrl: logo,
+      };
+    }
     if (next.type === "logo" && (force || next.props.autoLogo || !next.props.src)) {
       next.props = { ...next.props, ...logoProps(logo) };
     }
@@ -67,6 +74,10 @@ function applyDocumentBranding(document = [], logoDataUrl = "", options = {}) {
 function defaultDocument(logoDataUrl = "") {
   return [
     createBlock("page", {
+      props: {
+        headerAutoLogo: true,
+        headerLogoDataUrl: String(logoDataUrl || "").trim(),
+      },
       layout: { width: A4_WIDTH_PX, height: A4_HEIGHT_PX },
       children: [
         createBlock("grid"),

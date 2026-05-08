@@ -27,6 +27,14 @@ const TEXT_ALIGNS = [
   { value: "justify", label: "Justify" },
 ];
 
+const FOOTER_TYPES = [
+  { value: "none", label: "Bez footera" },
+  { value: "page-number", label: "Broj stranice" },
+  { value: "text", label: "Tekst" },
+  { value: "document-info", label: "Info + stranica" },
+  { value: "signature", label: "Potpis" },
+];
+
 function numberInput(value, onInput) {
   const control = input({ type: "number", value: Math.round(Number(value) || 0) });
   control.addEventListener("change", () => onInput(Number(control.value) || 0));
@@ -247,6 +255,76 @@ function createGridAction(label, title, onClick) {
   });
 }
 
+function getActivePage(state = {}) {
+  const pages = Array.isArray(state.document) ? state.document : [];
+  return pages[Math.max(0, Math.min(pages.length - 1, Number(state.activePage || 1) - 1))] || pages[0] || null;
+}
+
+function pickPageChromeTarget(state = {}, group = "header") {
+  const pages = Array.isArray(state.document) ? state.document : [];
+  const firstPage = pages[0] || null;
+  const activePage = getActivePage(state);
+  const firstProps = firstPage?.props || {};
+  const sameKey = group === "footer" ? "footerSameEveryPage" : "headerSameEveryPage";
+  return firstProps[sameKey] === false ? activePage : firstPage;
+}
+
+function pageSettingsSection(state, store) {
+  const activePage = getActivePage(state);
+  const firstPage = Array.isArray(state.document) ? state.document[0] : null;
+  if (!activePage || !firstPage) {
+    return null;
+  }
+
+  const headerPage = pickPageChromeTarget(state, "header") || activePage;
+  const footerPage = pickPageChromeTarget(state, "footer") || activePage;
+  const headerProps = headerPage.props || {};
+  const footerProps = footerPage.props || {};
+  const firstProps = firstPage.props || {};
+  const updatePageProps = (page, patch) => {
+    if (page?.id) store.updateBlock(page.id, { props: patch });
+  };
+  const updateHeaderProps = (patch) => updatePageProps(headerPage, patch);
+  const updateFooterProps = (patch) => updatePageProps(footerPage, patch);
+
+  return section("A4 header / footer", [
+    el("div", { className: "sn-builder-property-grid" }, [
+      field("Header", checkboxInput(headerProps.headerEnabled !== false, (value) => updateHeaderProps({ headerEnabled: value }))),
+      field("Header svugdje", checkboxInput(firstProps.headerSameEveryPage !== false, (value) => {
+        const sourceProps = activePage.props || {};
+        updatePageProps(firstPage, {
+          headerSameEveryPage: value,
+          ...(value ? {
+            headerEnabled: sourceProps.headerEnabled !== false,
+            headerLogoEnabled: sourceProps.headerLogoEnabled !== false,
+            headerLogoDataUrl: sourceProps.headerLogoDataUrl || firstProps.headerLogoDataUrl || "",
+            headerAutoLogo: sourceProps.headerAutoLogo !== false,
+            headerTitle: sourceProps.headerTitle || "",
+            headerHeight: Number(sourceProps.headerHeight) || Number(firstProps.headerHeight) || 64,
+          } : {}),
+        });
+      })),
+      field("Logo", checkboxInput(headerProps.headerLogoEnabled !== false, (value) => updateHeaderProps({ headerLogoEnabled: value }))),
+      field("Header height", numberInput(headerProps.headerHeight || 64, (value) => updateHeaderProps({ headerHeight: Math.max(34, Math.min(140, value)) }))),
+    ]),
+    field("Header title", textInput(headerProps.headerTitle || "", (value) => updateHeaderProps({ headerTitle: value }))),
+    el("div", { className: "sn-builder-property-grid" }, [
+      field("Footer", select(FOOTER_TYPES, footerProps.footerType || "page-number", { onchange: (event) => updateFooterProps({ footerType: event.target.value }) })),
+      field("Footer svugdje", checkboxInput(firstProps.footerSameEveryPage !== false, (value) => {
+        const sourceProps = activePage.props || {};
+        updatePageProps(firstPage, {
+          footerSameEveryPage: value,
+          ...(value ? {
+            footerType: sourceProps.footerType || firstProps.footerType || "page-number",
+            footerText: sourceProps.footerText || "",
+          } : {}),
+        });
+      })),
+    ]),
+    field("Footer text", textInput(footerProps.footerText || "", (value) => updateFooterProps({ footerText: value }))),
+  ]);
+}
+
 function gridPropertySection(block, updateProps, updateStyles, updateLayout) {
   if (block.type !== "grid") {
     return null;
@@ -257,8 +335,11 @@ function gridPropertySection(block, updateProps, updateStyles, updateLayout) {
   const showBorders = block.props?.showBorders !== false;
   const cellBackgroundColor = block.props?.cellBackgroundColor || "#ffffff";
   const selectedIds = getGridSelectedCellIds(block, rows, columns);
-  const selectedText = selectedIds.length
-    ? selectedIds.map((index) => `R${Math.floor(index / columns) + 1}C${(index % columns) + 1}`).join(", ")
+  const selectedRect = getGridSelectionRect(selectedIds, columns);
+  const selectedText = selectedIds.length && selectedRect
+    ? selectedIds.length === 1
+      ? `R${selectedRect.minRow + 1}C${selectedRect.minColumn + 1}`
+      : `${selectedIds.length} celija: R${selectedRect.minRow + 1}C${selectedRect.minColumn + 1} - R${selectedRect.maxRow + 1}C${selectedRect.maxColumn + 1}`
     : "Klikni celiju u gridu";
 
   return section("Grid", [
@@ -380,8 +461,12 @@ export function renderPropertiesPanel(container, store) {
       el("span", {}, "Properties"),
       el("strong", {}, block ? block.type : "Selection"),
     ]));
+    const pageSettings = pageSettingsSection(state, store);
+    if (pageSettings) {
+      container.append(pageSettings);
+    }
     if (!block) {
-      container.append(el("div", { className: "sn-builder-empty-state" }, "Oznaci element na stranici za uredjivanje."));
+      container.append(el("div", { className: "sn-builder-empty-state" }, "Oznaci element na stranici za uredjivanje blokova. Header i footer su iznad."));
       return;
     }
 

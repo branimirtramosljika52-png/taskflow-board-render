@@ -241,6 +241,68 @@
   pointer-events: none;
 }
 
+.sn-builder-page-header {
+  position: absolute;
+  z-index: 30;
+  top: 24px;
+  right: 48px;
+  left: 48px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  border-bottom: 2px solid #006fc0;
+  pointer-events: none;
+}
+
+.sn-builder-page-header-logo {
+  display: flex;
+  flex: 0 0 160px;
+  align-items: center;
+  height: 100%;
+}
+
+.sn-builder-page-header-logo img {
+  max-width: 150px;
+  max-height: calc(100% - 10px);
+  object-fit: contain;
+}
+
+.sn-builder-page-header-logo-empty {
+  display: inline-grid;
+  place-items: center;
+  width: 92px;
+  height: 34px;
+  border: 1px dashed #94a3b8;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.sn-builder-page-header-title {
+  flex: 1;
+  color: var(--sn-builder-text);
+  font-size: 13px;
+  font-weight: 800;
+  text-align: right;
+}
+
+.sn-builder-page-footer {
+  position: absolute;
+  z-index: 30;
+  right: 48px;
+  bottom: 24px;
+  left: 48px;
+  min-height: 24px;
+  border-top: 1px solid #cbd5e1;
+  padding-top: 6px;
+  color: #475569;
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+  pointer-events: none;
+}
+
 .sn-builder-grid {
   position: absolute;
   inset: 0;

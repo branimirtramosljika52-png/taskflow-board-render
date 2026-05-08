@@ -46,14 +46,62 @@ function renderExportBlock(block = {}) {
   return `<div class="sn-report-positioned sn-report-type-${escapeHtml(block.type)}" style="${blockLayoutStyles(block)}">${blockToHtml(block)}${children}</div>`;
 }
 
+function getSharedPageProps(page = {}, firstPage = {}, group = "header") {
+  const firstProps = firstPage.props || {};
+  const pageProps = page.props || {};
+  const sameKey = group === "footer" ? "footerSameEveryPage" : "headerSameEveryPage";
+  return firstProps[sameKey] === false ? pageProps : { ...pageProps, ...firstProps };
+}
+
+function renderPageHeader(page = {}, firstPage = {}) {
+  const props = getSharedPageProps(page, firstPage, "header");
+  if (props.headerEnabled === false) return "";
+  const headerHeight = Math.max(34, Math.min(140, Number(props.headerHeight) || 64));
+  const logoDataUrl = String(props.headerLogoDataUrl || "").trim();
+  const logo = props.headerLogoEnabled === false
+    ? ""
+    : logoDataUrl
+      ? `<img src="${escapeHtml(logoDataUrl)}" alt="Logo tvrtke">`
+      : `<span class="sn-report-page-header-logo-empty">Logo</span>`;
+  const title = escapeHtml(String(props.headerTitle || "").trim());
+  return `<div class="sn-report-page-header" style="height:${headerHeight}px"><div class="sn-report-page-header-logo">${logo}</div><div class="sn-report-page-header-title">${title}</div></div>`;
+}
+
+function getFooterContent(props = {}, pageIndex = 0, pageCount = 1) {
+  const text = String(props.footerText || "").trim();
+  switch (props.footerType || "page-number") {
+    case "none":
+      return "";
+    case "text":
+      return text || "{{FOOTER_TEXT}}";
+    case "document-info":
+      return `${text || "{{BROJ_ZAPISNIKA}}"} | Stranica ${pageIndex + 1} / ${pageCount}`;
+    case "signature":
+      return text || "Izradio: {{ISPITIVAC}}";
+    case "page-number":
+    default:
+      return text || `Stranica ${pageIndex + 1} / ${pageCount}`;
+  }
+}
+
+function renderPageFooter(page = {}, firstPage = {}, pageIndex = 0, pageCount = 1) {
+  const props = getSharedPageProps(page, firstPage, "footer");
+  const content = getFooterContent(props, pageIndex, pageCount);
+  return content
+    ? `<div class="sn-report-page-footer is-${escapeHtml(props.footerType || "page-number")}">${escapeHtml(content)}</div>`
+    : "";
+}
+
 export function buildBuilderHtmlFromDocument(document = [], options = {}) {
   const pages = Array.isArray(document) ? document : [];
   if (pages.length === 0) return "";
   const metadata = encodeMetadata(pages);
+  const firstPage = pages[0] || {};
   const body = pages.map((page, index) => {
     const width = Number(page.layout?.width) || A4_WIDTH_PX;
     const height = Math.max(A4_HEIGHT_PX, Number(page.layout?.height) || A4_HEIGHT_PX);
-    return `<section class="sn-report-page" data-page="${index + 1}" style="width:${width}px;min-height:${height}px">${(page.children || []).map(renderExportBlock).join("\n")}</section>`;
+    const chrome = `${renderPageHeader(page, firstPage)}${renderPageFooter(page, firstPage, index, pages.length)}`;
+    return `<section class="sn-report-page" data-page="${index + 1}" style="width:${width}px;min-height:${height}px">${chrome}${(page.children || []).map(renderExportBlock).join("\n")}</section>`;
   }).join("\n");
   return `<!-- ${DOCUMENT_BUILDER_METADATA_PREFIX}${metadata} -->
 <style>
@@ -63,6 +111,12 @@ export function buildBuilderHtmlFromDocument(document = [], options = {}) {
   .sn-report-document { display: grid; gap: 0; background: #fff; }
   .sn-report-page { position: relative; overflow: hidden; page-break-after: always; break-after: page; background: #fff; }
   .sn-report-page:last-child { page-break-after: auto; break-after: auto; }
+  .sn-report-page-header { position: absolute; z-index: 30; top: 24px; left: 48px; right: 48px; display: flex; align-items: center; gap: 18px; border-bottom: 2px solid #006fc0; pointer-events: none; }
+  .sn-report-page-header-logo { flex: 0 0 160px; display: flex; align-items: center; height: 100%; }
+  .sn-report-page-header-logo img { max-width: 150px; max-height: calc(100% - 10px); object-fit: contain; }
+  .sn-report-page-header-logo-empty { display: inline-grid; place-items: center; width: 92px; height: 34px; border: 1px dashed #94a3b8; color: #64748b; font-size: 10px; text-transform: uppercase; }
+  .sn-report-page-header-title { flex: 1; color: #172033; font-size: 13px; font-weight: 700; text-align: right; }
+  .sn-report-page-footer { position: absolute; z-index: 30; left: 48px; right: 48px; bottom: 24px; min-height: 24px; border-top: 1px solid #cbd5e1; padding-top: 6px; color: #475569; font-size: 10px; text-align: center; pointer-events: none; }
   .sn-report-positioned { overflow: visible; }
   .sn-report-block { width: 100%; height: 100%; overflow: hidden; }
   .sn-report-block h1, .sn-report-block h2, .sn-report-block p { margin: 0; }

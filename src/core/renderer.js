@@ -72,6 +72,61 @@ function renderGuides(guides = []) {
   }));
 }
 
+function getSharedPageProps(page = {}, firstPage = {}, group = "header") {
+  const firstProps = firstPage.props || {};
+  const pageProps = page.props || {};
+  const sameKey = group === "footer" ? "footerSameEveryPage" : "headerSameEveryPage";
+  return firstProps[sameKey] === false ? pageProps : { ...pageProps, ...firstProps };
+}
+
+function renderPageHeader(page = {}, firstPage = {}) {
+  const props = getSharedPageProps(page, firstPage, "header");
+  if (props.headerEnabled === false) {
+    return null;
+  }
+  const headerHeight = Math.max(34, Math.min(140, Number(props.headerHeight) || 64));
+  const logoDataUrl = String(props.headerLogoDataUrl || "").trim();
+  const logo = props.headerLogoEnabled === false
+    ? null
+    : logoDataUrl
+      ? el("img", { src: logoDataUrl, alt: "Logo tvrtke" })
+      : el("span", { className: "sn-builder-page-header-logo-empty" }, "Logo");
+  const title = String(props.headerTitle || "").trim();
+  return el("div", {
+    className: "sn-builder-page-header",
+    style: { height: `${headerHeight}px` },
+  }, [
+    el("div", { className: "sn-builder-page-header-logo" }, logo ? [logo] : []),
+    el("div", { className: "sn-builder-page-header-title" }, title),
+  ]);
+}
+
+function getFooterContent(props = {}, pageIndex = 0, pageCount = 1) {
+  const text = String(props.footerText || "").trim();
+  switch (props.footerType || "page-number") {
+    case "none":
+      return "";
+    case "text":
+      return text || "{{FOOTER_TEXT}}";
+    case "document-info":
+      return `${text || "{{BROJ_ZAPISNIKA}}"} | Stranica ${pageIndex + 1} / ${pageCount}`;
+    case "signature":
+      return text || "Izradio: {{ISPITIVAC}}";
+    case "page-number":
+    default:
+      return text || `Stranica ${pageIndex + 1} / ${pageCount}`;
+  }
+}
+
+function renderPageFooter(page = {}, firstPage = {}, pageIndex = 0, pageCount = 1) {
+  const props = getSharedPageProps(page, firstPage, "footer");
+  const content = getFooterContent(props, pageIndex, pageCount);
+  if (!content) {
+    return null;
+  }
+  return el("div", { className: `sn-builder-page-footer is-${props.footerType || "page-number"}` }, content);
+}
+
 export function renderCanvas(container, store, options = {}) {
   if (!(container instanceof HTMLElement)) return;
   const state = store.getState();
@@ -87,6 +142,8 @@ export function renderCanvas(container, store, options = {}) {
     tokenOptions: options.getTokenOptions?.() || [],
   };
 
+  const firstPage = state.document[0] || {};
+  const pageCount = state.document.length;
   state.document.forEach((page, pageIndex) => {
     const pageWidth = Number(page.layout?.width) || A4_WIDTH_PX;
     const pageHeight = Number(page.layout?.height) || A4_HEIGHT_PX;
@@ -113,6 +170,10 @@ export function renderCanvas(container, store, options = {}) {
       el("div", { className: "sn-builder-print-safe-area" }),
       el("div", { className: "sn-builder-grid" }),
     );
+    const headerNode = renderPageHeader(page, firstPage);
+    const footerNode = renderPageFooter(page, firstPage, pageIndex, pageCount);
+    if (headerNode) pageNode.append(headerNode);
+    if (footerNode) pageNode.append(footerNode);
     (page.children || []).forEach((block) => {
       pageNode.append(renderBlockNode(block, context));
     });

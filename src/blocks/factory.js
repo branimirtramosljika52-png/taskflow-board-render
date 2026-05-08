@@ -97,7 +97,19 @@ const baseStyles = {
 };
 
 const defaultProps = {
-  page: { name: "A4 stranica" },
+  page: {
+    name: "A4 stranica",
+    headerEnabled: true,
+    headerSameEveryPage: true,
+    headerLogoEnabled: true,
+    headerAutoLogo: true,
+    headerLogoDataUrl: "",
+    headerTitle: "",
+    headerHeight: 64,
+    footerType: "page-number",
+    footerSameEveryPage: true,
+    footerText: "",
+  },
   section: { title: "Poglavlje", content: "" },
   container: { label: "Kontejner" },
   heading: { content: "NASLOV DOKUMENTA" },
@@ -268,6 +280,34 @@ function getGridRangeCellIds(startIndex, endIndex, columns) {
   return ids;
 }
 
+function getGridCellIndexFromEvent(event, columns, rows) {
+  const target = event.target instanceof HTMLElement
+    ? event.target
+    : document.elementFromPoint(event.clientX, event.clientY);
+  const node = target instanceof HTMLElement
+    ? target.closest("[data-grid-cell-index]")
+    : null;
+  const index = Number.parseInt(node?.dataset?.gridCellIndex ?? "", 10);
+  return Number.isInteger(index) && index >= 0 && index < rows * columns ? index : null;
+}
+
+function getGridCellIndexFromPoint(event, columns, rows) {
+  const target = document.elementFromPoint(event.clientX, event.clientY);
+  const node = target instanceof HTMLElement
+    ? target.closest("[data-grid-cell-index]")
+    : null;
+  const index = Number.parseInt(node?.dataset?.gridCellIndex ?? "", 10);
+  return Number.isInteger(index) && index >= 0 && index < rows * columns ? index : null;
+}
+
+function applyGridLiveSelection(grid, selectedIds = []) {
+  const selected = new Set(selectedIds.map(String));
+  grid.querySelectorAll("[data-grid-cell-index]").forEach((node) => {
+    if (!(node instanceof HTMLElement)) return;
+    node.classList.toggle("is-selected", selected.has(String(node.dataset.gridCellIndex || "")));
+  });
+}
+
 function normalizeGridProps(props = {}) {
   const rows = normalizeGridDimension(props.rows, defaultProps.grid.rows);
   const columns = normalizeGridDimension(props.columns, defaultProps.grid.columns);
@@ -306,6 +346,7 @@ function gridCellStyle(block, props, cell) {
 
 function renderGrid(block, context) {
   const props = normalizeGridProps(block.props);
+  const selectedSet = new Set(props.selectedCellIds);
   const grid = el("div", {
     className: "sn-builder-layout-grid",
     style: {
@@ -324,7 +365,7 @@ function renderGrid(block, context) {
     const rowSpan = Math.max(1, Math.min(props.rows - row, cell.rowSpan || 1));
     const colSpan = Math.max(1, Math.min(props.columns - column, cell.colSpan || 1));
     const node = el("div", {
-      className: `sn-builder-grid-cell${props.selectedCellIds.includes(index) ? " is-selected" : ""}`,
+      className: `sn-builder-grid-cell${selectedSet.has(index) ? " is-selected" : ""}`,
       contenteditable: "true",
       spellcheck: "false",
       dataset: {
@@ -338,44 +379,6 @@ function renderGrid(block, context) {
         gridRow: `${row + 1} / span ${rowSpan}`,
       },
     }, cell.content || "");
-    node.addEventListener("pointerdown", (event) => {
-      event.stopPropagation();
-      const isMultiSelection = event.shiftKey || event.ctrlKey || event.metaKey;
-      if (isMultiSelection) {
-        event.preventDefault();
-      }
-      const selected = new Set(props.selectedCellIds);
-      if (event.shiftKey && selected.size > 0) {
-        const anchorIndex = [...selected].at(-1);
-        if (!event.ctrlKey && !event.metaKey) {
-          selected.clear();
-        }
-        getGridRangeCellIds(anchorIndex, index, props.columns)
-          .filter((cellIndex) => !props.cells[cellIndex]?.hidden)
-          .forEach((cellIndex) => selected.add(cellIndex));
-      } else if (event.ctrlKey || event.metaKey) {
-        if (selected.has(index)) {
-          selected.delete(index);
-        } else {
-          selected.add(index);
-        }
-      } else {
-        selected.clear();
-        selected.add(index);
-      }
-      if (!context.state?.selectedIds?.includes(block.id)) {
-        context.selectBlock?.(block.id);
-      }
-      context.updateBlock(block.id, {
-        props: {
-          ...block.props,
-          selectedCellIds: [...selected],
-        },
-      }, { history: false });
-      if (!isMultiSelection) {
-        focusEditableCellAtEnd(block.id, index);
-      }
-    });
     node.addEventListener("blur", () => {
       const nextCells = props.cells.map((entry) => ({ ...entry }));
       nextCells[index] = {
@@ -393,6 +396,96 @@ function renderGrid(block, context) {
       context.commitHistory();
     });
     grid.append(node);
+  });
+
+  let dragSession = null;
+
+  function resolveDragSelection(currentIndex, final = false) {
+    if (!dragSession) {
+      return [];
+    }
+    const startIndex = dragSession.anchorIndex;
+    const range = getGridRangeCellIds(startIndex, currentIndex, props.columns)
+      .filter((cellIndex) => !props.cells[cellIndex]?.hidden);
+    if (dragSession.additive && final && !dragSession.dragged && currentIndex === dragSession.startIndex) {
+      const selected = new Set(props.selectedCellIds);
+      if (selected.has(currentIndex)) {
+        selected.delete(currentIndex);
+      } else {
+        selected.add(currentIndex);
+      }
+      return [...selected];
+    }
+    if (dragSession.additive) {
+      const selected = new Set(props.selectedCellIds);
+      range.forEach((cellIndex) => selected.add(cellIndex));
+      return [...selected];
+    }
+    return range;
+  }
+
+  grid.addEventListener("pointerdown", (event) => {
+    if (!(event.target instanceof HTMLElement) || event.button !== 0) return;
+    const startIndex = getGridCellIndexFromEvent(event, props.columns, props.rows);
+    if (startIndex == null || props.cells[startIndex]?.hidden) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    const anchorIndex = event.shiftKey && props.selectedCellIds.length > 0
+      ? props.selectedCellIds.at(-1)
+      : startIndex;
+    dragSession = {
+      pointerId: event.pointerId,
+      startIndex,
+      anchorIndex,
+      currentIndex: startIndex,
+      additive: event.ctrlKey || event.metaKey,
+      dragged: false,
+    };
+    grid.setPointerCapture?.(event.pointerId);
+    applyGridLiveSelection(grid, resolveDragSelection(startIndex));
+  });
+
+  grid.addEventListener("pointermove", (event) => {
+    if (!dragSession || event.pointerId !== dragSession.pointerId) return;
+    const currentIndex = getGridCellIndexFromPoint(event, props.columns, props.rows);
+    if (currentIndex == null || props.cells[currentIndex]?.hidden) return;
+    if (currentIndex !== dragSession.currentIndex) {
+      dragSession.currentIndex = currentIndex;
+      dragSession.dragged = dragSession.dragged || currentIndex !== dragSession.startIndex;
+      applyGridLiveSelection(grid, resolveDragSelection(currentIndex));
+    }
+  });
+
+  grid.addEventListener("pointerup", (event) => {
+    if (!dragSession || event.pointerId !== dragSession.pointerId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    grid.releasePointerCapture?.(event.pointerId);
+    const session = dragSession;
+    const selectedCellIds = resolveDragSelection(session.currentIndex, true);
+    dragSession = null;
+    if (!context.state?.selectedIds?.includes(block.id)) {
+      context.selectBlock?.(block.id);
+    }
+    context.updateBlock(block.id, {
+      props: {
+        ...block.props,
+        rows: props.rows,
+        columns: props.columns,
+        selectedCellIds,
+      },
+    }, { history: false });
+    if (!session.dragged && !session.additive) {
+      focusEditableCellAtEnd(block.id, session.startIndex);
+    }
+  });
+
+  grid.addEventListener("pointercancel", (event) => {
+    if (!dragSession || event.pointerId !== dragSession.pointerId) return;
+    grid.releasePointerCapture?.(event.pointerId);
+    dragSession = null;
+    applyGridLiveSelection(grid, props.selectedCellIds);
   });
 
   return grid;
