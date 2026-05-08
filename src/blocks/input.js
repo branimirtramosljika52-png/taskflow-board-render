@@ -1,3 +1,2 @@
 import { createBlockDefinition } from "./factory.js";
-export default createBlockDefinition({ type: "input", label: "Input", category: "Forms", icon: "IN" });
-
+export default createBlockDefinition({ type: "input", label: "Polje", category: "Forms", icon: "IN" });

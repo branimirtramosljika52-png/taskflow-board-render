@@ -125,6 +125,11 @@ export function buildBuilderHtmlFromDocument(document = [], options = {}) {
   .sn-report-table th { background: #f1f5f9; font-weight: 700; }
   .sn-report-layout-grid { min-width: 0; min-height: 0; }
   .sn-report-grid-cell { min-width: 0; min-height: 0; }
+  .sn-report-choice { display: inline-flex; align-items: center; gap: 7px; min-height: 18px; }
+  .sn-report-choice-box { position: relative; display: inline-block; width: 14px; height: 14px; border: 1px solid #334155; border-radius: 3px; }
+  .sn-report-choice.is-radio .sn-report-choice-box { border-radius: 999px; }
+  .sn-report-choice-box.is-checked::after { content: ""; position: absolute; top: 2px; left: 5px; width: 4px; height: 8px; border: solid #172033; border-width: 0 2px 2px 0; transform: rotate(42deg); }
+  .sn-report-choice.is-radio .sn-report-choice-box.is-checked::after { top: 3px; left: 3px; width: 6px; height: 6px; border: 0; border-radius: 999px; background: #172033; transform: none; }
   .sn-report-signature { display: grid; align-content: end; gap: 8px; height: 100%; text-align: center; }
   .sn-report-signature em { display: block; border-top: 1px solid #64748b; min-height: 1px; }
   .sn-report-chart { display: flex; gap: 8px; align-items: end; height: 100%; padding: 12px; }

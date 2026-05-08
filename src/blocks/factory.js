@@ -73,7 +73,7 @@ const baseStyles = {
     fontFamily: "Arial",
     fontSize: "11px",
     color: "#172033",
-    backgroundColor: "#ffffff",
+    backgroundColor: "transparent",
     borderColor: "#9ca3af",
     borderWidth: "0",
     borderStyle: "dashed",
@@ -135,7 +135,7 @@ const defaultProps = {
     columnWidths: repeatedTrack(FULL_PAGE_GRID_COLUMNS),
     rowHeights: repeatedTrack(FULL_PAGE_GRID_ROWS),
     showBorders: true,
-    cellBackgroundColor: "#ffffff",
+    cellBackgroundColor: "transparent",
     selectedCellIds: [],
     cells: blankGridCells(),
   },
@@ -329,20 +329,23 @@ function normalizeGridProps(props = {}) {
   };
 }
 
-function gridCellStyle(block, props, cell) {
+function gridCellStyle(block, props, cell, options = {}) {
+  const isExport = options.export === true;
   const preferredBorderWidth = String(block.styles?.borderWidth || "").trim();
+  const explicitCellBorderWidth = String(cell.borderWidth || "").trim();
   const borderWidth = props.showBorders
     ? (preferredBorderWidth && preferredBorderWidth !== "0" ? preferredBorderWidth : "1px")
     : "0";
+  const finalBorderWidth = isExport ? (explicitCellBorderWidth || "0") : (explicitCellBorderWidth || borderWidth);
   return {
     backgroundColor: cell.backgroundColor || props.cellBackgroundColor || "transparent",
     color: cell.color || block.styles?.color || "#172033",
     textAlign: cell.textAlign || block.styles?.textAlign || "left",
     fontWeight: cell.fontWeight || block.styles?.fontWeight || "",
     padding: cell.padding || block.styles?.padding || "6px",
-    borderColor: cell.borderColor || block.styles?.borderColor || "#9ca3af",
-    borderWidth: cell.borderWidth || borderWidth,
-    borderStyle: cell.borderStyle || block.styles?.borderStyle || "dashed",
+    borderColor: finalBorderWidth === "0" ? "transparent" : (cell.borderColor || block.styles?.borderColor || "#9ca3af"),
+    borderWidth: finalBorderWidth,
+    borderStyle: finalBorderWidth === "0" ? "solid" : (cell.borderStyle || block.styles?.borderStyle || "dashed"),
   };
 }
 
@@ -433,6 +436,10 @@ function renderGrid(block, context) {
 
     event.preventDefault();
     event.stopPropagation();
+    if (!context.state?.selectedIds?.includes(block.id)) {
+      context.selectBlock?.(block.id);
+      return;
+    }
     const anchorIndex = event.shiftKey && props.selectedCellIds.length > 0
       ? props.selectedCellIds.at(-1)
       : startIndex;
@@ -519,7 +526,7 @@ function renderByType(block, context) {
   }
   if (type === "checkbox" || type === "radio") {
     return el("div", { className: "sn-builder-choice-line" }, [
-      el("span", { className: `sn-builder-choice-dot is-${type}` }, block.props?.checked ? "x" : ""),
+      el("span", { className: `sn-builder-choice-dot is-${type}${block.props?.checked ? " is-checked" : ""}`, "aria-hidden": "true" }),
       editableText(block, "label", block.props?.label || "Odabir", context, "span"),
     ]);
   }
@@ -570,7 +577,7 @@ function gridToHtml(block) {
     const row = Math.floor(index / props.columns);
     const column = index % props.columns;
     const style = inlineStyles({
-      ...gridCellStyle(block, props, cell),
+      ...gridCellStyle(block, props, cell, { export: true }),
       gridColumn: `${column + 1} / span ${Math.max(1, Math.min(props.columns - column, cell.colSpan || 1))}`,
       gridRow: `${row + 1} / span ${Math.max(1, Math.min(props.rows - row, cell.rowSpan || 1))}`,
       minWidth: "0",
@@ -595,7 +602,9 @@ function contentToHtml(block) {
   if (type === "grid") return gridToHtml(block);
   if (type === "badge" || type === "status" || type === "stamp" || type === "icon") return `<span>${escapeHtml(block.props?.content || block.props?.icon || type)}</span>`;
   if (["input", "textarea", "select", "date"].includes(type)) return `<div><span>${escapeHtml(block.props?.label || "")}</span><strong>${escapeHtml(block.props?.value || "")}</strong></div>`;
-  if (type === "checkbox" || type === "radio") return `<div>${block.props?.checked ? "[x]" : "[ ]"} ${escapeHtml(block.props?.label || "")}</div>`;
+  if (type === "checkbox" || type === "radio") {
+    return `<div class="sn-report-choice is-${type}"><span class="sn-report-choice-box${block.props?.checked ? " is-checked" : ""}"></span><span>${escapeHtml(block.props?.label || "")}</span></div>`;
+  }
   if (type === "signature") return `<div class="sn-report-signature"><span>${escapeHtml(block.props?.label || "Potpis")}</span><em></em><strong>${escapeHtml(block.props?.name || "")}</strong></div>`;
   if (type === "chart") return `<div class="sn-report-chart">${(block.props?.values || []).map((value) => `<span style="height:${Math.max(8, Math.min(100, Number(value) || 10))}%"></span>`).join("")}</div>`;
   if (type === "list") return `<ul>${(block.props?.items || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
@@ -625,7 +634,10 @@ export function createBlockDefinition({ type, label, category, icon }) {
       return renderByType(block, context);
     },
     toHtml(block) {
-      const styles = inlineStyles(block.styles || {});
+      const exportStyles = type === "grid"
+        ? { ...(block.styles || {}), backgroundColor: "transparent", borderWidth: "0" }
+        : (block.styles || {});
+      const styles = inlineStyles(exportStyles);
       return `<div class="sn-report-block sn-report-${type}" style="${styles}">${contentToHtml(block)}</div>`;
     },
   };

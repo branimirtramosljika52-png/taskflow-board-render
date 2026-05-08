@@ -1,3 +1,2 @@
 import { createBlockDefinition } from "./factory.js";
-export default createBlockDefinition({ type: "date", label: "Date", category: "Forms", icon: "DATE" });
-
+export default createBlockDefinition({ type: "date", label: "Datum", category: "Forms", icon: "DAT" });

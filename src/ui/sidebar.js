@@ -2,6 +2,21 @@ import { getBlockCategories } from "../core/registry.js";
 import { DOCUMENT_BUILDER_TEMPLATES } from "./templates.js";
 import { el, clear } from "../utils/dom.js";
 
+const CATEGORY_LABELS = {
+  Layout: "Layout",
+  Text: "Tekst",
+  Forms: "Forme",
+  Tables: "Tablice",
+  Media: "Media",
+  Utilities: "Alati",
+  Signatures: "Potpisi",
+  Reports: "Izvještaji",
+};
+
+function categoryLabel(category = "") {
+  return CATEGORY_LABELS[category] || category || "Ostalo";
+}
+
 export function renderSidebar(container, options = {}) {
   clear(container);
   const search = el("input", {
@@ -26,7 +41,7 @@ export function renderSidebar(container, options = {}) {
       if (filtered.length === 0) return;
       blockList.append(
         el("section", { className: "sn-builder-sidebar-category" }, [
-          el("h4", {}, category),
+          el("h4", {}, categoryLabel(category)),
           el("div", { className: "sn-builder-tool-grid" }, filtered.map((definition) => (
             el("button", {
               type: "button",
@@ -34,8 +49,8 @@ export function renderSidebar(container, options = {}) {
               dataset: { builderTool: definition.type },
               title: definition.label,
             }, [
-              el("span", { className: "sn-builder-tool-icon" }, definition.icon || definition.label.slice(0, 1)),
-              el("span", {}, definition.label),
+              el("span", { className: "sn-builder-tool-icon", "aria-hidden": "true" }, definition.icon || definition.label.slice(0, 1)),
+              el("span", { className: "sn-builder-tool-label" }, definition.label),
             ])
           ))),
         ]),
@@ -44,8 +59,11 @@ export function renderSidebar(container, options = {}) {
 
     const tokens = options.getTokenOptions?.() || [];
     if (tokens.length > 0) {
-      blockList.prepend(el("section", { className: "sn-builder-sidebar-category" }, [
-        el("h4", {}, "Placeholderi"),
+      blockList.prepend(el("section", { className: "sn-builder-sidebar-category is-token-category" }, [
+        el("div", { className: "sn-builder-token-head" }, [
+          el("h4", {}, "Tokeni predloška"),
+          el("small", {}, "Klik dodaje tekst blok"),
+        ]),
         el("div", { className: "sn-builder-token-grid" }, tokens
           .filter((token) => !query || `${token.label} ${token.value}`.toLowerCase().includes(query))
           .slice(0, 28)
@@ -54,7 +72,10 @@ export function renderSidebar(container, options = {}) {
             className: "sn-builder-token-tool",
             dataset: { builderTool: "text", builderToken: token.value },
             title: token.label,
-          }, token.value))),
+          }, [
+            el("span", { className: "sn-builder-token-value" }, token.value),
+            el("small", { className: "sn-builder-token-label" }, token.label),
+          ]))),
       ]));
     }
 
@@ -91,13 +112,13 @@ export function renderSidebar(container, options = {}) {
 
   container.append(
     el("div", { className: "sn-builder-panel-head" }, [
-      el("span", {}, "Blocks"),
+      el("span", {}, "Elementi"),
       el("strong", {}, "No-code"),
     ]),
     search,
     blockList,
     el("div", { className: "sn-builder-panel-head" }, [
-      el("span", {}, "Templates"),
+      el("span", {}, "Predlošci"),
       el("strong", {}, "Start"),
     ]),
     templateList,

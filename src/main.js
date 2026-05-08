@@ -41849,6 +41849,10 @@ function ensureDocumentTemplateHtmlBuilderEngine() {
     return null;
   }
 
+  documentTemplateHtmlPlaceholderPalette
+    ?.closest(".document-template-html-token-panel")
+    ?.setAttribute("hidden", "");
+
   const legacyActions = documentTemplateHtmlBuilderDuplicateButton?.closest(".document-template-html-builder-actions") || null;
   documentTemplateHtmlBuilderEngine = createDocumentReportBuilder({
     mount: documentTemplateHtmlBuilderCanvas,

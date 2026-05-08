@@ -1,2 +1,2 @@
 import { createBlockDefinition } from "./factory.js";
-export default createBlockDefinition({ type: "checkbox", label: "Checkbox", category: "Forms", icon: "CB" });
+export default createBlockDefinition({ type: "checkbox", label: "Kvacica", category: "Forms", icon: "CB" });

@@ -72,6 +72,25 @@ function renderGuides(guides = []) {
   }));
 }
 
+function renderPageRuler(orientation = "horizontal", pageWidth = A4_WIDTH_PX, pageHeight = A4_HEIGHT_PX, zoom = 1) {
+  const horizontal = orientation === "horizontal";
+  const millimeters = horizontal ? 210 : 297;
+  const length = (horizontal ? pageWidth : pageHeight) * (Number(zoom) || 1);
+  const ticks = [];
+  for (let mm = 0; mm <= millimeters; mm += 5) {
+    const position = (mm / millimeters) * length;
+    const major = mm % 10 === 0;
+    ticks.push(el("span", {
+      className: `sn-builder-page-ruler-tick${major ? " is-major" : " is-minor"}`,
+      style: horizontal ? { left: `${position}px` } : { top: `${position}px` },
+    }, major ? String(mm / 10) : ""));
+  }
+  return el("div", {
+    className: `sn-builder-page-ruler is-${orientation}`,
+    style: horizontal ? { width: `${length}px` } : { height: `${length}px` },
+  }, ticks);
+}
+
 function getSharedPageProps(page = {}, firstPage = {}, group = "header") {
   const firstProps = firstPage.props || {};
   const pageProps = page.props || {};
@@ -180,6 +199,8 @@ export function renderCanvas(container, store, options = {}) {
     pageNode.append(...renderGuides(state.guides));
     shell.append(
       el("div", { className: "sn-builder-page-label" }, `A4 ${pageIndex + 1}`),
+      renderPageRuler("horizontal", pageWidth, pageHeight, state.zoom),
+      renderPageRuler("vertical", pageWidth, pageHeight, state.zoom),
       pageNode,
       el("div", { className: "sn-builder-page-number" }, `${pageIndex + 1}`),
     );

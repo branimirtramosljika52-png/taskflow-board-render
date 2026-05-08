@@ -57,8 +57,16 @@ function colorInput(value, onInput) {
 
 function checkboxInput(value, onInput) {
   const control = input({ type: "checkbox", checked: Boolean(value) });
-  control.addEventListener("change", () => onInput(control.checked));
-  return control;
+  const text = el("span", { className: "sn-builder-check-text" }, control.checked ? "Da" : "Ne");
+  control.addEventListener("change", () => {
+    text.textContent = control.checked ? "Da" : "Ne";
+    onInput(control.checked);
+  });
+  return el("span", { className: "sn-builder-check-control" }, [
+    control,
+    el("span", { className: "sn-builder-check-box", "aria-hidden": "true" }),
+    text,
+  ]);
 }
 
 function section(title, children = []) {
@@ -147,7 +155,7 @@ function createFullPageGridProps() {
     columnWidths: repeatedTrack(FULL_PAGE_GRID_COLUMNS),
     rowHeights: repeatedTrack(FULL_PAGE_GRID_ROWS),
     showBorders: true,
-    cellBackgroundColor: "#ffffff",
+    cellBackgroundColor: "transparent",
     selectedCellIds: [],
     cells: createBlankGridCells(),
   };
@@ -361,11 +369,11 @@ function gridPropertySection(block, updateProps, updateStyles, updateLayout, act
     ? selectedIds.length === 1
       ? `R${selectedRect.minRow + 1}C${selectedRect.minColumn + 1}`
       : `${selectedIds.length} celija: R${selectedRect.minRow + 1}C${selectedRect.minColumn + 1} - R${selectedRect.maxRow + 1}C${selectedRect.maxColumn + 1}`
-    : "Klikni celiju u gridu";
+    : "Prvi klik oznaci grid, drugi klik bira celije";
 
-  return section("Grid", [
+  return section("Pomocna mreza", [
     el("div", { className: "sn-builder-grid-action-row" }, [
-      createGridAction("Puna A4 mreza", "Postavi praznu mrezu preko cijele A4 stranice unutar margina", () => {
+      createGridAction("Puna A4 mreza", "Postavi praznu mrezu preko radnog dijela stranice, bez headera i footera", () => {
         updateLayout(getGridLayoutForPageChrome(activePage?.props || {}));
         updateStyles({
           borderColor: "#9ca3af",
@@ -398,15 +406,16 @@ function gridPropertySection(block, updateProps, updateStyles, updateLayout, act
           selectedCellIds: [],
         });
       })),
-      field("Borders", checkboxInput(showBorders, (value) => updateProps({ showBorders: value }))),
-      field("Cell bg", colorInput(cellBackgroundColor, (value) => updateProps({ cellBackgroundColor: value }))),
-      field("Border", colorInput(block.styles?.borderColor || "#cbd5e1", (value) => updateStyles({ borderColor: value }))),
+      field("Linije pomoci", checkboxInput(showBorders, (value) => updateProps({ showBorders: value }))),
+      field("Pozadina celije", colorInput(cellBackgroundColor, (value) => updateProps({ cellBackgroundColor: value }))),
+      field("Boja linija", colorInput(block.styles?.borderColor || "#cbd5e1", (value) => updateStyles({ borderColor: value }))),
       field("Gap", textInput(block.styles?.gap || "0px", (value) => updateStyles({ gap: value }))),
     ]),
-    field("Column widths", textInput((block.props?.columnWidths || []).join(", "), (value) => {
+    el("p", { className: "sn-builder-helper-note" }, "Linije mreze su samo vizualna pomoc u builderu. U HTML/PDF ispisu se ne ispisuju kao kockice."),
+    field("Sirine stupaca", textInput((block.props?.columnWidths || []).join(", "), (value) => {
       updateProps({ columnWidths: normalizeGridTrackList(value, columns, "1fr") });
     })),
-    field("Row heights", textInput((block.props?.rowHeights || []).join(", "), (value) => {
+    field("Visine redaka", textInput((block.props?.rowHeights || []).join(", "), (value) => {
       updateProps({ rowHeights: normalizeGridTrackList(value, rows, "34px") });
     })),
     el("div", { className: "sn-builder-grid-selection-label" }, selectedText),
@@ -453,23 +462,32 @@ function gridPropertySection(block, updateProps, updateStyles, updateLayout, act
       }),
     ]),
     el("div", { className: "sn-builder-property-grid" }, [
-      field("Selected bg", colorInput("#bfbfbf", (value) => {
+      field("Pozadina", colorInput("#bfbfbf", (value) => {
         const patch = patchSelectedGridCells(block, rows, columns, { backgroundColor: value });
         if (patch) updateProps(patch);
       })),
-      field("Selected color", colorInput(block.styles?.color || "#172033", (value) => {
+      field("Tekst", colorInput(block.styles?.color || "#172033", (value) => {
         const patch = patchSelectedGridCells(block, rows, columns, { color: value });
         if (patch) updateProps(patch);
       })),
-      field("Selected border", colorInput(block.styles?.borderColor || "#9ca3af", (value) => {
+      field("Obrub", colorInput(block.styles?.borderColor || "#9ca3af", (value) => {
         const patch = patchSelectedGridCells(block, rows, columns, { borderColor: value });
         if (patch) updateProps(patch);
       })),
-      field("Selected padding", textInput("8px", (value) => {
+      field("Padding", textInput("8px", (value) => {
         const patch = patchSelectedGridCells(block, rows, columns, { padding: value });
         if (patch) updateProps(patch);
       })),
     ]),
+  ]);
+}
+
+function choicePropertySection(block, updateProps) {
+  if (block.type !== "checkbox" && block.type !== "radio") {
+    return null;
+  }
+  return section(block.type === "checkbox" ? "Checkbox" : "Radio", [
+    field("Oznaceno", checkboxInput(Boolean(block.props?.checked), (value) => updateProps({ checked: value }))),
   ]);
 }
 
@@ -504,6 +522,7 @@ export function renderPropertiesPanel(container, store) {
         })),
       ]),
       gridPropertySection(block, updateProps, updateStyles, updateLayout, getActivePage(state)),
+      choicePropertySection(block, updateProps),
       section("Layout", [
         el("div", { className: "sn-builder-property-grid" }, [
           field("X", numberInput(block.layout?.x, (value) => updateLayout({ x: value }))),
@@ -544,8 +563,8 @@ export function renderPropertiesPanel(container, store) {
         field("Blur", textInput(block.styles?.filter || "", (value) => updateStyles({ filter: value }))),
       ]),
       section("Layer", [
-        field("Locked", input({ type: "checkbox", checked: block.props?.locked, onchange: (event) => updateProps({ locked: event.target.checked }) })),
-        field("Hidden", input({ type: "checkbox", checked: block.props?.hidden, onchange: (event) => updateProps({ hidden: event.target.checked }) })),
+        field("Locked", checkboxInput(block.props?.locked, (value) => updateProps({ locked: value }))),
+        field("Hidden", checkboxInput(block.props?.hidden, (value) => updateProps({ hidden: value }))),
       ]),
     );
   });

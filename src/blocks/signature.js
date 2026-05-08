@@ -1,3 +1,2 @@
 import { createBlockDefinition } from "./factory.js";
-export default createBlockDefinition({ type: "signature", label: "Signature", category: "Signatures", icon: "SIG" });
-
+export default createBlockDefinition({ type: "signature", label: "Potpis", category: "Signatures", icon: "SIG" });

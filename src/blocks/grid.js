@@ -2,7 +2,7 @@ import { createBlockDefinition } from "./factory.js";
 
 export default createBlockDefinition({
   type: "grid",
-  label: "Grid tablica",
+  label: "Pomocna mreza",
   category: "Tables",
-  icon: "GRID",
+  icon: "GRD",
 });
