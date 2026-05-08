@@ -87,6 +87,13 @@ function normalizeGridCell(cell = {}) {
   }
   return {
     content: String(cell?.content ?? ""),
+    fontFamily: String(cell?.fontFamily ?? ""),
+    fontSize: String(cell?.fontSize ?? ""),
+    lineHeight: String(cell?.lineHeight ?? ""),
+    letterSpacing: String(cell?.letterSpacing ?? ""),
+    textTransform: String(cell?.textTransform ?? ""),
+    fontStyle: String(cell?.fontStyle ?? ""),
+    textDecoration: String(cell?.textDecoration ?? ""),
     backgroundColor: String(cell?.backgroundColor ?? ""),
     color: String(cell?.color ?? ""),
     textAlign: String(cell?.textAlign ?? ""),
@@ -95,6 +102,7 @@ function normalizeGridCell(cell = {}) {
     borderColor: String(cell?.borderColor ?? ""),
     borderWidth: String(cell?.borderWidth ?? ""),
     borderStyle: String(cell?.borderStyle ?? ""),
+    borderRadius: String(cell?.borderRadius ?? ""),
     rowSpan: Math.max(1, Math.min(48, Math.round(Number(cell?.rowSpan) || 1))),
     colSpan: Math.max(1, Math.min(48, Math.round(Number(cell?.colSpan) || 1))),
     hidden: Boolean(cell?.hidden),
@@ -116,6 +124,14 @@ function getGridSelectedCellIds(block = {}, rows = clampGridCount(block.props?.r
   return (Array.isArray(block.props?.selectedCellIds) ? block.props.selectedCellIds : [])
     .map((value) => Number.parseInt(value, 10))
     .filter((value) => Number.isInteger(value) && value >= 0 && value < rows * columns);
+}
+
+function getGridSelectedAnchorIds(block = {}, rows = clampGridCount(block.props?.rows, 4), columns = clampGridCount(block.props?.columns, 4), cells = []) {
+  return [...new Set(getGridSelectedCellIds(block, rows, columns).map((index) => (
+    cells[index]?.hidden && Number.isInteger(cells[index]?.masterIndex)
+      ? cells[index].masterIndex
+      : index
+  )))].filter((index) => Number.isInteger(index) && index >= 0 && index < rows * columns && cells[index] && !cells[index].hidden);
 }
 
 function resizeGridCells(block, nextRows, nextColumns) {
@@ -459,7 +475,7 @@ function unmergeGridCells(block, rows, columns) {
 
 function patchSelectedGridCells(block, rows, columns, patch) {
   const cells = Array.isArray(block.props?.cells) ? block.props.cells.map(normalizeGridCell) : resizeGridCells(block, rows, columns);
-  const selectedIds = getGridSelectedCellIds(block, rows, columns);
+  const selectedIds = getGridSelectedAnchorIds(block, rows, columns, cells);
   if (!selectedIds.length) {
     return null;
   }
@@ -470,6 +486,39 @@ function patchSelectedGridCells(block, rows, columns, patch) {
     return { ...cell, ...patch };
   });
   return { cells: nextCells };
+}
+
+function createGridCellStyleTarget(block, updateProps, updateStyles) {
+  if (block.type !== "grid") {
+    return {
+      isGrid: false,
+      isCell: false,
+      selectedCount: 0,
+      value: (key, fallback = "") => block.styles?.[key] || fallback,
+      update: updateStyles,
+    };
+  }
+  const rows = clampGridCount(block.props?.rows, 4);
+  const columns = clampGridCount(block.props?.columns, 4);
+  const cells = resizeGridCells(block, rows, columns);
+  const selectedIds = getGridSelectedAnchorIds(block, rows, columns, cells);
+  const firstCell = selectedIds.length ? cells[selectedIds[0]] : null;
+  return {
+    isGrid: true,
+    isCell: selectedIds.length > 0,
+    selectedCount: selectedIds.length,
+    value: (key, fallback = "") => (
+      firstCell?.[key] || block.styles?.[key] || fallback
+    ),
+    update: (patch) => {
+      if (selectedIds.length) {
+        const cellPatch = patchSelectedGridCells(block, rows, columns, patch);
+        if (cellPatch) updateProps(cellPatch);
+        return;
+      }
+      updateStyles(patch);
+    },
+  };
 }
 
 function createGridAction(label, title, onClick) {
@@ -671,7 +720,7 @@ function gridPropertySection(block, updateProps, updateStyles, updateLayout, act
       field("Boja linija", colorInput(block.styles?.borderColor || "#cbd5e1", (value) => updateStyles({ borderColor: value }))),
       field("Gap", textInput(block.styles?.gap || "0px", (value) => updateStyles({ gap: value }))),
     ]),
-    el("p", { className: "sn-builder-helper-note" }, "Linije mreze su samo vizualna pomoc. Sirina i visina se mijenjaju na odabranoj celiji, a pozadina samo na oznacenim celijama."),
+    el("p", { className: "sn-builder-helper-note" }, "Linije mreze su samo vizualna pomoc. Sirina, visina, fontovi, boje, padding i obrubi mogu se mijenjati samo na oznacenim celijama."),
     el("div", { className: "sn-builder-grid-selection-label" }, selectedText),
     selectedCellControls,
     el("div", { className: "sn-builder-grid-action-row" }, [
@@ -797,6 +846,15 @@ export function renderPropertiesPanel(container, store) {
     const updateLayout = (patch) => store.updateBlock(block.id, { layout: patch });
     const updateStyles = (patch) => store.updateBlock(block.id, { styles: patch });
     const updateProps = (patch) => store.updateBlock(block.id, { props: patch });
+    const gridStyleTarget = createGridCellStyleTarget(block, updateProps, updateStyles);
+    const typographyTitle = gridStyleTarget.isGrid
+      ? gridStyleTarget.isCell
+        ? `Typography (${gridStyleTarget.selectedCount} cel.)`
+        : "Typography mreze"
+      : "Typography";
+    const borderTitle = gridStyleTarget.isGrid && gridStyleTarget.isCell
+      ? `Border (${gridStyleTarget.selectedCount} cel.)`
+      : "Border";
 
     container.append(
       section("Content", [
@@ -817,26 +875,41 @@ export function renderPropertiesPanel(container, store) {
           field("Rotate", numberInput(block.layout?.rotation, (value) => updateLayout({ rotation: value }))),
         ]),
       ]),
-      section("Typography", [
-        field("Font", textInput(block.styles?.fontFamily || "Arial", (value) => updateStyles({ fontFamily: value }))),
-        field("Size", textInput(block.styles?.fontSize || "13px", (value) => updateStyles({ fontSize: value }))),
-        field("Weight", select(FONT_WEIGHTS, block.styles?.fontWeight || "400", { onchange: (event) => updateStyles({ fontWeight: event.target.value }) })),
-        field("Line height", textInput(block.styles?.lineHeight || "1.4", (value) => updateStyles({ lineHeight: value }))),
-        field("Letter spacing", textInput(block.styles?.letterSpacing || "0", (value) => updateStyles({ letterSpacing: value }))),
-        field("Transform", textInput(block.styles?.textTransform || "none", (value) => updateStyles({ textTransform: value }))),
-        field("Color", colorInput(block.styles?.color || "#172033", (value) => updateStyles({ color: value }))),
-        field("Text align", select(TEXT_ALIGNS, block.styles?.textAlign || "left", { onchange: (event) => updateStyles({ textAlign: event.target.value }) })),
+      section(typographyTitle, [
+        field("Font", textInput(gridStyleTarget.value("fontFamily", "Arial"), (value) => gridStyleTarget.update({ fontFamily: value }))),
+        field("Size", textInput(gridStyleTarget.value("fontSize", "13px"), (value) => gridStyleTarget.update({ fontSize: value }))),
+        field("Weight", select(FONT_WEIGHTS, gridStyleTarget.value("fontWeight", "400"), { onchange: (event) => gridStyleTarget.update({ fontWeight: event.target.value }) })),
+        field("Line height", textInput(gridStyleTarget.value("lineHeight", "1.4"), (value) => gridStyleTarget.update({ lineHeight: value }))),
+        field("Letter spacing", textInput(gridStyleTarget.value("letterSpacing", "0"), (value) => gridStyleTarget.update({ letterSpacing: value }))),
+        field("Transform", textInput(gridStyleTarget.value("textTransform", "none"), (value) => gridStyleTarget.update({ textTransform: value }))),
+        field("Color", colorInput(gridStyleTarget.value("color", "#172033"), (value) => gridStyleTarget.update({ color: value }))),
+        field("Text align", select(TEXT_ALIGNS, gridStyleTarget.value("textAlign", "left"), { onchange: (event) => gridStyleTarget.update({ textAlign: event.target.value }) })),
       ]),
       section("Spacing", [
         field("Margin", textInput(block.styles?.margin || "0", (value) => updateStyles({ margin: value }))),
-        field("Padding", textInput(block.styles?.padding || "", (value) => updateStyles({ padding: value }))),
+        field("Padding", textInput(gridStyleTarget.isGrid && gridStyleTarget.isCell ? gridStyleTarget.value("padding", "6px") : block.styles?.padding || "", (value) => {
+          if (gridStyleTarget.isGrid && gridStyleTarget.isCell) gridStyleTarget.update({ padding: value });
+          else updateStyles({ padding: value });
+        })),
         field("Gap", textInput(block.styles?.gap || "", (value) => updateStyles({ gap: value }))),
       ]),
-      section("Border", [
-        field("Width", textInput(block.styles?.borderWidth || "0", (value) => updateStyles({ borderWidth: value }))),
-        field("Style", textInput(block.styles?.borderStyle || "solid", (value) => updateStyles({ borderStyle: value }))),
-        field("Color", colorInput(block.styles?.borderColor || "#cbd5e1", (value) => updateStyles({ borderColor: value }))),
-        field("Radius", textInput(block.styles?.borderRadius || "0", (value) => updateStyles({ borderRadius: value }))),
+      section(borderTitle, [
+        field("Width", textInput(gridStyleTarget.isGrid && gridStyleTarget.isCell ? gridStyleTarget.value("borderWidth", "1px") : block.styles?.borderWidth || "0", (value) => {
+          if (gridStyleTarget.isGrid && gridStyleTarget.isCell) gridStyleTarget.update({ borderWidth: value });
+          else updateStyles({ borderWidth: value });
+        })),
+        field("Style", textInput(gridStyleTarget.isGrid && gridStyleTarget.isCell ? gridStyleTarget.value("borderStyle", "dashed") : block.styles?.borderStyle || "solid", (value) => {
+          if (gridStyleTarget.isGrid && gridStyleTarget.isCell) gridStyleTarget.update({ borderStyle: value });
+          else updateStyles({ borderStyle: value });
+        })),
+        field("Color", colorInput(gridStyleTarget.isGrid && gridStyleTarget.isCell ? gridStyleTarget.value("borderColor", "#cbd5e1") : block.styles?.borderColor || "#cbd5e1", (value) => {
+          if (gridStyleTarget.isGrid && gridStyleTarget.isCell) gridStyleTarget.update({ borderColor: value });
+          else updateStyles({ borderColor: value });
+        })),
+        field("Radius", textInput(gridStyleTarget.isGrid && gridStyleTarget.isCell ? gridStyleTarget.value("borderRadius", "0") : block.styles?.borderRadius || "0", (value) => {
+          if (gridStyleTarget.isGrid && gridStyleTarget.isCell) gridStyleTarget.update({ borderRadius: value });
+          else updateStyles({ borderRadius: value });
+        })),
       ]),
       block.type === "grid" ? el("template") : section("Background", [
         field("Color", colorInput(block.styles?.backgroundColor || "#ffffff", (value) => updateStyles({ backgroundColor: value }))),

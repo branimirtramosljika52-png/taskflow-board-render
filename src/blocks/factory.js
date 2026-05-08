@@ -258,6 +258,13 @@ function normalizeGridCell(cell = {}) {
   }
   return {
     content: String(cell?.content ?? ""),
+    fontFamily: String(cell?.fontFamily ?? ""),
+    fontSize: String(cell?.fontSize ?? ""),
+    lineHeight: String(cell?.lineHeight ?? ""),
+    letterSpacing: String(cell?.letterSpacing ?? ""),
+    textTransform: String(cell?.textTransform ?? ""),
+    fontStyle: String(cell?.fontStyle ?? ""),
+    textDecoration: String(cell?.textDecoration ?? ""),
     backgroundColor: String(cell?.backgroundColor ?? ""),
     color: String(cell?.color ?? ""),
     textAlign: String(cell?.textAlign ?? ""),
@@ -266,6 +273,7 @@ function normalizeGridCell(cell = {}) {
     borderColor: String(cell?.borderColor ?? ""),
     borderWidth: String(cell?.borderWidth ?? ""),
     borderStyle: String(cell?.borderStyle ?? ""),
+    borderRadius: String(cell?.borderRadius ?? ""),
     rowSpan: Math.max(1, Math.min(48, Math.round(Number(cell?.rowSpan) || 1))),
     colSpan: Math.max(1, Math.min(48, Math.round(Number(cell?.colSpan) || 1))),
     hidden: Boolean(cell?.hidden),
@@ -393,11 +401,19 @@ function gridCellStyle(block, props, cell, options = {}) {
     backgroundColor: cell.backgroundColor || "transparent",
     color: cell.color || block.styles?.color || "#172033",
     textAlign: cell.textAlign || block.styles?.textAlign || "left",
+    fontFamily: cell.fontFamily || block.styles?.fontFamily || "Arial",
+    fontSize: cell.fontSize || block.styles?.fontSize || "11px",
     fontWeight: cell.fontWeight || block.styles?.fontWeight || "",
+    lineHeight: cell.lineHeight || block.styles?.lineHeight || "1.25",
+    letterSpacing: cell.letterSpacing || block.styles?.letterSpacing || "0",
+    textTransform: cell.textTransform || block.styles?.textTransform || "none",
+    fontStyle: cell.fontStyle || block.styles?.fontStyle || "",
+    textDecoration: cell.textDecoration || block.styles?.textDecoration || "",
     padding: cell.padding || block.styles?.padding || "6px",
     borderColor: finalBorderWidth === "0" ? "transparent" : (cell.borderColor || block.styles?.borderColor || "#9ca3af"),
     borderWidth: finalBorderWidth,
     borderStyle: finalBorderWidth === "0" ? "solid" : (cell.borderStyle || block.styles?.borderStyle || "dashed"),
+    borderRadius: cell.borderRadius || block.styles?.borderRadius || "0",
   };
 }
 
