@@ -194,16 +194,51 @@ function editableText(block, propName, fallback, context, tagName = "div") {
 
 function renderTable(block, context) {
   const rows = Array.isArray(block.props?.rows) ? block.props.rows : defaultProps.table.rows;
+  const selectedCell = block.props?.selectedCell || {};
   const table = el("table", { className: "sn-builder-table" });
   rows.forEach((row, rowIndex) => {
       const tr = el("tr");
     (Array.isArray(row) ? row : []).forEach((cell, columnIndex) => {
       const tag = block.props?.header && rowIndex === 0 ? "th" : "td";
-      const td = el(tag, { contenteditable: "true", spellcheck: "false" }, cell || "");
+      const selected = Number(selectedCell.rowIndex) === rowIndex && Number(selectedCell.columnIndex) === columnIndex;
+      const td = el(tag, {
+        className: selected ? "is-selected" : "",
+        contenteditable: "true",
+        spellcheck: "false",
+        dataset: {
+          tableCellRow: rowIndex,
+          tableCellColumn: columnIndex,
+        },
+      }, cell || "");
+      td.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (!context.state?.selectedIds?.includes(block.id)) {
+          context.selectBlock?.(block.id);
+        }
+        context.updateBlock(block.id, {
+          props: {
+            ...block.props,
+            selectedCell: { rowIndex, columnIndex },
+          },
+        }, { history: false });
+        focusBlockNode(block.id);
+      });
+      td.addEventListener("dblclick", (event) => {
+        event.preventDefault();
+        focusTableEditableCellAtEnd(block.id, rowIndex, columnIndex);
+      });
       td.addEventListener("blur", () => {
         const nextRows = rows.map((entry) => [...entry]);
         nextRows[rowIndex][columnIndex] = td.innerText;
-        context.updateBlock(block.id, { props: { ...block.props, rows: nextRows } }, { history: false });
+        context.updateBlock(block.id, {
+          props: {
+            ...block.props,
+            rows: nextRows,
+            selectedCell: { rowIndex, columnIndex },
+          },
+        }, { history: false });
         context.commitHistory();
       });
       tr.append(td);
@@ -248,9 +283,9 @@ function normalizeGridTrackList(value, count, fallback = "1fr") {
   return Array.from({ length: count }, (_, index) => String(source[index] || fallback).trim() || fallback);
 }
 
-function focusEditableCellAtEnd(blockId, cellIndex) {
+function focusEditableNodeAtEnd(selector) {
   requestAnimationFrame(() => {
-    const node = document.querySelector(`[data-builder-block-id="${blockId}"] [data-grid-cell-index="${cellIndex}"]`);
+    const node = document.querySelector(selector);
     if (!(node instanceof HTMLElement)) {
       return;
     }
@@ -262,6 +297,23 @@ function focusEditableCellAtEnd(blockId, cellIndex) {
     selection?.removeAllRanges();
     selection?.addRange(range);
   });
+}
+
+function focusBlockNode(blockId) {
+  requestAnimationFrame(() => {
+    const node = document.querySelector(`[data-builder-block-id="${blockId}"]`);
+    if (node instanceof HTMLElement) {
+      node.focus();
+    }
+  });
+}
+
+function focusGridEditableCellAtEnd(blockId, cellIndex) {
+  focusEditableNodeAtEnd(`[data-builder-block-id="${blockId}"] [data-grid-cell-index="${cellIndex}"]`);
+}
+
+function focusTableEditableCellAtEnd(blockId, rowIndex, columnIndex) {
+  focusEditableNodeAtEnd(`[data-builder-block-id="${blockId}"] [data-table-cell-row="${rowIndex}"][data-table-cell-column="${columnIndex}"]`);
 }
 
 function getGridRangeCellIds(startIndex, endIndex, columns) {
@@ -482,9 +534,7 @@ function renderGrid(block, context) {
         selectedCellIds,
       },
     }, { history: false });
-    if (!session.dragged && !session.additive) {
-      focusEditableCellAtEnd(block.id, session.startIndex);
-    }
+    focusBlockNode(block.id);
   });
 
   grid.addEventListener("pointercancel", (event) => {

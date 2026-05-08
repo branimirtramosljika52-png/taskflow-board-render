@@ -105,6 +105,25 @@
   font-weight: 800;
 }
 
+.sn-builder-table :is(td, th).is-selected {
+  position: relative;
+  box-shadow:
+    inset 0 0 0 2px rgba(37, 99, 235, .84),
+    0 0 0 1px rgba(37, 99, 235, .18);
+}
+
+.sn-builder-table :is(td, th).is-selected::after {
+  content: "";
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #2563eb;
+  pointer-events: none;
+}
+
 .sn-builder-layout-grid {
   display: grid;
   width: 100%;
