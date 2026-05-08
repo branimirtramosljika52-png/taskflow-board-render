@@ -635,7 +635,7 @@ export function createBlockDefinition({ type, label, category, icon }) {
     },
     toHtml(block) {
       const exportStyles = type === "grid"
-        ? { ...(block.styles || {}), backgroundColor: "transparent", borderWidth: "0" }
+        ? { ...(block.styles || {}), borderWidth: "0" }
         : (block.styles || {});
       const styles = inlineStyles(exportStyles);
       return `<div class="sn-report-block sn-report-${type}" style="${styles}">${contentToHtml(block)}</div>`;

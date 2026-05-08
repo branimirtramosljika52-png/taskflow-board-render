@@ -51,6 +51,7 @@ function textInput(value, onInput) {
 
 function colorInput(value, onInput) {
   const control = input({ type: "color", value: /^#[0-9a-f]{6}$/i.test(String(value || "")) ? value : "#ffffff" });
+  control.addEventListener("input", () => onInput(control.value));
   control.addEventListener("change", () => onInput(control.value));
   return control;
 }
@@ -362,8 +363,11 @@ function gridPropertySection(block, updateProps, updateStyles, updateLayout, act
   const rows = clampGridCount(block.props?.rows, 4);
   const columns = clampGridCount(block.props?.columns, 4);
   const showBorders = block.props?.showBorders !== false;
-  const cellBackgroundColor = block.props?.cellBackgroundColor || "#ffffff";
+  const normalizedCells = Array.isArray(block.props?.cells) ? block.props.cells.map(normalizeGridCell) : [];
   const selectedIds = getGridSelectedCellIds(block, rows, columns);
+  const firstSelectedCell = selectedIds.length ? normalizedCells[selectedIds[0]] : null;
+  const cellBackgroundColor = block.props?.cellBackgroundColor || block.styles?.backgroundColor || "#ffffff";
+  const selectedBackgroundColor = firstSelectedCell?.backgroundColor || cellBackgroundColor || "#ffffff";
   const selectedRect = getGridSelectionRect(selectedIds, columns);
   const selectedText = selectedIds.length && selectedRect
     ? selectedIds.length === 1
@@ -407,7 +411,10 @@ function gridPropertySection(block, updateProps, updateStyles, updateLayout, act
         });
       })),
       field("Linije pomoci", checkboxInput(showBorders, (value) => updateProps({ showBorders: value }))),
-      field("Pozadina celije", colorInput(cellBackgroundColor, (value) => updateProps({ cellBackgroundColor: value }))),
+      field("Pozadina celije", colorInput(cellBackgroundColor, (value) => {
+        updateProps({ cellBackgroundColor: value });
+        updateStyles({ backgroundColor: value });
+      })),
       field("Boja linija", colorInput(block.styles?.borderColor || "#cbd5e1", (value) => updateStyles({ borderColor: value }))),
       field("Gap", textInput(block.styles?.gap || "0px", (value) => updateStyles({ gap: value }))),
     ]),
@@ -462,7 +469,7 @@ function gridPropertySection(block, updateProps, updateStyles, updateLayout, act
       }),
     ]),
     el("div", { className: "sn-builder-property-grid" }, [
-      field("Pozadina", colorInput("#bfbfbf", (value) => {
+      field("Pozadina", colorInput(selectedBackgroundColor, (value) => {
         const patch = patchSelectedGridCells(block, rows, columns, { backgroundColor: value });
         if (patch) updateProps(patch);
       })),

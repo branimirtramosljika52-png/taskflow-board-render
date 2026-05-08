@@ -346,9 +346,9 @@
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(90deg, rgba(31, 122, 224, .07) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(31, 122, 224, .07) 1px, transparent 1px);
-  background-size: 16px 16px;
+    linear-gradient(90deg, rgba(31, 122, 224, .032) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(31, 122, 224, .032) 1px, transparent 1px);
+  background-size: 18px 18px;
   pointer-events: none;
 }
 
