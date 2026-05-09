@@ -161,6 +161,7 @@ const WORK_ORDER_DOCUMENT_CATEGORY_OPTIONS = Object.freeze([
 const DEFAULT_WORK_ORDER_DOCUMENT_CATEGORY = WORK_ORDER_DOCUMENT_CATEGORY_OPTIONS[0]?.value ?? "";
 const VERIFIED_WORK_ORDER_DOCUMENT_CATEGORY = "Ovjereni Radni nalog";
 const GENERATED_WORK_ORDER_PDF_CATEGORY = "Radni nalog PDF";
+const GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY = "Zapisnik PDF";
 const WORK_ORDER_REGION_OPTIONS = Object.freeze([
   "Zagreb - Centar",
   "Zagreb - Zapad",
@@ -2044,6 +2045,8 @@ const state = {
 
 const workOrderPdfSaveTimers = new Map();
 const workOrderPdfSaveInFlight = new Set();
+const documentTemplateRuntimeSummaryDocumentLoadKeys = new Set();
+const documentTemplateRuntimeSummaryDocumentLoadInFlight = new Set();
 const dashboardCompanyPermissionBlockOpenState = new Map();
 
 function readSidebarCollapsedPreference() {
@@ -58069,6 +58072,75 @@ function getDocumentTemplateRuntimeGroupExportStatus(group = {}, { groupOk = fal
   };
 }
 
+function getDocumentTemplateRuntimeSavedPdfDocumentsFromItems(items = [], workOrderId = "") {
+  const normalizedWorkOrderId = String(workOrderId || "").trim();
+  return (Array.isArray(items) ? items : [])
+    .filter((item) => (
+      String(item?.sourceType || "").toLowerCase() === "pdf"
+      && String(item?.documentCategory || "").trim() === GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY
+    ))
+    .map((item) => ({
+      ...item,
+      workOrderId: String(item?.workOrderId || normalizedWorkOrderId || "").trim(),
+    }))
+    .filter((item) => item.id && item.workOrderId);
+}
+
+function queueDocumentTemplateRuntimeSavedPdfDocumentLoad(group = {}, { groupOk = false, skipped = false } = {}) {
+  const workOrderId = String(group?.workOrderId || "").trim();
+  if (!workOrderId || !groupOk || skipped) {
+    return;
+  }
+
+  const entries = Array.isArray(group?.items) ? group.items : [];
+  if (entries.length === 0) {
+    return;
+  }
+
+  const statusMap = getDocumentTemplateRuntimeExportStatusMap();
+  const hasActiveStatus = entries.some((entry) => {
+    const status = statusMap[getDocumentTemplateRuntimeSequenceEntryKey(entry)];
+    return ["done", "running", "pending", "error"].includes(String(status?.status || "").toLowerCase());
+  });
+  if (hasActiveStatus) {
+    return;
+  }
+
+  const loadKey = `${String(state.activeOrganizationId || "")}::${workOrderId}`;
+  if (
+    documentTemplateRuntimeSummaryDocumentLoadKeys.has(loadKey)
+    || documentTemplateRuntimeSummaryDocumentLoadInFlight.has(loadKey)
+  ) {
+    return;
+  }
+
+  documentTemplateRuntimeSummaryDocumentLoadInFlight.add(loadKey);
+  void apiRequest(`/work-orders/${encodeURIComponent(workOrderId)}/documents`)
+    .then((payload) => {
+      documentTemplateRuntimeSummaryDocumentLoadKeys.add(loadKey);
+      const savedDocuments = getDocumentTemplateRuntimeSavedPdfDocumentsFromItems(payload.items ?? [], workOrderId);
+      if (savedDocuments.length === 0) {
+        return;
+      }
+
+      entries.forEach((entry) => {
+        setDocumentTemplateRuntimeExportStatus(entry, {
+          status: "done",
+          message: "PDF zapisnik je već spremljen u Documents.",
+          document: savedDocuments[0],
+          documents: savedDocuments,
+        }, { render: false });
+      });
+      renderDocumentTemplateRuntimeSummaryIfVisible();
+    })
+    .catch((error) => {
+      console.warn("Ne mogu provjeriti spremljene PDF zapisnike za Summary.", error);
+    })
+    .finally(() => {
+      documentTemplateRuntimeSummaryDocumentLoadInFlight.delete(loadKey);
+    });
+}
+
 function isDocumentTemplateRuntimeWorkOrderReadyForExport(workOrderId = "") {
   const normalizedId = String(workOrderId || "").trim();
   if (!normalizedId || isDocumentTemplateRuntimeWorkOrderSkipped(normalizedId)) {
@@ -59539,6 +59611,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
       const servicesOk = serviceItems.length === 0 || completedServices >= serviceItems.length;
       const groupOk = !skipped && servicesOk && group.items.length > 0;
       const exportStatus = getDocumentTemplateRuntimeGroupExportStatus(group, { groupOk, skipped });
+      queueDocumentTemplateRuntimeSavedPdfDocumentLoad(group, { groupOk, skipped });
       return {
         group,
         workOrder,
