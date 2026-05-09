@@ -37955,6 +37955,116 @@ function textToDataUrl(text = "", mimeType = "text/html;charset=utf-8") {
   return `data:${mimeType};base64,${btoa(chunks.join(""))}`;
 }
 
+const HTML_TEXT_ENCODING_REPLACEMENTS = Object.freeze([
+  ["\u00c4\u0152", "\u010c"],
+  ["\u00c4\u008c", "\u010c"],
+  ["\u00c4\u0160", "\u010c"],
+  ["\u00c4\u2020", "\u0106"],
+  ["\u00c4\u0086", "\u0106"],
+  ["\u00c4\u2021", "\u0107"],
+  ["\u00c4\u0087", "\u0107"],
+  ["\u00c4\u0164", "\u010d"],
+  ["\u00c4\u008d", "\u010d"],
+  ["\u00c4\u02c7", "\u010d"],
+  ["\u00c4\u2018", "\u0111"],
+  ["\u00c4\u0091", "\u0111"],
+  ["\u00c4\u0090", "\u0110"],
+  ["\u00c5\u00a0", "\u0160"],
+  ["\u00c5\u00a1", "\u0161"],
+  ["\u00c5\u00bd", "\u017d"],
+  ["\u00c5\u00be", "\u017e"],
+  ["\u0139\u02c7", "\u0161"],
+  ["\u0139\u013e", "\u017e"],
+  ["\u0139\u02dd", "\u017d"],
+  ["\u00c2\u00a0", " "],
+]);
+
+function repairHtmlTextEncoding(value = "") {
+  let text = String(value ?? "");
+  HTML_TEXT_ENCODING_REPLACEMENTS.forEach(([broken, fixed]) => {
+    text = text.split(broken).join(fixed);
+  });
+  return text;
+}
+
+function getHtmlTextEncodingSuspicionScore(value = "") {
+  return (String(value ?? "").match(/[\uFFFD\u00c2\u00c3\u00c4\u00c5\u0102\u0139]/g) || []).length;
+}
+
+function ensureHtmlUtf8Meta(value = "") {
+  let source = repairHtmlTextEncoding(String(value ?? "").replace(/^\uFEFF/, ""));
+
+  if (/<meta\b[^>]*charset\s*=/i.test(source)) {
+    return source.replace(/<meta\b[^>]*charset\s*=\s*["']?[^"'>\s;]+[^>]*>/i, '<meta charset="utf-8">');
+  }
+
+  if (/<head\b[^>]*>/i.test(source)) {
+    return source.replace(/<head\b([^>]*)>/i, '<head$1>\n<meta charset="utf-8">');
+  }
+
+  if (/<html\b[^>]*>/i.test(source)) {
+    return source.replace(/<html\b([^>]*)>/i, '<html$1>\n<head>\n<meta charset="utf-8">\n</head>');
+  }
+
+  return source;
+}
+
+function detectHtmlFileCharset(bytes = new Uint8Array()) {
+  if (bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
+    return "utf-8";
+  }
+
+  const headBytes = bytes.slice(0, Math.min(bytes.length, 4096));
+  const head = Array.from(headBytes, (byte) => String.fromCharCode(byte)).join("");
+  const charset = String(
+    head.match(/<meta\b[^>]*charset\s*=\s*["']?\s*([A-Za-z0-9._-]+)/i)?.[1]
+    || head.match(/charset\s*=\s*([A-Za-z0-9._-]+)/i)?.[1]
+    || "utf-8",
+  ).trim().toLowerCase();
+  return charset === "utf8" ? "utf-8" : charset;
+}
+
+function countReplacementCharacters(value = "") {
+  return (String(value ?? "").match(/\uFFFD/g) || []).length;
+}
+
+function decodeHtmlTemplateBytes(buffer = new ArrayBuffer(0)) {
+  const bytes = new Uint8Array(buffer);
+  const charset = detectHtmlFileCharset(bytes);
+  let decoded = "";
+  try {
+    decoded = new TextDecoder(charset).decode(bytes);
+    if (charset !== "utf-8") {
+      const utf8Decoded = new TextDecoder("utf-8").decode(bytes);
+      if (getHtmlTextEncodingSuspicionScore(utf8Decoded) < getHtmlTextEncodingSuspicionScore(decoded)) {
+        decoded = utf8Decoded;
+      }
+    }
+  } catch {
+    decoded = new TextDecoder("utf-8").decode(bytes);
+  }
+
+  if (charset === "utf-8" && countReplacementCharacters(decoded) > 0) {
+    try {
+      const centralEuropeanDecoded = new TextDecoder("windows-1250").decode(bytes);
+      if (countReplacementCharacters(centralEuropeanDecoded) < countReplacementCharacters(decoded)) {
+        decoded = centralEuropeanDecoded;
+      }
+    } catch {
+      // Keep the UTF-8 decode when the browser does not support this legacy charset.
+    }
+  }
+
+  return ensureHtmlUtf8Meta(decoded);
+}
+
+async function readHtmlTemplateFileAsText(file) {
+  if (!(file instanceof File)) {
+    return "";
+  }
+  return decodeHtmlTemplateBytes(await file.arrayBuffer());
+}
+
 async function readDataUrlAsText(dataUrl = "") {
   const source = String(dataUrl || "").trim();
   if (!source) {
@@ -37966,7 +38076,7 @@ async function readDataUrlAsText(dataUrl = "") {
     if (!response.ok) {
       throw new Error("HTML predložak nije moguće učitati.");
     }
-    return await response.text();
+    return ensureHtmlUtf8Meta(await response.text());
   }
 
   const commaIndex = source.indexOf(",");
@@ -37977,7 +38087,7 @@ async function readDataUrlAsText(dataUrl = "") {
   const meta = source.slice(5, commaIndex).toLowerCase();
   const payload = source.slice(commaIndex + 1);
   if (!meta.includes(";base64")) {
-    return decodeURIComponent(payload);
+    return ensureHtmlUtf8Meta(decodeURIComponent(payload));
   }
 
   const binary = atob(payload);
@@ -37985,7 +38095,7 @@ async function readDataUrlAsText(dataUrl = "") {
   for (let index = 0; index < binary.length; index += 1) {
     bytes[index] = binary.charCodeAt(index);
   }
-  return new TextDecoder("utf-8").decode(bytes);
+  return decodeHtmlTemplateBytes(bytes.buffer);
 }
 
 function buildOfferLocationSummaryFromSelection(locationIds = [], companyId = "") {
@@ -43732,7 +43842,7 @@ function syncDocumentTemplateHtmlCodeInputFromReference() {
   documentTemplateHtmlCodeInput.placeholder = "HTML je spremljen. Ako želiš izmjenu, zalijepi novu verziju i klikni Spremi HTML kod.";
   const builderDocument = normalizeDocumentTemplateHtmlBuilderDocumentPayload(referenceDocument.builderDocument);
   if (builderDocument.length > 0) {
-    const htmlText = buildBuilderHtmlFromDocument(builderDocument);
+    const htmlText = ensureHtmlUtf8Meta(buildBuilderHtmlFromDocument(builderDocument));
     documentTemplateHtmlCodeInput.value = htmlText;
     documentTemplateHtmlCodeDirty = false;
     const engine = ensureDocumentTemplateHtmlBuilderEngine();
@@ -43757,7 +43867,7 @@ function syncDocumentTemplateHtmlCodeInputFromReference() {
         || "",
       ).trim();
       if (currentDataUrl === dataUrl) {
-        const htmlText = text.replace(/^\uFEFF/, "");
+        const htmlText = ensureHtmlUtf8Meta(text);
         documentTemplateHtmlCodeInput.value = htmlText;
         documentTemplateHtmlCodeDirty = false;
         hydrateDocumentTemplateHtmlBuilderFromCode(htmlText);
@@ -43873,7 +43983,7 @@ function setDocumentTemplateReferenceDocument(referenceDocument = null) {
 }
 
 function getDocumentTemplateManualHtmlCode() {
-  return String(documentTemplateHtmlCodeInput?.value || "").trim();
+  return ensureHtmlUtf8Meta(String(documentTemplateHtmlCodeInput?.value || "").trim());
 }
 
 function getBuilderDocumentFromHtmlCode(htmlCode = "") {
@@ -43900,12 +44010,15 @@ function shouldPreferDocumentTemplateHtmlCodeForSave({ preferTextarea = false, h
 function getCurrentDocumentTemplateHtmlCodeForSave({ preferTextarea = false } = {}) {
   const manualHtmlCode = getDocumentTemplateManualHtmlCode();
   if (shouldPreferDocumentTemplateHtmlCodeForSave({ preferTextarea, htmlCode: manualHtmlCode })) {
+    if (documentTemplateHtmlCodeInput instanceof HTMLTextAreaElement && documentTemplateHtmlCodeInput.value !== manualHtmlCode) {
+      documentTemplateHtmlCodeInput.value = manualHtmlCode;
+    }
     return manualHtmlCode;
   }
 
   if (documentTemplateHtmlBuilderEngine) {
     const builderDocument = documentTemplateHtmlBuilderEngine.getDocument?.();
-    const htmlCode = buildBuilderHtmlFromDocument(builderDocument);
+    const htmlCode = ensureHtmlUtf8Meta(buildBuilderHtmlFromDocument(builderDocument));
     documentTemplateHtmlBuilderBlocks = createLegacyBlocksFromBuilderDocument(builderDocument);
     if (documentTemplateHtmlCodeInput instanceof HTMLTextAreaElement && documentTemplateHtmlCodeInput.value !== htmlCode) {
       documentTemplateHtmlCodeInput.value = htmlCode;
@@ -43915,7 +44028,7 @@ function getCurrentDocumentTemplateHtmlCodeForSave({ preferTextarea = false } = 
   }
   const referenceBuilderDocument = normalizeDocumentTemplateHtmlBuilderDocumentPayload(documentTemplateReferenceDraft?.builderDocument);
   if (referenceBuilderDocument.length > 0 && !String(documentTemplateHtmlCodeInput?.value || "").trim()) {
-    const htmlCode = buildBuilderHtmlFromDocument(referenceBuilderDocument);
+    const htmlCode = ensureHtmlUtf8Meta(buildBuilderHtmlFromDocument(referenceBuilderDocument));
     if (documentTemplateHtmlCodeInput instanceof HTMLTextAreaElement) {
       documentTemplateHtmlCodeInput.value = htmlCode;
       documentTemplateHtmlCodeDirty = false;
@@ -48744,7 +48857,7 @@ function formatDocumentTemplateHtmlPreviewPlaceholderValue(value) {
 }
 
 function buildDocumentTemplateHtmlPreviewDocument(html = "", template = buildDocumentTemplateDraft()) {
-  const source = String(html || "").trim();
+  const source = ensureHtmlUtf8Meta(String(html || "").trim());
   if (!source) {
     return buildDocumentTemplateHtmlPreviewEmptyDocument(template);
   }
@@ -95232,7 +95345,7 @@ documentTemplatePlaceholderToggleButton?.addEventListener("click", () => {
 
 documentTemplateReferenceDownloadButton?.addEventListener("click", () => {
   const referenceDocument = normalizeDocumentTemplateHtmlReferenceDocument(documentTemplateReferenceDraft);
-  const currentHtmlCode = String(documentTemplateHtmlCodeInput?.value || "").trim();
+  const currentHtmlCode = ensureHtmlUtf8Meta(String(documentTemplateHtmlCodeInput?.value || "").trim());
   const referenceKind = getDocumentTemplateReferenceKind(referenceDocument);
   if (currentHtmlCode && referenceKind !== "word") {
     const fallbackName = sanitizeDocumentTemplateFileName(
@@ -95392,25 +95505,22 @@ documentTemplateReferenceFileInput?.addEventListener("change", () => {
     return;
   }
 
-  void readFileAsDataUrl(file, "Ne mogu učitati predložak.")
-    .then((dataUrl) => {
+  void readHtmlTemplateFileAsText(file)
+    .then((htmlText) => {
+      const normalizedHtmlText = ensureHtmlUtf8Meta(htmlText);
+      const dataUrl = textToDataUrl(normalizedHtmlText);
       setDocumentTemplateReferenceDocument({
         fileName: file.name,
-        fileType: file.type || (isHtmlFile ? "text/html" : "application/octet-stream"),
-        fileSize: file.size || 0,
+        fileType: file.type || "text/html",
+        fileSize: new TextEncoder().encode(normalizedHtmlText).length,
         dataUrl,
         updatedAt: new Date().toISOString(),
       });
-      if (isHtmlFile && documentTemplateHtmlCodeInput) {
-        void file.text()
-          .then((text) => {
-            const htmlText = text.replace(/^\uFEFF/, "");
-            documentTemplateHtmlCodeInput.value = htmlText;
-            documentTemplateHtmlCodeDirty = false;
-            hydrateDocumentTemplateHtmlBuilderFromCode(htmlText);
-            renderDocumentTemplateHtmlPreviewContent();
-          })
-          .catch(() => {});
+      if (documentTemplateHtmlCodeInput) {
+        documentTemplateHtmlCodeInput.value = normalizedHtmlText;
+        documentTemplateHtmlCodeDirty = false;
+        hydrateDocumentTemplateHtmlBuilderFromCode(normalizedHtmlText);
+        renderDocumentTemplateHtmlPreviewContent();
       }
       setDocumentTemplateMessage("Predložak je učitan u draft. Spremi template kako bi ostao povezan.", { type: "success" });
     })

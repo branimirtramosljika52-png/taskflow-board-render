@@ -117,6 +117,60 @@ function clean(value = "") {
   return String(value ?? "").trim();
 }
 
+const HTML_TEXT_ENCODING_REPLACEMENTS = Object.freeze([
+  ["\u00c4\u0152", "\u010c"],
+  ["\u00c4\u008c", "\u010c"],
+  ["\u00c4\u0160", "\u010c"],
+  ["\u00c4\u2020", "\u0106"],
+  ["\u00c4\u0086", "\u0106"],
+  ["\u00c4\u2021", "\u0107"],
+  ["\u00c4\u0087", "\u0107"],
+  ["\u00c4\u0164", "\u010d"],
+  ["\u00c4\u008d", "\u010d"],
+  ["\u00c4\u02c7", "\u010d"],
+  ["\u00c4\u2018", "\u0111"],
+  ["\u00c4\u0091", "\u0111"],
+  ["\u00c4\u0090", "\u0110"],
+  ["\u00c5\u00a0", "\u0160"],
+  ["\u00c5\u00a1", "\u0161"],
+  ["\u00c5\u00bd", "\u017d"],
+  ["\u00c5\u00be", "\u017e"],
+  ["\u0139\u02c7", "\u0161"],
+  ["\u0139\u013e", "\u017e"],
+  ["\u0139\u02dd", "\u017d"],
+  ["\u00c2\u00a0", " "],
+]);
+
+function repairHtmlTextEncoding(value = "") {
+  let text = String(value ?? "");
+  HTML_TEXT_ENCODING_REPLACEMENTS.forEach(([broken, fixed]) => {
+    text = text.split(broken).join(fixed);
+  });
+  return text;
+}
+
+function getHtmlTextEncodingSuspicionScore(value = "") {
+  return (String(value ?? "").match(/[\uFFFD\u00c2\u00c3\u00c4\u00c5\u0102\u0139]/g) || []).length;
+}
+
+function ensureHtmlUtf8Meta(value = "") {
+  let source = repairHtmlTextEncoding(String(value ?? "").replace(/^\uFEFF/, ""));
+
+  if (/<meta\b[^>]*charset\s*=/i.test(source)) {
+    return source.replace(/<meta\b[^>]*charset\s*=\s*["']?[^"'>\s;]+[^>]*>/i, '<meta charset="utf-8">');
+  }
+
+  if (/<head\b[^>]*>/i.test(source)) {
+    return source.replace(/<head\b([^>]*)>/i, '<head$1>\n<meta charset="utf-8">');
+  }
+
+  if (/<html\b[^>]*>/i.test(source)) {
+    return source.replace(/<html\b([^>]*)>/i, '<html$1>\n<head>\n<meta charset="utf-8">\n</head>');
+  }
+
+  return source;
+}
+
 function stripInvalidXmlChars(value = "") {
   const source = String(value ?? "");
   let normalized = "";
@@ -2044,7 +2098,7 @@ function buildHtmlTemplateSpecialPlaceholder(value) {
 }
 
 function buildHtmlTemplateDocument(html = "", { title = "Zapisnik" } = {}) {
-  const safeHtml = injectHtmlTemplateDefaultStyles(String(html ?? "").trim());
+  const safeHtml = ensureHtmlUtf8Meta(injectHtmlTemplateDefaultStyles(repairHtmlTextEncoding(String(html ?? "").trim())));
   if (/<!doctype\s+html|<html[\s>]/i.test(safeHtml)) {
     return safeHtml;
   }
@@ -2078,9 +2132,16 @@ function decodeHtmlBuffer(buffer = Buffer.alloc(0)) {
   const safeBuffer = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer ?? []);
   const charset = detectHtmlBufferCharset(safeBuffer);
   try {
-    return new TextDecoder(charset).decode(safeBuffer);
+    let decoded = new TextDecoder(charset).decode(safeBuffer);
+    if (charset !== "utf-8") {
+      const utf8Decoded = new TextDecoder("utf-8").decode(safeBuffer);
+      if (getHtmlTextEncodingSuspicionScore(utf8Decoded) < getHtmlTextEncodingSuspicionScore(decoded)) {
+        decoded = utf8Decoded;
+      }
+    }
+    return ensureHtmlUtf8Meta(decoded);
   } catch {
-    return safeBuffer.toString("utf8");
+    return ensureHtmlUtf8Meta(safeBuffer.toString("utf8"));
   }
 }
 
@@ -4280,7 +4341,7 @@ export function buildHtmlFromTemplateBuffer(templateBuffer, placeholders = {}, o
       .map(([key, value]) => [clean(key), value])
       .filter(([key]) => Boolean(key)),
   );
-  const templateHtml = safeBuffer.toString("utf8").replace(/^\uFEFF/, "");
+  const templateHtml = decodeHtmlBuffer(safeBuffer);
   const renderedHtml = templateHtml.replace(/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g, (match, token) => {
     const key = clean(token);
     if (!lookup.has(key)) {
@@ -4292,7 +4353,7 @@ export function buildHtmlFromTemplateBuffer(templateBuffer, placeholders = {}, o
     return specialHtml === null ? formatTemplateHtmlText(value) : specialHtml;
   });
 
-  return buildHtmlTemplateDocument(renderedHtml, {
+  return buildHtmlTemplateDocument(repairHtmlTextEncoding(renderedHtml), {
     title: options.title || options.fileName || "Zapisnik",
   });
 }

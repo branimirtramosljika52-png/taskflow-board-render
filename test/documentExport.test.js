@@ -144,6 +144,29 @@ test("HTML template export renders escaped placeholders and special table blocks
   assert.doesNotMatch(html, /\{\{DOCUMENT_TITLE\}\}/);
 });
 
+test("HTML template export normalizes Croatian mojibake and UTF-8 metadata", () => {
+  const html = buildHtmlFromTemplateBuffer(Buffer.from(`
+    <html>
+      <head><meta charset="windows-1250"></head>
+      <body>
+        <h1>ZAPISNIK</h1>
+        <p>O ISPITIVANJU SIGURNOSNE PROTUPANI\u00c4\u0152NE RASVJETE</p>
+        <p>{{ISPITIVAC}}</p>
+      </body>
+    </html>
+  `, "utf8"), {
+    ISPITIVAC: "Ispitiva\u00c4\u0164: Ana Ivi\u00c4\u2021",
+  }, {
+    title: "Zapisnik",
+  });
+
+  assert.match(html, /<meta charset="utf-8">/i);
+  assert.match(html, /PROTUPANIČNE RASVJETE/);
+  assert.match(html, /Ispitivač: Ana Ivić/);
+  assert.doesNotMatch(html, /PROTUPANI\u00c4\u0152NE/);
+  assert.doesNotMatch(html, /Ivi\u00c4\u2021/);
+});
+
 test("Word to HTML conversion preserves OOXML colors, alignment and tokens", async () => {
   const templateBuffer = buildMinimalDocxBuffer(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
     <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
