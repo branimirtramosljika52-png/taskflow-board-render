@@ -49029,8 +49029,8 @@ function getDocumentTemplatePdfLoadingPhases({ batch = false } = {}) {
       progress: 72,
     },
     {
-      label: batch ? "Ispis" : "Preuzimanje",
-      detail: batch ? "Preuzimam svaki zapisnik kao zaseban PDF" : "Pripremam datoteku za preuzimanje",
+      label: batch ? "Paket" : "Preuzimanje",
+      detail: batch ? "Preuzimam ZIP sa zasebnim PDF zapisnicima" : "Pripremam datoteku za preuzimanje",
       progress: 92,
     },
     {
@@ -49633,61 +49633,93 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
   }
 
   try {
-    for (const [index, item] of exportEntries.entries()) {
-      const { sequenceEntry, exportEntry, payload } = item;
+    const batchEntries = exportEntries.map(({ exportEntry, payload }) => ({
+      ...payload,
+      templateId: exportEntry.templateId,
+      fileName: exportEntry.pdfFileName,
+    }));
+    const exportBaseName = sanitizeDocumentTemplateFileName(
+      `zapisnici-${new Date().toISOString().slice(0, 10)}`,
+      "zapisnici",
+    );
+    const exportEndpoint = print
+      ? "/document-templates/export-pdf-batch"
+      : "/document-templates/export-pdf-files";
+    const exportFileName = print ? `${exportBaseName}.pdf` : `${exportBaseName}.zip`;
+
+    exportEntries.forEach(({ sequenceEntry, exportEntry }, index) => {
       const workOrderLabel = `RN ${sequenceEntry.workOrderNumber || exportEntry.renderModel?.workOrderNumber || index + 1}`;
       setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
         status: "running",
-        message: `PDF engine obrađuje ${workOrderLabel} (${index + 1}/${exportEntries.length}).`,
+        message: `PDF paket obrađuje ${workOrderLabel}.`,
       }, { render: true });
-      loading.setPhase(3, {
-        message: `Generiram PDF ${index + 1}/${exportEntries.length}: ${workOrderLabel}...`,
-        progress: Math.min(88, 48 + Math.round(((index + 1) / exportEntries.length) * 34)),
-      });
+    });
 
-      try {
-        const response = await apiBinaryRequest(`/document-templates/${encodeURIComponent(exportEntry.templateId)}/export-pdf`, {
-          method: "POST",
-          body: payload,
-        });
-        loading.setPhase(4, {
-          message: print
-            ? `Otvaram ispis za ${workOrderLabel}...`
-            : `Preuzimam ${workOrderLabel} kao zaseban PDF...`,
-          progress: Math.min(96, 78 + Math.round(((index + 1) / exportEntries.length) * 16)),
-        });
+    loading.setPhase(2, {
+      message: `Pakiram ${exportEntries.length} zelenih zapisnika u jedan brzi server zahtjev...`,
+      progress: 52,
+    });
+    loading.setPhase(3, {
+      message: `PDF engine generira ${exportEntries.length} zasebnih PDF datoteka...`,
+      progress: 76,
+    });
+    const response = await apiBinaryRequest(exportEndpoint, {
+      method: "POST",
+      body: {
+        fileName: exportFileName,
+        entries: batchEntries,
+      },
+    });
+    loading.setPhase(4, {
+      message: print
+        ? "Otvaram objedinjeni PDF za ispis..."
+        : "Preuzimam ZIP paket, svaki RN je zaseban PDF...",
+      progress: 94,
+    });
 
-        if (print) {
-          triggerBlobPrint(response.blob, response.fileName || payload.fileName || "zapisnik.pdf");
-        } else {
-          triggerBlobDownload(response.blob, response.fileName || payload.fileName || "zapisnik.pdf");
-        }
-
-        setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
-          status: "done",
-          message: `${workOrderLabel} je generiran kao zaseban PDF.`,
-        }, { render: true });
-        generatedCount += 1;
-      } catch (error) {
-        failureCount += 1;
-        console.error("Ne mogu generirati PDF zapisnik.", error);
-        setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
-          status: "error",
-          message: error?.message || "Ne mogu generirati PDF zapisnik.",
-        }, { render: true });
-      }
+    if (print) {
+      triggerBlobPrint(response.blob, response.fileName || exportFileName);
+    } else {
+      triggerBlobDownload(response.blob, response.fileName || exportFileName);
     }
+
+    exportEntries.forEach(({ sequenceEntry, exportEntry }, index) => {
+      const workOrderLabel = `RN ${sequenceEntry.workOrderNumber || exportEntry.renderModel?.workOrderNumber || index + 1}`;
+      setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
+        status: "done",
+        message: print
+          ? `${workOrderLabel} je poslan u PDF ispis.`
+          : `${workOrderLabel} je spreman u ZIP paketu kao zaseban PDF.`,
+      }, { render: true });
+    });
+    generatedCount = exportEntries.length;
 
     if (failureCount > 0) {
       setDocumentTemplateMessage(
-        `${generatedCount} PDF zapisnika je gotovo, ${failureCount} ima grešku. Pogledaj statuse po RN-u.`,
+        `${generatedCount} PDF zapisnika je gotovo, ${failureCount} nije pripremljeno. Pogledaj statuse po RN-u.`,
       );
     } else {
-      loading.complete({ message: "Svi označeni zapisnici su generirani kao zasebni PDF-ovi." });
-      setDocumentTemplateMessage("Svi označeni zapisnici su generirani kao zasebni PDF-ovi.", { type: "success" });
+      loading.complete({
+        message: print
+          ? "Svi označeni zapisnici su spremni za ispis."
+          : "ZIP je spreman: svaki RN je unutra kao zaseban PDF.",
+      });
+      setDocumentTemplateMessage(
+        print
+          ? "Svi označeni zapisnici su spremni za ispis."
+          : "ZIP je spreman: svaki označeni RN je zaseban PDF.",
+        { type: "success" },
+      );
     }
   } catch (error) {
     console.error("Ne mogu generirati batch PDF zapisnike.", error);
+    failureCount += exportEntries.length;
+    exportEntries.forEach(({ sequenceEntry }) => {
+      setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
+        status: "error",
+        message: error?.message || "Ne mogu generirati PDF paket.",
+      }, { render: true });
+    });
     setDocumentTemplateMessage(error?.message || "Ne mogu generirati batch PDF zapisnike.");
   } finally {
     restorePreviousRuntimeView({ render: true });
@@ -58017,8 +58049,8 @@ function getDocumentTemplateRuntimeGroupExportStatus(group = {}, { groupOk = fal
 
   return {
     kind: "ready",
-    label: "Zeleno · spremno",
-    detail: "RN je označen kao završen i ide u PDF export.",
+    label: "Odabrano",
+    detail: "RN je zelen i automatski je odabran za PDF export.",
   };
 }
 

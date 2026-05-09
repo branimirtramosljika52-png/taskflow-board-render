@@ -2044,6 +2044,114 @@ async function generatePdfBuffersForTemplateEntries(entries = [], scopedSnapshot
   return pdfBuffers.filter(Boolean);
 }
 
+async function mapWithConcurrency(items = [], limit = 2, worker = async () => null) {
+  const sourceItems = Array.isArray(items) ? items : [];
+  const workerLimit = Math.max(1, Math.min(Number(limit) || 1, sourceItems.length || 1));
+  const results = new Array(sourceItems.length);
+  let cursor = 0;
+
+  await Promise.all(Array.from({ length: workerLimit }, async () => {
+    while (cursor < sourceItems.length) {
+      const currentIndex = cursor;
+      cursor += 1;
+      results[currentIndex] = await worker(sourceItems[currentIndex], currentIndex);
+    }
+  }));
+
+  return results;
+}
+
+function ensureUniquePdfZipFileName(fileName = "", usedNames = new Set()) {
+  const safeFileName = sanitizeGeneratedDocumentFileName(
+    fileName || "zapisnik",
+    { fallback: "zapisnik", extension: "pdf" },
+  );
+  const lowerName = safeFileName.toLowerCase();
+  if (!usedNames.has(lowerName)) {
+    usedNames.add(lowerName);
+    return safeFileName;
+  }
+
+  const baseName = safeFileName.replace(/\.pdf$/i, "");
+  let suffix = 2;
+  while (usedNames.has(`${baseName}-${suffix}.pdf`.toLowerCase())) {
+    suffix += 1;
+  }
+  const uniqueName = `${baseName}-${suffix}.pdf`;
+  usedNames.add(uniqueName.toLowerCase());
+  return uniqueName;
+}
+
+async function generatePdfFileEntriesForTemplateEntries(entries = [], scopedSnapshot = {}) {
+  const documentTemplates = scopedSnapshot.documentTemplates ?? [];
+  const referenceDocumentCache = new Map();
+  const usedNames = new Set();
+  const concurrency = Math.max(
+    1,
+    Math.min(3, Number(process.env.DOCUMENT_TEMPLATE_PDF_ZIP_CONCURRENCY) || 2),
+  );
+
+  const pdfFiles = await mapWithConcurrency(entries, concurrency, async (entry, entryIndex) => {
+    const template = assertInScope(
+      documentTemplates,
+      entry?.templateId,
+      "Template nije pronaden.",
+    );
+    const fileName = ensureUniquePdfZipFileName(
+      entry?.fileName || template.outputFileName || template.title || `zapisnik-${entryIndex + 1}`,
+      usedNames,
+    );
+
+    if (!template.referenceDocument) {
+      if (hasTemplateRenderPdfModel(entry?.renderModel)) {
+        return {
+          fileName,
+          buffer: await buildPdfFromRenderModel(entry.renderModel),
+        };
+      }
+      throw new Error("Template jos nema ucitan HTML ili Word predlozak.");
+    }
+
+    const cacheKey = String(template.id || entry?.templateId || entryIndex);
+    let referenceDocumentPromise = referenceDocumentCache.get(cacheKey);
+    if (!referenceDocumentPromise) {
+      referenceDocumentPromise = readStoredDocumentBuffer(template.referenceDocument);
+      referenceDocumentCache.set(cacheKey, referenceDocumentPromise);
+    }
+    const referenceDocument = await referenceDocumentPromise;
+
+    if (isHtmlTemplateFile(template.referenceDocument)) {
+      return {
+        fileName,
+        buffer: await buildPdfFromHtmlTemplateBuffer(referenceDocument.buffer, entry?.placeholders ?? {}, {
+          fileName: entry?.fileName || template.outputFileName || template.title || `zapisnik-${entryIndex + 1}.html`,
+          title: template.title || template.documentType || "Zapisnik",
+        }),
+      };
+    }
+
+    if (isWordTemplateFile(template.referenceDocument)) {
+      const sourceFileName = String(
+        entry?.fileName || template.outputFileName || template.title || template.referenceDocument.fileName || "zapisnik",
+      ).replace(/\.(html?|docx?|dotx|pdf)$/i, "");
+      const docxFileName = sanitizeGeneratedDocumentFileName(
+        sourceFileName,
+        { fallback: "zapisnik", extension: "docx" },
+      );
+      return {
+        fileName,
+        buffer: await buildPdfFromTemplateBuffer(referenceDocument.buffer, entry?.placeholders ?? {}, {
+          fileName: docxFileName,
+        }),
+      };
+    }
+
+    throw new Error("Za Template Development ucitaj .html/.htm ili .docx/.dotx predlozak.");
+  });
+
+  return pdfFiles.filter((entry) => entry?.buffer);
+}
+
 async function generateCombinedHtmlPdfForTemplateEntries(entries = [], scopedSnapshot = {}) {
   const documentTemplates = scopedSnapshot.documentTemplates ?? [];
   const referenceDocumentCache = new Map();
@@ -5842,6 +5950,7 @@ async function handleApiRequest(request, response, url) {
     const documentTemplateMatch = url.pathname.match(/^\/api\/document-templates\/([^/]+)$/);
     const documentTemplatePdfExportMatch = url.pathname.match(/^\/api\/document-templates\/([^/]+)\/export-pdf$/);
     const documentTemplateBatchPdfExportMatch = url.pathname === "/api/document-templates/export-pdf-batch";
+    const documentTemplatePdfFilesExportMatch = url.pathname === "/api/document-templates/export-pdf-files";
     const documentTemplateWordHtmlConvertMatch = url.pathname === "/api/document-templates/convert-word-html";
     const documentTemplateHtmlPreviewPdfExportMatch = url.pathname === "/api/document-templates/export-html-preview-pdf";
     const vehicleReservationsCollectionMatch = url.pathname.match(/^\/api\/vehicles\/([^/]+)\/reservations$/);
@@ -7564,6 +7673,48 @@ async function handleApiRequest(request, response, url) {
 
       sendBinary(response, 200, pdfBuffer, {
         contentType: "application/pdf",
+        fileName,
+      });
+      return true;
+    }
+
+    if (documentTemplatePdfFilesExportMatch && request.method === "POST") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo generirati PDF zapisnike.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const entries = Array.isArray(body.entries) ? body.entries : [];
+
+      if (entries.length === 0) {
+        sendError(response, 400, "PDF paket nema nijedan zapisnik za obradu.");
+        return true;
+      }
+
+      const pdfFiles = await generatePdfFileEntriesForTemplateEntries(entries, scopedSnapshot);
+      if (pdfFiles.length === 0) {
+        sendError(response, 400, "PDF paket nema nijedan generirani zapisnik.");
+        return true;
+      }
+
+      const zip = new JSZip();
+      pdfFiles.forEach((entry) => {
+        zip.file(entry.fileName, entry.buffer);
+      });
+      const zipBuffer = await zip.generateAsync({
+        type: "nodebuffer",
+        compression: "DEFLATE",
+        compressionOptions: { level: 6 },
+      });
+      const fileName = sanitizeGeneratedDocumentFileName(
+        body.fileName || "zapisnici-pdf",
+        { fallback: "zapisnici-pdf", extension: "zip" },
+      );
+
+      sendBinary(response, 200, zipBuffer, {
+        contentType: "application/zip",
         fileName,
       });
       return true;
