@@ -31583,6 +31583,27 @@ body.is-measurement-equipment-export-open {
   background: linear-gradient(180deg, rgba(245, 253, 248, 0.98), rgba(255, 255, 255, 0.98));
 }
 
+.document-template-runtime-summary-entry.is-export-running {
+  border-color: rgba(37, 99, 235, 0.42);
+  background:
+    linear-gradient(90deg, rgba(37, 99, 235, 0.08), transparent 48%),
+    linear-gradient(180deg, rgba(245, 250, 255, 0.99), rgba(255, 255, 255, 0.98));
+}
+
+.document-template-runtime-summary-entry.is-export-done {
+  border-color: rgba(16, 185, 129, 0.48);
+  background:
+    linear-gradient(90deg, rgba(16, 185, 129, 0.12), transparent 52%),
+    linear-gradient(180deg, rgba(240, 253, 244, 0.99), rgba(255, 255, 255, 0.98));
+}
+
+.document-template-runtime-summary-entry.is-export-error {
+  border-color: rgba(220, 38, 38, 0.48);
+  background:
+    linear-gradient(90deg, rgba(220, 38, 38, 0.1), transparent 52%),
+    linear-gradient(180deg, rgba(255, 245, 246, 0.99), rgba(255, 255, 255, 0.98));
+}
+
 .document-template-runtime-summary-entry.is-warning {
   border-color: rgba(220, 82, 95, 0.34);
   background: linear-gradient(180deg, rgba(255, 245, 246, 0.98), rgba(255, 255, 255, 0.98));
@@ -31622,6 +31643,7 @@ body.is-measurement-equipment-export-open {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 6px;
   padding: 0 10px;
   border-radius: 999px;
   border: 1px solid rgba(48, 164, 108, 0.2);
@@ -31629,18 +31651,64 @@ body.is-measurement-equipment-export-open {
   color: #25734d;
   font-size: 0.72rem;
   font-weight: 800;
+  white-space: nowrap;
 }
 
+.document-template-runtime-summary-status.is-ready,
+.document-template-runtime-summary-status.is-done {
+  border-color: rgba(16, 185, 129, 0.36);
+  background: linear-gradient(135deg, #e8fbf0, #f8fffb);
+  color: #047857;
+  box-shadow: 0 8px 18px rgba(16, 185, 129, 0.12);
+}
+
+.document-template-runtime-summary-status.is-pending {
+  border-color: rgba(37, 99, 235, 0.26);
+  background: linear-gradient(135deg, #eff6ff, #ffffff);
+  color: #1d4ed8;
+}
+
+.document-template-runtime-summary-status.is-running {
+  border-color: rgba(37, 99, 235, 0.36);
+  background: linear-gradient(135deg, #dbeafe, #f8fbff);
+  color: #1d4ed8;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.16);
+}
+
+.document-template-runtime-summary-status.is-running::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border: 2px solid rgba(37, 99, 235, 0.24);
+  border-top-color: #2563eb;
+  border-radius: 999px;
+  animation: safenexus-summary-status-spin 0.8s linear infinite;
+}
+
+.document-template-runtime-summary-status.is-blocked,
 .document-template-runtime-summary-entry.is-warning .document-template-runtime-summary-status {
   border-color: rgba(220, 82, 95, 0.24);
   background: rgba(255, 237, 239, 0.98);
   color: #a93d49;
 }
 
+.document-template-runtime-summary-status.is-error {
+  border-color: rgba(220, 38, 38, 0.34);
+  background: linear-gradient(135deg, #fee2e2, #fff7f7);
+  color: #991b1b;
+}
+
+.document-template-runtime-summary-status.is-skipped,
 .document-template-runtime-summary-entry.is-skipped .document-template-runtime-summary-status {
   border-color: rgba(119, 129, 146, 0.2);
   background: rgba(242, 245, 249, 0.98);
   color: #647086;
+}
+
+.document-template-runtime-summary-entry-progress {
+  color: #5f6f8b;
+  font-size: 0.72rem;
+  line-height: 1.35;
 }
 
 .document-template-runtime-summary-skip {
@@ -31703,10 +31771,14 @@ body.is-measurement-equipment-export-open {
 .document-template-runtime-summary-service strong {
   color: #a93d49;
   font-size: 0.72rem;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(255, 237, 239, 0.82);
 }
 
 .document-template-runtime-summary-service.is-complete strong {
   color: #25734d;
+  background: rgba(232, 247, 238, 0.92);
 }
 
 .document-template-runtime-summary-service-meta {
@@ -37827,7 +37899,7 @@ body.is-document-template-resizing-diagonal * {
 .global-loading-indicator {
   position: fixed;
   inset: 0;
-  z-index: 220;
+  z-index: 10120;
   display: grid;
   place-items: center;
   padding: 24px;
@@ -38043,6 +38115,12 @@ body.is-global-loading {
   50% {
     transform: scale(1.08);
     opacity: 0.62;
+  }
+}
+
+@keyframes safenexus-summary-status-spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 
