@@ -2587,11 +2587,15 @@ const companySearchHaystackCache = new WeakMap();
 
 const GLOBAL_LOADING_DELAY_MS = 180;
 const GLOBAL_LOADING_HIDE_DELAY_MS = 180;
+const GLOBAL_LOADING_PHASE_ADVANCE_MS = 1300;
 const PASSWORD_POLICY_MESSAGE = "Lozinka mora imati najmanje 8 znakova, barem 1 veliko slovo i najmanje 2 broja.";
 const globalLoadingState = {
   count: 0,
   visible: false,
   message: "Učitavanje podataka...",
+  phaseTimerId: 0,
+  phaseIndex: 0,
+  phases: [],
 };
 
 const authScreen = document.querySelector("#auth-screen");
@@ -2624,6 +2628,11 @@ const changePasswordLogoutButton = document.querySelector("#change-password-logo
 const changePasswordError = document.querySelector("#change-password-error");
 const globalLoadingIndicator = document.querySelector("#global-loading-indicator");
 const globalLoadingIndicatorCopy = document.querySelector("#global-loading-indicator-copy");
+const globalLoadingPhase = document.querySelector("#global-loading-phase");
+const globalLoadingPhaseBar = document.querySelector("#global-loading-phase-bar");
+const globalLoadingPhaseLabel = document.querySelector("#global-loading-phase-label");
+const globalLoadingPhasePercent = document.querySelector("#global-loading-phase-percent");
+const globalLoadingPhaseSteps = document.querySelector("#global-loading-phase-steps");
 const topbarShortcutDashboardButton = document.querySelector("#topbar-shortcut-dashboard");
 const topbarShortcutRemindersButton = document.querySelector("#topbar-shortcut-reminders");
 const topbarShortcutTodoButton = document.querySelector("#topbar-shortcut-todo");
@@ -7143,6 +7152,141 @@ function getPeriodicsVisualSettings() {
   return normalizePeriodicsVisualSettings(state.periodicsVisualSettings);
 }
 
+function clampNumber(value = 0, min = 0, max = 100) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) {
+    return min;
+  }
+  return Math.min(Math.max(numericValue, min), max);
+}
+
+function normalizeGlobalLoadingPhases(phases = []) {
+  return (Array.isArray(phases) ? phases : [])
+    .map((phase, index) => ({
+      label: String(phase?.label || phase || `Faza ${index + 1}`).trim(),
+      detail: String(phase?.detail || "").trim(),
+      progress: clampNumber(Number(phase?.progress ?? ((index + 1) / Math.max(phases.length, 1)) * 92), 0, 99),
+    }))
+    .filter((phase) => phase.label);
+}
+
+function renderGlobalLoadingPhaseSteps() {
+  if (!globalLoadingPhaseSteps) {
+    return;
+  }
+
+  const phases = globalLoadingState.phases;
+  globalLoadingPhaseSteps.replaceChildren(...phases.map((phase, index) => {
+    const step = document.createElement("span");
+    step.className = "global-loading-phase-step";
+    if (index < globalLoadingState.phaseIndex) {
+      step.classList.add("is-done");
+    } else if (index === globalLoadingState.phaseIndex) {
+      step.classList.add("is-active");
+    }
+    step.textContent = phase.label;
+    return step;
+  }));
+}
+
+function setGlobalLoadingPhase(index = 0, { progress = null, message = "" } = {}) {
+  if (!globalLoadingPhase || globalLoadingState.phases.length === 0) {
+    return;
+  }
+
+  const lastIndex = Math.max(0, globalLoadingState.phases.length - 1);
+  globalLoadingState.phaseIndex = clampNumber(Number(index) || 0, 0, lastIndex);
+  const phase = globalLoadingState.phases[globalLoadingState.phaseIndex] || globalLoadingState.phases[0];
+  const safeProgress = clampNumber(
+    Number(progress ?? phase.progress ?? ((globalLoadingState.phaseIndex + 1) / Math.max(globalLoadingState.phases.length, 1)) * 92),
+    0,
+    100,
+  );
+
+  globalLoadingPhase.hidden = false;
+  if (globalLoadingPhaseBar) {
+    globalLoadingPhaseBar.style.width = `${safeProgress}%`;
+  }
+  if (globalLoadingPhaseLabel) {
+    globalLoadingPhaseLabel.textContent = phase.detail || phase.label;
+  }
+  if (globalLoadingPhasePercent) {
+    globalLoadingPhasePercent.textContent = `${Math.round(safeProgress)}%`;
+  }
+  if (message && globalLoadingIndicatorCopy) {
+    globalLoadingIndicatorCopy.textContent = message;
+  }
+  renderGlobalLoadingPhaseSteps();
+}
+
+function clearGlobalLoadingPhases() {
+  if (globalLoadingState.phaseTimerId) {
+    window.clearInterval(globalLoadingState.phaseTimerId);
+    globalLoadingState.phaseTimerId = 0;
+  }
+  globalLoadingState.phaseIndex = 0;
+  globalLoadingState.phases = [];
+  if (globalLoadingPhase) {
+    globalLoadingPhase.hidden = true;
+  }
+  if (globalLoadingPhaseBar) {
+    globalLoadingPhaseBar.style.width = "0%";
+  }
+  if (globalLoadingPhaseSteps) {
+    globalLoadingPhaseSteps.replaceChildren();
+  }
+}
+
+function startGlobalLoadingPhases(phases = []) {
+  const normalizedPhases = normalizeGlobalLoadingPhases(phases);
+  clearGlobalLoadingPhases();
+  if (normalizedPhases.length === 0) {
+    return;
+  }
+
+  globalLoadingState.phases = normalizedPhases;
+  setGlobalLoadingPhase(0);
+  globalLoadingState.phaseTimerId = window.setInterval(() => {
+    if (globalLoadingState.phases.length === 0) {
+      return;
+    }
+    const nextIndex = Math.min(globalLoadingState.phaseIndex + 1, Math.max(0, globalLoadingState.phases.length - 2));
+    setGlobalLoadingPhase(nextIndex);
+  }, GLOBAL_LOADING_PHASE_ADVANCE_MS);
+}
+
+function createGlobalLoadingController({
+  message = "Obrada je u tijeku...",
+  phases = [],
+} = {}) {
+  beginGlobalLoading(message, { immediate: true, phases });
+  let closed = false;
+  return {
+    setPhase(index = 0, options = {}) {
+      if (!closed) {
+        setGlobalLoadingPhase(index, options);
+      }
+    },
+    complete(options = {}) {
+      if (closed) {
+        return;
+      }
+      const lastIndex = Math.max(0, globalLoadingState.phases.length - 1);
+      setGlobalLoadingPhase(lastIndex, {
+        progress: 100,
+        message: options.message || "Dokument je spreman.",
+      });
+    },
+    close() {
+      if (closed) {
+        return;
+      }
+      closed = true;
+      endGlobalLoading();
+    },
+  };
+}
+
 function showGlobalLoadingIndicator(message = globalLoadingState.message) {
   if (!globalLoadingIndicator) {
     return;
@@ -7169,6 +7313,7 @@ function hideGlobalLoadingIndicator() {
   }
 
   globalLoadingState.visible = false;
+  clearGlobalLoadingPhases();
   globalLoadingIndicator.classList.remove("is-visible");
   document.body.classList.remove("is-global-loading");
 
@@ -7179,7 +7324,7 @@ function hideGlobalLoadingIndicator() {
   }, GLOBAL_LOADING_HIDE_DELAY_MS);
 }
 
-function beginGlobalLoading(message = "Učitavanje podataka...", { immediate = false } = {}) {
+function beginGlobalLoading(message = "Učitavanje podataka...", { immediate = false, phases = null } = {}) {
   globalLoadingState.count += 1;
   globalLoadingState.message = message || globalLoadingState.message;
 
@@ -7190,6 +7335,12 @@ function beginGlobalLoading(message = "Učitavanje podataka...", { immediate = f
   if (globalLoadingTimerId) {
     window.clearTimeout(globalLoadingTimerId);
     globalLoadingTimerId = null;
+  }
+
+  if (Array.isArray(phases) && phases.length > 0) {
+    startGlobalLoadingPhases(phases);
+  } else if (globalLoadingState.count <= 1) {
+    clearGlobalLoadingPhases();
   }
 
   if (globalLoadingState.visible) {
@@ -7285,14 +7436,13 @@ async function apiRequest(path, options = {}, retryOnAuthFailure = true) {
     }
   }
 
-  const payload = await response.json().catch(() => ({}));
-
   if (!response.ok) {
-    const error = new Error(payload.error || "Request failed.");
+    const error = new Error(await readApiErrorMessage(response));
     error.statusCode = response.status;
     throw error;
   }
 
+  const payload = await response.json().catch(() => ({}));
   return payload;
 }
 
@@ -7399,6 +7549,30 @@ function parseResponseDownloadFileName(response, fallback = "download.bin") {
   return plainMatch?.[1]?.trim() || fallback;
 }
 
+function normalizeApiErrorText(value = "") {
+  return String(value || "")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 320);
+}
+
+async function readApiErrorMessage(response) {
+  const statusLabel = response?.status ? `HTTP ${response.status}` : "Request failed";
+  const contentType = String(response?.headers?.get("content-type") || "").toLowerCase();
+
+  if (contentType.includes("application/json")) {
+    const payload = await response.json().catch(() => null);
+    const jsonMessage = normalizeApiErrorText(payload?.error || payload?.message || "");
+    return jsonMessage || statusLabel;
+  }
+
+  const textMessage = normalizeApiErrorText(await response.text().catch(() => ""));
+  return textMessage || statusLabel;
+}
+
 async function apiBinaryRequest(path, options = {}, retryOnAuthFailure = true) {
   const organizationHeader = state.activeOrganizationId
     ? { "X-Organization-Id": state.activeOrganizationId }
@@ -7427,8 +7601,7 @@ async function apiBinaryRequest(path, options = {}, retryOnAuthFailure = true) {
   }
 
   if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
-    const error = new Error(payload.error || "Request failed.");
+    const error = new Error(await readApiErrorMessage(response));
     error.statusCode = response.status;
     throw error;
   }
@@ -48832,6 +49005,41 @@ function buildDocumentTemplateRuntimePdfPayloadFromEntry(exportEntry = null) {
   };
 }
 
+function getDocumentTemplatePdfLoadingPhases({ batch = false } = {}) {
+  return [
+    {
+      label: "Podaci",
+      detail: batch ? "Spremam odabrane RN-ove" : "Spremam vrijednosti zapisnika",
+      progress: 12,
+    },
+    {
+      label: "Tokeni",
+      detail: "Punim placeholdere iz radnog naloga",
+      progress: 30,
+    },
+    {
+      label: "Template",
+      detail: "Slažem HTML/Word predložak",
+      progress: 48,
+    },
+    {
+      label: "PDF engine",
+      detail: "Renderiram dokument u PDF",
+      progress: 72,
+    },
+    {
+      label: batch ? "Ispis" : "Preuzimanje",
+      detail: batch ? "Pripremam zajednički PDF" : "Pripremam datoteku za preuzimanje",
+      progress: 92,
+    },
+    {
+      label: "Gotovo",
+      detail: "Dokument je spreman",
+      progress: 100,
+    },
+  ];
+}
+
 async function exportDocumentTemplatePdf() {
   const template = buildDocumentTemplateDraft();
   const templateId = getDocumentTemplateRuntimeTemplateId(template);
@@ -48842,31 +49050,55 @@ async function exportDocumentTemplatePdf() {
     return;
   }
 
+  const loading = createGlobalLoadingController({
+    message: "Izrađujem PDF zapisnik...",
+    phases: getDocumentTemplatePdfLoadingPhases(),
+  });
+
   try {
+    loading.setPhase(0, { message: "Spremam unesene podatke prije PDF exporta..." });
     await persistActiveDocumentTemplateRuntimeRecord();
   } catch (error) {
     console.error("Ne mogu spremiti runtime zapisnik prije PDF exporta.", error);
     setDocumentTemplateMessage(error?.message || "Ne mogu spremiti vrijednosti zapisnika prije PDF exporta.");
+    loading.close();
     return;
   }
 
-  const exportEntry = await buildDocumentTemplateRuntimeExportEntryAsync(template, workOrder);
-  const payload = buildDocumentTemplateRuntimePdfPayloadFromEntry(exportEntry);
-  if (!payload) {
-    setDocumentTemplateMessage("PDF payload nije ispravno pripremljen.");
+  let payload = null;
+  try {
+    loading.setPhase(1, { message: "Punim placeholdere podacima iz RN-a..." });
+    const exportEntry = await buildDocumentTemplateRuntimeExportEntryAsync(template, workOrder);
+    payload = buildDocumentTemplateRuntimePdfPayloadFromEntry(exportEntry);
+    if (!payload) {
+      setDocumentTemplateMessage("PDF payload nije ispravno pripremljen.");
+      loading.close();
+      return;
+    }
+  } catch (error) {
+    console.error("Ne mogu pripremiti PDF payload zapisnika.", error);
+    setDocumentTemplateMessage(error?.message || "Ne mogu pripremiti PDF payload zapisnika.");
+    loading.close();
     return;
   }
 
   try {
+    loading.setPhase(3, { message: "PDF engine radi dokument, ovo može potrajati par sekundi..." });
     const response = await apiBinaryRequest(`/document-templates/${encodeURIComponent(templateId)}/export-pdf`, {
       method: "POST",
       body: payload,
     });
+    loading.setPhase(4, { message: "PDF je vraćen, pripremam preuzimanje..." });
     triggerBlobDownload(response.blob, response.fileName || payload.fileName || "zapisnik.pdf");
+    loading.complete({ message: "PDF zapisnik je spreman." });
     setDocumentTemplateMessage("PDF zapisnik je generiran.", { type: "success" });
   } catch (error) {
     console.error("Ne mogu generirati PDF zapisnik.", error);
     setDocumentTemplateMessage(error?.message || "Ne mogu generirati PDF zapisnik.");
+  } finally {
+    window.setTimeout(() => {
+      loading.close();
+    }, 320);
   }
 }
 
@@ -49280,8 +49512,13 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
   }
 
   const exportEntries = [];
+  const loading = createGlobalLoadingController({
+    message: `Pripremam ${sequenceEntries.length} zapisnika za PDF...`,
+    phases: getDocumentTemplatePdfLoadingPhases({ batch: true }),
+  });
 
   try {
+    loading.setPhase(0, { message: `Spremam ${sequenceEntries.length} odabranih zapisnika...` });
     for (const sequenceEntry of sequenceEntries) {
       const template = getDocumentTemplateById(sequenceEntry.templateId);
       const workOrder = getDocumentTemplateRuntimeWorkOrderById(sequenceEntry.workOrderId);
@@ -49301,15 +49538,18 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
   } catch (error) {
     console.error("Ne mogu pripremiti batch zapisnike za ispis.", error);
     setDocumentTemplateMessage(error?.message || "Ne mogu pripremiti batch zapisnike za ispis.");
+    loading.close();
     return;
   }
 
   if (exportEntries.length === 0) {
     setDocumentTemplateMessage("Nema nijednog pripremljenog zapisnika za batch ispis.");
+    loading.close();
     return;
   }
 
   try {
+    loading.setPhase(2, { message: "Slažem sve predloške i placeholdere u zajednički export..." });
     const usesTemplateDocuments = exportEntries.some((entry) => (
       entry.templateReferenceKind === "html" || entry.templateReferenceKind === "word"
     ));
@@ -49331,6 +49571,7 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
         })),
       },
     });
+    loading.setPhase(4, { message: print ? "PDF je spreman, otvaram ispis..." : "PDF je spreman, pripremam preuzimanje..." });
 
     if (print) {
       triggerBlobPrint(response.blob, response.fileName || "zapisnici.pdf");
@@ -49338,10 +49579,15 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
       triggerBlobDownload(response.blob, response.fileName || "zapisnici.pdf");
     }
 
+    loading.complete({ message: "Batch PDF zapisnici su spremni." });
     setDocumentTemplateMessage("Batch PDF zapisnici su pripremljeni.", { type: "success" });
   } catch (error) {
     console.error("Ne mogu generirati batch PDF zapisnike.", error);
     setDocumentTemplateMessage(error?.message || "Ne mogu generirati batch PDF zapisnike.");
+  } finally {
+    window.setTimeout(() => {
+      loading.close();
+    }, 320);
   }
 }
 
