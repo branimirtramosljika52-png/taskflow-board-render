@@ -141,6 +141,8 @@ function getFooterContent(props = {}, pageIndex = 0, pageCount = 1) {
       return text || "{{FOOTER_TEXT}}";
     case "document-info":
       return `${text || "{{BROJ_ZAPISNIKA}}"} | Stranica ${pageIndex + 1} / ${pageCount}`;
+    case "service-page-number":
+      return `${text || "{{SIFRA_USLUGE}}"}-${pageIndex + 1} / ${pageCount}`;
     case "signature":
       return text || "Izradio: {{ISPITIVAC}}";
     case "page-number":

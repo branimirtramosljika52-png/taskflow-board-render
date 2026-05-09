@@ -47,6 +47,7 @@ function normalizeGridCell(cell = {}) {
     textTransform: String(cell?.textTransform ?? ""),
     fontStyle: String(cell?.fontStyle ?? ""),
     textDecoration: String(cell?.textDecoration ?? ""),
+    verticalAlign: String(cell?.verticalAlign ?? ""),
     backgroundColor: String(cell?.backgroundColor ?? ""),
     color: String(cell?.color ?? ""),
     textAlign: String(cell?.textAlign ?? ""),

@@ -1,5 +1,4 @@
 import { getBlockCategories } from "../core/registry.js";
-import { DOCUMENT_BUILDER_TEMPLATES } from "./templates.js";
 import { el, clear } from "../utils/dom.js";
 
 const CATEGORY_LABELS = {
@@ -22,11 +21,10 @@ export function renderSidebar(container, options = {}) {
   const search = el("input", {
     type: "search",
     className: "sn-builder-search",
-    placeholder: "Trazi blok, token ili template",
+    placeholder: "Traži blok ili placeholder",
     autocomplete: "off",
   });
   const blockList = el("div", { className: "sn-builder-sidebar-list" });
-  const templateList = el("div", { className: "sn-builder-template-list" });
 
   function renderLists() {
     const query = search.value.trim().toLowerCase();
@@ -61,12 +59,12 @@ export function renderSidebar(container, options = {}) {
     if (tokens.length > 0) {
       blockList.prepend(el("section", { className: "sn-builder-sidebar-category is-token-category" }, [
         el("div", { className: "sn-builder-token-head" }, [
-          el("h4", {}, "Tokeni predloška"),
-          el("small", {}, "Klik dodaje tekst blok"),
+          el("h4", {}, "Placeholderi"),
+          el("small", {}, "Klik dodaje tekst"),
         ]),
         el("div", { className: "sn-builder-token-grid" }, tokens
           .filter((token) => !query || `${token.label} ${token.value}`.toLowerCase().includes(query))
-          .slice(0, 28)
+          .slice(0, 32)
           .map((token) => el("button", {
             type: "button",
             className: "sn-builder-token-tool",
@@ -78,30 +76,10 @@ export function renderSidebar(container, options = {}) {
           ]))),
       ]));
     }
-
-    clear(templateList);
-    DOCUMENT_BUILDER_TEMPLATES
-      .filter((template) => !query || `${template.label} ${template.description}`.toLowerCase().includes(query))
-      .forEach((template) => {
-        templateList.append(el("button", {
-          type: "button",
-          className: "sn-builder-template-card",
-          dataset: { builderTemplate: template.id },
-        }, [
-          el("strong", {}, template.label),
-          el("span", {}, template.description),
-        ]));
-      });
   }
 
   search.addEventListener("input", renderLists);
   container.addEventListener("click", (event) => {
-    const templateButton = event.target instanceof HTMLElement
-      ? event.target.closest("[data-builder-template]")
-      : null;
-    if (templateButton instanceof HTMLElement) {
-      options.onLoadTemplate?.(templateButton.dataset.builderTemplate || "");
-    }
     const toolButton = event.target instanceof HTMLElement
       ? event.target.closest("[data-builder-tool]")
       : null;
@@ -117,11 +95,6 @@ export function renderSidebar(container, options = {}) {
     ]),
     search,
     blockList,
-    el("div", { className: "sn-builder-panel-head" }, [
-      el("span", {}, "Predlošci"),
-      el("strong", {}, "Start"),
-    ]),
-    templateList,
   );
   renderLists();
 }

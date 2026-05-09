@@ -265,6 +265,7 @@ function normalizeGridCell(cell = {}) {
     textTransform: String(cell?.textTransform ?? ""),
     fontStyle: String(cell?.fontStyle ?? ""),
     textDecoration: String(cell?.textDecoration ?? ""),
+    verticalAlign: String(cell?.verticalAlign ?? ""),
     backgroundColor: String(cell?.backgroundColor ?? ""),
     color: String(cell?.color ?? ""),
     textAlign: String(cell?.textAlign ?? ""),
@@ -397,10 +398,22 @@ function gridCellStyle(block, props, cell, options = {}) {
     ? (preferredBorderWidth && preferredBorderWidth !== "0" ? preferredBorderWidth : "1px")
     : "0";
   const finalBorderWidth = isExport ? (explicitCellBorderWidth || "0") : (explicitCellBorderWidth || borderWidth);
+  const textAlign = cell.textAlign || block.styles?.textAlign || "left";
+  const verticalAlign = cell.verticalAlign || block.styles?.verticalAlign || "top";
+  const justifyContent = textAlign === "center"
+    ? "center"
+    : textAlign === "right"
+      ? "flex-end"
+      : "flex-start";
+  const alignItems = verticalAlign === "middle"
+    ? "center"
+    : verticalAlign === "bottom"
+      ? "flex-end"
+      : "flex-start";
   return {
     backgroundColor: cell.backgroundColor || "transparent",
     color: cell.color || block.styles?.color || "#172033",
-    textAlign: cell.textAlign || block.styles?.textAlign || "left",
+    textAlign,
     fontFamily: cell.fontFamily || block.styles?.fontFamily || "Arial",
     fontSize: cell.fontSize || block.styles?.fontSize || "11px",
     fontWeight: cell.fontWeight || block.styles?.fontWeight || "",
@@ -414,6 +427,9 @@ function gridCellStyle(block, props, cell, options = {}) {
     borderWidth: finalBorderWidth,
     borderStyle: finalBorderWidth === "0" ? "solid" : (cell.borderStyle || block.styles?.borderStyle || "dashed"),
     borderRadius: cell.borderRadius || block.styles?.borderRadius || "0",
+    display: "flex",
+    alignItems,
+    justifyContent,
   };
 }
 

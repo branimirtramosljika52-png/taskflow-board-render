@@ -27825,11 +27825,11 @@ body.is-vehicle-reservation-open {
 }
 
 .document-template-workspace-head {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  flex-wrap: wrap;
 }
 
 .document-template-workspace-head-copy {
@@ -29714,8 +29714,9 @@ body.is-measurement-equipment-export-open {
 }
 
 .document-template-copy-source-card.is-header {
-  flex: 1 1 620px;
-  max-width: 860px;
+  grid-column: 1 / -1;
+  width: 100%;
+  max-width: none;
   grid-template-columns: minmax(220px, 0.72fr) minmax(340px, 1fr);
   align-self: stretch;
   padding: 10px 12px;
@@ -30685,6 +30686,10 @@ body.is-measurement-equipment-export-open {
   border-bottom: 1px solid rgba(220, 156, 212, 0.24);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
+}
+
+.document-template-editor-panel.is-fill-mode .document-template-copy-source-card.is-header {
+  display: none;
 }
 
 .document-template-editor-panel.is-fill-mode .document-template-workspace-head-copy {

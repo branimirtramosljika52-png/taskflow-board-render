@@ -29,9 +29,16 @@ const TEXT_ALIGNS = [
   { value: "justify", label: "Justify" },
 ];
 
+const VERTICAL_ALIGNS = [
+  { value: "top", label: "Gore" },
+  { value: "middle", label: "Sredina" },
+  { value: "bottom", label: "Dolje" },
+];
+
 const FOOTER_TYPES = [
   { value: "none", label: "Bez footera" },
   { value: "page-number", label: "Broj stranice" },
+  { value: "service-page-number", label: "Šifra usluge - stranica" },
   { value: "text", label: "Tekst" },
   { value: "document-info", label: "Info + stranica" },
   { value: "signature", label: "Potpis" },
@@ -94,6 +101,7 @@ function normalizeGridCell(cell = {}) {
     textTransform: String(cell?.textTransform ?? ""),
     fontStyle: String(cell?.fontStyle ?? ""),
     textDecoration: String(cell?.textDecoration ?? ""),
+    verticalAlign: String(cell?.verticalAlign ?? ""),
     backgroundColor: String(cell?.backgroundColor ?? ""),
     color: String(cell?.color ?? ""),
     textAlign: String(cell?.textAlign ?? ""),
@@ -295,12 +303,33 @@ function setGridTrackRangePixels(trackList = [], count = 1, start = 0, span = 1,
   return next;
 }
 
+function setGridTrackIndexesPixels(trackList = [], count = 1, indexes = [], valuePx = 1, fallback = "1fr") {
+  const next = normalizeGridTrackList(trackList, count, fallback);
+  const safeValue = `${Math.max(4, Math.round(Number(valuePx) || 1))}px`;
+  [...new Set(indexes)]
+    .filter((index) => Number.isInteger(index) && index >= 0 && index < count)
+    .forEach((index) => {
+      next[index] = safeValue;
+    });
+  return next;
+}
+
 function resetGridTrackRange(trackList = [], count = 1, start = 0, span = 1, fallback = "1fr") {
   const next = normalizeGridTrackList(trackList, count, fallback);
   const safeSpan = Math.max(1, Math.min(count - start, Number(span) || 1));
   for (let offset = 0; offset < safeSpan; offset += 1) {
     next[start + offset] = fallback;
   }
+  return next;
+}
+
+function resetGridTrackIndexes(trackList = [], count = 1, indexes = [], fallback = "1fr") {
+  const next = normalizeGridTrackList(trackList, count, fallback);
+  [...new Set(indexes)]
+    .filter((index) => Number.isInteger(index) && index >= 0 && index < count)
+    .forEach((index) => {
+      next[index] = fallback;
+    });
   return next;
 }
 
@@ -613,6 +642,7 @@ function gridPropertySection(block, updateProps, updateStyles, updateLayout, act
   const showBorders = block.props?.showBorders !== false;
   const normalizedCells = resizeGridCells(block, rows, columns);
   const selectedIds = getGridSelectedCellIds(block, rows, columns);
+  const selectedAnchorIds = getGridSelectedAnchorIds(block, rows, columns, normalizedCells);
   const firstSelectedCell = selectedIds.length ? normalizedCells[selectedIds[0]] : null;
   const selectedBackgroundColor = firstSelectedCell?.backgroundColor || "#ffffff";
   const selectedTextColor = firstSelectedCell?.color || block.styles?.color || "#172033";
@@ -628,58 +658,81 @@ function gridPropertySection(block, updateProps, updateStyles, updateLayout, act
   const gapPixels = getGridGapPixels(block.styles?.gap || "0px");
   const columnPixels = getGridTrackPixels(block.props?.columnWidths, columns, Number(block.layout?.width) || FULL_PAGE_GRID_LAYOUT.width, gapPixels.column, "1fr");
   const rowPixels = getGridTrackPixels(block.props?.rowHeights, rows, Number(block.layout?.height) || FULL_PAGE_GRID_LAYOUT.height, gapPixels.row, "1fr");
-  const selectedCellControls = selectedCell
+  const selectedRects = selectedAnchorIds.map((index) => getCellRect(index, normalizedCells[index], rows, columns));
+  const selectedColumns = selectedRects.flatMap((rect) => {
+    const indexes = [];
+    for (let index = rect.minColumn; index <= rect.maxColumn; index += 1) indexes.push(index);
+    return indexes;
+  });
+  const selectedRows = selectedRects.flatMap((rect) => {
+    const indexes = [];
+    for (let index = rect.minRow; index <= rect.maxRow; index += 1) indexes.push(index);
+    return indexes;
+  });
+  const firstSelectedColumn = selectedColumns[0] ?? selectedCell?.column ?? 0;
+  const firstSelectedRow = selectedRows[0] ?? selectedCell?.row ?? 0;
+  const selectedCellControls = selectedAnchorIds.length > 0
     ? el("div", { className: "sn-builder-grid-cell-controls" }, [
       el("div", { className: "sn-builder-property-grid" }, [
-        field("Sirina celije", numberInput(
-          sumRange(columnPixels, selectedCell.column, selectedCell.colSpan, gapPixels.column),
+        field(selectedAnchorIds.length > 1 ? "Sirina celija" : "Sirina celije", numberInput(
+          selectedCell
+            ? sumRange(columnPixels, selectedCell.column, selectedCell.colSpan, gapPixels.column)
+            : columnPixels[firstSelectedColumn],
           (value) => {
             updateProps({
-              columnWidths: setGridTrackRangePixels(
-                block.props?.columnWidths,
-                columns,
-                selectedCell.column,
-                selectedCell.colSpan,
-                Math.max(8, value),
-                gapPixels.column,
-                "1fr",
-              ),
+              columnWidths: selectedCell
+                ? setGridTrackRangePixels(
+                  block.props?.columnWidths,
+                  columns,
+                  selectedCell.column,
+                  selectedCell.colSpan,
+                  Math.max(8, value),
+                  gapPixels.column,
+                  "1fr",
+                )
+                : setGridTrackIndexesPixels(block.props?.columnWidths, columns, selectedColumns, Math.max(8, value), "1fr"),
             });
           },
         )),
-        field("Visina celije", numberInput(
-          sumRange(rowPixels, selectedCell.row, selectedCell.rowSpan, gapPixels.row),
+        field(selectedAnchorIds.length > 1 ? "Visina celija" : "Visina celije", numberInput(
+          selectedCell
+            ? sumRange(rowPixels, selectedCell.row, selectedCell.rowSpan, gapPixels.row)
+            : rowPixels[firstSelectedRow],
           (value) => {
             updateProps({
-              rowHeights: setGridTrackRangePixels(
-                block.props?.rowHeights,
-                rows,
-                selectedCell.row,
-                selectedCell.rowSpan,
-                Math.max(8, value),
-                gapPixels.row,
-                "1fr",
-              ),
+              rowHeights: selectedCell
+                ? setGridTrackRangePixels(
+                  block.props?.rowHeights,
+                  rows,
+                  selectedCell.row,
+                  selectedCell.rowSpan,
+                  Math.max(8, value),
+                  gapPixels.row,
+                  "1fr",
+                )
+                : setGridTrackIndexesPixels(block.props?.rowHeights, rows, selectedRows, Math.max(8, value), "34px"),
             });
           },
         )),
       ]),
       el("div", { className: "sn-builder-grid-action-row" }, [
-        createGridAction("Auto sirina", "Vrati sirinu odabrane celije u ravnomjerni grid", () => {
+        createGridAction("Auto sirina", "Vrati sirinu odabranih celija u ravnomjerni grid", () => {
           updateProps({
-            columnWidths: resetGridTrackRange(block.props?.columnWidths, columns, selectedCell.column, selectedCell.colSpan, "1fr"),
+            columnWidths: selectedCell
+              ? resetGridTrackRange(block.props?.columnWidths, columns, selectedCell.column, selectedCell.colSpan, "1fr")
+              : resetGridTrackIndexes(block.props?.columnWidths, columns, selectedColumns, "1fr"),
           });
         }),
-        createGridAction("Auto visina", "Vrati visinu odabrane celije u ravnomjerni grid", () => {
+        createGridAction("Auto visina", "Vrati visinu odabranih celija u ravnomjerni grid", () => {
           updateProps({
-            rowHeights: resetGridTrackRange(block.props?.rowHeights, rows, selectedCell.row, selectedCell.rowSpan, "1fr"),
+            rowHeights: selectedCell
+              ? resetGridTrackRange(block.props?.rowHeights, rows, selectedCell.row, selectedCell.rowSpan, "1fr")
+              : resetGridTrackIndexes(block.props?.rowHeights, rows, selectedRows, "34px"),
           });
         }),
       ]),
     ])
-    : el("p", { className: "sn-builder-helper-note" }, selectedIds.length > 1
-      ? "Za tocnu sirinu i visinu oznaci jednu celiju. Merge i stilovi i dalje rade nad vise oznacenih celija."
-      : "Klikni jednu celiju na mrezi i ovdje ces dobiti njezinu sirinu i visinu.");
+    : el("p", { className: "sn-builder-helper-note" }, "Klikni jednu ili vise celija na mrezi i ovdje ces dobiti sirinu, visinu i stilove.");
 
   return section("Pomocna mreza", [
     el("div", { className: "sn-builder-grid-action-row" }, [
@@ -752,6 +805,18 @@ function gridPropertySection(block, updateProps, updateStyles, updateLayout, act
         const patch = patchSelectedGridCells(block, rows, columns, { textAlign: "right" });
         if (patch) updateProps(patch);
       }),
+      createGridAction("Top", "Poravnaj sadrzaj celije gore", () => {
+        const patch = patchSelectedGridCells(block, rows, columns, { verticalAlign: "top" });
+        if (patch) updateProps(patch);
+      }),
+      createGridAction("Mid", "Centriraj sadrzaj celije po visini", () => {
+        const patch = patchSelectedGridCells(block, rows, columns, { verticalAlign: "middle" });
+        if (patch) updateProps(patch);
+      }),
+      createGridAction("Bot", "Poravnaj sadrzaj celije dolje", () => {
+        const patch = patchSelectedGridCells(block, rows, columns, { verticalAlign: "bottom" });
+        if (patch) updateProps(patch);
+      }),
       createGridAction("Gray", "Siva glava kao u Word tablici", () => {
         const patch = patchSelectedGridCells(block, rows, columns, { backgroundColor: "#bfbfbf", fontWeight: "700" });
         if (patch) updateProps(patch);
@@ -782,6 +847,10 @@ function gridPropertySection(block, updateProps, updateStyles, updateLayout, act
         const patch = patchSelectedGridCells(block, rows, columns, { padding: value });
         if (patch) updateProps(patch);
       })),
+      field("Vertikalno", select(VERTICAL_ALIGNS, firstSelectedCell?.verticalAlign || block.styles?.verticalAlign || "top", { onchange: (event) => {
+        const patch = patchSelectedGridCells(block, rows, columns, { verticalAlign: event.target.value });
+        if (patch) updateProps(patch);
+      } })),
     ]),
   ]);
 }
@@ -830,10 +899,10 @@ export function renderPropertiesPanel(container, store) {
       el("strong", {}, block ? block.type : "Selection"),
     ]));
     const pageSettings = pageSettingsSection(state, store);
-    if (pageSettings) {
-      container.append(pageSettings);
-    }
     if (!block) {
+      if (pageSettings) {
+        container.append(pageSettings);
+      }
       container.append(el("div", { className: "sn-builder-empty-state" }, "Oznaci element na stranici za uredjivanje blokova. Header i footer su iznad."));
       if (preserveScroll) {
         restoreScrollPosition(scrollElement, previousScrollTop);
@@ -857,7 +926,18 @@ export function renderPropertiesPanel(container, store) {
       : "Border";
 
     container.append(
-      section("Content", [
+      section(typographyTitle, [
+        field("Font", textInput(gridStyleTarget.value("fontFamily", "Arial"), (value) => gridStyleTarget.update({ fontFamily: value }))),
+        field("Size", textInput(gridStyleTarget.value("fontSize", "13px"), (value) => gridStyleTarget.update({ fontSize: value }))),
+        field("Weight", select(FONT_WEIGHTS, gridStyleTarget.value("fontWeight", "400"), { onchange: (event) => gridStyleTarget.update({ fontWeight: event.target.value }) })),
+        field("Line height", textInput(gridStyleTarget.value("lineHeight", "1.4"), (value) => gridStyleTarget.update({ lineHeight: value }))),
+        field("Letter spacing", textInput(gridStyleTarget.value("letterSpacing", "0"), (value) => gridStyleTarget.update({ letterSpacing: value }))),
+        field("Transform", textInput(gridStyleTarget.value("textTransform", "none"), (value) => gridStyleTarget.update({ textTransform: value }))),
+        field("Color", colorInput(gridStyleTarget.value("color", "#172033"), (value) => gridStyleTarget.update({ color: value }))),
+        field("Text align", select(TEXT_ALIGNS, gridStyleTarget.value("textAlign", "left"), { onchange: (event) => gridStyleTarget.update({ textAlign: event.target.value }) })),
+        field("Vertical", select(VERTICAL_ALIGNS, gridStyleTarget.value("verticalAlign", "top"), { onchange: (event) => gridStyleTarget.update({ verticalAlign: event.target.value }) })),
+      ]),
+      block.type === "grid" ? el("template") : section("Content", [
         field("Label / text", textInput(block.props?.content || block.props?.label || block.props?.title || "", (value) => {
           if (block.props?.title != null) updateProps({ title: value });
           else if (block.props?.label != null) updateProps({ label: value });
@@ -874,16 +954,6 @@ export function renderPropertiesPanel(container, store) {
           field("Height", numberInput(block.layout?.height, (value) => updateLayout({ height: value }))),
           field("Rotate", numberInput(block.layout?.rotation, (value) => updateLayout({ rotation: value }))),
         ]),
-      ]),
-      section(typographyTitle, [
-        field("Font", textInput(gridStyleTarget.value("fontFamily", "Arial"), (value) => gridStyleTarget.update({ fontFamily: value }))),
-        field("Size", textInput(gridStyleTarget.value("fontSize", "13px"), (value) => gridStyleTarget.update({ fontSize: value }))),
-        field("Weight", select(FONT_WEIGHTS, gridStyleTarget.value("fontWeight", "400"), { onchange: (event) => gridStyleTarget.update({ fontWeight: event.target.value }) })),
-        field("Line height", textInput(gridStyleTarget.value("lineHeight", "1.4"), (value) => gridStyleTarget.update({ lineHeight: value }))),
-        field("Letter spacing", textInput(gridStyleTarget.value("letterSpacing", "0"), (value) => gridStyleTarget.update({ letterSpacing: value }))),
-        field("Transform", textInput(gridStyleTarget.value("textTransform", "none"), (value) => gridStyleTarget.update({ textTransform: value }))),
-        field("Color", colorInput(gridStyleTarget.value("color", "#172033"), (value) => gridStyleTarget.update({ color: value }))),
-        field("Text align", select(TEXT_ALIGNS, gridStyleTarget.value("textAlign", "left"), { onchange: (event) => gridStyleTarget.update({ textAlign: event.target.value }) })),
       ]),
       section("Spacing", [
         field("Margin", textInput(block.styles?.margin || "0", (value) => updateStyles({ margin: value }))),
@@ -924,6 +994,7 @@ export function renderPropertiesPanel(container, store) {
         field("Locked", checkboxInput(block.props?.locked, (value) => updateProps({ locked: value }))),
         field("Hidden", checkboxInput(block.props?.hidden, (value) => updateProps({ hidden: value }))),
       ]),
+      pageSettings || el("template"),
     );
     if (preserveScroll) {
       restoreScrollPosition(scrollElement, previousScrollTop);

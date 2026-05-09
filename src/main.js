@@ -46999,37 +46999,234 @@ function getDocumentTemplateFieldPreviewValue(field = {}, context = {}, index = 
   return `[${label}]`;
 }
 
-function getDocumentTemplateSystemPlaceholderDefinitions(template = buildDocumentTemplateDraft(), context = buildDocumentTemplatePreviewContext(template)) {
+function buildDocumentTemplateSystemPlaceholderValues(template = buildDocumentTemplateDraft(), context = buildDocumentTemplatePreviewContext(template)) {
+  const workOrder = context.sampleWorkOrder || {};
   const documentNumber = getDocumentTemplateRuntimeDocumentNumber(context.sampleWorkOrder, template);
-  const workOrderNumber = String(context.sampleWorkOrder?.workOrderNumber || "").trim();
-  const inspectorListWithTitles = getWorkOrderDocumentQualifiedInspectorsWithTitles(context.sampleWorkOrder);
-  const inspectorNameList = getWorkOrderDocumentQualifiedInspectorNames(context.sampleWorkOrder);
+  const workOrderNumber = String(workOrder?.workOrderNumber || "").trim();
+  const inspectorListWithTitles = getWorkOrderDocumentQualifiedInspectorsWithTitles(workOrder);
+  const inspectorNameList = getWorkOrderDocumentQualifiedInspectorNames(workOrder);
+  const lookupContext = { ...context, template };
+  const lookup = (key) => String(getDocumentTemplateLookupSourcePreviewValue(key, lookupContext) ?? "").trim();
+  const serviceItems = getDocumentTemplateRuntimeResolvedServiceItems(workOrder);
+  const primaryService = getDocumentTemplateRuntimePrimaryServiceItem(workOrder, template)
+    || serviceItems[0]
+    || null;
+  const serviceCode = String(
+    primaryService?.serviceCode
+    || primaryService?.code
+    || primaryService?.serviceId
+    || ""
+  ).trim();
+  const serviceName = String(
+    primaryService?.serviceName
+    || primaryService?.name
+    || primaryService?.title
+    || ""
+  ).trim();
+  const serviceCodes = serviceItems
+    .map((item) => String(item?.serviceCode || item?.code || item?.serviceId || "").trim())
+    .filter(Boolean)
+    .join(", ");
+  const serviceNames = serviceItems
+    .map((item) => String(item?.serviceName || item?.name || item?.title || item?.serviceCode || "").trim())
+    .filter(Boolean)
+    .join(", ");
+  const serviceSummary = lookup("SERVICE_SUMMARY") || serviceNames || serviceName || serviceCode;
+  const companyName = lookup("COMPANY_NAME") || String(context.company?.name || "").trim();
+  const companyHeadquarters = lookup("COMPANY_HEADQUARTERS") || String(context.company?.headquarters || "").trim();
+  const companyOib = lookup("COMPANY_OIB") || String(context.company?.oib || "").trim();
+  const locationName = lookup("LOCATION_NAME") || String(context.location?.name || "").trim();
+  const objectName = lookup("OBJECT_NAME") || String(context.object?.name || "").trim();
+  const objectCode = lookup("OBJECT_CODE") || String(context.object?.code || "").trim();
+  const objectDescription = lookup("OBJECT_DESCRIPTION") || String(context.object?.description || "").trim();
+  const validUntil = lookup("WORK_ORDER_SERVICE_VALID_UNTIL") || lookup("WORK_ORDER_VALID_UNTIL");
+  const validityMonths = lookup("WORK_ORDER_SERVICE_VALIDITY_MONTHS") || lookup("WORK_ORDER_VALIDITY_MONTHS");
+  const firstInspectorName = inspectorNameList.split(",").map((item) => item.trim()).filter(Boolean)[0] || "";
+  const firstInspectorWithTitle = inspectorListWithTitles.split(",").map((item) => item.trim()).filter(Boolean)[0] || firstInspectorName;
+
+  return {
+    DOCUMENT_TITLE: String(template.title || "").trim(),
+    DOCUMENT_TYPE: String(template.documentType || "").trim(),
+    REFERENCE_DOCUMENT_NAME: String(template.referenceDocument?.fileName || "").trim(),
+    DOCUMENT_NUMBER: documentNumber,
+    BROJ_ZAPISNIKA: documentNumber,
+    WORK_ORDER_NUMBER: workOrderNumber,
+    BROJ_RADNOG_NALOGA: workOrderNumber,
+    BROJ_RN: workOrderNumber,
+    RN: workOrderNumber,
+    TODAY: lookup("TODAY"),
+    COMPANY_NAME: companyName,
+    TVRTKA: companyName,
+    TVRTKA_NAZIV: companyName,
+    NARUCITELJ: companyName,
+    KORISNIK_PROSTORA: companyName,
+    COMPANY_OIB: companyOib,
+    TVRTKA_OIB: companyOib,
+    OIB: companyOib,
+    COMPANY_HEADQUARTERS: companyHeadquarters,
+    TVRTKA_SJEDISTE: companyHeadquarters,
+    SJEDISTE: companyHeadquarters,
+    ADRESA: companyHeadquarters,
+    LOCATION_NAME: locationName,
+    LOKACIJA: locationName,
+    MJESTO_ISPITIVANJA: locationName,
+    LOCATION_REGION: lookup("LOCATION_REGION"),
+    REGIJA: lookup("LOCATION_REGION"),
+    LOCATION_COORDINATES: lookup("LOCATION_COORDINATES"),
+    KOORDINATE: lookup("LOCATION_COORDINATES"),
+    OBJECT_NAME: objectName,
+    OBJEKT: objectName,
+    OBJECT_CODE: objectCode,
+    SIFRA_OBJEKTA: objectCode,
+    OBJECT_DESCRIPTION: objectDescription,
+    OPIS_OBJEKTA: objectDescription,
+    SERVICE_CODE: serviceCode || serviceCodes,
+    SIFRA_USLUGE: serviceCode || serviceCodes,
+    SERVICE_CODES: serviceCodes || serviceCode,
+    SERVICE_NAME: serviceName || serviceSummary,
+    USLUGA: serviceName || serviceSummary,
+    SERVICE_SUMMARY: serviceSummary,
+    VRSTA_ISPITIVANJA: serviceName || serviceSummary,
+    WORK_ORDER_DOCUMENT_NUMBER: documentNumber,
+    WORK_ORDER_STATUS: lookup("WORK_ORDER_STATUS"),
+    STATUS_RN: lookup("WORK_ORDER_STATUS"),
+    WORK_ORDER_DUE_DATE: lookup("WORK_ORDER_DUE_DATE"),
+    ROK: lookup("WORK_ORDER_DUE_DATE"),
+    WORK_ORDER_INSPECTION_DATE: lookup("WORK_ORDER_INSPECTION_DATE"),
+    DATUM_ISPITIVANJA: lookup("WORK_ORDER_INSPECTION_DATE"),
+    WORK_ORDER_ISSUED_DATE: lookup("WORK_ORDER_ISSUED_DATE"),
+    DATUM_IZDAVANJA: lookup("WORK_ORDER_ISSUED_DATE"),
+    WORK_ORDER_VALID_UNTIL: lookup("WORK_ORDER_VALID_UNTIL"),
+    WORK_ORDER_VALIDITY_MONTHS: lookup("WORK_ORDER_VALIDITY_MONTHS"),
+    WORK_ORDER_SERVICE_VALID_UNTIL: lookup("WORK_ORDER_SERVICE_VALID_UNTIL"),
+    WORK_ORDER_SERVICE_VALIDITY_MONTHS: lookup("WORK_ORDER_SERVICE_VALIDITY_MONTHS"),
+    VRIJEDI_DO: validUntil,
+    VRIJEDI_MJESECI: validityMonths,
+    WORK_ORDER_ISSUED_PLACE: lookup("WORK_ORDER_ISSUED_PLACE"),
+    MJESTO_IZDAVANJA: lookup("WORK_ORDER_ISSUED_PLACE"),
+    WORK_ORDER_DOCUMENT_NOTE: lookup("WORK_ORDER_DOCUMENT_NOTE"),
+    NAPOMENA: lookup("WORK_ORDER_DOCUMENT_NOTE"),
+    WORK_ORDER_OUTSIDE_TEMPERATURE: lookup("WORK_ORDER_OUTSIDE_TEMPERATURE"),
+    TEMPERATURA: lookup("WORK_ORDER_OUTSIDE_TEMPERATURE"),
+    WORK_ORDER_RELATIVE_HUMIDITY: lookup("WORK_ORDER_RELATIVE_HUMIDITY"),
+    VLAGA: lookup("WORK_ORDER_RELATIVE_HUMIDITY"),
+    WORK_ORDER_AIRFLOW_SPEED: lookup("WORK_ORDER_AIRFLOW_SPEED"),
+    STRUJANJE_ZRAKA: lookup("WORK_ORDER_AIRFLOW_SPEED"),
+    WORK_ORDER_WEATHER: lookup("WORK_ORDER_WEATHER"),
+    VRIJEME: lookup("WORK_ORDER_WEATHER"),
+    WORK_ORDER_GROUND_CONDITION: lookup("WORK_ORDER_GROUND_CONDITION"),
+    STANJE_TLA: lookup("WORK_ORDER_GROUND_CONDITION"),
+    WORK_ORDER_GROUND_RESISTANCE: lookup("WORK_ORDER_GROUND_RESISTANCE"),
+    OTPOR_TLA: lookup("WORK_ORDER_GROUND_RESISTANCE"),
+    WORK_ORDER_PANIC_VALID_UNTIL: lookup("WORK_ORDER_PANIC_VALID_UNTIL"),
+    WORK_ORDER_PANIC_VALIDITY_MONTHS: lookup("WORK_ORDER_PANIC_VALIDITY_MONTHS"),
+    WORK_ORDER_TIPKALO_VALID_UNTIL: lookup("WORK_ORDER_TIPKALO_VALID_UNTIL"),
+    WORK_ORDER_TIPKALO_VALIDITY_MONTHS: lookup("WORK_ORDER_TIPKALO_VALIDITY_MONTHS"),
+    WORK_ORDER_EXECUTORS: lookup("WORK_ORDER_EXECUTORS"),
+    IZVRSITELJI: lookup("WORK_ORDER_EXECUTORS"),
+    WORK_ORDER_TEAM: lookup("WORK_ORDER_TEAM"),
+    TIM: lookup("WORK_ORDER_TEAM"),
+    CONTACT_NAME: lookup("CONTACT_NAME"),
+    KONTAKT: lookup("CONTACT_NAME"),
+    CONTACT_PHONE: lookup("CONTACT_PHONE"),
+    KONTAKT_TEL: lookup("CONTACT_PHONE"),
+    CONTACT_EMAIL: lookup("CONTACT_EMAIL"),
+    KONTAKT_EMAIL: lookup("CONTACT_EMAIL"),
+    QUALIFIED_INSPECTORS_LIST: inspectorListWithTitles,
+    QUALIFIED_INSPECTORS_LIST_WITH_TITLES: inspectorListWithTitles,
+    QUALIFIED_INSPECTORS_NAMES: inspectorNameList,
+    QUALIFIED_INSPECTORS_LIST_NAMES: inspectorNameList,
+    ISPITIVAC: firstInspectorName,
+    ISPITIVAC_S_TITULOM: firstInspectorWithTitle,
+    ISPITIVACI_POPIS: inspectorNameList,
+    ISPITIVACI_POPIS_S_TITULAMA: inspectorListWithTitles,
+    ISPITIVACI_POPIS_IMENA: inspectorNameList,
+  };
+}
+
+function getDocumentTemplateSystemPlaceholderDefinitions(template = buildDocumentTemplateDraft(), context = buildDocumentTemplatePreviewContext(template)) {
+  const values = buildDocumentTemplateSystemPlaceholderValues(template, context);
 
   return [
     {
       token: "{{BROJ_ZAPISNIKA}}",
       label: "Broj zapisnika (RN-šifra usluge, -1/-2 po objektu)",
-      value: documentNumber,
+      value: values.BROJ_ZAPISNIKA,
     },
     {
       token: "{{BROJ_RADNOG_NALOGA}}",
       label: "Broj radnog naloga",
-      value: workOrderNumber,
+      value: values.BROJ_RADNOG_NALOGA,
+    },
+    {
+      token: "{{TVRTKA}}",
+      label: "Naziv tvrtke / naručitelja",
+      value: values.TVRTKA,
+    },
+    {
+      token: "{{SJEDISTE}}",
+      label: "Sjedište tvrtke",
+      value: values.SJEDISTE,
+    },
+    {
+      token: "{{OIB}}",
+      label: "OIB tvrtke",
+      value: values.OIB,
+    },
+    {
+      token: "{{MJESTO_ISPITIVANJA}}",
+      label: "Mjesto ispitivanja / lokacija",
+      value: values.MJESTO_ISPITIVANJA,
+    },
+    {
+      token: "{{OBJEKT}}",
+      label: "Objekt ispitivanja",
+      value: values.OBJEKT,
+    },
+    {
+      token: "{{VRSTA_ISPITIVANJA}}",
+      label: "Vrsta ispitivanja / usluga",
+      value: values.VRSTA_ISPITIVANJA,
+    },
+    {
+      token: "{{DATUM_ISPITIVANJA}}",
+      label: "Datum ispitivanja",
+      value: values.DATUM_ISPITIVANJA,
+    },
+    {
+      token: "{{DATUM_IZDAVANJA}}",
+      label: "Datum izdavanja",
+      value: values.DATUM_IZDAVANJA,
+    },
+    {
+      token: "{{VRIJEDI_MJESECI}}",
+      label: "Vrijedi mjeseci",
+      value: values.VRIJEDI_MJESECI,
+    },
+    {
+      token: "{{VRIJEDI_DO}}",
+      label: "Vrijedi do",
+      value: values.VRIJEDI_DO,
+    },
+    {
+      token: "{{SIFRA_USLUGE}}",
+      label: "Šifra usluge",
+      value: values.SIFRA_USLUGE,
     },
     {
       token: "{{ISPITIVACI_POPIS}}",
       label: "Ispitivači - popis imena",
-      value: inspectorNameList,
+      value: values.ISPITIVACI_POPIS,
     },
     {
       token: "{{ISPITIVACI_POPIS_IMENA}}",
       label: "Ispitivači - popis imena",
-      value: inspectorNameList,
+      value: values.ISPITIVACI_POPIS_IMENA,
     },
     {
       token: "{{ISPITIVACI_POPIS_S_TITULAMA}}",
       label: "Ispitivači - popis s titulama",
-      value: inspectorListWithTitles,
+      value: values.ISPITIVACI_POPIS_S_TITULAMA,
     },
   ];
 }
@@ -48421,32 +48618,8 @@ function syncDocumentTemplateRuntimeObjectSelectionFromEntry(entry = null) {
 }
 
 function buildDocumentTemplateRuntimePlaceholderPayload(template = buildDocumentTemplateDraft(), context = buildDocumentTemplatePreviewContext(template)) {
-  const documentNumber = getDocumentTemplateRuntimeDocumentNumber(context.sampleWorkOrder, template);
-  const workOrderNumber = String(context.sampleWorkOrder?.workOrderNumber || "").trim();
-  const object = context.object;
-  const inspectorListWithTitles = getWorkOrderDocumentQualifiedInspectorsWithTitles(context.sampleWorkOrder);
-  const inspectorNameList = getWorkOrderDocumentQualifiedInspectorNames(context.sampleWorkOrder);
   const placeholders = {
-    DOCUMENT_TITLE: String(template.title || "").trim(),
-    DOCUMENT_TYPE: String(template.documentType || "").trim(),
-    REFERENCE_DOCUMENT_NAME: String(template.referenceDocument?.fileName || "").trim(),
-    DOCUMENT_NUMBER: documentNumber,
-    BROJ_ZAPISNIKA: documentNumber,
-    WORK_ORDER_NUMBER: workOrderNumber,
-    BROJ_RADNOG_NALOGA: workOrderNumber,
-    OBJECT_NAME: String(object?.name || "").trim(),
-    OBJEKT: String(object?.name || "").trim(),
-    OBJECT_CODE: String(object?.code || "").trim(),
-    SIFRA_OBJEKTA: String(object?.code || "").trim(),
-    OBJECT_DESCRIPTION: String(object?.description || "").trim(),
-    OPIS_OBJEKTA: String(object?.description || "").trim(),
-    QUALIFIED_INSPECTORS_LIST: inspectorListWithTitles,
-    QUALIFIED_INSPECTORS_LIST_WITH_TITLES: inspectorListWithTitles,
-    QUALIFIED_INSPECTORS_NAMES: inspectorNameList,
-    QUALIFIED_INSPECTORS_LIST_NAMES: inspectorNameList,
-    ISPITIVACI_POPIS: inspectorNameList,
-    ISPITIVACI_POPIS_S_TITULAMA: inspectorListWithTitles,
-    ISPITIVACI_POPIS_IMENA: inspectorNameList,
+    ...buildDocumentTemplateSystemPlaceholderValues(template, context),
   };
 
   const placeholderLookup = buildDocumentTemplateInlinePlaceholderLookup(template, context);
@@ -58896,6 +59069,12 @@ function renderDocumentTemplateRuntimeFieldRows() {
     exportCardTitle.textContent = "Preuzimanje";
     const exportCardMeta = document.createElement("p");
     exportCardMeta.className = "helper-copy module-copy";
+    const hasHtmlReference = exportableEntries.some((entry) => (
+      isDocumentTemplateHtmlReferenceDocument(getDocumentTemplateById(entry.templateId)?.referenceDocument)
+    ));
+    const hasWordReference = exportableEntries.some((entry) => (
+      isDocumentTemplateWordReferenceDocument(getDocumentTemplateById(entry.templateId)?.referenceDocument)
+    ));
     const hasReference = exportableEntries.some((entry) => {
       const referenceDocument = getDocumentTemplateById(entry.templateId)?.referenceDocument;
       return isDocumentTemplateHtmlReferenceDocument(referenceDocument)
@@ -58909,14 +59088,12 @@ function renderDocumentTemplateRuntimeFieldRows() {
     const pdfButton = document.createElement("button");
     pdfButton.type = "button";
     pdfButton.className = "ghost-button";
-    pdfButton.textContent = hasHtmlReference ? "PDF iz HTML-a" : "Brzi PDF";
+    pdfButton.textContent = hasHtmlReference
+      ? "PDF iz HTML-a"
+      : (hasWordReference ? "PDF iz Worda" : "Brzi PDF");
     pdfButton.disabled = exportableEntries.length === 0;
     pdfButton.addEventListener("click", () => {
-      if (sequenceState.itemTotal > 1) {
-        void exportDocumentTemplateBatchPdf({ print: false });
-        return;
-      }
-      void exportDocumentTemplatePdf();
+      void exportDocumentTemplateBatchPdf({ print: false });
     });
     const printAllButton = document.createElement("button");
     printAllButton.type = "button";
