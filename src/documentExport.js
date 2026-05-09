@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import CDP from "chrome-remote-interface";
 import Docxtemplater from "docxtemplater";
 import JSZip from "jszip";
 import mammoth from "mammoth";
@@ -78,6 +79,14 @@ const HTML_PDF_CONVERSION_TIMEOUT_MS = Math.max(
   20000,
   Number(process.env.HTML_PDF_CONVERSION_TIMEOUT_MS || 90000) || 90000,
 );
+const HTML_PDF_CDP_CONNECT_TIMEOUT_MS = Math.max(
+  3000,
+  Number(process.env.HTML_PDF_CDP_CONNECT_TIMEOUT_MS || 8000) || 8000,
+);
+const HTML_PDF_CDP_PRINT_TIMEOUT_MS = Math.max(
+  20000,
+  Number(process.env.HTML_PDF_CDP_PRINT_TIMEOUT_MS || HTML_PDF_CONVERSION_TIMEOUT_MS) || HTML_PDF_CONVERSION_TIMEOUT_MS,
+);
 const SOFFICE_PDF_CACHE_MAX_ENTRIES = Math.max(
   0,
   Number(process.env.SOFFICE_PDF_CACHE_MAX_ENTRIES || 60) || 60,
@@ -110,6 +119,8 @@ let sofficeCommandPromise = null;
 let sofficeProfileReadyPromise = null;
 let sofficeConversionQueue = Promise.resolve();
 let chromiumCommandPromise = null;
+let warmChromiumPromise = null;
+let warmChromiumInstance = null;
 let sofficePdfCacheSizeBytes = 0;
 const sofficePdfCache = new Map();
 
@@ -4370,6 +4381,78 @@ export async function buildPdfFromHtmlTemplateBuffer(templateBuffer, placeholder
   });
 }
 
+function extractHtmlDocumentHead(html = "") {
+  return String(html || "").match(/<head\b[^>]*>([\s\S]*?)<\/head>/i)?.[1] || "";
+}
+
+function extractHtmlDocumentBody(html = "") {
+  return String(html || "").match(/<body\b[^>]*>([\s\S]*?)<\/body>/i)?.[1] || String(html || "");
+}
+
+function buildCombinedHtmlTemplateDocument(documents = [], { title = "Zapisnici" } = {}) {
+  const renderedDocuments = (Array.isArray(documents) ? documents : [])
+    .map((entry) => String(entry?.html || "").trim())
+    .filter(Boolean);
+
+  const headHtml = renderedDocuments
+    .map((html, index) => {
+      const head = extractHtmlDocumentHead(html).trim();
+      return head ? `<!-- SafeNexus template ${index + 1} head -->\n${head}` : "";
+    })
+    .filter(Boolean)
+    .join("\n");
+  const bodyHtml = renderedDocuments
+    .map((html, index) => `<section class="safe-nexus-html-batch-entry" data-batch-entry="${index + 1}">${extractHtmlDocumentBody(html)}</section>`)
+    .join("\n");
+
+  return `<!doctype html>
+<html lang="hr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeTemplateHtml(title || "Zapisnici")}</title>
+  <style>
+    html,body{margin:0;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    *{box-sizing:border-box}
+    .safe-nexus-html-batch-entry{break-after:page;page-break-after:always}
+    .safe-nexus-html-batch-entry:last-child{break-after:auto;page-break-after:auto}
+  </style>
+  ${headHtml}
+</head>
+<body class="safe-nexus-template-body safe-nexus-template-batch-body">
+${bodyHtml}
+</body>
+</html>`;
+}
+
+export async function buildPdfFromHtmlTemplateBatchEntries(entries = [], options = {}) {
+  const renderedDocuments = (Array.isArray(entries) ? entries : [])
+    .map((entry, index) => ({
+      html: buildHtmlFromTemplateBuffer(entry.templateBuffer, entry.placeholders ?? {}, {
+        fileName: entry.fileName || options.fileName || `zapisnik-${index + 1}.html`,
+        title: entry.title || options.title || "Zapisnik",
+      }),
+    }));
+
+  if (renderedDocuments.length === 0) {
+    throw new Error("Batch HTML PDF nema nijedan HTML predlozak.");
+  }
+
+  const html = renderedDocuments.length === 1
+    ? renderedDocuments[0].html
+    : buildCombinedHtmlTemplateDocument(renderedDocuments, {
+      title: options.title || "Zapisnici",
+    });
+
+  return convertHtmlToPdfBuffer(html, {
+    fileName: sanitizeGeneratedDocumentFileName(
+      options.fileName || "zapisnici-batch",
+      { fallback: "zapisnici-batch", extension: "html" },
+    ),
+    title: options.title || "Zapisnici",
+  });
+}
+
 function pdfBufferFromDocument(doc) {
   return new Promise((resolvePromise, rejectPromise) => {
     const chunks = [];
@@ -6445,7 +6528,234 @@ function buildChromiumRuntimeEnv(tempRoot = "") {
   };
 }
 
-export async function convertHtmlToPdfBuffer(html = "", {
+function withTimeout(promise, timeoutMs = 0, message = "Operacija je istekla.") {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    return promise;
+  }
+
+  let timeout = null;
+  const timeoutPromise = new Promise((_, rejectPromise) => {
+    timeout = setTimeout(() => rejectPromise(new Error(message)), timeoutMs);
+  });
+  return Promise.race([promise, timeoutPromise])
+    .finally(() => {
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+    });
+}
+
+function waitForChromiumDebugEndpoint(child, timeoutMs = HTML_PDF_CDP_CONNECT_TIMEOUT_MS) {
+  return new Promise((resolvePromise, rejectPromise) => {
+    let settled = false;
+    let output = "";
+    const cleanup = () => {
+      child.stdout?.off("data", onData);
+      child.stderr?.off("data", onData);
+      child.off("exit", onExit);
+      child.off("error", onError);
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+    };
+    const settle = (callback, value) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      callback(value);
+    };
+    const onData = (chunk) => {
+      output += String(chunk ?? "");
+      const match = output.match(/DevTools listening on\s+(ws:\/\/[^\s]+)/i);
+      if (match?.[1]) {
+        settle(resolvePromise, match[1]);
+      }
+    };
+    const onExit = (code, signal) => {
+      settle(rejectPromise, new Error(`Chromium se zatvorio prije DevTools veze (${signal || code || "exit"}).`));
+    };
+    const onError = (error) => {
+      settle(rejectPromise, error);
+    };
+    const timeout = setTimeout(() => {
+      settle(rejectPromise, new Error("Chromium DevTools veza nije spremna na vrijeme."));
+    }, timeoutMs);
+
+    child.stdout?.on("data", onData);
+    child.stderr?.on("data", onData);
+    child.once("exit", onExit);
+    child.once("error", onError);
+  });
+}
+
+function parseChromiumDebugEndpoint(endpoint = "") {
+  const url = new URL(endpoint);
+  return {
+    endpoint,
+    host: url.hostname || "127.0.0.1",
+    port: Number(url.port) || 9222,
+  };
+}
+
+async function launchWarmChromium() {
+  const chromiumCommand = await resolveChromiumCommandCached();
+  if (!chromiumCommand) {
+    throw new Error("Chromium nije dostupan na serveru za HTML -> PDF konverziju.");
+  }
+
+  const tempRoot = await mkdtemp(join(tmpdir(), "taskflow-chromium-cdp-"));
+  const userDataDir = join(tempRoot, "profile");
+  await mkdir(userDataDir, { recursive: true });
+
+  const child = spawn(chromiumCommand, [
+    "--headless=new",
+    "--disable-gpu",
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-background-networking",
+    "--disable-default-apps",
+    "--disable-extensions",
+    "--disable-sync",
+    "--metrics-recording-only",
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--hide-scrollbars",
+    "--mute-audio",
+    "--remote-debugging-address=127.0.0.1",
+    "--remote-debugging-port=0",
+    `--user-data-dir=${userDataDir}`,
+    "about:blank",
+  ], {
+    cwd: tempRoot,
+    env: buildChromiumRuntimeEnv(tempRoot),
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
+  });
+
+  const clearWarmInstance = () => {
+    if (warmChromiumInstance?.child === child) {
+      warmChromiumInstance = null;
+      warmChromiumPromise = null;
+    }
+    void rm(tempRoot, { recursive: true, force: true }).catch(() => {});
+  };
+  child.once("exit", clearWarmInstance);
+  child.once("error", clearWarmInstance);
+
+  let endpoint = "";
+  try {
+    endpoint = await waitForChromiumDebugEndpoint(child);
+  } catch (error) {
+    child.kill("SIGKILL");
+    await rm(tempRoot, { recursive: true, force: true }).catch(() => {});
+    throw error;
+  }
+  warmChromiumInstance = {
+    ...parseChromiumDebugEndpoint(endpoint),
+    child,
+    tempRoot,
+  };
+  child.unref?.();
+  child.stdout?.unref?.();
+  child.stderr?.unref?.();
+  return warmChromiumInstance;
+}
+
+async function getWarmChromium() {
+  if (String(process.env.HTML_PDF_WARM_CHROMIUM || "").trim().toLowerCase() === "false") {
+    throw new Error("Warm Chromium je iskljucen konfiguracijom.");
+  }
+
+  if (warmChromiumInstance?.child && !warmChromiumInstance.child.killed) {
+    return warmChromiumInstance;
+  }
+
+  if (!warmChromiumPromise) {
+    warmChromiumPromise = launchWarmChromium()
+      .catch((error) => {
+        warmChromiumPromise = null;
+        warmChromiumInstance = null;
+        throw error;
+      });
+  }
+  return await warmChromiumPromise;
+}
+
+async function convertPreparedHtmlToPdfBufferWithWarmChromium(printableHtml = "", {
+  fileName = "ponuda.html",
+  title = "Ponuda",
+} = {}) {
+  const browser = await getWarmChromium();
+  const tempRoot = await mkdtemp(join(tmpdir(), "taskflow-html-cdp-"));
+  const sourceBaseName = clean(fileName).replace(/\.(html?|pdf)$/i, "");
+  const htmlBaseName = sanitizeGeneratedDocumentFileName(sourceBaseName, {
+    fallback: "ponuda",
+    extension: "html",
+  });
+  const inputPath = join(tempRoot, htmlBaseName);
+  let client = null;
+  let target = null;
+
+  try {
+    await writeFile(inputPath, printableHtml, "utf8");
+    target = await withTimeout(
+      CDP.New({ host: browser.host, port: browser.port, url: "about:blank" }),
+      HTML_PDF_CDP_CONNECT_TIMEOUT_MS,
+      "Chromium nije otvorio novu PDF karticu na vrijeme.",
+    );
+    client = await withTimeout(
+      CDP({ host: browser.host, port: browser.port, target }),
+      HTML_PDF_CDP_CONNECT_TIMEOUT_MS,
+      "Chromium DevTools veza nije dostupna.",
+    );
+
+    const { Page } = client;
+    await Page.enable();
+    const loadEvent = withTimeout(
+      new Promise((resolvePromise) => Page.loadEventFired(resolvePromise)),
+      HTML_PDF_CDP_CONNECT_TIMEOUT_MS,
+      "HTML predlozak se nije ucitao na vrijeme.",
+    );
+    await Page.navigate({ url: pathToFileURL(inputPath).href });
+    await loadEvent;
+
+    const pdfResult = await withTimeout(
+      Page.printToPDF({
+        printBackground: true,
+        preferCSSPageSize: true,
+        displayHeaderFooter: false,
+        marginTop: 0,
+        marginBottom: 0,
+        marginLeft: 0,
+        marginRight: 0,
+      }),
+      HTML_PDF_CDP_PRINT_TIMEOUT_MS,
+      "Chromium nije vratio PDF na vrijeme.",
+    );
+    const pdfBuffer = Buffer.from(pdfResult?.data || "", "base64");
+    if (pdfBuffer.subarray(0, 4).toString("utf8") !== "%PDF") {
+      throw new Error("Chromium DevTools je vratio neispravnu PDF datoteku.");
+    }
+    return pdfBuffer;
+  } finally {
+    if (client) {
+      try {
+        await client.close();
+      } catch {
+        // Ignore DevTools close errors, the target is closed below.
+      }
+    }
+    if (target?.id) {
+      await CDP.Close({ host: browser.host, port: browser.port, id: target.id }).catch(() => {});
+    }
+    await rm(tempRoot, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+async function convertPreparedHtmlToPdfBufferWithCli(printableHtml = "", {
   fileName = "ponuda.html",
   title = "Ponuda",
 } = {}) {
@@ -6468,13 +6778,12 @@ export async function convertHtmlToPdfBuffer(html = "", {
   const outputPath = join(tempRoot, pdfBaseName);
 
   try {
-    const pdfHtml = buildHtmlPdfDocument(html, { title });
-    const printableHtml = prepareHtmlForGeneratedPageNumberPdf(pdfHtml);
     await writeFile(inputPath, printableHtml, "utf8");
     const commandResult = await runCommand(chromiumCommand, [
       "--headless",
       "--disable-gpu",
       "--no-sandbox",
+      "--disable-setuid-sandbox",
       "--disable-dev-shm-usage",
       "--disable-background-networking",
       "--disable-default-apps",
@@ -6503,21 +6812,44 @@ export async function convertHtmlToPdfBuffer(html = "", {
       throw new Error(details || "Chromium nije vratio PDF datoteku.");
     }
 
-    let pdfBuffer = await readFile(outputPath);
+    const pdfBuffer = await readFile(outputPath);
     if (pdfBuffer.subarray(0, 4).toString("utf8") !== "%PDF") {
       throw new Error("Chromium je vratio neispravnu PDF datoteku.");
     }
-
-    if (htmlRequestsGeneratedPageNumbers(pdfHtml)) {
-      pdfBuffer = await applyGeneratedPageNumbersToPdfBuffer(pdfBuffer, {
-        prefix: getGeneratedPageNumberPrefixFromHtml(pdfHtml),
-      });
-    }
-
     return pdfBuffer;
   } finally {
     await rm(tempRoot, { recursive: true, force: true }).catch(() => {});
   }
+}
+
+export async function convertHtmlToPdfBuffer(html = "", {
+  fileName = "ponuda.html",
+  title = "Ponuda",
+} = {}) {
+  const pdfHtml = buildHtmlPdfDocument(html, { title });
+  const printableHtml = prepareHtmlForGeneratedPageNumberPdf(pdfHtml);
+  let pdfBuffer = null;
+
+  try {
+    pdfBuffer = await convertPreparedHtmlToPdfBufferWithWarmChromium(printableHtml, {
+      fileName,
+      title,
+    });
+  } catch (warmChromiumError) {
+    console.warn("Warm Chromium HTML -> PDF nije uspio, koristim CLI fallback.", warmChromiumError);
+    pdfBuffer = await convertPreparedHtmlToPdfBufferWithCli(printableHtml, {
+      fileName,
+      title,
+    });
+  }
+
+  if (htmlRequestsGeneratedPageNumbers(pdfHtml)) {
+    pdfBuffer = await applyGeneratedPageNumbersToPdfBuffer(pdfBuffer, {
+      prefix: getGeneratedPageNumberPrefixFromHtml(pdfHtml),
+    });
+  }
+
+  return pdfBuffer;
 }
 
 export async function buildOfferHtmlPdfBuffer(offer = {}, options = {}) {

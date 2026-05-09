@@ -25,6 +25,7 @@ import {
   buildOfferPdfBuffer,
   buildPurchaseOrderPdfBuffer,
   buildWorkOrderPdfBuffer,
+  buildPdfFromHtmlTemplateBatchEntries,
   buildPdfFromHtmlTemplateBuffer,
   buildPdfFromRenderModel,
   buildPdfFromTemplateBuffer,
@@ -1997,7 +1998,7 @@ async function generatePdfBuffersForTemplateEntries(entries = [], scopedSnapshot
     const template = assertInScope(
       documentTemplates,
       entry?.templateId,
-      "Template nije pronađen.",
+      "Template nije pronaden.",
     );
 
     if (!template.referenceDocument) {
@@ -2041,6 +2042,47 @@ async function generatePdfBuffersForTemplateEntries(entries = [], scopedSnapshot
   }
 
   return pdfBuffers.filter(Boolean);
+}
+
+async function generateCombinedHtmlPdfForTemplateEntries(entries = [], scopedSnapshot = {}) {
+  const documentTemplates = scopedSnapshot.documentTemplates ?? [];
+  const referenceDocumentCache = new Map();
+  const htmlEntries = [];
+
+  for (const [entryIndex, entry] of (Array.isArray(entries) ? entries : []).entries()) {
+    const template = assertInScope(
+      documentTemplates,
+      entry?.templateId,
+      "Template nije pronaÄ‘en.",
+    );
+
+    if (!template.referenceDocument || !isHtmlTemplateFile(template.referenceDocument)) {
+      return null;
+    }
+
+    const cacheKey = String(template.id || entry?.templateId || entryIndex);
+    let referenceDocument = referenceDocumentCache.get(cacheKey);
+    if (!referenceDocument) {
+      referenceDocument = await readStoredDocumentBuffer(template.referenceDocument);
+      referenceDocumentCache.set(cacheKey, referenceDocument);
+    }
+
+    htmlEntries.push({
+      templateBuffer: referenceDocument.buffer,
+      placeholders: entry?.placeholders ?? {},
+      fileName: entry?.fileName || template.outputFileName || template.title || `zapisnik-${entryIndex + 1}.html`,
+      title: template.title || template.documentType || "Zapisnik",
+    });
+  }
+
+  if (htmlEntries.length === 0) {
+    return null;
+  }
+
+  return await buildPdfFromHtmlTemplateBatchEntries(htmlEntries, {
+    fileName: "zapisnici-batch.html",
+    title: "Zapisnici",
+  });
 }
 
 function formatOfferDocumentDate(value = "") {
@@ -7558,11 +7600,22 @@ async function handleApiRequest(request, response, url) {
         && !["template", "word", "html"].includes(String(body?.pdfEngine || "").trim().toLowerCase())
         && !entriesUseStoredTemplateReference
         && entries.every((entry) => hasTemplateRenderPdfModel(entry?.renderModel));
-      const pdfBuffers = canUseFastPdf
-        ? await Promise.all(entries.map((entry) => buildPdfFromRenderModel(entry.renderModel)))
-        : await generatePdfBuffersForTemplateEntries(entries, scopedSnapshot);
-
-      const mergedPdf = await mergePdfBuffers(pdfBuffers);
+      let mergedPdf = null;
+      if (canUseFastPdf) {
+        const pdfBuffers = await Promise.all(entries.map((entry) => buildPdfFromRenderModel(entry.renderModel)));
+        mergedPdf = await mergePdfBuffers(pdfBuffers);
+      } else {
+        try {
+          mergedPdf = await generateCombinedHtmlPdfForTemplateEntries(entries, scopedSnapshot);
+        } catch (combinedHtmlPdfError) {
+          console.warn("Brzi batch HTML PDF nije uspio, koristim pojedinacni fallback.", combinedHtmlPdfError);
+          mergedPdf = null;
+        }
+        if (!mergedPdf) {
+          const pdfBuffers = await generatePdfBuffersForTemplateEntries(entries, scopedSnapshot);
+          mergedPdf = await mergePdfBuffers(pdfBuffers);
+        }
+      }
       const fileName = sanitizeGeneratedDocumentFileName(
         body.fileName || "zapisnici-batch",
         { fallback: "zapisnici-batch", extension: "pdf" },
