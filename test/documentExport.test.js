@@ -167,6 +167,38 @@ test("HTML template export normalizes Croatian mojibake and UTF-8 metadata", () 
   assert.doesNotMatch(html, /Ivi\u00c4\u2021/);
 });
 
+test("builder HTML download normalizes Croatian text and metadata", async () => {
+  global.window = {
+    btoa: (value) => Buffer.from(value, "binary").toString("base64"),
+    atob: (value) => Buffer.from(value, "base64").toString("binary"),
+  };
+  const { buildBuilderHtmlFromDocument, parseBuilderDocumentFromHtml } = await import("../src/core/export.js");
+  const document = [{
+    id: "page-1",
+    type: "page",
+    props: {},
+    styles: {},
+    layout: { width: 794, height: 1123 },
+    children: [{
+      id: "heading-1",
+      type: "heading",
+      props: { content: "O ISPITIVANJU SIGURNOSNE PROTUPANI\u00c4\u0152NE RASVJETE" },
+      styles: {},
+      layout: { x: 72, y: 100, width: 620, height: 42, rotation: 0 },
+      children: [],
+    }],
+  }];
+
+  const html = buildBuilderHtmlFromDocument(document, { title: "Zapisnik" });
+  const parsed = parseBuilderDocumentFromHtml(html);
+
+  assert.match(html, /<!doctype html>/i);
+  assert.match(html, /<meta charset="utf-8">/i);
+  assert.match(html, /PROTUPANIČNE RASVJETE/);
+  assert.doesNotMatch(html, /PROTUPANI\u00c4\u0152NE/);
+  assert.equal(parsed?.document?.[0]?.children?.[0]?.props?.content, "O ISPITIVANJU SIGURNOSNE PROTUPANIČNE RASVJETE");
+});
+
 test("Word to HTML conversion preserves OOXML colors, alignment and tokens", async () => {
   const templateBuffer = buildMinimalDocxBuffer(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
     <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">

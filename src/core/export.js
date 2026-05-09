@@ -11,6 +11,53 @@ function escapeHtml(value = "") {
     .replace(/"/g, "&quot;");
 }
 
+const HTML_TEXT_ENCODING_REPLACEMENTS = Object.freeze([
+  ["\u00c4\u0152", "\u010c"],
+  ["\u00c4\u008c", "\u010c"],
+  ["\u00c4\u0160", "\u010c"],
+  ["\u00c4\u2020", "\u0106"],
+  ["\u00c4\u0086", "\u0106"],
+  ["\u00c4\u2021", "\u0107"],
+  ["\u00c4\u0087", "\u0107"],
+  ["\u00c4\u0164", "\u010d"],
+  ["\u00c4\u008d", "\u010d"],
+  ["\u00c4\u02c7", "\u010d"],
+  ["\u00c4\u2018", "\u0111"],
+  ["\u00c4\u0091", "\u0111"],
+  ["\u00c4\u0090", "\u0110"],
+  ["\u00c5\u00a0", "\u0160"],
+  ["\u00c5\u00a1", "\u0161"],
+  ["\u00c5\u00bd", "\u017d"],
+  ["\u00c5\u00be", "\u017e"],
+  ["\u0139\u02c7", "\u0161"],
+  ["\u0139\u013e", "\u017e"],
+  ["\u0139\u02dd", "\u017d"],
+  ["\u00c2\u00a0", " "],
+]);
+
+function repairHtmlTextEncoding(value = "") {
+  let text = String(value ?? "");
+  HTML_TEXT_ENCODING_REPLACEMENTS.forEach(([broken, fixed]) => {
+    text = text.split(broken).join(fixed);
+  });
+  return text;
+}
+
+function normalizeBuilderTextEncoding(value) {
+  if (typeof value === "string") {
+    return repairHtmlTextEncoding(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => normalizeBuilderTextEncoding(entry));
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, normalizeBuilderTextEncoding(entry)]),
+    );
+  }
+  return value;
+}
+
 function encodeMetadata(document = []) {
   try {
     return window.btoa(unescape(encodeURIComponent(JSON.stringify({ version: 2, document }))));
@@ -101,7 +148,7 @@ function renderPageFooter(page = {}, firstPage = {}, pageIndex = 0, pageCount = 
 }
 
 export function buildBuilderHtmlFromDocument(document = [], options = {}) {
-  const pages = Array.isArray(document) ? document : [];
+  const pages = normalizeBuilderTextEncoding(Array.isArray(document) ? document : []);
   if (pages.length === 0) return "";
   const metadata = encodeMetadata(pages);
   const firstPage = pages[0] || {};
@@ -111,7 +158,11 @@ export function buildBuilderHtmlFromDocument(document = [], options = {}) {
     const chrome = `${renderPageHeader(page, firstPage)}${renderPageFooter(page, firstPage, index, pages.length)}`;
     return `<section class="sn-report-page" data-page="${index + 1}" style="width:${width}px;min-height:${height}px">${chrome}${(page.children || []).map(renderExportBlock).join("\n")}</section>`;
   }).join("\n");
-  return `<!-- ${DOCUMENT_BUILDER_METADATA_PREFIX}${metadata} -->
+  return `<!doctype html>
+<html lang="hr">
+<head>
+<meta charset="utf-8">
+<title>${escapeHtml(options.title || "SafeNexus dokument")}</title>
 <style>
   @page { size: A4; margin: 0; }
   * { box-sizing: border-box; }
@@ -159,9 +210,14 @@ export function buildBuilderHtmlFromDocument(document = [], options = {}) {
     .sn-report-page { box-shadow: none; }
   }
 </style>
+</head>
+<body>
+<!-- ${DOCUMENT_BUILDER_METADATA_PREFIX}${metadata} -->
 <main class="sn-report-document" data-title="${escapeHtml(options.title || "SafeNexus dokument")}">
 ${body}
-</main>`;
+</main>
+</body>
+</html>`;
 }
 
 export function parseBuilderDocumentFromHtml(html = "") {
