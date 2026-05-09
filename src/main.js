@@ -59519,7 +59519,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     summaryTitle.textContent = "Summary";
     const summaryMeta = document.createElement("p");
     summaryMeta.className = "document-template-runtime-block-meta";
-    summaryMeta.textContent = "Završni korak za pregled batcha, odabir potpisa i preuzimanje gotovih dokumenata.";
+    summaryMeta.textContent = "Završni pregled po RN-u: vidi što je gotovo, što nedostaje, odaberi potpis i završi export.";
     summaryHeadCopy.append(summaryTitle, summaryMeta);
     summaryHead.append(summaryHeadCopy);
 
@@ -59529,98 +59529,11 @@ function renderDocumentTemplateRuntimeFieldRows() {
     const batchCard = document.createElement("article");
     batchCard.className = "document-template-runtime-summary-card";
     const batchCardTitle = document.createElement("strong");
-    batchCardTitle.textContent = "Pregled batcha";
+    batchCardTitle.textContent = "Pregled RN-ova";
     const batchCardMeta = document.createElement("p");
     batchCardMeta.className = "helper-copy module-copy";
     batchCardMeta.textContent = `${exportableGroups.length} ${exportableGroups.length === 1 ? "zeleni RN" : "zelenih RN-ova"} · ${exportableEntries.length} ${exportableEntries.length === 1 ? "zapisnik" : "zapisnika"} ide u PDF. Crveni ili preskočeni ostaju u pregledu i ne izvoze se.`;
     batchCard.append(batchCardTitle, batchCardMeta);
-
-    const signatureCard = document.createElement("article");
-    signatureCard.className = "document-template-runtime-summary-card";
-    const signatureCardTitle = document.createElement("strong");
-    signatureCardTitle.textContent = "Način potpisa";
-    const signatureCardMeta = document.createElement("p");
-    signatureCardMeta.className = "helper-copy module-copy";
-    signatureCardMeta.textContent = signatureMode === "digital"
-      ? "Odabran je digitalni potpis za završni export batcha."
-      : "Odabran je scan potpisa za završni export batcha.";
-    const signatureActions = document.createElement("div");
-    signatureActions.className = "document-template-runtime-summary-actions";
-    const scanButton = document.createElement("button");
-    scanButton.type = "button";
-    scanButton.className = "ghost-button";
-    scanButton.textContent = "Scan potpisa";
-    scanButton.classList.toggle("is-active", signatureMode === "scan");
-    scanButton.addEventListener("click", () => {
-      updateDocumentTemplateRuntimeCommon({ signatureMode: "scan" }, { render: true });
-      renderDocumentTemplateRuntimeContext();
-      renderDocumentTemplatePreviewContent();
-    });
-    const digitalButton = document.createElement("button");
-    digitalButton.type = "button";
-    digitalButton.className = "ghost-button";
-    digitalButton.textContent = "Digitalni potpis";
-    digitalButton.classList.toggle("is-active", signatureMode === "digital");
-    digitalButton.addEventListener("click", () => {
-      updateDocumentTemplateRuntimeCommon({ signatureMode: "digital" }, { render: true });
-      renderDocumentTemplateRuntimeContext();
-      renderDocumentTemplatePreviewContent();
-    });
-    signatureActions.append(scanButton, digitalButton);
-    signatureCard.append(signatureCardTitle, signatureCardMeta, signatureActions);
-
-    const exportCard = document.createElement("article");
-    exportCard.className = "document-template-runtime-summary-card";
-    const exportCardTitle = document.createElement("strong");
-    exportCardTitle.textContent = "Preuzimanje";
-    const exportCardMeta = document.createElement("p");
-    exportCardMeta.className = "helper-copy module-copy";
-    const hasHtmlReference = exportableEntries.some((entry) => (
-      isDocumentTemplateHtmlReferenceDocument(getDocumentTemplateById(entry.templateId)?.referenceDocument)
-    ));
-    const hasWordReference = exportableEntries.some((entry) => (
-      isDocumentTemplateWordReferenceDocument(getDocumentTemplateById(entry.templateId)?.referenceDocument)
-    ));
-    const hasReference = exportableEntries.some((entry) => {
-      const referenceDocument = getDocumentTemplateById(entry.templateId)?.referenceDocument;
-      return isDocumentTemplateHtmlReferenceDocument(referenceDocument)
-        || isDocumentTemplateWordReferenceDocument(referenceDocument);
-    });
-    exportCardMeta.textContent = hasReference
-      ? "PDF koristi učitani HTML ili Word predložak i podatke s ekrana."
-      : "Brzi PDF koristi podatke s ekrana dok ne učitaš predložak.";
-    const exportActions = document.createElement("div");
-    exportActions.className = "document-template-runtime-summary-actions";
-    const pdfButton = document.createElement("button");
-    pdfButton.type = "button";
-    pdfButton.className = "ghost-button";
-    pdfButton.textContent = hasHtmlReference
-      ? "PDF iz HTML-a"
-      : (hasWordReference ? "PDF iz Worda" : "Brzi PDF");
-    pdfButton.disabled = exportableEntries.length === 0;
-    pdfButton.addEventListener("click", () => {
-      void exportDocumentTemplateBatchPdf({ print: false });
-    });
-    const printAllButton = document.createElement("button");
-    printAllButton.type = "button";
-    printAllButton.className = "ghost-button";
-    printAllButton.textContent = "Ispiši sve";
-    printAllButton.hidden = exportableEntries.length <= 1;
-    printAllButton.disabled = exportableEntries.length === 0;
-    printAllButton.addEventListener("click", () => {
-      void exportDocumentTemplateBatchPdf({ print: true });
-    });
-    const sendSignatureButton = document.createElement("button");
-    sendSignatureButton.type = "button";
-    sendSignatureButton.className = "ghost-button";
-    sendSignatureButton.textContent = "Pošalji na digitalni potpis";
-    sendSignatureButton.hidden = signatureMode !== "digital";
-    sendSignatureButton.disabled = exportableEntries.length === 0;
-    sendSignatureButton.addEventListener("click", () => {
-      void queueDocumentTemplateForDigitalSignature();
-    });
-    exportActions.append(pdfButton, printAllButton, sendSignatureButton);
-    exportCard.append(exportCardTitle, exportCardMeta, exportActions);
 
     const groupedList = document.createElement("div");
     groupedList.className = "document-template-runtime-summary-list";
@@ -59682,6 +59595,45 @@ function renderDocumentTemplateRuntimeFieldRows() {
       entryProgress.className = "document-template-runtime-summary-entry-progress";
       entryProgress.textContent = exportStatus?.detail || "";
 
+      const completedServiceLabels = serviceItems
+        .filter((service) => Boolean(service?.isCompleted))
+        .map((service) => service?.name || service?.serviceName || service?.serviceCode || "Usluga");
+      const pendingServiceLabels = serviceItems
+        .filter((service) => !service?.isCompleted)
+        .map((service) => service?.name || service?.serviceName || service?.serviceCode || "Usluga");
+      const entryChecklist = document.createElement("div");
+      entryChecklist.className = "document-template-runtime-summary-checklist";
+      const createChecklistItem = (label, value, tone = "") => {
+        const item = document.createElement("span");
+        item.className = "document-template-runtime-summary-checklist-item";
+        if (tone) {
+          item.classList.add(`is-${tone}`);
+        }
+        const itemLabel = document.createElement("small");
+        itemLabel.textContent = label;
+        const itemValue = document.createElement("strong");
+        itemValue.textContent = value;
+        item.append(itemLabel, itemValue);
+        return item;
+      };
+      entryChecklist.append(
+        createChecklistItem("Zapisnici", `${group.items.length}/${group.items.length}`, "ok"),
+        createChecklistItem(
+          "Usluge",
+          serviceItems.length === 0
+            ? "Bez usluga"
+            : `${completedServices}/${serviceItems.length} završeno`,
+          groupOk ? "ok" : "warning",
+        ),
+        createChecklistItem("PDF", groupOk ? "Ide u export" : "Ne ide u export", groupOk ? "ok" : "warning"),
+      );
+      if (completedServiceLabels.length > 0) {
+        entryChecklist.append(createChecklistItem("Napravljeno", completedServiceLabels.join(", "), "ok"));
+      }
+      if (pendingServiceLabels.length > 0) {
+        entryChecklist.append(createChecklistItem("Nije napravljeno", pendingServiceLabels.join(", "), "warning"));
+      }
+
       const serviceList = document.createElement("div");
       serviceList.className = "document-template-runtime-summary-services";
       if (serviceItems.length === 0) {
@@ -59719,25 +59671,48 @@ function renderDocumentTemplateRuntimeFieldRows() {
         });
       }
 
-      entryCard.append(entryHead, entryChips, entryProgress, serviceList);
+      entryCard.append(entryHead, entryChips, entryProgress, entryChecklist, serviceList);
       groupedList.append(entryCard);
     });
 
     const finalPanel = document.createElement("article");
-    finalPanel.className = "document-template-runtime-summary-card document-template-runtime-summary-final-panel";
+    finalPanel.className = "document-template-runtime-summary-card document-template-runtime-summary-final-panel document-template-runtime-summary-finish-panel";
     const finalCopy = document.createElement("div");
     finalCopy.className = "document-template-runtime-summary-final-copy";
     const finalTitle = document.createElement("strong");
-    finalTitle.textContent = "Završetak i potpis";
+    finalTitle.textContent = "Završi";
     const finalMeta = document.createElement("p");
     finalMeta.className = "helper-copy module-copy";
     finalMeta.textContent = `${exportableGroups.length} ${exportableGroups.length === 1 ? "zeleni RN" : "zelenih RN-ova"} · ${exportableEntries.length} ${exportableEntries.length === 1 ? "zapisnik" : "zapisnika"} za export. Svaki zapisnik ide u svoj PDF.`;
     finalCopy.append(finalTitle, finalMeta);
     const finalActions = document.createElement("div");
     finalActions.className = "document-template-runtime-summary-final-actions";
-    signatureActions.classList.add("is-signature-actions");
-    exportActions.classList.add("is-export-actions");
-    finalActions.append(signatureActions, exportActions);
+    const signatureField = document.createElement("label");
+    signatureField.className = "document-template-runtime-summary-signature-select";
+    const signatureLabel = document.createElement("span");
+    signatureLabel.textContent = "Potpis";
+    const signatureSelect = document.createElement("select");
+    signatureSelect.innerHTML = `
+      <option value="scan">Scan potpisa</option>
+      <option value="digital">Digitalni potpis</option>
+    `;
+    signatureSelect.value = signatureMode;
+    signatureSelect.addEventListener("change", (event) => {
+      updateDocumentTemplateRuntimeCommon({ signatureMode: event.currentTarget.value }, { render: true });
+      renderDocumentTemplateRuntimeContext();
+      renderDocumentTemplatePreviewContent();
+    });
+    signatureField.append(signatureLabel, signatureSelect);
+    const finishButton = document.createElement("button");
+    finishButton.type = "button";
+    finishButton.className = "primary-button document-template-runtime-summary-finish-button";
+    finishButton.textContent = "Završi";
+    finishButton.disabled = exportableEntries.length === 0;
+    finishButton.addEventListener("click", () => {
+      updateDocumentTemplateRuntimeCommon({ signatureMode: signatureSelect.value }, { render: false });
+      void exportDocumentTemplateBatchPdf({ print: false });
+    });
+    finalActions.append(signatureField, finishButton);
     finalPanel.append(finalCopy, finalActions);
 
     summaryBody.append(groupedList, finalPanel);

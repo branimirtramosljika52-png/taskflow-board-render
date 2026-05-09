@@ -31542,6 +31542,47 @@ body.is-measurement-equipment-export-open {
   flex-wrap: wrap;
 }
 
+.document-template-runtime-summary-finish-panel {
+  position: sticky;
+  bottom: 12px;
+  z-index: 3;
+  border-color: rgba(123, 92, 255, 0.32);
+  background:
+    radial-gradient(circle at 94% 0%, rgba(123, 92, 255, 0.1), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(248, 250, 255, 0.97));
+  box-shadow: 0 18px 36px rgba(90, 76, 132, 0.14);
+}
+
+.document-template-runtime-summary-signature-select {
+  min-width: 220px;
+  display: grid;
+  gap: 4px;
+}
+
+.document-template-runtime-summary-signature-select span {
+  color: #607089;
+  font-size: 0.64rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.document-template-runtime-summary-signature-select select {
+  min-height: 38px;
+  padding: 0 38px 0 12px;
+  border: 1px solid rgba(164, 187, 219, 0.82);
+  border-radius: 13px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 249, 255, 0.96));
+  color: #172033;
+  font-weight: 800;
+}
+
+.document-template-runtime-summary-finish-button {
+  min-width: 140px;
+  min-height: 40px;
+}
+
 .document-template-runtime-summary-body .ghost-button,
 .document-template-runtime-summary-body .primary-button {
   min-height: 34px;
@@ -31709,6 +31750,55 @@ body.is-measurement-equipment-export-open {
   color: #5f6f8b;
   font-size: 0.72rem;
   line-height: 1.35;
+}
+
+.document-template-runtime-summary-checklist {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.document-template-runtime-summary-checklist-item {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  padding: 7px 9px;
+  border: 1px solid rgba(186, 199, 217, 0.6);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.86);
+}
+
+.document-template-runtime-summary-checklist-item small {
+  color: #647086;
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.document-template-runtime-summary-checklist-item strong {
+  color: #26324c;
+  font-size: 0.74rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.document-template-runtime-summary-checklist-item.is-ok {
+  border-color: rgba(48, 164, 108, 0.28);
+  background: rgba(240, 253, 244, 0.9);
+}
+
+.document-template-runtime-summary-checklist-item.is-ok strong {
+  color: #166534;
+}
+
+.document-template-runtime-summary-checklist-item.is-warning {
+  border-color: rgba(220, 82, 95, 0.26);
+  background: rgba(255, 241, 242, 0.9);
+}
+
+.document-template-runtime-summary-checklist-item.is-warning strong {
+  color: #9f2835;
 }
 
 .document-template-runtime-summary-skip {
@@ -32356,6 +32446,10 @@ body.is-measurement-equipment-export-open {
 
   .document-template-runtime-summary-overview {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .document-template-runtime-summary-checklist {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .document-template-runtime-summary-final-panel,
