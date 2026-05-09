@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260508x" />
+    <link rel="stylesheet" href="/styles.css?v=20260509b" />
     <link rel="stylesheet" href="/src/styles/variables.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/reset.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/builder.css?v=20260508h" />
@@ -1768,11 +1768,11 @@
             </div>
 
             <section class="work-order-template-strip">
-              <input id="work-order-template-file-input" type="file" accept=".html,.htm,text/html" hidden />
+              <input id="work-order-template-file-input" type="file" accept=".html,.htm,text/html,.docx,.dotx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.wordprocessingml.template" hidden />
               <div class="work-order-template-copy">
                 <p class="section-kicker">RN template</p>
                 <h3>Predložak za radni nalog</h3>
-                <span id="work-order-template-meta">Dodaj HTML template ili preuzmi popis placeholdera za PDF.</span>
+                <span id="work-order-template-meta">Dodaj HTML ili Word template ili preuzmi popis placeholdera za PDF.</span>
                 <label class="work-order-template-select-field">
                   <span>Aktivni template</span>
                   <select id="work-order-template-select"></select>
@@ -7534,12 +7534,29 @@
                 <div class="document-template-editor-body" tabindex="-1">
                   <form id="document-template-form" class="entity-form document-template-form">
                     <input id="document-template-id" type="hidden" />
+                    <input id="document-template-output-file-name" type="hidden" />
+                    <input id="document-template-company-id" type="hidden" />
+                    <input id="document-template-location-id" type="hidden" />
 
                     <div class="document-template-workspace-head">
                       <div class="document-template-workspace-head-copy">
                         <h3 id="document-template-editor-title">Template editor</h3>
                         <div id="document-template-runtime-header-badges" class="document-template-runtime-header-badges" hidden></div>
                       </div>
+                      <section class="document-template-copy-source-card is-header" aria-labelledby="document-template-copy-source-title">
+                        <div class="document-template-copy-source-copy">
+                          <p class="section-kicker">Kopiraj iz</p>
+                          <h4 id="document-template-copy-source-title">Kopiraj kompletan template</h4>
+                          <span id="document-template-copy-meta">Kopira formu, HTML/Word predložak, izgled, opremu, propise i sekcije.</span>
+                        </div>
+                        <div class="document-template-copy-source-controls">
+                          <label class="field">
+                            <span>Izvorni template</span>
+                            <select id="document-template-copy-source"></select>
+                          </label>
+                          <button id="document-template-copy-button" type="button" class="primary-button">Kopiraj</button>
+                        </div>
+                      </section>
                       <div class="document-template-head-actions">
                         <button id="document-template-runtime-back" type="button" class="ghost-button" hidden>Vrati se na osnovne podatke</button>
                         <button id="document-template-runtime-prev" type="button" class="ghost-button" hidden>Prethodni</button>
@@ -7749,19 +7766,10 @@
                       <div class="document-template-sidebar-block-head document-template-html-workspace-head">
                         <div>
                           <p class="section-kicker">2 · Gotov HTML/PDF dokument</p>
-                          <h3>HTML predložak i live preview</h3>
-                          <p class="helper-copy module-copy">Lijevo uređuješ HTML koji se sprema u template, desno vidiš kako će se tokeni prikazati u završnom dokumentu.</p>
+                          <h3>HTML predložak</h3>
+                          <p class="helper-copy module-copy">Ovdje uređuješ HTML koji se sprema u template i kasnije koristi za PDF.</p>
                         </div>
                         <div class="document-template-html-workspace-head-actions">
-                          <button
-                            id="document-template-html-preview-toggle"
-                            type="button"
-                            class="ghost-button document-template-sidebar-toggle"
-                            aria-expanded="true"
-                            aria-controls="document-template-html-preview-panel"
-                          >
-                            Sakrij pregled
-                          </button>
                           <button
                             id="document-template-reference-toggle"
                             type="button"
@@ -7784,6 +7792,10 @@
                                   <option value="word">Word / PDF</option>
                                 </select>
                               </label>
+                              <div class="document-template-engine-segmented" role="group" aria-label="Odabir generiranja dokumenta">
+                                <button type="button" class="is-active" data-document-template-engine-choice="html">HTML / PDF</button>
+                                <button type="button" data-document-template-engine-choice="word">Word / PDF</button>
+                              </div>
                               <p class="helper-copy module-copy">Za svaki template odaberi želiš li ga spremiti kao HTML builder predložak ili kao Word predložak s placeholderima.</p>
                             </div>
                             <div id="document-template-reference-meta" class="document-template-reference-meta">
@@ -7838,15 +7850,6 @@
                               <span>HTML kod predloška</span>
                               <textarea id="document-template-html-code" rows="18" spellcheck="false" placeholder="Zalijepi HTML s tokenima, npr. {{DOCUMENT_TITLE}} i {{BROJ_RADNOG_NALOGA}}"></textarea>
                             </label>
-                          </div>
-                          <div id="document-template-html-preview-panel" class="document-template-html-preview-panel">
-                            <div class="section-heading offers-section-heading document-template-html-preview-head">
-                              <div>
-                                <p class="section-kicker">Live preview</p>
-                                <h3>Kako će zapisnik izgledati</h3>
-                              </div>
-                            </div>
-                            <iframe id="document-template-html-preview-frame" class="document-template-html-preview-frame" title="HTML/PDF preview predloška" sandbox=""></iframe>
                           </div>
                         </div>
                       </div>
@@ -8038,6 +8041,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260508x"></script>
+    <script type="module" src="/src/main.js?v=20260509b"></script>
   </body>
 </html>

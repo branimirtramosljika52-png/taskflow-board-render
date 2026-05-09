@@ -2495,15 +2495,17 @@ async function buildWorkOrderPdfExportPayload(workOrder = {}, scopedSnapshot = {
       "RN template nije pronaden.",
     );
 
-    if (!template.referenceDocument || !isHtmlTemplateFile(template.referenceDocument)) {
-      throw new Error("RN template mora imati .html ili .htm predložak.");
+    if (!template.referenceDocument || (!isHtmlTemplateFile(template.referenceDocument) && !isWordTemplateFile(template.referenceDocument))) {
+      throw new Error("RN template mora imati .html/.htm ili .docx/.dotx predlozak.");
     }
+
+    const referenceExtension = isWordTemplateFile(template.referenceDocument) ? "docx" : "html";
 
     const pdfBuffer = await generatePdfBufferForTemplate(template, {
       placeholders: buildWorkOrderTemplatePlaceholderPayload(workOrder),
       fileName: sanitizeGeneratedDocumentFileName(
         workOrder.workOrderNumber || workOrder.companyName || "radni-nalog",
-        { fallback: "radni-nalog", extension: "html" },
+        { fallback: "radni-nalog", extension: referenceExtension },
       ),
     });
     return { pdfBuffer, fileName };

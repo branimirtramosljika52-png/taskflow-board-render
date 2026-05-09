@@ -311,7 +311,8 @@ export function createDocumentReportBuilder({
       legacyActions?.removeAttribute("hidden");
     },
     render() {
-      emitChange();
+      // Canvas rendering is driven by the state subscription above. This method
+      // is kept for older callers that only need to ensure the builder exists.
     },
     updateTokenOptions() {
       renderSidebar(sidebar, {
