@@ -31579,7 +31579,7 @@ body.is-measurement-equipment-export-open {
 }
 
 .document-template-runtime-summary-finish-button {
-  min-width: 128px;
+  min-width: 160px;
   min-height: 36px;
 }
 
@@ -31805,6 +31805,17 @@ body.is-measurement-equipment-export-open {
   min-height: 26px;
   padding: 0 8px;
   border-radius: 10px;
+}
+
+.document-template-runtime-summary-download {
+  min-height: 26px;
+  padding: 0 9px;
+  border-radius: 10px;
+  border-color: rgba(16, 185, 129, 0.34);
+  background: linear-gradient(135deg, rgba(236, 253, 245, 0.98), rgba(255, 255, 255, 0.96));
+  color: #047857;
+  font-weight: 900;
+  box-shadow: 0 8px 18px rgba(16, 185, 129, 0.12);
 }
 
 .document-template-runtime-summary-entry-chips {

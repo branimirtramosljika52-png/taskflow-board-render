@@ -49029,8 +49029,8 @@ function getDocumentTemplatePdfLoadingPhases({ batch = false } = {}) {
       progress: 72,
     },
     {
-      label: batch ? "Paket" : "Preuzimanje",
-      detail: batch ? "Preuzimam ZIP sa zasebnim PDF zapisnicima" : "Pripremam datoteku za preuzimanje",
+      label: batch ? "Documents" : "Preuzimanje",
+      detail: batch ? "Spremam PDF zapisnike u RN Documents" : "Pripremam datoteku za preuzimanje",
       progress: 92,
     },
     {
@@ -49605,7 +49605,7 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
         restorePreviousRuntimeView();
         setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
           status: "pending",
-          message: `${workOrderLabel} čeka PDF engine.`,
+          message: `${workOrderLabel} čeka spremanje u Documents.`,
         }, { render: true });
       } catch (error) {
         failureCount += 1;
@@ -49633,81 +49633,65 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
   }
 
   try {
-    const batchEntries = exportEntries.map(({ exportEntry, payload }) => ({
+    const batchEntries = exportEntries.map(({ sequenceEntry, exportEntry, payload }) => ({
       ...payload,
       templateId: exportEntry.templateId,
+      workOrderId: sequenceEntry.workOrderId || exportEntry.workOrderId,
+      objectId: sequenceEntry.objectId || "",
+      objectSequence: sequenceEntry.objectSequence || 0,
       fileName: exportEntry.pdfFileName,
     }));
-    const exportBaseName = sanitizeDocumentTemplateFileName(
-      `zapisnici-${new Date().toISOString().slice(0, 10)}`,
-      "zapisnici",
-    );
-    const exportEndpoint = print
-      ? "/document-templates/export-pdf-batch"
-      : "/document-templates/export-pdf-files";
-    const exportFileName = print ? `${exportBaseName}.pdf` : `${exportBaseName}.zip`;
 
     exportEntries.forEach(({ sequenceEntry, exportEntry }, index) => {
       const workOrderLabel = `RN ${sequenceEntry.workOrderNumber || exportEntry.renderModel?.workOrderNumber || index + 1}`;
       setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
         status: "running",
-        message: `PDF paket obrađuje ${workOrderLabel}.`,
+        message: `Spremam PDF zapisnik za ${workOrderLabel} u Documents.`,
       }, { render: true });
     });
 
     loading.setPhase(2, {
-      message: `Pakiram ${exportEntries.length} zelenih zapisnika u jedan brzi server zahtjev...`,
+      message: `Šaljem ${exportEntries.length} zelenih zapisnika u brzi server zapis...`,
       progress: 52,
     });
     loading.setPhase(3, {
-      message: `PDF engine generira ${exportEntries.length} zasebnih PDF datoteka...`,
+      message: `PDF engine generira i sprema ${exportEntries.length} zasebnih PDF zapisnika...`,
       progress: 76,
     });
-    const response = await apiBinaryRequest(exportEndpoint, {
+    const response = await apiRequest("/document-templates/export-pdf-documents", {
       method: "POST",
       body: {
-        fileName: exportFileName,
         entries: batchEntries,
       },
     });
+    const savedItems = Array.isArray(response.items) ? response.items : [];
     loading.setPhase(4, {
-      message: print
-        ? "Otvaram objedinjeni PDF za ispis..."
-        : "Preuzimam ZIP paket, svaki RN je zaseban PDF...",
+      message: "Zapisnici su spremljeni u Documents. Preuzimanje je dostupno po RN-u.",
       progress: 94,
     });
 
-    if (print) {
-      triggerBlobPrint(response.blob, response.fileName || exportFileName);
-    } else {
-      triggerBlobDownload(response.blob, response.fileName || exportFileName);
-    }
-
     exportEntries.forEach(({ sequenceEntry, exportEntry }, index) => {
       const workOrderLabel = `RN ${sequenceEntry.workOrderNumber || exportEntry.renderModel?.workOrderNumber || index + 1}`;
+      const savedEntry = savedItems[index] || null;
       setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
         status: "done",
-        message: print
-          ? `${workOrderLabel} je poslan u PDF ispis.`
-          : `${workOrderLabel} je spreman u ZIP paketu kao zaseban PDF.`,
+        message: `${workOrderLabel} je spremljen u Documents.`,
+        document: savedEntry?.item || null,
+        documents: savedEntry?.item ? [savedEntry.item] : [],
       }, { render: true });
     });
-    generatedCount = exportEntries.length;
+    generatedCount = savedItems.length || exportEntries.length;
 
     if (failureCount > 0) {
       setDocumentTemplateMessage(
-        `${generatedCount} PDF zapisnika je gotovo, ${failureCount} nije pripremljeno. Pogledaj statuse po RN-u.`,
+        `${generatedCount} PDF zapisnika je spremljeno u Documents, ${failureCount} nije pripremljeno. Pogledaj statuse po RN-u.`,
       );
     } else {
       loading.complete({
-        message: print
-          ? "Svi označeni zapisnici su spremni za ispis."
-          : "ZIP je spreman: svaki RN je unutra kao zaseban PDF.",
+        message: "Gotovo: svi označeni zapisnici su spremljeni u Documents.",
       });
       setDocumentTemplateMessage(
-        print
-          ? "Svi označeni zapisnici su spremni za ispis."
-          : "ZIP je spreman: svaki označeni RN je zaseban PDF.",
+        "Gotovo: svaki označeni RN ima svoj PDF zapisnik spremljen u Documents.",
         { type: "success" },
       );
     }
@@ -49727,6 +49711,33 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
     window.setTimeout(() => {
       loading.close();
     }, 320);
+  }
+}
+
+async function downloadDocumentTemplateSavedPdfDocument(documentItem = {}) {
+  const workOrderId = String(documentItem?.workOrderId || "").trim();
+  const documentId = String(documentItem?.id || "").trim();
+
+  if (!workOrderId || !documentId) {
+    if (documentItem?.dataUrl || documentItem?.storageUrl) {
+      triggerModuleAttachmentDownload(documentItem);
+      return true;
+    }
+    setDocumentTemplateMessage("Spremljeni PDF nema dovoljno podataka za preuzimanje.");
+    return false;
+  }
+
+  try {
+    const response = await apiBinaryRequest(
+      `/work-orders/${encodeURIComponent(workOrderId)}/documents/${encodeURIComponent(documentId)}/download`,
+      { method: "GET" },
+    );
+    triggerBlobDownload(response.blob, response.fileName || documentItem.fileName || "zapisnik.pdf");
+    return true;
+  } catch (error) {
+    console.error("Ne mogu preuzeti spremljeni zapisnik.", error);
+    setDocumentTemplateMessage(error?.message || "Ne mogu preuzeti spremljeni zapisnik.");
+    return false;
   }
 }
 
@@ -58032,18 +58043,22 @@ function getDocumentTemplateRuntimeGroupExportStatus(group = {}, { groupOk = fal
   }
 
   if (statuses.length > 0 && statuses.every((item) => item.status === "done")) {
+    const documents = statuses
+      .flatMap((item) => (Array.isArray(item.documents) ? item.documents : [item.document]))
+      .filter(Boolean);
     return {
       kind: "done",
-      label: "PDF gotov",
-      detail: "PDF za ovaj RN je uspješno generiran.",
+      label: "Spremljeno",
+      detail: "PDF zapisnik je spremljen u Documents i spreman za preuzimanje.",
+      documents,
     };
   }
 
   if (statuses.some((item) => item.status === "pending")) {
     return {
       kind: "pending",
-      label: "Čeka export",
-      detail: "RN je zelen i čeka red za generiranje.",
+      label: "Čeka spremanje",
+      detail: "RN je zelen i čeka red za spremanje PDF zapisnika u Documents.",
     };
   }
 
@@ -59564,7 +59579,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     batchCardTitle.textContent = "Pregled RN-ova";
     const batchCardMeta = document.createElement("p");
     batchCardMeta.className = "helper-copy module-copy";
-    batchCardMeta.textContent = `${exportableGroups.length} ${exportableGroups.length === 1 ? "zeleni RN" : "zelenih RN-ova"} · ${exportableEntries.length} ${exportableEntries.length === 1 ? "zapisnik" : "zapisnika"} ide u PDF. Crveni ili preskočeni ostaju u pregledu i ne izvoze se.`;
+    batchCardMeta.textContent = `${exportableGroups.length} ${exportableGroups.length === 1 ? "zeleni RN" : "zelenih RN-ova"} · ${exportableEntries.length} ${exportableEntries.length === 1 ? "zapisnik" : "zapisnika"} sprema se u Documents. Crveni ili preskočeni ostaju u pregledu i ne spremaju se.`;
     batchCard.append(batchCardTitle, batchCardMeta);
 
     const groupedList = document.createElement("div");
@@ -59616,7 +59631,30 @@ function renderDocumentTemplateRuntimeFieldRows() {
       skipButton.addEventListener("click", () => {
         setDocumentTemplateRuntimeWorkOrderSkipped(group.workOrderId, !skipped, { render: true });
       });
-      entryHead.append(entryTitleWrap, statusPill, skipButton);
+      entryHead.append(entryTitleWrap, statusPill);
+      const savedDocuments = Array.isArray(exportStatus?.documents)
+        ? exportStatus.documents.filter(Boolean)
+        : [];
+      if (savedDocuments.length > 0) {
+        const downloadButton = document.createElement("button");
+        downloadButton.type = "button";
+        downloadButton.className = "ghost-button document-template-runtime-summary-download";
+        downloadButton.textContent = savedDocuments.length === 1 ? "Preuzmi PDF" : `Preuzmi ${savedDocuments.length} PDF`;
+        downloadButton.addEventListener("click", async () => {
+          downloadButton.disabled = true;
+          downloadButton.classList.add("is-loading");
+          try {
+            for (const documentItem of savedDocuments) {
+              await downloadDocumentTemplateSavedPdfDocument(documentItem);
+            }
+          } finally {
+            downloadButton.disabled = false;
+            downloadButton.classList.remove("is-loading");
+          }
+        });
+        entryHead.append(downloadButton);
+      }
+      entryHead.append(skipButton);
 
       const entryChips = document.createElement("div");
       entryChips.className = "document-template-runtime-summary-entry-chips";
@@ -59657,7 +59695,13 @@ function renderDocumentTemplateRuntimeFieldRows() {
             : `${completedServices}/${serviceItems.length} završeno`,
           groupOk ? "ok" : "warning",
         ),
-        createChecklistItem("PDF", groupOk ? "Ide u export" : "Ne ide u export", groupOk ? "ok" : "warning"),
+        createChecklistItem(
+          "PDF",
+          exportStatus?.kind === "done"
+            ? "Spremljen u Documents"
+            : (groupOk ? "Spremit će se" : "Ne ide u export"),
+          groupOk ? "ok" : "warning",
+        ),
       );
       if (completedServiceLabels.length > 0) {
         entryChecklist.append(createChecklistItem("Napravljeno", completedServiceLabels.join(", "), "ok"));
@@ -59715,7 +59759,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     finalTitle.textContent = "Završi";
     const finalMeta = document.createElement("p");
     finalMeta.className = "helper-copy module-copy";
-    finalMeta.textContent = `${exportableGroups.length} ${exportableGroups.length === 1 ? "zeleni RN" : "zelenih RN-ova"} · ${exportableEntries.length} ${exportableEntries.length === 1 ? "zapisnik" : "zapisnika"} za export. Svaki zapisnik ide u svoj PDF.`;
+    finalMeta.textContent = `${exportableGroups.length} ${exportableGroups.length === 1 ? "zeleni RN" : "zelenih RN-ova"} · ${exportableEntries.length} ${exportableEntries.length === 1 ? "zapisnik" : "zapisnika"} spremit će se u Documents. Preuzimanje ostaje dostupno po RN-u.`;
     finalCopy.append(finalTitle, finalMeta);
     const finalActions = document.createElement("div");
     finalActions.className = "document-template-runtime-summary-final-actions";
@@ -59738,7 +59782,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     const finishButton = document.createElement("button");
     finishButton.type = "button";
     finishButton.className = "primary-button document-template-runtime-summary-finish-button";
-    finishButton.textContent = "Završi";
+    finishButton.textContent = "Generiraj i spremi";
     finishButton.disabled = exportableEntries.length === 0;
     finishButton.addEventListener("click", () => {
       updateDocumentTemplateRuntimeCommon({ signatureMode: signatureSelect.value }, { render: false });

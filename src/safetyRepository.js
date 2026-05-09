@@ -4681,10 +4681,13 @@ export class InMemorySafetyRepository {
       },
       "pdf",
     );
+    const targetCategory = normalized.documentCategory || "Radni nalog PDF";
+    const targetFileName = String(normalized.fileName || "").trim();
     const existingDocuments = this.workOrderDocuments.get(String(workOrderId)) ?? [];
     const existing = existingDocuments.find((item) => (
       String(item.sourceType || "").toLowerCase() === "pdf"
-      && String(item.documentCategory || "") === "Radni nalog PDF"
+      && String(item.documentCategory || "") === targetCategory
+      && (targetCategory === "Radni nalog PDF" || String(item.fileName || "") === targetFileName)
     ));
     const nextDocument = {
       id: existing?.id || `${workOrderId}-generated-pdf-${Date.now()}`,
@@ -4695,7 +4698,7 @@ export class InMemorySafetyRepository {
       fileName: normalized.fileName,
       fileExtension: normalized.fileExtension,
       fileType: normalized.fileType || "application/pdf",
-      documentCategory: "Radni nalog PDF",
+      documentCategory: targetCategory,
       description: normalized.description,
       fileSize: normalized.fileSize,
       dataUrl: normalized.dataUrl,
@@ -8177,6 +8180,8 @@ export class MySqlSafetyRepository {
         "pdf",
       );
       const storedDocument = await prepareStoredWorkOrderDocument(normalized, workOrderId);
+      const targetCategory = storedDocument.documentCategory || normalized.documentCategory || "Radni nalog PDF";
+      const targetFileName = String(storedDocument.fileName || normalized.fileName || "").trim();
       const actorId = getActivityActorId(actor);
       const actorLabel = getActivityActorLabel(actor);
       const timestamp = new Date().toISOString();
@@ -8188,10 +8193,11 @@ export class MySqlSafetyRepository {
                  created_at, updated_at
           FROM web_work_order_documents
           WHERE work_order_id = ? AND source_type = 'pdf' AND document_category = ?
+            AND (? = 'Radni nalog PDF' OR file_name = ?)
           ORDER BY created_at DESC, id DESC
           LIMIT 1
         `,
-        [Number(workOrderId), "Radni nalog PDF"],
+        [Number(workOrderId), targetCategory, targetCategory, targetFileName],
       );
       const existing = existingRows[0] ? mapWorkOrderDocumentRow(existingRows[0]) : null;
 
@@ -8213,7 +8219,7 @@ export class MySqlSafetyRepository {
             storedDocument.fileExtension,
             storedDocument.fileType || "application/pdf",
             storedDocument.description,
-            "Radni nalog PDF",
+            targetCategory,
             storedDocument.fileSize,
             storedDocument.inlineDataUrl,
             storedDocument.storageProvider,
@@ -8234,7 +8240,7 @@ export class MySqlSafetyRepository {
           fileName: storedDocument.fileName,
           fileExtension: storedDocument.fileExtension,
           fileType: storedDocument.fileType || "application/pdf",
-          documentCategory: "Radni nalog PDF",
+          documentCategory: targetCategory,
           description: storedDocument.description,
           fileSize: storedDocument.fileSize,
           dataUrl: storedDocument.dataUrl,
@@ -8263,7 +8269,7 @@ export class MySqlSafetyRepository {
           storedDocument.fileExtension,
           storedDocument.fileType || "application/pdf",
           storedDocument.description,
-          "Radni nalog PDF",
+          targetCategory,
           storedDocument.fileSize,
           storedDocument.inlineDataUrl,
           storedDocument.storageProvider,
@@ -8281,7 +8287,7 @@ export class MySqlSafetyRepository {
         fileName: storedDocument.fileName,
         fileExtension: storedDocument.fileExtension,
         fileType: storedDocument.fileType || "application/pdf",
-        documentCategory: "Radni nalog PDF",
+        documentCategory: targetCategory,
         description: storedDocument.description,
         fileSize: storedDocument.fileSize,
         dataUrl: storedDocument.dataUrl,
