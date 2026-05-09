@@ -282,6 +282,26 @@ function getOpenWeatherCondition(weather = {}) {
   return main || "clear";
 }
 
+function isOpenWeatherNightIcon(icon = "") {
+  return String(icon || "").trim().toLowerCase().endsWith("n");
+}
+
+function isOpenWeatherCurrentNight(payload = {}, weather = {}) {
+  const icon = String(weather?.icon || "").trim();
+  if (icon) {
+    return isOpenWeatherNightIcon(icon);
+  }
+
+  const observedAt = Number(payload.dt ?? 0);
+  const sunrise = Number(payload.sys?.sunrise ?? 0);
+  const sunset = Number(payload.sys?.sunset ?? 0);
+  if (observedAt && sunrise && sunset) {
+    return observedAt < sunrise || observedAt >= sunset;
+  }
+
+  return false;
+}
+
 function buildOpenWeatherUrl(path, params = {}) {
   const config = getOpenWeatherRuntimeConfig();
   const url = new URL(`${config.apiBaseUrl}${path}`);
@@ -413,9 +433,12 @@ async function buildOpenWeatherCitySuggestions(query = "") {
 
 function mapOpenWeatherCurrent(payload = {}) {
   const weather = Array.isArray(payload.weather) ? payload.weather[0] || {} : {};
+  const icon = String(weather.icon || "").trim();
   return {
     condition: getOpenWeatherCondition(weather),
     description: titleCaseOpenWeatherDescription(weather.description || weather.main || ""),
+    icon,
+    isNight: isOpenWeatherCurrentNight(payload, weather),
     temp: Number(payload.main?.temp ?? 0),
     feelsLike: Number(payload.main?.feels_like ?? payload.main?.temp ?? 0),
     humidity: Number(payload.main?.humidity ?? 0),
@@ -430,10 +453,13 @@ function mapOpenWeatherCurrent(payload = {}) {
 
 function mapOpenWeatherForecastItem(item = {}) {
   const weather = Array.isArray(item.weather) ? item.weather[0] || {} : {};
+  const icon = String(weather.icon || "").trim();
   return {
     time: item.dt ? new Date(Number(item.dt) * 1000).toISOString() : "",
     condition: getOpenWeatherCondition(weather),
     description: titleCaseOpenWeatherDescription(weather.description || weather.main || ""),
+    icon,
+    isNight: isOpenWeatherNightIcon(icon),
     temp: Number(item.main?.temp ?? 0),
     feelsLike: Number(item.main?.feels_like ?? item.main?.temp ?? 0),
     humidity: Number(item.main?.humidity ?? 0),

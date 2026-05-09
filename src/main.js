@@ -21998,6 +21998,30 @@ function getWeatherConditionClass(condition = "") {
   return "is-clear";
 }
 
+function isWeatherNight(weatherLike = null) {
+  if (!weatherLike || typeof weatherLike !== "object") {
+    return false;
+  }
+  if (typeof weatherLike.isNight === "boolean") {
+    return weatherLike.isNight;
+  }
+  return String(weatherLike.icon || "").trim().toLowerCase().endsWith("n");
+}
+
+function getWeatherVisualCondition(weatherLike = "clear") {
+  if (weatherLike && typeof weatherLike === "object") {
+    return weatherLike.condition || "clear";
+  }
+  return weatherLike || "clear";
+}
+
+function getWeatherVisualClass(weatherLike = "clear") {
+  return [
+    getWeatherConditionClass(getWeatherVisualCondition(weatherLike)),
+    isWeatherNight(weatherLike) ? "is-night" : "",
+  ].filter(Boolean).join(" ");
+}
+
 function getWeatherConditionLabel(condition = "") {
   const map = {
     clear: "Vedro",
@@ -22018,6 +22042,20 @@ function getWeatherConditionLabel(condition = "") {
   };
   const key = String(condition || "").trim().toLowerCase();
   return map[key] || "Vrijeme";
+}
+
+function getWeatherDisplayDescription(weatherLike = {}) {
+  const condition = getWeatherVisualCondition(weatherLike);
+  const description = String(weatherLike?.description || "").trim();
+  if (isWeatherNight(weatherLike)) {
+    if (condition === "clear") {
+      return "Vedra noć";
+    }
+    if (condition === "clouds" && (!description || description.toLowerCase().includes("obla"))) {
+      return "Oblačna noć";
+    }
+  }
+  return description || getWeatherConditionLabel(condition);
 }
 
 function formatWeatherTemperature(value) {
@@ -22083,6 +22121,7 @@ function formatWeatherForecastHour(isoValue = "") {
 const WEATHER_VISUAL_PART_CLASSES = Object.freeze([
   "weather-halo",
   "weather-rays",
+  "weather-moon",
   "weather-sun",
   "weather-cloud",
   "weather-rain",
@@ -22105,9 +22144,9 @@ function populateWeatherVisualParts(container) {
   }));
 }
 
-function createWeatherVisual(condition = "clear", className = "weather-mini-icon") {
+function createWeatherVisual(weatherLike = "clear", className = "weather-mini-icon") {
   const wrap = document.createElement("span");
-  wrap.className = `${className} ${getWeatherConditionClass(condition)}`;
+  wrap.className = `${className} ${getWeatherVisualClass(weatherLike)}`;
   wrap.setAttribute("aria-hidden", "true");
   populateWeatherVisualParts(wrap);
   return wrap;
@@ -22128,7 +22167,7 @@ function getWeatherAlertCount() {
 
 function renderWeatherTrigger() {
   const activeItem = getActiveWeatherItem();
-  const condition = activeItem?.current?.condition || "clear";
+  const currentWeather = activeItem?.current || { condition: "clear" };
   if (weatherTrigger) {
     weatherTrigger.hidden = !state.user;
     weatherTrigger.setAttribute("aria-expanded", weatherMenuOpen ? "true" : "false");
@@ -22140,7 +22179,7 @@ function renderWeatherTrigger() {
       : "Vrijeme";
   }
   if (weatherTriggerIcon) {
-    weatherTriggerIcon.className = `weather-mini-icon ${getWeatherConditionClass(condition)}`;
+    weatherTriggerIcon.className = `weather-mini-icon ${getWeatherVisualClass(currentWeather)}`;
     populateWeatherVisualParts(weatherTriggerIcon);
   }
   if (weatherTriggerTemp) {
@@ -22166,8 +22205,9 @@ function renderWeatherHero() {
     return;
   }
 
-  const condition = activeItem.current?.condition || "clear";
-  weatherHero.className = `weather-hero ${getWeatherConditionClass(condition)}`;
+  const currentWeather = activeItem.current || { condition: "clear" };
+  const condition = currentWeather.condition || "clear";
+  weatherHero.className = `weather-hero ${getWeatherVisualClass(currentWeather)}`;
 
   const copy = document.createElement("div");
   copy.className = "weather-hero-copy";
@@ -22181,7 +22221,7 @@ function renderWeatherHero() {
   const eyebrow = document.createElement("span");
   eyebrow.textContent = "Prognoza vremena";
   const title = document.createElement("strong");
-  title.textContent = activeItem.current?.description || getWeatherConditionLabel(condition);
+  title.textContent = getWeatherDisplayDescription(currentWeather);
   const summary = document.createElement("p");
   summary.textContent = activeItem.summary || "Trenutni uvjeti i kratka prognoza za odabrani grad.";
   description.append(eyebrow, title, summary);
@@ -22203,7 +22243,7 @@ function renderWeatherHero() {
   const tempBlock = document.createElement("div");
   tempBlock.className = "weather-temp-block";
   tempBlock.append(
-    createWeatherVisual(condition, "weather-visual-icon"),
+    createWeatherVisual(currentWeather, "weather-visual-icon"),
     Object.assign(document.createElement("span"), {
       className: "weather-temp-value",
       textContent: formatWeatherTemperature(activeItem.current?.temp),
@@ -22417,7 +22457,7 @@ function renderWeatherForecast() {
   strip.className = "weather-forecast-strip";
   entries.forEach((entry, index) => {
     const card = document.createElement("article");
-    card.className = `weather-forecast-card ${getWeatherConditionClass(entry.condition || "clear")}${index === 0 ? " is-next" : ""}`;
+    card.className = `weather-forecast-card ${getWeatherVisualClass(entry)}${index === 0 ? " is-next" : ""}`;
 
     const day = document.createElement("span");
     day.className = "weather-forecast-day";
@@ -22429,7 +22469,7 @@ function renderWeatherForecast() {
 
     const description = document.createElement("span");
     description.className = "weather-forecast-description";
-    description.textContent = entry.description || getWeatherConditionLabel(entry.condition);
+    description.textContent = getWeatherDisplayDescription(entry);
 
     const wind = document.createElement("span");
     wind.className = "weather-forecast-wind";
@@ -22439,7 +22479,7 @@ function renderWeatherForecast() {
     temp.className = "weather-forecast-temp";
     temp.textContent = formatWeatherTemperature(entry.temp);
 
-    card.append(day, hour, createWeatherVisual(entry.condition || "clear", "weather-mini-icon"), temp, description, wind);
+    card.append(day, hour, createWeatherVisual(entry, "weather-mini-icon"), temp, description, wind);
     strip.append(card);
   });
   weatherForecast.append(head, strip);
