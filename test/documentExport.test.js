@@ -11,6 +11,7 @@ import {
   buildOfferPdfBuffer,
   buildPdfFromRenderModel,
   convertWordBufferToHtmlTemplate,
+  readStoredDocumentBuffer,
 } from "../src/documentExport.js";
 
 function buildMinimalDocxBuffer(documentXml = "", {
@@ -165,6 +166,15 @@ test("HTML template export normalizes Croatian mojibake and UTF-8 metadata", () 
   assert.match(html, /Ispitivač: Ana Ivić/);
   assert.doesNotMatch(html, /PROTUPANI\u00c4\u0152NE/);
   assert.doesNotMatch(html, /Ivi\u00c4\u2021/);
+});
+
+test("stored document reader accepts HTML data URLs with charset metadata", async () => {
+  const source = "<h1>Čć Žž Šš</h1>";
+  const dataUrl = `data:text/html;charset=utf-8;base64,${Buffer.from(source, "utf8").toString("base64")}`;
+  const result = await readStoredDocumentBuffer({ dataUrl });
+
+  assert.equal(result.mimeType, "text/html");
+  assert.equal(result.buffer.toString("utf8"), source);
 });
 
 test("builder HTML download normalizes Croatian text and metadata", async () => {

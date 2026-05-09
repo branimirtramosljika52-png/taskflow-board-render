@@ -215,15 +215,16 @@ export function sanitizeGeneratedDocumentFileName(value = "", {
 
 function parseDataUrl(dataUrl = "") {
   const raw = clean(dataUrl);
-  const match = raw.match(/^data:([^;,]+)?(;base64)?,([\s\S]+)$/i);
+  const match = raw.match(/^data:([^,]*),([\s\S]*)$/i);
 
   if (!match) {
     throw new Error("Datoteka nije u ispravnom data URL formatu.");
   }
 
-  const mimeType = clean(match[1]) || "application/octet-stream";
-  const isBase64 = Boolean(match[2]);
-  const payload = match[3] ?? "";
+  const metadata = clean(match[1]);
+  const mimeType = clean(metadata.split(";")[0]) || "application/octet-stream";
+  const isBase64 = /(?:^|;)base64(?:;|$)/i.test(metadata);
+  const payload = match[2] ?? "";
 
   return {
     mimeType,
