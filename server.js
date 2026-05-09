@@ -6047,6 +6047,7 @@ async function handleApiRequest(request, response, url) {
     const workOrderPdfSaveMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/save-pdf$/);
     const workOrderPdfDownloadMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/pdf$/);
     const workOrderActivityMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/activity$/);
+    const workOrderDocumentsCollectionMatch = url.pathname === "/api/work-order-documents";
     const workOrderDocumentsMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/documents$/);
     const workOrderDocumentDownloadMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/documents\/([^/]+)\/download$/);
     const workOrderDocumentMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/documents\/([^/]+)$/);
@@ -8178,6 +8179,33 @@ async function handleApiRequest(request, response, url) {
           fileName: document.fileName || getWorkOrderPdfExportFileName(workOrder),
         });
       }
+      return true;
+    }
+
+    if (workOrderDocumentsCollectionMatch && request.method === "GET") {
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const workOrderIds = (scopedSnapshot.workOrders ?? [])
+        .map((item) => String(item?.id || "").trim())
+        .filter(Boolean);
+      const documentCategory = String(
+        url.searchParams.get("category")
+        || url.searchParams.get("documentCategory")
+        || "",
+      ).trim();
+      const sourceType = String(url.searchParams.get("sourceType") || "").trim();
+      const limit = Number(url.searchParams.get("limit") || 5000);
+      const safeLimit = Math.max(1, Math.min(limit || 5000, 10000));
+      const items = typeof domainRepository.listWorkOrderDocuments === "function"
+        ? await domainRepository.listWorkOrderDocuments(workOrderIds, { documentCategory, sourceType, limit: safeLimit })
+        : (await Promise.all(workOrderIds.map((workOrderId) => domainRepository.getWorkOrderDocuments(workOrderId))))
+          .flat()
+          .filter((document) => (
+            (!documentCategory || String(document.documentCategory || "") === documentCategory)
+            && (!sourceType || String(document.sourceType || "").toLowerCase() === sourceType.toLowerCase())
+          ))
+          .slice(0, safeLimit);
+
+      sendJson(response, 200, { items: items.map((item) => stripStoredDocumentPayloadForResponse(item)) });
       return true;
     }
 

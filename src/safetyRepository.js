@@ -4739,6 +4739,45 @@ export class InMemorySafetyRepository {
       .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)));
   }
 
+  async listWorkOrderDocuments(workOrderIds = [], {
+    documentCategory = "",
+    sourceType = "",
+    limit = 5000,
+  } = {}) {
+    const idSet = new Set(
+      (Array.isArray(workOrderIds) ? workOrderIds : [])
+        .map((value) => String(value ?? "").trim())
+        .filter(Boolean),
+    );
+    if (idSet.size === 0) {
+      return [];
+    }
+
+    const categoryFilter = normalizeWorkOrderDocumentCategory(documentCategory);
+    const hasSourceFilter = String(sourceType ?? "").trim() !== "";
+    const sourceFilter = hasSourceFilter ? normalizeWorkOrderDocumentSource(sourceType) : "";
+    const safeLimit = Math.max(1, Math.min(Number(limit) || 5000, 10000));
+    const items = [];
+
+    idSet.forEach((workOrderId) => {
+      (this.workOrderDocuments.get(String(workOrderId)) ?? []).forEach((document) => {
+        if (categoryFilter && normalizeWorkOrderDocumentCategory(document.documentCategory) !== categoryFilter) {
+          return;
+        }
+        if (hasSourceFilter && normalizeWorkOrderDocumentSource(document.sourceType) !== sourceFilter) {
+          return;
+        }
+        items.push({ ...document });
+      });
+    });
+
+    return items
+      .sort((left, right) => (
+        String(right.createdAt || right.updatedAt || "").localeCompare(String(left.createdAt || left.updatedAt || ""))
+      ))
+      .slice(0, safeLimit);
+  }
+
   async updateWorkOrderDocument(workOrderId, documentId, patch, actor = null) {
     const currentDocuments = this.workOrderDocuments.get(String(workOrderId)) ?? [];
     const current = currentDocuments.find((item) => String(item.id) === String(documentId));
@@ -8331,6 +8370,60 @@ export class MySqlSafetyRepository {
           LIMIT 200
         `,
         [Number(id)],
+      );
+
+      return rows.map((row) => mapWorkOrderDocumentRow(row));
+    } finally {
+      connection.release();
+    }
+  }
+
+  async listWorkOrderDocuments(workOrderIds = [], {
+    documentCategory = "",
+    sourceType = "",
+    limit = 5000,
+  } = {}) {
+    const numericIds = Array.from(new Set(
+      (Array.isArray(workOrderIds) ? workOrderIds : [])
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value) && value > 0),
+    ));
+    if (numericIds.length === 0) {
+      return [];
+    }
+
+    const categoryFilter = normalizeWorkOrderDocumentCategory(documentCategory);
+    const hasSourceFilter = String(sourceType ?? "").trim() !== "";
+    const sourceFilter = hasSourceFilter ? normalizeWorkOrderDocumentSource(sourceType) : "";
+    const safeLimit = Math.max(1, Math.min(Number(limit) || 5000, 10000));
+    const whereParts = ["work_order_id IN (?)"];
+    const params = [numericIds];
+
+    if (categoryFilter) {
+      whereParts.push("document_category = ?");
+      params.push(categoryFilter);
+    }
+
+    if (hasSourceFilter) {
+      whereParts.push("source_type = ?");
+      params.push(sourceFilter);
+    }
+
+    const connection = await this.pool.getConnection();
+
+    try {
+      const [rows] = await connection.query(
+        `
+          SELECT id, work_order_id, actor_user_id, actor_label, source_type, file_name,
+                 file_extension, file_type, file_description, document_category, file_size, data_url,
+                 storage_provider, storage_bucket, storage_key, storage_url,
+                 created_at, updated_at
+          FROM web_work_order_documents
+          WHERE ${whereParts.join(" AND ")}
+          ORDER BY created_at DESC, id DESC
+          LIMIT ?
+        `,
+        [...params, safeLimit],
       );
 
       return rows.map((row) => mapWorkOrderDocumentRow(row));

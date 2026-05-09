@@ -1754,6 +1754,7 @@ const state = {
     error: "",
     lastRefreshAt: "",
     records: [],
+    workOrderDocuments: [],
     expandedCompanyIds: new Set(),
     expandedLocationIds: new Set(),
     expandedFolderIds: new Set(),
@@ -24377,6 +24378,8 @@ function createDocumentLibraryEntry(input = {}) {
   const fileName = String(input.fileName || label).trim() || label;
   const href = String(input.href || "").trim();
   const exportPath = String(input.exportPath || "").trim();
+  const workOrderId = String(input.workOrderId || "").trim();
+  const documentId = String(input.documentId || "").trim();
   const previewType = String(
     input.previewType
     || (exportPath ? "generated-pdf" : href ? "href" : "source")
@@ -24405,6 +24408,9 @@ function createDocumentLibraryEntry(input = {}) {
     fileSize: Number(input.fileSize || 0) || 0,
     href,
     exportPath,
+    workOrderId,
+    documentId,
+    documentCategory: String(input.documentCategory || "").trim(),
     fileKind,
     fileKindLabel,
     updatedAt,
@@ -24413,8 +24419,8 @@ function createDocumentLibraryEntry(input = {}) {
     previewType,
     sourceTarget: input.sourceTarget ?? null,
     metaParts,
-    canPreview: Boolean(href || exportPath || input.sourceTarget),
-    canDownload: input.canDownload === false ? false : Boolean(href || exportPath),
+    canPreview: Boolean(href || exportPath || (workOrderId && documentId) || input.sourceTarget),
+    canDownload: input.canDownload === false ? false : Boolean(href || exportPath || (workOrderId && documentId)),
     searchBlob: normalizeLooseName(searchTerms.join(" ")),
   };
 }
@@ -24466,6 +24472,81 @@ function createDocumentLibraryRecordEntry({
     canDownload: false,
     metaParts: ["Zapisnik"],
     searchTerms,
+  });
+}
+
+function getDocumentsExplorerWorkOrderDocuments({ documentCategory = "" } = {}) {
+  const categoryFilter = String(documentCategory || "").trim();
+  return (Array.isArray(state.documentsExplorer.workOrderDocuments)
+    ? state.documentsExplorer.workOrderDocuments
+    : [])
+    .filter((documentItem) => (
+      String(documentItem?.id || "").trim()
+      && String(documentItem?.workOrderId || "").trim()
+      && (!categoryFilter || String(documentItem?.documentCategory || "").trim() === categoryFilter)
+    ));
+}
+
+function getWorkOrderDocumentLibraryContext(documentItem = {}, documentIndex = 0) {
+  const linkedWorkOrder = findWorkOrderById(documentItem?.workOrderId || "");
+  const company = getCompany(linkedWorkOrder?.companyId || "");
+  const location = getLocation(linkedWorkOrder?.locationId || "");
+  const serviceLabel = String(
+    getWorkOrderServiceSummary(linkedWorkOrder)
+    || linkedWorkOrder?.serviceLine
+    || "",
+  ).trim();
+  const workOrderNumber = String(
+    linkedWorkOrder?.workOrderNumber
+    || documentItem?.workOrderNumber
+    || `Zapisnik ${documentIndex + 1}`,
+  ).trim();
+
+  return {
+    documentIndex,
+    linkedWorkOrder,
+    company,
+    location,
+    serviceLabel,
+    workOrderNumber,
+    sourceTarget: linkedWorkOrder
+      ? { kind: "work-order", record: linkedWorkOrder }
+      : null,
+  };
+}
+
+function createSavedWorkOrderDocumentLibraryEntry(documentItem = {}, context = {}, idPrefix = "saved-work-order-document") {
+  const fileName = getDocumentLibraryAttachmentFileName(documentItem)
+    || `${slugifyValue(context.workOrderNumber || "zapisnik") || "zapisnik"}.pdf`;
+  const categoryLabel = String(documentItem?.documentCategory || GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY).trim()
+    || GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY;
+
+  return createDocumentLibraryEntry({
+    id: `${idPrefix}:${String(documentItem?.workOrderId || "")}:${String(documentItem?.id || "")}`,
+    label: fileName,
+    description: String(documentItem?.description || `${categoryLabel} za RN ${context.workOrderNumber || ""}`).trim(),
+    fileName,
+    fileType: documentItem?.fileType || "application/pdf",
+    fileSize: documentItem?.fileSize || 0,
+    fileKind: "pdf",
+    updatedAt: documentItem?.updatedAt || documentItem?.createdAt || "",
+    previewType: "work-order-document",
+    workOrderId: documentItem?.workOrderId || "",
+    documentId: documentItem?.id || "",
+    documentCategory: categoryLabel,
+    metaParts: [
+      categoryLabel,
+      documentItem?.actorLabel || "",
+      formatFileSize(documentItem?.fileSize || 0),
+    ].filter(Boolean),
+    sourceTarget: context.sourceTarget ?? null,
+    searchTerms: [
+      context.workOrderNumber || "",
+      context.serviceLabel || "",
+      context.company?.name || "",
+      context.location?.name || context.linkedWorkOrder?.locationName || "",
+      categoryLabel,
+    ],
   });
 }
 
@@ -24727,6 +24808,46 @@ function buildDocumentRecordLibraryFolders(records = state.documentsExplorer.rec
     bucket.documents.push(createDocumentRecordLibraryEntryFromContext(record, context, "document-record"));
   });
 
+  getDocumentsExplorerWorkOrderDocuments({ documentCategory: GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY })
+    .forEach((documentItem, documentIndex) => {
+      const context = getWorkOrderDocumentLibraryContext(documentItem, documentIndex);
+      const folderKey = context.linkedWorkOrder?.id
+        ? `document-records:work-order:${context.linkedWorkOrder.id}`
+        : `document-records:document:${String(documentItem?.id || documentIndex)}`;
+
+      if (!buckets.has(folderKey)) {
+        buckets.set(folderKey, {
+          id: folderKey,
+          categoryId: "document-records",
+          label: context.workOrderNumber || "Zapisnik",
+          subtitle: [
+            context.company?.name || context.linkedWorkOrder?.companyName || "",
+            createCompactLocationLabel(context.location?.name || context.linkedWorkOrder?.locationName || ""),
+            context.serviceLabel,
+          ].filter(Boolean).join(" · "),
+          metaParts: [
+            context.company?.name || "",
+            context.serviceLabel || "",
+          ].filter(Boolean),
+          searchTerms: [
+            context.company?.name || "",
+            context.location?.name || context.linkedWorkOrder?.locationName || "",
+            context.serviceLabel,
+          ],
+          sourceTarget: context.sourceTarget,
+          documents: [],
+        });
+      }
+
+      const bucket = buckets.get(folderKey);
+      if (context.sourceTarget && !bucket.sourceTarget) {
+        bucket.sourceTarget = context.sourceTarget;
+      }
+      bucket.documents.push(
+        createSavedWorkOrderDocumentLibraryEntry(documentItem, context, "document-record-pdf"),
+      );
+    });
+
   return [...buckets.values()]
     .map((folder) => finalizeDocumentLibraryFolder(folder))
     .filter(Boolean);
@@ -24786,6 +24907,21 @@ function buildWorkOrderDocumentLibraryFolders(records = state.documentsExplorer.
       createDocumentRecordLibraryEntryFromContext(record, context, "work-order-record"),
     );
   });
+
+  getDocumentsExplorerWorkOrderDocuments({ documentCategory: GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY })
+    .forEach((documentItem, documentIndex) => {
+      const context = getWorkOrderDocumentLibraryContext(documentItem, documentIndex);
+      const folder = ensureWorkOrderFolder(context.linkedWorkOrder, {
+        id: documentItem?.id || documentIndex,
+        workOrderNumber: context.workOrderNumber,
+      }, documentIndex);
+      if (context.sourceTarget && !folder.sourceTarget) {
+        folder.sourceTarget = context.sourceTarget;
+      }
+      folder.documents.push(
+        createSavedWorkOrderDocumentLibraryEntry(documentItem, context, "work-order-saved-report"),
+      );
+    });
 
   sortWorkOrders(state.workOrders ?? []).forEach((workOrder, index) => {
     if (!workOrder?.id) {
@@ -24876,6 +25012,25 @@ function buildCompanyDocumentLibraryFolders(records = state.documentsExplorer.re
     });
     folder.documents.push(createDocumentRecordLibraryEntryFromContext(record, context, `company-record:${folder.id}`));
   });
+
+  getDocumentsExplorerWorkOrderDocuments({ documentCategory: GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY })
+    .forEach((documentItem, documentIndex) => {
+      const context = getWorkOrderDocumentLibraryContext(documentItem, documentIndex);
+      const company = context.company || companyById.get(String(context.linkedWorkOrder?.companyId || "")) || null;
+      const folder = getCompanyDocumentFolder(folders, {
+        company,
+        companyId: context.linkedWorkOrder?.companyId || "",
+        companyName: context.linkedWorkOrder?.companyName || "",
+        folderKey: "records",
+        folderLabel: "Zapisnici i RN",
+        subtitle: "Tvrtke · Radni nalozi i zapisnici",
+        metaParts: ["Radni nalozi", "Zapisnici"],
+        searchTerms: [context.workOrderNumber || "", context.serviceLabel || ""],
+      });
+      folder.documents.push(
+        createSavedWorkOrderDocumentLibraryEntry(documentItem, context, `company-record-pdf:${folder.id}`),
+      );
+    });
 
   sortOffers(state.offers ?? []).forEach((item, itemIndex) => {
     const company = companyById.get(String(item?.companyId || "")) || null;
@@ -25747,6 +25902,15 @@ async function previewDocumentsLibraryEntry(entry = null) {
     return;
   }
 
+  if (entry.previewType === "work-order-document" && entry.workOrderId && entry.documentId) {
+    const { blob, fileName } = await apiBinaryRequest(
+      `/work-orders/${encodeURIComponent(entry.workOrderId)}/documents/${encodeURIComponent(entry.documentId)}/download`,
+      { method: "GET" },
+    );
+    previewBlobInNewTab(blob, fileName || entry.fileName || "dokument.pdf");
+    return;
+  }
+
   if (entry.previewType === "href" && entry.href) {
     window.open(entry.href, "_blank", "noopener,noreferrer");
     return;
@@ -25767,6 +25931,15 @@ async function downloadDocumentsLibraryEntry(entry = null) {
       await saveGeneratedWorkOrderPdf(entry.sourceTarget.record.id);
     }
     const { blob, fileName } = await apiBinaryRequest(entry.exportPath, { method: "POST" });
+    triggerBlobDownload(blob, fileName || entry.fileName || "dokument.pdf");
+    return;
+  }
+
+  if (entry.previewType === "work-order-document" && entry.workOrderId && entry.documentId) {
+    const { blob, fileName } = await apiBinaryRequest(
+      `/work-orders/${encodeURIComponent(entry.workOrderId)}/documents/${encodeURIComponent(entry.documentId)}/download`,
+      { method: "GET" },
+    );
     triggerBlobDownload(blob, fileName || entry.fileName || "dokument.pdf");
     return;
   }
@@ -26521,6 +26694,7 @@ function renderDocumentsModule() {
   ) {
     state.documentsExplorer.loaded = false;
     state.documentsExplorer.records = [];
+    state.documentsExplorer.workOrderDocuments = [];
     state.documentsExplorer.error = "";
     state.documentsExplorer.lastRefreshAt = "";
     state.documentsExplorer.expandedCompanyIds = new Set();
@@ -26573,8 +26747,14 @@ async function loadDocumentsExplorerRecords({ force = false } = {}) {
   }
 
   try {
-    const response = await apiRequest(`/document-records?limit=${DOCUMENTS_EXPLORER_MAX_RECORDS}`);
-    state.documentsExplorer.records = Array.isArray(response?.items) ? response.items : [];
+    const [recordsResponse, workOrderDocumentsResponse] = await Promise.all([
+      apiRequest(`/document-records?limit=${DOCUMENTS_EXPLORER_MAX_RECORDS}`),
+      apiRequest(`/work-order-documents?category=${encodeURIComponent(GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY)}&sourceType=pdf&limit=5000`),
+    ]);
+    state.documentsExplorer.records = Array.isArray(recordsResponse?.items) ? recordsResponse.items : [];
+    state.documentsExplorer.workOrderDocuments = Array.isArray(workOrderDocumentsResponse?.items)
+      ? workOrderDocumentsResponse.items
+      : [];
     state.documentsExplorer.loaded = true;
     state.documentsExplorer.organizationId = activeOrganizationId;
     state.documentsExplorer.lastRefreshAt = new Date().toISOString();
@@ -26590,6 +26770,25 @@ async function loadDocumentsExplorerRecords({ force = false } = {}) {
       renderDocumentsModule();
     }
   }
+}
+
+function upsertDocumentsExplorerWorkOrderDocuments(documents = []) {
+  const nextDocuments = (Array.isArray(documents) ? documents : [])
+    .filter((item) => item && typeof item === "object" && String(item.id || "").trim());
+  if (nextDocuments.length === 0) {
+    return;
+  }
+
+  const currentItems = Array.isArray(state.documentsExplorer.workOrderDocuments)
+    ? state.documentsExplorer.workOrderDocuments
+    : [];
+  const nextKeys = new Set(nextDocuments.map((item) => String(item.id || "").trim()));
+
+  state.documentsExplorer.workOrderDocuments = [
+    ...nextDocuments,
+    ...currentItems.filter((item) => !nextKeys.has(String(item?.id || "").trim())),
+  ];
+  state.documentsExplorer.organizationId = String(state.activeOrganizationId || "").trim();
 }
 
 function upsertDocumentsExplorerRecord(record = null) {
@@ -49668,6 +49867,7 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
       },
     });
     const savedItems = Array.isArray(response.items) ? response.items : [];
+    upsertDocumentsExplorerWorkOrderDocuments(savedItems.map((entry) => entry?.item).filter(Boolean));
     loading.setPhase(4, {
       message: "Zapisnici su spremljeni u Documents. Preuzimanje je dostupno po RN-u.",
       progress: 94,
