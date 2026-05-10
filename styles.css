@@ -15506,7 +15506,8 @@ body.is-work-order-document-category-open {
 }
 
 .work-order-quick-cell input,
-.work-order-quick-cell select {
+.work-order-quick-cell select,
+.work-order-quick-picker-trigger {
   width: 100%;
   min-width: 0;
   min-height: 34px;
@@ -15520,10 +15521,181 @@ body.is-work-order-document-category-open {
 }
 
 .work-order-quick-cell input:focus,
-.work-order-quick-cell select:focus {
+.work-order-quick-cell select:focus,
+.work-order-quick-picker-trigger:focus {
   outline: none;
   border-color: rgba(59, 130, 246, 0.58);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+.work-order-quick-date-control {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  gap: 6px;
+  align-items: center;
+}
+
+.work-order-quick-date-button {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(190, 207, 231, 0.95);
+  border-radius: 12px;
+  color: #1d5ea8;
+  background: linear-gradient(180deg, #ffffff, #eef6ff);
+}
+
+.work-order-quick-date-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+.work-order-quick-native-date {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 1px !important;
+  height: 1px !important;
+  min-height: 1px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.work-order-quick-picker {
+  position: relative;
+  min-width: 0;
+}
+
+.work-order-quick-picker-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-order-quick-picker-trigger.is-empty {
+  color: #64748b;
+}
+
+.work-order-quick-picker-menu-portal {
+  width: min(420px, calc(100vw - 24px));
+  max-height: min(520px, calc(100vh - 48px));
+  z-index: 70;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  overflow: auto;
+}
+
+.work-order-quick-picker-search {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid rgba(185, 205, 236, 0.95);
+  border-radius: 14px;
+  padding: 0 12px;
+  background: #ffffff;
+}
+
+.work-order-quick-picker-selection {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.work-order-quick-picker-selection-empty,
+.work-order-quick-picker-empty {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.work-order-quick-picker-chip {
+  max-width: 100%;
+  min-height: 28px;
+  border: 1px solid rgba(173, 196, 229, 0.92);
+  border-radius: 999px;
+  padding: 0 10px;
+  overflow: hidden;
+  color: #1f3761;
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: linear-gradient(180deg, #ffffff, #eff6ff);
+}
+
+.work-order-quick-picker-options {
+  display: grid;
+  gap: 6px;
+}
+
+.work-order-quick-picker-option {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  text-align: left;
+}
+
+.work-order-quick-picker-option.has-leading {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.work-order-quick-picker-option-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.work-order-quick-picker-option-copy strong,
+.work-order-quick-picker-option-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-order-quick-picker-option-copy small {
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.work-order-quick-picker-marker {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #eef6ff;
+  color: #2563eb;
+  font-weight: 900;
+}
+
+.work-order-quick-picker-option.is-selected .work-order-quick-picker-marker {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.work-order-quick-picker-clear {
+  justify-content: center;
+}
+
+.work-order-quick-deferred span {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  color: #94a3b8;
+  font-size: 0.76rem;
+  font-weight: 800;
 }
 
 .work-order-quick-action {

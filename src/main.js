@@ -20461,6 +20461,10 @@ function parseDateValue(value) {
   }
 
   const rawValue = String(value).trim();
+  const compactRawValue = normalizeCompactTypedDateValue(rawValue);
+  if (compactRawValue && compactRawValue !== rawValue) {
+    return parseDateValue(compactRawValue);
+  }
   const createLocalDate = (year, month, day) => {
     if (
       !Number.isFinite(day)
@@ -20514,6 +20518,29 @@ function parseDateValue(value) {
   }
 
   return null;
+}
+
+function normalizeCompactTypedDateValue(value = "") {
+  const rawValue = String(value ?? "").trim();
+  if (!rawValue) {
+    return "";
+  }
+
+  const digitValue = rawValue.replace(/\s+/g, "");
+  if (!/^\d+$/.test(digitValue)) {
+    return rawValue;
+  }
+
+  if (digitValue.length === 8) {
+    return `${digitValue.slice(0, 2)}.${digitValue.slice(2, 4)}.${digitValue.slice(4)}`;
+  }
+
+  if (digitValue.length === 6) {
+    const yearPrefix = Number(digitValue.slice(4)) >= 70 ? "19" : "20";
+    return `${digitValue.slice(0, 2)}.${digitValue.slice(2, 4)}.${yearPrefix}${digitValue.slice(4)}`;
+  }
+
+  return rawValue;
 }
 
 function formatDate(value) {
@@ -20606,7 +20633,8 @@ function formatDateInputDisplayValue(value) {
     return "";
   }
 
-  const normalizedRawValue = rawValue.replace(/^(\d{1,2})\s*\/\s*(\d{1,2})\s*\/\s*(\d{4})$/, "$1.$2.$3");
+  const normalizedRawValue = normalizeCompactTypedDateValue(rawValue)
+    .replace(/^(\d{1,2})\s*\/\s*(\d{1,2})\s*\/\s*(\d{4})$/, "$1.$2.$3");
   const looksLikeCompleteDate = /^\d{4}-\d{2}-\d{2}$/.test(normalizedRawValue)
     || /^\d{1,2}\.\d{1,2}\.\d{4}\.?$/.test(normalizedRawValue);
   if (!looksLikeCompleteDate) {
@@ -20623,7 +20651,8 @@ function normalizeDateInputValue(value) {
     return "";
   }
 
-  const normalizedRawValue = rawValue.replace(/^(\d{1,2})\s*\/\s*(\d{1,2})\s*\/\s*(\d{4})$/, "$1.$2.$3");
+  const normalizedRawValue = normalizeCompactTypedDateValue(rawValue)
+    .replace(/^(\d{1,2})\s*\/\s*(\d{1,2})\s*\/\s*(\d{4})$/, "$1.$2.$3");
   const looksLikeCompleteDate = /^\d{4}-\d{2}-\d{2}$/.test(normalizedRawValue)
     || /^\d{1,2}\.\d{1,2}\.\d{4}\.?$/.test(normalizedRawValue);
   if (!looksLikeCompleteDate) {
@@ -50037,42 +50066,59 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
       }, { render: true });
     });
 
+    const savedItems = [];
     loading.setPhase(2, {
-      message: `Šaljem ${exportEntries.length} zelenih zapisnika u brzi server zapis...`,
+      message: `Spremam zapisnike jedan po jedan da se request ne prekine...`,
       progress: 52,
     });
-    loading.setPhase(3, {
-      message: `PDF engine generira i sprema ${exportEntries.length} zasebnih PDF zapisnika...`,
-      progress: 76,
-    });
-    const response = await apiRequest("/document-templates/export-pdf-documents", {
-      method: "POST",
-      body: {
-        entries: batchEntries,
-      },
-    });
-    const savedItems = Array.isArray(response.items) ? response.items : [];
-    upsertDocumentsExplorerWorkOrderDocuments(savedItems.map((entry) => entry?.item).filter(Boolean));
+
+    for (const [index, batchEntry] of batchEntries.entries()) {
+      const exportEntry = exportEntries[index];
+      const sequenceEntry = exportEntry?.sequenceEntry;
+      const workOrderLabel = `RN ${sequenceEntry?.workOrderNumber || exportEntry?.exportEntry?.renderModel?.workOrderNumber || index + 1}`;
+      loading.setPhase(3, {
+        message: `PDF engine sprema ${index + 1}/${batchEntries.length}: ${workOrderLabel} u Documents...`,
+        progress: Math.min(88, 58 + Math.round(((index + 1) / batchEntries.length) * 26)),
+      });
+
+      try {
+        const response = await apiRequest("/document-templates/export-pdf-documents", {
+          method: "POST",
+          body: {
+            entries: [batchEntry],
+          },
+        });
+        const savedEntry = Array.isArray(response.items) ? response.items[0] : null;
+        if (!savedEntry?.item) {
+          throw new Error("Server nije vratio spremljeni PDF dokument.");
+        }
+        savedItems.push(savedEntry);
+        upsertDocumentsExplorerWorkOrderDocuments([savedEntry.item]);
+        setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
+          status: "done",
+          message: `${workOrderLabel} je spremljen u Documents.`,
+          document: savedEntry.item,
+          documents: [savedEntry.item],
+        }, { render: true });
+      } catch (error) {
+        failureCount += 1;
+        console.error(`Ne mogu spremiti PDF zapisnik za ${workOrderLabel}.`, error);
+        setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
+          status: "error",
+          message: error?.message || `Ne mogu spremiti PDF za ${workOrderLabel}.`,
+        }, { render: true });
+      }
+    }
+
     loading.setPhase(4, {
-      message: "Zapisnici su spremljeni u Documents. Preuzimanje je dostupno po RN-u.",
+      message: "Spremanje u Documents je završilo. Preuzimanje je dostupno po RN-u.",
       progress: 94,
     });
-
-    exportEntries.forEach(({ sequenceEntry, exportEntry }, index) => {
-      const workOrderLabel = `RN ${sequenceEntry.workOrderNumber || exportEntry.renderModel?.workOrderNumber || index + 1}`;
-      const savedEntry = savedItems[index] || null;
-      setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
-        status: "done",
-        message: `${workOrderLabel} je spremljen u Documents.`,
-        document: savedEntry?.item || null,
-        documents: savedEntry?.item ? [savedEntry.item] : [],
-      }, { render: true });
-    });
-    generatedCount = savedItems.length || exportEntries.length;
+    generatedCount = savedItems.length;
 
     if (failureCount > 0) {
       setDocumentTemplateMessage(
-        `${generatedCount} PDF zapisnika je spremljeno u Documents, ${failureCount} nije pripremljeno. Pogledaj statuse po RN-u.`,
+        `${generatedCount} PDF zapisnika je spremljeno u Documents, ${failureCount} nije spremljeno. Pogledaj statuse po RN-u.`,
       );
     } else {
       loading.complete({
@@ -88859,7 +88905,7 @@ function renderWorkOrderDocumentWizard() {
 }
 
 function closeOpenWorkOrderStatusMenus(except = null) {
-  document.querySelectorAll(".work-item-status-dropdown.is-open, .work-order-calendar-executor-picker.is-open, .work-order-service-picker.is-open").forEach((node) => {
+  document.querySelectorAll(".work-item-status-dropdown.is-open, .work-order-calendar-executor-picker.is-open, .work-order-service-picker.is-open, .work-order-quick-picker.is-open").forEach((node) => {
     if (except && node === except) {
       return;
     }
@@ -88870,7 +88916,7 @@ function closeOpenWorkOrderStatusMenus(except = null) {
     }
 
     node.classList.remove("is-open");
-    const trigger = node.querySelector(".work-item-status-trigger, .work-order-calendar-executor-trigger, .work-order-service-picker-trigger");
+    const trigger = node.querySelector(".work-item-status-trigger, .work-order-calendar-executor-trigger, .work-order-service-picker-trigger, .work-order-quick-picker-trigger");
     trigger?.setAttribute("aria-expanded", "false");
     if (node._menuPortal) {
       node._menuPortal.remove();
@@ -89356,6 +89402,370 @@ function createWorkOrderQuickSelect(name, options = [], selectedValue = "") {
   return select;
 }
 
+function createWorkOrderQuickDateInput(name, placeholder = "dd.mm.yyyy") {
+  const wrap = document.createElement("div");
+  wrap.className = "work-order-quick-date-control";
+
+  const input = createWorkOrderQuickInput(name, placeholder, "text");
+  input.inputMode = "numeric";
+  input.pattern = "[0-9.\\-/\\s]*";
+  input.title = "Upiši datum, npr. 12112025 za 12.11.2025.";
+
+  const picker = document.createElement("input");
+  picker.type = "date";
+  picker.className = "work-order-quick-native-date";
+  picker.tabIndex = -1;
+  picker.setAttribute("aria-hidden", "true");
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "work-order-quick-date-button";
+  button.innerHTML = getWorkOrderIconMarkup("dates");
+  button.setAttribute("aria-label", "Odaberi datum");
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    picker.value = normalizeDateInputValue(input.value);
+    if (typeof picker.showPicker === "function") {
+      picker.showPicker();
+      return;
+    }
+    picker.focus({ preventScroll: true });
+  });
+
+  picker.addEventListener("change", () => {
+    input.value = formatDateInputDisplayValue(picker.value);
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+
+  input.addEventListener("blur", () => {
+    const normalizedValue = normalizeDateInputValue(input.value);
+    input.value = formatDateInputDisplayValue(normalizedValue || input.value);
+    picker.value = normalizedValue;
+  });
+
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      const normalizedValue = normalizeDateInputValue(input.value);
+      input.value = formatDateInputDisplayValue(normalizedValue || input.value);
+      picker.value = normalizedValue;
+    }
+  });
+
+  wrap.append(input, button, picker);
+  return wrap;
+}
+
+function readWorkOrderQuickJsonValue(formData, name, fallback = []) {
+  const rawValue = String(formData.get(name) || "").trim();
+  if (!rawValue) {
+    return fallback;
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue);
+    return Array.isArray(parsed) ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function createWorkOrderQuickPicker({
+  name,
+  placeholder = "Odaberi",
+  searchPlaceholder = "Traži...",
+  emptyText = "Nema rezultata.",
+  getOptions = () => [],
+  matchesOption = () => true,
+  getOptionValue = (option) => String(option?.value || option?.id || ""),
+  getOptionLabel = (option) => String(option?.label || option?.name || option?.value || ""),
+  getOptionMeta = () => "",
+  getSelectedLabel = (items) => `${items.length} odabrano`,
+  normalizeSelected = (items) => items,
+  serializeSelected = (items) => items,
+  renderOptionLeading = null,
+} = {}) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "work-order-quick-picker";
+
+  const hiddenInput = document.createElement("input");
+  hiddenInput.type = "hidden";
+  hiddenInput.name = name;
+
+  const trigger = document.createElement("button");
+  trigger.type = "button";
+  trigger.className = "work-order-quick-picker-trigger";
+  trigger.setAttribute("aria-haspopup", "dialog");
+  trigger.setAttribute("aria-expanded", "false");
+
+  let selectedItems = [];
+  let searchQuery = "";
+
+  const syncHiddenInput = () => {
+    hiddenInput.value = JSON.stringify(serializeSelected(selectedItems));
+  };
+
+  const renderTrigger = () => {
+    trigger.textContent = selectedItems.length > 0 ? getSelectedLabel(selectedItems) : placeholder;
+    trigger.classList.toggle("is-empty", selectedItems.length === 0);
+    syncHiddenInput();
+  };
+
+  const closeMenu = () => {
+    wrapper.classList.remove("is-open");
+    trigger.setAttribute("aria-expanded", "false");
+    if (wrapper._menuPortal) {
+      wrapper._menuPortal.remove();
+      wrapper._menuPortal = null;
+    }
+  };
+
+  const getSelectedValueSet = () => new Set(selectedItems.map((item) => getOptionValue(item)));
+
+  const setSelectedItems = (items = []) => {
+    selectedItems = normalizeSelected(items);
+    renderTrigger();
+  };
+
+  const openMenu = () => {
+    closeOpenWorkOrderStatusMenus(wrapper);
+    if (wrapper._menuPortal) {
+      return;
+    }
+
+    searchQuery = "";
+    const menu = document.createElement("div");
+    menu.className = "work-item-status-menu work-item-status-menu-portal work-order-quick-picker-menu-portal";
+    menu.setAttribute("role", "dialog");
+
+    ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
+      menu.addEventListener(eventName, (event) => event.stopPropagation());
+    });
+    menu.addEventListener("wheel", (event) => event.stopPropagation(), { passive: true });
+
+    const searchInput = document.createElement("input");
+    searchInput.type = "search";
+    searchInput.className = "work-order-quick-picker-search";
+    searchInput.placeholder = searchPlaceholder;
+    searchInput.autocomplete = "off";
+
+    const selection = document.createElement("div");
+    selection.className = "work-order-quick-picker-selection";
+
+    const optionsList = document.createElement("div");
+    optionsList.className = "work-order-quick-picker-options";
+
+    const clearButton = document.createElement("button");
+    clearButton.type = "button";
+    clearButton.className = "ghost-button work-order-quick-picker-clear";
+    clearButton.textContent = "Očisti";
+
+    const positionMenu = () => {
+      const triggerRect = trigger.getBoundingClientRect();
+      const menuRect = menu.getBoundingClientRect();
+      let left = triggerRect.left;
+      let top = triggerRect.bottom + 8;
+      if (left + menuRect.width > window.innerWidth - 12) {
+        left = Math.max(12, window.innerWidth - menuRect.width - 12);
+      }
+      if (top + menuRect.height > window.innerHeight - 12) {
+        top = Math.max(12, triggerRect.top - menuRect.height - 8);
+      }
+      menu.style.left = `${Math.round(left)}px`;
+      menu.style.top = `${Math.round(top)}px`;
+      menu.style.minWidth = `${Math.max(280, Math.round(triggerRect.width))}px`;
+    };
+
+    const renderSelection = () => {
+      selection.replaceChildren();
+      if (selectedItems.length === 0) {
+        const empty = document.createElement("span");
+        empty.className = "work-order-quick-picker-selection-empty";
+        empty.textContent = placeholder;
+        selection.append(empty);
+        return;
+      }
+
+      selectedItems.forEach((item) => {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "work-order-quick-picker-chip";
+        chip.textContent = getOptionLabel(item);
+        chip.addEventListener("click", (event) => {
+          event.stopPropagation();
+          setSelectedItems(selectedItems.filter((entry) => getOptionValue(entry) !== getOptionValue(item)));
+          syncMenu();
+        });
+        selection.append(chip);
+      });
+    };
+
+    const renderOptions = () => {
+      optionsList.replaceChildren();
+      const selectedValues = getSelectedValueSet();
+      const options = getOptions(selectedItems)
+        .filter((option) => matchesOption(option, searchQuery));
+
+      if (options.length === 0) {
+        const empty = document.createElement("p");
+        empty.className = "work-order-quick-picker-empty";
+        empty.textContent = emptyText;
+        optionsList.append(empty);
+        return;
+      }
+
+      options.forEach((option) => {
+        const value = getOptionValue(option);
+        const isSelected = selectedValues.has(value);
+        const optionButton = document.createElement("button");
+        optionButton.type = "button";
+        optionButton.className = "work-item-status-option work-order-quick-picker-option";
+        optionButton.classList.toggle("is-selected", isSelected);
+        optionButton.setAttribute("role", "menuitemcheckbox");
+        optionButton.setAttribute("aria-checked", String(isSelected));
+
+        const copy = document.createElement("span");
+        copy.className = "work-order-quick-picker-option-copy";
+        const label = document.createElement("strong");
+        label.textContent = getOptionLabel(option);
+        const metaText = getOptionMeta(option);
+        copy.append(label);
+        if (metaText) {
+          const meta = document.createElement("small");
+          meta.textContent = metaText;
+          copy.append(meta);
+        }
+
+        const marker = document.createElement("span");
+        marker.className = "work-order-quick-picker-marker";
+        marker.textContent = isSelected ? "✓" : "+";
+
+        if (typeof renderOptionLeading === "function") {
+          const leading = renderOptionLeading(option);
+          if (leading) {
+            optionButton.classList.add("has-leading");
+            optionButton.append(leading);
+          }
+        }
+        optionButton.append(copy, marker);
+        optionButton.addEventListener("click", (event) => {
+          event.stopPropagation();
+          const nextItems = isSelected
+            ? selectedItems.filter((item) => getOptionValue(item) !== value)
+            : [...selectedItems, option];
+          setSelectedItems(nextItems);
+          syncMenu();
+          searchInput.focus({ preventScroll: true });
+        });
+        optionsList.append(optionButton);
+      });
+    };
+
+    const syncMenu = () => {
+      renderSelection();
+      renderOptions();
+      clearButton.disabled = selectedItems.length === 0;
+      requestAnimationFrame(positionMenu);
+    };
+
+    clearButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      setSelectedItems([]);
+      syncMenu();
+      searchInput.focus({ preventScroll: true });
+    });
+    searchInput.addEventListener("input", () => {
+      searchQuery = searchInput.value || "";
+      syncMenu();
+    });
+    searchInput.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeMenu();
+        trigger.focus({ preventScroll: true });
+      }
+    });
+
+    menu.append(searchInput, selection, optionsList, clearButton);
+    document.body.append(menu);
+    wrapper._menuPortal = menu;
+    wrapper.classList.add("is-open");
+    trigger.setAttribute("aria-expanded", "true");
+    syncMenu();
+    requestAnimationFrame(() => {
+      positionMenu();
+      searchInput.focus({ preventScroll: true });
+    });
+  };
+
+  wrapper._closeMenu = closeMenu;
+  ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
+    wrapper.addEventListener(eventName, (event) => event.stopPropagation());
+  });
+  trigger.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (wrapper.classList.contains("is-open")) {
+      closeMenu();
+      return;
+    }
+    openMenu();
+  });
+
+  renderTrigger();
+  wrapper.append(hiddenInput, trigger);
+  return wrapper;
+}
+
+function createWorkOrderQuickServicePicker() {
+  return createWorkOrderQuickPicker({
+    name: "serviceItemsJson",
+    placeholder: "+ Usluge",
+    searchPlaceholder: "Traži uslugu...",
+    emptyText: "Nema usluga u katalogu za ovaj pojam.",
+    getOptions: (selectedItems) => getWorkOrderServiceCatalogOptions(selectedItems),
+    matchesOption: matchesWorkOrderServiceSearch,
+    getOptionValue: (option) => String(option?.id || option?.serviceId || `${option?.serviceCode || ""}::${option?.name || ""}`),
+    getOptionLabel: (option) => [option?.serviceCode, option?.name].filter(Boolean).join(" - ") || option?.name || "Usluga",
+    getOptionMeta: (option) => getServiceCatalogTypeLabel(getWorkOrderServiceType(option)),
+    getSelectedLabel: (items) => items.length === 1
+      ? (items[0]?.name || items[0]?.serviceCode || "1 usluga")
+      : `${items.length} usluga`,
+    normalizeSelected: (items) => getWorkOrderServiceItems({
+      serviceItems: items.map((item) => buildWorkOrderServiceItemSnapshot(item)),
+    }),
+    serializeSelected: (items) => getWorkOrderServiceItems({ serviceItems: items }),
+  });
+}
+
+function createWorkOrderQuickExecutorPicker() {
+  return createWorkOrderQuickPicker({
+    name: "executorsJson",
+    placeholder: "+ Izvršitelji",
+    searchPlaceholder: "Traži izvršitelja...",
+    emptyText: "Nema izvršitelja za ovaj pojam.",
+    getOptions: (selectedItems) => getWorkOrderExecutorOptions(selectedItems),
+    matchesOption: matchesWorkOrderExecutorSearch,
+    getOptionValue: (option) => String(option?.value || option?.label || ""),
+    getOptionLabel: (option) => String(option?.label || option?.value || ""),
+    getSelectedLabel: (items) => items.length === 1
+      ? String(items[0]?.label || items[0]?.value || "1 izvršitelj")
+      : `${items.length} izvršitelja`,
+    normalizeSelected: (items) => normalizeWorkOrderExecutorValues(items.map((item) => (
+      typeof item === "string" ? item : (item?.value || item?.label || "")
+    ))).map((value) => ({
+      value,
+      label: value,
+      user: findUserForExecutor(value),
+    })),
+    serializeSelected: (items) => normalizeWorkOrderExecutorValues(items.map((item) => (
+      typeof item === "string" ? item : (item?.value || item?.label || "")
+    ))),
+    renderOptionLeading: (option) => createWorkOrderMiniExecutor(option, {
+      className: "work-order-calendar-executor-option-avatar",
+    }),
+  });
+}
+
 function getWorkOrderQuickCompanyOptions() {
   return [
     { value: "", label: "Odaberi tvrtku" },
@@ -89387,9 +89797,14 @@ function getWorkOrderQuickLocationOptions(companyId = "") {
 function buildQuickWorkOrderPayload(form) {
   const formData = new FormData(form);
   const location = getLocation(formData.get("locationId"));
-  const serviceLine = String(formData.get("serviceLine") || "").trim();
+  const serviceItems = getWorkOrderServiceItems({
+    serviceItems: readWorkOrderQuickJsonValue(formData, "serviceItemsJson", []),
+  });
+  const executors = normalizeWorkOrderExecutorValues(
+    readWorkOrderQuickJsonValue(formData, "executorsJson", []),
+  );
+  const serviceLine = getWorkOrderServiceSummary({ serviceItems });
   const contactName = String(formData.get("contactName") || "").trim();
-  const tagText = String(formData.get("tagText") || "").trim();
 
   return {
     status: String(formData.get("status") || "Otvoreni RN"),
@@ -89405,11 +89820,11 @@ function buildQuickWorkOrderPayload(form) {
     contactName,
     contactPhone: "",
     contactEmail: "",
-    executors: [],
-    executor1: "",
-    executor2: "",
+    executors,
+    executor1: executors[0] || "",
+    executor2: executors[1] || "",
     measurementSheet: null,
-    serviceItems: [],
+    serviceItems,
     trainingContext: { name: "", role: "", phone: "", email: "" },
     serviceLine,
     department: "",
@@ -89417,7 +89832,7 @@ function buildQuickWorkOrderPayload(form) {
     weight: "",
     completedBy: "",
     invoiceDate: "",
-    tagText,
+    tagText: "",
     description: serviceLine,
     invoiceNote: "",
   };
@@ -89444,10 +89859,10 @@ function createWorkOrderQuickCreateRow(columnLayout = [], isExpanded = false) {
   companySelect.setAttribute("aria-required", "true");
   const locationSelect = createWorkOrderQuickSelect("locationId", getWorkOrderQuickLocationOptions(""));
   locationSelect.disabled = true;
-  const dueDateInput = createWorkOrderQuickInput("dueDate", "dd.mm.yyyy");
-  const serviceInput = createWorkOrderQuickInput("serviceLine", "Usluga ili kratki opis");
+  const dueDateInput = createWorkOrderQuickDateInput("dueDate", "dd.mm.yyyy");
+  const servicePicker = createWorkOrderQuickServicePicker();
+  const executorPicker = createWorkOrderQuickExecutorPicker();
   const contactInput = createWorkOrderQuickInput("contactName", "Kontakt");
-  const tagInput = createWorkOrderQuickInput("tagText", "Tagovi");
 
   companySelect.addEventListener("change", () => {
     replaceSelectOptions(locationSelect, getWorkOrderQuickLocationOptions(companySelect.value), "");
@@ -89455,7 +89870,17 @@ function createWorkOrderQuickCreateRow(columnLayout = [], isExpanded = false) {
   });
 
   const statusSelect = createWorkOrderQuickSelect("status", WORK_ORDER_STATUS_OPTIONS, "Otvoreni RN");
-  const prioritySelect = createWorkOrderQuickSelect("priority", PRIORITY_OPTIONS, "Normal");
+  const hasServiceColumn = columnLayout.some((column) => column.key === "service");
+  const deferredCell = (() => {
+    const cell = document.createElement("div");
+    cell.className = "work-order-quick-cell work-order-quick-deferred";
+    const label = document.createElement("label");
+    label.textContent = "Kasnije";
+    const text = document.createElement("span");
+    text.textContent = "Prioritet i tagovi";
+    cell.append(label, text);
+    return cell;
+  })();
 
   const cellsByKey = {
     select: (() => {
@@ -89471,10 +89896,10 @@ function createWorkOrderQuickCreateRow(columnLayout = [], isExpanded = false) {
     client: createWorkOrderQuickControl("Tvrtka", companySelect),
     location: createWorkOrderQuickControl("Lokacija", locationSelect),
     contact: createWorkOrderQuickControl("Kontakt", contactInput),
-    service: createWorkOrderQuickControl("Usluga", serviceInput),
+    service: createWorkOrderQuickControl("Usluge", servicePicker),
     billing: createWorkOrderQuickControl("Rok", dueDateInput),
-    priorityTags: createWorkOrderQuickControl("Prioritet", prioritySelect),
-    executors: createWorkOrderQuickControl("Tag", tagInput),
+    priorityTags: hasServiceColumn ? deferredCell : createWorkOrderQuickControl("Usluge", servicePicker),
+    executors: createWorkOrderQuickControl("Izvršitelji", executorPicker),
     actions: (() => {
       const cell = document.createElement("div");
       cell.className = "work-order-quick-cell";
@@ -98037,7 +98462,9 @@ document.addEventListener("click", (event) => {
       || targetElement?.closest(".work-order-calendar-executor-picker")
       || targetElement?.closest(".work-order-calendar-executor-menu-portal")
       || targetElement?.closest(".work-order-service-picker")
-      || targetElement?.closest(".work-order-service-picker-menu-portal"),
+      || targetElement?.closest(".work-order-service-picker-menu-portal")
+      || targetElement?.closest(".work-order-quick-picker")
+      || targetElement?.closest(".work-order-quick-picker-menu-portal"),
     );
 
     if (!clickedStatusMenu) {
@@ -98204,6 +98631,7 @@ document.addEventListener("scroll", (event) => {
       target.closest(".work-order-calendar-executor-menu-portal")
       || target.closest(".work-item-status-menu-portal")
       || target.closest(".work-order-service-picker-menu-portal")
+      || target.closest(".work-order-quick-picker-menu-portal")
       || target.closest(".vehicle-reservation-assignees-dropdown")
       || target.closest(".todo-invited-dropdown")
     )

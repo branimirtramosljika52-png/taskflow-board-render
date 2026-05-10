@@ -2242,7 +2242,7 @@ async function generatePdfFileEntriesForTemplateEntries(entries = [], scopedSnap
   const usedNames = new Set();
   const concurrency = Math.max(
     1,
-    Math.min(3, Number(process.env.DOCUMENT_TEMPLATE_PDF_ZIP_CONCURRENCY) || 2),
+    Math.min(3, Number(process.env.DOCUMENT_TEMPLATE_PDF_ZIP_CONCURRENCY) || 1),
   );
 
   const pdfFiles = await mapWithConcurrency(entries, concurrency, async (entry, entryIndex) => {
@@ -2899,7 +2899,10 @@ function stripStoredDocumentPayloadForResponse(document = null) {
 
 async function saveGeneratedDocumentTemplatePdfDocuments(entries = [], scopedSnapshot = {}, user = null) {
   const workOrders = scopedSnapshot.workOrders ?? [];
-  const pdfFiles = await generatePdfFileEntriesForTemplateEntries(entries, scopedSnapshot);
+  const pdfFiles = [];
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    pdfFiles.push(...await generatePdfFileEntriesForTemplateEntries([entry], scopedSnapshot));
+  }
   const savedItems = [];
 
   for (const pdfFile of pdfFiles) {
