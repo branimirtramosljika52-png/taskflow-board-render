@@ -96,6 +96,8 @@ test("docx export renders signature group placeholders as visible signature bloc
   assert.match(outputXml, /Ana Savanovic/);
   assert.match(outputXml, /Digitalni potpis/);
   assert.match(outputXml, /______________________________/);
+  assert.equal((outputXml.match(/<w:gridCol w:w="4680"\/>/g) || []).length, 1);
+  assert.equal((outputXml.match(/<w:tc>/g) || []).length, 1);
 });
 
 test("docx export embeds scan signature images in signature group placeholders", async () => {
@@ -129,7 +131,52 @@ test("docx export embeds scan signature images in signature group placeholders",
   assert.equal(outputXml.includes("{{POTPISI}}"), false);
   assert.match(outputXml, /<w:drawing>/);
   assert.match(outputXml, /r:embed="rId\d+"/);
+  assert.equal((outputXml.match(/<w:gridCol w:w="4680"\/>/g) || []).length, 1);
+  assert.equal((outputXml.match(/<w:tc>/g) || []).length, 1);
   assert.match(relsXml, /relationships\/image/);
+  assert.ok(outputZip.file("word/media/safenexus-signature-1.png"));
+});
+
+test("docx export keeps a single scan signature inside a narrow template cell", async () => {
+  const signaturePngDataUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGOSHzRgQAAAABJRU5ErkJggg==";
+  const templateBuffer = buildMinimalDocxBuffer(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:body>
+        <w:tbl>
+          <w:tblPr><w:tblW w:w="5103" w:type="dxa"/></w:tblPr>
+          <w:tblGrid><w:gridCol w:w="5103"/></w:tblGrid>
+          <w:tr>
+            <w:tc>
+              <w:tcPr><w:tcW w:w="5103" w:type="dxa"/></w:tcPr>
+              <w:p><w:r><w:t>{{POTPISI}}</w:t></w:r></w:p>
+            </w:tc>
+          </w:tr>
+        </w:tbl>
+        <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>
+      </w:body>
+    </w:document>`);
+
+  const outputBuffer = await buildDocxFromTemplateBuffer(templateBuffer, {
+    POTPISI: {
+      __docxBlockType: "signature_group",
+      items: [
+        {
+          role: "Nositelj ovlastenja",
+          name: "Ana Savanovic",
+          signatureMode: "scan",
+          signatureImageUrl: signaturePngDataUrl,
+        },
+      ],
+    },
+  });
+  const outputZip = new PizZip(outputBuffer);
+  const outputXml = outputZip.file("word/document.xml").asText();
+
+  assert.equal(outputXml.includes("{{POTPISI}}"), false);
+  assert.match(outputXml, /Ana Savanovic/);
+  assert.match(outputXml, /<w:drawing>/);
+  assert.equal(outputXml.includes('<w:gridCol w:w="4680"/><w:gridCol w:w="4680"/>'), false);
+  assert.equal((outputXml.match(/<w:gridCol w:w="4680"\/>/g) || []).length, 1);
   assert.ok(outputZip.file("word/media/safenexus-signature-1.png"));
 });
 

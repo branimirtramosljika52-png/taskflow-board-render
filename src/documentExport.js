@@ -1566,13 +1566,14 @@ function buildWordTableXml(table = {}) {
   `.replace(/\n\s+/g, "");
 }
 
-function buildWordSignatureCellXml(item = null, zip = null, context = {}, xmlFileName = "word/document.xml") {
+function buildWordSignatureCellXml(item = null, zip = null, context = {}, xmlFileName = "word/document.xml", options = {}) {
+  const cellWidth = Math.max(2400, Number(options.width) || 4680);
   const emptyParagraph = buildWordParagraphXml("", { spacingAfter: 0 });
   if (!item) {
     return `
       <w:tc>
         <w:tcPr>
-          <w:tcW w:w="4680" w:type="dxa"/>
+          <w:tcW w:w="${cellWidth}" w:type="dxa"/>
           <w:vAlign w:val="top"/>
           <w:tcBorders>
             <w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/>
@@ -1602,7 +1603,7 @@ function buildWordSignatureCellXml(item = null, zip = null, context = {}, xmlFil
   return `
     <w:tc>
       <w:tcPr>
-        <w:tcW w:w="4680" w:type="dxa"/>
+        <w:tcW w:w="${cellWidth}" w:type="dxa"/>
         <w:vAlign w:val="top"/>
         <w:tcMar>
           <w:top w:w="90" w:type="dxa"/><w:left w:w="90" w:type="dxa"/><w:bottom w:w="90" w:type="dxa"/><w:right w:w="90" w:type="dxa"/>
@@ -1629,22 +1630,35 @@ function buildWordSignatureGroupXml(items = [], zip = null, context = {}, xmlFil
   }
 
   const rows = [];
-  for (let index = 0; index < safeItems.length; index += 2) {
-    const rowItems = safeItems.slice(index, index + 2);
-    const leftItem = rowItems.length === 1 ? null : rowItems[0];
-    const rightItem = rowItems.length === 1 ? rowItems[0] : rowItems[1];
+  const singleColumn = safeItems.length === 1;
+  const columnWidth = 4680;
+  const columnCount = singleColumn ? 1 : 2;
+  const tableWidth = columnWidth * columnCount;
+
+  if (singleColumn) {
     rows.push(`
       <w:tr>
-        ${buildWordSignatureCellXml(leftItem, zip, context, xmlFileName)}
-        ${buildWordSignatureCellXml(rightItem, zip, context, xmlFileName)}
+        ${buildWordSignatureCellXml(safeItems[0], zip, context, xmlFileName, { width: columnWidth })}
       </w:tr>
     `.replace(/\n\s+/g, ""));
+  } else {
+    for (let index = 0; index < safeItems.length; index += 2) {
+      const rowItems = safeItems.slice(index, index + 2);
+      rows.push(`
+        <w:tr>
+          ${buildWordSignatureCellXml(rowItems[0], zip, context, xmlFileName, { width: columnWidth })}
+          ${buildWordSignatureCellXml(rowItems[1] || null, zip, context, xmlFileName, { width: columnWidth })}
+        </w:tr>
+      `.replace(/\n\s+/g, ""));
+    }
   }
+  const gridXml = Array.from({ length: columnCount }, () => `<w:gridCol w:w="${columnWidth}"/>`).join("");
 
   return `
     <w:tbl>
       <w:tblPr>
-        <w:tblW w:w="9360" w:type="dxa"/>
+        <w:tblW w:w="${tableWidth}" w:type="dxa"/>
+        <w:jc w:val="right"/>
         <w:tblLayout w:type="fixed"/>
         <w:tblCellMar>
           <w:top w:w="0" w:type="dxa"/><w:left w:w="0" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="0" w:type="dxa"/>
@@ -1654,8 +1668,7 @@ function buildWordSignatureGroupXml(items = [], zip = null, context = {}, xmlFil
         </w:tblBorders>
       </w:tblPr>
       <w:tblGrid>
-        <w:gridCol w:w="4680"/>
-        <w:gridCol w:w="4680"/>
+        ${gridXml}
       </w:tblGrid>
       ${rows.join("")}
     </w:tbl>
