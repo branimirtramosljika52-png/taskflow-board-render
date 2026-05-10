@@ -1783,6 +1783,144 @@ const DOCX_IMAGE_REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/20
 const DOCX_SIGNATURE_IMAGE_WIDTH_EMU = 1905000;
 const DOCX_SIGNATURE_IMAGE_HEIGHT_EMU = 571500;
 
+function readUInt24LE(buffer, offset) {
+  if (!Buffer.isBuffer(buffer) || offset + 2 >= buffer.length) {
+    return null;
+  }
+
+  return buffer[offset] | (buffer[offset + 1] << 8) | (buffer[offset + 2] << 16);
+}
+
+function readPngDimensions(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 24) {
+    return null;
+  }
+
+  const isPng = buffer[0] === 0x89
+    && buffer[1] === 0x50
+    && buffer[2] === 0x4e
+    && buffer[3] === 0x47
+    && buffer[4] === 0x0d
+    && buffer[5] === 0x0a
+    && buffer[6] === 0x1a
+    && buffer[7] === 0x0a;
+
+  if (!isPng) {
+    return null;
+  }
+
+  return {
+    width: buffer.readUInt32BE(16),
+    height: buffer.readUInt32BE(20),
+  };
+}
+
+function readJpegDimensions(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 4 || buffer[0] !== 0xff || buffer[1] !== 0xd8) {
+    return null;
+  }
+
+  let offset = 2;
+  while (offset + 9 < buffer.length) {
+    if (buffer[offset] !== 0xff) {
+      offset += 1;
+      continue;
+    }
+
+    const marker = buffer[offset + 1];
+    const segmentLength = buffer.readUInt16BE(offset + 2);
+    const isSofMarker = (marker >= 0xc0 && marker <= 0xc3)
+      || (marker >= 0xc5 && marker <= 0xc7)
+      || (marker >= 0xc9 && marker <= 0xcb)
+      || (marker >= 0xcd && marker <= 0xcf);
+
+    if (isSofMarker && segmentLength >= 7) {
+      return {
+        height: buffer.readUInt16BE(offset + 5),
+        width: buffer.readUInt16BE(offset + 7),
+      };
+    }
+
+    if (!Number.isFinite(segmentLength) || segmentLength < 2) {
+      break;
+    }
+    offset += 2 + segmentLength;
+  }
+
+  return null;
+}
+
+function readWebpDimensions(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 30) {
+    return null;
+  }
+
+  if (buffer.toString("ascii", 0, 4) !== "RIFF" || buffer.toString("ascii", 8, 12) !== "WEBP") {
+    return null;
+  }
+
+  const chunkType = buffer.toString("ascii", 12, 16);
+  if (chunkType === "VP8X") {
+    const widthMinusOne = readUInt24LE(buffer, 24);
+    const heightMinusOne = readUInt24LE(buffer, 27);
+    if (widthMinusOne !== null && heightMinusOne !== null) {
+      return {
+        width: widthMinusOne + 1,
+        height: heightMinusOne + 1,
+      };
+    }
+  }
+
+  if (chunkType === "VP8 " && buffer.length >= 30) {
+    return {
+      width: buffer.readUInt16LE(26) & 0x3fff,
+      height: buffer.readUInt16LE(28) & 0x3fff,
+    };
+  }
+
+  if (chunkType === "VP8L" && buffer.length >= 25 && buffer[20] === 0x2f) {
+    const bits = buffer.readUInt32LE(21);
+    return {
+      width: (bits & 0x3fff) + 1,
+      height: ((bits >> 14) & 0x3fff) + 1,
+    };
+  }
+
+  return null;
+}
+
+function getRasterImageDimensions(buffer, mimeType = "") {
+  const normalized = clean(mimeType).toLowerCase();
+  const dimensions = normalized.includes("png")
+    ? readPngDimensions(buffer)
+    : normalized.includes("jpeg") || normalized.includes("jpg")
+      ? readJpegDimensions(buffer)
+      : normalized.includes("webp")
+        ? readWebpDimensions(buffer)
+        : (readPngDimensions(buffer) || readJpegDimensions(buffer) || readWebpDimensions(buffer));
+
+  if (!dimensions || !Number.isFinite(dimensions.width) || !Number.isFinite(dimensions.height) || dimensions.width <= 0 || dimensions.height <= 0) {
+    return null;
+  }
+
+  return dimensions;
+}
+
+function fitImageDimensionsToEmuBox(dimensions, maxWidthEmu, maxHeightEmu) {
+  if (!dimensions) {
+    return {
+      widthEmu: maxWidthEmu,
+      heightEmu: maxHeightEmu,
+    };
+  }
+
+  const scale = Math.min(maxWidthEmu / dimensions.width, maxHeightEmu / dimensions.height);
+  return {
+    widthEmu: Math.max(1, Math.round(dimensions.width * scale)),
+    heightEmu: Math.max(1, Math.round(dimensions.height * scale)),
+  };
+}
+
 function escapeXmlAttribute(value = "") {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -1933,9 +2071,17 @@ function addDocxSignatureImage(zip, xmlFileName, item = {}, context = {}) {
     return null;
   }
 
+  const fittedSize = fitImageDimensionsToEmuBox(
+    getRasterImageDimensions(imageData.buffer, imageData.mimeType),
+    DOCX_SIGNATURE_IMAGE_WIDTH_EMU,
+    DOCX_SIGNATURE_IMAGE_HEIGHT_EMU,
+  );
+
   return {
     rId,
     docPrId: context.docPrCounter,
+    widthEmu: fittedSize.widthEmu,
+    heightEmu: fittedSize.heightEmu,
   };
 }
 
@@ -1945,6 +2091,8 @@ function buildWordSignatureImageXml(imageRef = null, item = {}) {
   }
 
   const safeName = escapeXmlAttribute(`Scan potpisa ${clean(item.name) || "potpisnik"}`);
+  const widthEmu = Math.max(1, Number(imageRef.widthEmu) || DOCX_SIGNATURE_IMAGE_WIDTH_EMU);
+  const heightEmu = Math.max(1, Number(imageRef.heightEmu) || DOCX_SIGNATURE_IMAGE_HEIGHT_EMU);
   return `
     <w:p>
       <w:pPr>
@@ -1954,7 +2102,7 @@ function buildWordSignatureImageXml(imageRef = null, item = {}) {
       <w:r>
         <w:drawing>
           <wp:inline distT="0" distB="0" distL="0" distR="0">
-            <wp:extent cx="${DOCX_SIGNATURE_IMAGE_WIDTH_EMU}" cy="${DOCX_SIGNATURE_IMAGE_HEIGHT_EMU}"/>
+            <wp:extent cx="${widthEmu}" cy="${heightEmu}"/>
             <wp:effectExtent l="0" t="0" r="0" b="0"/>
             <wp:docPr id="${Number(imageRef.docPrId) || 1001}" name="${safeName}"/>
             <wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr>
@@ -1972,7 +2120,7 @@ function buildWordSignatureImageXml(imageRef = null, item = {}) {
                   <pic:spPr>
                     <a:xfrm>
                       <a:off x="0" y="0"/>
-                      <a:ext cx="${DOCX_SIGNATURE_IMAGE_WIDTH_EMU}" cy="${DOCX_SIGNATURE_IMAGE_HEIGHT_EMU}"/>
+                      <a:ext cx="${widthEmu}" cy="${heightEmu}"/>
                     </a:xfrm>
                     <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
                   </pic:spPr>

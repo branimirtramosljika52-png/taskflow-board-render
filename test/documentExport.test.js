@@ -131,6 +131,9 @@ test("docx export embeds scan signature images in signature group placeholders",
   assert.equal(outputXml.includes("{{POTPISI}}"), false);
   assert.match(outputXml, /<w:drawing>/);
   assert.match(outputXml, /r:embed="rId\d+"/);
+  const extentMatch = outputXml.match(/<wp:extent cx="(\d+)" cy="(\d+)"\/>/);
+  assert.ok(extentMatch);
+  assert.equal(extentMatch[1], extentMatch[2]);
   assert.equal((outputXml.match(/<w:gridCol w:w="4680"\/>/g) || []).length, 1);
   assert.equal((outputXml.match(/<w:tc>/g) || []).length, 1);
   assert.match(relsXml, /relationships\/image/);
