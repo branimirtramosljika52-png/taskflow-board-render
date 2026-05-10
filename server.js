@@ -474,10 +474,10 @@ function mapOpenWeatherForecastItem(item = {}) {
 function getOpenWeatherForecastItems(payload = {}) {
   const list = Array.isArray(payload.list) ? payload.list : [];
   return list
-    .slice(0, 16)
+    .slice(0, 24)
     .map(mapOpenWeatherForecastItem)
     .filter((item) => item.time)
-    .slice(0, 8);
+    .slice(0, 16);
 }
 
 function buildOpenWeatherAlerts(current = {}, forecast = []) {

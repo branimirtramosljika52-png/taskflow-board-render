@@ -22440,7 +22440,7 @@ function renderWeatherForecast() {
   }
   weatherForecast.replaceChildren();
   const activeItem = getActiveWeatherItem();
-  const entries = Array.isArray(activeItem?.forecast) ? activeItem.forecast.slice(0, 8) : [];
+  const entries = Array.isArray(activeItem?.forecast) ? activeItem.forecast.slice(0, 16) : [];
   if (!entries.length) {
     return;
   }
@@ -22448,9 +22448,9 @@ function renderWeatherForecast() {
   head.className = "weather-forecast-head";
   const title = document.createElement("div");
   title.className = "weather-forecast-title";
-  title.textContent = "Satna linija";
+  title.textContent = "Prognoza unaprijed";
   const meta = document.createElement("span");
-  meta.textContent = "Dani i termini složeni redom za brzi pregled.";
+  meta.textContent = "Do 48 sati u 3-satnim koracima.";
   head.append(title, meta);
 
   const strip = document.createElement("div");

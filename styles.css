@@ -1587,12 +1587,12 @@ fieldset {
 }
 
 .weather-current-metrics span {
-  padding: 7px 10px;
+  padding: 6px 9px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.14);
   border: 1px solid rgba(255, 255, 255, 0.18);
   color: rgba(255, 255, 255, 0.88);
-  font-size: 0.74rem;
+  font-size: 0.7rem;
   font-weight: 700;
 }
 
@@ -1605,7 +1605,7 @@ fieldset {
 }
 
 .weather-temp-value {
-  font-size: clamp(3.5rem, 7vw, 5rem);
+  font-size: clamp(2.85rem, 4.2vw, 4rem);
   line-height: 0.92;
   font-weight: 300;
   letter-spacing: 0;
@@ -1613,7 +1613,7 @@ fieldset {
 
 .weather-feels {
   color: rgba(255, 255, 255, 0.72);
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   font-weight: 700;
 }
 
@@ -1829,10 +1829,12 @@ fieldset {
 }
 
 .weather-panel {
-  width: min(760px, calc(100vw - 28px));
-  gap: 14px;
-  padding: 16px;
-  border-radius: 28px;
+  width: min(980px, calc(100vw - 28px));
+  max-height: none;
+  gap: 9px;
+  overflow: visible;
+  padding: 12px;
+  border-radius: 24px;
   border-color: rgba(178, 202, 236, 0.92);
   background:
     radial-gradient(circle at 9% 6%, rgba(125, 211, 252, 0.3), transparent 28%),
@@ -1857,7 +1859,7 @@ fieldset {
 }
 
 .weather-panel-head {
-  padding: 2px 2px 0;
+  padding: 0 2px;
 }
 
 .weather-panel-head strong {
@@ -1877,11 +1879,11 @@ fieldset {
 }
 
 .weather-hero {
-  min-height: 236px;
-  padding: 20px;
-  border-radius: 26px;
+  min-height: 154px;
+  padding: 14px 16px;
+  border-radius: 22px;
   border: 1px solid rgba(255, 255, 255, 0.32);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 20px 40px rgba(15, 23, 42, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 14px 28px rgba(15, 23, 42, 0.12);
 }
 
 .weather-hero::before,
@@ -1893,19 +1895,19 @@ fieldset {
 }
 
 .weather-hero::before {
-  width: 220px;
-  height: 220px;
-  right: -74px;
-  top: -86px;
+  width: 170px;
+  height: 170px;
+  right: -54px;
+  top: -70px;
   background: rgba(255, 255, 255, 0.16);
   filter: blur(2px);
 }
 
 .weather-hero::after {
-  width: 160px;
-  height: 160px;
-  left: -76px;
-  bottom: -92px;
+  width: 120px;
+  height: 120px;
+  left: -58px;
+  bottom: -74px;
   background: rgba(255, 255, 255, 0.12);
 }
 
@@ -1917,7 +1919,13 @@ fieldset {
 
 .weather-description strong {
   max-width: 26rem;
+  font-size: clamp(1.35rem, 2vw, 2rem);
   text-wrap: balance;
+}
+
+.weather-description p {
+  max-width: 34rem;
+  font-size: 0.76rem;
 }
 
 .weather-current-metrics span {
@@ -1937,7 +1945,7 @@ fieldset {
 
 .weather-city-form input {
   width: 100%;
-  height: 42px;
+  height: 36px;
   border-radius: 16px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 250, 255, 0.96));
@@ -1945,8 +1953,8 @@ fieldset {
 }
 
 .weather-add-button {
-  height: 42px;
-  border-radius: 16px;
+  height: 36px;
+  border-radius: 14px;
   color: #0f3a78;
   background: linear-gradient(180deg, #ffffff, #eef6ff);
 }
@@ -2025,11 +2033,11 @@ fieldset {
 }
 
 .weather-city-list {
-  gap: 9px;
+  gap: 6px;
 }
 
 .weather-city-chip {
-  min-height: 36px;
+  min-height: 30px;
   background: rgba(255, 255, 255, 0.74);
   box-shadow: 0 8px 18px rgba(31, 62, 111, 0.08);
 }
@@ -2043,7 +2051,7 @@ fieldset {
 }
 
 .weather-forecast {
-  gap: 9px;
+  gap: 7px;
   min-width: 0;
 }
 
@@ -2063,22 +2071,21 @@ fieldset {
 
 .weather-forecast-strip {
   display: grid;
-  grid-auto-columns: minmax(118px, 1fr);
-  grid-auto-flow: column;
-  gap: 9px;
-  overflow-x: auto;
-  padding: 2px 2px 8px;
-  scrollbar-width: thin;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  grid-auto-flow: row;
+  gap: 7px;
+  overflow: visible;
+  padding: 1px;
 }
 
 .weather-forecast-card {
-  min-height: 156px;
+  min-height: 102px;
   display: grid;
   align-content: start;
   justify-items: start;
-  gap: 7px;
-  padding: 12px;
-  border-radius: 20px;
+  gap: 4px;
+  padding: 8px;
+  border-radius: 16px;
   border: 1px solid rgba(205, 219, 239, 0.9);
   background:
     radial-gradient(circle at 78% 8%, rgba(125, 211, 252, 0.2), transparent 34%),
@@ -2094,14 +2101,14 @@ fieldset {
 }
 
 .weather-forecast-card .weather-mini-icon {
-  width: 31px;
-  height: 31px;
-  margin-top: 2px;
+  width: 24px;
+  height: 24px;
+  margin-top: 0;
 }
 
 .weather-forecast-day {
   color: #64748b;
-  font-size: 0.68rem;
+  font-size: 0.6rem;
   font-weight: 900;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -2109,31 +2116,31 @@ fieldset {
 
 .weather-forecast-hour {
   color: #14223c;
-  font-size: 1rem;
+  font-size: 0.84rem;
   line-height: 1;
 }
 
 .weather-forecast-description {
-  min-height: 30px;
+  min-height: 24px;
   color: #475569;
-  font-size: 0.74rem;
-  line-height: 1.25;
+  font-size: 0.66rem;
+  line-height: 1.18;
 }
 
 .weather-forecast-card .weather-forecast-temp {
   color: #1d4ed8;
-  font-size: 1.24rem;
+  font-size: 1rem;
   font-weight: 900;
   line-height: 1;
 }
 
 .weather-forecast-wind {
   margin-top: auto;
-  padding: 5px 7px;
+  padding: 4px 6px;
   border-radius: 999px;
   background: rgba(226, 232, 240, 0.7);
   color: #52627a;
-  font-size: 0.67rem;
+  font-size: 0.59rem;
   font-weight: 800;
 }
 
@@ -2147,6 +2154,12 @@ fieldset {
   width: 168px;
   height: 132px;
   filter: drop-shadow(0 20px 32px rgba(4, 18, 38, 0.22));
+}
+
+.weather-hero .weather-visual-icon {
+  width: 108px;
+  height: 86px;
+  filter: drop-shadow(0 14px 24px rgba(4, 18, 38, 0.2));
 }
 
 .weather-halo,
@@ -2290,11 +2303,25 @@ fieldset {
   top: -6px;
 }
 
+.weather-hero .weather-visual-icon .weather-halo {
+  width: 96px;
+  height: 96px;
+  left: 8px;
+  top: -3px;
+}
+
 .weather-visual-icon .weather-rays {
   width: 120px;
   height: 120px;
   left: 24px;
   top: 4px;
+}
+
+.weather-hero .weather-visual-icon .weather-rays {
+  width: 82px;
+  height: 82px;
+  left: 15px;
+  top: 5px;
 }
 
 .weather-visual-icon .weather-sun {
@@ -2307,11 +2334,24 @@ fieldset {
   height: 62px;
 }
 
+.weather-hero .weather-visual-icon .weather-sun,
+.weather-hero .weather-visual-icon .weather-moon {
+  width: 46px;
+  height: 46px;
+}
+
 .weather-visual-icon .weather-cloud {
   width: 108px;
   height: 48px;
   left: 30px;
   bottom: 31px;
+}
+
+.weather-hero .weather-visual-icon .weather-cloud {
+  width: 76px;
+  height: 34px;
+  left: 18px;
+  bottom: 21px;
 }
 
 .weather-visual-icon .weather-cloud::before {
@@ -2321,11 +2361,25 @@ fieldset {
   top: -29px;
 }
 
+.weather-hero .weather-visual-icon .weather-cloud::before {
+  width: 38px;
+  height: 38px;
+  left: 14px;
+  top: -20px;
+}
+
 .weather-visual-icon .weather-cloud::after {
   width: 62px;
   height: 62px;
   right: 10px;
   top: -36px;
+}
+
+.weather-hero .weather-visual-icon .weather-cloud::after {
+  width: 43px;
+  height: 43px;
+  right: 8px;
+  top: -25px;
 }
 
 .weather-visual-icon .weather-rain {
@@ -2339,6 +2393,16 @@ fieldset {
     60px -5px 0 rgba(14, 165, 233, 0.82);
 }
 
+.weather-hero .weather-visual-icon .weather-rain {
+  left: 31px;
+  bottom: 6px;
+  height: 19px;
+  box-shadow:
+    14px -2px 0 #38bdf8,
+    28px 1px 0 #7dd3fc,
+    42px -3px 0 rgba(14, 165, 233, 0.82);
+}
+
 .weather-visual-icon .weather-snow {
   left: 42px;
   bottom: 14px;
@@ -2350,11 +2414,29 @@ fieldset {
     66px -5px 0 rgba(255, 255, 255, 0.86);
 }
 
+.weather-hero .weather-visual-icon .weather-snow {
+  left: 29px;
+  bottom: 9px;
+  width: 7px;
+  height: 7px;
+  box-shadow:
+    16px -2px 0 #ffffff,
+    32px 3px 0 #bae6fd,
+    48px -4px 0 rgba(255, 255, 255, 0.86);
+}
+
 .weather-visual-icon .weather-bolt {
   right: 28px;
   bottom: 8px;
   width: 32px;
   height: 50px;
+}
+
+.weather-hero .weather-visual-icon .weather-bolt {
+  right: 20px;
+  bottom: 5px;
+  width: 24px;
+  height: 36px;
 }
 
 .weather-visual-icon .weather-fog {
@@ -2366,6 +2448,17 @@ fieldset {
     0 13px 0 rgba(203, 213, 225, 0.92),
     0 26px 0 rgba(148, 163, 184, 0.72),
     0 39px 0 rgba(226, 232, 240, 0.52);
+}
+
+.weather-hero .weather-visual-icon .weather-fog {
+  left: 20px;
+  bottom: 16px;
+  width: 72px;
+  height: 3px;
+  box-shadow:
+    0 10px 0 rgba(203, 213, 225, 0.92),
+    0 20px 0 rgba(148, 163, 184, 0.72),
+    0 30px 0 rgba(226, 232, 240, 0.52);
 }
 
 .weather-visual-icon .weather-wind {
@@ -2627,9 +2720,9 @@ fieldset {
 }
 
 .weather-temp-block {
-  min-width: 184px;
-  padding: 12px;
-  border-radius: 26px;
+  min-width: 146px;
+  padding: 10px;
+  border-radius: 22px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.06));
   border: 1px solid rgba(255, 255, 255, 0.18);
   backdrop-filter: blur(12px);
@@ -21012,6 +21105,8 @@ body.is-resizing-work-order-column {
     left: auto;
     right: 0;
     width: min(100%, 640px);
+    max-height: calc(100vh - 76px);
+    overflow-y: auto;
   }
 
   .weather-hero {
@@ -21031,6 +21126,10 @@ body.is-resizing-work-order-column {
 
   .weather-forecast-row {
     grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .weather-forecast-strip {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .avatar-upload-row,
