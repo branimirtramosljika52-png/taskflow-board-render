@@ -20858,6 +20858,7 @@ function getWorkOrderIconMarkup(iconName) {
     collapse: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.25 2.75v3.5h-3.5M9.75 2.75v3.5h3.5M6.25 13.25v-3.5h-3.5M9.75 13.25v-3.5h3.5M6 6 3 3M10 6l3-3M6 10l-3 3M10 10l3 3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.15"/></svg>',
     folder: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 5.25h4l1.15-1.5h5.85v8.75a1 1 0 0 1-1 1h-10a1 1 0 0 1-1-1v-6.25a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.2"/><path d="M1.75 7h12.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.2"/></svg>',
     document: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.25h5l3 3v8.5H4zM9 2.25v3h3M5.5 8h5M5.5 10.5h5M5.5 13h3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
+    signature: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 12.5h10M3.5 9.75c1.1-.25 1.72-.88 2.15-2.15l.6-1.78c.25-.75 1.17-.98 1.73-.42.36.36.46.9.26 1.36L7.2 9.25c1.08-.28 1.94-.46 2.58-.54.72-.1 1.2.1 1.43.58.19.39.03.86-.35 1.07-.77.43-2.08.64-3.92.64H5.9c-.74 0-1.54-.43-2.4-1.25Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.15"/><path d="M10.75 3.75 12 5l2-2.25" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
     preview: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="3.75" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="m10 10 2.75 2.75" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.2"/></svg>',
     download: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.25v7.5M5.25 7.5 8 10.25 10.75 7.5M3 12.25h10" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
     mail: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.75 4.25h10.5v7.5H2.75zM3.25 4.75 8 8.5l4.75-3.75" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
@@ -24613,6 +24614,7 @@ function createDocumentLibraryEntry(input = {}) {
     updatedAtMs,
     updatedLabel,
     previewType,
+    signed: Boolean(input.signed),
     sourceTarget: input.sourceTarget ?? null,
     metaParts,
     canPreview: Boolean(href || exportPath || (workOrderId && documentId) || input.sourceTarget),
@@ -24716,11 +24718,13 @@ function createSavedWorkOrderDocumentLibraryEntry(documentItem = {}, context = {
     || `${slugifyValue(context.workOrderNumber || "zapisnik") || "zapisnik"}.pdf`;
   const categoryLabel = String(documentItem?.documentCategory || GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY).trim()
     || GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY;
+  const description = String(documentItem?.description || `${categoryLabel} za RN ${context.workOrderNumber || ""}`).trim();
+  const isSigned = /potpisano\s+scan\s+potpisom/i.test(description) || /scan\s+potpis/i.test(description);
 
   return createDocumentLibraryEntry({
     id: `${idPrefix}:${String(documentItem?.workOrderId || "")}:${String(documentItem?.id || "")}`,
     label: fileName,
-    description: String(documentItem?.description || `${categoryLabel} za RN ${context.workOrderNumber || ""}`).trim(),
+    description,
     fileName,
     fileType: documentItem?.fileType || "application/pdf",
     fileSize: documentItem?.fileSize || 0,
@@ -24730,8 +24734,10 @@ function createSavedWorkOrderDocumentLibraryEntry(documentItem = {}, context = {
     workOrderId: documentItem?.workOrderId || "",
     documentId: documentItem?.id || "",
     documentCategory: categoryLabel,
+    signed: isSigned,
     metaParts: [
       categoryLabel,
+      isSigned ? "Potpisano" : "",
       documentItem?.actorLabel || "",
       formatFileSize(documentItem?.fileSize || 0),
     ].filter(Boolean),
@@ -26274,6 +26280,14 @@ function renderDocumentsLibraryFolders(model = buildDocumentsLibraryViewModel())
       fileTitle.className = "documents-file-title";
       fileTitle.textContent = entry.label;
       fileTitleRow.append(fileTitle);
+      if (entry.signed) {
+        const signedBadge = document.createElement("span");
+        signedBadge.className = "documents-file-signed-badge";
+        signedBadge.title = "Dokument je potpisan scan potpisom";
+        signedBadge.setAttribute("aria-label", "Potpisano");
+        signedBadge.innerHTML = getWorkOrderIconMarkup("signature");
+        fileTitleRow.append(signedBadge);
+      }
       fileCopy.append(fileTitleRow);
 
       if (entry.description) {
@@ -26958,6 +26972,7 @@ async function loadDocumentsExplorerRecords({ force = false } = {}) {
     state.documentsExplorer.expandedLocationIds = new Set();
     state.documentsExplorer.expandedFolderIds = new Set();
     state.documentsExplorer.suppressDefaultExpansion = false;
+    renderNotifications();
   } catch (error) {
     state.documentsExplorer.error = error.message;
   } finally {
@@ -48926,6 +48941,8 @@ function buildDocumentTemplateQualifiedInspectorEntries(field = {}, context = {}
     field.signatureArea || "elektro",
   );
   return (allowMultiple ? users : users.slice(0, 1)).map((user) => {
+    const signerOib = String(user?.oib || "").trim();
+    const signerEmail = String(user?.email || "").trim();
     return {
       role: roleLabel,
       name: user.fullName || user.email || roleLabel,
@@ -48937,12 +48954,18 @@ function buildDocumentTemplateQualifiedInspectorEntries(field = {}, context = {}
       ),
       signatureImageUrl: signatureMethod === "scan" ? getUserSignatureScanDataUrl(user) : "",
       signatureMode: signatureMethod,
+      signerUserId: String(user?.id || "").trim(),
+      signerEmail,
+      signerOib,
+      digitalAnchor: signerOib || signerEmail || String(user?.fullName || "").trim(),
     };
   });
 }
 
 function buildDocumentTemplateSignatureEntry(field = {}, context = {}) {
   const signaturePreview = getDocumentTemplateSignaturePreviewData(field, context);
+  const signerOib = String(signaturePreview.user?.oib || "").trim();
+  const signerEmail = String(signaturePreview.user?.email || "").trim();
   return {
     role: field.type === "authorization_holder_signature" ? "Nositelj ovlaštenja" : "Ispitivač",
     name: signaturePreview.displayName || "Potpis",
@@ -48951,17 +48974,29 @@ function buildDocumentTemplateSignatureEntry(field = {}, context = {}) {
       : (signaturePreview.summary ? [signaturePreview.summary] : []),
     signatureImageUrl: signaturePreview.signatureImageUrl || "",
     signatureMode: signaturePreview.signatureMethod || "scan",
+    signerUserId: String(signaturePreview.user?.id || "").trim(),
+    signerEmail,
+    signerOib,
+    digitalAnchor: signerOib || signerEmail || String(signaturePreview.displayName || "").trim(),
   };
 }
 
 function buildDocumentTemplateDigitalSignatureEntries(field = {}, context = {}) {
-  return getDocumentTemplateDigitalSignatureEntries(field, context).map((entry) => ({
-    role: entry.role,
-    name: entry.user?.fullName || entry.user?.email || "Potpisnik",
-    metaLines: entry.metaLines ?? [],
-    signatureImageUrl: entry.signatureImageUrl || "",
-    signatureMode: entry.signatureMode || getDocumentTemplateContextSignatureMethod(context),
-  }));
+  return getDocumentTemplateDigitalSignatureEntries(field, context).map((entry) => {
+    const signerOib = String(entry.user?.oib || "").trim();
+    const signerEmail = String(entry.user?.email || "").trim();
+    return {
+      role: entry.role,
+      name: entry.user?.fullName || entry.user?.email || "Potpisnik",
+      metaLines: entry.metaLines ?? [],
+      signatureImageUrl: entry.signatureImageUrl || "",
+      signatureMode: entry.signatureMode || getDocumentTemplateContextSignatureMethod(context),
+      signerUserId: String(entry.user?.id || "").trim(),
+      signerEmail,
+      signerOib,
+      digitalAnchor: signerOib || signerEmail || String(entry.user?.fullName || "").trim(),
+    };
+  });
 }
 
 function buildDocumentTemplateSystemDescriptionWordPlaceholder(field = {}, context = {}, index = 0) {
@@ -50084,6 +50119,7 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
         : [savedEntry.item].filter(Boolean);
       savedItems.push(savedEntry);
       upsertDocumentsExplorerWorkOrderDocuments(savedDocuments);
+      renderNotifications();
       const savedTypes = new Set(savedDocuments.map((item) => String(item?.fileExtension || "").toLowerCase()));
       const savedLabel = savedTypes.has("docx") && savedTypes.has("pdf") ? "DOCX i PDF" : "PDF";
       setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
@@ -70480,6 +70516,9 @@ function getNotificationLevelLabel(level = "info") {
 }
 
 function getNotificationKindLabel(kind = "") {
+  if (kind === "document_signature") {
+    return "Potpis";
+  }
   if (kind === "todo_comment") {
     return "Komentar";
   }
@@ -71030,6 +71069,58 @@ function buildTodoCommentNotifications() {
     .filter(Boolean);
 }
 
+function buildDocumentSignatureNotifications() {
+  if (!state.user) {
+    return [];
+  }
+
+  const currentUser = state.users.find((item) => String(item?.id || "") === String(state.user?.id || ""))
+    ?? state.user
+    ?? {};
+  const identityTerms = [
+    currentUser.oib,
+    currentUser.email,
+    currentUser.fullName,
+    [currentUser.firstName, currentUser.lastName].filter(Boolean).join(" "),
+  ]
+    .map((value) => normalizeLooseName(value || ""))
+    .filter((value) => value.length >= 4);
+  if (identityTerms.length === 0) {
+    return [];
+  }
+
+  return (Array.isArray(state.documentsExplorer.workOrderDocuments) ? state.documentsExplorer.workOrderDocuments : [])
+    .map((documentItem) => {
+      const description = String(documentItem?.description || "");
+      if (!/potpisano\s+scan\s+potpisom/i.test(description)) {
+        return null;
+      }
+
+      const normalizedDescription = normalizeLooseName(description);
+      if (!identityTerms.some((term) => normalizedDescription.includes(term))) {
+        return null;
+      }
+
+      const workOrder = findWorkOrderById(documentItem.workOrderId || "");
+      const workOrderNumber = workOrder?.workOrderNumber || documentItem.workOrderNumber || "";
+      return {
+        id: `document-signature-${documentItem.id || documentItem.workOrderId || documentItem.fileName}`,
+        kind: "document_signature",
+        level: "info",
+        title: "Zapisnik je potpisan",
+        message: `Tvoj scan potpisa je umetnut u ${documentItem.fileName || "zapisnik"}.`,
+        context: [
+          workOrderNumber ? `RN ${workOrderNumber}` : "",
+          workOrder?.companyName || "",
+          documentItem.updatedAt ? `Spremljeno ${formatDateTime(documentItem.updatedAt)}` : "",
+        ].filter(Boolean).join(" · "),
+        dueDate: String(documentItem.updatedAt || documentItem.createdAt || "").slice(0, 10),
+        referenceId: String(documentItem.workOrderId || ""),
+      };
+    })
+    .filter(Boolean);
+}
+
 function getPendingReminderNotificationCount() {
   return (state.reminders ?? []).filter((item) => String(item?.status || "").toLowerCase() !== "done").length;
 }
@@ -71180,6 +71271,7 @@ function getAllNotifications() {
     ...buildAbsenceNotifications(),
     ...buildVehicleNotifications(),
     ...buildTodoCommentNotifications(),
+    ...buildDocumentSignatureNotifications(),
   ].map((entry) => ({
     ...entry,
     resolved: isNotificationResolved(entry.id),
@@ -71303,6 +71395,15 @@ function openNotificationEntry(entry) {
         selectTodoTask(task.id);
       });
     }
+    return;
+  }
+
+  if (entry.kind === "document_signature") {
+    activateSidebarItem("documents", { expandSidebar: state.sidebarCollapsed });
+    state.documentsExplorer.category = "document-records";
+    state.documentsExplorer.expandedFolderIds = new Set();
+    state.documentsExplorer.suppressDefaultExpansion = false;
+    void loadDocumentsExplorerRecords({ force: false }).then(() => renderDocumentsModule());
   }
 }
 

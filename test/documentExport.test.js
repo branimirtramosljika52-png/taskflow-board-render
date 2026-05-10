@@ -98,6 +98,41 @@ test("docx export renders signature group placeholders as visible signature bloc
   assert.match(outputXml, /______________________________/);
 });
 
+test("docx export embeds scan signature images in signature group placeholders", async () => {
+  const signaturePngDataUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGOSHzRgQAAAABJRU5ErkJggg==";
+  const templateBuffer = buildMinimalDocxBuffer(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:body>
+        <w:p><w:r><w:t>{{POTPISI}}</w:t></w:r></w:p>
+        <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>
+      </w:body>
+    </w:document>`);
+
+  const outputBuffer = await buildDocxFromTemplateBuffer(templateBuffer, {
+    POTPISI: {
+      __docxBlockType: "signature_group",
+      items: [
+        {
+          role: "Ispitivac",
+          name: "Ana Savanovic",
+          signatureMode: "scan",
+          signatureImageUrl: signaturePngDataUrl,
+          signerOib: "12345678901",
+        },
+      ],
+    },
+  });
+  const outputZip = new PizZip(outputBuffer);
+  const outputXml = outputZip.file("word/document.xml").asText();
+  const relsXml = outputZip.file("word/_rels/document.xml.rels").asText();
+
+  assert.equal(outputXml.includes("{{POTPISI}}"), false);
+  assert.match(outputXml, /<w:drawing>/);
+  assert.match(outputXml, /r:embed="rId\d+"/);
+  assert.match(relsXml, /relationships\/image/);
+  assert.ok(outputZip.file("word/media/safenexus-signature-1.png"));
+});
+
 test("HTML template export renders escaped placeholders and special table blocks", () => {
   const html = buildHtmlFromTemplateBuffer(Buffer.from(`
     <main>
@@ -129,7 +164,12 @@ test("HTML template export renders escaped placeholders and special table blocks
     },
     POTPISI: {
       __docxBlockType: "signature_group",
-      items: [{ role: "Ispitivač", name: "Ana Ivić", signatureMode: "digital" }],
+      items: [{
+        role: "Ispitivač",
+        name: "Ana Ivić",
+        signatureMode: "scan",
+        signatureImageUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGOSHzRgQAAAABJRU5ErkJggg==",
+      }],
     },
   }, {
     title: "HTML zapisnik",
@@ -140,7 +180,8 @@ test("HTML template export renders escaped placeholders and special table blocks
   assert.match(html, /Zapisnik &lt;script&gt;alert\(1\)&lt;\/script&gt;/);
   assert.match(html, /Prvi red<br>Drugi red &amp; znak/);
   assert.match(html, /Ana Ivić/);
-  assert.match(html, /Digitalni potpis/);
+  assert.match(html, /Scan potpisa/);
+  assert.match(html, /safe-nexus-template-signature-image/);
   assert.doesNotMatch(html, /<script>alert/);
   assert.doesNotMatch(html, /\{\{DOCUMENT_TITLE\}\}/);
 });

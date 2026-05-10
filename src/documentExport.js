@@ -1131,6 +1131,11 @@ function normalizeDocxSpecialPlaceholderValue(value) {
             .map((entry) => clean(entry))
             .filter(Boolean),
           signatureMode: clean(item.signatureMode).toLowerCase() || "scan",
+          signatureImageUrl: clean(item.signatureImageUrl || item.signatureDataUrl || item.imageUrl),
+          signerUserId: clean(item.signerUserId || item.userId),
+          signerEmail: clean(item.signerEmail || item.email),
+          signerOib: clean(item.signerOib || item.oib),
+          digitalAnchor: clean(item.digitalAnchor || item.signerOib || item.oib || item.signerEmail || item.email),
         };
       })
       .filter(Boolean);
@@ -1561,7 +1566,7 @@ function buildWordTableXml(table = {}) {
   `.replace(/\n\s+/g, "");
 }
 
-function buildWordSignatureCellXml(item = null) {
+function buildWordSignatureCellXml(item = null, zip = null, context = {}, xmlFileName = "word/document.xml") {
   const emptyParagraph = buildWordParagraphXml("", { spacingAfter: 0 });
   if (!item) {
     return `
@@ -1579,13 +1584,18 @@ function buildWordSignatureCellXml(item = null) {
   }
 
   const signatureLabel = item.signatureMode === "digital" ? "Digitalni potpis" : "Scan potpisa";
+  const signatureImageRef = item.signatureMode === "scan"
+    ? addDocxSignatureImage(zip, xmlFileName, item, context)
+    : null;
+  const signatureImageXml = buildWordSignatureImageXml(signatureImageRef, item);
   const paragraphs = [
     buildWordParagraphXml(item.role, { align: "right", size: 18, spacingAfter: 40 }),
     buildWordParagraphXml(item.name, { align: "right", bold: true, size: 22, spacingAfter: 40 }),
     ...((Array.isArray(item.metaLines) ? item.metaLines : []).map((line) => (
       buildWordParagraphXml(line, { align: "right", size: 18, spacingAfter: 20 })
     ))),
-    buildWordParagraphXml("______________________________", { align: "right", color: "7B61FF", size: 20, spacingBefore: 120, spacingAfter: 20 }),
+    signatureImageXml,
+    buildWordParagraphXml("______________________________", { align: "right", color: "7B61FF", size: 20, spacingBefore: signatureImageXml ? 20 : 120, spacingAfter: 20 }),
     buildWordParagraphXml(signatureLabel, { align: "right", italic: true, color: "6B7280", size: 18, spacingAfter: 0 }),
   ].join("");
 
@@ -1606,7 +1616,7 @@ function buildWordSignatureCellXml(item = null) {
   `.replace(/\n\s+/g, "");
 }
 
-function buildWordSignatureGroupXml(items = []) {
+function buildWordSignatureGroupXml(items = [], zip = null, context = {}, xmlFileName = "word/document.xml") {
   const safeItems = Array.isArray(items) ? items.filter(Boolean) : [];
   if (safeItems.length === 0) {
     return buildWordParagraphXml("Nema odabranih osoba.", {
@@ -1625,8 +1635,8 @@ function buildWordSignatureGroupXml(items = []) {
     const rightItem = rowItems.length === 1 ? rowItems[0] : rowItems[1];
     rows.push(`
       <w:tr>
-        ${buildWordSignatureCellXml(leftItem)}
-        ${buildWordSignatureCellXml(rightItem)}
+        ${buildWordSignatureCellXml(leftItem, zip, context, xmlFileName)}
+        ${buildWordSignatureCellXml(rightItem, zip, context, xmlFileName)}
       </w:tr>
     `.replace(/\n\s+/g, ""));
   }
@@ -1756,7 +1766,214 @@ function buildWordSystemDescriptionXml(value = {}) {
   return `${blocksXml}${buildWordParagraphXml("", { spacingAfter: 0 })}`;
 }
 
-function buildDocxSpecialPlaceholderXml(value) {
+const DOCX_IMAGE_REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image";
+const DOCX_SIGNATURE_IMAGE_WIDTH_EMU = 1905000;
+const DOCX_SIGNATURE_IMAGE_HEIGHT_EMU = 571500;
+
+function escapeXmlAttribute(value = "") {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function getDocxImageExtension(mimeType = "") {
+  const normalized = clean(mimeType).toLowerCase();
+  if (normalized.includes("jpeg") || normalized.includes("jpg")) {
+    return { extension: "jpg", contentType: "image/jpeg" };
+  }
+  if (normalized.includes("webp")) {
+    return { extension: "webp", contentType: "image/webp" };
+  }
+  return { extension: "png", contentType: "image/png" };
+}
+
+function getDocxRelationshipsFileName(xmlFileName = "word/document.xml") {
+  const safeName = clean(xmlFileName) || "word/document.xml";
+  const slashIndex = safeName.lastIndexOf("/");
+  const directory = slashIndex >= 0 ? safeName.slice(0, slashIndex) : "";
+  const baseName = slashIndex >= 0 ? safeName.slice(slashIndex + 1) : safeName;
+  return `${directory ? `${directory}/` : ""}_rels/${baseName}.rels`;
+}
+
+function getNextDocxRelationshipId(relationshipsXml = "") {
+  const used = new Set();
+  relationshipsXml.replace(/\bId=["']([^"']+)["']/g, (_match, id) => {
+    used.add(String(id || ""));
+    return _match;
+  });
+
+  let index = 1;
+  while (used.has(`rId${index}`)) {
+    index += 1;
+  }
+  return `rId${index}`;
+}
+
+function addDocxRelationship(zip, xmlFileName, {
+  type = DOCX_IMAGE_REL_TYPE,
+  target = "",
+  targetMode = "",
+} = {}) {
+  if (!zip || !target) {
+    return "";
+  }
+
+  const relFileName = getDocxRelationshipsFileName(xmlFileName);
+  const relFile = zip.file(relFileName);
+  let relationshipsXml = relFile
+    ? relFile.asText()
+    : '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>';
+  const rId = getNextDocxRelationshipId(relationshipsXml);
+  const relationshipXml = `<Relationship Id="${rId}" Type="${type}" Target="${escapeXmlAttribute(target)}"${targetMode ? ` TargetMode="${escapeXmlAttribute(targetMode)}"` : ""}/>`;
+
+  if (/<\/Relationships>/i.test(relationshipsXml)) {
+    relationshipsXml = relationshipsXml.replace(/<\/Relationships>/i, `${relationshipXml}</Relationships>`);
+  } else {
+    relationshipsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${relationshipXml}</Relationships>`;
+  }
+
+  zip.file(relFileName, relationshipsXml);
+  return rId;
+}
+
+function ensureDocxContentTypeDefault(zip, extension = "png", contentType = "image/png") {
+  const file = zip?.file("[Content_Types].xml");
+  if (!file) {
+    return;
+  }
+
+  const safeExtension = clean(extension).replace(/^\./, "").toLowerCase() || "png";
+  let xml = file.asText();
+  const defaultPattern = new RegExp(`<Default\\s+[^>]*Extension=["']${escapeRegex(safeExtension)}["']`, "i");
+  if (defaultPattern.test(xml)) {
+    return;
+  }
+
+  const defaultXml = `<Default Extension="${escapeXmlAttribute(safeExtension)}" ContentType="${escapeXmlAttribute(contentType)}"/>`;
+  if (/<\/Types>/i.test(xml)) {
+    xml = xml.replace(/<\/Types>/i, `${defaultXml}</Types>`);
+    zip.file("[Content_Types].xml", xml);
+  }
+}
+
+function ensureDocxDrawingNamespaces(xml = "") {
+  if (!xml || !/<w:(document|hdr|ftr)\b/i.test(xml)) {
+    return xml;
+  }
+
+  return xml.replace(/<w:(document|hdr|ftr)\b([^>]*)>/i, (match, tagName = "document", attrs = "") => {
+    const additions = [];
+    if (!/\sxmlns:r=/i.test(match)) {
+      additions.push('xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"');
+    }
+    if (!/\sxmlns:wp=/i.test(match)) {
+      additions.push('xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"');
+    }
+    if (!/\sxmlns:a=/i.test(match)) {
+      additions.push('xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"');
+    }
+    if (!/\sxmlns:pic=/i.test(match)) {
+      additions.push('xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"');
+    }
+    if (additions.length === 0) {
+      return match;
+    }
+    return `<w:${tagName}${attrs} ${additions.join(" ")}>`;
+  });
+}
+
+function getDocxSignatureImageData(item = {}) {
+  const imageData = item?.signatureImageData;
+  if (!imageData || !Buffer.isBuffer(imageData.buffer) || imageData.buffer.length === 0) {
+    return null;
+  }
+
+  if (!/^image\/(png|jpe?g|webp)$/i.test(clean(imageData.mimeType))) {
+    return null;
+  }
+
+  return imageData;
+}
+
+function addDocxSignatureImage(zip, xmlFileName, item = {}, context = {}) {
+  const imageData = getDocxSignatureImageData(item);
+  if (!imageData || !zip) {
+    return null;
+  }
+
+  const { extension, contentType } = getDocxImageExtension(imageData.mimeType);
+  context.imageCounter = (Number(context.imageCounter) || 0) + 1;
+  context.docPrCounter = (Number(context.docPrCounter) || 1000) + 1;
+  const mediaFileName = `safenexus-signature-${context.imageCounter}.${extension}`;
+  const mediaPath = `word/media/${mediaFileName}`;
+
+  zip.file(mediaPath, imageData.buffer);
+  ensureDocxContentTypeDefault(zip, extension, contentType);
+
+  const rId = addDocxRelationship(zip, xmlFileName, {
+    target: `media/${mediaFileName}`,
+  });
+
+  if (!rId) {
+    return null;
+  }
+
+  return {
+    rId,
+    docPrId: context.docPrCounter,
+  };
+}
+
+function buildWordSignatureImageXml(imageRef = null, item = {}) {
+  if (!imageRef?.rId) {
+    return "";
+  }
+
+  const safeName = escapeXmlAttribute(`Scan potpisa ${clean(item.name) || "potpisnik"}`);
+  return `
+    <w:p>
+      <w:pPr>
+        <w:jc w:val="right"/>
+        <w:spacing w:before="80" w:after="20"/>
+      </w:pPr>
+      <w:r>
+        <w:drawing>
+          <wp:inline distT="0" distB="0" distL="0" distR="0">
+            <wp:extent cx="${DOCX_SIGNATURE_IMAGE_WIDTH_EMU}" cy="${DOCX_SIGNATURE_IMAGE_HEIGHT_EMU}"/>
+            <wp:effectExtent l="0" t="0" r="0" b="0"/>
+            <wp:docPr id="${Number(imageRef.docPrId) || 1001}" name="${safeName}"/>
+            <wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr>
+            <a:graphic>
+              <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+                <pic:pic>
+                  <pic:nvPicPr>
+                    <pic:cNvPr id="0" name="${safeName}"/>
+                    <pic:cNvPicPr/>
+                  </pic:nvPicPr>
+                  <pic:blipFill>
+                    <a:blip r:embed="${escapeXmlAttribute(imageRef.rId)}"/>
+                    <a:stretch><a:fillRect/></a:stretch>
+                  </pic:blipFill>
+                  <pic:spPr>
+                    <a:xfrm>
+                      <a:off x="0" y="0"/>
+                      <a:ext cx="${DOCX_SIGNATURE_IMAGE_WIDTH_EMU}" cy="${DOCX_SIGNATURE_IMAGE_HEIGHT_EMU}"/>
+                    </a:xfrm>
+                    <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+                  </pic:spPr>
+                </pic:pic>
+              </a:graphicData>
+            </a:graphic>
+          </wp:inline>
+        </w:drawing>
+      </w:r>
+    </w:p>
+  `.replace(/\n\s+/g, "");
+}
+
+function buildDocxSpecialPlaceholderXml(value, zip = null, context = {}, xmlFileName = "word/document.xml") {
   if (!value || typeof value !== "object") {
     return "";
   }
@@ -1766,7 +1983,7 @@ function buildDocxSpecialPlaceholderXml(value) {
   }
 
   if (value.type === "signature_group") {
-    return buildWordSignatureGroupXml(value.items);
+    return buildWordSignatureGroupXml(value.items, zip, context, xmlFileName);
   }
 
   if (value.type === "table") {
@@ -1788,6 +2005,10 @@ function applyDocxSpecialPlaceholders(zip, specialPlaceholders = new Map()) {
   const xmlFileNames = Object.keys(zip.files ?? {}).filter((fileName) => (
     /^word\/(document|header\d+|footer\d+)\.xml$/i.test(fileName)
   ));
+  const renderContext = {
+    imageCounter: 0,
+    docPrCounter: 1000,
+  };
 
   xmlFileNames.forEach((fileName) => {
     const file = zip.file(fileName);
@@ -1803,7 +2024,7 @@ function applyDocxSpecialPlaceholders(zip, specialPlaceholders = new Map()) {
         return;
       }
 
-      const replacementXml = buildDocxSpecialPlaceholderXml(value);
+      const replacementXml = buildDocxSpecialPlaceholderXml(value, zip, renderContext, fileName);
       if (!replacementXml) {
         const nextXml = removeDocxOptionalPlaceholderBlock(xml, sentinel);
         if (nextXml !== xml) {
@@ -1835,6 +2056,7 @@ function applyDocxSpecialPlaceholders(zip, specialPlaceholders = new Map()) {
     });
 
     if (changed) {
+      xml = ensureDocxDrawingNamespaces(xml);
       zip.file(fileName, xml);
     }
   });
@@ -1937,6 +2159,63 @@ function renderDocxTemplateZip(zip, normalizedPlaceholders = {}, specialPlacehol
   });
 }
 
+async function resolveDocxImageData(source = "") {
+  const safeSource = clean(source);
+  if (!safeSource || /^data:image\/svg/i.test(safeSource)) {
+    return null;
+  }
+
+  try {
+    if (safeSource.startsWith("data:")) {
+      const parsed = parseDataUrl(safeSource);
+      return /^image\/(png|jpe?g|webp)$/i.test(parsed.mimeType) ? parsed : null;
+    }
+
+    if (/^https?:\/\//i.test(safeSource)) {
+      const parsed = await fetchBinaryFromUrl(safeSource);
+      return /^image\/(png|jpe?g|webp)$/i.test(parsed.mimeType) ? parsed : null;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+async function hydrateDocxSpecialPlaceholderImages(specialPlaceholders = new Map()) {
+  if (!(specialPlaceholders instanceof Map) || specialPlaceholders.size === 0) {
+    return;
+  }
+
+  const imageCache = new Map();
+  const pending = [];
+
+  specialPlaceholders.forEach((value) => {
+    if (!value || value.type !== "signature_group" || !Array.isArray(value.items)) {
+      return;
+    }
+
+    value.items.forEach((item) => {
+      const source = clean(item?.signatureImageUrl || item?.signatureDataUrl);
+      if (!source || item.signatureMode !== "scan") {
+        return;
+      }
+
+      pending.push((async () => {
+        if (!imageCache.has(source)) {
+          imageCache.set(source, await resolveDocxImageData(source));
+        }
+        const resolved = imageCache.get(source);
+        if (resolved) {
+          item.signatureImageData = resolved;
+        }
+      })());
+    });
+  });
+
+  await Promise.all(pending);
+}
+
 export async function buildDocxFromTemplateBuffer(templateBuffer, placeholders = {}, options = {}) {
   const safeBuffer = Buffer.isBuffer(templateBuffer)
     ? templateBuffer
@@ -1974,6 +2253,8 @@ export async function buildDocxFromTemplateBuffer(templateBuffer, placeholders =
       })
       .filter(Boolean),
   );
+
+  await hydrateDocxSpecialPlaceholderImages(specialPlaceholders);
 
   const renderWithCurlyDelimiters = (sourceBuffer) => renderDocxTemplateZip(
     new PizZip(sourceBuffer),
@@ -2258,6 +2539,7 @@ function buildHtmlTemplateDefaultStyles() {
       .safe-nexus-template-signature{min-height:116px;text-align:right}
       .safe-nexus-template-signature strong{display:block;margin-top:3px}
       .safe-nexus-template-signature small{display:block;color:#667085;margin-top:2px}
+      .safe-nexus-template-signature-image{display:block;max-width:190px;max-height:52px;margin:14px 0 4px auto;object-fit:contain}
       .safe-nexus-template-signature-line{border-top:1px solid #95aea3;margin-top:42px;padding-top:6px;color:#667085;font-size:12px}
       .safe-nexus-template-system-block{margin:14px 0 20px}
       .safe-nexus-template-system-block h3{margin:0 0 8px;padding:7px 9px;background:#e5e7eb;color:#111827;font-size:15px;text-transform:uppercase}
@@ -2409,11 +2691,16 @@ function buildHtmlTemplateSignatureGroupPlaceholder(items = []) {
       .filter(Boolean)
       .map((line) => `<small>${escapeTemplateHtml(line)}</small>`)
       .join("");
+    const signatureImageUrl = clean(item.signatureImageUrl || item.signatureDataUrl);
+    const signatureImage = signatureImageUrl && signatureLabel === "Scan potpisa"
+      ? `<img class="safe-nexus-template-signature-image" src="${escapeTemplateHtml(signatureImageUrl)}" alt="Scan potpisa ${escapeTemplateHtml(clean(item.name) || "potpisnik")}">`
+      : "";
     return `
       <section class="safe-nexus-template-signature">
         <span>${escapeTemplateHtml(clean(item.role) || "Osoba")}</span>
         <strong>${escapeTemplateHtml(clean(item.name) || "Potpisnik")}</strong>
         ${metaLines}
+        ${signatureImage}
         <div class="safe-nexus-template-signature-line">${escapeTemplateHtml(signatureLabel)}</div>
       </section>
     `.trim();

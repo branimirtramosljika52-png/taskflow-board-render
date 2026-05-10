@@ -28270,6 +28270,25 @@ body.is-vehicle-reservation-open {
   color: #5a6986;
 }
 
+.documents-file-signed-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  color: #0f8a5f;
+  background: linear-gradient(135deg, rgba(21, 185, 129, 0.16), rgba(59, 130, 246, 0.12));
+  border: 1px solid rgba(21, 185, 129, 0.34);
+  box-shadow: 0 8px 18px rgba(16, 185, 129, 0.12);
+}
+
+.documents-file-signed-badge svg {
+  width: 14px;
+  height: 14px;
+}
+
 .documents-file-title {
   min-width: 0;
   color: #22304d;

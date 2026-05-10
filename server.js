@@ -3085,11 +3085,92 @@ async function saveGeneratedWorkOrderPdfDocument(workOrderId, workOrder = {}, sc
   return items[0] ?? null;
 }
 
+function cleanSignatureExportText(value = "") {
+  return String(value ?? "").replace(/\s+/g, " ").trim();
+}
+
+function collectGeneratedDocumentTemplateSignatureItemsFromValue(value = null, output = []) {
+  if (!value || typeof value !== "object") {
+    return output;
+  }
+
+  const blockType = cleanSignatureExportText(value.__docxBlockType || value.type).toLowerCase();
+  if (blockType === "signature_group") {
+    (Array.isArray(value.items) ? value.items : []).forEach((item) => {
+      if (!item || typeof item !== "object") {
+        return;
+      }
+
+      const signatureMode = cleanSignatureExportText(item.signatureMode).toLowerCase() || "scan";
+      const name = cleanSignatureExportText(item.name);
+      const signerUserId = cleanSignatureExportText(item.signerUserId || item.userId);
+      const signerEmail = cleanSignatureExportText(item.signerEmail || item.email);
+      const signerOib = cleanSignatureExportText(item.signerOib || item.oib);
+      const hasScan = signatureMode === "scan" && cleanSignatureExportText(item.signatureImageUrl || item.signatureDataUrl || item.imageUrl);
+      if (!hasScan || (!name && !signerUserId && !signerEmail && !signerOib)) {
+        return;
+      }
+
+      output.push({
+        name,
+        signerUserId,
+        signerEmail,
+        signerOib,
+        role: cleanSignatureExportText(item.role),
+      });
+    });
+    return output;
+  }
+
+  Object.values(value).forEach((entry) => {
+    if (entry && typeof entry === "object") {
+      collectGeneratedDocumentTemplateSignatureItemsFromValue(entry, output);
+    }
+  });
+
+  return output;
+}
+
+function collectGeneratedDocumentTemplateSignatureItems(entry = {}) {
+  const items = collectGeneratedDocumentTemplateSignatureItemsFromValue(entry?.placeholders ?? {});
+  const seen = new Set();
+  return items.filter((item) => {
+    const key = [
+      item.signerUserId,
+      item.signerOib,
+      item.signerEmail,
+      item.name,
+    ].map((value) => String(value || "").toLowerCase()).filter(Boolean).join("|");
+    if (!key || seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function buildGeneratedDocumentTemplateSignatureDescription(entry = {}) {
+  const items = collectGeneratedDocumentTemplateSignatureItems(entry);
+  if (items.length === 0) {
+    return "";
+  }
+
+  const signerLabels = items.slice(0, 6).map((item) => {
+    const identity = item.signerOib ? `OIB ${item.signerOib}` : (item.signerEmail || "");
+    return [item.name || item.signerEmail || item.signerOib || "Potpisnik", identity ? `(${identity})` : ""]
+      .filter(Boolean)
+      .join(" ");
+  });
+  const suffix = items.length > signerLabels.length ? ` +${items.length - signerLabels.length}` : "";
+  return ` Potpisano scan potpisom: ${signerLabels.join(", ")}${suffix}.`;
+}
+
 function buildGeneratedDocumentTemplatePdfDocumentPayload({
   workOrder = {},
   template = {},
   pdfBuffer = Buffer.alloc(0),
   fileName = "",
+  entry = {},
 } = {}) {
   const safeFileName = sanitizeGeneratedDocumentFileName(
     fileName || template.outputFileName || template.title || workOrder.workOrderNumber || "zapisnik",
@@ -3104,7 +3185,7 @@ function buildGeneratedDocumentTemplatePdfDocumentPayload({
     fileType: "application/pdf",
     fileSize: safeBuffer.length,
     documentCategory: GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY,
-    description: `Automatski spremljen zapisnik "${templateTitle}" za RN ${workOrderNumber}.`,
+    description: `Automatski spremljen zapisnik "${templateTitle}" za RN ${workOrderNumber}.${buildGeneratedDocumentTemplateSignatureDescription(entry)}`,
     sourceType: "pdf",
     dataUrl: `data:application/pdf;base64,${safeBuffer.toString("base64")}`,
   };
@@ -3115,6 +3196,7 @@ function buildGeneratedDocumentTemplateDocxDocumentPayload({
   template = {},
   docxBuffer = Buffer.alloc(0),
   fileName = "",
+  entry = {},
 } = {}) {
   const safeFileName = sanitizeGeneratedDocumentFileName(
     fileName || template.outputFileName || template.title || workOrder.workOrderNumber || "zapisnik",
@@ -3129,7 +3211,7 @@ function buildGeneratedDocumentTemplateDocxDocumentPayload({
     fileType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     fileSize: safeBuffer.length,
     documentCategory: GENERATED_DOCUMENT_TEMPLATE_DOCX_CATEGORY,
-    description: `Automatski spremljen Word zapisnik "${templateTitle}" za RN ${workOrderNumber}.`,
+    description: `Automatski spremljen Word zapisnik "${templateTitle}" za RN ${workOrderNumber}.${buildGeneratedDocumentTemplateSignatureDescription(entry)}`,
     sourceType: "editor",
     dataUrl: `data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,${safeBuffer.toString("base64")}`,
   };
@@ -3176,6 +3258,7 @@ async function saveGeneratedDocumentTemplatePdfDocuments(entries = [], scopedSna
           template: bundle.template,
           docxBuffer: file.buffer,
           fileName: file.fileName,
+          entry: bundle.entry,
         });
         const docxItems = await domainRepository.addWorkOrderDocuments(
           workOrderId,
@@ -3195,6 +3278,7 @@ async function saveGeneratedDocumentTemplatePdfDocuments(entries = [], scopedSna
           template: bundle.template,
           pdfBuffer: file.buffer,
           fileName: file.fileName,
+          entry: bundle.entry,
         });
         const pdfItem = typeof domainRepository.upsertWorkOrderGeneratedPdfDocument === "function"
           ? await domainRepository.upsertWorkOrderGeneratedPdfDocument(workOrderId, filePayload, user)
