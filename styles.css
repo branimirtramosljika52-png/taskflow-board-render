@@ -1869,6 +1869,17 @@ fieldset {
   z-index: 1;
 }
 
+.weather-panel .weather-city-toolbar {
+  position: relative;
+  z-index: 70;
+}
+
+.weather-panel .weather-city-form,
+.weather-panel .weather-city-search {
+  position: relative;
+  z-index: 80;
+}
+
 .weather-panel-head {
   padding: 0 2px;
 }
@@ -1989,7 +2000,7 @@ fieldset {
   border: 1px solid rgba(185, 205, 236, 0.92);
   background: rgba(255, 255, 255, 0.98);
   box-shadow: 0 22px 44px rgba(23, 42, 76, 0.18);
-  z-index: 80;
+  z-index: 140;
 }
 
 .weather-city-suggestion {
@@ -11439,11 +11450,11 @@ body.is-work-order-editor-open {
 
 .work-order-editor-panel.is-modal-open {
   position: fixed;
-  top: 18px;
+  top: 10px;
   left: 50%;
   z-index: 37;
-  width: min(1540px, calc(100vw - 28px));
-  height: calc(100vh - 36px);
+  width: min(1840px, calc(100vw - 12px));
+  height: calc(100vh - 20px);
   max-height: none;
   overflow: hidden;
   transform: translateX(-50%);
@@ -11454,7 +11465,7 @@ body.is-work-order-editor-open {
 
 .work-order-editor-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 470px;
+  grid-template-columns: minmax(0, 1fr) clamp(340px, 24vw, 420px);
   gap: 0;
   height: 100%;
   min-height: 0;
@@ -13188,11 +13199,13 @@ body.is-work-order-document-category-open {
   display: grid;
   grid-template-rows: auto auto auto auto auto minmax(0, 1fr);
   align-content: start;
-  gap: 12px;
+  gap: 10px;
   min-height: 0;
-  padding: 18px 18px 18px 20px;
-  border-left: 1px solid #edf0f6;
-  background: linear-gradient(180deg, rgba(251, 247, 253, 0.95), rgba(245, 240, 250, 0.95));
+  padding: 16px 16px 16px 18px;
+  border-left: 1px solid rgba(191, 200, 218, 0.88);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(201, 213, 237, 0.52), transparent 34%),
+    linear-gradient(180deg, rgba(238, 242, 249, 0.98), rgba(226, 232, 244, 0.96));
   overflow: hidden;
 }
 
@@ -13212,7 +13225,7 @@ body.is-work-order-document-category-open {
   top: 0;
   z-index: 2;
   padding: 2px 0 8px;
-  background: linear-gradient(180deg, rgba(248, 249, 253, 0.98), rgba(244, 246, 251, 0.92));
+  background: linear-gradient(180deg, rgba(238, 242, 249, 0.98), rgba(229, 235, 246, 0.92));
 }
 
 .work-order-activity-head h3 {
@@ -13224,10 +13237,10 @@ body.is-work-order-document-category-open {
 .work-order-activity-documents-panel {
   display: grid;
   gap: 10px;
-  padding: 12px;
+  padding: 10px;
   border-radius: 16px;
   border: 1px solid #e6ebf4;
-  background: rgba(255, 255, 255, 0.84);
+  background: rgba(255, 255, 255, 0.74);
 }
 
 .work-order-activity-documents-head {
@@ -13245,7 +13258,7 @@ body.is-work-order-document-category-open {
 .work-order-activity-comment-panel {
   display: grid;
   gap: 8px;
-  padding: 12px;
+  padding: 10px;
   border-radius: 16px;
   border: 1px solid #e6ebf4;
   background:
@@ -13374,10 +13387,46 @@ body.is-work-order-document-category-open {
 .work-order-activity-item-body {
   display: grid;
   gap: 4px;
-  padding: 9px 10px;
+  padding: 8px 10px;
   border-radius: 14px;
   border: 1px solid #e7ebf4;
   background: rgba(255, 255, 255, 0.92);
+}
+
+.work-order-activity-item:not(.is-expanded) .work-order-activity-description,
+.work-order-activity-item:not(.is-expanded) .work-order-activity-comment-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.work-order-activity-item:not(.is-expanded) .work-order-activity-diff {
+  max-height: 48px;
+  overflow: hidden;
+}
+
+.work-order-activity-expand {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid rgba(183, 193, 214, 0.9);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  color: #55627a;
+  font-size: 0.8rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.work-order-activity-item.is-expanded .work-order-activity-expand {
+  background: #243147;
+  border-color: #243147;
+  color: #ffffff;
 }
 
 .work-order-activity-item.is-comment .work-order-activity-item-body {
@@ -15411,6 +15460,83 @@ body.is-work-order-document-category-open {
   position: relative;
   display: grid;
   gap: 10px;
+}
+
+.work-order-quick-create-card {
+  overflow: visible;
+  border: 1px solid rgba(185, 204, 231, 0.82);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(59, 130, 246, 0.1), transparent 30%),
+    linear-gradient(180deg, #ffffff, #f8fbff);
+  box-shadow: 0 14px 28px rgba(47, 68, 108, 0.08);
+}
+
+.work-order-quick-create-row {
+  align-items: center;
+  padding: 10px 14px;
+  background: transparent;
+}
+
+.work-order-quick-cell {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.work-order-quick-icon {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #3b82f6, #a855f7);
+  color: #ffffff;
+  font-weight: 900;
+  box-shadow: 0 12px 24px rgba(59, 130, 246, 0.22);
+}
+
+.work-order-quick-cell label {
+  color: #74809a;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.work-order-quick-cell input,
+.work-order-quick-cell select {
+  width: 100%;
+  min-width: 0;
+  min-height: 34px;
+  border: 1px solid rgba(190, 207, 231, 0.95);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #20283a;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 0.82rem;
+}
+
+.work-order-quick-cell input:focus,
+.work-order-quick-cell select:focus {
+  outline: none;
+  border-color: rgba(59, 130, 246, 0.58);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+.work-order-quick-action {
+  min-height: 36px;
+  justify-content: center;
+  border-radius: 12px;
+}
+
+.work-order-quick-error {
+  margin: 0;
+  color: #be123c;
+  font-size: 0.72rem;
+  font-weight: 700;
 }
 
 .work-order-filter-row {

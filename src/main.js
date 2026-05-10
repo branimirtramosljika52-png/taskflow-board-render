@@ -36481,7 +36481,19 @@ function renderWorkOrderActivity() {
     time.className = "work-order-activity-time";
     time.textContent = formatDateTime(entry.createdAt);
 
-    top.append(description, time);
+    const expandButton = document.createElement("button");
+    expandButton.type = "button";
+    expandButton.className = "work-order-activity-expand";
+    expandButton.textContent = "+";
+    expandButton.setAttribute("aria-label", "Prikaži detalje aktivnosti");
+    expandButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const expanded = item.classList.toggle("is-expanded");
+      expandButton.textContent = expanded ? "−" : "+";
+      expandButton.setAttribute("aria-label", expanded ? "Sažmi aktivnost" : "Prikaži detalje aktivnosti");
+    });
+
+    top.append(description, time, expandButton);
 
     const meta = document.createElement("div");
     meta.className = "work-order-activity-meta";
@@ -36534,6 +36546,12 @@ function renderWorkOrderActivity() {
     } else {
       body.append(top, meta);
     }
+
+    body.addEventListener("dblclick", () => {
+      const expanded = item.classList.toggle("is-expanded");
+      expandButton.textContent = expanded ? "−" : "+";
+      expandButton.setAttribute("aria-label", expanded ? "Sažmi aktivnost" : "Prikaži detalje aktivnosti");
+    });
 
     item.append(avatar, body);
     workOrderActivityList.append(item);
@@ -89313,6 +89331,216 @@ function createCompactLocationLabel(value = "") {
   return parts.slice(0, 2).join(", ");
 }
 
+function createWorkOrderQuickControl(labelText, control) {
+  const wrap = document.createElement("div");
+  wrap.className = "work-order-quick-cell";
+  const label = document.createElement("label");
+  label.textContent = labelText;
+  wrap.append(label, control);
+  return wrap;
+}
+
+function createWorkOrderQuickInput(name, placeholder = "", type = "text") {
+  const input = document.createElement("input");
+  input.name = name;
+  input.type = type;
+  input.placeholder = placeholder;
+  input.autocomplete = "off";
+  return input;
+}
+
+function createWorkOrderQuickSelect(name, options = [], selectedValue = "") {
+  const select = document.createElement("select");
+  select.name = name;
+  replaceSelectOptions(select, options, selectedValue);
+  return select;
+}
+
+function getWorkOrderQuickCompanyOptions() {
+  return [
+    { value: "", label: "Odaberi tvrtku" },
+    ...state.companies
+      .slice()
+      .sort((left, right) => String(left.name || "").localeCompare(String(right.name || ""), "hr"))
+      .map((company) => ({
+        value: company.id,
+        label: company.name || "Tvrtka",
+      })),
+  ];
+}
+
+function getWorkOrderQuickLocationOptions(companyId = "") {
+  const normalizedCompanyId = String(companyId || "").trim();
+  const locations = state.locations
+    .filter((location) => !normalizedCompanyId || String(location.companyId || "") === normalizedCompanyId)
+    .sort((left, right) => String(left.name || "").localeCompare(String(right.name || ""), "hr"));
+
+  return [
+    { value: "", label: normalizedCompanyId ? "Lokacija nije obavezna" : "Prvo odaberi tvrtku" },
+    ...locations.map((location) => ({
+      value: location.id,
+      label: location.name || "Lokacija",
+    })),
+  ];
+}
+
+function buildQuickWorkOrderPayload(form) {
+  const formData = new FormData(form);
+  const location = getLocation(formData.get("locationId"));
+  const serviceLine = String(formData.get("serviceLine") || "").trim();
+  const contactName = String(formData.get("contactName") || "").trim();
+  const tagText = String(formData.get("tagText") || "").trim();
+
+  return {
+    status: String(formData.get("status") || "Otvoreni RN"),
+    priority: String(formData.get("priority") || "Normal"),
+    openedDate: toDateKey(new Date()),
+    dueDate: normalizeDateInputValue(formData.get("dueDate")),
+    teamLabel: "",
+    companyId: String(formData.get("companyId") || ""),
+    locationId: String(formData.get("locationId") || ""),
+    coordinates: location?.coordinates || "",
+    region: location?.region || "",
+    contactSlot: "",
+    contactName,
+    contactPhone: "",
+    contactEmail: "",
+    executors: [],
+    executor1: "",
+    executor2: "",
+    measurementSheet: null,
+    serviceItems: [],
+    trainingContext: { name: "", role: "", phone: "", email: "" },
+    serviceLine,
+    department: "",
+    linkReference: "",
+    weight: "",
+    completedBy: "",
+    invoiceDate: "",
+    tagText,
+    description: serviceLine,
+    invoiceNote: "",
+  };
+}
+
+function createWorkOrderQuickCreateRow(columnLayout = [], isExpanded = false) {
+  if (!getCanEditOperationalData() || !getCanCreateWorkOrders()) {
+    return null;
+  }
+
+  const card = document.createElement("section");
+  card.className = "work-item-card work-order-quick-create-card";
+  card.dataset.preventRowOpen = "true";
+
+  const form = document.createElement("form");
+  form.className = `work-item-row is-${isExpanded ? "expanded" : "collapsed"} work-order-quick-create-row`;
+  form.dataset.preventRowOpen = "true";
+
+  const error = document.createElement("p");
+  error.className = "work-order-quick-error";
+  error.hidden = true;
+
+  const companySelect = createWorkOrderQuickSelect("companyId", getWorkOrderQuickCompanyOptions());
+  companySelect.setAttribute("aria-required", "true");
+  const locationSelect = createWorkOrderQuickSelect("locationId", getWorkOrderQuickLocationOptions(""));
+  locationSelect.disabled = true;
+  const dueDateInput = createWorkOrderQuickInput("dueDate", "dd.mm.yyyy");
+  const serviceInput = createWorkOrderQuickInput("serviceLine", "Usluga ili kratki opis");
+  const contactInput = createWorkOrderQuickInput("contactName", "Kontakt");
+  const tagInput = createWorkOrderQuickInput("tagText", "Tagovi");
+
+  companySelect.addEventListener("change", () => {
+    replaceSelectOptions(locationSelect, getWorkOrderQuickLocationOptions(companySelect.value), "");
+    locationSelect.disabled = !companySelect.value;
+  });
+
+  const statusSelect = createWorkOrderQuickSelect("status", WORK_ORDER_STATUS_OPTIONS, "Otvoreni RN");
+  const prioritySelect = createWorkOrderQuickSelect("priority", PRIORITY_OPTIONS, "Normal");
+
+  const cellsByKey = {
+    select: (() => {
+      const cell = document.createElement("div");
+      cell.className = "work-item-cell work-item-select-cell";
+      const icon = document.createElement("span");
+      icon.className = "work-order-quick-icon";
+      icon.textContent = "+";
+      cell.append(icon);
+      return cell;
+    })(),
+    basic: createWorkOrderQuickControl("Status", statusSelect),
+    client: createWorkOrderQuickControl("Tvrtka", companySelect),
+    location: createWorkOrderQuickControl("Lokacija", locationSelect),
+    contact: createWorkOrderQuickControl("Kontakt", contactInput),
+    service: createWorkOrderQuickControl("Usluga", serviceInput),
+    billing: createWorkOrderQuickControl("Rok", dueDateInput),
+    priorityTags: createWorkOrderQuickControl("Prioritet", prioritySelect),
+    executors: createWorkOrderQuickControl("Tag", tagInput),
+    actions: (() => {
+      const cell = document.createElement("div");
+      cell.className = "work-order-quick-cell";
+      const label = document.createElement("label");
+      label.textContent = "Spremi";
+      const button = document.createElement("button");
+      button.type = "submit";
+      button.className = "primary-button work-order-quick-action";
+      button.textContent = "Otvori RN";
+      cell.append(label, button, error);
+      return cell;
+    })(),
+  };
+
+  form.append(...columnLayout.map((column) => cellsByKey[column.key]).filter(Boolean));
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    error.hidden = true;
+    error.textContent = "";
+
+    const payload = buildQuickWorkOrderPayload(form);
+    if (!payload.companyId) {
+      error.textContent = "Tvrtka je obavezna.";
+      error.hidden = false;
+      companySelect.focus();
+      return;
+    }
+
+    const submitButton = form.querySelector('button[type="submit"]');
+    if (submitButton instanceof HTMLButtonElement) {
+      submitButton.disabled = true;
+      submitButton.textContent = "Spremam...";
+    }
+    const previousIds = new Set(state.workOrders.map((item) => String(item.id)));
+    const success = await runMutation(() => apiRequest("/work-orders", {
+      method: "POST",
+      body: payload,
+    }), error);
+
+    if (success) {
+      const created = findCreatedWorkOrderMatch(previousIds, payload);
+      if (created?.id) {
+        queueGeneratedWorkOrderPdfSave(created.id);
+      }
+      window.setTimeout(() => {
+        const nextCompanySelect = document.querySelector('.work-order-quick-create-row select[name="companyId"]');
+        if (nextCompanySelect instanceof HTMLSelectElement) {
+          nextCompanySelect.focus({ preventScroll: true });
+        }
+      }, 0);
+      return;
+    }
+
+    if (submitButton instanceof HTMLButtonElement) {
+      submitButton.disabled = false;
+      submitButton.textContent = "Otvori RN";
+    }
+    if (error.textContent) {
+      error.hidden = false;
+    }
+  });
+
+  card.append(form);
+  return card;
+}
+
 function renderCompactWorkOrdersList() {
   const filtered = getFilteredWorkOrders();
   const visibleItems = filtered.slice(0, state.workOrderRenderLimit);
@@ -89879,7 +90107,8 @@ function renderCompactWorkOrdersList() {
       body.append(rowCard);
   });
 
-  section.append(columns, body);
+  const quickCreateRow = createWorkOrderQuickCreateRow(columnLayout, isExpanded);
+  section.append(...[columns, quickCreateRow, body].filter(Boolean));
   workOrdersBody.replaceChildren(section);
 
   workOrdersEmpty.hidden = filtered.length !== 0;

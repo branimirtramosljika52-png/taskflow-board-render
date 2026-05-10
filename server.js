@@ -1141,7 +1141,7 @@ function getMissingScopedSnapshotAppPermissions(user, scopedSnapshot, permission
 }
 
 function normalizeWorkOrderStatusForPermission(value = "") {
-  return dbString(value) || "Otvoreni RN";
+  return normalizeInputValue(value) || "Otvoreni RN";
 }
 
 function getWorkOrderStatusPermissionKeys(currentStatus = "", nextStatus = "") {
@@ -1175,7 +1175,7 @@ function bodyHasOwnField(body = {}, fieldName = "") {
 
 function workOrderFieldChanged(currentWorkOrder = {}, body = {}, fieldName = "") {
   return bodyHasOwnField(body, fieldName)
-    && dbString(body[fieldName]) !== dbString(currentWorkOrder?.[fieldName]);
+    && normalizeInputValue(body[fieldName]) !== normalizeInputValue(currentWorkOrder?.[fieldName]);
 }
 
 function getWorkOrderBillingPermissionKeys(currentWorkOrder = {}, body = {}) {

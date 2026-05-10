@@ -1864,7 +1864,23 @@ export async function convertDocxBuffersToPdfBuffers(items = []) {
 
 export async function buildPdfFromTemplateBuffer(templateBuffer, placeholders = {}, options = {}) {
   const generatedWord = await buildDocxFromTemplateBuffer(templateBuffer, placeholders, options);
-  return convertDocxBufferToPdfBuffer(generatedWord, options);
+  try {
+    return await convertDocxBufferToPdfBuffer(generatedWord, options);
+  } catch (error) {
+    console.warn("Word -> PDF conversion failed, using HTML PDF fallback.", error);
+    const converted = await convertWordBufferToHtmlTemplate(generatedWord, {
+      fileName: options.fileName || "zapisnik.docx",
+    });
+    const htmlBuffer = Buffer.from(converted.html || "", "utf8");
+    return await buildPdfFromHtmlTemplateBuffer(htmlBuffer, {}, {
+      ...options,
+      fileName: sanitizeGeneratedDocumentFileName(
+        options.fileName || options.title || "zapisnik",
+        { fallback: "zapisnik", extension: "html" },
+      ),
+      title: options.title || options.fileName || "Zapisnik",
+    });
+  }
 }
 
 function escapeTemplateHtml(value = "") {
