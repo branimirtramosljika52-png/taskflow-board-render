@@ -1263,6 +1263,9 @@ const COMPRESSIBLE_STATIC_EXTENSIONS = new Set([".css", ".html", ".js", ".json",
 const staticFileCache = new Map();
 let cachedRawSnapshotEntry = null;
 const scopedSnapshotCache = new Map();
+const SIGNATURE_BRIDGE_JOB_TTL_MS = 60 * 60 * 1000;
+const SIGNATURE_BRIDGE_MAX_ITEMS = 80;
+const signatureBridgeJobs = new Map();
 
 function appendVaryHeader(response, value) {
   const normalizedValue = String(value ?? "").trim();
@@ -3223,6 +3226,202 @@ function stripStoredDocumentPayloadForResponse(document = null) {
   }
   const { dataUrl, ...rest } = document;
   return rest;
+}
+
+function cleanupSignatureBridgeJobs() {
+  const now = Date.now();
+  for (const [token, job] of signatureBridgeJobs.entries()) {
+    if (!job || Number(job.expiresAtMs || 0) <= now) {
+      signatureBridgeJobs.delete(token);
+    }
+  }
+}
+
+function getSignatureBridgeJob(token = "") {
+  cleanupSignatureBridgeJobs();
+  const normalizedToken = String(token || "").trim();
+  if (!normalizedToken) {
+    return null;
+  }
+
+  const job = signatureBridgeJobs.get(normalizedToken);
+  if (!job || Number(job.expiresAtMs || 0) <= Date.now()) {
+    signatureBridgeJobs.delete(normalizedToken);
+    return null;
+  }
+
+  return job;
+}
+
+function getRequestPublicBaseUrl(request) {
+  const configured = canonicalAppOrigin || publicAppUrl;
+  if (configured) {
+    return configured.replace(/\/+$/, "");
+  }
+
+  const forwardedProto = String(request.headers["x-forwarded-proto"] || "").split(",")[0].trim();
+  const host = String(request.headers["x-forwarded-host"] || request.headers.host || "").split(",")[0].trim();
+  if (host) {
+    return `${forwardedProto || "https"}://${host}`.replace(/\/+$/, "");
+  }
+
+  return "https://safe-nexus.org";
+}
+
+function isSignatureBridgeDocumentSigned(document = {}) {
+  return /\bpotpisano\b/i.test(String(document?.description || ""));
+}
+
+function buildSignatureBridgeSignedDescription(document = {}, job = {}) {
+  const currentDescription = String(document?.description || "").trim();
+  const baseDescription = currentDescription && !isSignatureBridgeDocumentSigned(document)
+    ? currentDescription
+    : `Zapisnik za digitalni potpis.`;
+  const signedAt = new Date().toISOString();
+  const signerLabel = String(job?.user?.fullName || job?.user?.email || job?.createdByLabel || "lokalni signer").trim();
+  return `${baseDescription.replace(/\s*Potpisano digitalno preko SafeNexus Signer bridgea.*$/i, "").trim()} Potpisano digitalno preko SafeNexus Signer bridgea ${signedAt}${signerLabel ? ` (${signerLabel})` : ""}.`.trim();
+}
+
+function buildSignatureBridgeProtocolUrl(job = {}) {
+  const apiBase = encodeURIComponent(job.apiBase || "https://safe-nexus.org");
+  const origin = encodeURIComponent(job.origin || job.apiBase || "https://safe-nexus.org");
+  return `safenexus-signer://sign?token=${encodeURIComponent(job.token)}&api=${apiBase}&origin=${origin}`;
+}
+
+async function buildSignatureBridgeCandidateDocuments(scopedSnapshot = {}, requestedDocumentIds = []) {
+  const scopedWorkOrders = Array.isArray(scopedSnapshot.workOrders) ? scopedSnapshot.workOrders : [];
+  const workOrderIds = scopedWorkOrders.map((workOrder) => String(workOrder?.id || "").trim()).filter(Boolean);
+  const requestedIds = new Set(
+    (Array.isArray(requestedDocumentIds) ? requestedDocumentIds : [])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean),
+  );
+  const allDocuments = typeof domainRepository.listWorkOrderDocuments === "function"
+    ? await domainRepository.listWorkOrderDocuments(workOrderIds, {
+      documentCategory: GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY,
+      sourceType: "pdf",
+      limit: 5000,
+    })
+    : (await Promise.all(workOrderIds.map((workOrderId) => domainRepository.getWorkOrderDocuments(workOrderId))))
+      .flat()
+      .filter((document) => (
+        String(document?.documentCategory || "") === GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY
+        && String(document?.sourceType || "").toLowerCase() === "pdf"
+      ));
+
+  return allDocuments
+    .filter((document) => (
+      String(document?.id || "").trim()
+      && String(document?.workOrderId || "").trim()
+      && (!requestedIds.size || requestedIds.has(String(document.id)))
+      && !isSignatureBridgeDocumentSigned(document)
+    ))
+    .slice(0, SIGNATURE_BRIDGE_MAX_ITEMS);
+}
+
+function buildSignatureBridgeJobResponse(job = {}) {
+  return {
+    ok: true,
+    token: job.token,
+    apiBase: job.apiBase,
+    origin: job.origin,
+    expiresAt: new Date(job.expiresAtMs).toISOString(),
+    protocolUrl: buildSignatureBridgeProtocolUrl(job),
+    engineHint: "PotpisPDF.exe",
+    items: job.items.map((item) => ({
+      id: item.id,
+      workOrderId: item.workOrderId,
+      documentId: item.documentId,
+      workOrderNumber: item.workOrderNumber,
+      companyName: item.companyName,
+      locationName: item.locationName,
+      fileName: item.fileName,
+      fileType: item.fileType || "application/pdf",
+      fileSize: item.fileSize || 0,
+      downloadUrl: `${job.apiBase}/api/signature-bridge/jobs/${encodeURIComponent(job.token)}/items/${encodeURIComponent(item.id)}/download`,
+      uploadUrl: `${job.apiBase}/api/signature-bridge/jobs/${encodeURIComponent(job.token)}/items/${encodeURIComponent(item.id)}/signed`,
+    })),
+  };
+}
+
+async function handleSignatureBridgeJobDownload(request, response, token = "", itemId = "") {
+  const job = getSignatureBridgeJob(token);
+  if (!job) {
+    sendError(response, 404, "Potpisni paket je istekao ili nije pronađen.");
+    return true;
+  }
+
+  const item = job.items.find((entry) => String(entry.id) === String(itemId));
+  if (!item) {
+    sendError(response, 404, "Dokument za potpis nije pronađen.");
+    return true;
+  }
+
+  const documents = await domainRepository.getWorkOrderDocuments(item.workOrderId);
+  const document = documents.find((entry) => String(entry.id) === String(item.documentId));
+  if (!document) {
+    sendError(response, 404, "Dokument vise nije dostupan.");
+    return true;
+  }
+
+  const stored = await readStoredDocumentBuffer(document);
+  sendBinary(response, 200, stored.buffer, {
+    contentType: stored.mimeType || document.fileType || "application/pdf",
+    fileName: document.fileName || item.fileName || "zapisnik.pdf",
+  });
+  return true;
+}
+
+async function handleSignatureBridgeSignedUpload(request, response, token = "", itemId = "") {
+  const job = getSignatureBridgeJob(token);
+  if (!job) {
+    sendError(response, 404, "Potpisni paket je istekao ili nije pronađen.");
+    return true;
+  }
+
+  const item = job.items.find((entry) => String(entry.id) === String(itemId));
+  if (!item) {
+    sendError(response, 404, "Dokument za potpis nije pronađen.");
+    return true;
+  }
+
+  const body = await readJsonBody(request);
+  const dataUrl = String(body?.dataUrl || "").trim();
+  if (!dataUrl.startsWith("data:application/pdf;base64,")) {
+    sendError(response, 400, "Potpisani dokument mora biti PDF data URL.");
+    return true;
+  }
+
+  const documents = await domainRepository.getWorkOrderDocuments(item.workOrderId);
+  const currentDocument = documents.find((entry) => String(entry.id) === String(item.documentId));
+  if (!currentDocument) {
+    sendError(response, 404, "Izvorni dokument vise nije dostupan.");
+    return true;
+  }
+
+  const base64 = dataUrl.split(",", 2)[1] || "";
+  const bufferSize = Buffer.byteLength(base64, "base64");
+  const filePayload = {
+    fileName: String(body?.fileName || currentDocument.fileName || item.fileName || "zapisnik.pdf").trim(),
+    fileType: "application/pdf",
+    fileSize: Number(body?.fileSize || 0) || bufferSize,
+    documentCategory: currentDocument.documentCategory || GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY,
+    sourceType: "pdf",
+    description: buildSignatureBridgeSignedDescription(currentDocument, job),
+    dataUrl,
+  };
+
+  const saved = typeof domainRepository.upsertWorkOrderGeneratedPdfDocument === "function"
+    ? await domainRepository.upsertWorkOrderGeneratedPdfDocument(item.workOrderId, filePayload, job.user)
+    : (await domainRepository.addWorkOrderDocuments(item.workOrderId, [filePayload], job.user, { sourceType: "pdf" }))[0] ?? null;
+
+  item.signedAt = new Date().toISOString();
+  item.savedDocumentId = saved?.id || "";
+  sendJson(response, 200, {
+    ok: true,
+    item: stripStoredDocumentPayloadForResponse(saved),
+  });
+  return true;
 }
 
 function logDocumentTemplateExportTiming(event = "", details = {}) {
@@ -6360,6 +6559,39 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    const signatureBridgeJobMatch = url.pathname.match(/^\/api\/signature-bridge\/jobs\/([^/]+)$/);
+    const signatureBridgeDownloadMatch = url.pathname.match(/^\/api\/signature-bridge\/jobs\/([^/]+)\/items\/([^/]+)\/download$/);
+    const signatureBridgeUploadMatch = url.pathname.match(/^\/api\/signature-bridge\/jobs\/([^/]+)\/items\/([^/]+)\/signed$/);
+
+    if (signatureBridgeJobMatch && request.method === "GET") {
+      const job = getSignatureBridgeJob(signatureBridgeJobMatch[1]);
+      if (!job) {
+        sendError(response, 404, "Potpisni paket je istekao ili nije pronađen.");
+        return true;
+      }
+
+      sendJson(response, 200, buildSignatureBridgeJobResponse(job));
+      return true;
+    }
+
+    if (signatureBridgeDownloadMatch && request.method === "GET") {
+      return await handleSignatureBridgeJobDownload(
+        request,
+        response,
+        signatureBridgeDownloadMatch[1],
+        signatureBridgeDownloadMatch[2],
+      );
+    }
+
+    if (signatureBridgeUploadMatch && request.method === "POST") {
+      return await handleSignatureBridgeSignedUpload(
+        request,
+        response,
+        signatureBridgeUploadMatch[1],
+        signatureBridgeUploadMatch[2],
+      );
+    }
+
     const user = await getRequestUser(request, response);
 
     if (!user) {
@@ -6591,6 +6823,60 @@ async function handleApiRequest(request, response, url) {
     const workOrderDocumentDownloadMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/documents\/([^/]+)\/download$/);
     const workOrderDocumentMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/documents\/([^/]+)$/);
     const workOrderMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)$/);
+
+    if (request.method === "POST" && url.pathname === "/api/signature-bridge/jobs") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo pripremati dokumente za potpis.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const documents = await buildSignatureBridgeCandidateDocuments(scopedSnapshot, body?.documentIds ?? []);
+      if (documents.length === 0) {
+        sendError(response, 400, "Nema nepotpisanih PDF zapisnika za lokalni potpis.");
+        return true;
+      }
+
+      const workOrderById = new Map((scopedSnapshot.workOrders ?? []).map((workOrder) => [
+        String(workOrder.id),
+        workOrder,
+      ]));
+      const token = randomUUID().replace(/-/g, "");
+      const apiBase = getRequestPublicBaseUrl(request);
+      const job = {
+        token,
+        apiBase,
+        origin: String(body?.origin || request.headers.origin || apiBase).trim() || apiBase,
+        createdAtMs: Date.now(),
+        expiresAtMs: Date.now() + SIGNATURE_BRIDGE_JOB_TTL_MS,
+        createdByLabel: user.fullName || user.email || "SafeNexus",
+        user: {
+          id: user.id,
+          fullName: user.fullName || user.username || user.email || "SafeNexus",
+          email: user.email || "",
+          username: user.username || "",
+        },
+        items: documents.map((document, index) => {
+          const workOrder = workOrderById.get(String(document.workOrderId)) || {};
+          return {
+            id: `${index + 1}-${randomUUID().slice(0, 8)}`,
+            documentId: String(document.id),
+            workOrderId: String(document.workOrderId),
+            workOrderNumber: String(workOrder.workOrderNumber || document.workOrderNumber || "").trim(),
+            companyName: String(workOrder.companyName || "").trim(),
+            locationName: String(workOrder.locationName || "").trim(),
+            fileName: String(document.fileName || "zapisnik.pdf").trim() || "zapisnik.pdf",
+            fileType: String(document.fileType || "application/pdf").trim() || "application/pdf",
+            fileSize: Number(document.fileSize || 0) || 0,
+          };
+        }),
+      };
+      signatureBridgeJobs.set(token, job);
+
+      sendJson(response, 201, buildSignatureBridgeJobResponse(job));
+      return true;
+    }
 
     if (request.method === "GET" && url.pathname === "/api/chat/bootstrap") {
       await writeChatSnapshot(response, user, request, url);

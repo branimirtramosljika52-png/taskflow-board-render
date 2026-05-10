@@ -3103,6 +3103,7 @@ const signaturesList = document.querySelector("#signatures-list");
 const signaturesRefreshButton = document.querySelector("#signatures-refresh");
 const signaturesOpenLocalSignerButton = document.querySelector("#signatures-open-local-signer");
 const signaturesCopyBridgeUrlButton = document.querySelector("#signatures-copy-bridge-url");
+const signaturesBridgeStatus = document.querySelector("#signatures-bridge-status");
 const offersTotalCount = document.querySelector("#offers-total-count");
 const offersDraftCount = document.querySelector("#offers-draft-count");
 const offersSentCount = document.querySelector("#offers-sent-count");
@@ -27086,6 +27087,12 @@ function renderSignaturesModule() {
       createSignatureStatCard("Bez dokumenta", String(workOrdersWithoutDocuments.length), workOrdersWithoutDocuments.length > 0 ? "missing" : "quiet"),
     );
   }
+  if (signaturesOpenLocalSignerButton) {
+    signaturesOpenLocalSignerButton.disabled = pendingEntries.length === 0 || state.documentsExplorer.loading;
+    signaturesOpenLocalSignerButton.title = pendingEntries.length > 0
+      ? `Pripremi ${pendingEntries.length} nepotpisanih PDF zapisnika za lokalni FINA/eOI potpis.`
+      : "Nema nepotpisanih PDF zapisnika za lokalni potpis.";
+  }
 
   if (!signaturesList) {
     return;
@@ -27193,6 +27200,54 @@ function renderSignaturesModule() {
   }
 
   signaturesList.replaceChildren(...rows);
+}
+
+function setSignaturesBridgeStatus(message = "", tone = "") {
+  if (!signaturesBridgeStatus) {
+    return;
+  }
+
+  signaturesBridgeStatus.textContent = message;
+  signaturesBridgeStatus.className = ["signatures-bridge-status", tone ? `is-${tone}` : ""].filter(Boolean).join(" ");
+  signaturesBridgeStatus.hidden = !message;
+}
+
+async function openLocalSignatureBridge() {
+  const pendingEntries = buildSignatureModuleDocumentEntries().filter((entry) => !entry.signed);
+  if (pendingEntries.length === 0) {
+    setSignaturesBridgeStatus("Nema nepotpisanih PDF zapisnika za slanje u lokalni signer.", "warning");
+    return;
+  }
+
+  signaturesOpenLocalSignerButton.disabled = true;
+  signaturesOpenLocalSignerButton.classList.add("is-loading");
+  setSignaturesBridgeStatus(`Pripremam ${pendingEntries.length} zapisnika za lokalni potpis...`, "loading");
+
+  try {
+    const payload = await apiRequest("/signature-bridge/jobs", {
+      method: "POST",
+      body: {
+        origin: window.location.origin,
+        documentIds: pendingEntries.map((entry) => entry.documentItem?.id).filter(Boolean),
+      },
+    });
+    const protocolUrl = payload.protocolUrl || `safenexus-signer://sign?token=${encodeURIComponent(payload.token || "")}&api=${encodeURIComponent(window.location.origin)}`;
+    setSignaturesBridgeStatus(
+      `${payload.items?.length || pendingEntries.length} zapisnika poslano u SafeNexus Signer. PIN se unosi samo u lokalnom prozoru.`,
+      "ready",
+    );
+    window.location.href = protocolUrl;
+    [8000, 18000, 45000].forEach((delay) => {
+      window.setTimeout(() => {
+        void loadDocumentsExplorerRecords({ force: true });
+      }, delay);
+    });
+  } catch (error) {
+    setSignaturesBridgeStatus(error.message || "Nije moguće pripremiti lokalni potpis.", "error");
+  } finally {
+    signaturesOpenLocalSignerButton.disabled = false;
+    signaturesOpenLocalSignerButton.classList.remove("is-loading");
+  }
 }
 
 function upsertDocumentsExplorerWorkOrderDocuments(documents = []) {
@@ -95378,12 +95433,11 @@ signaturesRefreshButton?.addEventListener("click", () => {
 });
 
 signaturesOpenLocalSignerButton?.addEventListener("click", () => {
-  const target = `safenexus-signer://open?origin=${encodeURIComponent(window.location.origin)}`;
-  window.location.href = target;
+  void openLocalSignatureBridge();
 });
 
 signaturesCopyBridgeUrlButton?.addEventListener("click", async () => {
-  const bridgeUrl = "http://127.0.0.1:9137";
+  const bridgeUrl = `safenexus-signer://open?origin=${encodeURIComponent(window.location.origin)}`;
   try {
     await navigator.clipboard?.writeText(bridgeUrl);
     signaturesCopyBridgeUrlButton.textContent = "Kopirano";

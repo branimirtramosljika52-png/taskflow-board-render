@@ -7,7 +7,10 @@ $ErrorActionPreference = "Stop"
 Push-Location $ProjectDir
 try {
   mvn -q -DskipTests package
-  $jar = Get-ChildItem -Path ".\target" -Filter "*.jar" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+  $jar = Get-ChildItem -Path ".\target" -Filter "*.jar" |
+    Where-Object { $_.Name -notlike "original-*" } |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1
   if (-not $jar) {
     throw "JAR nije pronađen u target folderu."
   }
