@@ -2110,12 +2110,51 @@ async function generatePdfBufferForTemplate(template = {}, {
       sourceFileName,
       { fallback: "zapisnik", extension: "docx" },
     );
-    return await buildPdfFromTemplateBuffer(referenceDocument.buffer, placeholders, {
+    return await buildPdfFromWordDocumentTemplate(referenceDocument.buffer, placeholders, {
       fileName: docxFileName,
+      title: template.title || template.documentType || "Zapisnik",
     });
   }
 
   throw new Error("Za Template Development učitaj .html/.htm ili .docx/.dotx predložak.");
+}
+
+async function buildPdfFromWordDocumentTemplate(referenceBuffer, placeholders = {}, {
+  fileName = "",
+  title = "",
+} = {}) {
+  const docxFileName = sanitizeGeneratedDocumentFileName(
+    fileName || title || "zapisnik",
+    { fallback: "zapisnik", extension: "docx" },
+  );
+  const htmlFileName = sanitizeGeneratedDocumentFileName(
+    docxFileName.replace(/\.(docx|dotx)$/i, ""),
+    { fallback: "zapisnik", extension: "html" },
+  );
+
+  try {
+    const converted = await convertWordBufferToHtmlTemplate(referenceBuffer, {
+      fileName: docxFileName,
+      allowLibreOfficeFallback: false,
+    });
+    return await buildPdfFromHtmlTemplateBuffer(Buffer.from(converted.html || "", "utf8"), placeholders, {
+      fileName: htmlFileName,
+      title: title || fileName || "Zapisnik",
+    });
+  } catch (directConversionError) {
+    console.warn("Direct Word template HTML PDF export failed; retrying after placeholder merge.", directConversionError);
+    const generatedWord = await buildDocxFromTemplateBuffer(referenceBuffer, placeholders, {
+      fileName: docxFileName,
+    });
+    const converted = await convertWordBufferToHtmlTemplate(generatedWord, {
+      fileName: docxFileName,
+      allowLibreOfficeFallback: false,
+    });
+    return await buildPdfFromHtmlTemplateBuffer(Buffer.from(converted.html || "", "utf8"), {}, {
+      fileName: htmlFileName,
+      title: title || fileName || "Zapisnik",
+    });
+  }
 }
 
 function hasTemplateRenderPdfModel(value = null) {
@@ -2186,8 +2225,9 @@ async function generatePdfBuffersForTemplateEntries(entries = [], scopedSnapshot
         sourceFileName,
         { fallback: "zapisnik", extension: "docx" },
       );
-      pdfBuffers[entryIndex] = await buildPdfFromTemplateBuffer(referenceDocument.buffer, entry?.placeholders ?? {}, {
+      pdfBuffers[entryIndex] = await buildPdfFromWordDocumentTemplate(referenceDocument.buffer, entry?.placeholders ?? {}, {
         fileName: docxFileName,
+        title: template.title || template.documentType || "Zapisnik",
       });
       continue;
     }
@@ -2300,8 +2340,9 @@ async function generatePdfFileEntriesForTemplateEntries(entries = [], scopedSnap
         entry,
         template,
         fileName,
-        buffer: await buildPdfFromTemplateBuffer(referenceDocument.buffer, entry?.placeholders ?? {}, {
+        buffer: await buildPdfFromWordDocumentTemplate(referenceDocument.buffer, entry?.placeholders ?? {}, {
           fileName: docxFileName,
+          title: template.title || template.documentType || "Zapisnik",
         }),
       };
     }

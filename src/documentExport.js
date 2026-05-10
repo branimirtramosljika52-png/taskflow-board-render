@@ -95,6 +95,14 @@ const SOFFICE_PDF_CACHE_MAX_BYTES = Math.max(
   0,
   Number(process.env.SOFFICE_PDF_CACHE_MAX_BYTES || 64 * 1024 * 1024) || 64 * 1024 * 1024,
 );
+const WORD_HTML_TEMPLATE_CACHE_MAX_ENTRIES = Math.max(
+  0,
+  Number(process.env.WORD_HTML_TEMPLATE_CACHE_MAX_ENTRIES || 40) || 40,
+);
+const WORD_HTML_TEMPLATE_CACHE_MAX_BYTES = Math.max(
+  0,
+  Number(process.env.WORD_HTML_TEMPLATE_CACHE_MAX_BYTES || 48 * 1024 * 1024) || 48 * 1024 * 1024,
+);
 const WORD_HTML_STYLE_MAP = [
   "p[style-name='Title'] => h1:fresh",
   "p[style-name='Naslov'] => h1:fresh",
@@ -123,6 +131,8 @@ let warmChromiumPromise = null;
 let warmChromiumInstance = null;
 let sofficePdfCacheSizeBytes = 0;
 const sofficePdfCache = new Map();
+let wordHtmlTemplateCacheSizeBytes = 0;
+const wordHtmlTemplateCache = new Map();
 
 function clean(value = "") {
   return String(value ?? "").trim();
@@ -494,6 +504,18 @@ function buildSofficePdfCacheKey(item = {}) {
   return hash.digest("hex");
 }
 
+function buildWordHtmlTemplateCacheKey(item = {}) {
+  const hash = createHash("sha256");
+  hash.update("word-html-v2");
+  hash.update("\0");
+  hash.update(clean(item.fileName || ""));
+  hash.update("\0");
+  hash.update(item.allowLibreOfficeFallback ? "lo" : "safe");
+  hash.update("\0");
+  hash.update(Buffer.isBuffer(item.buffer) ? item.buffer : Buffer.from(item.buffer ?? []));
+  return hash.digest("hex");
+}
+
 function getCachedSofficePdfBuffer(cacheKey = "") {
   if (!SOFFICE_PDF_CACHE_MAX_ENTRIES || !SOFFICE_PDF_CACHE_MAX_BYTES) {
     return null;
@@ -545,6 +567,69 @@ function cacheSofficePdfBuffer(cacheKey = "", buffer = Buffer.alloc(0)) {
     const oldest = sofficePdfCache.get(oldestKey);
     sofficePdfCacheSizeBytes -= oldest?.size || 0;
     sofficePdfCache.delete(oldestKey);
+  }
+}
+
+function getCachedWordHtmlTemplate(cacheKey = "") {
+  if (!WORD_HTML_TEMPLATE_CACHE_MAX_ENTRIES || !WORD_HTML_TEMPLATE_CACHE_MAX_BYTES || !cacheKey) {
+    return null;
+  }
+
+  const entry = wordHtmlTemplateCache.get(cacheKey);
+  if (!entry?.html) {
+    return null;
+  }
+
+  wordHtmlTemplateCache.delete(cacheKey);
+  wordHtmlTemplateCache.set(cacheKey, entry);
+  return {
+    html: entry.html,
+    engine: entry.engine || "",
+    messages: Array.isArray(entry.messages) ? entry.messages.map((message) => ({ ...message })) : [],
+  };
+}
+
+function cacheWordHtmlTemplate(cacheKey = "", converted = null) {
+  if (
+    !WORD_HTML_TEMPLATE_CACHE_MAX_ENTRIES
+    || !WORD_HTML_TEMPLATE_CACHE_MAX_BYTES
+    || !cacheKey
+    || !converted?.html
+  ) {
+    return;
+  }
+
+  const html = String(converted.html || "");
+  const size = Buffer.byteLength(html, "utf8");
+  if (size <= 0 || size > WORD_HTML_TEMPLATE_CACHE_MAX_BYTES) {
+    return;
+  }
+
+  const existing = wordHtmlTemplateCache.get(cacheKey);
+  if (existing) {
+    wordHtmlTemplateCacheSizeBytes -= existing.size || 0;
+    wordHtmlTemplateCache.delete(cacheKey);
+  }
+
+  wordHtmlTemplateCache.set(cacheKey, {
+    html,
+    engine: converted.engine || "",
+    messages: Array.isArray(converted.messages) ? converted.messages.map((message) => ({ ...message })) : [],
+    size,
+  });
+  wordHtmlTemplateCacheSizeBytes += size;
+
+  while (
+    wordHtmlTemplateCache.size > WORD_HTML_TEMPLATE_CACHE_MAX_ENTRIES
+    || wordHtmlTemplateCacheSizeBytes > WORD_HTML_TEMPLATE_CACHE_MAX_BYTES
+  ) {
+    const oldestKey = wordHtmlTemplateCache.keys().next().value;
+    if (!oldestKey) {
+      break;
+    }
+    const oldest = wordHtmlTemplateCache.get(oldestKey);
+    wordHtmlTemplateCacheSizeBytes -= oldest?.size || 0;
+    wordHtmlTemplateCache.delete(oldestKey);
   }
 }
 
@@ -4317,6 +4402,7 @@ async function convertWordBufferToHtmlWithMammoth(buffer = Buffer.alloc(0), {
 
 export async function convertWordBufferToHtmlTemplate(buffer = Buffer.alloc(0), {
   fileName = "word-template.docx",
+  allowLibreOfficeFallback = true,
 } = {}) {
   const safeBuffer = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer ?? []);
   if (safeBuffer.length === 0) {
@@ -4324,18 +4410,39 @@ export async function convertWordBufferToHtmlTemplate(buffer = Buffer.alloc(0), 
   }
 
   const safeFileName = fileName || "word-template.docx";
+  const cacheKey = buildWordHtmlTemplateCacheKey({
+    buffer: safeBuffer,
+    fileName: safeFileName,
+    allowLibreOfficeFallback,
+  });
+  const cached = getCachedWordHtmlTemplate(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  let converted = null;
   try {
-    return await convertWordBufferToHtmlWithDocxXml(safeBuffer, {
+    converted = await convertWordBufferToHtmlWithDocxXml(safeBuffer, {
       fileName: safeFileName,
     });
   } catch (ooxmlError) {
     const layoutFallbackMessage = {
       type: "warning",
-      message: `SafeNexus OOXML konverter nije uspio, koristen je LibreOffice layout fallback: ${clean(ooxmlError?.message) || "nepoznata greska"}`,
+      message: `SafeNexus OOXML konverter nije uspio: ${clean(ooxmlError?.message) || "nepoznata greska"}`,
     };
-    console.warn("SafeNexus OOXML Word -> HTML conversion failed, falling back to LibreOffice.", ooxmlError);
+    console.warn("SafeNexus OOXML Word -> HTML conversion failed.", ooxmlError);
+    if (!allowLibreOfficeFallback) {
+      converted = await convertWordBufferToHtmlWithMammoth(safeBuffer, {
+        fileName: safeFileName,
+        extraMessages: [layoutFallbackMessage],
+      });
+      cacheWordHtmlTemplate(cacheKey, converted);
+      return converted;
+    }
+
+    layoutFallbackMessage.message = `${layoutFallbackMessage.message} Koristen je LibreOffice layout fallback.`;
     try {
-      return await convertWordBufferToHtmlWithLibreOffice(safeBuffer, {
+      converted = await convertWordBufferToHtmlWithLibreOffice(safeBuffer, {
         fileName: safeFileName,
       });
     } catch (libreOfficeFallbackError) {
@@ -4344,12 +4451,14 @@ export async function convertWordBufferToHtmlTemplate(buffer = Buffer.alloc(0), 
         message: `LibreOffice layout fallback nije uspio, koristen je Mammoth tekstualni fallback: ${clean(libreOfficeFallbackError?.message) || "nepoznata greska"}`,
       };
       console.warn("LibreOffice Word -> HTML conversion failed, falling back to mammoth.", libreOfficeFallbackError);
-      return await convertWordBufferToHtmlWithMammoth(safeBuffer, {
+      converted = await convertWordBufferToHtmlWithMammoth(safeBuffer, {
         fileName: safeFileName,
         extraMessages: [layoutFallbackMessage, mammothFallbackMessage],
       });
     }
   }
+  cacheWordHtmlTemplate(cacheKey, converted);
+  return converted;
 }
 
 export function buildHtmlFromTemplateBuffer(templateBuffer, placeholders = {}, options = {}) {
