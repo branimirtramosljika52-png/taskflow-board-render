@@ -1438,6 +1438,11 @@ fieldset {
   gap: 10px;
 }
 
+.weather-city-toolbar {
+  position: relative;
+  z-index: 18;
+}
+
 .weather-panel-head strong {
   display: block;
   color: #172033;
@@ -1465,14 +1470,20 @@ fieldset {
 .weather-icon-button {
   width: 34px;
   height: 34px;
-  display: inline-grid;
-  place-items: center;
+  display: inline-flex;
+  flex: 0 0 34px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   border-radius: 12px;
+  line-height: 1;
 }
 
 .weather-icon-button .icon-svg {
   width: 17px;
   height: 17px;
+  display: block;
+  flex: 0 0 auto;
   stroke: currentColor;
   fill: none;
   stroke-width: 1.8;
@@ -1937,11 +1948,13 @@ fieldset {
 
 .weather-city-form {
   position: relative;
+  z-index: 20;
   align-items: stretch;
 }
 
 .weather-city-search {
   position: relative;
+  z-index: 21;
   flex: 1;
   min-width: min(100%, 360px);
 }
@@ -1976,7 +1989,7 @@ fieldset {
   border: 1px solid rgba(185, 205, 236, 0.92);
   background: rgba(255, 255, 255, 0.98);
   box-shadow: 0 22px 44px rgba(23, 42, 76, 0.18);
-  z-index: 4;
+  z-index: 80;
 }
 
 .weather-city-suggestion {
