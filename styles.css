@@ -1924,22 +1924,11 @@ fieldset {
 }
 
 .weather-description p {
-  max-width: 34rem;
-  font-size: 0.76rem;
-}
-
-.weather-brief-lines {
-  display: grid;
-  gap: 3px;
-  max-width: 40rem;
-}
-
-.weather-brief-line {
-  display: block;
+  max-width: 41rem;
   color: rgba(255, 255, 255, 0.84);
-  font-size: 0.68rem;
-  font-weight: 700;
-  line-height: 1.22;
+  font-size: 0.75rem;
+  font-weight: 750;
+  line-height: 1.36;
 }
 
 .weather-current-metrics span {

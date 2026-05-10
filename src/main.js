@@ -22134,24 +22134,100 @@ function formatWeatherForecastHour(isoValue = "") {
   }).format(date);
 }
 
-function formatWeatherBriefDay(entry = {}) {
-  return formatWeatherForecastDay(entry.time || entry.date).replace(/\.$/, "") || "Prognoza";
-}
-
-function buildWeatherDailyDetail(entry = {}) {
-  const precipitation = formatWeatherPrecipitation(entry.precipitationMm ?? (Number(entry.rainMm || 0) + Number(entry.snowMm || 0)));
-  if (precipitation) {
-    return `oborine ${precipitation}`;
+function buildWeatherTemperatureText(label, values = []) {
+  const numbers = values.map(Number).filter(Number.isFinite);
+  if (!numbers.length) {
+    return "";
   }
-  return `vjetar do ${formatWeatherSpeed(entry.windSpeed)}`;
+  const min = Math.round(Math.min(...numbers));
+  const max = Math.round(Math.max(...numbers));
+  return min === max
+    ? `${label} oko ${max} °C`
+    : `${label} između ${min} i ${max} °C`;
 }
 
-function buildWeatherBriefLines(activeItem = {}) {
-  const entries = Array.isArray(activeItem?.dailyForecast) ? activeItem.dailyForecast.slice(0, 3) : [];
-  return entries.map((entry) => {
-    const condition = getWeatherDisplayDescription(entry).toLowerCase();
-    return `${formatWeatherBriefDay(entry)}: jutro ${formatWeatherCardTemperature(entry.morningTemp ?? entry.tempMin)}, popodne ${formatWeatherCardTemperature(entry.afternoonTemp ?? entry.tempMax)}, ${condition}, ${buildWeatherDailyDetail(entry)}.`;
-  });
+function buildWeatherDominantConditionText(entries = []) {
+  const counts = entries.reduce((map, entry) => {
+    const condition = getWeatherVisualCondition(entry);
+    map.set(condition, (map.get(condition) || 0) + 1);
+    return map;
+  }, new Map());
+  const dominant = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || "clear";
+  if (dominant === "thunderstorm") {
+    return "mogući su lokalni pljuskovi s grmljavinom";
+  }
+  if (dominant === "rain" || dominant === "drizzle") {
+    return "prevladavat će promjenjivo vrijeme s kišom";
+  }
+  if (dominant === "snow") {
+    return "očekuje se hladnije vrijeme sa snijegom";
+  }
+  if (dominant === "fog") {
+    return "moguća je magla i smanjena vidljivost";
+  }
+  if (dominant === "clouds") {
+    return "prevladavat će oblačnije vrijeme uz povremena sunčana razdoblja";
+  }
+  return "prevladavat će stabilno i pretežno sunčano vrijeme";
+}
+
+function buildWeatherWindText(maxWindMs) {
+  const windKmh = Math.round(Number(maxWindMs || 0) * 3.6);
+  if (!windKmh) {
+    return "";
+  }
+  if (windKmh >= 50) {
+    return `Vjetar može biti jak, s udarima do oko ${windKmh} km/h.`;
+  }
+  if (windKmh >= 25) {
+    return `Vjetar slab do umjeren, povremeno pojačan do oko ${windKmh} km/h.`;
+  }
+  return `Vjetar uglavnom slab, do oko ${windKmh} km/h.`;
+}
+
+function buildWeatherNarrative(activeItem = {}) {
+  const entries = Array.isArray(activeItem?.dailyForecast) ? activeItem.dailyForecast.slice(0, 5) : [];
+  if (!entries.length) {
+    return activeItem.summary || "Trenutni uvjeti i kratka prognoza za odabrani grad.";
+  }
+
+  const totalPrecipitation = entries.reduce((sum, entry) => {
+    const value = entry.precipitationMm ?? (Number(entry.rainMm || 0) + Number(entry.snowMm || 0));
+    return sum + Number(value || 0);
+  }, 0);
+  const precipitationDays = entries.filter((entry) => {
+    const value = entry.precipitationMm ?? (Number(entry.rainMm || 0) + Number(entry.snowMm || 0));
+    return Number(value || 0) > 0.5;
+  }).length;
+  const hasStorm = entries.some((entry) => getWeatherVisualCondition(entry) === "thunderstorm");
+  const morningText = buildWeatherTemperatureText("Jutarnje temperature", entries.map((entry) => entry.morningTemp ?? entry.tempMin ?? entry.temp));
+  const afternoonText = buildWeatherTemperatureText("popodnevne većinom", entries.map((entry) => entry.afternoonTemp ?? entry.tempMax ?? entry.temp));
+  const maxWind = Math.max(...entries.map((entry) => Number(entry.windGust || entry.windSpeed || 0)), Number(activeItem.current?.windGust || activeItem.current?.windSpeed || 0));
+  const temperatureSentence = [morningText, afternoonText].filter(Boolean).join(", ");
+  const conditionText = buildWeatherDominantConditionText(entries);
+  const windText = buildWeatherWindText(maxWind);
+
+  const sentences = [
+    `U idućim danima ${conditionText}.`,
+  ];
+  if (totalPrecipitation > 0.5) {
+    const precipitationText = precipitationDays > 1
+      ? `Oborine se očekuju kroz ${precipitationDays} dana, ukupno oko ${Math.round(totalPrecipitation)} mm.`
+      : `Oborine su moguće lokalno, ukupno oko ${Math.round(totalPrecipitation)} mm.`;
+    sentences.push(precipitationText);
+  } else {
+    sentences.push("Oborine se ne ističu kao glavni rizik u prikazanoj prognozi.");
+  }
+  if (hasStorm) {
+    sentences.push("Uz nestabilnosti su mogući pljuskovi s grmljavinom i kratkotrajno jači udari vjetra.");
+  } else if (windText) {
+    sentences.push(windText);
+  }
+  if (temperatureSentence) {
+    sentences.push(`${temperatureSentence}.`);
+  }
+
+  return sentences.join(" ");
 }
 
 const WEATHER_VISUAL_PART_CLASSES = Object.freeze([
@@ -22259,20 +22335,8 @@ function renderWeatherHero() {
   const title = document.createElement("strong");
   title.textContent = getWeatherDisplayDescription(currentWeather);
   const summary = document.createElement("p");
-  summary.textContent = activeItem.summary || "Trenutni uvjeti i kratka prognoza za odabrani grad.";
+  summary.textContent = buildWeatherNarrative(activeItem);
   description.append(eyebrow, title, summary);
-  const briefLines = buildWeatherBriefLines(activeItem);
-  if (briefLines.length) {
-    const brief = document.createElement("div");
-    brief.className = "weather-brief-lines";
-    brief.replaceChildren(...briefLines.map((line) => {
-      const item = document.createElement("span");
-      item.className = "weather-brief-line";
-      item.textContent = line;
-      return item;
-    }));
-    description.append(brief);
-  }
 
   const metrics = document.createElement("div");
   metrics.className = "weather-current-metrics";
