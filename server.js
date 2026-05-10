@@ -38,6 +38,8 @@ import {
   mergePdfBuffers,
   readStoredDocumentBuffer,
   sanitizeGeneratedDocumentFileName,
+  shutdownDocumentExportEngines,
+  warmDocumentExportEngines,
 } from "./src/documentExport.js";
 import { createLiveChatStore } from "./src/liveChatStore.js";
 import { sendMail } from "./src/mailer.js";
@@ -2386,12 +2388,18 @@ async function buildPdfBufferFromGeneratedDocxBuffer(docxBuffer = Buffer.alloc(0
 }
 
 async function generateTemplateDocumentFilesForEntries(entries = [], scopedSnapshot = {}) {
+  const startedAt = Date.now();
   const documentTemplates = scopedSnapshot.documentTemplates ?? [];
   const referenceDocumentCache = new Map();
   const usedPdfNames = new Set();
   const usedDocxNames = new Set();
   const bundles = [];
   const wordBundles = [];
+  let readTemplateMs = 0;
+  let docxRenderMs = 0;
+  let htmlPdfMs = 0;
+  let renderModelPdfMs = 0;
+  let wordPdfMs = 0;
 
   for (const [entryIndex, entry] of (Array.isArray(entries) ? entries : []).entries()) {
     const template = assertInScope(
@@ -2416,22 +2424,27 @@ async function generateTemplateDocumentFilesForEntries(entries = [], scopedSnaps
       if (!hasTemplateRenderPdfModel(entry?.renderModel)) {
         throw new Error("Template jos nema ucitan HTML ili Word predlozak.");
       }
+      const renderModelPdfStartedAt = Date.now();
       bundle.files.push({
         kind: "pdf",
         fileName: pdfFileName,
         buffer: await buildPdfFromRenderModel(entry.renderModel),
       });
+      renderModelPdfMs += Date.now() - renderModelPdfStartedAt;
       continue;
     }
 
     const cacheKey = String(template.id || entry?.templateId || entryIndex);
     let referenceDocument = referenceDocumentCache.get(cacheKey);
     if (!referenceDocument) {
+      const readTemplateStartedAt = Date.now();
       referenceDocument = await readStoredDocumentBuffer(template.referenceDocument);
       referenceDocumentCache.set(cacheKey, referenceDocument);
+      readTemplateMs += Date.now() - readTemplateStartedAt;
     }
 
     if (isHtmlTemplateFile(template.referenceDocument)) {
+      const htmlPdfStartedAt = Date.now();
       bundle.files.push({
         kind: "pdf",
         fileName: pdfFileName,
@@ -2440,6 +2453,7 @@ async function generateTemplateDocumentFilesForEntries(entries = [], scopedSnaps
           title: template.title || template.documentType || "Zapisnik",
         }),
       });
+      htmlPdfMs += Date.now() - htmlPdfStartedAt;
       continue;
     }
 
@@ -2448,9 +2462,11 @@ async function generateTemplateDocumentFilesForEntries(entries = [], scopedSnaps
         fallback: fallbackName,
         extension: "docx",
       });
+      const docxRenderStartedAt = Date.now();
       const docxBuffer = await buildDocxFromTemplateBuffer(referenceDocument.buffer, entry?.placeholders ?? {}, {
         fileName: docxFileName,
       });
+      docxRenderMs += Date.now() - docxRenderStartedAt;
       bundle.files.push({
         kind: "docx",
         fileName: docxFileName,
@@ -2471,18 +2487,22 @@ async function generateTemplateDocumentFilesForEntries(entries = [], scopedSnaps
   if (wordBundles.length > 0) {
     let pdfBuffers = [];
     try {
+      const wordPdfStartedAt = Date.now();
       pdfBuffers = await convertDocxBuffersToPdfBuffers(wordBundles.map((item) => ({
         buffer: item.docxBuffer,
         fileName: item.docxFileName,
       })));
+      wordPdfMs += Date.now() - wordPdfStartedAt;
     } catch (error) {
       console.warn("LibreOffice batch Word -> PDF conversion failed, using SafeNexus HTML fallback.", error);
       pdfBuffers = [];
       for (const item of wordBundles) {
+        const wordPdfStartedAt = Date.now();
         pdfBuffers.push(await buildPdfBufferFromGeneratedDocxBuffer(item.docxBuffer, {
           fileName: item.docxFileName,
           title: item.bundle.template?.title || item.bundle.template?.documentType || "Zapisnik",
         }));
+        wordPdfMs += Date.now() - wordPdfStartedAt;
       }
     }
 
@@ -2498,6 +2518,17 @@ async function generateTemplateDocumentFilesForEntries(entries = [], scopedSnaps
       });
     });
   }
+
+  logDocumentTemplateExportTiming("generate-files", {
+    entries: Array.isArray(entries) ? entries.length : 0,
+    wordEntries: wordBundles.length,
+    readTemplateMs,
+    docxRenderMs,
+    wordPdfMs,
+    htmlPdfMs,
+    renderModelPdfMs,
+    totalMs: Date.now() - startedAt,
+  });
 
   return bundles.filter((bundle) => bundle.files.length > 0);
 }
@@ -3112,10 +3143,25 @@ function stripStoredDocumentPayloadForResponse(document = null) {
   return rest;
 }
 
+function logDocumentTemplateExportTiming(event = "", details = {}) {
+  try {
+    console.info("[document-template-export]", JSON.stringify({
+      event,
+      ...details,
+    }));
+  } catch {
+    console.info("[document-template-export]", event);
+  }
+}
+
 async function saveGeneratedDocumentTemplatePdfDocuments(entries = [], scopedSnapshot = {}, user = null) {
+  const startedAt = Date.now();
   const workOrders = scopedSnapshot.workOrders ?? [];
+  const generateStartedAt = Date.now();
   const generatedBundles = await generateTemplateDocumentFilesForEntries(entries, scopedSnapshot);
+  const generateMs = Date.now() - generateStartedAt;
   const savedItems = [];
+  const saveStartedAt = Date.now();
 
   for (const bundle of generatedBundles) {
     const workOrderId = String(bundle?.entry?.workOrderId || "").trim();
@@ -3179,6 +3225,15 @@ async function saveGeneratedDocumentTemplatePdfDocuments(entries = [], scopedSna
       documents: savedDocuments,
     });
   }
+
+  logDocumentTemplateExportTiming("save-documents", {
+    entries: Array.isArray(entries) ? entries.length : 0,
+    bundles: generatedBundles.length,
+    generatedFiles: generatedBundles.reduce((total, bundle) => total + (bundle.files?.length || 0), 0),
+    generateMs,
+    saveMs: Date.now() - saveStartedAt,
+    totalMs: Date.now() - startedAt,
+  });
 
   return savedItems.filter((entry) => entry?.item);
 }
@@ -8208,8 +8263,13 @@ async function handleApiRequest(request, response, url) {
         return true;
       }
 
+      const requestStartedAt = Date.now();
+      const readBodyStartedAt = Date.now();
       const body = await readJsonBody(request);
+      const readBodyMs = Date.now() - readBodyStartedAt;
+      const snapshotStartedAt = Date.now();
       const { scopedSnapshot } = await getScopedState(user, request);
+      const snapshotMs = Date.now() - snapshotStartedAt;
       const entries = Array.isArray(body.entries) ? body.entries : [];
 
       if (entries.length === 0) {
@@ -8217,11 +8277,21 @@ async function handleApiRequest(request, response, url) {
         return true;
       }
 
+      const saveStartedAt = Date.now();
       const items = await saveGeneratedDocumentTemplatePdfDocuments(entries, scopedSnapshot, user);
+      const saveMs = Date.now() - saveStartedAt;
       if (items.length === 0) {
         sendError(response, 400, "Nijedan zapisnik nije spremljen u Documents.");
         return true;
       }
+
+      logDocumentTemplateExportTiming("request", {
+        entries: entries.length,
+        readBodyMs,
+        snapshotMs,
+        saveMs,
+        totalMs: Date.now() - requestStartedAt,
+      });
 
       sendJson(response, 200, {
         items,
@@ -10152,6 +10222,7 @@ async function shutdown(signal) {
       await Promise.all([
         domainRepository.close?.(),
         tenantRepository.close?.(),
+        shutdownDocumentExportEngines(),
       ]);
       process.exit(0);
     } catch (error) {
@@ -10173,4 +10244,9 @@ startScheduledProfileReports();
 
 server.listen(port, () => {
   console.log(`SelfDash workspace live at http://localhost:${port} (${domainRepository.kind})`);
+  void warmDocumentExportEngines().then(() => {
+    console.log("Document export engines warmed.");
+  }).catch((error) => {
+    console.warn("Document export engine warmup failed.", error);
+  });
 });

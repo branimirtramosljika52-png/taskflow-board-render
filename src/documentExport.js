@@ -56,6 +56,12 @@ const SOFFICE_DISCOVERY_ROOTS = [
 ];
 const SOFFICE_BINARY_NAMES = new Set(["soffice", "libreoffice", "soffice.exe", "libreoffice.exe"]);
 const SOFFICE_PROFILE_DIR = join(tmpdir(), `taskflow-soffice-profile-${process.pid}`);
+const SOFFICE_UNO_PROFILE_DIR = join(tmpdir(), `taskflow-soffice-uno-profile-${process.pid}`);
+const SOFFICE_UNO_HOST = process.env.SOFFICE_UNO_HOST || "127.0.0.1";
+const SOFFICE_UNO_PORT = Math.max(
+  1024,
+  Number(process.env.SOFFICE_UNO_PORT || (22000 + (process.pid % 10000))) || 22000,
+);
 const CHROMIUM_CANDIDATES = [
   process.env.CHROMIUM_PATH,
   process.env.CHROME_PATH,
@@ -71,9 +77,28 @@ const CHROMIUM_CANDIDATES = [
   "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
   "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
 ].filter(Boolean);
+const PYTHON_CANDIDATES = [
+  process.env.PYTHON_PATH,
+  "python3",
+  "python",
+  "/usr/bin/python3",
+  "/usr/local/bin/python3",
+  "C:\\Python312\\python.exe",
+  "C:\\Python311\\python.exe",
+  "C:\\Python310\\python.exe",
+].filter(Boolean);
+const UNO_DOCX_PDF_CONVERTER_PATH = resolve(moduleDir, "unoDocxToPdf.py");
 const SOFFICE_CONVERSION_TIMEOUT_MS = Math.max(
   30000,
   Number(process.env.SOFFICE_CONVERSION_TIMEOUT_MS || 180000) || 180000,
+);
+const SOFFICE_UNO_READY_TIMEOUT_MS = Math.max(
+  3000,
+  Number(process.env.SOFFICE_UNO_READY_TIMEOUT_MS || 12000) || 12000,
+);
+const SOFFICE_UNO_CONVERSION_TIMEOUT_MS = Math.max(
+  15000,
+  Number(process.env.SOFFICE_UNO_CONVERSION_TIMEOUT_MS || 120000) || 120000,
 );
 const HTML_PDF_CONVERSION_TIMEOUT_MS = Math.max(
   20000,
@@ -126,6 +151,9 @@ const MEASUREMENT_COLUMN_MIN_WIDTH = 32;
 let sofficeCommandPromise = null;
 let sofficeProfileReadyPromise = null;
 let sofficeConversionQueue = Promise.resolve();
+let pythonCommandPromise = null;
+let warmSofficePromise = null;
+let warmSofficeInstance = null;
 let chromiumCommandPromise = null;
 let warmChromiumPromise = null;
 let warmChromiumInstance = null;
@@ -266,9 +294,9 @@ async function fileExists(path) {
 
 function runCommand(command, args = [], options = {}) {
   return new Promise((resolvePromise, rejectPromise) => {
-    const { timeoutMs = 0, ...spawnOptions } = options;
+    const { timeoutMs = 0, input, ...spawnOptions } = options;
     const child = spawn(command, args, {
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: input === undefined ? ["ignore", "pipe", "pipe"] : ["pipe", "pipe", "pipe"],
       windowsHide: true,
       ...spawnOptions,
     });
@@ -288,6 +316,10 @@ function runCommand(command, args = [], options = {}) {
     child.stderr?.on("data", (chunk) => {
       stderr += String(chunk ?? "");
     });
+    if (input !== undefined) {
+      child.stdin?.on("error", () => {});
+      child.stdin?.end(String(input ?? ""));
+    }
     child.on("error", (error) => {
       if (timeout) {
         clearTimeout(timeout);
@@ -441,6 +473,224 @@ async function resolveSofficeCommandCached() {
   }
 
   return await sofficeCommandPromise;
+}
+
+async function resolvePythonCommand() {
+  for (const candidate of PYTHON_CANDIDATES) {
+    const safeCandidate = clean(candidate);
+    if (!safeCandidate) {
+      continue;
+    }
+
+    if (/^[A-Za-z]:\\/i.test(safeCandidate) || safeCandidate.startsWith("/")) {
+      if (!await fileExists(safeCandidate)) {
+        continue;
+      }
+    }
+
+    try {
+      await runCommand(safeCandidate, ["--version"], {
+        timeoutMs: 5000,
+      });
+      await runCommand(safeCandidate, ["-c", "import uno"], {
+        timeoutMs: 5000,
+      });
+      return safeCandidate;
+    } catch {
+      continue;
+    }
+  }
+
+  return "";
+}
+
+async function resolvePythonCommandCached() {
+  if (!pythonCommandPromise) {
+    pythonCommandPromise = resolvePythonCommand();
+  }
+
+  return await pythonCommandPromise;
+}
+
+function isChildProcessAlive(child = null) {
+  return Boolean(child && !child.killed && child.exitCode === null && child.signalCode === null);
+}
+
+function trimCommandOutput(value = "", limit = 1600) {
+  const text = clean(value);
+  if (text.length <= limit) {
+    return text;
+  }
+
+  return `${text.slice(0, limit)}...`;
+}
+
+async function runUnoDocxPdfConverter(items = [], {
+  pythonCommand = "",
+  timeoutMs = SOFFICE_UNO_CONVERSION_TIMEOUT_MS,
+  tempRoot = "",
+} = {}) {
+  const payload = {
+    host: SOFFICE_UNO_HOST,
+    port: SOFFICE_UNO_PORT,
+    timeoutSeconds: Math.max(1, Math.ceil(timeoutMs / 1000)),
+    items,
+  };
+  const result = await runCommand(pythonCommand, [UNO_DOCX_PDF_CONVERTER_PATH], {
+    input: JSON.stringify(payload),
+    env: buildSofficeRuntimeEnv(tempRoot),
+    timeoutMs,
+  });
+  const stdout = clean(result.stdout);
+
+  if (!stdout) {
+    throw new Error("UNO PDF konverter nije vratio rezultat.");
+  }
+
+  try {
+    return JSON.parse(stdout);
+  } catch (error) {
+    throw new Error(`UNO PDF konverter je vratio neispravan odgovor: ${trimCommandOutput(stdout)}`);
+  }
+}
+
+async function launchWarmSofficeInstance() {
+  if (process.platform === "win32") {
+    return null;
+  }
+
+  const [sofficeCommand, pythonCommand] = await Promise.all([
+    resolveSofficeCommandCached(),
+    resolvePythonCommandCached(),
+  ]);
+
+  if (!sofficeCommand || !pythonCommand || !await fileExists(UNO_DOCX_PDF_CONVERTER_PATH)) {
+    return null;
+  }
+
+  await mkdir(SOFFICE_UNO_PROFILE_DIR, { recursive: true });
+  const child = spawn(sofficeCommand, [
+    "--headless",
+    "--invisible",
+    "--nologo",
+    "--nodefault",
+    "--nofirststartwizard",
+    "--norestore",
+    `-env:UserInstallation=${pathToFileURL(SOFFICE_UNO_PROFILE_DIR).href}`,
+    `--accept=socket,host=${SOFFICE_UNO_HOST},port=${SOFFICE_UNO_PORT};urp;StarOffice.ComponentContext`,
+  ], {
+    cwd: tmpdir(),
+    env: buildSofficeRuntimeEnv(tmpdir()),
+    stdio: ["ignore", "ignore", "pipe"],
+    windowsHide: true,
+  });
+  let stderr = "";
+
+  child.stderr?.on("data", (chunk) => {
+    stderr = `${stderr}${String(chunk ?? "")}`.slice(-2400);
+  });
+  child.on("exit", () => {
+    if (warmSofficeInstance?.child === child) {
+      warmSofficeInstance = null;
+      warmSofficePromise = null;
+    }
+  });
+
+  try {
+    await runUnoDocxPdfConverter([], {
+      pythonCommand,
+      tempRoot: tmpdir(),
+      timeoutMs: SOFFICE_UNO_READY_TIMEOUT_MS,
+    });
+  } catch (error) {
+    child.kill("SIGTERM");
+    throw new Error([
+      "Warm LibreOffice UNO proces nije spreman.",
+      clean(error?.message),
+      trimCommandOutput(stderr),
+    ].filter(Boolean).join(" "));
+  }
+
+  warmSofficeInstance = {
+    child,
+    pythonCommand,
+    sofficeCommand,
+    startedAt: Date.now(),
+  };
+  return warmSofficeInstance;
+}
+
+async function ensureWarmSofficeInstance() {
+  if (isChildProcessAlive(warmSofficeInstance?.child)) {
+    return warmSofficeInstance;
+  }
+
+  if (!warmSofficePromise) {
+    warmSofficePromise = launchWarmSofficeInstance()
+      .catch((error) => {
+        warmSofficePromise = null;
+        warmSofficeInstance = null;
+        console.warn("Warm LibreOffice UNO nije dostupan, koristim standardni CLI put.", error);
+        return null;
+      });
+  }
+
+  return await warmSofficePromise;
+}
+
+async function tryConvertPreparedDocxItemsWithWarmSoffice(preparedItems = [], tempRoot = "") {
+  if (!preparedItems.length) {
+    return [];
+  }
+
+  const warmInstance = await ensureWarmSofficeInstance();
+  if (!warmInstance?.pythonCommand || !isChildProcessAlive(warmInstance.child)) {
+    return null;
+  }
+
+  const items = preparedItems.map((item) => ({
+    inputPath: item.inputPath,
+    outputPath: item.outputPath,
+  }));
+  const result = await runUnoDocxPdfConverter(items, {
+    pythonCommand: warmInstance.pythonCommand,
+    tempRoot,
+    timeoutMs: SOFFICE_UNO_CONVERSION_TIMEOUT_MS,
+  });
+  const resultItems = Array.isArray(result?.results) ? result.results : [];
+  const failed = resultItems.find((item) => item && item.ok === false);
+  if (failed) {
+    throw new Error(clean(failed.error) || "UNO PDF konverzija nije uspjela.");
+  }
+
+  const buffers = [];
+  for (const item of preparedItems) {
+    if (!item.outputPath || !await fileExists(item.outputPath)) {
+      throw new Error(`UNO PDF konverzija nije vratila datoteku za ${item.inputBaseName}.`);
+    }
+    buffers.push(await readFile(item.outputPath));
+  }
+  return buffers;
+}
+
+export async function warmDocumentExportEngines() {
+  await Promise.allSettled([
+    ensureWarmSofficeInstance(),
+  ]);
+}
+
+export async function shutdownDocumentExportEngines() {
+  if (warmSofficeInstance?.child && !warmSofficeInstance.child.killed) {
+    warmSofficeInstance.child.kill("SIGTERM");
+  }
+  warmSofficeInstance = null;
+  warmSofficePromise = null;
+
+  if (warmChromiumInstance?.child && !warmChromiumInstance.child.killed) {
+    warmChromiumInstance.child.kill("SIGTERM");
+  }
+  warmChromiumInstance = null;
+  warmChromiumPromise = null;
 }
 
 async function resolveChromiumCommand() {
@@ -1880,55 +2130,70 @@ export async function convertDocxBuffersToPdfBuffers(items = []) {
     const usedNames = new Set();
     const preparedItems = stillUncachedItems.map((item, index) => {
       const inputBaseName = makeUniqueSofficeInputFileName(item.fileName, index, usedNames);
+      const outputBaseName = sanitizeGeneratedDocumentFileName(inputBaseName.replace(/\.(docx|dotx)$/i, ""), {
+        fallback: `zapisnik-${index + 1}`,
+        extension: "pdf",
+      });
       return {
         ...item,
         inputBaseName,
         inputPath: join(tempRoot, inputBaseName),
+        outputPath: join(tempRoot, outputBaseName),
       };
     });
 
     try {
       await Promise.all(preparedItems.map((item) => writeFile(item.inputPath, item.buffer)));
-      const commandResult = await runCommand(sofficeCommand, [
-        "--headless",
-        "--nologo",
-        "--nodefault",
-        "--nofirststartwizard",
-        `-env:UserInstallation=${pathToFileURL(officeProfileDir).href}`,
-        "--convert-to",
-        "pdf:writer_pdf_Export",
-        "--outdir",
-        tempRoot,
-        ...preparedItems.map((item) => item.inputPath),
-      ], {
-        cwd: tempRoot,
-        env: buildSofficeRuntimeEnv(tempRoot),
-        timeoutMs: SOFFICE_CONVERSION_TIMEOUT_MS,
-      });
-      const generatedPdfEntries = (await readdir(tempRoot, { withFileTypes: true }))
-        .filter((entry) => entry.isFile() && extname(entry.name).toLowerCase() === ".pdf")
-        .map((entry) => join(tempRoot, entry.name));
-      const pdfBuffers = [];
+      let pdfBuffers = null;
 
-      for (const item of preparedItems) {
-        const resolvedOutputPath = await resolveConvertedPdfPath(
+      try {
+        pdfBuffers = await tryConvertPreparedDocxItemsWithWarmSoffice(preparedItems, tempRoot);
+      } catch (unoError) {
+        console.warn("Warm LibreOffice UNO conversion failed, falling back to CLI convert-to.", unoError);
+      }
+
+      if (!pdfBuffers) {
+        const commandResult = await runCommand(sofficeCommand, [
+          "--headless",
+          "--nologo",
+          "--nodefault",
+          "--nofirststartwizard",
+          `-env:UserInstallation=${pathToFileURL(officeProfileDir).href}`,
+          "--convert-to",
+          "pdf:writer_pdf_Export",
+          "--outdir",
           tempRoot,
-          item.inputBaseName,
-          generatedPdfEntries,
-        );
+          ...preparedItems.map((item) => item.inputPath),
+        ], {
+          cwd: tempRoot,
+          env: buildSofficeRuntimeEnv(tempRoot),
+          timeoutMs: SOFFICE_CONVERSION_TIMEOUT_MS,
+        });
+        const generatedPdfEntries = (await readdir(tempRoot, { withFileTypes: true }))
+          .filter((entry) => entry.isFile() && extname(entry.name).toLowerCase() === ".pdf")
+          .map((entry) => join(tempRoot, entry.name));
+        pdfBuffers = [];
 
-        if (!resolvedOutputPath || !await fileExists(resolvedOutputPath)) {
-          const directoryEntries = await readdir(tempRoot).catch(() => []);
-          const details = [
-            "LibreOffice nije vratio PDF datoteku.",
-            clean(commandResult.stdout) ? `STDOUT: ${clean(commandResult.stdout)}` : "",
-            clean(commandResult.stderr) ? `STDERR: ${clean(commandResult.stderr)}` : "",
-            directoryEntries.length > 0 ? `Sadrzaj temp direktorija: ${directoryEntries.join(", ")}` : "",
-          ].filter(Boolean).join(" ");
-          throw new Error(details || "LibreOffice nije vratio PDF datoteku.");
+        for (const item of preparedItems) {
+          const resolvedOutputPath = await resolveConvertedPdfPath(
+            tempRoot,
+            item.inputBaseName,
+            generatedPdfEntries,
+          );
+
+          if (!resolvedOutputPath || !await fileExists(resolvedOutputPath)) {
+            const directoryEntries = await readdir(tempRoot).catch(() => []);
+            const details = [
+              "LibreOffice nije vratio PDF datoteku.",
+              clean(commandResult.stdout) ? `STDOUT: ${clean(commandResult.stdout)}` : "",
+              clean(commandResult.stderr) ? `STDERR: ${clean(commandResult.stderr)}` : "",
+              directoryEntries.length > 0 ? `Sadrzaj temp direktorija: ${directoryEntries.join(", ")}` : "",
+            ].filter(Boolean).join(" ");
+            throw new Error(details || "LibreOffice nije vratio PDF datoteku.");
+          }
+
+          pdfBuffers.push(await readFile(resolvedOutputPath));
         }
-
-        pdfBuffers.push(await readFile(resolvedOutputPath));
       }
 
       pdfBuffers.forEach((pdfBuffer, index) => {
