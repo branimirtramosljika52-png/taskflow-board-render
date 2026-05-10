@@ -83,6 +83,7 @@ const canonicalAppOrigin = (() => {
 const canonicalAppHost = canonicalAppOrigin ? new URL(canonicalAppOrigin).host.toLowerCase() : "";
 const GENERATED_WORK_ORDER_PDF_CATEGORY = "Radni nalog PDF";
 const GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY = "Zapisnik PDF";
+const GENERATED_DOCUMENT_TEMPLATE_DOCX_CATEGORY = "Zapisnik DOCX";
 const GENERATED_PEOPLE_TRAINING_CERTIFICATE_CATEGORY = "Automatsko uvjerenje";
 const GENERATED_PEOPLE_TRAINING_CERTIFICATE_SOURCE = "people-training-certificate";
 const OPENAI_DEFAULT_API_BASE_URL = "https://api.openai.com/v1";
@@ -2256,9 +2257,19 @@ async function mapWithConcurrency(items = [], limit = 2, worker = async () => nu
 }
 
 function ensureUniquePdfZipFileName(fileName = "", usedNames = new Set()) {
+  return ensureUniqueGeneratedDocumentFileName(fileName, usedNames, {
+    fallback: "zapisnik",
+    extension: "pdf",
+  });
+}
+
+function ensureUniqueGeneratedDocumentFileName(fileName = "", usedNames = new Set(), {
+  fallback = "zapisnik",
+  extension = "pdf",
+} = {}) {
   const safeFileName = sanitizeGeneratedDocumentFileName(
-    fileName || "zapisnik",
-    { fallback: "zapisnik", extension: "pdf" },
+    fileName || fallback,
+    { fallback, extension },
   );
   const lowerName = safeFileName.toLowerCase();
   if (!usedNames.has(lowerName)) {
@@ -2266,12 +2277,16 @@ function ensureUniquePdfZipFileName(fileName = "", usedNames = new Set()) {
     return safeFileName;
   }
 
-  const baseName = safeFileName.replace(/\.pdf$/i, "");
+  const escapedExtension = String(extension || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const baseName = escapedExtension
+    ? safeFileName.replace(new RegExp(`\\.${escapedExtension}$`, "i"), "")
+    : safeFileName;
   let suffix = 2;
-  while (usedNames.has(`${baseName}-${suffix}.pdf`.toLowerCase())) {
+  let uniqueName = escapedExtension ? `${baseName}-${suffix}.${extension}` : `${baseName}-${suffix}`;
+  while (usedNames.has(uniqueName.toLowerCase())) {
     suffix += 1;
+    uniqueName = escapedExtension ? `${baseName}-${suffix}.${extension}` : `${baseName}-${suffix}`;
   }
-  const uniqueName = `${baseName}-${suffix}.pdf`;
   usedNames.add(uniqueName.toLowerCase());
   return uniqueName;
 }
@@ -2351,6 +2366,140 @@ async function generatePdfFileEntriesForTemplateEntries(entries = [], scopedSnap
   });
 
   return pdfFiles.filter((entry) => entry?.buffer);
+}
+
+async function buildPdfBufferFromGeneratedDocxBuffer(docxBuffer = Buffer.alloc(0), {
+  fileName = "zapisnik.docx",
+  title = "Zapisnik",
+} = {}) {
+  const converted = await convertWordBufferToHtmlTemplate(docxBuffer, {
+    fileName,
+    allowLibreOfficeFallback: false,
+  });
+  return await buildPdfFromHtmlTemplateBuffer(Buffer.from(converted.html || "", "utf8"), {}, {
+    fileName: sanitizeGeneratedDocumentFileName(
+      fileName,
+      { fallback: "zapisnik", extension: "html" },
+    ),
+    title,
+  });
+}
+
+async function generateTemplateDocumentFilesForEntries(entries = [], scopedSnapshot = {}) {
+  const documentTemplates = scopedSnapshot.documentTemplates ?? [];
+  const referenceDocumentCache = new Map();
+  const usedPdfNames = new Set();
+  const usedDocxNames = new Set();
+  const bundles = [];
+  const wordBundles = [];
+
+  for (const [entryIndex, entry] of (Array.isArray(entries) ? entries : []).entries()) {
+    const template = assertInScope(
+      documentTemplates,
+      entry?.templateId,
+      "Template nije pronaden.",
+    );
+    const fallbackName = `zapisnik-${entryIndex + 1}`;
+    const sourceName = entry?.fileName || template.outputFileName || template.title || fallbackName;
+    const pdfFileName = ensureUniqueGeneratedDocumentFileName(sourceName, usedPdfNames, {
+      fallback: fallbackName,
+      extension: "pdf",
+    });
+    const bundle = {
+      entry,
+      template,
+      files: [],
+    };
+    bundles.push(bundle);
+
+    if (!template.referenceDocument) {
+      if (!hasTemplateRenderPdfModel(entry?.renderModel)) {
+        throw new Error("Template jos nema ucitan HTML ili Word predlozak.");
+      }
+      bundle.files.push({
+        kind: "pdf",
+        fileName: pdfFileName,
+        buffer: await buildPdfFromRenderModel(entry.renderModel),
+      });
+      continue;
+    }
+
+    const cacheKey = String(template.id || entry?.templateId || entryIndex);
+    let referenceDocument = referenceDocumentCache.get(cacheKey);
+    if (!referenceDocument) {
+      referenceDocument = await readStoredDocumentBuffer(template.referenceDocument);
+      referenceDocumentCache.set(cacheKey, referenceDocument);
+    }
+
+    if (isHtmlTemplateFile(template.referenceDocument)) {
+      bundle.files.push({
+        kind: "pdf",
+        fileName: pdfFileName,
+        buffer: await buildPdfFromHtmlTemplateBuffer(referenceDocument.buffer, entry?.placeholders ?? {}, {
+          fileName: entry?.fileName || template.outputFileName || template.title || `${fallbackName}.html`,
+          title: template.title || template.documentType || "Zapisnik",
+        }),
+      });
+      continue;
+    }
+
+    if (isWordTemplateFile(template.referenceDocument)) {
+      const docxFileName = ensureUniqueGeneratedDocumentFileName(sourceName, usedDocxNames, {
+        fallback: fallbackName,
+        extension: "docx",
+      });
+      const docxBuffer = await buildDocxFromTemplateBuffer(referenceDocument.buffer, entry?.placeholders ?? {}, {
+        fileName: docxFileName,
+      });
+      bundle.files.push({
+        kind: "docx",
+        fileName: docxFileName,
+        buffer: docxBuffer,
+      });
+      wordBundles.push({
+        bundle,
+        docxBuffer,
+        docxFileName,
+        pdfFileName,
+      });
+      continue;
+    }
+
+    throw new Error("Za Template Development ucitaj .html/.htm ili .docx/.dotx predlozak.");
+  }
+
+  if (wordBundles.length > 0) {
+    let pdfBuffers = [];
+    try {
+      pdfBuffers = await convertDocxBuffersToPdfBuffers(wordBundles.map((item) => ({
+        buffer: item.docxBuffer,
+        fileName: item.docxFileName,
+      })));
+    } catch (error) {
+      console.warn("LibreOffice batch Word -> PDF conversion failed, using SafeNexus HTML fallback.", error);
+      pdfBuffers = [];
+      for (const item of wordBundles) {
+        pdfBuffers.push(await buildPdfBufferFromGeneratedDocxBuffer(item.docxBuffer, {
+          fileName: item.docxFileName,
+          title: item.bundle.template?.title || item.bundle.template?.documentType || "Zapisnik",
+        }));
+      }
+    }
+
+    wordBundles.forEach((item, index) => {
+      const pdfBuffer = pdfBuffers[index];
+      if (!pdfBuffer) {
+        return;
+      }
+      item.bundle.files.push({
+        kind: "pdf",
+        fileName: item.pdfFileName,
+        buffer: pdfBuffer,
+      });
+    });
+  }
+
+  return bundles.filter((bundle) => bundle.files.length > 0);
 }
 
 async function generateCombinedHtmlPdfForTemplateEntries(entries = [], scopedSnapshot = {}) {
@@ -2930,6 +3079,31 @@ function buildGeneratedDocumentTemplatePdfDocumentPayload({
   };
 }
 
+function buildGeneratedDocumentTemplateDocxDocumentPayload({
+  workOrder = {},
+  template = {},
+  docxBuffer = Buffer.alloc(0),
+  fileName = "",
+} = {}) {
+  const safeFileName = sanitizeGeneratedDocumentFileName(
+    fileName || template.outputFileName || template.title || workOrder.workOrderNumber || "zapisnik",
+    { fallback: "zapisnik", extension: "docx" },
+  );
+  const safeBuffer = Buffer.isBuffer(docxBuffer) ? docxBuffer : Buffer.from(docxBuffer ?? []);
+  const templateTitle = String(template.title || template.documentType || "Zapisnik").trim() || "Zapisnik";
+  const workOrderNumber = String(workOrder.workOrderNumber || "bez broja").trim() || "bez broja";
+
+  return {
+    fileName: safeFileName,
+    fileType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    fileSize: safeBuffer.length,
+    documentCategory: GENERATED_DOCUMENT_TEMPLATE_DOCX_CATEGORY,
+    description: `Automatski spremljen Word zapisnik "${templateTitle}" za RN ${workOrderNumber}.`,
+    sourceType: "editor",
+    dataUrl: `data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,${safeBuffer.toString("base64")}`,
+  };
+}
+
 function stripStoredDocumentPayloadForResponse(document = null) {
   if (!document || typeof document !== "object") {
     return document;
@@ -2940,29 +3114,57 @@ function stripStoredDocumentPayloadForResponse(document = null) {
 
 async function saveGeneratedDocumentTemplatePdfDocuments(entries = [], scopedSnapshot = {}, user = null) {
   const workOrders = scopedSnapshot.workOrders ?? [];
-  const pdfFiles = [];
-  for (const entry of Array.isArray(entries) ? entries : []) {
-    pdfFiles.push(...await generatePdfFileEntriesForTemplateEntries([entry], scopedSnapshot));
-  }
+  const generatedBundles = await generateTemplateDocumentFilesForEntries(entries, scopedSnapshot);
   const savedItems = [];
 
-  for (const pdfFile of pdfFiles) {
-    const workOrderId = String(pdfFile?.entry?.workOrderId || "").trim();
+  for (const bundle of generatedBundles) {
+    const workOrderId = String(bundle?.entry?.workOrderId || "").trim();
     const workOrder = assertInScope(workOrders, workOrderId, "Radni nalog nije pronaden.");
-    const filePayload = buildGeneratedDocumentTemplatePdfDocumentPayload({
-      workOrder,
-      template: pdfFile.template,
-      pdfBuffer: pdfFile.buffer,
-      fileName: pdfFile.fileName,
-    });
-    const item = typeof domainRepository.upsertWorkOrderGeneratedPdfDocument === "function"
-      ? await domainRepository.upsertWorkOrderGeneratedPdfDocument(workOrderId, filePayload, user)
-      : (await domainRepository.addWorkOrderDocuments(
-        workOrderId,
-        [filePayload],
-        user,
-        { sourceType: "pdf" },
-      ))[0] ?? null;
+    const savedDocuments = [];
+    let primaryPdfItem = null;
+
+    for (const file of bundle.files) {
+      if (file.kind === "docx") {
+        const docxPayload = buildGeneratedDocumentTemplateDocxDocumentPayload({
+          workOrder,
+          template: bundle.template,
+          docxBuffer: file.buffer,
+          fileName: file.fileName,
+        });
+        const docxItems = await domainRepository.addWorkOrderDocuments(
+          workOrderId,
+          [docxPayload],
+          user,
+          { sourceType: "editor" },
+        );
+        if (docxItems[0]) {
+          savedDocuments.push(stripStoredDocumentPayloadForResponse(docxItems[0]));
+        }
+        continue;
+      }
+
+      if (file.kind === "pdf") {
+        const filePayload = buildGeneratedDocumentTemplatePdfDocumentPayload({
+          workOrder,
+          template: bundle.template,
+          pdfBuffer: file.buffer,
+          fileName: file.fileName,
+        });
+        const pdfItem = typeof domainRepository.upsertWorkOrderGeneratedPdfDocument === "function"
+          ? await domainRepository.upsertWorkOrderGeneratedPdfDocument(workOrderId, filePayload, user)
+          : (await domainRepository.addWorkOrderDocuments(
+            workOrderId,
+            [filePayload],
+            user,
+            { sourceType: "pdf" },
+          ))[0] ?? null;
+        if (pdfItem) {
+          const strippedPdfItem = stripStoredDocumentPayloadForResponse(pdfItem);
+          savedDocuments.push(strippedPdfItem);
+          primaryPdfItem = strippedPdfItem;
+        }
+      }
+    }
 
     savedItems.push({
       workOrderId,
@@ -2970,10 +3172,11 @@ async function saveGeneratedDocumentTemplatePdfDocuments(entries = [], scopedSna
       companyId: String(workOrder.companyId || "").trim(),
       companyName: String(workOrder.companyName || "").trim(),
       locationName: String(workOrder.locationName || "").trim(),
-      templateId: String(pdfFile?.entry?.templateId || pdfFile?.template?.id || "").trim(),
-      templateTitle: String(pdfFile?.template?.title || pdfFile?.template?.documentType || "Zapisnik").trim(),
-      fileName: filePayload.fileName,
-      item: stripStoredDocumentPayloadForResponse(item),
+      templateId: String(bundle?.entry?.templateId || bundle?.template?.id || "").trim(),
+      templateTitle: String(bundle?.template?.title || bundle?.template?.documentType || "Zapisnik").trim(),
+      fileName: primaryPdfItem?.fileName || savedDocuments[0]?.fileName || "",
+      item: primaryPdfItem || savedDocuments[0] || null,
+      documents: savedDocuments,
     });
   }
 

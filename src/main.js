@@ -50062,51 +50062,111 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
       const workOrderLabel = `RN ${sequenceEntry.workOrderNumber || exportEntry.renderModel?.workOrderNumber || index + 1}`;
       setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
         status: "running",
-        message: `Spremam PDF zapisnik za ${workOrderLabel} u Documents.`,
+        message: `Spremam DOCX/PDF zapisnik za ${workOrderLabel} u Documents.`,
       }, { render: true });
     });
 
     const savedItems = [];
     loading.setPhase(2, {
-      message: `Spremam zapisnike jedan po jedan da se request ne prekine...`,
+      message: `Pripremam DOCX predloške i brzi PDF batch...`,
       progress: 52,
     });
+    const hasWordTemplateEntries = exportEntries.some(({ exportEntry }) => (
+      String(exportEntry?.templateReferenceKind || "").trim().toLowerCase() === "word"
+    ));
+    const handleSavedEntry = (savedEntry, sequenceEntry, exportEntry, index = 0) => {
+      const workOrderLabel = `RN ${sequenceEntry?.workOrderNumber || exportEntry?.renderModel?.workOrderNumber || index + 1}`;
+      if (!savedEntry?.item) {
+        throw new Error("Server nije vratio spremljeni zapisnik.");
+      }
+      const savedDocuments = Array.isArray(savedEntry.documents) && savedEntry.documents.length > 0
+        ? savedEntry.documents
+        : [savedEntry.item].filter(Boolean);
+      savedItems.push(savedEntry);
+      upsertDocumentsExplorerWorkOrderDocuments(savedDocuments);
+      const savedTypes = new Set(savedDocuments.map((item) => String(item?.fileExtension || "").toLowerCase()));
+      const savedLabel = savedTypes.has("docx") && savedTypes.has("pdf") ? "DOCX i PDF" : "PDF";
+      setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
+        status: "done",
+        message: `${workOrderLabel}: spremljen ${savedLabel} u Documents.`,
+        document: savedEntry.item,
+        documents: savedDocuments,
+      }, { render: true });
+    };
 
-    for (const [index, batchEntry] of batchEntries.entries()) {
-      const exportEntry = exportEntries[index];
-      const sequenceEntry = exportEntry?.sequenceEntry;
-      const workOrderLabel = `RN ${sequenceEntry?.workOrderNumber || exportEntry?.exportEntry?.renderModel?.workOrderNumber || index + 1}`;
+    if (hasWordTemplateEntries) {
       loading.setPhase(3, {
-        message: `PDF engine sprema ${index + 1}/${batchEntries.length}: ${workOrderLabel} u Documents...`,
-        progress: Math.min(88, 58 + Math.round(((index + 1) / batchEntries.length) * 26)),
+        message: `LibreOffice batch sprema ${batchEntries.length} Word zapisnika u DOCX i PDF...`,
+        progress: 74,
       });
-
       try {
         const response = await apiRequest("/document-templates/export-pdf-documents", {
           method: "POST",
           body: {
-            entries: [batchEntry],
+            entries: batchEntries,
           },
         });
-        const savedEntry = Array.isArray(response.items) ? response.items[0] : null;
-        if (!savedEntry?.item) {
-          throw new Error("Server nije vratio spremljeni PDF dokument.");
-        }
-        savedItems.push(savedEntry);
-        upsertDocumentsExplorerWorkOrderDocuments([savedEntry.item]);
-        setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
-          status: "done",
-          message: `${workOrderLabel} je spremljen u Documents.`,
-          document: savedEntry.item,
-          documents: [savedEntry.item],
-        }, { render: true });
+        const responseItems = Array.isArray(response.items) ? response.items : [];
+        const responseItemsByWorkOrderId = new Map(responseItems.map((item) => [
+          String(item?.workOrderId || ""),
+          item,
+        ]));
+        exportEntries.forEach(({ sequenceEntry, exportEntry }, index) => {
+          const savedEntry = responseItemsByWorkOrderId.get(String(sequenceEntry?.workOrderId || ""))
+            || responseItems[index]
+            || null;
+          try {
+            handleSavedEntry(savedEntry, sequenceEntry, exportEntry, index);
+          } catch (error) {
+            failureCount += 1;
+            setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
+              status: "error",
+              message: error?.message || "Ne mogu spremiti DOCX/PDF zapisnik.",
+            }, { render: true });
+          }
+        });
       } catch (error) {
-        failureCount += 1;
-        console.error(`Ne mogu spremiti PDF zapisnik za ${workOrderLabel}.`, error);
-        setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
-          status: "error",
-          message: error?.message || `Ne mogu spremiti PDF za ${workOrderLabel}.`,
-        }, { render: true });
+        failureCount += batchEntries.length;
+        console.error("Ne mogu spremiti Word DOCX/PDF batch.", error);
+        exportEntries.forEach(({ sequenceEntry }) => {
+          setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
+            status: "error",
+            message: error?.message || "Ne mogu spremiti Word DOCX/PDF batch.",
+          }, { render: true });
+        });
+      }
+    } else {
+      loading.setPhase(2, {
+        message: `Spremam zapisnike jedan po jedan da se request ne prekine...`,
+        progress: 52,
+      });
+
+      for (const [index, batchEntry] of batchEntries.entries()) {
+        const exportEntry = exportEntries[index];
+        const sequenceEntry = exportEntry?.sequenceEntry;
+        const workOrderLabel = `RN ${sequenceEntry?.workOrderNumber || exportEntry?.exportEntry?.renderModel?.workOrderNumber || index + 1}`;
+        loading.setPhase(3, {
+          message: `PDF engine sprema ${index + 1}/${batchEntries.length}: ${workOrderLabel} u Documents...`,
+          progress: Math.min(88, 58 + Math.round(((index + 1) / batchEntries.length) * 26)),
+        });
+
+        try {
+          const response = await apiRequest("/document-templates/export-pdf-documents", {
+            method: "POST",
+            body: {
+              entries: [batchEntry],
+            },
+          });
+          const savedEntry = Array.isArray(response.items) ? response.items[0] : null;
+          handleSavedEntry(savedEntry, sequenceEntry, exportEntry?.exportEntry, index);
+        } catch (error) {
+          failureCount += 1;
+          console.error(`Ne mogu spremiti PDF zapisnik za ${workOrderLabel}.`, error);
+          setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
+            status: "error",
+            message: error?.message || `Ne mogu spremiti PDF za ${workOrderLabel}.`,
+          }, { render: true });
+        }
       }
     }
 
@@ -50118,14 +50178,16 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
 
     if (failureCount > 0) {
       setDocumentTemplateMessage(
-        `${generatedCount} PDF zapisnika je spremljeno u Documents, ${failureCount} nije spremljeno. Pogledaj statuse po RN-u.`,
+        `${generatedCount} zapisnika je spremljeno u Documents, ${failureCount} nije spremljeno. Pogledaj statuse po RN-u.`,
       );
     } else {
       loading.complete({
         message: "Gotovo: svi označeni zapisnici su spremljeni u Documents.",
       });
       setDocumentTemplateMessage(
-        "Gotovo: svaki označeni RN ima svoj PDF zapisnik spremljen u Documents.",
+        hasWordTemplateEntries
+          ? "Gotovo: svaki označeni RN ima svoj DOCX i PDF zapisnik spremljen u Documents."
+          : "Gotovo: svaki označeni RN ima svoj PDF zapisnik spremljen u Documents.",
         { type: "success" },
       );
     }
