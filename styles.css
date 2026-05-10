@@ -32376,7 +32376,7 @@ body.is-measurement-equipment-export-open {
 
 .document-template-runtime-summary-checklist {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 4px;
 }
 
@@ -32430,14 +32430,25 @@ body.is-measurement-equipment-export-open {
 }
 
 .document-template-runtime-summary-download {
-  min-height: 26px;
-  padding: 0 9px;
-  border-radius: 10px;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 999px;
   border-color: rgba(16, 185, 129, 0.34);
   background: linear-gradient(135deg, rgba(236, 253, 245, 0.98), rgba(255, 255, 255, 0.96));
   color: #047857;
   font-weight: 900;
   box-shadow: 0 8px 18px rgba(16, 185, 129, 0.12);
+}
+
+.document-template-runtime-summary-download svg {
+  width: 15px;
+  height: 15px;
 }
 
 .document-template-runtime-summary-entry-chips {
@@ -32448,17 +32459,40 @@ body.is-measurement-equipment-export-open {
 
 .document-template-runtime-summary-services {
   display: grid;
-  gap: 3px;
+  gap: 5px;
+  padding: 6px;
+  border: 1px solid rgba(191, 206, 226, 0.42);
+  border-radius: 11px;
+  background: rgba(248, 251, 255, 0.7);
+}
+
+.document-template-runtime-summary-services-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #1d2a44;
+  font-size: 0.68rem;
+}
+
+.document-template-runtime-summary-services-title strong {
+  font-size: 0.72rem;
+}
+
+.document-template-runtime-summary-services-title span {
+  color: #647086;
+  font-size: 0.62rem;
+  font-weight: 800;
 }
 
 .document-template-runtime-summary-service,
 .document-template-runtime-summary-service-empty {
-  min-height: 22px;
+  min-height: 25px;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 6px;
-  padding: 2px 6px;
+  padding: 3px 7px;
   border-radius: 9px;
   border: 1px solid rgba(220, 156, 212, 0.22);
   background: rgba(255, 246, 247, 0.86);

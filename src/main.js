@@ -58504,7 +58504,7 @@ function getDocumentTemplateRuntimeGroupExportStatus(group = {}, { groupOk = fal
     return {
       kind: "skipped",
       label: "Preskočeno",
-      detail: "RN je ručno preskočen i ne ide u PDF export.",
+      detail: "RN je ručno preskočen.",
     };
   }
 
@@ -58512,7 +58512,7 @@ function getDocumentTemplateRuntimeGroupExportStatus(group = {}, { groupOk = fal
     return {
       kind: "blocked",
       label: "Nije završeno",
-      detail: "Označi sve usluge kao završene kako bi RN postao zelen i ušao u export.",
+      detail: "Dovrši usluge za ovaj RN.",
     };
   }
 
@@ -58545,7 +58545,7 @@ function getDocumentTemplateRuntimeGroupExportStatus(group = {}, { groupOk = fal
     return {
       kind: "done",
       label: "Spremljeno",
-      detail: "PDF zapisnik je spremljen u Documents i spreman za preuzimanje.",
+      detail: "Spremljeno u Documents.",
       documents,
     };
   }
@@ -58554,14 +58554,14 @@ function getDocumentTemplateRuntimeGroupExportStatus(group = {}, { groupOk = fal
     return {
       kind: "pending",
       label: "Čeka spremanje",
-      detail: "RN je zelen i čeka red za spremanje PDF zapisnika u Documents.",
+      detail: "Čeka spremanje.",
     };
   }
 
   return {
     kind: "ready",
     label: "Odabrano",
-    detail: "RN je zelen i automatski je odabran za PDF export.",
+    detail: "Spremno za spremanje.",
   };
 }
 
@@ -60132,7 +60132,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     summaryTitle.textContent = "Summary";
     const summaryMeta = document.createElement("p");
     summaryMeta.className = "document-template-runtime-block-meta";
-    summaryMeta.textContent = "Završni pregled po RN-u: vidi što je gotovo, što nedostaje, odaberi potpis i završi export.";
+    summaryMeta.textContent = "Pregled RN-ova, usluga i spremljenih dokumenata.";
     summaryHeadCopy.append(summaryTitle, summaryMeta);
     summaryHead.append(summaryHeadCopy);
 
@@ -60145,7 +60145,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     batchCardTitle.textContent = "Pregled RN-ova";
     const batchCardMeta = document.createElement("p");
     batchCardMeta.className = "helper-copy module-copy";
-    batchCardMeta.textContent = `${exportableGroups.length} ${exportableGroups.length === 1 ? "zeleni RN" : "zelenih RN-ova"} · ${exportableEntries.length} ${exportableEntries.length === 1 ? "zapisnik" : "zapisnika"} sprema se u Documents. Crveni ili preskočeni ostaju u pregledu i ne spremaju se.`;
+    batchCardMeta.textContent = `${exportableGroups.length} ${exportableGroups.length === 1 ? "RN spreman" : "RN-ova spremno"} · ${exportableEntries.length} ${exportableEntries.length === 1 ? "zapisnik" : "zapisnika"}.`;
     batchCard.append(batchCardTitle, batchCardMeta);
 
     const groupedList = document.createElement("div");
@@ -60204,8 +60204,12 @@ function renderDocumentTemplateRuntimeFieldRows() {
       if (savedDocuments.length > 0) {
         const downloadButton = document.createElement("button");
         downloadButton.type = "button";
-        downloadButton.className = "ghost-button document-template-runtime-summary-download";
-        downloadButton.textContent = savedDocuments.length === 1 ? "Preuzmi PDF" : `Preuzmi ${savedDocuments.length} PDF`;
+        downloadButton.className = "ghost-button document-template-runtime-summary-download document-template-runtime-summary-download-icon";
+        downloadButton.innerHTML = getWorkOrderIconMarkup("download");
+        downloadButton.title = savedDocuments.length === 1
+          ? "Preuzmi spremljeni dokument"
+          : `Preuzmi spremljene dokumente (${savedDocuments.length})`;
+        downloadButton.setAttribute("aria-label", downloadButton.title);
         downloadButton.addEventListener("click", async () => {
           downloadButton.disabled = true;
           downloadButton.classList.add("is-loading");
@@ -60262,22 +60266,26 @@ function renderDocumentTemplateRuntimeFieldRows() {
           groupOk ? "ok" : "warning",
         ),
         createChecklistItem(
-          "PDF",
+          "Dokumenti",
           exportStatus?.kind === "done"
-            ? "Spremljen u Documents"
-            : (groupOk ? "Spremit će se" : "Ne ide u export"),
+            ? "Spremljeno"
+            : (groupOk ? "Spremno" : "Čeka usluge"),
           groupOk ? "ok" : "warning",
         ),
       );
-      if (completedServiceLabels.length > 0) {
-        entryChecklist.append(createChecklistItem("Napravljeno", completedServiceLabels.join(", "), "ok"));
-      }
-      if (pendingServiceLabels.length > 0) {
-        entryChecklist.append(createChecklistItem("Nije napravljeno", pendingServiceLabels.join(", "), "warning"));
-      }
 
       const serviceList = document.createElement("div");
       serviceList.className = "document-template-runtime-summary-services";
+      const serviceListTitle = document.createElement("div");
+      serviceListTitle.className = "document-template-runtime-summary-services-title";
+      const serviceListLabel = document.createElement("strong");
+      serviceListLabel.textContent = "Usluge";
+      const serviceListMeta = document.createElement("span");
+      serviceListMeta.textContent = serviceItems.length === 0
+        ? "Bez usluga"
+        : `${completedServiceLabels.length} gotovo · ${pendingServiceLabels.length} otvoreno`;
+      serviceListTitle.append(serviceListLabel, serviceListMeta);
+      serviceList.append(serviceListTitle);
       if (serviceItems.length === 0) {
         const emptyService = document.createElement("span");
         emptyService.className = "document-template-runtime-summary-service-empty";
@@ -60325,7 +60333,9 @@ function renderDocumentTemplateRuntimeFieldRows() {
     finalTitle.textContent = "Završi";
     const finalMeta = document.createElement("p");
     finalMeta.className = "helper-copy module-copy";
-    finalMeta.textContent = `${exportableGroups.length} ${exportableGroups.length === 1 ? "zeleni RN" : "zelenih RN-ova"} · ${exportableEntries.length} ${exportableEntries.length === 1 ? "zapisnik" : "zapisnika"} spremit će se u Documents. Preuzimanje ostaje dostupno po RN-u.`;
+    finalMeta.textContent = exportableEntries.length > 0
+      ? `${exportableGroups.length} ${exportableGroups.length === 1 ? "RN" : "RN-ova"} · ${exportableEntries.length} ${exportableEntries.length === 1 ? "zapisnik" : "zapisnika"} spremno za Documents.`
+      : "Označi završene usluge za RN koji želiš spremiti.";
     finalCopy.append(finalTitle, finalMeta);
     const finalActions = document.createElement("div");
     finalActions.className = "document-template-runtime-summary-final-actions";
