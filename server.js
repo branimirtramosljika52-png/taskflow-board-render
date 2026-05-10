@@ -536,6 +536,23 @@ function pickOpenWeatherDailyRepresentative(items = [], timezoneSeconds = 0) {
   })[0] || items[0] || {};
 }
 
+function pickOpenWeatherTemperatureByHour(items = [], timezoneSeconds = 0, targetHour = 12, minHour = 0, maxHour = 24) {
+  const candidates = items
+    .map((item) => ({
+      item,
+      hour: getOpenWeatherLocalHour(item.dt, timezoneSeconds),
+      temp: Number(item.main?.temp),
+    }))
+    .filter((entry) => Number.isFinite(entry.temp));
+  if (!candidates.length) {
+    return null;
+  }
+
+  const inWindow = candidates.filter((entry) => entry.hour >= minHour && entry.hour <= maxHour);
+  const pool = inWindow.length ? inWindow : candidates;
+  return pool.sort((a, b) => Math.abs(a.hour - targetHour) - Math.abs(b.hour - targetHour))[0]?.temp ?? null;
+}
+
 function getOpenWeatherDailyForecastItems(payload = {}) {
   const list = Array.isArray(payload.list) ? payload.list : [];
   const timezoneSeconds = Number(payload.city?.timezone ?? 0);
@@ -568,11 +585,15 @@ function getOpenWeatherDailyForecastItems(payload = {}) {
     const windGusts = items.map((item) => Number(item.wind?.gust ?? 0)).filter(Number.isFinite);
     const rainMm = items.reduce((sum, item) => sum + Number(item.rain?.["3h"] ?? item.rain?.["1h"] ?? 0), 0);
     const snowMm = items.reduce((sum, item) => sum + Number(item.snow?.["3h"] ?? item.snow?.["1h"] ?? 0), 0);
+    const morningTemp = pickOpenWeatherTemperatureByHour(items, timezoneSeconds, 8, 5, 11);
+    const afternoonTemp = pickOpenWeatherTemperatureByHour(items, timezoneSeconds, 15, 12, 18);
 
     return {
       ...mapped,
       date: key,
       isNight: false,
+      morningTemp: morningTemp ?? (temperatures.length ? temperatures[0] : mapped.temp),
+      afternoonTemp: afternoonTemp ?? (temperatures.length ? Math.max(...temperatures) : mapped.temp),
       tempMin: temperatures.length ? Math.min(...temperatures) : mapped.temp,
       tempMax: temperatures.length ? Math.max(...temperatures) : mapped.temp,
       windSpeed: windSpeeds.length ? Math.max(...windSpeeds) : mapped.windSpeed,

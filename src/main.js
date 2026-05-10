@@ -22066,25 +22066,6 @@ function formatWeatherTemperature(value) {
   return `${Math.round(number)}°`;
 }
 
-function formatWeatherTemperatureRange(minValue, maxValue) {
-  const minNumber = Number(minValue);
-  const maxNumber = Number(maxValue);
-  if (!Number.isFinite(minNumber) && !Number.isFinite(maxNumber)) {
-    return "--°";
-  }
-  if (!Number.isFinite(minNumber)) {
-    return formatWeatherTemperature(maxNumber);
-  }
-  if (!Number.isFinite(maxNumber)) {
-    return formatWeatherTemperature(minNumber);
-  }
-  const minRounded = Math.round(minNumber);
-  const maxRounded = Math.round(maxNumber);
-  return minRounded === maxRounded
-    ? `${maxRounded}°`
-    : `${maxRounded}° / ${minRounded}°`;
-}
-
 function formatWeatherPrecipitation(value) {
   const number = Number(value);
   if (!Number.isFinite(number) || number <= 0) {
@@ -22094,6 +22075,11 @@ function formatWeatherPrecipitation(value) {
     return "<1 mm";
   }
   return `${Math.round(number)} mm`;
+}
+
+function formatWeatherCardTemperature(value) {
+  const formatted = formatWeatherTemperature(value);
+  return formatted === "--°" ? "-" : formatted;
 }
 
 function formatWeatherSpeed(value) {
@@ -22146,6 +22132,26 @@ function formatWeatherForecastHour(isoValue = "") {
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
+}
+
+function formatWeatherBriefDay(entry = {}) {
+  return formatWeatherForecastDay(entry.time || entry.date).replace(/\.$/, "") || "Prognoza";
+}
+
+function buildWeatherDailyDetail(entry = {}) {
+  const precipitation = formatWeatherPrecipitation(entry.precipitationMm ?? (Number(entry.rainMm || 0) + Number(entry.snowMm || 0)));
+  if (precipitation) {
+    return `oborine ${precipitation}`;
+  }
+  return `vjetar do ${formatWeatherSpeed(entry.windSpeed)}`;
+}
+
+function buildWeatherBriefLines(activeItem = {}) {
+  const entries = Array.isArray(activeItem?.dailyForecast) ? activeItem.dailyForecast.slice(0, 3) : [];
+  return entries.map((entry) => {
+    const condition = getWeatherDisplayDescription(entry).toLowerCase();
+    return `${formatWeatherBriefDay(entry)}: jutro ${formatWeatherCardTemperature(entry.morningTemp ?? entry.tempMin)}, popodne ${formatWeatherCardTemperature(entry.afternoonTemp ?? entry.tempMax)}, ${condition}, ${buildWeatherDailyDetail(entry)}.`;
+  });
 }
 
 const WEATHER_VISUAL_PART_CLASSES = Object.freeze([
@@ -22255,6 +22261,18 @@ function renderWeatherHero() {
   const summary = document.createElement("p");
   summary.textContent = activeItem.summary || "Trenutni uvjeti i kratka prognoza za odabrani grad.";
   description.append(eyebrow, title, summary);
+  const briefLines = buildWeatherBriefLines(activeItem);
+  if (briefLines.length) {
+    const brief = document.createElement("div");
+    brief.className = "weather-brief-lines";
+    brief.replaceChildren(...briefLines.map((line) => {
+      const item = document.createElement("span");
+      item.className = "weather-brief-line";
+      item.textContent = line;
+      return item;
+    }));
+    description.append(brief);
+  }
 
   const metrics = document.createElement("div");
   metrics.className = "weather-current-metrics";
@@ -22487,17 +22505,31 @@ function renderWeatherForecast() {
 
   const strip = document.createElement("div");
   strip.className = "weather-forecast-strip";
-  entries.forEach((entry, index) => {
+  entries.forEach((entry) => {
     const card = document.createElement("article");
-    card.className = `weather-forecast-card ${getWeatherVisualClass(entry)}${index === 0 ? " is-next" : ""}`;
+    card.className = "weather-forecast-card";
 
     const day = document.createElement("span");
     day.className = "weather-forecast-day";
     day.textContent = formatWeatherForecastDay(entry.time || entry.date) || "Prognoza";
 
-    const range = document.createElement("strong");
-    range.className = "weather-forecast-hour";
-    range.textContent = formatWeatherTemperatureRange(entry.tempMin ?? entry.temp, entry.tempMax ?? entry.temp);
+    const temps = document.createElement("div");
+    temps.className = "weather-daily-temps";
+    [
+      ["Jutro", entry.morningTemp ?? entry.tempMin ?? entry.temp],
+      ["Popodne", entry.afternoonTemp ?? entry.tempMax ?? entry.temp],
+    ].forEach(([labelText, value]) => {
+      const pill = document.createElement("span");
+      pill.className = "weather-daily-temp-pill";
+      const label = document.createElement("span");
+      label.className = "weather-daily-temp-label";
+      label.textContent = labelText;
+      const tempValue = document.createElement("strong");
+      tempValue.className = "weather-daily-temp-value";
+      tempValue.textContent = formatWeatherCardTemperature(value);
+      pill.append(label, tempValue);
+      temps.append(pill);
+    });
 
     const description = document.createElement("span");
     description.className = "weather-forecast-description";
@@ -22510,7 +22542,7 @@ function renderWeatherForecast() {
       ? `Oborine ${precipitation}`
       : `Vjetar do ${formatWeatherSpeed(entry.windSpeed)}`;
 
-    card.append(day, createWeatherVisual(entry, "weather-mini-icon"), range, description, wind);
+    card.append(day, createWeatherVisual(entry, "weather-mini-icon"), temps, description, wind);
     strip.append(card);
   });
   weatherForecast.append(head, strip);

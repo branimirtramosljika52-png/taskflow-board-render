@@ -1928,6 +1928,20 @@ fieldset {
   font-size: 0.76rem;
 }
 
+.weather-brief-lines {
+  display: grid;
+  gap: 3px;
+  max-width: 40rem;
+}
+
+.weather-brief-line {
+  display: block;
+  color: rgba(255, 255, 255, 0.84);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.22;
+}
+
 .weather-current-metrics span {
   backdrop-filter: blur(10px);
 }
@@ -2079,7 +2093,7 @@ fieldset {
 }
 
 .weather-forecast-card {
-  min-height: 96px;
+  min-height: 108px;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-content: start;
@@ -2103,6 +2117,7 @@ fieldset {
 }
 
 .weather-forecast-card .weather-mini-icon {
+  grid-column: 1;
   grid-row: 1 / span 2;
   width: 30px;
   height: 30px;
@@ -2110,6 +2125,7 @@ fieldset {
 }
 
 .weather-forecast-day {
+  grid-column: 2;
   color: #64748b;
   font-size: 0.6rem;
   font-weight: 900;
@@ -2120,6 +2136,41 @@ fieldset {
 .weather-forecast-hour {
   color: #14223c;
   font-size: 1rem;
+  line-height: 1;
+}
+
+.weather-daily-temps {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.weather-daily-temp-pill {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: rgba(226, 232, 240, 0.62);
+  color: #1e3a5f;
+  white-space: nowrap;
+}
+
+.weather-daily-temp-label {
+  color: #64748b;
+  font-size: 0.55rem;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.weather-daily-temp-value {
+  color: #1d4ed8;
+  font-size: 0.82rem;
+  font-weight: 950;
   line-height: 1;
 }
 
