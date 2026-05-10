@@ -480,6 +480,110 @@ function getOpenWeatherForecastItems(payload = {}) {
     .slice(0, 16);
 }
 
+function getOpenWeatherLocalDayKey(timestampSeconds, timezoneSeconds = 0) {
+  const timestamp = Number(timestampSeconds);
+  if (!Number.isFinite(timestamp)) {
+    return "";
+  }
+  const localMs = (timestamp + Number(timezoneSeconds || 0)) * 1000;
+  return new Date(localMs).toISOString().slice(0, 10);
+}
+
+function getOpenWeatherLocalHour(timestampSeconds, timezoneSeconds = 0) {
+  const timestamp = Number(timestampSeconds);
+  if (!Number.isFinite(timestamp)) {
+    return 12;
+  }
+  const localDate = new Date((timestamp + Number(timezoneSeconds || 0)) * 1000);
+  return localDate.getUTCHours() + (localDate.getUTCMinutes() / 60);
+}
+
+function getOpenWeatherForecastPriority(item = {}) {
+  const condition = getOpenWeatherCondition(Array.isArray(item.weather) ? item.weather[0] || {} : {});
+  if (condition === "thunderstorm") {
+    return 60;
+  }
+  if (condition === "snow") {
+    return 50;
+  }
+  if (condition === "rain") {
+    return 40;
+  }
+  if (condition === "drizzle") {
+    return 35;
+  }
+  if (condition === "fog") {
+    return 30;
+  }
+  if (condition === "clouds") {
+    return 20;
+  }
+  return 10;
+}
+
+function pickOpenWeatherDailyRepresentative(items = [], timezoneSeconds = 0) {
+  return [...items].sort((a, b) => {
+    const priorityDelta = getOpenWeatherForecastPriority(b) - getOpenWeatherForecastPriority(a);
+    if (priorityDelta) {
+      return priorityDelta;
+    }
+    const noonDelta = Math.abs(getOpenWeatherLocalHour(a.dt, timezoneSeconds) - 12)
+      - Math.abs(getOpenWeatherLocalHour(b.dt, timezoneSeconds) - 12);
+    if (noonDelta) {
+      return noonDelta;
+    }
+    return Number(a.dt || 0) - Number(b.dt || 0);
+  })[0] || items[0] || {};
+}
+
+function getOpenWeatherDailyForecastItems(payload = {}) {
+  const list = Array.isArray(payload.list) ? payload.list : [];
+  const timezoneSeconds = Number(payload.city?.timezone ?? 0);
+  const grouped = new Map();
+  list.forEach((item) => {
+    const key = getOpenWeatherLocalDayKey(item.dt, timezoneSeconds);
+    if (!key) {
+      return;
+    }
+    const items = grouped.get(key) || [];
+    items.push(item);
+    grouped.set(key, items);
+  });
+
+  const todayKey = getOpenWeatherLocalDayKey(Date.now() / 1000, timezoneSeconds);
+  const allKeys = [...grouped.keys()].sort();
+  const forecastKeys = allKeys.filter((key) => key > todayKey).slice(0, 5);
+  allKeys.forEach((key) => {
+    if (forecastKeys.length < 5 && !forecastKeys.includes(key)) {
+      forecastKeys.push(key);
+    }
+  });
+
+  return forecastKeys.slice(0, 5).map((key) => {
+    const items = grouped.get(key) || [];
+    const representative = pickOpenWeatherDailyRepresentative(items, timezoneSeconds);
+    const mapped = mapOpenWeatherForecastItem(representative);
+    const temperatures = items.map((item) => Number(item.main?.temp)).filter(Number.isFinite);
+    const windSpeeds = items.map((item) => Number(item.wind?.speed ?? 0)).filter(Number.isFinite);
+    const windGusts = items.map((item) => Number(item.wind?.gust ?? 0)).filter(Number.isFinite);
+    const rainMm = items.reduce((sum, item) => sum + Number(item.rain?.["3h"] ?? item.rain?.["1h"] ?? 0), 0);
+    const snowMm = items.reduce((sum, item) => sum + Number(item.snow?.["3h"] ?? item.snow?.["1h"] ?? 0), 0);
+
+    return {
+      ...mapped,
+      date: key,
+      isNight: false,
+      tempMin: temperatures.length ? Math.min(...temperatures) : mapped.temp,
+      tempMax: temperatures.length ? Math.max(...temperatures) : mapped.temp,
+      windSpeed: windSpeeds.length ? Math.max(...windSpeeds) : mapped.windSpeed,
+      windGust: windGusts.length ? Math.max(...windGusts) : mapped.windGust,
+      rainMm,
+      snowMm,
+      precipitationMm: rainMm + snowMm,
+    };
+  }).filter((item) => item.time || item.date);
+}
+
 function buildOpenWeatherAlerts(current = {}, forecast = []) {
   const alerts = [];
   const nextDayForecast = forecast.filter((item) => {
@@ -552,6 +656,7 @@ async function fetchOpenWeatherCity(city) {
   const forecastPayload = await fetchOpenWeatherJson(buildOpenWeatherUrl("/forecast", lookupParams));
   const current = mapOpenWeatherCurrent(currentPayload);
   const forecast = getOpenWeatherForecastItems(forecastPayload);
+  const dailyForecast = getOpenWeatherDailyForecastItems(forecastPayload);
   const alerts = buildOpenWeatherAlerts(current, forecast);
 
   return {
@@ -563,6 +668,7 @@ async function fetchOpenWeatherCity(city) {
     timezone: Number(currentPayload.timezone ?? forecastPayload.city?.timezone ?? 0),
     current,
     forecast,
+    dailyForecast,
     alerts,
     summary: buildOpenWeatherSummary(current, alerts),
   };

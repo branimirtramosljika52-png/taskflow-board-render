@@ -2071,20 +2071,22 @@ fieldset {
 
 .weather-forecast-strip {
   display: grid;
-  grid-template-columns: repeat(8, minmax(0, 1fr));
-  grid-auto-flow: row;
-  gap: 7px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-auto-flow: column;
+  gap: 8px;
   overflow: visible;
   padding: 1px;
 }
 
 .weather-forecast-card {
-  min-height: 102px;
+  min-height: 96px;
   display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-content: start;
+  align-items: center;
   justify-items: start;
-  gap: 4px;
-  padding: 8px;
+  gap: 4px 8px;
+  padding: 8px 9px;
   border-radius: 16px;
   border: 1px solid rgba(205, 219, 239, 0.9);
   background:
@@ -2101,8 +2103,9 @@ fieldset {
 }
 
 .weather-forecast-card .weather-mini-icon {
-  width: 24px;
-  height: 24px;
+  grid-row: 1 / span 2;
+  width: 30px;
+  height: 30px;
   margin-top: 0;
 }
 
@@ -2116,15 +2119,16 @@ fieldset {
 
 .weather-forecast-hour {
   color: #14223c;
-  font-size: 0.84rem;
+  font-size: 1rem;
   line-height: 1;
 }
 
 .weather-forecast-description {
-  min-height: 24px;
+  grid-column: 1 / -1;
+  min-height: 18px;
   color: #475569;
   font-size: 0.66rem;
-  line-height: 1.18;
+  line-height: 1.15;
 }
 
 .weather-forecast-card .weather-forecast-temp {
@@ -2135,6 +2139,7 @@ fieldset {
 }
 
 .weather-forecast-wind {
+  grid-column: 1 / -1;
   margin-top: auto;
   padding: 4px 6px;
   border-radius: 999px;
@@ -21129,7 +21134,8 @@ body.is-resizing-work-order-column {
   }
 
   .weather-forecast-strip {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-flow: row;
   }
 
   .avatar-upload-row,
