@@ -94,7 +94,7 @@ test("docx export renders signature group placeholders as visible signature bloc
   assert.equal(outputXml.includes("{{POTPISI}}"), false);
   assert.equal(outputXml.includes("__TASKFLOW_DOCX_BLOCK"), false);
   assert.match(outputXml, /Ana Savanovic/);
-  assert.match(outputXml, /Digitalni potpis/);
+  assert.doesNotMatch(outputXml, new RegExp(["Scan", "potpisa"].join("\\s+"), "i"));
   assert.match(outputXml, /______________________________/);
   assert.equal((outputXml.match(/<w:gridCol w:w="4680"\/>/g) || []).length, 1);
   assert.equal((outputXml.match(/<w:tc>/g) || []).length, 1);
@@ -230,7 +230,7 @@ test("HTML template export renders escaped placeholders and special table blocks
   assert.match(html, /Zapisnik &lt;script&gt;alert\(1\)&lt;\/script&gt;/);
   assert.match(html, /Prvi red<br>Drugi red &amp; znak/);
   assert.match(html, /Ana Ivić/);
-  assert.match(html, /Scan potpisa/);
+  assert.doesNotMatch(html, new RegExp(["Scan", "potpisa"].join("\\s+"), "i"));
   assert.match(html, /safe-nexus-template-signature-image/);
   assert.doesNotMatch(html, /<script>alert/);
   assert.doesNotMatch(html, /\{\{DOCUMENT_TITLE\}\}/);

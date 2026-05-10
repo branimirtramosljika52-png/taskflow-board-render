@@ -1584,20 +1584,18 @@ function buildWordSignatureCellXml(item = null, zip = null, context = {}, xmlFil
     `.replace(/\n\s+/g, "");
   }
 
-  const signatureLabel = item.signatureMode === "digital" ? "Digitalni potpis" : "Scan potpisa";
   const signatureImageRef = item.signatureMode === "scan"
     ? addDocxSignatureImage(zip, xmlFileName, item, context)
     : null;
   const signatureImageXml = buildWordSignatureImageXml(signatureImageRef, item);
   const paragraphs = [
-    buildWordParagraphXml(item.role, { align: "right", size: 18, spacingAfter: 40 }),
-    buildWordParagraphXml(item.name, { align: "right", bold: true, size: 22, spacingAfter: 40 }),
+    buildWordParagraphXml(item.role, { align: "center", size: 18, spacingAfter: 40 }),
+    buildWordParagraphXml(item.name, { align: "center", bold: true, size: 22, spacingAfter: 40 }),
     ...((Array.isArray(item.metaLines) ? item.metaLines : []).map((line) => (
-      buildWordParagraphXml(line, { align: "right", size: 18, spacingAfter: 20 })
+      buildWordParagraphXml(line, { align: "center", size: 18, spacingAfter: 20 })
     ))),
     signatureImageXml,
-    buildWordParagraphXml("______________________________", { align: "right", color: "7B61FF", size: 20, spacingBefore: signatureImageXml ? 20 : 120, spacingAfter: 20 }),
-    buildWordParagraphXml(signatureLabel, { align: "right", italic: true, color: "6B7280", size: 18, spacingAfter: 0 }),
+    buildWordParagraphXml("______________________________", { align: "center", color: "7B61FF", size: 20, spacingBefore: signatureImageXml ? 20 : 120, spacingAfter: 0 }),
   ].join("");
 
   return `
@@ -2090,13 +2088,13 @@ function buildWordSignatureImageXml(imageRef = null, item = {}) {
     return "";
   }
 
-  const safeName = escapeXmlAttribute(`Scan potpisa ${clean(item.name) || "potpisnik"}`);
+  const safeName = escapeXmlAttribute(`Potpis ${clean(item.name) || "potpisnik"}`);
   const widthEmu = Math.max(1, Number(imageRef.widthEmu) || DOCX_SIGNATURE_IMAGE_WIDTH_EMU);
   const heightEmu = Math.max(1, Number(imageRef.heightEmu) || DOCX_SIGNATURE_IMAGE_HEIGHT_EMU);
   return `
     <w:p>
       <w:pPr>
-        <w:jc w:val="right"/>
+        <w:jc w:val="center"/>
         <w:spacing w:before="80" w:after="20"/>
       </w:pPr>
       <w:r>
@@ -2697,11 +2695,11 @@ function buildHtmlTemplateDefaultStyles() {
       .safe-nexus-template-table td{border:1px solid #cad8d1;padding:7px 9px;text-align:left;vertical-align:top;word-break:break-word;overflow-wrap:anywhere}
       .safe-nexus-template-table th{background:#eef5f2;font-weight:700}
       .safe-nexus-template-signatures{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:28px;margin:24px 0 8px}
-      .safe-nexus-template-signature{min-height:116px;text-align:right}
+      .safe-nexus-template-signature{min-height:116px;text-align:center}
       .safe-nexus-template-signature strong{display:block;margin-top:3px}
       .safe-nexus-template-signature small{display:block;color:#667085;margin-top:2px}
-      .safe-nexus-template-signature-image{display:block;max-width:190px;max-height:52px;margin:14px 0 4px auto;object-fit:contain}
-      .safe-nexus-template-signature-line{border-top:1px solid #95aea3;margin-top:42px;padding-top:6px;color:#667085;font-size:12px}
+      .safe-nexus-template-signature-image{display:block;max-width:190px;max-height:52px;margin:14px auto 4px;object-fit:contain}
+      .safe-nexus-template-signature-line{border-top:1px solid #95aea3;margin:10px auto 0;max-width:220px;height:1px;color:#667085;font-size:0}
       .safe-nexus-template-system-block{margin:14px 0 20px}
       .safe-nexus-template-system-block h3{margin:0 0 8px;padding:7px 9px;background:#e5e7eb;color:#111827;font-size:15px;text-transform:uppercase}
       .safe-nexus-template-system-block p{margin:6px 0}
@@ -2846,15 +2844,15 @@ function buildHtmlTemplateSignatureGroupPlaceholder(items = []) {
   }
 
   const itemHtml = safeItems.map((item) => {
-    const signatureLabel = item.signatureMode === "digital" ? "Digitalni potpis" : "Scan potpisa";
+    const isScanSignature = clean(item.signatureMode).toLowerCase() !== "digital";
     const metaLines = (Array.isArray(item.metaLines) ? item.metaLines : [])
       .map((line) => clean(line))
       .filter(Boolean)
       .map((line) => `<small>${escapeTemplateHtml(line)}</small>`)
       .join("");
     const signatureImageUrl = clean(item.signatureImageUrl || item.signatureDataUrl);
-    const signatureImage = signatureImageUrl && signatureLabel === "Scan potpisa"
-      ? `<img class="safe-nexus-template-signature-image" src="${escapeTemplateHtml(signatureImageUrl)}" alt="Scan potpisa ${escapeTemplateHtml(clean(item.name) || "potpisnik")}">`
+    const signatureImage = signatureImageUrl && isScanSignature
+      ? `<img class="safe-nexus-template-signature-image" src="${escapeTemplateHtml(signatureImageUrl)}" alt="Potpis ${escapeTemplateHtml(clean(item.name) || "potpisnik")}">`
       : "";
     return `
       <section class="safe-nexus-template-signature">
@@ -2862,7 +2860,7 @@ function buildHtmlTemplateSignatureGroupPlaceholder(items = []) {
         <strong>${escapeTemplateHtml(clean(item.name) || "Potpisnik")}</strong>
         ${metaLines}
         ${signatureImage}
-        <div class="safe-nexus-template-signature-line">${escapeTemplateHtml(signatureLabel)}</div>
+        <div class="safe-nexus-template-signature-line"></div>
       </section>
     `.trim();
   }).join("");
@@ -5655,26 +5653,30 @@ async function renderPdfSignatureGroup(doc, helpers, title, items = []) {
     drawAccentLine(doc, x, y, estimatedHeight, "#c94cc8");
     doc.font("dejavu-bold").fontSize(9).fillColor("#7b61ff").text(role, x + 16, y + 12, {
       width: cardWidth - 32,
+      align: "center",
     });
     doc.font("dejavu-bold").fontSize(12).fillColor("#1f2333").text(name, x + 16, y + 28, {
       width: cardWidth - 32,
+      align: "center",
     });
     if (metaLines.length > 0) {
       doc.font("dejavu").fontSize(9).fillColor("#475569").text(metaLines.join("\n"), x + 16, y + 48, {
         width: cardWidth - 32,
+        align: "center",
         lineGap: 1,
       });
     }
 
     if (signatureBuffer) {
       try {
-        doc.image(signatureBuffer, x + 16, y + estimatedHeight - 56, {
+        doc.image(signatureBuffer, x + (cardWidth - 160) / 2, y + estimatedHeight - 56, {
           fit: [160, 38],
-          align: "left",
+          align: "center",
         });
       } catch {
         doc.font("dejavu").fontSize(9).fillColor("#94a3b8").text("Potpis nije moguće prikazati u PDF-u.", x + 16, y + estimatedHeight - 40, {
           width: cardWidth - 32,
+          align: "center",
         });
       }
     } else if (isDigital) {

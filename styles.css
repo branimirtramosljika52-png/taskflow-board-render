@@ -29547,7 +29547,7 @@ body.is-document-template-editor-open {
 }
 
 .user-signature-upload-preview.is-empty::after {
-  content: "Dodaj scan potpisa";
+  content: "Dodaj potpis";
   margin-top: 10px;
   font-size: 0.82rem;
   color: #756f91;
@@ -46680,5 +46680,184 @@ button.work-order-editor-section-head {
   .risk-assessment-card-meta {
     grid-auto-flow: row;
     justify-content: start;
+  }
+}
+/* Signatures module */
+.signatures-module {
+  display: grid;
+  gap: 16px;
+}
+
+.signatures-hero-panel,
+.signatures-local-signer-panel,
+.signatures-list-panel {
+  border: 1px solid rgba(147, 197, 253, 0.72);
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(255,255,255,.96), rgba(247,251,255,.92));
+  box-shadow: 0 18px 40px rgba(30, 64, 175, .08);
+}
+
+.signatures-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.signatures-stat-card {
+  display: grid;
+  gap: 5px;
+  padding: 14px 16px;
+  border: 1px solid rgba(148, 163, 184, .28);
+  border-radius: 14px;
+  background: rgba(255,255,255,.82);
+}
+
+.signatures-stat-card span {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.signatures-stat-card strong {
+  color: #0f172a;
+  font-size: 28px;
+  line-height: 1;
+}
+
+.signatures-stat-card.is-signed {
+  border-color: rgba(16, 185, 129, .35);
+  background: linear-gradient(135deg, rgba(236, 253, 245, .95), rgba(255,255,255,.88));
+}
+
+.signatures-stat-card.is-pending {
+  border-color: rgba(245, 158, 11, .4);
+  background: linear-gradient(135deg, rgba(255, 251, 235, .96), rgba(255,255,255,.88));
+}
+
+.signatures-stat-card.is-missing {
+  border-color: rgba(239, 68, 68, .32);
+  background: linear-gradient(135deg, rgba(254, 242, 242, .95), rgba(255,255,255,.88));
+}
+
+.signatures-local-signer-panel {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: center;
+}
+
+.signatures-bridge-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.signatures-list {
+  display: grid;
+  gap: 10px;
+}
+
+.signatures-row {
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid rgba(191, 219, 254, .88);
+  border-radius: 14px;
+  background: rgba(255,255,255,.9);
+}
+
+.signatures-row.is-signed {
+  border-color: rgba(134, 239, 172, .75);
+  background: linear-gradient(135deg, rgba(240, 253, 244, .84), rgba(255,255,255,.92));
+}
+
+.signatures-row.is-pending {
+  border-color: rgba(253, 186, 116, .72);
+}
+
+.signatures-row.is-missing {
+  border-color: rgba(252, 165, 165, .68);
+}
+
+.signatures-status {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 94px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.signatures-status.is-signed {
+  color: #047857;
+  background: rgba(209, 250, 229, .95);
+  border: 1px solid rgba(16, 185, 129, .35);
+}
+
+.signatures-status.is-pending {
+  color: #92400e;
+  background: rgba(254, 243, 199, .95);
+  border: 1px solid rgba(245, 158, 11, .35);
+}
+
+.signatures-status.is-missing {
+  color: #b91c1c;
+  background: rgba(254, 226, 226, .95);
+  border: 1px solid rgba(239, 68, 68, .3);
+}
+
+.signatures-row-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.signatures-row-copy strong {
+  color: #172033;
+  font-size: 14px;
+}
+
+.signatures-row-copy span,
+.signatures-row-copy small {
+  color: #64748b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signatures-row-copy small {
+  color: #475569;
+}
+
+.signatures-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (max-width: 900px) {
+  .signatures-stats-grid,
+  .signatures-row {
+    grid-template-columns: 1fr;
+  }
+
+  .signatures-local-signer-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .signatures-bridge-actions,
+  .signatures-row-actions {
+    justify-content: flex-start;
   }
 }

@@ -3162,7 +3162,7 @@ function buildGeneratedDocumentTemplateSignatureDescription(entry = {}) {
       .join(" ");
   });
   const suffix = items.length > signerLabels.length ? ` +${items.length - signerLabels.length}` : "";
-  return ` Potpisano scan potpisom: ${signerLabels.join(", ")}${suffix}.`;
+  return ` Potpisano: ${signerLabels.join(", ")}${suffix}.`;
 }
 
 function buildGeneratedDocumentTemplatePdfDocumentPayload({

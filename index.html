@@ -604,6 +604,16 @@
                   </span>
                   <strong>Periodics</strong>
                 </button>
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="signatures">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <path d="M4 19h16"></path>
+                      <path d="M6 15c1.6-.3 2.5-1.2 3.1-3l.8-2.5c.3-.9 1.5-1.2 2.2-.5.5.5.6 1.2.3 1.8L11 14.5c1.6-.4 2.8-.6 3.7-.7 1-.1 1.7.2 2 .9.3.6 0 1.2-.5 1.5-1.1.6-3 .9-5.6.9H9.1c-1 0-2-.7-3.1-2.1Z"></path>
+                      <path d="m16.5 6.5 1.4 1.4L21 4.5"></path>
+                    </svg>
+                  </span>
+                  <strong>Signatures</strong>
+                </button>
                 <button type="button" class="tab-button sidebar-link" data-sidebar-item="drawing-studio">
                   <span class="tab-button-icon" aria-hidden="true">
                     <svg class="icon-svg" viewBox="0 0 24 24">
@@ -3811,7 +3821,7 @@
                     <div class="section-heading offers-section-heading">
                       <div>
                         <p class="section-kicker">Potpis korisnika</p>
-                        <h3>Scan potpisa</h3>
+                        <h3>Potpis</h3>
                       </div>
                       <div class="document-template-reference-actions">
                         <input id="user-electrical-signature-file" type="file" accept="image/*" hidden />
@@ -4717,6 +4727,40 @@
                   <p id="documents-library-empty" class="helper-copy" hidden>Nema dokumenata za trenutni prikaz.</p>
                 </section>
               </div>
+            </section>
+
+            <section id="signatures-module" class="signatures-module" hidden>
+              <section class="panel signatures-hero-panel">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Operations</p>
+                    <h3>Signatures</h3>
+                  </div>
+                  <button id="signatures-refresh" type="button" class="ghost-button">Osvježi</button>
+                </div>
+                <p class="helper-copy module-copy">Pregled zapisnika koji čekaju potpis, potpisanih dokumenata i lokalnog certificiranog potpisa.</p>
+                <div id="signatures-stats" class="signatures-stats-grid"></div>
+              </section>
+              <section class="panel signatures-local-signer-panel">
+                <div>
+                  <p class="section-kicker">Certificirani potpis</p>
+                  <h3>SafeNexus Signer bridge</h3>
+                  <p class="helper-copy module-copy">FINA/eOI token radi lokalno na računalu. Web aplikacija pripremi PDF, lokalni signer ga potpiše i vrati u Documents.</p>
+                </div>
+                <div class="signatures-bridge-actions">
+                  <button id="signatures-open-local-signer" type="button" class="primary-button">Otvori lokalni signer</button>
+                  <button id="signatures-copy-bridge-url" type="button" class="ghost-button">Kopiraj bridge URL</button>
+                </div>
+              </section>
+              <section class="panel signatures-list-panel">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Zapisnici</p>
+                    <h3>Status potpisa</h3>
+                  </div>
+                </div>
+                <div id="signatures-list" class="signatures-list"></div>
+              </section>
             </section>
 
             <section id="settings-module" class="settings-module" hidden>
@@ -7880,7 +7924,7 @@
                       <div class="document-template-runtime-dock-actions">
                         <button id="document-template-runtime-dock-back" type="button" class="ghost-button" hidden>Osnovni podaci</button>
                         <div class="document-template-runtime-dock-signature-mode">
-                          <button id="document-template-runtime-dock-sign-scan" type="button" class="ghost-button">Scan potpisa</button>
+                          <button id="document-template-runtime-dock-sign-scan" type="button" class="ghost-button">Potpis</button>
                           <button id="document-template-runtime-dock-sign-digital" type="button" class="ghost-button">Digitalni potpis</button>
                         </div>
                         <button id="document-template-runtime-dock-send-signature" type="button" class="ghost-button" hidden>Pošalji na digitalni potpis</button>
@@ -8052,6 +8096,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260510i"></script>
+    <script type="module" src="/src/main.js?v=20260510j"></script>
   </body>
 </html>

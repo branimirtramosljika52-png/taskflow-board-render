@@ -1324,6 +1324,12 @@ const MODULE_VIEW_DEFINITIONS = {
     description: "Pregled periodicnih obveza, kontrola i ponavljajucih naloga za organizaciju i klijente.",
     chips: ["Cycles", "Recurring", "Service plans"],
   },
+  signatures: {
+    kicker: "Operations",
+    title: "Signatures",
+    description: "Pregled zapisnika koji čekaju potpis, potpisanih dokumenata i lokalnog certificiranog potpisa.",
+    chips: ["Pending", "Signed", "Local signer"],
+  },
   "drawing-studio": {
     kicker: "Operations",
     title: "Drawing Studio",
@@ -1394,6 +1400,7 @@ const SIDEBAR_ITEM_CONFIG = {
   offers: { group: "operations", view: "module", module: "offers" },
   "purchase-orders": { group: "operations", view: "module", module: "offers" },
   periodics: { group: "operations", view: "module", module: "periodics" },
+  signatures: { group: "operations", view: "module", module: "signatures" },
   "drawing-studio": { group: "operations", view: "module", module: "drawing-studio" },
   "list-company": { group: "company", view: "companies", focus: "list" },
   "add-company": { group: "company", view: "companies", focus: "form" },
@@ -3090,6 +3097,12 @@ const vehicleReservationResetButton = document.querySelector("#vehicle-reservati
 const vehicleReservationsList = document.querySelector("#vehicle-reservations-list");
 const vehicleReservationsEmpty = document.querySelector("#vehicle-reservations-empty");
 const offersModule = document.querySelector("#offers-module");
+const signaturesModule = document.querySelector("#signatures-module");
+const signaturesStats = document.querySelector("#signatures-stats");
+const signaturesList = document.querySelector("#signatures-list");
+const signaturesRefreshButton = document.querySelector("#signatures-refresh");
+const signaturesOpenLocalSignerButton = document.querySelector("#signatures-open-local-signer");
+const signaturesCopyBridgeUrlButton = document.querySelector("#signatures-copy-bridge-url");
 const offersTotalCount = document.querySelector("#offers-total-count");
 const offersDraftCount = document.querySelector("#offers-draft-count");
 const offersSentCount = document.querySelector("#offers-sent-count");
@@ -17117,6 +17130,7 @@ function renderModuleView() {
   const isContractModule = state.activeModuleItem === "contract";
   const isClientPortalModule = state.activeModuleItem === "client-portal";
   const isPeriodicsModule = state.activeModuleItem === "periodics";
+  const isSignaturesModule = state.activeModuleItem === "signatures";
   const isDrawingStudioModule = state.activeModuleItem === "drawing-studio";
   const isVehiclesModule = state.activeModuleItem === "vehicles";
   const isMeasurementEquipmentModule = state.activeModuleItem === "measurement-equipment";
@@ -17140,6 +17154,7 @@ function renderModuleView() {
     && !isServiceCatalogModule
     && !isSettingsModule
     && !isPeriodicsModule
+    && !isSignaturesModule
     && !isDrawingStudioModule
     && !isVehiclesModule
     && !isPeopleTrainingModule
@@ -17232,6 +17247,10 @@ function renderModuleView() {
     periodicsModule.hidden = !isPeriodicsModule;
   }
 
+  if (signaturesModule) {
+    signaturesModule.hidden = !isSignaturesModule;
+  }
+
   if (drawingStudioModule) {
     drawingStudioModule.hidden = !isDrawingStudioModule;
   }
@@ -17298,6 +17317,10 @@ function renderModuleView() {
 
   if (isPeriodicsModule) {
     renderPeriodicsModule();
+  }
+
+  if (isSignaturesModule) {
+    renderSignaturesModule();
   }
 
   if (isDrawingStudioModule) {
@@ -24685,6 +24708,11 @@ function getDocumentsExplorerWorkOrderDocuments({ documentCategory = "" } = {}) 
     ));
 }
 
+function isGeneratedDocumentSigned(documentItem = {}) {
+  const description = String(documentItem?.description || "");
+  return /\bpotpisano\b/i.test(description);
+}
+
 function getWorkOrderDocumentLibraryContext(documentItem = {}, documentIndex = 0) {
   const linkedWorkOrder = findWorkOrderById(documentItem?.workOrderId || "");
   const company = getCompany(linkedWorkOrder?.companyId || "");
@@ -24719,7 +24747,7 @@ function createSavedWorkOrderDocumentLibraryEntry(documentItem = {}, context = {
   const categoryLabel = String(documentItem?.documentCategory || GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY).trim()
     || GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY;
   const description = String(documentItem?.description || `${categoryLabel} za RN ${context.workOrderNumber || ""}`).trim();
-  const isSigned = /potpisano\s+scan\s+potpisom/i.test(description) || /scan\s+potpis/i.test(description);
+  const isSigned = isGeneratedDocumentSigned({ ...documentItem, description });
 
   return createDocumentLibraryEntry({
     id: `${idPrefix}:${String(documentItem?.workOrderId || "")}:${String(documentItem?.id || "")}`,
@@ -26283,7 +26311,7 @@ function renderDocumentsLibraryFolders(model = buildDocumentsLibraryViewModel())
       if (entry.signed) {
         const signedBadge = document.createElement("span");
         signedBadge.className = "documents-file-signed-badge";
-        signedBadge.title = "Dokument je potpisan scan potpisom";
+        signedBadge.title = "Dokument je potpisan";
         signedBadge.setAttribute("aria-label", "Potpisano");
         signedBadge.innerHTML = getWorkOrderIconMarkup("signature");
         fileTitleRow.append(signedBadge);
@@ -26980,7 +27008,190 @@ async function loadDocumentsExplorerRecords({ force = false } = {}) {
     if (state.activeView === "module" && state.activeModuleItem === "documents") {
       renderDocumentsModule();
     }
+    if (state.activeView === "module" && state.activeModuleItem === "signatures") {
+      renderSignaturesModule();
+    }
   }
+}
+
+function buildSignatureModuleDocumentEntries() {
+  return getDocumentsExplorerWorkOrderDocuments({ documentCategory: GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY })
+    .map((documentItem, index) => {
+      const context = getWorkOrderDocumentLibraryContext(documentItem, index);
+      const entry = createSavedWorkOrderDocumentLibraryEntry(documentItem, context, "signature-document");
+      return {
+        documentItem,
+        context,
+        entry,
+        signed: isGeneratedDocumentSigned(documentItem),
+        updatedAtMs: entry.updatedAtMs || 0,
+      };
+    })
+    .sort((left, right) => (
+      Number(left.signed) - Number(right.signed)
+      || right.updatedAtMs - left.updatedAtMs
+      || String(left.context.workOrderNumber || "").localeCompare(String(right.context.workOrderNumber || ""), "hr", {
+        sensitivity: "base",
+        numeric: true,
+      })
+    ));
+}
+
+function createSignatureStatCard(label = "", value = "", tone = "") {
+  const card = document.createElement("div");
+  card.className = ["signatures-stat-card", tone ? `is-${tone}` : ""].filter(Boolean).join(" ");
+  const labelNode = document.createElement("span");
+  labelNode.textContent = label;
+  const valueNode = document.createElement("strong");
+  valueNode.textContent = value;
+  card.append(labelNode, valueNode);
+  return card;
+}
+
+function renderSignaturesModule() {
+  if (!signaturesModule) {
+    return;
+  }
+
+  const activeOrganizationId = String(state.activeOrganizationId || "").trim();
+  const recordsLoadedForOrganization = String(state.documentsExplorer.organizationId || "").trim();
+  if (
+    !state.documentsExplorer.loading
+    && (
+      !state.documentsExplorer.loaded
+      || !recordsLoadedForOrganization
+      || recordsLoadedForOrganization !== activeOrganizationId
+    )
+  ) {
+    void loadDocumentsExplorerRecords();
+  }
+
+  const entries = buildSignatureModuleDocumentEntries();
+  const signedEntries = entries.filter((item) => item.signed);
+  const pendingEntries = entries.filter((item) => !item.signed);
+  const linkedWorkOrderIds = new Set(entries.map((item) => String(item.documentItem?.workOrderId || "")).filter(Boolean));
+  const workOrdersWithoutDocuments = (Array.isArray(state.workOrders) ? state.workOrders : [])
+    .filter((workOrder) => {
+      if (!String(workOrder?.id || "").trim() || linkedWorkOrderIds.has(String(workOrder.id))) {
+        return false;
+      }
+      return getWorkOrderServiceItems(workOrder).length > 0;
+    });
+
+  if (signaturesStats) {
+    signaturesStats.replaceChildren(
+      createSignatureStatCard("Čeka potpis", String(pendingEntries.length), pendingEntries.length > 0 ? "pending" : "quiet"),
+      createSignatureStatCard("Potpisano", String(signedEntries.length), "signed"),
+      createSignatureStatCard("Bez dokumenta", String(workOrdersWithoutDocuments.length), workOrdersWithoutDocuments.length > 0 ? "missing" : "quiet"),
+    );
+  }
+
+  if (!signaturesList) {
+    return;
+  }
+
+  if (state.documentsExplorer.loading && entries.length === 0) {
+    const loading = document.createElement("p");
+    loading.className = "helper-copy module-copy";
+    loading.textContent = "Učitavam zapisnike za potpis...";
+    signaturesList.replaceChildren(loading);
+    return;
+  }
+
+  if (state.documentsExplorer.error) {
+    const error = document.createElement("p");
+    error.className = "helper-copy module-copy";
+    error.textContent = state.documentsExplorer.error;
+    signaturesList.replaceChildren(error);
+    return;
+  }
+
+  const rows = entries.map(({ entry, context, signed }) => {
+    const row = document.createElement("article");
+    row.className = `signatures-row ${signed ? "is-signed" : "is-pending"}`;
+
+    const status = document.createElement("span");
+    status.className = `signatures-status ${signed ? "is-signed" : "is-pending"}`;
+    status.textContent = signed ? "Potpisano" : "Čeka potpis";
+
+    const copy = document.createElement("div");
+    copy.className = "signatures-row-copy";
+    const title = document.createElement("strong");
+    title.textContent = context.workOrderNumber ? `RN ${context.workOrderNumber}` : entry.label;
+    const meta = document.createElement("span");
+    meta.textContent = [
+      context.company?.name || context.linkedWorkOrder?.companyName || "",
+      context.location?.name || context.linkedWorkOrder?.locationName || "",
+      context.serviceLabel || "",
+      entry.updatedAt ? formatDateTime(entry.updatedAt) : "",
+    ].filter(Boolean).join(" · ");
+    const description = document.createElement("small");
+    description.textContent = signed
+      ? String(entry.description || "").replace(/^\s*potpisano:\s*/i, "Potpisnici: ").trim()
+      : "Dokument je spreman za potpis.";
+    copy.append(title, meta, description);
+
+    const actions = document.createElement("div");
+    actions.className = "signatures-row-actions";
+    if (entry.canPreview) {
+      actions.append(createIconActionButton("Pregled", "preview", "", () => {
+        void runMutation(() => previewDocumentsLibraryEntry(entry), null);
+      }));
+    }
+    if (entry.canDownload) {
+      actions.append(createIconActionButton("Preuzmi", "download", "", () => {
+        void runMutation(() => downloadDocumentsLibraryEntry(entry), null);
+      }));
+    }
+    if (entry.sourceTarget) {
+      actions.append(createIconActionButton("Izvor", "edit", "", () => {
+        openDocumentsLibrarySource(entry.sourceTarget);
+      }));
+    }
+
+    row.append(status, copy, actions);
+    return row;
+  });
+
+  if (workOrdersWithoutDocuments.length > 0) {
+    workOrdersWithoutDocuments.slice(0, 12).forEach((workOrder) => {
+      const row = document.createElement("article");
+      row.className = "signatures-row is-missing";
+      const status = document.createElement("span");
+      status.className = "signatures-status is-missing";
+      status.textContent = "Bez PDF-a";
+      const copy = document.createElement("div");
+      copy.className = "signatures-row-copy";
+      const title = document.createElement("strong");
+      title.textContent = workOrder.workOrderNumber ? `RN ${workOrder.workOrderNumber}` : "Radni nalog";
+      const meta = document.createElement("span");
+      meta.textContent = [
+        workOrder.companyName || "",
+        workOrder.locationName || "",
+        getWorkOrderServiceSummary(workOrder) || "",
+      ].filter(Boolean).join(" · ");
+      const description = document.createElement("small");
+      description.textContent = "Prvo generiraj zapisnik, nakon toga će ući u potpisni red.";
+      copy.append(title, meta, description);
+      const actions = document.createElement("div");
+      actions.className = "signatures-row-actions";
+      actions.append(createIconActionButton("Otvori RN", "edit", "", () => {
+        openDocumentsLibrarySource({ kind: "work-order", record: workOrder });
+      }));
+      row.append(status, copy, actions);
+      rows.push(row);
+    });
+  }
+
+  if (rows.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "helper-copy module-copy";
+    empty.textContent = "Nema zapisnika u potpisnom redu.";
+    signaturesList.replaceChildren(empty);
+    return;
+  }
+
+  signaturesList.replaceChildren(...rows);
 }
 
 function upsertDocumentsExplorerWorkOrderDocuments(documents = []) {
@@ -39645,7 +39856,7 @@ const DOCUMENT_TEMPLATE_DEFAULT_SIGNATURE_META_FIELDS = DOCUMENT_TEMPLATE_SIGNAT
   .map((option) => option.value);
 
 const DOCUMENT_TEMPLATE_SIGNATURE_METHOD_OPTIONS = [
-  { value: "scan", label: "Scan potpisa" },
+  { value: "scan", label: "Potpis" },
   { value: "digital", label: "Digitalni potpis" },
 ];
 
@@ -40930,7 +41141,7 @@ function buildDocumentTemplateToolFieldDraft(tool = "text") {
         signatureRole: "inspect",
         signatureMultiple: true,
         signatureIncludeScan: false,
-        helpText: "Jedinstveni potpisni slot. U izradi zapisnika biraš koristi li scan potpisa ili digitalni potpis.",
+        helpText: "Jedinstveni potpisni slot. U izradi zapisnika biraš koristi li spremljeni potpis ili digitalni potpis.",
       },
       baseIndex,
     );
@@ -47314,7 +47525,7 @@ function buildDocumentTemplateDigitalSignatureText(field = {}, context = {}) {
   const signatureLabel = signatureMethod === "digital" ? "Digitalni potpis" : "Potpis";
   const signatureHint = signatureMethod === "digital"
     ? "[Kvalificirani digitalni potpis]"
-    : "[Scan potpisa / rezervirano mjesto potpisa]";
+    : "[Potpis / rezervirano mjesto]";
   if (entries.length === 0) {
     return [
       `${signatureLabel} (${areaLabel})`,
@@ -48447,7 +48658,7 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
           </div>
           <div class="document-template-preview-signature document-template-preview-signature--digital">
             <span class="document-template-inline-token">${escapeHtml(getDocumentTemplateSignatureMethodLabel(signatureMethod))}</span>
-            <div class="document-template-preview-signature-placeholder${signatureMethod === "digital" ? " is-digital" : ""}">${signatureMethod === "digital" ? "Rezervirano za certifikat" : "Rezervirano za scan potpisa"}</div>
+            <div class="document-template-preview-signature-placeholder${signatureMethod === "digital" ? " is-digital" : ""}">${signatureMethod === "digital" ? "Rezervirano za certifikat" : "Rezervirano za potpis"}</div>
           </div>
         </article>
       `;
@@ -51399,7 +51610,7 @@ function renderUserElectricalSignaturePad(signatureValue = "") {
 
   const previewImage = document.createElement("img");
   previewImage.src = safeValue;
-  previewImage.alt = "Scan potpisa korisnika";
+  previewImage.alt = "Potpis korisnika";
   previewImage.loading = "lazy";
 
   userElectricalSignaturePreview.append(previewImage);
@@ -53875,8 +54086,8 @@ function renderDocumentTemplateRuntimeContext() {
     const signatureEntries = getDocumentTemplateRuntimeSignatureEntriesFor(template, activeWorkOrder);
     if (documentTemplateRuntimeDockSignScanButton) {
       documentTemplateRuntimeDockSignScanButton.title = signatureEntries.length > 0
-        ? `${signatureEntries.length} potpisnika · Scan potpisa`
-        : "Scan potpisa";
+        ? `${signatureEntries.length} potpisnika · Potpis`
+        : "Potpis";
       documentTemplateRuntimeDockSignScanButton.classList.toggle("is-active", signatureMode === "scan");
     }
     if (documentTemplateRuntimeDockSignDigitalButton) {
@@ -60381,7 +60592,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     signatureLabel.textContent = "Potpis";
     const signatureSelect = document.createElement("select");
     signatureSelect.innerHTML = `
-      <option value="scan">Scan potpisa</option>
+      <option value="scan">Potpis</option>
       <option value="digital">Digitalni potpis</option>
     `;
     signatureSelect.value = signatureMode;
@@ -61472,7 +61683,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     note.className = "helper-copy module-copy";
     note.textContent = signatureMethod === "digital"
       ? "Ovaj blok rezervira mjesto za digitalni potpis odabranih osoba. Buduca Java/Fina/eOI integracija može koristiti isti slot."
-      : "Ovaj blok prikazuje scan potpisa odabranih osoba kada on postoji u People modulu.";
+      : "Ovaj blok prikazuje spremljeni potpis odabranih osoba kada on postoji u People modulu.";
 
     const personGrid = document.createElement("div");
     personGrid.className = "document-template-runtime-digital-signature-grid";
@@ -63071,7 +63282,7 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
       hintField.className = "field field-span-full";
       const hint = document.createElement("small");
       hint.className = "document-template-source-config-hint";
-      hint.textContent = "Legacy potpisni blok. Za novi raspored koristi Ispitivače, gdje se potpisi automatski slažu po odabranoj usluzi. U izradi zapisnika biraš koristiš li scan potpisa ili digitalni potpis.";
+      hint.textContent = "Legacy potpisni blok. Za novi raspored koristi Ispitivače, gdje se potpisi automatski slažu po odabranoj usluzi. U izradi zapisnika biraš koristiš li spremljeni potpis ili digitalni potpis.";
       hintField.append(hint);
 
       grid.append(areaField, roleField, hintField);
@@ -71092,7 +71303,7 @@ function buildDocumentSignatureNotifications() {
   return (Array.isArray(state.documentsExplorer.workOrderDocuments) ? state.documentsExplorer.workOrderDocuments : [])
     .map((documentItem) => {
       const description = String(documentItem?.description || "");
-      if (!/potpisano\s+scan\s+potpisom/i.test(description)) {
+      if (!isGeneratedDocumentSigned(documentItem)) {
         return null;
       }
 
@@ -71107,8 +71318,8 @@ function buildDocumentSignatureNotifications() {
         id: `document-signature-${documentItem.id || documentItem.workOrderId || documentItem.fileName}`,
         kind: "document_signature",
         level: "info",
-        title: "Zapisnik je potpisan",
-        message: `Tvoj scan potpisa je umetnut u ${documentItem.fileName || "zapisnik"}.`,
+        title: "Potpisano",
+        message: `${documentItem.fileName || "Zapisnik"} je potpisan.`,
         context: [
           workOrderNumber ? `RN ${workOrderNumber}` : "",
           workOrder?.companyName || "",
@@ -94903,6 +95114,28 @@ documentsFilterKindInput?.addEventListener("change", () => {
 
 documentsRefreshButton?.addEventListener("click", () => {
   void loadDocumentsExplorerRecords({ force: true });
+});
+
+signaturesRefreshButton?.addEventListener("click", () => {
+  void loadDocumentsExplorerRecords({ force: true });
+});
+
+signaturesOpenLocalSignerButton?.addEventListener("click", () => {
+  const target = `safenexus-signer://open?origin=${encodeURIComponent(window.location.origin)}`;
+  window.location.href = target;
+});
+
+signaturesCopyBridgeUrlButton?.addEventListener("click", async () => {
+  const bridgeUrl = "http://127.0.0.1:9137";
+  try {
+    await navigator.clipboard?.writeText(bridgeUrl);
+    signaturesCopyBridgeUrlButton.textContent = "Kopirano";
+    window.setTimeout(() => {
+      signaturesCopyBridgeUrlButton.textContent = "Kopiraj bridge URL";
+    }, 1600);
+  } catch {
+    window.prompt("Bridge URL", bridgeUrl);
+  }
 });
 
 documentsToggleFoldersButton?.addEventListener("click", () => {
