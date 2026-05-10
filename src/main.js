@@ -13883,6 +13883,7 @@ function findUserForExecutor(executorName = "") {
 
   return state.users.find((user) => {
     const candidates = [
+      user.displayName,
       user.fullName,
       [user.firstName, user.lastName].filter(Boolean).join(" "),
       user.legacyUsername,
@@ -34402,6 +34403,27 @@ function persistMeasurementSheetToDocumentTemplateRuntimeField({ rerenderFieldRo
   }
 }
 
+function flushOpenDocumentTemplateRuntimeMeasurementSheet(workOrderId = "") {
+  const normalizedWorkOrderId = String(workOrderId || "").trim();
+  if (
+    state.measurementSheet.ownerKind !== "document_template_runtime_field"
+    || !state.measurementSheet.isOpen
+  ) {
+    return;
+  }
+
+  const ownerWorkOrderId = String(
+    state.measurementSheet.ownerRuntimeWorkOrderId
+    || state.documentTemplateRuntime.activeWorkOrderId
+    || "",
+  ).trim();
+  if (normalizedWorkOrderId && ownerWorkOrderId && ownerWorkOrderId !== normalizedWorkOrderId) {
+    return;
+  }
+
+  persistMeasurementSheetToDocumentTemplateRuntimeField({ rerenderFieldRows: false });
+}
+
 function openDocumentTemplateRuntimeMeasurementSheet(fieldId, workOrderId = state.documentTemplateRuntime.activeWorkOrderId) {
   const normalizedFieldId = String(fieldId || "").trim();
   const normalizedWorkOrderId = String(workOrderId || "").trim();
@@ -45732,7 +45754,14 @@ function resolveQualifiedWorkOrderUser(workOrder = {}, capability = "inspect", s
   const eligibleUsers = getQualifiedUsersForSignatureArea(capability, normalizedArea);
 
   const matchedExecutor = eligibleUsers.find((user) => (
-    executorNames.includes(normalizePersonLookupValue(user.fullName || user.email || ""))
+    [
+      getUserDocumentDisplayName(user),
+      user.fullName,
+      [user.firstName, user.lastName].filter(Boolean).join(" "),
+      user.email,
+      user.legacyUsername,
+    ].map((value) => normalizePersonLookupValue(value)).filter(Boolean)
+      .some((candidate) => executorNames.includes(candidate))
   ));
 
   return matchedExecutor || eligibleUsers[0] || null;
@@ -46438,20 +46467,27 @@ function getWorkOrderDocumentSignaturePersonOptions(capability = "inspect", sign
   return resolvedOptions.map((option, index) => (
     index === 0 && option.value === ""
       ? option
-      : { ...option, label: getUsersByIds([option.value])[0]?.fullName || option.label }
+      : {
+        ...option,
+        label: (() => {
+          const user = getUsersByIds([option.value])[0];
+          return user ? getUserDocumentDisplayName(user) : option.label;
+        })(),
+      }
   ));
 }
 
 function getWorkOrderDocumentSignaturePersonName(source = {}, fieldName = "") {
   const value = String(source?.[fieldName] ?? "").trim();
-  return getUsersByIds([value])[0]?.fullName || "";
+  const user = getUsersByIds([value])[0];
+  return user ? getUserDocumentDisplayName(user) : "";
 }
 
 function getWorkOrderDocumentSignaturePersonNames(source = {}, definition = {}) {
   if (definition.listFieldName) {
     const values = normalizeQualifiedUserIdList(source?.[definition.listFieldName] ?? []);
     return getUsersByIds(values)
-      .map((user) => user.fullName || user.email || "")
+      .map((user) => getUserDocumentDisplayName(user))
       .filter(Boolean);
   }
   const value = getWorkOrderDocumentSignaturePersonName(source, definition.fieldName);
@@ -46475,7 +46511,7 @@ function getWorkOrderDocumentSignaturePersonPickerOptions(capability = "inspect"
   const normalizedArea = normalizeQualificationAreaKey(signatureArea);
   return getQualifiedUsersForSignatureArea(normalizedCapability, normalizedArea).map((user) => ({
     value: String(user.id),
-    label: String(user.fullName || user.email || "Korisnik").trim() || "Korisnik",
+    label: getUserDocumentDisplayName(user),
     summary: getQualifiedUserSummaryValue(user, normalizedCapability, normalizedArea),
     user,
   }));
@@ -46522,11 +46558,11 @@ function setWorkOrderDocumentSignaturePersonTriggerContent(
   );
   const labelText = selectedUsers.length === 0
     ? defaultEmptyLabel
-    : selectedUsers.map((user) => user.fullName || user.email || "Korisnik").filter(Boolean).join(", ");
+    : selectedUsers.map((user) => getUserDocumentDisplayName(user)).filter(Boolean).join(", ");
 
   trigger.replaceChildren();
   trigger.title = selectedUsers.length > 0
-    ? selectedUsers.map((user) => user.fullName || user.email || "Korisnik").join(", ")
+    ? selectedUsers.map((user) => getUserDocumentDisplayName(user)).join(", ")
     : defaultEmptyLabel;
   trigger.setAttribute("aria-label", trigger.title);
 
@@ -46539,7 +46575,7 @@ function setWorkOrderDocumentSignaturePersonTriggerContent(
     stack.className = "work-order-bulk-executor-stack work-order-document-person-stack";
     selectedUsers.forEach((user) => {
       const avatar = createWorkOrderMiniExecutor({
-        label: user.fullName || user.email || "Korisnik",
+        label: getUserDocumentDisplayName(user),
         user,
       }, {
         className: "work-order-mini-executor work-order-bulk-executor-avatar work-order-document-person-avatar",
@@ -47413,6 +47449,7 @@ function getDocumentTemplateSignaturePreviewData(field = {}, context = {}) {
   const matchedUser = matchedEntry?.user ?? null;
   const capability = matchedEntry?.capability || (field.type === "authorization_holder_signature" ? "authorize" : "inspect");
   const qualification = getUserElectricalQualification(matchedUser, signatureArea);
+  const displayName = matchedUser ? getUserDocumentDisplayName(matchedUser) : "";
 
   return {
     capability,
@@ -47423,11 +47460,10 @@ function getDocumentTemplateSignaturePreviewData(field = {}, context = {}) {
     qualification,
     metaLines: getQualifiedUserDocumentMetaLines(matchedUser, capability, signatureArea, field.signatureMetaFields),
     signatureImageUrl: signatureMethod === "scan" ? getUserSignatureScanDataUrl(matchedUser) : "",
-    displayName: matchedUser?.fullName
-      ? matchedUser.fullName
-      : capability === "authorize"
+    displayName: displayName
+      || (capability === "authorize"
         ? `Nositelj ovlaštenja (${signatureAreaLabel})`
-        : `Ispitivač (${signatureAreaLabel})`,
+        : `Ispitivač (${signatureAreaLabel})`),
     summary: matchedUser
       ? getQualifiedUserSummaryValue(matchedUser, capability, signatureArea)
       : "",
@@ -47535,7 +47571,7 @@ function buildDocumentTemplateDigitalSignatureText(field = {}, context = {}) {
 
   return entries.map((entry) => ([
     `${signatureLabel} - ${entry.role}`,
-    String(entry.user?.fullName || entry.user?.email || "Potpisnik").trim(),
+    getUserDocumentDisplayName(entry.user),
     ...(entry.metaLines ?? []),
     signatureHint,
   ].filter(Boolean).join("\n"))).join("\n\n");
@@ -47673,6 +47709,34 @@ function formatDocumentTemplateTextListValue(field = {}, value = "") {
   return lines.map((line) => `${marker} ${line}`).join("\n");
 }
 
+function isDocumentTemplateGeneratedEmptyPreviewValue(field = {}, value = "", index = 0) {
+  const text = String(value ?? "").trim();
+  if (!text) {
+    return true;
+  }
+
+  const label = String(field.wordLabel || field.label || `Polje ${index + 1}`).trim();
+  if (label && text === `[${label}]`) {
+    return true;
+  }
+
+  const type = String(field.type || "").trim().toLowerCase();
+  if (type === "longtext" && label && text === `Unesi ${label.toLowerCase()}`) {
+    return true;
+  }
+
+  if (type === "number" && text === "0" && !String(field.defaultValue ?? "").trim()) {
+    return true;
+  }
+
+  return false;
+}
+
+function getDocumentTemplateFieldExportTextValue(field = {}, context = {}, index = 0) {
+  const value = getDocumentTemplateFieldPreviewValue(field, context, index, { placeholderMode: false });
+  return isDocumentTemplateGeneratedEmptyPreviewValue(field, value, index) ? "" : value;
+}
+
 function renderDocumentTemplateTextValueHtml(field = {}, value = "") {
   const style = normalizeDocumentTemplateTextListStyleLocal(field.textListStyle ?? field.listStyle);
   const lines = getDocumentTemplateTextListLines(field, value);
@@ -47702,7 +47766,7 @@ function getDocumentTemplateFieldPreviewValue(field = {}, context = {}, index = 
     const entries = getDocumentTemplateDigitalSignatureEntries(field, context);
     if (entries.length > 0) {
       return entries
-        .map((entry) => String(entry.user?.fullName || entry.user?.email || "Potpisnik").trim())
+        .map((entry) => getUserDocumentDisplayName(entry.user))
         .filter(Boolean)
         .join(", ");
     }
@@ -48634,13 +48698,13 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
         const metaMarkup = (entry.metaLines ?? []).map((line) => `<span>${escapeHtml(line)}</span>`).join("");
         const isRightAligned = entries.length % 2 === 1 && entryIndex === entries.length - 1;
         const signatureVisual = entry.signatureImageUrl
-          ? `<img class="document-template-preview-signature-image" src="${escapeHtml(entry.signatureImageUrl)}" alt="${escapeHtml(entry.user?.fullName || entry.user?.email || "Digitalni potpis")}" />`
+          ? `<img class="document-template-preview-signature-image" src="${escapeHtml(entry.signatureImageUrl)}" alt="${escapeHtml(getUserDocumentDisplayName(entry.user) || "Digitalni potpis")}" />`
           : `<div class="document-template-preview-signature-placeholder${signatureMethod === "digital" ? " is-digital" : ""}">${signatureMethod === "digital" ? "Kvalificirani digitalni potpis" : "Potpis / scan"}</div>`;
         return `
           <article class="document-template-preview-person-signature${isRightAligned ? " is-right-aligned" : ""}">
             <div class="document-template-preview-person-copy">
               <span class="document-template-preview-person-role">${escapeHtml(entry.role)}</span>
-              <strong>${escapeHtml(entry.user?.fullName || entry.user?.email || "Potpisnik")}</strong>
+              <strong>${escapeHtml(getUserDocumentDisplayName(entry.user))}</strong>
               <div class="document-template-preview-person-meta">${metaMarkup}</div>
             </div>
             <div class="document-template-preview-signature document-template-preview-signature--digital">
@@ -49154,9 +49218,10 @@ function buildDocumentTemplateQualifiedInspectorEntries(field = {}, context = {}
   return (allowMultiple ? users : users.slice(0, 1)).map((user) => {
     const signerOib = String(user?.oib || "").trim();
     const signerEmail = String(user?.email || "").trim();
+    const displayName = getUserDocumentDisplayName(user);
     return {
       role: roleLabel,
-      name: user.fullName || user.email || roleLabel,
+      name: displayName || roleLabel,
       metaLines: getQualifiedUserDocumentMetaLines(
         user,
         capability,
@@ -49168,7 +49233,7 @@ function buildDocumentTemplateQualifiedInspectorEntries(field = {}, context = {}
       signerUserId: String(user?.id || "").trim(),
       signerEmail,
       signerOib,
-      digitalAnchor: signerOib || signerEmail || String(user?.fullName || "").trim(),
+      digitalAnchor: signerOib || signerEmail || displayName,
     };
   });
 }
@@ -49198,14 +49263,14 @@ function buildDocumentTemplateDigitalSignatureEntries(field = {}, context = {}) 
     const signerEmail = String(entry.user?.email || "").trim();
     return {
       role: entry.role,
-      name: entry.user?.fullName || entry.user?.email || "Potpisnik",
+      name: getUserDocumentDisplayName(entry.user),
       metaLines: entry.metaLines ?? [],
       signatureImageUrl: entry.signatureImageUrl || "",
       signatureMode: entry.signatureMode || getDocumentTemplateContextSignatureMethod(context),
       signerUserId: String(entry.user?.id || "").trim(),
       signerEmail,
       signerOib,
-      digitalAnchor: signerOib || signerEmail || String(entry.user?.fullName || "").trim(),
+      digitalAnchor: signerOib || signerEmail || getUserDocumentDisplayName(entry.user),
     };
   });
 }
@@ -49301,7 +49366,7 @@ function buildDocumentTemplateFieldExportText(field = {}, context = {}, index = 
 
   return formatDocumentTemplateTextListValue(
     field,
-    getDocumentTemplateFieldPreviewValue(field, context, index, { placeholderMode: false }),
+    getDocumentTemplateFieldExportTextValue(field, context, index),
   );
 }
 
@@ -49488,6 +49553,7 @@ function buildDocumentTemplateRuntimeExportEntry(
 
   const context = buildDocumentTemplatePreviewContext(template, { workOrder });
   const baseFileName = buildDocumentTemplateRuntimeExportFileBaseName(template, workOrder);
+  const systemPlaceholderValues = buildDocumentTemplateSystemPlaceholderValues(template, context);
 
   return {
     templateId: runtimeTemplateId,
@@ -49501,6 +49567,7 @@ function buildDocumentTemplateRuntimeExportEntry(
       title: String(template.title || template.documentType || "Zapisnik").trim(),
       documentType: String(template.documentType || "Zapisnik").trim(),
       workOrderNumber: String(workOrder.workOrderNumber || "").trim(),
+      serviceCode: String(systemPlaceholderValues.SIFRA_USLUGE || "").trim(),
       status: String(workOrder.status || "").trim(),
       company: {
         name: String(context.company?.name || "").trim(),
@@ -49574,6 +49641,7 @@ function buildDocumentTemplateRuntimePdfBlocks(template = buildDocumentTemplateD
           fileName: mediaValue?.fileName || "",
           caption: getDocumentTemplateMediaFieldSummary(mediaValue, field),
           imageKind: getDocumentTemplateMediaFieldKindLabel(field.type),
+          onePage: true,
         };
       }
 
@@ -51183,7 +51251,14 @@ function resolveQualifiedWorkOrderUsers(workOrder = {}, capability = "inspect", 
   const eligibleUsers = getQualifiedUsersForSignatureArea(capability, normalizedArea);
 
   return eligibleUsers.filter((user) => (
-    executorNames.includes(normalizePersonLookupValue(user.fullName || user.email || ""))
+    [
+      getUserDocumentDisplayName(user),
+      user.fullName,
+      [user.firstName, user.lastName].filter(Boolean).join(" "),
+      user.email,
+      user.legacyUsername,
+    ].map((value) => normalizePersonLookupValue(value)).filter(Boolean)
+      .some((candidate) => executorNames.includes(candidate))
   ));
 }
 
@@ -61704,7 +61779,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
         role.textContent = entry.role;
 
         const name = document.createElement("strong");
-        name.textContent = entry.user?.fullName || entry.user?.email || "Potpisnik";
+        name.textContent = getUserDocumentDisplayName(entry.user);
 
         const meta = document.createElement("div");
         meta.className = "document-template-runtime-digital-signature-meta";
@@ -61729,7 +61804,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
           const previewImage = document.createElement("img");
           previewImage.className = "document-template-runtime-signature-image";
           previewImage.src = entry.signatureImageUrl;
-          previewImage.alt = entry.user?.fullName || "Potpis";
+          previewImage.alt = getUserDocumentDisplayName(entry.user) || "Potpis";
           previewImage.loading = "lazy";
           card.append(previewImage);
         }
@@ -84022,21 +84097,29 @@ async function applyWorkOrderRowMenuUpdate(targets = [], bodyBuilder = () => ({}
   renderWorkOrderBatchBar();
 
   try {
-    let hasChanges = false;
+    const updates = [];
     for (const workOrder of workOrders) {
       const body = bodyBuilder(workOrder);
       if (!body || Object.keys(body).length === 0) {
         continue;
       }
-      hasChanges = true;
-      await apiRequest(`/work-orders/${workOrder.id}`, {
-        method: "PATCH",
-        body,
+      updates.push({
+        id: String(workOrder.id),
+        patch: body,
       });
     }
 
+    const hasChanges = updates.length > 0;
     if (hasChanges) {
-      await refreshSnapshot();
+      const payload = await apiRequest("/work-orders/batch-update", {
+        method: "POST",
+        body: { updates },
+      });
+      if (payload && typeof payload === "object" && Object.prototype.hasOwnProperty.call(payload, "storage")) {
+        applySnapshot(payload);
+      } else {
+        await refreshSnapshot();
+      }
     }
 
     state.workOrderBatch.message = hasChanges
@@ -84097,13 +84180,21 @@ function openWorkOrderRowMenu(workOrder = {}, pointerX = 0, pointerY = 0) {
     : `RN ${workOrder.workOrderNumber || ""}`.trim();
   header.append(title, subtitle);
 
-  const createTextField = (labelText, value = "", placeholder = "") => {
+  const createTextField = (labelText, value = "", placeholder = "", options = {}) => {
     const label = document.createElement("label");
     label.className = "work-order-row-context-field";
+    if (options.datePicker) {
+      label.classList.add("has-date-picker");
+    }
     const labelNode = document.createElement("span");
     labelNode.textContent = labelText;
     const input = document.createElement("input");
     input.type = "text";
+    if (options.datePicker) {
+      input.inputMode = "numeric";
+      input.pattern = "[0-9.\\-/\\s]*";
+      input.title = "Upiši datum, npr. 12112025 za 12.11.2025.";
+    }
     input.value = value;
     input.placeholder = placeholder;
     input.dataset.dirty = "false";
@@ -84111,6 +84202,42 @@ function openWorkOrderRowMenu(workOrder = {}, pointerX = 0, pointerY = 0) {
       input.dataset.dirty = "true";
     });
     label.append(labelNode, input);
+    if (options.datePicker) {
+      const picker = document.createElement("input");
+      picker.type = "date";
+      picker.className = "work-order-row-context-native-date";
+      picker.tabIndex = -1;
+      picker.setAttribute("aria-hidden", "true");
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "work-order-row-context-date-button";
+      button.innerHTML = getWorkOrderIconMarkup("dates");
+      button.setAttribute("aria-label", "Odaberi datum fakture");
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        picker.value = normalizeDateInputValue(input.value);
+        if (typeof picker.showPicker === "function") {
+          picker.showPicker();
+          return;
+        }
+        picker.focus({ preventScroll: true });
+      });
+
+      picker.addEventListener("change", () => {
+        input.value = formatDateInputDisplayValue(picker.value);
+        input.dataset.dirty = "true";
+      });
+
+      input.addEventListener("blur", () => {
+        const normalizedValue = normalizeDateInputValue(input.value);
+        input.value = formatDateInputDisplayValue(normalizedValue || input.value);
+        picker.value = normalizedValue;
+      });
+
+      label.append(button, picker);
+    }
     return { label, input };
   };
 
@@ -84118,6 +84245,7 @@ function openWorkOrderRowMenu(workOrder = {}, pointerX = 0, pointerY = 0) {
     "Datum fakture",
     invoiceDate.mixed ? "" : formatDateInputDisplayValue(invoiceDate.value),
     invoiceDate.mixed ? "Različiti datumi" : "dd.mm.yyyy",
+    { datePicker: true },
   );
   const noteField = createTextField(
     "Broj fakture",
@@ -87586,6 +87714,7 @@ async function persistDocumentTemplateRuntimeRecordFor(
     return null;
   }
 
+  flushOpenDocumentTemplateRuntimeMeasurementSheet(workOrder?.id || "");
   await ensureDocumentTemplateRuntimePreviousLookupState(template, workOrder);
 
   const payload = buildDocumentTemplateRuntimeDocumentRecordPayload(template, workOrder);
@@ -90100,6 +90229,30 @@ function createWorkOrderQuickPicker({
   return wrapper;
 }
 
+function getWorkOrderQuickServicePickerValue(option = {}) {
+  const serviceId = String(option?.serviceId || option?.id || "").trim();
+  if (serviceId) {
+    return `id:${serviceId}`;
+  }
+
+  const code = normalizeLooseName(option?.serviceCode || option?.code || "");
+  const name = normalizeLooseName(option?.name || option?.serviceName || option?.title || "");
+  const type = normalizeServiceCatalogTypeUi(option?.serviceType || "", option?.isTraining ? "znr" : "inspection");
+  return [type, code, name].filter(Boolean).join("::") || normalizeLooseName(JSON.stringify(option));
+}
+
+function dedupeWorkOrderQuickServiceItems(items = []) {
+  const seen = new Set();
+  return (Array.isArray(items) ? items : []).filter((item) => {
+    const key = getWorkOrderQuickServicePickerValue(item);
+    if (!key || seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
 function createWorkOrderQuickServicePicker() {
   return createWorkOrderQuickPicker({
     name: "serviceItemsJson",
@@ -90108,16 +90261,16 @@ function createWorkOrderQuickServicePicker() {
     emptyText: "Nema usluga u katalogu za ovaj pojam.",
     getOptions: (selectedItems) => getWorkOrderServiceCatalogOptions(selectedItems),
     matchesOption: matchesWorkOrderServiceSearch,
-    getOptionValue: (option) => String(option?.id || option?.serviceId || `${option?.serviceCode || ""}::${option?.name || ""}`),
+    getOptionValue: getWorkOrderQuickServicePickerValue,
     getOptionLabel: (option) => [option?.serviceCode, option?.name].filter(Boolean).join(" - ") || option?.name || "Usluga",
     getOptionMeta: (option) => getServiceCatalogTypeLabel(getWorkOrderServiceType(option)),
     getSelectedLabel: (items) => items.length === 1
       ? (items[0]?.name || items[0]?.serviceCode || "1 usluga")
       : `${items.length} usluga`,
-    normalizeSelected: (items) => getWorkOrderServiceItems({
-      serviceItems: items.map((item) => buildWorkOrderServiceItemSnapshot(item)),
-    }),
-    serializeSelected: (items) => getWorkOrderServiceItems({ serviceItems: items }),
+    normalizeSelected: (items) => dedupeWorkOrderQuickServiceItems(getWorkOrderServiceItems({
+      serviceItems: dedupeWorkOrderQuickServiceItems(items).map((item) => buildWorkOrderServiceItemSnapshot(item)),
+    })),
+    serializeSelected: (items) => dedupeWorkOrderQuickServiceItems(getWorkOrderServiceItems({ serviceItems: items })),
   });
 }
 
@@ -90178,9 +90331,30 @@ function getWorkOrderQuickLocationOptions(companyId = "") {
   ];
 }
 
+function getWorkOrderQuickLocationContact(locationId = "") {
+  const location = getLocation(locationId);
+  const contact = buildLocationContacts(location)[0] ?? null;
+  if (!contact) {
+    return {
+      slot: "",
+      name: "",
+      phone: "",
+      email: "",
+    };
+  }
+
+  return {
+    slot: String(contact.slot || "").trim(),
+    name: String(contact.name || "").trim(),
+    phone: String(contact.phone || "").trim(),
+    email: String(contact.email || "").trim(),
+  };
+}
+
 function buildQuickWorkOrderPayload(form) {
   const formData = new FormData(form);
   const location = getLocation(formData.get("locationId"));
+  const contact = getWorkOrderQuickLocationContact(formData.get("locationId"));
   const serviceItems = getWorkOrderServiceItems({
     serviceItems: readWorkOrderQuickJsonValue(formData, "serviceItemsJson", []),
   });
@@ -90188,7 +90362,7 @@ function buildQuickWorkOrderPayload(form) {
     readWorkOrderQuickJsonValue(formData, "executorsJson", []),
   );
   const serviceLine = getWorkOrderServiceSummary({ serviceItems });
-  const contactName = String(formData.get("contactName") || "").trim();
+  const contactName = String(formData.get("contactName") || "").trim() || contact.name;
 
   return {
     status: String(formData.get("status") || "Otvoreni RN"),
@@ -90200,10 +90374,10 @@ function buildQuickWorkOrderPayload(form) {
     locationId: String(formData.get("locationId") || ""),
     coordinates: location?.coordinates || "",
     region: location?.region || "",
-    contactSlot: "",
+    contactSlot: contact.slot,
     contactName,
-    contactPhone: "",
-    contactEmail: "",
+    contactPhone: contact.phone,
+    contactEmail: contact.email,
     executors,
     executor1: executors[0] || "",
     executor2: executors[1] || "",
@@ -90251,6 +90425,14 @@ function createWorkOrderQuickCreateRow(columnLayout = [], isExpanded = false) {
   companySelect.addEventListener("change", () => {
     replaceSelectOptions(locationSelect, getWorkOrderQuickLocationOptions(companySelect.value), "");
     locationSelect.disabled = !companySelect.value;
+    contactInput.value = "";
+  });
+
+  locationSelect.addEventListener("change", () => {
+    const contact = getWorkOrderQuickLocationContact(locationSelect.value);
+    if (!contactInput.value.trim()) {
+      contactInput.value = contact.name;
+    }
   });
 
   const statusSelect = createWorkOrderQuickSelect("status", WORK_ORDER_STATUS_OPTIONS, "Otvoreni RN");
@@ -90348,6 +90530,80 @@ function createWorkOrderQuickCreateRow(columnLayout = [], isExpanded = false) {
 
   card.append(form);
   return card;
+}
+
+function attachWorkOrderInlinePriorityEditor(cell, workOrder = {}) {
+  if (!(cell instanceof HTMLElement) || !workOrder?.id || !getCanEditOperationalData()) {
+    return;
+  }
+
+  cell.classList.add("has-inline-editor");
+  cell.dataset.preventRowOpen = "true";
+  ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
+    cell.addEventListener(eventName, (event) => {
+      if (event.target instanceof HTMLElement && event.target.closest(".work-order-inline-priority-editor")) {
+        event.stopPropagation();
+      }
+    });
+  });
+
+  let timerId = 0;
+  let editor = null;
+
+  const closeEditor = () => {
+    window.clearTimeout(timerId);
+    timerId = 0;
+    if (editor && !editor.matches(":focus-within")) {
+      editor.remove();
+      editor = null;
+    }
+  };
+
+  const openEditor = () => {
+    if (editor) {
+      return;
+    }
+
+    editor = document.createElement("div");
+    editor.className = "work-order-inline-priority-editor";
+    const select = document.createElement("select");
+    replaceSelectOptions(select, PRIORITY_OPTIONS, workOrder.priority || "Normal");
+    select.setAttribute("aria-label", `Promijeni prioritet za RN ${workOrder.workOrderNumber || ""}`.trim());
+    select.addEventListener("change", async (event) => {
+      event.stopPropagation();
+      const nextPriority = select.value || "Normal";
+      editor?.classList.add("is-saving");
+      const success = await runMutation(() => apiRequest(`/work-orders/${encodeURIComponent(String(workOrder.id))}`, {
+        method: "PATCH",
+        body: { priority: nextPriority },
+      }), null);
+      if (!success && editor) {
+        editor.classList.remove("is-saving");
+      }
+    });
+    select.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        editor?.remove();
+        editor = null;
+      }
+    });
+    select.addEventListener("blur", () => {
+      window.setTimeout(closeEditor, 120);
+    });
+    editor.append(select);
+    cell.append(editor);
+    select.focus({ preventScroll: true });
+  };
+
+  cell.addEventListener("pointerenter", () => {
+    window.clearTimeout(timerId);
+    timerId = window.setTimeout(openEditor, 900);
+  });
+  cell.addEventListener("pointerleave", () => {
+    window.clearTimeout(timerId);
+    timerId = window.setTimeout(closeEditor, 220);
+  });
 }
 
 function renderCompactWorkOrdersList() {
@@ -90851,6 +91107,7 @@ function renderCompactWorkOrdersList() {
       if (!priorityTagsCell.childElementCount) {
         priorityTagsCell.append(createValueStack("Bez prioriteta", "Bez tagova"));
       }
+      attachWorkOrderInlinePriorityEditor(priorityTagsCell, item);
 
       const executorsCell = document.createElement("div");
       executorsCell.className = "work-item-cell work-item-cell-group work-item-executors-cell";

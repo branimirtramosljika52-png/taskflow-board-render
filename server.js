@@ -8857,6 +8857,55 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (request.method === "POST" && url.pathname === "/api/work-orders/batch-update") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati radnim nalozima.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const updates = Array.isArray(body?.updates) ? body.updates : [];
+      if (updates.length === 0) {
+        sendError(response, 400, "Nema promjena za radne naloge.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      for (const update of updates) {
+        const workOrderId = String(update?.id || update?.workOrderId || "").trim();
+        const patch = update?.patch && typeof update.patch === "object" && !Array.isArray(update.patch)
+          ? update.patch
+          : {};
+        if (!workOrderId || Object.keys(patch).length === 0) {
+          continue;
+        }
+
+        const currentWorkOrder = assertInScope(scopedSnapshot.workOrders, workOrderId, "Radni nalog nije pronađen.");
+        const requestedStatus = bodyHasOwnField(patch, "status")
+          ? normalizeWorkOrderStatusForPermission(patch.status)
+          : normalizeWorkOrderStatusForPermission(currentWorkOrder.status);
+        const missingPermissions = getMissingScopedSnapshotAppPermissions(user, scopedSnapshot, [
+          ...getWorkOrderStatusPermissionKeys(currentWorkOrder.status, requestedStatus),
+          ...getWorkOrderBillingPermissionKeys(currentWorkOrder, patch),
+        ]);
+        if (missingPermissions.length > 0) {
+          sendError(response, 403, "Nemate ovlastenje za trazenu promjenu radnog naloga.");
+          return true;
+        }
+
+        assertCompanyPayloadInScope(scopedSnapshot, patch);
+        assertLocationPayloadInScope(scopedSnapshot, patch);
+        assertServiceCatalogIdsPayloadInScope(scopedSnapshot, patch);
+        await domainRepository.updateWorkOrder(workOrderId, {
+          ...patch,
+          organizationId: scopedSnapshot.activeOrganizationId,
+        }, user);
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
     if (workOrderMatch && request.method === "PATCH") {
       if (!canManageWorkOrders(user)) {
         sendError(response, 403, "Nemate pravo upravljati radnim nalozima.");

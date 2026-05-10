@@ -5730,6 +5730,36 @@ async function renderPdfImageBlock(doc, helpers, title, item = {}) {
     return;
   }
 
+  if (item.onePage) {
+    helpers.setLayout("portrait", { forceNewPage: doc.y > doc.page.margins.top + 8 });
+    const startX = doc.page.margins.left;
+    const titleY = doc.y;
+    const frameWidth = helpers.availableWidth;
+    doc.font("dejavu-bold").fontSize(12).fillColor("#1f2333").text(title, startX, titleY, {
+      width: frameWidth,
+    });
+    const startY = doc.y + 10;
+    const frameHeight = Math.max(120, helpers.maxY - startY - 8);
+
+    try {
+      doc.image(imageBuffer, startX, startY, {
+        fit: [frameWidth, frameHeight],
+        align: "center",
+        valign: "center",
+      });
+    } catch {
+      doc.font("dejavu").fontSize(10).fillColor("#64748b").text(
+        "Sliku nije moguće prikazati u PDF-u.",
+        startX,
+        startY,
+        { width: frameWidth },
+      );
+    }
+
+    doc.y = helpers.maxY;
+    return;
+  }
+
   helpers.ensureSpace(240);
   doc.font("dejavu-bold").fontSize(12).fillColor("#1f2333").text(title, {
     width: helpers.availableWidth,
@@ -5768,9 +5798,40 @@ async function renderPdfImageBlock(doc, helpers, title, item = {}) {
   }
 }
 
+function addRenderModelPageNumbers(doc, renderModel = {}) {
+  if (typeof doc.bufferedPageRange !== "function" || typeof doc.switchToPage !== "function") {
+    return;
+  }
+
+  let range;
+  try {
+    range = doc.bufferedPageRange();
+  } catch {
+    return;
+  }
+
+  const total = Number(range?.count) || 0;
+  if (total <= 0) {
+    return;
+  }
+
+  const prefixValue = clean(renderModel.serviceCode || renderModel.workOrderNumber || "");
+  const prefix = prefixValue ? `${prefixValue} - ` : "";
+  for (let pageOffset = 0; pageOffset < total; pageOffset += 1) {
+    doc.switchToPage(range.start + pageOffset);
+    const label = `${prefix}${pageOffset + 1}/${total}`;
+    const y = doc.page.height - doc.page.margins.bottom + 14;
+    doc.font("dejavu").fontSize(8.5).fillColor("#64748b").text(label, doc.page.margins.left, y, {
+      width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
+      align: "right",
+    });
+  }
+}
+
 export async function buildPdfFromRenderModel(renderModel = {}) {
   const doc = new PDFDocument({
     autoFirstPage: true,
+    bufferPages: true,
     size: "A4",
     layout: "portrait",
     margins: {
@@ -5909,6 +5970,7 @@ export async function buildPdfFromRenderModel(renderModel = {}) {
     }
   }
 
+  addRenderModelPageNumbers(doc, renderModel);
   return pdfBufferFromDocument(doc);
 }
 
