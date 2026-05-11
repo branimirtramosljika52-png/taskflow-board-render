@@ -3014,6 +3014,7 @@ const drawingSelectedFooterInput = document.querySelector("#drawing-selected-foo
 const drawingDeleteSelectedButton = document.querySelector("#drawing-delete-selected");
 const drawingError = document.querySelector("#drawing-error");
 const vehiclesModule = document.querySelector("#vehicles-module");
+const vehiclesReactRoot = document.querySelector("#vehicles-react-root");
 const vehiclesTotalCount = document.querySelector("#vehicles-total-count");
 const vehiclesAvailableCount = document.querySelector("#vehicles-available-count");
 const vehiclesReservedCount = document.querySelector("#vehicles-reserved-count");
@@ -3038,6 +3039,7 @@ const vehicleScheduleEmpty = document.querySelector("#vehicle-schedule-empty");
 const vehicleOpenFormButton = document.querySelector("#vehicle-open-form");
 const vehicleEditorBackdrop = document.querySelector("#vehicle-editor-backdrop");
 const vehicleEditorPanel = document.querySelector("#vehicle-editor-panel");
+const vehicleEditorReactRoot = document.querySelector("#vehicle-editor-react-root");
 const vehicleEditorCloseButton = document.querySelector("#vehicle-editor-close");
 const vehicleEditorBody = vehicleEditorPanel?.querySelector(".vehicle-modal-body");
 const vehicleEditorTitle = document.querySelector("#vehicle-editor-title");
@@ -3076,6 +3078,7 @@ const vehicleReservationsTitle = document.querySelector("#vehicle-reservations-t
 const vehicleOpenReservationButton = document.querySelector("#vehicle-open-reservation");
 const vehicleReservationBackdrop = document.querySelector("#vehicle-reservation-backdrop");
 const vehicleReservationPanel = document.querySelector("#vehicle-reservation-panel");
+const vehicleReservationReactRoot = document.querySelector("#vehicle-reservation-react-root");
 const vehicleReservationCloseButton = document.querySelector("#vehicle-reservation-close");
 const vehicleReservationBody = vehicleReservationPanel?.querySelector(".vehicle-modal-body");
 const vehicleReservationForm = document.querySelector("#vehicle-reservation-form");
@@ -3533,6 +3536,7 @@ const serviceCatalogError = document.querySelector("#service-catalog-error");
 const serviceCatalogResetButton = document.querySelector("#service-catalog-reset");
 const serviceCatalogDeleteButton = document.querySelector("#service-catalog-delete");
 const measurementEquipmentModule = document.querySelector("#measurement-equipment-module");
+const measurementEquipmentReactRoot = document.querySelector("#measurement-equipment-react-root");
 const measurementEquipmentTotalCount = document.querySelector("#measurement-equipment-total-count");
 const measurementEquipmentCalibrationCount = document.querySelector("#measurement-equipment-calibration-count");
 const measurementEquipmentExpiringCount = document.querySelector("#measurement-equipment-expiring-count");
@@ -3545,6 +3549,7 @@ const measurementEquipmentEmpty = document.querySelector("#measurement-equipment
 const measurementEquipmentOpenFormButton = document.querySelector("#measurement-equipment-open-form");
 const measurementEquipmentEditorBackdrop = document.querySelector("#measurement-equipment-editor-backdrop");
 const measurementEquipmentEditorPanel = document.querySelector("#measurement-equipment-editor-panel");
+const measurementEquipmentEditorReactRoot = document.querySelector("#measurement-equipment-editor-react-root");
 const measurementEquipmentEditorCloseButton = document.querySelector("#measurement-equipment-editor-close");
 const measurementEquipmentEditorBody = measurementEquipmentEditorPanel?.querySelector(".measurement-equipment-editor-body");
 const measurementEquipmentEditorTitle = document.querySelector("#measurement-equipment-editor-title");
@@ -3804,6 +3809,7 @@ let measurementEquipmentDocumentDrafts = [];
 let measurementEquipmentActivityDrafts = [];
 let measurementEquipmentSideComments = [];
 let measurementEquipmentSpecDrafts = [];
+let measurementEquipmentReactDraft = null;
 let legalFrameworkDocumentDrafts = [];
 let safetyAuthorizationDocumentDrafts = [];
 let absenceDocumentDrafts = [];
@@ -3811,6 +3817,8 @@ let absenceBalanceDrafts = [];
 let absenceEditorDraft = null;
 let vehicleDocumentDrafts = [];
 let vehicleActivityDrafts = [];
+let vehicleReactDraft = null;
+let vehicleReservationReactDraft = null;
 let activeMeasurementEquipmentDocumentPreview = null;
 let measurementEquipmentCardExporting = false;
 let measurementEquipmentBulkExporting = false;
@@ -38698,6 +38706,7 @@ function syncMeasurementEquipmentEditorModal() {
   syncMeasurementEquipmentEditorSections();
 
   if (isOpen) {
+    renderReactMeasurementEquipmentEditor();
     requestAnimationFrame(() => {
       scrollMeasurementEquipmentEditorToTop();
       measurementEquipmentEditorBody?.focus({ preventScroll: true });
@@ -38705,6 +38714,8 @@ function syncMeasurementEquipmentEditorModal() {
         scrollMeasurementEquipmentEditorToTop();
       }, 0);
     });
+  } else {
+    unmountReactMeasurementEquipmentEditor();
   }
 }
 
@@ -56828,6 +56839,7 @@ function resetMeasurementEquipmentForm() {
   setMeasurementEquipmentDocumentDrafts([]);
   setMeasurementEquipmentActivityDrafts([]);
   setMeasurementEquipmentSpecDrafts([]);
+  measurementEquipmentReactDraft = buildMeasurementEquipmentReactDraft({});
   renderMeasurementEquipmentDocuments();
   renderMeasurementEquipmentActivities();
   renderMeasurementEquipmentSpecs();
@@ -56872,6 +56884,7 @@ function hydrateMeasurementEquipmentForm(item) {
   setMeasurementEquipmentDocumentDrafts(item.documents ?? []);
   setMeasurementEquipmentActivityDrafts(item.activityItems ?? []);
   setMeasurementEquipmentSpecDrafts(item.measurementSpecs ?? []);
+  measurementEquipmentReactDraft = buildMeasurementEquipmentReactDraft(item);
   renderMeasurementEquipmentDocuments();
   renderMeasurementEquipmentActivities();
   renderMeasurementEquipmentSpecs();
@@ -56953,6 +56966,349 @@ function sortMeasurementEquipmentItemsForList(items, mode = "due-asc") {
   });
 }
 
+function getMeasurementEquipmentDeviceCodeOptions() {
+  return [
+    { value: "", label: "Bez oznake" },
+    ...Array.from({ length: 13 }, (_, index) => {
+      const letter = String.fromCharCode(65 + index);
+      return {
+        value: `Grupa ${letter}`,
+        label: `Grupa ${letter}`,
+      };
+    }),
+  ];
+}
+
+function getOrganisationsServiceOptions() {
+  return sortServiceCatalogItems(state.serviceCatalog ?? []).map((item) => ({
+    value: String(item.id || ""),
+    label: [item.serviceCode || "", item.name || "Usluga"].filter(Boolean).join(" - "),
+    meta: getServiceCatalogTypeLabel(item.serviceType || item.type || "inspection"),
+  }));
+}
+
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function formatModuleAttachmentMeta(entry = {}) {
+  return [
+    entry.fileType || entry.documentCategory || "Dokument",
+    formatFileSize(entry.fileSize),
+    entry.updatedAt ? formatCompactDateTime(entry.updatedAt) : "",
+  ].filter(Boolean).join(" | ");
+}
+
+function buildReactAttachmentRows(items = []) {
+  return (Array.isArray(items) ? items : [])
+    .map((entry) => {
+      const draft = createModuleAttachmentDraft(entry);
+      return {
+        ...draft,
+        meta: formatModuleAttachmentMeta(draft),
+        fileSizeLabel: formatFileSize(draft.fileSize),
+      };
+    })
+    .filter((entry) => entry.fileName && (entry.dataUrl || entry.storageUrl));
+}
+
+function buildMeasurementEquipmentReactDraft(item = {}) {
+  const source = item && typeof item === "object" ? item : {};
+  const sourceDocuments = source.documents ?? measurementEquipmentDocumentDrafts;
+  const sourceActivities = source.activityItems ?? measurementEquipmentActivityDrafts;
+  const sourceSpecs = source.measurementSpecs ?? measurementEquipmentSpecDrafts;
+  const linkedIds = source.linkedServiceCatalogIds
+    ?? getMeasurementEquipmentLinkedServiceIds(source)
+    ?? [];
+
+  return {
+    versionKey: [
+      source.id || "new",
+      source.updatedAt || "",
+      sourceDocuments?.length || 0,
+      sourceActivities?.length || 0,
+      sourceSpecs?.length || 0,
+      Date.now(),
+    ].join(":"),
+    id: String(source.id || ""),
+    organizationId: source.organizationId || state.activeOrganizationId || "",
+    name: source.name || "",
+    equipmentKind: source.equipmentKind || "combined",
+    manufacturer: source.manufacturer || "",
+    deviceType: source.deviceType || "",
+    deviceCode: source.deviceCode || "",
+    serialNumber: source.serialNumber || "",
+    inventoryNumber: source.inventoryNumber || "",
+    enteredBy: source.enteredBy || "",
+    approvedBy: source.approvedBy || "",
+    entryDate: String(source.entryDate || "").slice(0, 10),
+    requiresCalibration: source.requiresCalibration !== false,
+    calibrationDate: String(source.calibrationDate || "").slice(0, 10),
+    calibrationPeriod: source.calibrationPeriod || "",
+    validUntil: String(source.validUntil || "").slice(0, 10),
+    linkedServiceCatalogIds: (Array.isArray(linkedIds) ? linkedIds : []).map(String),
+    documents: buildReactAttachmentRows(sourceDocuments),
+    activityItems: (Array.isArray(sourceActivities) ? sourceActivities : []).map((entry) => createMeasurementEquipmentActivityDraft(entry)),
+    measurementSpecs: (Array.isArray(sourceSpecs) ? sourceSpecs : []).map((entry) => ({ ...entry, id: String(entry.id || crypto.randomUUID()) })),
+    note: source.note || "",
+  };
+}
+
+function sanitizeReactDocumentsForPayload(items = []) {
+  return (Array.isArray(items) ? items : []).map((entry) => {
+    const { meta, fileSizeLabel, documentCategoryLocked, ...payload } = entry;
+    return { ...payload };
+  });
+}
+
+function buildMeasurementEquipmentPayloadFromReactDraft(draft = {}) {
+  const requiresCalibration = draft.requiresCalibration !== false;
+  return {
+    organizationId: state.activeOrganizationId || draft.organizationId || "",
+    name: draft.name || "",
+    equipmentKind: draft.equipmentKind || "combined",
+    manufacturer: draft.manufacturer || "",
+    deviceType: draft.deviceType || "",
+    deviceCode: draft.deviceCode || "",
+    serialNumber: draft.serialNumber || "",
+    inventoryNumber: draft.inventoryNumber || "",
+    enteredBy: draft.enteredBy || "",
+    approvedBy: draft.approvedBy || "",
+    entryDate: draft.entryDate || "",
+    requiresCalibration,
+    calibrationDate: requiresCalibration ? (draft.calibrationDate || "") : "",
+    calibrationPeriod: requiresCalibration ? (draft.calibrationPeriod || "") : "",
+    validUntil: requiresCalibration ? (draft.validUntil || "") : "",
+    linkedServiceCatalogIds: (draft.linkedServiceCatalogIds ?? []).map(String),
+    documents: sanitizeReactDocumentsForPayload(draft.documents),
+    activityItems: (Array.isArray(draft.activityItems) ? draft.activityItems : []).map((entry) => ({ ...entry })),
+    measurementSpecs: (Array.isArray(draft.measurementSpecs) ? draft.measurementSpecs : []).map((entry) => ({ ...entry })),
+    note: draft.note || "",
+  };
+}
+
+async function uploadMeasurementEquipmentReactDocuments(files, draft = measurementEquipmentReactDraft) {
+  const uploads = await buildWorkOrderDocumentUploadPayload(files);
+  const nextDocuments = uploads.map((file) => createModuleAttachmentDraft(file));
+  const current = draft || buildMeasurementEquipmentReactDraft(getActiveMeasurementEquipmentItem() || {});
+  measurementEquipmentReactDraft = {
+    ...current,
+    documents: buildReactAttachmentRows([
+      ...(current.documents ?? []),
+      ...nextDocuments,
+    ]),
+    versionKey: `measurement-docs:${Date.now()}`,
+  };
+  measurementEquipmentDocumentDrafts = measurementEquipmentReactDraft.documents.map((entry) => createModuleAttachmentDraft(entry));
+  return measurementEquipmentReactDraft.documents;
+}
+
+function downloadMeasurementEquipmentReactDocument(documentId = "") {
+  const documentItem = (measurementEquipmentReactDraft?.documents ?? [])
+    .find((entry) => String(entry.id) === String(documentId));
+  if (documentItem) {
+    triggerModuleAttachmentDownload(documentItem);
+  }
+}
+
+async function saveMeasurementEquipmentReactDraft(nextDraft = measurementEquipmentReactDraft) {
+  const draft = {
+    ...(measurementEquipmentReactDraft ?? {}),
+    ...(nextDraft ?? {}),
+  };
+  measurementEquipmentReactDraft = draft;
+  const isEditing = Boolean(draft.id);
+  const path = isEditing ? `/measurement-equipment/${draft.id}` : "/measurement-equipment";
+  const method = isEditing ? "PATCH" : "POST";
+  const success = await runMutation(() => apiRequest(path, {
+    method,
+    body: buildMeasurementEquipmentPayloadFromReactDraft(draft),
+  }), measurementEquipmentError);
+
+  if (!success) {
+    throw new Error(measurementEquipmentError?.textContent || "Spremanje opreme nije uspjelo.");
+  }
+
+  closeMeasurementEquipmentEditor({ reset: true });
+  renderMeasurementEquipmentModule();
+  renderNotifications();
+  return true;
+}
+
+async function deleteMeasurementEquipmentReactDraft(equipmentId = measurementEquipmentReactDraft?.id || "") {
+  const safeId = String(equipmentId || "").trim();
+  if (!safeId) {
+    return false;
+  }
+  if (!window.confirm("Obrisati ovu stavku opreme?")) {
+    return false;
+  }
+
+  const success = await runMutation(() => apiRequest(`/measurement-equipment/${safeId}`, {
+    method: "DELETE",
+  }), measurementEquipmentError);
+
+  if (!success) {
+    throw new Error(measurementEquipmentError?.textContent || "Brisanje opreme nije uspjelo.");
+  }
+
+  closeMeasurementEquipmentEditor({ reset: true });
+  renderMeasurementEquipmentModule();
+  return true;
+}
+
+function buildMeasurementEquipmentReactRows(items = [], canEdit = false) {
+  const hasTemplate = Boolean(getMeasurementEquipmentCardTemplateDocument());
+  return items.map((item) => {
+    const dueWarning = item.validUntil && isUpcomingIsoDate(item.validUntil);
+    return {
+      ...item,
+      id: String(item.id || ""),
+      isActive: String(item.id || "") === String(measurementEquipmentReactDraft?.id || measurementEquipmentIdInput?.value || ""),
+      kindClass: `is-${slugifyValue(item.equipmentKind || "measurement")}`,
+      meta: [
+        item.manufacturer || "",
+        item.deviceType || "",
+        item.deviceCode ? `Ozn. ${item.deviceCode}` : "",
+        item.serialNumber ? `Ser. ${item.serialNumber}` : "",
+        item.inventoryNumber ? `Inv. ${item.inventoryNumber}` : "",
+      ].filter(Boolean).join(" | ") || "Bez dodatnih podataka",
+      calibrationBadgeLabel: item.requiresCalibration ? "Umjerava se" : "Ne umjerava se",
+      calibrationBadgeClass: item.requiresCalibration
+        ? "document-template-status-badge is-active"
+        : "document-template-status-badge is-archived",
+      dueLabel: item.requiresCalibration
+        ? (item.validUntil ? `Vrijedi do ${formatCompactDate(item.validUntil)}` : "Vrijedi do: bez roka")
+        : "Nije potrebno umjeravanje",
+      dueClass: dueWarning ? "measurement-equipment-chip is-warning" : "measurement-equipment-chip",
+      serviceTitles: getMeasurementEquipmentLinkedServiceTitles(item),
+      canExport: canEdit && hasTemplate,
+    };
+  });
+}
+
+function renderReactMeasurementEquipmentModule({
+  filters,
+  allItems,
+  visibleItems,
+  canCreate,
+  canEdit,
+} = {}) {
+  const reactComponents = window.SafeNexusReactComponents;
+  if (!measurementEquipmentReactRoot || !reactComponents?.renderMeasurementEquipmentModule) {
+    return false;
+  }
+
+  measurementEquipmentModule?.classList.add("is-react-module");
+  const cardTemplateDocument = getMeasurementEquipmentCardTemplateDocument();
+
+  return reactComponents.renderMeasurementEquipmentModule(measurementEquipmentReactRoot, {
+    filters,
+    sortOptions: MEASUREMENT_EQUIPMENT_SORT_OPTIONS,
+    stats: {
+      total: allItems.length,
+      calibration: allItems.filter((item) => item.requiresCalibration).length,
+      expiring: allItems.filter((item) => isUpcomingIsoDate(item.validUntil)).length,
+      files: allItems.filter((item) => (item.documents ?? []).length > 0).length,
+    },
+    items: buildMeasurementEquipmentReactRows(visibleItems, canEdit),
+    canCreate,
+    canEdit,
+    hasCardTemplate: Boolean(cardTemplateDocument),
+    cardTemplateMeta: cardTemplateDocument?.fileName
+      ? `${cardTemplateDocument.fileName} | ažurirano ${cardTemplateDocument.updatedAt ? formatCompactDateTime(cardTemplateDocument.updatedAt) : "bez datuma"}`
+      : "",
+    onCreate: () => {
+      if (!getCanCreateMeasurementEquipment()) {
+        return;
+      }
+      resetMeasurementEquipmentForm();
+      measurementEquipmentReactDraft = buildMeasurementEquipmentReactDraft({});
+      openMeasurementEquipmentEditor();
+    },
+    onFilterChange: (patch = {}) => {
+      state.measurementEquipmentFilters = {
+        ...state.measurementEquipmentFilters,
+        ...patch,
+      };
+      renderMeasurementEquipmentModule();
+    },
+    onOpen: (equipmentId) => {
+      const item = state.measurementEquipment.find((entry) => String(entry.id) === String(equipmentId));
+      if (item) {
+        hydrateMeasurementEquipmentForm(item);
+      }
+    },
+    onUploadTemplate: () => measurementEquipmentCardTemplateInput?.click(),
+    onExportPlaceholders: () => void runMutation(async () => {
+      exportMeasurementEquipmentPlaceholderWord();
+    }, measurementEquipmentError),
+    onExportWord: () => void runMutation(() => exportMeasurementEquipmentCardDocument("word"), measurementEquipmentError),
+    onExportPdf: () => void runMutation(() => exportMeasurementEquipmentCardDocument("pdf"), measurementEquipmentError),
+    onExportExcel: () => void runMutation(() => exportMeasurementEquipmentListExcel(), measurementEquipmentError),
+    onExportZip: () => void runMutation(() => exportMeasurementEquipmentDocumentsZip(), measurementEquipmentError),
+    onExportItem: (equipmentId, format) => {
+      const item = state.measurementEquipment.find((entry) => String(entry.id) === String(equipmentId));
+      if (item) {
+        void runMutation(() => exportMeasurementEquipmentCardDocumentForItem(item, format), measurementEquipmentError);
+      }
+    },
+  });
+}
+
+function renderReactMeasurementEquipmentEditor() {
+  const reactComponents = window.SafeNexusReactComponents;
+  if (!state.measurementEquipmentEditorOpen || !measurementEquipmentEditorReactRoot || !reactComponents?.renderMeasurementEquipmentEditor) {
+    return false;
+  }
+
+  const activeItem = getActiveMeasurementEquipmentItem();
+  if (!measurementEquipmentReactDraft) {
+    measurementEquipmentReactDraft = buildMeasurementEquipmentReactDraft(activeItem || {});
+  }
+
+  const draft = measurementEquipmentReactDraft;
+  const canEdit = draft.id ? getCanEditMeasurementEquipment() : getCanCreateMeasurementEquipment();
+
+  measurementEquipmentEditorPanel?.classList.add("is-react-editor");
+  return reactComponents.renderMeasurementEquipmentEditor(measurementEquipmentEditorReactRoot, {
+    title: draft.id ? `Uredi opremu | ${draft.name || "Bez naziva"}` : "Nova oprema",
+    draft,
+    kindOptions: MEASUREMENT_EQUIPMENT_KIND_OPTIONS,
+    deviceCodeOptions: getMeasurementEquipmentDeviceCodeOptions(),
+    serviceOptions: getOrganisationsServiceOptions(),
+    activityTypeOptions: MEASUREMENT_EQUIPMENT_ACTIVITY_TYPE_OPTIONS,
+    documentCategories: MEASUREMENT_EQUIPMENT_DOCUMENT_CATEGORY_OPTIONS,
+    canDelete: Boolean(draft.id) && getCanEditMeasurementEquipment(),
+    canSave: canEdit,
+    error: measurementEquipmentError?.textContent || "",
+    onDraftChange: (nextDraft) => {
+      measurementEquipmentReactDraft = {
+        ...measurementEquipmentReactDraft,
+        ...nextDraft,
+      };
+      measurementEquipmentDocumentDrafts = buildReactAttachmentRows(measurementEquipmentReactDraft.documents);
+      measurementEquipmentActivityDrafts = asArray(measurementEquipmentReactDraft.activityItems);
+      measurementEquipmentSpecDrafts = asArray(measurementEquipmentReactDraft.measurementSpecs);
+    },
+    onUploadDocuments: uploadMeasurementEquipmentReactDocuments,
+    onDownloadDocument: downloadMeasurementEquipmentReactDocument,
+    onSave: saveMeasurementEquipmentReactDraft,
+    onReset: () => {
+      resetMeasurementEquipmentForm();
+      measurementEquipmentReactDraft = buildMeasurementEquipmentReactDraft({});
+      openMeasurementEquipmentEditor();
+    },
+    onDelete: deleteMeasurementEquipmentReactDraft,
+    onClose: () => dismissMeasurementEquipmentEditor(),
+  });
+}
+
+function unmountReactMeasurementEquipmentEditor() {
+  window.SafeNexusReactComponents?.unmountMeasurementEquipmentEditor?.(measurementEquipmentEditorReactRoot);
+  measurementEquipmentEditorPanel?.classList.remove("is-react-editor");
+}
+
 function renderMeasurementEquipmentModule() {
   if (!measurementEquipmentModule || !measurementEquipmentList || !measurementEquipmentEmpty) {
     return;
@@ -57001,6 +57357,20 @@ function renderMeasurementEquipmentModule() {
       : `Prikazano ${visibleItems.length} od ${allItems.length} stavki opreme.`;
   }
   const hasCardTemplateDocument = Boolean(getMeasurementEquipmentCardTemplateDocument());
+
+  if (renderReactMeasurementEquipmentModule({
+    filters,
+    allItems,
+    visibleItems,
+    canCreate: canCreateMeasurementEquipment,
+    canEdit: canManageMasterData,
+  })) {
+    syncMeasurementEquipmentCardTemplateControls();
+    if (state.measurementEquipmentExportDialogOpen) {
+      syncMeasurementEquipmentExportDialogModal();
+    }
+    return;
+  }
 
   measurementEquipmentList.replaceChildren(...visibleItems.map((item) => {
     const card = document.createElement("article");
@@ -65698,6 +66068,7 @@ function syncVehicleEditorModal() {
   }
 
   if (isOpen) {
+    renderReactVehicleEditor();
     requestAnimationFrame(() => {
       scrollVehicleEditorToTop();
       vehicleEditorBody?.focus({ preventScroll: true });
@@ -65705,6 +66076,8 @@ function syncVehicleEditorModal() {
         scrollVehicleEditorToTop();
       }, 0);
     });
+  } else {
+    unmountReactVehicleEditor();
   }
 }
 
@@ -65742,6 +66115,7 @@ function syncVehicleReservationModal() {
   syncVehicleReservationAssigneePicker();
 
   if (isOpen) {
+    renderReactVehicleReservationEditor();
     requestAnimationFrame(() => {
       scrollVehicleReservationToTop();
       vehicleReservationBody?.focus({ preventScroll: true });
@@ -65749,6 +66123,8 @@ function syncVehicleReservationModal() {
         scrollVehicleReservationToTop();
       }, 0);
     });
+  } else {
+    unmountReactVehicleReservationEditor();
   }
 }
 
@@ -79747,6 +80123,9 @@ function resetVehicleReservationForm({ clearSelection = true, vehicleId = state.
     state.activeVehicleId = "";
   }
 
+  vehicleReservationReactDraft = buildVehicleReservationReactDraft({
+    vehicle: state.vehicles.find((item) => String(item.id) === String(vehicleId || state.activeVehicleId)) ?? null,
+  });
   syncVehicleEditorSummary();
 }
 
@@ -79758,6 +80137,7 @@ function resetVehicleForm({ clearSelection = true } = {}) {
   vehicleForm.reset();
   vehicleDocumentDrafts = [];
   vehicleActivityDrafts = [];
+  vehicleReactDraft = buildVehicleReactDraft({});
   if (vehicleIdInput) {
     vehicleIdInput.value = "";
   }
@@ -79787,6 +80167,7 @@ function hydrateVehicleReservationForm(vehicle, reservation) {
   state.activeVehicleId = vehicle.id;
   state.activeVehicleReservationId = reservation.id;
   setVehicleReservationAssigneePickerOpen(false);
+  vehicleReservationReactDraft = buildVehicleReservationReactDraft({ vehicle, reservation });
 
   if (vehicleReservationIdInput) {
     vehicleReservationIdInput.value = reservation.id || "";
@@ -79885,6 +80266,7 @@ function hydrateVehicleForm(vehicle) {
   }
   vehicleDocumentDrafts = (vehicle.documents ?? []).map((entry) => createModuleAttachmentDraft(entry));
   setVehicleActivityDrafts(vehicle.activityItems ?? []);
+  vehicleReactDraft = buildVehicleReactDraft(vehicle);
   state.vehicleActivitySectionExpanded = true;
   state.vehicleDocumentsSectionExpanded = true;
   renderVehicleDocuments();
@@ -79929,17 +80311,541 @@ function openVehicleReservationComposer({ vehicleId = state.activeVehicleId || "
 
   resetVehicleReservationForm({ clearSelection: true, vehicleId: nextVehicleId });
   rebuildVehicleReservationVehicleOptions(nextVehicleId);
+  vehicleReservationReactDraft = buildVehicleReservationReactDraft({
+    vehicle: state.vehicles.find((item) => String(item.id) === String(nextVehicleId)) ?? null,
+  });
 
   if (startAt && vehicleReservationStartAtInput) {
     vehicleReservationStartAtInput.value = startAt;
+    vehicleReservationReactDraft = {
+      ...vehicleReservationReactDraft,
+      startAt,
+      versionKey: `reservation-start:${Date.now()}`,
+    };
   }
 
   if (endAt && vehicleReservationEndAtInput) {
     vehicleReservationEndAtInput.value = endAt;
+    vehicleReservationReactDraft = {
+      ...vehicleReservationReactDraft,
+      endAt,
+      versionKey: `reservation-end:${Date.now()}`,
+    };
   }
 
   renderVehiclesModule();
   openVehicleReservationEditor();
+}
+
+function buildVehicleReactDraft(vehicle = {}) {
+  const source = vehicle && typeof vehicle === "object" ? vehicle : {};
+  const sourceDocuments = source.documents ?? vehicleDocumentDrafts;
+  const sourceActivities = source.activityItems ?? vehicleActivityDrafts;
+  return {
+    versionKey: [
+      source.id || "new",
+      source.updatedAt || "",
+      sourceDocuments?.length || 0,
+      sourceActivities?.length || 0,
+      Date.now(),
+    ].join(":"),
+    id: String(source.id || ""),
+    name: source.name || "",
+    plateNumber: source.plateNumber || "",
+    vinNumber: source.vinNumber || "",
+    status: getVehicleEditableStatusValue(source.status || "available"),
+    category: source.category || "",
+    make: source.make || "",
+    model: source.model || "",
+    year: source.year ? String(source.year) : "",
+    color: source.color || "",
+    fuelType: source.fuelType || "",
+    transmission: source.transmission || "",
+    seatCount: source.seatCount ? String(source.seatCount) : "",
+    odometerKm: source.odometerKm ? String(source.odometerKm) : "",
+    serviceDueDate: String(source.serviceDueDate || "").slice(0, 10),
+    registrationExpiresOn: String(source.registrationExpiresOn || "").slice(0, 10),
+    documents: buildReactAttachmentRows(sourceDocuments),
+    activityItems: (Array.isArray(sourceActivities) ? sourceActivities : []).map((entry) => createVehicleActivityDraft(entry)),
+    notes: source.notes || "",
+  };
+}
+
+function buildVehiclePayloadFromReactDraft(draft = {}) {
+  return {
+    name: draft.name || "",
+    plateNumber: draft.plateNumber || "",
+    vinNumber: draft.vinNumber || "",
+    status: draft.status || "available",
+    category: draft.category || "",
+    make: draft.make || "",
+    model: draft.model || "",
+    year: draft.year || "",
+    color: draft.color || "",
+    fuelType: draft.fuelType || "",
+    transmission: draft.transmission || "",
+    seatCount: draft.seatCount || "",
+    odometerKm: draft.odometerKm || "",
+    serviceDueDate: draft.serviceDueDate || "",
+    registrationExpiresOn: draft.registrationExpiresOn || "",
+    documents: sanitizeReactDocumentsForPayload(draft.documents),
+    activityItems: (Array.isArray(draft.activityItems) ? draft.activityItems : []).map((entry) => ({ ...entry })),
+    notes: draft.notes || "",
+  };
+}
+
+async function uploadVehicleReactDocuments(files, draft = vehicleReactDraft) {
+  const uploads = await buildWorkOrderDocumentUploadPayload(files);
+  const nextDocuments = uploads.map((file) => createModuleAttachmentDraft(file));
+  const current = draft || buildVehicleReactDraft(getActiveVehicle() || {});
+  vehicleReactDraft = {
+    ...current,
+    documents: buildReactAttachmentRows([
+      ...(current.documents ?? []),
+      ...nextDocuments,
+    ]),
+    versionKey: `vehicle-docs:${Date.now()}`,
+  };
+  vehicleDocumentDrafts = vehicleReactDraft.documents.map((entry) => createModuleAttachmentDraft(entry));
+  return vehicleReactDraft.documents;
+}
+
+function downloadVehicleReactDocument(documentId = "") {
+  const documentItem = (vehicleReactDraft?.documents ?? [])
+    .find((entry) => String(entry.id) === String(documentId));
+  if (documentItem) {
+    triggerModuleAttachmentDownload(documentItem);
+  }
+}
+
+async function saveVehicleReactDraft(nextDraft = vehicleReactDraft) {
+  const draft = {
+    ...(vehicleReactDraft ?? {}),
+    ...(nextDraft ?? {}),
+  };
+  vehicleReactDraft = draft;
+  const isEditing = Boolean(draft.id);
+  const previousIds = new Set(state.vehicles.map((item) => String(item.id)));
+  const path = isEditing ? `/vehicles/${draft.id}` : "/vehicles";
+  const method = isEditing ? "PATCH" : "POST";
+  const payload = buildVehiclePayloadFromReactDraft(draft);
+  const success = await runMutation(() => apiRequest(path, {
+    method,
+    body: payload,
+  }), vehicleError);
+
+  if (!success) {
+    throw new Error(vehicleError?.textContent || "Spremanje vozila nije uspjelo.");
+  }
+
+  if (!isEditing) {
+    const created = findCreatedVehicleMatch(previousIds, payload);
+    if (created) {
+      state.activeVehicleId = created.id;
+    }
+  }
+
+  closeVehicleEditor({ reset: true });
+  renderVehiclesModule();
+  renderNotifications();
+  return true;
+}
+
+async function deleteVehicleReactDraft(vehicleId = vehicleReactDraft?.id || "") {
+  const safeId = String(vehicleId || "").trim();
+  if (!safeId) {
+    return false;
+  }
+  if (!window.confirm("Obrisati ovo vozilo?")) {
+    return false;
+  }
+
+  const success = await runMutation(() => apiRequest(`/vehicles/${safeId}`, {
+    method: "DELETE",
+  }), vehicleError);
+
+  if (!success) {
+    throw new Error(vehicleError?.textContent || "Brisanje vozila nije uspjelo.");
+  }
+
+  closeVehicleEditor({ reset: true });
+  renderVehiclesModule();
+  return true;
+}
+
+function getVehicleReservationUserOptions() {
+  return state.users
+    .filter((user) => user?.isActive !== false)
+    .slice()
+    .sort((left, right) => getUserDisplayLabel(left).localeCompare(getUserDisplayLabel(right), "hr"))
+    .map((user) => ({
+      value: String(user.id),
+      label: getUserDisplayLabel(user),
+      meta: user.email || user.role || "",
+    }));
+}
+
+function getVehicleReservationVehicleOptions(selectedValue = "") {
+  const vehicles = sortVehicles(state.vehicles ?? []);
+  const options = [
+    { value: "", label: vehicles.length ? "Odaberi vozilo" : "Nema vozila" },
+    ...vehicles.map((vehicle) => ({
+      value: String(vehicle.id),
+      label: [
+        vehicle.name || "Vozilo",
+        vehicle.plateNumber || "bez registracije",
+        isVehicleServiceOnlyStatus(vehicle) ? "servis" : "",
+      ].filter(Boolean).join(" | "),
+    })),
+  ];
+  if (selectedValue && !options.some((option) => String(option.value) === String(selectedValue))) {
+    options.push({ value: String(selectedValue), label: "Odabrano vozilo" });
+  }
+  return options;
+}
+
+function buildVehicleReservationReactDraft({
+  vehicle = getVehicleFromReservationEditor() ?? getActiveVehicle(),
+  reservation = null,
+} = {}) {
+  const selectedVehicleId = String(vehicle?.id || vehicleReservationVehicleIdInput?.value || state.activeVehicleId || findFirstReservableVehicleId() || "");
+  const reservedIds = reservation?.reservedForUserIds ?? reservation?.reservedForUserId ?? [];
+  const selectedUserIds = Array.isArray(reservedIds)
+    ? reservedIds
+    : String(reservedIds || "").split(",").map((value) => value.trim()).filter(Boolean);
+  const windowRange = buildDefaultVehicleReservationWindow();
+
+  return {
+    versionKey: [
+      reservation?.id || "new",
+      selectedVehicleId,
+      reservation?.updatedAt || "",
+      Date.now(),
+    ].join(":"),
+    id: String(reservation?.id || ""),
+    vehicleId: selectedVehicleId,
+    status: reservation?.status || "reserved",
+    reservedForUserIds: selectedUserIds.map(String),
+    purpose: reservation?.purpose || "",
+    startAt: reservation ? toDateTimeLocalInputValue(reservation.startAt) : (vehicleReservationStartAtInput?.value || windowRange.startAt),
+    endAt: reservation ? toDateTimeLocalInputValue(reservation.endAt) : (vehicleReservationEndAtInput?.value || windowRange.endAt),
+    destination: reservation?.destination || "",
+    note: reservation?.note || "",
+  };
+}
+
+function buildVehicleReservationPayloadFromReactDraft(draft = {}) {
+  const selectedUsers = getVehicleReservationUserOptions()
+    .filter((user) => (draft.reservedForUserIds ?? []).map(String).includes(String(user.value)));
+  const reservedForUserIds = selectedUsers.map((user) => String(user.value));
+  const reservedForLabels = selectedUsers.map((user) => user.label || "User");
+  return {
+    status: draft.status || "reserved",
+    reservedForUserIds,
+    reservedForLabels,
+    reservedForUserId: reservedForUserIds[0] || "",
+    reservedForLabel: reservedForLabels.join(", "),
+    purpose: draft.purpose || "",
+    startAt: draft.startAt || "",
+    endAt: draft.endAt || "",
+    destination: draft.destination || "",
+    note: draft.note || "",
+  };
+}
+
+async function saveVehicleReservationReactDraft(nextDraft = vehicleReservationReactDraft) {
+  const draft = {
+    ...(vehicleReservationReactDraft ?? {}),
+    ...(nextDraft ?? {}),
+  };
+  vehicleReservationReactDraft = draft;
+  const vehicle = state.vehicles.find((item) => String(item.id) === String(draft.vehicleId)) ?? null;
+  if (!vehicle) {
+    throw new Error("Odaberi vozilo prije rezervacije.");
+  }
+  if (isVehicleServiceOnlyStatus(vehicle) && !draft.id) {
+    throw new Error(VEHICLE_SERVICE_RESERVATION_MESSAGE);
+  }
+
+  const previousIds = new Set((vehicle.reservations ?? []).map((item) => String(item.id)));
+  const isEditing = Boolean(draft.id);
+  const path = isEditing
+    ? `/vehicles/${vehicle.id}/reservations/${draft.id}`
+    : `/vehicles/${vehicle.id}/reservations`;
+  const method = isEditing ? "PATCH" : "POST";
+  const payload = buildVehicleReservationPayloadFromReactDraft(draft);
+  const success = await runMutation(() => apiRequest(path, {
+    method,
+    body: payload,
+  }), vehicleReservationError);
+
+  if (!success) {
+    throw new Error(vehicleReservationError?.textContent || "Spremanje rezervacije nije uspjelo.");
+  }
+
+  const refreshedVehicle = state.vehicles.find((item) => String(item.id) === String(vehicle.id)) ?? null;
+  const saved = isEditing
+    ? (refreshedVehicle?.reservations ?? []).find((item) => String(item.id) === String(draft.id))
+    : findCreatedVehicleReservationMatch(refreshedVehicle, previousIds, payload);
+  state.activeVehicleId = String(refreshedVehicle?.id || vehicle.id || "");
+  state.activeVehicleReservationId = String(saved?.id || "");
+  vehicleReservationReactDraft = buildVehicleReservationReactDraft({
+    vehicle: refreshedVehicle,
+    reservation: saved,
+  });
+  closeVehicleReservationEditor({ reset: true });
+  renderVehiclesModule();
+  return true;
+}
+
+function buildReactVehicleReservationRows(vehicle = getVehicleFromReservationEditor() ?? getActiveVehicle(), nowValue = new Date().toISOString()) {
+  if (!vehicle) {
+    return [];
+  }
+  return sortVehicleReservations(vehicle.reservations ?? [], nowValue).map((reservation) => ({
+    ...reservation,
+    id: String(reservation.id || ""),
+    isActive: String(reservation.id || "") === String(state.activeVehicleReservationId || vehicleReservationReactDraft?.id || ""),
+    toneClass: getVehicleStatusToneClass(reservation.status || "reserved"),
+    statusLabel: getVehicleReservationStatusLabel(reservation.status),
+    meta: [
+      getVehicleReservationStatusLabel(reservation.status),
+      reservation.destination || "",
+      getVehicleReservationAssigneeLabels(reservation).join(", "),
+    ].filter(Boolean).join(" | "),
+    window: `${formatDateTime(reservation.startAt)} - ${formatDateTime(reservation.endAt)}`,
+  }));
+}
+
+function buildVehicleReactRows(items = [], nowValue = new Date().toISOString()) {
+  return items.map((vehicle) => {
+    const availabilityStatus = getVehicleAvailabilityStatus(vehicle, nowValue);
+    const nextReservation = getVehicleNextReservation(vehicle, nowValue);
+    const reservations = sortVehicleReservations(vehicle.reservations ?? [], nowValue);
+    return {
+      ...vehicle,
+      id: String(vehicle.id || ""),
+      isActive: String(vehicle.id || "") === String(state.activeVehicleId || ""),
+      availabilityStatus,
+      availabilityLabel: getVehicleStatusLabel(availabilityStatus),
+      toneClass: getVehicleStatusToneClass(availabilityStatus),
+      editableStatus: getVehicleEditableStatusValue(vehicle.status),
+      isServiceOnly: isVehicleServiceOnlyStatus(vehicle),
+      meta: [
+        vehicle.plateNumber || "Bez registracije",
+        vehicle.vinNumber ? `Šasija ${vehicle.vinNumber}` : "",
+        vehicle.registrationExpiresOn ? `Registracija do ${formatCompactDate(vehicle.registrationExpiresOn)}` : "Registracija nije unesena",
+        [vehicle.make, vehicle.model].filter(Boolean).join(" "),
+        vehicle.category,
+      ].filter(Boolean).join(" | "),
+      detail: [
+        vehicle.documents?.length ? `${vehicle.documents.length} dok.` : "Bez dokumenata",
+        vehicle.activityItems?.length ? `${vehicle.activityItems.length} aktivnosti` : "Bez activity loga",
+        nextReservation ? `Sljedeće: ${formatDateTime(nextReservation.startAt)}` : "Trenutno bez rezervacije",
+      ].filter(Boolean).join(" | "),
+      reservationChips: reservations.slice(0, 3).map((reservation) => ({
+        id: String(reservation.id || ""),
+        title: reservation.purpose || "Rezervacija",
+        window: `${formatDateTime(reservation.startAt)} - ${formatDateTime(reservation.endAt)}`,
+        toneClass: getVehicleStatusToneClass(reservation.status || "reserved"),
+      })),
+    };
+  });
+}
+
+function renderReactVehiclesModule({ filters, allVehicles, visibleVehicles, canCreate, canManage, canReserve, nowValue } = {}) {
+  const reactComponents = window.SafeNexusReactComponents;
+  if (!vehiclesReactRoot || !reactComponents?.renderVehiclesModule) {
+    return false;
+  }
+
+  vehiclesModule?.classList.add("is-react-module");
+  return reactComponents.renderVehiclesModule(vehiclesReactRoot, {
+    filters,
+    statusFilterOptions: [
+      { value: "all", label: "Sva dostupnost" },
+      { value: "available", label: "Dostupno" },
+      { value: "reserved", label: "Rezervirano" },
+      { value: "service", label: "Servis" },
+    ],
+    statusOptions: VEHICLE_STATUS_OPTIONS,
+    stats: {
+      total: allVehicles.length,
+      available: allVehicles.filter((item) => getVehicleAvailabilityStatus(item, nowValue) === "available").length,
+      reserved: allVehicles.filter((item) => getVehicleAvailabilityStatus(item, nowValue) === "reserved").length,
+      service: allVehicles.filter((item) => getVehicleAvailabilityStatus(item, nowValue) === "service").length,
+    },
+    items: buildVehicleReactRows(visibleVehicles, nowValue),
+    scheduleDate: state.vehicleScheduleDate || new Date().toISOString().slice(0, 10),
+    canCreate,
+    canManage,
+    canReserve,
+    onCreate: () => {
+      if (!getCanManageVehicles()) {
+        return;
+      }
+      resetVehicleForm();
+      vehicleReactDraft = buildVehicleReactDraft({});
+      openVehicleEditor();
+    },
+    onReserve: (vehicleId = "", reservationId = "") => {
+      const vehicle = state.vehicles.find((item) => String(item.id) === String(vehicleId || state.activeVehicleId)) ?? null;
+      if (reservationId && vehicle) {
+        const reservation = (vehicle.reservations ?? []).find((item) => String(item.id) === String(reservationId));
+        if (reservation) {
+          hydrateVehicleReservationForm(vehicle, reservation);
+          return;
+        }
+      }
+      openVehicleReservationComposer({ vehicleId: vehicleId || state.activeVehicleId || "" });
+    },
+    onFilterChange: (patch = {}) => {
+      if (Object.prototype.hasOwnProperty.call(patch, "query") && vehiclesSearchInput) {
+        vehiclesSearchInput.value = patch.query || "";
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, "status") && vehiclesFilterStatusInput) {
+        vehiclesFilterStatusInput.value = patch.status || "all";
+      }
+      renderVehiclesModule();
+    },
+    onScheduleDateChange: (value) => {
+      if (value === "prev") {
+        state.vehicleScheduleDate = shiftDateKey(state.vehicleScheduleDate || new Date().toISOString().slice(0, 10), -1);
+      } else if (value === "next") {
+        state.vehicleScheduleDate = shiftDateKey(state.vehicleScheduleDate || new Date().toISOString().slice(0, 10), 1);
+      } else if (value === "today") {
+        state.vehicleScheduleDate = new Date().toISOString().slice(0, 10);
+      } else {
+        state.vehicleScheduleDate = value || new Date().toISOString().slice(0, 10);
+      }
+      renderVehiclesModule();
+    },
+    onOpen: (vehicleId) => {
+      const vehicle = state.vehicles.find((item) => String(item.id) === String(vehicleId));
+      if (vehicle) {
+        hydrateVehicleForm(vehicle);
+      }
+    },
+    onStatusChange: (vehicleId, status) => {
+      void runMutation(() => apiRequest(`/vehicles/${vehicleId}`, {
+        method: "PATCH",
+        body: { status },
+      }), vehicleError).then(() => renderVehiclesModule());
+    },
+  });
+}
+
+function renderReactVehicleEditor() {
+  const reactComponents = window.SafeNexusReactComponents;
+  if (!state.vehicleEditorOpen || !vehicleEditorReactRoot || !reactComponents?.renderVehicleEditor) {
+    return false;
+  }
+
+  const activeVehicle = getActiveVehicle();
+  if (!vehicleReactDraft) {
+    vehicleReactDraft = buildVehicleReactDraft(activeVehicle || {});
+  }
+
+  vehicleEditorPanel?.classList.add("is-react-editor");
+  return reactComponents.renderVehicleEditor(vehicleEditorReactRoot, {
+    title: vehicleReactDraft.id
+      ? `${vehicleReactDraft.name || "Vozilo"} | ${vehicleReactDraft.plateNumber || "bez registracije"}`
+      : "Novo vozilo",
+    draft: vehicleReactDraft,
+    statusOptions: VEHICLE_STATUS_OPTIONS,
+    activityTypeOptions: VEHICLE_ACTIVITY_TYPE_OPTIONS,
+    documentCategories: VEHICLE_DOCUMENT_CATEGORY_OPTIONS,
+    canDelete: Boolean(vehicleReactDraft.id) && getCanManageVehicles(),
+    error: vehicleError?.textContent || "",
+    onDraftChange: (nextDraft) => {
+      vehicleReactDraft = {
+        ...vehicleReactDraft,
+        ...nextDraft,
+      };
+      vehicleDocumentDrafts = buildReactAttachmentRows(vehicleReactDraft.documents);
+      vehicleActivityDrafts = asArray(vehicleReactDraft.activityItems);
+    },
+    onUploadDocuments: uploadVehicleReactDocuments,
+    onDownloadDocument: downloadVehicleReactDocument,
+    onSave: saveVehicleReactDraft,
+    onReset: () => {
+      resetVehicleForm();
+      vehicleReactDraft = buildVehicleReactDraft({});
+      openVehicleEditor();
+    },
+    onDelete: deleteVehicleReactDraft,
+    onClose: () => dismissVehicleEditor(),
+  });
+}
+
+function unmountReactVehicleEditor() {
+  window.SafeNexusReactComponents?.unmountVehicleEditor?.(vehicleEditorReactRoot);
+  vehicleEditorPanel?.classList.remove("is-react-editor");
+}
+
+function renderReactVehicleReservationEditor() {
+  const reactComponents = window.SafeNexusReactComponents;
+  if (!state.vehicleReservationEditorOpen || !vehicleReservationReactRoot || !reactComponents?.renderVehicleReservationEditor) {
+    return false;
+  }
+
+  const vehicle = getVehicleFromReservationEditor() ?? getActiveVehicle();
+  if (!vehicleReservationReactDraft) {
+    vehicleReservationReactDraft = buildVehicleReservationReactDraft({ vehicle });
+  }
+
+  vehicleReservationPanel?.classList.add("is-react-editor");
+  return reactComponents.renderVehicleReservationEditor(vehicleReservationReactRoot, {
+    title: vehicle ? `Rezervacija | ${vehicle.name || vehicle.plateNumber || "Vozilo"}` : "Rezervacija vozila",
+    draft: vehicleReservationReactDraft,
+    vehicleOptions: getVehicleReservationVehicleOptions(vehicleReservationReactDraft.vehicleId),
+    statusOptions: VEHICLE_RESERVATION_STATUS_OPTIONS,
+    userOptions: getVehicleReservationUserOptions(),
+    reservations: buildReactVehicleReservationRows(vehicle),
+    error: vehicleReservationError?.textContent || "",
+    onDraftChange: (nextDraft) => {
+      vehicleReservationReactDraft = {
+        ...vehicleReservationReactDraft,
+        ...nextDraft,
+      };
+    },
+    onSave: saveVehicleReservationReactDraft,
+    onReset: () => {
+      vehicleReservationReactDraft = buildVehicleReservationReactDraft({
+        vehicle: state.vehicles.find((item) => String(item.id) === String(vehicleReservationReactDraft?.vehicleId)) ?? vehicle,
+      });
+      renderReactVehicleReservationEditor();
+    },
+    onClose: () => dismissVehicleReservationEditor(),
+    onEditReservation: (reservationId) => {
+      const selectedVehicle = state.vehicles.find((item) => String(item.id) === String(vehicleReservationReactDraft?.vehicleId)) ?? vehicle;
+      const reservation = (selectedVehicle?.reservations ?? []).find((entry) => String(entry.id) === String(reservationId));
+      if (selectedVehicle && reservation) {
+        hydrateVehicleReservationForm(selectedVehicle, reservation);
+      }
+    },
+    onDeleteReservation: (reservationId) => {
+      const selectedVehicle = state.vehicles.find((item) => String(item.id) === String(vehicleReservationReactDraft?.vehicleId)) ?? vehicle;
+      if (!selectedVehicle || !reservationId || !window.confirm("Obrisati ovu rezervaciju?")) {
+        return;
+      }
+      void runMutation(() => apiRequest(`/vehicles/${selectedVehicle.id}/reservations/${reservationId}`, {
+        method: "DELETE",
+      }), vehicleReservationError).then((success) => {
+        if (success) {
+          state.activeVehicleReservationId = "";
+          vehicleReservationReactDraft = buildVehicleReservationReactDraft({ vehicle: selectedVehicle });
+          renderVehiclesModule();
+          renderReactVehicleReservationEditor();
+        }
+      });
+    },
+  });
+}
+
+function unmountReactVehicleReservationEditor() {
+  window.SafeNexusReactComponents?.unmountVehicleReservationEditor?.(vehicleReservationReactRoot);
+  vehicleReservationPanel?.classList.remove("is-react-editor");
 }
 
 function createVehicleInlineStatusSelect(vehicle) {
@@ -80364,9 +81270,13 @@ function renderVehiclesModule() {
   const canAccessVehicles = canViewVehicles || canManageVehicles || canReserveVehicles;
   const vehicleItems = canAccessVehicles ? (state.vehicles ?? []) : [];
   const allVehicles = sortVehicles(vehicleItems, nowValue);
-  const visibleVehicles = sortVehicles(filterVehicles(vehicleItems, {
+  const vehicleFilters = {
     query: vehiclesSearchInput?.value || "",
     status: vehiclesFilterStatusInput?.value || "all",
+  };
+  const visibleVehicles = sortVehicles(filterVehicles(vehicleItems, {
+    query: vehicleFilters.query,
+    status: vehicleFilters.status,
     nowValue,
   }), nowValue);
   const reservableVehicles = allVehicles.filter((vehicle) => !isVehicleServiceOnlyStatus(vehicle));
@@ -80397,6 +81307,21 @@ function renderVehiclesModule() {
   }
 
   rebuildVehicleReservationVehicleOptions(vehicleReservationVehicleIdInput?.value || state.activeVehicleId || "");
+
+  if (renderReactVehiclesModule({
+    filters: vehicleFilters,
+    allVehicles,
+    visibleVehicles,
+    canCreate: canManageVehicles,
+    canManage: canManageVehicles,
+    canReserve: canReserveVehicles,
+    nowValue,
+  })) {
+    renderVehicleDocuments();
+    renderVehicleActivities();
+    syncVehicleEditorSummary();
+    return;
+  }
 
   vehiclesList.replaceChildren(...visibleVehicles.map((vehicle) => {
     const availabilityStatus = getVehicleAvailabilityStatus(vehicle, nowValue);

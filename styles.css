@@ -47756,3 +47756,305 @@ button.work-order-editor-section-head {
     grid-column: span 2;
   }
 }
+
+.vehicles-react-root,
+.vehicle-editor-react-root,
+.vehicle-reservation-react-root,
+.measurement-equipment-react-root,
+.measurement-equipment-editor-react-root {
+  display: block;
+  width: 100%;
+}
+
+#vehicles-module.is-react-module > .vehicles-list-panel,
+#vehicles-module.is-react-module > .vehicle-schedule-panel,
+#measurement-equipment-module.is-react-module > .measurement-equipment-toolbar-panel,
+#measurement-equipment-module.is-react-module > .measurement-equipment-list-panel {
+  display: none;
+}
+
+#vehicle-editor-panel.is-react-editor > .vehicles-editor-fixed-head,
+#vehicle-editor-panel.is-react-editor > .vehicle-modal-body,
+#vehicle-reservation-panel.is-react-editor > .vehicles-editor-fixed-head,
+#vehicle-reservation-panel.is-react-editor > .vehicle-modal-body,
+#measurement-equipment-editor-panel.is-react-editor > .offers-editor-fixed-head,
+#measurement-equipment-editor-panel.is-react-editor > .measurement-equipment-editor-body {
+  display: none;
+}
+
+#vehicle-editor-panel.is-react-editor,
+#vehicle-reservation-panel.is-react-editor,
+#measurement-equipment-editor-panel.is-react-editor {
+  padding: 0;
+  overflow: hidden;
+}
+
+.organisations-react-shell {
+  display: grid;
+  gap: 16px;
+}
+
+.organisations-hero-panel,
+.organisations-list-panel {
+  border: 1px solid rgba(147, 197, 253, 0.62);
+  background:
+    radial-gradient(circle at 8% 12%, rgba(59, 130, 246, 0.12), transparent 28%),
+    radial-gradient(circle at 96% 4%, rgba(236, 72, 153, 0.1), transparent 22%),
+    rgba(255, 255, 255, 0.94);
+  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.07);
+}
+
+.organisations-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(130px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.organisations-stat-card {
+  display: grid;
+  gap: 8px;
+  min-height: 78px;
+  padding: 14px;
+  border: 1px solid rgba(191, 219, 254, 0.95);
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(248, 250, 252, 0.98), rgba(239, 246, 255, 0.9));
+}
+
+.organisations-stat-card span {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.organisations-stat-card strong {
+  color: #0f172a;
+  font-size: 1.55rem;
+  line-height: 1;
+}
+
+.organisations-stat-card.is-success {
+  border-color: rgba(134, 239, 172, 0.8);
+  background: linear-gradient(135deg, rgba(240, 253, 244, 0.98), rgba(236, 253, 245, 0.86));
+}
+
+.organisations-stat-card.is-info {
+  border-color: rgba(125, 211, 252, 0.82);
+  background: linear-gradient(135deg, rgba(240, 249, 255, 0.98), rgba(224, 242, 254, 0.86));
+}
+
+.organisations-stat-card.is-warning {
+  border-color: rgba(253, 186, 116, 0.82);
+  background: linear-gradient(135deg, rgba(255, 251, 235, 0.98), rgba(254, 243, 199, 0.84));
+}
+
+.organisations-template-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px dashed rgba(147, 197, 253, 0.9);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.organisations-template-strip strong {
+  display: block;
+  margin-top: 8px;
+  color: #0f172a;
+}
+
+.organisations-template-strip p {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 0.88rem;
+}
+
+.organisations-template-actions,
+.vehicle-reservation-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.organisations-icon-button {
+  display: inline-grid;
+  place-items: center;
+  min-width: 38px;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid rgba(147, 197, 253, 0.9);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ffffff, #eff6ff);
+  color: #1d4ed8;
+  font-size: 0.72rem;
+  font-weight: 900;
+  box-shadow: 0 10px 22px rgba(37, 99, 235, 0.08);
+}
+
+.organisations-icon-button.is-danger {
+  border-color: rgba(252, 165, 165, 0.85);
+  background: linear-gradient(180deg, #fff, #fef2f2);
+  color: #b91c1c;
+}
+
+.organisations-icon-button:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.organisations-filter-bar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(180px, 260px);
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.organisations-card-list {
+  display: grid;
+  gap: 12px;
+}
+
+.organisations-card {
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.organisations-card:hover,
+.organisations-card:focus-visible {
+  border-color: rgba(59, 130, 246, 0.9);
+  box-shadow: 0 18px 36px rgba(37, 99, 235, 0.12);
+  transform: translateY(-1px);
+}
+
+.vehicle-reservation-mini-chip {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 150px;
+  padding: 8px 10px;
+  border: 1px solid rgba(191, 219, 254, 0.9);
+  border-radius: 13px;
+  background: rgba(248, 250, 252, 0.86);
+  color: #0f172a;
+  text-align: left;
+}
+
+.vehicle-reservation-mini-chip span {
+  color: #64748b;
+  font-size: 0.72rem;
+}
+
+.organisations-editor-react {
+  height: min(88vh, 920px);
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(circle at 6% 0%, rgba(59, 130, 246, 0.1), transparent 28%),
+    radial-gradient(circle at 94% 0%, rgba(236, 72, 153, 0.1), transparent 24%),
+    #f8fbff;
+}
+
+.organisations-editor-head {
+  flex: 0 0 auto;
+  padding: 18px 22px;
+  border-bottom: 1px solid rgba(191, 219, 254, 0.85);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(16px);
+}
+
+.organisations-editor-body {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 18px 22px 24px;
+}
+
+.organisations-editor-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  gap: 16px;
+  align-items: start;
+}
+
+.organisations-editor-main {
+  display: grid;
+  gap: 14px;
+}
+
+.organisations-editor-section {
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.organisations-side-panel {
+  position: sticky;
+  top: 0;
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(239, 246, 255, 0.92));
+}
+
+.organisations-inline-editor {
+  display: grid;
+  gap: 10px;
+}
+
+.organisations-inline-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.organisations-inline-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(150px, 1fr)) auto;
+  gap: 10px;
+  align-items: end;
+  padding: 10px;
+  border: 1px solid rgba(191, 219, 254, 0.85);
+  border-radius: 16px;
+  background: rgba(248, 250, 252, 0.84);
+}
+
+.organisations-inline-row.is-activity,
+.organisations-inline-row.is-vehicle-activity {
+  grid-template-columns: repeat(6, minmax(120px, 1fr)) auto;
+}
+
+.organisations-document-row {
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.organisations-user-check-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+  max-height: 220px;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid rgba(191, 219, 254, 0.85);
+  border-radius: 14px;
+  background: rgba(248, 250, 252, 0.78);
+}
+
+@media (max-width: 1100px) {
+  .organisations-stat-grid,
+  .organisations-filter-bar,
+  .organisations-template-strip,
+  .organisations-editor-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .organisations-side-panel {
+    position: static;
+  }
+
+  .organisations-inline-row,
+  .organisations-inline-row.is-activity,
+  .organisations-inline-row.is-vehicle-activity {
+    grid-template-columns: 1fr;
+  }
+}
