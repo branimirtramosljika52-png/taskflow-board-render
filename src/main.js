@@ -5043,6 +5043,7 @@ const usersProfileHeader = document.querySelector("#users-profile-header");
 const usersMetaHeader = document.querySelector("#users-meta-header");
 const peopleWorkspaceCopy = document.querySelector("#people-workspace-copy");
 const peopleUsersPanel = document.querySelector("#people-users-panel");
+const peopleWorkspaceTabs = document.querySelector("#people-workspace-tabs");
 const peopleWorkspaceTabButtons = Array.from(document.querySelectorAll("[data-people-workspace-tab]"));
 const userPeopleOnlyElements = Array.from(document.querySelectorAll("[data-user-management-scope=\"people\"]"));
 const peopleTrainingPanel = document.querySelector("#people-training-panel");
@@ -92081,6 +92082,65 @@ function renderSignupRequests() {
   }));
 }
 
+function buildPeopleWorkspaceTabStats() {
+  const users = state.users ?? [];
+  const activeUsers = users.filter((user) => user?.isActive !== false).length;
+  const absenceEntries = state.absenceEntries ?? [];
+  const medicalTypes = new Set(ABSENCE_MEDICAL_TYPE_OPTIONS.map((option) => option.value));
+  const requestEntries = absenceEntries.filter((entry) => !medicalTypes.has(String(entry?.type || "")));
+  const medicalEntries = absenceEntries.filter((entry) => medicalTypes.has(String(entry?.type || "")));
+  const pendingRequests = requestEntries.filter((entry) => String(entry?.status || "") === "pending").length;
+  const reportRows = buildMonthlyWorkStatusReport({
+    users,
+    absenceEntries,
+    absenceBalances: state.absenceBalances ?? [],
+    workOrders: state.workOrders ?? [],
+    month: state.absenceReportMonth || new Date().toISOString().slice(0, 7),
+  });
+
+  return {
+    users: {
+      value: `${activeUsers}/${users.length}`,
+      copy: `${activeUsers} aktivnih korisnika u sustavu`,
+    },
+    "annual-leave": {
+      value: String(requestEntries.length),
+      copy: pendingRequests > 0 ? `${pendingRequests} na čekanju za odobrenje` : "Saldo, zahtjevi i odobrenja",
+    },
+    "sick-leave": {
+      value: String(medicalEntries.length),
+      copy: medicalEntries.length > 0 ? "Medicinski izostanci i dokumenti" : "Bez otvorenih bolovanja",
+    },
+    "absence-report": {
+      value: String(reportRows.length),
+      copy: "Mjesečni obračun po osobi i CSV",
+    },
+  };
+}
+
+function renderPeopleWorkspaceTabNavigation(activePeopleTab = normalizePeopleWorkspaceTab(state.peopleWorkspaceTab)) {
+  const reactComponents = window.SafeNexusReactComponents;
+  if (peopleWorkspaceTabs && reactComponents?.renderPeopleWorkspaceTabs) {
+    return reactComponents.renderPeopleWorkspaceTabs(peopleWorkspaceTabs, {
+      activeTab: activePeopleTab,
+      stats: buildPeopleWorkspaceTabStats(),
+      onSelectTab: (nextTab) => {
+        const normalizedTab = normalizePeopleWorkspaceTab(nextTab);
+        if (normalizedTab === normalizePeopleWorkspaceTab(state.peopleWorkspaceTab)) {
+          return;
+        }
+
+        setPeopleWorkspaceTab(normalizedTab);
+        renderTopbarBreadcrumbs();
+        renderManagement();
+      },
+    });
+  }
+
+  reactComponents?.unmountPeopleWorkspaceTabs?.(peopleWorkspaceTabs);
+  return false;
+}
+
 function renderManagement() {
   const currentOrganization = state.organizations.find((item) => item.id === state.activeOrganizationId)
     ?? state.organizations[0]
@@ -92124,13 +92184,17 @@ function renderManagement() {
 
   syncUserManagementListChrome();
 
-  peopleWorkspaceTabButtons.forEach((button) => {
-    const tabValue = normalizePeopleWorkspaceTab(button.dataset.peopleWorkspaceTab);
-    const isActive = tabValue === activePeopleTab;
-    button.classList.toggle("is-active", isActive);
-    button.setAttribute("aria-selected", isActive ? "true" : "false");
-    button.tabIndex = isActive ? 0 : -1;
-  });
+  const isReactPeopleWorkspaceTabsRendered = renderPeopleWorkspaceTabNavigation(activePeopleTab);
+
+  if (!isReactPeopleWorkspaceTabsRendered) {
+    peopleWorkspaceTabButtons.forEach((button) => {
+      const tabValue = normalizePeopleWorkspaceTab(button.dataset.peopleWorkspaceTab);
+      const isActive = tabValue === activePeopleTab;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-selected", isActive ? "true" : "false");
+      button.tabIndex = isActive ? 0 : -1;
+    });
+  }
 
   if (peopleUsersPanel) {
     peopleUsersPanel.hidden = !isUsersTab;

@@ -7369,6 +7369,10 @@ body.is-location-editor-open {
   gap: 14px;
 }
 
+.people-workspace-tabs.is-react {
+  align-items: stretch;
+}
+
 .people-workspace-tab {
   --people-tab-accent: #2563eb;
   --people-tab-ink: #14213d;
@@ -7461,13 +7465,39 @@ body.is-location-editor-open {
 
 .people-workspace-tab-content {
   display: grid;
-  gap: 5px;
+  gap: 7px;
+  min-width: 0;
+}
+
+.people-workspace-tab-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
 }
 
 .people-workspace-tab strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 1rem;
   color: var(--people-tab-ink);
+}
+
+.people-workspace-tab-stat {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  min-height: 22px;
+  padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--people-tab-accent) 24%, white);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.76);
+  color: var(--people-tab-accent);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.01em;
 }
 
 .people-workspace-tab-copy {
