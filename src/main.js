@@ -3647,6 +3647,7 @@ const safetyAuthorizationError = document.querySelector("#safety-authorization-e
 const safetyAuthorizationResetButton = document.querySelector("#safety-authorization-reset");
 const safetyAuthorizationDeleteButton = document.querySelector("#safety-authorization-delete");
 const absenceModule = document.querySelector("#absence-module");
+const absenceReactRoot = document.querySelector("#absence-react-root");
 const absenceModuleKicker = document.querySelector("#absence-module-kicker");
 const absenceModuleTitle = document.querySelector("#absence-module-title");
 const absenceModuleCopy = document.querySelector("#absence-module-copy");
@@ -3696,6 +3697,7 @@ const absenceBalanceForm = document.querySelector("#absence-balance-form");
 const absenceBalanceList = document.querySelector("#absence-balance-list");
 const absenceBalanceError = document.querySelector("#absence-balance-error");
 const absenceReportModule = document.querySelector("#absence-report-module");
+const absenceReportReactRoot = document.querySelector("#absence-report-react-root");
 const absenceReportMonthInput = document.querySelector("#absence-report-month");
 const absenceReportPrevButton = document.querySelector("#absence-report-prev");
 const absenceReportTodayButton = document.querySelector("#absence-report-today");
@@ -58376,6 +58378,199 @@ function createAbsenceCardDocumentActions(entry = {}) {
   return actions;
 }
 
+function buildAbsenceUserOptions() {
+  return [
+    { value: "all", label: "Svi korisnici" },
+    ...state.users
+      .filter((user) => user?.isActive !== false)
+      .slice()
+      .sort((left, right) => getUserDisplayLabel(left).localeCompare(getUserDisplayLabel(right), "hr"))
+      .map((user) => ({
+        value: String(user.id),
+        label: getUserDisplayLabel(user),
+      })),
+  ];
+}
+
+function updateAbsenceEntryStatus(entryId = "", status = "") {
+  const safeEntryId = String(entryId || "").trim();
+  const safeStatus = String(status || "").trim();
+  if (!safeEntryId || !safeStatus) {
+    return;
+  }
+
+  void runMutation(() => apiRequest(`/absence-entries/${safeEntryId}`, {
+    method: "PATCH",
+    body: { status: safeStatus },
+  }), absenceError).then((success) => {
+    if (success) {
+      renderAbsenceModule();
+      renderAbsenceReportModule();
+      renderNotifications();
+      renderWorkOrderCalendarView();
+    }
+  });
+}
+
+function openAbsenceEntryById(entryId = "") {
+  const entry = (state.absenceEntries ?? []).find((item) => String(item.id) === String(entryId));
+  if (entry) {
+    hydrateAbsenceForm(entry);
+  }
+}
+
+function downloadAbsenceEntryDocument(entryId = "", documentId = "") {
+  const entry = (state.absenceEntries ?? []).find((item) => String(item.id) === String(entryId));
+  const documentItem = (entry?.documents ?? []).find((item) => String(item.id) === String(documentId));
+  if (documentItem) {
+    triggerModuleAttachmentDownload(createModuleAttachmentDraft(documentItem));
+  }
+}
+
+function buildReactAbsencePeopleRows(mode = getCurrentAbsenceModuleMode()) {
+  const isMedical = mode === "medical";
+  const fieldKey = isMedical ? "sickLeaveInitialDays" : "annualLeaveInitialDays";
+  const initialKey = isMedical ? "sickLeaveInitialDays" : "annualLeaveInitialDays";
+  const usedKey = isMedical ? "sickLeaveUsedDays" : "annualLeaveUsedDays";
+  const remainingKey = isMedical ? "sickLeaveRemainingDays" : "annualLeaveRemainingDays";
+
+  return getSortedAbsenceUsers().map((user) => {
+    const summary = getAbsenceBalanceSummaryForUser(user.id);
+    return {
+      id: String(user.id),
+      name: getUserDisplayLabel(user),
+      meta: user.email || getUserOrganizationSummary(user),
+      initials: getUserInitials(user),
+      fieldKey,
+      balanceValue: getAbsenceBalanceInputValue(user.id, fieldKey),
+      stats: [
+        { label: isMedical ? "Evidencija" : "GO u godini", value: summary[initialKey] },
+        { label: "Iskorišteno", value: summary[usedKey] },
+        { label: "Preostalo", value: summary[remainingKey] },
+      ],
+    };
+  });
+}
+
+function buildReactAbsenceEntryRows(visibleItems = [], canManage = getCanManageMasterData()) {
+  return visibleItems.map((entry) => {
+    const documents = (Array.isArray(entry.documents) ? entry.documents : [])
+      .map((item) => createModuleAttachmentDraft(item))
+      .filter((item) => item.fileName && (item.dataUrl || item.storageUrl))
+      .slice(0, 3)
+      .map((item) => ({
+        id: String(item.id),
+        fileName: item.fileName || "Dokument",
+      }));
+    const isApproved = String(entry.status || "").toLowerCase() === "approved";
+
+    return {
+      id: String(entry.id),
+      userLabel: entry.userLabel || "Korisnik",
+      dateLabel: `${formatCompactDate(entry.startDate)} - ${formatCompactDate(entry.endDate)} · ${entry.dayCount || 0} dana`,
+      typeLabel: getAbsenceTypeLabelClient(entry.type),
+      statusLabel: getAbsenceStatusLabelClient(entry.status),
+      statusClassName: getAbsenceStatusBadgeClass(entry.status),
+      note: entry.note || "Bez dodatne napomene.",
+      requestedLabel: entry.requestedByLabel ? `Zahtjev: ${entry.requestedByLabel}` : "Bez pošiljatelja",
+      approvedLabel: entry.approvedByLabel && isApproved ? `Odobrio: ${entry.approvedByLabel}` : "",
+      documentCount: Array.isArray(entry.documents) ? entry.documents.length : 0,
+      documents,
+      canOpen: canManageAbsenceEntryClient(entry),
+      canApproveReject: canManage
+        && String(entry.status).toLowerCase() === "pending"
+        && doesAbsenceTypeRequireApproval(entry.type),
+      isActive: String(entry.id) === String(state.activeAbsenceId || ""),
+    };
+  });
+}
+
+function renderReactAbsenceModule(config, filters, allItems, visibleItems, selectedBalance, canManage) {
+  const reactComponents = window.SafeNexusReactComponents;
+  if (!absenceReactRoot || !reactComponents?.renderAbsenceModule) {
+    reactComponents?.unmountAbsenceModule?.(absenceReactRoot);
+    absenceModule?.classList.remove("is-react-rendered");
+    return false;
+  }
+
+  const mode = getCurrentAbsenceModuleMode();
+  const isMedical = mode === "medical";
+  const balanceValue = selectedBalance
+    ? (isMedical ? selectedBalance.sickLeaveRemainingDays : selectedBalance.annualLeaveRemainingDays)
+    : 0;
+  const balanceText = selectedBalance
+    ? `${config.balanceLabel}: ${balanceValue}`
+    : "Bez odabranog salda";
+  const helperText = visibleItems.length === allItems.length
+    ? `${visibleItems.length} stavki · ${balanceText}.`
+    : `${visibleItems.length}/${allItems.length} stavki · ${balanceText}.`;
+
+  absenceModule?.classList.add("is-react-rendered");
+  return reactComponents.renderAbsenceModule(absenceReactRoot, {
+    mode,
+    config,
+    filters,
+    canManage,
+    summary: {
+      total: allItems.length,
+      pending: allItems.filter((entry) => String(entry.status).toLowerCase() === "pending").length,
+      approved: allItems.filter((entry) => String(entry.status).toLowerCase() === "approved").length,
+      balance: balanceValue,
+    },
+    helperText,
+    peopleTitle: isMedical ? "Bolovanja po korisnicima" : "Godišnji odmor po korisnicima",
+    peopleCopy: isMedical
+      ? "Pregled bolovanja i opravdanih izostanaka po osobi, s brzim dodavanjem nove odsutnosti."
+      : "Popis svih ljudi, godišnji odmor u godini, iskorišteno i preostalo dana.",
+    peopleFeedback: absencePeopleFeedback?.textContent || "",
+    people: buildReactAbsencePeopleRows(mode),
+    userOptions: buildAbsenceUserOptions(),
+    statusOptions: [
+      { value: "all", label: "Svi statusi" },
+      ...ABSENCE_STATUS_OPTIONS.map((option) => ({ value: option.value, label: option.label })),
+    ],
+    typeOptions: [
+      { value: "all", label: "Sve vrste" },
+      ...config.typeOptions.map((option) => ({ value: option.value, label: option.label })),
+    ],
+    entries: buildReactAbsenceEntryRows(visibleItems, canManage),
+    emptyText: isMedical
+      ? "Nema evidentiranih bolovanja ili posebnih dopusta za zadane filtere."
+      : "Nema zahtjeva za godišnji ili druge dopuste za zadane filtere.",
+    onFilterChange: (patch) => {
+      updateAbsenceFiltersStateForCurrentMode(patch);
+      renderAbsenceModule();
+    },
+    onOpenCreate: () => {
+      resetAbsenceForm();
+      renderAbsenceModule();
+      openAbsenceEditor();
+      requestAnimationFrame(() => {
+        absenceStartDateInput?.focus({ preventScroll: true });
+      });
+    },
+    onOpenBalances: () => {
+      if (!getCanManagePeople()) {
+        return;
+      }
+      resetAbsenceBalanceDrafts();
+      renderAbsenceBalanceList();
+      if (absenceBalanceError) {
+        absenceBalanceError.textContent = "";
+      }
+      openAbsenceBalanceEditor();
+    },
+    onOpenUser: (userId) => openAbsenceEditorForUser(userId),
+    onSaveBalance: (userId, fieldKey, value) => {
+      void saveInlineAbsenceBalance(userId, fieldKey, value);
+    },
+    onOpenEntry: (entryId) => openAbsenceEntryById(entryId),
+    onApprove: (entryId) => updateAbsenceEntryStatus(entryId, "approved"),
+    onReject: (entryId) => updateAbsenceEntryStatus(entryId, "rejected"),
+    onDownloadDocument: (entryId, documentId) => downloadAbsenceEntryDocument(entryId, documentId),
+  });
+}
+
 function renderAbsenceModule() {
   if (!absenceModule || !absenceList || !absenceEmpty) {
     return;
@@ -58390,6 +58585,10 @@ function renderAbsenceModule() {
     ? filters.userId
     : String(state.user?.id || "");
   const selectedBalance = selectedUserId ? getAbsenceBalanceSummaryForUser(selectedUserId) : null;
+
+  if (renderReactAbsenceModule(config, filters, allItems, visibleItems, selectedBalance, canManage)) {
+    return;
+  }
 
   if (absenceModuleKicker) {
     absenceModuleKicker.textContent = config.kicker;
@@ -58629,6 +58828,85 @@ function exportAbsenceReportCsv(rows = getAbsenceReportRows(), fileName = "") {
   );
 }
 
+function moveAbsenceReportMonth(offset = 0) {
+  const [year, month] = String(state.absenceReportMonth || new Date().toISOString().slice(0, 7)).split("-").map(Number);
+  const date = new Date(Date.UTC(year, Math.max(0, (month || 1) - 1 + offset), 1));
+  state.absenceReportMonth = date.toISOString().slice(0, 7);
+  renderAbsenceReportModule();
+}
+
+function buildReactAbsenceReportRows(rows = getAbsenceReportRows()) {
+  return rows.map((row) => ({
+    userId: String(row.userId),
+    userLabel: row.userLabel,
+    meta: `${row.businessDayCount} radnih dana · ${row.assignedWorkOrderCount} RN`,
+    stats: [
+      { label: "Redovni rad", value: row.regularWorkDays },
+      { label: "Odsutnosti", value: row.absenceDays },
+      { label: "GO preostalo", value: row.annualLeaveRemainingDays },
+      { label: "Bolovanje preostalo", value: row.sickLeaveRemainingDays },
+    ],
+    breakdown: Object.entries(row.dayBreakdown || {})
+      .filter(([, count]) => Number(count || 0) > 0)
+      .map(([key, count]) => ({
+        label: key === "regular_work"
+          ? `Redovni rad ${count}`
+          : `${getAbsenceTypeLabelClient(key)} ${count}`,
+        className: key === "regular_work"
+          ? "service-catalog-template-badge"
+          : "measurement-equipment-chip",
+      })),
+  }));
+}
+
+function renderReactAbsenceReportModule(rows, totalRegularDays, totalAbsenceDays) {
+  const reactComponents = window.SafeNexusReactComponents;
+  if (!absenceReportReactRoot || !reactComponents?.renderAbsenceReportModule) {
+    reactComponents?.unmountAbsenceReportModule?.(absenceReportReactRoot);
+    absenceReportModule?.classList.remove("is-react-rendered");
+    return false;
+  }
+
+  absenceReportModule?.classList.add("is-react-rendered");
+  return reactComponents.renderAbsenceReportModule(absenceReportReactRoot, {
+    month: state.absenceReportMonth || new Date().toISOString().slice(0, 7),
+    userId: state.absenceReportFilters.userId || "all",
+    userOptions: buildAbsenceUserOptions(),
+    exportLabel: state.absenceReportFilters.userId && state.absenceReportFilters.userId !== "all"
+      ? "CSV osoba"
+      : "CSV sve",
+    summaryText: `${rows.length} korisnika · ${totalRegularDays} dana redovnog rada · ${totalAbsenceDays} dana odsutnosti`,
+    rows: buildReactAbsenceReportRows(rows),
+    onMonthChange: (month) => {
+      state.absenceReportMonth = month || new Date().toISOString().slice(0, 7);
+      renderAbsenceReportModule();
+    },
+    onPrev: () => moveAbsenceReportMonth(-1),
+    onToday: () => {
+      state.absenceReportMonth = new Date().toISOString().slice(0, 7);
+      renderAbsenceReportModule();
+    },
+    onNext: () => moveAbsenceReportMonth(1),
+    onUserChange: (userId) => {
+      state.absenceReportFilters = {
+        ...state.absenceReportFilters,
+        userId: userId || "all",
+      };
+      renderAbsenceReportModule();
+    },
+    onExport: () => exportAbsenceReportCsv(),
+    onExportRow: (userId) => {
+      const row = getAbsenceReportRows().find((item) => String(item.userId) === String(userId));
+      if (row) {
+        exportAbsenceReportCsv(
+          [row],
+          `work-status-report-${state.absenceReportMonth || new Date().toISOString().slice(0, 7)}-${slugifyValue(row.userLabel || "korisnik")}.csv`,
+        );
+      }
+    },
+  });
+}
+
 function renderAbsenceReportModule() {
   if (!absenceReportModule || !absenceReportList || !absenceReportEmpty) {
     return;
@@ -58659,6 +58937,10 @@ function renderAbsenceReportModule() {
   const rows = getAbsenceReportRows();
   const totalRegularDays = rows.reduce((sum, row) => sum + Number(row.regularWorkDays || 0), 0);
   const totalAbsenceDays = rows.reduce((sum, row) => sum + Number(row.absenceDays || 0), 0);
+
+  if (renderReactAbsenceReportModule(rows, totalRegularDays, totalAbsenceDays)) {
+    return;
+  }
 
   if (absenceReportSummary) {
     absenceReportSummary.textContent = `${rows.length} korisnika · ${totalRegularDays} dana redovnog rada · ${totalAbsenceDays} dana odsutnosti`;

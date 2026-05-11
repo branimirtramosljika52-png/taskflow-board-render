@@ -41362,6 +41362,71 @@ body.is-global-loading {
   gap: 18px;
 }
 
+.absence-react-root,
+.absence-report-react-root,
+.react-absence-module,
+.react-absence-report-module {
+  display: grid;
+  gap: 18px;
+}
+
+.absence-react-root:not(.is-react),
+.absence-report-react-root:not(.is-react) {
+  display: none;
+}
+
+.absence-module.is-react-rendered > .absence-summary-panel,
+.absence-module.is-react-rendered > .absence-people-panel,
+.absence-module.is-react-rendered > .absence-list-panel,
+.absence-report-module.is-react-rendered > .absence-report-toolbar-panel,
+.absence-report-module.is-react-rendered > .absence-report-list-panel {
+  display: none;
+}
+
+.react-absence-panel {
+  border-color: rgba(160, 191, 238, 0.7);
+  box-shadow:
+    0 18px 42px rgba(41, 84, 145, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.react-absence-module.is-medical .react-absence-panel {
+  border-color: rgba(98, 214, 168, 0.46);
+}
+
+.react-absence-summary-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.react-absence-summary-card::after {
+  content: "";
+  position: absolute;
+  inset: auto 14px 12px auto;
+  width: 42px;
+  height: 42px;
+  border-radius: 16px;
+  background: radial-gradient(circle, rgba(37, 99, 235, 0.14), transparent 70%);
+  pointer-events: none;
+}
+
+.react-absence-person-card,
+.react-absence-card,
+.react-absence-report-card {
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.react-absence-person-card:hover,
+.react-absence-card:hover,
+.react-absence-report-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(59, 130, 246, 0.28);
+  box-shadow: 0 18px 34px rgba(50, 87, 137, 0.1);
+}
+
 .absence-summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
