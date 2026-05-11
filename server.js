@@ -126,7 +126,7 @@ const securityContentSecurityPolicy = [
   "style-src 'self' 'unsafe-inline' https://unpkg.com",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data: https://unpkg.com",
-  "connect-src 'self'",
+  "connect-src 'self' http://127.0.0.1:9137 http://localhost:9137",
   "worker-src 'self' blob:",
   "manifest-src 'self'",
   "media-src 'self' blob: data: https:",

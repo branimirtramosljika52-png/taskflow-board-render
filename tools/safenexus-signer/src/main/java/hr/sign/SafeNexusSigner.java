@@ -55,6 +55,9 @@ public final class SafeNexusSigner {
                 showReport(result);
                 return;
             }
+            if (isProtocolLaunch(launchArg)) {
+                return;
+            }
             showInfo("SafeNexus Signer je već spreman za potpis.\n\nBridge je aktivan na http://127.0.0.1:" + PORT);
             return;
         }
@@ -66,7 +69,6 @@ public final class SafeNexusSigner {
         }
 
         if (bridgeStarted && launchArg.startsWith("safenexus-signer://")) {
-            showInfo("SafeNexus Signer je spreman.\n\nBridge radi na http://127.0.0.1:" + PORT);
             openSafeNexus();
             return;
         }
@@ -377,6 +379,10 @@ public final class SafeNexusSigner {
         } catch (Exception ignored) {
             return false;
         }
+    }
+
+    private static boolean isProtocolLaunch(String launchArg) {
+        return launchArg != null && launchArg.startsWith("safenexus-signer://");
     }
 
     private static String normalizeLaunchArg(String[] args) {
