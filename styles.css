@@ -47371,8 +47371,211 @@ button.work-order-editor-section-head {
     grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr) minmax(0, 0.58fr) minmax(0, 0.72fr) !important;
   }
 
-  .people-directory-table thead th:last-child,
-  .people-directory-table tbody td:last-child {
+  .people-directory-table.is-account-access-mode thead th:last-child,
+  .people-directory-table.is-account-access-mode tbody td:last-child {
     display: none;
+  }
+}
+
+.people-directory-table:not(.is-account-access-mode) thead tr,
+.people-directory-table:not(.is-account-access-mode) tbody tr {
+  grid-template-columns: minmax(0, 1.65fr) minmax(0, 1.15fr) minmax(0, 0.72fr) minmax(0, 0.82fr) !important;
+}
+
+.people-directory-table:not(.is-account-access-mode) thead th:last-child,
+.people-directory-table:not(.is-account-access-mode) tbody td:last-child {
+  display: block;
+}
+
+.people-directory-table td:nth-child(4) .list-meta-pill.is-success {
+  width: 100%;
+  border: 1px solid rgba(16, 185, 129, 0.28);
+  background: linear-gradient(90deg, rgba(209, 250, 229, 0.98), rgba(236, 253, 245, 0.82));
+  color: #047857;
+}
+
+.people-directory-table td:nth-child(4) .list-meta-pill.is-muted {
+  width: 100%;
+  border: 1px solid rgba(239, 68, 68, 0.24);
+  background: linear-gradient(90deg, rgba(254, 226, 226, 0.96), rgba(255, 241, 242, 0.82));
+  color: #b91c1c;
+}
+
+.absence-people-panel {
+  background:
+    radial-gradient(circle at top left, rgba(37, 99, 235, 0.06), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(248, 252, 255, 0.97));
+}
+
+.absence-people-feedback {
+  margin: 0;
+  min-height: 20px;
+  color: #047857;
+  text-align: right;
+}
+
+.absence-people-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.absence-person-card {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid rgba(184, 205, 236, 0.74);
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 250, 255, 0.96));
+  box-shadow: 0 12px 28px rgba(62, 88, 132, 0.06);
+}
+
+.absence-person-identity {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.absence-person-avatar {
+  width: 44px;
+  height: 44px;
+}
+
+.absence-person-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.absence-person-copy strong,
+.absence-person-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.absence-person-copy span {
+  color: #667896;
+  font-size: 0.82rem;
+}
+
+.absence-person-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.absence-person-stat {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(187, 205, 234, 0.62);
+  border-radius: 14px;
+  background: rgba(241, 247, 255, 0.82);
+}
+
+.absence-person-stat small {
+  color: #7284a1;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.absence-person-stat strong {
+  color: #14213d;
+  font-size: 1.02rem;
+}
+
+.absence-person-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.absence-person-days-field input {
+  min-height: 38px;
+}
+
+.absence-person-action {
+  min-height: 38px;
+  white-space: nowrap;
+}
+
+.absence-report-toolbar-panel .section-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+}
+
+.absence-report-toolbar-panel .vehicle-schedule-toolbar {
+  display: grid;
+  grid-template-columns: 42px auto minmax(200px, 1fr) 42px minmax(180px, 0.74fr) auto;
+  gap: 10px;
+  align-items: end;
+  justify-self: stretch;
+  width: 100%;
+  max-width: 100%;
+  padding: 10px;
+  border: 1px solid rgba(190, 207, 235, 0.68);
+  border-radius: 18px;
+  background: rgba(248, 251, 255, 0.86);
+}
+
+.absence-report-toolbar-panel .vehicle-schedule-date-input,
+.absence-report-user-field select {
+  min-height: 42px;
+}
+
+.absence-report-user-field {
+  margin: 0;
+  min-width: 0;
+}
+
+.absence-report-user-field span {
+  line-height: 1.1;
+}
+
+#absence-report-export {
+  min-height: 42px;
+  white-space: nowrap;
+}
+
+.absence-report-card-head {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.absence-report-card-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.absence-report-card-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.absence-report-card-download {
+  min-height: 34px;
+  padding-inline: 14px;
+  font-weight: 850;
+}
+
+@media (max-width: 1120px) {
+  .absence-report-toolbar-panel .vehicle-schedule-toolbar {
+    grid-template-columns: 42px auto minmax(180px, 1fr) 42px;
+  }
+
+  .absence-report-user-field,
+  #absence-report-export {
+    grid-column: span 2;
   }
 }

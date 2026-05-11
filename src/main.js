@@ -3654,6 +3654,11 @@ const absenceSummaryTotal = document.querySelector("#absence-summary-total");
 const absenceSummaryPending = document.querySelector("#absence-summary-pending");
 const absenceSummaryApproved = document.querySelector("#absence-summary-approved");
 const absenceSummaryBalance = document.querySelector("#absence-summary-balance");
+const absencePeoplePanel = document.querySelector("#absence-people-panel");
+const absencePeopleTitle = document.querySelector("#absence-people-title");
+const absencePeopleCopy = document.querySelector("#absence-people-copy");
+const absencePeopleList = document.querySelector("#absence-people-list");
+const absencePeopleFeedback = document.querySelector("#absence-people-feedback");
 const absenceSearchInput = document.querySelector("#absence-search");
 const absenceUserFilterInput = document.querySelector("#absence-filter-user");
 const absenceStatusFilterInput = document.querySelector("#absence-filter-status");
@@ -58152,6 +58157,168 @@ function renderAbsenceBalanceList() {
   }));
 }
 
+function getSortedAbsenceUsers() {
+  return (state.users ?? [])
+    .filter((user) => user?.isActive !== false)
+    .slice()
+    .sort((left, right) => getUserDisplayLabel(left).localeCompare(getUserDisplayLabel(right), "hr"));
+}
+
+function getStoredAbsenceBalanceForUser(userId = "") {
+  return (state.absenceBalances ?? []).find((entry) => String(entry.userId) === String(userId)) ?? null;
+}
+
+function getAbsenceBalanceInputValue(userId = "", fieldKey = "annualLeaveInitialDays") {
+  const stored = getStoredAbsenceBalanceForUser(userId);
+  if (stored && Object.prototype.hasOwnProperty.call(stored, fieldKey)) {
+    return Number(stored[fieldKey] ?? 0) || 0;
+  }
+
+  const summary = getAbsenceBalanceSummaryForUser(userId);
+  return Number(summary?.[fieldKey] ?? 0) || 0;
+}
+
+function openAbsenceEditorForUser(userId = "") {
+  const config = getAbsenceModuleConfig();
+  resetAbsenceForm();
+  if (absenceUserIdInput) {
+    absenceUserIdInput.value = String(userId || state.user?.id || "");
+  }
+  if (absenceTypeInput) {
+    absenceTypeInput.value = config.typeOptions[0]?.value || "";
+  }
+  if (absenceStatusInput) {
+    absenceStatusInput.value = getCanManageMasterData() ? "approved" : "pending";
+  }
+  syncAbsenceEditorChrome();
+  openAbsenceEditor();
+}
+
+async function saveInlineAbsenceBalance(userId = "", fieldKey = "annualLeaveInitialDays", nextValue = 0) {
+  const safeUserId = String(userId || "").trim();
+  if (!safeUserId) {
+    return false;
+  }
+
+  const stored = getStoredAbsenceBalanceForUser(safeUserId);
+  const payload = {
+    userId: safeUserId,
+    annualLeaveInitialDays: Number(stored?.annualLeaveInitialDays ?? 0) || 0,
+    sickLeaveInitialDays: Number(stored?.sickLeaveInitialDays ?? 0) || 0,
+  };
+  payload[fieldKey] = Math.max(0, Number(nextValue || 0) || 0);
+
+  const success = await runMutation(() => apiRequest("/absence-balances", {
+    method: "POST",
+    body: payload,
+  }), absencePeopleFeedback);
+
+  if (success) {
+    if (absencePeopleFeedback) {
+      absencePeopleFeedback.textContent = "Saldo je spremljen.";
+    }
+    renderAbsenceModule();
+    renderAbsenceReportModule();
+  }
+
+  return success;
+}
+
+function renderAbsencePeopleOverview() {
+  if (!absencePeoplePanel || !absencePeopleList) {
+    return;
+  }
+
+  const mode = getCurrentAbsenceModuleMode();
+  const isMedical = mode === "medical";
+  const canManage = getCanManageMasterData();
+  const users = getSortedAbsenceUsers();
+  const fieldKey = isMedical ? "sickLeaveInitialDays" : "annualLeaveInitialDays";
+  const initialKey = isMedical ? "sickLeaveInitialDays" : "annualLeaveInitialDays";
+  const usedKey = isMedical ? "sickLeaveUsedDays" : "annualLeaveUsedDays";
+  const remainingKey = isMedical ? "sickLeaveRemainingDays" : "annualLeaveRemainingDays";
+
+  if (absencePeopleTitle) {
+    absencePeopleTitle.textContent = isMedical ? "Bolovanja po korisnicima" : "Godišnji odmor po korisnicima";
+  }
+  if (absencePeopleCopy) {
+    absencePeopleCopy.textContent = isMedical
+      ? "Pregled bolovanja i opravdanih izostanaka po osobi, s brzim dodavanjem nove odsutnosti."
+      : "Popis svih ljudi, godišnji odmor u godini, iskorišteno i preostalo dana.";
+  }
+  if (absencePeopleFeedback && !absencePeopleFeedback.textContent) {
+    absencePeopleFeedback.textContent = "";
+  }
+
+  absencePeopleList.replaceChildren(...users.map((user) => {
+    const summary = getAbsenceBalanceSummaryForUser(user.id);
+    const card = document.createElement("article");
+    card.className = "absence-person-card";
+
+    const identity = document.createElement("div");
+    identity.className = "absence-person-identity";
+    const avatar = document.createElement("span");
+    avatar.className = "people-list-avatar absence-person-avatar";
+    avatar.textContent = getUserInitials(user);
+    const copy = document.createElement("div");
+    copy.className = "absence-person-copy";
+    const name = document.createElement("strong");
+    name.textContent = getUserDisplayLabel(user);
+    const meta = document.createElement("span");
+    meta.textContent = user.email || getUserOrganizationSummary(user);
+    copy.append(name, meta);
+    identity.append(avatar, copy);
+
+    const stats = document.createElement("div");
+    stats.className = "absence-person-stats";
+    [
+      { label: isMedical ? "Evidencija" : "GO u godini", value: summary[initialKey] },
+      { label: "Iskorišteno", value: summary[usedKey] },
+      { label: "Preostalo", value: summary[remainingKey] },
+    ].forEach((entry) => {
+      const stat = document.createElement("span");
+      stat.className = "absence-person-stat";
+      stat.innerHTML = `<small>${entry.label}</small><strong>${Number(entry.value || 0)}</strong>`;
+      stats.append(stat);
+    });
+
+    const controls = document.createElement("div");
+    controls.className = "absence-person-controls";
+
+    const allowanceField = document.createElement("label");
+    allowanceField.className = "field absence-person-days-field";
+    allowanceField.innerHTML = `<span>${isMedical ? "Dani bolovanja" : "Godišnji dani"}</span>`;
+    const input = document.createElement("input");
+    input.type = "number";
+    input.min = "0";
+    input.max = "365";
+    input.inputMode = "numeric";
+    input.value = String(getAbsenceBalanceInputValue(user.id, fieldKey));
+    input.disabled = !canManage;
+    input.addEventListener("change", () => {
+      void saveInlineAbsenceBalance(user.id, fieldKey, input.value);
+    });
+    allowanceField.append(input);
+
+    const addButton = document.createElement("button");
+    addButton.type = "button";
+    addButton.className = "ghost-button absence-person-action";
+    addButton.textContent = isMedical ? "+ Bolovanje" : "+ GO";
+    addButton.addEventListener("click", () => openAbsenceEditorForUser(user.id));
+
+    controls.append(allowanceField, addButton);
+    card.append(identity, stats, controls);
+    return card;
+  }));
+
+  if (users.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "offers-empty-card";
+    empty.textContent = "Nema aktivnih korisnika za prikaz salda.";
+    absencePeopleList.replaceChildren(empty);
+  }
+}
+
 async function saveAbsenceBalanceDrafts() {
   const currentByUserId = new Map((state.absenceBalances ?? []).map((entry) => [String(entry.userId), entry]));
   const changedEntries = absenceBalanceDrafts.filter((entry) => {
@@ -58265,9 +58432,11 @@ function renderAbsenceModule() {
       ? `${config.balanceLabel}: ${getCurrentAbsenceModuleMode() === "medical" ? selectedBalance.sickLeaveRemainingDays : selectedBalance.annualLeaveRemainingDays}`
       : "Bez odabranog salda";
     absenceHelper.textContent = visibleItems.length === allItems.length
-      ? `Prikazano ${visibleItems.length} stavki. ${balanceText}.`
-      : `Prikazano ${visibleItems.length} od ${allItems.length} stavki. ${balanceText}.`;
+      ? `${visibleItems.length} stavki · ${balanceText}.`
+      : `${visibleItems.length}/${allItems.length} stavki · ${balanceText}.`;
   }
+
+  renderAbsencePeopleOverview();
 
   absenceList.replaceChildren(...visibleItems.map((entry) => {
     const card = document.createElement("article");
@@ -58413,8 +58582,7 @@ function getAbsenceReportRows() {
   return rows.filter((row) => String(row.userId) === String(state.absenceReportFilters.userId));
 }
 
-function exportAbsenceReportCsv() {
-  const rows = getAbsenceReportRows();
+function exportAbsenceReportCsv(rows = getAbsenceReportRows(), fileName = "") {
   const breakdownHeaders = ABSENCE_TYPE_OPTIONS.map((option) => ({
     key: option.value,
     label: option.label,
@@ -58456,7 +58624,7 @@ function exportAbsenceReportCsv() {
 
   triggerBlobDownload(
     new Blob(["\ufeff", csvRows.join("\r\n")], { type: "text/csv;charset=utf-8" }),
-    `work-status-report-${state.absenceReportMonth || new Date().toISOString().slice(0, 7)}.csv`,
+    fileName || `work-status-report-${state.absenceReportMonth || new Date().toISOString().slice(0, 7)}.csv`,
   );
 }
 
@@ -58477,6 +58645,11 @@ function renderAbsenceReportModule() {
       })),
   ];
   replaceSelectOptions(absenceReportUserFilterInput, userOptions, state.absenceReportFilters.userId || "all");
+  if (absenceReportExportButton) {
+    absenceReportExportButton.textContent = state.absenceReportFilters.userId && state.absenceReportFilters.userId !== "all"
+      ? "CSV osoba"
+      : "CSV sve";
+  }
 
   if (absenceReportMonthInput && document.activeElement !== absenceReportMonthInput) {
     absenceReportMonthInput.value = state.absenceReportMonth || new Date().toISOString().slice(0, 7);
@@ -58496,11 +58669,28 @@ function renderAbsenceReportModule() {
 
     const head = document.createElement("div");
     head.className = "absence-report-card-head";
+    const headCopy = document.createElement("div");
+    headCopy.className = "absence-report-card-copy";
     const title = document.createElement("strong");
     title.textContent = row.userLabel;
     const meta = document.createElement("span");
     meta.textContent = `${row.businessDayCount} radnih dana · ${row.assignedWorkOrderCount} RN`;
-    head.append(title, meta);
+    headCopy.append(title, meta);
+    const actions = document.createElement("div");
+    actions.className = "absence-report-card-actions";
+    const downloadButton = document.createElement("button");
+    downloadButton.type = "button";
+    downloadButton.className = "ghost-button absence-report-card-download";
+    downloadButton.textContent = "CSV";
+    downloadButton.title = `Preuzmi mjesečni report za ${row.userLabel}`;
+    downloadButton.addEventListener("click", () => {
+      exportAbsenceReportCsv(
+        [row],
+        `work-status-report-${state.absenceReportMonth || new Date().toISOString().slice(0, 7)}-${slugifyValue(row.userLabel || "korisnik")}.csv`,
+      );
+    });
+    actions.append(downloadButton);
+    head.append(headCopy, actions);
 
     const stats = document.createElement("div");
     stats.className = "absence-report-card-stats";
@@ -91674,6 +91864,13 @@ function renderLocations() {
 
 function renderUsers() {
   const showAccountAccess = isControlPanelUserManagementScope();
+  const directoryTable = usersBody?.closest("table");
+  directoryTable?.classList.toggle("is-account-access-mode", showAccountAccess);
+  if (usersMetaHeader) {
+    usersMetaHeader.hidden = !showAccountAccess;
+    usersMetaHeader.textContent = showAccountAccess ? "Pristup" : "";
+  }
+
   const sortedUsers = [...state.users].sort((left, right) => String(
     left.displayName || left.fullName || left.email || "",
   ).localeCompare(
@@ -91686,7 +91883,6 @@ function renderUsers() {
     row.className = "list-row";
     const canEditUser = canManageRenderedUser(user);
     const roleSummary = getUserRoleSummary(user);
-    const activeAuthorizationCount = getUserActiveAuthorizationCount(user);
 
     if (canEditUser) {
       row.classList.add("is-clickable");
@@ -91720,13 +91916,12 @@ function renderUsers() {
       }),
       createBadgeCell(
         createStatusPill(user.isActive ? "Aktivno" : "Neaktivno", user.isActive)
-      ),
-      showAccountAccess
-        ? createUserAccountAccessCell(user)
-        : createStackCell({
-          title: `${activeAuthorizationCount} aktivnih`,
-        })
+      )
     );
+
+    if (showAccountAccess) {
+      row.append(createUserAccountAccessCell(user));
+    }
 
     return row;
   }));
