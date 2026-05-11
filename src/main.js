@@ -27287,6 +27287,53 @@ async function pingLocalSignatureBridge() {
   return false;
 }
 
+async function pairLocalSignatureBridgeDirect(bridgeKey = getSignatureBridgeKey()) {
+  let lastError = null;
+  for (const baseUrl of LOCAL_SIGNATURE_BRIDGE_BASE_URLS) {
+    try {
+      const response = await fetch(`${baseUrl}/pair`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          bridgeKey,
+          apiBase: window.location.origin,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok === false) {
+        throw new Error(result.error || result.message || "Lokalno povezivanje nije uspjelo.");
+      }
+      return result;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error("Lokalni signer nije dostupan za automatsko povezivanje.");
+}
+
+function openSignatureBridgePairProtocol(bridgeKey = getSignatureBridgeKey()) {
+  window.location.href = `safenexus-signer://pair?bridgeKey=${encodeURIComponent(bridgeKey)}&api=${encodeURIComponent(window.location.origin)}`;
+}
+
+async function pairLocalSignatureBridge() {
+  const bridgeKey = getSignatureBridgeKey();
+  signaturesCopyBridgeUrlButton.disabled = true;
+  signaturesCopyBridgeUrlButton.classList.add("is-loading");
+  setSignaturesBridgeStatus("Povezujem lokalni signer s DigitalOcean redom za potpis...", "loading");
+  try {
+    const result = await pairLocalSignatureBridgeDirect(bridgeKey);
+    setSignaturesBridgeStatus(result.message || "Lokalni signer je povezan i spreman za potpis.", "ready");
+  } catch {
+    openSignatureBridgePairProtocol(bridgeKey);
+    setSignaturesBridgeStatus("Otvaram lokalni signer za automatsko povezivanje. Ako Windows pita, potvrdi otvaranje aplikacije.", "warning");
+  } finally {
+    signaturesCopyBridgeUrlButton.disabled = false;
+    signaturesCopyBridgeUrlButton.classList.remove("is-loading");
+  }
+}
+
 function waitForLocalSignatureBridge(ms = 2500) {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms);
@@ -27306,6 +27353,11 @@ async function openLocalSignatureBridge() {
   setSignaturesBridgeStatus(`DigitalOcean priprema ${pendingEntries.length} zapisnika za lokalni potpis...`, "loading");
 
   try {
+    try {
+      await pairLocalSignatureBridgeDirect(bridgeKey);
+    } catch {
+      // Ako lokalni signer nije upaljen, job svejedno ide u cloud red i signer će ga povući čim se poveže.
+    }
     const payload = await apiRequest("/signature-bridge/jobs", {
       method: "POST",
       body: {
@@ -95518,16 +95570,7 @@ signaturesOpenLocalSignerButton?.addEventListener("click", () => {
 });
 
 signaturesCopyBridgeUrlButton?.addEventListener("click", async () => {
-  const bridgeKey = getSignatureBridgeKey();
-  try {
-    await navigator.clipboard?.writeText(bridgeKey);
-    signaturesCopyBridgeUrlButton.textContent = "Kopirano";
-    window.setTimeout(() => {
-      signaturesCopyBridgeUrlButton.textContent = "Kopiraj bridge ključ";
-    }, 1600);
-  } catch {
-    window.prompt("Bridge ključ", bridgeKey);
-  }
+  await pairLocalSignatureBridge();
 });
 
 documentsToggleFoldersButton?.addEventListener("click", () => {

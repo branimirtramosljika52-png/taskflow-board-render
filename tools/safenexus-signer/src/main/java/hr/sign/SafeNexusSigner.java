@@ -52,6 +52,11 @@ public final class SafeNexusSigner {
             startBridge();
             bridgeStarted = true;
         } catch (BindException portBusy) {
+            if (isPairLaunch(launchArg)) {
+                JsonNode result = forwardPairToRunningBridge(launchArg);
+                showPairReport(result);
+                return;
+            }
             if (isSignLaunch(launchArg)) {
                 JsonNode result = forwardLaunchToRunningBridge(launchArg);
                 showReport(result);
@@ -61,6 +66,13 @@ public final class SafeNexusSigner {
                 return;
             }
             showInfo("SafeNexus Signer je već spreman za potpis.\n\nBridge je aktivan na http://127.0.0.1:" + PORT);
+            return;
+        }
+
+        if (isPairLaunch(launchArg)) {
+            JsonNode result = applyPairing(parseQuery(URI.create(launchArg)));
+            startCloudPollingWorker();
+            showPairReport(result);
             return;
         }
 
@@ -84,6 +96,7 @@ public final class SafeNexusSigner {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", PORT), 0);
         server.createContext("/health", SafeNexusSigner::handleHealth);
         server.createContext("/sign", SafeNexusSigner::handleSign);
+        server.createContext("/pair", SafeNexusSigner::handlePair);
         server.setExecutor(null);
         server.start();
     }
@@ -183,6 +196,29 @@ public final class SafeNexusSigner {
         }
     }
 
+    private static void handlePair(HttpExchange exchange) throws IOException {
+        if (handleCorsPreflight(exchange)) {
+            return;
+        }
+        if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+            writeJson(exchange, 405, "{\"ok\":false,\"error\":\"POST required\"}");
+            return;
+        }
+
+        try {
+            JsonNode body = JSON.readTree(exchange.getRequestBody());
+            Map<String, String> params = new HashMap<>();
+            putIfText(params, "bridgeKey", text(body, "bridgeKey", ""));
+            putIfText(params, "apiBase", text(body, "apiBase", text(body, "api", "")));
+            writeJson(exchange, 200, JSON.writeValueAsString(applyPairing(params)));
+        } catch (Exception error) {
+            writeJson(exchange, 500, JSON.writeValueAsString(Map.of(
+                    "ok", false,
+                    "error", safeMessage(error)
+            )));
+        }
+    }
+
     private static boolean handleCorsPreflight(HttpExchange exchange) throws IOException {
         addCorsHeaders(exchange);
         if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
@@ -207,6 +243,46 @@ public final class SafeNexusSigner {
                 .build();
         HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         return JSON.readTree(response.body());
+    }
+
+    private static JsonNode forwardPairToRunningBridge(String launchArg) throws Exception {
+        Map<String, String> params = parseQuery(URI.create(launchArg));
+        String payload = JSON.writeValueAsString(Map.of(
+                "bridgeKey", params.getOrDefault("bridgeKey", ""),
+                "apiBase", params.getOrDefault("api", params.getOrDefault("apiBase", ""))
+        ));
+        HttpRequest request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + PORT + "/pair"))
+                .timeout(Duration.ofSeconds(20))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(payload, StandardCharsets.UTF_8))
+                .build();
+        HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        return JSON.readTree(response.body());
+    }
+
+    private static JsonNode applyPairing(Map<String, String> params) throws Exception {
+        String bridgeKey = params.getOrDefault("bridgeKey", "").trim().toLowerCase();
+        if (bridgeKey.isBlank()) {
+            throw new IllegalArgumentException("Bridge ključ nije poslan.");
+        }
+
+        String apiBase = stripTrailingSlash(params.getOrDefault("api", params.getOrDefault("apiBase", "https://safe-nexus.org")).trim());
+        if (apiBase.isBlank()) {
+            apiBase = "https://safe-nexus.org";
+        }
+
+        Properties config = loadConfig();
+        config.setProperty("bridge.key", bridgeKey);
+        config.setProperty("api.base", apiBase);
+        config.setProperty("poll.enabled", "true");
+        config.setProperty("poll.interval.ms", config.getProperty("poll.interval.ms", "5000"));
+        saveConfig(config);
+        bridgeKeyPrompted = true;
+        return JSON.valueToTree(Map.of(
+                "ok", true,
+                "message", "SafeNexus Signer je povezan s cloud redom za potpis.",
+                "apiBase", apiBase
+        ));
     }
 
     private static JsonNode runSignJobExclusive(Map<String, String> launchParams) throws Exception {
@@ -503,6 +579,22 @@ public final class SafeNexusSigner {
         }
     }
 
+    private static boolean isPairLaunch(String launchArg) {
+        if (launchArg == null || !launchArg.startsWith("safenexus-signer://")) {
+            return false;
+        }
+        try {
+            URI uri = URI.create(launchArg);
+            String command = uri.getHost();
+            if (command == null || command.isBlank()) {
+                command = uri.getPath();
+            }
+            return command != null && command.toLowerCase().contains("pair");
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
     private static boolean isProtocolLaunch(String launchArg) {
         return launchArg != null && launchArg.startsWith("safenexus-signer://");
     }
@@ -620,6 +712,17 @@ public final class SafeNexusSigner {
             }
         }
         JOptionPane.showMessageDialog(null, text.toString(), "SafeNexus Signer", ok ? JOptionPane.INFORMATION_MESSAGE : JOptionPane.WARNING_MESSAGE);
+    }
+
+    private static void showPairReport(JsonNode result) {
+        boolean ok = result != null && result.path("ok").asBoolean(false);
+        String message = result == null ? "Nema odgovora." : result.path("message").asText("");
+        if (message.isBlank()) {
+            message = ok
+                    ? "SafeNexus Signer je povezan i spreman za cloud red potpisivanja."
+                    : result.path("error").asText("Povezivanje nije uspjelo.");
+        }
+        JOptionPane.showMessageDialog(null, message, "SafeNexus Signer", ok ? JOptionPane.INFORMATION_MESSAGE : JOptionPane.WARNING_MESSAGE);
     }
 
     private static void showInfo(String message) {
