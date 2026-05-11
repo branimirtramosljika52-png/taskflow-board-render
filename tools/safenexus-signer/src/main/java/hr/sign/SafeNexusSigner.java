@@ -447,6 +447,7 @@ public final class SafeNexusSigner {
         exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
         exchange.getResponseHeaders().set("Access-Control-Allow-Headers", "Content-Type");
         exchange.getResponseHeaders().set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+        exchange.getResponseHeaders().set("Access-Control-Allow-Private-Network", "true");
     }
 
     private static void showReport(JsonNode result) {

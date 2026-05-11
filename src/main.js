@@ -27212,6 +27212,26 @@ function setSignaturesBridgeStatus(message = "", tone = "") {
   signaturesBridgeStatus.hidden = !message;
 }
 
+async function postLocalSignatureBridgeJob(payload = {}) {
+  const response = await fetch("http://127.0.0.1:9137/sign", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      token: payload.token || "",
+      apiBase: payload.apiBase || window.location.origin,
+      origin: window.location.origin,
+    }),
+  });
+
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || result.ok === false) {
+    throw new Error(result.error || result.message || "Lokalni signer nije uspio obraditi paket.");
+  }
+  return result;
+}
+
 async function openLocalSignatureBridge() {
   const pendingEntries = buildSignatureModuleDocumentEntries().filter((entry) => !entry.signed);
   if (pendingEntries.length === 0) {
@@ -27233,10 +27253,28 @@ async function openLocalSignatureBridge() {
     });
     const protocolUrl = payload.protocolUrl || `safenexus-signer://sign?token=${encodeURIComponent(payload.token || "")}&api=${encodeURIComponent(window.location.origin)}`;
     setSignaturesBridgeStatus(
-      `${payload.items?.length || pendingEntries.length} zapisnika poslano u SafeNexus Signer. PIN se unosi samo u lokalnom prozoru.`,
+      `${payload.items?.length || pendingEntries.length} zapisnika pripremljeno. Spajam se na lokalni signer...`,
+      "loading",
+    );
+    try {
+      const localResult = await postLocalSignatureBridgeJob(payload);
+      setSignaturesBridgeStatus(
+        localResult.message || `${localResult.signed || 0} zapisnika je potpisano i vraćeno u Documents.`,
+        localResult.ok === false ? "error" : "ready",
+      );
+      await loadDocumentsExplorerRecords({ force: true });
+      return;
+    } catch (localError) {
+      setSignaturesBridgeStatus(
+        "Lokalni signer nije odgovorio direktno. Otvaram ga kroz Windows protokol...",
+        "warning",
+      );
+    }
+    window.location.href = protocolUrl;
+    setSignaturesBridgeStatus(
+      "SafeNexus Signer je otvoren. Ako se pojavi pitanje iz browsera, potvrdi otvaranje aplikacije.",
       "ready",
     );
-    window.location.href = protocolUrl;
     [8000, 18000, 45000].forEach((delay) => {
       window.setTimeout(() => {
         void loadDocumentsExplorerRecords({ force: true });
