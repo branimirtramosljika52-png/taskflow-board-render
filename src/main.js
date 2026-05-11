@@ -27313,8 +27313,37 @@ async function pairLocalSignatureBridgeDirect(bridgeKey = getSignatureBridgeKey(
   throw lastError || new Error("Lokalni signer nije dostupan za automatsko povezivanje.");
 }
 
+function openExternalProtocolWithoutNavigation(url = "") {
+  if (!url || !document.body) {
+    return false;
+  }
+
+  const frame = document.createElement("iframe");
+  frame.setAttribute("aria-hidden", "true");
+  frame.tabIndex = -1;
+  frame.style.position = "fixed";
+  frame.style.left = "-10px";
+  frame.style.top = "-10px";
+  frame.style.width = "1px";
+  frame.style.height = "1px";
+  frame.style.opacity = "0";
+  frame.style.pointerEvents = "none";
+  frame.style.border = "0";
+  frame.src = url;
+  document.body.append(frame);
+
+  window.setTimeout(() => {
+    frame.remove();
+  }, 5000);
+
+  return true;
+}
+
 function openSignatureBridgePairProtocol(bridgeKey = getSignatureBridgeKey()) {
-  window.location.href = `safenexus-signer://pair?bridgeKey=${encodeURIComponent(bridgeKey)}&api=${encodeURIComponent(window.location.origin)}`;
+  const protocolUrl = `safenexus-signer://pair?bridgeKey=${encodeURIComponent(bridgeKey)}&api=${encodeURIComponent(window.location.origin)}`;
+  if (!openExternalProtocolWithoutNavigation(protocolUrl)) {
+    window.open(protocolUrl, "_blank", "noopener,noreferrer,width=1,height=1");
+  }
 }
 
 async function pairLocalSignatureBridge() {
@@ -27327,7 +27356,7 @@ async function pairLocalSignatureBridge() {
     setSignaturesBridgeStatus(result.message || "Lokalni signer je povezan i spreman za potpis.", "ready");
   } catch {
     openSignatureBridgePairProtocol(bridgeKey);
-    setSignaturesBridgeStatus("Otvaram lokalni signer za automatsko povezivanje. Ako Windows pita, potvrdi otvaranje aplikacije.", "warning");
+    setSignaturesBridgeStatus("Otvaram lokalni signer za automatsko povezivanje bez napuštanja stranice. Ako Windows pita, potvrdi otvaranje aplikacije.", "warning");
   } finally {
     signaturesCopyBridgeUrlButton.disabled = false;
     signaturesCopyBridgeUrlButton.classList.remove("is-loading");
