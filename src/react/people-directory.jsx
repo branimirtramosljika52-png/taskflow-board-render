@@ -5,6 +5,8 @@ const mountedRoots = new WeakMap();
 const mountedTabRoots = new WeakMap();
 const mountedAbsenceRoots = new WeakMap();
 const mountedAbsenceReportRoots = new WeakMap();
+const mountedAbsenceEditorRoots = new WeakMap();
+const mountedAbsenceBalanceRoots = new WeakMap();
 
 const PEOPLE_TABS = [
   {
@@ -452,9 +454,9 @@ function AbsenceModule({
           </div>
           <div className="vehicles-panel-head-actions">
             {canManage ? (
-              <button type="button" className="ghost-button" onClick={onOpenBalances}>Saldo dana</button>
+              <button id="absence-open-balances" type="button" className="ghost-button" onClick={onOpenBalances}>Saldo dana</button>
             ) : null}
-            <button type="button" className="primary-button" onClick={onOpenCreate}>{config.createLabel}</button>
+            <button id="absence-open-form" type="button" className="primary-button" onClick={onOpenCreate}>{config.createLabel}</button>
           </div>
         </div>
         <p className="helper-copy module-copy">{config.copy}</p>
@@ -529,8 +531,8 @@ function AbsenceModule({
           </label>
         </div>
 
-        <p className="helper-copy module-copy">{helperText}</p>
-        <div className="safety-authorization-list absence-list">
+        <p id="absence-helper" className="helper-copy module-copy">{helperText}</p>
+        <div id="absence-list" className="safety-authorization-list absence-list">
           {entries.length ? entries.map((entry) => (
             <AbsenceEntryCard
               key={entry.id}
@@ -586,16 +588,16 @@ function AbsenceReportModule({
                 {userOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             </label>
-            <button type="button" className="primary-button" id="react-absence-report-export" onClick={onExport}>
+            <button type="button" className="primary-button" id="absence-report-export" onClick={onExport}>
               {exportLabel}
             </button>
           </div>
         </div>
-        <p className="helper-copy module-copy">{summaryText}</p>
+        <p id="absence-report-summary" className="helper-copy module-copy">{summaryText}</p>
       </section>
 
       <section className="panel absence-report-list-panel react-absence-panel">
-        <div className="absence-report-list">
+        <div id="absence-report-list" className="absence-report-list">
           {rows.length ? rows.map((row) => (
             <article className="absence-report-card react-absence-report-card" key={row.userId}>
               <div className="absence-report-card-head">
@@ -631,6 +633,352 @@ function AbsenceReportModule({
           )) : <div className="offers-empty-card">Nema podataka za odabrani mjesec i filtere.</div>}
         </div>
       </section>
+    </div>
+  );
+}
+
+function AbsenceEditor({
+  title = "Zahtjev za dopust",
+  mode = "request",
+  draft = {},
+  canManage = false,
+  canDelete = false,
+  userOptions = [],
+  typeOptions = [],
+  statusOptions = [],
+  documents = [],
+  dayCount = 0,
+  balancePreview = "",
+  onDraftChange = () => {},
+  getDayCount = () => 0,
+  getBalancePreview = () => "",
+  getDefaultStatusForType = () => "pending",
+  onUploadDocuments = async () => {},
+  onDownloadDocument = () => {},
+  onRemoveDocument = () => {},
+  onSave = async () => {},
+  onReset = () => {},
+  onDelete = async () => {},
+  onClose = () => {},
+}) {
+  const fileInputRef = React.useRef(null);
+  const [form, setForm] = React.useState(() => ({ ...draft }));
+  const [error, setError] = React.useState("");
+  const [isSaving, setIsSaving] = React.useState(false);
+  const [isUploading, setIsUploading] = React.useState(false);
+
+  React.useEffect(() => {
+    setForm({ ...draft });
+    setError("");
+  }, [draft.id, draft.userId, draft.type, draft.status, draft.startDate, draft.endDate, draft.note]);
+
+  const mergeForm = (patch) => {
+    setForm((current) => {
+      const next = { ...current, ...patch };
+      onDraftChange(next);
+      return next;
+    });
+  };
+
+  const handleTypeChange = (value) => {
+    const patch = { type: value };
+    if (!canManage || !form.status) {
+      patch.status = getDefaultStatusForType(value);
+    }
+    mergeForm(patch);
+  };
+
+  const currentDayCount = getDayCount(form.startDate, form.endDate || form.startDate) || dayCount || 0;
+  const currentBalancePreview = getBalancePreview(form.userId) || balancePreview;
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setIsSaving(true);
+    setError("");
+    try {
+      await onSave({
+        ...form,
+        endDate: form.endDate || form.startDate,
+      });
+    } catch (saveError) {
+      setError(saveError?.message || "Spremanje nije uspjelo.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleUpload = async () => {
+    const files = Array.from(fileInputRef.current?.files ?? []);
+    if (!files.length) {
+      fileInputRef.current?.click();
+      return;
+    }
+
+    setIsUploading(true);
+    setError("");
+    try {
+      await onUploadDocuments(files);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    } catch (uploadError) {
+      setError(uploadError?.message || "Upload nije uspio.");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!form.id || !window.confirm("Obrisati ovu odsutnost?")) {
+      return;
+    }
+
+    setIsSaving(true);
+    setError("");
+    try {
+      await onDelete(form.id);
+    } catch (deleteError) {
+      setError(deleteError?.message || "Brisanje nije uspjelo.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className={`react-absence-editor ${mode === "medical" ? "is-medical" : "is-request"}`}>
+      <div className="offers-editor-fixed-head react-absence-editor-head">
+        <div className="section-heading offers-section-heading">
+          <div>
+            <p className="section-kicker">Absence</p>
+            <h3>{title}</h3>
+          </div>
+          <button type="button" className="ghost-button" onClick={onClose}>Zatvori</button>
+        </div>
+      </div>
+
+      <div className="safety-authorization-editor-body absence-editor-body react-absence-editor-body" tabIndex="-1">
+        <form className="entity-form absence-form react-absence-form" onSubmit={handleSubmit}>
+          <div className="form-grid safety-authorization-form-grid react-absence-form-grid">
+            <label className="field">
+              <span>Korisnik</span>
+              <select
+                value={form.userId || ""}
+                disabled={!canManage}
+                onChange={(event) => mergeForm({ userId: event.target.value })}
+              >
+                {userOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+
+            <label className="field">
+              <span>Vrsta odsutnosti</span>
+              <select value={form.type || ""} onChange={(event) => handleTypeChange(event.target.value)}>
+                {typeOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+
+            <label className="field">
+              <span>Status</span>
+              <select
+                value={form.status || ""}
+                disabled={!canManage}
+                onChange={(event) => mergeForm({ status: event.target.value })}
+              >
+                {statusOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+
+            <label className="field">
+              <span>Početak</span>
+              <input
+                id="react-absence-start-date"
+                type="date"
+                value={form.startDate || ""}
+                onChange={(event) => mergeForm({ startDate: event.target.value, endDate: form.endDate || event.target.value })}
+              />
+            </label>
+
+            <label className="field">
+              <span>Završetak</span>
+              <input
+                type="date"
+                value={form.endDate || form.startDate || ""}
+                onChange={(event) => mergeForm({ endDate: event.target.value })}
+              />
+            </label>
+
+            <div className="field absence-inline-summary react-absence-inline-summary">
+              <span>Obračun</span>
+              <strong>{form.startDate ? `${currentDayCount} radnih dana` : "Odaberi datume"}</strong>
+              <small>{currentBalancePreview}</small>
+            </div>
+          </div>
+
+          <section className="service-catalog-template-block legal-framework-documents-block react-absence-documents-block">
+            <div className="section-heading offers-section-heading">
+              <div>
+                <p className="section-kicker">Documents</p>
+                <h3>Dokumentacija odsutnosti</h3>
+              </div>
+              <div className="document-template-reference-actions">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  hidden
+                  onChange={() => void handleUpload()}
+                />
+                <button
+                  type="button"
+                  className="ghost-button"
+                  disabled={isUploading}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {isUploading ? "Dodajem..." : "Dodaj datoteke"}
+                </button>
+              </div>
+            </div>
+
+            <div className="module-attachment-list react-absence-document-list">
+              {documents.length ? documents.map((documentItem) => (
+                <article className="module-attachment-row react-absence-document-row" key={documentItem.id}>
+                  <div className="module-attachment-copy">
+                    <strong>{documentItem.fileName}</strong>
+                    <span>{documentItem.meta}</span>
+                  </div>
+                  <div className="module-attachment-actions">
+                    <button type="button" className="icon-action-button" title="Preuzmi" onClick={() => onDownloadDocument(documentItem.id)}>↓</button>
+                    <button type="button" className="icon-action-button card-danger" title="Makni" onClick={() => onRemoveDocument(documentItem.id)}>×</button>
+                  </div>
+                </article>
+              )) : <p className="helper-copy module-copy">Još nema dodanih dokumenata.</p>}
+            </div>
+          </section>
+
+          <label className="field field-span-full">
+            <span>Napomena</span>
+            <textarea
+              rows="4"
+              value={form.note || ""}
+              placeholder="Napomena, razlog, dodatna pojašnjenja..."
+              onChange={(event) => mergeForm({ note: event.target.value })}
+            />
+          </label>
+
+          {error ? <p className="form-error" aria-live="polite">{error}</p> : null}
+
+          <div className="form-actions react-absence-editor-actions">
+            <button type="submit" className="primary-button" disabled={isSaving}>
+              {isSaving ? "Spremam..." : "Spremi odsutnost"}
+            </button>
+            <button type="button" className="ghost-button" onClick={onReset} disabled={isSaving}>Nova odsutnost</button>
+            {canDelete ? (
+              <button type="button" className="card-button card-danger" onClick={handleDelete} disabled={isSaving}>Obriši</button>
+            ) : null}
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function AbsenceBalanceEditor({
+  rows = [],
+  onClose = () => {},
+  onSave = async () => {},
+}) {
+  const [draftRows, setDraftRows] = React.useState(() => rows.map((row) => ({ ...row })));
+  const [error, setError] = React.useState("");
+  const [isSaving, setIsSaving] = React.useState(false);
+
+  React.useEffect(() => {
+    setDraftRows(rows.map((row) => ({ ...row })));
+    setError("");
+  }, [JSON.stringify(rows)]);
+
+  const updateRow = (userId, key, value) => {
+    setDraftRows((current) => current.map((row) => (
+      String(row.userId) === String(userId)
+        ? { ...row, [key]: Math.max(0, Number(value || 0) || 0) }
+        : row
+    )));
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setIsSaving(true);
+    setError("");
+    try {
+      await onSave(draftRows);
+    } catch (saveError) {
+      setError(saveError?.message || "Saldo nije spremljen.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="react-absence-balance-editor">
+      <div className="offers-editor-fixed-head react-absence-editor-head">
+        <div className="section-heading offers-section-heading">
+          <div>
+            <p className="section-kicker">Balances</p>
+            <h3>Početni saldo dana</h3>
+          </div>
+          <button type="button" className="ghost-button" onClick={onClose}>Zatvori</button>
+        </div>
+      </div>
+
+      <div className="safety-authorization-editor-body absence-editor-body react-absence-editor-body" tabIndex="-1">
+        <form className="entity-form react-absence-balance-form" onSubmit={handleSubmit}>
+          <div className="absence-balance-list react-absence-balance-list">
+            {draftRows.length ? draftRows.map((entry) => (
+              <article className="absence-balance-row react-absence-balance-row" key={entry.userId}>
+                <div className="absence-balance-row-copy">
+                  <strong>{entry.userLabel}</strong>
+                  <span>Početni saldo po korisniku</span>
+                </div>
+                <div className="absence-balance-row-fields">
+                  <label className="field">
+                    <span>GO početno</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="365"
+                      value={entry.annualLeaveInitialDays ?? 0}
+                      onChange={(event) => updateRow(entry.userId, "annualLeaveInitialDays", event.target.value)}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Bolovanje početno</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="365"
+                      value={entry.sickLeaveInitialDays ?? 0}
+                      onChange={(event) => updateRow(entry.userId, "sickLeaveInitialDays", event.target.value)}
+                    />
+                  </label>
+                </div>
+              </article>
+            )) : <div className="offers-empty-card">Nema aktivnih korisnika za saldo.</div>}
+          </div>
+
+          {error ? <p className="form-error" aria-live="polite">{error}</p> : null}
+
+          <div className="form-actions react-absence-editor-actions">
+            <button type="submit" className="primary-button" disabled={isSaving}>
+              {isSaving ? "Spremam..." : "Spremi saldo"}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
@@ -741,6 +1089,60 @@ function unmountAbsenceReportModule(container) {
   container.classList.remove("is-react");
 }
 
+function renderAbsenceEditor(container, props = {}) {
+  if (!container) {
+    return false;
+  }
+
+  let root = mountedAbsenceEditorRoots.get(container);
+  if (!root) {
+    root = createRoot(container);
+    mountedAbsenceEditorRoots.set(container, root);
+  }
+
+  container.classList.add("is-react");
+  root.render(<AbsenceEditor {...props} />);
+  return true;
+}
+
+function unmountAbsenceEditor(container) {
+  const root = container ? mountedAbsenceEditorRoots.get(container) : null;
+  if (!root) {
+    return;
+  }
+
+  root.unmount();
+  mountedAbsenceEditorRoots.delete(container);
+  container.classList.remove("is-react");
+}
+
+function renderAbsenceBalanceEditor(container, props = {}) {
+  if (!container) {
+    return false;
+  }
+
+  let root = mountedAbsenceBalanceRoots.get(container);
+  if (!root) {
+    root = createRoot(container);
+    mountedAbsenceBalanceRoots.set(container, root);
+  }
+
+  container.classList.add("is-react");
+  root.render(<AbsenceBalanceEditor {...props} />);
+  return true;
+}
+
+function unmountAbsenceBalanceEditor(container) {
+  const root = container ? mountedAbsenceBalanceRoots.get(container) : null;
+  if (!root) {
+    return;
+  }
+
+  root.unmount();
+  mountedAbsenceBalanceRoots.delete(container);
+  container.classList.remove("is-react");
+}
+
 window.SafeNexusReactComponents = {
   ...(window.SafeNexusReactComponents ?? {}),
   renderPeopleDirectory,
@@ -751,4 +1153,8 @@ window.SafeNexusReactComponents = {
   unmountAbsenceModule,
   renderAbsenceReportModule,
   unmountAbsenceReportModule,
+  renderAbsenceEditor,
+  unmountAbsenceEditor,
+  renderAbsenceBalanceEditor,
+  unmountAbsenceBalanceEditor,
 };

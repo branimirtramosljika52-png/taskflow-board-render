@@ -3648,6 +3648,8 @@ const safetyAuthorizationResetButton = document.querySelector("#safety-authoriza
 const safetyAuthorizationDeleteButton = document.querySelector("#safety-authorization-delete");
 const absenceModule = document.querySelector("#absence-module");
 const absenceReactRoot = document.querySelector("#absence-react-root");
+const absenceEditorReactRoot = document.querySelector("#absence-editor-react-root");
+const absenceBalanceReactRoot = document.querySelector("#absence-balance-react-root");
 const absenceModuleKicker = document.querySelector("#absence-module-kicker");
 const absenceModuleTitle = document.querySelector("#absence-module-title");
 const absenceModuleCopy = document.querySelector("#absence-module-copy");
@@ -3806,6 +3808,7 @@ let legalFrameworkDocumentDrafts = [];
 let safetyAuthorizationDocumentDrafts = [];
 let absenceDocumentDrafts = [];
 let absenceBalanceDrafts = [];
+let absenceEditorDraft = null;
 let vehicleDocumentDrafts = [];
 let vehicleActivityDrafts = [];
 let activeMeasurementEquipmentDocumentPreview = null;
@@ -57751,6 +57754,94 @@ function setAbsenceDocumentDrafts(items = []) {
     .filter((entry) => entry.fileName && (entry.dataUrl || entry.storageUrl));
 }
 
+function getDefaultAbsenceTypeForCurrentMode() {
+  return getAbsenceModuleConfig().typeOptions[0]?.value || "";
+}
+
+function getDefaultAbsenceStatusForType(type = getDefaultAbsenceTypeForCurrentMode()) {
+  return getCanManageMasterData()
+    ? "approved"
+    : (doesAbsenceTypeRequireApproval(type) ? "pending" : "approved");
+}
+
+function createAbsenceEditorDraft(overrides = {}) {
+  const today = new Date().toISOString().slice(0, 10);
+  const type = String(overrides.type || getDefaultAbsenceTypeForCurrentMode() || "").trim();
+  const userId = getCanManageMasterData()
+    ? String(overrides.userId || state.user?.id || "")
+    : String(state.user?.id || "");
+
+  return {
+    id: String(overrides.id || ""),
+    userId,
+    type,
+    status: String(overrides.status || getDefaultAbsenceStatusForType(type)),
+    startDate: String(overrides.startDate || today),
+    endDate: String(overrides.endDate || overrides.startDate || today),
+    note: String(overrides.note || ""),
+  };
+}
+
+function normalizeAbsenceEditorDraft(draft = {}) {
+  const base = createAbsenceEditorDraft(draft);
+  const type = String(base.type || getDefaultAbsenceTypeForCurrentMode() || "").trim();
+  const userId = getCanManageMasterData()
+    ? String(base.userId || state.user?.id || "")
+    : String(state.user?.id || "");
+  const status = getCanManageMasterData()
+    ? String(base.status || getDefaultAbsenceStatusForType(type))
+    : getDefaultAbsenceStatusForType(type);
+
+  return {
+    ...base,
+    userId,
+    type,
+    status,
+    endDate: base.endDate || base.startDate,
+  };
+}
+
+function getAbsenceEditorDraft() {
+  if (!absenceEditorDraft) {
+    absenceEditorDraft = createAbsenceEditorDraft();
+  }
+  absenceEditorDraft = normalizeAbsenceEditorDraft(absenceEditorDraft);
+  return { ...absenceEditorDraft };
+}
+
+function setAbsenceEditorDraft(nextDraft = {}, { syncLegacy = true } = {}) {
+  absenceEditorDraft = normalizeAbsenceEditorDraft(nextDraft);
+  if (syncLegacy) {
+    syncLegacyAbsenceFormFromDraft();
+  }
+  return { ...absenceEditorDraft };
+}
+
+function syncLegacyAbsenceFormFromDraft() {
+  const draft = absenceEditorDraft ? normalizeAbsenceEditorDraft(absenceEditorDraft) : createAbsenceEditorDraft();
+  if (absenceIdInput) {
+    absenceIdInput.value = draft.id || "";
+  }
+  if (absenceUserIdInput) {
+    absenceUserIdInput.value = draft.userId || "";
+  }
+  if (absenceTypeInput) {
+    absenceTypeInput.value = draft.type || "";
+  }
+  if (absenceStatusInput) {
+    absenceStatusInput.value = draft.status || "";
+  }
+  if (absenceStartDateInput) {
+    absenceStartDateInput.value = draft.startDate || "";
+  }
+  if (absenceEndDateInput) {
+    absenceEndDateInput.value = draft.endDate || draft.startDate || "";
+  }
+  if (absenceNoteInput) {
+    absenceNoteInput.value = draft.note || "";
+  }
+}
+
 function renderAbsenceDocuments() {
   if (!absenceDocumentsList) {
     return;
@@ -57829,6 +57920,38 @@ async function queueAbsenceDocuments(files) {
     ...nextDocuments,
   ];
   renderAbsenceDocuments();
+  renderReactAbsenceEditor();
+  return absenceDocumentDrafts.map((entry) => ({ ...entry }));
+}
+
+function removeAbsenceDocumentDraft(documentId = "") {
+  const safeId = String(documentId || "").trim();
+  absenceDocumentDrafts = absenceDocumentDrafts.filter((item) => String(item.id) !== safeId);
+  renderAbsenceDocuments();
+  renderReactAbsenceEditor();
+}
+
+function buildAbsenceEditorUserOptions() {
+  return state.users
+    .filter((user) => user?.isActive !== false)
+    .slice()
+    .sort((left, right) => getUserDisplayLabel(left).localeCompare(getUserDisplayLabel(right), "hr"))
+    .map((user) => ({
+      value: String(user.id),
+      label: getUserDisplayLabel(user),
+    }));
+}
+
+function buildAbsenceEditorDocumentRows() {
+  return absenceDocumentDrafts.map((entry) => ({
+    id: String(entry.id),
+    fileName: entry.fileName || "Dokument",
+    meta: [
+      entry.fileType || "Dokument",
+      formatFileSize(entry.fileSize),
+      entry.updatedAt ? formatCompactDateTime(entry.updatedAt) : "",
+    ].filter(Boolean).join(" | "),
+  }));
 }
 
 function renderAbsenceUserSelectOptions(selectedValue = "") {
@@ -57910,17 +58033,18 @@ function syncAbsenceBalancePreview() {
 function syncAbsenceEditorChrome() {
   const config = getAbsenceModuleConfig();
   const isAdmin = getCanManageMasterData();
-  const selectedType = String(absenceTypeInput?.value || config.typeOptions[0]?.value || "").trim().toLowerCase();
+  const draft = getAbsenceEditorDraft();
+  const selectedType = String(absenceTypeInput?.value || draft.type || config.typeOptions[0]?.value || "").trim().toLowerCase();
   const requiresApproval = doesAbsenceTypeRequireApproval(selectedType);
   const ownUserId = String(state.user?.id || "");
 
-  renderAbsenceUserSelectOptions(absenceUserIdInput?.value || ownUserId);
+  renderAbsenceUserSelectOptions(absenceUserIdInput?.value || draft.userId || ownUserId);
   replaceSelectOptions(
     absenceTypeInput,
     config.typeOptions.map((option) => ({ value: option.value, label: option.label })),
-    absenceTypeInput?.value || config.typeOptions[0]?.value || "",
+    absenceTypeInput?.value || draft.type || config.typeOptions[0]?.value || "",
   );
-  replaceSelectOptions(absenceStatusInput, ABSENCE_STATUS_OPTIONS, absenceStatusInput?.value || (requiresApproval ? "pending" : "approved"));
+  replaceSelectOptions(absenceStatusInput, ABSENCE_STATUS_OPTIONS, absenceStatusInput?.value || draft.status || (requiresApproval ? "pending" : "approved"));
 
   if (!isAdmin) {
     if (absenceUserIdInput) {
@@ -57942,14 +58066,14 @@ function syncAbsenceEditorChrome() {
 
   if (absenceEditorTitle) {
     const titlePrefix = getCurrentAbsenceModuleMode() === "medical" ? "Bolovanje / dopust" : "Zahtjev za dopust";
-    absenceEditorTitle.textContent = absenceIdInput?.value
+    absenceEditorTitle.textContent = draft.id
       ? `Uredi odsutnost | ${titlePrefix}`
       : titlePrefix;
   }
 
   if (absenceDeleteButton) {
-    const canDelete = getCanManageMasterData() || String(state.user?.id ?? "") === String(absenceUserIdInput?.value || "");
-    absenceDeleteButton.hidden = !absenceIdInput?.value || !canDelete;
+    const canDelete = getCanManageMasterData() || String(state.user?.id ?? "") === String(draft.userId || "");
+    absenceDeleteButton.hidden = !draft.id || !canDelete;
   }
 
   if (absenceOpenFormButton) {
@@ -57958,9 +58082,24 @@ function syncAbsenceEditorChrome() {
 
   syncAbsenceDayCountPreview();
   syncAbsenceBalancePreview();
+  renderReactAbsenceEditor();
 }
 
 function buildAbsencePayload() {
+  const draft = getAbsenceEditorDraft();
+  if (draft) {
+    return {
+      organizationId: state.activeOrganizationId || "",
+      userId: draft.userId || state.user?.id || "",
+      type: draft.type || "",
+      status: draft.status || "",
+      startDate: draft.startDate || "",
+      endDate: draft.endDate || draft.startDate || "",
+      note: draft.note || "",
+      documents: absenceDocumentDrafts.map((entry) => ({ ...entry })),
+    };
+  }
+
   return {
     organizationId: state.activeOrganizationId || "",
     userId: absenceUserIdInput?.value || state.user?.id || "",
@@ -57973,6 +58112,146 @@ function buildAbsencePayload() {
   };
 }
 
+function getAbsenceBalancePreviewText(userId = "") {
+  const selectedUserId = String(userId || state.user?.id || "").trim();
+  if (!selectedUserId) {
+    return "Saldo će se prikazati nakon odabira korisnika.";
+  }
+
+  const summary = getAbsenceBalanceSummaryForUser(selectedUserId);
+  if (getCurrentAbsenceModuleMode() === "medical") {
+    return `Početno ${summary.sickLeaveInitialDays} · iskorišteno ${summary.sickLeaveUsedDays} · preostalo ${summary.sickLeaveRemainingDays}`;
+  }
+
+  return `Početno ${summary.annualLeaveInitialDays} · iskorišteno ${summary.annualLeaveUsedDays} · preostalo ${summary.annualLeaveRemainingDays}`;
+}
+
+async function saveAbsenceEditorDraft(nextDraft = getAbsenceEditorDraft()) {
+  const draft = setAbsenceEditorDraft(nextDraft);
+  const isEditing = Boolean(draft.id);
+  const path = isEditing ? `/absence-entries/${draft.id}` : "/absence-entries";
+  const method = isEditing ? "PATCH" : "POST";
+  const payload = await apiRequest(path, {
+    method,
+    body: buildAbsencePayload(),
+  });
+
+  if (payload && typeof payload === "object" && Object.prototype.hasOwnProperty.call(payload, "storage")) {
+    applySnapshot(payload);
+  }
+
+  closeAbsenceEditor({ reset: true });
+  renderAbsenceModule();
+  renderAbsenceReportModule();
+  renderNotifications();
+  renderWorkOrderCalendarView();
+  return true;
+}
+
+async function deleteAbsenceEditorDraft(entryId = getAbsenceEditorDraft().id) {
+  const safeId = String(entryId || "").trim();
+  if (!safeId) {
+    return false;
+  }
+
+  const payload = await apiRequest(`/absence-entries/${safeId}`, { method: "DELETE" });
+  if (payload && typeof payload === "object" && Object.prototype.hasOwnProperty.call(payload, "storage")) {
+    applySnapshot(payload);
+  }
+
+  closeAbsenceEditor({ reset: true });
+  renderAbsenceModule();
+  renderAbsenceReportModule();
+  renderNotifications();
+  renderWorkOrderCalendarView();
+  return true;
+}
+
+function renderReactAbsenceEditor() {
+  const reactComponents = window.SafeNexusReactComponents;
+  if (!state.absenceEditorOpen || !absenceEditorReactRoot || !reactComponents?.renderAbsenceEditor) {
+    return false;
+  }
+
+  const config = getAbsenceModuleConfig();
+  const draft = getAbsenceEditorDraft();
+  const canManage = getCanManageMasterData();
+  const canDelete = Boolean(draft.id) && (canManage || String(state.user?.id ?? "") === String(draft.userId || ""));
+  const titlePrefix = getCurrentAbsenceModuleMode() === "medical" ? "Bolovanje / dopust" : "Zahtjev za dopust";
+
+  return reactComponents.renderAbsenceEditor(absenceEditorReactRoot, {
+    title: draft.id ? `Uredi odsutnost | ${titlePrefix}` : titlePrefix,
+    mode: getCurrentAbsenceModuleMode(),
+    draft,
+    canManage,
+    canDelete,
+    userOptions: buildAbsenceEditorUserOptions(),
+    typeOptions: config.typeOptions.map((option) => ({ value: option.value, label: option.label })),
+    statusOptions: ABSENCE_STATUS_OPTIONS.map((option) => ({ value: option.value, label: option.label })),
+    documents: buildAbsenceEditorDocumentRows(),
+    dayCount: getAbsenceBusinessDayCount(draft.startDate, draft.endDate || draft.startDate),
+    balancePreview: getAbsenceBalancePreviewText(draft.userId),
+    onDraftChange: (patch) => {
+      setAbsenceEditorDraft({
+        ...getAbsenceEditorDraft(),
+        ...patch,
+      });
+    },
+    getDayCount: (startDate, endDate) => getAbsenceBusinessDayCount(startDate, endDate || startDate),
+    getBalancePreview: (userId) => getAbsenceBalancePreviewText(userId),
+    getDefaultStatusForType: (type) => getDefaultAbsenceStatusForType(type),
+    onUploadDocuments: async (files) => queueAbsenceDocuments(files),
+    onDownloadDocument: (documentId) => {
+      const documentItem = absenceDocumentDrafts.find((item) => String(item.id) === String(documentId));
+      if (documentItem) {
+        triggerModuleAttachmentDownload(documentItem);
+      }
+    },
+    onRemoveDocument: (documentId) => removeAbsenceDocumentDraft(documentId),
+    onSave: (payload) => saveAbsenceEditorDraft(payload),
+    onReset: () => {
+      resetAbsenceForm();
+      openAbsenceEditor();
+    },
+    onDelete: (entryId) => deleteAbsenceEditorDraft(entryId),
+    onClose: () => dismissAbsenceEditor(),
+  });
+}
+
+function unmountReactAbsenceEditor() {
+  window.SafeNexusReactComponents?.unmountAbsenceEditor?.(absenceEditorReactRoot);
+}
+
+function renderReactAbsenceBalanceEditor() {
+  const reactComponents = window.SafeNexusReactComponents;
+  if (!state.absenceBalanceEditorOpen || !absenceBalanceReactRoot || !reactComponents?.renderAbsenceBalanceEditor) {
+    return false;
+  }
+
+  if (!absenceBalanceDrafts.length) {
+    resetAbsenceBalanceDrafts();
+  }
+
+  return reactComponents.renderAbsenceBalanceEditor(absenceBalanceReactRoot, {
+    rows: absenceBalanceDrafts.map((entry) => ({ ...entry })),
+    onClose: () => closeAbsenceBalanceEditor(),
+    onSave: async (rows) => {
+      absenceBalanceDrafts = Array.isArray(rows) ? rows.map((entry) => ({ ...entry })) : absenceBalanceDrafts;
+      const success = await saveAbsenceBalanceDrafts(absenceBalanceDrafts);
+      if (success) {
+        closeAbsenceBalanceEditor();
+        renderAbsenceModule();
+        renderAbsenceReportModule();
+      }
+      return success;
+    },
+  });
+}
+
+function unmountReactAbsenceBalanceEditor() {
+  window.SafeNexusReactComponents?.unmountAbsenceBalanceEditor?.(absenceBalanceReactRoot);
+}
+
 function syncAbsenceEditorModal() {
   const isOpen = Boolean(state.absenceEditorOpen);
   if (absenceEditorBackdrop) {
@@ -57983,10 +58262,16 @@ function syncAbsenceEditorModal() {
   }
   absenceEditorPanel?.classList.toggle("is-modal-open", isOpen);
   document.body.classList.toggle("is-absence-editor-open", isOpen);
+  if (isOpen) {
+    renderReactAbsenceEditor();
+  } else {
+    unmountReactAbsenceEditor();
+  }
 }
 
 function openAbsenceEditor() {
   state.absenceEditorOpen = true;
+  renderReactAbsenceEditor();
   syncAbsenceEditorModal();
 }
 
@@ -58011,10 +58296,16 @@ function syncAbsenceBalanceModal() {
     absenceBalancePanel.hidden = !isOpen;
   }
   absenceBalancePanel?.classList.toggle("is-modal-open", isOpen);
+  if (isOpen) {
+    renderReactAbsenceBalanceEditor();
+  } else {
+    unmountReactAbsenceBalanceEditor();
+  }
 }
 
 function openAbsenceBalanceEditor() {
   state.absenceBalanceEditorOpen = true;
+  renderReactAbsenceBalanceEditor();
   syncAbsenceBalanceModal();
 }
 
@@ -58026,6 +58317,7 @@ function closeAbsenceBalanceEditor() {
 function resetAbsenceForm() {
   absenceForm?.reset();
   state.activeAbsenceId = "";
+  setAbsenceEditorDraft(createAbsenceEditorDraft(), { syncLegacy: false });
   if (absenceIdInput) {
     absenceIdInput.value = "";
   }
@@ -58043,6 +58335,7 @@ function resetAbsenceForm() {
   }
   setAbsenceDocumentDrafts([]);
   renderAbsenceDocuments();
+  renderReactAbsenceEditor();
   syncAbsenceEditorChrome();
 }
 
@@ -58058,6 +58351,15 @@ function hydrateAbsenceForm(entry) {
   renderActiveView();
   renderManagement();
   state.activeAbsenceId = entry.id;
+  setAbsenceEditorDraft({
+    id: entry.id || "",
+    userId: entry.userId || "",
+    type: entry.type || "",
+    status: entry.status || "pending",
+    startDate: entry.startDate || "",
+    endDate: entry.endDate || entry.startDate || "",
+    note: entry.note || "",
+  }, { syncLegacy: false });
   if (absenceIdInput) {
     absenceIdInput.value = entry.id || "";
   }
@@ -58084,10 +58386,11 @@ function hydrateAbsenceForm(entry) {
   }
   setAbsenceDocumentDrafts(entry.documents ?? []);
   renderAbsenceDocuments();
+  renderReactAbsenceEditor();
   syncAbsenceEditorChrome();
   openAbsenceEditor();
   requestAnimationFrame(() => {
-    absenceStartDateInput?.focus({ preventScroll: true });
+    document.querySelector("#react-absence-start-date")?.focus({ preventScroll: true });
   });
 }
 
@@ -58184,6 +58487,12 @@ function getAbsenceBalanceInputValue(userId = "", fieldKey = "annualLeaveInitial
 function openAbsenceEditorForUser(userId = "") {
   const config = getAbsenceModuleConfig();
   resetAbsenceForm();
+  setAbsenceEditorDraft({
+    ...getAbsenceEditorDraft(),
+    userId: String(userId || state.user?.id || ""),
+    type: config.typeOptions[0]?.value || "",
+    status: getDefaultAbsenceStatusForType(config.typeOptions[0]?.value || ""),
+  }, { syncLegacy: false });
   if (absenceUserIdInput) {
     absenceUserIdInput.value = String(userId || state.user?.id || "");
   }
@@ -58322,7 +58631,15 @@ function renderAbsencePeopleOverview() {
   }
 }
 
-async function saveAbsenceBalanceDrafts() {
+async function saveAbsenceBalanceDrafts(nextDrafts = absenceBalanceDrafts) {
+  absenceBalanceDrafts = Array.isArray(nextDrafts)
+    ? nextDrafts.map((entry) => ({
+      userId: String(entry.userId || ""),
+      userLabel: entry.userLabel || "",
+      annualLeaveInitialDays: Math.max(0, Number(entry.annualLeaveInitialDays ?? 0) || 0),
+      sickLeaveInitialDays: Math.max(0, Number(entry.sickLeaveInitialDays ?? 0) || 0),
+    }))
+    : absenceBalanceDrafts;
   const currentByUserId = new Map((state.absenceBalances ?? []).map((entry) => [String(entry.userId), entry]));
   const changedEntries = absenceBalanceDrafts.filter((entry) => {
     const current = currentByUserId.get(String(entry.userId));
@@ -58338,8 +58655,9 @@ async function saveAbsenceBalanceDrafts() {
   }
 
   const success = await runMutation(async () => {
+    let lastPayload = null;
     for (const entry of changedEntries) {
-      await apiRequest("/absence-balances", {
+      lastPayload = await apiRequest("/absence-balances", {
         method: "POST",
         body: {
           userId: entry.userId,
@@ -58348,6 +58666,7 @@ async function saveAbsenceBalanceDrafts() {
         },
       });
     }
+    return lastPayload;
   }, absenceBalanceError);
 
   if (success && absenceBalanceError) {
@@ -58546,7 +58865,7 @@ function renderReactAbsenceModule(config, filters, allItems, visibleItems, selec
       renderAbsenceModule();
       openAbsenceEditor();
       requestAnimationFrame(() => {
-        absenceStartDateInput?.focus({ preventScroll: true });
+        document.querySelector("#react-absence-start-date")?.focus({ preventScroll: true });
       });
     },
     onOpenBalances: () => {
@@ -58554,10 +58873,10 @@ function renderReactAbsenceModule(config, filters, allItems, visibleItems, selec
         return;
       }
       resetAbsenceBalanceDrafts();
-      renderAbsenceBalanceList();
       if (absenceBalanceError) {
         absenceBalanceError.textContent = "";
       }
+      renderReactAbsenceBalanceEditor();
       openAbsenceBalanceEditor();
     },
     onOpenUser: (userId) => openAbsenceEditorForUser(userId),
@@ -58572,7 +58891,7 @@ function renderReactAbsenceModule(config, filters, allItems, visibleItems, selec
 }
 
 function renderAbsenceModule() {
-  if (!absenceModule || !absenceList || !absenceEmpty) {
+  if (!absenceModule) {
     return;
   }
 
@@ -58587,6 +58906,10 @@ function renderAbsenceModule() {
   const selectedBalance = selectedUserId ? getAbsenceBalanceSummaryForUser(selectedUserId) : null;
 
   if (renderReactAbsenceModule(config, filters, allItems, visibleItems, selectedBalance, canManage)) {
+    return;
+  }
+
+  if (!absenceList || !absenceEmpty) {
     return;
   }
 
@@ -58908,7 +59231,7 @@ function renderReactAbsenceReportModule(rows, totalRegularDays, totalAbsenceDays
 }
 
 function renderAbsenceReportModule() {
-  if (!absenceReportModule || !absenceReportList || !absenceReportEmpty) {
+  if (!absenceReportModule) {
     return;
   }
 
@@ -58939,6 +59262,10 @@ function renderAbsenceReportModule() {
   const totalAbsenceDays = rows.reduce((sum, row) => sum + Number(row.absenceDays || 0), 0);
 
   if (renderReactAbsenceReportModule(rows, totalRegularDays, totalAbsenceDays)) {
+    return;
+  }
+
+  if (!absenceReportList || !absenceReportEmpty) {
     return;
   }
 
