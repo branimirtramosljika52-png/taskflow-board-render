@@ -91878,6 +91878,37 @@ function renderUsers() {
     "hr",
   ));
 
+  const reactPeopleDirectory = window.SafeNexusReactComponents;
+  if (!showAccountAccess && reactPeopleDirectory?.renderPeopleDirectory) {
+    reactPeopleDirectory.renderPeopleDirectory(usersBody, {
+      rows: sortedUsers.map((user) => {
+        const roleSummary = getUserRoleSummary(user);
+        const fullName = String(user.fullName || "").trim();
+        return {
+          id: String(user.id || user.email || user.username || ""),
+          name: fullName || String(user.displayName || "").trim() || user.email || "User",
+          email: user.email || "",
+          oib: String(user.oib || "").trim(),
+          initials: getUserInitials(user),
+          avatarDataUrl: user.avatarDataUrl || "",
+          organizationSummary: getUserOrganizationSummary(user),
+          roleTitle: roleSummary.title,
+          roleSubtitle: roleSummary.subtitle,
+          isActive: user.isActive !== false,
+          canEdit: canManageRenderedUser(user),
+        };
+      }),
+      onEditUser: (userId) => {
+        const user = state.users.find((item) => String(item.id || item.email || item.username || "") === String(userId));
+        if (user && canManageRenderedUser(user)) {
+          hydrateUserForm(user);
+        }
+      },
+    });
+    return;
+  }
+
+  reactPeopleDirectory?.unmountPeopleDirectory?.(usersBody);
   usersBody.replaceChildren(...sortedUsers.map((user) => {
     const row = document.createElement("tr");
     row.className = "list-row";
