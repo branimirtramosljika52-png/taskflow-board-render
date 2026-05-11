@@ -68756,16 +68756,14 @@ function getUserManagementNoteText(currentOrganization = null) {
   }
 
   if (getIsSuperAdmin()) {
-    return "Klikni bilo gdje na red korisnika za uređivanje podataka, role i ovlaštenja. Role automatski određuju i pristup sustavu.";
+    return "";
   }
 
   if (getIsAdmin()) {
-    return currentOrganization
-      ? `Novi korisnici automatski pripadaju organizaciji ${currentOrganization.name}.`
-      : "Novi korisnici automatski pripadaju tvojoj aktivnoj organizaciji.";
+    return "";
   }
 
-  return "Klikni bilo gdje na red korisnika za pregled podataka i dokumentacije.";
+  return "";
 }
 
 function syncUserEditorChrome(editing = false, user = null) {
@@ -91934,8 +91932,9 @@ function renderManagement() {
       managementViewDescription.hidden = !hasUserManagementDescription;
     }
     if (userManagementNote) {
-      userManagementNote.hidden = !isUsersTab;
-      userManagementNote.textContent = getUserManagementNoteText(currentOrganization);
+      const noteText = getUserManagementNoteText(currentOrganization);
+      userManagementNote.textContent = noteText;
+      userManagementNote.hidden = !isUsersTab || !String(noteText || "").trim();
     }
   } else if (getIsAdmin()) {
     if (managementViewKicker) {
@@ -91951,12 +91950,14 @@ function renderManagement() {
       managementViewDescription.hidden = !hasUserManagementDescription;
     }
     if (userManagementNote) {
-      userManagementNote.hidden = !isUsersTab;
-      userManagementNote.textContent = getUserManagementNoteText(currentOrganization);
+      const noteText = getUserManagementNoteText(currentOrganization);
+      userManagementNote.textContent = noteText;
+      userManagementNote.hidden = !isUsersTab || !String(noteText || "").trim();
     }
   } else if (userManagementNote) {
-    userManagementNote.hidden = !isUsersTab;
-    userManagementNote.textContent = getUserManagementNoteText(currentOrganization);
+    const noteText = getUserManagementNoteText(currentOrganization);
+    userManagementNote.textContent = noteText;
+    userManagementNote.hidden = !isUsersTab || !String(noteText || "").trim();
   }
 
   syncUserEditorChrome(Boolean(userIdInput.value), getCurrentUserEditorRecord());

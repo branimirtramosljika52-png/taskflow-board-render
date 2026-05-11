@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260510i" />
+    <link rel="stylesheet" href="/styles.css?v=20260511a" />
     <link rel="stylesheet" href="/src/styles/variables.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/reset.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/builder.css?v=20260509e" />
@@ -3638,50 +3638,92 @@
               <button
                 id="people-tab-users"
                 type="button"
-                class="tab-button people-workspace-tab"
+                class="tab-button people-workspace-tab is-users"
                 data-people-workspace-tab="users"
                 role="tab"
                 aria-controls="people-users-panel"
                 aria-selected="true"
               >
-                <strong>Korisnici</strong>
-                <span class="people-workspace-tab-copy">Role, pristupi i dokumenti</span>
+                <span class="people-workspace-tab-icon" aria-hidden="true">
+                  <svg class="icon-svg" viewBox="0 0 24 24">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="9.5" cy="7" r="4"></circle>
+                    <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                  </svg>
+                </span>
+                <span class="people-workspace-tab-content">
+                  <strong>Korisnici</strong>
+                  <span class="people-workspace-tab-copy">Role, pristupi i dokumenti</span>
+                </span>
               </button>
               <button
                 id="people-tab-annual-leave"
                 type="button"
-                class="tab-button people-workspace-tab"
+                class="tab-button people-workspace-tab is-annual-leave"
                 data-people-workspace-tab="annual-leave"
                 role="tab"
                 aria-controls="absence-module"
                 aria-selected="false"
               >
-                <strong>GO i dopusti</strong>
-                <span class="people-workspace-tab-copy">Zahtjevi, saldo i odobrenja</span>
+                <span class="people-workspace-tab-icon" aria-hidden="true">
+                  <svg class="icon-svg" viewBox="0 0 24 24">
+                    <path d="M8 2v4"></path>
+                    <path d="M16 2v4"></path>
+                    <rect x="3" y="4" width="18" height="18" rx="4"></rect>
+                    <path d="M3 10h18"></path>
+                    <path d="m9 16 2 2 4-5"></path>
+                  </svg>
+                </span>
+                <span class="people-workspace-tab-content">
+                  <strong>GO i dopusti</strong>
+                  <span class="people-workspace-tab-copy">Zahtjevi, saldo i odobrenja</span>
+                </span>
               </button>
               <button
                 id="people-tab-sick-leave"
                 type="button"
-                class="tab-button people-workspace-tab"
+                class="tab-button people-workspace-tab is-sick-leave"
                 data-people-workspace-tab="sick-leave"
                 role="tab"
                 aria-controls="absence-module"
                 aria-selected="false"
               >
-                <strong>Bolovanja</strong>
-                <span class="people-workspace-tab-copy">Medicinski izostanci i dokumenti</span>
+                <span class="people-workspace-tab-icon" aria-hidden="true">
+                  <svg class="icon-svg" viewBox="0 0 24 24">
+                    <path d="M11 2h2"></path>
+                    <path d="M12 2v7"></path>
+                    <path d="M7 9h10l4 10a2 2 0 0 1-1.86 3H4.86A2 2 0 0 1 3 19Z"></path>
+                    <path d="M8 14h8"></path>
+                    <path d="M12 10v8"></path>
+                  </svg>
+                </span>
+                <span class="people-workspace-tab-content">
+                  <strong>Bolovanja</strong>
+                  <span class="people-workspace-tab-copy">Medicinski izostanci i dokumenti</span>
+                </span>
               </button>
               <button
                 id="people-tab-absence-report"
                 type="button"
-                class="tab-button people-workspace-tab"
+                class="tab-button people-workspace-tab is-absence-report"
                 data-people-workspace-tab="absence-report"
                 role="tab"
                 aria-controls="absence-report-module"
                 aria-selected="false"
               >
-                <strong>Mjesečni report</strong>
-                <span class="people-workspace-tab-copy">Rad, odsutnosti i CSV izvoz</span>
+                <span class="people-workspace-tab-icon" aria-hidden="true">
+                  <svg class="icon-svg" viewBox="0 0 24 24">
+                    <path d="M4 19V5a2 2 0 0 1 2-2h9l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z"></path>
+                    <path d="M14 3v5h5"></path>
+                    <path d="M8 14h8"></path>
+                    <path d="M8 17h5"></path>
+                  </svg>
+                </span>
+                <span class="people-workspace-tab-content">
+                  <strong>Mjesečni report</strong>
+                  <span class="people-workspace-tab-copy">Rad, odsutnosti i CSV izvoz</span>
+                </span>
               </button>
             </div>
 
@@ -3701,10 +3743,10 @@
               </div>
             </div>
 
-            <p id="user-management-note" class="helper-copy people-management-copy">Klikni bilo gdje na red korisnika za uređivanje podataka, role i ovlaštenja.</p>
+            <p id="user-management-note" class="helper-copy people-management-copy" hidden></p>
 
-            <div class="table-wrap">
-              <table class="data-table">
+            <div class="table-wrap people-directory-wrap">
+              <table class="data-table people-directory-table">
                 <thead>
                   <tr>
                     <th id="users-profile-header">Profil</th>
@@ -8097,6 +8139,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260510j"></script>
+    <script type="module" src="/src/main.js?v=20260511a"></script>
   </body>
 </html>

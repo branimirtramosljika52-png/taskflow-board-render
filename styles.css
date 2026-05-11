@@ -7353,36 +7353,121 @@ body.is-location-editor-open {
 
 .people-workspace-panel {
   display: grid;
-  gap: 18px;
-  padding: 22px 24px;
-  border-radius: 30px;
-  background:
-    radial-gradient(circle at top left, rgba(87, 149, 234, 0.12), transparent 26%),
-    radial-gradient(circle at top right, rgba(230, 117, 196, 0.1), transparent 24%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 250, 255, 0.96));
+  gap: 20px;
+  padding: 24px;
+  border-radius: 28px;
+  border-color: rgba(173, 197, 236, 0.62);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(247, 251, 255, 0.98));
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.98),
-    0 18px 42px rgba(80, 92, 142, 0.08);
+    0 18px 42px rgba(80, 92, 142, 0.09);
 }
 
 .people-workspace-tabs {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  gap: 14px;
 }
 
 .people-workspace-tab {
+  --people-tab-accent: #2563eb;
+  --people-tab-ink: #14213d;
+  --people-tab-soft: rgba(37, 99, 235, 0.1);
+  position: relative;
   display: grid;
-  justify-items: start;
-  align-content: start;
-  gap: 6px;
-  min-height: 84px;
-  padding: 16px 18px;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  min-height: 112px;
+  padding: 18px;
+  overflow: hidden;
   text-align: left;
+  border: 1px solid rgba(196, 211, 232, 0.78);
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, var(--people-tab-soft), rgba(255, 255, 255, 0.82) 42%, rgba(255, 255, 255, 0.98)),
+    #fff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.98),
+    0 12px 28px rgba(42, 64, 110, 0.08);
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    background 0.18s ease;
+}
+
+.people-workspace-tab::after {
+  content: "";
+  position: absolute;
+  right: 14px;
+  bottom: 12px;
+  width: 58px;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--people-tab-accent), rgba(255, 255, 255, 0));
+  opacity: 0.34;
+  pointer-events: none;
+}
+
+.people-workspace-tab.is-users {
+  --people-tab-accent: #2f6fe4;
+  --people-tab-soft: rgba(47, 111, 228, 0.12);
+}
+
+.people-workspace-tab.is-annual-leave {
+  --people-tab-accent: #1f9f83;
+  --people-tab-soft: rgba(31, 159, 131, 0.13);
+}
+
+.people-workspace-tab.is-sick-leave {
+  --people-tab-accent: #df7b29;
+  --people-tab-soft: rgba(223, 123, 41, 0.13);
+}
+
+.people-workspace-tab.is-absence-report {
+  --people-tab-accent: #9b5bd9;
+  --people-tab-soft: rgba(155, 91, 217, 0.13);
+}
+
+.people-workspace-tab:hover,
+.people-workspace-tab:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(90, 129, 202, 0.56);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.98),
+    0 18px 34px rgba(42, 64, 110, 0.12);
+}
+
+.people-workspace-tab-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  color: var(--people-tab-accent);
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow:
+    inset 0 0 0 1px rgba(151, 173, 210, 0.32),
+    0 10px 18px rgba(51, 78, 120, 0.08);
+}
+
+.people-workspace-tab-icon .icon-svg {
+  width: 22px;
+  height: 22px;
+  stroke-width: 2;
+}
+
+.people-workspace-tab-content {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
 }
 
 .people-workspace-tab strong {
   font-size: 1rem;
+  color: var(--people-tab-ink);
 }
 
 .people-workspace-tab-copy {
@@ -7392,9 +7477,21 @@ body.is-location-editor-open {
 }
 
 .people-workspace-tab.is-active {
+  border-color: color-mix(in srgb, var(--people-tab-accent) 46%, white);
+  background:
+    linear-gradient(135deg, var(--people-tab-soft), rgba(255, 255, 255, 0.92) 52%, #fff),
+    #fff;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.98),
-    0 14px 30px rgba(84, 114, 190, 0.14);
+    0 18px 36px rgba(84, 114, 190, 0.16);
+}
+
+.people-workspace-tab.is-active .people-workspace-tab-icon {
+  color: #fff;
+  background: linear-gradient(135deg, var(--people-tab-accent), color-mix(in srgb, var(--people-tab-accent) 76%, #111827));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    0 12px 22px color-mix(in srgb, var(--people-tab-accent) 22%, transparent);
 }
 
 .people-workspace-copy {
@@ -7403,24 +7500,157 @@ body.is-location-editor-open {
   color: #687791;
 }
 
-.people-management-panel .data-table td:nth-child(1) {
+.people-management-panel {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(248, 251, 255, 0.98));
+}
+
+.people-management-panel .section-heading {
+  margin-bottom: 16px;
+}
+
+.people-directory-wrap {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.people-directory-table {
+  min-width: 0 !important;
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0 10px;
+}
+
+.people-directory-table thead th {
+  position: static;
+  padding: 0 16px 6px;
+  border: 0;
+  background: transparent;
+  color: #7a7894;
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+}
+
+.people-directory-table tbody td {
+  padding: 16px 14px;
+  border-top: 1px solid rgba(194, 211, 232, 0.78);
+  border-bottom: 1px solid rgba(194, 211, 232, 0.78);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(250, 253, 255, 0.96));
+  box-shadow: 0 10px 24px rgba(69, 90, 122, 0.05);
+}
+
+.people-directory-table tbody td:first-child {
+  border-left: 1px solid rgba(194, 211, 232, 0.78);
+  border-radius: 18px 0 0 18px;
+}
+
+.people-directory-table tbody td:last-child {
+  border-right: 1px solid rgba(194, 211, 232, 0.78);
+  border-radius: 0 18px 18px 0;
+}
+
+.people-directory-table tbody tr:last-child td {
+  border-bottom: 1px solid rgba(194, 211, 232, 0.78);
+}
+
+.people-directory-table tbody tr:hover td,
+.people-directory-table tbody tr:focus-visible td {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(246, 251, 255, 0.99));
+  border-color: rgba(111, 151, 220, 0.58);
+  box-shadow: 0 14px 30px rgba(69, 90, 122, 0.09);
+}
+
+.people-directory-table .people-list-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  background: linear-gradient(145deg, rgba(48, 112, 230, 0.12), rgba(31, 159, 131, 0.14));
+  color: #245da8;
+}
+
+.people-directory-table .people-list-copy {
+  gap: 3px;
+}
+
+.people-directory-table .list-primary {
+  font-size: 0.98rem;
+}
+
+.people-directory-table .list-secondary,
+.people-directory-table .list-tertiary {
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.people-directory-table td:nth-child(4) .list-meta-pill {
+  width: 100%;
+  min-width: 0;
+  justify-content: flex-start;
+  padding-inline: 12px;
+  background: linear-gradient(90deg, rgba(217, 234, 255, 0.98), rgba(233, 243, 255, 0.76));
+  color: #245da8;
+}
+
+.people-directory-table td:nth-child(5) .list-primary {
+  justify-content: flex-end;
+  color: #10213d;
+  font-weight: 800;
+}
+
+.people-management-panel .data-table:not(.people-directory-table) td:nth-child(1) {
   min-width: 320px;
 }
 
-.people-management-panel .data-table td:nth-child(2) {
+.people-directory-table th:nth-child(1),
+.people-directory-table td:nth-child(1) {
+  width: 38%;
+  min-width: 0 !important;
+}
+
+.people-management-panel .data-table:not(.people-directory-table) td:nth-child(2) {
   min-width: 220px;
 }
 
-.people-management-panel .data-table td:nth-child(3) {
+.people-directory-table th:nth-child(2),
+.people-directory-table td:nth-child(2) {
+  width: 22%;
+  min-width: 0 !important;
+}
+
+.people-management-panel .data-table:not(.people-directory-table) td:nth-child(3) {
   min-width: 180px;
 }
 
-.people-management-panel .data-table td:nth-child(4) {
+.people-directory-table th:nth-child(3),
+.people-directory-table td:nth-child(3) {
+  width: 13%;
+  min-width: 0 !important;
+}
+
+.people-management-panel .data-table:not(.people-directory-table) td:nth-child(4) {
   min-width: 180px;
 }
 
-.people-management-panel .data-table td:nth-child(5) {
+.people-directory-table th:nth-child(4),
+.people-directory-table td:nth-child(4) {
+  width: 15%;
+  min-width: 0 !important;
+}
+
+.people-management-panel .data-table:not(.people-directory-table) td:nth-child(5) {
   min-width: 170px;
+}
+
+.people-directory-table th:nth-child(5),
+.people-directory-table td:nth-child(5) {
+  width: 12%;
+  min-width: 0 !important;
 }
 
 .checkbox-field {
@@ -38319,6 +38549,85 @@ body.is-document-template-resizing-diagonal * {
   }
 }
 
+/* People directory uses a grid-based table surface so it stays readable inside the app shell. */
+.people-directory-table {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  min-width: 0 !important;
+  border-collapse: separate;
+}
+
+.people-directory-table thead,
+.people-directory-table tbody {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.people-directory-table thead tr,
+.people-directory-table tbody tr {
+  display: grid;
+  grid-template-columns: minmax(210px, 1.75fr) minmax(140px, 1fr) minmax(88px, 0.62fr) minmax(108px, 0.72fr) minmax(90px, 0.58fr);
+  align-items: stretch;
+  min-width: 0;
+}
+
+.people-directory-table th,
+.people-directory-table td {
+  min-width: 0 !important;
+}
+
+.people-directory-table thead th {
+  position: static;
+  padding: 0 14px 8px !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.people-directory-table tbody tr {
+  overflow: hidden;
+  border: 1px solid rgba(194, 211, 232, 0.78);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(250, 253, 255, 0.96));
+  box-shadow: 0 10px 24px rgba(69, 90, 122, 0.05);
+}
+
+.people-directory-table tbody tr:hover,
+.people-directory-table tbody tr:focus-visible {
+  border-color: rgba(111, 151, 220, 0.58);
+  box-shadow: 0 14px 30px rgba(69, 90, 122, 0.09);
+}
+
+.people-directory-table tbody td {
+  padding: 17px 14px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.people-directory-table th:last-child,
+.people-directory-table td:last-child {
+  text-align: right;
+}
+
+@media (max-width: 760px) {
+  .people-directory-table thead {
+    display: none;
+  }
+
+  .people-directory-table tbody tr {
+    grid-template-columns: 1fr;
+  }
+
+  .people-directory-table th:last-child,
+  .people-directory-table td:last-child {
+    text-align: left;
+  }
+}
+
 .document-template-editor-panel.is-workspace-open:not(.is-fill-mode) {
   display: block;
   height: calc(100dvh - 20px);
@@ -47006,5 +47315,64 @@ button.work-order-editor-section-head {
   .signatures-bridge-actions,
   .signatures-row-actions {
     justify-content: flex-start;
+  }
+}
+
+/* Final People directory fit: keep the premium cards readable without horizontal table scroll. */
+.people-directory-wrap {
+  max-width: 100%;
+  overflow-x: hidden !important;
+}
+
+.people-directory-table {
+  width: 100% !important;
+  max-width: 100%;
+  min-width: 0 !important;
+  table-layout: fixed;
+}
+
+.people-directory-table thead tr,
+.people-directory-table tbody tr {
+  grid-template-columns: minmax(0, 1.65fr) minmax(0, 1.15fr) minmax(0, 0.58fr) minmax(0, 0.76fr) minmax(0, 0.62fr) !important;
+  width: 100%;
+  max-width: 100%;
+}
+
+.people-directory-table thead th,
+.people-directory-table tbody td {
+  width: auto !important;
+  max-width: 100%;
+  padding-left: 12px !important;
+  padding-right: 12px !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.people-directory-table tbody td {
+  min-height: 74px;
+}
+
+.people-directory-table .user-cell,
+.people-directory-table td > div,
+.people-directory-table td > span {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.people-directory-table .status-badge,
+.people-directory-table .permission-count-pill {
+  max-width: 100%;
+  min-width: 0;
+}
+
+@media (max-width: 1360px) {
+  .people-directory-table thead tr,
+  .people-directory-table tbody tr {
+    grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr) minmax(0, 0.58fr) minmax(0, 0.72fr) !important;
+  }
+
+  .people-directory-table thead th:last-child,
+  .people-directory-table tbody td:last-child {
+    display: none;
   }
 }
