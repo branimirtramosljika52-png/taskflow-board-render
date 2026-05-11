@@ -164,4 +164,15 @@ await buildBrowserBundle({
   logLevel: "silent",
 });
 
+await buildBrowserBundle({
+  entryPoints: [resolve(rootDir, "src", "react", "core-modules.jsx")],
+  outfile: resolve(distDir, "assets", "react", "core-modules.js"),
+  bundle: true,
+  format: "esm",
+  target: ["es2020"],
+  minify: true,
+  sourcemap: false,
+  logLevel: "silent",
+});
+
 await compressDistAssets();

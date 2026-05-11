@@ -2822,6 +2822,7 @@ const moduleViewDescription = document.querySelector("#module-view-description")
 const moduleViewChips = document.querySelector("#module-view-chips");
 const modulePanel = document.querySelector("#module-view > .module-panel");
 const documentsModule = document.querySelector("#documents-module");
+const documentsReactRoot = document.querySelector("#documents-react-root");
 const settingsModule = document.querySelector("#settings-module");
 const settingsMeasurementLeadDaysInput = document.querySelector("#settings-measurement-lead-days");
 const settingsMeasurementRepeatDaysInput = document.querySelector("#settings-measurement-repeat-days");
@@ -3102,6 +3103,7 @@ const vehicleReservationsList = document.querySelector("#vehicle-reservations-li
 const vehicleReservationsEmpty = document.querySelector("#vehicle-reservations-empty");
 const offersModule = document.querySelector("#offers-module");
 const signaturesModule = document.querySelector("#signatures-module");
+const signaturesReactRoot = document.querySelector("#signatures-react-root");
 const signaturesStats = document.querySelector("#signatures-stats");
 const signaturesList = document.querySelector("#signatures-list");
 const signaturesRefreshButton = document.querySelector("#signatures-refresh");
@@ -3340,6 +3342,7 @@ const clientPortalPreviewCompany = document.querySelector("#client-portal-previe
 const clientPortalPreviewLocation = document.querySelector("#client-portal-preview-location");
 const clientPortalPreviewList = document.querySelector("#client-portal-preview-list");
 const legalFrameworkModule = document.querySelector("#legal-framework-module");
+const legalFrameworkReactRoot = document.querySelector("#legal-framework-react-root");
 const legalFrameworkTotalCount = document.querySelector("#legal-framework-total-count");
 const legalFrameworkActiveCount = document.querySelector("#legal-framework-active-count");
 const legalFrameworkInactiveCount = document.querySelector("#legal-framework-inactive-count");
@@ -3352,6 +3355,7 @@ const legalFrameworkEmpty = document.querySelector("#legal-framework-empty");
 const legalFrameworkOpenFormButton = document.querySelector("#legal-framework-open-form");
 const legalFrameworkEditorBackdrop = document.querySelector("#legal-framework-editor-backdrop");
 const legalFrameworkEditorPanel = document.querySelector("#legal-framework-editor-panel");
+const legalFrameworkEditorReactRoot = document.querySelector("#legal-framework-editor-react-root");
 const legalFrameworkEditorCloseButton = document.querySelector("#legal-framework-editor-close");
 const legalFrameworkEditorBody = legalFrameworkEditorPanel?.querySelector(".legal-framework-editor-body");
 const legalFrameworkEditorTitle = document.querySelector("#legal-framework-editor-title");
@@ -3817,6 +3821,7 @@ let measurementEquipmentSideComments = [];
 let measurementEquipmentSpecDrafts = [];
 let measurementEquipmentReactDraft = null;
 let legalFrameworkDocumentDrafts = [];
+let legalFrameworkReactDraft = null;
 let safetyAuthorizationDocumentDrafts = [];
 let safetyAuthorizationReactDraft = null;
 let absenceDocumentDrafts = [];
@@ -26931,6 +26936,65 @@ function formatDocumentsRefreshTimestamp(value = "") {
   })}`;
 }
 
+function renderReactDocumentsModule(model = buildDocumentsLibraryViewModel()) {
+  const reactComponents = window.SafeNexusReactComponents;
+  if (!documentsReactRoot || typeof reactComponents?.renderDocumentsModule !== "function") {
+    documentsModule?.querySelector(".documents-explorer-shell")?.removeAttribute("hidden");
+    return false;
+  }
+
+  documentsModule?.querySelector(".documents-explorer-shell")?.setAttribute("hidden", "");
+  syncDocumentsLibraryDefaultExpansion(model.visibleFolders);
+  const lastRefreshLabel = formatDocumentsRefreshTimestamp(state.documentsExplorer.lastRefreshAt);
+  return reactComponents.renderDocumentsModule(documentsReactRoot, {
+    model: {
+      ...model,
+      query: state.documentsExplorer.query || "",
+    },
+    loading: Boolean(state.documentsExplorer.loading),
+    error: state.documentsExplorer.error || "",
+    lastRefreshLabel: state.documentsExplorer.loading
+      ? (state.documentsExplorer.lastRefreshAt ? `${lastRefreshLabel} - osvježavanje...` : "Osvježavanje dokumenata...")
+      : lastRefreshLabel,
+    expandedFolderIds: Array.from(state.documentsExplorer.expandedFolderIds ?? []),
+    onRefresh: () => {
+      void loadDocumentsExplorerRecords({ force: true });
+    },
+    onSearch: (query) => {
+      state.documentsExplorer.query = String(query || "");
+      if (documentsSearchInput) {
+        documentsSearchInput.value = state.documentsExplorer.query;
+      }
+      renderDocumentsModule();
+    },
+    onKindChange: (fileKind) => {
+      state.documentsExplorer.fileKind = normalizeDocumentLibraryFileKind(fileKind || "all");
+      if (documentsFilterKindInput) {
+        documentsFilterKindInput.value = state.documentsExplorer.fileKind;
+      }
+      renderDocumentsModule();
+    },
+    onSelectCategory: (categoryId) => {
+      selectDocumentsLibraryCategory(categoryId);
+    },
+    onToggleFolder: (folderId) => {
+      toggleDocumentsLibraryFolder(folderId);
+    },
+    onToggleAll: () => {
+      toggleDocumentsLibraryAllFolders(model);
+    },
+    onPreview: (entry) => {
+      void runMutation(() => previewDocumentsLibraryEntry(entry), null);
+    },
+    onDownload: (entry) => {
+      void runMutation(() => downloadDocumentsLibraryEntry(entry), null);
+    },
+    onOpenSource: (target) => {
+      openDocumentsLibrarySource(target);
+    },
+  });
+}
+
 function renderDocumentsModule() {
   if (!documentsModule) {
     return;
@@ -26982,6 +27046,13 @@ function renderDocumentsModule() {
   }
 
   const model = buildDocumentsLibraryViewModel();
+  if (renderReactDocumentsModule(model)) {
+    if (documentsLibraryEmpty) {
+      documentsLibraryEmpty.hidden = true;
+    }
+    return;
+  }
+
   renderDocumentsLibraryCategories(model);
   renderDocumentsLibraryFolders(model);
   updateDocumentsToggleFoldersButton(model);
@@ -27077,6 +27148,105 @@ function createSignatureStatCard(label = "", value = "", tone = "") {
   return card;
 }
 
+function buildReactSignatureRows(entries = [], workOrdersWithoutDocuments = []) {
+  const rows = entries.map(({ entry, context, signed, documentItem }) => ({
+    id: String(documentItem?.id || entry.id || `${context.workOrderNumber || entry.label}:${entry.updatedAtMs || ""}`),
+    title: context.workOrderNumber ? `RN ${context.workOrderNumber}` : entry.label,
+    meta: [
+      context.company?.name || context.linkedWorkOrder?.companyName || "",
+      context.location?.name || context.linkedWorkOrder?.locationName || "",
+      context.serviceLabel || "",
+      entry.updatedAt ? formatDateTime(entry.updatedAt) : "",
+    ].filter(Boolean).join(" | "),
+    description: signed
+      ? String(entry.description || "").replace(/^\s*potpisano:\s*/i, "Potpisnici: ").trim()
+      : "Dokument je spreman za potpis.",
+    signed,
+    missing: false,
+    statusLabel: signed ? "Potpisano" : "Čeka potpis",
+    canPreview: Boolean(entry.canPreview),
+    canDownload: Boolean(entry.canDownload),
+    entry,
+    sourceTarget: entry.sourceTarget,
+  }));
+
+  workOrdersWithoutDocuments.slice(0, 12).forEach((workOrder) => {
+    rows.push({
+      id: `missing:${workOrder.id || workOrder.workOrderNumber}`,
+      title: workOrder.workOrderNumber ? `RN ${workOrder.workOrderNumber}` : "Radni nalog",
+      meta: [
+        workOrder.companyName || "",
+        workOrder.locationName || "",
+        getWorkOrderServiceSummary(workOrder) || "",
+      ].filter(Boolean).join(" | "),
+      description: "Prvo generiraj zapisnik, nakon toga ulazi u potpisni red.",
+      signed: false,
+      missing: true,
+      statusLabel: "Bez PDF-a",
+      canPreview: false,
+      canDownload: false,
+      entry: null,
+      sourceTarget: { kind: "work-order", record: workOrder },
+    });
+  });
+
+  return rows;
+}
+
+function renderReactSignaturesModule({
+  entries = [],
+  signedEntries = [],
+  pendingEntries = [],
+  workOrdersWithoutDocuments = [],
+} = {}) {
+  const reactComponents = window.SafeNexusReactComponents;
+  if (!signaturesReactRoot || typeof reactComponents?.renderSignaturesModule !== "function") {
+    signaturesModule?.querySelector(".signatures-hero-panel")?.removeAttribute("hidden");
+    signaturesModule?.querySelector(".signatures-local-signer-panel")?.removeAttribute("hidden");
+    signaturesModule?.querySelector(".signatures-list-panel")?.removeAttribute("hidden");
+    return false;
+  }
+
+  signaturesModule?.querySelector(".signatures-hero-panel")?.setAttribute("hidden", "");
+  signaturesModule?.querySelector(".signatures-local-signer-panel")?.setAttribute("hidden", "");
+  signaturesModule?.querySelector(".signatures-list-panel")?.setAttribute("hidden", "");
+
+  return reactComponents.renderSignaturesModule(signaturesReactRoot, {
+    loading: Boolean(state.documentsExplorer.loading),
+    error: state.documentsExplorer.error || "",
+    stats: {
+      total: entries.length + workOrdersWithoutDocuments.length,
+      pending: pendingEntries.length,
+      signed: signedEntries.length,
+      missing: workOrdersWithoutDocuments.length,
+    },
+    entries: buildReactSignatureRows(entries, workOrdersWithoutDocuments),
+    bridgeStatus: signaturesReactBridgeStatus,
+    onRefresh: () => {
+      void loadDocumentsExplorerRecords({ force: true });
+    },
+    onQueueLocalSigner: () => {
+      void openLocalSignatureBridge();
+    },
+    onPairSigner: () => {
+      void pairLocalSignatureBridge();
+    },
+    onPreview: (entry) => {
+      if (entry) {
+        void runMutation(() => previewDocumentsLibraryEntry(entry), null);
+      }
+    },
+    onDownload: (entry) => {
+      if (entry) {
+        void runMutation(() => downloadDocumentsLibraryEntry(entry), null);
+      }
+    },
+    onOpenSource: (target) => {
+      openDocumentsLibrarySource(target);
+    },
+  });
+}
+
 function renderSignaturesModule() {
   if (!signaturesModule) {
     return;
@@ -27106,6 +27276,15 @@ function renderSignaturesModule() {
       }
       return getWorkOrderServiceItems(workOrder).length > 0;
     });
+
+  if (renderReactSignaturesModule({
+    entries,
+    signedEntries,
+    pendingEntries,
+    workOrdersWithoutDocuments,
+  })) {
+    return;
+  }
 
   if (signaturesStats) {
     signaturesStats.replaceChildren(
@@ -27230,17 +27409,28 @@ function renderSignaturesModule() {
 }
 
 function setSignaturesBridgeStatus(message = "", tone = "") {
+  signaturesReactBridgeStatus = {
+    message: String(message || ""),
+    tone: String(tone || ""),
+  };
   if (!signaturesBridgeStatus) {
+    if (state.activeView === "module" && state.activeModuleItem === "signatures") {
+      renderSignaturesModule();
+    }
     return;
   }
 
   signaturesBridgeStatus.textContent = message;
   signaturesBridgeStatus.className = ["signatures-bridge-status", tone ? `is-${tone}` : ""].filter(Boolean).join(" ");
   signaturesBridgeStatus.hidden = !message;
+  if (state.activeView === "module" && state.activeModuleItem === "signatures") {
+    renderSignaturesModule();
+  }
 }
 
 const SIGNATURE_BRIDGE_KEY_STORAGE_KEY = "safeNexus.signatureBridge.key";
 const LOCAL_SIGNATURE_BRIDGE_BASE_URLS = ["http://127.0.0.1:9137", "http://localhost:9137"];
+let signaturesReactBridgeStatus = { message: "", tone: "" };
 
 function createSignatureBridgeKey() {
   const bytes = new Uint8Array(18);
@@ -38576,6 +38766,7 @@ function syncLegalFrameworkEditorModal() {
   }
 
   if (isOpen) {
+    renderReactLegalFrameworkEditor();
     requestAnimationFrame(() => {
       scrollLegalFrameworkEditorToTop();
       legalFrameworkEditorBody?.focus({ preventScroll: true });
@@ -38583,6 +38774,8 @@ function syncLegalFrameworkEditorModal() {
         scrollLegalFrameworkEditorToTop();
       }, 0);
     });
+  } else {
+    unmountReactLegalFrameworkEditor();
   }
 }
 
@@ -51168,6 +51361,331 @@ async function queueLegalFrameworkDocuments(files) {
   renderLegalFrameworkDocuments();
 }
 
+function buildLegalFrameworkReactDraft(item = {}) {
+  const source = item && typeof item === "object" ? item : {};
+  const documents = (Array.isArray(source.documents) ? source.documents : legalFrameworkDocumentDrafts)
+    .map((entry) => {
+      const draft = createModuleAttachmentDraft(entry);
+      return {
+        ...draft,
+        meta: [
+          "PDF",
+          formatFileSize(draft.fileSize || 0),
+          draft.updatedAt ? formatCompactDateTime(draft.updatedAt) : "",
+        ].filter(Boolean).join(" | "),
+        fileSizeLabel: formatFileSize(draft.fileSize || 0),
+      };
+    })
+    .filter((entry) => entry.fileName && (entry.dataUrl || entry.storageUrl));
+
+  return {
+    versionKey: [
+      source.id || "new",
+      source.updatedAt || "",
+      Date.now(),
+    ].join(":"),
+    id: String(source.id || ""),
+    organizationId: source.organizationId || state.activeOrganizationId || "",
+    title: source.title ?? legalFrameworkTitleInput?.value ?? "",
+    category: source.category ?? legalFrameworkCategoryInput?.value ?? "",
+    status: source.status ?? legalFrameworkStatusInput?.value ?? "active",
+    authority: source.authority ?? legalFrameworkAuthorityInput?.value ?? "",
+    referenceCode: source.referenceCode ?? legalFrameworkReferenceCodeInput?.value ?? "",
+    versionLabel: source.versionLabel ?? legalFrameworkVersionLabelInput?.value ?? "",
+    publishedOn: source.publishedOn ?? legalFrameworkPublishedOnInput?.value ?? "",
+    effectiveFrom: source.effectiveFrom ?? legalFrameworkEffectiveFromInput?.value ?? "",
+    reviewDate: source.reviewDate ?? legalFrameworkReviewDateInput?.value ?? "",
+    sourceUrl: source.sourceUrl ?? legalFrameworkSourceUrlInput?.value ?? "",
+    tagsText: source.tagsText ?? legalFrameworkTagsTextInput?.value ?? "",
+    documents,
+    linkedServiceCatalogIds: (Array.isArray(source.linkedServiceCatalogIds)
+      ? source.linkedServiceCatalogIds
+      : getLegalFrameworkLinkedServiceIds(source)).map(String),
+    note: source.note ?? legalFrameworkNoteInput?.value ?? "",
+  };
+}
+
+function buildLegalFrameworkPayloadFromReactDraft(draft = legalFrameworkReactDraft || {}) {
+  return {
+    organizationId: state.activeOrganizationId || draft.organizationId || "",
+    title: draft.title || "",
+    category: draft.category || "",
+    status: draft.status || "active",
+    authority: draft.authority || "",
+    referenceCode: draft.referenceCode || "",
+    versionLabel: draft.versionLabel || "",
+    publishedOn: draft.publishedOn || "",
+    effectiveFrom: draft.effectiveFrom || "",
+    reviewDate: draft.reviewDate || "",
+    sourceUrl: draft.sourceUrl || "",
+    tagsText: draft.tagsText || "",
+    documents: (Array.isArray(draft.documents) ? draft.documents : []).map((item) => {
+      const { documentCategoryLocked, meta, fileSizeLabel, ...payload } = item;
+      return { ...payload };
+    }),
+    linkedServiceCatalogIds: (Array.isArray(draft.linkedServiceCatalogIds) ? draft.linkedServiceCatalogIds : []).map(String),
+    note: draft.note || "",
+  };
+}
+
+function syncLegalFrameworkReactDraftToLegacyForm(draft = legalFrameworkReactDraft || {}) {
+  if (legalFrameworkIdInput) {
+    legalFrameworkIdInput.value = draft.id || "";
+  }
+  if (legalFrameworkTitleInput) {
+    legalFrameworkTitleInput.value = draft.title || "";
+  }
+  if (legalFrameworkCategoryInput) {
+    legalFrameworkCategoryInput.value = draft.category || "";
+  }
+  if (legalFrameworkStatusInput) {
+    legalFrameworkStatusInput.value = draft.status || "active";
+  }
+  if (legalFrameworkAuthorityInput) {
+    legalFrameworkAuthorityInput.value = draft.authority || "";
+  }
+  if (legalFrameworkReferenceCodeInput) {
+    legalFrameworkReferenceCodeInput.value = draft.referenceCode || "";
+  }
+  if (legalFrameworkVersionLabelInput) {
+    legalFrameworkVersionLabelInput.value = draft.versionLabel || "";
+  }
+  if (legalFrameworkPublishedOnInput) {
+    legalFrameworkPublishedOnInput.value = draft.publishedOn || "";
+  }
+  if (legalFrameworkEffectiveFromInput) {
+    legalFrameworkEffectiveFromInput.value = draft.effectiveFrom || "";
+  }
+  if (legalFrameworkReviewDateInput) {
+    legalFrameworkReviewDateInput.value = draft.reviewDate || "";
+  }
+  if (legalFrameworkSourceUrlInput) {
+    legalFrameworkSourceUrlInput.value = draft.sourceUrl || "";
+  }
+  if (legalFrameworkTagsTextInput) {
+    legalFrameworkTagsTextInput.value = draft.tagsText || "";
+  }
+  if (legalFrameworkNoteInput) {
+    legalFrameworkNoteInput.value = draft.note || "";
+  }
+  legalFrameworkDocumentDrafts = (Array.isArray(draft.documents) ? draft.documents : []).map((item) => {
+    const { meta, fileSizeLabel, ...payload } = item;
+    return payload;
+  });
+  renderLegalFrameworkTemplateChecklist(draft.linkedServiceCatalogIds || []);
+  renderLegalFrameworkDocuments();
+  syncLegalFrameworkEditorChrome();
+}
+
+function getLegalFrameworkReactServiceOptions() {
+  return sortServiceCatalogItems(state.serviceCatalog ?? [])
+    .map((service) => ({
+      value: String(service.id || ""),
+      label: [service.serviceCode, service.name].filter(Boolean).join(" - ") || "Usluga",
+      meta: [
+        getServiceCatalogTypeLabel(service.serviceType || (service.isTraining ? "znr" : "inspection")),
+        getOptionLabel(SERVICE_CATALOG_STATUS_OPTIONS, service.status || "active"),
+      ].filter(Boolean).join(" | "),
+    }))
+    .filter((option) => option.value);
+}
+
+function buildLegalFrameworkReactRows(items = []) {
+  return items.map((item) => {
+    const documents = (Array.isArray(item.documents) ? item.documents : [])
+      .map((entry) => createModuleAttachmentDraft(entry))
+      .filter((entry) => entry.fileName && (entry.dataUrl || entry.storageUrl));
+    const serviceTitles = getLegalFrameworkLinkedServiceTitles(item);
+    const status = item.status || "active";
+    return {
+      ...item,
+      id: String(item.id || ""),
+      title: item.title || "Bez naziva",
+      statusLabel: getLegalFrameworkStatusLabel(status),
+      statusClass: `is-${slugifyValue(status)}`,
+      statusTone: status === "active" ? "is-green" : "is-muted",
+      isActive: String(item.id || "") === String(legalFrameworkReactDraft?.id || legalFrameworkIdInput?.value || ""),
+      note: item.note || "Dodaj sažetak obveze ili kratku napomenu koja ide u zapisnik.",
+      documents,
+      documentCountLabel: documents.length ? formatLegalFrameworkDocumentCountLabel(documents.length) : "Bez PDF dokumenata",
+      serviceBadges: serviceTitles.length
+        ? serviceTitles.slice(0, 5).map((label) => ({ label }))
+        : [{ label: "Bez usluga", muted: true }],
+    };
+  });
+}
+
+function renderReactLegalFrameworkModule({ filters, allItems, visibleItems, canEditLegalFramework } = {}) {
+  const reactComponents = window.SafeNexusReactComponents;
+  if (!legalFrameworkReactRoot || typeof reactComponents?.renderLegalFrameworkModule !== "function") {
+    legalFrameworkModule?.querySelector(".legal-framework-list-panel")?.removeAttribute("hidden");
+    return false;
+  }
+
+  legalFrameworkModule?.querySelector(".legal-framework-list-panel")?.setAttribute("hidden", "");
+  return reactComponents.renderLegalFrameworkModule(legalFrameworkReactRoot, {
+    filters,
+    rows: buildLegalFrameworkReactRows(visibleItems),
+    stats: {
+      total: allItems.length,
+      active: allItems.filter((item) => String(item.status || "active") === "active").length,
+      withDocuments: allItems.filter((item) => Array.isArray(item.documents) && item.documents.length > 0).length,
+      withServices: allItems.filter((item) => getLegalFrameworkLinkedServiceIds(item).length > 0).length,
+    },
+    statusOptions: [
+      { value: "all", label: "Svi statusi" },
+      ...LEGAL_FRAMEWORK_STATUS_OPTIONS,
+    ],
+    canEdit: canEditLegalFramework,
+    onCreate: () => {
+      if (!getCanEditLegalFramework()) {
+        return;
+      }
+      resetLegalFrameworkForm();
+      renderLegalFrameworkModule();
+      openLegalFrameworkEditor();
+    },
+    onOpen: (itemId) => {
+      const item = state.legalFrameworks.find((entry) => String(entry.id) === String(itemId));
+      if (item && getCanEditLegalFramework()) {
+        hydrateLegalFrameworkForm(item);
+      }
+    },
+    onSearch: (query) => {
+      state.legalFrameworkFilters.query = String(query || "").trim();
+      if (legalFrameworkSearchInput) {
+        legalFrameworkSearchInput.value = state.legalFrameworkFilters.query;
+      }
+      renderLegalFrameworkModule();
+    },
+    onStatus: (status) => {
+      state.legalFrameworkFilters.status = status || "all";
+      if (legalFrameworkFilterStatusInput) {
+        legalFrameworkFilterStatusInput.value = state.legalFrameworkFilters.status;
+      }
+      renderLegalFrameworkModule();
+    },
+    onDownloadDocument: (document) => {
+      triggerModuleAttachmentDownload(document);
+    },
+  });
+}
+
+function renderReactLegalFrameworkEditor() {
+  const reactComponents = window.SafeNexusReactComponents;
+  if (!legalFrameworkEditorReactRoot || typeof reactComponents?.renderLegalFrameworkEditor !== "function") {
+    legalFrameworkEditorPanel?.querySelector(".offers-editor-fixed-head")?.removeAttribute("hidden");
+    legalFrameworkEditorBody?.removeAttribute("hidden");
+    return false;
+  }
+
+  if (!legalFrameworkReactDraft) {
+    legalFrameworkReactDraft = buildLegalFrameworkReactDraft({});
+  }
+
+  legalFrameworkEditorPanel?.querySelector(".offers-editor-fixed-head")?.setAttribute("hidden", "");
+  legalFrameworkEditorBody?.setAttribute("hidden", "");
+  return reactComponents.renderLegalFrameworkEditor(legalFrameworkEditorReactRoot, {
+    draft: legalFrameworkReactDraft,
+    statusOptions: LEGAL_FRAMEWORK_STATUS_OPTIONS,
+    serviceOptions: getLegalFrameworkReactServiceOptions(),
+    canEdit: getCanEditLegalFramework(),
+    onChange: (draft) => {
+      legalFrameworkReactDraft = buildLegalFrameworkReactDraft(draft);
+      syncLegalFrameworkReactDraftToLegacyForm(legalFrameworkReactDraft);
+      renderReactLegalFrameworkEditor();
+    },
+    onClose: () => {
+      dismissLegalFrameworkEditor();
+    },
+    onSave: (draft) => {
+      void saveLegalFrameworkReactDraft(draft);
+    },
+    onDelete: (itemId) => {
+      void deleteLegalFrameworkReactDraft(itemId);
+    },
+    onReset: () => {
+      resetLegalFrameworkForm();
+      renderLegalFrameworkModule();
+      openLegalFrameworkEditor();
+    },
+    onUploadDocuments: (files) => {
+      void uploadLegalFrameworkReactDocuments(files);
+    },
+    onDownloadDocument: (document) => {
+      triggerModuleAttachmentDownload(document);
+    },
+    onRemoveDocument: (documentId) => {
+      legalFrameworkReactDraft = {
+        ...legalFrameworkReactDraft,
+        documents: (legalFrameworkReactDraft.documents || []).filter((item) => String(item.id) !== String(documentId)),
+      };
+      syncLegalFrameworkReactDraftToLegacyForm(legalFrameworkReactDraft);
+      renderReactLegalFrameworkEditor();
+    },
+  });
+}
+
+function unmountReactLegalFrameworkEditor() {
+  window.SafeNexusReactComponents?.unmountLegalFrameworkEditor?.(legalFrameworkEditorReactRoot);
+  legalFrameworkEditorPanel?.querySelector(".offers-editor-fixed-head")?.removeAttribute("hidden");
+  legalFrameworkEditorBody?.removeAttribute("hidden");
+}
+
+async function uploadLegalFrameworkReactDocuments(files = []) {
+  await queueLegalFrameworkDocuments(files);
+  legalFrameworkReactDraft = buildLegalFrameworkReactDraft({
+    ...(legalFrameworkReactDraft || {}),
+    documents: legalFrameworkDocumentDrafts,
+  });
+  renderReactLegalFrameworkEditor();
+}
+
+async function saveLegalFrameworkReactDraft(draft = legalFrameworkReactDraft || {}) {
+  if (!getCanEditLegalFramework()) {
+    setInlineMessage(legalFrameworkError, "Nemate pravo spremati propise.");
+    return false;
+  }
+
+  legalFrameworkReactDraft = buildLegalFrameworkReactDraft(draft);
+  syncLegalFrameworkReactDraftToLegacyForm(legalFrameworkReactDraft);
+  const isEditing = Boolean(legalFrameworkReactDraft.id);
+  const path = isEditing ? `/legal-frameworks/${legalFrameworkReactDraft.id}` : "/legal-frameworks";
+  const method = isEditing ? "PATCH" : "POST";
+  const success = await runMutation(() => apiRequest(path, {
+    method,
+    body: buildLegalFrameworkPayloadFromReactDraft(legalFrameworkReactDraft),
+  }), legalFrameworkError);
+
+  if (success) {
+    closeLegalFrameworkEditor({ reset: true });
+    renderLegalFrameworkModule();
+  }
+
+  return success;
+}
+
+async function deleteLegalFrameworkReactDraft(itemId = legalFrameworkReactDraft?.id || "") {
+  if (!getCanEditLegalFramework()) {
+    return false;
+  }
+  const legalFrameworkId = String(itemId || "").trim();
+  if (!legalFrameworkId || !window.confirm("Obrisati ovaj propis?")) {
+    return false;
+  }
+
+  const success = await runMutation(() => apiRequest(`/legal-frameworks/${legalFrameworkId}`, {
+    method: "DELETE",
+  }), legalFrameworkError);
+
+  if (success) {
+    closeLegalFrameworkEditor({ reset: true });
+    renderLegalFrameworkModule();
+  }
+
+  return success;
+}
+
 function renderTemplateSelectionChecklist(
   container,
   {
@@ -54691,6 +55209,7 @@ function resetLegalFrameworkForm() {
     legalFrameworkError.textContent = "";
   }
   setLegalFrameworkDocumentDrafts([]);
+  legalFrameworkReactDraft = buildLegalFrameworkReactDraft({});
   renderLegalFrameworkTemplateChecklist([]);
   renderLegalFrameworkDocuments();
   syncLegalFrameworkEditorChrome();
@@ -54724,6 +55243,7 @@ function hydrateLegalFrameworkForm(item) {
   legalFrameworkTagsTextInput.value = item.tagsText || "";
   legalFrameworkNoteInput.value = item.note || "";
   setLegalFrameworkDocumentDrafts(item.documents ?? []);
+  legalFrameworkReactDraft = buildLegalFrameworkReactDraft(item);
   renderLegalFrameworkTemplateChecklist(getLegalFrameworkLinkedServiceIds(item));
   renderLegalFrameworkDocuments();
   if (legalFrameworkError) {
@@ -54777,6 +55297,18 @@ function renderLegalFrameworkModule() {
   const legalFrameworkItems = canAccessLegalFramework ? (state.legalFrameworks ?? []) : [];
   const allItems = sortLegalFrameworks(legalFrameworkItems);
   const visibleItems = sortLegalFrameworks(filterLegalFrameworks(legalFrameworkItems, filters));
+  if (legalFrameworkTotalCount) {
+    legalFrameworkTotalCount.textContent = String(allItems.length);
+  }
+  if (legalFrameworkActiveCount) {
+    legalFrameworkActiveCount.textContent = String(allItems.filter((item) => String(item.status || "active") === "active").length);
+  }
+  if (legalFrameworkInactiveCount) {
+    legalFrameworkInactiveCount.textContent = String(allItems.filter((item) => String(item.status || "active") !== "active").length);
+  }
+  if (legalFrameworkReviewCount) {
+    legalFrameworkReviewCount.textContent = String(allItems.filter((item) => isLegalFrameworkReviewSoon(item)).length);
+  }
   if (legalFrameworkOpenFormButton) {
     legalFrameworkOpenFormButton.hidden = !canEditLegalFramework;
   }
@@ -54787,6 +55319,18 @@ function renderLegalFrameworkModule() {
     legalFrameworkHelper.textContent = visibleItems.length === allItems.length
       ? `Prikazano ${visibleItems.length} propisa.`
       : `Prikazano ${visibleItems.length} od ${allItems.length} propisa.`;
+  }
+
+  if (renderReactLegalFrameworkModule({
+    filters,
+    allItems,
+    visibleItems,
+    canEditLegalFramework,
+  })) {
+    if (legalFrameworkEmpty) {
+      legalFrameworkEmpty.hidden = true;
+    }
+    return;
   }
 
   legalFrameworkList.replaceChildren(...visibleItems.map((item) => {

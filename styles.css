@@ -48202,6 +48202,324 @@ button.work-order-editor-section-head {
   align-content: center;
 }
 
+.documents-react-root,
+.signatures-react-root,
+.legal-framework-react-root,
+.legal-framework-editor-react-root {
+  display: block;
+  width: 100%;
+}
+
+.core-shell {
+  display: grid;
+  gap: 16px;
+  color: var(--text-primary, #17213a);
+}
+
+.core-hero-panel,
+.core-side-panel,
+.core-main-panel,
+.core-signer-card {
+  border: 1px solid rgba(119, 151, 205, 0.34);
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(244, 249, 255, 0.92)),
+    radial-gradient(circle at top right, rgba(220, 81, 178, 0.11), transparent 42%);
+  box-shadow: 0 18px 40px rgba(34, 62, 105, 0.08);
+}
+
+.core-hero-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px;
+}
+
+.core-hero-panel h3,
+.core-side-panel h3,
+.core-main-panel h3,
+.core-signer-card h3 {
+  margin: 4px 0;
+  font-size: 18px;
+  letter-spacing: 0;
+}
+
+.core-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.core-stat-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.core-documents-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.core-side-panel,
+.core-main-panel {
+  padding: 16px;
+}
+
+.core-category-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.core-category-card {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  border: 1px solid rgba(148, 176, 219, 0.48);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.78);
+  color: inherit;
+  text-align: left;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.core-category-card:hover,
+.core-category-card.is-active {
+  border-color: rgba(42, 119, 230, 0.78);
+  box-shadow: 0 12px 24px rgba(42, 119, 230, 0.12);
+  transform: translateY(-1px);
+}
+
+.core-category-icon,
+.core-folder-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(232, 243, 255, 0.95), rgba(229, 244, 239, 0.95));
+  color: #1f66c7;
+  font-weight: 800;
+  font-size: 12px;
+}
+
+.core-filter-bar {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(150px, 220px);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.core-folder-list,
+.core-signature-list,
+.core-card-grid,
+.core-attachment-list {
+  display: grid;
+  gap: 10px;
+}
+
+.core-folder-card,
+.core-file-row,
+.core-signature-row,
+.core-registry-card,
+.core-attachment-row {
+  border: 1px solid rgba(139, 166, 207, 0.36);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow: 0 10px 26px rgba(25, 42, 78, 0.05);
+}
+
+.core-folder-head {
+  display: grid;
+  grid-template-columns: 20px 34px minmax(0, 1fr) auto minmax(92px, auto);
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 12px;
+  cursor: pointer;
+}
+
+.core-folder-mark {
+  color: #316fd0;
+  font-weight: 900;
+}
+
+.core-folder-copy,
+.core-file-copy,
+.core-signature-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.core-folder-copy strong,
+.core-file-copy strong,
+.core-signature-copy strong,
+.core-registry-card h4 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.core-folder-copy small,
+.core-file-copy small,
+.core-file-copy span,
+.core-signature-copy span,
+.core-signature-copy small,
+.core-file-date,
+.core-folder-date {
+  color: #61708f;
+  font-size: 12px;
+}
+
+.core-file-list {
+  display: grid;
+  gap: 8px;
+  padding: 0 12px 12px 56px;
+}
+
+.core-file-row,
+.core-signature-row,
+.core-attachment-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(96px, auto) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+}
+
+.core-signature-row {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.core-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.core-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  border-radius: 999px;
+  border: 1px solid rgba(135, 164, 210, 0.45);
+  background: rgba(239, 246, 255, 0.86);
+  color: #24466f;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.core-badge.is-green {
+  border-color: rgba(64, 179, 124, 0.45);
+  background: rgba(232, 251, 241, 0.9);
+  color: #17663d;
+}
+
+.core-badge.is-orange {
+  border-color: rgba(240, 172, 74, 0.5);
+  background: rgba(255, 246, 225, 0.92);
+  color: #86550f;
+}
+
+.core-badge.is-red {
+  border-color: rgba(230, 112, 128, 0.52);
+  background: rgba(255, 237, 240, 0.92);
+  color: #9b2635;
+}
+
+.core-badge.is-muted {
+  background: rgba(245, 247, 251, 0.9);
+  color: #64728f;
+}
+
+.core-signer-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+}
+
+.core-card-grid {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.core-registry-card {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  cursor: pointer;
+}
+
+.core-registry-card.is-active {
+  border-color: rgba(42, 119, 230, 0.72);
+  box-shadow: 0 14px 34px rgba(42, 119, 230, 0.13);
+}
+
+.core-registry-card p {
+  min-height: 40px;
+  margin: 0;
+  color: #52627f;
+  line-height: 1.45;
+}
+
+.core-registry-head,
+.core-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.core-registry-head {
+  justify-content: space-between;
+  color: #687692;
+  font-size: 12px;
+}
+
+.core-empty-card {
+  padding: 18px;
+}
+
+.core-editor-react {
+  min-height: min(760px, calc(100vh - 72px));
+}
+
+.core-attachment-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.core-attachment-row > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.core-attachment-row span {
+  color: #61708f;
+  font-size: 12px;
+}
+
+.core-toggle-field .operations-switch {
+  justify-self: start;
+}
+
 .work-orders-scroll-shell.is-react-list {
   padding: 12px;
   background:
@@ -48417,6 +48735,14 @@ button.work-order-editor-section-head {
 }
 
 @media (max-width: 1280px) {
+  .core-documents-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .core-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .work-order-react-quick-create,
   .work-order-react-summary,
   .work-order-react-quick-details {
@@ -48425,5 +48751,25 @@ button.work-order-editor-section-head {
 
   .work-order-react-quick-details {
     grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  .core-hero-panel,
+  .core-signer-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .core-filter-bar,
+  .core-file-row,
+  .core-folder-head,
+  .core-signature-row,
+  .core-stat-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .core-file-list {
+    padding-left: 12px;
   }
 }
