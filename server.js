@@ -130,7 +130,6 @@ const securityContentSecurityPolicy = [
   "worker-src 'self' blob:",
   "manifest-src 'self'",
   "media-src 'self' blob: data: https:",
-  "upgrade-insecure-requests",
 ].join("; ");
 
 function normalizeEnvBoolean(value, fallback = false) {

@@ -27212,24 +27212,52 @@ function setSignaturesBridgeStatus(message = "", tone = "") {
   signaturesBridgeStatus.hidden = !message;
 }
 
-async function postLocalSignatureBridgeJob(payload = {}) {
-  const response = await fetch("http://127.0.0.1:9137/sign", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      token: payload.token || "",
-      apiBase: payload.apiBase || window.location.origin,
-      origin: window.location.origin,
-    }),
-  });
+const LOCAL_SIGNATURE_BRIDGE_BASE_URLS = ["http://127.0.0.1:9137", "http://localhost:9137"];
 
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok || result.ok === false) {
-    throw new Error(result.error || result.message || "Lokalni signer nije uspio obraditi paket.");
+async function postLocalSignatureBridgeJob(payload = {}) {
+  let lastError = null;
+  for (const baseUrl of LOCAL_SIGNATURE_BRIDGE_BASE_URLS) {
+    try {
+      const response = await fetch(`${baseUrl}/sign`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          token: payload.token || "",
+          apiBase: payload.apiBase || window.location.origin,
+          origin: window.location.origin,
+        }),
+      });
+
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok === false) {
+        throw new Error(result.error || result.message || "Lokalni signer nije uspio obraditi paket.");
+      }
+      return result;
+    } catch (error) {
+      lastError = error;
+    }
   }
-  return result;
+
+  throw lastError || new Error("Lokalni signer nije dostupan na 127.0.0.1:9137.");
+}
+
+async function pingLocalSignatureBridge() {
+  for (const baseUrl of LOCAL_SIGNATURE_BRIDGE_BASE_URLS) {
+    try {
+      const response = await fetch(`${baseUrl}/health`, {
+        method: "GET",
+        cache: "no-store",
+      });
+      if (response.ok) {
+        return true;
+      }
+    } catch {
+      // Try the next localhost alias.
+    }
+  }
+  return false;
 }
 
 function waitForLocalSignatureBridge(ms = 2500) {
@@ -27259,9 +27287,15 @@ async function openLocalSignatureBridge() {
     });
     const protocolUrl = payload.protocolUrl || `safenexus-signer://sign?token=${encodeURIComponent(payload.token || "")}&api=${encodeURIComponent(window.location.origin)}`;
     setSignaturesBridgeStatus(
-      `${payload.items?.length || pendingEntries.length} zapisnika pripremljeno. Spajam se na lokalni signer...`,
+      `${payload.items?.length || pendingEntries.length} zapisnika pripremljeno. Provjeravam lokalni bridge...`,
       "loading",
     );
+    const bridgeOnline = await pingLocalSignatureBridge();
+    if (!bridgeOnline) {
+      setSignaturesBridgeStatus("Lokalni bridge nije aktivan. Pokrećem SafeNexus Signer...", "warning");
+      window.location.href = `safenexus-signer://open?origin=${encodeURIComponent(window.location.origin)}`;
+      await waitForLocalSignatureBridge();
+    }
     try {
       const localResult = await postLocalSignatureBridgeJob(payload);
       setSignaturesBridgeStatus(
