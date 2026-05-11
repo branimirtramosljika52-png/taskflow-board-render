@@ -44,7 +44,7 @@ public final class SafeNexusSigner {
     }
 
     public static void main(String[] args) throws Exception {
-        String launchArg = args != null && args.length > 0 ? args[0] : "";
+        String launchArg = normalizeLaunchArg(args);
         boolean bridgeStarted = false;
         try {
             startBridge();
@@ -55,7 +55,7 @@ public final class SafeNexusSigner {
                 showReport(result);
                 return;
             }
-            showInfo("SafeNexus Signer bridge već radi na http://127.0.0.1:" + PORT);
+            showInfo("SafeNexus Signer je već spreman za potpis.\n\nBridge je aktivan na http://127.0.0.1:" + PORT);
             return;
         }
 
@@ -71,7 +71,7 @@ public final class SafeNexusSigner {
             return;
         }
 
-        showInfo("SafeNexus Signer bridge radi na http://127.0.0.1:" + PORT + "\n\nWeb aplikacija će ga otvoriti automatski kada pokreneš digitalni potpis.");
+        showInfo("SafeNexus Signer je spreman za potpis.\n\nBridge radi na http://127.0.0.1:" + PORT + "\n\nWeb aplikacija će ga otvoriti automatski kada pokreneš digitalni potpis.");
     }
 
     private static void startBridge() throws IOException {
@@ -377,6 +377,29 @@ public final class SafeNexusSigner {
         } catch (Exception ignored) {
             return false;
         }
+    }
+
+    private static String normalizeLaunchArg(String[] args) {
+        if (args == null || args.length == 0) {
+            return "";
+        }
+
+        for (String arg : args) {
+            String value = stripWrappingQuotes(arg);
+            if (value.startsWith("safenexus-signer://")) {
+                return value;
+            }
+        }
+
+        return stripWrappingQuotes(String.join("", args));
+    }
+
+    private static String stripWrappingQuotes(String value) {
+        String out = value == null ? "" : value.trim();
+        while (out.length() >= 2 && ((out.startsWith("\"") && out.endsWith("\"")) || (out.startsWith("'") && out.endsWith("'")))) {
+            out = out.substring(1, out.length() - 1).trim();
+        }
+        return out;
     }
 
     private static Map<String, String> parseQuery(URI uri) {

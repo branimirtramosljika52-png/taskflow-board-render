@@ -27232,6 +27232,12 @@ async function postLocalSignatureBridgeJob(payload = {}) {
   return result;
 }
 
+function waitForLocalSignatureBridge(ms = 2500) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
 async function openLocalSignatureBridge() {
   const pendingEntries = buildSignatureModuleDocumentEntries().filter((entry) => !entry.signed);
   if (pendingEntries.length === 0) {
@@ -27266,7 +27272,23 @@ async function openLocalSignatureBridge() {
       return;
     } catch (localError) {
       setSignaturesBridgeStatus(
-        "Lokalni signer nije odgovorio direktno. Otvaram ga kroz Windows protokol...",
+        "Lokalni signer nije odgovorio direktno. Pokrećem bridge pa pokušavam još jednom...",
+        "warning",
+      );
+    }
+    window.location.href = `safenexus-signer://open?origin=${encodeURIComponent(window.location.origin)}`;
+    await waitForLocalSignatureBridge();
+    try {
+      const retryResult = await postLocalSignatureBridgeJob(payload);
+      setSignaturesBridgeStatus(
+        retryResult.message || `${retryResult.signed || 0} zapisnika je potpisano i vraćeno u Documents.`,
+        retryResult.ok === false ? "error" : "ready",
+      );
+      await loadDocumentsExplorerRecords({ force: true });
+      return;
+    } catch (retryError) {
+      setSignaturesBridgeStatus(
+        "Bridge se nije javio kroz localhost. Šaljem paket kroz Windows protokol...",
         "warning",
       );
     }
