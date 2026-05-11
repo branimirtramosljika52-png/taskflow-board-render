@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260511e" />
+    <link rel="stylesheet" href="/styles.css?v=20260511h" />
     <link rel="stylesheet" href="/src/styles/variables.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/reset.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/builder.css?v=20260509e" />
@@ -1867,6 +1867,7 @@
 
             <section id="work-order-list-view" class="work-order-mode-view">
               <div id="work-orders-table-wrap" class="work-orders-scroll-shell">
+                <div id="work-orders-react-root" class="work-orders-react-root"></div>
                 <div id="work-orders-body" class="work-orders-groups"></div>
               </div>
             </section>
@@ -6678,6 +6679,7 @@
             </section>
 
             <section id="service-catalog-module" class="service-catalog-module" hidden>
+              <div id="service-catalog-react-root" class="service-catalog-react-root"></div>
               <section class="panel service-catalog-list-panel">
                 <div class="section-heading offers-section-heading service-catalog-list-heading">
                   <div>
@@ -6705,6 +6707,7 @@
 
               <div id="service-catalog-editor-backdrop" class="offer-editor-backdrop service-catalog-editor-backdrop" hidden></div>
               <section id="service-catalog-editor-panel" class="panel service-catalog-editor-panel" hidden>
+                <div id="service-catalog-editor-react-root" class="service-catalog-editor-react-root"></div>
                 <div class="offers-editor-fixed-head">
                   <div class="section-heading offers-section-heading">
                     <div>
@@ -7192,6 +7195,7 @@
             </section>
 
             <section id="safety-authorization-module" class="safety-authorization-module" hidden>
+              <div id="safety-authorization-react-root" class="safety-authorization-react-root"></div>
               <section class="panel safety-authorization-list-panel">
                 <div class="section-heading offers-section-heading">
                   <div>
@@ -7215,6 +7219,7 @@
 
               <div id="safety-authorization-editor-backdrop" class="offer-editor-backdrop safety-authorization-editor-backdrop" hidden></div>
               <section id="safety-authorization-editor-panel" class="panel safety-authorization-editor-panel" hidden>
+                <div id="safety-authorization-editor-react-root" class="safety-authorization-editor-react-root"></div>
                 <div class="offers-editor-fixed-head">
                   <div class="section-heading offers-section-heading">
                     <div>
@@ -7981,6 +7986,7 @@
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
     <script type="module" src="/assets/react/people-directory.js?v=20260511f"></script>
     <script type="module" src="/assets/react/organisations.js?v=20260511g"></script>
-    <script type="module" src="/src/main.js?v=20260511g"></script>
+    <script type="module" src="/assets/react/operations.js?v=20260511h"></script>
+    <script type="module" src="/src/main.js?v=20260511h"></script>
   </body>
 </html>

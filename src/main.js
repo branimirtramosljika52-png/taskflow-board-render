@@ -2591,6 +2591,7 @@ let companiesColumnResizeState = null;
 let companiesColumnResizeInitialized = false;
 let workOrderListColumnWidths = {};
 let workOrderListColumnResizeState = null;
+let workOrderReactQuickCreateBusy = false;
 let companyEditorRelatedDataRafId = 0;
 let companyEditorRelatedDataTimeoutId = 0;
 let companyEditorRelatedDataIdleId = 0;
@@ -3504,9 +3505,11 @@ const serviceCatalogFilterStatusInput = document.querySelector("#service-catalog
 const serviceCatalogHelper = document.querySelector("#service-catalog-helper");
 const serviceCatalogList = document.querySelector("#service-catalog-list");
 const serviceCatalogEmpty = document.querySelector("#service-catalog-empty");
+const serviceCatalogReactRoot = document.querySelector("#service-catalog-react-root");
 const serviceCatalogOpenFormButton = document.querySelector("#service-catalog-open-form");
 const serviceCatalogEditorBackdrop = document.querySelector("#service-catalog-editor-backdrop");
 const serviceCatalogEditorPanel = document.querySelector("#service-catalog-editor-panel");
+const serviceCatalogEditorReactRoot = document.querySelector("#service-catalog-editor-react-root");
 const serviceCatalogEditorCloseButton = document.querySelector("#service-catalog-editor-close");
 const serviceCatalogEditorBody = serviceCatalogEditorPanel?.querySelector(".service-catalog-editor-body");
 const serviceCatalogEditorTitle = document.querySelector("#service-catalog-editor-title");
@@ -3630,9 +3633,11 @@ const safetyAuthorizationSearchInput = document.querySelector("#safety-authoriza
 const safetyAuthorizationHelper = document.querySelector("#safety-authorization-helper");
 const safetyAuthorizationList = document.querySelector("#safety-authorization-list");
 const safetyAuthorizationEmpty = document.querySelector("#safety-authorization-empty");
+const safetyAuthorizationReactRoot = document.querySelector("#safety-authorization-react-root");
 const safetyAuthorizationOpenFormButton = document.querySelector("#safety-authorization-open-form");
 const safetyAuthorizationEditorBackdrop = document.querySelector("#safety-authorization-editor-backdrop");
 const safetyAuthorizationEditorPanel = document.querySelector("#safety-authorization-editor-panel");
+const safetyAuthorizationEditorReactRoot = document.querySelector("#safety-authorization-editor-react-root");
 const safetyAuthorizationEditorCloseButton = document.querySelector("#safety-authorization-editor-close");
 const safetyAuthorizationEditorBody = safetyAuthorizationEditorPanel?.querySelector(".safety-authorization-editor-body");
 const safetyAuthorizationEditorTitle = document.querySelector("#safety-authorization-editor-title");
@@ -3776,6 +3781,7 @@ let offerHtmlPreviewPayload = null;
 let contractAnnexDrafts = [];
 let contractTemplateReferenceDraft = null;
 let serviceCatalogCertificateTemplateDraft = null;
+let serviceCatalogReactDraft = null;
 let lastCommercialDocumentContextKey = "offers";
 let offerServiceAddMenu = null;
 let documentTemplateFieldDrafts = [];
@@ -3812,6 +3818,7 @@ let measurementEquipmentSpecDrafts = [];
 let measurementEquipmentReactDraft = null;
 let legalFrameworkDocumentDrafts = [];
 let safetyAuthorizationDocumentDrafts = [];
+let safetyAuthorizationReactDraft = null;
 let absenceDocumentDrafts = [];
 let absenceBalanceDrafts = [];
 let absenceEditorDraft = null;
@@ -4523,6 +4530,7 @@ const measurementContextDeleteColumnButton = document.querySelector("#measuremen
 const workOrdersBody = document.querySelector("#work-orders-body");
 const workOrdersEmpty = document.querySelector("#work-orders-empty");
 const workOrdersTableWrap = document.querySelector("#work-orders-table-wrap");
+const workOrdersReactRoot = document.querySelector("#work-orders-react-root");
 const workOrdersLoadState = document.querySelector("#work-orders-load-state");
 const workOrdersHelper = document.querySelector("#work-orders-helper");
 const workspaceViewChips = Array.from(document.querySelectorAll("[data-jump-view]"));
@@ -38662,6 +38670,7 @@ function syncServiceCatalogEditorModal() {
   }
 
   if (isOpen) {
+    renderReactServiceCatalogEditor();
     requestAnimationFrame(() => {
       scrollServiceCatalogEditorToTop();
       serviceCatalogEditorBody?.focus({ preventScroll: true });
@@ -38669,6 +38678,8 @@ function syncServiceCatalogEditorModal() {
         scrollServiceCatalogEditorToTop();
       }, 0);
     });
+  } else {
+    unmountReactServiceCatalogEditor();
   }
 }
 
@@ -38746,6 +38757,7 @@ function syncSafetyAuthorizationEditorModal() {
   }
 
   if (isOpen) {
+    renderReactSafetyAuthorizationEditor();
     requestAnimationFrame(() => {
       scrollSafetyAuthorizationEditorToTop();
       safetyAuthorizationEditorBody?.focus({ preventScroll: true });
@@ -38753,6 +38765,8 @@ function syncSafetyAuthorizationEditorModal() {
         scrollSafetyAuthorizationEditorToTop();
       }, 0);
     });
+  } else {
+    unmountReactSafetyAuthorizationEditor();
   }
 }
 
@@ -55199,6 +55213,325 @@ function syncServiceCatalogTrainingSections({ source = "" } = {}) {
   renderServiceCatalogCertificatePlaceholderList();
 }
 
+function buildServiceCatalogReactDraft(item = {}) {
+  const source = item && typeof item === "object" ? item : {};
+  const serviceType = source.isTraining
+    ? "znr"
+    : normalizeServiceCatalogTypeUi(source.serviceType || serviceCatalogTypeInput?.value || "inspection", "inspection");
+  const certificateDraft = source.trainingCertificateTemplate
+    ? serializeModuleAttachmentDraft(source.trainingCertificateTemplate)
+    : serviceCatalogCertificateTemplateDraft;
+
+  return {
+    versionKey: [
+      source.id || "new",
+      source.updatedAt || "",
+      Date.now(),
+    ].join(":"),
+    id: String(source.id || ""),
+    organizationId: source.organizationId || state.activeOrganizationId || "",
+    name: source.name ?? serviceCatalogNameInput?.value ?? "",
+    serviceCode: source.serviceCode ?? serviceCatalogCodeInput?.value ?? "",
+    status: source.status ?? serviceCatalogStatusInput?.value ?? "active",
+    serviceType,
+    isTraining: serviceType === "znr",
+    validityMonths: normalizeValidityMonthsValue(source.validityMonths ?? serviceCatalogValidityMonthsInput?.value ?? ""),
+    linkedTemplateIds: (Array.isArray(source.linkedTemplateIds)
+      ? source.linkedTemplateIds
+      : getServiceCatalogTemplateSelectionIds()).map(String),
+    linkedLearningTestIds: (Array.isArray(source.linkedLearningTestIds)
+      ? source.linkedLearningTestIds
+      : getServiceCatalogLearningTestSelectionIds()).map(String),
+    trainingCertificateTemplate: certificateDraft ? {
+      ...certificateDraft,
+      meta: formatModuleAttachmentMeta(certificateDraft),
+      fileSizeLabel: formatFileSize(certificateDraft.fileSize),
+    } : null,
+    note: source.note ?? serviceCatalogNoteInput?.value ?? "",
+  };
+}
+
+function buildServiceCatalogPayloadFromReactDraft(draft = {}) {
+  const serviceType = normalizeServiceCatalogTypeUi(draft.isTraining ? "znr" : draft.serviceType, "inspection");
+  const appliesToPeople = Boolean(draft.isTraining || serviceType === "znr");
+  return {
+    organizationId: state.activeOrganizationId || draft.organizationId || "",
+    name: draft.name || "",
+    serviceCode: draft.serviceCode || "",
+    status: draft.status || "active",
+    serviceType: appliesToPeople ? "znr" : serviceType,
+    isTraining: appliesToPeople,
+    validityMonths: normalizeValidityMonthsValue(draft.validityMonths || ""),
+    linkedTemplateIds: appliesToPeople ? [] : asArray(draft.linkedTemplateIds).map(String),
+    linkedLearningTestIds: appliesToPeople ? asArray(draft.linkedLearningTestIds).map(String) : [],
+    trainingCertificateTemplate: appliesToPeople && draft.trainingCertificateTemplate
+      ? serializeModuleAttachmentDraft(draft.trainingCertificateTemplate)
+      : null,
+    note: draft.note || "",
+  };
+}
+
+function buildServiceCatalogReactRows(items = []) {
+  return items.map((item) => {
+    const typeValue = normalizeServiceCatalogTypeUi(item.serviceType, item.isTraining ? "znr" : "inspection");
+    const templateTitles = (item.linkedTemplateTitles ?? [])
+      .map((value) => String(value ?? "").trim())
+      .filter(Boolean);
+    const learningTestTitles = (item.linkedLearningTestTitles ?? [])
+      .map((value) => String(value ?? "").trim())
+      .filter(Boolean);
+    const badges = typeValue === "inspection"
+      ? (templateTitles.length
+        ? templateTitles.slice(0, 3).map((label) => ({ label }))
+        : [{ label: "Bez zapisnika", muted: true }])
+      : typeValue === "znr"
+        ? (learningTestTitles.length
+          ? learningTestTitles.slice(0, 3).map((label) => ({ label }))
+          : [{ label: "Bez ispita", muted: true }])
+        : [{ label: "Bez dodatnih veza", muted: true }];
+
+    if (typeValue === "inspection" && templateTitles.length > 3) {
+      badges.push({ label: `+${templateTitles.length - 3}`, muted: true });
+    }
+    if (typeValue === "znr" && learningTestTitles.length > 3) {
+      badges.push({ label: `+${learningTestTitles.length - 3} ispita`, muted: true });
+    }
+
+    return {
+      ...item,
+      id: String(item.id || ""),
+      statusClass: `is-${slugifyValue(item.status || "active")}`,
+      isActive: String(item.id || "") === String(serviceCatalogReactDraft?.id || serviceCatalogIdInput?.value || ""),
+      typeLabel: getServiceCatalogTypeLabel(typeValue),
+      statusLabel: getOptionLabel(SERVICE_CATALOG_STATUS_OPTIONS, item.status || "active"),
+      meta: [
+        item.serviceCode || "Bez sifre",
+        getServiceCatalogTypeLabel(typeValue),
+        normalizeValidityMonthsValue(item.validityMonths) ? `${normalizeValidityMonthsValue(item.validityMonths)} mj. vrijedi` : "Bez roka",
+      ].join(" | "),
+      badges,
+      updatedLabel: item.updatedAt ? `Azurirano ${formatCompactDate(item.updatedAt)}` : "Novo",
+    };
+  });
+}
+
+function getDocumentTemplateReactOptions() {
+  return sortDocumentTemplates(state.documentTemplates ?? []).map((template) => ({
+    value: String(template.id || ""),
+    label: template.title || "Template",
+    meta: [
+      getDocumentTemplateTypeLabel(template.documentType),
+      getDocumentTemplateStatusLabel(template.status),
+      template.referenceDocument?.fileName ? `${getDocumentTemplateReferenceLabel(template.referenceDocument)} ref` : "",
+    ].filter(Boolean).join(" | "),
+  }));
+}
+
+function getLearningTestReactOptions() {
+  return sortLearningTests(state.learningTests ?? []).map((test) => ({
+    value: String(test.id || ""),
+    label: test.title || test.name || "Learning test",
+    meta: [
+      getOptionLabel(LEARNING_TEST_STATUS_OPTIONS, test.status || "draft"),
+      test.serviceCode || "",
+    ].filter(Boolean).join(" | "),
+  }));
+}
+
+function renderReactServiceCatalogModule({ filters, allItems, visibleItems, canManage } = {}) {
+  const reactComponents = window.SafeNexusReactComponents;
+  if (!serviceCatalogReactRoot || !reactComponents?.renderServiceCatalogModule) {
+    serviceCatalogList?.closest(".service-catalog-list-panel")?.removeAttribute("hidden");
+    return false;
+  }
+
+  serviceCatalogModule?.classList.add("is-react-module");
+  serviceCatalogList?.closest(".service-catalog-list-panel")?.setAttribute("hidden", "");
+  return reactComponents.renderServiceCatalogModule(serviceCatalogReactRoot, {
+    filters,
+    statusOptions: [
+      { value: "all", label: "Svi statusi" },
+      ...SERVICE_CATALOG_STATUS_OPTIONS,
+    ],
+    stats: {
+      total: allItems.length,
+      active: allItems.filter((item) => item.status === "active").length,
+      inactive: allItems.filter((item) => item.status === "inactive").length,
+      withTemplate: allItems.filter((item) => (item.linkedTemplateIds ?? []).length > 0 || (item.linkedLearningTestIds ?? []).length > 0).length,
+    },
+    items: buildServiceCatalogReactRows(visibleItems),
+    canManage,
+    onCreate: () => {
+      resetServiceCatalogForm();
+      serviceCatalogReactDraft = buildServiceCatalogReactDraft({});
+      renderServiceCatalogModule();
+      openServiceCatalogEditor();
+    },
+    onFilterChange: (patch = {}) => {
+      state.serviceCatalogFilters = {
+        ...state.serviceCatalogFilters,
+        ...patch,
+      };
+      if (Object.prototype.hasOwnProperty.call(patch, "query") && serviceCatalogSearchInput) {
+        serviceCatalogSearchInput.value = patch.query || "";
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, "status") && serviceCatalogFilterStatusInput) {
+        serviceCatalogFilterStatusInput.value = patch.status || "all";
+      }
+      renderServiceCatalogModule();
+    },
+    onOpen: (serviceId) => {
+      const item = state.serviceCatalog.find((entry) => String(entry.id) === String(serviceId));
+      if (item) {
+        hydrateServiceCatalogForm(item);
+      }
+    },
+  });
+}
+
+function renderReactServiceCatalogEditor() {
+  const reactComponents = window.SafeNexusReactComponents;
+  if (!state.serviceCatalogEditorOpen || !serviceCatalogEditorReactRoot || !reactComponents?.renderServiceCatalogEditor) {
+    return false;
+  }
+
+  const activeItem = state.serviceCatalog.find((entry) => String(entry.id) === String(state.activeServiceCatalogId || serviceCatalogIdInput?.value || ""));
+  if (!serviceCatalogReactDraft) {
+    serviceCatalogReactDraft = buildServiceCatalogReactDraft(activeItem || {});
+  }
+
+  serviceCatalogEditorPanel?.classList.add("is-react-editor");
+  serviceCatalogEditorPanel?.querySelector(".offers-editor-fixed-head")?.setAttribute("hidden", "");
+  serviceCatalogEditorBody?.setAttribute("hidden", "");
+  return reactComponents.renderServiceCatalogEditor(serviceCatalogEditorReactRoot, {
+    title: serviceCatalogReactDraft.id ? `Uredi uslugu | ${serviceCatalogReactDraft.name || "Bez naziva"}` : "Nova usluga",
+    draft: serviceCatalogReactDraft,
+    statusOptions: SERVICE_CATALOG_STATUS_OPTIONS,
+    typeOptions: SERVICE_CATALOG_TYPE_OPTIONS,
+    templateOptions: getDocumentTemplateReactOptions(),
+    learningTestOptions: getLearningTestReactOptions(),
+    certificateTemplateOptions: getServiceCatalogIsZnrTemplateOptions().map((option) => ({
+      value: option.value,
+      label: option.label,
+    })),
+    canDelete: Boolean(serviceCatalogReactDraft.id) && getCanManageServiceCatalog(),
+    error: serviceCatalogError?.textContent || "",
+    onDraftChange: (nextDraft) => {
+      serviceCatalogReactDraft = {
+        ...serviceCatalogReactDraft,
+        ...nextDraft,
+      };
+      serviceCatalogCertificateTemplateDraft = serviceCatalogReactDraft.trainingCertificateTemplate
+        ? serializeModuleAttachmentDraft(serviceCatalogReactDraft.trainingCertificateTemplate)
+        : null;
+    },
+    onUploadCertificate: async (file) => {
+      await setServiceCatalogCertificateTemplateFile(file);
+      const certificate = serviceCatalogCertificateTemplateDraft ? {
+        ...serviceCatalogCertificateTemplateDraft,
+        meta: formatModuleAttachmentMeta(serviceCatalogCertificateTemplateDraft),
+        fileSizeLabel: formatFileSize(serviceCatalogCertificateTemplateDraft.fileSize),
+      } : null;
+      serviceCatalogReactDraft = {
+        ...serviceCatalogReactDraft,
+        trainingCertificateTemplate: certificate,
+      };
+      return certificate;
+    },
+    onDownloadCertificate: (certificate) => {
+      if (certificate) {
+        triggerModuleAttachmentDownload(certificate);
+      }
+    },
+    onRemoveCertificate: () => {
+      serviceCatalogCertificateTemplateDraft = null;
+      serviceCatalogReactDraft = {
+        ...serviceCatalogReactDraft,
+        trainingCertificateTemplate: null,
+      };
+    },
+    onUseCertificateTemplate: async (templateId) => {
+      const template = getServiceCatalogIsZnrTemplateOptions()
+        .find((option) => option.value === templateId)?.template ?? null;
+      serviceCatalogCertificateTemplateDraft = buildServiceCatalogCertificateTemplateDraftFromDocumentTemplate(template);
+      const certificate = serviceCatalogCertificateTemplateDraft ? {
+        ...serviceCatalogCertificateTemplateDraft,
+        meta: formatModuleAttachmentMeta(serviceCatalogCertificateTemplateDraft),
+        fileSizeLabel: formatFileSize(serviceCatalogCertificateTemplateDraft.fileSize),
+      } : null;
+      serviceCatalogReactDraft = {
+        ...serviceCatalogReactDraft,
+        trainingCertificateTemplate: certificate,
+      };
+      return certificate;
+    },
+    onSave: saveServiceCatalogReactDraft,
+    onReset: () => {
+      resetServiceCatalogForm();
+      serviceCatalogReactDraft = buildServiceCatalogReactDraft({});
+      openServiceCatalogEditor();
+    },
+    onDelete: deleteServiceCatalogReactDraft,
+    onClose: () => dismissServiceCatalogEditor(),
+  });
+}
+
+function unmountReactServiceCatalogEditor() {
+  window.SafeNexusReactComponents?.unmountServiceCatalogEditor?.(serviceCatalogEditorReactRoot);
+  serviceCatalogEditorPanel?.classList.remove("is-react-editor");
+  serviceCatalogEditorPanel?.querySelector(".offers-editor-fixed-head")?.removeAttribute("hidden");
+  serviceCatalogEditorBody?.removeAttribute("hidden");
+}
+
+async function saveServiceCatalogReactDraft(nextDraft = serviceCatalogReactDraft) {
+  const draft = {
+    ...(serviceCatalogReactDraft ?? {}),
+    ...(nextDraft ?? {}),
+  };
+  serviceCatalogReactDraft = draft;
+  const isEditing = Boolean(draft.id);
+  const path = isEditing ? `/service-catalog/${draft.id}` : "/service-catalog";
+  const method = isEditing ? "PATCH" : "POST";
+  const success = await runMutation(() => apiRequest(path, {
+    method,
+    body: buildServiceCatalogPayloadFromReactDraft(draft),
+  }), serviceCatalogError);
+
+  if (!success) {
+    throw new Error(serviceCatalogError?.textContent || "Spremanje usluge nije uspjelo.");
+  }
+
+  closeServiceCatalogEditor({ reset: true });
+  renderServiceCatalogModule();
+  renderWorkOrderServicePicker();
+  renderWorkOrderServiceSelection();
+  return true;
+}
+
+async function deleteServiceCatalogReactDraft(serviceId = serviceCatalogReactDraft?.id || "") {
+  const normalizedId = String(serviceId || "").trim();
+  if (!normalizedId) {
+    return false;
+  }
+  if (!window.confirm("Obrisati ovu uslugu?")) {
+    return false;
+  }
+
+  const success = await runMutation(() => apiRequest(`/service-catalog/${normalizedId}`, {
+    method: "DELETE",
+  }), serviceCatalogError);
+
+  if (!success) {
+    throw new Error(serviceCatalogError?.textContent || "Brisanje usluge nije uspjelo.");
+  }
+
+  closeServiceCatalogEditor({ reset: true });
+  renderServiceCatalogModule();
+  renderWorkOrderServicePicker();
+  renderWorkOrderServiceSelection();
+  return true;
+}
+
 function resetServiceCatalogForm() {
   if (!serviceCatalogForm) {
     return;
@@ -55231,6 +55564,7 @@ function resetServiceCatalogForm() {
     serviceCatalogEditorTitle.textContent = "Nova usluga";
   }
   serviceCatalogCertificateTemplateDraft = null;
+  serviceCatalogReactDraft = buildServiceCatalogReactDraft({});
   renderServiceCatalogTemplateChecklist([]);
   renderServiceCatalogLearningTestChecklist([]);
   syncServiceCatalogTrainingSections();
@@ -55283,6 +55617,7 @@ function hydrateServiceCatalogForm(item) {
   serviceCatalogCertificateTemplateDraft = item.trainingCertificateTemplate
     ? serializeModuleAttachmentDraft(item.trainingCertificateTemplate)
     : null;
+  serviceCatalogReactDraft = buildServiceCatalogReactDraft(item);
   renderServiceCatalogTemplateChecklist(item.linkedTemplateIds ?? []);
   renderServiceCatalogLearningTestChecklist(item.linkedLearningTestIds ?? []);
   syncServiceCatalogTrainingSections();
@@ -55338,6 +55673,16 @@ function renderServiceCatalogModule() {
     serviceCatalogHelper.textContent = visibleItems.length === allItems.length
       ? `Prikazano ${visibleItems.length} usluga.`
       : `Prikazano ${visibleItems.length} od ${allItems.length} usluga.`;
+  }
+
+  if (renderReactServiceCatalogModule({
+    filters,
+    allItems,
+    visibleItems,
+    canManage: canManageMasterData,
+  })) {
+    serviceCatalogEmpty.hidden = true;
+    return;
   }
 
   serviceCatalogList.replaceChildren(...visibleItems.map((item) => {
@@ -57736,6 +58081,272 @@ function syncSafetyAuthorizationEditorChrome() {
   }
 }
 
+function buildSafetyAuthorizationReactDraft(item = {}) {
+  const source = item && typeof item === "object" ? item : {};
+  const linkedIds = source.linkedServiceCatalogIds
+    ?? getSafetyAuthorizationLinkedServiceIds(source)
+    ?? getSafetyAuthorizationServiceSelectionIds();
+  return {
+    versionKey: [
+      source.id || "new",
+      source.updatedAt || "",
+      source.documents?.length || 0,
+      Date.now(),
+    ].join(":"),
+    id: String(source.id || ""),
+    organizationId: source.organizationId || state.activeOrganizationId || "",
+    title: source.title ?? safetyAuthorizationTitleInput?.value ?? "",
+    scope: source.scope ?? safetyAuthorizationScopeInput?.value ?? "",
+    issuedOn: String(source.issuedOn ?? safetyAuthorizationIssuedOnInput?.value ?? "").slice(0, 10),
+    validUntil: String(source.validUntil ?? safetyAuthorizationValidUntilInput?.value ?? "").slice(0, 10),
+    validForever: Boolean(source.validForever ?? safetyAuthorizationValidForeverInput?.checked),
+    linkedServiceCatalogIds: asArray(linkedIds).map(String),
+    documents: buildReactAttachmentRows(source.documents ?? safetyAuthorizationDocumentDrafts),
+    note: source.note ?? safetyAuthorizationNoteInput?.value ?? "",
+  };
+}
+
+function buildSafetyAuthorizationPayloadFromReactDraft(draft = {}) {
+  return {
+    organizationId: state.activeOrganizationId || draft.organizationId || "",
+    title: draft.title || "",
+    scope: draft.scope || "",
+    issuedOn: draft.issuedOn || "",
+    validUntil: draft.validForever ? "" : (draft.validUntil || ""),
+    validForever: Boolean(draft.validForever),
+    linkedServiceCatalogIds: asArray(draft.linkedServiceCatalogIds).map(String),
+    documents: sanitizeReactDocumentsForPayload(draft.documents),
+    note: draft.note || "",
+  };
+}
+
+function buildSafetyAuthorizationReactRows(items = []) {
+  return items.map((item) => {
+    const documents = buildReactAttachmentRows(item.documents ?? []);
+    const dateBadges = [];
+    if (item.issuedOn) {
+      dateBadges.push({
+        label: `Izdano ${formatCompactDate(item.issuedOn)}`,
+        className: "measurement-equipment-chip",
+      });
+    }
+    dateBadges.push({
+      label: item.validForever
+        ? "Vrijedi trajno"
+        : item.validUntil
+          ? `Vrijedi do ${formatCompactDate(item.validUntil)}`
+          : "Bez roka",
+      className: !item.validForever && isUpcomingIsoDate(item.validUntil)
+        ? "measurement-equipment-chip is-warning"
+        : "measurement-equipment-chip",
+    });
+
+    return {
+      ...item,
+      id: String(item.id || ""),
+      isActive: String(item.id || "") === String(safetyAuthorizationReactDraft?.id || safetyAuthorizationIdInput?.value || ""),
+      dateBadges,
+      serviceTitles: getSafetyAuthorizationLinkedServiceTitles(item),
+      documentCount: documents.length,
+      documents,
+    };
+  });
+}
+
+async function uploadSafetyAuthorizationReactDocuments(files, draft = safetyAuthorizationReactDraft) {
+  const uploadFiles = Array.from(files ?? []).filter((file) => file instanceof File);
+
+  if (!uploadFiles.length) {
+    return buildReactAttachmentRows(draft?.documents ?? []);
+  }
+
+  for (const file of uploadFiles) {
+    if (!isSafetyAuthorizationDocumentFileAllowed(file)) {
+      throw new Error(`Format ${file.name} nije podrzan. Dozvoljen je samo PDF.`);
+    }
+
+    if (file.size > WORK_ORDER_DOCUMENT_MAX_SIZE_BYTES) {
+      throw new Error(`Datoteka ${file.name} mora biti manja od 12 MB.`);
+    }
+  }
+
+  const nextDocuments = await Promise.all(uploadFiles.map(async (file) => createModuleAttachmentDraft({
+    fileName: file.name,
+    fileType: file.type || "application/pdf",
+    fileSize: file.size || 0,
+    documentCategory: "pdf",
+    dataUrl: await readFileAsDataUrl(file, `Ne mogu ucitati datoteku ${file.name}.`),
+    updatedAt: new Date().toISOString(),
+  })));
+
+  const current = draft || buildSafetyAuthorizationReactDraft({});
+  safetyAuthorizationReactDraft = {
+    ...current,
+    documents: buildReactAttachmentRows([
+      ...(current.documents ?? []),
+      ...nextDocuments,
+    ]),
+    versionKey: `safety-docs:${Date.now()}`,
+  };
+  safetyAuthorizationDocumentDrafts = safetyAuthorizationReactDraft.documents.map((entry) => createModuleAttachmentDraft(entry));
+  return safetyAuthorizationReactDraft.documents;
+}
+
+function downloadSafetyAuthorizationReactDocument(documentId = "") {
+  const documentItem = (safetyAuthorizationReactDraft?.documents ?? [])
+    .find((entry) => String(entry.id) === String(documentId));
+  if (documentItem) {
+    triggerModuleAttachmentDownload(documentItem);
+  }
+}
+
+function downloadSafetyAuthorizationCardDocument(authorizationId = "", documentId = "") {
+  const item = state.safetyAuthorizations.find((entry) => String(entry.id) === String(authorizationId));
+  const documentItem = buildReactAttachmentRows(item?.documents ?? [])
+    .find((entry) => String(entry.id) === String(documentId));
+  if (documentItem) {
+    triggerModuleAttachmentDownload(documentItem);
+  }
+}
+
+function renderReactSafetyAuthorizationModule({ filters, allItems, visibleItems, activeItems, canManage } = {}) {
+  const reactComponents = window.SafeNexusReactComponents;
+  if (!safetyAuthorizationReactRoot || !reactComponents?.renderSafetyAuthorizationModule) {
+    safetyAuthorizationList?.closest(".safety-authorization-list-panel")?.removeAttribute("hidden");
+    return false;
+  }
+
+  safetyAuthorizationModule?.classList.add("is-react-module");
+  safetyAuthorizationList?.closest(".safety-authorization-list-panel")?.setAttribute("hidden", "");
+  return reactComponents.renderSafetyAuthorizationModule(safetyAuthorizationReactRoot, {
+    filters,
+    stats: {
+      total: allItems.length,
+      active: activeItems.length,
+      expiring: allItems.filter((item) => isUpcomingIsoDate(item.validUntil)).length,
+      documents: allItems.reduce((sum, item) => sum + (Array.isArray(item.documents) ? item.documents.length : 0), 0),
+    },
+    items: buildSafetyAuthorizationReactRows(visibleItems),
+    canManage,
+    onCreate: () => {
+      resetSafetyAuthorizationForm();
+      safetyAuthorizationReactDraft = buildSafetyAuthorizationReactDraft({});
+      renderSafetyAuthorizationModule();
+      openSafetyAuthorizationEditor();
+    },
+    onFilterChange: (patch = {}) => {
+      state.safetyAuthorizationFilters = {
+        ...state.safetyAuthorizationFilters,
+        ...patch,
+      };
+      if (Object.prototype.hasOwnProperty.call(patch, "query") && safetyAuthorizationSearchInput) {
+        safetyAuthorizationSearchInput.value = patch.query || "";
+      }
+      renderSafetyAuthorizationModule();
+    },
+    onOpen: (authorizationId) => {
+      const item = state.safetyAuthorizations.find((entry) => String(entry.id) === String(authorizationId));
+      if (item) {
+        hydrateSafetyAuthorizationForm(item);
+      }
+    },
+    onDownloadDocument: downloadSafetyAuthorizationCardDocument,
+  });
+}
+
+function renderReactSafetyAuthorizationEditor() {
+  const reactComponents = window.SafeNexusReactComponents;
+  if (!state.safetyAuthorizationEditorOpen || !safetyAuthorizationEditorReactRoot || !reactComponents?.renderSafetyAuthorizationEditor) {
+    return false;
+  }
+
+  const activeItem = state.safetyAuthorizations.find((entry) => String(entry.id) === String(state.activeSafetyAuthorizationId || safetyAuthorizationIdInput?.value || ""));
+  if (!safetyAuthorizationReactDraft) {
+    safetyAuthorizationReactDraft = buildSafetyAuthorizationReactDraft(activeItem || {});
+  }
+
+  safetyAuthorizationEditorPanel?.classList.add("is-react-editor");
+  safetyAuthorizationEditorPanel?.querySelector(".offers-editor-fixed-head")?.setAttribute("hidden", "");
+  safetyAuthorizationEditorBody?.setAttribute("hidden", "");
+  return reactComponents.renderSafetyAuthorizationEditor(safetyAuthorizationEditorReactRoot, {
+    title: safetyAuthorizationReactDraft.id ? `Uredi ovlastenje | ${safetyAuthorizationReactDraft.title || "Bez naziva"}` : "Novo ovlastenje",
+    draft: safetyAuthorizationReactDraft,
+    serviceOptions: getOrganisationsServiceOptions(),
+    canDelete: Boolean(safetyAuthorizationReactDraft.id) && getCanManageSafetyAuthorizations(),
+    error: safetyAuthorizationError?.textContent || "",
+    onDraftChange: (nextDraft) => {
+      safetyAuthorizationReactDraft = {
+        ...safetyAuthorizationReactDraft,
+        ...nextDraft,
+      };
+      safetyAuthorizationDocumentDrafts = buildReactAttachmentRows(safetyAuthorizationReactDraft.documents)
+        .map((entry) => createModuleAttachmentDraft(entry));
+    },
+    onUploadDocuments: uploadSafetyAuthorizationReactDocuments,
+    onDownloadDocument: downloadSafetyAuthorizationReactDocument,
+    onSave: saveSafetyAuthorizationReactDraft,
+    onReset: () => {
+      resetSafetyAuthorizationForm();
+      safetyAuthorizationReactDraft = buildSafetyAuthorizationReactDraft({});
+      openSafetyAuthorizationEditor();
+    },
+    onDelete: deleteSafetyAuthorizationReactDraft,
+    onClose: () => dismissSafetyAuthorizationEditor(),
+  });
+}
+
+function unmountReactSafetyAuthorizationEditor() {
+  window.SafeNexusReactComponents?.unmountSafetyAuthorizationEditor?.(safetyAuthorizationEditorReactRoot);
+  safetyAuthorizationEditorPanel?.classList.remove("is-react-editor");
+  safetyAuthorizationEditorPanel?.querySelector(".offers-editor-fixed-head")?.removeAttribute("hidden");
+  safetyAuthorizationEditorBody?.removeAttribute("hidden");
+}
+
+async function saveSafetyAuthorizationReactDraft(nextDraft = safetyAuthorizationReactDraft) {
+  const draft = {
+    ...(safetyAuthorizationReactDraft ?? {}),
+    ...(nextDraft ?? {}),
+  };
+  safetyAuthorizationReactDraft = draft;
+  const isEditing = Boolean(draft.id);
+  const path = isEditing ? `/safety-authorizations/${draft.id}` : "/safety-authorizations";
+  const method = isEditing ? "PATCH" : "POST";
+  const success = await runMutation(() => apiRequest(path, {
+    method,
+    body: buildSafetyAuthorizationPayloadFromReactDraft(draft),
+  }), safetyAuthorizationError);
+
+  if (!success) {
+    throw new Error(safetyAuthorizationError?.textContent || "Spremanje ovlastenja nije uspjelo.");
+  }
+
+  closeSafetyAuthorizationEditor({ reset: true });
+  renderSafetyAuthorizationModule();
+  return true;
+}
+
+async function deleteSafetyAuthorizationReactDraft(authorizationId = safetyAuthorizationReactDraft?.id || "") {
+  const normalizedId = String(authorizationId || "").trim();
+  if (!normalizedId) {
+    return false;
+  }
+  if (!window.confirm("Obrisati ovo ovlastenje?")) {
+    return false;
+  }
+
+  const success = await runMutation(() => apiRequest(`/safety-authorizations/${normalizedId}`, {
+    method: "DELETE",
+  }), safetyAuthorizationError);
+
+  if (!success) {
+    throw new Error(safetyAuthorizationError?.textContent || "Brisanje ovlastenja nije uspjelo.");
+  }
+
+  closeSafetyAuthorizationEditor({ reset: true });
+  renderSafetyAuthorizationModule();
+  return true;
+}
+
 function resetSafetyAuthorizationForm() {
   if (!safetyAuthorizationForm) {
     return;
@@ -57753,6 +58364,7 @@ function resetSafetyAuthorizationForm() {
     safetyAuthorizationValidForeverInput.checked = false;
   }
   setSafetyAuthorizationDocumentDrafts([]);
+  safetyAuthorizationReactDraft = buildSafetyAuthorizationReactDraft({});
   renderSafetyAuthorizationDocuments();
   syncSafetyAuthorizationValidityInput();
   renderSafetyAuthorizationTemplateChecklist([]);
@@ -57778,6 +58390,7 @@ function hydrateSafetyAuthorizationForm(item) {
     safetyAuthorizationError.textContent = "";
   }
   setSafetyAuthorizationDocumentDrafts(item.documents ?? []);
+  safetyAuthorizationReactDraft = buildSafetyAuthorizationReactDraft(item);
   renderSafetyAuthorizationDocuments();
   syncSafetyAuthorizationValidityInput();
   renderSafetyAuthorizationTemplateChecklist(getSafetyAuthorizationLinkedServiceIds(item));
@@ -57829,6 +58442,17 @@ function renderSafetyAuthorizationModule() {
     safetyAuthorizationHelper.textContent = visibleItems.length === allItems.length
       ? `Prikazano ${visibleItems.length} ovlaštenja. Ovdje ih povezuješ s uslugama.`
       : `Prikazano ${visibleItems.length} od ${allItems.length} ovlaštenja.`;
+  }
+
+  if (renderReactSafetyAuthorizationModule({
+    filters,
+    allItems,
+    visibleItems,
+    activeItems,
+    canManage: canManageMasterData,
+  })) {
+    safetyAuthorizationEmpty.hidden = true;
+    return;
   }
 
   safetyAuthorizationList.replaceChildren(...visibleItems.map((item) => {
@@ -92546,6 +93170,259 @@ function attachWorkOrderInlinePriorityEditor(cell, workOrder = {}) {
   });
 }
 
+function buildWorkOrderReactQuickOptions() {
+  return {
+    companies: state.companies
+      .slice()
+      .sort((left, right) => String(left.name || "").localeCompare(String(right.name || ""), "hr"))
+      .map((company) => ({
+        value: String(company.id || ""),
+        label: company.name || "Tvrtka",
+      })),
+    locations: state.locations
+      .slice()
+      .sort((left, right) => String(left.name || "").localeCompare(String(right.name || ""), "hr"))
+      .map((location) => ({
+        value: String(location.id || ""),
+        companyId: String(location.companyId || ""),
+        label: location.name || location.address || "Lokacija",
+        meta: [location.address, location.region].filter(Boolean).join(" | "),
+      })),
+    services: sortServiceCatalogItems(state.serviceCatalog ?? [])
+      .filter((service) => service.status !== "inactive")
+      .map((service) => ({
+        value: String(service.id || ""),
+        label: [service.serviceCode, service.name].filter(Boolean).join(" - ") || "Usluga",
+      })),
+    executors: getWorkOrderExecutorOptions([], { includeEmpty: false }).map((executor) => ({
+      value: executor.value,
+      label: executor.label,
+    })),
+  };
+}
+
+function buildReactQuickWorkOrderPayload(draft = {}) {
+  const location = getLocation(draft.locationId);
+  const contact = getWorkOrderQuickLocationContact(draft.locationId);
+  const serviceItems = asArray(draft.serviceIds)
+    .map((serviceId) => state.serviceCatalog.find((service) => String(service.id) === String(serviceId)))
+    .filter(Boolean)
+    .map((service) => buildWorkOrderServiceItemSnapshot(service));
+  const executors = normalizeWorkOrderExecutorValues(asArray(draft.executorIds));
+  const serviceLine = getWorkOrderServiceSummary({ serviceItems });
+
+  return {
+    status: String(draft.status || "Otvoreni RN"),
+    priority: "Normal",
+    openedDate: toDateKey(new Date()),
+    dueDate: normalizeDateInputValue(draft.dueDate),
+    teamLabel: "",
+    companyId: String(draft.companyId || ""),
+    locationId: String(draft.locationId || ""),
+    coordinates: location?.coordinates || "",
+    region: location?.region || "",
+    contactSlot: contact.slot,
+    contactName: contact.name,
+    contactPhone: contact.phone,
+    contactEmail: contact.email,
+    executors,
+    executor1: executors[0] || "",
+    executor2: executors[1] || "",
+    measurementSheet: null,
+    serviceItems,
+    trainingContext: { name: "", role: "", phone: "", email: "" },
+    serviceLine,
+    department: "",
+    linkReference: "",
+    weight: "",
+    completedBy: "",
+    invoiceDate: "",
+    tagText: "",
+    description: serviceLine,
+    invoiceNote: "",
+  };
+}
+
+async function createReactQuickWorkOrder(draft = {}) {
+  if (!getCanCreateWorkOrders() || !getCanEditOperationalData()) {
+    return false;
+  }
+
+  const payload = buildReactQuickWorkOrderPayload(draft);
+  if (!payload.companyId) {
+    setSyncError("Tvrtka je obavezna za otvaranje RN-a.");
+    return false;
+  }
+
+  workOrderReactQuickCreateBusy = true;
+  renderCompactWorkOrdersList();
+  const previousIds = new Set(state.workOrders.map((item) => String(item.id)));
+  const success = await runMutation(() => apiRequest("/work-orders", {
+    method: "POST",
+    body: payload,
+  }), null);
+  workOrderReactQuickCreateBusy = false;
+
+  if (success) {
+    const created = findCreatedWorkOrderMatch(previousIds, payload);
+    if (created?.id) {
+      queueGeneratedWorkOrderPdfSave(created.id);
+    }
+  }
+
+  renderCompactWorkOrdersList();
+  renderWorkOrderWorkspace();
+  return success;
+}
+
+function getWorkOrderReactContractLabel(item = {}) {
+  const company = getCompany(item.companyId);
+  return item.contractLabel
+    || item.contractType
+    || company?.contractType
+    || company?.contractNumber
+    || "Bez ugovora";
+}
+
+function buildReactWorkOrderRows(items = []) {
+  return items.map((item) => ({
+    ...item,
+    id: String(item.id || ""),
+    openedDateLabel: item.openedDate ? formatCompactDate(item.openedDate) : "Bez datuma",
+    dueDateLabel: item.dueDate ? formatCompactDate(item.dueDate) : "Bez roka",
+    companyName: item.companyName || getCompany(item.companyId)?.name || "",
+    contractLabel: getWorkOrderReactContractLabel(item),
+    locationName: item.locationName || getLocation(item.locationId)?.name || item.location || "",
+    region: item.region || getLocation(item.locationId)?.region || "",
+    contactLabel: item.contactName || item.contactPhone || item.contactEmail || "",
+    serviceSummary: getWorkOrderServiceSummary(item) || item.serviceLine || "",
+    status: item.status || "Otvoreni RN",
+    priority: item.priority || "Normal",
+  }));
+}
+
+function buildReactWorkOrderGroups(items = []) {
+  return buildWorkOrderGroups(items).map((group) => ({
+    ...group,
+    statusClass: statusBadgeClass(group.status),
+    totalCount: group.items.length,
+    items: buildReactWorkOrderRows(group.items),
+  }));
+}
+
+async function patchReactWorkOrder(workOrderId = "", body = {}) {
+  const normalizedId = String(workOrderId || "").trim();
+  if (!normalizedId) {
+    return false;
+  }
+
+  const success = await runMutation(() => apiRequest(`/work-orders/${encodeURIComponent(normalizedId)}`, {
+    method: "PATCH",
+    body,
+  }), null);
+
+  renderCompactWorkOrdersList();
+  renderWorkOrderWorkspace();
+  return success;
+}
+
+async function deleteReactWorkOrder(workOrderId = "") {
+  const item = state.workOrders.find((entry) => String(entry.id) === String(workOrderId));
+  if (!item?.id) {
+    return false;
+  }
+  if (!window.confirm(`Obrisati ${item.workOrderNumber || "RN"}?`)) {
+    return false;
+  }
+
+  const success = await runMutation(() => apiRequest(`/work-orders/${encodeURIComponent(String(item.id))}`, {
+    method: "DELETE",
+  }), null);
+  renderCompactWorkOrdersList();
+  renderWorkOrderWorkspace();
+  return success;
+}
+
+function renderReactWorkOrdersList({ filtered = [], visibleItems = [] } = {}) {
+  const reactComponents = window.SafeNexusReactComponents;
+  if (!workOrdersReactRoot || !reactComponents?.renderWorkOrdersList) {
+    workOrdersTableWrap?.classList.remove("is-react-list");
+    if (workOrdersBody) {
+      workOrdersBody.hidden = false;
+    }
+    return false;
+  }
+
+  workOrdersTableWrap?.classList.add("is-react-list");
+  if (workOrdersBody) {
+    workOrdersBody.hidden = true;
+  }
+  const selectedIds = [...(state.workOrderDocumentWizard.selectedIds ?? new Set())].map(String);
+  const visibleSelected = visibleItems.filter((item) => state.workOrderDocumentWizard.selectedIds.has(String(item.id))).length;
+  const selectionState = getWorkOrderDocumentSelectionState(getAllSelectedWorkOrdersForDocumentWizard());
+  const actionCopy = getWorkOrderDocumentActionCopy(selectionState.mode);
+  const canOpenDocuments = selectedIds.length > 0 && selectionState.hasServices && !selectionState.hasMixedTypes;
+
+  return reactComponents.renderWorkOrdersList(workOrdersReactRoot, {
+    stats: {
+      total: state.workOrders.length,
+      filtered: filtered.length,
+      visible: visibleItems.length,
+      visibleSelected,
+      overdue: filtered.filter((item) => isOverdueWorkOrder(item)).length,
+    },
+    groups: buildReactWorkOrderGroups(visibleItems),
+    selectedIds,
+    statusOptions: WORK_ORDER_STATUS_OPTIONS,
+    priorityOptions: PRIORITY_OPTIONS,
+    quickOptions: buildWorkOrderReactQuickOptions(),
+    busy: workOrderReactQuickCreateBusy,
+    canCreate: getCanEditOperationalData() && getCanCreateWorkOrders(),
+    canManage: getCanEditOperationalData(),
+    canOpenDocuments,
+    documentActionLabel: actionCopy.bulk || "Izrada zapisnika",
+    loadState: visibleItems.length < filtered.length
+      ? `Prikazano ${visibleItems.length} od ${filtered.length} RN.`
+      : `Prikazano svih ${filtered.length} RN.`,
+    batchMessage: state.workOrderBatch.message || "",
+    onCreate: createReactQuickWorkOrder,
+    onOpen: (workOrderId) => {
+      const item = state.workOrders.find((entry) => String(entry.id) === String(workOrderId));
+      if (item) {
+        hydrateWorkOrderForm(item);
+      }
+    },
+    onDelete: deleteReactWorkOrder,
+    onStatusChange: (workOrderId, nextStatus) => {
+      const item = state.workOrders.find((entry) => String(entry.id) === String(workOrderId));
+      if (!item || !getCanSetWorkOrderStatus(item.status, nextStatus)) {
+        renderCompactWorkOrdersList();
+        return;
+      }
+      void patchReactWorkOrder(workOrderId, { status: nextStatus });
+    },
+    onPriorityChange: (workOrderId, priority) => {
+      void patchReactWorkOrder(workOrderId, { priority: priority || "Normal" });
+    },
+    onToggleSelect: (workOrderId, checked) => toggleWorkOrderDocumentSelection(workOrderId, checked),
+    onSelectVisible: (checked) => setVisibleWorkOrderDocumentSelection(checked),
+    onOpenDocuments: () => openWorkOrderDocumentWizard(getSelectedWorkOrderDocumentMode()),
+    onLoadMore: () => loadMoreWorkOrders(),
+    onDownloadPdf: (workOrderId) => {
+      const item = state.workOrders.find((entry) => String(entry.id) === String(workOrderId));
+      if (item) {
+        void downloadWorkOrderPdf(item);
+      }
+    },
+    onDownloadVerified: (workOrderId) => {
+      const item = state.workOrders.find((entry) => String(entry.id) === String(workOrderId));
+      if (item) {
+        void downloadVerifiedWorkOrderDocument(item);
+      }
+    },
+  });
+}
+
 function renderCompactWorkOrdersList() {
   const filtered = getFilteredWorkOrders();
   const visibleItems = filtered.slice(0, state.workOrderRenderLimit);
@@ -92558,6 +93435,18 @@ function renderCompactWorkOrdersList() {
     workOrdersHelper.textContent = "";
     workOrdersHelper.dataset.baseText = "";
     workOrdersHelper.hidden = true;
+  }
+
+  if (renderReactWorkOrdersList({ filtered, visibleItems })) {
+    if (workOrdersEmpty) {
+      workOrdersEmpty.hidden = true;
+    }
+    if (workOrdersLoadState) {
+      workOrdersLoadState.hidden = true;
+      workOrdersLoadState.textContent = "";
+    }
+    updateWorkOrderDocumentSelectionChrome({ visibleItems });
+    return;
   }
 
   const section = document.createElement("section");

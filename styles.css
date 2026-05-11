@@ -48058,3 +48058,372 @@ button.work-order-editor-section-head {
     grid-template-columns: 1fr;
   }
 }
+
+.service-catalog-react-root,
+.service-catalog-editor-react-root,
+.safety-authorization-react-root,
+.safety-authorization-editor-react-root,
+.work-orders-react-root {
+  display: block;
+  width: 100%;
+}
+
+#service-catalog-module.is-react-module > .service-catalog-list-panel,
+#safety-authorization-module.is-react-module > .safety-authorization-list-panel,
+#service-catalog-editor-panel.is-react-editor > .offers-editor-fixed-head,
+#service-catalog-editor-panel.is-react-editor > .service-catalog-editor-body,
+#safety-authorization-editor-panel.is-react-editor > .offers-editor-fixed-head,
+#safety-authorization-editor-panel.is-react-editor > .safety-authorization-editor-body,
+.work-orders-scroll-shell.is-react-list > #work-orders-body {
+  display: none !important;
+}
+
+#service-catalog-editor-panel.is-react-editor,
+#safety-authorization-editor-panel.is-react-editor {
+  padding: 0;
+  overflow: hidden;
+}
+
+.operations-react-shell,
+.operations-editor-body,
+.operations-card-list {
+  display: grid;
+  gap: 14px;
+}
+
+.operations-hero-panel {
+  overflow: hidden;
+}
+
+.operations-filter-bar.is-single {
+  grid-template-columns: minmax(240px, 1fr);
+}
+
+.operations-editor-react {
+  height: min(88vh, 920px);
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(37, 99, 235, 0.1), transparent 28%),
+    radial-gradient(circle at 94% 0%, rgba(217, 70, 239, 0.08), transparent 24%),
+    #f8fbff;
+}
+
+.operations-editor-section {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid rgba(191, 219, 254, 0.86);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.93);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.05);
+}
+
+.operations-toggle-field {
+  align-content: start;
+}
+
+.operations-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 5px 10px 5px 5px;
+  border: 1px solid rgba(191, 219, 254, 0.96);
+  border-radius: 999px;
+  background: #f8fbff;
+  color: #64748b;
+  font-size: 0.8rem;
+  font-weight: 850;
+}
+
+.operations-switch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.operations-switch i {
+  position: relative;
+  width: 34px;
+  height: 24px;
+  border-radius: 999px;
+  background: #dbe5f4;
+}
+
+.operations-switch i::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 2px 7px rgba(15, 23, 42, 0.18);
+  transition: transform 160ms ease;
+}
+
+.operations-switch.is-on {
+  color: #0f766e;
+}
+
+.operations-switch.is-on i {
+  background: linear-gradient(135deg, #38bdf8, #10b981);
+}
+
+.operations-switch.is-on i::after {
+  transform: translateX(10px);
+}
+
+.operations-checklist {
+  max-height: 280px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.operations-certificate-card {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px dashed rgba(147, 197, 253, 0.95);
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(248, 250, 252, 0.96), rgba(239, 246, 255, 0.84));
+}
+
+.operations-document-list {
+  display: grid;
+  gap: 10px;
+}
+
+.operations-empty-card {
+  min-height: 110px;
+  align-content: center;
+}
+
+.work-orders-scroll-shell.is-react-list {
+  padding: 12px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(59, 130, 246, 0.08), transparent 28%),
+    radial-gradient(circle at 100% 0%, rgba(236, 72, 153, 0.07), transparent 26%),
+    rgba(248, 250, 252, 0.72);
+}
+
+.work-order-react-list {
+  display: grid;
+  gap: 12px;
+}
+
+.work-order-react-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.work-order-react-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(191, 219, 254, 0.82);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.work-order-batch-launch {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.work-order-batch-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding-inline: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #1d4ed8;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.work-order-react-quick-create {
+  display: grid;
+  grid-template-columns: 34px minmax(130px, 170px) minmax(180px, 1fr) minmax(180px, 1fr) minmax(130px, 170px) auto auto;
+  gap: 10px;
+  align-items: end;
+  padding: 10px;
+  border: 1px solid rgba(147, 197, 253, 0.9);
+  border-radius: 20px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(239, 246, 255, 0.86));
+  box-shadow: 0 12px 30px rgba(37, 99, 235, 0.08);
+}
+
+.work-order-react-quick-mark {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin-bottom: 7px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #2563eb, #d946ef);
+  color: #fff;
+  font-weight: 900;
+}
+
+.work-order-react-quick-details {
+  grid-column: 2 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 12px;
+  border: 1px dashed rgba(147, 197, 253, 0.82);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.work-order-react-chip-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 8px;
+  max-height: 150px;
+  overflow: auto;
+}
+
+.work-order-react-chip {
+  border: 1px solid rgba(191, 219, 254, 0.92);
+  border-radius: 999px;
+  background: #fff;
+  color: #334155;
+  padding: 7px 10px;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.work-order-react-chip.is-selected {
+  border-color: rgba(37, 99, 235, 0.86);
+  background: linear-gradient(135deg, #eff6ff, #e0f2fe);
+  color: #1d4ed8;
+}
+
+.work-order-react-batch-message {
+  margin: 0;
+  padding: 9px 12px;
+  border: 1px solid rgba(191, 219, 254, 0.84);
+  border-radius: 14px;
+  background: rgba(239, 246, 255, 0.84);
+  color: #334155;
+  font-weight: 750;
+}
+
+.work-order-react-groups {
+  display: grid;
+  gap: 12px;
+}
+
+.work-order-react-group {
+  padding: 10px;
+  border-color: rgba(191, 219, 254, 0.88);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.work-order-react-row-head,
+.work-order-react-row {
+  display: grid;
+  grid-template-columns: 34px minmax(120px, 0.9fr) minmax(160px, 1.1fr) minmax(180px, 1.2fr) minmax(180px, 1.25fr) minmax(170px, 1fr) minmax(170px, auto);
+  gap: 10px;
+  align-items: center;
+}
+
+.work-order-react-row-head {
+  padding: 8px 10px 8px 54px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.95);
+  color: #8b5cf6;
+  font-size: 0.64rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.work-order-react-row-head span:first-child {
+  grid-column: 1 / span 2;
+}
+
+.work-order-react-row {
+  min-width: 1080px;
+  padding: 10px;
+  border-radius: 16px;
+  background: rgba(248, 250, 252, 0.82);
+}
+
+.work-order-react-row + .work-order-react-row {
+  margin-top: 8px;
+}
+
+.work-order-react-open {
+  display: grid;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #0f172a;
+  text-align: left;
+}
+
+.work-order-react-open strong {
+  font-size: 0.98rem;
+}
+
+.work-order-react-open span {
+  color: #64748b;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.work-order-react-inline-controls {
+  display: grid;
+  gap: 6px;
+}
+
+.work-order-react-inline-controls select {
+  min-height: 30px;
+  border-radius: 10px;
+  background: #fff;
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.work-item-actions-cell {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.work-order-react-load {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 2px 0;
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+@media (max-width: 1280px) {
+  .work-order-react-quick-create,
+  .work-order-react-summary,
+  .work-order-react-quick-details {
+    grid-template-columns: 1fr;
+  }
+
+  .work-order-react-quick-details {
+    grid-column: 1 / -1;
+  }
+}
