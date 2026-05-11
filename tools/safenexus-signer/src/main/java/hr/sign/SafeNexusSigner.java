@@ -39,6 +39,8 @@ public final class SafeNexusSigner {
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(20))
             .build();
+    private static volatile boolean signingBusy = false;
+    private static volatile boolean bridgeKeyPrompted = false;
 
     private SafeNexusSigner() {
     }
@@ -63,17 +65,19 @@ public final class SafeNexusSigner {
         }
 
         if (isSignLaunch(launchArg)) {
-            JsonNode result = runSignJob(parseQuery(URI.create(launchArg)));
+            JsonNode result = runSignJobExclusive(parseQuery(URI.create(launchArg)));
             showReport(result);
             return;
         }
 
         if (bridgeStarted && launchArg.startsWith("safenexus-signer://")) {
+            startCloudPollingWorker();
             openSafeNexus();
             return;
         }
 
-        showInfo("SafeNexus Signer je spreman za potpis.\n\nBridge radi na http://127.0.0.1:" + PORT + "\n\nWeb aplikacija će ga otvoriti automatski kada pokreneš digitalni potpis.");
+        showInfo("SafeNexus Signer je spreman.\n\nCloud red za potpis se prati automatski. Kada u SafeNexusu pošalješ zapisnike u red, lokalni signer će ih preuzeti i zatražiti PIN.");
+        startCloudPollingWorker();
     }
 
     private static void startBridge() throws IOException {
@@ -82,6 +86,70 @@ public final class SafeNexusSigner {
         server.createContext("/sign", SafeNexusSigner::handleSign);
         server.setExecutor(null);
         server.start();
+    }
+
+    private static void startCloudPollingWorker() {
+        Thread worker = new Thread(() -> {
+            while (true) {
+                try {
+                    pollCloudSigningQueue();
+                } catch (Exception ignored) {
+                    // Polling mora ostati tih; detaljna greška se vidi kad se job stvarno pokrene.
+                }
+
+                try {
+                    Properties config = loadConfig();
+                    long intervalMs = Long.parseLong(config.getProperty("poll.interval.ms", "5000"));
+                    Thread.sleep(Math.max(2000L, Math.min(intervalMs, 60000L)));
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    return;
+                } catch (Exception ignored) {
+                    try {
+                        Thread.sleep(5000L);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                }
+            }
+        }, "SafeNexus-cloud-signing-worker");
+        worker.setDaemon(false);
+        worker.start();
+    }
+
+    private static void pollCloudSigningQueue() throws Exception {
+        if (signingBusy) {
+            return;
+        }
+
+        Properties config = loadConfig();
+        if (!Boolean.parseBoolean(config.getProperty("poll.enabled", "true"))) {
+            return;
+        }
+
+        String bridgeKey = ensureBridgeKey(config);
+        if (bridgeKey.isBlank()) {
+            return;
+        }
+
+        String apiBase = stripTrailingSlash(config.getProperty("api.base", "https://safe-nexus.org"));
+        JsonNode response = getJson(apiBase + "/api/signature-bridge/agent/jobs/next?bridgeKey=" + urlEncode(bridgeKey));
+        JsonNode job = response.path("job");
+        if (job.isMissingNode() || job.isNull()) {
+            return;
+        }
+
+        String token = text(job, "token", "");
+        if (token.isBlank()) {
+            return;
+        }
+
+        JsonNode result = runSignJobExclusive(Map.of(
+                "token", token,
+                "apiBase", text(job, "apiBase", apiBase)
+        ));
+        showReport(result);
     }
 
     private static void handleHealth(HttpExchange exchange) throws IOException {
@@ -106,7 +174,7 @@ public final class SafeNexusSigner {
             putIfText(params, "token", text(body, "token", text(body, "jobToken", "")));
             putIfText(params, "api", text(body, "api", text(body, "apiBase", "")));
             putIfText(params, "origin", text(body, "origin", ""));
-            writeJson(exchange, 200, JSON.writeValueAsString(runSignJob(params)));
+            writeJson(exchange, 200, JSON.writeValueAsString(runSignJobExclusive(params)));
         } catch (Exception error) {
             writeJson(exchange, 500, JSON.writeValueAsString(Map.of(
                     "ok", false,
@@ -139,6 +207,23 @@ public final class SafeNexusSigner {
                 .build();
         HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         return JSON.readTree(response.body());
+    }
+
+    private static JsonNode runSignJobExclusive(Map<String, String> launchParams) throws Exception {
+        if (signingBusy) {
+            return JSON.valueToTree(Map.of(
+                    "ok", false,
+                    "signed", 0,
+                    "failed", 0,
+                    "message", "Lokalni signer već obrađuje drugi potpisni paket."
+            ));
+        }
+        signingBusy = true;
+        try {
+            return runSignJob(launchParams);
+        } finally {
+            signingBusy = false;
+        }
     }
 
     private static JsonNode runSignJob(Map<String, String> launchParams) throws Exception {
@@ -326,10 +411,47 @@ public final class SafeNexusSigner {
 
         properties.setProperty("engine.exe", "C:/Users/Branimir/IdeaProjects/PdfSignerDSS/dist/PotpisPDF/PotpisPDF.exe");
         properties.setProperty("keep.workdir", "false");
+        properties.setProperty("api.base", "https://safe-nexus.org");
+        properties.setProperty("poll.enabled", "true");
+        properties.setProperty("poll.interval.ms", "5000");
+        saveConfig(properties);
+        return properties;
+    }
+
+    private static void saveConfig(Properties properties) throws IOException {
+        Path path = configPath();
+        Files.createDirectories(path.getParent());
         try (var output = Files.newOutputStream(path)) {
             properties.store(output, "SafeNexus local signing bridge");
         }
-        return properties;
+    }
+
+    private static String ensureBridgeKey(Properties config) throws IOException {
+        String key = config.getProperty("bridge.key", "").trim().toLowerCase();
+        if (!key.isBlank()) {
+            return key;
+        }
+        if (bridgeKeyPrompted) {
+            return "";
+        }
+
+        bridgeKeyPrompted = true;
+        String entered = JOptionPane.showInputDialog(
+                null,
+                "Zalijepi bridge ključ iz SafeNexusa.\n\nOperations > Signatures > Kopiraj bridge ključ",
+                "SafeNexus Signer - povezivanje",
+                JOptionPane.QUESTION_MESSAGE
+        );
+        if (entered == null || entered.trim().isBlank()) {
+            return "";
+        }
+
+        key = entered.trim().toLowerCase();
+        config.setProperty("bridge.key", key);
+        config.setProperty("api.base", config.getProperty("api.base", "https://safe-nexus.org"));
+        config.setProperty("poll.enabled", "true");
+        saveConfig(config);
+        return key;
     }
 
     private static Path configPath() {

@@ -27212,7 +27212,34 @@ function setSignaturesBridgeStatus(message = "", tone = "") {
   signaturesBridgeStatus.hidden = !message;
 }
 
+const SIGNATURE_BRIDGE_KEY_STORAGE_KEY = "safeNexus.signatureBridge.key";
 const LOCAL_SIGNATURE_BRIDGE_BASE_URLS = ["http://127.0.0.1:9137", "http://localhost:9137"];
+
+function createSignatureBridgeKey() {
+  const bytes = new Uint8Array(18);
+  if (window.crypto?.getRandomValues) {
+    window.crypto.getRandomValues(bytes);
+  } else {
+    for (let index = 0; index < bytes.length; index += 1) {
+      bytes[index] = Math.floor(Math.random() * 256);
+    }
+  }
+  return `sn-${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function getSignatureBridgeKey() {
+  try {
+    const existing = localStorage.getItem(SIGNATURE_BRIDGE_KEY_STORAGE_KEY);
+    if (existing && existing.trim()) {
+      return existing.trim().toLowerCase();
+    }
+    const created = createSignatureBridgeKey();
+    localStorage.setItem(SIGNATURE_BRIDGE_KEY_STORAGE_KEY, created);
+    return created;
+  } catch {
+    return createSignatureBridgeKey();
+  }
+}
 
 async function postLocalSignatureBridgeJob(payload = {}) {
   let lastError = null;
@@ -27275,63 +27302,23 @@ async function openLocalSignatureBridge() {
 
   signaturesOpenLocalSignerButton.disabled = true;
   signaturesOpenLocalSignerButton.classList.add("is-loading");
-  setSignaturesBridgeStatus(`Pripremam ${pendingEntries.length} zapisnika za lokalni potpis...`, "loading");
+  const bridgeKey = getSignatureBridgeKey();
+  setSignaturesBridgeStatus(`DigitalOcean priprema ${pendingEntries.length} zapisnika za lokalni potpis...`, "loading");
 
   try {
     const payload = await apiRequest("/signature-bridge/jobs", {
       method: "POST",
       body: {
         origin: window.location.origin,
+        bridgeKey,
         documentIds: pendingEntries.map((entry) => entry.documentItem?.id).filter(Boolean),
       },
     });
-    const protocolUrl = payload.protocolUrl || `safenexus-signer://sign?token=${encodeURIComponent(payload.token || "")}&api=${encodeURIComponent(window.location.origin)}`;
     setSignaturesBridgeStatus(
-      `${payload.items?.length || pendingEntries.length} zapisnika pripremljeno. Provjeravam lokalni bridge...`,
-      "loading",
-    );
-    const bridgeOnline = await pingLocalSignatureBridge();
-    if (!bridgeOnline) {
-      setSignaturesBridgeStatus("Lokalni bridge nije aktivan. Pokrećem SafeNexus Signer...", "warning");
-      window.location.href = `safenexus-signer://open?origin=${encodeURIComponent(window.location.origin)}`;
-      await waitForLocalSignatureBridge();
-    }
-    try {
-      const localResult = await postLocalSignatureBridgeJob(payload);
-      setSignaturesBridgeStatus(
-        localResult.message || `${localResult.signed || 0} zapisnika je potpisano i vraćeno u Documents.`,
-        localResult.ok === false ? "error" : "ready",
-      );
-      await loadDocumentsExplorerRecords({ force: true });
-      return;
-    } catch (localError) {
-      setSignaturesBridgeStatus(
-        "Lokalni signer nije odgovorio direktno. Pokrećem bridge pa pokušavam još jednom...",
-        "warning",
-      );
-    }
-    window.location.href = `safenexus-signer://open?origin=${encodeURIComponent(window.location.origin)}`;
-    await waitForLocalSignatureBridge();
-    try {
-      const retryResult = await postLocalSignatureBridgeJob(payload);
-      setSignaturesBridgeStatus(
-        retryResult.message || `${retryResult.signed || 0} zapisnika je potpisano i vraćeno u Documents.`,
-        retryResult.ok === false ? "error" : "ready",
-      );
-      await loadDocumentsExplorerRecords({ force: true });
-      return;
-    } catch (retryError) {
-      setSignaturesBridgeStatus(
-        "Bridge se nije javio kroz localhost. Šaljem paket kroz Windows protokol...",
-        "warning",
-      );
-    }
-    window.location.href = protocolUrl;
-    setSignaturesBridgeStatus(
-      "SafeNexus Signer je otvoren. Ako se pojavi pitanje iz browsera, potvrdi otvaranje aplikacije.",
+      `${payload.items?.length || pendingEntries.length} zapisnika je u DigitalOcean redu za potpis. Lokalni SafeNexus Signer će ih sam preuzeti. Bridge ključ: ${bridgeKey}`,
       "ready",
     );
-    [8000, 18000, 45000].forEach((delay) => {
+    [5000, 12000, 25000, 45000, 90000].forEach((delay) => {
       window.setTimeout(() => {
         void loadDocumentsExplorerRecords({ force: true });
       }, delay);
@@ -95531,15 +95518,15 @@ signaturesOpenLocalSignerButton?.addEventListener("click", () => {
 });
 
 signaturesCopyBridgeUrlButton?.addEventListener("click", async () => {
-  const bridgeUrl = `safenexus-signer://open?origin=${encodeURIComponent(window.location.origin)}`;
+  const bridgeKey = getSignatureBridgeKey();
   try {
-    await navigator.clipboard?.writeText(bridgeUrl);
+    await navigator.clipboard?.writeText(bridgeKey);
     signaturesCopyBridgeUrlButton.textContent = "Kopirano";
     window.setTimeout(() => {
-      signaturesCopyBridgeUrlButton.textContent = "Kopiraj bridge URL";
+      signaturesCopyBridgeUrlButton.textContent = "Kopiraj bridge ključ";
     }, 1600);
   } catch {
-    window.prompt("Bridge URL", bridgeUrl);
+    window.prompt("Bridge ključ", bridgeKey);
   }
 });
 

@@ -1264,6 +1264,7 @@ let cachedRawSnapshotEntry = null;
 const scopedSnapshotCache = new Map();
 const SIGNATURE_BRIDGE_JOB_TTL_MS = 60 * 60 * 1000;
 const SIGNATURE_BRIDGE_MAX_ITEMS = 80;
+const SIGNATURE_BRIDGE_CLAIM_TTL_MS = 20 * 60 * 1000;
 const signatureBridgeJobs = new Map();
 
 function appendVaryHeader(response, value) {
@@ -3252,6 +3253,54 @@ function getSignatureBridgeJob(token = "") {
   return job;
 }
 
+function normalizeSignatureBridgeKey(value = "") {
+  return String(value || "").trim().toLowerCase();
+}
+
+function markSignatureBridgeJobProgress(job = {}) {
+  if (!job || !Array.isArray(job.items)) {
+    return job;
+  }
+  const allSigned = job.items.length > 0 && job.items.every((item) => item?.signedAt || item?.savedDocumentId);
+  if (allSigned) {
+    job.status = "completed";
+    job.completedAtMs = job.completedAtMs || Date.now();
+  }
+  return job;
+}
+
+function claimNextSignatureBridgeJob(bridgeKey = "") {
+  cleanupSignatureBridgeJobs();
+  const normalizedKey = normalizeSignatureBridgeKey(bridgeKey);
+  if (!normalizedKey) {
+    return null;
+  }
+
+  const now = Date.now();
+  const jobs = Array.from(signatureBridgeJobs.values())
+    .map((job) => markSignatureBridgeJobProgress(job))
+    .filter((job) => (
+      normalizeSignatureBridgeKey(job?.bridgeKey) === normalizedKey
+      && job.status !== "completed"
+      && Array.isArray(job.items)
+      && job.items.some((item) => !item?.signedAt && !item?.savedDocumentId)
+      && (
+        job.status !== "claimed"
+        || Number(job.claimedAtMs || 0) + SIGNATURE_BRIDGE_CLAIM_TTL_MS <= now
+      )
+    ))
+    .sort((a, b) => Number(a.createdAtMs || 0) - Number(b.createdAtMs || 0));
+
+  const job = jobs[0] || null;
+  if (!job) {
+    return null;
+  }
+
+  job.status = "claimed";
+  job.claimedAtMs = now;
+  return job;
+}
+
 function getRequestPublicBaseUrl(request) {
   const configured = canonicalAppOrigin || publicAppUrl;
   if (configured) {
@@ -3324,6 +3373,8 @@ function buildSignatureBridgeJobResponse(job = {}) {
     token: job.token,
     apiBase: job.apiBase,
     origin: job.origin,
+    status: job.status || "pending",
+    bridgeKey: job.bridgeKey || "",
     expiresAt: new Date(job.expiresAtMs).toISOString(),
     protocolUrl: buildSignatureBridgeProtocolUrl(job),
     engineHint: "PotpisPDF.exe",
@@ -3416,6 +3467,7 @@ async function handleSignatureBridgeSignedUpload(request, response, token = "", 
 
   item.signedAt = new Date().toISOString();
   item.savedDocumentId = saved?.id || "";
+  markSignatureBridgeJobProgress(job);
   sendJson(response, 200, {
     ok: true,
     item: stripStoredDocumentPayloadForResponse(saved),
@@ -6562,6 +6614,21 @@ async function handleApiRequest(request, response, url) {
     const signatureBridgeDownloadMatch = url.pathname.match(/^\/api\/signature-bridge\/jobs\/([^/]+)\/items\/([^/]+)\/download$/);
     const signatureBridgeUploadMatch = url.pathname.match(/^\/api\/signature-bridge\/jobs\/([^/]+)\/items\/([^/]+)\/signed$/);
 
+    if (request.method === "GET" && url.pathname === "/api/signature-bridge/agent/jobs/next") {
+      const bridgeKey = normalizeSignatureBridgeKey(url.searchParams.get("bridgeKey") || "");
+      if (!bridgeKey) {
+        sendError(response, 400, "Bridge ključ je obavezan.");
+        return true;
+      }
+
+      const job = claimNextSignatureBridgeJob(bridgeKey);
+      sendJson(response, 200, {
+        ok: true,
+        job: job ? buildSignatureBridgeJobResponse(job) : null,
+      });
+      return true;
+    }
+
     if (signatureBridgeJobMatch && request.method === "GET") {
       const job = getSignatureBridgeJob(signatureBridgeJobMatch[1]);
       if (!job) {
@@ -6843,10 +6910,13 @@ async function handleApiRequest(request, response, url) {
       ]));
       const token = randomUUID().replace(/-/g, "");
       const apiBase = getRequestPublicBaseUrl(request);
+      const bridgeKey = normalizeSignatureBridgeKey(body?.bridgeKey || "");
       const job = {
         token,
         apiBase,
         origin: String(body?.origin || request.headers.origin || apiBase).trim() || apiBase,
+        bridgeKey,
+        status: "pending",
         createdAtMs: Date.now(),
         expiresAtMs: Date.now() + SIGNATURE_BRIDGE_JOB_TTL_MS,
         createdByLabel: user.fullName || user.email || "SafeNexus",
