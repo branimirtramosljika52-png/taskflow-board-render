@@ -20,8 +20,6 @@
     "pdfkit": "^0.18.0",
     "pg": "^8.16.3",
     "pizzip": "^3.2.0",
-    "react": "^19.2.6",
-    "react-dom": "^19.2.6",
     "xlsx": "^0.18.5"
   },
   "scripts": {
@@ -29,8 +27,5 @@
     "dev": "node server.js",
     "start": "node server.js",
     "test": "node --test"
-  },
-  "devDependencies": {
-    "esbuild": "^0.28.0"
   }
 }

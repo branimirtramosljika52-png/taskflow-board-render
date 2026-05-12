@@ -2591,7 +2591,6 @@ let companiesColumnResizeState = null;
 let companiesColumnResizeInitialized = false;
 let workOrderListColumnWidths = {};
 let workOrderListColumnResizeState = null;
-let workOrderReactQuickCreateBusy = false;
 let companyEditorRelatedDataRafId = 0;
 let companyEditorRelatedDataTimeoutId = 0;
 let companyEditorRelatedDataIdleId = 0;
@@ -2822,7 +2821,6 @@ const moduleViewDescription = document.querySelector("#module-view-description")
 const moduleViewChips = document.querySelector("#module-view-chips");
 const modulePanel = document.querySelector("#module-view > .module-panel");
 const documentsModule = document.querySelector("#documents-module");
-const documentsReactRoot = document.querySelector("#documents-react-root");
 const settingsModule = document.querySelector("#settings-module");
 const settingsMeasurementLeadDaysInput = document.querySelector("#settings-measurement-lead-days");
 const settingsMeasurementRepeatDaysInput = document.querySelector("#settings-measurement-repeat-days");
@@ -3016,7 +3014,6 @@ const drawingSelectedFooterInput = document.querySelector("#drawing-selected-foo
 const drawingDeleteSelectedButton = document.querySelector("#drawing-delete-selected");
 const drawingError = document.querySelector("#drawing-error");
 const vehiclesModule = document.querySelector("#vehicles-module");
-const vehiclesReactRoot = document.querySelector("#vehicles-react-root");
 const vehiclesTotalCount = document.querySelector("#vehicles-total-count");
 const vehiclesAvailableCount = document.querySelector("#vehicles-available-count");
 const vehiclesReservedCount = document.querySelector("#vehicles-reserved-count");
@@ -3041,7 +3038,6 @@ const vehicleScheduleEmpty = document.querySelector("#vehicle-schedule-empty");
 const vehicleOpenFormButton = document.querySelector("#vehicle-open-form");
 const vehicleEditorBackdrop = document.querySelector("#vehicle-editor-backdrop");
 const vehicleEditorPanel = document.querySelector("#vehicle-editor-panel");
-const vehicleEditorReactRoot = document.querySelector("#vehicle-editor-react-root");
 const vehicleEditorCloseButton = document.querySelector("#vehicle-editor-close");
 const vehicleEditorBody = vehicleEditorPanel?.querySelector(".vehicle-modal-body");
 const vehicleEditorTitle = document.querySelector("#vehicle-editor-title");
@@ -3080,7 +3076,6 @@ const vehicleReservationsTitle = document.querySelector("#vehicle-reservations-t
 const vehicleOpenReservationButton = document.querySelector("#vehicle-open-reservation");
 const vehicleReservationBackdrop = document.querySelector("#vehicle-reservation-backdrop");
 const vehicleReservationPanel = document.querySelector("#vehicle-reservation-panel");
-const vehicleReservationReactRoot = document.querySelector("#vehicle-reservation-react-root");
 const vehicleReservationCloseButton = document.querySelector("#vehicle-reservation-close");
 const vehicleReservationBody = vehicleReservationPanel?.querySelector(".vehicle-modal-body");
 const vehicleReservationForm = document.querySelector("#vehicle-reservation-form");
@@ -3103,7 +3098,6 @@ const vehicleReservationsList = document.querySelector("#vehicle-reservations-li
 const vehicleReservationsEmpty = document.querySelector("#vehicle-reservations-empty");
 const offersModule = document.querySelector("#offers-module");
 const signaturesModule = document.querySelector("#signatures-module");
-const signaturesReactRoot = document.querySelector("#signatures-react-root");
 const signaturesStats = document.querySelector("#signatures-stats");
 const signaturesList = document.querySelector("#signatures-list");
 const signaturesRefreshButton = document.querySelector("#signatures-refresh");
@@ -3342,7 +3336,6 @@ const clientPortalPreviewCompany = document.querySelector("#client-portal-previe
 const clientPortalPreviewLocation = document.querySelector("#client-portal-preview-location");
 const clientPortalPreviewList = document.querySelector("#client-portal-preview-list");
 const legalFrameworkModule = document.querySelector("#legal-framework-module");
-const legalFrameworkReactRoot = document.querySelector("#legal-framework-react-root");
 const legalFrameworkTotalCount = document.querySelector("#legal-framework-total-count");
 const legalFrameworkActiveCount = document.querySelector("#legal-framework-active-count");
 const legalFrameworkInactiveCount = document.querySelector("#legal-framework-inactive-count");
@@ -3355,7 +3348,6 @@ const legalFrameworkEmpty = document.querySelector("#legal-framework-empty");
 const legalFrameworkOpenFormButton = document.querySelector("#legal-framework-open-form");
 const legalFrameworkEditorBackdrop = document.querySelector("#legal-framework-editor-backdrop");
 const legalFrameworkEditorPanel = document.querySelector("#legal-framework-editor-panel");
-const legalFrameworkEditorReactRoot = document.querySelector("#legal-framework-editor-react-root");
 const legalFrameworkEditorCloseButton = document.querySelector("#legal-framework-editor-close");
 const legalFrameworkEditorBody = legalFrameworkEditorPanel?.querySelector(".legal-framework-editor-body");
 const legalFrameworkEditorTitle = document.querySelector("#legal-framework-editor-title");
@@ -3509,11 +3501,9 @@ const serviceCatalogFilterStatusInput = document.querySelector("#service-catalog
 const serviceCatalogHelper = document.querySelector("#service-catalog-helper");
 const serviceCatalogList = document.querySelector("#service-catalog-list");
 const serviceCatalogEmpty = document.querySelector("#service-catalog-empty");
-const serviceCatalogReactRoot = document.querySelector("#service-catalog-react-root");
 const serviceCatalogOpenFormButton = document.querySelector("#service-catalog-open-form");
 const serviceCatalogEditorBackdrop = document.querySelector("#service-catalog-editor-backdrop");
 const serviceCatalogEditorPanel = document.querySelector("#service-catalog-editor-panel");
-const serviceCatalogEditorReactRoot = document.querySelector("#service-catalog-editor-react-root");
 const serviceCatalogEditorCloseButton = document.querySelector("#service-catalog-editor-close");
 const serviceCatalogEditorBody = serviceCatalogEditorPanel?.querySelector(".service-catalog-editor-body");
 const serviceCatalogEditorTitle = document.querySelector("#service-catalog-editor-title");
@@ -3543,7 +3533,6 @@ const serviceCatalogError = document.querySelector("#service-catalog-error");
 const serviceCatalogResetButton = document.querySelector("#service-catalog-reset");
 const serviceCatalogDeleteButton = document.querySelector("#service-catalog-delete");
 const measurementEquipmentModule = document.querySelector("#measurement-equipment-module");
-const measurementEquipmentReactRoot = document.querySelector("#measurement-equipment-react-root");
 const measurementEquipmentTotalCount = document.querySelector("#measurement-equipment-total-count");
 const measurementEquipmentCalibrationCount = document.querySelector("#measurement-equipment-calibration-count");
 const measurementEquipmentExpiringCount = document.querySelector("#measurement-equipment-expiring-count");
@@ -3556,7 +3545,6 @@ const measurementEquipmentEmpty = document.querySelector("#measurement-equipment
 const measurementEquipmentOpenFormButton = document.querySelector("#measurement-equipment-open-form");
 const measurementEquipmentEditorBackdrop = document.querySelector("#measurement-equipment-editor-backdrop");
 const measurementEquipmentEditorPanel = document.querySelector("#measurement-equipment-editor-panel");
-const measurementEquipmentEditorReactRoot = document.querySelector("#measurement-equipment-editor-react-root");
 const measurementEquipmentEditorCloseButton = document.querySelector("#measurement-equipment-editor-close");
 const measurementEquipmentEditorBody = measurementEquipmentEditorPanel?.querySelector(".measurement-equipment-editor-body");
 const measurementEquipmentEditorTitle = document.querySelector("#measurement-equipment-editor-title");
@@ -3637,11 +3625,9 @@ const safetyAuthorizationSearchInput = document.querySelector("#safety-authoriza
 const safetyAuthorizationHelper = document.querySelector("#safety-authorization-helper");
 const safetyAuthorizationList = document.querySelector("#safety-authorization-list");
 const safetyAuthorizationEmpty = document.querySelector("#safety-authorization-empty");
-const safetyAuthorizationReactRoot = document.querySelector("#safety-authorization-react-root");
 const safetyAuthorizationOpenFormButton = document.querySelector("#safety-authorization-open-form");
 const safetyAuthorizationEditorBackdrop = document.querySelector("#safety-authorization-editor-backdrop");
 const safetyAuthorizationEditorPanel = document.querySelector("#safety-authorization-editor-panel");
-const safetyAuthorizationEditorReactRoot = document.querySelector("#safety-authorization-editor-react-root");
 const safetyAuthorizationEditorCloseButton = document.querySelector("#safety-authorization-editor-close");
 const safetyAuthorizationEditorBody = safetyAuthorizationEditorPanel?.querySelector(".safety-authorization-editor-body");
 const safetyAuthorizationEditorTitle = document.querySelector("#safety-authorization-editor-title");
@@ -3661,9 +3647,6 @@ const safetyAuthorizationError = document.querySelector("#safety-authorization-e
 const safetyAuthorizationResetButton = document.querySelector("#safety-authorization-reset");
 const safetyAuthorizationDeleteButton = document.querySelector("#safety-authorization-delete");
 const absenceModule = document.querySelector("#absence-module");
-const absenceReactRoot = document.querySelector("#absence-react-root");
-const absenceEditorReactRoot = document.querySelector("#absence-editor-react-root");
-const absenceBalanceReactRoot = document.querySelector("#absence-balance-react-root");
 const absenceModuleKicker = document.querySelector("#absence-module-kicker");
 const absenceModuleTitle = document.querySelector("#absence-module-title");
 const absenceModuleCopy = document.querySelector("#absence-module-copy");
@@ -3713,7 +3696,6 @@ const absenceBalanceForm = document.querySelector("#absence-balance-form");
 const absenceBalanceList = document.querySelector("#absence-balance-list");
 const absenceBalanceError = document.querySelector("#absence-balance-error");
 const absenceReportModule = document.querySelector("#absence-report-module");
-const absenceReportReactRoot = document.querySelector("#absence-report-react-root");
 const absenceReportMonthInput = document.querySelector("#absence-report-month");
 const absenceReportPrevButton = document.querySelector("#absence-report-prev");
 const absenceReportTodayButton = document.querySelector("#absence-report-today");
@@ -3785,7 +3767,6 @@ let offerHtmlPreviewPayload = null;
 let contractAnnexDrafts = [];
 let contractTemplateReferenceDraft = null;
 let serviceCatalogCertificateTemplateDraft = null;
-let serviceCatalogReactDraft = null;
 let lastCommercialDocumentContextKey = "offers";
 let offerServiceAddMenu = null;
 let documentTemplateFieldDrafts = [];
@@ -3819,18 +3800,12 @@ let measurementEquipmentDocumentDrafts = [];
 let measurementEquipmentActivityDrafts = [];
 let measurementEquipmentSideComments = [];
 let measurementEquipmentSpecDrafts = [];
-let measurementEquipmentReactDraft = null;
 let legalFrameworkDocumentDrafts = [];
-let legalFrameworkReactDraft = null;
 let safetyAuthorizationDocumentDrafts = [];
-let safetyAuthorizationReactDraft = null;
 let absenceDocumentDrafts = [];
 let absenceBalanceDrafts = [];
-let absenceEditorDraft = null;
 let vehicleDocumentDrafts = [];
 let vehicleActivityDrafts = [];
-let vehicleReactDraft = null;
-let vehicleReservationReactDraft = null;
 let activeMeasurementEquipmentDocumentPreview = null;
 let measurementEquipmentCardExporting = false;
 let measurementEquipmentBulkExporting = false;
@@ -3899,7 +3874,6 @@ const activeWorkOrdersCount = document.querySelector("#active-work-orders-count"
 const completedWorkOrdersCount = document.querySelector("#completed-work-orders-count");
 const overdueWorkOrdersCount = document.querySelector("#overdue-work-orders-count");
 const dashboardOverviewPanel = document.querySelector("#dashboard-overview-panel");
-const dashboardReactRoot = document.querySelector("#dashboard-react-root");
 const dashboardControlPanel = document.querySelector("#dashboard-control-panel");
 const dashboardControlGrid = document.querySelector("#dashboard-control-grid");
 const dashboardPeoplePanel = document.querySelector("#dashboard-people-panel");
@@ -4536,7 +4510,6 @@ const measurementContextDeleteColumnButton = document.querySelector("#measuremen
 const workOrdersBody = document.querySelector("#work-orders-body");
 const workOrdersEmpty = document.querySelector("#work-orders-empty");
 const workOrdersTableWrap = document.querySelector("#work-orders-table-wrap");
-const workOrdersReactRoot = document.querySelector("#work-orders-react-root");
 const workOrdersLoadState = document.querySelector("#work-orders-load-state");
 const workOrdersHelper = document.querySelector("#work-orders-helper");
 const workspaceViewChips = Array.from(document.querySelectorAll("[data-jump-view]"));
@@ -5070,7 +5043,6 @@ const usersProfileHeader = document.querySelector("#users-profile-header");
 const usersMetaHeader = document.querySelector("#users-meta-header");
 const peopleWorkspaceCopy = document.querySelector("#people-workspace-copy");
 const peopleUsersPanel = document.querySelector("#people-users-panel");
-const peopleWorkspaceTabs = document.querySelector("#people-workspace-tabs");
 const peopleWorkspaceTabButtons = Array.from(document.querySelectorAll("[data-people-workspace-tab]"));
 const userPeopleOnlyElements = Array.from(document.querySelectorAll("[data-user-management-scope=\"people\"]"));
 const peopleTrainingPanel = document.querySelector("#people-training-panel");
@@ -26937,65 +26909,6 @@ function formatDocumentsRefreshTimestamp(value = "") {
   })}`;
 }
 
-function renderReactDocumentsModule(model = buildDocumentsLibraryViewModel()) {
-  const reactComponents = window.SafeNexusReactComponents;
-  if (!documentsReactRoot || typeof reactComponents?.renderDocumentsModule !== "function") {
-    documentsModule?.querySelector(".documents-explorer-shell")?.removeAttribute("hidden");
-    return false;
-  }
-
-  documentsModule?.querySelector(".documents-explorer-shell")?.setAttribute("hidden", "");
-  syncDocumentsLibraryDefaultExpansion(model.visibleFolders);
-  const lastRefreshLabel = formatDocumentsRefreshTimestamp(state.documentsExplorer.lastRefreshAt);
-  return reactComponents.renderDocumentsModule(documentsReactRoot, {
-    model: {
-      ...model,
-      query: state.documentsExplorer.query || "",
-    },
-    loading: Boolean(state.documentsExplorer.loading),
-    error: state.documentsExplorer.error || "",
-    lastRefreshLabel: state.documentsExplorer.loading
-      ? (state.documentsExplorer.lastRefreshAt ? `${lastRefreshLabel} - osvježavanje...` : "Osvježavanje dokumenata...")
-      : lastRefreshLabel,
-    expandedFolderIds: Array.from(state.documentsExplorer.expandedFolderIds ?? []),
-    onRefresh: () => {
-      void loadDocumentsExplorerRecords({ force: true });
-    },
-    onSearch: (query) => {
-      state.documentsExplorer.query = String(query || "");
-      if (documentsSearchInput) {
-        documentsSearchInput.value = state.documentsExplorer.query;
-      }
-      renderDocumentsModule();
-    },
-    onKindChange: (fileKind) => {
-      state.documentsExplorer.fileKind = normalizeDocumentLibraryFileKind(fileKind || "all");
-      if (documentsFilterKindInput) {
-        documentsFilterKindInput.value = state.documentsExplorer.fileKind;
-      }
-      renderDocumentsModule();
-    },
-    onSelectCategory: (categoryId) => {
-      selectDocumentsLibraryCategory(categoryId);
-    },
-    onToggleFolder: (folderId) => {
-      toggleDocumentsLibraryFolder(folderId);
-    },
-    onToggleAll: () => {
-      toggleDocumentsLibraryAllFolders(model);
-    },
-    onPreview: (entry) => {
-      void runMutation(() => previewDocumentsLibraryEntry(entry), null);
-    },
-    onDownload: (entry) => {
-      void runMutation(() => downloadDocumentsLibraryEntry(entry), null);
-    },
-    onOpenSource: (target) => {
-      openDocumentsLibrarySource(target);
-    },
-  });
-}
-
 function renderDocumentsModule() {
   if (!documentsModule) {
     return;
@@ -27047,13 +26960,6 @@ function renderDocumentsModule() {
   }
 
   const model = buildDocumentsLibraryViewModel();
-  if (renderReactDocumentsModule(model)) {
-    if (documentsLibraryEmpty) {
-      documentsLibraryEmpty.hidden = true;
-    }
-    return;
-  }
-
   renderDocumentsLibraryCategories(model);
   renderDocumentsLibraryFolders(model);
   updateDocumentsToggleFoldersButton(model);
@@ -27149,105 +27055,6 @@ function createSignatureStatCard(label = "", value = "", tone = "") {
   return card;
 }
 
-function buildReactSignatureRows(entries = [], workOrdersWithoutDocuments = []) {
-  const rows = entries.map(({ entry, context, signed, documentItem }) => ({
-    id: String(documentItem?.id || entry.id || `${context.workOrderNumber || entry.label}:${entry.updatedAtMs || ""}`),
-    title: context.workOrderNumber ? `RN ${context.workOrderNumber}` : entry.label,
-    meta: [
-      context.company?.name || context.linkedWorkOrder?.companyName || "",
-      context.location?.name || context.linkedWorkOrder?.locationName || "",
-      context.serviceLabel || "",
-      entry.updatedAt ? formatDateTime(entry.updatedAt) : "",
-    ].filter(Boolean).join(" | "),
-    description: signed
-      ? String(entry.description || "").replace(/^\s*potpisano:\s*/i, "Potpisnici: ").trim()
-      : "Dokument je spreman za potpis.",
-    signed,
-    missing: false,
-    statusLabel: signed ? "Potpisano" : "Čeka potpis",
-    canPreview: Boolean(entry.canPreview),
-    canDownload: Boolean(entry.canDownload),
-    entry,
-    sourceTarget: entry.sourceTarget,
-  }));
-
-  workOrdersWithoutDocuments.slice(0, 12).forEach((workOrder) => {
-    rows.push({
-      id: `missing:${workOrder.id || workOrder.workOrderNumber}`,
-      title: workOrder.workOrderNumber ? `RN ${workOrder.workOrderNumber}` : "Radni nalog",
-      meta: [
-        workOrder.companyName || "",
-        workOrder.locationName || "",
-        getWorkOrderServiceSummary(workOrder) || "",
-      ].filter(Boolean).join(" | "),
-      description: "Prvo generiraj zapisnik, nakon toga ulazi u potpisni red.",
-      signed: false,
-      missing: true,
-      statusLabel: "Bez PDF-a",
-      canPreview: false,
-      canDownload: false,
-      entry: null,
-      sourceTarget: { kind: "work-order", record: workOrder },
-    });
-  });
-
-  return rows;
-}
-
-function renderReactSignaturesModule({
-  entries = [],
-  signedEntries = [],
-  pendingEntries = [],
-  workOrdersWithoutDocuments = [],
-} = {}) {
-  const reactComponents = window.SafeNexusReactComponents;
-  if (!signaturesReactRoot || typeof reactComponents?.renderSignaturesModule !== "function") {
-    signaturesModule?.querySelector(".signatures-hero-panel")?.removeAttribute("hidden");
-    signaturesModule?.querySelector(".signatures-local-signer-panel")?.removeAttribute("hidden");
-    signaturesModule?.querySelector(".signatures-list-panel")?.removeAttribute("hidden");
-    return false;
-  }
-
-  signaturesModule?.querySelector(".signatures-hero-panel")?.setAttribute("hidden", "");
-  signaturesModule?.querySelector(".signatures-local-signer-panel")?.setAttribute("hidden", "");
-  signaturesModule?.querySelector(".signatures-list-panel")?.setAttribute("hidden", "");
-
-  return reactComponents.renderSignaturesModule(signaturesReactRoot, {
-    loading: Boolean(state.documentsExplorer.loading),
-    error: state.documentsExplorer.error || "",
-    stats: {
-      total: entries.length + workOrdersWithoutDocuments.length,
-      pending: pendingEntries.length,
-      signed: signedEntries.length,
-      missing: workOrdersWithoutDocuments.length,
-    },
-    entries: buildReactSignatureRows(entries, workOrdersWithoutDocuments),
-    bridgeStatus: signaturesReactBridgeStatus,
-    onRefresh: () => {
-      void loadDocumentsExplorerRecords({ force: true });
-    },
-    onQueueLocalSigner: () => {
-      void openLocalSignatureBridge();
-    },
-    onPairSigner: () => {
-      void pairLocalSignatureBridge();
-    },
-    onPreview: (entry) => {
-      if (entry) {
-        void runMutation(() => previewDocumentsLibraryEntry(entry), null);
-      }
-    },
-    onDownload: (entry) => {
-      if (entry) {
-        void runMutation(() => downloadDocumentsLibraryEntry(entry), null);
-      }
-    },
-    onOpenSource: (target) => {
-      openDocumentsLibrarySource(target);
-    },
-  });
-}
-
 function renderSignaturesModule() {
   if (!signaturesModule) {
     return;
@@ -27277,15 +27084,6 @@ function renderSignaturesModule() {
       }
       return getWorkOrderServiceItems(workOrder).length > 0;
     });
-
-  if (renderReactSignaturesModule({
-    entries,
-    signedEntries,
-    pendingEntries,
-    workOrdersWithoutDocuments,
-  })) {
-    return;
-  }
 
   if (signaturesStats) {
     signaturesStats.replaceChildren(
@@ -27410,28 +27208,17 @@ function renderSignaturesModule() {
 }
 
 function setSignaturesBridgeStatus(message = "", tone = "") {
-  signaturesReactBridgeStatus = {
-    message: String(message || ""),
-    tone: String(tone || ""),
-  };
   if (!signaturesBridgeStatus) {
-    if (state.activeView === "module" && state.activeModuleItem === "signatures") {
-      renderSignaturesModule();
-    }
     return;
   }
 
   signaturesBridgeStatus.textContent = message;
   signaturesBridgeStatus.className = ["signatures-bridge-status", tone ? `is-${tone}` : ""].filter(Boolean).join(" ");
   signaturesBridgeStatus.hidden = !message;
-  if (state.activeView === "module" && state.activeModuleItem === "signatures") {
-    renderSignaturesModule();
-  }
 }
 
 const SIGNATURE_BRIDGE_KEY_STORAGE_KEY = "safeNexus.signatureBridge.key";
 const LOCAL_SIGNATURE_BRIDGE_BASE_URLS = ["http://127.0.0.1:9137", "http://localhost:9137"];
-let signaturesReactBridgeStatus = { message: "", tone: "" };
 
 function createSignatureBridgeKey() {
   const bytes = new Uint8Array(18);
@@ -38767,7 +38554,6 @@ function syncLegalFrameworkEditorModal() {
   }
 
   if (isOpen) {
-    renderReactLegalFrameworkEditor();
     requestAnimationFrame(() => {
       scrollLegalFrameworkEditorToTop();
       legalFrameworkEditorBody?.focus({ preventScroll: true });
@@ -38775,8 +38561,6 @@ function syncLegalFrameworkEditorModal() {
         scrollLegalFrameworkEditorToTop();
       }, 0);
     });
-  } else {
-    unmountReactLegalFrameworkEditor();
   }
 }
 
@@ -38864,7 +38648,6 @@ function syncServiceCatalogEditorModal() {
   }
 
   if (isOpen) {
-    renderReactServiceCatalogEditor();
     requestAnimationFrame(() => {
       scrollServiceCatalogEditorToTop();
       serviceCatalogEditorBody?.focus({ preventScroll: true });
@@ -38872,8 +38655,6 @@ function syncServiceCatalogEditorModal() {
         scrollServiceCatalogEditorToTop();
       }, 0);
     });
-  } else {
-    unmountReactServiceCatalogEditor();
   }
 }
 
@@ -38911,7 +38692,6 @@ function syncMeasurementEquipmentEditorModal() {
   syncMeasurementEquipmentEditorSections();
 
   if (isOpen) {
-    renderReactMeasurementEquipmentEditor();
     requestAnimationFrame(() => {
       scrollMeasurementEquipmentEditorToTop();
       measurementEquipmentEditorBody?.focus({ preventScroll: true });
@@ -38919,8 +38699,6 @@ function syncMeasurementEquipmentEditorModal() {
         scrollMeasurementEquipmentEditorToTop();
       }, 0);
     });
-  } else {
-    unmountReactMeasurementEquipmentEditor();
   }
 }
 
@@ -38951,7 +38729,6 @@ function syncSafetyAuthorizationEditorModal() {
   }
 
   if (isOpen) {
-    renderReactSafetyAuthorizationEditor();
     requestAnimationFrame(() => {
       scrollSafetyAuthorizationEditorToTop();
       safetyAuthorizationEditorBody?.focus({ preventScroll: true });
@@ -38959,8 +38736,6 @@ function syncSafetyAuthorizationEditorModal() {
         scrollSafetyAuthorizationEditorToTop();
       }, 0);
     });
-  } else {
-    unmountReactSafetyAuthorizationEditor();
   }
 }
 
@@ -51362,331 +51137,6 @@ async function queueLegalFrameworkDocuments(files) {
   renderLegalFrameworkDocuments();
 }
 
-function buildLegalFrameworkReactDraft(item = {}) {
-  const source = item && typeof item === "object" ? item : {};
-  const documents = (Array.isArray(source.documents) ? source.documents : legalFrameworkDocumentDrafts)
-    .map((entry) => {
-      const draft = createModuleAttachmentDraft(entry);
-      return {
-        ...draft,
-        meta: [
-          "PDF",
-          formatFileSize(draft.fileSize || 0),
-          draft.updatedAt ? formatCompactDateTime(draft.updatedAt) : "",
-        ].filter(Boolean).join(" | "),
-        fileSizeLabel: formatFileSize(draft.fileSize || 0),
-      };
-    })
-    .filter((entry) => entry.fileName && (entry.dataUrl || entry.storageUrl));
-
-  return {
-    versionKey: [
-      source.id || "new",
-      source.updatedAt || "",
-      Date.now(),
-    ].join(":"),
-    id: String(source.id || ""),
-    organizationId: source.organizationId || state.activeOrganizationId || "",
-    title: source.title ?? legalFrameworkTitleInput?.value ?? "",
-    category: source.category ?? legalFrameworkCategoryInput?.value ?? "",
-    status: source.status ?? legalFrameworkStatusInput?.value ?? "active",
-    authority: source.authority ?? legalFrameworkAuthorityInput?.value ?? "",
-    referenceCode: source.referenceCode ?? legalFrameworkReferenceCodeInput?.value ?? "",
-    versionLabel: source.versionLabel ?? legalFrameworkVersionLabelInput?.value ?? "",
-    publishedOn: source.publishedOn ?? legalFrameworkPublishedOnInput?.value ?? "",
-    effectiveFrom: source.effectiveFrom ?? legalFrameworkEffectiveFromInput?.value ?? "",
-    reviewDate: source.reviewDate ?? legalFrameworkReviewDateInput?.value ?? "",
-    sourceUrl: source.sourceUrl ?? legalFrameworkSourceUrlInput?.value ?? "",
-    tagsText: source.tagsText ?? legalFrameworkTagsTextInput?.value ?? "",
-    documents,
-    linkedServiceCatalogIds: (Array.isArray(source.linkedServiceCatalogIds)
-      ? source.linkedServiceCatalogIds
-      : getLegalFrameworkLinkedServiceIds(source)).map(String),
-    note: source.note ?? legalFrameworkNoteInput?.value ?? "",
-  };
-}
-
-function buildLegalFrameworkPayloadFromReactDraft(draft = legalFrameworkReactDraft || {}) {
-  return {
-    organizationId: state.activeOrganizationId || draft.organizationId || "",
-    title: draft.title || "",
-    category: draft.category || "",
-    status: draft.status || "active",
-    authority: draft.authority || "",
-    referenceCode: draft.referenceCode || "",
-    versionLabel: draft.versionLabel || "",
-    publishedOn: draft.publishedOn || "",
-    effectiveFrom: draft.effectiveFrom || "",
-    reviewDate: draft.reviewDate || "",
-    sourceUrl: draft.sourceUrl || "",
-    tagsText: draft.tagsText || "",
-    documents: (Array.isArray(draft.documents) ? draft.documents : []).map((item) => {
-      const { documentCategoryLocked, meta, fileSizeLabel, ...payload } = item;
-      return { ...payload };
-    }),
-    linkedServiceCatalogIds: (Array.isArray(draft.linkedServiceCatalogIds) ? draft.linkedServiceCatalogIds : []).map(String),
-    note: draft.note || "",
-  };
-}
-
-function syncLegalFrameworkReactDraftToLegacyForm(draft = legalFrameworkReactDraft || {}) {
-  if (legalFrameworkIdInput) {
-    legalFrameworkIdInput.value = draft.id || "";
-  }
-  if (legalFrameworkTitleInput) {
-    legalFrameworkTitleInput.value = draft.title || "";
-  }
-  if (legalFrameworkCategoryInput) {
-    legalFrameworkCategoryInput.value = draft.category || "";
-  }
-  if (legalFrameworkStatusInput) {
-    legalFrameworkStatusInput.value = draft.status || "active";
-  }
-  if (legalFrameworkAuthorityInput) {
-    legalFrameworkAuthorityInput.value = draft.authority || "";
-  }
-  if (legalFrameworkReferenceCodeInput) {
-    legalFrameworkReferenceCodeInput.value = draft.referenceCode || "";
-  }
-  if (legalFrameworkVersionLabelInput) {
-    legalFrameworkVersionLabelInput.value = draft.versionLabel || "";
-  }
-  if (legalFrameworkPublishedOnInput) {
-    legalFrameworkPublishedOnInput.value = draft.publishedOn || "";
-  }
-  if (legalFrameworkEffectiveFromInput) {
-    legalFrameworkEffectiveFromInput.value = draft.effectiveFrom || "";
-  }
-  if (legalFrameworkReviewDateInput) {
-    legalFrameworkReviewDateInput.value = draft.reviewDate || "";
-  }
-  if (legalFrameworkSourceUrlInput) {
-    legalFrameworkSourceUrlInput.value = draft.sourceUrl || "";
-  }
-  if (legalFrameworkTagsTextInput) {
-    legalFrameworkTagsTextInput.value = draft.tagsText || "";
-  }
-  if (legalFrameworkNoteInput) {
-    legalFrameworkNoteInput.value = draft.note || "";
-  }
-  legalFrameworkDocumentDrafts = (Array.isArray(draft.documents) ? draft.documents : []).map((item) => {
-    const { meta, fileSizeLabel, ...payload } = item;
-    return payload;
-  });
-  renderLegalFrameworkTemplateChecklist(draft.linkedServiceCatalogIds || []);
-  renderLegalFrameworkDocuments();
-  syncLegalFrameworkEditorChrome();
-}
-
-function getLegalFrameworkReactServiceOptions() {
-  return sortServiceCatalogItems(state.serviceCatalog ?? [])
-    .map((service) => ({
-      value: String(service.id || ""),
-      label: [service.serviceCode, service.name].filter(Boolean).join(" - ") || "Usluga",
-      meta: [
-        getServiceCatalogTypeLabel(service.serviceType || (service.isTraining ? "znr" : "inspection")),
-        getOptionLabel(SERVICE_CATALOG_STATUS_OPTIONS, service.status || "active"),
-      ].filter(Boolean).join(" | "),
-    }))
-    .filter((option) => option.value);
-}
-
-function buildLegalFrameworkReactRows(items = []) {
-  return items.map((item) => {
-    const documents = (Array.isArray(item.documents) ? item.documents : [])
-      .map((entry) => createModuleAttachmentDraft(entry))
-      .filter((entry) => entry.fileName && (entry.dataUrl || entry.storageUrl));
-    const serviceTitles = getLegalFrameworkLinkedServiceTitles(item);
-    const status = item.status || "active";
-    return {
-      ...item,
-      id: String(item.id || ""),
-      title: item.title || "Bez naziva",
-      statusLabel: getLegalFrameworkStatusLabel(status),
-      statusClass: `is-${slugifyValue(status)}`,
-      statusTone: status === "active" ? "is-green" : "is-muted",
-      isActive: String(item.id || "") === String(legalFrameworkReactDraft?.id || legalFrameworkIdInput?.value || ""),
-      note: item.note || "Dodaj sažetak obveze ili kratku napomenu koja ide u zapisnik.",
-      documents,
-      documentCountLabel: documents.length ? formatLegalFrameworkDocumentCountLabel(documents.length) : "Bez PDF dokumenata",
-      serviceBadges: serviceTitles.length
-        ? serviceTitles.slice(0, 5).map((label) => ({ label }))
-        : [{ label: "Bez usluga", muted: true }],
-    };
-  });
-}
-
-function renderReactLegalFrameworkModule({ filters, allItems, visibleItems, canEditLegalFramework } = {}) {
-  const reactComponents = window.SafeNexusReactComponents;
-  if (!legalFrameworkReactRoot || typeof reactComponents?.renderLegalFrameworkModule !== "function") {
-    legalFrameworkModule?.querySelector(".legal-framework-list-panel")?.removeAttribute("hidden");
-    return false;
-  }
-
-  legalFrameworkModule?.querySelector(".legal-framework-list-panel")?.setAttribute("hidden", "");
-  return reactComponents.renderLegalFrameworkModule(legalFrameworkReactRoot, {
-    filters,
-    rows: buildLegalFrameworkReactRows(visibleItems),
-    stats: {
-      total: allItems.length,
-      active: allItems.filter((item) => String(item.status || "active") === "active").length,
-      withDocuments: allItems.filter((item) => Array.isArray(item.documents) && item.documents.length > 0).length,
-      withServices: allItems.filter((item) => getLegalFrameworkLinkedServiceIds(item).length > 0).length,
-    },
-    statusOptions: [
-      { value: "all", label: "Svi statusi" },
-      ...LEGAL_FRAMEWORK_STATUS_OPTIONS,
-    ],
-    canEdit: canEditLegalFramework,
-    onCreate: () => {
-      if (!getCanEditLegalFramework()) {
-        return;
-      }
-      resetLegalFrameworkForm();
-      renderLegalFrameworkModule();
-      openLegalFrameworkEditor();
-    },
-    onOpen: (itemId) => {
-      const item = state.legalFrameworks.find((entry) => String(entry.id) === String(itemId));
-      if (item && getCanEditLegalFramework()) {
-        hydrateLegalFrameworkForm(item);
-      }
-    },
-    onSearch: (query) => {
-      state.legalFrameworkFilters.query = String(query || "").trim();
-      if (legalFrameworkSearchInput) {
-        legalFrameworkSearchInput.value = state.legalFrameworkFilters.query;
-      }
-      renderLegalFrameworkModule();
-    },
-    onStatus: (status) => {
-      state.legalFrameworkFilters.status = status || "all";
-      if (legalFrameworkFilterStatusInput) {
-        legalFrameworkFilterStatusInput.value = state.legalFrameworkFilters.status;
-      }
-      renderLegalFrameworkModule();
-    },
-    onDownloadDocument: (document) => {
-      triggerModuleAttachmentDownload(document);
-    },
-  });
-}
-
-function renderReactLegalFrameworkEditor() {
-  const reactComponents = window.SafeNexusReactComponents;
-  if (!legalFrameworkEditorReactRoot || typeof reactComponents?.renderLegalFrameworkEditor !== "function") {
-    legalFrameworkEditorPanel?.querySelector(".offers-editor-fixed-head")?.removeAttribute("hidden");
-    legalFrameworkEditorBody?.removeAttribute("hidden");
-    return false;
-  }
-
-  if (!legalFrameworkReactDraft) {
-    legalFrameworkReactDraft = buildLegalFrameworkReactDraft({});
-  }
-
-  legalFrameworkEditorPanel?.querySelector(".offers-editor-fixed-head")?.setAttribute("hidden", "");
-  legalFrameworkEditorBody?.setAttribute("hidden", "");
-  return reactComponents.renderLegalFrameworkEditor(legalFrameworkEditorReactRoot, {
-    draft: legalFrameworkReactDraft,
-    statusOptions: LEGAL_FRAMEWORK_STATUS_OPTIONS,
-    serviceOptions: getLegalFrameworkReactServiceOptions(),
-    canEdit: getCanEditLegalFramework(),
-    onChange: (draft) => {
-      legalFrameworkReactDraft = buildLegalFrameworkReactDraft(draft);
-      syncLegalFrameworkReactDraftToLegacyForm(legalFrameworkReactDraft);
-      renderReactLegalFrameworkEditor();
-    },
-    onClose: () => {
-      dismissLegalFrameworkEditor();
-    },
-    onSave: (draft) => {
-      void saveLegalFrameworkReactDraft(draft);
-    },
-    onDelete: (itemId) => {
-      void deleteLegalFrameworkReactDraft(itemId);
-    },
-    onReset: () => {
-      resetLegalFrameworkForm();
-      renderLegalFrameworkModule();
-      openLegalFrameworkEditor();
-    },
-    onUploadDocuments: (files) => {
-      void uploadLegalFrameworkReactDocuments(files);
-    },
-    onDownloadDocument: (document) => {
-      triggerModuleAttachmentDownload(document);
-    },
-    onRemoveDocument: (documentId) => {
-      legalFrameworkReactDraft = {
-        ...legalFrameworkReactDraft,
-        documents: (legalFrameworkReactDraft.documents || []).filter((item) => String(item.id) !== String(documentId)),
-      };
-      syncLegalFrameworkReactDraftToLegacyForm(legalFrameworkReactDraft);
-      renderReactLegalFrameworkEditor();
-    },
-  });
-}
-
-function unmountReactLegalFrameworkEditor() {
-  window.SafeNexusReactComponents?.unmountLegalFrameworkEditor?.(legalFrameworkEditorReactRoot);
-  legalFrameworkEditorPanel?.querySelector(".offers-editor-fixed-head")?.removeAttribute("hidden");
-  legalFrameworkEditorBody?.removeAttribute("hidden");
-}
-
-async function uploadLegalFrameworkReactDocuments(files = []) {
-  await queueLegalFrameworkDocuments(files);
-  legalFrameworkReactDraft = buildLegalFrameworkReactDraft({
-    ...(legalFrameworkReactDraft || {}),
-    documents: legalFrameworkDocumentDrafts,
-  });
-  renderReactLegalFrameworkEditor();
-}
-
-async function saveLegalFrameworkReactDraft(draft = legalFrameworkReactDraft || {}) {
-  if (!getCanEditLegalFramework()) {
-    setInlineMessage(legalFrameworkError, "Nemate pravo spremati propise.");
-    return false;
-  }
-
-  legalFrameworkReactDraft = buildLegalFrameworkReactDraft(draft);
-  syncLegalFrameworkReactDraftToLegacyForm(legalFrameworkReactDraft);
-  const isEditing = Boolean(legalFrameworkReactDraft.id);
-  const path = isEditing ? `/legal-frameworks/${legalFrameworkReactDraft.id}` : "/legal-frameworks";
-  const method = isEditing ? "PATCH" : "POST";
-  const success = await runMutation(() => apiRequest(path, {
-    method,
-    body: buildLegalFrameworkPayloadFromReactDraft(legalFrameworkReactDraft),
-  }), legalFrameworkError);
-
-  if (success) {
-    closeLegalFrameworkEditor({ reset: true });
-    renderLegalFrameworkModule();
-  }
-
-  return success;
-}
-
-async function deleteLegalFrameworkReactDraft(itemId = legalFrameworkReactDraft?.id || "") {
-  if (!getCanEditLegalFramework()) {
-    return false;
-  }
-  const legalFrameworkId = String(itemId || "").trim();
-  if (!legalFrameworkId || !window.confirm("Obrisati ovaj propis?")) {
-    return false;
-  }
-
-  const success = await runMutation(() => apiRequest(`/legal-frameworks/${legalFrameworkId}`, {
-    method: "DELETE",
-  }), legalFrameworkError);
-
-  if (success) {
-    closeLegalFrameworkEditor({ reset: true });
-    renderLegalFrameworkModule();
-  }
-
-  return success;
-}
-
 function renderTemplateSelectionChecklist(
   container,
   {
@@ -55210,7 +54660,6 @@ function resetLegalFrameworkForm() {
     legalFrameworkError.textContent = "";
   }
   setLegalFrameworkDocumentDrafts([]);
-  legalFrameworkReactDraft = buildLegalFrameworkReactDraft({});
   renderLegalFrameworkTemplateChecklist([]);
   renderLegalFrameworkDocuments();
   syncLegalFrameworkEditorChrome();
@@ -55244,7 +54693,6 @@ function hydrateLegalFrameworkForm(item) {
   legalFrameworkTagsTextInput.value = item.tagsText || "";
   legalFrameworkNoteInput.value = item.note || "";
   setLegalFrameworkDocumentDrafts(item.documents ?? []);
-  legalFrameworkReactDraft = buildLegalFrameworkReactDraft(item);
   renderLegalFrameworkTemplateChecklist(getLegalFrameworkLinkedServiceIds(item));
   renderLegalFrameworkDocuments();
   if (legalFrameworkError) {
@@ -55298,18 +54746,6 @@ function renderLegalFrameworkModule() {
   const legalFrameworkItems = canAccessLegalFramework ? (state.legalFrameworks ?? []) : [];
   const allItems = sortLegalFrameworks(legalFrameworkItems);
   const visibleItems = sortLegalFrameworks(filterLegalFrameworks(legalFrameworkItems, filters));
-  if (legalFrameworkTotalCount) {
-    legalFrameworkTotalCount.textContent = String(allItems.length);
-  }
-  if (legalFrameworkActiveCount) {
-    legalFrameworkActiveCount.textContent = String(allItems.filter((item) => String(item.status || "active") === "active").length);
-  }
-  if (legalFrameworkInactiveCount) {
-    legalFrameworkInactiveCount.textContent = String(allItems.filter((item) => String(item.status || "active") !== "active").length);
-  }
-  if (legalFrameworkReviewCount) {
-    legalFrameworkReviewCount.textContent = String(allItems.filter((item) => isLegalFrameworkReviewSoon(item)).length);
-  }
   if (legalFrameworkOpenFormButton) {
     legalFrameworkOpenFormButton.hidden = !canEditLegalFramework;
   }
@@ -55320,18 +54756,6 @@ function renderLegalFrameworkModule() {
     legalFrameworkHelper.textContent = visibleItems.length === allItems.length
       ? `Prikazano ${visibleItems.length} propisa.`
       : `Prikazano ${visibleItems.length} od ${allItems.length} propisa.`;
-  }
-
-  if (renderReactLegalFrameworkModule({
-    filters,
-    allItems,
-    visibleItems,
-    canEditLegalFramework,
-  })) {
-    if (legalFrameworkEmpty) {
-      legalFrameworkEmpty.hidden = true;
-    }
-    return;
   }
 
   legalFrameworkList.replaceChildren(...visibleItems.map((item) => {
@@ -55758,325 +55182,6 @@ function syncServiceCatalogTrainingSections({ source = "" } = {}) {
   renderServiceCatalogCertificatePlaceholderList();
 }
 
-function buildServiceCatalogReactDraft(item = {}) {
-  const source = item && typeof item === "object" ? item : {};
-  const serviceType = source.isTraining
-    ? "znr"
-    : normalizeServiceCatalogTypeUi(source.serviceType || serviceCatalogTypeInput?.value || "inspection", "inspection");
-  const certificateDraft = source.trainingCertificateTemplate
-    ? serializeModuleAttachmentDraft(source.trainingCertificateTemplate)
-    : serviceCatalogCertificateTemplateDraft;
-
-  return {
-    versionKey: [
-      source.id || "new",
-      source.updatedAt || "",
-      Date.now(),
-    ].join(":"),
-    id: String(source.id || ""),
-    organizationId: source.organizationId || state.activeOrganizationId || "",
-    name: source.name ?? serviceCatalogNameInput?.value ?? "",
-    serviceCode: source.serviceCode ?? serviceCatalogCodeInput?.value ?? "",
-    status: source.status ?? serviceCatalogStatusInput?.value ?? "active",
-    serviceType,
-    isTraining: serviceType === "znr",
-    validityMonths: normalizeValidityMonthsValue(source.validityMonths ?? serviceCatalogValidityMonthsInput?.value ?? ""),
-    linkedTemplateIds: (Array.isArray(source.linkedTemplateIds)
-      ? source.linkedTemplateIds
-      : getServiceCatalogTemplateSelectionIds()).map(String),
-    linkedLearningTestIds: (Array.isArray(source.linkedLearningTestIds)
-      ? source.linkedLearningTestIds
-      : getServiceCatalogLearningTestSelectionIds()).map(String),
-    trainingCertificateTemplate: certificateDraft ? {
-      ...certificateDraft,
-      meta: formatModuleAttachmentMeta(certificateDraft),
-      fileSizeLabel: formatFileSize(certificateDraft.fileSize),
-    } : null,
-    note: source.note ?? serviceCatalogNoteInput?.value ?? "",
-  };
-}
-
-function buildServiceCatalogPayloadFromReactDraft(draft = {}) {
-  const serviceType = normalizeServiceCatalogTypeUi(draft.isTraining ? "znr" : draft.serviceType, "inspection");
-  const appliesToPeople = Boolean(draft.isTraining || serviceType === "znr");
-  return {
-    organizationId: state.activeOrganizationId || draft.organizationId || "",
-    name: draft.name || "",
-    serviceCode: draft.serviceCode || "",
-    status: draft.status || "active",
-    serviceType: appliesToPeople ? "znr" : serviceType,
-    isTraining: appliesToPeople,
-    validityMonths: normalizeValidityMonthsValue(draft.validityMonths || ""),
-    linkedTemplateIds: appliesToPeople ? [] : asArray(draft.linkedTemplateIds).map(String),
-    linkedLearningTestIds: appliesToPeople ? asArray(draft.linkedLearningTestIds).map(String) : [],
-    trainingCertificateTemplate: appliesToPeople && draft.trainingCertificateTemplate
-      ? serializeModuleAttachmentDraft(draft.trainingCertificateTemplate)
-      : null,
-    note: draft.note || "",
-  };
-}
-
-function buildServiceCatalogReactRows(items = []) {
-  return items.map((item) => {
-    const typeValue = normalizeServiceCatalogTypeUi(item.serviceType, item.isTraining ? "znr" : "inspection");
-    const templateTitles = (item.linkedTemplateTitles ?? [])
-      .map((value) => String(value ?? "").trim())
-      .filter(Boolean);
-    const learningTestTitles = (item.linkedLearningTestTitles ?? [])
-      .map((value) => String(value ?? "").trim())
-      .filter(Boolean);
-    const badges = typeValue === "inspection"
-      ? (templateTitles.length
-        ? templateTitles.slice(0, 3).map((label) => ({ label }))
-        : [{ label: "Bez zapisnika", muted: true }])
-      : typeValue === "znr"
-        ? (learningTestTitles.length
-          ? learningTestTitles.slice(0, 3).map((label) => ({ label }))
-          : [{ label: "Bez ispita", muted: true }])
-        : [{ label: "Bez dodatnih veza", muted: true }];
-
-    if (typeValue === "inspection" && templateTitles.length > 3) {
-      badges.push({ label: `+${templateTitles.length - 3}`, muted: true });
-    }
-    if (typeValue === "znr" && learningTestTitles.length > 3) {
-      badges.push({ label: `+${learningTestTitles.length - 3} ispita`, muted: true });
-    }
-
-    return {
-      ...item,
-      id: String(item.id || ""),
-      statusClass: `is-${slugifyValue(item.status || "active")}`,
-      isActive: String(item.id || "") === String(serviceCatalogReactDraft?.id || serviceCatalogIdInput?.value || ""),
-      typeLabel: getServiceCatalogTypeLabel(typeValue),
-      statusLabel: getOptionLabel(SERVICE_CATALOG_STATUS_OPTIONS, item.status || "active"),
-      meta: [
-        item.serviceCode || "Bez sifre",
-        getServiceCatalogTypeLabel(typeValue),
-        normalizeValidityMonthsValue(item.validityMonths) ? `${normalizeValidityMonthsValue(item.validityMonths)} mj. vrijedi` : "Bez roka",
-      ].join(" | "),
-      badges,
-      updatedLabel: item.updatedAt ? `Azurirano ${formatCompactDate(item.updatedAt)}` : "Novo",
-    };
-  });
-}
-
-function getDocumentTemplateReactOptions() {
-  return sortDocumentTemplates(state.documentTemplates ?? []).map((template) => ({
-    value: String(template.id || ""),
-    label: template.title || "Template",
-    meta: [
-      getDocumentTemplateTypeLabel(template.documentType),
-      getDocumentTemplateStatusLabel(template.status),
-      template.referenceDocument?.fileName ? `${getDocumentTemplateReferenceLabel(template.referenceDocument)} ref` : "",
-    ].filter(Boolean).join(" | "),
-  }));
-}
-
-function getLearningTestReactOptions() {
-  return sortLearningTests(state.learningTests ?? []).map((test) => ({
-    value: String(test.id || ""),
-    label: test.title || test.name || "Learning test",
-    meta: [
-      getOptionLabel(LEARNING_TEST_STATUS_OPTIONS, test.status || "draft"),
-      test.serviceCode || "",
-    ].filter(Boolean).join(" | "),
-  }));
-}
-
-function renderReactServiceCatalogModule({ filters, allItems, visibleItems, canManage } = {}) {
-  const reactComponents = window.SafeNexusReactComponents;
-  if (!serviceCatalogReactRoot || !reactComponents?.renderServiceCatalogModule) {
-    serviceCatalogList?.closest(".service-catalog-list-panel")?.removeAttribute("hidden");
-    return false;
-  }
-
-  serviceCatalogModule?.classList.add("is-react-module");
-  serviceCatalogList?.closest(".service-catalog-list-panel")?.setAttribute("hidden", "");
-  return reactComponents.renderServiceCatalogModule(serviceCatalogReactRoot, {
-    filters,
-    statusOptions: [
-      { value: "all", label: "Svi statusi" },
-      ...SERVICE_CATALOG_STATUS_OPTIONS,
-    ],
-    stats: {
-      total: allItems.length,
-      active: allItems.filter((item) => item.status === "active").length,
-      inactive: allItems.filter((item) => item.status === "inactive").length,
-      withTemplate: allItems.filter((item) => (item.linkedTemplateIds ?? []).length > 0 || (item.linkedLearningTestIds ?? []).length > 0).length,
-    },
-    items: buildServiceCatalogReactRows(visibleItems),
-    canManage,
-    onCreate: () => {
-      resetServiceCatalogForm();
-      serviceCatalogReactDraft = buildServiceCatalogReactDraft({});
-      renderServiceCatalogModule();
-      openServiceCatalogEditor();
-    },
-    onFilterChange: (patch = {}) => {
-      state.serviceCatalogFilters = {
-        ...state.serviceCatalogFilters,
-        ...patch,
-      };
-      if (Object.prototype.hasOwnProperty.call(patch, "query") && serviceCatalogSearchInput) {
-        serviceCatalogSearchInput.value = patch.query || "";
-      }
-      if (Object.prototype.hasOwnProperty.call(patch, "status") && serviceCatalogFilterStatusInput) {
-        serviceCatalogFilterStatusInput.value = patch.status || "all";
-      }
-      renderServiceCatalogModule();
-    },
-    onOpen: (serviceId) => {
-      const item = state.serviceCatalog.find((entry) => String(entry.id) === String(serviceId));
-      if (item) {
-        hydrateServiceCatalogForm(item);
-      }
-    },
-  });
-}
-
-function renderReactServiceCatalogEditor() {
-  const reactComponents = window.SafeNexusReactComponents;
-  if (!state.serviceCatalogEditorOpen || !serviceCatalogEditorReactRoot || !reactComponents?.renderServiceCatalogEditor) {
-    return false;
-  }
-
-  const activeItem = state.serviceCatalog.find((entry) => String(entry.id) === String(state.activeServiceCatalogId || serviceCatalogIdInput?.value || ""));
-  if (!serviceCatalogReactDraft) {
-    serviceCatalogReactDraft = buildServiceCatalogReactDraft(activeItem || {});
-  }
-
-  serviceCatalogEditorPanel?.classList.add("is-react-editor");
-  serviceCatalogEditorPanel?.querySelector(".offers-editor-fixed-head")?.setAttribute("hidden", "");
-  serviceCatalogEditorBody?.setAttribute("hidden", "");
-  return reactComponents.renderServiceCatalogEditor(serviceCatalogEditorReactRoot, {
-    title: serviceCatalogReactDraft.id ? `Uredi uslugu | ${serviceCatalogReactDraft.name || "Bez naziva"}` : "Nova usluga",
-    draft: serviceCatalogReactDraft,
-    statusOptions: SERVICE_CATALOG_STATUS_OPTIONS,
-    typeOptions: SERVICE_CATALOG_TYPE_OPTIONS,
-    templateOptions: getDocumentTemplateReactOptions(),
-    learningTestOptions: getLearningTestReactOptions(),
-    certificateTemplateOptions: getServiceCatalogIsZnrTemplateOptions().map((option) => ({
-      value: option.value,
-      label: option.label,
-    })),
-    canDelete: Boolean(serviceCatalogReactDraft.id) && getCanManageServiceCatalog(),
-    error: serviceCatalogError?.textContent || "",
-    onDraftChange: (nextDraft) => {
-      serviceCatalogReactDraft = {
-        ...serviceCatalogReactDraft,
-        ...nextDraft,
-      };
-      serviceCatalogCertificateTemplateDraft = serviceCatalogReactDraft.trainingCertificateTemplate
-        ? serializeModuleAttachmentDraft(serviceCatalogReactDraft.trainingCertificateTemplate)
-        : null;
-    },
-    onUploadCertificate: async (file) => {
-      await setServiceCatalogCertificateTemplateFile(file);
-      const certificate = serviceCatalogCertificateTemplateDraft ? {
-        ...serviceCatalogCertificateTemplateDraft,
-        meta: formatModuleAttachmentMeta(serviceCatalogCertificateTemplateDraft),
-        fileSizeLabel: formatFileSize(serviceCatalogCertificateTemplateDraft.fileSize),
-      } : null;
-      serviceCatalogReactDraft = {
-        ...serviceCatalogReactDraft,
-        trainingCertificateTemplate: certificate,
-      };
-      return certificate;
-    },
-    onDownloadCertificate: (certificate) => {
-      if (certificate) {
-        triggerModuleAttachmentDownload(certificate);
-      }
-    },
-    onRemoveCertificate: () => {
-      serviceCatalogCertificateTemplateDraft = null;
-      serviceCatalogReactDraft = {
-        ...serviceCatalogReactDraft,
-        trainingCertificateTemplate: null,
-      };
-    },
-    onUseCertificateTemplate: async (templateId) => {
-      const template = getServiceCatalogIsZnrTemplateOptions()
-        .find((option) => option.value === templateId)?.template ?? null;
-      serviceCatalogCertificateTemplateDraft = buildServiceCatalogCertificateTemplateDraftFromDocumentTemplate(template);
-      const certificate = serviceCatalogCertificateTemplateDraft ? {
-        ...serviceCatalogCertificateTemplateDraft,
-        meta: formatModuleAttachmentMeta(serviceCatalogCertificateTemplateDraft),
-        fileSizeLabel: formatFileSize(serviceCatalogCertificateTemplateDraft.fileSize),
-      } : null;
-      serviceCatalogReactDraft = {
-        ...serviceCatalogReactDraft,
-        trainingCertificateTemplate: certificate,
-      };
-      return certificate;
-    },
-    onSave: saveServiceCatalogReactDraft,
-    onReset: () => {
-      resetServiceCatalogForm();
-      serviceCatalogReactDraft = buildServiceCatalogReactDraft({});
-      openServiceCatalogEditor();
-    },
-    onDelete: deleteServiceCatalogReactDraft,
-    onClose: () => dismissServiceCatalogEditor(),
-  });
-}
-
-function unmountReactServiceCatalogEditor() {
-  window.SafeNexusReactComponents?.unmountServiceCatalogEditor?.(serviceCatalogEditorReactRoot);
-  serviceCatalogEditorPanel?.classList.remove("is-react-editor");
-  serviceCatalogEditorPanel?.querySelector(".offers-editor-fixed-head")?.removeAttribute("hidden");
-  serviceCatalogEditorBody?.removeAttribute("hidden");
-}
-
-async function saveServiceCatalogReactDraft(nextDraft = serviceCatalogReactDraft) {
-  const draft = {
-    ...(serviceCatalogReactDraft ?? {}),
-    ...(nextDraft ?? {}),
-  };
-  serviceCatalogReactDraft = draft;
-  const isEditing = Boolean(draft.id);
-  const path = isEditing ? `/service-catalog/${draft.id}` : "/service-catalog";
-  const method = isEditing ? "PATCH" : "POST";
-  const success = await runMutation(() => apiRequest(path, {
-    method,
-    body: buildServiceCatalogPayloadFromReactDraft(draft),
-  }), serviceCatalogError);
-
-  if (!success) {
-    throw new Error(serviceCatalogError?.textContent || "Spremanje usluge nije uspjelo.");
-  }
-
-  closeServiceCatalogEditor({ reset: true });
-  renderServiceCatalogModule();
-  renderWorkOrderServicePicker();
-  renderWorkOrderServiceSelection();
-  return true;
-}
-
-async function deleteServiceCatalogReactDraft(serviceId = serviceCatalogReactDraft?.id || "") {
-  const normalizedId = String(serviceId || "").trim();
-  if (!normalizedId) {
-    return false;
-  }
-  if (!window.confirm("Obrisati ovu uslugu?")) {
-    return false;
-  }
-
-  const success = await runMutation(() => apiRequest(`/service-catalog/${normalizedId}`, {
-    method: "DELETE",
-  }), serviceCatalogError);
-
-  if (!success) {
-    throw new Error(serviceCatalogError?.textContent || "Brisanje usluge nije uspjelo.");
-  }
-
-  closeServiceCatalogEditor({ reset: true });
-  renderServiceCatalogModule();
-  renderWorkOrderServicePicker();
-  renderWorkOrderServiceSelection();
-  return true;
-}
-
 function resetServiceCatalogForm() {
   if (!serviceCatalogForm) {
     return;
@@ -56109,7 +55214,6 @@ function resetServiceCatalogForm() {
     serviceCatalogEditorTitle.textContent = "Nova usluga";
   }
   serviceCatalogCertificateTemplateDraft = null;
-  serviceCatalogReactDraft = buildServiceCatalogReactDraft({});
   renderServiceCatalogTemplateChecklist([]);
   renderServiceCatalogLearningTestChecklist([]);
   syncServiceCatalogTrainingSections();
@@ -56162,7 +55266,6 @@ function hydrateServiceCatalogForm(item) {
   serviceCatalogCertificateTemplateDraft = item.trainingCertificateTemplate
     ? serializeModuleAttachmentDraft(item.trainingCertificateTemplate)
     : null;
-  serviceCatalogReactDraft = buildServiceCatalogReactDraft(item);
   renderServiceCatalogTemplateChecklist(item.linkedTemplateIds ?? []);
   renderServiceCatalogLearningTestChecklist(item.linkedLearningTestIds ?? []);
   syncServiceCatalogTrainingSections();
@@ -56218,16 +55321,6 @@ function renderServiceCatalogModule() {
     serviceCatalogHelper.textContent = visibleItems.length === allItems.length
       ? `Prikazano ${visibleItems.length} usluga.`
       : `Prikazano ${visibleItems.length} od ${allItems.length} usluga.`;
-  }
-
-  if (renderReactServiceCatalogModule({
-    filters,
-    allItems,
-    visibleItems,
-    canManage: canManageMasterData,
-  })) {
-    serviceCatalogEmpty.hidden = true;
-    return;
   }
 
   serviceCatalogList.replaceChildren(...visibleItems.map((item) => {
@@ -57729,7 +56822,6 @@ function resetMeasurementEquipmentForm() {
   setMeasurementEquipmentDocumentDrafts([]);
   setMeasurementEquipmentActivityDrafts([]);
   setMeasurementEquipmentSpecDrafts([]);
-  measurementEquipmentReactDraft = buildMeasurementEquipmentReactDraft({});
   renderMeasurementEquipmentDocuments();
   renderMeasurementEquipmentActivities();
   renderMeasurementEquipmentSpecs();
@@ -57774,7 +56866,6 @@ function hydrateMeasurementEquipmentForm(item) {
   setMeasurementEquipmentDocumentDrafts(item.documents ?? []);
   setMeasurementEquipmentActivityDrafts(item.activityItems ?? []);
   setMeasurementEquipmentSpecDrafts(item.measurementSpecs ?? []);
-  measurementEquipmentReactDraft = buildMeasurementEquipmentReactDraft(item);
   renderMeasurementEquipmentDocuments();
   renderMeasurementEquipmentActivities();
   renderMeasurementEquipmentSpecs();
@@ -57856,349 +56947,6 @@ function sortMeasurementEquipmentItemsForList(items, mode = "due-asc") {
   });
 }
 
-function getMeasurementEquipmentDeviceCodeOptions() {
-  return [
-    { value: "", label: "Bez oznake" },
-    ...Array.from({ length: 13 }, (_, index) => {
-      const letter = String.fromCharCode(65 + index);
-      return {
-        value: `Grupa ${letter}`,
-        label: `Grupa ${letter}`,
-      };
-    }),
-  ];
-}
-
-function getOrganisationsServiceOptions() {
-  return sortServiceCatalogItems(state.serviceCatalog ?? []).map((item) => ({
-    value: String(item.id || ""),
-    label: [item.serviceCode || "", item.name || "Usluga"].filter(Boolean).join(" - "),
-    meta: getServiceCatalogTypeLabel(item.serviceType || item.type || "inspection"),
-  }));
-}
-
-function asArray(value) {
-  return Array.isArray(value) ? value : [];
-}
-
-function formatModuleAttachmentMeta(entry = {}) {
-  return [
-    entry.fileType || entry.documentCategory || "Dokument",
-    formatFileSize(entry.fileSize),
-    entry.updatedAt ? formatCompactDateTime(entry.updatedAt) : "",
-  ].filter(Boolean).join(" | ");
-}
-
-function buildReactAttachmentRows(items = []) {
-  return (Array.isArray(items) ? items : [])
-    .map((entry) => {
-      const draft = createModuleAttachmentDraft(entry);
-      return {
-        ...draft,
-        meta: formatModuleAttachmentMeta(draft),
-        fileSizeLabel: formatFileSize(draft.fileSize),
-      };
-    })
-    .filter((entry) => entry.fileName && (entry.dataUrl || entry.storageUrl));
-}
-
-function buildMeasurementEquipmentReactDraft(item = {}) {
-  const source = item && typeof item === "object" ? item : {};
-  const sourceDocuments = source.documents ?? measurementEquipmentDocumentDrafts;
-  const sourceActivities = source.activityItems ?? measurementEquipmentActivityDrafts;
-  const sourceSpecs = source.measurementSpecs ?? measurementEquipmentSpecDrafts;
-  const linkedIds = source.linkedServiceCatalogIds
-    ?? getMeasurementEquipmentLinkedServiceIds(source)
-    ?? [];
-
-  return {
-    versionKey: [
-      source.id || "new",
-      source.updatedAt || "",
-      sourceDocuments?.length || 0,
-      sourceActivities?.length || 0,
-      sourceSpecs?.length || 0,
-      Date.now(),
-    ].join(":"),
-    id: String(source.id || ""),
-    organizationId: source.organizationId || state.activeOrganizationId || "",
-    name: source.name || "",
-    equipmentKind: source.equipmentKind || "combined",
-    manufacturer: source.manufacturer || "",
-    deviceType: source.deviceType || "",
-    deviceCode: source.deviceCode || "",
-    serialNumber: source.serialNumber || "",
-    inventoryNumber: source.inventoryNumber || "",
-    enteredBy: source.enteredBy || "",
-    approvedBy: source.approvedBy || "",
-    entryDate: String(source.entryDate || "").slice(0, 10),
-    requiresCalibration: source.requiresCalibration !== false,
-    calibrationDate: String(source.calibrationDate || "").slice(0, 10),
-    calibrationPeriod: source.calibrationPeriod || "",
-    validUntil: String(source.validUntil || "").slice(0, 10),
-    linkedServiceCatalogIds: (Array.isArray(linkedIds) ? linkedIds : []).map(String),
-    documents: buildReactAttachmentRows(sourceDocuments),
-    activityItems: (Array.isArray(sourceActivities) ? sourceActivities : []).map((entry) => createMeasurementEquipmentActivityDraft(entry)),
-    measurementSpecs: (Array.isArray(sourceSpecs) ? sourceSpecs : []).map((entry) => ({ ...entry, id: String(entry.id || crypto.randomUUID()) })),
-    note: source.note || "",
-  };
-}
-
-function sanitizeReactDocumentsForPayload(items = []) {
-  return (Array.isArray(items) ? items : []).map((entry) => {
-    const { meta, fileSizeLabel, documentCategoryLocked, ...payload } = entry;
-    return { ...payload };
-  });
-}
-
-function buildMeasurementEquipmentPayloadFromReactDraft(draft = {}) {
-  const requiresCalibration = draft.requiresCalibration !== false;
-  return {
-    organizationId: state.activeOrganizationId || draft.organizationId || "",
-    name: draft.name || "",
-    equipmentKind: draft.equipmentKind || "combined",
-    manufacturer: draft.manufacturer || "",
-    deviceType: draft.deviceType || "",
-    deviceCode: draft.deviceCode || "",
-    serialNumber: draft.serialNumber || "",
-    inventoryNumber: draft.inventoryNumber || "",
-    enteredBy: draft.enteredBy || "",
-    approvedBy: draft.approvedBy || "",
-    entryDate: draft.entryDate || "",
-    requiresCalibration,
-    calibrationDate: requiresCalibration ? (draft.calibrationDate || "") : "",
-    calibrationPeriod: requiresCalibration ? (draft.calibrationPeriod || "") : "",
-    validUntil: requiresCalibration ? (draft.validUntil || "") : "",
-    linkedServiceCatalogIds: (draft.linkedServiceCatalogIds ?? []).map(String),
-    documents: sanitizeReactDocumentsForPayload(draft.documents),
-    activityItems: (Array.isArray(draft.activityItems) ? draft.activityItems : []).map((entry) => ({ ...entry })),
-    measurementSpecs: (Array.isArray(draft.measurementSpecs) ? draft.measurementSpecs : []).map((entry) => ({ ...entry })),
-    note: draft.note || "",
-  };
-}
-
-async function uploadMeasurementEquipmentReactDocuments(files, draft = measurementEquipmentReactDraft) {
-  const uploads = await buildWorkOrderDocumentUploadPayload(files);
-  const nextDocuments = uploads.map((file) => createModuleAttachmentDraft(file));
-  const current = draft || buildMeasurementEquipmentReactDraft(getActiveMeasurementEquipmentItem() || {});
-  measurementEquipmentReactDraft = {
-    ...current,
-    documents: buildReactAttachmentRows([
-      ...(current.documents ?? []),
-      ...nextDocuments,
-    ]),
-    versionKey: `measurement-docs:${Date.now()}`,
-  };
-  measurementEquipmentDocumentDrafts = measurementEquipmentReactDraft.documents.map((entry) => createModuleAttachmentDraft(entry));
-  return measurementEquipmentReactDraft.documents;
-}
-
-function downloadMeasurementEquipmentReactDocument(documentId = "") {
-  const documentItem = (measurementEquipmentReactDraft?.documents ?? [])
-    .find((entry) => String(entry.id) === String(documentId));
-  if (documentItem) {
-    triggerModuleAttachmentDownload(documentItem);
-  }
-}
-
-async function saveMeasurementEquipmentReactDraft(nextDraft = measurementEquipmentReactDraft) {
-  const draft = {
-    ...(measurementEquipmentReactDraft ?? {}),
-    ...(nextDraft ?? {}),
-  };
-  measurementEquipmentReactDraft = draft;
-  const isEditing = Boolean(draft.id);
-  const path = isEditing ? `/measurement-equipment/${draft.id}` : "/measurement-equipment";
-  const method = isEditing ? "PATCH" : "POST";
-  const success = await runMutation(() => apiRequest(path, {
-    method,
-    body: buildMeasurementEquipmentPayloadFromReactDraft(draft),
-  }), measurementEquipmentError);
-
-  if (!success) {
-    throw new Error(measurementEquipmentError?.textContent || "Spremanje opreme nije uspjelo.");
-  }
-
-  closeMeasurementEquipmentEditor({ reset: true });
-  renderMeasurementEquipmentModule();
-  renderNotifications();
-  return true;
-}
-
-async function deleteMeasurementEquipmentReactDraft(equipmentId = measurementEquipmentReactDraft?.id || "") {
-  const safeId = String(equipmentId || "").trim();
-  if (!safeId) {
-    return false;
-  }
-  if (!window.confirm("Obrisati ovu stavku opreme?")) {
-    return false;
-  }
-
-  const success = await runMutation(() => apiRequest(`/measurement-equipment/${safeId}`, {
-    method: "DELETE",
-  }), measurementEquipmentError);
-
-  if (!success) {
-    throw new Error(measurementEquipmentError?.textContent || "Brisanje opreme nije uspjelo.");
-  }
-
-  closeMeasurementEquipmentEditor({ reset: true });
-  renderMeasurementEquipmentModule();
-  return true;
-}
-
-function buildMeasurementEquipmentReactRows(items = [], canEdit = false) {
-  const hasTemplate = Boolean(getMeasurementEquipmentCardTemplateDocument());
-  return items.map((item) => {
-    const dueWarning = item.validUntil && isUpcomingIsoDate(item.validUntil);
-    return {
-      ...item,
-      id: String(item.id || ""),
-      isActive: String(item.id || "") === String(measurementEquipmentReactDraft?.id || measurementEquipmentIdInput?.value || ""),
-      kindClass: `is-${slugifyValue(item.equipmentKind || "measurement")}`,
-      meta: [
-        item.manufacturer || "",
-        item.deviceType || "",
-        item.deviceCode ? `Ozn. ${item.deviceCode}` : "",
-        item.serialNumber ? `Ser. ${item.serialNumber}` : "",
-        item.inventoryNumber ? `Inv. ${item.inventoryNumber}` : "",
-      ].filter(Boolean).join(" | ") || "Bez dodatnih podataka",
-      calibrationBadgeLabel: item.requiresCalibration ? "Umjerava se" : "Ne umjerava se",
-      calibrationBadgeClass: item.requiresCalibration
-        ? "document-template-status-badge is-active"
-        : "document-template-status-badge is-archived",
-      dueLabel: item.requiresCalibration
-        ? (item.validUntil ? `Vrijedi do ${formatCompactDate(item.validUntil)}` : "Vrijedi do: bez roka")
-        : "Nije potrebno umjeravanje",
-      dueClass: dueWarning ? "measurement-equipment-chip is-warning" : "measurement-equipment-chip",
-      serviceTitles: getMeasurementEquipmentLinkedServiceTitles(item),
-      canExport: canEdit && hasTemplate,
-    };
-  });
-}
-
-function renderReactMeasurementEquipmentModule({
-  filters,
-  allItems,
-  visibleItems,
-  canCreate,
-  canEdit,
-} = {}) {
-  const reactComponents = window.SafeNexusReactComponents;
-  if (!measurementEquipmentReactRoot || !reactComponents?.renderMeasurementEquipmentModule) {
-    return false;
-  }
-
-  measurementEquipmentModule?.classList.add("is-react-module");
-  const cardTemplateDocument = getMeasurementEquipmentCardTemplateDocument();
-
-  return reactComponents.renderMeasurementEquipmentModule(measurementEquipmentReactRoot, {
-    filters,
-    sortOptions: MEASUREMENT_EQUIPMENT_SORT_OPTIONS,
-    stats: {
-      total: allItems.length,
-      calibration: allItems.filter((item) => item.requiresCalibration).length,
-      expiring: allItems.filter((item) => isUpcomingIsoDate(item.validUntil)).length,
-      files: allItems.filter((item) => (item.documents ?? []).length > 0).length,
-    },
-    items: buildMeasurementEquipmentReactRows(visibleItems, canEdit),
-    canCreate,
-    canEdit,
-    hasCardTemplate: Boolean(cardTemplateDocument),
-    cardTemplateMeta: cardTemplateDocument?.fileName
-      ? `${cardTemplateDocument.fileName} | ažurirano ${cardTemplateDocument.updatedAt ? formatCompactDateTime(cardTemplateDocument.updatedAt) : "bez datuma"}`
-      : "",
-    onCreate: () => {
-      if (!getCanCreateMeasurementEquipment()) {
-        return;
-      }
-      resetMeasurementEquipmentForm();
-      measurementEquipmentReactDraft = buildMeasurementEquipmentReactDraft({});
-      openMeasurementEquipmentEditor();
-    },
-    onFilterChange: (patch = {}) => {
-      state.measurementEquipmentFilters = {
-        ...state.measurementEquipmentFilters,
-        ...patch,
-      };
-      renderMeasurementEquipmentModule();
-    },
-    onOpen: (equipmentId) => {
-      const item = state.measurementEquipment.find((entry) => String(entry.id) === String(equipmentId));
-      if (item) {
-        hydrateMeasurementEquipmentForm(item);
-      }
-    },
-    onUploadTemplate: () => measurementEquipmentCardTemplateInput?.click(),
-    onExportPlaceholders: () => void runMutation(async () => {
-      exportMeasurementEquipmentPlaceholderWord();
-    }, measurementEquipmentError),
-    onExportWord: () => void runMutation(() => exportMeasurementEquipmentCardDocument("word"), measurementEquipmentError),
-    onExportPdf: () => void runMutation(() => exportMeasurementEquipmentCardDocument("pdf"), measurementEquipmentError),
-    onExportExcel: () => void runMutation(() => exportMeasurementEquipmentListExcel(), measurementEquipmentError),
-    onExportZip: () => void runMutation(() => exportMeasurementEquipmentDocumentsZip(), measurementEquipmentError),
-    onExportItem: (equipmentId, format) => {
-      const item = state.measurementEquipment.find((entry) => String(entry.id) === String(equipmentId));
-      if (item) {
-        void runMutation(() => exportMeasurementEquipmentCardDocumentForItem(item, format), measurementEquipmentError);
-      }
-    },
-  });
-}
-
-function renderReactMeasurementEquipmentEditor() {
-  const reactComponents = window.SafeNexusReactComponents;
-  if (!state.measurementEquipmentEditorOpen || !measurementEquipmentEditorReactRoot || !reactComponents?.renderMeasurementEquipmentEditor) {
-    return false;
-  }
-
-  const activeItem = getActiveMeasurementEquipmentItem();
-  if (!measurementEquipmentReactDraft) {
-    measurementEquipmentReactDraft = buildMeasurementEquipmentReactDraft(activeItem || {});
-  }
-
-  const draft = measurementEquipmentReactDraft;
-  const canEdit = draft.id ? getCanEditMeasurementEquipment() : getCanCreateMeasurementEquipment();
-
-  measurementEquipmentEditorPanel?.classList.add("is-react-editor");
-  return reactComponents.renderMeasurementEquipmentEditor(measurementEquipmentEditorReactRoot, {
-    title: draft.id ? `Uredi opremu | ${draft.name || "Bez naziva"}` : "Nova oprema",
-    draft,
-    kindOptions: MEASUREMENT_EQUIPMENT_KIND_OPTIONS,
-    deviceCodeOptions: getMeasurementEquipmentDeviceCodeOptions(),
-    serviceOptions: getOrganisationsServiceOptions(),
-    activityTypeOptions: MEASUREMENT_EQUIPMENT_ACTIVITY_TYPE_OPTIONS,
-    documentCategories: MEASUREMENT_EQUIPMENT_DOCUMENT_CATEGORY_OPTIONS,
-    canDelete: Boolean(draft.id) && getCanEditMeasurementEquipment(),
-    canSave: canEdit,
-    error: measurementEquipmentError?.textContent || "",
-    onDraftChange: (nextDraft) => {
-      measurementEquipmentReactDraft = {
-        ...measurementEquipmentReactDraft,
-        ...nextDraft,
-      };
-      measurementEquipmentDocumentDrafts = buildReactAttachmentRows(measurementEquipmentReactDraft.documents);
-      measurementEquipmentActivityDrafts = asArray(measurementEquipmentReactDraft.activityItems);
-      measurementEquipmentSpecDrafts = asArray(measurementEquipmentReactDraft.measurementSpecs);
-    },
-    onUploadDocuments: uploadMeasurementEquipmentReactDocuments,
-    onDownloadDocument: downloadMeasurementEquipmentReactDocument,
-    onSave: saveMeasurementEquipmentReactDraft,
-    onReset: () => {
-      resetMeasurementEquipmentForm();
-      measurementEquipmentReactDraft = buildMeasurementEquipmentReactDraft({});
-      openMeasurementEquipmentEditor();
-    },
-    onDelete: deleteMeasurementEquipmentReactDraft,
-    onClose: () => dismissMeasurementEquipmentEditor(),
-  });
-}
-
-function unmountReactMeasurementEquipmentEditor() {
-  window.SafeNexusReactComponents?.unmountMeasurementEquipmentEditor?.(measurementEquipmentEditorReactRoot);
-  measurementEquipmentEditorPanel?.classList.remove("is-react-editor");
-}
-
 function renderMeasurementEquipmentModule() {
   if (!measurementEquipmentModule || !measurementEquipmentList || !measurementEquipmentEmpty) {
     return;
@@ -58247,20 +56995,6 @@ function renderMeasurementEquipmentModule() {
       : `Prikazano ${visibleItems.length} od ${allItems.length} stavki opreme.`;
   }
   const hasCardTemplateDocument = Boolean(getMeasurementEquipmentCardTemplateDocument());
-
-  if (renderReactMeasurementEquipmentModule({
-    filters,
-    allItems,
-    visibleItems,
-    canCreate: canCreateMeasurementEquipment,
-    canEdit: canManageMasterData,
-  })) {
-    syncMeasurementEquipmentCardTemplateControls();
-    if (state.measurementEquipmentExportDialogOpen) {
-      syncMeasurementEquipmentExportDialogModal();
-    }
-    return;
-  }
 
   measurementEquipmentList.replaceChildren(...visibleItems.map((item) => {
     const card = document.createElement("article");
@@ -58626,272 +57360,6 @@ function syncSafetyAuthorizationEditorChrome() {
   }
 }
 
-function buildSafetyAuthorizationReactDraft(item = {}) {
-  const source = item && typeof item === "object" ? item : {};
-  const linkedIds = source.linkedServiceCatalogIds
-    ?? getSafetyAuthorizationLinkedServiceIds(source)
-    ?? getSafetyAuthorizationServiceSelectionIds();
-  return {
-    versionKey: [
-      source.id || "new",
-      source.updatedAt || "",
-      source.documents?.length || 0,
-      Date.now(),
-    ].join(":"),
-    id: String(source.id || ""),
-    organizationId: source.organizationId || state.activeOrganizationId || "",
-    title: source.title ?? safetyAuthorizationTitleInput?.value ?? "",
-    scope: source.scope ?? safetyAuthorizationScopeInput?.value ?? "",
-    issuedOn: String(source.issuedOn ?? safetyAuthorizationIssuedOnInput?.value ?? "").slice(0, 10),
-    validUntil: String(source.validUntil ?? safetyAuthorizationValidUntilInput?.value ?? "").slice(0, 10),
-    validForever: Boolean(source.validForever ?? safetyAuthorizationValidForeverInput?.checked),
-    linkedServiceCatalogIds: asArray(linkedIds).map(String),
-    documents: buildReactAttachmentRows(source.documents ?? safetyAuthorizationDocumentDrafts),
-    note: source.note ?? safetyAuthorizationNoteInput?.value ?? "",
-  };
-}
-
-function buildSafetyAuthorizationPayloadFromReactDraft(draft = {}) {
-  return {
-    organizationId: state.activeOrganizationId || draft.organizationId || "",
-    title: draft.title || "",
-    scope: draft.scope || "",
-    issuedOn: draft.issuedOn || "",
-    validUntil: draft.validForever ? "" : (draft.validUntil || ""),
-    validForever: Boolean(draft.validForever),
-    linkedServiceCatalogIds: asArray(draft.linkedServiceCatalogIds).map(String),
-    documents: sanitizeReactDocumentsForPayload(draft.documents),
-    note: draft.note || "",
-  };
-}
-
-function buildSafetyAuthorizationReactRows(items = []) {
-  return items.map((item) => {
-    const documents = buildReactAttachmentRows(item.documents ?? []);
-    const dateBadges = [];
-    if (item.issuedOn) {
-      dateBadges.push({
-        label: `Izdano ${formatCompactDate(item.issuedOn)}`,
-        className: "measurement-equipment-chip",
-      });
-    }
-    dateBadges.push({
-      label: item.validForever
-        ? "Vrijedi trajno"
-        : item.validUntil
-          ? `Vrijedi do ${formatCompactDate(item.validUntil)}`
-          : "Bez roka",
-      className: !item.validForever && isUpcomingIsoDate(item.validUntil)
-        ? "measurement-equipment-chip is-warning"
-        : "measurement-equipment-chip",
-    });
-
-    return {
-      ...item,
-      id: String(item.id || ""),
-      isActive: String(item.id || "") === String(safetyAuthorizationReactDraft?.id || safetyAuthorizationIdInput?.value || ""),
-      dateBadges,
-      serviceTitles: getSafetyAuthorizationLinkedServiceTitles(item),
-      documentCount: documents.length,
-      documents,
-    };
-  });
-}
-
-async function uploadSafetyAuthorizationReactDocuments(files, draft = safetyAuthorizationReactDraft) {
-  const uploadFiles = Array.from(files ?? []).filter((file) => file instanceof File);
-
-  if (!uploadFiles.length) {
-    return buildReactAttachmentRows(draft?.documents ?? []);
-  }
-
-  for (const file of uploadFiles) {
-    if (!isSafetyAuthorizationDocumentFileAllowed(file)) {
-      throw new Error(`Format ${file.name} nije podrzan. Dozvoljen je samo PDF.`);
-    }
-
-    if (file.size > WORK_ORDER_DOCUMENT_MAX_SIZE_BYTES) {
-      throw new Error(`Datoteka ${file.name} mora biti manja od 12 MB.`);
-    }
-  }
-
-  const nextDocuments = await Promise.all(uploadFiles.map(async (file) => createModuleAttachmentDraft({
-    fileName: file.name,
-    fileType: file.type || "application/pdf",
-    fileSize: file.size || 0,
-    documentCategory: "pdf",
-    dataUrl: await readFileAsDataUrl(file, `Ne mogu ucitati datoteku ${file.name}.`),
-    updatedAt: new Date().toISOString(),
-  })));
-
-  const current = draft || buildSafetyAuthorizationReactDraft({});
-  safetyAuthorizationReactDraft = {
-    ...current,
-    documents: buildReactAttachmentRows([
-      ...(current.documents ?? []),
-      ...nextDocuments,
-    ]),
-    versionKey: `safety-docs:${Date.now()}`,
-  };
-  safetyAuthorizationDocumentDrafts = safetyAuthorizationReactDraft.documents.map((entry) => createModuleAttachmentDraft(entry));
-  return safetyAuthorizationReactDraft.documents;
-}
-
-function downloadSafetyAuthorizationReactDocument(documentId = "") {
-  const documentItem = (safetyAuthorizationReactDraft?.documents ?? [])
-    .find((entry) => String(entry.id) === String(documentId));
-  if (documentItem) {
-    triggerModuleAttachmentDownload(documentItem);
-  }
-}
-
-function downloadSafetyAuthorizationCardDocument(authorizationId = "", documentId = "") {
-  const item = state.safetyAuthorizations.find((entry) => String(entry.id) === String(authorizationId));
-  const documentItem = buildReactAttachmentRows(item?.documents ?? [])
-    .find((entry) => String(entry.id) === String(documentId));
-  if (documentItem) {
-    triggerModuleAttachmentDownload(documentItem);
-  }
-}
-
-function renderReactSafetyAuthorizationModule({ filters, allItems, visibleItems, activeItems, canManage } = {}) {
-  const reactComponents = window.SafeNexusReactComponents;
-  if (!safetyAuthorizationReactRoot || !reactComponents?.renderSafetyAuthorizationModule) {
-    safetyAuthorizationList?.closest(".safety-authorization-list-panel")?.removeAttribute("hidden");
-    return false;
-  }
-
-  safetyAuthorizationModule?.classList.add("is-react-module");
-  safetyAuthorizationList?.closest(".safety-authorization-list-panel")?.setAttribute("hidden", "");
-  return reactComponents.renderSafetyAuthorizationModule(safetyAuthorizationReactRoot, {
-    filters,
-    stats: {
-      total: allItems.length,
-      active: activeItems.length,
-      expiring: allItems.filter((item) => isUpcomingIsoDate(item.validUntil)).length,
-      documents: allItems.reduce((sum, item) => sum + (Array.isArray(item.documents) ? item.documents.length : 0), 0),
-    },
-    items: buildSafetyAuthorizationReactRows(visibleItems),
-    canManage,
-    onCreate: () => {
-      resetSafetyAuthorizationForm();
-      safetyAuthorizationReactDraft = buildSafetyAuthorizationReactDraft({});
-      renderSafetyAuthorizationModule();
-      openSafetyAuthorizationEditor();
-    },
-    onFilterChange: (patch = {}) => {
-      state.safetyAuthorizationFilters = {
-        ...state.safetyAuthorizationFilters,
-        ...patch,
-      };
-      if (Object.prototype.hasOwnProperty.call(patch, "query") && safetyAuthorizationSearchInput) {
-        safetyAuthorizationSearchInput.value = patch.query || "";
-      }
-      renderSafetyAuthorizationModule();
-    },
-    onOpen: (authorizationId) => {
-      const item = state.safetyAuthorizations.find((entry) => String(entry.id) === String(authorizationId));
-      if (item) {
-        hydrateSafetyAuthorizationForm(item);
-      }
-    },
-    onDownloadDocument: downloadSafetyAuthorizationCardDocument,
-  });
-}
-
-function renderReactSafetyAuthorizationEditor() {
-  const reactComponents = window.SafeNexusReactComponents;
-  if (!state.safetyAuthorizationEditorOpen || !safetyAuthorizationEditorReactRoot || !reactComponents?.renderSafetyAuthorizationEditor) {
-    return false;
-  }
-
-  const activeItem = state.safetyAuthorizations.find((entry) => String(entry.id) === String(state.activeSafetyAuthorizationId || safetyAuthorizationIdInput?.value || ""));
-  if (!safetyAuthorizationReactDraft) {
-    safetyAuthorizationReactDraft = buildSafetyAuthorizationReactDraft(activeItem || {});
-  }
-
-  safetyAuthorizationEditorPanel?.classList.add("is-react-editor");
-  safetyAuthorizationEditorPanel?.querySelector(".offers-editor-fixed-head")?.setAttribute("hidden", "");
-  safetyAuthorizationEditorBody?.setAttribute("hidden", "");
-  return reactComponents.renderSafetyAuthorizationEditor(safetyAuthorizationEditorReactRoot, {
-    title: safetyAuthorizationReactDraft.id ? `Uredi ovlastenje | ${safetyAuthorizationReactDraft.title || "Bez naziva"}` : "Novo ovlastenje",
-    draft: safetyAuthorizationReactDraft,
-    serviceOptions: getOrganisationsServiceOptions(),
-    canDelete: Boolean(safetyAuthorizationReactDraft.id) && getCanManageSafetyAuthorizations(),
-    error: safetyAuthorizationError?.textContent || "",
-    onDraftChange: (nextDraft) => {
-      safetyAuthorizationReactDraft = {
-        ...safetyAuthorizationReactDraft,
-        ...nextDraft,
-      };
-      safetyAuthorizationDocumentDrafts = buildReactAttachmentRows(safetyAuthorizationReactDraft.documents)
-        .map((entry) => createModuleAttachmentDraft(entry));
-    },
-    onUploadDocuments: uploadSafetyAuthorizationReactDocuments,
-    onDownloadDocument: downloadSafetyAuthorizationReactDocument,
-    onSave: saveSafetyAuthorizationReactDraft,
-    onReset: () => {
-      resetSafetyAuthorizationForm();
-      safetyAuthorizationReactDraft = buildSafetyAuthorizationReactDraft({});
-      openSafetyAuthorizationEditor();
-    },
-    onDelete: deleteSafetyAuthorizationReactDraft,
-    onClose: () => dismissSafetyAuthorizationEditor(),
-  });
-}
-
-function unmountReactSafetyAuthorizationEditor() {
-  window.SafeNexusReactComponents?.unmountSafetyAuthorizationEditor?.(safetyAuthorizationEditorReactRoot);
-  safetyAuthorizationEditorPanel?.classList.remove("is-react-editor");
-  safetyAuthorizationEditorPanel?.querySelector(".offers-editor-fixed-head")?.removeAttribute("hidden");
-  safetyAuthorizationEditorBody?.removeAttribute("hidden");
-}
-
-async function saveSafetyAuthorizationReactDraft(nextDraft = safetyAuthorizationReactDraft) {
-  const draft = {
-    ...(safetyAuthorizationReactDraft ?? {}),
-    ...(nextDraft ?? {}),
-  };
-  safetyAuthorizationReactDraft = draft;
-  const isEditing = Boolean(draft.id);
-  const path = isEditing ? `/safety-authorizations/${draft.id}` : "/safety-authorizations";
-  const method = isEditing ? "PATCH" : "POST";
-  const success = await runMutation(() => apiRequest(path, {
-    method,
-    body: buildSafetyAuthorizationPayloadFromReactDraft(draft),
-  }), safetyAuthorizationError);
-
-  if (!success) {
-    throw new Error(safetyAuthorizationError?.textContent || "Spremanje ovlastenja nije uspjelo.");
-  }
-
-  closeSafetyAuthorizationEditor({ reset: true });
-  renderSafetyAuthorizationModule();
-  return true;
-}
-
-async function deleteSafetyAuthorizationReactDraft(authorizationId = safetyAuthorizationReactDraft?.id || "") {
-  const normalizedId = String(authorizationId || "").trim();
-  if (!normalizedId) {
-    return false;
-  }
-  if (!window.confirm("Obrisati ovo ovlastenje?")) {
-    return false;
-  }
-
-  const success = await runMutation(() => apiRequest(`/safety-authorizations/${normalizedId}`, {
-    method: "DELETE",
-  }), safetyAuthorizationError);
-
-  if (!success) {
-    throw new Error(safetyAuthorizationError?.textContent || "Brisanje ovlastenja nije uspjelo.");
-  }
-
-  closeSafetyAuthorizationEditor({ reset: true });
-  renderSafetyAuthorizationModule();
-  return true;
-}
-
 function resetSafetyAuthorizationForm() {
   if (!safetyAuthorizationForm) {
     return;
@@ -58909,7 +57377,6 @@ function resetSafetyAuthorizationForm() {
     safetyAuthorizationValidForeverInput.checked = false;
   }
   setSafetyAuthorizationDocumentDrafts([]);
-  safetyAuthorizationReactDraft = buildSafetyAuthorizationReactDraft({});
   renderSafetyAuthorizationDocuments();
   syncSafetyAuthorizationValidityInput();
   renderSafetyAuthorizationTemplateChecklist([]);
@@ -58935,7 +57402,6 @@ function hydrateSafetyAuthorizationForm(item) {
     safetyAuthorizationError.textContent = "";
   }
   setSafetyAuthorizationDocumentDrafts(item.documents ?? []);
-  safetyAuthorizationReactDraft = buildSafetyAuthorizationReactDraft(item);
   renderSafetyAuthorizationDocuments();
   syncSafetyAuthorizationValidityInput();
   renderSafetyAuthorizationTemplateChecklist(getSafetyAuthorizationLinkedServiceIds(item));
@@ -58987,17 +57453,6 @@ function renderSafetyAuthorizationModule() {
     safetyAuthorizationHelper.textContent = visibleItems.length === allItems.length
       ? `Prikazano ${visibleItems.length} ovlaštenja. Ovdje ih povezuješ s uslugama.`
       : `Prikazano ${visibleItems.length} od ${allItems.length} ovlaštenja.`;
-  }
-
-  if (renderReactSafetyAuthorizationModule({
-    filters,
-    allItems,
-    visibleItems,
-    activeItems,
-    canManage: canManageMasterData,
-  })) {
-    safetyAuthorizationEmpty.hidden = true;
-    return;
   }
 
   safetyAuthorizationList.replaceChildren(...visibleItems.map((item) => {
@@ -59293,94 +57748,6 @@ function setAbsenceDocumentDrafts(items = []) {
     .filter((entry) => entry.fileName && (entry.dataUrl || entry.storageUrl));
 }
 
-function getDefaultAbsenceTypeForCurrentMode() {
-  return getAbsenceModuleConfig().typeOptions[0]?.value || "";
-}
-
-function getDefaultAbsenceStatusForType(type = getDefaultAbsenceTypeForCurrentMode()) {
-  return getCanManageMasterData()
-    ? "approved"
-    : (doesAbsenceTypeRequireApproval(type) ? "pending" : "approved");
-}
-
-function createAbsenceEditorDraft(overrides = {}) {
-  const today = new Date().toISOString().slice(0, 10);
-  const type = String(overrides.type || getDefaultAbsenceTypeForCurrentMode() || "").trim();
-  const userId = getCanManageMasterData()
-    ? String(overrides.userId || state.user?.id || "")
-    : String(state.user?.id || "");
-
-  return {
-    id: String(overrides.id || ""),
-    userId,
-    type,
-    status: String(overrides.status || getDefaultAbsenceStatusForType(type)),
-    startDate: String(overrides.startDate || today),
-    endDate: String(overrides.endDate || overrides.startDate || today),
-    note: String(overrides.note || ""),
-  };
-}
-
-function normalizeAbsenceEditorDraft(draft = {}) {
-  const base = createAbsenceEditorDraft(draft);
-  const type = String(base.type || getDefaultAbsenceTypeForCurrentMode() || "").trim();
-  const userId = getCanManageMasterData()
-    ? String(base.userId || state.user?.id || "")
-    : String(state.user?.id || "");
-  const status = getCanManageMasterData()
-    ? String(base.status || getDefaultAbsenceStatusForType(type))
-    : getDefaultAbsenceStatusForType(type);
-
-  return {
-    ...base,
-    userId,
-    type,
-    status,
-    endDate: base.endDate || base.startDate,
-  };
-}
-
-function getAbsenceEditorDraft() {
-  if (!absenceEditorDraft) {
-    absenceEditorDraft = createAbsenceEditorDraft();
-  }
-  absenceEditorDraft = normalizeAbsenceEditorDraft(absenceEditorDraft);
-  return { ...absenceEditorDraft };
-}
-
-function setAbsenceEditorDraft(nextDraft = {}, { syncLegacy = true } = {}) {
-  absenceEditorDraft = normalizeAbsenceEditorDraft(nextDraft);
-  if (syncLegacy) {
-    syncLegacyAbsenceFormFromDraft();
-  }
-  return { ...absenceEditorDraft };
-}
-
-function syncLegacyAbsenceFormFromDraft() {
-  const draft = absenceEditorDraft ? normalizeAbsenceEditorDraft(absenceEditorDraft) : createAbsenceEditorDraft();
-  if (absenceIdInput) {
-    absenceIdInput.value = draft.id || "";
-  }
-  if (absenceUserIdInput) {
-    absenceUserIdInput.value = draft.userId || "";
-  }
-  if (absenceTypeInput) {
-    absenceTypeInput.value = draft.type || "";
-  }
-  if (absenceStatusInput) {
-    absenceStatusInput.value = draft.status || "";
-  }
-  if (absenceStartDateInput) {
-    absenceStartDateInput.value = draft.startDate || "";
-  }
-  if (absenceEndDateInput) {
-    absenceEndDateInput.value = draft.endDate || draft.startDate || "";
-  }
-  if (absenceNoteInput) {
-    absenceNoteInput.value = draft.note || "";
-  }
-}
-
 function renderAbsenceDocuments() {
   if (!absenceDocumentsList) {
     return;
@@ -59459,38 +57826,6 @@ async function queueAbsenceDocuments(files) {
     ...nextDocuments,
   ];
   renderAbsenceDocuments();
-  renderReactAbsenceEditor();
-  return absenceDocumentDrafts.map((entry) => ({ ...entry }));
-}
-
-function removeAbsenceDocumentDraft(documentId = "") {
-  const safeId = String(documentId || "").trim();
-  absenceDocumentDrafts = absenceDocumentDrafts.filter((item) => String(item.id) !== safeId);
-  renderAbsenceDocuments();
-  renderReactAbsenceEditor();
-}
-
-function buildAbsenceEditorUserOptions() {
-  return state.users
-    .filter((user) => user?.isActive !== false)
-    .slice()
-    .sort((left, right) => getUserDisplayLabel(left).localeCompare(getUserDisplayLabel(right), "hr"))
-    .map((user) => ({
-      value: String(user.id),
-      label: getUserDisplayLabel(user),
-    }));
-}
-
-function buildAbsenceEditorDocumentRows() {
-  return absenceDocumentDrafts.map((entry) => ({
-    id: String(entry.id),
-    fileName: entry.fileName || "Dokument",
-    meta: [
-      entry.fileType || "Dokument",
-      formatFileSize(entry.fileSize),
-      entry.updatedAt ? formatCompactDateTime(entry.updatedAt) : "",
-    ].filter(Boolean).join(" | "),
-  }));
 }
 
 function renderAbsenceUserSelectOptions(selectedValue = "") {
@@ -59572,18 +57907,17 @@ function syncAbsenceBalancePreview() {
 function syncAbsenceEditorChrome() {
   const config = getAbsenceModuleConfig();
   const isAdmin = getCanManageMasterData();
-  const draft = getAbsenceEditorDraft();
-  const selectedType = String(absenceTypeInput?.value || draft.type || config.typeOptions[0]?.value || "").trim().toLowerCase();
+  const selectedType = String(absenceTypeInput?.value || config.typeOptions[0]?.value || "").trim().toLowerCase();
   const requiresApproval = doesAbsenceTypeRequireApproval(selectedType);
   const ownUserId = String(state.user?.id || "");
 
-  renderAbsenceUserSelectOptions(absenceUserIdInput?.value || draft.userId || ownUserId);
+  renderAbsenceUserSelectOptions(absenceUserIdInput?.value || ownUserId);
   replaceSelectOptions(
     absenceTypeInput,
     config.typeOptions.map((option) => ({ value: option.value, label: option.label })),
-    absenceTypeInput?.value || draft.type || config.typeOptions[0]?.value || "",
+    absenceTypeInput?.value || config.typeOptions[0]?.value || "",
   );
-  replaceSelectOptions(absenceStatusInput, ABSENCE_STATUS_OPTIONS, absenceStatusInput?.value || draft.status || (requiresApproval ? "pending" : "approved"));
+  replaceSelectOptions(absenceStatusInput, ABSENCE_STATUS_OPTIONS, absenceStatusInput?.value || (requiresApproval ? "pending" : "approved"));
 
   if (!isAdmin) {
     if (absenceUserIdInput) {
@@ -59605,14 +57939,14 @@ function syncAbsenceEditorChrome() {
 
   if (absenceEditorTitle) {
     const titlePrefix = getCurrentAbsenceModuleMode() === "medical" ? "Bolovanje / dopust" : "Zahtjev za dopust";
-    absenceEditorTitle.textContent = draft.id
+    absenceEditorTitle.textContent = absenceIdInput?.value
       ? `Uredi odsutnost | ${titlePrefix}`
       : titlePrefix;
   }
 
   if (absenceDeleteButton) {
-    const canDelete = getCanManageMasterData() || String(state.user?.id ?? "") === String(draft.userId || "");
-    absenceDeleteButton.hidden = !draft.id || !canDelete;
+    const canDelete = getCanManageMasterData() || String(state.user?.id ?? "") === String(absenceUserIdInput?.value || "");
+    absenceDeleteButton.hidden = !absenceIdInput?.value || !canDelete;
   }
 
   if (absenceOpenFormButton) {
@@ -59621,24 +57955,9 @@ function syncAbsenceEditorChrome() {
 
   syncAbsenceDayCountPreview();
   syncAbsenceBalancePreview();
-  renderReactAbsenceEditor();
 }
 
 function buildAbsencePayload() {
-  const draft = getAbsenceEditorDraft();
-  if (draft) {
-    return {
-      organizationId: state.activeOrganizationId || "",
-      userId: draft.userId || state.user?.id || "",
-      type: draft.type || "",
-      status: draft.status || "",
-      startDate: draft.startDate || "",
-      endDate: draft.endDate || draft.startDate || "",
-      note: draft.note || "",
-      documents: absenceDocumentDrafts.map((entry) => ({ ...entry })),
-    };
-  }
-
   return {
     organizationId: state.activeOrganizationId || "",
     userId: absenceUserIdInput?.value || state.user?.id || "",
@@ -59651,146 +57970,6 @@ function buildAbsencePayload() {
   };
 }
 
-function getAbsenceBalancePreviewText(userId = "") {
-  const selectedUserId = String(userId || state.user?.id || "").trim();
-  if (!selectedUserId) {
-    return "Saldo će se prikazati nakon odabira korisnika.";
-  }
-
-  const summary = getAbsenceBalanceSummaryForUser(selectedUserId);
-  if (getCurrentAbsenceModuleMode() === "medical") {
-    return `Početno ${summary.sickLeaveInitialDays} · iskorišteno ${summary.sickLeaveUsedDays} · preostalo ${summary.sickLeaveRemainingDays}`;
-  }
-
-  return `Početno ${summary.annualLeaveInitialDays} · iskorišteno ${summary.annualLeaveUsedDays} · preostalo ${summary.annualLeaveRemainingDays}`;
-}
-
-async function saveAbsenceEditorDraft(nextDraft = getAbsenceEditorDraft()) {
-  const draft = setAbsenceEditorDraft(nextDraft);
-  const isEditing = Boolean(draft.id);
-  const path = isEditing ? `/absence-entries/${draft.id}` : "/absence-entries";
-  const method = isEditing ? "PATCH" : "POST";
-  const payload = await apiRequest(path, {
-    method,
-    body: buildAbsencePayload(),
-  });
-
-  if (payload && typeof payload === "object" && Object.prototype.hasOwnProperty.call(payload, "storage")) {
-    applySnapshot(payload);
-  }
-
-  closeAbsenceEditor({ reset: true });
-  renderAbsenceModule();
-  renderAbsenceReportModule();
-  renderNotifications();
-  renderWorkOrderCalendarView();
-  return true;
-}
-
-async function deleteAbsenceEditorDraft(entryId = getAbsenceEditorDraft().id) {
-  const safeId = String(entryId || "").trim();
-  if (!safeId) {
-    return false;
-  }
-
-  const payload = await apiRequest(`/absence-entries/${safeId}`, { method: "DELETE" });
-  if (payload && typeof payload === "object" && Object.prototype.hasOwnProperty.call(payload, "storage")) {
-    applySnapshot(payload);
-  }
-
-  closeAbsenceEditor({ reset: true });
-  renderAbsenceModule();
-  renderAbsenceReportModule();
-  renderNotifications();
-  renderWorkOrderCalendarView();
-  return true;
-}
-
-function renderReactAbsenceEditor() {
-  const reactComponents = window.SafeNexusReactComponents;
-  if (!state.absenceEditorOpen || !absenceEditorReactRoot || !reactComponents?.renderAbsenceEditor) {
-    return false;
-  }
-
-  const config = getAbsenceModuleConfig();
-  const draft = getAbsenceEditorDraft();
-  const canManage = getCanManageMasterData();
-  const canDelete = Boolean(draft.id) && (canManage || String(state.user?.id ?? "") === String(draft.userId || ""));
-  const titlePrefix = getCurrentAbsenceModuleMode() === "medical" ? "Bolovanje / dopust" : "Zahtjev za dopust";
-
-  return reactComponents.renderAbsenceEditor(absenceEditorReactRoot, {
-    title: draft.id ? `Uredi odsutnost | ${titlePrefix}` : titlePrefix,
-    mode: getCurrentAbsenceModuleMode(),
-    draft,
-    canManage,
-    canDelete,
-    userOptions: buildAbsenceEditorUserOptions(),
-    typeOptions: config.typeOptions.map((option) => ({ value: option.value, label: option.label })),
-    statusOptions: ABSENCE_STATUS_OPTIONS.map((option) => ({ value: option.value, label: option.label })),
-    documents: buildAbsenceEditorDocumentRows(),
-    dayCount: getAbsenceBusinessDayCount(draft.startDate, draft.endDate || draft.startDate),
-    balancePreview: getAbsenceBalancePreviewText(draft.userId),
-    onDraftChange: (patch) => {
-      setAbsenceEditorDraft({
-        ...getAbsenceEditorDraft(),
-        ...patch,
-      });
-    },
-    getDayCount: (startDate, endDate) => getAbsenceBusinessDayCount(startDate, endDate || startDate),
-    getBalancePreview: (userId) => getAbsenceBalancePreviewText(userId),
-    getDefaultStatusForType: (type) => getDefaultAbsenceStatusForType(type),
-    onUploadDocuments: async (files) => queueAbsenceDocuments(files),
-    onDownloadDocument: (documentId) => {
-      const documentItem = absenceDocumentDrafts.find((item) => String(item.id) === String(documentId));
-      if (documentItem) {
-        triggerModuleAttachmentDownload(documentItem);
-      }
-    },
-    onRemoveDocument: (documentId) => removeAbsenceDocumentDraft(documentId),
-    onSave: (payload) => saveAbsenceEditorDraft(payload),
-    onReset: () => {
-      resetAbsenceForm();
-      openAbsenceEditor();
-    },
-    onDelete: (entryId) => deleteAbsenceEditorDraft(entryId),
-    onClose: () => dismissAbsenceEditor(),
-  });
-}
-
-function unmountReactAbsenceEditor() {
-  window.SafeNexusReactComponents?.unmountAbsenceEditor?.(absenceEditorReactRoot);
-}
-
-function renderReactAbsenceBalanceEditor() {
-  const reactComponents = window.SafeNexusReactComponents;
-  if (!state.absenceBalanceEditorOpen || !absenceBalanceReactRoot || !reactComponents?.renderAbsenceBalanceEditor) {
-    return false;
-  }
-
-  if (!absenceBalanceDrafts.length) {
-    resetAbsenceBalanceDrafts();
-  }
-
-  return reactComponents.renderAbsenceBalanceEditor(absenceBalanceReactRoot, {
-    rows: absenceBalanceDrafts.map((entry) => ({ ...entry })),
-    onClose: () => closeAbsenceBalanceEditor(),
-    onSave: async (rows) => {
-      absenceBalanceDrafts = Array.isArray(rows) ? rows.map((entry) => ({ ...entry })) : absenceBalanceDrafts;
-      const success = await saveAbsenceBalanceDrafts(absenceBalanceDrafts);
-      if (success) {
-        closeAbsenceBalanceEditor();
-        renderAbsenceModule();
-        renderAbsenceReportModule();
-      }
-      return success;
-    },
-  });
-}
-
-function unmountReactAbsenceBalanceEditor() {
-  window.SafeNexusReactComponents?.unmountAbsenceBalanceEditor?.(absenceBalanceReactRoot);
-}
-
 function syncAbsenceEditorModal() {
   const isOpen = Boolean(state.absenceEditorOpen);
   if (absenceEditorBackdrop) {
@@ -59801,16 +57980,10 @@ function syncAbsenceEditorModal() {
   }
   absenceEditorPanel?.classList.toggle("is-modal-open", isOpen);
   document.body.classList.toggle("is-absence-editor-open", isOpen);
-  if (isOpen) {
-    renderReactAbsenceEditor();
-  } else {
-    unmountReactAbsenceEditor();
-  }
 }
 
 function openAbsenceEditor() {
   state.absenceEditorOpen = true;
-  renderReactAbsenceEditor();
   syncAbsenceEditorModal();
 }
 
@@ -59835,16 +58008,10 @@ function syncAbsenceBalanceModal() {
     absenceBalancePanel.hidden = !isOpen;
   }
   absenceBalancePanel?.classList.toggle("is-modal-open", isOpen);
-  if (isOpen) {
-    renderReactAbsenceBalanceEditor();
-  } else {
-    unmountReactAbsenceBalanceEditor();
-  }
 }
 
 function openAbsenceBalanceEditor() {
   state.absenceBalanceEditorOpen = true;
-  renderReactAbsenceBalanceEditor();
   syncAbsenceBalanceModal();
 }
 
@@ -59856,7 +58023,6 @@ function closeAbsenceBalanceEditor() {
 function resetAbsenceForm() {
   absenceForm?.reset();
   state.activeAbsenceId = "";
-  setAbsenceEditorDraft(createAbsenceEditorDraft(), { syncLegacy: false });
   if (absenceIdInput) {
     absenceIdInput.value = "";
   }
@@ -59874,7 +58040,6 @@ function resetAbsenceForm() {
   }
   setAbsenceDocumentDrafts([]);
   renderAbsenceDocuments();
-  renderReactAbsenceEditor();
   syncAbsenceEditorChrome();
 }
 
@@ -59890,15 +58055,6 @@ function hydrateAbsenceForm(entry) {
   renderActiveView();
   renderManagement();
   state.activeAbsenceId = entry.id;
-  setAbsenceEditorDraft({
-    id: entry.id || "",
-    userId: entry.userId || "",
-    type: entry.type || "",
-    status: entry.status || "pending",
-    startDate: entry.startDate || "",
-    endDate: entry.endDate || entry.startDate || "",
-    note: entry.note || "",
-  }, { syncLegacy: false });
   if (absenceIdInput) {
     absenceIdInput.value = entry.id || "";
   }
@@ -59925,11 +58081,10 @@ function hydrateAbsenceForm(entry) {
   }
   setAbsenceDocumentDrafts(entry.documents ?? []);
   renderAbsenceDocuments();
-  renderReactAbsenceEditor();
   syncAbsenceEditorChrome();
   openAbsenceEditor();
   requestAnimationFrame(() => {
-    document.querySelector("#react-absence-start-date")?.focus({ preventScroll: true });
+    absenceStartDateInput?.focus({ preventScroll: true });
   });
 }
 
@@ -60026,12 +58181,6 @@ function getAbsenceBalanceInputValue(userId = "", fieldKey = "annualLeaveInitial
 function openAbsenceEditorForUser(userId = "") {
   const config = getAbsenceModuleConfig();
   resetAbsenceForm();
-  setAbsenceEditorDraft({
-    ...getAbsenceEditorDraft(),
-    userId: String(userId || state.user?.id || ""),
-    type: config.typeOptions[0]?.value || "",
-    status: getDefaultAbsenceStatusForType(config.typeOptions[0]?.value || ""),
-  }, { syncLegacy: false });
   if (absenceUserIdInput) {
     absenceUserIdInput.value = String(userId || state.user?.id || "");
   }
@@ -60170,15 +58319,7 @@ function renderAbsencePeopleOverview() {
   }
 }
 
-async function saveAbsenceBalanceDrafts(nextDrafts = absenceBalanceDrafts) {
-  absenceBalanceDrafts = Array.isArray(nextDrafts)
-    ? nextDrafts.map((entry) => ({
-      userId: String(entry.userId || ""),
-      userLabel: entry.userLabel || "",
-      annualLeaveInitialDays: Math.max(0, Number(entry.annualLeaveInitialDays ?? 0) || 0),
-      sickLeaveInitialDays: Math.max(0, Number(entry.sickLeaveInitialDays ?? 0) || 0),
-    }))
-    : absenceBalanceDrafts;
+async function saveAbsenceBalanceDrafts() {
   const currentByUserId = new Map((state.absenceBalances ?? []).map((entry) => [String(entry.userId), entry]));
   const changedEntries = absenceBalanceDrafts.filter((entry) => {
     const current = currentByUserId.get(String(entry.userId));
@@ -60194,9 +58335,8 @@ async function saveAbsenceBalanceDrafts(nextDrafts = absenceBalanceDrafts) {
   }
 
   const success = await runMutation(async () => {
-    let lastPayload = null;
     for (const entry of changedEntries) {
-      lastPayload = await apiRequest("/absence-balances", {
+      await apiRequest("/absence-balances", {
         method: "POST",
         body: {
           userId: entry.userId,
@@ -60205,7 +58345,6 @@ async function saveAbsenceBalanceDrafts(nextDrafts = absenceBalanceDrafts) {
         },
       });
     }
-    return lastPayload;
   }, absenceBalanceError);
 
   if (success && absenceBalanceError) {
@@ -60236,201 +58375,8 @@ function createAbsenceCardDocumentActions(entry = {}) {
   return actions;
 }
 
-function buildAbsenceUserOptions() {
-  return [
-    { value: "all", label: "Svi korisnici" },
-    ...state.users
-      .filter((user) => user?.isActive !== false)
-      .slice()
-      .sort((left, right) => getUserDisplayLabel(left).localeCompare(getUserDisplayLabel(right), "hr"))
-      .map((user) => ({
-        value: String(user.id),
-        label: getUserDisplayLabel(user),
-      })),
-  ];
-}
-
-function updateAbsenceEntryStatus(entryId = "", status = "") {
-  const safeEntryId = String(entryId || "").trim();
-  const safeStatus = String(status || "").trim();
-  if (!safeEntryId || !safeStatus) {
-    return;
-  }
-
-  void runMutation(() => apiRequest(`/absence-entries/${safeEntryId}`, {
-    method: "PATCH",
-    body: { status: safeStatus },
-  }), absenceError).then((success) => {
-    if (success) {
-      renderAbsenceModule();
-      renderAbsenceReportModule();
-      renderNotifications();
-      renderWorkOrderCalendarView();
-    }
-  });
-}
-
-function openAbsenceEntryById(entryId = "") {
-  const entry = (state.absenceEntries ?? []).find((item) => String(item.id) === String(entryId));
-  if (entry) {
-    hydrateAbsenceForm(entry);
-  }
-}
-
-function downloadAbsenceEntryDocument(entryId = "", documentId = "") {
-  const entry = (state.absenceEntries ?? []).find((item) => String(item.id) === String(entryId));
-  const documentItem = (entry?.documents ?? []).find((item) => String(item.id) === String(documentId));
-  if (documentItem) {
-    triggerModuleAttachmentDownload(createModuleAttachmentDraft(documentItem));
-  }
-}
-
-function buildReactAbsencePeopleRows(mode = getCurrentAbsenceModuleMode()) {
-  const isMedical = mode === "medical";
-  const fieldKey = isMedical ? "sickLeaveInitialDays" : "annualLeaveInitialDays";
-  const initialKey = isMedical ? "sickLeaveInitialDays" : "annualLeaveInitialDays";
-  const usedKey = isMedical ? "sickLeaveUsedDays" : "annualLeaveUsedDays";
-  const remainingKey = isMedical ? "sickLeaveRemainingDays" : "annualLeaveRemainingDays";
-
-  return getSortedAbsenceUsers().map((user) => {
-    const summary = getAbsenceBalanceSummaryForUser(user.id);
-    return {
-      id: String(user.id),
-      name: getUserDisplayLabel(user),
-      meta: user.email || getUserOrganizationSummary(user),
-      initials: getUserInitials(user),
-      fieldKey,
-      balanceValue: getAbsenceBalanceInputValue(user.id, fieldKey),
-      stats: [
-        { label: isMedical ? "Evidencija" : "GO u godini", value: summary[initialKey] },
-        { label: "Iskorišteno", value: summary[usedKey] },
-        { label: "Preostalo", value: summary[remainingKey] },
-      ],
-    };
-  });
-}
-
-function buildReactAbsenceEntryRows(visibleItems = [], canManage = getCanManageMasterData()) {
-  return visibleItems.map((entry) => {
-    const documents = (Array.isArray(entry.documents) ? entry.documents : [])
-      .map((item) => createModuleAttachmentDraft(item))
-      .filter((item) => item.fileName && (item.dataUrl || item.storageUrl))
-      .slice(0, 3)
-      .map((item) => ({
-        id: String(item.id),
-        fileName: item.fileName || "Dokument",
-      }));
-    const isApproved = String(entry.status || "").toLowerCase() === "approved";
-
-    return {
-      id: String(entry.id),
-      userLabel: entry.userLabel || "Korisnik",
-      dateLabel: `${formatCompactDate(entry.startDate)} - ${formatCompactDate(entry.endDate)} · ${entry.dayCount || 0} dana`,
-      typeLabel: getAbsenceTypeLabelClient(entry.type),
-      statusLabel: getAbsenceStatusLabelClient(entry.status),
-      statusClassName: getAbsenceStatusBadgeClass(entry.status),
-      note: entry.note || "Bez dodatne napomene.",
-      requestedLabel: entry.requestedByLabel ? `Zahtjev: ${entry.requestedByLabel}` : "Bez pošiljatelja",
-      approvedLabel: entry.approvedByLabel && isApproved ? `Odobrio: ${entry.approvedByLabel}` : "",
-      documentCount: Array.isArray(entry.documents) ? entry.documents.length : 0,
-      documents,
-      canOpen: canManageAbsenceEntryClient(entry),
-      canApproveReject: canManage
-        && String(entry.status).toLowerCase() === "pending"
-        && doesAbsenceTypeRequireApproval(entry.type),
-      isActive: String(entry.id) === String(state.activeAbsenceId || ""),
-    };
-  });
-}
-
-function renderReactAbsenceModule(config, filters, allItems, visibleItems, selectedBalance, canManage) {
-  const reactComponents = window.SafeNexusReactComponents;
-  if (!absenceReactRoot || !reactComponents?.renderAbsenceModule) {
-    reactComponents?.unmountAbsenceModule?.(absenceReactRoot);
-    absenceModule?.classList.remove("is-react-rendered");
-    return false;
-  }
-
-  const mode = getCurrentAbsenceModuleMode();
-  const isMedical = mode === "medical";
-  const balanceValue = selectedBalance
-    ? (isMedical ? selectedBalance.sickLeaveRemainingDays : selectedBalance.annualLeaveRemainingDays)
-    : 0;
-  const balanceText = selectedBalance
-    ? `${config.balanceLabel}: ${balanceValue}`
-    : "Bez odabranog salda";
-  const helperText = visibleItems.length === allItems.length
-    ? `${visibleItems.length} stavki · ${balanceText}.`
-    : `${visibleItems.length}/${allItems.length} stavki · ${balanceText}.`;
-
-  absenceModule?.classList.add("is-react-rendered");
-  return reactComponents.renderAbsenceModule(absenceReactRoot, {
-    mode,
-    config,
-    filters,
-    canManage,
-    summary: {
-      total: allItems.length,
-      pending: allItems.filter((entry) => String(entry.status).toLowerCase() === "pending").length,
-      approved: allItems.filter((entry) => String(entry.status).toLowerCase() === "approved").length,
-      balance: balanceValue,
-    },
-    helperText,
-    peopleTitle: isMedical ? "Bolovanja po korisnicima" : "Godišnji odmor po korisnicima",
-    peopleCopy: isMedical
-      ? "Pregled bolovanja i opravdanih izostanaka po osobi, s brzim dodavanjem nove odsutnosti."
-      : "Popis svih ljudi, godišnji odmor u godini, iskorišteno i preostalo dana.",
-    peopleFeedback: absencePeopleFeedback?.textContent || "",
-    people: buildReactAbsencePeopleRows(mode),
-    userOptions: buildAbsenceUserOptions(),
-    statusOptions: [
-      { value: "all", label: "Svi statusi" },
-      ...ABSENCE_STATUS_OPTIONS.map((option) => ({ value: option.value, label: option.label })),
-    ],
-    typeOptions: [
-      { value: "all", label: "Sve vrste" },
-      ...config.typeOptions.map((option) => ({ value: option.value, label: option.label })),
-    ],
-    entries: buildReactAbsenceEntryRows(visibleItems, canManage),
-    emptyText: isMedical
-      ? "Nema evidentiranih bolovanja ili posebnih dopusta za zadane filtere."
-      : "Nema zahtjeva za godišnji ili druge dopuste za zadane filtere.",
-    onFilterChange: (patch) => {
-      updateAbsenceFiltersStateForCurrentMode(patch);
-      renderAbsenceModule();
-    },
-    onOpenCreate: () => {
-      resetAbsenceForm();
-      renderAbsenceModule();
-      openAbsenceEditor();
-      requestAnimationFrame(() => {
-        document.querySelector("#react-absence-start-date")?.focus({ preventScroll: true });
-      });
-    },
-    onOpenBalances: () => {
-      if (!getCanManagePeople()) {
-        return;
-      }
-      resetAbsenceBalanceDrafts();
-      if (absenceBalanceError) {
-        absenceBalanceError.textContent = "";
-      }
-      renderReactAbsenceBalanceEditor();
-      openAbsenceBalanceEditor();
-    },
-    onOpenUser: (userId) => openAbsenceEditorForUser(userId),
-    onSaveBalance: (userId, fieldKey, value) => {
-      void saveInlineAbsenceBalance(userId, fieldKey, value);
-    },
-    onOpenEntry: (entryId) => openAbsenceEntryById(entryId),
-    onApprove: (entryId) => updateAbsenceEntryStatus(entryId, "approved"),
-    onReject: (entryId) => updateAbsenceEntryStatus(entryId, "rejected"),
-    onDownloadDocument: (entryId, documentId) => downloadAbsenceEntryDocument(entryId, documentId),
-  });
-}
-
 function renderAbsenceModule() {
-  if (!absenceModule) {
+  if (!absenceModule || !absenceList || !absenceEmpty) {
     return;
   }
 
@@ -60443,14 +58389,6 @@ function renderAbsenceModule() {
     ? filters.userId
     : String(state.user?.id || "");
   const selectedBalance = selectedUserId ? getAbsenceBalanceSummaryForUser(selectedUserId) : null;
-
-  if (renderReactAbsenceModule(config, filters, allItems, visibleItems, selectedBalance, canManage)) {
-    return;
-  }
-
-  if (!absenceList || !absenceEmpty) {
-    return;
-  }
 
   if (absenceModuleKicker) {
     absenceModuleKicker.textContent = config.kicker;
@@ -60690,87 +58628,8 @@ function exportAbsenceReportCsv(rows = getAbsenceReportRows(), fileName = "") {
   );
 }
 
-function moveAbsenceReportMonth(offset = 0) {
-  const [year, month] = String(state.absenceReportMonth || new Date().toISOString().slice(0, 7)).split("-").map(Number);
-  const date = new Date(Date.UTC(year, Math.max(0, (month || 1) - 1 + offset), 1));
-  state.absenceReportMonth = date.toISOString().slice(0, 7);
-  renderAbsenceReportModule();
-}
-
-function buildReactAbsenceReportRows(rows = getAbsenceReportRows()) {
-  return rows.map((row) => ({
-    userId: String(row.userId),
-    userLabel: row.userLabel,
-    meta: `${row.businessDayCount} radnih dana · ${row.assignedWorkOrderCount} RN`,
-    stats: [
-      { label: "Redovni rad", value: row.regularWorkDays },
-      { label: "Odsutnosti", value: row.absenceDays },
-      { label: "GO preostalo", value: row.annualLeaveRemainingDays },
-      { label: "Bolovanje preostalo", value: row.sickLeaveRemainingDays },
-    ],
-    breakdown: Object.entries(row.dayBreakdown || {})
-      .filter(([, count]) => Number(count || 0) > 0)
-      .map(([key, count]) => ({
-        label: key === "regular_work"
-          ? `Redovni rad ${count}`
-          : `${getAbsenceTypeLabelClient(key)} ${count}`,
-        className: key === "regular_work"
-          ? "service-catalog-template-badge"
-          : "measurement-equipment-chip",
-      })),
-  }));
-}
-
-function renderReactAbsenceReportModule(rows, totalRegularDays, totalAbsenceDays) {
-  const reactComponents = window.SafeNexusReactComponents;
-  if (!absenceReportReactRoot || !reactComponents?.renderAbsenceReportModule) {
-    reactComponents?.unmountAbsenceReportModule?.(absenceReportReactRoot);
-    absenceReportModule?.classList.remove("is-react-rendered");
-    return false;
-  }
-
-  absenceReportModule?.classList.add("is-react-rendered");
-  return reactComponents.renderAbsenceReportModule(absenceReportReactRoot, {
-    month: state.absenceReportMonth || new Date().toISOString().slice(0, 7),
-    userId: state.absenceReportFilters.userId || "all",
-    userOptions: buildAbsenceUserOptions(),
-    exportLabel: state.absenceReportFilters.userId && state.absenceReportFilters.userId !== "all"
-      ? "CSV osoba"
-      : "CSV sve",
-    summaryText: `${rows.length} korisnika · ${totalRegularDays} dana redovnog rada · ${totalAbsenceDays} dana odsutnosti`,
-    rows: buildReactAbsenceReportRows(rows),
-    onMonthChange: (month) => {
-      state.absenceReportMonth = month || new Date().toISOString().slice(0, 7);
-      renderAbsenceReportModule();
-    },
-    onPrev: () => moveAbsenceReportMonth(-1),
-    onToday: () => {
-      state.absenceReportMonth = new Date().toISOString().slice(0, 7);
-      renderAbsenceReportModule();
-    },
-    onNext: () => moveAbsenceReportMonth(1),
-    onUserChange: (userId) => {
-      state.absenceReportFilters = {
-        ...state.absenceReportFilters,
-        userId: userId || "all",
-      };
-      renderAbsenceReportModule();
-    },
-    onExport: () => exportAbsenceReportCsv(),
-    onExportRow: (userId) => {
-      const row = getAbsenceReportRows().find((item) => String(item.userId) === String(userId));
-      if (row) {
-        exportAbsenceReportCsv(
-          [row],
-          `work-status-report-${state.absenceReportMonth || new Date().toISOString().slice(0, 7)}-${slugifyValue(row.userLabel || "korisnik")}.csv`,
-        );
-      }
-    },
-  });
-}
-
 function renderAbsenceReportModule() {
-  if (!absenceReportModule) {
+  if (!absenceReportModule || !absenceReportList || !absenceReportEmpty) {
     return;
   }
 
@@ -60799,14 +58658,6 @@ function renderAbsenceReportModule() {
   const rows = getAbsenceReportRows();
   const totalRegularDays = rows.reduce((sum, row) => sum + Number(row.regularWorkDays || 0), 0);
   const totalAbsenceDays = rows.reduce((sum, row) => sum + Number(row.absenceDays || 0), 0);
-
-  if (renderReactAbsenceReportModule(rows, totalRegularDays, totalAbsenceDays)) {
-    return;
-  }
-
-  if (!absenceReportList || !absenceReportEmpty) {
-    return;
-  }
 
   if (absenceReportSummary) {
     absenceReportSummary.textContent = `${rows.length} korisnika · ${totalRegularDays} dana redovnog rada · ${totalAbsenceDays} dana odsutnosti`;
@@ -67237,7 +65088,6 @@ function syncVehicleEditorModal() {
   }
 
   if (isOpen) {
-    renderReactVehicleEditor();
     requestAnimationFrame(() => {
       scrollVehicleEditorToTop();
       vehicleEditorBody?.focus({ preventScroll: true });
@@ -67245,8 +65095,6 @@ function syncVehicleEditorModal() {
         scrollVehicleEditorToTop();
       }, 0);
     });
-  } else {
-    unmountReactVehicleEditor();
   }
 }
 
@@ -67284,7 +65132,6 @@ function syncVehicleReservationModal() {
   syncVehicleReservationAssigneePicker();
 
   if (isOpen) {
-    renderReactVehicleReservationEditor();
     requestAnimationFrame(() => {
       scrollVehicleReservationToTop();
       vehicleReservationBody?.focus({ preventScroll: true });
@@ -67292,8 +65139,6 @@ function syncVehicleReservationModal() {
         scrollVehicleReservationToTop();
       }, 0);
     });
-  } else {
-    unmountReactVehicleReservationEditor();
   }
 }
 
@@ -73249,161 +71094,6 @@ function renderDashboardWidgetGrid() {
   dashboardWidgetGrid.replaceChildren(...widgets.map((widget) => createDashboardWidgetCanvasCard(widget)));
 }
 
-function getDashboardWidgetFilterChipModels(widget) {
-  const filters = widget.filters ?? {};
-  const chips = [];
-
-  if (filters.companyId) {
-    const company = state.companies.find((item) => String(item.id) === String(filters.companyId));
-    chips.push({ label: company?.name || "Tvrtka", tone: "filter" });
-  }
-
-  if (filters.status) {
-    chips.push({ label: filters.status, tone: "filter" });
-  }
-
-  if (filters.priority) {
-    chips.push({ label: filters.priority, tone: "filter" });
-  }
-
-  if (filters.region) {
-    chips.push({ label: filters.region, tone: "filter" });
-  }
-
-  if (filters.executor) {
-    chips.push({ label: filters.executor, tone: "filter" });
-  }
-
-  if (filters.assigneeUserId) {
-    const user = state.users.find((item) => String(item.id) === String(filters.assigneeUserId));
-    chips.push({ label: user?.fullName || user?.email || "Korisnik", tone: "filter" });
-  }
-
-  if (filters.tag) {
-    chips.push({ label: filters.tag, tone: "tag" });
-  }
-
-  if (filters.dateWindow && filters.dateWindow !== "all") {
-    const label = DASHBOARD_WIDGET_DATE_WINDOW_OPTIONS.find((item) => item.value === filters.dateWindow)?.label;
-    chips.push({ label: label || filters.dateWindow, tone: "filter" });
-  }
-
-  return chips;
-}
-
-function buildReactDashboardWidgetModel(widget) {
-  let data = null;
-
-  try {
-    data = getDashboardWidgetData(state, widget, {
-      userId: state.user?.id,
-    });
-  } catch (error) {
-    data = {
-      kind: "list",
-      title: widget.title,
-      sourceLabel: "Dashboard",
-      optionLabel: "Greška",
-      items: [],
-      emptyMessage: error.message || "Widget se trenutno ne može prikazati.",
-    };
-  }
-
-  return {
-    ...widget,
-    data,
-    chips: getDashboardWidgetFilterChipModels(widget),
-    sizeLabel: DASHBOARD_WIDGET_SIZE_OPTIONS.find((item) => item.value === widget.size)?.label || widget.size,
-  };
-}
-
-function buildReactDashboardModel() {
-  const stats = getDashboardStats(state);
-  const insights = getDashboardInsights(state);
-
-  return {
-    canCreate: Boolean(state.activeOrganizationId),
-    seeding: Boolean(state.dashboardBuilder.seeding),
-    stats: {
-      ...stats,
-      urgentWorkOrders: insights.urgentWorkOrders,
-      dueThisWeekWorkOrders: insights.dueThisWeekWorkOrders,
-      missingCoordinatesLocations: insights.missingCoordinatesLocations,
-      statusBreakdown: insights.statusBreakdown,
-    },
-    widgets: getDashboardWidgets().map((widget) => buildReactDashboardWidgetModel(widget)),
-  };
-}
-
-function setLegacyDashboardOverviewHidden(isHidden) {
-  if (!dashboardOverviewPanel) {
-    return;
-  }
-
-  Array.from(dashboardOverviewPanel.children).filter((element) => (
-    element.classList?.contains("dashboard-overview-head")
-    || element.classList?.contains("dashboard-builder-actions")
-    || element.classList?.contains("dashboard-builder-layout")
-  )).forEach((element) => {
-    if (!element) {
-      return;
-    }
-    if (isHidden) {
-      element.setAttribute("hidden", "");
-    } else {
-      element.removeAttribute("hidden");
-    }
-  });
-}
-
-function renderReactDashboardOverview() {
-  const reactComponents = window.SafeNexusReactComponents;
-
-  if (!dashboardReactRoot || typeof reactComponents?.renderDashboardOverview !== "function") {
-    dashboardOverviewPanel?.classList.remove("is-react-dashboard");
-    setLegacyDashboardOverviewHidden(false);
-    return false;
-  }
-
-  dashboardOverviewPanel?.classList.add("is-react-dashboard");
-  setLegacyDashboardOverviewHidden(true);
-  return reactComponents.renderDashboardOverview(dashboardReactRoot, {
-    model: buildReactDashboardModel(),
-    onAdd: () => {
-      openDashboardBuilder();
-      renderDashboardOverview();
-    },
-    onSeed: () => {
-      void createSuggestedDashboardLayout();
-    },
-    onEdit: (widgetId) => {
-      const widget = getDashboardWidgetById(widgetId);
-      if (widget) {
-        openDashboardBuilder(widget);
-        renderDashboardOverview();
-      }
-    },
-    onMove: (widgetId, deltaColumn, deltaRow) => {
-      void moveDashboardWidgetOnGrid(widgetId, deltaColumn, deltaRow);
-    },
-    onResize: (widgetId, deltaWidth, deltaHeight) => {
-      void resizeDashboardWidgetOnGrid(widgetId, deltaWidth, deltaHeight);
-    },
-    onOpenWorkOrder: (workOrderId) => {
-      const linked = state.workOrders.find((entry) => String(entry.id) === String(workOrderId));
-      if (linked) {
-        hydrateWorkOrderForm(linked);
-      }
-    },
-  });
-}
-
-function unmountReactDashboardOverview() {
-  window.SafeNexusReactComponents?.unmountDashboardOverview?.(dashboardReactRoot);
-  dashboardOverviewPanel?.classList.remove("is-react-dashboard");
-  setLegacyDashboardOverviewHidden(false);
-}
-
 function renderDashboardOverview() {
   const shouldShowDashboardOverview = Boolean(
     dashboardOverviewPanel
@@ -73436,19 +71126,10 @@ function renderDashboardOverview() {
 
   if (!shouldShowDashboardWorkspace) {
     document.body.classList.remove("is-dashboard-builder-open");
-    unmountReactDashboardOverview();
     return;
   }
 
-  let renderedReactDashboard = false;
-
   if (shouldShowDashboardOverview) {
-    renderedReactDashboard = renderReactDashboardOverview();
-  } else {
-    unmountReactDashboardOverview();
-  }
-
-  if (shouldShowDashboardOverview && !renderedReactDashboard) {
     renderDashboardInsightsSummary();
   }
 
@@ -73480,11 +71161,7 @@ function renderDashboardOverview() {
     syncDashboardWidgetFormOptions();
   }
   if (shouldShowDashboardOverview) {
-    if (!renderedReactDashboard) {
-      renderDashboardWidgetGrid();
-    } else {
-      clearDashboardWidgetDropPreview();
-    }
+    renderDashboardWidgetGrid();
     renderDashboardWidgetPreview();
   }
 }
@@ -81460,9 +79137,6 @@ function resetVehicleReservationForm({ clearSelection = true, vehicleId = state.
     state.activeVehicleId = "";
   }
 
-  vehicleReservationReactDraft = buildVehicleReservationReactDraft({
-    vehicle: state.vehicles.find((item) => String(item.id) === String(vehicleId || state.activeVehicleId)) ?? null,
-  });
   syncVehicleEditorSummary();
 }
 
@@ -81474,7 +79148,6 @@ function resetVehicleForm({ clearSelection = true } = {}) {
   vehicleForm.reset();
   vehicleDocumentDrafts = [];
   vehicleActivityDrafts = [];
-  vehicleReactDraft = buildVehicleReactDraft({});
   if (vehicleIdInput) {
     vehicleIdInput.value = "";
   }
@@ -81504,7 +79177,6 @@ function hydrateVehicleReservationForm(vehicle, reservation) {
   state.activeVehicleId = vehicle.id;
   state.activeVehicleReservationId = reservation.id;
   setVehicleReservationAssigneePickerOpen(false);
-  vehicleReservationReactDraft = buildVehicleReservationReactDraft({ vehicle, reservation });
 
   if (vehicleReservationIdInput) {
     vehicleReservationIdInput.value = reservation.id || "";
@@ -81603,7 +79275,6 @@ function hydrateVehicleForm(vehicle) {
   }
   vehicleDocumentDrafts = (vehicle.documents ?? []).map((entry) => createModuleAttachmentDraft(entry));
   setVehicleActivityDrafts(vehicle.activityItems ?? []);
-  vehicleReactDraft = buildVehicleReactDraft(vehicle);
   state.vehicleActivitySectionExpanded = true;
   state.vehicleDocumentsSectionExpanded = true;
   renderVehicleDocuments();
@@ -81648,541 +79319,17 @@ function openVehicleReservationComposer({ vehicleId = state.activeVehicleId || "
 
   resetVehicleReservationForm({ clearSelection: true, vehicleId: nextVehicleId });
   rebuildVehicleReservationVehicleOptions(nextVehicleId);
-  vehicleReservationReactDraft = buildVehicleReservationReactDraft({
-    vehicle: state.vehicles.find((item) => String(item.id) === String(nextVehicleId)) ?? null,
-  });
 
   if (startAt && vehicleReservationStartAtInput) {
     vehicleReservationStartAtInput.value = startAt;
-    vehicleReservationReactDraft = {
-      ...vehicleReservationReactDraft,
-      startAt,
-      versionKey: `reservation-start:${Date.now()}`,
-    };
   }
 
   if (endAt && vehicleReservationEndAtInput) {
     vehicleReservationEndAtInput.value = endAt;
-    vehicleReservationReactDraft = {
-      ...vehicleReservationReactDraft,
-      endAt,
-      versionKey: `reservation-end:${Date.now()}`,
-    };
   }
 
   renderVehiclesModule();
   openVehicleReservationEditor();
-}
-
-function buildVehicleReactDraft(vehicle = {}) {
-  const source = vehicle && typeof vehicle === "object" ? vehicle : {};
-  const sourceDocuments = source.documents ?? vehicleDocumentDrafts;
-  const sourceActivities = source.activityItems ?? vehicleActivityDrafts;
-  return {
-    versionKey: [
-      source.id || "new",
-      source.updatedAt || "",
-      sourceDocuments?.length || 0,
-      sourceActivities?.length || 0,
-      Date.now(),
-    ].join(":"),
-    id: String(source.id || ""),
-    name: source.name || "",
-    plateNumber: source.plateNumber || "",
-    vinNumber: source.vinNumber || "",
-    status: getVehicleEditableStatusValue(source.status || "available"),
-    category: source.category || "",
-    make: source.make || "",
-    model: source.model || "",
-    year: source.year ? String(source.year) : "",
-    color: source.color || "",
-    fuelType: source.fuelType || "",
-    transmission: source.transmission || "",
-    seatCount: source.seatCount ? String(source.seatCount) : "",
-    odometerKm: source.odometerKm ? String(source.odometerKm) : "",
-    serviceDueDate: String(source.serviceDueDate || "").slice(0, 10),
-    registrationExpiresOn: String(source.registrationExpiresOn || "").slice(0, 10),
-    documents: buildReactAttachmentRows(sourceDocuments),
-    activityItems: (Array.isArray(sourceActivities) ? sourceActivities : []).map((entry) => createVehicleActivityDraft(entry)),
-    notes: source.notes || "",
-  };
-}
-
-function buildVehiclePayloadFromReactDraft(draft = {}) {
-  return {
-    name: draft.name || "",
-    plateNumber: draft.plateNumber || "",
-    vinNumber: draft.vinNumber || "",
-    status: draft.status || "available",
-    category: draft.category || "",
-    make: draft.make || "",
-    model: draft.model || "",
-    year: draft.year || "",
-    color: draft.color || "",
-    fuelType: draft.fuelType || "",
-    transmission: draft.transmission || "",
-    seatCount: draft.seatCount || "",
-    odometerKm: draft.odometerKm || "",
-    serviceDueDate: draft.serviceDueDate || "",
-    registrationExpiresOn: draft.registrationExpiresOn || "",
-    documents: sanitizeReactDocumentsForPayload(draft.documents),
-    activityItems: (Array.isArray(draft.activityItems) ? draft.activityItems : []).map((entry) => ({ ...entry })),
-    notes: draft.notes || "",
-  };
-}
-
-async function uploadVehicleReactDocuments(files, draft = vehicleReactDraft) {
-  const uploads = await buildWorkOrderDocumentUploadPayload(files);
-  const nextDocuments = uploads.map((file) => createModuleAttachmentDraft(file));
-  const current = draft || buildVehicleReactDraft(getActiveVehicle() || {});
-  vehicleReactDraft = {
-    ...current,
-    documents: buildReactAttachmentRows([
-      ...(current.documents ?? []),
-      ...nextDocuments,
-    ]),
-    versionKey: `vehicle-docs:${Date.now()}`,
-  };
-  vehicleDocumentDrafts = vehicleReactDraft.documents.map((entry) => createModuleAttachmentDraft(entry));
-  return vehicleReactDraft.documents;
-}
-
-function downloadVehicleReactDocument(documentId = "") {
-  const documentItem = (vehicleReactDraft?.documents ?? [])
-    .find((entry) => String(entry.id) === String(documentId));
-  if (documentItem) {
-    triggerModuleAttachmentDownload(documentItem);
-  }
-}
-
-async function saveVehicleReactDraft(nextDraft = vehicleReactDraft) {
-  const draft = {
-    ...(vehicleReactDraft ?? {}),
-    ...(nextDraft ?? {}),
-  };
-  vehicleReactDraft = draft;
-  const isEditing = Boolean(draft.id);
-  const previousIds = new Set(state.vehicles.map((item) => String(item.id)));
-  const path = isEditing ? `/vehicles/${draft.id}` : "/vehicles";
-  const method = isEditing ? "PATCH" : "POST";
-  const payload = buildVehiclePayloadFromReactDraft(draft);
-  const success = await runMutation(() => apiRequest(path, {
-    method,
-    body: payload,
-  }), vehicleError);
-
-  if (!success) {
-    throw new Error(vehicleError?.textContent || "Spremanje vozila nije uspjelo.");
-  }
-
-  if (!isEditing) {
-    const created = findCreatedVehicleMatch(previousIds, payload);
-    if (created) {
-      state.activeVehicleId = created.id;
-    }
-  }
-
-  closeVehicleEditor({ reset: true });
-  renderVehiclesModule();
-  renderNotifications();
-  return true;
-}
-
-async function deleteVehicleReactDraft(vehicleId = vehicleReactDraft?.id || "") {
-  const safeId = String(vehicleId || "").trim();
-  if (!safeId) {
-    return false;
-  }
-  if (!window.confirm("Obrisati ovo vozilo?")) {
-    return false;
-  }
-
-  const success = await runMutation(() => apiRequest(`/vehicles/${safeId}`, {
-    method: "DELETE",
-  }), vehicleError);
-
-  if (!success) {
-    throw new Error(vehicleError?.textContent || "Brisanje vozila nije uspjelo.");
-  }
-
-  closeVehicleEditor({ reset: true });
-  renderVehiclesModule();
-  return true;
-}
-
-function getVehicleReservationUserOptions() {
-  return state.users
-    .filter((user) => user?.isActive !== false)
-    .slice()
-    .sort((left, right) => getUserDisplayLabel(left).localeCompare(getUserDisplayLabel(right), "hr"))
-    .map((user) => ({
-      value: String(user.id),
-      label: getUserDisplayLabel(user),
-      meta: user.email || user.role || "",
-    }));
-}
-
-function getVehicleReservationVehicleOptions(selectedValue = "") {
-  const vehicles = sortVehicles(state.vehicles ?? []);
-  const options = [
-    { value: "", label: vehicles.length ? "Odaberi vozilo" : "Nema vozila" },
-    ...vehicles.map((vehicle) => ({
-      value: String(vehicle.id),
-      label: [
-        vehicle.name || "Vozilo",
-        vehicle.plateNumber || "bez registracije",
-        isVehicleServiceOnlyStatus(vehicle) ? "servis" : "",
-      ].filter(Boolean).join(" | "),
-    })),
-  ];
-  if (selectedValue && !options.some((option) => String(option.value) === String(selectedValue))) {
-    options.push({ value: String(selectedValue), label: "Odabrano vozilo" });
-  }
-  return options;
-}
-
-function buildVehicleReservationReactDraft({
-  vehicle = getVehicleFromReservationEditor() ?? getActiveVehicle(),
-  reservation = null,
-} = {}) {
-  const selectedVehicleId = String(vehicle?.id || vehicleReservationVehicleIdInput?.value || state.activeVehicleId || findFirstReservableVehicleId() || "");
-  const reservedIds = reservation?.reservedForUserIds ?? reservation?.reservedForUserId ?? [];
-  const selectedUserIds = Array.isArray(reservedIds)
-    ? reservedIds
-    : String(reservedIds || "").split(",").map((value) => value.trim()).filter(Boolean);
-  const windowRange = buildDefaultVehicleReservationWindow();
-
-  return {
-    versionKey: [
-      reservation?.id || "new",
-      selectedVehicleId,
-      reservation?.updatedAt || "",
-      Date.now(),
-    ].join(":"),
-    id: String(reservation?.id || ""),
-    vehicleId: selectedVehicleId,
-    status: reservation?.status || "reserved",
-    reservedForUserIds: selectedUserIds.map(String),
-    purpose: reservation?.purpose || "",
-    startAt: reservation ? toDateTimeLocalInputValue(reservation.startAt) : (vehicleReservationStartAtInput?.value || windowRange.startAt),
-    endAt: reservation ? toDateTimeLocalInputValue(reservation.endAt) : (vehicleReservationEndAtInput?.value || windowRange.endAt),
-    destination: reservation?.destination || "",
-    note: reservation?.note || "",
-  };
-}
-
-function buildVehicleReservationPayloadFromReactDraft(draft = {}) {
-  const selectedUsers = getVehicleReservationUserOptions()
-    .filter((user) => (draft.reservedForUserIds ?? []).map(String).includes(String(user.value)));
-  const reservedForUserIds = selectedUsers.map((user) => String(user.value));
-  const reservedForLabels = selectedUsers.map((user) => user.label || "User");
-  return {
-    status: draft.status || "reserved",
-    reservedForUserIds,
-    reservedForLabels,
-    reservedForUserId: reservedForUserIds[0] || "",
-    reservedForLabel: reservedForLabels.join(", "),
-    purpose: draft.purpose || "",
-    startAt: draft.startAt || "",
-    endAt: draft.endAt || "",
-    destination: draft.destination || "",
-    note: draft.note || "",
-  };
-}
-
-async function saveVehicleReservationReactDraft(nextDraft = vehicleReservationReactDraft) {
-  const draft = {
-    ...(vehicleReservationReactDraft ?? {}),
-    ...(nextDraft ?? {}),
-  };
-  vehicleReservationReactDraft = draft;
-  const vehicle = state.vehicles.find((item) => String(item.id) === String(draft.vehicleId)) ?? null;
-  if (!vehicle) {
-    throw new Error("Odaberi vozilo prije rezervacije.");
-  }
-  if (isVehicleServiceOnlyStatus(vehicle) && !draft.id) {
-    throw new Error(VEHICLE_SERVICE_RESERVATION_MESSAGE);
-  }
-
-  const previousIds = new Set((vehicle.reservations ?? []).map((item) => String(item.id)));
-  const isEditing = Boolean(draft.id);
-  const path = isEditing
-    ? `/vehicles/${vehicle.id}/reservations/${draft.id}`
-    : `/vehicles/${vehicle.id}/reservations`;
-  const method = isEditing ? "PATCH" : "POST";
-  const payload = buildVehicleReservationPayloadFromReactDraft(draft);
-  const success = await runMutation(() => apiRequest(path, {
-    method,
-    body: payload,
-  }), vehicleReservationError);
-
-  if (!success) {
-    throw new Error(vehicleReservationError?.textContent || "Spremanje rezervacije nije uspjelo.");
-  }
-
-  const refreshedVehicle = state.vehicles.find((item) => String(item.id) === String(vehicle.id)) ?? null;
-  const saved = isEditing
-    ? (refreshedVehicle?.reservations ?? []).find((item) => String(item.id) === String(draft.id))
-    : findCreatedVehicleReservationMatch(refreshedVehicle, previousIds, payload);
-  state.activeVehicleId = String(refreshedVehicle?.id || vehicle.id || "");
-  state.activeVehicleReservationId = String(saved?.id || "");
-  vehicleReservationReactDraft = buildVehicleReservationReactDraft({
-    vehicle: refreshedVehicle,
-    reservation: saved,
-  });
-  closeVehicleReservationEditor({ reset: true });
-  renderVehiclesModule();
-  return true;
-}
-
-function buildReactVehicleReservationRows(vehicle = getVehicleFromReservationEditor() ?? getActiveVehicle(), nowValue = new Date().toISOString()) {
-  if (!vehicle) {
-    return [];
-  }
-  return sortVehicleReservations(vehicle.reservations ?? [], nowValue).map((reservation) => ({
-    ...reservation,
-    id: String(reservation.id || ""),
-    isActive: String(reservation.id || "") === String(state.activeVehicleReservationId || vehicleReservationReactDraft?.id || ""),
-    toneClass: getVehicleStatusToneClass(reservation.status || "reserved"),
-    statusLabel: getVehicleReservationStatusLabel(reservation.status),
-    meta: [
-      getVehicleReservationStatusLabel(reservation.status),
-      reservation.destination || "",
-      getVehicleReservationAssigneeLabels(reservation).join(", "),
-    ].filter(Boolean).join(" | "),
-    window: `${formatDateTime(reservation.startAt)} - ${formatDateTime(reservation.endAt)}`,
-  }));
-}
-
-function buildVehicleReactRows(items = [], nowValue = new Date().toISOString()) {
-  return items.map((vehicle) => {
-    const availabilityStatus = getVehicleAvailabilityStatus(vehicle, nowValue);
-    const nextReservation = getVehicleNextReservation(vehicle, nowValue);
-    const reservations = sortVehicleReservations(vehicle.reservations ?? [], nowValue);
-    return {
-      ...vehicle,
-      id: String(vehicle.id || ""),
-      isActive: String(vehicle.id || "") === String(state.activeVehicleId || ""),
-      availabilityStatus,
-      availabilityLabel: getVehicleStatusLabel(availabilityStatus),
-      toneClass: getVehicleStatusToneClass(availabilityStatus),
-      editableStatus: getVehicleEditableStatusValue(vehicle.status),
-      isServiceOnly: isVehicleServiceOnlyStatus(vehicle),
-      meta: [
-        vehicle.plateNumber || "Bez registracije",
-        vehicle.vinNumber ? `Šasija ${vehicle.vinNumber}` : "",
-        vehicle.registrationExpiresOn ? `Registracija do ${formatCompactDate(vehicle.registrationExpiresOn)}` : "Registracija nije unesena",
-        [vehicle.make, vehicle.model].filter(Boolean).join(" "),
-        vehicle.category,
-      ].filter(Boolean).join(" | "),
-      detail: [
-        vehicle.documents?.length ? `${vehicle.documents.length} dok.` : "Bez dokumenata",
-        vehicle.activityItems?.length ? `${vehicle.activityItems.length} aktivnosti` : "Bez activity loga",
-        nextReservation ? `Sljedeće: ${formatDateTime(nextReservation.startAt)}` : "Trenutno bez rezervacije",
-      ].filter(Boolean).join(" | "),
-      reservationChips: reservations.slice(0, 3).map((reservation) => ({
-        id: String(reservation.id || ""),
-        title: reservation.purpose || "Rezervacija",
-        window: `${formatDateTime(reservation.startAt)} - ${formatDateTime(reservation.endAt)}`,
-        toneClass: getVehicleStatusToneClass(reservation.status || "reserved"),
-      })),
-    };
-  });
-}
-
-function renderReactVehiclesModule({ filters, allVehicles, visibleVehicles, canCreate, canManage, canReserve, nowValue } = {}) {
-  const reactComponents = window.SafeNexusReactComponents;
-  if (!vehiclesReactRoot || !reactComponents?.renderVehiclesModule) {
-    return false;
-  }
-
-  vehiclesModule?.classList.add("is-react-module");
-  return reactComponents.renderVehiclesModule(vehiclesReactRoot, {
-    filters,
-    statusFilterOptions: [
-      { value: "all", label: "Sva dostupnost" },
-      { value: "available", label: "Dostupno" },
-      { value: "reserved", label: "Rezervirano" },
-      { value: "service", label: "Servis" },
-    ],
-    statusOptions: VEHICLE_STATUS_OPTIONS,
-    stats: {
-      total: allVehicles.length,
-      available: allVehicles.filter((item) => getVehicleAvailabilityStatus(item, nowValue) === "available").length,
-      reserved: allVehicles.filter((item) => getVehicleAvailabilityStatus(item, nowValue) === "reserved").length,
-      service: allVehicles.filter((item) => getVehicleAvailabilityStatus(item, nowValue) === "service").length,
-    },
-    items: buildVehicleReactRows(visibleVehicles, nowValue),
-    scheduleDate: state.vehicleScheduleDate || new Date().toISOString().slice(0, 10),
-    canCreate,
-    canManage,
-    canReserve,
-    onCreate: () => {
-      if (!getCanManageVehicles()) {
-        return;
-      }
-      resetVehicleForm();
-      vehicleReactDraft = buildVehicleReactDraft({});
-      openVehicleEditor();
-    },
-    onReserve: (vehicleId = "", reservationId = "") => {
-      const vehicle = state.vehicles.find((item) => String(item.id) === String(vehicleId || state.activeVehicleId)) ?? null;
-      if (reservationId && vehicle) {
-        const reservation = (vehicle.reservations ?? []).find((item) => String(item.id) === String(reservationId));
-        if (reservation) {
-          hydrateVehicleReservationForm(vehicle, reservation);
-          return;
-        }
-      }
-      openVehicleReservationComposer({ vehicleId: vehicleId || state.activeVehicleId || "" });
-    },
-    onFilterChange: (patch = {}) => {
-      if (Object.prototype.hasOwnProperty.call(patch, "query") && vehiclesSearchInput) {
-        vehiclesSearchInput.value = patch.query || "";
-      }
-      if (Object.prototype.hasOwnProperty.call(patch, "status") && vehiclesFilterStatusInput) {
-        vehiclesFilterStatusInput.value = patch.status || "all";
-      }
-      renderVehiclesModule();
-    },
-    onScheduleDateChange: (value) => {
-      if (value === "prev") {
-        state.vehicleScheduleDate = shiftDateKey(state.vehicleScheduleDate || new Date().toISOString().slice(0, 10), -1);
-      } else if (value === "next") {
-        state.vehicleScheduleDate = shiftDateKey(state.vehicleScheduleDate || new Date().toISOString().slice(0, 10), 1);
-      } else if (value === "today") {
-        state.vehicleScheduleDate = new Date().toISOString().slice(0, 10);
-      } else {
-        state.vehicleScheduleDate = value || new Date().toISOString().slice(0, 10);
-      }
-      renderVehiclesModule();
-    },
-    onOpen: (vehicleId) => {
-      const vehicle = state.vehicles.find((item) => String(item.id) === String(vehicleId));
-      if (vehicle) {
-        hydrateVehicleForm(vehicle);
-      }
-    },
-    onStatusChange: (vehicleId, status) => {
-      void runMutation(() => apiRequest(`/vehicles/${vehicleId}`, {
-        method: "PATCH",
-        body: { status },
-      }), vehicleError).then(() => renderVehiclesModule());
-    },
-  });
-}
-
-function renderReactVehicleEditor() {
-  const reactComponents = window.SafeNexusReactComponents;
-  if (!state.vehicleEditorOpen || !vehicleEditorReactRoot || !reactComponents?.renderVehicleEditor) {
-    return false;
-  }
-
-  const activeVehicle = getActiveVehicle();
-  if (!vehicleReactDraft) {
-    vehicleReactDraft = buildVehicleReactDraft(activeVehicle || {});
-  }
-
-  vehicleEditorPanel?.classList.add("is-react-editor");
-  return reactComponents.renderVehicleEditor(vehicleEditorReactRoot, {
-    title: vehicleReactDraft.id
-      ? `${vehicleReactDraft.name || "Vozilo"} | ${vehicleReactDraft.plateNumber || "bez registracije"}`
-      : "Novo vozilo",
-    draft: vehicleReactDraft,
-    statusOptions: VEHICLE_STATUS_OPTIONS,
-    activityTypeOptions: VEHICLE_ACTIVITY_TYPE_OPTIONS,
-    documentCategories: VEHICLE_DOCUMENT_CATEGORY_OPTIONS,
-    canDelete: Boolean(vehicleReactDraft.id) && getCanManageVehicles(),
-    error: vehicleError?.textContent || "",
-    onDraftChange: (nextDraft) => {
-      vehicleReactDraft = {
-        ...vehicleReactDraft,
-        ...nextDraft,
-      };
-      vehicleDocumentDrafts = buildReactAttachmentRows(vehicleReactDraft.documents);
-      vehicleActivityDrafts = asArray(vehicleReactDraft.activityItems);
-    },
-    onUploadDocuments: uploadVehicleReactDocuments,
-    onDownloadDocument: downloadVehicleReactDocument,
-    onSave: saveVehicleReactDraft,
-    onReset: () => {
-      resetVehicleForm();
-      vehicleReactDraft = buildVehicleReactDraft({});
-      openVehicleEditor();
-    },
-    onDelete: deleteVehicleReactDraft,
-    onClose: () => dismissVehicleEditor(),
-  });
-}
-
-function unmountReactVehicleEditor() {
-  window.SafeNexusReactComponents?.unmountVehicleEditor?.(vehicleEditorReactRoot);
-  vehicleEditorPanel?.classList.remove("is-react-editor");
-}
-
-function renderReactVehicleReservationEditor() {
-  const reactComponents = window.SafeNexusReactComponents;
-  if (!state.vehicleReservationEditorOpen || !vehicleReservationReactRoot || !reactComponents?.renderVehicleReservationEditor) {
-    return false;
-  }
-
-  const vehicle = getVehicleFromReservationEditor() ?? getActiveVehicle();
-  if (!vehicleReservationReactDraft) {
-    vehicleReservationReactDraft = buildVehicleReservationReactDraft({ vehicle });
-  }
-
-  vehicleReservationPanel?.classList.add("is-react-editor");
-  return reactComponents.renderVehicleReservationEditor(vehicleReservationReactRoot, {
-    title: vehicle ? `Rezervacija | ${vehicle.name || vehicle.plateNumber || "Vozilo"}` : "Rezervacija vozila",
-    draft: vehicleReservationReactDraft,
-    vehicleOptions: getVehicleReservationVehicleOptions(vehicleReservationReactDraft.vehicleId),
-    statusOptions: VEHICLE_RESERVATION_STATUS_OPTIONS,
-    userOptions: getVehicleReservationUserOptions(),
-    reservations: buildReactVehicleReservationRows(vehicle),
-    error: vehicleReservationError?.textContent || "",
-    onDraftChange: (nextDraft) => {
-      vehicleReservationReactDraft = {
-        ...vehicleReservationReactDraft,
-        ...nextDraft,
-      };
-    },
-    onSave: saveVehicleReservationReactDraft,
-    onReset: () => {
-      vehicleReservationReactDraft = buildVehicleReservationReactDraft({
-        vehicle: state.vehicles.find((item) => String(item.id) === String(vehicleReservationReactDraft?.vehicleId)) ?? vehicle,
-      });
-      renderReactVehicleReservationEditor();
-    },
-    onClose: () => dismissVehicleReservationEditor(),
-    onEditReservation: (reservationId) => {
-      const selectedVehicle = state.vehicles.find((item) => String(item.id) === String(vehicleReservationReactDraft?.vehicleId)) ?? vehicle;
-      const reservation = (selectedVehicle?.reservations ?? []).find((entry) => String(entry.id) === String(reservationId));
-      if (selectedVehicle && reservation) {
-        hydrateVehicleReservationForm(selectedVehicle, reservation);
-      }
-    },
-    onDeleteReservation: (reservationId) => {
-      const selectedVehicle = state.vehicles.find((item) => String(item.id) === String(vehicleReservationReactDraft?.vehicleId)) ?? vehicle;
-      if (!selectedVehicle || !reservationId || !window.confirm("Obrisati ovu rezervaciju?")) {
-        return;
-      }
-      void runMutation(() => apiRequest(`/vehicles/${selectedVehicle.id}/reservations/${reservationId}`, {
-        method: "DELETE",
-      }), vehicleReservationError).then((success) => {
-        if (success) {
-          state.activeVehicleReservationId = "";
-          vehicleReservationReactDraft = buildVehicleReservationReactDraft({ vehicle: selectedVehicle });
-          renderVehiclesModule();
-          renderReactVehicleReservationEditor();
-        }
-      });
-    },
-  });
-}
-
-function unmountReactVehicleReservationEditor() {
-  window.SafeNexusReactComponents?.unmountVehicleReservationEditor?.(vehicleReservationReactRoot);
-  vehicleReservationPanel?.classList.remove("is-react-editor");
 }
 
 function createVehicleInlineStatusSelect(vehicle) {
@@ -82607,13 +79754,9 @@ function renderVehiclesModule() {
   const canAccessVehicles = canViewVehicles || canManageVehicles || canReserveVehicles;
   const vehicleItems = canAccessVehicles ? (state.vehicles ?? []) : [];
   const allVehicles = sortVehicles(vehicleItems, nowValue);
-  const vehicleFilters = {
+  const visibleVehicles = sortVehicles(filterVehicles(vehicleItems, {
     query: vehiclesSearchInput?.value || "",
     status: vehiclesFilterStatusInput?.value || "all",
-  };
-  const visibleVehicles = sortVehicles(filterVehicles(vehicleItems, {
-    query: vehicleFilters.query,
-    status: vehicleFilters.status,
     nowValue,
   }), nowValue);
   const reservableVehicles = allVehicles.filter((vehicle) => !isVehicleServiceOnlyStatus(vehicle));
@@ -82644,21 +79787,6 @@ function renderVehiclesModule() {
   }
 
   rebuildVehicleReservationVehicleOptions(vehicleReservationVehicleIdInput?.value || state.activeVehicleId || "");
-
-  if (renderReactVehiclesModule({
-    filters: vehicleFilters,
-    allVehicles,
-    visibleVehicles,
-    canCreate: canManageVehicles,
-    canManage: canManageVehicles,
-    canReserve: canReserveVehicles,
-    nowValue,
-  })) {
-    renderVehicleDocuments();
-    renderVehicleActivities();
-    syncVehicleEditorSummary();
-    return;
-  }
 
   vehiclesList.replaceChildren(...visibleVehicles.map((vehicle) => {
     const availabilityStatus = getVehicleAvailabilityStatus(vehicle, nowValue);
@@ -93883,259 +91011,6 @@ function attachWorkOrderInlinePriorityEditor(cell, workOrder = {}) {
   });
 }
 
-function buildWorkOrderReactQuickOptions() {
-  return {
-    companies: state.companies
-      .slice()
-      .sort((left, right) => String(left.name || "").localeCompare(String(right.name || ""), "hr"))
-      .map((company) => ({
-        value: String(company.id || ""),
-        label: company.name || "Tvrtka",
-      })),
-    locations: state.locations
-      .slice()
-      .sort((left, right) => String(left.name || "").localeCompare(String(right.name || ""), "hr"))
-      .map((location) => ({
-        value: String(location.id || ""),
-        companyId: String(location.companyId || ""),
-        label: location.name || location.address || "Lokacija",
-        meta: [location.address, location.region].filter(Boolean).join(" | "),
-      })),
-    services: sortServiceCatalogItems(state.serviceCatalog ?? [])
-      .filter((service) => service.status !== "inactive")
-      .map((service) => ({
-        value: String(service.id || ""),
-        label: [service.serviceCode, service.name].filter(Boolean).join(" - ") || "Usluga",
-      })),
-    executors: getWorkOrderExecutorOptions([], { includeEmpty: false }).map((executor) => ({
-      value: executor.value,
-      label: executor.label,
-    })),
-  };
-}
-
-function buildReactQuickWorkOrderPayload(draft = {}) {
-  const location = getLocation(draft.locationId);
-  const contact = getWorkOrderQuickLocationContact(draft.locationId);
-  const serviceItems = asArray(draft.serviceIds)
-    .map((serviceId) => state.serviceCatalog.find((service) => String(service.id) === String(serviceId)))
-    .filter(Boolean)
-    .map((service) => buildWorkOrderServiceItemSnapshot(service));
-  const executors = normalizeWorkOrderExecutorValues(asArray(draft.executorIds));
-  const serviceLine = getWorkOrderServiceSummary({ serviceItems });
-
-  return {
-    status: String(draft.status || "Otvoreni RN"),
-    priority: "Normal",
-    openedDate: toDateKey(new Date()),
-    dueDate: normalizeDateInputValue(draft.dueDate),
-    teamLabel: "",
-    companyId: String(draft.companyId || ""),
-    locationId: String(draft.locationId || ""),
-    coordinates: location?.coordinates || "",
-    region: location?.region || "",
-    contactSlot: contact.slot,
-    contactName: contact.name,
-    contactPhone: contact.phone,
-    contactEmail: contact.email,
-    executors,
-    executor1: executors[0] || "",
-    executor2: executors[1] || "",
-    measurementSheet: null,
-    serviceItems,
-    trainingContext: { name: "", role: "", phone: "", email: "" },
-    serviceLine,
-    department: "",
-    linkReference: "",
-    weight: "",
-    completedBy: "",
-    invoiceDate: "",
-    tagText: "",
-    description: serviceLine,
-    invoiceNote: "",
-  };
-}
-
-async function createReactQuickWorkOrder(draft = {}) {
-  if (!getCanCreateWorkOrders() || !getCanEditOperationalData()) {
-    return false;
-  }
-
-  const payload = buildReactQuickWorkOrderPayload(draft);
-  if (!payload.companyId) {
-    setSyncError("Tvrtka je obavezna za otvaranje RN-a.");
-    return false;
-  }
-
-  workOrderReactQuickCreateBusy = true;
-  renderCompactWorkOrdersList();
-  const previousIds = new Set(state.workOrders.map((item) => String(item.id)));
-  const success = await runMutation(() => apiRequest("/work-orders", {
-    method: "POST",
-    body: payload,
-  }), null);
-  workOrderReactQuickCreateBusy = false;
-
-  if (success) {
-    const created = findCreatedWorkOrderMatch(previousIds, payload);
-    if (created?.id) {
-      queueGeneratedWorkOrderPdfSave(created.id);
-    }
-  }
-
-  renderCompactWorkOrdersList();
-  renderWorkOrderWorkspace();
-  return success;
-}
-
-function getWorkOrderReactContractLabel(item = {}) {
-  const company = getCompany(item.companyId);
-  return item.contractLabel
-    || item.contractType
-    || company?.contractType
-    || company?.contractNumber
-    || "Bez ugovora";
-}
-
-function buildReactWorkOrderRows(items = []) {
-  return items.map((item) => ({
-    ...item,
-    id: String(item.id || ""),
-    openedDateLabel: item.openedDate ? formatCompactDate(item.openedDate) : "Bez datuma",
-    dueDateLabel: item.dueDate ? formatCompactDate(item.dueDate) : "Bez roka",
-    companyName: item.companyName || getCompany(item.companyId)?.name || "",
-    contractLabel: getWorkOrderReactContractLabel(item),
-    locationName: item.locationName || getLocation(item.locationId)?.name || item.location || "",
-    region: item.region || getLocation(item.locationId)?.region || "",
-    contactLabel: item.contactName || item.contactPhone || item.contactEmail || "",
-    serviceSummary: getWorkOrderServiceSummary(item) || item.serviceLine || "",
-    status: item.status || "Otvoreni RN",
-    priority: item.priority || "Normal",
-  }));
-}
-
-function buildReactWorkOrderGroups(items = []) {
-  return buildWorkOrderGroups(items).map((group) => ({
-    ...group,
-    statusClass: statusBadgeClass(group.status),
-    totalCount: group.items.length,
-    items: buildReactWorkOrderRows(group.items),
-  }));
-}
-
-async function patchReactWorkOrder(workOrderId = "", body = {}) {
-  const normalizedId = String(workOrderId || "").trim();
-  if (!normalizedId) {
-    return false;
-  }
-
-  const success = await runMutation(() => apiRequest(`/work-orders/${encodeURIComponent(normalizedId)}`, {
-    method: "PATCH",
-    body,
-  }), null);
-
-  renderCompactWorkOrdersList();
-  renderWorkOrderWorkspace();
-  return success;
-}
-
-async function deleteReactWorkOrder(workOrderId = "") {
-  const item = state.workOrders.find((entry) => String(entry.id) === String(workOrderId));
-  if (!item?.id) {
-    return false;
-  }
-  if (!window.confirm(`Obrisati ${item.workOrderNumber || "RN"}?`)) {
-    return false;
-  }
-
-  const success = await runMutation(() => apiRequest(`/work-orders/${encodeURIComponent(String(item.id))}`, {
-    method: "DELETE",
-  }), null);
-  renderCompactWorkOrdersList();
-  renderWorkOrderWorkspace();
-  return success;
-}
-
-function renderReactWorkOrdersList({ filtered = [], visibleItems = [] } = {}) {
-  const reactComponents = window.SafeNexusReactComponents;
-  if (!workOrdersReactRoot || !reactComponents?.renderWorkOrdersList) {
-    workOrdersTableWrap?.classList.remove("is-react-list");
-    if (workOrdersBody) {
-      workOrdersBody.hidden = false;
-    }
-    return false;
-  }
-
-  workOrdersTableWrap?.classList.add("is-react-list");
-  if (workOrdersBody) {
-    workOrdersBody.hidden = true;
-  }
-  const selectedIds = [...(state.workOrderDocumentWizard.selectedIds ?? new Set())].map(String);
-  const visibleSelected = visibleItems.filter((item) => state.workOrderDocumentWizard.selectedIds.has(String(item.id))).length;
-  const selectionState = getWorkOrderDocumentSelectionState(getAllSelectedWorkOrdersForDocumentWizard());
-  const actionCopy = getWorkOrderDocumentActionCopy(selectionState.mode);
-  const canOpenDocuments = selectedIds.length > 0 && selectionState.hasServices && !selectionState.hasMixedTypes;
-
-  return reactComponents.renderWorkOrdersList(workOrdersReactRoot, {
-    stats: {
-      total: state.workOrders.length,
-      filtered: filtered.length,
-      visible: visibleItems.length,
-      visibleSelected,
-      overdue: filtered.filter((item) => isOverdueWorkOrder(item)).length,
-    },
-    groups: buildReactWorkOrderGroups(visibleItems),
-    selectedIds,
-    statusOptions: WORK_ORDER_STATUS_OPTIONS,
-    priorityOptions: PRIORITY_OPTIONS,
-    quickOptions: buildWorkOrderReactQuickOptions(),
-    busy: workOrderReactQuickCreateBusy,
-    canCreate: getCanEditOperationalData() && getCanCreateWorkOrders(),
-    canManage: getCanEditOperationalData(),
-    canOpenDocuments,
-    documentActionLabel: actionCopy.bulk || "Izrada zapisnika",
-    loadState: visibleItems.length < filtered.length
-      ? `Prikazano ${visibleItems.length} od ${filtered.length} RN.`
-      : `Prikazano svih ${filtered.length} RN.`,
-    batchMessage: state.workOrderBatch.message || "",
-    onCreate: createReactQuickWorkOrder,
-    onOpen: (workOrderId) => {
-      const item = state.workOrders.find((entry) => String(entry.id) === String(workOrderId));
-      if (item) {
-        hydrateWorkOrderForm(item);
-      }
-    },
-    onDelete: deleteReactWorkOrder,
-    onStatusChange: (workOrderId, nextStatus) => {
-      const item = state.workOrders.find((entry) => String(entry.id) === String(workOrderId));
-      if (!item || !getCanSetWorkOrderStatus(item.status, nextStatus)) {
-        renderCompactWorkOrdersList();
-        return;
-      }
-      void patchReactWorkOrder(workOrderId, { status: nextStatus });
-    },
-    onPriorityChange: (workOrderId, priority) => {
-      void patchReactWorkOrder(workOrderId, { priority: priority || "Normal" });
-    },
-    onToggleSelect: (workOrderId, checked) => toggleWorkOrderDocumentSelection(workOrderId, checked),
-    onSelectVisible: (checked) => setVisibleWorkOrderDocumentSelection(checked),
-    onOpenDocuments: () => openWorkOrderDocumentWizard(getSelectedWorkOrderDocumentMode()),
-    onLoadMore: () => loadMoreWorkOrders(),
-    onDownloadPdf: (workOrderId) => {
-      const item = state.workOrders.find((entry) => String(entry.id) === String(workOrderId));
-      if (item) {
-        void downloadWorkOrderPdf(item);
-      }
-    },
-    onDownloadVerified: (workOrderId) => {
-      const item = state.workOrders.find((entry) => String(entry.id) === String(workOrderId));
-      if (item) {
-        void downloadVerifiedWorkOrderDocument(item);
-      }
-    },
-  });
-}
-
 function renderCompactWorkOrdersList() {
   const filtered = getFilteredWorkOrders();
   const visibleItems = filtered.slice(0, state.workOrderRenderLimit);
@@ -94148,18 +91023,6 @@ function renderCompactWorkOrdersList() {
     workOrdersHelper.textContent = "";
     workOrdersHelper.dataset.baseText = "";
     workOrdersHelper.hidden = true;
-  }
-
-  if (renderReactWorkOrdersList({ filtered, visibleItems })) {
-    if (workOrdersEmpty) {
-      workOrdersEmpty.hidden = true;
-    }
-    if (workOrdersLoadState) {
-      workOrdersLoadState.hidden = true;
-      workOrdersLoadState.textContent = "";
-    }
-    updateWorkOrderDocumentSelectionChrome({ visibleItems });
-    return;
   }
 
   const section = document.createElement("section");
@@ -95015,37 +91878,6 @@ function renderUsers() {
     "hr",
   ));
 
-  const reactPeopleDirectory = window.SafeNexusReactComponents;
-  if (!showAccountAccess && reactPeopleDirectory?.renderPeopleDirectory) {
-    reactPeopleDirectory.renderPeopleDirectory(usersBody, {
-      rows: sortedUsers.map((user) => {
-        const roleSummary = getUserRoleSummary(user);
-        const fullName = String(user.fullName || "").trim();
-        return {
-          id: String(user.id || user.email || user.username || ""),
-          name: fullName || String(user.displayName || "").trim() || user.email || "User",
-          email: user.email || "",
-          oib: String(user.oib || "").trim(),
-          initials: getUserInitials(user),
-          avatarDataUrl: user.avatarDataUrl || "",
-          organizationSummary: getUserOrganizationSummary(user),
-          roleTitle: roleSummary.title,
-          roleSubtitle: roleSummary.subtitle,
-          isActive: user.isActive !== false,
-          canEdit: canManageRenderedUser(user),
-        };
-      }),
-      onEditUser: (userId) => {
-        const user = state.users.find((item) => String(item.id || item.email || item.username || "") === String(userId));
-        if (user && canManageRenderedUser(user)) {
-          hydrateUserForm(user);
-        }
-      },
-    });
-    return;
-  }
-
-  reactPeopleDirectory?.unmountPeopleDirectory?.(usersBody);
   usersBody.replaceChildren(...sortedUsers.map((user) => {
     const row = document.createElement("tr");
     row.className = "list-row";
@@ -95218,65 +92050,6 @@ function renderSignupRequests() {
   }));
 }
 
-function buildPeopleWorkspaceTabStats() {
-  const users = state.users ?? [];
-  const activeUsers = users.filter((user) => user?.isActive !== false).length;
-  const absenceEntries = state.absenceEntries ?? [];
-  const medicalTypes = new Set(ABSENCE_MEDICAL_TYPE_OPTIONS.map((option) => option.value));
-  const requestEntries = absenceEntries.filter((entry) => !medicalTypes.has(String(entry?.type || "")));
-  const medicalEntries = absenceEntries.filter((entry) => medicalTypes.has(String(entry?.type || "")));
-  const pendingRequests = requestEntries.filter((entry) => String(entry?.status || "") === "pending").length;
-  const reportRows = buildMonthlyWorkStatusReport({
-    users,
-    absenceEntries,
-    absenceBalances: state.absenceBalances ?? [],
-    workOrders: state.workOrders ?? [],
-    month: state.absenceReportMonth || new Date().toISOString().slice(0, 7),
-  });
-
-  return {
-    users: {
-      value: `${activeUsers}/${users.length}`,
-      copy: `${activeUsers} aktivnih korisnika u sustavu`,
-    },
-    "annual-leave": {
-      value: String(requestEntries.length),
-      copy: pendingRequests > 0 ? `${pendingRequests} na čekanju za odobrenje` : "Saldo, zahtjevi i odobrenja",
-    },
-    "sick-leave": {
-      value: String(medicalEntries.length),
-      copy: medicalEntries.length > 0 ? "Medicinski izostanci i dokumenti" : "Bez otvorenih bolovanja",
-    },
-    "absence-report": {
-      value: String(reportRows.length),
-      copy: "Mjesečni obračun po osobi i CSV",
-    },
-  };
-}
-
-function renderPeopleWorkspaceTabNavigation(activePeopleTab = normalizePeopleWorkspaceTab(state.peopleWorkspaceTab)) {
-  const reactComponents = window.SafeNexusReactComponents;
-  if (peopleWorkspaceTabs && reactComponents?.renderPeopleWorkspaceTabs) {
-    return reactComponents.renderPeopleWorkspaceTabs(peopleWorkspaceTabs, {
-      activeTab: activePeopleTab,
-      stats: buildPeopleWorkspaceTabStats(),
-      onSelectTab: (nextTab) => {
-        const normalizedTab = normalizePeopleWorkspaceTab(nextTab);
-        if (normalizedTab === normalizePeopleWorkspaceTab(state.peopleWorkspaceTab)) {
-          return;
-        }
-
-        setPeopleWorkspaceTab(normalizedTab);
-        renderTopbarBreadcrumbs();
-        renderManagement();
-      },
-    });
-  }
-
-  reactComponents?.unmountPeopleWorkspaceTabs?.(peopleWorkspaceTabs);
-  return false;
-}
-
 function renderManagement() {
   const currentOrganization = state.organizations.find((item) => item.id === state.activeOrganizationId)
     ?? state.organizations[0]
@@ -95320,17 +92093,13 @@ function renderManagement() {
 
   syncUserManagementListChrome();
 
-  const isReactPeopleWorkspaceTabsRendered = renderPeopleWorkspaceTabNavigation(activePeopleTab);
-
-  if (!isReactPeopleWorkspaceTabsRendered) {
-    peopleWorkspaceTabButtons.forEach((button) => {
-      const tabValue = normalizePeopleWorkspaceTab(button.dataset.peopleWorkspaceTab);
-      const isActive = tabValue === activePeopleTab;
-      button.classList.toggle("is-active", isActive);
-      button.setAttribute("aria-selected", isActive ? "true" : "false");
-      button.tabIndex = isActive ? 0 : -1;
-    });
-  }
+  peopleWorkspaceTabButtons.forEach((button) => {
+    const tabValue = normalizePeopleWorkspaceTab(button.dataset.peopleWorkspaceTab);
+    const isActive = tabValue === activePeopleTab;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-selected", isActive ? "true" : "false");
+    button.tabIndex = isActive ? 0 : -1;
+  });
 
   if (peopleUsersPanel) {
     peopleUsersPanel.hidden = !isUsersTab;

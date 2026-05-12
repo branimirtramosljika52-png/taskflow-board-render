@@ -2,7 +2,6 @@ import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, extname, relative, resolve } from "node:path";
 import { brotliCompress, constants as zlibConstants, gzip } from "node:zlib";
 import { promisify } from "node:util";
-import { build as buildBrowserBundle } from "esbuild";
 
 const rootDir = process.cwd();
 const distDir = resolve(rootDir, "dist");
@@ -100,7 +99,6 @@ await rm(distDir, { recursive: true, force: true });
 await mkdir(resolve(distDir, "src"), { recursive: true });
 await mkdir(resolve(distDir, "assets"), { recursive: true });
 await mkdir(resolve(distDir, "assets", "vendor"), { recursive: true });
-await mkdir(resolve(distDir, "assets", "react"), { recursive: true });
 
 await cp(resolve(rootDir, "index.html"), resolve(distDir, "index.html"));
 await cp(resolve(rootDir, "learning-test.html"), resolve(distDir, "learning-test.html"));
@@ -130,60 +128,5 @@ const copiedBrowserModules = new Set();
 for (const entryModulePath of browserEntryModules) {
   await copyBrowserModule(entryModulePath, copiedBrowserModules);
 }
-
-await buildBrowserBundle({
-  entryPoints: [resolve(rootDir, "src", "react", "people-directory.jsx")],
-  outfile: resolve(distDir, "assets", "react", "people-directory.js"),
-  bundle: true,
-  format: "esm",
-  target: ["es2020"],
-  minify: true,
-  sourcemap: false,
-  logLevel: "silent",
-});
-
-await buildBrowserBundle({
-  entryPoints: [resolve(rootDir, "src", "react", "organisations.jsx")],
-  outfile: resolve(distDir, "assets", "react", "organisations.js"),
-  bundle: true,
-  format: "esm",
-  target: ["es2020"],
-  minify: true,
-  sourcemap: false,
-  logLevel: "silent",
-});
-
-await buildBrowserBundle({
-  entryPoints: [resolve(rootDir, "src", "react", "operations.jsx")],
-  outfile: resolve(distDir, "assets", "react", "operations.js"),
-  bundle: true,
-  format: "esm",
-  target: ["es2020"],
-  minify: true,
-  sourcemap: false,
-  logLevel: "silent",
-});
-
-await buildBrowserBundle({
-  entryPoints: [resolve(rootDir, "src", "react", "core-modules.jsx")],
-  outfile: resolve(distDir, "assets", "react", "core-modules.js"),
-  bundle: true,
-  format: "esm",
-  target: ["es2020"],
-  minify: true,
-  sourcemap: false,
-  logLevel: "silent",
-});
-
-await buildBrowserBundle({
-  entryPoints: [resolve(rootDir, "src", "react", "dashboard.jsx")],
-  outfile: resolve(distDir, "assets", "react", "dashboard.js"),
-  bundle: true,
-  format: "esm",
-  target: ["es2020"],
-  minify: true,
-  sourcemap: false,
-  logLevel: "silent",
-});
 
 await compressDistAssets();
