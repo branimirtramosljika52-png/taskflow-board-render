@@ -41529,7 +41529,7 @@ body.is-global-loading {
 
 .absence-balance-row-fields {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -47591,6 +47591,166 @@ button.work-order-editor-section-head {
   white-space: nowrap;
 }
 
+.absence-people-list.is-row-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+
+.absence-person-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.9fr) minmax(420px, 1.55fr) minmax(90px, 0.35fr) minmax(280px, 0.9fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid rgba(183, 204, 235, 0.8);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at top left, rgba(83, 128, 218, 0.08), transparent 28%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.99), rgba(246, 250, 255, 0.96));
+  box-shadow: 0 14px 34px rgba(61, 87, 129, 0.07);
+}
+
+.absence-person-row.is-medical {
+  background:
+    radial-gradient(circle at top left, rgba(16, 185, 129, 0.1), transparent 30%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.99), rgba(240, 253, 250, 0.94));
+}
+
+.absence-person-row-identity {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 11px;
+  align-items: center;
+  min-width: 0;
+}
+
+.absence-person-row-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.absence-person-row-copy strong,
+.absence-person-row-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.absence-person-row-copy span {
+  color: #657891;
+  font-size: 0.78rem;
+}
+
+.absence-person-row-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.absence-person-row-metric {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(183, 202, 232, 0.64);
+  border-radius: 14px;
+  background: rgba(245, 249, 255, 0.82);
+}
+
+.absence-person-row-metric span,
+.absence-person-row-input span {
+  color: #71839d;
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.absence-person-row-metric strong {
+  color: #16243d;
+  font-size: 1.05rem;
+  line-height: 1.05;
+}
+
+.absence-person-row-metric small {
+  color: #7a8ba5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.absence-person-row-metric.is-green {
+  border-color: rgba(45, 162, 107, 0.22);
+  background: linear-gradient(180deg, rgba(236, 253, 245, 0.95), rgba(220, 252, 231, 0.78));
+}
+
+.absence-person-row-metric.is-blue {
+  border-color: rgba(59, 130, 246, 0.22);
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.96), rgba(219, 234, 254, 0.78));
+}
+
+.absence-person-row-metric.is-amber {
+  border-color: rgba(245, 158, 11, 0.24);
+  background: linear-gradient(180deg, rgba(255, 251, 235, 0.98), rgba(254, 243, 199, 0.8));
+}
+
+.absence-person-row-metric.is-muted {
+  background: rgba(248, 250, 252, 0.9);
+}
+
+.absence-person-row-progress {
+  position: relative;
+  height: 9px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(222, 232, 247, 0.95);
+  box-shadow: inset 0 1px 2px rgba(37, 56, 88, 0.12);
+}
+
+.absence-person-row-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #38bdf8, #2563eb, #a855f7);
+}
+
+.absence-person-row.is-medical .absence-person-row-progress span {
+  background: linear-gradient(90deg, #34d399, #14b8a6, #0ea5e9);
+}
+
+.absence-person-row-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(74px, 1fr)) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.absence-person-row.is-medical .absence-person-row-controls {
+  grid-template-columns: minmax(120px, 1fr) auto;
+}
+
+.absence-person-row-input {
+  margin: 0;
+}
+
+.absence-person-row-input input {
+  min-height: 36px;
+  padding: 8px 10px;
+}
+
+.absence-person-row-action {
+  min-height: 36px;
+  white-space: nowrap;
+}
+
+.absence-person-row-status {
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
 .absence-report-toolbar-panel .section-heading {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -47655,6 +47815,20 @@ button.work-order-editor-section-head {
 }
 
 @media (max-width: 1120px) {
+  .absence-person-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .absence-person-row-metrics,
+  .absence-person-row-controls,
+  .absence-person-row.is-medical .absence-person-row-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .absence-person-row-status {
+    justify-content: flex-start;
+  }
+
   .absence-report-toolbar-panel .vehicle-schedule-toolbar {
     grid-template-columns: 42px auto minmax(180px, 1fr) 42px;
   }

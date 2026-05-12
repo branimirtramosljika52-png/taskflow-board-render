@@ -959,6 +959,57 @@ function normalizeAbsenceDayAllowance(value, fallback = 0) {
   return Math.max(0, Math.min(365, Math.round(numeric)));
 }
 
+function normalizeAbsenceBalanceAnnualParts(input = {}, fallbackTotal = 0) {
+  const hasSplitValues = hasOwn(input, "annualLeaveCarriedDays")
+    || hasOwn(input, "annualLeaveCarryoverDays")
+    || hasOwn(input, "annualLeaveCurrentDays");
+
+  if (!hasSplitValues) {
+    const totalDays = normalizeAbsenceDayAllowance(input.annualLeaveInitialDays, fallbackTotal);
+    return {
+      carriedDays: 0,
+      currentDays: totalDays,
+      totalDays,
+    };
+  }
+
+  const carriedDays = normalizeAbsenceDayAllowance(
+    hasOwn(input, "annualLeaveCarriedDays") ? input.annualLeaveCarriedDays : input.annualLeaveCarryoverDays,
+    0,
+  );
+  const currentDays = normalizeAbsenceDayAllowance(
+    hasOwn(input, "annualLeaveCurrentDays") ? input.annualLeaveCurrentDays : input.annualLeaveInitialDays,
+    fallbackTotal,
+  );
+
+  return {
+    carriedDays,
+    currentDays,
+    totalDays: carriedDays + currentDays,
+  };
+}
+
+function getAnnualLeaveCarryoverDeadline(asOfDate = todayString()) {
+  const normalizedDate = normalizeOptionalDate(asOfDate) ?? todayString();
+  return `${normalizedDate.slice(0, 4)}-06-30`;
+}
+
+function getAbsenceSummaryYear(asOfDate = todayString()) {
+  const normalizedDate = normalizeOptionalDate(asOfDate) ?? todayString();
+  return normalizedDate.slice(0, 4);
+}
+
+function getMonthLastDateKey(monthKey = "") {
+  const normalizedMonth = String(monthKey || "").trim();
+  if (!/^\d{4}-\d{2}$/.test(normalizedMonth)) {
+    return todayString();
+  }
+
+  const [year, month] = normalizedMonth.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month, 0, 12, 0, 0, 0));
+  return Number.isNaN(date.getTime()) ? todayString() : toIsoDateKey(date);
+}
+
 function normalizeOfferLocationScope(value, fallback = "none") {
   const scope = normalizeText(value).toLowerCase();
   return OFFER_LOCATION_SCOPE_SET.has(scope) ? scope : fallback;
@@ -5761,12 +5812,16 @@ export function normalizeAbsenceBalanceEntry(
   now = isoNow,
 ) {
   const timestamp = now();
+  const annualLeave = normalizeAbsenceBalanceAnnualParts(input, 0);
+
   return {
     id: normalizeId(input.id) || createId(),
     organizationId: requireText(input.organizationId, "Organizacija"),
     userId: requireText(input.userId, "Korisnik"),
     userLabel: requireText(input.userLabel, "Ime korisnika"),
-    annualLeaveInitialDays: normalizeAbsenceDayAllowance(input.annualLeaveInitialDays, 0),
+    annualLeaveInitialDays: annualLeave.totalDays,
+    annualLeaveCarriedDays: annualLeave.carriedDays,
+    annualLeaveCurrentDays: annualLeave.currentDays,
     sickLeaveInitialDays: normalizeAbsenceDayAllowance(input.sickLeaveInitialDays, 0),
     createdAt: normalizeOptionalDateTime(input.createdAt) ?? timestamp,
     updatedAt: normalizeOptionalDateTime(input.updatedAt) ?? timestamp,
@@ -5774,6 +5829,19 @@ export function normalizeAbsenceBalanceEntry(
 }
 
 export function updateAbsenceBalanceEntry(current, patch, now = isoNow) {
+  const hasAnnualPatch = hasOwn(patch, "annualLeaveInitialDays")
+    || hasOwn(patch, "annualLeaveCarriedDays")
+    || hasOwn(patch, "annualLeaveCarryoverDays")
+    || hasOwn(patch, "annualLeaveCurrentDays");
+  const annualLeave = hasAnnualPatch
+    ? normalizeAbsenceBalanceAnnualParts({
+      annualLeaveInitialDays: hasOwn(patch, "annualLeaveInitialDays") ? patch.annualLeaveInitialDays : current.annualLeaveInitialDays,
+      annualLeaveCarriedDays: hasOwn(patch, "annualLeaveCarriedDays") ? patch.annualLeaveCarriedDays : current.annualLeaveCarriedDays,
+      annualLeaveCarryoverDays: hasOwn(patch, "annualLeaveCarryoverDays") ? patch.annualLeaveCarryoverDays : current.annualLeaveCarriedDays,
+      annualLeaveCurrentDays: hasOwn(patch, "annualLeaveCurrentDays") ? patch.annualLeaveCurrentDays : current.annualLeaveCurrentDays,
+    }, current.annualLeaveInitialDays)
+    : null;
+
   return {
     ...current,
     organizationId: hasOwn(patch, "organizationId")
@@ -5785,9 +5853,9 @@ export function updateAbsenceBalanceEntry(current, patch, now = isoNow) {
     userLabel: hasOwn(patch, "userLabel")
       ? requireText(patch.userLabel, "Ime korisnika")
       : current.userLabel,
-    annualLeaveInitialDays: hasOwn(patch, "annualLeaveInitialDays")
-      ? normalizeAbsenceDayAllowance(patch.annualLeaveInitialDays, current.annualLeaveInitialDays)
-      : current.annualLeaveInitialDays,
+    annualLeaveInitialDays: annualLeave ? annualLeave.totalDays : current.annualLeaveInitialDays,
+    annualLeaveCarriedDays: annualLeave ? annualLeave.carriedDays : (current.annualLeaveCarriedDays ?? 0),
+    annualLeaveCurrentDays: annualLeave ? annualLeave.currentDays : (current.annualLeaveCurrentDays ?? current.annualLeaveInitialDays ?? 0),
     sickLeaveInitialDays: hasOwn(patch, "sickLeaveInitialDays")
       ? normalizeAbsenceDayAllowance(patch.sickLeaveInitialDays, current.sickLeaveInitialDays)
       : current.sickLeaveInitialDays,
@@ -6398,9 +6466,12 @@ export function sortPersonTrainingRecords(items) {
 export function buildAbsenceBalanceSummaries(
   balances = [],
   entries = [],
-  { userIds = [] } = {},
+  { userIds = [], asOfDate = todayString() } = {},
 ) {
   const requestedUserIds = new Set((Array.isArray(userIds) ? userIds : [userIds]).map((value) => normalizeId(value)).filter(Boolean));
+  const summaryYear = getAbsenceSummaryYear(asOfDate);
+  const yearPrefix = `${summaryYear}-`;
+  const carryoverDeadline = getAnnualLeaveCarryoverDeadline(asOfDate);
   const approvedEntries = (entries ?? []).filter((entry) => normalizeAbsenceStatus(entry.status) === "approved");
   const summaryMap = new Map();
 
@@ -6412,12 +6483,21 @@ export function buildAbsenceBalanceSummaries(
     if (requestedUserIds.size > 0 && !requestedUserIds.has(userId)) {
       return;
     }
+    const annualLeave = normalizeAbsenceBalanceAnnualParts(entry, entry.annualLeaveInitialDays ?? 0);
     summaryMap.set(userId, {
       userId,
       userLabel: normalizeText(entry.userLabel) || "Korisnik",
-      annualLeaveInitialDays: normalizeAbsenceDayAllowance(entry.annualLeaveInitialDays, 0),
+      annualLeaveInitialDays: annualLeave.totalDays,
+      annualLeaveCarriedDays: annualLeave.carriedDays,
+      annualLeaveCurrentDays: annualLeave.currentDays,
       annualLeaveUsedDays: 0,
-      annualLeaveRemainingDays: normalizeAbsenceDayAllowance(entry.annualLeaveInitialDays, 0),
+      annualLeaveCarriedUsedDays: 0,
+      annualLeaveCurrentUsedDays: 0,
+      annualLeaveCarriedRemainingDays: annualLeave.carriedDays,
+      annualLeaveCurrentRemainingDays: annualLeave.currentDays,
+      annualLeaveExpiredDays: 0,
+      annualLeaveRemainingDays: annualLeave.totalDays,
+      annualLeaveCarryoverDeadline: carryoverDeadline,
       sickLeaveInitialDays: normalizeAbsenceDayAllowance(entry.sickLeaveInitialDays, 0),
       sickLeaveUsedDays: 0,
       sickLeaveRemainingDays: normalizeAbsenceDayAllowance(entry.sickLeaveInitialDays, 0),
@@ -6437,27 +6517,65 @@ export function buildAbsenceBalanceSummaries(
       userId,
       userLabel: normalizeText(entry.userLabel) || "Korisnik",
       annualLeaveInitialDays: 0,
+      annualLeaveCarriedDays: 0,
+      annualLeaveCurrentDays: 0,
       annualLeaveUsedDays: 0,
+      annualLeaveCarriedUsedDays: 0,
+      annualLeaveCurrentUsedDays: 0,
+      annualLeaveCarriedRemainingDays: 0,
+      annualLeaveCurrentRemainingDays: 0,
+      annualLeaveExpiredDays: 0,
       annualLeaveRemainingDays: 0,
+      annualLeaveCarryoverDeadline: carryoverDeadline,
       sickLeaveInitialDays: 0,
       sickLeaveUsedDays: 0,
       sickLeaveRemainingDays: 0,
     };
 
+    const entryBusinessDays = listBusinessDayKeysBetween(entry.startDate, entry.endDate)
+      .filter((dateKey) => dateKey.startsWith(yearPrefix));
+
     if (normalizeAbsenceType(entry.type) === "annual_leave") {
-      current.annualLeaveUsedDays += Number(entry.dayCount ?? getAbsenceBusinessDayCount(entry.startDate, entry.endDate)) || 0;
-      current.annualLeaveRemainingDays = Math.max(0, current.annualLeaveInitialDays - current.annualLeaveUsedDays);
+      current.annualLeaveUsedDays += entryBusinessDays.length;
+      current.annualLeaveCarriedUsedDays += entryBusinessDays.filter((dateKey) => dateKey <= carryoverDeadline).length;
     }
 
     if (normalizeAbsenceType(entry.type) === "sick_leave") {
-      current.sickLeaveUsedDays += Number(entry.dayCount ?? getAbsenceBusinessDayCount(entry.startDate, entry.endDate)) || 0;
+      current.sickLeaveUsedDays += entryBusinessDays.length;
       current.sickLeaveRemainingDays = Math.max(0, current.sickLeaveInitialDays - current.sickLeaveUsedDays);
     }
 
     summaryMap.set(userId, current);
   });
 
-  return Array.from(summaryMap.values()).sort((left, right) => (
+  return Array.from(summaryMap.values()).map((entry) => {
+    const carriedDays = normalizeAbsenceDayAllowance(entry.annualLeaveCarriedDays, 0);
+    const currentDays = normalizeAbsenceDayAllowance(entry.annualLeaveCurrentDays, entry.annualLeaveInitialDays);
+    const carriedUsedDays = Math.min(carriedDays, Number(entry.annualLeaveCarriedUsedDays || 0));
+    const currentUsedDays = Math.max(0, Number(entry.annualLeaveUsedDays || 0) - carriedUsedDays);
+    const carryoverStillValid = (normalizeOptionalDate(asOfDate) ?? todayString()) <= carryoverDeadline;
+    const carriedRemainingDays = carryoverStillValid
+      ? Math.max(0, carriedDays - carriedUsedDays)
+      : 0;
+    const currentRemainingDays = Math.max(0, currentDays - currentUsedDays);
+    const expiredDays = carryoverStillValid
+      ? 0
+      : Math.max(0, carriedDays - carriedUsedDays);
+
+    return {
+      ...entry,
+      annualLeaveInitialDays: carriedDays + currentDays,
+      annualLeaveCarriedDays: carriedDays,
+      annualLeaveCurrentDays: currentDays,
+      annualLeaveCarriedUsedDays: carriedUsedDays,
+      annualLeaveCurrentUsedDays: currentUsedDays,
+      annualLeaveCarriedRemainingDays: carriedRemainingDays,
+      annualLeaveCurrentRemainingDays: currentRemainingDays,
+      annualLeaveExpiredDays: expiredDays,
+      annualLeaveRemainingDays: carriedRemainingDays + currentRemainingDays,
+      annualLeaveCarryoverDeadline: carryoverDeadline,
+    };
+  }).sort((left, right) => (
     String(left.userLabel || "").localeCompare(String(right.userLabel || ""), "hr", { sensitivity: "base" })
   ));
 }
@@ -6473,6 +6591,25 @@ export function buildMonthlyWorkStatusReport(
 ) {
   const businessDayKeys = getMonthBusinessDayKeys(monthKey);
   const businessDaySet = new Set(businessDayKeys);
+  const reportUsers = (users ?? []).filter((user) => user?.isActive !== false);
+  const userIdByExecutorKey = new Map();
+  reportUsers.forEach((user) => {
+    const fullName = normalizeText(user.fullName || [user.firstName, user.lastName].filter(Boolean).join(" "));
+    [
+      user.id,
+      user.email,
+      user.username,
+      user.legacyUsername,
+      user.displayName,
+      fullName,
+      [user.firstName, user.lastName].filter(Boolean).join(" "),
+    ].forEach((value) => {
+      const key = normalizeText(value).toLowerCase();
+      if (key) {
+        userIdByExecutorKey.set(key, normalizeId(user.id));
+      }
+    });
+  });
   const approvedEntries = sortAbsenceEntries((absenceEntries ?? []).filter((entry) => (
     normalizeAbsenceStatus(entry.status) === "approved"
   )));
@@ -6494,7 +6631,9 @@ export function buildMonthlyWorkStatusReport(
   });
 
   const balanceByUserId = new Map(
-    buildAbsenceBalanceSummaries(absenceBalances, approvedEntries).map((entry) => [entry.userId, entry]),
+    buildAbsenceBalanceSummaries(absenceBalances, approvedEntries, {
+      asOfDate: getMonthLastDateKey(monthKey),
+    }).map((entry) => [entry.userId, entry]),
   );
 
   const workOrderCountsByUserId = new Map();
@@ -6505,16 +6644,16 @@ export function buildMonthlyWorkStatusReport(
     }
     const executors = getWorkOrderExecutors(workOrder);
     executors.forEach((executorLabel) => {
-      const key = normalizeText(executorLabel);
-      if (!key) {
+      const executorKey = normalizeText(executorLabel).toLowerCase();
+      if (!executorKey) {
         return;
       }
-      workOrderCountsByUserId.set(key, (workOrderCountsByUserId.get(key) ?? 0) + 1);
+      const userId = userIdByExecutorKey.get(executorKey) || executorKey;
+      workOrderCountsByUserId.set(userId, (workOrderCountsByUserId.get(userId) ?? 0) + 1);
     });
   });
 
-  return (users ?? [])
-    .filter((user) => user?.isActive !== false)
+  return reportUsers
     .map((user) => {
       const userId = normalizeId(user.id);
       const timeline = timelineByUserId.get(userId) ?? new Map();
@@ -6553,7 +6692,7 @@ export function buildMonthlyWorkStatusReport(
         sickLeaveInitialDays: balance.sickLeaveInitialDays,
         sickLeaveUsedDays: balance.sickLeaveUsedDays,
         sickLeaveRemainingDays: balance.sickLeaveRemainingDays,
-        assignedWorkOrderCount: workOrderCountsByUserId.get(fullName) ?? 0,
+        assignedWorkOrderCount: workOrderCountsByUserId.get(userId) ?? 0,
       };
     })
     .sort((left, right) => String(left.userLabel || "").localeCompare(String(right.userLabel || ""), "hr", { sensitivity: "base" }));

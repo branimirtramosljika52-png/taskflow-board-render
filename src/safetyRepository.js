@@ -2109,6 +2109,8 @@ function mapAbsenceBalanceRow(row = {}) {
     userId,
     userLabel: row.user_label ?? "",
     annualLeaveInitialDays: Number(row.annual_leave_initial_days ?? 0) || 0,
+    annualLeaveCarriedDays: Number(row.annual_leave_carried_days ?? 0) || 0,
+    annualLeaveCurrentDays: Number(row.annual_leave_current_days ?? row.annual_leave_initial_days ?? 0) || 0,
     sickLeaveInitialDays: Number(row.sick_leave_initial_days ?? 0) || 0,
     createdAt: normalizeTimestamp(row.created_at),
     updatedAt: normalizeTimestamp(row.updated_at),
@@ -3989,7 +3991,8 @@ async function fetchSnapshotFromConnection(connection) {
     .filter(Boolean);
 
   const [absenceBalanceRows] = await connection.query(`
-    SELECT id, organization_id, user_id, user_label, annual_leave_initial_days, sick_leave_initial_days,
+    SELECT id, organization_id, user_id, user_label, annual_leave_initial_days,
+           annual_leave_carried_days, annual_leave_current_days, sick_leave_initial_days,
            created_at, updated_at
     FROM web_absence_balances
     ORDER BY organization_id ASC, user_label ASC, id ASC
@@ -7012,6 +7015,8 @@ export class MySqlSafetyRepository {
         user_id INT NOT NULL,
         user_label VARCHAR(180) NOT NULL DEFAULT '',
         annual_leave_initial_days INT NOT NULL DEFAULT 0,
+        annual_leave_carried_days INT NOT NULL DEFAULT 0,
+        annual_leave_current_days INT NOT NULL DEFAULT 0,
         sick_leave_initial_days INT NOT NULL DEFAULT 0,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -7303,6 +7308,15 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_dashboard_widgets", "grid_row", "INT NOT NULL DEFAULT 1");
     await ensureColumnExists(this.pool, "web_dashboard_widgets", "grid_width", "INT NOT NULL DEFAULT 4");
     await ensureColumnExists(this.pool, "web_dashboard_widgets", "grid_height", "INT NOT NULL DEFAULT 3");
+    await ensureColumnExists(this.pool, "web_absence_balances", "annual_leave_carried_days", "INT NOT NULL DEFAULT 0 AFTER annual_leave_initial_days");
+    await ensureColumnExists(this.pool, "web_absence_balances", "annual_leave_current_days", "INT NOT NULL DEFAULT 0 AFTER annual_leave_carried_days");
+    await this.pool.query(`
+      UPDATE web_absence_balances
+      SET annual_leave_current_days = annual_leave_initial_days
+      WHERE annual_leave_current_days = 0
+        AND annual_leave_carried_days = 0
+        AND annual_leave_initial_days > 0
+    `);
     await backfillDashboardWidgetLayouts(this.pool);
     await migrateInlineCompanyLogosToObjectStorage(this.pool);
   }
@@ -11547,11 +11561,14 @@ export class MySqlSafetyRepository {
     await this.pool.query(
       `
         INSERT INTO web_absence_balances
-          (organization_id, user_id, user_label, annual_leave_initial_days, sick_leave_initial_days)
-        VALUES (?, ?, ?, ?, ?)
+          (organization_id, user_id, user_label, annual_leave_initial_days,
+           annual_leave_carried_days, annual_leave_current_days, sick_leave_initial_days)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
           user_label = VALUES(user_label),
           annual_leave_initial_days = VALUES(annual_leave_initial_days),
+          annual_leave_carried_days = VALUES(annual_leave_carried_days),
+          annual_leave_current_days = VALUES(annual_leave_current_days),
           sick_leave_initial_days = VALUES(sick_leave_initial_days),
           updated_at = CURRENT_TIMESTAMP
       `,
@@ -11560,13 +11577,16 @@ export class MySqlSafetyRepository {
         safeUserId,
         normalized.userLabel,
         Number(normalized.annualLeaveInitialDays ?? 0),
+        Number(normalized.annualLeaveCarriedDays ?? 0),
+        Number(normalized.annualLeaveCurrentDays ?? normalized.annualLeaveInitialDays ?? 0),
         Number(normalized.sickLeaveInitialDays ?? 0),
       ],
     );
 
     const [rows] = await this.pool.query(
       `
-        SELECT id, organization_id, user_id, user_label, annual_leave_initial_days, sick_leave_initial_days,
+        SELECT id, organization_id, user_id, user_label, annual_leave_initial_days,
+               annual_leave_carried_days, annual_leave_current_days, sick_leave_initial_days,
                created_at, updated_at
         FROM web_absence_balances
         WHERE organization_id = ? AND user_id = ?

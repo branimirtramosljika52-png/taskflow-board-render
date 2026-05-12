@@ -588,6 +588,61 @@ test("absence balances and monthly work report count regular work vs absence typ
   assert.equal(report[0].assignedWorkOrderCount, 1);
 });
 
+test("absence balances split carried and current annual leave with June deadline", () => {
+  const balances = [
+    {
+      id: "balance-split-1",
+      organizationId: "org-1",
+      userId: "user-1",
+      userLabel: "Ana Savanovic",
+      annualLeaveCarriedDays: 4,
+      annualLeaveCurrentDays: 20,
+      sickLeaveInitialDays: 30,
+    },
+  ];
+  const springLeave = createAbsenceEntry(
+    {
+      organizationId: "org-1",
+      userId: "user-1",
+      userLabel: "Ana Savanovic",
+      type: "annual_leave",
+      status: "approved",
+      startDate: "2026-04-06",
+      endDate: "2026-04-08",
+    },
+    () => "absence-spring-go",
+    () => "2026-04-01T08:00:00.000Z",
+  );
+  const summerLeave = createAbsenceEntry(
+    {
+      organizationId: "org-1",
+      userId: "user-1",
+      userLabel: "Ana Savanovic",
+      type: "annual_leave",
+      status: "approved",
+      startDate: "2026-07-06",
+      endDate: "2026-07-07",
+    },
+    () => "absence-summer-go",
+    () => "2026-04-01T08:00:00.000Z",
+  );
+
+  const beforeDeadline = buildAbsenceBalanceSummaries(balances, [springLeave, summerLeave], {
+    asOfDate: "2026-05-31",
+  })[0];
+  assert.equal(beforeDeadline.annualLeaveInitialDays, 24);
+  assert.equal(beforeDeadline.annualLeaveCarriedRemainingDays, 1);
+  assert.equal(beforeDeadline.annualLeaveCurrentRemainingDays, 18);
+  assert.equal(beforeDeadline.annualLeaveRemainingDays, 19);
+
+  const afterDeadline = buildAbsenceBalanceSummaries(balances, [springLeave, summerLeave], {
+    asOfDate: "2026-07-01",
+  })[0];
+  assert.equal(afterDeadline.annualLeaveExpiredDays, 1);
+  assert.equal(afterDeadline.annualLeaveCarriedRemainingDays, 0);
+  assert.equal(afterDeadline.annualLeaveRemainingDays, 18);
+});
+
 test("legal framework create, update, filter and sort work together", () => {
   const state = buildState();
   const first = createLegalFramework(

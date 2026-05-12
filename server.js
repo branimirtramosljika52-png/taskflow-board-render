@@ -7879,6 +7879,8 @@ async function handleApiRequest(request, response, url) {
         userId: String(targetUser.id),
         userLabel: getScopedUserDisplayLabel(targetUser),
         annualLeaveInitialDays: body?.annualLeaveInitialDays,
+        annualLeaveCarriedDays: body?.annualLeaveCarriedDays,
+        annualLeaveCurrentDays: body?.annualLeaveCurrentDays,
         sickLeaveInitialDays: body?.sickLeaveInitialDays,
       });
       await writeSnapshot(response, user, request);

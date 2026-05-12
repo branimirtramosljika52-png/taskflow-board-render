@@ -57647,7 +57647,15 @@ function getAbsenceBalanceSummaryForUser(userId = "") {
     userId: String(userId || ""),
     userLabel: "",
     annualLeaveInitialDays: 0,
+    annualLeaveCarriedDays: 0,
+    annualLeaveCurrentDays: 0,
     annualLeaveUsedDays: 0,
+    annualLeaveCarriedUsedDays: 0,
+    annualLeaveCurrentUsedDays: 0,
+    annualLeaveCarriedRemainingDays: 0,
+    annualLeaveCurrentRemainingDays: 0,
+    annualLeaveExpiredDays: 0,
+    annualLeaveCarryoverDeadline: "",
     annualLeaveRemainingDays: 0,
     sickLeaveInitialDays: 0,
     sickLeaveUsedDays: 0,
@@ -57905,7 +57913,7 @@ function syncAbsenceBalancePreview() {
     return;
   }
 
-  absenceBalancePreview.textContent = `Početno ${summary.annualLeaveInitialDays} · iskorišteno ${summary.annualLeaveUsedDays} · preostalo ${summary.annualLeaveRemainingDays}`;
+  absenceBalancePreview.textContent = `Stari ${summary.annualLeaveCarriedRemainingDays}/${summary.annualLeaveCarriedDays} · novi ${summary.annualLeaveCurrentRemainingDays}/${summary.annualLeaveCurrentDays} · preostalo ${summary.annualLeaveRemainingDays}`;
 }
 
 function syncAbsenceEditorChrome() {
@@ -58100,10 +58108,13 @@ function resetAbsenceBalanceDrafts() {
     .sort((left, right) => getUserDisplayLabel(left).localeCompare(getUserDisplayLabel(right), "hr"))
     .map((user) => {
       const current = currentByUserId.get(String(user.id));
+      const currentAnnualTotal = Number(current?.annualLeaveInitialDays ?? 0) || 0;
       return {
         userId: String(user.id),
         userLabel: getUserDisplayLabel(user),
-        annualLeaveInitialDays: Number(current?.annualLeaveInitialDays ?? 0) || 0,
+        annualLeaveInitialDays: currentAnnualTotal,
+        annualLeaveCarriedDays: Number(current?.annualLeaveCarriedDays ?? 0) || 0,
+        annualLeaveCurrentDays: Number(current?.annualLeaveCurrentDays ?? currentAnnualTotal) || 0,
         sickLeaveInitialDays: Number(current?.sickLeaveInitialDays ?? 0) || 0,
       };
     });
@@ -58129,18 +58140,33 @@ function renderAbsenceBalanceList() {
     const controls = document.createElement("div");
     controls.className = "absence-balance-row-fields";
 
-    const annualField = document.createElement("label");
-    annualField.className = "field";
-    annualField.innerHTML = `<span>GO početno</span>`;
-    const annualInput = document.createElement("input");
-    annualInput.type = "number";
-    annualInput.min = "0";
-    annualInput.max = "365";
-    annualInput.value = String(entry.annualLeaveInitialDays ?? 0);
-    annualInput.addEventListener("input", () => {
-      entry.annualLeaveInitialDays = Math.max(0, Number(annualInput.value || 0) || 0);
+    const carriedField = document.createElement("label");
+    carriedField.className = "field";
+    carriedField.innerHTML = `<span>Stari GO</span>`;
+    const carriedInput = document.createElement("input");
+    carriedInput.type = "number";
+    carriedInput.min = "0";
+    carriedInput.max = "365";
+    carriedInput.value = String(entry.annualLeaveCarriedDays ?? 0);
+    carriedInput.addEventListener("input", () => {
+      entry.annualLeaveCarriedDays = Math.max(0, Number(carriedInput.value || 0) || 0);
+      entry.annualLeaveInitialDays = Number(entry.annualLeaveCarriedDays || 0) + Number(entry.annualLeaveCurrentDays || 0);
     });
-    annualField.append(annualInput);
+    carriedField.append(carriedInput);
+
+    const currentField = document.createElement("label");
+    currentField.className = "field";
+    currentField.innerHTML = `<span>Novi GO</span>`;
+    const currentInput = document.createElement("input");
+    currentInput.type = "number";
+    currentInput.min = "0";
+    currentInput.max = "365";
+    currentInput.value = String(entry.annualLeaveCurrentDays ?? entry.annualLeaveInitialDays ?? 0);
+    currentInput.addEventListener("input", () => {
+      entry.annualLeaveCurrentDays = Math.max(0, Number(currentInput.value || 0) || 0);
+      entry.annualLeaveInitialDays = Number(entry.annualLeaveCarriedDays || 0) + Number(entry.annualLeaveCurrentDays || 0);
+    });
+    currentField.append(currentInput);
 
     const sickField = document.createElement("label");
     sickField.className = "field";
@@ -58155,7 +58181,7 @@ function renderAbsenceBalanceList() {
     });
     sickField.append(sickInput);
 
-    controls.append(annualField, sickField);
+    controls.append(carriedField, currentField, sickField);
     row.append(name, controls);
     return row;
   }));
@@ -58205,12 +58231,15 @@ async function saveInlineAbsenceBalance(userId = "", fieldKey = "annualLeaveInit
   }
 
   const stored = getStoredAbsenceBalanceForUser(safeUserId);
+  const storedAnnualTotal = Number(stored?.annualLeaveInitialDays ?? 0) || 0;
   const payload = {
     userId: safeUserId,
-    annualLeaveInitialDays: Number(stored?.annualLeaveInitialDays ?? 0) || 0,
+    annualLeaveCarriedDays: Number(stored?.annualLeaveCarriedDays ?? 0) || 0,
+    annualLeaveCurrentDays: Number(stored?.annualLeaveCurrentDays ?? storedAnnualTotal) || 0,
     sickLeaveInitialDays: Number(stored?.sickLeaveInitialDays ?? 0) || 0,
   };
   payload[fieldKey] = Math.max(0, Number(nextValue || 0) || 0);
+  payload.annualLeaveInitialDays = Number(payload.annualLeaveCarriedDays || 0) + Number(payload.annualLeaveCurrentDays || 0);
 
   const success = await runMutation(() => apiRequest("/absence-balances", {
     method: "POST",
@@ -58237,82 +58266,140 @@ function renderAbsencePeopleOverview() {
   const isMedical = mode === "medical";
   const canManage = getCanManageMasterData();
   const users = getSortedAbsenceUsers();
-  const fieldKey = isMedical ? "sickLeaveInitialDays" : "annualLeaveInitialDays";
-  const initialKey = isMedical ? "sickLeaveInitialDays" : "annualLeaveInitialDays";
-  const usedKey = isMedical ? "sickLeaveUsedDays" : "annualLeaveUsedDays";
-  const remainingKey = isMedical ? "sickLeaveRemainingDays" : "annualLeaveRemainingDays";
+  const typeSet = new Set(getAbsenceModuleConfig().typeOptions.map((option) => option.value));
 
   if (absencePeopleTitle) {
     absencePeopleTitle.textContent = isMedical ? "Bolovanja po korisnicima" : "Godišnji odmor po korisnicima";
   }
   if (absencePeopleCopy) {
     absencePeopleCopy.textContent = isMedical
-      ? "Pregled bolovanja i opravdanih izostanaka po osobi, s brzim dodavanjem nove odsutnosti."
-      : "Popis svih ljudi, godišnji odmor u godini, iskorišteno i preostalo dana.";
+      ? "Jedan red po osobi, dokumentirana bolovanja i opravdani izostanci povezani s People korisnicima."
+      : "Jedan red po osobi, stari GO vrijedi do 30.06., novi GO ostaje za tekuću godinu.";
   }
   if (absencePeopleFeedback && !absencePeopleFeedback.textContent) {
     absencePeopleFeedback.textContent = "";
   }
 
-  absencePeopleList.replaceChildren(...users.map((user) => {
-    const summary = getAbsenceBalanceSummaryForUser(user.id);
-    const card = document.createElement("article");
-    card.className = "absence-person-card";
+  absencePeopleList.className = `absence-people-list is-row-list${isMedical ? " is-medical" : " is-annual"}`;
 
-    const identity = document.createElement("div");
-    identity.className = "absence-person-identity";
-    const avatar = document.createElement("span");
-    avatar.className = "people-list-avatar absence-person-avatar";
-    avatar.textContent = getUserInitials(user);
-    const copy = document.createElement("div");
-    copy.className = "absence-person-copy";
-    const name = document.createElement("strong");
-    name.textContent = getUserDisplayLabel(user);
-    const meta = document.createElement("span");
-    meta.textContent = user.email || getUserOrganizationSummary(user);
-    copy.append(name, meta);
-    identity.append(avatar, copy);
+  const createMetric = (label, value, meta = "", tone = "") => {
+    const metric = document.createElement("div");
+    metric.className = `absence-person-row-metric${tone ? ` ${tone}` : ""}`;
+    const labelNode = document.createElement("span");
+    labelNode.textContent = label;
+    const valueNode = document.createElement("strong");
+    valueNode.textContent = String(value ?? 0);
+    metric.append(labelNode, valueNode);
+    if (meta) {
+      const metaNode = document.createElement("small");
+      metaNode.textContent = meta;
+      metric.append(metaNode);
+    }
+    return metric;
+  };
 
-    const stats = document.createElement("div");
-    stats.className = "absence-person-stats";
-    [
-      { label: isMedical ? "Evidencija" : "GO u godini", value: summary[initialKey] },
-      { label: "Iskorišteno", value: summary[usedKey] },
-      { label: "Preostalo", value: summary[remainingKey] },
-    ].forEach((entry) => {
-      const stat = document.createElement("span");
-      stat.className = "absence-person-stat";
-      stat.innerHTML = `<small>${entry.label}</small><strong>${Number(entry.value || 0)}</strong>`;
-      stats.append(stat);
-    });
-
-    const controls = document.createElement("div");
-    controls.className = "absence-person-controls";
-
-    const allowanceField = document.createElement("label");
-    allowanceField.className = "field absence-person-days-field";
-    allowanceField.innerHTML = `<span>${isMedical ? "Dani bolovanja" : "Godišnji dani"}</span>`;
+  const createNumberField = (label, value, fieldKey, userId) => {
+    const field = document.createElement("label");
+    field.className = "field absence-person-row-input";
+    field.innerHTML = `<span>${label}</span>`;
     const input = document.createElement("input");
     input.type = "number";
     input.min = "0";
     input.max = "365";
     input.inputMode = "numeric";
-    input.value = String(getAbsenceBalanceInputValue(user.id, fieldKey));
+    input.value = String(value ?? 0);
     input.disabled = !canManage;
     input.addEventListener("change", () => {
-      void saveInlineAbsenceBalance(user.id, fieldKey, input.value);
+      void saveInlineAbsenceBalance(userId, fieldKey, input.value);
     });
-    allowanceField.append(input);
+    field.append(input);
+    return field;
+  };
+
+  absencePeopleList.replaceChildren(...users.map((user) => {
+    const summary = getAbsenceBalanceSummaryForUser(user.id);
+    const userEntries = (state.absenceEntries ?? [])
+      .filter((entry) => String(entry.userId) === String(user.id) && typeSet.has(String(entry.type || "")));
+    const approvedEntries = userEntries.filter((entry) => String(entry.status || "").toLowerCase() === "approved");
+    const latestEntry = [...userEntries].sort((left, right) => String(right.startDate || "").localeCompare(String(left.startDate || "")))[0];
+    const row = document.createElement("article");
+    row.className = `absence-person-row${isMedical ? " is-medical" : " is-annual"}`;
+
+    const identity = document.createElement("div");
+    identity.className = "absence-person-row-identity";
+    const avatar = document.createElement("span");
+    avatar.className = "people-list-avatar absence-person-avatar";
+    avatar.textContent = getUserInitials(user);
+    const copy = document.createElement("div");
+    copy.className = "absence-person-row-copy";
+    const name = document.createElement("strong");
+    name.textContent = getUserDisplayLabel(user);
+    const meta = document.createElement("span");
+    meta.textContent = [user.email, getUserOrganizationSummary(user)].filter(Boolean).join(" · ") || "People korisnik";
+    copy.append(name, meta);
+    identity.append(avatar, copy);
+
+    const metrics = document.createElement("div");
+    metrics.className = "absence-person-row-metrics";
+    if (isMedical) {
+      metrics.append(
+        createMetric("Evidencija", summary.sickLeaveInitialDays, "dana", "is-blue"),
+        createMetric("Iskorišteno", summary.sickLeaveUsedDays, `${approvedEntries.length} zapisa`, "is-amber"),
+        createMetric("Preostalo", summary.sickLeaveRemainingDays, "dana", "is-green"),
+        createMetric("Zadnje", latestEntry ? formatCompactDate(latestEntry.startDate) : "Nema", latestEntry ? getAbsenceTypeLabelClient(latestEntry.type) : "", "is-muted"),
+      );
+    } else {
+      metrics.append(
+        createMetric("Stari GO", summary.annualLeaveCarriedRemainingDays, `od ${summary.annualLeaveCarriedDays} · do 30.06.`, "is-amber"),
+        createMetric("Novi GO", summary.annualLeaveCurrentRemainingDays, `od ${summary.annualLeaveCurrentDays}`, "is-blue"),
+        createMetric("Iskorišteno", summary.annualLeaveUsedDays, `${approvedEntries.length} zapisa`, "is-muted"),
+        createMetric("Preostalo", summary.annualLeaveRemainingDays, summary.annualLeaveExpiredDays ? `${summary.annualLeaveExpiredDays} isteklo` : "dana", "is-green"),
+      );
+    }
+
+    const totalAllowance = isMedical
+      ? Number(summary.sickLeaveInitialDays || 0)
+      : Number(summary.annualLeaveInitialDays || 0);
+    const usedDays = isMedical
+      ? Number(summary.sickLeaveUsedDays || 0)
+      : Number(summary.annualLeaveUsedDays || 0);
+    const percentage = totalAllowance > 0 ? Math.min(100, Math.round((usedDays / totalAllowance) * 100)) : 0;
+    const progress = document.createElement("div");
+    progress.className = "absence-person-row-progress";
+    progress.innerHTML = `<span style="width:${percentage}%"></span>`;
+
+    const controls = document.createElement("div");
+    controls.className = "absence-person-row-controls";
+    if (isMedical) {
+      controls.append(createNumberField("Dani bolovanja", getAbsenceBalanceInputValue(user.id, "sickLeaveInitialDays"), "sickLeaveInitialDays", user.id));
+    } else {
+      controls.append(
+        createNumberField("Stari GO", getAbsenceBalanceInputValue(user.id, "annualLeaveCarriedDays"), "annualLeaveCarriedDays", user.id),
+        createNumberField("Novi GO", getAbsenceBalanceInputValue(user.id, "annualLeaveCurrentDays"), "annualLeaveCurrentDays", user.id),
+      );
+    }
 
     const addButton = document.createElement("button");
     addButton.type = "button";
-    addButton.className = "ghost-button absence-person-action";
+    addButton.className = "ghost-button absence-person-row-action";
     addButton.textContent = isMedical ? "+ Bolovanje" : "+ GO";
     addButton.addEventListener("click", () => openAbsenceEditorForUser(user.id));
 
-    controls.append(allowanceField, addButton);
-    card.append(identity, stats, controls);
-    return card;
+    controls.append(addButton);
+
+    const status = document.createElement("div");
+    status.className = "absence-person-row-status";
+    status.append(
+      createBadge(
+        isMedical
+          ? `${userEntries.length} izostanaka`
+          : `Stari GO do ${formatCompactDate(summary.annualLeaveCarryoverDeadline || `${new Date().getFullYear()}-06-30`)}`,
+        isMedical ? "measurement-equipment-chip" : "service-catalog-template-badge",
+      ),
+    );
+
+    row.append(identity, metrics, progress, controls, status);
+    return row;
   }));
 
   if (users.length === 0) {
@@ -58328,6 +58415,8 @@ async function saveAbsenceBalanceDrafts() {
   const changedEntries = absenceBalanceDrafts.filter((entry) => {
     const current = currentByUserId.get(String(entry.userId));
     return Number(current?.annualLeaveInitialDays ?? 0) !== Number(entry.annualLeaveInitialDays ?? 0)
+      || Number(current?.annualLeaveCarriedDays ?? 0) !== Number(entry.annualLeaveCarriedDays ?? 0)
+      || Number(current?.annualLeaveCurrentDays ?? current?.annualLeaveInitialDays ?? 0) !== Number(entry.annualLeaveCurrentDays ?? 0)
       || Number(current?.sickLeaveInitialDays ?? 0) !== Number(entry.sickLeaveInitialDays ?? 0);
   });
 
@@ -58344,7 +58433,9 @@ async function saveAbsenceBalanceDrafts() {
         method: "POST",
         body: {
           userId: entry.userId,
-          annualLeaveInitialDays: entry.annualLeaveInitialDays,
+          annualLeaveInitialDays: Number(entry.annualLeaveCarriedDays || 0) + Number(entry.annualLeaveCurrentDays || 0),
+          annualLeaveCarriedDays: entry.annualLeaveCarriedDays,
+          annualLeaveCurrentDays: entry.annualLeaveCurrentDays,
           sickLeaveInitialDays: entry.sickLeaveInitialDays,
         },
       });
@@ -58587,6 +58678,14 @@ function getAbsenceReportRows() {
 }
 
 function exportAbsenceReportCsv(rows = getAbsenceReportRows(), fileName = "") {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  if (safeRows.length === 0) {
+    if (absenceReportSummary) {
+      absenceReportSummary.textContent = "Nema podataka za izvoz u odabranom mjesecu.";
+    }
+    return;
+  }
+
   const breakdownHeaders = ABSENCE_TYPE_OPTIONS.map((option) => ({
     key: option.value,
     label: option.label,
@@ -58609,7 +58708,7 @@ function exportAbsenceReportCsv(rows = getAbsenceReportRows(), fileName = "") {
 
   const csvRows = [
     headers.join(";"),
-    ...rows.map((row) => [
+    ...safeRows.map((row) => [
       row.userLabel,
       state.absenceReportMonth,
       row.businessDayCount,
@@ -58662,6 +58761,9 @@ function renderAbsenceReportModule() {
   const rows = getAbsenceReportRows();
   const totalRegularDays = rows.reduce((sum, row) => sum + Number(row.regularWorkDays || 0), 0);
   const totalAbsenceDays = rows.reduce((sum, row) => sum + Number(row.absenceDays || 0), 0);
+  if (absenceReportExportButton) {
+    absenceReportExportButton.disabled = rows.length === 0;
+  }
 
   if (absenceReportSummary) {
     absenceReportSummary.textContent = `${rows.length} korisnika · ${totalRegularDays} dana redovnog rada · ${totalAbsenceDays} dana odsutnosti`;
