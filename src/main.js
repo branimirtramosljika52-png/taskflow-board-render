@@ -70402,6 +70402,10 @@ function createDashboardBarChart(data) {
         }
       });
     });
+    const segmentColorByLabel = new Map(segmentLabels.map((segment, index) => [
+      segment.label,
+      DASHBOARD_CHART_COLORS[index % DASHBOARD_CHART_COLORS.length],
+    ]));
 
     segmentLabels.forEach((segment, index) => {
       const chip = document.createElement("span");
@@ -70412,43 +70416,58 @@ function createDashboardBarChart(data) {
       legend.append(chip);
     });
 
-    const rows = document.createElement("div");
-    rows.className = "dashboard-stacked-bar-chart";
+    const maxTotal = Math.max(...data.items.map((item) => Number(item.count ?? 0) || 0), 1);
+    const columns = document.createElement("div");
+    columns.className = "dashboard-stacked-column-chart";
 
     data.items.forEach((item) => {
       const total = Number(item.count ?? 0) || 0;
-      const row = document.createElement("div");
-      row.className = "dashboard-stacked-bar-row";
+      const column = document.createElement("div");
+      column.className = "dashboard-stacked-column";
 
-      const label = document.createElement("div");
-      label.className = "dashboard-stacked-bar-label";
-      const labelText = document.createElement("strong");
-      labelText.textContent = item.label;
       const totalText = document.createElement("span");
+      totalText.className = "dashboard-stacked-column-total";
       totalText.textContent = formatDashboardWidgetValue(total, data.valueType);
-      label.append(labelText, totalText);
 
       const track = document.createElement("div");
-      track.className = "dashboard-stacked-bar-track";
-      (item.segments ?? []).forEach((segment, index) => {
+      track.className = "dashboard-stacked-column-track";
+
+      const stack = document.createElement("div");
+      stack.className = "dashboard-stacked-column-stack";
+      stack.style.height = total > 0
+        ? `${Math.max(8, Math.round((total / maxTotal) * 100))}%`
+        : "0%";
+
+      (item.segments ?? []).forEach((segment) => {
         const count = Number(segment.count ?? 0) || 0;
         if (count <= 0 || total <= 0) {
           return;
         }
 
         const fill = document.createElement("span");
-        fill.className = "dashboard-stacked-bar-fill";
-        fill.style.width = `${Math.max(4, Math.round((count / total) * 100))}%`;
-        fill.style.background = DASHBOARD_CHART_COLORS[index % DASHBOARD_CHART_COLORS.length];
+        fill.className = "dashboard-stacked-column-segment";
+        fill.style.height = `${(count / total) * 100}%`;
+        fill.style.background = segmentColorByLabel.get(segment.label) || DASHBOARD_CHART_COLORS[0];
         fill.title = `${segment.label}: ${formatDashboardWidgetValue(count, data.valueType)}`;
-        track.append(fill);
+        stack.append(fill);
       });
 
-      row.append(label, track);
-      rows.append(row);
+      track.append(stack);
+
+      const label = document.createElement("div");
+      label.className = "dashboard-stacked-column-label";
+      const labelText = document.createElement("strong");
+      labelText.textContent = item.label;
+      labelText.title = item.label;
+      const meta = document.createElement("span");
+      meta.textContent = total === 1 ? "1 RN" : `${formatDashboardWidgetValue(total, data.valueType)} RN`;
+      label.append(labelText, meta);
+
+      column.append(totalText, track, label);
+      columns.append(column);
     });
 
-    shell.append(legend, rows);
+    shell.append(legend, columns);
     return shell;
   }
 

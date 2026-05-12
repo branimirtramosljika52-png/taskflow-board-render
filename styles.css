@@ -11063,6 +11063,93 @@ body.is-dragging-dashboard-widget * {
   height: 100%;
 }
 
+.dashboard-stacked-column-chart {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  gap: 14px;
+  align-items: end;
+  min-height: 250px;
+}
+
+.dashboard-stacked-column {
+  display: grid;
+  grid-template-rows: auto minmax(148px, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+  min-width: 0;
+}
+
+.dashboard-stacked-column-total {
+  justify-self: center;
+  color: #26334f;
+  font-size: 0.86rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.dashboard-stacked-column-track {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  height: 188px;
+  min-width: 0;
+  padding: 8px;
+  border-radius: 18px;
+  border: 1px solid rgba(203, 214, 235, 0.86);
+  background:
+    linear-gradient(to top, rgba(138, 160, 194, 0.14) 1px, transparent 1px) 0 0 / 100% 25%,
+    linear-gradient(180deg, rgba(247, 250, 255, 0.94), rgba(239, 245, 253, 0.9));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 12px 28px rgba(43, 63, 105, 0.08);
+}
+
+.dashboard-stacked-column-stack {
+  display: flex;
+  flex-direction: column-reverse;
+  width: min(100%, 46px);
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 14px;
+  box-shadow:
+    0 10px 22px rgba(49, 83, 143, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.34);
+}
+
+.dashboard-stacked-column-segment {
+  display: block;
+  width: 100%;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+.dashboard-stacked-column-label {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  text-align: center;
+}
+
+.dashboard-stacked-column-label strong,
+.dashboard-stacked-column-label span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-stacked-column-label strong {
+  color: #27334f;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.dashboard-stacked-column-label span {
+  color: #78859f;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
 .dashboard-widget-list {
   display: grid;
   gap: 10px;
