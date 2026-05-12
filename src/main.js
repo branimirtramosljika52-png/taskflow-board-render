@@ -3899,6 +3899,7 @@ const activeWorkOrdersCount = document.querySelector("#active-work-orders-count"
 const completedWorkOrdersCount = document.querySelector("#completed-work-orders-count");
 const overdueWorkOrdersCount = document.querySelector("#overdue-work-orders-count");
 const dashboardOverviewPanel = document.querySelector("#dashboard-overview-panel");
+const dashboardReactRoot = document.querySelector("#dashboard-react-root");
 const dashboardControlPanel = document.querySelector("#dashboard-control-panel");
 const dashboardControlGrid = document.querySelector("#dashboard-control-grid");
 const dashboardPeoplePanel = document.querySelector("#dashboard-people-panel");
@@ -73248,6 +73249,161 @@ function renderDashboardWidgetGrid() {
   dashboardWidgetGrid.replaceChildren(...widgets.map((widget) => createDashboardWidgetCanvasCard(widget)));
 }
 
+function getDashboardWidgetFilterChipModels(widget) {
+  const filters = widget.filters ?? {};
+  const chips = [];
+
+  if (filters.companyId) {
+    const company = state.companies.find((item) => String(item.id) === String(filters.companyId));
+    chips.push({ label: company?.name || "Tvrtka", tone: "filter" });
+  }
+
+  if (filters.status) {
+    chips.push({ label: filters.status, tone: "filter" });
+  }
+
+  if (filters.priority) {
+    chips.push({ label: filters.priority, tone: "filter" });
+  }
+
+  if (filters.region) {
+    chips.push({ label: filters.region, tone: "filter" });
+  }
+
+  if (filters.executor) {
+    chips.push({ label: filters.executor, tone: "filter" });
+  }
+
+  if (filters.assigneeUserId) {
+    const user = state.users.find((item) => String(item.id) === String(filters.assigneeUserId));
+    chips.push({ label: user?.fullName || user?.email || "Korisnik", tone: "filter" });
+  }
+
+  if (filters.tag) {
+    chips.push({ label: filters.tag, tone: "tag" });
+  }
+
+  if (filters.dateWindow && filters.dateWindow !== "all") {
+    const label = DASHBOARD_WIDGET_DATE_WINDOW_OPTIONS.find((item) => item.value === filters.dateWindow)?.label;
+    chips.push({ label: label || filters.dateWindow, tone: "filter" });
+  }
+
+  return chips;
+}
+
+function buildReactDashboardWidgetModel(widget) {
+  let data = null;
+
+  try {
+    data = getDashboardWidgetData(state, widget, {
+      userId: state.user?.id,
+    });
+  } catch (error) {
+    data = {
+      kind: "list",
+      title: widget.title,
+      sourceLabel: "Dashboard",
+      optionLabel: "Greška",
+      items: [],
+      emptyMessage: error.message || "Widget se trenutno ne može prikazati.",
+    };
+  }
+
+  return {
+    ...widget,
+    data,
+    chips: getDashboardWidgetFilterChipModels(widget),
+    sizeLabel: DASHBOARD_WIDGET_SIZE_OPTIONS.find((item) => item.value === widget.size)?.label || widget.size,
+  };
+}
+
+function buildReactDashboardModel() {
+  const stats = getDashboardStats(state);
+  const insights = getDashboardInsights(state);
+
+  return {
+    canCreate: Boolean(state.activeOrganizationId),
+    seeding: Boolean(state.dashboardBuilder.seeding),
+    stats: {
+      ...stats,
+      urgentWorkOrders: insights.urgentWorkOrders,
+      dueThisWeekWorkOrders: insights.dueThisWeekWorkOrders,
+      missingCoordinatesLocations: insights.missingCoordinatesLocations,
+      statusBreakdown: insights.statusBreakdown,
+    },
+    widgets: getDashboardWidgets().map((widget) => buildReactDashboardWidgetModel(widget)),
+  };
+}
+
+function setLegacyDashboardOverviewHidden(isHidden) {
+  if (!dashboardOverviewPanel) {
+    return;
+  }
+
+  Array.from(dashboardOverviewPanel.children).filter((element) => (
+    element.classList?.contains("dashboard-overview-head")
+    || element.classList?.contains("dashboard-builder-actions")
+    || element.classList?.contains("dashboard-builder-layout")
+  )).forEach((element) => {
+    if (!element) {
+      return;
+    }
+    if (isHidden) {
+      element.setAttribute("hidden", "");
+    } else {
+      element.removeAttribute("hidden");
+    }
+  });
+}
+
+function renderReactDashboardOverview() {
+  const reactComponents = window.SafeNexusReactComponents;
+
+  if (!dashboardReactRoot || typeof reactComponents?.renderDashboardOverview !== "function") {
+    dashboardOverviewPanel?.classList.remove("is-react-dashboard");
+    setLegacyDashboardOverviewHidden(false);
+    return false;
+  }
+
+  dashboardOverviewPanel?.classList.add("is-react-dashboard");
+  setLegacyDashboardOverviewHidden(true);
+  return reactComponents.renderDashboardOverview(dashboardReactRoot, {
+    model: buildReactDashboardModel(),
+    onAdd: () => {
+      openDashboardBuilder();
+      renderDashboardOverview();
+    },
+    onSeed: () => {
+      void createSuggestedDashboardLayout();
+    },
+    onEdit: (widgetId) => {
+      const widget = getDashboardWidgetById(widgetId);
+      if (widget) {
+        openDashboardBuilder(widget);
+        renderDashboardOverview();
+      }
+    },
+    onMove: (widgetId, deltaColumn, deltaRow) => {
+      void moveDashboardWidgetOnGrid(widgetId, deltaColumn, deltaRow);
+    },
+    onResize: (widgetId, deltaWidth, deltaHeight) => {
+      void resizeDashboardWidgetOnGrid(widgetId, deltaWidth, deltaHeight);
+    },
+    onOpenWorkOrder: (workOrderId) => {
+      const linked = state.workOrders.find((entry) => String(entry.id) === String(workOrderId));
+      if (linked) {
+        hydrateWorkOrderForm(linked);
+      }
+    },
+  });
+}
+
+function unmountReactDashboardOverview() {
+  window.SafeNexusReactComponents?.unmountDashboardOverview?.(dashboardReactRoot);
+  dashboardOverviewPanel?.classList.remove("is-react-dashboard");
+  setLegacyDashboardOverviewHidden(false);
+}
+
 function renderDashboardOverview() {
   const shouldShowDashboardOverview = Boolean(
     dashboardOverviewPanel
@@ -73280,10 +73436,19 @@ function renderDashboardOverview() {
 
   if (!shouldShowDashboardWorkspace) {
     document.body.classList.remove("is-dashboard-builder-open");
+    unmountReactDashboardOverview();
     return;
   }
 
+  let renderedReactDashboard = false;
+
   if (shouldShowDashboardOverview) {
+    renderedReactDashboard = renderReactDashboardOverview();
+  } else {
+    unmountReactDashboardOverview();
+  }
+
+  if (shouldShowDashboardOverview && !renderedReactDashboard) {
     renderDashboardInsightsSummary();
   }
 
@@ -73315,7 +73480,11 @@ function renderDashboardOverview() {
     syncDashboardWidgetFormOptions();
   }
   if (shouldShowDashboardOverview) {
-    renderDashboardWidgetGrid();
+    if (!renderedReactDashboard) {
+      renderDashboardWidgetGrid();
+    } else {
+      clearDashboardWidgetDropPreview();
+    }
     renderDashboardWidgetPreview();
   }
 }

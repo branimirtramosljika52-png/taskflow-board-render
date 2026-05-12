@@ -175,4 +175,15 @@ await buildBrowserBundle({
   logLevel: "silent",
 });
 
+await buildBrowserBundle({
+  entryPoints: [resolve(rootDir, "src", "react", "dashboard.jsx")],
+  outfile: resolve(distDir, "assets", "react", "dashboard.js"),
+  bundle: true,
+  format: "esm",
+  target: ["es2020"],
+  minify: true,
+  sourcemap: false,
+  logLevel: "silent",
+});
+
 await compressDistAssets();
