@@ -374,9 +374,14 @@ export const DASHBOARD_WIDGET_DEFINITIONS = {
       { value: "overdue", label: "Istek / kasnjenje" },
       { value: "completed", label: "Zatvoreni RN" },
       { value: "factured", label: "Fakturirani RN" },
+      { value: "invoice_total", label: "Iznos faktura" },
     ],
     groupings: [
       { value: "status", label: "Status RN" },
+      { value: "executor_status", label: "Ucinkovitost ispitivaca" },
+      { value: "invoice_status", label: "Iznos po statusu" },
+      { value: "invoice_executor", label: "Iznos po izvrsitelju" },
+      { value: "invoice_company", label: "Iznos po tvrtki" },
       { value: "priority", label: "Prioritet" },
       { value: "region", label: "Regija" },
       { value: "company", label: "Tvrtka" },
@@ -8953,6 +8958,71 @@ function countGroupedValues(items, getValue, { fallback = "Bez podatka", limit =
     .slice(0, limit);
 }
 
+function getWorkOrderInvoiceAmount(workOrder = {}) {
+  return roundCurrencyAmount(Math.max(0, normalizeFiniteNumber(workOrder.weight, 0)));
+}
+
+function sumGroupedWorkOrderInvoiceAmounts(items, getValue, { fallback = "Bez podatka", limit = Infinity, includeZeroLabels = [] } = {}) {
+  const grouped = new Map(includeZeroLabels.map((label) => [label, 0]));
+
+  items.forEach((item) => {
+    const rawLabel = getValue(item);
+    const label = normalizeText(rawLabel) || fallback;
+    grouped.set(label, roundCurrencyAmount((grouped.get(label) ?? 0) + getWorkOrderInvoiceAmount(item)));
+  });
+
+  return [...grouped.entries()]
+    .map(([label, count]) => ({ label, count }))
+    .sort((left, right) => {
+      if (right.count !== left.count) {
+        return right.count - left.count;
+      }
+
+      return left.label.localeCompare(right.label, "hr");
+    })
+    .slice(0, limit);
+}
+
+function buildDashboardWorkOrderExecutorStatusItems(items, limit = Infinity) {
+  const grouped = new Map();
+
+  items.forEach((item) => {
+    const executors = getWorkOrderExecutors(item);
+    const labels = executors.length > 0 ? [...new Set(executors)] : ["Bez izvrsitelja"];
+    const status = normalizeWorkOrderStatus(item.status);
+
+    labels.forEach((label) => {
+      const key = normalizeText(label) || "Bez izvrsitelja";
+      if (!grouped.has(key)) {
+        grouped.set(key, new Map());
+      }
+
+      const statusMap = grouped.get(key);
+      statusMap.set(status, (statusMap.get(status) ?? 0) + 1);
+    });
+  });
+
+  return [...grouped.entries()]
+    .map(([label, statusMap]) => {
+      const segments = WORK_ORDER_STATUS_OPTIONS.map((option) => ({
+        label: option.label,
+        status: option.value,
+        count: statusMap.get(option.value) ?? 0,
+      }));
+      const count = segments.reduce((sum, segment) => sum + segment.count, 0);
+
+      return { label, count, segments };
+    })
+    .sort((left, right) => {
+      if (right.count !== left.count) {
+        return right.count - left.count;
+      }
+
+      return left.label.localeCompare(right.label, "hr");
+    })
+    .slice(0, limit);
+}
+
 function normalizeDashboardWidgetSource(value) {
   const normalized = normalizeText(value).toLowerCase();
   return DASHBOARD_WIDGET_SOURCE_SET.has(normalized) ? normalized : "work_orders";
@@ -9478,6 +9548,40 @@ function buildDashboardDistributionItems(widget, items) {
     }
   }
 
+  if (widget.metricKey === "executor_status") {
+    return buildDashboardWorkOrderExecutorStatusItems(items, widget.limit);
+  }
+
+  if (widget.metricKey === "invoice_status") {
+    return sumGroupedWorkOrderInvoiceAmounts(items, (item) => item.status, {
+      fallback: "Bez statusa",
+      limit: widget.limit,
+      includeZeroLabels: WORK_ORDER_STATUS_OPTIONS.map((option) => option.label),
+    });
+  }
+
+  if (widget.metricKey === "invoice_executor") {
+    return sumGroupedWorkOrderInvoiceAmounts(
+      items.flatMap((item) => {
+        const executors = getWorkOrderExecutors(item);
+        const labels = executors.length > 0 ? [...new Set(executors)] : ["Bez izvrsitelja"];
+        return labels.map((label) => ({ ...item, executorLabel: label }));
+      }),
+      (item) => item.executorLabel,
+      {
+        fallback: "Bez izvrsitelja",
+        limit: widget.limit,
+      },
+    );
+  }
+
+  if (widget.metricKey === "invoice_company") {
+    return sumGroupedWorkOrderInvoiceAmounts(items, (item) => item.companyName, {
+      fallback: "Bez tvrtke",
+      limit: widget.limit,
+    });
+  }
+
   if (widget.metricKey === "status") {
     const statusItems = WORK_ORDER_STATUS_OPTIONS.map((option) => ({
       label: option.label,
@@ -9606,6 +9710,10 @@ function buildDashboardMetricValue(widget, items, snapshot, context = {}, today 
 
   if (widget.metricKey === "factured") {
     return items.filter((item) => item.status === "Fakturiran RN").length;
+  }
+
+  if (widget.metricKey === "invoice_total") {
+    return roundCurrencyAmount(items.reduce((sum, item) => sum + getWorkOrderInvoiceAmount(item), 0));
   }
 
   return items.length;
@@ -9757,6 +9865,10 @@ function buildDashboardListItems(widget, items, context = {}, today = todayStrin
   return nextItems.slice(0, widget.limit).map((item) => mapDashboardListItem(item, "work_orders"));
 }
 
+function getDashboardWidgetValueType(widget = {}) {
+  return String(widget.metricKey || "").startsWith("invoice_") ? "currency" : "number";
+}
+
 export function getDashboardWidgetData(snapshot, widget, context = {}, today = todayString()) {
   const normalizedSource = normalizeDashboardWidgetSource(widget.source);
   const normalizedVisualization = normalizeDashboardWidgetVisualization(widget.visualization);
@@ -9781,6 +9893,7 @@ export function getDashboardWidgetData(snapshot, widget, context = {}, today = t
       sourceLabel: sourceDefinition.label,
       optionLabel: choice?.label ?? normalizedWidget.title,
       value: buildDashboardMetricValue(normalizedWidget, filteredItems, snapshot, context, today),
+      valueType: getDashboardWidgetValueType(normalizedWidget),
       subtitle: `${filteredItems.length} zapisa nakon filtra`,
     };
   }
@@ -9802,6 +9915,7 @@ export function getDashboardWidgetData(snapshot, widget, context = {}, today = t
     sourceLabel: sourceDefinition.label,
     optionLabel: choice?.label ?? normalizedWidget.title,
     items: buildDashboardDistributionItems(normalizedWidget, filteredItems),
+    valueType: getDashboardWidgetValueType(normalizedWidget),
     emptyMessage: "Nema dovoljno podataka za graf.",
   };
 }

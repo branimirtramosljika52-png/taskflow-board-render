@@ -3043,6 +3043,7 @@ test("dashboard widget data supports KPI, chart and list outputs with filters", 
         region: "Zagreb",
         executor1: "Ana Anic",
         tagText: "petrol",
+        weight: "100,50 EUR",
         description: "Hitni pregled",
       },
       state,
@@ -3059,6 +3060,7 @@ test("dashboard widget data supports KPI, chart and list outputs with filters", 
         dueDate: "2026-03-20",
         region: "Istra",
         executor1: "Marko Maric",
+        weight: "250",
         description: "Zatvoreni nalog",
       },
       state,
@@ -3133,6 +3135,44 @@ test("dashboard widget data supports KPI, chart and list outputs with filters", 
     () => "2026-03-28T09:13:00.000Z",
   );
 
+  const executorStatusWidget = updateDashboardWidget(
+    metricWidget,
+    {
+      visualization: "bar",
+      metricKey: "executor_status",
+      size: "full",
+      limit: 10,
+      filters: {},
+    },
+    { dashboardWidgets: [metricWidget] },
+    () => "2026-03-28T09:14:00.000Z",
+  );
+
+  const invoiceMetricWidget = updateDashboardWidget(
+    metricWidget,
+    {
+      visualization: "metric",
+      metricKey: "invoice_total",
+      size: "small",
+      filters: {},
+    },
+    { dashboardWidgets: [metricWidget] },
+    () => "2026-03-28T09:15:00.000Z",
+  );
+
+  const invoiceStatusWidget = updateDashboardWidget(
+    metricWidget,
+    {
+      visualization: "bar",
+      metricKey: "invoice_status",
+      size: "full",
+      limit: 50,
+      filters: {},
+    },
+    { dashboardWidgets: [metricWidget] },
+    () => "2026-03-28T09:16:00.000Z",
+  );
+
   const snapshot = {
     ...state,
     workOrders,
@@ -3146,6 +3186,9 @@ test("dashboard widget data supports KPI, chart and list outputs with filters", 
   const statusBarData = getDashboardWidgetData(snapshot, statusBarWidget, { userId: "22" }, "2026-03-28");
   const listData = getDashboardWidgetData(snapshot, listWidget, { userId: "22" }, "2026-03-28");
   const statusGroupData = getDashboardWidgetData(snapshot, statusGroupWidget, { userId: "22" }, "2026-03-28");
+  const executorStatusData = getDashboardWidgetData(snapshot, executorStatusWidget, { userId: "22" }, "2026-03-28");
+  const invoiceMetricData = getDashboardWidgetData(snapshot, invoiceMetricWidget, { userId: "22" }, "2026-03-28");
+  const invoiceStatusData = getDashboardWidgetData(snapshot, invoiceStatusWidget, { userId: "22" }, "2026-03-28");
 
   assert.equal(metricData.kind, "metric");
   assert.equal(metricData.value, 1);
@@ -3166,6 +3209,16 @@ test("dashboard widget data supports KPI, chart and list outputs with filters", 
   assert.equal(statusGroupData.items[1].title, "Gotov RN");
   assert.equal(statusGroupData.items[1].count, 0);
   assert.ok(statusGroupData.items.some((item) => item.type === "status_count" && item.title === "Fakturiran RN" && item.count === 1));
+  assert.equal(executorStatusData.kind, "bar");
+  assert.equal(executorStatusData.items.find((item) => item.label === "Ana Anic")?.segments.find((segment) => segment.label === "Otvoreni RN")?.count, 1);
+  assert.equal(executorStatusData.items.find((item) => item.label === "Marko Maric")?.segments.find((segment) => segment.label === "Fakturiran RN")?.count, 1);
+  assert.equal(invoiceMetricData.kind, "metric");
+  assert.equal(invoiceMetricData.valueType, "currency");
+  assert.equal(invoiceMetricData.value, 350.5);
+  assert.equal(invoiceStatusData.kind, "bar");
+  assert.equal(invoiceStatusData.valueType, "currency");
+  assert.equal(invoiceStatusData.items.find((item) => item.label === "Fakturiran RN")?.count, 250);
+  assert.equal(invoiceStatusData.items.find((item) => item.label === "Otvoreni RN")?.count, 100.5);
 });
 
 test("createReminder can link to a work order and inherit company context", () => {

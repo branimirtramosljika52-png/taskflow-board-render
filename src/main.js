@@ -1073,6 +1073,10 @@ const DASHBOARD_WIDGET_TEMPLATES = [
   { key: "wo-region-bar", category: "work_orders", source: "work_orders", visualization: "bar", metricKey: "region", title: "RN po regiji", description: "Bar chart raspodjele po regijama.", size: "full", gridWidth: 12, gridHeight: 4, limit: 6 },
   { key: "wo-executor-donut", category: "work_orders", source: "work_orders", visualization: "donut", metricKey: "executor", title: "Opterećenje izvršitelja", description: "Tko trenutno nosi najviše RN-a.", size: "large", gridWidth: 6, gridHeight: 4, limit: 6 },
   { key: "wo-status-evidence", category: "work_orders", source: "work_orders", visualization: "bar", metricKey: "status", title: "Broj RN po statusu", description: "Bar prikaz koji odvaja otvorene, gotove, ovjerene, fakturirane i stornirane RN.", size: "full", gridWidth: 12, gridHeight: 4, limit: 50 },
+  { key: "wo-executor-efficiency", category: "work_orders", source: "work_orders", visualization: "bar", metricKey: "executor_status", title: "Učinkovitost ispitivača", description: "Svaki ispitivač u jednom baru sa statusima RN-a.", size: "full", gridWidth: 12, gridHeight: 5, limit: 24 },
+  { key: "wo-invoice-total", category: "work_orders", source: "work_orders", visualization: "metric", metricKey: "invoice_total", title: "Iznos faktura", description: "Ukupan iznos iz RN faktura nakon filtera.", size: "small", gridWidth: 3, gridHeight: 2, limit: 6 },
+  { key: "wo-invoice-status", category: "work_orders", source: "work_orders", visualization: "bar", metricKey: "invoice_status", title: "Iznos po statusu RN", description: "Financijski pregled iznosa po statusima radnih naloga.", size: "full", gridWidth: 12, gridHeight: 4, limit: 50 },
+  { key: "wo-invoice-executor", category: "work_orders", source: "work_orders", visualization: "bar", metricKey: "invoice_executor", title: "Iznos po ispitivaču", description: "Zbroj iznosa RN faktura po izvršiteljima.", size: "full", gridWidth: 12, gridHeight: 4, limit: 24 },
   { key: "reminders-active", category: "reminders", source: "reminders", visualization: "metric", metricKey: "active", title: "Aktivni reminders", description: "Broj otvorenih reminders stavki.", size: "small", gridWidth: 3, gridHeight: 2, limit: 6 },
   { key: "reminders-status", category: "reminders", source: "reminders", visualization: "donut", metricKey: "status", title: "Reminder statusi", description: "Kako su reminders raspoređeni po statusu.", size: "large", gridWidth: 6, gridHeight: 4, limit: 6 },
   { key: "reminders-due", category: "reminders", source: "reminders", visualization: "list", metricKey: "due_soon", title: "Reminder rokovi", description: "Što uskoro dolazi na red.", size: "large", gridWidth: 6, gridHeight: 4, limit: 6 },
@@ -69874,7 +69878,6 @@ function createDashboardTemplateCard(template) {
   footer.className = "dashboard-template-card-footer";
   footer.append(
     createDashboardChip(DASHBOARD_WIDGET_SOURCE_OPTIONS.find((option) => option.value === template.source)?.label || template.source, "soft"),
-    createDashboardChip(DASHBOARD_WIDGET_SIZE_OPTIONS.find((option) => option.value === template.size)?.label || template.size, "filter"),
   );
 
   button.append(top, title, description, footer);
@@ -70198,6 +70201,16 @@ function getDashboardWidgetFilterChips(widget) {
   return chips;
 }
 
+function formatDashboardWidgetValue(value, valueType = "number") {
+  if (valueType === "currency") {
+    return formatCurrencyAmount(value, "EUR");
+  }
+
+  return new Intl.NumberFormat("hr-HR", {
+    maximumFractionDigits: 0,
+  }).format(Number(value ?? 0) || 0);
+}
+
 function createDashboardDonut(data) {
   const shell = document.createElement("div");
   shell.className = "dashboard-chart-shell";
@@ -70227,10 +70240,10 @@ function createDashboardDonut(data) {
   center.className = "dashboard-donut-center";
 
   const centerValue = document.createElement("strong");
-  centerValue.textContent = String(total);
+  centerValue.textContent = formatDashboardWidgetValue(total, data.valueType);
 
   const centerLabel = document.createElement("span");
-  centerLabel.textContent = "Zapisa";
+  centerLabel.textContent = data.valueType === "currency" ? "EUR" : "Zapisa";
 
   center.append(centerValue, centerLabel);
   donut.append(center);
@@ -70256,7 +70269,7 @@ function createDashboardDonut(data) {
     copy.append(dot, label);
 
     const value = document.createElement("span");
-    value.textContent = String(item.count);
+    value.textContent = formatDashboardWidgetValue(item.count, data.valueType);
 
     row.append(copy, value);
     legend.append(row);
@@ -70275,25 +70288,88 @@ function createDashboardBarChart(data) {
     return shell;
   }
 
-  const maxValue = Math.max(...data.items.map((item) => item.count), 1);
+  if (data.items.some((item) => Array.isArray(item.segments) && item.segments.length > 0)) {
+    const legend = document.createElement("div");
+    legend.className = "dashboard-stacked-bar-legend";
+    const segmentLabels = [];
+
+    data.items.forEach((item) => {
+      (item.segments ?? []).forEach((segment) => {
+        if (!segmentLabels.some((entry) => entry.label === segment.label)) {
+          segmentLabels.push(segment);
+        }
+      });
+    });
+
+    segmentLabels.forEach((segment, index) => {
+      const chip = document.createElement("span");
+      chip.className = "dashboard-stacked-bar-legend-chip";
+      const dot = document.createElement("span");
+      dot.style.background = DASHBOARD_CHART_COLORS[index % DASHBOARD_CHART_COLORS.length];
+      chip.append(dot, document.createTextNode(segment.label));
+      legend.append(chip);
+    });
+
+    const rows = document.createElement("div");
+    rows.className = "dashboard-stacked-bar-chart";
+
+    data.items.forEach((item) => {
+      const total = Number(item.count ?? 0) || 0;
+      const row = document.createElement("div");
+      row.className = "dashboard-stacked-bar-row";
+
+      const label = document.createElement("div");
+      label.className = "dashboard-stacked-bar-label";
+      const labelText = document.createElement("strong");
+      labelText.textContent = item.label;
+      const totalText = document.createElement("span");
+      totalText.textContent = formatDashboardWidgetValue(total, data.valueType);
+      label.append(labelText, totalText);
+
+      const track = document.createElement("div");
+      track.className = "dashboard-stacked-bar-track";
+      (item.segments ?? []).forEach((segment, index) => {
+        const count = Number(segment.count ?? 0) || 0;
+        if (count <= 0 || total <= 0) {
+          return;
+        }
+
+        const fill = document.createElement("span");
+        fill.className = "dashboard-stacked-bar-fill";
+        fill.style.width = `${Math.max(4, Math.round((count / total) * 100))}%`;
+        fill.style.background = DASHBOARD_CHART_COLORS[index % DASHBOARD_CHART_COLORS.length];
+        fill.title = `${segment.label}: ${formatDashboardWidgetValue(count, data.valueType)}`;
+        track.append(fill);
+      });
+
+      row.append(label, track);
+      rows.append(row);
+    });
+
+    shell.append(legend, rows);
+    return shell;
+  }
+
+  const maxValue = Math.max(...data.items.map((item) => Number(item.count ?? 0) || 0), 1);
   const chart = document.createElement("div");
   chart.className = "dashboard-bar-chart";
 
   data.items.forEach((item, index) => {
+    const numericValue = Number(item.count ?? 0) || 0;
     const column = document.createElement("div");
     column.className = "dashboard-bar-column";
 
     const value = document.createElement("span");
     value.className = "dashboard-bar-value";
-    value.textContent = String(item.count);
+    value.textContent = formatDashboardWidgetValue(numericValue, data.valueType);
 
     const track = document.createElement("div");
     track.className = "dashboard-bar-track";
 
     const fill = document.createElement("span");
     fill.className = "dashboard-bar-fill";
-    fill.style.height = item.count > 0
-      ? `${Math.max(12, Math.round((item.count / maxValue) * 100))}%`
+    fill.style.height = numericValue > 0
+      ? `${Math.max(12, Math.round((numericValue / maxValue) * 100))}%`
       : "0%";
     fill.style.background = DASHBOARD_CHART_COLORS[index % DASHBOARD_CHART_COLORS.length];
 
@@ -70469,7 +70545,7 @@ function createDashboardWidgetCard(widget, { preview = false } = {}) {
   if (data.kind === "metric") {
     const value = document.createElement("strong");
     value.className = "dashboard-widget-metric-value";
-    value.textContent = String(data.value);
+    value.textContent = formatDashboardWidgetValue(data.value, data.valueType);
 
     const subtitle = document.createElement("span");
     subtitle.className = "dashboard-widget-metric-subtitle";
@@ -70486,13 +70562,13 @@ function createDashboardWidgetCard(widget, { preview = false } = {}) {
 
   const footer = document.createElement("div");
   footer.className = "dashboard-widget-footer";
-  footer.append(createDashboardChip(
-    DASHBOARD_WIDGET_SIZE_OPTIONS.find((item) => item.value === widget.size)?.label || widget.size,
-    "soft",
-  ));
   footer.append(...getDashboardWidgetFilterChips(widget));
 
-  card.append(head, body, footer);
+  if (footer.childElementCount > 0) {
+    card.append(head, body, footer);
+  } else {
+    card.append(head, body);
+  }
   return card;
 }
 
@@ -70992,7 +71068,7 @@ function createDashboardWidgetCanvasCard(widget, { preview = false } = {}) {
   if (data.kind === "metric") {
     const value = document.createElement("strong");
     value.className = "dashboard-widget-metric-value";
-    value.textContent = String(data.value);
+    value.textContent = formatDashboardWidgetValue(data.value, data.valueType);
 
     const subtitle = document.createElement("span");
     subtitle.className = "dashboard-widget-metric-subtitle";
@@ -71009,14 +71085,13 @@ function createDashboardWidgetCanvasCard(widget, { preview = false } = {}) {
 
   const footer = document.createElement("div");
   footer.className = "dashboard-widget-footer";
-  footer.append(createDashboardChip(
-    DASHBOARD_WIDGET_SIZE_OPTIONS.find((item) => item.value === widget.size)?.label || widget.size,
-    "soft",
-  ));
-  footer.append(createDashboardChip(`${clampDashboardWidgetWidth(widget.gridWidth)} kol.`, "soft"));
   footer.append(...getDashboardWidgetFilterChips(widget));
 
-  card.append(head, body, footer);
+  if (footer.childElementCount > 0) {
+    card.append(head, body, footer);
+  } else {
+    card.append(head, body);
+  }
 
   if (!preview) {
     const resizeHandle = document.createElement("button");
