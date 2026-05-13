@@ -9270,6 +9270,21 @@ function normalizeDashboardWidgetMetricKey(source, visualization, value) {
   return match?.value ?? options[0]?.value ?? "";
 }
 
+function normalizeDashboardStatusColors(input = {}) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return {};
+  }
+
+  return Object.entries(input).reduce((acc, [key, value]) => {
+    const normalizedKey = normalizeText(key);
+    const normalizedValue = normalizeText(value);
+    if (normalizedKey && /^#[0-9a-f]{6}$/i.test(normalizedValue)) {
+      acc[normalizedKey] = normalizedValue.toLowerCase();
+    }
+    return acc;
+  }, {});
+}
+
 function normalizeDashboardWidgetFilters(input = {}) {
   return {
     companyId: normalizeText(input.companyId),
@@ -9280,6 +9295,7 @@ function normalizeDashboardWidgetFilters(input = {}) {
     assigneeUserId: normalizeText(input.assigneeUserId),
     dateWindow: normalizeDashboardWidgetDateWindow(input.dateWindow),
     tag: normalizeText(input.tag),
+    statusColors: normalizeDashboardStatusColors(input.statusColors),
   };
 }
 
@@ -9724,6 +9740,7 @@ function buildDashboardDistributionItems(widget, items) {
   if (widget.metricKey === "status") {
     const statusItems = WORK_ORDER_STATUS_OPTIONS.map((option) => ({
       label: option.label,
+      status: option.value,
       count: items.filter((item) => item.status === option.value).length,
     }));
 

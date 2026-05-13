@@ -1056,6 +1056,13 @@ const DASHBOARD_CHART_COLORS = [
   "#45c7f0",
   "#b0b8c9",
 ];
+const DASHBOARD_STATUS_DEFAULT_COLORS = Object.freeze({
+  "Otvoreni RN": "#5b8def",
+  "Gotov RN": "#e35eb7",
+  "Ovjeren RN": "#2db889",
+  "Fakturiran RN": "#ffb648",
+  "Storno RN": "#7f6df2",
+});
 const DASHBOARD_WIDGET_TEMPLATE_CATEGORIES = [
   { value: "featured", label: "Featured", copy: "Najkorisnije kartice za brzi start." },
   { value: "work_orders", label: "Radni nalozi", copy: "Operativa, statusi, rokovi i regije." },
@@ -3887,6 +3894,7 @@ const dashboardOpenPeopleButton = document.querySelector("#dashboard-open-people
 const dashboardOrganizationsPanel = document.querySelector("#dashboard-organizations-panel");
 const dashboardOrganizationsCount = document.querySelector("#dashboard-organizations-count");
 const dashboardOrganizationsBody = document.querySelector("#dashboard-organizations-body");
+const dashboardOrganizationOpenFormButton = document.querySelector("#dashboard-organization-open-form");
 const dashboardSignupRequestsPanel = document.querySelector("#dashboard-signup-requests-panel");
 const dashboardSignupRequestsCount = document.querySelector("#dashboard-signup-requests-count");
 const dashboardSignupRequestsBody = document.querySelector("#dashboard-signup-requests-body");
@@ -3929,6 +3937,8 @@ const dashboardWidgetExecutorFilterInput = document.querySelector("#dashboard-wi
 const dashboardWidgetAssigneeFilterInput = document.querySelector("#dashboard-widget-assignee-filter");
 const dashboardWidgetDateWindowInput = document.querySelector("#dashboard-widget-date-window");
 const dashboardWidgetTagFilterInput = document.querySelector("#dashboard-widget-tag-filter");
+const dashboardWidgetStatusColorsField = document.querySelector("#dashboard-widget-status-colors-field");
+const dashboardWidgetStatusColors = document.querySelector("#dashboard-widget-status-colors");
 const dashboardWidgetDeleteButton = document.querySelector("#dashboard-widget-delete");
 const dashboardWidgetCancelButton = document.querySelector("#dashboard-widget-cancel");
 const dashboardWidgetPreview = document.querySelector("#dashboard-widget-preview");
@@ -4971,6 +4981,11 @@ const locationsHelper = document.querySelector("#locations-helper");
 const organizationForm = document.querySelector("#organization-form");
 const organizationError = document.querySelector("#organization-error");
 const organizationPanel = document.querySelector("#organization-panel");
+const organizationEditorBackdrop = document.querySelector("#organization-editor-backdrop");
+const organizationEditorPanel = document.querySelector("#organization-editor-panel");
+const organizationEditorTitle = document.querySelector("#organization-editor-title");
+const organizationEditorStatusPill = document.querySelector("#organization-editor-status-pill");
+const organizationEditorCloseButton = document.querySelector("#organization-editor-close");
 const organizationIdInput = document.querySelector("#organization-id");
 const organizationNameInput = document.querySelector("#organization-name");
 const organizationOibInput = document.querySelector("#organization-oib");
@@ -46374,6 +46389,10 @@ function renderDashboardOrganizationsPanel() {
     dashboardOrganizationsPanel.hidden = !isSuperAdmin;
   }
 
+  if (dashboardOrganizationOpenFormButton) {
+    dashboardOrganizationOpenFormButton.hidden = !isSuperAdmin;
+  }
+
   if (!isSuperAdmin || !dashboardOrganizationsBody) {
     return;
   }
@@ -46437,9 +46456,7 @@ function renderDashboardOrganizationsPanel() {
         });
       }),
       createActionButton("Uredi", "card-button card-button-light", () => {
-        populateOrganizationForm(organization);
-        activateSidebarItem("people", { expandSidebar: state.sidebarCollapsed });
-        organizationPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
+        hydrateOrganizationForm(organization);
       }),
     );
 
@@ -69443,6 +69460,47 @@ function resetOrganizationForm() {
   organizationError.textContent = "";
   organizationStatusInput.value = "active";
   organizationCountryInput.value = "Hrvatska";
+  syncOrganizationEditorChrome();
+}
+
+function syncOrganizationEditorChrome() {
+  const isEditing = Boolean(organizationIdInput?.value);
+  const isActive = String(organizationStatusInput?.value || "active") === "active";
+
+  if (organizationEditorTitle) {
+    organizationEditorTitle.textContent = isEditing ? "Uredi organizaciju" : "Nova organizacija";
+  }
+
+  if (organizationEditorStatusPill) {
+    organizationEditorStatusPill.textContent = isActive ? "Aktivna" : "Neaktivna";
+    organizationEditorStatusPill.classList.toggle("is-active", isActive);
+    organizationEditorStatusPill.classList.toggle("is-inactive", !isActive);
+  }
+}
+
+function openOrganizationEditor() {
+  syncOrganizationEditorChrome();
+  if (organizationEditorBackdrop) {
+    organizationEditorBackdrop.hidden = false;
+  }
+  if (organizationEditorPanel) {
+    organizationEditorPanel.hidden = false;
+    requestAnimationFrame(() => {
+      organizationNameInput?.focus({ preventScroll: true });
+    });
+  }
+}
+
+function closeOrganizationEditor({ reset = false } = {}) {
+  if (organizationEditorBackdrop) {
+    organizationEditorBackdrop.hidden = true;
+  }
+  if (organizationEditorPanel) {
+    organizationEditorPanel.hidden = true;
+  }
+  if (reset) {
+    resetOrganizationForm();
+  }
 }
 
 function resetUserForm() {
@@ -69679,6 +69737,7 @@ function populateOrganizationForm(organization) {
   organizationContactPhoneInput.value = organization.contactPhone;
   organizationStatusInput.value = organization.status || "active";
   organizationError.textContent = "";
+  syncOrganizationEditorChrome();
 }
 
 function hydrateOrganizationForm(organization) {
@@ -69686,6 +69745,7 @@ function hydrateOrganizationForm(organization) {
   renderActiveView();
   renderManagement();
   populateOrganizationForm(organization);
+  openOrganizationEditor();
 }
 
 function hydrateUserForm(user) {
@@ -70055,6 +70115,109 @@ function getDashboardStatusOptions(source) {
   return WORK_ORDER_STATUS_OPTIONS;
 }
 
+function normalizeDashboardColor(value, fallback = "#5b8def") {
+  const normalized = String(value ?? "").trim();
+  return /^#[0-9a-f]{6}$/i.test(normalized) ? normalized.toLowerCase() : fallback;
+}
+
+function getDashboardDefaultStatusColor(status) {
+  return normalizeDashboardColor(
+    DASHBOARD_STATUS_DEFAULT_COLORS[status],
+    DASHBOARD_CHART_COLORS[WORK_ORDER_STATUS_OPTIONS.findIndex((option) => option.value === status)] ?? DASHBOARD_CHART_COLORS[0],
+  );
+}
+
+function getDashboardWidgetStatusColorsFromForm() {
+  if (!dashboardWidgetStatusColors) {
+    return {};
+  }
+
+  return Array.from(dashboardWidgetStatusColors.querySelectorAll("input[data-status-color-key]"))
+    .reduce((acc, input) => {
+      if (!(input instanceof HTMLInputElement)) {
+        return acc;
+      }
+      const key = input.dataset.statusColorKey || "";
+      if (key) {
+        acc[key] = normalizeDashboardColor(input.value, getDashboardDefaultStatusColor(key));
+      }
+      return acc;
+    }, {});
+}
+
+function getDashboardWidgetStatusColorMap(widget = {}) {
+  const colors = widget?.filters?.statusColors ?? {};
+  return WORK_ORDER_STATUS_OPTIONS.reduce((acc, option) => {
+    acc[option.value] = normalizeDashboardColor(
+      colors[option.value] ?? colors[option.label],
+      getDashboardDefaultStatusColor(option.value),
+    );
+    return acc;
+  }, {});
+}
+
+function getDashboardChartColor(widget, item, index = 0) {
+  const statusKey = item?.status || item?.label || "";
+  const statusColors = getDashboardWidgetStatusColorMap(widget);
+  return statusColors[statusKey] || DASHBOARD_CHART_COLORS[index % DASHBOARD_CHART_COLORS.length];
+}
+
+function dashboardWidgetSupportsStatusColors(source, visualization, metricKey) {
+  return source === "work_orders"
+    && (visualization === "bar" || visualization === "donut")
+    && ["status", "executor_status"].includes(metricKey);
+}
+
+function renderDashboardWidgetStatusColorControls(widget = null) {
+  if (!dashboardWidgetStatusColorsField || !dashboardWidgetStatusColors) {
+    return;
+  }
+
+  const source = dashboardWidgetSourceInput?.value || widget?.source || "work_orders";
+  const visualization = dashboardWidgetVisualizationInput?.value || widget?.visualization || "metric";
+  const metricKey = dashboardWidgetMetricInput?.value || widget?.metricKey || "";
+  const isVisible = dashboardWidgetSupportsStatusColors(source, visualization, metricKey);
+  dashboardWidgetStatusColorsField.hidden = !isVisible;
+
+  if (!isVisible) {
+    dashboardWidgetStatusColors.replaceChildren();
+    return;
+  }
+
+  const colors = widget?.filters?.statusColors ?? getDashboardWidgetStatusColorsFromForm();
+  dashboardWidgetStatusColors.replaceChildren(...WORK_ORDER_STATUS_OPTIONS.map((option) => {
+    const label = document.createElement("label");
+    label.className = "dashboard-status-color-option";
+
+    const input = document.createElement("input");
+    input.type = "color";
+    input.dataset.statusColorKey = option.value;
+    input.value = normalizeDashboardColor(colors[option.value] ?? colors[option.label], getDashboardDefaultStatusColor(option.value));
+    input.addEventListener("input", renderDashboardWidgetPreview);
+    input.addEventListener("change", renderDashboardWidgetPreview);
+
+    const swatch = document.createElement("span");
+    swatch.className = "dashboard-status-color-swatch";
+    swatch.style.background = input.value;
+
+    const copy = document.createElement("span");
+    copy.className = "dashboard-status-color-copy";
+    const title = document.createElement("strong");
+    title.textContent = option.label;
+    const hint = document.createElement("small");
+    hint.textContent = input.value.toUpperCase();
+    copy.append(title, hint);
+
+    input.addEventListener("input", () => {
+      hint.textContent = input.value.toUpperCase();
+      swatch.style.background = input.value;
+    });
+
+    label.append(input, swatch, copy);
+    return label;
+  }));
+}
+
 function getDashboardPriorityOptions(source) {
   return source === "todo_tasks" || source === "work_orders" ? PRIORITY_OPTIONS : [];
 }
@@ -70296,6 +70459,7 @@ function readDashboardWidgetFormPatch() {
       assigneeUserId: dashboardWidgetAssigneeFilterInput?.value ?? "",
       dateWindow: dashboardWidgetDateWindowInput?.value ?? "all",
       tag: dashboardWidgetTagFilterInput?.value ?? "",
+      statusColors: getDashboardWidgetStatusColorsFromForm(),
     },
   };
 }
@@ -70421,6 +70585,8 @@ function syncDashboardWidgetFormOptions() {
   if (dashboardWidgetLimitInput) {
     dashboardWidgetLimitInput.disabled = visualization === "metric";
   }
+
+  renderDashboardWidgetStatusColorControls();
 }
 
 function populateDashboardWidgetForm(widget = null) {
@@ -70466,6 +70632,7 @@ function populateDashboardWidgetForm(widget = null) {
   dashboardWidgetAssigneeFilterInput.value = draft.filters?.assigneeUserId ?? "";
   dashboardWidgetDateWindowInput.value = draft.filters?.dateWindow ?? "all";
   dashboardWidgetTagFilterInput.value = draft.filters?.tag ?? "";
+  renderDashboardWidgetStatusColorControls(draft);
 }
 
 function openDashboardBuilder(widget = null) {
@@ -70563,7 +70730,7 @@ function formatDashboardWidgetValue(value, valueType = "number") {
   }).format(Number(value ?? 0) || 0);
 }
 
-function createDashboardDonut(data) {
+function createDashboardDonut(data, widget = {}) {
   const shell = document.createElement("div");
   shell.className = "dashboard-chart-shell";
   const total = data.items.reduce((sum, item) => sum + item.count, 0);
@@ -70581,7 +70748,7 @@ function createDashboardDonut(data) {
     const value = (item.count / total) * 100;
     const start = offset;
     offset += value;
-    return `${DASHBOARD_CHART_COLORS[index % DASHBOARD_CHART_COLORS.length]} ${start}% ${offset}%`;
+    return `${getDashboardChartColor(widget, item, index)} ${start}% ${offset}%`;
   });
 
   const donut = document.createElement("div");
@@ -70613,7 +70780,7 @@ function createDashboardDonut(data) {
 
     const dot = document.createElement("span");
     dot.className = "dashboard-widget-legend-dot";
-    dot.style.background = DASHBOARD_CHART_COLORS[index % DASHBOARD_CHART_COLORS.length];
+    dot.style.background = getDashboardChartColor(widget, item, index);
 
     const label = document.createElement("strong");
     label.textContent = item.label;
@@ -70631,7 +70798,7 @@ function createDashboardDonut(data) {
   return shell;
 }
 
-function createDashboardBarChart(data) {
+function createDashboardBarChart(data, widget = {}) {
   const shell = document.createElement("div");
   shell.className = "dashboard-chart-shell";
 
@@ -70654,14 +70821,14 @@ function createDashboardBarChart(data) {
     });
     const segmentColorByLabel = new Map(segmentLabels.map((segment, index) => [
       segment.label,
-      DASHBOARD_CHART_COLORS[index % DASHBOARD_CHART_COLORS.length],
+      getDashboardChartColor(widget, segment, index),
     ]));
 
     segmentLabels.forEach((segment, index) => {
       const chip = document.createElement("span");
       chip.className = "dashboard-stacked-bar-legend-chip";
       const dot = document.createElement("span");
-      dot.style.background = DASHBOARD_CHART_COLORS[index % DASHBOARD_CHART_COLORS.length];
+      dot.style.background = getDashboardChartColor(widget, segment, index);
       chip.append(dot, document.createTextNode(segment.label));
       legend.append(chip);
     });
@@ -70742,7 +70909,7 @@ function createDashboardBarChart(data) {
     fill.style.height = numericValue > 0
       ? `${Math.max(12, Math.round((numericValue / maxValue) * 100))}%`
       : "0%";
-    fill.style.background = DASHBOARD_CHART_COLORS[index % DASHBOARD_CHART_COLORS.length];
+    fill.style.background = getDashboardChartColor(widget, item, index);
 
     track.append(fill);
 
@@ -70924,9 +71091,9 @@ function createDashboardWidgetCard(widget, { preview = false } = {}) {
 
     body.append(value, subtitle);
   } else if (data.kind === "donut") {
-    body.append(createDashboardDonut(data));
+    body.append(createDashboardDonut(data, widget));
   } else if (data.kind === "bar") {
-    body.append(createDashboardBarChart(data));
+    body.append(createDashboardBarChart(data, widget));
   } else {
     body.append(createDashboardList(data));
   }
@@ -71447,9 +71614,9 @@ function createDashboardWidgetCanvasCard(widget, { preview = false } = {}) {
 
     body.append(value, subtitle);
   } else if (data.kind === "donut") {
-    body.append(createDashboardDonut(data));
+    body.append(createDashboardDonut(data, widget));
   } else if (data.kind === "bar") {
-    body.append(createDashboardBarChart(data));
+    body.append(createDashboardBarChart(data, widget));
   } else {
     body.append(createDashboardList(data));
   }
@@ -102046,15 +102213,34 @@ organizationForm?.addEventListener("submit", (event) => {
     method,
     body: buildOrganizationPayload(),
   }), organizationError).then((success) => {
-    if (success && !isEditing) {
-      resetOrganizationForm();
+    if (success) {
+      closeOrganizationEditor({ reset: true });
     }
   });
+});
+
+dashboardOrganizationOpenFormButton?.addEventListener("click", () => {
+  if (!getIsSuperAdmin()) {
+    return;
+  }
+  resetOrganizationForm();
+  openOrganizationEditor();
 });
 
 organizationResetButton?.addEventListener("click", () => {
   resetOrganizationForm();
 });
+
+organizationEditorCloseButton?.addEventListener("click", () => {
+  closeOrganizationEditor({ reset: false });
+});
+
+organizationEditorBackdrop?.addEventListener("click", () => {
+  closeOrganizationEditor({ reset: false });
+});
+
+organizationStatusInput?.addEventListener("change", syncOrganizationEditorChrome);
+organizationNameInput?.addEventListener("input", syncOrganizationEditorChrome);
 
 userOpenFormButton?.addEventListener("click", () => {
   if (!getCanManagePeople()) {
@@ -102540,9 +102726,15 @@ dashboardWidgetSearchInput?.addEventListener("input", () => {
   dashboardWidgetTagFilterInput,
 ].forEach((input) => {
   input?.addEventListener("input", () => {
+    if (input === dashboardWidgetMetricInput) {
+      renderDashboardWidgetStatusColorControls();
+    }
     renderDashboardWidgetPreview();
   });
   input?.addEventListener("change", () => {
+    if (input === dashboardWidgetMetricInput) {
+      renderDashboardWidgetStatusColorControls();
+    }
     renderDashboardWidgetPreview();
   });
 });

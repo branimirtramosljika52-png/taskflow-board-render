@@ -3056,7 +3056,12 @@ test("dashboard widgets normalize settings and keep deterministic ordering", () 
       size: "large",
       limit: 5,
       position: 2,
-      filters: {},
+      filters: {
+        statusColors: {
+          "Otvoreni RN": "#8a8f99",
+          "Gotov RN": "not-a-color",
+        },
+      },
     },
     { dashboardWidgets: [widgetA] },
     () => "widget-b",
@@ -3082,6 +3087,8 @@ test("dashboard widgets normalize settings and keep deterministic ordering", () 
   assert.equal(updated.size, "full");
   assert.equal(updated.filters.region, "Zagreb");
   assert.equal(updated.filters.dateWindow, "overdue");
+  assert.equal(widgetB.filters.statusColors["Otvoreni RN"], "#8a8f99");
+  assert.equal(widgetB.filters.statusColors["Gotov RN"], undefined);
   assert.deepEqual(sortDashboardWidgets([widgetA, widgetB]).map((item) => item.id), ["widget-b", "widget-a"]);
 });
 
