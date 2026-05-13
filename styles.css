@@ -26787,6 +26787,10 @@ body.is-vehicle-reservation-open {
   gap: 12px;
 }
 
+.periodics-filters {
+  grid-template-columns: minmax(280px, 1fr) minmax(180px, 220px) minmax(220px, 260px);
+}
+
 .template-development-list-heading {
   display: flex;
   align-items: flex-start;
@@ -27726,6 +27730,38 @@ body.is-vehicle-reservation-open {
 
 .periodics-grid-row:hover {
   background: rgba(247, 250, 255, 0.96);
+}
+
+.periodics-group-row {
+  background:
+    linear-gradient(90deg, rgba(232, 241, 255, 0.96), rgba(255, 248, 255, 0.94));
+  border-top: 1px solid rgba(188, 203, 235, 0.8);
+  cursor: pointer;
+}
+
+.periodics-group-row:focus-visible {
+  outline: 3px solid rgba(47, 126, 247, 0.28);
+  outline-offset: -3px;
+}
+
+.periodics-group-cell {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 14px;
+}
+
+.periodics-group-cell strong {
+  color: #13213a;
+  font-size: 0.9rem;
+}
+
+.periodics-group-cell span {
+  color: rgba(82, 99, 132, 0.88);
+  font-size: 0.76rem;
+  text-align: right;
 }
 
 .periodics-grid-row.is-overdue {
