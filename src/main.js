@@ -63808,8 +63808,10 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
         refreshEditorSupport();
         renderDocumentTemplatePreviewContent();
       },
+      { full: true },
     );
-    periodicsTrackingField.hidden = !isDocumentTemplatePeriodicsTrackableField(field);
+    const isPeriodicsTrackableField = isDocumentTemplatePeriodicsTrackableField(field);
+    periodicsTrackingField.hidden = !isPeriodicsTrackableField;
 
     const textListStyleField = document.createElement("label");
     textListStyleField.className = "field";
@@ -64194,9 +64196,6 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
       }
       if (isDocumentTemplateRequiredToggleFieldType(field.type)) {
         grid.append(requiredField);
-      }
-      if (!periodicsTrackingField.hidden) {
-        grid.append(periodicsTrackingField);
       }
       if (!textListStyleField.hidden) {
         grid.append(textListStyleField);
@@ -64976,6 +64975,10 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
       inspectorShell.append(inspectorHeader);
       if (tokenRow) {
         inspectorShell.append(tokenRow);
+      }
+      if (isPeriodicsTrackableField) {
+        periodicsTrackingField.hidden = false;
+        inspectorShell.append(periodicsTrackingField);
       }
       inspectorShell.append(grid);
     }
