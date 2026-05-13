@@ -8112,6 +8112,9 @@ async function handleApiRequest(request, response, url) {
       const locationId = String(url.searchParams.get("locationId") ?? "").trim();
       const objectId = String(url.searchParams.get("objectId") ?? "").trim();
       const limit = String(url.searchParams.get("limit") ?? "200").trim();
+      const periodics = ["1", "true", "yes"].includes(
+        String(url.searchParams.get("periodics") ?? "").trim().toLowerCase(),
+      );
 
       if (templateId) {
         assertInScope(scopedSnapshot.documentTemplates ?? [], templateId, "Template nije dostupan za odabranu organizaciju.");
@@ -8136,6 +8139,7 @@ async function handleApiRequest(request, response, url) {
         locationId,
         objectId,
         limit,
+        periodics,
       })).filter((item) => {
         const itemCompanyId = String(item.companyId || "");
         const itemLocationId = String(item.locationId || "");

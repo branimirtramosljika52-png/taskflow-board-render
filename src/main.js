@@ -427,7 +427,9 @@ const DOCUMENT_LIBRARY_FILE_KIND_LABELS = Object.freeze({
   record: "Zapisnik",
   other: "Ostalo",
 });
-const PERIODICS_MAX_RECORDS = 1000;
+const PERIODICS_MAX_RECORDS = 10000;
+const PERIODICS_FILTERS_STORAGE_KEY_PREFIX = "safenexus.periodics.filters.v1:";
+const PERIODICS_EXPANDED_GROUPS_STORAGE_KEY_PREFIX = "safenexus.periodics.expanded-groups.v1:";
 const DRAWING_REFERENCE_MAX_SIZE_BYTES = 25 * 1024 * 1024;
 const DRAWING_REFERENCE_ALLOWED_EXTENSIONS = new Set(["dwg", "dxf", "pdf", "png", "jpg", "jpeg", "webp", "svg"]);
 const DRAWING_REFERENCE_PREVIEW_CATEGORY = "cad-preview";
@@ -1814,6 +1816,7 @@ const state = {
     inspectionGroupKey: "",
   },
   periodicsInspectionExpandedGroups: {},
+  periodicsPreferencesScope: "",
   periodicsViewMode: "list",
   periodicsCalendar: {
     anchorDate: new Date().toISOString().slice(0, 10),
@@ -2443,6 +2446,96 @@ function persistResolvedNotifications() {
     getNotificationsResolvedStorageKey(),
     Array.from(state.notificationsResolved.ids),
   );
+}
+
+function getPeriodicsPreferencesScope() {
+  const organizationId = state.activeOrganizationId || "global";
+  const userId = state.user?.id || "guest";
+  return `${userId}:${organizationId}`;
+}
+
+function getPeriodicsFallbackPreferencesScope() {
+  const userId = state.user?.id || "guest";
+  return `${userId}:global`;
+}
+
+function getPeriodicsFiltersStorageKey(scope = getPeriodicsPreferencesScope()) {
+  return `${PERIODICS_FILTERS_STORAGE_KEY_PREFIX}${scope}`;
+}
+
+function getPeriodicsExpandedGroupsStorageKey(scope = getPeriodicsPreferencesScope()) {
+  return `${PERIODICS_EXPANDED_GROUPS_STORAGE_KEY_PREFIX}${scope}`;
+}
+
+function normalizePeriodicsStoredFilters(filters = {}) {
+  return {
+    horizon: String(filters?.horizon || "all").trim() || "all",
+    inspectionGroup: normalizePeriodicsInspectionGroupMode(filters?.inspectionGroup || "location-object"),
+    inspectionGroupKey: String(filters?.inspectionGroupKey || "").trim(),
+  };
+}
+
+function normalizePeriodicsExpandedGroupsPreference(value = {}) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([key, isExpanded]) => [String(key || "").trim(), Boolean(isExpanded)])
+      .filter(([key]) => Boolean(key)),
+  );
+}
+
+function hasStoredPeriodicsPreference(value) {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length > 0);
+}
+
+function loadPeriodicsPreferences(force = false) {
+  const scope = getPeriodicsPreferencesScope();
+  if (!force && state.periodicsPreferencesScope === scope) {
+    return;
+  }
+
+  const fallbackScope = getPeriodicsFallbackPreferencesScope();
+  const storedFiltersRaw = readJsonFromLocalStorage(getPeriodicsFiltersStorageKey(scope), null);
+  const fallbackFiltersRaw = scope === fallbackScope
+    ? {}
+    : readJsonFromLocalStorage(getPeriodicsFiltersStorageKey(fallbackScope), {});
+  const storedFilters = normalizePeriodicsStoredFilters(
+    hasStoredPeriodicsPreference(storedFiltersRaw) ? storedFiltersRaw : fallbackFiltersRaw,
+  );
+  const storedExpandedRaw = readJsonFromLocalStorage(getPeriodicsExpandedGroupsStorageKey(scope), null);
+  const fallbackExpandedRaw = scope === fallbackScope
+    ? {}
+    : readJsonFromLocalStorage(getPeriodicsExpandedGroupsStorageKey(fallbackScope), {});
+  state.periodicsFilters = {
+    ...state.periodicsFilters,
+    ...storedFilters,
+  };
+  state.periodicsInspectionExpandedGroups = normalizePeriodicsExpandedGroupsPreference(
+    hasStoredPeriodicsPreference(storedExpandedRaw) ? storedExpandedRaw : fallbackExpandedRaw,
+  );
+  state.periodicsPreferencesScope = scope;
+}
+
+function persistPeriodicsPreferences() {
+  const scope = state.periodicsPreferencesScope || getPeriodicsPreferencesScope();
+  state.periodicsPreferencesScope = scope;
+  const filters = normalizePeriodicsStoredFilters(state.periodicsFilters);
+  writeJsonToLocalStorage(getPeriodicsFiltersStorageKey(scope), filters);
+  writeJsonToLocalStorage(
+    getPeriodicsExpandedGroupsStorageKey(scope),
+    normalizePeriodicsExpandedGroupsPreference(state.periodicsInspectionExpandedGroups),
+  );
+  const fallbackScope = getPeriodicsFallbackPreferencesScope();
+  if (fallbackScope !== scope) {
+    writeJsonToLocalStorage(getPeriodicsFiltersStorageKey(fallbackScope), filters);
+    writeJsonToLocalStorage(
+      getPeriodicsExpandedGroupsStorageKey(fallbackScope),
+      normalizePeriodicsExpandedGroupsPreference(state.periodicsInspectionExpandedGroups),
+    );
+  }
 }
 
 function isNotificationResolved(notificationId = "") {
@@ -28408,6 +28501,7 @@ function togglePeriodicsInspectionGroupExpansion(groupKey = "") {
   }
   const expandedGroups = getPeriodicsInspectionExpandedGroups();
   expandedGroups[key] = !expandedGroups[key];
+  persistPeriodicsPreferences();
   renderPeriodicsModule();
 }
 
@@ -29763,6 +29857,7 @@ function renderPeriodicsModule() {
   if (!periodicsModule) {
     return;
   }
+  loadPeriodicsPreferences();
   state.periodicsViewMode = normalizePeriodicsViewMode(state.periodicsViewMode);
   state.periodicsCalendar = {
     anchorDate: getPeriodicsCalendarAnchorDate(state.periodicsCalendar?.anchorDate),
@@ -29778,12 +29873,12 @@ function renderPeriodicsModule() {
   const criticalDays = visualSettings.criticalDays;
 
   const filters = {
-    query: periodicsSearchInput?.value?.trim() || state.periodicsFilters.query || "",
-    horizon: periodicsHorizonInput?.value || state.periodicsFilters.horizon || "all",
+    query: state.periodicsFilters.query || periodicsSearchInput?.value?.trim() || "",
+    horizon: state.periodicsFilters.horizon || periodicsHorizonInput?.value || "all",
     inspectionGroup: normalizePeriodicsInspectionGroupMode(
-      periodicsInspectionGroupInput?.value || state.periodicsFilters.inspectionGroup || "location-object",
+      state.periodicsFilters.inspectionGroup || periodicsInspectionGroupInput?.value || "location-object",
     ),
-    inspectionGroupKey: String(periodicsInspectionGroupValueInput?.value || state.periodicsFilters.inspectionGroupKey || "").trim(),
+    inspectionGroupKey: String(state.periodicsFilters.inspectionGroupKey || periodicsInspectionGroupValueInput?.value || "").trim(),
   };
   state.periodicsFilters = filters;
 
@@ -29828,7 +29923,10 @@ function renderPeriodicsModule() {
   const rawEquipmentEntries = buildPeriodicsMeasurementEquipmentEntries();
 
   const inspectionEntriesBeforeGroup = applyPeriodicsFilters(rawInspectionEntries, filters);
-  filters.inspectionGroupKey = syncPeriodicsInspectionGroupFilterControl(inspectionEntriesBeforeGroup, filters);
+  const syncedInspectionGroupKey = syncPeriodicsInspectionGroupFilterControl(inspectionEntriesBeforeGroup, filters);
+  filters.inspectionGroupKey = state.periodicsFeed.loading && filters.inspectionGroupKey
+    ? filters.inspectionGroupKey
+    : syncedInspectionGroupKey;
   state.periodicsFilters = filters;
   const inspectionEntries = applyPeriodicsInspectionGroupFilter(inspectionEntriesBeforeGroup, filters);
   const vehicleEntries = applyPeriodicsFilters(rawVehicleEntries, filters);
@@ -30024,7 +30122,7 @@ async function loadPeriodicsFeed({ force = false } = {}) {
   }
 
   try {
-    const response = await apiRequest(`/document-records?limit=${PERIODICS_MAX_RECORDS}`);
+    const response = await apiRequest(`/document-records?limit=${PERIODICS_MAX_RECORDS}&periodics=1`);
     state.periodicsFeed = {
       organizationId: activeOrganizationId,
       loaded: true,
@@ -96891,17 +96989,20 @@ periodicsSearchInput?.addEventListener("input", () => {
 
 periodicsHorizonInput?.addEventListener("change", () => {
   state.periodicsFilters.horizon = periodicsHorizonInput.value || "all";
+  persistPeriodicsPreferences();
   renderPeriodicsModule();
 });
 
 periodicsInspectionGroupInput?.addEventListener("change", () => {
   state.periodicsFilters.inspectionGroup = normalizePeriodicsInspectionGroupMode(periodicsInspectionGroupInput.value);
   state.periodicsFilters.inspectionGroupKey = "";
+  persistPeriodicsPreferences();
   renderPeriodicsModule();
 });
 
 periodicsInspectionGroupValueInput?.addEventListener("change", () => {
   state.periodicsFilters.inspectionGroupKey = String(periodicsInspectionGroupValueInput.value || "").trim();
+  persistPeriodicsPreferences();
   renderPeriodicsModule();
 });
 
@@ -102622,6 +102723,7 @@ function resetAuthenticatedWorkspaceState() {
     inspectionGroupKey: "",
   };
   state.periodicsInspectionExpandedGroups = {};
+  state.periodicsPreferencesScope = "";
   state.periodicsSections = {
     inspectionsCollapsed: false,
     vehiclesCollapsed: false,

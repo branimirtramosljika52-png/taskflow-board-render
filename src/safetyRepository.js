@@ -6136,7 +6136,8 @@ export class InMemorySafetyRepository {
     const companyId = dbString(filters.companyId);
     const locationId = dbString(filters.locationId);
     const objectId = dbString(filters.objectId);
-    const limit = Math.max(1, Math.min(1000, Number.parseInt(filters.limit, 10) || 200));
+    const limitCap = filters.periodics ? 10000 : 1000;
+    const limit = Math.max(1, Math.min(limitCap, Number.parseInt(filters.limit, 10) || 200));
 
     return (this.snapshot.documentRecords ?? [])
       .filter((item) => (
@@ -12258,7 +12259,8 @@ export class MySqlSafetyRepository {
       const companyId = Number(filters.companyId);
       const locationId = Number(filters.locationId);
       const objectId = Number(filters.objectId);
-      const limit = Math.max(1, Math.min(1000, Number.parseInt(filters.limit, 10) || 200));
+      const limitCap = filters.periodics ? 10000 : 1000;
+      const limit = Math.max(1, Math.min(limitCap, Number.parseInt(filters.limit, 10) || 200));
 
       const conditions = [];
       const params = [];

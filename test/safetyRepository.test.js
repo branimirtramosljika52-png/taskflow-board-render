@@ -162,6 +162,38 @@ test("in-memory safety repository normalizes document record values and respects
   assert.deepEqual(older.fieldValues.lista, ["A", "B"]);
 });
 
+test("in-memory safety repository allows larger document record feeds for periodics", async () => {
+  const repository = new InMemorySafetyRepository();
+  await repository.init();
+
+  for (let index = 0; index < 1205; index += 1) {
+    await repository.createDocumentRecord({
+      organizationId: "org-1",
+      templateId: "template-periodics",
+      templateTitle: "SPR",
+      companyId: "company-1",
+      locationId: "location-1",
+      inspectionDate: `2026-01-${String((index % 28) + 1).padStart(2, "0")}`,
+      fieldValues: {
+        VRIJEDI_DO: "2027-05-13",
+      },
+    });
+  }
+
+  const regularItems = await repository.listDocumentRecords({
+    organizationId: "org-1",
+    limit: 1205,
+  });
+  const periodicsItems = await repository.listDocumentRecords({
+    organizationId: "org-1",
+    limit: 1205,
+    periodics: true,
+  });
+
+  assert.equal(regularItems.length, 1000);
+  assert.equal(periodicsItems.length, 1205);
+});
+
 test("in-memory safety repository stores measurement sheet presets per template, company and location", async () => {
   const repository = new InMemorySafetyRepository();
   await repository.init();
