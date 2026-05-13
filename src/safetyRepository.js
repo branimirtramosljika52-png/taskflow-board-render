@@ -588,6 +588,9 @@ export function mapStoredDocumentTemplateCustomField(field = {}) {
     label: dbString(source.label),
     wordLabel: dbString(source.wordLabel),
     type,
+    trackPeriodics: source.trackPeriodics === undefined && source.periodicsTracked === undefined
+      ? undefined
+      : Boolean(source.trackPeriodics ?? source.periodicsTracked),
     layoutWidth: dbString(source.layoutWidth),
     fieldHeight: Number(source.fieldHeight ?? 0) || 0,
     source: dbString(source.source ?? source.bindingSource),

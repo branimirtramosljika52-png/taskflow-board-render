@@ -2274,6 +2274,9 @@ function normalizeDocumentTemplateFields(fields = []) {
       wordLabel,
       type,
       required: normalizeBoolean(field?.required, false),
+      trackPeriodics: type === "date"
+        ? normalizeBoolean(field?.trackPeriodics ?? field?.periodicsTracked, false)
+        : false,
       layoutWidth: normalizeDocumentTemplateFieldLayoutWidth(field?.layoutWidth, type),
       fieldHeight: normalizeDocumentTemplateFieldHeight(field?.fieldHeight, type),
       htmlStyle: normalizeDocumentTemplateHtmlStyle(field?.htmlStyle),

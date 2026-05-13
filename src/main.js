@@ -464,6 +464,7 @@ const PERIODICS_VALIDITY_MONTHS_KEY_HINTS = Object.freeze([
   "VALIDITYMONTHS",
   "SERVICEVALIDITYMONTHS",
 ]);
+const PERIODICS_TRACKED_DATES_FIELD_KEY = "__PERIODICS_TRACKED_DATES";
 const PERIODICS_COMPANY_KEY_HINTS = Object.freeze([
   "TVRTKA",
   "NAZIVTVRTKE",
@@ -1810,6 +1811,7 @@ const state = {
     query: "",
     horizon: "all",
     inspectionGroup: "item",
+    inspectionGroupKey: "",
   },
   periodicsViewMode: "list",
   periodicsCalendar: {
@@ -2888,6 +2890,8 @@ const periodicsCriticalCount = document.querySelector("#periodics-critical-count
 const periodicsSearchInput = document.querySelector("#periodics-search");
 const periodicsHorizonInput = document.querySelector("#periodics-horizon");
 const periodicsInspectionGroupInput = document.querySelector("#periodics-inspection-group");
+const periodicsInspectionGroupValueField = document.querySelector("#periodics-inspection-group-value-field");
+const periodicsInspectionGroupValueInput = document.querySelector("#periodics-inspection-group-value");
 const periodicsHorizonField = periodicsHorizonInput?.closest(".field") ?? null;
 const periodicsRefreshButton = document.querySelector("#periodics-refresh");
 const periodicsViewListButton = document.querySelector("#periodics-view-list");
@@ -27683,8 +27687,18 @@ function extractPeriodicsDocumentValidityMonths(record = {}) {
 
 function extractPeriodicsDocumentDueDates(record = {}) {
   const dueDates = new Set();
+  const trackedDates = Array.isArray(record?.fieldValues?.[PERIODICS_TRACKED_DATES_FIELD_KEY])
+    ? record.fieldValues[PERIODICS_TRACKED_DATES_FIELD_KEY]
+    : [];
+
+  trackedDates.forEach((entry) => {
+    collectPeriodicsDateTokensFromText(entry?.value ?? entry?.date ?? entry?.validUntil, dueDates);
+  });
 
   Object.entries(record?.fieldValues ?? {}).forEach(([fieldKey, fieldValue]) => {
+    if (fieldKey === PERIODICS_TRACKED_DATES_FIELD_KEY) {
+      return;
+    }
     collectPeriodicsDueDatesFromValue(fieldValue, dueDates, fieldKey);
   });
 
@@ -28289,6 +28303,76 @@ function getPeriodicsInspectionGroupMeta(entry = {}, groupMode = "item") {
   return { key: "item", title: "", subtitle: "" };
 }
 
+function buildPeriodicsInspectionGroupOptions(entries = [], groupMode = "item") {
+  const mode = normalizePeriodicsInspectionGroupMode(groupMode);
+  if (mode === "item") {
+    return [];
+  }
+
+  const groupMap = new Map();
+  (Array.isArray(entries) ? entries : []).forEach((entry) => {
+    const meta = getPeriodicsInspectionGroupMeta(entry, mode);
+    const current = groupMap.get(meta.key) || {
+      ...meta,
+      count: 0,
+      nextDueDate: "",
+    };
+    current.count += 1;
+    if (entry.dueDate && (!current.nextDueDate || entry.dueDate < current.nextDueDate)) {
+      current.nextDueDate = entry.dueDate;
+    }
+    groupMap.set(meta.key, current);
+  });
+
+  return Array.from(groupMap.values())
+    .sort((left, right) => (
+      String(left.title || "").localeCompare(String(right.title || ""), "hr")
+      || String(left.nextDueDate || "9999-12-31").localeCompare(String(right.nextDueDate || "9999-12-31"))
+    ));
+}
+
+function applyPeriodicsInspectionGroupFilter(entries = [], filters = state.periodicsFilters) {
+  const mode = normalizePeriodicsInspectionGroupMode(filters?.inspectionGroup || "item");
+  const selectedKey = String(filters?.inspectionGroupKey || "").trim();
+  if (mode === "item" || !selectedKey) {
+    return Array.isArray(entries) ? entries : [];
+  }
+
+  return (Array.isArray(entries) ? entries : []).filter((entry) => (
+    getPeriodicsInspectionGroupMeta(entry, mode).key === selectedKey
+  ));
+}
+
+function syncPeriodicsInspectionGroupFilterControl(entries = [], filters = state.periodicsFilters) {
+  if (!periodicsInspectionGroupValueInput || !periodicsInspectionGroupValueField) {
+    return "";
+  }
+
+  const mode = normalizePeriodicsInspectionGroupMode(filters?.inspectionGroup || "item");
+  const options = buildPeriodicsInspectionGroupOptions(entries, mode);
+  const selectedKey = options.some((option) => option.key === filters?.inspectionGroupKey)
+    ? String(filters.inspectionGroupKey)
+    : "";
+
+  periodicsInspectionGroupValueField.hidden = mode === "item";
+  replaceSelectOptions(
+    periodicsInspectionGroupValueInput,
+    [
+      { value: "", label: "Sve grupe" },
+      ...options.map((option) => ({
+        value: option.key,
+        label: [
+          option.title,
+          option.count ? `${option.count} stavki` : "",
+          option.nextDueDate ? formatCompactDate(option.nextDueDate) : "",
+        ].filter(Boolean).join(" · "),
+      })),
+    ],
+    selectedKey,
+  );
+  return selectedKey;
+}
+
 function createPeriodicsInspectionGroupRow(group = {}) {
   const row = document.createElement("article");
   row.className = "periodics-grid-row periodics-group-row";
@@ -28312,13 +28396,13 @@ function createPeriodicsInspectionGroupRow(group = {}) {
   cell.append(title, subtitle);
   row.append(cell);
   const applyGroupFilter = () => {
-    const nextQuery = String(group.title || "").trim();
-    if (!nextQuery) {
+    const nextKey = String(group.key || "").trim();
+    if (!nextKey) {
       return;
     }
-    state.periodicsFilters.query = nextQuery;
-    if (periodicsSearchInput) {
-      periodicsSearchInput.value = nextQuery;
+    state.periodicsFilters.inspectionGroupKey = nextKey;
+    if (periodicsInspectionGroupValueInput) {
+      periodicsInspectionGroupValueInput.value = nextKey;
     }
     renderPeriodicsModule();
   };
@@ -29650,6 +29734,7 @@ function renderPeriodicsModule() {
     inspectionGroup: normalizePeriodicsInspectionGroupMode(
       periodicsInspectionGroupInput?.value || state.periodicsFilters.inspectionGroup || "item",
     ),
+    inspectionGroupKey: String(periodicsInspectionGroupValueInput?.value || state.periodicsFilters.inspectionGroupKey || "").trim(),
   };
   state.periodicsFilters = filters;
 
@@ -29693,7 +29778,10 @@ function renderPeriodicsModule() {
   const rawPeopleEntries = buildPeriodicsPeopleEntries();
   const rawEquipmentEntries = buildPeriodicsMeasurementEquipmentEntries();
 
-  const inspectionEntries = applyPeriodicsFilters(rawInspectionEntries, filters);
+  const inspectionEntriesBeforeGroup = applyPeriodicsFilters(rawInspectionEntries, filters);
+  filters.inspectionGroupKey = syncPeriodicsInspectionGroupFilterControl(inspectionEntriesBeforeGroup, filters);
+  state.periodicsFilters = filters;
+  const inspectionEntries = applyPeriodicsInspectionGroupFilter(inspectionEntriesBeforeGroup, filters);
   const vehicleEntries = applyPeriodicsFilters(rawVehicleEntries, filters);
   const peopleEntries = applyPeriodicsFilters(rawPeopleEntries, filters);
   const equipmentEntries = applyPeriodicsFilters(rawEquipmentEntries, filters);
@@ -43608,6 +43696,7 @@ function createEmptyDocumentTemplateFieldDraft(initial = {}, index = 0) {
     key: normalizeDocumentTemplateFieldKeyDraft(initial.key || wordLabel || label || fallbackKey, fallbackKey),
     type,
     required: Boolean(initial.required),
+    trackPeriodics: type === "date" ? Boolean(initial.trackPeriodics ?? initial.periodicsTracked) : false,
     layoutWidth: normalizeDocumentTemplateFieldLayoutWidth(initial.layoutWidth, type),
     fieldHeight: normalizeDocumentTemplateFieldHeight(initial.fieldHeight, type),
     htmlStyle: normalizeDocumentTemplateHtmlStyleDraft(initial.htmlStyle),
@@ -45585,6 +45674,7 @@ function buildDocumentTemplateDraft() {
       wordLabel: String(field.wordLabel || field.label || "").trim() || `Polje ${index + 1}`,
       type: field.type || "text",
       required: Boolean(field.required),
+      trackPeriodics: field.type === "date" ? Boolean(field.trackPeriodics ?? field.periodicsTracked) : false,
       layoutWidth: normalizeDocumentTemplateFieldLayoutWidth(field.layoutWidth, field.type || "text"),
       fieldHeight: normalizeDocumentTemplateFieldHeight(field.fieldHeight, field.type || "text"),
       htmlStyle: normalizeDocumentTemplateHtmlStyleDraft(field.htmlStyle),
@@ -63662,6 +63752,16 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
         refreshEditorSupport();
       },
     );
+    const periodicsTrackingField = createInlineCheckboxField(
+      "Prati periodiku",
+      Boolean(field.trackPeriodics ?? field.periodicsTracked),
+      (isChecked) => {
+        documentTemplateFieldDrafts[draftIndex].trackPeriodics = isChecked;
+        refreshEditorSupport();
+        renderDocumentTemplatePreviewContent();
+      },
+    );
+    periodicsTrackingField.hidden = field.type !== "date";
 
     const textListStyleField = document.createElement("label");
     textListStyleField.className = "field";
@@ -64046,6 +64146,9 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
       }
       if (isDocumentTemplateRequiredToggleFieldType(field.type)) {
         grid.append(requiredField);
+      }
+      if (!periodicsTrackingField.hidden) {
+        grid.append(periodicsTrackingField);
       }
       if (!textListStyleField.hidden) {
         grid.append(textListStyleField);
@@ -64467,6 +64570,12 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
       field.type || "text",
     );
     canvasMeta.append(widthLabel);
+    if (field.type === "date" && Boolean(field.trackPeriodics ?? field.periodicsTracked)) {
+      const periodicsLabel = document.createElement("span");
+      periodicsLabel.className = "document-template-canvas-meta-pill is-periodics";
+      periodicsLabel.textContent = "Prati periodiku";
+      canvasMeta.append(periodicsLabel);
+    }
     let heightLabel = null;
     if (isDocumentTemplateFieldHeightEditable(field.type)) {
       heightLabel = document.createElement("span");
@@ -88770,6 +88879,10 @@ function isDocumentTemplateRuntimePersistedField(field = {}) {
     return false;
   }
 
+  if (type === "date" && Boolean(field.trackPeriodics ?? field.periodicsTracked)) {
+    return true;
+  }
+
   if (type === "measurement_table") {
     return true;
   }
@@ -88823,6 +88936,7 @@ function buildDocumentTemplateRuntimeDocumentRecordPayload(template = buildDocum
 
   const fieldValues = {};
   const fieldSheets = {};
+  const trackedPeriodicsDates = [];
 
   (Array.isArray(template?.customFields) ? template.customFields : []).forEach((field) => {
     if (!isDocumentTemplateRuntimePersistedField(field)) {
@@ -88846,6 +88960,17 @@ function buildDocumentTemplateRuntimeDocumentRecordPayload(template = buildDocum
     if (hasMeaningfulDocumentRecordValue(value)) {
       fieldValues[fieldKey] = value;
     }
+    if (String(field.type || "").trim().toLowerCase() === "date" && Boolean(field.trackPeriodics ?? field.periodicsTracked)) {
+      const normalizedDateValue = normalizeDateInputValue(value);
+      if (normalizedDateValue) {
+        trackedPeriodicsDates.push({
+          fieldId: String(field.id || "").trim(),
+          fieldKey,
+          label: String(field.wordLabel || field.label || fieldKey).trim(),
+          value: normalizedDateValue,
+        });
+      }
+    }
   });
 
   const workOrderNumber = String(workOrder.workOrderNumber || "").trim();
@@ -88865,11 +88990,21 @@ function buildDocumentTemplateRuntimeDocumentRecordPayload(template = buildDocum
     fieldValues.OBJECT_DESCRIPTION = locationObject.description;
     fieldValues.OPIS_OBJEKTA = locationObject.description;
   }
+  if (trackedPeriodicsDates.length > 0) {
+    fieldValues[PERIODICS_TRACKED_DATES_FIELD_KEY] = trackedPeriodicsDates;
+    const primaryTrackedDate = trackedPeriodicsDates[0]?.value || "";
+    if (primaryTrackedDate) {
+      fieldValues.WORK_ORDER_VALID_UNTIL = primaryTrackedDate;
+      fieldValues.WORK_ORDER_SERVICE_VALID_UNTIL = primaryTrackedDate;
+      fieldValues.VRIJEDI_DO = primaryTrackedDate;
+      fieldValues.DATUM_VRIJEDI_DO = primaryTrackedDate;
+    }
+  }
   const runtimeValidUntil = resolveDocumentTemplateRuntimeServiceValidUntil(workOrder, template)
     || resolveDocumentTemplateRuntimeValidUntil(workOrder);
   const runtimeValidityMonths = resolveDocumentTemplateRuntimeServiceValidityMonths(workOrder, template)
     || resolveDocumentTemplateRuntimeValidityMonths(workOrder);
-  if (runtimeValidUntil) {
+  if (runtimeValidUntil && trackedPeriodicsDates.length === 0) {
     if (!hasMeaningfulDocumentRecordValue(fieldValues.WORK_ORDER_VALID_UNTIL)) {
       fieldValues.WORK_ORDER_VALID_UNTIL = runtimeValidUntil;
     }
@@ -96661,6 +96796,12 @@ periodicsHorizonInput?.addEventListener("change", () => {
 
 periodicsInspectionGroupInput?.addEventListener("change", () => {
   state.periodicsFilters.inspectionGroup = normalizePeriodicsInspectionGroupMode(periodicsInspectionGroupInput.value);
+  state.periodicsFilters.inspectionGroupKey = "";
+  renderPeriodicsModule();
+});
+
+periodicsInspectionGroupValueInput?.addEventListener("change", () => {
+  state.periodicsFilters.inspectionGroupKey = String(periodicsInspectionGroupValueInput.value || "").trim();
   renderPeriodicsModule();
 });
 
@@ -102378,6 +102519,7 @@ function resetAuthenticatedWorkspaceState() {
     query: "",
     horizon: "all",
     inspectionGroup: "item",
+    inspectionGroupKey: "",
   };
   state.periodicsSections = {
     inspectionsCollapsed: false,

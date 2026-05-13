@@ -26788,7 +26788,11 @@ body.is-vehicle-reservation-open {
 }
 
 .periodics-filters {
-  grid-template-columns: minmax(280px, 1fr) minmax(180px, 220px) minmax(220px, 260px);
+  grid-template-columns:
+    minmax(260px, 1fr)
+    minmax(160px, 200px)
+    minmax(190px, 230px)
+    minmax(230px, 300px);
 }
 
 .template-development-list-heading {
@@ -38524,6 +38528,12 @@ body.is-document-template-resizing-diagonal .document-template-preview-field-val
   font-size: 0.64rem;
   font-weight: 700;
   letter-spacing: 0.03em;
+}
+
+.document-template-canvas-meta-pill.is-periodics {
+  border-color: rgba(47, 126, 247, 0.26);
+  background: linear-gradient(135deg, rgba(231, 240, 255, 0.98), rgba(248, 232, 255, 0.94));
+  color: #2456a9;
 }
 
 .document-template-canvas-resize-handle {
