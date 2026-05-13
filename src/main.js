@@ -3884,6 +3884,12 @@ const dashboardPeoplePanel = document.querySelector("#dashboard-people-panel");
 const dashboardPeopleCount = document.querySelector("#dashboard-people-count");
 const dashboardPeopleOrganization = document.querySelector("#dashboard-people-organization");
 const dashboardOpenPeopleButton = document.querySelector("#dashboard-open-people");
+const dashboardOrganizationsPanel = document.querySelector("#dashboard-organizations-panel");
+const dashboardOrganizationsCount = document.querySelector("#dashboard-organizations-count");
+const dashboardOrganizationsBody = document.querySelector("#dashboard-organizations-body");
+const dashboardSignupRequestsPanel = document.querySelector("#dashboard-signup-requests-panel");
+const dashboardSignupRequestsCount = document.querySelector("#dashboard-signup-requests-count");
+const dashboardSignupRequestsBody = document.querySelector("#dashboard-signup-requests-body");
 const dashboardCompanyPermissionsPanel = document.querySelector("#dashboard-company-permissions-panel");
 const dashboardCompanyPermissionsHead = document.querySelector("#dashboard-company-permissions-head");
 const dashboardCompanyPermissionsContent = document.querySelector("#dashboard-company-permissions-content");
@@ -46263,6 +46269,248 @@ function renderDashboardCompanyPermissionsPanel() {
   dashboardCompanyPermissionsBody.replaceChildren(moduleList);
 }
 
+function getSignupRequestsByStatus(status = "") {
+  const normalizedStatus = String(status || "").trim().toLowerCase();
+  return (state.signupRequests ?? []).filter((request) => (
+    !normalizedStatus || String(request.status || "").trim().toLowerCase() === normalizedStatus
+  ));
+}
+
+function getSignupRequestOrganizationLabel(request = {}) {
+  const matchedOrganization = (state.organizations ?? []).find((organization) => (
+    String(organization.id) === String(request.organizationId || "")
+    || (
+      request.organizationOib
+      && String(organization.oib || "").replace(/\D/g, "") === String(request.organizationOib || "").replace(/\D/g, "")
+    )
+  ));
+
+  if (matchedOrganization?.name) {
+    return matchedOrganization.name;
+  }
+
+  return request.organizationName || "Nova organizacija";
+}
+
+function createSignupRequestActions(request = {}, { compact = false } = {}) {
+  const actions = document.createElement("div");
+  actions.className = compact ? "signup-request-card-actions" : "signup-approval-actions";
+
+  if (request.status !== "pending") {
+    const status = document.createElement("span");
+    status.className = "dashboard-control-chip";
+    status.textContent = request.status === "approved" ? "Prihvaćeno" : "Odbijeno";
+    actions.append(status);
+    return actions;
+  }
+
+  const isSuperAdmin = getIsSuperAdmin();
+  let organizationSelect = null;
+  let roleSelect = null;
+
+  if (isSuperAdmin) {
+    organizationSelect = document.createElement("select");
+    organizationSelect.className = "signup-inline-select";
+    organizationSelect.append(
+      createOption("__new__", `Nova: ${request.organizationName || "organizacija"}`, "__new__"),
+      ...state.organizations.map((organization) => createOption(organization.id, organization.name)),
+    );
+
+    const matchedByOib = state.organizations.find((organization) => (
+      request.organizationOib
+      && String(organization.oib || "").replace(/\D/g, "") === String(request.organizationOib || "").replace(/\D/g, "")
+    ));
+    if (matchedByOib) {
+      organizationSelect.value = String(matchedByOib.id);
+    }
+
+    roleSelect = document.createElement("select");
+    roleSelect.className = "signup-inline-select";
+    roleSelect.append(
+      createOption("admin", "Admin", "admin"),
+      createOption("user", "User", "admin"),
+    );
+
+    const inlineControls = document.createElement("div");
+    inlineControls.className = "signup-approval-controls";
+    inlineControls.append(organizationSelect, roleSelect);
+    actions.append(inlineControls);
+  }
+
+  actions.append(
+    createActionButton("Prihvati", "card-button", () => {
+      const body = isSuperAdmin
+        ? {
+          organizationId: organizationSelect?.value === "__new__" ? "" : String(organizationSelect?.value || ""),
+          role: String(roleSelect?.value || "admin"),
+        }
+        : {
+          role: "user",
+        };
+      void runMutation(() => apiRequest(`/signup-requests/${request.id}/approve`, {
+        method: "POST",
+        body,
+      }), syncError);
+    }),
+    createActionButton("Odbij", "card-button card-danger", () => {
+      if (!window.confirm(`Odbiti signup zahtjev za ${request.email}?`)) {
+        return;
+      }
+
+      void runMutation(() => apiRequest(`/signup-requests/${request.id}/reject`, {
+        method: "POST",
+        body: {},
+      }), syncError);
+    }),
+  );
+
+  return actions;
+}
+
+function renderDashboardOrganizationsPanel() {
+  const isSuperAdmin = getIsSuperAdmin();
+
+  if (dashboardOrganizationsPanel) {
+    dashboardOrganizationsPanel.hidden = !isSuperAdmin;
+  }
+
+  if (!isSuperAdmin || !dashboardOrganizationsBody) {
+    return;
+  }
+
+  const organizations = [...(state.organizations ?? [])].sort((left, right) => (
+    String(left.name || "").localeCompare(String(right.name || ""), "hr")
+  ));
+
+  if (dashboardOrganizationsCount) {
+    dashboardOrganizationsCount.textContent = `${organizations.length} tvrtki`;
+  }
+
+  if (organizations.length === 0) {
+    dashboardOrganizationsBody.replaceChildren(createDashboardBuilderEmptyState("Nema organizacija za prikaz."));
+    return;
+  }
+
+  const list = document.createElement("div");
+  list.className = "dashboard-organization-list";
+
+  organizations.forEach((organization) => {
+    const isActive = String(organization.id) === String(state.activeOrganizationId);
+    const card = document.createElement("article");
+    card.className = "dashboard-organization-card";
+    card.classList.toggle("is-active", isActive);
+
+    const logo = document.createElement("div");
+    logo.className = "dashboard-organization-logo";
+    renderCompanyLogo(logo, {
+      name: organization.name,
+      logoDataUrl: organization.logoDataUrl,
+    });
+
+    const copy = document.createElement("div");
+    copy.className = "dashboard-organization-copy";
+    const title = document.createElement("strong");
+    title.textContent = organization.name || "Bez naziva";
+    const meta = document.createElement("span");
+    meta.textContent = [
+      organization.oib ? `OIB ${organization.oib}` : "Bez OIB-a",
+      organization.city || organization.address || "",
+    ].filter(Boolean).join(" · ");
+    copy.append(title, meta);
+
+    const status = document.createElement("span");
+    status.className = `dashboard-organization-status ${organization.status === "active" ? "is-active" : "is-inactive"}`;
+    status.textContent = organization.status === "active" ? "Aktivna" : "Neaktivna";
+
+    const actions = document.createElement("div");
+    actions.className = "dashboard-organization-actions";
+    actions.append(
+      createActionButton(isActive ? "Aktivna" : "Otvori", "card-button", () => {
+        state.activeOrganizationId = String(organization.id);
+        settingsOrganizationLogoDraftTouched = false;
+        if (organizationSwitcher) {
+          organizationSwitcher.value = state.activeOrganizationId;
+        }
+        populateOrganizationForm(organization);
+        void withGlobalLoading("Učitavam podatke organizacije...", () => refreshSnapshot()).catch((error) => {
+          setSyncError(error.message);
+        });
+      }),
+      createActionButton("Uredi", "card-button card-button-light", () => {
+        populateOrganizationForm(organization);
+        activateSidebarItem("people", { expandSidebar: state.sidebarCollapsed });
+        organizationPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }),
+    );
+
+    card.append(logo, copy, status, actions);
+    list.append(card);
+  });
+
+  dashboardOrganizationsBody.replaceChildren(list);
+}
+
+function renderDashboardSignupRequestsPanel() {
+  const canReviewRequests = getCanManageMasterData();
+
+  if (dashboardSignupRequestsPanel) {
+    dashboardSignupRequestsPanel.hidden = !canReviewRequests;
+  }
+
+  if (!canReviewRequests || !dashboardSignupRequestsBody) {
+    return;
+  }
+
+  const requests = state.signupRequests ?? [];
+  const pendingRequests = getSignupRequestsByStatus("pending");
+
+  if (dashboardSignupRequestsCount) {
+    dashboardSignupRequestsCount.textContent = pendingRequests.length === 1
+      ? "1 pending"
+      : `${pendingRequests.length} pending`;
+  }
+
+  if (requests.length === 0) {
+    dashboardSignupRequestsBody.replaceChildren(createDashboardBuilderEmptyState("Nema signup zahtjeva za aktivni opseg."));
+    return;
+  }
+
+  const list = document.createElement("div");
+  list.className = "dashboard-signup-request-list";
+
+  requests.slice(0, 8).forEach((request) => {
+    const card = document.createElement("article");
+    card.className = "dashboard-signup-request-card";
+    card.classList.toggle("is-pending", request.status === "pending");
+
+    const copy = document.createElement("div");
+    copy.className = "dashboard-signup-request-copy";
+    const title = document.createElement("strong");
+    title.textContent = request.fullName || [request.firstName, request.lastName].filter(Boolean).join(" ") || request.email;
+    const meta = document.createElement("span");
+    meta.textContent = request.email || "Bez emaila";
+    const org = document.createElement("small");
+    org.textContent = [
+      getSignupRequestOrganizationLabel(request),
+      request.organizationOib ? `OIB ${request.organizationOib}` : "",
+    ].filter(Boolean).join(" · ");
+    copy.append(title, meta, org);
+
+    const status = document.createElement("span");
+    status.className = `dashboard-signup-request-status is-${request.status || "pending"}`;
+    status.textContent = request.status === "pending"
+      ? "Čeka odluku"
+      : request.status === "approved"
+        ? "Prihvaćen"
+        : "Odbijen";
+
+    card.append(copy, status, createSignupRequestActions(request, { compact: true }));
+    list.append(card);
+  });
+
+  dashboardSignupRequestsBody.replaceChildren(list);
+}
+
 function renderDashboardControlPanelContent() {
   const canManageMasterData = getCanManageMasterData();
   const isSuperAdmin = getIsSuperAdmin();
@@ -46283,6 +46531,8 @@ function renderDashboardControlPanelContent() {
     signupRequestsPanel.hidden = !canManageMasterData;
   }
 
+  renderDashboardOrganizationsPanel();
+  renderDashboardSignupRequestsPanel();
   renderDashboardCompanyPermissionsPanel();
 }
 
@@ -92167,57 +92417,9 @@ function renderSignupRequests() {
     actionsCell.className = "table-actions";
 
     if (request.status === "pending") {
-      const isSuperAdmin = getIsSuperAdmin();
-      let organizationSelect = null;
-      let roleSelect = null;
-
-      if (isSuperAdmin) {
-        organizationSelect = document.createElement("select");
-        organizationSelect.className = "signup-inline-select";
-        organizationSelect.append(
-          createOption("__new__", `Create new: ${request.organizationName}`, "__new__"),
-          ...state.organizations.map((organization) => createOption(organization.id, organization.name)),
-        );
-
-        roleSelect = document.createElement("select");
-        roleSelect.className = "signup-inline-select";
-        roleSelect.append(
-          createOption("admin", "Admin", "admin"),
-          createOption("user", "User", "admin"),
-        );
-
-        const inlineControls = document.createElement("div");
-        inlineControls.className = "signup-approval-controls";
-        inlineControls.append(organizationSelect, roleSelect);
-        actionsCell.append(inlineControls);
-      }
-
-      actionsCell.append(
-        createActionButton("Approve", "card-button", () => {
-          const body = isSuperAdmin
-            ? {
-              organizationId: organizationSelect?.value === "__new__" ? "" : String(organizationSelect?.value || ""),
-              role: String(roleSelect?.value || "admin"),
-            }
-            : {
-              role: "user",
-            };
-          void runMutation(() => apiRequest(`/signup-requests/${request.id}/approve`, {
-            method: "POST",
-            body,
-          }), syncError);
-        }),
-        createActionButton("Reject", "card-button card-danger", () => {
-          if (!window.confirm(`Reject signup request for ${request.email}?`)) {
-            return;
-          }
-
-          void runMutation(() => apiRequest(`/signup-requests/${request.id}/reject`, {
-            method: "POST",
-            body: {},
-          }), syncError);
-        }),
-      );
+      actionsCell.append(createSignupRequestActions(request));
+    } else {
+      actionsCell.append(createSignupRequestActions(request));
     }
 
     row.append(
