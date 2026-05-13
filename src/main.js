@@ -440,6 +440,7 @@ const DRAWING_STAGE_MIN_HEIGHT = 800;
 const DRAWING_STAGE_MAX_HEIGHT = 3200;
 const PERIODICS_DUE_DATE_KEY_HINTS = Object.freeze([
   "VRIJEDIDO",
+  "VRIJEDIDOZAPISNIKA",
   "VRIJEDI",
   "VAZIDO",
   "VAZI",
@@ -449,6 +450,7 @@ const PERIODICS_DUE_DATE_KEY_HINTS = Object.freeze([
   "DATUMISTEKA",
   "VALIDUNTIL",
   "VALIDTO",
+  "VALIDUNTILDATE",
   "EXPIRY",
   "EXPIRES",
   "ISTEK",
@@ -27712,16 +27714,68 @@ function getPeriodicsDocumentRecords() {
   return [];
 }
 
+function getPeriodicsRecordFreshnessKey(record = {}, dueDate = "") {
+  const dateCandidates = [
+    record?.inspectionDate,
+    record?.issuedDate,
+    record?.updatedAt,
+    record?.createdAt,
+    dueDate,
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  const normalizedDates = dateCandidates.map((value) => {
+    const dateKey = normalizeDateInputValue(value.slice(0, 10));
+    if (dateKey) {
+      return dateKey;
+    }
+    const timestamp = Date.parse(value);
+    return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : "";
+  });
+
+  return [
+    ...normalizedDates,
+    String(record?.id || ""),
+  ].join("|");
+}
+
+function createPeriodicsInspectionRenewalKey({
+  record = {},
+  companyId = "",
+  companyName = "",
+  locationId = "",
+  locationName = "",
+  objectId = "",
+  objectName = "",
+  serviceLabel = "",
+  templateLabel = "",
+  dueIndex = 0,
+} = {}) {
+  const identityParts = [
+    String(record?.organizationId || state.activeOrganizationId || "").trim(),
+    companyId || normalizeDocumentsExplorerKey(companyName),
+    locationId || normalizeDocumentsExplorerKey(locationName),
+    objectId || normalizeDocumentsExplorerKey(objectName),
+    normalizeDocumentsExplorerKey(serviceLabel),
+    normalizeDocumentsExplorerKey(templateLabel),
+    String(dueIndex || 0),
+  ];
+
+  return identityParts.map((part) => String(part || "").trim()).join("|");
+}
+
 function buildPeriodicsInspectionEntries(records = getPeriodicsDocumentRecords()) {
-  const rows = [];
-  const seenKeys = new Set();
+  const latestRows = new Map();
   const todayDate = new Date();
   const visualSettings = getPeriodicsVisualSettings();
   todayDate.setHours(0, 0, 0, 0);
 
   (Array.isArray(records) ? records : []).forEach((record) => {
     const dueDates = extractPeriodicsDocumentDueDates(record);
-    const inspectionDueDates = dueDates.length > 0 ? dueDates : [""];
+    if (dueDates.length === 0) {
+      return;
+    }
+    const inspectionDueDates = dueDates;
 
     const extractedWorkOrderNumber = extractDocumentsExplorerWorkOrderNumber(record);
     const linkedWorkOrder = resolveDocumentsExplorerWorkOrder(record, extractedWorkOrderNumber);
@@ -27795,20 +27849,19 @@ function buildPeriodicsInspectionEntries(records = getPeriodicsDocumentRecords()
     const workOrderNumber = String(linkedWorkOrder?.workOrderNumber || extractedWorkOrderNumber || "").trim();
 
     inspectionDueDates.forEach((dueDate, index) => {
-      const dueKey = dueDate || "bez-roka";
-      const dedupeKey = [
-        String(record?.id || ""),
+      const renewalKey = createPeriodicsInspectionRenewalKey({
+        record,
         companyId,
+        companyName,
         locationId,
-        objectId || objectName,
+        locationName: compactLocationName,
+        objectId,
+        objectName,
         serviceLabel,
-        dueKey,
-        index,
-      ].join("|");
-      if (seenKeys.has(dedupeKey)) {
-        return;
-      }
-      seenKeys.add(dedupeKey);
+        templateLabel,
+        dueIndex: index,
+      });
+      const freshnessKey = getPeriodicsRecordFreshnessKey(record, dueDate);
 
       const dueState = getPeriodicsDueState(dueDate, todayDate, visualSettings);
       const searchText = [
@@ -27822,8 +27875,8 @@ function buildPeriodicsInspectionEntries(records = getPeriodicsDocumentRecords()
         workOrderNumber,
       ].filter(Boolean).join(" ");
 
-      rows.push({
-        id: `periodics-inspection-${String(record?.id || crypto.randomUUID())}-${dueKey}-${index}`,
+      const row = {
+        id: `periodics-inspection-${renewalKey || String(record?.id || "")}-${dueDate}-${index}`,
         dueDate,
         dueState,
         companyName,
@@ -27835,11 +27888,16 @@ function buildPeriodicsInspectionEntries(records = getPeriodicsDocumentRecords()
         templateLabel,
         workOrderNumber,
         searchText,
-      });
+        freshnessKey,
+      };
+      const current = latestRows.get(renewalKey);
+      if (!current || String(row.freshnessKey).localeCompare(String(current.freshnessKey)) >= 0) {
+        latestRows.set(renewalKey, row);
+      }
     });
   });
 
-  return rows.sort((left, right) => (
+  return Array.from(latestRows.values()).sort((left, right) => (
     String(left.dueDate || "9999-12-31").localeCompare(String(right.dueDate || "9999-12-31"))
     || String(left.companyName || "").localeCompare(String(right.companyName || ""), "hr")
     || String(left.locationName || "").localeCompare(String(right.locationName || ""), "hr")
@@ -29450,8 +29508,9 @@ function renderPeriodicsModule() {
     createPeriodicsCell(entry.companyOib || "—", "", { dimmed: !entry.companyOib }),
     createPeriodicsCell(
       entry.locationName || "Bez lokacije",
-      entry.objectName ? `Objekt ${entry.objectName}` : "",
+      entry.workOrderNumber ? `RN ${entry.workOrderNumber}` : "",
     ),
+    createPeriodicsCell(entry.objectName || "Bez objekta", "", { dimmed: !entry.objectName }),
     createPeriodicsCell(entry.serviceLabel, entry.templateLabel),
     createPeriodicsDueCell(entry.dueDate, entry.dueState),
   ], entry.dueState?.toneClass));
@@ -88611,6 +88670,35 @@ function buildDocumentTemplateRuntimeDocumentRecordPayload(template = buildDocum
   if (locationObject?.description) {
     fieldValues.OBJECT_DESCRIPTION = locationObject.description;
     fieldValues.OPIS_OBJEKTA = locationObject.description;
+  }
+  const runtimeValidUntil = resolveDocumentTemplateRuntimeServiceValidUntil(workOrder, template)
+    || resolveDocumentTemplateRuntimeValidUntil(workOrder);
+  const runtimeValidityMonths = resolveDocumentTemplateRuntimeServiceValidityMonths(workOrder, template)
+    || resolveDocumentTemplateRuntimeValidityMonths(workOrder);
+  if (runtimeValidUntil) {
+    if (!hasMeaningfulDocumentRecordValue(fieldValues.WORK_ORDER_VALID_UNTIL)) {
+      fieldValues.WORK_ORDER_VALID_UNTIL = runtimeValidUntil;
+    }
+    if (!hasMeaningfulDocumentRecordValue(fieldValues.WORK_ORDER_SERVICE_VALID_UNTIL)) {
+      fieldValues.WORK_ORDER_SERVICE_VALID_UNTIL = runtimeValidUntil;
+    }
+    if (!hasMeaningfulDocumentRecordValue(fieldValues.VRIJEDI_DO)) {
+      fieldValues.VRIJEDI_DO = runtimeValidUntil;
+    }
+    if (!hasMeaningfulDocumentRecordValue(fieldValues.DATUM_VRIJEDI_DO)) {
+      fieldValues.DATUM_VRIJEDI_DO = runtimeValidUntil;
+    }
+  }
+  if (runtimeValidityMonths) {
+    if (!hasMeaningfulDocumentRecordValue(fieldValues.WORK_ORDER_VALIDITY_MONTHS)) {
+      fieldValues.WORK_ORDER_VALIDITY_MONTHS = runtimeValidityMonths;
+    }
+    if (!hasMeaningfulDocumentRecordValue(fieldValues.WORK_ORDER_SERVICE_VALIDITY_MONTHS)) {
+      fieldValues.WORK_ORDER_SERVICE_VALIDITY_MONTHS = runtimeValidityMonths;
+    }
+    if (!hasMeaningfulDocumentRecordValue(fieldValues.VRIJEDI_MJESECI)) {
+      fieldValues.VRIJEDI_MJESECI = runtimeValidityMonths;
+    }
   }
 
   return {
