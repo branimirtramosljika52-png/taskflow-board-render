@@ -40584,6 +40584,38 @@ function getDocumentTemplateSourceOptions(selectedValue = "") {
   return options;
 }
 
+const DOCUMENT_TEMPLATE_PERIODICS_TRACKABLE_SOURCE_VALUES = new Set([
+  "WORK_ORDER_VALID_UNTIL",
+  "WORK_ORDER_SERVICE_VALID_UNTIL",
+  "WORK_ORDER_PANIC_VALID_UNTIL",
+  "WORK_ORDER_TIPKALO_VALID_UNTIL",
+]);
+
+function isDocumentTemplatePeriodicsTrackableField(field = {}) {
+  const type = String(field?.type || "").trim().toLowerCase();
+  if (type === "date") {
+    return true;
+  }
+
+  const source = String(field?.source || field?.bindingSource || "").trim().toUpperCase();
+  if (DOCUMENT_TEMPLATE_PERIODICS_TRACKABLE_SOURCE_VALUES.has(source)) {
+    return true;
+  }
+
+  const parsedSource = parseDocumentTemplateServiceValiditySource(source);
+  if (parsedSource?.kind === "SERVICE_VALID_UNTIL") {
+    return true;
+  }
+
+  const identity = [
+    field?.key,
+    field?.wordLabel,
+    field?.label,
+  ].map((value) => String(value || "").trim().toUpperCase()).filter(Boolean).join(" ");
+
+  return /\b(VRIJEDI_DO|DATUM_VRIJEDI_DO|VALID_UNTIL|VALID_TO)\b/.test(identity);
+}
+
 const DOCUMENT_TEMPLATE_OBJECT_SOURCE_VALUES = new Set([
   "OBJECT_NAME",
   "OBJECT_CODE",
@@ -43689,18 +43721,28 @@ function createEmptyDocumentTemplateFieldDraft(initial = {}, index = 0) {
   const sheet = type === "measurement_table"
     ? ensureDocumentTemplateMeasurementFieldSheet(initial)
     : null;
+  const key = normalizeDocumentTemplateFieldKeyDraft(initial.key || wordLabel || label || fallbackKey, fallbackKey);
+  const source = String(initial.source ?? initial.bindingSource ?? getDocumentTemplateDefaultFieldSource(type)).trim().toUpperCase();
+  const isPeriodicsTrackable = isDocumentTemplatePeriodicsTrackableField({
+    ...initial,
+    key,
+    label,
+    wordLabel,
+    type,
+    source,
+  });
   const draft = {
     id: initial.id || crypto.randomUUID(),
     label,
     wordLabel,
-    key: normalizeDocumentTemplateFieldKeyDraft(initial.key || wordLabel || label || fallbackKey, fallbackKey),
+    key,
     type,
     required: Boolean(initial.required),
-    trackPeriodics: type === "date" ? Boolean(initial.trackPeriodics ?? initial.periodicsTracked) : false,
+    trackPeriodics: isPeriodicsTrackable ? Boolean(initial.trackPeriodics ?? initial.periodicsTracked) : false,
     layoutWidth: normalizeDocumentTemplateFieldLayoutWidth(initial.layoutWidth, type),
     fieldHeight: normalizeDocumentTemplateFieldHeight(initial.fieldHeight, type),
     htmlStyle: normalizeDocumentTemplateHtmlStyleDraft(initial.htmlStyle),
-    source: String(initial.source ?? initial.bindingSource ?? getDocumentTemplateDefaultFieldSource(type)).trim().toUpperCase(),
+    source,
     sourceTable: String(initial.sourceTable ?? "").trim().toLowerCase(),
     lookupColumn: String(initial.lookupColumn ?? "").trim().toLowerCase(),
     lookupValueSource: String(initial.lookupValueSource ?? "").trim().toUpperCase() || "WORK_ORDER_NUMBER",
@@ -45674,7 +45716,13 @@ function buildDocumentTemplateDraft() {
       wordLabel: String(field.wordLabel || field.label || "").trim() || `Polje ${index + 1}`,
       type: field.type || "text",
       required: Boolean(field.required),
-      trackPeriodics: field.type === "date" ? Boolean(field.trackPeriodics ?? field.periodicsTracked) : false,
+      trackPeriodics: isDocumentTemplatePeriodicsTrackableField({
+        ...field,
+        type: field.type || "text",
+        source: String(field.source || getDocumentTemplateDefaultFieldSource(field.type || "text")).trim().toUpperCase(),
+      })
+        ? Boolean(field.trackPeriodics ?? field.periodicsTracked)
+        : false,
       layoutWidth: normalizeDocumentTemplateFieldLayoutWidth(field.layoutWidth, field.type || "text"),
       fieldHeight: normalizeDocumentTemplateFieldHeight(field.fieldHeight, field.type || "text"),
       htmlStyle: normalizeDocumentTemplateHtmlStyleDraft(field.htmlStyle),
@@ -63761,7 +63809,7 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
         renderDocumentTemplatePreviewContent();
       },
     );
-    periodicsTrackingField.hidden = field.type !== "date";
+    periodicsTrackingField.hidden = !isDocumentTemplatePeriodicsTrackableField(field);
 
     const textListStyleField = document.createElement("label");
     textListStyleField.className = "field";
@@ -64570,7 +64618,7 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
       field.type || "text",
     );
     canvasMeta.append(widthLabel);
-    if (field.type === "date" && Boolean(field.trackPeriodics ?? field.periodicsTracked)) {
+    if (isDocumentTemplatePeriodicsTrackableField(field) && Boolean(field.trackPeriodics ?? field.periodicsTracked)) {
       const periodicsLabel = document.createElement("span");
       periodicsLabel.className = "document-template-canvas-meta-pill is-periodics";
       periodicsLabel.textContent = "Prati periodiku";
@@ -88879,7 +88927,7 @@ function isDocumentTemplateRuntimePersistedField(field = {}) {
     return false;
   }
 
-  if (type === "date" && Boolean(field.trackPeriodics ?? field.periodicsTracked)) {
+  if (isDocumentTemplatePeriodicsTrackableField(field) && Boolean(field.trackPeriodics ?? field.periodicsTracked)) {
     return true;
   }
 
@@ -88960,7 +89008,7 @@ function buildDocumentTemplateRuntimeDocumentRecordPayload(template = buildDocum
     if (hasMeaningfulDocumentRecordValue(value)) {
       fieldValues[fieldKey] = value;
     }
-    if (String(field.type || "").trim().toLowerCase() === "date" && Boolean(field.trackPeriodics ?? field.periodicsTracked)) {
+    if (isDocumentTemplatePeriodicsTrackableField(field) && Boolean(field.trackPeriodics ?? field.periodicsTracked)) {
       const normalizedDateValue = normalizeDateInputValue(value);
       if (normalizedDateValue) {
         trackedPeriodicsDates.push({

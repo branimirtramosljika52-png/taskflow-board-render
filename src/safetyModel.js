@@ -857,6 +857,36 @@ function normalizeDocumentTemplateFieldSource(value) {
   return normalizeText(value).trim().toUpperCase().slice(0, 80);
 }
 
+const DOCUMENT_TEMPLATE_PERIODICS_TRACKABLE_SOURCE_VALUES = new Set([
+  "WORK_ORDER_VALID_UNTIL",
+  "WORK_ORDER_SERVICE_VALID_UNTIL",
+  "WORK_ORDER_PANIC_VALID_UNTIL",
+  "WORK_ORDER_TIPKALO_VALID_UNTIL",
+]);
+
+function isDocumentTemplatePeriodicsTrackableField(field = {}) {
+  const type = normalizeDocumentTemplateFieldType(field?.type);
+  if (type === "date") {
+    return true;
+  }
+
+  const source = normalizeDocumentTemplateFieldSource(field?.source ?? field?.bindingSource);
+  if (
+    DOCUMENT_TEMPLATE_PERIODICS_TRACKABLE_SOURCE_VALUES.has(source)
+    || source.startsWith("SERVICE_VALID_UNTIL::")
+  ) {
+    return true;
+  }
+
+  const identity = [
+    field?.key,
+    field?.wordLabel,
+    field?.label,
+  ].map((value) => normalizeText(value).toUpperCase()).filter(Boolean).join(" ");
+
+  return /\b(VRIJEDI_DO|DATUM_VRIJEDI_DO|VALID_UNTIL|VALID_TO)\b/.test(identity);
+}
+
 function normalizeDocumentTemplateFieldAiConfig(input = {}, field = {}) {
   const source = input && typeof input === "object" ? input : {};
   const fieldType = normalizeDocumentTemplateFieldType(field?.type);
@@ -2260,6 +2290,7 @@ function normalizeDocumentTemplateFields(fields = []) {
     const normalizedSystemRows = type === "system_description"
       ? normalizeDocumentTemplateSystemDescriptionRows(field?.systemRows ?? field?.rows ?? [])
       : [];
+    const source = normalizeDocumentTemplateFieldSource(field?.source ?? field?.bindingSource);
 
     while (seenKeys.has(key)) {
       key = slugifyTemplateKey(`${key}_${index + 1}`, `FIELD_${index + 1}`);
@@ -2274,13 +2305,20 @@ function normalizeDocumentTemplateFields(fields = []) {
       wordLabel,
       type,
       required: normalizeBoolean(field?.required, false),
-      trackPeriodics: type === "date"
+      trackPeriodics: isDocumentTemplatePeriodicsTrackableField({
+        ...field,
+        key,
+        label,
+        wordLabel,
+        type,
+        source,
+      })
         ? normalizeBoolean(field?.trackPeriodics ?? field?.periodicsTracked, false)
         : false,
       layoutWidth: normalizeDocumentTemplateFieldLayoutWidth(field?.layoutWidth, type),
       fieldHeight: normalizeDocumentTemplateFieldHeight(field?.fieldHeight, type),
       htmlStyle: normalizeDocumentTemplateHtmlStyle(field?.htmlStyle),
-      source: normalizeDocumentTemplateFieldSource(field?.source ?? field?.bindingSource),
+      source,
       sourceTable: normalizeText(field?.sourceTable).toLowerCase().slice(0, 80),
       lookupColumn: normalizeText(field?.lookupColumn).toLowerCase().slice(0, 80),
       lookupValueSource: normalizeText(field?.lookupValueSource).toUpperCase().slice(0, 80) || "WORK_ORDER_NUMBER",
