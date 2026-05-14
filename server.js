@@ -3220,6 +3220,251 @@ function buildGeneratedDocumentTemplateDocxDocumentPayload({
   };
 }
 
+function normalizeGeneratedDocumentRecordDate(value = "") {
+  const raw = String(value ?? "").trim();
+  if (!raw) {
+    return "";
+  }
+
+  const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) {
+    return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+  }
+
+  const localMatch = raw.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
+  if (localMatch) {
+    const [, day, month, year] = localMatch;
+    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+
+  return normalizeDateOnlyValue(raw);
+}
+
+function getGeneratedDocumentRecordValue(source = {}, keys = []) {
+  if (!source || typeof source !== "object" || Array.isArray(source)) {
+    return "";
+  }
+
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(source, key)) {
+      const value = source[key];
+      if (value !== undefined && value !== null && String(value).trim()) {
+        return value;
+      }
+    }
+  }
+
+  const normalizedKeys = keys.map((key) => normalizeLookupKey(key)).filter(Boolean);
+  if (normalizedKeys.length === 0) {
+    return "";
+  }
+
+  const entry = Object.entries(source).find(([key, value]) => (
+    value !== undefined
+    && value !== null
+    && String(value).trim()
+    && normalizedKeys.includes(normalizeLookupKey(key))
+  ));
+
+  return entry?.[1] ?? "";
+}
+
+function getGeneratedDocumentRecordWorkOrderNumber(record = {}, workOrder = {}) {
+  const fieldValues = record?.fieldValues && typeof record.fieldValues === "object" && !Array.isArray(record.fieldValues)
+    ? record.fieldValues
+    : {};
+  return String(
+    record?.workOrderNumber
+    || getGeneratedDocumentRecordValue(fieldValues, [
+      "WORK_ORDER_NUMBER",
+      "BROJ_RN",
+      "RN",
+      "RADNI_NALOG",
+    ])
+    || workOrder?.workOrderNumber
+    || "",
+  ).replace(/^RN\s*/i, "").trim();
+}
+
+function buildGeneratedDocumentTemplateRecordPayload({
+  entry = {},
+  workOrder = {},
+  template = {},
+  scopedSnapshot = {},
+} = {}) {
+  const suppliedRecord = entry?.documentRecord && typeof entry.documentRecord === "object" && !Array.isArray(entry.documentRecord)
+    ? entry.documentRecord
+    : {};
+  const suppliedFieldValues = suppliedRecord.fieldValues && typeof suppliedRecord.fieldValues === "object" && !Array.isArray(suppliedRecord.fieldValues)
+    ? suppliedRecord.fieldValues
+    : {};
+  const placeholders = entry?.placeholders && typeof entry.placeholders === "object" && !Array.isArray(entry.placeholders)
+    ? entry.placeholders
+    : {};
+  const renderModel = entry?.renderModel && typeof entry.renderModel === "object" && !Array.isArray(entry.renderModel)
+    ? entry.renderModel
+    : {};
+  const fieldValues = {
+    ...placeholders,
+    ...suppliedFieldValues,
+  };
+  const workOrderNumber = String(workOrder?.workOrderNumber || renderModel.workOrderNumber || "").trim();
+
+  if (workOrderNumber && !String(fieldValues.WORK_ORDER_NUMBER || "").trim()) {
+    fieldValues.WORK_ORDER_NUMBER = workOrderNumber;
+  }
+  if (renderModel?.company?.name && !String(fieldValues.COMPANY_NAME || fieldValues.TVRTKA || "").trim()) {
+    fieldValues.COMPANY_NAME = renderModel.company.name;
+    fieldValues.TVRTKA = renderModel.company.name;
+  }
+  if (renderModel?.company?.headquarters && !String(fieldValues.COMPANY_HEADQUARTERS || fieldValues.SJEDISTE || "").trim()) {
+    fieldValues.COMPANY_HEADQUARTERS = renderModel.company.headquarters;
+    fieldValues.SJEDISTE = renderModel.company.headquarters;
+  }
+  if (renderModel?.company?.oib && !String(fieldValues.COMPANY_OIB || fieldValues.OIB || "").trim()) {
+    fieldValues.COMPANY_OIB = renderModel.company.oib;
+    fieldValues.OIB = renderModel.company.oib;
+  }
+  if (renderModel?.location?.name && !String(fieldValues.LOCATION_NAME || fieldValues.LOKACIJA || "").trim()) {
+    fieldValues.LOCATION_NAME = renderModel.location.name;
+    fieldValues.LOKACIJA = renderModel.location.name;
+  }
+  if (renderModel?.object?.name && !String(fieldValues.OBJECT_NAME || fieldValues.OBJEKT || "").trim()) {
+    fieldValues.OBJECT_NAME = renderModel.object.name;
+    fieldValues.OBJEKT = renderModel.object.name;
+  }
+  if (renderModel?.serviceCode && !String(fieldValues.SERVICE_SUMMARY || fieldValues.USLUGA || "").trim()) {
+    fieldValues.SERVICE_SUMMARY = renderModel.serviceCode;
+    fieldValues.USLUGA = renderModel.serviceCode;
+  }
+
+  const inspectionDate = normalizeGeneratedDocumentRecordDate(
+    suppliedRecord.inspectionDate
+    || entry.inspectionDate
+    || getGeneratedDocumentRecordValue(fieldValues, ["WORK_ORDER_INSPECTION_DATE", "DATUM_ISPITIVANJA"]),
+  );
+  const issuedDate = normalizeGeneratedDocumentRecordDate(
+    suppliedRecord.issuedDate
+    || entry.issuedDate
+    || getGeneratedDocumentRecordValue(fieldValues, ["WORK_ORDER_ISSUED_DATE", "DATUM_IZDAVANJA"]),
+  );
+  const objectName = String(
+    suppliedRecord.objectName
+    || entry.objectName
+    || renderModel?.object?.name
+    || getGeneratedDocumentRecordValue(fieldValues, ["OBJECT_NAME", "OBJEKT"])
+    || "",
+  ).trim();
+
+  const payload = {
+    organizationId: String(
+      suppliedRecord.organizationId
+      || scopedSnapshot.activeOrganizationId
+      || workOrder.organizationId
+      || "",
+    ).trim(),
+    templateId: String(suppliedRecord.templateId || entry.templateId || template.id || "").trim(),
+    templateTitle: String(suppliedRecord.templateTitle || template.title || renderModel.title || template.documentType || "Zapisnik").trim(),
+    documentType: String(suppliedRecord.documentType || template.documentType || renderModel.documentType || "Zapisnik").trim(),
+    companyId: String(suppliedRecord.companyId || workOrder.companyId || "").trim(),
+    locationId: String(suppliedRecord.locationId || workOrder.locationId || "").trim(),
+    objectId: String(suppliedRecord.objectId || entry.objectId || "").trim(),
+    objectName,
+    inspectionDate,
+    issuedDate,
+    fieldValues,
+    fieldSheets: suppliedRecord.fieldSheets && typeof suppliedRecord.fieldSheets === "object" && !Array.isArray(suppliedRecord.fieldSheets)
+      ? suppliedRecord.fieldSheets
+      : {},
+  };
+
+  if (!payload.organizationId || !payload.templateId || !payload.companyId || !payload.locationId) {
+    return null;
+  }
+
+  return payload;
+}
+
+function isSameGeneratedDocumentRecord(existing = {}, payload = {}, workOrder = {}) {
+  if (!existing || !payload) {
+    return false;
+  }
+
+  const existingObjectId = String(existing.objectId || "").trim();
+  const payloadObjectId = String(payload.objectId || "").trim();
+  if (payloadObjectId && existingObjectId && existingObjectId !== payloadObjectId) {
+    return false;
+  }
+
+  const existingObjectName = String(existing.objectName || "").trim().toLowerCase();
+  const payloadObjectName = String(payload.objectName || "").trim().toLowerCase();
+  if (!payloadObjectId && payloadObjectName && existingObjectName && existingObjectName !== payloadObjectName) {
+    return false;
+  }
+
+  const existingInspectionDate = normalizeGeneratedDocumentRecordDate(existing.inspectionDate);
+  const payloadInspectionDate = normalizeGeneratedDocumentRecordDate(payload.inspectionDate);
+  if (existingInspectionDate && payloadInspectionDate && existingInspectionDate !== payloadInspectionDate) {
+    return false;
+  }
+
+  const existingIssuedDate = normalizeGeneratedDocumentRecordDate(existing.issuedDate);
+  const payloadIssuedDate = normalizeGeneratedDocumentRecordDate(payload.issuedDate);
+  if (existingIssuedDate && payloadIssuedDate && existingIssuedDate !== payloadIssuedDate) {
+    return false;
+  }
+
+  const existingWorkOrderNumber = getGeneratedDocumentRecordWorkOrderNumber(existing, workOrder);
+  const payloadWorkOrderNumber = getGeneratedDocumentRecordWorkOrderNumber(payload, workOrder);
+  if (existingWorkOrderNumber && payloadWorkOrderNumber) {
+    return existingWorkOrderNumber === payloadWorkOrderNumber;
+  }
+
+  return JSON.stringify(existing.fieldValues ?? {}) === JSON.stringify(payload.fieldValues ?? {});
+}
+
+async function ensureGeneratedDocumentTemplateRecord({
+  entry = {},
+  workOrder = {},
+  template = {},
+  scopedSnapshot = {},
+  user = null,
+} = {}) {
+  if (
+    typeof domainRepository.createDocumentRecord !== "function"
+    || typeof domainRepository.listDocumentRecords !== "function"
+  ) {
+    return null;
+  }
+
+  const payload = buildGeneratedDocumentTemplateRecordPayload({
+    entry,
+    workOrder,
+    template,
+    scopedSnapshot,
+  });
+
+  if (!payload) {
+    return null;
+  }
+
+  const existingRecords = await domainRepository.listDocumentRecords({
+    organizationId: payload.organizationId,
+    templateId: payload.templateId,
+    companyId: payload.companyId,
+    locationId: payload.locationId,
+    objectId: payload.objectId,
+    limit: 50,
+    periodics: true,
+  });
+  const existing = existingRecords.find((record) => isSameGeneratedDocumentRecord(record, payload, workOrder));
+  if (existing) {
+    return existing;
+  }
+
+  return await domainRepository.createDocumentRecord(payload, user);
+}
+
 function stripStoredDocumentPayloadForResponse(document = null) {
   if (!document || typeof document !== "object") {
     return document;
@@ -3546,6 +3791,19 @@ async function saveGeneratedDocumentTemplatePdfDocuments(entries = [], scopedSna
       }
     }
 
+    let documentRecord = null;
+    try {
+      documentRecord = await ensureGeneratedDocumentTemplateRecord({
+        entry: bundle.entry,
+        workOrder,
+        template: bundle.template,
+        scopedSnapshot,
+        user,
+      });
+    } catch (recordError) {
+      console.warn("Generated document was saved, but periodics record could not be persisted.", recordError);
+    }
+
     savedItems.push({
       workOrderId,
       workOrderNumber: String(workOrder.workOrderNumber || "").trim(),
@@ -3557,6 +3815,7 @@ async function saveGeneratedDocumentTemplatePdfDocuments(entries = [], scopedSna
       fileName: primaryPdfItem?.fileName || savedDocuments[0]?.fileName || "",
       item: primaryPdfItem || savedDocuments[0] || null,
       documents: savedDocuments,
+      record: documentRecord,
     });
   }
 

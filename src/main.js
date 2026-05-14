@@ -50617,6 +50617,7 @@ function buildDocumentTemplateRuntimeExportEntry(
     htmlFileName: `${baseFileName}.html`,
     pdfFileName: `${baseFileName}.pdf`,
     placeholders: buildDocumentTemplateRuntimePlaceholderPayload(template, context),
+    documentRecord: buildDocumentTemplateRuntimeDocumentRecordPayload(template, workOrder),
     renderModel: {
       title: String(template.title || template.documentType || "Zapisnik").trim(),
       documentType: String(template.documentType || "Zapisnik").trim(),
@@ -50786,6 +50787,7 @@ function buildDocumentTemplateRuntimePdfPayloadFromEntry(exportEntry = null) {
     useTemplatePdf: usesTemplateDocument,
     pdfEngine: templateEngine,
     placeholders: exportEntry.placeholders,
+    documentRecord: exportEntry.documentRecord,
     renderModel: exportEntry.renderModel,
   };
 }
@@ -51452,6 +51454,9 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
         : [savedEntry.item].filter(Boolean);
       savedItems.push(savedEntry);
       upsertDocumentsExplorerWorkOrderDocuments(savedDocuments);
+      if (savedEntry.record) {
+        upsertDocumentsExplorerRecord(savedEntry.record);
+      }
       renderNotifications();
       const savedTypes = new Set(savedDocuments.map((item) => String(item?.fileExtension || "").toLowerCase()));
       const savedLabel = savedTypes.has("docx") && savedTypes.has("pdf") ? "DOCX i PDF" : "PDF";
