@@ -45849,6 +45849,321 @@ button.work-order-editor-section-head {
   }
 }
 
+/* RN editor workspace layout: phase cards on top, compact summary left, form on the right. */
+.work-order-editor-panel.is-modal-open {
+  top: 6px;
+  width: min(1920px, calc(100vw - 8px));
+  height: calc(100vh - 12px);
+  border-radius: 22px;
+}
+
+.work-order-editor-shell {
+  grid-template-columns: minmax(0, 1fr) clamp(300px, 18vw, 360px);
+}
+
+.work-order-editor-hero {
+  grid-template-columns: minmax(240px, 0.34fr) minmax(0, 1.66fr);
+  align-items: stretch;
+  gap: 12px;
+  padding: 10px;
+}
+
+.work-order-editor-meta {
+  display: grid;
+  align-content: stretch;
+}
+
+.work-order-editor-stage-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(132px, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+
+.work-order-editor-stage-card {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  min-height: 76px;
+  padding: 10px;
+  border: 1px solid rgba(198, 213, 237, 0.92);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, #ffffff, #f7fbff);
+  color: #17243b;
+  text-align: left;
+  cursor: pointer;
+  box-shadow:
+    0 10px 24px rgba(35, 54, 87, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.96);
+  transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.work-order-editor-stage-card:hover,
+.work-order-editor-stage-card:focus-visible {
+  border-color: rgba(52, 120, 246, 0.46);
+  outline: none;
+  transform: translateY(-1px);
+  box-shadow:
+    0 14px 30px rgba(43, 77, 128, 0.13),
+    0 0 0 3px rgba(52, 120, 246, 0.1);
+}
+
+.work-order-editor-stage-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  background: #eef6f3;
+  color: #16845f;
+}
+
+.work-order-editor-stage-icon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.work-order-editor-stage-card.is-status .work-order-editor-stage-icon {
+  background: #eef4ff;
+  color: #2f68c8;
+}
+
+.work-order-editor-stage-card.is-service .work-order-editor-stage-icon {
+  background: #f1f0ff;
+  color: #6554d8;
+}
+
+.work-order-editor-stage-card.is-billing .work-order-editor-stage-icon {
+  background: #fff7e6;
+  color: #9a6a14;
+}
+
+.work-order-editor-stage-card.is-upload .work-order-editor-stage-icon {
+  background: #fff0f3;
+  color: #c53655;
+}
+
+.work-order-editor-stage-copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.work-order-editor-stage-copy strong {
+  color: #15223a;
+  font-size: 0.82rem;
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.work-order-editor-stage-copy span {
+  min-width: 0;
+  color: #65738f;
+  font-size: 0.7rem;
+  font-weight: 750;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-order-editor-body {
+  grid-template-columns: minmax(230px, 272px) minmax(0, 1fr);
+  align-items: start;
+  gap: 14px;
+  padding: 14px;
+}
+
+.work-order-editor-form-panel {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.work-order-editor-side-summary {
+  position: sticky;
+  top: 0;
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+  max-height: calc(100dvh - 170px);
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid rgba(196, 212, 237, 0.92);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, #ffffff, #f7fbff);
+  box-shadow:
+    0 16px 34px rgba(31, 48, 82, 0.09),
+    inset 0 1px 0 rgba(255, 255, 255, 0.96);
+}
+
+.work-order-side-summary-head {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(216, 225, 241, 0.9);
+}
+
+.work-order-side-summary-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #1fa46f, #3478f6);
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 950;
+  box-shadow: 0 12px 24px rgba(52, 120, 246, 0.16);
+}
+
+.work-order-side-summary-title {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.work-order-side-summary-title strong {
+  min-width: 0;
+  color: #15223a;
+  font-size: 0.98rem;
+  line-height: 1.16;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-order-side-summary-title span {
+  color: #65738f;
+  font-size: 0.74rem;
+  font-weight: 750;
+}
+
+.work-order-side-summary-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.work-order-side-summary-list {
+  display: grid;
+  gap: 8px;
+}
+
+.work-order-side-summary-item {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  min-width: 0;
+  padding: 9px;
+  border: 1px solid rgba(219, 228, 243, 0.88);
+  border-radius: 14px;
+  background: rgba(251, 253, 255, 0.94);
+}
+
+.work-order-side-summary-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+  background: #eef6f3;
+  color: #1f8a62;
+}
+
+.work-order-side-summary-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.work-order-side-summary-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.work-order-side-summary-label {
+  color: #71809b;
+  font-size: 0.58rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.work-order-side-summary-value {
+  min-width: 0;
+  color: #1b2941;
+  font-size: 0.77rem;
+  line-height: 1.26;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-order-editor-section.is-editor-focus-pulse {
+  animation: workOrderSectionFocusPulse 1.1s ease-out;
+}
+
+@keyframes workOrderSectionFocusPulse {
+  0% {
+    box-shadow:
+      0 0 0 0 rgba(52, 120, 246, 0.28),
+      0 14px 34px rgba(36, 51, 84, 0.07);
+  }
+
+  100% {
+    box-shadow:
+      0 0 0 10px rgba(52, 120, 246, 0),
+      0 14px 34px rgba(36, 51, 84, 0.07);
+  }
+}
+
+@media (max-width: 1480px) {
+  .work-order-editor-stage-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1180px) {
+  .work-order-editor-shell,
+  .work-order-editor-hero,
+  .work-order-editor-body {
+    grid-template-columns: 1fr;
+  }
+
+  .work-order-editor-side-summary {
+    position: static;
+    max-height: none;
+  }
+
+  .work-order-editor-stage-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .work-order-editor-panel.is-modal-open {
+    top: 4px;
+    width: calc(100vw - 8px);
+    height: calc(100vh - 8px);
+  }
+
+  .work-order-editor-stage-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .work-order-calendar-executor-menu-portal,
 .work-order-service-picker-menu-portal {
   position: fixed;

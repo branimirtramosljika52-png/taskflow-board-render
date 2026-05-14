@@ -4169,6 +4169,7 @@ const workOrderEditorTitle = document.querySelector("#work-order-editor-title");
 const workOrderEditorCompanySummary = document.querySelector("#work-order-editor-company-summary");
 const workOrderEditorSubtitle = document.querySelector("#work-order-editor-subtitle");
 const workOrderEditorMeta = document.querySelector("#work-order-editor-meta");
+const workOrderEditorSideSummary = document.querySelector("#work-order-editor-side-summary");
 const workOrderForm = document.querySelector("#work-order-form");
 const workOrderError = document.querySelector("#work-order-error");
 const workOrderResetButton = document.querySelector("#work-order-reset");
@@ -21077,6 +21078,154 @@ function createWorkOrderEditorMetaItem(iconName, label, value, contentNode = nul
   return item;
 }
 
+function expandWorkOrderEditorSections(sectionKeys = []) {
+  (Array.isArray(sectionKeys) ? sectionKeys : [sectionKeys])
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .forEach((sectionKey) => {
+      state.workOrderEditorCollapsedSections[sectionKey] = false;
+      syncWorkOrderEditorSectionCollapse(
+        workOrderForm?.querySelector(`.work-order-editor-section[data-work-order-section="${sectionKey}"]`),
+      );
+    });
+}
+
+function focusWorkOrderEditorSection(sectionKeys = []) {
+  const keys = (Array.isArray(sectionKeys) ? sectionKeys : [sectionKeys])
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  if (keys.length === 0) {
+    return;
+  }
+
+  expandWorkOrderEditorSections(keys);
+  const target = workOrderForm?.querySelector(`.work-order-editor-section[data-work-order-section="${keys[0]}"]`);
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+
+  requestAnimationFrame(() => {
+    target.scrollIntoView({ block: "start", behavior: "smooth" });
+    target.classList.add("is-editor-focus-pulse");
+    window.setTimeout(() => {
+      target.classList.remove("is-editor-focus-pulse");
+    }, 1200);
+  });
+}
+
+function createWorkOrderEditorStageCard({
+  iconName = "service",
+  label = "",
+  value = "",
+  targetSections = [],
+  tone = "",
+} = {}) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `work-order-editor-stage-card${tone ? ` is-${tone}` : ""}`.trim();
+  button.dataset.preventRowOpen = "true";
+  button.setAttribute("aria-label", `${label}: ${value || ""}`.trim());
+
+  const icon = document.createElement("span");
+  icon.className = "work-order-editor-stage-icon";
+  icon.setAttribute("aria-hidden", "true");
+  icon.innerHTML = getWorkOrderIconMarkup(iconName);
+
+  const copy = document.createElement("span");
+  copy.className = "work-order-editor-stage-copy";
+
+  const labelNode = document.createElement("strong");
+  labelNode.textContent = label;
+  const valueNode = document.createElement("span");
+  valueNode.textContent = value || "-";
+  copy.append(labelNode, valueNode);
+
+  button.append(icon, copy);
+  button.addEventListener("click", () => {
+    focusWorkOrderEditorSection(targetSections);
+  });
+  return button;
+}
+
+function createWorkOrderSideSummaryItem(label = "", value = "", iconName = "service") {
+  const item = document.createElement("div");
+  item.className = "work-order-side-summary-item";
+
+  const icon = document.createElement("span");
+  icon.className = "work-order-side-summary-icon";
+  icon.setAttribute("aria-hidden", "true");
+  icon.innerHTML = getWorkOrderIconMarkup(iconName);
+
+  const copy = document.createElement("span");
+  copy.className = "work-order-side-summary-copy";
+
+  const labelNode = document.createElement("span");
+  labelNode.className = "work-order-side-summary-label";
+  labelNode.textContent = label;
+
+  const valueNode = document.createElement("strong");
+  valueNode.className = "work-order-side-summary-value";
+  valueNode.textContent = value || "-";
+
+  copy.append(labelNode, valueNode);
+  item.append(icon, copy);
+  return item;
+}
+
+function renderWorkOrderEditorSideSummary({
+  workOrderNumber = "",
+  statusLabel = "",
+  priorityLabel = "",
+  companyName = "",
+  locationName = "",
+  dateSummary = "",
+  serviceSummary = "",
+  contactSummary = "",
+  executorValues = [],
+  documentCount = 0,
+} = {}) {
+  if (!workOrderEditorSideSummary) {
+    return;
+  }
+
+  const head = document.createElement("div");
+  head.className = "work-order-side-summary-head";
+
+  const mark = document.createElement("span");
+  mark.className = "work-order-side-summary-mark";
+  mark.textContent = "RN";
+
+  const titleWrap = document.createElement("span");
+  titleWrap.className = "work-order-side-summary-title";
+  const title = document.createElement("strong");
+  title.textContent = workOrderNumber ? `RN ${workOrderNumber}` : "Novi RN";
+  const subtitle = document.createElement("span");
+  subtitle.textContent = statusLabel || "Otvoreni RN";
+  titleWrap.append(title, subtitle);
+  head.append(mark, titleWrap);
+
+  const chips = document.createElement("div");
+  chips.className = "work-order-side-summary-chips";
+  chips.append(
+    createWorkOrderEditorInfoChip(statusLabel || "Otvoreni RN", "accent"),
+    createWorkOrderEditorInfoChip(priorityLabel || "Normal", "soft"),
+  );
+
+  const list = document.createElement("div");
+  list.className = "work-order-side-summary-list";
+  list.append(
+    createWorkOrderSideSummaryItem("Tvrtka", companyName || "Nije odabrana", "company"),
+    createWorkOrderSideSummaryItem("Lokacija", locationName || "Nije odabrana", "location"),
+    createWorkOrderSideSummaryItem("Rokovi", dateSummary || "Bez roka", "dates"),
+    createWorkOrderSideSummaryItem("Usluge", serviceSummary || "Bez usluge", "service"),
+    createWorkOrderSideSummaryItem("Izvršitelji", executorValues.length ? `${executorValues.length} odabrano` : "Bez izvršitelja", "assignees"),
+    createWorkOrderSideSummaryItem("Kontakt", contactSummary || "Bez kontakta", "contact"),
+    createWorkOrderSideSummaryItem("Upload", `${Number(documentCount || 0)} dokumenata`, "document"),
+  );
+
+  workOrderEditorSideSummary.replaceChildren(head, chips, list);
+}
+
 function createWorkOrderFieldIcon(iconName) {
   const icon = document.createElement("span");
   icon.className = `work-order-field-icon is-${iconName}`;
@@ -21620,90 +21769,67 @@ function renderWorkOrderEditorSummary() {
     workOrderNumberPreview.textContent = workOrderNumber ? `RN ${workOrderNumber}` : "Broj nakon spremanja";
   }
 
-  const statusBadge = createBadge(
-    getSelectedOptionText(workOrderStatusInput) || workOrderStatusInput.value || "Otvoreni RN",
-    statusBadgeClass(workOrderStatusInput.value || "Otvoreni RN"),
-  );
-  statusBadge.classList.add("work-order-editor-chip");
+  const statusLabel = getSelectedOptionText(workOrderStatusInput) || workOrderStatusInput.value || "Otvoreni RN";
+  const priorityLabel = getSelectedOptionText(workOrderPriorityInput) || workOrderPriorityInput.value || "Normal";
+  const openedDateLabel = formatCompactOpenedDate(getNormalizedWorkOrderDateInputValue(workOrderOpenedDateInput));
+  const dueDateLabel = formatCompactDueDate(getNormalizedWorkOrderDateInputValue(workOrderDueDateInput));
+  const normalizedInvoiceDate = getNormalizedWorkOrderDateInputValue(workOrderInvoiceDateInput);
+  const invoiceDateLabel = normalizedInvoiceDate ? formatCompactDate(normalizedInvoiceDate) : "";
+  const documentCount = Number(workOrderDocumentCount?.textContent || 0);
 
-  const priorityBadge = createBadge(
-    getSelectedOptionText(workOrderPriorityInput) || workOrderPriorityInput.value || "Normal",
-    priorityBadgeClass(workOrderPriorityInput.value || "Normal"),
-  );
-  priorityBadge.classList.add("work-order-editor-chip");
-
-  const chips = document.createElement("div");
-  chips.className = "work-order-editor-chip-row";
-  chips.append(statusBadge, priorityBadge);
-
-  if (workOrderTagTextInput.value.trim()) {
-    chips.append(createWorkOrderEditorInfoChip(workOrderTagTextInput.value.trim(), "accent"));
-  }
-
-  if (teamLabel) {
-    chips.append(createWorkOrderEditorInfoChip(teamLabel, "accent"));
-  }
-
-  if (linkReference) {
-    chips.append(createWorkOrderEditorInfoChip(linkReference, "soft"));
-  }
-
-  const facts = document.createElement("div");
-  facts.className = "work-order-editor-facts";
-  facts.append(
-    createWorkOrderEditorMetaItem(
-      "number",
-      "Broj RN",
-      workOrderNumber || "Dodjeljuje se nakon spremanja",
-    ),
-    createWorkOrderEditorMetaItem(
-      "location",
-      "Lokacija",
-      locationName || "Odaberi lokaciju",
-    ),
-    createWorkOrderEditorMetaItem(
-      "dates",
-      "Datumi",
-      `${formatCompactOpenedDate(getNormalizedWorkOrderDateInputValue(workOrderOpenedDateInput))} · ${formatCompactDueDate(getNormalizedWorkOrderDateInputValue(workOrderDueDateInput))}`,
-    ),
-    createWorkOrderEditorMetaItem(
-      "service",
-      "Usluga",
-      serviceSummary || "Bez usluge",
-    ),
-    createWorkOrderEditorMetaItem(
-      "team",
-      "Tim",
-      teamLabel || "Bez tima",
-    ),
-    createWorkOrderEditorMetaItem(
-      "contact",
-      "Kontakt",
-      contactSummary || "Bez kontakta",
-    ),
+  const stages = document.createElement("div");
+  stages.className = "work-order-editor-stage-grid";
+  stages.append(
+    createWorkOrderEditorStageCard({
+      iconName: "dates",
+      label: "Status i rokovi",
+      value: `${statusLabel} · ${dueDateLabel}`,
+      targetSections: ["status"],
+      tone: "status",
+    }),
+    createWorkOrderEditorStageCard({
+      iconName: "company",
+      label: "Osnovni podaci",
+      value: [companyName || "Tvrtka", locationName || "Lokacija"].filter(Boolean).join(" · "),
+      targetSections: ["client", "location", "contact"],
+      tone: "base",
+    }),
+    createWorkOrderEditorStageCard({
+      iconName: "service",
+      label: "Izvršitelji i usluge",
+      value: `${executorValues.length} izvršitelja · ${selectedServiceItems.length} usluga`,
+      targetSections: ["executors", "services"],
+      tone: "service",
+    }),
+    createWorkOrderEditorStageCard({
+      iconName: "billing",
+      label: "Fakturni dio",
+      value: invoiceDateLabel || workOrderWeightInput.value.trim() || "Bez fakture",
+      targetSections: ["billing"],
+      tone: "billing",
+    }),
+    createWorkOrderEditorStageCard({
+      iconName: "document",
+      label: "Upload",
+      value: `${documentCount} dokumenata`,
+      targetSections: ["documents"],
+      tone: "upload",
+    }),
   );
 
-  const assigneeWrap = document.createElement("div");
-  assigneeWrap.className = "work-order-editor-assignees";
-
-  if (executorValues.length > 0) {
-    executorValues.slice(0, 5).forEach((executor) => {
-      assigneeWrap.append(createWorkOrderMiniExecutor(executor, { className: "work-order-editor-assignee" }));
-    });
-    if (executorValues.length > 5) {
-      assigneeWrap.append(createExecutorOverflowBadge(executorValues.length - 5, "work-order-editor-assignee"));
-    }
-  } else {
-    const empty = document.createElement("span");
-    empty.className = "work-order-editor-assignees-empty";
-    empty.textContent = "Bez izvršitelja";
-    assigneeWrap.append(empty);
-  }
-
-  const assigneeMeta = createWorkOrderEditorMetaItem("assignees", "Izvršitelji", "", assigneeWrap);
-  assigneeMeta.classList.add("is-assignee-group");
-  facts.append(assigneeMeta);
-  workOrderEditorMeta.replaceChildren(chips, facts);
+  workOrderEditorMeta.replaceChildren(stages);
+  renderWorkOrderEditorSideSummary({
+    workOrderNumber,
+    statusLabel,
+    priorityLabel,
+    companyName,
+    locationName,
+    dateSummary: `${openedDateLabel} · ${dueDateLabel}`,
+    serviceSummary,
+    contactSummary,
+    executorValues,
+    documentCount,
+  });
   workOrderStatusInput.dataset.status = slugifyValue(workOrderStatusInput.value || "Otvoreni RN");
   syncWorkOrderPdfAndRequiredFields();
   renderTopbarBreadcrumbs();
