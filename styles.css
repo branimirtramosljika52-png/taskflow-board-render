@@ -46200,6 +46200,9 @@ button.work-order-editor-section-head {
 
 .work-order-editor-heading-actions {
   gap: 8px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: min(520px, 46vw);
 }
 
 .work-order-editor-heading-actions .helper-copy,
@@ -46540,6 +46543,636 @@ button.work-order-editor-section-head {
 
   .work-order-editor-form .field {
     grid-template-columns: minmax(92px, 0.3fr) minmax(0, 1fr) !important;
+  }
+}
+
+/* RN editor ClickUp-style task view: clean title, detail rows, borderless content blocks. */
+.work-order-editor-panel.is-modal-open {
+  top: 10px;
+  width: min(1760px, calc(100vw - 28px));
+  height: calc(100vh - 20px);
+  border: 1px solid rgba(218, 223, 232, 0.95);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.28);
+}
+
+.work-order-editor-panel,
+.work-order-editor-main {
+  background: #ffffff !important;
+}
+
+.work-order-editor-shell {
+  grid-template-columns: minmax(760px, 1fr) minmax(360px, 33vw);
+  background: #ffffff;
+}
+
+.work-order-editor-fixed-head {
+  gap: 10px;
+  padding: 16px 28px 10px;
+  border-bottom: 1px solid rgba(232, 234, 239, 0.95);
+  background: #ffffff !important;
+}
+
+.work-order-editor-topbar {
+  min-height: 28px;
+  color: #667085;
+}
+
+.work-order-editor-breadcrumb {
+  gap: 7px;
+  color: #667085;
+  font-size: 0.76rem;
+  font-weight: 650;
+}
+
+.work-order-editor-type-mark {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  border-radius: 6px;
+  background: #f04438;
+  color: #ffffff;
+  box-shadow: none;
+  font-size: 0.52rem;
+  line-height: 1;
+}
+
+.work-order-editor-heading-actions {
+  gap: 8px;
+}
+
+#work-order-number-preview {
+  display: none !important;
+}
+
+.work-order-save-state {
+  max-width: 260px;
+  overflow: hidden;
+  padding: 5px 9px;
+  border-radius: 999px;
+  color: #7a8496;
+  font-size: 0.72rem;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-order-save-state[data-state="blocked"] {
+  border: 1px solid #fedf89;
+  background: #fffaeb;
+  color: #93370d;
+}
+
+.work-order-download-pdf,
+.work-order-editor-close {
+  min-height: 28px !important;
+  border-radius: 7px !important;
+}
+
+.work-order-editor-hero {
+  display: block !important;
+  padding: 0;
+  border: 0 !important;
+  border-radius: 0;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.work-order-editor-hero-copy {
+  display: grid;
+  gap: 8px;
+  padding: 0;
+}
+
+.work-order-editor-hero-copy h2 {
+  margin: 0;
+  color: #111827;
+  font-size: clamp(1.55rem, 2.1vw, 2.15rem);
+  font-weight: 760;
+  letter-spacing: 0 !important;
+  line-height: 1.16;
+}
+
+.work-order-editor-company-summary {
+  gap: 4px;
+}
+
+.work-order-editor-company-primary {
+  color: #485267;
+  font-size: 0.82rem;
+  font-weight: 740;
+}
+
+.work-order-editor-company-line,
+.work-order-editor-subtitle {
+  color: #687386;
+  font-size: 0.76rem;
+  font-weight: 520;
+  line-height: 1.38;
+}
+
+.work-order-editor-meta {
+  display: block;
+  width: min(920px, 100%);
+  margin-top: 14px;
+}
+
+.work-order-editor-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: 42px;
+  row-gap: 2px;
+}
+
+.work-order-editor-detail-column {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  align-content: start;
+}
+
+.work-order-editor-detail-row {
+  display: grid;
+  grid-template-columns: 18px minmax(104px, 0.42fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 36px;
+  padding: 3px 2px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #273142;
+  text-align: left;
+  cursor: pointer;
+}
+
+.work-order-editor-detail-row:hover,
+.work-order-editor-detail-row:focus-visible {
+  background: #f7f8fa;
+  outline: none;
+}
+
+.work-order-editor-detail-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  color: #7f8795;
+}
+
+.work-order-editor-detail-icon svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+.work-order-editor-detail-label {
+  min-width: 0;
+  color: #6f7787;
+  font-size: 0.86rem;
+  font-weight: 560;
+  line-height: 1.2;
+}
+
+.work-order-editor-detail-content {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  color: #202838;
+  font-size: 0.84rem;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.work-order-editor-detail-value.is-muted,
+.work-order-editor-detail-dates .is-muted {
+  color: #98a1b1;
+  font-weight: 520;
+}
+
+.work-order-editor-detail-status-pill,
+.work-order-editor-detail-priority-pill,
+.work-order-editor-detail-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  max-width: 100%;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: 0.76rem;
+  font-weight: 820;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.work-order-editor-detail-status-pill {
+  color: #5a6373;
+  background: #eef1f4;
+}
+
+.work-order-editor-detail-status-pill[data-status="gotov-rn"] {
+  color: #075e45;
+  background: #29c3a6;
+}
+
+.work-order-editor-detail-status-pill[data-status="ovjeren-rn"] {
+  color: #674500;
+  background: #f4cf62;
+}
+
+.work-order-editor-detail-status-pill[data-status="fakturiran-rn"] {
+  color: #14532d;
+  background: #bbf7d0;
+}
+
+.work-order-editor-detail-status-pill[data-status="storno-rn"] {
+  color: #495565;
+  background: #dce2ea;
+}
+
+.work-order-editor-detail-priority-pill {
+  position: relative;
+  gap: 7px;
+  color: #d92d20;
+  background: transparent;
+  padding-left: 0;
+  font-weight: 760;
+}
+
+.work-order-editor-detail-priority-pill::before {
+  content: "";
+  width: 11px;
+  height: 11px;
+  border-radius: 2px 2px 5px 2px;
+  background: #ef4444;
+  transform: skew(-8deg);
+}
+
+.work-order-editor-detail-priority-pill[data-priority="normal"] {
+  color: #475467;
+}
+
+.work-order-editor-detail-priority-pill[data-priority="normal"]::before,
+.work-order-editor-detail-priority-pill[data-priority="niski-prioritet"]::before,
+.work-order-editor-detail-priority-pill[data-priority="bez-prioriteta"]::before {
+  background: #98a2b3;
+}
+
+.work-order-editor-detail-dates {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.work-order-editor-detail-date-arrow {
+  color: #98a1b1;
+  font-weight: 650;
+}
+
+.work-order-editor-detail-tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+
+.work-order-editor-detail-tag {
+  color: #ffffff;
+  background: #ef4565;
+}
+
+.work-order-editor-detail-assignees {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.work-order-editor-detail-avatar-stack {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.work-order-editor-detail-avatar {
+  width: 25px;
+  height: 25px;
+  min-width: 25px;
+  margin-right: -7px;
+  border: 2px solid #ffffff;
+  box-shadow: none;
+}
+
+.work-order-editor-detail-avatar:last-child {
+  margin-right: 0;
+}
+
+.work-order-editor-detail-assignee-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-order-editor-body {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  padding: 14px 28px 28px;
+  background: #ffffff !important;
+}
+
+.work-order-editor-side-summary {
+  display: none !important;
+}
+
+.work-order-editor-form-panel {
+  gap: 12px;
+  width: min(980px, 100%);
+}
+
+.work-order-editor-form {
+  gap: 0 !important;
+}
+
+.work-order-editor-section[data-work-order-section] {
+  border: 0 !important;
+  border-top: 1px solid #eceef3 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  overflow: visible;
+}
+
+.work-order-editor-section[data-work-order-section]::before {
+  display: none !important;
+}
+
+.work-order-editor-section[data-work-order-section]:first-of-type {
+  border-top: 0 !important;
+}
+
+button.work-order-editor-section-head {
+  grid-template-columns: 18px minmax(0, 1fr) 24px !important;
+  min-height: 42px;
+  padding: 10px 0 8px;
+  border-bottom: 0 !important;
+  border-radius: 7px;
+  background: transparent !important;
+  color: #1f2937;
+}
+
+button.work-order-editor-section-head:hover,
+button.work-order-editor-section-head:focus-visible {
+  background: #f7f8fa;
+  outline: none;
+}
+
+.work-order-editor-section-head > div {
+  gap: 1px;
+}
+
+.work-order-editor-section-kicker {
+  display: none;
+}
+
+.work-order-editor-section-head h3 {
+  color: #1f2937;
+  font-size: 0.95rem;
+  font-weight: 760;
+  letter-spacing: 0 !important;
+}
+
+.work-order-section-toggle-icon {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+  color: #98a1b1;
+  box-shadow: none;
+}
+
+.work-order-section-mark {
+  width: 18px !important;
+  height: 18px !important;
+  flex: 0 0 18px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: #8a94a6 !important;
+  box-shadow: none !important;
+}
+
+.work-order-section-mark svg,
+.work-order-section-toggle-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.work-order-editor-section-body,
+.work-order-editor-section.is-client-identity .work-order-editor-section-body {
+  gap: 8px;
+  padding: 0 0 14px !important;
+}
+
+.work-order-editor-form .form-grid {
+  gap: 5px 22px;
+}
+
+.work-order-editor-form .field {
+  grid-template-columns: 150px minmax(0, 1fr) !important;
+  align-items: center;
+  min-height: 34px;
+  gap: 12px;
+  padding: 2px 0 !important;
+  border: 0 !important;
+  border-radius: 6px;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.work-order-editor-form .field > span,
+.work-order-editor-form .work-order-field-heading {
+  gap: 8px !important;
+  margin: 0 !important;
+  color: #687386 !important;
+  font-size: 0.8rem !important;
+  font-weight: 560 !important;
+  letter-spacing: 0 !important;
+  line-height: 1.2 !important;
+  text-transform: none !important;
+}
+
+.work-order-editor-form .work-order-field-icon {
+  width: 17px;
+  height: 17px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #858e9f;
+}
+
+.work-order-editor-form input,
+.work-order-editor-form select,
+.work-order-editor-form textarea,
+.work-order-inline-executor-picker,
+.work-order-inline-service-picker {
+  min-height: 30px !important;
+  padding: 4px 8px !important;
+  border: 1px solid transparent !important;
+  border-radius: 6px !important;
+  background: transparent !important;
+  color: #1f2937;
+  font-size: 0.86rem;
+  font-weight: 580;
+  box-shadow: none !important;
+}
+
+.work-order-editor-form select,
+.work-order-inline-executor-picker,
+.work-order-inline-service-picker {
+  background: #f7f8fa !important;
+  border-color: transparent !important;
+}
+
+.work-order-editor-form input[readonly] {
+  color: #4b5565;
+}
+
+.work-order-editor-form input:hover,
+.work-order-editor-form select:hover,
+.work-order-editor-form textarea:hover,
+.work-order-inline-executor-picker:hover,
+.work-order-inline-service-picker:hover {
+  background: #f7f8fa !important;
+}
+
+.work-order-editor-form input:focus,
+.work-order-editor-form select:focus,
+.work-order-editor-form textarea:focus {
+  border-color: rgba(47, 110, 225, 0.4) !important;
+  background: #ffffff !important;
+  outline: none;
+}
+
+.work-order-company-picker {
+  min-height: 40px;
+  padding: 6px 70px 6px 8px;
+  border: 0;
+  background: #f7f8fa;
+}
+
+.work-order-company-picker::after {
+  min-height: 22px;
+  font-size: 0.62rem;
+}
+
+.work-order-service-type-tabs {
+  display: inline-grid;
+  width: min(520px, 100%);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  margin: 4px 0 8px;
+  padding: 2px;
+  border-radius: 8px;
+  background: #f3f4f6;
+}
+
+.work-order-service-type-tab {
+  min-height: 28px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #667085;
+  font-size: 0.75rem;
+  font-weight: 720;
+}
+
+.work-order-service-type-tab.is-active {
+  background: #ffffff;
+  color: #1f2937;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.1);
+}
+
+.work-order-editor-form .field.has-required-attention {
+  border: 0 !important;
+  background: #fff6f7 !important;
+  box-shadow: inset 3px 0 0 #e5484d !important;
+  padding-inline: 8px !important;
+  animation: none !important;
+}
+
+.work-order-editor-form .field.has-required-attention > span,
+.work-order-editor-form .field.has-required-attention .work-order-field-heading {
+  color: #b42334 !important;
+}
+
+.work-order-editor-form .field.has-required-attention > span::after,
+.work-order-editor-form .field.has-required-attention .work-order-field-heading::after {
+  content: "OBAVEZNO";
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: #fee4e2;
+  color: #b42334;
+  font-size: 0.52rem;
+  font-weight: 820;
+  letter-spacing: 0.04em;
+}
+
+.work-order-activity-panel {
+  padding: 16px 18px;
+  border-left: 1px solid #eceef3;
+  background: #fbfbfc !important;
+}
+
+.work-order-activity-head {
+  min-height: 42px;
+}
+
+.work-order-activity-head h3 {
+  color: #1f2937;
+  font-size: 0.96rem;
+  font-weight: 760;
+}
+
+.work-order-activity-documents-panel,
+.work-order-activity-comment-panel {
+  border: 0;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+@media (max-width: 1180px) {
+  .work-order-editor-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .work-order-editor-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .work-order-editor-body,
+  .work-order-editor-fixed-head {
+    padding-inline: 18px;
+  }
+}
+
+@media (max-width: 760px) {
+  .work-order-editor-panel.is-modal-open {
+    top: 4px;
+    width: calc(100vw - 8px);
+    height: calc(100vh - 8px);
+    border-radius: 12px;
+  }
+
+  .work-order-editor-form .field {
+    grid-template-columns: 1fr !important;
+    gap: 4px;
   }
 }
 

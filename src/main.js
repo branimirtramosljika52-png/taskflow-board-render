@@ -21147,6 +21147,140 @@ function createWorkOrderEditorStageCard({
   return button;
 }
 
+function createWorkOrderEditorPlainValue(value = "", { muted = false } = {}) {
+  const node = document.createElement("span");
+  node.className = `work-order-editor-detail-value${muted ? " is-muted" : ""}`;
+  node.textContent = value || "-";
+  return node;
+}
+
+function createWorkOrderEditorStatusPill(statusLabel = "Otvoreni RN", statusValue = statusLabel) {
+  const pill = document.createElement("span");
+  pill.className = "work-order-editor-detail-status-pill";
+  pill.dataset.status = slugifyValue(statusValue || statusLabel || "Otvoreni RN");
+  pill.textContent = statusLabel || "Otvoreni RN";
+  return pill;
+}
+
+function createWorkOrderEditorPriorityPill(priorityLabel = "Normal", priorityValue = priorityLabel) {
+  const pill = document.createElement("span");
+  pill.className = "work-order-editor-detail-priority-pill";
+  pill.dataset.priority = slugifyValue(priorityValue || priorityLabel || "Normal");
+  pill.textContent = priorityLabel || "Normal";
+  return pill;
+}
+
+function createWorkOrderEditorTagsContent(tagText = "") {
+  const values = String(tagText || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .slice(0, 4);
+  const wrap = document.createElement("span");
+  wrap.className = "work-order-editor-detail-tags";
+
+  if (values.length === 0) {
+    wrap.append(createWorkOrderEditorPlainValue("Empty", { muted: true }));
+    return wrap;
+  }
+
+  values.forEach((value) => {
+    const tag = document.createElement("span");
+    tag.className = "work-order-editor-detail-tag";
+    tag.textContent = value;
+    wrap.append(tag);
+  });
+  return wrap;
+}
+
+function createWorkOrderEditorDatesContent(openedDateLabel = "", dueDateLabel = "") {
+  const wrap = document.createElement("span");
+  wrap.className = "work-order-editor-detail-dates";
+
+  const start = document.createElement("span");
+  start.className = openedDateLabel === "Bez datuma" ? "is-muted" : "";
+  start.textContent = openedDateLabel || "Bez datuma";
+
+  const arrow = document.createElement("span");
+  arrow.className = "work-order-editor-detail-date-arrow";
+  arrow.textContent = "->";
+
+  const due = document.createElement("strong");
+  due.className = dueDateLabel === "Bez roka" ? "is-muted" : "";
+  due.textContent = dueDateLabel || "Bez roka";
+
+  wrap.append(start, arrow, due);
+  return wrap;
+}
+
+function createWorkOrderEditorAssigneesContent(executorValues = []) {
+  const wrap = document.createElement("span");
+  wrap.className = "work-order-editor-detail-assignees";
+  const values = (Array.isArray(executorValues) ? executorValues : [])
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+
+  if (values.length === 0) {
+    wrap.append(createWorkOrderEditorPlainValue("Empty", { muted: true }));
+    return wrap;
+  }
+
+  const stack = document.createElement("span");
+  stack.className = "work-order-editor-detail-avatar-stack";
+  values.slice(0, 3).forEach((value) => {
+    stack.append(createWorkOrderMiniExecutor(value, {
+      className: "work-order-mini-executor work-order-editor-detail-avatar",
+    }));
+  });
+  if (values.length > 3) {
+    stack.append(createExecutorOverflowBadge(values.length - 3, "work-order-mini-executor work-order-editor-detail-avatar"));
+  }
+
+  const label = document.createElement("span");
+  label.className = "work-order-editor-detail-assignee-label";
+  label.textContent = values.length === 1 ? values[0] : `${values[0]} +${values.length - 1}`;
+
+  wrap.append(stack, label);
+  return wrap;
+}
+
+function createWorkOrderEditorDetailRow({
+  iconName = "service",
+  label = "",
+  content = null,
+  value = "",
+  targetSections = [],
+  tone = "",
+} = {}) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `work-order-editor-detail-row${tone ? ` is-${tone}` : ""}`.trim();
+  button.dataset.preventRowOpen = "true";
+
+  const icon = document.createElement("span");
+  icon.className = "work-order-editor-detail-icon";
+  icon.setAttribute("aria-hidden", "true");
+  icon.innerHTML = getWorkOrderIconMarkup(iconName);
+
+  const labelNode = document.createElement("span");
+  labelNode.className = "work-order-editor-detail-label";
+  labelNode.textContent = label;
+
+  const valueNode = document.createElement("span");
+  valueNode.className = "work-order-editor-detail-content";
+  if (content instanceof Node) {
+    valueNode.append(content);
+  } else {
+    valueNode.append(createWorkOrderEditorPlainValue(value || "-"));
+  }
+
+  button.append(icon, labelNode, valueNode);
+  button.addEventListener("click", () => {
+    focusWorkOrderEditorSection(targetSections);
+  });
+  return button;
+}
+
 function createWorkOrderSideSummaryItem(label = "", value = "", iconName = "service") {
   const item = document.createElement("div");
   item.className = "work-order-side-summary-item";
@@ -21792,47 +21926,77 @@ function renderWorkOrderEditorSummary() {
   const invoiceDateLabel = normalizedInvoiceDate ? formatCompactDate(normalizedInvoiceDate) : "";
   const documentCount = Number(workOrderDocumentCount?.textContent || 0);
 
-  const stages = document.createElement("div");
-  stages.className = "work-order-editor-stage-grid";
-  stages.append(
-    createWorkOrderEditorStageCard({
-      iconName: "dates",
-      label: "Status i rokovi",
-      value: `${statusLabel} · ${dueDateLabel}`,
+  const details = document.createElement("div");
+  details.className = "work-order-editor-detail-grid";
+
+  const primaryColumn = document.createElement("div");
+  primaryColumn.className = "work-order-editor-detail-column";
+  primaryColumn.append(
+    createWorkOrderEditorDetailRow({
+      iconName: "status",
+      label: "Status",
+      content: createWorkOrderEditorStatusPill(statusLabel, workOrderStatusInput.value || statusLabel),
       targetSections: ["status"],
       tone: "status",
     }),
-    createWorkOrderEditorStageCard({
-      iconName: "company",
-      label: "Osnovni podaci",
-      value: [companyName || "Tvrtka", locationName || "Lokacija"].filter(Boolean).join(" · "),
-      targetSections: ["client", "location", "contact"],
-      tone: "base",
+    createWorkOrderEditorDetailRow({
+      iconName: "dates",
+      label: "Dates",
+      content: createWorkOrderEditorDatesContent(openedDateLabel, dueDateLabel),
+      targetSections: ["status"],
+      tone: "dates",
     }),
-    createWorkOrderEditorStageCard({
-      iconName: "service",
-      label: "Izvršitelji i usluge",
-      value: `${executorValues.length} izvršitelja · ${selectedServiceItems.length} usluga`,
-      targetSections: ["executors", "services"],
-      tone: "service",
+    createWorkOrderEditorDetailRow({
+      iconName: "measurement",
+      label: "Time estimate",
+      content: createWorkOrderEditorPlainValue("Empty", { muted: true }),
+      targetSections: ["status"],
+      tone: "time",
     }),
-    createWorkOrderEditorStageCard({
-      iconName: "billing",
-      label: "Fakturni dio",
-      value: invoiceDateLabel || workOrderWeightInput.value.trim() || "Bez fakture",
-      targetSections: ["billing"],
-      tone: "billing",
-    }),
-    createWorkOrderEditorStageCard({
-      iconName: "document",
-      label: "Upload",
-      value: `${documentCount} dokumenata`,
-      targetSections: ["documents"],
-      tone: "upload",
+    createWorkOrderEditorDetailRow({
+      iconName: "tags",
+      label: "Tags",
+      content: createWorkOrderEditorTagsContent(workOrderTagTextInput.value),
+      targetSections: ["status"],
+      tone: "tags",
     }),
   );
 
-  workOrderEditorMeta.replaceChildren(stages);
+  const secondaryColumn = document.createElement("div");
+  secondaryColumn.className = "work-order-editor-detail-column";
+  secondaryColumn.append(
+    createWorkOrderEditorDetailRow({
+      iconName: "assignees",
+      label: "Assignees",
+      content: createWorkOrderEditorAssigneesContent(executorValues),
+      targetSections: ["executors"],
+      tone: "assignees",
+    }),
+    createWorkOrderEditorDetailRow({
+      iconName: "priority",
+      label: "Priority",
+      content: createWorkOrderEditorPriorityPill(priorityLabel, workOrderPriorityInput.value || priorityLabel),
+      targetSections: ["status"],
+      tone: "priority",
+    }),
+    createWorkOrderEditorDetailRow({
+      iconName: "reminder",
+      label: "Track time",
+      content: createWorkOrderEditorPlainValue("Start", { muted: true }),
+      targetSections: ["status"],
+      tone: "track",
+    }),
+    createWorkOrderEditorDetailRow({
+      iconName: "service",
+      label: "Services",
+      value: selectedServiceItems.length > 0 ? `${selectedServiceItems.length} odabrano` : "Empty",
+      targetSections: ["services"],
+      tone: "service",
+    }),
+  );
+
+  details.append(primaryColumn, secondaryColumn);
+  workOrderEditorMeta.replaceChildren(details);
   renderWorkOrderEditorSideSummary({
     workOrderNumber,
     statusLabel,
