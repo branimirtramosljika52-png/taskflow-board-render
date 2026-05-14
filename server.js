@@ -8424,6 +8424,7 @@ async function handleApiRequest(request, response, url) {
         visualSettings: {
           criticalDays: body?.criticalDays,
           warningDays: body?.warningDays,
+          workOrderDefaultDueDays: body?.workOrderDefaultDueDays,
         },
       });
       await writeSnapshot(response, user, request);

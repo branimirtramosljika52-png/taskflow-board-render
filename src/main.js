@@ -859,6 +859,7 @@ const DEFAULT_VEHICLE_NOTIFICATION_SETTINGS = Object.freeze({
 const DEFAULT_PERIODICS_VISUAL_SETTINGS = Object.freeze({
   criticalDays: 7,
   warningDays: 60,
+  workOrderDefaultDueDays: "",
 });
 const APP_CAPABILITY_STATUS_OPTIONS = Object.freeze([
   Object.freeze({
@@ -2963,6 +2964,7 @@ const settingsVehicleTireLeadDaysInput = document.querySelector("#settings-vehic
 const settingsVehicleTireRepeatDaysInput = document.querySelector("#settings-vehicle-tire-repeat-days");
 const settingsPeriodicsCriticalDaysInput = document.querySelector("#settings-periodics-critical-days");
 const settingsPeriodicsWarningDaysInput = document.querySelector("#settings-periodics-warning-days");
+const settingsWorkOrderDefaultDueDaysInput = document.querySelector("#settings-work-order-default-due-days");
 const settingsSaveAllButton = document.querySelector("#settings-save-all");
 const settingsOrganizationLogoDataUrlInput = document.querySelector("#settings-organization-logo-data-url");
 const settingsOrganizationLogoFileInput = document.querySelector("#settings-organization-logo-file");
@@ -7196,6 +7198,20 @@ function normalizeNotificationDayValue(value, fallback = 1, { min = 1, max = 365
   return Math.max(min, Math.min(max, Math.round(numeric)));
 }
 
+function normalizeOptionalDayValue(value, { min = 0, max = 365 } = {}) {
+  const rawValue = String(value ?? "").trim();
+  if (!rawValue) {
+    return "";
+  }
+
+  const numeric = Number(rawValue);
+  if (!Number.isFinite(numeric)) {
+    return "";
+  }
+
+  return String(Math.max(min, Math.min(max, Math.round(numeric))));
+}
+
 function normalizeMeasurementEquipmentNotificationSettings(value = {}) {
   const source = value && typeof value === "object"
     ? value
@@ -7317,6 +7333,10 @@ function normalizePeriodicsVisualSettings(value = {}) {
   return {
     criticalDays,
     warningDays,
+    workOrderDefaultDueDays: normalizeOptionalDayValue(
+      source.workOrderDefaultDueDays ?? source.workOrderDueDays ?? source.defaultWorkOrderDueDays,
+      { min: 0, max: 365 },
+    ),
   };
 }
 
@@ -11754,7 +11774,7 @@ function buildPeopleTrainingWorkOrderPayload(group = {}, selection = {}) {
     status: WORK_ORDER_STATUS_OPTIONS[0]?.value || "Otvoreni RN",
     priority: PRIORITY_OPTIONS[0]?.value || "Normal",
     openedDate: getTodayDateKey(),
-    dueDate: getTodayDateKey(),
+    dueDate: resolveDefaultWorkOrderDueDate(getTodayDateKey()),
     executionDate: "",
     teamLabel: "Osposobljavanje ljudi",
     companyId: group.companyId || "",
@@ -14094,6 +14114,25 @@ function writeWorkOrderExecutorSelection(values = [], { dispatchEventName = "", 
 
   if (renderPicker) {
     renderWorkOrderEditorExecutorPicker();
+  }
+}
+
+function readWorkOrderCompletedBySelection() {
+  return normalizeWorkOrderExecutorValues(
+    String(workOrderCompletedByInput?.value || "")
+      .split(/[,\n;]+/)
+      .map((value) => value.trim())
+      .filter(Boolean),
+  );
+}
+
+function writeWorkOrderCompletedBySelection(values = [], { dispatchEventName = "change" } = {}) {
+  const normalized = normalizeWorkOrderExecutorValues(values);
+  if (workOrderCompletedByInput) {
+    workOrderCompletedByInput.value = normalized.join(", ");
+    if (dispatchEventName) {
+      workOrderCompletedByInput.dispatchEvent(new Event(dispatchEventName, { bubbles: true }));
+    }
   }
 }
 
@@ -20722,6 +20761,20 @@ function normalizeCompactTypedDateValue(value = "") {
   return rawValue;
 }
 
+function normalizeLiveDateTypingValue(value = "") {
+  const rawValue = String(value ?? "").trim();
+  if (!rawValue) {
+    return "";
+  }
+
+  const digitValue = rawValue.replace(/\s+/g, "");
+  if (/^\d{8}$/.test(digitValue)) {
+    return `${digitValue.slice(0, 2)}.${digitValue.slice(2, 4)}.${digitValue.slice(4)}`;
+  }
+
+  return rawValue;
+}
+
 function formatDate(value) {
   const parsedDate = parseDateValue(value);
 
@@ -20922,6 +20975,40 @@ function shiftDateKey(value, days) {
   const shifted = new Date(parsedDate);
   shifted.setDate(shifted.getDate() + days);
   return toDateKey(shifted);
+}
+
+function getWorkOrderDefaultDueDays() {
+  const value = getPeriodicsVisualSettings().workOrderDefaultDueDays;
+  if (String(value ?? "").trim() === "") {
+    return null;
+  }
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? Math.max(0, Math.min(365, Math.round(numeric))) : null;
+}
+
+function resolveDefaultWorkOrderDueDate(openedDate = getTodayDateKey()) {
+  const days = getWorkOrderDefaultDueDays();
+  if (days === null) {
+    return "";
+  }
+  return shiftDateKey(openedDate || getTodayDateKey(), days);
+}
+
+function applyDefaultWorkOrderDueDate({ force = false } = {}) {
+  if (!workOrderDueDateInput || !workOrderOpenedDateInput) {
+    return "";
+  }
+
+  const currentDueDate = getNormalizedWorkOrderDateInputValue(workOrderDueDateInput);
+  const shouldApply = force || !currentDueDate || workOrderDueDateInput.dataset.autoDefaultDue === "true";
+  if (!shouldApply) {
+    return currentDueDate;
+  }
+
+  const nextDueDate = resolveDefaultWorkOrderDueDate(getNormalizedWorkOrderDateInputValue(workOrderOpenedDateInput) || getTodayDateKey());
+  setWorkOrderDateInputValue(workOrderDueDateInput, nextDueDate);
+  workOrderDueDateInput.dataset.autoDefaultDue = nextDueDate ? "true" : "false";
+  return nextDueDate;
 }
 
 function shiftMonthDateKey(value, months) {
@@ -21559,6 +21646,10 @@ function createWorkOrderEditorPriorityControl(priorityValue = "", priorityLabel 
 
 function createWorkOrderEditorDateControl(input, placeholder = "Odaberi datum") {
   const normalizedValue = getNormalizedWorkOrderDateInputValue(input);
+  const wrap = document.createElement("span");
+  wrap.className = "work-order-editor-date-wrap";
+  wrap.dataset.preventRowOpen = "true";
+
   const dateInput = document.createElement("input");
   dateInput.type = "text";
   dateInput.inputMode = "numeric";
@@ -21566,14 +21657,44 @@ function createWorkOrderEditorDateControl(input, placeholder = "Odaberi datum") 
   dateInput.dataset.preventRowOpen = "true";
   dateInput.value = normalizedValue ? formatDateInputDisplayValue(normalizedValue) : "";
   dateInput.placeholder = "dd.mm.yyyy";
+  dateInput.maxLength = 10;
   dateInput.setAttribute("aria-label", placeholder);
+
+  const nativeInput = document.createElement("input");
+  nativeInput.type = "date";
+  nativeInput.className = "work-order-editor-native-date";
+  nativeInput.value = normalizedValue || "";
+  nativeInput.tabIndex = -1;
+  nativeInput.dataset.preventRowOpen = "true";
+  nativeInput.setAttribute("aria-hidden", "true");
+
+  const pickerButton = document.createElement("button");
+  pickerButton.type = "button";
+  pickerButton.className = "work-order-editor-date-picker-button";
+  pickerButton.dataset.preventRowOpen = "true";
+  pickerButton.setAttribute("aria-label", `${placeholder} - kalendar`);
+  pickerButton.innerHTML = getWorkOrderIconMarkup("dates");
+
+  const openPicker = () => {
+    if (typeof nativeInput.showPicker === "function") {
+      try {
+        nativeInput.showPicker();
+        return;
+      } catch {
+        // Browser can reject showPicker without a direct user gesture; focus is the safe fallback.
+      }
+    }
+    nativeInput.focus({ preventScroll: true });
+  };
 
   const commitDate = () => {
     const normalized = normalizeDateInputValue(dateInput.value);
     dateInput.value = normalized ? formatDateInputDisplayValue(normalized) : "";
-    setWorkOrderDateInputValue(input, normalized);
-    dispatchWorkOrderEditorFieldEvent(input, "input");
-    dispatchWorkOrderEditorFieldEvent(input, "change");
+    nativeInput.value = normalized || "";
+    if (input && getNormalizedWorkOrderDateInputValue(input) !== normalized) {
+      setWorkOrderDateInputValue(input, normalized);
+      dispatchWorkOrderEditorFieldEvent(input, "change");
+    }
   };
 
   dateInput.addEventListener("click", (event) => {
@@ -21581,11 +21702,7 @@ function createWorkOrderEditorDateControl(input, placeholder = "Odaberi datum") 
   });
 
   dateInput.addEventListener("input", () => {
-    dateInput.value = normalizeCompactTypedDateValue(dateInput.value);
-    if (input) {
-      input.value = dateInput.value;
-      dispatchWorkOrderEditorFieldEvent(input, "input");
-    }
+    dateInput.value = normalizeLiveDateTypingValue(dateInput.value);
   });
   dateInput.addEventListener("change", commitDate);
   dateInput.addEventListener("blur", commitDate);
@@ -21596,7 +21713,22 @@ function createWorkOrderEditorDateControl(input, placeholder = "Odaberi datum") 
     }
   });
 
-  return dateInput;
+  pickerButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    openPicker();
+  });
+  nativeInput.addEventListener("click", (event) => event.stopPropagation());
+  nativeInput.addEventListener("change", () => {
+    const normalized = normalizeDateInputValue(nativeInput.value);
+    dateInput.value = normalized ? formatDateInputDisplayValue(normalized) : "";
+    if (input && getNormalizedWorkOrderDateInputValue(input) !== normalized) {
+      setWorkOrderDateInputValue(input, normalized);
+      dispatchWorkOrderEditorFieldEvent(input, "change");
+    }
+  });
+
+  wrap.append(dateInput, pickerButton, nativeInput);
+  return wrap;
 }
 
 function createWorkOrderEditorTextControl(input, {
@@ -21633,7 +21765,6 @@ function createWorkOrderEditorTextControl(input, {
       return;
     }
     input.value = control.value;
-    dispatchWorkOrderEditorFieldEvent(input, "input");
   });
   control.addEventListener("change", commit);
   control.addEventListener("blur", commit);
@@ -22104,6 +22235,150 @@ function createWorkOrderEditorExecutorsContent(executorValues = []) {
 
         list.replaceChildren();
         getWorkOrderExecutorOptions(draftValues).forEach((option) => {
+          const isSelected = draftValues.includes(option.value);
+          const optionButton = document.createElement("button");
+          optionButton.type = "button";
+          optionButton.className = `work-item-status-option work-order-calendar-executor-option${isSelected ? " is-selected" : ""}`;
+          optionButton.setAttribute("role", "menuitemcheckbox");
+          optionButton.setAttribute("aria-checked", String(isSelected));
+          const avatar = createWorkOrderMiniExecutor(option, {
+            className: "work-order-calendar-executor-option-avatar",
+          });
+          const label = document.createElement("span");
+          label.className = "work-order-calendar-executor-option-label";
+          label.textContent = option.label;
+          const marker = document.createElement("span");
+          marker.className = "work-order-calendar-executor-option-marker";
+          marker.setAttribute("aria-hidden", "true");
+          marker.textContent = isSelected ? "✓" : "+";
+          optionButton.append(avatar, label, marker);
+          optionButton.addEventListener("click", (event) => {
+            event.stopPropagation();
+            draftValues = isSelected
+              ? draftValues.filter((entry) => entry !== option.value)
+              : [...draftValues, option.value];
+            dirty = true;
+            render();
+          });
+          list.append(optionButton);
+        });
+
+        clearButton.disabled = draftValues.length === 0;
+        reposition();
+      };
+
+      clearButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        draftValues = [];
+        dirty = true;
+        render();
+      });
+      doneButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        closeMenu();
+      });
+
+      footer.append(clearButton, doneButton);
+      menu.append(selection, list, footer);
+      render();
+    },
+  });
+}
+
+function getWorkOrderCompletedByOptions(currentValues = []) {
+  const labels = normalizeWorkOrderExecutorValues(currentValues);
+  const target = {
+    ...buildWorkOrderPayload(),
+    completedBy: labels.join(", "),
+  };
+  return getWorkOrderFinishedInspectorOptions([target], labels)
+    .map((option) => ({
+      value: option.label,
+      label: option.label,
+      user: option.user,
+      summary: option.summary,
+      isSnapshot: option.isSnapshot,
+    }));
+}
+
+function createWorkOrderEditorCompletedByContent(completedValues = []) {
+  let draftValues = normalizeWorkOrderExecutorValues(completedValues);
+  let dirty = false;
+
+  const commit = () => {
+    if (!dirty) {
+      return;
+    }
+    writeWorkOrderCompletedBySelection(draftValues, {
+      dispatchEventName: "change",
+    });
+    dirty = false;
+  };
+
+  return createWorkOrderEditorMenuShell({
+    className: "is-completed-by",
+    ariaLabel: "Odaberi tko je završio RN",
+    renderTriggerContent: () => (
+      draftValues.length > 0
+        ? createWorkOrderEditorExecutorTriggerContent(draftValues)
+        : createWorkOrderEditorPlainValue("Odaberi ispitivače", { muted: true })
+    ),
+    commit,
+    renderMenuContent: (menu, reposition, closeMenu) => {
+      const selection = document.createElement("div");
+      selection.className = "work-order-editor-menu-selection";
+
+      const list = document.createElement("div");
+      list.className = "work-order-editor-field-options work-order-editor-people-options";
+
+      const footer = document.createElement("div");
+      footer.className = "work-order-editor-menu-footer";
+
+      const clearButton = document.createElement("button");
+      clearButton.type = "button";
+      clearButton.className = "ghost-button work-order-editor-menu-clear";
+      clearButton.textContent = "Očisti";
+
+      const doneButton = document.createElement("button");
+      doneButton.type = "button";
+      doneButton.className = "primary-button work-order-editor-menu-done";
+      doneButton.textContent = "Gotovo";
+
+      const render = () => {
+        selection.replaceChildren();
+        if (draftValues.length === 0) {
+          const empty = document.createElement("span");
+          empty.className = "work-order-calendar-executor-selection-empty";
+          empty.textContent = "Nije završeno";
+          selection.append(empty);
+        } else {
+          draftValues.forEach((value) => {
+            const chip = document.createElement("button");
+            chip.type = "button";
+            chip.className = "work-order-calendar-executor-chip";
+            chip.title = `Makni ${value}`;
+            const avatar = createWorkOrderMiniExecutor(value);
+            avatar.removeAttribute("title");
+            const label = document.createElement("span");
+            label.className = "work-order-calendar-executor-chip-label";
+            label.textContent = value;
+            const remove = document.createElement("span");
+            remove.className = "work-order-calendar-executor-chip-remove";
+            remove.setAttribute("aria-hidden", "true");
+            remove.textContent = "x";
+            chip.append(avatar, label, remove);
+            chip.addEventListener("click", (event) => {
+              event.stopPropagation();
+              draftValues = draftValues.filter((entry) => entry !== value);
+              dirty = true;
+              render();
+            });
+            selection.append(chip);
+          });
+        }
+
+        list.replaceChildren();
+        getWorkOrderCompletedByOptions(draftValues).forEach((option) => {
           const isSelected = draftValues.includes(option.value);
           const optionButton = document.createElement("button");
           optionButton.type = "button";
@@ -23073,7 +23348,7 @@ function renderWorkOrderEditorSummary() {
     createWorkOrderEditorDetailRow({
       iconName: "service",
       label: "Vrsta ugovora",
-      content: createWorkOrderEditorStaticValue(String(workOrderContractTypeInput.value || "").trim(), "Bez ugovora"),
+      content: createWorkOrderEditorTextControl(workOrderContractTypeInput, { placeholder: "Vrsta ugovora" }),
       tone: "contract",
     }),
     createWorkOrderEditorDetailRow({
@@ -23097,7 +23372,7 @@ function renderWorkOrderEditorSummary() {
     createWorkOrderEditorDetailRow({
       iconName: "billing",
       label: "RN završio",
-      content: createWorkOrderEditorTextControl(workOrderCompletedByInput, { placeholder: "Ime i prezime" }),
+      content: createWorkOrderEditorCompletedByContent(readWorkOrderCompletedBySelection()),
       tone: "billing",
     }),
   );
@@ -28080,6 +28355,13 @@ function renderSettingsModule() {
     settingsPeriodicsWarningDaysInput.disabled = !canManageSettings;
   }
 
+  if (settingsWorkOrderDefaultDueDaysInput) {
+    if (document.activeElement !== settingsWorkOrderDefaultDueDaysInput) {
+      settingsWorkOrderDefaultDueDaysInput.value = periodicsVisualSettings.workOrderDefaultDueDays || "";
+    }
+    settingsWorkOrderDefaultDueDaysInput.disabled = !canManageSettings;
+  }
+
   if (settingsSaveAllButton) {
     settingsSaveAllButton.disabled = !canManageSettings;
     settingsSaveAllButton.hidden = !canManageSettings;
@@ -28363,6 +28645,10 @@ async function savePeriodicsVisualSettings(options = {}) {
     { min: 1, max: 365 },
   );
   const warningDays = Math.max(criticalDays, warningDaysRaw);
+  const workOrderDefaultDueDays = normalizeOptionalDayValue(
+    settingsWorkOrderDefaultDueDaysInput?.value,
+    { min: 0, max: 365 },
+  );
 
   if (settingsPeriodicsCriticalDaysInput) {
     settingsPeriodicsCriticalDaysInput.value = String(criticalDays);
@@ -28370,12 +28656,16 @@ async function savePeriodicsVisualSettings(options = {}) {
   if (settingsPeriodicsWarningDaysInput) {
     settingsPeriodicsWarningDaysInput.value = String(warningDays);
   }
+  if (settingsWorkOrderDefaultDueDaysInput) {
+    settingsWorkOrderDefaultDueDaysInput.value = workOrderDefaultDueDays;
+  }
 
   const success = await runMutation(() => apiRequest("/periodics/visual-settings", {
     method: "POST",
     body: {
       criticalDays,
       warningDays,
+      workOrderDefaultDueDays,
     },
   }), settingsPeriodicsVisualFeedback);
 
@@ -39592,13 +39882,63 @@ function renderWorkOrderActivityCommentControls() {
   if (workOrderActivityCommentInput) {
     workOrderActivityCommentInput.disabled = !hasWorkOrder;
     workOrderActivityCommentInput.placeholder = hasWorkOrder
-      ? "Napiši komentar za ovaj RN..."
+      ? "Napiši komentar... koristi @ime za tagiranje"
       : "Prvo otvori ili spremi RN za komentare.";
   }
 
   if (workOrderActivityCommentAddButton) {
     workOrderActivityCommentAddButton.disabled = !hasWorkOrder;
   }
+}
+
+function getWorkOrderActivityMentionUserId(message = "") {
+  const normalizedMessage = normalizeLooseName(String(message || "").replace(/@/g, " mention "));
+  if (!normalizedMessage.includes("mention ")) {
+    return "";
+  }
+
+  const activeUsers = (state.users ?? [])
+    .filter((user) => user?.isActive !== false)
+    .sort((left, right) => getUserDisplayLabel(right).length - getUserDisplayLabel(left).length);
+
+  for (const user of activeUsers) {
+    const label = normalizeLooseName(getUserDisplayLabel(user));
+    const firstToken = label.split(" ")[0] || "";
+    const emailToken = normalizeLooseName(user.email || "");
+    const candidates = [label, firstToken, emailToken]
+      .filter(Boolean)
+      .map((candidate) => `mention ${candidate}`);
+    if (candidates.some((candidate) => normalizedMessage.includes(candidate))) {
+      return String(user.id || "");
+    }
+  }
+
+  return "";
+}
+
+function appendWorkOrderActivityTextWithMentions(target, text = "") {
+  const source = String(text || "");
+  const fragment = document.createDocumentFragment();
+  const mentionPattern = /(@[\p{L}\p{N}._-]+(?:\s+[\p{L}\p{N}._-]+)?)/gu;
+  let cursor = 0;
+
+  source.replace(mentionPattern, (match, _mention, offset) => {
+    if (offset > cursor) {
+      fragment.append(document.createTextNode(source.slice(cursor, offset)));
+    }
+    const mention = document.createElement("span");
+    mention.className = "work-order-activity-mention";
+    mention.textContent = match;
+    fragment.append(mention);
+    cursor = offset + match.length;
+    return match;
+  });
+
+  if (cursor < source.length) {
+    fragment.append(document.createTextNode(source.slice(cursor)));
+  }
+
+  target.replaceChildren(fragment);
 }
 
 function renderWorkOrderActivity() {
@@ -39675,7 +40015,7 @@ function renderWorkOrderActivity() {
     if (entry.actionType === "comment") {
       const comment = document.createElement("p");
       comment.className = "work-order-activity-comment-text";
-      comment.textContent = entry.newValue || entry.description || "Komentar";
+      appendWorkOrderActivityTextWithMentions(comment, entry.newValue || entry.description || "Komentar");
       body.append(top, meta, comment);
     } else if (entry.oldValue || entry.newValue) {
       const diff = document.createElement("div");
@@ -39766,7 +40106,8 @@ async function loadWorkOrderActivity(workOrderId) {
 async function submitWorkOrderActivityComment() {
   const workOrderId = state.workOrderActivity.workOrderId || workOrderIdInput?.value || "";
   const message = String(workOrderActivityCommentInput?.value || "").trim();
-  const mentionUserId = String(workOrderActivityMentionUserInput?.value || "").trim();
+  const mentionUserId = String(workOrderActivityMentionUserInput?.value || "").trim()
+    || getWorkOrderActivityMentionUserId(message);
 
   if (!workOrderId) {
     if (workOrderActivityCommentError) {
@@ -40328,8 +40669,8 @@ async function buildWorkOrderDocumentUploadPayload(files, metadataEntries = []) 
   return Promise.all(uploadFiles.map(async (file, index) => {
     const metadata = metadataByFile.get(file) || metadataList[index] || {};
     const documentCategory = getWorkOrderDocumentCategoryLabel(
-      metadata.documentCategory || metadata.category || "",
-    );
+      metadata.documentCategory || metadata.category || DEFAULT_WORK_ORDER_DOCUMENT_CATEGORY,
+    ) || DEFAULT_WORK_ORDER_DOCUMENT_CATEGORY;
 
     return {
       fileName: file.name,
@@ -40379,10 +40720,15 @@ async function handleWorkOrderDocumentSelection(files, sourceType = "editor", op
     }
 
     const workOrder = options.workOrder || findWorkOrderById(workOrderId);
-    const selectedCategories = await openWorkOrderDocumentCategoryDialog(selectedFiles, {
-      title: options.title || getWorkOrderDocumentDialogTitle(workOrderId, workOrder),
-      helper: options.helper || "Odaberi vrstu za svaku datoteku. Ako ih je više, svaka dobiva svoj red.",
-    });
+    const selectedCategories = options.askCategory === true
+      ? await openWorkOrderDocumentCategoryDialog(selectedFiles, {
+        title: options.title || getWorkOrderDocumentDialogTitle(workOrderId, workOrder),
+        helper: options.helper || "Odaberi vrstu za svaku datoteku. Ako ih je više, svaka dobiva svoj red.",
+      })
+      : selectedFiles.map((file) => ({
+        file,
+        documentCategory: options.documentCategory || DEFAULT_WORK_ORDER_DOCUMENT_CATEGORY,
+      }));
 
     if (!selectedCategories) {
       return;
@@ -68311,12 +68657,17 @@ function focusWorkOrderComposer(prefill = {}) {
   resetWorkOrderForm();
   resetWorkOrderActivityState();
 
+  const prefillHasDueDate = Object.prototype.hasOwnProperty.call(prefill, "dueDate");
   if (Object.prototype.hasOwnProperty.call(prefill, "openedDate")) {
     setWorkOrderDateInputValue(workOrderOpenedDateInput, prefill.openedDate || "");
+    if (!prefillHasDueDate) {
+      applyDefaultWorkOrderDueDate({ force: true });
+    }
   }
 
-  if (Object.prototype.hasOwnProperty.call(prefill, "dueDate")) {
+  if (prefillHasDueDate) {
     setWorkOrderDateInputValue(workOrderDueDateInput, prefill.dueDate || "");
+    workOrderDueDateInput.dataset.autoDefaultDue = "false";
   }
 
   if (Object.prototype.hasOwnProperty.call(prefill, "teamLabel")) {
@@ -69370,6 +69721,7 @@ function buildWorkOrderPayload() {
     executionDate: getNormalizedWorkOrderDateInputValue(workOrderExecutionDateInput),
     teamLabel: workOrderTeamLabelInput.value,
     companyId: workOrderCompanyIdInput.value,
+    contractType: workOrderContractTypeInput.value,
     locationId: workOrderLocationIdInput.value,
     coordinates: workOrderCoordinatesInput.value,
     region: workOrderRegionInput.value,
@@ -72140,8 +72492,9 @@ function resetWorkOrderForm() {
   workOrderNumberPreview.textContent = "Broj RN se generira pri spremanju.";
   workOrderStatusInput.value = "Otvoreni RN";
   workOrderPriorityInput.value = "Normal";
-  setWorkOrderDateInputValue(workOrderOpenedDateInput, new Date().toISOString().slice(0, 10));
-  setWorkOrderDateInputValue(workOrderDueDateInput, "");
+  setWorkOrderDateInputValue(workOrderOpenedDateInput, getTodayDateKey());
+  setWorkOrderDateInputValue(workOrderDueDateInput, resolveDefaultWorkOrderDueDate(getTodayDateKey()));
+  workOrderDueDateInput.dataset.autoDefaultDue = getNormalizedWorkOrderDateInputValue(workOrderDueDateInput) ? "true" : "false";
   setWorkOrderDateInputValue(workOrderExecutionDateInput, "");
   setWorkOrderDateInputValue(workOrderInvoiceDateInput, "");
   workOrderTeamLabelInput.value = "";
@@ -72439,6 +72792,7 @@ function hydrateWorkOrderForm(workOrder, options = {}) {
   workOrderPriorityInput.value = workOrder.priority;
   setWorkOrderDateInputValue(workOrderOpenedDateInput, workOrder.openedDate ?? "");
   setWorkOrderDateInputValue(workOrderDueDateInput, workOrder.dueDate ?? "");
+  workOrderDueDateInput.dataset.autoDefaultDue = "false";
   setWorkOrderDateInputValue(workOrderExecutionDateInput, workOrder.executionDate ?? "");
   workOrderTeamLabelInput.value = workOrder.teamLabel ?? "";
   rebuildWorkOrderCompanyOptions(workOrder.companyId);
@@ -89067,7 +89421,7 @@ async function deleteSelectedWorkOrderTemplate() {
   }
 }
 
-async function saveGeneratedWorkOrderPdf(workOrderId = "") {
+async function saveGeneratedWorkOrderPdf(workOrderId = "", { refreshDocuments = true } = {}) {
   const normalizedId = String(workOrderId || "").trim();
   if (!normalizedId || workOrderPdfSaveInFlight.has(normalizedId)) {
     return false;
@@ -89083,7 +89437,7 @@ async function saveGeneratedWorkOrderPdf(workOrderId = "") {
       },
     });
 
-    if (String(state.workOrderDocuments.workOrderId || workOrderIdInput?.value || "") === normalizedId) {
+    if (refreshDocuments && String(state.workOrderDocuments.workOrderId || workOrderIdInput?.value || "") === normalizedId) {
       await loadWorkOrderDocuments(normalizedId);
     }
 
@@ -89105,7 +89459,7 @@ function queueGeneratedWorkOrderPdfSave(workOrderId = "") {
   window.clearTimeout(workOrderPdfSaveTimers.get(normalizedId));
   workOrderPdfSaveTimers.set(normalizedId, window.setTimeout(() => {
     workOrderPdfSaveTimers.delete(normalizedId);
-    void saveGeneratedWorkOrderPdf(normalizedId);
+    void saveGeneratedWorkOrderPdf(normalizedId, { refreshDocuments: false });
   }, WORK_ORDER_PDF_AUTOSAVE_DELAY_MS));
 }
 
@@ -89117,7 +89471,7 @@ async function downloadWorkOrderPdf(workOrder = {}, { saveFirst = true } = {}) {
 
   try {
     if (saveFirst) {
-      await saveGeneratedWorkOrderPdf(workOrderId);
+      await saveGeneratedWorkOrderPdf(workOrderId, { refreshDocuments: false });
     }
     const templateId = getSelectedWorkOrderTemplateId();
     const response = await apiBinaryRequest(`/work-orders/${workOrderId}/pdf`, {
@@ -89179,6 +89533,9 @@ async function downloadActiveWorkOrderPdfFromEditor() {
     return;
   }
 
+  const mainScrollTop = workOrderEditorMain?.scrollTop ?? null;
+  const activityScrollTop = workOrderActivityPanel?.scrollTop ?? null;
+
   if (workOrderDownloadPdfButton) {
     workOrderDownloadPdfButton.disabled = true;
     workOrderDownloadPdfButton.classList.add("is-loading");
@@ -89205,7 +89562,7 @@ async function downloadActiveWorkOrderPdfFromEditor() {
       workOrderNumber: workOrderNumberPreview?.textContent?.replace(/^RN\s+/i, "") || "",
     };
 
-    await saveGeneratedWorkOrderPdf(workOrderId);
+    await saveGeneratedWorkOrderPdf(workOrderId, { refreshDocuments: false });
     await downloadWorkOrderPdf(workOrder, { saveFirst: false });
     workOrderError.textContent = "";
   } catch (error) {
@@ -89216,6 +89573,14 @@ async function downloadActiveWorkOrderPdfFromEditor() {
       workOrderDownloadPdfButton.removeAttribute("aria-busy");
     }
     syncWorkOrderPdfAndRequiredFields();
+    requestAnimationFrame(() => {
+      if (workOrderEditorMain && mainScrollTop !== null) {
+        workOrderEditorMain.scrollTop = mainScrollTop;
+      }
+      if (workOrderActivityPanel && activityScrollTop !== null) {
+        workOrderActivityPanel.scrollTop = activityScrollTop;
+      }
+    });
   }
 }
 
@@ -97606,6 +97971,7 @@ workOrderContactSlotInput.addEventListener("change", () => {
 [
   workOrderOpenedDateInput,
   workOrderDueDateInput,
+  workOrderExecutionDateInput,
   workOrderInvoiceDateInput,
 ].forEach((input) => {
   input?.addEventListener("input", () => {
@@ -97617,6 +97983,14 @@ workOrderContactSlotInput.addEventListener("change", () => {
   input?.addEventListener("blur", () => {
     normalizeWorkOrderDateInputDisplay(input);
   });
+});
+
+workOrderOpenedDateInput?.addEventListener("change", () => {
+  applyDefaultWorkOrderDueDate();
+});
+
+workOrderDueDateInput?.addEventListener("change", () => {
+  workOrderDueDateInput.dataset.autoDefaultDue = "false";
 });
 
 workOrderForm.addEventListener("input", () => {
@@ -97671,7 +98045,7 @@ workOrderActivityCommentAddButton?.addEventListener("click", () => {
   void submitWorkOrderActivityComment();
 });
 workOrderActivityCommentInput?.addEventListener("keydown", (event) => {
-  if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+  if (event.key === "Enter" && !event.shiftKey) {
     event.preventDefault();
     void submitWorkOrderActivityComment();
   }
@@ -102827,6 +103201,13 @@ settingsPeriodicsCriticalDaysInput?.addEventListener("keydown", (event) => {
 });
 
 settingsPeriodicsWarningDaysInput?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    void saveAllSettingsBlocks();
+  }
+});
+
+settingsWorkOrderDefaultDueDaysInput?.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     event.preventDefault();
     void saveAllSettingsBlocks();

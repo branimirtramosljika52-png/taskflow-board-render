@@ -423,6 +423,7 @@ const DEFAULT_VEHICLE_NOTIFICATION_SETTINGS = Object.freeze({
 const DEFAULT_PERIODICS_VISUAL_SETTINGS = Object.freeze({
   criticalDays: 7,
   warningDays: 60,
+  workOrderDefaultDueDays: "",
 });
 const APP_CAPABILITY_STATUS_VALUES = new Set([
   "implemented",
@@ -438,6 +439,20 @@ function normalizeMeasurementEquipmentNotificationDay(value, fallback = 1, { min
   }
 
   return Math.max(min, Math.min(max, Math.round(numeric)));
+}
+
+function normalizeOptionalSettingsDay(value, { min = 0, max = 365 } = {}) {
+  const rawValue = dbString(value).trim();
+  if (!rawValue) {
+    return "";
+  }
+
+  const numeric = Number(rawValue);
+  if (!Number.isFinite(numeric)) {
+    return "";
+  }
+
+  return String(Math.max(min, Math.min(max, Math.round(numeric))));
 }
 
 function normalizeMeasurementEquipmentNotificationSettings(value = {}) {
@@ -544,6 +559,10 @@ function normalizePeriodicsVisualSettings(value = {}) {
   return {
     criticalDays,
     warningDays: Math.max(criticalDays, warningDaysRaw),
+    workOrderDefaultDueDays: normalizeOptionalSettingsDay(
+      source.workOrderDefaultDueDays ?? source.workOrderDueDays ?? source.defaultWorkOrderDueDays,
+      { min: 0, max: 365 },
+    ),
   };
 }
 
@@ -1290,6 +1309,7 @@ const WORK_ORDER_ACTIVITY_FIELD_LABELS = {
   companyName: "Tvrtka",
   headquarters: "Sjedište",
   companyOib: "OIB",
+  contractType: "Vrsta ugovora",
   locationName: "Lokacija",
   region: "Regija",
   coordinates: "Koordinate",
@@ -2920,7 +2940,7 @@ async function fetchSnapshotFromConnection(connection) {
   );
 
   const [workOrderRows] = await connection.query(`
-    SELECT id, broj_rn, datum_rn, ime_tvrtke, sjediste, oib, veza_rn, lokacija, prioritet,
+    SELECT id, broj_rn, datum_rn, ime_tvrtke, sjediste, oib, vrsta_ugovora, veza_rn, lokacija, prioritet,
            kontakt_osoba, kontakt_broj, kontakt_email, rok_zavrsetka, datum_izvrsenja, izvrsitelj_rn1,
            izvrsitelj_rn2, izvrsitelji_json, tagovi, status_rn, napomena_faktura, godina_rn, redni_broj,
            tim_rn, odjel, koordinate, usluge, opis, regija, datum_fakturiranja, tezina, rn_zavrsio,
@@ -2988,7 +3008,7 @@ async function fetchSnapshotFromConnection(connection) {
       companyName: row.ime_tvrtke ?? company?.name ?? "",
       companyOib: row.oib ?? "",
       headquarters: row.sjediste ?? company?.headquarters ?? "",
-      contractType: company?.contractType ?? "",
+      contractType: row.vrsta_ugovora || company?.contractType || "",
       locationId: location?.id ?? "",
       locationName: row.lokacija ?? "",
       linkReference: row.veza_rn ?? "",
@@ -7317,6 +7337,7 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "radni_nalozi", "izvrsitelji_json", "LONGTEXT NULL AFTER izvrsitelj_rn2");
     await ensureColumnExists(this.pool, "radni_nalozi", "tim_rn", "VARCHAR(160) NOT NULL DEFAULT '' AFTER izvrsitelji_json");
     await ensureColumnExists(this.pool, "radni_nalozi", "datum_izvrsenja", "DATE NULL AFTER rok_zavrsetka");
+    await ensureColumnExists(this.pool, "radni_nalozi", "vrsta_ugovora", "VARCHAR(180) NOT NULL DEFAULT '' AFTER oib");
     await ensureColumnExists(this.pool, "radni_nalozi", "usluge_json", "LONGTEXT NULL AFTER usluge");
     await ensureColumnExists(this.pool, "radni_nalozi", "mjerenja_json", "LONGTEXT NULL AFTER usluge_json");
     await ensureColumnExists(this.pool, "radni_nalozi", "training_admin_name", "VARCHAR(160) NOT NULL DEFAULT '' AFTER rn_zavrsio");
@@ -8091,12 +8112,12 @@ export class MySqlSafetyRepository {
       const [result] = await connection.query(
         `
           INSERT INTO radni_nalozi
-            (broj_rn, datum_rn, ime_tvrtke, sjediste, oib, veza_rn, lokacija, prioritet,
+            (broj_rn, datum_rn, ime_tvrtke, sjediste, oib, vrsta_ugovora, veza_rn, lokacija, prioritet,
              kontakt_osoba, kontakt_broj, kontakt_email, rok_zavrsetka, datum_izvrsenja, izvrsitelj_rn1,
              izvrsitelj_rn2, izvrsitelji_json, tim_rn, tagovi, status_rn, napomena_faktura, godina_rn, redni_broj,
              odjel, koordinate, usluge, usluge_json, mjerenja_json, opis, regija, datum_fakturiranja, tezina, rn_zavrsio,
              training_admin_name, training_admin_role, training_admin_phone, training_admin_email)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           brojRn,
@@ -8104,6 +8125,7 @@ export class MySqlSafetyRepository {
           draft.companyName,
           draft.headquarters,
           draft.companyOib,
+          draft.contractType,
           draft.linkReference,
           draft.locationName,
           draft.priority,
@@ -8184,7 +8206,7 @@ export class MySqlSafetyRepository {
       await connection.query(
         `
           UPDATE radni_nalozi
-          SET datum_rn = ?, ime_tvrtke = ?, sjediste = ?, oib = ?, veza_rn = ?, lokacija = ?,
+          SET datum_rn = ?, ime_tvrtke = ?, sjediste = ?, oib = ?, vrsta_ugovora = ?, veza_rn = ?, lokacija = ?,
               prioritet = ?, kontakt_osoba = ?, kontakt_broj = ?, kontakt_email = ?, rok_zavrsetka = ?, datum_izvrsenja = ?,
               izvrsitelj_rn1 = ?, izvrsitelj_rn2 = ?, izvrsitelji_json = ?, tim_rn = ?, tagovi = ?, status_rn = ?, napomena_faktura = ?,
               odjel = ?, koordinate = ?, usluge = ?, usluge_json = ?, mjerenja_json = ?, opis = ?, regija = ?, datum_fakturiranja = ?,
@@ -8196,6 +8218,7 @@ export class MySqlSafetyRepository {
           next.companyName,
           next.headquarters,
           next.companyOib,
+          next.contractType,
           next.linkReference,
           next.locationName,
           next.priority,

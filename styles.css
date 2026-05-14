@@ -46773,9 +46773,9 @@ button.work-order-editor-section-head {
 
 .work-order-editor-detail-row {
   display: grid;
-  grid-template-columns: 18px minmax(126px, 0.42fr) minmax(0, 1fr);
+  grid-template-columns: 24px 142px minmax(0, 1fr);
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
   min-height: 36px;
   padding: 3px 2px;
@@ -46797,8 +46797,7 @@ button.work-order-editor-section-head {
 .work-order-editor-detail-grid.is-clickup-table .work-order-editor-detail-row.is-location,
 .work-order-editor-detail-grid.is-clickup-table .work-order-editor-detail-row.is-contact,
 .work-order-editor-detail-grid.is-clickup-table .work-order-editor-detail-row.is-assignees,
-.work-order-editor-detail-grid.is-clickup-table .work-order-editor-detail-row.is-service,
-.work-order-editor-detail-grid.is-clickup-table .work-order-editor-detail-row.is-contract {
+.work-order-editor-detail-grid.is-clickup-table .work-order-editor-detail-row.is-service {
   grid-column: 1 / -1;
 }
 
@@ -46870,7 +46869,16 @@ button.work-order-editor-section-head {
 }
 
 .work-order-editor-field-picker {
-  width: min(100%, 440px);
+  width: min(100%, 460px);
+}
+
+.work-order-editor-detail-row.is-status .work-order-editor-field-picker,
+.work-order-editor-detail-row.is-priority .work-order-editor-field-picker,
+.work-order-editor-detail-row.is-contract .work-order-editor-text-control,
+.work-order-editor-detail-row.is-tags .work-order-editor-text-control,
+.work-order-editor-detail-row.is-dates .work-order-editor-date-wrap,
+.work-order-editor-detail-row.is-billing .work-order-editor-date-wrap {
+  width: 100%;
 }
 
 .work-order-editor-detail-row.is-company .work-order-editor-field-picker,
@@ -46967,6 +46975,60 @@ button.work-order-editor-section-head {
   font-size: 0.82rem;
   font-weight: 680;
   box-shadow: none;
+}
+
+.work-order-editor-date-wrap {
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  align-items: center;
+  width: min(100%, 220px);
+  min-width: 0;
+}
+
+.work-order-editor-date-wrap .work-order-editor-date-control {
+  width: 100%;
+  padding-right: 34px;
+}
+
+.work-order-editor-date-picker-button {
+  position: absolute;
+  right: 3px;
+  top: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #7b8496;
+  transform: translateY(-50%);
+  cursor: pointer;
+}
+
+.work-order-editor-date-picker-button:hover,
+.work-order-editor-date-picker-button:focus-visible {
+  background: #eef2f7;
+  color: #344054;
+  outline: none;
+}
+
+.work-order-editor-date-picker-button svg {
+  width: 15px;
+  height: 15px;
+}
+
+.work-order-editor-native-date {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .work-order-editor-date-control:hover,
@@ -47383,12 +47445,29 @@ button.work-order-editor-section-head {
   display: none !important;
 }
 
+#work-order-training-section {
+  display: none !important;
+}
+
 .work-order-editor-section[data-work-order-section="services"] {
   margin-top: 14px;
 }
 
 .work-order-editor-section[data-work-order-section="services"] .work-order-editor-section-head h3 {
   font-size: 0.88rem;
+}
+
+.work-order-editor-section.is-documents > .work-order-editor-section-head {
+  display: none !important;
+}
+
+.work-order-editor-section.is-documents {
+  margin-top: 12px;
+  border-top: 0 !important;
+}
+
+.work-order-editor-section.is-documents .work-order-editor-section-body {
+  padding-top: 4px !important;
 }
 
 .work-order-editor-section[data-work-order-section]::before {
@@ -47611,6 +47690,7 @@ button.work-order-editor-section-head:focus-visible {
   padding: 16px 18px;
   border-left: 1px solid #eceef3;
   background: #fbfbfc !important;
+  gap: 12px;
 }
 
 .work-order-activity-head {
@@ -47626,9 +47706,101 @@ button.work-order-editor-section-head:focus-visible {
 .work-order-activity-documents-panel,
 .work-order-activity-comment-panel {
   border: 0;
-  border-radius: 10px;
+  border-radius: 8px;
   background: #ffffff;
-  box-shadow: none;
+  box-shadow: inset 0 0 0 1px #edf0f5;
+}
+
+.work-order-activity-comment-head span {
+  color: #6b7280;
+}
+
+.work-order-activity-comment-panel textarea {
+  min-height: 72px;
+  border-radius: 9px;
+  background: #ffffff;
+}
+
+.work-order-activity-comment-actions {
+  grid-template-columns: auto;
+  justify-content: end;
+}
+
+.work-order-activity-comment-actions select {
+  display: none;
+}
+
+.work-order-activity-list {
+  gap: 10px;
+  padding-left: 0;
+}
+
+.work-order-activity-item {
+  position: relative;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.work-order-activity-item::before {
+  content: "";
+  position: absolute;
+  left: 14px;
+  top: 32px;
+  bottom: -12px;
+  width: 1px;
+  background: #e5e7eb;
+}
+
+.work-order-activity-item:last-child::before {
+  display: none;
+}
+
+.work-order-activity-avatar {
+  width: 28px;
+  height: 28px;
+  background: #f1f4fb;
+  color: #4f46e5;
+  font-size: 0.65rem;
+}
+
+.work-order-activity-item-body {
+  border-radius: 9px;
+  border-color: #e5e7eb;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.work-order-activity-item.is-comment .work-order-activity-item-body {
+  border-color: #dfe5ee;
+  background: #ffffff;
+}
+
+.work-order-activity-description {
+  font-size: 0.83rem;
+  font-weight: 720;
+}
+
+.work-order-activity-time {
+  color: #6b7280;
+  font-size: 0.7rem;
+}
+
+.work-order-activity-actor,
+.work-order-activity-field,
+.work-order-activity-old,
+.work-order-activity-new {
+  min-height: 19px;
+  border-radius: 6px;
+}
+
+.work-order-activity-mention {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 5px;
+  border-radius: 6px;
+  background: #eef4ff;
+  color: #2f5fb8;
+  font-weight: 760;
 }
 
 @media (max-width: 1180px) {
@@ -47699,6 +47871,7 @@ button.work-order-editor-section-head:focus-visible {
 
   .work-order-editor-field-picker,
   .work-order-editor-inline-action,
+  .work-order-editor-date-wrap,
   .work-order-editor-date-control,
   .work-order-editor-text-input {
     width: 100%;

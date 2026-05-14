@@ -2192,6 +2192,7 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       const defaults = {
         criticalDays: 7,
         warningDays: 60,
+        workOrderDefaultDueDays: "",
       };
       const settingsEntry = (rawSnapshot.periodicsVisualSettings ?? []).find((item) => (
         String(item.organizationId) === String(organizationId)
@@ -2210,6 +2211,7 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       return {
         criticalDays,
         warningDays: Math.max(criticalDays, warningDaysRaw),
+        workOrderDefaultDueDays: String(settingsEntry.workOrderDefaultDueDays ?? "").trim(),
       };
     })(),
     appCapabilities: (() => {

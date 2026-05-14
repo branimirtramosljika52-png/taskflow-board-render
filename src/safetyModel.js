@@ -6952,6 +6952,10 @@ function hydrateWorkOrderCore(base, company, location) {
     : getWorkOrderServiceItems(base);
   const measurementSheet = normalizeWorkOrderMeasurementSheet(base?.measurementSheet);
   const locationSnapshot = resolveLocationSnapshot(location);
+  const companySnapshot = resolveCompanySnapshot(company);
+  const contractType = hasOwn(base ?? {}, "contractType")
+    ? normalizeText(base?.contractType)
+    : companySnapshot.contractType;
   const trainingContext = {
     name: normalizeText(base?.trainingContext?.name),
     role: normalizeText(base?.trainingContext?.role),
@@ -6970,7 +6974,8 @@ function hydrateWorkOrderCore(base, company, location) {
     serviceLine: serviceItems.length > 0
       ? serviceItems.map((item) => item.name || item.serviceCode).filter(Boolean).join(" · ")
       : normalizeText(base?.serviceLine),
-    ...resolveCompanySnapshot(company),
+    ...companySnapshot,
+    contractType,
     ...locationSnapshot,
     locationName: locationSnapshot.locationName || normalizeText(base?.locationName),
     coordinates: locationSnapshot.coordinates || normalizeText(base?.coordinates),
@@ -7025,6 +7030,7 @@ export function createWorkOrder(
     description: normalizeText(input.description),
     linkReference: normalizeText(input.linkReference),
     teamLabel: normalizeText(input.teamLabel),
+    contractType: normalizeText(input.contractType) || company.contractType,
     executors: resolveWorkOrderExecutorsInput(input),
     measurementSheet: normalizeWorkOrderMeasurementSheet(input.measurementSheet),
     priority: normalizePriority(input.priority),
@@ -7103,6 +7109,11 @@ export function updateWorkOrder(current, patch, state, now = isoNow) {
     description: hasOwn(patch, "description") ? normalizeText(patch.description) : current.description,
     linkReference: hasOwn(patch, "linkReference") ? normalizeText(patch.linkReference) : current.linkReference,
     teamLabel: hasOwn(patch, "teamLabel") ? normalizeText(patch.teamLabel) : current.teamLabel,
+    contractType: hasOwn(patch, "contractType")
+      ? normalizeText(patch.contractType)
+      : companyChanged
+        ? company.contractType
+        : current.contractType,
     executors: resolveWorkOrderExecutorsInput(patch, current),
     measurementSheet: hasOwn(patch, "measurementSheet")
       ? normalizeWorkOrderMeasurementSheet(patch.measurementSheet)
