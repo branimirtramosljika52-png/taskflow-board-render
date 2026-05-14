@@ -27683,6 +27683,19 @@ body.is-vehicle-reservation-open {
   min-width: 0;
 }
 
+.periodics-grid.is-raw-records .periodics-grid-head,
+.periodics-grid.is-raw-records .periodics-grid-row {
+  grid-template-columns:
+    minmax(70px, 0.38fr)
+    minmax(170px, 0.78fr)
+    minmax(170px, 0.78fr)
+    minmax(170px, 0.78fr)
+    minmax(190px, 0.82fr)
+    minmax(220px, 1fr)
+    minmax(320px, 1.8fr);
+  min-width: 1320px;
+}
+
 .periodics-grid.is-vehicles .periodics-grid-head,
 .periodics-grid.is-vehicles .periodics-grid-row {
   grid-template-columns:
@@ -27905,6 +27918,25 @@ body.is-vehicle-reservation-open {
 
 .periodics-grid.is-inspections .periodics-cell-due {
   gap: 4px;
+}
+
+.periodics-grid.is-raw-records .periodics-cell-primary,
+.periodics-grid.is-raw-records .periodics-cell-secondary {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.periodics-raw-json-cell .periodics-cell-primary,
+.periodics-raw-json-cell .periodics-cell-secondary {
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  word-break: break-word;
+}
+
+.periodics-raw-json-cell .periodics-cell-secondary {
+  max-height: 96px;
+  overflow: auto;
+  padding-right: 4px;
 }
 
 .periodics-group-summary {
