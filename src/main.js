@@ -28347,21 +28347,18 @@ function getPeriodicsInspectionGroupMeta(entry = {}, groupMode = "location-objec
   const mode = normalizePeriodicsInspectionGroupMode(groupMode);
   if (mode === "location-object") {
     const companyName = entry.companyName || "Bez tvrtke";
-    const locationName = entry.locationName || "Bez lokacije";
-    const objectName = entry.objectName || "Bez objekta";
+    const companyOib = entry.companyOib || "";
+    const headquarters = entry.headquarters || "";
     return {
       key: [
-        "location-object",
+        "company",
         normalizeDocumentsExplorerKey(companyName) || "unknown-company",
-        normalizeDocumentsExplorerKey(locationName) || "unknown-location",
-        normalizeDocumentsExplorerKey(objectName) || "unknown-object",
+        normalizeDocumentsExplorerKey(companyOib || headquarters) || "unknown-company-meta",
       ].join(":"),
-      title: [companyName, locationName, objectName].filter(Boolean).join(" · "),
+      title: companyName,
       companyName,
-      headquarters: entry.headquarters || "",
-      companyOib: entry.companyOib || "",
-      locationName,
-      objectName,
+      headquarters,
+      companyOib,
     };
   }
   return { key: "item", title: "", subtitle: "" };
@@ -28380,18 +28377,20 @@ function buildPeriodicsInspectionGroupOptions(entries = [], groupMode = "locatio
       ...meta,
       count: 0,
       nextDueDate: "",
+      nextDueState: null,
     };
     current.count += 1;
     if (entry.dueDate && (!current.nextDueDate || entry.dueDate < current.nextDueDate)) {
       current.nextDueDate = entry.dueDate;
+      current.nextDueState = entry.dueState || null;
     }
     groupMap.set(meta.key, current);
   });
 
   return Array.from(groupMap.values())
     .sort((left, right) => (
-      String(left.nextDueDate || "9999-12-31").localeCompare(String(right.nextDueDate || "9999-12-31"))
-      || String(left.title || "").localeCompare(String(right.title || ""), "hr")
+      String(left.title || "").localeCompare(String(right.title || ""), "hr")
+      || String(left.nextDueDate || "9999-12-31").localeCompare(String(right.nextDueDate || "9999-12-31"))
     ));
 }
 
@@ -28427,8 +28426,6 @@ function syncPeriodicsInspectionGroupFilterControl(entries = [], filters = state
         value: option.key,
         label: [
           option.companyName,
-          option.locationName,
-          option.objectName,
           option.count ? `${option.count} stavki` : "",
           option.nextDueDate ? formatCompactDate(option.nextDueDate) : "",
         ].filter(Boolean).join(" · "),
@@ -28461,35 +28458,41 @@ function togglePeriodicsInspectionGroupExpansion(groupKey = "") {
   renderPeriodicsModule();
 }
 
-function createPeriodicsInspectionGroupLeadCell(primary = "", expanded = false) {
-  const cell = createPeriodicsCell(`${expanded ? "v" : ">"} ${primary || "Bez tvrtke"}`);
-  cell.classList.add("periodics-group-toggle-cell");
+function createPeriodicsInspectionGroupCell(group = {}, expanded = false) {
+  const cell = document.createElement("div");
+  cell.className = "periodics-group-cell";
+
+  const title = document.createElement("strong");
+  title.textContent = `${expanded ? "v" : ">"} ${group.companyName || "Bez tvrtke"}`;
+
+  const meta = document.createElement("span");
+  meta.textContent = [
+    group.headquarters || "",
+    group.companyOib ? `OIB ${group.companyOib}` : "",
+    `${Number(group.count || 0)} ${Number(group.count || 0) === 1 ? "ispitivanje" : "ispitivanja"}`,
+  ].filter(Boolean).join(" · ");
+
+  const due = createPeriodicsDueCell(group.nextDueDate || "", group.nextDueState || {});
+  due.classList.add("periodics-group-due");
+
+  const copy = document.createElement("div");
+  copy.className = "periodics-group-copy";
+  copy.append(title, meta);
+
+  cell.append(copy, due);
   return cell;
 }
 
 function createPeriodicsInspectionGroupRow(group = {}) {
-  const items = Array.isArray(group.items) ? group.items : [];
-  const leadItem = items[0] || {};
   const expanded = isPeriodicsInspectionGroupExpanded(group.key);
   const row = document.createElement("article");
-  row.className = `periodics-grid-row periodics-group-row periodics-group-summary ${leadItem?.dueState?.toneClass || ""}`.trim();
+  row.className = `periodics-grid-row periodics-group-row periodics-group-summary ${group.nextDueState?.toneClass || ""}`.trim();
   row.tabIndex = 0;
   row.setAttribute("role", "button");
   row.setAttribute("aria-expanded", String(expanded));
   row.setAttribute("title", expanded ? "Klikni za sazimanje ispitivanja." : "Klikni za prikaz svih ispitivanja.");
 
-  const serviceSummary = items.length > 1
-    ? `${items.length} ispitivanja`
-    : (leadItem.serviceLabel || "Ispitivanje");
-  row.append(
-    createPeriodicsInspectionGroupLeadCell(group.companyName || leadItem.companyName, expanded),
-    createPeriodicsCell(group.headquarters || leadItem.headquarters || "—", "", { dimmed: !(group.headquarters || leadItem.headquarters) }),
-    createPeriodicsCell(group.companyOib || leadItem.companyOib || "—", "", { dimmed: !(group.companyOib || leadItem.companyOib) }),
-    createPeriodicsCell(group.locationName || leadItem.locationName || "Bez lokacije"),
-    createPeriodicsCell(group.objectName || leadItem.objectName || "Bez objekta", "", { dimmed: !(group.objectName || leadItem.objectName) }),
-    createPeriodicsCell(serviceSummary),
-    createPeriodicsDueCell(group.nextDueDate || leadItem.dueDate, leadItem.dueState),
-  );
+  row.append(createPeriodicsInspectionGroupCell(group, expanded));
 
   const toggleGroup = () => {
     togglePeriodicsInspectionGroupExpansion(group.key);
@@ -28586,6 +28589,13 @@ function createPeriodicsCell(primary = "", secondary = "", { dimmed = false } = 
   return cell;
 }
 
+function createPeriodicsBlankCell() {
+  const cell = document.createElement("div");
+  cell.className = "periodics-cell periodics-cell-blank";
+  cell.setAttribute("aria-hidden", "true");
+  return cell;
+}
+
 function createPeriodicsDueCell(dueDate = "", dueState = {}) {
   const cell = document.createElement("div");
   cell.className = "periodics-cell periodics-cell-due";
@@ -28616,15 +28626,25 @@ function createPeriodicsRow(cells = [], toneClass = "") {
 }
 
 function createPeriodicsInspectionRow(entry = {}, { detail = false } = {}) {
-  const row = createPeriodicsRow([
-    createPeriodicsCell(entry.companyName),
-    createPeriodicsCell(entry.headquarters || "—", "", { dimmed: !entry.headquarters }),
-    createPeriodicsCell(entry.companyOib || "—", "", { dimmed: !entry.companyOib }),
-    createPeriodicsCell(entry.locationName || "Bez lokacije"),
-    createPeriodicsCell(entry.objectName || "Bez objekta", "", { dimmed: !entry.objectName }),
-    createPeriodicsCell(entry.serviceLabel),
-    createPeriodicsDueCell(entry.dueDate, entry.dueState),
-  ], entry.dueState?.toneClass);
+  const row = detail
+    ? createPeriodicsRow([
+      createPeriodicsBlankCell(),
+      createPeriodicsBlankCell(),
+      createPeriodicsBlankCell(),
+      createPeriodicsCell(entry.locationName || "Bez lokacije"),
+      createPeriodicsCell(entry.objectName || "Bez objekta", "", { dimmed: !entry.objectName }),
+      createPeriodicsCell(entry.serviceLabel),
+      createPeriodicsDueCell(entry.dueDate, entry.dueState),
+    ], entry.dueState?.toneClass)
+    : createPeriodicsRow([
+      createPeriodicsCell(entry.companyName),
+      createPeriodicsCell(entry.headquarters || "—", "", { dimmed: !entry.headquarters }),
+      createPeriodicsCell(entry.companyOib || "—", "", { dimmed: !entry.companyOib }),
+      createPeriodicsCell(entry.locationName || "Bez lokacije"),
+      createPeriodicsCell(entry.objectName || "Bez objekta", "", { dimmed: !entry.objectName }),
+      createPeriodicsCell(entry.serviceLabel),
+      createPeriodicsDueCell(entry.dueDate, entry.dueState),
+    ], entry.dueState?.toneClass);
   if (detail) {
     row.classList.add("periodics-detail-row");
   }
@@ -28640,10 +28660,12 @@ function createPeriodicsInspectionRows(entries = [], groupMode = "location-objec
   const groups = new Map();
   (Array.isArray(entries) ? entries : []).forEach((entry) => {
     const meta = getPeriodicsInspectionGroupMeta(entry, mode);
-    const current = groups.get(meta.key) || { ...meta, items: [], nextDueDate: "" };
+    const current = groups.get(meta.key) || { ...meta, items: [], count: 0, nextDueDate: "", nextDueState: null };
     current.items.push(entry);
+    current.count += 1;
     if (entry.dueDate && (!current.nextDueDate || entry.dueDate < current.nextDueDate)) {
       current.nextDueDate = entry.dueDate;
+      current.nextDueState = entry.dueState || null;
     }
     groups.set(meta.key, current);
   });
@@ -28652,13 +28674,15 @@ function createPeriodicsInspectionRows(entries = [], groupMode = "location-objec
     .map((group) => ({
       ...group,
       items: group.items.slice().sort((left, right) => (
-        String(left.dueDate || "9999-12-31").localeCompare(String(right.dueDate || "9999-12-31"))
+        String(left.locationName || "").localeCompare(String(right.locationName || ""), "hr")
+        || String(left.objectName || "").localeCompare(String(right.objectName || ""), "hr")
+        || String(left.dueDate || "9999-12-31").localeCompare(String(right.dueDate || "9999-12-31"))
         || String(left.serviceLabel || "").localeCompare(String(right.serviceLabel || ""), "hr")
       )),
     }))
     .sort((left, right) => (
-      String(left.nextDueDate || "9999-12-31").localeCompare(String(right.nextDueDate || "9999-12-31"))
-      || String(left.title || "").localeCompare(String(right.title || ""), "hr")
+      String(left.companyName || left.title || "").localeCompare(String(right.companyName || right.title || ""), "hr")
+      || String(left.nextDueDate || "9999-12-31").localeCompare(String(right.nextDueDate || "9999-12-31"))
     ))
     .flatMap((group) => {
       const expanded = isPeriodicsInspectionGroupExpanded(group.key);

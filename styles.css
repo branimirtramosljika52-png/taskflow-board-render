@@ -27783,15 +27783,24 @@ body.is-vehicle-reservation-open {
   padding: 10px 14px;
 }
 
+.periodics-group-copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
 .periodics-group-cell strong {
   color: #13213a;
   font-size: 0.9rem;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .periodics-group-cell span {
   color: rgba(82, 99, 132, 0.88);
   font-size: 0.76rem;
-  text-align: right;
 }
 
 .periodics-grid-row.is-overdue {
@@ -27890,6 +27899,9 @@ body.is-vehicle-reservation-open {
 }
 
 .periodics-cell-due {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
@@ -27908,7 +27920,7 @@ body.is-vehicle-reservation-open {
 }
 
 .periodics-grid.is-inspections .periodics-cell-due {
-  gap: 4px;
+  gap: 6px;
 }
 
 .periodics-group-summary {
@@ -27919,17 +27931,24 @@ body.is-vehicle-reservation-open {
   box-shadow: inset 3px 0 0 rgba(47, 126, 247, 0.76);
 }
 
-.periodics-group-toggle-cell .periodics-cell-primary {
-  color: #14294a;
-}
-
 .periodics-detail-row {
   background:
     linear-gradient(90deg, rgba(244, 248, 255, 0.94), rgba(255, 255, 255, 0.98) 46%);
 }
 
-.periodics-detail-row .periodics-cell:first-child {
-  padding-left: 24px;
+.periodics-detail-row .periodics-cell-blank {
+  background: rgba(247, 250, 255, 0.56);
+}
+
+.periodics-detail-row .periodics-cell:nth-child(4) {
+  padding-left: 18px;
+}
+
+.periodics-group-due {
+  flex: 0 0 auto;
+  border-right: 0;
+  padding: 0;
+  background: transparent;
 }
 
 .periodics-due-pill {
