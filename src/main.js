@@ -27990,6 +27990,12 @@ function buildPeriodicsInspectionEntries(records = getPeriodicsDocumentRecords()
     const objectId = String(locationObject?.id || record?.objectId || "").trim();
     const templateLabel = String(record?.templateTitle || record?.documentType || "Zapisnik").trim() || "Zapisnik";
     const workOrderNumber = String(linkedWorkOrder?.workOrderNumber || extractedWorkOrderNumber || "").trim();
+    const workOrderId = String(linkedWorkOrder?.id || "").trim();
+    const workOrderStatus = String(linkedWorkOrder?.status || "").trim();
+    const workOrderVerified = Boolean(
+      Number(linkedWorkOrder?.documentSummary?.verifiedWorkOrderCount || 0) > 0
+      || normalizeLooseName(workOrderStatus).includes("ovjeren"),
+    );
 
     inspectionDueDates.forEach((dueDate, index) => {
       const renewalKey = createPeriodicsInspectionRenewalKey({
@@ -28019,20 +28025,28 @@ function buildPeriodicsInspectionEntries(records = getPeriodicsDocumentRecords()
         serviceLabel,
         templateLabel,
         workOrderNumber,
+        workOrderStatus,
       ].filter(Boolean).join(" ");
 
       const row = {
         id: `periodics-inspection-${renewalKey || String(record?.id || "")}-${dueDate}-${index}`,
         dueDate,
         dueState,
+        companyId,
         companyName,
         headquarters,
         companyOib,
+        locationId,
         locationName: compactLocationName,
+        objectId,
         objectName,
         serviceLabel,
         templateLabel,
+        workOrderId,
         workOrderNumber,
+        workOrderStatus,
+        workOrderVerified,
+        workOrder: linkedWorkOrder || null,
         searchText,
         freshnessKey,
       };
@@ -28462,14 +28476,23 @@ function createPeriodicsInspectionGroupCell(group = {}, expanded = false) {
   const cell = document.createElement("div");
   cell.className = "periodics-group-cell";
 
+  const titleLine = document.createElement("div");
+  titleLine.className = "periodics-group-title-line";
+  const alertDot = createPeriodicsGroupAlertDot(group);
+  if (alertDot) {
+    titleLine.append(alertDot);
+  }
+
   const title = document.createElement("strong");
   title.textContent = `${expanded ? "v" : ">"} ${group.companyName || "Bez tvrtke"}`;
+  titleLine.append(title);
 
   const meta = document.createElement("span");
   meta.textContent = [
     group.headquarters || "",
     group.companyOib ? `OIB ${group.companyOib}` : "",
     `${Number(group.count || 0)} ${Number(group.count || 0) === 1 ? "ispitivanje" : "ispitivanja"}`,
+    getPeriodicsInspectionWorkOrderSummary(group.items),
   ].filter(Boolean).join(" · ");
 
   const due = createPeriodicsDueCell(group.nextDueDate || "", group.nextDueState || {});
@@ -28477,7 +28500,7 @@ function createPeriodicsInspectionGroupCell(group = {}, expanded = false) {
 
   const copy = document.createElement("div");
   copy.className = "periodics-group-copy";
-  copy.append(title, meta);
+  copy.append(titleLine, meta);
 
   cell.append(copy, due);
   return cell;
@@ -28486,7 +28509,7 @@ function createPeriodicsInspectionGroupCell(group = {}, expanded = false) {
 function createPeriodicsInspectionGroupRow(group = {}) {
   const expanded = isPeriodicsInspectionGroupExpanded(group.key);
   const row = document.createElement("article");
-  row.className = `periodics-grid-row periodics-group-row periodics-group-summary ${group.nextDueState?.toneClass || ""}`.trim();
+  row.className = `periodics-grid-row periodics-group-row periodics-group-summary ${getPeriodicsInspectionGroupToneClass(group)}`.trim();
   row.tabIndex = 0;
   row.setAttribute("role", "button");
   row.setAttribute("aria-expanded", String(expanded));
@@ -28504,7 +28527,7 @@ function createPeriodicsInspectionGroupRow(group = {}) {
       toggleGroup();
     }
   });
-  return row;
+  return bindPeriodicsInspectionWorkOrderContext(row, group.items);
 }
 
 function getPeriodicsEntryCounts(entries = [], visualSettings = getPeriodicsVisualSettings()) {
@@ -28528,6 +28551,51 @@ function getPeriodicsEntryCounts(entries = [], visualSettings = getPeriodicsVisu
     }
   });
   return { overdueCount, warningCount, validCount };
+}
+
+function getPeriodicsInspectionGroupToneClass(group = {}) {
+  if (Number(group.overdueCount || 0) > 0) {
+    return "is-overdue";
+  }
+  if (Number(group.warningCount || 0) > 0) {
+    return "is-warning";
+  }
+  return group.nextDueState?.toneClass || "";
+}
+
+function summarizePeriodicsInspectionEntries(entries = []) {
+  const normalizedEntries = Array.isArray(entries) ? entries : [];
+  const summary = {
+    count: normalizedEntries.length,
+    nextDueDate: "",
+    nextDueState: null,
+    ...getPeriodicsEntryCounts(normalizedEntries),
+  };
+
+  normalizedEntries.forEach((entry) => {
+    if (entry?.dueDate && (!summary.nextDueDate || entry.dueDate < summary.nextDueDate)) {
+      summary.nextDueDate = entry.dueDate;
+      summary.nextDueState = entry.dueState || null;
+    }
+  });
+
+  return summary;
+}
+
+function createPeriodicsGroupAlertDot(group = {}) {
+  const overdueCount = Number(group.overdueCount || 0);
+  const warningCount = Number(group.warningCount || 0);
+  if (overdueCount <= 0 && warningCount <= 0) {
+    return null;
+  }
+
+  const dot = document.createElement("span");
+  dot.className = `periodics-group-alert-dot ${overdueCount > 0 ? "is-overdue has-pulse-alert" : "is-warning has-pulse-warning"}`;
+  dot.setAttribute("aria-hidden", "true");
+  dot.title = overdueCount > 0
+    ? `${overdueCount} isteklo`
+    : `${warningCount} uskoro ističe`;
+  return dot;
 }
 
 function syncPeriodicsSectionMetrics(
@@ -28570,6 +28638,280 @@ function syncPeriodicsSectionMetrics(
   }
 }
 
+function getPeriodicsInspectionWorkOrder(entry = {}) {
+  if (entry?.workOrder && typeof entry.workOrder === "object" && entry.workOrder.id) {
+    return entry.workOrder;
+  }
+
+  const workOrderId = String(entry?.workOrderId || "").trim();
+  if (workOrderId) {
+    const matchById = state.workOrders.find((item) => String(item?.id || "") === workOrderId);
+    if (matchById) {
+      return matchById;
+    }
+  }
+
+  const workOrderNumber = String(entry?.workOrderNumber || "").trim().toUpperCase();
+  if (!workOrderNumber) {
+    return null;
+  }
+
+  return state.workOrders.find((item) => (
+    String(item?.workOrderNumber || "").trim().toUpperCase() === workOrderNumber
+  )) || null;
+}
+
+function getPeriodicsInspectionWorkOrderStatusInfo(entry = {}) {
+  const workOrder = getPeriodicsInspectionWorkOrder(entry);
+  const status = String(workOrder?.status || entry?.workOrderStatus || "").trim();
+  const normalizedStatus = normalizeLooseName(status);
+  const verified = Boolean(
+    entry?.workOrderVerified
+    || Number(workOrder?.documentSummary?.verifiedWorkOrderCount || 0) > 0
+    || normalizedStatus.includes("ovjeren"),
+  );
+
+  if (verified) {
+    return {
+      label: "Ovjeren",
+      shortLabel: "OV",
+      toneClass: "is-verified",
+      title: status ? `RN je ovjeren (${status}).` : "RN je ovjeren.",
+    };
+  }
+
+  if (normalizedStatus.includes("fakturiran")) {
+    return {
+      label: "Fakturiran",
+      shortLabel: "FA",
+      toneClass: "is-invoiced",
+      title: "RN je fakturiran.",
+    };
+  }
+
+  if (normalizedStatus.includes("gotov")) {
+    return {
+      label: "Gotov",
+      shortLabel: "GO",
+      toneClass: "is-done",
+      title: "RN je označen kao gotov.",
+    };
+  }
+
+  if (normalizedStatus.includes("storno")) {
+    return {
+      label: "Storno",
+      shortLabel: "ST",
+      toneClass: "is-cancelled",
+      title: "RN je storniran.",
+    };
+  }
+
+  if (workOrder?.id) {
+    return {
+      label: "Otvoren",
+      shortLabel: "RN",
+      toneClass: "is-open",
+      title: status ? `RN je otvoren (${status}).` : "RN je otvoren.",
+    };
+  }
+
+  if (entry?.workOrderNumber) {
+    return {
+      label: "RN broj",
+      shortLabel: "RN",
+      toneClass: "is-unlinked",
+      title: "Broj RN-a postoji u zapisniku, ali RN nije pronađen u listi.",
+    };
+  }
+
+  return {
+    label: "Bez RN",
+    shortLabel: "-",
+    toneClass: "is-missing",
+    title: "Zapisnik nije povezan s RN-om.",
+  };
+}
+
+function createPeriodicsInspectionWorkOrderBadge(entry = {}, { compact = false } = {}) {
+  const info = getPeriodicsInspectionWorkOrderStatusInfo(entry);
+  const badge = document.createElement("span");
+  badge.className = `periodics-work-order-badge ${info.toneClass}`;
+  badge.title = info.title;
+
+  const icon = document.createElement("span");
+  icon.className = "periodics-work-order-badge-icon";
+  icon.setAttribute("aria-hidden", "true");
+
+  const label = document.createElement("span");
+  label.textContent = compact ? info.shortLabel : info.label;
+
+  badge.append(icon, label);
+  return badge;
+}
+
+function getPeriodicsInspectionLinkedWorkOrderTargets(entries = []) {
+  const sourceEntries = Array.isArray(entries) ? entries : [entries];
+  const targetsByKey = new Map();
+
+  sourceEntries.forEach((entry) => {
+    const workOrder = getPeriodicsInspectionWorkOrder(entry);
+    if (!workOrder?.id) {
+      return;
+    }
+
+    const key = String(workOrder.id);
+    const current = targetsByKey.get(key) || {
+      key,
+      workOrder,
+      entry: { ...entry, workOrder },
+      count: 0,
+      services: new Set(),
+      dueDate: "",
+    };
+    current.count += 1;
+    if (entry?.serviceLabel) {
+      current.services.add(String(entry.serviceLabel));
+    }
+    if (entry?.dueDate && (!current.dueDate || entry.dueDate < current.dueDate)) {
+      current.dueDate = entry.dueDate;
+    }
+    targetsByKey.set(key, current);
+  });
+
+  return Array.from(targetsByKey.values())
+    .sort((left, right) => (
+      String(left.dueDate || "9999-12-31").localeCompare(String(right.dueDate || "9999-12-31"))
+      || String(left.workOrder?.workOrderNumber || "").localeCompare(String(right.workOrder?.workOrderNumber || ""), "hr", { numeric: true })
+    ));
+}
+
+function getPeriodicsInspectionWorkOrderSummary(entries = []) {
+  const targets = getPeriodicsInspectionLinkedWorkOrderTargets(entries);
+  if (targets.length === 0) {
+    return "Bez otvorenog RN-a";
+  }
+
+  const verifiedCount = targets.filter((target) => (
+    getPeriodicsInspectionWorkOrderStatusInfo(target.entry).toneClass === "is-verified"
+  )).length;
+  const openCount = targets.filter((target) => (
+    getPeriodicsInspectionWorkOrderStatusInfo(target.entry).toneClass === "is-open"
+  )).length;
+
+  return [
+    `${targets.length} RN`,
+    verifiedCount > 0 ? `${verifiedCount} ovjereno` : "",
+    openCount > 0 ? `${openCount} otvoreno` : "",
+  ].filter(Boolean).join(" · ");
+}
+
+function closePeriodicsInspectionContextMenu() {
+  const menu = state.periodicsInspectionContextMenu;
+  if (menu instanceof HTMLElement) {
+    menu.remove();
+  }
+  state.periodicsInspectionContextMenu = null;
+}
+
+function openPeriodicsInspectionWorkOrderTarget(target = {}) {
+  const workOrder = target?.workOrder || getPeriodicsInspectionWorkOrder(target?.entry || target);
+  if (!workOrder?.id) {
+    return false;
+  }
+
+  closePeriodicsInspectionContextMenu();
+  activateSidebarItem("rn", { expandSidebar: state.sidebarCollapsed });
+  requestAnimationFrame(() => {
+    hydrateWorkOrderForm(workOrder, { loadActivity: true });
+  });
+  return true;
+}
+
+function openPeriodicsInspectionContextMenu(entries = [], pointerX = 0, pointerY = 0) {
+  const targets = getPeriodicsInspectionLinkedWorkOrderTargets(entries);
+  if (targets.length === 0) {
+    return;
+  }
+
+  closePeriodicsInspectionContextMenu();
+
+  const menu = document.createElement("div");
+  menu.className = "periodics-inspection-context-menu";
+  menu.dataset.preventRowOpen = "true";
+  menu.setAttribute("role", "menu");
+
+  const head = document.createElement("div");
+  head.className = "periodics-inspection-context-head";
+  const title = document.createElement("strong");
+  title.textContent = targets.length === 1 ? "Radni nalog" : "Radni nalozi";
+  const subtitle = document.createElement("span");
+  subtitle.textContent = targets.length === 1
+    ? "Otvori povezani RN za ovu stavku."
+    : `${targets.length} povezana RN-a za ove stavke.`;
+  head.append(title, subtitle);
+  menu.append(head);
+
+  targets.slice(0, 8).forEach((target) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "periodics-inspection-context-action";
+    button.setAttribute("role", "menuitem");
+
+    const copy = document.createElement("span");
+    copy.className = "periodics-inspection-context-copy";
+    const label = document.createElement("strong");
+    label.textContent = `Otvori RN ${target.workOrder.workOrderNumber || "bez broja"}`;
+    const meta = document.createElement("span");
+    meta.textContent = [
+      Array.from(target.services).slice(0, 2).join(", "),
+      target.count > 1 ? `${target.count} stavki` : "",
+      target.dueDate ? `rok ${formatCompactDate(target.dueDate)}` : "",
+    ].filter(Boolean).join(" · ");
+    copy.append(label, meta);
+
+    button.append(copy, createPeriodicsInspectionWorkOrderBadge(target.entry, { compact: true }));
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openPeriodicsInspectionWorkOrderTarget(target);
+    });
+    menu.append(button);
+  });
+
+  if (targets.length > 8) {
+    const more = document.createElement("p");
+    more.className = "periodics-inspection-context-more";
+    more.textContent = `Još ${targets.length - 8} RN-a je skriveno u ovom prikazu.`;
+    menu.append(more);
+  }
+
+  document.body.append(menu);
+  const rect = menu.getBoundingClientRect();
+  const left = Math.min(Math.max(pointerX + 8, 12), Math.max(12, window.innerWidth - rect.width - 12));
+  const top = Math.min(Math.max(pointerY + 8, 12), Math.max(12, window.innerHeight - rect.height - 12));
+  menu.style.left = `${Math.round(left)}px`;
+  menu.style.top = `${Math.round(top)}px`;
+  state.periodicsInspectionContextMenu = menu;
+}
+
+function bindPeriodicsInspectionWorkOrderContext(row, entries = []) {
+  const targets = getPeriodicsInspectionLinkedWorkOrderTargets(entries);
+  if (!(row instanceof HTMLElement) || targets.length === 0) {
+    return row;
+  }
+
+  row.classList.add("has-periodics-work-order-context");
+  const currentTitle = row.getAttribute("title") || "";
+  row.setAttribute("title", [currentTitle, "Desni klik: otvori RN."].filter(Boolean).join(" "));
+  row.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openPeriodicsInspectionContextMenu(entries, event.clientX, event.clientY);
+  });
+  return row;
+}
+
 function createPeriodicsCell(primary = "", secondary = "", { dimmed = false } = {}) {
   const cell = document.createElement("div");
   cell.className = `periodics-cell${dimmed ? " is-dimmed" : ""}`;
@@ -28586,6 +28928,17 @@ function createPeriodicsCell(primary = "", secondary = "", { dimmed = false } = 
     cell.append(secondaryLine);
   }
 
+  return cell;
+}
+
+function createPeriodicsInspectionServiceCell(entry = {}) {
+  const secondary = [
+    entry.templateLabel && entry.templateLabel !== entry.serviceLabel ? entry.templateLabel : "",
+    entry.workOrderNumber ? `RN ${entry.workOrderNumber}` : "",
+  ].filter(Boolean).join(" · ");
+  const cell = createPeriodicsCell(entry.serviceLabel || "Ispitivanje", secondary);
+  cell.classList.add("periodics-service-cell");
+  cell.append(createPeriodicsInspectionWorkOrderBadge(entry));
   return cell;
 }
 
@@ -28625,15 +28978,138 @@ function createPeriodicsRow(cells = [], toneClass = "") {
   return row;
 }
 
-function createPeriodicsInspectionRow(entry = {}, { detail = false } = {}) {
+function getPeriodicsInspectionNestedGroupKey(parentKey = "", type = "location", id = "", title = "") {
+  return [
+    String(parentKey || "").trim(),
+    type,
+    String(id || "").trim() || normalizeDocumentsExplorerKey(title) || "bez-naziva",
+  ].join(":");
+}
+
+function sortPeriodicsInspectionHierarchyEntries(left = {}, right = {}) {
+  return (
+    String(left.locationName || "").localeCompare(String(right.locationName || ""), "hr", { numeric: true })
+    || String(left.objectName || "").localeCompare(String(right.objectName || ""), "hr", { numeric: true })
+    || String(left.dueDate || "9999-12-31").localeCompare(String(right.dueDate || "9999-12-31"))
+    || String(left.serviceLabel || "").localeCompare(String(right.serviceLabel || ""), "hr", { numeric: true })
+    || String(left.workOrderNumber || "").localeCompare(String(right.workOrderNumber || ""), "hr", { numeric: true })
+  );
+}
+
+function buildPeriodicsInspectionNestedGroups(entries = [], parentKey = "", type = "location") {
+  const groups = new Map();
+  (Array.isArray(entries) ? entries : []).forEach((entry) => {
+    const isLocation = type === "location";
+    const id = isLocation ? entry.locationId : entry.objectId;
+    const title = String(isLocation ? (entry.locationName || "Bez lokacije") : (entry.objectName || "Bez objekta")).trim()
+      || (isLocation ? "Bez lokacije" : "Bez objekta");
+    const key = getPeriodicsInspectionNestedGroupKey(parentKey, type, id, title);
+    const current = groups.get(key) || {
+      key,
+      type,
+      title,
+      items: [],
+    };
+    current.items.push(entry);
+    groups.set(key, current);
+  });
+
+  return Array.from(groups.values())
+    .map((group) => ({
+      ...group,
+      ...summarizePeriodicsInspectionEntries(group.items),
+      items: group.items.slice().sort(sortPeriodicsInspectionHierarchyEntries),
+    }))
+    .sort((left, right) => (
+      String(left.title || "").localeCompare(String(right.title || ""), "hr", { numeric: true })
+      || String(left.nextDueDate || "9999-12-31").localeCompare(String(right.nextDueDate || "9999-12-31"))
+    ));
+}
+
+function createPeriodicsInspectionSubgroupCell(group = {}, expanded = false, type = "location") {
+  const cell = document.createElement("div");
+  cell.className = `periodics-cell periodics-subgroup-cell is-${type}`;
+
+  const titleLine = document.createElement("div");
+  titleLine.className = "periodics-subgroup-title-line";
+  const alertDot = createPeriodicsGroupAlertDot(group);
+  if (alertDot) {
+    titleLine.append(alertDot);
+  }
+
+  const title = document.createElement("strong");
+  title.className = "periodics-subgroup-title";
+  title.textContent = `${expanded ? "v" : ">"} ${group.title || (type === "location" ? "Bez lokacije" : "Bez objekta")}`;
+  titleLine.append(title);
+
+  const meta = document.createElement("span");
+  meta.className = "periodics-cell-secondary";
+  meta.textContent = [
+    `${Number(group.count || 0)} ${Number(group.count || 0) === 1 ? "ispitivanje" : "ispitivanja"}`,
+    Number(group.overdueCount || 0) > 0 ? `${group.overdueCount} isteklo` : "",
+  ].filter(Boolean).join(" · ");
+
+  cell.append(titleLine, meta);
+  return cell;
+}
+
+function createPeriodicsInspectionSubgroupRow(group = {}, type = "location") {
+  const expanded = isPeriodicsInspectionGroupExpanded(group.key);
+  const countLabel = `${Number(group.count || 0)} ${Number(group.count || 0) === 1 ? "stavka" : "stavki"}`;
+  const summaryCell = createPeriodicsCell(countLabel, getPeriodicsInspectionWorkOrderSummary(group.items));
+  summaryCell.classList.add("periodics-subgroup-summary-cell");
+  const dueCell = createPeriodicsDueCell(group.nextDueDate || "", group.nextDueState || {});
+
+  const cells = type === "location"
+    ? [
+      createPeriodicsBlankCell(),
+      createPeriodicsBlankCell(),
+      createPeriodicsBlankCell(),
+      createPeriodicsInspectionSubgroupCell(group, expanded, type),
+      createPeriodicsBlankCell(),
+      summaryCell,
+      dueCell,
+    ]
+    : [
+      createPeriodicsBlankCell(),
+      createPeriodicsBlankCell(),
+      createPeriodicsBlankCell(),
+      createPeriodicsBlankCell(),
+      createPeriodicsInspectionSubgroupCell(group, expanded, type),
+      summaryCell,
+      dueCell,
+    ];
+
+  const row = createPeriodicsRow(cells, getPeriodicsInspectionGroupToneClass(group));
+  row.classList.add("periodics-subgroup-row", `is-${type}`);
+  row.tabIndex = 0;
+  row.setAttribute("role", "button");
+  row.setAttribute("aria-expanded", String(expanded));
+  row.setAttribute("title", expanded ? "Klikni za sazimanje grupe." : "Klikni za prikaz stavki u grupi.");
+
+  const toggleGroup = () => {
+    togglePeriodicsInspectionGroupExpansion(group.key);
+  };
+  row.addEventListener("click", toggleGroup);
+  row.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      toggleGroup();
+    }
+  });
+
+  return bindPeriodicsInspectionWorkOrderContext(row, group.items);
+}
+
+function createPeriodicsInspectionRow(entry = {}, { detail = false, hideLocation = false, hideObject = false } = {}) {
   const row = detail
     ? createPeriodicsRow([
       createPeriodicsBlankCell(),
       createPeriodicsBlankCell(),
       createPeriodicsBlankCell(),
-      createPeriodicsCell(entry.locationName || "Bez lokacije"),
-      createPeriodicsCell(entry.objectName || "Bez objekta", "", { dimmed: !entry.objectName }),
-      createPeriodicsCell(entry.serviceLabel),
+      hideLocation ? createPeriodicsBlankCell() : createPeriodicsCell(entry.locationName || "Bez lokacije"),
+      hideObject ? createPeriodicsBlankCell() : createPeriodicsCell(entry.objectName || "Bez objekta", "", { dimmed: !entry.objectName }),
+      createPeriodicsInspectionServiceCell(entry),
       createPeriodicsDueCell(entry.dueDate, entry.dueState),
     ], entry.dueState?.toneClass)
     : createPeriodicsRow([
@@ -28642,13 +29118,64 @@ function createPeriodicsInspectionRow(entry = {}, { detail = false } = {}) {
       createPeriodicsCell(entry.companyOib || "—", "", { dimmed: !entry.companyOib }),
       createPeriodicsCell(entry.locationName || "Bez lokacije"),
       createPeriodicsCell(entry.objectName || "Bez objekta", "", { dimmed: !entry.objectName }),
-      createPeriodicsCell(entry.serviceLabel),
+      createPeriodicsInspectionServiceCell(entry),
       createPeriodicsDueCell(entry.dueDate, entry.dueState),
     ], entry.dueState?.toneClass);
   if (detail) {
     row.classList.add("periodics-detail-row");
   }
-  return row;
+  return bindPeriodicsInspectionWorkOrderContext(row, [entry]);
+}
+
+function createPeriodicsInspectionObjectRows(objectGroup = {}, { hideLocation = true } = {}) {
+  if (Number(objectGroup.count || 0) > 1) {
+    const expanded = isPeriodicsInspectionGroupExpanded(objectGroup.key);
+    return [
+      createPeriodicsInspectionSubgroupRow(objectGroup, "object"),
+      ...(expanded
+        ? objectGroup.items.map((entry) => createPeriodicsInspectionRow(entry, {
+          detail: true,
+          hideLocation,
+          hideObject: true,
+        }))
+        : []),
+    ];
+  }
+
+  return objectGroup.items.map((entry) => createPeriodicsInspectionRow(entry, {
+    detail: true,
+    hideLocation,
+  }));
+}
+
+function createPeriodicsInspectionLocationRows(locationGroup = {}) {
+  if (Number(locationGroup.count || 0) > 1) {
+    const expanded = isPeriodicsInspectionGroupExpanded(locationGroup.key);
+    const rows = [createPeriodicsInspectionSubgroupRow(locationGroup, "location")];
+    if (!expanded) {
+      return rows;
+    }
+
+    const objectGroups = buildPeriodicsInspectionNestedGroups(locationGroup.items, locationGroup.key, "object");
+    return [
+      ...rows,
+      ...objectGroups.flatMap((objectGroup) => createPeriodicsInspectionObjectRows(objectGroup, { hideLocation: true })),
+    ];
+  }
+
+  return locationGroup.items.map((entry) => createPeriodicsInspectionRow(entry, { detail: true }));
+}
+
+function createPeriodicsInspectionCompanyRows(group = {}) {
+  const expanded = isPeriodicsInspectionGroupExpanded(group.key);
+  const rows = [createPeriodicsInspectionGroupRow(group)];
+  if (!expanded) {
+    return rows;
+  }
+
+  const locationGroups = buildPeriodicsInspectionNestedGroups(group.items, group.key, "location");
+  rows.push(...locationGroups.flatMap((locationGroup) => createPeriodicsInspectionLocationRows(locationGroup)));
+  return rows;
 }
 
 function createPeriodicsInspectionRows(entries = [], groupMode = "location-object") {
@@ -28673,24 +29200,14 @@ function createPeriodicsInspectionRows(entries = [], groupMode = "location-objec
   return Array.from(groups.values())
     .map((group) => ({
       ...group,
-      items: group.items.slice().sort((left, right) => (
-        String(left.locationName || "").localeCompare(String(right.locationName || ""), "hr")
-        || String(left.objectName || "").localeCompare(String(right.objectName || ""), "hr")
-        || String(left.dueDate || "9999-12-31").localeCompare(String(right.dueDate || "9999-12-31"))
-        || String(left.serviceLabel || "").localeCompare(String(right.serviceLabel || ""), "hr")
-      )),
+      ...summarizePeriodicsInspectionEntries(group.items),
+      items: group.items.slice().sort(sortPeriodicsInspectionHierarchyEntries),
     }))
     .sort((left, right) => (
       String(left.companyName || left.title || "").localeCompare(String(right.companyName || right.title || ""), "hr")
       || String(left.nextDueDate || "9999-12-31").localeCompare(String(right.nextDueDate || "9999-12-31"))
     ))
-    .flatMap((group) => {
-      const expanded = isPeriodicsInspectionGroupExpanded(group.key);
-      return [
-        createPeriodicsInspectionGroupRow(group),
-        ...(expanded ? group.items.map((entry) => createPeriodicsInspectionRow(entry, { detail: true })) : []),
-      ];
-    });
+    .flatMap((group) => createPeriodicsInspectionCompanyRows(group));
 }
 
 function renderPeriodicsRows(target, rows = []) {
@@ -92214,6 +92731,212 @@ function attachWorkOrderInlinePriorityEditor(cell, workOrder = {}) {
   });
 }
 
+function closeWorkOrderInlineFieldEditor() {
+  const editorState = state.workOrderInlineFieldEditor;
+  if (editorState?.element instanceof HTMLElement) {
+    editorState.element.remove();
+  }
+  state.workOrderInlineFieldEditor = null;
+}
+
+function positionWorkOrderInlineFieldEditor(editor, anchor) {
+  if (!(editor instanceof HTMLElement) || !(anchor instanceof HTMLElement)) {
+    return;
+  }
+
+  const anchorRect = anchor.getBoundingClientRect();
+  const editorRect = editor.getBoundingClientRect();
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  let left = anchorRect.left;
+  let top = anchorRect.bottom + 8;
+
+  if (left + editorRect.width > viewportWidth - 12) {
+    left = Math.max(12, viewportWidth - editorRect.width - 12);
+  }
+  if (top + editorRect.height > viewportHeight - 12) {
+    top = Math.max(12, anchorRect.top - editorRect.height - 8);
+  }
+
+  editor.style.left = `${Math.round(Math.max(12, left))}px`;
+  editor.style.top = `${Math.round(Math.max(12, top))}px`;
+}
+
+function attachWorkOrderInlineFieldEditor(cell, workOrder = {}, config = {}) {
+  const fields = (Array.isArray(config.fields) ? config.fields : [])
+    .map((field) => ({
+      key: String(field?.key || "").trim(),
+      label: String(field?.label || "").trim(),
+      type: String(field?.type || "text").trim(),
+      placeholder: String(field?.placeholder || "").trim(),
+    }))
+    .filter((field) => field.key && field.label);
+
+  if (!(cell instanceof HTMLElement) || !workOrder?.id || fields.length === 0 || !getCanEditOperationalData()) {
+    return;
+  }
+
+  cell.classList.add("has-inline-editor", "has-inline-field-editor");
+  cell.dataset.preventRowOpen = "true";
+  cell.title = [cell.title || "", "Zadrži 1 sekundu ili dvoklik za brzu izmjenu."].filter(Boolean).join(" ");
+
+  ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
+    cell.addEventListener(eventName, (event) => {
+      if (event.target instanceof HTMLElement && event.target.closest(".work-order-inline-field-editor")) {
+        event.stopPropagation();
+      }
+    });
+  });
+
+  let hoverTimer = 0;
+  let pressTimer = 0;
+
+  const clearTimers = () => {
+    window.clearTimeout(hoverTimer);
+    window.clearTimeout(pressTimer);
+    hoverTimer = 0;
+    pressTimer = 0;
+  };
+
+  const openEditor = () => {
+    clearTimers();
+    if (state.workOrderInlineFieldEditor?.anchor === cell) {
+      return;
+    }
+
+    closeWorkOrderInlineFieldEditor();
+
+    const form = document.createElement("form");
+    form.className = "work-order-inline-field-editor";
+    form.dataset.preventRowOpen = "true";
+    form.setAttribute("role", "dialog");
+    form.setAttribute("aria-label", config.title || "Brza izmjena RN-a");
+
+    ["pointerdown", "mousedown", "click", "keydown", "contextmenu"].forEach((eventName) => {
+      form.addEventListener(eventName, (event) => {
+        event.stopPropagation();
+      });
+    });
+
+    const header = document.createElement("div");
+    header.className = "work-order-inline-field-head";
+    const title = document.createElement("strong");
+    title.textContent = config.title || "Brza izmjena";
+    const subtitle = document.createElement("span");
+    subtitle.textContent = workOrder.workOrderNumber ? `RN ${workOrder.workOrderNumber}` : "Radni nalog";
+    header.append(title, subtitle);
+
+    const grid = document.createElement("div");
+    grid.className = "work-order-inline-field-grid";
+    const inputs = new Map();
+    fields.forEach((field) => {
+      const label = document.createElement("label");
+      label.className = "work-order-inline-field-control";
+      const labelText = document.createElement("span");
+      labelText.textContent = field.label;
+      const input = document.createElement("input");
+      input.type = "text";
+      input.value = field.type === "date"
+        ? formatDateInputDisplayValue(workOrder[field.key] || "")
+        : String(workOrder[field.key] ?? "");
+      input.placeholder = field.placeholder || (field.type === "date" ? "dd.mm.yyyy" : "");
+      if (field.type === "date") {
+        input.inputMode = "numeric";
+        input.pattern = "[0-9.\\-/\\s]*";
+      }
+      label.append(labelText, input);
+      grid.append(label);
+      inputs.set(field.key, { input, field, initialValue: input.value });
+    });
+
+    const actions = document.createElement("div");
+    actions.className = "work-order-inline-field-actions";
+    const cancelButton = document.createElement("button");
+    cancelButton.type = "button";
+    cancelButton.className = "ghost-button";
+    cancelButton.textContent = "Zatvori";
+    cancelButton.addEventListener("click", () => {
+      closeWorkOrderInlineFieldEditor();
+    });
+    const saveButton = document.createElement("button");
+    saveButton.type = "submit";
+    saveButton.className = "primary-button";
+    saveButton.textContent = "Spremi";
+    actions.append(cancelButton, saveButton);
+
+    form.append(header, grid, actions);
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const body = {};
+      inputs.forEach(({ input, field, initialValue }, key) => {
+        if (input.value === initialValue) {
+          return;
+        }
+        body[key] = field.type === "date" ? normalizeDateInputValue(input.value) : input.value;
+      });
+
+      if (Object.keys(body).length === 0) {
+        closeWorkOrderInlineFieldEditor();
+        return;
+      }
+
+      saveButton.disabled = true;
+      saveButton.textContent = "Spremam...";
+      void runMutation(() => apiRequest(`/work-orders/${encodeURIComponent(String(workOrder.id))}`, {
+        method: "PATCH",
+        body,
+      })).then((success) => {
+        if (success) {
+          closeWorkOrderInlineFieldEditor();
+          return;
+        }
+        saveButton.disabled = false;
+        saveButton.textContent = "Spremi";
+      });
+    });
+
+    form.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeWorkOrderInlineFieldEditor();
+      }
+    });
+
+    document.body.append(form);
+    state.workOrderInlineFieldEditor = { element: form, anchor: cell };
+    positionWorkOrderInlineFieldEditor(form, cell);
+    requestAnimationFrame(() => positionWorkOrderInlineFieldEditor(form, cell));
+    const firstInput = form.querySelector("input");
+    if (firstInput instanceof HTMLInputElement) {
+      firstInput.focus({ preventScroll: true });
+      firstInput.select();
+    }
+  };
+
+  const scheduleHover = () => {
+    clearTimers();
+    hoverTimer = window.setTimeout(openEditor, 950);
+  };
+
+  cell.addEventListener("pointerenter", scheduleHover);
+  cell.addEventListener("pointerleave", clearTimers);
+  cell.addEventListener("pointerdown", (event) => {
+    if (event.target instanceof HTMLElement && event.target.closest("select, button, input, textarea, a")) {
+      return;
+    }
+    clearTimers();
+    pressTimer = window.setTimeout(openEditor, 900);
+  });
+  ["pointerup", "pointercancel", "lostpointercapture"].forEach((eventName) => {
+    cell.addEventListener(eventName, clearTimers);
+  });
+  cell.addEventListener("dblclick", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openEditor();
+  });
+}
+
 function renderCompactWorkOrdersList() {
   const filtered = getFilteredWorkOrders();
   const visibleItems = filtered.slice(0, state.workOrderRenderLimit);
@@ -92716,6 +93439,39 @@ function renderCompactWorkOrdersList() {
         priorityTagsCell.append(createValueStack("Bez prioriteta", "Bez tagova"));
       }
       attachWorkOrderInlinePriorityEditor(priorityTagsCell, item);
+      attachWorkOrderInlineFieldEditor(locationCell, item, {
+        title: "Lokacija",
+        fields: [
+          { key: "locationName", label: "Lokacija" },
+          { key: "region", label: "Regija" },
+          { key: "coordinates", label: "Koordinate" },
+        ],
+      });
+      attachWorkOrderInlineFieldEditor(contactCell, item, {
+        title: "Kontakt",
+        fields: [
+          { key: "contactName", label: "Kontakt" },
+          { key: "contactPhone", label: "Telefon" },
+          { key: "contactEmail", label: "Email" },
+        ],
+      });
+      attachWorkOrderInlineFieldEditor(serviceCell, item, {
+        title: "Usluga",
+        fields: [
+          { key: "department", label: "Odjel" },
+          { key: "serviceLine", label: "Usluga" },
+          { key: "description", label: "Opis" },
+        ],
+      });
+      attachWorkOrderInlineFieldEditor(billingCell, item, {
+        title: "Faktura i završetak",
+        fields: [
+          { key: "invoiceDate", label: "Datum fakture", type: "date" },
+          { key: "invoiceNote", label: "Broj fakture" },
+          { key: "completedBy", label: "RN završio" },
+          { key: "weight", label: "Iznos" },
+        ],
+      });
 
       const executorsCell = document.createElement("div");
       executorsCell.className = "work-item-cell work-item-cell-group work-item-executors-cell";
@@ -96438,8 +97194,36 @@ documentTemplateBuilderInspector?.addEventListener("pointerdown", (event) => {
   closeDocumentTemplateInspectorModal();
 });
 
+document.addEventListener("pointerdown", (event) => {
+  const menu = state.periodicsInspectionContextMenu;
+  if (menu instanceof HTMLElement) {
+    if (!(event.target instanceof Node) || !menu.contains(event.target)) {
+      closePeriodicsInspectionContextMenu();
+    }
+  }
+
+  const inlineEditor = state.workOrderInlineFieldEditor?.element;
+  if (inlineEditor instanceof HTMLElement) {
+    if (!(event.target instanceof Node) || !inlineEditor.contains(event.target)) {
+      closeWorkOrderInlineFieldEditor();
+    }
+  }
+}, true);
+
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") {
+    return;
+  }
+
+  if (state.periodicsInspectionContextMenu instanceof HTMLElement) {
+    event.preventDefault();
+    closePeriodicsInspectionContextMenu();
+    return;
+  }
+
+  if (state.workOrderInlineFieldEditor?.element instanceof HTMLElement) {
+    event.preventDefault();
+    closeWorkOrderInlineFieldEditor();
     return;
   }
 
