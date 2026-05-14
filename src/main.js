@@ -1837,6 +1837,7 @@ const state = {
   },
   periodicsSections: {
     inspectionsCollapsed: false,
+    inspectionPeriodicsCollapsed: false,
     vehiclesCollapsed: false,
     peopleCollapsed: false,
     equipmentCollapsed: false,
@@ -3037,6 +3038,16 @@ const periodicsInspectionsWarning = document.querySelector("#periodics-inspectio
 const periodicsInspectionsValid = document.querySelector("#periodics-inspections-valid");
 const periodicsInspectionsOverdueDot = document.querySelector("#periodics-inspections-overdue-dot");
 const periodicsInspectionsWarningDot = document.querySelector("#periodics-inspections-warning-dot");
+const periodicsInspectionPeriodicsHeading = document.querySelector("#periodics-inspection-periodics-heading");
+const periodicsInspectionPeriodicsToggleButton = document.querySelector("#periodics-inspection-periodics-toggle");
+const periodicsInspectionPeriodicsBody = document.querySelector("#periodics-inspection-periodics-body");
+const periodicsInspectionPeriodicsList = document.querySelector("#periodics-inspection-periodics-list");
+const periodicsInspectionPeriodicsEmpty = document.querySelector("#periodics-inspection-periodics-empty");
+const periodicsInspectionPeriodicsOverdue = document.querySelector("#periodics-inspection-periodics-overdue");
+const periodicsInspectionPeriodicsWarning = document.querySelector("#periodics-inspection-periodics-warning");
+const periodicsInspectionPeriodicsValid = document.querySelector("#periodics-inspection-periodics-valid");
+const periodicsInspectionPeriodicsOverdueDot = document.querySelector("#periodics-inspection-periodics-overdue-dot");
+const periodicsInspectionPeriodicsWarningDot = document.querySelector("#periodics-inspection-periodics-warning-dot");
 const periodicsVehiclesCount = document.querySelector("#periodics-vehicles-count");
 const periodicsVehiclesHeading = document.querySelector("#periodics-vehicles-heading");
 const periodicsVehiclesToggleButton = document.querySelector("#periodics-vehicles-toggle");
@@ -27740,12 +27751,16 @@ function getPeriodicsPreferredDueDateSources(record = {}) {
 
 function normalizePeriodicsDueDateSet(values = []) {
   return Array.from(new Set((Array.isArray(values) ? values : [])
-    .map((value) => normalizePeriodicsDateToken(value) || String(value || "").trim())
+    .map((value) => normalizePeriodicsDateToken(value))
     .filter(Boolean)))
     .sort((left, right) => left.localeCompare(right));
 }
 
 function extractPeriodicsDocumentDueDates(record = {}) {
+  const expirationDate = normalizePeriodicsDateToken(record?.expirationDate ?? record?.expiration_date);
+  if (expirationDate) {
+    return [expirationDate];
+  }
   const preferredDueDates = getPeriodicsPreferredDueDateSources(record).map((entry) => entry.dateKey);
   return normalizePeriodicsDueDateSet(preferredDueDates);
 }
@@ -27881,8 +27896,13 @@ function createPeriodicsInspectionRenewalKey({
   objectName = "",
   serviceLabel = "",
   templateLabel = "",
+  workOrderNumber = "",
+  inspectionDate = "",
+  issuedDate = "",
   dueIndex = 0,
 } = {}) {
+  const recordId = String(record?.id || "").trim();
+  const documentNumber = normalizeDocumentsExplorerKey(workOrderNumber) || recordId;
   const identityParts = [
     String(record?.organizationId || state.activeOrganizationId || "").trim(),
     companyId || normalizeDocumentsExplorerKey(companyName),
@@ -27890,6 +27910,8 @@ function createPeriodicsInspectionRenewalKey({
     objectId || normalizeDocumentsExplorerKey(objectName),
     normalizeDocumentsExplorerKey(serviceLabel),
     normalizeDocumentsExplorerKey(templateLabel),
+    documentNumber,
+    inspectionDate || issuedDate,
     String(dueIndex || 0),
   ];
 
@@ -27903,16 +27925,10 @@ function buildPeriodicsInspectionEntries(records = getPeriodicsDocumentRecords()
   todayDate.setHours(0, 0, 0, 0);
 
   (Array.isArray(records) ? records : []).forEach((record) => {
-    let dueDates = extractPeriodicsDocumentDueDates(record);
+    const dueDates = extractPeriodicsDocumentDueDates(record);
 
     const extractedWorkOrderNumber = extractDocumentsExplorerWorkOrderNumber(record);
     const linkedWorkOrder = resolveDocumentsExplorerWorkOrder(record, extractedWorkOrderNumber);
-    if (dueDates.length === 0 && linkedWorkOrder) {
-      const anchorDate = normalizeDateInputValue(record?.inspectionDate || record?.issuedDate || "");
-      const linkedValidityMonths = resolveWorkOrderDocumentValidityMonthsForWorkOrder(linkedWorkOrder, { fallback: "" });
-      const computedDueDate = addMonthsToDateKey(anchorDate, linkedValidityMonths);
-      dueDates = computedDueDate ? [computedDueDate] : [];
-    }
     if (dueDates.length === 0) {
       return;
     }
@@ -27997,6 +28013,9 @@ function buildPeriodicsInspectionEntries(records = getPeriodicsDocumentRecords()
         objectName,
         serviceLabel,
         templateLabel,
+        workOrderNumber,
+        inspectionDate: normalizeDateInputValue(record?.inspectionDate || ""),
+        issuedDate: normalizeDateInputValue(record?.issuedDate || ""),
         dueIndex: index,
       });
       const freshnessKey = getPeriodicsRecordFreshnessKey(record, dueDate);
@@ -28703,13 +28722,18 @@ function getPeriodicsRawRecordUsedFieldKeys(record = {}) {
 }
 
 function getPeriodicsRawRecordDueDateSourceText(record = {}, dueDates = []) {
+  const expirationDate = normalizePeriodicsDateToken(record?.expirationDate ?? record?.expiration_date);
+  if (expirationDate) {
+    return "koristi web_document_records.expiration_date";
+  }
+
   const preferredSources = getPeriodicsPreferredDueDateSources(record);
   if (preferredSources.length > 0) {
     return `koristi trackano polje: ${preferredSources.map((entry) => entry.sourceKey).join(", ")}`;
   }
 
   return dueDates.length > 0
-    ? "koristi fallback datum iz values_json"
+    ? "koristi trackani datum iz values_json"
     : "nema trackanog datuma";
 }
 
@@ -28728,6 +28752,7 @@ function createPeriodicsRawDocumentRecordRows(records = getPeriodicsDocumentReco
     .map((record) => {
       const dueDates = extractPeriodicsDocumentDueDates(record);
       const firstDueDate = dueDates[0] || "";
+      const recordExpirationDate = normalizePeriodicsDateToken(record?.expirationDate ?? record?.expiration_date);
       const dueState = firstDueDate
         ? getPeriodicsDueState(firstDueDate, todayDate, visualSettings)
         : { toneClass: "is-unknown", badgeLabel: "Nema datuma", daysUntil: Number.NaN };
@@ -28761,6 +28786,13 @@ function createPeriodicsRawDocumentRecordRows(records = getPeriodicsDocumentReco
           record?.objectName ? `object_name ${record.objectName}` : "object_name \"\"",
         ),
         createPeriodicsCell(dates),
+        createPeriodicsCell(
+          recordExpirationDate || "NULL",
+          recordExpirationDate
+            ? "expiration_date"
+            : (firstDueDate ? `iz trackanog polja ${firstDueDate}` : "expiration_date NULL"),
+          { dimmed: !recordExpirationDate },
+        ),
         createPeriodicsCell(periodicsFieldSummary, periodicsFieldDetails, { dimmed: dueDates.length === 0 }),
         createPeriodicsRawRecordJsonCell(record),
       ], dueState.toneClass);
@@ -28840,7 +28872,14 @@ function syncPeriodicsSections() {
     periodicsInspectionsBody,
     periodicsInspectionsHeading,
     Boolean(state.periodicsSections.inspectionsCollapsed),
-    "blok ispitivanja",
+    "sirove zapise",
+  );
+  syncPeriodicsSectionToggle(
+    periodicsInspectionPeriodicsToggleButton,
+    periodicsInspectionPeriodicsBody,
+    periodicsInspectionPeriodicsHeading,
+    Boolean(state.periodicsSections.inspectionPeriodicsCollapsed),
+    "periodiku ispitivanja",
   );
   syncPeriodicsSectionToggle(
     periodicsVehiclesToggleButton,
@@ -29980,6 +30019,7 @@ function renderPeriodicsModule() {
   renderPeriodicsCalendarView(calendarData);
 
   const inspectionRows = createPeriodicsRawDocumentRecordRows(rawDocumentRecords);
+  const inspectionPeriodicsRows = createPeriodicsInspectionRows(inspectionEntries, "item");
 
   const vehicleRows = vehicleEntries.map((entry) => createPeriodicsRow([
     createPeriodicsCell(entry.vehicleName, entry.plateNumber || "Bez registracije"),
@@ -30005,6 +30045,7 @@ function renderPeriodicsModule() {
   ], entry.dueState?.toneClass));
 
   renderPeriodicsRows(periodicsInspectionsList, inspectionRows);
+  renderPeriodicsRows(periodicsInspectionPeriodicsList, inspectionPeriodicsRows);
   renderPeriodicsRows(periodicsVehiclesList, vehicleRows);
   renderPeriodicsRows(periodicsPeopleList, peopleRows);
   renderPeriodicsRows(periodicsEquipmentList, equipmentRows);
@@ -30029,6 +30070,18 @@ function renderPeriodicsModule() {
       alertOverdueNode: periodicsInspectionsOverdueDot,
       alertWarningNode: periodicsInspectionsWarningDot,
       bodyNode: periodicsInspectionsBody,
+    },
+    inspectionEntries,
+    visualSettings,
+  );
+  syncPeriodicsSectionMetrics(
+    {
+      overdueNode: periodicsInspectionPeriodicsOverdue,
+      warningNode: periodicsInspectionPeriodicsWarning,
+      validNode: periodicsInspectionPeriodicsValid,
+      alertOverdueNode: periodicsInspectionPeriodicsOverdueDot,
+      alertWarningNode: periodicsInspectionPeriodicsWarningDot,
+      bodyNode: periodicsInspectionPeriodicsBody,
     },
     inspectionEntries,
     visualSettings,
@@ -30076,7 +30129,7 @@ function renderPeriodicsModule() {
     ...peopleEntries,
     ...equipmentEntries,
   ];
-  const totalEntryCount = rawDocumentRecords.length + vehicleEntries.length + peopleEntries.length + equipmentEntries.length;
+  const totalPeriodicEntryCount = inspectionEntries.length + vehicleEntries.length + peopleEntries.length + equipmentEntries.length;
   const overdueEntries = allEntries.filter((entry) => Number(entry?.dueState?.daysUntil) < 0);
   const nextSixtyDaysEntries = allEntries.filter((entry) => {
     const daysUntil = Number(entry?.dueState?.daysUntil);
@@ -30088,7 +30141,7 @@ function renderPeriodicsModule() {
   });
 
   if (periodicsTotalCount) {
-    periodicsTotalCount.textContent = String(totalEntryCount);
+    periodicsTotalCount.textContent = String(totalPeriodicEntryCount);
   }
   if (periodicsOverdueCount) {
     periodicsOverdueCount.textContent = String(overdueEntries.length);
@@ -30113,6 +30166,12 @@ function renderPeriodicsModule() {
       ? "Zapisnici trenutno nisu učitani. Klikni osvježi ili provjeri dokumente."
       : "Nema zapisa u web_document_records za aktivnu organizaciju.";
   }
+  if (periodicsInspectionPeriodicsEmpty) {
+    periodicsInspectionPeriodicsEmpty.hidden = state.periodicsFeed.loading || inspectionEntries.length > 0;
+    periodicsInspectionPeriodicsEmpty.textContent = state.periodicsFeed.error
+      ? "Periodika ispitivanja trenutno nije učitana."
+      : "Nema ispitivanja s expiration_date iz trackanog polja Vrijedi do.";
+  }
   if (periodicsVehiclesEmpty) {
     periodicsVehiclesEmpty.hidden = vehicleEntries.length > 0;
   }
@@ -30135,7 +30194,7 @@ function renderPeriodicsModule() {
     } else if (state.periodicsFeed.error) {
       periodicsHelper.textContent = `Sirovi zapisnici nisu učitani · Vozila ${vehicleEntries.length} · Ljudi ${peopleEntries.length} · Oprema ${equipmentEntries.length}.`;
     } else {
-      periodicsHelper.textContent = `Sirovo iz web_document_records: ${rawDocumentRecords.length} zapisa · s izvučenim rokom ${inspectionEntries.length} · Vozila ${vehicleEntries.length} · Ljudi ${peopleEntries.length} · Oprema ${equipmentEntries.length}.`;
+      periodicsHelper.textContent = `Sirovo iz web_document_records: ${rawDocumentRecords.length} zapisa · Periodika Ispitivanja ${inspectionEntries.length} · Vozila ${vehicleEntries.length} · Ljudi ${peopleEntries.length} · Oprema ${equipmentEntries.length}.`;
     }
   }
 
@@ -89201,7 +89260,7 @@ function buildDocumentTemplateRuntimeDocumentRecordPayload(template = buildDocum
       fieldValues[fieldKey] = value;
     }
     if (isDocumentTemplatePeriodicsTrackableField(field) && Boolean(field.trackPeriodics ?? field.periodicsTracked)) {
-      const normalizedDateValue = normalizeDateInputValue(value);
+      const normalizedDateValue = normalizePeriodicsDateToken(value);
       if (normalizedDateValue) {
         trackedPeriodicsDates.push({
           fieldId: String(field.id || "").trim(),
@@ -89240,6 +89299,7 @@ function buildDocumentTemplateRuntimeDocumentRecordPayload(template = buildDocum
       fieldValues.DATUM_VRIJEDI_DO = primaryTrackedDate;
     }
   }
+  const expirationDate = trackedPeriodicsDates[0]?.value || "";
   const runtimeValidityMonths = resolveDocumentTemplateRuntimeServiceValidityMonths(workOrder, template)
     || resolveDocumentTemplateRuntimeValidityMonths(workOrder);
   if (runtimeValidityMonths) {
@@ -89263,6 +89323,7 @@ function buildDocumentTemplateRuntimeDocumentRecordPayload(template = buildDocum
     objectName: String(locationObject?.name || "").trim(),
     inspectionDate: getDocumentTemplateRuntimeValue(workOrder.id, "inspectionDate"),
     issuedDate: getDocumentTemplateRuntimeValue(workOrder.id, "issuedDate"),
+    expirationDate,
     fieldValues,
     fieldSheets,
   };
@@ -89280,6 +89341,7 @@ function buildDocumentTemplateRuntimeDocumentRecordFingerprint(payload = null) {
     objectId: payload.objectId,
     inspectionDate: payload.inspectionDate,
     issuedDate: payload.issuedDate,
+    expirationDate: payload.expirationDate,
     fieldValues: payload.fieldValues ?? {},
     fieldSheets: payload.fieldSheets ?? {},
   });
@@ -97147,6 +97209,11 @@ bindPeriodicsSectionHeaderToggle(
   "inspectionsCollapsed",
 );
 bindPeriodicsSectionHeaderToggle(
+  periodicsInspectionPeriodicsHeading,
+  periodicsInspectionPeriodicsToggleButton,
+  "inspectionPeriodicsCollapsed",
+);
+bindPeriodicsSectionHeaderToggle(
   periodicsVehiclesHeading,
   periodicsVehiclesToggleButton,
   "vehiclesCollapsed",
@@ -102751,6 +102818,7 @@ function resetAuthenticatedWorkspaceState() {
   state.periodicsPreferencesScope = "";
   state.periodicsSections = {
     inspectionsCollapsed: false,
+    inspectionPeriodicsCollapsed: false,
     vehiclesCollapsed: false,
     peopleCollapsed: false,
     equipmentCollapsed: false,

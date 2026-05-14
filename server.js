@@ -3240,6 +3240,47 @@ function normalizeGeneratedDocumentRecordDate(value = "") {
   return normalizeDateOnlyValue(raw);
 }
 
+const GENERATED_DOCUMENT_PERIODICS_TRACKED_DATES_KEY = "__PERIODICS_TRACKED_DATES";
+
+function normalizeGeneratedDocumentExpirationDate(value = "") {
+  const raw = String(value ?? "").trim();
+  if (!raw) {
+    return "";
+  }
+
+  const isValidDateParts = (year, month, day) => {
+    const parsed = new Date(Date.UTC(year, month - 1, day));
+    return parsed.getUTCFullYear() === year
+      && parsed.getUTCMonth() === month - 1
+      && parsed.getUTCDate() === day;
+  };
+  const formatDate = (year, month, day) => (
+    isValidDateParts(year, month, day)
+      ? `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+      : ""
+  );
+
+  const isoMatch = raw.match(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/);
+  if (isoMatch) {
+    return formatDate(
+      Number.parseInt(isoMatch[1], 10),
+      Number.parseInt(isoMatch[2], 10),
+      Number.parseInt(isoMatch[3], 10),
+    );
+  }
+
+  const localMatch = raw.match(/\b(\d{1,2})[./](\d{1,2})[./](\d{4})\b/);
+  if (localMatch) {
+    return formatDate(
+      Number.parseInt(localMatch[3], 10),
+      Number.parseInt(localMatch[2], 10),
+      Number.parseInt(localMatch[1], 10),
+    );
+  }
+
+  return "";
+}
+
 function getGeneratedDocumentRecordValue(source = {}, keys = []) {
   if (!source || typeof source !== "object" || Array.isArray(source)) {
     return "";
@@ -3284,6 +3325,29 @@ function getGeneratedDocumentRecordWorkOrderNumber(record = {}, workOrder = {}) 
     || workOrder?.workOrderNumber
     || "",
   ).replace(/^RN\s*/i, "").trim();
+}
+
+function getGeneratedDocumentRecordTrackedExpirationDate(fieldValues = {}) {
+  const trackedDates = Array.isArray(fieldValues?.[GENERATED_DOCUMENT_PERIODICS_TRACKED_DATES_KEY])
+    ? fieldValues[GENERATED_DOCUMENT_PERIODICS_TRACKED_DATES_KEY]
+    : [];
+
+  for (const entry of trackedDates) {
+    const expirationDate = normalizeGeneratedDocumentExpirationDate(entry?.value ?? entry?.date ?? entry?.validUntil);
+    if (expirationDate) {
+      return expirationDate;
+    }
+  }
+
+  return "";
+}
+
+function normalizeGeneratedDocumentRecordExpirationFromPayload(payload = {}) {
+  const fieldValues = payload?.fieldValues && typeof payload.fieldValues === "object" && !Array.isArray(payload.fieldValues)
+    ? payload.fieldValues
+    : {};
+  return normalizeGeneratedDocumentExpirationDate(payload?.expirationDate ?? payload?.expiration_date)
+    || getGeneratedDocumentRecordTrackedExpirationDate(fieldValues);
 }
 
 function buildGeneratedDocumentTemplateRecordPayload({
@@ -3348,6 +3412,10 @@ function buildGeneratedDocumentTemplateRecordPayload({
     || entry.issuedDate
     || getGeneratedDocumentRecordValue(fieldValues, ["WORK_ORDER_ISSUED_DATE", "DATUM_IZDAVANJA"]),
   );
+  const expirationDate = normalizeGeneratedDocumentRecordExpirationFromPayload({
+    expirationDate: suppliedRecord.expirationDate || entry.expirationDate,
+    fieldValues,
+  });
   const objectName = String(
     suppliedRecord.objectName
     || entry.objectName
@@ -3372,6 +3440,7 @@ function buildGeneratedDocumentTemplateRecordPayload({
     objectName,
     inspectionDate,
     issuedDate,
+    expirationDate,
     fieldValues,
     fieldSheets: suppliedRecord.fieldSheets && typeof suppliedRecord.fieldSheets === "object" && !Array.isArray(suppliedRecord.fieldSheets)
       ? suppliedRecord.fieldSheets
@@ -3436,8 +3505,65 @@ function isGeneratedDocumentRecordPayloadCurrent(existing = {}, payload = {}) {
     && String(existing.objectName || "") === String(payload.objectName || "")
     && normalizeGeneratedDocumentRecordDate(existing.inspectionDate) === normalizeGeneratedDocumentRecordDate(payload.inspectionDate)
     && normalizeGeneratedDocumentRecordDate(existing.issuedDate) === normalizeGeneratedDocumentRecordDate(payload.issuedDate)
+    && normalizeGeneratedDocumentRecordExpirationFromPayload(existing) === normalizeGeneratedDocumentRecordExpirationFromPayload(payload)
     && JSON.stringify(existing.fieldValues ?? {}) === JSON.stringify(payload.fieldValues ?? {})
     && JSON.stringify(existing.fieldSheets ?? {}) === JSON.stringify(payload.fieldSheets ?? {});
+}
+
+async function upsertDocumentRecordPayload(payload = {}, user = null, workOrder = {}) {
+  if (typeof domainRepository.createDocumentRecord !== "function") {
+    return null;
+  }
+
+  const normalizedPayload = {
+    ...payload,
+    expirationDate: normalizeGeneratedDocumentRecordExpirationFromPayload(payload),
+  };
+
+  if (typeof domainRepository.listDocumentRecords === "function") {
+    const existingRecords = await domainRepository.listDocumentRecords({
+      organizationId: normalizedPayload.organizationId,
+      templateId: normalizedPayload.templateId,
+      companyId: normalizedPayload.companyId,
+      locationId: normalizedPayload.locationId,
+      objectId: normalizedPayload.objectId,
+      limit: 50,
+      periodics: true,
+    });
+    const existing = existingRecords.find((record) => isSameGeneratedDocumentRecord(record, normalizedPayload, workOrder));
+    if (existing) {
+      const existingExpirationDate = normalizeGeneratedDocumentRecordExpirationFromPayload(existing);
+      let payloadForSave = normalizedPayload;
+      if (!payloadForSave.expirationDate && existingExpirationDate) {
+        const existingFieldValues = existing?.fieldValues && typeof existing.fieldValues === "object" && !Array.isArray(existing.fieldValues)
+          ? existing.fieldValues
+          : {};
+        const payloadFieldValues = payloadForSave?.fieldValues && typeof payloadForSave.fieldValues === "object" && !Array.isArray(payloadForSave.fieldValues)
+          ? payloadForSave.fieldValues
+          : {};
+        payloadForSave = {
+          ...payloadForSave,
+          expirationDate: existingExpirationDate,
+          fieldValues: {
+            ...payloadFieldValues,
+            ...(!Array.isArray(payloadFieldValues[GENERATED_DOCUMENT_PERIODICS_TRACKED_DATES_KEY])
+              && Array.isArray(existingFieldValues[GENERATED_DOCUMENT_PERIODICS_TRACKED_DATES_KEY])
+              ? { [GENERATED_DOCUMENT_PERIODICS_TRACKED_DATES_KEY]: existingFieldValues[GENERATED_DOCUMENT_PERIODICS_TRACKED_DATES_KEY] }
+              : {}),
+          },
+        };
+      }
+      if (
+        typeof domainRepository.updateDocumentRecord === "function"
+        && !isGeneratedDocumentRecordPayloadCurrent(existing, payloadForSave)
+      ) {
+        return await domainRepository.updateDocumentRecord(existing.id, payloadForSave, user) || existing;
+      }
+      return existing;
+    }
+  }
+
+  return await domainRepository.createDocumentRecord(normalizedPayload, user);
 }
 
 async function ensureGeneratedDocumentTemplateRecord({
@@ -3465,27 +3591,7 @@ async function ensureGeneratedDocumentTemplateRecord({
     return null;
   }
 
-  const existingRecords = await domainRepository.listDocumentRecords({
-    organizationId: payload.organizationId,
-    templateId: payload.templateId,
-    companyId: payload.companyId,
-    locationId: payload.locationId,
-    objectId: payload.objectId,
-    limit: 50,
-    periodics: true,
-  });
-  const existing = existingRecords.find((record) => isSameGeneratedDocumentRecord(record, payload, workOrder));
-  if (existing) {
-    if (
-      typeof domainRepository.updateDocumentRecord === "function"
-      && !isGeneratedDocumentRecordPayloadCurrent(existing, payload)
-    ) {
-      return await domainRepository.updateDocumentRecord(existing.id, payload, user) || existing;
-    }
-    return existing;
-  }
-
-  return await domainRepository.createDocumentRecord(payload, user);
+  return await upsertDocumentRecordPayload(payload, user, workOrder);
 }
 
 function stripStoredDocumentPayloadForResponse(document = null) {
@@ -8448,7 +8554,7 @@ async function handleApiRequest(request, response, url) {
       assertInScope(scopedSnapshot.locations ?? [], body.locationId, "Lokacija nije dostupna za odabranu organizaciju.");
       const locationObject = assertLocationObjectPayloadInScope(scopedSnapshot, body);
 
-      const item = await domainRepository.createDocumentRecord({
+      const item = await upsertDocumentRecordPayload({
         ...body,
         organizationId: scopedSnapshot.activeOrganizationId,
         objectName: body.objectName || locationObject?.name || "",

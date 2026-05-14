@@ -110,6 +110,47 @@ function normalizeDateOnly(value) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString().slice(0, 10);
 }
 
+const DOCUMENT_RECORD_PERIODICS_TRACKED_DATES_KEY = "__PERIODICS_TRACKED_DATES";
+
+function normalizeExplicitDateOnly(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) {
+    return null;
+  }
+
+  const isValidDateParts = (year, month, day) => {
+    const parsed = new Date(Date.UTC(year, month - 1, day));
+    return parsed.getUTCFullYear() === year
+      && parsed.getUTCMonth() === month - 1
+      && parsed.getUTCDate() === day;
+  };
+  const formatDate = (year, month, day) => (
+    isValidDateParts(year, month, day)
+      ? `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+      : null
+  );
+
+  const isoMatch = raw.match(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/);
+  if (isoMatch) {
+    return formatDate(
+      Number.parseInt(isoMatch[1], 10),
+      Number.parseInt(isoMatch[2], 10),
+      Number.parseInt(isoMatch[3], 10),
+    );
+  }
+
+  const localMatch = raw.match(/\b(\d{1,2})[./](\d{1,2})[./](\d{4})\b/);
+  if (localMatch) {
+    return formatDate(
+      Number.parseInt(localMatch[3], 10),
+      Number.parseInt(localMatch[2], 10),
+      Number.parseInt(localMatch[1], 10),
+    );
+  }
+
+  return null;
+}
+
 function parseMySqlConnectionString(connectionString) {
   const url = new URL(connectionString);
   const rawSslMode = url.searchParams.get("ssl-mode") ?? url.searchParams.get("sslmode") ?? "";
@@ -855,6 +896,29 @@ function normalizeDocumentRecordFieldSheets(value = {}) {
   );
 }
 
+function normalizeDocumentRecordExpirationDate(input = {}, fieldValues = null) {
+  const directDate = normalizeExplicitDateOnly(input.expirationDate ?? input.expiration_date);
+  if (directDate) {
+    return directDate;
+  }
+
+  const normalizedFieldValues = fieldValues && typeof fieldValues === "object" && !Array.isArray(fieldValues)
+    ? fieldValues
+    : normalizeDocumentRecordFieldValues(input.fieldValues);
+  const trackedDates = Array.isArray(normalizedFieldValues[DOCUMENT_RECORD_PERIODICS_TRACKED_DATES_KEY])
+    ? normalizedFieldValues[DOCUMENT_RECORD_PERIODICS_TRACKED_DATES_KEY]
+    : [];
+
+  for (const entry of trackedDates) {
+    const trackedDate = normalizeExplicitDateOnly(entry?.value ?? entry?.date ?? entry?.validUntil);
+    if (trackedDate) {
+      return trackedDate;
+    }
+  }
+
+  return null;
+}
+
 function cloneDocumentRecord(record = {}) {
   return {
     ...record,
@@ -865,6 +929,8 @@ function cloneDocumentRecord(record = {}) {
 
 function createDocumentRecordEntry(input = {}, actor = null, createId = () => crypto.randomUUID(), now = () => new Date().toISOString()) {
   const timestamp = normalizeTimestamp(now()) ?? new Date().toISOString();
+  const fieldValues = normalizeDocumentRecordFieldValues(input.fieldValues);
+  const fieldSheets = normalizeDocumentRecordFieldSheets(input.fieldSheets);
 
   return {
     id: dbString(input.id) || createId(),
@@ -878,8 +944,9 @@ function createDocumentRecordEntry(input = {}, actor = null, createId = () => cr
     objectName: dbString(input.objectName),
     inspectionDate: normalizeDateOnly(input.inspectionDate),
     issuedDate: normalizeDateOnly(input.issuedDate),
-    fieldValues: normalizeDocumentRecordFieldValues(input.fieldValues),
-    fieldSheets: normalizeDocumentRecordFieldSheets(input.fieldSheets),
+    expirationDate: normalizeDocumentRecordExpirationDate(input, fieldValues),
+    fieldValues,
+    fieldSheets,
     createdByUserId: dbString(input.createdByUserId || actor?.id),
     createdByLabel: dbString(input.createdByLabel || actor?.fullName || actor?.username || "Safety360"),
     createdAt: normalizeTimestamp(input.createdAt) ?? timestamp,
@@ -900,6 +967,7 @@ function mapDocumentRecordRow(row = {}) {
     objectName: row.object_name ?? row.objectName,
     inspectionDate: row.inspection_date ?? row.inspectionDate,
     issuedDate: row.issued_date ?? row.issuedDate,
+    expirationDate: row.expiration_date ?? row.expirationDate,
     fieldValues: row.values_json ?? row.fieldValues,
     fieldSheets: row.measurement_sheets_json ?? row.fieldSheets,
     createdByUserId: row.created_by_user_id ?? row.createdByUserId,
@@ -6148,8 +6216,8 @@ export class InMemorySafetyRepository {
         && (!objectId || String(item.objectId) === objectId)
       ))
       .sort((left, right) => {
-        const leftSortValue = left.inspectionDate || left.issuedDate || left.createdAt || "";
-        const rightSortValue = right.inspectionDate || right.issuedDate || right.createdAt || "";
+        const leftSortValue = left.expirationDate || left.inspectionDate || left.issuedDate || left.createdAt || "";
+        const rightSortValue = right.expirationDate || right.inspectionDate || right.issuedDate || right.createdAt || "";
         return String(rightSortValue).localeCompare(String(leftSortValue))
           || String(right.createdAt || "").localeCompare(String(left.createdAt || ""));
       })
@@ -7140,6 +7208,7 @@ export class MySqlSafetyRepository {
         object_name VARCHAR(180) NOT NULL DEFAULT '',
         inspection_date DATE NULL,
         issued_date DATE NULL,
+        expiration_date DATE NULL,
         values_json LONGTEXT NULL,
         measurement_sheets_json LONGTEXT NULL,
         created_by_user_id INT NULL,
@@ -7147,11 +7216,23 @@ export class MySqlSafetyRepository {
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_web_document_records_scope (organization_id, template_id, company_id, location_id),
+        INDEX idx_web_document_records_expiration (organization_id, expiration_date),
         INDEX idx_web_document_records_dates (organization_id, inspection_date, issued_date, created_at)
       )
     `);
     await ensureColumnExists(this.pool, "web_document_records", "object_id", "BIGINT NULL AFTER location_id");
     await ensureColumnExists(this.pool, "web_document_records", "object_name", "VARCHAR(180) NOT NULL DEFAULT '' AFTER object_id");
+    await ensureColumnExists(this.pool, "web_document_records", "expiration_date", "DATE NULL AFTER issued_date");
+    const [documentRecordExpirationIndexRows] = await this.pool.query(`
+      SHOW INDEX FROM web_document_records
+      WHERE Key_name = 'idx_web_document_records_expiration'
+    `);
+    if (documentRecordExpirationIndexRows.length === 0) {
+      await this.pool.query(`
+        ALTER TABLE web_document_records
+        ADD INDEX idx_web_document_records_expiration (organization_id, expiration_date)
+      `);
+    }
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS web_measurement_sheet_presets (
         id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -12285,34 +12366,42 @@ export class MySqlSafetyRepository {
     const connection = await this.pool.getConnection();
 
     try {
-      const organizationId = Number(filters.organizationId);
-      const templateId = Number(filters.templateId);
-      const companyId = Number(filters.companyId);
-      const locationId = Number(filters.locationId);
-      const objectId = Number(filters.objectId);
+      const toOptionalNumber = (value) => {
+        const raw = String(value ?? "").trim();
+        if (!raw) {
+          return null;
+        }
+        const number = Number(raw);
+        return Number.isFinite(number) ? number : null;
+      };
+      const organizationId = toOptionalNumber(filters.organizationId);
+      const templateId = toOptionalNumber(filters.templateId);
+      const companyId = toOptionalNumber(filters.companyId);
+      const locationId = toOptionalNumber(filters.locationId);
+      const objectId = toOptionalNumber(filters.objectId);
       const limitCap = filters.periodics ? 10000 : 1000;
       const limit = Math.max(1, Math.min(limitCap, Number.parseInt(filters.limit, 10) || 200));
 
       const conditions = [];
       const params = [];
 
-      if (Number.isFinite(organizationId)) {
+      if (organizationId !== null) {
         conditions.push("organization_id = ?");
         params.push(organizationId);
       }
-      if (Number.isFinite(templateId)) {
+      if (templateId !== null) {
         conditions.push("template_id = ?");
         params.push(templateId);
       }
-      if (Number.isFinite(companyId)) {
+      if (companyId !== null) {
         conditions.push("company_id = ?");
         params.push(companyId);
       }
-      if (Number.isFinite(locationId)) {
+      if (locationId !== null) {
         conditions.push("location_id = ?");
         params.push(locationId);
       }
-      if (Number.isFinite(objectId)) {
+      if (objectId !== null) {
         conditions.push("object_id = ?");
         params.push(objectId);
       }
@@ -12323,12 +12412,12 @@ export class MySqlSafetyRepository {
       const [rows] = await connection.query(
         `
           SELECT id, organization_id, template_id, template_title, document_type,
-                 company_id, location_id, object_id, object_name, inspection_date, issued_date,
+                 company_id, location_id, object_id, object_name, inspection_date, issued_date, expiration_date,
                  values_json, measurement_sheets_json,
                  created_by_user_id, created_by_label, created_at, updated_at
           FROM web_document_records
           ${whereClause}
-          ORDER BY COALESCE(inspection_date, issued_date, DATE(created_at)) DESC, created_at DESC, id DESC
+          ORDER BY COALESCE(expiration_date, inspection_date, issued_date, DATE(created_at)) DESC, created_at DESC, id DESC
           LIMIT ?
         `,
         [...params, limit],
@@ -12349,10 +12438,10 @@ export class MySqlSafetyRepository {
         `
           INSERT INTO web_document_records
             (organization_id, template_id, template_title, document_type,
-             company_id, location_id, object_id, object_name, inspection_date, issued_date,
+             company_id, location_id, object_id, object_name, inspection_date, issued_date, expiration_date,
              values_json, measurement_sheets_json,
              created_by_user_id, created_by_label)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(entry.organizationId),
@@ -12365,6 +12454,7 @@ export class MySqlSafetyRepository {
           entry.objectName,
           entry.inspectionDate || null,
           entry.issuedDate || null,
+          entry.expirationDate || null,
           JSON.stringify(entry.fieldValues ?? {}),
           JSON.stringify(entry.fieldSheets ?? {}),
           entry.createdByUserId ? Number(entry.createdByUserId) : null,
@@ -12375,7 +12465,7 @@ export class MySqlSafetyRepository {
       const [rows] = await connection.query(
         `
           SELECT id, organization_id, template_id, template_title, document_type,
-                 company_id, location_id, object_id, object_name, inspection_date, issued_date,
+                 company_id, location_id, object_id, object_name, inspection_date, issued_date, expiration_date,
                  values_json, measurement_sheets_json,
                  created_by_user_id, created_by_label, created_at, updated_at
           FROM web_document_records
@@ -12406,7 +12496,7 @@ export class MySqlSafetyRepository {
           UPDATE web_document_records
           SET organization_id = ?, template_id = ?, template_title = ?, document_type = ?,
               company_id = ?, location_id = ?, object_id = ?, object_name = ?,
-              inspection_date = ?, issued_date = ?,
+              inspection_date = ?, issued_date = ?, expiration_date = ?,
               values_json = ?, measurement_sheets_json = ?,
               updated_at = CURRENT_TIMESTAMP
           WHERE id = ?
@@ -12423,6 +12513,7 @@ export class MySqlSafetyRepository {
           entry.objectName,
           entry.inspectionDate || null,
           entry.issuedDate || null,
+          entry.expirationDate || null,
           JSON.stringify(entry.fieldValues ?? {}),
           JSON.stringify(entry.fieldSheets ?? {}),
           recordId,
@@ -12432,7 +12523,7 @@ export class MySqlSafetyRepository {
       const [rows] = await connection.query(
         `
           SELECT id, organization_id, template_id, template_title, document_type,
-                 company_id, location_id, object_id, object_name, inspection_date, issued_date,
+                 company_id, location_id, object_id, object_name, inspection_date, issued_date, expiration_date,
                  values_json, measurement_sheets_json,
                  created_by_user_id, created_by_label, created_at, updated_at
           FROM web_document_records

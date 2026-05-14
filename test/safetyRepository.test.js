@@ -162,6 +162,52 @@ test("in-memory safety repository normalizes document record values and respects
   assert.deepEqual(older.fieldValues.lista, ["A", "B"]);
 });
 
+test("in-memory safety repository stores expiration date only from tracked periodics dates", async () => {
+  const repository = new InMemorySafetyRepository();
+  await repository.init();
+
+  const partial = await repository.createDocumentRecord({
+    organizationId: "org-1",
+    templateId: "template-periodics",
+    templateTitle: "SPR",
+    companyId: "company-1",
+    locationId: "location-1",
+    inspectionDate: "2026-05-14",
+    fieldValues: {
+      VRIJEDI_DO: "14",
+      __PERIODICS_TRACKED_DATES: [
+        {
+          fieldKey: "VRIJEDI_DO",
+          label: "Vrijedi do",
+          value: "14",
+        },
+      ],
+    },
+  });
+
+  const complete = await repository.createDocumentRecord({
+    organizationId: "org-1",
+    templateId: "template-periodics",
+    templateTitle: "SPR",
+    companyId: "company-1",
+    locationId: "location-1",
+    inspectionDate: "2026-05-14",
+    fieldValues: {
+      VRIJEDI_DO: "14.05.2027",
+      __PERIODICS_TRACKED_DATES: [
+        {
+          fieldKey: "VRIJEDI_DO",
+          label: "Vrijedi do",
+          value: "14.05.2027",
+        },
+      ],
+    },
+  });
+
+  assert.equal(partial.expirationDate, null);
+  assert.equal(complete.expirationDate, "2027-05-14");
+});
+
 test("in-memory safety repository returns expanded document record feed for periodics", async () => {
   const repository = new InMemorySafetyRepository();
   await repository.init();

@@ -26911,6 +26911,10 @@ body.is-vehicle-reservation-open {
   background: linear-gradient(90deg, rgba(104, 133, 228, 0.9), rgba(104, 198, 241, 0.9));
 }
 
+.periodics-section-card.is-inspection-periodics::before {
+  background: linear-gradient(90deg, rgba(95, 179, 136, 0.92), rgba(95, 185, 215, 0.9));
+}
+
 .periodics-section-card.is-vehicles::before {
   background: linear-gradient(90deg, rgba(110, 178, 134, 0.9), rgba(80, 199, 176, 0.9));
 }
@@ -27691,9 +27695,10 @@ body.is-vehicle-reservation-open {
     minmax(170px, 0.78fr)
     minmax(170px, 0.78fr)
     minmax(190px, 0.82fr)
+    minmax(160px, 0.68fr)
     minmax(220px, 1fr)
     minmax(320px, 1.8fr);
-  min-width: 1320px;
+  min-width: 1480px;
 }
 
 .periodics-grid.is-vehicles .periodics-grid-head,
