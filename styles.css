@@ -46602,6 +46602,58 @@ button.work-order-editor-section-head {
   gap: 8px;
 }
 
+.work-order-editor-heading-stack {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+  min-width: min(460px, 46vw);
+}
+
+.work-order-editor-top-actions {
+  display: inline-flex;
+  justify-content: flex-end;
+  gap: 5px;
+  min-height: 30px;
+}
+
+.work-order-editor-top-action {
+  display: inline-grid !important;
+  grid-template-columns: 18px !important;
+  place-items: center;
+  width: 30px !important;
+  min-width: 30px !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  padding: 0 !important;
+  border-radius: 8px !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  color: #667085 !important;
+  box-shadow: none !important;
+}
+
+.work-order-editor-top-action:hover,
+.work-order-editor-top-action:focus-visible {
+  border-color: #e6e9ef !important;
+  background: #f7f8fa !important;
+  color: #1f2937 !important;
+  outline: none;
+}
+
+.work-order-editor-top-action .work-order-action-label {
+  display: none;
+}
+
+.work-order-editor-top-action .work-order-action-icon {
+  width: 17px;
+  height: 17px;
+}
+
+.work-order-editor-top-action .work-order-action-icon svg {
+  width: 17px;
+  height: 17px;
+}
+
 #work-order-number-preview {
   display: none !important;
 }
@@ -46694,7 +46746,7 @@ button.work-order-editor-section-head {
 
 .work-order-editor-detail-row {
   display: grid;
-  grid-template-columns: 18px minmax(104px, 0.42fr) minmax(0, 1fr);
+  grid-template-columns: 18px minmax(126px, 0.42fr) minmax(0, 1fr);
   align-items: center;
   gap: 10px;
   min-width: 0;
@@ -46706,6 +46758,16 @@ button.work-order-editor-section-head {
   color: #273142;
   text-align: left;
   cursor: pointer;
+}
+
+.work-order-editor-detail-row.has-required-attention {
+  border-radius: 8px;
+  background: #fff7f8;
+  box-shadow: inset 3px 0 0 #e5484d;
+}
+
+.work-order-editor-detail-row.has-required-attention .work-order-editor-detail-label {
+  color: #b42334;
 }
 
 .work-order-editor-detail-row:hover,
@@ -46741,10 +46803,234 @@ button.work-order-editor-section-head {
   min-width: 0;
   display: inline-flex;
   align-items: center;
+  width: 100%;
   color: #202838;
   font-size: 0.84rem;
   font-weight: 650;
   line-height: 1.2;
+}
+
+.work-order-editor-field-picker,
+.work-order-editor-priority-tags-control,
+.work-order-editor-tags-control {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.work-order-editor-field-picker {
+  width: min(100%, 440px);
+}
+
+.work-order-editor-field-trigger,
+.work-order-editor-inline-action {
+  display: inline-grid;
+  grid-template-columns: minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 28px;
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: #f7f8fa;
+  color: #1f2937;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 680;
+  text-align: left;
+  box-shadow: none;
+}
+
+.work-order-editor-field-trigger:hover,
+.work-order-editor-field-trigger:focus-visible,
+.work-order-editor-inline-action:hover,
+.work-order-editor-inline-action:focus-visible {
+  border-color: #dde3ec;
+  background: #ffffff;
+  outline: none;
+}
+
+.work-order-editor-field-trigger:disabled {
+  color: #98a2b3;
+  cursor: not-allowed;
+  opacity: 0.75;
+}
+
+.work-order-editor-field-trigger-copy,
+.work-order-editor-inline-action-label,
+.work-order-editor-inline-action-summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-order-editor-field-trigger-copy {
+  display: grid;
+  gap: 1px;
+}
+
+.work-order-editor-field-trigger-label.is-empty,
+.work-order-editor-inline-action.is-empty .work-order-editor-inline-action-label {
+  color: #98a2b3;
+  font-weight: 560;
+}
+
+.work-order-editor-field-trigger-meta,
+.work-order-editor-inline-action-summary {
+  color: #667085;
+  font-size: 0.68rem;
+  font-weight: 560;
+}
+
+.work-order-editor-inline-action {
+  width: min(100%, 440px);
+}
+
+.work-order-editor-field-caret {
+  color: #98a2b3;
+  font-size: 0.75rem;
+  line-height: 1;
+  text-align: center;
+}
+
+.work-order-editor-date-control,
+.work-order-editor-tags-input {
+  width: min(100%, 220px);
+  min-height: 28px;
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: #f7f8fa;
+  color: #1f2937;
+  font-size: 0.82rem;
+  font-weight: 680;
+  box-shadow: none;
+}
+
+.work-order-editor-date-control:hover,
+.work-order-editor-tags-input:hover,
+.work-order-editor-date-control:focus,
+.work-order-editor-tags-input:focus {
+  border-color: #dde3ec;
+  background: #ffffff;
+  outline: none;
+}
+
+.work-order-editor-priority-tags-control {
+  width: min(100%, 440px);
+  gap: 7px;
+}
+
+.work-order-editor-priority-tags-control .work-order-editor-field-picker {
+  width: min(180px, 42%);
+  flex: 0 1 180px;
+}
+
+.work-order-editor-priority-tags-control .work-order-editor-tags-control {
+  flex: 1 1 160px;
+}
+
+.work-order-editor-priority-tags-control .work-order-editor-tags-input {
+  width: 100%;
+}
+
+.work-order-editor-field-menu-portal {
+  position: fixed;
+  z-index: 4600;
+  max-width: min(520px, calc(100vw - 24px));
+  max-height: min(430px, calc(100dvh - 24px));
+  overflow: hidden;
+  padding: 7px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.18);
+  contain: layout paint;
+}
+
+.work-order-editor-field-search {
+  padding: 2px 2px 7px;
+}
+
+.work-order-editor-field-search-input {
+  width: 100%;
+  min-height: 30px;
+  padding: 5px 9px;
+  border: 1px solid #e4e7ec;
+  border-radius: 8px;
+  background: #f9fafb;
+  color: #1f2937;
+  font-size: 0.82rem;
+  font-weight: 560;
+  outline: none;
+}
+
+.work-order-editor-field-search-input:focus {
+  border-color: rgba(47, 110, 225, 0.45);
+  background: #ffffff;
+}
+
+.work-order-editor-field-options {
+  display: grid;
+  gap: 2px;
+  max-height: min(320px, 42dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.work-order-editor-field-option {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 9px;
+  min-height: 34px;
+  padding: 6px 8px !important;
+  border-radius: 8px !important;
+  text-align: left;
+}
+
+.work-order-editor-field-option-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.work-order-editor-field-option-copy strong,
+.work-order-editor-field-option-copy span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-order-editor-field-option-copy strong {
+  color: #1f2937;
+  font-size: 0.82rem;
+  font-weight: 720;
+}
+
+.work-order-editor-field-option-copy span {
+  color: #667085;
+  font-size: 0.69rem;
+  font-weight: 560;
+}
+
+.work-order-editor-field-option-marker {
+  color: #16a34a;
+  font-size: 0.9rem;
+  font-weight: 820;
+  text-align: center;
+}
+
+.work-order-editor-field-empty {
+  margin: 0;
+  padding: 8px;
+  color: #667085;
+  font-size: 0.8rem;
 }
 
 .work-order-editor-detail-value.is-muted,
@@ -46896,6 +47182,10 @@ button.work-order-editor-section-head {
 
 .work-order-editor-form {
   gap: 0 !important;
+}
+
+.work-order-editor-actions {
+  display: none !important;
 }
 
 .work-order-editor-section[data-work-order-section] {
@@ -47173,6 +47463,58 @@ button.work-order-editor-section-head:focus-visible {
   .work-order-editor-form .field {
     grid-template-columns: 1fr !important;
     gap: 4px;
+  }
+
+  .work-order-editor-topbar {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .work-order-editor-heading-stack {
+    width: 100%;
+    min-width: 0;
+    justify-items: start;
+  }
+
+  .work-order-editor-heading-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .work-order-save-state {
+    max-width: min(100%, 340px);
+  }
+
+  .work-order-editor-top-actions {
+    justify-content: flex-start;
+  }
+
+  .work-order-editor-detail-row {
+    grid-template-columns: 18px minmax(0, 1fr);
+    gap: 4px 10px;
+    padding: 6px 2px;
+  }
+
+  .work-order-editor-detail-content {
+    grid-column: 2;
+  }
+
+  .work-order-editor-field-picker,
+  .work-order-editor-inline-action,
+  .work-order-editor-priority-tags-control,
+  .work-order-editor-date-control,
+  .work-order-editor-tags-input {
+    width: 100%;
+  }
+
+  .work-order-editor-priority-tags-control {
+    flex-wrap: wrap;
+  }
+
+  .work-order-editor-priority-tags-control .work-order-editor-field-picker,
+  .work-order-editor-priority-tags-control .work-order-editor-tags-control {
+    width: 100%;
+    flex: 1 1 100%;
   }
 }
 
