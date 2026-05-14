@@ -21320,13 +21320,13 @@ function getWorkOrderRequiredFieldStates(payload = buildWorkOrderPayload()) {
       key: "openedDate",
       label: "Datum otvaranja",
       target: workOrderOpenedDateInput,
-      complete: Boolean(toDateKey(workOrderOpenedDateInput?.value || "")),
+      complete: Boolean(String(payload?.openedDate || "").trim()),
     },
     {
       key: "dueDate",
       label: "Rok završetka",
       target: workOrderDueDateInput,
-      complete: Boolean(toDateKey(workOrderDueDateInput?.value || "")),
+      complete: Boolean(String(payload?.dueDate || "").trim()),
     },
     {
       key: "executors",
@@ -21341,6 +21341,13 @@ function getWorkOrderRequiredFieldStates(payload = buildWorkOrderPayload()) {
       complete: serviceItems.length > 0,
     },
   ];
+}
+
+function getWorkOrderRequiredBlockMessage(payload = buildWorkOrderPayload()) {
+  const missing = getWorkOrderRequiredFieldStates(payload).filter((entry) => !entry.complete);
+  return missing.length > 0
+    ? `Popuni obavezno: ${missing.map((entry) => entry.label).join(", ")}.`
+    : "";
 }
 
 function getWorkOrderPdfReadiness(payload = buildWorkOrderPayload()) {
@@ -21359,6 +21366,12 @@ function syncWorkOrderPdfAndRequiredFields(payload = buildWorkOrderPayload()) {
 
   readiness.requiredFields.forEach((entry) => {
     setWorkOrderFieldRequiredAttention(entry.target, shouldHighlight && !entry.complete);
+    if (entry.target instanceof HTMLElement) {
+      entry.target.setAttribute("aria-required", "true");
+      if ("required" in entry.target) {
+        entry.target.required = true;
+      }
+    }
   });
 
   if (workOrderDownloadPdfButton) {
@@ -21434,7 +21447,7 @@ function setWorkOrderSaveState(mode, message = "") {
     pending: "Promjene cekaju spremanje...",
     saving: "Spremanje u tijeku...",
     saved: "Sve promjene su spremljene.",
-    blocked: "Odaberi tvrtku da se RN spremi.",
+    blocked: "Popuni obavezna polja da se RN spremi.",
     error: "Spremanje nije uspjelo.",
   };
 
@@ -21472,7 +21485,7 @@ function canAutoSaveWorkOrder(payload = buildWorkOrderPayload()) {
     return true;
   }
 
-  return Boolean(payload.companyId);
+  return getWorkOrderPdfReadiness(payload).ready;
 }
 
 function findCreatedWorkOrderMatch(previousIds, payload) {
@@ -21526,7 +21539,8 @@ async function persistWorkOrderAutoSave({ immediate = false } = {}) {
 
   if (!canAutoSaveWorkOrder(payload)) {
     state.workOrderAutoSave.dirty = false;
-    setWorkOrderSaveState("blocked");
+    syncWorkOrderPdfAndRequiredFields(payload);
+    setWorkOrderSaveState("blocked", getWorkOrderRequiredBlockMessage(payload));
     return false;
   }
 
@@ -21608,7 +21622,8 @@ function queueWorkOrderAutoSave() {
   if (!canAutoSaveWorkOrder(payload)) {
     clearWorkOrderAutoSaveTimer();
     state.workOrderAutoSave.dirty = false;
-    setWorkOrderSaveState("blocked");
+    syncWorkOrderPdfAndRequiredFields(payload);
+    setWorkOrderSaveState("blocked", getWorkOrderRequiredBlockMessage(payload));
     return;
   }
 
@@ -67000,7 +67015,7 @@ function openWorkOrderEditor() {
   } else if (canAutoSaveWorkOrder()) {
     setWorkOrderSaveState("idle");
   } else {
-    setWorkOrderSaveState("blocked");
+    setWorkOrderSaveState("blocked", getWorkOrderRequiredBlockMessage());
   }
   renderTopbarBreadcrumbs();
   syncWorkOrderEditorModal();
@@ -92849,7 +92864,7 @@ function getWorkOrderQuickLocationOptions(companyId = "") {
     .sort((left, right) => String(left.name || "").localeCompare(String(right.name || ""), "hr"));
 
   return [
-    { value: "", label: normalizedCompanyId ? "Lokacija nije obavezna" : "Prvo odaberi tvrtku" },
+    { value: "", label: normalizedCompanyId ? "Odaberi lokaciju" : "Prvo odaberi tvrtku" },
     ...locations.map((location) => ({
       value: location.id,
       label: location.name || "Lokacija",
@@ -93013,10 +93028,18 @@ function createWorkOrderQuickCreateRow(columnLayout = [], isExpanded = false) {
     error.textContent = "";
 
     const payload = buildQuickWorkOrderPayload(form);
-    if (!payload.companyId) {
-      error.textContent = "Tvrtka je obavezna.";
+    const blockMessage = getWorkOrderRequiredBlockMessage(payload);
+    if (blockMessage) {
+      error.textContent = blockMessage;
       error.hidden = false;
-      companySelect.focus();
+      const focusTarget = !payload.companyId
+        ? companySelect
+        : !payload.locationId
+          ? locationSelect
+          : !payload.dueDate
+            ? dueDateInput
+            : null;
+      focusTarget?.focus?.();
       return;
     }
 
