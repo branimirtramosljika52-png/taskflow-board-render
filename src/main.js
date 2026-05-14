@@ -29887,13 +29887,22 @@ function renderPeriodicsModule() {
   const warningDays = visualSettings.warningDays;
   const criticalDays = visualSettings.criticalDays;
 
+  const controlInspectionGroup = normalizePeriodicsInspectionGroupMode(
+    periodicsInspectionGroupInput?.value || state.periodicsFilters.inspectionGroup || "location-object",
+  );
+  const hasPersistedInspectionGroup = Boolean(String(state.periodicsFilters.inspectionGroup || "").trim());
+  const persistedInspectionGroup = normalizePeriodicsInspectionGroupMode(
+    state.periodicsFilters.inspectionGroup || controlInspectionGroup,
+  );
+  const inspectionGroup = hasPersistedInspectionGroup ? persistedInspectionGroup : controlInspectionGroup;
+  const inspectionGroupChanged = persistedInspectionGroup !== inspectionGroup;
   const filters = {
     query: state.periodicsFilters.query || periodicsSearchInput?.value?.trim() || "",
     horizon: state.periodicsFilters.horizon || periodicsHorizonInput?.value || "all",
-    inspectionGroup: normalizePeriodicsInspectionGroupMode(
-      state.periodicsFilters.inspectionGroup || periodicsInspectionGroupInput?.value || "location-object",
-    ),
-    inspectionGroupKey: String(state.periodicsFilters.inspectionGroupKey || periodicsInspectionGroupValueInput?.value || "").trim(),
+    inspectionGroup,
+    inspectionGroupKey: inspectionGroupChanged
+      ? ""
+      : String(periodicsInspectionGroupValueInput?.value || state.periodicsFilters.inspectionGroupKey || "").trim(),
   };
   state.periodicsFilters = filters;
 

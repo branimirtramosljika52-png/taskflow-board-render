@@ -162,7 +162,7 @@ test("in-memory safety repository normalizes document record values and respects
   assert.deepEqual(older.fieldValues.lista, ["A", "B"]);
 });
 
-test("in-memory safety repository filters document record feeds for persisted periodics", async () => {
+test("in-memory safety repository returns expanded document record feed for periodics", async () => {
   const repository = new InMemorySafetyRepository();
   await repository.init();
 
@@ -198,15 +198,16 @@ test("in-memory safety repository filters document record feeds for persisted pe
   });
   const periodicsItems = await repository.listDocumentRecords({
     organizationId: "org-1",
-    limit: 1205,
+    limit: 2000,
     periodics: true,
   });
 
   assert.equal(regularItems.length, 1000);
   assert.equal(regularItems.some((item) => item.id === periodicRecord.id), false);
-  assert.equal(periodicsItems.length, 1);
-  assert.equal(periodicsItems[0].id, periodicRecord.id);
-  assert.equal(periodicsItems[0].fieldValues["Vrijedi do"], "2027-05-13");
+  assert.equal(periodicsItems.length, 1206);
+  const persistedPeriodicRecord = periodicsItems.find((item) => item.id === periodicRecord.id);
+  assert.ok(persistedPeriodicRecord);
+  assert.equal(persistedPeriodicRecord.fieldValues["Vrijedi do"], "2027-05-13");
 });
 
 test("in-memory safety repository stores measurement sheet presets per template, company and location", async () => {
