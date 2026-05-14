@@ -6168,6 +6168,37 @@ export class InMemorySafetyRepository {
     return cloneDocumentRecord(item);
   }
 
+  async updateDocumentRecord(id, input, actor = null) {
+    const normalizedId = dbString(id);
+    const records = this.snapshot.documentRecords ?? [];
+    const index = records.findIndex((item) => String(item.id) === normalizedId);
+    if (index < 0) {
+      return null;
+    }
+
+    const existing = records[index];
+    const next = createDocumentRecordEntry(
+      {
+        ...existing,
+        ...input,
+        id: existing.id,
+        createdAt: existing.createdAt,
+        updatedAt: undefined,
+        createdByUserId: existing.createdByUserId,
+        createdByLabel: existing.createdByLabel,
+      },
+      actor,
+      () => existing.id,
+      () => new Date().toISOString(),
+    );
+    this.snapshot.documentRecords = [
+      ...records.slice(0, index),
+      next,
+      ...records.slice(index + 1),
+    ];
+    return cloneDocumentRecord(next);
+  }
+
   async listMeasurementSheetPresets(filters = {}) {
     const organizationId = dbString(filters.organizationId);
     const templateId = dbString(filters.templateId);
@@ -12355,6 +12386,63 @@ export class MySqlSafetyRepository {
       );
 
       return rows[0] ? mapDocumentRecordRow(rows[0]) : entry;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updateDocumentRecord(id, input, actor = null) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const recordId = Number(id);
+      if (!Number.isFinite(recordId)) {
+        return null;
+      }
+
+      const entry = createDocumentRecordEntry(input, actor);
+      await connection.query(
+        `
+          UPDATE web_document_records
+          SET organization_id = ?, template_id = ?, template_title = ?, document_type = ?,
+              company_id = ?, location_id = ?, object_id = ?, object_name = ?,
+              inspection_date = ?, issued_date = ?,
+              values_json = ?, measurement_sheets_json = ?,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+          LIMIT 1
+        `,
+        [
+          Number(entry.organizationId),
+          Number(entry.templateId),
+          entry.templateTitle,
+          entry.documentType,
+          entry.companyId ? Number(entry.companyId) : null,
+          entry.locationId ? Number(entry.locationId) : null,
+          entry.objectId ? Number(entry.objectId) : null,
+          entry.objectName,
+          entry.inspectionDate || null,
+          entry.issuedDate || null,
+          JSON.stringify(entry.fieldValues ?? {}),
+          JSON.stringify(entry.fieldSheets ?? {}),
+          recordId,
+        ],
+      );
+
+      const [rows] = await connection.query(
+        `
+          SELECT id, organization_id, template_id, template_title, document_type,
+                 company_id, location_id, object_id, object_name, inspection_date, issued_date,
+                 values_json, measurement_sheets_json,
+                 created_by_user_id, created_by_label, created_at, updated_at
+          FROM web_document_records
+          WHERE id = ?
+          LIMIT 1
+        `,
+        [recordId],
+      );
+
+      return rows[0] ? mapDocumentRecordRow(rows[0]) : null;
     } finally {
       connection.release();
     }

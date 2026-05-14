@@ -3423,6 +3423,23 @@ function isSameGeneratedDocumentRecord(existing = {}, payload = {}, workOrder = 
   return JSON.stringify(existing.fieldValues ?? {}) === JSON.stringify(payload.fieldValues ?? {});
 }
 
+function isGeneratedDocumentRecordPayloadCurrent(existing = {}, payload = {}) {
+  if (!existing || !payload) {
+    return false;
+  }
+
+  return String(existing.templateTitle || "") === String(payload.templateTitle || "")
+    && String(existing.documentType || "") === String(payload.documentType || "")
+    && String(existing.companyId || "") === String(payload.companyId || "")
+    && String(existing.locationId || "") === String(payload.locationId || "")
+    && String(existing.objectId || "") === String(payload.objectId || "")
+    && String(existing.objectName || "") === String(payload.objectName || "")
+    && normalizeGeneratedDocumentRecordDate(existing.inspectionDate) === normalizeGeneratedDocumentRecordDate(payload.inspectionDate)
+    && normalizeGeneratedDocumentRecordDate(existing.issuedDate) === normalizeGeneratedDocumentRecordDate(payload.issuedDate)
+    && JSON.stringify(existing.fieldValues ?? {}) === JSON.stringify(payload.fieldValues ?? {})
+    && JSON.stringify(existing.fieldSheets ?? {}) === JSON.stringify(payload.fieldSheets ?? {});
+}
+
 async function ensureGeneratedDocumentTemplateRecord({
   entry = {},
   workOrder = {},
@@ -3459,6 +3476,12 @@ async function ensureGeneratedDocumentTemplateRecord({
   });
   const existing = existingRecords.find((record) => isSameGeneratedDocumentRecord(record, payload, workOrder));
   if (existing) {
+    if (
+      typeof domainRepository.updateDocumentRecord === "function"
+      && !isGeneratedDocumentRecordPayloadCurrent(existing, payload)
+    ) {
+      return await domainRepository.updateDocumentRecord(existing.id, payload, user) || existing;
+    }
     return existing;
   }
 

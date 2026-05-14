@@ -466,6 +466,31 @@ const PERIODICS_VALIDITY_MONTHS_KEY_HINTS = Object.freeze([
   "VALIDITYMONTHS",
   "SERVICEVALIDITYMONTHS",
 ]);
+const PERIODICS_DUE_DATE_REJECT_KEY_HINTS = Object.freeze([
+  "MJESEC",
+  "MJESECI",
+  "MONTH",
+  "MONTHS",
+  "VALIDITYMONTHS",
+  "SERVICEVALIDITYMONTHS",
+  "PERIODIKA",
+  "PERIODICNOST",
+]);
+const PERIODICS_PRIMARY_DUE_DATE_FIELD_KEYS = Object.freeze([
+  "VRIJEDI_DO",
+  "DATUM_VRIJEDI_DO",
+  "WORK_ORDER_SERVICE_VALID_UNTIL",
+  "WORK_ORDER_VALID_UNTIL",
+  "WORK_ORDER_PANIC_VALID_UNTIL",
+  "WORK_ORDER_TIPKALO_VALID_UNTIL",
+]);
+const PERIODICS_PRIMARY_VALIDITY_MONTHS_FIELD_KEYS = Object.freeze([
+  "VRIJEDI_MJESECI",
+  "WORK_ORDER_SERVICE_VALIDITY_MONTHS",
+  "WORK_ORDER_VALIDITY_MONTHS",
+  "WORK_ORDER_PANIC_VALIDITY_MONTHS",
+  "WORK_ORDER_TIPKALO_VALIDITY_MONTHS",
+]);
 const PERIODICS_TRACKED_DATES_FIELD_KEY = "__PERIODICS_TRACKED_DATES";
 const PERIODICS_COMPANY_KEY_HINTS = Object.freeze([
   "TVRTKA",
@@ -27636,6 +27661,12 @@ function upsertDocumentsExplorerRecord(record = null) {
   }
 }
 
+function hasExplicitPeriodicsDatePattern(value = "") {
+  const token = String(value || "").trim();
+  return /\b\d{4}-\d{1,2}-\d{1,2}\b/.test(token)
+    || /\b\d{1,2}[./]\d{1,2}[./]\d{4}\b/.test(token);
+}
+
 function normalizePeriodicsDateToken(value = "") {
   const token = String(value || "").trim();
   if (!token) {
@@ -27661,6 +27692,10 @@ function normalizePeriodicsDateToken(value = "") {
         return toDateKey(parsedCandidate);
       }
     }
+  }
+
+  if (!hasExplicitPeriodicsDatePattern(token)) {
+    return "";
   }
 
   const parsedDate = parseDateValue(token);
@@ -27702,6 +27737,12 @@ function isPeriodicsDueDateKey(key = "") {
   if (!normalizedKey) {
     return false;
   }
+  if (
+    PERIODICS_DUE_DATE_REJECT_KEY_HINTS.some((hint) => normalizedKey.includes(hint))
+    || PERIODICS_VALIDITY_MONTHS_KEY_HINTS.some((hint) => normalizedKey.includes(hint))
+  ) {
+    return false;
+  }
   return PERIODICS_DUE_DATE_KEY_HINTS.some((hint) => normalizedKey.includes(hint));
 }
 
@@ -27711,6 +27752,114 @@ function isPeriodicsValidityMonthsKey(key = "") {
     return false;
   }
   return PERIODICS_VALIDITY_MONTHS_KEY_HINTS.some((hint) => normalizedKey.includes(hint));
+}
+
+function getPeriodicsRecordFieldValues(record = {}) {
+  return record?.fieldValues && typeof record.fieldValues === "object" && !Array.isArray(record.fieldValues)
+    ? record.fieldValues
+    : {};
+}
+
+function getPeriodicsExactFieldEntries(record = {}, keys = []) {
+  const fieldValues = getPeriodicsRecordFieldValues(record);
+  const normalizedTargets = new Set((Array.isArray(keys) ? keys : [])
+    .map((key) => normalizeDocumentsExplorerKey(key))
+    .filter(Boolean));
+
+  return Object.entries(fieldValues)
+    .filter(([fieldKey]) => normalizedTargets.has(normalizeDocumentsExplorerKey(fieldKey)))
+    .map(([fieldKey, value]) => ({ fieldKey, value }));
+}
+
+function getPeriodicsPreferredDueDateSources(record = {}) {
+  const fieldValues = getPeriodicsRecordFieldValues(record);
+  const trackedDates = Array.isArray(fieldValues[PERIODICS_TRACKED_DATES_FIELD_KEY])
+    ? fieldValues[PERIODICS_TRACKED_DATES_FIELD_KEY]
+    : [];
+  const trackedSources = trackedDates
+    .map((entry) => {
+      const fieldKey = String(entry?.fieldKey || entry?.key || entry?.label || "").trim();
+      if (!fieldKey || !isPeriodicsDueDateKey(fieldKey)) {
+        return null;
+      }
+      const dateKey = normalizePeriodicsDateToken(entry?.value ?? entry?.date ?? entry?.validUntil);
+      return dateKey ? {
+        sourceKey: `${PERIODICS_TRACKED_DATES_FIELD_KEY}.${fieldKey}`,
+        fieldKey,
+        dateKey,
+      } : null;
+    })
+    .filter(Boolean);
+
+  if (trackedSources.length > 0) {
+    return trackedSources;
+  }
+
+  return getPeriodicsExactFieldEntries(record, PERIODICS_PRIMARY_DUE_DATE_FIELD_KEYS)
+    .map(({ fieldKey, value }) => {
+      const dateKey = normalizePeriodicsDateToken(value);
+      return dateKey ? { sourceKey: fieldKey, fieldKey, dateKey } : null;
+    })
+    .filter(Boolean);
+}
+
+function getPeriodicsPreferredValidityMonthValues(record = {}) {
+  return getPeriodicsExactFieldEntries(record, PERIODICS_PRIMARY_VALIDITY_MONTHS_FIELD_KEYS)
+    .map(({ fieldKey, value }) => {
+      const monthsValue = normalizeValidityMonthsValue(value);
+      return monthsValue ? { fieldKey, monthsValue } : null;
+    })
+    .filter(Boolean);
+}
+
+function getPeriodicsRecordAnchorDateKey(record = {}) {
+  const fieldValues = getPeriodicsRecordFieldValues(record);
+  return normalizeDateInputValue(
+    record?.inspectionDate
+    || fieldValues.WORK_ORDER_INSPECTION_DATE
+    || fieldValues.DATUM_ISPITIVANJA
+    || record?.issuedDate
+    || fieldValues.WORK_ORDER_ISSUED_DATE
+    || fieldValues.DATUM_IZDAVANJA
+    || "",
+  );
+}
+
+function getPeriodicsComputedDueDatesFromValidity(record = {}) {
+  const anchorDate = getPeriodicsRecordAnchorDateKey(record);
+  if (!anchorDate) {
+    return [];
+  }
+
+  return getPeriodicsPreferredValidityMonthValues(record)
+    .map(({ monthsValue }) => addMonthsToDateKey(anchorDate, monthsValue))
+    .filter(Boolean);
+}
+
+function normalizePeriodicsDueDateSet(values = []) {
+  return Array.from(new Set((Array.isArray(values) ? values : [])
+    .map((value) => normalizePeriodicsDateToken(value) || String(value || "").trim())
+    .filter(Boolean)))
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function reconcilePeriodicsDueDatesWithAnchor(record = {}, dueDates = []) {
+  const normalizedDueDates = normalizePeriodicsDueDateSet(dueDates);
+  if (normalizedDueDates.length === 0) {
+    return normalizedDueDates;
+  }
+
+  const anchorDate = getPeriodicsRecordAnchorDateKey(record);
+  const computedDueDates = normalizePeriodicsDueDateSet(getPeriodicsComputedDueDatesFromValidity(record));
+  if (
+    anchorDate
+    && computedDueDates.length > 0
+    && normalizedDueDates.every((dateKey) => dateKey < anchorDate)
+  ) {
+    return computedDueDates;
+  }
+
+  return normalizedDueDates;
 }
 
 function collectPeriodicsDueDatesFromValue(value, bucket = new Set(), keyPath = "") {
@@ -27780,14 +27929,12 @@ function extractPeriodicsDocumentValidityMonths(record = {}) {
 }
 
 function extractPeriodicsDocumentDueDates(record = {}) {
-  const dueDates = new Set();
-  const trackedDates = Array.isArray(record?.fieldValues?.[PERIODICS_TRACKED_DATES_FIELD_KEY])
-    ? record.fieldValues[PERIODICS_TRACKED_DATES_FIELD_KEY]
-    : [];
+  const preferredDueDates = getPeriodicsPreferredDueDateSources(record).map((entry) => entry.dateKey);
+  if (preferredDueDates.length > 0) {
+    return reconcilePeriodicsDueDatesWithAnchor(record, preferredDueDates);
+  }
 
-  trackedDates.forEach((entry) => {
-    collectPeriodicsDateTokensFromText(entry?.value ?? entry?.date ?? entry?.validUntil, dueDates);
-  });
+  const dueDates = new Set();
 
   Object.entries(record?.fieldValues ?? {}).forEach(([fieldKey, fieldValue]) => {
     if (fieldKey === PERIODICS_TRACKED_DATES_FIELD_KEY) {
@@ -27814,7 +27961,7 @@ function extractPeriodicsDocumentDueDates(record = {}) {
     });
   }
 
-  return Array.from(dueDates).sort((left, right) => left.localeCompare(right));
+  return reconcilePeriodicsDueDatesWithAnchor(record, Array.from(dueDates));
 }
 
 function getPeriodicsDueState(dueDate = "", todayDate = null, visualSettings = getPeriodicsVisualSettings()) {
@@ -28769,6 +28916,29 @@ function getPeriodicsRawRecordUsedFieldKeys(record = {}) {
   return Array.from(new Set(keys));
 }
 
+function getPeriodicsRawRecordDueDateSourceText(record = {}, dueDates = []) {
+  const preferredSources = getPeriodicsPreferredDueDateSources(record);
+  const preferredDates = preferredSources.map((entry) => entry.dateKey);
+  const reconciledPreferredDates = reconcilePeriodicsDueDatesWithAnchor(record, preferredDates);
+  const normalizedDueDates = normalizePeriodicsDueDateSet(dueDates);
+
+  if (
+    preferredSources.length > 0
+    && normalizedDueDates.length > 0
+    && normalizedDueDates.join("|") !== normalizePeriodicsDueDateSet(preferredDates).join("|")
+    && normalizedDueDates.join("|") === reconciledPreferredDates.join("|")
+  ) {
+    const monthsKeys = getPeriodicsPreferredValidityMonthValues(record).map((entry) => entry.fieldKey);
+    return `koristi izračun: inspection_date + ${monthsKeys.join(", ") || "vrijedi mjeseci"}`;
+  }
+
+  if (preferredSources.length > 0) {
+    return `koristi: ${preferredSources.map((entry) => entry.sourceKey).join(", ")}`;
+  }
+
+  return "koristi fallback skeniranje values_json";
+}
+
 function createPeriodicsRawDocumentRecordRows(records = getPeriodicsDocumentRecords()) {
   const todayDate = new Date();
   todayDate.setHours(0, 0, 0, 0);
@@ -28797,6 +28967,7 @@ function createPeriodicsRawDocumentRecordRows(records = getPeriodicsDocumentReco
         ? `vrijedi do: ${dueDates.join(", ")}`
         : "nije izvučen vrijedi do";
       const periodicsFieldDetails = [
+        getPeriodicsRawRecordDueDateSourceText(record, dueDates),
         usedFieldKeys.length ? `key: ${usedFieldKeys.join(", ")}` : "nema prepoznatog keya u values_json",
         workOrderNumber ? `RN ${workOrderNumber}` : "",
       ].filter(Boolean).join(" · ");
@@ -48209,6 +48380,94 @@ function resolveDocumentTemplateRuntimeServiceValidUntil(workOrder = {}, templat
   return addMonthsToDateKey(inspectionDate, resolveDocumentTemplateRuntimeServiceValidityMonths(workOrder, template));
 }
 
+function resolveDocumentTemplateRuntimePeriodicsValidUntil(workOrder = {}, template = buildDocumentTemplateDraft()) {
+  return resolveDocumentTemplateRuntimeServiceValidUntil(workOrder, template)
+    || resolveDocumentTemplateRuntimeValidUntil(workOrder);
+}
+
+function getDocumentTemplateRuntimeInspectionDateKey(workOrder = {}) {
+  const workOrderId = String(workOrder?.id || "").trim();
+  return toDateKey(
+    (workOrderId ? getDocumentTemplateRuntimeValue(workOrderId, "inspectionDate") : "")
+    || workOrder?.inspectionDate
+    || workOrder?.issuedDate
+    || "",
+  );
+}
+
+function shouldApplyDocumentTemplateRuntimePeriodicsDate(currentValue = "", runtimeValue = "", workOrder = {}) {
+  const runtimeDate = toDateKey(runtimeValue);
+  if (!runtimeDate) {
+    return false;
+  }
+
+  const currentDate = toDateKey(currentValue);
+  if (!currentDate) {
+    return true;
+  }
+
+  const inspectionDate = getDocumentTemplateRuntimeInspectionDateKey(workOrder);
+  return Boolean(inspectionDate && currentDate < inspectionDate);
+}
+
+function applyDocumentTemplateRuntimePeriodicsDateValues(
+  values = {},
+  workOrder = {},
+  template = buildDocumentTemplateDraft(),
+  { display = false } = {},
+) {
+  if (!values || typeof values !== "object" || Array.isArray(values)) {
+    return "";
+  }
+
+  const runtimeDate = toDateKey(resolveDocumentTemplateRuntimePeriodicsValidUntil(workOrder, template));
+  if (!runtimeDate) {
+    return "";
+  }
+
+  const currentDate = values.VRIJEDI_DO
+    || values.DATUM_VRIJEDI_DO
+    || values.WORK_ORDER_SERVICE_VALID_UNTIL
+    || values.WORK_ORDER_VALID_UNTIL
+    || "";
+  if (!shouldApplyDocumentTemplateRuntimePeriodicsDate(currentDate, runtimeDate, workOrder)) {
+    return "";
+  }
+
+  const value = display ? formatCompactDate(runtimeDate) : runtimeDate;
+  values.WORK_ORDER_VALID_UNTIL = value;
+  values.WORK_ORDER_SERVICE_VALID_UNTIL = value;
+  values.VRIJEDI_DO = value;
+  values.DATUM_VRIJEDI_DO = value;
+
+  if (Array.isArray(values[PERIODICS_TRACKED_DATES_FIELD_KEY])) {
+    values[PERIODICS_TRACKED_DATES_FIELD_KEY] = values[PERIODICS_TRACKED_DATES_FIELD_KEY].map((entry) => {
+      const fieldKey = String(entry?.fieldKey || entry?.key || entry?.label || "").trim();
+      return isPeriodicsDueDateKey(fieldKey)
+        ? { ...entry, value }
+        : entry;
+    });
+  }
+
+  return runtimeDate;
+}
+
+function getDocumentTemplateRuntimePeriodicsDisplayValue(field = {}, context = {}, currentValue = "") {
+  if (!isDocumentTemplatePeriodicsTrackableField(field) || !Boolean(field.trackPeriodics ?? field.periodicsTracked)) {
+    return undefined;
+  }
+
+  const workOrder = context.sampleWorkOrder;
+  const runtimeDate = toDateKey(resolveDocumentTemplateRuntimePeriodicsValidUntil(workOrder, context.template));
+  if (!shouldApplyDocumentTemplateRuntimePeriodicsDate(currentValue, runtimeDate, workOrder)) {
+    return undefined;
+  }
+
+  return String(field.type || "").trim().toLowerCase() === "date"
+    ? formatCompactDate(runtimeDate)
+    : runtimeDate;
+}
+
 function resolveDocumentTemplateRuntimeValidUntilForMonthsField(workOrder = {}, fieldName = "") {
   const workOrderId = String(workOrder?.id || "").trim();
   if (!workOrderId) {
@@ -48932,6 +49191,10 @@ function getDocumentTemplateFieldPreviewValue(field = {}, context = {}, index = 
   const runtimeValue = runtimeWorkOrderId
     ? getDocumentTemplateRuntimeFieldValue(runtimeWorkOrderId, field.id)
     : undefined;
+  const periodicsDisplayValue = getDocumentTemplateRuntimePeriodicsDisplayValue(field, context, runtimeValue);
+  if (periodicsDisplayValue !== undefined) {
+    return periodicsDisplayValue;
+  }
   if (runtimeValue !== undefined) {
     if (field.type === "checkbox" || field.type === "toggle") {
       return getDocumentTemplateBooleanDisplayValue(field, runtimeValue);
@@ -48948,6 +49211,10 @@ function getDocumentTemplateFieldPreviewValue(field = {}, context = {}, index = 
 
   if (runtimeWorkOrderId && isDocumentTemplateRuntimePersistedField(field)) {
     const fallbackValue = getDocumentTemplateRuntimeInitialValue(field, runtimeWorkOrderId);
+    const fallbackPeriodicsDisplayValue = getDocumentTemplateRuntimePeriodicsDisplayValue(field, context, fallbackValue);
+    if (fallbackPeriodicsDisplayValue !== undefined) {
+      return fallbackPeriodicsDisplayValue;
+    }
     if (hasMeaningfulDocumentRecordValue(fallbackValue)) {
       if (field.type === "checkbox" || field.type === "toggle") {
         return getDocumentTemplateBooleanDisplayValue(field, fallbackValue);
@@ -50661,6 +50928,8 @@ function buildDocumentTemplateRuntimePlaceholderPayload(template = buildDocument
       placeholders[`${fieldKey}_PUNI_TEKST`] = toggleValues.fullText;
     }
   });
+
+  applyDocumentTemplateRuntimePeriodicsDateValues(placeholders, context.sampleWorkOrder, template, { display: true });
 
   return placeholders;
 }
@@ -89211,6 +89480,17 @@ function isDocumentTemplateRuntimePersistedField(field = {}) {
 
 function getDocumentTemplateRuntimePersistedFieldValue(field = {}, workOrderId = "", template = buildDocumentTemplateDraft()) {
   const runtimeValue = getDocumentTemplateRuntimeFieldValue(workOrderId, field.id);
+  const workOrder = workOrderId ? getDocumentTemplateRuntimeWorkOrderById(workOrderId) : null;
+  if (workOrder) {
+    const runtimeDate = resolveDocumentTemplateRuntimePeriodicsValidUntil(workOrder, template);
+    if (
+      isDocumentTemplatePeriodicsTrackableField(field)
+      && Boolean(field.trackPeriodics ?? field.periodicsTracked)
+      && shouldApplyDocumentTemplateRuntimePeriodicsDate(runtimeValue, runtimeDate, workOrder)
+    ) {
+      return normalizeDocumentTemplateRuntimeFieldValueByType(field, runtimeDate);
+    }
+  }
   if (runtimeValue !== undefined) {
     return runtimeValue;
   }
@@ -89324,6 +89604,7 @@ function buildDocumentTemplateRuntimeDocumentRecordPayload(template = buildDocum
       fieldValues.VRIJEDI_MJESECI = runtimeValidityMonths;
     }
   }
+  applyDocumentTemplateRuntimePeriodicsDateValues(fieldValues, workOrder, template);
 
   return {
     templateId,
