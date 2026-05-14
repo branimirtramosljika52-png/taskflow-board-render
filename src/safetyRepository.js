@@ -793,6 +793,59 @@ async function prepareStoredLearningTestAssets(test = {}, currentTest = null) {
   };
 }
 
+const DOCUMENT_RECORD_PERIODICS_TEXT_HINTS = Object.freeze([
+  "__PERIODICS_TRACKED_DATES",
+  "PERIODICS_TRACKED_DATES",
+  "PERIODICSTRACKEDDATES",
+  "WORK_ORDER_VALID_UNTIL",
+  "WORKORDERVALIDUNTIL",
+  "WORK_ORDER_SERVICE_VALID_UNTIL",
+  "WORKORDERSERVICEVALIDUNTIL",
+  "DATUM_VRIJEDI_DO",
+  "DATUMVRIJEDIDO",
+  "VRIJEDI_DO",
+  "VRIJEDIDO",
+  "VALID_UNTIL",
+  "VALIDUNTIL",
+  "VALID_TO",
+  "VALIDTO",
+  "EXPIRES_ON",
+  "EXPIRESON",
+  "DATUM_ISTEKA",
+  "DATUMISTEKA",
+  "ROK_VAZENJA",
+  "ROKVAZENJA",
+  "VRIJEDI_MJESECI",
+  "VRIJEDIMJESECI",
+  "VALIDITY_MONTHS",
+  "VALIDITYMONTHS",
+  "WORK_ORDER_VALIDITY_MONTHS",
+  "WORKORDERVALIDITYMONTHS",
+  "WORK_ORDER_SERVICE_VALIDITY_MONTHS",
+  "WORKORDERSERVICEVALIDITYMONTHS",
+  "PERIODIKA",
+  "PERIODICNOST",
+]);
+
+function normalizeDocumentRecordPeriodicsHaystack(value) {
+  return dbString(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase();
+}
+
+function documentRecordHasPeriodicsHints(record = {}) {
+  const valuesJson = normalizeDocumentRecordPeriodicsHaystack(
+    JSON.stringify(normalizeDocumentRecordFieldValues(record.fieldValues)),
+  );
+
+  if (!valuesJson) {
+    return false;
+  }
+
+  return DOCUMENT_RECORD_PERIODICS_TEXT_HINTS.some((hint) => valuesJson.includes(hint));
+}
+
 function normalizeDocumentRecordFieldValues(value = {}) {
   const source = value && typeof value === "object" && !Array.isArray(value)
     ? value
@@ -6146,6 +6199,7 @@ export class InMemorySafetyRepository {
         && (!companyId || String(item.companyId) === companyId)
         && (!locationId || String(item.locationId) === locationId)
         && (!objectId || String(item.objectId) === objectId)
+        && (!filters.periodics || documentRecordHasPeriodicsHints(item))
       ))
       .sort((left, right) => {
         const leftSortValue = left.inspectionDate || left.issuedDate || left.createdAt || "";
@@ -12284,6 +12338,14 @@ export class MySqlSafetyRepository {
       if (Number.isFinite(objectId)) {
         conditions.push("object_id = ?");
         params.push(objectId);
+      }
+      if (filters.periodics) {
+        conditions.push(`(${
+          DOCUMENT_RECORD_PERIODICS_TEXT_HINTS
+            .map(() => "UPPER(COALESCE(values_json, '')) LIKE ?")
+            .join(" OR ")
+        })`);
+        params.push(...DOCUMENT_RECORD_PERIODICS_TEXT_HINTS.map((hint) => `%${hint}%`));
       }
 
       const whereClause = conditions.length > 0

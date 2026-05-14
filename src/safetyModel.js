@@ -2146,10 +2146,11 @@ export function getWorkOrderServiceItems(workOrder = {}) {
 }
 
 export function getWorkOrderServiceSummary(workOrder = {}) {
-  const serviceItems = getWorkOrderServiceItems(workOrder);
+  const safeWorkOrder = workOrder && typeof workOrder === "object" ? workOrder : {};
+  const serviceItems = getWorkOrderServiceItems(safeWorkOrder);
 
   if (serviceItems.length === 0) {
-    return normalizeText(workOrder.serviceLine);
+    return normalizeText(safeWorkOrder.serviceLine);
   }
 
   return serviceItems.map((item) => item.name || item.serviceCode).filter(Boolean).join(" · ");

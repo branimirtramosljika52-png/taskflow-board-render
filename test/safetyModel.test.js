@@ -1539,6 +1539,7 @@ test("work orders can store service catalog items with completion state", () => 
   assert.equal(getWorkOrderServiceItems(workOrder)[0].name, "Panik rasvjeta");
   assert.equal(getWorkOrderServiceItems(workOrder)[0].validityMonths, "36");
   assert.equal(getWorkOrderServiceSummary(workOrder), "Panik rasvjeta");
+  assert.equal(getWorkOrderServiceSummary(null), "");
   assert.equal(getWorkOrderCompletedServiceCount(workOrder), 0);
 
   const updated = updateWorkOrder(
