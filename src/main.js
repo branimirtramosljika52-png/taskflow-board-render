@@ -1822,7 +1822,7 @@ const state = {
   periodicsFilters: {
     query: "",
     horizon: "all",
-    inspectionGroup: "location-object",
+    inspectionGroup: "item",
     inspectionGroupKey: "",
   },
   periodicsInspectionExpandedGroups: {},
@@ -2479,8 +2479,9 @@ function getPeriodicsExpandedGroupsStorageKey(scope = getPeriodicsPreferencesSco
 
 function normalizePeriodicsStoredFilters(filters = {}) {
   return {
+    query: String(filters?.query || "").trim(),
     horizon: String(filters?.horizon || "all").trim() || "all",
-    inspectionGroup: normalizePeriodicsInspectionGroupMode(filters?.inspectionGroup || "location-object"),
+    inspectionGroup: normalizePeriodicsInspectionGroupMode(filters?.inspectionGroup || "item"),
     inspectionGroupKey: String(filters?.inspectionGroupKey || "").trim(),
   };
 }
@@ -29813,6 +29814,12 @@ function renderPeriodicsModule() {
     return;
   }
   loadPeriodicsPreferences();
+  state.periodicsFilters = {
+    query: String(state.periodicsFilters?.query || "").trim(),
+    horizon: String(state.periodicsFilters?.horizon || "all").trim() || "all",
+    inspectionGroup: normalizePeriodicsInspectionGroupMode(state.periodicsFilters?.inspectionGroup || "item"),
+    inspectionGroupKey: String(state.periodicsFilters?.inspectionGroupKey || "").trim(),
+  };
   state.periodicsViewMode = normalizePeriodicsViewMode(state.periodicsViewMode);
   state.periodicsCalendar = {
     anchorDate: getPeriodicsCalendarAnchorDate(state.periodicsCalendar?.anchorDate),
@@ -29826,14 +29833,6 @@ function renderPeriodicsModule() {
   const visualSettings = getPeriodicsVisualSettings();
   const warningDays = visualSettings.warningDays;
   const criticalDays = visualSettings.criticalDays;
-
-  const filters = {
-    query: "",
-    horizon: "all",
-    inspectionGroup: "item",
-    inspectionGroupKey: "",
-  };
-  state.periodicsFilters = filters;
 
   syncPeriodicsViewState();
 
@@ -29866,7 +29865,18 @@ function renderPeriodicsModule() {
   const rawPeopleEntries = buildPeriodicsPeopleEntries();
   const rawEquipmentEntries = buildPeriodicsMeasurementEquipmentEntries();
 
-  const inspectionEntries = rawInspectionEntries;
+  const inspectionSearchEntries = applyPeriodicsFilters(rawInspectionEntries, {
+    ...state.periodicsFilters,
+    horizon: "all",
+  });
+  const selectedInspectionGroupKey = syncPeriodicsInspectionGroupFilterControl(
+    inspectionSearchEntries,
+    state.periodicsFilters,
+  );
+  if (String(state.periodicsFilters.inspectionGroupKey || "") !== selectedInspectionGroupKey) {
+    state.periodicsFilters.inspectionGroupKey = selectedInspectionGroupKey;
+  }
+  const inspectionEntries = applyPeriodicsInspectionGroupFilter(inspectionSearchEntries, state.periodicsFilters);
   const vehicleEntries = rawVehicleEntries;
   const peopleEntries = rawPeopleEntries;
   const equipmentEntries = rawEquipmentEntries;
@@ -29880,7 +29890,20 @@ function renderPeriodicsModule() {
   });
   renderPeriodicsCalendarView(calendarData);
 
-  const inspectionPeriodicsRows = createPeriodicsInspectionRows(inspectionEntries, "item");
+  if (periodicsSearchInput && periodicsSearchInput.value !== state.periodicsFilters.query) {
+    periodicsSearchInput.value = state.periodicsFilters.query;
+  }
+  if (periodicsInspectionGroupInput) {
+    const inspectionGroupMode = normalizePeriodicsInspectionGroupMode(state.periodicsFilters.inspectionGroup);
+    if (periodicsInspectionGroupInput.value !== inspectionGroupMode) {
+      periodicsInspectionGroupInput.value = inspectionGroupMode;
+    }
+  }
+
+  const inspectionPeriodicsRows = createPeriodicsInspectionRows(
+    inspectionEntries,
+    state.periodicsFilters.inspectionGroup,
+  );
 
   const vehicleRows = vehicleEntries.map((entry) => createPeriodicsRow([
     createPeriodicsCell(entry.vehicleName, entry.plateNumber || "Bez registracije"),
@@ -30009,7 +30032,9 @@ function renderPeriodicsModule() {
     periodicsInspectionPeriodicsEmpty.hidden = state.periodicsFeed.loading || inspectionEntries.length > 0;
     periodicsInspectionPeriodicsEmpty.textContent = state.periodicsFeed.error
       ? "Periodika ispitivanja trenutno nije učitana."
-      : "Nema ispitivanja s expiration_date iz trackanog polja Vrijedi do.";
+      : (rawInspectionEntries.length > 0
+        ? "Nema ispitivanja za odabranu pretragu ili prikaz."
+        : "Nema ispitivanja s expiration_date iz trackanog polja Vrijedi do.");
   }
   if (periodicsVehiclesEmpty) {
     periodicsVehiclesEmpty.hidden = vehicleEntries.length > 0;
@@ -102645,7 +102670,7 @@ function resetAuthenticatedWorkspaceState() {
   state.periodicsFilters = {
     query: "",
     horizon: "all",
-    inspectionGroup: "location-object",
+    inspectionGroup: "item",
     inspectionGroupKey: "",
   };
   state.periodicsInspectionExpandedGroups = {};

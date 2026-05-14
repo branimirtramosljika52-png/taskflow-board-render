@@ -27637,7 +27637,7 @@ body.is-vehicle-reservation-open {
 
 .periodics-inspection-controls {
   display: grid;
-  grid-template-columns: minmax(220px, 280px) minmax(260px, 1fr);
+  grid-template-columns: minmax(280px, 1fr) minmax(220px, 280px);
   gap: 10px;
   align-items: end;
   padding: 10px 12px;
