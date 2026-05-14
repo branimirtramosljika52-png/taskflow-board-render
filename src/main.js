@@ -4496,6 +4496,7 @@ const workOrderStatusInput = document.querySelector("#work-order-status");
 const workOrderPriorityInput = document.querySelector("#work-order-priority");
 const workOrderOpenedDateInput = document.querySelector("#work-order-opened-date");
 const workOrderDueDateInput = document.querySelector("#work-order-due-date");
+const workOrderExecutionDateInput = document.querySelector("#work-order-execution-date");
 const workOrderTeamLabelInput = document.querySelector("#work-order-team-label");
 const workOrderTeamSuggestions = document.querySelector("#work-order-team-suggestions");
 const workOrderCompanyIdInput = document.querySelector("#work-order-company-id");
@@ -11754,6 +11755,7 @@ function buildPeopleTrainingWorkOrderPayload(group = {}, selection = {}) {
     priority: PRIORITY_OPTIONS[0]?.value || "Normal",
     openedDate: getTodayDateKey(),
     dueDate: getTodayDateKey(),
+    executionDate: "",
     teamLabel: "Osposobljavanje ljudi",
     companyId: group.companyId || "",
     locationId: group.locationId || "",
@@ -20894,6 +20896,7 @@ function ensureWorkOrderDateInputsDisplay() {
   [
     workOrderOpenedDateInput,
     workOrderDueDateInput,
+    workOrderExecutionDateInput,
     workOrderInvoiceDateInput,
   ].forEach((input) => {
     ensureWorkOrderDateInputDisplay(input);
@@ -21557,68 +21560,99 @@ function createWorkOrderEditorPriorityControl(priorityValue = "", priorityLabel 
 function createWorkOrderEditorDateControl(input, placeholder = "Odaberi datum") {
   const normalizedValue = getNormalizedWorkOrderDateInputValue(input);
   const dateInput = document.createElement("input");
-  dateInput.type = "date";
+  dateInput.type = "text";
+  dateInput.inputMode = "numeric";
   dateInput.className = "work-order-editor-date-control";
   dateInput.dataset.preventRowOpen = "true";
-  dateInput.value = normalizedValue || "";
+  dateInput.value = normalizedValue ? formatDateInputDisplayValue(normalizedValue) : "";
+  dateInput.placeholder = "dd.mm.yyyy";
   dateInput.setAttribute("aria-label", placeholder);
+
+  const commitDate = () => {
+    const normalized = normalizeDateInputValue(dateInput.value);
+    dateInput.value = normalized ? formatDateInputDisplayValue(normalized) : "";
+    setWorkOrderDateInputValue(input, normalized);
+    dispatchWorkOrderEditorFieldEvent(input, "input");
+    dispatchWorkOrderEditorFieldEvent(input, "change");
+  };
 
   dateInput.addEventListener("click", (event) => {
     event.stopPropagation();
   });
 
-  dateInput.addEventListener("change", () => {
-    setWorkOrderDateInputValue(input, dateInput.value);
-    dispatchWorkOrderEditorFieldEvent(input, "input");
-    dispatchWorkOrderEditorFieldEvent(input, "change");
+  dateInput.addEventListener("input", () => {
+    dateInput.value = normalizeCompactTypedDateValue(dateInput.value);
+    if (input) {
+      input.value = dateInput.value;
+      dispatchWorkOrderEditorFieldEvent(input, "input");
+    }
+  });
+  dateInput.addEventListener("change", commitDate);
+  dateInput.addEventListener("blur", commitDate);
+  dateInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      dateInput.blur();
+    }
   });
 
   return dateInput;
 }
 
-function createWorkOrderEditorTagsInput() {
+function createWorkOrderEditorTextControl(input, {
+  placeholder = "",
+  className = "",
+  inputMode = "",
+  type = "text",
+} = {}) {
   const wrap = document.createElement("span");
-  wrap.className = "work-order-editor-tags-control";
+  wrap.className = ["work-order-editor-text-control", className].filter(Boolean).join(" ");
   wrap.dataset.preventRowOpen = "true";
 
-  const input = document.createElement("input");
-  input.type = "text";
-  input.className = "work-order-editor-tags-input";
-  input.placeholder = "Tagovi";
-  input.value = workOrderTagTextInput.value || "";
-  input.dataset.preventRowOpen = "true";
+  const control = document.createElement("input");
+  control.type = type;
+  control.className = "work-order-editor-text-input";
+  control.placeholder = placeholder;
+  control.value = input?.value || "";
+  control.dataset.preventRowOpen = "true";
+  if (inputMode) {
+    control.inputMode = inputMode;
+  }
 
-  const commitTags = () => {
-    workOrderTagTextInput.value = input.value;
-    dispatchWorkOrderEditorFieldEvent(workOrderTagTextInput, "change");
+  const commit = () => {
+    if (!input) {
+      return;
+    }
+    input.value = control.value;
+    dispatchWorkOrderEditorFieldEvent(input, "change");
   };
 
-  input.addEventListener("click", (event) => event.stopPropagation());
-  input.addEventListener("input", () => {
-    workOrderTagTextInput.value = input.value;
+  control.addEventListener("click", (event) => event.stopPropagation());
+  control.addEventListener("input", () => {
+    if (!input) {
+      return;
+    }
+    input.value = control.value;
+    dispatchWorkOrderEditorFieldEvent(input, "input");
   });
-  input.addEventListener("change", commitTags);
-  input.addEventListener("blur", commitTags);
-  input.addEventListener("keydown", (event) => {
+  control.addEventListener("change", commit);
+  control.addEventListener("blur", commit);
+  control.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
-      input.blur();
+      control.blur();
     }
   });
 
-  wrap.append(input);
+  wrap.append(control);
   return wrap;
 }
 
-function createWorkOrderEditorPriorityTagsControl(priorityLabel = "") {
-  const wrap = document.createElement("span");
-  wrap.className = "work-order-editor-priority-tags-control";
-  wrap.dataset.preventRowOpen = "true";
-  wrap.append(
-    createWorkOrderEditorPriorityControl(workOrderPriorityInput.value, priorityLabel),
-    createWorkOrderEditorTagsInput(),
-  );
-  return wrap;
+function createWorkOrderEditorStaticValue(value = "", placeholder = "-") {
+  const node = document.createElement("span");
+  node.className = value ? "work-order-editor-static-value" : "work-order-editor-static-value is-empty";
+  node.textContent = value || placeholder;
+  return node;
 }
 
 function getWorkOrderEditorCompanyMenuOptions() {
@@ -21724,7 +21758,11 @@ function createWorkOrderEditorCompanyControl() {
 }
 
 function createWorkOrderEditorLocationControl() {
-  return createWorkOrderEditorMenuControl({
+  const wrap = document.createElement("span");
+  wrap.className = "work-order-editor-location-control";
+  wrap.dataset.preventRowOpen = "true";
+
+  wrap.append(createWorkOrderEditorMenuControl({
     className: "is-location",
     value: workOrderLocationIdInput.value,
     options: getWorkOrderEditorLocationMenuOptions(),
@@ -21739,7 +21777,102 @@ function createWorkOrderEditorLocationControl() {
     onSelect: (nextValue) => {
       setWorkOrderEditorFieldValue(workOrderLocationIdInput, nextValue, "change");
     },
+  }));
+
+  const location = getLocation(workOrderLocationIdInput.value);
+  const missingCoordinates = Boolean(location && !String(workOrderCoordinatesInput.value || location.coordinates || "").trim());
+  const missingRegion = Boolean(location && !String(workOrderRegionInput.value || location.region || "").trim());
+
+  if (!missingCoordinates && !missingRegion) {
+    return wrap;
+  }
+
+  const prompt = document.createElement("span");
+  prompt.className = "work-order-editor-location-missing";
+
+  const copy = document.createElement("span");
+  copy.className = "work-order-editor-location-missing-copy";
+  copy.textContent = `Nedostaje: ${[
+    missingRegion ? "regija" : "",
+    missingCoordinates ? "koordinate" : "",
+  ].filter(Boolean).join(", ")}`;
+
+  const regionSelect = document.createElement("select");
+  regionSelect.className = "work-order-editor-location-region";
+  regionSelect.dataset.preventRowOpen = "true";
+  regionSelect.setAttribute("aria-label", "Regija lokacije");
+  regionSelect.append(createOption("", "Regija", workOrderRegionInput.value));
+  WORK_ORDER_REGION_OPTIONS.forEach((region) => {
+    regionSelect.append(createOption(region, region, workOrderRegionInput.value));
   });
+  regionSelect.value = workOrderRegionInput.value || location?.region || "";
+
+  const coordinatesInput = document.createElement("input");
+  coordinatesInput.type = "text";
+  coordinatesInput.className = "work-order-editor-location-coordinates";
+  coordinatesInput.dataset.preventRowOpen = "true";
+  coordinatesInput.placeholder = "45.8150, 15.9819";
+  coordinatesInput.value = workOrderCoordinatesInput.value || location?.coordinates || "";
+  coordinatesInput.setAttribute("aria-label", "Koordinate lokacije");
+
+  const saveButton = document.createElement("button");
+  saveButton.type = "button";
+  saveButton.className = "work-order-editor-location-save";
+  saveButton.dataset.preventRowOpen = "true";
+  saveButton.style.gridColumn = "1 / -1";
+  saveButton.style.justifySelf = "start";
+  saveButton.style.width = "auto";
+  saveButton.textContent = "Ažuriraj";
+
+  saveButton.addEventListener("click", async (event) => {
+    event.stopPropagation();
+    const activeLocation = getLocation(workOrderLocationIdInput.value);
+    if (!activeLocation) {
+      return;
+    }
+
+    const nextRegion = String(regionSelect.value || "").trim();
+    const nextCoordinates = String(coordinatesInput.value || "").trim();
+    workOrderCoordinatesInput.value = nextCoordinates;
+    syncWorkOrderRegionOption(nextRegion);
+    dispatchWorkOrderEditorFieldEvent(workOrderCoordinatesInput, "input");
+    dispatchWorkOrderEditorFieldEvent(workOrderRegionInput, "change");
+
+    saveButton.disabled = true;
+    saveButton.textContent = "Spremam";
+    const contacts = buildLocationContacts(activeLocation)
+      .map((contact) => ({
+        name: contact.name,
+        phone: contact.phone,
+        email: contact.email,
+      }))
+      .filter((contact) => contact.name || contact.phone || contact.email);
+    const success = await runMutation(() => apiRequest(`/locations/${encodeURIComponent(String(activeLocation.id))}`, {
+      method: "PATCH",
+      body: {
+        companyId: activeLocation.companyId,
+        name: activeLocation.name,
+        region: nextRegion,
+        coordinates: nextCoordinates,
+        period: activeLocation.period || "",
+        representative: activeLocation.representative || "",
+        isActive: activeLocation.isActive === false ? "false" : "true",
+        contacts,
+        note: activeLocation.note || "",
+      },
+    }), workOrderError);
+    if (success) {
+      renderWorkOrderEditorSummary();
+      queueWorkOrderAutoSave();
+    } else {
+      saveButton.disabled = false;
+      saveButton.textContent = "Ažuriraj";
+    }
+  });
+
+  prompt.append(copy, regionSelect, coordinatesInput, saveButton);
+  wrap.append(prompt);
+  return wrap;
 }
 
 function createWorkOrderEditorContactControl() {
@@ -21762,99 +21895,402 @@ function createWorkOrderEditorContactControl() {
   });
 }
 
-function openWorkOrderEditorInlinePicker(sectionKey, triggerSelector) {
-  focusWorkOrderEditorSection([sectionKey]);
-  window.setTimeout(() => {
-    const trigger = workOrderForm?.querySelector(triggerSelector);
-    if (trigger instanceof HTMLButtonElement) {
-      trigger.click();
-    }
-  }, 180);
-}
-
-function createWorkOrderEditorInlineAction(label = "Odaberi", {
-  summary = "",
-  muted = false,
-  sectionKey = "",
-  triggerSelector = "",
+function createWorkOrderEditorMenuShell({
+  className = "",
+  ariaLabel = "Odabir",
+  renderTriggerContent = () => document.createTextNode("Odaberi"),
+  renderMenuContent = () => {},
+  commit = () => {},
 } = {}) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = `work-order-editor-inline-action${muted ? " is-empty" : ""}`;
-  button.dataset.preventRowOpen = "true";
+  const wrapper = document.createElement("span");
+  wrapper.className = ["work-order-quick-picker", "work-order-editor-field-picker", "work-order-editor-multi-picker", className].filter(Boolean).join(" ");
+  wrapper.dataset.preventRowOpen = "true";
 
-  const labelNode = document.createElement("span");
-  labelNode.className = "work-order-editor-inline-action-label";
-  labelNode.textContent = label;
-
-  if (summary) {
-    const summaryNode = document.createElement("span");
-    summaryNode.className = "work-order-editor-inline-action-summary";
-    summaryNode.textContent = summary;
-    button.append(labelNode, summaryNode);
-  } else {
-    button.append(labelNode);
-  }
+  const trigger = document.createElement("button");
+  trigger.type = "button";
+  trigger.className = "work-order-quick-picker-trigger work-order-editor-field-trigger";
+  trigger.dataset.preventRowOpen = "true";
+  trigger.setAttribute("aria-haspopup", "dialog");
+  trigger.setAttribute("aria-expanded", "false");
+  trigger.setAttribute("aria-label", ariaLabel);
 
   const caret = document.createElement("span");
   caret.className = "work-order-editor-field-caret";
   caret.setAttribute("aria-hidden", "true");
   caret.textContent = "⌄";
-  button.append(caret);
 
-  button.addEventListener("click", (event) => {
-    event.stopPropagation();
-    if (triggerSelector) {
-      openWorkOrderEditorInlinePicker(sectionKey, triggerSelector);
+  const syncTrigger = () => {
+    const content = renderTriggerContent();
+    trigger.replaceChildren(content, caret);
+  };
+
+  const positionMenuPortal = (menu) => {
+    const triggerRect = trigger.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    let left = triggerRect.left;
+    let top = triggerRect.bottom + 8;
+
+    if (left + menuRect.width > viewportWidth - 12) {
+      left = Math.max(12, viewportWidth - menuRect.width - 12);
+    }
+    if (top + menuRect.height > viewportHeight - 12) {
+      top = Math.max(12, triggerRect.top - menuRect.height - 8);
+    }
+
+    menu.style.left = `${Math.round(left)}px`;
+    menu.style.top = `${Math.round(top)}px`;
+    menu.style.minWidth = `${Math.max(340, Math.round(triggerRect.width + 80))}px`;
+  };
+
+  const closeMenu = () => {
+    commit();
+    wrapper.classList.remove("is-open");
+    trigger.setAttribute("aria-expanded", "false");
+    if (wrapper._menuPortal) {
+      wrapper._menuPortal.remove();
+      wrapper._menuPortal = null;
+    }
+    syncTrigger();
+  };
+
+  wrapper._closeMenu = closeMenu;
+
+  const openMenu = () => {
+    closeOpenWorkOrderStatusMenus(wrapper);
+    if (wrapper._menuPortal) {
       return;
     }
-    focusWorkOrderEditorSection([sectionKey]);
+
+    const menu = document.createElement("div");
+    menu.className = "work-item-status-menu work-item-status-menu-portal work-order-quick-picker-menu-portal work-order-editor-field-menu-portal work-order-editor-multi-menu-portal";
+    menu.dataset.preventRowOpen = "true";
+    menu.setAttribute("role", "dialog");
+    menu.setAttribute("aria-label", ariaLabel);
+
+    ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
+      menu.addEventListener(eventName, (event) => {
+        event.stopPropagation();
+      });
+    });
+    menu.addEventListener("wheel", (event) => event.stopPropagation(), { passive: true });
+
+    renderMenuContent(menu, () => {
+      requestAnimationFrame(() => positionMenuPortal(menu));
+    }, closeMenu);
+
+    document.body.append(menu);
+    wrapper._menuPortal = menu;
+    wrapper.classList.add("is-open");
+    trigger.setAttribute("aria-expanded", "true");
+    positionMenuPortal(menu);
+    requestAnimationFrame(() => positionMenuPortal(menu));
+  };
+
+  trigger.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (wrapper._menuPortal) {
+      closeOpenWorkOrderStatusMenus();
+      return;
+    }
+    openMenu();
   });
 
-  return button;
+  syncTrigger();
+  wrapper.append(trigger);
+  return wrapper;
 }
 
-function createWorkOrderEditorServicesContent(selectedServiceItems = [], serviceLine = "") {
-  const selectedCount = Array.isArray(selectedServiceItems) ? selectedServiceItems.length : 0;
-  return createWorkOrderEditorInlineAction(
-    selectedCount > 0 ? `${selectedCount} odabrano` : "Odaberi usluge",
-    {
-      summary: selectedCount > 0 ? serviceLine : "",
-      muted: selectedCount === 0,
-      sectionKey: "services",
-      triggerSelector: ".work-order-service-picker-trigger",
-    },
-  );
+function createWorkOrderEditorExecutorTriggerContent(values = []) {
+  const wrap = document.createElement("span");
+  wrap.className = "work-order-editor-trigger-people";
+  const normalizedValues = normalizeWorkOrderExecutorValues(values);
+
+  if (normalizedValues.length === 0) {
+    wrap.append(createWorkOrderEditorPlainValue("Odaberi izvršitelje", { muted: true }));
+    return wrap;
+  }
+
+  const stack = document.createElement("span");
+  stack.className = "work-order-editor-detail-avatar-stack";
+  normalizedValues.slice(0, 4).forEach((value) => {
+    stack.append(createWorkOrderMiniExecutor(value, {
+      className: "work-order-mini-executor work-order-editor-detail-avatar",
+    }));
+  });
+  if (normalizedValues.length > 4) {
+    stack.append(createExecutorOverflowBadge(normalizedValues.length - 4, "work-order-mini-executor work-order-editor-detail-avatar"));
+  }
+
+  const label = document.createElement("span");
+  label.className = "work-order-editor-trigger-people-label";
+  label.textContent = normalizedValues.join(", ");
+  wrap.append(stack, label);
+  return wrap;
 }
 
 function createWorkOrderEditorExecutorsContent(executorValues = []) {
-  const values = (Array.isArray(executorValues) ? executorValues : [])
-    .map((value) => String(value || "").trim())
-    .filter(Boolean);
-  return createWorkOrderEditorInlineAction(
-    values.length > 0 ? `${values.length} odabrano` : "Odaberi izvršitelje",
-    {
-      summary: values.join(", "),
-      muted: values.length === 0,
-      sectionKey: "executors",
-      triggerSelector: ".work-order-editor-executor-trigger",
+  let draftValues = normalizeWorkOrderExecutorValues(executorValues);
+  let dirty = false;
+
+  const commit = () => {
+    if (!dirty) {
+      return;
+    }
+    writeWorkOrderExecutorSelection(draftValues, {
+      dispatchEventName: "change",
+    });
+    dirty = false;
+  };
+
+  return createWorkOrderEditorMenuShell({
+    className: "is-executors",
+    ariaLabel: "Odaberi izvršitelje",
+    renderTriggerContent: () => createWorkOrderEditorExecutorTriggerContent(draftValues),
+    commit,
+    renderMenuContent: (menu, reposition, closeMenu) => {
+      const selection = document.createElement("div");
+      selection.className = "work-order-editor-menu-selection";
+
+      const list = document.createElement("div");
+      list.className = "work-order-editor-field-options work-order-editor-people-options";
+
+      const footer = document.createElement("div");
+      footer.className = "work-order-editor-menu-footer";
+
+      const clearButton = document.createElement("button");
+      clearButton.type = "button";
+      clearButton.className = "ghost-button work-order-editor-menu-clear";
+      clearButton.textContent = "Očisti";
+
+      const doneButton = document.createElement("button");
+      doneButton.type = "button";
+      doneButton.className = "primary-button work-order-editor-menu-done";
+      doneButton.textContent = "Gotovo";
+
+      const render = () => {
+        selection.replaceChildren();
+        if (draftValues.length === 0) {
+          const empty = document.createElement("span");
+          empty.className = "work-order-calendar-executor-selection-empty";
+          empty.textContent = "Bez izvršitelja";
+          selection.append(empty);
+        } else {
+          draftValues.forEach((value) => {
+            const chip = document.createElement("button");
+            chip.type = "button";
+            chip.className = "work-order-calendar-executor-chip";
+            chip.title = `Makni ${value}`;
+            const avatar = createWorkOrderMiniExecutor(value);
+            avatar.removeAttribute("title");
+            const label = document.createElement("span");
+            label.className = "work-order-calendar-executor-chip-label";
+            label.textContent = value;
+            const remove = document.createElement("span");
+            remove.className = "work-order-calendar-executor-chip-remove";
+            remove.setAttribute("aria-hidden", "true");
+            remove.textContent = "x";
+            chip.append(avatar, label, remove);
+            chip.addEventListener("click", (event) => {
+              event.stopPropagation();
+              draftValues = draftValues.filter((entry) => entry !== value);
+              dirty = true;
+              render();
+            });
+            selection.append(chip);
+          });
+        }
+
+        list.replaceChildren();
+        getWorkOrderExecutorOptions(draftValues).forEach((option) => {
+          const isSelected = draftValues.includes(option.value);
+          const optionButton = document.createElement("button");
+          optionButton.type = "button";
+          optionButton.className = `work-item-status-option work-order-calendar-executor-option${isSelected ? " is-selected" : ""}`;
+          optionButton.setAttribute("role", "menuitemcheckbox");
+          optionButton.setAttribute("aria-checked", String(isSelected));
+          const avatar = createWorkOrderMiniExecutor(option, {
+            className: "work-order-calendar-executor-option-avatar",
+          });
+          const label = document.createElement("span");
+          label.className = "work-order-calendar-executor-option-label";
+          label.textContent = option.label;
+          const marker = document.createElement("span");
+          marker.className = "work-order-calendar-executor-option-marker";
+          marker.setAttribute("aria-hidden", "true");
+          marker.textContent = isSelected ? "✓" : "+";
+          optionButton.append(avatar, label, marker);
+          optionButton.addEventListener("click", (event) => {
+            event.stopPropagation();
+            draftValues = isSelected
+              ? draftValues.filter((entry) => entry !== option.value)
+              : [...draftValues, option.value];
+            dirty = true;
+            render();
+          });
+          list.append(optionButton);
+        });
+
+        clearButton.disabled = draftValues.length === 0;
+        reposition();
+      };
+
+      clearButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        draftValues = [];
+        dirty = true;
+        render();
+      });
+      doneButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        closeMenu();
+      });
+
+      footer.append(clearButton, doneButton);
+      menu.append(selection, list, footer);
+      render();
     },
-  );
+  });
 }
 
-function createWorkOrderEditorBillingContent(invoiceDateLabel = "") {
-  const invoiceSummary = [
-    invoiceDateLabel ? `Faktura ${invoiceDateLabel}` : "",
-    String(workOrderWeightInput.value || "").trim() ? `Težina ${workOrderWeightInput.value.trim()}` : "",
-  ].filter(Boolean).join(" · ");
+function createWorkOrderEditorServicesContent(selectedServiceItems = []) {
+  let draftItems = Array.isArray(selectedServiceItems) ? [...selectedServiceItems] : [];
+  let dirty = false;
 
-  return createWorkOrderEditorInlineAction(
-    invoiceSummary || "Fakturni podaci",
-    {
-      muted: !invoiceSummary,
-      sectionKey: "billing",
+  const commit = () => {
+    if (!dirty) {
+      return;
+    }
+    writeWorkOrderServiceSelection(draftItems, {
+      dispatchEventName: "change",
+    });
+    dirty = false;
+  };
+
+  const getServiceTriggerContent = () => {
+    const wrap = document.createElement("span");
+    wrap.className = "work-order-editor-trigger-services";
+    if (draftItems.length === 0) {
+      wrap.append(createWorkOrderEditorPlainValue("Odaberi usluge", { muted: true }));
+      return wrap;
+    }
+    const label = document.createElement("span");
+    label.className = "work-order-editor-trigger-service-label";
+    label.textContent = `${draftItems.length} odabrano`;
+    const summary = document.createElement("span");
+    summary.className = "work-order-editor-trigger-service-summary";
+    summary.textContent = draftItems.map((item) => item.name || item.serviceCode).filter(Boolean).join(", ");
+    wrap.append(label, summary);
+    return wrap;
+  };
+
+  return createWorkOrderEditorMenuShell({
+    className: "is-services",
+    ariaLabel: "Odaberi usluge",
+    renderTriggerContent: getServiceTriggerContent,
+    commit,
+    renderMenuContent: (menu, reposition, closeMenu) => {
+      const selection = document.createElement("div");
+      selection.className = "work-order-service-picker-selection";
+      const list = document.createElement("div");
+      list.className = "work-order-service-picker-options work-order-editor-field-options";
+      const footer = document.createElement("div");
+      footer.className = "work-order-editor-menu-footer";
+      const clearButton = document.createElement("button");
+      clearButton.type = "button";
+      clearButton.className = "ghost-button work-order-editor-menu-clear";
+      clearButton.textContent = "Očisti";
+      const doneButton = document.createElement("button");
+      doneButton.type = "button";
+      doneButton.className = "primary-button work-order-editor-menu-done";
+      doneButton.textContent = "Gotovo";
+
+      const render = () => {
+        selection.replaceChildren();
+        if (draftItems.length === 0) {
+          const empty = document.createElement("span");
+          empty.className = "work-order-service-picker-selection-empty";
+          empty.textContent = "Bez odabranih usluga";
+          selection.append(empty);
+        } else {
+          draftItems.forEach((item) => {
+            const chip = document.createElement("button");
+            chip.type = "button";
+            chip.className = `work-order-service-picker-selection-chip${item.isCompleted ? " is-completed" : ""}`;
+            chip.textContent = item.name || item.serviceCode || "Usluga";
+            chip.addEventListener("click", (event) => {
+              event.stopPropagation();
+              draftItems = draftItems.filter((entry) => String(entry.serviceId) !== String(item.serviceId));
+              dirty = true;
+              render();
+            });
+            selection.append(chip);
+          });
+        }
+
+        list.replaceChildren();
+        const lockedType = getWorkOrderSelectionServiceType(draftItems);
+        getWorkOrderServiceCatalogOptions(draftItems).forEach((option) => {
+          const optionType = getWorkOrderServiceType(option);
+          const isSelected = draftItems.some((item) => String(item.serviceId) === String(option.id));
+          const isLockedOut = Boolean(lockedType && optionType && lockedType !== optionType && !isSelected);
+          const optionButton = document.createElement("button");
+          optionButton.type = "button";
+          optionButton.className = `work-item-status-option work-order-service-picker-option${isSelected ? " is-selected" : ""}${isLockedOut ? " is-disabled" : ""}`;
+          optionButton.disabled = isLockedOut;
+
+          const copy = document.createElement("div");
+          copy.className = "work-order-service-picker-option-copy";
+          const title = document.createElement("strong");
+          title.textContent = option.name || "Usluga";
+          const meta = document.createElement("span");
+          meta.textContent = [
+            option.serviceCode || "",
+            getServiceCatalogTypeLabel(optionType),
+            option.status === "inactive" ? "Neaktivna" : "Aktivna",
+          ].filter(Boolean).join(" · ");
+          copy.append(title, meta);
+
+          const marker = document.createElement("span");
+          marker.className = "work-order-service-picker-option-marker";
+          marker.textContent = isSelected ? "✓" : "+";
+
+          optionButton.append(copy, marker);
+          optionButton.addEventListener("click", (event) => {
+            event.stopPropagation();
+            if (isLockedOut) {
+              return;
+            }
+            draftItems = isSelected
+              ? draftItems.filter((item) => String(item.serviceId) !== String(option.id))
+              : [...draftItems, buildWorkOrderServiceItemSnapshot(option)];
+            dirty = true;
+            render();
+          });
+          list.append(optionButton);
+        });
+
+        clearButton.disabled = draftItems.length === 0;
+        reposition();
+      };
+
+      clearButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        draftItems = [];
+        dirty = true;
+        render();
+      });
+      doneButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        closeMenu();
+      });
+
+      footer.append(clearButton, doneButton);
+      menu.append(selection, list, footer);
+      render();
     },
-  );
+  });
 }
 
 function createWorkOrderEditorDetailRow({
@@ -22493,13 +22929,10 @@ function renderWorkOrderEditorSummary() {
   const workOrderNumber = persistedItem?.workOrderNumber || "";
   const selectedServiceItems = readWorkOrderServiceSelection();
   const serviceLine = getSelectedWorkOrderServiceSummary();
-  const teamLabel = String(workOrderTeamLabelInput.value ?? "").trim();
-  const description = String(workOrderDescriptionInput.value ?? "").trim();
   const company = getCompany(workOrderCompanyIdInput.value);
   const location = getLocation(workOrderLocationIdInput.value);
   const companyName = company?.name || "";
   const locationName = location?.name || "";
-  const compactServiceSummary = serviceLine;
   const completedServices = getWorkOrderCompletedServiceCount({ serviceItems: selectedServiceItems });
   const serviceSummary = [
     serviceLine,
@@ -22509,47 +22942,27 @@ function renderWorkOrderEditorSummary() {
     getSelectedContactName(),
     String(workOrderContactPhoneInput.value ?? "").trim() || String(workOrderContactEmailInput.value ?? "").trim(),
   ].filter(Boolean).join(" · ");
-  const linkReference = String(workOrderLinkReferenceInput.value ?? "").trim();
   const executorValues = readWorkOrderExecutorSelection();
 
   workOrderEditorContext.textContent = activeId ? "Uređivanje radnog naloga" : "Otvaranje novog RN";
-  workOrderEditorTitle.textContent = activeId ? (workOrderNumber || "Radni nalog") : "Novi radni nalog";
-  workOrderEditorSubtitle.textContent = description
-    || compactServiceSummary
-    || [companyName, locationName].filter(Boolean).join(" · ")
-    || "Promjene se spremaju automatski.";
-
-  const companySummaryNodes = [];
-
-  if (companyName) {
-    const companyLine = document.createElement("strong");
-    companyLine.className = "work-order-editor-company-primary";
-    companyLine.textContent = companyName;
-    companySummaryNodes.push(companyLine);
+  const titleNumber = document.createElement("span");
+  titleNumber.className = "work-order-editor-title-number";
+  titleNumber.textContent = activeId ? (workOrderNumber || "Radni nalog") : "Novi radni nalog";
+  const titleMetaText = [
+    companyName,
+    String(workOrderHeadquartersInput.value || "").trim(),
+    String(workOrderCompanyOibInput.value || "").trim() ? `OIB ${String(workOrderCompanyOibInput.value || "").trim()}` : "",
+  ].filter(Boolean).join(" · ");
+  if (titleMetaText) {
+    const titleMeta = document.createElement("span");
+    titleMeta.className = "work-order-editor-title-meta";
+    titleMeta.textContent = titleMetaText;
+    workOrderEditorTitle.replaceChildren(titleNumber, titleMeta);
+  } else {
+    workOrderEditorTitle.replaceChildren(titleNumber);
   }
-
-  if (workOrderHeadquartersInput.value.trim()) {
-    const headquartersLine = document.createElement("span");
-    headquartersLine.className = "work-order-editor-company-line";
-    headquartersLine.textContent = `Sjedište · ${workOrderHeadquartersInput.value.trim()}`;
-    companySummaryNodes.push(headquartersLine);
-  }
-
-  if (workOrderCompanyOibInput.value.trim()) {
-    const oibLine = document.createElement("span");
-    oibLine.className = "work-order-editor-company-line";
-    oibLine.textContent = `OIB · ${workOrderCompanyOibInput.value.trim()}`;
-    companySummaryNodes.push(oibLine);
-  }
-
-  if (companySummaryNodes.length === 0) {
-    const placeholderLine = document.createElement("span");
-    placeholderLine.className = "work-order-editor-company-line is-placeholder";
-    placeholderLine.textContent = "Odaberi tvrtku, sjedište i OIB će se prikazati ovdje.";
-    companySummaryNodes.push(placeholderLine);
-  }
-
-  workOrderEditorCompanySummary.replaceChildren(...companySummaryNodes);
+  workOrderEditorSubtitle.textContent = "";
+  workOrderEditorCompanySummary.replaceChildren();
 
   if (workOrderRelationActions) {
     workOrderRelationActions.hidden = !company && !location;
@@ -22574,8 +22987,6 @@ function renderWorkOrderEditorSummary() {
   const dueDateValue = getNormalizedWorkOrderDateInputValue(workOrderDueDateInput);
   const openedDateLabel = formatCompactOpenedDate(openedDateValue);
   const dueDateLabel = formatCompactDueDate(dueDateValue);
-  const normalizedInvoiceDate = getNormalizedWorkOrderDateInputValue(workOrderInvoiceDateInput);
-  const invoiceDateLabel = normalizedInvoiceDate ? formatCompactDate(normalizedInvoiceDate) : "";
   const documentCount = Number(workOrderDocumentCount?.textContent || 0);
   const payload = buildWorkOrderPayload();
   const missingRequiredKeys = new Set(
@@ -22585,23 +22996,18 @@ function renderWorkOrderEditorSummary() {
   );
 
   const details = document.createElement("div");
-  details.className = "work-order-editor-detail-grid";
-
-  const primaryColumn = document.createElement("div");
-  primaryColumn.className = "work-order-editor-detail-column";
-  primaryColumn.append(
+  details.className = "work-order-editor-detail-grid is-clickup-table";
+  details.append(
     createWorkOrderEditorDetailRow({
       iconName: "status",
       label: "Status",
       content: createWorkOrderEditorStatusControl(workOrderStatusInput.value, statusLabel),
-      targetSections: ["status"],
       tone: "status",
     }),
     createWorkOrderEditorDetailRow({
       iconName: "company",
       label: "Tvrtka",
       content: createWorkOrderEditorCompanyControl(),
-      targetSections: ["client"],
       tone: "company",
       attention: missingRequiredKeys.has("company"),
     }),
@@ -22609,7 +23015,6 @@ function renderWorkOrderEditorSummary() {
       iconName: "location",
       label: "Lokacija",
       content: createWorkOrderEditorLocationControl(),
-      targetSections: ["location"],
       tone: "location",
       attention: missingRequiredKeys.has("location"),
     }),
@@ -22617,14 +23022,26 @@ function renderWorkOrderEditorSummary() {
       iconName: "contact",
       label: "Kontakt",
       content: createWorkOrderEditorContactControl(),
-      targetSections: ["contact"],
       tone: "contact",
+    }),
+    createWorkOrderEditorDetailRow({
+      iconName: "assignees",
+      label: "Izvršitelji",
+      content: createWorkOrderEditorExecutorsContent(executorValues),
+      tone: "assignees",
+      attention: missingRequiredKeys.has("executors"),
+    }),
+    createWorkOrderEditorDetailRow({
+      iconName: "service",
+      label: "Usluge",
+      content: createWorkOrderEditorServicesContent(selectedServiceItems),
+      tone: "service",
+      attention: missingRequiredKeys.has("services"),
     }),
     createWorkOrderEditorDetailRow({
       iconName: "dates",
       label: "Datum otvaranja",
       content: createWorkOrderEditorDateControl(workOrderOpenedDateInput, "Datum otvaranja"),
-      targetSections: ["status"],
       tone: "dates",
       attention: missingRequiredKeys.has("openedDate"),
     }),
@@ -22632,48 +23049,59 @@ function renderWorkOrderEditorSummary() {
       iconName: "dates",
       label: "Rok završetka",
       content: createWorkOrderEditorDateControl(workOrderDueDateInput, "Rok završetka"),
-      targetSections: ["status"],
       tone: "dates",
       attention: missingRequiredKeys.has("dueDate"),
     }),
-  );
-
-  const secondaryColumn = document.createElement("div");
-  secondaryColumn.className = "work-order-editor-detail-column";
-  secondaryColumn.append(
     createWorkOrderEditorDetailRow({
-      iconName: "assignees",
-      label: "Izvršitelji",
-      content: createWorkOrderEditorExecutorsContent(executorValues),
-      targetSections: ["executors"],
-      tone: "assignees",
-      attention: missingRequiredKeys.has("executors"),
-    }),
-    createWorkOrderEditorDetailRow({
-      iconName: "service",
-      label: "Usluge",
-      content: createWorkOrderEditorServicesContent(selectedServiceItems, serviceLine),
-      targetSections: ["services"],
-      tone: "service",
-      attention: missingRequiredKeys.has("services"),
+      iconName: "dates",
+      label: "Datum izvršenja",
+      content: createWorkOrderEditorDateControl(workOrderExecutionDateInput, "Datum izvršenja"),
+      tone: "dates",
     }),
     createWorkOrderEditorDetailRow({
       iconName: "priority",
-      label: "Prioritet / Tagovi",
-      content: createWorkOrderEditorPriorityTagsControl(priorityLabel),
-      targetSections: ["status"],
+      label: "Prioritet",
+      content: createWorkOrderEditorPriorityControl(workOrderPriorityInput.value, priorityLabel),
       tone: "priority",
     }),
     createWorkOrderEditorDetailRow({
+      iconName: "tags",
+      label: "Tagovi",
+      content: createWorkOrderEditorTextControl(workOrderTagTextInput, { placeholder: "Tagovi" }),
+      tone: "tags",
+    }),
+    createWorkOrderEditorDetailRow({
+      iconName: "service",
+      label: "Vrsta ugovora",
+      content: createWorkOrderEditorStaticValue(String(workOrderContractTypeInput.value || "").trim(), "Bez ugovora"),
+      tone: "contract",
+    }),
+    createWorkOrderEditorDetailRow({
       iconName: "billing",
-      label: "Fakturni dio",
-      content: createWorkOrderEditorBillingContent(invoiceDateLabel),
-      targetSections: ["billing"],
+      label: "Broj fakture",
+      content: createWorkOrderEditorTextControl(workOrderInvoiceNoteInput, { placeholder: "Broj fakture" }),
+      tone: "billing",
+    }),
+    createWorkOrderEditorDetailRow({
+      iconName: "number",
+      label: "Iznos fakture",
+      content: createWorkOrderEditorTextControl(workOrderWeightInput, { placeholder: "Iznos", inputMode: "decimal" }),
+      tone: "billing",
+    }),
+    createWorkOrderEditorDetailRow({
+      iconName: "billing",
+      label: "Datum fakture",
+      content: createWorkOrderEditorDateControl(workOrderInvoiceDateInput, "Datum fakture"),
+      tone: "billing",
+    }),
+    createWorkOrderEditorDetailRow({
+      iconName: "billing",
+      label: "RN završio",
+      content: createWorkOrderEditorTextControl(workOrderCompletedByInput, { placeholder: "Ime i prezime" }),
       tone: "billing",
     }),
   );
 
-  details.append(primaryColumn, secondaryColumn);
   workOrderEditorMeta.replaceChildren(details);
   renderWorkOrderEditorSideSummary({
     workOrderNumber,
@@ -68939,6 +69367,7 @@ function buildWorkOrderPayload() {
     priority: workOrderPriorityInput.value,
     openedDate: getNormalizedWorkOrderDateInputValue(workOrderOpenedDateInput),
     dueDate: getNormalizedWorkOrderDateInputValue(workOrderDueDateInput),
+    executionDate: getNormalizedWorkOrderDateInputValue(workOrderExecutionDateInput),
     teamLabel: workOrderTeamLabelInput.value,
     companyId: workOrderCompanyIdInput.value,
     locationId: workOrderLocationIdInput.value,
@@ -71713,6 +72142,7 @@ function resetWorkOrderForm() {
   workOrderPriorityInput.value = "Normal";
   setWorkOrderDateInputValue(workOrderOpenedDateInput, new Date().toISOString().slice(0, 10));
   setWorkOrderDateInputValue(workOrderDueDateInput, "");
+  setWorkOrderDateInputValue(workOrderExecutionDateInput, "");
   setWorkOrderDateInputValue(workOrderInvoiceDateInput, "");
   workOrderTeamLabelInput.value = "";
   rebuildWorkOrderCompanyOptions("");
@@ -72009,6 +72439,7 @@ function hydrateWorkOrderForm(workOrder, options = {}) {
   workOrderPriorityInput.value = workOrder.priority;
   setWorkOrderDateInputValue(workOrderOpenedDateInput, workOrder.openedDate ?? "");
   setWorkOrderDateInputValue(workOrderDueDateInput, workOrder.dueDate ?? "");
+  setWorkOrderDateInputValue(workOrderExecutionDateInput, workOrder.executionDate ?? "");
   workOrderTeamLabelInput.value = workOrder.teamLabel ?? "";
   rebuildWorkOrderCompanyOptions(workOrder.companyId);
   fillWorkOrderCompanySnapshot(workOrder);

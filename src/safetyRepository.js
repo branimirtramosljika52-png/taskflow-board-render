@@ -1285,6 +1285,7 @@ const WORK_ORDER_ACTIVITY_FIELD_LABELS = {
   priority: "Prioritet",
   openedDate: "Datum otvaranja",
   dueDate: "Rok zavrsetka",
+  executionDate: "Datum izvrsenja",
   teamLabel: "Tim",
   companyName: "Tvrtka",
   headquarters: "Sjedište",
@@ -1300,12 +1301,12 @@ const WORK_ORDER_ACTIVITY_FIELD_LABELS = {
   serviceLine: "Usluga",
   department: "Odjel",
   linkReference: "Veza RN",
-  weight: "Tezinski faktor",
+  weight: "Iznos fakture",
   completedBy: "Nalog zavrsio",
   invoiceDate: "Datum fakture",
   tagText: "Tagovi",
   description: "Opis",
-  invoiceNote: "Napomena",
+  invoiceNote: "Broj fakture",
 };
 
 function formatDateOnlyDisplay(value) {
@@ -1330,7 +1331,7 @@ function formatWorkOrderActivityValue(fieldKey, value) {
       .join(", ");
   }
 
-  if (fieldKey === "openedDate" || fieldKey === "dueDate" || fieldKey === "invoiceDate") {
+  if (fieldKey === "openedDate" || fieldKey === "dueDate" || fieldKey === "executionDate" || fieldKey === "invoiceDate") {
     return formatDateOnlyDisplay(value);
   }
 
@@ -1365,7 +1366,7 @@ function areWorkOrderActivityValuesEqual(fieldKey, left, right) {
     ));
   }
 
-  if (fieldKey === "openedDate" || fieldKey === "dueDate" || fieldKey === "invoiceDate") {
+  if (fieldKey === "openedDate" || fieldKey === "dueDate" || fieldKey === "executionDate" || fieldKey === "invoiceDate") {
     return normalizeDateOnly(left) === normalizeDateOnly(right);
   }
 
@@ -2920,7 +2921,7 @@ async function fetchSnapshotFromConnection(connection) {
 
   const [workOrderRows] = await connection.query(`
     SELECT id, broj_rn, datum_rn, ime_tvrtke, sjediste, oib, veza_rn, lokacija, prioritet,
-           kontakt_osoba, kontakt_broj, kontakt_email, rok_zavrsetka, izvrsitelj_rn1,
+           kontakt_osoba, kontakt_broj, kontakt_email, rok_zavrsetka, datum_izvrsenja, izvrsitelj_rn1,
            izvrsitelj_rn2, izvrsitelji_json, tagovi, status_rn, napomena_faktura, godina_rn, redni_broj,
            tim_rn, odjel, koordinate, usluge, opis, regija, datum_fakturiranja, tezina, rn_zavrsio,
            training_admin_name, training_admin_role, training_admin_phone, training_admin_email,
@@ -2977,6 +2978,7 @@ async function fetchSnapshotFromConnection(connection) {
       status: row.status_rn ?? "Otvoreni RN",
       openedDate: normalizeDateOnly(row.datum_rn),
       dueDate: normalizeDateOnly(row.rok_zavrsetka),
+      executionDate: normalizeDateOnly(row.datum_izvrsenja),
       invoiceNote: row.napomena_faktura ?? "",
       invoiceDate: normalizeDateOnly(row.datum_fakturiranja),
       weight: row.tezina === null || row.tezina === undefined ? "" : String(row.tezina),
@@ -7314,6 +7316,7 @@ export class MySqlSafetyRepository {
     await ensureCompanyRolePermissionScopeSchema(this.pool);
     await ensureColumnExists(this.pool, "radni_nalozi", "izvrsitelji_json", "LONGTEXT NULL AFTER izvrsitelj_rn2");
     await ensureColumnExists(this.pool, "radni_nalozi", "tim_rn", "VARCHAR(160) NOT NULL DEFAULT '' AFTER izvrsitelji_json");
+    await ensureColumnExists(this.pool, "radni_nalozi", "datum_izvrsenja", "DATE NULL AFTER rok_zavrsetka");
     await ensureColumnExists(this.pool, "radni_nalozi", "usluge_json", "LONGTEXT NULL AFTER usluge");
     await ensureColumnExists(this.pool, "radni_nalozi", "mjerenja_json", "LONGTEXT NULL AFTER usluge_json");
     await ensureColumnExists(this.pool, "radni_nalozi", "training_admin_name", "VARCHAR(160) NOT NULL DEFAULT '' AFTER rn_zavrsio");
@@ -8089,11 +8092,11 @@ export class MySqlSafetyRepository {
         `
           INSERT INTO radni_nalozi
             (broj_rn, datum_rn, ime_tvrtke, sjediste, oib, veza_rn, lokacija, prioritet,
-             kontakt_osoba, kontakt_broj, kontakt_email, rok_zavrsetka, izvrsitelj_rn1,
+             kontakt_osoba, kontakt_broj, kontakt_email, rok_zavrsetka, datum_izvrsenja, izvrsitelj_rn1,
              izvrsitelj_rn2, izvrsitelji_json, tim_rn, tagovi, status_rn, napomena_faktura, godina_rn, redni_broj,
              odjel, koordinate, usluge, usluge_json, mjerenja_json, opis, regija, datum_fakturiranja, tezina, rn_zavrsio,
              training_admin_name, training_admin_role, training_admin_phone, training_admin_email)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           brojRn,
@@ -8108,6 +8111,7 @@ export class MySqlSafetyRepository {
           draft.contactPhone,
           draft.contactEmail,
           draft.dueDate,
+          draft.executionDate,
           draft.executor1,
           draft.executor2,
           JSON.stringify(draft.executors ?? []),
@@ -8181,7 +8185,7 @@ export class MySqlSafetyRepository {
         `
           UPDATE radni_nalozi
           SET datum_rn = ?, ime_tvrtke = ?, sjediste = ?, oib = ?, veza_rn = ?, lokacija = ?,
-              prioritet = ?, kontakt_osoba = ?, kontakt_broj = ?, kontakt_email = ?, rok_zavrsetka = ?,
+              prioritet = ?, kontakt_osoba = ?, kontakt_broj = ?, kontakt_email = ?, rok_zavrsetka = ?, datum_izvrsenja = ?,
               izvrsitelj_rn1 = ?, izvrsitelj_rn2 = ?, izvrsitelji_json = ?, tim_rn = ?, tagovi = ?, status_rn = ?, napomena_faktura = ?,
               odjel = ?, koordinate = ?, usluge = ?, usluge_json = ?, mjerenja_json = ?, opis = ?, regija = ?, datum_fakturiranja = ?,
               tezina = ?, rn_zavrsio = ?, training_admin_name = ?, training_admin_role = ?, training_admin_phone = ?, training_admin_email = ?
@@ -8199,6 +8203,7 @@ export class MySqlSafetyRepository {
           next.contactPhone,
           next.contactEmail,
           next.dueDate,
+          next.executionDate,
           next.executor1,
           next.executor2,
           JSON.stringify(next.executors ?? []),

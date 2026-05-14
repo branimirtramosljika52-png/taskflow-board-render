@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260514-rn-editor-task-controls" />
+    <link rel="stylesheet" href="/styles.css?v=20260514-rn-editor-clickup-table5" />
     <link rel="stylesheet" href="/src/styles/variables.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/reset.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/builder.css?v=20260509e" />
@@ -1181,6 +1181,7 @@
                     <input id="work-order-department" type="hidden" />
                     <input id="work-order-description" type="hidden" />
                     <input id="work-order-invoice-note" type="hidden" />
+                    <input id="work-order-execution-date" type="hidden" />
                     <input id="work-order-team-label" type="hidden" />
                     <input id="work-order-link-reference" type="hidden" />
                     <datalist id="work-order-team-suggestions"></datalist>
@@ -1370,7 +1371,7 @@
                       <button type="button" class="work-order-editor-section-head" data-work-order-section-toggle aria-expanded="true">
                         <div>
                           <p class="work-order-editor-section-kicker">Usluge</p>
-                          <h3>Vrsta i odabir usluga</h3>
+                          <h3>Odabrane usluge</h3>
                         </div>
                         <span class="work-order-section-toggle-icon" aria-hidden="true">⌄</span>
                       </button>
@@ -1434,13 +1435,13 @@
                       <div class="work-order-editor-section-body">
                         <div class="form-grid form-grid-billing">
                           <label class="field">
-                            <span>Težinski faktor / iznos</span>
-                            <input id="work-order-weight" type="text" placeholder="npr. 1.5 ili 250.00" />
+                            <span>Iznos fakture</span>
+                            <input id="work-order-weight" type="text" placeholder="npr. 250.00" />
                           </label>
 
                           <label class="field">
-                            <span>Nalog završio</span>
-                            <input id="work-order-completed-by" type="text" placeholder="Završio" />
+                            <span>RN završio</span>
+                            <input id="work-order-completed-by" type="text" placeholder="Ime i prezime" />
                           </label>
 
                           <label class="field">
@@ -8216,6 +8217,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260514-rn-editor-task-controls"></script>
+    <script type="module" src="/src/main.js?v=20260514-rn-editor-clickup-table5"></script>
   </body>
 </html>

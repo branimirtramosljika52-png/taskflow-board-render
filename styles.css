@@ -46698,6 +46698,10 @@ button.work-order-editor-section-head {
 }
 
 .work-order-editor-hero-copy h2 {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px 14px;
   margin: 0;
   color: #111827;
   font-size: clamp(1.55rem, 2.1vw, 2.15rem);
@@ -46706,8 +46710,25 @@ button.work-order-editor-section-head {
   line-height: 1.16;
 }
 
+.work-order-editor-title-number,
+.work-order-editor-title-meta {
+  min-width: 0;
+}
+
+.work-order-editor-title-meta {
+  color: #4b5565;
+  font-size: clamp(0.86rem, 1vw, 1rem);
+  font-weight: 650;
+  line-height: 1.25;
+}
+
 .work-order-editor-company-summary {
   gap: 4px;
+}
+
+.work-order-editor-company-summary:empty,
+.work-order-editor-subtitle:empty {
+  display: none;
 }
 
 .work-order-editor-company-primary {
@@ -46726,7 +46747,7 @@ button.work-order-editor-section-head {
 
 .work-order-editor-meta {
   display: block;
-  width: min(920px, 100%);
+  width: min(1180px, 100%);
   margin-top: 14px;
 }
 
@@ -46735,6 +46756,12 @@ button.work-order-editor-section-head {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   column-gap: 42px;
   row-gap: 2px;
+}
+
+.work-order-editor-detail-grid.is-clickup-table {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 4px 42px;
+  align-items: start;
 }
 
 .work-order-editor-detail-column {
@@ -46758,6 +46785,29 @@ button.work-order-editor-section-head {
   color: #273142;
   text-align: left;
   cursor: pointer;
+}
+
+.work-order-editor-detail-grid.is-clickup-table .work-order-editor-detail-row {
+  min-height: 34px;
+  padding: 2px 0;
+  cursor: default;
+}
+
+.work-order-editor-detail-grid.is-clickup-table .work-order-editor-detail-row.is-company,
+.work-order-editor-detail-grid.is-clickup-table .work-order-editor-detail-row.is-location,
+.work-order-editor-detail-grid.is-clickup-table .work-order-editor-detail-row.is-contact,
+.work-order-editor-detail-grid.is-clickup-table .work-order-editor-detail-row.is-assignees,
+.work-order-editor-detail-grid.is-clickup-table .work-order-editor-detail-row.is-service,
+.work-order-editor-detail-grid.is-clickup-table .work-order-editor-detail-row.is-contract {
+  grid-column: 1 / -1;
+}
+
+.work-order-editor-detail-grid.is-clickup-table .work-order-editor-detail-row.is-company {
+  min-height: 42px;
+}
+
+.work-order-editor-detail-grid.is-clickup-table .work-order-editor-detail-row.is-company .work-order-editor-field-trigger {
+  min-height: 40px;
 }
 
 .work-order-editor-detail-row.has-required-attention {
@@ -46811,8 +46861,8 @@ button.work-order-editor-section-head {
 }
 
 .work-order-editor-field-picker,
-.work-order-editor-priority-tags-control,
-.work-order-editor-tags-control {
+.work-order-editor-multi-picker,
+.work-order-editor-text-control {
   display: inline-flex;
   align-items: center;
   min-width: 0;
@@ -46821,6 +46871,19 @@ button.work-order-editor-section-head {
 
 .work-order-editor-field-picker {
   width: min(100%, 440px);
+}
+
+.work-order-editor-detail-row.is-company .work-order-editor-field-picker,
+.work-order-editor-detail-row.is-location .work-order-editor-field-picker,
+.work-order-editor-detail-row.is-contact .work-order-editor-field-picker,
+.work-order-editor-detail-row.is-assignees .work-order-editor-field-picker,
+.work-order-editor-detail-row.is-service .work-order-editor-field-picker,
+.work-order-editor-detail-row.is-company .work-order-editor-multi-picker,
+.work-order-editor-detail-row.is-location .work-order-editor-multi-picker,
+.work-order-editor-detail-row.is-contact .work-order-editor-multi-picker,
+.work-order-editor-detail-row.is-assignees .work-order-editor-multi-picker,
+.work-order-editor-detail-row.is-service .work-order-editor-multi-picker {
+  width: 100%;
 }
 
 .work-order-editor-field-trigger,
@@ -46885,10 +46948,6 @@ button.work-order-editor-section-head {
   font-weight: 560;
 }
 
-.work-order-editor-inline-action {
-  width: min(100%, 440px);
-}
-
 .work-order-editor-field-caret {
   color: #98a2b3;
   font-size: 0.75rem;
@@ -46897,7 +46956,7 @@ button.work-order-editor-section-head {
 }
 
 .work-order-editor-date-control,
-.work-order-editor-tags-input {
+.work-order-editor-text-input {
   width: min(100%, 220px);
   min-height: 28px;
   padding: 3px 8px;
@@ -46911,30 +46970,32 @@ button.work-order-editor-section-head {
 }
 
 .work-order-editor-date-control:hover,
-.work-order-editor-tags-input:hover,
+.work-order-editor-text-input:hover,
 .work-order-editor-date-control:focus,
-.work-order-editor-tags-input:focus {
+.work-order-editor-text-input:focus {
   border-color: #dde3ec;
   background: #ffffff;
   outline: none;
 }
 
-.work-order-editor-priority-tags-control {
-  width: min(100%, 440px);
-  gap: 7px;
-}
-
-.work-order-editor-priority-tags-control .work-order-editor-field-picker {
-  width: min(180px, 42%);
-  flex: 0 1 180px;
-}
-
-.work-order-editor-priority-tags-control .work-order-editor-tags-control {
-  flex: 1 1 160px;
-}
-
-.work-order-editor-priority-tags-control .work-order-editor-tags-input {
+.work-order-editor-text-control,
+.work-order-editor-text-input {
   width: 100%;
+}
+
+.work-order-editor-static-value {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  max-width: 100%;
+  color: #1f2937;
+  font-size: 0.82rem;
+  font-weight: 680;
+}
+
+.work-order-editor-static-value.is-empty {
+  color: #98a2b3;
+  font-weight: 560;
 }
 
 .work-order-editor-field-menu-portal {
@@ -47031,6 +47092,118 @@ button.work-order-editor-section-head {
   padding: 8px;
   color: #667085;
   font-size: 0.8rem;
+}
+
+.work-order-editor-multi-menu-portal {
+  display: grid;
+  gap: 8px;
+  min-width: min(520px, calc(100vw - 24px));
+}
+
+.work-order-editor-menu-selection,
+.work-order-editor-multi-menu-portal .work-order-service-picker-selection {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 92px;
+  overflow-y: auto;
+  padding: 4px;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.work-order-editor-people-options,
+.work-order-editor-multi-menu-portal .work-order-service-picker-options {
+  max-height: min(320px, 45dvh);
+}
+
+.work-order-editor-menu-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+  padding-top: 2px;
+}
+
+.work-order-editor-trigger-people,
+.work-order-editor-trigger-services {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.work-order-editor-trigger-services {
+  display: grid;
+  gap: 1px;
+}
+
+.work-order-editor-trigger-people-label,
+.work-order-editor-trigger-service-summary {
+  min-width: 0;
+  overflow: hidden;
+  color: #667085;
+  font-size: 0.7rem;
+  font-weight: 560;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-order-editor-trigger-service-label {
+  color: #1f2937;
+  font-size: 0.82rem;
+  font-weight: 720;
+}
+
+.work-order-editor-location-control {
+  display: grid;
+  gap: 7px;
+  width: 100%;
+}
+
+.work-order-editor-location-missing {
+  display: grid;
+  grid-template-columns: minmax(108px, 0.75fr) minmax(126px, 0.95fr) minmax(132px, 1fr);
+  gap: 6px;
+  align-items: center;
+  padding: 7px;
+  border-radius: 9px;
+  background: #fff7ed;
+}
+
+.work-order-editor-location-missing-copy {
+  color: #9a3412;
+  font-size: 0.74rem;
+  font-weight: 720;
+}
+
+.work-order-editor-location-region,
+.work-order-editor-location-coordinates {
+  width: 100%;
+  min-width: 0;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px solid #fed7aa;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #1f2937;
+  font-size: 0.78rem;
+  font-weight: 620;
+}
+
+.work-order-editor-location-save {
+  grid-column: 1 / -1;
+  justify-self: start;
+  width: auto;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 28px;
+  padding: 0 12px;
+  border: 1px solid #fb923c;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #9a3412;
+  font-size: 0.76rem;
+  font-weight: 760;
 }
 
 .work-order-editor-detail-value.is-muted,
@@ -47177,7 +47350,7 @@ button.work-order-editor-section-head {
 
 .work-order-editor-form-panel {
   gap: 12px;
-  width: min(980px, 100%);
+  width: min(1180px, 100%);
 }
 
 .work-order-editor-form {
@@ -47195,6 +47368,27 @@ button.work-order-editor-section-head {
   background: transparent !important;
   box-shadow: none !important;
   overflow: visible;
+}
+
+.work-order-editor-section[data-work-order-section="status"],
+.work-order-editor-section[data-work-order-section="client"],
+.work-order-editor-section[data-work-order-section="location"],
+.work-order-editor-section[data-work-order-section="contact"],
+.work-order-editor-section[data-work-order-section="executors"],
+.work-order-editor-section[data-work-order-section="billing"] {
+  display: none !important;
+}
+
+.work-order-editor-section[data-work-order-section="services"] .work-order-services-field {
+  display: none !important;
+}
+
+.work-order-editor-section[data-work-order-section="services"] {
+  margin-top: 14px;
+}
+
+.work-order-editor-section[data-work-order-section="services"] .work-order-editor-section-head h3 {
+  font-size: 0.88rem;
 }
 
 .work-order-editor-section[data-work-order-section]::before {
@@ -47495,26 +47689,23 @@ button.work-order-editor-section-head:focus-visible {
     padding: 6px 2px;
   }
 
+  .work-order-editor-detail-grid.is-clickup-table {
+    grid-template-columns: 1fr;
+  }
+
   .work-order-editor-detail-content {
     grid-column: 2;
   }
 
   .work-order-editor-field-picker,
   .work-order-editor-inline-action,
-  .work-order-editor-priority-tags-control,
   .work-order-editor-date-control,
-  .work-order-editor-tags-input {
+  .work-order-editor-text-input {
     width: 100%;
   }
 
-  .work-order-editor-priority-tags-control {
-    flex-wrap: wrap;
-  }
-
-  .work-order-editor-priority-tags-control .work-order-editor-field-picker,
-  .work-order-editor-priority-tags-control .work-order-editor-tags-control {
-    width: 100%;
-    flex: 1 1 100%;
+  .work-order-editor-location-missing {
+    grid-template-columns: 1fr;
   }
 }
 
