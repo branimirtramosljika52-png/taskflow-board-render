@@ -27776,10 +27776,10 @@ body.is-vehicle-reservation-open {
     minmax(90px, 0.58fr)
     minmax(170px, 1.22fr)
     minmax(120px, 0.72fr)
-    minmax(190px, 1.12fr)
-    minmax(168px, 0.88fr);
+    minmax(220px, 1.18fr)
+    minmax(184px, 0.8fr);
   width: 100%;
-  min-width: 1038px;
+  min-width: 1100px;
 }
 
 .periodics-grid.is-vehicles .periodics-grid-head,
@@ -27855,6 +27855,11 @@ body.is-vehicle-reservation-open {
   padding: 8px 10px;
   font-size: 0.68rem;
   letter-spacing: 0.07em;
+}
+
+.periodics-grid.is-inspections .periodics-grid-head span:last-child {
+  text-align: right;
+  padding-right: 18px;
 }
 
 .periodics-group-row {
@@ -28051,15 +28056,16 @@ body.is-vehicle-reservation-open {
 
 .periodics-grid.is-inspections .periodics-cell-due {
   display: grid;
-  grid-template-columns: 86px max-content;
+  grid-template-columns: max-content max-content;
   align-items: center;
-  justify-content: start;
+  justify-content: end;
   gap: 8px;
+  white-space: nowrap;
 }
 
 .periodics-grid.is-inspections .periodics-cell-due .periodics-cell-primary {
-  width: 86px;
-  text-align: left;
+  width: auto;
+  text-align: right;
 }
 
 .periodics-group-summary {
@@ -28116,31 +28122,56 @@ body.is-vehicle-reservation-open {
 }
 
 .periodics-service-cell {
-  gap: 5px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.periodics-service-cell .periodics-cell-primary {
+  grid-column: 1;
+  min-width: 0;
+}
+
+.periodics-service-cell .periodics-cell-secondary {
+  grid-column: 1 / -1;
+}
+
+.periodics-service-cell .periodics-work-order-badge,
+.periodics-service-cell .periodics-new-work-order-button {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
 }
 
 .periodics-work-order-badge {
   display: inline-flex;
   align-items: center;
-  width: fit-content;
-  min-height: 20px;
-  gap: 6px;
-  padding: 2px 8px;
-  border-radius: 999px;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  border-radius: 10px;
   border: 1px solid rgba(161, 174, 202, 0.58);
   background: rgba(246, 248, 253, 0.92);
   color: #52607a;
-  font-size: 0.68rem;
-  font-weight: 800;
   line-height: 1;
 }
 
 .periodics-work-order-badge-icon {
-  width: 7px;
-  height: 7px;
+  width: 16px;
+  height: 16px;
   flex: 0 0 auto;
-  border-radius: 50%;
-  background: currentColor;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+}
+
+.periodics-work-order-badge-icon svg {
+  width: 16px;
+  height: 16px;
+  display: block;
 }
 
 .periodics-work-order-badge.is-open {
@@ -28168,6 +28199,37 @@ body.is-vehicle-reservation-open {
   border-color: rgba(174, 184, 202, 0.58);
   background: rgba(244, 246, 250, 0.94);
   color: #6a7488;
+}
+
+.periodics-new-work-order-button,
+.periodics-new-work-order-menu-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+  border: 1px solid rgba(223, 58, 85, 0.36);
+  background: linear-gradient(180deg, #fff6f8, #ffe8ed);
+  color: #c22d48;
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.periodics-new-work-order-button {
+  cursor: pointer;
+  box-shadow: 0 10px 20px rgba(205, 54, 82, 0.12);
+}
+
+.periodics-new-work-order-button:hover,
+.periodics-new-work-order-button:focus-visible {
+  border-color: rgba(223, 58, 85, 0.62);
+  background: linear-gradient(180deg, #ffffff, #ffdfe7);
+  outline: none;
+  box-shadow:
+    0 0 0 3px rgba(223, 58, 85, 0.13),
+    0 12px 22px rgba(205, 54, 82, 0.16);
 }
 
 .periodics-inspection-context-menu {
@@ -28225,6 +28287,11 @@ body.is-vehicle-reservation-open {
   outline: none;
 }
 
+.periodics-inspection-context-action.is-new-rn {
+  border-color: rgba(223, 58, 85, 0.22);
+  background: linear-gradient(180deg, #fffefe, #fff5f7);
+}
+
 .periodics-inspection-context-copy {
   min-width: 0;
   display: grid;
@@ -28246,10 +28313,11 @@ body.is-vehicle-reservation-open {
 
 .periodics-group-due {
   flex: 0 0 auto;
-  min-width: 150px;
+  min-width: 184px;
   border-right: 0;
   padding: 0;
   background: transparent;
+  justify-content: end;
 }
 
 .periodics-due-pill {
@@ -45590,6 +45658,195 @@ button.work-order-editor-section-head {
 .work-order-service-item-title-row .work-order-service-code-badge,
 .work-order-service-template-hint {
   display: none !important;
+}
+
+/* Premium RN modal pass: top summary cards stay visible and the editor reads like one polished workspace. */
+.work-order-editor-panel.is-modal-open {
+  width: min(1780px, calc(100vw - 18px));
+  height: calc(100vh - 24px);
+  top: 12px;
+  border-radius: 24px;
+  border-color: rgba(183, 197, 222, 0.82);
+  background: #f6f8fb;
+  box-shadow:
+    0 34px 88px rgba(26, 39, 68, 0.24),
+    0 0 0 1px rgba(255, 255, 255, 0.9) inset;
+}
+
+.work-order-editor-main,
+.work-order-editor-panel {
+  background:
+    linear-gradient(180deg, rgba(250, 252, 255, 0.98), rgba(242, 246, 251, 0.98));
+}
+
+.work-order-editor-fixed-head {
+  gap: 12px;
+  padding: 14px 16px 14px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 249, 253, 0.96));
+  border-bottom: 1px solid rgba(213, 223, 239, 0.86);
+}
+
+.work-order-editor-topbar {
+  min-height: 42px;
+}
+
+.work-order-editor-type-mark {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  padding: 0;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #1fa46f, #3478f6);
+  box-shadow: 0 12px 24px rgba(52, 120, 246, 0.18);
+}
+
+.work-order-editor-hero {
+  display: grid !important;
+  grid-template-columns: minmax(260px, 0.66fr) minmax(0, 1.34fr);
+  gap: 14px;
+  padding: 12px;
+  border-radius: 20px;
+  border-color: rgba(203, 216, 238, 0.94);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(247, 251, 255, 0.96));
+  box-shadow:
+    0 16px 34px rgba(42, 58, 91, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.96);
+}
+
+.work-order-editor-hero-copy {
+  min-width: 0;
+  padding: 4px 2px 2px 4px;
+}
+
+.work-order-editor-hero-copy h2 {
+  font-size: 1.12rem;
+  line-height: 1.15;
+}
+
+.work-order-editor-company-primary {
+  font-size: 0.94rem;
+}
+
+.work-order-editor-company-line,
+.work-order-editor-subtitle {
+  font-size: 0.76rem;
+}
+
+.work-order-editor-meta {
+  gap: 10px;
+}
+
+.work-order-editor-chip-row {
+  gap: 8px;
+}
+
+.work-order-editor-facts {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.work-order-editor-meta-item {
+  grid-template-columns: 30px minmax(0, 1fr);
+  min-height: 74px;
+  padding: 11px 12px;
+  border-radius: 16px;
+  border-color: rgba(205, 218, 238, 0.96);
+  background:
+    linear-gradient(180deg, #ffffff, #f7faff);
+  box-shadow:
+    0 10px 24px rgba(38, 54, 86, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.96);
+}
+
+.work-order-editor-meta-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 11px;
+  background: #eef6f3;
+  color: #1f8a62;
+}
+
+.work-order-editor-meta-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.work-order-editor-meta-label {
+  color: #71809b;
+  font-size: 0.56rem;
+  letter-spacing: 0.08em;
+}
+
+.work-order-editor-meta-value {
+  color: #17243b;
+  font-size: 0.74rem;
+}
+
+.work-order-editor-body {
+  padding: 14px 16px 18px;
+  background: linear-gradient(180deg, rgba(247, 250, 253, 0.96), rgba(243, 247, 251, 0.98));
+}
+
+.work-order-editor-section[data-work-order-section] {
+  border-radius: 18px;
+  border-color: rgba(203, 216, 238, 0.86);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow:
+    0 14px 34px rgba(36, 51, 84, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.96);
+}
+
+button.work-order-editor-section-head {
+  min-height: 48px;
+}
+
+.work-order-editor-form .field {
+  border-color: rgba(205, 218, 238, 0.92);
+  background: linear-gradient(180deg, #ffffff, #f8fbff);
+}
+
+.work-order-editor-form input,
+.work-order-editor-form select,
+.work-order-editor-form textarea,
+.work-order-inline-executor-picker,
+.work-order-inline-service-picker {
+  border-color: rgba(190, 205, 230, 0.9);
+  background: #ffffff;
+  color: #18243a;
+}
+
+.work-order-editor-heading-actions .helper-copy,
+.work-order-save-state {
+  font-size: 0.74rem;
+}
+
+@media (max-width: 1180px) {
+  .work-order-editor-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .work-order-editor-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .work-order-editor-panel.is-modal-open {
+    width: calc(100vw - 8px);
+    height: calc(100vh - 8px);
+    top: 4px;
+    border-radius: 18px;
+  }
+
+  .work-order-editor-fixed-head {
+    padding: 10px;
+  }
+
+  .work-order-editor-facts {
+    grid-template-columns: 1fr;
+  }
 }
 
 .work-order-calendar-executor-menu-portal,

@@ -28492,7 +28492,6 @@ function createPeriodicsInspectionGroupCell(group = {}, expanded = false) {
     group.headquarters || "",
     group.companyOib ? `OIB ${group.companyOib}` : "",
     `${Number(group.count || 0)} ${Number(group.count || 0) === 1 ? "ispitivanje" : "ispitivanja"}`,
-    getPeriodicsInspectionWorkOrderSummary(group.items),
   ].filter(Boolean).join(" · ");
 
   const due = createPeriodicsDueCell(group.nextDueDate || "", group.nextDueState || {});
@@ -28661,92 +28660,170 @@ function getPeriodicsInspectionWorkOrder(entry = {}) {
   )) || null;
 }
 
-function getPeriodicsInspectionWorkOrderStatusInfo(entry = {}) {
-  const workOrder = getPeriodicsInspectionWorkOrder(entry);
+function isPeriodicsInspectionExpired(entry = {}) {
+  const daysUntil = Number(entry?.dueState?.daysUntil);
+  return Number.isFinite(daysUntil) && daysUntil < 0;
+}
+
+function isPeriodicsInspectionSourceWorkOrder(workOrder = null, entry = {}) {
+  if (!workOrder?.id) {
+    return false;
+  }
+
+  const entryWorkOrderId = String(entry?.workOrderId || "").trim();
+  const entryWorkOrderNumber = String(entry?.workOrderNumber || "").trim().toUpperCase();
+  const workOrderNumber = String(workOrder?.workOrderNumber || "").trim().toUpperCase();
+
+  return Boolean(
+    (entryWorkOrderId && entryWorkOrderId === String(workOrder.id))
+    || (entryWorkOrderNumber && workOrderNumber && entryWorkOrderNumber === workOrderNumber),
+  );
+}
+
+function getPeriodicsInspectionActiveWorkOrderState(workOrder = null, entry = {}) {
+  if (!workOrder?.id) {
+    return null;
+  }
+
   const status = String(workOrder?.status || entry?.workOrderStatus || "").trim();
   const normalizedStatus = normalizeLooseName(status);
+  const entryMatchesWorkOrder = Boolean(
+    workOrder?.id
+    && (
+      String(entry?.workOrderId || "").trim() === String(workOrder.id)
+      || (
+        String(entry?.workOrderNumber || "").trim()
+        && String(entry.workOrderNumber || "").trim().toUpperCase() === String(workOrder.workOrderNumber || "").trim().toUpperCase()
+      )
+    ),
+  );
   const verified = Boolean(
-    entry?.workOrderVerified
+    (entryMatchesWorkOrder && entry?.workOrderVerified)
     || Number(workOrder?.documentSummary?.verifiedWorkOrderCount || 0) > 0
     || normalizedStatus.includes("ovjeren"),
   );
 
   if (verified) {
     return {
-      label: "Ovjeren",
-      shortLabel: "OV",
+      state: "verified",
+      label: "Ovjeren RN",
       toneClass: "is-verified",
-      title: status ? `RN je ovjeren (${status}).` : "RN je ovjeren.",
+      title: status ? `Postoji ovjeren RN (${status}).` : "Postoji ovjeren RN.",
     };
   }
 
-  if (normalizedStatus.includes("fakturiran")) {
+  if (
+    workOrder?.id
+    && (
+      !normalizedStatus
+      || normalizedStatus.includes("otvoren")
+      || normalizedStatus.includes("open")
+      || normalizedStatus.includes("u radu")
+      || normalizedStatus.includes("novo")
+    )
+  ) {
     return {
-      label: "Fakturiran",
-      shortLabel: "FA",
-      toneClass: "is-invoiced",
-      title: "RN je fakturiran.",
-    };
-  }
-
-  if (normalizedStatus.includes("gotov")) {
-    return {
-      label: "Gotov",
-      shortLabel: "GO",
-      toneClass: "is-done",
-      title: "RN je označen kao gotov.",
-    };
-  }
-
-  if (normalizedStatus.includes("storno")) {
-    return {
-      label: "Storno",
-      shortLabel: "ST",
-      toneClass: "is-cancelled",
-      title: "RN je storniran.",
-    };
-  }
-
-  if (workOrder?.id) {
-    return {
-      label: "Otvoren",
-      shortLabel: "RN",
+      state: "open",
+      label: "Otvoren RN",
       toneClass: "is-open",
-      title: status ? `RN je otvoren (${status}).` : "RN je otvoren.",
+      title: status ? `Postoji otvoren RN (${status}).` : "Postoji otvoren RN.",
+    };
+  }
+
+  return null;
+}
+
+function getPeriodicsInspectionActiveWorkOrder(entry = {}) {
+  const linkedWorkOrder = getPeriodicsInspectionWorkOrder(entry);
+  if (
+    linkedWorkOrder?.id
+    && !isPeriodicsInspectionExpired(entry)
+    && getPeriodicsInspectionActiveWorkOrderState(linkedWorkOrder, entry)
+  ) {
+    return linkedWorkOrder;
+  }
+
+  const companyId = String(entry?.companyId || "").trim();
+  const locationId = String(entry?.locationId || "").trim();
+  const serviceNeedle = normalizeLooseName(entry?.serviceLabel || "");
+  const candidates = (state.workOrders ?? [])
+    .filter((workOrder) => {
+      if (companyId && String(workOrder?.companyId || "") !== companyId) {
+        return false;
+      }
+      if (locationId && String(workOrder?.locationId || "") !== locationId) {
+        return false;
+      }
+      if (isPeriodicsInspectionExpired(entry) && isPeriodicsInspectionSourceWorkOrder(workOrder, entry)) {
+        return false;
+      }
+      if (!getPeriodicsInspectionActiveWorkOrderState(workOrder, entry)) {
+        return false;
+      }
+      if (!serviceNeedle) {
+        return true;
+      }
+      const serviceText = normalizeLooseName([
+        getWorkOrderServiceSummary(workOrder),
+        workOrder?.serviceLine,
+        ...(getWorkOrderServiceItems(workOrder) ?? []).flatMap((item) => [
+          item?.name,
+          item?.serviceCode,
+        ]),
+      ].filter(Boolean).join(" "));
+      return Boolean(serviceText) && (serviceText.includes(serviceNeedle) || serviceNeedle.includes(serviceText));
+    })
+    .sort((left, right) => (
+      String(right?.openedDate || right?.createdAt || "").localeCompare(String(left?.openedDate || left?.createdAt || ""))
+      || String(right?.id || "").localeCompare(String(left?.id || ""))
+    ));
+
+  return candidates[0] ?? null;
+}
+
+function getPeriodicsInspectionWorkOrderStatusInfo(entry = {}) {
+  const workOrder = getPeriodicsInspectionActiveWorkOrder(entry);
+  const activeState = getPeriodicsInspectionActiveWorkOrderState(workOrder, entry);
+
+  if (activeState) {
+    return {
+      ...activeState,
+      workOrder,
     };
   }
 
   if (entry?.workOrderNumber) {
     return {
-      label: "RN broj",
-      shortLabel: "RN",
+      state: "historic",
+      label: "Stari RN",
       toneClass: "is-unlinked",
-      title: "Broj RN-a postoji u zapisniku, ali RN nije pronađen u listi.",
+      title: "Zapisnik ima raniji RN, ali nema otvorenog ili ovjerenog RN-a za novu periodiku.",
     };
   }
 
   return {
-    label: "Bez RN",
-    shortLabel: "-",
+    state: "missing",
+    label: "Novi RN",
     toneClass: "is-missing",
-    title: "Zapisnik nije povezan s RN-om.",
+    title: "Nema otvorenog ili ovjerenog RN-a za ovu periodiku.",
   };
 }
 
-function createPeriodicsInspectionWorkOrderBadge(entry = {}, { compact = false } = {}) {
+function createPeriodicsInspectionWorkOrderBadge(entry = {}) {
   const info = getPeriodicsInspectionWorkOrderStatusInfo(entry);
   const badge = document.createElement("span");
   badge.className = `periodics-work-order-badge ${info.toneClass}`;
-  badge.title = info.title;
+  badge.title = info.workOrder?.workOrderNumber
+    ? `${info.title} ${info.workOrder.workOrderNumber}`
+    : info.title;
+  badge.setAttribute("aria-label", info.label);
 
   const icon = document.createElement("span");
   icon.className = "periodics-work-order-badge-icon";
   icon.setAttribute("aria-hidden", "true");
+  icon.innerHTML = getWorkOrderIconMarkup(info.state === "verified" ? "status" : "todo");
 
-  const label = document.createElement("span");
-  label.textContent = compact ? info.shortLabel : info.label;
-
-  badge.append(icon, label);
+  badge.append(icon);
   return badge;
 }
 
@@ -28755,7 +28832,7 @@ function getPeriodicsInspectionLinkedWorkOrderTargets(entries = []) {
   const targetsByKey = new Map();
 
   sourceEntries.forEach((entry) => {
-    const workOrder = getPeriodicsInspectionWorkOrder(entry);
+    const workOrder = getPeriodicsInspectionActiveWorkOrder(entry);
     if (!workOrder?.id) {
       return;
     }
@@ -28786,10 +28863,83 @@ function getPeriodicsInspectionLinkedWorkOrderTargets(entries = []) {
     ));
 }
 
+function isPeriodicsInspectionRenewalCandidate(entry = {}) {
+  return !getPeriodicsInspectionActiveWorkOrder(entry)
+    && isPeriodicsInspectionExpired(entry);
+}
+
+function buildPeriodicsInspectionWorkOrderServiceItems(entries = []) {
+  const serviceMap = new Map();
+  (Array.isArray(entries) ? entries : [entries]).forEach((entry) => {
+    const serviceLabel = String(entry?.serviceLabel || "Ispitivanje").trim() || "Ispitivanje";
+    const serviceKey = normalizeLooseName(serviceLabel) || serviceLabel.toLowerCase();
+    if (serviceMap.has(serviceKey)) {
+      return;
+    }
+    const catalogItem = getServiceCatalogItemForWorkOrderService({
+      name: serviceLabel,
+      serviceCode: serviceLabel,
+    });
+    serviceMap.set(serviceKey, buildWorkOrderServiceItemSnapshot(catalogItem ?? {
+      name: serviceLabel,
+      serviceCode: "",
+      serviceType: "inspection",
+      status: "active",
+    }, {
+      name: serviceLabel,
+      serviceType: "inspection",
+    }));
+  });
+  return Array.from(serviceMap.values());
+}
+
+function getPeriodicsInspectionRenewalTargets(entries = []) {
+  const sourceEntries = (Array.isArray(entries) ? entries : [entries])
+    .filter(isPeriodicsInspectionRenewalCandidate);
+  const targetsByKey = new Map();
+
+  sourceEntries.forEach((entry) => {
+    const key = [
+      String(entry?.companyId || normalizeLooseName(entry?.companyName || "bez-tvrtke")).trim(),
+      String(entry?.locationId || normalizeLooseName(entry?.locationName || "bez-lokacije")).trim(),
+    ].join(":");
+    const current = targetsByKey.get(key) || {
+      key,
+      companyId: String(entry?.companyId || "").trim(),
+      companyName: String(entry?.companyName || "Bez tvrtke").trim() || "Bez tvrtke",
+      locationId: String(entry?.locationId || "").trim(),
+      locationName: String(entry?.locationName || "Bez lokacije").trim() || "Bez lokacije",
+      entries: [],
+      services: new Set(),
+      dueDate: "",
+    };
+    current.entries.push(entry);
+    if (entry?.serviceLabel) {
+      current.services.add(String(entry.serviceLabel));
+    }
+    if (entry?.dueDate && (!current.dueDate || entry.dueDate < current.dueDate)) {
+      current.dueDate = entry.dueDate;
+    }
+    targetsByKey.set(key, current);
+  });
+
+  return Array.from(targetsByKey.values())
+    .map((target) => ({
+      ...target,
+      serviceItems: buildPeriodicsInspectionWorkOrderServiceItems(target.entries),
+    }))
+    .sort((left, right) => (
+      String(left.dueDate || "9999-12-31").localeCompare(String(right.dueDate || "9999-12-31"))
+      || String(left.companyName || "").localeCompare(String(right.companyName || ""), "hr", { numeric: true })
+      || String(left.locationName || "").localeCompare(String(right.locationName || ""), "hr", { numeric: true })
+    ));
+}
+
 function getPeriodicsInspectionWorkOrderSummary(entries = []) {
   const targets = getPeriodicsInspectionLinkedWorkOrderTargets(entries);
   if (targets.length === 0) {
-    return "Bez otvorenog RN-a";
+    const renewalTargets = getPeriodicsInspectionRenewalTargets(entries);
+    return renewalTargets.length > 0 ? "Treba otvoriti RN" : "Bez otvorenog RN-a";
   }
 
   const verifiedCount = targets.filter((target) => (
@@ -28828,9 +28978,36 @@ function openPeriodicsInspectionWorkOrderTarget(target = {}) {
   return true;
 }
 
+function openPeriodicsInspectionRenewalTarget(target = {}) {
+  const entries = Array.isArray(target?.entries) ? target.entries : [];
+  const firstEntry = entries[0] || {};
+  if (!firstEntry?.companyId && !firstEntry?.companyName) {
+    return false;
+  }
+
+  closePeriodicsInspectionContextMenu();
+  activateSidebarItem("rn", { expandSidebar: state.sidebarCollapsed });
+  requestAnimationFrame(() => {
+    focusWorkOrderComposer({
+      status: "Otvoreni RN",
+      companyId: target.companyId || firstEntry.companyId || "",
+      companyName: target.companyName || firstEntry.companyName || "",
+      headquarters: firstEntry.headquarters || "",
+      companyOib: firstEntry.companyOib || "",
+      locationId: target.locationId || firstEntry.locationId || "",
+      dueDate: new Date().toISOString().slice(0, 10),
+      serviceItems: target.serviceItems || buildPeriodicsInspectionWorkOrderServiceItems(entries),
+      tagText: "periodika",
+      linkReference: target.dueDate ? `Periodika ${formatCompactDate(target.dueDate)}` : "Periodika",
+    });
+  });
+  return true;
+}
+
 function openPeriodicsInspectionContextMenu(entries = [], pointerX = 0, pointerY = 0) {
   const targets = getPeriodicsInspectionLinkedWorkOrderTargets(entries);
-  if (targets.length === 0) {
+  const renewalTargets = getPeriodicsInspectionRenewalTargets(entries);
+  if (targets.length === 0 && renewalTargets.length === 0) {
     return;
   }
 
@@ -28844,11 +29021,13 @@ function openPeriodicsInspectionContextMenu(entries = [], pointerX = 0, pointerY
   const head = document.createElement("div");
   head.className = "periodics-inspection-context-head";
   const title = document.createElement("strong");
-  title.textContent = targets.length === 1 ? "Radni nalog" : "Radni nalozi";
+  title.textContent = targets.length > 0 ? (targets.length === 1 ? "Radni nalog" : "Radni nalozi") : "Novi RN";
   const subtitle = document.createElement("span");
-  subtitle.textContent = targets.length === 1
-    ? "Otvori povezani RN za ovu stavku."
-    : `${targets.length} povezana RN-a za ove stavke.`;
+  subtitle.textContent = targets.length > 0
+    ? (targets.length === 1
+      ? "Otvori otvoreni ili ovjereni RN za ovu stavku."
+      : `${targets.length} otvorena/ovjerena RN-a za ove stavke.`)
+    : "Otvori novi RN za istekle stavke.";
   head.append(title, subtitle);
   menu.append(head);
 
@@ -28870,7 +29049,7 @@ function openPeriodicsInspectionContextMenu(entries = [], pointerX = 0, pointerY
     ].filter(Boolean).join(" · ");
     copy.append(label, meta);
 
-    button.append(copy, createPeriodicsInspectionWorkOrderBadge(target.entry, { compact: true }));
+    button.append(copy, createPeriodicsInspectionWorkOrderBadge(target.entry));
     button.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -28879,10 +29058,49 @@ function openPeriodicsInspectionContextMenu(entries = [], pointerX = 0, pointerY
     menu.append(button);
   });
 
+  renewalTargets.slice(0, 6).forEach((target) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "periodics-inspection-context-action is-new-rn";
+    button.setAttribute("role", "menuitem");
+
+    const copy = document.createElement("span");
+    copy.className = "periodics-inspection-context-copy";
+    const label = document.createElement("strong");
+    label.textContent = `Otvori novi RN · ${target.locationName || target.companyName}`;
+    const meta = document.createElement("span");
+    meta.textContent = [
+      Array.from(target.services).slice(0, 3).join(", "),
+      `${target.entries.length} ${target.entries.length === 1 ? "stavka" : "stavki"}`,
+      target.dueDate ? `rok ${formatCompactDate(target.dueDate)}` : "",
+    ].filter(Boolean).join(" · ");
+    copy.append(label, meta);
+
+    const plus = document.createElement("span");
+    plus.className = "periodics-new-work-order-menu-icon";
+    plus.setAttribute("aria-hidden", "true");
+    plus.textContent = "+";
+
+    button.append(copy, plus);
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openPeriodicsInspectionRenewalTarget(target);
+    });
+    menu.append(button);
+  });
+
   if (targets.length > 8) {
     const more = document.createElement("p");
     more.className = "periodics-inspection-context-more";
     more.textContent = `Još ${targets.length - 8} RN-a je skriveno u ovom prikazu.`;
+    menu.append(more);
+  }
+
+  if (renewalTargets.length > 6) {
+    const more = document.createElement("p");
+    more.className = "periodics-inspection-context-more";
+    more.textContent = `Još ${renewalTargets.length - 6} prijedloga za novi RN je skriveno u ovom prikazu.`;
     menu.append(more);
   }
 
@@ -28897,19 +29115,39 @@ function openPeriodicsInspectionContextMenu(entries = [], pointerX = 0, pointerY
 
 function bindPeriodicsInspectionWorkOrderContext(row, entries = []) {
   const targets = getPeriodicsInspectionLinkedWorkOrderTargets(entries);
-  if (!(row instanceof HTMLElement) || targets.length === 0) {
+  const renewalTargets = getPeriodicsInspectionRenewalTargets(entries);
+  if (!(row instanceof HTMLElement) || (targets.length === 0 && renewalTargets.length === 0)) {
     return row;
   }
 
   row.classList.add("has-periodics-work-order-context");
   const currentTitle = row.getAttribute("title") || "";
-  row.setAttribute("title", [currentTitle, "Desni klik: otvori RN."].filter(Boolean).join(" "));
+  row.setAttribute("title", [currentTitle, "Desni klik: RN akcije."].filter(Boolean).join(" "));
   row.addEventListener("contextmenu", (event) => {
     event.preventDefault();
     event.stopPropagation();
     openPeriodicsInspectionContextMenu(entries, event.clientX, event.clientY);
   });
   return row;
+}
+
+function createPeriodicsInspectionRenewalButton(entry = {}) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "periodics-new-work-order-button";
+  button.dataset.preventRowOpen = "true";
+  button.setAttribute("aria-label", "Otvori novi RN za isteklo ispitivanje");
+  button.title = "Otvori novi RN za isteklo ispitivanje";
+  button.textContent = "+";
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const [target] = getPeriodicsInspectionRenewalTargets([entry]);
+    if (target) {
+      openPeriodicsInspectionRenewalTarget(target);
+    }
+  });
+  return button;
 }
 
 function createPeriodicsCell(primary = "", secondary = "", { dimmed = false } = {}) {
@@ -28932,13 +29170,13 @@ function createPeriodicsCell(primary = "", secondary = "", { dimmed = false } = 
 }
 
 function createPeriodicsInspectionServiceCell(entry = {}) {
-  const secondary = [
-    entry.templateLabel && entry.templateLabel !== entry.serviceLabel ? entry.templateLabel : "",
-    entry.workOrderNumber ? `RN ${entry.workOrderNumber}` : "",
-  ].filter(Boolean).join(" · ");
-  const cell = createPeriodicsCell(entry.serviceLabel || "Ispitivanje", secondary);
+  const cell = createPeriodicsCell(entry.serviceLabel || "Ispitivanje");
   cell.classList.add("periodics-service-cell");
-  cell.append(createPeriodicsInspectionWorkOrderBadge(entry));
+  if (getPeriodicsInspectionActiveWorkOrder(entry)) {
+    cell.append(createPeriodicsInspectionWorkOrderBadge(entry));
+  } else if (isPeriodicsInspectionRenewalCandidate(entry)) {
+    cell.append(createPeriodicsInspectionRenewalButton(entry));
+  }
   return cell;
 }
 
@@ -29056,7 +29294,7 @@ function createPeriodicsInspectionSubgroupCell(group = {}, expanded = false, typ
 function createPeriodicsInspectionSubgroupRow(group = {}, type = "location") {
   const expanded = isPeriodicsInspectionGroupExpanded(group.key);
   const countLabel = `${Number(group.count || 0)} ${Number(group.count || 0) === 1 ? "stavka" : "stavki"}`;
-  const summaryCell = createPeriodicsCell(countLabel, getPeriodicsInspectionWorkOrderSummary(group.items));
+  const summaryCell = createPeriodicsCell(countLabel);
   summaryCell.classList.add("periodics-subgroup-summary-cell");
   const dueCell = createPeriodicsDueCell(group.nextDueDate || "", group.nextDueState || {});
 
@@ -66685,6 +66923,43 @@ function focusWorkOrderComposer(prefill = {}) {
 
   if (prefill.priority) {
     workOrderPriorityInput.value = prefill.priority;
+  }
+
+  const prefillCompanyId = String(prefill.companyId || "").trim();
+  if (prefillCompanyId) {
+    const company = getCompany(prefillCompanyId) || {
+      id: prefillCompanyId,
+      companyId: prefillCompanyId,
+      headquarters: prefill.headquarters || "",
+      companyOib: prefill.companyOib || "",
+      oib: prefill.companyOib || "",
+      contractType: prefill.contractType || "",
+    };
+    rebuildWorkOrderCompanyOptions(prefillCompanyId);
+    workOrderCompanyIdInput.value = prefillCompanyId;
+    fillWorkOrderCompanySnapshot(company);
+    rebuildWorkOrderLocationOptions("");
+  }
+
+  const prefillLocationId = String(prefill.locationId || "").trim();
+  if (prefillLocationId) {
+    rebuildWorkOrderLocationOptions(prefillLocationId);
+    workOrderLocationIdInput.value = prefillLocationId;
+    applySelectedLocationDefaults();
+  } else if (prefillCompanyId) {
+    applySelectedLocationDefaults();
+  }
+
+  if (Array.isArray(prefill.serviceItems)) {
+    writeWorkOrderServiceSelection(prefill.serviceItems);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(prefill, "linkReference")) {
+    workOrderLinkReferenceInput.value = prefill.linkReference || "";
+  }
+
+  if (Object.prototype.hasOwnProperty.call(prefill, "tagText")) {
+    workOrderTagTextInput.value = prefill.tagText || "";
   }
 
   renderWorkOrderEditorSummary();
