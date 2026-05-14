@@ -174,7 +174,7 @@ test("in-memory safety repository filters document record feeds for persisted pe
     locationId: "location-1",
     inspectionDate: "2020-01-05",
     fieldValues: {
-      VRIJEDI_DO: "2027-05-13",
+      "Vrijedi do": "2027-05-13",
     },
   });
 
@@ -206,7 +206,7 @@ test("in-memory safety repository filters document record feeds for persisted pe
   assert.equal(regularItems.some((item) => item.id === periodicRecord.id), false);
   assert.equal(periodicsItems.length, 1);
   assert.equal(periodicsItems[0].id, periodicRecord.id);
-  assert.equal(periodicsItems[0].fieldValues.VRIJEDI_DO, "2027-05-13");
+  assert.equal(periodicsItems[0].fieldValues["Vrijedi do"], "2027-05-13");
 });
 
 test("in-memory safety repository stores measurement sheet presets per template, company and location", async () => {

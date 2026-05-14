@@ -831,6 +831,7 @@ function normalizeDocumentRecordPeriodicsHaystack(value) {
   return dbString(value)
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Za-z0-9]+/g, "")
     .toUpperCase();
 }
 
@@ -843,7 +844,9 @@ function documentRecordHasPeriodicsHints(record = {}) {
     return false;
   }
 
-  return DOCUMENT_RECORD_PERIODICS_TEXT_HINTS.some((hint) => valuesJson.includes(hint));
+  return DOCUMENT_RECORD_PERIODICS_TEXT_HINTS.some((hint) => (
+    valuesJson.includes(normalizeDocumentRecordPeriodicsHaystack(hint))
+  ));
 }
 
 function normalizeDocumentRecordFieldValues(value = {}) {
@@ -12340,12 +12343,13 @@ export class MySqlSafetyRepository {
         params.push(objectId);
       }
       if (filters.periodics) {
+        const periodicsValuesExpression = "UPPER(REPLACE(REPLACE(REPLACE(COALESCE(values_json, ''), '_', ''), ' ', ''), '-', ''))";
         conditions.push(`(${
           DOCUMENT_RECORD_PERIODICS_TEXT_HINTS
-            .map(() => "UPPER(COALESCE(values_json, '')) LIKE ?")
+            .map(() => `${periodicsValuesExpression} LIKE ?`)
             .join(" OR ")
         })`);
-        params.push(...DOCUMENT_RECORD_PERIODICS_TEXT_HINTS.map((hint) => `%${hint}%`));
+        params.push(...DOCUMENT_RECORD_PERIODICS_TEXT_HINTS.map((hint) => `%${normalizeDocumentRecordPeriodicsHaystack(hint)}%`));
       }
 
       const whereClause = conditions.length > 0

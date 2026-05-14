@@ -27875,27 +27875,42 @@ function getPeriodicsDueState(dueDate = "", todayDate = null, visualSettings = g
 
 function getPeriodicsDocumentRecords() {
   const activeOrganizationId = String(state.activeOrganizationId || "").trim();
+  if (!activeOrganizationId) {
+    return [];
+  }
+
+  const recordsById = new Map();
+  const pushScopedRecords = (records = []) => {
+    (Array.isArray(records) ? records : []).forEach((record) => {
+      const recordId = String(record?.id || "").trim();
+      if (!recordId) {
+        return;
+      }
+      if (!recordsById.has(recordId)) {
+        recordsById.set(recordId, record);
+      }
+    });
+  };
+
   const periodicsFeedScope = String(state.periodicsFeed.organizationId || "").trim();
   if (
     state.periodicsFeed.loaded
-    && activeOrganizationId
     && periodicsFeedScope === activeOrganizationId
     && Array.isArray(state.periodicsFeed.records)
   ) {
-    return state.periodicsFeed.records;
+    pushScopedRecords(state.periodicsFeed.records);
   }
 
   const documentsScope = String(state.documentsExplorer.organizationId || "").trim();
   if (
     state.documentsExplorer.loaded
-    && activeOrganizationId
     && documentsScope === activeOrganizationId
     && Array.isArray(state.documentsExplorer.records)
   ) {
-    return state.documentsExplorer.records;
+    pushScopedRecords(state.documentsExplorer.records);
   }
 
-  return [];
+  return Array.from(recordsById.values());
 }
 
 function getPeriodicsRecordFreshnessKey(record = {}, dueDate = "") {
@@ -30137,7 +30152,6 @@ async function loadPeriodicsFeed({ force = false } = {}) {
       loaded: false,
       loading: false,
       error: error?.message || "Ne mogu učitati periodičke zapise.",
-      records: [],
     };
   }
 
