@@ -1836,7 +1836,6 @@ const state = {
     visibility: { ...PERIODICS_CALENDAR_VISIBILITY_DEFAULTS },
   },
   periodicsSections: {
-    inspectionsCollapsed: false,
     inspectionPeriodicsCollapsed: false,
     vehiclesCollapsed: false,
     peopleCollapsed: false,
@@ -3027,17 +3026,6 @@ const periodicsCalendarDetailList = document.querySelector("#periodics-calendar-
 const periodicsCalendarDetailEmpty = document.querySelector("#periodics-calendar-detail-empty");
 const periodicsCalendarDetailCloseButton = document.querySelector("#periodics-calendar-detail-close");
 const periodicsListView = document.querySelector("#periodics-list-view");
-const periodicsInspectionsCount = document.querySelector("#periodics-inspections-count");
-const periodicsInspectionsHeading = document.querySelector("#periodics-inspections-heading");
-const periodicsInspectionsToggleButton = document.querySelector("#periodics-inspections-toggle");
-const periodicsInspectionsBody = document.querySelector("#periodics-inspections-body");
-const periodicsInspectionsList = document.querySelector("#periodics-inspections-list");
-const periodicsInspectionsEmpty = document.querySelector("#periodics-inspections-empty");
-const periodicsInspectionsOverdue = document.querySelector("#periodics-inspections-overdue");
-const periodicsInspectionsWarning = document.querySelector("#periodics-inspections-warning");
-const periodicsInspectionsValid = document.querySelector("#periodics-inspections-valid");
-const periodicsInspectionsOverdueDot = document.querySelector("#periodics-inspections-overdue-dot");
-const periodicsInspectionsWarningDot = document.querySelector("#periodics-inspections-warning-dot");
 const periodicsInspectionPeriodicsHeading = document.querySelector("#periodics-inspection-periodics-heading");
 const periodicsInspectionPeriodicsToggleButton = document.querySelector("#periodics-inspection-periodics-toggle");
 const periodicsInspectionPeriodicsBody = document.querySelector("#periodics-inspection-periodics-body");
@@ -28680,125 +28668,6 @@ function createPeriodicsInspectionRows(entries = [], groupMode = "location-objec
     });
 }
 
-function createPeriodicsRawRecordJsonCell(record = {}) {
-  const fieldValues = record?.fieldValues && typeof record.fieldValues === "object" && !Array.isArray(record.fieldValues)
-    ? record.fieldValues
-    : {};
-  const fieldKeys = Object.keys(fieldValues);
-  const jsonText = JSON.stringify(fieldValues);
-  const cell = createPeriodicsCell(
-    fieldKeys.length ? fieldKeys.join(", ") : "values_json prazan",
-    jsonText && jsonText !== "{}" ? jsonText : "—",
-    { dimmed: fieldKeys.length === 0 },
-  );
-  cell.classList.add("periodics-raw-json-cell");
-  cell.title = jsonText || "{}";
-  return cell;
-}
-
-function getPeriodicsRawRecordUsedFieldKeys(record = {}) {
-  const keys = [];
-  const fieldValues = record?.fieldValues && typeof record.fieldValues === "object" && !Array.isArray(record.fieldValues)
-    ? record.fieldValues
-    : {};
-  const trackedDates = Array.isArray(fieldValues[PERIODICS_TRACKED_DATES_FIELD_KEY])
-    ? fieldValues[PERIODICS_TRACKED_DATES_FIELD_KEY]
-    : [];
-
-  if (trackedDates.length > 0) {
-    keys.push(PERIODICS_TRACKED_DATES_FIELD_KEY);
-  }
-
-  Object.keys(fieldValues).forEach((fieldKey) => {
-    if (fieldKey === PERIODICS_TRACKED_DATES_FIELD_KEY) {
-      return;
-    }
-    if (isPeriodicsDueDateKey(fieldKey) || isPeriodicsValidityMonthsKey(fieldKey)) {
-      keys.push(fieldKey);
-    }
-  });
-
-  return Array.from(new Set(keys));
-}
-
-function getPeriodicsRawRecordDueDateSourceText(record = {}, dueDates = []) {
-  const expirationDate = normalizePeriodicsDateToken(record?.expirationDate ?? record?.expiration_date);
-  if (expirationDate) {
-    return "koristi web_document_records.expiration_date";
-  }
-
-  const preferredSources = getPeriodicsPreferredDueDateSources(record);
-  if (preferredSources.length > 0) {
-    return `koristi trackano polje: ${preferredSources.map((entry) => entry.sourceKey).join(", ")}`;
-  }
-
-  return dueDates.length > 0
-    ? "koristi trackani datum iz values_json"
-    : "nema trackanog datuma";
-}
-
-function createPeriodicsRawDocumentRecordRows(records = getPeriodicsDocumentRecords()) {
-  const todayDate = new Date();
-  todayDate.setHours(0, 0, 0, 0);
-  const visualSettings = getPeriodicsVisualSettings();
-
-  return (Array.isArray(records) ? records : [])
-    .slice()
-    .sort((left, right) => (
-      String(right.createdAt || "").localeCompare(String(left.createdAt || ""))
-      || String(right.updatedAt || "").localeCompare(String(left.updatedAt || ""))
-      || String(right.id || "").localeCompare(String(left.id || ""))
-    ))
-    .map((record) => {
-      const dueDates = extractPeriodicsDocumentDueDates(record);
-      const firstDueDate = dueDates[0] || "";
-      const recordExpirationDate = normalizePeriodicsDateToken(record?.expirationDate ?? record?.expiration_date);
-      const dueState = firstDueDate
-        ? getPeriodicsDueState(firstDueDate, todayDate, visualSettings)
-        : { toneClass: "is-unknown", badgeLabel: "Nema datuma", daysUntil: Number.NaN };
-      const usedFieldKeys = getPeriodicsRawRecordUsedFieldKeys(record);
-      const workOrderNumber = extractDocumentsExplorerWorkOrderNumber(record);
-      const dates = [
-        record?.inspectionDate ? `inspection_date ${record.inspectionDate}` : "inspection_date NULL",
-        record?.issuedDate ? `issued_date ${record.issuedDate}` : "issued_date NULL",
-      ].join(" · ");
-      const periodicsFieldSummary = dueDates.length > 0
-        ? `vrijedi do: ${dueDates.join(", ")}`
-        : "nije izvučen vrijedi do";
-      const periodicsFieldDetails = [
-        getPeriodicsRawRecordDueDateSourceText(record, dueDates),
-        usedFieldKeys.length ? `key: ${usedFieldKeys.join(", ")}` : "nema prepoznatog keya u values_json",
-        workOrderNumber ? `RN ${workOrderNumber}` : "",
-      ].filter(Boolean).join(" · ");
-
-      return createPeriodicsRow([
-        createPeriodicsCell(String(record?.id || "—"), record?.createdAt ? `created_at ${formatCompactDateTime(record.createdAt)}` : ""),
-        createPeriodicsCell(
-          String(record?.templateId || "—"),
-          [record?.templateTitle || "", record?.documentType || ""].filter(Boolean).join(" · "),
-        ),
-        createPeriodicsCell(
-          `company_id ${record?.companyId || "NULL"}`,
-          `location_id ${record?.locationId || "NULL"}`,
-        ),
-        createPeriodicsCell(
-          `object_id ${record?.objectId || "NULL"}`,
-          record?.objectName ? `object_name ${record.objectName}` : "object_name \"\"",
-        ),
-        createPeriodicsCell(dates),
-        createPeriodicsCell(
-          recordExpirationDate || "NULL",
-          recordExpirationDate
-            ? "expiration_date"
-            : (firstDueDate ? `iz trackanog polja ${firstDueDate}` : "expiration_date NULL"),
-          { dimmed: !recordExpirationDate },
-        ),
-        createPeriodicsCell(periodicsFieldSummary, periodicsFieldDetails, { dimmed: dueDates.length === 0 }),
-        createPeriodicsRawRecordJsonCell(record),
-      ], dueState.toneClass);
-    });
-}
-
 function renderPeriodicsRows(target, rows = []) {
   if (!target) {
     return;
@@ -28867,13 +28736,6 @@ function bindPeriodicsSectionHeaderToggle(headingNode, toggleButton, sectionKey 
 }
 
 function syncPeriodicsSections() {
-  syncPeriodicsSectionToggle(
-    periodicsInspectionsToggleButton,
-    periodicsInspectionsBody,
-    periodicsInspectionsHeading,
-    Boolean(state.periodicsSections.inspectionsCollapsed),
-    "sirove zapise",
-  );
   syncPeriodicsSectionToggle(
     periodicsInspectionPeriodicsToggleButton,
     periodicsInspectionPeriodicsBody,
@@ -30018,7 +29880,6 @@ function renderPeriodicsModule() {
   });
   renderPeriodicsCalendarView(calendarData);
 
-  const inspectionRows = createPeriodicsRawDocumentRecordRows(rawDocumentRecords);
   const inspectionPeriodicsRows = createPeriodicsInspectionRows(inspectionEntries, "item");
 
   const vehicleRows = vehicleEntries.map((entry) => createPeriodicsRow([
@@ -30044,15 +29905,11 @@ function renderPeriodicsModule() {
     createPeriodicsDueCell(entry.dueDate, entry.dueState),
   ], entry.dueState?.toneClass));
 
-  renderPeriodicsRows(periodicsInspectionsList, inspectionRows);
   renderPeriodicsRows(periodicsInspectionPeriodicsList, inspectionPeriodicsRows);
   renderPeriodicsRows(periodicsVehiclesList, vehicleRows);
   renderPeriodicsRows(periodicsPeopleList, peopleRows);
   renderPeriodicsRows(periodicsEquipmentList, equipmentRows);
 
-  if (periodicsInspectionsCount) {
-    periodicsInspectionsCount.textContent = String(rawDocumentRecords.length);
-  }
   if (periodicsVehiclesCount) {
     periodicsVehiclesCount.textContent = String(vehicleEntries.length);
   }
@@ -30062,18 +29919,6 @@ function renderPeriodicsModule() {
   if (periodicsEquipmentCount) {
     periodicsEquipmentCount.textContent = String(equipmentEntries.length);
   }
-  syncPeriodicsSectionMetrics(
-    {
-      overdueNode: periodicsInspectionsOverdue,
-      warningNode: periodicsInspectionsWarning,
-      validNode: periodicsInspectionsValid,
-      alertOverdueNode: periodicsInspectionsOverdueDot,
-      alertWarningNode: periodicsInspectionsWarningDot,
-      bodyNode: periodicsInspectionsBody,
-    },
-    inspectionEntries,
-    visualSettings,
-  );
   syncPeriodicsSectionMetrics(
     {
       overdueNode: periodicsInspectionPeriodicsOverdue,
@@ -30160,12 +30005,6 @@ function renderPeriodicsModule() {
   }
   periodicsOverdueCount?.closest(".periodics-stat-card")?.classList.toggle("has-overdue-pulse", overdueEntries.length > 0);
 
-  if (periodicsInspectionsEmpty) {
-    periodicsInspectionsEmpty.hidden = state.periodicsFeed.loading || rawDocumentRecords.length > 0;
-    periodicsInspectionsEmpty.textContent = state.periodicsFeed.error
-      ? "Zapisnici trenutno nisu učitani. Klikni osvježi ili provjeri dokumente."
-      : "Nema zapisa u web_document_records za aktivnu organizaciju.";
-  }
   if (periodicsInspectionPeriodicsEmpty) {
     periodicsInspectionPeriodicsEmpty.hidden = state.periodicsFeed.loading || inspectionEntries.length > 0;
     periodicsInspectionPeriodicsEmpty.textContent = state.periodicsFeed.error
@@ -30189,12 +30028,12 @@ function renderPeriodicsModule() {
       periodicsHelper.textContent = "Učitavanje periodike...";
     } else if (state.periodicsFeed.error && allEntries.length === 0) {
       periodicsHelper.textContent = state.periodicsFeed.error;
-    } else if (rawDocumentRecords.length === 0 && allEntries.length === 0) {
-      periodicsHelper.textContent = "Nema zapisa u web_document_records ni drugih periodičkih obveza.";
+    } else if (allEntries.length === 0) {
+      periodicsHelper.textContent = "Nema periodičkih obveza za aktivnu organizaciju.";
     } else if (state.periodicsFeed.error) {
-      periodicsHelper.textContent = `Sirovi zapisnici nisu učitani · Vozila ${vehicleEntries.length} · Ljudi ${peopleEntries.length} · Oprema ${equipmentEntries.length}.`;
+      periodicsHelper.textContent = `Periodika Ispitivanja ${inspectionEntries.length} · Vozila ${vehicleEntries.length} · Ljudi ${peopleEntries.length} · Oprema ${equipmentEntries.length}.`;
     } else {
-      periodicsHelper.textContent = `Sirovo iz web_document_records: ${rawDocumentRecords.length} zapisa · Periodika Ispitivanja ${inspectionEntries.length} · Vozila ${vehicleEntries.length} · Ljudi ${peopleEntries.length} · Oprema ${equipmentEntries.length}.`;
+      periodicsHelper.textContent = `Periodika Ispitivanja ${inspectionEntries.length} · Vozila ${vehicleEntries.length} · Ljudi ${peopleEntries.length} · Oprema ${equipmentEntries.length}.`;
     }
   }
 
@@ -97204,11 +97043,6 @@ periodicsCalendarDetailCloseButton?.addEventListener("click", () => {
 });
 
 bindPeriodicsSectionHeaderToggle(
-  periodicsInspectionsHeading,
-  periodicsInspectionsToggleButton,
-  "inspectionsCollapsed",
-);
-bindPeriodicsSectionHeaderToggle(
   periodicsInspectionPeriodicsHeading,
   periodicsInspectionPeriodicsToggleButton,
   "inspectionPeriodicsCollapsed",
@@ -102817,7 +102651,6 @@ function resetAuthenticatedWorkspaceState() {
   state.periodicsInspectionExpandedGroups = {};
   state.periodicsPreferencesScope = "";
   state.periodicsSections = {
-    inspectionsCollapsed: false,
     inspectionPeriodicsCollapsed: false,
     vehiclesCollapsed: false,
     peopleCollapsed: false,
