@@ -7,11 +7,13 @@ import javax.naming.ldap.Rdn;
 import javax.security.auth.callback.Callback;
 import javax.security.auth.callback.PasswordCallback;
 import javax.security.auth.callback.UnsupportedCallbackException;
+import javax.security.auth.x500.X500Principal;
 import javax.swing.JDialog;
 import javax.swing.JOptionPane;
 import javax.swing.JPasswordField;
 import javax.swing.SwingUtilities;
 import java.io.FileWriter;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.GeneralSecurityException;
@@ -33,7 +35,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class TokenService {
-    private static final Pattern ELEVEN_DIGITS = Pattern.compile("\\b(\\d{11})\\b");
+    private static final Pattern ELEVEN_DIGITS = Pattern.compile("(?<!\\d)(\\d{11})(?!\\d)");
+    private static final Pattern HEX_DER_VALUE = Pattern.compile("#([0-9A-Fa-f]{4,})");
 
     public Credential resolveCredentialWithGuiPin(SignerConfig config) throws SignatureBridgeException {
         List<String> providers = config.providerOrder().isEmpty()
@@ -420,15 +423,14 @@ public final class TokenService {
             LdapName ldapName = new LdapName(dn);
             for (Rdn rdn : ldapName.getRdns()) {
                 if (rdn.getType().equalsIgnoreCase(keyNoEq)) {
-                    Object value = rdn.getValue();
-                    return value == null ? "" : value.toString();
+                    return rdnValueToString(rdn.getValue());
                 }
             }
         } catch (Exception ignored) {
             // Fall back to simple parsing.
         }
         String key = keyNoEq.endsWith("=") ? keyNoEq : keyNoEq + "=";
-        int index = dn.indexOf(key);
+        int index = dn.toUpperCase(Locale.ROOT).indexOf(key.toUpperCase(Locale.ROOT));
         if (index < 0) {
             return "";
         }
@@ -456,18 +458,101 @@ public final class TokenService {
         if (certificate == null) {
             return "";
         }
-        String subject = certificate.getSubjectX500Principal().getName();
-        String serialNumber = extractField(subject, "SERIALNUMBER");
-        String fromSerial = extractOib(serialNumber);
-        if (!fromSerial.isBlank()) {
-            return fromSerial;
+        List<String> subjects = new ArrayList<>();
+        X500Principal principal = certificate.getSubjectX500Principal();
+        subjects.add(principal.getName(X500Principal.RFC2253));
+        subjects.add(principal.getName(X500Principal.RFC1779));
+        subjects.add(principal.getName(X500Principal.CANONICAL));
+        subjects.add(certificate.getSubjectDN().getName());
+
+        for (String subject : subjects) {
+            for (String key : List.of("SERIALNUMBER", "serialNumber", "2.5.4.5")) {
+                String fromSerial = extractOib(extractField(subject, key));
+                if (!fromSerial.isBlank()) {
+                    return fromSerial;
+                }
+            }
         }
-        return extractOib(subject);
+
+        for (String subject : subjects) {
+            String fromSubject = extractOib(subject);
+            if (!fromSubject.isBlank()) {
+                return fromSubject;
+            }
+        }
+        return "";
     }
 
     public static String extractOib(String value) {
-        Matcher matcher = ELEVEN_DIGITS.matcher(String.valueOf(value == null ? "" : value));
+        String raw = String.valueOf(value == null ? "" : value);
+        String decoded = decodeEmbeddedDerHex(raw);
+        Matcher matcher = ELEVEN_DIGITS.matcher(raw + " " + decoded);
         return matcher.find() ? matcher.group(1) : "";
+    }
+
+    private static String rdnValueToString(Object value) {
+        if (value == null) {
+            return "";
+        }
+        if (value instanceof byte[] bytes) {
+            return decodeDerString(bytes);
+        }
+        return String.valueOf(value);
+    }
+
+    private static String decodeEmbeddedDerHex(String value) {
+        Matcher matcher = HEX_DER_VALUE.matcher(String.valueOf(value == null ? "" : value));
+        StringBuilder out = new StringBuilder();
+        while (matcher.find()) {
+            byte[] bytes = hexToBytes(matcher.group(1));
+            String decoded = decodeDerString(bytes);
+            if (!decoded.isBlank()) {
+                out.append(' ').append(decoded);
+            }
+        }
+        return out.toString();
+    }
+
+    private static String decodeDerString(byte[] bytes) {
+        if (bytes == null || bytes.length == 0) {
+            return "";
+        }
+        try {
+            int offset = 0;
+            int tag = bytes[offset] & 0xff;
+            if (isDerStringTag(tag) && bytes.length > 2) {
+                offset++;
+                int length = bytes[offset++] & 0xff;
+                if ((length & 0x80) != 0) {
+                    int count = length & 0x7f;
+                    length = 0;
+                    for (int i = 0; i < count && offset < bytes.length; i++) {
+                        length = (length << 8) | (bytes[offset++] & 0xff);
+                    }
+                }
+                if (length >= 0 && offset + length <= bytes.length) {
+                    byte[] content = java.util.Arrays.copyOfRange(bytes, offset, offset + length);
+                    return new String(content, tag == 0x1e ? StandardCharsets.UTF_16BE : StandardCharsets.UTF_8).trim();
+                }
+            }
+            return new String(bytes, StandardCharsets.UTF_8).trim();
+        } catch (Exception ignored) {
+            return "";
+        }
+    }
+
+    private static boolean isDerStringTag(int tag) {
+        return tag == 0x0c || tag == 0x13 || tag == 0x14 || tag == 0x16 || tag == 0x1e;
+    }
+
+    private static byte[] hexToBytes(String hex) {
+        String clean = String.valueOf(hex == null ? "" : hex).replaceAll("[^0-9A-Fa-f]", "");
+        int length = clean.length();
+        byte[] bytes = new byte[length / 2];
+        for (int i = 0; i + 1 < length; i += 2) {
+            bytes[i / 2] = (byte) Integer.parseInt(clean.substring(i, i + 2), 16);
+        }
+        return bytes;
     }
 
     private static boolean isTokenAbsent(Throwable error) {

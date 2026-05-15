@@ -3291,6 +3291,7 @@ const signaturesReviewPanel = document.querySelector("#signatures-review-panel")
 const signaturesReviewBody = document.querySelector("#signatures-review-body");
 const signaturesReviewApproveAllButton = document.querySelector("#signatures-review-approve-all");
 const signaturesReviewSignSelectedButton = document.querySelector("#signatures-review-sign-selected");
+const signaturesReviewCloseButton = document.querySelector("#signatures-review-close");
 const signaturesSettingsPanel = document.querySelector("#signatures-settings-panel");
 const signaturesSettingsOpenButton = document.querySelector("#signatures-settings-open");
 const signaturesSettingsLoadButton = document.querySelector("#signatures-settings-load");
@@ -30416,7 +30417,7 @@ function getSignatureReviewStatusLabel(status = "") {
     pending_review: "Čeka pregled",
     approved_for_signing: "OK za potpis",
     skipped_with_comment: "Preskočeno",
-    rejected_with_comment: "Ne potpisuj",
+    rejected_with_comment: "Nije OK",
     signing: "Potpisivanje",
     signed: "Potpisano",
     error: "Greška",
@@ -30438,6 +30439,24 @@ function revokeSignatureReviewPreviewUrl() {
   if (currentUrl.startsWith("blob:")) {
     URL.revokeObjectURL(currentUrl);
   }
+}
+
+function closeSignatureReviewPanel() {
+  revokeSignatureReviewPreviewUrl();
+  state.signatures.review = {
+    status: "idle",
+    job: null,
+    items: [],
+    decisions: {},
+    activeDocumentId: "",
+    activeReviewKey: "",
+    activePreviewUrl: "",
+    activePreviewLoading: false,
+    activePreviewError: "",
+    error: "",
+  };
+  document.body.classList.remove("is-signature-review-open");
+  renderSignatureReviewPanel();
 }
 
 async function fetchSignatureReviewPdfBlob(item = {}) {
@@ -30559,7 +30578,9 @@ function renderSignatureReviewPanel() {
 
   const review = state.signatures.review || {};
   signaturesReviewPanel.hidden = !Array.isArray(review.items) || review.items.length === 0;
+  document.body.classList.toggle("is-signature-review-open", !signaturesReviewPanel.hidden);
   if (signaturesReviewPanel.hidden) {
+    document.body.classList.remove("is-signature-review-open");
     return;
   }
 
@@ -30664,24 +30685,39 @@ function renderSignatureReviewPanel() {
     const actions = document.createElement("div");
     actions.className = "signature-review-preview-actions";
     [
-      ["approved_for_signing", "OK"],
-      ["rejected_with_comment", "Nije OK"],
-      ["skipped_with_comment", "Preskoči"],
-    ].forEach(([status, label]) => {
+      ["approved_for_signing", "OK", "status"],
+      ["rejected_with_comment", "Nije OK", "trash"],
+    ].forEach(([status, label, iconName]) => {
       const button = document.createElement("button");
       button.type = "button";
-      button.className = ["ghost-button", activeDecision.status === status ? "is-active" : ""].filter(Boolean).join(" ");
-      button.textContent = label;
+      button.className = [
+        "signature-review-choice-button",
+        status === "approved_for_signing" ? "is-ok" : "is-reject",
+        activeDecision.status === status ? "is-active" : "",
+      ].filter(Boolean).join(" ");
+      button.innerHTML = `${getWorkOrderIconMarkup(iconName)}<span>${label}</span>`;
       button.disabled = activeItem.status === "signed" || activeItem.status === "error";
-      button.addEventListener("click", () => updateSignatureReviewDecisionAndAdvance(activeItem.reviewKey, status));
+      button.addEventListener("click", () => {
+        if (status === "approved_for_signing") {
+          updateSignatureReviewDecisionAndAdvance(activeItem.reviewKey, status);
+          return;
+        }
+        updateSignatureReviewDecision(activeItem.reviewKey, { status });
+        window.setTimeout(() => {
+          document.querySelector(`[data-signature-review-comment="${CSS.escape(String(activeItem.reviewKey || ""))}"]`)?.focus();
+        }, 0);
+      });
       actions.append(button);
     });
     previewHead.append(copy, actions);
 
     const comment = document.createElement("textarea");
     comment.className = "signature-review-comment";
+    comment.dataset.signatureReviewComment = String(activeItem.reviewKey || "");
     comment.rows = 2;
-    comment.placeholder = "Komentar za preskok ili odbijanje...";
+    comment.placeholder = activeDecision.status === "rejected_with_comment"
+      ? "Upiši razlog zašto ovaj dokument nije OK..."
+      : "Komentar za pregled...";
     comment.value = activeDecision.comment || "";
     comment.addEventListener("input", (event) => {
       const key = String(activeItem.reviewKey || "").trim();
@@ -102812,6 +102848,10 @@ signaturesReviewApproveAllButton?.addEventListener("click", () => {
 
 signaturesReviewSignSelectedButton?.addEventListener("click", () => {
   void signApprovedSignatureReviewItems();
+});
+
+signaturesReviewCloseButton?.addEventListener("click", () => {
+  closeSignatureReviewPanel();
 });
 
 signaturesInstallSignerButton?.addEventListener("click", () => {
