@@ -16,7 +16,6 @@ import {
   PDFName,
   PDFNumber,
   PDFString,
-  PDFWidgetAnnotation,
   StandardFonts,
   rgb,
 } from "pdf-lib";
@@ -5492,19 +5491,16 @@ function addPdfSignatureField(pdfDoc, page, rect, fieldName = "") {
   acroForm.dict.set(PDFName.of("SigFlags"), PDFNumber.of(3));
 
   const fieldDict = context.obj({
+    Type: PDFName.of("Annot"),
+    Subtype: PDFName.of("Widget"),
     FT: PDFName.of("Sig"),
     T: PDFString.of(fieldName),
-    Kids: [],
+    Rect: [rect.x, rect.y, rect.x + rect.width, rect.y + rect.height],
+    F: PDFNumber.of(4),
+    P: page.ref,
   });
   const fieldRef = context.register(fieldDict);
-  const widget = PDFWidgetAnnotation.create(context, fieldRef);
-  widget.setRectangle(rect);
-  widget.setP(page.ref);
-  widget.dict.set(PDFName.of("F"), PDFNumber.of(4));
-
-  const widgetRef = context.register(widget.dict);
-  fieldDict.set(PDFName.of("Kids"), context.obj([widgetRef]));
-  page.node.addAnnot(widgetRef);
+  page.node.addAnnot(fieldRef);
   acroForm.addField(fieldRef);
 }
 
