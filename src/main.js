@@ -30707,11 +30707,12 @@ function renderSignatureReviewPanel() {
       error.textContent = review.activePreviewError;
       stage.append(error);
     } else if (review.activePreviewUrl) {
-      const object = document.createElement("object");
-      object.type = "application/pdf";
-      object.data = review.activePreviewUrl;
-      object.setAttribute("aria-label", activeItem.fileName || "PDF preview");
-      stage.append(object);
+      const frame = document.createElement("iframe");
+      frame.src = review.activePreviewUrl;
+      frame.loading = "lazy";
+      frame.referrerPolicy = "same-origin";
+      frame.setAttribute("aria-label", activeItem.fileName || "PDF preview");
+      stage.append(frame);
     }
 
     const map = document.createElement("div");
@@ -30912,10 +30913,11 @@ function openSignatureReviewPreviewModal(item = {}, pdfUrl = "") {
 
   const body = document.createElement("div");
   body.className = "signature-preview-body";
-  const object = document.createElement("object");
-  object.type = "application/pdf";
-  object.data = pdfUrl;
-  object.setAttribute("aria-label", item.fileName || "PDF preview");
+  const frame = document.createElement("iframe");
+  frame.src = pdfUrl;
+  frame.loading = "lazy";
+  frame.referrerPolicy = "same-origin";
+  frame.setAttribute("aria-label", item.fileName || "PDF preview");
 
   const map = document.createElement("div");
   map.className = "signature-preview-map";
@@ -30939,7 +30941,7 @@ function openSignatureReviewPreviewModal(item = {}, pdfUrl = "") {
     page.append(empty);
   }
   map.append(page);
-  body.append(object, map);
+  body.append(frame, map);
   modal.append(head, body);
   backdrop.append(modal);
   document.body.append(backdrop);

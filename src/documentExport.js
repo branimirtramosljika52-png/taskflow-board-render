@@ -232,7 +232,9 @@ function normalizePdfSignatureFieldSpec(item = {}, options = {}) {
     signatureFieldStandard: PDF_SIGNATURE_FIELD_STANDARD,
     label: clean(item.name) || clean(item.label) || "Potpisnik",
     roleLabel: clean(item.role) || signatureFieldRole,
-    page: Number.isFinite(Number(item.page)) ? Number(item.page) : Number(options.page || 0),
+    page: Number.isFinite(Number(item.page))
+      ? Number(item.page)
+      : (Number.isFinite(Number(options.page)) ? Number(options.page) : Number.NaN),
     x: Number.isFinite(Number(item.x)) ? Number(item.x) : Number.NaN,
     y: Number.isFinite(Number(item.y)) ? Number(item.y) : Number.NaN,
     width: Number.isFinite(Number(item.width)) ? Number(item.width) : Number.NaN,
@@ -5448,7 +5450,7 @@ function resolvePdfSignatureFieldPageIndex(spec = {}, pageCount = 1) {
   const rawPageIndex = Number.isFinite(Number(spec.pageIndex))
     ? Number(spec.pageIndex)
     : Number(spec.page || 0) - 1;
-  if (!Number.isFinite(rawPageIndex)) {
+  if (!Number.isFinite(rawPageIndex) || rawPageIndex < 0) {
     return Math.max(0, pageCount - 1);
   }
   return Math.min(Math.max(0, Math.round(rawPageIndex)), Math.max(0, pageCount - 1));

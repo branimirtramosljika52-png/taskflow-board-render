@@ -51406,7 +51406,7 @@ body.is-signatures-settings-open::before {
   background: #f8fafc;
 }
 
-.signature-review-preview-stage object {
+.signature-review-preview-stage iframe {
   width: 100%;
   height: 100%;
   min-height: 560px;
@@ -51451,7 +51451,7 @@ body.is-signatures-settings-open::before {
   min-height: 0;
 }
 
-.signature-preview-body object {
+.signature-preview-body iframe {
   width: 100%;
   height: 100%;
   border: 0;
