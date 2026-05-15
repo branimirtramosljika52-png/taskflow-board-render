@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "SafeNexus PDF Signer Bridge",
+  "description": "Connects SafeNexus web app with the local PDF signer through Chrome Native Messaging.",
+  "version": "0.1.0",
+  "permissions": [
+    "nativeMessaging"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "externally_connectable": {
+    "matches": [
+      "https://safe-nexus.org/*",
+      "http://localhost/*",
+      "http://localhost:*/*",
+      "http://127.0.0.1/*",
+      "http://127.0.0.1:*/*"
+    ]
+  }
+}

@@ -1283,7 +1283,7 @@ const COMPRESSIBLE_STATIC_EXTENSIONS = new Set([".css", ".html", ".js", ".json",
 const staticFileCache = new Map();
 let cachedRawSnapshotEntry = null;
 const scopedSnapshotCache = new Map();
-const SIGNATURE_BRIDGE_JOB_TTL_MS = 60 * 60 * 1000;
+const SIGNATURE_BRIDGE_JOB_TTL_MS = 5 * 60 * 1000;
 const SIGNATURE_BRIDGE_MAX_ITEMS = 80;
 const SIGNATURE_BRIDGE_CLAIM_TTL_MS = 20 * 60 * 1000;
 const signatureBridgeJobs = new Map();
@@ -3723,6 +3723,75 @@ function isSignatureBridgeDocumentSigned(document = {}) {
   return /\bpotpisano\b/i.test(String(document?.description || ""));
 }
 
+function normalizeSignatureFieldRole(value = "ZNR") {
+  const normalized = String(value || "ZNR")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return normalized || "ZNR";
+}
+
+function normalizeSignatureFieldOib(value = "") {
+  const digits = String(value || "").replace(/\D/g, "");
+  return /^\d{11}$/.test(digits) ? digits : "";
+}
+
+function buildSignatureFieldName(role = "ZNR", oib = "") {
+  const normalizedOib = normalizeSignatureFieldOib(oib);
+  if (!normalizedOib) {
+    return "";
+  }
+  return `SIGN_${normalizeSignatureFieldRole(role)}_${normalizedOib}`;
+}
+
+function resolveSignatureBridgeFieldMetadata(body = {}, document = {}, workOrder = {}, user = {}) {
+  const documentId = String(document?.id || "").trim();
+  const preferredFieldsByDocumentId = body?.preferredFieldsByDocumentId && typeof body.preferredFieldsByDocumentId === "object"
+    ? body.preferredFieldsByDocumentId
+    : {};
+  const fieldMetadataByDocumentId = body?.signatureFieldsByDocumentId && typeof body.signatureFieldsByDocumentId === "object"
+    ? body.signatureFieldsByDocumentId
+    : {};
+  const explicitMetadata = fieldMetadataByDocumentId[documentId] && typeof fieldMetadataByDocumentId[documentId] === "object"
+    ? fieldMetadataByDocumentId[documentId]
+    : {};
+
+  const signatureFieldRole = normalizeSignatureFieldRole(
+    explicitMetadata.role
+      || body?.signatureFieldRole
+      || document?.signatureFieldRole
+      || workOrder?.signatureFieldRole
+      || "ZNR",
+  );
+  const signatureFieldOib = normalizeSignatureFieldOib(
+    explicitMetadata.oib
+      || body?.signatureFieldOib
+      || body?.signerOib
+      || document?.signatureFieldOib
+      || document?.signerOib
+      || workOrder?.signatureFieldOib
+      || workOrder?.signerOib
+      || user?.oib
+      || "",
+  );
+  const preferredField = String(
+    preferredFieldsByDocumentId[documentId]
+      || explicitMetadata.preferredField
+      || body?.preferredField
+      || document?.preferredField
+      || buildSignatureFieldName(signatureFieldRole, signatureFieldOib)
+      || "",
+  ).trim();
+
+  return {
+    signatureFieldRole,
+    signatureFieldOib,
+    preferredField,
+    signatureFieldStandard: "SIGN_{ROLE}_{OIB}",
+  };
+}
+
 function buildSignatureBridgeSignedDescription(document = {}, job = {}) {
   const currentDescription = String(document?.description || "").trim();
   const baseDescription = currentDescription && !isSignatureBridgeDocumentSigned(document)
@@ -3791,6 +3860,10 @@ function buildSignatureBridgeJobResponse(job = {}) {
       fileName: item.fileName,
       fileType: item.fileType || "application/pdf",
       fileSize: item.fileSize || 0,
+      preferredField: item.preferredField || "",
+      signatureFieldRole: item.signatureFieldRole || "ZNR",
+      signatureFieldOib: item.signatureFieldOib || "",
+      signatureFieldStandard: item.signatureFieldStandard || "SIGN_{ROLE}_{OIB}",
       downloadUrl: `${job.apiBase}/api/signature-bridge/jobs/${encodeURIComponent(job.token)}/items/${encodeURIComponent(item.id)}/download`,
       uploadUrl: `${job.apiBase}/api/signature-bridge/jobs/${encodeURIComponent(job.token)}/items/${encodeURIComponent(item.id)}/signed`,
     })),
@@ -7345,6 +7418,7 @@ async function handleApiRequest(request, response, url) {
         },
         items: documents.map((document, index) => {
           const workOrder = workOrderById.get(String(document.workOrderId)) || {};
+          const signatureField = resolveSignatureBridgeFieldMetadata(body, document, workOrder, user);
           return {
             id: `${index + 1}-${randomUUID().slice(0, 8)}`,
             documentId: String(document.id),
@@ -7355,6 +7429,7 @@ async function handleApiRequest(request, response, url) {
             fileName: String(document.fileName || "zapisnik.pdf").trim() || "zapisnik.pdf",
             fileType: String(document.fileType || "application/pdf").trim() || "application/pdf",
             fileSize: Number(document.fileSize || 0) || 0,
+            ...signatureField,
           };
         }),
       };

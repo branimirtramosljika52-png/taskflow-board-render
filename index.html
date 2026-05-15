@@ -4869,14 +4869,42 @@
               <section class="panel signatures-local-signer-panel">
                 <div>
                   <p class="section-kicker">Certificirani potpis</p>
-                  <h3>SafeNexus Signer bridge</h3>
-                  <p class="helper-copy module-copy">DigitalOcean priprema red za potpis, lokalni signer ga sam preuzima, potpiše FINA/eOI tokenom i vrati u Documents.</p>
+                  <h3>PDF Signer</h3>
+                  <p class="helper-copy module-copy">Odaberi potpis, unesi PIN isključivo u lokalnom Signer programu i potpisani PDF se vraća u Documents.</p>
                 </div>
                 <div class="signatures-bridge-actions">
-                  <button id="signatures-open-local-signer" type="button" class="primary-button">Pošalji u red za potpis</button>
-                  <button id="signatures-copy-bridge-url" type="button" class="ghost-button">Poveži lokalni signer</button>
+                  <button id="signatures-open-local-signer" type="button" class="primary-button">Potpiši dokument</button>
+                  <button id="signatures-install-signer" type="button" class="ghost-button" hidden>Preuzmi signer</button>
                 </div>
                 <p id="signatures-bridge-status" class="signatures-bridge-status" aria-live="polite"></p>
+                <div id="signatures-debug-panel" class="signatures-debug-panel" hidden>
+                  <div class="signatures-debug-heading">
+                    <div>
+                      <p class="section-kicker">Development</p>
+                      <h4>PDF Signer debug</h4>
+                    </div>
+                    <button id="signatures-debug-ping" type="button" class="ghost-button">Test PING</button>
+                  </div>
+                  <dl class="signatures-debug-grid">
+                    <div>
+                      <dt>Extension ID</dt>
+                      <dd id="signatures-debug-extension-id">-</dd>
+                    </div>
+                    <div>
+                      <dt>Origin</dt>
+                      <dd id="signatures-debug-origin">-</dd>
+                    </div>
+                    <div>
+                      <dt>Extension detected</dt>
+                      <dd id="signatures-debug-extension-detected">Nije testirano</dd>
+                    </div>
+                    <div>
+                      <dt>Native signer detected</dt>
+                      <dd id="signatures-debug-native-detected">Nije testirano</dd>
+                    </div>
+                  </dl>
+                  <pre id="signatures-debug-last-response" class="signatures-debug-response">Nema PING odgovora.</pre>
+                </div>
               </section>
               <section class="panel signatures-list-panel">
                 <div class="section-heading offers-section-heading">

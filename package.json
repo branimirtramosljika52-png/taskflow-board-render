@@ -23,8 +23,9 @@
     "xlsx": "^0.18.5"
   },
   "scripts": {
-    "build": "npm test && node --check src/main.js && node scripts/build.mjs",
+    "build": "npm run signer:sync-config && npm test && node --check src/main.js && node scripts/build.mjs",
     "dev": "node server.js",
+    "signer:sync-config": "node scripts/sync-pdf-signer-config.mjs",
     "start": "node server.js",
     "test": "node --test"
   }

@@ -142,6 +142,13 @@ import {
   createLegacyBlocksFromBuilderDocument,
   parseBuilderDocumentFromHtml,
 } from "./core/builder.js";
+import {
+  getPdfSignerExtensionId,
+  getPdfSignerExtensionInstallUrl,
+  isPdfSignerExtensionUnavailable,
+  pingPdfSignerExtension,
+  signDocumentsWithPdfSignerExtension,
+} from "./pdfSignerExtensionBridge.js";
 
 const API_BASE = "/api";
 const WORK_ORDER_BATCH_SIZE = 60;
@@ -1629,6 +1636,15 @@ const state = {
   user: null,
   authView: "login",
   authResetEmail: "",
+  signatures: {
+    debug: {
+      extensionDetected: null,
+      nativeSignerDetected: null,
+      lastPingResponse: null,
+      lastPingError: "",
+      lastCheckedAt: "",
+    },
+  },
   activeOrganizationId: "",
   openAiIntegration: {
     status: "idle",
@@ -3242,7 +3258,15 @@ const signaturesList = document.querySelector("#signatures-list");
 const signaturesRefreshButton = document.querySelector("#signatures-refresh");
 const signaturesOpenLocalSignerButton = document.querySelector("#signatures-open-local-signer");
 const signaturesCopyBridgeUrlButton = document.querySelector("#signatures-copy-bridge-url");
+const signaturesInstallSignerButton = document.querySelector("#signatures-install-signer");
 const signaturesBridgeStatus = document.querySelector("#signatures-bridge-status");
+const signaturesDebugPanel = document.querySelector("#signatures-debug-panel");
+const signaturesDebugPingButton = document.querySelector("#signatures-debug-ping");
+const signaturesDebugExtensionId = document.querySelector("#signatures-debug-extension-id");
+const signaturesDebugOrigin = document.querySelector("#signatures-debug-origin");
+const signaturesDebugExtensionDetected = document.querySelector("#signatures-debug-extension-detected");
+const signaturesDebugNativeDetected = document.querySelector("#signatures-debug-native-detected");
+const signaturesDebugLastResponse = document.querySelector("#signatures-debug-last-response");
 const offersTotalCount = document.querySelector("#offers-total-count");
 const offersDraftCount = document.querySelector("#offers-draft-count");
 const offersSentCount = document.querySelector("#offers-sent-count");
@@ -29774,9 +29798,10 @@ function renderSignaturesModule() {
   if (signaturesOpenLocalSignerButton) {
     signaturesOpenLocalSignerButton.disabled = pendingEntries.length === 0 || state.documentsExplorer.loading;
     signaturesOpenLocalSignerButton.title = pendingEntries.length > 0
-      ? `Pripremi ${pendingEntries.length} nepotpisanih PDF zapisnika za lokalni FINA/eOI potpis.`
+      ? `Potpiši ${pendingEntries.length} nepotpisanih PDF zapisnika preko lokalnog PDF Signera.`
       : "Nema nepotpisanih PDF zapisnika za lokalni potpis.";
   }
+  updateSignatureDebugPanel();
 
   if (!signaturesList) {
     return;
@@ -29894,6 +29919,129 @@ function setSignaturesBridgeStatus(message = "", tone = "") {
   signaturesBridgeStatus.textContent = message;
   signaturesBridgeStatus.className = ["signatures-bridge-status", tone ? `is-${tone}` : ""].filter(Boolean).join(" ");
   signaturesBridgeStatus.hidden = !message;
+}
+
+function canShowSignatureDebugPanel() {
+  return getCanManageMasterData()
+    || ["localhost", "127.0.0.1"].includes(String(window.location.hostname || "").toLowerCase());
+}
+
+function formatSignatureDebugBoolean(value) {
+  if (value === true) {
+    return "Da";
+  }
+  if (value === false) {
+    return "Ne";
+  }
+  return "Nije testirano";
+}
+
+function updateSignatureDebugPanel() {
+  if (!signaturesDebugPanel) {
+    return;
+  }
+
+  const visible = canShowSignatureDebugPanel();
+  signaturesDebugPanel.hidden = !visible;
+  if (!visible) {
+    return;
+  }
+
+  const debug = state.signatures?.debug ?? {};
+  if (signaturesDebugExtensionId) {
+    signaturesDebugExtensionId.textContent = getPdfSignerExtensionId() || "Nije postavljen";
+  }
+  if (signaturesDebugOrigin) {
+    signaturesDebugOrigin.textContent = window.location.origin || "-";
+  }
+  if (signaturesDebugExtensionDetected) {
+    signaturesDebugExtensionDetected.textContent = formatSignatureDebugBoolean(debug.extensionDetected);
+    signaturesDebugExtensionDetected.dataset.state = debug.extensionDetected === true
+      ? "ok"
+      : debug.extensionDetected === false
+        ? "error"
+        : "idle";
+  }
+  if (signaturesDebugNativeDetected) {
+    signaturesDebugNativeDetected.textContent = formatSignatureDebugBoolean(debug.nativeSignerDetected);
+    signaturesDebugNativeDetected.dataset.state = debug.nativeSignerDetected === true
+      ? "ok"
+      : debug.nativeSignerDetected === false
+        ? "error"
+        : "idle";
+  }
+  if (signaturesDebugLastResponse) {
+    const payload = debug.lastPingResponse ?? (debug.lastPingError
+      ? { error: debug.lastPingError, checkedAt: debug.lastCheckedAt || "" }
+      : null);
+    signaturesDebugLastResponse.textContent = payload
+      ? JSON.stringify(payload, null, 2)
+      : "Nema PING odgovora.";
+  }
+}
+
+function setSignatureDebugFromPingResponse(response = {}) {
+  state.signatures.debug = {
+    extensionDetected: true,
+    nativeSignerDetected: true,
+    lastPingResponse: {
+      ...response,
+      checkedAt: new Date().toISOString(),
+    },
+    lastPingError: "",
+    lastCheckedAt: new Date().toISOString(),
+  };
+  updateSignatureDebugPanel();
+}
+
+function setSignatureDebugFromPingError(error = {}) {
+  const nativeUnavailable = error?.code === "NATIVE_HOST_UNAVAILABLE";
+  state.signatures.debug = {
+    extensionDetected: nativeUnavailable ? true : false,
+    nativeSignerDetected: false,
+    lastPingResponse: error?.details && Object.keys(error.details).length > 0
+      ? {
+        ...error.details,
+        checkedAt: new Date().toISOString(),
+      }
+      : null,
+    lastPingError: error?.message || "PDF Signer PING nije uspio.",
+    lastCheckedAt: new Date().toISOString(),
+  };
+  updateSignatureDebugPanel();
+}
+
+async function runSignatureDebugPing({ showStatus = true } = {}) {
+  if (signaturesDebugPingButton) {
+    signaturesDebugPingButton.disabled = true;
+    signaturesDebugPingButton.classList.add("is-loading");
+  }
+  if (showStatus) {
+    setSignaturesBridgeStatus("Testiram PDF Signer PING...", "loading");
+  }
+
+  try {
+    const response = await pingPdfSignerExtension();
+    setSignatureDebugFromPingResponse(response);
+    if (showStatus) {
+      setSignaturesBridgeStatus("PING_SIGNER radi: extension i native signer su dostupni.", "ready");
+    }
+    return response;
+  } catch (error) {
+    setSignatureDebugFromPingError(error);
+    if (showStatus) {
+      const message = error?.code === "NATIVE_HOST_UNAVAILABLE"
+        ? "Extension je dostupan, ali Native Messaging host nije registriran ili nije pokrenut."
+        : (error?.message || "PDF Signer nije dostupan.");
+      setSignaturesBridgeStatus(message, isPdfSignerExtensionUnavailable(error) ? "warning" : "error");
+    }
+    throw error;
+  } finally {
+    if (signaturesDebugPingButton) {
+      signaturesDebugPingButton.disabled = false;
+      signaturesDebugPingButton.classList.remove("is-loading");
+    }
+  }
 }
 
 const SIGNATURE_BRIDGE_KEY_STORAGE_KEY = "safeNexus.signatureBridge.key";
@@ -30056,21 +30204,22 @@ function waitForLocalSignatureBridge(ms = 2500) {
 async function openLocalSignatureBridge() {
   const pendingEntries = buildSignatureModuleDocumentEntries().filter((entry) => !entry.signed);
   if (pendingEntries.length === 0) {
-    setSignaturesBridgeStatus("Nema nepotpisanih PDF zapisnika za slanje u lokalni signer.", "warning");
+    setSignaturesBridgeStatus("Nema nepotpisanih PDF zapisnika za potpis.", "warning");
     return;
   }
 
   signaturesOpenLocalSignerButton.disabled = true;
   signaturesOpenLocalSignerButton.classList.add("is-loading");
+  if (signaturesInstallSignerButton) {
+    signaturesInstallSignerButton.hidden = true;
+  }
   const bridgeKey = getSignatureBridgeKey();
-  setSignaturesBridgeStatus(`DigitalOcean priprema ${pendingEntries.length} zapisnika za lokalni potpis...`, "loading");
+  setSignaturesBridgeStatus("Provjeravam PDF Signer...", "loading");
 
   try {
-    try {
-      await pairLocalSignatureBridgeDirect(bridgeKey);
-    } catch {
-      // Ako lokalni signer nije upaljen, job svejedno ide u cloud red i signer će ga povući čim se poveže.
-    }
+    await runSignatureDebugPing({ showStatus: false });
+    setSignaturesBridgeStatus("Pripremam dokumente za potpis...", "loading");
+
     const payload = await apiRequest("/signature-bridge/jobs", {
       method: "POST",
       body: {
@@ -30079,8 +30228,29 @@ async function openLocalSignatureBridge() {
         documentIds: pendingEntries.map((entry) => entry.documentItem?.id).filter(Boolean),
       },
     });
+
+    const documents = (Array.isArray(payload.items) ? payload.items : []).map((item) => ({
+      id: item.documentId || item.id,
+      documentId: item.documentId || "",
+      fileName: item.fileName || "zapisnik.pdf",
+      preferredField: item.preferredField || "",
+      signatureFieldRole: item.signatureFieldRole || "",
+      signatureFieldOib: item.signatureFieldOib || "",
+    }));
+
+    setSignaturesBridgeStatus("Otvori lokalni prozor signera i unesi PIN tamo. SafeNexus ne prima i ne sprema PIN.", "loading");
+    const signResult = await signDocumentsWithPdfSignerExtension({
+      jobId: payload.token || "",
+      token: payload.token || "",
+      apiBaseUrl: payload.apiBase || window.location.origin,
+      documents,
+    });
+
+    const signedCount = Number(signResult.signed ?? signResult.downloaded ?? documents.length) || documents.length;
     setSignaturesBridgeStatus(
-      `${payload.items?.length || pendingEntries.length} zapisnika je u DigitalOcean redu za potpis. Lokalni SafeNexus Signer će ih sam preuzeti. Bridge ključ: ${bridgeKey}`,
+      signedCount === 1
+        ? "Potpisano. Osvježavam dokumente..."
+        : `Potpisano ${signedCount} dokumenata. Osvježavam dokumente...`,
       "ready",
     );
     [5000, 12000, 25000, 45000, 90000].forEach((delay) => {
@@ -30089,7 +30259,17 @@ async function openLocalSignatureBridge() {
       }, delay);
     });
   } catch (error) {
-    setSignaturesBridgeStatus(error.message || "Nije moguće pripremiti lokalni potpis.", "error");
+    if (isPdfSignerExtensionUnavailable(error)) {
+      if (signaturesInstallSignerButton) {
+        signaturesInstallSignerButton.hidden = false;
+      }
+      setSignaturesBridgeStatus(
+        "Za digitalno potpisivanje instaliraj PDF Signer ekstenziju i lokalni Signer program.",
+        "warning",
+      );
+    } else {
+      setSignaturesBridgeStatus(error.message || "Nije moguće pokrenuti potpisivanje.", "error");
+    }
   } finally {
     signaturesOpenLocalSignerButton.disabled = false;
     signaturesOpenLocalSignerButton.classList.remove("is-loading");
@@ -101527,6 +101707,16 @@ signaturesRefreshButton?.addEventListener("click", () => {
 
 signaturesOpenLocalSignerButton?.addEventListener("click", () => {
   void openLocalSignatureBridge();
+});
+
+signaturesInstallSignerButton?.addEventListener("click", () => {
+  window.open(getPdfSignerExtensionInstallUrl(), "_blank", "noopener,noreferrer");
+});
+
+signaturesDebugPingButton?.addEventListener("click", () => {
+  void runSignatureDebugPing().catch(() => {
+    // Status and debug payload are rendered in the panel.
+  });
 });
 
 signaturesCopyBridgeUrlButton?.addEventListener("click", async () => {

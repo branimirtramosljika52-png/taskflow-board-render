@@ -1,0 +1,9 @@
+{
+  "name": "hr.abeceda.pdfsigner",
+  "description": "SafeNexus PDF Signer Native Host",
+  "path": "C:\\Program Files\\PDFSigner\\PDFSigner.exe",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://kcblmjckgngeaemhkcaoklligaollnec/"
+  ]
+}

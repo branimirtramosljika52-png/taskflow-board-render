@@ -1,0 +1,14 @@
+{
+  "extensionId": "kcblmjckgngeaemhkcaoklligaollnec",
+  "nativeHostName": "hr.abeceda.pdfsigner",
+  "nativeHostDescription": "SafeNexus PDF Signer Native Host",
+  "nativeHostPath": "C:\\Program Files\\PDFSigner\\PDFSigner.exe",
+  "installUrl": "/browser-extension/pdf-signer-bridge/README.md",
+  "externallyConnectableMatches": [
+    "https://safe-nexus.org/*",
+    "http://localhost/*",
+    "http://localhost:*/*",
+    "http://127.0.0.1/*",
+    "http://127.0.0.1:*/*"
+  ]
+}
