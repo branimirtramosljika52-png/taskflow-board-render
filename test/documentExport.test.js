@@ -616,8 +616,8 @@ test("render model digital signature adds SIGN_ROLE_OIB signature field", async 
             title: "Potpis",
             items: [
               {
-                role: "Ispitivac",
-                name: "Ana Ivic",
+                role: "Ispitiva\u010d",
+                name: "Ana Ivi\u0107",
                 signatureMode: "digital",
                 signerOib: "91977516569",
                 signatureFieldRole: "ZNR",

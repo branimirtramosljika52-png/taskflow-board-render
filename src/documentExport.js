@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import fontkit from "@pdf-lib/fontkit";
 import CDP from "chrome-remote-interface";
 import Docxtemplater from "docxtemplater";
 import JSZip from "jszip";
@@ -5504,6 +5505,18 @@ function addPdfSignatureField(pdfDoc, page, rect, fieldName = "") {
   acroForm.addField(fieldRef);
 }
 
+async function embedPdfSignaturePlaceholderFonts(pdfDoc) {
+  pdfDoc.registerFontkit(fontkit);
+  const [regularBytes, boldBytes] = await Promise.all([
+    readFile(PDF_FONTS.regular),
+    readFile(PDF_FONTS.bold),
+  ]);
+  return {
+    regular: await pdfDoc.embedFont(regularBytes, { subset: true }),
+    bold: await pdfDoc.embedFont(boldBytes, { subset: true }),
+  };
+}
+
 export async function addPdfSignatureFieldsToBuffer(pdfBuffer = Buffer.alloc(0), signatureFields = []) {
   const safeBuffer = Buffer.isBuffer(pdfBuffer) ? pdfBuffer : Buffer.from(pdfBuffer ?? []);
   const normalizedFields = (Array.isArray(signatureFields) ? signatureFields : [])
@@ -5525,10 +5538,7 @@ export async function addPdfSignatureFieldsToBuffer(pdfBuffer = Buffer.alloc(0),
 
   const form = pdfDoc.getForm();
   const existingFieldNames = new Set(form.getFields().map((field) => field.getName()));
-  const fonts = {
-    regular: await pdfDoc.embedFont(StandardFonts.Helvetica),
-    bold: await pdfDoc.embedFont(StandardFonts.HelveticaBold),
-  };
+  const fonts = await embedPdfSignaturePlaceholderFonts(pdfDoc);
   const addedFieldNames = new Set();
 
   normalizedFields.forEach((field, index) => {
