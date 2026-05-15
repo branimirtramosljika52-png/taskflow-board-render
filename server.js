@@ -3915,6 +3915,9 @@ function buildSignatureBridgeJobResponse(job = {}) {
       signatureFieldRole: item.signatureFieldRole || "ZNR",
       signatureFieldOib: item.signatureFieldOib || "",
       signatureFieldStandard: item.signatureFieldStandard || "SIGN_{ROLE}_{OIB}",
+      signatureFieldsJson: item.signatureFieldsJson || "",
+      signatureLabel: item.signatureLabel || "",
+      signatureSigner: item.signatureSigner || "",
       downloadUrl: `${job.apiBase}/api/signature-bridge/jobs/${encodeURIComponent(job.token)}/items/${encodeURIComponent(item.id)}/download`,
       uploadUrl: `${job.apiBase}/api/signature-bridge/jobs/${encodeURIComponent(job.token)}/items/${encodeURIComponent(item.id)}/signed`,
     })),
@@ -7445,7 +7448,22 @@ async function handleApiRequest(request, response, url) {
 
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
-      const documents = await buildSignatureBridgeCandidateDocuments(scopedSnapshot, body?.documentIds ?? []);
+      const signatureRequests = Array.isArray(body?.signatureRequests)
+        ? body.signatureRequests
+          .map((entry) => ({
+            documentId: String(entry?.documentId || entry?.id || "").trim(),
+            preferredField: String(entry?.preferredField || entry?.fieldName || "").trim(),
+            role: String(entry?.role || entry?.signatureFieldRole || "").trim(),
+            oib: String(entry?.oib || entry?.signatureFieldOib || "").trim(),
+            label: String(entry?.label || entry?.signatureLabel || "").trim(),
+            signer: String(entry?.signer || entry?.signatureSigner || entry?.signerName || "").trim(),
+          }))
+          .filter((entry) => entry.documentId)
+        : [];
+      const requestedDocumentIds = signatureRequests.length > 0
+        ? signatureRequests.map((entry) => entry.documentId)
+        : (body?.documentIds ?? []);
+      const documents = await buildSignatureBridgeCandidateDocuments(scopedSnapshot, requestedDocumentIds);
       if (documents.length === 0) {
         sendError(response, 400, "Nema nepotpisanih PDF zapisnika za lokalni potpis.");
         return true;
@@ -7470,12 +7488,38 @@ async function handleApiRequest(request, response, url) {
         user: {
           id: user.id,
           fullName: user.fullName || user.username || user.email || "SafeNexus",
-          email: user.email || "",
-          username: user.username || "",
-        },
-        items: documents.map((document, index) => {
+        email: user.email || "",
+        username: user.username || "",
+      },
+        items: (signatureRequests.length > 0
+          ? signatureRequests
+            .map((signatureRequest) => ({
+              signatureRequest,
+              document: documents.find((document) => String(document.id) === String(signatureRequest.documentId)),
+            }))
+            .filter((entry) => entry.document)
+          : documents.map((document) => ({ document, signatureRequest: {} }))
+        ).map(({ document, signatureRequest }, index) => {
           const workOrder = workOrderById.get(String(document.workOrderId)) || {};
-          const signatureField = resolveSignatureBridgeFieldMetadata(body, document, workOrder, user);
+          const documentId = String(document.id);
+          const requestFieldMetadata = signatureRequest && Object.keys(signatureRequest).length > 0
+            ? {
+              preferredFieldsByDocumentId: {
+                [documentId]: signatureRequest.preferredField,
+              },
+              signatureFieldsByDocumentId: {
+                [documentId]: {
+                  role: signatureRequest.role,
+                  oib: signatureRequest.oib,
+                  preferredField: signatureRequest.preferredField,
+                },
+              },
+            }
+            : {};
+          const signatureField = resolveSignatureBridgeFieldMetadata({
+            ...body,
+            ...requestFieldMetadata,
+          }, document, workOrder, user);
           return {
             id: `${index + 1}-${randomUUID().slice(0, 8)}`,
             documentId: String(document.id),
@@ -7486,6 +7530,9 @@ async function handleApiRequest(request, response, url) {
             fileName: String(document.fileName || "zapisnik.pdf").trim() || "zapisnik.pdf",
             fileType: String(document.fileType || "application/pdf").trim() || "application/pdf",
             fileSize: Number(document.fileSize || 0) || 0,
+            signatureFieldsJson: String(document.signatureFieldsJson || "").trim(),
+            signatureLabel: signatureRequest?.label || "",
+            signatureSigner: signatureRequest?.signer || "",
             ...signatureField,
           };
         }),

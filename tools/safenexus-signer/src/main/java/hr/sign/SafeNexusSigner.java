@@ -46,6 +46,10 @@ public final class SafeNexusSigner {
     }
 
     public static void main(String[] args) throws Exception {
+        if (hasArg(args, "--settings")) {
+            SignerSettingsDialog.open();
+            return;
+        }
         String launchArg = normalizeLaunchArg(args);
         boolean bridgeStarted = false;
         try {
@@ -612,6 +616,18 @@ public final class SafeNexusSigner {
         }
 
         return stripWrappingQuotes(String.join("", args));
+    }
+
+    private static boolean hasArg(String[] args, String expected) {
+        if (args == null || expected == null) {
+            return false;
+        }
+        for (String arg : args) {
+            if (expected.equalsIgnoreCase(String.valueOf(arg == null ? "" : arg).trim())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static String stripWrappingQuotes(String value) {

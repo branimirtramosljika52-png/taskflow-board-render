@@ -17,10 +17,11 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class PdfSignatureFieldService {
-    private static final Pattern SIGN_FIELD_PATTERN = Pattern.compile("^SIGN_[A-Z0-9_]+_\\d{11}$");
+    private static final Pattern SIGN_FIELD_PATTERN = Pattern.compile("^SIGN_([A-Z0-9_]+)_(\\d{11})$");
 
     public List<SignatureFieldInfo> listSignatureFields(byte[] pdfBytes) throws Exception {
         List<SignatureFieldInfo> fields = new ArrayList<>();
@@ -83,30 +84,64 @@ public final class PdfSignatureFieldService {
             String role,
             String oib
     ) {
+        FieldMatch match = resolveMatchingField(fields, preferredField, role, oib, oib);
+        return match.field() == null ? Optional.empty() : Optional.of(match.field());
+    }
+
+    public FieldMatch resolveMatchingField(
+            List<SignatureFieldInfo> fields,
+            String preferredField,
+            String role,
+            String requestedOib,
+            String signerOib
+    ) {
+        String normalizedSignerOib = normalizeOib(signerOib);
+        String normalizedRequestedOib = normalizeOib(requestedOib);
+        String effectiveOib = !normalizedSignerOib.isBlank() ? normalizedSignerOib : normalizedRequestedOib;
+        if (effectiveOib.isBlank()) {
+            return FieldMatch.error("NO_MATCHING_SIGNATURE_FIELD", "Nije poznat OIB potpisnika za match signature fielda.");
+        }
+
         String preferred = normalizeFieldName(preferredField);
         if (!preferred.isBlank()) {
             Optional<SignatureFieldInfo> explicit = findByName(fields, preferred);
             if (explicit.isPresent()) {
-                return explicit;
+                String fieldOib = extractOibFromFieldName(explicit.get().fieldName());
+                if (!fieldOib.isBlank() && !fieldOib.equals(effectiveOib)) {
+                    return FieldMatch.error(
+                            "NO_MATCHING_SIGNATURE_FIELD",
+                            "Preferred signature field ne odgovara OIB-u certifikata."
+                    );
+                }
+                return FieldMatch.single(explicit.get());
             }
         }
 
-        String standard = buildStandardFieldName(role, oib);
+        String standard = buildStandardFieldName(role, effectiveOib);
         if (!standard.isBlank()) {
             Optional<SignatureFieldInfo> byStandard = findByName(fields, standard);
             if (byStandard.isPresent()) {
-                return byStandard;
+                return FieldMatch.single(byStandard.get());
             }
         }
 
-        String normalizedOib = normalizeOib(oib);
-        if (!normalizedOib.isBlank()) {
-            return fields.stream()
-                    .filter(field -> field.fieldName().endsWith("_" + normalizedOib))
-                    .findFirst();
+        List<SignatureFieldInfo> byOib = fields.stream()
+                .filter(field -> effectiveOib.equals(extractOibFromFieldName(field.fieldName())))
+                .toList();
+        if (byOib.size() == 1) {
+            return FieldMatch.single(byOib.get(0));
+        }
+        if (byOib.size() > 1) {
+            return FieldMatch.error(
+                    "MULTIPLE_MATCHING_SIGNATURE_FIELDS",
+                    "Pronadjeno je vise signature fieldova za isti OIB. Posalji preferredField."
+            );
         }
 
-        return Optional.empty();
+        return FieldMatch.error(
+                "NO_MATCHING_SIGNATURE_FIELD",
+                "Nije pronadjeno signature polje koje odgovara OIB-u certifikata."
+        );
     }
 
     public String buildStandardFieldName(String role, String oib) {
@@ -124,6 +159,16 @@ public final class PdfSignatureFieldService {
 
     public boolean looksLikeStandardField(String fieldName) {
         return SIGN_FIELD_PATTERN.matcher(normalizeFieldName(fieldName)).matches();
+    }
+
+    public String extractRoleFromFieldName(String fieldName) {
+        Matcher matcher = SIGN_FIELD_PATTERN.matcher(normalizeFieldName(fieldName));
+        return matcher.matches() ? matcher.group(1) : "";
+    }
+
+    public String extractOibFromFieldName(String fieldName) {
+        Matcher matcher = SIGN_FIELD_PATTERN.matcher(normalizeFieldName(fieldName));
+        return matcher.matches() ? matcher.group(2) : "";
     }
 
     private Optional<SignatureFieldInfo> findByName(List<SignatureFieldInfo> fields, String fieldName) {
@@ -150,5 +195,19 @@ public final class PdfSignatureFieldService {
             float height,
             String status
     ) {
+    }
+
+    public record FieldMatch(SignatureFieldInfo field, String code, String message) {
+        static FieldMatch single(SignatureFieldInfo field) {
+            return new FieldMatch(field, "", "");
+        }
+
+        static FieldMatch error(String code, String message) {
+            return new FieldMatch(null, code, message);
+        }
+
+        public boolean ok() {
+            return field != null;
+        }
     }
 }

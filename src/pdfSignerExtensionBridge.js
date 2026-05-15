@@ -143,16 +143,19 @@ export function signDocumentsWithPdfSignerExtension({
   token = "",
   apiBaseUrl = "",
   documents = [],
-  dryRun = false,
+  dryRun,
 } = {}) {
-  return sendMessageToPdfSignerExtension({
+  const payload = {
     type: "SIGN_DOCUMENTS",
     jobId,
     token,
     apiBaseUrl,
     documents,
-    dryRun,
-  }, { timeoutMs: 120000 });
+  };
+  if (typeof dryRun === "boolean") {
+    payload.dryRun = dryRun;
+  }
+  return sendMessageToPdfSignerExtension(payload, { timeoutMs: 120000 });
 }
 
 export function getSignatureFieldsWithPdfSignerExtension({
@@ -168,4 +171,23 @@ export function getSignatureFieldsWithPdfSignerExtension({
     apiBaseUrl,
     documents,
   }, { timeoutMs: 120000 });
+}
+
+export function getSignerSettingsWithPdfSignerExtension() {
+  return sendMessageToPdfSignerExtension({ type: "GET_SIGNER_SETTINGS" }, { timeoutMs: 10000 });
+}
+
+export function saveSignerSettingsWithPdfSignerExtension(settings = {}) {
+  return sendMessageToPdfSignerExtension({
+    type: "SAVE_SIGNER_SETTINGS",
+    settings,
+  }, { timeoutMs: 15000 });
+}
+
+export function testSignerTokenDetectionWithPdfSignerExtension() {
+  return sendMessageToPdfSignerExtension({ type: "TEST_TOKEN_DETECTION" }, { timeoutMs: 20000 });
+}
+
+export function openSignerSettingsWithPdfSignerExtension() {
+  return sendMessageToPdfSignerExtension({ type: "OPEN_SIGNER_SETTINGS" }, { timeoutMs: 300000 });
 }

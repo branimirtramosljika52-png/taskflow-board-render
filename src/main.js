@@ -146,9 +146,13 @@ import {
   getPdfSignerExtensionId,
   getPdfSignerExtensionInstallUrl,
   getSignatureFieldsWithPdfSignerExtension,
+  getSignerSettingsWithPdfSignerExtension,
   isPdfSignerExtensionUnavailable,
+  openSignerSettingsWithPdfSignerExtension,
   pingPdfSignerExtension,
+  saveSignerSettingsWithPdfSignerExtension,
   signDocumentsWithPdfSignerExtension,
+  testSignerTokenDetectionWithPdfSignerExtension,
 } from "./pdfSignerExtensionBridge.js";
 
 const API_BASE = "/api";
@@ -1644,6 +1648,24 @@ const state = {
       lastPingResponse: null,
       lastPingError: "",
       lastCheckedAt: "",
+    },
+    review: {
+      status: "idle",
+      job: null,
+      items: [],
+      decisions: {},
+      activeDocumentId: "",
+      activePreviewUrl: "",
+      error: "",
+    },
+    settings: {
+      loaded: false,
+      loading: false,
+      saving: false,
+      testing: false,
+      values: null,
+      lastResponse: null,
+      error: "",
     },
   },
   activeOrganizationId: "",
@@ -3257,10 +3279,27 @@ const signaturesModule = document.querySelector("#signatures-module");
 const signaturesStats = document.querySelector("#signatures-stats");
 const signaturesList = document.querySelector("#signatures-list");
 const signaturesRefreshButton = document.querySelector("#signatures-refresh");
+const signaturesReviewStartButton = document.querySelector("#signatures-review-start");
 const signaturesOpenLocalSignerButton = document.querySelector("#signatures-open-local-signer");
 const signaturesCopyBridgeUrlButton = document.querySelector("#signatures-copy-bridge-url");
 const signaturesInstallSignerButton = document.querySelector("#signatures-install-signer");
 const signaturesBridgeStatus = document.querySelector("#signatures-bridge-status");
+const signaturesReviewPanel = document.querySelector("#signatures-review-panel");
+const signaturesReviewBody = document.querySelector("#signatures-review-body");
+const signaturesReviewApproveAllButton = document.querySelector("#signatures-review-approve-all");
+const signaturesReviewSignSelectedButton = document.querySelector("#signatures-review-sign-selected");
+const signaturesSettingsPanel = document.querySelector("#signatures-settings-panel");
+const signaturesSettingsLoadButton = document.querySelector("#signatures-settings-load");
+const signaturesSettingsSaveButton = document.querySelector("#signatures-settings-save");
+const signaturesSettingsTestTokenButton = document.querySelector("#signatures-settings-test-token");
+const signaturesSettingsOpenLocalButton = document.querySelector("#signatures-settings-open-local");
+const signaturesSettingsModeInput = document.querySelector("#signatures-settings-mode");
+const signaturesSettingsDryRunInput = document.querySelector("#signatures-settings-dry-run");
+const signaturesSettingsAllowlistInput = document.querySelector("#signatures-settings-allowlist");
+const signaturesSettingsProviderOrderInput = document.querySelector("#signatures-settings-provider-order");
+const signaturesSettingsEoiPathInput = document.querySelector("#signatures-settings-eoi-path");
+const signaturesSettingsFinaPathInput = document.querySelector("#signatures-settings-fina-path");
+const signaturesSettingsResponse = document.querySelector("#signatures-settings-response");
 const signaturesDebugPanel = document.querySelector("#signatures-debug-panel");
 const signaturesDebugPingButton = document.querySelector("#signatures-debug-ping");
 const signaturesDebugFieldsButton = document.querySelector("#signatures-debug-fields");
@@ -29799,12 +29838,21 @@ function renderSignaturesModule() {
     );
   }
   if (signaturesOpenLocalSignerButton) {
-    signaturesOpenLocalSignerButton.disabled = pendingEntries.length === 0 || state.documentsExplorer.loading;
-    signaturesOpenLocalSignerButton.title = pendingEntries.length > 0
-      ? `Potpiši ${pendingEntries.length} nepotpisanih PDF zapisnika preko lokalnog PDF Signera.`
-      : "Nema nepotpisanih PDF zapisnika za lokalni potpis.";
+    const hasApprovedReview = (state.signatures.review.items || [])
+      .some((item) => getSignatureReviewDecision(item.reviewKey).status === "approved_for_signing");
+    signaturesOpenLocalSignerButton.disabled = (pendingEntries.length === 0 && !hasApprovedReview) || state.documentsExplorer.loading;
+    signaturesOpenLocalSignerButton.title = hasApprovedReview
+      ? "Potpiši samo stavke označene kao OK."
+      : pendingEntries.length > 0
+        ? `Prvo pripremi review za ${pendingEntries.length} nepotpisanih PDF zapisnika.`
+        : "Nema nepotpisanih PDF zapisnika za lokalni potpis.";
+  }
+  if (signaturesReviewStartButton) {
+    signaturesReviewStartButton.disabled = pendingEntries.length === 0 || state.documentsExplorer.loading;
   }
   updateSignatureDebugPanel();
+  renderSignerSettingsPanel();
+  renderSignatureReviewPanel();
 
   if (!signaturesList) {
     return;
@@ -30058,24 +30106,36 @@ function mapSignatureBridgeDocuments(payload = {}) {
   return (Array.isArray(payload.items) ? payload.items : []).map((item) => ({
     id: item.documentId || item.id,
     documentId: item.documentId || "",
+    itemId: item.id || "",
     fileName: item.fileName || "zapisnik.pdf",
     preferredField: item.preferredField || "",
     signatureFieldRole: item.signatureFieldRole || "",
     signatureFieldOib: item.signatureFieldOib || "",
+    signatureFieldsJson: item.signatureFieldsJson || "",
+    signatureLabel: item.signatureLabel || "",
+    signatureSigner: item.signatureSigner || "",
+    downloadUrl: item.downloadUrl || "",
+    workOrderNumber: item.workOrderNumber || "",
+    companyName: item.companyName || "",
+    locationName: item.locationName || "",
   }));
 }
 
-async function createSignatureBridgeJobForPendingEntries(entries = getPendingSignatureBridgeEntries()) {
+async function createSignatureBridgeJobForPendingEntries(entries = getPendingSignatureBridgeEntries(), options = {}) {
   if (entries.length === 0) {
     throw new Error("Nema nepotpisanih PDF zapisnika za test.");
   }
 
+  const signatureRequests = Array.isArray(options.signatureRequests)
+    ? options.signatureRequests.filter((entry) => entry && entry.documentId)
+    : [];
   const payload = await apiRequest("/signature-bridge/jobs", {
     method: "POST",
     body: {
       origin: window.location.origin,
       bridgeKey: getSignatureBridgeKey(),
       documentIds: entries.map((entry) => entry.documentItem?.id).filter(Boolean),
+      ...(signatureRequests.length > 0 ? { signatureRequests } : {}),
     },
   });
 
@@ -30173,6 +30233,546 @@ async function runSignatureDebugDryRun() {
     throw error;
   } finally {
     setSignatureDebugOperationLoading(signaturesDebugDryRunButton, false);
+  }
+}
+
+function parseSignatureFieldsJson(value = "") {
+  if (!value || typeof value !== "string") {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((item) => item && typeof item === "object") : [];
+  } catch {
+    return [];
+  }
+}
+
+function getSignatureRoleFallbackLabel(role = "") {
+  const normalized = String(role || "").trim().toUpperCase();
+  if (normalized.includes("DIREKTOR")) return "Direktor";
+  if (normalized.includes("KLIJENT")) return "Odgovorna osoba";
+  if (normalized.includes("ZNR")) return "Ispitivanje obavili";
+  return normalized || "Potpisnik";
+}
+
+function resolveSignatureReviewLabel(item = {}, field = null, metadataEntry = null) {
+  const metadata = parseSignatureFieldsJson(item.signatureFieldsJson);
+  const byField = metadataEntry || metadata.find((entry) => String(entry.fieldName || "").trim() === String(field?.fieldName || item.preferredField || "").trim());
+  return {
+    label: byField?.label || byField?.roleLabel || item.signatureLabel || getSignatureRoleFallbackLabel(byField?.role || item.signatureFieldRole),
+    signer: byField?.name || byField?.signerName || byField?.displayName || item.signatureSigner || item.signatureFieldOib || "Potpisnik",
+    fieldName: field?.fieldName || item.preferredField || "",
+    role: byField?.role || item.signatureFieldRole || "",
+    oib: byField?.oib || item.signatureFieldOib || "",
+  };
+}
+
+async function getSignatureFieldsForBridgeRequest(bridgeRequest = {}) {
+  try {
+    return await getSignatureFieldsWithPdfSignerExtension(bridgeRequest);
+  } catch (error) {
+    if (error?.code !== "UNSUPPORTED_MESSAGE") {
+      throw error;
+    }
+    const dryRunResponse = await signDocumentsWithPdfSignerExtension({
+      ...bridgeRequest,
+      dryRun: true,
+    });
+    const fields = (Array.isArray(dryRunResponse?.documents) ? dryRunResponse.documents : [])
+      .map((document) => {
+        const field = document?.matchedField && typeof document.matchedField === "object"
+          ? document.matchedField
+          : null;
+        return field ? {
+          ...field,
+          itemId: document.itemId || "",
+          documentId: document.documentId || "",
+          fileName: document.fileName || "",
+        } : null;
+      })
+      .filter(Boolean);
+    return {
+      ...dryRunResponse,
+      command: "GET_SIGNATURE_FIELDS_FALLBACK",
+      fieldCount: fields.length,
+      fields,
+    };
+  }
+}
+
+function buildSignatureReviewItems(payload = {}, fieldsResponse = {}, sourceEntries = []) {
+  const entriesByDocumentId = new Map(sourceEntries.map((entry) => [String(entry.documentItem?.id || ""), entry]));
+  const fieldsByDocumentId = new Map();
+  (Array.isArray(fieldsResponse.fields) ? fieldsResponse.fields : []).forEach((field) => {
+    const documentId = String(field.documentId || "").trim();
+    if (!documentId) return;
+    if (!fieldsByDocumentId.has(documentId)) fieldsByDocumentId.set(documentId, []);
+    fieldsByDocumentId.get(documentId).push(field);
+  });
+
+  return (Array.isArray(payload.items) ? payload.items : []).flatMap((item) => {
+    const documentId = String(item.documentId || "").trim();
+    const sourceEntry = entriesByDocumentId.get(documentId) || null;
+    const fields = fieldsByDocumentId.get(documentId) || [];
+    const metadata = parseSignatureFieldsJson(item.signatureFieldsJson);
+    const preferred = String(item.preferredField || "").trim();
+    const reviewTargets = metadata.length > 0
+      ? metadata.map((entry) => ({
+        metadataEntry: entry,
+        preferredField: String(entry.fieldName || entry.preferredField || "").trim(),
+      }))
+      : fields.map((field) => ({
+        metadataEntry: null,
+        preferredField: String(field.fieldName || "").trim(),
+      }));
+    const targets = reviewTargets.length > 0
+      ? reviewTargets
+      : [{ metadataEntry: null, preferredField: preferred }];
+
+    return targets.map((target, index) => {
+      const targetFieldName = target.preferredField || preferred;
+      const matchedField = fields.find((field) => String(field.fieldName || "") === targetFieldName)
+        || (!targetFieldName ? fields[index] || fields[0] : null);
+      const label = resolveSignatureReviewLabel(item, matchedField || { fieldName: targetFieldName }, target.metadataEntry);
+      const status = matchedField
+        ? (matchedField.status === "already_signed" ? "signed" : "pending_review")
+        : "error";
+      const fieldName = String(matchedField?.fieldName || targetFieldName || label.fieldName || "").trim();
+      return {
+        ...item,
+        sourceEntry,
+        documentId,
+        reviewKey: `${documentId}:${fieldName || item.itemId || index}`,
+        field: matchedField,
+        fields,
+        label: label.label,
+        signer: label.signer,
+        fieldName,
+        signatureFieldRole: label.role || item.signatureFieldRole || "",
+        signatureFieldOib: label.oib || item.signatureFieldOib || "",
+        status,
+        error: matchedField ? "" : (fieldName
+          ? `Ovaj PDF nema digitalno potpisno polje ${fieldName}.`
+          : "Ovaj PDF nema digitalno potpisno polje."),
+      };
+    });
+  });
+}
+
+function setSignatureReviewState(patch = {}) {
+  state.signatures.review = {
+    ...state.signatures.review,
+    ...patch,
+  };
+  renderSignatureReviewPanel();
+}
+
+function getSignatureReviewDecision(reviewKey = "") {
+  const key = String(reviewKey || "").trim();
+  return state.signatures.review.decisions?.[key] || { status: "pending_review", comment: "" };
+}
+
+function updateSignatureReviewDecision(reviewKey = "", patch = {}) {
+  const key = String(reviewKey || "").trim();
+  if (!key) return;
+  state.signatures.review.decisions = {
+    ...state.signatures.review.decisions,
+    [key]: {
+      ...getSignatureReviewDecision(key),
+      ...patch,
+    },
+  };
+  renderSignatureReviewPanel();
+}
+
+function getSignatureReviewStatusLabel(status = "") {
+  return ({
+    pending_review: "Čeka pregled",
+    approved_for_signing: "OK za potpis",
+    skipped_with_comment: "Preskočeno",
+    rejected_with_comment: "Ne potpisuj",
+    signing: "Potpisivanje",
+    signed: "Potpisano",
+    error: "Greška",
+  })[status] || "Čeka pregled";
+}
+
+function renderSignatureReviewPanel() {
+  if (!signaturesReviewPanel || !signaturesReviewBody) {
+    return;
+  }
+
+  const review = state.signatures.review || {};
+  signaturesReviewPanel.hidden = !Array.isArray(review.items) || review.items.length === 0;
+  if (signaturesReviewPanel.hidden) {
+    return;
+  }
+
+  const grouped = new Map();
+  review.items.forEach((item) => {
+    const key = String(item.workOrderId || item.workOrderNumber || item.documentId || "bez-rn");
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        workOrderNumber: item.workOrderNumber || "",
+        companyName: item.companyName || item.sourceEntry?.context?.company?.name || "",
+        locationName: item.locationName || item.sourceEntry?.context?.location?.name || "",
+        items: [],
+      });
+    }
+    grouped.get(key).items.push(item);
+  });
+
+  const blocks = Array.from(grouped.values()).map((group) => {
+    const block = document.createElement("article");
+    block.className = "signature-review-work-order";
+    const head = document.createElement("div");
+    head.className = "signature-review-work-order-head";
+    const title = document.createElement("strong");
+    title.textContent = group.workOrderNumber ? `RN ${group.workOrderNumber}` : "RN bez broja";
+    const meta = document.createElement("span");
+    meta.textContent = [group.companyName, group.locationName].filter(Boolean).join(" · ");
+    head.append(title, meta);
+
+    const list = document.createElement("div");
+    list.className = "signature-review-documents";
+    group.items.forEach((item) => {
+      const decision = getSignatureReviewDecision(item.reviewKey);
+      const effectiveStatus = item.status === "signed" || item.status === "error" ? item.status : decision.status;
+      const row = document.createElement("section");
+      row.className = `signature-review-document is-${effectiveStatus}`;
+
+      const copy = document.createElement("button");
+      copy.type = "button";
+      copy.className = "signature-review-document-copy";
+      copy.addEventListener("click", () => {
+        void previewSignatureReviewDocument(item);
+      });
+      const doc = document.createElement("strong");
+      doc.textContent = item.fileName || "zapisnik.pdf";
+      const line = document.createElement("span");
+      line.textContent = `${item.label}: ${item.signer} — ${getSignatureReviewStatusLabel(effectiveStatus)}`;
+      const help = document.createElement("small");
+      help.textContent = item.error || "Klikni za PDF preview i označeno mjesto digitalnog potpisa.";
+      copy.append(doc, line, help);
+
+      const actions = document.createElement("div");
+      actions.className = "signature-review-actions-row";
+      [
+        ["approved_for_signing", "OK za potpis"],
+        ["skipped_with_comment", "Preskoči"],
+        ["rejected_with_comment", "Ne potpisuj"],
+      ].forEach(([status, label]) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = ["ghost-button", decision.status === status ? "is-active" : ""].filter(Boolean).join(" ");
+        button.textContent = label;
+        button.disabled = item.status === "signed" || item.status === "error";
+        button.addEventListener("click", () => updateSignatureReviewDecision(item.reviewKey, { status }));
+        actions.append(button);
+      });
+
+      const comment = document.createElement("textarea");
+      comment.className = "signature-review-comment";
+      comment.rows = 2;
+      comment.placeholder = "Komentar za preskok ili odbijanje...";
+      comment.value = decision.comment || "";
+      comment.addEventListener("input", (event) => {
+        const key = String(item.reviewKey || "").trim();
+        state.signatures.review.decisions = {
+          ...state.signatures.review.decisions,
+          [key]: {
+            ...getSignatureReviewDecision(key),
+            comment: event.currentTarget.value,
+          },
+        };
+      });
+
+      row.append(copy, actions, comment);
+      list.append(row);
+    });
+
+    block.append(head, list);
+    return block;
+  });
+
+  const approvedCount = review.items.filter((item) => getSignatureReviewDecision(item.reviewKey).status === "approved_for_signing").length;
+  if (signaturesReviewSignSelectedButton) {
+    signaturesReviewSignSelectedButton.disabled = approvedCount === 0 || review.status === "signing";
+    signaturesReviewSignSelectedButton.textContent = approvedCount > 0 ? `Potpiši odabrano (${approvedCount})` : "Potpiši odabrano";
+  }
+  signaturesReviewBody.replaceChildren(...blocks);
+}
+
+async function openSignatureReviewFlow() {
+  const pendingEntries = getPendingSignatureBridgeEntries();
+  if (pendingEntries.length === 0) {
+    setSignaturesBridgeStatus("Nema nepotpisanih PDF zapisnika za pregled.", "warning");
+    return;
+  }
+
+  setSignatureDebugOperationLoading(signaturesReviewStartButton, true);
+  setSignaturesBridgeStatus("Pripremam review po RN-u i citam signature fieldove...", "loading");
+  try {
+    await runSignatureDebugPing({ showStatus: false });
+    const { payload, documents } = await createSignatureBridgeJobForPendingEntries(pendingEntries);
+    const bridgeRequest = {
+      jobId: payload.token || "",
+      token: payload.token || "",
+      apiBaseUrl: payload.apiBase || window.location.origin,
+      documents,
+    };
+    const fieldsResponse = await getSignatureFieldsForBridgeRequest(bridgeRequest);
+    const items = buildSignatureReviewItems(payload, fieldsResponse, pendingEntries);
+    const decisions = {};
+    items.forEach((item) => {
+      decisions[item.reviewKey] = {
+        status: item.status === "signed" ? "signed" : item.status === "error" ? "error" : "pending_review",
+        comment: item.error || "",
+      };
+    });
+    setSignatureReviewState({
+      status: "pending_review",
+      job: payload,
+      items,
+      decisions,
+      activeDocumentId: "",
+      error: "",
+    });
+    setSignaturesBridgeStatus("Review je spreman. Pregledaj dokumente ili oznaci sve kao OK.", "ready");
+  } catch (error) {
+    setSignatureDebugFromPingError(error);
+    setSignaturesBridgeStatus(error.message || "Review priprema nije uspjela.", isPdfSignerExtensionUnavailable(error) ? "warning" : "error");
+  } finally {
+    setSignatureDebugOperationLoading(signaturesReviewStartButton, false);
+  }
+}
+
+function approveAllSignatureReviewItems() {
+  const decisions = {};
+  (state.signatures.review.items || []).forEach((item) => {
+    decisions[item.reviewKey] = {
+      status: item.status === "signed" ? "signed" : item.status === "error" ? "error" : "approved_for_signing",
+      comment: item.status === "error" ? item.error : "",
+    };
+  });
+  setSignatureReviewState({ decisions });
+}
+
+async function previewSignatureReviewDocument(item = {}) {
+  if (!item?.downloadUrl) {
+    setSignaturesBridgeStatus("PDF preview nije dostupan za ovaj dokument.", "warning");
+    return;
+  }
+  try {
+    const response = await fetch(item.downloadUrl, { method: "GET", cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(`PDF preview nije uspio: HTTP ${response.status}`);
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    window.setTimeout(() => URL.revokeObjectURL(url), 120000);
+    openSignatureReviewPreviewModal(item, url);
+  } catch (error) {
+    setSignaturesBridgeStatus(error.message || "PDF preview nije uspio.", "error");
+  }
+}
+
+function openSignatureReviewPreviewModal(item = {}, pdfUrl = "") {
+  document.querySelector(".signature-preview-backdrop")?.remove();
+  const backdrop = document.createElement("div");
+  backdrop.className = "signature-preview-backdrop";
+  const modal = document.createElement("section");
+  modal.className = "signature-preview-modal";
+  const head = document.createElement("div");
+  head.className = "signature-preview-head";
+  const copy = document.createElement("div");
+  const kicker = document.createElement("p");
+  kicker.className = "section-kicker";
+  kicker.textContent = item.workOrderNumber ? `RN ${item.workOrderNumber}` : "PDF preview";
+  const title = document.createElement("h3");
+  title.textContent = item.fileName || "zapisnik.pdf";
+  const meta = document.createElement("p");
+  meta.className = "helper-copy";
+  meta.textContent = item.field ? `${item.label}: ${item.signer}` : "Ovaj PDF nema digitalno potpisno polje.";
+  copy.append(kicker, title, meta);
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "ghost-button";
+  close.textContent = "Zatvori";
+  close.addEventListener("click", () => backdrop.remove());
+  head.append(copy, close);
+
+  const body = document.createElement("div");
+  body.className = "signature-preview-body";
+  const object = document.createElement("object");
+  object.type = "application/pdf";
+  object.data = pdfUrl;
+  object.setAttribute("aria-label", item.fileName || "PDF preview");
+
+  const map = document.createElement("div");
+  map.className = "signature-preview-map";
+  const page = document.createElement("div");
+  page.className = "signature-preview-page";
+  if (item.field) {
+    const marker = document.createElement("div");
+    marker.className = "signature-preview-marker";
+    const left = Math.max(4, Math.min(78, (Number(item.field.x || 0) / 595) * 100));
+    const width = Math.max(12, Math.min(44, (Number(item.field.width || 120) / 595) * 100));
+    const top = Math.max(4, Math.min(86, 100 - ((Number(item.field.y || 0) + Number(item.field.height || 50)) / 842) * 100));
+    marker.style.left = `${left}%`;
+    marker.style.top = `${top}%`;
+    marker.style.width = `${width}%`;
+    marker.textContent = "Ovdje ide digitalni potpis";
+    page.append(marker);
+  } else {
+    const empty = document.createElement("p");
+    empty.className = "signature-preview-empty";
+    empty.textContent = "Ovaj PDF nema digitalno potpisno polje.";
+    page.append(empty);
+  }
+  map.append(page);
+  body.append(object, map);
+  modal.append(head, body);
+  backdrop.append(modal);
+  document.body.append(backdrop);
+}
+
+async function signApprovedSignatureReviewItems() {
+  const approved = (state.signatures.review.items || [])
+    .filter((item) => getSignatureReviewDecision(item.reviewKey).status === "approved_for_signing");
+  if (approved.length === 0) {
+    setSignaturesBridgeStatus("Nema stavki oznacenih OK za potpis.", "warning");
+    return;
+  }
+  const approvedEntries = approved.map((item) => item.sourceEntry).filter(Boolean);
+  if (approvedEntries.length === 0) {
+    setSignaturesBridgeStatus("Ne mogu povezati odabrane stavke s dokumentima.", "error");
+    return;
+  }
+  const signatureRequests = approved.map((item) => ({
+    documentId: item.documentId,
+    preferredField: item.fieldName || item.preferredField || "",
+    fieldName: item.fieldName || item.preferredField || "",
+    role: item.signatureFieldRole || "ZNR",
+    oib: item.signatureFieldOib || "",
+    label: item.label || "",
+    signer: item.signer || "",
+  }));
+  setSignatureReviewState({ status: "signing" });
+  await openLocalSignatureBridge(approvedEntries, { signatureRequests });
+}
+
+function renderSignerSettingsPanel() {
+  if (!signaturesSettingsPanel) {
+    return;
+  }
+  const visible = canShowSignatureDebugPanel();
+  signaturesSettingsPanel.hidden = !visible;
+  if (!visible) {
+    return;
+  }
+  const settings = state.signatures.settings?.values || {};
+  if (signaturesSettingsModeInput) signaturesSettingsModeInput.value = settings.signerMode || "mock";
+  if (signaturesSettingsDryRunInput) signaturesSettingsDryRunInput.value = String(settings.realDryRun ?? true);
+  if (signaturesSettingsAllowlistInput) signaturesSettingsAllowlistInput.value = settings.apiAllowlist || "https://safe-nexus.org";
+  if (signaturesSettingsProviderOrderInput) signaturesSettingsProviderOrderInput.value = settings.providerOrder || "EOI,FINA";
+  if (signaturesSettingsEoiPathInput) signaturesSettingsEoiPathInput.value = settings.eoiPkcs11 || "";
+  if (signaturesSettingsFinaPathInput) signaturesSettingsFinaPathInput.value = settings.finaPkcs11 || "";
+  if (signaturesSettingsResponse) {
+    const payload = state.signatures.settings?.lastResponse || state.signatures.settings?.error || "Postavke nisu učitane.";
+    signaturesSettingsResponse.textContent = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+  }
+}
+
+function collectSignerSettingsFormValues() {
+  return {
+    signerMode: signaturesSettingsModeInput?.value || "mock",
+    realDryRun: signaturesSettingsDryRunInput?.value !== "false",
+    apiAllowlist: signaturesSettingsAllowlistInput?.value || "https://safe-nexus.org",
+    providerOrder: signaturesSettingsProviderOrderInput?.value || "EOI,FINA",
+    eoiPkcs11: signaturesSettingsEoiPathInput?.value || "",
+    finaPkcs11: signaturesSettingsFinaPathInput?.value || "",
+  };
+}
+
+async function loadSignerSettingsPanel() {
+  setSignatureDebugOperationLoading(signaturesSettingsLoadButton, true);
+  try {
+    const response = await getSignerSettingsWithPdfSignerExtension();
+    state.signatures.settings = {
+      ...state.signatures.settings,
+      loaded: true,
+      values: response.settings || {},
+      lastResponse: response,
+      error: "",
+    };
+    setSignatureDebugFromPingResponse(response);
+    renderSignerSettingsPanel();
+    setSignaturesBridgeStatus("PDF Signer postavke su učitane iz lokalnog signera.", "ready");
+  } catch (error) {
+    state.signatures.settings.error = error.message || "Postavke nisu dostupne.";
+    renderSignerSettingsPanel();
+    setSignaturesBridgeStatus(state.signatures.settings.error, isPdfSignerExtensionUnavailable(error) ? "warning" : "error");
+  } finally {
+    setSignatureDebugOperationLoading(signaturesSettingsLoadButton, false);
+  }
+}
+
+async function saveSignerSettingsPanel() {
+  setSignatureDebugOperationLoading(signaturesSettingsSaveButton, true);
+  try {
+    const response = await saveSignerSettingsWithPdfSignerExtension(collectSignerSettingsFormValues());
+    state.signatures.settings = {
+      ...state.signatures.settings,
+      loaded: true,
+      values: response.settings || {},
+      lastResponse: response,
+      error: "",
+    };
+    renderSignerSettingsPanel();
+    setSignaturesBridgeStatus("PDF Signer postavke su spremljene lokalno. PIN nije spremljen.", "ready");
+  } catch (error) {
+    state.signatures.settings.error = error.message || "Spremanje postavki nije uspjelo.";
+    renderSignerSettingsPanel();
+    setSignaturesBridgeStatus(state.signatures.settings.error, "error");
+  } finally {
+    setSignatureDebugOperationLoading(signaturesSettingsSaveButton, false);
+  }
+}
+
+async function testSignerTokenDetectionPanel() {
+  setSignatureDebugOperationLoading(signaturesSettingsTestTokenButton, true);
+  try {
+    const response = await testSignerTokenDetectionWithPdfSignerExtension();
+    state.signatures.settings.lastResponse = response;
+    renderSignerSettingsPanel();
+    setSignaturesBridgeStatus("Token detection je završen. PIN nije tražen.", "ready");
+  } catch (error) {
+    state.signatures.settings.error = error.message || "Token detection nije uspio.";
+    renderSignerSettingsPanel();
+    setSignaturesBridgeStatus(state.signatures.settings.error, "error");
+  } finally {
+    setSignatureDebugOperationLoading(signaturesSettingsTestTokenButton, false);
+  }
+}
+
+async function openLocalSignerSettingsFromWeb() {
+  setSignatureDebugOperationLoading(signaturesSettingsOpenLocalButton, true);
+  try {
+    const response = await openSignerSettingsWithPdfSignerExtension();
+    state.signatures.settings = {
+      ...state.signatures.settings,
+      loaded: true,
+      values: response.settings || {},
+      lastResponse: response,
+      error: "",
+    };
+    renderSignerSettingsPanel();
+  } catch (error) {
+    setSignaturesBridgeStatus(error.message || "Lokalni settings prozor nije otvoren.", "warning");
+  } finally {
+    setSignatureDebugOperationLoading(signaturesSettingsOpenLocalButton, false);
   }
 }
 
@@ -30333,8 +30933,10 @@ function waitForLocalSignatureBridge(ms = 2500) {
   });
 }
 
-async function openLocalSignatureBridge() {
-  const pendingEntries = getPendingSignatureBridgeEntries();
+async function openLocalSignatureBridge(entriesOverride = null, options = {}) {
+  const pendingEntries = Array.isArray(entriesOverride) && entriesOverride.length > 0
+    ? entriesOverride
+    : getPendingSignatureBridgeEntries();
   if (pendingEntries.length === 0) {
     setSignaturesBridgeStatus("Nema nepotpisanih PDF zapisnika za potpis.", "warning");
     return;
@@ -30351,7 +30953,7 @@ async function openLocalSignatureBridge() {
     await runSignatureDebugPing({ showStatus: false });
     setSignaturesBridgeStatus("Pripremam dokumente za potpis...", "loading");
 
-    const { payload, documents } = await createSignatureBridgeJobForPendingEntries(pendingEntries);
+    const { payload, documents } = await createSignatureBridgeJobForPendingEntries(pendingEntries, options);
 
     setSignaturesBridgeStatus("Otvori lokalni prozor signera i unesi PIN tamo. SafeNexus ne prima i ne sprema PIN.", "loading");
     const signResult = await signDocumentsWithPdfSignerExtension({
@@ -101873,8 +102475,25 @@ signaturesRefreshButton?.addEventListener("click", () => {
   void loadDocumentsExplorerRecords({ force: true });
 });
 
+signaturesReviewStartButton?.addEventListener("click", () => {
+  void openSignatureReviewFlow();
+});
+
 signaturesOpenLocalSignerButton?.addEventListener("click", () => {
-  void openLocalSignatureBridge();
+  const hasReview = (state.signatures.review.items || []).length > 0;
+  if (hasReview) {
+    void signApprovedSignatureReviewItems();
+  } else {
+    void openSignatureReviewFlow();
+  }
+});
+
+signaturesReviewApproveAllButton?.addEventListener("click", () => {
+  approveAllSignatureReviewItems();
+});
+
+signaturesReviewSignSelectedButton?.addEventListener("click", () => {
+  void signApprovedSignatureReviewItems();
 });
 
 signaturesInstallSignerButton?.addEventListener("click", () => {
@@ -101897,6 +102516,22 @@ signaturesDebugDryRunButton?.addEventListener("click", () => {
   void runSignatureDebugDryRun().catch(() => {
     // Status and debug payload are rendered in the panel.
   });
+});
+
+signaturesSettingsLoadButton?.addEventListener("click", () => {
+  void loadSignerSettingsPanel();
+});
+
+signaturesSettingsSaveButton?.addEventListener("click", () => {
+  void saveSignerSettingsPanel();
+});
+
+signaturesSettingsTestTokenButton?.addEventListener("click", () => {
+  void testSignerTokenDetectionPanel();
+});
+
+signaturesSettingsOpenLocalButton?.addEventListener("click", () => {
+  void openLocalSignerSettingsFromWeb();
 });
 
 signaturesCopyBridgeUrlButton?.addEventListener("click", async () => {

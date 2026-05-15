@@ -51119,6 +51119,247 @@ button.work-order-editor-section-head:focus-visible {
   line-height: 1.45;
 }
 
+.signatures-settings-panel,
+.signatures-review-panel {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(191, 219, 254, 0.78);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.signatures-settings-panel[hidden],
+.signatures-review-panel[hidden] {
+  display: none;
+}
+
+.signatures-settings-heading,
+.signature-review-work-order-head,
+.signature-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.signatures-settings-heading h4,
+.signature-preview-head h3 {
+  margin: 0;
+  color: #172033;
+}
+
+.signatures-settings-actions,
+.signatures-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.signatures-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.signatures-settings-grid .field {
+  margin: 0;
+}
+
+.signatures-settings-grid .field-span-2 {
+  grid-column: 1 / -1;
+}
+
+.signatures-review-body {
+  display: grid;
+  gap: 12px;
+}
+
+.signature-review-work-order {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(203, 213, 225, 0.78);
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(248, 250, 252, 0.94), rgba(255, 255, 255, 0.88));
+}
+
+.signature-review-work-order-head strong {
+  color: #172033;
+  font-size: 1rem;
+}
+
+.signature-review-work-order-head span {
+  color: #64748b;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.signature-review-documents {
+  display: grid;
+  gap: 8px;
+}
+
+.signature-review-document {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(220px, 0.35fr);
+  gap: 10px;
+  align-items: stretch;
+  padding: 10px;
+  border: 1px solid rgba(191, 219, 254, 0.84);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.signature-review-document.is-approved_for_signing {
+  border-color: rgba(16, 185, 129, 0.38);
+  background: rgba(236, 253, 245, 0.72);
+}
+
+.signature-review-document.is-skipped_with_comment {
+  border-color: rgba(245, 158, 11, 0.38);
+  background: rgba(255, 251, 235, 0.72);
+}
+
+.signature-review-document.is-rejected_with_comment,
+.signature-review-document.is-error {
+  border-color: rgba(239, 68, 68, 0.32);
+  background: rgba(254, 242, 242, 0.74);
+}
+
+.signature-review-document-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.signature-review-document-copy strong {
+  color: #172033;
+}
+
+.signature-review-document-copy span,
+.signature-review-document-copy small {
+  overflow: hidden;
+  color: #64748b;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signature-review-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-content: center;
+  justify-content: flex-end;
+}
+
+.signature-review-actions-row .ghost-button.is-active {
+  border-color: rgba(37, 99, 235, 0.35);
+  background: rgba(239, 246, 255, 0.95);
+  color: #1d4ed8;
+}
+
+.signature-review-comment {
+  width: 100%;
+  min-height: 52px;
+  resize: vertical;
+}
+
+.signature-preview-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.52);
+  backdrop-filter: blur(10px);
+}
+
+.signature-preview-modal {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(1180px, 96vw);
+  height: min(820px, 92vh);
+  overflow: hidden;
+  border: 1px solid rgba(191, 219, 254, 0.86);
+  border-radius: 20px;
+  background: #ffffff;
+  box-shadow: 0 30px 80px rgba(15, 23, 42, 0.28);
+}
+
+.signature-preview-head {
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(203, 213, 225, 0.72);
+}
+
+.signature-preview-head .helper-copy {
+  margin: 4px 0 0;
+}
+
+.signature-preview-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  min-height: 0;
+}
+
+.signature-preview-body object {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #f8fafc;
+}
+
+.signature-preview-map {
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  border-left: 1px solid rgba(203, 213, 225, 0.72);
+  background: linear-gradient(180deg, #f8fafc, #eef6ff);
+}
+
+.signature-preview-page {
+  position: relative;
+  width: 190px;
+  aspect-ratio: 595 / 842;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 18px 36px rgba(30, 64, 175, 0.12);
+}
+
+.signature-preview-marker {
+  position: absolute;
+  min-height: 34px;
+  padding: 6px;
+  border: 2px solid rgba(37, 99, 235, 0.78);
+  border-radius: 8px;
+  background: rgba(219, 234, 254, 0.76);
+  color: #1d4ed8;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.signature-preview-empty {
+  position: absolute;
+  inset: 18px;
+  display: grid;
+  place-items: center;
+  color: #b91c1c;
+  font-size: 12px;
+  font-weight: 900;
+  text-align: center;
+}
+
 .signatures-list {
   display: grid;
   gap: 10px;
@@ -51231,6 +51472,17 @@ button.work-order-editor-section-head:focus-visible {
 
   .signatures-debug-grid {
     grid-template-columns: 1fr;
+  }
+
+  .signatures-settings-grid,
+  .signature-review-document,
+  .signature-preview-body {
+    grid-template-columns: 1fr;
+  }
+
+  .signature-preview-map {
+    border-left: 0;
+    border-top: 1px solid rgba(203, 213, 225, 0.72);
   }
 }
 

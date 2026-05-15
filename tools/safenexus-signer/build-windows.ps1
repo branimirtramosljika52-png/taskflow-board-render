@@ -22,12 +22,13 @@ try {
 
   jpackage `
     --type app-image `
-    --name SafeNexusSigner `
+    --name PDFSigner `
     --dest ".\dist" `
     --input ".\target" `
-    --main-jar $jar.Name
+    --main-jar $jar.Name `
+    --main-class hr.sign.NativeMessagingMain
 
-  Write-Host "SafeNexus Signer app image: $ProjectDir\dist\SafeNexusSigner"
+  Write-Host "SafeNexus PDF Signer app image: $ProjectDir\dist\PDFSigner"
 } finally {
   Pop-Location
 }

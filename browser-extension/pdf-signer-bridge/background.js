@@ -1,7 +1,15 @@
 importScripts("pdf-signer.config.js");
 
 const NATIVE_HOST_NAME = self.SAFE_NEXUS_PDF_SIGNER_CONFIG?.nativeHostName || "hr.abeceda.pdfsigner";
-const SUPPORTED_TYPES = new Set(["PING_SIGNER", "SIGN_DOCUMENTS", "GET_SIGNATURE_FIELDS"]);
+const SUPPORTED_TYPES = new Set([
+  "PING_SIGNER",
+  "SIGN_DOCUMENTS",
+  "GET_SIGNATURE_FIELDS",
+  "GET_SIGNER_SETTINGS",
+  "SAVE_SIGNER_SETTINGS",
+  "TEST_TOKEN_DETECTION",
+  "OPEN_SIGNER_SETTINGS",
+]);
 
 function createErrorResponse(code, message, details = {}) {
   return {
@@ -30,8 +38,15 @@ function normalizeMessage(message) {
     throw createErrorResponse("UNSUPPORTED_MESSAGE", "PDF Signer ne podrzava ovu naredbu.");
   }
 
-  if (type === "PING_SIGNER") {
+  if (type === "PING_SIGNER" || type === "GET_SIGNER_SETTINGS" || type === "TEST_TOKEN_DETECTION" || type === "OPEN_SIGNER_SETTINGS") {
     return { type };
+  }
+
+  if (type === "SAVE_SIGNER_SETTINGS") {
+    return {
+      type,
+      settings: message?.settings && typeof message.settings === "object" ? message.settings : {},
+    };
   }
 
   const apiBaseUrl = String(message?.apiBaseUrl || message?.apiBase || "").trim();
@@ -46,14 +61,19 @@ function normalizeMessage(message) {
     );
   }
 
-  return {
+  const payload = {
     type,
     jobId,
     token,
     apiBaseUrl,
     documents,
-    dryRun: Boolean(message?.dryRun),
   };
+
+  if (Object.prototype.hasOwnProperty.call(message || {}, "dryRun")) {
+    payload.dryRun = Boolean(message.dryRun);
+  }
+
+  return payload;
 }
 
 function sendToNativeHost(payload) {
