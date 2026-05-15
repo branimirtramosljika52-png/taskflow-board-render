@@ -30285,7 +30285,10 @@ function resolveSignatureReviewLabel(item = {}, field = null, metadataEntry = nu
 
 async function getSignatureFieldsForBridgeRequest(bridgeRequest = {}) {
   try {
-    return await getSignatureFieldsWithPdfSignerExtension(bridgeRequest);
+    return await getSignatureFieldsWithPdfSignerExtension({
+      ...bridgeRequest,
+      allowErrorResponse: true,
+    });
   } catch (error) {
     if (error?.code !== "UNSUPPORTED_MESSAGE") {
       throw error;
@@ -30688,8 +30691,8 @@ function renderSignerSettingsPanel() {
     return;
   }
   const settings = state.signatures.settings?.values || {};
-  if (signaturesSettingsModeInput) signaturesSettingsModeInput.value = settings.signerMode || "mock";
-  if (signaturesSettingsDryRunInput) signaturesSettingsDryRunInput.value = String(settings.realDryRun ?? true);
+  if (signaturesSettingsModeInput) signaturesSettingsModeInput.value = "real";
+  if (signaturesSettingsDryRunInput) signaturesSettingsDryRunInput.value = "false";
   if (signaturesSettingsAllowlistInput) signaturesSettingsAllowlistInput.value = settings.apiAllowlist || "https://safe-nexus.org";
   if (signaturesSettingsPdfFolderInput) signaturesSettingsPdfFolderInput.value = settings.pdfFolder || "";
   if (signaturesSettingsKeywordInput) signaturesSettingsKeywordInput.value = settings.keyword || settings.fallbackKeyword || "";
@@ -30711,24 +30714,35 @@ function renderSignerSettingsPanel() {
   if (signaturesSettingsHideSignedInput) signaturesSettingsHideSignedInput.value = String(settings.previewHideAlreadySigned ?? false);
   if (signaturesSettingsResponse) {
     const payload = state.signatures.settings?.lastResponse || state.signatures.settings?.error || "Postavke nisu učitane.";
-    signaturesSettingsResponse.textContent = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+    if (typeof payload === "string") {
+      signaturesSettingsResponse.textContent = payload;
+    } else {
+      const settingsPayload = payload.settings || {};
+      const configPath = payload.configPath || settingsPayload.configPath || "";
+      signaturesSettingsResponse.textContent = [
+        "Stvarni potpis je uključen.",
+        "PIN se unosi samo u lokalnom PDFSigner.exe prozoru.",
+        configPath ? `Lokalni config: ${configPath}` : "",
+      ].filter(Boolean).join("\n");
+    }
   }
 }
 
 function collectSignerSettingsFormValues() {
+  const current = state.signatures.settings?.values || {};
   return {
-    signerMode: signaturesSettingsModeInput?.value || "mock",
-    realDryRun: signaturesSettingsDryRunInput?.value !== "false",
-    apiAllowlist: signaturesSettingsAllowlistInput?.value || "https://safe-nexus.org",
-    pdfFolder: signaturesSettingsPdfFolderInput?.value || "",
+    signerMode: "real",
+    realDryRun: false,
+    apiAllowlist: "https://safe-nexus.org",
+    pdfFolder: signaturesSettingsPdfFolderInput?.value ?? current.pdfFolder ?? "C:/Users/Branimir/Desktop/ZaPotpis",
     keyword: signaturesSettingsKeywordInput?.value || "",
     fallbackKeyword: signaturesSettingsKeywordInput?.value || "",
     caseInsensitive: signaturesSettingsCaseInsensitiveInput?.value !== "false",
     fallbackCaseInsensitive: signaturesSettingsCaseInsensitiveInput?.value !== "false",
     providerOrder: signaturesSettingsProviderOrderInput?.value || "EOI,FINA",
-    eoiSlotIndex: signaturesSettingsEoiSlotInput?.value || "",
+    eoiSlotIndex: signaturesSettingsEoiSlotInput?.value ?? current.eoiSlotIndex ?? "",
     eoiPkcs11: signaturesSettingsEoiPathInput?.value || "",
-    finaSlotIndex: signaturesSettingsFinaSlotInput?.value || "",
+    finaSlotIndex: signaturesSettingsFinaSlotInput?.value ?? current.finaSlotIndex ?? "",
     finaPkcs11: signaturesSettingsFinaPathInput?.value || "",
     rectWidthCm: signaturesSettingsRectWidthInput?.value || "",
     rectHeightCm: signaturesSettingsRectHeightInput?.value || "",
@@ -30736,10 +30750,14 @@ function collectSignerSettingsFormValues() {
     offsetLeftCm: signaturesSettingsOffsetLeftInput?.value || "",
     fontSize: signaturesSettingsFontSizeInput?.value || "",
     skipTolerancePt: signaturesSettingsSkipToleranceInput?.value || "",
-    reason: signaturesSettingsReasonInput?.value || "",
-    location: signaturesSettingsLocationInput?.value || "",
-    skipAlreadySigned: signaturesSettingsSkipSignedInput?.value !== "false",
-    previewHideAlreadySigned: signaturesSettingsHideSignedInput?.value === "true",
+    reason: signaturesSettingsReasonInput?.value ?? current.reason ?? "Digitalni potpis",
+    location: signaturesSettingsLocationInput?.value ?? current.location ?? "Hrvatska",
+    skipAlreadySigned: signaturesSettingsSkipSignedInput
+      ? signaturesSettingsSkipSignedInput.value !== "false"
+      : current.skipAlreadySigned ?? true,
+    previewHideAlreadySigned: signaturesSettingsHideSignedInput
+      ? signaturesSettingsHideSignedInput.value === "true"
+      : current.previewHideAlreadySigned ?? false,
   };
 }
 

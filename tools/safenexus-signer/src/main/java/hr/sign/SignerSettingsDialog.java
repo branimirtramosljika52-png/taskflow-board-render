@@ -3,7 +3,6 @@ package hr.sign;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
-import javax.swing.JComboBox;
 import javax.swing.JDialog;
 import javax.swing.JFileChooser;
 import javax.swing.JLabel;
@@ -52,11 +51,6 @@ public final class SignerSettingsDialog {
     private static void showDialog() {
         Properties properties = SignerConfig.loadRawProperties();
 
-        JComboBox<String> mode = new JComboBox<>(new String[]{"mock", "real"});
-        mode.setSelectedItem(properties.getProperty("signer.mode", "mock"));
-        JCheckBox dryRun = new JCheckBox("Real mode dry-run (bez PIN-a i bez pravog potpisa)");
-        dryRun.setSelected(Boolean.parseBoolean(properties.getProperty("real.dryRun", "true")));
-
         JTextArea allowlist = new JTextArea(properties.getProperty("api.allowlist", "https://safe-nexus.org"), 4, 44);
         JTextField pdfFolder = new JTextField(properties.getProperty("pdf.folder", "C:/Users/Branimir/Desktop/ZaPotpis"), 32);
         JTextField keyword = new JTextField(firstNonBlank(properties.getProperty("keyword", ""), properties.getProperty("fallback.keyword", "")), 32);
@@ -83,8 +77,7 @@ public final class SignerSettingsDialog {
         JPanel fields = new JPanel(new GridBagLayout());
         fields.setBorder(BorderFactory.createEmptyBorder(16, 16, 8, 16));
         int row = 0;
-        row = addRow(fields, row, "Signer mode", mode, null);
-        row = addRow(fields, row, "Dry-run", dryRun, null);
+        row = addRow(fields, row, "Potpis", new JLabel("Stvarni digitalni potpis je ukljucen."), null);
         row = addRow(fields, row, "API allowlist", new JScrollPane(allowlist), null);
         row = addRow(fields, row, "PDF folder", pdfFolder, null);
         row = addRow(fields, row, "Keyword fallback", keyword, null);
@@ -106,44 +99,13 @@ public final class SignerSettingsDialog {
         row = addRow(fields, row, "Preview hide signed", previewHideAlreadySigned, null);
         addRow(fields, row, "PIN", new JLabel("PIN se unosi samo lokalno pri potpisu i ne sprema se."), null);
 
-        JButton testBridge = new JButton("Test native bridge");
-        JButton testToken = new JButton("Test token detection");
         JButton save = new JButton("Spremi");
         JButton close = new JButton("Zatvori");
-
-        testBridge.addActionListener(event -> JOptionPane.showMessageDialog(
-                null,
-                "Native bridge je spreman.\n\nConfig: " + SignerConfig.resolveConfigPath()
-                        + "\nMode: " + mode.getSelectedItem()
-                        + "\nPIN se ne sprema u config.",
-                "SafeNexus PDF Signer",
-                JOptionPane.INFORMATION_MESSAGE
-        ));
-
-        testToken.addActionListener(event -> {
-            try {
-                Properties draft = toProperties(properties, mode, dryRun, allowlist, pdfFolder, keyword, caseInsensitive, providerOrder, eoiPath, eoiSlot, finaPath, finaSlot, rectWidth, rectHeight, offsetDown, offsetLeft, fontSize, reason, location, skipAlreadySigned, skipTolerance, previewHideAlreadySigned);
-                SignerConfig.saveRawProperties(draft);
-                SignerConfig config = SignerConfig.load();
-                StringBuilder text = new StringBuilder("Token detection:\n\n");
-                for (TokenService.TokenProbe probe : new TokenService().detectTokens(config)) {
-                    text.append(probe.provider())
-                            .append(": ")
-                            .append(probe.present() ? "detektiran" : "nije detektiran")
-                            .append(" - ")
-                            .append(probe.message())
-                            .append("\n");
-                }
-                JOptionPane.showMessageDialog(null, text.toString(), "SafeNexus PDF Signer", JOptionPane.INFORMATION_MESSAGE);
-            } catch (Exception error) {
-                JOptionPane.showMessageDialog(null, safeMessage(error), "SafeNexus PDF Signer", JOptionPane.ERROR_MESSAGE);
-            }
-        });
 
         JDialog dialog = new JDialog((java.awt.Frame) null, "SafeNexus PDF Signer Settings", true);
         save.addActionListener(event -> {
             try {
-                SignerConfig.saveRawProperties(toProperties(properties, mode, dryRun, allowlist, pdfFolder, keyword, caseInsensitive, providerOrder, eoiPath, eoiSlot, finaPath, finaSlot, rectWidth, rectHeight, offsetDown, offsetLeft, fontSize, reason, location, skipAlreadySigned, skipTolerance, previewHideAlreadySigned));
+                SignerConfig.saveRawProperties(toProperties(properties, allowlist, pdfFolder, keyword, caseInsensitive, providerOrder, eoiPath, eoiSlot, finaPath, finaSlot, rectWidth, rectHeight, offsetDown, offsetLeft, fontSize, reason, location, skipAlreadySigned, skipTolerance, previewHideAlreadySigned));
                 JOptionPane.showMessageDialog(dialog, "Settings su spremljeni.\nPIN nije spremljen.", "SafeNexus PDF Signer", JOptionPane.INFORMATION_MESSAGE);
             } catch (Exception error) {
                 JOptionPane.showMessageDialog(dialog, safeMessage(error), "SafeNexus PDF Signer", JOptionPane.ERROR_MESSAGE);
@@ -152,8 +114,6 @@ public final class SignerSettingsDialog {
         close.addActionListener(event -> dialog.dispose());
 
         JPanel buttons = new JPanel();
-        buttons.add(testBridge);
-        buttons.add(testToken);
         buttons.add(save);
         buttons.add(close);
 
@@ -169,8 +129,6 @@ public final class SignerSettingsDialog {
 
     private static Properties toProperties(
             Properties original,
-            JComboBox<String> mode,
-            JCheckBox dryRun,
             JTextArea allowlist,
             JTextField pdfFolder,
             JTextField keyword,
@@ -193,8 +151,8 @@ public final class SignerSettingsDialog {
     ) {
         Properties out = new Properties();
         out.putAll(original);
-        out.setProperty("signer.mode", String.valueOf(mode.getSelectedItem()));
-        out.setProperty("real.dryRun", Boolean.toString(dryRun.isSelected()));
+        out.setProperty("signer.mode", "real");
+        out.setProperty("real.dryRun", "false");
         out.setProperty("api.allowlist", allowlist.getText().trim());
         out.setProperty("pdf.folder", pdfFolder.getText().trim());
         out.setProperty("keyword", keyword.getText().trim());

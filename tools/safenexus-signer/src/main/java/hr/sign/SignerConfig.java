@@ -91,13 +91,11 @@ public final class SignerConfig {
         String envMode = System.getenv("SAFENEXUS_SIGNER_MODE");
         String configuredMode = envMode != null && !envMode.isBlank()
                 ? envMode
-                : properties.getProperty("signer.mode", "mock");
+                : "real";
 
         Mode mode = "real".equalsIgnoreCase(configuredMode.trim()) ? Mode.REAL : Mode.MOCK;
         String envDryRun = System.getenv("SAFENEXUS_SIGNER_DRY_RUN");
-        boolean dryRun = Boolean.parseBoolean(envDryRun == null || envDryRun.isBlank()
-                ? properties.getProperty("real.dryRun", "true")
-                : envDryRun);
+        boolean dryRun = envDryRun != null && !envDryRun.isBlank() && Boolean.parseBoolean(envDryRun);
 
         return new SignerConfig(
                 mode,
@@ -129,8 +127,8 @@ public final class SignerConfig {
 
     public static Properties defaultProperties() {
         Properties properties = new Properties();
-        properties.setProperty("signer.mode", "mock");
-        properties.setProperty("real.dryRun", "true");
+        properties.setProperty("signer.mode", "real");
+        properties.setProperty("real.dryRun", "false");
         properties.setProperty("api.allowlist", "https://safe-nexus.org");
         properties.setProperty("pdf.folder", "C:/Users/Branimir/Desktop/ZaPotpis");
         properties.setProperty("keyword", "");

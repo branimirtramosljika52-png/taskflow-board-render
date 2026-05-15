@@ -19,7 +19,7 @@ import java.util.Properties;
 
 public final class NativeMessagingMain {
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final String VERSION = "1.1.0-real-field";
+    private static final String VERSION = "1.2.0-real-signing";
     private static final int MAX_MESSAGE_BYTES = 8 * 1024 * 1024;
 
     private NativeMessagingMain() {
@@ -131,9 +131,8 @@ public final class NativeMessagingMain {
             putSetting(properties, settings, "skipTolerancePt", "skip.tolerance.pt");
             putSetting(properties, settings, "previewHideAlreadySigned", "preview.hide.already.signed");
 
-            if (!List.of("mock", "real").contains(properties.getProperty("signer.mode", "mock").toLowerCase(Locale.ROOT))) {
-                properties.setProperty("signer.mode", "mock");
-            }
+            properties.setProperty("signer.mode", "real");
+            properties.setProperty("real.dryRun", "false");
             properties.remove("pin");
             properties.remove("eoi.pin");
             properties.remove("fina.pin");

@@ -112,7 +112,7 @@ export async function sendMessageToPdfSignerExtension(message = {}, options = {}
           return;
         }
 
-        if (response.success === false || response.ok === false) {
+        if ((response.success === false || response.ok === false) && !options.allowErrorResponse) {
           reject(new PdfSignerExtensionError(
             response.message || "PDF Signer nije uspio obraditi dokumente.",
             response.code || "PDF_SIGNER_EXTENSION_RESPONSE_ERROR",
@@ -163,6 +163,7 @@ export function getSignatureFieldsWithPdfSignerExtension({
   token = "",
   apiBaseUrl = "",
   documents = [],
+  allowErrorResponse = false,
 } = {}) {
   return sendMessageToPdfSignerExtension({
     type: "GET_SIGNATURE_FIELDS",
@@ -170,7 +171,7 @@ export function getSignatureFieldsWithPdfSignerExtension({
     token,
     apiBaseUrl,
     documents,
-  }, { timeoutMs: 120000 });
+  }, { timeoutMs: 120000, allowErrorResponse });
 }
 
 export function getSignerSettingsWithPdfSignerExtension() {
