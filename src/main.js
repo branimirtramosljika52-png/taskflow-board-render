@@ -861,6 +861,12 @@ const DEFAULT_PERIODICS_VISUAL_SETTINGS = Object.freeze({
   warningDays: 60,
   workOrderDefaultDueDays: "",
 });
+const WORK_ORDER_SERVICE_PROGRESS_OPTIONS = Object.freeze([
+  { value: "pending", label: "Nije završeno", tone: "pending" },
+  { value: "in_progress", label: "U tijeku", tone: "progress" },
+  { value: "completed", label: "Završeno", tone: "completed" },
+]);
+const WORK_ORDER_SERVICE_PROGRESS_VALUES = new Set(WORK_ORDER_SERVICE_PROGRESS_OPTIONS.map((option) => option.value));
 const APP_CAPABILITY_STATUS_OPTIONS = Object.freeze([
   Object.freeze({
     value: "implemented",
@@ -14157,6 +14163,46 @@ function getSelectedWorkOrderServiceSummary() {
   });
 }
 
+function normalizeWorkOrderServiceProgressStatus(value = "", fallback = "pending") {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (WORK_ORDER_SERVICE_PROGRESS_VALUES.has(normalized)) {
+    return normalized;
+  }
+  const normalizedFallback = String(fallback || "").trim().toLowerCase();
+  return WORK_ORDER_SERVICE_PROGRESS_VALUES.has(normalizedFallback) ? normalizedFallback : "pending";
+}
+
+function getWorkOrderServiceProgressStatus(item = {}) {
+  return normalizeWorkOrderServiceProgressStatus(
+    item?.serviceStatus ?? item?.progressStatus ?? item?.workStatus,
+    item?.isCompleted ? "completed" : "pending",
+  );
+}
+
+function getWorkOrderServiceProgressMeta(item = {}) {
+  const status = getWorkOrderServiceProgressStatus(item);
+  return WORK_ORDER_SERVICE_PROGRESS_OPTIONS.find((option) => option.value === status)
+    || WORK_ORDER_SERVICE_PROGRESS_OPTIONS[0];
+}
+
+function withWorkOrderServiceProgressStatus(item = {}, status = "pending") {
+  const normalizedStatus = normalizeWorkOrderServiceProgressStatus(status);
+  return {
+    ...item,
+    serviceStatus: normalizedStatus,
+    isCompleted: normalizedStatus === "completed",
+  };
+}
+
+function summarizeWorkOrderServiceProgress(items = []) {
+  const counts = { pending: 0, in_progress: 0, completed: 0 };
+  (Array.isArray(items) ? items : []).forEach((item) => {
+    const status = getWorkOrderServiceProgressStatus(item);
+    counts[status] = (counts[status] || 0) + 1;
+  });
+  return counts;
+}
+
 function buildWorkOrderServiceItemSnapshot(service, current = null) {
   const linkedTemplateTitles = Array.isArray(service?.linkedTemplateTitles) && service.linkedTemplateTitles.length > 0
     ? service.linkedTemplateTitles
@@ -14188,7 +14234,14 @@ function buildWorkOrderServiceItemSnapshot(service, current = null) {
         : [],
     linkedLearningTestTitles: linkedLearningTestTitles.map((value) => String(value ?? "").trim()).filter(Boolean),
     isTraining: String(service?.serviceType ?? current?.serviceType ?? (service?.isTraining ?? current?.isTraining ? "znr" : "inspection")).trim().toLowerCase() === "znr",
-    isCompleted: Boolean(current?.isCompleted),
+    serviceStatus: normalizeWorkOrderServiceProgressStatus(
+      current?.serviceStatus ?? current?.progressStatus ?? current?.workStatus,
+      current?.isCompleted ? "completed" : "pending",
+    ),
+    isCompleted: normalizeWorkOrderServiceProgressStatus(
+      current?.serviceStatus ?? current?.progressStatus ?? current?.workStatus,
+      current?.isCompleted ? "completed" : "pending",
+    ) === "completed",
   };
 }
 
@@ -23208,10 +23261,16 @@ function renderWorkOrderEditorSummary() {
   const location = getLocation(workOrderLocationIdInput.value);
   const companyName = company?.name || "";
   const locationName = location?.name || "";
-  const completedServices = getWorkOrderCompletedServiceCount({ serviceItems: selectedServiceItems });
+  const serviceProgressCounts = summarizeWorkOrderServiceProgress(selectedServiceItems);
   const serviceSummary = [
     serviceLine,
-    selectedServiceItems.length > 0 ? `${completedServices}/${selectedServiceItems.length} odrađeno` : "",
+    selectedServiceItems.length > 0
+      ? [
+        serviceProgressCounts.pending ? `${serviceProgressCounts.pending} nije završeno` : "",
+        serviceProgressCounts.in_progress ? `${serviceProgressCounts.in_progress} u tijeku` : "",
+        serviceProgressCounts.completed ? `${serviceProgressCounts.completed} završeno` : "",
+      ].filter(Boolean).join(" · ")
+      : "",
   ].filter(Boolean).join(" · ");
   const contactSummary = [
     getSelectedContactName(),
@@ -23779,7 +23838,12 @@ function setWorkOrderServicePickerTriggerContent(trigger, items = []) {
   if (selectedItems.length > 0) {
     const meta = document.createElement("span");
     meta.className = "work-order-service-picker-empty";
-    meta.textContent = `${getWorkOrderCompletedServiceCount({ serviceItems: selectedItems })}/${selectedItems.length} odrađeno`;
+    const progressCounts = summarizeWorkOrderServiceProgress(selectedItems);
+    meta.textContent = [
+      progressCounts.pending ? `${progressCounts.pending} nije završeno` : "",
+      progressCounts.in_progress ? `${progressCounts.in_progress} u tijeku` : "",
+      progressCounts.completed ? `${progressCounts.completed} završeno` : "",
+    ].filter(Boolean).join(" · ");
     trigger.append(meta);
   }
 }
@@ -24904,8 +24968,9 @@ function renderWorkOrderServiceSelection() {
   }
 
   workOrderServiceSelection.replaceChildren(...selectedItems.map((item) => {
+    const progressMeta = getWorkOrderServiceProgressMeta(item);
     const row = document.createElement("article");
-    row.className = `work-order-service-item${item.isCompleted ? " is-completed" : ""}`;
+    row.className = `work-order-service-item is-${progressMeta.tone}${item.isCompleted ? " is-completed" : ""}`;
 
     const copy = document.createElement("div");
     copy.className = "work-order-service-item-copy";
@@ -24916,25 +24981,39 @@ function renderWorkOrderServiceSelection() {
     title.textContent = item.name || item.serviceCode || "Usluga";
     titleRow.append(title);
 
-    copy.append(titleRow);
+    const metaRow = document.createElement("div");
+    metaRow.className = "work-order-service-item-meta";
+    if (item.serviceCode && item.name && item.serviceCode !== item.name) {
+      metaRow.append(createBadge(item.serviceCode, "work-order-service-code-badge"));
+    }
+    metaRow.append(createBadge(progressMeta.label, `work-order-service-progress-badge is-${progressMeta.tone}`));
+
+    copy.append(titleRow, metaRow);
 
     const actions = document.createElement("div");
     actions.className = "work-order-service-item-actions";
 
-    const toggle = document.createElement("button");
-    toggle.type = "button";
-    toggle.className = `work-order-service-status-toggle${item.isCompleted ? " is-completed" : ""}`;
-    toggle.innerHTML = getWorkOrderIconMarkup("status");
-    toggle.title = item.isCompleted ? "Označi kao neodrađeno" : "Označi kao odrađeno";
-    toggle.addEventListener("click", () => {
-      const nextItems = selectedItems.map((entry) => (
-        entry.serviceId === item.serviceId
-          ? { ...entry, isCompleted: !entry.isCompleted }
-          : entry
-      ));
-      writeWorkOrderServiceSelection(nextItems, {
-        dispatchEventName: "change",
+    const statusGroup = document.createElement("div");
+    statusGroup.className = "work-order-service-progress-toggle";
+    statusGroup.setAttribute("role", "group");
+    statusGroup.setAttribute("aria-label", `Status usluge ${item.name || item.serviceCode || "Usluga"}`);
+    WORK_ORDER_SERVICE_PROGRESS_OPTIONS.forEach((option) => {
+      const statusButton = document.createElement("button");
+      statusButton.type = "button";
+      statusButton.className = `work-order-service-status-toggle is-${option.tone}`;
+      statusButton.textContent = option.label;
+      statusButton.setAttribute("aria-pressed", String(progressMeta.value === option.value));
+      statusButton.addEventListener("click", () => {
+        const nextItems = selectedItems.map((entry) => (
+          entry.serviceId === item.serviceId
+            ? withWorkOrderServiceProgressStatus(entry, option.value)
+            : entry
+        ));
+        writeWorkOrderServiceSelection(nextItems, {
+          dispatchEventName: "change",
+        });
       });
+      statusGroup.append(statusButton);
     });
 
     const remove = document.createElement("button");
@@ -24950,7 +25029,7 @@ function renderWorkOrderServiceSelection() {
       });
     });
 
-    actions.append(toggle, remove);
+    actions.append(statusGroup, remove);
     row.append(copy, actions);
     return row;
   }));
@@ -53789,7 +53868,7 @@ function buildDocumentTemplateRuntimeBatchSequenceEntries() {
 async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
   const sequenceEntries = buildDocumentTemplateRuntimeBatchSequenceEntries();
   if (sequenceEntries.length === 0) {
-    setDocumentTemplateMessage("Nema zelenih/označenih zapisnika za PDF. Označi usluge kao završene ili vrati preskočene RN-ove.");
+    setDocumentTemplateMessage("Nema odabranih RN-ova za PDF. Vrati preskočene RN-ove ili odaberi zapisnike za spremanje.");
     return;
   }
 
@@ -53848,6 +53927,7 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
         }
         state.documentTemplateRuntime.activeWorkOrderId = String(sequenceEntry.workOrderId || "").trim();
         syncDocumentTemplateRuntimeObjectSelectionFromEntry(sequenceEntry);
+        await persistDocumentTemplateRuntimeServiceProgress(workOrder, template, "in_progress");
 
         await persistDocumentTemplateRuntimeRecordFor(template, workOrder);
         const exportEntry = await buildDocumentTemplateRuntimeExportEntryAsync(template, workOrder);
@@ -53917,7 +53997,7 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
     const hasWordTemplateEntries = exportEntries.some(({ exportEntry }) => (
       String(exportEntry?.templateReferenceKind || "").trim().toLowerCase() === "word"
     ));
-    const handleSavedEntry = (savedEntry, sequenceEntry, exportEntry, index = 0) => {
+    const handleSavedEntry = async (savedEntry, sequenceEntry, exportEntry, index = 0) => {
       const workOrderLabel = `RN ${sequenceEntry?.workOrderNumber || exportEntry?.renderModel?.workOrderNumber || index + 1}`;
       if (!savedEntry?.item) {
         throw new Error("Server nije vratio spremljeni zapisnik.");
@@ -53933,6 +54013,11 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
       renderNotifications();
       const savedTypes = new Set(savedDocuments.map((item) => String(item?.fileExtension || "").toLowerCase()));
       const savedLabel = savedTypes.has("docx") && savedTypes.has("pdf") ? "DOCX i PDF" : "PDF";
+      await persistDocumentTemplateRuntimeServiceProgress(
+        getDocumentTemplateRuntimeWorkOrderById(sequenceEntry?.workOrderId) || { id: sequenceEntry?.workOrderId },
+        getDocumentTemplateById(sequenceEntry?.templateId || exportEntry?.templateId),
+        "completed",
+      );
       setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
         status: "done",
         message: `${workOrderLabel}: spremljen ${savedLabel} u Documents.`,
@@ -53958,12 +54043,12 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
           String(item?.workOrderId || ""),
           item,
         ]));
-        exportEntries.forEach(({ sequenceEntry, exportEntry }, index) => {
+        for (const [index, { sequenceEntry, exportEntry }] of exportEntries.entries()) {
           const savedEntry = responseItemsByWorkOrderId.get(String(sequenceEntry?.workOrderId || ""))
             || responseItems[index]
             || null;
           try {
-            handleSavedEntry(savedEntry, sequenceEntry, exportEntry, index);
+            await handleSavedEntry(savedEntry, sequenceEntry, exportEntry, index);
           } catch (error) {
             failureCount += 1;
             setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
@@ -53971,7 +54056,7 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
               message: error?.message || "Ne mogu spremiti DOCX/PDF zapisnik.",
             }, { render: true });
           }
-        });
+        }
       } catch (error) {
         failureCount += batchEntries.length;
         console.error("Ne mogu spremiti Word DOCX/PDF batch.", error);
@@ -54005,7 +54090,7 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
             },
           });
           const savedEntry = Array.isArray(response.items) ? response.items[0] : null;
-          handleSavedEntry(savedEntry, sequenceEntry, exportEntry?.exportEntry, index);
+          await handleSavedEntry(savedEntry, sequenceEntry, exportEntry?.exportEntry, index);
         } catch (error) {
           failureCount += 1;
           console.error(`Ne mogu spremiti PDF zapisnik za ${workOrderLabel}.`, error);
@@ -55005,6 +55090,10 @@ function getDocumentTemplateRuntimeResolvedServiceItems(workOrder = {}) {
 }
 
 function setDocumentTemplateRuntimeServiceItemCompleted(workOrderId = "", serviceIndex = -1, isCompleted = false, { render = true } = {}) {
+  setDocumentTemplateRuntimeServiceItemStatus(workOrderId, serviceIndex, isCompleted ? "completed" : "pending", { render });
+}
+
+function setDocumentTemplateRuntimeServiceItemStatus(workOrderId = "", serviceIndex = -1, status = "pending", { render = true } = {}) {
   const normalizedId = String(workOrderId || "").trim();
   const workOrder = getDocumentTemplateRuntimeWorkOrderById(normalizedId);
   if (!normalizedId || !workOrder) {
@@ -55018,7 +55107,7 @@ function setDocumentTemplateRuntimeServiceItemCompleted(workOrderId = "", servic
 
   const nextItems = currentItems.map((item, index) => (
     index === serviceIndex
-      ? { ...item, isCompleted: Boolean(isCompleted) }
+      ? withWorkOrderServiceProgressStatus(item, status)
       : item
   ));
 
@@ -55033,6 +55122,63 @@ function setDocumentTemplateRuntimeServiceItemCompleted(workOrderId = "", servic
     renderDocumentTemplateRuntimeContext();
     renderDocumentTemplateFieldRows();
     renderDocumentTemplatePreviewContent();
+  }
+}
+
+function buildDocumentTemplateRuntimeServiceProgressPatch(workOrder = {}, template = null, status = "in_progress") {
+  const workOrderId = String(workOrder?.id || "").trim();
+  const currentItems = getDocumentTemplateRuntimeResolvedServiceItems(workOrder);
+  if (!workOrderId || currentItems.length === 0) {
+    return null;
+  }
+
+  const normalizedTemplateId = getDocumentTemplateRuntimeTemplateId(template);
+  const normalizedTemplateTitle = String(template?.title || "").trim().toLowerCase();
+  let matchedCount = 0;
+  const nextItems = currentItems.map((service) => {
+    const templateIds = getWorkOrderServiceTemplateIds(service).map((value) => String(value || "").trim());
+    const templateTitles = getResolvedWorkOrderServiceTemplateTitles(service)
+      .map((value) => String(value || "").trim().toLowerCase());
+    const matchesTemplate = (
+      (normalizedTemplateId && templateIds.includes(normalizedTemplateId))
+      || (normalizedTemplateTitle && templateTitles.includes(normalizedTemplateTitle))
+      || currentItems.length === 1
+    );
+
+    if (!matchesTemplate) {
+      return service;
+    }
+
+    matchedCount += 1;
+    return withWorkOrderServiceProgressStatus(service, status);
+  });
+
+  return matchedCount > 0 ? nextItems : null;
+}
+
+async function persistDocumentTemplateRuntimeServiceProgress(workOrder = {}, template = null, status = "in_progress") {
+  const workOrderId = String(workOrder?.id || "").trim();
+  const nextItems = buildDocumentTemplateRuntimeServiceProgressPatch(workOrder, template, status);
+  if (!workOrderId || !nextItems) {
+    return false;
+  }
+
+  updateDocumentTemplateRuntimeOverride(workOrderId, { serviceItems: nextItems }, { render: false });
+  const stateItem = state.workOrders.find((item) => String(item.id) === workOrderId);
+  if (stateItem) {
+    stateItem.serviceItems = nextItems;
+    stateItem.serviceLine = getWorkOrderServiceSummary({ serviceItems: nextItems });
+  }
+
+  try {
+    await apiRequest(`/work-orders/${encodeURIComponent(workOrderId)}`, {
+      method: "PATCH",
+      body: { serviceItems: nextItems },
+    });
+    return true;
+  } catch (error) {
+    console.warn("Ne mogu automatski ažurirati status usluge na RN-u.", error);
+    return false;
   }
 }
 
@@ -62786,9 +62932,7 @@ function isDocumentTemplateRuntimeWorkOrderReadyForExport(workOrderId = "") {
     return false;
   }
 
-  const serviceItems = getDocumentTemplateRuntimeResolvedServiceItems(workOrder);
-  const completedServices = getWorkOrderCompletedServiceCount({ serviceItems });
-  return serviceItems.length === 0 || completedServices >= serviceItems.length;
+  return true;
 }
 
 function getDocumentTemplateRuntimeExportableSequenceEntries(entries = getDocumentTemplateRuntimeSequenceEntries()) {
@@ -64242,7 +64386,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
       const skipped = skippedWorkOrderIds.has(String(group.workOrderId || "").trim());
       const serviceItems = workOrder ? getDocumentTemplateRuntimeResolvedServiceItems(workOrder) : [];
       const completedServices = getWorkOrderCompletedServiceCount({ serviceItems });
-      const servicesOk = serviceItems.length === 0 || completedServices >= serviceItems.length;
+      const servicesOk = true;
       const groupOk = !skipped && servicesOk && group.items.length > 0;
       const exportStatus = getDocumentTemplateRuntimeGroupExportStatus(group, { groupOk, skipped });
       queueDocumentTemplateRuntimeSavedPdfDocumentLoad(group, { groupOk, skipped });
@@ -64435,20 +64579,21 @@ function renderDocumentTemplateRuntimeFieldRows() {
       } else {
         serviceItems.forEach((service, serviceIndex) => {
           const serviceLabel = service?.name || service?.serviceName || service?.serviceCode || "Usluga";
+          const progressMeta = getWorkOrderServiceProgressMeta(service);
           const serviceRow = document.createElement("label");
           serviceRow.className = "document-template-runtime-summary-service";
           serviceRow.classList.toggle("is-complete", Boolean(service?.isCompleted));
-          const serviceCheckbox = document.createElement("input");
-          serviceCheckbox.type = "checkbox";
-          serviceCheckbox.className = "document-template-runtime-summary-service-check";
-          serviceCheckbox.checked = Boolean(service?.isCompleted);
-          serviceCheckbox.disabled = skipped;
-          serviceCheckbox.setAttribute("aria-label", `${service?.isCompleted ? "Makni završeno" : "Označi završeno"} za ${serviceLabel}`);
-          serviceCheckbox.addEventListener("change", (event) => {
-            setDocumentTemplateRuntimeServiceItemCompleted(
+          serviceRow.classList.toggle("is-progress", progressMeta.value === "in_progress");
+          const serviceStatusSelect = document.createElement("select");
+          serviceStatusSelect.className = "document-template-runtime-summary-service-status-select";
+          serviceStatusSelect.disabled = skipped;
+          serviceStatusSelect.setAttribute("aria-label", `Status usluge ${serviceLabel}`);
+          replaceSelectOptions(serviceStatusSelect, WORK_ORDER_SERVICE_PROGRESS_OPTIONS, progressMeta.value);
+          serviceStatusSelect.addEventListener("change", (event) => {
+            setDocumentTemplateRuntimeServiceItemStatus(
               group.workOrderId,
               serviceIndex,
-              Boolean(event.currentTarget.checked),
+              event.currentTarget.value || "pending",
               { render: true },
             );
           });
@@ -64456,8 +64601,8 @@ function renderDocumentTemplateRuntimeFieldRows() {
           serviceName.className = "document-template-runtime-summary-service-name";
           serviceName.textContent = serviceLabel;
           const serviceStatus = document.createElement("strong");
-          serviceStatus.textContent = service?.isCompleted ? "Završeno" : "Nije završeno";
-          serviceRow.append(serviceCheckbox, serviceName, serviceStatus);
+          serviceStatus.textContent = progressMeta.label;
+          serviceRow.append(serviceName, serviceStatus, serviceStatusSelect);
           serviceList.append(serviceRow);
         });
       }
@@ -89432,9 +89577,7 @@ async function saveGeneratedWorkOrderPdf(workOrderId = "", { refreshDocuments = 
   try {
     await apiRequest(`/work-orders/${encodeURIComponent(normalizedId)}/save-pdf`, {
       method: "POST",
-      body: {
-        templateId: getSelectedWorkOrderTemplateId(),
-      },
+      body: {},
     });
 
     if (refreshDocuments && String(state.workOrderDocuments.workOrderId || workOrderIdInput?.value || "") === normalizedId) {
@@ -89463,7 +89606,7 @@ function queueGeneratedWorkOrderPdfSave(workOrderId = "") {
   }, WORK_ORDER_PDF_AUTOSAVE_DELAY_MS));
 }
 
-async function downloadWorkOrderPdf(workOrder = {}, { saveFirst = true } = {}) {
+async function downloadWorkOrderPdf(workOrder = {}, { saveFirst = false, useTemplate = false } = {}) {
   const workOrderId = String(workOrder?.id || "").trim();
   if (!workOrderId) {
     return false;
@@ -89473,7 +89616,7 @@ async function downloadWorkOrderPdf(workOrder = {}, { saveFirst = true } = {}) {
     if (saveFirst) {
       await saveGeneratedWorkOrderPdf(workOrderId, { refreshDocuments: false });
     }
-    const templateId = getSelectedWorkOrderTemplateId();
+    const templateId = useTemplate ? getSelectedWorkOrderTemplateId() : "";
     const response = await apiBinaryRequest(`/work-orders/${workOrderId}/pdf`, {
       method: "POST",
       body: templateId ? { templateId } : undefined,
@@ -95447,7 +95590,12 @@ function renderCompactWorkOrdersList() {
         if (serviceItems.length > 0) {
           const serviceProgress = document.createElement("div");
           serviceProgress.className = "work-item-service-note";
-          serviceProgress.textContent = `${getWorkOrderCompletedServiceCount(item)}/${serviceItems.length} odrađeno`;
+          const progressCounts = summarizeWorkOrderServiceProgress(serviceItems);
+          serviceProgress.textContent = [
+            progressCounts.pending ? `${progressCounts.pending} nije završeno` : "",
+            progressCounts.in_progress ? `${progressCounts.in_progress} u tijeku` : "",
+            progressCounts.completed ? `${progressCounts.completed} završeno` : "",
+          ].filter(Boolean).join(" · ") || "Nije završeno";
           serviceCell.append(serviceProgress);
         }
 

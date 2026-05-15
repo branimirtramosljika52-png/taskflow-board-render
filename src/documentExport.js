@@ -6480,7 +6480,10 @@ export async function buildWorkOrderPdfBuffer(workOrder = {}) {
   drawOfferPdfSectionTitle(doc, "Usluge");
   if (serviceItems.length > 0) {
     serviceItems.forEach((item, index) => {
-      const status = item?.isCompleted ? "odradeno" : "nije oznaceno";
+      const serviceStatus = String(item?.serviceStatus || "").trim().toLowerCase();
+      const status = item?.isCompleted || serviceStatus === "completed"
+        ? "Zavrseno"
+        : (serviceStatus === "in_progress" ? "U tijeku" : "Nije zavrseno");
       doc.font("dejavu").fontSize(10).fillColor("#1f2937").text(
         `${index + 1}. ${normalizePdfText(item?.name || item?.serviceCode || "Usluga")} - ${status}`,
         { width: helpers.availableWidth },

@@ -1382,6 +1382,7 @@ function areWorkOrderActivityValuesEqual(fieldKey, left, right) {
       String(item.serviceId) === String(rightItems[index]?.serviceId)
       && String(item.name) === String(rightItems[index]?.name)
       && String(item.serviceCode) === String(rightItems[index]?.serviceCode)
+      && String(item.serviceStatus || "pending") === String(rightItems[index]?.serviceStatus || "pending")
       && Boolean(item.isCompleted) === Boolean(rightItems[index]?.isCompleted)
     ));
   }
@@ -2988,6 +2989,7 @@ async function fetchSnapshotFromConnection(connection) {
         linkedTemplateIds: parseJsonArray(item.linkedTemplateIds).map((value) => dbString(value)).filter(Boolean),
         linkedTemplateTitles: parseJsonArray(item.linkedTemplateTitles).map((value) => dbString(value)).filter(Boolean),
         isTraining: Boolean(item.isTraining),
+        serviceStatus: dbString(item.serviceStatus || item.progressStatus || item.workStatus),
         isCompleted: Boolean(item.isCompleted),
       }))
       .filter((item) => item.name || item.serviceCode);

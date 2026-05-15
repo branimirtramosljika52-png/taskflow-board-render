@@ -2010,6 +2010,17 @@ function deriveTemplateSnapshotFromLinkedServices(state, serviceIds = [], fallba
   };
 }
 
+const WORK_ORDER_SERVICE_PROGRESS_VALUES = new Set(["pending", "in_progress", "completed"]);
+
+function normalizeWorkOrderServiceProgressStatus(value = "", fallback = "pending") {
+  const normalized = normalizeText(value).toLowerCase();
+  if (WORK_ORDER_SERVICE_PROGRESS_VALUES.has(normalized)) {
+    return normalized;
+  }
+  const normalizedFallback = normalizeText(fallback).toLowerCase();
+  return WORK_ORDER_SERVICE_PROGRESS_VALUES.has(normalizedFallback) ? normalizedFallback : "pending";
+}
+
 function normalizeWorkOrderServiceItemSnapshot(item = {}) {
   const name = normalizeText(item.name);
   const serviceCode = normalizeText(item.serviceCode);
@@ -2026,6 +2037,10 @@ function normalizeWorkOrderServiceItemSnapshot(item = {}) {
   const linkedLearningTestTitles = Array.isArray(item.linkedLearningTestTitles)
     ? item.linkedLearningTestTitles.map((value) => normalizeText(value)).filter(Boolean)
     : [];
+  const serviceStatus = normalizeWorkOrderServiceProgressStatus(
+    item.serviceStatus ?? item.progressStatus ?? item.workStatus,
+    normalizeBoolean(item.isCompleted, false) ? "completed" : "pending",
+  );
 
   return {
     serviceId: normalizeId(item.serviceId || item.id),
@@ -2044,7 +2059,8 @@ function normalizeWorkOrderServiceItemSnapshot(item = {}) {
       item.serviceType,
       normalizeBoolean(item.isTraining, false) ? "znr" : "inspection",
     ) === "znr",
-    isCompleted: normalizeBoolean(item.isCompleted, false),
+    serviceStatus,
+    isCompleted: serviceStatus === "completed",
   };
 }
 
@@ -2101,6 +2117,13 @@ function normalizeWorkOrderServiceItemsInput(items = [], state, currentItems = [
         ) ? "znr" : "inspection"),
     );
 
+    const serviceStatus = normalizeWorkOrderServiceProgressStatus(
+      entry?.serviceStatus ?? entry?.progressStatus ?? entry?.workStatus,
+      hasOwn(entry ?? {}, "isCompleted")
+        ? (normalizeBoolean(entry.isCompleted, false) ? "completed" : "pending")
+        : normalizeWorkOrderServiceProgressStatus(current?.serviceStatus, normalizeBoolean(current?.isCompleted, false) ? "completed" : "pending"),
+    );
+
     const normalizedItem = {
       serviceId: serviceId || current?.serviceId || "",
       name: name || current?.name || "",
@@ -2112,9 +2135,8 @@ function normalizeWorkOrderServiceItemsInput(items = [], state, currentItems = [
       ...templateSnapshot,
       ...learningTestSnapshot,
       isTraining: serviceType === "znr",
-      isCompleted: hasOwn(entry ?? {}, "isCompleted")
-        ? normalizeBoolean(entry.isCompleted, false)
-        : normalizeBoolean(current?.isCompleted, false),
+      serviceStatus,
+      isCompleted: serviceStatus === "completed",
     };
 
     const dedupeKey = normalizedItem.serviceId || `${normalizedItem.serviceCode.toLowerCase()}::${normalizedItem.name.toLowerCase()}`;

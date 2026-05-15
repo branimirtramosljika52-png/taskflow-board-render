@@ -63,6 +63,10 @@ import {
 } from "./src/safetyModel.js";
 
 const port = Number(process.env.PORT || 3000);
+const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
+  5000,
+  Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
+);
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
@@ -82,6 +86,23 @@ const canonicalAppOrigin = (() => {
     return "";
   }
 })();
+
+function withOperationTimeout(promise, timeoutMs = 0, message = "Operacija je istekla.") {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    return promise;
+  }
+
+  let timeout = null;
+  const timeoutPromise = new Promise((_, rejectPromise) => {
+    timeout = setTimeout(() => rejectPromise(new Error(message)), timeoutMs);
+  });
+  return Promise.race([promise, timeoutPromise])
+    .finally(() => {
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+    });
+}
 const canonicalAppHost = canonicalAppOrigin ? new URL(canonicalAppOrigin).host.toLowerCase() : "";
 const GENERATED_WORK_ORDER_PDF_CATEGORY = "Radni nalog PDF";
 const GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY = "Zapisnik PDF";
@@ -3035,14 +3056,22 @@ async function buildWorkOrderPdfExportPayload(workOrder = {}, scopedSnapshot = {
 
     const referenceExtension = isWordTemplateFile(template.referenceDocument) ? "docx" : "html";
 
-    const pdfBuffer = await generatePdfBufferForTemplate(template, {
-      placeholders: buildWorkOrderTemplatePlaceholderPayload(workOrder),
-      fileName: sanitizeGeneratedDocumentFileName(
-        workOrder.workOrderNumber || workOrder.companyName || "radni-nalog",
-        { fallback: "radni-nalog", extension: referenceExtension },
-      ),
-    });
-    return { pdfBuffer, fileName };
+    try {
+      const pdfBuffer = await withOperationTimeout(
+        generatePdfBufferForTemplate(template, {
+          placeholders: buildWorkOrderTemplatePlaceholderPayload(workOrder),
+          fileName: sanitizeGeneratedDocumentFileName(
+            workOrder.workOrderNumber || workOrder.companyName || "radni-nalog",
+            { fallback: "radni-nalog", extension: referenceExtension },
+          ),
+        }),
+        WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS,
+        "RN template PDF nije zavrsio na vrijeme.",
+      );
+      return { pdfBuffer, fileName };
+    } catch (error) {
+      console.warn("RN template PDF nije uspio, koristim standardni RN PDF.", error);
+    }
   }
 
   const pdfBuffer = await buildWorkOrderPdfBuffer(workOrder);
