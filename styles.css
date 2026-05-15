@@ -21026,6 +21026,10 @@ body.is-resizing-work-order-column {
   flex: 0 0 auto;
 }
 
+.work-item-meta-icon.is-execution {
+  color: #2f9f75;
+}
+
 .work-item-meta-icon svg {
   width: 14px;
   height: 14px;
@@ -21722,9 +21726,9 @@ body.is-resizing-work-order-column {
 }
 
 .work-item-tag-pill {
-  background: #f7d7db;
-  border-color: #efc3c9;
-  color: #7c4050;
+  background: var(--work-order-tag-soft-bg, #f7d7db);
+  border-color: var(--work-order-tag-soft-border, #efc3c9);
+  color: var(--work-order-tag-soft-color, #7c4050);
 }
 
 .work-item-tag-pill.is-muted {
@@ -47447,8 +47451,9 @@ button.work-order-editor-section-head {
 }
 
 .work-order-editor-detail-tag {
-  color: #ffffff;
-  background: #ef4565;
+  color: var(--work-order-tag-color, #ffffff);
+  background: var(--work-order-tag-bg, #ef4565);
+  border: 1px solid var(--work-order-tag-border, transparent);
 }
 
 .work-order-editor-detail-assignees {
@@ -51240,7 +51245,8 @@ button.work-order-editor-section-head:focus-visible {
 }
 
 .work-order-inline-field-control select,
-.work-order-inline-field-control .work-order-tag-picker-trigger {
+.work-order-inline-field-control .work-order-tag-picker-trigger,
+.work-order-inline-field-control .work-order-tag-picker-field {
   min-height: 38px;
   width: 100%;
   border: 1px solid rgba(157, 178, 214, 0.74);
@@ -51316,6 +51322,69 @@ button.work-order-editor-section-head:focus-visible {
 .work-order-tag-picker,
 .work-order-tag-picker-trigger-copy {
   min-width: 0;
+}
+
+.work-order-tag-picker {
+  display: block;
+  width: 100%;
+}
+
+.work-order-tag-picker-field {
+  min-height: 34px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: rgba(246, 248, 252, 0.96);
+  color: #1f2937;
+  cursor: text;
+}
+
+.work-order-tag-picker-field:focus-within,
+.work-order-tag-picker.is-open .work-order-tag-picker-field {
+  border-color: rgba(74, 126, 255, 0.38);
+  box-shadow: 0 0 0 3px rgba(74, 126, 255, 0.1);
+}
+
+.work-order-tag-picker-chip-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+  min-width: 0;
+}
+
+.work-order-tag-picker-field-chip {
+  border: 0;
+  cursor: pointer;
+}
+
+.work-order-tag-picker-field-chip-remove {
+  margin-left: 4px;
+  font-size: 0.78rem;
+  line-height: 1;
+}
+
+.work-order-tag-picker-inline-input {
+  flex: 1 1 86px;
+  min-width: 78px;
+  height: 24px;
+  border: 0;
+  padding: 0 2px;
+  background: transparent;
+  color: #1f2937;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  outline: none;
+}
+
+.work-order-tag-picker-inline-input::placeholder {
+  color: #8b95a7;
+  font-weight: 700;
 }
 
 .work-order-inline-field-control .work-order-tag-picker span {

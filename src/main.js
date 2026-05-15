@@ -21332,6 +21332,41 @@ function splitWorkOrderTags(value = "") {
     .slice(0, 32);
 }
 
+const WORK_ORDER_TAG_TONES = Object.freeze([
+  { bg: "#e9415e", border: "#d62f4b", color: "#ffffff", softBg: "#ffe4ea", softBorder: "#ffc2cd", softColor: "#9f1239" },
+  { bg: "#2563eb", border: "#1d4ed8", color: "#ffffff", softBg: "#dbeafe", softBorder: "#bfdbfe", softColor: "#1d4ed8" },
+  { bg: "#0f9f7a", border: "#0d8b69", color: "#ffffff", softBg: "#d1fae5", softBorder: "#a7f3d0", softColor: "#047857" },
+  { bg: "#7c3aed", border: "#6d28d9", color: "#ffffff", softBg: "#ede9fe", softBorder: "#ddd6fe", softColor: "#6d28d9" },
+  { bg: "#ea580c", border: "#c2410c", color: "#ffffff", softBg: "#ffedd5", softBorder: "#fed7aa", softColor: "#c2410c" },
+  { bg: "#be185d", border: "#9d174d", color: "#ffffff", softBg: "#fce7f3", softBorder: "#fbcfe8", softColor: "#be185d" },
+  { bg: "#4f46e5", border: "#4338ca", color: "#ffffff", softBg: "#e0e7ff", softBorder: "#c7d2fe", softColor: "#4338ca" },
+  { bg: "#0e7490", border: "#155e75", color: "#ffffff", softBg: "#cffafe", softBorder: "#a5f3fc", softColor: "#0e7490" },
+]);
+
+function getWorkOrderTagTone(value = "") {
+  const normalized = normalizeLooseName(value);
+  let hash = 0;
+  for (let index = 0; index < normalized.length; index += 1) {
+    hash = ((hash * 31) + normalized.charCodeAt(index)) >>> 0;
+  }
+  return WORK_ORDER_TAG_TONES[hash % WORK_ORDER_TAG_TONES.length];
+}
+
+function applyWorkOrderTagTone(node, value = "", { soft = false } = {}) {
+  if (!(node instanceof HTMLElement)) {
+    return node;
+  }
+
+  const tone = getWorkOrderTagTone(value);
+  node.style.setProperty("--work-order-tag-bg", soft ? tone.softBg : tone.bg);
+  node.style.setProperty("--work-order-tag-border", soft ? tone.softBorder : tone.border);
+  node.style.setProperty("--work-order-tag-color", soft ? tone.softColor : tone.color);
+  node.style.setProperty("--work-order-tag-soft-bg", tone.softBg);
+  node.style.setProperty("--work-order-tag-soft-border", tone.softBorder);
+  node.style.setProperty("--work-order-tag-soft-color", tone.softColor);
+  return node;
+}
+
 function getKnownWorkOrderTags(additionalTags = []) {
   const tags = [
     ...splitWorkOrderTags(additionalTags),
@@ -21365,15 +21400,37 @@ function createWorkOrderTagPickerControl({
   wrapper.className = ["work-order-tag-picker", "work-order-quick-picker", className].filter(Boolean).join(" ");
   wrapper.dataset.preventRowOpen = "true";
 
-  const trigger = document.createElement("button");
-  trigger.type = "button";
-  trigger.className = "work-order-tag-picker-trigger work-order-quick-picker-trigger";
-  trigger.dataset.preventRowOpen = "true";
-  trigger.setAttribute("aria-haspopup", "dialog");
-  trigger.setAttribute("aria-expanded", "false");
-  trigger.setAttribute("aria-label", ariaLabel);
+  const field = document.createElement("span");
+  field.className = "work-order-tag-picker-field work-order-quick-picker-trigger";
+  field.dataset.preventRowOpen = "true";
+  field.tabIndex = 0;
+  field.setAttribute("role", "combobox");
+  field.setAttribute("aria-haspopup", "dialog");
+  field.setAttribute("aria-expanded", "false");
+  field.setAttribute("aria-label", ariaLabel);
+
+  const chipsWrap = document.createElement("span");
+  chipsWrap.className = "work-order-tag-picker-trigger-copy work-order-tag-picker-chip-wrap";
+
+  const searchInput = document.createElement("input");
+  searchInput.type = "text";
+  searchInput.className = "work-order-tag-picker-inline-input";
+  searchInput.autocomplete = "off";
+  searchInput.spellcheck = false;
+  searchInput.dataset.preventRowOpen = "true";
+  searchInput.setAttribute("aria-label", `${ariaLabel} - pretraga ili novi tag`);
+
+  const caret = document.createElement("span");
+  caret.className = "work-order-editor-field-caret";
+  caret.setAttribute("aria-hidden", "true");
+  caret.textContent = "⌄";
+
+  field.append(chipsWrap, searchInput, caret);
 
   let selectedTags = splitWorkOrderTags(value);
+  let searchQuery = "";
+  let optionsList = null;
+  let clearButton = null;
 
   const commitTags = () => {
     onChange([...selectedTags]);
@@ -21381,47 +21438,50 @@ function createWorkOrderTagPickerControl({
 
   const setSelectedTags = (nextTags, { commit = true } = {}) => {
     selectedTags = splitWorkOrderTags(nextTags);
-    renderTrigger();
+    renderField();
     if (commit) {
       commitTags();
     }
   };
 
-  const renderTrigger = () => {
-    trigger.replaceChildren();
-    trigger.title = selectedTags.length ? selectedTags.join(", ") : placeholder;
-
-    const copy = document.createElement("span");
-    copy.className = "work-order-tag-picker-trigger-copy";
+  const renderField = () => {
+    chipsWrap.replaceChildren();
+    field.title = selectedTags.length ? selectedTags.join(", ") : placeholder;
+    searchInput.placeholder = selectedTags.length ? "" : placeholder;
     if (selectedTags.length === 0) {
       const empty = document.createElement("span");
-      empty.className = "work-order-editor-field-trigger-label is-empty";
-      empty.textContent = placeholder;
-      copy.append(empty);
-    } else {
-      selectedTags.slice(0, 3).forEach((tag) => {
-        const chip = document.createElement("span");
-        chip.className = "work-order-editor-detail-tag";
-        chip.textContent = tag;
-        copy.append(chip);
-      });
-      if (selectedTags.length > 3) {
-        const more = document.createElement("span");
-        more.className = "work-order-editor-detail-tag is-muted";
-        more.textContent = `+${selectedTags.length - 3}`;
-        copy.append(more);
-      }
+      empty.className = "work-order-tag-picker-empty-hint";
+      empty.textContent = "";
+      chipsWrap.append(empty);
+      return;
     }
 
-    const caret = document.createElement("span");
-    caret.className = "work-order-editor-field-caret";
-    caret.setAttribute("aria-hidden", "true");
-    caret.textContent = "⌄";
-    trigger.append(copy, caret);
+    selectedTags.forEach((tag) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "work-order-tag-picker-field-chip work-order-editor-detail-tag";
+      chip.dataset.preventRowOpen = "true";
+      chip.setAttribute("aria-label", `Ukloni tag ${tag}`);
+      applyWorkOrderTagTone(chip, tag);
+      const label = document.createElement("span");
+      label.textContent = tag;
+      const remove = document.createElement("span");
+      remove.className = "work-order-tag-picker-field-chip-remove";
+      remove.setAttribute("aria-hidden", "true");
+      remove.textContent = "×";
+      chip.append(label, remove);
+      chip.addEventListener("click", (event) => {
+        event.stopPropagation();
+        setSelectedTags(selectedTags.filter((entry) => normalizeLooseName(entry) !== normalizeLooseName(tag)));
+        renderMenu();
+        openMenu({ focusInput: true });
+      });
+      chipsWrap.append(chip);
+    });
   };
 
   const positionMenu = (menu) => {
-    const triggerRect = trigger.getBoundingClientRect();
+    const triggerRect = field.getBoundingClientRect();
     const menuRect = menu.getBoundingClientRect();
     let left = triggerRect.left;
     let top = triggerRect.bottom + 8;
@@ -21440,20 +21500,116 @@ function createWorkOrderTagPickerControl({
 
   const closeMenu = () => {
     wrapper.classList.remove("is-open");
-    trigger.setAttribute("aria-expanded", "false");
+    field.setAttribute("aria-expanded", "false");
     if (wrapper._menuPortal) {
       wrapper._menuPortal.remove();
       wrapper._menuPortal = null;
     }
   };
 
-  const openMenu = () => {
-    closeOpenWorkOrderStatusMenus(wrapper);
-    if (wrapper._menuPortal) {
+  const renderOptions = () => {
+    if (!(optionsList instanceof HTMLElement)) {
       return;
     }
 
-    let searchQuery = "";
+    optionsList.replaceChildren();
+    const normalizedQuery = normalizeLooseName(searchQuery);
+    const selectedKeys = new Set(selectedTags.map((tag) => normalizeLooseName(tag)));
+    const knownTags = getKnownWorkOrderTags(selectedTags);
+    const visibleTags = knownTags.filter((tag) => (
+      !normalizedQuery || normalizeLooseName(tag).includes(normalizedQuery)
+    ));
+
+    const typedTag = searchQuery.trim();
+    const typedKey = normalizeLooseName(typedTag);
+    if (typedTag && !knownTags.some((tag) => normalizeLooseName(tag) === typedKey)) {
+      const createButton = document.createElement("button");
+      createButton.type = "button";
+      createButton.className = "work-item-status-option work-order-tag-picker-option is-create";
+      createButton.innerHTML = `<span><strong>Dodaj "${escapeHtml(typedTag)}"</strong><small>Novi tag</small></span><span class="work-order-quick-picker-marker">+</span>`;
+      createButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        setSelectedTags([...selectedTags, typedTag]);
+        searchInput.value = "";
+        searchQuery = "";
+        renderMenu();
+        searchInput.focus({ preventScroll: true });
+      });
+      optionsList.append(createButton);
+    }
+
+    if (visibleTags.length === 0 && !typedTag) {
+      const empty = document.createElement("p");
+      empty.className = "work-order-quick-picker-empty";
+      empty.textContent = "Nema spremljenih tagova.";
+      optionsList.append(empty);
+      return;
+    }
+
+    visibleTags.forEach((tag) => {
+      const isSelected = selectedKeys.has(normalizeLooseName(tag));
+      const option = document.createElement("button");
+      option.type = "button";
+      option.className = `work-item-status-option work-order-tag-picker-option${isSelected ? " is-selected" : ""}`;
+      option.setAttribute("role", "menuitemcheckbox");
+      option.setAttribute("aria-checked", String(isSelected));
+
+      const chip = document.createElement("span");
+      chip.className = "work-order-editor-detail-tag";
+      chip.textContent = tag;
+      applyWorkOrderTagTone(chip, tag);
+
+      const marker = document.createElement("span");
+      marker.className = "work-order-quick-picker-marker";
+      marker.textContent = isSelected ? "✓" : "+";
+
+      option.append(chip, marker);
+      option.addEventListener("click", (event) => {
+        event.stopPropagation();
+        setSelectedTags(isSelected
+          ? selectedTags.filter((entry) => normalizeLooseName(entry) !== normalizeLooseName(tag))
+          : [...selectedTags, tag]);
+        searchInput.value = "";
+        searchQuery = "";
+        renderMenu();
+        searchInput.focus({ preventScroll: true });
+      });
+      optionsList.append(option);
+    });
+  };
+
+  const renderMenu = () => {
+    renderOptions();
+    if (clearButton instanceof HTMLButtonElement) {
+      clearButton.disabled = selectedTags.length === 0;
+    }
+    if (wrapper._menuPortal) {
+      requestAnimationFrame(() => positionMenu(wrapper._menuPortal));
+    }
+  };
+
+  const addTypedTag = () => {
+    const typedTag = searchInput.value.trim();
+    if (!typedTag) {
+      return false;
+    }
+    setSelectedTags([...selectedTags, typedTag]);
+    searchInput.value = "";
+    searchQuery = "";
+    renderMenu();
+    return true;
+  };
+
+  const openMenu = ({ focusInput = false } = {}) => {
+    closeOpenWorkOrderStatusMenus(wrapper);
+    if (wrapper._menuPortal) {
+      renderMenu();
+      if (focusInput) {
+        searchInput.focus({ preventScroll: true });
+      }
+      return;
+    }
+
     const menu = document.createElement("div");
     menu.className = "work-item-status-menu work-item-status-menu-portal work-order-tag-picker-menu-portal work-order-quick-picker-menu-portal";
     menu.dataset.preventRowOpen = "true";
@@ -21465,22 +21621,12 @@ function createWorkOrderTagPickerControl({
     });
     menu.addEventListener("wheel", (event) => event.stopPropagation(), { passive: true });
 
-    const searchInput = document.createElement("input");
-    searchInput.type = "search";
-    searchInput.className = "work-order-quick-picker-search work-order-tag-picker-search";
-    searchInput.placeholder = "Pretraži ili upiši novi tag...";
-    searchInput.autocomplete = "off";
-    searchInput.spellcheck = false;
-
-    const selection = document.createElement("div");
-    selection.className = "work-order-tag-picker-selection work-order-quick-picker-selection";
-
-    const optionsList = document.createElement("div");
+    optionsList = document.createElement("div");
     optionsList.className = "work-order-tag-picker-options work-order-quick-picker-options";
 
     const actions = document.createElement("div");
     actions.className = "work-order-inline-field-actions work-order-tag-picker-actions";
-    const clearButton = document.createElement("button");
+    clearButton = document.createElement("button");
     clearButton.type = "button";
     clearButton.className = "ghost-button";
     clearButton.textContent = "Očisti";
@@ -21490,145 +21636,32 @@ function createWorkOrderTagPickerControl({
     doneButton.textContent = "Gotovo";
     actions.append(clearButton, doneButton);
 
-    const renderSelection = () => {
-      selection.replaceChildren();
-      if (selectedTags.length === 0) {
-        const empty = document.createElement("span");
-        empty.className = "work-order-quick-picker-selection-empty";
-        empty.textContent = "Bez tagova";
-        selection.append(empty);
-        return;
-      }
-
-      selectedTags.forEach((tag) => {
-        const chip = document.createElement("button");
-        chip.type = "button";
-        chip.className = "work-order-quick-picker-chip work-order-tag-picker-chip";
-        chip.textContent = tag;
-        chip.addEventListener("click", (event) => {
-          event.stopPropagation();
-          setSelectedTags(selectedTags.filter((entry) => normalizeLooseName(entry) !== normalizeLooseName(tag)));
-          renderMenu();
-          searchInput.focus({ preventScroll: true });
-        });
-        selection.append(chip);
-      });
-    };
-
-    const renderOptions = () => {
-      optionsList.replaceChildren();
-      const normalizedQuery = normalizeLooseName(searchQuery);
-      const selectedKeys = new Set(selectedTags.map((tag) => normalizeLooseName(tag)));
-      const knownTags = getKnownWorkOrderTags(selectedTags);
-      const visibleTags = knownTags.filter((tag) => (
-        !normalizedQuery || normalizeLooseName(tag).includes(normalizedQuery)
-      ));
-
-      const typedTag = searchQuery.trim();
-      const typedKey = normalizeLooseName(typedTag);
-      if (typedTag && !knownTags.some((tag) => normalizeLooseName(tag) === typedKey)) {
-        const createButton = document.createElement("button");
-        createButton.type = "button";
-        createButton.className = "work-item-status-option work-order-tag-picker-option is-create";
-        createButton.innerHTML = `<span><strong>Dodaj "${escapeHtml(typedTag)}"</strong><small>Novi tag</small></span><span class="work-order-quick-picker-marker">+</span>`;
-        createButton.addEventListener("click", (event) => {
-          event.stopPropagation();
-          setSelectedTags([...selectedTags, typedTag]);
-          searchInput.value = "";
-          searchQuery = "";
-          renderMenu();
-          searchInput.focus({ preventScroll: true });
-        });
-        optionsList.append(createButton);
-      }
-
-      if (visibleTags.length === 0 && !typedTag) {
-        const empty = document.createElement("p");
-        empty.className = "work-order-quick-picker-empty";
-        empty.textContent = "Nema spremljenih tagova.";
-        optionsList.append(empty);
-        return;
-      }
-
-      visibleTags.forEach((tag) => {
-        const isSelected = selectedKeys.has(normalizeLooseName(tag));
-        const option = document.createElement("button");
-        option.type = "button";
-        option.className = `work-item-status-option work-order-tag-picker-option${isSelected ? " is-selected" : ""}`;
-        option.setAttribute("role", "menuitemcheckbox");
-        option.setAttribute("aria-checked", String(isSelected));
-
-        const chip = document.createElement("span");
-        chip.className = "work-order-editor-detail-tag";
-        chip.textContent = tag;
-
-        const marker = document.createElement("span");
-        marker.className = "work-order-quick-picker-marker";
-        marker.textContent = isSelected ? "✓" : "+";
-
-        option.append(chip, marker);
-        option.addEventListener("click", (event) => {
-          event.stopPropagation();
-          setSelectedTags(isSelected
-            ? selectedTags.filter((entry) => normalizeLooseName(entry) !== normalizeLooseName(tag))
-            : [...selectedTags, tag]);
-          renderMenu();
-          searchInput.focus({ preventScroll: true });
-        });
-        optionsList.append(option);
-      });
-    };
-
-    const renderMenu = () => {
-      renderSelection();
-      renderOptions();
-      clearButton.disabled = selectedTags.length === 0;
-      requestAnimationFrame(() => positionMenu(menu));
-    };
-
     clearButton.addEventListener("click", (event) => {
       event.stopPropagation();
       setSelectedTags([]);
+      searchInput.value = "";
+      searchQuery = "";
       renderMenu();
       searchInput.focus({ preventScroll: true });
     });
     doneButton.addEventListener("click", (event) => {
       event.stopPropagation();
       closeMenu();
-      trigger.focus({ preventScroll: true });
-    });
-    searchInput.addEventListener("input", () => {
-      searchQuery = searchInput.value || "";
-      renderMenu();
-    });
-    searchInput.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        const typedTag = searchInput.value.trim();
-        if (typedTag) {
-          setSelectedTags([...selectedTags, typedTag]);
-          searchInput.value = "";
-          searchQuery = "";
-          renderMenu();
-        }
-        return;
-      }
-      if (event.key === "Escape") {
-        event.preventDefault();
-        closeMenu();
-        trigger.focus({ preventScroll: true });
-      }
+      searchInput.blur();
+      field.blur();
     });
 
-    menu.append(searchInput, selection, optionsList, actions);
+    menu.append(optionsList, actions);
     document.body.append(menu);
     wrapper._menuPortal = menu;
     wrapper.classList.add("is-open");
-    trigger.setAttribute("aria-expanded", "true");
+    field.setAttribute("aria-expanded", "true");
     renderMenu();
     requestAnimationFrame(() => {
       positionMenu(menu);
-      searchInput.focus({ preventScroll: true });
+      if (focusInput) {
+        searchInput.focus({ preventScroll: true });
+      }
     });
   };
 
@@ -21636,17 +21669,42 @@ function createWorkOrderTagPickerControl({
   ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
     wrapper.addEventListener(eventName, (event) => event.stopPropagation());
   });
-  trigger.addEventListener("click", (event) => {
+
+  field.addEventListener("click", (event) => {
     event.stopPropagation();
-    if (wrapper.classList.contains("is-open")) {
-      closeMenu();
-      return;
-    }
+    openMenu({ focusInput: true });
+  });
+  field.addEventListener("focus", () => {
     openMenu();
   });
+  searchInput.addEventListener("focus", () => {
+    openMenu();
+  });
+  searchInput.addEventListener("input", () => {
+    searchQuery = searchInput.value || "";
+    openMenu();
+    renderMenu();
+  });
+  searchInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      addTypedTag();
+      return;
+    }
+    if (event.key === "Backspace" && !searchInput.value && selectedTags.length > 0) {
+      setSelectedTags(selectedTags.slice(0, -1));
+      renderMenu();
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeMenu();
+      searchInput.blur();
+    }
+  });
 
-  renderTrigger();
-  wrapper.append(trigger);
+  renderField();
+  wrapper.append(field);
   return wrapper;
 }
 
@@ -94816,6 +94874,7 @@ function renderGroupedWorkOrdersList() {
         const pill = document.createElement("span");
         pill.className = "work-item-tag-pill";
         pill.textContent = value;
+        applyWorkOrderTagTone(pill, value, { soft: true });
         return pill;
       };
 
@@ -96496,6 +96555,8 @@ function renderCompactWorkOrdersList() {
 
         if (iconName === "opened") {
           icon.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.75V1.5M12 2.75V1.5M2.75 5.25h10.5M3.75 3.5h8.5a1 1 0 0 1 1 1v7.75a1 1 0 0 1-1 1h-8.5a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.3"/></svg>';
+        } else if (iconName === "execution") {
+          icon.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4.25 8.15 2.28 2.28 5.22-5.36M8 14a6 6 0 1 0 0-12 6 6 0 0 0 0 12Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.3"/></svg>';
         } else {
           icon.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.25v4l2.5 1.5M8 14a6 6 0 1 0 0-12 6 6 0 0 0 0 12Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.3"/></svg>';
         }
@@ -96504,9 +96565,12 @@ function renderCompactWorkOrdersList() {
       };
 
       const createIconMetaLine = (iconName, value, options = {}) => {
-        const { valueClassName = "" } = options;
+        const { valueClassName = "", title = "" } = options;
         const line = document.createElement("div");
         line.className = "work-item-meta-line";
+        if (title) {
+          line.title = title;
+        }
 
         const text = document.createElement("span");
         text.className = ["work-item-meta-value", valueClassName].filter(Boolean).join(" ");
@@ -96569,6 +96633,7 @@ function renderCompactWorkOrdersList() {
         const pill = document.createElement("span");
         pill.className = "work-item-tag-pill";
         pill.textContent = value;
+        applyWorkOrderTagTone(pill, value, { soft: true });
         return pill;
       };
 
@@ -96760,8 +96825,9 @@ function renderCompactWorkOrdersList() {
           createIconMetaLine("due", formatCompactDueDate(item.dueDate), {
             valueClassName: ["is-subtle-date", isOverdueWorkOrder(item) ? "is-overdue" : ""].join(" "),
           }),
-          createIconMetaLine("dates", item.executionDate ? `Izvršeno ${formatCompactDate(item.executionDate)}` : "Bez izvršenja", {
+          createIconMetaLine("execution", item.executionDate ? formatCompactDate(item.executionDate) : "Bez izvršenja", {
             valueClassName: ["is-subtle-date", item.executionDate ? "" : "is-muted"].join(" "),
+            title: "Datum izvršenja",
           }),
         );
         attachWorkOrderInlineFieldEditor(datesStack, item, {
