@@ -21395,6 +21395,7 @@ function createWorkOrderTagPickerControl({
   className = "",
   ariaLabel = "Odaberi tagove",
   onChange = () => {},
+  onCommit = null,
 } = {}) {
   const wrapper = document.createElement("span");
   wrapper.className = ["work-order-tag-picker", "work-order-quick-picker", className].filter(Boolean).join(" ");
@@ -21431,8 +21432,10 @@ function createWorkOrderTagPickerControl({
   let searchQuery = "";
   let optionsList = null;
   let clearButton = null;
+  let hasPendingCommit = false;
 
   const commitTags = () => {
+    hasPendingCommit = true;
     onChange([...selectedTags]);
   };
 
@@ -21504,6 +21507,12 @@ function createWorkOrderTagPickerControl({
     if (wrapper._menuPortal) {
       wrapper._menuPortal.remove();
       wrapper._menuPortal = null;
+    }
+    if (hasPendingCommit) {
+      hasPendingCommit = false;
+      if (typeof onCommit === "function") {
+        onCommit([...selectedTags]);
+      }
     }
   };
 
@@ -21715,7 +21724,18 @@ function createWorkOrderEditorTagsContent(tagText = "") {
     className: "work-order-editor-tag-picker",
     ariaLabel: "Odaberi tagove radnog naloga",
     onChange: (tags) => {
-      setWorkOrderEditorFieldValue(workOrderTagTextInput, formatWorkOrderTagText(tags), "change");
+      if (!(workOrderTagTextInput instanceof HTMLInputElement)) {
+        return;
+      }
+      const nextValue = formatWorkOrderTagText(tags);
+      if (workOrderTagTextInput.value === nextValue) {
+        return;
+      }
+      workOrderTagTextInput.value = nextValue;
+      queueWorkOrderAutoSave();
+    },
+    onCommit: () => {
+      void persistWorkOrderAutoSave({ immediate: true });
     },
   });
 }
@@ -24140,7 +24160,7 @@ function renderWorkOrderEditorSummary() {
     createWorkOrderEditorDetailRow({
       iconName: "tags",
       label: "Tagovi",
-      content: createWorkOrderEditorTextControl(workOrderTagTextInput, { placeholder: "Tagovi" }),
+      content: createWorkOrderEditorTagsContent(workOrderTagTextInput.value),
       tone: "tags",
     }),
     createWorkOrderEditorDetailRow({

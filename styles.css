@@ -46965,6 +46965,7 @@ button.work-order-editor-section-head {
 .work-order-editor-detail-row.is-priority .work-order-editor-field-picker,
 .work-order-editor-detail-row.is-contract .work-order-editor-text-control,
 .work-order-editor-detail-row.is-tags .work-order-editor-text-control,
+.work-order-editor-detail-row.is-tags .work-order-tag-picker,
 .work-order-editor-detail-row.is-dates .work-order-editor-date-wrap,
 .work-order-editor-detail-row.is-billing .work-order-editor-date-wrap {
   width: 100%;
