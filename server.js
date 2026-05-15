@@ -4109,6 +4109,8 @@ async function saveGeneratedDocumentTemplatePdfDocuments(entries = [], scopedSna
     entries: Array.isArray(entries) ? entries.length : 0,
     bundles: generatedBundles.length,
     generatedFiles: generatedBundles.reduce((total, bundle) => total + (bundle.files?.length || 0), 0),
+    savedItems: savedItems.length,
+    savedDocuments: savedItems.reduce((total, item) => total + (item.documents?.length || 0), 0),
     generateMs,
     saveMs: Date.now() - saveStartedAt,
     totalMs: Date.now() - startedAt,

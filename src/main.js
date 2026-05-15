@@ -55009,6 +55009,7 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
   const exportEntries = [];
   let failureCount = 0;
   let generatedCount = 0;
+  const exportFailureDetails = [];
   const allSequenceEntries = getDocumentTemplateRuntimeSequenceEntries();
   const previousRuntimeView = {
     sequenceIndex: state.documentTemplateRuntime.sequenceIndex,
@@ -55025,6 +55026,11 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
       renderDocumentTemplateRuntimeSummaryIfVisible();
     }
   };
+  const pushExportFailureDetail = (sequenceEntry = {}, error = null, fallback = "Ne mogu spremiti zapisnik.") => {
+    const workOrderLabel = `RN ${sequenceEntry?.workOrderNumber || sequenceEntry?.workOrderId || "?"}`;
+    const message = String(error?.message || fallback || "").trim() || "Ne mogu spremiti zapisnik.";
+    exportFailureDetails.push(`${workOrderLabel}: ${message}`);
+  };
 
   try {
     loading.setPhase(0, { message: `Spremam ${sequenceEntries.length} označenih zelenih zapisnika...` });
@@ -55035,6 +55041,7 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
 
       if (!template || !workOrder) {
         failureCount += 1;
+        pushExportFailureDetail(sequenceEntry, null, "Template ili RN više nije dostupan.");
         setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
           status: "error",
           message: "Template ili RN više nije dostupan.",
@@ -55081,6 +55088,7 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
         failureCount += 1;
         restorePreviousRuntimeView();
         console.error("Ne mogu pripremiti zapisnik za PDF.", error);
+        pushExportFailureDetail(sequenceEntry, error, "Ne mogu pripremiti zapisnik za PDF.");
         setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
           status: "error",
           message: error?.message || "Ne mogu pripremiti zapisnik za PDF.",
@@ -55171,12 +55179,16 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
         console.warn("Zapisnik je spremljen, ali status usluge nije automatski ažuriran.", progressError);
       }
 
-      setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
-        status: "done",
-        message: `${workOrderLabel}: spremljen ${savedLabel} u Documents.`,
-        document: primaryDocument,
-        documents: savedDocuments,
-      }, { render: true });
+      try {
+        setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
+          status: "done",
+          message: `${workOrderLabel}: spremljen ${savedLabel} u Documents.`,
+          document: primaryDocument,
+          documents: savedDocuments,
+        }, { render: true });
+      } catch (statusError) {
+        console.warn("Zapisnik je spremljen, ali status prikaza nije odmah osvježen.", statusError);
+      }
     };
 
     if (hasWordTemplateEntries) {
@@ -55204,6 +55216,7 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
             await handleSavedEntry(savedEntry, sequenceEntry, exportEntry, index);
           } catch (error) {
             failureCount += 1;
+            pushExportFailureDetail(sequenceEntry, error, "Ne mogu spremiti DOCX/PDF zapisnik.");
             setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
               status: "error",
               message: error?.message || "Ne mogu spremiti DOCX/PDF zapisnik.",
@@ -55214,6 +55227,7 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
         failureCount += batchEntries.length;
         console.error("Ne mogu spremiti Word DOCX/PDF batch.", error);
         exportEntries.forEach(({ sequenceEntry }) => {
+          pushExportFailureDetail(sequenceEntry, error, "Ne mogu spremiti Word DOCX/PDF batch.");
           setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
             status: "error",
             message: error?.message || "Ne mogu spremiti Word DOCX/PDF batch.",
@@ -55247,6 +55261,7 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
         } catch (error) {
           failureCount += 1;
           console.error(`Ne mogu spremiti PDF zapisnik za ${workOrderLabel}.`, error);
+          pushExportFailureDetail(sequenceEntry, error, `Ne mogu spremiti PDF za ${workOrderLabel}.`);
           setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
             status: "error",
             message: error?.message || `Ne mogu spremiti PDF za ${workOrderLabel}.`,
@@ -55262,8 +55277,11 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
     generatedCount = savedItems.length;
 
     if (failureCount > 0) {
+      const failureDetail = exportFailureDetails.length > 0
+        ? ` Detalj: ${exportFailureDetails.slice(0, 3).join(" | ")}`
+        : "";
       setDocumentTemplateMessage(
-        `${generatedCount} zapisnika je spremljeno u Documents, ${failureCount} nije spremljeno. Pogledaj statuse po RN-u.`,
+        `${generatedCount} zapisnika je spremljeno u Documents, ${failureCount} nije spremljeno.${failureDetail}`,
       );
     } else {
       loading.complete({
@@ -55280,6 +55298,7 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
     console.error("Ne mogu generirati batch PDF zapisnike.", error);
     failureCount += exportEntries.length;
     exportEntries.forEach(({ sequenceEntry }) => {
+      pushExportFailureDetail(sequenceEntry, error, "Ne mogu generirati PDF paket.");
       setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
         status: "error",
         message: error?.message || "Ne mogu generirati PDF paket.",
