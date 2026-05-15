@@ -30655,7 +30655,87 @@ function renderSignatureReviewPanel() {
   workspace.className = "signature-review-workspace";
   const sidebar = document.createElement("div");
   sidebar.className = "signature-review-sidebar";
-  sidebar.replaceChildren(...listBlocks);
+
+  if (activeItem) {
+    const activeDecision = getSignatureReviewDecision(activeItem.reviewKey);
+    const decisionCard = document.createElement("section");
+    decisionCard.className = "signature-review-decision-card";
+
+    const decisionKicker = document.createElement("p");
+    decisionKicker.className = "section-kicker";
+    decisionKicker.textContent = "Odabrani dokument";
+
+    const decisionTitle = document.createElement("h4");
+    decisionTitle.textContent = activeItem.fileName || "zapisnik.pdf";
+
+    const decisionMeta = document.createElement("p");
+    decisionMeta.className = "helper-copy";
+    decisionMeta.textContent = [
+      activeItem.workOrderNumber ? `RN ${activeItem.workOrderNumber}` : "",
+      activeItem.companyName || activeItem.sourceEntry?.context?.company?.name || "",
+      activeItem.locationName || activeItem.sourceEntry?.context?.location?.name || "",
+    ].filter(Boolean).join(" · ");
+
+    const signerLine = document.createElement("div");
+    signerLine.className = "signature-review-decision-signer";
+    const signerIcon = document.createElement("span");
+    signerIcon.innerHTML = getWorkOrderIconMarkup("signature");
+    const signerCopy = document.createElement("span");
+    signerCopy.textContent = `${activeItem.label}: ${activeItem.signer || "nije upisano"}`;
+    signerLine.append(signerIcon, signerCopy);
+
+    const decisionActions = document.createElement("div");
+    decisionActions.className = "signature-review-decision-actions";
+    [
+      ["approved_for_signing", "OK za potpis", "status"],
+      ["rejected_with_comment", "Nije OK", "trash"],
+    ].forEach(([status, label, iconName]) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = [
+        "signature-review-choice-button",
+        status === "approved_for_signing" ? "is-ok" : "is-reject",
+        activeDecision.status === status ? "is-active" : "",
+      ].filter(Boolean).join(" ");
+      button.innerHTML = `${getWorkOrderIconMarkup(iconName)}<span>${label}</span>`;
+      button.disabled = activeItem.status === "signed" || activeItem.status === "error";
+      button.addEventListener("click", () => {
+        if (status === "approved_for_signing") {
+          updateSignatureReviewDecisionAndAdvance(activeItem.reviewKey, status);
+          return;
+        }
+        updateSignatureReviewDecision(activeItem.reviewKey, { status });
+        window.setTimeout(() => {
+          document.querySelector(`[data-signature-review-comment="${CSS.escape(String(activeItem.reviewKey || ""))}"]`)?.focus();
+        }, 0);
+      });
+      decisionActions.append(button);
+    });
+
+    const comment = document.createElement("textarea");
+    comment.className = "signature-review-comment";
+    comment.dataset.signatureReviewComment = String(activeItem.reviewKey || "");
+    comment.rows = 3;
+    comment.placeholder = activeDecision.status === "rejected_with_comment"
+      ? "Upiši razlog zašto ovaj dokument nije OK..."
+      : "Komentar za pregled...";
+    comment.value = activeDecision.comment || "";
+    comment.addEventListener("input", (event) => {
+      const key = String(activeItem.reviewKey || "").trim();
+      state.signatures.review.decisions = {
+        ...state.signatures.review.decisions,
+        [key]: {
+          ...getSignatureReviewDecision(key),
+          comment: event.currentTarget.value,
+        },
+      };
+    });
+
+    decisionCard.append(decisionKicker, decisionTitle, decisionMeta, signerLine, decisionActions, comment);
+    sidebar.append(decisionCard);
+  }
+
+  sidebar.append(...listBlocks);
 
   const preview = document.createElement("section");
   preview.className = "signature-review-preview";
@@ -30682,53 +30762,10 @@ function renderSignatureReviewPanel() {
       `${activeItem.label}: ${activeItem.signer}`,
     ].filter(Boolean).join(" · ");
     copy.append(kicker, title, meta);
-    const actions = document.createElement("div");
-    actions.className = "signature-review-preview-actions";
-    [
-      ["approved_for_signing", "OK", "status"],
-      ["rejected_with_comment", "Nije OK", "trash"],
-    ].forEach(([status, label, iconName]) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = [
-        "signature-review-choice-button",
-        status === "approved_for_signing" ? "is-ok" : "is-reject",
-        activeDecision.status === status ? "is-active" : "",
-      ].filter(Boolean).join(" ");
-      button.innerHTML = `${getWorkOrderIconMarkup(iconName)}<span>${label}</span>`;
-      button.disabled = activeItem.status === "signed" || activeItem.status === "error";
-      button.addEventListener("click", () => {
-        if (status === "approved_for_signing") {
-          updateSignatureReviewDecisionAndAdvance(activeItem.reviewKey, status);
-          return;
-        }
-        updateSignatureReviewDecision(activeItem.reviewKey, { status });
-        window.setTimeout(() => {
-          document.querySelector(`[data-signature-review-comment="${CSS.escape(String(activeItem.reviewKey || ""))}"]`)?.focus();
-        }, 0);
-      });
-      actions.append(button);
-    });
-    previewHead.append(copy, actions);
-
-    const comment = document.createElement("textarea");
-    comment.className = "signature-review-comment";
-    comment.dataset.signatureReviewComment = String(activeItem.reviewKey || "");
-    comment.rows = 2;
-    comment.placeholder = activeDecision.status === "rejected_with_comment"
-      ? "Upiši razlog zašto ovaj dokument nije OK..."
-      : "Komentar za pregled...";
-    comment.value = activeDecision.comment || "";
-    comment.addEventListener("input", (event) => {
-      const key = String(activeItem.reviewKey || "").trim();
-      state.signatures.review.decisions = {
-        ...state.signatures.review.decisions,
-        [key]: {
-          ...getSignatureReviewDecision(key),
-          comment: event.currentTarget.value,
-        },
-      };
-    });
+    const previewStatus = document.createElement("span");
+    previewStatus.className = `signature-review-status is-${activeDecision.status || "pending_review"}`;
+    previewStatus.textContent = getSignatureReviewStatusLabel(activeDecision.status);
+    previewHead.append(copy, previewStatus);
 
     const stage = document.createElement("div");
     stage.className = "signature-review-preview-stage";
@@ -30751,30 +30788,10 @@ function renderSignatureReviewPanel() {
       stage.append(frame);
     }
 
-    const map = document.createElement("div");
-    map.className = "signature-preview-page";
-    if (activeItem.field) {
-      const marker = document.createElement("div");
-      marker.className = "signature-preview-marker";
-      const left = Math.max(4, Math.min(78, (Number(activeItem.field.x || 0) / 595) * 100));
-      const width = Math.max(12, Math.min(44, (Number(activeItem.field.width || 120) / 595) * 100));
-      const top = Math.max(4, Math.min(86, 100 - ((Number(activeItem.field.y || 0) + Number(activeItem.field.height || 50)) / 842) * 100));
-      marker.style.left = `${left}%`;
-      marker.style.top = `${top}%`;
-      marker.style.width = `${width}%`;
-      marker.textContent = "Ovdje ide digitalni potpis";
-      map.append(marker);
-    } else {
-      const empty = document.createElement("p");
-      empty.className = "signature-preview-empty";
-      empty.textContent = "Ovaj PDF nema digitalno potpisno polje.";
-      map.append(empty);
-    }
-
     const previewBody = document.createElement("div");
     previewBody.className = "signature-review-preview-body";
-    previewBody.append(stage, map);
-    preview.append(previewHead, comment, previewBody);
+    previewBody.append(stage);
+    preview.append(previewHead, previewBody);
   }
 
   workspace.append(sidebar, preview);
