@@ -55130,29 +55130,51 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
     ));
     const handleSavedEntry = async (savedEntry, sequenceEntry, exportEntry, index = 0) => {
       const workOrderLabel = `RN ${sequenceEntry?.workOrderNumber || exportEntry?.renderModel?.workOrderNumber || index + 1}`;
-      if (!savedEntry?.item) {
+      const rawSavedDocuments = Array.isArray(savedEntry?.documents) && savedEntry.documents.length > 0
+        ? savedEntry.documents
+        : [savedEntry?.item].filter(Boolean);
+      const savedDocuments = rawSavedDocuments
+        .filter((item) => item && typeof item === "object" && String(item.id || "").trim());
+      const primaryDocument = savedEntry?.item
+        || savedDocuments.find((item) => String(item?.fileExtension || "").toLowerCase() === "pdf")
+        || savedDocuments[0]
+        || null;
+
+      if (!primaryDocument) {
         throw new Error("Server nije vratio spremljeni zapisnik.");
       }
-      const savedDocuments = Array.isArray(savedEntry.documents) && savedEntry.documents.length > 0
-        ? savedEntry.documents
-        : [savedEntry.item].filter(Boolean);
-      savedItems.push(savedEntry);
-      upsertDocumentsExplorerWorkOrderDocuments(savedDocuments);
-      if (savedEntry.record) {
-        upsertDocumentsExplorerRecord(savedEntry.record);
+      savedItems.push({
+        ...savedEntry,
+        item: primaryDocument,
+        documents: savedDocuments,
+      });
+
+      try {
+        upsertDocumentsExplorerWorkOrderDocuments(savedDocuments);
+        if (savedEntry?.record) {
+          upsertDocumentsExplorerRecord(savedEntry.record);
+        }
+        renderNotifications();
+      } catch (syncError) {
+        console.warn("Zapisnik je spremljen, ali lokalni prikaz Documentsa nije odmah osvježen.", syncError);
       }
-      renderNotifications();
+
       const savedTypes = new Set(savedDocuments.map((item) => String(item?.fileExtension || "").toLowerCase()));
       const savedLabel = savedTypes.has("docx") && savedTypes.has("pdf") ? "DOCX i PDF" : "PDF";
-      await persistDocumentTemplateRuntimeServiceProgress(
-        getDocumentTemplateRuntimeWorkOrderById(sequenceEntry?.workOrderId) || { id: sequenceEntry?.workOrderId },
-        getDocumentTemplateById(sequenceEntry?.templateId || exportEntry?.templateId),
-        "completed",
-      );
+      try {
+        await persistDocumentTemplateRuntimeServiceProgress(
+          getDocumentTemplateRuntimeWorkOrderById(sequenceEntry?.workOrderId) || { id: sequenceEntry?.workOrderId },
+          getDocumentTemplateById(sequenceEntry?.templateId || exportEntry?.templateId),
+          "completed",
+        );
+      } catch (progressError) {
+        console.warn("Zapisnik je spremljen, ali status usluge nije automatski ažuriran.", progressError);
+      }
+
       setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
         status: "done",
         message: `${workOrderLabel}: spremljen ${savedLabel} u Documents.`,
-        document: savedEntry.item,
+        document: primaryDocument,
         documents: savedDocuments,
       }, { render: true });
     };
