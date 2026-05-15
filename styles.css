@@ -51164,8 +51164,7 @@ body.is-signature-review-open::before {
   position: fixed;
   inset: 0;
   z-index: 89;
-  background: rgba(15, 23, 42, 0.52);
-  backdrop-filter: blur(10px);
+  background: rgba(15, 23, 42, 0.36);
 }
 
 .signatures-review-panel:not([hidden]) {
