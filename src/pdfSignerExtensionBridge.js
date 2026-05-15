@@ -143,9 +143,26 @@ export function signDocumentsWithPdfSignerExtension({
   token = "",
   apiBaseUrl = "",
   documents = [],
+  dryRun = false,
 } = {}) {
   return sendMessageToPdfSignerExtension({
     type: "SIGN_DOCUMENTS",
+    jobId,
+    token,
+    apiBaseUrl,
+    documents,
+    dryRun,
+  }, { timeoutMs: 120000 });
+}
+
+export function getSignatureFieldsWithPdfSignerExtension({
+  jobId = "",
+  token = "",
+  apiBaseUrl = "",
+  documents = [],
+} = {}) {
+  return sendMessageToPdfSignerExtension({
+    type: "GET_SIGNATURE_FIELDS",
     jobId,
     token,
     apiBaseUrl,

@@ -1,7 +1,7 @@
 importScripts("pdf-signer.config.js");
 
 const NATIVE_HOST_NAME = self.SAFE_NEXUS_PDF_SIGNER_CONFIG?.nativeHostName || "hr.abeceda.pdfsigner";
-const SUPPORTED_TYPES = new Set(["PING_SIGNER", "SIGN_DOCUMENTS"]);
+const SUPPORTED_TYPES = new Set(["PING_SIGNER", "SIGN_DOCUMENTS", "GET_SIGNATURE_FIELDS"]);
 
 function createErrorResponse(code, message, details = {}) {
   return {
@@ -52,6 +52,7 @@ function normalizeMessage(message) {
     token,
     apiBaseUrl,
     documents,
+    dryRun: Boolean(message?.dryRun),
   };
 }
 

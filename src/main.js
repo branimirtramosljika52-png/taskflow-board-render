@@ -145,6 +145,7 @@ import {
 import {
   getPdfSignerExtensionId,
   getPdfSignerExtensionInstallUrl,
+  getSignatureFieldsWithPdfSignerExtension,
   isPdfSignerExtensionUnavailable,
   pingPdfSignerExtension,
   signDocumentsWithPdfSignerExtension,
@@ -3262,6 +3263,8 @@ const signaturesInstallSignerButton = document.querySelector("#signatures-instal
 const signaturesBridgeStatus = document.querySelector("#signatures-bridge-status");
 const signaturesDebugPanel = document.querySelector("#signatures-debug-panel");
 const signaturesDebugPingButton = document.querySelector("#signatures-debug-ping");
+const signaturesDebugFieldsButton = document.querySelector("#signatures-debug-fields");
+const signaturesDebugDryRunButton = document.querySelector("#signatures-debug-dry-run");
 const signaturesDebugExtensionId = document.querySelector("#signatures-debug-extension-id");
 const signaturesDebugOrigin = document.querySelector("#signatures-debug-origin");
 const signaturesDebugExtensionDetected = document.querySelector("#signatures-debug-extension-detected");
@@ -29996,9 +29999,10 @@ function setSignatureDebugFromPingResponse(response = {}) {
 
 function setSignatureDebugFromPingError(error = {}) {
   const nativeUnavailable = error?.code === "NATIVE_HOST_UNAVAILABLE";
+  const signerUnavailable = isPdfSignerExtensionUnavailable(error);
   state.signatures.debug = {
-    extensionDetected: nativeUnavailable ? true : false,
-    nativeSignerDetected: false,
+    extensionDetected: nativeUnavailable ? true : !signerUnavailable,
+    nativeSignerDetected: signerUnavailable ? false : true,
     lastPingResponse: error?.details && Object.keys(error.details).length > 0
       ? {
         ...error.details,
@@ -30011,11 +30015,16 @@ function setSignatureDebugFromPingError(error = {}) {
   updateSignatureDebugPanel();
 }
 
-async function runSignatureDebugPing({ showStatus = true } = {}) {
-  if (signaturesDebugPingButton) {
-    signaturesDebugPingButton.disabled = true;
-    signaturesDebugPingButton.classList.add("is-loading");
+function setSignatureDebugOperationLoading(button, loading) {
+  if (!button) {
+    return;
   }
+  button.disabled = Boolean(loading);
+  button.classList.toggle("is-loading", Boolean(loading));
+}
+
+async function runSignatureDebugPing({ showStatus = true } = {}) {
+  setSignatureDebugOperationLoading(signaturesDebugPingButton, true);
   if (showStatus) {
     setSignaturesBridgeStatus("Testiram PDF Signer PING...", "loading");
   }
@@ -30037,10 +30046,91 @@ async function runSignatureDebugPing({ showStatus = true } = {}) {
     }
     throw error;
   } finally {
-    if (signaturesDebugPingButton) {
-      signaturesDebugPingButton.disabled = false;
-      signaturesDebugPingButton.classList.remove("is-loading");
-    }
+    setSignatureDebugOperationLoading(signaturesDebugPingButton, false);
+  }
+}
+
+function getPendingSignatureBridgeEntries() {
+  return buildSignatureModuleDocumentEntries().filter((entry) => !entry.signed);
+}
+
+function mapSignatureBridgeDocuments(payload = {}) {
+  return (Array.isArray(payload.items) ? payload.items : []).map((item) => ({
+    id: item.documentId || item.id,
+    documentId: item.documentId || "",
+    fileName: item.fileName || "zapisnik.pdf",
+    preferredField: item.preferredField || "",
+    signatureFieldRole: item.signatureFieldRole || "",
+    signatureFieldOib: item.signatureFieldOib || "",
+  }));
+}
+
+async function createSignatureBridgeJobForPendingEntries(entries = getPendingSignatureBridgeEntries()) {
+  if (entries.length === 0) {
+    throw new Error("Nema nepotpisanih PDF zapisnika za test.");
+  }
+
+  const payload = await apiRequest("/signature-bridge/jobs", {
+    method: "POST",
+    body: {
+      origin: window.location.origin,
+      bridgeKey: getSignatureBridgeKey(),
+      documentIds: entries.map((entry) => entry.documentItem?.id).filter(Boolean),
+    },
+  });
+
+  return {
+    payload,
+    documents: mapSignatureBridgeDocuments(payload),
+  };
+}
+
+async function runSignatureDebugGetFields() {
+  setSignatureDebugOperationLoading(signaturesDebugFieldsButton, true);
+  setSignaturesBridgeStatus("Dohvacam PDF signature fieldove kroz extension i native host...", "loading");
+  try {
+    await runSignatureDebugPing({ showStatus: false });
+    const { payload, documents } = await createSignatureBridgeJobForPendingEntries();
+    const response = await getSignatureFieldsWithPdfSignerExtension({
+      jobId: payload.token || "",
+      token: payload.token || "",
+      apiBaseUrl: payload.apiBase || window.location.origin,
+      documents,
+    });
+    setSignatureDebugFromPingResponse(response);
+    setSignaturesBridgeStatus(`GET_SIGNATURE_FIELDS radi. Pronadeno fieldova: ${Number(response.fieldCount || 0)}.`, "ready");
+    return response;
+  } catch (error) {
+    setSignatureDebugFromPingError(error);
+    setSignaturesBridgeStatus(error.message || "GET_SIGNATURE_FIELDS nije uspio.", isPdfSignerExtensionUnavailable(error) ? "warning" : "error");
+    throw error;
+  } finally {
+    setSignatureDebugOperationLoading(signaturesDebugFieldsButton, false);
+  }
+}
+
+async function runSignatureDebugDryRun() {
+  setSignatureDebugOperationLoading(signaturesDebugDryRunButton, true);
+  setSignaturesBridgeStatus("Pokrecem SIGN_DOCUMENTS dry-run bez PIN-a i bez uploada...", "loading");
+  try {
+    await runSignatureDebugPing({ showStatus: false });
+    const { payload, documents } = await createSignatureBridgeJobForPendingEntries();
+    const response = await signDocumentsWithPdfSignerExtension({
+      jobId: payload.token || "",
+      token: payload.token || "",
+      apiBaseUrl: payload.apiBase || window.location.origin,
+      documents,
+      dryRun: true,
+    });
+    setSignatureDebugFromPingResponse(response);
+    setSignaturesBridgeStatus(`Dry-run zavrsen. Bilo bi potpisano: ${Number(response.wouldSign || 0)}.`, "ready");
+    return response;
+  } catch (error) {
+    setSignatureDebugFromPingError(error);
+    setSignaturesBridgeStatus(error.message || "SIGN_DOCUMENTS dry-run nije uspio.", isPdfSignerExtensionUnavailable(error) ? "warning" : "error");
+    throw error;
+  } finally {
+    setSignatureDebugOperationLoading(signaturesDebugDryRunButton, false);
   }
 }
 
@@ -30202,7 +30292,7 @@ function waitForLocalSignatureBridge(ms = 2500) {
 }
 
 async function openLocalSignatureBridge() {
-  const pendingEntries = buildSignatureModuleDocumentEntries().filter((entry) => !entry.signed);
+  const pendingEntries = getPendingSignatureBridgeEntries();
   if (pendingEntries.length === 0) {
     setSignaturesBridgeStatus("Nema nepotpisanih PDF zapisnika za potpis.", "warning");
     return;
@@ -30213,30 +30303,13 @@ async function openLocalSignatureBridge() {
   if (signaturesInstallSignerButton) {
     signaturesInstallSignerButton.hidden = true;
   }
-  const bridgeKey = getSignatureBridgeKey();
   setSignaturesBridgeStatus("Provjeravam PDF Signer...", "loading");
 
   try {
     await runSignatureDebugPing({ showStatus: false });
     setSignaturesBridgeStatus("Pripremam dokumente za potpis...", "loading");
 
-    const payload = await apiRequest("/signature-bridge/jobs", {
-      method: "POST",
-      body: {
-        origin: window.location.origin,
-        bridgeKey,
-        documentIds: pendingEntries.map((entry) => entry.documentItem?.id).filter(Boolean),
-      },
-    });
-
-    const documents = (Array.isArray(payload.items) ? payload.items : []).map((item) => ({
-      id: item.documentId || item.id,
-      documentId: item.documentId || "",
-      fileName: item.fileName || "zapisnik.pdf",
-      preferredField: item.preferredField || "",
-      signatureFieldRole: item.signatureFieldRole || "",
-      signatureFieldOib: item.signatureFieldOib || "",
-    }));
+    const { payload, documents } = await createSignatureBridgeJobForPendingEntries(pendingEntries);
 
     setSignaturesBridgeStatus("Otvori lokalni prozor signera i unesi PIN tamo. SafeNexus ne prima i ne sprema PIN.", "loading");
     const signResult = await signDocumentsWithPdfSignerExtension({
@@ -30246,13 +30319,19 @@ async function openLocalSignatureBridge() {
       documents,
     });
 
-    const signedCount = Number(signResult.signed ?? signResult.downloaded ?? documents.length) || documents.length;
-    setSignaturesBridgeStatus(
-      signedCount === 1
-        ? "Potpisano. Osvježavam dokumente..."
-        : `Potpisano ${signedCount} dokumenata. Osvježavam dokumente...`,
-      "ready",
-    );
+    if (signResult.dryRun) {
+      setSignatureDebugFromPingResponse(signResult);
+      setSignaturesBridgeStatus(`Dry-run zavrsen. Bilo bi potpisano: ${Number(signResult.wouldSign || 0)}.`, "ready");
+    } else {
+      const signedRaw = Number(signResult.signed ?? signResult.downloaded);
+      const signedCount = Number.isFinite(signedRaw) && signedRaw > 0 ? signedRaw : documents.length;
+      setSignaturesBridgeStatus(
+        signedCount === 1
+          ? "Potpisano. Osvježavam dokumente..."
+          : `Potpisano ${signedCount} dokumenata. Osvježavam dokumente...`,
+        "ready",
+      );
+    }
     [5000, 12000, 25000, 45000, 90000].forEach((delay) => {
       window.setTimeout(() => {
         void loadDocumentsExplorerRecords({ force: true });
@@ -101715,6 +101794,18 @@ signaturesInstallSignerButton?.addEventListener("click", () => {
 
 signaturesDebugPingButton?.addEventListener("click", () => {
   void runSignatureDebugPing().catch(() => {
+    // Status and debug payload are rendered in the panel.
+  });
+});
+
+signaturesDebugFieldsButton?.addEventListener("click", () => {
+  void runSignatureDebugGetFields().catch(() => {
+    // Status and debug payload are rendered in the panel.
+  });
+});
+
+signaturesDebugDryRunButton?.addEventListener("click", () => {
+  void runSignatureDebugDryRun().catch(() => {
     // Status and debug payload are rendered in the panel.
   });
 });

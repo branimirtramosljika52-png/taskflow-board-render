@@ -51057,6 +51057,13 @@ button.work-order-editor-section-head:focus-visible {
   font-size: 14px;
 }
 
+.signatures-debug-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .signatures-debug-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
