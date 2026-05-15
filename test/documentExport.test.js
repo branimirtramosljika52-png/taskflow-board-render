@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import PizZip from "pizzip";
+import { PDFDocument } from "pdf-lib";
 
 import {
   buildDashboardCalendarReportPdfBuffer,
@@ -10,6 +11,7 @@ import {
   buildOfferHtmlTemplate,
   buildOfferPdfBuffer,
   buildPdfFromRenderModel,
+  collectPdfSignatureFieldSpecsFromEntry,
   convertWordBufferToHtmlTemplate,
   readStoredDocumentBuffer,
 } from "../src/documentExport.js";
@@ -569,6 +571,89 @@ test("render model export returns a direct PDF buffer", async () => {
 
   assert.equal(outputBuffer.subarray(0, 4).toString("utf8"), "%PDF");
   assert.ok(outputBuffer.length > 1000);
+});
+
+test("render model ordinary signature keeps PDF without signature fields", async () => {
+  const outputBuffer = await buildPdfFromRenderModel({
+    title: "Zapisnik obicni potpis",
+    documentType: "Zapisnik",
+    blocks: [
+      {
+        title: "Potpisi",
+        items: [
+          {
+            type: "signature_group",
+            title: "Potpis",
+            items: [
+              {
+                role: "Ispitivac",
+                name: "Ana Ivic",
+                signatureMode: "scan",
+                signerOib: "91977516569",
+                signatureFieldRole: "ZNR",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+
+  const pdfDoc = await PDFDocument.load(outputBuffer);
+  assert.equal(pdfDoc.getForm().getFields().length, 0);
+});
+
+test("render model digital signature adds SIGN_ROLE_OIB signature field", async () => {
+  const outputBuffer = await buildPdfFromRenderModel({
+    title: "Zapisnik digitalni potpis",
+    documentType: "Zapisnik",
+    blocks: [
+      {
+        title: "Potpisi",
+        items: [
+          {
+            type: "signature_group",
+            title: "Potpis",
+            items: [
+              {
+                role: "Ispitivac",
+                name: "Ana Ivic",
+                signatureMode: "digital",
+                signerOib: "91977516569",
+                signatureFieldRole: "ZNR",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+
+  const pdfDoc = await PDFDocument.load(outputBuffer);
+  const fields = pdfDoc.getForm().getFields();
+  assert.deepEqual(fields.map((field) => field.getName()), ["SIGN_ZNR_91977516569"]);
+});
+
+test("signature field metadata collector returns preferred field for digital entries", () => {
+  const fields = collectPdfSignatureFieldSpecsFromEntry({
+    placeholders: {
+      POTPIS: {
+        __docxBlockType: "signature_group",
+        items: [
+          {
+            role: "Ispitivac",
+            name: "Ana Ivic",
+            signatureMode: "digital",
+            signerOib: "91977516569",
+            signatureFieldRole: "ZNR",
+          },
+        ],
+      },
+    },
+  });
+
+  assert.equal(fields.length, 1);
+  assert.equal(fields[0].fieldName, "SIGN_ZNR_91977516569");
 });
 
 test("offer HTML template renders escaped commercial data", () => {

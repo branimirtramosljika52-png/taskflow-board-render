@@ -25,6 +25,7 @@ import {
   buildOfferPdfBuffer,
   buildPurchaseOrderPdfBuffer,
   buildWorkOrderPdfBuffer,
+  addPdfSignatureFieldsToBuffer,
   buildPdfFromHtmlTemplateBatchEntries,
   buildPdfFromHtmlTemplateBuffer,
   buildPdfFromRenderModel,
@@ -36,6 +37,7 @@ import {
   isHtmlTemplateFile,
   isWordTemplateFile,
   mergePdfBuffers,
+  collectPdfSignatureFieldSpecsFromEntry,
   readStoredDocumentBuffer,
   sanitizeGeneratedDocumentFileName,
   shutdownDocumentExportEngines,
@@ -2411,6 +2413,17 @@ async function buildPdfBufferFromGeneratedDocxBuffer(docxBuffer = Buffer.alloc(0
   });
 }
 
+async function addGeneratedTemplateDigitalSignatureFields(pdfBuffer = Buffer.alloc(0), entry = {}) {
+  const signatureFields = collectPdfSignatureFieldSpecsFromEntry(entry);
+  if (signatureFields.length === 0) {
+    return pdfBuffer;
+  }
+  return await addPdfSignatureFieldsToBuffer(pdfBuffer, signatureFields.map((field) => ({
+    ...field,
+    drawPlaceholder: true,
+  })));
+}
+
 async function generateTemplateDocumentFilesForEntries(entries = [], scopedSnapshot = {}) {
   const startedAt = Date.now();
   const documentTemplates = scopedSnapshot.documentTemplates ?? [];
@@ -2469,13 +2482,14 @@ async function generateTemplateDocumentFilesForEntries(entries = [], scopedSnaps
 
     if (isHtmlTemplateFile(template.referenceDocument)) {
       const htmlPdfStartedAt = Date.now();
+      const pdfBuffer = await buildPdfFromHtmlTemplateBuffer(referenceDocument.buffer, entry?.placeholders ?? {}, {
+        fileName: entry?.fileName || template.outputFileName || template.title || `${fallbackName}.html`,
+        title: template.title || template.documentType || "Zapisnik",
+      });
       bundle.files.push({
         kind: "pdf",
         fileName: pdfFileName,
-        buffer: await buildPdfFromHtmlTemplateBuffer(referenceDocument.buffer, entry?.placeholders ?? {}, {
-          fileName: entry?.fileName || template.outputFileName || template.title || `${fallbackName}.html`,
-          title: template.title || template.documentType || "Zapisnik",
-        }),
+        buffer: await addGeneratedTemplateDigitalSignatureFields(pdfBuffer, entry),
       });
       htmlPdfMs += Date.now() - htmlPdfStartedAt;
       continue;
@@ -2530,17 +2544,17 @@ async function generateTemplateDocumentFilesForEntries(entries = [], scopedSnaps
       }
     }
 
-    wordBundles.forEach((item, index) => {
+    for (const [index, item] of wordBundles.entries()) {
       const pdfBuffer = pdfBuffers[index];
       if (!pdfBuffer) {
-        return;
+        continue;
       }
       item.bundle.files.push({
         kind: "pdf",
         fileName: item.pdfFileName,
-        buffer: pdfBuffer,
+        buffer: await addGeneratedTemplateDigitalSignatureFields(pdfBuffer, item.bundle.entry),
       });
-    });
+    }
   }
 
   logDocumentTemplateExportTiming("generate-files", {
@@ -3139,7 +3153,11 @@ function collectGeneratedDocumentTemplateSignatureItemsFromValue(value = null, o
       const signerEmail = cleanSignatureExportText(item.signerEmail || item.email);
       const signerOib = cleanSignatureExportText(item.signerOib || item.oib);
       const hasScan = signatureMode === "scan" && cleanSignatureExportText(item.signatureImageUrl || item.signatureDataUrl || item.imageUrl);
-      if (!hasScan || (!name && !signerUserId && !signerEmail && !signerOib)) {
+      const signatureFieldRole = normalizeSignatureFieldRole(item.signatureFieldRole || item.signatureRole || "ZNR");
+      const signatureFieldOib = normalizeSignatureFieldOib(item.signatureFieldOib || signerOib);
+      const preferredField = cleanSignatureExportText(item.preferredField || buildSignatureFieldName(signatureFieldRole, signatureFieldOib));
+      const hasDigitalField = signatureMode === "digital" && signatureFieldOib && preferredField;
+      if ((!hasScan && !hasDigitalField) || (!name && !signerUserId && !signerEmail && !signerOib)) {
         return;
       }
 
@@ -3148,6 +3166,10 @@ function collectGeneratedDocumentTemplateSignatureItemsFromValue(value = null, o
         signerUserId,
         signerEmail,
         signerOib,
+        signatureMode,
+        signatureFieldRole,
+        signatureFieldOib,
+        preferredField,
         role: cleanSignatureExportText(item.role),
       });
     });
@@ -3164,7 +3186,10 @@ function collectGeneratedDocumentTemplateSignatureItemsFromValue(value = null, o
 }
 
 function collectGeneratedDocumentTemplateSignatureItems(entry = {}) {
-  const items = collectGeneratedDocumentTemplateSignatureItemsFromValue(entry?.placeholders ?? {});
+  const items = [
+    ...collectGeneratedDocumentTemplateSignatureItemsFromValue(entry?.placeholders ?? {}),
+    ...collectGeneratedDocumentTemplateSignatureItemsFromValue(entry?.renderModel ?? {}),
+  ];
   const seen = new Set();
   return items.filter((item) => {
     const key = [
@@ -3182,7 +3207,8 @@ function collectGeneratedDocumentTemplateSignatureItems(entry = {}) {
 }
 
 function buildGeneratedDocumentTemplateSignatureDescription(entry = {}) {
-  const items = collectGeneratedDocumentTemplateSignatureItems(entry);
+  const items = collectGeneratedDocumentTemplateSignatureItems(entry)
+    .filter((item) => String(item.signatureMode || "scan").toLowerCase() === "scan");
   if (items.length === 0) {
     return "";
   }
@@ -3195,6 +3221,29 @@ function buildGeneratedDocumentTemplateSignatureDescription(entry = {}) {
   });
   const suffix = items.length > signerLabels.length ? ` +${items.length - signerLabels.length}` : "";
   return ` Potpisano: ${signerLabels.join(", ")}${suffix}.`;
+}
+
+function resolveGeneratedDocumentTemplateSignatureMetadata(entry = {}) {
+  const signatureFields = collectPdfSignatureFieldSpecsFromEntry(entry);
+  const primaryField = signatureFields[0] ?? null;
+  return {
+    signatureFieldRole: primaryField?.signatureFieldRole || "",
+    signatureFieldOib: primaryField?.signatureFieldOib || "",
+    preferredField: primaryField?.fieldName || "",
+    signerOib: primaryField?.signatureFieldOib || "",
+    signatureFieldsJson: signatureFields.length > 0 ? JSON.stringify(signatureFields.map((field) => ({
+      fieldName: field.fieldName,
+      page: field.page || "",
+      x: Number.isFinite(Number(field.x)) ? Number(field.x) : null,
+      y: Number.isFinite(Number(field.y)) ? Number(field.y) : null,
+      width: Number.isFinite(Number(field.width)) ? Number(field.width) : null,
+      height: Number.isFinite(Number(field.height)) ? Number(field.height) : null,
+      role: field.signatureFieldRole || "ZNR",
+      oib: field.signatureFieldOib || "",
+      status: "available",
+      standard: field.signatureFieldStandard || "SIGN_{ROLE}_{OIB}",
+    }))) : "",
+  };
 }
 
 function buildGeneratedDocumentTemplatePdfDocumentPayload({
@@ -3211,6 +3260,7 @@ function buildGeneratedDocumentTemplatePdfDocumentPayload({
   const safeBuffer = Buffer.isBuffer(pdfBuffer) ? pdfBuffer : Buffer.from(pdfBuffer ?? []);
   const templateTitle = String(template.title || template.documentType || "Zapisnik").trim() || "Zapisnik";
   const workOrderNumber = String(workOrder.workOrderNumber || "bez broja").trim() || "bez broja";
+  const signatureMetadata = resolveGeneratedDocumentTemplateSignatureMetadata(entry);
 
   return {
     fileName: safeFileName,
@@ -3219,6 +3269,7 @@ function buildGeneratedDocumentTemplatePdfDocumentPayload({
     documentCategory: GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY,
     description: `Automatski spremljen zapisnik "${templateTitle}" za RN ${workOrderNumber}.${buildGeneratedDocumentTemplateSignatureDescription(entry)}`,
     sourceType: "pdf",
+    ...signatureMetadata,
     dataUrl: `data:application/pdf;base64,${safeBuffer.toString("base64")}`,
   };
 }
@@ -3934,6 +3985,10 @@ async function handleSignatureBridgeSignedUpload(request, response, token = "", 
     documentCategory: currentDocument.documentCategory || GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY,
     sourceType: "pdf",
     description: buildSignatureBridgeSignedDescription(currentDocument, job),
+    signatureFieldRole: currentDocument.signatureFieldRole || item.signatureFieldRole || "",
+    signatureFieldOib: currentDocument.signatureFieldOib || item.signatureFieldOib || "",
+    preferredField: currentDocument.preferredField || item.preferredField || "",
+    signatureFieldsJson: currentDocument.signatureFieldsJson || "",
     dataUrl,
   };
 

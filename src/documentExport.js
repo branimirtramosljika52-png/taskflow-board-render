@@ -11,7 +11,15 @@ import CDP from "chrome-remote-interface";
 import Docxtemplater from "docxtemplater";
 import JSZip from "jszip";
 import mammoth from "mammoth";
-import { PDFDocument as PdfLibDocument, StandardFonts, rgb } from "pdf-lib";
+import {
+  PDFDocument as PdfLibDocument,
+  PDFName,
+  PDFNumber,
+  PDFString,
+  PDFWidgetAnnotation,
+  StandardFonts,
+  rgb,
+} from "pdf-lib";
 import PDFDocument from "pdfkit";
 import PizZip from "pizzip";
 
@@ -164,6 +172,117 @@ const wordHtmlTemplateCache = new Map();
 
 function clean(value = "") {
   return String(value ?? "").trim();
+}
+
+const PDF_SIGNATURE_FIELD_STANDARD = "SIGN_{ROLE}_{OIB}";
+const DEFAULT_PDF_SIGNATURE_FIELD_ROLE = "ZNR";
+
+export function normalizePdfSignatureFieldRole(value = DEFAULT_PDF_SIGNATURE_FIELD_ROLE) {
+  const normalized = clean(value || DEFAULT_PDF_SIGNATURE_FIELD_ROLE)
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return normalized || DEFAULT_PDF_SIGNATURE_FIELD_ROLE;
+}
+
+export function normalizePdfSignatureFieldOib(value = "") {
+  const digits = clean(value).replace(/\D/g, "");
+  return /^\d{11}$/.test(digits) ? digits : "";
+}
+
+export function buildPdfSignatureFieldName(role = DEFAULT_PDF_SIGNATURE_FIELD_ROLE, oib = "") {
+  const normalizedOib = normalizePdfSignatureFieldOib(oib);
+  if (!normalizedOib) {
+    return "";
+  }
+  return `SIGN_${normalizePdfSignatureFieldRole(role)}_${normalizedOib}`;
+}
+
+function normalizePdfSignatureFieldSpec(item = {}, options = {}) {
+  const signatureMode = clean(item.signatureMode).toLowerCase() || "scan";
+  if (signatureMode !== "digital") {
+    return null;
+  }
+
+  const signatureFieldRole = normalizePdfSignatureFieldRole(
+    item.signatureFieldRole
+      || item.signatureRole
+      || item.roleCode
+      || options.signatureFieldRole
+      || DEFAULT_PDF_SIGNATURE_FIELD_ROLE,
+  );
+  const signatureFieldOib = normalizePdfSignatureFieldOib(
+    item.signatureFieldOib
+      || item.signerOib
+      || item.oib
+      || options.signatureFieldOib
+      || "",
+  );
+  const fieldName = clean(item.preferredField || item.fieldName)
+    || buildPdfSignatureFieldName(signatureFieldRole, signatureFieldOib);
+
+  if (!fieldName || !signatureFieldOib) {
+    return null;
+  }
+
+  return {
+    fieldName,
+    signatureFieldRole,
+    signatureFieldOib,
+    signatureFieldStandard: PDF_SIGNATURE_FIELD_STANDARD,
+    label: clean(item.name) || clean(item.label) || "Potpisnik",
+    roleLabel: clean(item.role) || signatureFieldRole,
+    page: Number.isFinite(Number(item.page)) ? Number(item.page) : Number(options.page || 0),
+    x: Number.isFinite(Number(item.x)) ? Number(item.x) : Number.NaN,
+    y: Number.isFinite(Number(item.y)) ? Number(item.y) : Number.NaN,
+    width: Number.isFinite(Number(item.width)) ? Number(item.width) : Number.NaN,
+    height: Number.isFinite(Number(item.height)) ? Number(item.height) : Number.NaN,
+    drawPlaceholder: Boolean(item.drawPlaceholder ?? options.drawPlaceholder),
+  };
+}
+
+function collectPdfSignatureFieldSpecsFromItems(items = [], options = {}) {
+  return (Array.isArray(items) ? items : [])
+    .map((item) => normalizePdfSignatureFieldSpec(item, options))
+    .filter(Boolean);
+}
+
+export function collectPdfSignatureFieldSpecsFromValue(value = null, output = []) {
+  if (!value || typeof value !== "object") {
+    return output;
+  }
+
+  const blockType = clean(value.__docxBlockType || value.type).toLowerCase();
+  if (blockType === "signature_group") {
+    output.push(...collectPdfSignatureFieldSpecsFromItems(value.items ?? [], {
+      drawPlaceholder: true,
+    }));
+    return output;
+  }
+
+  Object.values(value).forEach((entry) => {
+    if (entry && typeof entry === "object") {
+      collectPdfSignatureFieldSpecsFromValue(entry, output);
+    }
+  });
+
+  return output;
+}
+
+export function collectPdfSignatureFieldSpecsFromEntry(entry = {}) {
+  const specs = [
+    ...collectPdfSignatureFieldSpecsFromValue(entry?.placeholders ?? {}),
+    ...collectPdfSignatureFieldSpecsFromValue(entry?.renderModel ?? {}),
+  ];
+  const seen = new Set();
+  return specs.filter((spec) => {
+    const key = clean(spec.fieldName);
+    if (!key || seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
 }
 
 const HTML_TEXT_ENCODING_REPLACEMENTS = Object.freeze([
@@ -1135,6 +1254,9 @@ function normalizeDocxSpecialPlaceholderValue(value) {
           signerUserId: clean(item.signerUserId || item.userId),
           signerEmail: clean(item.signerEmail || item.email),
           signerOib: clean(item.signerOib || item.oib),
+          signatureFieldRole: normalizePdfSignatureFieldRole(item.signatureFieldRole || item.signatureRole || item.roleCode || DEFAULT_PDF_SIGNATURE_FIELD_ROLE),
+          signatureFieldOib: normalizePdfSignatureFieldOib(item.signatureFieldOib || item.signerOib || item.oib),
+          preferredField: clean(item.preferredField || item.fieldName),
           digitalAnchor: clean(item.digitalAnchor || item.signerOib || item.oib || item.signerEmail || item.email),
         };
       })
@@ -5299,6 +5421,142 @@ function pdfBufferFromDocument(doc) {
   });
 }
 
+function resolvePdfSignatureFieldRect(spec = {}, page, index = 0) {
+  const pageWidth = page.getWidth();
+  const pageHeight = page.getHeight();
+  const fallbackWidth = 220;
+  const fallbackHeight = 44;
+  const fallbackX = Math.max(36, pageWidth - fallbackWidth - 42);
+  const fallbackY = Math.max(36, 52 + (index * (fallbackHeight + 12)));
+  const width = Number.isFinite(Number(spec.width)) && Number(spec.width) > 20
+    ? Math.min(Number(spec.width), pageWidth - 24)
+    : fallbackWidth;
+  const height = Number.isFinite(Number(spec.height)) && Number(spec.height) > 12
+    ? Math.min(Number(spec.height), pageHeight - 24)
+    : fallbackHeight;
+  const x = Number.isFinite(Number(spec.x))
+    ? Math.min(Math.max(12, Number(spec.x)), Math.max(12, pageWidth - width - 12))
+    : Math.min(fallbackX, Math.max(12, pageWidth - width - 12));
+  const y = Number.isFinite(Number(spec.y))
+    ? Math.min(Math.max(12, Number(spec.y)), Math.max(12, pageHeight - height - 12))
+    : Math.min(fallbackY, Math.max(12, pageHeight - height - 12));
+
+  return { x, y, width, height };
+}
+
+function resolvePdfSignatureFieldPageIndex(spec = {}, pageCount = 1) {
+  const rawPageIndex = Number.isFinite(Number(spec.pageIndex))
+    ? Number(spec.pageIndex)
+    : Number(spec.page || 0) - 1;
+  if (!Number.isFinite(rawPageIndex)) {
+    return Math.max(0, pageCount - 1);
+  }
+  return Math.min(Math.max(0, Math.round(rawPageIndex)), Math.max(0, pageCount - 1));
+}
+
+function drawPdfSignatureFieldPlaceholder(page, rect, spec = {}, fonts = {}) {
+  page.drawRectangle({
+    x: rect.x,
+    y: rect.y,
+    width: rect.width,
+    height: rect.height,
+    borderColor: rgb(0.48, 0.38, 1),
+    borderWidth: 0.8,
+    color: rgb(0.985, 0.99, 1),
+    opacity: 0.96,
+  });
+  page.drawText("Kvalificirani digitalni potpis", {
+    x: rect.x + 10,
+    y: rect.y + rect.height - 17,
+    size: 8.5,
+    font: fonts.bold,
+    color: rgb(0.35, 0.28, 0.88),
+    maxWidth: Math.max(40, rect.width - 20),
+  });
+  const signerLabel = clean(spec.label || spec.roleLabel);
+  if (signerLabel) {
+    page.drawText(signerLabel, {
+      x: rect.x + 10,
+      y: rect.y + 9,
+      size: 7.5,
+      font: fonts.regular,
+      color: rgb(0.24, 0.29, 0.38),
+      maxWidth: Math.max(40, rect.width - 20),
+    });
+  }
+}
+
+function addPdfSignatureField(pdfDoc, page, rect, fieldName = "") {
+  const context = pdfDoc.context;
+  const acroForm = pdfDoc.catalog.getOrCreateAcroForm();
+  acroForm.dict.set(PDFName.of("SigFlags"), PDFNumber.of(3));
+
+  const fieldDict = context.obj({
+    FT: PDFName.of("Sig"),
+    T: PDFString.of(fieldName),
+    Kids: [],
+  });
+  const fieldRef = context.register(fieldDict);
+  const widget = PDFWidgetAnnotation.create(context, fieldRef);
+  widget.setRectangle(rect);
+  widget.setP(page.ref);
+  widget.dict.set(PDFName.of("F"), PDFNumber.of(4));
+
+  const widgetRef = context.register(widget.dict);
+  fieldDict.set(PDFName.of("Kids"), context.obj([widgetRef]));
+  page.node.addAnnot(widgetRef);
+  acroForm.addField(fieldRef);
+}
+
+export async function addPdfSignatureFieldsToBuffer(pdfBuffer = Buffer.alloc(0), signatureFields = []) {
+  const safeBuffer = Buffer.isBuffer(pdfBuffer) ? pdfBuffer : Buffer.from(pdfBuffer ?? []);
+  const normalizedFields = (Array.isArray(signatureFields) ? signatureFields : [])
+    .map((field) => normalizePdfSignatureFieldSpec({
+      ...field,
+      signatureMode: "digital",
+    }))
+    .filter(Boolean);
+
+  if (safeBuffer.length === 0 || normalizedFields.length === 0) {
+    return safeBuffer;
+  }
+
+  const pdfDoc = await PdfLibDocument.load(safeBuffer, { ignoreEncryption: true });
+  const pages = pdfDoc.getPages();
+  if (pages.length === 0) {
+    return safeBuffer;
+  }
+
+  const form = pdfDoc.getForm();
+  const existingFieldNames = new Set(form.getFields().map((field) => field.getName()));
+  const fonts = {
+    regular: await pdfDoc.embedFont(StandardFonts.Helvetica),
+    bold: await pdfDoc.embedFont(StandardFonts.HelveticaBold),
+  };
+  const addedFieldNames = new Set();
+
+  normalizedFields.forEach((field, index) => {
+    if (existingFieldNames.has(field.fieldName) || addedFieldNames.has(field.fieldName)) {
+      return;
+    }
+
+    const pageIndex = resolvePdfSignatureFieldPageIndex(field, pages.length);
+    const page = pages[pageIndex];
+    const rect = resolvePdfSignatureFieldRect(field, page, index);
+    if (field.drawPlaceholder) {
+      drawPdfSignatureFieldPlaceholder(page, rect, field, fonts);
+    }
+    addPdfSignatureField(pdfDoc, page, rect, field.fieldName);
+    addedFieldNames.add(field.fieldName);
+  });
+
+  if (addedFieldNames.size === 0) {
+    return safeBuffer;
+  }
+
+  return Buffer.from(await pdfDoc.save({ useObjectStreams: false }));
+}
+
 function normalizePdfText(value = "") {
   const text = clean(value);
   return text || "—";
@@ -5339,14 +5597,21 @@ async function resolvePdfImageBuffer(source = "") {
 
 function createPdfLayoutHelpers(doc) {
   let currentLayout = doc.page.layout === "landscape" ? "landscape" : "portrait";
+  let currentPageIndex = 0;
   const margins = {
     top: 40,
     bottom: 40,
     left: 42,
     right: 42,
   };
+  doc.on("pageAdded", () => {
+    currentPageIndex += 1;
+  });
 
   const helpers = {
+    get pageNumber() {
+      return currentPageIndex + 1;
+    },
     get availableWidth() {
       return doc.page.width - doc.page.margins.left - doc.page.margins.right;
     },
@@ -5626,7 +5891,7 @@ function renderPdfTable(doc, helpers, table = {}) {
   doc.moveDown(0.6);
 }
 
-async function renderPdfSignatureGroup(doc, helpers, title, items = []) {
+async function renderPdfSignatureGroup(doc, helpers, title, items = [], signatureFields = []) {
   const safeItems = Array.isArray(items) ? items : [];
   if (safeItems.length === 0) {
     renderPdfFieldCard(doc, helpers, title, "Nema odabranih osoba.");
@@ -5680,8 +5945,14 @@ async function renderPdfSignatureGroup(doc, helpers, title, items = []) {
         });
       }
     } else if (isDigital) {
+      const fieldRect = {
+        x: x + 16,
+        y: y + estimatedHeight - 56,
+        width: Math.max(220, cardWidth - 32),
+        height: 34,
+      };
       doc.save();
-      doc.roundedRect(x + 16, y + estimatedHeight - 56, Math.max(220, cardWidth - 32), 34, 10);
+      doc.roundedRect(fieldRect.x, fieldRect.y, fieldRect.width, fieldRect.height, 10);
       doc.lineWidth(0.8);
       doc.dash(5, { space: 3 });
       doc.strokeColor("#111111").stroke();
@@ -5690,6 +5961,18 @@ async function renderPdfSignatureGroup(doc, helpers, title, items = []) {
       doc.font("dejavu-bold").fontSize(9).fillColor("#7b61ff").text("Kvalificirani digitalni potpis", x + 28, y + estimatedHeight - 45, {
         width: Math.max(200, cardWidth - 56),
       });
+      const signatureField = normalizePdfSignatureFieldSpec({
+        ...item,
+        x: fieldRect.x,
+        y: doc.page.height - fieldRect.y - fieldRect.height,
+        width: fieldRect.width,
+        height: fieldRect.height,
+        page: helpers.pageNumber,
+        drawPlaceholder: false,
+      });
+      if (signatureField) {
+        signatureFields.push(signatureField);
+      }
     }
 
     doc.save();
@@ -5853,6 +6136,7 @@ export async function buildPdfFromRenderModel(renderModel = {}) {
   doc.font("dejavu");
 
   const helpers = createPdfLayoutHelpers(doc);
+  const signatureFields = [];
   const title = clean(renderModel.title) || "Zapisnik";
   const documentType = clean(renderModel.documentType) || "Zapisnik";
   const subtitleParts = normalizePdfLines([
@@ -5957,7 +6241,7 @@ export async function buildPdfFromRenderModel(renderModel = {}) {
       }
 
       if (itemType === "signature_group") {
-        await renderPdfSignatureGroup(doc, helpers, item.title || "Potpisi", item.items || []);
+        await renderPdfSignatureGroup(doc, helpers, item.title || "Potpisi", item.items || [], signatureFields);
         continue;
       }
 
@@ -5971,7 +6255,8 @@ export async function buildPdfFromRenderModel(renderModel = {}) {
   }
 
   addRenderModelPageNumbers(doc, renderModel);
-  return pdfBufferFromDocument(doc);
+  const pdfBuffer = await pdfBufferFromDocument(doc);
+  return addPdfSignatureFieldsToBuffer(pdfBuffer, signatureFields);
 }
 
 function formatOfferPdfDate(value = "") {

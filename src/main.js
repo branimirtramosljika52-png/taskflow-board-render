@@ -53964,6 +53964,8 @@ function buildDocumentTemplateQualifiedInspectorEntries(field = {}, context = {}
       signerUserId: String(user?.id || "").trim(),
       signerEmail,
       signerOib,
+      signatureFieldRole: "ZNR",
+      signatureFieldOib: signerOib,
       digitalAnchor: signerOib || signerEmail || displayName,
     };
   });
@@ -53984,6 +53986,8 @@ function buildDocumentTemplateSignatureEntry(field = {}, context = {}) {
     signerUserId: String(signaturePreview.user?.id || "").trim(),
     signerEmail,
     signerOib,
+    signatureFieldRole: "ZNR",
+    signatureFieldOib: signerOib,
     digitalAnchor: signerOib || signerEmail || String(signaturePreview.displayName || "").trim(),
   };
 }
@@ -54001,6 +54005,8 @@ function buildDocumentTemplateDigitalSignatureEntries(field = {}, context = {}) 
       signerUserId: String(entry.user?.id || "").trim(),
       signerEmail,
       signerOib,
+      signatureFieldRole: entry.signatureFieldRole || "ZNR",
+      signatureFieldOib: signerOib,
       digitalAnchor: signerOib || signerEmail || getUserDocumentDisplayName(entry.user),
     };
   });

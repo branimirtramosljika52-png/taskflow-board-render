@@ -1488,6 +1488,16 @@ function normalizeWorkOrderDocumentCategory(value = "") {
   return dbString(value).slice(0, 96);
 }
 
+function normalizeWorkOrderDocumentSignatureFieldsJson(value = "") {
+  if (Array.isArray(value)) {
+    return JSON.stringify(value);
+  }
+  if (value && typeof value === "object") {
+    return JSON.stringify(value);
+  }
+  return dbString(value);
+}
+
 function inferWorkOrderDocumentExtension(fileName = "", fileType = "") {
   const normalizedName = dbString(fileName);
   const fromName = normalizedName.includes(".")
@@ -1529,6 +1539,12 @@ function normalizeWorkOrderDocumentInput(input = {}, defaultSourceType = "editor
     fileExtension: inferWorkOrderDocumentExtension(fileName, fileType),
     documentCategory: normalizeWorkOrderDocumentCategory(
       input.documentCategory ?? input.category ?? input.documentType,
+    ),
+    signatureFieldRole: dbString(input.signatureFieldRole ?? input.signature_field_role).slice(0, 64),
+    signatureFieldOib: dbString(input.signatureFieldOib ?? input.signerOib ?? input.signature_field_oib).replace(/\D/g, "").slice(0, 32),
+    preferredField: dbString(input.preferredField ?? input.preferred_field).slice(0, 180),
+    signatureFieldsJson: normalizeWorkOrderDocumentSignatureFieldsJson(
+      input.signatureFieldsJson ?? input.signatureFields ?? input.signature_fields_json,
     ),
     description: dbString(input.description),
     fileSize,
@@ -2762,6 +2778,11 @@ function mapWorkOrderDocumentRow(row) {
     fileExtension: row.file_extension ?? row.fileExtension ?? "",
     fileType: row.file_type ?? row.fileType ?? "",
     documentCategory: normalizeWorkOrderDocumentCategory(row.document_category ?? row.documentCategory),
+    signatureFieldRole: row.signature_field_role ?? row.signatureFieldRole ?? "",
+    signatureFieldOib: row.signature_field_oib ?? row.signatureFieldOib ?? "",
+    signerOib: row.signature_field_oib ?? row.signatureFieldOib ?? row.signerOib ?? "",
+    preferredField: row.preferred_field ?? row.preferredField ?? "",
+    signatureFieldsJson: row.signature_fields_json ?? row.signatureFieldsJson ?? "",
     description: row.file_description ?? row.description ?? "",
     fileSize: Number(row.file_size ?? row.fileSize ?? 0) || 0,
     dataUrl: storedDocument.dataUrl,
@@ -4732,6 +4753,11 @@ export class InMemorySafetyRepository {
       fileExtension: file.fileExtension,
       fileType: file.fileType,
       documentCategory: file.documentCategory,
+      signatureFieldRole: file.signatureFieldRole,
+      signatureFieldOib: file.signatureFieldOib,
+      signerOib: file.signatureFieldOib,
+      preferredField: file.preferredField,
+      signatureFieldsJson: file.signatureFieldsJson,
       description: file.description,
       fileSize: file.fileSize,
       dataUrl: file.dataUrl,
@@ -4797,6 +4823,11 @@ export class InMemorySafetyRepository {
       fileExtension: normalized.fileExtension,
       fileType: normalized.fileType || "application/pdf",
       documentCategory: targetCategory,
+      signatureFieldRole: normalized.signatureFieldRole,
+      signatureFieldOib: normalized.signatureFieldOib,
+      signerOib: normalized.signatureFieldOib,
+      preferredField: normalized.preferredField,
+      signatureFieldsJson: normalized.signatureFieldsJson,
       description: normalized.description,
       fileSize: normalized.fileSize,
       dataUrl: normalized.dataUrl,
@@ -6435,6 +6466,10 @@ export class MySqlSafetyRepository {
     `);
     await ensureColumnExists(this.pool, "web_work_order_documents", "file_description", "TEXT NULL AFTER file_type");
     await ensureColumnExists(this.pool, "web_work_order_documents", "document_category", "VARCHAR(96) NOT NULL DEFAULT '' AFTER file_description");
+    await ensureColumnExists(this.pool, "web_work_order_documents", "signature_field_role", "VARCHAR(64) NOT NULL DEFAULT '' AFTER document_category");
+    await ensureColumnExists(this.pool, "web_work_order_documents", "signature_field_oib", "VARCHAR(32) NOT NULL DEFAULT '' AFTER signature_field_role");
+    await ensureColumnExists(this.pool, "web_work_order_documents", "preferred_field", "VARCHAR(180) NOT NULL DEFAULT '' AFTER signature_field_oib");
+    await ensureColumnExists(this.pool, "web_work_order_documents", "signature_fields_json", "LONGTEXT NULL AFTER preferred_field");
     await ensureColumnExists(this.pool, "web_work_order_documents", "storage_provider", "VARCHAR(32) NULL AFTER data_url");
     await ensureColumnExists(this.pool, "web_work_order_documents", "storage_bucket", "VARCHAR(128) NULL AFTER storage_provider");
     await ensureColumnExists(this.pool, "web_work_order_documents", "storage_key", "VARCHAR(512) NULL AFTER storage_bucket");
@@ -8293,9 +8328,10 @@ export class MySqlSafetyRepository {
           `
             INSERT INTO web_work_order_documents
               (work_order_id, actor_user_id, actor_label, source_type, file_name, file_extension,
-               file_type, file_description, document_category, file_size, data_url,
+               file_type, file_description, document_category, signature_field_role, signature_field_oib,
+               preferred_field, signature_fields_json, file_size, data_url,
                storage_provider, storage_bucket, storage_key, storage_url)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `,
           [
             Number(workOrderId),
@@ -8307,6 +8343,10 @@ export class MySqlSafetyRepository {
             storedDocument.fileType,
             storedDocument.description,
             storedDocument.documentCategory,
+            storedDocument.signatureFieldRole,
+            storedDocument.signatureFieldOib,
+            storedDocument.preferredField,
+            storedDocument.signatureFieldsJson,
             storedDocument.fileSize,
             storedDocument.inlineDataUrl,
             storedDocument.storageProvider,
@@ -8326,6 +8366,11 @@ export class MySqlSafetyRepository {
           fileExtension: storedDocument.fileExtension,
           fileType: storedDocument.fileType,
           documentCategory: storedDocument.documentCategory,
+          signatureFieldRole: storedDocument.signatureFieldRole,
+          signatureFieldOib: storedDocument.signatureFieldOib,
+          signerOib: storedDocument.signatureFieldOib,
+          preferredField: storedDocument.preferredField,
+          signatureFieldsJson: storedDocument.signatureFieldsJson,
           description: storedDocument.description,
           fileSize: storedDocument.fileSize,
           dataUrl: storedDocument.dataUrl,
@@ -8388,6 +8433,7 @@ export class MySqlSafetyRepository {
         `
           SELECT id, work_order_id, actor_user_id, actor_label, source_type, file_name,
                  file_extension, file_type, file_description, document_category, file_size, data_url,
+                 signature_field_role, signature_field_oib, preferred_field, signature_fields_json,
                  storage_provider, storage_bucket, storage_key, storage_url,
                  created_at, updated_at
           FROM web_work_order_documents
@@ -8406,7 +8452,9 @@ export class MySqlSafetyRepository {
           `
             UPDATE web_work_order_documents
             SET actor_user_id = ?, actor_label = ?, file_name = ?, file_extension = ?,
-                file_type = ?, file_description = ?, document_category = ?, file_size = ?,
+                file_type = ?, file_description = ?, document_category = ?,
+                signature_field_role = ?, signature_field_oib = ?, preferred_field = ?, signature_fields_json = ?,
+                file_size = ?,
                 data_url = ?, storage_provider = ?, storage_bucket = ?, storage_key = ?, storage_url = ?,
                 updated_at = CURRENT_TIMESTAMP
             WHERE work_order_id = ? AND id = ?
@@ -8419,6 +8467,10 @@ export class MySqlSafetyRepository {
             storedDocument.fileType || "application/pdf",
             storedDocument.description,
             targetCategory,
+            storedDocument.signatureFieldRole,
+            storedDocument.signatureFieldOib,
+            storedDocument.preferredField,
+            storedDocument.signatureFieldsJson,
             storedDocument.fileSize,
             storedDocument.inlineDataUrl,
             storedDocument.storageProvider,
@@ -8440,6 +8492,11 @@ export class MySqlSafetyRepository {
           fileExtension: storedDocument.fileExtension,
           fileType: storedDocument.fileType || "application/pdf",
           documentCategory: targetCategory,
+          signatureFieldRole: storedDocument.signatureFieldRole,
+          signatureFieldOib: storedDocument.signatureFieldOib,
+          signerOib: storedDocument.signatureFieldOib,
+          preferredField: storedDocument.preferredField,
+          signatureFieldsJson: storedDocument.signatureFieldsJson,
           description: storedDocument.description,
           fileSize: storedDocument.fileSize,
           dataUrl: storedDocument.dataUrl,
@@ -8455,9 +8512,10 @@ export class MySqlSafetyRepository {
         `
           INSERT INTO web_work_order_documents
             (work_order_id, actor_user_id, actor_label, source_type, file_name, file_extension,
-             file_type, file_description, document_category, file_size, data_url,
+             file_type, file_description, document_category, signature_field_role, signature_field_oib,
+             preferred_field, signature_fields_json, file_size, data_url,
              storage_provider, storage_bucket, storage_key, storage_url)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(workOrderId),
@@ -8469,6 +8527,10 @@ export class MySqlSafetyRepository {
           storedDocument.fileType || "application/pdf",
           storedDocument.description,
           targetCategory,
+          storedDocument.signatureFieldRole,
+          storedDocument.signatureFieldOib,
+          storedDocument.preferredField,
+          storedDocument.signatureFieldsJson,
           storedDocument.fileSize,
           storedDocument.inlineDataUrl,
           storedDocument.storageProvider,
@@ -8487,6 +8549,11 @@ export class MySqlSafetyRepository {
         fileExtension: storedDocument.fileExtension,
         fileType: storedDocument.fileType || "application/pdf",
         documentCategory: targetCategory,
+        signatureFieldRole: storedDocument.signatureFieldRole,
+        signatureFieldOib: storedDocument.signatureFieldOib,
+        signerOib: storedDocument.signatureFieldOib,
+        preferredField: storedDocument.preferredField,
+        signatureFieldsJson: storedDocument.signatureFieldsJson,
         description: storedDocument.description,
         fileSize: storedDocument.fileSize,
         dataUrl: storedDocument.dataUrl,
@@ -8522,6 +8589,7 @@ export class MySqlSafetyRepository {
         `
           SELECT id, work_order_id, actor_user_id, actor_label, source_type, file_name,
                  file_extension, file_type, file_description, document_category, file_size, data_url,
+                 signature_field_role, signature_field_oib, preferred_field, signature_fields_json,
                  storage_provider, storage_bucket, storage_key, storage_url,
                  created_at, updated_at
           FROM web_work_order_documents
@@ -8576,6 +8644,7 @@ export class MySqlSafetyRepository {
         `
           SELECT id, work_order_id, actor_user_id, actor_label, source_type, file_name,
                  file_extension, file_type, file_description, document_category, file_size, data_url,
+                 signature_field_role, signature_field_oib, preferred_field, signature_fields_json,
                  storage_provider, storage_bucket, storage_key, storage_url,
                  created_at, updated_at
           FROM web_work_order_documents
@@ -8602,6 +8671,7 @@ export class MySqlSafetyRepository {
         `
           SELECT id, work_order_id, actor_user_id, actor_label, source_type, file_name,
                  file_extension, file_type, file_description, document_category, file_size, data_url,
+                 signature_field_role, signature_field_oib, preferred_field, signature_fields_json,
                  storage_provider, storage_bucket, storage_key, storage_url,
                  created_at, updated_at
           FROM web_work_order_documents
@@ -8675,6 +8745,7 @@ export class MySqlSafetyRepository {
         `
           SELECT id, work_order_id, actor_user_id, actor_label, source_type, file_name,
                  file_extension, file_type, file_description, document_category, file_size, data_url,
+                 signature_field_role, signature_field_oib, preferred_field, signature_fields_json,
                  storage_provider, storage_bucket, storage_key, storage_url,
                  created_at, updated_at
           FROM web_work_order_documents
