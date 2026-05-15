@@ -4870,10 +4870,11 @@
                 <div>
                   <p class="section-kicker">Certificirani potpis</p>
                   <h3>PDF Signer</h3>
-                  <p class="helper-copy module-copy">Odaberi potpis, unesi PIN isključivo u lokalnom Signer programu i potpisani PDF se vraća u Documents.</p>
+                  <p class="helper-copy module-copy">Pregledaj dokumente, označi što ide na potpis i potpisani PDF se vraća u Documents.</p>
                 </div>
                 <div class="signatures-bridge-actions">
                   <button id="signatures-review-start" type="button" class="ghost-button">Pripremi pregled</button>
+                  <button id="signatures-settings-open" type="button" class="ghost-button">Postavke</button>
                   <button id="signatures-open-local-signer" type="button" class="primary-button">Potpiši odabrano</button>
                   <button id="signatures-install-signer" type="button" class="ghost-button" hidden>Preuzmi signer</button>
                 </div>
@@ -4881,26 +4882,15 @@
                 <div id="signatures-settings-panel" class="signatures-settings-panel" hidden>
                   <div class="signatures-settings-heading">
                     <div>
-                      <p class="section-kicker">Local settings</p>
+                      <p class="section-kicker">PDF Signer</p>
                       <h4>PDF Signer postavke</h4>
                     </div>
                     <div class="signatures-settings-actions">
-                      <button id="signatures-settings-load" type="button" class="ghost-button">Učitaj</button>
                       <button id="signatures-settings-save" type="button" class="ghost-button">Spremi</button>
+                      <button id="signatures-settings-close" type="button" class="ghost-button">Zatvori</button>
                     </div>
                   </div>
                   <div class="signatures-settings-grid">
-                    <label class="field">
-                      <span>Keyword fallback</span>
-                      <input id="signatures-settings-keyword" type="text" placeholder="OIB ili ključna riječ" />
-                    </label>
-                    <label class="field">
-                      <span>Case insensitive</span>
-                      <select id="signatures-settings-case-insensitive">
-                        <option value="true">true</option>
-                        <option value="false">false</option>
-                      </select>
-                    </label>
                     <label class="field">
                       <span>Provider order</span>
                       <input id="signatures-settings-provider-order" type="text" placeholder="EOI,FINA" />
@@ -4933,16 +4923,7 @@
                       <span>Font size</span>
                       <input id="signatures-settings-font-size" type="number" step="0.5" min="4" />
                     </label>
-                    <label class="field">
-                      <span>Skip tolerance pt</span>
-                      <input id="signatures-settings-skip-tolerance" type="number" step="0.5" min="0" />
-                    </label>
-                    <label class="field field-span-2">
-                      <span>PIN</span>
-                      <input type="text" value="Stvarni potpis je uključen. PIN se unosi samo lokalno u PDFSigner.exe i ne sprema se kroz web." disabled />
-                    </label>
                   </div>
-                  <pre id="signatures-settings-response" class="signatures-debug-response">Postavke nisu učitane.</pre>
                 </div>
               </section>
               <section id="signatures-review-panel" class="panel signatures-review-panel" hidden>

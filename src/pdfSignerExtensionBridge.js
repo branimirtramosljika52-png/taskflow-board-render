@@ -143,6 +143,7 @@ export function signDocumentsWithPdfSignerExtension({
   token = "",
   apiBaseUrl = "",
   documents = [],
+  settings = {},
   dryRun,
 } = {}) {
   const payload = {
@@ -151,6 +152,7 @@ export function signDocumentsWithPdfSignerExtension({
     token,
     apiBaseUrl,
     documents,
+    settings,
   };
   if (typeof dryRun === "boolean") {
     payload.dryRun = dryRun;
@@ -163,6 +165,7 @@ export function getSignatureFieldsWithPdfSignerExtension({
   token = "",
   apiBaseUrl = "",
   documents = [],
+  settings = {},
   allowErrorResponse = false,
 } = {}) {
   return sendMessageToPdfSignerExtension({
@@ -171,6 +174,7 @@ export function getSignatureFieldsWithPdfSignerExtension({
     token,
     apiBaseUrl,
     documents,
+    settings,
   }, { timeoutMs: 120000, allowErrorResponse });
 }
 

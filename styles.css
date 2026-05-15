@@ -51130,6 +51130,31 @@ button.work-order-editor-section-head:focus-visible {
   background: rgba(255, 255, 255, 0.82);
 }
 
+.signatures-settings-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  z-index: 90;
+  width: min(760px, calc(100vw - 32px));
+  max-height: min(720px, calc(100vh - 32px));
+  overflow: auto;
+  transform: translate(-50%, -50%);
+  border-color: rgba(147, 197, 253, 0.92);
+  background: #ffffff;
+  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.28);
+}
+
+body.is-signatures-settings-open::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 89;
+  background: rgba(15, 23, 42, 0.46);
+  backdrop-filter: blur(8px);
+}
+
 .signatures-settings-panel[hidden],
 .signatures-review-panel[hidden] {
   display: none;
@@ -51177,6 +51202,22 @@ button.work-order-editor-section-head:focus-visible {
   gap: 12px;
 }
 
+.signature-review-workspace {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.36fr) minmax(0, 1fr);
+  gap: 14px;
+  min-height: min(720px, calc(100vh - 260px));
+}
+
+.signature-review-sidebar {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 2px;
+}
+
 .signature-review-work-order {
   display: grid;
   gap: 10px;
@@ -51204,13 +51245,21 @@ button.work-order-editor-section-head:focus-visible {
 
 .signature-review-document {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(220px, 0.35fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
-  align-items: stretch;
+  align-items: center;
+  width: 100%;
   padding: 10px;
   border: 1px solid rgba(191, 219, 254, 0.84);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.92);
+  text-align: left;
+  cursor: pointer;
+}
+
+.signature-review-document.is-active {
+  border-color: rgba(37, 99, 235, 0.52);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
 }
 
 .signature-review-document.is-approved_for_signing {
@@ -51270,6 +51319,98 @@ button.work-order-editor-section-head:focus-visible {
   width: 100%;
   min-height: 52px;
   resize: vertical;
+}
+
+.signature-review-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 96px;
+  padding: 6px 9px;
+  border-radius: 999px;
+  color: #475569;
+  background: #f1f5f9;
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.signature-review-status.is-approved_for_signing,
+.signature-review-status.is-signed {
+  color: #047857;
+  background: #d1fae5;
+}
+
+.signature-review-status.is-skipped_with_comment {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.signature-review-status.is-rejected_with_comment,
+.signature-review-status.is-error {
+  color: #b91c1c;
+  background: #fee2e2;
+}
+
+.signature-review-preview {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  padding: 12px;
+  border: 1px solid rgba(191, 219, 254, 0.84);
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(255,255,255,.98), rgba(248,250,252,.94));
+}
+
+.signature-review-preview-head,
+.signature-review-preview-actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.signature-review-preview-head h4 {
+  margin: 0;
+  color: #172033;
+  font-size: 18px;
+}
+
+.signature-review-preview-actions {
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.signature-review-preview-actions .ghost-button.is-active {
+  border-color: rgba(37, 99, 235, 0.35);
+  background: rgba(239, 246, 255, 0.95);
+  color: #1d4ed8;
+}
+
+.signature-review-preview-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 210px;
+  gap: 12px;
+  min-height: 0;
+}
+
+.signature-review-preview-stage {
+  position: relative;
+  min-height: 560px;
+  overflow: hidden;
+  border: 1px solid rgba(203, 213, 225, 0.78);
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.signature-review-preview-stage object {
+  width: 100%;
+  height: 100%;
+  min-height: 560px;
+  border: 0;
 }
 
 .signature-preview-backdrop {

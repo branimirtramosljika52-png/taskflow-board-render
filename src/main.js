@@ -1655,7 +1655,10 @@ const state = {
       items: [],
       decisions: {},
       activeDocumentId: "",
+      activeReviewKey: "",
       activePreviewUrl: "",
+      activePreviewLoading: false,
+      activePreviewError: "",
       error: "",
     },
     settings: {
@@ -3289,8 +3292,10 @@ const signaturesReviewBody = document.querySelector("#signatures-review-body");
 const signaturesReviewApproveAllButton = document.querySelector("#signatures-review-approve-all");
 const signaturesReviewSignSelectedButton = document.querySelector("#signatures-review-sign-selected");
 const signaturesSettingsPanel = document.querySelector("#signatures-settings-panel");
+const signaturesSettingsOpenButton = document.querySelector("#signatures-settings-open");
 const signaturesSettingsLoadButton = document.querySelector("#signatures-settings-load");
 const signaturesSettingsSaveButton = document.querySelector("#signatures-settings-save");
+const signaturesSettingsCloseButton = document.querySelector("#signatures-settings-close");
 const signaturesSettingsTestTokenButton = document.querySelector("#signatures-settings-test-token");
 const signaturesSettingsOpenLocalButton = document.querySelector("#signatures-settings-open-local");
 const signaturesSettingsModeInput = document.querySelector("#signatures-settings-mode");
@@ -30171,6 +30176,7 @@ async function runSignatureDebugGetFields() {
       token: payload.token || "",
       apiBaseUrl: payload.apiBase || window.location.origin,
       documents,
+      settings: getPdfSignerWebSettings(),
     };
     let response;
     let usedDryRunFallback = false;
@@ -30237,6 +30243,7 @@ async function runSignatureDebugDryRun() {
       token: payload.token || "",
       apiBaseUrl: payload.apiBase || window.location.origin,
       documents,
+      settings: getPdfSignerWebSettings(),
       dryRun: true,
     });
     setSignatureDebugFromPingResponse(response);
@@ -30416,6 +30423,135 @@ function getSignatureReviewStatusLabel(status = "") {
   })[status] || "Čeka pregled";
 }
 
+function getSignatureReviewOrderedItems() {
+  return Array.isArray(state.signatures.review.items) ? state.signatures.review.items : [];
+}
+
+function getActiveSignatureReviewItem() {
+  const items = getSignatureReviewOrderedItems();
+  const activeKey = String(state.signatures.review.activeReviewKey || "").trim();
+  return items.find((item) => String(item.reviewKey || "") === activeKey) || items[0] || null;
+}
+
+function revokeSignatureReviewPreviewUrl() {
+  const currentUrl = String(state.signatures.review.activePreviewUrl || "").trim();
+  if (currentUrl.startsWith("blob:")) {
+    URL.revokeObjectURL(currentUrl);
+  }
+}
+
+async function fetchSignatureReviewPdfBlob(item = {}) {
+  const sourceEntry = item.sourceEntry?.entry || {};
+  if (sourceEntry.previewType === "work-order-document" && sourceEntry.workOrderId && sourceEntry.documentId) {
+    const { blob } = await apiBinaryRequest(
+      `/work-orders/${encodeURIComponent(sourceEntry.workOrderId)}/documents/${encodeURIComponent(sourceEntry.documentId)}/download`,
+      { method: "GET" },
+    );
+    return blob;
+  }
+
+  if (item.sourceEntry?.documentItem?.workOrderId && item.sourceEntry?.documentItem?.id) {
+    const { blob } = await apiBinaryRequest(
+      `/work-orders/${encodeURIComponent(item.sourceEntry.documentItem.workOrderId)}/documents/${encodeURIComponent(item.sourceEntry.documentItem.id)}/download`,
+      { method: "GET" },
+    );
+    return blob;
+  }
+
+  if (item.workOrderId && item.documentId) {
+    const { blob } = await apiBinaryRequest(
+      `/work-orders/${encodeURIComponent(item.workOrderId)}/documents/${encodeURIComponent(item.documentId)}/download`,
+      { method: "GET" },
+    );
+    return blob;
+  }
+
+  if (item.downloadUrl) {
+    const response = await fetch(item.downloadUrl, {
+      method: "GET",
+      cache: "no-store",
+      credentials: "same-origin",
+    });
+    if (!response.ok) {
+      throw new Error(`PDF preview nije uspio: HTTP ${response.status}`);
+    }
+    return await response.blob();
+  }
+
+  throw new Error("PDF preview nije dostupan za ovaj dokument.");
+}
+
+async function loadSignatureReviewPreview(item = null) {
+  const activeItem = item || getActiveSignatureReviewItem();
+  if (!activeItem?.reviewKey) {
+    return;
+  }
+  const activeKey = String(activeItem.reviewKey);
+  revokeSignatureReviewPreviewUrl();
+  state.signatures.review.activePreviewUrl = "";
+  state.signatures.review.activePreviewError = "";
+  state.signatures.review.activePreviewLoading = true;
+  renderSignatureReviewPanel();
+  try {
+    const blob = await fetchSignatureReviewPdfBlob(activeItem);
+    if (String(state.signatures.review.activeReviewKey || "") !== activeKey) {
+      return;
+    }
+    state.signatures.review.activePreviewUrl = URL.createObjectURL(blob);
+    state.signatures.review.activePreviewError = "";
+  } catch (error) {
+    if (String(state.signatures.review.activeReviewKey || "") === activeKey) {
+      state.signatures.review.activePreviewError = error.message || "PDF preview nije uspio.";
+    }
+  } finally {
+    if (String(state.signatures.review.activeReviewKey || "") === activeKey) {
+      state.signatures.review.activePreviewLoading = false;
+      renderSignatureReviewPanel();
+    }
+  }
+}
+
+function activateSignatureReviewItem(reviewKey = "") {
+  const key = String(reviewKey || "").trim();
+  const item = getSignatureReviewOrderedItems().find((entry) => String(entry.reviewKey || "") === key);
+  if (!item) {
+    return;
+  }
+  revokeSignatureReviewPreviewUrl();
+  state.signatures.review.activeReviewKey = key;
+  state.signatures.review.activeDocumentId = item.documentId || "";
+  state.signatures.review.activePreviewUrl = "";
+  state.signatures.review.activePreviewError = "";
+  state.signatures.review.activePreviewLoading = false;
+  renderSignatureReviewPanel();
+  void loadSignatureReviewPreview(item);
+}
+
+function moveToNextSignatureReviewItem(currentReviewKey = "") {
+  const items = getSignatureReviewOrderedItems();
+  if (items.length === 0) return;
+  const currentIndex = Math.max(0, items.findIndex((item) => String(item.reviewKey || "") === String(currentReviewKey || "")));
+  const candidates = [
+    ...items.slice(currentIndex + 1),
+    ...items.slice(0, currentIndex),
+  ];
+  const next = candidates.find((item) => {
+    if (item.status === "signed" || item.status === "error") return false;
+    const decision = getSignatureReviewDecision(item.reviewKey);
+    return decision.status === "pending_review";
+  }) || candidates.find((item) => item.status !== "signed" && item.status !== "error") || items[currentIndex];
+  if (next?.reviewKey && String(next.reviewKey) !== String(currentReviewKey || "")) {
+    activateSignatureReviewItem(next.reviewKey);
+  } else {
+    renderSignatureReviewPanel();
+  }
+}
+
+function updateSignatureReviewDecisionAndAdvance(reviewKey = "", status = "") {
+  updateSignatureReviewDecision(reviewKey, { status });
+  moveToNextSignatureReviewItem(reviewKey);
+}
+
 function renderSignatureReviewPanel() {
   if (!signaturesReviewPanel || !signaturesReviewBody) {
     return;
@@ -30427,6 +30563,7 @@ function renderSignatureReviewPanel() {
     return;
   }
 
+  const activeItem = getActiveSignatureReviewItem();
   const grouped = new Map();
   review.items.forEach((item) => {
     const key = String(item.workOrderId || item.workOrderNumber || item.documentId || "bez-rn");
@@ -30441,7 +30578,7 @@ function renderSignatureReviewPanel() {
     grouped.get(key).items.push(item);
   });
 
-  const blocks = Array.from(grouped.values()).map((group) => {
+  const listBlocks = Array.from(grouped.values()).map((group) => {
     const block = document.createElement("article");
     block.className = "signature-review-work-order";
     const head = document.createElement("div");
@@ -30457,15 +30594,17 @@ function renderSignatureReviewPanel() {
     group.items.forEach((item) => {
       const decision = getSignatureReviewDecision(item.reviewKey);
       const effectiveStatus = item.status === "signed" || item.status === "error" ? item.status : decision.status;
-      const row = document.createElement("section");
-      row.className = `signature-review-document is-${effectiveStatus}`;
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = [
+        "signature-review-document",
+        `is-${effectiveStatus}`,
+        String(activeItem?.reviewKey || "") === String(item.reviewKey || "") ? "is-active" : "",
+      ].filter(Boolean).join(" ");
+      row.addEventListener("click", () => activateSignatureReviewItem(item.reviewKey));
 
-      const copy = document.createElement("button");
-      copy.type = "button";
+      const copy = document.createElement("span");
       copy.className = "signature-review-document-copy";
-      copy.addEventListener("click", () => {
-        void previewSignatureReviewDocument(item);
-      });
       const doc = document.createElement("strong");
       doc.textContent = item.fileName || "zapisnik.pdf";
       const line = document.createElement("span");
@@ -30474,39 +30613,10 @@ function renderSignatureReviewPanel() {
       help.textContent = item.error || "Klikni za PDF preview i označeno mjesto digitalnog potpisa.";
       copy.append(doc, line, help);
 
-      const actions = document.createElement("div");
-      actions.className = "signature-review-actions-row";
-      [
-        ["approved_for_signing", "OK za potpis"],
-        ["skipped_with_comment", "Preskoči"],
-        ["rejected_with_comment", "Ne potpisuj"],
-      ].forEach(([status, label]) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = ["ghost-button", decision.status === status ? "is-active" : ""].filter(Boolean).join(" ");
-        button.textContent = label;
-        button.disabled = item.status === "signed" || item.status === "error";
-        button.addEventListener("click", () => updateSignatureReviewDecision(item.reviewKey, { status }));
-        actions.append(button);
-      });
-
-      const comment = document.createElement("textarea");
-      comment.className = "signature-review-comment";
-      comment.rows = 2;
-      comment.placeholder = "Komentar za preskok ili odbijanje...";
-      comment.value = decision.comment || "";
-      comment.addEventListener("input", (event) => {
-        const key = String(item.reviewKey || "").trim();
-        state.signatures.review.decisions = {
-          ...state.signatures.review.decisions,
-          [key]: {
-            ...getSignatureReviewDecision(key),
-            comment: event.currentTarget.value,
-          },
-        };
-      });
-
-      row.append(copy, actions, comment);
+      const badge = document.createElement("span");
+      badge.className = `signature-review-status is-${effectiveStatus}`;
+      badge.textContent = getSignatureReviewStatusLabel(effectiveStatus);
+      row.append(copy, badge);
       list.append(row);
     });
 
@@ -30519,7 +30629,119 @@ function renderSignatureReviewPanel() {
     signaturesReviewSignSelectedButton.disabled = approvedCount === 0 || review.status === "signing";
     signaturesReviewSignSelectedButton.textContent = approvedCount > 0 ? `Potpiši odabrano (${approvedCount})` : "Potpiši odabrano";
   }
-  signaturesReviewBody.replaceChildren(...blocks);
+
+  const workspace = document.createElement("div");
+  workspace.className = "signature-review-workspace";
+  const sidebar = document.createElement("div");
+  sidebar.className = "signature-review-sidebar";
+  sidebar.replaceChildren(...listBlocks);
+
+  const preview = document.createElement("section");
+  preview.className = "signature-review-preview";
+  if (!activeItem) {
+    const empty = document.createElement("p");
+    empty.className = "helper-copy";
+    empty.textContent = "Nema dokumenta za pregled.";
+    preview.append(empty);
+  } else {
+    const activeDecision = getSignatureReviewDecision(activeItem.reviewKey);
+    const previewHead = document.createElement("div");
+    previewHead.className = "signature-review-preview-head";
+    const copy = document.createElement("div");
+    const kicker = document.createElement("p");
+    kicker.className = "section-kicker";
+    kicker.textContent = activeItem.workOrderNumber ? `RN ${activeItem.workOrderNumber}` : "PDF pregled";
+    const title = document.createElement("h4");
+    title.textContent = activeItem.fileName || "zapisnik.pdf";
+    const meta = document.createElement("p");
+    meta.className = "helper-copy module-copy";
+    meta.textContent = [
+      activeItem.companyName || activeItem.sourceEntry?.context?.company?.name || "",
+      activeItem.locationName || activeItem.sourceEntry?.context?.location?.name || "",
+      `${activeItem.label}: ${activeItem.signer}`,
+    ].filter(Boolean).join(" · ");
+    copy.append(kicker, title, meta);
+    const actions = document.createElement("div");
+    actions.className = "signature-review-preview-actions";
+    [
+      ["approved_for_signing", "OK"],
+      ["rejected_with_comment", "Nije OK"],
+      ["skipped_with_comment", "Preskoči"],
+    ].forEach(([status, label]) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = ["ghost-button", activeDecision.status === status ? "is-active" : ""].filter(Boolean).join(" ");
+      button.textContent = label;
+      button.disabled = activeItem.status === "signed" || activeItem.status === "error";
+      button.addEventListener("click", () => updateSignatureReviewDecisionAndAdvance(activeItem.reviewKey, status));
+      actions.append(button);
+    });
+    previewHead.append(copy, actions);
+
+    const comment = document.createElement("textarea");
+    comment.className = "signature-review-comment";
+    comment.rows = 2;
+    comment.placeholder = "Komentar za preskok ili odbijanje...";
+    comment.value = activeDecision.comment || "";
+    comment.addEventListener("input", (event) => {
+      const key = String(activeItem.reviewKey || "").trim();
+      state.signatures.review.decisions = {
+        ...state.signatures.review.decisions,
+        [key]: {
+          ...getSignatureReviewDecision(key),
+          comment: event.currentTarget.value,
+        },
+      };
+    });
+
+    const stage = document.createElement("div");
+    stage.className = "signature-review-preview-stage";
+    if (review.activePreviewLoading) {
+      const loading = document.createElement("p");
+      loading.className = "signature-preview-empty";
+      loading.textContent = "Učitavam PDF...";
+      stage.append(loading);
+    } else if (review.activePreviewError) {
+      const error = document.createElement("p");
+      error.className = "signature-preview-empty";
+      error.textContent = review.activePreviewError;
+      stage.append(error);
+    } else if (review.activePreviewUrl) {
+      const object = document.createElement("object");
+      object.type = "application/pdf";
+      object.data = review.activePreviewUrl;
+      object.setAttribute("aria-label", activeItem.fileName || "PDF preview");
+      stage.append(object);
+    }
+
+    const map = document.createElement("div");
+    map.className = "signature-preview-page";
+    if (activeItem.field) {
+      const marker = document.createElement("div");
+      marker.className = "signature-preview-marker";
+      const left = Math.max(4, Math.min(78, (Number(activeItem.field.x || 0) / 595) * 100));
+      const width = Math.max(12, Math.min(44, (Number(activeItem.field.width || 120) / 595) * 100));
+      const top = Math.max(4, Math.min(86, 100 - ((Number(activeItem.field.y || 0) + Number(activeItem.field.height || 50)) / 842) * 100));
+      marker.style.left = `${left}%`;
+      marker.style.top = `${top}%`;
+      marker.style.width = `${width}%`;
+      marker.textContent = "Ovdje ide digitalni potpis";
+      map.append(marker);
+    } else {
+      const empty = document.createElement("p");
+      empty.className = "signature-preview-empty";
+      empty.textContent = "Ovaj PDF nema digitalno potpisno polje.";
+      map.append(empty);
+    }
+
+    const previewBody = document.createElement("div");
+    previewBody.className = "signature-review-preview-body";
+    previewBody.append(stage, map);
+    preview.append(previewHead, comment, previewBody);
+  }
+
+  workspace.append(sidebar, preview);
+  signaturesReviewBody.replaceChildren(workspace);
 }
 
 async function openSignatureReviewFlow() {
@@ -30539,6 +30761,7 @@ async function openSignatureReviewFlow() {
       token: payload.token || "",
       apiBaseUrl: payload.apiBase || window.location.origin,
       documents,
+      settings: getPdfSignerWebSettings(),
     };
     const fieldsResponse = await getSignatureFieldsForBridgeRequest(bridgeRequest);
     const items = buildSignatureReviewItems(payload, fieldsResponse, pendingEntries);
@@ -30555,8 +30778,13 @@ async function openSignatureReviewFlow() {
       items,
       decisions,
       activeDocumentId: "",
+      activeReviewKey: "",
       error: "",
     });
+    const firstReviewItem = items.find((item) => item.status !== "signed" && item.status !== "error") || items[0] || null;
+    if (firstReviewItem?.reviewKey) {
+      activateSignatureReviewItem(firstReviewItem.reviewKey);
+    }
     setSignaturesBridgeStatus("Review je spreman. Pregledaj dokumente ili oznaci sve kao OK.", "ready");
   } catch (error) {
     setSignatureDebugFromPingError(error);
@@ -30577,17 +30805,78 @@ function approveAllSignatureReviewItems() {
   setSignatureReviewState({ decisions });
 }
 
-async function previewSignatureReviewDocument(item = {}) {
-  if (!item?.downloadUrl) {
-    setSignaturesBridgeStatus("PDF preview nije dostupan za ovaj dokument.", "warning");
-    return;
-  }
+const PDF_SIGNER_WEB_SETTINGS_STORAGE_KEY = "safeNexus.pdfSigner.settings";
+const DEFAULT_PDF_SIGNER_WEB_SETTINGS = {
+  signerMode: "real",
+  realDryRun: false,
+  apiAllowlist: "https://safe-nexus.org",
+  providerOrder: "EOI,FINA",
+  eoiPkcs11: "C:/Program Files/AKD/Certilia Middleware/pkcs11/AkdEidPkcs11_64.dll",
+  finaPkcs11: "C:/Windows/System32/eTPKCS11.dll",
+  rectWidthCm: "6",
+  rectHeightCm: "2",
+  offsetDownCm: "2.2",
+  offsetLeftCm: "2.6",
+  fontSize: "8",
+  reason: "Digitalni potpis",
+  location: "Hrvatska",
+};
+
+function loadPdfSignerWebSettings() {
   try {
-    const response = await fetch(item.downloadUrl, { method: "GET", cache: "no-store" });
-    if (!response.ok) {
-      throw new Error(`PDF preview nije uspio: HTTP ${response.status}`);
-    }
-    const blob = await response.blob();
+    const raw = localStorage.getItem(PDF_SIGNER_WEB_SETTINGS_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return {
+      ...DEFAULT_PDF_SIGNER_WEB_SETTINGS,
+      ...(parsed && typeof parsed === "object" ? parsed : {}),
+      signerMode: "real",
+      realDryRun: false,
+      apiAllowlist: "https://safe-nexus.org",
+    };
+  } catch {
+    return { ...DEFAULT_PDF_SIGNER_WEB_SETTINGS };
+  }
+}
+
+function savePdfSignerWebSettings(settings = {}) {
+  const next = {
+    ...DEFAULT_PDF_SIGNER_WEB_SETTINGS,
+    ...(settings && typeof settings === "object" ? settings : {}),
+    signerMode: "real",
+    realDryRun: false,
+    apiAllowlist: "https://safe-nexus.org",
+  };
+  try {
+    localStorage.setItem(PDF_SIGNER_WEB_SETTINGS_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // Settings can still be sent for the current session.
+  }
+  state.signatures.settings = {
+    ...state.signatures.settings,
+    loaded: true,
+    values: next,
+    lastResponse: null,
+    error: "",
+  };
+  return next;
+}
+
+function getPdfSignerWebSettings() {
+  if (!state.signatures.settings?.values) {
+    return savePdfSignerWebSettings(loadPdfSignerWebSettings());
+  }
+  return {
+    ...DEFAULT_PDF_SIGNER_WEB_SETTINGS,
+    ...state.signatures.settings.values,
+    signerMode: "real",
+    realDryRun: false,
+    apiAllowlist: "https://safe-nexus.org",
+  };
+}
+
+async function previewSignatureReviewDocument(item = {}) {
+  try {
+    const blob = await fetchSignatureReviewPdfBlob(item);
     const url = URL.createObjectURL(blob);
     window.setTimeout(() => URL.revokeObjectURL(url), 120000);
     openSignatureReviewPreviewModal(item, url);
@@ -30685,12 +30974,7 @@ function renderSignerSettingsPanel() {
   if (!signaturesSettingsPanel) {
     return;
   }
-  const visible = canShowSignatureDebugPanel();
-  signaturesSettingsPanel.hidden = !visible;
-  if (!visible) {
-    return;
-  }
-  const settings = state.signatures.settings?.values || {};
+  const settings = getPdfSignerWebSettings();
   if (signaturesSettingsModeInput) signaturesSettingsModeInput.value = "real";
   if (signaturesSettingsDryRunInput) signaturesSettingsDryRunInput.value = "false";
   if (signaturesSettingsAllowlistInput) signaturesSettingsAllowlistInput.value = settings.apiAllowlist || "https://safe-nexus.org";
@@ -30712,20 +30996,6 @@ function renderSignerSettingsPanel() {
   if (signaturesSettingsLocationInput) signaturesSettingsLocationInput.value = settings.location || "";
   if (signaturesSettingsSkipSignedInput) signaturesSettingsSkipSignedInput.value = String(settings.skipAlreadySigned ?? true);
   if (signaturesSettingsHideSignedInput) signaturesSettingsHideSignedInput.value = String(settings.previewHideAlreadySigned ?? false);
-  if (signaturesSettingsResponse) {
-    const payload = state.signatures.settings?.lastResponse || state.signatures.settings?.error || "Postavke nisu učitane.";
-    if (typeof payload === "string") {
-      signaturesSettingsResponse.textContent = payload;
-    } else {
-      const settingsPayload = payload.settings || {};
-      const configPath = payload.configPath || settingsPayload.configPath || "";
-      signaturesSettingsResponse.textContent = [
-        "Stvarni potpis je uključen.",
-        "PIN se unosi samo u lokalnom PDFSigner.exe prozoru.",
-        configPath ? `Lokalni config: ${configPath}` : "",
-      ].filter(Boolean).join("\n");
-    }
-  }
 }
 
 function collectSignerSettingsFormValues() {
@@ -30734,11 +31004,6 @@ function collectSignerSettingsFormValues() {
     signerMode: "real",
     realDryRun: false,
     apiAllowlist: "https://safe-nexus.org",
-    pdfFolder: signaturesSettingsPdfFolderInput?.value ?? current.pdfFolder ?? "C:/Users/Branimir/Desktop/ZaPotpis",
-    keyword: signaturesSettingsKeywordInput?.value || "",
-    fallbackKeyword: signaturesSettingsKeywordInput?.value || "",
-    caseInsensitive: signaturesSettingsCaseInsensitiveInput?.value !== "false",
-    fallbackCaseInsensitive: signaturesSettingsCaseInsensitiveInput?.value !== "false",
     providerOrder: signaturesSettingsProviderOrderInput?.value || "EOI,FINA",
     eoiSlotIndex: signaturesSettingsEoiSlotInput?.value ?? current.eoiSlotIndex ?? "",
     eoiPkcs11: signaturesSettingsEoiPathInput?.value || "",
@@ -30749,54 +31014,39 @@ function collectSignerSettingsFormValues() {
     offsetDownCm: signaturesSettingsOffsetDownInput?.value || "",
     offsetLeftCm: signaturesSettingsOffsetLeftInput?.value || "",
     fontSize: signaturesSettingsFontSizeInput?.value || "",
-    skipTolerancePt: signaturesSettingsSkipToleranceInput?.value || "",
     reason: signaturesSettingsReasonInput?.value ?? current.reason ?? "Digitalni potpis",
     location: signaturesSettingsLocationInput?.value ?? current.location ?? "Hrvatska",
-    skipAlreadySigned: signaturesSettingsSkipSignedInput
-      ? signaturesSettingsSkipSignedInput.value !== "false"
-      : current.skipAlreadySigned ?? true,
-    previewHideAlreadySigned: signaturesSettingsHideSignedInput
-      ? signaturesSettingsHideSignedInput.value === "true"
-      : current.previewHideAlreadySigned ?? false,
   };
 }
 
-async function loadSignerSettingsPanel() {
-  setSignatureDebugOperationLoading(signaturesSettingsLoadButton, true);
-  try {
-    const response = await getSignerSettingsWithPdfSignerExtension();
-    state.signatures.settings = {
-      ...state.signatures.settings,
-      loaded: true,
-      values: response.settings || {},
-      lastResponse: response,
-      error: "",
-    };
-    setSignatureDebugFromPingResponse(response);
-    renderSignerSettingsPanel();
-    setSignaturesBridgeStatus("PDF Signer postavke su učitane iz lokalnog signera.", "ready");
-  } catch (error) {
-    state.signatures.settings.error = error.message || "Postavke nisu dostupne.";
-    renderSignerSettingsPanel();
-    setSignaturesBridgeStatus(state.signatures.settings.error, isPdfSignerExtensionUnavailable(error) ? "warning" : "error");
-  } finally {
-    setSignatureDebugOperationLoading(signaturesSettingsLoadButton, false);
+function openSignerSettingsPanel() {
+  if (!signaturesSettingsPanel) return;
+  if (signaturesSettingsPanel.parentElement !== document.body) {
+    document.body.append(signaturesSettingsPanel);
   }
+  savePdfSignerWebSettings(loadPdfSignerWebSettings());
+  renderSignerSettingsPanel();
+  signaturesSettingsPanel.hidden = false;
+  document.body.classList.add("is-signatures-settings-open");
 }
 
-async function saveSignerSettingsPanel() {
+function closeSignerSettingsPanel() {
+  if (!signaturesSettingsPanel) return;
+  signaturesSettingsPanel.hidden = true;
+  document.body.classList.remove("is-signatures-settings-open");
+}
+
+function loadSignerSettingsPanel() {
+  openSignerSettingsPanel();
+}
+
+function saveSignerSettingsPanel() {
   setSignatureDebugOperationLoading(signaturesSettingsSaveButton, true);
   try {
-    const response = await saveSignerSettingsWithPdfSignerExtension(collectSignerSettingsFormValues());
-    state.signatures.settings = {
-      ...state.signatures.settings,
-      loaded: true,
-      values: response.settings || {},
-      lastResponse: response,
-      error: "",
-    };
+    savePdfSignerWebSettings(collectSignerSettingsFormValues());
     renderSignerSettingsPanel();
-    setSignaturesBridgeStatus("PDF Signer postavke su spremljene lokalno. PIN nije spremljen.", "ready");
+    setSignaturesBridgeStatus("PDF Signer postavke su spremljene u web app i šalju se lokalnom signeru pri potpisu.", "ready");
+    closeSignerSettingsPanel();
   } catch (error) {
     state.signatures.settings.error = error.message || "Spremanje postavki nije uspjelo.";
     renderSignerSettingsPanel();
@@ -31020,12 +31270,13 @@ async function openLocalSignatureBridge(entriesOverride = null, options = {}) {
 
     const { payload, documents } = await createSignatureBridgeJobForPendingEntries(pendingEntries, options);
 
-    setSignaturesBridgeStatus("Otvori lokalni prozor signera i unesi PIN tamo. SafeNexus ne prima i ne sprema PIN.", "loading");
+    setSignaturesBridgeStatus("Otvaram lokalni PDF Signer...", "loading");
     const signResult = await signDocumentsWithPdfSignerExtension({
       jobId: payload.token || "",
       token: payload.token || "",
       apiBaseUrl: payload.apiBase || window.location.origin,
       documents,
+      settings: getPdfSignerWebSettings(),
     });
 
     if (signResult.dryRun) {
@@ -102563,6 +102814,14 @@ signaturesReviewSignSelectedButton?.addEventListener("click", () => {
 
 signaturesInstallSignerButton?.addEventListener("click", () => {
   window.open(getPdfSignerExtensionInstallUrl(), "_blank", "noopener,noreferrer");
+});
+
+signaturesSettingsOpenButton?.addEventListener("click", () => {
+  openSignerSettingsPanel();
+});
+
+signaturesSettingsCloseButton?.addEventListener("click", () => {
+  closeSignerSettingsPanel();
 });
 
 signaturesDebugPingButton?.addEventListener("click", () => {

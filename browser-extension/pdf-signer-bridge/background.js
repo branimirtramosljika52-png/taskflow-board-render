@@ -32,6 +32,10 @@ function sanitizeDocument(document) {
   };
 }
 
+function sanitizeSignerSettings(settings) {
+  return settings && typeof settings === "object" ? { ...settings } : {};
+}
+
 function normalizeMessage(message) {
   const type = String(message?.type || "").trim();
   if (!SUPPORTED_TYPES.has(type)) {
@@ -45,7 +49,7 @@ function normalizeMessage(message) {
   if (type === "SAVE_SIGNER_SETTINGS") {
     return {
       type,
-      settings: message?.settings && typeof message.settings === "object" ? message.settings : {},
+      settings: sanitizeSignerSettings(message?.settings),
     };
   }
 
@@ -68,6 +72,10 @@ function normalizeMessage(message) {
     apiBaseUrl,
     documents,
   };
+  const settings = sanitizeSignerSettings(message?.settings);
+  if (Object.keys(settings).length > 0) {
+    payload.settings = settings;
+  }
 
   if (Object.prototype.hasOwnProperty.call(message || {}, "dryRun")) {
     payload.dryRun = Boolean(message.dryRun);

@@ -1,6 +1,6 @@
 {
   "extensionId": "kcblmjckgngeaemhkcaoklligaollnec",
-  "extensionVersion": "0.1.2",
+  "extensionVersion": "0.1.3",
   "nativeHostName": "hr.abeceda.pdfsigner",
   "nativeHostDescription": "SafeNexus PDF Signer Native Host",
   "nativeHostPath": "C:\\Program Files\\PDFSigner\\PDFSigner.exe",

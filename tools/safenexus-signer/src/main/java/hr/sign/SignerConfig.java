@@ -87,7 +87,24 @@ public final class SignerConfig {
     public static SignerConfig load() {
         Path path = resolveConfigPath();
         Properties properties = loadRawProperties(path);
+        return fromProperties(properties, path);
+    }
 
+    public static SignerConfig loadWithOverrides(Properties overrides) {
+        Path path = resolveConfigPath();
+        Properties properties = loadRawProperties(path);
+        if (overrides != null) {
+            for (String name : overrides.stringPropertyNames()) {
+                if (isPinSecretProperty(name)) {
+                    continue;
+                }
+                properties.setProperty(name, overrides.getProperty(name, ""));
+            }
+        }
+        return fromProperties(properties, path);
+    }
+
+    private static SignerConfig fromProperties(Properties properties, Path path) {
         String envMode = System.getenv("SAFENEXUS_SIGNER_MODE");
         String configuredMode = envMode != null && !envMode.isBlank()
                 ? envMode

@@ -19,7 +19,7 @@ import java.util.Properties;
 
 public final class NativeMessagingMain {
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final String VERSION = "1.2.0-real-signing";
+    private static final String VERSION = "1.3.0-web-settings";
     private static final int MAX_MESSAGE_BYTES = 8 * 1024 * 1024;
 
     private NativeMessagingMain() {
@@ -57,7 +57,7 @@ public final class NativeMessagingMain {
     }
 
     private static JsonNode handleMessage(JsonNode request) {
-        SignerConfig config = SignerConfig.load();
+        SignerConfig config = SignerConfig.loadWithOverrides(settingsOverrides(request.path("settings")));
         String type = text(request, "type", "").trim();
         return switch (type) {
             case "PING_SIGNER" -> pingResponse(config);
@@ -73,6 +73,39 @@ public final class NativeMessagingMain {
         };
     }
 
+    private static Properties settingsOverrides(JsonNode settings) {
+        Properties properties = new Properties();
+        if (settings == null || !settings.isObject()) {
+            return properties;
+        }
+        putOverride(properties, settings, "apiAllowlist", "api.allowlist");
+        putOverride(properties, settings, "providerOrder", "providers.order");
+        putOverride(properties, settings, "eoiPkcs11", "eoi.pkcs11");
+        putOverride(properties, settings, "eoiSlotIndex", "eoi.slotIndex");
+        putOverride(properties, settings, "finaPkcs11", "fina.pkcs11");
+        putOverride(properties, settings, "finaSlotIndex", "fina.slotIndex");
+        putOverride(properties, settings, "rectWidthCm", "rect.width.cm");
+        putOverride(properties, settings, "rectHeightCm", "rect.height.cm");
+        putOverride(properties, settings, "offsetDownCm", "offset.down.cm");
+        putOverride(properties, settings, "offsetLeftCm", "offset.left.cm");
+        putOverride(properties, settings, "fontSize", "font.size");
+        putOverride(properties, settings, "reason", "reason");
+        putOverride(properties, settings, "location", "location");
+        properties.setProperty("signer.mode", "real");
+        properties.setProperty("real.dryRun", "false");
+        return properties;
+    }
+
+    private static void putOverride(Properties properties, JsonNode settings, String sourceKey, String targetKey) {
+        if (!settings.has(sourceKey)) {
+            return;
+        }
+        String value = settings.path(sourceKey).asText("").trim();
+        if (!value.isBlank()) {
+            properties.setProperty(targetKey, value);
+        }
+    }
+
     private static JsonNode pingResponse(SignerConfig config) {
         ObjectNode response = JSON.createObjectNode();
         response.put("success", true);
@@ -83,10 +116,8 @@ public final class NativeMessagingMain {
                 : (config.realDryRun() ? "native-messaging-real-dry-run" : "native-messaging-real"));
         response.put("signerMode", config.modeName());
         response.put("realDryRun", config.realDryRun());
-        response.put("configPath", config.configPath().toString());
         response.put("apiAllowlist", String.join(", ", config.allowedApiBases()));
         response.put("providerOrder", String.join(", ", config.providerOrder()));
-        response.put("pinPolicy", "PIN se unosi iskljucivo lokalno u Signer programu.");
         return response;
     }
 
@@ -94,8 +125,6 @@ public final class NativeMessagingMain {
         ObjectNode response = JSON.createObjectNode();
         response.put("success", true);
         response.put("ok", true);
-        response.put("configPath", config.configPath().toString());
-        response.put("pinPolicy", "PIN se nikad ne salje u web app i nikad se ne sprema.");
         response.set("settings", safeSettingsNode(config));
         return response;
     }
@@ -179,16 +208,11 @@ public final class NativeMessagingMain {
         settings.put("signerMode", config.modeName());
         settings.put("realDryRun", config.realDryRun());
         settings.put("apiAllowlist", String.join("\n", config.allowedApiBases()));
-        settings.put("pdfFolder", raw.getProperty("pdf.folder", ""));
-        settings.put("keyword", raw.getProperty("keyword", config.fallbackKeyword()));
-        settings.put("caseInsensitive", Boolean.parseBoolean(raw.getProperty("case.insensitive", String.valueOf(config.fallbackCaseInsensitive()))));
         settings.put("providerOrder", String.join(",", config.providerOrder()));
         settings.put("eoiPkcs11", config.eoiPkcs11Lib());
         settings.put("eoiSlotIndex", config.eoiSlotIndex() == null ? "" : String.valueOf(config.eoiSlotIndex()));
-        settings.put("eoiPinMode", "prompt");
         settings.put("finaPkcs11", config.finaPkcs11Lib());
         settings.put("finaSlotIndex", config.finaSlotIndex() == null ? "" : String.valueOf(config.finaSlotIndex()));
-        settings.put("finaPinMode", "prompt");
         settings.put("rectWidthCm", raw.getProperty("rect.width.cm", "6"));
         settings.put("rectHeightCm", raw.getProperty("rect.height.cm", "2"));
         settings.put("offsetDownCm", raw.getProperty("offset.down.cm", "2.2"));
@@ -196,14 +220,6 @@ public final class NativeMessagingMain {
         settings.put("fontSize", raw.getProperty("font.size", "8"));
         settings.put("reason", config.reason());
         settings.put("location", config.location());
-        settings.put("fallbackKeywordEnabled", config.fallbackKeywordEnabled());
-        settings.put("fallbackKeyword", config.fallbackKeyword());
-        settings.put("fallbackCaseInsensitive", config.fallbackCaseInsensitive());
-        settings.put("skipAlreadySigned", Boolean.parseBoolean(raw.getProperty("skip.already.signed", "true")));
-        settings.put("skipTolerancePt", raw.getProperty("skip.tolerance.pt", "12"));
-        settings.put("previewHideAlreadySigned", Boolean.parseBoolean(raw.getProperty("preview.hide.already.signed", "false")));
-        settings.put("configPath", config.configPath().toString());
-        settings.put("pinPolicy", "PIN se ne prikazuje i ne sprema kroz web. Signer uvijek trazi PIN lokalno.");
         return settings;
     }
 
@@ -482,11 +498,6 @@ public final class NativeMessagingMain {
 
     private static JsonNode signDocumentsRealDryRun(JsonNode request, SignerConfig config) {
         String jobId = text(request, "jobId", text(request, "token", ""));
-        boolean dryRun = request.path("dryRun").asBoolean(config.realDryRun());
-        if (!dryRun) {
-            return errorResponse(jobId, "REAL_SIGNING_NOT_ENABLED", "Stvarni PKCS#11 potpis jos nije ukljucen. Ukljuci real.dryRun=true.");
-        }
-
         ObjectNode response = baseRealResponse(jobId, config, true);
         ArrayNode documents = JSON.createArrayNode();
         ArrayNode errors = JSON.createArrayNode();
