@@ -27,7 +27,7 @@ function sanitizeDocument(document) {
 function normalizeMessage(message) {
   const type = String(message?.type || "").trim();
   if (!SUPPORTED_TYPES.has(type)) {
-    throw createErrorResponse("UNSUPPORTED_MESSAGE", "PDF Signer ne podržava ovu naredbu.");
+    throw createErrorResponse("UNSUPPORTED_MESSAGE", "PDF Signer ne podrzava ovu naredbu.");
   }
 
   if (type === "PING_SIGNER") {

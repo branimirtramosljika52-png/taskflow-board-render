@@ -24,6 +24,7 @@ const nativeHostName = cleanString(config.nativeHostName || "hr.abeceda.pdfsigne
 const nativeHostDescription = cleanString(config.nativeHostDescription || "SafeNexus PDF Signer Native Host");
 const nativeHostExePath = cleanString(config.nativeHostPath || "C:\\Program Files\\PDFSigner\\PDFSigner.exe");
 const installUrl = cleanString(config.installUrl || "/browser-extension/pdf-signer-bridge/README.md");
+const extensionVersion = cleanString(config.extensionVersion || "0.1.0");
 const externallyConnectableMatches = cleanMatches(config.externallyConnectableMatches);
 
 if (!/^[a-p]{32}$/.test(extensionId)) {
@@ -48,7 +49,7 @@ const manifest = {
   manifest_version: 3,
   name: "SafeNexus PDF Signer Bridge",
   description: "Connects SafeNexus web app with the local PDF signer through Chrome Native Messaging.",
-  version: "0.1.0",
+  version: extensionVersion,
   permissions: [
     "nativeMessaging",
   ],

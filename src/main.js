@@ -30091,14 +30091,56 @@ async function runSignatureDebugGetFields() {
   try {
     await runSignatureDebugPing({ showStatus: false });
     const { payload, documents } = await createSignatureBridgeJobForPendingEntries();
-    const response = await getSignatureFieldsWithPdfSignerExtension({
+    const bridgeRequest = {
       jobId: payload.token || "",
       token: payload.token || "",
       apiBaseUrl: payload.apiBase || window.location.origin,
       documents,
-    });
+    };
+    let response;
+    let usedDryRunFallback = false;
+    try {
+      response = await getSignatureFieldsWithPdfSignerExtension(bridgeRequest);
+    } catch (error) {
+      if (error?.code !== "UNSUPPORTED_MESSAGE") {
+        throw error;
+      }
+      usedDryRunFallback = true;
+      const dryRunResponse = await signDocumentsWithPdfSignerExtension({
+        ...bridgeRequest,
+        dryRun: true,
+      });
+      const fields = (Array.isArray(dryRunResponse?.documents) ? dryRunResponse.documents : [])
+        .map((document) => {
+          const field = document?.matchedField && typeof document.matchedField === "object"
+            ? document.matchedField
+            : null;
+          if (!field) {
+            return null;
+          }
+          return {
+            ...field,
+            itemId: document.itemId || "",
+            documentId: document.documentId || "",
+            fileName: document.fileName || "",
+          };
+        })
+        .filter(Boolean);
+      response = {
+        ...dryRunResponse,
+        command: "GET_SIGNATURE_FIELDS_FALLBACK",
+        fieldCount: fields.length,
+        fields,
+        message: "GET_SIGNATURE_FIELDS nije dostupan u instaliranoj ekstenziji; fieldovi su procitani kroz dry-run fallback.",
+      };
+    }
     setSignatureDebugFromPingResponse(response);
-    setSignaturesBridgeStatus(`GET_SIGNATURE_FIELDS radi. Pronadeno fieldova: ${Number(response.fieldCount || 0)}.`, "ready");
+    setSignaturesBridgeStatus(
+      usedDryRunFallback
+        ? `GET fields fallback radi. Pronadeno fieldova: ${Number(response.fieldCount || 0)}. Reload ekstenzije ce ukljuciti pravi GET_SIGNATURE_FIELDS.`
+        : `GET_SIGNATURE_FIELDS radi. Pronadeno fieldova: ${Number(response.fieldCount || 0)}.`,
+      "ready",
+    );
     return response;
   } catch (error) {
     setSignatureDebugFromPingError(error);
