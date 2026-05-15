@@ -113,8 +113,8 @@ public final class SignerConfig {
                 properties.getProperty("location", "Hrvatska"),
                 parseFloat(properties.getProperty("font.size"), 8f),
                 Boolean.parseBoolean(properties.getProperty("fallback.keyword.enabled", "true")),
-                properties.getProperty("fallback.keyword", ""),
-                Boolean.parseBoolean(properties.getProperty("fallback.case.insensitive", "true")),
+                firstNonBlank(properties.getProperty("fallback.keyword", ""), properties.getProperty("keyword", "")),
+                Boolean.parseBoolean(properties.getProperty("fallback.case.insensitive", properties.getProperty("case.insensitive", "true"))),
                 cmToPt(parseFloat(properties.getProperty("rect.width.cm"), 6f)),
                 cmToPt(parseFloat(properties.getProperty("rect.height.cm"), 2f)),
                 cmToPt(parseFloat(properties.getProperty("offset.down.cm"), 2.2f)),
@@ -132,22 +132,29 @@ public final class SignerConfig {
         properties.setProperty("signer.mode", "mock");
         properties.setProperty("real.dryRun", "true");
         properties.setProperty("api.allowlist", "https://safe-nexus.org");
+        properties.setProperty("pdf.folder", "C:/Users/Branimir/Desktop/ZaPotpis");
+        properties.setProperty("keyword", "");
+        properties.setProperty("case.insensitive", "true");
         properties.setProperty("providers.order", "EOI,FINA");
         properties.setProperty("eoi.pkcs11", "C:/Program Files/AKD/Certilia Middleware/pkcs11/AkdEidPkcs11_64.dll");
         properties.setProperty("eoi.slotIndex", "");
+        properties.setProperty("eoi.pinMode", "prompt");
         properties.setProperty("fina.pkcs11", "C:/Windows/System32/eTPKCS11.dll");
         properties.setProperty("fina.slotIndex", "");
+        properties.setProperty("fina.pinMode", "prompt");
         properties.setProperty("reason", "Digitalni potpis");
         properties.setProperty("location", "Hrvatska");
         properties.setProperty("font.size", "8");
         properties.setProperty("fallback.keyword.enabled", "true");
         properties.setProperty("fallback.keyword", "");
         properties.setProperty("fallback.case.insensitive", "true");
+        properties.setProperty("skip.already.signed", "true");
         properties.setProperty("rect.width.cm", "6");
         properties.setProperty("rect.height.cm", "2");
         properties.setProperty("offset.down.cm", "2.2");
         properties.setProperty("offset.left.cm", "2.6");
         properties.setProperty("skip.tolerance.pt", "12");
+        properties.setProperty("preview.hide.already.signed", "false");
         return properties;
     }
 
@@ -157,7 +164,7 @@ public final class SignerConfig {
         Properties merged = defaultProperties();
         if (properties != null) {
             for (String name : properties.stringPropertyNames()) {
-                if (name != null && name.toLowerCase(Locale.ROOT).contains("pin")) {
+                if (isPinSecretProperty(name)) {
                     continue;
                 }
                 merged.setProperty(name, properties.getProperty(name, ""));
@@ -376,5 +383,15 @@ public final class SignerConfig {
 
     private static float cmToPt(float cm) {
         return cm * 28.35f;
+    }
+
+    private static String firstNonBlank(String first, String second) {
+        String cleanFirst = String.valueOf(first == null ? "" : first).trim();
+        return cleanFirst.isBlank() ? String.valueOf(second == null ? "" : second).trim() : cleanFirst;
+    }
+
+    private static boolean isPinSecretProperty(String name) {
+        String normalized = String.valueOf(name == null ? "" : name).trim().toLowerCase(Locale.ROOT);
+        return normalized.equals("pin") || normalized.equals("eoi.pin") || normalized.equals("fina.pin");
     }
 }

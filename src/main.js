@@ -3296,9 +3296,24 @@ const signaturesSettingsOpenLocalButton = document.querySelector("#signatures-se
 const signaturesSettingsModeInput = document.querySelector("#signatures-settings-mode");
 const signaturesSettingsDryRunInput = document.querySelector("#signatures-settings-dry-run");
 const signaturesSettingsAllowlistInput = document.querySelector("#signatures-settings-allowlist");
+const signaturesSettingsPdfFolderInput = document.querySelector("#signatures-settings-pdf-folder");
+const signaturesSettingsKeywordInput = document.querySelector("#signatures-settings-keyword");
+const signaturesSettingsCaseInsensitiveInput = document.querySelector("#signatures-settings-case-insensitive");
 const signaturesSettingsProviderOrderInput = document.querySelector("#signatures-settings-provider-order");
+const signaturesSettingsEoiSlotInput = document.querySelector("#signatures-settings-eoi-slot");
 const signaturesSettingsEoiPathInput = document.querySelector("#signatures-settings-eoi-path");
+const signaturesSettingsFinaSlotInput = document.querySelector("#signatures-settings-fina-slot");
 const signaturesSettingsFinaPathInput = document.querySelector("#signatures-settings-fina-path");
+const signaturesSettingsRectWidthInput = document.querySelector("#signatures-settings-rect-width");
+const signaturesSettingsRectHeightInput = document.querySelector("#signatures-settings-rect-height");
+const signaturesSettingsOffsetDownInput = document.querySelector("#signatures-settings-offset-down");
+const signaturesSettingsOffsetLeftInput = document.querySelector("#signatures-settings-offset-left");
+const signaturesSettingsFontSizeInput = document.querySelector("#signatures-settings-font-size");
+const signaturesSettingsSkipToleranceInput = document.querySelector("#signatures-settings-skip-tolerance");
+const signaturesSettingsReasonInput = document.querySelector("#signatures-settings-reason");
+const signaturesSettingsLocationInput = document.querySelector("#signatures-settings-location");
+const signaturesSettingsSkipSignedInput = document.querySelector("#signatures-settings-skip-signed");
+const signaturesSettingsHideSignedInput = document.querySelector("#signatures-settings-hide-signed");
 const signaturesSettingsResponse = document.querySelector("#signatures-settings-response");
 const signaturesDebugPanel = document.querySelector("#signatures-debug-panel");
 const signaturesDebugPingButton = document.querySelector("#signatures-debug-ping");
@@ -30676,9 +30691,24 @@ function renderSignerSettingsPanel() {
   if (signaturesSettingsModeInput) signaturesSettingsModeInput.value = settings.signerMode || "mock";
   if (signaturesSettingsDryRunInput) signaturesSettingsDryRunInput.value = String(settings.realDryRun ?? true);
   if (signaturesSettingsAllowlistInput) signaturesSettingsAllowlistInput.value = settings.apiAllowlist || "https://safe-nexus.org";
+  if (signaturesSettingsPdfFolderInput) signaturesSettingsPdfFolderInput.value = settings.pdfFolder || "";
+  if (signaturesSettingsKeywordInput) signaturesSettingsKeywordInput.value = settings.keyword || settings.fallbackKeyword || "";
+  if (signaturesSettingsCaseInsensitiveInput) signaturesSettingsCaseInsensitiveInput.value = String(settings.caseInsensitive ?? settings.fallbackCaseInsensitive ?? true);
   if (signaturesSettingsProviderOrderInput) signaturesSettingsProviderOrderInput.value = settings.providerOrder || "EOI,FINA";
+  if (signaturesSettingsEoiSlotInput) signaturesSettingsEoiSlotInput.value = settings.eoiSlotIndex || "";
   if (signaturesSettingsEoiPathInput) signaturesSettingsEoiPathInput.value = settings.eoiPkcs11 || "";
+  if (signaturesSettingsFinaSlotInput) signaturesSettingsFinaSlotInput.value = settings.finaSlotIndex || "";
   if (signaturesSettingsFinaPathInput) signaturesSettingsFinaPathInput.value = settings.finaPkcs11 || "";
+  if (signaturesSettingsRectWidthInput) signaturesSettingsRectWidthInput.value = settings.rectWidthCm || "";
+  if (signaturesSettingsRectHeightInput) signaturesSettingsRectHeightInput.value = settings.rectHeightCm || "";
+  if (signaturesSettingsOffsetDownInput) signaturesSettingsOffsetDownInput.value = settings.offsetDownCm || "";
+  if (signaturesSettingsOffsetLeftInput) signaturesSettingsOffsetLeftInput.value = settings.offsetLeftCm || "";
+  if (signaturesSettingsFontSizeInput) signaturesSettingsFontSizeInput.value = settings.fontSize || "";
+  if (signaturesSettingsSkipToleranceInput) signaturesSettingsSkipToleranceInput.value = settings.skipTolerancePt || "";
+  if (signaturesSettingsReasonInput) signaturesSettingsReasonInput.value = settings.reason || "";
+  if (signaturesSettingsLocationInput) signaturesSettingsLocationInput.value = settings.location || "";
+  if (signaturesSettingsSkipSignedInput) signaturesSettingsSkipSignedInput.value = String(settings.skipAlreadySigned ?? true);
+  if (signaturesSettingsHideSignedInput) signaturesSettingsHideSignedInput.value = String(settings.previewHideAlreadySigned ?? false);
   if (signaturesSettingsResponse) {
     const payload = state.signatures.settings?.lastResponse || state.signatures.settings?.error || "Postavke nisu učitane.";
     signaturesSettingsResponse.textContent = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
@@ -30690,9 +30720,26 @@ function collectSignerSettingsFormValues() {
     signerMode: signaturesSettingsModeInput?.value || "mock",
     realDryRun: signaturesSettingsDryRunInput?.value !== "false",
     apiAllowlist: signaturesSettingsAllowlistInput?.value || "https://safe-nexus.org",
+    pdfFolder: signaturesSettingsPdfFolderInput?.value || "",
+    keyword: signaturesSettingsKeywordInput?.value || "",
+    fallbackKeyword: signaturesSettingsKeywordInput?.value || "",
+    caseInsensitive: signaturesSettingsCaseInsensitiveInput?.value !== "false",
+    fallbackCaseInsensitive: signaturesSettingsCaseInsensitiveInput?.value !== "false",
     providerOrder: signaturesSettingsProviderOrderInput?.value || "EOI,FINA",
+    eoiSlotIndex: signaturesSettingsEoiSlotInput?.value || "",
     eoiPkcs11: signaturesSettingsEoiPathInput?.value || "",
+    finaSlotIndex: signaturesSettingsFinaSlotInput?.value || "",
     finaPkcs11: signaturesSettingsFinaPathInput?.value || "",
+    rectWidthCm: signaturesSettingsRectWidthInput?.value || "",
+    rectHeightCm: signaturesSettingsRectHeightInput?.value || "",
+    offsetDownCm: signaturesSettingsOffsetDownInput?.value || "",
+    offsetLeftCm: signaturesSettingsOffsetLeftInput?.value || "",
+    fontSize: signaturesSettingsFontSizeInput?.value || "",
+    skipTolerancePt: signaturesSettingsSkipToleranceInput?.value || "",
+    reason: signaturesSettingsReasonInput?.value || "",
+    location: signaturesSettingsLocationInput?.value || "",
+    skipAlreadySigned: signaturesSettingsSkipSignedInput?.value !== "false",
+    previewHideAlreadySigned: signaturesSettingsHideSignedInput?.value === "true",
   };
 }
 

@@ -109,12 +109,27 @@ public final class NativeMessagingMain {
             putSetting(properties, settings, "realDryRun", "real.dryRun");
             putSetting(properties, settings, "dryRun", "real.dryRun");
             putSetting(properties, settings, "apiAllowlist", "api.allowlist");
+            putSetting(properties, settings, "pdfFolder", "pdf.folder");
+            putSetting(properties, settings, "keyword", "keyword");
+            putSetting(properties, settings, "caseInsensitive", "case.insensitive");
             putSetting(properties, settings, "providerOrder", "providers.order");
             putSetting(properties, settings, "eoiPkcs11", "eoi.pkcs11");
             putSetting(properties, settings, "eoiSlotIndex", "eoi.slotIndex");
             putSetting(properties, settings, "finaPkcs11", "fina.pkcs11");
             putSetting(properties, settings, "finaSlotIndex", "fina.slotIndex");
+            putSetting(properties, settings, "rectWidthCm", "rect.width.cm");
+            putSetting(properties, settings, "rectHeightCm", "rect.height.cm");
+            putSetting(properties, settings, "offsetDownCm", "offset.down.cm");
+            putSetting(properties, settings, "offsetLeftCm", "offset.left.cm");
+            putSetting(properties, settings, "fontSize", "font.size");
+            putSetting(properties, settings, "reason", "reason");
+            putSetting(properties, settings, "location", "location");
+            putSetting(properties, settings, "fallbackKeywordEnabled", "fallback.keyword.enabled");
             putSetting(properties, settings, "fallbackKeyword", "fallback.keyword");
+            putSetting(properties, settings, "fallbackCaseInsensitive", "fallback.case.insensitive");
+            putSetting(properties, settings, "skipAlreadySigned", "skip.already.signed");
+            putSetting(properties, settings, "skipTolerancePt", "skip.tolerance.pt");
+            putSetting(properties, settings, "previewHideAlreadySigned", "preview.hide.already.signed");
 
             if (!List.of("mock", "real").contains(properties.getProperty("signer.mode", "mock").toLowerCase(Locale.ROOT))) {
                 properties.setProperty("signer.mode", "mock");
@@ -160,17 +175,36 @@ public final class NativeMessagingMain {
     }
 
     private static ObjectNode safeSettingsNode(SignerConfig config) {
+        Properties raw = SignerConfig.loadRawProperties();
         ObjectNode settings = JSON.createObjectNode();
         settings.put("signerMode", config.modeName());
         settings.put("realDryRun", config.realDryRun());
         settings.put("apiAllowlist", String.join("\n", config.allowedApiBases()));
+        settings.put("pdfFolder", raw.getProperty("pdf.folder", ""));
+        settings.put("keyword", raw.getProperty("keyword", config.fallbackKeyword()));
+        settings.put("caseInsensitive", Boolean.parseBoolean(raw.getProperty("case.insensitive", String.valueOf(config.fallbackCaseInsensitive()))));
         settings.put("providerOrder", String.join(",", config.providerOrder()));
         settings.put("eoiPkcs11", config.eoiPkcs11Lib());
         settings.put("eoiSlotIndex", config.eoiSlotIndex() == null ? "" : String.valueOf(config.eoiSlotIndex()));
+        settings.put("eoiPinMode", "prompt");
         settings.put("finaPkcs11", config.finaPkcs11Lib());
         settings.put("finaSlotIndex", config.finaSlotIndex() == null ? "" : String.valueOf(config.finaSlotIndex()));
+        settings.put("finaPinMode", "prompt");
+        settings.put("rectWidthCm", raw.getProperty("rect.width.cm", "6"));
+        settings.put("rectHeightCm", raw.getProperty("rect.height.cm", "2"));
+        settings.put("offsetDownCm", raw.getProperty("offset.down.cm", "2.2"));
+        settings.put("offsetLeftCm", raw.getProperty("offset.left.cm", "2.6"));
+        settings.put("fontSize", raw.getProperty("font.size", "8"));
+        settings.put("reason", config.reason());
+        settings.put("location", config.location());
+        settings.put("fallbackKeywordEnabled", config.fallbackKeywordEnabled());
         settings.put("fallbackKeyword", config.fallbackKeyword());
+        settings.put("fallbackCaseInsensitive", config.fallbackCaseInsensitive());
+        settings.put("skipAlreadySigned", Boolean.parseBoolean(raw.getProperty("skip.already.signed", "true")));
+        settings.put("skipTolerancePt", raw.getProperty("skip.tolerance.pt", "12"));
+        settings.put("previewHideAlreadySigned", Boolean.parseBoolean(raw.getProperty("preview.hide.already.signed", "false")));
         settings.put("configPath", config.configPath().toString());
+        settings.put("pinPolicy", "PIN se ne prikazuje i ne sprema kroz web. Signer uvijek trazi PIN lokalno.");
         return settings;
     }
 
