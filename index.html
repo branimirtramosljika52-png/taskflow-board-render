@@ -1154,8 +1154,8 @@
                       <div class="work-order-editor-heading-actions">
                         <p id="work-order-number-preview" class="helper-copy">Broj RN se generira pri spremanju.</p>
                         <span id="work-order-save-state" class="work-order-save-state" data-state="idle">Automatsko spremanje je spremno.</span>
+                        <button id="work-order-open-documentation" type="button" class="ghost-button work-order-open-documentation" hidden aria-label="Izrada dokumentacije" title="Izrada dokumentacije">DOC</button>
                         <button id="work-order-download-pdf" type="button" class="ghost-button work-order-download-pdf" hidden aria-label="Preuzmi PDF" title="Preuzmi PDF">PDF</button>
-                        <button id="work-order-editor-close" type="button" class="ghost-button work-order-editor-close" hidden>Zatvori</button>
                       </div>
                       <div id="work-order-editor-top-actions" class="work-order-editor-top-actions" aria-label="Brze radnje radnog naloga"></div>
                     </div>
@@ -1505,7 +1505,7 @@
                     <p class="section-kicker">Timeline</p>
                     <h3>Activity</h3>
                   </div>
-                  <span id="work-order-activity-count" class="work-order-activity-count">0</span>
+                  <button id="work-order-editor-close" type="button" class="ghost-button work-order-editor-close work-order-activity-close" hidden aria-label="Zatvori">×</button>
                 </div>
 
                 <section class="work-order-activity-documents-panel">

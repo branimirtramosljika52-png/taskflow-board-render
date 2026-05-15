@@ -47888,6 +47888,227 @@ button.work-order-editor-section-head:focus-visible {
   font-weight: 760;
 }
 
+.work-order-open-documentation {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  min-width: 30px;
+  min-height: 28px !important;
+  padding: 0 !important;
+  border-radius: 7px !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  color: #667085 !important;
+  font-size: 0;
+  box-shadow: none !important;
+}
+
+.work-order-open-documentation[hidden],
+.work-order-download-pdf[hidden],
+.work-order-editor-close[hidden] {
+  display: none !important;
+}
+
+.work-order-open-documentation:hover,
+.work-order-open-documentation:focus-visible {
+  border-color: #e6e9ef !important;
+  background: #f7f8fa !important;
+  color: #1f2937 !important;
+  outline: none;
+}
+
+.work-order-open-documentation svg,
+.work-order-download-pdf svg,
+.work-order-editor-close svg {
+  width: 16px;
+  height: 16px;
+}
+
+.work-order-activity-close {
+  width: 30px !important;
+  min-width: 30px !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 8px !important;
+  background: transparent !important;
+  color: #667085 !important;
+  font-size: 1.25rem !important;
+  line-height: 1 !important;
+  box-shadow: none !important;
+}
+
+.work-order-activity-close:hover,
+.work-order-activity-close:focus-visible {
+  background: #eef2f7 !important;
+  color: #111827 !important;
+  outline: none;
+}
+
+#work-order-document-count,
+#work-order-activity-document-count {
+  display: none !important;
+}
+
+.work-order-editor-detail-grid.is-clickup-table .work-order-editor-detail-row {
+  min-height: 38px;
+}
+
+.work-order-editor-field-trigger,
+.work-order-editor-date-control,
+.work-order-editor-text-input,
+.work-order-editor-static-value {
+  min-height: 34px;
+}
+
+.work-order-editor-date-wrap {
+  min-height: 34px;
+}
+
+.work-order-editor-form input,
+.work-order-editor-form select,
+.work-order-editor-form textarea,
+.work-order-inline-executor-picker,
+.work-order-inline-service-picker {
+  min-height: 34px !important;
+}
+
+.work-order-service-selection {
+  gap: 8px;
+}
+
+.work-order-service-item {
+  grid-template-columns: minmax(0, 1fr) minmax(150px, auto);
+  min-height: 46px;
+  padding: 8px 10px 8px 12px;
+}
+
+.work-order-service-item-actions {
+  justify-content: end;
+}
+
+.work-order-service-progress-select {
+  min-width: 132px;
+  min-height: 34px;
+  padding: 0 32px 0 10px;
+  border: 1px solid #dde3ec;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #344054;
+  font-size: 0.76rem;
+  font-weight: 780;
+}
+
+.work-order-service-progress-select.is-pending {
+  border-color: #f4b8c3;
+  background: #fff4f6;
+  color: #9f273a;
+}
+
+.work-order-service-progress-select.is-progress {
+  border-color: #e8c36d;
+  background: #fff6db;
+  color: #8a5b00;
+}
+
+.work-order-service-progress-select.is-completed {
+  border-color: #a8d9b6;
+  background: #ecfdf3;
+  color: #12633d;
+}
+
+.work-order-contact-menu-portal {
+  min-width: min(520px, calc(100vw - 24px));
+}
+
+.work-order-contact-menu-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 2px 2px 6px;
+}
+
+.work-order-contact-menu-title {
+  color: #475467;
+  font-size: 0.74rem;
+  font-weight: 780;
+}
+
+.work-order-contact-add-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  border: 1px solid #dbe3ef;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1d4ed8;
+  font-size: 1rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.work-order-contact-add-button:hover,
+.work-order-contact-add-button:focus-visible {
+  border-color: #bcd2ff;
+  background: #eef4ff;
+  outline: none;
+}
+
+.work-order-contact-add-form {
+  display: grid;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid #e6eaf1;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.work-order-contact-add-form[hidden] {
+  display: none !important;
+}
+
+.work-order-contact-add-form input {
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 9px;
+  border: 1px solid #dde3ec;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1f2937;
+  font-size: 0.82rem;
+  font-weight: 560;
+}
+
+.work-order-contact-add-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.work-order-contact-add-error {
+  margin: 0;
+}
+
+.work-order-activity-item:not(.is-expanded):not(.is-comment) .work-order-activity-meta,
+.work-order-activity-item:not(.is-expanded):not(.is-comment) .work-order-activity-diff,
+.work-order-activity-expanded-summary {
+  display: none;
+}
+
+.work-order-activity-item.is-expanded .work-order-activity-expanded-summary {
+  display: block;
+  margin: 2px 0 0;
+  color: #344054;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
 @media (max-width: 1180px) {
   .work-order-editor-shell {
     grid-template-columns: 1fr;
