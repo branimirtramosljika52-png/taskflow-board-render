@@ -50208,6 +50208,42 @@ function getSignupRequestOrganizationLabel(request = {}) {
   return request.organizationName || "Nova organizacija";
 }
 
+function getSignupRequestRequestedLabel(request = {}) {
+  const requestedAt = String(request.requestedAt || "").trim();
+  if (!requestedAt) {
+    return "Bez datuma";
+  }
+
+  return requestedAt.includes("T")
+    ? formatCompactDateTime(requestedAt)
+    : formatCompactDate(requestedAt);
+}
+
+function getSignupRequestStatusLabel(status = "") {
+  const normalizedStatus = String(status || "pending").trim().toLowerCase();
+  if (normalizedStatus === "approved") {
+    return "Odobren";
+  }
+  if (normalizedStatus === "rejected") {
+    return "Odbijen";
+  }
+  return "Ceka odobrenje";
+}
+
+function createSignupRequestInfoItem(label, value, fallback = "Nije upisano") {
+  const item = document.createElement("div");
+  item.className = "signup-request-info-item";
+
+  const labelNode = document.createElement("span");
+  labelNode.textContent = label;
+
+  const valueNode = document.createElement("strong");
+  valueNode.textContent = String(value || "").trim() || fallback;
+
+  item.append(labelNode, valueNode);
+  return item;
+}
+
 function createSignupRequestActions(request = {}, { compact = false } = {}) {
   const actions = document.createElement("div");
   actions.className = compact ? "signup-request-card-actions" : "signup-approval-actions";
@@ -50215,7 +50251,7 @@ function createSignupRequestActions(request = {}, { compact = false } = {}) {
   if (request.status !== "pending") {
     const status = document.createElement("span");
     status.className = "dashboard-control-chip";
-    status.textContent = request.status === "approved" ? "Prihvaćeno" : "Odbijeno";
+    status.textContent = getSignupRequestStatusLabel(request.status);
     actions.append(status);
     return actions;
   }
@@ -50228,8 +50264,11 @@ function createSignupRequestActions(request = {}, { compact = false } = {}) {
     organizationSelect = document.createElement("select");
     organizationSelect.className = "signup-inline-select";
     organizationSelect.append(
-      createOption("__new__", `Nova: ${request.organizationName || "organizacija"}`, "__new__"),
-      ...state.organizations.map((organization) => createOption(organization.id, organization.name)),
+      createOption("__new__", `Nova organizacija: ${request.organizationName || "bez naziva"}`, "__new__"),
+      ...state.organizations.map((organization) => createOption(
+        organization.id,
+        [organization.name, organization.oib ? `OIB ${organization.oib}` : ""].filter(Boolean).join(" · "),
+      )),
     );
 
     const matchedByOib = state.organizations.find((organization) => (
@@ -50244,7 +50283,7 @@ function createSignupRequestActions(request = {}, { compact = false } = {}) {
     roleSelect.className = "signup-inline-select";
     roleSelect.append(
       createOption("admin", "Admin", "admin"),
-      createOption("user", "User", "admin"),
+      createOption("user", "Korisnik", "admin"),
     );
 
     const inlineControls = document.createElement("div");
@@ -50254,7 +50293,7 @@ function createSignupRequestActions(request = {}, { compact = false } = {}) {
   }
 
   actions.append(
-    createActionButton("Prihvati", "card-button", () => {
+    createActionButton("Odobri", "card-button", () => {
       const body = isSuperAdmin
         ? {
           organizationId: organizationSelect?.value === "__new__" ? "" : String(organizationSelect?.value || ""),
@@ -50379,7 +50418,14 @@ function renderDashboardSignupRequestsPanel() {
     return;
   }
 
-  const requests = state.signupRequests ?? [];
+  const requests = [...(state.signupRequests ?? [])].sort((left, right) => {
+    const statusDelta = (String(left.status || "pending") === "pending" ? 0 : 1)
+      - (String(right.status || "pending") === "pending" ? 0 : 1);
+    if (statusDelta !== 0) {
+      return statusDelta;
+    }
+    return String(right.requestedAt || "").localeCompare(String(left.requestedAt || ""));
+  });
   const pendingRequests = getSignupRequestsByStatus("pending");
 
   if (dashboardSignupRequestsCount) {
@@ -50401,28 +50447,42 @@ function renderDashboardSignupRequestsPanel() {
     card.className = "dashboard-signup-request-card";
     card.classList.toggle("is-pending", request.status === "pending");
 
+    const marker = document.createElement("span");
+    marker.className = `dashboard-signup-request-marker is-${request.status || "pending"}`;
+    marker.setAttribute("aria-hidden", "true");
+
     const copy = document.createElement("div");
     copy.className = "dashboard-signup-request-copy";
     const title = document.createElement("strong");
     title.textContent = request.fullName || [request.firstName, request.lastName].filter(Boolean).join(" ") || request.email;
     const meta = document.createElement("span");
-    meta.textContent = request.email || "Bez emaila";
+    meta.textContent = [
+      request.email || "Bez emaila",
+      request.phone || "",
+    ].filter(Boolean).join(" · ");
     const org = document.createElement("small");
     org.textContent = [
       getSignupRequestOrganizationLabel(request),
       request.organizationOib ? `OIB ${request.organizationOib}` : "",
     ].filter(Boolean).join(" · ");
-    copy.append(title, meta, org);
+    const note = document.createElement("small");
+    note.textContent = request.note ? `Napomena: ${request.note}` : `Zaprimljeno: ${getSignupRequestRequestedLabel(request)}`;
+    copy.append(title, meta, org, note);
+
+    const info = document.createElement("div");
+    info.className = "signup-request-info-grid";
+    info.append(
+      createSignupRequestInfoItem("Tvrtka", getSignupRequestOrganizationLabel(request)),
+      createSignupRequestInfoItem("OIB", request.organizationOib),
+      createSignupRequestInfoItem("Zaprimljeno", getSignupRequestRequestedLabel(request), "Bez datuma"),
+      createSignupRequestInfoItem("Email status", request.emailStatus || "nije poslano"),
+    );
 
     const status = document.createElement("span");
     status.className = `dashboard-signup-request-status is-${request.status || "pending"}`;
-    status.textContent = request.status === "pending"
-      ? "Čeka odluku"
-      : request.status === "approved"
-        ? "Prihvaćen"
-        : "Odbijen";
+    status.textContent = getSignupRequestStatusLabel(request.status);
 
-    card.append(copy, status, createSignupRequestActions(request, { compact: true }));
+    card.append(marker, copy, info, status, createSignupRequestActions(request, { compact: true }));
     list.append(card);
   });
 
@@ -75868,6 +75928,9 @@ function getNotificationKindLabel(kind = "") {
   if (kind === "todo_comment") {
     return "Komentar";
   }
+  if (kind === "signup_request") {
+    return "Pristup";
+  }
   if (kind === "absence") {
     return "Odsutnost";
   }
@@ -76467,6 +76530,29 @@ function buildDocumentSignatureNotifications() {
     .filter(Boolean);
 }
 
+function buildSignupRequestNotifications() {
+  if (!getCanManageMasterData()) {
+    return [];
+  }
+
+  return (state.signupRequests ?? [])
+    .filter((request) => String(request?.status || "").trim().toLowerCase() === "pending")
+    .map((request) => ({
+      id: `signup-request-${request.id}`,
+      kind: "signup_request",
+      level: "warning",
+      title: "Novi zahtjev za pristup",
+      message: request.fullName || [request.firstName, request.lastName].filter(Boolean).join(" ") || request.email || "Novi korisnik",
+      context: [
+        getSignupRequestOrganizationLabel(request),
+        request.organizationOib ? `OIB ${request.organizationOib}` : "",
+        request.email || "",
+      ].filter(Boolean).join(" · "),
+      dueDate: String(request.requestedAt || "").slice(0, 10) || new Date().toISOString().slice(0, 10),
+      referenceId: String(request.id || ""),
+    }));
+}
+
 function getPendingReminderNotificationCount() {
   return (state.reminders ?? []).filter((item) => String(item?.status || "").toLowerCase() !== "done").length;
 }
@@ -76618,6 +76704,7 @@ function getAllNotifications() {
     ...buildVehicleNotifications(),
     ...buildTodoCommentNotifications(),
     ...buildDocumentSignatureNotifications(),
+    ...buildSignupRequestNotifications(),
   ].map((entry) => ({
     ...entry,
     resolved: isNotificationResolved(entry.id),
@@ -76744,6 +76831,15 @@ function openNotificationEntry(entry) {
     return;
   }
 
+  if (entry.kind === "signup_request") {
+    activateSidebarItem("control-panel", { expandSidebar: state.sidebarCollapsed });
+    window.requestAnimationFrame(() => {
+      renderDashboardSignupRequestsPanel();
+      dashboardSignupRequestsPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return;
+  }
+
   if (entry.kind === "document_signature") {
     activateSidebarItem("documents", { expandSidebar: state.sidebarCollapsed });
     state.documentsExplorer.category = "document-records";
@@ -76756,6 +76852,24 @@ function openNotificationEntry(entry) {
 function createNotificationRow(entry, { compact = false } = {}) {
   const row = document.createElement("article");
   row.className = `notification-row is-${entry.level || "info"}${compact ? " is-compact" : ""}${entry.resolved ? " is-resolved" : ""}`;
+  row.tabIndex = 0;
+  row.setAttribute("role", "button");
+  row.addEventListener("click", () => {
+    openNotificationEntry(entry);
+    if (compact) {
+      setNotificationsMenuOpen(false);
+    }
+  });
+  row.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+    event.preventDefault();
+    openNotificationEntry(entry);
+    if (compact) {
+      setNotificationsMenuOpen(false);
+    }
+  });
 
   const marker = document.createElement("span");
   marker.className = `notification-row-marker is-${entry.level || "info"}${entry.resolved ? " is-resolved" : ""}`;
@@ -97436,7 +97550,27 @@ function renderSignupRequests() {
     return;
   }
 
-  signupRequestsBody.replaceChildren(...state.signupRequests.map((request) => {
+  const requests = [...(state.signupRequests ?? [])].sort((left, right) => {
+    const statusDelta = (String(left.status || "pending") === "pending" ? 0 : 1)
+      - (String(right.status || "pending") === "pending" ? 0 : 1);
+    if (statusDelta !== 0) {
+      return statusDelta;
+    }
+    return String(right.requestedAt || "").localeCompare(String(left.requestedAt || ""));
+  });
+
+  if (requests.length === 0) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 5;
+    cell.className = "empty-cell";
+    cell.textContent = "Nema signup zahtjeva za aktivni opseg.";
+    row.append(cell);
+    signupRequestsBody.replaceChildren(row);
+    return;
+  }
+
+  signupRequestsBody.replaceChildren(...requests.map((request) => {
     const row = document.createElement("tr");
     row.className = "list-row";
 
@@ -97456,17 +97590,17 @@ function renderSignupRequests() {
         tertiary: request.phone || "",
       }),
       createStackCell({
-        title: request.organizationName,
+        title: getSignupRequestOrganizationLabel(request),
         subtitle: request.organizationOib ? `OIB ${request.organizationOib}` : "Bez OIB-a",
         tertiary: request.note || "",
       }),
       createStackCell({
-        title: request.status,
+        title: getSignupRequestStatusLabel(request.status),
         subtitle: request.emailStatus ? `Email: ${request.emailStatus}` : "Bez email loga",
       }),
       createStackCell({
-        title: request.requestedAt ? formatDate(request.requestedAt.slice(0, 10)) : "Bez datuma",
-        subtitle: request.processedAt ? `Processed ${formatDate(request.processedAt.slice(0, 10))}` : "Pending review",
+        title: getSignupRequestRequestedLabel(request),
+        subtitle: request.processedAt ? `Rijeseno ${formatDate(request.processedAt.slice(0, 10))}` : "Ceka odluku",
       }),
       actionsCell,
     );

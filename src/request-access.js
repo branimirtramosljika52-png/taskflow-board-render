@@ -4,11 +4,13 @@ const firstNameInput = document.querySelector("#request-first-name");
 const lastNameInput = document.querySelector("#request-last-name");
 const organizationOibInput = document.querySelector("#request-organization-oib");
 const emailInput = document.querySelector("#request-email");
+const phoneInput = document.querySelector("#request-phone");
+const noteInput = document.querySelector("#request-note");
 const passwordInput = document.querySelector("#request-password");
 const passwordRepeatInput = document.querySelector("#request-password-repeat");
 const submitButton = document.querySelector("#request-submit-button");
 const feedback = document.querySelector("#request-feedback");
-const PASSWORD_POLICY_MESSAGE = "Password must be at least 8 characters long, include 1 uppercase letter and at least 2 numbers.";
+const PASSWORD_POLICY_MESSAGE = "Lozinka mora imati najmanje 8 znakova, barem 1 veliko slovo i najmanje 2 broja.";
 
 function normalizeOib(value) {
   return String(value ?? "").replace(/\s+/g, "").trim();
@@ -17,7 +19,7 @@ function normalizeOib(value) {
 function setBusy(isBusy) {
   if (submitButton) {
     submitButton.disabled = isBusy;
-    submitButton.textContent = isBusy ? "Sending..." : "Send request";
+    submitButton.textContent = isBusy ? "Saljem..." : "Posalji zahtjev";
   }
 
   [
@@ -26,6 +28,8 @@ function setBusy(isBusy) {
     lastNameInput,
     organizationOibInput,
     emailInput,
+    phoneInput,
+    noteInput,
     passwordInput,
     passwordRepeatInput,
   ].forEach((input) => {
@@ -37,11 +41,11 @@ function setBusy(isBusy) {
 
 function validateOrganizationOib() {
   const value = normalizeOib(organizationOibInput?.value ?? "");
-  const isValid = !value || /^\d{11}$/.test(value);
+  const isValid = /^\d{11}$/.test(value);
 
   if (organizationOibInput) {
     organizationOibInput.value = value;
-    organizationOibInput.setCustomValidity(isValid ? "" : "Organization OIB must be empty or contain exactly 11 digits.");
+    organizationOibInput.setCustomValidity(isValid ? "" : "OIB tvrtke ili organizacije mora imati tocno 11 znamenki.");
   }
 
   return isValid;
@@ -81,8 +85,8 @@ function buildPayload() {
     lastName: String(lastNameInput?.value ?? "").trim(),
     email: String(emailInput?.value ?? "").trim(),
     password: String(passwordInput?.value ?? ""),
-    phone: "",
-    note: "",
+    phone: String(phoneInput?.value ?? "").trim(),
+    note: String(noteInput?.value ?? "").trim(),
   };
 }
 
@@ -93,7 +97,7 @@ async function submitRequest(event) {
 
   if (!validateOrganizationOib()) {
     feedback.classList.add("is-error");
-    feedback.textContent = "Organization OIB must be empty or contain exactly 11 digits.";
+    feedback.textContent = "OIB tvrtke ili organizacije mora imati tocno 11 znamenki.";
     organizationOibInput?.reportValidity();
     organizationOibInput?.focus();
     return;
@@ -101,7 +105,7 @@ async function submitRequest(event) {
 
   if (!validatePasswordMatch()) {
     feedback.classList.add("is-error");
-    feedback.textContent = "Passwords do not match.";
+    feedback.textContent = "Lozinke se ne podudaraju.";
     passwordRepeatInput?.reportValidity();
     passwordRepeatInput?.focus();
     return;
@@ -133,7 +137,7 @@ async function submitRequest(event) {
       throw new Error(payload.error || "Unable to send access request.");
     }
 
-    feedback.textContent = payload.message || "Your request has been sent.";
+    feedback.textContent = payload.message || "Zahtjev za pristup je poslan.";
     form.reset();
     organizationNameInput?.focus();
   } catch (error) {

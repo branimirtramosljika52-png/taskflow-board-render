@@ -1271,6 +1271,20 @@ function resolveSignupRequestOrganizationFromOib(request = {}, organizations = [
     .find((organization) => normalizeOib(organization?.oib) === requestOib) ?? null;
 }
 
+function resolveSignupRequestOrganization(request = {}, organizations = []) {
+  const list = Array.isArray(organizations) ? organizations : [];
+  const requestOrganizationId = dbString(request.organizationId ?? request.organization_id);
+
+  if (requestOrganizationId) {
+    const matchedById = list.find((organization) => String(organization?.id ?? "") === requestOrganizationId);
+    if (matchedById) {
+      return matchedById;
+    }
+  }
+
+  return resolveSignupRequestOrganizationFromOib(request, list);
+}
+
 function canActorReviewSignupRequest(actor, request = {}, organizations = []) {
   const actorRole = normalizeRole(actor?.role);
   if (actorRole === ROLE_SUPER_ADMIN) {
@@ -1281,7 +1295,7 @@ function canActorReviewSignupRequest(actor, request = {}, organizations = []) {
     return false;
   }
 
-  const matchedOrganization = resolveSignupRequestOrganizationFromOib(request, organizations);
+  const matchedOrganization = resolveSignupRequestOrganization(request, organizations);
   if (!matchedOrganization) {
     return false;
   }
@@ -1646,6 +1660,12 @@ async function ensureSchema(connection) {
     "organization_oib",
     "VARCHAR(32) NOT NULL DEFAULT '' AFTER organization_name",
   );
+  await ensureColumn(
+    connection,
+    "signup_requests",
+    "organization_id",
+    "INT NULL AFTER status",
+  );
 
   await connection.query(`
     UPDATE app_users
@@ -1750,6 +1770,22 @@ async function fetchSignupRequests(connection) {
   `);
 
   return rows.map(sanitizeSignupRequest);
+}
+
+async function fetchOrganizationByOib(connection, organizationOib = "") {
+  const normalizedOib = normalizeOib(organizationOib);
+  if (!/^\d{11}$/.test(normalizedOib)) {
+    return null;
+  }
+
+  const [rows] = await connection.query(`
+    SELECT id, name, oib, address, city, postal_code, country, contact_email, contact_phone, logo_data_url, status, created_at, updated_at
+    FROM organizations
+    WHERE REPLACE(COALESCE(oib, ''), ' ', '') = ?
+    LIMIT 1
+  `, [normalizedOib]);
+
+  return rows[0] ? sanitizeOrganization(rows[0]) : null;
 }
 
 async function fetchCompanyAssignments(connection) {
@@ -2353,6 +2389,41 @@ async function fetchOrganizationAdminEmailsByOib(connection, organizationOib = "
   ));
 }
 
+async function fetchOrganizationAdminEmailsByIds(connection, organizationIds = []) {
+  const normalizedOrganizationIds = Array.from(new Set(
+    (Array.isArray(organizationIds) ? organizationIds : [organizationIds])
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value) && value > 0),
+  ));
+
+  if (normalizedOrganizationIds.length === 0) {
+    return [];
+  }
+
+  const organizationIdSet = new Set(normalizedOrganizationIds.map((id) => String(id)));
+  const [adminRows] = await connection.query(`
+    SELECT email, organization_id, organization_ids_csv
+    FROM app_users
+    WHERE role = 'admin'
+      AND is_active = 1
+      AND COALESCE(email, '') <> ''
+  `);
+
+  return Array.from(new Set(
+    adminRows
+      .filter((row) => {
+        const primaryOrganizationId = String(row.organization_id || "").trim();
+        if (primaryOrganizationId && organizationIdSet.has(primaryOrganizationId)) {
+          return true;
+        }
+        const relatedOrganizationIds = normalizeOrganizationIds(row.organization_ids_csv);
+        return relatedOrganizationIds.some((organizationId) => organizationIdSet.has(String(organizationId || "").trim()));
+      })
+      .map((row) => dbString(row.email).toLowerCase())
+      .filter(Boolean),
+  ));
+}
+
 async function updateSignupEmailStatus(connection, requestId, emailStatus, emailError = "") {
   await connection.query(
     `
@@ -2364,45 +2435,49 @@ async function updateSignupEmailStatus(connection, requestId, emailStatus, email
   );
 }
 
-async function notifySignupSubmitted(connection, request) {
-  const [superAdminRecipients, organizationAdminRecipients] = await Promise.all([
+async function notifySignupSubmitted(connection, request, mailer = sendMail) {
+  const [superAdminRecipients, organizationAdminRecipients, linkedOrganizationAdminRecipients] = await Promise.all([
     fetchSuperAdminEmails(connection),
     fetchOrganizationAdminEmailsByOib(connection, request.organizationOib),
+    fetchOrganizationAdminEmailsByIds(connection, request.organizationId),
   ]);
   const recipients = resolveSignupNotifyRecipients([
     ...superAdminRecipients,
     ...organizationAdminRecipients,
+    ...linkedOrganizationAdminRecipients,
   ]);
   const fullName = [request.firstName, request.lastName].filter(Boolean).join(" ").trim() || request.email;
   const outgoing = [];
 
   if (recipients.length > 0) {
-    outgoing.push(sendMail({
+    outgoing.push(mailer({
       to: recipients.join(", "),
-      subject: `New signup request: ${request.organizationName}`,
+      subject: `SafeNexus zahtjev za pristup: ${request.organizationName}`,
       text: [
-        "New signup request received.",
-        `Organization: ${request.organizationName}`,
-        request.organizationOib ? `Organization OIB: ${request.organizationOib}` : "",
-        `Name: ${fullName}`,
+        "Zaprimljen je novi zahtjev za pristup.",
+        `Tvrtka/organizacija: ${request.organizationName}`,
+        request.organizationOib ? `OIB: ${request.organizationOib}` : "",
+        `Ime i prezime: ${fullName}`,
         `Email: ${request.email}`,
-        request.phone ? `Phone: ${request.phone}` : "",
-        request.note ? `Note: ${request.note}` : "",
+        request.phone ? `Telefon: ${request.phone}` : "",
+        request.note ? `Napomena: ${request.note}` : "",
+        "",
+        `SafeNexus: ${resolveAppUrl()}`,
       ].filter(Boolean).join("\n"),
     }));
   }
 
-  outgoing.push(sendMail({
+  outgoing.push(mailer({
     to: request.email,
-    subject: "Safety360 signup request received",
+    subject: "SafeNexus zahtjev za pristup je zaprimljen",
     text: [
-      `Hello ${request.firstName || fullName},`,
+      `Pozdrav ${request.firstName || fullName},`,
       "",
-      "We received your signup request for Safety360.",
-      "An administrator will review it and contact you shortly.",
+      "Zaprimili smo vas zahtjev za SafeNexus pristup.",
+      "Administrator ce ga pregledati i odobriti ako je sve u redu.",
       "",
-      `Organization: ${request.organizationName}`,
-      request.organizationOib ? `Organization OIB: ${request.organizationOib}` : "",
+      `Tvrtka/organizacija: ${request.organizationName}`,
+      request.organizationOib ? `OIB: ${request.organizationOib}` : "",
     ].filter(Boolean).join("\n"),
   }));
 
@@ -2418,29 +2493,30 @@ async function notifySignupSubmitted(connection, request) {
   );
 }
 
-async function notifySignupDecision(connection, request, decision) {
+async function notifySignupDecision(connection, request, decision, mailer = sendMail) {
   const subject = decision === SIGNUP_STATUS_APPROVED
-    ? "Safety360 account approved"
-    : "Safety360 signup request update";
+    ? "SafeNexus pristup je odobren"
+    : "SafeNexus zahtjev za pristup";
   const text = decision === SIGNUP_STATUS_APPROVED
     ? [
-      `Hello ${request.firstName || request.email},`,
+      `Pozdrav ${request.firstName || request.email},`,
       "",
-      "Your Safety360 signup request has been approved.",
-      "You can now sign in with your email address and password.",
+      "Vas SafeNexus zahtjev za pristup je odobren.",
+      "Mozete se prijaviti s email adresom i lozinkom koju ste upisali kod prijave.",
       "",
-      `Organization: ${request.organizationName}`,
+      `Prijava: ${resolveAppUrl()}`,
+      `Tvrtka/organizacija: ${request.organizationName}`,
     ].join("\n")
     : [
-      `Hello ${request.firstName || request.email},`,
+      `Pozdrav ${request.firstName || request.email},`,
       "",
-      "Your Safety360 signup request has been reviewed.",
-      "Please contact the administrator for more details.",
+      "Vas SafeNexus zahtjev za pristup je pregledan.",
+      "Za dodatne informacije javite se administratoru.",
       request.processedNote ? "" : null,
-      request.processedNote ? `Note: ${request.processedNote}` : null,
+      request.processedNote ? `Napomena: ${request.processedNote}` : null,
     ].filter((value) => value !== null).join("\n");
 
-  const result = await sendMail({
+  const result = await mailer({
     to: request.email,
     subject,
     text,
@@ -3256,6 +3332,7 @@ export class MemoryTenantRepository {
       throw createHttpError(400, "Zahtjev s tim emailom je vec poslan.");
     }
 
+    const matchedOrganization = resolveSignupRequestOrganizationFromOib(normalized, this.organizations);
     const next = {
       id: String(this.signupRequests.length + 1),
       organizationName: normalized.organizationName,
@@ -3267,7 +3344,7 @@ export class MemoryTenantRepository {
       phone: normalized.phone,
       note: normalized.note,
       status: SIGNUP_STATUS_PENDING,
-      organizationId: "",
+      organizationId: matchedOrganization ? String(matchedOrganization.id) : "",
       userId: "",
       processedNote: "",
       emailStatus: "skipped",
@@ -3304,7 +3381,7 @@ export class MemoryTenantRepository {
     const actorRole = normalizeRole(actor?.role);
     const approvedRole = normalizeSignupApprovedRole(actor, input.role || ROLE_ADMIN);
     const useExistingOrganization = dbString(input.organizationId);
-    const matchedOrganization = resolveSignupRequestOrganizationFromOib(request, this.organizations);
+    const matchedOrganization = resolveSignupRequestOrganization(request, this.organizations);
     let organization = null;
     if (actorRole === ROLE_ADMIN) {
       if (!matchedOrganization) {
@@ -4761,12 +4838,13 @@ export class MySqlTenantRepository {
         throw createHttpError(400, "Zahtjev s tim emailom je vec poslan.");
       }
 
+      const matchedOrganization = await fetchOrganizationByOib(connection, normalized.organizationOib);
       const passwordHash = await createPasswordHash(normalized.password);
       const [result] = await connection.query(
         `
           INSERT INTO signup_requests
-            (organization_name, organization_oib, first_name, last_name, email, phone, note, password_hash, status, email_status)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', '')
+            (organization_name, organization_oib, first_name, last_name, email, phone, note, password_hash, status, organization_id, email_status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, '')
         `,
         [
           normalized.organizationName,
@@ -4777,6 +4855,7 @@ export class MySqlTenantRepository {
           normalized.phone,
           normalized.note,
           passwordHash,
+          matchedOrganization ? Number(matchedOrganization.id) : null,
         ],
       );
 
@@ -4793,7 +4872,7 @@ export class MySqlTenantRepository {
       );
 
       const request = sanitizeSignupRequest(requestRow);
-      await notifySignupSubmitted(connection, request);
+      await notifySignupSubmitted(connection, request, this.mailer);
 
       return {
         ok: true,
@@ -4846,7 +4925,7 @@ export class MySqlTenantRepository {
       const actorRole = normalizeRole(actor?.role);
       const approvedRole = normalizeSignupApprovedRole(actor, input.role || ROLE_ADMIN);
       const selectedOrganizationId = dbString(input.organizationId);
-      const matchedOrganization = resolveSignupRequestOrganizationFromOib(request, accessibleOrganizations);
+      const matchedOrganization = resolveSignupRequestOrganization(request, accessibleOrganizations);
       let organizationId = "";
 
       if (actorRole === ROLE_ADMIN) {
@@ -4941,7 +5020,7 @@ export class MySqlTenantRepository {
       );
 
       const nextRequest = sanitizeSignupRequest(nextRow);
-      await notifySignupDecision(connection, nextRequest, SIGNUP_STATUS_APPROVED);
+      await notifySignupDecision(connection, nextRequest, SIGNUP_STATUS_APPROVED, this.mailer);
       return nextRequest;
     } catch (error) {
       await connection.rollback();
@@ -5017,7 +5096,7 @@ export class MySqlTenantRepository {
 
       const nextRequest = sanitizeSignupRequest(nextRow);
       await connection.commit();
-      await notifySignupDecision(connection, nextRequest, SIGNUP_STATUS_REJECTED);
+      await notifySignupDecision(connection, nextRequest, SIGNUP_STATUS_REJECTED, this.mailer);
       return nextRequest;
     } catch (error) {
       await connection.rollback();

@@ -11524,6 +11524,18 @@ button.dashboard-widget-list-row {
   box-shadow: 0 16px 34px rgba(43, 63, 105, 0.08);
 }
 
+.dashboard-signup-request-card {
+  grid-template-columns: auto minmax(220px, 1fr) minmax(300px, 1.35fr) auto auto;
+  border-radius: 16px;
+}
+
+.dashboard-signup-request-card.is-pending {
+  border-color: rgba(245, 189, 75, 0.5);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(255, 250, 234, 0.92)),
+    radial-gradient(circle at 0 0, rgba(245, 189, 75, 0.16), transparent 38%);
+}
+
 .dashboard-organization-card.is-active {
   border-color: rgba(43, 125, 233, 0.46);
   background:
@@ -11540,6 +11552,24 @@ button.dashboard-widget-list-row {
   background: #ffffff;
   display: grid;
   place-items: center;
+}
+
+.dashboard-signup-request-marker {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: #f1b33d;
+  box-shadow: 0 0 0 5px rgba(241, 179, 61, 0.13);
+}
+
+.dashboard-signup-request-marker.is-approved {
+  background: #34b979;
+  box-shadow: 0 0 0 5px rgba(52, 185, 121, 0.13);
+}
+
+.dashboard-signup-request-marker.is-rejected {
+  background: #ef5c6c;
+  box-shadow: 0 0 0 5px rgba(239, 92, 108, 0.13);
 }
 
 .dashboard-organization-copy,
@@ -11567,6 +11597,45 @@ button.dashboard-widget-list-row {
   color: #667492;
   font-size: 0.78rem;
   font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signup-request-info-grid {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.signup-request-info-item {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(244, 247, 252, 0.86);
+  border: 1px solid rgba(214, 224, 242, 0.66);
+}
+
+.signup-request-info-item span {
+  min-width: 0;
+  color: #77839d;
+  font-size: 0.66rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signup-request-info-item strong {
+  min-width: 0;
+  color: #1a2942;
+  font-size: 0.76rem;
+  font-weight: 900;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -11616,6 +11685,47 @@ button.dashboard-widget-list-row {
 .signup-request-card-actions .signup-approval-controls {
   width: 100%;
   justify-content: flex-end;
+}
+
+@media (max-width: 1180px) {
+  .dashboard-signup-request-card {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .signup-request-info-grid,
+  .signup-request-card-actions {
+    grid-column: 2 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  .dashboard-organization-card,
+  .dashboard-signup-request-card {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .dashboard-signup-request-status,
+  .dashboard-organization-status,
+  .dashboard-organization-actions,
+  .signup-request-card-actions,
+  .signup-request-info-grid {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+  }
+
+  .signup-request-info-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .signup-request-card-actions {
+    justify-content: stretch;
+  }
+
+  .signup-request-card-actions .card-button,
+  .signup-request-card-actions .signup-inline-select {
+    width: 100%;
+  }
 }
 
 .form-grid-wide {
@@ -23678,7 +23788,7 @@ body.is-resizing-companies-column .companies-column-resize-handle::before {
 }
 
 .auth-request-card {
-  width: min(100%, 520px);
+  width: min(100%, 680px);
   gap: 18px;
 }
 
@@ -23691,6 +23801,23 @@ body.is-resizing-companies-column .companies-column-resize-handle::before {
 
 .auth-request-form .auth-submit-button {
   margin-top: 4px;
+}
+
+.auth-textarea-shell {
+  min-height: 72px;
+  align-items: stretch;
+}
+
+.auth-textarea-shell textarea {
+  width: 100%;
+  min-height: 58px;
+  resize: vertical;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 1.45;
 }
 
 .auth-request-actions {
@@ -23864,7 +23991,7 @@ body.is-resizing-companies-column .companies-column-resize-handle::before {
   }
 
   .auth-request-card {
-    width: min(100%, 390px);
+    width: min(100%, 430px);
   }
 
   .auth-request-form {

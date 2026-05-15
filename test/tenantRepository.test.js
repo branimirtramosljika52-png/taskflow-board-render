@@ -798,6 +798,7 @@ test("memory tenant repository lets organization admin approve matching OIB sign
     email: "luka-approval@example.com",
     password: "Tajna123",
   });
+  assert.equal(request.request.organizationId, organization.id);
 
   await repository.approveSignupRequest(orgAdmin, request.request.id, {
     role: "admin",

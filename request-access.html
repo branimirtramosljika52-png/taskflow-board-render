@@ -6,17 +6,17 @@
     <meta name="application-name" content="SafeNexus" />
     <meta name="apple-mobile-web-app-title" content="SafeNexus" />
     <meta name="theme-color" content="#1d74f5" />
-    <title>SafeNexus - Request Access</title>
+    <title>SafeNexus - Signup</title>
     <link rel="canonical" href="https://safe-nexus.org/request-access.html" />
     <link rel="icon" type="image/png" sizes="352x352" href="/assets/safenexus-mark.png" />
     <link rel="apple-touch-icon" href="/assets/safenexus-mark.png" />
     <link rel="manifest" href="/site.webmanifest" />
-<link rel="stylesheet" href="/styles.css?v=20260425a" />
+<link rel="stylesheet" href="/styles.css?v=20260515-signup-access1" />
   </head>
   <body class="auth-page">
     <section class="auth-screen auth-request-screen">
       <div class="auth-minimal-shell">
-        <section class="auth-minimal-card auth-request-card" aria-label="Request access">
+        <section class="auth-minimal-card auth-request-card" aria-label="Signup">
           <div class="auth-logo auth-logo-compact brand-lockup auth-brand-lockup" aria-label="SafeNexus" role="img">
             <span class="brand-logo-badge auth-brand-mark" aria-hidden="true">
               <img src="/assets/safenexus-mark.png" alt="" class="brand-logo-image" />
@@ -27,20 +27,20 @@
           </div>
 
           <div class="auth-login-copy auth-request-copy">
-            <h1>Request access</h1>
-            <p>Enter your organization details, your contact details and a password. Password must have at least 8 characters, 1 uppercase letter and 2 numbers.</p>
+            <h1>Sign up</h1>
+            <p>Unesi podatke tvrtke, kontakt i lozinku. OIB povezuje zahtjev s pravom organizacijom da ga admin moze odobriti.</p>
           </div>
 
           <form id="request-access-form" class="auth-form auth-form-tenant auth-request-form">
             <label class="field">
-              <span>Organization</span>
+              <span>Tvrtka / organizacija</span>
               <div class="auth-input-shell is-plain">
-                <input id="request-organization-name" type="text" placeholder="Organization name" required />
+                <input id="request-organization-name" type="text" placeholder="Naziv tvrtke ili organizacije" required />
               </div>
             </label>
 
             <label class="field">
-              <span>Organization OIB</span>
+              <span>OIB tvrtke</span>
               <div class="auth-input-shell is-plain">
                 <input
                   id="request-organization-oib"
@@ -48,22 +48,23 @@
                   inputmode="numeric"
                   maxlength="11"
                   autocomplete="off"
-                  placeholder="11-digit OIB (optional)"
+                  placeholder="11 znamenki"
+                  required
                 />
               </div>
             </label>
 
             <label class="field">
-              <span>First name</span>
+              <span>Ime</span>
               <div class="auth-input-shell is-plain">
-                <input id="request-first-name" type="text" autocomplete="given-name" placeholder="First name" required />
+                <input id="request-first-name" type="text" autocomplete="given-name" placeholder="Ime" required />
               </div>
             </label>
 
             <label class="field">
-              <span>Last name</span>
+              <span>Prezime</span>
               <div class="auth-input-shell is-plain">
-                <input id="request-last-name" type="text" autocomplete="family-name" placeholder="Last name" required />
+                <input id="request-last-name" type="text" autocomplete="family-name" placeholder="Prezime" required />
               </div>
             </label>
 
@@ -71,27 +72,41 @@
               <span>Email</span>
               <div class="auth-input-shell">
                 <span class="auth-input-icon auth-input-icon-email" aria-hidden="true"></span>
-                <input id="request-email" type="email" autocomplete="email" placeholder="Email address" required />
+                <input id="request-email" type="email" autocomplete="email" placeholder="Email adresa" required />
               </div>
             </label>
 
             <label class="field">
-              <span>Password</span>
-              <div class="auth-input-shell">
-                <span class="auth-input-icon auth-input-icon-password" aria-hidden="true"></span>
-                <input id="request-password" type="password" autocomplete="new-password" placeholder="Create password" required />
+              <span>Telefon</span>
+              <div class="auth-input-shell is-plain">
+                <input id="request-phone" type="tel" autocomplete="tel" placeholder="+385..." />
               </div>
             </label>
 
             <label class="field">
-              <span>Repeat password</span>
-              <div class="auth-input-shell">
-                <span class="auth-input-icon auth-input-icon-password" aria-hidden="true"></span>
-                <input id="request-password-repeat" type="password" autocomplete="new-password" placeholder="Repeat password" required />
+              <span>Napomena</span>
+              <div class="auth-input-shell is-plain auth-textarea-shell">
+                <textarea id="request-note" rows="2" placeholder="Npr. odjel, lokacija ili kratka napomena"></textarea>
               </div>
             </label>
 
-            <button id="request-submit-button" type="submit" class="primary-button auth-submit-button field-span-full">Send request</button>
+            <label class="field">
+              <span>Lozinka</span>
+              <div class="auth-input-shell">
+                <span class="auth-input-icon auth-input-icon-password" aria-hidden="true"></span>
+                <input id="request-password" type="password" autocomplete="new-password" placeholder="Kreiraj lozinku" required />
+              </div>
+            </label>
+
+            <label class="field">
+              <span>Ponovi lozinku</span>
+              <div class="auth-input-shell">
+                <span class="auth-input-icon auth-input-icon-password" aria-hidden="true"></span>
+                <input id="request-password-repeat" type="password" autocomplete="new-password" placeholder="Ponovi lozinku" required />
+              </div>
+            </label>
+
+            <button id="request-submit-button" type="submit" class="primary-button auth-submit-button field-span-full">Posalji zahtjev</button>
           </form>
 
           <p id="request-feedback" class="form-success" aria-live="polite"></p>
@@ -104,13 +119,13 @@
       </div>
       <aside class="auth-story-floating" aria-live="polite" aria-label="Istaknuta priča">
         <p class="auth-story-line auth-story-floating-quote" data-auth-story-quote>
-          Enter your organization details, your contact details and a password.
+          Zahtjev ide administratoru organizacije i ceka odobrenje.
         </p>
         <p class="auth-story-byline auth-story-floating-author" data-auth-story-author>SafeNexus</p>
       </aside>
     </section>
 
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/request-access.js?v=20260422c"></script>
+    <script type="module" src="/src/request-access.js?v=20260515-signup-access1"></script>
   </body>
 </html>
