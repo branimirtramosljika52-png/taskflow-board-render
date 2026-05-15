@@ -50244,6 +50244,18 @@ function createSignupRequestInfoItem(label, value, fallback = "Nije upisano") {
   return item;
 }
 
+function getSignupApprovalProfileRoleOptions() {
+  return USER_PROFILE_ROLE_OPTIONS.filter((option) => (
+    getIsSuperAdmin() || option.value !== "admin"
+  ));
+}
+
+function getSignupApprovalSystemRole(profileRole = "") {
+  return resolveUserSystemRoleFromProfileRole(profileRole || "new_user", {
+    fallbackRole: "user",
+  });
+}
+
 function createSignupRequestActions(request = {}, { compact = false } = {}) {
   const actions = document.createElement("div");
   actions.className = compact ? "signup-request-card-actions" : "signup-approval-actions";
@@ -50258,7 +50270,14 @@ function createSignupRequestActions(request = {}, { compact = false } = {}) {
 
   const isSuperAdmin = getIsSuperAdmin();
   let organizationSelect = null;
-  let roleSelect = null;
+  const roleSelect = document.createElement("select");
+  roleSelect.className = "signup-inline-select";
+  roleSelect.title = "Rola korisnika nakon odobrenja";
+  roleSelect.setAttribute("aria-label", "Rola korisnika nakon odobrenja");
+  roleSelect.append(...getSignupApprovalProfileRoleOptions().map((option) => createOption(option.value, option.label, "new_user")));
+  roleSelect.value = getSignupApprovalProfileRoleOptions().some((option) => option.value === request.profileRole)
+    ? request.profileRole
+    : "new_user";
 
   if (isSuperAdmin) {
     organizationSelect = document.createElement("select");
@@ -50278,29 +50297,28 @@ function createSignupRequestActions(request = {}, { compact = false } = {}) {
     if (matchedByOib) {
       organizationSelect.value = String(matchedByOib.id);
     }
-
-    roleSelect = document.createElement("select");
-    roleSelect.className = "signup-inline-select";
-    roleSelect.append(
-      createOption("admin", "Admin", "admin"),
-      createOption("user", "Korisnik", "admin"),
-    );
-
-    const inlineControls = document.createElement("div");
-    inlineControls.className = "signup-approval-controls";
-    inlineControls.append(organizationSelect, roleSelect);
-    actions.append(inlineControls);
   }
+
+  const inlineControls = document.createElement("div");
+  inlineControls.className = "signup-approval-controls";
+  if (organizationSelect) {
+    inlineControls.append(organizationSelect);
+  }
+  inlineControls.append(roleSelect);
+  actions.append(inlineControls);
 
   actions.append(
     createActionButton("Odobri", "card-button", () => {
+      const profileRole = String(roleSelect?.value || "new_user");
       const body = isSuperAdmin
         ? {
           organizationId: organizationSelect?.value === "__new__" ? "" : String(organizationSelect?.value || ""),
-          role: String(roleSelect?.value || "admin"),
+          role: getSignupApprovalSystemRole(profileRole),
+          profileRole,
         }
         : {
           role: "user",
+          profileRole,
         };
       void runMutation(() => apiRequest(`/signup-requests/${request.id}/approve`, {
         method: "POST",
@@ -63385,14 +63403,76 @@ function getDocumentTemplateRuntimeCommonValidityInitialValue(field = {}, workOr
   return normalizeDocumentTemplateRuntimeFieldValueByType(field, value);
 }
 
+function isDocumentTemplateRuntimeCommonValidUntilField(field = {}) {
+  const source = String(field?.source || field?.bindingSource || "").trim().toUpperCase();
+  if (DOCUMENT_TEMPLATE_PERIODICS_TRACKABLE_SOURCE_VALUES.has(source)) {
+    return true;
+  }
+
+  const parsedSource = parseDocumentTemplateServiceValiditySource(source);
+  if (parsedSource?.kind === "SERVICE_VALID_UNTIL") {
+    return true;
+  }
+
+  const labelText = normalizeLooseName([
+    field.label,
+    field.wordLabel,
+    field.name,
+    field.key,
+    field.token,
+    field.placeholder,
+  ].filter(Boolean).join(" "));
+
+  return Boolean(
+    labelText
+    && (
+      labelText.includes("vrijedi do")
+      || labelText.includes("datum vrijedi")
+      || labelText.includes("valid until")
+      || labelText.includes("valid to")
+      || labelText.includes("valid_until")
+    )
+  );
+}
+
+function getDocumentTemplateRuntimeCommonValidUntilInitialValue(field = {}, workOrderId = "") {
+  if (!isDocumentTemplateRuntimeCommonValidUntilField(field)) {
+    return undefined;
+  }
+
+  const normalizedWorkOrderId = String(workOrderId || state.documentTemplateRuntime.activeWorkOrderId || "").trim();
+  const workOrder = normalizedWorkOrderId
+    ? getDocumentTemplateRuntimeWorkOrderById(normalizedWorkOrderId)
+    : null;
+  if (!workOrder) {
+    return undefined;
+  }
+
+  const template = buildDocumentTemplateDraft();
+  const value = resolveDocumentTemplateRuntimeServiceValidUntil(workOrder, template)
+    || resolveDocumentTemplateRuntimeValidUntil(workOrder);
+  if (!value) {
+    return undefined;
+  }
+
+  return normalizeDocumentTemplateRuntimeFieldValueByType(field, value);
+}
+
 function getDocumentTemplateRuntimeInitialValue(field = {}, workOrderId = "") {
   const normalizedWorkOrderId = String(workOrderId || state.documentTemplateRuntime.activeWorkOrderId || "").trim();
   const workOrder = (state.workOrders ?? []).find((item) => String(item.id) === normalizedWorkOrderId) ?? null;
   const template = buildDocumentTemplateDraft();
   const sourceId = getDocumentTemplateRuntimeFieldSource(normalizedWorkOrderId, field.id);
   const commonDateValue = getDocumentTemplateRuntimeCommonDateInitialValue(field, normalizedWorkOrderId);
+  const commonValidUntilValue = getDocumentTemplateRuntimeCommonValidUntilInitialValue(field, normalizedWorkOrderId);
   const commonValidityValue = getDocumentTemplateRuntimeCommonValidityInitialValue(field, normalizedWorkOrderId);
-  const commonFieldValue = commonDateValue !== undefined ? commonDateValue : commonValidityValue;
+  const commonFieldValue = commonDateValue !== undefined
+    ? commonDateValue
+    : (commonValidUntilValue !== undefined ? commonValidUntilValue : commonValidityValue);
+  if (commonValidUntilValue !== undefined) {
+    return commonValidUntilValue;
+  }
+
   const runtimeValue = getDocumentTemplateRuntimeFieldValue(normalizedWorkOrderId, field.id);
   if (runtimeValue !== undefined) {
     return commonFieldValue !== undefined && !hasMeaningfulDocumentRecordValue(runtimeValue)
@@ -63866,6 +63946,7 @@ function getDocumentTemplateRuntimeBlockCompletion(block = {}, workOrder = getDo
   const requiredEntries = entries.filter((entry) => entry.required);
   const requiredComplete = requiredEntries.filter((entry) => entry.isComplete).length;
   const requiredTotal = requiredEntries.length;
+  const missingRequiredEntries = requiredEntries.filter((entry) => !entry.isComplete);
   const details = entries
     .map((entry) => `${entry.label}: ${entry.displayValue || "prazno"}`);
   const ok = requiredTotal === 0 || requiredComplete >= requiredTotal;
@@ -63878,7 +63959,26 @@ function getDocumentTemplateRuntimeBlockCompletion(block = {}, workOrder = getDo
       ? `${requiredComplete}/${requiredTotal} obavezno`
       : (total > 0 ? `${complete}/${total} popunjeno` : "Automatski blok"),
     details,
+    missingRequiredLabels: missingRequiredEntries.map((entry) => entry.label),
+    missingRequiredDetails: missingRequiredEntries.map((entry) => `${entry.label}: ${entry.displayValue || "prazno"}`),
   };
+}
+
+function getDocumentTemplateRuntimeSequenceEntryMissingRequired(entry = {}) {
+  const template = getDocumentTemplateById(entry?.templateId);
+  const workOrder = getDocumentTemplateRuntimeWorkOrderById(entry?.workOrderId)
+    || (state.workOrders ?? []).find((item) => String(item?.id) === String(entry?.workOrderId));
+  if (!template || !workOrder) {
+    return ["Nedostaje template ili RN."];
+  }
+
+  return buildDocumentTemplateRuntimeBlockGroups(template.customFields ?? [])
+    .filter((block) => (block.items ?? []).length > 0)
+    .flatMap((block) => (
+      getDocumentTemplateRuntimeBlockCompletion(block, workOrder, template).missingRequiredLabels ?? []
+    ))
+    .map((label) => String(label || "").trim())
+    .filter(Boolean);
 }
 
 function isDocumentTemplateRuntimeSequenceEntryComplete(entry = {}) {
@@ -65225,8 +65325,6 @@ function renderDocumentTemplateRuntimeFieldRows() {
 
   if (sequenceState?.isSummary) {
     const groupedEntries = groupDocumentTemplateRuntimeDockEntries(sequenceState.entries);
-    const exportableEntries = getDocumentTemplateRuntimeExportableSequenceEntries(sequenceState.entries);
-    const exportableGroups = groupDocumentTemplateRuntimeDockEntries(exportableEntries);
     const skippedWorkOrderIds = getDocumentTemplateRuntimeSkippedWorkOrderIdSet();
     const signatureMode = normalizeDocumentTemplateSignatureMethod(state.documentTemplateRuntime.common?.signatureMode);
     const summaryGroupStates = groupedEntries.map((group) => {
@@ -65235,7 +65333,8 @@ function renderDocumentTemplateRuntimeFieldRows() {
       const serviceItems = workOrder ? getDocumentTemplateRuntimeResolvedServiceItems(workOrder) : [];
       const completedServices = getWorkOrderCompletedServiceCount({ serviceItems });
       const servicesOk = true;
-      const groupOk = !skipped && servicesOk && group.items.length > 0;
+      const missingRequired = group.items.flatMap((entry) => getDocumentTemplateRuntimeSequenceEntryMissingRequired(entry));
+      const groupOk = !skipped && servicesOk && missingRequired.length === 0 && group.items.length > 0;
       const exportStatus = getDocumentTemplateRuntimeGroupExportStatus(group, { groupOk, skipped });
       queueDocumentTemplateRuntimeSavedPdfDocumentLoad(group, { groupOk, skipped });
       return {
@@ -65245,15 +65344,25 @@ function renderDocumentTemplateRuntimeFieldRows() {
         serviceItems,
         completedServices,
         servicesOk,
+        missingRequired,
         groupOk,
         exportStatus,
       };
     });
+    const readyWorkOrderIds = new Set(
+      summaryGroupStates
+        .filter((item) => item.groupOk)
+        .map((item) => String(item.group.workOrderId || "").trim())
+        .filter(Boolean),
+    );
+    const exportableEntries = sequenceState.entries.filter((entry) => readyWorkOrderIds.has(String(entry.workOrderId || "").trim()));
+    const exportableGroups = groupDocumentTemplateRuntimeDockEntries(exportableEntries);
     const readyGroupCount = summaryGroupStates.filter((item) => item.groupOk).length;
     const skippedGroupCount = summaryGroupStates.filter((item) => item.skipped).length;
     const warningGroupCount = summaryGroupStates.filter((item) => !item.groupOk && !item.skipped).length;
     const totalSummaryServices = summaryGroupStates.reduce((total, item) => total + item.serviceItems.length, 0);
     const completedSummaryServices = summaryGroupStates.reduce((total, item) => total + item.completedServices, 0);
+    const missingRequiredCount = summaryGroupStates.reduce((total, item) => total + item.missingRequired.length, 0);
 
     const summaryBlock = document.createElement("section");
     summaryBlock.className = "document-template-runtime-block document-template-runtime-summary-block";
@@ -65288,6 +65397,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
       skipped,
       serviceItems,
       completedServices,
+      missingRequired,
       groupOk,
       exportStatus,
     }) => {
@@ -65302,6 +65412,20 @@ function renderDocumentTemplateRuntimeFieldRows() {
 
       const entryHead = document.createElement("div");
       entryHead.className = "document-template-runtime-summary-entry-head";
+      const includeField = document.createElement("label");
+      includeField.className = "document-template-runtime-summary-include";
+      includeField.title = skipped ? "RN je preskočen" : "RN je označen za spremanje";
+      const includeInput = document.createElement("input");
+      includeInput.type = "checkbox";
+      includeInput.checked = !skipped;
+      includeInput.setAttribute("aria-label", skipped ? "Uključi RN u spremanje" : "RN uključen u spremanje");
+      includeInput.addEventListener("change", () => {
+        setDocumentTemplateRuntimeWorkOrderSkipped(group.workOrderId, !includeInput.checked, { render: true });
+      });
+      const includeMark = document.createElement("span");
+      includeMark.setAttribute("aria-hidden", "true");
+      includeMark.textContent = "✓";
+      includeField.append(includeInput, includeMark);
       const entryTitleWrap = document.createElement("div");
       entryTitleWrap.className = "document-template-runtime-summary-entry-title";
       const entryTitle = document.createElement("strong");
@@ -65323,14 +65447,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
         ? "Preskočeno"
         : (groupOk ? "Spremno" : "Nije završeno"));
       statusPill.title = exportStatus?.detail || "";
-      const skipButton = document.createElement("button");
-      skipButton.type = "button";
-      skipButton.className = "ghost-button document-template-runtime-summary-skip";
-      skipButton.textContent = skipped ? "Vrati RN" : "Preskoči";
-      skipButton.addEventListener("click", () => {
-        setDocumentTemplateRuntimeWorkOrderSkipped(group.workOrderId, !skipped, { render: true });
-      });
-      entryHead.append(entryTitleWrap, statusPill);
+      entryHead.append(includeField, entryTitleWrap, statusPill);
       const savedDocuments = Array.isArray(exportStatus?.documents)
         ? exportStatus.documents.filter(Boolean)
         : [];
@@ -65357,7 +65474,12 @@ function renderDocumentTemplateRuntimeFieldRows() {
         });
         entryHead.append(downloadButton);
       }
-      entryHead.append(skipButton);
+      let requiredWarning = null;
+      if (missingRequired.length > 0) {
+        requiredWarning = document.createElement("div");
+        requiredWarning.className = "document-template-runtime-summary-required-warning";
+        requiredWarning.textContent = `Fali obavezno: ${Array.from(new Set(missingRequired)).slice(0, 4).join(", ")}${missingRequired.length > 4 ? "..." : ""}`;
+      }
 
       const entryChips = document.createElement("div");
       entryChips.className = "document-template-runtime-summary-entry-chips";
@@ -65455,7 +65577,11 @@ function renderDocumentTemplateRuntimeFieldRows() {
         });
       }
 
-      entryCard.append(entryHead, entryChips, entryProgress, entryChecklist, serviceList);
+      entryCard.append(entryHead);
+      if (requiredWarning) {
+        entryCard.append(requiredWarning);
+      }
+      entryCard.append(serviceList);
       groupedList.append(entryCard);
     });
 
@@ -65467,9 +65593,11 @@ function renderDocumentTemplateRuntimeFieldRows() {
     finalTitle.textContent = "Završi";
     const finalMeta = document.createElement("p");
     finalMeta.className = "helper-copy module-copy";
-    finalMeta.textContent = exportableEntries.length > 0
+    finalMeta.textContent = missingRequiredCount > 0
+      ? `Popuni ${missingRequiredCount} obaveznih polja prije spremanja. Označeni RN-ovi ostaju kvačicom uključeni.`
+      : exportableEntries.length > 0
       ? `${exportableGroups.length} ${exportableGroups.length === 1 ? "RN" : "RN-ova"} · ${exportableEntries.length} ${exportableEntries.length === 1 ? "zapisnik" : "zapisnika"} spremno za Documents.`
-      : "Označi završene usluge za RN koji želiš spremiti.";
+      : "Označi kvačicom RN koji želiš spremiti.";
     finalCopy.append(finalTitle, finalMeta);
     const finalActions = document.createElement("div");
     finalActions.className = "document-template-runtime-summary-final-actions";
@@ -65493,7 +65621,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     finishButton.type = "button";
     finishButton.className = "primary-button document-template-runtime-summary-finish-button";
     finishButton.textContent = "Generiraj i spremi";
-    finishButton.disabled = exportableEntries.length === 0;
+    finishButton.disabled = exportableEntries.length === 0 || missingRequiredCount > 0;
     finishButton.addEventListener("click", () => {
       updateDocumentTemplateRuntimeCommon({ signatureMode: signatureSelect.value }, { render: false });
       void exportDocumentTemplateBatchPdf({ print: false });
@@ -92750,6 +92878,11 @@ function isDocumentTemplateRuntimePersistedField(field = {}) {
 }
 
 function getDocumentTemplateRuntimePersistedFieldValue(field = {}, workOrderId = "", template = buildDocumentTemplateDraft()) {
+  const commonValidUntilValue = getDocumentTemplateRuntimeCommonValidUntilInitialValue(field, workOrderId);
+  if (commonValidUntilValue !== undefined) {
+    return commonValidUntilValue;
+  }
+
   const runtimeValue = getDocumentTemplateRuntimeFieldValue(workOrderId, field.id);
   if (runtimeValue !== undefined) {
     return runtimeValue;
@@ -99919,10 +100052,9 @@ workOrderDocumentWizardNextButton?.addEventListener("click", (event) => {
 ].forEach(([input, fieldName, isDateField = false]) => {
   input?.addEventListener("input", () => {
     state.workOrderDocumentWizard.common[fieldName] = input.value || "";
-    renderWorkOrderDocumentWizardCommonSection();
-    renderWorkOrderDocumentWizardWorkOrders(getAllSelectedWorkOrdersForDocumentWizard());
-    if (state.workOrderDocumentWizard.step === "templates") {
-      renderWorkOrderDocumentWizardTemplates(getAllSelectedWorkOrdersForDocumentWizard());
+    syncWorkOrderDocumentWizardCommonSummaryText();
+    if (isDateField) {
+      markWorkOrderDocumentWizardRequiredField(input, !normalizeDateInputValue(input.value));
     }
   });
   input?.addEventListener("change", () => {

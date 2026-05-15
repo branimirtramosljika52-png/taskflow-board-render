@@ -701,11 +701,13 @@ test("memory tenant repository approves signup requests into an existing organiz
   await repository.approveSignupRequest(superAdmin, response.request.id, {
     organizationId: existingOrganization.id,
     role: "user",
+    profileRole: "manager",
   });
 
   const approvedUser = await repository.authenticateUser("iva-request@example.com", "Tajna123");
   assert.ok(approvedUser);
   assert.equal(approvedUser.role, "user");
+  assert.equal(approvedUser.profileRole, "manager");
   assert.equal(approvedUser.organizationId, existingOrganization.id);
 });
 

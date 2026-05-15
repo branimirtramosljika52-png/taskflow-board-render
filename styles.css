@@ -17829,6 +17829,139 @@ body.is-document-template-editor-open .chat-dock {
   max-width: 220px;
 }
 
+.work-order-document-wizard-panel {
+  top: 18px;
+  width: min(1760px, calc(100vw - 28px));
+  max-height: calc(100dvh - 36px);
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  gap: 10px;
+  padding: 18px 22px 16px;
+  border-radius: 22px;
+  border-color: rgba(198, 209, 228, 0.86);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(248, 250, 252, 0.99));
+  box-shadow: 0 30px 80px rgba(15, 23, 42, 0.26);
+}
+
+.work-order-document-wizard-head {
+  padding: 0 2px 12px;
+  border-bottom: 1px solid rgba(212, 219, 233, 0.9);
+}
+
+.work-order-document-wizard-head-copy {
+  gap: 2px;
+}
+
+.work-order-document-wizard-head-copy .section-kicker {
+  margin: 0;
+  color: #2f7eff;
+  letter-spacing: 0.14em;
+}
+
+.work-order-document-wizard-head-copy h2 {
+  color: #182133;
+  font-size: clamp(1.45rem, 2vw, 2.15rem);
+  letter-spacing: 0;
+}
+
+.work-order-document-wizard-head-actions .ghost-button {
+  min-width: 44px;
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 12px;
+}
+
+.work-order-document-wizard-body {
+  gap: 10px;
+  padding: 0 6px 2px 0;
+}
+
+.work-order-document-wizard-block,
+.work-order-document-selection-card,
+.work-order-document-template-card,
+.work-order-document-template-summary-card {
+  border-color: rgba(209, 218, 233, 0.76);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 12px 34px rgba(31, 42, 71, 0.07);
+}
+
+.work-order-document-wizard-block {
+  padding: 14px 16px;
+}
+
+.work-order-document-wizard-common-core,
+.work-order-document-wizard-common-env-block,
+.work-order-document-wizard-common-periods-block,
+.work-order-document-wizard-common-person-block,
+.work-order-document-selection-person-block,
+.work-order-document-selection-section-block {
+  border-color: rgba(213, 220, 235, 0.82);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: none;
+}
+
+.work-order-document-wizard-common-core::before,
+.work-order-document-wizard-common-env-block::before,
+.work-order-document-wizard-common-periods-block::before,
+.work-order-document-wizard-common-person-block::before,
+.work-order-document-selection-section-block::before {
+  display: none;
+}
+
+.work-order-document-wizard-common-core-grid {
+  grid-template-columns: minmax(128px, 0.72fr) minmax(128px, 0.72fr) minmax(170px, 0.95fr) minmax(260px, 1.35fr);
+}
+
+.work-order-document-wizard-common-core-grid .field,
+.work-order-document-wizard-common-env-grid .field,
+.work-order-document-selection-basic-grid .field,
+.work-order-document-selection-env-grid .field {
+  min-width: 0;
+  border-color: rgba(218, 224, 236, 0.94);
+  border-radius: 12px;
+  background: #f8fafc;
+  box-shadow: none;
+}
+
+.work-order-document-wizard-common-core-grid input,
+.work-order-document-wizard-common-env-grid input,
+.work-order-document-selection-basic-grid input,
+.work-order-document-selection-env-grid input {
+  min-height: 34px;
+  padding-block: 5px;
+  border-color: rgba(219, 226, 238, 0.98);
+  border-radius: 10px;
+  background: #fff;
+  font-weight: 700;
+}
+
+.work-order-document-wizard-control-slot .work-item-status-trigger,
+.work-order-document-wizard-control-slot .work-order-calendar-executor-trigger,
+.work-order-document-selection-picker-slot .work-order-document-person-trigger,
+.work-order-document-selection-services-toolbar .work-order-service-picker-trigger {
+  min-height: 36px;
+  border-color: rgba(218, 224, 236, 0.98);
+  border-radius: 10px;
+  background: #f8fafc;
+  box-shadow: none;
+}
+
+#work-order-document-service-validity-grid {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 220px));
+  max-width: 760px;
+  gap: 8px;
+}
+
+#work-order-document-service-validity-grid .field {
+  max-width: 220px;
+}
+
+#work-order-document-service-validity-grid input {
+  max-width: 150px;
+  min-height: 34px;
+}
+
 .work-order-document-wizard-panel .field.has-required-attention {
   border-color: rgba(213, 71, 113, 0.86) !important;
   background:
@@ -23842,6 +23975,10 @@ body.is-resizing-companies-column .companies-column-resize-handle::before {
   text-align: center;
 }
 
+.auth-screen .form-success.is-error {
+  color: #d54867;
+}
+
 .auth-page .auth-screen::before,
 .auth-page .auth-screen::after {
   transition:
@@ -23944,6 +24081,13 @@ body.is-resizing-companies-column .companies-column-resize-handle::before {
 
 .auth-page.is-auth-ready .auth-request-actions {
   animation: auth-fade-up 520ms 840ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.auth-page.is-auth-ready .auth-screen .form-error,
+.auth-page.is-auth-ready .auth-screen .form-success {
+  opacity: 1;
+  transform: translateY(0);
+  animation: auth-fade-up 420ms 880ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .auth-page.is-auth-ready .auth-screen::before {
@@ -33783,9 +33927,50 @@ body.is-measurement-equipment-export-open {
 
 .document-template-runtime-summary-entry-head {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 6px;
+}
+
+.document-template-runtime-summary-include {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 9px;
+  border: 1px solid rgba(176, 190, 210, 0.82);
+  background: #fff;
+  color: transparent;
+  cursor: pointer;
+}
+
+.document-template-runtime-summary-include input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.document-template-runtime-summary-include span {
+  width: 18px;
+  height: 18px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 6px;
+  background: #f1f5f9;
+  color: transparent;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.document-template-runtime-summary-include input:checked + span {
+  background: #19b37a;
+  color: #fff;
+}
+
+.document-template-runtime-summary-include:focus-within {
+  border-color: rgba(37, 99, 235, 0.5);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 
 .document-template-runtime-summary-entry-title {
@@ -33876,6 +34061,16 @@ body.is-measurement-equipment-export-open {
   color: #5f6f8b;
   font-size: 0.66rem;
   line-height: 1.35;
+}
+
+.document-template-runtime-summary-required-warning {
+  padding: 6px 8px;
+  border: 1px solid rgba(220, 82, 95, 0.24);
+  border-radius: 10px;
+  background: rgba(255, 241, 242, 0.88);
+  color: #9f2835;
+  font-size: 0.68rem;
+  font-weight: 800;
 }
 
 .document-template-runtime-summary-checklist {

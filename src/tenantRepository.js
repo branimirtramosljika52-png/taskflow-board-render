@@ -1342,6 +1342,19 @@ function normalizeSignupApprovedRole(actor, requestedRole = ROLE_ADMIN) {
   return normalized === ROLE_SUPER_ADMIN ? ROLE_ADMIN : normalized;
 }
 
+function normalizeSignupApprovedProfileRole(actor, requestedProfileRole = "", approvedRole = ROLE_USER) {
+  const actorRole = normalizeRole(actor?.role);
+  const normalizedApprovedRole = normalizeRole(approvedRole);
+  const fallbackProfileRole = normalizedApprovedRole === ROLE_ADMIN ? "admin" : "new_user";
+  const profileRole = normalizeUserProfileRole(requestedProfileRole, fallbackProfileRole);
+
+  if (profileRole === "admin" && (actorRole === ROLE_ADMIN || normalizedApprovedRole !== ROLE_ADMIN)) {
+    return "new_user";
+  }
+
+  return profileRole;
+}
+
 function rethrowDatabaseError(error, fallbackMessage) {
   if (error?.statusCode) {
     throw error;
@@ -3380,6 +3393,7 @@ export class MemoryTenantRepository {
 
     const actorRole = normalizeRole(actor?.role);
     const approvedRole = normalizeSignupApprovedRole(actor, input.role || ROLE_ADMIN);
+    const approvedProfileRole = normalizeSignupApprovedProfileRole(actor, input.profileRole, approvedRole);
     const useExistingOrganization = dbString(input.organizationId);
     const matchedOrganization = resolveSignupRequestOrganization(request, this.organizations);
     let organization = null;
@@ -3423,7 +3437,7 @@ export class MemoryTenantRepository {
       lastName: request.lastName,
       fullName: approvedFullName,
       displayName: approvedFullName,
-      profileRole: approvedRole === ROLE_ADMIN ? "admin" : "new_user",
+      profileRole: approvedProfileRole,
       email: request.email,
       username: request.email,
       legacyUsername: "",
@@ -4924,6 +4938,7 @@ export class MySqlTenantRepository {
 
       const actorRole = normalizeRole(actor?.role);
       const approvedRole = normalizeSignupApprovedRole(actor, input.role || ROLE_ADMIN);
+      const approvedProfileRole = normalizeSignupApprovedProfileRole(actor, input.profileRole, approvedRole);
       const selectedOrganizationId = dbString(input.organizationId);
       const matchedOrganization = resolveSignupRequestOrganization(request, accessibleOrganizations);
       let organizationId = "";
@@ -4976,7 +4991,7 @@ export class MySqlTenantRepository {
           request.firstName,
           request.lastName,
           approvedDisplayName,
-          approvedRole === ROLE_ADMIN ? "admin" : "new_user",
+          approvedProfileRole,
           request.phone,
           null,
           request.email,
