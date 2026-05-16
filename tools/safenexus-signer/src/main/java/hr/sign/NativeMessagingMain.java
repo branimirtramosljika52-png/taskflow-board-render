@@ -235,7 +235,7 @@ public final class NativeMessagingMain {
         settings.put("finaPkcs11", config.finaPkcs11Lib());
         settings.put("finaSlotIndex", config.finaSlotIndex() == null ? "" : String.valueOf(config.finaSlotIndex()));
         settings.put("rectWidthCm", raw.getProperty("rect.width.cm", "6"));
-        settings.put("rectHeightCm", raw.getProperty("rect.height.cm", "2"));
+        settings.put("rectHeightCm", raw.getProperty("rect.height.cm", "1.5"));
         settings.put("offsetDownCm", raw.getProperty("offset.down.cm", "2.2"));
         settings.put("offsetLeftCm", raw.getProperty("offset.left.cm", "2.6"));
         settings.put("fontSize", raw.getProperty("font.size", "7.5"));
@@ -257,7 +257,7 @@ public final class NativeMessagingMain {
         putLogoDebugFields(appearance, config.appearanceShowLogo(), config.appearanceLogoDataUrl(), "settings.appearance.logoDataUrl");
         appearance.put("logoDataUrl", "");
         appearance.put("logoDataUrlOmitted", !String.valueOf(config.appearanceLogoDataUrl() == null ? "" : config.appearanceLogoDataUrl()).trim().isBlank());
-        appearance.put("logoOpacity", raw.getProperty("appearance.logo.opacity", "0.08"));
+        appearance.put("logoOpacity", raw.getProperty("appearance.logo.opacity", "0.14"));
         appearance.put("border", config.appearanceBorder());
         appearance.put("transparentBackground", config.appearanceTransparentBackground());
         appearance.put("alignment", config.appearanceAlignment());

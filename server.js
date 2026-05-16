@@ -2162,34 +2162,10 @@ async function buildPdfFromWordDocumentTemplate(referenceBuffer, placeholders = 
     fileName || title || "zapisnik",
     { fallback: "zapisnik", extension: "docx" },
   );
-  const htmlFileName = sanitizeGeneratedDocumentFileName(
-    docxFileName.replace(/\.(docx|dotx)$/i, ""),
-    { fallback: "zapisnik", extension: "html" },
-  );
-
-  try {
-    const converted = await convertWordBufferToHtmlTemplate(referenceBuffer, {
-      fileName: docxFileName,
-      allowLibreOfficeFallback: false,
-    });
-    return await buildPdfFromHtmlTemplateBuffer(Buffer.from(converted.html || "", "utf8"), placeholders, {
-      fileName: htmlFileName,
-      title: title || fileName || "Zapisnik",
-    });
-  } catch (directConversionError) {
-    console.warn("Direct Word template HTML PDF export failed; retrying after placeholder merge.", directConversionError);
-    const generatedWord = await buildDocxFromTemplateBuffer(referenceBuffer, placeholders, {
-      fileName: docxFileName,
-    });
-    const converted = await convertWordBufferToHtmlTemplate(generatedWord, {
-      fileName: docxFileName,
-      allowLibreOfficeFallback: false,
-    });
-    return await buildPdfFromHtmlTemplateBuffer(Buffer.from(converted.html || "", "utf8"), {}, {
-      fileName: htmlFileName,
-      title: title || fileName || "Zapisnik",
-    });
-  }
+  return await buildPdfFromTemplateBuffer(referenceBuffer, placeholders, {
+    fileName: docxFileName,
+    title: title || fileName || "Zapisnik",
+  });
 }
 
 function hasTemplateRenderPdfModel(value = null) {
@@ -2456,7 +2432,9 @@ async function addGeneratedTemplateDigitalSignatureFields(pdfBuffer = Buffer.all
   }
   return await addPdfSignatureFieldsToBuffer(pdfBuffer, signatureFields.map((field) => ({
     ...field,
-    drawPlaceholder: true,
+    // The native signer draws the real iText appearance. Burning the same
+    // text into the PDF first causes the final document to show it twice.
+    drawPlaceholder: false,
   })), {
     appearance: getSignatureExportAppearanceSettings(signatureSettings),
     rolePositioning: getSignatureExportRolePositioningSettings(signatureSettings),

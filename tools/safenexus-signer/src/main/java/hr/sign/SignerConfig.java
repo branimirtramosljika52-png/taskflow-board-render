@@ -15,8 +15,8 @@ import java.util.Properties;
 
 public final class SignerConfig {
     private static final String DEFAULT_SIGNATURE_POSITIONING_JSON = "{"
-            + "\"ISPITIVANJE_OBAVILI\":{\"anchor\":\"bottom\",\"offsetX\":0,\"offsetY\":-28,\"width\":180,\"height\":55,\"alignment\":\"left\"},"
-            + "\"ODGOVORNA_OSOBA\":{\"anchor\":\"bottom\",\"offsetX\":0,\"offsetY\":-22,\"width\":160,\"height\":50,\"alignment\":\"left\"}"
+            + "\"ISPITIVANJE_OBAVILI\":{\"anchor\":\"bottom\",\"offsetX\":0,\"offsetY\":-20,\"width\":164,\"height\":42,\"alignment\":\"left\"},"
+            + "\"ODGOVORNA_OSOBA\":{\"anchor\":\"bottom\",\"offsetX\":0,\"offsetY\":-18,\"width\":154,\"height\":42,\"alignment\":\"left\"}"
             + "}";
 
     public enum Mode {
@@ -190,7 +190,7 @@ public final class SignerConfig {
                 firstNonBlank(properties.getProperty("fallback.keyword", ""), properties.getProperty("keyword", "")),
                 Boolean.parseBoolean(properties.getProperty("fallback.case.insensitive", properties.getProperty("case.insensitive", "true"))),
                 cmToPt(parseFloat(properties.getProperty("rect.width.cm"), 6f)),
-                cmToPt(parseFloat(properties.getProperty("rect.height.cm"), 2f)),
+                cmToPt(parseFloat(properties.getProperty("rect.height.cm"), 1.5f)),
                 cmToPt(parseFloat(properties.getProperty("offset.down.cm"), 2.2f)),
                 cmToPt(parseFloat(properties.getProperty("offset.left.cm"), 2.6f)),
                 parseFloat(properties.getProperty("skip.tolerance.pt"), 12f),
@@ -207,7 +207,7 @@ public final class SignerConfig {
                 Boolean.parseBoolean(properties.getProperty("appearance.show.reason", "false")),
                 Boolean.parseBoolean(properties.getProperty("appearance.show.location", "false")),
                 properties.getProperty("appearance.logo.dataUrl", ""),
-                clamp(parseFloat(properties.getProperty("appearance.logo.opacity"), 0.08f), 0f, 0.4f),
+                clamp(parseFloat(properties.getProperty("appearance.logo.opacity"), 0.14f), 0f, 0.4f),
                 Boolean.parseBoolean(properties.getProperty("appearance.border", "false")),
                 Boolean.parseBoolean(properties.getProperty("appearance.transparentBackground", "true")),
                 properties.getProperty("appearance.alignment", "left"),
@@ -242,7 +242,7 @@ public final class SignerConfig {
         properties.setProperty("fallback.case.insensitive", "true");
         properties.setProperty("skip.already.signed", "true");
         properties.setProperty("rect.width.cm", "6");
-        properties.setProperty("rect.height.cm", "2");
+        properties.setProperty("rect.height.cm", "1.5");
         properties.setProperty("offset.down.cm", "2.2");
         properties.setProperty("offset.left.cm", "2.6");
         properties.setProperty("skip.tolerance.pt", "12");
@@ -260,7 +260,7 @@ public final class SignerConfig {
         properties.setProperty("appearance.show.reason", "false");
         properties.setProperty("appearance.show.location", "false");
         properties.setProperty("appearance.logo.dataUrl", "");
-        properties.setProperty("appearance.logo.opacity", "0.08");
+        properties.setProperty("appearance.logo.opacity", "0.14");
         properties.setProperty("appearance.border", "false");
         properties.setProperty("appearance.transparentBackground", "true");
         properties.setProperty("appearance.alignment", "left");

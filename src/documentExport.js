@@ -53,7 +53,7 @@ const DEFAULT_PDF_SIGNATURE_APPEARANCE_SETTINGS = Object.freeze({
   showReason: false,
   showLocation: false,
   logoDataUrl: "",
-  logoOpacity: 0.08,
+  logoOpacity: 0.14,
   border: false,
   transparentBackground: true,
   alignment: "left",

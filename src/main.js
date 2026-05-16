@@ -31824,7 +31824,7 @@ const DEFAULT_PDF_SIGNER_WEB_SETTINGS = {
   eoiPkcs11: "C:/Program Files/AKD/Certilia Middleware/pkcs11/AkdEidPkcs11_64.dll",
   finaPkcs11: "C:/Windows/System32/eTPKCS11.dll",
   rectWidthCm: "6",
-  rectHeightCm: "2",
+  rectHeightCm: "1.5",
   offsetDownCm: "2.2",
   offsetLeftCm: "2.6",
   fontSize: "7.5",
@@ -31844,7 +31844,7 @@ const DEFAULT_PDF_SIGNER_WEB_SETTINGS = {
     showReason: false,
     showLocation: false,
     logoDataUrl: "",
-    logoOpacity: "0.08",
+    logoOpacity: "0.14",
     border: false,
     transparentBackground: true,
     alignment: "left",
@@ -31854,21 +31854,40 @@ const DEFAULT_PDF_SIGNER_WEB_SETTINGS = {
     ISPITIVANJE_OBAVILI: {
       anchor: "bottom",
       offsetX: 0,
-      offsetY: -28,
-      width: 180,
-      height: 55,
+      offsetY: -20,
+      width: 164,
+      height: 42,
       alignment: "left",
     },
     ODGOVORNA_OSOBA: {
       anchor: "bottom",
       offsetX: 0,
-      offsetY: -22,
-      width: 160,
-      height: 50,
+      offsetY: -18,
+      width: 154,
+      height: 42,
       alignment: "left",
     },
   },
 };
+
+const LEGACY_PDF_SIGNER_ROLE_POSITIONING_DEFAULTS = Object.freeze({
+  ISPITIVANJE_OBAVILI: Object.freeze({
+    anchor: "bottom",
+    offsetX: 0,
+    offsetY: -28,
+    width: 180,
+    height: 55,
+    alignment: "left",
+  }),
+  ODGOVORNA_OSOBA: Object.freeze({
+    anchor: "bottom",
+    offsetX: 0,
+    offsetY: -22,
+    width: 160,
+    height: 50,
+    alignment: "left",
+  }),
+});
 
 function normalizePdfSignerAppearanceBoolean(value, fallback = false) {
   if (typeof value === "boolean") {
@@ -31914,8 +31933,11 @@ function normalizePdfSignerAppearanceSettings(settings = {}) {
     raw.transparentBackground,
     DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.transparentBackground,
   );
+  const rawLogoOpacity = String(raw.logoOpacity ?? "").trim() === "0.08"
+    ? DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.logoOpacity
+    : raw.logoOpacity;
   const logoOpacity = normalizePdfSignerAppearanceNumber(
-    raw.logoOpacity,
+    rawLogoOpacity,
     Number(DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.logoOpacity),
     { min: 0, max: 0.4 },
   );
@@ -31951,13 +31973,39 @@ function cloneDefaultPdfSignerRolePositioningSettings() {
   return JSON.parse(JSON.stringify(DEFAULT_PDF_SIGNER_WEB_SETTINGS.rolePositioning));
 }
 
+function isLegacyPdfSignerRolePositioningDefault(role, value = {}) {
+  const legacy = LEGACY_PDF_SIGNER_ROLE_POSITIONING_DEFAULTS[role];
+  if (!legacy || !value || typeof value !== "object") {
+    return false;
+  }
+  return String(value.anchor || "") === legacy.anchor
+    && Number(value.offsetX) === legacy.offsetX
+    && Number(value.offsetY) === legacy.offsetY
+    && Number(value.width) === legacy.width
+    && Number(value.height) === legacy.height
+    && String(value.alignment || "") === legacy.alignment;
+}
+
 function normalizePdfSignerRolePositioningSettings(settings = null) {
   if (settings === null || settings === undefined) {
     return cloneDefaultPdfSignerRolePositioningSettings();
   }
-  return settings && typeof settings === "object" && !Array.isArray(settings)
-    ? settings
-    : cloneDefaultPdfSignerRolePositioningSettings();
+  if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
+    return cloneDefaultPdfSignerRolePositioningSettings();
+  }
+  const defaults = cloneDefaultPdfSignerRolePositioningSettings();
+  const normalized = { ...settings };
+  Object.keys(defaults).forEach((role) => {
+    const raw = settings[role];
+    if (isLegacyPdfSignerRolePositioningDefault(role, raw)) {
+      normalized[role] = defaults[role];
+      return;
+    }
+    normalized[role] = raw && typeof raw === "object" && !Array.isArray(raw)
+      ? { ...defaults[role], ...raw }
+      : defaults[role];
+  });
+  return normalized;
 }
 
 function loadSignatureLogoImage(dataUrl = "") {
@@ -32028,29 +32076,41 @@ function syncSignatureLogoPicker(appearance = {}) {
   }
 }
 
+function normalizePdfSignerWebSettingsEnvelope(settings = {}) {
+  const raw = settings && typeof settings === "object" ? settings : {};
+  const next = {
+    ...DEFAULT_PDF_SIGNER_WEB_SETTINGS,
+    ...raw,
+  };
+  if (String(next.rectHeightCm || "").trim() === "2") {
+    next.rectHeightCm = DEFAULT_PDF_SIGNER_WEB_SETTINGS.rectHeightCm;
+  }
+  return next;
+}
+
 function loadPdfSignerWebSettings() {
   try {
     const raw = localStorage.getItem(PDF_SIGNER_WEB_SETTINGS_STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : {};
+    const base = normalizePdfSignerWebSettingsEnvelope(parsed);
     return {
-      ...DEFAULT_PDF_SIGNER_WEB_SETTINGS,
-      ...(parsed && typeof parsed === "object" ? parsed : {}),
-      apiAllowlist: parsed?.apiAllowlist || DEFAULT_PDF_SIGNER_WEB_SETTINGS.apiAllowlist,
-      appearance: normalizePdfSignerAppearanceSettings(parsed?.appearance),
-      rolePositioning: normalizePdfSignerRolePositioningSettings(parsed?.rolePositioning),
+      ...base,
+      apiAllowlist: base.apiAllowlist || DEFAULT_PDF_SIGNER_WEB_SETTINGS.apiAllowlist,
+      appearance: normalizePdfSignerAppearanceSettings(base.appearance),
+      rolePositioning: normalizePdfSignerRolePositioningSettings(base.rolePositioning),
     };
   } catch {
-    return { ...DEFAULT_PDF_SIGNER_WEB_SETTINGS };
+    return normalizePdfSignerWebSettingsEnvelope();
   }
 }
 
 function savePdfSignerWebSettings(settings = {}) {
+  const base = normalizePdfSignerWebSettingsEnvelope(settings);
   const next = {
-    ...DEFAULT_PDF_SIGNER_WEB_SETTINGS,
-    ...(settings && typeof settings === "object" ? settings : {}),
-    apiAllowlist: settings?.apiAllowlist || DEFAULT_PDF_SIGNER_WEB_SETTINGS.apiAllowlist,
-    appearance: normalizePdfSignerAppearanceSettings(settings?.appearance),
-    rolePositioning: normalizePdfSignerRolePositioningSettings(settings?.rolePositioning),
+    ...base,
+    apiAllowlist: base.apiAllowlist || DEFAULT_PDF_SIGNER_WEB_SETTINGS.apiAllowlist,
+    appearance: normalizePdfSignerAppearanceSettings(base.appearance),
+    rolePositioning: normalizePdfSignerRolePositioningSettings(base.rolePositioning),
   };
   try {
     localStorage.setItem(PDF_SIGNER_WEB_SETTINGS_STORAGE_KEY, JSON.stringify(next));
@@ -32071,12 +32131,12 @@ function getPdfSignerWebSettings() {
   if (!state.signatures.settings?.values) {
     return savePdfSignerWebSettings(loadPdfSignerWebSettings());
   }
+  const base = normalizePdfSignerWebSettingsEnvelope(state.signatures.settings.values);
   return {
-    ...DEFAULT_PDF_SIGNER_WEB_SETTINGS,
-    ...state.signatures.settings.values,
-    apiAllowlist: state.signatures.settings.values?.apiAllowlist || DEFAULT_PDF_SIGNER_WEB_SETTINGS.apiAllowlist,
-    appearance: normalizePdfSignerAppearanceSettings(state.signatures.settings.values?.appearance),
-    rolePositioning: normalizePdfSignerRolePositioningSettings(state.signatures.settings.values?.rolePositioning),
+    ...base,
+    apiAllowlist: base.apiAllowlist || DEFAULT_PDF_SIGNER_WEB_SETTINGS.apiAllowlist,
+    appearance: normalizePdfSignerAppearanceSettings(base.appearance),
+    rolePositioning: normalizePdfSignerRolePositioningSettings(base.rolePositioning),
   };
 }
 
