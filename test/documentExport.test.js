@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import PizZip from "pizzip";
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, StandardFonts } from "pdf-lib";
 
 import {
+  addPdfSignatureFieldsToBuffer,
   buildDashboardCalendarReportPdfBuffer,
   buildDocxFromTemplateBuffer,
   buildHtmlFromTemplateBuffer,
@@ -632,6 +633,38 @@ test("render model digital signature adds SIGN_ROLE_OIB signature field", async 
   const pdfDoc = await PDFDocument.load(outputBuffer);
   const fields = pdfDoc.getForm().getFields();
   assert.deepEqual(fields.map((field) => field.getName()), ["SIGN_ZNR_91977516569"]);
+});
+
+test("PDF signature field is anchored below the last matching signer OIB", async () => {
+  const sourceDoc = await PDFDocument.create();
+  const font = await sourceDoc.embedFont(StandardFonts.Helvetica);
+  const firstPage = sourceDoc.addPage([595.303937007874, 841.889763779528]);
+  firstPage.drawText("OIB 35649316156", { x: 416.4, y: 691.989, size: 9, font });
+  const signaturePage = sourceDoc.addPage([595.303937007874, 841.889763779528]);
+  signaturePage.drawText("Ana Savanovic", { x: 412, y: 745.589, size: 11, font });
+  signaturePage.drawText("OIB 35649316156", { x: 416.4, y: 732.589, size: 9, font });
+  signaturePage.drawText("______________________________", { x: 382.2, y: 701, size: 10, font });
+
+  const outputBuffer = await addPdfSignatureFieldsToBuffer(
+    Buffer.from(await sourceDoc.save({ useObjectStreams: false })),
+    [{
+      signatureMode: "digital",
+      signatureFieldRole: "ZNR",
+      signatureFieldOib: "35649316156",
+      fieldName: "SIGN_ZNR_35649316156",
+      name: "Ana Savanovic",
+      drawPlaceholder: true,
+    }],
+  );
+
+  const pdfDoc = await PDFDocument.load(outputBuffer);
+  const field = pdfDoc.getForm().getField("SIGN_ZNR_35649316156");
+  const rect = field.acroField.getWidgets()[0].getRectangle();
+  assert.ok(rect.y > 660, `expected field to use the later OIB anchor, got y=${rect.y}`);
+  assert.ok(rect.y < 690, `expected field below the signer OIB, got y=${rect.y}`);
+  assert.ok(rect.x > 360 && rect.x < 390, `expected field aligned with signer block, got x=${rect.x}`);
+  assert.equal(Math.round(rect.width), 164);
+  assert.equal(Math.round(rect.height), 32);
 });
 
 test("signature field metadata collector returns preferred field for digital entries", () => {

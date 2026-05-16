@@ -26,12 +26,10 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.security.PrivateKey;
 import java.security.cert.X509Certificate;
-import java.text.SimpleDateFormat;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Date;
 import java.util.Deque;
 import java.util.HashSet;
 import java.util.List;
@@ -189,18 +187,14 @@ public final class SigningService {
     }
 
     private String buildAppearanceText(TokenService.Credential credential) {
-        String timestamp = new SimpleDateFormat("dd.MM.yyyy HH:mm:ss").format(new Date());
-        return "Digitalno potpisao:\n"
-                + safeText(credential.commonName()) + "\n"
-                + "OIB/SN: " + safeText(credential.serialNumber()) + "\n"
-                + "Organizacija: " + safeText(credential.organization()) + "\n"
-                + "Vrijeme: " + timestamp;
+        return "Kvalificirani digitalni potpis\n"
+                + safeText(credential.commonName());
     }
 
     private PdfFont tryLoadUnicodeFont() {
         String[] candidates = {
-                "C:/Windows/Fonts/arial.ttf",
                 "C:/Windows/Fonts/segoeui.ttf",
+                "C:/Windows/Fonts/arial.ttf",
                 "C:/Windows/Fonts/calibri.ttf",
                 "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
         };

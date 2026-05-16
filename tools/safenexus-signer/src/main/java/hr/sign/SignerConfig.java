@@ -126,7 +126,7 @@ public final class SignerConfig {
                 parseIntOrNull(properties.getProperty("fina.slotIndex", "")),
                 properties.getProperty("reason", "Digitalni potpis"),
                 properties.getProperty("location", "Hrvatska"),
-                parseFloat(properties.getProperty("font.size"), 8f),
+                parseFloat(properties.getProperty("font.size"), 7.5f),
                 Boolean.parseBoolean(properties.getProperty("fallback.keyword.enabled", "true")),
                 firstNonBlank(properties.getProperty("fallback.keyword", ""), properties.getProperty("keyword", "")),
                 Boolean.parseBoolean(properties.getProperty("fallback.case.insensitive", properties.getProperty("case.insensitive", "true"))),
@@ -159,7 +159,7 @@ public final class SignerConfig {
         properties.setProperty("fina.pinMode", "prompt");
         properties.setProperty("reason", "Digitalni potpis");
         properties.setProperty("location", "Hrvatska");
-        properties.setProperty("font.size", "8");
+        properties.setProperty("font.size", "7.5");
         properties.setProperty("fallback.keyword.enabled", "true");
         properties.setProperty("fallback.keyword", "");
         properties.setProperty("fallback.case.insensitive", "true");

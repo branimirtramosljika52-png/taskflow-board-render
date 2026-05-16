@@ -65,7 +65,7 @@ public final class SignerSettingsDialog {
         JTextField rectHeight = new JTextField(properties.getProperty("rect.height.cm", "2"), 8);
         JTextField offsetDown = new JTextField(properties.getProperty("offset.down.cm", "2.2"), 8);
         JTextField offsetLeft = new JTextField(properties.getProperty("offset.left.cm", "2.6"), 8);
-        JTextField fontSize = new JTextField(properties.getProperty("font.size", "8"), 8);
+        JTextField fontSize = new JTextField(properties.getProperty("font.size", "7.5"), 8);
         JTextField reason = new JTextField(properties.getProperty("reason", "Digitalni potpis"), 32);
         JTextField location = new JTextField(properties.getProperty("location", "Hrvatska"), 32);
         JCheckBox skipAlreadySigned = new JCheckBox("Preskoci ako je vec potpisano");

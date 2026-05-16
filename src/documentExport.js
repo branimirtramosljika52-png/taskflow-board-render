@@ -12,6 +12,7 @@ import CDP from "chrome-remote-interface";
 import Docxtemplater from "docxtemplater";
 import JSZip from "jszip";
 import mammoth from "mammoth";
+import { getDocument as getPdfJsDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import {
   PDFDocument as PdfLibDocument,
   PDFName,
@@ -5428,35 +5429,57 @@ function pdfBufferFromDocument(doc) {
   });
 }
 
-function resolvePdfSignatureFieldRect(spec = {}, page, index = 0, totalFields = 1) {
+function resolvePdfSignatureFieldRect(spec = {}, page, index = 0, totalFields = 1, anchor = null) {
   const pageWidth = page.getWidth();
   const pageHeight = page.getHeight();
-  const fallbackHeight = 38;
+  const fallbackHeight = 32;
   const sideMargin = 42;
-  const columnGap = 18;
+  const columnGap = 28;
   const columnCount = Math.max(1, Math.min(2, Number(totalFields || 1) > 1 ? 2 : 1));
   const columnWidth = columnCount > 1
     ? Math.max(180, (pageWidth - (sideMargin * 2) - columnGap) / 2)
     : Math.max(220, pageWidth - (sideMargin * 2));
-  const fallbackWidth = Math.max(190, Math.min(240, columnWidth - 18));
+  const fallbackWidth = Math.max(148, Math.min(164, columnWidth - 24));
   const fallbackColumn = columnCount === 1 ? 1 : index % 2;
   const fallbackRow = columnCount === 1 ? 0 : Math.floor(index / 2);
+  const rightAlignedX = Math.max(sideMargin, pageWidth - fallbackWidth - 50);
   const fallbackX = columnCount === 1
-    ? Math.max(36, pageWidth - fallbackWidth - 54)
-    : sideMargin + (fallbackColumn * (columnWidth + columnGap)) + Math.max(0, (columnWidth - fallbackWidth) / 2);
-  const fallbackY = Math.max(96, 126 + (fallbackRow * (fallbackHeight + 18)));
+    ? rightAlignedX
+    : fallbackColumn === 0
+      ? sideMargin + Math.max(0, (columnWidth - fallbackWidth) / 2)
+      : rightAlignedX;
+  const fallbackY = Math.max(72, pageHeight - 170 - (fallbackRow * (fallbackHeight + 22)));
+  const anchorWidth = Math.max(0, Number(anchor?.width) || 0);
+  const anchorX = Number(anchor?.x);
+  const anchorY = Number(anchor?.y);
   const width = Number.isFinite(Number(spec.width)) && Number(spec.width) > 20
     ? Math.min(Number(spec.width), pageWidth - 24)
     : fallbackWidth;
   const height = Number.isFinite(Number(spec.height)) && Number(spec.height) > 12
     ? Math.min(Number(spec.height), pageHeight - 24)
     : fallbackHeight;
+  const anchoredX = Number.isFinite(anchorX)
+    ? Math.min(
+      Math.max(12, (anchorX + (anchorWidth / 2)) - (width / 2)),
+      Math.max(12, pageWidth - width - 12),
+    )
+    : Number.NaN;
+  const anchoredY = Number.isFinite(anchorY)
+    ? Math.min(
+      Math.max(12, anchorY - height - 28),
+      Math.max(12, pageHeight - height - 12),
+    )
+    : Number.NaN;
   const x = Number.isFinite(Number(spec.x))
     ? Math.min(Math.max(12, Number(spec.x)), Math.max(12, pageWidth - width - 12))
-    : Math.min(fallbackX, Math.max(12, pageWidth - width - 12));
+    : Number.isFinite(anchoredX)
+      ? anchoredX
+      : Math.min(fallbackX, Math.max(12, pageWidth - width - 12));
   const y = Number.isFinite(Number(spec.y))
     ? Math.min(Math.max(12, Number(spec.y)), Math.max(12, pageHeight - height - 12))
-    : Math.min(fallbackY, Math.max(12, pageHeight - height - 12));
+    : Number.isFinite(anchoredY)
+      ? anchoredY
+      : Math.min(fallbackY, Math.max(12, pageHeight - height - 12));
 
   return { x, y, width, height };
 }
@@ -5472,33 +5495,27 @@ function resolvePdfSignatureFieldPageIndex(spec = {}, pageCount = 1) {
 }
 
 function drawPdfSignatureFieldPlaceholder(page, rect, spec = {}, fonts = {}) {
-  page.drawRectangle({
-    x: rect.x,
-    y: rect.y,
-    width: rect.width,
-    height: rect.height,
-    borderColor: rgb(0.48, 0.38, 1),
-    borderWidth: 0.8,
-    color: rgb(0.985, 0.99, 1),
-    opacity: 0.96,
-  });
+  const regularFont = fonts.regular || fonts.bold;
+  const boldFont = fonts.bold || fonts.regular;
+  const contentX = rect.x + 2;
+  const contentWidth = Math.max(40, rect.width - 4);
+  const signerName = clean(spec.name || spec.label || "Potpisnik");
   page.drawText("Kvalificirani digitalni potpis", {
-    x: rect.x + 10,
-    y: rect.y + rect.height - 17,
-    size: 8.5,
-    font: fonts.bold,
-    color: rgb(0.35, 0.28, 0.88),
-    maxWidth: Math.max(40, rect.width - 20),
+    x: contentX,
+    y: rect.y + Math.max(17, rect.height - 12),
+    size: 7.2,
+    font: regularFont,
+    color: rgb(0.18, 0.2, 0.24),
+    maxWidth: contentWidth,
   });
-  const signerLabel = clean(spec.label || spec.roleLabel);
-  if (signerLabel) {
-    page.drawText(signerLabel, {
-      x: rect.x + 10,
-      y: rect.y + 9,
-      size: 7.5,
-      font: fonts.regular,
-      color: rgb(0.24, 0.29, 0.38),
-      maxWidth: Math.max(40, rect.width - 20),
+  if (signerName) {
+    page.drawText(signerName, {
+      x: contentX,
+      y: rect.y + 5,
+      size: 8.2,
+      font: boldFont,
+      color: rgb(0.05, 0.06, 0.08),
+      maxWidth: contentWidth,
     });
   }
 }
@@ -5534,6 +5551,135 @@ async function embedPdfSignaturePlaceholderFonts(pdfDoc) {
   };
 }
 
+function hasExplicitPdfSignatureFieldPosition(spec = {}) {
+  return Number.isFinite(Number(spec.x)) && Number.isFinite(Number(spec.y));
+}
+
+function hasExplicitPdfSignatureFieldPage(spec = {}) {
+  return Number.isFinite(Number(spec.pageIndex))
+    || (Number.isFinite(Number(spec.page)) && Number(spec.page) > 0);
+}
+
+function normalizePdfSignatureAnchorDigits(value = "") {
+  return clean(value).replace(/\D/g, "");
+}
+
+function normalizePdfSignatureTextItem(item = {}) {
+  const rawTransform = Array.isArray(item.transform) ? item.transform : [];
+  const x = Number(rawTransform[4]);
+  const y = Number(rawTransform[5]);
+  const width = Math.max(0, Number(item.width) || 0);
+  const transformHeight = Math.abs(Number(rawTransform[3]) || 0);
+  const height = Math.max(0, Number(item.height) || transformHeight || 0);
+  const str = clean(item.str);
+  if (!str || !Number.isFinite(x) || !Number.isFinite(y)) {
+    return null;
+  }
+  return {
+    str,
+    digits: normalizePdfSignatureAnchorDigits(str),
+    x,
+    y,
+    width,
+    height,
+    endX: x + width,
+  };
+}
+
+function buildPdfSignatureTextLines(items = []) {
+  const lines = [];
+  const sorted = [...items].sort((left, right) => {
+    if (Math.abs(right.y - left.y) > 2.5) {
+      return right.y - left.y;
+    }
+    return left.x - right.x;
+  });
+  sorted.forEach((item) => {
+    const line = lines.find((candidate) => Math.abs(candidate.y - item.y) <= 2.5);
+    if (!line) {
+      lines.push({
+        items: [item],
+        str: item.str,
+        digits: item.digits,
+        x: item.x,
+        y: item.y,
+        width: item.width,
+        height: item.height,
+        endX: item.endX,
+      });
+      return;
+    }
+    line.items.push(item);
+    line.items.sort((left, right) => left.x - right.x);
+    line.str = line.items.map((entry) => entry.str).join(" ");
+    line.digits = normalizePdfSignatureAnchorDigits(line.str);
+    line.x = Math.min(line.x, item.x);
+    line.y = Math.max(line.y, item.y);
+    line.endX = Math.max(line.endX, item.endX);
+    line.width = Math.max(0, line.endX - line.x);
+    line.height = Math.max(line.height, item.height);
+  });
+  return lines;
+}
+
+async function extractPdfSignatureTextAnchors(pdfBuffer = Buffer.alloc(0)) {
+  const anchors = [];
+  let loadingTask = null;
+  try {
+    loadingTask = getPdfJsDocument({
+      data: new Uint8Array(pdfBuffer),
+      disableFontFace: true,
+      isEvalSupported: false,
+      useSystemFonts: true,
+      verbosity: 0,
+    });
+    const document = await loadingTask.promise;
+    for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+      const page = await document.getPage(pageNumber);
+      const textContent = await page.getTextContent({ disableCombineTextItems: false });
+      const items = (Array.isArray(textContent?.items) ? textContent.items : [])
+        .map((item) => normalizePdfSignatureTextItem(item))
+        .filter(Boolean);
+      anchors.push({
+        pageNumber,
+        items,
+        lines: buildPdfSignatureTextLines(items),
+      });
+    }
+  } catch {
+    return [];
+  } finally {
+    try {
+      await loadingTask?.destroy?.();
+    } catch {
+      // Best effort cleanup only.
+    }
+  }
+  return anchors;
+}
+
+function findPdfSignatureOibAnchor(textAnchors = [], signatureFieldOib = "") {
+  const oib = normalizePdfSignatureFieldOib(signatureFieldOib);
+  if (!oib) {
+    return null;
+  }
+  for (let pageIndex = textAnchors.length - 1; pageIndex >= 0; pageIndex -= 1) {
+    const page = textAnchors[pageIndex];
+    const candidates = [
+      ...page.items
+        .filter((item) => item.digits.includes(oib))
+        .map((item) => ({ ...item, pageNumber: page.pageNumber, source: "oib" })),
+      ...page.lines
+        .filter((candidate) => candidate.digits.includes(oib))
+        .map((line) => ({ ...line, pageNumber: page.pageNumber, source: "oib_line" })),
+    ];
+    if (candidates.length > 0) {
+      return candidates.sort((left, right) => left.y - right.y)[0];
+    }
+  }
+  return null;
+}
+
 export async function addPdfSignatureFieldsToBuffer(pdfBuffer = Buffer.alloc(0), signatureFields = []) {
   const safeBuffer = Buffer.isBuffer(pdfBuffer) ? pdfBuffer : Buffer.from(pdfBuffer ?? []);
   const normalizedFields = (Array.isArray(signatureFields) ? signatureFields : [])
@@ -5557,15 +5703,34 @@ export async function addPdfSignatureFieldsToBuffer(pdfBuffer = Buffer.alloc(0),
   const existingFieldNames = new Set(form.getFields().map((field) => field.getName()));
   const fonts = await embedPdfSignaturePlaceholderFonts(pdfDoc);
   const addedFieldNames = new Set();
+  const needsTextAnchors = normalizedFields.some((field) => (
+    !hasExplicitPdfSignatureFieldPosition(field)
+    && normalizePdfSignatureFieldOib(field.signatureFieldOib)
+  ));
+  const textAnchors = needsTextAnchors ? await extractPdfSignatureTextAnchors(safeBuffer) : [];
 
   normalizedFields.forEach((field, index) => {
     if (existingFieldNames.has(field.fieldName) || addedFieldNames.has(field.fieldName)) {
       return;
     }
 
-    const pageIndex = resolvePdfSignatureFieldPageIndex(field, pages.length);
+    const explicitPageIndex = resolvePdfSignatureFieldPageIndex(field, pages.length);
+    const oibAnchor = hasExplicitPdfSignatureFieldPosition(field)
+      ? null
+      : findPdfSignatureOibAnchor(textAnchors, field.signatureFieldOib);
+    const canUseAnchorPage = oibAnchor
+      && (!hasExplicitPdfSignatureFieldPage(field) || Math.max(0, oibAnchor.pageNumber - 1) === explicitPageIndex);
+    const pageIndex = canUseAnchorPage
+      ? Math.min(Math.max(0, oibAnchor.pageNumber - 1), pages.length - 1)
+      : explicitPageIndex;
     const page = pages[pageIndex];
-    const rect = resolvePdfSignatureFieldRect(field, page, index, normalizedFields.length);
+    const rect = resolvePdfSignatureFieldRect(
+      field,
+      page,
+      index,
+      normalizedFields.length,
+      canUseAnchorPage ? oibAnchor : null,
+    );
     if (field.drawPlaceholder) {
       drawPdfSignatureFieldPlaceholder(page, rect, field, fonts);
     }
@@ -5971,18 +6136,18 @@ async function renderPdfSignatureGroup(doc, helpers, title, items = [], signatur
       const fieldRect = {
         x: x + 16,
         y: y + estimatedHeight - 56,
-        width: Math.max(220, cardWidth - 32),
-        height: 34,
+        width: Math.max(160, Math.min(190, cardWidth - 32)),
+        height: 32,
       };
-      doc.save();
-      doc.roundedRect(fieldRect.x, fieldRect.y, fieldRect.width, fieldRect.height, 10);
-      doc.lineWidth(0.8);
-      doc.dash(5, { space: 3 });
-      doc.strokeColor("#111111").stroke();
-      doc.undash();
-      doc.restore();
-      doc.font("dejavu-bold").fontSize(9).fillColor("#7b61ff").text("Kvalificirani digitalni potpis", x + 28, y + estimatedHeight - 45, {
-        width: Math.max(200, cardWidth - 56),
+      const fieldX = x + ((cardWidth - fieldRect.width) / 2);
+      fieldRect.x = fieldX;
+      doc.font("dejavu").fontSize(7.4).fillColor("#2f3540").text("Kvalificirani digitalni potpis", fieldRect.x + 2, fieldRect.y + 7, {
+        width: fieldRect.width - 4,
+        align: "left",
+      });
+      doc.font("dejavu-bold").fontSize(8.6).fillColor("#111827").text(name, fieldRect.x + 2, fieldRect.y + 18, {
+        width: fieldRect.width - 4,
+        align: "left",
       });
       const signatureField = normalizePdfSignatureFieldSpec({
         ...item,

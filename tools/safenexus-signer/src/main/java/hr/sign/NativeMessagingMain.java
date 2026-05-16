@@ -225,7 +225,7 @@ public final class NativeMessagingMain {
         settings.put("rectHeightCm", raw.getProperty("rect.height.cm", "2"));
         settings.put("offsetDownCm", raw.getProperty("offset.down.cm", "2.2"));
         settings.put("offsetLeftCm", raw.getProperty("offset.left.cm", "2.6"));
-        settings.put("fontSize", raw.getProperty("font.size", "8"));
+        settings.put("fontSize", raw.getProperty("font.size", "7.5"));
         settings.put("reason", config.reason());
         settings.put("location", config.location());
         return settings;

@@ -51932,19 +51932,33 @@ body.is-signature-review-open::before {
   position: absolute;
   left: auto;
   top: auto;
-  max-width: min(220px, 34%);
-  min-height: 32px;
-  padding: 7px 10px;
-  border: 1px solid rgba(37, 99, 235, 0.5);
-  border-radius: 12px;
-  background: rgba(239, 246, 255, 0.9);
-  color: #1d4ed8;
-  font-size: 11px;
-  font-weight: 900;
-  line-height: 1.15;
-  text-align: center;
+  max-width: min(190px, 30%);
+  min-height: 26px;
+  padding: 1px 2px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #111827;
+  font-size: 8.5px;
+  font-weight: 500;
+  line-height: 1.2;
+  text-align: left;
   pointer-events: none;
-  box-shadow: 0 12px 30px rgba(30, 64, 175, 0.12);
+  box-shadow: none;
+}
+
+.signature-review-field-marker span,
+.signature-review-field-marker strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signature-review-field-marker strong {
+  margin-top: 2px;
+  font-size: 9.6px;
+  font-weight: 800;
 }
 
 .signature-review-active-actions {
@@ -52210,16 +52224,30 @@ body.is-signature-review-open::before {
 
 .signature-preview-marker {
   position: absolute;
-  min-height: 34px;
-  padding: 6px;
-  border: 2px solid rgba(37, 99, 235, 0.78);
-  border-radius: 8px;
-  background: rgba(219, 234, 254, 0.76);
-  color: #1d4ed8;
-  font-size: 10px;
-  font-weight: 900;
+  min-height: 18px;
+  padding: 1px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #111827;
+  font-size: 5.5px;
+  font-weight: 500;
   line-height: 1.2;
-  text-align: center;
+  text-align: left;
+}
+
+.signature-preview-marker span,
+.signature-preview-marker strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signature-preview-marker strong {
+  margin-top: 1px;
+  font-size: 6px;
+  font-weight: 800;
 }
 
 .signature-preview-empty {

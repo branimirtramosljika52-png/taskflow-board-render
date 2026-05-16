@@ -31654,18 +31654,27 @@ function renderSignatureReviewPanel() {
       frame.setAttribute("aria-label", activeItem.fileName || "PDF preview");
       stage.append(frame);
       if (activeItem.field) {
-        const marker = document.createElement("div");
-        marker.className = "signature-review-field-marker";
-        const pageWidth = 595;
-        const pageHeight = 842;
-        const left = Math.max(4, Math.min(82, (Number(activeItem.field.x || 0) / pageWidth) * 100));
-        const width = Math.max(10, Math.min(34, (Number(activeItem.field.width || 120) / pageWidth) * 100));
-        const top = Math.max(4, Math.min(88, 100 - (((Number(activeItem.field.y || 0) + Number(activeItem.field.height || 50)) / pageHeight) * 100)));
-        marker.style.left = `${left}%`;
-        marker.style.top = `${top}%`;
-        marker.style.width = `${width}%`;
-        marker.textContent = "Ovdje ide digitalni potpis";
-        stage.append(marker);
+        const markerPage = Math.round(Number(activeItem.field.page || activeItem.field.pageNumber || controls.page || 1));
+        if (!Number.isFinite(markerPage) || markerPage <= 0 || markerPage === controls.page) {
+          const marker = document.createElement("div");
+          marker.className = "signature-review-field-marker";
+          const pageWidth = 595;
+          const pageHeight = 842;
+          const left = Math.max(4, Math.min(82, (Number(activeItem.field.x || 0) / pageWidth) * 100));
+          const width = Math.max(10, Math.min(30, (Number(activeItem.field.width || 120) / pageWidth) * 100));
+          const height = Math.max(3.6, Math.min(7.5, (Number(activeItem.field.height || 32) / pageHeight) * 100));
+          const top = Math.max(4, Math.min(88, 100 - (((Number(activeItem.field.y || 0) + Number(activeItem.field.height || 32)) / pageHeight) * 100)));
+          marker.style.left = `${left}%`;
+          marker.style.top = `${top}%`;
+          marker.style.width = `${width}%`;
+          marker.style.height = `${height}%`;
+          const markerTitle = document.createElement("span");
+          markerTitle.textContent = "Kvalificirani digitalni potpis";
+          const markerName = document.createElement("strong");
+          markerName.textContent = activeItem.signerName || activeItem.signer || "Potpisnik";
+          marker.append(markerTitle, markerName);
+          stage.append(marker);
+        }
       } else {
         const missing = document.createElement("p");
         missing.className = "signature-preview-empty";
@@ -31792,7 +31801,7 @@ const DEFAULT_PDF_SIGNER_WEB_SETTINGS = {
   rectHeightCm: "2",
   offsetDownCm: "2.2",
   offsetLeftCm: "2.6",
-  fontSize: "8",
+  fontSize: "7.5",
   reason: "Digitalni potpis",
   location: "Hrvatska",
 };
@@ -31895,12 +31904,18 @@ function openSignatureReviewPreviewModal(item = {}, pdfUrl = "") {
     const marker = document.createElement("div");
     marker.className = "signature-preview-marker";
     const left = Math.max(4, Math.min(78, (Number(item.field.x || 0) / 595) * 100));
-    const width = Math.max(12, Math.min(44, (Number(item.field.width || 120) / 595) * 100));
-    const top = Math.max(4, Math.min(86, 100 - ((Number(item.field.y || 0) + Number(item.field.height || 50)) / 842) * 100));
+    const width = Math.max(12, Math.min(36, (Number(item.field.width || 120) / 595) * 100));
+    const height = Math.max(3.8, Math.min(8, (Number(item.field.height || 32) / 842) * 100));
+    const top = Math.max(4, Math.min(86, 100 - ((Number(item.field.y || 0) + Number(item.field.height || 32)) / 842) * 100));
     marker.style.left = `${left}%`;
     marker.style.top = `${top}%`;
     marker.style.width = `${width}%`;
-    marker.textContent = "Ovdje ide digitalni potpis";
+    marker.style.height = `${height}%`;
+    const markerTitle = document.createElement("span");
+    markerTitle.textContent = "Kvalificirani digitalni potpis";
+    const markerName = document.createElement("strong");
+    markerName.textContent = item.signerName || item.signer || "Potpisnik";
+    marker.append(markerTitle, markerName);
     page.append(marker);
   } else {
     const empty = document.createElement("p");
