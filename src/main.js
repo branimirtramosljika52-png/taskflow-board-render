@@ -1657,6 +1657,9 @@ const state = {
       activeDocumentId: "",
       activeReviewKey: "",
       activePreviewUrl: "",
+      activePreviewPage: 1,
+      activePreviewMode: "fit-width",
+      activePreviewZoom: 85,
       activePreviewLoading: false,
       activePreviewError: "",
       error: "",
@@ -30451,6 +30454,9 @@ function closeSignatureReviewPanel() {
     activeDocumentId: "",
     activeReviewKey: "",
     activePreviewUrl: "",
+    activePreviewPage: 1,
+    activePreviewMode: "fit-width",
+    activePreviewZoom: 85,
     activePreviewLoading: false,
     activePreviewError: "",
     error: "",
@@ -30540,6 +30546,9 @@ function activateSignatureReviewItem(reviewKey = "") {
   state.signatures.review.activeReviewKey = key;
   state.signatures.review.activeDocumentId = item.documentId || "";
   state.signatures.review.activePreviewUrl = "";
+  state.signatures.review.activePreviewPage = Math.max(1, Number.parseInt(item.field?.page || "1", 10) || 1);
+  state.signatures.review.activePreviewMode = "fit-width";
+  state.signatures.review.activePreviewZoom = 85;
   state.signatures.review.activePreviewError = "";
   state.signatures.review.activePreviewLoading = false;
   renderSignatureReviewPanel();
@@ -30569,6 +30578,118 @@ function moveToNextSignatureReviewItem(currentReviewKey = "") {
 function updateSignatureReviewDecisionAndAdvance(reviewKey = "", status = "") {
   updateSignatureReviewDecision(reviewKey, { status });
   moveToNextSignatureReviewItem(reviewKey);
+}
+
+function getSignatureReviewPdfControls(item = {}) {
+  const review = state.signatures.review || {};
+  return {
+    page: Math.max(1, Number.parseInt(review.activePreviewPage || item.field?.page || "1", 10) || 1),
+    mode: ["fit-width", "fit-page", "custom"].includes(review.activePreviewMode) ? review.activePreviewMode : "fit-width",
+    zoom: Math.max(50, Math.min(180, Number.parseInt(review.activePreviewZoom || "85", 10) || 85)),
+  };
+}
+
+function setSignatureReviewPdfControls(patch = {}) {
+  const activeItem = getActiveSignatureReviewItem();
+  const current = getSignatureReviewPdfControls(activeItem || {});
+  state.signatures.review.activePreviewPage = Math.max(1, Number.parseInt(patch.page ?? current.page, 10) || 1);
+  state.signatures.review.activePreviewMode = ["fit-width", "fit-page", "custom"].includes(patch.mode) ? patch.mode : current.mode;
+  state.signatures.review.activePreviewZoom = Math.max(50, Math.min(180, Number.parseInt(patch.zoom ?? current.zoom, 10) || 85));
+  renderSignatureReviewPanel();
+}
+
+function buildSignatureReviewPdfFrameUrl(baseUrl = "", controls = {}) {
+  const safeBase = String(baseUrl || "").split("#")[0];
+  if (!safeBase) {
+    return "";
+  }
+  const page = Math.max(1, Number.parseInt(controls.page || "1", 10) || 1);
+  const mode = controls.mode || "fit-width";
+  const zoom = Math.max(50, Math.min(180, Number.parseInt(controls.zoom || "85", 10) || 85));
+  const zoomValue = mode === "fit-page"
+    ? "page-fit"
+    : mode === "fit-width"
+      ? "page-width"
+      : String(zoom);
+  return `${safeBase}#toolbar=0&navpanes=0&scrollbar=1&page=${page}&zoom=${zoomValue}`;
+}
+
+function createSignatureReviewPdfControl(label = "", title = "", isActive = false, onClick = null) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = ["signature-review-pdf-control", isActive ? "is-active" : ""].filter(Boolean).join(" ");
+  button.textContent = label;
+  button.title = title || label;
+  if (typeof onClick === "function") {
+    button.addEventListener("click", onClick);
+  }
+  return button;
+}
+
+function createSignatureReviewActiveActions(activeItem = {}, activeDecision = {}) {
+  const wrap = document.createElement("section");
+  wrap.className = "signature-review-active-actions";
+
+  const signerLine = document.createElement("div");
+  signerLine.className = "signature-review-decision-signer";
+  const signerIcon = document.createElement("span");
+  signerIcon.innerHTML = getWorkOrderIconMarkup("signature");
+  const signerCopy = document.createElement("span");
+  signerCopy.textContent = `${activeItem.label}: ${activeItem.signer || "nije upisano"}`;
+  signerLine.append(signerIcon, signerCopy);
+
+  const decisionActions = document.createElement("div");
+  decisionActions.className = "signature-review-decision-actions";
+  [
+    ["approved_for_signing", "OK za potpis", "status", "is-ok"],
+    ["skipped_with_comment", "Preskoči", "reset", "is-skip"],
+    ["rejected_with_comment", "Ne potpisuj", "trash", "is-reject"],
+  ].forEach(([status, label, iconName, tone]) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = [
+      "signature-review-choice-button",
+      tone,
+      activeDecision.status === status ? "is-active" : "",
+    ].filter(Boolean).join(" ");
+    button.innerHTML = `${getWorkOrderIconMarkup(iconName)}<span>${label}</span>`;
+    button.disabled = activeItem.status === "signed" || activeItem.status === "error";
+    button.addEventListener("click", () => {
+      if (status === "approved_for_signing") {
+        updateSignatureReviewDecisionAndAdvance(activeItem.reviewKey, status);
+        return;
+      }
+      updateSignatureReviewDecision(activeItem.reviewKey, { status });
+      window.setTimeout(() => {
+        document.querySelector(`[data-signature-review-comment="${CSS.escape(String(activeItem.reviewKey || ""))}"]`)?.focus();
+      }, 0);
+    });
+    decisionActions.append(button);
+  });
+
+  const comment = document.createElement("textarea");
+  comment.className = "signature-review-comment";
+  comment.dataset.signatureReviewComment = String(activeItem.reviewKey || "");
+  comment.rows = 2;
+  comment.placeholder = activeDecision.status === "rejected_with_comment"
+    ? "Razlog zašto se ovaj dokument ne potpisuje..."
+    : activeDecision.status === "skipped_with_comment"
+      ? "Kratki komentar za preskok..."
+      : "Komentar za pregled...";
+  comment.value = activeDecision.comment || "";
+  comment.addEventListener("input", (event) => {
+    const key = String(activeItem.reviewKey || "").trim();
+    state.signatures.review.decisions = {
+      ...state.signatures.review.decisions,
+      [key]: {
+        ...getSignatureReviewDecision(key),
+        comment: event.currentTarget.value,
+      },
+    };
+  });
+
+  wrap.append(signerLine, decisionActions, comment);
+  return wrap;
 }
 
 function renderSignatureReviewPanel() {
@@ -30655,86 +30776,6 @@ function renderSignatureReviewPanel() {
   workspace.className = "signature-review-workspace";
   const sidebar = document.createElement("div");
   sidebar.className = "signature-review-sidebar";
-
-  if (activeItem) {
-    const activeDecision = getSignatureReviewDecision(activeItem.reviewKey);
-    const decisionCard = document.createElement("section");
-    decisionCard.className = "signature-review-decision-card";
-
-    const decisionKicker = document.createElement("p");
-    decisionKicker.className = "section-kicker";
-    decisionKicker.textContent = "Odabrani dokument";
-
-    const decisionTitle = document.createElement("h4");
-    decisionTitle.textContent = activeItem.fileName || "zapisnik.pdf";
-
-    const decisionMeta = document.createElement("p");
-    decisionMeta.className = "helper-copy";
-    decisionMeta.textContent = [
-      activeItem.workOrderNumber ? `RN ${activeItem.workOrderNumber}` : "",
-      activeItem.companyName || activeItem.sourceEntry?.context?.company?.name || "",
-      activeItem.locationName || activeItem.sourceEntry?.context?.location?.name || "",
-    ].filter(Boolean).join(" · ");
-
-    const signerLine = document.createElement("div");
-    signerLine.className = "signature-review-decision-signer";
-    const signerIcon = document.createElement("span");
-    signerIcon.innerHTML = getWorkOrderIconMarkup("signature");
-    const signerCopy = document.createElement("span");
-    signerCopy.textContent = `${activeItem.label}: ${activeItem.signer || "nije upisano"}`;
-    signerLine.append(signerIcon, signerCopy);
-
-    const decisionActions = document.createElement("div");
-    decisionActions.className = "signature-review-decision-actions";
-    [
-      ["approved_for_signing", "OK za potpis", "status"],
-      ["rejected_with_comment", "Nije OK", "trash"],
-    ].forEach(([status, label, iconName]) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = [
-        "signature-review-choice-button",
-        status === "approved_for_signing" ? "is-ok" : "is-reject",
-        activeDecision.status === status ? "is-active" : "",
-      ].filter(Boolean).join(" ");
-      button.innerHTML = `${getWorkOrderIconMarkup(iconName)}<span>${label}</span>`;
-      button.disabled = activeItem.status === "signed" || activeItem.status === "error";
-      button.addEventListener("click", () => {
-        if (status === "approved_for_signing") {
-          updateSignatureReviewDecisionAndAdvance(activeItem.reviewKey, status);
-          return;
-        }
-        updateSignatureReviewDecision(activeItem.reviewKey, { status });
-        window.setTimeout(() => {
-          document.querySelector(`[data-signature-review-comment="${CSS.escape(String(activeItem.reviewKey || ""))}"]`)?.focus();
-        }, 0);
-      });
-      decisionActions.append(button);
-    });
-
-    const comment = document.createElement("textarea");
-    comment.className = "signature-review-comment";
-    comment.dataset.signatureReviewComment = String(activeItem.reviewKey || "");
-    comment.rows = 3;
-    comment.placeholder = activeDecision.status === "rejected_with_comment"
-      ? "Upiši razlog zašto ovaj dokument nije OK..."
-      : "Komentar za pregled...";
-    comment.value = activeDecision.comment || "";
-    comment.addEventListener("input", (event) => {
-      const key = String(activeItem.reviewKey || "").trim();
-      state.signatures.review.decisions = {
-        ...state.signatures.review.decisions,
-        [key]: {
-          ...getSignatureReviewDecision(key),
-          comment: event.currentTarget.value,
-        },
-      };
-    });
-
-    decisionCard.append(decisionKicker, decisionTitle, decisionMeta, signerLine, decisionActions, comment);
-    sidebar.append(decisionCard);
-  }
-
   sidebar.append(...listBlocks);
 
   const preview = document.createElement("section");
@@ -30767,6 +30808,32 @@ function renderSignatureReviewPanel() {
     previewStatus.textContent = getSignatureReviewStatusLabel(activeDecision.status);
     previewHead.append(copy, previewStatus);
 
+    const controls = getSignatureReviewPdfControls(activeItem);
+    const toolbar = document.createElement("div");
+    toolbar.className = "signature-review-pdf-toolbar";
+    toolbar.append(
+      createSignatureReviewPdfControl("‹", "Prethodna stranica", false, () => {
+        setSignatureReviewPdfControls({ page: Math.max(1, controls.page - 1) });
+      }),
+      createSignatureReviewPdfControl(String(controls.page), "Trenutna stranica", true, null),
+      createSignatureReviewPdfControl("›", "Sljedeća stranica", false, () => {
+        setSignatureReviewPdfControls({ page: controls.page + 1 });
+      }),
+      createSignatureReviewPdfControl("Fit width", "Prilagodi širini", controls.mode === "fit-width", () => {
+        setSignatureReviewPdfControls({ mode: "fit-width" });
+      }),
+      createSignatureReviewPdfControl("Fit page", "Prilagodi stranici", controls.mode === "fit-page", () => {
+        setSignatureReviewPdfControls({ mode: "fit-page" });
+      }),
+      createSignatureReviewPdfControl("−", "Smanji zoom", false, () => {
+        setSignatureReviewPdfControls({ mode: "custom", zoom: controls.zoom - 10 });
+      }),
+      createSignatureReviewPdfControl(`${controls.zoom}%`, "Zoom", controls.mode === "custom", null),
+      createSignatureReviewPdfControl("+", "Povećaj zoom", false, () => {
+        setSignatureReviewPdfControls({ mode: "custom", zoom: controls.zoom + 10 });
+      }),
+    );
+
     const stage = document.createElement("div");
     stage.className = "signature-review-preview-stage";
     if (review.activePreviewLoading) {
@@ -30781,17 +30848,23 @@ function renderSignatureReviewPanel() {
       stage.append(error);
     } else if (review.activePreviewUrl) {
       const frame = document.createElement("iframe");
-      frame.src = review.activePreviewUrl;
+      frame.src = buildSignatureReviewPdfFrameUrl(review.activePreviewUrl, controls);
       frame.loading = "lazy";
       frame.referrerPolicy = "same-origin";
       frame.setAttribute("aria-label", activeItem.fileName || "PDF preview");
       stage.append(frame);
+      if (activeItem.field) {
+        const marker = document.createElement("div");
+        marker.className = "signature-review-field-marker";
+        marker.textContent = "Ovdje ide digitalni potpis";
+        stage.append(marker);
+      }
     }
 
     const previewBody = document.createElement("div");
     previewBody.className = "signature-review-preview-body";
     previewBody.append(stage);
-    preview.append(previewHead, previewBody);
+    preview.append(previewHead, toolbar, previewBody, createSignatureReviewActiveActions(activeItem, activeDecision));
   }
 
   workspace.append(sidebar, preview);

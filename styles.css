@@ -51160,20 +51160,17 @@ body.is-signature-review-open {
 }
 
 body.is-signature-review-open::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 2147482999;
-  background: rgba(15, 23, 42, 0.38);
+  display: none;
 }
 
 .signatures-review-panel:not([hidden]) {
   position: fixed;
-  top: clamp(72px, 8dvh, 96px);
-  right: clamp(14px, 2dvw, 28px);
-  bottom: clamp(14px, 2dvh, 28px);
-  left: clamp(14px, 2dvw, 28px);
-  z-index: 2147483000;
+  top: clamp(8px, 1.5dvh, 18px);
+  right: clamp(10px, 1.5dvw, 24px);
+  bottom: clamp(8px, 1.5dvh, 18px);
+  left: clamp(10px, 1.5dvw, 24px);
+  z-index: 2147483600;
+  isolation: isolate;
   grid-template-rows: auto minmax(0, 1fr) auto;
   width: auto;
   height: auto;
@@ -51183,8 +51180,10 @@ body.is-signature-review-open::before {
   padding: 10px;
   border-color: rgba(147, 197, 253, 0.92);
   border-radius: 18px;
-  background: linear-gradient(135deg, #ffffff 0%, #f8fbff 52%, #ffffff 100%);
-  box-shadow: 0 32px 92px rgba(15, 23, 42, 0.34);
+  background: #ffffff;
+  color: #172033;
+  opacity: 1;
+  box-shadow: 0 26px 84px rgba(15, 23, 42, 0.18);
 }
 
 .signatures-review-panel:not([hidden]) > .section-heading {
@@ -51192,7 +51191,7 @@ body.is-signature-review-open::before {
   min-height: 46px;
   padding: 0 2px 10px;
   border-bottom: 1px solid rgba(203, 213, 225, 0.7);
-  background: linear-gradient(135deg, #ffffff 0%, #f8fbff 100%);
+  background: #ffffff;
 }
 
 .signatures-settings-panel[hidden],
@@ -51274,7 +51273,7 @@ body.is-signature-review-open::before {
   border: 0;
   border-top: 1px solid rgba(203, 213, 225, 0.72);
   border-radius: 0;
-  background: linear-gradient(135deg, #ffffff 0%, #f8fbff 100%);
+  background: #ffffff;
   box-shadow: none;
 }
 
@@ -51301,9 +51300,9 @@ body.is-signature-review-open::before {
 
 @supports not (height: 100dvh) {
   .signatures-review-panel:not([hidden]) {
-    top: 72px;
+    top: 12px;
     right: 18px;
-    bottom: 18px;
+    bottom: 12px;
     left: 18px;
   }
 }
@@ -51325,8 +51324,8 @@ body.is-signature-review-open::before {
 
 .signature-review-workspace {
   display: grid;
-  grid-template-columns: minmax(360px, 430px) minmax(0, 1fr);
-  gap: 16px;
+  grid-template-columns: minmax(430px, 500px) minmax(0, 1fr);
+  gap: 14px;
   min-height: 0;
   height: 100%;
 }
@@ -51337,7 +51336,8 @@ body.is-signature-review-open::before {
   gap: 10px;
   min-height: 0;
   overflow: auto;
-  padding: 0 4px 2px 0;
+  padding: 0 6px 2px 0;
+  background: #ffffff;
 }
 
 .signature-review-decision-card {
@@ -51384,7 +51384,7 @@ body.is-signature-review-open::before {
 
 .signature-review-decision-actions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -51394,7 +51394,7 @@ body.is-signature-review-open::before {
   padding: 10px;
   border: 1px solid rgba(203, 213, 225, 0.78);
   border-radius: 14px;
-  background: linear-gradient(135deg, rgba(248, 250, 252, 0.94), rgba(255, 255, 255, 0.88));
+  background: #ffffff;
 }
 
 .signature-review-work-order-head strong {
@@ -51415,9 +51415,9 @@ body.is-signature-review-open::before {
 
 .signature-review-document {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) max-content;
   gap: 10px;
-  align-items: center;
+  align-items: start;
   width: 100%;
   padding: 10px 11px;
   border: 1px solid rgba(191, 219, 254, 0.84);
@@ -51465,10 +51465,10 @@ body.is-signature-review-open::before {
 
 .signature-review-document-copy span,
 .signature-review-document-copy small {
-  overflow: hidden;
   color: #64748b;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
 }
 
 .signature-review-actions-row {
@@ -51512,6 +51512,13 @@ body.is-signature-review-open::before {
   color: #047857;
 }
 
+.signature-review-choice-button.is-skip:hover,
+.signature-review-choice-button.is-skip.is-active {
+  border-color: rgba(245, 158, 11, 0.42);
+  background: #fffbeb;
+  color: #92400e;
+}
+
 .signature-review-choice-button.is-reject:hover,
 .signature-review-choice-button.is-reject.is-active {
   border-color: rgba(239, 68, 68, 0.38);
@@ -51526,7 +51533,7 @@ body.is-signature-review-open::before {
 
 .signature-review-comment {
   width: 100%;
-  min-height: 78px;
+  min-height: 60px;
   resize: none;
   border-radius: 14px;
   background: rgba(248, 250, 252, 0.9);
@@ -51565,14 +51572,14 @@ body.is-signature-review-open::before {
 
 .signature-review-preview {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   gap: 10px;
   min-width: 0;
   min-height: 0;
-  padding: 14px;
+  padding: 12px;
   border: 1px solid rgba(191, 219, 254, 0.84);
   border-radius: 18px;
-  background: linear-gradient(135deg, rgba(255,255,255,.98), rgba(248,250,252,.94));
+  background: #ffffff;
 }
 
 .signature-review-preview-head,
@@ -51587,6 +51594,40 @@ body.is-signature-review-open::before {
   margin: 0;
   color: #172033;
   font-size: 18px;
+}
+
+.signature-review-pdf-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 7px;
+  border: 1px solid rgba(203, 213, 225, 0.8);
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.signature-review-pdf-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid rgba(191, 219, 254, 0.9);
+  border-radius: 10px;
+  background: #ffffff;
+  color: #172033;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.signature-review-pdf-control.is-active {
+  border-color: rgba(37, 99, 235, 0.42);
+  background: #eff6ff;
+  color: #1d4ed8;
 }
 
 .signature-review-preview-actions {
@@ -51614,7 +51655,7 @@ body.is-signature-review-open::before {
   overflow: hidden;
   border: 1px solid rgba(203, 213, 225, 0.78);
   border-radius: 14px;
-  background: #f8fafc;
+  background: #ffffff;
 }
 
 .signature-review-preview-stage iframe {
@@ -51622,12 +51663,51 @@ body.is-signature-review-open::before {
   height: 100%;
   min-height: 0;
   border: 0;
+  background: #ffffff;
+}
+
+.signature-review-field-marker {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  max-width: min(220px, 34%);
+  padding: 7px 10px;
+  border: 1px solid rgba(37, 99, 235, 0.5);
+  border-radius: 12px;
+  background: rgba(239, 246, 255, 0.9);
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.15;
+  text-align: center;
+  pointer-events: none;
+  box-shadow: 0 12px 30px rgba(30, 64, 175, 0.12);
+}
+
+.signature-review-active-actions {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.85fr) minmax(300px, 1fr) minmax(260px, 1.1fr);
+  gap: 10px;
+  align-items: stretch;
+  padding: 10px;
+  border: 1px solid rgba(203, 213, 225, 0.78);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 -10px 26px rgba(15, 23, 42, 0.04);
+}
+
+.signature-review-active-actions .signature-review-decision-signer {
+  min-height: 44px;
+}
+
+.signature-review-active-actions .signature-review-comment {
+  min-height: 44px;
 }
 
 @media (max-height: 760px) {
   .signatures-review-panel:not([hidden]) {
-    top: 56px;
-    bottom: 10px;
+    top: 8px;
+    bottom: 8px;
     padding: 8px;
   }
 
@@ -51636,14 +51716,40 @@ body.is-signature-review-open::before {
   }
 
   .signature-review-comment {
-    min-height: 58px;
+    min-height: 48px;
+  }
+
+  .signature-review-preview {
+    gap: 7px;
+    padding: 8px;
+  }
+
+  .signature-review-preview-head .helper-copy {
+    display: none;
+  }
+
+  .signature-review-pdf-toolbar {
+    padding: 5px;
+  }
+
+  .signature-review-pdf-control {
+    min-height: 30px;
+  }
+
+  .signature-review-active-actions {
+    grid-template-columns: minmax(180px, 0.8fr) minmax(260px, 1fr) minmax(220px, 1fr);
+    padding: 8px;
   }
 }
 
-@media (max-width: 1040px) {
+@media (max-width: 1280px) {
   .signature-review-workspace {
-    grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+    grid-template-columns: minmax(360px, 420px) minmax(0, 1fr);
     gap: 10px;
+  }
+
+  .signature-review-active-actions {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -51657,6 +51763,10 @@ body.is-signature-review-open::before {
 
   .signature-review-workspace {
     grid-template-columns: 1fr;
+  }
+
+  .signature-review-sidebar {
+    max-height: 38dvh;
   }
 
   .signature-review-preview {
