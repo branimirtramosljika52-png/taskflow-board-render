@@ -51260,6 +51260,7 @@ body.is-signature-review-open::before {
 .signatures-review-body {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
+  align-items: stretch;
   gap: 12px;
   height: 100%;
   min-height: 0;
@@ -51326,8 +51327,10 @@ body.is-signature-review-open::before {
 
 .signature-review-workspace {
   display: grid;
+  grid-row: 2;
   grid-template-columns: minmax(330px, 430px) minmax(0, 1fr);
   gap: clamp(12px, 1.1vw, 18px);
+  align-items: stretch;
   align-self: stretch;
   height: 100%;
   min-height: 0;
@@ -51335,10 +51338,16 @@ body.is-signature-review-open::before {
   overflow: hidden;
 }
 
+.signature-review-status-bar[hidden] + .signature-review-workspace {
+  grid-row: 1 / -1;
+}
+
 .signature-review-sidebar {
   display: grid;
   align-content: start;
   gap: 10px;
+  align-self: stretch;
+  height: 100%;
   min-height: 0;
   overflow: auto;
   padding: 14px;
@@ -51707,6 +51716,8 @@ body.is-signature-review-open::before {
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto;
   gap: 12px;
+  align-self: stretch;
+  height: 100%;
   min-width: 0;
   min-height: 0;
   max-width: 100%;
