@@ -29,6 +29,11 @@ function sanitizeDocument(document) {
     preferredField: String(document?.preferredField || ""),
     signatureFieldRole: String(document?.signatureFieldRole || ""),
     signatureFieldOib: String(document?.signatureFieldOib || ""),
+    signatureFieldsJson: String(document?.signatureFieldsJson || ""),
+    downloadUrl: String(document?.downloadUrl || ""),
+    uploadUrl: String(document?.uploadUrl || ""),
+    lockToken: String(document?.lockToken || document?.signingLockToken || ""),
+    signingLockToken: String(document?.signingLockToken || document?.lockToken || ""),
   };
 }
 

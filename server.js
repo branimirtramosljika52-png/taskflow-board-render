@@ -1286,10 +1286,15 @@ const COMPRESSIBLE_STATIC_EXTENSIONS = new Set([".css", ".html", ".js", ".json",
 const staticFileCache = new Map();
 let cachedRawSnapshotEntry = null;
 const scopedSnapshotCache = new Map();
-const SIGNATURE_BRIDGE_JOB_TTL_MS = 5 * 60 * 1000;
+const SIGNATURE_BRIDGE_JOB_TTL_MS = 10 * 60 * 1000;
 const SIGNATURE_BRIDGE_MAX_ITEMS = 80;
 const SIGNATURE_BRIDGE_CLAIM_TTL_MS = 20 * 60 * 1000;
+const SIGNATURE_BRIDGE_LOCK_TTL_MS = 10 * 60 * 1000;
 const signatureBridgeJobs = new Map();
+const signatureBridgeLocks = new Map();
+const signatureBridgeAuditLog = [];
+const signatureBridgeReviewLog = [];
+const signatureBridgeNotifications = [];
 
 function appendVaryHeader(response, value) {
   const normalizedValue = String(value ?? "").trim();
@@ -3153,6 +3158,7 @@ function collectGeneratedDocumentTemplateSignatureItemsFromValue(value = null, o
       const signerUserId = cleanSignatureExportText(item.signerUserId || item.userId);
       const signerEmail = cleanSignatureExportText(item.signerEmail || item.email);
       const signerOib = cleanSignatureExportText(item.signerOib || item.oib);
+      const signerTitle = cleanSignatureExportText(item.signerTitle || item.title);
       const hasScan = signatureMode === "scan" && cleanSignatureExportText(item.signatureImageUrl || item.signatureDataUrl || item.imageUrl);
       const signatureFieldRole = normalizeSignatureFieldRole(item.signatureFieldRole || item.signatureRole || "ZNR");
       const signatureFieldOib = normalizeSignatureFieldOib(item.signatureFieldOib || signerOib);
@@ -3167,6 +3173,7 @@ function collectGeneratedDocumentTemplateSignatureItemsFromValue(value = null, o
         signerUserId,
         signerEmail,
         signerOib,
+        signerTitle,
         signatureMode,
         signatureFieldRole,
         signatureFieldOib,
@@ -3234,6 +3241,12 @@ function resolveGeneratedDocumentTemplateSignatureMetadata(entry = {}) {
     signerOib: primaryField?.signatureFieldOib || "",
     signatureFieldsJson: signatureFields.length > 0 ? JSON.stringify(signatureFields.map((field) => ({
       fieldName: field.fieldName,
+      label: field.label || field.name || "",
+      name: field.name || field.label || "",
+      roleLabel: field.roleLabel || field.role || "",
+      signerTitle: field.signerTitle || "",
+      signerUserId: field.signerUserId || "",
+      signerEmail: field.signerEmail || "",
       page: field.page || "",
       x: Number.isFinite(Number(field.x)) ? Number(field.x) : null,
       y: Number.isFinite(Number(field.y)) ? Number(field.y) : null,
@@ -3687,8 +3700,111 @@ function cleanupSignatureBridgeJobs() {
   const now = Date.now();
   for (const [token, job] of signatureBridgeJobs.entries()) {
     if (!job || Number(job.expiresAtMs || 0) <= now) {
+      releaseSignatureBridgeJobLocks(job);
       signatureBridgeJobs.delete(token);
     }
+  }
+}
+
+function cleanupSignatureBridgeLocks() {
+  const now = Date.now();
+  for (const [key, lock] of signatureBridgeLocks.entries()) {
+    if (!lock || Number(lock.signingLockUntilMs || 0) <= now) {
+      signatureBridgeLocks.delete(key);
+    }
+  }
+}
+
+function getSignatureBridgeItemLockKey(item = {}) {
+  return [
+    String(item.workOrderId || "").trim(),
+    String(item.documentId || "").trim(),
+    String(item.preferredField || item.fieldName || item.id || "").trim(),
+  ].filter(Boolean).join(":");
+}
+
+function applySignatureBridgeLockToItem(item = {}, lock = {}, status = "locked") {
+  item.signingStatus = status;
+  item.signingLockByUserId = lock.signingLockByUserId || "";
+  item.signingLockByUserName = lock.signingLockByUserName || "";
+  item.signingLockUntil = lock.signingLockUntil || "";
+  item.signingLockUntilMs = Number(lock.signingLockUntilMs || 0) || 0;
+  item.signingLockToken = lock.signingLockToken || "";
+  return item;
+}
+
+function acquireSignatureBridgeItemLock(item = {}, user = {}) {
+  cleanupSignatureBridgeLocks();
+  const key = getSignatureBridgeItemLockKey(item);
+  if (!key) {
+    return item;
+  }
+  const existing = signatureBridgeLocks.get(key);
+  const userId = String(user?.id || "").trim();
+  if (
+    existing
+    && Number(existing.signingLockUntilMs || 0) > Date.now()
+    && String(existing.signingLockByUserId || "") !== userId
+  ) {
+    item.lockKey = key;
+    item.lockedByOther = true;
+    return applySignatureBridgeLockToItem(item, existing, "locked_by_other");
+  }
+
+  const untilMs = Date.now() + SIGNATURE_BRIDGE_LOCK_TTL_MS;
+  const lock = {
+    lockKey: key,
+    signingLockByUserId: userId,
+    signingLockByUserName: String(user?.fullName || user?.username || user?.email || "korisnik").trim(),
+    signingLockUntilMs: untilMs,
+    signingLockUntil: new Date(untilMs).toISOString(),
+    signingLockToken: randomUUID(),
+  };
+  signatureBridgeLocks.set(key, lock);
+  item.lockKey = key;
+  item.lockedByOther = false;
+  return applySignatureBridgeLockToItem(item, lock, "locked");
+}
+
+function releaseSignatureBridgeItemLock(item = {}) {
+  cleanupSignatureBridgeLocks();
+  const key = item.lockKey || getSignatureBridgeItemLockKey(item);
+  if (!key) {
+    return;
+  }
+  const existing = signatureBridgeLocks.get(key);
+  if (!existing || !item.signingLockToken || existing.signingLockToken === item.signingLockToken) {
+    signatureBridgeLocks.delete(key);
+  }
+}
+
+function releaseSignatureBridgeJobLocks(job = {}) {
+  if (!job || !Array.isArray(job.items)) {
+    return;
+  }
+  job.items.forEach((item) => releaseSignatureBridgeItemLock(item));
+}
+
+function refreshSignatureBridgeItemLock(item = {}) {
+  if (!item.signingLockToken || item.lockedByOther) {
+    return;
+  }
+  const key = item.lockKey || getSignatureBridgeItemLockKey(item);
+  const existing = key ? signatureBridgeLocks.get(key) : null;
+  if (!existing || existing.signingLockToken !== item.signingLockToken) {
+    return;
+  }
+  const untilMs = Date.now() + SIGNATURE_BRIDGE_LOCK_TTL_MS;
+  existing.signingLockUntilMs = untilMs;
+  existing.signingLockUntil = new Date(untilMs).toISOString();
+  applySignatureBridgeLockToItem(item, existing, "locked");
+}
+
+function hashSignatureBridgeBuffer(buffer = Buffer.alloc(0)) {
+  try {
+    return createHash("sha256").update(Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer ?? [])).digest("hex");
+  } catch {
+    return "";
   }
 }
 
@@ -3737,6 +3853,7 @@ function claimNextSignatureBridgeJob(bridgeKey = "") {
     .filter((job) => (
       normalizeSignatureBridgeKey(job?.bridgeKey) === normalizedKey
       && job.status !== "completed"
+      && job.status !== "cancelled"
       && Array.isArray(job.items)
       && job.items.some((item) => !item?.signedAt && !item?.savedDocumentId)
       && (
@@ -3773,6 +3890,10 @@ function getRequestPublicBaseUrl(request) {
 
 function isSignatureBridgeDocumentSigned(document = {}) {
   return /\bpotpisano\b/i.test(String(document?.description || ""));
+}
+
+function isSignatureBridgeDocumentRejected(document = {}) {
+  return String(document?.signatureReviewStatus || "").trim() === "rejected_with_comment";
 }
 
 function normalizeSignatureFieldRole(value = "ZNR") {
@@ -3887,11 +4008,16 @@ async function buildSignatureBridgeCandidateDocuments(scopedSnapshot = {}, reque
       && String(document?.workOrderId || "").trim()
       && (!requestedIds.size || requestedIds.has(String(document.id)))
       && !isSignatureBridgeDocumentSigned(document)
+      && !isSignatureBridgeDocumentRejected(document)
     ))
     .slice(0, SIGNATURE_BRIDGE_MAX_ITEMS);
 }
 
 function buildSignatureBridgeJobResponse(job = {}) {
+  cleanupSignatureBridgeLocks();
+  if (Array.isArray(job.items)) {
+    job.items.forEach((item) => refreshSignatureBridgeItemLock(item));
+  }
   return {
     ok: true,
     token: job.token,
@@ -3919,8 +4045,18 @@ function buildSignatureBridgeJobResponse(job = {}) {
       signatureFieldsJson: item.signatureFieldsJson || "",
       signatureLabel: item.signatureLabel || "",
       signatureSigner: item.signatureSigner || "",
+      signerName: item.signerName || item.signatureSigner || "",
+      signerTitle: item.signerTitle || "",
+      signerUserId: item.signerUserId || "",
+      signerEmail: item.signerEmail || "",
+      signingStatus: item.signingStatus || "",
+      signingLockByUserId: item.signingLockByUserId || "",
+      signingLockByUserName: item.signingLockByUserName || "",
+      signingLockUntil: item.signingLockUntil || "",
+      signingLockToken: item.lockedByOther ? "" : (item.signingLockToken || ""),
+      lockToken: item.lockedByOther ? "" : (item.signingLockToken || ""),
       downloadUrl: `${job.apiBase}/api/signature-bridge/jobs/${encodeURIComponent(job.token)}/items/${encodeURIComponent(item.id)}/download`,
-      uploadUrl: `${job.apiBase}/api/signature-bridge/jobs/${encodeURIComponent(job.token)}/items/${encodeURIComponent(item.id)}/signed`,
+      uploadUrl: `${job.apiBase}/api/signature-bridge/jobs/${encodeURIComponent(job.token)}/items/${encodeURIComponent(item.id)}/signed?lockToken=${encodeURIComponent(item.lockedByOther ? "" : (item.signingLockToken || ""))}`,
     })),
   };
 }
@@ -3967,6 +4103,25 @@ async function handleSignatureBridgeSignedUpload(request, response, token = "", 
   }
 
   const body = await readJsonBody(request);
+  const requestUrl = new URL(request.url, "http://localhost");
+  const providedLockToken = String(
+    body?.lockToken
+    || requestUrl.searchParams.get("lockToken")
+    || request.headers["x-safenexus-lock-token"]
+    || "",
+  ).trim();
+  if (item.signingLockToken && providedLockToken !== item.signingLockToken) {
+    sendJson(response, 423, {
+      ok: false,
+      code: "SIGNING_LOCK_MISMATCH",
+      message: "Ovaj potpis nije zaključan za trenutni signing token.",
+      itemId: item.id,
+      documentId: item.documentId,
+      fileName: item.fileName,
+    });
+    return true;
+  }
+
   const dataUrl = String(body?.dataUrl || "").trim();
   if (!dataUrl.startsWith("data:application/pdf;base64,")) {
     sendError(response, 400, "Potpisani dokument mora biti PDF data URL.");
@@ -3979,8 +4134,21 @@ async function handleSignatureBridgeSignedUpload(request, response, token = "", 
     sendError(response, 404, "Izvorni dokument vise nije dostupan.");
     return true;
   }
+  if (isSignatureBridgeDocumentSigned(currentDocument) || item.signedAt || item.savedDocumentId) {
+    sendJson(response, 409, {
+      ok: false,
+      code: "ALREADY_SIGNED",
+      message: "Dokument je već potpisan.",
+      itemId: item.id,
+      documentId: item.documentId,
+      fileName: item.fileName,
+    });
+    return true;
+  }
 
+  const originalStored = await readStoredDocumentBuffer(currentDocument);
   const base64 = dataUrl.split(",", 2)[1] || "";
+  const signedBuffer = Buffer.from(base64, "base64");
   const bufferSize = Buffer.byteLength(base64, "base64");
   const filePayload = {
     fileName: String(body?.fileName || currentDocument.fileName || item.fileName || "zapisnik.pdf").trim(),
@@ -4002,6 +4170,35 @@ async function handleSignatureBridgeSignedUpload(request, response, token = "", 
 
   item.signedAt = new Date().toISOString();
   item.savedDocumentId = saved?.id || "";
+  item.signingStatus = "signed";
+  signatureBridgeAuditLog.push({
+    id: randomUUID(),
+    workOrderId: item.workOrderId,
+    workOrderNumber: item.workOrderNumber,
+    documentId: item.documentId,
+    documentName: item.fileName,
+    signatureItemId: item.id,
+    fieldName: item.preferredField || "",
+    placeholderKey: item.preferredField || "",
+    label: item.signatureLabel || "",
+    servicePart: item.servicePart || "",
+    personLevel: item.personLevel || "",
+    signerUserId: item.signerUserId || job.user?.id || "",
+    signerName: item.signerName || item.signatureSigner || job.user?.fullName || "",
+    signerOib: item.signatureFieldOib || "",
+    signerTitle: item.signerTitle || "",
+    certificateSubject: String(body?.certificateSubject || body?.certificate?.subject || "").trim(),
+    certificateOib: String(body?.certificateOib || body?.certificate?.oib || "").trim(),
+    certificateSerialNumber: String(body?.certificateSerialNumber || body?.certificate?.serialNumber || "").trim(),
+    provider: String(body?.provider || body?.certificateProvider || "").trim(),
+    signedAt: item.signedAt,
+    originalDocumentHash: hashSignatureBridgeBuffer(originalStored.buffer),
+    signedDocumentHash: hashSignatureBridgeBuffer(signedBuffer),
+    status: "signed",
+    errorCode: "",
+    errorMessage: "",
+  });
+  releaseSignatureBridgeItemLock(item);
   markSignatureBridgeJobProgress(job);
   sendJson(response, 200, {
     ok: true,
@@ -7440,6 +7637,90 @@ async function handleApiRequest(request, response, url) {
     const workOrderDocumentDownloadMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/documents\/([^/]+)\/download$/);
     const workOrderDocumentMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/documents\/([^/]+)$/);
     const workOrderMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)$/);
+    const signatureBridgeReleaseLocksMatch = url.pathname.match(/^\/api\/signature-bridge\/jobs\/([^/]+)\/release-locks$/);
+
+    if (signatureBridgeReleaseLocksMatch && request.method === "POST") {
+      const job = getSignatureBridgeJob(signatureBridgeReleaseLocksMatch[1]);
+      if (!job) {
+        sendError(response, 404, "Potpisni paket je istekao ili nije pronađen.");
+        return true;
+      }
+      releaseSignatureBridgeJobLocks(job);
+      job.status = "cancelled";
+      sendJson(response, 200, { ok: true });
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/signature-bridge/reviews") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo pregledavati dokumente za potpis.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const reviewedAt = new Date().toISOString();
+      const rejections = Array.isArray(body?.rejections) ? body.rejections : [];
+      const reviewJob = getSignatureBridgeJob(String(body?.jobToken || "").trim());
+      if (reviewJob) {
+        releaseSignatureBridgeJobLocks(reviewJob);
+      }
+      const items = await Promise.all(rejections.map(async (entry) => {
+        const workOrderNumber = String(entry?.workOrderNumber || "").trim();
+        const documentName = String(entry?.documentName || entry?.fileName || "").trim();
+        const comment = String(entry?.comment || "").trim();
+        const notificationMessage = `Dokument RN ${workOrderNumber || "-"} nije prihvaćen za potpis. Razlog: ${comment || "-"}. Potrebno je ispraviti dokument i ponovno ga generirati.`;
+        const review = {
+          id: randomUUID(),
+          jobToken: String(body?.jobToken || "").trim(),
+          reviewDecisionKey: String(entry?.reviewDecisionKey || "").trim(),
+          workOrderId: String(entry?.workOrderId || "").trim(),
+          workOrderNumber,
+          documentId: String(entry?.documentId || "").trim(),
+          documentName,
+          signatureItemIds: Array.isArray(entry?.signatureItemIds) ? entry.signatureItemIds.map((value) => String(value || "").trim()).filter(Boolean) : [],
+          fieldNames: Array.isArray(entry?.fieldNames) ? entry.fieldNames.map((value) => String(value || "").trim()).filter(Boolean) : [],
+          role: String(entry?.role || "").trim(),
+          signerName: String(entry?.signerName || "").trim(),
+          signerTitle: String(entry?.signerTitle || "").trim(),
+          signerOib: String(entry?.signerOib || "").trim(),
+          reviewedByUserId: String(user.id || "").trim(),
+          reviewedByName: String(user.fullName || user.username || user.email || "").trim(),
+          reviewedAt,
+          status: "rejected_with_comment",
+          comment,
+          notifiedDocumentOwner: true,
+          notificationMessage,
+        };
+        signatureBridgeReviewLog.push(review);
+        signatureBridgeNotifications.push({
+          id: randomUUID(),
+          kind: "signature_rejected",
+          createdAt: reviewedAt,
+          workOrderId: review.workOrderId,
+          workOrderNumber: review.workOrderNumber,
+          documentId: review.documentId,
+          documentName: review.documentName,
+          message: notificationMessage,
+          reviewedByUserId: review.reviewedByUserId,
+          reviewedByName: review.reviewedByName,
+          status: "unread",
+        });
+        if (typeof domainRepository.updateWorkOrderDocument === "function" && review.workOrderId && review.documentId) {
+          await domainRepository.updateWorkOrderDocument(review.workOrderId, review.documentId, {
+            signatureReviewStatus: "rejected_with_comment",
+            signatureReviewComment: comment,
+            signatureReviewedByUserId: user.id,
+            signatureReviewedByName: review.reviewedByName,
+            signatureReviewedAt: reviewedAt,
+            signatureReviewNotifiedOwner: true,
+          }, user);
+        }
+        return review;
+      }));
+
+      sendJson(response, 201, { ok: true, items });
+      return true;
+    }
 
     if (request.method === "POST" && url.pathname === "/api/signature-bridge/jobs") {
       if (!canManageWorkOrders(user)) {
@@ -7458,6 +7739,12 @@ async function handleApiRequest(request, response, url) {
             oib: String(entry?.oib || entry?.signatureFieldOib || "").trim(),
             label: String(entry?.label || entry?.signatureLabel || "").trim(),
             signer: String(entry?.signer || entry?.signatureSigner || entry?.signerName || "").trim(),
+            signerName: String(entry?.signerName || entry?.signatureSigner || entry?.signer || "").trim(),
+            signerTitle: String(entry?.signerTitle || entry?.title || "").trim(),
+            signerUserId: String(entry?.signerUserId || entry?.userId || "").trim(),
+            signerEmail: String(entry?.signerEmail || entry?.email || "").trim(),
+            lockToken: String(entry?.lockToken || entry?.signingLockToken || "").trim(),
+            reviewDecisionKey: String(entry?.reviewDecisionKey || "").trim(),
           }))
           .filter((entry) => entry.documentId)
         : [];
@@ -7533,11 +7820,19 @@ async function handleApiRequest(request, response, url) {
             fileSize: Number(document.fileSize || 0) || 0,
             signatureFieldsJson: String(document.signatureFieldsJson || "").trim(),
             signatureLabel: signatureRequest?.label || "",
-            signatureSigner: signatureRequest?.signer || "",
+            signatureSigner: signatureRequest?.signer || signatureRequest?.signerName || "",
+            signerName: signatureRequest?.signerName || signatureRequest?.signer || "",
+            signerTitle: signatureRequest?.signerTitle || "",
+            signerUserId: signatureRequest?.signerUserId || "",
+            signerEmail: signatureRequest?.signerEmail || "",
+            reviewDecisionKey: signatureRequest?.reviewDecisionKey || "",
             ...signatureField,
           };
         }),
       };
+      job.items.forEach((item) => {
+        acquireSignatureBridgeItemLock(item, user);
+      });
       signatureBridgeJobs.set(token, job);
 
       sendJson(response, 201, buildSignatureBridgeJobResponse(job));

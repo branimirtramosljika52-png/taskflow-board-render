@@ -1575,6 +1575,34 @@ function normalizeWorkOrderDocumentPatch(input = {}) {
     patch.documentCategory = normalizeWorkOrderDocumentCategory(input.documentCategory ?? input.category);
   }
 
+  if (Object.prototype.hasOwnProperty.call(input, "signatureReviewStatus")) {
+    patch.signatureReviewStatus = dbString(input.signatureReviewStatus).slice(0, 64);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(input, "signatureReviewComment")) {
+    patch.signatureReviewComment = dbString(input.signatureReviewComment);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(input, "signatureReviewedByUserId")) {
+    const rawUserId = input.signatureReviewedByUserId;
+    const numericUserId = Number(rawUserId);
+    patch.signatureReviewedByUserId = Number.isFinite(numericUserId) && numericUserId > 0
+      ? String(Math.round(numericUserId))
+      : dbString(rawUserId).slice(0, 64);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(input, "signatureReviewedByName")) {
+    patch.signatureReviewedByName = dbString(input.signatureReviewedByName).slice(0, 160);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(input, "signatureReviewedAt")) {
+    patch.signatureReviewedAt = normalizeActivityTimestamp(input.signatureReviewedAt);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(input, "signatureReviewNotifiedOwner")) {
+    patch.signatureReviewNotifiedOwner = input.signatureReviewNotifiedOwner ? true : false;
+  }
+
   return patch;
 }
 
@@ -2783,6 +2811,14 @@ function mapWorkOrderDocumentRow(row) {
     signerOib: row.signature_field_oib ?? row.signatureFieldOib ?? row.signerOib ?? "",
     preferredField: row.preferred_field ?? row.preferredField ?? "",
     signatureFieldsJson: row.signature_fields_json ?? row.signatureFieldsJson ?? "",
+    signatureReviewStatus: row.signature_review_status ?? row.signatureReviewStatus ?? "",
+    signatureReviewComment: row.signature_review_comment ?? row.signatureReviewComment ?? "",
+    signatureReviewedByUserId: row.signature_reviewed_by_user_id === null || row.signature_reviewed_by_user_id === undefined
+      ? ""
+      : String(row.signature_reviewed_by_user_id),
+    signatureReviewedByName: row.signature_reviewed_by_name ?? row.signatureReviewedByName ?? "",
+    signatureReviewedAt: normalizeActivityTimestamp(row.signature_reviewed_at ?? row.signatureReviewedAt),
+    signatureReviewNotifiedOwner: Boolean(Number(row.signature_review_notified_owner ?? row.signatureReviewNotifiedOwner ?? 0)),
     description: row.file_description ?? row.description ?? "",
     fileSize: Number(row.file_size ?? row.fileSize ?? 0) || 0,
     dataUrl: storedDocument.dataUrl,
@@ -4758,6 +4794,12 @@ export class InMemorySafetyRepository {
       signerOib: file.signatureFieldOib,
       preferredField: file.preferredField,
       signatureFieldsJson: file.signatureFieldsJson,
+      signatureReviewStatus: "",
+      signatureReviewComment: "",
+      signatureReviewedByUserId: "",
+      signatureReviewedByName: "",
+      signatureReviewedAt: "",
+      signatureReviewNotifiedOwner: false,
       description: file.description,
       fileSize: file.fileSize,
       dataUrl: file.dataUrl,
@@ -4828,6 +4870,12 @@ export class InMemorySafetyRepository {
       signerOib: normalized.signatureFieldOib,
       preferredField: normalized.preferredField,
       signatureFieldsJson: normalized.signatureFieldsJson,
+      signatureReviewStatus: "",
+      signatureReviewComment: "",
+      signatureReviewedByUserId: "",
+      signatureReviewedByName: "",
+      signatureReviewedAt: "",
+      signatureReviewNotifiedOwner: false,
       description: normalized.description,
       fileSize: normalized.fileSize,
       dataUrl: normalized.dataUrl,
@@ -4926,6 +4974,24 @@ export class InMemorySafetyRepository {
         ? normalizedPatch.documentCategory
         : current.documentCategory,
       description: Object.prototype.hasOwnProperty.call(normalizedPatch, "description") ? normalizedPatch.description : current.description,
+      signatureReviewStatus: Object.prototype.hasOwnProperty.call(normalizedPatch, "signatureReviewStatus")
+        ? normalizedPatch.signatureReviewStatus
+        : (current.signatureReviewStatus || ""),
+      signatureReviewComment: Object.prototype.hasOwnProperty.call(normalizedPatch, "signatureReviewComment")
+        ? normalizedPatch.signatureReviewComment
+        : (current.signatureReviewComment || ""),
+      signatureReviewedByUserId: Object.prototype.hasOwnProperty.call(normalizedPatch, "signatureReviewedByUserId")
+        ? normalizedPatch.signatureReviewedByUserId
+        : (current.signatureReviewedByUserId || ""),
+      signatureReviewedByName: Object.prototype.hasOwnProperty.call(normalizedPatch, "signatureReviewedByName")
+        ? normalizedPatch.signatureReviewedByName
+        : (current.signatureReviewedByName || ""),
+      signatureReviewedAt: Object.prototype.hasOwnProperty.call(normalizedPatch, "signatureReviewedAt")
+        ? normalizedPatch.signatureReviewedAt
+        : (current.signatureReviewedAt || ""),
+      signatureReviewNotifiedOwner: Object.prototype.hasOwnProperty.call(normalizedPatch, "signatureReviewNotifiedOwner")
+        ? normalizedPatch.signatureReviewNotifiedOwner
+        : Boolean(current.signatureReviewNotifiedOwner),
       updatedAt: new Date().toISOString(),
     };
 
@@ -6470,6 +6536,12 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_work_order_documents", "signature_field_oib", "VARCHAR(32) NOT NULL DEFAULT '' AFTER signature_field_role");
     await ensureColumnExists(this.pool, "web_work_order_documents", "preferred_field", "VARCHAR(180) NOT NULL DEFAULT '' AFTER signature_field_oib");
     await ensureColumnExists(this.pool, "web_work_order_documents", "signature_fields_json", "LONGTEXT NULL AFTER preferred_field");
+    await ensureColumnExists(this.pool, "web_work_order_documents", "signature_review_status", "VARCHAR(64) NOT NULL DEFAULT '' AFTER signature_fields_json");
+    await ensureColumnExists(this.pool, "web_work_order_documents", "signature_review_comment", "TEXT NULL AFTER signature_review_status");
+    await ensureColumnExists(this.pool, "web_work_order_documents", "signature_reviewed_by_user_id", "INT NULL AFTER signature_review_comment");
+    await ensureColumnExists(this.pool, "web_work_order_documents", "signature_reviewed_by_name", "VARCHAR(160) NOT NULL DEFAULT '' AFTER signature_reviewed_by_user_id");
+    await ensureColumnExists(this.pool, "web_work_order_documents", "signature_reviewed_at", "DATETIME NULL AFTER signature_reviewed_by_name");
+    await ensureColumnExists(this.pool, "web_work_order_documents", "signature_review_notified_owner", "TINYINT(1) NOT NULL DEFAULT 0 AFTER signature_reviewed_at");
     await ensureColumnExists(this.pool, "web_work_order_documents", "storage_provider", "VARCHAR(32) NULL AFTER data_url");
     await ensureColumnExists(this.pool, "web_work_order_documents", "storage_bucket", "VARCHAR(128) NULL AFTER storage_provider");
     await ensureColumnExists(this.pool, "web_work_order_documents", "storage_key", "VARCHAR(512) NULL AFTER storage_bucket");
@@ -8434,6 +8506,8 @@ export class MySqlSafetyRepository {
           SELECT id, work_order_id, actor_user_id, actor_label, source_type, file_name,
                  file_extension, file_type, file_description, document_category, file_size, data_url,
                  signature_field_role, signature_field_oib, preferred_field, signature_fields_json,
+                 signature_review_status, signature_review_comment, signature_reviewed_by_user_id,
+                 signature_reviewed_by_name, signature_reviewed_at, signature_review_notified_owner,
                  storage_provider, storage_bucket, storage_key, storage_url,
                  created_at, updated_at
           FROM web_work_order_documents
@@ -8454,6 +8528,9 @@ export class MySqlSafetyRepository {
             SET actor_user_id = ?, actor_label = ?, file_name = ?, file_extension = ?,
                 file_type = ?, file_description = ?, document_category = ?,
                 signature_field_role = ?, signature_field_oib = ?, preferred_field = ?, signature_fields_json = ?,
+                signature_review_status = '', signature_review_comment = NULL,
+                signature_reviewed_by_user_id = NULL, signature_reviewed_by_name = '',
+                signature_reviewed_at = NULL, signature_review_notified_owner = 0,
                 file_size = ?,
                 data_url = ?, storage_provider = ?, storage_bucket = ?, storage_key = ?, storage_url = ?,
                 updated_at = CURRENT_TIMESTAMP
@@ -8497,6 +8574,12 @@ export class MySqlSafetyRepository {
           signerOib: storedDocument.signatureFieldOib,
           preferredField: storedDocument.preferredField,
           signatureFieldsJson: storedDocument.signatureFieldsJson,
+          signatureReviewStatus: "",
+          signatureReviewComment: "",
+          signatureReviewedByUserId: "",
+          signatureReviewedByName: "",
+          signatureReviewedAt: "",
+          signatureReviewNotifiedOwner: false,
           description: storedDocument.description,
           fileSize: storedDocument.fileSize,
           dataUrl: storedDocument.dataUrl,
@@ -8554,6 +8637,12 @@ export class MySqlSafetyRepository {
         signerOib: storedDocument.signatureFieldOib,
         preferredField: storedDocument.preferredField,
         signatureFieldsJson: storedDocument.signatureFieldsJson,
+        signatureReviewStatus: "",
+        signatureReviewComment: "",
+        signatureReviewedByUserId: "",
+        signatureReviewedByName: "",
+        signatureReviewedAt: "",
+        signatureReviewNotifiedOwner: false,
         description: storedDocument.description,
         fileSize: storedDocument.fileSize,
         dataUrl: storedDocument.dataUrl,
@@ -8590,6 +8679,8 @@ export class MySqlSafetyRepository {
           SELECT id, work_order_id, actor_user_id, actor_label, source_type, file_name,
                  file_extension, file_type, file_description, document_category, file_size, data_url,
                  signature_field_role, signature_field_oib, preferred_field, signature_fields_json,
+                 signature_review_status, signature_review_comment, signature_reviewed_by_user_id,
+                 signature_reviewed_by_name, signature_reviewed_at, signature_review_notified_owner,
                  storage_provider, storage_bucket, storage_key, storage_url,
                  created_at, updated_at
           FROM web_work_order_documents
@@ -8645,6 +8736,8 @@ export class MySqlSafetyRepository {
           SELECT id, work_order_id, actor_user_id, actor_label, source_type, file_name,
                  file_extension, file_type, file_description, document_category, file_size, data_url,
                  signature_field_role, signature_field_oib, preferred_field, signature_fields_json,
+                 signature_review_status, signature_review_comment, signature_reviewed_by_user_id,
+                 signature_reviewed_by_name, signature_reviewed_at, signature_review_notified_owner,
                  storage_provider, storage_bucket, storage_key, storage_url,
                  created_at, updated_at
           FROM web_work_order_documents
@@ -8672,6 +8765,8 @@ export class MySqlSafetyRepository {
           SELECT id, work_order_id, actor_user_id, actor_label, source_type, file_name,
                  file_extension, file_type, file_description, document_category, file_size, data_url,
                  signature_field_role, signature_field_oib, preferred_field, signature_fields_json,
+                 signature_review_status, signature_review_comment, signature_reviewed_by_user_id,
+                 signature_reviewed_by_name, signature_reviewed_at, signature_review_notified_owner,
                  storage_provider, storage_bucket, storage_key, storage_url,
                  created_at, updated_at
           FROM web_work_order_documents
@@ -8698,13 +8793,34 @@ export class MySqlSafetyRepository {
           ? normalizedPatch.documentCategory
           : current.documentCategory,
         description: Object.prototype.hasOwnProperty.call(normalizedPatch, "description") ? normalizedPatch.description : current.description,
+        signatureReviewStatus: Object.prototype.hasOwnProperty.call(normalizedPatch, "signatureReviewStatus")
+          ? normalizedPatch.signatureReviewStatus
+          : (current.signatureReviewStatus || ""),
+        signatureReviewComment: Object.prototype.hasOwnProperty.call(normalizedPatch, "signatureReviewComment")
+          ? normalizedPatch.signatureReviewComment
+          : (current.signatureReviewComment || ""),
+        signatureReviewedByUserId: Object.prototype.hasOwnProperty.call(normalizedPatch, "signatureReviewedByUserId")
+          ? normalizedPatch.signatureReviewedByUserId
+          : (current.signatureReviewedByUserId || ""),
+        signatureReviewedByName: Object.prototype.hasOwnProperty.call(normalizedPatch, "signatureReviewedByName")
+          ? normalizedPatch.signatureReviewedByName
+          : (current.signatureReviewedByName || ""),
+        signatureReviewedAt: Object.prototype.hasOwnProperty.call(normalizedPatch, "signatureReviewedAt")
+          ? normalizedPatch.signatureReviewedAt
+          : (current.signatureReviewedAt || ""),
+        signatureReviewNotifiedOwner: Object.prototype.hasOwnProperty.call(normalizedPatch, "signatureReviewNotifiedOwner")
+          ? normalizedPatch.signatureReviewNotifiedOwner
+          : Boolean(current.signatureReviewNotifiedOwner),
         updatedAt: new Date().toISOString(),
       };
 
       await connection.query(
         `
           UPDATE web_work_order_documents
-          SET file_name = ?, file_extension = ?, file_description = ?, document_category = ?, updated_at = CURRENT_TIMESTAMP
+          SET file_name = ?, file_extension = ?, file_description = ?, document_category = ?,
+              signature_review_status = ?, signature_review_comment = ?, signature_reviewed_by_user_id = ?,
+              signature_reviewed_by_name = ?, signature_reviewed_at = ?, signature_review_notified_owner = ?,
+              updated_at = CURRENT_TIMESTAMP
           WHERE work_order_id = ? AND id = ?
         `,
         [
@@ -8712,6 +8828,12 @@ export class MySqlSafetyRepository {
           next.fileExtension,
           next.description,
           next.documentCategory,
+          next.signatureReviewStatus,
+          next.signatureReviewComment,
+          Number(next.signatureReviewedByUserId) || null,
+          next.signatureReviewedByName,
+          next.signatureReviewedAt || null,
+          next.signatureReviewNotifiedOwner ? 1 : 0,
           Number(workOrderId),
           Number(documentId),
         ],
@@ -8746,6 +8868,8 @@ export class MySqlSafetyRepository {
           SELECT id, work_order_id, actor_user_id, actor_label, source_type, file_name,
                  file_extension, file_type, file_description, document_category, file_size, data_url,
                  signature_field_role, signature_field_oib, preferred_field, signature_fields_json,
+                 signature_review_status, signature_review_comment, signature_reviewed_by_user_id,
+                 signature_reviewed_by_name, signature_reviewed_at, signature_review_notified_owner,
                  storage_provider, storage_bucket, storage_key, storage_url,
                  created_at, updated_at
           FROM web_work_order_documents

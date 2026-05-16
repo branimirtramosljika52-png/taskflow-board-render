@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260516-signature-review-fullheight" />
+    <link rel="stylesheet" href="/styles.css?v=20260516-signatures-premium2" />
     <link rel="stylesheet" href="/src/styles/variables.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/reset.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/builder.css?v=20260509e" />
@@ -4861,24 +4861,17 @@
                     <p class="section-kicker">Operations</p>
                     <h3>Signatures</h3>
                   </div>
-                  <button id="signatures-refresh" type="button" class="ghost-button">Osvježi</button>
-                </div>
-                <p class="helper-copy module-copy">Pregled zapisnika koji čekaju potpis, potpisanih dokumenata i lokalnog certificiranog potpisa.</p>
-                <div id="signatures-stats" class="signatures-stats-grid"></div>
-              </section>
-              <section class="panel signatures-local-signer-panel">
-                <div>
-                  <p class="section-kicker">Certificirani potpis</p>
-                  <h3>PDF Signer</h3>
-                  <p class="helper-copy module-copy">Pregledaj dokumente, označi što ide na potpis i potpisani PDF se vraća u Documents.</p>
-                </div>
-                <div class="signatures-bridge-actions">
-                  <button id="signatures-review-start" type="button" class="ghost-button">Pripremi pregled</button>
-                  <button id="signatures-settings-open" type="button" class="ghost-button">Postavke</button>
-                  <button id="signatures-open-local-signer" type="button" class="primary-button">Potpiši odabrano</button>
-                  <button id="signatures-install-signer" type="button" class="ghost-button" hidden>Preuzmi signer</button>
+                  <div class="signatures-bridge-actions">
+                    <button id="signatures-settings-open" type="button" class="ghost-button">Postavke</button>
+                    <button id="signatures-refresh" type="button" class="ghost-button">Osvježi</button>
+                    <button id="signatures-review-start" type="button" class="primary-button">Pripremi pregled</button>
+                  </div>
                 </div>
                 <p id="signatures-bridge-status" class="signatures-bridge-status" aria-live="polite"></p>
+              </section>
+              <section class="panel signatures-local-signer-panel" hidden>
+                <button id="signatures-open-local-signer" type="button" class="primary-button" hidden>Potpiši odabrano</button>
+                <button id="signatures-install-signer" type="button" class="ghost-button" hidden>Preuzmi signer</button>
                 <div id="signatures-settings-panel" class="signatures-settings-panel" hidden>
                   <div class="signatures-settings-heading">
                     <div>
@@ -4886,22 +4879,66 @@
                       <h4>PDF Signer postavke</h4>
                     </div>
                     <div class="signatures-settings-actions">
+                      <button id="signatures-settings-load" type="button" class="ghost-button">Učitaj</button>
+                      <button id="signatures-settings-test-token" type="button" class="ghost-button">Test token detection</button>
+                      <button id="signatures-settings-open-local" type="button" class="ghost-button">Open local signer settings</button>
                       <button id="signatures-settings-save" type="button" class="ghost-button">Spremi</button>
                       <button id="signatures-settings-close" type="button" class="ghost-button">Zatvori</button>
                     </div>
                   </div>
                   <div class="signatures-settings-grid">
                     <label class="field">
+                      <span>Signer mode</span>
+                      <select id="signatures-settings-mode">
+                        <option value="real">Real</option>
+                        <option value="dry-run">Dry-run</option>
+                      </select>
+                    </label>
+                    <label class="field">
+                      <span>Dry-run</span>
+                      <select id="signatures-settings-dry-run">
+                        <option value="false">Ne</option>
+                        <option value="true">Da</option>
+                      </select>
+                    </label>
+                    <label class="field field-span-2">
+                      <span>API allowlist</span>
+                      <input id="signatures-settings-allowlist" type="text" placeholder="https://safe-nexus.org" />
+                    </label>
+                    <label class="field">
                       <span>Provider order</span>
                       <input id="signatures-settings-provider-order" type="text" placeholder="EOI,FINA" />
+                    </label>
+                    <label class="field">
+                      <span>eOI slot</span>
+                      <input id="signatures-settings-eoi-slot" type="text" />
                     </label>
                     <label class="field field-span-2">
                       <span>eOI PKCS#11 path</span>
                       <input id="signatures-settings-eoi-path" type="text" />
                     </label>
+                    <label class="field">
+                      <span>FINA slot</span>
+                      <input id="signatures-settings-fina-slot" type="text" />
+                    </label>
                     <label class="field field-span-2">
                       <span>FINA PKCS#11 path</span>
                       <input id="signatures-settings-fina-path" type="text" />
+                    </label>
+                    <label class="field field-span-2">
+                      <span>PDF folder</span>
+                      <input id="signatures-settings-pdf-folder" type="text" />
+                    </label>
+                    <label class="field">
+                      <span>Fallback keyword</span>
+                      <input id="signatures-settings-keyword" type="text" />
+                    </label>
+                    <label class="field">
+                      <span>Case insensitive</span>
+                      <select id="signatures-settings-case-insensitive">
+                        <option value="true">Da</option>
+                        <option value="false">Ne</option>
+                      </select>
                     </label>
                     <label class="field">
                       <span>Rect width cm</span>
@@ -4923,7 +4960,34 @@
                       <span>Font size</span>
                       <input id="signatures-settings-font-size" type="number" step="0.5" min="4" />
                     </label>
+                    <label class="field">
+                      <span>Skip tolerance pt</span>
+                      <input id="signatures-settings-skip-tolerance" type="number" step="0.5" min="0" />
+                    </label>
+                    <label class="field">
+                      <span>Skip signed</span>
+                      <select id="signatures-settings-skip-signed">
+                        <option value="true">Da</option>
+                        <option value="false">Ne</option>
+                      </select>
+                    </label>
+                    <label class="field">
+                      <span>Hide signed preview</span>
+                      <select id="signatures-settings-hide-signed">
+                        <option value="false">Ne</option>
+                        <option value="true">Da</option>
+                      </select>
+                    </label>
+                    <label class="field">
+                      <span>Reason</span>
+                      <input id="signatures-settings-reason" type="text" />
+                    </label>
+                    <label class="field">
+                      <span>Location</span>
+                      <input id="signatures-settings-location" type="text" />
+                    </label>
                   </div>
+                  <pre id="signatures-settings-response" class="signatures-settings-response"></pre>
                 </div>
               </section>
               <section id="signatures-review-panel" class="panel signatures-review-panel" hidden>
@@ -4946,6 +5010,35 @@
                     <p class="section-kicker">Zapisnici</p>
                     <h3>Status potpisa</h3>
                   </div>
+                </div>
+                <div class="signatures-filter-bar">
+                  <label class="field">
+                    <span>RN</span>
+                    <input id="signatures-filter-rn" type="search" placeholder="26-625" />
+                  </label>
+                  <label class="field">
+                    <span>Status</span>
+                    <select id="signatures-filter-status">
+                      <option value="all">Sve</option>
+                      <option value="pending">Još nedostaje</option>
+                      <option value="signed">Potpisano</option>
+                      <option value="rejected">Odbijeno</option>
+                      <option value="locked">Zaključano</option>
+                      <option value="missing">Bez dokumenta</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>Potpisnik</span>
+                    <input id="signatures-filter-signer" type="search" placeholder="Ime osobe" />
+                  </label>
+                  <label class="field">
+                    <span>Uloga potpisa</span>
+                    <input id="signatures-filter-role" type="search" placeholder="Ispitivač SPR" />
+                  </label>
+                  <label class="field">
+                    <span>Dokument</span>
+                    <input id="signatures-filter-document" type="search" placeholder="spr.pdf" />
+                  </label>
                 </div>
                 <div id="signatures-list" class="signatures-list"></div>
               </section>
@@ -8284,6 +8377,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260516-signature-review-portal"></script>
+    <script type="module" src="/src/main.js?v=20260516-signatures-premium2"></script>
   </body>
 </html>

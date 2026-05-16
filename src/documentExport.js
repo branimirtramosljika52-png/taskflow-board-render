@@ -231,7 +231,11 @@ function normalizePdfSignatureFieldSpec(item = {}, options = {}) {
     signatureFieldOib,
     signatureFieldStandard: PDF_SIGNATURE_FIELD_STANDARD,
     label: clean(item.name) || clean(item.label) || "Potpisnik",
+    name: clean(item.name) || clean(item.label) || "Potpisnik",
     roleLabel: clean(item.role) || signatureFieldRole,
+    signerTitle: clean(item.signerTitle || item.title),
+    signerUserId: clean(item.signerUserId || item.userId),
+    signerEmail: clean(item.signerEmail || item.email),
     page: Number.isFinite(Number(item.page))
       ? Number(item.page)
       : (Number.isFinite(Number(options.page)) ? Number(options.page) : Number.NaN),
@@ -1256,6 +1260,7 @@ function normalizeDocxSpecialPlaceholderValue(value) {
           signerUserId: clean(item.signerUserId || item.userId),
           signerEmail: clean(item.signerEmail || item.email),
           signerOib: clean(item.signerOib || item.oib),
+          signerTitle: clean(item.signerTitle || item.title),
           signatureFieldRole: normalizePdfSignatureFieldRole(item.signatureFieldRole || item.signatureRole || item.roleCode || DEFAULT_PDF_SIGNATURE_FIELD_ROLE),
           signatureFieldOib: normalizePdfSignatureFieldOib(item.signatureFieldOib || item.signerOib || item.oib),
           preferredField: clean(item.preferredField || item.fieldName),
