@@ -31870,29 +31870,80 @@ const DEFAULT_PDF_SIGNER_WEB_SETTINGS = {
   },
 };
 
+function normalizePdfSignerAppearanceBoolean(value, fallback = false) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number") {
+    return value !== 0;
+  }
+  const text = String(value ?? "").trim().toLowerCase();
+  if (["true", "1", "yes", "da", "on"].includes(text)) {
+    return true;
+  }
+  if (["false", "0", "no", "ne", "off"].includes(text)) {
+    return false;
+  }
+  return fallback;
+}
+
+function normalizePdfSignerAppearanceNumber(value, fallback = 0, { min = Number.NEGATIVE_INFINITY, max = Number.POSITIVE_INFINITY } = {}) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, number));
+}
+
+function isPdfSignerLogoBase64DataUrl(value = "") {
+  return /^data:image\/(?:png|jpe?g|webp|svg\+xml);base64,/i.test(String(value || "").trim());
+}
+
 function normalizePdfSignerAppearanceSettings(settings = {}) {
   const raw = settings && typeof settings === "object" ? settings : {};
+  const logoDataUrl = String(raw.logoDataUrl || raw.logo || raw.logoUrl || "").trim();
+  const showLogo = normalizePdfSignerAppearanceBoolean(
+    raw.showLogo ?? raw.logoEnabled ?? raw.logo,
+    DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showLogo,
+  );
+  const border = normalizePdfSignerAppearanceBoolean(
+    raw.border ?? raw.borderEnabled ?? raw.showBorder,
+    DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.border,
+  );
+  const transparentBackground = normalizePdfSignerAppearanceBoolean(
+    raw.transparentBackground,
+    DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.transparentBackground,
+  );
+  const logoOpacity = normalizePdfSignerAppearanceNumber(
+    raw.logoOpacity,
+    Number(DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.logoOpacity),
+    { min: 0, max: 0.4 },
+  );
   return {
     ...DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance,
     ...raw,
-    showQualifiedLabel: raw.showQualifiedLabel ?? DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showQualifiedLabel,
-    showName: raw.showName ?? DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showName,
-    showTitle: raw.showTitle ?? DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showTitle,
-    showRole: raw.showRole ?? DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showRole,
-    showOib: raw.showOib ?? DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showOib,
-    showOrganization: raw.showOrganization ?? DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showOrganization,
-    showDateTime: raw.showDateTime ?? DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showDateTime,
-    showLogo: raw.showLogo ?? DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showLogo,
-    showCertificateSubject: raw.showCertificateSubject ?? DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showCertificateSubject,
-    showProvider: raw.showProvider ?? DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showProvider,
-    showReason: raw.showReason ?? DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showReason,
-    showLocation: raw.showLocation ?? DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showLocation,
-    logoDataUrl: raw.logoDataUrl || "",
-    logoOpacity: String(raw.logoOpacity ?? DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.logoOpacity),
-    border: Boolean(raw.border ?? DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.border),
-    transparentBackground: raw.transparentBackground !== false,
+    showQualifiedLabel: normalizePdfSignerAppearanceBoolean(raw.showQualifiedLabel, DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showQualifiedLabel),
+    showName: normalizePdfSignerAppearanceBoolean(raw.showName, DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showName),
+    showTitle: normalizePdfSignerAppearanceBoolean(raw.showTitle, DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showTitle),
+    showRole: normalizePdfSignerAppearanceBoolean(raw.showRole, DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showRole),
+    showOib: normalizePdfSignerAppearanceBoolean(raw.showOib, DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showOib),
+    showOrganization: normalizePdfSignerAppearanceBoolean(raw.showOrganization, DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showOrganization),
+    showDateTime: normalizePdfSignerAppearanceBoolean(raw.showDateTime, DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showDateTime),
+    showLogo,
+    logoEnabled: showLogo,
+    showCertificateSubject: normalizePdfSignerAppearanceBoolean(raw.showCertificateSubject, DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showCertificateSubject),
+    showProvider: normalizePdfSignerAppearanceBoolean(raw.showProvider, DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showProvider),
+    showReason: normalizePdfSignerAppearanceBoolean(raw.showReason, DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showReason),
+    showLocation: normalizePdfSignerAppearanceBoolean(raw.showLocation, DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showLocation),
+    logoDataUrl,
+    logoOpacity: String(logoOpacity),
+    border,
+    borderEnabled: border,
+    transparentBackground,
+    backgroundColor: "",
+    borderColor: "",
     alignment: ["left", "center", "right"].includes(String(raw.alignment || "").trim()) ? raw.alignment : "left",
-    compactMode: raw.compactMode !== false,
+    compactMode: normalizePdfSignerAppearanceBoolean(raw.compactMode, DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.compactMode),
   };
 }
 
@@ -32053,8 +32104,17 @@ function estimatePdfSignerLogoByteSize(dataUrl = "") {
 function getPdfSignerAppearanceDebug(settings = getActivePdfSignerWebSettings()) {
   const appearance = normalizePdfSignerAppearanceSettings(settings?.appearance);
   const logoDataUrl = String(appearance.logoDataUrl || "").trim();
-  const logoBase64Present = /^data:image\/(?:png|jpe?g|webp|svg\+xml);base64,/i.test(logoDataUrl);
+  const logoBase64Present = isPdfSignerLogoBase64DataUrl(logoDataUrl);
   const logoByteSize = estimatePdfSignerLogoByteSize(logoDataUrl);
+  const appearanceDebug = {
+    logoEnabled: Boolean(appearance.showLogo),
+    logoOpacity: appearance.logoOpacity,
+    logoBytesPresent: Boolean(logoDataUrl),
+    logoBase64Present,
+    logoBytesBase64Present: Boolean(logoDataUrl) && logoBase64Present,
+    borderEnabled: Boolean(appearance.border),
+    transparentBackground: appearance.transparentBackground !== false,
+  };
   return {
     logoEnabled: Boolean(appearance.showLogo),
     logoSource: logoDataUrl ? "web-settings-data-url" : "none",
@@ -32065,6 +32125,7 @@ function getPdfSignerAppearanceDebug(settings = getActivePdfSignerWebSettings())
     logoOpacity: appearance.logoOpacity,
     borderEnabled: Boolean(appearance.border),
     transparentBackground: appearance.transparentBackground !== false,
+    appearance: appearanceDebug,
     appearanceMode: appearance.transparentBackground !== false && !appearance.border
       ? "minimal-transparent"
       : "configured",
@@ -32096,7 +32157,7 @@ function appendSignatureAppearanceMarkerContent(marker, item = {}) {
   marker.classList.toggle("has-border", Boolean(appearance.border));
   marker.classList.toggle("has-background", appearance.transparentBackground === false);
   marker.style.textAlign = appearance.alignment || "left";
-  if (appearance.showLogo && appearance.logoDataUrl) {
+  if (appearance.showLogo && isPdfSignerLogoBase64DataUrl(appearance.logoDataUrl)) {
     const logo = document.createElement("span");
     logo.className = "signature-marker-logo";
     logo.style.backgroundImage = `url("${appearance.logoDataUrl.replace(/"/g, "%22")}")`;

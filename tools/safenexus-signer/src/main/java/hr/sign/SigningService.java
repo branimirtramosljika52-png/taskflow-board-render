@@ -11,6 +11,10 @@ import com.itextpdf.kernel.font.PdfFont;
 import com.itextpdf.kernel.font.PdfFontFactory;
 import com.itextpdf.kernel.geom.Rectangle;
 import com.itextpdf.kernel.pdf.PdfDocument;
+import com.itextpdf.kernel.pdf.PdfArray;
+import com.itextpdf.kernel.pdf.PdfDictionary;
+import com.itextpdf.kernel.pdf.PdfName;
+import com.itextpdf.kernel.pdf.PdfNumber;
 import com.itextpdf.kernel.pdf.PdfReader;
 import com.itextpdf.kernel.pdf.ReaderProperties;
 import com.itextpdf.kernel.pdf.StampingProperties;
@@ -191,9 +195,10 @@ public final class SigningService {
                         .setPageNumber(page);
             }
 
+            signer.setFieldName(fieldName);
+            suppressSignatureWidgetChrome(signer, fieldName);
             SignatureAppearanceResult appearanceResult = drawConfiguredAppearance(signer, appearance, appearanceText, font);
 
-            signer.setFieldName(fieldName);
             IExternalDigest digest = new BouncyCastleDigest();
             signer.signDetached(
                     digest,
@@ -222,6 +227,52 @@ public final class SigningService {
                     appearanceResult.errorMessage()
             );
         }
+    }
+
+    private void suppressSignatureWidgetChrome(PdfSigner signer, String fieldName) {
+        if (signer == null || fieldName == null || fieldName.isBlank()) {
+            return;
+        }
+        try {
+            PdfAcroForm acroForm = PdfAcroForm.getAcroForm(signer.getDocument(), false);
+            if (acroForm == null) {
+                return;
+            }
+            PdfFormField field = acroForm.getField(fieldName);
+            if (field == null || field.getWidgets() == null) {
+                return;
+            }
+            for (PdfWidgetAnnotation widget : field.getWidgets()) {
+                if (widget == null || widget.getPdfObject() == null) {
+                    continue;
+                }
+                PdfDictionary widgetDict = widget.getPdfObject();
+                widgetDict.put(PdfName.Border, zeroPdfArray(3));
+                PdfDictionary borderStyle = widgetDict.getAsDictionary(PdfName.BS);
+                if (borderStyle == null) {
+                    borderStyle = new PdfDictionary();
+                    widgetDict.put(PdfName.BS, borderStyle);
+                }
+                borderStyle.put(PdfName.W, new PdfNumber(0));
+                PdfDictionary appearanceCharacteristics = widgetDict.getAsDictionary(PdfName.MK);
+                if (appearanceCharacteristics == null) {
+                    appearanceCharacteristics = new PdfDictionary();
+                    widgetDict.put(PdfName.MK, appearanceCharacteristics);
+                }
+                appearanceCharacteristics.put(PdfName.BC, new PdfArray());
+                appearanceCharacteristics.put(PdfName.BG, new PdfArray());
+            }
+        } catch (Exception ignored) {
+            // Widget chrome cleanup is defensive; the custom layer still controls the visible signature.
+        }
+    }
+
+    private static PdfArray zeroPdfArray(int count) {
+        PdfArray array = new PdfArray();
+        for (int index = 0; index < count; index += 1) {
+            array.add(new PdfNumber(0));
+        }
+        return array;
     }
 
     private String buildAppearanceText(TokenService.Credential credential, SignatureAppearanceMetadata metadata) {

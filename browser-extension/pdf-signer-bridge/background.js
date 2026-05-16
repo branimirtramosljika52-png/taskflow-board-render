@@ -41,6 +41,10 @@ function sanitizeSignerSettings(settings) {
   return settings && typeof settings === "object" ? { ...settings } : {};
 }
 
+function sanitizeAppearance(appearance) {
+  return appearance && typeof appearance === "object" ? { ...appearance } : null;
+}
+
 function sanitizeDebugAppearance(debugAppearance) {
   return debugAppearance && typeof debugAppearance === "object" ? { ...debugAppearance } : null;
 }
@@ -84,6 +88,10 @@ function normalizeMessage(message) {
   const settings = sanitizeSignerSettings(message?.settings);
   if (Object.keys(settings).length > 0) {
     payload.settings = settings;
+  }
+  const appearance = sanitizeAppearance(message?.appearance || settings.appearance);
+  if (appearance) {
+    payload.appearance = appearance;
   }
   const debugAppearance = sanitizeDebugAppearance(message?.debugAppearance);
   if (debugAppearance) {

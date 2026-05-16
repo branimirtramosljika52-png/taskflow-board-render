@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { inflateSync } from "node:zlib";
 
 import PizZip from "pizzip";
-import { PDFDocument, StandardFonts } from "pdf-lib";
+import { PDFDocument, PDFName, StandardFonts } from "pdf-lib";
 
 import {
   addPdfSignatureFieldsToBuffer,
@@ -44,6 +45,19 @@ function buildMinimalDocxBuffer(documentXml = "", {
     wordFolder.file(path.replace(/^word\//, ""), content);
   });
   return zip.generate({ type: "nodebuffer", compression: "DEFLATE" });
+}
+
+function inflatePdfContentStreams(pdfBuffer = Buffer.alloc(0)) {
+  const content = pdfBuffer.toString("latin1");
+  return [...content.matchAll(/stream\r?\n([\s\S]*?)endstream/g)]
+    .map((match) => Buffer.from(match[1].replace(/\r?\n$/, ""), "latin1"))
+    .flatMap((stream) => {
+      try {
+        return [inflateSync(stream).toString("latin1")];
+      } catch {
+        return [];
+      }
+    });
 }
 
 test("docx export removes an empty optional media placeholder with its standalone page break", async () => {
@@ -704,6 +718,38 @@ test("PDF signature role positioning settings override anchor offsets and size",
   assert.equal(Math.round(rect.height), 50);
   assert.ok(rect.y > 640 && rect.y < 645, `expected configured offset below OIB, got y=${rect.y}`);
   assert.ok(rect.x > 364 && rect.x < 374, `expected configured horizontal offset, got x=${rect.x}`);
+});
+
+test("PDF signature appearance treats string false as borderless transparent placeholder", async () => {
+  const sourceDoc = await PDFDocument.create();
+  const font = await sourceDoc.embedFont(StandardFonts.Helvetica);
+  const page = sourceDoc.addPage([300, 200]);
+  page.drawText("OIB 12345678901", { x: 50, y: 100, size: 9, font });
+
+  const outputBuffer = await addPdfSignatureFieldsToBuffer(
+    Buffer.from(await sourceDoc.save({ useObjectStreams: false })),
+    [{
+      signatureMode: "digital",
+      signatureFieldRole: "ZNR",
+      signatureFieldOib: "12345678901",
+      fieldName: "SIGN_ZNR_12345678901",
+      name: "Ana Ivic",
+      drawPlaceholder: true,
+    }],
+    {
+      appearance: {
+        showLogo: "false",
+        border: "false",
+        transparentBackground: "true",
+      },
+    },
+  );
+
+  const pdfDoc = await PDFDocument.load(outputBuffer);
+  const widget = pdfDoc.getForm().getField("SIGN_ZNR_12345678901").acroField.getWidgets()[0];
+  assert.deepEqual(widget.dict.get(PDFName.of("Border"))?.asArray().map((item) => item.asNumber()), [0, 0, 0]);
+  assert.equal(widget.dict.get(PDFName.of("BS"))?.lookup(PDFName.of("W"))?.asNumber(), 0);
+  assert.doesNotMatch(inflatePdfContentStreams(outputBuffer).join("\n"), /0\.68 0\.72 0\.78 RG|1 1 1 rg/);
 });
 
 test("signature field metadata collector returns preferred field for digital entries", () => {

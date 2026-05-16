@@ -22,7 +22,7 @@ import java.util.Properties;
 
 public final class NativeMessagingMain {
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final String VERSION = "1.4.0-appearance-debug";
+    private static final String VERSION = "1.4.1-minimal-appearance-debug";
     private static final int MAX_MESSAGE_BYTES = 8 * 1024 * 1024;
 
     private NativeMessagingMain() {
@@ -60,7 +60,7 @@ public final class NativeMessagingMain {
     }
 
     private static JsonNode handleMessage(JsonNode request) {
-        SignerConfig config = SignerConfig.loadWithOverrides(settingsOverrides(request.path("settings")));
+        SignerConfig config = loadConfigWithRequestOverrides(request);
         String type = text(request, "type", "").trim();
         return switch (type) {
             case "PING_SIGNER" -> pingResponse(config);
@@ -74,6 +74,12 @@ public final class NativeMessagingMain {
                     : signDocumentsReal(request, config);
             default -> errorResponse(text(request, "jobId", ""), "UNSUPPORTED_MESSAGE", "Nepodrzana naredba za PDF Signer.");
         };
+    }
+
+    private static SignerConfig loadConfigWithRequestOverrides(JsonNode request) {
+        Properties overrides = settingsOverrides(request.path("settings"));
+        putAppearanceSettings(overrides, request.path("appearance"));
+        return SignerConfig.loadWithOverrides(overrides);
     }
 
     private static Properties settingsOverrides(JsonNode settings) {
@@ -271,6 +277,7 @@ public final class NativeMessagingMain {
         putSetting(properties, appearance, "showOrganization", "appearance.show.organization");
         putSetting(properties, appearance, "showDateTime", "appearance.show.dateTime");
         putSetting(properties, appearance, "showLogo", "appearance.show.logo");
+        putSetting(properties, appearance, "logoEnabled", "appearance.show.logo");
         putSetting(properties, appearance, "showCertificateSubject", "appearance.show.certificateSubject");
         putSetting(properties, appearance, "showProvider", "appearance.show.provider");
         putSetting(properties, appearance, "showReason", "appearance.show.reason");
@@ -278,6 +285,7 @@ public final class NativeMessagingMain {
         putSetting(properties, appearance, "logoDataUrl", "appearance.logo.dataUrl");
         putSetting(properties, appearance, "logoOpacity", "appearance.logo.opacity");
         putSetting(properties, appearance, "border", "appearance.border");
+        putSetting(properties, appearance, "borderEnabled", "appearance.border");
         putSetting(properties, appearance, "transparentBackground", "appearance.transparentBackground");
         putSetting(properties, appearance, "alignment", "appearance.alignment");
         putSetting(properties, appearance, "compactMode", "appearance.compactMode");
@@ -549,6 +557,7 @@ public final class NativeMessagingMain {
                             );
                         }
 
+                        documentResult.set("appearanceUsed", appliedAppearanceDebugNode(config, signedPdf));
                         documentResult.put("logoApplied", signedPdf.logoApplied());
                         documentResult.put("borderApplied", signedPdf.borderApplied());
                         documentResult.put("appearanceMode", signedPdf.appearanceMode());
@@ -704,6 +713,11 @@ public final class NativeMessagingMain {
                         wouldSign += 1;
                         documentResult.put("status", "would_sign");
                         documentResult.put("message", "Dry-run: ovaj dokument bi bio potpisan po fieldu " + matchedField.fieldName() + ".");
+                        documentResult.put("logoApplied", false);
+                        documentResult.put("borderApplied", false);
+                        documentResult.put("appearanceMode", config.appearanceBorder() ? "configured" : "minimal-transparent");
+                        documentResult.put("fieldName", matchedField.fieldName());
+                        documentResult.put("signedFileName", text(item, "fileName", "zapisnik.pdf"));
                     } else {
                         ObjectNode error = errorItem(
                                 item,
@@ -747,6 +761,9 @@ public final class NativeMessagingMain {
         response.put("signed", 0);
         response.put("wouldSign", wouldSign);
         response.put("skipped", skipped);
+        response.put("logoApplied", false);
+        response.put("borderApplied", false);
+        response.put("appearanceMode", config.appearanceBorder() ? "configured" : "minimal-transparent");
         response.put("message", ok
                 ? "Dry-run uspjesan: dokumenti imaju odgovarajuca signature polja."
                 : "Dry-run je zavrsio s provjerljivim greskama.");
@@ -765,7 +782,11 @@ public final class NativeMessagingMain {
         response.put("mode", config.isMock() ? "mock" : "real");
         response.put("dryRun", dryRun);
         response.put("pinRequested", false);
-        response.set("appearanceDebug", appearanceDebugNode(config));
+        ObjectNode appearanceDebug = appearanceDebugNode(config);
+        response.set("appearanceDebug", appearanceDebug);
+        response.set("appearanceUsed", appearanceDebug.deepCopy());
+        response.put("receivedLogo", appearanceDebug.path("receivedLogo").asBoolean(false));
+        response.put("logoByteSize", appearanceDebug.path("logoByteSize").asInt(0));
         return response;
     }
 
@@ -773,6 +794,10 @@ public final class NativeMessagingMain {
         JsonNode debugAppearance = request == null ? null : request.path("debugAppearance");
         if (debugAppearance != null && debugAppearance.isObject()) {
             response.set("requestAppearanceDebug", debugAppearance.deepCopy());
+        }
+        JsonNode appearance = request == null ? null : request.path("appearance");
+        if (appearance != null && appearance.isObject()) {
+            response.set("requestAppearance", appearance.deepCopy());
         }
     }
 
@@ -792,9 +817,42 @@ public final class NativeMessagingMain {
         debug.put("logoOpacity", config.appearanceLogoOpacity());
         debug.put("borderEnabled", config.appearanceBorder());
         debug.put("transparentBackground", config.appearanceTransparentBackground());
+        debug.putNull("backgroundColor");
+        debug.putNull("borderColor");
+        ObjectNode appearance = JSON.createObjectNode();
+        appearance.put("logoEnabled", config.appearanceShowLogo());
+        appearance.put("logoOpacity", config.appearanceLogoOpacity());
+        appearance.put("logoBytesPresent", !logoDataUrl.isBlank());
+        appearance.put("logoBase64Present", logoBase64Present);
+        appearance.put("logoBytesBase64Present", !logoDataUrl.isBlank() && logoBase64Present);
+        appearance.put("borderEnabled", config.appearanceBorder());
+        appearance.put("transparentBackground", config.appearanceTransparentBackground());
+        appearance.putNull("backgroundColor");
+        appearance.putNull("borderColor");
+        debug.set("appearance", appearance);
         debug.put("appearanceMode", config.appearanceBorder()
                 ? "configured"
                 : "minimal-transparent");
+        return debug;
+    }
+
+    private static ObjectNode appliedAppearanceDebugNode(SignerConfig config, SigningService.SignedPdf signedPdf) {
+        ObjectNode debug = appearanceDebugNode(config);
+        if (signedPdf == null) {
+            return debug;
+        }
+        debug.put("logoApplied", signedPdf.logoApplied());
+        debug.put("borderApplied", signedPdf.borderApplied());
+        debug.put("appearanceMode", signedPdf.appearanceMode());
+        debug.put("fieldName", signedPdf.fieldName());
+        debug.put("logoByteSize", signedPdf.logoByteSize());
+        debug.put("appearanceError", signedPdf.appearanceError());
+        JsonNode appearanceNode = debug.path("appearance");
+        if (appearanceNode.isObject()) {
+            ((ObjectNode) appearanceNode).put("logoApplied", signedPdf.logoApplied());
+            ((ObjectNode) appearanceNode).put("borderApplied", signedPdf.borderApplied());
+            ((ObjectNode) appearanceNode).put("appearanceMode", signedPdf.appearanceMode());
+        }
         return debug;
     }
 
