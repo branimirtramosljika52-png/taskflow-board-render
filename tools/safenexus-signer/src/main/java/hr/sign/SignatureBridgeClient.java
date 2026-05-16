@@ -85,6 +85,7 @@ public final class SignatureBridgeClient {
             String itemId,
             String documentId,
             String fileName,
+            String lockToken,
             byte[] pdfBytes
     ) throws SignatureBridgeException {
         config.requireSafeNexusApiBase(apiBaseUrl);
@@ -97,6 +98,9 @@ public final class SignatureBridgeClient {
                 + "/items/"
                 + urlEncode(itemId.trim())
                 + "/signed";
+        if (lockToken != null && !lockToken.isBlank()) {
+            url += "?lockToken=" + urlEncode(lockToken.trim());
+        }
         config.requireSafeNexusUrl(url, "UPLOAD_FAILED", "Upload URL nije na dopustenoj SafeNexus domeni.");
 
         try {
@@ -105,10 +109,17 @@ public final class SignatureBridgeClient {
             payload.put("fileType", "application/pdf");
             payload.put("fileSize", pdfBytes == null ? 0 : pdfBytes.length);
             payload.put("dataUrl", "data:application/pdf;base64," + Base64.getEncoder().encodeToString(pdfBytes));
+            if (lockToken != null && !lockToken.isBlank()) {
+                payload.put("lockToken", lockToken.trim());
+            }
 
-            HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder(URI.create(url))
                     .timeout(Duration.ofMinutes(5))
-                    .header("Content-Type", "application/json")
+                    .header("Content-Type", "application/json");
+            if (lockToken != null && !lockToken.isBlank()) {
+                requestBuilder.header("X-SafeNexus-Lock-Token", lockToken.trim());
+            }
+            HttpRequest request = requestBuilder
                     .POST(HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(payload), StandardCharsets.UTF_8))
                     .build();
             HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));

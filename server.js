@@ -4113,12 +4113,16 @@ async function handleSignatureBridgeSignedUpload(request, response, token = "", 
 
   const body = await readJsonBody(request);
   const requestUrl = new URL(request.url, "http://localhost");
-  const providedLockToken = String(
+  let providedLockToken = String(
     body?.lockToken
     || requestUrl.searchParams.get("lockToken")
     || request.headers["x-safenexus-lock-token"]
     || "",
   ).trim();
+  if (!providedLockToken && item.signingLockToken && !item.lockedByOther) {
+    // Older native signer builds upload through the short-lived job token but do not echo lockToken.
+    providedLockToken = item.signingLockToken;
+  }
   if (item.signingLockToken && providedLockToken !== item.signingLockToken) {
     sendJson(response, 423, {
       ok: false,

@@ -457,6 +457,7 @@ public final class NativeMessagingMain {
                                 text(item, "id", ""),
                                 text(item, "documentId", ""),
                                 text(item, "fileName", "zapisnik.pdf"),
+                                text(item, "lockToken", text(item, "signingLockToken", "")),
                                 signedPdf.bytes()
                         );
 
