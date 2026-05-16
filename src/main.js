@@ -30480,7 +30480,7 @@ async function runSignatureDebugGetFields() {
       token: payload.token || "",
       apiBaseUrl: payload.apiBase || window.location.origin,
       documents,
-      settings: getPdfSignerWebSettings(),
+      settings: getActivePdfSignerWebSettings(),
     };
     let response;
     let usedDryRunFallback = false;
@@ -30547,7 +30547,7 @@ async function runSignatureDebugDryRun() {
       token: payload.token || "",
       apiBaseUrl: payload.apiBase || window.location.origin,
       documents,
-      settings: getPdfSignerWebSettings(),
+      settings: getActivePdfSignerWebSettings(),
       dryRun: true,
     });
     setSignatureDebugFromPingResponse(response);
@@ -31735,7 +31735,7 @@ async function openSignatureReviewFlow(options = {}) {
       token: payload.token || "",
       apiBaseUrl: payload.apiBase || window.location.origin,
       documents,
-      settings: getPdfSignerWebSettings(),
+      settings: getActivePdfSignerWebSettings(),
     };
     const fieldsResponse = await getSignatureFieldsForBridgeRequest(bridgeRequest);
     const items = buildSignatureReviewItems(payload, fieldsResponse, pendingEntries);
@@ -32022,8 +32022,30 @@ function getPdfSignerWebSettings() {
   };
 }
 
+function getActivePdfSignerWebSettings() {
+  if (signaturesSettingsPanel && !signaturesSettingsPanel.hidden) {
+    try {
+      return savePdfSignerWebSettings(collectSignerSettingsFormValues());
+    } catch {
+      return getPdfSignerWebSettings();
+    }
+  }
+  return getPdfSignerWebSettings();
+}
+
+function saveSignerSettingsFormDraftSilently() {
+  if (!signaturesSettingsPanel || signaturesSettingsPanel.hidden) {
+    return getPdfSignerWebSettings();
+  }
+  try {
+    return savePdfSignerWebSettings(collectSignerSettingsFormValues());
+  } catch {
+    return getPdfSignerWebSettings();
+  }
+}
+
 function getPdfSignatureExportSettings() {
-  const settings = getPdfSignerWebSettings();
+  const settings = getActivePdfSignerWebSettings();
   return {
     appearance: settings.appearance,
     rolePositioning: settings.rolePositioning,
@@ -32031,7 +32053,8 @@ function getPdfSignatureExportSettings() {
 }
 
 function appendSignatureAppearanceMarkerContent(marker, item = {}) {
-  const appearance = normalizePdfSignerAppearanceSettings(getPdfSignerWebSettings().appearance);
+  const settings = getActivePdfSignerWebSettings();
+  const appearance = normalizePdfSignerAppearanceSettings(settings.appearance);
   marker.classList.toggle("has-border", Boolean(appearance.border));
   marker.classList.toggle("has-background", appearance.transparentBackground === false);
   marker.style.textAlign = appearance.alignment || "left";
@@ -32052,8 +32075,8 @@ function appendSignatureAppearanceMarkerContent(marker, item = {}) {
     lines.push({ text: item.companyName || item.sourceEntry?.context?.company?.name, strong: false });
   }
   if (appearance.showDateTime) lines.push({ text: "Datum i vrijeme potpisa", strong: false });
-  if (appearance.showReason && getPdfSignerWebSettings().reason) lines.push({ text: getPdfSignerWebSettings().reason, strong: false });
-  if (appearance.showLocation && getPdfSignerWebSettings().location) lines.push({ text: getPdfSignerWebSettings().location, strong: false });
+  if (appearance.showReason && settings.reason) lines.push({ text: settings.reason, strong: false });
+  if (appearance.showLocation && settings.location) lines.push({ text: settings.location, strong: false });
   lines.slice(0, appearance.compactMode ? 5 : 9).forEach((line) => {
     const element = document.createElement(line.strong ? "strong" : "span");
     element.textContent = line.text;
@@ -32485,7 +32508,7 @@ async function openLocalSignerSettingsFromWeb() {
     state.signatures.settings = {
       ...state.signatures.settings,
       loaded: true,
-      values: getPdfSignerWebSettings(),
+      values: getActivePdfSignerWebSettings(),
       lastResponse: response,
       error: "",
     };
@@ -32690,7 +32713,7 @@ async function openLocalSignatureBridge(entriesOverride = null, options = {}) {
         token: payload.token || "",
         apiBaseUrl: payload.apiBase || window.location.origin,
         documents,
-        settings: getPdfSignerWebSettings(),
+        settings: getActivePdfSignerWebSettings(),
         allowErrorResponse: true,
       });
     } finally {
@@ -104424,6 +104447,7 @@ signaturesSettingsLogoClearButton?.addEventListener("click", () => {
     signaturesSettingsShowLogoInput.checked = false;
   }
   syncSignatureLogoPicker({ logoDataUrl: "" });
+  saveSignerSettingsFormDraftSilently();
 });
 
 signaturesSettingsLogoFileInput?.addEventListener("change", () => {
@@ -104440,7 +104464,8 @@ signaturesSettingsLogoFileInput?.addEventListener("change", () => {
       signaturesSettingsShowLogoInput.checked = true;
     }
     syncSignatureLogoPicker({ logoDataUrl });
-    setSignaturesBridgeStatus("Logo za digitalni potpis je dodan u web app postavke. Klikni Spremi za slanje lokalnom signeru.", "ready");
+    saveSignerSettingsFormDraftSilently();
+    setSignaturesBridgeStatus("Logo za digitalni potpis je aktivan u web app postavkama. Spremi ga za trajno slanje lokalnom signeru.", "ready");
   }).catch((error) => {
     setSignaturesBridgeStatus(error.message || "Logo nije moguće učitati.", "error");
   }).finally(() => {
@@ -104449,6 +104474,30 @@ signaturesSettingsLogoFileInput?.addEventListener("change", () => {
     }
     setSignatureDebugOperationLoading(signaturesSettingsLogoUploadButton, false);
   });
+});
+
+signaturesSettingsPanel?.addEventListener("change", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+  if (target.closest("#signatures-settings-role-positioning")) {
+    saveSignerSettingsFormDraftSilently();
+    return;
+  }
+  if (target.matches("input, select, textarea")) {
+    saveSignerSettingsFormDraftSilently();
+  }
+});
+
+signaturesSettingsPanel?.addEventListener("input", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement) || target.closest("#signatures-settings-role-positioning")) {
+    return;
+  }
+  if (target.matches("input, textarea")) {
+    saveSignerSettingsFormDraftSilently();
+  }
 });
 
 signaturesSettingsTestTokenButton?.addEventListener("click", () => {
