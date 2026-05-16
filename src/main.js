@@ -30832,10 +30832,20 @@ function createSignatureReviewStatusBar(review = {}) {
   return bar;
 }
 
+function ensureSignatureReviewPanelPortal() {
+  if (!signaturesReviewPanel || signaturesReviewPanel.parentElement === document.body) {
+    return;
+  }
+  // Keep the fullscreen review outside transformed app shells so fixed positioning uses the viewport.
+  document.body.append(signaturesReviewPanel);
+}
+
 function renderSignatureReviewPanel() {
   if (!signaturesReviewPanel || !signaturesReviewBody) {
     return;
   }
+
+  ensureSignatureReviewPanelPortal();
 
   const review = state.signatures.review || {};
   signaturesReviewPanel.hidden = !Array.isArray(review.items) || review.items.length === 0;
