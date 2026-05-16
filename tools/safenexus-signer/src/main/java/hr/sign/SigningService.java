@@ -2,6 +2,7 @@ package hr.sign;
 
 import com.itextpdf.forms.PdfAcroForm;
 import com.itextpdf.forms.fields.PdfFormField;
+import com.itextpdf.forms.fields.PdfSignatureFormField;
 import com.itextpdf.io.font.constants.StandardFonts;
 import com.itextpdf.io.image.ImageData;
 import com.itextpdf.io.image.ImageDataFactory;
@@ -195,6 +196,7 @@ public final class SigningService {
                         .setPageNumber(page);
             }
 
+            ensureSignatureFieldIsMinimal(signer, fieldName, rectangle, page);
             signer.setFieldName(fieldName);
             suppressSignatureWidgetChrome(signer, fieldName);
             SignatureAppearanceResult appearanceResult = drawConfiguredAppearance(signer, appearance, appearanceText, font);
@@ -229,6 +231,61 @@ public final class SigningService {
         }
     }
 
+    private void ensureSignatureFieldIsMinimal(PdfSigner signer, String fieldName, Rectangle rectangle, int page) {
+        if (signer == null || fieldName == null || fieldName.isBlank()) {
+            return;
+        }
+        try {
+            PdfDocument document = signer.getDocument();
+            PdfAcroForm acroForm = PdfAcroForm.getAcroForm(document, true);
+            if (acroForm == null) {
+                return;
+            }
+            PdfFormField field = acroForm.getField(fieldName);
+            if (field == null && rectangle != null && page > 0 && page <= document.getNumberOfPages()) {
+                PdfSignatureFormField signatureField = PdfFormField.createSignature(document, rectangle);
+                signatureField.setFieldName(fieldName);
+                signatureField.setPage(page);
+                applyMinimalFieldChrome(signatureField);
+                acroForm.addField(signatureField, document.getPage(page));
+                field = signatureField;
+            }
+            applyMinimalFieldChrome(field);
+        } catch (Exception ignored) {
+            // If field pre-creation fails, PdfSigner can still create/sign the field.
+        }
+    }
+
+    private void applyMinimalFieldChrome(PdfFormField field) {
+        if (field == null) {
+            return;
+        }
+        try {
+            field.put(PdfName.Border, zeroPdfArray(3));
+            PdfDictionary borderStyle = new PdfDictionary();
+            borderStyle.put(PdfName.W, new PdfNumber(0));
+            field.put(PdfName.BS, borderStyle);
+            PdfDictionary appearanceCharacteristics = new PdfDictionary();
+            appearanceCharacteristics.put(PdfName.BC, new PdfArray());
+            appearanceCharacteristics.put(PdfName.BG, new PdfArray());
+            field.put(PdfName.MK, appearanceCharacteristics);
+            field.setBorderWidth(0);
+            field.setReadOnly(false);
+        } catch (Exception ignored) {
+            // Dictionary cleanup below is still attempted widget-by-widget.
+        }
+        try {
+            if (field.getWidgets() == null) {
+                return;
+            }
+            for (PdfWidgetAnnotation widget : field.getWidgets()) {
+                clearWidgetChrome(widget);
+            }
+        } catch (Exception ignored) {
+            // Minimal appearance is best-effort for legacy malformed fields.
+        }
+    }
+
     private void suppressSignatureWidgetChrome(PdfSigner signer, String fieldName) {
         if (signer == null || fieldName == null || fieldName.isBlank()) {
             return;
@@ -243,28 +300,34 @@ public final class SigningService {
                 return;
             }
             for (PdfWidgetAnnotation widget : field.getWidgets()) {
-                if (widget == null || widget.getPdfObject() == null) {
-                    continue;
-                }
-                PdfDictionary widgetDict = widget.getPdfObject();
-                widgetDict.put(PdfName.Border, zeroPdfArray(3));
-                PdfDictionary borderStyle = widgetDict.getAsDictionary(PdfName.BS);
-                if (borderStyle == null) {
-                    borderStyle = new PdfDictionary();
-                    widgetDict.put(PdfName.BS, borderStyle);
-                }
-                borderStyle.put(PdfName.W, new PdfNumber(0));
-                PdfDictionary appearanceCharacteristics = widgetDict.getAsDictionary(PdfName.MK);
-                if (appearanceCharacteristics == null) {
-                    appearanceCharacteristics = new PdfDictionary();
-                    widgetDict.put(PdfName.MK, appearanceCharacteristics);
-                }
-                appearanceCharacteristics.put(PdfName.BC, new PdfArray());
-                appearanceCharacteristics.put(PdfName.BG, new PdfArray());
+                clearWidgetChrome(widget);
             }
         } catch (Exception ignored) {
             // Widget chrome cleanup is defensive; the custom layer still controls the visible signature.
         }
+    }
+
+    private void clearWidgetChrome(PdfWidgetAnnotation widget) {
+        if (widget == null || widget.getPdfObject() == null) {
+            return;
+        }
+        PdfDictionary widgetDict = widget.getPdfObject();
+        widgetDict.put(PdfName.Border, zeroPdfArray(3));
+        PdfDictionary borderStyle = widgetDict.getAsDictionary(PdfName.BS);
+        if (borderStyle == null) {
+            borderStyle = new PdfDictionary();
+            widgetDict.put(PdfName.BS, borderStyle);
+        }
+        borderStyle.put(PdfName.W, new PdfNumber(0));
+        PdfDictionary appearanceCharacteristics = widgetDict.getAsDictionary(PdfName.MK);
+        if (appearanceCharacteristics == null) {
+            appearanceCharacteristics = new PdfDictionary();
+            widgetDict.put(PdfName.MK, appearanceCharacteristics);
+        }
+        appearanceCharacteristics.put(PdfName.BC, new PdfArray());
+        appearanceCharacteristics.put(PdfName.BG, new PdfArray());
+        widget.setHighlightMode(PdfName.N);
+        widgetDict.remove(PdfName.AP);
     }
 
     private static PdfArray zeroPdfArray(int count) {
@@ -461,7 +524,10 @@ public final class SigningService {
 
     private AppearanceLogo loadAppearanceLogo() {
         String dataUrl = String.valueOf(config.appearanceLogoDataUrl() == null ? "" : config.appearanceLogoDataUrl()).trim();
-        if (!dataUrl.startsWith("data:image/")) {
+        String lowerDataUrl = dataUrl.toLowerCase(Locale.ROOT);
+        if (!lowerDataUrl.startsWith("data:image/png;base64,")
+                && !lowerDataUrl.startsWith("data:image/jpeg;base64,")
+                && !lowerDataUrl.startsWith("data:image/jpg;base64,")) {
             return null;
         }
         int comma = dataUrl.indexOf(',');

@@ -31896,7 +31896,7 @@ function normalizePdfSignerAppearanceNumber(value, fallback = 0, { min = Number.
 }
 
 function isPdfSignerLogoBase64DataUrl(value = "") {
-  return /^data:image\/(?:png|jpe?g|webp|svg\+xml);base64,/i.test(String(value || "").trim());
+  return /^data:image\/(?:png|jpe?g);base64,/i.test(String(value || "").trim());
 }
 
 function normalizePdfSignerAppearanceSettings(settings = {}) {
@@ -32008,17 +32008,18 @@ async function readSignatureLogoFileAsDataUrl(file) {
 
 function syncSignatureLogoPicker(appearance = {}) {
   const logoDataUrl = String(appearance.logoDataUrl || signaturesSettingsLogoDataUrlInput?.value || "").trim();
+  const hasSupportedLogo = isPdfSignerLogoBase64DataUrl(logoDataUrl);
   if (signaturesSettingsLogoPreview) {
-    signaturesSettingsLogoPreview.classList.toggle("has-logo", Boolean(logoDataUrl));
+    signaturesSettingsLogoPreview.classList.toggle("has-logo", hasSupportedLogo);
     signaturesSettingsLogoPreview.replaceChildren();
-    if (logoDataUrl) {
+    if (hasSupportedLogo) {
       const image = document.createElement("img");
       image.src = logoDataUrl;
       image.alt = "Logo firme";
       signaturesSettingsLogoPreview.append(image);
     } else {
       const empty = document.createElement("span");
-      empty.textContent = "Logo nije odabran";
+      empty.textContent = logoDataUrl ? "Logo nije u PNG/JPG formatu" : "Logo nije odabran";
       signaturesSettingsLogoPreview.append(empty);
     }
   }
@@ -32092,7 +32093,7 @@ function getActivePdfSignerWebSettings() {
 
 function estimatePdfSignerLogoByteSize(dataUrl = "") {
   const text = String(dataUrl || "").trim();
-  const match = text.match(/^data:image\/(?:png|jpe?g|webp|svg\+xml);base64,([a-z0-9+/=\s]+)$/i);
+  const match = text.match(/^data:image\/(?:png|jpe?g);base64,([a-z0-9+/=\s]+)$/i);
   if (!match) {
     return 0;
   }

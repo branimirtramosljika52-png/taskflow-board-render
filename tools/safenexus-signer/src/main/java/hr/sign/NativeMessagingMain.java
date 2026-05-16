@@ -22,7 +22,7 @@ import java.util.Properties;
 
 public final class NativeMessagingMain {
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final String VERSION = "1.4.1-minimal-appearance-debug";
+    private static final String VERSION = "1.4.2-minimal-logo-appearance";
     private static final int MAX_MESSAGE_BYTES = 8 * 1024 * 1024;
 
     private NativeMessagingMain() {
@@ -70,7 +70,7 @@ public final class NativeMessagingMain {
             case "TEST_TOKEN_DETECTION" -> testTokenDetection(config);
             case "OPEN_SIGNER_SETTINGS" -> openSignerSettings(config);
             case "SIGN_DOCUMENTS" -> config.isMock()
-                    ? signDocumentsMock(request)
+                    ? signDocumentsMock(request, config)
                     : signDocumentsReal(request, config);
             default -> errorResponse(text(request, "jobId", ""), "UNSUPPORTED_MESSAGE", "Nepodrzana naredba za PDF Signer.");
         };
@@ -254,7 +254,9 @@ public final class NativeMessagingMain {
         appearance.put("showProvider", config.appearanceShowProvider());
         appearance.put("showReason", config.appearanceShowReason());
         appearance.put("showLocation", config.appearanceShowLocation());
-        appearance.put("logoDataUrl", config.appearanceLogoDataUrl());
+        putLogoDebugFields(appearance, config.appearanceShowLogo(), config.appearanceLogoDataUrl(), "settings.appearance.logoDataUrl");
+        appearance.put("logoDataUrl", "");
+        appearance.put("logoDataUrlOmitted", !String.valueOf(config.appearanceLogoDataUrl() == null ? "" : config.appearanceLogoDataUrl()).trim().isBlank());
         appearance.put("logoOpacity", raw.getProperty("appearance.logo.opacity", "0.08"));
         appearance.put("border", config.appearanceBorder());
         appearance.put("transparentBackground", config.appearanceTransparentBackground());
@@ -334,10 +336,13 @@ public final class NativeMessagingMain {
         return JSON.createObjectNode();
     }
 
-    private static JsonNode signDocumentsMock(JsonNode request) {
+    private static JsonNode signDocumentsMock(JsonNode request, SignerConfig config) {
         String jobId = text(request, "jobId", "");
         ObjectNode response = JSON.createObjectNode();
         response.put("jobId", jobId);
+        response.set("appearanceDebug", appearanceDebugNode(config));
+        response.set("appearanceUsed", appearanceDebugNode(config));
+        putRequestAppearanceDebug(response, request);
 
         String apiBaseUrl = text(request, "apiBaseUrl", text(request, "apiBase", ""));
         if (!isAllowedApiBaseUrl(apiBaseUrl)) {
@@ -797,14 +802,13 @@ public final class NativeMessagingMain {
         }
         JsonNode appearance = request == null ? null : request.path("appearance");
         if (appearance != null && appearance.isObject()) {
-            response.set("requestAppearance", appearance.deepCopy());
+            response.set("requestAppearance", requestAppearanceDebugNode(appearance));
         }
     }
 
     private static ObjectNode appearanceDebugNode(SignerConfig config) {
         String logoDataUrl = String.valueOf(config.appearanceLogoDataUrl() == null ? "" : config.appearanceLogoDataUrl()).trim();
-        boolean logoBase64Present = logoDataUrl.toLowerCase(Locale.ROOT).startsWith("data:image/")
-                && logoDataUrl.toLowerCase(Locale.ROOT).contains(";base64,");
+        boolean logoBase64Present = isBase64ImageDataUrl(logoDataUrl);
         int logoByteSize = logoBase64Present ? estimateLogoByteSize(logoDataUrl) : 0;
         ObjectNode debug = JSON.createObjectNode();
         debug.put("logoEnabled", config.appearanceShowLogo());
@@ -821,6 +825,7 @@ public final class NativeMessagingMain {
         debug.putNull("borderColor");
         ObjectNode appearance = JSON.createObjectNode();
         appearance.put("logoEnabled", config.appearanceShowLogo());
+        appearance.put("logoSource", logoDataUrl.isBlank() ? "none" : "settings.appearance.logoDataUrl");
         appearance.put("logoOpacity", config.appearanceLogoOpacity());
         appearance.put("logoBytesPresent", !logoDataUrl.isBlank());
         appearance.put("logoBase64Present", logoBase64Present);
@@ -834,6 +839,72 @@ public final class NativeMessagingMain {
                 ? "configured"
                 : "minimal-transparent");
         return debug;
+    }
+
+    private static ObjectNode requestAppearanceDebugNode(JsonNode appearance) {
+        String logoDataUrl = firstNonBlank(
+                text(appearance, "logoDataUrl", ""),
+                firstNonBlank(text(appearance, "logo", ""), text(appearance, "logoUrl", ""))
+        );
+        boolean logoEnabled = booleanSetting(appearance, "showLogo", booleanSetting(appearance, "logoEnabled", false));
+        boolean borderEnabled = booleanSetting(appearance, "border", booleanSetting(appearance, "borderEnabled", false));
+        boolean transparentBackground = booleanSetting(appearance, "transparentBackground", true);
+        ObjectNode debug = JSON.createObjectNode();
+        putLogoDebugFields(debug, logoEnabled, logoDataUrl, logoDataUrl.isBlank() ? "none" : "request.appearance.logoDataUrl");
+        debug.put("logoOpacity", firstNonBlank(text(appearance, "logoOpacity", ""), "0.08"));
+        debug.put("borderEnabled", borderEnabled);
+        debug.put("transparentBackground", transparentBackground);
+        debug.putNull("backgroundColor");
+        debug.putNull("borderColor");
+        debug.put("appearanceMode", transparentBackground && !borderEnabled ? "minimal-transparent" : "configured");
+
+        ObjectNode nested = JSON.createObjectNode();
+        nested.put("logoEnabled", logoEnabled);
+        nested.put("logoOpacity", firstNonBlank(text(appearance, "logoOpacity", ""), "0.08"));
+        nested.put("logoBytesPresent", !logoDataUrl.isBlank());
+        nested.put("logoBase64Present", isBase64ImageDataUrl(logoDataUrl));
+        nested.put("logoBytesBase64Present", !logoDataUrl.isBlank() && isBase64ImageDataUrl(logoDataUrl));
+        nested.put("borderEnabled", borderEnabled);
+        nested.put("transparentBackground", transparentBackground);
+        debug.set("appearance", nested);
+        debug.put("logoDataUrlOmitted", !logoDataUrl.isBlank());
+        return debug;
+    }
+
+    private static void putLogoDebugFields(ObjectNode node, boolean logoEnabled, String logoDataUrl, String logoSource) {
+        String value = String.valueOf(logoDataUrl == null ? "" : logoDataUrl).trim();
+        boolean logoBase64Present = isBase64ImageDataUrl(value);
+        node.put("logoEnabled", logoEnabled);
+        node.put("logoSource", value.isBlank() ? "none" : logoSource);
+        node.put("logoBytesPresent", !value.isBlank());
+        node.put("logoBase64Present", logoBase64Present);
+        node.put("logoBytesBase64Present", !value.isBlank() && logoBase64Present);
+        node.put("logoByteSize", logoBase64Present ? estimateLogoByteSize(value) : 0);
+    }
+
+    private static boolean isBase64ImageDataUrl(String dataUrl) {
+        String value = String.valueOf(dataUrl == null ? "" : dataUrl).trim().toLowerCase(Locale.ROOT);
+        return (value.startsWith("data:image/png;base64,")
+                || value.startsWith("data:image/jpeg;base64,")
+                || value.startsWith("data:image/jpg;base64,"));
+    }
+
+    private static boolean booleanSetting(JsonNode node, String field, boolean fallback) {
+        if (node == null || !node.has(field) || node.get(field) == null || node.get(field).isNull()) {
+            return fallback;
+        }
+        JsonNode value = node.get(field);
+        if (value.isBoolean()) {
+            return value.asBoolean();
+        }
+        String text = value.asText("").trim().toLowerCase(Locale.ROOT);
+        if (List.of("true", "1", "yes", "da", "on").contains(text)) {
+            return true;
+        }
+        if (List.of("false", "0", "no", "ne", "off").contains(text)) {
+            return false;
+        }
+        return fallback;
     }
 
     private static ObjectNode appliedAppearanceDebugNode(SignerConfig config, SigningService.SignedPdf signedPdf) {
