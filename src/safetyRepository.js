@@ -91,6 +91,11 @@ function normalizeTimestamp(value) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+function formatMysqlDateTime(value) {
+  const normalized = normalizeTimestamp(value);
+  return normalized ? normalized.slice(0, 19).replace("T", " ") : null;
+}
+
 function normalizeDateOnly(value) {
   if (!value) {
     return null;
@@ -8832,7 +8837,7 @@ export class MySqlSafetyRepository {
           next.signatureReviewComment,
           Number(next.signatureReviewedByUserId) || null,
           next.signatureReviewedByName,
-          next.signatureReviewedAt || null,
+          formatMysqlDateTime(next.signatureReviewedAt),
           next.signatureReviewNotifiedOwner ? 1 : 0,
           Number(workOrderId),
           Number(documentId),
