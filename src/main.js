@@ -57632,26 +57632,50 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
       progress: 52,
     });
 
-    const isRetryableExportError = (error = null) => (
-      Number(error?.statusCode) === 503
-      || /upstream_reset|connection_termination|failed to forward/i.test(String(error?.message || ""))
-    );
-    const waitBeforeRetry = () => new Promise((resolve) => {
-      window.setTimeout(resolve, 2500);
+    const retryableExportStatusCodes = new Set([502, 503, 504]);
+    const exportRetryDelays = [2000, 4000, 7000, 10000, 15000, 20000, 25000, 30000, 30000];
+    const isRetryableExportError = (error = null) => {
+      const message = String(error?.message || "");
+      return retryableExportStatusCodes.has(Number(error?.statusCode))
+        || /no_healthy_upstream|upstream_reset|connection_termination|failed to forward|networkerror|failed to fetch/i.test(message);
+    };
+    const waitBeforeRetry = (attemptIndex = 0) => new Promise((resolve) => {
+      window.setTimeout(resolve, exportRetryDelays[Math.min(attemptIndex, exportRetryDelays.length - 1)]);
     });
+    const postExportPdfDocumentsWithRetry = async (chunkEntries, chunkStartIndex, label = "") => {
+      const maxAttempts = exportRetryDelays.length + 1;
+      for (let attemptIndex = 0; attemptIndex < maxAttempts; attemptIndex += 1) {
+        try {
+          return await apiRequest("/document-templates/export-pdf-documents", {
+            method: "POST",
+            body: {
+              entries: chunkEntries,
+              signatureSettings: getPdfSignatureExportSettings(),
+            },
+          });
+        } catch (error) {
+          if (!isRetryableExportError(error) || attemptIndex >= maxAttempts - 1) {
+            throw error;
+          }
+          loading.setPhase(3, {
+            message: `Server se upravo vraća online, pokušavam ponovno ${attemptIndex + 2}/${maxAttempts}: ${label || "spremanje zapisnika"}...`,
+            progress: Math.min(90, 62 + Math.round(((chunkStartIndex + chunkEntries.length) / batchEntries.length) * 24)),
+          });
+          await waitBeforeRetry(attemptIndex);
+        }
+      }
+      throw new Error("Spremanje zapisnika nije uspjelo nakon ponovnih pokušaja.");
+    };
     const saveBatchChunk = async (chunkEntries, chunkStartIndex, { allowSplit = true } = {}) => {
+      const chunkLabel = chunkEntries
+        .map((entry, offset) => `RN ${entry?.renderModel?.workOrderNumber || entry?.workOrderNumber || chunkStartIndex + offset + 1}`)
+        .join(", ");
       try {
-        return await apiRequest("/document-templates/export-pdf-documents", {
-          method: "POST",
-          body: {
-            entries: chunkEntries,
-            signatureSettings: getPdfSignatureExportSettings(),
-          },
-        });
+        return await postExportPdfDocumentsWithRetry(chunkEntries, chunkStartIndex, chunkLabel);
       } catch (error) {
         if (allowSplit && chunkEntries.length > 1 && isRetryableExportError(error)) {
           loading.setPhase(3, {
-            message: "Server je usporio, prebacujem taj paket na sigurno pojedinačno spremanje...",
+            message: "Server još nije stabilan za veći paket, prebacujem na sigurno pojedinačno spremanje...",
             progress: Math.min(90, 62 + Math.round(((chunkStartIndex + 1) / batchEntries.length) * 24)),
           });
           const splitItems = [];
@@ -57674,16 +57698,6 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
             items: splitItems,
             generatedCount: splitItems.length,
           };
-        }
-        if (!allowSplit && isRetryableExportError(error)) {
-          await waitBeforeRetry();
-          return await apiRequest("/document-templates/export-pdf-documents", {
-            method: "POST",
-            body: {
-              entries: chunkEntries,
-              signatureSettings: getPdfSignatureExportSettings(),
-            },
-          });
         }
         throw error;
       }
