@@ -146,7 +146,6 @@ import {
   getPdfSignerExtensionId,
   getPdfSignerExtensionInstallUrl,
   getSignatureFieldsWithPdfSignerExtension,
-  getSignerSettingsWithPdfSignerExtension,
   isPdfSignerExtensionUnavailable,
   openSignerSettingsWithPdfSignerExtension,
   pingPdfSignerExtension,
@@ -3320,7 +3319,6 @@ const signaturesReviewSignSelectedButton = document.querySelector("#signatures-r
 const signaturesReviewCloseButton = document.querySelector("#signatures-review-close");
 const signaturesSettingsPanel = document.querySelector("#signatures-settings-panel");
 const signaturesSettingsOpenButton = document.querySelector("#signatures-settings-open");
-const signaturesSettingsLoadButton = document.querySelector("#signatures-settings-load");
 const signaturesSettingsSaveButton = document.querySelector("#signatures-settings-save");
 const signaturesSettingsCloseButton = document.querySelector("#signatures-settings-close");
 const signaturesSettingsTestTokenButton = document.querySelector("#signatures-settings-test-token");
@@ -3359,6 +3357,10 @@ const signaturesSettingsShowProviderInput = document.querySelector("#signatures-
 const signaturesSettingsShowReasonVisibleInput = document.querySelector("#signatures-settings-show-reason");
 const signaturesSettingsShowLocationVisibleInput = document.querySelector("#signatures-settings-show-location");
 const signaturesSettingsLogoDataUrlInput = document.querySelector("#signatures-settings-logo-data-url");
+const signaturesSettingsLogoFileInput = document.querySelector("#signatures-settings-logo-file");
+const signaturesSettingsLogoPreview = document.querySelector("#signatures-settings-logo-preview");
+const signaturesSettingsLogoUploadButton = document.querySelector("#signatures-settings-logo-upload");
+const signaturesSettingsLogoClearButton = document.querySelector("#signatures-settings-logo-clear");
 const signaturesSettingsLogoOpacityInput = document.querySelector("#signatures-settings-logo-opacity");
 const signaturesSettingsBorderInput = document.querySelector("#signatures-settings-border");
 const signaturesSettingsTransparentBgInput = document.querySelector("#signatures-settings-transparent-bg");
@@ -31805,6 +31807,9 @@ function approveAllSignatureReviewItems() {
 }
 
 const PDF_SIGNER_WEB_SETTINGS_STORAGE_KEY = "safeNexus.pdfSigner.settings";
+const PDF_SIGNER_LOGO_MAX_SOURCE_BYTES = 2 * 1024 * 1024;
+const PDF_SIGNER_LOGO_MAX_DATA_URL_LENGTH = 2_800_000;
+const PDF_SIGNER_LOGO_MAX_SIDE = 720;
 const DEFAULT_PDF_SIGNER_WEB_SETTINGS = {
   signerMode: "real",
   realDryRun: false,
@@ -31896,6 +31901,73 @@ function normalizePdfSignerRolePositioningSettings(settings = null) {
   return settings && typeof settings === "object" && !Array.isArray(settings)
     ? settings
     : cloneDefaultPdfSignerRolePositioningSettings();
+}
+
+function loadSignatureLogoImage(dataUrl = "") {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.addEventListener("load", () => resolve(image), { once: true });
+    image.addEventListener("error", () => reject(new Error("Logo nije moguće pročitati kao sliku.")), { once: true });
+    image.decoding = "async";
+    image.src = dataUrl;
+  });
+}
+
+async function readSignatureLogoFileAsDataUrl(file) {
+  if (!file) {
+    return "";
+  }
+  const type = String(file.type || "").toLowerCase();
+  const name = String(file.name || "").toLowerCase();
+  if (!type.startsWith("image/") && !/\.(png|jpe?g|webp|svg)$/i.test(name)) {
+    throw new Error("Logo mora biti slika.");
+  }
+  if (Number(file.size || 0) > PDF_SIGNER_LOGO_MAX_SOURCE_BYTES) {
+    throw new Error("Logo za potpis mora biti manji od 2 MB.");
+  }
+  const sourceDataUrl = await readFileAsDataUrl(file, "Ne mogu učitati logo za potpis.");
+  const image = await loadSignatureLogoImage(sourceDataUrl);
+  const naturalWidth = Number(image.naturalWidth || image.width || 0);
+  const naturalHeight = Number(image.naturalHeight || image.height || 0);
+  if (!naturalWidth || !naturalHeight) {
+    throw new Error("Logo nema ispravne dimenzije.");
+  }
+  const scale = Math.min(1, PDF_SIGNER_LOGO_MAX_SIDE / Math.max(naturalWidth, naturalHeight));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(naturalHeight * scale));
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("Preglednik ne može pripremiti logo za potpis.");
+  }
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  const dataUrl = canvas.toDataURL("image/png");
+  if (dataUrl.length > PDF_SIGNER_LOGO_MAX_DATA_URL_LENGTH) {
+    throw new Error("Logo je prevelik nakon obrade. Odaberi manju sliku.");
+  }
+  return dataUrl;
+}
+
+function syncSignatureLogoPicker(appearance = {}) {
+  const logoDataUrl = String(appearance.logoDataUrl || signaturesSettingsLogoDataUrlInput?.value || "").trim();
+  if (signaturesSettingsLogoPreview) {
+    signaturesSettingsLogoPreview.classList.toggle("has-logo", Boolean(logoDataUrl));
+    signaturesSettingsLogoPreview.replaceChildren();
+    if (logoDataUrl) {
+      const image = document.createElement("img");
+      image.src = logoDataUrl;
+      image.alt = "Logo firme";
+      signaturesSettingsLogoPreview.append(image);
+    } else {
+      const empty = document.createElement("span");
+      empty.textContent = "Logo nije odabran";
+      signaturesSettingsLogoPreview.append(empty);
+    }
+  }
+  if (signaturesSettingsLogoClearButton) {
+    signaturesSettingsLogoClearButton.disabled = !logoDataUrl;
+  }
 }
 
 function loadPdfSignerWebSettings() {
@@ -32256,6 +32328,7 @@ function renderSignerSettingsPanel() {
   if (signaturesSettingsShowReasonVisibleInput) signaturesSettingsShowReasonVisibleInput.checked = Boolean(appearance.showReason);
   if (signaturesSettingsShowLocationVisibleInput) signaturesSettingsShowLocationVisibleInput.checked = Boolean(appearance.showLocation);
   if (signaturesSettingsLogoDataUrlInput) signaturesSettingsLogoDataUrlInput.value = appearance.logoDataUrl || "";
+  syncSignatureLogoPicker(appearance);
   if (signaturesSettingsLogoOpacityInput) signaturesSettingsLogoOpacityInput.value = appearance.logoOpacity || "0.08";
   if (signaturesSettingsBorderInput) signaturesSettingsBorderInput.value = String(Boolean(appearance.border));
   if (signaturesSettingsTransparentBgInput) signaturesSettingsTransparentBgInput.value = String(appearance.transparentBackground !== false);
@@ -32359,28 +32432,6 @@ function closeSignerSettingsPanel() {
   document.body.classList.remove("is-signatures-settings-open");
 }
 
-async function loadSignerSettingsPanel() {
-  if (!getCanManageMasterData()) {
-    setSignaturesBridgeStatus("PDF Signer postavke može učitati samo admin ili super admin.", "warning");
-    return;
-  }
-  setSignatureDebugOperationLoading(signaturesSettingsLoadButton, true);
-  try {
-    const response = await getSignerSettingsWithPdfSignerExtension();
-    const settings = savePdfSignerWebSettings(response.settings || response || {});
-    state.signatures.settings.lastResponse = response;
-    state.signatures.settings.values = settings;
-    openSignerSettingsPanel();
-    setSignaturesBridgeStatus("PDF Signer postavke su učitane iz lokalnog signera.", "ready");
-  } catch (error) {
-    state.signatures.settings.error = error.message || "Učitavanje lokalnih postavki nije uspjelo.";
-    openSignerSettingsPanel();
-    setSignaturesBridgeStatus(state.signatures.settings.error, "warning");
-  } finally {
-    setSignatureDebugOperationLoading(signaturesSettingsLoadButton, false);
-  }
-}
-
 async function saveSignerSettingsPanel() {
   if (!getCanManageMasterData()) {
     setSignaturesBridgeStatus("PDF Signer postavke može spremati samo admin ili super admin.", "warning");
@@ -32431,15 +32482,15 @@ async function openLocalSignerSettingsFromWeb() {
   setSignatureDebugOperationLoading(signaturesSettingsOpenLocalButton, true);
   try {
     const response = await openSignerSettingsWithPdfSignerExtension();
-    const settings = savePdfSignerWebSettings(response.settings || response || {});
     state.signatures.settings = {
       ...state.signatures.settings,
       loaded: true,
-      values: settings,
+      values: getPdfSignerWebSettings(),
       lastResponse: response,
       error: "",
     };
     renderSignerSettingsPanel();
+    setSignaturesBridgeStatus("Lokalni signer settings je otvoren. Web app postavke ostaju glavno stanje.", "ready");
   } catch (error) {
     setSignaturesBridgeStatus(error.message || "Lokalni settings prozor nije otvoren.", "warning");
   } finally {
@@ -104340,12 +104391,50 @@ signaturesDebugDryRunButton?.addEventListener("click", () => {
   });
 });
 
-signaturesSettingsLoadButton?.addEventListener("click", () => {
-  void loadSignerSettingsPanel();
-});
-
 signaturesSettingsSaveButton?.addEventListener("click", () => {
   void saveSignerSettingsPanel();
+});
+
+signaturesSettingsLogoUploadButton?.addEventListener("click", () => {
+  signaturesSettingsLogoFileInput?.click();
+});
+
+signaturesSettingsLogoClearButton?.addEventListener("click", () => {
+  if (signaturesSettingsLogoDataUrlInput) {
+    signaturesSettingsLogoDataUrlInput.value = "";
+  }
+  if (signaturesSettingsLogoFileInput) {
+    signaturesSettingsLogoFileInput.value = "";
+  }
+  if (signaturesSettingsShowLogoInput) {
+    signaturesSettingsShowLogoInput.checked = false;
+  }
+  syncSignatureLogoPicker({ logoDataUrl: "" });
+});
+
+signaturesSettingsLogoFileInput?.addEventListener("change", () => {
+  const file = signaturesSettingsLogoFileInput.files?.[0];
+  if (!file) {
+    return;
+  }
+  setSignatureDebugOperationLoading(signaturesSettingsLogoUploadButton, true);
+  void readSignatureLogoFileAsDataUrl(file).then((logoDataUrl) => {
+    if (signaturesSettingsLogoDataUrlInput) {
+      signaturesSettingsLogoDataUrlInput.value = logoDataUrl;
+    }
+    if (signaturesSettingsShowLogoInput) {
+      signaturesSettingsShowLogoInput.checked = true;
+    }
+    syncSignatureLogoPicker({ logoDataUrl });
+    setSignaturesBridgeStatus("Logo za digitalni potpis je dodan u web app postavke. Klikni Spremi za slanje lokalnom signeru.", "ready");
+  }).catch((error) => {
+    setSignaturesBridgeStatus(error.message || "Logo nije moguće učitati.", "error");
+  }).finally(() => {
+    if (signaturesSettingsLogoFileInput) {
+      signaturesSettingsLogoFileInput.value = "";
+    }
+    setSignatureDebugOperationLoading(signaturesSettingsLogoUploadButton, false);
+  });
 });
 
 signaturesSettingsTestTokenButton?.addEventListener("click", () => {

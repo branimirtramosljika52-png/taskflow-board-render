@@ -4879,7 +4879,6 @@
                       <h4>PDF Signer postavke</h4>
                     </div>
                     <div class="signatures-settings-actions">
-                      <button id="signatures-settings-load" type="button" class="ghost-button">Učitaj</button>
                       <button id="signatures-settings-test-token" type="button" class="ghost-button">Test token detection</button>
                       <button id="signatures-settings-open-local" type="button" class="ghost-button">Open local signer settings</button>
                       <button id="signatures-settings-save" type="button" class="ghost-button">Spremi</button>
@@ -5003,10 +5002,24 @@
                         <label><input id="signatures-settings-show-location" type="checkbox" /> Location</label>
                       </div>
                     </fieldset>
-                    <label class="field field-span-2">
-                      <span>Logo data URL</span>
-                      <textarea id="signatures-settings-logo-data-url" rows="2" placeholder="data:image/png;base64,..."></textarea>
-                    </label>
+                    <div class="field field-span-2 signatures-logo-upload-field">
+                      <span>Logo firme</span>
+                      <input id="signatures-settings-logo-data-url" type="hidden" />
+                      <input id="signatures-settings-logo-file" type="file" accept="image/*" hidden />
+                      <div class="signatures-logo-picker">
+                        <div id="signatures-settings-logo-preview" class="signatures-logo-preview">
+                          <span>Logo nije odabran</span>
+                        </div>
+                        <div class="signatures-logo-picker-copy">
+                          <strong>Watermark logotip za potpis</strong>
+                          <span>Odaberi PNG, JPG, SVG ili WEBP. Web app ga sprema u postavke i šalje lokalnom signeru pri spremanju.</span>
+                          <div class="signatures-logo-picker-actions">
+                            <button id="signatures-settings-logo-upload" type="button" class="ghost-button">Odaberi logo</button>
+                            <button id="signatures-settings-logo-clear" type="button" class="ghost-button">Makni logo</button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                     <label class="field">
                       <span>Logo opacity</span>
                       <input id="signatures-settings-logo-opacity" type="number" step="0.01" min="0" max="0.4" />

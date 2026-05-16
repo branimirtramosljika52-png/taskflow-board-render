@@ -51320,6 +51320,78 @@ body.is-signature-review-open::before {
   accent-color: #2563eb;
 }
 
+.signatures-logo-upload-field {
+  gap: 8px;
+}
+
+.signatures-logo-picker {
+  display: grid;
+  grid-template-columns: minmax(118px, 0.32fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+  padding: 12px;
+  border: 1px solid rgba(203, 213, 225, 0.82);
+  border-radius: 14px;
+  background: linear-gradient(135deg, #ffffff, #f8fafc);
+}
+
+.signatures-logo-preview {
+  display: grid;
+  place-items: center;
+  min-height: 86px;
+  padding: 10px;
+  border: 1px dashed rgba(148, 163, 184, 0.82);
+  border-radius: 12px;
+  background:
+    linear-gradient(45deg, rgba(226, 232, 240, 0.44) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(226, 232, 240, 0.44) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(226, 232, 240, 0.44) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(226, 232, 240, 0.44) 75%);
+  background-color: #ffffff;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  background-size: 16px 16px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.signatures-logo-preview.has-logo {
+  border-style: solid;
+}
+
+.signatures-logo-preview img {
+  max-width: 100%;
+  max-height: 74px;
+  object-fit: contain;
+}
+
+.signatures-logo-picker-copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.signatures-logo-picker-copy strong {
+  color: #0f172a;
+  font-size: 13px;
+}
+
+.signatures-logo-picker-copy span {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.signatures-logo-picker-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
 .signatures-settings-response {
   max-height: 180px;
   overflow: auto;
