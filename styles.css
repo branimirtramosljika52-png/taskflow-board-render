@@ -51165,24 +51165,30 @@ body.is-signature-review-open::before {
 
 .signatures-review-panel:not([hidden]) {
   position: fixed;
-  inset: 16px;
+  inset: 8px 12px;
   z-index: 2147483000;
   grid-template-rows: auto minmax(0, 1fr);
   width: auto;
+  height: calc(100dvh - 16px);
   max-width: none;
-  max-height: none;
+  max-height: calc(100dvh - 16px);
   overflow: hidden;
-  padding: 16px;
+  padding: 10px;
   border-color: rgba(147, 197, 253, 0.92);
-  border-radius: 22px;
+  border-radius: 18px;
   background: linear-gradient(135deg, #ffffff 0%, #f8fbff 52%, #ffffff 100%);
   box-shadow: 0 32px 92px rgba(15, 23, 42, 0.34);
 }
 
 .signatures-review-panel:not([hidden]) > .section-heading {
+  position: sticky;
+  top: 0;
+  z-index: 5;
   align-items: center;
-  padding: 0 2px 12px;
+  min-height: 46px;
+  padding: 0 2px 8px;
   border-bottom: 1px solid rgba(203, 213, 225, 0.7);
+  background: linear-gradient(135deg, #ffffff 0%, #f8fbff 100%);
 }
 
 .signatures-settings-panel[hidden],
@@ -51250,7 +51256,7 @@ body.is-signature-review-open::before {
   display: grid;
   gap: 12px;
   min-height: 0;
-  overflow: hidden;
+  overflow: auto;
 }
 
 .signature-review-workspace {
@@ -51550,7 +51556,7 @@ body.is-signature-review-open::before {
 .signature-review-preview-stage iframe {
   width: 100%;
   height: 100%;
-  min-height: calc(100vh - 270px);
+  min-height: calc(100dvh - 180px);
   border: 0;
 }
 
