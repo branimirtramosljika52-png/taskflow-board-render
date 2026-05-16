@@ -29781,7 +29781,7 @@ function renderDocumentsModule() {
   }
 }
 
-async function loadDocumentsExplorerRecords({ force = false } = {}) {
+async function loadDocumentsExplorerRecords({ force = false, renderSignatures = true } = {}) {
   const activeOrganizationId = String(state.activeOrganizationId || "").trim();
   if (!activeOrganizationId || state.documentsExplorer.loading) {
     return;
@@ -29822,7 +29822,7 @@ async function loadDocumentsExplorerRecords({ force = false } = {}) {
     if (state.activeView === "module" && state.activeModuleItem === "documents") {
       renderDocumentsModule();
     }
-    if (state.activeView === "module" && state.activeModuleItem === "signatures") {
+    if (renderSignatures && state.activeView === "module" && state.activeModuleItem === "signatures") {
       renderSignaturesModule();
     }
   }
@@ -30734,12 +30734,18 @@ function buildSignatureReviewItems(payload = {}, fieldsResponse = {}, sourceEntr
   });
 }
 
-function setSignatureReviewState(patch = {}) {
+function setSignatureReviewState(patch = {}, options = {}) {
   state.signatures.review = {
     ...state.signatures.review,
     ...patch,
   };
-  renderSignatureReviewPanel();
+  if (options.render === "progress") {
+    updateSignatureReviewProgressSurface();
+    return;
+  }
+  if (options.render !== false) {
+    renderSignatureReviewPanel();
+  }
 }
 
 function getSignatureReviewDecision(reviewKey = "") {
@@ -31087,8 +31093,33 @@ function createSignatureReviewActiveActions(activeItem = {}, activeDecision = {}
   return wrap;
 }
 
+function getSignatureBridgeSignedCount(source = {}) {
+  const signed = Number(source?.signed ?? source?.downloaded ?? 0);
+  return Number.isFinite(signed) && signed > 0 ? signed : 0;
+}
+
+function getSignatureBridgeFailedCount(source = {}) {
+  const failed = Number(source?.failed ?? source?.failedCount ?? 0);
+  return Number.isFinite(failed) && failed > 0 ? failed : 0;
+}
+
+function hasSignatureBridgeRawErrors(source = {}) {
+  const payload = source?.details && typeof source.details === "object" ? source.details : source;
+  return Array.isArray(payload?.errors) && payload.errors.some((entry) => entry && typeof entry === "object");
+}
+
+function isSignatureBridgeResultEffectivelySuccessful(source = {}) {
+  const payload = source?.details && typeof source.details === "object" ? source.details : source;
+  return getSignatureBridgeSignedCount(payload) > 0
+    && getSignatureBridgeFailedCount(payload) === 0
+    && !hasSignatureBridgeRawErrors(payload);
+}
+
 function normalizeSignatureBridgeErrors(source = {}) {
   const payload = source?.details && typeof source.details === "object" ? source.details : source;
+  if (isSignatureBridgeResultEffectivelySuccessful(payload)) {
+    return [];
+  }
   const rawErrors = Array.isArray(payload?.errors) && payload.errors.length > 0
     ? payload.errors
     : (payload?.code || payload?.message)
@@ -31119,10 +31150,17 @@ function signatureReviewErrorMatchesItem(error = {}, item = {}) {
 }
 
 function applySignatureReviewSigningResult(signResult = {}) {
-  const errors = normalizeSignatureBridgeErrors(signResult);
+  const effectiveSuccess = isSignatureBridgeResultEffectivelySuccessful(signResult);
+  const errors = effectiveSuccess ? [] : normalizeSignatureBridgeErrors(signResult);
   const documents = Array.isArray(signResult.documents) ? signResult.documents : [];
   const approvedItems = (state.signatures.review.items || [])
     .filter((item) => getSignatureReviewDecisionForItem(item).status === "approved_for_signing");
+  const signedFallbackCount = effectiveSuccess && documents.length === 0
+    ? Math.min(getSignatureBridgeSignedCount(signResult), approvedItems.length)
+    : 0;
+  const signedFallbackKeys = new Set(
+    approvedItems.slice(0, signedFallbackCount).map((item) => getSignatureReviewDecisionKey(item)),
+  );
   const nextItems = (state.signatures.review.items || []).map((item) => {
     const itemError = errors.find((error) => signatureReviewErrorMatchesItem(error, item));
     if (itemError) {
@@ -31144,11 +31182,18 @@ function applySignatureReviewSigningResult(signResult = {}) {
         error: "",
       };
     }
+    if (signedFallbackKeys.has(getSignatureReviewDecisionKey(item))) {
+      return {
+        ...item,
+        status: "signed",
+        error: "",
+      };
+    }
     return item;
   });
   const signedCount = nextItems.filter((item) => item.status === "signed").length;
   const approvedCount = approvedItems.length;
-  const hasErrors = errors.length > 0 || signResult.ok === false || signResult.success === false;
+  const hasErrors = !effectiveSuccess && (errors.length > 0 || signResult.ok === false || signResult.success === false);
   const nextStatus = hasErrors && signedCount > 0
     ? "partial"
     : hasErrors
@@ -31176,6 +31221,74 @@ function applySignatureReviewSigningResult(signResult = {}) {
           : "Potpisivanje je završilo s greškama.",
     },
   });
+}
+
+function isSignatureBridgeJobItemSigned(item = {}) {
+  return Boolean(item?.signedAt || item?.savedDocumentId || String(item?.signingStatus || "").toLowerCase() === "signed");
+}
+
+function describeSignatureBridgeJobItem(item = {}) {
+  return {
+    fileName: item.fileName || "PDF dokument",
+    signer: item.signerName || item.signatureSigner || "",
+    role: item.signatureLabel || item.signatureFieldRole || "",
+  };
+}
+
+function updateSignatureReviewProgressFromJob(job = {}, fallbackTotal = 1) {
+  const items = Array.isArray(job?.items) ? job.items : [];
+  if (items.length === 0 || state.signatures.review.status !== "signing") {
+    return;
+  }
+  const total = Math.max(1, fallbackTotal || items.length);
+  const signedItems = items.filter(isSignatureBridgeJobItemSigned);
+  const current = Math.min(total, signedItems.length);
+  const activeItem = items.find((item) => !isSignatureBridgeJobItemSigned(item)) || items[items.length - 1] || {};
+  const active = describeSignatureBridgeJobItem(activeItem);
+  const message = current > 0
+    ? `Spremljen potpis ${current}/${total}: ${active.fileName}`
+    : `Čekam PIN i potpisivanje 1/${total}: ${active.fileName}`;
+  setSignatureReviewState({
+    signingProgress: {
+      ...(state.signatures.review.signingProgress || {}),
+      active: true,
+      state: "running",
+      current,
+      total,
+      fileName: active.fileName,
+      signer: active.signer,
+      role: active.role,
+      phase: current > 0 ? "Upload u Documents je u tijeku" : "Lokalni signer obrađuje certifikat",
+      message,
+    },
+  }, { render: "progress" });
+}
+
+async function pollSignatureBridgeJobProgress(token = "", { total = 1, isActive = () => true } = {}) {
+  const normalizedToken = String(token || "").trim();
+  if (!normalizedToken) {
+    return;
+  }
+  while (isActive()) {
+    try {
+      const response = await apiRequest(`/signature-bridge/jobs/${encodeURIComponent(normalizedToken)}`);
+      updateSignatureReviewProgressFromJob(response, total);
+      if (String(response?.status || "").toLowerCase() === "completed") {
+        return;
+      }
+    } catch (error) {
+      console.debug("Signature progress polling skipped.", error);
+    }
+    await new Promise((resolve) => {
+      window.setTimeout(resolve, 1500);
+    });
+  }
+}
+
+function scheduleDocumentsExplorerSilentRefresh() {
+  window.setTimeout(() => {
+    void loadDocumentsExplorerRecords({ force: true, renderSignatures: false });
+  }, 3000);
 }
 
 function createSignatureReviewStatusBar(review = {}) {
@@ -31277,22 +31390,51 @@ function createSignatureReviewProgressOverlay(review = {}) {
   const pulse = document.createElement("div");
   pulse.className = "signature-review-progress-pulse";
   const title = document.createElement("strong");
-  const current = Math.max(1, Number(progress.current || 1) || 1);
-  const total = Math.max(current, Number(progress.total || 1) || 1);
+  const current = Math.max(0, Number(progress.current ?? 0) || 0);
+  const total = Math.max(1, Number(progress.total || 1) || 1);
   title.textContent = progress.message || `Potpisuje se dokument ${current}/${total}: ${progress.fileName || "PDF dokument"}`;
   const detail = document.createElement("p");
   detail.textContent = [
+    progress.phase || "",
     progress.role || "",
     progress.signer || "",
   ].filter(Boolean).join(" — ") || "Lokalni signer obrađuje odabrane stavke.";
   const meter = document.createElement("div");
   meter.className = "signature-review-progress-meter";
   const bar = document.createElement("span");
-  bar.style.width = `${Math.max(8, Math.min(100, (current / total) * 100))}%`;
+  bar.style.width = `${current <= 0 ? 10 : Math.max(12, Math.min(100, (current / total) * 100))}%`;
   meter.append(bar);
   card.append(pulse, title, detail, meter);
   overlay.append(card);
   return overlay;
+}
+
+function updateSignatureReviewProgressSurface() {
+  if (!signaturesReviewBody) {
+    return;
+  }
+  const review = state.signatures.review || {};
+  const nextBar = createSignatureReviewStatusBar(review);
+  const currentBar = signaturesReviewBody.querySelector(":scope > .signature-review-status-bar");
+  if (currentBar) {
+    currentBar.replaceWith(nextBar);
+  } else {
+    signaturesReviewBody.prepend(nextBar);
+  }
+
+  const workspace = signaturesReviewBody.querySelector(":scope > .signature-review-workspace");
+  if (!workspace) {
+    return;
+  }
+  const currentOverlay = workspace.querySelector(":scope > .signature-review-progress-overlay");
+  const nextOverlay = createSignatureReviewProgressOverlay(review);
+  if (currentOverlay && nextOverlay) {
+    currentOverlay.replaceWith(nextOverlay);
+  } else if (currentOverlay) {
+    currentOverlay.remove();
+  } else if (nextOverlay) {
+    workspace.append(nextOverlay);
+  }
 }
 
 function renderSignatureReviewPanel() {
@@ -31914,12 +32056,13 @@ async function signApprovedSignatureReviewItems() {
     signingProgress: {
       active: true,
       state: "running",
-      current: 1,
+      current: 0,
       total: uniqueDocuments.length || approved.length,
       fileName: first.fileName || "PDF dokument",
       signer: first.signer || "",
       role: first.roleLabel || first.label || "",
-      message: `Potpisuje se dokument 1/${uniqueDocuments.length || approved.length}: ${first.fileName || "PDF dokument"}`,
+      phase: "Čeka se potvrda PIN-a",
+      message: `Čekam PIN i potpisivanje 1/${uniqueDocuments.length || approved.length}: ${first.fileName || "PDF dokument"}`,
     },
   });
   await openLocalSignatureBridge(approvedEntries, { signatureRequests });
@@ -32277,32 +32420,44 @@ async function openLocalSignatureBridge(entriesOverride = null, options = {}) {
     const { payload, documents } = await createSignatureBridgeJobForPendingEntries(pendingEntries, options);
 
     setSignaturesBridgeStatus("Otvaram lokalni PDF Signer...", "loading");
-    const signResult = await signDocumentsWithPdfSignerExtension({
-      jobId: payload.token || "",
-      token: payload.token || "",
-      apiBaseUrl: payload.apiBase || window.location.origin,
-      documents,
-      settings: getPdfSignerWebSettings(),
-      allowErrorResponse: true,
+    let keepPollingSignatureProgress = true;
+    const progressPolling = pollSignatureBridgeJobProgress(payload.token || "", {
+      total: documents.length || pendingEntries.length || 1,
+      isActive: () => keepPollingSignatureProgress,
     });
+    let signResult;
+    try {
+      signResult = await signDocumentsWithPdfSignerExtension({
+        jobId: payload.token || "",
+        token: payload.token || "",
+        apiBaseUrl: payload.apiBase || window.location.origin,
+        documents,
+        settings: getPdfSignerWebSettings(),
+        allowErrorResponse: true,
+      });
+    } finally {
+      keepPollingSignatureProgress = false;
+      await progressPolling.catch(() => {});
+    }
 
     setSignatureDebugFromPingResponse(signResult);
     applySignatureReviewSigningResult(signResult);
     if (signResult.ok === false || signResult.success === false) {
       const errors = normalizeSignatureBridgeErrors(signResult);
-      const firstError = errors[0];
-      setSignaturesBridgeStatus(
-        firstError
-          ? `${firstError.code}: ${firstError.nativeSignerMessage || firstError.message}`
-          : (signResult.message || "Potpisivanje je završilo s greškama."),
-        "error",
-      );
-      if (Number(signResult.signed || 0) > 0) {
-        [5000, 12000, 25000, 45000, 90000].forEach((delay) => {
-          window.setTimeout(() => {
-            void loadDocumentsExplorerRecords({ force: true });
-          }, delay);
-        });
+      if (isSignatureBridgeResultEffectivelySuccessful(signResult)) {
+        setSignaturesBridgeStatus(signResult.message || "Potpisano. Osvježavam dokumente u pozadini...", "ready");
+        scheduleDocumentsExplorerSilentRefresh();
+      } else {
+        const firstError = errors[0];
+        setSignaturesBridgeStatus(
+          firstError
+            ? `${firstError.code}: ${firstError.nativeSignerMessage || firstError.message}`
+            : (signResult.message || "Potpisivanje je završilo s greškama."),
+          "error",
+        );
+        if (Number(signResult.signed || 0) > 0) {
+          scheduleDocumentsExplorerSilentRefresh();
+        }
       }
       return;
     }
@@ -32319,11 +32474,7 @@ async function openLocalSignatureBridge(entriesOverride = null, options = {}) {
         "ready",
       );
     }
-    [5000, 12000, 25000, 45000, 90000].forEach((delay) => {
-      window.setTimeout(() => {
-        void loadDocumentsExplorerRecords({ force: true });
-      }, delay);
-    });
+    scheduleDocumentsExplorerSilentRefresh();
   } catch (error) {
     if (isPdfSignerExtensionUnavailable(error)) {
       setSignatureReviewState({
@@ -57215,59 +57366,128 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
 
     loading.setPhase(2, {
       message: hasWordTemplateEntries
-        ? "Spremam Word zapisnike jedan po jedan da se PDF engine ne prekine..."
-        : "Spremam zapisnike jedan po jedan da se request ne prekine...",
+        ? "Spremam zapisnike u malim paketima da LibreOffice ostane stabilan..."
+        : "Spremam zapisnike u malim paketima za brži Documents upload...",
       progress: 52,
     });
 
-    for (const [index, batchEntry] of batchEntries.entries()) {
-      const exportEntry = exportEntries[index];
-      const sequenceEntry = exportEntry?.sequenceEntry;
-      const workOrderLabel = `RN ${sequenceEntry?.workOrderNumber || exportEntry?.exportEntry?.renderModel?.workOrderNumber || index + 1}`;
-      const isWordEntry = String(exportEntry?.exportEntry?.templateReferenceKind || "").trim().toLowerCase() === "word";
+    const isRetryableExportError = (error = null) => (
+      Number(error?.statusCode) === 503
+      || /upstream_reset|connection_termination|failed to forward/i.test(String(error?.message || ""))
+    );
+    const waitBeforeRetry = () => new Promise((resolve) => {
+      window.setTimeout(resolve, 2500);
+    });
+    const saveBatchChunk = async (chunkEntries, chunkStartIndex, { allowSplit = true } = {}) => {
+      try {
+        return await apiRequest("/document-templates/export-pdf-documents", {
+          method: "POST",
+          body: {
+            entries: chunkEntries,
+          },
+        });
+      } catch (error) {
+        if (allowSplit && chunkEntries.length > 1 && isRetryableExportError(error)) {
+          loading.setPhase(3, {
+            message: "Server je usporio, prebacujem taj paket na sigurno pojedinačno spremanje...",
+            progress: Math.min(90, 62 + Math.round(((chunkStartIndex + 1) / batchEntries.length) * 24)),
+          });
+          const splitItems = [];
+          const splitFailures = [];
+          for (const [offset, singleEntry] of chunkEntries.entries()) {
+            try {
+              const singleResponse = await saveBatchChunk([singleEntry], chunkStartIndex + offset, { allowSplit: false });
+              splitItems.push(...(Array.isArray(singleResponse?.items) ? singleResponse.items : []));
+            } catch (singleError) {
+              splitFailures.push({ offset, error: singleError });
+            }
+          }
+          if (splitFailures.length > 0) {
+            const partialError = new Error("Dio zapisnika iz paketa nije spremljen.");
+            partialError.partialItems = splitItems;
+            partialError.partialFailures = splitFailures;
+            throw partialError;
+          }
+          return {
+            items: splitItems,
+            generatedCount: splitItems.length,
+          };
+        }
+        if (!allowSplit && isRetryableExportError(error)) {
+          await waitBeforeRetry();
+          return await apiRequest("/document-templates/export-pdf-documents", {
+            method: "POST",
+            body: {
+              entries: chunkEntries,
+            },
+          });
+        }
+        throw error;
+      }
+    };
+    const saveChunkSize = hasWordTemplateEntries ? 2 : 3;
+
+    for (let startIndex = 0; startIndex < batchEntries.length; startIndex += saveChunkSize) {
+      const chunkEntries = batchEntries.slice(startIndex, startIndex + saveChunkSize);
+      const chunkMetas = exportEntries.slice(startIndex, startIndex + saveChunkSize);
+      const chunkLabel = chunkMetas
+        .map((meta, offset) => `RN ${meta?.sequenceEntry?.workOrderNumber || meta?.exportEntry?.renderModel?.workOrderNumber || startIndex + offset + 1}`)
+        .join(", ");
+      const hasWordChunk = chunkMetas.some((meta) => (
+        String(meta?.exportEntry?.templateReferenceKind || "").trim().toLowerCase() === "word"
+      ));
       loading.setPhase(3, {
-        message: `${isWordEntry ? "LibreOffice" : "PDF engine"} sprema ${index + 1}/${batchEntries.length}: ${workOrderLabel} u Documents...`,
-        progress: Math.min(88, 58 + Math.round(((index + 1) / batchEntries.length) * 26)),
+        message: `${hasWordChunk ? "LibreOffice" : "PDF engine"} sprema ${Math.min(startIndex + chunkEntries.length, batchEntries.length)}/${batchEntries.length}: ${chunkLabel} u Documents...`,
+        progress: Math.min(88, 58 + Math.round(((startIndex + chunkEntries.length) / batchEntries.length) * 26)),
       });
 
       try {
-        let response = null;
-        for (let attempt = 0; attempt < 2; attempt += 1) {
-          try {
-            response = await apiRequest("/document-templates/export-pdf-documents", {
-              method: "POST",
-              body: {
-                entries: [batchEntry],
-              },
-            });
-            break;
-          } catch (requestError) {
-            const canRetry = attempt === 0 && (
-              Number(requestError?.statusCode) === 503
-              || /upstream_reset|connection_termination|failed to forward/i.test(String(requestError?.message || ""))
-            );
-            if (!canRetry) {
-              throw requestError;
+        const response = await saveBatchChunk(chunkEntries, startIndex);
+        const responseItems = Array.isArray(response?.items) ? response.items : [];
+        for (const [offset, meta] of chunkMetas.entries()) {
+          const sequenceEntry = meta?.sequenceEntry;
+          const runtimeExportEntry = meta?.exportEntry;
+          const savedEntry = responseItems.find((item) => (
+            String(item?.workOrderId || "") === String(sequenceEntry?.workOrderId || "")
+            && (!item?.templateId || !runtimeExportEntry?.templateId || String(item.templateId) === String(runtimeExportEntry.templateId))
+          )) || responseItems[offset] || null;
+          await handleSavedEntry(savedEntry, sequenceEntry, runtimeExportEntry, startIndex + offset);
+        }
+      } catch (error) {
+        const partialItems = Array.isArray(error?.partialItems) ? error.partialItems : [];
+        const partialFailures = Array.isArray(error?.partialFailures) ? error.partialFailures : [];
+        const handledOffsets = new Set();
+        if (partialItems.length > 0) {
+          for (const [offset, meta] of chunkMetas.entries()) {
+            const sequenceEntry = meta?.sequenceEntry;
+            const runtimeExportEntry = meta?.exportEntry;
+            const savedEntry = partialItems.find((item) => (
+              String(item?.workOrderId || "") === String(sequenceEntry?.workOrderId || "")
+              && (!item?.templateId || !runtimeExportEntry?.templateId || String(item.templateId) === String(runtimeExportEntry.templateId))
+            )) || null;
+            if (savedEntry) {
+              handledOffsets.add(offset);
+              await handleSavedEntry(savedEntry, sequenceEntry, runtimeExportEntry, startIndex + offset);
             }
-            loading.setPhase(3, {
-              message: `Server se oporavlja, ponavljam spremanje za ${workOrderLabel}...`,
-              progress: Math.min(90, 62 + Math.round(((index + 1) / batchEntries.length) * 24)),
-            });
-            await new Promise((resolve) => {
-              window.setTimeout(resolve, 3500);
-            });
           }
         }
-        const savedEntry = Array.isArray(response.items) ? response.items[0] : null;
-        await handleSavedEntry(savedEntry, sequenceEntry, exportEntry?.exportEntry, index);
-      } catch (error) {
-        failureCount += 1;
-        console.error(`Ne mogu spremiti zapisnik za ${workOrderLabel}.`, error);
-        pushExportFailureDetail(sequenceEntry, error, `Ne mogu spremiti zapisnik za ${workOrderLabel}.`);
-        setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
-          status: "error",
-          message: error?.message || `Ne mogu spremiti zapisnik za ${workOrderLabel}.`,
-        }, { render: true });
+        const failureByOffset = new Map(partialFailures.map((entry) => [entry.offset, entry.error]));
+        for (const [offset, meta] of chunkMetas.entries()) {
+          if (handledOffsets.has(offset)) {
+            continue;
+          }
+          const sequenceEntry = meta?.sequenceEntry;
+          const runtimeExportEntry = meta?.exportEntry;
+          const workOrderLabel = `RN ${sequenceEntry?.workOrderNumber || runtimeExportEntry?.renderModel?.workOrderNumber || startIndex + offset + 1}`;
+          const itemError = failureByOffset.get(offset) || error;
+          failureCount += 1;
+          console.error(`Ne mogu spremiti zapisnik za ${workOrderLabel}.`, itemError);
+          pushExportFailureDetail(sequenceEntry, itemError, `Ne mogu spremiti zapisnik za ${workOrderLabel}.`);
+          setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
+            status: "error",
+            message: itemError?.message || `Ne mogu spremiti zapisnik za ${workOrderLabel}.`,
+          }, { render: true });
+        }
       }
     }
 

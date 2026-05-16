@@ -4064,6 +4064,8 @@ function buildSignatureBridgeJobResponse(job = {}) {
       signingLockUntil: item.signingLockUntil || "",
       signingLockToken: item.lockedByOther ? "" : (item.signingLockToken || ""),
       lockToken: item.lockedByOther ? "" : (item.signingLockToken || ""),
+      signedAt: item.signedAt || "",
+      savedDocumentId: item.savedDocumentId || "",
       downloadUrl: `${job.apiBase}/api/signature-bridge/jobs/${encodeURIComponent(job.token)}/items/${encodeURIComponent(item.id)}/download`,
       uploadUrl: `${job.apiBase}/api/signature-bridge/jobs/${encodeURIComponent(job.token)}/items/${encodeURIComponent(item.id)}/signed?lockToken=${encodeURIComponent(item.lockedByOther ? "" : (item.signingLockToken || ""))}`,
     })),

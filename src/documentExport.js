@@ -5428,13 +5428,23 @@ function pdfBufferFromDocument(doc) {
   });
 }
 
-function resolvePdfSignatureFieldRect(spec = {}, page, index = 0) {
+function resolvePdfSignatureFieldRect(spec = {}, page, index = 0, totalFields = 1) {
   const pageWidth = page.getWidth();
   const pageHeight = page.getHeight();
-  const fallbackWidth = 220;
-  const fallbackHeight = 44;
-  const fallbackX = Math.max(36, pageWidth - fallbackWidth - 42);
-  const fallbackY = Math.max(36, 52 + (index * (fallbackHeight + 12)));
+  const fallbackHeight = 38;
+  const sideMargin = 42;
+  const columnGap = 18;
+  const columnCount = Math.max(1, Math.min(2, Number(totalFields || 1) > 1 ? 2 : 1));
+  const columnWidth = columnCount > 1
+    ? Math.max(180, (pageWidth - (sideMargin * 2) - columnGap) / 2)
+    : Math.max(220, pageWidth - (sideMargin * 2));
+  const fallbackWidth = Math.max(190, Math.min(240, columnWidth - 18));
+  const fallbackColumn = columnCount === 1 ? 1 : index % 2;
+  const fallbackRow = columnCount === 1 ? 0 : Math.floor(index / 2);
+  const fallbackX = columnCount === 1
+    ? Math.max(36, pageWidth - fallbackWidth - 54)
+    : sideMargin + (fallbackColumn * (columnWidth + columnGap)) + Math.max(0, (columnWidth - fallbackWidth) / 2);
+  const fallbackY = Math.max(96, 126 + (fallbackRow * (fallbackHeight + 18)));
   const width = Number.isFinite(Number(spec.width)) && Number(spec.width) > 20
     ? Math.min(Number(spec.width), pageWidth - 24)
     : fallbackWidth;
@@ -5555,7 +5565,7 @@ export async function addPdfSignatureFieldsToBuffer(pdfBuffer = Buffer.alloc(0),
 
     const pageIndex = resolvePdfSignatureFieldPageIndex(field, pages.length);
     const page = pages[pageIndex];
-    const rect = resolvePdfSignatureFieldRect(field, page, index);
+    const rect = resolvePdfSignatureFieldRect(field, page, index, normalizedFields.length);
     if (field.drawPlaceholder) {
       drawPdfSignatureFieldPlaceholder(page, rect, field, fonts);
     }

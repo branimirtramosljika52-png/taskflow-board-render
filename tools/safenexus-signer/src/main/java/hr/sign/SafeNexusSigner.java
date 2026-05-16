@@ -336,13 +336,18 @@ public final class SafeNexusSigner {
             deleteRecursively(workDir);
         }
 
+        boolean uploadComplete = report.failed == 0 && report.signed == localItems.size();
         Map<String, Object> payload = new HashMap<>();
-        payload.put("ok", report.failed == 0 && engineExitCode == 0);
+        payload.put("ok", uploadComplete);
         payload.put("engineExitCode", engineExitCode);
         payload.put("downloaded", localItems.size());
         payload.put("signed", report.signed);
         payload.put("failed", report.failed);
         payload.put("message", report.message());
+        if (uploadComplete && engineExitCode != 0) {
+            payload.put("warningCode", "ENGINE_EXIT_NONZERO_AFTER_UPLOAD");
+            payload.put("warning", "Potpisani PDF-ovi su spremljeni u Documents, ali vanjski engine je vratio kod " + engineExitCode + ".");
+        }
         payload.put("workDir", workDir.toString());
         payload.put("errors", report.errors);
         return JSON.valueToTree(payload);
