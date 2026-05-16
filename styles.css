@@ -51283,6 +51283,43 @@ body.is-signature-review-open::before {
   grid-column: 1 / -1;
 }
 
+.signatures-settings-fieldset {
+  margin: 0;
+  padding: 12px;
+  border: 1px solid rgba(203, 213, 225, 0.78);
+  border-radius: 14px;
+  background: rgba(248, 250, 252, 0.82);
+}
+
+.signatures-settings-fieldset legend {
+  padding: 0 6px;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.signatures-settings-checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+}
+
+.signatures-settings-checkbox-grid label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.signatures-settings-checkbox-grid input {
+  width: 15px;
+  height: 15px;
+  accent-color: #2563eb;
+}
+
 .signatures-settings-response {
   max-height: 180px;
   overflow: auto;
@@ -51945,10 +51982,13 @@ body.is-signature-review-open::before {
   text-align: left;
   pointer-events: none;
   box-shadow: none;
+  overflow: hidden;
 }
 
 .signature-review-field-marker span,
 .signature-review-field-marker strong {
+  position: relative;
+  z-index: 1;
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -51959,6 +51999,27 @@ body.is-signature-review-open::before {
   margin-top: 2px;
   font-size: 9.6px;
   font-weight: 800;
+}
+
+.signature-review-field-marker.has-border,
+.signature-preview-marker.has-border {
+  border: 1px solid rgba(148, 163, 184, 0.6);
+}
+
+.signature-review-field-marker.has-background,
+.signature-preview-marker.has-background {
+  background: rgba(255, 255, 255, 0.76);
+}
+
+.signature-marker-logo {
+  position: absolute !important;
+  z-index: 0 !important;
+  inset: 8%;
+  display: block !important;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+  pointer-events: none;
 }
 
 .signature-review-active-actions {
@@ -52234,10 +52295,13 @@ body.is-signature-review-open::before {
   font-weight: 500;
   line-height: 1.2;
   text-align: left;
+  overflow: hidden;
 }
 
 .signature-preview-marker span,
 .signature-preview-marker strong {
+  position: relative;
+  z-index: 1;
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;

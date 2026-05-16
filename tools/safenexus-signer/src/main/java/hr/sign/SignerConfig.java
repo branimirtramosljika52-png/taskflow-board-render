@@ -14,6 +14,11 @@ import java.util.Locale;
 import java.util.Properties;
 
 public final class SignerConfig {
+    private static final String DEFAULT_SIGNATURE_POSITIONING_JSON = "{"
+            + "\"ISPITIVANJE_OBAVILI\":{\"anchor\":\"bottom\",\"offsetX\":0,\"offsetY\":-28,\"width\":180,\"height\":55,\"alignment\":\"left\"},"
+            + "\"ODGOVORNA_OSOBA\":{\"anchor\":\"bottom\",\"offsetX\":0,\"offsetY\":-22,\"width\":160,\"height\":50,\"alignment\":\"left\"}"
+            + "}";
+
     public enum Mode {
         MOCK,
         REAL
@@ -39,6 +44,24 @@ public final class SignerConfig {
     private final float offsetDownPt;
     private final float offsetLeftPt;
     private final float skipTolerancePt;
+    private final boolean appearanceShowQualifiedLabel;
+    private final boolean appearanceShowName;
+    private final boolean appearanceShowTitle;
+    private final boolean appearanceShowRole;
+    private final boolean appearanceShowOib;
+    private final boolean appearanceShowOrganization;
+    private final boolean appearanceShowDateTime;
+    private final boolean appearanceShowLogo;
+    private final boolean appearanceShowCertificateSubject;
+    private final boolean appearanceShowProvider;
+    private final boolean appearanceShowReason;
+    private final boolean appearanceShowLocation;
+    private final String appearanceLogoDataUrl;
+    private final float appearanceLogoOpacity;
+    private final boolean appearanceBorder;
+    private final boolean appearanceTransparentBackground;
+    private final String appearanceAlignment;
+    private final boolean appearanceCompactMode;
 
     private SignerConfig(
             Mode mode,
@@ -60,7 +83,25 @@ public final class SignerConfig {
             float rectHeightPt,
             float offsetDownPt,
             float offsetLeftPt,
-            float skipTolerancePt
+            float skipTolerancePt,
+            boolean appearanceShowQualifiedLabel,
+            boolean appearanceShowName,
+            boolean appearanceShowTitle,
+            boolean appearanceShowRole,
+            boolean appearanceShowOib,
+            boolean appearanceShowOrganization,
+            boolean appearanceShowDateTime,
+            boolean appearanceShowLogo,
+            boolean appearanceShowCertificateSubject,
+            boolean appearanceShowProvider,
+            boolean appearanceShowReason,
+            boolean appearanceShowLocation,
+            String appearanceLogoDataUrl,
+            float appearanceLogoOpacity,
+            boolean appearanceBorder,
+            boolean appearanceTransparentBackground,
+            String appearanceAlignment,
+            boolean appearanceCompactMode
     ) {
         this.mode = mode;
         this.realDryRun = realDryRun;
@@ -82,6 +123,24 @@ public final class SignerConfig {
         this.offsetDownPt = offsetDownPt;
         this.offsetLeftPt = offsetLeftPt;
         this.skipTolerancePt = skipTolerancePt;
+        this.appearanceShowQualifiedLabel = appearanceShowQualifiedLabel;
+        this.appearanceShowName = appearanceShowName;
+        this.appearanceShowTitle = appearanceShowTitle;
+        this.appearanceShowRole = appearanceShowRole;
+        this.appearanceShowOib = appearanceShowOib;
+        this.appearanceShowOrganization = appearanceShowOrganization;
+        this.appearanceShowDateTime = appearanceShowDateTime;
+        this.appearanceShowLogo = appearanceShowLogo;
+        this.appearanceShowCertificateSubject = appearanceShowCertificateSubject;
+        this.appearanceShowProvider = appearanceShowProvider;
+        this.appearanceShowReason = appearanceShowReason;
+        this.appearanceShowLocation = appearanceShowLocation;
+        this.appearanceLogoDataUrl = appearanceLogoDataUrl == null ? "" : appearanceLogoDataUrl;
+        this.appearanceLogoOpacity = appearanceLogoOpacity;
+        this.appearanceBorder = appearanceBorder;
+        this.appearanceTransparentBackground = appearanceTransparentBackground;
+        this.appearanceAlignment = normalizeAppearanceAlignment(appearanceAlignment);
+        this.appearanceCompactMode = appearanceCompactMode;
     }
 
     public static SignerConfig load() {
@@ -134,7 +193,25 @@ public final class SignerConfig {
                 cmToPt(parseFloat(properties.getProperty("rect.height.cm"), 2f)),
                 cmToPt(parseFloat(properties.getProperty("offset.down.cm"), 2.2f)),
                 cmToPt(parseFloat(properties.getProperty("offset.left.cm"), 2.6f)),
-                parseFloat(properties.getProperty("skip.tolerance.pt"), 12f)
+                parseFloat(properties.getProperty("skip.tolerance.pt"), 12f),
+                Boolean.parseBoolean(properties.getProperty("appearance.show.qualifiedLabel", "true")),
+                Boolean.parseBoolean(properties.getProperty("appearance.show.name", "true")),
+                Boolean.parseBoolean(properties.getProperty("appearance.show.title", "true")),
+                Boolean.parseBoolean(properties.getProperty("appearance.show.role", "true")),
+                Boolean.parseBoolean(properties.getProperty("appearance.show.oib", "false")),
+                Boolean.parseBoolean(properties.getProperty("appearance.show.organization", "false")),
+                Boolean.parseBoolean(properties.getProperty("appearance.show.dateTime", "false")),
+                Boolean.parseBoolean(properties.getProperty("appearance.show.logo", "false")),
+                Boolean.parseBoolean(properties.getProperty("appearance.show.certificateSubject", "false")),
+                Boolean.parseBoolean(properties.getProperty("appearance.show.provider", "false")),
+                Boolean.parseBoolean(properties.getProperty("appearance.show.reason", "false")),
+                Boolean.parseBoolean(properties.getProperty("appearance.show.location", "false")),
+                properties.getProperty("appearance.logo.dataUrl", ""),
+                clamp(parseFloat(properties.getProperty("appearance.logo.opacity"), 0.08f), 0f, 0.4f),
+                Boolean.parseBoolean(properties.getProperty("appearance.border", "false")),
+                Boolean.parseBoolean(properties.getProperty("appearance.transparentBackground", "true")),
+                properties.getProperty("appearance.alignment", "left"),
+                Boolean.parseBoolean(properties.getProperty("appearance.compactMode", "true"))
         );
     }
 
@@ -170,6 +247,25 @@ public final class SignerConfig {
         properties.setProperty("offset.left.cm", "2.6");
         properties.setProperty("skip.tolerance.pt", "12");
         properties.setProperty("preview.hide.already.signed", "false");
+        properties.setProperty("appearance.show.qualifiedLabel", "true");
+        properties.setProperty("appearance.show.name", "true");
+        properties.setProperty("appearance.show.title", "true");
+        properties.setProperty("appearance.show.role", "true");
+        properties.setProperty("appearance.show.oib", "false");
+        properties.setProperty("appearance.show.organization", "false");
+        properties.setProperty("appearance.show.dateTime", "false");
+        properties.setProperty("appearance.show.logo", "false");
+        properties.setProperty("appearance.show.certificateSubject", "false");
+        properties.setProperty("appearance.show.provider", "false");
+        properties.setProperty("appearance.show.reason", "false");
+        properties.setProperty("appearance.show.location", "false");
+        properties.setProperty("appearance.logo.dataUrl", "");
+        properties.setProperty("appearance.logo.opacity", "0.08");
+        properties.setProperty("appearance.border", "false");
+        properties.setProperty("appearance.transparentBackground", "true");
+        properties.setProperty("appearance.alignment", "left");
+        properties.setProperty("appearance.compactMode", "true");
+        properties.setProperty("signature.positioning.json", DEFAULT_SIGNATURE_POSITIONING_JSON);
         return properties;
     }
 
@@ -294,6 +390,25 @@ public final class SignerConfig {
         return skipTolerancePt;
     }
 
+    public boolean appearanceShowQualifiedLabel() { return appearanceShowQualifiedLabel; }
+    public boolean appearanceShowName() { return appearanceShowName; }
+    public boolean appearanceShowTitle() { return appearanceShowTitle; }
+    public boolean appearanceShowRole() { return appearanceShowRole; }
+    public boolean appearanceShowOib() { return appearanceShowOib; }
+    public boolean appearanceShowOrganization() { return appearanceShowOrganization; }
+    public boolean appearanceShowDateTime() { return appearanceShowDateTime; }
+    public boolean appearanceShowLogo() { return appearanceShowLogo; }
+    public boolean appearanceShowCertificateSubject() { return appearanceShowCertificateSubject; }
+    public boolean appearanceShowProvider() { return appearanceShowProvider; }
+    public boolean appearanceShowReason() { return appearanceShowReason; }
+    public boolean appearanceShowLocation() { return appearanceShowLocation; }
+    public String appearanceLogoDataUrl() { return appearanceLogoDataUrl; }
+    public float appearanceLogoOpacity() { return appearanceLogoOpacity; }
+    public boolean appearanceBorder() { return appearanceBorder; }
+    public boolean appearanceTransparentBackground() { return appearanceTransparentBackground; }
+    public String appearanceAlignment() { return appearanceAlignment; }
+    public boolean appearanceCompactMode() { return appearanceCompactMode; }
+
     private boolean isAllowedApiBase(String value) {
         String candidate = normalizeOrigin(value);
         if (candidate.isBlank()) {
@@ -394,6 +509,15 @@ public final class SignerConfig {
         } catch (Exception ignored) {
             return fallback;
         }
+    }
+
+    private static float clamp(float value, float min, float max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
+    private static String normalizeAppearanceAlignment(String value) {
+        String normalized = String.valueOf(value == null ? "" : value).trim().toLowerCase(Locale.ROOT);
+        return normalized.equals("center") || normalized.equals("right") ? normalized : "left";
     }
 
     private static float cmToPt(float cm) {

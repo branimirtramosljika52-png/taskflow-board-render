@@ -39,6 +39,34 @@ const PDF_FONTS = {
   italic: resolve(DEJAVU_FONT_DIR, "DejaVuSans-Oblique.ttf"),
 };
 const DEFAULT_OFFER_HTML_TEMPLATE_PATH = resolve(moduleDir, "templates", "offer-v1.0.0.html");
+const DEFAULT_PDF_SIGNATURE_APPEARANCE_SETTINGS = Object.freeze({
+  showQualifiedLabel: true,
+  showName: true,
+  showTitle: true,
+  showRole: true,
+  showOib: false,
+  showOrganization: false,
+  showDateTime: false,
+  showLogo: false,
+  showCertificateSubject: false,
+  showProvider: false,
+  showReason: false,
+  showLocation: false,
+  logoDataUrl: "",
+  logoOpacity: 0.08,
+  border: false,
+  transparentBackground: true,
+  alignment: "left",
+  compactMode: true,
+});
+const DEFAULT_PDF_SIGNATURE_POSITION_SETTINGS = Object.freeze({
+  anchor: "bottom",
+  offsetX: 0,
+  offsetY: -28,
+  width: 164,
+  height: 32,
+  alignment: "left",
+});
 const SOFFICE_CANDIDATES = [
   process.env.SOFFICE_PATH,
   process.env.LIBREOFFICE_PATH,
@@ -199,6 +227,110 @@ export function buildPdfSignatureFieldName(role = DEFAULT_PDF_SIGNATURE_FIELD_RO
   return `SIGN_${normalizePdfSignatureFieldRole(role)}_${normalizedOib}`;
 }
 
+function parsePdfSignatureJsonObject(value = null) {
+  if (!value) {
+    return null;
+  }
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return value;
+  }
+  if (typeof value !== "string") {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizePdfSignatureBoolean(value, fallback = false) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number") {
+    return value !== 0;
+  }
+  const text = String(value ?? "").trim().toLowerCase();
+  if (["true", "1", "yes", "da", "on"].includes(text)) {
+    return true;
+  }
+  if (["false", "0", "no", "ne", "off"].includes(text)) {
+    return false;
+  }
+  return fallback;
+}
+
+function normalizePdfSignatureNumber(value, fallback = 0, { min = Number.NEGATIVE_INFINITY, max = Number.POSITIVE_INFINITY } = {}) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, number));
+}
+
+function normalizePdfSignatureAlignment(value = "", fallback = "left") {
+  const normalized = clean(value).toLowerCase();
+  return ["left", "center", "right"].includes(normalized) ? normalized : fallback;
+}
+
+function normalizePdfSignatureAnchor(value = "", fallback = "bottom") {
+  const normalized = clean(value).toLowerCase();
+  return ["left", "right", "top", "bottom", "inline"].includes(normalized) ? normalized : fallback;
+}
+
+function normalizePdfSignatureAppearanceSettings(value = null) {
+  const raw = parsePdfSignatureJsonObject(value) || {};
+  return {
+    showQualifiedLabel: normalizePdfSignatureBoolean(raw.showQualifiedLabel ?? raw.qualifiedLabel, DEFAULT_PDF_SIGNATURE_APPEARANCE_SETTINGS.showQualifiedLabel),
+    showName: normalizePdfSignatureBoolean(raw.showName ?? raw.name, DEFAULT_PDF_SIGNATURE_APPEARANCE_SETTINGS.showName),
+    showTitle: normalizePdfSignatureBoolean(raw.showTitle ?? raw.title, DEFAULT_PDF_SIGNATURE_APPEARANCE_SETTINGS.showTitle),
+    showRole: normalizePdfSignatureBoolean(raw.showRole ?? raw.role, DEFAULT_PDF_SIGNATURE_APPEARANCE_SETTINGS.showRole),
+    showOib: normalizePdfSignatureBoolean(raw.showOib ?? raw.oib, DEFAULT_PDF_SIGNATURE_APPEARANCE_SETTINGS.showOib),
+    showOrganization: normalizePdfSignatureBoolean(raw.showOrganization ?? raw.organization, DEFAULT_PDF_SIGNATURE_APPEARANCE_SETTINGS.showOrganization),
+    showDateTime: normalizePdfSignatureBoolean(raw.showDateTime ?? raw.dateTime, DEFAULT_PDF_SIGNATURE_APPEARANCE_SETTINGS.showDateTime),
+    showLogo: normalizePdfSignatureBoolean(raw.showLogo ?? raw.logo, DEFAULT_PDF_SIGNATURE_APPEARANCE_SETTINGS.showLogo),
+    showCertificateSubject: normalizePdfSignatureBoolean(raw.showCertificateSubject ?? raw.certificateSubject, DEFAULT_PDF_SIGNATURE_APPEARANCE_SETTINGS.showCertificateSubject),
+    showProvider: normalizePdfSignatureBoolean(raw.showProvider ?? raw.provider, DEFAULT_PDF_SIGNATURE_APPEARANCE_SETTINGS.showProvider),
+    showReason: normalizePdfSignatureBoolean(raw.showReason ?? raw.reasonVisible, DEFAULT_PDF_SIGNATURE_APPEARANCE_SETTINGS.showReason),
+    showLocation: normalizePdfSignatureBoolean(raw.showLocation ?? raw.locationVisible, DEFAULT_PDF_SIGNATURE_APPEARANCE_SETTINGS.showLocation),
+    logoDataUrl: clean(raw.logoDataUrl || raw.logo || raw.logoUrl || ""),
+    logoOpacity: normalizePdfSignatureNumber(raw.logoOpacity, DEFAULT_PDF_SIGNATURE_APPEARANCE_SETTINGS.logoOpacity, { min: 0, max: 0.4 }),
+    border: normalizePdfSignatureBoolean(raw.border ?? raw.showBorder, DEFAULT_PDF_SIGNATURE_APPEARANCE_SETTINGS.border),
+    transparentBackground: normalizePdfSignatureBoolean(raw.transparentBackground, DEFAULT_PDF_SIGNATURE_APPEARANCE_SETTINGS.transparentBackground),
+    alignment: normalizePdfSignatureAlignment(raw.alignment, DEFAULT_PDF_SIGNATURE_APPEARANCE_SETTINGS.alignment),
+    compactMode: normalizePdfSignatureBoolean(raw.compactMode ?? raw.compact, DEFAULT_PDF_SIGNATURE_APPEARANCE_SETTINGS.compactMode),
+  };
+}
+
+function normalizePdfSignaturePositionSettings(value = null) {
+  const raw = parsePdfSignatureJsonObject(value) || {};
+  return {
+    anchor: normalizePdfSignatureAnchor(raw.anchor, DEFAULT_PDF_SIGNATURE_POSITION_SETTINGS.anchor),
+    offsetX: normalizePdfSignatureNumber(raw.offsetX ?? raw.x ?? raw.dx, DEFAULT_PDF_SIGNATURE_POSITION_SETTINGS.offsetX, { min: -400, max: 400 }),
+    offsetY: normalizePdfSignatureNumber(raw.offsetY ?? raw.y ?? raw.dy, DEFAULT_PDF_SIGNATURE_POSITION_SETTINGS.offsetY, { min: -400, max: 400 }),
+    width: normalizePdfSignatureNumber(raw.width, DEFAULT_PDF_SIGNATURE_POSITION_SETTINGS.width, { min: 60, max: 420 }),
+    height: normalizePdfSignatureNumber(raw.height, DEFAULT_PDF_SIGNATURE_POSITION_SETTINGS.height, { min: 18, max: 160 }),
+    alignment: normalizePdfSignatureAlignment(raw.alignment, DEFAULT_PDF_SIGNATURE_POSITION_SETTINGS.alignment),
+  };
+}
+
+function normalizePdfSignatureRolePositioningSettings(value = null) {
+  const raw = parsePdfSignatureJsonObject(value);
+  if (!raw) {
+    return {};
+  }
+  return Object.entries(raw).reduce((settings, [key, config]) => {
+    const normalizedKey = clean(key).toUpperCase();
+    if (!normalizedKey) {
+      return settings;
+    }
+    settings[normalizedKey] = normalizePdfSignaturePositionSettings(config);
+    return settings;
+  }, {});
+}
+
 function normalizePdfSignatureFieldSpec(item = {}, options = {}) {
   const signatureMode = clean(item.signatureMode).toLowerCase() || "scan";
   if (signatureMode !== "digital") {
@@ -235,8 +367,12 @@ function normalizePdfSignatureFieldSpec(item = {}, options = {}) {
     name: clean(item.name) || clean(item.label) || "Potpisnik",
     roleLabel: clean(item.role) || signatureFieldRole,
     signerTitle: clean(item.signerTitle || item.title),
+    signerOib: signatureFieldOib,
+    signerOrganization: clean(item.signerOrganization || item.organization || item.companyName),
     signerUserId: clean(item.signerUserId || item.userId),
     signerEmail: clean(item.signerEmail || item.email),
+    positioning: normalizePdfSignaturePositionSettings(item.positioning || item.signaturePosition || item.signaturePositioning),
+    appearance: normalizePdfSignatureAppearanceSettings(item.appearance || item.signatureAppearance || options.appearance),
     page: Number.isFinite(Number(item.page))
       ? Number(item.page)
       : (Number.isFinite(Number(options.page)) ? Number(options.page) : Number.NaN),
@@ -5429,17 +5565,32 @@ function pdfBufferFromDocument(doc) {
   });
 }
 
-function resolvePdfSignatureFieldRect(spec = {}, page, index = 0, totalFields = 1, anchor = null) {
+function resolvePdfSignatureFieldPositioning(spec = {}, rolePositioningSettings = {}) {
+  const keys = [
+    clean(spec.fieldName).toUpperCase(),
+    normalizePdfSignatureFieldRole(spec.signatureFieldRole || ""),
+    clean(spec.roleLabel).toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, ""),
+  ].filter(Boolean);
+  const matched = keys.map((key) => rolePositioningSettings[key]).find(Boolean) || {};
+  return {
+    ...DEFAULT_PDF_SIGNATURE_POSITION_SETTINGS,
+    ...(spec.positioning || {}),
+    ...matched,
+  };
+}
+
+function resolvePdfSignatureFieldRect(spec = {}, page, index = 0, totalFields = 1, anchor = null, rolePositioningSettings = {}) {
   const pageWidth = page.getWidth();
   const pageHeight = page.getHeight();
-  const fallbackHeight = 32;
+  const positioning = resolvePdfSignatureFieldPositioning(spec, rolePositioningSettings);
+  const fallbackHeight = positioning.height;
   const sideMargin = 42;
   const columnGap = 28;
   const columnCount = Math.max(1, Math.min(2, Number(totalFields || 1) > 1 ? 2 : 1));
   const columnWidth = columnCount > 1
     ? Math.max(180, (pageWidth - (sideMargin * 2) - columnGap) / 2)
     : Math.max(220, pageWidth - (sideMargin * 2));
-  const fallbackWidth = Math.max(148, Math.min(164, columnWidth - 24));
+  const fallbackWidth = Math.max(60, Math.min(positioning.width, columnWidth - 24));
   const fallbackColumn = columnCount === 1 ? 1 : index % 2;
   const fallbackRow = columnCount === 1 ? 0 : Math.floor(index / 2);
   const rightAlignedX = Math.max(sideMargin, pageWidth - fallbackWidth - 50);
@@ -5450,6 +5601,7 @@ function resolvePdfSignatureFieldRect(spec = {}, page, index = 0, totalFields = 
       : rightAlignedX;
   const fallbackY = Math.max(72, pageHeight - 170 - (fallbackRow * (fallbackHeight + 22)));
   const anchorWidth = Math.max(0, Number(anchor?.width) || 0);
+  const anchorHeight = Math.max(0, Number(anchor?.height) || 0);
   const anchorX = Number(anchor?.x);
   const anchorY = Number(anchor?.y);
   const width = Number.isFinite(Number(spec.width)) && Number(spec.width) > 20
@@ -5458,18 +5610,26 @@ function resolvePdfSignatureFieldRect(spec = {}, page, index = 0, totalFields = 
   const height = Number.isFinite(Number(spec.height)) && Number(spec.height) > 12
     ? Math.min(Number(spec.height), pageHeight - 24)
     : fallbackHeight;
-  const anchoredX = Number.isFinite(anchorX)
-    ? Math.min(
-      Math.max(12, (anchorX + (anchorWidth / 2)) - (width / 2)),
-      Math.max(12, pageWidth - width - 12),
-    )
-    : Number.NaN;
-  const anchoredY = Number.isFinite(anchorY)
-    ? Math.min(
-      Math.max(12, anchorY - height - 28),
-      Math.max(12, pageHeight - height - 12),
-    )
-    : Number.NaN;
+  let anchoredX = Number.NaN;
+  let anchoredY = Number.NaN;
+  if (Number.isFinite(anchorX) && Number.isFinite(anchorY)) {
+    const anchorMode = positioning.anchor;
+    if (anchorMode === "left") {
+      anchoredX = anchorX - width + positioning.offsetX;
+      anchoredY = anchorY + positioning.offsetY;
+    } else if (anchorMode === "right" || anchorMode === "inline") {
+      anchoredX = anchorX + anchorWidth + positioning.offsetX;
+      anchoredY = anchorY + positioning.offsetY;
+    } else if (anchorMode === "top") {
+      anchoredX = (anchorX + (anchorWidth / 2)) - (width / 2) + positioning.offsetX;
+      anchoredY = anchorY + anchorHeight + positioning.offsetY;
+    } else {
+      anchoredX = (anchorX + (anchorWidth / 2)) - (width / 2) + positioning.offsetX;
+      anchoredY = anchorY - height + positioning.offsetY;
+    }
+    anchoredX = Math.min(Math.max(12, anchoredX), Math.max(12, pageWidth - width - 12));
+    anchoredY = Math.min(Math.max(12, anchoredY), Math.max(12, pageHeight - height - 12));
+  }
   const x = Number.isFinite(Number(spec.x))
     ? Math.min(Math.max(12, Number(spec.x)), Math.max(12, pageWidth - width - 12))
     : Number.isFinite(anchoredX)
@@ -5494,30 +5654,111 @@ function resolvePdfSignatureFieldPageIndex(spec = {}, pageCount = 1) {
   return Math.min(Math.max(0, Math.round(rawPageIndex)), Math.max(0, pageCount - 1));
 }
 
-function drawPdfSignatureFieldPlaceholder(page, rect, spec = {}, fonts = {}) {
+function getPdfSignatureTextAlign(value = "") {
+  const alignment = normalizePdfSignatureAlignment(value, "left");
+  return alignment === "right" ? "right" : alignment === "center" ? "center" : "left";
+}
+
+function resolvePdfSignatureTextX(rect, text = "", font = null, size = 8, alignment = "left") {
+  const contentWidth = Math.max(40, rect.width - 4);
+  if (alignment === "left" || !font?.widthOfTextAtSize) {
+    return rect.x + 2;
+  }
+  const textWidth = Math.min(contentWidth, font.widthOfTextAtSize(text, size));
+  if (alignment === "right") {
+    return rect.x + rect.width - textWidth - 2;
+  }
+  return rect.x + ((rect.width - textWidth) / 2);
+}
+
+function buildPdfSignatureAppearanceLines(spec = {}, appearance = DEFAULT_PDF_SIGNATURE_APPEARANCE_SETTINGS) {
+  const signerName = clean(spec.name || spec.label || "Potpisnik");
+  const lines = [];
+  if (appearance.showQualifiedLabel) {
+    lines.push({ text: "Kvalificirani digitalni potpis", strong: false });
+  }
+  if (appearance.showName && signerName) {
+    lines.push({ text: signerName, strong: true });
+  }
+  if (appearance.showTitle && clean(spec.signerTitle)) {
+    lines.push({ text: clean(spec.signerTitle), strong: false });
+  }
+  if (appearance.showRole && clean(spec.roleLabel)) {
+    lines.push({ text: clean(spec.roleLabel), strong: false });
+  }
+  if (appearance.showOib && clean(spec.signerOib || spec.signatureFieldOib)) {
+    lines.push({ text: `OIB ${clean(spec.signerOib || spec.signatureFieldOib)}`, strong: false });
+  }
+  if (appearance.showOrganization && clean(spec.signerOrganization)) {
+    lines.push({ text: clean(spec.signerOrganization), strong: false });
+  }
+  if (appearance.showDateTime) {
+    lines.push({ text: "Datum i vrijeme potpisa", strong: false });
+  }
+  if (appearance.showReason && clean(spec.reason)) {
+    lines.push({ text: clean(spec.reason), strong: false });
+  }
+  if (appearance.showLocation && clean(spec.location)) {
+    lines.push({ text: clean(spec.location), strong: false });
+  }
+  return lines.slice(0, appearance.compactMode ? 5 : 9);
+}
+
+function drawPdfSignatureFieldPlaceholder(page, rect, spec = {}, fonts = {}, appearance = DEFAULT_PDF_SIGNATURE_APPEARANCE_SETTINGS, logoImage = null) {
   const regularFont = fonts.regular || fonts.bold;
   const boldFont = fonts.bold || fonts.regular;
-  const contentX = rect.x + 2;
-  const contentWidth = Math.max(40, rect.width - 4);
-  const signerName = clean(spec.name || spec.label || "Potpisnik");
-  page.drawText("Kvalificirani digitalni potpis", {
-    x: contentX,
-    y: rect.y + Math.max(17, rect.height - 12),
-    size: 7.2,
-    font: regularFont,
-    color: rgb(0.18, 0.2, 0.24),
-    maxWidth: contentWidth,
-  });
-  if (signerName) {
-    page.drawText(signerName, {
-      x: contentX,
-      y: rect.y + 5,
-      size: 8.2,
-      font: boldFont,
-      color: rgb(0.05, 0.06, 0.08),
-      maxWidth: contentWidth,
+  const appearanceSettings = {
+    ...DEFAULT_PDF_SIGNATURE_APPEARANCE_SETTINGS,
+    ...(appearance || {}),
+  };
+  if (!appearanceSettings.transparentBackground || appearanceSettings.border) {
+    page.drawRectangle({
+      x: rect.x,
+      y: rect.y,
+      width: rect.width,
+      height: rect.height,
+      borderColor: rgb(0.68, 0.72, 0.78),
+      borderWidth: appearanceSettings.border ? 0.45 : 0,
+      color: rgb(1, 1, 1),
+      opacity: appearanceSettings.transparentBackground ? 0 : 0.72,
     });
   }
+  if (appearanceSettings.showLogo && logoImage) {
+    const scale = Math.min(rect.width * 0.82 / logoImage.width, rect.height * 0.78 / logoImage.height);
+    if (Number.isFinite(scale) && scale > 0) {
+      const logoWidth = logoImage.width * scale;
+      const logoHeight = logoImage.height * scale;
+      page.drawImage(logoImage, {
+        x: rect.x + ((rect.width - logoWidth) / 2),
+        y: rect.y + ((rect.height - logoHeight) / 2),
+        width: logoWidth,
+        height: logoHeight,
+        opacity: appearanceSettings.logoOpacity,
+      });
+    }
+  }
+
+  const contentWidth = Math.max(40, rect.width - 4);
+  const lines = buildPdfSignatureAppearanceLines(spec, appearanceSettings);
+  const compact = Boolean(appearanceSettings.compactMode);
+  const baseSize = compact ? 7.2 : 7.8;
+  const strongSize = compact ? 8.2 : 8.8;
+  const lineHeight = compact ? 9.2 : 10.4;
+  let y = rect.y + rect.height - (compact ? 10 : 11);
+  const alignment = getPdfSignatureTextAlign(appearanceSettings.alignment || spec.positioning?.alignment);
+  lines.forEach((line) => {
+    const size = line.strong ? strongSize : baseSize;
+    const font = line.strong ? boldFont : regularFont;
+    page.drawText(line.text, {
+      x: resolvePdfSignatureTextX(rect, line.text, font, size, alignment),
+      y,
+      size,
+      font,
+      color: line.strong ? rgb(0.05, 0.06, 0.08) : rgb(0.18, 0.2, 0.24),
+      maxWidth: contentWidth,
+    });
+    y -= lineHeight;
+  });
 }
 
 function addPdfSignatureField(pdfDoc, page, rect, fieldName = "") {
@@ -5549,6 +5790,40 @@ async function embedPdfSignaturePlaceholderFonts(pdfDoc) {
     regular: await pdfDoc.embedFont(regularBytes, { subset: true }),
     bold: await pdfDoc.embedFont(boldBytes, { subset: true }),
   };
+}
+
+function parsePdfSignatureLogoDataUrl(value = "") {
+  const text = clean(value);
+  const match = text.match(/^data:(image\/(?:png|jpe?g));base64,([a-z0-9+/=\s]+)$/i);
+  if (!match) {
+    return null;
+  }
+  try {
+    return {
+      mimeType: match[1].toLowerCase(),
+      bytes: Buffer.from(match[2].replace(/\s+/g, ""), "base64"),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function embedPdfSignatureAppearanceLogo(pdfDoc, appearance = DEFAULT_PDF_SIGNATURE_APPEARANCE_SETTINGS) {
+  if (!appearance?.showLogo || !appearance?.logoDataUrl) {
+    return null;
+  }
+  const logo = parsePdfSignatureLogoDataUrl(appearance.logoDataUrl);
+  if (!logo || logo.bytes.length === 0) {
+    return null;
+  }
+  try {
+    if (logo.mimeType === "image/png") {
+      return await pdfDoc.embedPng(logo.bytes);
+    }
+    return await pdfDoc.embedJpg(logo.bytes);
+  } catch {
+    return null;
+  }
 }
 
 function hasExplicitPdfSignatureFieldPosition(spec = {}) {
@@ -5680,12 +5955,17 @@ function findPdfSignatureOibAnchor(textAnchors = [], signatureFieldOib = "") {
   return null;
 }
 
-export async function addPdfSignatureFieldsToBuffer(pdfBuffer = Buffer.alloc(0), signatureFields = []) {
+export async function addPdfSignatureFieldsToBuffer(pdfBuffer = Buffer.alloc(0), signatureFields = [], options = {}) {
   const safeBuffer = Buffer.isBuffer(pdfBuffer) ? pdfBuffer : Buffer.from(pdfBuffer ?? []);
+  const appearanceSettings = normalizePdfSignatureAppearanceSettings(options.appearance || options.signatureAppearance);
+  const rolePositioningSettings = normalizePdfSignatureRolePositioningSettings(
+    options.rolePositioning || options.positioning || options.signaturePositioning,
+  );
   const normalizedFields = (Array.isArray(signatureFields) ? signatureFields : [])
     .map((field) => normalizePdfSignatureFieldSpec({
       ...field,
       signatureMode: "digital",
+      appearance: field.appearance || field.signatureAppearance || appearanceSettings,
     }))
     .filter(Boolean);
 
@@ -5702,6 +5982,7 @@ export async function addPdfSignatureFieldsToBuffer(pdfBuffer = Buffer.alloc(0),
   const form = pdfDoc.getForm();
   const existingFieldNames = new Set(form.getFields().map((field) => field.getName()));
   const fonts = await embedPdfSignaturePlaceholderFonts(pdfDoc);
+  const logoImage = await embedPdfSignatureAppearanceLogo(pdfDoc, appearanceSettings);
   const addedFieldNames = new Set();
   const needsTextAnchors = normalizedFields.some((field) => (
     !hasExplicitPdfSignatureFieldPosition(field)
@@ -5730,9 +6011,20 @@ export async function addPdfSignatureFieldsToBuffer(pdfBuffer = Buffer.alloc(0),
       index,
       normalizedFields.length,
       canUseAnchorPage ? oibAnchor : null,
+      rolePositioningSettings,
     );
     if (field.drawPlaceholder) {
-      drawPdfSignatureFieldPlaceholder(page, rect, field, fonts);
+      drawPdfSignatureFieldPlaceholder(
+        page,
+        rect,
+        field,
+        fonts,
+        {
+          ...appearanceSettings,
+          ...(field.appearance || {}),
+        },
+        logoImage,
+      );
     }
     addPdfSignatureField(pdfDoc, page, rect, field.fieldName);
     addedFieldNames.add(field.fieldName);

@@ -4986,6 +4986,64 @@
                       <span>Location</span>
                       <input id="signatures-settings-location" type="text" />
                     </label>
+                    <fieldset class="signatures-settings-fieldset field-span-2">
+                      <legend>Digital signature appearance</legend>
+                      <div class="signatures-settings-checkbox-grid">
+                        <label><input id="signatures-settings-show-qualified" type="checkbox" /> Kvalificirani digitalni potpis</label>
+                        <label><input id="signatures-settings-show-name" type="checkbox" /> Ime i prezime</label>
+                        <label><input id="signatures-settings-show-title" type="checkbox" /> Titula</label>
+                        <label><input id="signatures-settings-show-role" type="checkbox" /> Uloga potpisa</label>
+                        <label><input id="signatures-settings-show-oib" type="checkbox" /> OIB</label>
+                        <label><input id="signatures-settings-show-organization" type="checkbox" /> Organizacija</label>
+                        <label><input id="signatures-settings-show-date-time" type="checkbox" /> Datum i vrijeme</label>
+                        <label><input id="signatures-settings-show-logo" type="checkbox" /> Logo firme u pozadini</label>
+                        <label><input id="signatures-settings-show-certificate-subject" type="checkbox" /> Certificate subject</label>
+                        <label><input id="signatures-settings-show-provider" type="checkbox" /> Provider</label>
+                        <label><input id="signatures-settings-show-reason" type="checkbox" /> Reason</label>
+                        <label><input id="signatures-settings-show-location" type="checkbox" /> Location</label>
+                      </div>
+                    </fieldset>
+                    <label class="field field-span-2">
+                      <span>Logo data URL</span>
+                      <textarea id="signatures-settings-logo-data-url" rows="2" placeholder="data:image/png;base64,..."></textarea>
+                    </label>
+                    <label class="field">
+                      <span>Logo opacity</span>
+                      <input id="signatures-settings-logo-opacity" type="number" step="0.01" min="0" max="0.4" />
+                    </label>
+                    <label class="field">
+                      <span>Border</span>
+                      <select id="signatures-settings-border">
+                        <option value="false">Ne</option>
+                        <option value="true">Da</option>
+                      </select>
+                    </label>
+                    <label class="field">
+                      <span>Transparent background</span>
+                      <select id="signatures-settings-transparent-bg">
+                        <option value="true">Da</option>
+                        <option value="false">Ne</option>
+                      </select>
+                    </label>
+                    <label class="field">
+                      <span>Alignment</span>
+                      <select id="signatures-settings-alignment">
+                        <option value="left">Left</option>
+                        <option value="center">Center</option>
+                        <option value="right">Right</option>
+                      </select>
+                    </label>
+                    <label class="field">
+                      <span>Compact mode</span>
+                      <select id="signatures-settings-compact">
+                        <option value="true">Da</option>
+                        <option value="false">Ne</option>
+                      </select>
+                    </label>
+                    <label class="field field-span-2">
+                      <span>Role / placeholder positioning JSON</span>
+                      <textarea id="signatures-settings-role-positioning" rows="7" spellcheck="false" placeholder='{"ISPITIVANJE_OBAVILI":{"anchor":"bottom","offsetX":0,"offsetY":-28,"width":180,"height":55,"alignment":"left"}}'></textarea>
+                    </label>
                   </div>
                   <pre id="signatures-settings-response" class="signatures-settings-response"></pre>
                 </div>

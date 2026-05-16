@@ -2,7 +2,10 @@ package hr.sign;
 
 import com.itextpdf.forms.PdfAcroForm;
 import com.itextpdf.forms.fields.PdfFormField;
+import com.itextpdf.io.image.ImageData;
+import com.itextpdf.io.image.ImageDataFactory;
 import com.itextpdf.io.font.PdfEncodings;
+import com.itextpdf.kernel.colors.ColorConstants;
 import com.itextpdf.kernel.font.PdfFont;
 import com.itextpdf.kernel.font.PdfFontFactory;
 import com.itextpdf.kernel.geom.Rectangle;
@@ -11,25 +14,32 @@ import com.itextpdf.kernel.pdf.PdfReader;
 import com.itextpdf.kernel.pdf.ReaderProperties;
 import com.itextpdf.kernel.pdf.StampingProperties;
 import com.itextpdf.kernel.pdf.annot.PdfWidgetAnnotation;
+import com.itextpdf.kernel.pdf.canvas.PdfCanvas;
 import com.itextpdf.kernel.pdf.canvas.parser.EventType;
 import com.itextpdf.kernel.pdf.canvas.parser.PdfCanvasProcessor;
 import com.itextpdf.kernel.pdf.canvas.parser.data.IEventData;
 import com.itextpdf.kernel.pdf.canvas.parser.data.TextRenderInfo;
 import com.itextpdf.kernel.pdf.canvas.parser.listener.IEventListener;
+import com.itextpdf.kernel.pdf.extgstate.PdfExtGState;
+import com.itextpdf.kernel.pdf.xobject.PdfFormXObject;
 import com.itextpdf.signatures.BouncyCastleDigest;
 import com.itextpdf.signatures.IExternalDigest;
 import com.itextpdf.signatures.PdfPKCS7;
 import com.itextpdf.signatures.PdfSigner;
+import com.itextpdf.signatures.PdfSignatureAppearance;
 import com.itextpdf.signatures.SignatureUtil;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.security.PrivateKey;
 import java.security.cert.X509Certificate;
+import java.text.SimpleDateFormat;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Date;
 import java.util.Deque;
 import java.util.HashSet;
 import java.util.List;
@@ -48,6 +58,10 @@ public final class SigningService {
     }
 
     public SignedPdf signPdfByField(byte[] pdfBytes, String fieldName, TokenService.Credential credential) throws SignatureBridgeException {
+        return signPdfByField(pdfBytes, fieldName, credential, SignatureAppearanceMetadata.empty());
+    }
+
+    public SignedPdf signPdfByField(byte[] pdfBytes, String fieldName, TokenService.Credential credential, SignatureAppearanceMetadata metadata) throws SignatureBridgeException {
         try {
             List<PdfSignatureFieldService.SignatureFieldInfo> fields = fieldService.listSignatureFields(pdfBytes);
             PdfSignatureFieldService.SignatureFieldInfo field = fields.stream()
@@ -64,7 +78,7 @@ public final class SigningService {
             Rectangle rectangle = field.page() > 0 && field.width() > 0 && field.height() > 0
                     ? new Rectangle(field.x(), field.y(), field.width(), field.height())
                     : null;
-            return signOnce(pdfBytes, fieldName, rectangle, field.page(), credential, "field");
+            return signOnce(pdfBytes, fieldName, rectangle, field.page(), credential, "field", metadata);
         } catch (SignatureBridgeException error) {
             throw error;
         } catch (Exception error) {
@@ -82,6 +96,16 @@ public final class SigningService {
             String keyword,
             TokenService.Credential credential,
             String originalName
+    ) throws SignatureBridgeException {
+        return signPdfByKeywordFallback(pdfBytes, keyword, credential, originalName, SignatureAppearanceMetadata.empty());
+    }
+
+    public SignedPdf signPdfByKeywordFallback(
+            byte[] pdfBytes,
+            String keyword,
+            TokenService.Credential credential,
+            String originalName,
+            SignatureAppearanceMetadata metadata
     ) throws SignatureBridgeException {
         if (!config.fallbackKeywordEnabled()) {
             throw new SignatureBridgeException("NO_SIGNATURE_FIELDS", "PDF nema signature field, a keyword fallback je iskljucen.");
@@ -111,7 +135,7 @@ public final class SigningService {
                         existing,
                         "sig_" + baseName + "_p" + match.page() + "_x" + q5(rectangle.getX()) + "_y" + q5(rectangle.getY())
                 );
-                return signOnce(pdfBytes, fieldName, rectangle, match.page(), credential, "keyword");
+                return signOnce(pdfBytes, fieldName, rectangle, match.page(), credential, "keyword", metadata);
             }
 
             throw new SignatureBridgeException("ALREADY_SIGNED", "Sve fallback keyword pozicije su vec potpisane.");
@@ -133,7 +157,8 @@ public final class SigningService {
             Rectangle rectangle,
             int page,
             TokenService.Credential credential,
-            String signingMode
+            String signingMode,
+            SignatureAppearanceMetadata metadata
     ) throws Exception {
         ByteArrayOutputStream output = new ByteArrayOutputStream(Math.max(pdfBytes.length + 16384, 65536));
         try (PdfReader reader = new PdfReader(new ByteArrayInputStream(pdfBytes), new ReaderProperties())) {
@@ -142,23 +167,27 @@ public final class SigningService {
             PrivateKey privateKey = tokenService.loadPrivateKey(credential);
             TokenService.SignatureChoice signatureChoice = tokenService.chooseSignature(privateKey, credential.provider());
 
-            String appearanceText = buildAppearanceText(credential);
-            signer.getSignatureAppearance()
+            String appearanceText = buildAppearanceText(credential, metadata);
+            PdfSignatureAppearance appearance = signer.getSignatureAppearance()
                     .setReason(config.reason())
                     .setLocation(config.location())
+                    .setRenderingMode(PdfSignatureAppearance.RenderingMode.DESCRIPTION)
                     .setLayer2Text(appearanceText)
-                    .setLayer2FontSize(config.fontSize());
+                    .setLayer2FontSize(config.fontSize())
+                    .setLayer2FontColor(ColorConstants.BLACK);
 
             PdfFont font = tryLoadUnicodeFont();
             if (font != null) {
-                signer.getSignatureAppearance().setLayer2Font(font);
+                appearance.setLayer2Font(font);
             }
 
             if (rectangle != null && page > 0) {
-                signer.getSignatureAppearance()
+                appearance
                         .setPageRect(rectangle)
                         .setPageNumber(page);
             }
+
+            drawConfiguredAppearanceBackground(signer, appearance);
 
             signer.setFieldName(fieldName);
             IExternalDigest digest = new BouncyCastleDigest();
@@ -186,9 +215,122 @@ public final class SigningService {
         }
     }
 
-    private String buildAppearanceText(TokenService.Credential credential) {
-        return "Kvalificirani digitalni potpis\n"
-                + safeText(credential.commonName());
+    private String buildAppearanceText(TokenService.Credential credential, SignatureAppearanceMetadata metadata) {
+        List<String> lines = new ArrayList<>();
+        SignatureAppearanceMetadata safeMetadata = metadata == null ? SignatureAppearanceMetadata.empty() : metadata;
+        String signerName = firstNonBlank(safeMetadata.signerName(), credential.commonName());
+        if (config.appearanceShowQualifiedLabel()) {
+            lines.add("Kvalificirani digitalni potpis");
+        }
+        if (config.appearanceShowName() && !signerName.isBlank()) {
+            lines.add(signerName);
+        }
+        if (config.appearanceShowTitle() && !safeMetadata.signerTitle().isBlank()) {
+            lines.add(safeMetadata.signerTitle());
+        }
+        if (config.appearanceShowRole() && !safeMetadata.roleLabel().isBlank()) {
+            lines.add(safeMetadata.roleLabel());
+        }
+        if (config.appearanceShowOib()) {
+            String oib = firstNonBlank(safeMetadata.signerOib(), credential.oib());
+            if (!oib.isBlank()) {
+                lines.add("OIB " + oib);
+            }
+        }
+        if (config.appearanceShowOrganization()) {
+            String organization = firstNonBlank(safeMetadata.organization(), credential.organization());
+            if (!organization.isBlank()) {
+                lines.add(organization);
+            }
+        }
+        if (config.appearanceShowDateTime()) {
+            lines.add(new SimpleDateFormat("dd.MM.yyyy HH:mm:ss").format(new Date()));
+        }
+        if (config.appearanceShowCertificateSubject() && !credential.subject().isBlank()) {
+            lines.add(credential.subject());
+        }
+        if (config.appearanceShowProvider() && !credential.providerName().isBlank()) {
+            lines.add(credential.providerName());
+        }
+        if (config.appearanceShowReason() && !config.reason().isBlank()) {
+            lines.add(config.reason());
+        }
+        if (config.appearanceShowLocation() && !config.location().isBlank()) {
+            lines.add(config.location());
+        }
+        int limit = config.appearanceCompactMode() ? 5 : 10;
+        return String.join("\n", lines.stream().filter(line -> !line.isBlank()).limit(limit).toList());
+    }
+
+    private void drawConfiguredAppearanceBackground(PdfSigner signer, PdfSignatureAppearance appearance) {
+        try {
+            PdfFormXObject layer0 = appearance.getLayer0();
+            Rectangle box = layer0.getBBox().toRectangle();
+            PdfCanvas canvas = new PdfCanvas(layer0, signer.getDocument());
+            if (!config.appearanceTransparentBackground()) {
+                canvas.saveState();
+                canvas.setFillColor(ColorConstants.WHITE);
+                canvas.rectangle(0, 0, box.getWidth(), box.getHeight());
+                canvas.fill();
+                canvas.restoreState();
+            }
+            if (config.appearanceShowLogo()) {
+                ImageData logo = loadAppearanceLogo();
+                if (logo != null && logo.getWidth() > 0 && logo.getHeight() > 0) {
+                    float scale = Math.min((box.getWidth() * 0.82f) / logo.getWidth(), (box.getHeight() * 0.78f) / logo.getHeight());
+                    if (Float.isFinite(scale) && scale > 0f) {
+                        float width = logo.getWidth() * scale;
+                        float height = logo.getHeight() * scale;
+                        PdfExtGState state = new PdfExtGState()
+                                .setFillOpacity(config.appearanceLogoOpacity())
+                                .setStrokeOpacity(config.appearanceLogoOpacity());
+                        canvas.saveState();
+                        canvas.setExtGState(state);
+                        canvas.addImageFittedIntoRectangle(
+                                logo,
+                                new Rectangle((box.getWidth() - width) / 2f, (box.getHeight() - height) / 2f, width, height),
+                                false
+                        );
+                        canvas.restoreState();
+                    }
+                }
+            }
+            if (config.appearanceBorder()) {
+                canvas.saveState();
+                canvas.setStrokeColor(ColorConstants.LIGHT_GRAY);
+                canvas.setLineWidth(0.35f);
+                canvas.rectangle(0.3f, 0.3f, Math.max(0f, box.getWidth() - 0.6f), Math.max(0f, box.getHeight() - 0.6f));
+                canvas.stroke();
+                canvas.restoreState();
+            }
+        } catch (Exception ignored) {
+            // Appearance background is cosmetic; signing must continue if it cannot be drawn.
+        }
+    }
+
+    private ImageData loadAppearanceLogo() {
+        String dataUrl = String.valueOf(config.appearanceLogoDataUrl() == null ? "" : config.appearanceLogoDataUrl()).trim();
+        if (!dataUrl.startsWith("data:image/")) {
+            return null;
+        }
+        int comma = dataUrl.indexOf(',');
+        if (comma < 0 || !dataUrl.substring(0, comma).toLowerCase(Locale.ROOT).contains(";base64")) {
+            return null;
+        }
+        try {
+            byte[] bytes = Base64.getDecoder().decode(dataUrl.substring(comma + 1).replaceAll("\\s+", ""));
+            return ImageDataFactory.create(bytes);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private String firstNonBlank(String first, String second) {
+        String cleanFirst = String.valueOf(first == null ? "" : first).trim();
+        if (!cleanFirst.isBlank()) {
+            return cleanFirst;
+        }
+        return String.valueOf(second == null ? "" : second).trim();
     }
 
     private PdfFont tryLoadUnicodeFont() {
@@ -427,6 +569,18 @@ public final class SigningService {
             String signerOib,
             String signerCommonName
     ) {
+    }
+
+    public record SignatureAppearanceMetadata(
+            String signerName,
+            String signerTitle,
+            String roleLabel,
+            String signerOib,
+            String organization
+    ) {
+        public static SignatureAppearanceMetadata empty() {
+            return new SignatureAppearanceMetadata("", "", "", "", "");
+        }
     }
 
     private record Glyph(String text, float x, float y) {

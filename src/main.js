@@ -3346,6 +3346,25 @@ const signaturesSettingsReasonInput = document.querySelector("#signatures-settin
 const signaturesSettingsLocationInput = document.querySelector("#signatures-settings-location");
 const signaturesSettingsSkipSignedInput = document.querySelector("#signatures-settings-skip-signed");
 const signaturesSettingsHideSignedInput = document.querySelector("#signatures-settings-hide-signed");
+const signaturesSettingsShowQualifiedInput = document.querySelector("#signatures-settings-show-qualified");
+const signaturesSettingsShowNameInput = document.querySelector("#signatures-settings-show-name");
+const signaturesSettingsShowTitleInput = document.querySelector("#signatures-settings-show-title");
+const signaturesSettingsShowRoleInput = document.querySelector("#signatures-settings-show-role");
+const signaturesSettingsShowOibInput = document.querySelector("#signatures-settings-show-oib");
+const signaturesSettingsShowOrganizationInput = document.querySelector("#signatures-settings-show-organization");
+const signaturesSettingsShowDateTimeInput = document.querySelector("#signatures-settings-show-date-time");
+const signaturesSettingsShowLogoInput = document.querySelector("#signatures-settings-show-logo");
+const signaturesSettingsShowCertificateSubjectInput = document.querySelector("#signatures-settings-show-certificate-subject");
+const signaturesSettingsShowProviderInput = document.querySelector("#signatures-settings-show-provider");
+const signaturesSettingsShowReasonVisibleInput = document.querySelector("#signatures-settings-show-reason");
+const signaturesSettingsShowLocationVisibleInput = document.querySelector("#signatures-settings-show-location");
+const signaturesSettingsLogoDataUrlInput = document.querySelector("#signatures-settings-logo-data-url");
+const signaturesSettingsLogoOpacityInput = document.querySelector("#signatures-settings-logo-opacity");
+const signaturesSettingsBorderInput = document.querySelector("#signatures-settings-border");
+const signaturesSettingsTransparentBgInput = document.querySelector("#signatures-settings-transparent-bg");
+const signaturesSettingsAlignmentInput = document.querySelector("#signatures-settings-alignment");
+const signaturesSettingsCompactInput = document.querySelector("#signatures-settings-compact");
+const signaturesSettingsRolePositioningInput = document.querySelector("#signatures-settings-role-positioning");
 const signaturesSettingsResponse = document.querySelector("#signatures-settings-response");
 const signaturesDebugPanel = document.querySelector("#signatures-debug-panel");
 const signaturesDebugPingButton = document.querySelector("#signatures-debug-ping");
@@ -31668,11 +31687,7 @@ function renderSignatureReviewPanel() {
           marker.style.top = `${top}%`;
           marker.style.width = `${width}%`;
           marker.style.height = `${height}%`;
-          const markerTitle = document.createElement("span");
-          markerTitle.textContent = "Kvalificirani digitalni potpis";
-          const markerName = document.createElement("strong");
-          markerName.textContent = activeItem.signerName || activeItem.signer || "Potpisnik";
-          marker.append(markerTitle, markerName);
+          appendSignatureAppearanceMarkerContent(marker, activeItem);
           stage.append(marker);
         }
       } else {
@@ -31804,7 +31819,84 @@ const DEFAULT_PDF_SIGNER_WEB_SETTINGS = {
   fontSize: "7.5",
   reason: "Digitalni potpis",
   location: "Hrvatska",
+  appearance: {
+    showQualifiedLabel: true,
+    showName: true,
+    showTitle: true,
+    showRole: true,
+    showOib: false,
+    showOrganization: false,
+    showDateTime: false,
+    showLogo: false,
+    showCertificateSubject: false,
+    showProvider: false,
+    showReason: false,
+    showLocation: false,
+    logoDataUrl: "",
+    logoOpacity: "0.08",
+    border: false,
+    transparentBackground: true,
+    alignment: "left",
+    compactMode: true,
+  },
+  rolePositioning: {
+    ISPITIVANJE_OBAVILI: {
+      anchor: "bottom",
+      offsetX: 0,
+      offsetY: -28,
+      width: 180,
+      height: 55,
+      alignment: "left",
+    },
+    ODGOVORNA_OSOBA: {
+      anchor: "bottom",
+      offsetX: 0,
+      offsetY: -22,
+      width: 160,
+      height: 50,
+      alignment: "left",
+    },
+  },
 };
+
+function normalizePdfSignerAppearanceSettings(settings = {}) {
+  const raw = settings && typeof settings === "object" ? settings : {};
+  return {
+    ...DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance,
+    ...raw,
+    showQualifiedLabel: raw.showQualifiedLabel ?? DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showQualifiedLabel,
+    showName: raw.showName ?? DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showName,
+    showTitle: raw.showTitle ?? DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showTitle,
+    showRole: raw.showRole ?? DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showRole,
+    showOib: raw.showOib ?? DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showOib,
+    showOrganization: raw.showOrganization ?? DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showOrganization,
+    showDateTime: raw.showDateTime ?? DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showDateTime,
+    showLogo: raw.showLogo ?? DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showLogo,
+    showCertificateSubject: raw.showCertificateSubject ?? DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showCertificateSubject,
+    showProvider: raw.showProvider ?? DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showProvider,
+    showReason: raw.showReason ?? DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showReason,
+    showLocation: raw.showLocation ?? DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.showLocation,
+    logoDataUrl: raw.logoDataUrl || "",
+    logoOpacity: String(raw.logoOpacity ?? DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.logoOpacity),
+    border: Boolean(raw.border ?? DEFAULT_PDF_SIGNER_WEB_SETTINGS.appearance.border),
+    transparentBackground: raw.transparentBackground !== false,
+    alignment: ["left", "center", "right"].includes(String(raw.alignment || "").trim()) ? raw.alignment : "left",
+    compactMode: raw.compactMode !== false,
+  };
+}
+
+function cloneDefaultPdfSignerRolePositioningSettings() {
+  return JSON.parse(JSON.stringify(DEFAULT_PDF_SIGNER_WEB_SETTINGS.rolePositioning));
+}
+
+function normalizePdfSignerRolePositioningSettings(settings = null) {
+  if (settings === null || settings === undefined) {
+    return cloneDefaultPdfSignerRolePositioningSettings();
+  }
+  return settings && typeof settings === "object" && !Array.isArray(settings)
+    ? settings
+    : cloneDefaultPdfSignerRolePositioningSettings();
+}
 
 function loadPdfSignerWebSettings() {
   try {
@@ -31814,6 +31906,8 @@ function loadPdfSignerWebSettings() {
       ...DEFAULT_PDF_SIGNER_WEB_SETTINGS,
       ...(parsed && typeof parsed === "object" ? parsed : {}),
       apiAllowlist: parsed?.apiAllowlist || DEFAULT_PDF_SIGNER_WEB_SETTINGS.apiAllowlist,
+      appearance: normalizePdfSignerAppearanceSettings(parsed?.appearance),
+      rolePositioning: normalizePdfSignerRolePositioningSettings(parsed?.rolePositioning),
     };
   } catch {
     return { ...DEFAULT_PDF_SIGNER_WEB_SETTINGS };
@@ -31825,6 +31919,8 @@ function savePdfSignerWebSettings(settings = {}) {
     ...DEFAULT_PDF_SIGNER_WEB_SETTINGS,
     ...(settings && typeof settings === "object" ? settings : {}),
     apiAllowlist: settings?.apiAllowlist || DEFAULT_PDF_SIGNER_WEB_SETTINGS.apiAllowlist,
+    appearance: normalizePdfSignerAppearanceSettings(settings?.appearance),
+    rolePositioning: normalizePdfSignerRolePositioningSettings(settings?.rolePositioning),
   };
   try {
     localStorage.setItem(PDF_SIGNER_WEB_SETTINGS_STORAGE_KEY, JSON.stringify(next));
@@ -31849,7 +31945,48 @@ function getPdfSignerWebSettings() {
     ...DEFAULT_PDF_SIGNER_WEB_SETTINGS,
     ...state.signatures.settings.values,
     apiAllowlist: state.signatures.settings.values?.apiAllowlist || DEFAULT_PDF_SIGNER_WEB_SETTINGS.apiAllowlist,
+    appearance: normalizePdfSignerAppearanceSettings(state.signatures.settings.values?.appearance),
+    rolePositioning: normalizePdfSignerRolePositioningSettings(state.signatures.settings.values?.rolePositioning),
   };
+}
+
+function getPdfSignatureExportSettings() {
+  const settings = getPdfSignerWebSettings();
+  return {
+    appearance: settings.appearance,
+    rolePositioning: settings.rolePositioning,
+  };
+}
+
+function appendSignatureAppearanceMarkerContent(marker, item = {}) {
+  const appearance = normalizePdfSignerAppearanceSettings(getPdfSignerWebSettings().appearance);
+  marker.classList.toggle("has-border", Boolean(appearance.border));
+  marker.classList.toggle("has-background", appearance.transparentBackground === false);
+  marker.style.textAlign = appearance.alignment || "left";
+  if (appearance.showLogo && appearance.logoDataUrl) {
+    const logo = document.createElement("span");
+    logo.className = "signature-marker-logo";
+    logo.style.backgroundImage = `url("${appearance.logoDataUrl.replace(/"/g, "%22")}")`;
+    logo.style.opacity = String(Math.max(0, Math.min(0.4, Number(appearance.logoOpacity) || 0.08)));
+    marker.append(logo);
+  }
+  const lines = [];
+  if (appearance.showQualifiedLabel) lines.push({ text: "Kvalificirani digitalni potpis", strong: false });
+  if (appearance.showName) lines.push({ text: item.signerName || item.signer || "Potpisnik", strong: true });
+  if (appearance.showTitle && item.signerTitle) lines.push({ text: item.signerTitle, strong: false });
+  if (appearance.showRole && (item.roleLabel || item.label)) lines.push({ text: item.roleLabel || item.label, strong: false });
+  if (appearance.showOib && item.signatureFieldOib) lines.push({ text: `OIB ${item.signatureFieldOib}`, strong: false });
+  if (appearance.showOrganization && (item.companyName || item.sourceEntry?.context?.company?.name)) {
+    lines.push({ text: item.companyName || item.sourceEntry?.context?.company?.name, strong: false });
+  }
+  if (appearance.showDateTime) lines.push({ text: "Datum i vrijeme potpisa", strong: false });
+  if (appearance.showReason && getPdfSignerWebSettings().reason) lines.push({ text: getPdfSignerWebSettings().reason, strong: false });
+  if (appearance.showLocation && getPdfSignerWebSettings().location) lines.push({ text: getPdfSignerWebSettings().location, strong: false });
+  lines.slice(0, appearance.compactMode ? 5 : 9).forEach((line) => {
+    const element = document.createElement(line.strong ? "strong" : "span");
+    element.textContent = line.text;
+    marker.append(element);
+  });
 }
 
 async function previewSignatureReviewDocument(item = {}) {
@@ -31911,11 +32048,7 @@ function openSignatureReviewPreviewModal(item = {}, pdfUrl = "") {
     marker.style.top = `${top}%`;
     marker.style.width = `${width}%`;
     marker.style.height = `${height}%`;
-    const markerTitle = document.createElement("span");
-    markerTitle.textContent = "Kvalificirani digitalni potpis";
-    const markerName = document.createElement("strong");
-    markerName.textContent = item.signerName || item.signer || "Potpisnik";
-    marker.append(markerTitle, markerName);
+    appendSignatureAppearanceMarkerContent(marker, item);
     page.append(marker);
   } else {
     const empty = document.createElement("p");
@@ -32109,6 +32242,32 @@ function renderSignerSettingsPanel() {
   if (signaturesSettingsLocationInput) signaturesSettingsLocationInput.value = settings.location || "";
   if (signaturesSettingsSkipSignedInput) signaturesSettingsSkipSignedInput.value = String(settings.skipAlreadySigned ?? true);
   if (signaturesSettingsHideSignedInput) signaturesSettingsHideSignedInput.value = String(settings.previewHideAlreadySigned ?? false);
+  const appearance = normalizePdfSignerAppearanceSettings(settings.appearance);
+  if (signaturesSettingsShowQualifiedInput) signaturesSettingsShowQualifiedInput.checked = Boolean(appearance.showQualifiedLabel);
+  if (signaturesSettingsShowNameInput) signaturesSettingsShowNameInput.checked = Boolean(appearance.showName);
+  if (signaturesSettingsShowTitleInput) signaturesSettingsShowTitleInput.checked = Boolean(appearance.showTitle);
+  if (signaturesSettingsShowRoleInput) signaturesSettingsShowRoleInput.checked = Boolean(appearance.showRole);
+  if (signaturesSettingsShowOibInput) signaturesSettingsShowOibInput.checked = Boolean(appearance.showOib);
+  if (signaturesSettingsShowOrganizationInput) signaturesSettingsShowOrganizationInput.checked = Boolean(appearance.showOrganization);
+  if (signaturesSettingsShowDateTimeInput) signaturesSettingsShowDateTimeInput.checked = Boolean(appearance.showDateTime);
+  if (signaturesSettingsShowLogoInput) signaturesSettingsShowLogoInput.checked = Boolean(appearance.showLogo);
+  if (signaturesSettingsShowCertificateSubjectInput) signaturesSettingsShowCertificateSubjectInput.checked = Boolean(appearance.showCertificateSubject);
+  if (signaturesSettingsShowProviderInput) signaturesSettingsShowProviderInput.checked = Boolean(appearance.showProvider);
+  if (signaturesSettingsShowReasonVisibleInput) signaturesSettingsShowReasonVisibleInput.checked = Boolean(appearance.showReason);
+  if (signaturesSettingsShowLocationVisibleInput) signaturesSettingsShowLocationVisibleInput.checked = Boolean(appearance.showLocation);
+  if (signaturesSettingsLogoDataUrlInput) signaturesSettingsLogoDataUrlInput.value = appearance.logoDataUrl || "";
+  if (signaturesSettingsLogoOpacityInput) signaturesSettingsLogoOpacityInput.value = appearance.logoOpacity || "0.08";
+  if (signaturesSettingsBorderInput) signaturesSettingsBorderInput.value = String(Boolean(appearance.border));
+  if (signaturesSettingsTransparentBgInput) signaturesSettingsTransparentBgInput.value = String(appearance.transparentBackground !== false);
+  if (signaturesSettingsAlignmentInput) signaturesSettingsAlignmentInput.value = appearance.alignment || "left";
+  if (signaturesSettingsCompactInput) signaturesSettingsCompactInput.value = String(appearance.compactMode !== false);
+  if (signaturesSettingsRolePositioningInput) {
+    signaturesSettingsRolePositioningInput.value = JSON.stringify(
+      normalizePdfSignerRolePositioningSettings(settings.rolePositioning),
+      null,
+      2,
+    );
+  }
   if (signaturesSettingsResponse) {
     const response = state.signatures.settings?.lastResponse || null;
     const error = state.signatures.settings?.error || "";
@@ -32121,6 +32280,17 @@ function renderSignerSettingsPanel() {
 
 function collectSignerSettingsFormValues() {
   const current = state.signatures.settings?.values || {};
+  let rolePositioning = normalizePdfSignerRolePositioningSettings(current.rolePositioning);
+  if (signaturesSettingsRolePositioningInput?.value) {
+    try {
+      const parsed = JSON.parse(signaturesSettingsRolePositioningInput.value);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        rolePositioning = parsed;
+      }
+    } catch {
+      throw new Error("Role / placeholder positioning JSON nije ispravan.");
+    }
+  }
   return {
     signerMode: signaturesSettingsModeInput?.value || current.signerMode || "real",
     realDryRun: (signaturesSettingsDryRunInput?.value ?? String(current.realDryRun ?? false)) === "true",
@@ -32144,6 +32314,27 @@ function collectSignerSettingsFormValues() {
     previewHideAlreadySigned: (signaturesSettingsHideSignedInput?.value ?? String(current.previewHideAlreadySigned ?? false)) === "true",
     reason: signaturesSettingsReasonInput?.value ?? current.reason ?? "Digitalni potpis",
     location: signaturesSettingsLocationInput?.value ?? current.location ?? "Hrvatska",
+    appearance: normalizePdfSignerAppearanceSettings({
+      showQualifiedLabel: Boolean(signaturesSettingsShowQualifiedInput?.checked),
+      showName: Boolean(signaturesSettingsShowNameInput?.checked),
+      showTitle: Boolean(signaturesSettingsShowTitleInput?.checked),
+      showRole: Boolean(signaturesSettingsShowRoleInput?.checked),
+      showOib: Boolean(signaturesSettingsShowOibInput?.checked),
+      showOrganization: Boolean(signaturesSettingsShowOrganizationInput?.checked),
+      showDateTime: Boolean(signaturesSettingsShowDateTimeInput?.checked),
+      showLogo: Boolean(signaturesSettingsShowLogoInput?.checked),
+      showCertificateSubject: Boolean(signaturesSettingsShowCertificateSubjectInput?.checked),
+      showProvider: Boolean(signaturesSettingsShowProviderInput?.checked),
+      showReason: Boolean(signaturesSettingsShowReasonVisibleInput?.checked),
+      showLocation: Boolean(signaturesSettingsShowLocationVisibleInput?.checked),
+      logoDataUrl: signaturesSettingsLogoDataUrlInput?.value || "",
+      logoOpacity: signaturesSettingsLogoOpacityInput?.value || "0.08",
+      border: (signaturesSettingsBorderInput?.value ?? "false") === "true",
+      transparentBackground: (signaturesSettingsTransparentBgInput?.value ?? "true") !== "false",
+      alignment: signaturesSettingsAlignmentInput?.value || "left",
+      compactMode: (signaturesSettingsCompactInput?.value ?? "true") !== "false",
+    }),
+    rolePositioning,
   };
 }
 
@@ -32240,10 +32431,11 @@ async function openLocalSignerSettingsFromWeb() {
   setSignatureDebugOperationLoading(signaturesSettingsOpenLocalButton, true);
   try {
     const response = await openSignerSettingsWithPdfSignerExtension();
+    const settings = savePdfSignerWebSettings(response.settings || response || {});
     state.signatures.settings = {
       ...state.signatures.settings,
       loaded: true,
-      values: response.settings || {},
+      values: settings,
       lastResponse: response,
       error: "",
     };
@@ -56744,7 +56936,10 @@ async function exportDocumentTemplatePdf() {
     loading.setPhase(3, { message: "PDF engine radi dokument, ovo može potrajati par sekundi..." });
     const response = await apiBinaryRequest(`/document-templates/${encodeURIComponent(templateId)}/export-pdf`, {
       method: "POST",
-      body: payload,
+      body: {
+        ...payload,
+        signatureSettings: getPdfSignatureExportSettings(),
+      },
     });
     loading.setPhase(4, { message: "PDF je vraćen, pripremam preuzimanje..." });
     triggerBlobDownload(response.blob, response.fileName || payload.fileName || "zapisnik.pdf");
@@ -57399,6 +57594,7 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
           method: "POST",
           body: {
             entries: chunkEntries,
+            signatureSettings: getPdfSignatureExportSettings(),
           },
         });
       } catch (error) {
@@ -57434,6 +57630,7 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
             method: "POST",
             body: {
               entries: chunkEntries,
+              signatureSettings: getPdfSignatureExportSettings(),
             },
           });
         }
@@ -93149,7 +93346,9 @@ async function saveGeneratedWorkOrderPdf(workOrderId = "", { refreshDocuments = 
   try {
     await apiRequest(`/work-orders/${encodeURIComponent(normalizedId)}/save-pdf`, {
       method: "POST",
-      body: {},
+      body: {
+        signatureSettings: getPdfSignatureExportSettings(),
+      },
     });
 
     if (refreshDocuments && String(state.workOrderDocuments.workOrderId || workOrderIdInput?.value || "") === normalizedId) {
@@ -93191,7 +93390,10 @@ async function downloadWorkOrderPdf(workOrder = {}, { saveFirst = false, useTemp
     const templateId = useTemplate ? getSelectedWorkOrderTemplateId() : "";
     const response = await apiBinaryRequest(`/work-orders/${workOrderId}/pdf`, {
       method: "POST",
-      body: templateId ? { templateId } : undefined,
+      body: {
+        ...(templateId ? { templateId } : {}),
+        signatureSettings: getPdfSignatureExportSettings(),
+      },
     });
     triggerBlobDownload(response.blob, response.fileName || `${sanitizeDocumentTemplateFileName(workOrder.workOrderNumber || "radni-nalog", "radni-nalog")}.pdf`);
     return true;

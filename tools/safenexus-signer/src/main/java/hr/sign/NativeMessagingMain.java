@@ -93,6 +93,7 @@ public final class NativeMessagingMain {
         putOverride(properties, settings, "fontSize", "font.size");
         putOverride(properties, settings, "reason", "reason");
         putOverride(properties, settings, "location", "location");
+        putAppearanceSettings(properties, settings.path("appearance"));
         properties.setProperty("signer.mode", "real");
         properties.setProperty("real.dryRun", "false");
         return properties;
@@ -161,6 +162,8 @@ public final class NativeMessagingMain {
             putSetting(properties, settings, "skipAlreadySigned", "skip.already.signed");
             putSetting(properties, settings, "skipTolerancePt", "skip.tolerance.pt");
             putSetting(properties, settings, "previewHideAlreadySigned", "preview.hide.already.signed");
+            putAppearanceSettings(properties, settings.path("appearance"));
+            putJsonObjectSetting(properties, settings, "rolePositioning", "signature.positioning.json");
 
             properties.setProperty("signer.mode", "real");
             properties.setProperty("real.dryRun", "false");
@@ -228,7 +231,52 @@ public final class NativeMessagingMain {
         settings.put("fontSize", raw.getProperty("font.size", "7.5"));
         settings.put("reason", config.reason());
         settings.put("location", config.location());
+        ObjectNode appearance = JSON.createObjectNode();
+        appearance.put("showQualifiedLabel", config.appearanceShowQualifiedLabel());
+        appearance.put("showName", config.appearanceShowName());
+        appearance.put("showTitle", config.appearanceShowTitle());
+        appearance.put("showRole", config.appearanceShowRole());
+        appearance.put("showOib", config.appearanceShowOib());
+        appearance.put("showOrganization", config.appearanceShowOrganization());
+        appearance.put("showDateTime", config.appearanceShowDateTime());
+        appearance.put("showLogo", config.appearanceShowLogo());
+        appearance.put("showCertificateSubject", config.appearanceShowCertificateSubject());
+        appearance.put("showProvider", config.appearanceShowProvider());
+        appearance.put("showReason", config.appearanceShowReason());
+        appearance.put("showLocation", config.appearanceShowLocation());
+        appearance.put("logoDataUrl", config.appearanceLogoDataUrl());
+        appearance.put("logoOpacity", raw.getProperty("appearance.logo.opacity", "0.08"));
+        appearance.put("border", config.appearanceBorder());
+        appearance.put("transparentBackground", config.appearanceTransparentBackground());
+        appearance.put("alignment", config.appearanceAlignment());
+        appearance.put("compactMode", config.appearanceCompactMode());
+        settings.set("appearance", appearance);
+        settings.set("rolePositioning", parseJsonObjectSetting(raw.getProperty("signature.positioning.json", "{}")));
         return settings;
+    }
+
+    private static void putAppearanceSettings(Properties properties, JsonNode appearance) {
+        if (appearance == null || !appearance.isObject()) {
+            return;
+        }
+        putSetting(properties, appearance, "showQualifiedLabel", "appearance.show.qualifiedLabel");
+        putSetting(properties, appearance, "showName", "appearance.show.name");
+        putSetting(properties, appearance, "showTitle", "appearance.show.title");
+        putSetting(properties, appearance, "showRole", "appearance.show.role");
+        putSetting(properties, appearance, "showOib", "appearance.show.oib");
+        putSetting(properties, appearance, "showOrganization", "appearance.show.organization");
+        putSetting(properties, appearance, "showDateTime", "appearance.show.dateTime");
+        putSetting(properties, appearance, "showLogo", "appearance.show.logo");
+        putSetting(properties, appearance, "showCertificateSubject", "appearance.show.certificateSubject");
+        putSetting(properties, appearance, "showProvider", "appearance.show.provider");
+        putSetting(properties, appearance, "showReason", "appearance.show.reason");
+        putSetting(properties, appearance, "showLocation", "appearance.show.location");
+        putSetting(properties, appearance, "logoDataUrl", "appearance.logo.dataUrl");
+        putSetting(properties, appearance, "logoOpacity", "appearance.logo.opacity");
+        putSetting(properties, appearance, "border", "appearance.border");
+        putSetting(properties, appearance, "transparentBackground", "appearance.transparentBackground");
+        putSetting(properties, appearance, "alignment", "appearance.alignment");
+        putSetting(properties, appearance, "compactMode", "appearance.compactMode");
     }
 
     private static void putSetting(Properties properties, JsonNode settings, String sourceName, String targetName) {
@@ -241,6 +289,37 @@ public final class NativeMessagingMain {
         } else {
             properties.setProperty(targetName, value.isBoolean() ? Boolean.toString(value.asBoolean()) : value.asText(""));
         }
+    }
+
+    private static void putJsonObjectSetting(Properties properties, JsonNode settings, String sourceName, String targetName) throws IOException {
+        if (settings == null || !settings.has(sourceName)) {
+            return;
+        }
+        JsonNode value = settings.get(sourceName);
+        if (value == null || value.isNull()) {
+            properties.setProperty(targetName, "{}");
+            return;
+        }
+        if (value.isTextual()) {
+            properties.setProperty(targetName, JSON.writeValueAsString(parseJsonObjectSetting(value.asText("{}"))));
+            return;
+        }
+        if (!value.isObject()) {
+            throw new IOException(sourceName + " mora biti JSON objekt.");
+        }
+        properties.setProperty(targetName, JSON.writeValueAsString(value));
+    }
+
+    private static ObjectNode parseJsonObjectSetting(String rawJson) {
+        try {
+            JsonNode parsed = JSON.readTree(rawJson == null || rawJson.isBlank() ? "{}" : rawJson);
+            if (parsed != null && parsed.isObject()) {
+                return (ObjectNode) parsed;
+            }
+        } catch (Exception ignored) {
+            // Invalid persisted settings should not break the signer settings panel.
+        }
+        return JSON.createObjectNode();
     }
 
     private static JsonNode signDocumentsMock(JsonNode request) {
@@ -412,6 +491,13 @@ public final class NativeMessagingMain {
                     ObjectNode documentResult = documentBase(item);
                     putSignatureMetadata(documentResult, item);
                     documentResult.put("signerOib", signerOib);
+                    SigningService.SignatureAppearanceMetadata appearanceMetadata = new SigningService.SignatureAppearanceMetadata(
+                            text(item, "signerName", text(item, "signatureSigner", "")),
+                            text(item, "signerTitle", ""),
+                            firstNonBlank(text(item, "signatureLabel", ""), text(item, "signatureFieldRole", "")),
+                            text(item, "signatureFieldOib", ""),
+                            text(item, "companyName", "")
+                    );
 
                     try {
                         byte[] pdf = client.downloadPdf(text(item, "downloadUrl", ""), text(item, "documentId", ""));
@@ -438,7 +524,7 @@ public final class NativeMessagingMain {
                             if (!"available".equals(matchedField.status())) {
                                 throw new SignatureBridgeException("NO_MATCHING_SIGNATURE_FIELD", "Signature polje nema sigurnu poziciju/status za potpis.", text(item, "documentId", ""));
                             }
-                            signedPdf = signingService.signPdfByField(pdf, matchedField.fieldName(), credential);
+                            signedPdf = signingService.signPdfByField(pdf, matchedField.fieldName(), credential, appearanceMetadata);
                         } else {
                             documentResult.put("fieldCount", 0);
                             String keyword = resolveFallbackKeyword(config, item, signerOib);
@@ -447,7 +533,8 @@ public final class NativeMessagingMain {
                                     pdf,
                                     keyword,
                                     credential,
-                                    text(item, "fileName", "zapisnik.pdf")
+                                    text(item, "fileName", "zapisnik.pdf"),
+                                    appearanceMetadata
                             );
                         }
 
@@ -827,6 +914,11 @@ public final class NativeMessagingMain {
             return fallback;
         }
         return value.asText(fallback);
+    }
+
+    private static String firstNonBlank(String first, String second) {
+        String cleanFirst = String.valueOf(first == null ? "" : first).trim();
+        return cleanFirst.isBlank() ? String.valueOf(second == null ? "" : second).trim() : cleanFirst;
     }
 
     private static String safeMessage(Throwable error) {

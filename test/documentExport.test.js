@@ -667,6 +667,45 @@ test("PDF signature field is anchored below the last matching signer OIB", async
   assert.equal(Math.round(rect.height), 32);
 });
 
+test("PDF signature role positioning settings override anchor offsets and size", async () => {
+  const sourceDoc = await PDFDocument.create();
+  const font = await sourceDoc.embedFont(StandardFonts.Helvetica);
+  const page = sourceDoc.addPage([595.303937007874, 841.889763779528]);
+  page.drawText("OIB 12345678901", { x: 400, y: 700, size: 9, font });
+
+  const outputBuffer = await addPdfSignatureFieldsToBuffer(
+    Buffer.from(await sourceDoc.save({ useObjectStreams: false })),
+    [{
+      signatureMode: "digital",
+      signatureFieldRole: "ODGOVORNA_OSOBA",
+      signatureFieldOib: "12345678901",
+      fieldName: "SIGN_ODGOVORNA_OSOBA_12345678901",
+      name: "Marko Markovic",
+      drawPlaceholder: true,
+    }],
+    {
+      rolePositioning: {
+        ODGOVORNA_OSOBA: {
+          anchor: "bottom",
+          offsetX: 10,
+          offsetY: -8,
+          width: 160,
+          height: 50,
+          alignment: "left",
+        },
+      },
+    },
+  );
+
+  const pdfDoc = await PDFDocument.load(outputBuffer);
+  const field = pdfDoc.getForm().getField("SIGN_ODGOVORNA_OSOBA_12345678901");
+  const rect = field.acroField.getWidgets()[0].getRectangle();
+  assert.equal(Math.round(rect.width), 160);
+  assert.equal(Math.round(rect.height), 50);
+  assert.ok(rect.y > 640 && rect.y < 645, `expected configured offset below OIB, got y=${rect.y}`);
+  assert.ok(rect.x > 364 && rect.x < 374, `expected configured horizontal offset, got x=${rect.x}`);
+});
+
 test("signature field metadata collector returns preferred field for digital entries", () => {
   const fields = collectPdfSignatureFieldSpecsFromEntry({
     placeholders: {
