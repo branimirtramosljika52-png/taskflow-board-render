@@ -57213,82 +57213,61 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
       }
     };
 
-    if (hasWordTemplateEntries) {
+    loading.setPhase(2, {
+      message: hasWordTemplateEntries
+        ? "Spremam Word zapisnike jedan po jedan da se PDF engine ne prekine..."
+        : "Spremam zapisnike jedan po jedan da se request ne prekine...",
+      progress: 52,
+    });
+
+    for (const [index, batchEntry] of batchEntries.entries()) {
+      const exportEntry = exportEntries[index];
+      const sequenceEntry = exportEntry?.sequenceEntry;
+      const workOrderLabel = `RN ${sequenceEntry?.workOrderNumber || exportEntry?.exportEntry?.renderModel?.workOrderNumber || index + 1}`;
+      const isWordEntry = String(exportEntry?.exportEntry?.templateReferenceKind || "").trim().toLowerCase() === "word";
       loading.setPhase(3, {
-        message: `LibreOffice batch sprema ${batchEntries.length} Word zapisnika u DOCX i PDF...`,
-        progress: 74,
+        message: `${isWordEntry ? "LibreOffice" : "PDF engine"} sprema ${index + 1}/${batchEntries.length}: ${workOrderLabel} u Documents...`,
+        progress: Math.min(88, 58 + Math.round(((index + 1) / batchEntries.length) * 26)),
       });
+
       try {
-        const response = await apiRequest("/document-templates/export-pdf-documents", {
-          method: "POST",
-          body: {
-            entries: batchEntries,
-          },
-        });
-        const responseItems = Array.isArray(response.items) ? response.items : [];
-        const responseItemsByWorkOrderId = new Map(responseItems.map((item) => [
-          String(item?.workOrderId || ""),
-          item,
-        ]));
-        for (const [index, { sequenceEntry, exportEntry }] of exportEntries.entries()) {
-          const savedEntry = responseItemsByWorkOrderId.get(String(sequenceEntry?.workOrderId || ""))
-            || responseItems[index]
-            || null;
+        let response = null;
+        for (let attempt = 0; attempt < 2; attempt += 1) {
           try {
-            await handleSavedEntry(savedEntry, sequenceEntry, exportEntry, index);
-          } catch (error) {
-            failureCount += 1;
-            pushExportFailureDetail(sequenceEntry, error, "Ne mogu spremiti DOCX/PDF zapisnik.");
-            setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
-              status: "error",
-              message: error?.message || "Ne mogu spremiti DOCX/PDF zapisnik.",
-            }, { render: true });
+            response = await apiRequest("/document-templates/export-pdf-documents", {
+              method: "POST",
+              body: {
+                entries: [batchEntry],
+              },
+            });
+            break;
+          } catch (requestError) {
+            const canRetry = attempt === 0 && (
+              Number(requestError?.statusCode) === 503
+              || /upstream_reset|connection_termination|failed to forward/i.test(String(requestError?.message || ""))
+            );
+            if (!canRetry) {
+              throw requestError;
+            }
+            loading.setPhase(3, {
+              message: `Server se oporavlja, ponavljam spremanje za ${workOrderLabel}...`,
+              progress: Math.min(90, 62 + Math.round(((index + 1) / batchEntries.length) * 24)),
+            });
+            await new Promise((resolve) => {
+              window.setTimeout(resolve, 3500);
+            });
           }
         }
+        const savedEntry = Array.isArray(response.items) ? response.items[0] : null;
+        await handleSavedEntry(savedEntry, sequenceEntry, exportEntry?.exportEntry, index);
       } catch (error) {
-        failureCount += batchEntries.length;
-        console.error("Ne mogu spremiti Word DOCX/PDF batch.", error);
-        exportEntries.forEach(({ sequenceEntry }) => {
-          pushExportFailureDetail(sequenceEntry, error, "Ne mogu spremiti Word DOCX/PDF batch.");
-          setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
-            status: "error",
-            message: error?.message || "Ne mogu spremiti Word DOCX/PDF batch.",
-          }, { render: true });
-        });
-      }
-    } else {
-      loading.setPhase(2, {
-        message: `Spremam zapisnike jedan po jedan da se request ne prekine...`,
-        progress: 52,
-      });
-
-      for (const [index, batchEntry] of batchEntries.entries()) {
-        const exportEntry = exportEntries[index];
-        const sequenceEntry = exportEntry?.sequenceEntry;
-        const workOrderLabel = `RN ${sequenceEntry?.workOrderNumber || exportEntry?.exportEntry?.renderModel?.workOrderNumber || index + 1}`;
-        loading.setPhase(3, {
-          message: `PDF engine sprema ${index + 1}/${batchEntries.length}: ${workOrderLabel} u Documents...`,
-          progress: Math.min(88, 58 + Math.round(((index + 1) / batchEntries.length) * 26)),
-        });
-
-        try {
-          const response = await apiRequest("/document-templates/export-pdf-documents", {
-            method: "POST",
-            body: {
-              entries: [batchEntry],
-            },
-          });
-          const savedEntry = Array.isArray(response.items) ? response.items[0] : null;
-          await handleSavedEntry(savedEntry, sequenceEntry, exportEntry?.exportEntry, index);
-        } catch (error) {
-          failureCount += 1;
-          console.error(`Ne mogu spremiti PDF zapisnik za ${workOrderLabel}.`, error);
-          pushExportFailureDetail(sequenceEntry, error, `Ne mogu spremiti PDF za ${workOrderLabel}.`);
-          setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
-            status: "error",
-            message: error?.message || `Ne mogu spremiti PDF za ${workOrderLabel}.`,
-          }, { render: true });
-        }
+        failureCount += 1;
+        console.error(`Ne mogu spremiti zapisnik za ${workOrderLabel}.`, error);
+        pushExportFailureDetail(sequenceEntry, error, `Ne mogu spremiti zapisnik za ${workOrderLabel}.`);
+        setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
+          status: "error",
+          message: error?.message || `Ne mogu spremiti zapisnik za ${workOrderLabel}.`,
+        }, { render: true });
       }
     }
 

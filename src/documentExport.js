@@ -7868,7 +7868,7 @@ async function launchWarmChromium() {
 }
 
 async function getWarmChromium() {
-  if (String(process.env.HTML_PDF_WARM_CHROMIUM || "").trim().toLowerCase() === "false") {
+  if (String(process.env.HTML_PDF_WARM_CHROMIUM || "").trim().toLowerCase() !== "true") {
     throw new Error("Warm Chromium je iskljucen konfiguracijom.");
   }
 
@@ -7885,6 +7885,18 @@ async function getWarmChromium() {
       });
   }
   return await warmChromiumPromise;
+}
+
+async function resetWarmChromiumInstance() {
+  const instance = warmChromiumInstance;
+  warmChromiumInstance = null;
+  warmChromiumPromise = null;
+  if (instance?.child && !instance.child.killed) {
+    instance.child.kill("SIGKILL");
+  }
+  if (instance?.tempRoot) {
+    await rm(instance.tempRoot, { recursive: true, force: true }).catch(() => {});
+  }
 }
 
 async function convertPreparedHtmlToPdfBufferWithWarmChromium(printableHtml = "", {
@@ -8033,13 +8045,21 @@ export async function convertHtmlToPdfBuffer(html = "", {
   const printableHtml = prepareHtmlForGeneratedPageNumberPdf(pdfHtml);
   let pdfBuffer = null;
 
-  try {
-    pdfBuffer = await convertPreparedHtmlToPdfBufferWithWarmChromium(printableHtml, {
-      fileName,
-      title,
-    });
-  } catch (warmChromiumError) {
-    console.warn("Warm Chromium HTML -> PDF nije uspio, koristim CLI fallback.", warmChromiumError);
+  if (String(process.env.HTML_PDF_WARM_CHROMIUM || "").trim().toLowerCase() === "true") {
+    try {
+      pdfBuffer = await convertPreparedHtmlToPdfBufferWithWarmChromium(printableHtml, {
+        fileName,
+        title,
+      });
+    } catch (warmChromiumError) {
+      console.warn("Warm Chromium HTML -> PDF nije uspio, koristim CLI fallback.", warmChromiumError);
+      await resetWarmChromiumInstance();
+      pdfBuffer = await convertPreparedHtmlToPdfBufferWithCli(printableHtml, {
+        fileName,
+        title,
+      });
+    }
+  } else {
     pdfBuffer = await convertPreparedHtmlToPdfBufferWithCli(printableHtml, {
       fileName,
       title,

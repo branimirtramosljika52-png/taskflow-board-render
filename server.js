@@ -2529,24 +2529,33 @@ async function generateTemplateDocumentFilesForEntries(entries = [], scopedSnaps
   }
 
   if (wordBundles.length > 0) {
-    let pdfBuffers = [];
-    try {
-      const wordPdfStartedAt = Date.now();
-      pdfBuffers = await convertDocxBuffersToPdfBuffers(wordBundles.map((item) => ({
-        buffer: item.docxBuffer,
-        fileName: item.docxFileName,
-      })));
-      wordPdfMs += Date.now() - wordPdfStartedAt;
-    } catch (error) {
-      console.warn("LibreOffice batch Word -> PDF conversion failed, using SafeNexus HTML fallback.", error);
-      pdfBuffers = [];
-      for (const item of wordBundles) {
+    const wordBatchSize = Math.max(
+      1,
+      Math.min(2, Number(process.env.DOCUMENT_TEMPLATE_WORD_PDF_BATCH_SIZE) || 1),
+    );
+    const pdfBuffers = new Array(wordBundles.length).fill(null);
+    for (let startIndex = 0; startIndex < wordBundles.length; startIndex += wordBatchSize) {
+      const slice = wordBundles.slice(startIndex, startIndex + wordBatchSize);
+      try {
         const wordPdfStartedAt = Date.now();
-        pdfBuffers.push(await buildPdfBufferFromGeneratedDocxBuffer(item.docxBuffer, {
+        const sliceBuffers = await convertDocxBuffersToPdfBuffers(slice.map((item) => ({
+          buffer: item.docxBuffer,
           fileName: item.docxFileName,
-          title: item.bundle.template?.title || item.bundle.template?.documentType || "Zapisnik",
-        }));
+        })));
         wordPdfMs += Date.now() - wordPdfStartedAt;
+        sliceBuffers.forEach((buffer, offset) => {
+          pdfBuffers[startIndex + offset] = buffer;
+        });
+      } catch (error) {
+        console.warn("LibreOffice Word -> PDF conversion failed, using SafeNexus HTML fallback for this chunk.", error);
+        for (const [offset, item] of slice.entries()) {
+          const wordPdfStartedAt = Date.now();
+          pdfBuffers[startIndex + offset] = await buildPdfBufferFromGeneratedDocxBuffer(item.docxBuffer, {
+            fileName: item.docxFileName,
+            title: item.bundle.template?.title || item.bundle.template?.documentType || "Zapisnik",
+          });
+          wordPdfMs += Date.now() - wordPdfStartedAt;
+        }
       }
     }
 
