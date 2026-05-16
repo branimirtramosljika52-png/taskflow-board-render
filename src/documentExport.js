@@ -5773,6 +5773,16 @@ function addPdfSignatureField(pdfDoc, page, rect, fieldName = "") {
     T: PDFString.of(fieldName),
     Rect: [rect.x, rect.y, rect.x + rect.width, rect.y + rect.height],
     F: PDFNumber.of(4),
+    Border: [0, 0, 0],
+    BS: {
+      Type: PDFName.of("Border"),
+      W: PDFNumber.of(0),
+    },
+    H: PDFName.of("N"),
+    MK: {
+      BC: [],
+      BG: [],
+    },
     P: page.ref,
   });
   const fieldRef = context.register(fieldDict);

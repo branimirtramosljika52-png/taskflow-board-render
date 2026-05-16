@@ -2,6 +2,7 @@ package hr.sign;
 
 import com.itextpdf.forms.PdfAcroForm;
 import com.itextpdf.forms.fields.PdfFormField;
+import com.itextpdf.io.font.constants.StandardFonts;
 import com.itextpdf.io.image.ImageData;
 import com.itextpdf.io.image.ImageDataFactory;
 import com.itextpdf.io.font.PdfEncodings;
@@ -31,6 +32,8 @@ import com.itextpdf.signatures.SignatureUtil;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.PrivateKey;
 import java.security.cert.X509Certificate;
 import java.text.SimpleDateFormat;
@@ -168,18 +171,19 @@ public final class SigningService {
             TokenService.SignatureChoice signatureChoice = tokenService.chooseSignature(privateKey, credential.provider());
 
             String appearanceText = buildAppearanceText(credential, metadata);
+            PdfFont font = tryLoadUnicodeFont();
+            if (font == null) {
+                font = PdfFontFactory.createFont(StandardFonts.HELVETICA);
+            }
             PdfSignatureAppearance appearance = signer.getSignatureAppearance()
                     .setReason(config.reason())
                     .setLocation(config.location())
                     .setRenderingMode(PdfSignatureAppearance.RenderingMode.DESCRIPTION)
-                    .setLayer2Text(appearanceText)
+                    .setLayer2Text("")
                     .setLayer2FontSize(config.fontSize())
-                    .setLayer2FontColor(ColorConstants.BLACK);
-
-            PdfFont font = tryLoadUnicodeFont();
-            if (font != null) {
-                appearance.setLayer2Font(font);
-            }
+                    .setLayer2FontColor(ColorConstants.BLACK)
+                    .setLayer2Font(font)
+                    .setReuseAppearance(false);
 
             if (rectangle != null && page > 0) {
                 appearance
@@ -187,7 +191,7 @@ public final class SigningService {
                         .setPageNumber(page);
             }
 
-            drawConfiguredAppearanceBackground(signer, appearance);
+            SignatureAppearanceResult appearanceResult = drawConfiguredAppearance(signer, appearance, appearanceText, font);
 
             signer.setFieldName(fieldName);
             IExternalDigest digest = new BouncyCastleDigest();
@@ -210,7 +214,12 @@ public final class SigningService {
                     signatureChoice.algorithm(),
                     signatureChoice.keyAlgorithm(),
                     credential.oib(),
-                    credential.commonName()
+                    credential.commonName(),
+                    appearanceResult.logoApplied(),
+                    appearanceResult.borderApplied(),
+                    appearanceResult.appearanceMode(),
+                    appearanceResult.logoByteSize(),
+                    appearanceResult.errorMessage()
             );
         }
     }
@@ -262,11 +271,19 @@ public final class SigningService {
         return String.join("\n", lines.stream().filter(line -> !line.isBlank()).limit(limit).toList());
     }
 
-    private void drawConfiguredAppearanceBackground(PdfSigner signer, PdfSignatureAppearance appearance) {
+    private SignatureAppearanceResult drawConfiguredAppearance(
+            PdfSigner signer,
+            PdfSignatureAppearance appearance,
+            String appearanceText,
+            PdfFont font
+    ) {
+        boolean logoApplied = false;
+        boolean borderApplied = false;
+        int logoByteSize = 0;
         try {
-            PdfFormXObject layer0 = appearance.getLayer0();
-            Rectangle box = layer0.getBBox().toRectangle();
-            PdfCanvas canvas = new PdfCanvas(layer0, signer.getDocument());
+            PdfFormXObject layer2 = appearance.getLayer2();
+            Rectangle box = layer2.getBBox().toRectangle();
+            PdfCanvas canvas = new PdfCanvas(layer2, signer.getDocument());
             if (!config.appearanceTransparentBackground()) {
                 canvas.saveState();
                 canvas.setFillColor(ColorConstants.WHITE);
@@ -275,26 +292,11 @@ public final class SigningService {
                 canvas.restoreState();
             }
             if (config.appearanceShowLogo()) {
-                ImageData logo = loadAppearanceLogo();
-                if (logo != null && logo.getWidth() > 0 && logo.getHeight() > 0) {
-                    float scale = Math.min((box.getWidth() * 0.82f) / logo.getWidth(), (box.getHeight() * 0.78f) / logo.getHeight());
-                    if (Float.isFinite(scale) && scale > 0f) {
-                        float width = logo.getWidth() * scale;
-                        float height = logo.getHeight() * scale;
-                        PdfExtGState state = new PdfExtGState()
-                                .setFillOpacity(config.appearanceLogoOpacity())
-                                .setStrokeOpacity(config.appearanceLogoOpacity());
-                        canvas.saveState();
-                        canvas.setExtGState(state);
-                        canvas.addImageFittedIntoRectangle(
-                                logo,
-                                new Rectangle((box.getWidth() - width) / 2f, (box.getHeight() - height) / 2f, width, height),
-                                false
-                        );
-                        canvas.restoreState();
-                    }
-                }
+                AppearanceLogo logo = loadAppearanceLogo();
+                logoByteSize = logo == null ? 0 : logo.byteSize();
+                logoApplied = drawAppearanceLogo(canvas, box, logo);
             }
+            drawAppearanceText(canvas, box, appearanceText, font);
             if (config.appearanceBorder()) {
                 canvas.saveState();
                 canvas.setStrokeColor(ColorConstants.LIGHT_GRAY);
@@ -302,13 +304,111 @@ public final class SigningService {
                 canvas.rectangle(0.3f, 0.3f, Math.max(0f, box.getWidth() - 0.6f), Math.max(0f, box.getHeight() - 0.6f));
                 canvas.stroke();
                 canvas.restoreState();
+                borderApplied = true;
             }
+            return new SignatureAppearanceResult(
+                    logoApplied,
+                    borderApplied,
+                    config.appearanceBorder() ? "custom-layer2-configured" : "custom-layer2-minimal-transparent",
+                    logoByteSize,
+                    ""
+            );
         } catch (Exception ignored) {
-            // Appearance background is cosmetic; signing must continue if it cannot be drawn.
+            try {
+                appearance.setLayer2Text(appearanceText == null ? "" : appearanceText);
+            } catch (Exception fallbackIgnored) {
+                // Keep signing alive even if appearance fallback cannot be restored.
+            }
+            return new SignatureAppearanceResult(
+                    false,
+                    false,
+                    "itext-layer2-text-fallback",
+                    logoByteSize,
+                    ignored.getClass().getName() + ": " + safeMessage(ignored)
+            );
         }
     }
 
-    private ImageData loadAppearanceLogo() {
+    private boolean drawAppearanceLogo(PdfCanvas canvas, Rectangle box, AppearanceLogo logo) {
+        if (logo == null || logo.image() == null || logo.image().getWidth() <= 0 || logo.image().getHeight() <= 0) {
+            return false;
+        }
+        float scale = Math.min(
+                (box.getWidth() * 0.82f) / logo.image().getWidth(),
+                (box.getHeight() * 0.78f) / logo.image().getHeight()
+        );
+        if (!Float.isFinite(scale) || scale <= 0f) {
+            return false;
+        }
+        float width = logo.image().getWidth() * scale;
+        float height = logo.image().getHeight() * scale;
+        PdfExtGState state = new PdfExtGState()
+                .setFillOpacity(config.appearanceLogoOpacity())
+                .setStrokeOpacity(config.appearanceLogoOpacity());
+        canvas.saveState();
+        canvas.setExtGState(state);
+        canvas.addImageFittedIntoRectangle(
+                logo.image(),
+                new Rectangle((box.getWidth() - width) / 2f, (box.getHeight() - height) / 2f, width, height),
+                false
+        );
+        canvas.restoreState();
+        return true;
+    }
+
+    private void drawAppearanceText(PdfCanvas canvas, Rectangle box, String appearanceText, PdfFont font) {
+        String[] rawLines = String.valueOf(appearanceText == null ? "" : appearanceText).split("\\R");
+        List<String> lines = new ArrayList<>();
+        for (String rawLine : rawLines) {
+            String line = String.valueOf(rawLine == null ? "" : rawLine).trim();
+            if (!line.isBlank()) {
+                lines.add(line);
+            }
+        }
+        if (lines.isEmpty() || font == null) {
+            return;
+        }
+        float baseSize = Math.max(5.2f, config.fontSize());
+        float lineHeight = baseSize + 1.8f;
+        float paddingX = 3f;
+        float maxWidth = Math.max(10f, box.getWidth() - (paddingX * 2f));
+        float y = Math.min(box.getHeight() - baseSize - 3f, box.getHeight() - 5f - baseSize);
+        for (String line : lines) {
+            if (y < 2f) {
+                break;
+            }
+            float lineSize = baseSize;
+            float width = font.getWidth(line, lineSize);
+            if (width > maxWidth && width > 0f) {
+                lineSize = Math.max(4.8f, lineSize * (maxWidth / width));
+                width = font.getWidth(line, lineSize);
+            }
+            float x = resolveAppearanceTextX(box, paddingX, width);
+            canvas.saveState();
+            canvas.setFillColor(ColorConstants.BLACK);
+            canvas.beginText();
+            canvas.setFontAndSize(font, lineSize);
+            canvas.moveText(x, y);
+            canvas.showText(line);
+            canvas.endText();
+            canvas.restoreState();
+            y -= lineHeight;
+        }
+    }
+
+    private float resolveAppearanceTextX(Rectangle box, float paddingX, float textWidth) {
+        String alignment = config.appearanceAlignment();
+        float maxLeft = Math.max(paddingX, box.getWidth() - paddingX - textWidth);
+        if ("right".equals(alignment)) {
+            return maxLeft;
+        }
+        if ("center".equals(alignment)) {
+            return Math.max(paddingX, (box.getWidth() - textWidth) / 2f);
+        }
+        return paddingX;
+    }
+
+    private AppearanceLogo loadAppearanceLogo() {
         String dataUrl = String.valueOf(config.appearanceLogoDataUrl() == null ? "" : config.appearanceLogoDataUrl()).trim();
         if (!dataUrl.startsWith("data:image/")) {
             return null;
@@ -317,11 +417,33 @@ public final class SigningService {
         if (comma < 0 || !dataUrl.substring(0, comma).toLowerCase(Locale.ROOT).contains(";base64")) {
             return null;
         }
+        byte[] bytes;
         try {
-            byte[] bytes = Base64.getDecoder().decode(dataUrl.substring(comma + 1).replaceAll("\\s+", ""));
-            return ImageDataFactory.create(bytes);
+            bytes = Base64.getDecoder().decode(dataUrl.substring(comma + 1).replaceAll("\\s+", ""));
         } catch (Exception ignored) {
             return null;
+        }
+        try {
+            return new AppearanceLogo(ImageDataFactory.create(bytes), bytes.length);
+        } catch (Exception ignored) {
+            Path tempLogo = null;
+            try {
+                Path workDir = config.configPath().getParent().resolve("work");
+                Files.createDirectories(workDir);
+                tempLogo = Files.createTempFile(workDir, "signature-logo-", ".img");
+                Files.write(tempLogo, bytes);
+                return new AppearanceLogo(ImageDataFactory.create(tempLogo.toString()), bytes.length);
+            } catch (Exception tempIgnored) {
+                return null;
+            } finally {
+                if (tempLogo != null) {
+                    try {
+                        Files.deleteIfExists(tempLogo);
+                    } catch (Exception deleteIgnored) {
+                        // Temporary logo cleanup is best-effort.
+                    }
+                }
+            }
         }
     }
 
@@ -567,7 +689,12 @@ public final class SigningService {
             String algorithm,
             String keyAlgorithm,
             String signerOib,
-            String signerCommonName
+            String signerCommonName,
+            boolean logoApplied,
+            boolean borderApplied,
+            String appearanceMode,
+            int logoByteSize,
+            String appearanceError
     ) {
     }
 
@@ -590,5 +717,17 @@ public final class SigningService {
     }
 
     private record SignedSpot(String fieldName, int page, float x, float y, float width, float height, String subjectCn) {
+    }
+
+    private record AppearanceLogo(ImageData image, int byteSize) {
+    }
+
+    private record SignatureAppearanceResult(
+            boolean logoApplied,
+            boolean borderApplied,
+            String appearanceMode,
+            int logoByteSize,
+            String errorMessage
+    ) {
     }
 }

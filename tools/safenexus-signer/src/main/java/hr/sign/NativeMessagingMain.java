@@ -15,13 +15,14 @@ import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
 
 public final class NativeMessagingMain {
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final String VERSION = "1.3.0-web-settings";
+    private static final String VERSION = "1.4.0-appearance-debug";
     private static final int MAX_MESSAGE_BYTES = 8 * 1024 * 1024;
 
     private NativeMessagingMain() {
@@ -121,6 +122,7 @@ public final class NativeMessagingMain {
         response.put("realDryRun", config.realDryRun());
         response.put("apiAllowlist", String.join(", ", config.allowedApiBases()));
         response.put("providerOrder", String.join(", ", config.providerOrder()));
+        response.set("appearanceDebug", appearanceDebugNode(config));
         return response;
     }
 
@@ -129,6 +131,7 @@ public final class NativeMessagingMain {
         response.put("success", true);
         response.put("ok", true);
         response.set("settings", safeSettingsNode(config));
+        response.set("appearanceDebug", appearanceDebugNode(config));
         return response;
     }
 
@@ -178,6 +181,7 @@ public final class NativeMessagingMain {
             response.put("ok", true);
             response.put("message", "PDF Signer postavke su spremljene lokalno. PIN nije spremljen.");
             response.set("settings", safeSettingsNode(saved));
+            response.set("appearanceDebug", appearanceDebugNode(saved));
             return response;
         } catch (Exception error) {
             return errorResponse(text(request, "jobId", ""), "SETTINGS_SAVE_FAILED", "Postavke nisu spremljene: " + safeMessage(error));
@@ -364,6 +368,7 @@ public final class NativeMessagingMain {
     private static JsonNode getSignatureFields(JsonNode request, SignerConfig config) {
         String jobId = text(request, "jobId", text(request, "token", ""));
         ObjectNode response = baseRealResponse(jobId, config, true);
+        putRequestAppearanceDebug(response, request);
         ArrayNode documents = JSON.createArrayNode();
         ArrayNode fields = JSON.createArrayNode();
         ArrayNode errors = JSON.createArrayNode();
@@ -379,6 +384,7 @@ public final class NativeMessagingMain {
 
             for (JsonNode item : job.path("items")) {
                 ObjectNode documentResult = documentBase(item);
+                documentResult.set("appearanceUsed", appearanceDebugNode(config));
                 try {
                     byte[] pdf = client.downloadPdf(text(item, "downloadUrl", ""), text(item, "documentId", ""));
                     List<PdfSignatureFieldService.SignatureFieldInfo> itemFields = fieldService.listSignatureFields(pdf);
@@ -456,11 +462,15 @@ public final class NativeMessagingMain {
         }
 
         ObjectNode response = baseRealResponse(jobId, config, false);
+        putRequestAppearanceDebug(response, request);
         response.put("pinRequested", true);
         ArrayNode documents = JSON.createArrayNode();
         ArrayNode errors = JSON.createArrayNode();
         int signed = 0;
         int skipped = 0;
+        boolean anyLogoApplied = false;
+        boolean anyBorderApplied = false;
+        String lastAppearanceMode = "";
 
         String apiBaseUrl = text(request, "apiBaseUrl", text(request, "apiBase", ""));
         String token = text(request, "token", "");
@@ -489,6 +499,7 @@ public final class NativeMessagingMain {
 
                 for (JsonNode item : job.path("items")) {
                     ObjectNode documentResult = documentBase(item);
+                    documentResult.set("appearanceUsed", appearanceDebugNode(config));
                     putSignatureMetadata(documentResult, item);
                     documentResult.put("signerOib", signerOib);
                     SigningService.SignatureAppearanceMetadata appearanceMetadata = new SigningService.SignatureAppearanceMetadata(
@@ -537,6 +548,17 @@ public final class NativeMessagingMain {
                                     appearanceMetadata
                             );
                         }
+
+                        documentResult.put("logoApplied", signedPdf.logoApplied());
+                        documentResult.put("borderApplied", signedPdf.borderApplied());
+                        documentResult.put("appearanceMode", signedPdf.appearanceMode());
+                        documentResult.put("logoByteSize", signedPdf.logoByteSize());
+                        documentResult.put("appearanceError", signedPdf.appearanceError());
+                        documentResult.put("fieldName", signedPdf.fieldName());
+                        documentResult.put("signedFileName", text(item, "fileName", "zapisnik.pdf"));
+                        anyLogoApplied = anyLogoApplied || signedPdf.logoApplied();
+                        anyBorderApplied = anyBorderApplied || signedPdf.borderApplied();
+                        lastAppearanceMode = signedPdf.appearanceMode();
 
                         JsonNode upload = client.uploadSignedPdf(
                                 apiBaseUrl,
@@ -589,6 +611,9 @@ public final class NativeMessagingMain {
         response.put("ok", ok);
         response.put("signed", signed);
         response.put("skipped", skipped);
+        response.put("logoApplied", anyLogoApplied);
+        response.put("borderApplied", anyBorderApplied);
+        response.put("appearanceMode", lastAppearanceMode);
         response.put("message", ok
                 ? (signed == 1 ? "Dokument je digitalno potpisan i vracen u Documents." : signed + " dokumenata je digitalno potpisano i vraceno u Documents.")
                 : "Potpisivanje je zavrsilo s greskama.");
@@ -604,6 +629,7 @@ public final class NativeMessagingMain {
     private static JsonNode signDocumentsRealDryRun(JsonNode request, SignerConfig config) {
         String jobId = text(request, "jobId", text(request, "token", ""));
         ObjectNode response = baseRealResponse(jobId, config, true);
+        putRequestAppearanceDebug(response, request);
         ArrayNode documents = JSON.createArrayNode();
         ArrayNode errors = JSON.createArrayNode();
         int wouldSign = 0;
@@ -618,6 +644,7 @@ public final class NativeMessagingMain {
 
             for (JsonNode item : job.path("items")) {
                 ObjectNode documentResult = documentBase(item);
+                documentResult.set("appearanceUsed", appearanceDebugNode(config));
                 putSignatureMetadata(documentResult, item);
 
                 try {
@@ -738,7 +765,49 @@ public final class NativeMessagingMain {
         response.put("mode", config.isMock() ? "mock" : "real");
         response.put("dryRun", dryRun);
         response.put("pinRequested", false);
+        response.set("appearanceDebug", appearanceDebugNode(config));
         return response;
+    }
+
+    private static void putRequestAppearanceDebug(ObjectNode response, JsonNode request) {
+        JsonNode debugAppearance = request == null ? null : request.path("debugAppearance");
+        if (debugAppearance != null && debugAppearance.isObject()) {
+            response.set("requestAppearanceDebug", debugAppearance.deepCopy());
+        }
+    }
+
+    private static ObjectNode appearanceDebugNode(SignerConfig config) {
+        String logoDataUrl = String.valueOf(config.appearanceLogoDataUrl() == null ? "" : config.appearanceLogoDataUrl()).trim();
+        boolean logoBase64Present = logoDataUrl.toLowerCase(Locale.ROOT).startsWith("data:image/")
+                && logoDataUrl.toLowerCase(Locale.ROOT).contains(";base64,");
+        int logoByteSize = logoBase64Present ? estimateLogoByteSize(logoDataUrl) : 0;
+        ObjectNode debug = JSON.createObjectNode();
+        debug.put("logoEnabled", config.appearanceShowLogo());
+        debug.put("logoSource", logoDataUrl.isBlank() ? "none" : "settings.appearance.logoDataUrl");
+        debug.put("logoBytesPresent", !logoDataUrl.isBlank());
+        debug.put("logoBase64Present", logoBase64Present);
+        debug.put("logoBytesBase64Present", !logoDataUrl.isBlank() && logoBase64Present);
+        debug.put("logoByteSize", logoByteSize);
+        debug.put("receivedLogo", config.appearanceShowLogo() && logoByteSize > 0);
+        debug.put("logoOpacity", config.appearanceLogoOpacity());
+        debug.put("borderEnabled", config.appearanceBorder());
+        debug.put("transparentBackground", config.appearanceTransparentBackground());
+        debug.put("appearanceMode", config.appearanceBorder()
+                ? "configured"
+                : "minimal-transparent");
+        return debug;
+    }
+
+    private static int estimateLogoByteSize(String dataUrl) {
+        try {
+            int comma = dataUrl.indexOf(',');
+            if (comma < 0) {
+                return 0;
+            }
+            return Base64.getDecoder().decode(dataUrl.substring(comma + 1).replaceAll("\\s+", "")).length;
+        } catch (Exception ignored) {
+            return 0;
+        }
     }
 
     private static void putSignatureMetadata(ObjectNode node, JsonNode item) {

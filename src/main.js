@@ -30475,12 +30475,14 @@ async function runSignatureDebugGetFields() {
   try {
     await runSignatureDebugPing({ showStatus: false });
     const { payload, documents } = await createSignatureBridgeJobForPendingEntries();
+    const signerSettings = getActivePdfSignerWebSettings();
     const bridgeRequest = {
       jobId: payload.token || "",
       token: payload.token || "",
       apiBaseUrl: payload.apiBase || window.location.origin,
       documents,
-      settings: getActivePdfSignerWebSettings(),
+      settings: signerSettings,
+      debugAppearance: getPdfSignerAppearanceDebug(signerSettings),
     };
     let response;
     let usedDryRunFallback = false;
@@ -30542,12 +30544,14 @@ async function runSignatureDebugDryRun() {
   try {
     await runSignatureDebugPing({ showStatus: false });
     const { payload, documents } = await createSignatureBridgeJobForPendingEntries();
+    const signerSettings = getActivePdfSignerWebSettings();
     const response = await signDocumentsWithPdfSignerExtension({
       jobId: payload.token || "",
       token: payload.token || "",
       apiBaseUrl: payload.apiBase || window.location.origin,
       documents,
-      settings: getActivePdfSignerWebSettings(),
+      settings: signerSettings,
+      debugAppearance: getPdfSignerAppearanceDebug(signerSettings),
       dryRun: true,
     });
     setSignatureDebugFromPingResponse(response);
@@ -31730,12 +31734,14 @@ async function openSignatureReviewFlow(options = {}) {
   try {
     await runSignatureDebugPing({ showStatus: false });
     const { payload, documents } = await createSignatureBridgeJobForPendingEntries(pendingEntries);
+    const signerSettings = getActivePdfSignerWebSettings();
     const bridgeRequest = {
       jobId: payload.token || "",
       token: payload.token || "",
       apiBaseUrl: payload.apiBase || window.location.origin,
       documents,
-      settings: getActivePdfSignerWebSettings(),
+      settings: signerSettings,
+      debugAppearance: getPdfSignerAppearanceDebug(signerSettings),
     };
     const fieldsResponse = await getSignatureFieldsForBridgeRequest(bridgeRequest);
     const items = buildSignatureReviewItems(payload, fieldsResponse, pendingEntries);
@@ -32031,6 +32037,38 @@ function getActivePdfSignerWebSettings() {
     }
   }
   return getPdfSignerWebSettings();
+}
+
+function estimatePdfSignerLogoByteSize(dataUrl = "") {
+  const text = String(dataUrl || "").trim();
+  const match = text.match(/^data:image\/(?:png|jpe?g|webp|svg\+xml);base64,([a-z0-9+/=\s]+)$/i);
+  if (!match) {
+    return 0;
+  }
+  const base64 = match[1].replace(/\s+/g, "");
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
+}
+
+function getPdfSignerAppearanceDebug(settings = getActivePdfSignerWebSettings()) {
+  const appearance = normalizePdfSignerAppearanceSettings(settings?.appearance);
+  const logoDataUrl = String(appearance.logoDataUrl || "").trim();
+  const logoBase64Present = /^data:image\/(?:png|jpe?g|webp|svg\+xml);base64,/i.test(logoDataUrl);
+  const logoByteSize = estimatePdfSignerLogoByteSize(logoDataUrl);
+  return {
+    logoEnabled: Boolean(appearance.showLogo),
+    logoSource: logoDataUrl ? "web-settings-data-url" : "none",
+    logoBytesPresent: Boolean(logoDataUrl),
+    logoBase64Present,
+    logoBytesBase64Present: Boolean(logoDataUrl) && logoBase64Present,
+    logoByteSize,
+    logoOpacity: appearance.logoOpacity,
+    borderEnabled: Boolean(appearance.border),
+    transparentBackground: appearance.transparentBackground !== false,
+    appearanceMode: appearance.transparentBackground !== false && !appearance.border
+      ? "minimal-transparent"
+      : "configured",
+  };
 }
 
 function saveSignerSettingsFormDraftSilently() {
@@ -32464,7 +32502,10 @@ async function saveSignerSettingsPanel() {
   try {
     const settings = savePdfSignerWebSettings(collectSignerSettingsFormValues());
     const response = await saveSignerSettingsWithPdfSignerExtension(settings);
-    state.signatures.settings.lastResponse = response;
+    state.signatures.settings.lastResponse = {
+      ...response,
+      webAppearanceDebug: getPdfSignerAppearanceDebug(settings),
+    };
     renderSignerSettingsPanel();
     setSignaturesBridgeStatus("PDF Signer postavke su spremljene u web app i lokalni signer.", "ready");
     closeSignerSettingsPanel();
@@ -32708,12 +32749,14 @@ async function openLocalSignatureBridge(entriesOverride = null, options = {}) {
     });
     let signResult;
     try {
+      const signerSettings = getActivePdfSignerWebSettings();
       signResult = await signDocumentsWithPdfSignerExtension({
         jobId: payload.token || "",
         token: payload.token || "",
         apiBaseUrl: payload.apiBase || window.location.origin,
         documents,
-        settings: getActivePdfSignerWebSettings(),
+        settings: signerSettings,
+        debugAppearance: getPdfSignerAppearanceDebug(signerSettings),
         allowErrorResponse: true,
       });
     } finally {

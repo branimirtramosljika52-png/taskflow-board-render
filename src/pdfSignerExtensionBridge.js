@@ -144,6 +144,7 @@ export function signDocumentsWithPdfSignerExtension({
   apiBaseUrl = "",
   documents = [],
   settings = {},
+  debugAppearance = null,
   dryRun,
   allowErrorResponse = false,
 } = {}) {
@@ -155,6 +156,9 @@ export function signDocumentsWithPdfSignerExtension({
     documents,
     settings,
   };
+  if (debugAppearance && typeof debugAppearance === "object") {
+    payload.debugAppearance = debugAppearance;
+  }
   if (typeof dryRun === "boolean") {
     payload.dryRun = dryRun;
   }
@@ -167,16 +171,21 @@ export function getSignatureFieldsWithPdfSignerExtension({
   apiBaseUrl = "",
   documents = [],
   settings = {},
+  debugAppearance = null,
   allowErrorResponse = false,
 } = {}) {
-  return sendMessageToPdfSignerExtension({
+  const payload = {
     type: "GET_SIGNATURE_FIELDS",
     jobId,
     token,
     apiBaseUrl,
     documents,
     settings,
-  }, { timeoutMs: 120000, allowErrorResponse });
+  };
+  if (debugAppearance && typeof debugAppearance === "object") {
+    payload.debugAppearance = debugAppearance;
+  }
+  return sendMessageToPdfSignerExtension(payload, { timeoutMs: 120000, allowErrorResponse });
 }
 
 export function getSignerSettingsWithPdfSignerExtension() {
