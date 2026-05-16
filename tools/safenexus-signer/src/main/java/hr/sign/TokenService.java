@@ -135,9 +135,9 @@ public final class TokenService {
             throw error;
         } catch (Exception error) {
             if (isInvalidPin(error)) {
-                throw new SignatureBridgeException("INVALID_PIN", "PIN nije ispravan ili je token odbio prijavu.");
+                throw new SignatureBridgeException("INVALID_PIN", "PIN nije ispravan ili je token odbio prijavu.", "", error.getClass().getName() + ": " + safeMessage(error));
             }
-            throw new SignatureBridgeException("SIGN_FAILED", "Ne mogu ucitati privatni kljuc s tokena: " + safeMessage(error));
+            throw new SignatureBridgeException("SIGN_FAILED", "Ne mogu ucitati privatni kljuc s tokena.", "", error.getClass().getName() + ": " + safeMessage(error));
         }
     }
 
@@ -227,12 +227,12 @@ public final class TokenService {
                 removeProvider(provider);
             }
             if (isInvalidPin(error)) {
-                throw new SignatureBridgeException("INVALID_PIN", "PIN nije ispravan ili je token odbio prijavu.");
+                throw new SignatureBridgeException("INVALID_PIN", "PIN nije ispravan ili je token odbio prijavu.", "", error.getClass().getName() + ": " + safeMessage(error));
             }
             if (isTokenAbsent(error)) {
-                throw new SignatureBridgeException("TOKEN_NOT_AVAILABLE", tag + " token nije prisutan.");
+                throw new SignatureBridgeException("TOKEN_NOT_AVAILABLE", tag + " token nije prisutan.", "", error.getClass().getName() + ": " + safeMessage(error));
             }
-            throw new SignatureBridgeException("TOKEN_NOT_AVAILABLE", tag + " PKCS#11 inicijalizacija nije uspjela: " + safeMessage(error));
+            throw new SignatureBridgeException("TOKEN_NOT_AVAILABLE", tag + " PKCS#11 inicijalizacija nije uspjela.", "", error.getClass().getName() + ": " + safeMessage(error));
         }
     }
 

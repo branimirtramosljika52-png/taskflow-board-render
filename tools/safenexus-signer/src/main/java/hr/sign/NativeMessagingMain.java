@@ -9,6 +9,8 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -313,27 +315,33 @@ public final class NativeMessagingMain {
                     documentResult.set("fields", fieldNodes);
                     if (itemFields.isEmpty()) {
                         ObjectNode error = errorItem(
-                                text(item, "documentId", ""),
+                                item,
                                 "NO_SIGNATURE_FIELDS",
-                                "PDF nema AcroForm signature fieldove."
+                                "PDF nema AcroForm signature fieldove.",
+                                "",
+                                ""
                         );
                         errors.add(error);
                         documentResult.set("error", error.deepCopy());
                     }
                 } catch (SignatureBridgeException error) {
                     ObjectNode errorNode = errorItem(
-                            text(item, "documentId", ""),
+                            item,
                             error.code(),
-                            error.getMessage()
+                            error.getMessage(),
+                            error.technicalMessage(),
+                            stackTrace(error.getCause())
                     );
                     errors.add(errorNode);
                     documentResult.set("fields", JSON.createArrayNode());
                     documentResult.set("error", errorNode.deepCopy());
                 } catch (Exception error) {
                     ObjectNode errorNode = errorItem(
-                            text(item, "documentId", ""),
+                            item,
                             "DOWNLOAD_FAILED",
-                            "Ne mogu procitati PDF signature fieldove: " + safeMessage(error)
+                            "Ne mogu procitati PDF signature fieldove.",
+                            error.getClass().getName() + ": " + safeMessage(error),
+                            stackTrace(error)
                     );
                     errors.add(errorNode);
                     documentResult.set("fields", JSON.createArrayNode());
@@ -342,9 +350,9 @@ public final class NativeMessagingMain {
                 documents.add(documentResult);
             }
         } catch (SignatureBridgeException error) {
-            return errorResponse(jobId, error.code(), error.getMessage());
+            return errorResponse(jobId, error.code(), error.getMessage(), error.technicalMessage(), stackTrace(error.getCause()));
         } catch (Exception error) {
-            return errorResponse(jobId, "DOWNLOAD_FAILED", "Ne mogu dohvatiti signature fieldove: " + safeMessage(error));
+            return errorResponse(jobId, "DOWNLOAD_FAILED", "Ne mogu dohvatiti signature fieldove.", error.getClass().getName() + ": " + safeMessage(error), stackTrace(error));
         }
 
         boolean ok = errors.isEmpty();
@@ -463,19 +471,17 @@ public final class NativeMessagingMain {
                         if ("ALREADY_SIGNED".equals(error.code())) {
                             skipped += 1;
                         }
-                        ObjectNode errorNode = errorItem(
-                                text(item, "documentId", ""),
-                                error.code(),
-                                error.getMessage()
-                        );
+                        ObjectNode errorNode = errorItem(item, error.code(), error.getMessage(), error.technicalMessage(), stackTrace(error.getCause()));
                         errors.add(errorNode);
                         documentResult.put("status", "error");
                         documentResult.set("error", errorNode.deepCopy());
                     } catch (Exception error) {
                         ObjectNode errorNode = errorItem(
-                                text(item, "documentId", ""),
+                                item,
                                 "SIGN_FAILED",
-                                "Potpisivanje dokumenta nije uspjelo: " + safeMessage(error)
+                                "Potpisivanje dokumenta nije uspjelo.",
+                                error.getClass().getName() + ": " + safeMessage(error),
+                                stackTrace(error)
                         );
                         errors.add(errorNode);
                         documentResult.put("status", "error");
@@ -485,9 +491,9 @@ public final class NativeMessagingMain {
                 }
             }
         } catch (SignatureBridgeException error) {
-            return errorResponse(jobId, error.code(), error.getMessage());
+            return errorResponse(jobId, error.code(), error.getMessage(), error.technicalMessage(), stackTrace(error.getCause()));
         } catch (Exception error) {
-            return errorResponse(jobId, "SIGN_FAILED", "Stvarno potpisivanje nije uspjelo: " + safeMessage(error));
+            return errorResponse(jobId, "SIGN_FAILED", "Stvarno potpisivanje nije uspjelo.", error.getClass().getName() + ": " + safeMessage(error), stackTrace(error));
         }
 
         boolean ok = errors.isEmpty();
@@ -552,9 +558,11 @@ public final class NativeMessagingMain {
                     );
                     if (!match.ok()) {
                         ObjectNode error = errorItem(
-                                text(item, "documentId", ""),
+                                item,
                                 match.code(),
-                                match.message()
+                                match.message(),
+                                "",
+                                ""
                         );
                         errors.add(error);
                         documentResult.put("status", "error");
@@ -567,9 +575,11 @@ public final class NativeMessagingMain {
                     documentResult.set("matchedField", fieldNode(matchedField));
                     if ("already_signed".equals(matchedField.status())) {
                         ObjectNode error = errorItem(
-                                text(item, "documentId", ""),
+                                item,
                                 "ALREADY_SIGNED",
-                                "Odabrano signature polje je vec potpisano."
+                                "Odabrano signature polje je vec potpisano.",
+                                "",
+                                ""
                         );
                         errors.add(error);
                         skipped += 1;
@@ -581,24 +591,28 @@ public final class NativeMessagingMain {
                         documentResult.put("message", "Dry-run: ovaj dokument bi bio potpisan po fieldu " + matchedField.fieldName() + ".");
                     } else {
                         ObjectNode error = errorItem(
-                                text(item, "documentId", ""),
+                                item,
                                 "NO_MATCHING_SIGNATURE_FIELD",
-                                "Signature polje postoji, ali nema jasnu poziciju/status za siguran potpis."
+                                "Signature polje postoji, ali nema jasnu poziciju/status za siguran potpis.",
+                                "",
+                                ""
                         );
                         errors.add(error);
                         documentResult.put("status", "error");
                         documentResult.set("error", error.deepCopy());
                     }
                 } catch (SignatureBridgeException error) {
-                    ObjectNode errorNode = errorItem(text(item, "documentId", ""), error.code(), error.getMessage());
+                    ObjectNode errorNode = errorItem(item, error.code(), error.getMessage(), error.technicalMessage(), stackTrace(error.getCause()));
                     errors.add(errorNode);
                     documentResult.put("status", "error");
                     documentResult.set("error", errorNode.deepCopy());
                 } catch (Exception error) {
                     ObjectNode errorNode = errorItem(
-                            text(item, "documentId", ""),
+                            item,
                             "DOWNLOAD_FAILED",
-                            "Dry-run nije uspio procitati PDF: " + safeMessage(error)
+                            "Dry-run nije uspio procitati PDF.",
+                            error.getClass().getName() + ": " + safeMessage(error),
+                            stackTrace(error)
                     );
                     errors.add(errorNode);
                     documentResult.put("status", "error");
@@ -607,9 +621,9 @@ public final class NativeMessagingMain {
                 documents.add(documentResult);
             }
         } catch (SignatureBridgeException error) {
-            return errorResponse(jobId, error.code(), error.getMessage());
+            return errorResponse(jobId, error.code(), error.getMessage(), error.technicalMessage(), stackTrace(error.getCause()));
         } catch (Exception error) {
-            return errorResponse(jobId, "DOWNLOAD_FAILED", "Real dry-run nije uspio: " + safeMessage(error));
+            return errorResponse(jobId, "DOWNLOAD_FAILED", "Real dry-run nije uspio.", error.getClass().getName() + ": " + safeMessage(error), stackTrace(error));
         }
 
         boolean ok = errors.isEmpty();
@@ -689,10 +703,30 @@ public final class NativeMessagingMain {
         error.put("documentId", documentId == null ? "" : documentId);
         error.put("code", code == null || code.isBlank() ? "SIGNATURE_BRIDGE_ERROR" : code);
         error.put("message", message == null || message.isBlank() ? "Neocekivana greska." : message);
+        error.put("nativeSignerMessage", message == null || message.isBlank() ? "Neocekivana greska." : message);
+        return error;
+    }
+
+    private static ObjectNode errorItem(JsonNode item, String code, String message, String technicalMessage, String stack) {
+        ObjectNode error = errorItem(text(item, "documentId", ""), code, message);
+        error.put("itemId", text(item, "id", ""));
+        error.put("fileName", text(item, "fileName", "zapisnik.pdf"));
+        error.put("workOrderId", text(item, "workOrderId", ""));
+        error.put("workOrderNumber", text(item, "workOrderNumber", ""));
+        if (technicalMessage != null && !technicalMessage.isBlank()) {
+            error.put("technicalMessage", technicalMessage);
+        }
+        if (stack != null && !stack.isBlank()) {
+            error.put("stack", stack);
+        }
         return error;
     }
 
     private static ObjectNode errorResponse(String jobId, String code, String message) {
+        return errorResponse(jobId, code, message, "", "");
+    }
+
+    private static ObjectNode errorResponse(String jobId, String code, String message, String technicalMessage, String stack) {
         ObjectNode response = JSON.createObjectNode();
         response.put("success", false);
         response.put("ok", false);
@@ -705,9 +739,26 @@ public final class NativeMessagingMain {
         ObjectNode error = JSON.createObjectNode();
         error.put("code", code);
         error.put("message", message);
+        error.put("nativeSignerMessage", message);
+        if (technicalMessage != null && !technicalMessage.isBlank()) {
+            error.put("technicalMessage", technicalMessage);
+        }
+        if (stack != null && !stack.isBlank()) {
+            error.put("stack", stack);
+        }
         errors.add(error);
         response.set("errors", errors);
         return response;
+    }
+
+    private static String stackTrace(Throwable error) {
+        if (error == null) {
+            return "";
+        }
+        StringWriter writer = new StringWriter();
+        error.printStackTrace(new PrintWriter(writer));
+        String value = writer.toString();
+        return value.length() > 6000 ? value.substring(0, 6000) : value;
     }
 
     private static JsonNode readNativeMessage(InputStream input) throws IOException {

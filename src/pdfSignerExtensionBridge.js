@@ -145,6 +145,7 @@ export function signDocumentsWithPdfSignerExtension({
   documents = [],
   settings = {},
   dryRun,
+  allowErrorResponse = false,
 } = {}) {
   const payload = {
     type: "SIGN_DOCUMENTS",
@@ -157,7 +158,7 @@ export function signDocumentsWithPdfSignerExtension({
   if (typeof dryRun === "boolean") {
     payload.dryRun = dryRun;
   }
-  return sendMessageToPdfSignerExtension(payload, { timeoutMs: 120000 });
+  return sendMessageToPdfSignerExtension(payload, { timeoutMs: 120000, allowErrorResponse });
 }
 
 export function getSignatureFieldsWithPdfSignerExtension({

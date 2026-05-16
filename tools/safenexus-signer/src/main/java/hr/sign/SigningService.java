@@ -70,7 +70,12 @@ public final class SigningService {
         } catch (SignatureBridgeException error) {
             throw error;
         } catch (Exception error) {
-            throw new SignatureBridgeException("SIGN_FAILED", "Potpis po signature fieldu nije uspio: " + safeMessage(error));
+            throw new SignatureBridgeException(
+                    "SIGN_FAILED",
+                    "Potpis po signature fieldu nije uspio.",
+                    "",
+                    error.getClass().getName() + ": " + safeMessage(error)
+            );
         }
     }
 
@@ -115,7 +120,12 @@ public final class SigningService {
         } catch (SignatureBridgeException error) {
             throw error;
         } catch (Exception error) {
-            throw new SignatureBridgeException("SIGN_FAILED", "Fallback potpis po keywordu nije uspio: " + safeMessage(error));
+            throw new SignatureBridgeException(
+                    "SIGN_FAILED",
+                    "Fallback potpis po keywordu nije uspio.",
+                    "",
+                    error.getClass().getName() + ": " + safeMessage(error)
+            );
         }
     }
 

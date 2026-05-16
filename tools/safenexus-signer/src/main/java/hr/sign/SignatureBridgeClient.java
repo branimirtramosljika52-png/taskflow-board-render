@@ -116,18 +116,19 @@ public final class SignatureBridgeClient {
                 throw new SignatureBridgeException(
                         "UPLOAD_FAILED",
                         "Upload potpisanog PDF-a nije uspio: HTTP " + response.statusCode() + ".",
-                        documentId
+                        documentId,
+                        trimTechnical(response.body())
                 );
             }
             JsonNode json = JSON.readTree(response.body());
             if (!json.path("ok").asBoolean(false)) {
-                throw new SignatureBridgeException("UPLOAD_FAILED", "Backend nije prihvatio potpisani PDF.", documentId);
+                throw new SignatureBridgeException("UPLOAD_FAILED", "Backend nije prihvatio potpisani PDF.", documentId, trimTechnical(response.body()));
             }
             return json;
         } catch (SignatureBridgeException error) {
             throw error;
         } catch (Exception error) {
-            throw new SignatureBridgeException("UPLOAD_FAILED", "Upload potpisanog PDF-a nije uspio: " + safeMessage(error), documentId);
+            throw new SignatureBridgeException("UPLOAD_FAILED", "Upload potpisanog PDF-a nije uspio.", documentId, error.getClass().getName() + ": " + safeMessage(error));
         }
     }
 
@@ -142,5 +143,10 @@ public final class SignatureBridgeClient {
     private static String safeMessage(Throwable error) {
         String message = error == null ? "" : error.getMessage();
         return message == null || message.isBlank() ? "nepoznata greska" : message;
+    }
+
+    private static String trimTechnical(String value) {
+        String text = value == null ? "" : value.trim();
+        return text.length() > 3000 ? text.substring(0, 3000) : text;
     }
 }

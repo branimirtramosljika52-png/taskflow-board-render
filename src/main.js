@@ -1663,6 +1663,7 @@ const state = {
       activePreviewLoading: false,
       activePreviewError: "",
       error: "",
+      errorDetails: [],
     },
     settings: {
       loaded: false,
@@ -30460,6 +30461,7 @@ function closeSignatureReviewPanel() {
     activePreviewLoading: false,
     activePreviewError: "",
     error: "",
+    errorDetails: [],
   };
   document.body.classList.remove("is-signature-review-open");
   renderSignatureReviewPanel();
@@ -30692,6 +30694,144 @@ function createSignatureReviewActiveActions(activeItem = {}, activeDecision = {}
   return wrap;
 }
 
+function normalizeSignatureBridgeErrors(source = {}) {
+  const payload = source?.details && typeof source.details === "object" ? source.details : source;
+  const rawErrors = Array.isArray(payload?.errors) && payload.errors.length > 0
+    ? payload.errors
+    : (payload?.code || payload?.message)
+      ? [payload]
+      : [];
+  return rawErrors.map((error, index) => ({
+    itemId: String(error?.itemId || error?.id || ""),
+    documentId: String(error?.documentId || payload?.documentId || ""),
+    fileName: String(error?.fileName || payload?.fileName || ""),
+    workOrderNumber: String(error?.workOrderNumber || payload?.workOrderNumber || ""),
+    code: String(error?.code || payload?.code || "SIGN_FAILED"),
+    message: String(error?.message || payload?.message || "Potpisivanje dokumenta nije uspjelo."),
+    nativeSignerMessage: String(error?.nativeSignerMessage || error?.signerMessage || error?.message || payload?.message || ""),
+    technicalMessage: String(error?.technicalMessage || error?.technical || ""),
+    stack: String(error?.stack || error?.stackTrace || ""),
+    index,
+  }));
+}
+
+function signatureReviewErrorMatchesItem(error = {}, item = {}) {
+  const errorDocumentId = String(error.documentId || "").trim();
+  const errorItemId = String(error.itemId || "").trim();
+  const errorFileName = String(error.fileName || "").trim().toLowerCase();
+  if (errorDocumentId && errorDocumentId === String(item.documentId || "").trim()) return true;
+  if (errorItemId && errorItemId === String(item.itemId || item.id || "").trim()) return true;
+  if (errorFileName && errorFileName === String(item.fileName || "").trim().toLowerCase()) return true;
+  return false;
+}
+
+function applySignatureReviewSigningResult(signResult = {}) {
+  const errors = normalizeSignatureBridgeErrors(signResult);
+  const documents = Array.isArray(signResult.documents) ? signResult.documents : [];
+  const nextItems = (state.signatures.review.items || []).map((item) => {
+    const itemError = errors.find((error) => signatureReviewErrorMatchesItem(error, item));
+    if (itemError) {
+      return {
+        ...item,
+        status: "error",
+        error: itemError.message || itemError.nativeSignerMessage || "Potpisivanje dokumenta nije uspjelo.",
+      };
+    }
+    const signedDocument = documents.find((document) => {
+      const sameDocument = String(document?.documentId || "") === String(item.documentId || "");
+      const signedField = String(document?.signedField || document?.fieldName || "").trim();
+      return sameDocument && String(document?.status || "") === "signed" && (!signedField || signedField === String(item.fieldName || ""));
+    });
+    if (signedDocument) {
+      return {
+        ...item,
+        status: "signed",
+        error: "",
+      };
+    }
+    return item;
+  });
+  setSignatureReviewState({
+    status: signResult.ok === false || signResult.success === false ? "error" : "signed",
+    items: nextItems,
+    error: signResult.ok === false || signResult.success === false
+      ? (signResult.message || "Potpisivanje je završilo s greškama.")
+      : "",
+    errorDetails: errors,
+  });
+}
+
+function createSignatureReviewStatusBar(review = {}) {
+  const bar = document.createElement("section");
+  const errors = Array.isArray(review.errorDetails) ? review.errorDetails : [];
+  const hasErrors = errors.length > 0 || Boolean(review.error);
+  const isSigning = review.status === "signing";
+  const isSigned = review.status === "signed";
+  bar.className = [
+    "signature-review-status-bar",
+    hasErrors ? "is-error" : isSigning ? "is-loading" : isSigned ? "is-ready" : "",
+  ].filter(Boolean).join(" ");
+  bar.hidden = !hasErrors && !isSigning && !isSigned;
+  if (bar.hidden) {
+    return bar;
+  }
+
+  const summary = document.createElement("div");
+  summary.className = "signature-review-status-summary";
+  const title = document.createElement("strong");
+  title.textContent = hasErrors
+    ? (review.error || "Potpisivanje je završilo s greškama.")
+    : isSigning
+      ? "Potpisivanje je u tijeku"
+      : "Potpisivanje je završeno";
+  const meta = document.createElement("span");
+  meta.textContent = hasErrors
+    ? `${errors.length || 1} detalj${(errors.length || 1) === 1 ? "" : "a"} greške`
+    : isSigning
+      ? "PIN i potpisivanje se obrađuju lokalno u PDFSigner.exe."
+      : "Dokumenti se osvježavaju u Documents.";
+  summary.append(title, meta);
+  bar.append(summary);
+
+  if (hasErrors) {
+    const list = document.createElement("div");
+    list.className = "signature-review-error-list";
+    const visibleErrors = errors.length > 0 ? errors : normalizeSignatureBridgeErrors({ message: review.error });
+    visibleErrors.forEach((error) => {
+      const row = document.createElement("article");
+      row.className = "signature-review-error-row";
+      const heading = document.createElement("div");
+      heading.className = "signature-review-error-heading";
+      const code = document.createElement("strong");
+      code.textContent = error.code || "SIGN_FAILED";
+      const doc = document.createElement("span");
+      doc.textContent = [
+        error.fileName || "",
+        error.documentId ? `documentId ${error.documentId}` : "",
+        error.itemId ? `item ${error.itemId}` : "",
+      ].filter(Boolean).join(" · ");
+      heading.append(code, doc);
+      const message = document.createElement("p");
+      message.textContent = error.nativeSignerMessage || error.message || "Native signer nije vratio detaljnu poruku.";
+      row.append(heading, message);
+      if (canShowSignatureDebugPanel() && (error.technicalMessage || error.stack)) {
+        const details = document.createElement("details");
+        details.className = "signature-review-technical-details";
+        const summaryNode = document.createElement("summary");
+        summaryNode.textContent = "Tehnički detalji";
+        const pre = document.createElement("pre");
+        pre.textContent = [error.technicalMessage, error.stack].filter(Boolean).join("\n\n");
+        details.append(summaryNode, pre);
+        row.append(details);
+      }
+      list.append(row);
+    });
+    bar.append(list);
+  }
+
+  return bar;
+}
+
 function renderSignatureReviewPanel() {
   if (!signaturesReviewPanel || !signaturesReviewBody) {
     return;
@@ -30868,7 +31008,7 @@ function renderSignatureReviewPanel() {
   }
 
   workspace.append(sidebar, preview);
-  signaturesReviewBody.replaceChildren(workspace);
+  signaturesReviewBody.replaceChildren(createSignatureReviewStatusBar(review), workspace);
 }
 
 async function openSignatureReviewFlow() {
@@ -31094,7 +31234,7 @@ async function signApprovedSignatureReviewItems() {
     label: item.label || "",
     signer: item.signer || "",
   }));
-  setSignatureReviewState({ status: "signing" });
+  setSignatureReviewState({ status: "signing", error: "", errorDetails: [] });
   await openLocalSignatureBridge(approvedEntries, { signatureRequests });
 }
 
@@ -31405,10 +31545,31 @@ async function openLocalSignatureBridge(entriesOverride = null, options = {}) {
       apiBaseUrl: payload.apiBase || window.location.origin,
       documents,
       settings: getPdfSignerWebSettings(),
+      allowErrorResponse: true,
     });
 
+    setSignatureDebugFromPingResponse(signResult);
+    applySignatureReviewSigningResult(signResult);
+    if (signResult.ok === false || signResult.success === false) {
+      const errors = normalizeSignatureBridgeErrors(signResult);
+      const firstError = errors[0];
+      setSignaturesBridgeStatus(
+        firstError
+          ? `${firstError.code}: ${firstError.nativeSignerMessage || firstError.message}`
+          : (signResult.message || "Potpisivanje je završilo s greškama."),
+        "error",
+      );
+      if (Number(signResult.signed || 0) > 0) {
+        [5000, 12000, 25000, 45000, 90000].forEach((delay) => {
+          window.setTimeout(() => {
+            void loadDocumentsExplorerRecords({ force: true });
+          }, delay);
+        });
+      }
+      return;
+    }
+
     if (signResult.dryRun) {
-      setSignatureDebugFromPingResponse(signResult);
       setSignaturesBridgeStatus(`Dry-run zavrsen. Bilo bi potpisano: ${Number(signResult.wouldSign || 0)}.`, "ready");
     } else {
       const signedRaw = Number(signResult.signed ?? signResult.downloaded);
@@ -31435,7 +31596,19 @@ async function openLocalSignatureBridge(entriesOverride = null, options = {}) {
         "warning",
       );
     } else {
-      setSignaturesBridgeStatus(error.message || "Nije moguće pokrenuti potpisivanje.", "error");
+      const errors = normalizeSignatureBridgeErrors(error);
+      setSignatureReviewState({
+        status: "error",
+        error: error.message || "Nije moguće pokrenuti potpisivanje.",
+        errorDetails: errors,
+      });
+      const firstError = errors[0];
+      setSignaturesBridgeStatus(
+        firstError
+          ? `${firstError.code}: ${firstError.nativeSignerMessage || firstError.message}`
+          : (error.message || "Nije moguće pokrenuti potpisivanje."),
+        "error",
+      );
     }
   } finally {
     signaturesOpenLocalSignerButton.disabled = false;

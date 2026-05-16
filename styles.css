@@ -51165,21 +51165,18 @@ body.is-signature-review-open::before {
 
 .signatures-review-panel:not([hidden]) {
   position: fixed;
-  top: clamp(8px, 1.5dvh, 18px);
-  right: clamp(10px, 1.5dvw, 24px);
-  bottom: clamp(8px, 1.5dvh, 18px);
-  left: clamp(10px, 1.5dvw, 24px);
+  inset: 0;
   z-index: 2147483600;
   isolation: isolate;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  width: auto;
-  height: auto;
+  width: 100vw;
+  height: 100dvh;
   max-width: none;
   max-height: none;
   overflow: hidden;
-  padding: 10px;
+  padding: 10px 12px;
   border-color: rgba(147, 197, 253, 0.92);
-  border-radius: 18px;
+  border-radius: 0;
   background: #ffffff;
   color: #172033;
   opacity: 1;
@@ -51188,6 +51185,7 @@ body.is-signature-review-open::before {
 
 .signatures-review-panel:not([hidden]) > .section-heading {
   align-items: center;
+  flex: 0 0 auto;
   min-height: 46px;
   padding: 0 2px 10px;
   border-bottom: 1px solid rgba(203, 213, 225, 0.7);
@@ -51257,6 +51255,7 @@ body.is-signature-review-open::before {
 
 .signatures-review-body {
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 12px;
   min-height: 0;
   overflow: hidden;
@@ -51264,6 +51263,7 @@ body.is-signature-review-open::before {
 
 .signatures-review-panel:not([hidden]) .signatures-review-actions {
   position: static;
+  flex: 0 0 auto;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -51300,10 +51300,7 @@ body.is-signature-review-open::before {
 
 @supports not (height: 100dvh) {
   .signatures-review-panel:not([hidden]) {
-    top: 12px;
-    right: 18px;
-    bottom: 12px;
-    left: 18px;
+    height: 100vh;
   }
 }
 
@@ -51327,7 +51324,9 @@ body.is-signature-review-open::before {
   grid-template-columns: minmax(430px, 500px) minmax(0, 1fr);
   gap: 14px;
   min-height: 0;
-  height: 100%;
+  height: auto;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .signature-review-sidebar {
@@ -51338,6 +51337,107 @@ body.is-signature-review-open::before {
   overflow: auto;
   padding: 0 6px 2px 0;
   background: #ffffff;
+}
+
+.signature-review-status-bar {
+  display: grid;
+  gap: 8px;
+  max-height: clamp(76px, 21dvh, 176px);
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid rgba(191, 219, 254, 0.9);
+  border-radius: 14px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  box-shadow: 0 10px 26px rgba(30, 64, 175, 0.08);
+}
+
+.signature-review-status-bar[hidden] {
+  display: none;
+}
+
+.signature-review-status-bar.is-error {
+  border-color: rgba(248, 113, 113, 0.62);
+  background: #fff1f2;
+  color: #991b1b;
+}
+
+.signature-review-status-bar.is-loading {
+  border-color: rgba(96, 165, 250, 0.72);
+  background: #eff6ff;
+}
+
+.signature-review-status-bar.is-ready {
+  border-color: rgba(52, 211, 153, 0.62);
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.signature-review-status-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.signature-review-status-summary strong {
+  font-size: 14px;
+}
+
+.signature-review-status-summary span {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.signature-review-error-list {
+  display: grid;
+  gap: 6px;
+}
+
+.signature-review-error-row {
+  display: grid;
+  gap: 5px;
+  padding: 8px 10px;
+  border: 1px solid rgba(248, 113, 113, 0.38);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.signature-review-error-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.signature-review-error-heading strong {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.signature-review-error-heading span,
+.signature-review-error-row p {
+  margin: 0;
+  color: inherit;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.signature-review-technical-details {
+  font-size: 11px;
+}
+
+.signature-review-technical-details pre {
+  max-height: 140px;
+  overflow: auto;
+  margin: 6px 0 0;
+  padding: 8px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.92);
+  color: #e2e8f0;
+  white-space: pre-wrap;
 }
 
 .signature-review-decision-card {
@@ -51406,6 +51506,9 @@ body.is-signature-review-open::before {
   color: #64748b;
   font-size: 0.8rem;
   font-weight: 700;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .signature-review-documents {
@@ -51576,6 +51679,8 @@ body.is-signature-review-open::before {
   gap: 10px;
   min-width: 0;
   min-height: 0;
+  max-width: 100%;
+  overflow: hidden;
   padding: 12px;
   border: 1px solid rgba(191, 219, 254, 0.84);
   border-radius: 18px;
@@ -51588,6 +51693,18 @@ body.is-signature-review-open::before {
   align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
+  min-width: 0;
+}
+
+.signature-review-preview-head > div {
+  min-width: 0;
+}
+
+.signature-review-preview-head .module-copy {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .signature-review-preview-head h4 {
@@ -51606,6 +51723,7 @@ body.is-signature-review-open::before {
   border: 1px solid rgba(203, 213, 225, 0.8);
   border-radius: 12px;
   background: #f8fafc;
+  min-width: 0;
 }
 
 .signature-review-pdf-control {
@@ -51647,6 +51765,7 @@ body.is-signature-review-open::before {
   grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   min-height: 0;
+  overflow: hidden;
 }
 
 .signature-review-preview-stage {
@@ -51689,6 +51808,7 @@ body.is-signature-review-open::before {
   grid-template-columns: minmax(220px, 0.85fr) minmax(300px, 1fr) minmax(260px, 1.1fr);
   gap: 10px;
   align-items: stretch;
+  min-height: 0;
   padding: 10px;
   border: 1px solid rgba(203, 213, 225, 0.78);
   border-radius: 14px;
@@ -51706,9 +51826,12 @@ body.is-signature-review-open::before {
 
 @media (max-height: 760px) {
   .signatures-review-panel:not([hidden]) {
-    top: 8px;
-    bottom: 8px;
-    padding: 8px;
+    padding: 7px 8px;
+  }
+
+  .signatures-review-panel:not([hidden]) > .section-heading {
+    min-height: 38px;
+    padding-bottom: 6px;
   }
 
   .signature-review-decision-card {
@@ -51728,6 +51851,15 @@ body.is-signature-review-open::before {
     display: none;
   }
 
+  .signature-review-status-bar {
+    max-height: 112px;
+    padding: 8px 10px;
+  }
+
+  .signature-review-error-row {
+    padding: 6px 8px;
+  }
+
   .signature-review-pdf-toolbar {
     padding: 5px;
   }
@@ -51744,24 +51876,45 @@ body.is-signature-review-open::before {
 
 @media (max-width: 1280px) {
   .signature-review-workspace {
-    grid-template-columns: minmax(360px, 420px) minmax(0, 1fr);
+    grid-template-columns: minmax(330px, 380px) minmax(0, 1fr);
     gap: 10px;
   }
 
   .signature-review-active-actions {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(145px, 0.72fr) minmax(250px, 1.18fr) minmax(205px, 1fr);
+    gap: 8px;
   }
 }
 
-@media (max-width: 820px) {
+@media (max-width: 1080px) {
+  .signature-review-workspace {
+    grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
+  }
+
+  .signature-review-active-actions {
+    grid-template-columns: minmax(130px, 0.72fr) minmax(220px, 1.14fr) minmax(178px, 1fr);
+  }
+
+  .signature-review-status {
+    min-width: 74px;
+    padding-inline: 7px;
+  }
+
+  .signature-review-pdf-toolbar {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 700px) {
   .signatures-review-panel:not([hidden]) {
-    top: 18px;
-    right: 10px;
-    bottom: 10px;
-    left: 10px;
+    inset: 0;
   }
 
   .signature-review-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .signature-review-active-actions {
     grid-template-columns: 1fr;
   }
 
