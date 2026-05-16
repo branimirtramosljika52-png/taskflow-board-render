@@ -97,17 +97,12 @@ public final class PdfSignatureFieldService {
     ) {
         String normalizedSignerOib = normalizeOib(signerOib);
         String normalizedRequestedOib = normalizeOib(requestedOib);
-        String effectiveOib = !normalizedSignerOib.isBlank() ? normalizedSignerOib : normalizedRequestedOib;
-        if (effectiveOib.isBlank()) {
-            return FieldMatch.error("NO_MATCHING_SIGNATURE_FIELD", "Nije poznat OIB potpisnika za match signature fielda.");
-        }
-
         String preferred = normalizeFieldName(preferredField);
         if (!preferred.isBlank()) {
             Optional<SignatureFieldInfo> explicit = findByName(fields, preferred);
             if (explicit.isPresent()) {
                 String fieldOib = extractOibFromFieldName(explicit.get().fieldName());
-                if (!fieldOib.isBlank() && !fieldOib.equals(effectiveOib)) {
+                if (!normalizedSignerOib.isBlank() && !fieldOib.isBlank() && !fieldOib.equals(normalizedSignerOib)) {
                     return FieldMatch.error(
                             "NO_MATCHING_SIGNATURE_FIELD",
                             "Preferred signature field ne odgovara OIB-u certifikata."
@@ -115,6 +110,14 @@ public final class PdfSignatureFieldService {
                 }
                 return FieldMatch.single(explicit.get());
             }
+        }
+
+        String effectiveOib = !normalizedSignerOib.isBlank() ? normalizedSignerOib : normalizedRequestedOib;
+        if (effectiveOib.isBlank()) {
+            return FieldMatch.error(
+                    "CERTIFICATE_OIB_NOT_FOUND",
+                    "Iz certifikata nije moguce procitati OIB/SERIALNUMBER potpisnika, a job nema preferredField."
+            );
         }
 
         String standard = buildStandardFieldName(role, effectiveOib);

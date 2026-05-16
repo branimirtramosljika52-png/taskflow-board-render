@@ -51165,13 +51165,16 @@ body.is-signature-review-open::before {
 
 .signatures-review-panel:not([hidden]) {
   position: fixed;
-  inset: 8px 12px;
+  top: 54px;
+  right: 12px;
+  bottom: 8px;
+  left: 12px;
   z-index: 2147483000;
   grid-template-rows: auto minmax(0, 1fr);
   width: auto;
-  height: calc(100dvh - 16px);
+  height: auto;
   max-width: none;
-  max-height: calc(100dvh - 16px);
+  max-height: none;
   overflow: hidden;
   padding: 10px;
   border-color: rgba(147, 197, 253, 0.92);
@@ -51257,6 +51260,24 @@ body.is-signature-review-open::before {
   gap: 12px;
   min-height: 0;
   overflow: auto;
+  padding-bottom: 72px;
+}
+
+.signatures-review-panel:not([hidden]) .signatures-review-actions {
+  position: fixed;
+  right: 28px;
+  bottom: 18px;
+  z-index: 2147483001;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 8px;
+  border: 1px solid rgba(191, 219, 254, 0.88);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.2);
 }
 
 .signature-review-workspace {

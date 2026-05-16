@@ -188,7 +188,13 @@ public final class NativeMessagingMain {
             provider.put("present", probe.present());
             provider.put("message", probe.message());
             provider.put("subject", probe.subject());
+            provider.put("subjectDn", probe.subject());
+            provider.put("parsedSerialNumber", probe.serialNumber());
+            provider.put("serialNumber", probe.serialNumber());
+            provider.put("parsedOib", probe.oib());
             provider.put("oib", probe.oib());
+            provider.put("alias", probe.alias());
+            provider.put("keyAlgorithm", probe.keyAlgorithm());
             providers.add(provider);
         }
         response.put("success", true);
@@ -382,11 +388,16 @@ public final class NativeMessagingMain {
 
             try (TokenService.Credential credential = tokenService.resolveCredentialWithGuiPin(config)) {
                 String signerOib = credential.oib();
-                if (signerOib.isBlank()) {
-                    return errorResponse(jobId, "TOKEN_NOT_AVAILABLE", "Iz certifikata nije moguce procitati OIB/SERIALNUMBER potpisnika.");
-                }
                 response.put("signerOib", signerOib);
+                response.put("certificateOibFound", !signerOib.isBlank());
+                if (signerOib.isBlank()) {
+                    response.put("certificateWarningCode", "CERTIFICATE_OIB_NOT_FOUND");
+                    response.put("certificateWarning", "Iz certifikata nije moguce procitati OIB/SERIALNUMBER potpisnika. Ako job ima preferredField, potpisivanje se nastavlja po tom fieldu.");
+                }
                 response.put("signerName", credential.commonName());
+                response.put("certificateSerialNumber", credential.serialNumber());
+                response.put("certificateSubject", credential.subject());
+                response.put("alias", credential.alias());
                 response.put("provider", credential.providerName());
 
                 for (JsonNode item : job.path("items")) {
@@ -643,6 +654,10 @@ public final class NativeMessagingMain {
         String itemOib = text(item, "signatureFieldOib", "");
         if (!itemOib.isBlank()) {
             return itemOib;
+        }
+        String preferredOib = new PdfSignatureFieldService().extractOibFromFieldName(text(item, "preferredField", ""));
+        if (!preferredOib.isBlank()) {
+            return preferredOib;
         }
         return signerOib == null ? "" : signerOib;
     }

@@ -28,6 +28,7 @@ import java.security.cert.X509Certificate;
 import java.security.spec.MGF1ParameterSpec;
 import java.security.spec.PSSParameterSpec;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Locale;
@@ -36,6 +37,10 @@ import java.util.regex.Pattern;
 
 public final class TokenService {
     private static final Pattern ELEVEN_DIGITS = Pattern.compile("(?<!\\d)(\\d{11})(?!\\d)");
+    private static final Pattern WORD_ELEVEN_DIGITS = Pattern.compile("\\b(\\d{11})\\b");
+    private static final Pattern PNOHR_OIB = Pattern.compile("(?i)\\bPNOHR[-\\s:/]*([0-9]{11})\\b");
+    private static final Pattern HR_OIB = Pattern.compile("(?i)\\bHR[-\\s:/]*([0-9]{11})\\b");
+    private static final Pattern OIB_ATTRIBUTE = Pattern.compile("(?i)\\bOIB\\s*[:=\\-]?\\s*([0-9]{11})\\b");
     private static final Pattern HEX_DER_VALUE = Pattern.compile("#([0-9A-Fa-f]{4,})");
 
     public Credential resolveCredentialWithGuiPin(SignerConfig config) throws SignatureBridgeException {
@@ -274,8 +279,18 @@ public final class TokenService {
                 String alias = aliases.nextElement();
                 Certificate certificate = keyStore.getCertificate(alias);
                 if (certificate instanceof X509Certificate x509) {
-                    String subject = x509.getSubjectX500Principal().getName();
-                    return new TokenProbe(tag, true, "Token je detektiran.", subject, extractOibFromCertificate(x509));
+                    CertificateIdentity identity = inspectCertificate(x509);
+                    String keyAlgorithm = x509.getPublicKey() == null ? "" : x509.getPublicKey().getAlgorithm();
+                    return new TokenProbe(
+                            tag,
+                            true,
+                            "Token je detektiran.",
+                            identity.subjectDn(),
+                            identity.oib(),
+                            identity.serialNumber(),
+                            alias,
+                            keyAlgorithm
+                    );
                 }
             }
             return new TokenProbe(tag, true, "Token je detektiran, ali certifikat nije citljiv bez PIN-a.", "", "");
@@ -455,8 +470,16 @@ public final class TokenService {
     }
 
     public static String extractOibFromCertificate(X509Certificate certificate) {
+        return inspectCertificate(certificate).oib();
+    }
+
+    public static String extractSerialNumberFromCertificate(X509Certificate certificate) {
+        return inspectCertificate(certificate).serialNumber();
+    }
+
+    public static CertificateIdentity inspectCertificate(X509Certificate certificate) {
         if (certificate == null) {
-            return "";
+            return new CertificateIdentity("", "", "", List.of());
         }
         List<String> subjects = new ArrayList<>();
         X500Principal principal = certificate.getSubjectX500Principal();
@@ -465,29 +488,100 @@ public final class TokenService {
         subjects.add(principal.getName(X500Principal.CANONICAL));
         subjects.add(certificate.getSubjectDN().getName());
 
+        List<String> candidates = new ArrayList<>(subjects);
+        List<String> serialCandidates = new ArrayList<>();
         for (String subject : subjects) {
-            for (String key : List.of("SERIALNUMBER", "serialNumber", "2.5.4.5")) {
-                String fromSerial = extractOib(extractField(subject, key));
-                if (!fromSerial.isBlank()) {
-                    return fromSerial;
+            for (String key : List.of("SERIALNUMBER", "serialNumber", "2.5.4.5", "OID.2.5.4.5", "OIB")) {
+                String serialValue = extractField(subject, key);
+                if (!serialValue.isBlank()) {
+                    serialCandidates.add(serialValue);
+                    candidates.add(serialValue);
                 }
             }
         }
 
-        for (String subject : subjects) {
-            String fromSubject = extractOib(subject);
-            if (!fromSubject.isBlank()) {
-                return fromSubject;
+        for (String san : subjectAlternativeNameValues(certificate)) {
+            candidates.add(san);
+            String serialLike = extractSerialLikeValue(san);
+            if (!serialLike.isBlank()) {
+                serialCandidates.add(serialLike);
+                candidates.add(serialLike);
+            }
+        }
+
+        String serialNumber = "";
+        for (String serialCandidate : serialCandidates) {
+            String decoded = normalizeCandidateText(serialCandidate);
+            if (!decoded.isBlank()) {
+                serialNumber = decoded;
+                break;
+            }
+        }
+
+        String parsedOib = "";
+        for (String candidate : candidates) {
+            parsedOib = extractOib(candidate);
+            if (!parsedOib.isBlank()) {
+                break;
+            }
+        }
+
+        return new CertificateIdentity(
+                subjects.isEmpty() ? "" : subjects.get(0),
+                serialNumber,
+                parsedOib,
+                List.copyOf(candidates)
+        );
+    }
+
+    public static String extractOib(String value) {
+        String combined = normalizeCandidateText(value);
+
+        for (Pattern pattern : List.of(OIB_ATTRIBUTE, PNOHR_OIB, HR_OIB, ELEVEN_DIGITS, WORD_ELEVEN_DIGITS)) {
+            Matcher matcher = pattern.matcher(combined);
+            if (matcher.find()) {
+                return matcher.group(1);
             }
         }
         return "";
     }
 
-    public static String extractOib(String value) {
+    private static String normalizeCandidateText(String value) {
         String raw = String.valueOf(value == null ? "" : value);
         String decoded = decodeEmbeddedDerHex(raw);
-        Matcher matcher = ELEVEN_DIGITS.matcher(raw + " " + decoded);
-        return matcher.find() ? matcher.group(1) : "";
+        return (raw + " " + decoded).trim();
+    }
+
+    private static List<String> subjectAlternativeNameValues(X509Certificate certificate) {
+        List<String> values = new ArrayList<>();
+        try {
+            Collection<List<?>> names = certificate.getSubjectAlternativeNames();
+            if (names == null) {
+                return values;
+            }
+            for (List<?> name : names) {
+                if (name == null || name.size() < 2) {
+                    continue;
+                }
+                Object value = name.get(1);
+                if (value instanceof byte[] bytes) {
+                    values.add(decodeDerString(bytes));
+                    values.add(bytesToHexString(bytes));
+                } else {
+                    values.add(String.valueOf(value));
+                }
+                values.add(String.valueOf(name));
+            }
+        } catch (Exception ignored) {
+            // Some tokens do not expose SAN without additional middleware support.
+        }
+        return values;
+    }
+
+    private static String extractSerialLikeValue(String value) {
+        String normalized = normalizeCandidateText(value);
+        Matcher matcher = Pattern.compile("(?i)\\b(?:SERIALNUMBER|2\\.5\\.4\\.5|OIB)\\s*[:=]\\s*([^,;\\]]+)").matcher(normalized);
+        return matcher.find() ? matcher.group(1).trim() : "";
     }
 
     private static String rdnValueToString(Object value) {
@@ -555,6 +649,17 @@ public final class TokenService {
         return bytes;
     }
 
+    private static String bytesToHexString(byte[] bytes) {
+        if (bytes == null || bytes.length == 0) {
+            return "";
+        }
+        StringBuilder out = new StringBuilder("#");
+        for (byte value : bytes) {
+            out.append(String.format("%02X", value));
+        }
+        return out.toString();
+    }
+
     private static boolean isTokenAbsent(Throwable error) {
         String flattened = flattenThrowable(error).toLowerCase(Locale.ROOT);
         return flattened.contains("ckr_token_not_present")
@@ -607,7 +712,22 @@ public final class TokenService {
         }
     }
 
-    public record TokenProbe(String provider, boolean present, String message, String subject, String oib) {
+    public record CertificateIdentity(String subjectDn, String serialNumber, String oib, List<String> sources) {
+    }
+
+    public record TokenProbe(
+            String provider,
+            boolean present,
+            String message,
+            String subject,
+            String oib,
+            String serialNumber,
+            String alias,
+            String keyAlgorithm
+    ) {
+        public TokenProbe(String provider, boolean present, String message, String subject, String oib) {
+            this(provider, present, message, subject, oib, "", "", "");
+        }
     }
 
     private record ProviderSpec(String tag, String displayName, String libraryPath, Integer slotIndex) {
@@ -682,7 +802,7 @@ public final class TokenService {
         }
 
         public String serialNumber() {
-            return extractField(subject, "SERIALNUMBER");
+            return extractSerialNumberFromCertificate(certificate());
         }
 
         public String oib() {
