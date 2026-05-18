@@ -30925,13 +30925,28 @@ function isSignatureReviewDecisionActionable(item = {}) {
   return item.status !== "signed" && item.status !== "error" && item.status !== "locked";
 }
 
-function getSignatureReviewDocumentActionItems(activeItem = {}) {
-  const documentId = String(activeItem?.documentId || "").trim();
-  if (!documentId) {
+function getSignatureReviewSignerGroupKey(item = {}) {
+  const documentId = String(item?.documentId || item?.itemId || item?.fileName || "document").trim();
+  const signerIdentity = normalizeSignatureIdentityKey(
+    item?.signerUserId
+      || item?.signerEmail
+      || item?.signatureFieldOib
+      || item?.signerName
+      || item?.signer
+      || "",
+  );
+  const fallback = normalizeSignatureIdentityKey(getSignatureReviewDecisionKey(item) || item?.reviewKey || item?.fieldName || "");
+  const identity = signerIdentity || fallback;
+  return identity ? `${documentId}:${identity}` : "";
+}
+
+function getSignatureReviewSignerActionItems(activeItem = {}) {
+  const signerGroupKey = getSignatureReviewSignerGroupKey(activeItem);
+  if (!signerGroupKey) {
     return isSignatureReviewDecisionActionable(activeItem) ? [activeItem] : [];
   }
   return getSignatureReviewOrderedItems().filter((item) => (
-    String(item.documentId || "").trim() === documentId
+    getSignatureReviewSignerGroupKey(item) === signerGroupKey
     && isSignatureReviewDecisionActionable(item)
   ));
 }
@@ -31208,10 +31223,10 @@ function createSignatureReviewActiveActions(activeItem = {}, activeDecision = {}
   const wrap = document.createElement("section");
   wrap.className = "signature-review-active-actions";
   const decisionKey = getSignatureReviewDecisionKey(activeItem);
-  const documentActionItems = getSignatureReviewDocumentActionItems(activeItem);
-  const activeDocumentHasMultipleSignatures = documentActionItems.length > 1;
-  const signerSummary = activeDocumentHasMultipleSignatures
-    ? documentActionItems.map((item) => `${item.signer || "Potpisnik"} — ${item.roleLabel || item.label || "Potpisnik"}`).join("; ")
+  const signerActionItems = getSignatureReviewSignerActionItems(activeItem);
+  const activeSignerHasMultipleSignatures = signerActionItems.length > 1;
+  const signerRolesSummary = activeSignerHasMultipleSignatures
+    ? signerActionItems.map((item) => item.roleLabel || item.label || "Potpisnik").join("; ")
     : `${activeItem.signer || "Potpisnik"} — ${activeItem.roleLabel || activeItem.label || "Potpisnik"}`;
 
   const signerLine = document.createElement("div");
@@ -31219,9 +31234,9 @@ function createSignatureReviewActiveActions(activeItem = {}, activeDecision = {}
   const signerIcon = document.createElement("span");
   signerIcon.innerHTML = getWorkOrderIconMarkup("signature");
   const signerCopy = document.createElement("span");
-  signerCopy.textContent = activeDocumentHasMultipleSignatures
-    ? `${activeItem.fileName || "PDF dokument"} — svi potpisi (${documentActionItems.length}): ${signerSummary}`
-    : signerSummary;
+  signerCopy.textContent = activeSignerHasMultipleSignatures
+    ? `${activeItem.signer || "Potpisnik"} — ${signerActionItems.length} potpisa: ${signerRolesSummary}`
+    : signerRolesSummary;
   signerLine.append(signerIcon, signerCopy);
 
   const decisionActions = document.createElement("div");
@@ -31229,15 +31244,15 @@ function createSignatureReviewActiveActions(activeItem = {}, activeDecision = {}
   [
     [
       "approved_for_signing",
-      activeDocumentHasMultipleSignatures ? `OK za sve (${documentActionItems.length})` : "OK za potpis",
-      activeDocumentHasMultipleSignatures ? "Svi potpisi ovog PDF-a idu u aktivni signing flow." : "Dokument ide u aktivni signing flow.",
+      activeSignerHasMultipleSignatures ? `OK za potpisnika (${signerActionItems.length})` : "OK za potpis",
+      activeSignerHasMultipleSignatures ? "Svi potpisi ovog potpisnika u ovom PDF-u idu u aktivni signing flow." : "Potpis ide u aktivni signing flow.",
       "status",
       "is-ok",
     ],
     [
       "rejected_with_comment",
-      activeDocumentHasMultipleSignatures ? "Ne potpisuj sve" : "Ne potpisuj",
-      activeDocumentHasMultipleSignatures ? "Vrati cijeli PDF autoru na doradu uz obavezan razlog." : "Vrati dokument autoru na doradu uz obavezan razlog.",
+      activeSignerHasMultipleSignatures ? "Ne potpisuj potpisnika" : "Ne potpisuj",
+      activeSignerHasMultipleSignatures ? "Vrati potpise ovog potpisnika autoru na doradu uz obavezan razlog." : "Vrati potpis autoru na doradu uz obavezan razlog.",
       "trash",
       "is-reject",
     ],
@@ -31250,10 +31265,10 @@ function createSignatureReviewActiveActions(activeItem = {}, activeDecision = {}
       activeDecision.status === status ? "is-active" : "",
     ].filter(Boolean).join(" ");
     button.innerHTML = `${getWorkOrderIconMarkup(iconName)}<span><strong>${label}</strong><small>${description}</small></span>`;
-    button.disabled = documentActionItems.length === 0;
+    button.disabled = signerActionItems.length === 0;
     button.addEventListener("click", () => {
       if (status === "approved_for_signing") {
-        updateSignatureReviewDecisionsForItems(documentActionItems, {
+        updateSignatureReviewDecisionsForItems(signerActionItems, {
           status,
           needsComment: false,
           comment: "",
@@ -31261,7 +31276,7 @@ function createSignatureReviewActiveActions(activeItem = {}, activeDecision = {}
         moveToNextSignatureReviewItem(activeItem.reviewKey);
         return;
       }
-      updateSignatureReviewDecisionsForItems(documentActionItems, { status, needsComment: !String(activeDecision.comment || "").trim() });
+      updateSignatureReviewDecisionsForItems(signerActionItems, { status, needsComment: !String(activeDecision.comment || "").trim() });
       window.setTimeout(() => {
         document.querySelector(`[data-signature-review-comment="${CSS.escape(decisionKey)}"]`)?.focus();
       }, 0);
@@ -31278,7 +31293,7 @@ function createSignatureReviewActiveActions(activeItem = {}, activeDecision = {}
   comment.hidden = activeDecision.status !== "rejected_with_comment";
   comment.required = activeDecision.status === "rejected_with_comment";
   comment.addEventListener("input", (event) => {
-    const commentTargets = activeDocumentHasMultipleSignatures ? documentActionItems : [activeItem];
+    const commentTargets = activeSignerHasMultipleSignatures ? signerActionItems : [activeItem];
     const decisions = { ...(state.signatures.review.decisions || {}) };
     commentTargets.forEach((item) => {
       const key = getSignatureReviewDecisionKey(item);
@@ -31686,7 +31701,7 @@ function renderSignatureReviewPanel() {
     }
     const documentGroup = group.documents.get(documentKey);
     documentGroup.items.push(item);
-    const personKey = getSignatureReviewDecisionKey(item);
+    const personKey = getSignatureReviewSignerGroupKey(item) || getSignatureReviewDecisionKey(item);
     if (!documentGroup.people.has(personKey)) {
       documentGroup.people.set(personKey, {
         key: personKey,
@@ -31719,138 +31734,93 @@ function renderSignatureReviewPanel() {
       documentTitle.className = "signature-review-document-title";
       documentTitle.textContent = documentGroup.fileName || "zapisnik.pdf";
 
-      const documentPeopleGroups = Array.from(documentGroup.people.values());
-      const documentRepresentatives = documentPeopleGroups
-        .map((personGroup) => personGroup.representative)
-        .filter(Boolean);
-      const actionableRepresentatives = documentRepresentatives.filter((item) => isSignatureReviewDecisionActionable(item));
-      const approvedRepresentatives = actionableRepresentatives.filter((item) => (
-        getSignatureReviewDecisionForItem(item).status === "approved_for_signing"
-      ));
-      const changedRepresentatives = actionableRepresentatives.filter((item) => (
-        getSignatureReviewDecisionForItem(item).status !== "pending_review"
-      ));
-
-      const documentActions = document.createElement("div");
-      documentActions.className = "signature-review-document-group-actions";
-      const approveAllButton = document.createElement("button");
-      approveAllButton.type = "button";
-      approveAllButton.className = "signature-review-document-group-action is-ok";
-      approveAllButton.textContent = actionableRepresentatives.length > 1
-        ? `OK sve (${actionableRepresentatives.length})`
-        : "OK";
-      approveAllButton.disabled = actionableRepresentatives.length === 0
-        || approvedRepresentatives.length === actionableRepresentatives.length
-        || review.status === "signing";
-      approveAllButton.addEventListener("click", (event) => {
-        event.stopPropagation();
-        updateSignatureReviewDecisionsForItems(actionableRepresentatives, {
-          status: "approved_for_signing",
-          needsComment: false,
-          comment: "",
-        });
-      });
-      const resetAllButton = document.createElement("button");
-      resetAllButton.type = "button";
-      resetAllButton.className = "signature-review-document-group-action";
-      resetAllButton.textContent = "Poništi";
-      resetAllButton.disabled = changedRepresentatives.length === 0 || review.status === "signing";
-      resetAllButton.addEventListener("click", (event) => {
-        event.stopPropagation();
-        updateSignatureReviewDecisionsForItems(actionableRepresentatives, {
-          status: "pending_review",
-          needsComment: false,
-          comment: "",
-        });
-      });
-      documentActions.append(approveAllButton, resetAllButton);
-      documentHead.append(documentTitle, documentActions);
+      documentHead.append(documentTitle);
       documentShell.append(documentHead);
 
-      const personSummaries = Array.from(documentGroup.people.values()).map((personGroup) => {
-        const item = personGroup.representative;
-        const decision = getSignatureReviewDecisionForItem(item);
-        const effectiveStatus = personGroup.items.some((entry) => entry.status === "locked")
-          ? "locked"
-          : personGroup.items.some((entry) => entry.status === "error")
-            ? "error"
-            : personGroup.items.every((entry) => entry.status === "signed")
-              ? "signed"
-              : decision.status;
-        return {
-          personGroup,
-          item,
-          effectiveStatus,
-          signer: item?.signer || "Potpisnik",
-          roleLabel: item?.roleLabel || item?.label || "Potpisnik",
-        };
-      }).filter((summary) => summary.item);
-      const documentStatuses = personSummaries.map((summary) => summary.effectiveStatus);
-      const documentEffectiveStatus = documentStatuses.some((status) => status === "error")
-        ? "error"
-        : documentStatuses.some((status) => status === "locked")
-          ? "locked"
-          : documentStatuses.length > 0 && documentStatuses.every((status) => status === "signed")
-            ? "signed"
-            : documentStatuses.length > 0 && documentStatuses.every((status) => status === "approved_for_signing")
-              ? "approved_for_signing"
-              : documentStatuses.length > 0 && documentStatuses.every((status) => status === "rejected_with_comment")
-                ? "rejected_with_comment"
-                : documentStatuses.length > 0 && documentStatuses.every((status) => status === "pending_review")
-                  ? "pending_review"
-                  : "partial";
-      const activeReviewKey = String(activeItem?.reviewKey || "");
-      const isDocumentActive = personSummaries.some((summary) => (
-        summary.personGroup.items.some((entry) => String(entry.reviewKey || "") === activeReviewKey)
-      ));
-      const preferredSummary = personSummaries.find((summary) => summary.effectiveStatus === "pending_review")
-        || personSummaries.find((summary) => isSignatureReviewDecisionActionable(summary.item))
-        || personSummaries[0];
-      const signerNames = [...new Set(personSummaries.map((summary) => summary.signer).filter(Boolean))];
-
-      const row = document.createElement("button");
-      row.type = "button";
-      row.className = [
-        "signature-review-document",
-        "is-document-bundle",
-        `is-${documentEffectiveStatus}`,
-        isDocumentActive ? "is-active" : "",
-      ].filter(Boolean).join(" ");
-      row.addEventListener("click", () => {
-        if (preferredSummary?.item?.reviewKey) {
-          activateSignatureReviewItem(preferredSummary.item.reviewKey);
+      Array.from(documentGroup.people.values()).forEach((personGroup) => {
+        const signerItems = personGroup.items.map((item) => {
+          const decision = getSignatureReviewDecisionForItem(item);
+          const effectiveStatus = item.status === "locked"
+            ? "locked"
+            : item.status === "error"
+              ? "error"
+              : item.status === "signed"
+                ? "signed"
+                : decision.status;
+          return {
+            item,
+            effectiveStatus,
+            signer: item?.signer || "Potpisnik",
+            roleLabel: item?.roleLabel || item?.label || "Potpisnik",
+          };
+        }).filter((summary) => summary.item);
+        if (signerItems.length === 0) {
+          return;
         }
-      });
+        const signerStatuses = signerItems.map((summary) => summary.effectiveStatus);
+        const signerEffectiveStatus = signerStatuses.some((status) => status === "error")
+          ? "error"
+          : signerStatuses.some((status) => status === "locked")
+            ? "locked"
+            : signerStatuses.length > 0 && signerStatuses.every((status) => status === "signed")
+              ? "signed"
+              : signerStatuses.length > 0 && signerStatuses.every((status) => status === "approved_for_signing")
+                ? "approved_for_signing"
+                : signerStatuses.length > 0 && signerStatuses.every((status) => status === "rejected_with_comment")
+                  ? "rejected_with_comment"
+                  : signerStatuses.length > 0 && signerStatuses.every((status) => status === "pending_review")
+                    ? "pending_review"
+                    : "partial";
+        const activeReviewKey = String(activeItem?.reviewKey || "");
+        const isSignerActive = signerItems.some((summary) => String(summary.item.reviewKey || "") === activeReviewKey);
+        const preferredSummary = signerItems.find((summary) => summary.effectiveStatus === "pending_review")
+          || signerItems.find((summary) => isSignatureReviewDecisionActionable(summary.item))
+          || signerItems[0];
 
-      const copy = document.createElement("span");
-      copy.className = "signature-review-document-copy";
-      const doc = document.createElement("strong");
-      doc.textContent = signerNames.length === 1
-        ? `${signerNames[0]} — ${personSummaries.length} ${personSummaries.length === 1 ? "potpis" : "potpisa"}`
-        : `${signerNames.length || personSummaries.length} potpisnika — ${personSummaries.length} potpisa`;
-      const signers = document.createElement("span");
-      signers.className = "signature-review-document-signers";
-      personSummaries.forEach((summary) => {
-        const signerLine = document.createElement("span");
-        signerLine.className = "signature-review-document-signer";
-        const signerRole = document.createElement("span");
-        signerRole.textContent = `${summary.signer} — ${summary.roleLabel}`;
-        const signerStatus = document.createElement("small");
-        signerStatus.textContent = getSignatureReviewStatusLabel(summary.effectiveStatus);
-        signerLine.append(signerRole, signerStatus);
-        signers.append(signerLine);
-      });
-      const help = document.createElement("small");
-      help.textContent = personSummaries.find((summary) => summary.item.error)?.item.error || "Klikni za PDF pregled dokumenta.";
-      copy.append(doc, signers, help);
+        const row = document.createElement("button");
+        row.type = "button";
+        row.className = [
+          "signature-review-document",
+          "is-signer-bundle",
+          `is-${signerEffectiveStatus}`,
+          isSignerActive ? "is-active" : "",
+        ].filter(Boolean).join(" ");
+        row.addEventListener("click", () => {
+          if (preferredSummary?.item?.reviewKey) {
+            activateSignatureReviewItem(preferredSummary.item.reviewKey);
+          }
+        });
 
-      const badge = document.createElement("span");
-      badge.className = `signature-review-status is-${documentEffectiveStatus}`;
-      badge.textContent = documentEffectiveStatus === "approved_for_signing" && personSummaries.length > 1
-        ? `OK sve (${personSummaries.length})`
-        : getSignatureReviewStatusLabel(documentEffectiveStatus);
-      row.append(copy, badge);
-      documentShell.append(row);
+        const copy = document.createElement("span");
+        copy.className = "signature-review-document-copy";
+        const doc = document.createElement("strong");
+        doc.textContent = signerItems.length > 1
+          ? `${signerItems[0].signer} — ${signerItems.length} potpisa`
+          : signerItems[0].signer;
+        const signers = document.createElement("span");
+        signers.className = "signature-review-document-signers";
+        signerItems.forEach((summary) => {
+          const signerLine = document.createElement("span");
+          signerLine.className = "signature-review-document-signer";
+          const signerRole = document.createElement("span");
+          signerRole.textContent = summary.roleLabel;
+          const signerStatus = document.createElement("small");
+          signerStatus.textContent = getSignatureReviewStatusLabel(summary.effectiveStatus);
+          signerLine.append(signerRole, signerStatus);
+          signers.append(signerLine);
+        });
+        const help = document.createElement("small");
+        help.textContent = signerItems.find((summary) => summary.item.error)?.item.error || "Klikni za PDF pregled dokumenta.";
+        copy.append(doc, signers, help);
+
+        const badge = document.createElement("span");
+        badge.className = `signature-review-status is-${signerEffectiveStatus}`;
+        badge.textContent = signerEffectiveStatus === "approved_for_signing" && signerItems.length > 1
+          ? `OK (${signerItems.length})`
+          : getSignatureReviewStatusLabel(signerEffectiveStatus);
+        row.append(copy, badge);
+        documentShell.append(row);
+      });
       list.append(documentShell);
     });
 
