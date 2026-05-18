@@ -30925,6 +30925,17 @@ function isSignatureReviewDecisionActionable(item = {}) {
   return item.status !== "signed" && item.status !== "error" && item.status !== "locked";
 }
 
+function getSignatureReviewDocumentActionItems(activeItem = {}) {
+  const documentId = String(activeItem?.documentId || "").trim();
+  if (!documentId) {
+    return isSignatureReviewDecisionActionable(activeItem) ? [activeItem] : [];
+  }
+  return getSignatureReviewOrderedItems().filter((item) => (
+    String(item.documentId || "").trim() === documentId
+    && isSignatureReviewDecisionActionable(item)
+  ));
+}
+
 function updateSignatureReviewDecisionsForItems(items = [], patch = {}) {
   const decisions = { ...(state.signatures.review.decisions || {}) };
   let changed = false;
@@ -31197,20 +31208,39 @@ function createSignatureReviewActiveActions(activeItem = {}, activeDecision = {}
   const wrap = document.createElement("section");
   wrap.className = "signature-review-active-actions";
   const decisionKey = getSignatureReviewDecisionKey(activeItem);
+  const documentActionItems = getSignatureReviewDocumentActionItems(activeItem);
+  const activeDocumentHasMultipleSignatures = documentActionItems.length > 1;
+  const signerSummary = activeDocumentHasMultipleSignatures
+    ? documentActionItems.map((item) => `${item.signer || "Potpisnik"} — ${item.roleLabel || item.label || "Potpisnik"}`).join("; ")
+    : `${activeItem.signer || "Potpisnik"} — ${activeItem.roleLabel || activeItem.label || "Potpisnik"}`;
 
   const signerLine = document.createElement("div");
   signerLine.className = "signature-review-decision-signer";
   const signerIcon = document.createElement("span");
   signerIcon.innerHTML = getWorkOrderIconMarkup("signature");
   const signerCopy = document.createElement("span");
-  signerCopy.textContent = `${activeItem.signer || "Potpisnik"} — ${activeItem.roleLabel || activeItem.label || "Potpisnik"}`;
+  signerCopy.textContent = activeDocumentHasMultipleSignatures
+    ? `${activeItem.fileName || "PDF dokument"} — svi potpisi (${documentActionItems.length}): ${signerSummary}`
+    : signerSummary;
   signerLine.append(signerIcon, signerCopy);
 
   const decisionActions = document.createElement("div");
   decisionActions.className = "signature-review-decision-actions";
   [
-    ["approved_for_signing", "OK za potpis", "Dokument ide u aktivni signing flow.", "status", "is-ok"],
-    ["rejected_with_comment", "Ne potpisuj", "Vrati dokument autoru na doradu uz obavezan razlog.", "trash", "is-reject"],
+    [
+      "approved_for_signing",
+      activeDocumentHasMultipleSignatures ? `OK za sve (${documentActionItems.length})` : "OK za potpis",
+      activeDocumentHasMultipleSignatures ? "Svi potpisi ovog PDF-a idu u aktivni signing flow." : "Dokument ide u aktivni signing flow.",
+      "status",
+      "is-ok",
+    ],
+    [
+      "rejected_with_comment",
+      activeDocumentHasMultipleSignatures ? "Ne potpisuj sve" : "Ne potpisuj",
+      activeDocumentHasMultipleSignatures ? "Vrati cijeli PDF autoru na doradu uz obavezan razlog." : "Vrati dokument autoru na doradu uz obavezan razlog.",
+      "trash",
+      "is-reject",
+    ],
   ].forEach(([status, label, description, iconName, tone]) => {
     const button = document.createElement("button");
     button.type = "button";
@@ -31220,13 +31250,18 @@ function createSignatureReviewActiveActions(activeItem = {}, activeDecision = {}
       activeDecision.status === status ? "is-active" : "",
     ].filter(Boolean).join(" ");
     button.innerHTML = `${getWorkOrderIconMarkup(iconName)}<span><strong>${label}</strong><small>${description}</small></span>`;
-    button.disabled = activeItem.status === "signed" || activeItem.status === "error" || activeItem.status === "locked";
+    button.disabled = documentActionItems.length === 0;
     button.addEventListener("click", () => {
       if (status === "approved_for_signing") {
-        updateSignatureReviewItemDecisionAndAdvance(activeItem, status);
+        updateSignatureReviewDecisionsForItems(documentActionItems, {
+          status,
+          needsComment: false,
+          comment: "",
+        });
+        moveToNextSignatureReviewItem(activeItem.reviewKey);
         return;
       }
-      updateSignatureReviewDecisionForItem(activeItem, { status, needsComment: !String(activeDecision.comment || "").trim() });
+      updateSignatureReviewDecisionsForItems(documentActionItems, { status, needsComment: !String(activeDecision.comment || "").trim() });
       window.setTimeout(() => {
         document.querySelector(`[data-signature-review-comment="${CSS.escape(decisionKey)}"]`)?.focus();
       }, 0);
@@ -31243,14 +31278,19 @@ function createSignatureReviewActiveActions(activeItem = {}, activeDecision = {}
   comment.hidden = activeDecision.status !== "rejected_with_comment";
   comment.required = activeDecision.status === "rejected_with_comment";
   comment.addEventListener("input", (event) => {
-    const key = decisionKey;
-    state.signatures.review.decisions = {
-      ...state.signatures.review.decisions,
-      [key]: {
+    const commentTargets = activeDocumentHasMultipleSignatures ? documentActionItems : [activeItem];
+    const decisions = { ...(state.signatures.review.decisions || {}) };
+    commentTargets.forEach((item) => {
+      const key = getSignatureReviewDecisionKey(item);
+      if (!key) return;
+      decisions[key] = {
         ...getSignatureReviewDecision(key),
         comment: event.currentTarget.value,
         needsComment: !String(event.currentTarget.value || "").trim(),
-      },
+      };
+    });
+    state.signatures.review.decisions = {
+      ...decisions,
     };
   });
 
