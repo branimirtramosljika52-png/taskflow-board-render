@@ -31766,42 +31766,91 @@ function renderSignatureReviewPanel() {
       documentActions.append(approveAllButton, resetAllButton);
       documentHead.append(documentTitle, documentActions);
       documentShell.append(documentHead);
-      Array.from(documentGroup.people.values()).forEach((personGroup) => {
-      const item = personGroup.representative;
-      const decision = getSignatureReviewDecisionForItem(item);
-      const groupStatus = personGroup.items.some((entry) => entry.status === "locked")
-        ? "locked"
-        : personGroup.items.some((entry) => entry.status === "error")
-          ? "error"
-          : personGroup.items.every((entry) => entry.status === "signed")
+
+      const personSummaries = Array.from(documentGroup.people.values()).map((personGroup) => {
+        const item = personGroup.representative;
+        const decision = getSignatureReviewDecisionForItem(item);
+        const effectiveStatus = personGroup.items.some((entry) => entry.status === "locked")
+          ? "locked"
+          : personGroup.items.some((entry) => entry.status === "error")
+            ? "error"
+            : personGroup.items.every((entry) => entry.status === "signed")
+              ? "signed"
+              : decision.status;
+        return {
+          personGroup,
+          item,
+          effectiveStatus,
+          signer: item?.signer || "Potpisnik",
+          roleLabel: item?.roleLabel || item?.label || "Potpisnik",
+        };
+      }).filter((summary) => summary.item);
+      const documentStatuses = personSummaries.map((summary) => summary.effectiveStatus);
+      const documentEffectiveStatus = documentStatuses.some((status) => status === "error")
+        ? "error"
+        : documentStatuses.some((status) => status === "locked")
+          ? "locked"
+          : documentStatuses.length > 0 && documentStatuses.every((status) => status === "signed")
             ? "signed"
-            : decision.status;
-      const effectiveStatus = groupStatus;
+            : documentStatuses.length > 0 && documentStatuses.every((status) => status === "approved_for_signing")
+              ? "approved_for_signing"
+              : documentStatuses.length > 0 && documentStatuses.every((status) => status === "rejected_with_comment")
+                ? "rejected_with_comment"
+                : documentStatuses.length > 0 && documentStatuses.every((status) => status === "pending_review")
+                  ? "pending_review"
+                  : "partial";
+      const activeReviewKey = String(activeItem?.reviewKey || "");
+      const isDocumentActive = personSummaries.some((summary) => (
+        summary.personGroup.items.some((entry) => String(entry.reviewKey || "") === activeReviewKey)
+      ));
+      const preferredSummary = personSummaries.find((summary) => summary.effectiveStatus === "pending_review")
+        || personSummaries.find((summary) => isSignatureReviewDecisionActionable(summary.item))
+        || personSummaries[0];
+      const signerNames = [...new Set(personSummaries.map((summary) => summary.signer).filter(Boolean))];
+
       const row = document.createElement("button");
       row.type = "button";
       row.className = [
         "signature-review-document",
-        `is-${effectiveStatus}`,
-        String(activeItem?.reviewKey || "") === String(item.reviewKey || "") ? "is-active" : "",
+        "is-document-bundle",
+        `is-${documentEffectiveStatus}`,
+        isDocumentActive ? "is-active" : "",
       ].filter(Boolean).join(" ");
-      row.addEventListener("click", () => activateSignatureReviewItem(item.reviewKey));
+      row.addEventListener("click", () => {
+        if (preferredSummary?.item?.reviewKey) {
+          activateSignatureReviewItem(preferredSummary.item.reviewKey);
+        }
+      });
 
       const copy = document.createElement("span");
       copy.className = "signature-review-document-copy";
       const doc = document.createElement("strong");
-      doc.textContent = item.signer || "Potpisnik";
-      const line = document.createElement("span");
-      line.textContent = `${item.roleLabel || item.label || "Potpisnik"} — ${getSignatureReviewStatusLabel(effectiveStatus)}`;
+      doc.textContent = signerNames.length === 1
+        ? `${signerNames[0]} — ${personSummaries.length} ${personSummaries.length === 1 ? "potpis" : "potpisa"}`
+        : `${signerNames.length || personSummaries.length} potpisnika — ${personSummaries.length} potpisa`;
+      const signers = document.createElement("span");
+      signers.className = "signature-review-document-signers";
+      personSummaries.forEach((summary) => {
+        const signerLine = document.createElement("span");
+        signerLine.className = "signature-review-document-signer";
+        const signerRole = document.createElement("span");
+        signerRole.textContent = `${summary.signer} — ${summary.roleLabel}`;
+        const signerStatus = document.createElement("small");
+        signerStatus.textContent = getSignatureReviewStatusLabel(summary.effectiveStatus);
+        signerLine.append(signerRole, signerStatus);
+        signers.append(signerLine);
+      });
       const help = document.createElement("small");
-      help.textContent = item.error || "Klikni za PDF pregled dokumenta.";
-      copy.append(doc, line, help);
+      help.textContent = personSummaries.find((summary) => summary.item.error)?.item.error || "Klikni za PDF pregled dokumenta.";
+      copy.append(doc, signers, help);
 
       const badge = document.createElement("span");
-      badge.className = `signature-review-status is-${effectiveStatus}`;
-      badge.textContent = getSignatureReviewStatusLabel(effectiveStatus);
+      badge.className = `signature-review-status is-${documentEffectiveStatus}`;
+      badge.textContent = documentEffectiveStatus === "approved_for_signing" && personSummaries.length > 1
+        ? `OK sve (${personSummaries.length})`
+        : getSignatureReviewStatusLabel(documentEffectiveStatus);
       row.append(copy, badge);
       documentShell.append(row);
-      });
       list.append(documentShell);
     });
 

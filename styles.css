@@ -51786,6 +51786,11 @@ body.is-signature-review-open::before {
   background: rgba(236, 253, 245, 0.72);
 }
 
+.signature-review-document.is-partial {
+  border-color: rgba(245, 158, 11, 0.38);
+  background: rgba(255, 251, 235, 0.72);
+}
+
 .signature-review-document.is-skipped_with_comment {
   border-color: rgba(245, 158, 11, 0.38);
   background: rgba(255, 251, 235, 0.72);
@@ -51823,6 +51828,25 @@ body.is-signature-review-open::before {
   overflow-wrap: anywhere;
   text-overflow: clip;
   white-space: normal;
+}
+
+.signature-review-document-signers {
+  display: grid;
+  gap: 3px;
+}
+
+.signature-review-document-signer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.signature-review-document-signer small {
+  color: #475569;
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
 }
 
 .signature-review-actions-row {
