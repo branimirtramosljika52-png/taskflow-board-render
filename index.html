@@ -3816,6 +3816,17 @@
 
             <p id="user-management-note" class="helper-copy people-management-copy" hidden></p>
 
+            <div id="people-user-sheets" class="people-user-sheets" role="tablist" aria-label="Prikaz korisnika">
+              <button type="button" class="people-user-sheet is-active" data-people-user-sheet="active" aria-selected="true">
+                <strong>Aktivni</strong>
+                <span id="people-user-active-count">0</span>
+              </button>
+              <button type="button" class="people-user-sheet" data-people-user-sheet="inactive" aria-selected="false">
+                <strong>Neaktivni</strong>
+                <span id="people-user-inactive-count">0</span>
+              </button>
+            </div>
+
             <div class="table-wrap people-directory-wrap">
               <table class="data-table people-directory-table">
                 <thead>
@@ -4386,18 +4397,36 @@
                     <div id="risk-assessment-measures" class="risk-assessment-repeat-list"></div>
                   </section>
 
-                  <section id="risk-assessment-block-jobs" class="risk-assessment-editor-section risk-assessment-subpanel" data-risk-assessment-block="jobs">
+                  <section id="risk-assessment-block-structure" class="risk-assessment-editor-section risk-assessment-subpanel" data-risk-assessment-block="structure">
                     <div class="risk-assessment-editor-section-head">
                       <div>
                         <span>08</span>
+                        <strong>Sistematizacija</strong>
+                      </div>
+                      <p>Hijerarhija organizacijskih jedinica, odgovorne osobe i povezani poslovi.</p>
+                    </div>
+                    <div class="offers-items-head">
+                      <div>
+                        <strong>Organizacijske jedinice</strong>
+                        <p class="inline-help">Dodaj jedinice i podjedinice, opise i odgovorne osobe. Poslove možeš povući u jedinicu.</p>
+                      </div>
+                      <button id="risk-assessment-add-unit" type="button" class="ghost-button">+ Jedinica</button>
+                    </div>
+                    <div id="risk-assessment-organization-units" class="risk-assessment-org-list"></div>
+                  </section>
+
+                  <section id="risk-assessment-block-jobs" class="risk-assessment-editor-section risk-assessment-subpanel" data-risk-assessment-block="jobs">
+                    <div class="risk-assessment-editor-section-head">
+                      <div>
+                        <span>09</span>
                         <strong>Poslovi i rizici</strong>
                       </div>
-                      <p>Obrada po poslovima, katalog opasnosti, procjena rizika i mjere po Prilogu 7.</p>
+                      <p>Radna mjesta, uvjeti rada, katalog opasnosti, procjena rizika i vizualni odabir OZO.</p>
                     </div>
                     <div class="offers-items-head">
                       <div>
                         <strong>Obrada po poslovima</strong>
-                        <p class="inline-help">ARMOR obrada po radnom mjestu: poslovi, posebni uvjeti, opasnosti, štetnosti, napori i mjere.</p>
+                        <p class="inline-help">Svaki posao je vezan uz organizacijsku jedinicu i nosi vlastite rizike, mjere i osobnu zaštitnu opremu.</p>
                       </div>
                       <button id="risk-assessment-add-job" type="button" class="ghost-button">+ Posao</button>
                     </div>
@@ -4407,6 +4436,17 @@
                       <span>Poruka / napomena klijenta</span>
                       <textarea id="risk-assessment-client-note" rows="3" placeholder="Vidljivo i u klijentskom pristupu."></textarea>
                     </label>
+                  </section>
+
+                  <section id="risk-assessment-block-overview" class="risk-assessment-editor-section risk-assessment-subpanel" data-risk-assessment-block="overview">
+                    <div class="risk-assessment-editor-section-head">
+                      <div>
+                        <span>10</span>
+                        <strong>Pregled</strong>
+                      </div>
+                      <p>Sažetak procjene po jedinicama, poslovima, rizicima, mjerama i OZO.</p>
+                    </div>
+                    <div id="risk-assessment-overview" class="risk-assessment-overview"></div>
                   </section>
 
                   <p id="risk-assessment-error" class="form-error" aria-live="polite"></p>
@@ -4425,7 +4465,9 @@
                 <button type="button" data-risk-assessment-jump="rules"><strong>Pravila</strong><span>ZNR pravila</span></button>
                 <button type="button" data-risk-assessment-jump="findings"><strong>Propusti</strong><span>Zaključak</span></button>
                 <button type="button" data-risk-assessment-jump="measures"><strong>Mjere</strong><span>Plan mjera</span></button>
+                <button type="button" data-risk-assessment-jump="structure"><strong>Struktura</strong><span>Jedinice</span></button>
                 <button type="button" data-risk-assessment-jump="jobs"><strong>Poslovi</strong><span>Rizici i ARMOR</span></button>
+                <button type="button" data-risk-assessment-jump="overview"><strong>Pregled</strong><span>Sažetak</span></button>
               </nav>
             </section>
           </section>

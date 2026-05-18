@@ -214,6 +214,79 @@ test("risk assessments keep detailed ARMOR job rows and eligibility data", () =>
   assert.equal(filtered.length, 1);
 });
 
+test("risk assessments keep organization units and PPE details", () => {
+  const state = buildState();
+  const assessment = createRiskAssessment(
+    {
+      organizationId: "org-1",
+      companyId: "company-1",
+      locationId: "location-1",
+      title: "Procjena rizika - sistematizacija",
+      organizationUnits: [
+        {
+          id: "unit-production",
+          name: "Proizvodnja",
+          description: "Organizacijska jedinica pogona.",
+          responsiblePerson: "Voditelj pogona",
+          workerCount: "12",
+        },
+      ],
+      jobs: [
+        {
+          organizationUnitId: "unit-production",
+          status: "ready",
+          jobTitle: "Operater postrojenja",
+          workplace: "Pogon",
+          shortDescription: "Operater postrojenja.",
+          workerCount: "3",
+          shiftWork: true,
+          trainings: "Osposobljavanje za rad na siguran nacin.",
+          medicalExams: "Pregled za posebne uvjete rada.",
+          ppeItems: [
+            {
+              catalogId: "safety-shoes",
+              name: "Zastitna obuca",
+              category: "Zastita nogu",
+              bodyPart: "feet",
+              norm: "HRN EN ISO 20345",
+              required: true,
+            },
+          ],
+          riskRows: [
+            {
+              code: "1.4.1",
+              category: "II. STETNOSTI",
+              group: "1. Kemijske stetnosti",
+              hazard: "Inertni zagusljivci",
+              source: "Spremnici i instalacije plina.",
+              possibleConsequences: "Gusenje i ozljeda.",
+              probability: "vv",
+              consequence: "ss",
+              riskLevel: "Veliki rizik",
+              existingMeasures: "Ventilacija i nadzor atmosfere.",
+              additionalMeasures: "Dodati alarm kisika.",
+              deadline: "30 dana",
+              responsiblePerson: "Voditelj pogona",
+              controlMethod: "Interna kontrola",
+            },
+          ],
+        },
+      ],
+    },
+    state,
+    () => "risk-organization-1",
+    () => "2026-05-02T08:00:00.000Z",
+  );
+
+  assert.equal(assessment.organizationUnits[0].name, "Proizvodnja");
+  assert.equal(assessment.jobs[0].organizationUnitId, "unit-production");
+  assert.equal(assessment.jobs[0].shiftWork, true);
+  assert.equal(assessment.jobs[0].ppeItems[0].norm, "HRN EN ISO 20345");
+  assert.equal(assessment.jobs[0].riskRows[0].source, "Spremnici i instalacije plina.");
+  assert.equal(filterRiskAssessments([assessment], { query: "Proizvodnja" }).length, 1);
+  assert.equal(filterRiskAssessments([assessment], { query: "20345" }).length, 1);
+});
+
 test("createCompany blocks duplicate OIB values", () => {
   const existing = [
     createCompany(

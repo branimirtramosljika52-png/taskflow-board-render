@@ -1945,7 +1945,9 @@ function mapRiskAssessmentEntry(row = {}, companiesById = new Map(), locationsBy
     conclusion: row.conclusion_text ?? "",
     clientNote: row.client_note ?? "",
     measures: parseJsonArray(row.measures_json),
+    organizationUnits: parseJsonArray(row.organization_units_json),
     jobs: parseJsonArray(row.jobs_json),
+    riskTemplates: parseJsonArray(row.risk_templates_json),
     attachments: parseJsonArray(row.attachments_json)
       .map((document) => mapStoredAttachmentDocument(document))
       .filter((document) => document.fileName && (document.dataUrl || document.storageUrl)),
@@ -3494,7 +3496,7 @@ async function fetchSnapshotFromConnection(connection) {
            assessment_date, revision_date, assessment_type, team_lead, collaborators,
            intro_text, work_process_description, general_data, computer_workplaces,
            basic_rules, special_rules, omissions_basic, omissions_special, conclusion_text,
-           client_note, measures_json, jobs_json, attachments_json, comments_json,
+           client_note, measures_json, organization_units_json, jobs_json, risk_templates_json, attachments_json, comments_json,
            created_by_user_id, created_by_label, created_at, updated_at
     FROM web_risk_assessments
     ORDER BY
@@ -6789,7 +6791,9 @@ export class MySqlSafetyRepository {
         conclusion_text LONGTEXT NULL,
         client_note TEXT NOT NULL,
         measures_json LONGTEXT NULL,
+        organization_units_json LONGTEXT NULL,
         jobs_json LONGTEXT NULL,
+        risk_templates_json LONGTEXT NULL,
         attachments_json LONGTEXT NULL,
         comments_json LONGTEXT NULL,
         created_by_user_id INT NULL,
@@ -7331,6 +7335,8 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_safety_authorization_settings", "notification_rules_json", "LONGTEXT NULL");
     await ensureColumnExists(this.pool, "web_safety_authorizations", "valid_forever", "TINYINT(1) NOT NULL DEFAULT 0 AFTER valid_until");
     await ensureColumnExists(this.pool, "web_safety_authorizations", "linked_service_catalog_ids_json", "LONGTEXT NULL AFTER linked_template_ids_json");
+    await ensureColumnExists(this.pool, "web_risk_assessments", "organization_units_json", "LONGTEXT NULL AFTER measures_json");
+    await ensureColumnExists(this.pool, "web_risk_assessments", "risk_templates_json", "LONGTEXT NULL AFTER jobs_json");
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS web_document_records (
         id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -9834,9 +9840,9 @@ export class MySqlSafetyRepository {
             (organization_id, company_id, location_id, assessment_number, title, status, assessment_date,
              revision_date, assessment_type, team_lead, collaborators, intro_text, work_process_description,
              general_data, computer_workplaces, basic_rules, special_rules, omissions_basic, omissions_special,
-             conclusion_text, client_note, measures_json, jobs_json, attachments_json, comments_json,
+             conclusion_text, client_note, measures_json, organization_units_json, jobs_json, risk_templates_json, attachments_json, comments_json,
              created_by_user_id, created_by_label)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
@@ -9861,7 +9867,9 @@ export class MySqlSafetyRepository {
           draft.conclusion,
           draft.clientNote,
           JSON.stringify(draft.measures ?? []),
+          JSON.stringify(draft.organizationUnits ?? []),
           JSON.stringify(draft.jobs ?? []),
+          JSON.stringify(draft.riskTemplates ?? []),
           JSON.stringify(preparedDocuments.nextDocuments ?? []),
           JSON.stringify(draft.comments ?? []),
           parseNullableInteger(draft.createdByUserId),
@@ -9917,7 +9925,7 @@ export class MySqlSafetyRepository {
               revision_date = ?, assessment_type = ?, team_lead = ?, collaborators = ?, intro_text = ?,
               work_process_description = ?, general_data = ?, computer_workplaces = ?, basic_rules = ?,
               special_rules = ?, omissions_basic = ?, omissions_special = ?, conclusion_text = ?,
-              client_note = ?, measures_json = ?, jobs_json = ?, attachments_json = ?, comments_json = ?
+              client_note = ?, measures_json = ?, organization_units_json = ?, jobs_json = ?, risk_templates_json = ?, attachments_json = ?, comments_json = ?
           WHERE id = ?
         `,
         [
@@ -9942,7 +9950,9 @@ export class MySqlSafetyRepository {
           next.conclusion,
           next.clientNote,
           JSON.stringify(next.measures ?? []),
+          JSON.stringify(next.organizationUnits ?? []),
           JSON.stringify(next.jobs ?? []),
+          JSON.stringify(next.riskTemplates ?? []),
           JSON.stringify(preparedDocuments.nextDocuments ?? []),
           JSON.stringify(next.comments ?? []),
           Number(id),

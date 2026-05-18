@@ -4740,6 +4740,43 @@ function normalizeRiskAssessmentMeasureItems(items = []) {
   })).filter((item) => item.measure || item.deadline || item.responsiblePerson || item.controlMethod);
 }
 
+function normalizeRiskAssessmentOrganizationUnits(items = []) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items.map((item, index) => {
+    const id = normalizeId(item?.id) || crypto.randomUUID();
+    return {
+      id,
+      parentId: normalizeId(item?.parentId),
+      order: Number.isFinite(Number(item?.order)) ? Number(item.order) : index + 1,
+      name: normalizeText(item?.name),
+      shortDescription: normalizeText(item?.shortDescription),
+      description: normalizeText(item?.description),
+      detailedDescription: normalizeText(item?.detailedDescription),
+      responsiblePerson: normalizeText(item?.responsiblePerson),
+      workerCount: normalizeText(item?.workerCount),
+      linkedJobIds: Array.from(new Set(
+        (Array.isArray(item?.linkedJobIds) ? item.linkedJobIds : [])
+          .map((value) => normalizeId(value))
+          .filter(Boolean),
+      )),
+      note: normalizeText(item?.note),
+      collapsed: normalizeBoolean(item?.collapsed, false),
+    };
+  }).filter((item) => (
+    item.name
+    || item.shortDescription
+    || item.description
+    || item.detailedDescription
+    || item.responsiblePerson
+    || item.workerCount
+    || item.linkedJobIds.length > 0
+    || item.note
+  ));
+}
+
 function normalizeRiskAssessmentRiskRows(items = []) {
   if (!Array.isArray(items)) {
     return [];
@@ -4748,9 +4785,13 @@ function normalizeRiskAssessmentRiskRows(items = []) {
   return items.map((item) => ({
     id: normalizeId(item?.id) || crypto.randomUUID(),
     code: normalizeText(item?.code),
+    topCategory: normalizeText(item?.topCategory),
     category: normalizeText(item?.category),
     group: normalizeText(item?.group),
     hazard: normalizeText(item?.hazard),
+    description: normalizeText(item?.description),
+    source: normalizeText(item?.source),
+    possibleConsequences: normalizeText(item?.possibleConsequences ?? item?.possibleEvent),
     probability: normalizeText(item?.probability),
     consequence: normalizeText(item?.consequence),
     riskCode: normalizeText(item?.riskCode),
@@ -4758,16 +4799,30 @@ function normalizeRiskAssessmentRiskRows(items = []) {
     likelihoodConsequence: normalizeText(item?.likelihoodConsequence),
     workNote: normalizeText(item?.workNote ?? item?.jobsNote ?? item?.posloviNote),
     note: normalizeText(item?.note),
+    existingMeasures: normalizeText(item?.existingMeasures),
+    additionalMeasures: normalizeText(item?.additionalMeasures),
     measures: normalizeText(item?.measures),
+    deadline: normalizeText(item?.deadline),
+    responsiblePerson: normalizeText(item?.responsiblePerson),
+    controlMethod: normalizeText(item?.controlMethod),
   })).filter((item) => (
     item.code
+    || item.topCategory
     || item.category
     || item.group
     || item.hazard
+    || item.description
+    || item.source
+    || item.possibleConsequences
     || item.riskLevel
     || item.workNote
     || item.note
+    || item.existingMeasures
+    || item.additionalMeasures
     || item.measures
+    || item.deadline
+    || item.responsiblePerson
+    || item.controlMethod
   ));
 }
 
@@ -4804,6 +4859,41 @@ function normalizeRiskAssessmentEligibility(value = {}) {
   };
 }
 
+function normalizeRiskAssessmentPpeItems(items = []) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items.map((item) => ({
+    id: normalizeId(item?.id) || crypto.randomUUID(),
+    catalogId: normalizeText(item?.catalogId),
+    name: normalizeText(item?.name),
+    category: normalizeText(item?.category),
+    bodyPart: normalizeText(item?.bodyPart),
+    norm: normalizeText(item?.norm),
+    description: normalizeText(item?.description),
+    hazardLinks: normalizeText(item?.hazardLinks),
+    required: normalizeBoolean(item?.required ?? item?.mandatory, true),
+    mandatory: normalizeBoolean(item?.mandatory ?? item?.required, true),
+    note: normalizeText(item?.note),
+    jobId: normalizeId(item?.jobId),
+    riskRowIds: Array.from(new Set(
+      (Array.isArray(item?.riskRowIds) ? item.riskRowIds : [])
+        .map((value) => normalizeId(value))
+        .filter(Boolean),
+    )),
+  })).filter((item) => (
+    item.name
+    || item.category
+    || item.bodyPart
+    || item.norm
+    || item.description
+    || item.hazardLinks
+    || item.note
+    || item.riskRowIds.length > 0
+  ));
+}
+
 function normalizeRiskAssessmentJobs(items = []) {
   if (!Array.isArray(items)) {
     return [];
@@ -4816,8 +4906,15 @@ function normalizeRiskAssessmentJobs(items = []) {
 
     return {
       id: normalizeId(item?.id) || crypto.randomUUID(),
+      organizationUnitId: normalizeId(item?.organizationUnitId),
       order: Number.isFinite(Number(item?.order)) ? Number(item.order) : index + 1,
+      status: normalizeText(item?.status || "draft"),
       jobTitle: normalizeText(item?.jobTitle),
+      shortDescription: normalizeText(item?.shortDescription),
+      detailedDescription: normalizeText(item?.detailedDescription),
+      workplaceDescription: normalizeText(item?.workplaceDescription),
+      workEnvironment: normalizeText(item?.workEnvironment),
+      workplace: normalizeText(item?.workplace),
       workerCount: normalizeText(item?.workerCount),
       alcoholLimit: normalizeText(item?.alcoholLimit),
       specialWorkConditions: normalizeRiskAssessmentYesNo(item?.specialWorkConditions, ""),
@@ -4829,24 +4926,68 @@ function normalizeRiskAssessmentJobs(items = []) {
       qualifications,
       workOrganization: normalizeText(item?.workOrganization ?? organization),
       organization,
+      workSchedule: normalizeText(item?.workSchedule),
       description: normalizeText(item?.description),
       tasks: normalizeText(item?.tasks),
+      workSubstances: normalizeText(item?.workSubstances),
       workEquipment: normalizeText(item?.workEquipment),
+      toolsAndMachines: normalizeText(item?.toolsAndMachines),
       workplaces: normalizeText(item?.workplaces),
       workplaceArrangement: normalizeText(item?.workplaceArrangement),
       harmfulSources: normalizeText(item?.harmfulSources),
+      shiftWork: normalizeBoolean(item?.shiftWork, false),
+      nightWork: normalizeBoolean(item?.nightWork, false),
+      fieldWork: normalizeBoolean(item?.fieldWork, false),
+      remoteWork: normalizeBoolean(item?.remoteWork, false),
+      workAtHeight: normalizeBoolean(item?.workAtHeight, false),
+      confinedSpace: normalizeBoolean(item?.confinedSpace, false),
+      outdoorWork: normalizeBoolean(item?.outdoorWork, false),
+      computerWork: normalizeBoolean(item?.computerWork, false),
+      chemicalWork: normalizeBoolean(item?.chemicalWork, false),
+      biologicalWork: normalizeBoolean(item?.biologicalWork, false),
+      physicalHazardsWork: normalizeBoolean(item?.physicalHazardsWork, false),
+      trainings: normalizeText(item?.trainings),
+      medicalExams: normalizeText(item?.medicalExams),
+      ppeText: normalizeText(item?.ppeText),
+      ppeItems: normalizeRiskAssessmentPpeItems(item?.ppeItems ?? []),
       eligibility: normalizeRiskAssessmentEligibility(item?.eligibility),
       riskRows: normalizeRiskAssessmentRiskRows(item?.riskRows ?? []),
     };
   }).filter((item) => (
-    item.jobTitle
+    item.organizationUnitId
+    || item.jobTitle
+    || item.shortDescription
+    || item.detailedDescription
+    || item.workplaceDescription
+    || item.workEnvironment
+    || item.workplace
     || item.description
     || item.tasks
+    || item.workSubstances
     || item.workEquipment
+    || item.toolsAndMachines
     || item.workplaces
     || item.harmfulSources
+    || item.trainings
+    || item.medicalExams
+    || item.ppeText
+    || item.ppeItems.length > 0
     || item.riskRows.length > 0
   ));
+}
+
+function normalizeRiskAssessmentRiskTemplates(items = []) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items.map((item) => ({
+    id: normalizeId(item?.id) || crypto.randomUUID(),
+    name: normalizeText(item?.name),
+    jobHint: normalizeText(item?.jobHint),
+    riskRows: normalizeRiskAssessmentRiskRows(item?.riskRows ?? []),
+    ppeItems: normalizeRiskAssessmentPpeItems(item?.ppeItems ?? []),
+  })).filter((item) => item.name && (item.riskRows.length > 0 || item.ppeItems.length > 0));
 }
 
 function normalizeRiskAssessmentComments(items = []) {
@@ -4952,9 +5093,15 @@ function hydrateRiskAssessmentCore({
     measures: hasOwn(input, "measures")
       ? normalizeRiskAssessmentMeasureItems(input.measures)
       : normalizeRiskAssessmentMeasureItems(current?.measures ?? []),
+    organizationUnits: hasOwn(input, "organizationUnits")
+      ? normalizeRiskAssessmentOrganizationUnits(input.organizationUnits)
+      : normalizeRiskAssessmentOrganizationUnits(current?.organizationUnits ?? []),
     jobs: hasOwn(input, "jobs")
       ? normalizeRiskAssessmentJobs(input.jobs)
       : normalizeRiskAssessmentJobs(current?.jobs ?? []),
+    riskTemplates: hasOwn(input, "riskTemplates")
+      ? normalizeRiskAssessmentRiskTemplates(input.riskTemplates)
+      : normalizeRiskAssessmentRiskTemplates(current?.riskTemplates ?? []),
     attachments: hasOwn(input, "attachments")
       ? normalizeAttachmentDocuments(input.attachments)
       : normalizeAttachmentDocuments(current?.attachments ?? []),
@@ -7729,8 +7876,22 @@ export function filterRiskAssessments(
       item.workProcessDescription,
       item.clientNote,
       ...(item.measures ?? []).flatMap((entry) => [entry.measure, entry.responsiblePerson, entry.deadline]),
+      ...(item.organizationUnits ?? []).flatMap((entry) => [
+        entry.name,
+        entry.shortDescription,
+        entry.description,
+        entry.detailedDescription,
+        entry.responsiblePerson,
+        entry.workerCount,
+        entry.note,
+      ]),
       ...(item.jobs ?? []).flatMap((entry) => [
         entry.jobTitle,
+        entry.shortDescription,
+        entry.detailedDescription,
+        entry.workplaceDescription,
+        entry.workEnvironment,
+        entry.workplace,
         entry.workerCount,
         entry.alcoholLimit,
         entry.description,
@@ -7738,23 +7899,53 @@ export function filterRiskAssessments(
         entry.specialWorkReason,
         entry.requiredQualification,
         entry.workOrganization,
+        entry.workSchedule,
+        entry.workSubstances,
         entry.workEquipment,
+        entry.toolsAndMachines,
         entry.workplaces,
         entry.workplaceArrangement,
         entry.harmfulSources,
+        entry.trainings,
+        entry.medicalExams,
+        entry.ppeText,
         ...(Object.values(entry.eligibility ?? {}).flatMap((eligibility) => [eligibility?.allowed, eligibility?.note])),
+        ...(entry.ppeItems ?? []).flatMap((ppe) => [
+          ppe.name,
+          ppe.category,
+          ppe.bodyPart,
+          ppe.norm,
+          ppe.description,
+          ppe.hazardLinks,
+          ppe.note,
+        ]),
         ...(entry.riskRows ?? []).flatMap((risk) => [
           risk.code,
+          risk.topCategory,
           risk.category,
           risk.group,
           risk.hazard,
+          risk.description,
+          risk.source,
+          risk.possibleConsequences,
           risk.probability,
           risk.consequence,
           risk.riskLevel,
           risk.workNote,
           risk.note,
+          risk.existingMeasures,
+          risk.additionalMeasures,
           risk.measures,
+          risk.deadline,
+          risk.responsiblePerson,
+          risk.controlMethod,
         ]),
+      ]),
+      ...(item.riskTemplates ?? []).flatMap((entry) => [
+        entry.name,
+        entry.jobHint,
+        ...(entry.riskRows ?? []).map((risk) => risk.hazard),
+        ...(entry.ppeItems ?? []).map((ppe) => ppe.name),
       ]),
     ].join(" ").toLowerCase();
 
