@@ -32175,6 +32175,9 @@ function getPdfSignerAppearanceDebug(settings = getActivePdfSignerWebSettings())
     logoBytesBase64Present: Boolean(logoDataUrl) && logoBase64Present,
     borderEnabled: Boolean(appearance.border),
     transparentBackground: appearance.transparentBackground !== false,
+    showOib: Boolean(appearance.showOib),
+    showOrganization: Boolean(appearance.showOrganization),
+    showDateTime: Boolean(appearance.showDateTime),
   };
   return {
     logoEnabled: Boolean(appearance.showLogo),
@@ -32186,6 +32189,9 @@ function getPdfSignerAppearanceDebug(settings = getActivePdfSignerWebSettings())
     logoOpacity: appearance.logoOpacity,
     borderEnabled: Boolean(appearance.border),
     transparentBackground: appearance.transparentBackground !== false,
+    showOib: Boolean(appearance.showOib),
+    showOrganization: Boolean(appearance.showOrganization),
+    showDateTime: Boolean(appearance.showDateTime),
     appearance: appearanceDebug,
     appearanceMode: appearance.transparentBackground !== false && !appearance.border
       ? "minimal-transparent"
@@ -32237,7 +32243,10 @@ function appendSignatureAppearanceMarkerContent(marker, item = {}) {
   if (appearance.showDateTime) lines.push({ text: "Datum i vrijeme potpisa", strong: false });
   if (appearance.showReason && settings.reason) lines.push({ text: settings.reason, strong: false });
   if (appearance.showLocation && settings.location) lines.push({ text: settings.location, strong: false });
-  lines.slice(0, appearance.compactMode ? 5 : 9).forEach((line) => {
+  const visibleLines = lines.slice(0, appearance.compactMode ? 7 : 9);
+  marker.classList.toggle("is-dense", visibleLines.length >= 5);
+  marker.classList.toggle("is-very-dense", visibleLines.length >= 7);
+  visibleLines.forEach((line) => {
     const element = document.createElement(line.strong ? "strong" : "span");
     element.textContent = line.text;
     marker.append(element);

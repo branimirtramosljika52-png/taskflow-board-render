@@ -52073,6 +52073,25 @@ body.is-signature-review-open::before {
   font-weight: 800;
 }
 
+.signature-review-field-marker.is-dense {
+  font-size: 6.8px;
+  line-height: 1.08;
+}
+
+.signature-review-field-marker.is-dense strong {
+  margin-top: 0;
+  font-size: 7.4px;
+}
+
+.signature-review-field-marker.is-very-dense {
+  font-size: 5.9px;
+  line-height: 1.04;
+}
+
+.signature-review-field-marker.is-very-dense strong {
+  font-size: 6.5px;
+}
+
 .signature-review-field-marker.has-border,
 .signature-preview-marker.has-border {
   border: 1px solid rgba(148, 163, 184, 0.6);

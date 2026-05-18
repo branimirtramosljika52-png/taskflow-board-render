@@ -381,7 +381,7 @@ public final class SigningService {
         if (config.appearanceShowLocation() && !config.location().isBlank()) {
             lines.add(config.location());
         }
-        int limit = config.appearanceCompactMode() ? 5 : 10;
+        int limit = config.appearanceCompactMode() ? 7 : 10;
         return String.join("\n", lines.stream().filter(line -> !line.isBlank()).limit(limit).toList());
     }
 
@@ -482,19 +482,30 @@ public final class SigningService {
         if (lines.isEmpty() || font == null) {
             return;
         }
-        float baseSize = Math.max(5.2f, config.fontSize());
-        float lineHeight = baseSize + 1.8f;
+        float configuredSize = Math.max(5.2f, config.fontSize());
+        float verticalPadding = Math.max(1.4f, Math.min(3f, box.getHeight() * 0.08f));
+        float availableHeight = Math.max(8f, box.getHeight() - (verticalPadding * 2f));
+        float targetLineHeight = Math.max(4.8f, availableHeight / Math.max(1, lines.size()));
+        float baseSize = Math.min(configuredSize, Math.max(4.4f, targetLineHeight - 1f));
+        if (lines.size() >= 5) {
+            baseSize = Math.min(baseSize, 6.6f);
+        }
+        float lineHeight = Math.min(configuredSize + 1.8f, Math.max(baseSize + 0.8f, targetLineHeight));
+        if (lineHeight * lines.size() > availableHeight) {
+            lineHeight = availableHeight / Math.max(1, lines.size());
+        }
         float paddingX = 3f;
         float maxWidth = Math.max(10f, box.getWidth() - (paddingX * 2f));
-        float y = Math.min(box.getHeight() - baseSize - 3f, box.getHeight() - 5f - baseSize);
+        float y = box.getHeight() - verticalPadding - baseSize;
+        float minY = Math.max(0.4f, verticalPadding - 1f);
         for (String line : lines) {
-            if (y < 2f) {
+            if (y < minY) {
                 break;
             }
             float lineSize = baseSize;
             float width = font.getWidth(line, lineSize);
             if (width > maxWidth && width > 0f) {
-                lineSize = Math.max(4.8f, lineSize * (maxWidth / width));
+                lineSize = Math.max(4.2f, lineSize * (maxWidth / width));
                 width = font.getWidth(line, lineSize);
             }
             float x = resolveAppearanceTextX(box, paddingX, width);

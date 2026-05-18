@@ -5701,7 +5701,7 @@ function buildPdfSignatureAppearanceLines(spec = {}, appearance = DEFAULT_PDF_SI
   if (appearance.showLocation && clean(spec.location)) {
     lines.push({ text: clean(spec.location), strong: false });
   }
-  return lines.slice(0, appearance.compactMode ? 5 : 9);
+  return lines.slice(0, appearance.compactMode ? 7 : 9);
 }
 
 function drawPdfSignatureFieldPlaceholder(page, rect, spec = {}, fonts = {}, appearance = DEFAULT_PDF_SIGNATURE_APPEARANCE_SETTINGS, logoImage = null) {
@@ -5741,10 +5741,13 @@ function drawPdfSignatureFieldPlaceholder(page, rect, spec = {}, fonts = {}, app
   const contentWidth = Math.max(40, rect.width - 4);
   const lines = buildPdfSignatureAppearanceLines(spec, appearanceSettings);
   const compact = Boolean(appearanceSettings.compactMode);
-  const baseSize = compact ? 7.2 : 7.8;
-  const strongSize = compact ? 8.2 : 8.8;
-  const lineHeight = compact ? 9.2 : 10.4;
-  let y = rect.y + rect.height - (compact ? 10 : 11);
+  const contentHeight = Math.max(10, rect.height - 4);
+  const lineCount = Math.max(1, lines.length);
+  const maxLineHeight = compact ? 9.2 : 10.4;
+  const lineHeight = Math.min(maxLineHeight, Math.max(5.2, contentHeight / lineCount));
+  const baseSize = Math.max(4.6, Math.min(compact ? 7.2 : 7.8, lineHeight - 1));
+  const strongSize = Math.max(baseSize, Math.min(compact ? 8.2 : 8.8, lineHeight - 0.35, baseSize + 0.9));
+  let y = rect.y + rect.height - 2 - Math.max(baseSize, strongSize);
   const alignment = getPdfSignatureTextAlign(appearanceSettings.alignment || spec.positioning?.alignment);
   lines.forEach((line) => {
     const size = line.strong ? strongSize : baseSize;

@@ -22,7 +22,7 @@ import java.util.Properties;
 
 public final class NativeMessagingMain {
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final String VERSION = "1.4.2-minimal-logo-appearance";
+    private static final String VERSION = "1.4.3-fit-selected-appearance-lines";
     private static final int MAX_MESSAGE_BYTES = 8 * 1024 * 1024;
 
     private NativeMessagingMain() {
@@ -821,6 +821,9 @@ public final class NativeMessagingMain {
         debug.put("logoOpacity", config.appearanceLogoOpacity());
         debug.put("borderEnabled", config.appearanceBorder());
         debug.put("transparentBackground", config.appearanceTransparentBackground());
+        debug.put("showOib", config.appearanceShowOib());
+        debug.put("showOrganization", config.appearanceShowOrganization());
+        debug.put("showDateTime", config.appearanceShowDateTime());
         debug.putNull("backgroundColor");
         debug.putNull("borderColor");
         ObjectNode appearance = JSON.createObjectNode();
@@ -832,6 +835,9 @@ public final class NativeMessagingMain {
         appearance.put("logoBytesBase64Present", !logoDataUrl.isBlank() && logoBase64Present);
         appearance.put("borderEnabled", config.appearanceBorder());
         appearance.put("transparentBackground", config.appearanceTransparentBackground());
+        appearance.put("showOib", config.appearanceShowOib());
+        appearance.put("showOrganization", config.appearanceShowOrganization());
+        appearance.put("showDateTime", config.appearanceShowDateTime());
         appearance.putNull("backgroundColor");
         appearance.putNull("borderColor");
         debug.set("appearance", appearance);
@@ -849,23 +855,32 @@ public final class NativeMessagingMain {
         boolean logoEnabled = booleanSetting(appearance, "showLogo", booleanSetting(appearance, "logoEnabled", false));
         boolean borderEnabled = booleanSetting(appearance, "border", booleanSetting(appearance, "borderEnabled", false));
         boolean transparentBackground = booleanSetting(appearance, "transparentBackground", true);
+        boolean showOib = booleanSetting(appearance, "showOib", false);
+        boolean showOrganization = booleanSetting(appearance, "showOrganization", false);
+        boolean showDateTime = booleanSetting(appearance, "showDateTime", false);
         ObjectNode debug = JSON.createObjectNode();
         putLogoDebugFields(debug, logoEnabled, logoDataUrl, logoDataUrl.isBlank() ? "none" : "request.appearance.logoDataUrl");
-        debug.put("logoOpacity", firstNonBlank(text(appearance, "logoOpacity", ""), "0.08"));
+        debug.put("logoOpacity", firstNonBlank(text(appearance, "logoOpacity", ""), "0.14"));
         debug.put("borderEnabled", borderEnabled);
         debug.put("transparentBackground", transparentBackground);
+        debug.put("showOib", showOib);
+        debug.put("showOrganization", showOrganization);
+        debug.put("showDateTime", showDateTime);
         debug.putNull("backgroundColor");
         debug.putNull("borderColor");
         debug.put("appearanceMode", transparentBackground && !borderEnabled ? "minimal-transparent" : "configured");
 
         ObjectNode nested = JSON.createObjectNode();
         nested.put("logoEnabled", logoEnabled);
-        nested.put("logoOpacity", firstNonBlank(text(appearance, "logoOpacity", ""), "0.08"));
+        nested.put("logoOpacity", firstNonBlank(text(appearance, "logoOpacity", ""), "0.14"));
         nested.put("logoBytesPresent", !logoDataUrl.isBlank());
         nested.put("logoBase64Present", isBase64ImageDataUrl(logoDataUrl));
         nested.put("logoBytesBase64Present", !logoDataUrl.isBlank() && isBase64ImageDataUrl(logoDataUrl));
         nested.put("borderEnabled", borderEnabled);
         nested.put("transparentBackground", transparentBackground);
+        nested.put("showOib", showOib);
+        nested.put("showOrganization", showOrganization);
+        nested.put("showDateTime", showDateTime);
         debug.set("appearance", nested);
         debug.put("logoDataUrlOmitted", !logoDataUrl.isBlank());
         return debug;
