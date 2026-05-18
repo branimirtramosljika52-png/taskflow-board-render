@@ -436,16 +436,28 @@ function mapUserElectricalQualification(row = {}) {
 
   const mapQualificationArea = (rawArea = {}, discipline = "elektro") => {
     const validForever = toBooleanFlag(rawArea.validForever, false);
+    const examType = dbString(rawArea.examType || rawArea.type || rawArea.equipmentType || rawArea.kind);
+    const data1 = dbString(rawArea.data1 || rawArea.classCode);
+    const data2 = dbString(rawArea.data2 || rawArea.urbroj);
+    const data3 = dbString(rawArea.data3 || rawArea.eBroj);
     return {
       discipline: dbString(discipline || "elektro").toLowerCase() || "elektro",
-      type: dbString(rawArea.type ?? rawArea.equipmentType ?? rawArea.kind),
+      examTitle: dbString(rawArea.examTitle ?? rawArea.title),
+      type: examType,
+      examType,
       canInspect: toBooleanFlag(rawArea.canInspect, false),
       canAuthorize: toBooleanFlag(rawArea.canAuthorize, false),
-      classCode: dbString(rawArea.classCode),
-      urbroj: dbString(rawArea.urbroj),
-      eBroj: dbString(rawArea.eBroj),
+      canResponsible: toBooleanFlag(rawArea.canResponsible || rawArea.canBeResponsible, false),
+      data1,
+      data2,
+      data3,
+      classCode: data1,
+      urbroj: data2,
+      eBroj: data3,
+      passedOn: normalizeDateOnly(rawArea.passedOn || rawArea.examDate),
       validUntil: validForever ? "" : normalizeDateOnly(rawArea.validUntil),
       validForever,
+      specialRoles: parseJsonObject(rawArea.specialRoles, {}),
       signatureDataUrl: storedSignature.dataUrl,
       signatureStorageProvider: storedSignature.storageProvider,
       signatureStorageBucket: storedSignature.storageBucket,
@@ -796,13 +808,19 @@ async function prepareStoredUserElectricalSignature({
 function normalizeUserElectricalQualification(input = {}, fallback = {}) {
   const source = {
     discipline: "elektro",
+    examTitle: "",
+    type: "",
+    examType: "",
     canInspect: false,
     canAuthorize: false,
-    classCode: "",
-    urbroj: "",
-    eBroj: "",
+    canResponsible: false,
+    data1: "",
+    data2: "",
+    data3: "",
+    passedOn: "",
     validUntil: "",
     validForever: false,
+    specialRoles: {},
     signatureDataUrl: "",
     signatureStorageProvider: "",
     signatureStorageBucket: "",
@@ -821,17 +839,29 @@ function normalizeUserElectricalQualification(input = {}, fallback = {}) {
   });
 
   const validForever = toBooleanFlag(source.validForever, false);
+  const examType = dbString(source.examType || source.type || source.equipmentType || source.kind);
+  const data1 = dbString(source.data1 || source.classCode);
+  const data2 = dbString(source.data2 || source.urbroj);
+  const data3 = dbString(source.data3 || source.eBroj);
 
   return {
     discipline: dbString(source.discipline || "elektro").toLowerCase() || "elektro",
-    type: dbString(source.type ?? source.equipmentType ?? source.kind),
+    examTitle: dbString(source.examTitle ?? source.title),
+    type: examType,
+    examType,
     canInspect: toBooleanFlag(source.canInspect, false),
     canAuthorize: toBooleanFlag(source.canAuthorize, false),
-    classCode: dbString(source.classCode),
-    urbroj: dbString(source.urbroj),
-    eBroj: dbString(source.eBroj),
+    canResponsible: toBooleanFlag(source.canResponsible || source.canBeResponsible, false),
+    data1,
+    data2,
+    data3,
+    classCode: data1,
+    urbroj: data2,
+    eBroj: data3,
+    passedOn: normalizeDateOnly(source.passedOn || source.examDate),
     validUntil: validForever ? "" : normalizeDateOnly(source.validUntil),
     validForever,
+    specialRoles: parseJsonObject(source.specialRoles, {}),
     signatureDataUrl: storedSignature.dataUrl,
     signatureStorageProvider: storedSignature.storageProvider,
     signatureStorageBucket: storedSignature.storageBucket,
@@ -850,16 +880,28 @@ function normalizeUserElectricalQualification(input = {}, fallback = {}) {
 
           const rawArea = parseJsonObject(value, {});
           const areaValidForever = toBooleanFlag(rawArea.validForever, false);
+          const areaExamType = dbString(rawArea.examType || rawArea.type || rawArea.equipmentType || rawArea.kind);
+          const areaData1 = dbString(rawArea.data1 || rawArea.classCode);
+          const areaData2 = dbString(rawArea.data2 || rawArea.urbroj);
+          const areaData3 = dbString(rawArea.data3 || rawArea.eBroj);
           return [normalizedKey, {
             discipline: normalizedKey,
-            type: dbString(rawArea.type ?? rawArea.equipmentType ?? rawArea.kind),
+            examTitle: dbString(rawArea.examTitle ?? rawArea.title),
+            type: areaExamType,
+            examType: areaExamType,
             canInspect: toBooleanFlag(rawArea.canInspect, false),
             canAuthorize: toBooleanFlag(rawArea.canAuthorize, false),
-            classCode: dbString(rawArea.classCode),
-            urbroj: dbString(rawArea.urbroj),
-            eBroj: dbString(rawArea.eBroj),
+            canResponsible: toBooleanFlag(rawArea.canResponsible || rawArea.canBeResponsible, false),
+            data1: areaData1,
+            data2: areaData2,
+            data3: areaData3,
+            classCode: areaData1,
+            urbroj: areaData2,
+            eBroj: areaData3,
+            passedOn: normalizeDateOnly(rawArea.passedOn || rawArea.examDate),
             validUntil: areaValidForever ? "" : normalizeDateOnly(rawArea.validUntil),
             validForever: areaValidForever,
+            specialRoles: parseJsonObject(rawArea.specialRoles, {}),
             signatureDataUrl: storedSignature.dataUrl,
             signatureStorageProvider: storedSignature.storageProvider,
             signatureStorageBucket: storedSignature.storageBucket,

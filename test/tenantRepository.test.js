@@ -577,9 +577,16 @@ test("memory tenant repository keeps additional switch-off qualifications on use
       canInspect: false,
       additionalAreas: {
         tipkalo: {
+          examTitle: "Tipkalo za isklop napona",
           type: "Sigurnosno tipkalo",
           canInspect: true,
           canAuthorize: true,
+          canResponsible: true,
+          data1: "Podatak A",
+          data2: "Podatak B",
+          data3: "Podatak C",
+          passedOn: "2026-05-18",
+          specialRoles: { inspectorElectrical: true },
           classCode: "UP/I-133-02/25-02/26",
           urbroj: "1392/25",
           eBroj: "89627512970",
@@ -591,10 +598,17 @@ test("memory tenant repository keeps additional switch-off qualifications on use
   assert.equal(createdUser.electricalQualification.canInspect, false);
   assert.equal(createdUser.electricalQualification.additionalAreas.tipkalo.canInspect, true);
   assert.equal(createdUser.electricalQualification.additionalAreas.tipkalo.canAuthorize, true);
+  assert.equal(createdUser.electricalQualification.additionalAreas.tipkalo.canResponsible, true);
+  assert.equal(createdUser.electricalQualification.additionalAreas.tipkalo.examTitle, "Tipkalo za isklop napona");
   assert.equal(createdUser.electricalQualification.additionalAreas.tipkalo.type, "Sigurnosno tipkalo");
-  assert.equal(createdUser.electricalQualification.additionalAreas.tipkalo.classCode, "UP/I-133-02/25-02/26");
-  assert.equal(createdUser.electricalQualification.additionalAreas.tipkalo.urbroj, "1392/25");
-  assert.equal(createdUser.electricalQualification.additionalAreas.tipkalo.eBroj, "89627512970");
+  assert.equal(createdUser.electricalQualification.additionalAreas.tipkalo.data1, "Podatak A");
+  assert.equal(createdUser.electricalQualification.additionalAreas.tipkalo.data2, "Podatak B");
+  assert.equal(createdUser.electricalQualification.additionalAreas.tipkalo.data3, "Podatak C");
+  assert.equal(createdUser.electricalQualification.additionalAreas.tipkalo.passedOn, "2026-05-18");
+  assert.equal(createdUser.electricalQualification.additionalAreas.tipkalo.classCode, "Podatak A");
+  assert.equal(createdUser.electricalQualification.additionalAreas.tipkalo.urbroj, "Podatak B");
+  assert.equal(createdUser.electricalQualification.additionalAreas.tipkalo.eBroj, "Podatak C");
+  assert.equal(createdUser.electricalQualification.additionalAreas.tipkalo.specialRoles.inspectorElectrical, true);
 });
 
 test("memory tenant repository stores display name and profile role on user", async () => {

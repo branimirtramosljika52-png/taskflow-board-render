@@ -4086,6 +4086,7 @@ let measurementEquipmentEditorChromeSyncTimer = 0;
 let userDocumentDrafts = [];
 let userElectricalDocumentDrafts = [];
 let userEditorDocumentDragDepth = 0;
+let userQualificationEditorDraftDefinitions = new Map();
 let learningTestQuestionGroupDrafts = [];
 let learningTestEditorStep = "group";
 let drawingProjectDraft = null;
@@ -7326,7 +7327,12 @@ function getUserDocumentOrganizationName(user = null) {
 }
 
 function hasQualificationCapability(qualification = {}) {
-  return Boolean(qualification?.canInspect || qualification?.canAuthorize);
+  return Boolean(
+    qualification?.canInspect
+    || qualification?.canAuthorize
+    || qualification?.canResponsible
+    || Object.values(normalizeQualificationSpecialRoles(qualification?.specialRoles)).some(Boolean)
+  );
 }
 
 function getQualificationValidityLabel(qualification = {}) {
@@ -33788,10 +33794,7 @@ function buildPeriodicsPeopleEntries() {
   const todayDate = new Date();
   const visualSettings = getPeriodicsVisualSettings();
   todayDate.setHours(0, 0, 0, 0);
-  const areaDefinitions = [
-    { key: "elektro", label: "Panik rasvjeta" },
-    { key: "tipkalo", label: "Tipkalo" },
-  ];
+  const areaDefinitions = getQualificationExamDefinitions();
 
   getActiveOrganizationUsers().forEach((user) => {
     const userName = getUserDocumentDisplayName(user);
@@ -33809,12 +33812,14 @@ function buildPeriodicsPeopleEntries() {
       }
 
       const dueState = getPeriodicsDueState(dueDate, todayDate, visualSettings);
-      const capabilityLabel = qualification.canInspect && qualification.canAuthorize
-        ? "Ispitivanje + ovjeravanje"
-        : (qualification.canAuthorize ? "Ovjeravanje" : "Ispitivanje");
+      const capabilityLabel = [
+        qualification.canInspect ? "Ispitivač" : "",
+        qualification.canAuthorize ? "Ovlaštena osoba" : "",
+        qualification.canResponsible ? "Odgovorna osoba" : "",
+      ].filter(Boolean).join(" + ") || "Ispit";
       const qualificationLabel = [
         capabilityLabel,
-        qualification.classCode ? `Klasa ${qualification.classCode}` : "",
+        qualification.data1 ? `Podatak 1 ${qualification.data1}` : "",
       ].filter(Boolean).join(" · ");
 
       rows.push({
@@ -33830,9 +33835,10 @@ function buildPeriodicsPeopleEntries() {
           userEmail,
           areaDefinition.label,
           capabilityLabel,
-          qualification.classCode,
-          qualification.urbroj,
-          qualification.eBroj,
+          qualification.data1,
+          qualification.data2,
+          qualification.data3,
+          qualification.type,
         ].filter(Boolean).join(" "),
       });
     });
@@ -47056,18 +47062,47 @@ const USER_DOCUMENT_CATEGORY_OPTIONS = [
 
 const BUILTIN_QUALIFICATION_EXAM_DEFINITIONS = Object.freeze([
   Object.freeze({
+    key: "radna_oprema",
+    title: "Radna oprema",
+    label: "Radna oprema",
+    defaultExam: true,
+    specialRoleOptions: Object.freeze([
+      Object.freeze({ key: "inspectorMechanical", label: "Ispitivač Strojar", capability: "inspect" }),
+      Object.freeze({ key: "inspectorElectrical", label: "Ispitivač Elektro", capability: "inspect" }),
+      Object.freeze({ key: "authorizationMechanical", label: "Nositelj ovlaštenja Strojar", capability: "authorize" }),
+      Object.freeze({ key: "authorizationElectrical", label: "Nositelj ovlaštenja Elektro", capability: "authorize" }),
+    ]),
+    builtIn: true,
+  }),
+  Object.freeze({
+    key: "radni_okolis",
+    title: "Radni okoliš",
+    label: "Radni okoliš",
+    defaultExam: true,
+    specialRoleOptions: Object.freeze([
+      Object.freeze({ key: "inspectorPhysical", label: "Ispitivač - fizikalne", capability: "inspect" }),
+      Object.freeze({ key: "inspectorChemical", label: "Ispitivač - kemijske", capability: "inspect" }),
+      Object.freeze({ key: "responsiblePhysical", label: "Odgovorna osoba Fizikalne", capability: "responsible" }),
+      Object.freeze({ key: "responsibleChemical", label: "Odgovorna osoba Kemijske", capability: "responsible" }),
+    ]),
+    builtIn: true,
+  }),
+]);
+
+const LEGACY_QUALIFICATION_EXAM_DEFINITIONS = Object.freeze([
+  Object.freeze({
     key: "elektro",
     title: "Panik rasvjeta",
     label: "Panik rasvjeta",
-    serviceLabel: "Sigurnosna panik rasvjeta",
-    builtIn: true,
+    builtIn: false,
+    legacy: true,
   }),
   Object.freeze({
     key: "tipkalo",
     title: "Tipkalo za isklop napona",
     label: "Tipkalo za isklop napona",
-    serviceLabel: "Tipkalo za isklop napona",
-    builtIn: true,
+    builtIn: false,
+    legacy: true,
   }),
 ]);
 
@@ -47084,10 +47119,11 @@ const DOCUMENT_TEMPLATE_DIGITAL_SIGNATURE_ROLE_OPTIONS = [
 const DOCUMENT_TEMPLATE_SIGNATURE_META_FIELD_OPTIONS = [
   { value: "title", label: "Titula" },
   { value: "oib", label: "OIB" },
-  { value: "type", label: "Vrsta" },
-  { value: "classCode", label: "Klasa" },
-  { value: "urbroj", label: "UrBROJ" },
-  { value: "eBroj", label: "E broj" },
+  { value: "type", label: "Vrsta ispita" },
+  { value: "data1", label: "Podatak 1" },
+  { value: "data2", label: "Podatak 2" },
+  { value: "data3", label: "Podatak 3" },
+  { value: "passedOn", label: "Datum polaganja" },
 ];
 
 const DOCUMENT_TEMPLATE_DEFAULT_SIGNATURE_META_FIELDS = DOCUMENT_TEMPLATE_SIGNATURE_META_FIELD_OPTIONS
@@ -47139,16 +47175,18 @@ const DOCUMENT_TEMPLATE_SOURCE_OPTIONS = [
   { value: "WORK_ORDER_TEAM", label: "Tim" },
   { value: "SERVICE_SUMMARY", label: "Usluge" },
   { value: "QUALIFIED_INSPECTOR_NAME", label: "Ispitivač - ime i prezime" },
-  { value: "QUALIFIED_INSPECTOR_TYPE", label: "Ispitivač - vrsta" },
-  { value: "QUALIFIED_INSPECTOR_CLASS_CODE", label: "Ispitivač - klasa" },
-  { value: "QUALIFIED_INSPECTOR_URBROJ", label: "Ispitivač - UrBROJ" },
-  { value: "QUALIFIED_INSPECTOR_E_BROJ", label: "Ispitivač - E broj" },
+  { value: "QUALIFIED_INSPECTOR_TYPE", label: "Ispitivač - vrsta ispita" },
+  { value: "QUALIFIED_INSPECTOR_DATA_1", label: "Ispitivač - podatak 1" },
+  { value: "QUALIFIED_INSPECTOR_DATA_2", label: "Ispitivač - podatak 2" },
+  { value: "QUALIFIED_INSPECTOR_DATA_3", label: "Ispitivač - podatak 3" },
+  { value: "QUALIFIED_INSPECTOR_PASSED_ON", label: "Ispitivač - datum polaganja" },
   { value: "QUALIFIED_INSPECTOR_SUMMARY", label: "Ispitivač - podaci o ovlaštenju" },
   { value: "QUALIFIED_AUTHORIZATION_HOLDER_NAME", label: "Nositelj - ime i prezime" },
-  { value: "QUALIFIED_AUTHORIZATION_HOLDER_TYPE", label: "Nositelj - vrsta" },
-  { value: "QUALIFIED_AUTHORIZATION_HOLDER_CLASS_CODE", label: "Nositelj - klasa" },
-  { value: "QUALIFIED_AUTHORIZATION_HOLDER_URBROJ", label: "Nositelj - UrBROJ" },
-  { value: "QUALIFIED_AUTHORIZATION_HOLDER_E_BROJ", label: "Nositelj - E broj" },
+  { value: "QUALIFIED_AUTHORIZATION_HOLDER_TYPE", label: "Nositelj - vrsta ispita" },
+  { value: "QUALIFIED_AUTHORIZATION_HOLDER_DATA_1", label: "Nositelj - podatak 1" },
+  { value: "QUALIFIED_AUTHORIZATION_HOLDER_DATA_2", label: "Nositelj - podatak 2" },
+  { value: "QUALIFIED_AUTHORIZATION_HOLDER_DATA_3", label: "Nositelj - podatak 3" },
+  { value: "QUALIFIED_AUTHORIZATION_HOLDER_PASSED_ON", label: "Nositelj - datum polaganja" },
   { value: "QUALIFIED_AUTHORIZATION_HOLDER_SUMMARY", label: "Nositelj - podaci o ovlaštenju" },
   { value: "CONTACT_NAME", label: "Kontakt - ime" },
   { value: "CONTACT_PHONE", label: "Kontakt - telefon" },
@@ -53040,34 +53078,115 @@ function normalizeQualificationAreaKey(signatureArea = "elektro") {
   return normalizedArea || "elektro";
 }
 
-function getSafetyAuthorizationQualificationAreaKey(item = {}) {
-  const rawId = String(item?.id || "").trim();
-  if (!rawId) {
-    return "";
-  }
-  const safeId = rawId
+function createUserQualificationExamKey(value = "") {
+  const safeId = String(value || "")
+    .trim()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-zA-Z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "")
     .toLowerCase();
-  return safeId ? `authorization_${safeId}` : "";
+  return safeId || "";
 }
 
-function getBuiltinQualificationExamDefinitionMatch(item = {}) {
-  const haystack = normalizeLooseName([
-    item?.title,
-    item?.scope,
-    ...(Array.isArray(item?.linkedServiceCatalogTitles) ? item.linkedServiceCatalogTitles : []),
-  ].filter(Boolean).join(" "));
-  if (!haystack) {
+function normalizeQualificationSpecialRoles(value = {}) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([key, flag]) => [String(key || "").trim(), Boolean(flag)])
+      .filter(([key]) => key),
+  );
+}
+
+function hasQualificationSpecialRole(qualification = {}, capability = "") {
+  const specialRoles = normalizeQualificationSpecialRoles(qualification.specialRoles);
+  if (!Object.values(specialRoles).some(Boolean)) {
+    return false;
+  }
+  const definition = getQualificationExamDefinition(qualification.discipline || qualification.examKey || "");
+  const specialRoleOptions = Array.isArray(definition.specialRoleOptions) ? definition.specialRoleOptions : [];
+  if (!capability) {
+    return Object.values(specialRoles).some(Boolean);
+  }
+  return specialRoleOptions.some((option) => (
+    option.capability === capability && specialRoles[option.key]
+  ));
+}
+
+function hasQualificationContent(qualification = {}) {
+  return Boolean(
+    hasQualificationCapability(qualification)
+    || qualification.examTitle
+    || qualification.type
+    || qualification.examType
+    || qualification.data1
+    || qualification.data2
+    || qualification.data3
+    || qualification.classCode
+    || qualification.urbroj
+    || qualification.eBroj
+    || qualification.passedOn
+    || qualification.validUntil
+    || qualification.validForever
+  );
+}
+
+function normalizeUserQualificationExamDefinition(definition = {}) {
+  const rawTitle = String(definition.title || definition.label || definition.examTitle || "").trim();
+  const key = normalizeQualificationAreaKey(definition.key || createUserQualificationExamKey(rawTitle));
+  if (!key) {
     return null;
   }
-  return BUILTIN_QUALIFICATION_EXAM_DEFINITIONS.find((definition) => {
-    const title = normalizeLooseName(definition.title);
-    const label = normalizeLooseName(definition.label);
-    return (title && haystack.includes(title)) || (label && haystack.includes(label));
-  }) || null;
+  const title = rawTitle || key
+    .split(/[_-]+/g)
+    .filter(Boolean)
+    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+    .join(" ") || key;
+  return {
+    ...definition,
+    key,
+    title,
+    label: String(definition.label || title).trim() || title,
+    specialRoleOptions: Array.isArray(definition.specialRoleOptions) ? definition.specialRoleOptions : [],
+  };
+}
+
+function addQualificationExamDefinition(definitions, definition = {}) {
+  const normalized = normalizeUserQualificationExamDefinition(definition);
+  if (!normalized) {
+    return;
+  }
+  const previous = definitions.get(normalized.key) || {};
+  definitions.set(normalized.key, {
+    ...previous,
+    ...normalized,
+    specialRoleOptions: normalized.specialRoleOptions.length > 0
+      ? normalized.specialRoleOptions
+      : (previous.specialRoleOptions || []),
+    builtIn: Boolean(previous.builtIn || normalized.builtIn),
+    legacy: Boolean(previous.legacy || normalized.legacy),
+  });
+}
+
+function collectUserQualificationDefinitionFromArea(definitions, key = "", qualification = {}) {
+  const normalizedKey = normalizeQualificationAreaKey(key);
+  if (!normalizedKey || definitions.has(normalizedKey) || !hasQualificationContent(qualification)) {
+    return;
+  }
+  const legacyDefinition = LEGACY_QUALIFICATION_EXAM_DEFINITIONS.find((entry) => entry.key === normalizedKey);
+  const fallbackTitle = normalizedKey
+    .split(/[_-]+/g)
+    .filter(Boolean)
+    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+    .join(" ") || normalizedKey;
+  addQualificationExamDefinition(definitions, {
+    ...(legacyDefinition || {}),
+    key: normalizedKey,
+    title: qualification.examTitle || legacyDefinition?.title || fallbackTitle,
+    label: qualification.examTitle || legacyDefinition?.label || fallbackTitle,
+  });
 }
 
 function getQualificationExamDefinitions({ includeCustom = true } = {}) {
@@ -53075,46 +53194,30 @@ function getQualificationExamDefinitions({ includeCustom = true } = {}) {
     entry.key,
     {
       ...entry,
-      linkedServiceCatalogIds: [],
-      linkedServiceCatalogTitles: [],
     },
   ]));
 
   if (includeCustom) {
-    sortSafetyAuthorizations(state.safetyAuthorizations ?? []).forEach((item) => {
-      const organizationId = String(item?.organizationId || "").trim();
-      if (organizationId && state.activeOrganizationId && organizationId !== String(state.activeOrganizationId)) {
-        return;
-      }
-
-      const key = getSafetyAuthorizationQualificationAreaKey(item);
-      if (!key) {
-        return;
-      }
-
-      const linkedServiceCatalogIds = getSafetyAuthorizationLinkedServiceIds(item);
-      const linkedServiceCatalogTitles = getSafetyAuthorizationLinkedServiceTitles(item);
-      const builtinMatch = getBuiltinQualificationExamDefinitionMatch(item);
-      const targetKey = builtinMatch?.key || key;
-      const previous = definitions.get(targetKey) || {};
-      definitions.set(targetKey, {
-        key: targetKey,
-        title: previous.title || item.title || "Ispit",
-        label: previous.label || item.title || "Ispit",
-        serviceLabel: previous.serviceLabel || item.title || "Ispit",
-        builtIn: Boolean(previous.builtIn || builtinMatch),
-        sourceAuthorizationId: item.id || previous.sourceAuthorizationId || "",
-        sourceAuthorizationTitle: item.title || previous.sourceAuthorizationTitle || "",
-        scope: item.scope || previous.scope || "",
-        linkedServiceCatalogIds: Array.from(new Set([
-          ...(previous.linkedServiceCatalogIds || []),
-          ...linkedServiceCatalogIds,
-        ])),
-        linkedServiceCatalogTitles: Array.from(new Set([
-          ...(previous.linkedServiceCatalogTitles || []),
-          ...linkedServiceCatalogTitles,
-        ])),
+    LEGACY_QUALIFICATION_EXAM_DEFINITIONS.forEach((legacyDefinition) => {
+      const hasLegacyData = (state.users ?? []).some((user) => {
+        const qualification = getUserElectricalQualification(user, legacyDefinition.key);
+        return hasQualificationContent(qualification);
       });
+      if (hasLegacyData) {
+        addQualificationExamDefinition(definitions, legacyDefinition);
+      }
+    });
+
+    (state.users ?? []).forEach((user) => {
+      const rootQualification = user?.electricalQualification ?? {};
+      collectUserQualificationDefinitionFromArea(definitions, rootQualification.discipline || "elektro", rootQualification);
+      Object.entries(rootQualification.additionalAreas || {}).forEach(([key, qualification]) => {
+        collectUserQualificationDefinitionFromArea(definitions, key, qualification || {});
+      });
+    });
+
+    userQualificationEditorDraftDefinitions.forEach((definition) => {
+      addQualificationExamDefinition(definitions, definition);
     });
   }
 
@@ -53125,7 +53228,8 @@ function getQualificationExamDefinition(signatureArea = "elektro") {
   const normalizedArea = normalizeQualificationAreaKey(signatureArea);
   return getQualificationExamDefinitions().find((entry) => entry.key === normalizedArea)
     || BUILTIN_QUALIFICATION_EXAM_DEFINITIONS.find((entry) => entry.key === normalizedArea)
-    || { key: normalizedArea, label: normalizedArea, title: normalizedArea, linkedServiceCatalogIds: [], linkedServiceCatalogTitles: [] };
+    || LEGACY_QUALIFICATION_EXAM_DEFINITIONS.find((entry) => entry.key === normalizedArea)
+    || { key: normalizedArea, label: normalizedArea, title: normalizedArea, specialRoleOptions: [] };
 }
 
 function getDocumentTemplateSignatureAreaOptions(selectedValue = "") {
@@ -53245,27 +53349,11 @@ function getDocumentTemplateSignatureAreas(template = {}) {
 
 function getWorkOrderRelevantSignatureAreas(workOrder = {}) {
   const areas = new Set();
-  const serviceCatalogIds = new Set();
   getWorkOrderServiceItems(workOrder).forEach((service) => {
-    const catalogItem = getServiceCatalogItemForWorkOrderService(service);
-    [
-      service?.serviceId,
-      service?.serviceCatalogId,
-      catalogItem?.id,
-    ].map((value) => String(value || "").trim()).filter(Boolean)
-      .forEach((value) => serviceCatalogIds.add(value));
-
     getWorkOrderServiceTemplateIds(service).forEach((templateId) => {
       const template = getDocumentTemplateById(templateId);
       getDocumentTemplateSignatureAreas(template).forEach((area) => areas.add(area));
     });
-  });
-
-  getQualificationExamDefinitions().forEach((definition) => {
-    const linkedIds = Array.isArray(definition.linkedServiceCatalogIds) ? definition.linkedServiceCatalogIds : [];
-    if (linkedIds.some((serviceId) => serviceCatalogIds.has(String(serviceId)))) {
-      areas.add(definition.key);
-    }
   });
 
   return areas.size > 0 ? [...areas] : ["elektro"];
@@ -59069,14 +59157,22 @@ function getUserElectricalQualification(user = {}, signatureArea = "elektro") {
   ).trim();
   return {
     discipline: String(qualification.discipline || normalizedArea || "elektro").trim().toLowerCase() || "elektro",
-    type: String(qualification.type || qualification.equipmentType || qualification.kind || "").trim(),
+    examTitle: String(qualification.examTitle || qualification.title || "").trim(),
+    type: String(qualification.examType || qualification.type || qualification.equipmentType || qualification.kind || "").trim(),
+    examType: String(qualification.examType || qualification.type || qualification.equipmentType || qualification.kind || "").trim(),
     canInspect: Boolean(qualification.canInspect),
     canAuthorize: Boolean(qualification.canAuthorize),
-    classCode: String(qualification.classCode || "").trim(),
-    urbroj: String(qualification.urbroj || "").trim(),
-    eBroj: String(qualification.eBroj || "").trim(),
+    canResponsible: Boolean(qualification.canResponsible || qualification.canBeResponsible),
+    data1: String(qualification.data1 || qualification.classCode || "").trim(),
+    data2: String(qualification.data2 || qualification.urbroj || "").trim(),
+    data3: String(qualification.data3 || qualification.eBroj || "").trim(),
+    classCode: String(qualification.data1 || qualification.classCode || "").trim(),
+    urbroj: String(qualification.data2 || qualification.urbroj || "").trim(),
+    eBroj: String(qualification.data3 || qualification.eBroj || "").trim(),
+    passedOn: String(qualification.passedOn || qualification.examDate || "").trim(),
     validUntil: String(qualification.validUntil || "").trim(),
     validForever: Boolean(qualification.validForever),
+    specialRoles: normalizeQualificationSpecialRoles(qualification.specialRoles),
     signatureDataUrl: String(
       qualification.signatureDataUrl
       || qualification.signatureStorageUrl
@@ -59103,9 +59199,7 @@ function getUserQualificationAreaDefinitions(user = null) {
       key,
       title: getSignatureAreaLabel(key),
       label: getSignatureAreaLabel(key),
-      serviceLabel: getSignatureAreaLabel(key),
-      linkedServiceCatalogIds: [],
-      linkedServiceCatalogTitles: [],
+      specialRoleOptions: [],
     });
   });
   return Array.from(definitions.values());
@@ -59121,27 +59215,52 @@ function getUserQualificationInput(area = "", field = "") {
   );
 }
 
+function getUserQualificationSpecialRoleInputs(area = "") {
+  if (!userQualificationAreasContainer) {
+    return [];
+  }
+  const areaKey = normalizeQualificationAreaKey(area);
+  return Array.from(userQualificationAreasContainer.querySelectorAll(
+    `[data-user-qualification-area="${CSS.escape(areaKey)}"] [data-user-qualification-special-role]`,
+  ));
+}
+
 function readUserQualificationAreaPayload(definition = {}) {
   const area = normalizeQualificationAreaKey(definition.key || "elektro");
   const validForever = Boolean(getUserQualificationInput(area, "validForever")?.checked);
+  const specialRoles = Object.fromEntries(
+    getUserQualificationSpecialRoleInputs(area).map((input) => [
+      String(input.dataset.userQualificationSpecialRole || "").trim(),
+      Boolean(input.checked),
+    ]).filter(([key]) => key),
+  );
+  const specialRoleOptions = Array.isArray(definition.specialRoleOptions) ? definition.specialRoleOptions : [];
+  const hasSpecialCapability = (capability) => specialRoleOptions.some((option) => (
+    option.capability === capability && specialRoles[option.key]
+  ));
+  const examType = String(getUserQualificationInput(area, "type")?.value || "").trim();
+  const data1 = String(getUserQualificationInput(area, "data1")?.value || "").trim();
+  const data2 = String(getUserQualificationInput(area, "data2")?.value || "").trim();
+  const data3 = String(getUserQualificationInput(area, "data3")?.value || "").trim();
   return {
     discipline: area,
-    type: String(getUserQualificationInput(area, "type")?.value || "").trim(),
-    canInspect: getUserQualificationInput(area, "canInspect")?.value === "true",
-    canAuthorize: getUserQualificationInput(area, "canAuthorize")?.value === "true",
-    classCode: String(getUserQualificationInput(area, "classCode")?.value || "").trim(),
-    urbroj: String(getUserQualificationInput(area, "urbroj")?.value || "").trim(),
-    eBroj: String(getUserQualificationInput(area, "eBroj")?.value || "").trim(),
+    examTitle: String(definition.title || definition.label || area).trim(),
+    type: examType,
+    examType,
+    canInspect: Boolean(getUserQualificationInput(area, "canInspect")?.checked || hasSpecialCapability("inspect")),
+    canAuthorize: Boolean(getUserQualificationInput(area, "canAuthorize")?.checked || hasSpecialCapability("authorize")),
+    canResponsible: Boolean(getUserQualificationInput(area, "canResponsible")?.checked || hasSpecialCapability("responsible")),
+    data1,
+    data2,
+    data3,
+    classCode: data1,
+    urbroj: data2,
+    eBroj: data3,
+    passedOn: String(getUserQualificationInput(area, "passedOn")?.value || "").trim(),
     validUntil: validForever ? "" : String(getUserQualificationInput(area, "validUntil")?.value || "").trim(),
     validForever,
+    specialRoles,
   };
-}
-
-function createUserQualificationSelect(value = false) {
-  const select = document.createElement("select");
-  select.innerHTML = "<option value=\"false\">Ne</option><option value=\"true\">Da</option>";
-  select.value = value ? "true" : "false";
-  return select;
 }
 
 function createUserQualificationField(labelText = "", control, fieldName = "") {
@@ -59156,6 +59275,21 @@ function createUserQualificationField(labelText = "", control, fieldName = "") {
   return field;
 }
 
+function createUserQualificationCheckbox(labelText = "", checked = false, fieldName = "") {
+  const label = document.createElement("label");
+  label.className = "checkbox-field user-qualification-checkbox";
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.checked = Boolean(checked);
+  if (fieldName) {
+    input.dataset.userQualificationField = fieldName;
+  }
+  const copy = document.createElement("span");
+  copy.textContent = labelText;
+  label.append(input, copy);
+  return label;
+}
+
 function renderUserQualificationAreas(user = getCurrentUserEditorRecord() || {}) {
   if (!userQualificationAreasContainer) {
     return;
@@ -59165,7 +59299,7 @@ function renderUserQualificationAreas(user = getCurrentUserEditorRecord() || {})
   if (definitions.length === 0) {
     const empty = document.createElement("p");
     empty.className = "helper-copy module-copy";
-    empty.textContent = "Nema definiranih ispita. Dodaj novi ispit i poveži ga s uslugama.";
+    empty.textContent = "Nema definiranih ispita. Dodaj novi ispit u People pa će se nuditi i na drugim osobama.";
     userQualificationAreasContainer.replaceChildren(empty);
     return;
   }
@@ -59183,49 +59317,35 @@ function renderUserQualificationAreas(user = getCurrentUserEditorRecord() || {})
     const headingCopy = document.createElement("div");
     const kicker = document.createElement("p");
     kicker.className = "section-kicker";
-    kicker.textContent = definition.builtIn ? "Ovlaštenja" : "Ispit";
+    kicker.textContent = definition.defaultExam ? "Default ispit" : "Ispit";
     const title = document.createElement("h3");
     title.textContent = definition.title || definition.label || area;
     headingCopy.append(kicker, title);
     heading.append(headingCopy);
 
-    const serviceTitles = Array.isArray(definition.linkedServiceCatalogTitles)
-      ? definition.linkedServiceCatalogTitles.map((value) => String(value || "").trim()).filter(Boolean)
-      : [];
-    if (serviceTitles.length > 0) {
-      const services = document.createElement("div");
-      services.className = "user-qualification-service-links";
-      serviceTitles.slice(0, 3).forEach((entry) => {
-        services.append(createBadge(entry, "service-catalog-template-badge"));
-      });
-      if (serviceTitles.length > 3) {
-        services.append(createBadge(`+${serviceTitles.length - 3}`, "service-catalog-template-badge is-muted"));
-      }
-      heading.append(services);
-    }
-
     const grid = document.createElement("div");
     grid.className = "form-grid user-electrical-grid";
 
-    const inspectSelect = createUserQualificationSelect(qualification.canInspect);
-    const authorizeSelect = createUserQualificationSelect(qualification.canAuthorize);
     const typeInput = document.createElement("input");
     typeInput.type = "text";
     typeInput.maxLength = 160;
     typeInput.value = qualification.type || "";
-    typeInput.placeholder = "npr. viličar, dizalica, instalacija...";
-    const classInput = document.createElement("input");
-    classInput.type = "text";
-    classInput.maxLength = 160;
-    classInput.value = qualification.classCode || "";
-    const urbrojInput = document.createElement("input");
-    urbrojInput.type = "text";
-    urbrojInput.maxLength = 160;
-    urbrojInput.value = qualification.urbroj || "";
-    const eBrojInput = document.createElement("input");
-    eBrojInput.type = "text";
-    eBrojInput.maxLength = 160;
-    eBrojInput.value = qualification.eBroj || "";
+    typeInput.placeholder = "npr. viličar, dizalica, kemijske...";
+    const data1Input = document.createElement("input");
+    data1Input.type = "text";
+    data1Input.maxLength = 160;
+    data1Input.value = qualification.data1 || "";
+    const data2Input = document.createElement("input");
+    data2Input.type = "text";
+    data2Input.maxLength = 160;
+    data2Input.value = qualification.data2 || "";
+    const data3Input = document.createElement("input");
+    data3Input.type = "text";
+    data3Input.maxLength = 160;
+    data3Input.value = qualification.data3 || "";
+    const passedOnInput = document.createElement("input");
+    passedOnInput.type = "date";
+    passedOnInput.value = qualification.passedOn || "";
     const validUntilInput = document.createElement("input");
     validUntilInput.type = "date";
     validUntilInput.value = qualification.validUntil || "";
@@ -59249,13 +59369,45 @@ function renderUserQualificationAreas(user = getCurrentUserEditorRecord() || {})
       syncQualificationValidityInput(validUntilInput, validForeverInput);
     });
 
+    const genericRoles = document.createElement("div");
+    genericRoles.className = "field field-span-full user-qualification-role-group";
+    const genericRoleLabel = document.createElement("span");
+    genericRoleLabel.textContent = "Razina osobe";
+    const genericRoleOptions = document.createElement("div");
+    genericRoleOptions.className = "user-qualification-role-options";
+    genericRoleOptions.append(
+      createUserQualificationCheckbox("Ispitivač", qualification.canInspect, "canInspect"),
+      createUserQualificationCheckbox("Ovlaštena osoba", qualification.canAuthorize, "canAuthorize"),
+      createUserQualificationCheckbox("Odgovorna osoba", qualification.canResponsible, "canResponsible"),
+    );
+    genericRoles.append(genericRoleLabel, genericRoleOptions);
+
+    const specialRoleOptions = Array.isArray(definition.specialRoleOptions) ? definition.specialRoleOptions : [];
+    const specialRoles = normalizeQualificationSpecialRoles(qualification.specialRoles);
+    const specialRoleField = document.createElement("div");
+    specialRoleField.className = "field field-span-full user-qualification-role-group";
+    const specialRoleLabel = document.createElement("span");
+    specialRoleLabel.textContent = "Dodatne razine";
+    const specialRoleOptionWrap = document.createElement("div");
+    specialRoleOptionWrap.className = "user-qualification-role-options";
+    specialRoleOptions.forEach((option) => {
+      const optionLabel = createUserQualificationCheckbox(option.label, specialRoles[option.key], "");
+      const input = optionLabel.querySelector("input");
+      if (input) {
+        input.dataset.userQualificationSpecialRole = option.key;
+      }
+      specialRoleOptionWrap.append(optionLabel);
+    });
+    specialRoleField.append(specialRoleLabel, specialRoleOptionWrap);
+
     grid.append(
-      createUserQualificationField("Ispitivač", inspectSelect, "canInspect"),
-      createUserQualificationField("Nositelj", authorizeSelect, "canAuthorize"),
-      createUserQualificationField("Vrsta", typeInput, "type"),
-      createUserQualificationField("Klasa", classInput, "classCode"),
-      createUserQualificationField("UrBROJ", urbrojInput, "urbroj"),
-      createUserQualificationField("E broj", eBrojInput, "eBroj"),
+      genericRoles,
+      ...(specialRoleOptions.length > 0 ? [specialRoleField] : []),
+      createUserQualificationField("Vrsta ispita", typeInput, "type"),
+      createUserQualificationField("Podatak 1", data1Input, "data1"),
+      createUserQualificationField("Podatak 2", data2Input, "data2"),
+      createUserQualificationField("Podatak 3", data3Input, "data3"),
+      createUserQualificationField("Datum polaganja", passedOnInput, "passedOn"),
       createUserQualificationField("Vrijedi do", validUntilInput, "validUntil"),
       validForeverField,
     );
@@ -59270,10 +59422,10 @@ function buildUserElectricalQualificationPayload() {
   const currentRecord = getCurrentUserEditorRecord();
   const definitions = getUserQualificationAreaDefinitions(currentRecord || {});
   const renderedAreas = new Set(definitions.map((definition) => normalizeQualificationAreaKey(definition.key)));
-  const rootDefinition = definitions.find((definition) => normalizeQualificationAreaKey(definition.key) === "elektro")
-    || { key: "elektro" };
+  const rootDefinition = definitions.find((definition) => normalizeQualificationAreaKey(definition.key) === "elektro");
+  const currentRoot = getUserElectricalQualification(currentRecord || {}, "elektro");
   const root = {
-    ...readUserQualificationAreaPayload(rootDefinition),
+    ...(rootDefinition ? readUserQualificationAreaPayload(rootDefinition) : currentRoot),
     discipline: "elektro",
     signatureDataUrl: userElectricalSignatureDataUrlInput?.value || "",
     documents: [],
@@ -59322,10 +59474,11 @@ function getQualifiedUsersForSignatureArea(capability = "inspect", signatureArea
 function getQualifiedUserSelectLabel(user = {}, capability = "inspect", signatureArea = "elektro") {
   const qualification = getUserElectricalQualification(user, signatureArea);
   const summaryParts = [
-    qualification.type ? `Vrsta ${qualification.type}` : "",
-    qualification.classCode ? `Klasa ${qualification.classCode}` : "",
-    qualification.urbroj ? `UrBROJ ${qualification.urbroj}` : "",
-    qualification.eBroj ? `E ${qualification.eBroj}` : "",
+    qualification.type ? `Vrsta ispita ${qualification.type}` : "",
+    qualification.data1 ? `Podatak 1 ${qualification.data1}` : "",
+    qualification.data2 ? `Podatak 2 ${qualification.data2}` : "",
+    qualification.data3 ? `Podatak 3 ${qualification.data3}` : "",
+    qualification.passedOn ? `Položeno ${formatCompactDate(qualification.passedOn)}` : "",
   ].filter(Boolean);
   const roleLabel = capability === "authorize" ? "nositelj" : "ispitivač";
   const areaLabel = getSignatureAreaLabel(signatureArea);
@@ -59419,10 +59572,11 @@ function getQualifiedUserSummaryValue(user = null, capability = "inspect", signa
   const qualification = getUserElectricalQualification(user, signatureArea);
   return [
     getUserDocumentDisplayName(user),
-    qualification.type ? `Vrsta ${qualification.type}` : "",
-    qualification.classCode ? `Klasa ${qualification.classCode}` : "",
-    qualification.urbroj ? `UrBROJ ${qualification.urbroj}` : "",
-    qualification.eBroj ? `E broj ${qualification.eBroj}` : "",
+    qualification.type ? `Vrsta ispita ${qualification.type}` : "",
+    qualification.data1 ? `Podatak 1 ${qualification.data1}` : "",
+    qualification.data2 ? `Podatak 2 ${qualification.data2}` : "",
+    qualification.data3 ? `Podatak 3 ${qualification.data3}` : "",
+    qualification.passedOn ? `Položeno ${formatCompactDate(qualification.passedOn)}` : "",
   ].filter(Boolean).join(" | ");
 }
 
@@ -59441,10 +59595,11 @@ function getQualifiedUserDocumentMetaLines(
   return [
     visibleFields.has("title") && user.title ? String(user.title).trim() : "",
     visibleFields.has("oib") && user.oib ? `OIB ${String(user.oib).trim()}` : "",
-    visibleFields.has("type") && qualification.type ? `Vrsta ${qualification.type}` : "",
-    visibleFields.has("classCode") && qualification.classCode ? `Klasa ${qualification.classCode}` : "",
-    visibleFields.has("urbroj") && qualification.urbroj ? `UrBROJ ${qualification.urbroj}` : "",
-    visibleFields.has("eBroj") && qualification.eBroj ? `E broj ${qualification.eBroj}` : "",
+    visibleFields.has("type") && qualification.type ? `Vrsta ispita ${qualification.type}` : "",
+    (visibleFields.has("data1") || visibleFields.has("classCode")) && qualification.data1 ? `Podatak 1 ${qualification.data1}` : "",
+    (visibleFields.has("data2") || visibleFields.has("urbroj")) && qualification.data2 ? `Podatak 2 ${qualification.data2}` : "",
+    (visibleFields.has("data3") || visibleFields.has("eBroj")) && qualification.data3 ? `Podatak 3 ${qualification.data3}` : "",
+    visibleFields.has("passedOn") && qualification.passedOn ? `Datum polaganja ${formatCompactDate(qualification.passedOn)}` : "",
   ].filter(Boolean);
 }
 
@@ -59892,12 +60047,20 @@ function getQualifiedUserSourcePreviewValue(source, context = {}) {
   const sourceMap = {
     QUALIFIED_INSPECTOR_NAME: { capability: "inspect", field: "name" },
     QUALIFIED_INSPECTOR_TYPE: { capability: "inspect", field: "type" },
+    QUALIFIED_INSPECTOR_DATA_1: { capability: "inspect", field: "data1" },
+    QUALIFIED_INSPECTOR_DATA_2: { capability: "inspect", field: "data2" },
+    QUALIFIED_INSPECTOR_DATA_3: { capability: "inspect", field: "data3" },
+    QUALIFIED_INSPECTOR_PASSED_ON: { capability: "inspect", field: "passedOn" },
     QUALIFIED_INSPECTOR_CLASS_CODE: { capability: "inspect", field: "classCode" },
     QUALIFIED_INSPECTOR_URBROJ: { capability: "inspect", field: "urbroj" },
     QUALIFIED_INSPECTOR_E_BROJ: { capability: "inspect", field: "eBroj" },
     QUALIFIED_INSPECTOR_SUMMARY: { capability: "inspect", field: "summary" },
     QUALIFIED_AUTHORIZATION_HOLDER_NAME: { capability: "authorize", field: "name" },
     QUALIFIED_AUTHORIZATION_HOLDER_TYPE: { capability: "authorize", field: "type" },
+    QUALIFIED_AUTHORIZATION_HOLDER_DATA_1: { capability: "authorize", field: "data1" },
+    QUALIFIED_AUTHORIZATION_HOLDER_DATA_2: { capability: "authorize", field: "data2" },
+    QUALIFIED_AUTHORIZATION_HOLDER_DATA_3: { capability: "authorize", field: "data3" },
+    QUALIFIED_AUTHORIZATION_HOLDER_PASSED_ON: { capability: "authorize", field: "passedOn" },
     QUALIFIED_AUTHORIZATION_HOLDER_CLASS_CODE: { capability: "authorize", field: "classCode" },
     QUALIFIED_AUTHORIZATION_HOLDER_URBROJ: { capability: "authorize", field: "urbroj" },
     QUALIFIED_AUTHORIZATION_HOLDER_E_BROJ: { capability: "authorize", field: "eBroj" },
@@ -77477,6 +77640,7 @@ function closeOrganizationEditor({ reset = false } = {}) {
 }
 
 function resetUserForm() {
+  userQualificationEditorDraftDefinitions = new Map();
   userForm.reset();
   userIdInput.value = "";
   userAvatarDataUrlInput.value = "";
@@ -77725,6 +77889,7 @@ function hydrateOrganizationForm(organization) {
 }
 
 function hydrateUserForm(user) {
+  userQualificationEditorDraftDefinitions = new Map();
   setPeopleWorkspaceTab("users");
   state.activeSidebarGroup = "organisations";
   state.activeSidebarItem = "people";
@@ -92712,9 +92877,10 @@ function getWorkOrderFinishedInspectorOptions(targets = [], currentLabels = []) 
       const qualificationParts = [...entry.areas].flatMap((area) => {
         const qualification = getUserElectricalQualification(entry.user, area);
         return [
-          qualification.classCode ? `Klasa ${qualification.classCode}` : "",
-          qualification.urbroj ? `UrBROJ ${qualification.urbroj}` : "",
-          qualification.eBroj ? `E ${qualification.eBroj}` : "",
+          qualification.type ? `Vrsta ispita ${qualification.type}` : "",
+          qualification.data1 ? `Podatak 1 ${qualification.data1}` : "",
+          qualification.data2 ? `Podatak 2 ${qualification.data2}` : "",
+          qualification.data3 ? `Podatak 3 ${qualification.data3}` : "",
         ].filter(Boolean);
       });
       return {
@@ -111638,14 +111804,26 @@ userTipkaloValidForeverInput?.addEventListener("change", () => {
 });
 
 userQualificationAddExamButton?.addEventListener("click", () => {
-  state.activeView = "module";
-  state.activeModuleItem = "safety-authorization";
-  renderActiveView();
-  renderModuleView();
-  resetSafetyAuthorizationForm();
-  openSafetyAuthorizationEditor();
+  const title = window.prompt("Upiši naziv novog ispita:");
+  const normalizedTitle = String(title || "").trim();
+  if (!normalizedTitle) {
+    return;
+  }
+  const key = createUserQualificationExamKey(normalizedTitle);
+  if (!key) {
+    return;
+  }
+  userQualificationEditorDraftDefinitions.set(key, {
+    key,
+    title: normalizedTitle,
+    label: normalizedTitle,
+    builtIn: false,
+    specialRoleOptions: [],
+  });
+  renderUserQualificationAreas(getCurrentUserEditorRecord() || {});
   requestAnimationFrame(() => {
-    safetyAuthorizationTitleInput?.focus({ preventScroll: true });
+    const input = getUserQualificationInput(key, "type");
+    input?.focus({ preventScroll: true });
   });
 });
 

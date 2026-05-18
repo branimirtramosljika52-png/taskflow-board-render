@@ -31044,6 +31044,20 @@ body.is-document-template-editor-open {
   justify-content: flex-end;
 }
 
+.user-qualification-role-group {
+  align-items: stretch;
+}
+
+.user-qualification-role-options {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.user-qualification-checkbox {
+  min-height: 38px;
+}
+
 .user-editor-panel .module-attachment-list {
   margin-top: 0;
 }
