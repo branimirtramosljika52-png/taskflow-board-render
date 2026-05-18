@@ -52349,6 +52349,10 @@ body.is-signature-review-open::before {
   min-height: 0;
 }
 
+.signature-preview-body.is-pdf-only {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .signature-preview-body iframe {
   width: 100%;
   height: 100%;

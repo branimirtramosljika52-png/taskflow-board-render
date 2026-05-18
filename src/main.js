@@ -7316,6 +7316,15 @@ function getUserDocumentTitle(user = null) {
   ).replace(/\s+/g, " ").trim();
 }
 
+function getUserDocumentOrganizationName(user = null) {
+  return String(
+    user?.organizationName
+    || user?.organization?.name
+    || user?.companyName
+    || "",
+  ).replace(/\s+/g, " ").trim();
+}
+
 function hasQualificationCapability(qualification = {}) {
   return Boolean(qualification?.canInspect || qualification?.canAuthorize);
 }
@@ -27524,9 +27533,64 @@ function getDocumentsExplorerWorkOrderDocuments({ documentCategory = "" } = {}) 
     ));
 }
 
+function normalizeGeneratedSignatureFieldName(value = "") {
+  return String(value || "").trim();
+}
+
+function parseGeneratedSignedFieldsJson(value = "") {
+  if (!value || typeof value !== "string") {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function getGeneratedDocumentSignatureFieldNames(documentItem = {}) {
+  const metadata = parseSignatureFieldsJson(documentItem?.signatureFieldsJson || "");
+  const fieldNames = metadata
+    .map((entry) => normalizeGeneratedSignatureFieldName(entry?.fieldName || entry?.preferredField))
+    .filter(Boolean);
+  if (fieldNames.length > 0) {
+    return Array.from(new Set(fieldNames));
+  }
+  const preferredField = normalizeGeneratedSignatureFieldName(documentItem?.preferredField);
+  return preferredField ? [preferredField] : [];
+}
+
+function getGeneratedDocumentSignedFieldNames(documentItem = {}) {
+  return new Set(parseGeneratedSignedFieldsJson(documentItem?.signedFieldsJson || "")
+    .map((entry) => normalizeGeneratedSignatureFieldName(typeof entry === "string" ? entry : (entry?.fieldName || entry?.preferredField)))
+    .filter(Boolean));
+}
+
+function isGeneratedDocumentSignatureFieldSigned(documentItem = {}, fieldName = "") {
+  const normalizedFieldName = normalizeGeneratedSignatureFieldName(fieldName);
+  const fieldNames = getGeneratedDocumentSignatureFieldNames(documentItem);
+  const signedFields = getGeneratedDocumentSignedFieldNames(documentItem);
+  if (normalizedFieldName && signedFields.has(normalizedFieldName)) {
+    return true;
+  }
+  return fieldNames.length <= 1
+    && normalizedFieldName
+    && fieldNames.includes(normalizedFieldName)
+    && signedFields.size === 0
+    && /\bpotpisano\b/i.test(String(documentItem?.description || ""));
+}
+
 function isGeneratedDocumentSigned(documentItem = {}) {
-  const description = String(documentItem?.description || "");
-  return /\bpotpisano\b/i.test(description);
+  const fieldNames = getGeneratedDocumentSignatureFieldNames(documentItem);
+  if (fieldNames.length > 0) {
+    const signedFields = getGeneratedDocumentSignedFieldNames(documentItem);
+    if (signedFields.size === 0) {
+      return fieldNames.length === 1 && /\bpotpisano\b/i.test(String(documentItem?.description || ""));
+    }
+    return fieldNames.every((fieldName) => signedFields.has(fieldName));
+  }
+  return /\bpotpisano\b/i.test(String(documentItem?.description || ""));
 }
 
 function isGeneratedDocumentRejected(documentItem = {}) {
@@ -29931,6 +29995,7 @@ function getSignatureReviewItemForDocumentField(documentId = "", fieldName = "")
 
 function buildSignatureStatusPerson(documentItem = {}, metadataEntry = null, signed = false) {
   const fieldName = String(metadataEntry?.fieldName || documentItem.preferredField || "").trim();
+  const fieldSigned = isGeneratedDocumentSignatureFieldSigned(documentItem, fieldName) || (signed && !fieldName);
   const label = resolveSignatureReviewLabel({
     documentId: documentItem.id || "",
     preferredField: fieldName,
@@ -29945,7 +30010,7 @@ function buildSignatureStatusPerson(documentItem = {}, metadataEntry = null, sig
     ? "locked"
     : decision?.status === "rejected_with_comment" || documentRejected
       ? "rejected"
-      : signed
+      : fieldSigned
         ? "signed"
         : "pending";
   return {
@@ -29957,7 +30022,7 @@ function buildSignatureStatusPerson(documentItem = {}, metadataEntry = null, sig
     oib: label.oib || "",
     status,
     comment: decision?.comment || reviewItem?.error || documentItem.signatureReviewComment || "",
-    signedAt: signed ? (documentItem.updatedAt || documentItem.createdAt || "") : "",
+    signedAt: fieldSigned ? (documentItem.updatedAt || documentItem.createdAt || "") : "",
     lockBy: reviewItem?.signingLockByUserName || "",
     lockUntil: reviewItem?.signingLockUntil || "",
   };
@@ -30432,6 +30497,7 @@ function mapSignatureBridgeDocuments(payload = {}) {
     signerTitle: item.signerTitle || "",
     signerUserId: item.signerUserId || "",
     signerEmail: item.signerEmail || "",
+    signerOrganization: item.signerOrganization || "",
     signingStatus: item.signingStatus || "",
     signingLockByUserId: item.signingLockByUserId || "",
     signingLockByUserName: item.signingLockByUserName || "",
@@ -30626,7 +30692,7 @@ function resolveSignatureReviewLabel(item = {}, field = null, metadataEntry = nu
     || (byField?.label && normalizeSignatureIdentityKey(byField.label) !== normalizeSignatureIdentityKey(roleLabel) ? byField.label : "")
     || item.signatureSigner
     || "";
-  const title = byField?.signerTitle || byField?.title || item.signatureSignerTitle || "";
+  const title = byField?.signerTitle || byField?.title || item.signerTitle || item.signatureSignerTitle || "";
   return {
     label: roleLabel,
     roleLabel,
@@ -30638,6 +30704,7 @@ function resolveSignatureReviewLabel(item = {}, field = null, metadataEntry = nu
     oib: byField?.oib || item.signatureFieldOib || "",
     signerUserId: byField?.signerUserId || byField?.userId || item.signerUserId || "",
     signerEmail: byField?.signerEmail || byField?.email || item.signerEmail || "",
+    signerOrganization: byField?.signerOrganization || byField?.organization || byField?.organizationName || item.signerOrganization || "",
   };
 }
 
@@ -30742,6 +30809,7 @@ function buildSignatureReviewItems(payload = {}, fieldsResponse = {}, sourceEntr
         signerTitle: label.title,
         signerUserId: label.signerUserId || item.signerUserId || "",
         signerEmail: label.signerEmail || item.signerEmail || "",
+        signerOrganization: label.signerOrganization || item.signerOrganization || "",
         fieldName,
         signatureFieldRole: label.role || item.signatureFieldRole || "",
         signatureFieldOib: label.oib || item.signatureFieldOib || "",
@@ -31560,7 +31628,7 @@ function renderSignatureReviewPanel() {
       help.textContent = item.error
         || (personGroup.items.length > 1
           ? `Odluka vrijedi za ${personGroup.items.length} potpisa ove osobe na dokumentu.`
-          : "Klikni za PDF preview i označeno mjesto digitalnog potpisa.");
+          : "Klikni za PDF pregled dokumenta.");
       copy.append(doc, line, help);
 
       const badge = document.createElement("span");
@@ -31678,25 +31746,7 @@ function renderSignatureReviewPanel() {
       frame.referrerPolicy = "same-origin";
       frame.setAttribute("aria-label", activeItem.fileName || "PDF preview");
       stage.append(frame);
-      if (activeItem.field) {
-        const markerPage = Math.round(Number(activeItem.field.page || activeItem.field.pageNumber || controls.page || 1));
-        if (!Number.isFinite(markerPage) || markerPage <= 0 || markerPage === controls.page) {
-          const marker = document.createElement("div");
-          marker.className = "signature-review-field-marker";
-          const pageWidth = 595;
-          const pageHeight = 842;
-          const left = Math.max(4, Math.min(82, (Number(activeItem.field.x || 0) / pageWidth) * 100));
-          const width = Math.max(10, Math.min(30, (Number(activeItem.field.width || 120) / pageWidth) * 100));
-          const height = Math.max(3.6, Math.min(7.5, (Number(activeItem.field.height || 32) / pageHeight) * 100));
-          const top = Math.max(4, Math.min(88, 100 - (((Number(activeItem.field.y || 0) + Number(activeItem.field.height || 32)) / pageHeight) * 100)));
-          marker.style.left = `${left}%`;
-          marker.style.top = `${top}%`;
-          marker.style.width = `${width}%`;
-          marker.style.height = `${height}%`;
-          appendSignatureAppearanceMarkerContent(marker, activeItem);
-          stage.append(marker);
-        }
-      } else {
+      if (!activeItem.field) {
         const missing = document.createElement("p");
         missing.className = "signature-preview-empty";
         missing.textContent = activeItem.error || "Ovaj PDF nema digitalno potpisno polje.";
@@ -32237,8 +32287,8 @@ function appendSignatureAppearanceMarkerContent(marker, item = {}) {
   if (appearance.showTitle && item.signerTitle) lines.push({ text: item.signerTitle, strong: false });
   if (appearance.showRole && (item.roleLabel || item.label)) lines.push({ text: item.roleLabel || item.label, strong: false });
   if (appearance.showOib && item.signatureFieldOib) lines.push({ text: `OIB ${item.signatureFieldOib}`, strong: false });
-  if (appearance.showOrganization && (item.companyName || item.sourceEntry?.context?.company?.name)) {
-    lines.push({ text: item.companyName || item.sourceEntry?.context?.company?.name, strong: false });
+  if (appearance.showOrganization && (item.signerOrganization || item.companyName || item.sourceEntry?.context?.company?.name)) {
+    lines.push({ text: item.signerOrganization || item.companyName || item.sourceEntry?.context?.company?.name, strong: false });
   }
   if (appearance.showDateTime) lines.push({ text: "Datum i vrijeme potpisa", strong: false });
   if (appearance.showReason && settings.reason) lines.push({ text: settings.reason, strong: false });
@@ -32290,38 +32340,14 @@ function openSignatureReviewPreviewModal(item = {}, pdfUrl = "") {
   head.append(copy, close);
 
   const body = document.createElement("div");
-  body.className = "signature-preview-body";
+  body.className = "signature-preview-body is-pdf-only";
   const frame = document.createElement("iframe");
   frame.src = pdfUrl;
   frame.loading = "lazy";
   frame.referrerPolicy = "same-origin";
   frame.setAttribute("aria-label", item.fileName || "PDF preview");
 
-  const map = document.createElement("div");
-  map.className = "signature-preview-map";
-  const page = document.createElement("div");
-  page.className = "signature-preview-page";
-  if (item.field) {
-    const marker = document.createElement("div");
-    marker.className = "signature-preview-marker";
-    const left = Math.max(4, Math.min(78, (Number(item.field.x || 0) / 595) * 100));
-    const width = Math.max(12, Math.min(36, (Number(item.field.width || 120) / 595) * 100));
-    const height = Math.max(3.8, Math.min(8, (Number(item.field.height || 32) / 842) * 100));
-    const top = Math.max(4, Math.min(86, 100 - ((Number(item.field.y || 0) + Number(item.field.height || 32)) / 842) * 100));
-    marker.style.left = `${left}%`;
-    marker.style.top = `${top}%`;
-    marker.style.width = `${width}%`;
-    marker.style.height = `${height}%`;
-    appendSignatureAppearanceMarkerContent(marker, item);
-    page.append(marker);
-  } else {
-    const empty = document.createElement("p");
-    empty.className = "signature-preview-empty";
-    empty.textContent = "Ovaj PDF nema digitalno potpisno polje.";
-    page.append(empty);
-  }
-  map.append(page);
-  body.append(frame, map);
+  body.append(frame);
   modal.append(head, body);
   backdrop.append(modal);
   document.body.append(backdrop);
@@ -32456,6 +32482,7 @@ async function signApprovedSignatureReviewItems() {
     signerTitle: item.signerTitle || "",
     signerUserId: item.signerUserId || "",
     signerEmail: item.signerEmail || "",
+    signerOrganization: item.signerOrganization || "",
     lockToken: item.signingLockToken || "",
     reviewDecisionKey: getSignatureReviewDecisionKey(item),
   }));
@@ -56573,6 +56600,7 @@ function buildDocumentTemplateQualifiedInspectorEntries(field = {}, context = {}
     const signerEmail = String(user?.email || "").trim();
     const displayName = getUserDocumentDisplayName(user);
     const signerTitle = getUserDocumentTitle(user);
+    const signerOrganization = getUserDocumentOrganizationName(user);
     return {
       role: roleLabel,
       name: displayName || roleLabel,
@@ -56588,6 +56616,7 @@ function buildDocumentTemplateQualifiedInspectorEntries(field = {}, context = {}
       signerEmail,
       signerOib,
       signerTitle,
+      signerOrganization,
       signatureFieldRole: "ZNR",
       signatureFieldOib: signerOib,
       digitalAnchor: signerOib || signerEmail || displayName,
@@ -56600,6 +56629,7 @@ function buildDocumentTemplateSignatureEntry(field = {}, context = {}) {
   const signerOib = String(signaturePreview.user?.oib || "").trim();
   const signerEmail = String(signaturePreview.user?.email || "").trim();
   const signerTitle = getUserDocumentTitle(signaturePreview.user);
+  const signerOrganization = getUserDocumentOrganizationName(signaturePreview.user);
   return {
     role: field.type === "authorization_holder_signature" ? "Nositelj ovlaštenja" : "Ispitivač",
     name: signaturePreview.displayName || "Potpis",
@@ -56612,6 +56642,7 @@ function buildDocumentTemplateSignatureEntry(field = {}, context = {}) {
     signerEmail,
     signerOib,
     signerTitle,
+    signerOrganization,
     signatureFieldRole: "ZNR",
     signatureFieldOib: signerOib,
     digitalAnchor: signerOib || signerEmail || String(signaturePreview.displayName || "").trim(),
@@ -56623,6 +56654,7 @@ function buildDocumentTemplateDigitalSignatureEntries(field = {}, context = {}) 
     const signerOib = String(entry.user?.oib || "").trim();
     const signerEmail = String(entry.user?.email || "").trim();
     const signerTitle = getUserDocumentTitle(entry.user);
+    const signerOrganization = getUserDocumentOrganizationName(entry.user);
     return {
       role: entry.role,
       name: getUserDocumentDisplayName(entry.user),
@@ -56633,6 +56665,7 @@ function buildDocumentTemplateDigitalSignatureEntries(field = {}, context = {}) 
       signerEmail,
       signerOib,
       signerTitle,
+      signerOrganization,
       signatureFieldRole: entry.signatureFieldRole || "ZNR",
       signatureFieldOib: signerOib,
       digitalAnchor: signerOib || signerEmail || getUserDocumentDisplayName(entry.user),

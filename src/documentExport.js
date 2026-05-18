@@ -368,7 +368,7 @@ function normalizePdfSignatureFieldSpec(item = {}, options = {}) {
     roleLabel: clean(item.role) || signatureFieldRole,
     signerTitle: clean(item.signerTitle || item.title),
     signerOib: signatureFieldOib,
-    signerOrganization: clean(item.signerOrganization || item.organization || item.companyName),
+    signerOrganization: clean(item.signerOrganization || item.organization || item.organizationName || item.companyName),
     signerUserId: clean(item.signerUserId || item.userId),
     signerEmail: clean(item.signerEmail || item.email),
     positioning: normalizePdfSignaturePositionSettings(item.positioning || item.signaturePosition || item.signaturePositioning),
@@ -382,6 +382,32 @@ function normalizePdfSignatureFieldSpec(item = {}, options = {}) {
     height: Number.isFinite(Number(item.height)) ? Number(item.height) : Number.NaN,
     drawPlaceholder: Boolean(item.drawPlaceholder ?? options.drawPlaceholder),
   };
+}
+
+function ensureUniquePdfSignatureFieldSpecs(specs = []) {
+  const counts = new Map();
+  const used = new Set();
+  return (Array.isArray(specs) ? specs : [])
+    .map((spec) => {
+      const baseName = clean(spec?.fieldName);
+      if (!baseName) {
+        return null;
+      }
+      const count = counts.get(baseName) || 0;
+      counts.set(baseName, count + 1);
+      let candidate = count === 0 ? baseName : `${baseName}_${count + 1}`;
+      let suffix = count + 2;
+      while (used.has(candidate)) {
+        candidate = `${baseName}_${suffix}`;
+        suffix += 1;
+      }
+      used.add(candidate);
+      return {
+        ...spec,
+        fieldName: candidate,
+      };
+    })
+    .filter(Boolean);
 }
 
 function collectPdfSignatureFieldSpecsFromItems(items = [], options = {}) {
@@ -413,19 +439,13 @@ export function collectPdfSignatureFieldSpecsFromValue(value = null, output = []
 }
 
 export function collectPdfSignatureFieldSpecsFromEntry(entry = {}) {
-  const specs = [
-    ...collectPdfSignatureFieldSpecsFromValue(entry?.placeholders ?? {}),
-    ...collectPdfSignatureFieldSpecsFromValue(entry?.renderModel ?? {}),
-  ];
-  const seen = new Set();
-  return specs.filter((spec) => {
-    const key = clean(spec.fieldName);
-    if (!key || seen.has(key)) {
-      return false;
-    }
-    seen.add(key);
-    return true;
-  });
+  const referenceKind = clean(entry?.templateReferenceKind).toLowerCase();
+  const placeholderSpecs = collectPdfSignatureFieldSpecsFromValue(entry?.placeholders ?? {});
+  const renderModelSpecs = collectPdfSignatureFieldSpecsFromValue(entry?.renderModel ?? {});
+  const specs = ["word", "html"].includes(referenceKind)
+    ? placeholderSpecs
+    : (renderModelSpecs.length > 0 ? renderModelSpecs : placeholderSpecs);
+  return ensureUniquePdfSignatureFieldSpecs(specs);
 }
 
 const HTML_TEXT_ENCODING_REPLACEMENTS = Object.freeze([
@@ -1398,6 +1418,7 @@ function normalizeDocxSpecialPlaceholderValue(value) {
           signerEmail: clean(item.signerEmail || item.email),
           signerOib: clean(item.signerOib || item.oib),
           signerTitle: clean(item.signerTitle || item.title),
+          signerOrganization: clean(item.signerOrganization || item.organization || item.organizationName),
           signatureFieldRole: normalizePdfSignatureFieldRole(item.signatureFieldRole || item.signatureRole || item.roleCode || DEFAULT_PDF_SIGNATURE_FIELD_ROLE),
           signatureFieldOib: normalizePdfSignatureFieldOib(item.signatureFieldOib || item.signerOib || item.oib),
           preferredField: clean(item.preferredField || item.fieldName),
@@ -5729,7 +5750,7 @@ function drawPdfSignatureFieldPlaceholder(page, rect, spec = {}, fonts = {}, app
       const logoWidth = logoImage.width * scale;
       const logoHeight = logoImage.height * scale;
       page.drawImage(logoImage, {
-        x: rect.x + ((rect.width - logoWidth) / 2),
+        x: rect.x + Math.max(2, rect.width * 0.04),
         y: rect.y + ((rect.height - logoHeight) / 2),
         width: logoWidth,
         height: logoHeight,
@@ -5974,13 +5995,13 @@ export async function addPdfSignatureFieldsToBuffer(pdfBuffer = Buffer.alloc(0),
   const rolePositioningSettings = normalizePdfSignatureRolePositioningSettings(
     options.rolePositioning || options.positioning || options.signaturePositioning,
   );
-  const normalizedFields = (Array.isArray(signatureFields) ? signatureFields : [])
+  const normalizedFields = ensureUniquePdfSignatureFieldSpecs((Array.isArray(signatureFields) ? signatureFields : [])
     .map((field) => normalizePdfSignatureFieldSpec({
       ...field,
       signatureMode: "digital",
       appearance: field.appearance || field.signatureAppearance || appearanceSettings,
     }))
-    .filter(Boolean);
+    .filter(Boolean));
 
   if (safeBuffer.length === 0 || normalizedFields.length === 0) {
     return safeBuffer;

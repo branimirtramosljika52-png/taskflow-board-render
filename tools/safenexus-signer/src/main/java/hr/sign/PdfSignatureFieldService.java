@@ -21,7 +21,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class PdfSignatureFieldService {
-    private static final Pattern SIGN_FIELD_PATTERN = Pattern.compile("^SIGN_([A-Z0-9_]+)_(\\d{11})$");
+    private static final Pattern SIGN_FIELD_PATTERN = Pattern.compile("^SIGN_([A-Z0-9_]+)_(\\d{11})(?:_[A-Z0-9]+)?$");
 
     public List<SignatureFieldInfo> listSignatureFields(byte[] pdfBytes) throws Exception {
         List<SignatureFieldInfo> fields = new ArrayList<>();

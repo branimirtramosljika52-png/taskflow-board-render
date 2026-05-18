@@ -3183,6 +3183,7 @@ function collectGeneratedDocumentTemplateSignatureItemsFromValue(value = null, o
       const signerEmail = cleanSignatureExportText(item.signerEmail || item.email);
       const signerOib = cleanSignatureExportText(item.signerOib || item.oib);
       const signerTitle = cleanSignatureExportText(item.signerTitle || item.title);
+      const signerOrganization = cleanSignatureExportText(item.signerOrganization || item.organization || item.organizationName);
       const hasScan = signatureMode === "scan" && cleanSignatureExportText(item.signatureImageUrl || item.signatureDataUrl || item.imageUrl);
       const signatureFieldRole = normalizeSignatureFieldRole(item.signatureFieldRole || item.signatureRole || "ZNR");
       const signatureFieldOib = normalizeSignatureFieldOib(item.signatureFieldOib || signerOib);
@@ -3198,6 +3199,7 @@ function collectGeneratedDocumentTemplateSignatureItemsFromValue(value = null, o
         signerEmail,
         signerOib,
         signerTitle,
+        signerOrganization,
         signatureMode,
         signatureFieldRole,
         signatureFieldOib,
@@ -3218,24 +3220,13 @@ function collectGeneratedDocumentTemplateSignatureItemsFromValue(value = null, o
 }
 
 function collectGeneratedDocumentTemplateSignatureItems(entry = {}) {
-  const items = [
-    ...collectGeneratedDocumentTemplateSignatureItemsFromValue(entry?.placeholders ?? {}),
-    ...collectGeneratedDocumentTemplateSignatureItemsFromValue(entry?.renderModel ?? {}),
-  ];
-  const seen = new Set();
-  return items.filter((item) => {
-    const key = [
-      item.signerUserId,
-      item.signerOib,
-      item.signerEmail,
-      item.name,
-    ].map((value) => String(value || "").toLowerCase()).filter(Boolean).join("|");
-    if (!key || seen.has(key)) {
-      return false;
-    }
-    seen.add(key);
-    return true;
-  });
+  const referenceKind = cleanSignatureExportText(entry?.templateReferenceKind).toLowerCase();
+  const placeholderItems = collectGeneratedDocumentTemplateSignatureItemsFromValue(entry?.placeholders ?? {});
+  const renderModelItems = collectGeneratedDocumentTemplateSignatureItemsFromValue(entry?.renderModel ?? {});
+  const items = ["word", "html"].includes(referenceKind)
+    ? placeholderItems
+    : (renderModelItems.length > 0 ? renderModelItems : placeholderItems);
+  return items;
 }
 
 function buildGeneratedDocumentTemplateSignatureDescription(entry = {}) {
@@ -3269,6 +3260,7 @@ function resolveGeneratedDocumentTemplateSignatureMetadata(entry = {}) {
       name: field.name || field.label || "",
       roleLabel: field.roleLabel || field.role || "",
       signerTitle: field.signerTitle || "",
+      signerOrganization: field.signerOrganization || "",
       signerUserId: field.signerUserId || "",
       signerEmail: field.signerEmail || "",
       page: field.page || "",
@@ -3913,11 +3905,65 @@ function getRequestPublicBaseUrl(request) {
 }
 
 function isSignatureBridgeDocumentSigned(document = {}) {
+  const fieldNames = getSignatureBridgeDocumentFieldNames(document);
+  if (fieldNames.length > 0) {
+    const signedFields = getSignatureBridgeDocumentSignedFieldNames(document);
+    if (signedFields.size === 0) {
+      return fieldNames.length === 1 && /\bpotpisano\b/i.test(String(document?.description || ""));
+    }
+    return fieldNames.every((fieldName) => signedFields.has(fieldName));
+  }
   return /\bpotpisano\b/i.test(String(document?.description || ""));
 }
 
 function isSignatureBridgeDocumentRejected(document = {}) {
   return String(document?.signatureReviewStatus || "").trim() === "rejected_with_comment";
+}
+
+function normalizeSignatureBridgeFieldName(value = "") {
+  return String(value || "").trim();
+}
+
+function parseSignatureBridgeJsonArray(value = "") {
+  if (!value || typeof value !== "string") {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function getSignatureBridgeDocumentFieldNames(document = {}) {
+  const fields = parseSignatureBridgeJsonArray(document?.signatureFieldsJson)
+    .map((entry) => normalizeSignatureBridgeFieldName(entry?.fieldName || entry?.preferredField))
+    .filter(Boolean);
+  if (fields.length > 0) {
+    return Array.from(new Set(fields));
+  }
+  const preferredField = normalizeSignatureBridgeFieldName(document?.preferredField);
+  return preferredField ? [preferredField] : [];
+}
+
+function getSignatureBridgeDocumentSignedFieldNames(document = {}) {
+  const names = parseSignatureBridgeJsonArray(document?.signedFieldsJson)
+    .map((entry) => normalizeSignatureBridgeFieldName(typeof entry === "string" ? entry : (entry?.fieldName || entry?.preferredField)))
+    .filter(Boolean);
+  return new Set(names);
+}
+
+function buildSignatureBridgeSignedFieldsJson(document = {}, fieldName = "") {
+  const signedFields = getSignatureBridgeDocumentSignedFieldNames(document);
+  const normalizedFieldName = normalizeSignatureBridgeFieldName(fieldName);
+  if (normalizedFieldName) {
+    signedFields.add(normalizedFieldName);
+  }
+  return JSON.stringify(Array.from(signedFields).map((name) => ({
+    fieldName: name,
+    signedAt: new Date().toISOString(),
+  })));
 }
 
 function normalizeSignatureFieldRole(value = "ZNR") {
@@ -4073,6 +4119,7 @@ function buildSignatureBridgeJobResponse(job = {}) {
       signerTitle: item.signerTitle || "",
       signerUserId: item.signerUserId || "",
       signerEmail: item.signerEmail || "",
+      signerOrganization: item.signerOrganization || "",
       signingStatus: item.signingStatus || "",
       signingLockByUserId: item.signingLockByUserId || "",
       signingLockByUserName: item.signingLockByUserName || "",
@@ -4164,7 +4211,7 @@ async function handleSignatureBridgeSignedUpload(request, response, token = "", 
     sendError(response, 404, "Izvorni dokument vise nije dostupan.");
     return true;
   }
-  if (isSignatureBridgeDocumentSigned(currentDocument) || item.signedAt || item.savedDocumentId) {
+  if (item.signedAt || item.savedDocumentId || isSignatureBridgeDocumentSigned(currentDocument)) {
     sendJson(response, 409, {
       ok: false,
       code: "ALREADY_SIGNED",
@@ -4180,6 +4227,7 @@ async function handleSignatureBridgeSignedUpload(request, response, token = "", 
   const base64 = dataUrl.split(",", 2)[1] || "";
   const signedBuffer = Buffer.from(base64, "base64");
   const bufferSize = Buffer.byteLength(base64, "base64");
+  const signedFieldName = String(body?.signedField || body?.fieldName || item.preferredField || "").trim();
   const filePayload = {
     fileName: String(body?.fileName || currentDocument.fileName || item.fileName || "zapisnik.pdf").trim(),
     fileType: "application/pdf",
@@ -4191,6 +4239,7 @@ async function handleSignatureBridgeSignedUpload(request, response, token = "", 
     signatureFieldOib: currentDocument.signatureFieldOib || item.signatureFieldOib || "",
     preferredField: currentDocument.preferredField || item.preferredField || "",
     signatureFieldsJson: currentDocument.signatureFieldsJson || "",
+    signedFieldsJson: buildSignatureBridgeSignedFieldsJson(currentDocument, signedFieldName),
     dataUrl,
   };
 
@@ -4208,8 +4257,8 @@ async function handleSignatureBridgeSignedUpload(request, response, token = "", 
     documentId: item.documentId,
     documentName: item.fileName,
     signatureItemId: item.id,
-    fieldName: item.preferredField || "",
-    placeholderKey: item.preferredField || "",
+    fieldName: signedFieldName || item.preferredField || "",
+    placeholderKey: signedFieldName || item.preferredField || "",
     label: item.signatureLabel || "",
     servicePart: item.servicePart || "",
     personLevel: item.personLevel || "",
@@ -7775,6 +7824,7 @@ async function handleApiRequest(request, response, url) {
             signerTitle: String(entry?.signerTitle || entry?.title || "").trim(),
             signerUserId: String(entry?.signerUserId || entry?.userId || "").trim(),
             signerEmail: String(entry?.signerEmail || entry?.email || "").trim(),
+            signerOrganization: String(entry?.signerOrganization || entry?.organization || entry?.organizationName || "").trim(),
             lockToken: String(entry?.lockToken || entry?.signingLockToken || "").trim(),
             reviewDecisionKey: String(entry?.reviewDecisionKey || "").trim(),
           }))
@@ -7840,6 +7890,24 @@ async function handleApiRequest(request, response, url) {
             ...body,
             ...requestFieldMetadata,
           }, document, workOrder, user);
+          const signerUser = (scopedSnapshot.users ?? []).find((entry) => {
+            const signerUserId = String(signatureRequest?.signerUserId || "").trim();
+            const signerEmail = String(signatureRequest?.signerEmail || "").trim().toLowerCase();
+            const signerOib = String(signatureRequest?.oib || "").replace(/\D/g, "");
+            return (
+              (signerUserId && String(entry?.id || "") === signerUserId)
+              || (signerEmail && String(entry?.email || "").trim().toLowerCase() === signerEmail)
+              || (signerOib && String(entry?.oib || "").replace(/\D/g, "") === signerOib)
+            );
+          }) || {};
+          const signerOrganization = String(
+            signatureRequest?.signerOrganization
+            || signerUser.organizationName
+            || signerUser.organization?.name
+            || scopedSnapshot.currentOrganization?.name
+            || (scopedSnapshot.organizations ?? []).find((entry) => String(entry?.id || "") === String(signerUser.organizationId || scopedSnapshot.activeOrganizationId || ""))?.name
+            || "",
+          ).trim();
           return {
             id: `${index + 1}-${randomUUID().slice(0, 8)}`,
             documentId: String(document.id),
@@ -7857,6 +7925,7 @@ async function handleApiRequest(request, response, url) {
             signerTitle: signatureRequest?.signerTitle || "",
             signerUserId: signatureRequest?.signerUserId || "",
             signerEmail: signatureRequest?.signerEmail || "",
+            signerOrganization,
             reviewDecisionKey: signatureRequest?.reviewDecisionKey || "",
             ...signatureField,
           };

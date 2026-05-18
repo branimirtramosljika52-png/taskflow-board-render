@@ -22,7 +22,7 @@ import java.util.Properties;
 
 public final class NativeMessagingMain {
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final String VERSION = "1.4.3-fit-selected-appearance-lines";
+    private static final String VERSION = "1.4.4-signer-org-multi-fields";
     private static final int MAX_MESSAGE_BYTES = 8 * 1024 * 1024;
 
     private NativeMessagingMain() {
@@ -520,7 +520,7 @@ public final class NativeMessagingMain {
                             text(item, "signerTitle", ""),
                             firstNonBlank(text(item, "signatureLabel", ""), text(item, "signatureFieldRole", "")),
                             text(item, "signatureFieldOib", ""),
-                            text(item, "companyName", "")
+                            firstNonBlank(text(item, "signerOrganization", ""), text(item, "organizationName", ""))
                     );
 
                     try {
@@ -581,6 +581,7 @@ public final class NativeMessagingMain {
                                 text(item, "documentId", ""),
                                 text(item, "fileName", "zapisnik.pdf"),
                                 text(item, "lockToken", text(item, "signingLockToken", "")),
+                                signedPdf.fieldName(),
                                 signedPdf.bytes()
                         );
 

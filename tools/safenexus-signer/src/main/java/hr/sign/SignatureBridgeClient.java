@@ -86,6 +86,7 @@ public final class SignatureBridgeClient {
             String documentId,
             String fileName,
             String lockToken,
+            String signedField,
             byte[] pdfBytes
     ) throws SignatureBridgeException {
         config.requireSafeNexusApiBase(apiBaseUrl);
@@ -109,6 +110,9 @@ public final class SignatureBridgeClient {
             payload.put("fileType", "application/pdf");
             payload.put("fileSize", pdfBytes == null ? 0 : pdfBytes.length);
             payload.put("dataUrl", "data:application/pdf;base64," + Base64.getEncoder().encodeToString(pdfBytes));
+            if (signedField != null && !signedField.isBlank()) {
+                payload.put("signedField", signedField.trim());
+            }
             if (lockToken != null && !lockToken.isBlank()) {
                 payload.put("lockToken", lockToken.trim());
             }

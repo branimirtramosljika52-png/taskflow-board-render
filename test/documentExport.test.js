@@ -774,6 +774,42 @@ test("signature field metadata collector returns preferred field for digital ent
   assert.equal(fields[0].fieldName, "SIGN_ZNR_91977516569");
 });
 
+test("signature field metadata collector keeps repeated signer fields unique", () => {
+  const repeatedSigner = {
+    role: "Ispitivac",
+    name: "Ana Savanovic",
+    signatureMode: "digital",
+    signerOib: "35649316156",
+    signerOrganization: "Adria grupa d.o.o.",
+    signatureFieldRole: "ZNR",
+  };
+  const fields = collectPdfSignatureFieldSpecsFromEntry({
+    templateReferenceKind: "word",
+    placeholders: {
+      POTPISI: {
+        __docxBlockType: "signature_group",
+        items: [repeatedSigner, repeatedSigner],
+      },
+    },
+    renderModel: {
+      blocks: [
+        {
+          type: "signature_group",
+          items: [repeatedSigner],
+        },
+      ],
+    },
+  });
+
+  assert.equal(fields.length, 2);
+  assert.deepEqual(fields.map((field) => field.fieldName), [
+    "SIGN_ZNR_35649316156",
+    "SIGN_ZNR_35649316156_2",
+  ]);
+  assert.equal(fields[0].signerOrganization, "Adria grupa d.o.o.");
+  assert.equal(fields[1].signerOrganization, "Adria grupa d.o.o.");
+});
+
 test("offer HTML template renders escaped commercial data", () => {
   const html = buildOfferHtmlTemplate({
     title: "Ponuda <script>alert(1)</script>",

@@ -463,7 +463,7 @@ public final class SigningService {
         canvas.setExtGState(state);
         canvas.addImageFittedIntoRectangle(
                 logo.image(),
-                new Rectangle((box.getWidth() - width) / 2f, (box.getHeight() - height) / 2f, width, height),
+                new Rectangle(Math.max(2f, box.getWidth() * 0.04f), (box.getHeight() - height) / 2f, width, height),
                 false
         );
         canvas.restoreState();
