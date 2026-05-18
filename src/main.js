@@ -27602,14 +27602,34 @@ function isGeneratedDocumentRejected(documentItem = {}) {
   return String(documentItem?.signatureReviewStatus || "").trim() === "rejected_with_comment";
 }
 
+function resolveGeneratedDocumentSignatureSummaryRole(entry = {}, documentItem = {}) {
+  const rawRole = String(
+    entry?.roleLabel
+    || entry?.role
+    || getSignatureRoleFallbackLabel(entry?.signatureFieldRole || ""),
+  ).replace(/\s+/g, " ").trim();
+  const normalizedRole = normalizeSignatureIdentityKey(rawRole);
+  const baseRole = normalizedRole.includes("odgovorna") || normalizedRole.includes("nositelj")
+    ? "Odgovorna osoba"
+    : normalizedRole.includes("ispitiv")
+      ? "Ispitivač"
+      : rawRole;
+  const serviceCode = normalizeDocumentTemplateSignatureServiceCode([
+    documentItem?.fileName,
+    documentItem?.documentType,
+    documentItem?.templateTitle,
+    documentItem?.description,
+    entry?.roleLabel,
+    entry?.role,
+  ].filter(Boolean).join(" "));
+  const alreadyHasServiceCode = serviceCode && new RegExp(`\\b${serviceCode}\\b`, "i").test(rawRole);
+  return [baseRole, serviceCode && !alreadyHasServiceCode ? serviceCode : ""].filter(Boolean).join(" ");
+}
+
 function buildGeneratedDocumentSignatureSummary(documentItem = {}) {
   return parseSignatureFieldsJson(documentItem?.signatureFieldsJson || "")
     .map((entry) => {
-      const role = String(
-        entry?.roleLabel
-        || entry?.role
-        || getSignatureRoleFallbackLabel(entry?.signatureFieldRole || ""),
-      ).replace(/\s+/g, " ").trim();
+      const role = resolveGeneratedDocumentSignatureSummaryRole(entry, documentItem);
       const name = String(
         entry?.name
         || entry?.signerName
