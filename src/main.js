@@ -31168,6 +31168,7 @@ function createSignatureReviewPdfControl(label = "", title = "", isActive = fals
 function createSignatureReviewActiveActions(activeItem = {}, activeDecision = {}) {
   const wrap = document.createElement("section");
   wrap.className = "signature-review-active-actions";
+  const decisionKey = getSignatureReviewDecisionKey(activeItem);
 
   const signerLine = document.createElement("div");
   signerLine.className = "signature-review-decision-signer";
@@ -46914,6 +46915,7 @@ const DOCUMENT_TEMPLATE_SIGNATURE_AREA_OPTIONS = [
 const DOCUMENT_TEMPLATE_DIGITAL_SIGNATURE_ROLE_OPTIONS = [
   { value: "inspect", label: "Ispitivaci" },
   { value: "authorize", label: "Odgovorna osoba" },
+  { value: "company_responsible", label: "Odgovorna osoba u tvrtki" },
   { value: "all", label: "Ispitivaci + odgovorna osoba" },
 ];
 
@@ -50242,7 +50244,7 @@ function createEmptyDocumentTemplateFieldDraft(initial = {}, index = 0) {
       )
       : [],
     signatureArea: String(initial.signatureArea ?? "elektro").trim().toLowerCase() || "elektro",
-    signatureRole: String(initial.signatureRole ?? (type === "authorization_holder_signature" ? "authorize" : "inspect")).trim().toLowerCase() || "inspect",
+    signatureRole: normalizeDocumentTemplateSignatureRole(initial.signatureRole ?? (type === "authorization_holder_signature" ? "authorize" : "inspect")),
     signatureMultiple: type === "authorization_holder_signature" || type === "inspector_signature"
       ? false
       : (initial.signatureMultiple !== undefined ? Boolean(initial.signatureMultiple) : true),
@@ -52217,7 +52219,7 @@ function buildDocumentTemplateDraft() {
           : [],
       }),
       signatureArea: String(field.signatureArea || "elektro").trim().toLowerCase() || "elektro",
-      signatureRole: String(field.signatureRole || (field.type === "authorization_holder_signature" ? "authorize" : "inspect")).trim().toLowerCase() || "inspect",
+      signatureRole: normalizeDocumentTemplateSignatureRole(field.signatureRole || (field.type === "authorization_holder_signature" ? "authorize" : "inspect")),
       signatureMultiple: field.type === "authorization_holder_signature" || field.type === "inspector_signature"
         ? false
         : Boolean(field.signatureMultiple ?? true),
@@ -52276,7 +52278,7 @@ function buildDocumentTemplateDraft() {
           valueColumn: "",
           previousDocumentMode: "NONE",
           signatureArea: field.signatureArea || "elektro",
-          signatureRole: field.signatureRole || (field.type === "authorization_holder_signature" ? "authorize" : "inspect"),
+          signatureRole: normalizeDocumentTemplateSignatureRole(field.signatureRole || (field.type === "authorization_holder_signature" ? "authorize" : "inspect")),
           signatureMultiple: field.type === "authorization_holder_signature" || field.type === "inspector_signature"
             ? false
             : Boolean(field.signatureMultiple ?? true),
@@ -52941,8 +52943,30 @@ function getDocumentTemplateSignatureServiceCode(field = {}, context = {}) {
     .find(Boolean) || "";
 }
 
+function normalizeDocumentTemplateSignatureRole(value = "inspect") {
+  const normalizedRole = String(value || "inspect").trim().toLowerCase();
+  return ["inspect", "authorize", "company_responsible", "all"].includes(normalizedRole)
+    ? normalizedRole
+    : "inspect";
+}
+
+function getDocumentTemplatePersonSignatureDisplayLabel(role = "inspect") {
+  const normalizedRole = normalizeDocumentTemplateSignatureRole(role);
+  if (normalizedRole === "authorize") {
+    return "Nositelj ovlaštenja";
+  }
+  if (normalizedRole === "company_responsible") {
+    return "Odgovorna osoba u tvrtki";
+  }
+  return "Ispitivač";
+}
+
 function buildDocumentTemplateSignatureRoleLabel(capability = "inspect", field = {}, context = {}) {
-  const base = capability === "authorize" ? "Odgovorna osoba" : "Ispitivač";
+  const normalizedCapability = normalizeDocumentTemplateSignatureRole(capability);
+  if (normalizedCapability === "company_responsible") {
+    return "Odgovorna osoba u tvrtki";
+  }
+  const base = normalizedCapability === "authorize" ? "Odgovorna osoba" : "Ispitivač";
   const serviceCode = getDocumentTemplateSignatureServiceCode(field, context);
   return [base, serviceCode].filter(Boolean).join(" ");
 }
@@ -54927,7 +54951,7 @@ function getDocumentTemplateSignaturePreviewData(field = {}, context = {}) {
   const capability = matchedEntry?.capability || (field.type === "authorization_holder_signature" ? "authorize" : "inspect");
   const roleLabel = buildDocumentTemplateSignatureRoleLabel(capability, field, context);
   const qualification = getUserElectricalQualification(matchedUser, signatureArea);
-  const displayName = matchedUser ? getUserDocumentDisplayName(matchedUser) : "";
+  const displayName = matchedEntry?.name || (matchedUser ? getUserDocumentDisplayName(matchedUser) : "");
 
   return {
     capability,
@@ -54936,20 +54960,23 @@ function getDocumentTemplateSignaturePreviewData(field = {}, context = {}) {
     signatureMethod,
     user: matchedUser,
     qualification,
-    metaLines: getQualifiedUserDocumentMetaLines(matchedUser, capability, signatureArea, field.signatureMetaFields),
-    signatureImageUrl: signatureMethod === "scan" ? getUserSignatureScanDataUrl(matchedUser) : "",
+    metaLines: matchedEntry?.metaLines ?? getQualifiedUserDocumentMetaLines(matchedUser, capability, signatureArea, field.signatureMetaFields),
+    signatureImageUrl: matchedEntry?.signatureImageUrl || (signatureMethod === "scan" ? getUserSignatureScanDataUrl(matchedUser) : ""),
     displayName: displayName
       || `${roleLabel} (${signatureAreaLabel})`,
     summary: matchedUser
       ? getQualifiedUserSummaryValue(matchedUser, capability, signatureArea)
-      : "",
+      : (matchedEntry?.summary || ""),
   };
 }
 
 function getDocumentTemplateDigitalSignatureRoleLabel(role = "inspect") {
-  const normalizedRole = String(role || "inspect").trim().toLowerCase();
+  const normalizedRole = normalizeDocumentTemplateSignatureRole(role);
   if (normalizedRole === "authorize") {
     return "Odgovorna osoba";
+  }
+  if (normalizedRole === "company_responsible") {
+    return "Odgovorna osoba u tvrtki";
   }
   if (normalizedRole === "all") {
     return "Ispitivaci + odgovorna osoba";
@@ -54990,10 +55017,12 @@ function getDocumentTemplateSignatureFieldConfig(field = {}) {
       allowMultiple: false,
     };
   }
-  const normalizedRole = String(field.signatureRole || "inspect").trim().toLowerCase() || "inspect";
+  const normalizedRole = normalizeDocumentTemplateSignatureRole(field.signatureRole || "inspect");
   return {
     role: normalizedRole,
-    allowMultiple: normalizedRole === "authorize" ? false : field.signatureMultiple !== false,
+    allowMultiple: normalizedRole === "inspect" || normalizedRole === "all"
+      ? field.signatureMultiple !== false
+      : false,
   };
 }
 
@@ -55021,6 +55050,8 @@ function getDocumentTemplateDigitalSignatureEntries(field = {}, context = {}) {
 
   if (role === "authorize") {
     pushEntriesForCapability("authorize");
+  } else if (role === "company_responsible") {
+    entries.push(buildDocumentTemplateCompanyResponsibleEntry(field, context));
   } else if (role === "all") {
     pushEntriesForCapability("inspect");
     pushEntriesForCapability("authorize");
@@ -55048,7 +55079,7 @@ function buildDocumentTemplateDigitalSignatureText(field = {}, context = {}) {
 
   return entries.map((entry) => ([
     `${signatureLabel} - ${entry.role}`,
-    getUserDocumentDisplayName(entry.user),
+    entry.name || (entry.user ? getUserDocumentDisplayName(entry.user) : ""),
     ...(entry.metaLines ?? []),
     signatureHint,
   ].filter(Boolean).join("\n"))).join("\n\n");
@@ -55243,7 +55274,7 @@ function getDocumentTemplateFieldPreviewValue(field = {}, context = {}, index = 
     const entries = getDocumentTemplateDigitalSignatureEntries(field, context);
     if (entries.length > 0) {
       return entries
-        .map((entry) => getUserDocumentDisplayName(entry.user))
+        .map((entry) => entry.name || (entry.user ? getUserDocumentDisplayName(entry.user) : ""))
         .filter(Boolean)
         .join(", ");
     }
@@ -56110,7 +56141,7 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
     );
     const signatureMethod = getDocumentTemplateContextSignatureMethod(context);
     const { role, allowMultiple } = getDocumentTemplateSignatureFieldConfig(field);
-    const roleLabel = role === "authorize" ? "Nositelj ovlaštenja" : "Ispitivač";
+    const roleLabel = getDocumentTemplatePersonSignatureDisplayLabel(role);
     const people = placeholderMode
       ? []
       : buildDocumentTemplateQualifiedInspectorEntries(field, context);
@@ -56174,14 +56205,15 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
       ? entries.map((entry, entryIndex) => {
         const metaMarkup = (entry.metaLines ?? []).map((line) => `<span>${escapeHtml(line)}</span>`).join("");
         const isRightAligned = entries.length % 2 === 1 && entryIndex === entries.length - 1;
+        const entryName = entry.name || (entry.user ? getUserDocumentDisplayName(entry.user) : "") || entry.role || "Potpisnik";
         const signatureVisual = entry.signatureImageUrl
-          ? `<img class="document-template-preview-signature-image" src="${escapeHtml(entry.signatureImageUrl)}" alt="${escapeHtml(getUserDocumentDisplayName(entry.user) || "Digitalni potpis")}" />`
+          ? `<img class="document-template-preview-signature-image" src="${escapeHtml(entry.signatureImageUrl)}" alt="${escapeHtml(entryName || "Digitalni potpis")}" />`
           : `<div class="document-template-preview-signature-placeholder${signatureMethod === "digital" ? " is-digital" : ""}">${signatureMethod === "digital" ? "Kvalificirani digitalni potpis" : "Potpis / scan"}</div>`;
         return `
           <article class="document-template-preview-person-signature${isRightAligned ? " is-right-aligned" : ""}">
             <div class="document-template-preview-person-copy">
               <span class="document-template-preview-person-role">${escapeHtml(entry.role)}</span>
-              <strong>${escapeHtml(getUserDocumentDisplayName(entry.user))}</strong>
+              <strong>${escapeHtml(entryName)}</strong>
               <div class="document-template-preview-person-meta">${metaMarkup}</div>
             </div>
             <div class="document-template-preview-signature document-template-preview-signature--digital">
@@ -56682,9 +56714,49 @@ function buildDocumentTemplateEquipmentExportItems(field = {}, context = {}) {
     .filter(Boolean);
 }
 
+function buildDocumentTemplateCompanyResponsibleEntry(field = {}, context = {}) {
+  const workOrder = context.sampleWorkOrder || {};
+  const roleLabel = buildDocumentTemplateSignatureRoleLabel("company_responsible", field, context);
+  const name = String(
+    workOrder?.contactNameSnapshot
+    || workOrder?.contactName
+    || "",
+  ).replace(/\s+/g, " ").trim();
+  const signerEmail = String(workOrder?.contactEmail || "").trim();
+  const signerPhone = String(workOrder?.contactPhone || "").trim();
+  const signerOrganization = String(
+    workOrder?.companyName
+    || context.companyName
+    || "",
+  ).replace(/\s+/g, " ").trim();
+  const displayName = name || roleLabel;
+
+  return {
+    role: roleLabel,
+    capability: "company_responsible",
+    user: null,
+    name: displayName,
+    metaLines: [signerOrganization, signerPhone, signerEmail].filter(Boolean),
+    signatureImageUrl: "",
+    signatureMode: getDocumentTemplateContextSignatureMethod(context),
+    signerUserId: "",
+    signerEmail,
+    signerOib: "",
+    signerTitle: "",
+    signerOrganization,
+    signatureFieldRole: "",
+    signatureFieldOib: "",
+    digitalAnchor: signerEmail || displayName,
+    summary: [displayName, signerOrganization, signerPhone || signerEmail].filter(Boolean).join(" | "),
+  };
+}
+
 function buildDocumentTemplateQualifiedInspectorEntries(field = {}, context = {}) {
   const signatureMethod = getDocumentTemplateContextSignatureMethod(context);
   const { role, allowMultiple } = getDocumentTemplateSignatureFieldConfig(field);
+  if (role === "company_responsible") {
+    return [buildDocumentTemplateCompanyResponsibleEntry(field, context)];
+  }
   const capability = role === "authorize" ? "authorize" : "inspect";
   const roleLabel = buildDocumentTemplateSignatureRoleLabel(capability, field, context);
   const users = getWorkOrderDocumentQualifiedUsers(
@@ -56753,24 +56825,25 @@ function buildDocumentTemplateSignatureEntry(field = {}, context = {}) {
 
 function buildDocumentTemplateDigitalSignatureEntries(field = {}, context = {}) {
   return getDocumentTemplateDigitalSignatureEntries(field, context).map((entry) => {
-    const signerOib = String(entry.user?.oib || "").trim();
-    const signerEmail = String(entry.user?.email || "").trim();
-    const signerTitle = getUserDocumentTitle(entry.user);
-    const signerOrganization = getUserDocumentOrganizationName(entry.user);
+    const signerOib = String(entry.signerOib || entry.user?.oib || "").trim();
+    const signerEmail = String(entry.signerEmail || entry.user?.email || "").trim();
+    const signerTitle = String(entry.signerTitle || getUserDocumentTitle(entry.user)).trim();
+    const signerOrganization = String(entry.signerOrganization || getUserDocumentOrganizationName(entry.user)).trim();
+    const displayName = String(entry.name || (entry.user ? getUserDocumentDisplayName(entry.user) : "")).trim();
     return {
       role: entry.role,
-      name: getUserDocumentDisplayName(entry.user),
+      name: displayName || entry.role || "Potpisnik",
       metaLines: entry.metaLines ?? [],
       signatureImageUrl: entry.signatureImageUrl || "",
       signatureMode: entry.signatureMode || getDocumentTemplateContextSignatureMethod(context),
-      signerUserId: String(entry.user?.id || "").trim(),
+      signerUserId: String(entry.signerUserId || entry.user?.id || "").trim(),
       signerEmail,
       signerOib,
       signerTitle,
       signerOrganization,
       signatureFieldRole: entry.signatureFieldRole || "ZNR",
       signatureFieldOib: signerOib,
-      digitalAnchor: signerOib || signerEmail || getUserDocumentDisplayName(entry.user),
+      digitalAnchor: entry.digitalAnchor || signerOib || signerEmail || displayName,
     };
   });
 }
@@ -69092,6 +69165,23 @@ function renderDocumentTemplateRuntimeFieldRows() {
     appendDocumentTemplateRuntimeTitleAiPill(title, field, workOrder?.id);
     const area = field.signatureArea || "elektro";
     const { role, allowMultiple } = getDocumentTemplateSignatureFieldConfig(field);
+    if (role === "company_responsible") {
+      const responsible = buildDocumentTemplateCompanyResponsibleEntry(field, { sampleWorkOrder: workOrder });
+      const value = document.createElement("div");
+      value.className = "document-template-inline-special-value";
+      value.textContent = [
+        responsible.name || "Odgovorna osoba u tvrtki",
+        responsible.signerOrganization || "",
+      ].filter(Boolean).join(" | ");
+      wrapper.append(title, value);
+      if (field.helpText) {
+        const helper = document.createElement("small");
+        helper.className = "document-template-runtime-field-help";
+        helper.textContent = field.helpText;
+        wrapper.append(helper);
+      }
+      return wrapper;
+    }
     const capability = role === "authorize" ? "authorize" : "inspect";
     const multiple = Boolean(allowMultiple && capability !== "authorize");
     const listFieldName = getWorkOrderDocumentSignaturePersonListFieldName(capability, area)
@@ -69826,7 +69916,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
 
     const countBadge = document.createElement("span");
     countBadge.className = "document-template-inline-token";
-    countBadge.textContent = field.signatureMultiple === false ? "Jedan potpisnik" : "Vise potpisnika";
+    countBadge.textContent = getDocumentTemplateSignatureFieldConfig(field).allowMultiple ? "Vise potpisnika" : "Jedan potpisnik";
 
     badgeRow.append(areaBadge, roleBadge, modeBadge, countBadge);
 
@@ -69855,7 +69945,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
         role.textContent = entry.role;
 
         const name = document.createElement("strong");
-        name.textContent = getUserDocumentDisplayName(entry.user);
+        name.textContent = entry.name || (entry.user ? getUserDocumentDisplayName(entry.user) : "") || entry.role || "Potpisnik";
 
         const meta = document.createElement("div");
         meta.className = "document-template-runtime-digital-signature-meta";
@@ -69880,7 +69970,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
           const previewImage = document.createElement("img");
           previewImage.className = "document-template-runtime-signature-image";
           previewImage.src = entry.signatureImageUrl;
-          previewImage.alt = getUserDocumentDisplayName(entry.user) || "Potpis";
+          previewImage.alt = entry.name || (entry.user ? getUserDocumentDisplayName(entry.user) : "") || "Potpis";
           previewImage.loading = "lazy";
           card.append(previewImage);
         }
@@ -71297,12 +71387,13 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
         [
           { value: "inspect", label: "Ispitivači" },
           { value: "authorize", label: "Nositelj ovlaštenja" },
+          { value: "company_responsible", label: "Odgovorna osoba u tvrtki" },
         ],
         field.signatureRole || "inspect",
         (nextValue) => {
-          const nextRole = nextValue === "authorize" ? "authorize" : "inspect";
+          const nextRole = normalizeDocumentTemplateSignatureRole(nextValue);
           documentTemplateFieldDrafts[draftIndex].signatureRole = nextRole;
-          documentTemplateFieldDrafts[draftIndex].signatureMultiple = nextRole === "authorize" ? false : true;
+          documentTemplateFieldDrafts[draftIndex].signatureMultiple = nextRole === "inspect";
         },
       );
 
@@ -71435,7 +71526,7 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
         DOCUMENT_TEMPLATE_DIGITAL_SIGNATURE_ROLE_OPTIONS,
         field.signatureRole || "inspect",
         (nextValue) => {
-          documentTemplateFieldDrafts[draftIndex].signatureRole = nextValue || "inspect";
+          documentTemplateFieldDrafts[draftIndex].signatureRole = normalizeDocumentTemplateSignatureRole(nextValue);
         },
       );
 
