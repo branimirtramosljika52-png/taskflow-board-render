@@ -51656,10 +51656,13 @@ body.is-signature-review-open::before {
 }
 
 .signature-review-document-title {
-  margin-top: 4px;
   color: #475569;
   font-size: 12px;
   font-weight: 900;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .signature-review-work-order {
@@ -51699,6 +51702,57 @@ body.is-signature-review-open::before {
 .signature-review-documents {
   display: grid;
   gap: 8px;
+}
+
+.signature-review-document-group {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 14px;
+  background: rgba(248, 250, 252, 0.78);
+}
+
+.signature-review-document-group-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  gap: 8px;
+  align-items: center;
+}
+
+.signature-review-document-group-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.signature-review-document-group-action {
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.signature-review-document-group-action.is-ok {
+  border-color: rgba(16, 185, 129, 0.38);
+  color: #047857;
+  background: rgba(236, 253, 245, 0.88);
+}
+
+.signature-review-document-group-action:hover:not(:disabled) {
+  border-color: rgba(37, 99, 235, 0.42);
+  color: #1d4ed8;
+}
+
+.signature-review-document-group-action:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
 }
 
 .signature-review-document {

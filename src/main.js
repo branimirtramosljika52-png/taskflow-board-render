@@ -30921,6 +30921,34 @@ function updateSignatureReviewDecisionForItem(item = {}, patch = {}) {
   updateSignatureReviewDecision(getSignatureReviewDecisionKey(item), patch);
 }
 
+function isSignatureReviewDecisionActionable(item = {}) {
+  return item.status !== "signed" && item.status !== "error" && item.status !== "locked";
+}
+
+function updateSignatureReviewDecisionsForItems(items = [], patch = {}) {
+  const decisions = { ...(state.signatures.review.decisions || {}) };
+  let changed = false;
+  (Array.isArray(items) ? items : []).forEach((item) => {
+    if (!isSignatureReviewDecisionActionable(item)) {
+      return;
+    }
+    const key = getSignatureReviewDecisionKey(item);
+    if (!key) {
+      return;
+    }
+    decisions[key] = {
+      ...getSignatureReviewDecision(key),
+      ...patch,
+    };
+    changed = true;
+  });
+  if (!changed) {
+    return;
+  }
+  state.signatures.review.decisions = decisions;
+  renderSignatureReviewPanel();
+}
+
 function getSignatureReviewStatusLabel(status = "") {
   return ({
     pending_review: "Čeka pregled",
@@ -31643,10 +31671,61 @@ function renderSignatureReviewPanel() {
     const list = document.createElement("div");
     list.className = "signature-review-documents";
     Array.from(group.documents.values()).forEach((documentGroup) => {
-      const documentTitle = document.createElement("div");
+      const documentShell = document.createElement("section");
+      documentShell.className = "signature-review-document-group";
+      const documentHead = document.createElement("div");
+      documentHead.className = "signature-review-document-group-head";
+      const documentTitle = document.createElement("strong");
       documentTitle.className = "signature-review-document-title";
-      documentTitle.textContent = `Dokument: ${documentGroup.fileName || "zapisnik.pdf"}`;
-      list.append(documentTitle);
+      documentTitle.textContent = documentGroup.fileName || "zapisnik.pdf";
+
+      const documentPeopleGroups = Array.from(documentGroup.people.values());
+      const documentRepresentatives = documentPeopleGroups
+        .map((personGroup) => personGroup.representative)
+        .filter(Boolean);
+      const actionableRepresentatives = documentRepresentatives.filter((item) => isSignatureReviewDecisionActionable(item));
+      const approvedRepresentatives = actionableRepresentatives.filter((item) => (
+        getSignatureReviewDecisionForItem(item).status === "approved_for_signing"
+      ));
+      const changedRepresentatives = actionableRepresentatives.filter((item) => (
+        getSignatureReviewDecisionForItem(item).status !== "pending_review"
+      ));
+
+      const documentActions = document.createElement("div");
+      documentActions.className = "signature-review-document-group-actions";
+      const approveAllButton = document.createElement("button");
+      approveAllButton.type = "button";
+      approveAllButton.className = "signature-review-document-group-action is-ok";
+      approveAllButton.textContent = actionableRepresentatives.length > 1
+        ? `OK sve (${actionableRepresentatives.length})`
+        : "OK";
+      approveAllButton.disabled = actionableRepresentatives.length === 0
+        || approvedRepresentatives.length === actionableRepresentatives.length
+        || review.status === "signing";
+      approveAllButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        updateSignatureReviewDecisionsForItems(actionableRepresentatives, {
+          status: "approved_for_signing",
+          needsComment: false,
+          comment: "",
+        });
+      });
+      const resetAllButton = document.createElement("button");
+      resetAllButton.type = "button";
+      resetAllButton.className = "signature-review-document-group-action";
+      resetAllButton.textContent = "Poništi";
+      resetAllButton.disabled = changedRepresentatives.length === 0 || review.status === "signing";
+      resetAllButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        updateSignatureReviewDecisionsForItems(actionableRepresentatives, {
+          status: "pending_review",
+          needsComment: false,
+          comment: "",
+        });
+      });
+      documentActions.append(approveAllButton, resetAllButton);
+      documentHead.append(documentTitle, documentActions);
+      documentShell.append(documentHead);
       Array.from(documentGroup.people.values()).forEach((personGroup) => {
       const item = personGroup.representative;
       const decision = getSignatureReviewDecisionForItem(item);
@@ -31681,8 +31760,9 @@ function renderSignatureReviewPanel() {
       badge.className = `signature-review-status is-${effectiveStatus}`;
       badge.textContent = getSignatureReviewStatusLabel(effectiveStatus);
       row.append(copy, badge);
-      list.append(row);
+      documentShell.append(row);
       });
+      list.append(documentShell);
     });
 
     block.append(head, list);
