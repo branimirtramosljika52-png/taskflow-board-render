@@ -31071,12 +31071,12 @@ body.is-document-template-editor-open {
 
 .user-electrical-grid > .field.user-qualification-role-group {
   align-items: stretch;
-  grid-column: span 3;
+  grid-column: 1 / -1;
   gap: 5px;
 }
 
-.user-electrical-grid > .field.user-qualification-role-group.is-special {
-  grid-column: 1 / -1;
+.user-electrical-grid > .field.user-qualification-role-group:not(.is-special) .user-qualification-role-options {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .user-qualification-role-options {
@@ -37556,6 +37556,10 @@ body.is-measurement-equipment-export-open {
   .user-electrical-grid > .field.user-qualification-field-validUntil,
   .user-electrical-grid > .field.qualification-validity-field {
     grid-column: 1 / -1;
+  }
+
+  .user-electrical-grid > .field.user-qualification-role-group:not(.is-special) .user-qualification-role-options {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .measurement-equipment-activity-row {

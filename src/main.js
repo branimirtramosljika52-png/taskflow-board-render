@@ -59256,8 +59256,8 @@ function readUserQualificationAreaPayload(definition = {}) {
     classCode: data1,
     urbroj: data2,
     eBroj: data3,
-    passedOn: String(getUserQualificationInput(area, "passedOn")?.value || "").trim(),
-    validUntil: validForever ? "" : String(getUserQualificationInput(area, "validUntil")?.value || "").trim(),
+    passedOn: normalizePeopleTrainingDate(getUserQualificationInput(area, "passedOn")?.value || ""),
+    validUntil: validForever ? "" : normalizePeopleTrainingDate(getUserQualificationInput(area, "validUntil")?.value || ""),
     validForever,
     specialRoles,
   };
@@ -59291,6 +59291,23 @@ function createUserQualificationCheckbox(labelText = "", checked = false, fieldN
   copy.textContent = labelText;
   label.append(input, copy);
   return label;
+}
+
+function createUserQualificationDateInput(value = "") {
+  const input = document.createElement("input");
+  input.type = "text";
+  input.inputMode = "numeric";
+  input.maxLength = 10;
+  input.placeholder = "dd.mm.yyyy";
+  input.value = formatDateInputDisplayValue(normalizePeopleTrainingDate(value));
+  input.addEventListener("input", () => {
+    input.value = normalizeLiveDateTypingValue(input.value);
+  });
+  input.addEventListener("blur", () => {
+    const normalizedValue = normalizePeopleTrainingDate(input.value);
+    input.value = normalizedValue ? formatDateInputDisplayValue(normalizedValue) : String(input.value || "").trim();
+  });
+  return input;
 }
 
 function renderUserQualificationAreas(user = getCurrentUserEditorRecord() || {}) {
@@ -59333,7 +59350,7 @@ function renderUserQualificationAreas(user = getCurrentUserEditorRecord() || {})
     typeInput.type = "text";
     typeInput.maxLength = 160;
     typeInput.value = qualification.type || "";
-    typeInput.placeholder = "npr. viličar, dizalica, kemijske...";
+    typeInput.placeholder = "npr. Opći ispit iz zaštite na radu";
     const data1Input = document.createElement("input");
     data1Input.type = "text";
     data1Input.maxLength = 160;
@@ -59346,12 +59363,8 @@ function renderUserQualificationAreas(user = getCurrentUserEditorRecord() || {})
     data3Input.type = "text";
     data3Input.maxLength = 160;
     data3Input.value = qualification.data3 || "";
-    const passedOnInput = document.createElement("input");
-    passedOnInput.type = "date";
-    passedOnInput.value = qualification.passedOn || "";
-    const validUntilInput = document.createElement("input");
-    validUntilInput.type = "date";
-    validUntilInput.value = qualification.validUntil || "";
+    const passedOnInput = createUserQualificationDateInput(qualification.passedOn);
+    const validUntilInput = createUserQualificationDateInput(qualification.validUntil);
     const validForeverInput = document.createElement("input");
     validForeverInput.type = "checkbox";
     validForeverInput.checked = Boolean(qualification.validForever);
