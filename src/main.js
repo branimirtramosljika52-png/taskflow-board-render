@@ -27567,6 +27567,11 @@ function getGeneratedDocumentSignedFieldNames(documentItem = {}) {
     .filter(Boolean));
 }
 
+function hasGeneratedDocumentAnySignature(documentItem = {}) {
+  return getGeneratedDocumentSignedFieldNames(documentItem).size > 0
+    || /\bpotpisano\b/i.test(String(documentItem?.description || ""));
+}
+
 function isGeneratedDocumentSignatureFieldSigned(documentItem = {}, fieldName = "") {
   const normalizedFieldName = normalizeGeneratedSignatureFieldName(fieldName);
   const fieldNames = getGeneratedDocumentSignatureFieldNames(documentItem);
@@ -27595,6 +27600,28 @@ function isGeneratedDocumentSigned(documentItem = {}) {
 
 function isGeneratedDocumentRejected(documentItem = {}) {
   return String(documentItem?.signatureReviewStatus || "").trim() === "rejected_with_comment";
+}
+
+function buildGeneratedDocumentSignatureSummary(documentItem = {}) {
+  return parseSignatureFieldsJson(documentItem?.signatureFieldsJson || "")
+    .map((entry) => {
+      const role = String(
+        entry?.roleLabel
+        || entry?.role
+        || getSignatureRoleFallbackLabel(entry?.signatureFieldRole || ""),
+      ).replace(/\s+/g, " ").trim();
+      const name = String(
+        entry?.name
+        || entry?.signerName
+        || (normalizeSignatureIdentityKey(entry?.label) !== normalizeSignatureIdentityKey(role) ? entry?.label : "")
+        || entry?.signerEmail
+        || entry?.oib
+        || "",
+      ).replace(/\s+/g, " ").trim();
+      return [name, role].filter(Boolean).join(" - ");
+    })
+    .filter(Boolean)
+    .join("; ");
 }
 
 function getWorkOrderDocumentLibraryContext(documentItem = {}, documentIndex = 0) {
@@ -27631,7 +27658,10 @@ function createSavedWorkOrderDocumentLibraryEntry(documentItem = {}, context = {
   const categoryLabel = String(documentItem?.documentCategory || GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY).trim()
     || GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY;
   const description = String(documentItem?.description || `${categoryLabel} za RN ${context.workOrderNumber || ""}`).trim();
-  const isSigned = isGeneratedDocumentSigned({ ...documentItem, description });
+  const documentWithDescription = { ...documentItem, description };
+  const hasSignature = hasGeneratedDocumentAnySignature(documentWithDescription);
+  const isFullySigned = isGeneratedDocumentSigned(documentWithDescription);
+  const signatureSummary = buildGeneratedDocumentSignatureSummary(documentItem);
 
   return createDocumentLibraryEntry({
     id: `${idPrefix}:${String(documentItem?.workOrderId || "")}:${String(documentItem?.id || "")}`,
@@ -27646,10 +27676,11 @@ function createSavedWorkOrderDocumentLibraryEntry(documentItem = {}, context = {
     workOrderId: documentItem?.workOrderId || "",
     documentId: documentItem?.id || "",
     documentCategory: categoryLabel,
-    signed: isSigned,
+    signed: hasSignature,
     metaParts: [
       categoryLabel,
-      isSigned ? "Potpisano" : "",
+      hasSignature ? (isFullySigned ? "Potpisano" : "Digitalni potpis u tijeku") : "",
+      signatureSummary,
       documentItem?.actorLabel || "",
       formatFileSize(documentItem?.fileSize || 0),
     ].filter(Boolean),
@@ -30788,10 +30819,13 @@ function buildSignatureReviewItems(payload = {}, fieldsResponse = {}, sourceEntr
       const signerIdentity = normalizeSignatureIdentityKey(
         label.signerUserId || label.signerEmail || label.oib || label.signerName || label.signer || fieldName || `${index}`,
       );
+      const roleIdentity = normalizeSignatureIdentityKey(label.roleLabel || label.label || label.role || "");
       const reviewDecisionKey = [
         item.workOrderId || item.workOrderNumber || "rn",
         documentId || item.itemId || "document",
         signerIdentity || fieldName || index,
+        roleIdentity || "role",
+        fieldName || index,
       ].map((value) => String(value || "").trim()).join(":");
       return {
         ...item,
@@ -31115,18 +31149,12 @@ function createSignatureReviewActiveActions(activeItem = {}, activeDecision = {}
   const wrap = document.createElement("section");
   wrap.className = "signature-review-active-actions";
 
-  const decisionKey = getSignatureReviewDecisionKey(activeItem);
-  const groupedItems = getSignatureReviewOrderedItems().filter((item) => getSignatureReviewDecisionKey(item) === decisionKey);
-  const groupCount = groupedItems.length;
   const signerLine = document.createElement("div");
   signerLine.className = "signature-review-decision-signer";
   const signerIcon = document.createElement("span");
   signerIcon.innerHTML = getWorkOrderIconMarkup("signature");
   const signerCopy = document.createElement("span");
-  signerCopy.textContent = [
-    `${activeItem.signer || "Potpisnik"} — ${activeItem.roleLabel || activeItem.label || "Potpisnik"}`,
-    groupCount > 1 ? `${groupCount} potpisa ove osobe` : "",
-  ].filter(Boolean).join(" · ");
+  signerCopy.textContent = `${activeItem.signer || "Potpisnik"} — ${activeItem.roleLabel || activeItem.label || "Potpisnik"}`;
   signerLine.append(signerIcon, signerCopy);
 
   const decisionActions = document.createElement("div");
@@ -31625,10 +31653,7 @@ function renderSignatureReviewPanel() {
       const line = document.createElement("span");
       line.textContent = `${item.roleLabel || item.label || "Potpisnik"} — ${getSignatureReviewStatusLabel(effectiveStatus)}`;
       const help = document.createElement("small");
-      help.textContent = item.error
-        || (personGroup.items.length > 1
-          ? `Odluka vrijedi za ${personGroup.items.length} potpisa ove osobe na dokumentu.`
-          : "Klikni za PDF pregled dokumenta.");
+      help.textContent = item.error || "Klikni za PDF pregled dokumenta.";
       copy.append(doc, line, help);
 
       const badge = document.createElement("span");
@@ -52850,6 +52875,58 @@ function getSignatureAreaLabel(signatureArea = "elektro") {
   return normalizedArea;
 }
 
+function normalizeDocumentTemplateSignatureServiceCode(value = "") {
+  const text = String(value || "").trim();
+  if (!text) {
+    return "";
+  }
+  const direct = text
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, " ")
+    .trim();
+  const known = ["SPR", "ZNR", "TZIN", "TIPKALO", "PANIK"];
+  const knownMatch = known.find((code) => new RegExp(`\\b${code}\\b`, "i").test(direct));
+  if (knownMatch) {
+    return knownMatch === "PANIK" ? "SPR" : knownMatch;
+  }
+  if (/SIGURNOSNA\s+PANIK|PANIK\s+RASVJET/i.test(text)) {
+    return "SPR";
+  }
+  const compact = direct.replace(/\s+/g, "");
+  return compact.length > 0 && compact.length <= 10 ? compact : "";
+}
+
+function getDocumentTemplateSignatureServiceCode(field = {}, context = {}) {
+  const workOrder = context.sampleWorkOrder || {};
+  const template = context.template || {};
+  const serviceItems = getDocumentTemplateRuntimeResolvedServiceItems(workOrder);
+  const primaryService = getDocumentTemplateRuntimePrimaryServiceItem(workOrder, template)
+    || serviceItems[0]
+    || null;
+  const candidates = [
+    primaryService?.serviceCode,
+    primaryService?.code,
+    primaryService?.serviceId,
+    primaryService?.name,
+    primaryService?.serviceName,
+    template.documentType,
+    template.title,
+    template.outputFileName,
+    field.wordLabel,
+    field.label,
+    getSignatureAreaLabel(field.signatureArea || "elektro"),
+  ];
+  return candidates
+    .map((value) => normalizeDocumentTemplateSignatureServiceCode(value))
+    .find(Boolean) || "";
+}
+
+function buildDocumentTemplateSignatureRoleLabel(capability = "inspect", field = {}, context = {}) {
+  const base = capability === "authorize" ? "Odgovorna osoba" : "Ispitivač";
+  const serviceCode = getDocumentTemplateSignatureServiceCode(field, context);
+  return [base, serviceCode].filter(Boolean).join(" ");
+}
+
 function getDocumentTemplateSignatureAreas(template = {}) {
   const areas = new Set();
   (Array.isArray(template?.customFields) ? template.customFields : []).forEach((field) => {
@@ -54828,6 +54905,7 @@ function getDocumentTemplateSignaturePreviewData(field = {}, context = {}) {
   const matchedEntry = getDocumentTemplateDigitalSignatureEntries(field, context)[0] ?? null;
   const matchedUser = matchedEntry?.user ?? null;
   const capability = matchedEntry?.capability || (field.type === "authorization_holder_signature" ? "authorize" : "inspect");
+  const roleLabel = buildDocumentTemplateSignatureRoleLabel(capability, field, context);
   const qualification = getUserElectricalQualification(matchedUser, signatureArea);
   const displayName = matchedUser ? getUserDocumentDisplayName(matchedUser) : "";
 
@@ -54841,9 +54919,7 @@ function getDocumentTemplateSignaturePreviewData(field = {}, context = {}) {
     metaLines: getQualifiedUserDocumentMetaLines(matchedUser, capability, signatureArea, field.signatureMetaFields),
     signatureImageUrl: signatureMethod === "scan" ? getUserSignatureScanDataUrl(matchedUser) : "",
     displayName: displayName
-      || (capability === "authorize"
-        ? `Nositelj ovlaštenja (${signatureAreaLabel})`
-        : `Ispitivač (${signatureAreaLabel})`),
+      || `${roleLabel} (${signatureAreaLabel})`,
     summary: matchedUser
       ? getQualifiedUserSummaryValue(matchedUser, capability, signatureArea)
       : "",
@@ -54909,9 +54985,10 @@ function getDocumentTemplateDigitalSignatureEntries(field = {}, context = {}) {
   const entries = [];
 
   const pushEntriesForCapability = (capability) => {
+    const roleLabel = buildDocumentTemplateSignatureRoleLabel(capability, field, context);
     getWorkOrderDocumentQualifiedUsers(workOrder, capability, signatureArea).forEach((user) => {
       entries.push({
-        role: capability === "authorize" ? "Odgovorna osoba" : "Ispitivač",
+        role: roleLabel,
         capability,
         user,
         signatureArea,
@@ -56589,7 +56666,7 @@ function buildDocumentTemplateQualifiedInspectorEntries(field = {}, context = {}
   const signatureMethod = getDocumentTemplateContextSignatureMethod(context);
   const { role, allowMultiple } = getDocumentTemplateSignatureFieldConfig(field);
   const capability = role === "authorize" ? "authorize" : "inspect";
-  const roleLabel = capability === "authorize" ? "Nositelj ovlaštenja" : "Ispitivač";
+  const roleLabel = buildDocumentTemplateSignatureRoleLabel(capability, field, context);
   const users = getWorkOrderDocumentQualifiedUsers(
     context.sampleWorkOrder,
     capability,
@@ -56630,8 +56707,13 @@ function buildDocumentTemplateSignatureEntry(field = {}, context = {}) {
   const signerEmail = String(signaturePreview.user?.email || "").trim();
   const signerTitle = getUserDocumentTitle(signaturePreview.user);
   const signerOrganization = getUserDocumentOrganizationName(signaturePreview.user);
+  const roleLabel = buildDocumentTemplateSignatureRoleLabel(
+    field.type === "authorization_holder_signature" ? "authorize" : "inspect",
+    field,
+    context,
+  );
   return {
-    role: field.type === "authorization_holder_signature" ? "Nositelj ovlaštenja" : "Ispitivač",
+    role: roleLabel,
     name: signaturePreview.displayName || "Potpis",
     metaLines: signaturePreview.metaLines?.length > 0
       ? signaturePreview.metaLines
