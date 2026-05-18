@@ -611,6 +611,34 @@ test("memory tenant repository keeps additional switch-off qualifications on use
   assert.equal(createdUser.electricalQualification.additionalAreas.tipkalo.specialRoles.inspectorElectrical, true);
 });
 
+test("memory tenant repository keeps service links on people qualifications", async () => {
+  const repository = new MemoryTenantRepository();
+  await repository.init();
+
+  const superAdmin = await repository.authenticateUser("admin@local.test", "admin");
+  const createdUser = await repository.createUser(superAdmin, {
+    organizationId: "1",
+    firstName: "Sara",
+    lastName: "Usluge",
+    email: "sara-usluge@example.com",
+    password: "Secret123",
+    role: "user",
+    electricalQualification: {
+      serviceIds: ["service-1", "service-1", "service-2"],
+      additionalAreas: {
+        radna_oprema: {
+          linkedServiceCatalogIds: ["service-3", "service-4"],
+        },
+      },
+    },
+  });
+
+  assert.deepEqual(createdUser.electricalQualification.serviceIds, ["service-1", "service-2"]);
+  assert.deepEqual(createdUser.electricalQualification.linkedServiceCatalogIds, ["service-1", "service-2"]);
+  assert.deepEqual(createdUser.electricalQualification.additionalAreas.radna_oprema.serviceIds, ["service-3", "service-4"]);
+  assert.deepEqual(createdUser.electricalQualification.additionalAreas.radna_oprema.linkedServiceCatalogIds, ["service-3", "service-4"]);
+});
+
 test("memory tenant repository stores display name and profile role on user", async () => {
   const repository = new MemoryTenantRepository();
   await repository.init();

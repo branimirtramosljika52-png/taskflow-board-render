@@ -287,6 +287,42 @@ function normalizeClientScopeIds(values = []) {
   ));
 }
 
+function normalizeServiceCatalogIdList(values = []) {
+  let entries = [];
+  if (Array.isArray(values)) {
+    entries = values;
+  } else if (values && typeof values === "object") {
+    const objectEntries = Object.entries(values);
+    entries = objectEntries.every(([, flag]) => typeof flag === "boolean")
+      ? objectEntries.filter(([, flag]) => flag).map(([key]) => key)
+      : Object.values(values);
+  } else {
+    const rawValue = dbString(values);
+    if (!rawValue) {
+      return [];
+    }
+    const parsed = parseJsonArray(rawValue);
+    entries = parsed.length > 0 ? parsed : rawValue.split(",");
+  }
+
+  return Array.from(new Set(
+    entries
+      .map((value) => dbString(value))
+      .filter(Boolean),
+  ));
+}
+
+function getQualificationServiceIds(source = {}) {
+  const qualification = source && typeof source === "object" ? source : {};
+  for (const key of ["serviceIds", "linkedServiceCatalogIds", "linkedServiceIds", "serviceCatalogIds"]) {
+    const serviceIds = normalizeServiceCatalogIdList(qualification[key]);
+    if (serviceIds.length > 0) {
+      return serviceIds;
+    }
+  }
+  return [];
+}
+
 function isClientPortalProfileRole(value = "") {
   return normalizeUserProfileRole(value, "") === "client_user";
 }
@@ -440,6 +476,7 @@ function mapUserElectricalQualification(row = {}) {
     const data1 = dbString(rawArea.data1 || rawArea.classCode);
     const data2 = dbString(rawArea.data2 || rawArea.urbroj);
     const data3 = dbString(rawArea.data3 || rawArea.eBroj);
+    const serviceIds = getQualificationServiceIds(rawArea);
     return {
       discipline: dbString(discipline || "elektro").toLowerCase() || "elektro",
       examTitle: dbString(rawArea.examTitle ?? rawArea.title),
@@ -458,6 +495,8 @@ function mapUserElectricalQualification(row = {}) {
       validUntil: validForever ? "" : normalizeDateOnly(rawArea.validUntil),
       validForever,
       specialRoles: parseJsonObject(rawArea.specialRoles, {}),
+      serviceIds,
+      linkedServiceCatalogIds: serviceIds,
       signatureDataUrl: storedSignature.dataUrl,
       signatureStorageProvider: storedSignature.storageProvider,
       signatureStorageBucket: storedSignature.storageBucket,
@@ -843,6 +882,7 @@ function normalizeUserElectricalQualification(input = {}, fallback = {}) {
   const data1 = dbString(source.data1 || source.classCode);
   const data2 = dbString(source.data2 || source.urbroj);
   const data3 = dbString(source.data3 || source.eBroj);
+  const serviceIds = getQualificationServiceIds(source);
 
   return {
     discipline: dbString(source.discipline || "elektro").toLowerCase() || "elektro",
@@ -862,6 +902,8 @@ function normalizeUserElectricalQualification(input = {}, fallback = {}) {
     validUntil: validForever ? "" : normalizeDateOnly(source.validUntil),
     validForever,
     specialRoles: parseJsonObject(source.specialRoles, {}),
+    serviceIds,
+    linkedServiceCatalogIds: serviceIds,
     signatureDataUrl: storedSignature.dataUrl,
     signatureStorageProvider: storedSignature.storageProvider,
     signatureStorageBucket: storedSignature.storageBucket,
@@ -884,6 +926,7 @@ function normalizeUserElectricalQualification(input = {}, fallback = {}) {
           const areaData1 = dbString(rawArea.data1 || rawArea.classCode);
           const areaData2 = dbString(rawArea.data2 || rawArea.urbroj);
           const areaData3 = dbString(rawArea.data3 || rawArea.eBroj);
+          const areaServiceIds = getQualificationServiceIds(rawArea);
           return [normalizedKey, {
             discipline: normalizedKey,
             examTitle: dbString(rawArea.examTitle ?? rawArea.title),
@@ -902,6 +945,8 @@ function normalizeUserElectricalQualification(input = {}, fallback = {}) {
             validUntil: areaValidForever ? "" : normalizeDateOnly(rawArea.validUntil),
             validForever: areaValidForever,
             specialRoles: parseJsonObject(rawArea.specialRoles, {}),
+            serviceIds: areaServiceIds,
+            linkedServiceCatalogIds: areaServiceIds,
             signatureDataUrl: storedSignature.dataUrl,
             signatureStorageProvider: storedSignature.storageProvider,
             signatureStorageBucket: storedSignature.storageBucket,

@@ -53100,6 +53100,46 @@ function normalizeQualificationSpecialRoles(value = {}) {
   );
 }
 
+function normalizeUserQualificationServiceIds(value = []) {
+  let entries = [];
+  if (Array.isArray(value)) {
+    entries = value;
+  } else if (value && typeof value === "object") {
+    const objectEntries = Object.entries(value);
+    entries = objectEntries.every(([, flag]) => typeof flag === "boolean")
+      ? objectEntries.filter(([, flag]) => flag).map(([key]) => key)
+      : Object.values(value);
+  } else {
+    const rawValue = String(value ?? "").trim();
+    if (!rawValue) {
+      return [];
+    }
+    try {
+      const parsed = JSON.parse(rawValue);
+      entries = Array.isArray(parsed) ? parsed : rawValue.split(",");
+    } catch {
+      entries = rawValue.split(",");
+    }
+  }
+
+  return Array.from(new Set(
+    entries
+      .map((entry) => String(entry ?? "").trim())
+      .filter(Boolean),
+  ));
+}
+
+function getQualificationLinkedServiceIds(qualification = {}) {
+  const source = qualification && typeof qualification === "object" ? qualification : {};
+  for (const key of ["serviceIds", "linkedServiceCatalogIds", "linkedServiceIds", "serviceCatalogIds"]) {
+    const ids = normalizeUserQualificationServiceIds(source[key]);
+    if (ids.length > 0) {
+      return ids;
+    }
+  }
+  return [];
+}
+
 function hasQualificationSpecialRole(qualification = {}, capability = "") {
   const specialRoles = normalizeQualificationSpecialRoles(qualification.specialRoles);
   if (!Object.values(specialRoles).some(Boolean)) {
@@ -53130,6 +53170,7 @@ function hasQualificationContent(qualification = {}) {
     || qualification.passedOn
     || qualification.validUntil
     || qualification.validForever
+    || getQualificationLinkedServiceIds(qualification).length > 0
   );
 }
 
@@ -53150,6 +53191,8 @@ function normalizeUserQualificationExamDefinition(definition = {}) {
     title,
     label: String(definition.label || title).trim() || title,
     specialRoleOptions: Array.isArray(definition.specialRoleOptions) ? definition.specialRoleOptions : [],
+    serviceIds: getQualificationLinkedServiceIds(definition),
+    linkedServiceCatalogIds: getQualificationLinkedServiceIds(definition),
   };
 }
 
@@ -53159,12 +53202,18 @@ function addQualificationExamDefinition(definitions, definition = {}) {
     return;
   }
   const previous = definitions.get(normalized.key) || {};
+  const serviceIds = Array.from(new Set([
+    ...getQualificationLinkedServiceIds(previous),
+    ...getQualificationLinkedServiceIds(normalized),
+  ]));
   definitions.set(normalized.key, {
     ...previous,
     ...normalized,
     specialRoleOptions: normalized.specialRoleOptions.length > 0
       ? normalized.specialRoleOptions
       : (previous.specialRoleOptions || []),
+    serviceIds,
+    linkedServiceCatalogIds: serviceIds,
     builtIn: Boolean(previous.builtIn || normalized.builtIn),
     legacy: Boolean(previous.legacy || normalized.legacy),
   });
@@ -53172,7 +53221,7 @@ function addQualificationExamDefinition(definitions, definition = {}) {
 
 function collectUserQualificationDefinitionFromArea(definitions, key = "", qualification = {}) {
   const normalizedKey = normalizeQualificationAreaKey(key);
-  if (!normalizedKey || definitions.has(normalizedKey) || !hasQualificationContent(qualification)) {
+  if (!normalizedKey || !hasQualificationContent(qualification)) {
     return;
   }
   const legacyDefinition = LEGACY_QUALIFICATION_EXAM_DEFINITIONS.find((entry) => entry.key === normalizedKey);
@@ -53186,6 +53235,7 @@ function collectUserQualificationDefinitionFromArea(definitions, key = "", quali
     key: normalizedKey,
     title: qualification.examTitle || legacyDefinition?.title || fallbackTitle,
     label: qualification.examTitle || legacyDefinition?.label || fallbackTitle,
+    serviceIds: getQualificationLinkedServiceIds(qualification),
   });
 }
 
@@ -58726,6 +58776,88 @@ function getServiceCatalogTitlesByIds(ids = [], { organizationId = "" } = {}) {
     .filter(Boolean);
 }
 
+function getUserQualificationServiceCatalogOptions(selectedIds = [], { organizationId = "" } = {}) {
+  const normalizedSelectedIds = normalizeUserQualificationServiceIds(selectedIds);
+  const selectedSet = new Set(normalizedSelectedIds);
+  const normalizedOrganizationId = String(organizationId || state.activeOrganizationId || "").trim();
+  const services = sortServiceCatalogItems((state.serviceCatalog ?? []).filter((item) => {
+    const serviceId = String(item?.id || "").trim();
+    if (!serviceId) {
+      return false;
+    }
+    const serviceOrganizationId = String(item?.organizationId || "").trim();
+    const isSelected = selectedSet.has(serviceId);
+    const isSameOrganization = !normalizedOrganizationId || !serviceOrganizationId || serviceOrganizationId === normalizedOrganizationId;
+    const isInactive = String(item?.status || "active").trim().toLowerCase() === "inactive";
+    return isSelected || (isSameOrganization && !isInactive);
+  }));
+  const knownIds = new Set(services.map((item) => String(item?.id || "").trim()).filter(Boolean));
+  const missingSelectedServices = normalizedSelectedIds
+    .filter((serviceId) => !knownIds.has(serviceId))
+    .map((serviceId) => ({
+      id: serviceId,
+      name: serviceId,
+      serviceCode: "",
+      status: "active",
+      serviceType: "other",
+      isMissingReference: true,
+    }));
+  return [...services, ...missingSelectedServices];
+}
+
+function renderUserQualificationServiceChecklist(container, {
+  selectedIds = [],
+  inputName = "user-qualification-service-id",
+  organizationId = "",
+  emptyText = "Prvo dodaj usluge u List Of Services pa ih ovdje poveži.",
+} = {}) {
+  if (!container) {
+    return;
+  }
+
+  const selectedSet = new Set(normalizeUserQualificationServiceIds(selectedIds));
+  const services = getUserQualificationServiceCatalogOptions(selectedIds, { organizationId });
+  const canManagePeople = getCanManagePeople();
+  if (services.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "helper-copy module-copy user-qualification-service-empty";
+    empty.textContent = emptyText;
+    container.replaceChildren(empty);
+    return;
+  }
+
+  container.replaceChildren(...services.map((service) => {
+    const serviceId = String(service?.id || "").trim();
+    const label = document.createElement("label");
+    label.className = "service-catalog-template-option user-qualification-service-option";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.name = inputName;
+    checkbox.value = serviceId;
+    checkbox.checked = selectedSet.has(serviceId);
+    checkbox.disabled = !canManagePeople;
+    checkbox.dataset.userQualificationServiceId = serviceId;
+
+    const copy = document.createElement("div");
+    copy.className = "service-catalog-template-option-copy";
+
+    const title = document.createElement("strong");
+    title.textContent = service.name || service.serviceCode || "Usluga";
+
+    const meta = document.createElement("span");
+    meta.textContent = [
+      service.serviceCode || "",
+      service.isMissingReference ? "Nije u aktivnom katalogu" : getServiceCatalogTypeLabel(service.serviceType || (service.isTraining ? "znr" : "inspection")),
+      service.isMissingReference ? "" : getOptionLabel(SERVICE_CATALOG_STATUS_OPTIONS, service.status || "active"),
+    ].filter(Boolean).join(" | ");
+
+    copy.append(title, meta);
+    label.append(checkbox, copy);
+    return label;
+  }));
+}
+
 function getLinkedServiceCatalogIdsForItem(item = {}, { legacyTemplateIds = [], organizationId = "" } = {}) {
   const normalizedOrganizationId = String(organizationId || item?.organizationId || "").trim();
   const explicitIds = Array.isArray(item?.linkedServiceCatalogIds)
@@ -59155,6 +59287,7 @@ function getUserElectricalQualification(user = {}, signatureArea = "elektro") {
     || rootQualification.storageUrl
     || "",
   ).trim();
+  const serviceIds = getQualificationLinkedServiceIds(qualification);
   return {
     discipline: String(qualification.discipline || normalizedArea || "elektro").trim().toLowerCase() || "elektro",
     examTitle: String(qualification.examTitle || qualification.title || "").trim(),
@@ -59173,6 +59306,11 @@ function getUserElectricalQualification(user = {}, signatureArea = "elektro") {
     validUntil: String(qualification.validUntil || "").trim(),
     validForever: Boolean(qualification.validForever),
     specialRoles: normalizeQualificationSpecialRoles(qualification.specialRoles),
+    serviceIds,
+    linkedServiceCatalogIds: serviceIds,
+    linkedServiceCatalogTitles: getServiceCatalogTitlesByIds(serviceIds, {
+      organizationId: user?.organizationId || state.activeOrganizationId || "",
+    }),
     signatureDataUrl: String(
       qualification.signatureDataUrl
       || qualification.signatureStorageUrl
@@ -59225,9 +59363,24 @@ function getUserQualificationSpecialRoleInputs(area = "") {
   ));
 }
 
+function getUserQualificationServiceInputs(area = "") {
+  if (!userQualificationAreasContainer) {
+    return [];
+  }
+  const areaKey = normalizeQualificationAreaKey(area);
+  return Array.from(userQualificationAreasContainer.querySelectorAll(
+    `[data-user-qualification-area="${CSS.escape(areaKey)}"] [data-user-qualification-service-id]`,
+  ));
+}
+
 function readUserQualificationAreaPayload(definition = {}) {
   const area = normalizeQualificationAreaKey(definition.key || "elektro");
   const validForever = Boolean(getUserQualificationInput(area, "validForever")?.checked);
+  const serviceIds = normalizeUserQualificationServiceIds(
+    getUserQualificationServiceInputs(area)
+      .filter((input) => Boolean(input.checked))
+      .map((input) => input.dataset.userQualificationServiceId || input.value || ""),
+  );
   const specialRoles = Object.fromEntries(
     getUserQualificationSpecialRoleInputs(area).map((input) => [
       String(input.dataset.userQualificationSpecialRole || "").trim(),
@@ -59260,6 +59413,8 @@ function readUserQualificationAreaPayload(definition = {}) {
     validUntil: validForever ? "" : normalizePeopleTrainingDate(getUserQualificationInput(area, "validUntil")?.value || ""),
     validForever,
     specialRoles,
+    serviceIds,
+    linkedServiceCatalogIds: serviceIds,
   };
 }
 
@@ -59419,9 +59574,26 @@ function renderUserQualificationAreas(user = getCurrentUserEditorRecord() || {})
     });
     specialRoleField.append(specialRoleLabel, specialRoleOptionWrap);
 
+    const serviceIds = qualification.serviceIds.length > 0
+      ? qualification.serviceIds
+      : getQualificationLinkedServiceIds(definition);
+    const serviceField = document.createElement("div");
+    serviceField.className = "field field-span-full user-qualification-service-field";
+    const serviceLabel = document.createElement("span");
+    serviceLabel.textContent = "Usluge u kojima se pojavljuje";
+    const serviceOptionWrap = document.createElement("div");
+    serviceOptionWrap.className = "user-qualification-service-options";
+    renderUserQualificationServiceChecklist(serviceOptionWrap, {
+      selectedIds: serviceIds,
+      inputName: `user-qualification-service-${area}`,
+      organizationId: user?.organizationId || state.activeOrganizationId || "",
+    });
+    serviceField.append(serviceLabel, serviceOptionWrap);
+
     grid.append(
       genericRoles,
       ...(specialRoleOptions.length > 0 ? [specialRoleField] : []),
+      serviceField,
       createUserQualificationField("Vrsta ispita", typeInput, "type"),
       createUserQualificationField("Podatak 1", data1Input, "data1"),
       createUserQualificationField("Podatak 2", data2Input, "data2"),

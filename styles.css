@@ -31079,10 +31079,25 @@ body.is-document-template-editor-open {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.user-electrical-grid > .field.user-qualification-service-field {
+  grid-column: 1 / -1;
+  gap: 6px;
+}
+
 .user-qualification-role-options {
   display: grid;
   gap: 6px;
   grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+}
+
+.user-qualification-service-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 6px;
+  max-height: 156px;
+  overflow: auto;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
 }
 
 .user-qualification-checkbox {
@@ -31109,6 +31124,48 @@ body.is-document-template-editor-open {
   font-size: 0.76rem;
   letter-spacing: 0;
   color: #4f5d78;
+}
+
+.user-qualification-service-option {
+  min-height: 36px;
+  padding: 7px 9px;
+  gap: 8px;
+  border-radius: 10px;
+  border-color: rgba(204, 71, 230, 0.16);
+  background: rgba(255, 255, 255, 0.94);
+  align-items: center;
+}
+
+.user-qualification-service-option input[type="checkbox"] {
+  width: 14px !important;
+  min-width: 14px !important;
+  height: 14px !important;
+  min-height: 14px !important;
+  margin: 0;
+}
+
+.user-qualification-service-option .service-catalog-template-option-copy {
+  gap: 2px;
+}
+
+.user-qualification-service-option .service-catalog-template-option-copy strong {
+  color: #34415b;
+  font-size: 0.78rem;
+  line-height: 1.2;
+}
+
+.user-qualification-service-option .service-catalog-template-option-copy span {
+  color: #748097;
+  font-size: 0.68rem;
+  line-height: 1.2;
+}
+
+.user-qualification-service-empty {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px dashed rgba(204, 71, 230, 0.18);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.78);
 }
 
 .user-electrical-grid > .field.user-qualification-field-type {
@@ -37548,6 +37605,7 @@ body.is-measurement-equipment-export-open {
 
   .user-electrical-grid > .field.user-qualification-role-group,
   .user-electrical-grid > .field.user-qualification-role-group.is-special,
+  .user-electrical-grid > .field.user-qualification-service-field,
   .user-electrical-grid > .field.user-qualification-field-type,
   .user-electrical-grid > .field.user-qualification-field-data1,
   .user-electrical-grid > .field.user-qualification-field-data2,
@@ -37559,6 +37617,10 @@ body.is-measurement-equipment-export-open {
   }
 
   .user-electrical-grid > .field.user-qualification-role-group:not(.is-special) .user-qualification-role-options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .user-qualification-service-options {
     grid-template-columns: minmax(0, 1fr);
   }
 
