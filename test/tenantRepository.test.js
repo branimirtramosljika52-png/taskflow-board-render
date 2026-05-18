@@ -577,6 +577,7 @@ test("memory tenant repository keeps additional switch-off qualifications on use
       canInspect: false,
       additionalAreas: {
         tipkalo: {
+          type: "Sigurnosno tipkalo",
           canInspect: true,
           canAuthorize: true,
           classCode: "UP/I-133-02/25-02/26",
@@ -590,6 +591,7 @@ test("memory tenant repository keeps additional switch-off qualifications on use
   assert.equal(createdUser.electricalQualification.canInspect, false);
   assert.equal(createdUser.electricalQualification.additionalAreas.tipkalo.canInspect, true);
   assert.equal(createdUser.electricalQualification.additionalAreas.tipkalo.canAuthorize, true);
+  assert.equal(createdUser.electricalQualification.additionalAreas.tipkalo.type, "Sigurnosno tipkalo");
   assert.equal(createdUser.electricalQualification.additionalAreas.tipkalo.classCode, "UP/I-133-02/25-02/26");
   assert.equal(createdUser.electricalQualification.additionalAreas.tipkalo.urbroj, "1392/25");
   assert.equal(createdUser.electricalQualification.additionalAreas.tipkalo.eBroj, "89627512970");

@@ -31025,6 +31025,25 @@ body.is-document-template-editor-open {
     0 0 0 1px rgba(204, 71, 230, 0.12);
 }
 
+.user-qualification-catalog-block {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.user-qualification-areas {
+  display: grid;
+  gap: 10px;
+}
+
+.user-qualification-service-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
 .user-editor-panel .module-attachment-list {
   margin-top: 0;
 }

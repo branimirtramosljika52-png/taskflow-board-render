@@ -3946,100 +3946,18 @@
                     <div id="user-electrical-signature-preview" class="user-signature-upload-preview is-empty" aria-live="polite"></div>
                   </section>
 
-                  <section class="service-catalog-template-block user-editor-module user-electrical-qualification-block" data-user-management-scope="people">
+                  <section class="user-qualification-catalog-block" data-user-management-scope="people">
                     <div class="section-heading offers-section-heading">
                       <div>
                         <p class="section-kicker">Ovlaštenja</p>
-                        <h3>Ispitivanje panik rasvjete</h3>
+                        <h3>Ispiti vezani uz usluge</h3>
+                      </div>
+                      <div class="document-template-reference-actions">
+                        <button id="user-qualification-add-exam" type="button" class="ghost-button">+ Novi ispit</button>
                       </div>
                     </div>
-                    <div class="form-grid user-electrical-grid">
-                      <label class="field">
-                        <span>Ispitivač</span>
-                        <select id="user-electrical-can-inspect">
-                          <option value="false">Ne</option>
-                          <option value="true">Da</option>
-                        </select>
-                      </label>
-                      <label class="field">
-                        <span>Nositelj</span>
-                        <select id="user-electrical-can-authorize">
-                          <option value="false">Ne</option>
-                          <option value="true">Da</option>
-                        </select>
-                      </label>
-                      <label class="field">
-                        <span>Klasa</span>
-                        <input id="user-electrical-class" type="text" maxlength="160" />
-                      </label>
-                      <label class="field">
-                        <span>UrBROJ</span>
-                        <input id="user-electrical-urbroj" type="text" maxlength="160" />
-                      </label>
-                      <label class="field">
-                        <span>E broj</span>
-                        <input id="user-electrical-e-broj" type="text" maxlength="160" />
-                      </label>
-                      <label class="field">
-                        <span>Vrijedi do</span>
-                        <input id="user-electrical-valid-until" type="date" />
-                      </label>
-                      <div class="field qualification-validity-field">
-                        <span>Vrijedi trajno</span>
-                        <label class="checkbox-field">
-                          <input id="user-electrical-valid-forever" type="checkbox" />
-                          <span>Bez isteka</span>
-                        </label>
-                      </div>
-                    </div>
-                  </section>
-
-                  <section class="service-catalog-template-block user-editor-module user-electrical-qualification-block" data-user-management-scope="people">
-                    <div class="section-heading offers-section-heading">
-                      <div>
-                        <p class="section-kicker">Ovlaštenja</p>
-                        <h3>Tipkalo za isklop napona</h3>
-                      </div>
-                    </div>
-                    <div class="form-grid user-electrical-grid">
-                      <label class="field">
-                        <span>Ispitivač</span>
-                        <select id="user-tipkalo-can-inspect">
-                          <option value="false">Ne</option>
-                          <option value="true">Da</option>
-                        </select>
-                      </label>
-                      <label class="field">
-                        <span>Nositelj</span>
-                        <select id="user-tipkalo-can-authorize">
-                          <option value="false">Ne</option>
-                          <option value="true">Da</option>
-                        </select>
-                      </label>
-                      <label class="field">
-                        <span>Klasa</span>
-                        <input id="user-tipkalo-class" type="text" maxlength="160" />
-                      </label>
-                      <label class="field">
-                        <span>UrBROJ</span>
-                        <input id="user-tipkalo-urbroj" type="text" maxlength="160" />
-                      </label>
-                      <label class="field">
-                        <span>E broj</span>
-                        <input id="user-tipkalo-e-broj" type="text" maxlength="160" />
-                      </label>
-                      <label class="field">
-                        <span>Vrijedi do</span>
-                        <input id="user-tipkalo-valid-until" type="date" />
-                      </label>
-                      <div class="field qualification-validity-field">
-                        <span>Vrijedi trajno</span>
-                        <label class="checkbox-field">
-                          <input id="user-tipkalo-valid-forever" type="checkbox" />
-                          <span>Bez isteka</span>
-                        </label>
-                      </div>
-                    </div>
+                    <p class="helper-copy module-copy">Ispite dodaješ u Safety Authorization i tamo ih vežeš uz jednu ili više usluga. Ovdje se za korisnika upisuju prava, brojevi rješenja i rokovi.</p>
+                    <div id="user-qualification-areas" class="user-qualification-areas"></div>
                   </section>
                   </div>
 
@@ -7665,9 +7583,9 @@
                 <div class="section-heading offers-section-heading">
                   <div>
                     <p class="section-kicker">Register</p>
-                    <h3>Popis ovlaštenja</h3>
+                    <h3>Popis ispita i ovlaštenja</h3>
                   </div>
-                  <button id="safety-authorization-open-form" type="button" class="primary-button">+ Novo ovlaštenje</button>
+                  <button id="safety-authorization-open-form" type="button" class="primary-button">+ Novi ispit</button>
                 </div>
 
                 <div class="safety-authorization-filters">
@@ -7677,7 +7595,7 @@
                   </label>
                 </div>
 
-                <p id="safety-authorization-helper" class="helper-copy module-copy">Evidencija ovlaštenja, rokova i zapisnika u kojima se spominju.</p>
+                <p id="safety-authorization-helper" class="helper-copy module-copy">Evidencija ispita/ovlaštenja, rokova i usluga u kojima se koriste.</p>
                 <div id="safety-authorization-list" class="safety-authorization-list"></div>
                 <p id="safety-authorization-empty" class="helper-copy" hidden>Nema ovlaštenja za prikaz u odabranoj organizaciji.</p>
               </section>
@@ -7688,7 +7606,7 @@
                   <div class="section-heading offers-section-heading">
                     <div>
                       <p class="section-kicker">Safety authorization</p>
-                      <h3 id="safety-authorization-editor-title">Novo ovlaštenje</h3>
+                      <h3 id="safety-authorization-editor-title">Novi ispit / ovlaštenje</h3>
                     </div>
                     <button id="safety-authorization-editor-close" type="button" class="ghost-button">Zatvori</button>
                   </div>
@@ -7700,12 +7618,12 @@
 
                     <div class="form-grid safety-authorization-form-grid">
                       <label class="field field-span-full">
-                        <span>Ime ovlaštenja</span>
-                        <input id="safety-authorization-title" maxlength="180" placeholder="Ovlaštenje za..." required />
+                        <span>Naziv ispita / ovlaštenja</span>
+                        <input id="safety-authorization-title" maxlength="180" placeholder="npr. Ispitivanje radne opreme" required />
                       </label>
                       <label class="field field-span-full">
                         <span>Pod ovlaštenje / opseg</span>
-                        <input id="safety-authorization-scope" maxlength="220" placeholder="Što pokriva ovo ovlaštenje" />
+                        <input id="safety-authorization-scope" maxlength="220" placeholder="Što pokriva ovaj ispit ili ovlaštenje" />
                       </label>
                       <label class="field">
                         <span>Datum izdavanja</span>
@@ -7746,7 +7664,7 @@
                           <h3>Pojavljuje se u uslugama</h3>
                         </div>
                       </div>
-                      <p class="helper-copy module-copy">Označi usluge u kojima ovo ovlaštenje treba biti navedeno. Zapisnici se dalje biraju na usluzi.</p>
+                      <p class="helper-copy module-copy">Označi jednu ili više usluga u kojima se ovaj ispit treba koristiti. Zapisnici se dalje biraju na usluzi.</p>
                       <div id="safety-authorization-template-list" class="service-catalog-template-list"></div>
                     </section>
 

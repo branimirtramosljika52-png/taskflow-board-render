@@ -5310,6 +5310,8 @@ const userTipkaloUrbrojInput = document.querySelector("#user-tipkalo-urbroj");
 const userTipkaloEBrojInput = document.querySelector("#user-tipkalo-e-broj");
 const userTipkaloValidUntilInput = document.querySelector("#user-tipkalo-valid-until");
 const userTipkaloValidForeverInput = document.querySelector("#user-tipkalo-valid-forever");
+const userQualificationAreasContainer = document.querySelector("#user-qualification-areas");
+const userQualificationAddExamButton = document.querySelector("#user-qualification-add-exam");
 const userElectricalSignatureDataUrlInput = document.querySelector("#user-electrical-signature-data-url");
 const userElectricalSignatureFileInput = document.querySelector("#user-electrical-signature-file");
 const userElectricalSignatureUploadButton = document.querySelector("#user-electrical-signature-upload");
@@ -7248,12 +7250,12 @@ function getClientPortalLocationLabel(user = {}) {
 }
 
 function getUserAuthorizationSummary(user = {}) {
-  const panicQualification = getUserElectricalQualification(user, "elektro");
-  const switchQualification = getUserElectricalQualification(user, "tipkalo");
-  const activeAreas = [
-    { label: "Panik rasvjeta", qualification: panicQualification },
-    { label: "Tipkalo", qualification: switchQualification },
-  ].filter(({ qualification }) => hasQualificationCapability(qualification));
+  const activeAreas = getUserQualificationAreaDefinitions(user)
+    .map((definition) => ({
+      label: definition.label || definition.title || definition.key,
+      qualification: getUserElectricalQualification(user, definition.key),
+    }))
+    .filter(({ qualification }) => hasQualificationCapability(qualification));
 
   if (activeAreas.length === 0) {
     return {
@@ -7288,10 +7290,8 @@ function isUserAuthorizationCurrentlyActive(qualification = {}) {
 }
 
 function getUserActiveAuthorizationCount(user = {}) {
-  const areas = [
-    getUserElectricalQualification(user, "elektro"),
-    getUserElectricalQualification(user, "tipkalo"),
-  ];
+  const areas = getUserQualificationAreaDefinitions(user)
+    .map((definition) => getUserElectricalQualification(user, definition.key));
 
   return areas.filter((qualification) => isUserAuthorizationCurrentlyActive(qualification)).length;
 }
@@ -7347,7 +7347,15 @@ function syncQualificationValidityInput(dateInput, foreverInput) {
     return;
   }
 
-  dateInput.disabled = foreverInput.checked;
+  const isForever = Boolean(foreverInput.checked);
+  dateInput.disabled = isForever;
+  if (isForever) {
+    dateInput.value = "";
+  }
+  const dateField = dateInput.closest(".field");
+  if (dateField instanceof HTMLElement) {
+    dateField.hidden = isForever;
+  }
 }
 
 function normalizeNotificationDayValue(value, fallback = 1, { min = 1, max = 365 } = {}) {
@@ -47046,10 +47054,25 @@ const USER_DOCUMENT_CATEGORY_OPTIONS = [
   { value: "__custom__", label: "Add new..." },
 ];
 
-const DOCUMENT_TEMPLATE_SIGNATURE_AREA_OPTIONS = [
-  { value: "elektro", label: "Panik rasvjeta" },
-  { value: "tipkalo", label: "Tipkalo za isklop napona" },
-];
+const BUILTIN_QUALIFICATION_EXAM_DEFINITIONS = Object.freeze([
+  Object.freeze({
+    key: "elektro",
+    title: "Panik rasvjeta",
+    label: "Panik rasvjeta",
+    serviceLabel: "Sigurnosna panik rasvjeta",
+    builtIn: true,
+  }),
+  Object.freeze({
+    key: "tipkalo",
+    title: "Tipkalo za isklop napona",
+    label: "Tipkalo za isklop napona",
+    serviceLabel: "Tipkalo za isklop napona",
+    builtIn: true,
+  }),
+]);
+
+const DOCUMENT_TEMPLATE_SIGNATURE_AREA_OPTIONS = BUILTIN_QUALIFICATION_EXAM_DEFINITIONS
+  .map((entry) => ({ value: entry.key, label: entry.label }));
 
 const DOCUMENT_TEMPLATE_DIGITAL_SIGNATURE_ROLE_OPTIONS = [
   { value: "inspect", label: "Ispitivaci" },
@@ -47061,6 +47084,7 @@ const DOCUMENT_TEMPLATE_DIGITAL_SIGNATURE_ROLE_OPTIONS = [
 const DOCUMENT_TEMPLATE_SIGNATURE_META_FIELD_OPTIONS = [
   { value: "title", label: "Titula" },
   { value: "oib", label: "OIB" },
+  { value: "type", label: "Vrsta" },
   { value: "classCode", label: "Klasa" },
   { value: "urbroj", label: "UrBROJ" },
   { value: "eBroj", label: "E broj" },
@@ -47115,11 +47139,13 @@ const DOCUMENT_TEMPLATE_SOURCE_OPTIONS = [
   { value: "WORK_ORDER_TEAM", label: "Tim" },
   { value: "SERVICE_SUMMARY", label: "Usluge" },
   { value: "QUALIFIED_INSPECTOR_NAME", label: "Ispitivač - ime i prezime" },
+  { value: "QUALIFIED_INSPECTOR_TYPE", label: "Ispitivač - vrsta" },
   { value: "QUALIFIED_INSPECTOR_CLASS_CODE", label: "Ispitivač - klasa" },
   { value: "QUALIFIED_INSPECTOR_URBROJ", label: "Ispitivač - UrBROJ" },
   { value: "QUALIFIED_INSPECTOR_E_BROJ", label: "Ispitivač - E broj" },
   { value: "QUALIFIED_INSPECTOR_SUMMARY", label: "Ispitivač - podaci o ovlaštenju" },
   { value: "QUALIFIED_AUTHORIZATION_HOLDER_NAME", label: "Nositelj - ime i prezime" },
+  { value: "QUALIFIED_AUTHORIZATION_HOLDER_TYPE", label: "Nositelj - vrsta" },
   { value: "QUALIFIED_AUTHORIZATION_HOLDER_CLASS_CODE", label: "Nositelj - klasa" },
   { value: "QUALIFIED_AUTHORIZATION_HOLDER_URBROJ", label: "Nositelj - UrBROJ" },
   { value: "QUALIFIED_AUTHORIZATION_HOLDER_E_BROJ", label: "Nositelj - E broj" },
@@ -53014,6 +53040,106 @@ function normalizeQualificationAreaKey(signatureArea = "elektro") {
   return normalizedArea || "elektro";
 }
 
+function getSafetyAuthorizationQualificationAreaKey(item = {}) {
+  const rawId = String(item?.id || "").trim();
+  if (!rawId) {
+    return "";
+  }
+  const safeId = rawId
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toLowerCase();
+  return safeId ? `authorization_${safeId}` : "";
+}
+
+function getBuiltinQualificationExamDefinitionMatch(item = {}) {
+  const haystack = normalizeLooseName([
+    item?.title,
+    item?.scope,
+    ...(Array.isArray(item?.linkedServiceCatalogTitles) ? item.linkedServiceCatalogTitles : []),
+  ].filter(Boolean).join(" "));
+  if (!haystack) {
+    return null;
+  }
+  return BUILTIN_QUALIFICATION_EXAM_DEFINITIONS.find((definition) => {
+    const title = normalizeLooseName(definition.title);
+    const label = normalizeLooseName(definition.label);
+    return (title && haystack.includes(title)) || (label && haystack.includes(label));
+  }) || null;
+}
+
+function getQualificationExamDefinitions({ includeCustom = true } = {}) {
+  const definitions = new Map(BUILTIN_QUALIFICATION_EXAM_DEFINITIONS.map((entry) => [
+    entry.key,
+    {
+      ...entry,
+      linkedServiceCatalogIds: [],
+      linkedServiceCatalogTitles: [],
+    },
+  ]));
+
+  if (includeCustom) {
+    sortSafetyAuthorizations(state.safetyAuthorizations ?? []).forEach((item) => {
+      const organizationId = String(item?.organizationId || "").trim();
+      if (organizationId && state.activeOrganizationId && organizationId !== String(state.activeOrganizationId)) {
+        return;
+      }
+
+      const key = getSafetyAuthorizationQualificationAreaKey(item);
+      if (!key) {
+        return;
+      }
+
+      const linkedServiceCatalogIds = getSafetyAuthorizationLinkedServiceIds(item);
+      const linkedServiceCatalogTitles = getSafetyAuthorizationLinkedServiceTitles(item);
+      const builtinMatch = getBuiltinQualificationExamDefinitionMatch(item);
+      const targetKey = builtinMatch?.key || key;
+      const previous = definitions.get(targetKey) || {};
+      definitions.set(targetKey, {
+        key: targetKey,
+        title: previous.title || item.title || "Ispit",
+        label: previous.label || item.title || "Ispit",
+        serviceLabel: previous.serviceLabel || item.title || "Ispit",
+        builtIn: Boolean(previous.builtIn || builtinMatch),
+        sourceAuthorizationId: item.id || previous.sourceAuthorizationId || "",
+        sourceAuthorizationTitle: item.title || previous.sourceAuthorizationTitle || "",
+        scope: item.scope || previous.scope || "",
+        linkedServiceCatalogIds: Array.from(new Set([
+          ...(previous.linkedServiceCatalogIds || []),
+          ...linkedServiceCatalogIds,
+        ])),
+        linkedServiceCatalogTitles: Array.from(new Set([
+          ...(previous.linkedServiceCatalogTitles || []),
+          ...linkedServiceCatalogTitles,
+        ])),
+      });
+    });
+  }
+
+  return Array.from(definitions.values());
+}
+
+function getQualificationExamDefinition(signatureArea = "elektro") {
+  const normalizedArea = normalizeQualificationAreaKey(signatureArea);
+  return getQualificationExamDefinitions().find((entry) => entry.key === normalizedArea)
+    || BUILTIN_QUALIFICATION_EXAM_DEFINITIONS.find((entry) => entry.key === normalizedArea)
+    || { key: normalizedArea, label: normalizedArea, title: normalizedArea, linkedServiceCatalogIds: [], linkedServiceCatalogTitles: [] };
+}
+
+function getDocumentTemplateSignatureAreaOptions(selectedValue = "") {
+  const selectedArea = normalizeQualificationAreaKey(selectedValue || "elektro");
+  const options = getQualificationExamDefinitions().map((entry) => ({
+    value: entry.key,
+    label: entry.label || entry.title || entry.key,
+  }));
+  if (selectedArea && !options.some((option) => option.value === selectedArea)) {
+    options.push({ value: selectedArea, label: getSignatureAreaLabel(selectedArea) });
+  }
+  return options;
+}
+
 function getUsersByIds(userIds = []) {
   const normalizedIds = normalizeQualifiedUserIdList(userIds);
   if (normalizedIds.length === 0) {
@@ -53026,14 +53152,8 @@ function getUsersByIds(userIds = []) {
 }
 
 function getSignatureAreaLabel(signatureArea = "elektro") {
-  const normalizedArea = normalizeQualificationAreaKey(signatureArea);
-  if (normalizedArea === "elektro") {
-    return "panik rasvjeta";
-  }
-  if (normalizedArea === "tipkalo") {
-    return "tipkalo za isklop napona";
-  }
-  return normalizedArea;
+  const definition = getQualificationExamDefinition(signatureArea);
+  return String(definition.label || definition.title || definition.key || signatureArea || "ispit").trim();
 }
 
 function normalizeDocumentTemplateSignatureServiceCode(value = "") {
@@ -53125,11 +53245,27 @@ function getDocumentTemplateSignatureAreas(template = {}) {
 
 function getWorkOrderRelevantSignatureAreas(workOrder = {}) {
   const areas = new Set();
+  const serviceCatalogIds = new Set();
   getWorkOrderServiceItems(workOrder).forEach((service) => {
+    const catalogItem = getServiceCatalogItemForWorkOrderService(service);
+    [
+      service?.serviceId,
+      service?.serviceCatalogId,
+      catalogItem?.id,
+    ].map((value) => String(value || "").trim()).filter(Boolean)
+      .forEach((value) => serviceCatalogIds.add(value));
+
     getWorkOrderServiceTemplateIds(service).forEach((templateId) => {
       const template = getDocumentTemplateById(templateId);
       getDocumentTemplateSignatureAreas(template).forEach((area) => areas.add(area));
     });
+  });
+
+  getQualificationExamDefinitions().forEach((definition) => {
+    const linkedIds = Array.isArray(definition.linkedServiceCatalogIds) ? definition.linkedServiceCatalogIds : [];
+    if (linkedIds.some((serviceId) => serviceCatalogIds.has(String(serviceId)))) {
+      areas.add(definition.key);
+    }
   });
 
   return areas.size > 0 ? [...areas] : ["elektro"];
@@ -53933,6 +54069,57 @@ const WORK_ORDER_DOCUMENT_SIGNATURE_AREA_GROUPS = [
   },
 ];
 
+function getQualificationAreaFieldKey(signatureArea = "elektro") {
+  return normalizeQualificationAreaKey(signatureArea)
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "") || "elektro";
+}
+
+function getWorkOrderDocumentSignaturePersonFields() {
+  const legacyFields = new Map(WORK_ORDER_DOCUMENT_SIGNATURE_PERSON_FIELDS.map((definition) => [
+    `${definition.signatureArea}:${definition.capability}`,
+    definition,
+  ]));
+
+  return getQualificationExamDefinitions().flatMap((definition) => {
+    const area = normalizeQualificationAreaKey(definition.key);
+    const fieldKey = getQualificationAreaFieldKey(area);
+    const inspectLegacy = legacyFields.get(`${area}:inspect`);
+    const authorizeLegacy = legacyFields.get(`${area}:authorize`);
+    return [
+      {
+        listFieldName: inspectLegacy?.listFieldName || `${fieldKey}InspectorUserIds`,
+        fieldName: inspectLegacy?.fieldName || `${fieldKey}InspectorUserId`,
+        capability: "inspect",
+        signatureArea: area,
+        label: inspectLegacy?.label || `Ispitivači ${definition.label || definition.title || area}`,
+        summaryLabel: inspectLegacy?.summaryLabel || `${definition.label || definition.title || area} ispitivači`,
+        emptyLabel: inspectLegacy?.emptyLabel || "Odaberi ispitivače",
+        multiple: true,
+      },
+      {
+        fieldName: authorizeLegacy?.fieldName || `${fieldKey}AuthorizationHolderUserId`,
+        capability: "authorize",
+        signatureArea: area,
+        label: authorizeLegacy?.label || `Odgovorna osoba ${definition.label || definition.title || area}`,
+        summaryLabel: authorizeLegacy?.summaryLabel || `${definition.label || definition.title || area} odgovorna osoba`,
+        emptyLabel: authorizeLegacy?.emptyLabel || "Odaberi odgovornu osobu",
+      },
+    ];
+  });
+}
+
+function getWorkOrderDocumentSignatureAreaGroups() {
+  const legacyGroups = new Map(WORK_ORDER_DOCUMENT_SIGNATURE_AREA_GROUPS.map((group) => [group.key, group]));
+  return getQualificationExamDefinitions().map((definition) => {
+    const legacyGroup = legacyGroups.get(definition.key);
+    return {
+      key: definition.key,
+      title: legacyGroup?.title || definition.serviceLabel || definition.label || definition.title || definition.key,
+    };
+  });
+}
+
 const WORK_ORDER_DOCUMENT_COMMON_ENVIRONMENT_FIELDS = [
   ["outsideTemperature", "Vanjska temperatura"],
   ["relativeHumidity", "Relativna vlažnost"],
@@ -54000,7 +54187,7 @@ function applyDeterministicEnvironmentVariance(rawValue = "", seedKey = "", fiel
 function getWorkOrderDocumentSignaturePersonFieldName(capability = "inspect", signatureArea = "elektro") {
   const normalizedCapability = capability === "authorize" ? "authorize" : "inspect";
   const normalizedArea = normalizeQualificationAreaKey(signatureArea);
-  return WORK_ORDER_DOCUMENT_SIGNATURE_PERSON_FIELDS.find((entry) => (
+  return getWorkOrderDocumentSignaturePersonFields().find((entry) => (
     entry.capability === normalizedCapability && entry.signatureArea === normalizedArea
   ))?.fieldName || (normalizedCapability === "authorize" ? "authorizationHolderUserId" : "inspectorUserId");
 }
@@ -54008,7 +54195,7 @@ function getWorkOrderDocumentSignaturePersonFieldName(capability = "inspect", si
 function getWorkOrderDocumentSignaturePersonListFieldName(capability = "inspect", signatureArea = "elektro") {
   const normalizedCapability = capability === "authorize" ? "authorize" : "inspect";
   const normalizedArea = normalizeQualificationAreaKey(signatureArea);
-  return WORK_ORDER_DOCUMENT_SIGNATURE_PERSON_FIELDS.find((entry) => (
+  return getWorkOrderDocumentSignaturePersonFields().find((entry) => (
     entry.capability === normalizedCapability
       && entry.signatureArea === normalizedArea
       && entry.listFieldName
@@ -54087,7 +54274,7 @@ function applyWorkOrderDocumentWizardCommonSignaturePersonPatch({
 
 function getWorkOrderDocumentSignaturePersonOptions(capability = "inspect", signatureArea = "elektro", options = {}) {
   const normalizedCapability = capability === "authorize" ? "authorize" : "inspect";
-  const definition = WORK_ORDER_DOCUMENT_SIGNATURE_PERSON_FIELDS.find((entry) => (
+  const definition = getWorkOrderDocumentSignaturePersonFields().find((entry) => (
     entry.capability === normalizedCapability
       && entry.signatureArea === normalizeQualificationAreaKey(signatureArea)
   )) || null;
@@ -54138,7 +54325,7 @@ function getWorkOrderDocumentSignaturePersonSummaryParts(source = {}, signatureA
   const areaSet = Array.isArray(signatureAreas)
     ? new Set(signatureAreas.map((area) => normalizeQualificationAreaKey(area)))
     : null;
-  return WORK_ORDER_DOCUMENT_SIGNATURE_PERSON_FIELDS
+  return getWorkOrderDocumentSignaturePersonFields()
     .filter((definition) => !areaSet || areaSet.has(definition.signatureArea))
     .map((definition) => {
       const names = getWorkOrderDocumentSignaturePersonNames(source, definition);
@@ -56275,7 +56462,7 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
 
   if (isDocumentTemplatePersonSignatureFieldType(field.type)) {
     const areaLabel = getOptionLabel(
-      DOCUMENT_TEMPLATE_SIGNATURE_AREA_OPTIONS,
+      getDocumentTemplateSignatureAreaOptions(field.signatureArea || "elektro"),
       field.signatureArea || "elektro",
     );
     const signatureMethod = getDocumentTemplateContextSignatureMethod(context);
@@ -56332,7 +56519,7 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
 
   if (field.type === "digital_signature") {
     const areaLabel = getOptionLabel(
-      DOCUMENT_TEMPLATE_SIGNATURE_AREA_OPTIONS,
+      getDocumentTemplateSignatureAreaOptions(field.signatureArea || "elektro"),
       field.signatureArea || "elektro",
     );
     const roleLabel = getDocumentTemplateDigitalSignatureRoleLabel(field.signatureRole || "inspect");
@@ -56520,7 +56707,7 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
   if (field.type === "inspector_signature" || field.type === "authorization_holder_signature") {
     const signaturePreview = getDocumentTemplateSignaturePreviewData(field, context);
     const areaLabel = getOptionLabel(
-      DOCUMENT_TEMPLATE_SIGNATURE_AREA_OPTIONS,
+      getDocumentTemplateSignatureAreaOptions(field.signatureArea || "elektro"),
       field.signatureArea || "elektro",
     );
     const signatureVisual = placeholderMode
@@ -58882,11 +59069,14 @@ function getUserElectricalQualification(user = {}, signatureArea = "elektro") {
   ).trim();
   return {
     discipline: String(qualification.discipline || normalizedArea || "elektro").trim().toLowerCase() || "elektro",
+    type: String(qualification.type || qualification.equipmentType || qualification.kind || "").trim(),
     canInspect: Boolean(qualification.canInspect),
     canAuthorize: Boolean(qualification.canAuthorize),
     classCode: String(qualification.classCode || "").trim(),
     urbroj: String(qualification.urbroj || "").trim(),
     eBroj: String(qualification.eBroj || "").trim(),
+    validUntil: String(qualification.validUntil || "").trim(),
+    validForever: Boolean(qualification.validForever),
     signatureDataUrl: String(
       qualification.signatureDataUrl
       || qualification.signatureStorageUrl
@@ -58900,6 +59090,212 @@ function getUserElectricalQualification(user = {}, signatureArea = "elektro") {
     signatureStorageUrl: String(qualification.signatureStorageUrl || "").trim(),
     documents: Array.isArray(qualification.documents) ? qualification.documents : [],
   };
+}
+
+function getUserQualificationAreaDefinitions(user = null) {
+  const definitions = new Map(getQualificationExamDefinitions().map((definition) => [definition.key, definition]));
+  Object.keys(user?.electricalQualification?.additionalAreas || {}).forEach((area) => {
+    const key = normalizeQualificationAreaKey(area);
+    if (!key || definitions.has(key)) {
+      return;
+    }
+    definitions.set(key, {
+      key,
+      title: getSignatureAreaLabel(key),
+      label: getSignatureAreaLabel(key),
+      serviceLabel: getSignatureAreaLabel(key),
+      linkedServiceCatalogIds: [],
+      linkedServiceCatalogTitles: [],
+    });
+  });
+  return Array.from(definitions.values());
+}
+
+function getUserQualificationInput(area = "", field = "") {
+  if (!userQualificationAreasContainer) {
+    return null;
+  }
+  const areaKey = normalizeQualificationAreaKey(area);
+  return userQualificationAreasContainer.querySelector(
+    `[data-user-qualification-area="${CSS.escape(areaKey)}"] [data-user-qualification-field="${CSS.escape(field)}"]`,
+  );
+}
+
+function readUserQualificationAreaPayload(definition = {}) {
+  const area = normalizeQualificationAreaKey(definition.key || "elektro");
+  const validForever = Boolean(getUserQualificationInput(area, "validForever")?.checked);
+  return {
+    discipline: area,
+    type: String(getUserQualificationInput(area, "type")?.value || "").trim(),
+    canInspect: getUserQualificationInput(area, "canInspect")?.value === "true",
+    canAuthorize: getUserQualificationInput(area, "canAuthorize")?.value === "true",
+    classCode: String(getUserQualificationInput(area, "classCode")?.value || "").trim(),
+    urbroj: String(getUserQualificationInput(area, "urbroj")?.value || "").trim(),
+    eBroj: String(getUserQualificationInput(area, "eBroj")?.value || "").trim(),
+    validUntil: validForever ? "" : String(getUserQualificationInput(area, "validUntil")?.value || "").trim(),
+    validForever,
+  };
+}
+
+function createUserQualificationSelect(value = false) {
+  const select = document.createElement("select");
+  select.innerHTML = "<option value=\"false\">Ne</option><option value=\"true\">Da</option>";
+  select.value = value ? "true" : "false";
+  return select;
+}
+
+function createUserQualificationField(labelText = "", control, fieldName = "") {
+  const field = document.createElement("label");
+  field.className = "field";
+  const label = document.createElement("span");
+  label.textContent = labelText;
+  if (fieldName) {
+    control.dataset.userQualificationField = fieldName;
+  }
+  field.append(label, control);
+  return field;
+}
+
+function renderUserQualificationAreas(user = getCurrentUserEditorRecord() || {}) {
+  if (!userQualificationAreasContainer) {
+    return;
+  }
+
+  const definitions = getUserQualificationAreaDefinitions(user);
+  if (definitions.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "helper-copy module-copy";
+    empty.textContent = "Nema definiranih ispita. Dodaj novi ispit i poveži ga s uslugama.";
+    userQualificationAreasContainer.replaceChildren(empty);
+    return;
+  }
+
+  userQualificationAreasContainer.replaceChildren(...definitions.map((definition) => {
+    const area = normalizeQualificationAreaKey(definition.key);
+    const qualification = getUserElectricalQualification(user, area);
+    const block = document.createElement("section");
+    block.className = "service-catalog-template-block user-editor-module user-electrical-qualification-block";
+    block.dataset.userManagementScope = "people";
+    block.dataset.userQualificationArea = area;
+
+    const heading = document.createElement("div");
+    heading.className = "section-heading offers-section-heading";
+    const headingCopy = document.createElement("div");
+    const kicker = document.createElement("p");
+    kicker.className = "section-kicker";
+    kicker.textContent = definition.builtIn ? "Ovlaštenja" : "Ispit";
+    const title = document.createElement("h3");
+    title.textContent = definition.title || definition.label || area;
+    headingCopy.append(kicker, title);
+    heading.append(headingCopy);
+
+    const serviceTitles = Array.isArray(definition.linkedServiceCatalogTitles)
+      ? definition.linkedServiceCatalogTitles.map((value) => String(value || "").trim()).filter(Boolean)
+      : [];
+    if (serviceTitles.length > 0) {
+      const services = document.createElement("div");
+      services.className = "user-qualification-service-links";
+      serviceTitles.slice(0, 3).forEach((entry) => {
+        services.append(createBadge(entry, "service-catalog-template-badge"));
+      });
+      if (serviceTitles.length > 3) {
+        services.append(createBadge(`+${serviceTitles.length - 3}`, "service-catalog-template-badge is-muted"));
+      }
+      heading.append(services);
+    }
+
+    const grid = document.createElement("div");
+    grid.className = "form-grid user-electrical-grid";
+
+    const inspectSelect = createUserQualificationSelect(qualification.canInspect);
+    const authorizeSelect = createUserQualificationSelect(qualification.canAuthorize);
+    const typeInput = document.createElement("input");
+    typeInput.type = "text";
+    typeInput.maxLength = 160;
+    typeInput.value = qualification.type || "";
+    typeInput.placeholder = "npr. viličar, dizalica, instalacija...";
+    const classInput = document.createElement("input");
+    classInput.type = "text";
+    classInput.maxLength = 160;
+    classInput.value = qualification.classCode || "";
+    const urbrojInput = document.createElement("input");
+    urbrojInput.type = "text";
+    urbrojInput.maxLength = 160;
+    urbrojInput.value = qualification.urbroj || "";
+    const eBrojInput = document.createElement("input");
+    eBrojInput.type = "text";
+    eBrojInput.maxLength = 160;
+    eBrojInput.value = qualification.eBroj || "";
+    const validUntilInput = document.createElement("input");
+    validUntilInput.type = "date";
+    validUntilInput.value = qualification.validUntil || "";
+    const validForeverInput = document.createElement("input");
+    validForeverInput.type = "checkbox";
+    validForeverInput.checked = Boolean(qualification.validForever);
+
+    const validForeverField = document.createElement("div");
+    validForeverField.className = "field qualification-validity-field";
+    const validForeverLabel = document.createElement("span");
+    validForeverLabel.textContent = "Vrijedi trajno";
+    const checkboxLabel = document.createElement("label");
+    checkboxLabel.className = "checkbox-field";
+    const checkboxCopy = document.createElement("span");
+    checkboxCopy.textContent = "Bez isteka";
+    validForeverInput.dataset.userQualificationField = "validForever";
+    checkboxLabel.append(validForeverInput, checkboxCopy);
+    validForeverField.append(validForeverLabel, checkboxLabel);
+
+    validForeverInput.addEventListener("change", () => {
+      syncQualificationValidityInput(validUntilInput, validForeverInput);
+    });
+
+    grid.append(
+      createUserQualificationField("Ispitivač", inspectSelect, "canInspect"),
+      createUserQualificationField("Nositelj", authorizeSelect, "canAuthorize"),
+      createUserQualificationField("Vrsta", typeInput, "type"),
+      createUserQualificationField("Klasa", classInput, "classCode"),
+      createUserQualificationField("UrBROJ", urbrojInput, "urbroj"),
+      createUserQualificationField("E broj", eBrojInput, "eBroj"),
+      createUserQualificationField("Vrijedi do", validUntilInput, "validUntil"),
+      validForeverField,
+    );
+
+    block.append(heading, grid);
+    syncQualificationValidityInput(validUntilInput, validForeverInput);
+    return block;
+  }));
+}
+
+function buildUserElectricalQualificationPayload() {
+  const currentRecord = getCurrentUserEditorRecord();
+  const definitions = getUserQualificationAreaDefinitions(currentRecord || {});
+  const renderedAreas = new Set(definitions.map((definition) => normalizeQualificationAreaKey(definition.key)));
+  const rootDefinition = definitions.find((definition) => normalizeQualificationAreaKey(definition.key) === "elektro")
+    || { key: "elektro" };
+  const root = {
+    ...readUserQualificationAreaPayload(rootDefinition),
+    discipline: "elektro",
+    signatureDataUrl: userElectricalSignatureDataUrlInput?.value || "",
+    documents: [],
+    additionalAreas: {},
+  };
+
+  definitions
+    .filter((definition) => normalizeQualificationAreaKey(definition.key) !== "elektro")
+    .forEach((definition) => {
+      const area = normalizeQualificationAreaKey(definition.key);
+      root.additionalAreas[area] = readUserQualificationAreaPayload(definition);
+    });
+
+  Object.entries(currentRecord?.electricalQualification?.additionalAreas || {}).forEach(([area, value]) => {
+    const normalizedArea = normalizeQualificationAreaKey(area);
+    if (!normalizedArea || renderedAreas.has(normalizedArea)) {
+      return;
+    }
+    root.additionalAreas[normalizedArea] = value;
+  });
+
+  return root;
 }
 
 function getQualifiedUsersForSignatureArea(capability = "inspect", signatureArea = "elektro") {
@@ -58926,6 +59322,7 @@ function getQualifiedUsersForSignatureArea(capability = "inspect", signatureArea
 function getQualifiedUserSelectLabel(user = {}, capability = "inspect", signatureArea = "elektro") {
   const qualification = getUserElectricalQualification(user, signatureArea);
   const summaryParts = [
+    qualification.type ? `Vrsta ${qualification.type}` : "",
     qualification.classCode ? `Klasa ${qualification.classCode}` : "",
     qualification.urbroj ? `UrBROJ ${qualification.urbroj}` : "",
     qualification.eBroj ? `E ${qualification.eBroj}` : "",
@@ -59022,6 +59419,7 @@ function getQualifiedUserSummaryValue(user = null, capability = "inspect", signa
   const qualification = getUserElectricalQualification(user, signatureArea);
   return [
     getUserDocumentDisplayName(user),
+    qualification.type ? `Vrsta ${qualification.type}` : "",
     qualification.classCode ? `Klasa ${qualification.classCode}` : "",
     qualification.urbroj ? `UrBROJ ${qualification.urbroj}` : "",
     qualification.eBroj ? `E broj ${qualification.eBroj}` : "",
@@ -59043,6 +59441,7 @@ function getQualifiedUserDocumentMetaLines(
   return [
     visibleFields.has("title") && user.title ? String(user.title).trim() : "",
     visibleFields.has("oib") && user.oib ? `OIB ${String(user.oib).trim()}` : "",
+    visibleFields.has("type") && qualification.type ? `Vrsta ${qualification.type}` : "",
     visibleFields.has("classCode") && qualification.classCode ? `Klasa ${qualification.classCode}` : "",
     visibleFields.has("urbroj") && qualification.urbroj ? `UrBROJ ${qualification.urbroj}` : "",
     visibleFields.has("eBroj") && qualification.eBroj ? `E broj ${qualification.eBroj}` : "",
@@ -59163,8 +59562,9 @@ function getWorkOrderDocumentSignatureAreaGroupsForAreas(areas = []) {
       .filter(Boolean),
   ));
   const areaList = normalizedAreas.length > 0 ? normalizedAreas : ["elektro"];
+  const areaGroups = getWorkOrderDocumentSignatureAreaGroups();
   return areaList.map((area) => (
-    WORK_ORDER_DOCUMENT_SIGNATURE_AREA_GROUPS.find((group) => group.key === area) || {
+    areaGroups.find((group) => group.key === area) || {
       key: area,
       title: getSignatureAreaLabel(area),
     }
@@ -59445,7 +59845,7 @@ function getWorkOrderDocumentOrderedQualifiedInspectors(workOrder = {}) {
   const orderedInspectors = [];
   const seenUserIds = new Set();
 
-  WORK_ORDER_DOCUMENT_SIGNATURE_PERSON_FIELDS
+  getWorkOrderDocumentSignaturePersonFields()
     .filter((definition) => definition.capability === "inspect")
     .forEach((definition) => {
       getWorkOrderDocumentQualifiedUsers(workOrder, "inspect", definition.signatureArea).forEach((user) => {
@@ -59491,11 +59891,13 @@ function getQualifiedUserSourcePreviewValue(source, context = {}) {
 
   const sourceMap = {
     QUALIFIED_INSPECTOR_NAME: { capability: "inspect", field: "name" },
+    QUALIFIED_INSPECTOR_TYPE: { capability: "inspect", field: "type" },
     QUALIFIED_INSPECTOR_CLASS_CODE: { capability: "inspect", field: "classCode" },
     QUALIFIED_INSPECTOR_URBROJ: { capability: "inspect", field: "urbroj" },
     QUALIFIED_INSPECTOR_E_BROJ: { capability: "inspect", field: "eBroj" },
     QUALIFIED_INSPECTOR_SUMMARY: { capability: "inspect", field: "summary" },
     QUALIFIED_AUTHORIZATION_HOLDER_NAME: { capability: "authorize", field: "name" },
+    QUALIFIED_AUTHORIZATION_HOLDER_TYPE: { capability: "authorize", field: "type" },
     QUALIFIED_AUTHORIZATION_HOLDER_CLASS_CODE: { capability: "authorize", field: "classCode" },
     QUALIFIED_AUTHORIZATION_HOLDER_URBROJ: { capability: "authorize", field: "urbroj" },
     QUALIFIED_AUTHORIZATION_HOLDER_E_BROJ: { capability: "authorize", field: "eBroj" },
@@ -65021,8 +65423,8 @@ function buildSafetyAuthorizationPayload() {
 function syncSafetyAuthorizationEditorChrome() {
   if (safetyAuthorizationEditorTitle) {
     safetyAuthorizationEditorTitle.textContent = safetyAuthorizationIdInput?.value
-      ? `Uredi ovlaštenje | ${safetyAuthorizationTitleInput?.value?.trim() || "Bez naziva"}`
-      : "Novo ovlaštenje";
+      ? `Uredi ispit | ${safetyAuthorizationTitleInput?.value?.trim() || "Bez naziva"}`
+      : "Novi ispit / ovlaštenje";
   }
 
   if (safetyAuthorizationDeleteButton) {
@@ -71514,7 +71916,7 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
 
       const areaField = createSignatureSelectField(
         "Usluga / dio potpisa",
-        DOCUMENT_TEMPLATE_SIGNATURE_AREA_OPTIONS,
+        getDocumentTemplateSignatureAreaOptions(field.signatureArea || "elektro"),
         field.signatureArea || "elektro",
         (nextValue) => {
           documentTemplateFieldDrafts[draftIndex].signatureArea = nextValue || "elektro";
@@ -71616,7 +72018,7 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
       signatureAreaSelect.className = "document-template-source-select";
       replaceSelectOptions(
         signatureAreaSelect,
-        DOCUMENT_TEMPLATE_SIGNATURE_AREA_OPTIONS,
+        getDocumentTemplateSignatureAreaOptions(field.signatureArea || "elektro"),
         field.signatureArea || "elektro",
       );
       signatureAreaSelect.addEventListener("change", () => {
@@ -71653,7 +72055,7 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
 
       const areaField = createDigitalSelectField(
         "Usluga / dio potpisa",
-        DOCUMENT_TEMPLATE_SIGNATURE_AREA_OPTIONS,
+        getDocumentTemplateSignatureAreaOptions(field.signatureArea || "elektro"),
         field.signatureArea || "elektro",
         (nextValue) => {
           documentTemplateFieldDrafts[draftIndex].signatureArea = nextValue || "elektro";
@@ -76824,30 +77226,7 @@ function buildUserPayload() {
     isActive: userIsActiveInput.value,
     avatarDataUrl: userAvatarDataUrlInput.value,
     documents: userDocumentDrafts.map((item) => ({ ...item })),
-    electricalQualification: {
-      discipline: "elektro",
-      canInspect: userElectricalCanInspectInput?.value === "true",
-      canAuthorize: userElectricalCanAuthorizeInput?.value === "true",
-      classCode: userElectricalClassInput?.value || "",
-      urbroj: userElectricalUrbrojInput?.value || "",
-      eBroj: userElectricalEBrojInput?.value || "",
-      validUntil: userElectricalValidForeverInput?.checked ? "" : (userElectricalValidUntilInput?.value || ""),
-      validForever: Boolean(userElectricalValidForeverInput?.checked),
-      signatureDataUrl: userElectricalSignatureDataUrlInput?.value || "",
-      documents: [],
-      additionalAreas: {
-        tipkalo: {
-          discipline: "tipkalo",
-          canInspect: userTipkaloCanInspectInput?.value === "true",
-          canAuthorize: userTipkaloCanAuthorizeInput?.value === "true",
-          classCode: userTipkaloClassInput?.value || "",
-          urbroj: userTipkaloUrbrojInput?.value || "",
-          eBroj: userTipkaloEBrojInput?.value || "",
-          validUntil: userTipkaloValidForeverInput?.checked ? "" : (userTipkaloValidUntilInput?.value || ""),
-          validForever: Boolean(userTipkaloValidForeverInput?.checked),
-        },
-      },
-    },
+    electricalQualification: buildUserElectricalQualificationPayload(),
   };
 }
 
@@ -77164,6 +77543,7 @@ function resetUserForm() {
   if (userTipkaloValidForeverInput) {
     userTipkaloValidForeverInput.checked = false;
   }
+  renderUserQualificationAreas({});
   setUserDocumentDrafts([]);
   renderUserDocuments();
   renderUserElectricalSignaturePad("");
@@ -77374,6 +77754,7 @@ function hydrateUserForm(user) {
   }
   userLegacyUsernameInput.value = user.legacyUsername || "";
   userIsActiveInput.value = String(user.isActive);
+  renderUserQualificationAreas(user);
   if (userElectricalCanInspectInput) {
     userElectricalCanInspectInput.value = electricalQualification.canInspect ? "true" : "false";
   }
@@ -94410,60 +94791,75 @@ function syncWorkOrderDocumentWizardCommonInputs() {
   renderWorkOrderDocumentServiceValidityFields(selectedWorkOrders);
 
   const relevantAreaSet = new Set(getWorkOrderDocumentWizardRelevantAreasForBatch(selectedWorkOrders));
-  workOrderDocumentWizardCommonPeopleBody
-    ?.querySelectorAll(".work-order-document-wizard-common-person-area[data-signature-area]")
-    .forEach((areaNode) => {
-      const area = normalizeQualificationAreaKey(areaNode.dataset.signatureArea || "");
-      areaNode.hidden = !relevantAreaSet.has(area);
-    });
+  if (workOrderDocumentWizardCommonPeopleBody) {
+    workOrderDocumentWizardCommonPeopleBody.replaceChildren();
+    getWorkOrderDocumentSignatureAreaGroupsForAreas([...relevantAreaSet]).forEach((areaGroup) => {
+      const areaFields = getWorkOrderDocumentSignaturePersonFields()
+        .filter((definition) => definition.signatureArea === areaGroup.key);
+      if (areaFields.length === 0) {
+        return;
+      }
 
-  [
-    [workOrderDocumentCommonElectricalInspectorSlot, "inspect", "elektro", "electricalInspectorUserId", "electricalInspectorUserIds", true],
-    [workOrderDocumentCommonElectricalAuthorizationHolderSlot, "authorize", "elektro", "electricalAuthorizationHolderUserId", "", false],
-    [workOrderDocumentCommonTipkaloInspectorSlot, "inspect", "tipkalo", "tipkaloInspectorUserId", "tipkaloInspectorUserIds", true],
-    [workOrderDocumentCommonTipkaloAuthorizationHolderSlot, "authorize", "tipkalo", "tipkaloAuthorizationHolderUserId", "", false],
-  ].forEach(([slot, capability, signatureArea, fieldName, listFieldName = "", multiple = false]) => {
-    if (!slot) {
-      return;
-    }
-    if (!relevantAreaSet.has(normalizeQualificationAreaKey(signatureArea))) {
-      slot.replaceChildren();
-      return;
-    }
-    slot.replaceChildren(createWorkOrderDocumentSignaturePersonPicker({
-      capability,
-      signatureArea,
-      multiple,
-      value: multiple
-        ? normalizeQualifiedUserIdList(state.workOrderDocumentWizard.common?.[listFieldName] ?? [])
-        : String(state.workOrderDocumentWizard.common?.[fieldName] ?? "").trim(),
-      emptyLabel: capability === "authorize" ? "Odaberi odgovornu osobu" : "Odaberi ispitivače",
-      onChange: (nextValue, meta = {}) => {
-        applyWorkOrderDocumentWizardCommonSignaturePersonPatch({
-          capability,
-          signatureArea,
-          value: nextValue,
+      const areaNode = document.createElement("section");
+      areaNode.className = "work-order-document-wizard-common-person-area";
+      areaNode.dataset.signatureArea = areaGroup.key;
+
+      const areaTitle = document.createElement("strong");
+      areaTitle.className = "work-order-document-wizard-common-person-area-title";
+      areaTitle.textContent = areaGroup.title;
+
+      const areaGrid = document.createElement("div");
+      areaGrid.className = "work-order-document-wizard-common-person-area-grid";
+
+      areaFields.forEach((definition) => {
+        const field = document.createElement("label");
+        field.className = "field";
+        const fieldLabel = document.createElement("span");
+        fieldLabel.textContent = definition.capability === "authorize" ? "Odgovorna osoba" : "Ispitivači";
+        const slot = document.createElement("div");
+        slot.className = "work-order-document-wizard-control-slot";
+        const multiple = Boolean(definition.multiple);
+        slot.replaceChildren(createWorkOrderDocumentSignaturePersonPicker({
+          capability: definition.capability,
+          signatureArea: definition.signatureArea,
           multiple,
-        });
+          value: multiple
+            ? normalizeQualifiedUserIdList(state.workOrderDocumentWizard.common?.[definition.listFieldName] ?? [])
+            : String(state.workOrderDocumentWizard.common?.[definition.fieldName] ?? "").trim(),
+          emptyLabel: definition.emptyLabel || (definition.capability === "authorize" ? "Odaberi odgovornu osobu" : "Odaberi ispitivače"),
+          onChange: (nextValue, meta = {}) => {
+            applyWorkOrderDocumentWizardCommonSignaturePersonPatch({
+              capability: definition.capability,
+              signatureArea: definition.signatureArea,
+              value: nextValue,
+              multiple,
+            });
 
-        if (meta.keepMenuOpen) {
-          syncWorkOrderDocumentWizardCommonSummaryText();
-          renderWorkOrderDocumentWizardCommonPeopleSection();
-          renderWorkOrderDocumentWizardWorkOrders(getAllSelectedWorkOrdersForDocumentWizard());
-          if (state.workOrderDocumentWizard.step === "templates") {
-            renderWorkOrderDocumentWizardTemplates(getAllSelectedWorkOrdersForDocumentWizard());
-          }
-          return;
-        }
+            if (meta.keepMenuOpen) {
+              syncWorkOrderDocumentWizardCommonSummaryText();
+              renderWorkOrderDocumentWizardCommonPeopleSection();
+              renderWorkOrderDocumentWizardWorkOrders(getAllSelectedWorkOrdersForDocumentWizard());
+              if (state.workOrderDocumentWizard.step === "templates") {
+                renderWorkOrderDocumentWizardTemplates(getAllSelectedWorkOrdersForDocumentWizard());
+              }
+              return;
+            }
 
-        renderWorkOrderDocumentWizardCommonSection();
-        renderWorkOrderDocumentWizardWorkOrders(getAllSelectedWorkOrdersForDocumentWizard());
-        if (state.workOrderDocumentWizard.step === "templates") {
-          renderWorkOrderDocumentWizardTemplates(getAllSelectedWorkOrdersForDocumentWizard());
-        }
-      },
-    }));
-  });
+            renderWorkOrderDocumentWizardCommonSection();
+            renderWorkOrderDocumentWizardWorkOrders(getAllSelectedWorkOrdersForDocumentWizard());
+            if (state.workOrderDocumentWizard.step === "templates") {
+              renderWorkOrderDocumentWizardTemplates(getAllSelectedWorkOrdersForDocumentWizard());
+            }
+          },
+        }));
+        field.append(fieldLabel, slot);
+        areaGrid.append(field);
+      });
+
+      areaNode.append(areaTitle, areaGrid);
+      workOrderDocumentWizardCommonPeopleBody.append(areaNode);
+    });
+  }
 
   if (workOrderDocumentCommonStatusSlot) {
     const sharedStatus = getSharedWorkOrderBatchValue(selectedWorkOrders, (item) => item.status || "Otvoreni RN");
@@ -94821,7 +95217,7 @@ function setWorkOrderDocumentWizardOverride(workOrderId, patch = {}) {
   const hasInspectorPatch = Object.prototype.hasOwnProperty.call(patch, "inspectorUserId");
   const hasAuthorizationHolderPatch = Object.prototype.hasOwnProperty.call(patch, "authorizationHolderUserId");
   const areaSpecificOverrides = Object.fromEntries(
-    WORK_ORDER_DOCUMENT_SIGNATURE_PERSON_FIELDS.flatMap((definition) => {
+    getWorkOrderDocumentSignaturePersonFields().flatMap((definition) => {
       const entries = [];
       if (definition.listFieldName) {
         const hasListPatch = Object.prototype.hasOwnProperty.call(patch, definition.listFieldName);
@@ -94906,7 +95302,7 @@ function setWorkOrderDocumentWizardOverride(workOrderId, patch = {}) {
     || inspectorUserIds.length > 0
     || Boolean(next.inspectorUserId)
     || Boolean(next.authorizationHolderUserId)
-    || WORK_ORDER_DOCUMENT_SIGNATURE_PERSON_FIELDS.some((definition) => (
+    || getWorkOrderDocumentSignaturePersonFields().some((definition) => (
       next[definition.fieldName] === null
         || Boolean(next[definition.fieldName])
         || (definition.listFieldName ? normalizeQualifiedUserIdList(next[definition.listFieldName] ?? []).length > 0 : false)
@@ -95399,7 +95795,7 @@ function setDocumentTemplateRuntimeActiveWorkOrder(workOrderId, { render = true 
 function updateDocumentTemplateRuntimeCommon(patch = {}, { render = true } = {}) {
   const hasInspectorIdsPatch = Object.prototype.hasOwnProperty.call(patch, "inspectorUserIds");
   const areaSpecificCommonFields = Object.fromEntries(
-    WORK_ORDER_DOCUMENT_SIGNATURE_PERSON_FIELDS.flatMap((definition) => {
+    getWorkOrderDocumentSignaturePersonFields().flatMap((definition) => {
       if (definition.listFieldName) {
         const listValues = Object.prototype.hasOwnProperty.call(patch, definition.listFieldName)
           ? normalizeQualifiedUserIdList(patch[definition.listFieldName] ?? [])
@@ -95519,7 +95915,7 @@ function updateDocumentTemplateRuntimeOverride(workOrderId, patch = {}, { render
         : normalizeValidityMonthsValue(record.validityMonths)
     );
   const areaSpecificOverrideFields = Object.fromEntries(
-    WORK_ORDER_DOCUMENT_SIGNATURE_PERSON_FIELDS.flatMap((definition) => {
+    getWorkOrderDocumentSignaturePersonFields().flatMap((definition) => {
       if (definition.listFieldName) {
         const listValues = Object.prototype.hasOwnProperty.call(patch, definition.listFieldName)
           ? normalizeQualifiedUserIdList(patch[definition.listFieldName] ?? [])
@@ -97462,7 +97858,7 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
   const peopleGrid = document.createElement("div");
   peopleGrid.className = "work-order-document-selection-person-grid";
   getWorkOrderDocumentSignatureAreaGroupsForAreas(relevantSignatureAreas).forEach((areaGroup) => {
-    const fields = WORK_ORDER_DOCUMENT_SIGNATURE_PERSON_FIELDS
+    const fields = getWorkOrderDocumentSignaturePersonFields()
       .filter((definition) => definition.signatureArea === areaGroup.key);
     if (fields.length === 0) {
       return;
@@ -111239,6 +111635,18 @@ userElectricalValidForeverInput?.addEventListener("change", () => {
 
 userTipkaloValidForeverInput?.addEventListener("change", () => {
   syncQualificationValidityInput(userTipkaloValidUntilInput, userTipkaloValidForeverInput);
+});
+
+userQualificationAddExamButton?.addEventListener("click", () => {
+  state.activeView = "module";
+  state.activeModuleItem = "safety-authorization";
+  renderActiveView();
+  renderModuleView();
+  resetSafetyAuthorizationForm();
+  openSafetyAuthorizationEditor();
+  requestAnimationFrame(() => {
+    safetyAuthorizationTitleInput?.focus({ preventScroll: true });
+  });
 });
 
 userDocumentsUploadButton?.addEventListener("click", () => {

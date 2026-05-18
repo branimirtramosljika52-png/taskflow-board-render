@@ -437,21 +437,22 @@ function mapUserElectricalQualification(row = {}) {
   const mapQualificationArea = (rawArea = {}, discipline = "elektro") => {
     const validForever = toBooleanFlag(rawArea.validForever, false);
     return {
-    discipline: dbString(discipline || "elektro").toLowerCase() || "elektro",
-    canInspect: toBooleanFlag(rawArea.canInspect, false),
-    canAuthorize: toBooleanFlag(rawArea.canAuthorize, false),
-    classCode: dbString(rawArea.classCode),
-    urbroj: dbString(rawArea.urbroj),
-    eBroj: dbString(rawArea.eBroj),
-    validUntil: validForever ? "" : normalizeDateOnly(rawArea.validUntil),
-    validForever,
-    signatureDataUrl: storedSignature.dataUrl,
-    signatureStorageProvider: storedSignature.storageProvider,
-    signatureStorageBucket: storedSignature.storageBucket,
-    signatureStorageKey: storedSignature.storageKey,
-    signatureStorageUrl: storedSignature.storageUrl,
-    documents: [],
-  };
+      discipline: dbString(discipline || "elektro").toLowerCase() || "elektro",
+      type: dbString(rawArea.type ?? rawArea.equipmentType ?? rawArea.kind),
+      canInspect: toBooleanFlag(rawArea.canInspect, false),
+      canAuthorize: toBooleanFlag(rawArea.canAuthorize, false),
+      classCode: dbString(rawArea.classCode),
+      urbroj: dbString(rawArea.urbroj),
+      eBroj: dbString(rawArea.eBroj),
+      validUntil: validForever ? "" : normalizeDateOnly(rawArea.validUntil),
+      validForever,
+      signatureDataUrl: storedSignature.dataUrl,
+      signatureStorageProvider: storedSignature.storageProvider,
+      signatureStorageBucket: storedSignature.storageBucket,
+      signatureStorageKey: storedSignature.storageKey,
+      signatureStorageUrl: storedSignature.storageUrl,
+      documents: [],
+    };
   };
 
   const mappedAdditionalAreas = Object.fromEntries(
@@ -823,6 +824,7 @@ function normalizeUserElectricalQualification(input = {}, fallback = {}) {
 
   return {
     discipline: dbString(source.discipline || "elektro").toLowerCase() || "elektro",
+    type: dbString(source.type ?? source.equipmentType ?? source.kind),
     canInspect: toBooleanFlag(source.canInspect, false),
     canAuthorize: toBooleanFlag(source.canAuthorize, false),
     classCode: dbString(source.classCode),
@@ -850,6 +852,7 @@ function normalizeUserElectricalQualification(input = {}, fallback = {}) {
           const areaValidForever = toBooleanFlag(rawArea.validForever, false);
           return [normalizedKey, {
             discipline: normalizedKey,
+            type: dbString(rawArea.type ?? rawArea.equipmentType ?? rawArea.kind),
             canInspect: toBooleanFlag(rawArea.canInspect, false),
             canAuthorize: toBooleanFlag(rawArea.canAuthorize, false),
             classCode: dbString(rawArea.classCode),
