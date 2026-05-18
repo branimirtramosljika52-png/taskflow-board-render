@@ -365,7 +365,7 @@ function normalizePdfSignatureFieldSpec(item = {}, options = {}) {
     signatureFieldStandard: PDF_SIGNATURE_FIELD_STANDARD,
     label: clean(item.name) || clean(item.label) || "Potpisnik",
     name: clean(item.name) || clean(item.label) || "Potpisnik",
-    roleLabel: clean(item.role) || signatureFieldRole,
+    roleLabel: clean(item.roleLabel || item.role || item.signatureLabel) || signatureFieldRole,
     signerTitle: clean(item.signerTitle || item.title),
     signerOib: signatureFieldOib,
     signerOrganization: clean(item.signerOrganization || item.organization || item.organizationName || item.companyName),
@@ -5873,6 +5873,13 @@ function normalizePdfSignatureAnchorDigits(value = "") {
   return clean(value).replace(/\D/g, "");
 }
 
+function normalizePdfSignatureAnchorText(value = "") {
+  return clean(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
 function normalizePdfSignatureTextItem(item = {}) {
   const rawTransform = Array.isArray(item.transform) ? item.transform : [];
   const x = Number(rawTransform[4]);
@@ -5967,26 +5974,99 @@ async function extractPdfSignatureTextAnchors(pdfBuffer = Buffer.alloc(0)) {
   return anchors;
 }
 
-function findPdfSignatureOibAnchor(textAnchors = [], signatureFieldOib = "") {
+function getPdfSignatureAnchorKey(anchor = {}) {
+  return [
+    anchor.pageNumber,
+    anchor.source,
+    Math.round((Number(anchor.x) || 0) * 10),
+    Math.round((Number(anchor.y) || 0) * 10),
+    normalizePdfSignatureAnchorDigits(anchor.str || ""),
+  ].join(":");
+}
+
+function buildPdfSignatureAnchorContext(page = {}, anchor = {}) {
+  const anchorY = Number(anchor?.y);
+  const nearbyLines = (Array.isArray(page.lines) ? page.lines : [])
+    .filter((line) => !Number.isFinite(anchorY) || Math.abs(Number(line.y) - anchorY) <= 46)
+    .sort((left, right) => right.y - left.y)
+    .map((line) => line.str);
+  return normalizePdfSignatureAnchorText(nearbyLines.join(" "));
+}
+
+function getPdfSignatureRoleNeedles(field = {}) {
+  const roleText = normalizePdfSignatureAnchorText([
+    field.roleLabel,
+    field.role,
+    field.label,
+  ].filter(Boolean).join(" "));
+  const needles = [];
+  if (roleText) {
+    needles.push(roleText);
+  }
+  if (/\bispitiv/.test(roleText)) {
+    needles.push("ispitiv");
+  }
+  if (/\bodgovorn|\bnositelj/.test(roleText)) {
+    needles.push("odgovorn", "nositelj");
+  }
+  return Array.from(new Set(needles.filter(Boolean)));
+}
+
+function collectPdfSignatureOibAnchorCandidates(textAnchors = [], signatureFieldOib = "") {
   const oib = normalizePdfSignatureFieldOib(signatureFieldOib);
   if (!oib) {
-    return null;
+    return [];
   }
+  const candidates = [];
   for (let pageIndex = textAnchors.length - 1; pageIndex >= 0; pageIndex -= 1) {
     const page = textAnchors[pageIndex];
-    const candidates = [
+    const pageCandidates = [
       ...page.items
         .filter((item) => item.digits.includes(oib))
         .map((item) => ({ ...item, pageNumber: page.pageNumber, source: "oib" })),
       ...page.lines
         .filter((candidate) => candidate.digits.includes(oib))
         .map((line) => ({ ...line, pageNumber: page.pageNumber, source: "oib_line" })),
-    ];
-    if (candidates.length > 0) {
-      return candidates.sort((left, right) => left.y - right.y)[0];
-    }
+    ].map((candidate) => ({
+      ...candidate,
+      contextText: buildPdfSignatureAnchorContext(page, candidate),
+    }));
+    candidates.push(...pageCandidates.sort((left, right) => left.y - right.y));
   }
-  return null;
+  return candidates;
+}
+
+function findPdfSignatureOibAnchor(textAnchors = [], fieldOrOib = "", options = {}) {
+  const field = fieldOrOib && typeof fieldOrOib === "object"
+    ? fieldOrOib
+    : { signatureFieldOib: fieldOrOib };
+  const candidates = collectPdfSignatureOibAnchorCandidates(textAnchors, field.signatureFieldOib);
+  if (candidates.length === 0) {
+    return null;
+  }
+  const usedAnchorKeys = options.usedAnchorKeys instanceof Set ? options.usedAnchorKeys : new Set();
+  const roleNeedles = getPdfSignatureRoleNeedles(field);
+  const scored = candidates.map((candidate, index) => {
+    const anchorKey = getPdfSignatureAnchorKey(candidate);
+    const unused = !usedAnchorKeys.has(anchorKey);
+    const exactRoleMatch = roleNeedles[0] && candidate.contextText.includes(roleNeedles[0]);
+    const roleMatch = roleNeedles.some((needle) => candidate.contextText.includes(needle));
+    return {
+      candidate: {
+        ...candidate,
+        anchorKey,
+      },
+      index,
+      score: (exactRoleMatch ? 120 : 0)
+        + (roleMatch ? 80 : 0)
+        + (unused ? 20 : 0)
+        + (candidate.source === "oib_line" ? 4 : 0),
+    };
+  }).sort((left, right) => (
+    right.score - left.score
+    || left.index - right.index
+  ));
+  return scored[0]?.candidate || null;
 }
 
 export async function addPdfSignatureFieldsToBuffer(pdfBuffer = Buffer.alloc(0), signatureFields = [], options = {}) {
@@ -6023,6 +6103,7 @@ export async function addPdfSignatureFieldsToBuffer(pdfBuffer = Buffer.alloc(0),
     && normalizePdfSignatureFieldOib(field.signatureFieldOib)
   ));
   const textAnchors = needsTextAnchors ? await extractPdfSignatureTextAnchors(safeBuffer) : [];
+  const usedTextAnchorKeys = new Set();
 
   normalizedFields.forEach((field, index) => {
     if (existingFieldNames.has(field.fieldName) || addedFieldNames.has(field.fieldName)) {
@@ -6032,7 +6113,7 @@ export async function addPdfSignatureFieldsToBuffer(pdfBuffer = Buffer.alloc(0),
     const explicitPageIndex = resolvePdfSignatureFieldPageIndex(field, pages.length);
     const oibAnchor = hasExplicitPdfSignatureFieldPosition(field)
       ? null
-      : findPdfSignatureOibAnchor(textAnchors, field.signatureFieldOib);
+      : findPdfSignatureOibAnchor(textAnchors, field, { usedAnchorKeys: usedTextAnchorKeys });
     const canUseAnchorPage = oibAnchor
       && (!hasExplicitPdfSignatureFieldPage(field) || Math.max(0, oibAnchor.pageNumber - 1) === explicitPageIndex);
     const pageIndex = canUseAnchorPage
@@ -6047,6 +6128,9 @@ export async function addPdfSignatureFieldsToBuffer(pdfBuffer = Buffer.alloc(0),
       canUseAnchorPage ? oibAnchor : null,
       rolePositioningSettings,
     );
+    if (canUseAnchorPage && oibAnchor?.anchorKey) {
+      usedTextAnchorKeys.add(oibAnchor.anchorKey);
+    }
     if (field.drawPlaceholder) {
       drawPdfSignatureFieldPlaceholder(
         page,

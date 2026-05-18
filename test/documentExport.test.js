@@ -681,6 +681,50 @@ test("PDF signature field is anchored below the last matching signer OIB", async
   assert.equal(Math.round(rect.height), 32);
 });
 
+test("PDF signature fields for the same OIB use separate role anchors", async () => {
+  const sourceDoc = await PDFDocument.create();
+  const font = await sourceDoc.embedFont(StandardFonts.Helvetica);
+  const inspectorPage = sourceDoc.addPage([595.303937007874, 841.889763779528]);
+  inspectorPage.drawText("Ispitivac SPR", { x: 428.4, y: 719.289, size: 9, font });
+  inspectorPage.drawText("Ana Savanovic", { x: 412, y: 704.889, size: 11, font });
+  inspectorPage.drawText("OIB 35649316156", { x: 416.4, y: 691.989, size: 9, font });
+  const responsiblePage = sourceDoc.addPage([595.303937007874, 841.889763779528]);
+  responsiblePage.drawText("Ana Savanovic", { x: 412, y: 745.589, size: 11, font });
+  responsiblePage.drawText("OIB 35649316156", { x: 416.4, y: 732.589, size: 9, font });
+
+  const outputBuffer = await addPdfSignatureFieldsToBuffer(
+    Buffer.from(await sourceDoc.save({ useObjectStreams: false })),
+    [
+      {
+        signatureMode: "digital",
+        signatureFieldRole: "ZNR",
+        signatureFieldOib: "35649316156",
+        fieldName: "SIGN_ZNR_35649316156",
+        name: "Ana Savanovic",
+        roleLabel: "Ispitivac SPR",
+      },
+      {
+        signatureMode: "digital",
+        signatureFieldRole: "ZNR",
+        signatureFieldOib: "35649316156",
+        fieldName: "SIGN_ZNR_35649316156_2",
+        name: "Ana Savanovic",
+        roleLabel: "Odgovorna osoba SPR",
+      },
+    ],
+  );
+
+  const pdfDoc = await PDFDocument.load(outputBuffer);
+  const pages = pdfDoc.getPages();
+  const getFieldPageIndex = (fieldName) => {
+    const widget = pdfDoc.getForm().getField(fieldName).acroField.getWidgets()[0];
+    return pages.findIndex((page) => page.ref === widget.P());
+  };
+
+  assert.equal(getFieldPageIndex("SIGN_ZNR_35649316156"), 0);
+  assert.equal(getFieldPageIndex("SIGN_ZNR_35649316156_2"), 1);
+});
+
 test("PDF signature role positioning settings override anchor offsets and size", async () => {
   const sourceDoc = await PDFDocument.create();
   const font = await sourceDoc.embedFont(StandardFonts.Helvetica);
