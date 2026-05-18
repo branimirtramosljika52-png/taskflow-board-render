@@ -59266,6 +59266,9 @@ function readUserQualificationAreaPayload(definition = {}) {
 function createUserQualificationField(labelText = "", control, fieldName = "") {
   const field = document.createElement("label");
   field.className = "field";
+  if (fieldName) {
+    field.classList.add(`user-qualification-field-${fieldName}`);
+  }
   const label = document.createElement("span");
   label.textContent = labelText;
   if (fieldName) {
@@ -59383,9 +59386,12 @@ function renderUserQualificationAreas(user = getCurrentUserEditorRecord() || {})
     genericRoles.append(genericRoleLabel, genericRoleOptions);
 
     const specialRoleOptions = Array.isArray(definition.specialRoleOptions) ? definition.specialRoleOptions : [];
+    if (specialRoleOptions.length > 0) {
+      block.classList.add("has-special-roles");
+    }
     const specialRoles = normalizeQualificationSpecialRoles(qualification.specialRoles);
     const specialRoleField = document.createElement("div");
-    specialRoleField.className = "field field-span-full user-qualification-role-group";
+    specialRoleField.className = "field field-span-full user-qualification-role-group is-special";
     const specialRoleLabel = document.createElement("span");
     specialRoleLabel.textContent = "Dodatne razine";
     const specialRoleOptionWrap = document.createElement("div");

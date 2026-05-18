@@ -5746,6 +5746,10 @@ body.is-location-editor-open {
   position: relative;
 }
 
+.user-editor-backdrop {
+  backdrop-filter: none;
+}
+
 .user-editor-panel .masterdata-editor-body {
   height: auto;
   min-height: 0;
@@ -5754,6 +5758,7 @@ body.is-location-editor-open {
   scrollbar-gutter: stable;
   padding-bottom: 36px;
   padding-top: 12px;
+  will-change: scroll-position;
 }
 
 .user-editor-panel .masterdata-editor-body > .entity-form {
@@ -30923,6 +30928,11 @@ body.is-document-template-editor-open {
 .user-electrical-grid {
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 10px 12px;
+  align-items: start;
+}
+
+.user-electrical-grid > .field {
+  align-content: start;
 }
 
 .user-electrical-grid > .field:nth-child(1),
@@ -31025,6 +31035,21 @@ body.is-document-template-editor-open {
     0 0 0 1px rgba(204, 71, 230, 0.12);
 }
 
+.user-editor-panel .user-electrical-qualification-block {
+  contain: layout paint style;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 340px;
+  border-color: rgba(204, 71, 230, 0.16);
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.user-editor-panel .user-electrical-qualification-block::before {
+  height: 2px;
+  background: rgba(204, 71, 230, 0.52);
+}
+
 .user-qualification-catalog-block {
   grid-column: 1 / -1;
   display: grid;
@@ -31044,18 +31069,82 @@ body.is-document-template-editor-open {
   justify-content: flex-end;
 }
 
-.user-qualification-role-group {
+.user-electrical-grid > .field.user-qualification-role-group {
   align-items: stretch;
+  grid-column: span 3;
+  gap: 5px;
+}
+
+.user-electrical-grid > .field.user-qualification-role-group.is-special {
+  grid-column: 1 / -1;
 }
 
 .user-qualification-role-options {
   display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 6px;
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
 }
 
 .user-qualification-checkbox {
-  min-height: 38px;
+  min-height: 32px;
+  padding: 0 9px;
+  gap: 8px;
+  border-radius: 10px;
+  font-size: 0.76rem;
+  letter-spacing: 0;
+  line-height: 1.2;
+  box-sizing: border-box;
+}
+
+.user-electrical-qualification-block .user-qualification-checkbox input[type="checkbox"] {
+  width: 14px !important;
+  min-width: 14px !important;
+  height: 14px !important;
+  min-height: 14px !important;
+  flex: 0 0 14px;
+  margin: 0;
+}
+
+.user-electrical-qualification-block .user-qualification-checkbox span {
+  font-size: 0.76rem;
+  letter-spacing: 0;
+  color: #4f5d78;
+}
+
+.user-electrical-grid > .field.user-qualification-field-type {
+  grid-column: span 3;
+}
+
+.user-electrical-qualification-block.has-special-roles .user-electrical-grid > .field.user-qualification-field-type {
+  grid-column: 1 / -1;
+}
+
+.user-electrical-grid > .field.user-qualification-field-data1,
+.user-electrical-grid > .field.user-qualification-field-data2,
+.user-electrical-grid > .field.user-qualification-field-data3,
+.user-electrical-grid > .field.user-qualification-field-passedOn,
+.user-electrical-grid > .field.user-qualification-field-validUntil,
+.user-electrical-grid > .field.qualification-validity-field {
+  grid-column: span 2;
+}
+
+.user-electrical-grid > .field.qualification-validity-field .checkbox-field {
+  min-height: 36px;
+  padding: 0 10px;
+  gap: 8px;
+  border-radius: 10px;
+  font-size: 0.76rem;
+  letter-spacing: 0;
+  line-height: 1.2;
+}
+
+.user-electrical-grid > .field.qualification-validity-field input[type="checkbox"] {
+  width: 14px !important;
+  min-width: 14px !important;
+  height: 14px !important;
+  min-height: 14px !important;
+  flex: 0 0 14px;
+  margin: 0;
 }
 
 .user-editor-panel .module-attachment-list {
@@ -31152,7 +31241,7 @@ body.is-document-template-editor-open {
 }
 
 .user-electrical-qualification-block select,
-.user-electrical-qualification-block input {
+.user-electrical-qualification-block input:not([type="checkbox"]) {
   min-height: 42px;
 }
 
@@ -37455,6 +37544,18 @@ body.is-measurement-equipment-export-open {
   .user-documents-block .module-attachment-actions {
     flex-direction: row;
     justify-content: flex-start;
+  }
+
+  .user-electrical-grid > .field.user-qualification-role-group,
+  .user-electrical-grid > .field.user-qualification-role-group.is-special,
+  .user-electrical-grid > .field.user-qualification-field-type,
+  .user-electrical-grid > .field.user-qualification-field-data1,
+  .user-electrical-grid > .field.user-qualification-field-data2,
+  .user-electrical-grid > .field.user-qualification-field-data3,
+  .user-electrical-grid > .field.user-qualification-field-passedOn,
+  .user-electrical-grid > .field.user-qualification-field-validUntil,
+  .user-electrical-grid > .field.qualification-validity-field {
+    grid-column: 1 / -1;
   }
 
   .measurement-equipment-activity-row {
