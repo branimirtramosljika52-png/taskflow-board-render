@@ -33747,6 +33747,39 @@ body.is-measurement-equipment-export-open {
   overflow-wrap: anywhere;
 }
 
+.document-template-runtime-ai-suggestion-value.is-rich-text {
+  max-height: 300px;
+  overflow: auto;
+}
+
+.document-template-runtime-ai-suggestion-value.is-rich-text h2,
+.document-template-runtime-ai-suggestion-value.is-rich-text h3 {
+  margin: 0.45rem 0 0.25rem;
+  color: #1b2d4f;
+  font-size: 0.82rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.document-template-runtime-ai-suggestion-value.is-rich-text h2:first-child,
+.document-template-runtime-ai-suggestion-value.is-rich-text h3:first-child {
+  margin-top: 0;
+}
+
+.document-template-runtime-ai-suggestion-value.is-rich-text p {
+  margin: 0 0 0.45rem;
+}
+
+.document-template-runtime-ai-suggestion-value.is-rich-text ul,
+.document-template-runtime-ai-suggestion-value.is-rich-text ol {
+  margin: 0.15rem 0 0.55rem 1.2rem;
+  padding: 0;
+}
+
+.document-template-runtime-ai-suggestion-value.is-rich-text li {
+  margin: 0.08rem 0;
+}
+
 .document-template-runtime-ai-suggestion-footer {
   display: flex;
   align-items: center;

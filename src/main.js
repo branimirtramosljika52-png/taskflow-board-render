@@ -49867,7 +49867,11 @@ function createDocumentTemplateRuntimeAiSuggestionsPanel(payload = {}, template 
     const matchedField = findDocumentTemplateRuntimeAiField(fields, suggestion);
     const field = findDocumentTemplateRuntimeAiWritableField(fields, suggestion);
     const rawValue = getDocumentTemplateRuntimeAiSuggestionValue(suggestion);
-    const value = formatDocumentTemplateRuntimeAiSuggestionValue(rawValue, field || matchedField);
+    const suggestionField = field || matchedField;
+    const value = formatDocumentTemplateRuntimeAiSuggestionValue(rawValue, suggestionField);
+    const shouldRenderRichValue = String(suggestionField?.type || "").trim().toLowerCase() === "longtext"
+      && isRichTextHtml(value);
+    const copyValue = shouldRenderRichValue ? richTextHtmlToPlainText(value) : value;
     const canApply = Boolean(field && isDocumentTemplateRuntimeAiWritableField(field));
     const card = document.createElement("article");
     card.className = "document-template-runtime-ai-suggestion";
@@ -49891,9 +49895,14 @@ function createDocumentTemplateRuntimeAiSuggestionsPanel(payload = {}, template 
       : (matchedField ? "Polje nije za automatski upis" : "Nije povezano s template poljem");
     cardHead.append(cardTitle, status);
 
-    const valueNode = document.createElement("p");
+    const valueNode = document.createElement(shouldRenderRichValue ? "div" : "p");
     valueNode.className = "document-template-runtime-ai-suggestion-value";
-    valueNode.textContent = value || "Prazna vrijednost";
+    if (shouldRenderRichValue) {
+      valueNode.classList.add("is-rich-text");
+      valueNode.innerHTML = sanitizeRichTextHtml(value);
+    } else {
+      valueNode.textContent = value || "Prazna vrijednost";
+    }
 
     const footer = document.createElement("div");
     footer.className = "document-template-runtime-ai-suggestion-footer";
@@ -49906,10 +49915,10 @@ function createDocumentTemplateRuntimeAiSuggestionsPanel(payload = {}, template 
     copyButton.type = "button";
     copyButton.className = "ghost-button compact-button document-template-runtime-ai-suggestion-copy";
     copyButton.textContent = "Kopiraj";
-    copyButton.disabled = !value;
+    copyButton.disabled = !copyValue;
     copyButton.addEventListener("click", async () => {
       try {
-        await navigator.clipboard?.writeText(value);
+        await navigator.clipboard?.writeText(copyValue);
         copyButton.textContent = "Kopirano";
         window.setTimeout(() => {
           copyButton.textContent = "Kopiraj";
