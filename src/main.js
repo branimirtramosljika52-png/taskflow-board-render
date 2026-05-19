@@ -36660,7 +36660,7 @@ function normalizeMeasurementSheetColumnAiMappingSnapshotLocal(input = {}) {
   const source = input && typeof input === "object" ? input : {};
   const format = normalizeAiFieldTypeLocal(source?.format || source?.type || "", "text");
   const description = String(source?.description ?? source?.aiDescription ?? source?.ai_description ?? "").trim().slice(0, 2000);
-  const aiDescription = String(source?.aiDescription ?? source?.ai_description ?? source?.description ?? "").trim().slice(0, 2000);
+  const aiDescription = String(source?.aiDescription ?? source?.ai_description ?? source?.description ?? "").trim().slice(0, 4000);
   const aiLookFor = normalizeAiConfigListLocal(
     source?.aiLookFor ?? source?.ai_look_for ?? source?.synonyms,
     160,
@@ -46902,7 +46902,133 @@ function isDocumentTemplateSystemDescriptionValue(value = null) {
   );
 }
 
+function getDocumentTemplateSystemDescriptionValueByKeys(source = {}, keys = []) {
+  if (!source || typeof source !== "object" || Array.isArray(source)) {
+    return "";
+  }
+
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(source, key) && hasMeaningfulDocumentRecordValue(source[key])) {
+      return source[key];
+    }
+  }
+
+  const sourceEntries = Object.entries(source);
+  for (const key of keys) {
+    const normalizedKey = normalizeLooseName(key);
+    const matchedEntry = sourceEntries.find(([entryKey]) => normalizeLooseName(entryKey) === normalizedKey);
+    if (matchedEntry && hasMeaningfulDocumentRecordValue(matchedEntry[1])) {
+      return matchedEntry[1];
+    }
+  }
+
+  return "";
+}
+
+function getDocumentTemplateSystemDescriptionRowValueKeys(row = {}) {
+  const subtitle = String(row?.subtitle || "").trim();
+  const looseSubtitle = normalizeLooseName(subtitle);
+  const keys = [
+    subtitle,
+    looseSubtitle,
+    subtitle.replace(/\s+/g, ""),
+  ].filter(Boolean);
+
+  if (looseSubtitle.includes("proizvodac") || looseSubtitle.includes("manufacturer")) {
+    keys.push("proizvodac", "proizvođač", "manufacturer", "producer", "make");
+  }
+  if (looseSubtitle === "tip" || looseSubtitle.includes("model")) {
+    keys.push("tip", "type", "model", "tipModel", "tip_model");
+  }
+  if (looseSubtitle.includes("teh") || looseSubtitle.includes("podat")) {
+    keys.push("tehPodaci", "teh_podaci", "tehnickiPodaci", "tehnički podaci", "technicalData", "technical_data");
+  }
+  if (!looseSubtitle || looseSubtitle.includes("opis")) {
+    keys.push("opis", "description", "systemDescription", "system_description", "napomena", "note");
+  }
+
+  return Array.from(new Set(keys.map((key) => String(key || "").trim()).filter(Boolean)));
+}
+
+function normalizeDocumentTemplateSystemDescriptionRowsFromAiValue(field = {}, value = null) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  if (Array.isArray(value)) {
+    const rowObjects = value
+      .filter((entry) => entry && typeof entry === "object" && !Array.isArray(entry))
+      .map((entry, index) => createEmptyDocumentTemplateSystemDescriptionRowDraft({
+        subtitle: entry.subtitle ?? entry.label ?? entry.title ?? "",
+        description: entry.description ?? entry.value ?? entry.text ?? entry.content ?? "",
+        lineCount: entry.lineCount ?? entry.line_count ?? 1,
+        placeholder: entry.placeholder ?? "",
+      }, index))
+      .filter((row) => String(row.subtitle || row.description || "").trim());
+    if (rowObjects.length > 0) {
+      return rowObjects;
+    }
+
+    const textRows = value
+      .map((entry) => String(entry ?? "").trim())
+      .filter(Boolean);
+    return textRows.length > 0
+      ? [createEmptyDocumentTemplateSystemDescriptionRowDraft({ description: textRows.join("\n"), lineCount: 2 }, 0)]
+      : null;
+  }
+
+  const explicitRows = Array.isArray(value.rows)
+    ? value.rows
+    : Array.isArray(value.items)
+      ? value.items
+      : null;
+  if (explicitRows) {
+    return normalizeDocumentTemplateSystemDescriptionRowsFromAiValue(field, explicitRows);
+  }
+
+  const templateRows = normalizeDocumentTemplateSystemDescriptionRows(
+    field?.systemRows,
+    {
+      ensureOne: true,
+      fallbackRows: createDefaultDocumentTemplateSystemDescriptionRows(),
+    },
+  );
+  let hasMappedValue = false;
+  const rows = templateRows.map((row, index) => {
+    const rawValue = getDocumentTemplateSystemDescriptionValueByKeys(value, getDocumentTemplateSystemDescriptionRowValueKeys(row));
+    const description = Array.isArray(rawValue)
+      ? rawValue.map((entry) => String(entry ?? "").trim()).filter(Boolean).join("\n")
+      : rawValue && typeof rawValue === "object"
+        ? String(rawValue.value ?? rawValue.text ?? rawValue.description ?? rawValue.content ?? "").trim()
+        : String(rawValue ?? "").trim();
+    if (description) {
+      hasMappedValue = true;
+    }
+    return createEmptyDocumentTemplateSystemDescriptionRowDraft({
+      ...row,
+      description,
+    }, index);
+  });
+
+  return hasMappedValue ? rows : null;
+}
+
 function normalizeDocumentTemplateSystemDescriptionRuntimeValue(field = {}, value = null) {
+  if (!isDocumentTemplateSystemDescriptionValue(value) && value && typeof value === "object") {
+    const aiRows = normalizeDocumentTemplateSystemDescriptionRowsFromAiValue(field, value);
+    if (aiRows?.length) {
+      return {
+        blocks: [
+          createDocumentTemplateSystemDescriptionBlockDraft({
+            title: value.title ?? value.label ?? field?.label ?? field?.wordLabel ?? "Opis sustava",
+            sectionSubtitle: value.sectionSubtitle ?? value.section_subtitle ?? value.subtitle ?? "",
+            rows: aiRows,
+          }, field, 0),
+        ],
+      };
+    }
+  }
+
   if (!isDocumentTemplateSystemDescriptionValue(value) && hasMeaningfulDocumentRecordValue(value)) {
     const textValue = Array.isArray(value)
       ? value.map((entry) => String(entry ?? "").trim()).filter(Boolean).join("\n")
@@ -48641,7 +48767,7 @@ function normalizeDocumentTemplateFieldAiConfig(input = {}, field = {}) {
     allowedValues: normalizeAiConfigListLocal(source?.allowedValues ?? source?.allowed_values, 160),
     commonValues: normalizeAiConfigListLocal(source?.commonValues ?? source?.common_values, 80),
     examples: normalizeAiConfigListLocal(source?.examples, 80),
-    format: String(source?.format || "").trim().slice(0, 160),
+    format: String(source?.format || "").trim().slice(0, 1200),
     unit: String(source?.unit || "").trim().slice(0, 40),
     defaultValue: String(source?.defaultValue ?? source?.default_value ?? field?.defaultValue ?? "").trim().slice(0, 500),
     fallbackValue: String(source?.fallbackValue ?? source?.fallback_value ?? "").trim().slice(0, 500),
@@ -48932,18 +49058,38 @@ function getDocumentTemplateRuntimeAiFields(template = {}) {
     : documentTemplateFieldDrafts;
   return fields
     .map((field, index) => {
+      const fieldType = String(field?.type || "text").trim().toLowerCase();
       const config = normalizeDocumentTemplateFieldAiConfig(field?.ai ?? field?.aiConfig, field);
-      if (!hasDocumentTemplateFieldAiConfig(config, field)) {
+      const isSystemDescription = fieldType === "system_description";
+      if (!hasDocumentTemplateFieldAiConfig(config, field) && !isSystemDescription) {
         return null;
       }
-      return {
+      const runtimeField = {
         id: String(field?.id || `field-${index + 1}`),
         key: config.key || String(field?.key || field?.wordLabel || field?.label || `field_${index + 1}`),
         label: config.label || String(field?.label || field?.wordLabel || `Polje ${index + 1}`),
-        type: config.type || String(field?.type || "text"),
+        type: isSystemDescription ? "system_description" : (config.type || fieldType || "text"),
+        fieldType,
         required: Boolean(config.required || field?.required),
         ai: config,
       };
+      if (isSystemDescription) {
+        runtimeField.valueShape = "system_description_blocks";
+        runtimeField.sectionSubtitle = String(field?.sectionSubtitle || "");
+        runtimeField.systemRows = normalizeDocumentTemplateSystemDescriptionRows(
+          field?.systemRows,
+          {
+            ensureOne: true,
+            fallbackRows: createDefaultDocumentTemplateSystemDescriptionRows(),
+          },
+        ).map((row, rowIndex) => ({
+          id: String(row?.id || `system-description-row-${rowIndex + 1}`),
+          subtitle: String(row?.subtitle || ""),
+          lineCount: normalizeDocumentTemplateSystemDescriptionLineCount(row?.lineCount),
+          placeholder: String(row?.placeholder || ""),
+        }));
+      }
+      return runtimeField;
     })
     .filter(Boolean);
 }
@@ -49613,9 +49759,13 @@ function applyDocumentTemplateRuntimeAiSuggestions(payload = {}, template = {}, 
   return { fieldCount, measurementCount };
 }
 
-function formatDocumentTemplateRuntimeAiSuggestionValue(value = "") {
+function formatDocumentTemplateRuntimeAiSuggestionValue(value = "", field = null) {
   if (value == null) {
     return "";
+  }
+  if (String(field?.type || "").trim().toLowerCase() === "system_description") {
+    const normalizedValue = normalizeDocumentTemplateSystemDescriptionRuntimeValue(field, value);
+    return buildDocumentTemplateSystemDescriptionSummaryText(normalizedValue);
   }
   if (typeof value === "object") {
     try {
@@ -49670,7 +49820,7 @@ function createDocumentTemplateRuntimeAiSuggestionsPanel(payload = {}, template 
     const matchedField = findDocumentTemplateRuntimeAiField(fields, suggestion);
     const field = findDocumentTemplateRuntimeAiWritableField(fields, suggestion);
     const rawValue = getDocumentTemplateRuntimeAiSuggestionValue(suggestion);
-    const value = formatDocumentTemplateRuntimeAiSuggestionValue(rawValue);
+    const value = formatDocumentTemplateRuntimeAiSuggestionValue(rawValue, field || matchedField);
     const canApply = Boolean(field && isDocumentTemplateRuntimeAiWritableField(field));
     const card = document.createElement("article");
     card.className = "document-template-runtime-ai-suggestion";
@@ -49818,6 +49968,17 @@ function createDocumentTemplateRuntimeAiSuggestionsPanel(payload = {}, template 
   return panel;
 }
 
+function formatDocumentTemplateRuntimeAiDuration(ms = 0) {
+  const numericMs = Number(ms);
+  if (!Number.isFinite(numericMs) || numericMs <= 0) {
+    return "";
+  }
+  if (numericMs < 1000) {
+    return `${Math.round(numericMs)} ms`;
+  }
+  return `${(numericMs / 1000).toFixed(numericMs < 10000 ? 1 : 0)} s`;
+}
+
 async function runDocumentTemplateRuntimeAiAssistant(template = {}, workOrder = {}) {
   const assistant = getDocumentTemplateRuntimeAiAssistantState(template, workOrder);
   const modelOption = getDocumentTemplateRuntimeAiModelTierOption(assistant.modelTier);
@@ -49831,7 +49992,7 @@ async function runDocumentTemplateRuntimeAiAssistant(template = {}, workOrder = 
   const fields = getDocumentTemplateRuntimeAiFields(template);
   const columns = getDocumentTemplateRuntimeAiMeasurementColumns(template);
   assistant.status = "loading";
-  assistant.message = "Šaljem zapisnik OpenAI-ju i čekam prijedloge...";
+  assistant.message = `Šaljem zapisnik OpenAI-ju (${modelOption.label}) i čekam prijedloge...`;
   assistant.lastPlan = null;
   renderDocumentTemplateFieldRows({ renderSupport: false });
 
@@ -49872,8 +50033,9 @@ async function runDocumentTemplateRuntimeAiAssistant(template = {}, workOrder = 
     if (payload?.dryRun) {
       assistant.message = `Dry-run je prošao za model ${payload?.modelLabel || modelOption.label}. Live poziv još nije uključen na serveru.`;
     } else {
+      const elapsed = formatDocumentTemplateRuntimeAiDuration(payload?.timings?.totalMs);
       assistant.message = [
-        `OpenAI live test prošao (${payload?.model || payload?.modelLabel || modelOption.label}).`,
+        `OpenAI live test prošao${elapsed ? ` za ${elapsed}` : ""} (${payload?.model || payload?.modelLabel || modelOption.label}).`,
         appliedCount || appliedMeasurementCount
           ? `AI je popunio ${appliedCount} polja i ${appliedMeasurementCount} Excel tablica. Boja AI oznake pokazuje sigurnost.`
           : "AI je vratio prijedloge, ali nema polja koja se mogu automatski upisati.",

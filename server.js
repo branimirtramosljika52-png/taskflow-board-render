@@ -812,6 +812,54 @@ function sanitizeOpenAiFileForPrompt(file = {}) {
   };
 }
 
+function buildOpenAiFieldForPrompt(field = {}, index = 0) {
+  const type = String(field?.type || "text").trim().toLowerCase() || "text";
+  const promptField = {
+    id: String(field?.id || `field-${index + 1}`),
+    key: String(field?.key || ""),
+    label: String(field?.label || ""),
+    type,
+    fieldType: String(field?.fieldType || field?.actualFieldType || field?.type || "text"),
+    required: Boolean(field?.required),
+    ai: field?.ai ?? {},
+  };
+
+  if (type === "system_description") {
+    const systemRows = (Array.isArray(field?.systemRows) ? field.systemRows : [])
+      .slice(0, 16)
+      .map((row, rowIndex) => ({
+        id: String(row?.id || `system-description-row-${rowIndex + 1}`),
+        subtitle: String(row?.subtitle || ""),
+        lineCount: Number.isFinite(Number(row?.lineCount)) ? Number(row.lineCount) : 1,
+        placeholder: String(row?.placeholder || ""),
+      }));
+
+    promptField.valueShape = "system_description_blocks";
+    promptField.sectionSubtitle = String(field?.sectionSubtitle || field?.section_subtitle || "");
+    promptField.systemRows = systemRows;
+    promptField.expectedValue = {
+      blocks: [
+        {
+          title: String(field?.label || "Opis sustava"),
+          sectionSubtitle: "kratki uvod ako postoji u izvoru",
+          rows: (systemRows.length > 0 ? systemRows : [
+            { subtitle: "Proizvodac", lineCount: 1 },
+            { subtitle: "Tip", lineCount: 1 },
+            { subtitle: "Teh. podaci", lineCount: 1 },
+            { subtitle: "", lineCount: 2 },
+          ]).map((row) => ({
+            subtitle: row.subtitle,
+            description: "vrijednost procitana iz izvora za ovaj red",
+            lineCount: row.lineCount,
+          })),
+        },
+      ],
+    };
+  }
+
+  return promptField;
+}
+
 function truncateOpenAiText(value = "", maxLength = OPENAI_MAX_CONTEXT_JSON_CHARS) {
   const text = String(value || "");
   if (text.length <= maxLength) {
@@ -876,14 +924,7 @@ function buildOpenAiLiveContextPayload(body = {}, user = null, selectedModel = "
     actorId: user?.id || null,
     model: selectedModel,
     files: files.map(sanitizeOpenAiFileForPrompt),
-    fields: fields.map((field) => ({
-      id: String(field?.id || ""),
-      key: String(field?.key || ""),
-      label: String(field?.label || ""),
-      type: String(field?.type || "text"),
-      required: Boolean(field?.required),
-      ai: field?.ai ?? {},
-    })),
+    fields: fields.map(buildOpenAiFieldForPrompt),
     measurementColumns: columns.map((column) => ({
       fieldId: String(column?.fieldId || ""),
       fieldKey: String(column?.fieldKey || ""),
@@ -905,7 +946,7 @@ function buildOpenAiLiveContextPayload(body = {}, user = null, selectedModel = "
         {
           fieldId: "id polja iz fields",
           fieldKey: "key polja",
-          value: "predlozena vrijednost",
+          value: "string za obicno polje; za type=system_description objekt { blocks: [{ title, sectionSubtitle, rows: [{ subtitle, description, lineCount }] }] }",
           confidence: "high | medium | low",
           reason: "kratko objasnjenje",
           sourceFile: "ime datoteke",
@@ -1023,6 +1064,7 @@ function buildOpenAiSafeErrorMessage(error) {
 }
 
 async function buildOpenAiLivePlan(body = {}, user = null) {
+  const startedAt = Date.now();
   const config = getOpenAiRuntimeConfig();
   if (!config.keyConfigured) {
     const error = new Error("OpenAI API ključ nije postavljen na serveru.");
@@ -1050,6 +1092,8 @@ async function buildOpenAiLivePlan(body = {}, user = null) {
       "Ti si AI asistent za SafeNexus zapisnike.",
       "Analiziras stare zapisnike, PDF-ove, slike i tekst te predlazes vrijednosti za web polja i Excel tablice.",
       "Odgovori samo validnim JSON objektom. Ako nisi siguran, confidence mora biti low i vrijednost ne smije biti izmisljena.",
+      "Za polja ciji je fieldType longtext ili ciji ai.format trazi dugi opis nemoj vracati kratki sazetak. Postuj trazenu duljinu, broj odlomaka i strukturu iz aiDescription, ai.format i validationRules.",
+      "Za polje fields[].type === system_description value u fieldSuggestions mora biti objekt oblika { blocks: [{ title, sectionSubtitle, rows: [{ subtitle, description, lineCount }] }] }. Koristi tocne redove iz fields[].systemRows, npr. Proizvodac, Tip, Teh. podaci i opisni red. Nemoj vracati cijeli Opis sustava kao obican string ako su dostupni redovi.",
       "Za Excel tablice measurementSuggestions.fieldId mora biti tocno jedan fieldId iz measurementColumns, a kljucevi u rows[].values moraju biti tocni columnId ili key iz measurementColumns. Popunjavaj samo kolone navedene u measurementColumns; sve druge kolone, formule i rucni unos ignoriraj. Nemoj vracati genericki kljuc columnKey.",
       "Za hrvatske poslovne dokumente koristi hrvatski jezik i zadrzi strucne nazive.",
     ].join(" "),
@@ -1059,9 +1103,10 @@ async function buildOpenAiLivePlan(body = {}, user = null) {
         content: buildOpenAiResponseInputContent(body, user, selectedModel),
       },
     ],
-    max_output_tokens: 1800,
+    max_output_tokens: 3200,
   };
 
+  const requestStartedAt = Date.now();
   const openAiResponse = await fetch(config.endpoint, {
     method: "POST",
     headers: {
@@ -1070,6 +1115,7 @@ async function buildOpenAiLivePlan(body = {}, user = null) {
     },
     body: JSON.stringify(requestBody),
   });
+  const responseReceivedAt = Date.now();
 
   const responseText = await openAiResponse.text();
   let payload = null;
@@ -1088,6 +1134,7 @@ async function buildOpenAiLivePlan(body = {}, user = null) {
 
   const outputText = extractOpenAiResponseText(payload);
   const result = parseOpenAiJsonObject(outputText);
+  const parsedAt = Date.now();
   const fields = Array.isArray(body.fields) ? body.fields : [];
   const columns = Array.isArray(body.columns) ? body.columns : [];
   const files = Array.isArray(body.files) ? body.files : [];
@@ -1103,6 +1150,11 @@ async function buildOpenAiLivePlan(body = {}, user = null) {
     modelLabel: modelTierOption.label,
     modelStrength: modelTierOption.strength,
     preparedAt: new Date().toISOString(),
+    timings: {
+      totalMs: parsedAt - startedAt,
+      openAiMs: responseReceivedAt - requestStartedAt,
+      parseMs: parsedAt - responseReceivedAt,
+    },
     actorId: user?.id ?? null,
     organizationId: String(body.organizationId || ""),
     summary: {

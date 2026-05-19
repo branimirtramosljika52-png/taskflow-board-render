@@ -899,7 +899,7 @@ function normalizeDocumentTemplateFieldAiConfig(input = {}, field = {}) {
         : "text";
   const label = normalizeText(source?.label ?? field?.label ?? field?.wordLabel).slice(0, 160);
   const key = normalizeText(source?.key ?? field?.key).slice(0, 120);
-  const aiDescription = normalizeText(source?.aiDescription ?? source?.ai_description ?? source?.description).slice(0, 2000);
+  const aiDescription = normalizeText(source?.aiDescription ?? source?.ai_description ?? source?.description).slice(0, 4000);
   const aiLookFor = normalizeAiConfigList(source?.aiLookFor ?? source?.ai_look_for, 160);
   const aiAvoid = normalizeText(source?.aiAvoid ?? source?.ai_avoid).slice(0, 1000);
 
@@ -918,7 +918,7 @@ function normalizeDocumentTemplateFieldAiConfig(input = {}, field = {}) {
     allowedValues: normalizeAiConfigList(source?.allowedValues ?? source?.allowed_values, 160),
     commonValues: normalizeAiConfigList(source?.commonValues ?? source?.common_values, 80),
     examples: normalizeAiConfigList(source?.examples, 80),
-    format: normalizeText(source?.format).slice(0, 160),
+    format: normalizeText(source?.format).slice(0, 1200),
     unit: normalizeText(source?.unit).slice(0, 40),
     defaultValue: normalizeText(source?.defaultValue ?? source?.default_value ?? field?.defaultValue).slice(0, 500),
     fallbackValue: normalizeText(source?.fallbackValue ?? source?.fallback_value).slice(0, 500),
