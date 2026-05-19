@@ -143,7 +143,9 @@ import {
   parseBuilderDocumentFromHtml,
 } from "./core/builder.js";
 import {
+  getRichTextHtmlFromClipboard,
   isRichTextHtml,
+  normalizeRichTextHtml,
   richTextHtmlToPlainText,
   sanitizeRichTextHtml,
 } from "./utils/richText.js";
@@ -55677,6 +55679,273 @@ function buildDocumentTemplateToggleDerivedValues(field = {}, context = {}, plac
   };
 }
 
+const DOCUMENT_TEMPLATE_RUNTIME_RICH_COMMANDS = Object.freeze([
+  { id: "heading", label: "Naslov", hint: "Veliki naslov", html: "<h2>Naslov</h2>" },
+  { id: "subheading", label: "Podnaslov", hint: "Manji naslov", html: "<h3>Podnaslov</h3>" },
+  { id: "paragraph", label: "Tekst", hint: "Novi odlomak", html: "<p>Tekst</p>" },
+  { id: "bullet", label: "Bullet lista", hint: "Lista s točkama", html: "<ul><li>Stavka</li></ul>" },
+  { id: "numbered", label: "Numerirana lista", hint: "Lista 1, 2, 3", html: "<ol><li>Stavka</li></ol>" },
+  {
+    id: "table",
+    label: "Tablica",
+    hint: "2 x 2 tablica",
+    html: "<table><tbody><tr><th>Naslov</th><th>Vrijednost</th></tr><tr><td>Stavka</td><td>Opis</td></tr></tbody></table>",
+  },
+  { id: "placeholder", label: "Placeholder", hint: "Token u tekstu", html: "<p>{{PLACEHOLDER}}</p>" },
+]);
+
+let documentTemplateRuntimeRichMenu = null;
+let documentTemplateRuntimeRichTarget = null;
+let documentTemplateRuntimeRichRange = null;
+let documentTemplateRuntimeRichCommandIndex = 0;
+let documentTemplateRuntimeRichSuppressEscapeKeyup = false;
+
+function stopDocumentTemplateRuntimeRichKeyEvent(event) {
+  event.preventDefault();
+  event.stopPropagation();
+  event.stopImmediatePropagation?.();
+}
+
+function isDocumentTemplateRuntimeRichSelectionInside(target) {
+  const selection = window.getSelection?.();
+  if (!selection || selection.rangeCount === 0) return false;
+  return target.contains(selection.getRangeAt(0).commonAncestorContainer);
+}
+
+function rememberDocumentTemplateRuntimeRichSelection(target) {
+  const selection = window.getSelection?.();
+  if (!selection || selection.rangeCount === 0 || !isDocumentTemplateRuntimeRichSelectionInside(target)) {
+    documentTemplateRuntimeRichRange = null;
+    return;
+  }
+  documentTemplateRuntimeRichRange = selection.getRangeAt(0).cloneRange();
+}
+
+function restoreDocumentTemplateRuntimeRichSelection(target) {
+  target.focus({ preventScroll: true });
+  const selection = window.getSelection?.();
+  if (!selection) return;
+  selection.removeAllRanges();
+  if (documentTemplateRuntimeRichRange) {
+    selection.addRange(documentTemplateRuntimeRichRange);
+    return;
+  }
+  const range = document.createRange();
+  range.selectNodeContents(target);
+  range.collapse(false);
+  selection.addRange(range);
+}
+
+function getDocumentTemplateRuntimeRichMenuRect(target) {
+  const selection = window.getSelection?.();
+  if (selection && selection.rangeCount > 0 && isDocumentTemplateRuntimeRichSelectionInside(target)) {
+    const rect = selection.getRangeAt(0).getBoundingClientRect();
+    if (rect.width || rect.height) {
+      return rect;
+    }
+  }
+  return target.getBoundingClientRect();
+}
+
+function insertDocumentTemplateRuntimeRichHtml(target, html = "") {
+  const safeHtml = sanitizeRichTextHtml(html);
+  if (!safeHtml) return;
+  restoreDocumentTemplateRuntimeRichSelection(target);
+  if (document.queryCommandSupported?.("insertHTML")) {
+    document.execCommand("insertHTML", false, safeHtml);
+    rememberDocumentTemplateRuntimeRichSelection(target);
+    return;
+  }
+
+  const selection = window.getSelection?.();
+  if (!selection || selection.rangeCount === 0) return;
+  const range = selection.getRangeAt(0);
+  range.deleteContents();
+  const template = document.createElement("template");
+  template.innerHTML = safeHtml;
+  const fragment = template.content.cloneNode(true);
+  const lastChild = fragment.lastChild;
+  range.insertNode(fragment);
+  if (lastChild) {
+    range.setStartAfter(lastChild);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+  rememberDocumentTemplateRuntimeRichSelection(target);
+}
+
+function hideDocumentTemplateRuntimeRichCommandMenu({ keepEscapeKeyupTrap = false } = {}) {
+  documentTemplateRuntimeRichMenu?.remove();
+  document.removeEventListener("keydown", trapDocumentTemplateRuntimeRichCommandKeydown, true);
+  if (!keepEscapeKeyupTrap) {
+    document.removeEventListener("keyup", trapDocumentTemplateRuntimeRichCommandKeyup, true);
+    documentTemplateRuntimeRichSuppressEscapeKeyup = false;
+  }
+  documentTemplateRuntimeRichMenu = null;
+  documentTemplateRuntimeRichTarget = null;
+  documentTemplateRuntimeRichRange = null;
+  documentTemplateRuntimeRichCommandIndex = 0;
+}
+
+function updateDocumentTemplateRuntimeRichCommandSelection() {
+  documentTemplateRuntimeRichMenu?.querySelectorAll("[data-document-template-runtime-rich-command]").forEach((button, index) => {
+    button.classList.toggle("is-active", index === documentTemplateRuntimeRichCommandIndex);
+  });
+}
+
+function applyDocumentTemplateRuntimeRichCommand(command, target = documentTemplateRuntimeRichTarget) {
+  if (!command || !(target instanceof HTMLElement)) return;
+  insertDocumentTemplateRuntimeRichHtml(target, command.html);
+  hideDocumentTemplateRuntimeRichCommandMenu();
+  target.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertHTML", data: "" }));
+}
+
+function showDocumentTemplateRuntimeRichCommandMenu(target) {
+  if (!(target instanceof HTMLElement)) return;
+  rememberDocumentTemplateRuntimeRichSelection(target);
+  hideDocumentTemplateRuntimeRichCommandMenu();
+  documentTemplateRuntimeRichTarget = target;
+  documentTemplateRuntimeRichCommandIndex = 0;
+
+  const menu = document.createElement("div");
+  menu.className = "document-template-runtime-rich-command-menu";
+  menu.setAttribute("role", "menu");
+  menu.setAttribute("aria-label", "Brzo dodavanje formatiranja");
+  DOCUMENT_TEMPLATE_RUNTIME_RICH_COMMANDS.forEach((command, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.documentTemplateRuntimeRichCommand = command.id;
+    button.setAttribute("role", "menuitem");
+    button.innerHTML = `<strong>${escapeHtml(command.label)}</strong><span>${escapeHtml(command.hint)}</span>`;
+    button.addEventListener("mouseenter", () => {
+      documentTemplateRuntimeRichCommandIndex = index;
+      updateDocumentTemplateRuntimeRichCommandSelection();
+    });
+    button.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      applyDocumentTemplateRuntimeRichCommand(command, target);
+    });
+    menu.append(button);
+  });
+
+  document.body.append(menu);
+  const rect = getDocumentTemplateRuntimeRichMenuRect(target);
+  const menuRect = menu.getBoundingClientRect();
+  const left = Math.min(window.innerWidth - menuRect.width - 12, Math.max(12, rect.left));
+  const top = Math.min(window.innerHeight - menuRect.height - 12, Math.max(12, rect.bottom + 8));
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+  documentTemplateRuntimeRichMenu = menu;
+  document.addEventListener("keydown", trapDocumentTemplateRuntimeRichCommandKeydown, true);
+  document.addEventListener("keyup", trapDocumentTemplateRuntimeRichCommandKeyup, true);
+  updateDocumentTemplateRuntimeRichCommandSelection();
+}
+
+function handleDocumentTemplateRuntimeRichCommandKeys(event) {
+  if (!documentTemplateRuntimeRichMenu || !documentTemplateRuntimeRichTarget) return false;
+  if (event.key === "Escape") {
+    stopDocumentTemplateRuntimeRichKeyEvent(event);
+    documentTemplateRuntimeRichSuppressEscapeKeyup = true;
+    hideDocumentTemplateRuntimeRichCommandMenu({ keepEscapeKeyupTrap: true });
+    return true;
+  }
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    stopDocumentTemplateRuntimeRichKeyEvent(event);
+    const direction = event.key === "ArrowDown" ? 1 : -1;
+    documentTemplateRuntimeRichCommandIndex = (
+      documentTemplateRuntimeRichCommandIndex
+      + direction
+      + DOCUMENT_TEMPLATE_RUNTIME_RICH_COMMANDS.length
+    ) % DOCUMENT_TEMPLATE_RUNTIME_RICH_COMMANDS.length;
+    updateDocumentTemplateRuntimeRichCommandSelection();
+    return true;
+  }
+  if (event.key === "Enter" || event.key === "Tab") {
+    stopDocumentTemplateRuntimeRichKeyEvent(event);
+    applyDocumentTemplateRuntimeRichCommand(
+      DOCUMENT_TEMPLATE_RUNTIME_RICH_COMMANDS[documentTemplateRuntimeRichCommandIndex],
+      documentTemplateRuntimeRichTarget,
+    );
+    return true;
+  }
+  return false;
+}
+
+function trapDocumentTemplateRuntimeRichCommandKeydown(event) {
+  handleDocumentTemplateRuntimeRichCommandKeys(event);
+}
+
+function trapDocumentTemplateRuntimeRichCommandKeyup(event) {
+  if (documentTemplateRuntimeRichSuppressEscapeKeyup && event.key === "Escape") {
+    stopDocumentTemplateRuntimeRichKeyEvent(event);
+    documentTemplateRuntimeRichSuppressEscapeKeyup = false;
+    document.removeEventListener("keyup", trapDocumentTemplateRuntimeRichCommandKeyup, true);
+    return;
+  }
+  if (!documentTemplateRuntimeRichMenu) {
+    document.removeEventListener("keyup", trapDocumentTemplateRuntimeRichCommandKeyup, true);
+  }
+}
+
+function createDocumentTemplateRuntimeRichTextControl({
+  value = "",
+  minHeight = 160,
+  onChange = null,
+} = {}) {
+  const editor = document.createElement("div");
+  editor.className = "document-template-runtime-rich-editor";
+  editor.contentEditable = "true";
+  editor.spellcheck = true;
+  editor.setAttribute("role", "textbox");
+  editor.setAttribute("aria-multiline", "true");
+  editor.dataset.placeholder = "Zalijepi tekst iz Worda ili pritisni \\ za naslov, listu ili tablicu";
+  editor.style.minHeight = `${Math.max(120, minHeight)}px`;
+  editor.innerHTML = normalizeRichTextHtml(value);
+
+  const persist = ({ cleanDom = false } = {}) => {
+    const html = sanitizeRichTextHtml(editor.innerHTML);
+    const text = richTextHtmlToPlainText(html);
+    if (cleanDom) {
+      editor.innerHTML = html;
+    }
+    onChange?.(text ? html : "");
+  };
+
+  editor.addEventListener("input", () => {
+    persist();
+  });
+  editor.addEventListener("blur", () => {
+    persist({ cleanDom: true });
+  });
+  editor.addEventListener("keydown", (event) => {
+    if (handleDocumentTemplateRuntimeRichCommandKeys(event)) {
+      return;
+    }
+    if (event.key === "\\" || event.key === "/") {
+      stopDocumentTemplateRuntimeRichKeyEvent(event);
+      showDocumentTemplateRuntimeRichCommandMenu(editor);
+      return;
+    }
+    if (event.key === "Escape") {
+      stopDocumentTemplateRuntimeRichKeyEvent(event);
+      hideDocumentTemplateRuntimeRichCommandMenu();
+      editor.blur();
+    }
+  });
+  editor.addEventListener("paste", (event) => {
+    const html = getRichTextHtmlFromClipboard(event.clipboardData);
+    if (!html) return;
+    event.preventDefault();
+    insertDocumentTemplateRuntimeRichHtml(editor, html);
+    persist();
+  });
+  editor.addEventListener("keyup", () => rememberDocumentTemplateRuntimeRichSelection(editor));
+  editor.addEventListener("mouseup", () => rememberDocumentTemplateRuntimeRichSelection(editor));
+
+  return editor;
+}
+
 function getDocumentTemplateTextListLines(field = {}, value = "") {
   if (!isDocumentTemplateTextListStyleField(field?.type)) {
     return [];
@@ -69951,7 +70220,17 @@ function renderDocumentTemplateRuntimeFieldRows() {
           { type: "success" },
         );
       });
-    } else if (field.type === "longtext" || (field.type === "text" && textListStyle !== "none")) {
+    } else if (field.type === "longtext") {
+      const fieldHeight = normalizeDocumentTemplateFieldHeight(field.fieldHeight, field.type || "longtext");
+      control = createDocumentTemplateRuntimeRichTextControl({
+        value: getDocumentTemplateRuntimeInitialValue(field, workOrderId) ?? "",
+        minHeight: Math.max(120, fieldHeight * 28),
+        onChange: (value) => {
+          setDocumentTemplateRuntimeFieldValue(workOrderId, field.id, value, { render: false });
+          renderDocumentTemplatePreviewContent();
+        },
+      });
+    } else if (field.type === "text" && textListStyle !== "none") {
       const fieldHeight = field.type === "longtext"
         ? normalizeDocumentTemplateFieldHeight(field.fieldHeight, field.type || "longtext")
         : 3;
@@ -70070,6 +70349,8 @@ function renderDocumentTemplateRuntimeFieldRows() {
         control.style.minHeight = `${Math.max(120, customFieldHeight - 44)}px`;
       } else if (control instanceof HTMLInputElement) {
         control.style.minHeight = `${Math.max(52, customFieldHeight - 52)}px`;
+      } else if (control instanceof HTMLElement && control.classList.contains("document-template-runtime-rich-editor")) {
+        control.style.minHeight = `${Math.max(120, customFieldHeight - 44)}px`;
       } else if (control instanceof HTMLElement) {
         control.style.minHeight = `${Math.max(52, customFieldHeight - 40)}px`;
       }
