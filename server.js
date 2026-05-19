@@ -1093,6 +1093,7 @@ async function buildOpenAiLivePlan(body = {}, user = null) {
       "Analiziras stare zapisnike, PDF-ove, slike i tekst te predlazes vrijednosti za web polja i Excel tablice.",
       "Odgovori samo validnim JSON objektom. Ako nisi siguran, confidence mora biti low i vrijednost ne smije biti izmisljena.",
       "Za polja ciji je fieldType longtext ili ciji ai.format trazi dugi opis nemoj vracati kratki sazetak. Postuj trazenu duljinu, broj odlomaka i strukturu iz aiDescription, ai.format i validationRules.",
+      "Za obicna text i longtext polja fieldSuggestions[].value uvijek mora biti plain text string s odlomcima odvojenim praznim redom. Nemoj vracati blocks, rows, markdown JSON ni objekt za longtext polja.",
       "Za polje fields[].type === system_description value u fieldSuggestions mora biti objekt oblika { blocks: [{ title, sectionSubtitle, rows: [{ subtitle, description, lineCount }] }] }. Koristi tocne redove iz fields[].systemRows, npr. Proizvodac, Tip, Teh. podaci i opisni red. Nemoj vracati cijeli Opis sustava kao obican string ako su dostupni redovi.",
       "Za Excel tablice measurementSuggestions.fieldId mora biti tocno jedan fieldId iz measurementColumns, a kljucevi u rows[].values moraju biti tocni columnId ili key iz measurementColumns. Popunjavaj samo kolone navedene u measurementColumns; sve druge kolone, formule i rucni unos ignoriraj. Nemoj vracati genericki kljuc columnKey.",
       "Za hrvatske poslovne dokumente koristi hrvatski jezik i zadrzi strucne nazive.",

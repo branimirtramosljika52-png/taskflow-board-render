@@ -47110,6 +47110,45 @@ function buildDocumentTemplateSystemDescriptionSummaryText(value = null) {
   return buildDocumentTemplateSystemDescriptionSummaryLines(value).join("\n");
 }
 
+function buildDocumentTemplateSystemDescriptionNarrativeText(value = null, {
+  includeBlockTitle = true,
+  includeRowHeadings = true,
+} = {}) {
+  const model = isDocumentTemplateSystemDescriptionValue(value)
+    ? normalizeDocumentTemplateSystemDescriptionRuntimeValue({}, value)
+    : null;
+
+  if (!model) {
+    return "";
+  }
+
+  const paragraphs = [];
+  model.blocks.forEach((block) => {
+    const title = String(block.title || "").trim();
+    const subtitle = String(block.sectionSubtitle || "").trim();
+    if (includeBlockTitle && title) {
+      paragraphs.push(title);
+    }
+    if (subtitle) {
+      paragraphs.push(subtitle);
+    }
+    (Array.isArray(block.rows) ? block.rows : []).forEach((row) => {
+      const rowSubtitle = String(row?.subtitle || "").trim();
+      const description = String(row?.description || "").trim();
+      if (!rowSubtitle && !description) {
+        return;
+      }
+      if (includeRowHeadings && rowSubtitle && description) {
+        paragraphs.push(`${rowSubtitle}\n${description}`);
+        return;
+      }
+      paragraphs.push(description || rowSubtitle);
+    });
+  });
+
+  return paragraphs.filter(Boolean).join("\n\n");
+}
+
 function hasDocumentTemplateSystemDescriptionContent(value = null) {
   if (!isDocumentTemplateSystemDescriptionValue(value)) {
     return false;
@@ -49762,6 +49801,14 @@ function applyDocumentTemplateRuntimeAiSuggestions(payload = {}, template = {}, 
 function formatDocumentTemplateRuntimeAiSuggestionValue(value = "", field = null) {
   if (value == null) {
     return "";
+  }
+  if (isDocumentTemplateSystemDescriptionValue(value)) {
+    return String(field?.type || "").trim().toLowerCase() === "system_description"
+      ? buildDocumentTemplateSystemDescriptionSummaryText(value)
+      : buildDocumentTemplateSystemDescriptionNarrativeText(value, {
+        includeBlockTitle: false,
+        includeRowHeadings: true,
+      });
   }
   if (String(field?.type || "").trim().toLowerCase() === "system_description") {
     const normalizedValue = normalizeDocumentTemplateSystemDescriptionRuntimeValue(field, value);
@@ -55557,6 +55604,22 @@ function normalizeDocumentTemplateRuntimeFieldValueByType(field = {}, value = ""
 
   if (type === "system_description") {
     return normalizeDocumentTemplateSystemDescriptionRuntimeValue(field, value);
+  }
+
+  if ((type === "text" || type === "longtext") && isDocumentTemplateSystemDescriptionValue(value)) {
+    return buildDocumentTemplateSystemDescriptionNarrativeText(value, {
+      includeBlockTitle: false,
+      includeRowHeadings: true,
+    });
+  }
+
+  if ((type === "text" || type === "longtext") && value && typeof value === "object" && !Array.isArray(value)) {
+    const preferredValue = value.value ?? value.text ?? value.content ?? value.description ?? value.result ?? "";
+    if (hasMeaningfulDocumentRecordValue(preferredValue)) {
+      return Array.isArray(preferredValue)
+        ? preferredValue.map((entry) => String(entry ?? "").trim()).filter(Boolean).join("\n\n")
+        : String(preferredValue ?? "").trim();
+    }
   }
 
   if (type === "checkbox" || type === "toggle") {
