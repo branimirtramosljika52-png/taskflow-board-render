@@ -43297,7 +43297,7 @@ body.is-global-loading {
 
 .absence-report-card-stats {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -54035,7 +54035,7 @@ body.is-signature-review-open::before {
 
 .absence-person-row {
   display: grid;
-  grid-template-columns: minmax(220px, 0.9fr) minmax(420px, 1.55fr) minmax(90px, 0.35fr) minmax(280px, 0.9fr) auto;
+  grid-template-columns: minmax(220px, 0.9fr) minmax(360px, 1.35fr) minmax(260px, 0.95fr);
   gap: 12px;
   align-items: center;
   padding: 12px 14px;
@@ -54045,6 +54045,16 @@ body.is-signature-review-open::before {
     radial-gradient(circle at top left, rgba(83, 128, 218, 0.08), transparent 28%),
     linear-gradient(135deg, rgba(255, 255, 255, 0.99), rgba(246, 250, 255, 0.96));
   box-shadow: 0 14px 34px rgba(61, 87, 129, 0.07);
+  cursor: pointer;
+}
+
+.absence-person-row:hover,
+.absence-person-row:focus-visible,
+.absence-person-row.is-expanded {
+  border-color: rgba(73, 121, 209, 0.46);
+  box-shadow:
+    0 16px 38px rgba(61, 87, 129, 0.1),
+    0 0 0 2px rgba(96, 165, 250, 0.12);
 }
 
 .absence-person-row.is-medical {
@@ -54081,8 +54091,12 @@ body.is-signature-review-open::before {
 
 .absence-person-row-metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+}
+
+.absence-person-row.is-medical .absence-person-row-metrics {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .absence-person-row-metric {
@@ -54164,7 +54178,8 @@ body.is-signature-review-open::before {
 }
 
 .absence-person-row.is-medical .absence-person-row-controls {
-  grid-template-columns: minmax(120px, 1fr) auto;
+  grid-template-columns: auto;
+  justify-content: end;
 }
 
 .absence-person-row-input {
@@ -54185,6 +54200,54 @@ body.is-signature-review-open::before {
   display: flex;
   justify-content: flex-end;
   min-width: 0;
+}
+
+.absence-person-row-log {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid rgba(174, 197, 231, 0.72);
+  border-radius: 14px;
+  background: rgba(248, 251, 255, 0.9);
+}
+
+.absence-person-row-log > strong {
+  color: #1f3150;
+  font-size: 0.88rem;
+}
+
+.absence-person-row-log p {
+  margin: 0;
+  color: #667896;
+  font-size: 0.86rem;
+}
+
+.absence-person-log-list {
+  display: grid;
+  gap: 6px;
+}
+
+.absence-person-log-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.8fr) minmax(140px, 0.9fr) minmax(100px, 0.55fr) minmax(180px, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(190, 207, 235, 0.62);
+}
+
+.absence-person-log-row span,
+.absence-person-log-row small {
+  color: #667896;
+  min-width: 0;
+}
+
+.absence-person-log-row strong {
+  color: #14213d;
+  white-space: nowrap;
 }
 
 .absence-report-toolbar-panel .section-heading {
@@ -54228,8 +54291,26 @@ body.is-signature-review-open::before {
 }
 
 .absence-report-card-head {
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
+}
+
+.absence-report-card-select {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  margin: 0;
+  border: 1px solid rgba(161, 184, 220, 0.72);
+  border-radius: 12px;
+  background: rgba(248, 251, 255, 0.94);
+}
+
+.absence-report-card-select input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
 }
 
 .absence-report-card-copy {
@@ -54259,6 +54340,10 @@ body.is-signature-review-open::before {
   .absence-person-row-controls,
   .absence-person-row.is-medical .absence-person-row-controls {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .absence-person-log-row {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .absence-person-row-status {

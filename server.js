@@ -8864,11 +8864,6 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "POST" && url.pathname === "/api/absence-entries") {
-      if (!canManageWorkOrders(user)) {
-        sendError(response, 403, "Nemate pravo evidentirati odsutnosti.");
-        return true;
-      }
-
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
       const isAdmin = canManageMasterData(user) || Boolean(scopedSnapshot.appPermissions?.["people.manage"]);
@@ -11074,11 +11069,6 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (absenceEntryMatch && request.method === "PATCH") {
-      if (!canManageWorkOrders(user)) {
-        sendError(response, 403, "Nemate pravo uređivati odsutnosti.");
-        return true;
-      }
-
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
       const current = assertInScope(scopedSnapshot.absenceEntries ?? [], absenceEntryMatch[1], "Odsutnost nije pronađena.");
@@ -11100,7 +11090,7 @@ async function handleApiRequest(request, response, url) {
       const normalizedType = normalizeInputValue(body.type || current.type).toLowerCase();
       const requestedStatus = isAdmin
         ? (normalizeInputValue(body.status).toLowerCase() || String(current.status || "").toLowerCase())
-        : (doesAbsenceTypeRequireApproval(normalizedType) ? String(current.status || "pending").toLowerCase() : "approved");
+        : (doesAbsenceTypeRequireApproval(normalizedType) ? "pending" : "approved");
       const actorLabel = getScopedUserDisplayLabel(user);
       const approvedMeta = requestedStatus === "approved"
         ? {
@@ -11459,11 +11449,6 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (absenceEntryMatch && request.method === "DELETE") {
-      if (!canManageWorkOrders(user)) {
-        sendError(response, 403, "Nemate pravo brisati odsutnosti.");
-        return true;
-      }
-
       const { scopedSnapshot } = await getScopedState(user, request);
       const current = assertInScope(scopedSnapshot.absenceEntries ?? [], absenceEntryMatch[1], "Odsutnost nije pronađena.");
       const canDeleteOwnPending = String(current.userId ?? "") === String(user.id ?? "")

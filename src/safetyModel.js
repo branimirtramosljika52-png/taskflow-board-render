@@ -575,10 +575,8 @@ const ABSENCE_STATUS_RANK = {
   rejected: 2,
   cancelled: 3,
 };
-const REQUEST_ABSENCE_TYPES = new Set(
-  ABSENCE_TYPE_OPTIONS
-    .filter((option) => option.group === "request")
-    .map((option) => option.value),
+const APPROVAL_ABSENCE_TYPES = new Set(
+  ABSENCE_TYPE_OPTIONS.map((option) => option.value),
 );
 
 function isoNow() {
@@ -5953,7 +5951,7 @@ export function sortSafetyAuthorizations(items) {
 }
 
 export function doesAbsenceTypeRequireApproval(value = "") {
-  return REQUEST_ABSENCE_TYPES.has(normalizeAbsenceType(value));
+  return APPROVAL_ABSENCE_TYPES.has(normalizeAbsenceType(value));
 }
 
 export function getAbsenceBusinessDayCount(startDate, endDate) {

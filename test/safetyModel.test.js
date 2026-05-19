@@ -439,20 +439,30 @@ test("absence entries default to sensible statuses and support filtering/sorting
     },
     () => "2026-04-02T10:00:00.000Z",
   );
+  const approvedSickLeave = updateAbsenceEntry(
+    sickLeave,
+    {
+      status: "approved",
+      approvedByUserId: "admin-1",
+      approvedByLabel: "Admin",
+      approvedAt: "2026-04-02T10:00:00.000Z",
+    },
+    () => "2026-04-02T10:00:00.000Z",
+  );
 
   assert.equal(annualLeave.status, "pending");
-  assert.equal(sickLeave.status, "approved");
+  assert.equal(sickLeave.status, "pending");
   assert.equal(updatedAnnualLeave.status, "approved");
   assert.equal(updatedAnnualLeave.dayCount, 3);
 
   const filtered = filterAbsenceEntries(
-    [updatedAnnualLeave, sickLeave],
+    [updatedAnnualLeave, approvedSickLeave],
     { query: "bolovanje", status: "approved", type: "all", userId: "" },
   );
   assert.equal(filtered.length, 1);
   assert.equal(filtered[0].id, "absence-2");
 
-  const sorted = sortAbsenceEntries([updatedAnnualLeave, sickLeave]);
+  const sorted = sortAbsenceEntries([updatedAnnualLeave, approvedSickLeave]);
   assert.equal(sorted[0].id, "absence-1");
 });
 

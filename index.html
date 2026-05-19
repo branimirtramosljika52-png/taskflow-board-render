@@ -3748,7 +3748,7 @@
                 </span>
                 <span class="people-workspace-tab-content">
                   <strong>GO i dopusti</strong>
-                  <span class="people-workspace-tab-copy">Zahtjevi, saldo i odobrenja</span>
+                  <span class="people-workspace-tab-copy">Zahtjevi i odobrenja</span>
                 </span>
               </button>
               <button
@@ -3793,7 +3793,7 @@
                 </span>
                 <span class="people-workspace-tab-content">
                   <strong>Mjesečni report</strong>
-                  <span class="people-workspace-tab-copy">Rad, odsutnosti i CSV izvoz</span>
+                  <span class="people-workspace-tab-copy">Rad, odsutnosti i Excel izvoz</span>
                 </span>
               </button>
             </div>
@@ -4480,36 +4480,17 @@
                   <h3 id="absence-module-title">Godišnji odmori i dopusti</h3>
                 </div>
                 <div class="vehicles-panel-head-actions">
-                  <button id="absence-open-balances" type="button" class="ghost-button">Saldo dana</button>
                   <button id="absence-open-form" type="button" class="primary-button">+ Novi zahtjev</button>
                 </div>
               </div>
-              <p id="absence-module-copy" class="helper-copy module-copy">Zahtjevi za godišnji, plaćene i druge dopuste s admin odobrenjima i pregledom stanja dana.</p>
-              <div class="absence-summary-grid">
-                <article class="absence-summary-card">
-                  <span>Ukupno</span>
-                  <strong id="absence-summary-total">0</strong>
-                </article>
-                <article class="absence-summary-card">
-                  <span>Na čekanju</span>
-                  <strong id="absence-summary-pending">0</strong>
-                </article>
-                <article class="absence-summary-card">
-                  <span>Odobreno</span>
-                  <strong id="absence-summary-approved">0</strong>
-                </article>
-                <article class="absence-summary-card">
-                  <span>Saldo</span>
-                  <strong id="absence-summary-balance">0</strong>
-                </article>
-              </div>
+              <p id="absence-module-copy" class="helper-copy module-copy">Zahtjevi za godišnji, plaćene i druge dopuste s admin odobrenjima i pregledom dana po korisniku.</p>
             </section>
 
             <section id="absence-people-panel" class="panel absence-people-panel">
               <div class="section-heading offers-section-heading">
                 <div>
                   <p class="section-kicker">People</p>
-                  <h3 id="absence-people-title">Saldo po korisnicima</h3>
+                  <h3 id="absence-people-title">Dani po korisnicima</h3>
                 </div>
                 <p id="absence-people-feedback" class="form-error absence-people-feedback" aria-live="polite"></p>
               </div>
@@ -4582,7 +4563,7 @@
                     <div class="field absence-inline-summary">
                       <span>Obračun</span>
                       <strong id="absence-day-count-preview">0 radnih dana</strong>
-                      <small id="absence-balance-preview">Saldo će se prikazati nakon odabira korisnika.</small>
+                      <small id="absence-balance-preview">Odaberi korisnika i datume za obračun radnih dana.</small>
                     </div>
                   </div>
 
@@ -4622,7 +4603,7 @@
                 <div class="section-heading offers-section-heading">
                   <div>
                     <p class="section-kicker">Balances</p>
-                    <h3>Početni saldo dana</h3>
+                    <h3>Početna stanja GO</h3>
                   </div>
                   <button id="absence-balance-close" type="button" class="ghost-button">Zatvori</button>
                 </div>
@@ -4632,7 +4613,7 @@
                   <div id="absence-balance-list" class="absence-balance-list"></div>
                   <p id="absence-balance-error" class="form-error" aria-live="polite"></p>
                   <div class="form-actions">
-                    <button type="submit" class="primary-button">Spremi saldo</button>
+                    <button type="submit" class="primary-button">Spremi dane</button>
                   </div>
                 </form>
               </div>
@@ -4655,7 +4636,7 @@
                     <span>Korisnik</span>
                     <select id="absence-report-user"></select>
                   </label>
-                  <button id="absence-report-export" type="button" class="primary-button">Preuzmi CSV</button>
+                  <button id="absence-report-export" type="button" class="primary-button">Preuzmi Excel</button>
                 </div>
               </div>
               <p id="absence-report-summary" class="helper-copy module-copy">Nema podataka za odabrani mjesec.</p>
