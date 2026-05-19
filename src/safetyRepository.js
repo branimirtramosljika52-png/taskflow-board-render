@@ -3052,6 +3052,7 @@ async function fetchSnapshotFromConnection(connection) {
         serviceCode: dbString(item.serviceCode),
         linkedTemplateIds: parseJsonArray(item.linkedTemplateIds).map((value) => dbString(value)).filter(Boolean),
         linkedTemplateTitles: parseJsonArray(item.linkedTemplateTitles).map((value) => dbString(value)).filter(Boolean),
+        linkedQualificationKeys: parseJsonArray(item.linkedQualificationKeys ?? item.linkedQualificationExamKeys).map((value) => dbString(value)).filter(Boolean),
         isTraining: Boolean(item.isTraining),
         serviceStatus: dbString(item.serviceStatus || item.progressStatus || item.workStatus),
         isCompleted: Boolean(item.isCompleted),
@@ -3737,7 +3738,7 @@ async function fetchSnapshotFromConnection(connection) {
   );
 
   const [serviceCatalogRows] = await connection.query(`
-    SELECT id, organization_id, name, service_code, status, service_type, is_training, validity_months, linked_template_ids_json, linked_learning_test_ids_json, training_certificate_template_json, note, created_at, updated_at
+    SELECT id, organization_id, name, service_code, status, service_type, is_training, validity_months, linked_template_ids_json, linked_learning_test_ids_json, linked_qualification_keys_json, training_certificate_template_json, note, created_at, updated_at
     FROM web_service_catalog
     ORDER BY
       CASE status
@@ -3759,6 +3760,7 @@ async function fetchSnapshotFromConnection(connection) {
     const linkedLearningTestTitles = learningTestIds
       .map((testId) => learningTests.find((item) => String(item.id) === String(testId))?.title ?? "")
       .filter(Boolean);
+    const linkedQualificationKeys = parseJsonArray(row.linked_qualification_keys_json).map((value) => dbString(value)).filter(Boolean);
 
     return {
       id: String(row.id),
@@ -3773,6 +3775,7 @@ async function fetchSnapshotFromConnection(connection) {
       linkedTemplateTitles,
       linkedLearningTestIds: learningTestIds,
       linkedLearningTestTitles,
+      linkedQualificationKeys,
       trainingCertificateTemplate: parseJsonArray(row.training_certificate_template_json)
         .map((document) => mapStoredAttachmentDocument(document))
         .find((document) => document.fileName && (document.dataUrl || document.storageUrl)) ?? null,
@@ -4519,6 +4522,7 @@ export class InMemorySafetyRepository {
         linkedTemplateTitles: [...(item.linkedTemplateTitles ?? [])],
         linkedLearningTestIds: [...(item.linkedLearningTestIds ?? [])],
         linkedLearningTestTitles: [...(item.linkedLearningTestTitles ?? [])],
+        linkedQualificationKeys: [...(item.linkedQualificationKeys ?? [])],
         trainingCertificateTemplate: item.trainingCertificateTemplate ? { ...item.trainingCertificateTemplate } : null,
       })),
       measurementEquipment: this.snapshot.measurementEquipment.map((item) => ({
@@ -7406,6 +7410,7 @@ export class MySqlSafetyRepository {
         validity_months VARCHAR(16) NOT NULL DEFAULT '',
         linked_template_ids_json LONGTEXT NULL,
         linked_learning_test_ids_json LONGTEXT NULL,
+        linked_qualification_keys_json LONGTEXT NULL,
         training_certificate_template_json LONGTEXT NULL,
         note TEXT NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -7468,7 +7473,8 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_service_catalog", "service_type", "VARCHAR(24) NOT NULL DEFAULT 'inspection' AFTER status");
     await ensureColumnExists(this.pool, "web_service_catalog", "validity_months", "VARCHAR(16) NOT NULL DEFAULT '' AFTER is_training");
     await ensureColumnExists(this.pool, "web_service_catalog", "linked_learning_test_ids_json", "LONGTEXT NULL AFTER linked_template_ids_json");
-    await ensureColumnExists(this.pool, "web_service_catalog", "training_certificate_template_json", "LONGTEXT NULL AFTER linked_learning_test_ids_json");
+    await ensureColumnExists(this.pool, "web_service_catalog", "linked_qualification_keys_json", "LONGTEXT NULL AFTER linked_learning_test_ids_json");
+    await ensureColumnExists(this.pool, "web_service_catalog", "training_certificate_template_json", "LONGTEXT NULL AFTER linked_qualification_keys_json");
     await ensureColumnExists(this.pool, "web_people_training_records", "father_name", "VARCHAR(120) NOT NULL DEFAULT '' AFTER oib");
     await ensureColumnExists(this.pool, "web_people_training_records", "language_name", "VARCHAR(80) NOT NULL DEFAULT '' AFTER father_name");
     await ensureColumnExists(this.pool, "web_people_training_records", "birth_date", "DATE NULL AFTER language_name");
@@ -10880,8 +10886,8 @@ export class MySqlSafetyRepository {
       const [result] = await connection.query(
         `
           INSERT INTO web_service_catalog
-            (organization_id, name, service_code, status, service_type, is_training, validity_months, linked_template_ids_json, linked_learning_test_ids_json, training_certificate_template_json, note)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (organization_id, name, service_code, status, service_type, is_training, validity_months, linked_template_ids_json, linked_learning_test_ids_json, linked_qualification_keys_json, training_certificate_template_json, note)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
@@ -10893,6 +10899,7 @@ export class MySqlSafetyRepository {
           draft.validityMonths,
           JSON.stringify(draft.linkedTemplateIds ?? []),
           JSON.stringify(draft.linkedLearningTestIds ?? []),
+          JSON.stringify(draft.linkedQualificationKeys ?? []),
           JSON.stringify(draft.trainingCertificateTemplate ? [draft.trainingCertificateTemplate] : []),
           draft.note,
         ],
@@ -10930,7 +10937,7 @@ export class MySqlSafetyRepository {
       await connection.query(
         `
           UPDATE web_service_catalog
-          SET organization_id = ?, name = ?, service_code = ?, status = ?, service_type = ?, is_training = ?, validity_months = ?, linked_template_ids_json = ?, linked_learning_test_ids_json = ?, training_certificate_template_json = ?, note = ?
+          SET organization_id = ?, name = ?, service_code = ?, status = ?, service_type = ?, is_training = ?, validity_months = ?, linked_template_ids_json = ?, linked_learning_test_ids_json = ?, linked_qualification_keys_json = ?, training_certificate_template_json = ?, note = ?
           WHERE id = ?
         `,
         [
@@ -10943,6 +10950,7 @@ export class MySqlSafetyRepository {
           next.validityMonths,
           JSON.stringify(next.linkedTemplateIds ?? []),
           JSON.stringify(next.linkedLearningTestIds ?? []),
+          JSON.stringify(next.linkedQualificationKeys ?? []),
           JSON.stringify(next.trainingCertificateTemplate ? [next.trainingCertificateTemplate] : []),
           next.note,
           Number(id),

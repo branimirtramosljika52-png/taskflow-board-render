@@ -1173,6 +1173,7 @@ test("service catalog keeps linked templates and supports filtering and sorting"
       serviceCode: "IRO-001",
       status: "active",
       linkedTemplateIds: ["template-1"],
+      linkedQualificationKeys: ["Radna oprema", "radni_okolis"],
       validityMonths: "24",
       note: "Redovni pregled",
     },
@@ -1183,12 +1184,14 @@ test("service catalog keeps linked templates and supports filtering and sorting"
 
   assert.equal(service.linkedTemplateIds.length, 1);
   assert.equal(service.linkedTemplateTitles[0], "Zapisnik radne opreme");
+  assert.deepEqual(service.linkedQualificationKeys, ["radna_oprema", "radni_okolis"]);
   assert.equal(service.validityMonths, "24");
 
   const updated = updateServiceCatalogItem(
     service,
     {
       status: "inactive",
+      linkedQualificationKeys: ["panic_rasvjeta"],
       note: "Privremeno ugašena usluga",
     },
     {
@@ -1200,6 +1203,7 @@ test("service catalog keeps linked templates and supports filtering and sorting"
 
   assert.equal(updated.status, "inactive");
   assert.equal(updated.note, "Privremeno ugašena usluga");
+  assert.deepEqual(updated.linkedQualificationKeys, ["panic_rasvjeta"]);
   assert.equal(updated.validityMonths, "24");
 
   const filtered = filterServiceCatalogItems([service, updated], {
@@ -1208,6 +1212,13 @@ test("service catalog keeps linked templates and supports filtering and sorting"
   });
   assert.equal(filtered.length, 1);
   assert.equal(filtered[0].id, "service-1");
+
+  const qualificationFiltered = filterServiceCatalogItems([service, updated], {
+    query: "panic_rasvjeta",
+    status: "all",
+  });
+  assert.equal(qualificationFiltered.length, 1);
+  assert.equal(qualificationFiltered[0].id, "service-1");
 
   const sorted = sortServiceCatalogItems([
     { ...service, id: "service-2", serviceCode: "ZNR-200", name: "Zaštita na radu" },

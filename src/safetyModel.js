@@ -1124,6 +1124,45 @@ function normalizeIdList(values = []) {
   ));
 }
 
+function normalizeQualificationKey(value = "") {
+  return normalizeText(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toLowerCase();
+}
+
+function normalizeQualificationKeyList(values = []) {
+  let source = [];
+  if (Array.isArray(values)) {
+    source = values;
+  } else if (values && typeof values === "object") {
+    const entries = Object.entries(values);
+    source = entries.every(([, flag]) => typeof flag === "boolean")
+      ? entries.filter(([, flag]) => flag).map(([key]) => key)
+      : Object.values(values);
+  } else {
+    const rawValue = normalizeText(values);
+    if (!rawValue) {
+      return [];
+    }
+    try {
+      const parsed = JSON.parse(rawValue);
+      source = Array.isArray(parsed) ? parsed : rawValue.split(",");
+    } catch {
+      source = rawValue.split(",");
+    }
+  }
+
+  return Array.from(new Set(
+    source
+      .flatMap((entry) => Array.isArray(entry) ? entry : [entry])
+      .map((entry) => normalizeQualificationKey(entry))
+      .filter(Boolean),
+  ));
+}
+
 function cloneJsonArray(items = []) {
   return JSON.parse(JSON.stringify(Array.isArray(items) ? items : []));
 }
@@ -2037,6 +2076,7 @@ function normalizeWorkOrderServiceItemSnapshot(item = {}) {
   const linkedLearningTestTitles = Array.isArray(item.linkedLearningTestTitles)
     ? item.linkedLearningTestTitles.map((value) => normalizeText(value)).filter(Boolean)
     : [];
+  const linkedQualificationKeys = normalizeQualificationKeyList(item.linkedQualificationKeys ?? item.linkedQualificationExamKeys ?? []);
   const serviceStatus = normalizeWorkOrderServiceProgressStatus(
     item.serviceStatus ?? item.progressStatus ?? item.workStatus,
     normalizeBoolean(item.isCompleted, false) ? "completed" : "pending",
@@ -2055,6 +2095,7 @@ function normalizeWorkOrderServiceItemSnapshot(item = {}) {
     linkedTemplateTitles: Array.from(new Set(linkedTemplateTitles)),
     linkedLearningTestIds,
     linkedLearningTestTitles: Array.from(new Set(linkedLearningTestTitles)),
+    linkedQualificationKeys,
     isTraining: normalizeServiceCatalogType(
       item.serviceType,
       normalizeBoolean(item.isTraining, false) ? "znr" : "inspection",
@@ -3955,6 +3996,7 @@ export function createServiceCatalogItem(
     validityMonths: normalizeServiceValidityMonths(input.validityMonths),
     linkedTemplateIds: serviceType === "inspection" ? normalizedTemplateIds.linkedTemplateIds : [],
     linkedTemplateTitles: serviceType === "inspection" ? normalizedTemplateIds.linkedTemplateTitles : [],
+    linkedQualificationKeys: normalizeQualificationKeyList(input.linkedQualificationKeys ?? input.linkedQualificationExamKeys ?? []),
     linkedLearningTestIds: serviceType === "znr" ? normalizedLearningTestIds.linkedLearningTestIds : [],
     linkedLearningTestTitles: serviceType === "znr" ? normalizedLearningTestIds.linkedLearningTestTitles : [],
     trainingCertificateTemplate: serviceType === "znr" ? trainingCertificateTemplate : null,
@@ -5175,6 +5217,9 @@ export function updateServiceCatalogItem(current, patch, state, now = isoNow) {
       : normalizeServiceValidityMonths(current.validityMonths),
     linkedTemplateIds: serviceType === "inspection" ? templateSnapshot.linkedTemplateIds : [],
     linkedTemplateTitles: serviceType === "inspection" ? templateSnapshot.linkedTemplateTitles : [],
+    linkedQualificationKeys: hasOwn(patch, "linkedQualificationKeys") || hasOwn(patch, "linkedQualificationExamKeys")
+      ? normalizeQualificationKeyList(patch.linkedQualificationKeys ?? patch.linkedQualificationExamKeys)
+      : normalizeQualificationKeyList(current.linkedQualificationKeys ?? current.linkedQualificationExamKeys ?? []),
     linkedLearningTestIds: serviceType === "znr" ? learningTestSnapshot.linkedLearningTestIds : [],
     linkedLearningTestTitles: serviceType === "znr" ? learningTestSnapshot.linkedLearningTestTitles : [],
     trainingCertificateTemplate: serviceType === "znr" ? trainingCertificateTemplate : null,
@@ -5204,6 +5249,7 @@ export function filterServiceCatalogItems(
       item.validityMonths ? `${item.validityMonths} mjeseci` : "",
       item.note,
       ...(item.linkedTemplateTitles ?? []),
+      ...(item.linkedQualificationKeys ?? []),
     ].join(" ").toLowerCase();
 
     return haystack.includes(normalizedQuery);

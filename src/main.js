@@ -3801,9 +3801,11 @@ const serviceCatalogTypeInput = document.querySelector("#service-catalog-type");
 const serviceCatalogValidityMonthsInput = document.querySelector("#service-catalog-validity-months");
 const serviceCatalogAppliesToPeopleInput = document.querySelector("#service-catalog-applies-to-people");
 const serviceCatalogTemplateSection = document.querySelector("#service-catalog-template-section");
+const serviceCatalogQualificationSection = document.querySelector("#service-catalog-qualification-section");
 const serviceCatalogLearningTestSection = document.querySelector("#service-catalog-learning-test-section");
 const serviceCatalogCertificateTemplateSection = document.querySelector("#service-catalog-certificate-template-section");
 const serviceCatalogTemplateList = document.querySelector("#service-catalog-template-list");
+const serviceCatalogQualificationList = document.querySelector("#service-catalog-qualification-list");
 const serviceCatalogLearningTestList = document.querySelector("#service-catalog-learning-test-list");
 const serviceCatalogCertificateTemplateInput = document.querySelector("#service-catalog-certificate-template-input");
 const serviceCatalogCertificateTemplateSelect = document.querySelector("#service-catalog-certificate-template-select");
@@ -14424,6 +14426,9 @@ function buildWorkOrderServiceItemSnapshot(service, current = null) {
         ? current.linkedLearningTestIds.map((value) => String(value ?? "").trim()).filter(Boolean)
         : [],
     linkedLearningTestTitles: linkedLearningTestTitles.map((value) => String(value ?? "").trim()).filter(Boolean),
+    linkedQualificationKeys: getServiceCatalogQualificationKeys(service).length > 0
+      ? getServiceCatalogQualificationKeys(service)
+      : normalizeQualificationExamKeyList(current?.linkedQualificationKeys ?? current?.linkedQualificationExamKeys ?? []),
     isTraining: String(service?.serviceType ?? current?.serviceType ?? (service?.isTraining ?? current?.isTraining ? "znr" : "inspection")).trim().toLowerCase() === "znr",
     serviceStatus: normalizeWorkOrderServiceProgressStatus(
       current?.serviceStatus ?? current?.progressStatus ?? current?.workStatus,
@@ -53369,6 +53374,44 @@ function normalizeUserQualificationServiceIds(value = []) {
   ));
 }
 
+function normalizeQualificationExamKeyList(value = []) {
+  let entries = [];
+  if (Array.isArray(value)) {
+    entries = value;
+  } else if (value && typeof value === "object") {
+    const objectEntries = Object.entries(value);
+    entries = objectEntries.every(([, flag]) => typeof flag === "boolean")
+      ? objectEntries.filter(([, flag]) => flag).map(([key]) => key)
+      : Object.values(value);
+  } else {
+    const rawValue = String(value ?? "").trim();
+    if (!rawValue) {
+      return [];
+    }
+    try {
+      const parsed = JSON.parse(rawValue);
+      entries = Array.isArray(parsed) ? parsed : rawValue.split(",");
+    } catch {
+      entries = rawValue.split(",");
+    }
+  }
+
+  return Array.from(new Set(
+    entries
+      .map((entry) => {
+        const rawValue = String(entry ?? "").trim();
+        if (!rawValue) {
+          return "";
+        }
+        const normalizedValue = normalizeQualificationAreaKey(rawValue);
+        return /[^a-z0-9_-]/i.test(normalizedValue)
+          ? createUserQualificationExamKey(rawValue)
+          : normalizedValue;
+      })
+      .filter(Boolean),
+  ));
+}
+
 function getQualificationLinkedServiceIds(qualification = {}) {
   const source = qualification && typeof qualification === "object" ? qualification : {};
   for (const key of ["serviceIds", "linkedServiceCatalogIds", "linkedServiceIds", "serviceCatalogIds"]) {
@@ -53378,6 +53421,79 @@ function getQualificationLinkedServiceIds(qualification = {}) {
     }
   }
   return [];
+}
+
+function getServiceCatalogDirectQualificationKeys(service = {}) {
+  const source = service && typeof service === "object" ? service : {};
+  for (const key of [
+    "linkedQualificationKeys",
+    "linkedQualificationExamKeys",
+    "qualificationKeys",
+    "peopleQualificationKeys",
+    "linkedPeopleQualificationKeys",
+  ]) {
+    const keys = normalizeQualificationExamKeyList(source[key]);
+    if (keys.length > 0) {
+      return keys;
+    }
+  }
+  return [];
+}
+
+function getLegacyQualificationKeysForService(serviceId = "") {
+  const normalizedServiceId = String(serviceId || "").trim();
+  if (!normalizedServiceId) {
+    return [];
+  }
+
+  const keys = new Set();
+  (state.users ?? []).forEach((user) => {
+    const rootQualification = user?.electricalQualification ?? {};
+    const entries = [
+      [rootQualification.discipline || "elektro", rootQualification],
+      ...Object.entries(rootQualification.additionalAreas || {}),
+    ];
+    entries.forEach(([key, qualification]) => {
+      if (!qualification || typeof qualification !== "object") {
+        return;
+      }
+      if (getQualificationLinkedServiceIds(qualification).includes(normalizedServiceId)) {
+        keys.add(normalizeQualificationAreaKey(key || qualification.discipline || qualification.examKey || ""));
+      }
+    });
+  });
+
+  return [...keys].filter(Boolean);
+}
+
+function getServiceCatalogQualificationKeys(service = {}, { includeLegacy = true } = {}) {
+  const directKeys = getServiceCatalogDirectQualificationKeys(service);
+  const legacyKeys = includeLegacy
+    ? getLegacyQualificationKeysForService(service?.id)
+    : [];
+  return Array.from(new Set([...directKeys, ...legacyKeys].map((key) => normalizeQualificationAreaKey(key)).filter(Boolean)));
+}
+
+function getServiceCatalogIdsForQualificationArea(signatureArea = "", { organizationId = "" } = {}) {
+  const normalizedArea = normalizeQualificationAreaKey(signatureArea);
+  const normalizedOrganizationId = String(organizationId || state.activeOrganizationId || "").trim();
+  return sortServiceCatalogItems((state.serviceCatalog ?? []).filter((service) => {
+    if (String(service?.status || "active").trim().toLowerCase() === "inactive") {
+      return false;
+    }
+    const serviceOrganizationId = String(service?.organizationId || "").trim();
+    if (normalizedOrganizationId && serviceOrganizationId && serviceOrganizationId !== normalizedOrganizationId) {
+      return false;
+    }
+    return getServiceCatalogQualificationKeys(service).includes(normalizedArea);
+  })).map((service) => String(service.id || "").trim()).filter(Boolean);
+}
+
+function getQualificationServiceIdsForArea(signatureArea = "", qualification = {}, options = {}) {
+  return Array.from(new Set([
+    ...getQualificationLinkedServiceIds(qualification),
+    ...getServiceCatalogIdsForQualificationArea(signatureArea, options),
+  ]));
 }
 
 function hasQualificationSpecialRole(qualification = {}, capability = "") {
@@ -53410,7 +53526,6 @@ function hasQualificationContent(qualification = {}) {
     || qualification.passedOn
     || qualification.validUntil
     || qualification.validForever
-    || getQualificationLinkedServiceIds(qualification).length > 0
   );
 }
 
@@ -53508,6 +53623,25 @@ function getQualificationExamDefinitions({ includeCustom = true } = {}) {
 
     userQualificationEditorDraftDefinitions.forEach((definition) => {
       addQualificationExamDefinition(definitions, definition);
+    });
+
+    (state.serviceCatalog ?? []).forEach((service) => {
+      const serviceId = String(service?.id || "").trim();
+      getServiceCatalogDirectQualificationKeys(service).forEach((key) => {
+        const previous = definitions.get(key);
+        const fallbackTitle = previous?.title || key
+          .split(/[_-]+/g)
+          .filter(Boolean)
+          .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+          .join(" ") || key;
+        addQualificationExamDefinition(definitions, {
+          ...(previous || {}),
+          key,
+          title: fallbackTitle,
+          label: previous?.label || fallbackTitle,
+          serviceIds: serviceId ? [serviceId] : [],
+        });
+      });
     });
   }
 
@@ -53640,6 +53774,7 @@ function getDocumentTemplateSignatureAreas(template = {}) {
 function getWorkOrderRelevantSignatureAreas(workOrder = {}) {
   const areas = new Set();
   getWorkOrderServiceItems(workOrder).forEach((service) => {
+    getWorkOrderServiceQualificationKeys(service).forEach((area) => areas.add(area));
     getWorkOrderServiceTemplateIds(service).forEach((templateId) => {
       const template = getDocumentTemplateById(templateId);
       getDocumentTemplateSignatureAreas(template).forEach((area) => areas.add(area));
@@ -59825,7 +59960,9 @@ function getUserElectricalQualification(user = {}, signatureArea = "elektro") {
     || rootQualification.storageUrl
     || "",
   ).trim();
-  const serviceIds = getQualificationLinkedServiceIds(qualification);
+  const serviceIds = getQualificationServiceIdsForArea(normalizedArea, qualification, {
+    organizationId: user?.organizationId || state.activeOrganizationId || "",
+  });
   return {
     discipline: String(qualification.discipline || normalizedArea || "elektro").trim().toLowerCase() || "elektro",
     examTitle: String(qualification.examTitle || qualification.title || "").trim(),
@@ -59914,11 +60051,12 @@ function getUserQualificationServiceInputs(area = "") {
 function readUserQualificationAreaPayload(definition = {}) {
   const area = normalizeQualificationAreaKey(definition.key || "elektro");
   const validForever = Boolean(getUserQualificationInput(area, "validForever")?.checked);
-  const serviceIds = normalizeUserQualificationServiceIds(
-    getUserQualificationServiceInputs(area)
-      .filter((input) => Boolean(input.checked))
-      .map((input) => input.dataset.userQualificationServiceId || input.value || ""),
-  );
+  const currentRecord = getCurrentUserEditorRecord() || {};
+  const currentRootQualification = currentRecord?.electricalQualification ?? {};
+  const currentQualification = area === "elektro"
+    ? currentRootQualification
+    : currentRootQualification?.additionalAreas?.[area] ?? {};
+  const existingServiceIds = getQualificationLinkedServiceIds(currentQualification);
   const specialRoles = Object.fromEntries(
     getUserQualificationSpecialRoleInputs(area).map((input) => [
       String(input.dataset.userQualificationSpecialRole || "").trim(),
@@ -59951,8 +60089,8 @@ function readUserQualificationAreaPayload(definition = {}) {
     validUntil: validForever ? "" : normalizePeopleTrainingDate(getUserQualificationInput(area, "validUntil")?.value || ""),
     validForever,
     specialRoles,
-    serviceIds,
-    linkedServiceCatalogIds: serviceIds,
+    serviceIds: existingServiceIds,
+    linkedServiceCatalogIds: existingServiceIds,
   };
 }
 
@@ -60112,26 +60250,9 @@ function renderUserQualificationAreas(user = getCurrentUserEditorRecord() || {})
     });
     specialRoleField.append(specialRoleLabel, specialRoleOptionWrap);
 
-    const serviceIds = qualification.serviceIds.length > 0
-      ? qualification.serviceIds
-      : getQualificationLinkedServiceIds(definition);
-    const serviceField = document.createElement("div");
-    serviceField.className = "field field-span-full user-qualification-service-field";
-    const serviceLabel = document.createElement("span");
-    serviceLabel.textContent = "Usluge u kojima se pojavljuje";
-    const serviceOptionWrap = document.createElement("div");
-    serviceOptionWrap.className = "user-qualification-service-options";
-    renderUserQualificationServiceChecklist(serviceOptionWrap, {
-      selectedIds: serviceIds,
-      inputName: `user-qualification-service-${area}`,
-      organizationId: user?.organizationId || state.activeOrganizationId || "",
-    });
-    serviceField.append(serviceLabel, serviceOptionWrap);
-
     grid.append(
       genericRoles,
       ...(specialRoleOptions.length > 0 ? [specialRoleField] : []),
-      serviceField,
       createUserQualificationField("Vrsta ispita", typeInput, "type"),
       createUserQualificationField("Podatak 1", data1Input, "data1"),
       createUserQualificationField("Podatak 2", data2Input, "data2"),
@@ -63817,6 +63938,7 @@ function buildServiceCatalogPayload() {
     isTraining: appliesToPeople,
     validityMonths: normalizeValidityMonthsValue(serviceCatalogValidityMonthsInput?.value || ""),
     linkedTemplateIds: serviceType === "inspection" ? getServiceCatalogTemplateSelectionIds() : [],
+    linkedQualificationKeys: getServiceCatalogQualificationSelectionKeys(),
     linkedLearningTestIds: appliesToPeople ? getServiceCatalogLearningTestSelectionIds() : [],
     trainingCertificateTemplate: appliesToPeople && serviceCatalogCertificateTemplateDraft
       ? serializeModuleAttachmentDraft(serviceCatalogCertificateTemplateDraft)
@@ -63835,6 +63957,28 @@ function getServiceCatalogLearningTestSelectionIds() {
   return Array.from(serviceCatalogLearningTestList?.querySelectorAll('input[name="service-catalog-learning-test-id"]:checked') ?? [])
     .map((input) => String(input.value || "").trim())
     .filter(Boolean);
+}
+
+function getServiceCatalogQualificationSelectionKeys() {
+  return normalizeQualificationExamKeyList(
+    Array.from(serviceCatalogQualificationList?.querySelectorAll('input[name="service-catalog-qualification-key"]:checked') ?? [])
+      .map((input) => input.value || ""),
+  );
+}
+
+function getQualificationExamDefinitionByKeyMap() {
+  return new Map(getQualificationExamDefinitions().map((definition) => [
+    normalizeQualificationAreaKey(definition.key),
+    definition,
+  ]));
+}
+
+function getServiceCatalogQualificationLabels(service = {}) {
+  const definitionsByKey = getQualificationExamDefinitionByKeyMap();
+  return getServiceCatalogQualificationKeys(service).map((key) => {
+    const definition = definitionsByKey.get(normalizeQualificationAreaKey(key));
+    return String(definition?.label || definition?.title || key).trim();
+  }).filter(Boolean);
 }
 
 function renderServiceCatalogTemplateChecklist(selectedIds = []) {
@@ -63876,6 +64020,62 @@ function renderServiceCatalogTemplateChecklist(selectedIds = []) {
       getDocumentTemplateTypeLabel(template.documentType),
       getDocumentTemplateStatusLabel(template.status),
       template.referenceDocument?.fileName ? `${getDocumentTemplateReferenceLabel(template.referenceDocument)} ref` : "",
+    ].filter(Boolean).join(" | ");
+
+    copy.append(title, meta);
+    label.append(checkbox, copy);
+    return label;
+  }));
+}
+
+function renderServiceCatalogQualificationChecklist(selectedKeys = []) {
+  if (!serviceCatalogQualificationList) {
+    return;
+  }
+
+  const canManageMasterData = getCanManageServiceCatalog();
+  const selectedSet = new Set(normalizeQualificationExamKeyList(selectedKeys));
+  const definitions = getQualificationExamDefinitions()
+    .sort((left, right) => String(left.title || left.label || left.key || "").localeCompare(
+      String(right.title || right.label || right.key || ""),
+      "hr",
+      { numeric: true, sensitivity: "base" },
+    ));
+
+  if (definitions.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "helper-copy module-copy";
+    empty.textContent = "Prvo dodaj ispit u People pa će se ovdje moći vezati uz uslugu.";
+    serviceCatalogQualificationList.replaceChildren(empty);
+    return;
+  }
+
+  serviceCatalogQualificationList.replaceChildren(...definitions.map((definition) => {
+    const key = normalizeQualificationAreaKey(definition.key);
+    const label = document.createElement("label");
+    label.className = "service-catalog-template-option";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.name = "service-catalog-qualification-key";
+    checkbox.value = key;
+    checkbox.checked = selectedSet.has(key);
+    checkbox.disabled = !canManageMasterData;
+
+    const copy = document.createElement("div");
+    copy.className = "service-catalog-template-option-copy";
+
+    const title = document.createElement("strong");
+    title.textContent = definition.title || definition.label || key;
+
+    const specialRoleCount = Array.isArray(definition.specialRoleOptions)
+      ? definition.specialRoleOptions.length
+      : 0;
+    const meta = document.createElement("span");
+    meta.textContent = [
+      definition.builtIn ? "Default ispit" : "People ispit",
+      specialRoleCount > 0 ? `${specialRoleCount} dodatne razine` : "",
+      getQualificationLinkedServiceIds(definition).length > 0 ? "Već povezan s uslugom" : "",
     ].filter(Boolean).join(" | ");
 
     copy.append(title, meta);
@@ -64135,6 +64335,9 @@ function syncServiceCatalogTrainingSections({ source = "" } = {}) {
   if (serviceCatalogTemplateSection) {
     serviceCatalogTemplateSection.hidden = isPeopleService || serviceType !== "inspection";
   }
+  if (serviceCatalogQualificationSection) {
+    serviceCatalogQualificationSection.hidden = false;
+  }
   if (serviceCatalogLearningTestSection) {
     serviceCatalogLearningTestSection.hidden = !isPeopleService;
   }
@@ -64179,6 +64382,7 @@ function resetServiceCatalogForm() {
   }
   serviceCatalogCertificateTemplateDraft = null;
   renderServiceCatalogTemplateChecklist([]);
+  renderServiceCatalogQualificationChecklist([]);
   renderServiceCatalogLearningTestChecklist([]);
   syncServiceCatalogTrainingSections();
 }
@@ -64231,6 +64435,7 @@ function hydrateServiceCatalogForm(item) {
     ? serializeModuleAttachmentDraft(item.trainingCertificateTemplate)
     : null;
   renderServiceCatalogTemplateChecklist(item.linkedTemplateIds ?? []);
+  renderServiceCatalogQualificationChecklist(getServiceCatalogQualificationKeys(item));
   renderServiceCatalogLearningTestChecklist(item.linkedLearningTestIds ?? []);
   syncServiceCatalogTrainingSections();
   openServiceCatalogEditor();
@@ -64312,6 +64517,7 @@ function renderServiceCatalogModule() {
     const learningTestTitles = (item.linkedLearningTestTitles ?? [])
       .map((value) => String(value ?? "").trim())
       .filter(Boolean);
+    const qualificationLabels = getServiceCatalogQualificationLabels(item);
 
     const title = document.createElement("h4");
     title.textContent = item.name || "Bez naziva";
@@ -64327,6 +64533,7 @@ function renderServiceCatalogModule() {
         : normalizeServiceCatalogTypeUi(item.serviceType, item.isTraining ? "znr" : "inspection") === "znr"
           ? (learningTestTitles.length > 0 ? `${learningTestTitles.length} ispita` : "Bez ispita")
           : "",
+      qualificationLabels.length > 0 ? `${qualificationLabels.length} People ispita` : "Bez People ispita",
     ].join(" | ");
 
     copy.append(title, meta);
@@ -64362,6 +64569,14 @@ function renderServiceCatalogModule() {
         }
       } else {
         templates.append(createBadge("Bez povezanih ispita", "service-catalog-template-badge is-muted"));
+      }
+    }
+    if (qualificationLabels.length > 0) {
+      qualificationLabels.slice(0, 3).forEach((labelText) => {
+        templates.append(createBadge(labelText, "service-catalog-template-badge"));
+      });
+      if (qualificationLabels.length > 3) {
+        templates.append(createBadge(`+${qualificationLabels.length - 3} People ispita`, "service-catalog-template-badge is-muted"));
       }
     }
     if (templates.childNodes.length === 0) {
@@ -97859,6 +98074,17 @@ function getWorkOrderServiceTemplateIds(service = {}) {
   return [...resolvedIds];
 }
 
+function getWorkOrderServiceQualificationKeys(service = {}) {
+  const keys = new Set(normalizeQualificationExamKeyList(
+    service?.linkedQualificationKeys
+    ?? service?.linkedQualificationExamKeys
+    ?? [],
+  ));
+  const linkedServiceCatalogItem = getServiceCatalogItemForWorkOrderService(service);
+  getServiceCatalogQualificationKeys(linkedServiceCatalogItem).forEach((key) => keys.add(key));
+  return [...keys].filter(Boolean);
+}
+
 function getWorkOrderServiceLearningTestIds(service = {}) {
   const resolvedIds = new Set(
     (Array.isArray(service?.linkedLearningTestIds) ? service.linkedLearningTestIds : [])
@@ -102290,28 +102516,7 @@ function createPeopleUserActivityCell(user, { canEditUser = false } = {}) {
   stack.append(createStatusPill(user.isActive ? "Aktivno" : "Neaktivno", user.isActive));
 
   const isCurrentUser = String(user?.id || "") === String(state.user?.id || "");
-  if (canEditUser && !isCurrentUser) {
-    const nextIsActive = user.isActive === false;
-    const button = createActionButton(
-      nextIsActive ? "Vrati u aktivne" : "Premjesti u neaktivne",
-      nextIsActive ? "people-user-sheet-action is-restore" : "people-user-sheet-action is-archive",
-      (event) => {
-        event.stopPropagation();
-        const message = nextIsActive
-          ? `Vratiti korisnika ${user.fullName || user.email || "korisnik"} u aktivne?`
-          : `Premjestiti korisnika ${user.fullName || user.email || "korisnik"} u neaktivne?`;
-        if (!window.confirm(message)) {
-          return;
-        }
-
-        void runMutation(() => apiRequest(`/users/${encodeURIComponent(String(user.id))}`, {
-          method: "PATCH",
-          body: { isActive: nextIsActive },
-        }));
-      },
-    );
-    stack.append(button);
-  } else if (isCurrentUser) {
+  if (isCurrentUser) {
     stack.append(createListLine("Tvoj račun", "list-tertiary"));
   }
 
