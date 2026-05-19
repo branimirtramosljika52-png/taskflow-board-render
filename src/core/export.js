@@ -186,6 +186,18 @@ export function buildBuilderHtmlFromDocument(document = [], options = {}) {
   .sn-report-positioned { overflow: visible; }
   .sn-report-block { width: 100%; height: 100%; overflow: hidden; }
   .sn-report-block h1, .sn-report-block h2, .sn-report-block p { margin: 0; }
+  .sn-report-rich-text { width: 100%; height: 100%; overflow: hidden; line-height: inherit; }
+  .sn-report-rich-text p { margin: 0 0 .45em; }
+  .sn-report-rich-text h1, .sn-report-rich-text h2, .sn-report-rich-text h3, .sn-report-rich-text h4 { margin: 0 0 .35em; line-height: 1.18; }
+  .sn-report-rich-text h1 { font-size: 1.55em; }
+  .sn-report-rich-text h2 { font-size: 1.32em; }
+  .sn-report-rich-text h3 { font-size: 1.15em; }
+  .sn-report-rich-text ul, .sn-report-rich-text ol { margin: .25em 0 .55em 1.35em; padding: 0; }
+  .sn-report-rich-text li { margin: .12em 0; }
+  .sn-report-rich-text table { width: 100%; border-collapse: collapse; table-layout: fixed; margin: .3em 0 .65em; }
+  .sn-report-rich-text th, .sn-report-rich-text td { border: 1px solid #cbd5e1; padding: 5px 7px; vertical-align: top; }
+  .sn-report-rich-text th { background: #f1f5f9; font-weight: 700; }
+  .sn-report-rich-text blockquote { margin: .35em 0; border-left: 3px solid #cbd5e1; padding-left: .7em; color: #475569; }
   .sn-report-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
   .sn-report-table th, .sn-report-table td { border: 1px solid #cbd5e1; padding: 6px 8px; vertical-align: top; }
   .sn-report-table th { background: #f1f5f9; font-weight: 700; }

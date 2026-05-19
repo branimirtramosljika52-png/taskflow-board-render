@@ -143,6 +143,11 @@ import {
   parseBuilderDocumentFromHtml,
 } from "./core/builder.js";
 import {
+  isRichTextHtml,
+  richTextHtmlToPlainText,
+  sanitizeRichTextHtml,
+} from "./utils/richText.js";
+import {
   getPdfSignerExtensionId,
   getPdfSignerExtensionInstallUrl,
   getSignatureFieldsWithPdfSignerExtension,
@@ -55687,6 +55692,9 @@ function getDocumentTemplateTextListLines(field = {}, value = "") {
 }
 
 function formatDocumentTemplateTextListValue(field = {}, value = "") {
+  if (isRichTextHtml(value)) {
+    return richTextHtmlToPlainText(value);
+  }
   const style = normalizeDocumentTemplateTextListStyleLocal(field.textListStyle ?? field.listStyle);
   const lines = getDocumentTemplateTextListLines(field, value);
   if (style === "none" || lines.length === 0) {
@@ -55725,6 +55733,9 @@ function getDocumentTemplateFieldExportTextValue(field = {}, context = {}, index
 }
 
 function renderDocumentTemplateTextValueHtml(field = {}, value = "") {
+  if (isRichTextHtml(value)) {
+    return `<div class="document-template-rich-text">${sanitizeRichTextHtml(value)}</div>`;
+  }
   const style = normalizeDocumentTemplateTextListStyleLocal(field.textListStyle ?? field.listStyle);
   const lines = getDocumentTemplateTextListLines(field, value);
   if (style !== "none" && lines.length > 0) {
@@ -57373,6 +57384,15 @@ function buildDocumentTemplateFieldWordPlaceholderValue(field = {}, context = {}
     return {
       __docxBlockType: "signature_group",
       items: buildDocumentTemplateDigitalSignatureEntries(field, context),
+    };
+  }
+
+  const exportText = getDocumentTemplateFieldExportTextValue(field, context, index);
+  if (isRichTextHtml(exportText)) {
+    return {
+      __docxBlockType: "rich_text",
+      html: sanitizeRichTextHtml(exportText),
+      text: richTextHtmlToPlainText(exportText),
     };
   }
 

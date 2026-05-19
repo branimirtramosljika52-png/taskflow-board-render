@@ -30,6 +30,10 @@ import {
   getDashboardStats,
   getWorkOrderExecutors,
 } from "./safetyModel.js";
+import {
+  richTextHtmlToPlainText,
+  sanitizeRichTextHtml,
+} from "./utils/richText.js";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 const DEJAVU_FONT_DIR = resolve(moduleDir, "..", "node_modules", "dejavu-fonts-ttf", "ttf");
@@ -1433,6 +1437,17 @@ function normalizeDocxSpecialPlaceholderValue(value) {
     };
   }
 
+  if (blockType === "rich_text") {
+    const html = sanitizeRichTextHtml(value.html || value.richHtml || value.value || "");
+    return html
+      ? {
+        type: "rich_text",
+        html,
+        text: richTextHtmlToPlainText(html),
+      }
+      : { type: "optional_empty" };
+  }
+
   if (blockType !== "table") {
     return null;
   }
@@ -2064,6 +2079,20 @@ function buildWordSystemDescriptionXml(value = {}) {
   return `${blocksXml}${buildWordParagraphXml("", { spacingAfter: 0 })}`;
 }
 
+function buildWordRichTextXml(value = {}) {
+  const text = richTextHtmlToPlainText(value.html || value.richHtml || value.text || "");
+  const lines = String(text || "").replace(/\r\n/g, "\n").split("\n");
+  const paragraphs = lines.length > 0 ? lines : [""];
+  return paragraphs.map((line) => {
+    const trimmed = clean(line);
+    const isListItem = /^[-•]\s+/.test(trimmed) || /^\d+[.)]\s+/.test(trimmed);
+    const safeLine = isListItem ? trimmed.replace(/^[-•]\s+/, "• ").replace(/^\d+[.)]\s+/, "• ") : trimmed;
+    return buildWordParagraphXml(safeLine, {
+      spacingAfter: isListItem ? 30 : 60,
+    });
+  }).join("");
+}
+
 const DOCX_IMAGE_REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image";
 const DOCX_SIGNATURE_IMAGE_WIDTH_EMU = 1905000;
 const DOCX_SIGNATURE_IMAGE_HEIGHT_EMU = 571500;
@@ -2434,6 +2463,10 @@ function buildDocxSpecialPlaceholderXml(value, zip = null, context = {}, xmlFile
 
   if (value.type === "table") {
     return buildWordTableXml(value);
+  }
+
+  if (value.type === "rich_text") {
+    return buildWordRichTextXml(value);
   }
 
   if (value.type === "optional_empty") {
@@ -2992,6 +3025,12 @@ function buildHtmlTemplateDefaultStyles() {
       .safe-nexus-template-system-block p{margin:6px 0}
       .safe-nexus-template-system-row{margin:8px 0;text-align:center}
       .safe-nexus-template-system-row strong{font-weight:700}
+      .safe-nexus-template-rich-text p{margin:0 0 .55em}
+      .safe-nexus-template-rich-text h1,.safe-nexus-template-rich-text h2,.safe-nexus-template-rich-text h3,.safe-nexus-template-rich-text h4{margin:.15em 0 .4em;line-height:1.18}
+      .safe-nexus-template-rich-text ul,.safe-nexus-template-rich-text ol{margin:.25em 0 .65em 1.35em;padding:0}
+      .safe-nexus-template-rich-text table{width:100%;border-collapse:collapse;table-layout:fixed;margin:.35em 0 .75em}
+      .safe-nexus-template-rich-text th,.safe-nexus-template-rich-text td{border:1px solid #cad8d1;padding:6px 8px;vertical-align:top}
+      .safe-nexus-template-rich-text th{background:#eef5f2;font-weight:700}
       @media print{.safe-nexus-template-signatures{break-inside:avoid}.safe-nexus-template-system-block,.safe-nexus-template-table{break-inside:auto}}
     </style>
   `.trim();
@@ -3186,6 +3225,11 @@ function buildHtmlTemplateSystemDescriptionPlaceholder(value = {}) {
   }).join("");
 }
 
+function buildHtmlTemplateRichTextPlaceholder(value = {}) {
+  const html = sanitizeRichTextHtml(value.html || value.richHtml || value.value || "");
+  return html ? `<div class="safe-nexus-template-rich-text">${html}</div>` : "";
+}
+
 function buildHtmlTemplateSpecialPlaceholder(value) {
   const specialValue = normalizeDocxSpecialPlaceholderValue(value);
   if (!specialValue) {
@@ -3203,6 +3247,9 @@ function buildHtmlTemplateSpecialPlaceholder(value) {
   }
   if (specialValue.type === "system_description") {
     return buildHtmlTemplateSystemDescriptionPlaceholder(specialValue);
+  }
+  if (specialValue.type === "rich_text") {
+    return buildHtmlTemplateRichTextPlaceholder(specialValue);
   }
 
   return "";

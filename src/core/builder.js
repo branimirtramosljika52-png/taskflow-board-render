@@ -121,7 +121,11 @@ export function createBuilderDocumentFromLegacyBlocks(blocks = []) {
         ? { content: legacyTextFromBlock(block) }
         : type === "signature"
           ? { label: block.leftText || "Izradio", name: block.rightText || "Odobrio" }
-          : { content: legacyTextFromBlock(block), label: block.label || block.title || "" },
+          : {
+            content: legacyTextFromBlock(block),
+            label: block.label || block.title || "",
+            richHtml: block.richHtml || "",
+          },
       layout: {
         x: 64,
         y: cursorY,
@@ -157,7 +161,7 @@ export function createLegacyBlocksFromBuilderDocument(document = []) {
       } else if (block.type === "grid") {
         legacy.push({ id: block.id, type: "table", title: "Grid", token: "{{GRID}}", align: block.styles?.textAlign || "left" });
       } else {
-        legacy.push({ id: block.id, type: "paragraph", text: block.props?.content || block.props?.value || block.props?.label || block.type, align: block.styles?.textAlign || "left" });
+        legacy.push({ id: block.id, type: "paragraph", text: block.props?.content || block.props?.value || block.props?.label || block.type, richHtml: block.props?.richHtml || "", align: block.styles?.textAlign || "left" });
       }
     });
   });

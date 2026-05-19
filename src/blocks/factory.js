@@ -1,6 +1,12 @@
 import { el } from "../utils/dom.js";
 import { createId } from "../utils/ids.js";
 import { A4_HEIGHT_PX, A4_WIDTH_PX } from "../utils/math.js";
+import {
+  getRichTextHtmlFromClipboard,
+  normalizeRichTextHtml,
+  richTextHtmlToPlainText,
+  sanitizeRichTextHtml,
+} from "../utils/richText.js";
 
 const GRID_PAGE_MARGIN_PX = 48;
 const GRID_CONTENT_TOP_PX = 198;
@@ -172,23 +178,305 @@ function inlineStyles(styles = {}) {
     .join(";");
 }
 
+const RICH_TEXT_COMMANDS = [
+  {
+    id: "heading",
+    label: "Naslov",
+    hint: "Veliki naslov",
+    html: "<h2>Naslov</h2>",
+  },
+  {
+    id: "subheading",
+    label: "Podnaslov",
+    hint: "Manji naslov",
+    html: "<h3>Podnaslov</h3>",
+  },
+  {
+    id: "paragraph",
+    label: "Tekst",
+    hint: "Novi odlomak",
+    html: "<p>Tekst</p>",
+  },
+  {
+    id: "bullet",
+    label: "Bullet lista",
+    hint: "Lista s točkama",
+    html: "<ul><li>Stavka</li></ul>",
+  },
+  {
+    id: "numbered",
+    label: "Numerirana lista",
+    hint: "Lista 1, 2, 3",
+    html: "<ol><li>Stavka</li></ol>",
+  },
+  {
+    id: "table",
+    label: "Tablica",
+    hint: "2 x 2 tablica",
+    html: "<table><tbody><tr><th>Naslov</th><th>Vrijednost</th></tr><tr><td>Stavka</td><td>Opis</td></tr></tbody></table>",
+  },
+  {
+    id: "placeholder",
+    label: "Placeholder",
+    hint: "Token u tekstu",
+    html: "<p>{{PLACEHOLDER}}</p>",
+  },
+];
+
+let activeRichTextCommandMenu = null;
+let activeRichTextCommandTarget = null;
+let activeRichTextCommandRange = null;
+let activeRichTextCommandIndex = 0;
+let suppressRichTextEscapeKeyup = false;
+
+function stopRichTextKeyEvent(event) {
+  event.preventDefault();
+  event.stopPropagation();
+  event.stopImmediatePropagation?.();
+}
+
+function selectionInsideTarget(target) {
+  const selection = window.getSelection?.();
+  if (!selection || selection.rangeCount === 0) return false;
+  const range = selection.getRangeAt(0);
+  return target.contains(range.commonAncestorContainer);
+}
+
+function rememberRichTextSelection(target) {
+  const selection = window.getSelection?.();
+  if (!selection || selection.rangeCount === 0 || !selectionInsideTarget(target)) {
+    activeRichTextCommandRange = null;
+    return;
+  }
+  activeRichTextCommandRange = selection.getRangeAt(0).cloneRange();
+}
+
+function restoreRichTextSelection(target) {
+  target.focus({ preventScroll: true });
+  const selection = window.getSelection?.();
+  if (!selection) return;
+  selection.removeAllRanges();
+  if (activeRichTextCommandRange) {
+    selection.addRange(activeRichTextCommandRange);
+    return;
+  }
+  const range = document.createRange();
+  range.selectNodeContents(target);
+  range.collapse(false);
+  selection.addRange(range);
+}
+
+function getRichTextMenuRect(target) {
+  const selection = window.getSelection?.();
+  if (selection && selection.rangeCount > 0 && selectionInsideTarget(target)) {
+    const range = selection.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    if (rect.width || rect.height) {
+      return rect;
+    }
+  }
+  return target.getBoundingClientRect();
+}
+
+function insertRichTextHtmlAtSelection(target, html = "") {
+  const safeHtml = sanitizeRichTextHtml(html);
+  if (!safeHtml) return;
+  restoreRichTextSelection(target);
+  if (document.queryCommandSupported?.("insertHTML")) {
+    document.execCommand("insertHTML", false, safeHtml);
+    rememberRichTextSelection(target);
+    return;
+  }
+
+  const selection = window.getSelection?.();
+  if (!selection || selection.rangeCount === 0) return;
+  const range = selection.getRangeAt(0);
+  range.deleteContents();
+  const template = document.createElement("template");
+  template.innerHTML = safeHtml;
+  const fragment = template.content.cloneNode(true);
+  const lastChild = fragment.lastChild;
+  range.insertNode(fragment);
+  if (lastChild) {
+    range.setStartAfter(lastChild);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+  rememberRichTextSelection(target);
+}
+
+function hideRichTextCommandMenu({ keepEscapeKeyupTrap = false } = {}) {
+  activeRichTextCommandMenu?.remove();
+  document.removeEventListener("keydown", trapRichTextCommandMenuKeydown, true);
+  if (!keepEscapeKeyupTrap) {
+    document.removeEventListener("keyup", trapRichTextCommandMenuKeyup, true);
+    suppressRichTextEscapeKeyup = false;
+  }
+  activeRichTextCommandMenu = null;
+  activeRichTextCommandTarget = null;
+  activeRichTextCommandRange = null;
+  activeRichTextCommandIndex = 0;
+}
+
+function updateRichTextCommandMenuSelection() {
+  activeRichTextCommandMenu?.querySelectorAll("[data-rich-text-command]").forEach((button, index) => {
+    button.classList.toggle("is-active", index === activeRichTextCommandIndex);
+  });
+}
+
+function applyRichTextCommand(command, target = activeRichTextCommandTarget) {
+  if (!command || !(target instanceof HTMLElement)) return;
+  insertRichTextHtmlAtSelection(target, command.html);
+  hideRichTextCommandMenu();
+  target.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertHTML", data: "" }));
+}
+
+function showRichTextCommandMenu(target) {
+  if (!(target instanceof HTMLElement)) return;
+  rememberRichTextSelection(target);
+  hideRichTextCommandMenu();
+  activeRichTextCommandTarget = target;
+  activeRichTextCommandIndex = 0;
+
+  const menu = document.createElement("div");
+  menu.className = "sn-builder-rich-command-menu";
+  menu.setAttribute("role", "menu");
+  menu.setAttribute("aria-label", "Brzo dodavanje formatiranja");
+  RICH_TEXT_COMMANDS.forEach((command, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.richTextCommand = command.id;
+    button.setAttribute("role", "menuitem");
+    button.innerHTML = `<strong>${command.label}</strong><span>${command.hint}</span>`;
+    button.addEventListener("mouseenter", () => {
+      activeRichTextCommandIndex = index;
+      updateRichTextCommandMenuSelection();
+    });
+    button.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      applyRichTextCommand(command, target);
+    });
+    menu.append(button);
+  });
+
+  document.body.append(menu);
+  const rect = getRichTextMenuRect(target);
+  const menuRect = menu.getBoundingClientRect();
+  const left = Math.min(window.innerWidth - menuRect.width - 12, Math.max(12, rect.left));
+  const top = Math.min(window.innerHeight - menuRect.height - 12, Math.max(12, rect.bottom + 8));
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+  activeRichTextCommandMenu = menu;
+  document.addEventListener("keydown", trapRichTextCommandMenuKeydown, true);
+  document.addEventListener("keyup", trapRichTextCommandMenuKeyup, true);
+  updateRichTextCommandMenuSelection();
+}
+
+function handleRichTextCommandMenuKeys(event) {
+  if (!activeRichTextCommandMenu || !activeRichTextCommandTarget) return false;
+  if (event.key === "Escape") {
+    stopRichTextKeyEvent(event);
+    suppressRichTextEscapeKeyup = true;
+    hideRichTextCommandMenu({ keepEscapeKeyupTrap: true });
+    return true;
+  }
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    stopRichTextKeyEvent(event);
+    const direction = event.key === "ArrowDown" ? 1 : -1;
+    activeRichTextCommandIndex = (activeRichTextCommandIndex + direction + RICH_TEXT_COMMANDS.length) % RICH_TEXT_COMMANDS.length;
+    updateRichTextCommandMenuSelection();
+    return true;
+  }
+  if (event.key === "Enter" || event.key === "Tab") {
+    stopRichTextKeyEvent(event);
+    applyRichTextCommand(RICH_TEXT_COMMANDS[activeRichTextCommandIndex], activeRichTextCommandTarget);
+    return true;
+  }
+  return false;
+}
+
+function trapRichTextCommandMenuKeydown(event) {
+  handleRichTextCommandMenuKeys(event);
+}
+
+function trapRichTextCommandMenuKeyup(event) {
+  if (suppressRichTextEscapeKeyup && event.key === "Escape") {
+    stopRichTextKeyEvent(event);
+    suppressRichTextEscapeKeyup = false;
+    document.removeEventListener("keyup", trapRichTextCommandMenuKeyup, true);
+    return;
+  }
+  if (!activeRichTextCommandMenu) {
+    document.removeEventListener("keyup", trapRichTextCommandMenuKeyup, true);
+  }
+}
+
+function isRichEditable(block = {}, propName = "") {
+  return block.type === "text" && propName === "content";
+}
+
+function setRichEditableContent(node, block, propName, fallback) {
+  const richHtml = sanitizeRichTextHtml(block.props?.richHtml || "");
+  node.innerHTML = richHtml || normalizeRichTextHtml(block.props?.[propName] || fallback);
+}
+
 function editableText(block, propName, fallback, context, tagName = "div") {
+  const rich = isRichEditable(block, propName);
   const node = el(tagName, {
     contenteditable: "true",
     spellcheck: "false",
-    className: "sn-builder-editable",
-  }, block.props?.[propName] || fallback);
+    className: `sn-builder-editable${rich ? " is-rich" : ""}`,
+  }, rich ? [] : (block.props?.[propName] || fallback));
+  if (rich) {
+    setRichEditableContent(node, block, propName, fallback);
+  }
   node.addEventListener("blur", () => {
+    if (rich) {
+      const richHtml = sanitizeRichTextHtml(node.innerHTML);
+      node.innerHTML = richHtml;
+      context.updateBlock(block.id, {
+        props: {
+          ...block.props,
+          [propName]: richTextHtmlToPlainText(richHtml),
+          richHtml,
+        },
+      }, { history: false });
+      context.commitHistory();
+      return;
+    }
     context.updateBlock(block.id, { props: { ...block.props, [propName]: node.innerText } }, { history: false });
     context.commitHistory();
   });
   node.addEventListener("keydown", (event) => {
+    if (rich && handleRichTextCommandMenuKeys(event)) {
+      return;
+    }
+    if (rich && (event.key === "\\" || event.key === "/")) {
+      stopRichTextKeyEvent(event);
+      showRichTextCommandMenu(node);
+      return;
+    }
     if (event.key === "Escape") {
-      event.preventDefault();
-      node.textContent = block.props?.[propName] || fallback;
+      stopRichTextKeyEvent(event);
+      if (rich) {
+        setRichEditableContent(node, block, propName, fallback);
+      } else {
+        node.textContent = block.props?.[propName] || fallback;
+      }
       node.blur();
     }
   });
+  if (rich) {
+    node.addEventListener("paste", (event) => {
+      const html = getRichTextHtmlFromClipboard(event.clipboardData);
+      if (!html) return;
+      event.preventDefault();
+      insertRichTextHtmlAtSelection(node, html);
+    });
+    node.addEventListener("keyup", () => rememberRichTextSelection(node));
+    node.addEventListener("mouseup", () => rememberRichTextSelection(node));
+  }
   return node;
 }
 
@@ -583,7 +871,7 @@ function renderGrid(block, context) {
 function renderByType(block, context) {
   const type = block.type;
   if (type === "heading") return editableText(block, "content", "NASLOV", context, "h1");
-  if (type === "text") return editableText(block, "content", "Tekst", context, "p");
+  if (type === "text") return editableText(block, "content", "Tekst", context, "div");
   if (type === "section") return el("div", { className: "sn-builder-section-shell" }, [
     editableText(block, "title", "Poglavlje", context, "h2"),
     editableText(block, "content", "", context, "p"),
@@ -673,7 +961,12 @@ function gridToHtml(block) {
 function contentToHtml(block) {
   const type = block.type;
   if (type === "heading") return `<h1>${escapeHtml(block.props?.content || "NASLOV")}</h1>`;
-  if (type === "text") return `<p>${escapeHtml(block.props?.content || "").replace(/\n/g, "<br>")}</p>`;
+  if (type === "text") {
+    const richHtml = sanitizeRichTextHtml(block.props?.richHtml || "");
+    return richHtml
+      ? `<div class="sn-report-rich-text">${richHtml}</div>`
+      : `<p>${escapeHtml(block.props?.content || "").replace(/\n/g, "<br>")}</p>`;
+  }
   if (type === "section") return `<section><h2>${escapeHtml(block.props?.title || "Poglavlje")}</h2><p>${escapeHtml(block.props?.content || "").replace(/\n/g, "<br>")}</p></section>`;
   if (type === "image" || type === "logo") return block.props?.src ? `<img src="${escapeHtml(block.props.src)}" alt="${escapeHtml(block.props.alt || "")}">` : "";
   if (type === "line" || type === "divider") return "<hr>";

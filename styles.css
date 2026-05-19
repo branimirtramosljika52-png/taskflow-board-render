@@ -37370,6 +37370,49 @@ body.is-measurement-equipment-export-open {
   line-height: 1.55;
 }
 
+.document-template-rich-text p {
+  margin: 0 0 .55em;
+}
+
+.document-template-rich-text h1,
+.document-template-rich-text h2,
+.document-template-rich-text h3,
+.document-template-rich-text h4 {
+  margin: .1em 0 .4em;
+  color: #172033;
+  line-height: 1.18;
+}
+
+.document-template-rich-text h1 { font-size: 1.55em; }
+.document-template-rich-text h2 { font-size: 1.32em; }
+.document-template-rich-text h3 { font-size: 1.15em; }
+
+.document-template-rich-text ul,
+.document-template-rich-text ol {
+  margin: .25em 0 .65em 1.35em;
+  padding: 0;
+}
+
+.document-template-rich-text table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  margin: .35em 0 .75em;
+  background: #fff;
+}
+
+.document-template-rich-text th,
+.document-template-rich-text td {
+  border: 1px solid rgba(47, 104, 84, 0.18);
+  padding: 7px 9px;
+  vertical-align: top;
+}
+
+.document-template-rich-text th {
+  background: rgba(241, 247, 244, 0.98);
+  font-weight: 700;
+}
+
 .document-template-preview-field-value.is-resizable-input {
   padding-bottom: 28px;
 }

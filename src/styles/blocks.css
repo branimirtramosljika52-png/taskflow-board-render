@@ -51,6 +51,111 @@
   box-shadow: inset 0 0 0 1px rgba(31, 122, 224, .35);
 }
 
+.sn-builder-editable.is-rich {
+  overflow: auto;
+  padding: 2px 3px;
+  white-space: normal;
+}
+
+.sn-builder-editable.is-rich:empty::before {
+  content: "Tekst";
+  color: #94a3b8;
+}
+
+.sn-builder-editable.is-rich p {
+  margin: 0 0 .45em;
+}
+
+.sn-builder-editable.is-rich h1,
+.sn-builder-editable.is-rich h2,
+.sn-builder-editable.is-rich h3,
+.sn-builder-editable.is-rich h4 {
+  margin: 0 0 .35em;
+  line-height: 1.18;
+}
+
+.sn-builder-editable.is-rich h1 { font-size: 1.55em; }
+.sn-builder-editable.is-rich h2 { font-size: 1.32em; }
+.sn-builder-editable.is-rich h3 { font-size: 1.15em; }
+
+.sn-builder-editable.is-rich ul,
+.sn-builder-editable.is-rich ol {
+  margin: .25em 0 .55em 1.35em;
+  padding: 0;
+}
+
+.sn-builder-editable.is-rich li {
+  margin: .12em 0;
+}
+
+.sn-builder-editable.is-rich table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  margin: .3em 0 .65em;
+  background: #fff;
+}
+
+.sn-builder-editable.is-rich th,
+.sn-builder-editable.is-rich td {
+  border: 1px solid #cbd5e1;
+  padding: 5px 7px;
+  vertical-align: top;
+}
+
+.sn-builder-editable.is-rich th {
+  background: #f1f5f9;
+  font-weight: 800;
+}
+
+.sn-builder-editable.is-rich blockquote {
+  margin: .35em 0;
+  border-left: 3px solid #cbd5e1;
+  padding-left: .7em;
+  color: #475569;
+}
+
+.sn-builder-rich-command-menu {
+  position: fixed;
+  z-index: 100000;
+  display: grid;
+  width: min(260px, calc(100vw - 24px));
+  gap: 3px;
+  border: 1px solid rgba(31, 122, 224, .24);
+  border-radius: 10px;
+  background: #fff;
+  padding: 7px;
+  box-shadow: 0 20px 46px rgba(15, 23, 42, .18);
+}
+
+.sn-builder-rich-command-menu button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  padding: 8px 9px;
+  text-align: left;
+  color: #172033;
+}
+
+.sn-builder-rich-command-menu button:hover,
+.sn-builder-rich-command-menu button.is-active {
+  background: #edf6ff;
+}
+
+.sn-builder-rich-command-menu strong {
+  font-size: 12px;
+  line-height: 1.1;
+}
+
+.sn-builder-rich-command-menu span {
+  color: #64748b;
+  font-size: 10px;
+  line-height: 1.2;
+}
+
 .sn-builder-section-shell,
 .sn-builder-container-shell {
   display: grid;
