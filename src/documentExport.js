@@ -1602,6 +1602,8 @@ function buildWordParagraphXml(text = "", {
   size = 20,
   spacingBefore = 0,
   spacingAfter = 60,
+  line = 0,
+  lineRule = "auto",
 } = {}) {
   const safeText = clean(text);
   const runProperties = [
@@ -1612,7 +1614,7 @@ function buildWordParagraphXml(text = "", {
   ].filter(Boolean).join("");
   const paragraphProperties = [
     `<w:jc w:val="${escapeWordXmlText(align)}"/>`,
-    `<w:spacing w:before="${Math.max(0, spacingBefore)}" w:after="${Math.max(0, spacingAfter)}"/>`,
+    `<w:spacing w:before="${Math.max(0, spacingBefore)}" w:after="${Math.max(0, spacingAfter)}"${line ? ` w:line="${Math.max(1, Number(line) || 0)}" w:lineRule="${escapeWordXmlText(lineRule)}"` : ""}/>`,
   ].join("");
 
   if (!safeText) {
@@ -1917,6 +1919,56 @@ function buildWordSignatureCellXml(item = null, zip = null, context = {}, xmlFil
   `.replace(/\n\s+/g, "");
 }
 
+function buildWordCompactSignatureItemXml(item = null, zip = null, context = {}, xmlFileName = "word/document.xml", options = {}) {
+  if (!item) {
+    return buildWordParagraphXml("", { spacingAfter: 0 });
+  }
+
+  const signatureImageRef = item.signatureMode === "scan"
+    ? addDocxSignatureImage(zip, xmlFileName, item, context)
+    : null;
+  const signatureImageXml = buildWordSignatureImageXml(signatureImageRef, item);
+  const itemSpacingAfter = Math.max(0, Number(options.spacingAfter) || 0);
+  const metaLines = (Array.isArray(item.metaLines) ? item.metaLines : [])
+    .map((line) => clean(line))
+    .filter(Boolean);
+
+  return [
+    buildWordParagraphXml(item.role, { align: "center", size: 16, spacingAfter: 0, line: 180, lineRule: "exact" }),
+    buildWordParagraphXml(item.name, { align: "center", bold: true, size: 18, spacingAfter: 0, line: 190, lineRule: "exact" }),
+    ...metaLines.map((line) => buildWordParagraphXml(line, { align: "center", size: 16, spacingAfter: 0, line: 180, lineRule: "exact" })),
+    signatureImageXml,
+    buildWordParagraphXml("______________________________", {
+      align: "center",
+      color: "7B61FF",
+      size: 14,
+      spacingBefore: signatureImageXml ? 8 : 0,
+      spacingAfter: itemSpacingAfter,
+      line: 150,
+      lineRule: "exact",
+    }),
+  ].join("");
+}
+
+function buildWordCompactSignatureGroupXml(items = [], zip = null, context = {}, xmlFileName = "word/document.xml") {
+  const safeItems = Array.isArray(items) ? items.filter(Boolean) : [];
+  if (safeItems.length === 0) {
+    return buildWordParagraphXml("Nema odabranih osoba.", {
+      align: "center",
+      italic: true,
+      color: "6B7280",
+      size: 18,
+      spacingAfter: 0,
+    });
+  }
+
+  return safeItems.map((item, index) => (
+    buildWordCompactSignatureItemXml(item, zip, context, xmlFileName, {
+      spacingAfter: index === safeItems.length - 1 ? 0 : 40,
+    })
+  )).join("");
+}
+
 function buildWordSignatureGroupXml(items = [], zip = null, context = {}, xmlFileName = "word/document.xml") {
   const safeItems = Array.isArray(items) ? items.filter(Boolean) : [];
   if (safeItems.length === 0) {
@@ -1974,6 +2026,12 @@ function buildWordSignatureGroupXml(items = [], zip = null, context = {}, xmlFil
     </w:tbl>
     ${buildWordParagraphXml("", { spacingAfter: 0 })}
   `.replace(/\n\s+/g, "");
+}
+
+function isDocxXmlOffsetInsideTableCell(xml = "", offset = 0) {
+  const safeOffset = Math.max(0, Number(offset) || 0);
+  const before = String(xml).slice(0, safeOffset);
+  return before.lastIndexOf("<w:tc") > before.lastIndexOf("</w:tc>");
 }
 
 function buildDocxSystemDescriptionFallbackText(value = {}) {
@@ -2518,7 +2576,12 @@ function applyDocxSpecialPlaceholders(zip, specialPlaceholders = new Map()) {
         "g",
       );
       if (paragraphPattern.test(xml)) {
-        xml = xml.replace(paragraphPattern, replacementXml);
+        xml = xml.replace(paragraphPattern, (match, offset) => {
+          if (value.type === "signature_group" && isDocxXmlOffsetInsideTableCell(xml, offset)) {
+            return buildWordCompactSignatureGroupXml(value.items, zip, renderContext, fileName);
+          }
+          return replacementXml;
+        });
         changed = true;
         return;
       }

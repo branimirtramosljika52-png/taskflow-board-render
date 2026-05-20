@@ -195,9 +195,50 @@ test("docx export keeps a single scan signature inside a narrow template cell", 
   assert.equal(outputXml.includes("{{POTPISI}}"), false);
   assert.match(outputXml, /Ana Savanovic/);
   assert.match(outputXml, /<w:drawing>/);
-  assert.equal(outputXml.includes('<w:gridCol w:w="4680"/><w:gridCol w:w="4680"/>'), false);
-  assert.equal((outputXml.match(/<w:gridCol w:w="4680"\/>/g) || []).length, 1);
+  assert.equal(outputXml.includes('<w:gridCol w:w="4680"/>'), false);
+  assert.equal((outputXml.match(/<w:tbl>/g) || []).length, 1);
   assert.ok(outputZip.file("word/media/safenexus-signature-1.png"));
+});
+
+test("docx export keeps digital signature placeholders compact inside template cells", async () => {
+  const templateBuffer = buildMinimalDocxBuffer(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:body>
+        <w:tbl>
+          <w:tblPr><w:tblW w:w="10773" w:type="dxa"/></w:tblPr>
+          <w:tblGrid><w:gridCol w:w="5670"/><w:gridCol w:w="5103"/></w:tblGrid>
+          <w:tr>
+            <w:tc><w:tcPr><w:tcW w:w="5670" w:type="dxa"/></w:tcPr><w:p><w:r><w:t>Zapisnik pregledao i ocjenio:</w:t></w:r></w:p></w:tc>
+            <w:tc><w:tcPr><w:tcW w:w="5103" w:type="dxa"/></w:tcPr><w:p><w:r><w:t>{{POTPISI}}</w:t></w:r></w:p></w:tc>
+          </w:tr>
+        </w:tbl>
+        <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>
+      </w:body>
+    </w:document>`);
+
+  const outputBuffer = await buildDocxFromTemplateBuffer(templateBuffer, {
+    POTPISI: {
+      __docxBlockType: "signature_group",
+      items: [
+        {
+          role: "Odgovorna osoba SPR",
+          name: "Ana Savanovic",
+          metaLines: ["OIB 35649316156"],
+          signatureMode: "digital",
+        },
+      ],
+    },
+  });
+  const outputXml = new PizZip(outputBuffer).file("word/document.xml").asText();
+
+  assert.equal(outputXml.includes("{{POTPISI}}"), false);
+  assert.match(outputXml, /Odgovorna osoba SPR/);
+  assert.match(outputXml, /Ana Savanovic/);
+  assert.match(outputXml, /OIB 35649316156/);
+  assert.equal((outputXml.match(/<w:tbl>/g) || []).length, 1);
+  assert.doesNotMatch(outputXml, /<w:spacing w:before="120"/);
+  assert.doesNotMatch(outputXml, /<w:spacing w:before="80"/);
+  assert.equal(outputXml.includes('<w:gridCol w:w="4680"/>'), false);
 });
 
 test("HTML template export renders escaped placeholders and special table blocks", () => {
