@@ -55125,7 +55125,6 @@ body.is-signature-review-open::before {
   margin: 0 0 10px;
 }
 
-.work-order-list-density-toggle .workspace-view-chip,
 .workspace-view-chip {
   min-height: 36px;
   padding: 0 14px;
@@ -55545,6 +55544,10 @@ body.is-signature-review-open::before {
   gap: 9px;
 }
 
+.work-item-priority-tags-cell {
+  gap: 7px;
+}
+
 .work-item-priority-service-block {
   display: grid;
   gap: 6px;
@@ -55571,6 +55574,55 @@ body.is-signature-review-open::before {
   line-height: 1.35;
 }
 
+.work-item-services-cell {
+  align-self: stretch;
+  border-left: 1px solid rgba(226, 232, 240, 0.82);
+  padding-left: 12px;
+}
+
+.work-item-service-list {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.work-item-service-list ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0 0 0 14px;
+  color: #12245a;
+  font-size: 0.72rem;
+  font-weight: 820;
+  line-height: 1.35;
+}
+
+.work-item-service-list li::marker {
+  color: #211bff;
+  font-size: 0.78em;
+}
+
+.work-item-service-more {
+  justify-self: start;
+  border: 0;
+  background: transparent;
+  color: #271dca;
+  font-size: 0.72rem;
+  font-weight: 900;
+  cursor: pointer;
+  padding: 0;
+}
+
+.work-item-service-more:hover {
+  text-decoration: underline;
+}
+
+.work-item-service-empty {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 760;
+}
+
 .work-item-service-note {
   color: #64748b;
   font-size: 0.68rem;
@@ -55584,11 +55636,27 @@ body.is-signature-review-open::before {
 
 .work-executor-load-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: 9px minmax(0, 1fr) auto;
   gap: 8px;
+  align-items: center;
   color: #1e2a4a;
   font-size: 0.72rem;
   line-height: 1.2;
+}
+
+.work-executor-load-row::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #3b27ff;
+  box-shadow: 0 0 0 3px rgba(59, 39, 255, 0.08);
+}
+
+.work-executor-load-row:nth-child(2)::before,
+.work-executor-load-row:nth-child(3)::before {
+  background: #f97316;
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.10);
 }
 
 .work-executor-load-row span {
@@ -55617,9 +55685,13 @@ body.is-signature-review-open::before {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
-  padding-top: 5px;
-  border-top: 1px dashed rgba(203, 213, 225, 0.85);
+  margin-top: 4px;
+  padding: 7px 8px;
+  border: 1px solid rgba(187, 247, 208, 0.92);
+  border-radius: 10px;
+  background: rgba(240, 253, 244, 0.9);
   color: #047857;
+  font-weight: 900;
 }
 
 .work-executor-completed-line span {

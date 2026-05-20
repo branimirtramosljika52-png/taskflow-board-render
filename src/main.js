@@ -200,34 +200,32 @@ const WORK_ORDER_REGION_OPTIONS = Object.freeze([
   "Središnja Hrvatska",
   "Riječko područje",
 ]);
-const WORK_ORDER_LIST_COLUMN_STORAGE_PREFIX = "safenexus.work-order-list-columns.v3";
-const WORK_ORDER_COLUMN_PANEL_STORAGE_PREFIX = "safenexus.work-order-column-panel.v1";
+const WORK_ORDER_LIST_COLUMN_STORAGE_PREFIX = "safenexus.work-order-list-columns.v4";
+const WORK_ORDER_COLUMN_PANEL_STORAGE_PREFIX = "safenexus.work-order-column-panel.v2";
 const WORK_ORDER_LIST_COLUMN_LAYOUTS = Object.freeze({
   collapsed: Object.freeze([
     { key: "select", title: "", defaultWidth: 48, minWidth: 42, resizable: false },
     { key: "basic", title: "RN / status / datum", defaultWidth: 164, minWidth: 138 },
-    { key: "client", title: "Tvrtka", defaultWidth: 190, minWidth: 154 },
-    { key: "headquarters", title: "Sjedište", defaultWidth: 146, minWidth: 124 },
-    { key: "region", title: "Regija", defaultWidth: 128, minWidth: 108 },
-    { key: "location", title: "Lokacija", defaultWidth: 204, minWidth: 158 },
+    { key: "client", title: "Tvrtka", defaultWidth: 214, minWidth: 168 },
+    { key: "location", title: "Lokacija", defaultWidth: 224, minWidth: 168 },
     { key: "contact", title: "Kontakt osoba", defaultWidth: 178, minWidth: 140 },
-    { key: "priorityServices", title: "Prioritet / usluge", defaultWidth: 206, minWidth: 158 },
-    { key: "executors", title: "Izvršitelji (% / bodovi)", defaultWidth: 206, minWidth: 162 },
+    { key: "priorityTags", title: "Prioritet / tagovi", defaultWidth: 168, minWidth: 138 },
+    { key: "services", title: "Usluge", defaultWidth: 196, minWidth: 150 },
+    { key: "executors", title: "Izvršitelji (% / bodovi)", defaultWidth: 226, minWidth: 174 },
     { key: "finance", title: "Financije", defaultWidth: 142, minWidth: 118 },
-    { key: "actions", title: "", defaultWidth: 58, minWidth: 52, resizable: false },
+    { key: "actions", title: "Akcije", defaultWidth: 70, minWidth: 62, resizable: false },
   ]),
   expanded: Object.freeze([
     { key: "select", title: "", defaultWidth: 48, minWidth: 42, resizable: false },
     { key: "basic", title: "RN / status / datum", defaultWidth: 176, minWidth: 146 },
-    { key: "client", title: "Tvrtka", defaultWidth: 206, minWidth: 164 },
-    { key: "headquarters", title: "Sjedište", defaultWidth: 154, minWidth: 128 },
-    { key: "region", title: "Regija", defaultWidth: 132, minWidth: 110 },
-    { key: "location", title: "Lokacija", defaultWidth: 218, minWidth: 164 },
+    { key: "client", title: "Tvrtka", defaultWidth: 228, minWidth: 176 },
+    { key: "location", title: "Lokacija", defaultWidth: 238, minWidth: 176 },
     { key: "contact", title: "Kontakt osoba", defaultWidth: 190, minWidth: 146 },
-    { key: "priorityServices", title: "Prioritet / usluge", defaultWidth: 222, minWidth: 166 },
-    { key: "executors", title: "Izvršitelji (% / bodovi)", defaultWidth: 220, minWidth: 172 },
+    { key: "priorityTags", title: "Prioritet / tagovi", defaultWidth: 178, minWidth: 144 },
+    { key: "services", title: "Usluge", defaultWidth: 210, minWidth: 158 },
+    { key: "executors", title: "Izvršitelji (% / bodovi)", defaultWidth: 240, minWidth: 184 },
     { key: "finance", title: "Financije", defaultWidth: 154, minWidth: 124 },
-    { key: "actions", title: "", defaultWidth: 58, minWidth: 52, resizable: false },
+    { key: "actions", title: "Akcije", defaultWidth: 70, minWidth: 62, resizable: false },
   ]),
 });
 const WORK_ORDER_COLUMN_ALWAYS_VISIBLE_KEYS = new Set(["select", "basic", "actions"]);
@@ -237,7 +235,7 @@ const WORK_ORDER_COLUMN_GROUPS = Object.freeze([
     title: "Tvrtka",
     fields: Object.freeze([
       { key: "companyName", label: "Naziv tvrtke", columnKey: "client" },
-      { key: "headquarters", label: "Sjedište", columnKey: "headquarters" },
+      { key: "headquarters", label: "Sjedište", columnKey: "client" },
       { key: "companyOib", label: "OIB", columnKey: "client" },
       { key: "contract", label: "Ugovor", columnKey: "client" },
     ]),
@@ -247,7 +245,7 @@ const WORK_ORDER_COLUMN_GROUPS = Object.freeze([
     title: "Lokacija",
     fields: Object.freeze([
       { key: "location", label: "Lokacija", columnKey: "location" },
-      { key: "region", label: "Regija", columnKey: "region" },
+      { key: "region", label: "Regija", columnKey: "location" },
       { key: "coordinates", label: "Koordinate", columnKey: "location" },
     ]),
   },
@@ -266,9 +264,9 @@ const WORK_ORDER_COLUMN_GROUPS = Object.freeze([
     fields: Object.freeze([
       { key: "status", label: "Status", columnKey: "basic" },
       { key: "dates", label: "Datumi", columnKey: "basic" },
-      { key: "priority", label: "Prioritet", columnKey: "priorityServices" },
-      { key: "tags", label: "Tagovi", columnKey: "priorityServices" },
-      { key: "services", label: "Usluge", columnKey: "priorityServices" },
+      { key: "priority", label: "Prioritet", columnKey: "priorityTags" },
+      { key: "tags", label: "Tagovi", columnKey: "priorityTags" },
+      { key: "services", label: "Usluge", columnKey: "services" },
     ]),
   },
   {
@@ -296,31 +294,31 @@ const WORK_ORDER_COLUMN_PRESETS = Object.freeze([
     id: "operations",
     label: "Operativa",
     description: "Pun operativni pregled RN-a, lokacije, kontakt, izvršitelji i financije.",
-    columns: Object.freeze(["client", "headquarters", "region", "location", "contact", "priorityServices", "executors", "finance"]),
+    columns: Object.freeze(["client", "location", "contact", "priorityTags", "services", "executors", "finance"]),
   },
   {
     id: "finance",
     label: "Financije",
     description: "Tvrtka, sjedište, ugovor i faktura za naplatu i kontrolu računa.",
-    columns: Object.freeze(["client", "headquarters", "region", "location", "finance"]),
+    columns: Object.freeze(["client", "location", "finance"]),
   },
   {
     id: "field",
     label: "Terenski",
     description: "Lokacija, kontakt, usluge i izvršitelji za terenski rad.",
-    columns: Object.freeze(["client", "headquarters", "region", "location", "contact", "priorityServices", "executors"]),
+    columns: Object.freeze(["client", "location", "contact", "priorityTags", "services", "executors"]),
   },
   {
     id: "management",
     label: "Management",
     description: "Sažetak statusa, regija, prioriteta, izvršitelja i financijskog stanja.",
-    columns: Object.freeze(["client", "region", "location", "priorityServices", "executors", "finance"]),
+    columns: Object.freeze(["client", "location", "priorityTags", "services", "executors", "finance"]),
   },
   {
     id: "minimal",
     label: "Minimal",
     description: "Najkraći pregled za brzo skeniranje liste.",
-    columns: Object.freeze(["client", "location", "priorityServices"]),
+    columns: Object.freeze(["client", "location", "services"]),
   },
 ]);
 const WORK_ORDER_QUICK_FILTERS = Object.freeze([
@@ -91889,7 +91887,7 @@ function formatWorkOrderDueRelativeLabel(item = {}) {
     return "";
   }
   if (distance < 0) {
-    return `kasni ${Math.abs(distance)} dana`;
+    return "";
   }
   if (distance === 0) {
     return "danas";
@@ -94648,7 +94646,7 @@ function buildWorkOrderMetricData(items = state.workOrders ?? []) {
       title: "Fakturirano ovaj mjesec",
       value: formatCompactMetricCurrency(invoiceTotal),
       delta: getMetricDelta(invoiceTotal, previousInvoiceTotal),
-      chart: buildMetricBars(invoiceTrend, "blue"),
+      chart: buildMetricSparkline(invoiceTrend, "blue"),
       metaLeft: `${invoicedThisMonth.length} RN`,
       metaRight: `Prosj. ${formatCompactMetricCurrency(invoicedThisMonth.length ? invoiceTotal / invoicedThisMonth.length : 0)}`,
     },
@@ -94659,7 +94657,7 @@ function buildWorkOrderMetricData(items = state.workOrders ?? []) {
       value: dueSoonTotal,
       delta: getMetricDelta(dueSoonTotal, overdueItems.length),
       badWhenUp: true,
-      chart: buildMetricDonut({ today: dueToday, soon: dueOneToThree, week: dueFourToSeven }),
+      chart: buildMetricSparkline([dueToday, dueOneToThree, dueFourToSeven, dueSoonTotal], "orange"),
       metaLeft: `${dueToday} danas`,
       metaRight: `${dueOneToThree} 1-3d · ${dueFourToSeven} 4-7d`,
     },
@@ -94669,7 +94667,7 @@ function buildWorkOrderMetricData(items = state.workOrders ?? []) {
       title: "Aktivni izvršitelji",
       value: activeExecutorCount,
       delta: activeExecutorCount > 0 ? getMetricDelta(activeExecutorCount, Math.max(1, activeExecutorCount - 1)) : 0,
-      chart: buildMetricBars(executorTrend, "indigo"),
+      chart: buildMetricSparkline(executorTrend, "violet"),
       metaLeft: `${workloadPercent}% workload`,
       metaRight: `${activeAssignments} dodjela`,
     },
@@ -95803,7 +95801,7 @@ function openWorkOrderRowMenu(workOrder = {}, pointerX = 0, pointerY = 0) {
   const header = document.createElement("div");
   header.className = "work-order-row-context-head";
   const title = document.createElement("strong");
-  title.textContent = "Faktura i završetak";
+  title.textContent = "Akcije RN-a";
   const subtitle = document.createElement("span");
   subtitle.textContent = targets.length > 1
     ? `Primjenjuje se na ${targets.length} odabrana RN-a`
@@ -95851,6 +95849,15 @@ function openWorkOrderRowMenu(workOrder = {}, pointerX = 0, pointerY = 0) {
       closeWorkOrderRowMenu();
       hydrateWorkOrderForm(workOrder);
       void openActiveWorkOrderDocumentationFromEditor();
+    }),
+    createShortcutButton("Otvori PDF", () => {
+      void downloadVerifiedWorkOrderDocument(workOrder);
+    }),
+    createShortcutButton("Izrada zapisnika", () => {
+      closeWorkOrderRowMenu();
+      clearWorkOrderDocumentSelection({ closeWizard: false });
+      state.workOrderDocumentWizard.selectedIds = new Set([String(workOrder.id || "")].filter(Boolean));
+      openWorkOrderDocumentWizard(getWorkOrderSelectionModeFromWorkOrders([workOrder]));
     }),
     createShortcutButton("Export PDF", () => {
       void downloadWorkOrderPdf(workOrder);
@@ -102237,7 +102244,7 @@ function createWorkOrderQuickCreateRow(columnLayout = [], isExpanded = false) {
   });
 
   const statusSelect = createWorkOrderQuickSelect("status", WORK_ORDER_STATUS_OPTIONS, "Otvoreni RN");
-  const hasServiceColumn = columnLayout.some((column) => column.key === "service");
+  const hasServiceColumn = columnLayout.some((column) => column.key === "service" || column.key === "services");
   const createDeferredQuickCell = (labelText = "Kasnije", copyText = "Prioritet i tagovi") => {
     const cell = document.createElement("div");
     cell.className = "work-order-quick-cell work-order-quick-deferred";
@@ -102267,9 +102274,10 @@ function createWorkOrderQuickCreateRow(columnLayout = [], isExpanded = false) {
     location: createWorkOrderQuickControl("Lokacija", locationSelect),
     contact: createWorkOrderQuickControl("Kontakt", contactInput),
     service: createWorkOrderQuickControl("Usluge", servicePicker),
+    services: createWorkOrderQuickControl("Usluge", servicePicker),
     billing: createWorkOrderQuickControl("Rok", dueDateInput),
     finance: createWorkOrderQuickControl("Rok", dueDateInput),
-    priorityTags: hasServiceColumn ? deferredCell : createWorkOrderQuickControl("Usluge", servicePicker),
+    priorityTags: hasServiceColumn ? deferredCell : createDeferredQuickCell("Kasnije", "Prioritet i tagovi"),
     priorityServices: createWorkOrderQuickControl("Usluge", servicePicker),
     executors: createWorkOrderQuickControl("Izvršitelji", executorPicker),
     actions: (() => {
@@ -103427,6 +103435,60 @@ function renderCompactWorkOrdersList() {
         return wrap;
       };
 
+      const createServiceBulletList = (items = [], fallbackSummary = "") => {
+        const labels = Array.from(new Set([
+          ...items.map((service) => String(service.name || service.serviceName || service.serviceCode || "").trim()),
+          ...String(fallbackSummary || "")
+            .split(/[·|,;/]+/u)
+            .map((entry) => entry.trim()),
+        ].filter(Boolean)));
+
+        const wrap = document.createElement("div");
+        wrap.className = "work-item-service-list";
+
+        if (!labels.length) {
+          const empty = document.createElement("span");
+          empty.className = "work-item-service-empty";
+          empty.textContent = "Bez usluge";
+          wrap.append(empty);
+          return wrap;
+        }
+
+        const list = document.createElement("ul");
+        labels.slice(0, 3).forEach((label) => {
+          const itemNode = document.createElement("li");
+          itemNode.textContent = label;
+          list.append(itemNode);
+        });
+        wrap.append(list);
+
+        if (labels.length > 3) {
+          const overflow = document.createElement("button");
+          overflow.type = "button";
+          overflow.className = "work-item-service-more";
+          overflow.textContent = `+${labels.length - 3} više`;
+          overflow.dataset.preventRowOpen = "true";
+          overflow.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            rowCard.classList.toggle("is-expanded");
+            list.replaceChildren(...labels
+              .slice(0, rowCard.classList.contains("is-expanded") ? labels.length : 3)
+              .map((label) => {
+                const itemNode = document.createElement("li");
+                itemNode.textContent = label;
+                return itemNode;
+              }));
+            overflow.textContent = rowCard.classList.contains("is-expanded")
+              ? "Prikaži manje"
+              : `+${labels.length - 3} više`;
+          });
+          wrap.append(overflow);
+        }
+
+        return wrap;
+      };
+
       const formatWorkOrderInvoiceAmount = (value) => {
         const rawValue = String(value ?? "").trim();
 
@@ -103565,16 +103627,23 @@ function renderCompactWorkOrdersList() {
       const contactCell = document.createElement("div");
       contactCell.className = "work-item-cell work-item-cell-group";
       const serviceCell = document.createElement("div");
-      serviceCell.className = "work-item-cell work-item-cell-group";
+      serviceCell.className = "work-item-cell work-item-cell-group work-item-services-cell";
       const serviceDescription = looksLikeWorkOrderLog(item.description) ? "" : item.description;
       const serviceItems = getWorkOrderServiceItems(item);
+      const serviceSummary = getWorkOrderServiceSummary(item);
 
       const contractValue = item.contractType || getWorkOrderClientPills(item)[0] || normalizeWorkOrderClientReference(item.linkReference);
       clientCell.append(createValueStack(
         item.companyName || "Bez tvrtke",
+        getWorkOrderColumnFieldVisibility("headquarters") && item.headquarters ? `Sjedište: ${item.headquarters}` : "",
         getWorkOrderColumnFieldVisibility("companyOib") && item.companyOib ? `OIB: ${item.companyOib}` : "",
-        getWorkOrderColumnFieldVisibility("contract") && contractValue ? `Ugovor: ${contractValue}` : "",
       ));
+      if (getWorkOrderColumnFieldVisibility("contract")) {
+        const contractPill = createContractPill(contractValue);
+        if (contractPill) {
+          clientCell.append(contractPill);
+        }
+      }
 
       headquartersCell.append(createValueStack(
         item.headquarters || "Bez sjedišta",
@@ -103587,8 +103656,8 @@ function renderCompactWorkOrdersList() {
       ));
 
       locationCell.append(createValueStack(
-        createCompactLocationLabel(item.locationName),
-        item.locationName && item.locationName !== createCompactLocationLabel(item.locationName) ? item.locationName.replace(createCompactLocationLabel(item.locationName), "").replace(/^,\s*/, "") : "",
+        item.locationName || "Bez lokacije",
+        getWorkOrderColumnFieldVisibility("region") && item.region ? `Regija: ${item.region}` : "",
         getWorkOrderColumnFieldVisibility("coordinates") && item.coordinates ? item.coordinates : "",
       ));
 
@@ -103605,22 +103674,9 @@ function renderCompactWorkOrdersList() {
         serviceCell.append(departmentPill);
       }
 
-      const serviceLine = document.createElement("div");
-      serviceLine.className = "work-item-service-line";
-      serviceLine.textContent = getWorkOrderServiceSummary(item) || "Bez usluge";
-      serviceCell.append(serviceLine);
+      serviceCell.append(createServiceBulletList(serviceItems, serviceSummary));
 
-      if (serviceItems.length > 0) {
-        const progressCounts = summarizeWorkOrderServiceProgress(serviceItems);
-        const serviceProgress = document.createElement("div");
-        serviceProgress.className = "work-item-service-note";
-        serviceProgress.textContent = [
-          progressCounts.pending ? `${progressCounts.pending} nije završeno` : "",
-          progressCounts.in_progress ? `${progressCounts.in_progress} u tijeku` : "",
-          progressCounts.completed ? `${progressCounts.completed} završeno` : "",
-        ].filter(Boolean).join(" · ") || "Nije završeno";
-        serviceCell.append(serviceProgress);
-      } else if (serviceDescription && isExpanded) {
+      if (!serviceItems.length && serviceDescription && isExpanded) {
         const serviceNote = document.createElement("div");
         serviceNote.className = "work-item-service-note";
         serviceNote.textContent = serviceDescription;
@@ -103660,16 +103716,16 @@ function renderCompactWorkOrdersList() {
       priorityServicesCell.className = "work-item-cell work-item-cell-group work-item-priority-services-cell";
       const priorityBlock = document.createElement("div");
       priorityBlock.className = "work-item-priority-service-block";
-      priorityBlock.append(...Array.from(priorityTagsCell.childNodes));
+      priorityBlock.append(...Array.from(priorityTagsCell.cloneNode(true).childNodes));
       const servicesBlock = document.createElement("div");
       servicesBlock.className = "work-item-priority-service-block is-services";
-      servicesBlock.append(...Array.from(serviceCell.childNodes));
+      servicesBlock.append(...Array.from(serviceCell.cloneNode(true).childNodes));
       priorityServicesCell.append(priorityBlock, servicesBlock);
 
-      attachWorkOrderInlinePriorityEditor(priorityBlock, item);
+      attachWorkOrderInlinePriorityEditor(priorityTagsCell, item);
       attachWorkOrderInlineLocationEditor(locationCell, item);
       attachWorkOrderInlineContactEditor(contactCell, item);
-      attachWorkOrderInlineServicesEditor(servicesBlock, item);
+      attachWorkOrderInlineServicesEditor(serviceCell, item);
       attachWorkOrderInlineFieldEditor(financeCell, item, {
         title: "Faktura i završetak",
         fields: [
@@ -103717,6 +103773,7 @@ function renderCompactWorkOrdersList() {
         location: locationCell,
         contact: contactCell,
         service: serviceCell,
+        services: serviceCell,
         billing: financeCell,
         finance: financeCell,
         priorityTags: priorityTagsCell,
