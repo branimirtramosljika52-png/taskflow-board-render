@@ -5168,10 +5168,21 @@ function getVisibleWorkOrderColumnKeys() {
   ensureWorkOrderColumnPanelSettingsLoaded();
   const visibility = normalizeWorkOrderColumnVisibility(state.workOrderColumnPanel.visibility);
   const visibleColumnKeys = new Set(WORK_ORDER_COLUMN_ALWAYS_VISIBLE_KEYS);
+  const fieldsByColumn = new Map();
 
   getWorkOrderColumnFields().forEach((field) => {
-    if (visibility[field.key]) {
-      visibleColumnKeys.add(field.columnKey);
+    if (!fieldsByColumn.has(field.columnKey)) {
+      fieldsByColumn.set(field.columnKey, []);
+    }
+    fieldsByColumn.get(field.columnKey).push(field);
+  });
+
+  fieldsByColumn.forEach((fields, columnKey) => {
+    if (WORK_ORDER_COLUMN_ALWAYS_VISIBLE_KEYS.has(columnKey)) {
+      return;
+    }
+    if (fields.every((field) => visibility[field.key])) {
+      visibleColumnKeys.add(columnKey);
     }
   });
 
@@ -91879,20 +91890,7 @@ function loadMoreWorkOrders() {
 }
 
 function formatWorkOrderDueRelativeLabel(item = {}) {
-  if (!item?.dueDate) {
-    return "";
-  }
-  const distance = getDateDistanceInDays(getWorkOrderDateKey(item.dueDate), getTodayDateKey());
-  if (!Number.isFinite(distance)) {
-    return "";
-  }
-  if (distance < 0) {
-    return "";
-  }
-  if (distance === 0) {
-    return "danas";
-  }
-  return `za ${distance} dana`;
+  return "";
 }
 
 function createExecutorAvatarIcon() {
@@ -103223,6 +103221,7 @@ function renderCompactWorkOrdersList() {
     completedLine.className = "work-executor-completed-line";
     const completedBy = String(item.completedBy || "").trim();
     if (completedBy || isClosedWorkOrder(item.status)) {
+      completedLine.classList.add("is-completed");
       completedLine.textContent = `✓ Završila ${completedBy || executors[0] || "izvršitelj"}`;
       if (item.executionDate) {
         const date = document.createElement("span");
@@ -103230,6 +103229,7 @@ function renderCompactWorkOrdersList() {
         completedLine.append(date);
       }
     } else {
+      completedLine.classList.add("is-pending");
       completedLine.textContent = "— Nije završeno";
     }
     wrap.append(completedLine);
@@ -103588,7 +103588,14 @@ function renderCompactWorkOrdersList() {
       statusRow.append(createWorkOrderStatusDropdown(item));
       basicsStack.append(statusRow);
 
-      const dueRelativeLabel = formatWorkOrderDueRelativeLabel(item);
+      const dueDistance = item.dueDate
+        ? getDateDistanceInDays(getWorkOrderDateKey(item.dueDate), getTodayDateKey())
+        : NaN;
+      const dueToneClass = isOverdueWorkOrder(item)
+        ? "is-overdue"
+        : Number.isFinite(dueDistance) && dueDistance > 0
+          ? "is-future"
+          : "";
       const datesStack = document.createElement("div");
       datesStack.className = `work-item-date-stack${isExpanded ? "" : " is-compact"}`;
       datesStack.dataset.preventRowOpen = "true";
@@ -103596,8 +103603,8 @@ function renderCompactWorkOrdersList() {
         createIconMetaLine("opened", `Otvoren: ${formatCompactOpenedDate(item.openedDate)}`, {
           valueClassName: "is-subtle-date",
         }),
-        createIconMetaLine("due", `Rok: ${formatCompactDueDate(item.dueDate)}${dueRelativeLabel ? ` · ${dueRelativeLabel}` : ""}`, {
-          valueClassName: ["is-subtle-date", isOverdueWorkOrder(item) ? "is-overdue" : ""].join(" "),
+        createIconMetaLine("due", `Rok: ${formatCompactDueDate(item.dueDate)}`, {
+          valueClassName: ["is-subtle-date", dueToneClass].join(" "),
         }),
         createIconMetaLine("execution", `Izvršenje: ${item.executionDate ? formatCompactDate(item.executionDate) : "—"}`, {
           valueClassName: ["is-subtle-date", item.executionDate ? "" : "is-muted"].join(" "),
@@ -103635,7 +103642,7 @@ function renderCompactWorkOrdersList() {
       const contractValue = item.contractType || getWorkOrderClientPills(item)[0] || normalizeWorkOrderClientReference(item.linkReference);
       clientCell.append(createValueStack(
         item.companyName || "Bez tvrtke",
-        getWorkOrderColumnFieldVisibility("headquarters") && item.headquarters ? `Sjedište: ${item.headquarters}` : "",
+        getWorkOrderColumnFieldVisibility("headquarters") && item.headquarters ? item.headquarters : "",
         getWorkOrderColumnFieldVisibility("companyOib") && item.companyOib ? `OIB: ${item.companyOib}` : "",
       ));
       if (getWorkOrderColumnFieldVisibility("contract")) {
@@ -103657,7 +103664,7 @@ function renderCompactWorkOrdersList() {
 
       locationCell.append(createValueStack(
         item.locationName || "Bez lokacije",
-        getWorkOrderColumnFieldVisibility("region") && item.region ? `Regija: ${item.region}` : "",
+        getWorkOrderColumnFieldVisibility("region") && item.region ? item.region : "",
         getWorkOrderColumnFieldVisibility("coordinates") && item.coordinates ? item.coordinates : "",
       ));
 

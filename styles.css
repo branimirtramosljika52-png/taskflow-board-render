@@ -21027,7 +21027,12 @@ body.is-document-template-editor-open .chat-dock {
   background: transparent;
   color: rgba(111, 124, 148, 0.44);
   cursor: col-resize;
+  opacity: 0;
   transform: translateY(-50%);
+  transition:
+    opacity 140ms ease,
+    color 140ms ease,
+    background 140ms ease;
   z-index: 2;
 }
 
@@ -21045,6 +21050,7 @@ body.is-document-template-editor-open .chat-dock {
 
 .work-order-column-resize-handle:hover,
 .work-order-column-resize-handle:focus-visible {
+  opacity: 1;
   color: rgba(65, 96, 178, 0.72);
   background: rgba(233, 240, 255, 0.76);
 }
@@ -55526,6 +55532,11 @@ body.is-signature-review-open::before {
   font-weight: 900;
 }
 
+.work-item-meta-value.is-future {
+  color: #047857;
+  font-weight: 900;
+}
+
 .work-item-value-primary {
   color: #121a3f;
   font-size: 0.82rem;
@@ -55576,8 +55587,7 @@ body.is-signature-review-open::before {
 
 .work-item-services-cell {
   align-self: stretch;
-  border-left: 1px solid rgba(226, 232, 240, 0.82);
-  padding-left: 12px;
+  padding-left: 4px;
 }
 
 .work-item-service-list {
@@ -55685,13 +55695,20 @@ body.is-signature-review-open::before {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
-  margin-top: 4px;
-  padding: 7px 8px;
-  border: 1px solid rgba(187, 247, 208, 0.92);
-  border-radius: 10px;
-  background: rgba(240, 253, 244, 0.9);
-  color: #047857;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(226, 232, 240, 0.75);
+  color: #64748b;
   font-weight: 900;
+}
+
+.work-executor-completed-line.is-completed {
+  color: #047857;
+}
+
+.work-executor-completed-line.is-pending {
+  color: #64748b;
+  font-weight: 780;
 }
 
 .work-executor-completed-line span {
