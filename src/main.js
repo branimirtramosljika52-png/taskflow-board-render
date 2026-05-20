@@ -200,29 +200,30 @@ const WORK_ORDER_REGION_OPTIONS = Object.freeze([
   "Središnja Hrvatska",
   "Riječko područje",
 ]);
-const WORK_ORDER_LIST_COLUMN_STORAGE_PREFIX = "safenexus.work-order-list-columns.v1";
+const WORK_ORDER_LIST_COLUMN_STORAGE_PREFIX = "safenexus.work-order-list-columns.v2";
 const WORK_ORDER_LIST_COLUMN_LAYOUTS = Object.freeze({
   collapsed: Object.freeze([
     { key: "select", title: "", defaultWidth: 48, minWidth: 42, resizable: false },
-    { key: "basic", title: "Osnovno", defaultWidth: 164, minWidth: 128 },
-    { key: "client", title: "Klijent", defaultWidth: 244, minWidth: 170 },
-    { key: "location", title: "Lokacija", defaultWidth: 246, minWidth: 170 },
-    { key: "billing", title: "Izvršenje / fakture", defaultWidth: 218, minWidth: 168 },
-    { key: "priorityTags", title: "Prioritet i tagovi", defaultWidth: 174, minWidth: 132 },
-    { key: "executors", title: "Izvršitelji", defaultWidth: 180, minWidth: 132 },
-    { key: "actions", title: "Akcije", defaultWidth: 124, minWidth: 104 },
+    { key: "basic", title: "RN / status", defaultWidth: 150, minWidth: 124 },
+    { key: "client", title: "Tvrtka", defaultWidth: 210, minWidth: 164 },
+    { key: "location", title: "Lokacija", defaultWidth: 226, minWidth: 166 },
+    { key: "priorityTags", title: "Oznake / prioritet", defaultWidth: 168, minWidth: 132 },
+    { key: "service", title: "Usluge", defaultWidth: 190, minWidth: 150 },
+    { key: "executors", title: "Izvršitelji", defaultWidth: 132, minWidth: 112 },
+    { key: "finance", title: "Financije", defaultWidth: 154, minWidth: 126 },
+    { key: "actions", title: "Akcije", defaultWidth: 98, minWidth: 88 },
   ]),
   expanded: Object.freeze([
     { key: "select", title: "", defaultWidth: 48, minWidth: 42, resizable: false },
-    { key: "basic", title: "Osnovno", defaultWidth: 150, minWidth: 124 },
-    { key: "client", title: "Klijent", defaultWidth: 236, minWidth: 170 },
-    { key: "location", title: "Lokacija", defaultWidth: 246, minWidth: 170 },
+    { key: "basic", title: "RN / status / datumi", defaultWidth: 150, minWidth: 124 },
+    { key: "client", title: "Tvrtka", defaultWidth: 224, minWidth: 170 },
+    { key: "location", title: "Lokacija", defaultWidth: 232, minWidth: 170 },
     { key: "contact", title: "Kontakt", defaultWidth: 190, minWidth: 140 },
-    { key: "service", title: "Usluga", defaultWidth: 230, minWidth: 170 },
-    { key: "billing", title: "Izvršenje / fakture", defaultWidth: 222, minWidth: 168 },
-    { key: "priorityTags", title: "Prioritet i tagovi", defaultWidth: 178, minWidth: 132 },
-    { key: "executors", title: "Izvršitelji", defaultWidth: 190, minWidth: 132 },
-    { key: "actions", title: "Akcije", defaultWidth: 128, minWidth: 108 },
+    { key: "priorityTags", title: "Oznake / prioritet", defaultWidth: 176, minWidth: 132 },
+    { key: "service", title: "Usluge", defaultWidth: 218, minWidth: 166 },
+    { key: "executors", title: "Izvršitelji", defaultWidth: 142, minWidth: 112 },
+    { key: "finance", title: "Financije", defaultWidth: 160, minWidth: 128 },
+    { key: "actions", title: "Akcije", defaultWidth: 110, minWidth: 96 },
   ]),
 });
 const WORK_ORDER_PDF_AUTOSAVE_DELAY_MS = 2600;
@@ -5027,6 +5028,7 @@ function applyWorkOrderListColumnWidths(mode = getWorkOrderListColumnMode()) {
 
   const widths = getWorkOrderListColumnWidths(mode);
   const layout = getWorkOrderListColumnLayout(mode);
+  const columnGap = 14;
   const template = layout.map((column, index) => {
     const width = Math.max(
       column.minWidth || 1,
@@ -5035,11 +5037,15 @@ function applyWorkOrderListColumnWidths(mode = getWorkOrderListColumnMode()) {
     if (column.resizable === false) {
       return `${width}px`;
     }
-    return `minmax(0, ${width}fr)`;
+    return `minmax(${Math.max(1, Number(column.minWidth) || 1)}px, ${width}fr)`;
   }).join(" ");
+  const minWidth = layout.reduce((sum, column) => sum + Math.max(
+    column.resizable === false ? column.defaultWidth : column.minWidth,
+    1,
+  ), 0) + Math.max(0, layout.length - 1) * columnGap;
 
   workOrdersTableWrap.style.setProperty("--work-order-list-grid-template", template);
-  workOrdersTableWrap.style.setProperty("--work-order-list-min-width", "100%");
+  workOrdersTableWrap.style.setProperty("--work-order-list-min-width", `${minWidth}px`);
 }
 
 function startWorkOrderListColumnResize(mode, columnIndex, pointerX, pointerId, handle) {
@@ -93854,6 +93860,7 @@ const WORK_ORDER_METRIC_FILTERS = new Set([
   "overdue",
   "completed-month",
   "invoiced-month",
+  "pending-invoice",
   "due-soon",
   "executors",
 ]);
@@ -93880,6 +93887,71 @@ function getWorkOrderInvoiceDateKey(item = {}) {
 
 function getWorkOrderInvoiceAmount(item = {}) {
   return Math.max(0, parseOfferMoneyInput(item.weight, 0));
+}
+
+function hasWorkOrderInvoiceData(item = {}) {
+  const status = String(item.status || "");
+  return Boolean(
+    getWorkOrderDateKey(item.invoiceDate)
+    || String(item.invoiceNote || "").trim()
+    || status === "Fakturiran RN",
+  );
+}
+
+function getWorkOrderReadyForInvoiceDateKey(item = {}) {
+  return getWorkOrderCompletionDateKey(item)
+    || getWorkOrderDateKey(item.executionDate)
+    || getWorkOrderDateKey(item.completedAt)
+    || getWorkOrderDateKey(item.updatedAt)
+    || getWorkOrderDateKey(item.openedDate);
+}
+
+function isWorkOrderReadyForInvoice(item = {}) {
+  const status = String(item.status || "");
+  if (status === "Storno RN") {
+    return false;
+  }
+
+  return Boolean(
+    ["Gotov RN", "Ovjeren RN", "Fakturiran RN"].includes(status)
+    || String(item.completedBy || "").trim()
+    || getWorkOrderDateKey(item.executionDate),
+  );
+}
+
+function isWorkOrderWaitingForInvoice(item = {}) {
+  return isWorkOrderReadyForInvoice(item) && !hasWorkOrderInvoiceData(item);
+}
+
+function getWorkOrderFinanceStatus(item = {}) {
+  const status = String(item.status || "");
+  const rawPaymentStatus = normalizeLooseName([
+    item.paymentStatus,
+    item.invoiceStatus,
+    item.paymentNote,
+  ].filter(Boolean).join(" "));
+
+  if (status === "Storno RN") {
+    return { state: "cancelled", label: "STORNO" };
+  }
+
+  if (
+    rawPaymentStatus.includes("naplac")
+    || rawPaymentStatus.includes("placen")
+    || rawPaymentStatus.includes("paid")
+  ) {
+    return { state: "paid", label: "NAPLAĆENO" };
+  }
+
+  if (hasWorkOrderInvoiceData(item)) {
+    return { state: "invoiced", label: "FAKTURIRANO" };
+  }
+
+  if (isWorkOrderWaitingForInvoice(item)) {
+    return { state: "pending-invoice", label: "ČEKA FAKTURU" };
+  }
+
+  return { state: "draft", label: "U PRIPREMI" };
 }
 
 function getDateDistanceInDays(targetDateKey = "", baseDateKey = getTodayDateKey()) {
@@ -93912,6 +93984,9 @@ function isWorkOrderMetricMatch(item = {}, metricKey = "", todayKey = getTodayDa
   }
   if (metricKey === "invoiced-month") {
     return getWorkOrderInvoiceDateKey(item).startsWith(monthKey);
+  }
+  if (metricKey === "pending-invoice") {
+    return isWorkOrderWaitingForInvoice(item);
   }
   if (metricKey === "due-soon") {
     return isWorkOrderDueWithin(item, 0, 7, todayKey);
@@ -94052,6 +94127,10 @@ function buildWorkOrderMetricData(items = state.workOrders ?? []) {
   const invoicedPreviousMonth = workOrders.filter((item) => getWorkOrderInvoiceDateKey(item).startsWith(previousMonthKey));
   const invoiceTotal = invoicedThisMonth.reduce((sum, item) => sum + getWorkOrderInvoiceAmount(item), 0);
   const previousInvoiceTotal = invoicedPreviousMonth.reduce((sum, item) => sum + getWorkOrderInvoiceAmount(item), 0);
+  const pendingInvoiceItems = workOrders.filter((item) => isWorkOrderWaitingForInvoice(item));
+  const pendingInvoicePreviousMonth = pendingInvoiceItems.filter((item) => getWorkOrderReadyForInvoiceDateKey(item).startsWith(previousMonthKey));
+  const pendingInvoiceTotal = pendingInvoiceItems.reduce((sum, item) => sum + getWorkOrderInvoiceAmount(item), 0);
+  const previousPendingInvoiceTotal = pendingInvoicePreviousMonth.reduce((sum, item) => sum + getWorkOrderInvoiceAmount(item), 0);
   const dueToday = activeItems.filter((item) => isWorkOrderDueWithin(item, 0, 0, todayKey)).length;
   const dueOneToThree = activeItems.filter((item) => isWorkOrderDueWithin(item, 1, 3, todayKey)).length;
   const dueFourToSeven = activeItems.filter((item) => isWorkOrderDueWithin(item, 4, 7, todayKey)).length;
@@ -94070,6 +94149,7 @@ function buildWorkOrderMetricData(items = state.workOrders ?? []) {
   const overdueTrend = buildRollingMetricValues(overdueItems, (item) => item.dueDate);
   const completedTrend = buildRollingMetricValues(completedThisMonth, (item) => getWorkOrderCompletionDateKey(item), { bucketCount: 5, bucketDays: 6 });
   const invoiceTrend = buildMonthlyMetricValues(workOrders, (item) => getWorkOrderInvoiceDateKey(item), { valueGetter: getWorkOrderInvoiceAmount });
+  const pendingInvoiceTrend = buildMonthlyMetricValues(pendingInvoiceItems, (item) => getWorkOrderReadyForInvoiceDateKey(item), { valueGetter: getWorkOrderInvoiceAmount });
   const executorTrend = sortedExecutorLoads.slice(0, 8).map(([, load]) => load);
   const openedLastSeven = workOrders.filter((item) => {
     const openedDate = getWorkOrderDateKey(item.openedDate);
@@ -94125,6 +94205,17 @@ function buildWorkOrderMetricData(items = state.workOrders ?? []) {
       chart: buildMetricBars(invoiceTrend, "blue"),
       metaLeft: `${invoicedThisMonth.length} RN`,
       metaRight: `Prosj. ${formatCompactMetricCurrency(invoicedThisMonth.length ? invoiceTotal / invoicedThisMonth.length : 0)}`,
+    },
+    {
+      id: "pending-invoice",
+      tone: "orange",
+      title: "Čeka fakturu",
+      value: formatCompactMetricCurrency(pendingInvoiceTotal),
+      delta: getMetricDelta(pendingInvoiceTotal, previousPendingInvoiceTotal),
+      badWhenUp: true,
+      chart: buildMetricBars(pendingInvoiceTrend, "orange"),
+      metaLeft: `${pendingInvoiceItems.length} RN`,
+      metaRight: `Prosj. ${formatCompactMetricCurrency(pendingInvoiceItems.length ? pendingInvoiceTotal / pendingInvoiceItems.length : 0)}`,
     },
     {
       id: "due-soon",
@@ -101684,6 +101775,7 @@ function createWorkOrderQuickCreateRow(columnLayout = [], isExpanded = false) {
     contact: createWorkOrderQuickControl("Kontakt", contactInput),
     service: createWorkOrderQuickControl("Usluge", servicePicker),
     billing: createWorkOrderQuickControl("Rok", dueDateInput),
+    finance: createWorkOrderQuickControl("Rok", dueDateInput),
     priorityTags: hasServiceColumn ? deferredCell : createWorkOrderQuickControl("Usluge", servicePicker),
     executors: createWorkOrderQuickControl("Izvršitelji", executorPicker),
     actions: (() => {
@@ -102948,6 +103040,8 @@ function renderCompactWorkOrdersList() {
       contactCell.className = "work-item-cell work-item-cell-group";
       const serviceCell = document.createElement("div");
       serviceCell.className = "work-item-cell work-item-cell-group";
+      const serviceDescription = looksLikeWorkOrderLog(item.description) ? "" : item.description;
+      const serviceItems = getWorkOrderServiceItems(item);
 
       if (isExpanded) {
         clientCell.append(createValueStack(
@@ -102974,8 +103068,6 @@ function renderCompactWorkOrdersList() {
           item.contactPhone && item.contactPhone !== item.contactName ? item.contactPhone : "",
         ));
 
-        const serviceDescription = looksLikeWorkOrderLog(item.description) ? "" : item.description;
-        const serviceItems = getWorkOrderServiceItems(item);
         if (item.department) {
           const departmentPill = document.createElement("span");
           departmentPill.className = "work-item-department-pill";
@@ -103017,22 +103109,60 @@ function renderCompactWorkOrdersList() {
           createCompactLocationLabel(item.locationName),
           item.region || "",
         ));
+
+        if (item.department) {
+          const departmentPill = document.createElement("span");
+          departmentPill.className = "work-item-department-pill";
+          departmentPill.textContent = item.department;
+          serviceCell.append(departmentPill);
+        }
+
+        const serviceLine = document.createElement("div");
+        serviceLine.className = "work-item-service-line";
+        serviceLine.textContent = getWorkOrderServiceSummary(item) || "Bez usluge";
+        serviceCell.append(serviceLine);
+
+        if (serviceItems.length > 0) {
+          const progressCounts = summarizeWorkOrderServiceProgress(serviceItems);
+          const serviceProgress = document.createElement("div");
+          serviceProgress.className = "work-item-service-note";
+          serviceProgress.textContent = [
+            progressCounts.pending ? `${progressCounts.pending} nije završeno` : "",
+            progressCounts.in_progress ? `${progressCounts.in_progress} u tijeku` : "",
+            progressCounts.completed ? `${progressCounts.completed} završeno` : "",
+          ].filter(Boolean).join(" · ") || "Nije završeno";
+          serviceCell.append(serviceProgress);
+        } else if (serviceDescription) {
+          const serviceNote = document.createElement("div");
+          serviceNote.className = "work-item-service-note";
+          serviceNote.textContent = serviceDescription;
+          serviceCell.append(serviceNote);
+        }
       }
 
-      const billingCell = document.createElement("div");
-      billingCell.className = "work-item-cell work-item-cell-group work-item-billing-cell";
-      billingCell.append(
-        createCompactInfoLine("Datum fakture", item.invoiceDate ? formatCompactDate(item.invoiceDate) : "Bez datuma", {
-          className: "is-date",
-        }),
-        createCompactInfoLine("Broj fakture", item.invoiceNote || "Bez broja", {
+      const financeCell = document.createElement("div");
+      financeCell.className = "work-item-cell work-item-cell-group work-item-finance-cell work-item-billing-cell";
+      const financeStatus = getWorkOrderFinanceStatus(item);
+      const financeStatusPill = document.createElement("span");
+      financeStatusPill.className = "work-item-finance-status";
+      financeStatusPill.dataset.state = financeStatus.state;
+      financeStatusPill.textContent = financeStatus.label;
+      financeCell.append(
+        financeStatusPill,
+        createCompactInfoLine("Broj", item.invoiceNote || "—", {
           className: "is-invoice-note",
         }),
-        createCompactInfoLine("RN završio", item.completedBy || "Nije završeno"),
         createCompactInfoLine("Iznos", formatWorkOrderInvoiceAmount(item.weight), {
           className: "is-amount",
         }),
       );
+      if (isExpanded) {
+        financeCell.append(
+          createCompactInfoLine("Datum", item.invoiceDate ? formatCompactDate(item.invoiceDate) : "Bez datuma", {
+            className: "is-date",
+          }),
+        );
+      }
 
       const priorityTagsCell = document.createElement("div");
       priorityTagsCell.className = "work-item-cell work-item-cell-group work-item-priority-tags-cell";
@@ -103053,7 +103183,7 @@ function renderCompactWorkOrdersList() {
       attachWorkOrderInlineLocationEditor(locationCell, item);
       attachWorkOrderInlineContactEditor(contactCell, item);
       attachWorkOrderInlineServicesEditor(serviceCell, item);
-      attachWorkOrderInlineFieldEditor(billingCell, item, {
+      attachWorkOrderInlineFieldEditor(financeCell, item, {
         title: "Faktura i završetak",
         fields: [
           { key: "invoiceDate", label: "Datum fakture", type: "date" },
@@ -103118,7 +103248,8 @@ function renderCompactWorkOrdersList() {
         location: locationCell,
         contact: contactCell,
         service: serviceCell,
-        billing: billingCell,
+        billing: financeCell,
+        finance: financeCell,
         priorityTags: priorityTagsCell,
         executors: executorsCell,
         actions: actionsCell,

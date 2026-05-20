@@ -21678,10 +21678,55 @@ body.is-resizing-work-order-column {
   gap: 5px;
 }
 
+.work-item-finance-cell {
+  align-content: center;
+  gap: 5px;
+}
+
+.work-item-finance-status {
+  width: fit-content;
+  max-width: 100%;
+  min-height: 21px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 999px;
+  background: rgba(248, 250, 252, 0.96);
+  color: #64748b;
+  font-size: 0.64rem;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-item-finance-status[data-state="paid"],
+.work-item-finance-status[data-state="invoiced"] {
+  border-color: rgba(34, 197, 94, 0.2);
+  background: rgba(220, 252, 231, 0.72);
+  color: #15803d;
+}
+
+.work-item-finance-status[data-state="pending-invoice"] {
+  border-color: rgba(251, 146, 60, 0.24);
+  background: rgba(255, 237, 213, 0.82);
+  color: #c2410c;
+}
+
+.work-item-finance-status[data-state="cancelled"] {
+  border-color: rgba(148, 163, 184, 0.24);
+  background: rgba(241, 245, 249, 0.86);
+  color: #64748b;
+}
+
 .work-item-compact-info {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(66px, auto) minmax(0, 1fr);
+  grid-template-columns: minmax(44px, auto) minmax(0, 1fr);
   align-items: baseline;
   gap: 6px;
 }
@@ -54653,7 +54698,7 @@ body.is-signature-review-open::before {
 
 .work-order-premium-summary {
   display: grid;
-  grid-template-columns: repeat(6, minmax(178px, 1fr));
+  grid-template-columns: repeat(7, minmax(162px, 1fr));
   gap: 10px;
   margin: 6px 0 2px;
   overflow-x: auto;
@@ -54664,7 +54709,7 @@ body.is-signature-review-open::before {
 
 .work-order-metric-card {
   position: relative;
-  min-width: 178px;
+  min-width: 162px;
   height: 104px;
   display: grid;
   grid-template-rows: auto auto minmax(22px, 1fr) auto;
@@ -54722,6 +54767,10 @@ body.is-signature-review-open::before {
 
 .work-order-metric-card.is-amber::before {
   background: #f59e0b;
+}
+
+.work-order-metric-card.is-orange::before {
+  background: #f97316;
 }
 
 .work-order-metric-card.is-indigo::before {
@@ -54818,6 +54867,10 @@ body.is-signature-review-open::before {
   color: #7c3aed;
 }
 
+.work-order-metric-sparkline.is-orange {
+  color: #f97316;
+}
+
 .metric-sparkline-area {
   fill: currentColor;
   opacity: 0.08;
@@ -54842,6 +54895,10 @@ body.is-signature-review-open::before {
 
 .work-order-metric-bars.is-indigo {
   color: #4f46e5;
+}
+
+.work-order-metric-bars.is-orange {
+  color: #f97316;
 }
 
 .work-order-metric-bars span {
@@ -55190,7 +55247,7 @@ body.is-signature-review-open::before {
   }
 
   .work-order-premium-summary {
-    grid-template-columns: repeat(6, minmax(170px, 1fr));
+    grid-template-columns: repeat(7, minmax(158px, 1fr));
   }
 
   .public-procurement-layout {
@@ -55205,6 +55262,6 @@ body.is-signature-review-open::before {
   }
 
   .work-order-premium-summary {
-    grid-template-columns: repeat(6, minmax(164px, 1fr));
+    grid-template-columns: repeat(7, minmax(154px, 1fr));
   }
 }
