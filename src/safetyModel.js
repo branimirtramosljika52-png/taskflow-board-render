@@ -7868,6 +7868,7 @@ export function filterTodoTasks(
       item.title,
       item.message,
       item.companyName,
+      item.headquarters,
       item.locationName,
       item.workOrderNumber,
       item.createdByLabel,
@@ -8681,6 +8682,8 @@ export function filterWorkOrders(
       item.status,
       item.department,
       item.description,
+      item.serviceLine,
+      getWorkOrderServiceSummary(item),
       ...getWorkOrderExecutors(item),
     ].join(" ").toLowerCase();
 
@@ -8694,6 +8697,7 @@ const WORK_ORDER_ADVANCED_FILTER_FIELDS = new Set([
   "priority",
   "companyId",
   "locationId",
+  "headquarters",
   "region",
   "executor",
   "department",
@@ -8807,6 +8811,8 @@ function getWorkOrderAdvancedFieldValues(item, field) {
       return [normalizeText(item.companyId)];
     case "locationId":
       return [normalizeText(item.locationId)];
+    case "headquarters":
+      return [normalizeText(item.headquarters)];
     case "region":
       return [normalizeText(item.region)];
     case "executor":
@@ -8822,7 +8828,7 @@ function getWorkOrderAdvancedFieldValues(item, field) {
     case "description":
       return [normalizeText(item.description)];
     case "serviceLine":
-      return [normalizeText(item.serviceLine)];
+      return [normalizeText(item.serviceLine), normalizeText(getWorkOrderServiceSummary(item))];
     case "dueDate":
       return [normalizeOptionalDate(item.dueDate)];
     case "openedDate":

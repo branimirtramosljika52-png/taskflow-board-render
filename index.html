@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260520-rn-finance-kpi1" />
+    <link rel="stylesheet" href="/styles.css?v=20260520-rn-command-center2" />
     <link rel="stylesheet" href="/src/styles/variables.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/reset.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/builder.css?v=20260509e" />
@@ -1916,10 +1916,6 @@
                 <span class="work-order-metric-title">Fakturirano ovaj mjesec</span>
                 <strong>0 EUR</strong>
               </button>
-              <button type="button" class="work-order-metric-card" data-work-order-metric="pending-invoice">
-                <span class="work-order-metric-title">Čeka fakturu</span>
-                <strong>0 EUR</strong>
-              </button>
               <button type="button" class="work-order-metric-card" data-work-order-metric="due-soon">
                 <span class="work-order-metric-title">Rokovi uskoro</span>
                 <strong>0</strong>
@@ -1931,6 +1927,8 @@
             </section>
 
             <div class="work-order-filter-shell">
+              <div id="work-order-quick-filters" class="work-order-quick-filters" aria-label="Brzi RN filteri"></div>
+
               <div class="filter-row filter-row-clickup work-order-filter-row">
                 <label class="field work-order-search-field">
                   <span>Pretraga</span>
@@ -1947,6 +1945,15 @@
                     <span>Filteri</span>
                     <span id="work-order-filter-count" class="work-order-filter-count" hidden>0</span>
                   </button>
+                  <button id="work-order-columns-toggle" type="button" class="ghost-button work-order-columns-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="work-order-columns-panel">
+                    <span aria-hidden="true">
+                      <svg viewBox="0 0 16 16">
+                        <path d="M2.75 4.25h10.5M2.75 8h10.5M2.75 11.75h10.5M5.25 2.75v10.5M10.75 2.75v10.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.35"/>
+                      </svg>
+                    </span>
+                    <span>Kolone</span>
+                  </button>
+                  <button id="work-order-filter-reset" type="button" class="ghost-button work-order-filter-reset">Poništi</button>
                 </div>
               </div>
 
@@ -1954,6 +1961,25 @@
 
               <section id="work-order-filter-builder" class="work-order-filter-builder" aria-label="RN filteri" hidden></section>
             </div>
+
+            <aside id="work-order-columns-panel" class="work-order-columns-panel" aria-label="Prikaz kolona" hidden>
+              <div class="work-order-columns-head">
+                <div>
+                  <p class="section-kicker">Prikaz</p>
+                  <h3>Prikaz kolona</h3>
+                </div>
+                <button id="work-order-columns-close" type="button" class="ghost-button work-order-columns-close" aria-label="Zatvori prikaz kolona">×</button>
+              </div>
+              <div class="work-order-columns-tabs" role="tablist" aria-label="Uređivanje prikaza RN liste">
+                <button id="work-order-columns-tab-columns" type="button" class="is-active" data-work-order-columns-tab="columns">Kolone</button>
+                <button id="work-order-columns-tab-presets" type="button" data-work-order-columns-tab="presets">Preseti</button>
+              </div>
+              <div id="work-order-columns-body" class="work-order-columns-body"></div>
+              <div class="work-order-columns-footer">
+                <button id="work-order-columns-reset" type="button" class="ghost-button">Vrati na zadano</button>
+                <button id="work-order-columns-save" type="button" class="primary-button">Spremi prikaz</button>
+              </div>
+            </aside>
 
             <section id="work-order-list-view" class="work-order-mode-view">
               <div id="work-orders-table-wrap" class="work-orders-scroll-shell">
@@ -8552,6 +8578,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260520-rn-finance-kpi1"></script>
+    <script type="module" src="/src/main.js?v=20260520-rn-command-center2"></script>
   </body>
 </html>
