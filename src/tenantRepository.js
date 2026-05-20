@@ -1990,6 +1990,7 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
   const actorIsClientPortal = isClientPortalProfileRole(actor?.profileRole ?? actor?.profile_role);
   const canViewOffers = actorIsClientPortal
     || ["offers.view", "offers.create", "offers.edit"].some((permissionKey) => hasAppPermission(permissionKey));
+  const canViewPublicProcurements = canViewOffers;
   const canViewPurchaseOrders = actorIsClientPortal
     || ["purchaseOrders.view", "purchaseOrders.create", "purchaseOrders.edit"].some((permissionKey) => hasAppPermission(permissionKey));
   const canViewLocations = actorIsClientPortal
@@ -2114,6 +2115,10 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       selectedLocationIds: [...(item.selectedLocationIds ?? [])],
       selectedLocationNames: [...(item.selectedLocationNames ?? [])],
       items: (item.items ?? []).map((entry) => ({ ...entry })),
+    })),
+    publicProcurements: (canViewPublicProcurements ? (rawSnapshot.publicProcurements ?? []) : []).filter(isOrganizationOrCompanyItemVisible).map((item) => ({
+      ...item,
+      documents: (item.documents ?? []).map((document) => ({ ...document })),
     })),
     purchaseOrders: (canViewPurchaseOrders ? (rawSnapshot.purchaseOrders ?? []) : []).filter(isOrganizationOrCompanyItemVisible).map((item) => ({
       ...item,
@@ -2966,6 +2971,7 @@ export class MemoryTenantRepository {
     reminders: [],
     todoTasks: [],
       offers: [],
+      publicProcurements: [],
       purchaseOrders: [],
       riskAssessments: [],
       contracts: [],
@@ -3915,6 +3921,7 @@ export class MySqlTenantRepository {
     reminders: [],
     todoTasks: [],
       offers: [],
+      publicProcurements: [],
       purchaseOrders: [],
       riskAssessments: [],
       contracts: [],
@@ -3971,6 +3978,7 @@ export class MySqlTenantRepository {
         reminders: [],
         todoTasks: [],
       offers: [],
+      publicProcurements: [],
       purchaseOrders: [],
       riskAssessments: [],
       contracts: [],

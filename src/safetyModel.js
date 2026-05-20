@@ -46,6 +46,14 @@ export const PURCHASE_ORDER_STATUS_OPTIONS = [
   { value: "closed", label: "Zatvorena" },
 ];
 
+export const PUBLIC_PROCUREMENT_STATUS_OPTIONS = [
+  { value: "open", label: "Otvoreno" },
+  { value: "in_progress", label: "U pripremi" },
+  { value: "submitted", label: "Predano" },
+  { value: "awarded", label: "Dobiveno" },
+  { value: "cancelled", label: "Otkazano" },
+];
+
 export const RISK_ASSESSMENT_STATUS_OPTIONS = [
   { value: "draft", label: "Skica" },
   { value: "in_review", label: "U pregledu" },
@@ -462,6 +470,7 @@ const REMINDER_STATUS_SET = new Set(REMINDER_STATUS_OPTIONS.map((option) => opti
 const TODO_TASK_STATUS_SET = new Set(TODO_TASK_STATUS_OPTIONS.map((option) => option.value));
 const OFFER_STATUS_SET = new Set(OFFER_STATUS_OPTIONS.map((option) => option.value));
 const PURCHASE_ORDER_STATUS_SET = new Set(PURCHASE_ORDER_STATUS_OPTIONS.map((option) => option.value));
+const PUBLIC_PROCUREMENT_STATUS_SET = new Set(PUBLIC_PROCUREMENT_STATUS_OPTIONS.map((option) => option.value));
 const RISK_ASSESSMENT_STATUS_SET = new Set(RISK_ASSESSMENT_STATUS_OPTIONS.map((option) => option.value));
 const CONTRACT_STATUS_SET = new Set(CONTRACT_STATUS_OPTIONS.map((option) => option.value));
 const CONTRACT_TEMPLATE_STATUS_SET = new Set(CONTRACT_TEMPLATE_STATUS_OPTIONS.map((option) => option.value));
@@ -525,6 +534,13 @@ const PURCHASE_ORDER_STATUS_RANK = {
   issued: 2,
   confirmed: 3,
   closed: 4,
+};
+const PUBLIC_PROCUREMENT_STATUS_RANK = {
+  open: 0,
+  in_progress: 1,
+  submitted: 2,
+  awarded: 3,
+  cancelled: 4,
 };
 const RISK_ASSESSMENT_STATUS_RANK = {
   draft: 0,
@@ -805,6 +821,11 @@ function normalizeOfferStatus(value) {
 function normalizePurchaseOrderStatus(value, fallback = "draft") {
   const status = normalizeText(value).toLowerCase();
   return PURCHASE_ORDER_STATUS_SET.has(status) ? status : fallback;
+}
+
+function normalizePublicProcurementStatus(value, fallback = "open") {
+  const status = normalizeText(value).toLowerCase();
+  return PUBLIC_PROCUREMENT_STATUS_SET.has(status) ? status : fallback;
 }
 
 function normalizeRiskAssessmentStatus(value, fallback = "draft") {
@@ -3347,6 +3368,64 @@ function hydrateOfferCore({
     taxTotal: totals.taxTotal,
     total: totals.total,
     items: items.map((item) => ({ ...item })),
+    documents: documents.map((document) => ({ ...document })),
+    createdByUserId: hasOwn(input, "createdByUserId")
+      ? normalizeText(input.createdByUserId)
+      : (current?.createdByUserId ?? ""),
+    createdByLabel: hasOwn(input, "createdByLabel")
+      ? normalizeText(input.createdByLabel)
+      : (current?.createdByLabel ?? ""),
+    createdAt: current?.createdAt ?? timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+function hydratePublicProcurementCore({
+  current = null,
+  state,
+  input,
+  timestamp,
+}) {
+  const organizationId = hasOwn(input, "organizationId")
+    ? requireText(input.organizationId, "Organizacija")
+    : requireText(current?.organizationId, "Organizacija");
+  const companyId = hasOwn(input, "companyId")
+    ? normalizeId(input.companyId)
+    : normalizeId(current?.companyId);
+  const company = companyId ? findOfferCompany(state, companyId) : null;
+
+  if (companyId && !company) {
+    throw new Error("Odabrana tvrtka ne postoji.");
+  }
+
+  const documents = hasOwn(input, "documents")
+    ? normalizeAttachmentDocuments(input.documents)
+    : normalizeAttachmentDocuments(current?.documents ?? []);
+
+  return {
+    id: current?.id ?? "",
+    organizationId,
+    title: hasOwn(input, "title")
+      ? requireText(input.title, "Naziv javne nabave")
+      : requireText(current?.title, "Naziv javne nabave"),
+    referenceNumber: hasOwn(input, "referenceNumber")
+      ? normalizeText(input.referenceNumber)
+      : normalizeText(current?.referenceNumber),
+    status: hasOwn(input, "status")
+      ? normalizePublicProcurementStatus(input.status)
+      : normalizePublicProcurementStatus(current?.status),
+    deadline: hasOwn(input, "deadline")
+      ? normalizeOptionalDate(input.deadline)
+      : normalizeOptionalDate(current?.deadline),
+    companyId,
+    companyName: company?.name
+      ?? (hasOwn(input, "companyName") ? normalizeText(input.companyName) : normalizeText(current?.companyName)),
+    companyOib: company?.oib ?? normalizeText(current?.companyOib),
+    headquarters: company?.headquarters ?? normalizeText(current?.headquarters),
+    documentationUrl: hasOwn(input, "documentationUrl")
+      ? normalizeText(input.documentationUrl)
+      : normalizeText(current?.documentationUrl),
+    note: hasOwn(input, "note") ? normalizeText(input.note) : normalizeText(current?.note),
     documents: documents.map((document) => ({ ...document })),
     createdByUserId: hasOwn(input, "createdByUserId")
       ? normalizeText(input.createdByUserId)
@@ -7576,6 +7655,36 @@ export function updatePurchaseOrder(current, patch, state, now = isoNow) {
   });
 }
 
+export function createPublicProcurement(
+  input,
+  state,
+  createId = () => crypto.randomUUID(),
+  now = isoNow,
+) {
+  const timestamp = now();
+  const item = hydratePublicProcurementCore({
+    state,
+    input,
+    timestamp,
+  });
+
+  return {
+    ...item,
+    id: createId(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+export function updatePublicProcurement(current, patch, state, now = isoNow) {
+  return hydratePublicProcurementCore({
+    current,
+    state,
+    input: patch,
+    timestamp: now(),
+  });
+}
+
 export function createRiskAssessment(
   input,
   state,
@@ -7887,6 +7996,38 @@ export function filterPurchaseOrders(
   });
 }
 
+export function filterPublicProcurements(
+  procurements,
+  { query = "", status = "all" } = {},
+) {
+  const normalizedQuery = normalizeText(query).toLowerCase();
+
+  return (procurements ?? []).filter((item) => {
+    if (status !== "all" && item.status !== status) {
+      return false;
+    }
+
+    if (!normalizedQuery) {
+      return true;
+    }
+
+    const haystack = [
+      item.referenceNumber,
+      item.title,
+      item.companyName,
+      item.companyOib,
+      item.headquarters,
+      item.documentationUrl,
+      item.note,
+      item.createdByLabel,
+      ...(item.documents ?? []).map((entry) => entry.fileName),
+      ...(item.documents ?? []).map((entry) => entry.description),
+    ].join(" ").toLowerCase();
+
+    return haystack.includes(normalizedQuery);
+  });
+}
+
 export function filterRiskAssessments(
   riskAssessments,
   { query = "", status = "all", companyId = "all" } = {},
@@ -8148,6 +8289,31 @@ export function sortPurchaseOrders(purchaseOrders) {
     }
 
     if (!left.purchaseOrderDate && right.purchaseOrderDate) {
+      return 1;
+    }
+
+    return String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? ""));
+  });
+}
+
+export function sortPublicProcurements(procurements) {
+  return [...(procurements ?? [])].sort((left, right) => {
+    const leftRank = PUBLIC_PROCUREMENT_STATUS_RANK[left.status] ?? Number.MAX_SAFE_INTEGER;
+    const rightRank = PUBLIC_PROCUREMENT_STATUS_RANK[right.status] ?? Number.MAX_SAFE_INTEGER;
+
+    if (leftRank !== rightRank) {
+      return leftRank - rightRank;
+    }
+
+    if (left.deadline && right.deadline && left.deadline !== right.deadline) {
+      return left.deadline.localeCompare(right.deadline);
+    }
+
+    if (left.deadline && !right.deadline) {
+      return -1;
+    }
+
+    if (!left.deadline && right.deadline) {
       return 1;
     }
 

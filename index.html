@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260516-signatures-premium3" />
+    <link rel="stylesheet" href="/styles.css?v=20260520-rn-kpi-compact3" />
     <link rel="stylesheet" href="/src/styles/variables.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/reset.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/builder.css?v=20260509e" />
@@ -581,6 +581,17 @@
                     </svg>
                   </span>
                   <strong>Offers</strong>
+                </button>
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="public-procurement">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <path d="M7 5h10a2 2 0 0 1 2 2v13H5V7a2 2 0 0 1 2-2Z"></path>
+                      <path d="M9 3h6v4H9Z"></path>
+                      <path d="M8.5 11h7M8.5 15h4"></path>
+                      <path d="m14 16.5 1.5 1.5 3-3"></path>
+                    </svg>
+                  </span>
+                  <strong>Public Procurement</strong>
                 </button>
                 <button type="button" class="tab-button sidebar-link" data-sidebar-item="purchase-orders">
                   <span class="tab-button-icon" aria-hidden="true">
@@ -1887,6 +1898,33 @@
                 <button type="button" class="workspace-view-chip" data-work-order-list-density="expanded">Detaljno</button>
               </div>
             </div>
+
+            <section id="work-order-metrics-bar" class="work-order-premium-summary work-order-metrics-bar" aria-label="Operativne RN metrike">
+              <button type="button" class="work-order-metric-card" data-work-order-metric="open">
+                <span class="work-order-metric-title">Otvoreni RN</span>
+                <strong>0</strong>
+              </button>
+              <button type="button" class="work-order-metric-card" data-work-order-metric="overdue">
+                <span class="work-order-metric-title">RN u kašnjenju</span>
+                <strong>0</strong>
+              </button>
+              <button type="button" class="work-order-metric-card" data-work-order-metric="completed-month">
+                <span class="work-order-metric-title">Završeni ovaj mjesec</span>
+                <strong>0</strong>
+              </button>
+              <button type="button" class="work-order-metric-card" data-work-order-metric="invoiced-month">
+                <span class="work-order-metric-title">Fakturirano ovaj mjesec</span>
+                <strong>0 EUR</strong>
+              </button>
+              <button type="button" class="work-order-metric-card" data-work-order-metric="due-soon">
+                <span class="work-order-metric-title">Rokovi uskoro</span>
+                <strong>0</strong>
+              </button>
+              <button type="button" class="work-order-metric-card" data-work-order-metric="executors">
+                <span class="work-order-metric-title">Aktivni izvršitelji</span>
+                <strong>0</strong>
+              </button>
+            </section>
 
             <div class="work-order-filter-shell">
               <div class="filter-row filter-row-clickup work-order-filter-row">
@@ -5945,6 +5983,116 @@
               </div>
             </section>
 
+            <section id="public-procurement-module" class="public-procurement-module offers-module" hidden>
+              <div class="public-procurement-layout">
+                <section class="panel public-procurement-list-panel">
+                  <div class="public-procurement-hero">
+                    <div>
+                      <p class="section-kicker">Public Procurement</p>
+                      <h3>Javna nabava</h3>
+                      <p>Popis svih natječaja, rokova, tvrtki, dokumentacije i internih napomena.</p>
+                    </div>
+                    <button id="public-procurement-open-form" type="button" class="primary-button">+ New tender</button>
+                  </div>
+
+                  <div class="public-procurement-stats" aria-label="Public procurement overview">
+                    <article>
+                      <span>All</span>
+                      <strong id="public-procurement-total-count">0</strong>
+                    </article>
+                    <article>
+                      <span>Open</span>
+                      <strong id="public-procurement-open-count">0</strong>
+                    </article>
+                    <article>
+                      <span>Submitted</span>
+                      <strong id="public-procurement-submitted-count">0</strong>
+                    </article>
+                    <article>
+                      <span>Documents</span>
+                      <strong id="public-procurement-document-count">0</strong>
+                    </article>
+                  </div>
+
+                  <div class="public-procurement-filters">
+                    <label class="field">
+                      <span>Search</span>
+                      <input id="public-procurement-search" type="search" placeholder="Rok, tvrtka, dokumentacija, napomena..." />
+                    </label>
+                    <label class="field">
+                      <span>Status</span>
+                      <select id="public-procurement-filter-status"></select>
+                    </label>
+                  </div>
+
+                  <div id="public-procurement-list" class="public-procurement-list"></div>
+                  <p id="public-procurement-empty" class="helper-copy" hidden>Nema javnih nabava za prikaz.</p>
+                </section>
+
+                <section class="panel public-procurement-editor-panel">
+                  <div class="section-heading offers-section-heading">
+                    <div>
+                      <p class="section-kicker">Tender details</p>
+                      <h3 id="public-procurement-editor-title">New public procurement</h3>
+                    </div>
+                    <button id="public-procurement-reset" type="button" class="ghost-button">Clear</button>
+                  </div>
+
+                  <form id="public-procurement-form" class="entity-form public-procurement-form">
+                    <input id="public-procurement-id" type="hidden" />
+                    <div class="form-grid offers-form-grid">
+                      <label class="field field-span-full">
+                        <span>Naziv</span>
+                        <input id="public-procurement-title" maxlength="220" placeholder="Naziv postupka javne nabave..." required />
+                      </label>
+                      <label class="field">
+                        <span>Rok</span>
+                        <input id="public-procurement-deadline" type="text" inputmode="numeric" autocomplete="off" placeholder="dd.mm.yyyy" />
+                      </label>
+                      <label class="field">
+                        <span>Status</span>
+                        <select id="public-procurement-status"></select>
+                      </label>
+                      <label class="field">
+                        <span>Tvrtka</span>
+                        <select id="public-procurement-company-id"></select>
+                      </label>
+                      <label class="field">
+                        <span>Broj / oznaka</span>
+                        <input id="public-procurement-reference-number" maxlength="120" placeholder="EOJN, interni broj..." />
+                      </label>
+                      <label class="field field-span-full">
+                        <span>Dokumentacija URL</span>
+                        <input id="public-procurement-documentation-url" type="url" placeholder="https://..." />
+                      </label>
+                      <label class="field field-span-full">
+                        <span>Napomena</span>
+                        <textarea id="public-procurement-note" rows="5" placeholder="Sažetak dokumentacije, što treba pripremiti, interni dogovor..."></textarea>
+                      </label>
+                    </div>
+
+                    <section class="public-procurement-documents">
+                      <div class="offers-items-head">
+                        <div>
+                          <strong>Dokumentacija</strong>
+                          <p class="inline-help">Upload troškovnika, dokumentacije, upita, potvrda i internih priloga.</p>
+                        </div>
+                        <button id="public-procurement-documents-add" type="button" class="ghost-button">+ Upload</button>
+                      </div>
+                      <input id="public-procurement-documents-input" type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.jpg,.jpeg,.png,.webp,.txt,.zip" hidden />
+                      <div id="public-procurement-documents-list" class="public-procurement-documents-list"></div>
+                    </section>
+
+                    <p id="public-procurement-error" class="form-error" aria-live="polite"></p>
+                    <div class="form-actions">
+                      <button id="public-procurement-save" type="submit" class="primary-button">Save tender</button>
+                      <button id="public-procurement-delete" type="button" class="card-button card-danger" hidden>Delete</button>
+                    </div>
+                  </form>
+                </section>
+              </div>
+            </section>
+
             <section id="contract-module" class="offers-module contract-module" hidden>
               <div class="offers-layout">
                 <section class="panel offers-list-panel">
@@ -8400,6 +8548,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260516-signatures-premium3"></script>
+    <script type="module" src="/src/main.js?v=20260520-rn-kpi-compact3"></script>
   </body>
 </html>

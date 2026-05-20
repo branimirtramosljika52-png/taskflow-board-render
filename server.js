@@ -7720,6 +7720,7 @@ async function handleApiRequest(request, response, url) {
     const offerPdfDraftExportMatch = url.pathname === "/api/offers/export-pdf-draft";
     const offerPdfExportMatch = url.pathname.match(/^\/api\/offers\/([^/]+)\/export-pdf$/);
     const offerEmailMatch = url.pathname.match(/^\/api\/offers\/([^/]+)\/email$/);
+    const publicProcurementMatch = url.pathname.match(/^\/api\/public-procurements\/([^/]+)$/);
     const purchaseOrderMatch = url.pathname.match(/^\/api\/purchase-orders\/([^/]+)$/);
     const purchaseOrderPdfDraftExportMatch = url.pathname === "/api/purchase-orders/export-pdf-draft";
     const purchaseOrderPdfExportMatch = url.pathname.match(/^\/api\/purchase-orders\/([^/]+)\/export-pdf$/);
@@ -8469,6 +8470,23 @@ async function handleApiRequest(request, response, url) {
       assertCompanyPayloadInScope(scopedSnapshot, body);
       assertLocationPayloadInScope(scopedSnapshot, body);
       await domainRepository.createOffer({
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      }, user);
+      await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/public-procurements") {
+      if (!(await canUseScopedAppPermission(user, request, "offers.create"))) {
+        sendError(response, 403, "Nemate pravo izradivati javnu nabavu.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertCompanyPayloadInScope(scopedSnapshot, body);
+      await domainRepository.createPublicProcurement({
         ...body,
         organizationId: scopedSnapshot.activeOrganizationId,
       }, user);
@@ -10474,6 +10492,30 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (publicProcurementMatch && request.method === "PATCH") {
+      if (!(await canUseScopedAppPermission(user, request, "offers.edit"))) {
+        sendError(response, 403, "Nemate pravo uredivati javnu nabavu.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.publicProcurements ?? [], publicProcurementMatch[1], "Javna nabava nije pronađena.");
+      assertCompanyPayloadInScope(scopedSnapshot, body);
+      const updated = await domainRepository.updatePublicProcurement(publicProcurementMatch[1], {
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      }, user);
+
+      if (!updated) {
+        sendError(response, 404, "Javna nabava nije pronađena.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
     if (riskAssessmentMatch && request.method === "PATCH") {
       if (!canManageWorkOrders(user) && !isClientPortalUser(user)) {
         sendError(response, 403, "Nemate pravo upravljati procjenama rizika.");
@@ -11308,6 +11350,25 @@ async function handleApiRequest(request, response, url) {
 
       if (!deleted) {
         sendError(response, 404, "Narudzbenica nije pronađena.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (publicProcurementMatch && request.method === "DELETE") {
+      if (!(await canUseScopedAppPermission(user, request, "offers.edit"))) {
+        sendError(response, 403, "Nemate pravo brisati javnu nabavu.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.publicProcurements ?? [], publicProcurementMatch[1], "Javna nabava nije pronađena.");
+      const deleted = await domainRepository.deletePublicProcurement(publicProcurementMatch[1]);
+
+      if (!deleted) {
+        sendError(response, 404, "Javna nabava nije pronađena.");
         return true;
       }
 

@@ -24,6 +24,7 @@
   OFFER_STATUS_OPTIONS,
   PERSON_TRAINING_STATUS_OPTIONS,
   PERSON_TRAINING_TYPE_OPTIONS,
+  PUBLIC_PROCUREMENT_STATUS_OPTIONS,
   PURCHASE_ORDER_STATUS_OPTIONS,
   RISK_ASSESSMENT_STATUS_OPTIONS,
   REMINDER_STATUS_OPTIONS,
@@ -50,6 +51,7 @@
   filterLearningTests,
   filterMeasurementEquipmentItems,
   filterOffers,
+  filterPublicProcurements,
   filterPurchaseOrders,
   filterRiskAssessments,
   filterAbsenceEntries,
@@ -77,6 +79,7 @@
   getAbsenceBusinessDayCount,
   groupWorkOrdersByExecutorSet,
   sortOffers,
+  sortPublicProcurements,
   sortPurchaseOrders,
   sortRiskAssessments,
   sortReminders,
@@ -1377,6 +1380,12 @@ const MODULE_VIEW_DEFINITIONS = {
     description: "Pregled ulaznih i izlaznih narudžbenica, zaprimljenih PDF-ova i internih komercijalnih dokumenata.",
     chips: ["Incoming", "Outgoing", "Client docs"],
   },
+  "public-procurement": {
+    kicker: "Operations",
+    title: "Public Procurement",
+    description: "Praćenje javnih nabava, rokova, tvrtki, dokumentacije i internih napomena za prijave.",
+    chips: ["All tenders", "Deadlines", "Documentation"],
+  },
   periodics: {
     kicker: "Operations",
     title: "Periodics",
@@ -1457,6 +1466,7 @@ const SIDEBAR_ITEM_CONFIG = {
   "absence-report": { group: "organisations", view: "management", sidebarItem: "people", managementTab: "absence-report" },
   rn: { group: "operations", view: "selfdash", focus: "list" },
   offers: { group: "operations", view: "module", module: "offers" },
+  "public-procurement": { group: "operations", view: "module", module: "public-procurement" },
   "purchase-orders": { group: "operations", view: "module", module: "offers" },
   periodics: { group: "operations", view: "module", module: "periodics" },
   signatures: { group: "operations", view: "module", module: "signatures" },
@@ -1510,6 +1520,7 @@ const SIDEBAR_ITEM_LABELS = {
   "absence-report": "Mjesečni report",
   rn: "RN",
   offers: "Offers",
+  "public-procurement": "Public Procurement",
   "purchase-orders": "Purchase Orders",
   periodics: "Periodics",
   "drawing-studio": "Drawing Studio",
@@ -1604,6 +1615,7 @@ const state = {
   reminders: [],
   todoTasks: [],
   offers: [],
+  publicProcurements: [],
   purchaseOrders: [],
   riskAssessments: [],
   contracts: [],
@@ -1884,6 +1896,10 @@ const state = {
     offers: "outgoing",
     "purchase-orders": "outgoing",
   },
+  publicProcurementFilters: {
+    query: "",
+    status: "all",
+  },
   clientPortalAccessModalOpen: false,
   clientPortalPreviewCollapsed: {
     workOrders: false,
@@ -1939,6 +1955,7 @@ const state = {
     groups: [],
     storageScope: "",
   },
+  workOrderMetricFilter: "",
   workOrderMap: {
     selectedWorkOrderId: "",
     popupWorkOrderId: "",
@@ -3312,6 +3329,32 @@ const vehicleReservationResetButton = document.querySelector("#vehicle-reservati
 const vehicleReservationsList = document.querySelector("#vehicle-reservations-list");
 const vehicleReservationsEmpty = document.querySelector("#vehicle-reservations-empty");
 const offersModule = document.querySelector("#offers-module");
+const publicProcurementModule = document.querySelector("#public-procurement-module");
+const publicProcurementTotalCount = document.querySelector("#public-procurement-total-count");
+const publicProcurementOpenCount = document.querySelector("#public-procurement-open-count");
+const publicProcurementSubmittedCount = document.querySelector("#public-procurement-submitted-count");
+const publicProcurementDocumentCount = document.querySelector("#public-procurement-document-count");
+const publicProcurementOpenFormButton = document.querySelector("#public-procurement-open-form");
+const publicProcurementSearchInput = document.querySelector("#public-procurement-search");
+const publicProcurementFilterStatusInput = document.querySelector("#public-procurement-filter-status");
+const publicProcurementList = document.querySelector("#public-procurement-list");
+const publicProcurementEmpty = document.querySelector("#public-procurement-empty");
+const publicProcurementForm = document.querySelector("#public-procurement-form");
+const publicProcurementIdInput = document.querySelector("#public-procurement-id");
+const publicProcurementEditorTitle = document.querySelector("#public-procurement-editor-title");
+const publicProcurementTitleInput = document.querySelector("#public-procurement-title");
+const publicProcurementDeadlineInput = document.querySelector("#public-procurement-deadline");
+const publicProcurementStatusInput = document.querySelector("#public-procurement-status");
+const publicProcurementCompanyIdInput = document.querySelector("#public-procurement-company-id");
+const publicProcurementReferenceNumberInput = document.querySelector("#public-procurement-reference-number");
+const publicProcurementDocumentationUrlInput = document.querySelector("#public-procurement-documentation-url");
+const publicProcurementNoteInput = document.querySelector("#public-procurement-note");
+const publicProcurementDocumentsInput = document.querySelector("#public-procurement-documents-input");
+const publicProcurementDocumentsAddButton = document.querySelector("#public-procurement-documents-add");
+const publicProcurementDocumentsList = document.querySelector("#public-procurement-documents-list");
+const publicProcurementError = document.querySelector("#public-procurement-error");
+const publicProcurementResetButton = document.querySelector("#public-procurement-reset");
+const publicProcurementDeleteButton = document.querySelector("#public-procurement-delete");
 const signaturesModule = document.querySelector("#signatures-module");
 const signaturesStats = document.querySelector("#signatures-stats");
 const signaturesList = document.querySelector("#signatures-list");
@@ -4050,6 +4093,7 @@ let offerFormSelectedLocationIds = [];
 let offerTemplateReferenceDraft = null;
 let purchaseOrderTemplateReferenceDraft = null;
 let purchaseOrderDocumentDrafts = [];
+let publicProcurementDocumentDrafts = [];
 let offerEmailModalOpen = false;
 let offerHtmlPreviewModalOpen = false;
 let offerHtmlPreviewPayload = null;
@@ -4820,6 +4864,7 @@ const workOrderModeButtons = Array.from(document.querySelectorAll("[data-work-or
 const workOrderListDensityToggle = document.querySelector("#work-order-list-density-toggle");
 const workOrderListDensityButtons = Array.from(document.querySelectorAll("[data-work-order-list-density]"));
 const workOrderListView = document.querySelector("#work-order-list-view");
+const workOrderMetricsBar = document.querySelector("#work-order-metrics-bar");
 const workOrderCalendarView = document.querySelector("#work-order-calendar-view");
 const workOrderMapView = document.querySelector("#work-order-map-view");
 const workOrderCalendarPrevButton = document.querySelector("#work-order-calendar-prev");
@@ -7037,6 +7082,18 @@ function getCanEditOffers() {
   return hasAppPermissionClient("offers.edit");
 }
 
+function getCanViewPublicProcurements() {
+  return getCanViewOffers();
+}
+
+function getCanCreatePublicProcurements() {
+  return getCanCreateOffers();
+}
+
+function getCanEditPublicProcurements() {
+  return getCanEditOffers();
+}
+
 function getCanViewPurchaseOrders() {
   return hasAppPermissionClient("purchaseOrders.view") || getCanCreatePurchaseOrders() || getCanEditPurchaseOrders();
 }
@@ -8020,6 +8077,7 @@ function applySnapshot(payload, options = {}) {
   state.reminders = payload.reminders ?? [];
   state.todoTasks = payload.todoTasks ?? [];
   state.offers = payload.offers ?? [];
+  state.publicProcurements = payload.publicProcurements ?? [];
   state.purchaseOrders = payload.purchaseOrders ?? [];
   state.riskAssessments = payload.riskAssessments ?? [];
   state.contracts = payload.contracts ?? [];
@@ -8139,6 +8197,9 @@ function applySnapshot(payload, options = {}) {
     state.offerEditorOpen = false;
     syncOfferEditorModal();
     resetOfferForm();
+  }
+  if (publicProcurementIdInput?.value && !state.publicProcurements.some((item) => String(item.id) === String(publicProcurementIdInput.value))) {
+    resetPublicProcurementForm();
   }
   if (reminderIdInput?.value && !state.reminders.some((item) => String(item.id) === String(reminderIdInput.value))) {
     state.reminderEditorOpen = false;
@@ -17573,6 +17634,7 @@ function renderModuleView() {
   const isDocumentsModule = state.activeModuleItem === "documents";
   const isSettingsModule = state.activeModuleItem === "settings";
   const isOffersModule = state.activeModuleItem === "offers";
+  const isPublicProcurementModule = state.activeModuleItem === "public-procurement";
   const isContractModule = state.activeModuleItem === "contract";
   const isClientPortalModule = state.activeModuleItem === "client-portal";
   const isPeriodicsModule = state.activeModuleItem === "periodics";
@@ -17592,6 +17654,7 @@ function renderModuleView() {
   const shouldShowGenericModuleHeader = !isTemplateDevelopmentModule
     && !isDocumentsModule
     && !isOffersModule
+    && !isPublicProcurementModule
     && !isLegalFrameworkModule
     && !isMeasurementEquipmentModule
     && !isContractModule
@@ -17681,6 +17744,10 @@ function renderModuleView() {
     offersModule.hidden = !isOffersModule;
   }
 
+  if (publicProcurementModule) {
+    publicProcurementModule.hidden = !isPublicProcurementModule;
+  }
+
   if (contractModule) {
     contractModule.hidden = !isContractModule;
   }
@@ -17751,6 +17818,10 @@ function renderModuleView() {
 
   if (isOffersModule) {
     renderOffersModule();
+  }
+
+  if (isPublicProcurementModule) {
+    renderPublicProcurementModule();
   }
 
   if (isContractModule) {
@@ -87314,6 +87385,251 @@ async function sendOfferEmailFromModal() {
   closeOfferEmailModal();
 }
 
+function getPublicProcurementStatusLabel(status = "open") {
+  return getOptionLabel(PUBLIC_PROCUREMENT_STATUS_OPTIONS, status || "open") || "Otvoreno";
+}
+
+function syncPublicProcurementSelects() {
+  if (publicProcurementFilterStatusInput) {
+    replaceSelectOptions(publicProcurementFilterStatusInput, [
+      { value: "all", label: "Svi statusi" },
+      ...PUBLIC_PROCUREMENT_STATUS_OPTIONS,
+    ], state.publicProcurementFilters.status || "all");
+  }
+
+  if (publicProcurementStatusInput) {
+    replaceSelectOptions(publicProcurementStatusInput, PUBLIC_PROCUREMENT_STATUS_OPTIONS, publicProcurementStatusInput.value || "open");
+  }
+
+  if (publicProcurementCompanyIdInput) {
+    const currentValue = publicProcurementCompanyIdInput.value || "";
+    replaceSelectOptions(publicProcurementCompanyIdInput, [
+      { value: "", label: "Bez povezane tvrtke" },
+      ...[...state.companies]
+        .sort((left, right) => String(left.name || "").localeCompare(String(right.name || ""), "hr"))
+        .map((company) => ({
+          value: String(company.id),
+          label: company.name || "Tvrtka bez naziva",
+        })),
+    ], currentValue);
+  }
+}
+
+function resetPublicProcurementForm() {
+  if (publicProcurementIdInput) publicProcurementIdInput.value = "";
+  if (publicProcurementTitleInput) publicProcurementTitleInput.value = "";
+  if (publicProcurementDeadlineInput) publicProcurementDeadlineInput.value = "";
+  if (publicProcurementStatusInput) publicProcurementStatusInput.value = "open";
+  if (publicProcurementCompanyIdInput) publicProcurementCompanyIdInput.value = "";
+  if (publicProcurementReferenceNumberInput) publicProcurementReferenceNumberInput.value = "";
+  if (publicProcurementDocumentationUrlInput) publicProcurementDocumentationUrlInput.value = "";
+  if (publicProcurementNoteInput) publicProcurementNoteInput.value = "";
+  publicProcurementDocumentDrafts = [];
+  setInlineMessage(publicProcurementError, "");
+  renderPublicProcurementDocuments();
+  if (publicProcurementEditorTitle) {
+    publicProcurementEditorTitle.textContent = "New public procurement";
+  }
+  if (publicProcurementDeleteButton) {
+    publicProcurementDeleteButton.hidden = true;
+  }
+}
+
+function hydratePublicProcurementForm(item = {}) {
+  if (publicProcurementIdInput) publicProcurementIdInput.value = item.id || "";
+  if (publicProcurementTitleInput) publicProcurementTitleInput.value = item.title || "";
+  if (publicProcurementDeadlineInput) publicProcurementDeadlineInput.value = item.deadline ? formatDateInputDisplayValue(item.deadline) : "";
+  if (publicProcurementStatusInput) publicProcurementStatusInput.value = item.status || "open";
+  if (publicProcurementCompanyIdInput) publicProcurementCompanyIdInput.value = item.companyId || "";
+  if (publicProcurementReferenceNumberInput) publicProcurementReferenceNumberInput.value = item.referenceNumber || "";
+  if (publicProcurementDocumentationUrlInput) publicProcurementDocumentationUrlInput.value = item.documentationUrl || "";
+  if (publicProcurementNoteInput) publicProcurementNoteInput.value = item.note || "";
+  publicProcurementDocumentDrafts = (item.documents ?? []).map((document) => ({ ...document }));
+  setInlineMessage(publicProcurementError, "");
+  renderPublicProcurementDocuments();
+  if (publicProcurementEditorTitle) {
+    publicProcurementEditorTitle.textContent = item.title || "Tender details";
+  }
+  if (publicProcurementDeleteButton) {
+    publicProcurementDeleteButton.hidden = !item.id || !getCanEditPublicProcurements();
+  }
+  publicProcurementTitleInput?.focus({ preventScroll: true });
+}
+
+function buildPublicProcurementPayload() {
+  const company = state.companies.find((item) => String(item.id) === String(publicProcurementCompanyIdInput?.value || "")) ?? null;
+  return {
+    title: String(publicProcurementTitleInput?.value || "").trim(),
+    referenceNumber: String(publicProcurementReferenceNumberInput?.value || "").trim(),
+    status: publicProcurementStatusInput?.value || "open",
+    deadline: normalizeDateInputValue(publicProcurementDeadlineInput?.value || "") || null,
+    companyId: company ? String(company.id) : "",
+    companyName: company?.name || "",
+    documentationUrl: String(publicProcurementDocumentationUrlInput?.value || "").trim(),
+    note: String(publicProcurementNoteInput?.value || "").trim(),
+    documents: publicProcurementDocumentDrafts.map((document) => ({ ...document })),
+  };
+}
+
+function renderPublicProcurementDocuments() {
+  if (!publicProcurementDocumentsList) {
+    return;
+  }
+
+  if (publicProcurementDocumentDrafts.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "helper-copy public-procurement-documents-empty";
+    empty.textContent = "Još nema uploadane dokumentacije.";
+    publicProcurementDocumentsList.replaceChildren(empty);
+    return;
+  }
+
+  publicProcurementDocumentsList.replaceChildren(...publicProcurementDocumentDrafts.map((documentItem) => {
+    const row = document.createElement("article");
+    row.className = "public-procurement-document-row";
+
+    const copy = document.createElement("div");
+    copy.className = "public-procurement-document-copy";
+    const title = document.createElement("strong");
+    title.textContent = documentItem.fileName || "Dokument";
+    const meta = document.createElement("span");
+    meta.textContent = [
+      documentItem.fileType || "",
+      formatFileSize(documentItem.fileSize || 0),
+    ].filter(Boolean).join(" · ");
+    copy.append(title, meta);
+
+    const actions = document.createElement("div");
+    actions.className = "public-procurement-document-actions";
+    actions.append(
+      createIconActionButton("Preuzmi", "download", "", () => {
+        triggerModuleAttachmentDownload(documentItem);
+      }),
+      createIconActionButton("Makni", "trash", "is-danger", () => {
+        publicProcurementDocumentDrafts = publicProcurementDocumentDrafts.filter((entry) => String(entry.id) !== String(documentItem.id));
+        renderPublicProcurementDocuments();
+      }),
+    );
+
+    row.append(copy, actions);
+    return row;
+  }));
+}
+
+function renderPublicProcurementStats(items = []) {
+  if (publicProcurementTotalCount) {
+    publicProcurementTotalCount.textContent = String(items.length);
+  }
+  if (publicProcurementOpenCount) {
+    publicProcurementOpenCount.textContent = String(items.filter((item) => ["open", "in_progress"].includes(item.status)).length);
+  }
+  if (publicProcurementSubmittedCount) {
+    publicProcurementSubmittedCount.textContent = String(items.filter((item) => item.status === "submitted").length);
+  }
+  if (publicProcurementDocumentCount) {
+    publicProcurementDocumentCount.textContent = String(items.reduce((total, item) => total + (item.documents?.length ?? 0), 0));
+  }
+}
+
+function renderPublicProcurementModule() {
+  if (!publicProcurementModule || !publicProcurementList) {
+    return;
+  }
+
+  syncPublicProcurementSelects();
+
+  if (publicProcurementOpenFormButton) {
+    publicProcurementOpenFormButton.hidden = !getCanCreatePublicProcurements();
+  }
+
+  if (publicProcurementDeleteButton) {
+    publicProcurementDeleteButton.hidden = !publicProcurementIdInput?.value || !getCanEditPublicProcurements();
+  }
+
+  const allItems = getCanViewPublicProcurements() ? sortPublicProcurements(state.publicProcurements ?? []) : [];
+  const visibleItems = sortPublicProcurements(filterPublicProcurements(allItems, state.publicProcurementFilters));
+  renderPublicProcurementStats(allItems);
+
+  if (publicProcurementSearchInput && publicProcurementSearchInput.value !== state.publicProcurementFilters.query) {
+    publicProcurementSearchInput.value = state.publicProcurementFilters.query || "";
+  }
+
+  publicProcurementList.replaceChildren(...visibleItems.map((item) => {
+    const card = document.createElement("article");
+    card.className = `public-procurement-card is-${item.status || "open"}`;
+    if (String(item.id) === String(publicProcurementIdInput?.value || "")) {
+      card.classList.add("is-active");
+    }
+    card.tabIndex = 0;
+    card.setAttribute("role", "button");
+    card.setAttribute("aria-label", `Otvori javnu nabavu ${item.title || ""}`.trim());
+
+    const top = document.createElement("div");
+    top.className = "public-procurement-card-top";
+    const copy = document.createElement("div");
+    copy.className = "public-procurement-card-copy";
+    const title = document.createElement("h4");
+    title.textContent = item.title || "Bez naziva";
+    const meta = document.createElement("p");
+    meta.textContent = [
+      item.referenceNumber ? `#${item.referenceNumber}` : "",
+      item.companyName || "Bez tvrtke",
+      item.deadline ? `Rok ${formatDate(item.deadline)}` : "Bez roka",
+    ].filter(Boolean).join(" · ");
+    copy.append(title, meta);
+
+    const status = createMetaPill(getPublicProcurementStatusLabel(item.status), `is-${slugifyValue(item.status || "open")}`);
+    top.append(copy, status);
+
+    const note = document.createElement("p");
+    note.className = "public-procurement-card-note";
+    note.textContent = item.note || "Nema napomene.";
+
+    const footer = document.createElement("div");
+    footer.className = "public-procurement-card-footer";
+    const docs = document.createElement("span");
+    docs.textContent = `${item.documents?.length ?? 0} dok.`;
+    const author = document.createElement("span");
+    author.textContent = item.createdByLabel || "SafeNexus";
+    footer.append(docs, author);
+
+    card.append(top, note, footer);
+    const open = () => {
+      if (getCanEditPublicProcurements()) {
+        hydratePublicProcurementForm(item);
+      }
+    };
+    card.addEventListener("click", (event) => {
+      if (isInteractiveWorkOrderTarget(event.target)) {
+        return;
+      }
+      open();
+    });
+    card.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") {
+        return;
+      }
+      event.preventDefault();
+      open();
+    });
+    return card;
+  }));
+
+  if (publicProcurementEmpty) {
+    publicProcurementEmpty.hidden = true;
+    publicProcurementEmpty.textContent = getCanViewPublicProcurements()
+      ? "Nema javnih nabava za odabrane filtere."
+      : "Nemas ovlastenje za pregled javne nabave.";
+  }
+
+  if (visibleItems.length === 0) {
+    const emptyCard = document.createElement("div");
+    emptyCard.className = "offers-empty-card";
+    emptyCard.textContent = publicProcurementEmpty?.textContent || "Nema javnih nabava za prikaz.";
+    publicProcurementList.replaceChildren(emptyCard);
+  }
+}
+
 function renderOffersModule() {
   if (!offersModule || !offersList || !offersEmpty) {
     return;
@@ -91056,6 +91372,7 @@ function renderWorkOrderFilterBuilder() {
     }),
     createActionButton("Očisti sve", "ghost-button", () => {
       state.workOrderFilters.query = "";
+      state.workOrderMetricFilter = "";
       state.workOrderFilters.groups = [createWorkOrderFilterGroup()];
       setWorkOrderFilterActivePreset("");
       if (workOrderSearchInput) {
@@ -91074,12 +91391,14 @@ function renderWorkOrderFilterBuilder() {
 }
 
 function getFilteredWorkOrders() {
-  return sortWorkOrders(filterWorkOrders(state.workOrders, {
+  const filtered = filterWorkOrders(state.workOrders, {
     query: state.workOrderFilters.query,
     advancedFilters: {
       groups: state.workOrderFilters.groups,
     },
-  }));
+  });
+
+  return sortWorkOrders(applyWorkOrderMetricFilter(filtered));
 }
 
 function getMapFilteredWorkOrders() {
@@ -93529,12 +93848,355 @@ function renderWorkOrderCroatiaMapView() {
 
   syncWorkOrderLeafletMarkers(markers);
 }
+
+const WORK_ORDER_METRIC_FILTERS = new Set([
+  "open",
+  "overdue",
+  "completed-month",
+  "invoiced-month",
+  "due-soon",
+  "executors",
+]);
+
+function getWorkOrderDateKey(value = "") {
+  const normalized = String(value ?? "").trim();
+  return /^\d{4}-\d{2}-\d{2}/.test(normalized) ? normalized.slice(0, 10) : "";
+}
+
+function getWorkOrderCompletionDateKey(item = {}) {
+  if (!isClosedWorkOrder(item.status)) {
+    return "";
+  }
+  return getWorkOrderDateKey(item.executionDate)
+    || getWorkOrderDateKey(item.completedAt)
+    || getWorkOrderDateKey(item.updatedAt)
+    || getWorkOrderDateKey(item.openedDate);
+}
+
+function getWorkOrderInvoiceDateKey(item = {}) {
+  return getWorkOrderDateKey(item.invoiceDate)
+    || (String(item.status || "") === "Fakturiran RN" ? getWorkOrderCompletionDateKey(item) : "");
+}
+
+function getWorkOrderInvoiceAmount(item = {}) {
+  return Math.max(0, parseOfferMoneyInput(item.weight, 0));
+}
+
+function getDateDistanceInDays(targetDateKey = "", baseDateKey = getTodayDateKey()) {
+  const target = Date.parse(`${targetDateKey}T12:00:00`);
+  const base = Date.parse(`${baseDateKey}T12:00:00`);
+  if (!Number.isFinite(target) || !Number.isFinite(base)) {
+    return Number.NaN;
+  }
+  return Math.round((target - base) / 86400000);
+}
+
+function isWorkOrderDueWithin(item = {}, fromDays = 0, toDays = 7, todayKey = getTodayDateKey()) {
+  if (!item?.dueDate || isClosedWorkOrder(item.status)) {
+    return false;
+  }
+  const days = getDateDistanceInDays(item.dueDate, todayKey);
+  return Number.isFinite(days) && days >= fromDays && days <= toDays;
+}
+
+function isWorkOrderMetricMatch(item = {}, metricKey = "", todayKey = getTodayDateKey()) {
+  const monthKey = todayKey.slice(0, 7);
+  if (metricKey === "open") {
+    return String(item.status || "") === "Otvoreni RN";
+  }
+  if (metricKey === "overdue") {
+    return isOverdueWorkOrder(item);
+  }
+  if (metricKey === "completed-month") {
+    return getWorkOrderCompletionDateKey(item).startsWith(monthKey);
+  }
+  if (metricKey === "invoiced-month") {
+    return getWorkOrderInvoiceDateKey(item).startsWith(monthKey);
+  }
+  if (metricKey === "due-soon") {
+    return isWorkOrderDueWithin(item, 0, 7, todayKey);
+  }
+  if (metricKey === "executors") {
+    return !isClosedWorkOrder(item.status) && getWorkOrderExecutors(item).length > 0;
+  }
+  return true;
+}
+
+function applyWorkOrderMetricFilter(items = []) {
+  const metricKey = String(state.workOrderMetricFilter || "");
+  if (!WORK_ORDER_METRIC_FILTERS.has(metricKey)) {
+    return items;
+  }
+  const todayKey = getTodayDateKey();
+  return items.filter((item) => isWorkOrderMetricMatch(item, metricKey, todayKey));
+}
+
+function getMetricDelta(currentValue = 0, previousValue = 0) {
+  const current = Number(currentValue) || 0;
+  const previous = Number(previousValue) || 0;
+  if (previous <= 0) {
+    return current > 0 ? 100 : 0;
+  }
+  return Math.round(((current - previous) / previous) * 100);
+}
+
+function formatMetricDelta(value = 0) {
+  const numeric = Number(value) || 0;
+  if (numeric === 0) {
+    return "0%";
+  }
+  return `${numeric > 0 ? "+" : ""}${numeric}%`;
+}
+
+function formatCompactMetricCurrency(value = 0) {
+  const numeric = Number(value) || 0;
+  return new Intl.NumberFormat("hr-HR", {
+    style: "currency",
+    currency: "EUR",
+    maximumFractionDigits: numeric >= 10000 ? 0 : 2,
+  }).format(numeric);
+}
+
+function getMetricDeltaClass(metric = {}) {
+  const numericDelta = Number(metric.delta) || 0;
+  if (numericDelta === 0) {
+    return "is-neutral";
+  }
+  if (metric.badWhenUp) {
+    return numericDelta > 0 ? "is-down" : "is-up";
+  }
+  return numericDelta > 0 ? "is-up" : "is-down";
+}
+
+function buildRollingMetricValues(items = [], dateGetter, { bucketCount = 6, bucketDays = 7, valueGetter = () => 1 } = {}) {
+  const todayKey = getTodayDateKey();
+  return Array.from({ length: bucketCount }, (_, index) => {
+    const bucketStart = shiftDateKey(todayKey, -((bucketCount - index) * bucketDays) + 1);
+    const bucketEnd = shiftDateKey(bucketStart, bucketDays - 1);
+    return items.reduce((sum, item) => {
+      const dateKey = getWorkOrderDateKey(dateGetter(item));
+      if (!dateKey || dateKey < bucketStart || dateKey > bucketEnd) {
+        return sum;
+      }
+      return sum + (Number(valueGetter(item)) || 0);
+    }, 0);
+  });
+}
+
+function shiftMonthKey(monthKey = getTodayDateKey().slice(0, 7), offset = 0) {
+  const [year, month] = monthKey.split("-").map((value) => Number(value));
+  const date = new Date(year || new Date().getFullYear(), (month || 1) - 1 + offset, 1, 12, 0, 0, 0);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function buildMonthlyMetricValues(items = [], dateGetter, { monthCount = 6, valueGetter = () => 1 } = {}) {
+  const currentMonth = getTodayDateKey().slice(0, 7);
+  return Array.from({ length: monthCount }, (_, index) => {
+    const monthKey = shiftMonthKey(currentMonth, index - monthCount + 1);
+    return items.reduce((sum, item) => {
+      const dateKey = getWorkOrderDateKey(dateGetter(item));
+      return dateKey.startsWith(monthKey) ? sum + (Number(valueGetter(item)) || 0) : sum;
+    }, 0);
+  });
+}
+
+function buildMetricSparkline(values = [], tone = "blue") {
+  const safeValues = values.length > 0 ? values.map((value) => Math.max(0, Number(value) || 0)) : [0, 0];
+  const maxValue = Math.max(1, ...safeValues);
+  const points = safeValues.map((value, index) => {
+    const x = safeValues.length === 1 ? 48 : (index / (safeValues.length - 1)) * 96;
+    const y = 23 - ((value / maxValue) * 18);
+    return `${x.toFixed(2)},${y.toFixed(2)}`;
+  }).join(" ");
+  const areaPoints = `0,24 ${points} 96,24`;
+  return `
+    <svg class="work-order-metric-sparkline is-${escapeHtml(tone)}" viewBox="0 0 96 24" aria-hidden="true" focusable="false">
+      <polygon class="metric-sparkline-area" points="${areaPoints}"></polygon>
+      <polyline class="metric-sparkline-line" points="${points}"></polyline>
+    </svg>
+  `;
+}
+
+function buildMetricBars(values = [], tone = "blue") {
+  const safeValues = values.length > 0 ? values.map((value) => Math.max(0, Number(value) || 0)) : [0];
+  const maxValue = Math.max(1, ...safeValues);
+  return `
+    <span class="work-order-metric-bars is-${escapeHtml(tone)}" aria-hidden="true">
+      ${safeValues.map((value) => `<span style="--bar:${Math.max(7, Math.round((value / maxValue) * 100))}%"></span>`).join("")}
+    </span>
+  `;
+}
+
+function buildMetricDonut({ today = 0, soon = 0, week = 0 } = {}) {
+  const total = Math.max(0, today + soon + week);
+  const todayPart = total > 0 ? (today / total) * 100 : 0;
+  const soonPart = total > 0 ? ((today + soon) / total) * 100 : 0;
+  return `
+    <span class="work-order-metric-donut" style="--today:${todayPart.toFixed(2)}%;--soon:${soonPart.toFixed(2)}%" aria-hidden="true">
+      <span>${total}</span>
+    </span>
+  `;
+}
+
+function buildWorkOrderMetricData(items = state.workOrders ?? []) {
+  const workOrders = Array.isArray(items) ? items : [];
+  const todayKey = getTodayDateKey();
+  const monthKey = todayKey.slice(0, 7);
+  const previousMonthKey = shiftMonthKey(monthKey, -1);
+  const activeItems = workOrders.filter((item) => !isClosedWorkOrder(item.status));
+  const openItems = workOrders.filter((item) => String(item.status || "") === "Otvoreni RN");
+  const overdueItems = activeItems.filter((item) => isOverdueWorkOrder(item));
+  const completedThisMonth = workOrders.filter((item) => getWorkOrderCompletionDateKey(item).startsWith(monthKey));
+  const completedPreviousMonth = workOrders.filter((item) => getWorkOrderCompletionDateKey(item).startsWith(previousMonthKey));
+  const invoicedThisMonth = workOrders.filter((item) => getWorkOrderInvoiceDateKey(item).startsWith(monthKey));
+  const invoicedPreviousMonth = workOrders.filter((item) => getWorkOrderInvoiceDateKey(item).startsWith(previousMonthKey));
+  const invoiceTotal = invoicedThisMonth.reduce((sum, item) => sum + getWorkOrderInvoiceAmount(item), 0);
+  const previousInvoiceTotal = invoicedPreviousMonth.reduce((sum, item) => sum + getWorkOrderInvoiceAmount(item), 0);
+  const dueToday = activeItems.filter((item) => isWorkOrderDueWithin(item, 0, 0, todayKey)).length;
+  const dueOneToThree = activeItems.filter((item) => isWorkOrderDueWithin(item, 1, 3, todayKey)).length;
+  const dueFourToSeven = activeItems.filter((item) => isWorkOrderDueWithin(item, 4, 7, todayKey)).length;
+  const dueSoonTotal = dueToday + dueOneToThree + dueFourToSeven;
+  const executorLoads = new Map();
+  activeItems.forEach((item) => {
+    getWorkOrderExecutors(item).forEach((executor) => {
+      executorLoads.set(executor, (executorLoads.get(executor) || 0) + 1);
+    });
+  });
+  const sortedExecutorLoads = [...executorLoads.entries()].sort((left, right) => right[1] - left[1]);
+  const activeExecutorCount = sortedExecutorLoads.length;
+  const workloadCapacity = Math.max(1, activeExecutorCount * 8);
+  const workloadPercent = Math.min(100, Math.round((activeItems.length / workloadCapacity) * 100));
+  const openTrend = buildRollingMetricValues(openItems, (item) => item.openedDate);
+  const overdueTrend = buildRollingMetricValues(overdueItems, (item) => item.dueDate);
+  const completedTrend = buildRollingMetricValues(completedThisMonth, (item) => getWorkOrderCompletionDateKey(item), { bucketCount: 5, bucketDays: 6 });
+  const invoiceTrend = buildMonthlyMetricValues(workOrders, (item) => getWorkOrderInvoiceDateKey(item), { valueGetter: getWorkOrderInvoiceAmount });
+  const executorTrend = sortedExecutorLoads.slice(0, 8).map(([, load]) => load);
+  const openedLastSeven = workOrders.filter((item) => {
+    const openedDate = getWorkOrderDateKey(item.openedDate);
+    return openedDate >= shiftDateKey(todayKey, -6) && openedDate <= todayKey;
+  }).length;
+  const openedPreviousSeven = workOrders.filter((item) => {
+    const openedDate = getWorkOrderDateKey(item.openedDate);
+    return openedDate >= shiftDateKey(todayKey, -13) && openedDate <= shiftDateKey(todayKey, -7);
+  }).length;
+  const overdueMoreThanSeven = overdueItems.filter((item) => getDateDistanceInDays(item.dueDate, todayKey) <= -7).length;
+  const overdueMoreThanThirty = overdueItems.filter((item) => getDateDistanceInDays(item.dueDate, todayKey) <= -30).length;
+  const urgentOpen = openItems.filter((item) => String(item.priority || "") === "Urgent").length;
+  const activeAssignments = [...executorLoads.values()].reduce((sum, value) => sum + value, 0);
+
+  return [
+    {
+      id: "open",
+      tone: "violet",
+      title: "Otvoreni RN",
+      value: openItems.length,
+      delta: getMetricDelta(openedLastSeven, openedPreviousSeven),
+      chart: buildMetricSparkline(openTrend, "violet"),
+      metaLeft: `${overdueItems.length} kasni`,
+      metaRight: `${urgentOpen} hitno`,
+    },
+    {
+      id: "overdue",
+      tone: "red",
+      title: "RN u kašnjenju",
+      value: overdueItems.length,
+      delta: getMetricDelta(overdueItems.length, Math.max(0, overdueItems.length - overdueTrend.at(-2) || 0)),
+      badWhenUp: true,
+      chart: buildMetricSparkline(overdueTrend, "red"),
+      metaLeft: `${overdueMoreThanSeven} više od 7 dana`,
+      metaRight: `${overdueMoreThanThirty} više od 30 dana`,
+    },
+    {
+      id: "completed-month",
+      tone: "green",
+      title: "Završeni ovaj mjesec",
+      value: completedThisMonth.length,
+      delta: getMetricDelta(completedThisMonth.length, completedPreviousMonth.length),
+      chart: buildMetricSparkline(completedTrend, "green"),
+      metaLeft: `Cilj ${Math.max(completedThisMonth.length, completedPreviousMonth.length, 1)}`,
+      metaRight: `${completedPreviousMonth.length} prošli mj.`,
+    },
+    {
+      id: "invoiced-month",
+      tone: "blue",
+      title: "Fakturirano ovaj mjesec",
+      value: formatCompactMetricCurrency(invoiceTotal),
+      delta: getMetricDelta(invoiceTotal, previousInvoiceTotal),
+      chart: buildMetricBars(invoiceTrend, "blue"),
+      metaLeft: `${invoicedThisMonth.length} RN`,
+      metaRight: `Prosj. ${formatCompactMetricCurrency(invoicedThisMonth.length ? invoiceTotal / invoicedThisMonth.length : 0)}`,
+    },
+    {
+      id: "due-soon",
+      tone: "amber",
+      title: "Rokovi uskoro",
+      value: dueSoonTotal,
+      delta: getMetricDelta(dueSoonTotal, overdueItems.length),
+      badWhenUp: true,
+      chart: buildMetricDonut({ today: dueToday, soon: dueOneToThree, week: dueFourToSeven }),
+      metaLeft: `${dueToday} danas`,
+      metaRight: `${dueOneToThree} 1-3d · ${dueFourToSeven} 4-7d`,
+    },
+    {
+      id: "executors",
+      tone: "indigo",
+      title: "Aktivni izvršitelji",
+      value: activeExecutorCount,
+      delta: activeExecutorCount > 0 ? getMetricDelta(activeExecutorCount, Math.max(1, activeExecutorCount - 1)) : 0,
+      chart: buildMetricBars(executorTrend, "indigo"),
+      metaLeft: `${workloadPercent}% workload`,
+      metaRight: `${activeAssignments} dodjela`,
+    },
+  ];
+}
+
+function renderWorkOrderPremiumSummary(items = state.workOrders ?? []) {
+  if (!workOrderMetricsBar) {
+    return;
+  }
+
+  const metrics = buildWorkOrderMetricData(items);
+  workOrderMetricsBar.replaceChildren(...metrics.map((metric) => {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = `work-order-metric-card is-${metric.tone}`;
+    card.dataset.workOrderMetric = metric.id;
+    const isActive = state.workOrderMetricFilter === metric.id;
+    card.classList.toggle("is-active", isActive);
+    card.setAttribute("aria-pressed", isActive ? "true" : "false");
+    card.setAttribute("aria-label", `${metric.title}: ${metric.value}`);
+
+    const deltaClass = getMetricDeltaClass(metric);
+    card.innerHTML = `
+      <span class="work-order-metric-head">
+        <span class="work-order-metric-title">${escapeHtml(metric.title)}</span>
+        <span class="work-order-metric-delta ${deltaClass}">${escapeHtml(formatMetricDelta(metric.delta))}</span>
+      </span>
+      <span class="work-order-metric-main">
+        <strong>${escapeHtml(metric.value)}</strong>
+      </span>
+      <span class="work-order-metric-chart">${metric.chart}</span>
+      <span class="work-order-metric-meta">
+        <span>${escapeHtml(metric.metaLeft)}</span>
+        <span>${escapeHtml(metric.metaRight)}</span>
+      </span>
+    `;
+    card.addEventListener("click", () => {
+      state.workOrderMetricFilter = state.workOrderMetricFilter === metric.id ? "" : metric.id;
+      resetWorkOrderListWindow();
+      renderWorkOrderWorkspace();
+    });
+    return card;
+  }));
+}
+
 function renderWorkOrderWorkspace() {
   updateWorkOrderModeButtons();
   updateWorkOrderListDensityButtons();
   refreshWorkOrderTeamSuggestions();
   renderWorkOrderTemplateStrip();
   renderWorkOrderFilterSummary();
+  renderWorkOrderPremiumSummary(state.workOrders ?? []);
 
   const filtered = getFilteredWorkOrders();
   const emptyTextByMode = {
@@ -107065,6 +107727,112 @@ bindPeriodicsSectionHeaderToggle(
   "equipmentCollapsed",
 );
 
+publicProcurementOpenFormButton?.addEventListener("click", () => {
+  if (!getCanCreatePublicProcurements()) {
+    return;
+  }
+  resetPublicProcurementForm();
+  renderPublicProcurementModule();
+  publicProcurementTitleInput?.focus({ preventScroll: true });
+});
+
+publicProcurementSearchInput?.addEventListener("input", () => {
+  state.publicProcurementFilters.query = publicProcurementSearchInput.value || "";
+  renderPublicProcurementModule();
+});
+
+publicProcurementFilterStatusInput?.addEventListener("change", () => {
+  state.publicProcurementFilters.status = publicProcurementFilterStatusInput.value || "all";
+  renderPublicProcurementModule();
+});
+
+publicProcurementDeadlineInput?.addEventListener("blur", () => {
+  const normalized = normalizeDateInputValue(publicProcurementDeadlineInput.value || "");
+  publicProcurementDeadlineInput.value = normalized ? formatDateInputDisplayValue(normalized) : publicProcurementDeadlineInput.value.trim();
+});
+
+publicProcurementDocumentsAddButton?.addEventListener("click", () => {
+  publicProcurementDocumentsInput?.click();
+});
+
+publicProcurementDocumentsInput?.addEventListener("change", () => {
+  const files = Array.from(publicProcurementDocumentsInput.files ?? []);
+  if (!files.length) {
+    return;
+  }
+
+  void Promise.all(files.map(async (file) => ({
+    id: crypto.randomUUID(),
+    fileName: file.name,
+    fileType: file.type || "",
+    fileSize: file.size || 0,
+    documentCategory: "Public Procurement",
+    dataUrl: await readFileAsDataUrl(file, `Ne mogu učitati datoteku ${file.name}.`),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }))).then((documents) => {
+    publicProcurementDocumentDrafts = [...publicProcurementDocumentDrafts, ...documents];
+    renderPublicProcurementDocuments();
+  }).catch((error) => {
+    setInlineMessage(publicProcurementError, error.message || "Dokumentacija se ne može učitati.");
+  }).finally(() => {
+    if (publicProcurementDocumentsInput) {
+      publicProcurementDocumentsInput.value = "";
+    }
+  });
+});
+
+publicProcurementResetButton?.addEventListener("click", () => {
+  resetPublicProcurementForm();
+  renderPublicProcurementModule();
+});
+
+publicProcurementDeleteButton?.addEventListener("click", () => {
+  const id = publicProcurementIdInput?.value || "";
+  if (!id || !getCanEditPublicProcurements()) {
+    return;
+  }
+  if (!window.confirm("Obrisati ovu javnu nabavu?")) {
+    return;
+  }
+  void runMutation(() => apiRequest(`/public-procurements/${id}`, {
+    method: "DELETE",
+  }), publicProcurementError).then((success) => {
+    if (success) {
+      resetPublicProcurementForm();
+      renderPublicProcurementModule();
+    }
+  });
+});
+
+publicProcurementForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const isEditing = Boolean(publicProcurementIdInput?.value);
+  const canSave = isEditing ? getCanEditPublicProcurements() : getCanCreatePublicProcurements();
+
+  if (!canSave) {
+    setInlineMessage(publicProcurementError, isEditing
+      ? "Nemas ovlastenje za uredivanje javne nabave."
+      : "Nemas ovlastenje za izradu javne nabave.");
+    return;
+  }
+
+  const path = isEditing
+    ? `/public-procurements/${publicProcurementIdInput.value}`
+    : "/public-procurements";
+  const method = isEditing ? "PATCH" : "POST";
+
+  void runMutation(() => apiRequest(path, {
+    method,
+    body: buildPublicProcurementPayload(),
+  }), publicProcurementError).then((success) => {
+    if (success) {
+      resetPublicProcurementForm();
+      renderPublicProcurementModule();
+    }
+  });
+});
+
 offersSearchInput?.addEventListener("input", () => {
   renderOffersModule();
 });
@@ -113790,9 +114558,11 @@ function resetAuthenticatedWorkspaceState() {
   state.userManagementScope = "people";
   state.organizations = [];
   state.workOrders = [];
+  state.workOrderMetricFilter = "";
   state.reminders = [];
   state.todoTasks = [];
   state.offers = [];
+  state.publicProcurements = [];
   state.purchaseOrders = [];
   state.vehicles = [];
   state.legalFrameworks = [];

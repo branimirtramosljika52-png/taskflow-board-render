@@ -26,6 +26,7 @@ import {
   createMeasurementEquipmentItem,
   createOffer,
   createPersonTrainingRecord,
+  createPublicProcurement,
   createPurchaseOrder,
   createRiskAssessment,
   createReminder,
@@ -59,6 +60,7 @@ import {
   updateMeasurementEquipmentItem,
   updateOffer,
   updatePersonTrainingRecord,
+  updatePublicProcurement,
   updatePurchaseOrder,
   updateRiskAssessment,
   updateReminder,
@@ -3368,6 +3370,50 @@ async function fetchSnapshotFromConnection(connection) {
     };
   });
 
+  const [publicProcurementRows] = await connection.query(`
+    SELECT id, organization_id, title, reference_number, status, deadline, company_id, company_name,
+           documentation_url, note, documents_json, created_by_user_id, created_by_label, created_at, updated_at
+    FROM web_public_procurements
+    ORDER BY
+      CASE status
+        WHEN 'open' THEN 0
+        WHEN 'in_progress' THEN 1
+        WHEN 'submitted' THEN 2
+        WHEN 'awarded' THEN 3
+        WHEN 'cancelled' THEN 4
+        ELSE 9
+      END ASC,
+      deadline ASC,
+      updated_at DESC,
+      id DESC
+  `);
+
+  const publicProcurements = publicProcurementRows.map((row) => {
+    const company = companiesById.get(dbString(row.company_id));
+
+    return {
+      id: String(row.id),
+      organizationId: dbString(row.organization_id),
+      title: row.title ?? "",
+      referenceNumber: row.reference_number ?? "",
+      status: row.status ?? "open",
+      deadline: normalizeDateOnly(row.deadline),
+      companyId: dbString(row.company_id),
+      companyName: company?.name ?? row.company_name ?? "",
+      companyOib: company?.oib ?? "",
+      headquarters: company?.headquarters ?? "",
+      documentationUrl: row.documentation_url ?? "",
+      note: row.note ?? "",
+      documents: parseJsonArray(row.documents_json)
+        .map((document) => mapStoredAttachmentDocument(document))
+        .filter((document) => document.fileName && (document.dataUrl || document.storageUrl)),
+      createdByUserId: dbString(row.created_by_user_id),
+      createdByLabel: row.created_by_label ?? "",
+      createdAt: normalizeTimestamp(row.created_at),
+      updatedAt: normalizeTimestamp(row.updated_at),
+    };
+  });
+
   const [purchaseOrderRows] = await connection.query(`
     SELECT id, organization_id, company_id, location_id, location_scope, location_ids_json, location_names_json,
            purchase_order_number, purchase_order_year, purchase_order_sequence,
@@ -4201,6 +4247,7 @@ async function fetchSnapshotFromConnection(connection) {
     todoTasks,
     offers,
     offerTemplateSettings,
+    publicProcurements,
     purchaseOrders,
     purchaseOrderTemplateSettings,
     riskAssessments,
@@ -4305,6 +4352,7 @@ export class InMemorySafetyRepository {
       reminders: [],
       todoTasks: [],
       offers: [],
+      publicProcurements: [],
       purchaseOrders: [],
       riskAssessments: [],
       contracts: [],
@@ -4443,6 +4491,10 @@ export class InMemorySafetyRepository {
           ...entry,
           breakdowns: (entry.breakdowns ?? []).map((detail) => ({ ...detail })),
         })),
+        documents: (item.documents ?? []).map((document) => ({ ...document })),
+      })),
+      publicProcurements: this.snapshot.publicProcurements.map((item) => ({
+        ...item,
         documents: (item.documents ?? []).map((document) => ({ ...document })),
       })),
       purchaseOrders: this.snapshot.purchaseOrders.map((item) => ({
@@ -4629,12 +4681,13 @@ export class InMemorySafetyRepository {
     const hasReminders = this.snapshot.reminders.some((item) => item.companyId === id);
     const hasTodoTasks = this.snapshot.todoTasks.some((item) => item.companyId === id);
     const hasOffers = this.snapshot.offers.some((item) => item.companyId === id);
+    const hasPublicProcurements = this.snapshot.publicProcurements.some((item) => item.companyId === id);
     const hasPurchaseOrders = this.snapshot.purchaseOrders.some((item) => item.companyId === id);
     const hasContracts = this.snapshot.contracts.some((item) => item.companyId === id);
     const hasDrawings = this.snapshot.drawings.some((item) => item.companyId === id);
 
-    if (hasLocations || hasWorkOrders || hasReminders || hasTodoTasks || hasOffers || hasPurchaseOrders || hasContracts || hasDrawings) {
-      throw new Error("Tvrtka je vec povezana s lokacijama, ponudama, narudzbenicama, ugovorima, crtezima ili radnim nalozima.");
+    if (hasLocations || hasWorkOrders || hasReminders || hasTodoTasks || hasOffers || hasPublicProcurements || hasPurchaseOrders || hasContracts || hasDrawings) {
+      throw new Error("Tvrtka je vec povezana s lokacijama, ponudama, javnom nabavom, narudzbenicama, ugovorima, crtezima ili radnim nalozima.");
     }
 
     this.snapshot.companies = this.snapshot.companies.filter((item) => item.id !== id);
@@ -5214,6 +5267,38 @@ export class InMemorySafetyRepository {
     const before = this.snapshot.offers.length;
     this.snapshot.offers = this.snapshot.offers.filter((item) => item.id !== id);
     return this.snapshot.offers.length !== before;
+  }
+
+  async createPublicProcurement(input, actor = null) {
+    const item = createPublicProcurement({
+      ...input,
+      createdByUserId: String(actor?.id ?? input.createdByUserId ?? ""),
+      createdByLabel: actor?.fullName || actor?.username || input.createdByLabel || "Safety360",
+    }, this.snapshot, () => crypto.randomUUID(), () => new Date().toISOString());
+    this.snapshot.publicProcurements = [item, ...this.snapshot.publicProcurements];
+    return item;
+  }
+
+  async updatePublicProcurement(id, patch, actor = null) {
+    const current = this.snapshot.publicProcurements.find((item) => item.id === id);
+
+    if (!current) {
+      return null;
+    }
+
+    const next = updatePublicProcurement(current, {
+      ...patch,
+      createdByUserId: current.createdByUserId || String(actor?.id ?? ""),
+      createdByLabel: current.createdByLabel || actor?.fullName || actor?.username || "Safety360",
+    }, this.snapshot, () => new Date().toISOString());
+    this.snapshot.publicProcurements = this.snapshot.publicProcurements.map((item) => (item.id === id ? next : item));
+    return next;
+  }
+
+  async deletePublicProcurement(id) {
+    const before = this.snapshot.publicProcurements.length;
+    this.snapshot.publicProcurements = this.snapshot.publicProcurements.filter((item) => item.id !== id);
+    return this.snapshot.publicProcurements.length !== before;
   }
 
   async getOfferTemplateSettings(organizationId = "") {
@@ -6723,6 +6808,28 @@ export class MySqlSafetyRepository {
       )
     `);
     await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_public_procurements (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        title VARCHAR(220) NOT NULL,
+        reference_number VARCHAR(120) NOT NULL DEFAULT '',
+        status VARCHAR(24) NOT NULL DEFAULT 'open',
+        deadline DATE NULL,
+        company_id INT NULL,
+        company_name VARCHAR(180) NOT NULL DEFAULT '',
+        documentation_url TEXT NULL,
+        note TEXT NOT NULL,
+        documents_json LONGTEXT NULL,
+        created_by_user_id INT NULL,
+        created_by_label VARCHAR(160) NOT NULL DEFAULT '',
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_web_public_procurements_org_status (organization_id, status),
+        INDEX idx_web_public_procurements_company (company_id),
+        INDEX idx_web_public_procurements_deadline (deadline)
+      )
+    `);
+    await this.pool.query(`
       CREATE TABLE IF NOT EXISTS web_purchase_orders (
         id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
         organization_id INT NOT NULL,
@@ -7953,6 +8060,10 @@ export class MySqlSafetyRepository {
         "SELECT COUNT(*) AS total FROM web_offers WHERE company_id = ?",
         [Number(id)],
       );
+      const [[publicProcurementCount]] = await connection.query(
+        "SELECT COUNT(*) AS total FROM web_public_procurements WHERE company_id = ?",
+        [Number(id)],
+      );
       const [[purchaseOrderCount]] = await connection.query(
         "SELECT COUNT(*) AS total FROM web_purchase_orders WHERE company_id = ?",
         [Number(id)],
@@ -7970,8 +8081,8 @@ export class MySqlSafetyRepository {
         [Number(id)],
       );
 
-      if (locationCount.total > 0 || workOrderCount.total > 0 || reminderCount.total > 0 || todoTaskCount.total > 0 || offerCount.total > 0 || purchaseOrderCount.total > 0 || contractCount.total > 0 || drawingCount.total > 0 || riskAssessmentCount.total > 0) {
-        throw new Error("Tvrtka je vec povezana s lokacijama, ponudama, narudzbenicama, ugovorima, crtezima, procjenama rizika ili radnim nalozima.");
+      if (locationCount.total > 0 || workOrderCount.total > 0 || reminderCount.total > 0 || todoTaskCount.total > 0 || offerCount.total > 0 || publicProcurementCount.total > 0 || purchaseOrderCount.total > 0 || contractCount.total > 0 || drawingCount.total > 0 || riskAssessmentCount.total > 0) {
+        throw new Error("Tvrtka je vec povezana s lokacijama, ponudama, javnom nabavom, narudzbenicama, ugovorima, crtezima, procjenama rizika ili radnim nalozima.");
       }
 
       const [result] = await connection.query("DELETE FROM firme WHERE id = ?", [Number(id)]);
@@ -9468,6 +9579,156 @@ export class MySqlSafetyRepository {
         .filter((document) => document.storageKey);
 
       const [result] = await connection.query("DELETE FROM web_offers WHERE id = ?", [Number(id)]);
+      await connection.commit();
+      await cleanupStoredObjects(staleDocuments);
+      return result.affectedRows > 0;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async createPublicProcurement(input, actor = null) {
+    const connection = await this.pool.getConnection();
+    let staleDocuments = [];
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const draft = createPublicProcurement({
+        ...input,
+        createdByUserId: String(actor?.id ?? input.createdByUserId ?? ""),
+        createdByLabel: actor?.fullName || actor?.username || input.createdByLabel || "Safety360",
+      }, snapshot, () => "pending", () => new Date().toISOString());
+      const preparedDocuments = await prepareStoredAttachmentDocuments(draft.documents ?? [], {
+        keyPrefix: `public-procurements/${draft.organizationId}/documents`,
+        currentDocuments: [],
+      });
+      staleDocuments = preparedDocuments.staleDocuments ?? [];
+
+      const [result] = await connection.query(
+        `
+          INSERT INTO web_public_procurements
+            (organization_id, title, reference_number, status, deadline, company_id, company_name,
+             documentation_url, note, documents_json, created_by_user_id, created_by_label)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          Number(draft.organizationId),
+          draft.title,
+          draft.referenceNumber ?? "",
+          draft.status || "open",
+          draft.deadline,
+          parseNullableInteger(draft.companyId),
+          draft.companyName ?? "",
+          draft.documentationUrl ?? "",
+          draft.note ?? "",
+          JSON.stringify(preparedDocuments.nextDocuments ?? []),
+          parseNullableInteger(draft.createdByUserId),
+          draft.createdByLabel,
+        ],
+      );
+
+      await connection.commit();
+      await cleanupStoredObjects(staleDocuments);
+      return {
+        ...draft,
+        id: String(result.insertId),
+        documents: preparedDocuments.nextDocuments ?? [],
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updatePublicProcurement(id, patch, actor = null) {
+    const connection = await this.pool.getConnection();
+    let staleDocuments = [];
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const current = snapshot.publicProcurements.find((item) => item.id === id);
+
+      if (!current) {
+        await connection.rollback();
+        return null;
+      }
+
+      const next = updatePublicProcurement(current, {
+        ...patch,
+        createdByUserId: current.createdByUserId || String(actor?.id ?? ""),
+        createdByLabel: current.createdByLabel || actor?.fullName || actor?.username || "Safety360",
+      }, snapshot, () => new Date().toISOString());
+      const preparedDocuments = await prepareStoredAttachmentDocuments(next.documents ?? [], {
+        keyPrefix: `public-procurements/${next.organizationId}/documents`,
+        currentDocuments: current.documents ?? [],
+      });
+      staleDocuments = preparedDocuments.staleDocuments ?? [];
+
+      await connection.query(
+        `
+          UPDATE web_public_procurements
+          SET title = ?, reference_number = ?, status = ?, deadline = ?, company_id = ?, company_name = ?,
+              documentation_url = ?, note = ?, documents_json = ?
+          WHERE id = ?
+        `,
+        [
+          next.title,
+          next.referenceNumber ?? "",
+          next.status || "open",
+          next.deadline,
+          parseNullableInteger(next.companyId),
+          next.companyName ?? "",
+          next.documentationUrl ?? "",
+          next.note ?? "",
+          JSON.stringify(preparedDocuments.nextDocuments ?? []),
+          Number(id),
+        ],
+      );
+
+      await connection.commit();
+      await cleanupStoredObjects(staleDocuments);
+      return {
+        ...next,
+        documents: preparedDocuments.nextDocuments ?? [],
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async deletePublicProcurement(id) {
+    const connection = await this.pool.getConnection();
+    let staleDocuments = [];
+
+    try {
+      await connection.beginTransaction();
+      const [rows] = await connection.query(
+        `
+          SELECT documents_json
+          FROM web_public_procurements
+          WHERE id = ?
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [Number(id)],
+      );
+      staleDocuments = parseJsonArray(rows[0]?.documents_json)
+        .map((document) => mapStoredAttachmentDocument(document))
+        .filter((document) => document.storageKey);
+
+      const [result] = await connection.query("DELETE FROM web_public_procurements WHERE id = ?", [Number(id)]);
       await connection.commit();
       await cleanupStoredObjects(staleDocuments);
       return result.affectedRows > 0;

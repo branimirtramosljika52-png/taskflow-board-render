@@ -23,6 +23,7 @@ import {
   createMeasurementEquipmentItem,
   createOffer,
   createPersonTrainingRecord,
+  createPublicProcurement,
   createPurchaseOrder,
   createRiskAssessment,
   createReminder,
@@ -44,6 +45,7 @@ import {
   filterMeasurementEquipmentItems,
   filterOffers,
   filterPersonTrainingRecords,
+  filterPublicProcurements,
   filterPurchaseOrders,
   filterRiskAssessments,
   filterSafetyAuthorizations,
@@ -77,6 +79,7 @@ import {
   sortMeasurementEquipmentItems,
   sortOffers,
   sortPersonTrainingRecords,
+  sortPublicProcurements,
   sortPurchaseOrders,
   sortSafetyAuthorizations,
   sortServiceCatalogItems,
@@ -95,6 +98,7 @@ import {
   updateMeasurementEquipmentItem,
   updateOffer,
   updatePersonTrainingRecord,
+  updatePublicProcurement,
   updatePurchaseOrder,
   updateReminder,
   updateSafetyAuthorization,
@@ -143,6 +147,7 @@ function buildState() {
     reminders: [],
     todoTasks: [],
     offers: [],
+    publicProcurements: [],
     purchaseOrders: [],
     contracts: [],
     drawings: [],
@@ -2221,6 +2226,75 @@ test("offers support location scope, contact snapshots, discounts and breakdown 
   assert.equal(allLocationsOffer.contactName, "");
   assert.equal(allLocationsOffer.showTotalAmount, true);
   assert.equal(filterOffers([detailedOffer, allLocationsOffer], { query: "do 180 mm" }).length, 1);
+});
+
+test("public procurements keep company context, documents, filtering and updates", () => {
+  const state = buildState();
+
+  const openTender = createPublicProcurement(
+    {
+      organizationId: "55",
+      title: "Nabava usluge ispitivanja",
+      referenceNumber: "EOJN-2026-11",
+      status: "open",
+      deadline: "2026-05-30",
+      companyId: "company-1",
+      documentationUrl: "https://example.test/dokumentacija",
+      note: "Treba pripremiti troskovnik i potvrde.",
+      documents: [
+        {
+          id: "doc-1",
+          fileName: "troskovnik.xlsx",
+          fileType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          dataUrl: "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,AAA",
+        },
+      ],
+      createdByUserId: "user-1",
+      createdByLabel: "Ana Savanovic",
+    },
+    state,
+    () => "public-procurement-1",
+    () => "2026-05-19T09:00:00.000Z",
+  );
+
+  const submittedTender = createPublicProcurement(
+    {
+      organizationId: "55",
+      title: "Predana ponuda za edukaciju",
+      status: "submitted",
+      deadline: "2026-05-25",
+    },
+    {
+      ...state,
+      publicProcurements: [openTender],
+    },
+    () => "public-procurement-2",
+    () => "2026-05-19T10:00:00.000Z",
+  );
+
+  const updatedTender = updatePublicProcurement(
+    openTender,
+    {
+      status: "in_progress",
+      note: "Dokumentacija preuzeta, ceka se interna provjera.",
+    },
+    {
+      ...state,
+      publicProcurements: [openTender, submittedTender],
+    },
+    () => "2026-05-19T11:00:00.000Z",
+  );
+
+  assert.equal(openTender.companyName, "Acme d.o.o.");
+  assert.equal(openTender.companyOib, "12345678901");
+  assert.equal(openTender.documents.length, 1);
+  assert.equal(openTender.documents[0].fileName, "troskovnik.xlsx");
+  assert.equal(filterPublicProcurements([openTender, submittedTender], { query: "troskovnik" }).length, 1);
+  assert.equal(filterPublicProcurements([openTender, submittedTender], { status: "submitted" })[0].id, "public-procurement-2");
+  assert.equal(sortPublicProcurements([submittedTender, openTender])[0].id, "public-procurement-1");
+  assert.equal(updatedTender.status, "in_progress");
+  assert.equal(updatedTender.note, "Dokumentacija preuzeta, ceka se interna provjera.");
+  assert.equal(updatedTender.updatedAt, "2026-05-19T11:00:00.000Z");
 });
 
 test("purchase orders generate numbering and keep incoming document metadata", () => {
