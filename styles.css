@@ -35806,6 +35806,21 @@ body.is-measurement-equipment-export-open {
   box-shadow: 0 8px 20px rgba(123, 92, 255, 0.08);
 }
 
+.document-template-runtime-checklist-item.is-extra-equipment {
+  background: rgba(250, 251, 255, 0.9);
+}
+
+.document-template-runtime-equipment-more {
+  justify-self: start;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border-color: rgba(123, 92, 255, 0.2);
+  color: #513ba4;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
 .document-template-runtime-checklist-item > span {
   flex: 1 1 auto;
   min-width: 0;

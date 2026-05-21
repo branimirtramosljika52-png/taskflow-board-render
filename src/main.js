@@ -53554,28 +53554,9 @@ function getDocumentTemplateRuntimeSelectedEquipmentIds(
       getDocumentTemplateRuntimeEquipmentCodeFieldId(field),
     ) ?? "",
   ).trim();
-  const filterIdsToEquipmentCode = (ids = [], selectedEquipmentCode = "") => {
-    const normalizedCode = String(selectedEquipmentCode || "").trim();
-    const normalizedIds = ids.map((value) => String(value || "").trim()).filter(Boolean);
-    if (!normalizedCode) {
-      return normalizedIds;
-    }
-
-    const allowedIds = new Set(
-      availableItems
-        .filter((item) => getDocumentTemplateEquipmentDeviceCode(item) === normalizedCode)
-        .map((item) => String(item?.id || "").trim())
-        .filter(Boolean),
-    );
-    const filteredIds = normalizedIds.filter((id) => allowedIds.has(id));
-    return filteredIds.length > 0 || normalizedIds.length === 0
-      ? filteredIds
-      : [...allowedIds];
-  };
-
   const runtimeValue = getDocumentTemplateRuntimeFieldValue(workOrderId, field.id);
   if (Array.isArray(runtimeValue)) {
-    return filterIdsToEquipmentCode(runtimeValue, getSelectedEquipmentCode());
+    return runtimeValue.map((value) => String(value || "").trim()).filter(Boolean);
   }
 
   const selectedEquipmentCode = getSelectedEquipmentCode();
@@ -53694,7 +53675,7 @@ function getDocumentTemplateEquipmentItemsForField(
     const selectedIds = new Set(
       runtimeValue.map((value) => String(value || "").trim()).filter(Boolean),
     );
-    const selectedItems = scopedItems.filter((item) => selectedIds.has(String(item?.id || "").trim()));
+    const selectedItems = availableItems.filter((item) => selectedIds.has(String(item?.id || "").trim()));
 
     return selectedItems.length > 0 || selectedIds.size === 0
       ? selectedItems
@@ -72070,7 +72051,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
 
       const codeHint = document.createElement("small");
       codeHint.textContent = selectedEquipmentCode
-        ? "U zapisniku se prikazuje samo oprema s tom oznakom."
+        ? "Predefinirana oprema je vidljiva, a ostala je dostupna pod + ostali."
         : "Odabirom oznake sustav automatski označi povezane uređaje.";
       codePicker.append(codeLabel, codeSelect, codeHint);
       shellNode.append(codePicker);
@@ -72088,9 +72069,51 @@ function renderDocumentTemplateRuntimeFieldRows() {
       renderDocumentTemplatePreviewContent();
     };
 
-    const visibleEquipmentItems = selectedEquipmentCode
-      ? equipmentItems.filter((item) => getDocumentTemplateEquipmentDeviceCode(item) === selectedEquipmentCode)
+    const getEquipmentItemId = (item) => String(item?.id || "").trim();
+    const isSelectedGroupEquipment = (item) => (
+      Boolean(selectedEquipmentCode)
+      && getDocumentTemplateEquipmentDeviceCode(item) === selectedEquipmentCode
+    );
+    const primaryEquipmentItems = selectedEquipmentCode
+      ? equipmentItems.filter((item) => (
+        isSelectedGroupEquipment(item)
+        || selectedIds.has(getEquipmentItemId(item))
+      ))
       : equipmentItems;
+    const extraEquipmentItems = selectedEquipmentCode
+      ? equipmentItems.filter((item) => (
+        !isSelectedGroupEquipment(item)
+        && !selectedIds.has(getEquipmentItemId(item))
+      ))
+      : [];
+    const visibleEquipmentItems = [...primaryEquipmentItems, ...extraEquipmentItems];
+    let extraEquipmentExpanded = false;
+    let extraToggleButton = null;
+
+    const syncExtraEquipmentVisibility = () => {
+      const extraRows = Array.from(list.querySelectorAll(".document-template-runtime-checklist-item.is-extra-equipment"));
+      let hiddenCount = 0;
+      extraRows.forEach((row) => {
+        const checkbox = row.querySelector('input[type="checkbox"]');
+        const isChecked = checkbox instanceof HTMLInputElement && checkbox.checked;
+        const shouldHide = Boolean(selectedEquipmentCode) && !extraEquipmentExpanded && !isChecked;
+        row.hidden = shouldHide;
+        row.classList.toggle("is-selected-equipment", isChecked);
+        if (shouldHide) {
+          hiddenCount += 1;
+        }
+      });
+
+      if (extraToggleButton) {
+        extraToggleButton.hidden = extraRows.length === 0 || (!extraEquipmentExpanded && hiddenCount === 0);
+        extraToggleButton.textContent = extraEquipmentExpanded ? "− ostali" : "+ ostali";
+        extraToggleButton.title = extraEquipmentExpanded
+          ? "Sakrij ostalu opremu"
+          : `Prikaži ostalu opremu (${hiddenCount})`;
+        extraToggleButton.setAttribute("aria-label", extraToggleButton.title);
+        extraToggleButton.setAttribute("aria-expanded", String(extraEquipmentExpanded));
+      }
+    };
 
     if (visibleEquipmentItems.length === 0) {
       const empty = document.createElement("p");
@@ -72108,6 +72131,9 @@ function renderDocumentTemplateRuntimeFieldRows() {
       if (selectedEquipmentCode && getDocumentTemplateEquipmentDeviceCode(item) === selectedEquipmentCode) {
         option.classList.add("is-suggested-by-code");
       }
+      if (selectedEquipmentCode && !isSelectedGroupEquipment(item)) {
+        option.classList.add("is-extra-equipment");
+      }
 
       const checkbox = document.createElement("input");
       checkbox.type = "checkbox";
@@ -72117,6 +72143,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
       checkbox.addEventListener("change", () => {
         option.classList.toggle("is-selected-equipment", checkbox.checked);
         syncSelection();
+        syncExtraEquipmentVisibility();
       });
 
       const copy = document.createElement("div");
@@ -72145,10 +72172,21 @@ function renderDocumentTemplateRuntimeFieldRows() {
     });
 
     shellNode.append(list);
+    if (selectedEquipmentCode && extraEquipmentItems.length > 0) {
+      extraToggleButton = document.createElement("button");
+      extraToggleButton.type = "button";
+      extraToggleButton.className = "ghost-button document-template-runtime-equipment-more";
+      extraToggleButton.addEventListener("click", () => {
+        extraEquipmentExpanded = !extraEquipmentExpanded;
+        syncExtraEquipmentVisibility();
+      });
+      shellNode.append(extraToggleButton);
+      syncExtraEquipmentVisibility();
+    }
     const helper = document.createElement("small");
     helper.className = "document-template-runtime-field-help";
     helper.textContent = selectedEquipmentCode
-      ? `Prikazana je samo oprema iz grupe ${selectedEquipmentCode} koja ide u ovaj zapisnik.`
+      ? `Predefinirana oprema iz grupe ${selectedEquipmentCode} je vidljiva; ostalo je pod "+ ostali".`
       : (field.helpText || "Odaberi uređaje koji ulaze u ovaj zapisnik.");
     shellNode.append(helper);
     return shellNode;
