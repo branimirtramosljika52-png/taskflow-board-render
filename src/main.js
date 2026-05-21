@@ -97940,16 +97940,19 @@ function toggleWorkOrderDocumentWizardSectionCollapsed(workOrderId = "", section
 
 function renderWorkOrderDocumentWizardCommonPeopleSection() {
   const isCollapsed = Boolean(state.workOrderDocumentWizard.commonPeopleCollapsed);
+  const relevantAreas = getWorkOrderDocumentWizardRelevantAreasForBatch();
   const summaryParts = getWorkOrderDocumentSignaturePersonSummaryParts(
     state.workOrderDocumentWizard.common,
-    getWorkOrderDocumentWizardRelevantAreasForBatch(),
+    relevantAreas,
   );
+  const hasRelevantAreas = relevantAreas.length > 0;
 
   if (workOrderDocumentWizardCommonPeopleSection) {
+    workOrderDocumentWizardCommonPeopleSection.hidden = !hasRelevantAreas;
     workOrderDocumentWizardCommonPeopleSection.classList.toggle("is-collapsed", isCollapsed);
   }
   if (workOrderDocumentWizardCommonPeopleBody) {
-    workOrderDocumentWizardCommonPeopleBody.hidden = isCollapsed;
+    workOrderDocumentWizardCommonPeopleBody.hidden = isCollapsed || !hasRelevantAreas;
   }
   if (workOrderDocumentWizardCommonPeopleSummary) {
     workOrderDocumentWizardCommonPeopleSummary.textContent = summaryParts.length > 0
@@ -101480,6 +101483,12 @@ function renderWorkOrderDocumentWizard() {
     ? getWorkOrderDocumentTemplateRecommendations(workOrders)
     : { recommendations: [] };
   state.workOrderDocumentWizard.mode = mode;
+  if (workOrderDocumentWizardPanel) {
+    workOrderDocumentWizardPanel.classList.toggle("is-details-step", state.workOrderDocumentWizard.step === "details");
+    workOrderDocumentWizardPanel.classList.toggle("is-templates-step", state.workOrderDocumentWizard.step === "templates");
+    workOrderDocumentWizardPanel.classList.toggle("is-inspection-mode", mode === "inspection");
+    workOrderDocumentWizardPanel.classList.toggle("is-znr-mode", mode === "znr");
+  }
   if (isInspectionMode) {
     ensureWorkOrderDocumentWizardPersonDefaults(workOrders);
   }
@@ -101517,7 +101526,7 @@ function renderWorkOrderDocumentWizard() {
       : "Vrati se na pregled RN-ova";
   }
   if (workOrderDocumentWizardNextButton) {
-    workOrderDocumentWizardNextButton.textContent = isInspectionMode ? "NEXT" : "Dodjela ispita je spremna";
+    workOrderDocumentWizardNextButton.textContent = isInspectionMode ? "Otvori zapisnik" : "Dodjela ispita je spremna";
     workOrderDocumentWizardNextButton.hidden = state.workOrderDocumentWizard.step === "templates" || !isInspectionMode;
     workOrderDocumentWizardNextButton.disabled = !isInspectionMode;
   }
