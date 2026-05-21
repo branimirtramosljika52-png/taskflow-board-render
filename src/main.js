@@ -55150,9 +55150,27 @@ function applyDeterministicEnvironmentVariance(rawValue = "", seedKey = "", fiel
   const hash = getStableStringHash(seedKey);
   const ratio = (hash % 2001) / 1000 - 1;
   const nextNumber = originalNumber * (1 + (ratio * spread));
-  const roundedValue = targetDecimals > 0
-    ? nextNumber.toFixed(Math.min(targetDecimals, 3))
-    : String(Math.round(nextNumber));
+  const maxDelta = Math.abs(originalNumber * spread);
+  const maxDisplayDecimals = Math.max(4, Math.min(targetDecimals, 6));
+  let displayDecimals = Math.min(targetDecimals, maxDisplayDecimals);
+  while (
+    displayDecimals < maxDisplayDecimals
+    && maxDelta > 0
+    && (1 / (10 ** displayDecimals)) > maxDelta
+  ) {
+    displayDecimals += 1;
+  }
+  let roundedNumber = displayDecimals > 0
+    ? Number(nextNumber.toFixed(displayDecimals))
+    : Math.round(nextNumber);
+  const displayUnit = displayDecimals > 0 ? 1 / (10 ** displayDecimals) : 1;
+  if (maxDelta > 0 && roundedNumber === originalNumber && displayUnit <= maxDelta) {
+    const direction = ratio === 0 ? (hash % 2 === 0 ? 1 : -1) : Math.sign(ratio);
+    roundedNumber = originalNumber + (originalNumber < 0 ? -direction : direction) * displayUnit;
+  }
+  const roundedValue = displayDecimals > 0
+    ? roundedNumber.toFixed(displayDecimals)
+    : String(Math.round(roundedNumber));
   const localizedValue = usesComma ? roundedValue.replace(".", ",") : roundedValue;
 
   return `${normalizedRawValue.slice(0, numericMatch.index)}${localizedValue}${normalizedRawValue.slice((numericMatch.index ?? 0) + numericMatch[0].length)}`;
