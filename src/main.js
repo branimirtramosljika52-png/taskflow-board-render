@@ -2127,6 +2127,7 @@ const state = {
     source: "",
     workOrderIds: [],
     activeWorkOrderId: "",
+    activePanel: "fields",
     returnState: null,
     sequenceEntries: [],
     sequenceIndex: -1,
@@ -63283,6 +63284,7 @@ function createWorkOrderBottomBarCard({
   hasSequence = false,
   sequenceState = null,
   activeWorkOrder = null,
+  activePanel = "fields",
 } = {}) {
   const workOrder = getDocumentTemplateRuntimeWorkOrderById(group.workOrderId) || {};
   const serviceItems = workOrder?.id ? getDocumentTemplateRuntimeResolvedServiceItems(workOrder) : [];
@@ -63293,8 +63295,10 @@ function createWorkOrderBottomBarCard({
   const allServicesComplete = serviceItems.length > 0 && serviceItems.every((service) => Boolean(service?.isCompleted));
   const isActive = sequenceState?.isSummary
     ? false
-    : groupItems.some((entry) => Number(entry.dockIndex) === activeIndex)
-      || String(group.workOrderId || "") === String(activeWorkOrder?.id || "");
+    : activePanel !== "handover" && (
+      groupItems.some((entry) => Number(entry.dockIndex) === activeIndex)
+      || String(group.workOrderId || "") === String(activeWorkOrder?.id || "")
+    );
   const hasProblem = missingRequired.length > 0 || serviceItems.some((service) => getWorkOrderServiceProgressStatus(service) === "in_progress");
 
   const card = document.createElement("button");
@@ -63352,6 +63356,55 @@ function createWorkOrderBottomBarCard({
       serviceRow.append(more);
     }
   }
+
+  card.append(head, serviceRow);
+  return card;
+}
+
+function createWorkOrderHandoverBottomBarCard({
+  template = buildDocumentTemplateDraft(),
+  activeWorkOrder = null,
+  activePanel = "fields",
+} = {}) {
+  const protocol = activeWorkOrder
+    ? buildDocumentTemplateRuntimeHandoverProtocolModel(
+      template,
+      buildDocumentTemplatePreviewContext(template, { workOrder: activeWorkOrder }),
+      activeWorkOrder,
+    )
+    : normalizeDocumentTemplateHandoverProtocol();
+  const serviceCount = Array.isArray(protocol.rows) ? protocol.rows.length : 0;
+  const card = document.createElement("button");
+  card.type = "button";
+  card.className = "document-template-runtime-dock-group work-order-bottom-card is-handover";
+  card.classList.toggle("is-active", activePanel === "handover");
+  card.setAttribute("aria-label", "Otvori primopredajni zapisnik");
+  card.addEventListener("click", () => {
+    openDocumentTemplateRuntimeHandoverPanel(activeWorkOrder?.id || "");
+  });
+
+  const head = document.createElement("span");
+  head.className = "work-order-bottom-card-head";
+  const icon = document.createElement("span");
+  icon.className = "work-order-bottom-card-icon is-handover";
+  icon.innerHTML = getWorkOrderIconMarkup("signature");
+  icon.setAttribute("aria-hidden", "true");
+  const title = document.createElement("strong");
+  title.textContent = "Primopredajni";
+  head.append(icon, title);
+
+  const serviceRow = document.createElement("span");
+  serviceRow.className = "work-order-bottom-card-services";
+  [
+    `${serviceCount || 0} USL`,
+    "BR",
+    "KOL",
+  ].forEach((label, index) => {
+    const badge = document.createElement("span");
+    badge.className = `work-order-bottom-card-service ${index === 0 && serviceCount > 0 ? "is-ok" : "is-neutral"}`;
+    badge.textContent = label;
+    serviceRow.append(badge);
+  });
 
   card.append(head, serviceRow);
   return card;
@@ -64040,6 +64093,7 @@ function renderDocumentTemplateRuntimeContext() {
       ? dockEntries[dockEntries.length - 1]
       : (dockEntries[activeIndex] || dockEntries[0]);
     const groupedEntries = groupDocumentTemplateRuntimeDockEntries(dockEntries);
+    const activePanel = getDocumentTemplateRuntimeActivePanel();
     documentTemplateRuntimeDock.hidden = dockEntries.length === 0;
     if (sequenceState?.isSummary) {
       documentTemplateRuntimeDockTitle.textContent = "Radni nalozi";
@@ -64055,7 +64109,16 @@ function renderDocumentTemplateRuntimeContext() {
       hasSequence,
       sequenceState,
       activeWorkOrder,
+      activePanel,
     }));
+
+    if (!sequenceState?.isSummary && activeWorkOrder) {
+      dockNodes.push(createWorkOrderHandoverBottomBarCard({
+        template,
+        activeWorkOrder,
+        activePanel,
+      }));
+    }
 
     if (sequenceState) {
       const summaryCard = document.createElement("button");
@@ -71792,6 +71855,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     let protocol = buildDocumentTemplateRuntimeHandoverProtocolModel(template, context, activeWorkOrder);
     const blockNode = document.createElement("section");
     blockNode.className = "document-template-runtime-block document-template-runtime-handover-block is-ok";
+    blockNode.dataset.documentTemplateRuntimePanel = "handover";
 
     const commitProtocol = (nextProtocol, { renderRows = false } = {}) => {
       protocol = normalizeDocumentTemplateHandoverProtocol(nextProtocol);
@@ -71935,6 +71999,22 @@ function renderDocumentTemplateRuntimeFieldRows() {
   };
 
   const visibleBlocks = buildDocumentTemplateRuntimeBlockGroups(documentTemplateFieldDrafts);
+  if (getDocumentTemplateRuntimeActivePanel() === "handover") {
+    renderDocumentTemplateRuntimeStatusPanel({ template, activeWorkOrder, blocks: visibleBlocks });
+    shell.append(createHandoverProtocolBlock());
+    documentTemplateCustomFields.replaceChildren(shell);
+    if (state.measurementSheet.ownerKind === "document_template_runtime_field") {
+      setMeasurementSheetOpen(false);
+      state.measurementSheet.ownerKind = "work_order";
+      state.measurementSheet.ownerFieldId = "";
+      state.measurementSheet.ownerRuntimeWorkOrderId = "";
+      syncMeasurementToolbar();
+    }
+    syncMeasurementSheetPanelMount();
+    syncDocumentTemplateInlineExcelPreviewVisibility();
+    return;
+  }
+
   if (visibleBlocks.length === 0) {
     renderDocumentTemplateRuntimeStatusPanel({ template, activeWorkOrder, blocks: [] });
     const empty = document.createElement("p");
@@ -71942,7 +72022,6 @@ function renderDocumentTemplateRuntimeFieldRows() {
     empty.textContent = "Ovaj template nema dodatnih polja za ručni unos. Podaci se povlače iz RN-a i povezanih izvora.";
     shell.append(createDocumentTemplateRuntimeAiAssistantPanel(template, activeWorkOrder));
     shell.append(empty);
-    shell.append(createHandoverProtocolBlock());
     documentTemplateCustomFields.replaceChildren(shell);
     return;
   }
@@ -73376,7 +73455,6 @@ function renderDocumentTemplateRuntimeFieldRows() {
     shell.append(blockNode);
   });
 
-  shell.append(createHandoverProtocolBlock());
   documentTemplateCustomFields.replaceChildren(shell);
 
   const shouldCloseRuntimeSheet = state.measurementSheet.ownerKind === "document_template_runtime_field"
@@ -99358,12 +99436,46 @@ function applyDocumentTemplateRuntimePersistedFieldCandidate(
   }
 }
 
-function setDocumentTemplateRuntimeActiveWorkOrder(workOrderId, { render = true } = {}) {
+function normalizeDocumentTemplateRuntimeActivePanel(value = "fields") {
+  return String(value || "").trim().toLowerCase() === "handover" ? "handover" : "fields";
+}
+
+function getDocumentTemplateRuntimeActivePanel() {
+  return normalizeDocumentTemplateRuntimeActivePanel(state.documentTemplateRuntime.activePanel);
+}
+
+function setDocumentTemplateRuntimeActivePanel(panel = "fields", { render = true, scroll = false } = {}) {
+  state.documentTemplateRuntime.activePanel = normalizeDocumentTemplateRuntimeActivePanel(panel);
+  if (render) {
+    renderDocumentTemplateRuntimeContext();
+    renderDocumentTemplateFieldRows();
+    renderDocumentTemplatePreviewContent();
+  }
+  if (scroll) {
+    window.requestAnimationFrame(() => {
+      document
+        .querySelector("[data-document-template-runtime-panel='handover']")
+        ?.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
+  }
+  saveDocumentTemplateRuntimeLocalDraft({ syncButton: true });
+}
+
+function openDocumentTemplateRuntimeHandoverPanel(workOrderId = state.documentTemplateRuntime.activeWorkOrderId) {
+  const normalizedId = String(workOrderId || state.documentTemplateRuntime.activeWorkOrderId || "").trim();
+  if (normalizedId) {
+    state.documentTemplateRuntime.activeWorkOrderId = normalizedId;
+  }
+  setDocumentTemplateRuntimeActivePanel("handover", { render: true, scroll: true });
+}
+
+function setDocumentTemplateRuntimeActiveWorkOrder(workOrderId, { render = true, activePanel = "fields" } = {}) {
   const normalizedId = String(workOrderId || "").trim();
   if (!normalizedId) {
     return;
   }
   state.documentTemplateRuntime.activeWorkOrderId = normalizedId;
+  state.documentTemplateRuntime.activePanel = normalizeDocumentTemplateRuntimeActivePanel(activePanel);
   if (render) {
     renderDocumentTemplateRuntimeContext();
     renderDocumentTemplateFieldRows();
@@ -99835,6 +99947,7 @@ function buildDocumentTemplateRuntimeLocalDraftSnapshot() {
       source: state.documentTemplateRuntime.source || "wizard",
       workOrderIds,
       activeWorkOrderId: String(state.documentTemplateRuntime.activeWorkOrderId || workOrderIds[0] || "").trim(),
+      activePanel: getDocumentTemplateRuntimeActivePanel(),
       returnState: state.documentTemplateRuntime.returnState ?? null,
       sequenceEntries,
       sequenceIndex,
@@ -99913,6 +100026,7 @@ function normalizeDocumentTemplateRuntimeLocalDraft(snapshot = null) {
       source: String(runtime.source || "wizard").trim() || "wizard",
       workOrderIds,
       activeWorkOrderId,
+      activePanel: normalizeDocumentTemplateRuntimeActivePanel(runtime.activePanel),
       returnState: runtime.returnState && typeof runtime.returnState === "object" ? runtime.returnState : null,
       sequenceEntries,
       sequenceIndex: sequenceEntries.length > 0
@@ -100036,6 +100150,7 @@ function restoreDocumentTemplateRuntimeLocalDraft() {
     source: runtime.source || "wizard",
     workOrderIds: runtime.workOrderIds,
     activeWorkOrderId: runtime.activeWorkOrderId || runtime.workOrderIds[0] || "",
+    activePanel: normalizeDocumentTemplateRuntimeActivePanel(runtime.activePanel),
     returnState: runtime.returnState ?? {
       activeView: state.activeView,
       activeSidebarGroup: state.activeSidebarGroup,
@@ -100133,6 +100248,7 @@ function setDocumentTemplateRuntimeFromWizard(workOrders = getAllSelectedWorkOrd
     source: ids.length > 0 ? "wizard" : "",
     workOrderIds: ids,
     activeWorkOrderId: ids[0] || "",
+    activePanel: "fields",
     objectSelections: {},
     previousRecordOptions: {},
     savedRecordFingerprints: {},
@@ -101859,6 +101975,7 @@ function openDocumentTemplateRuntimeSequenceIndex(targetIndex, { closeWizard = f
   const safeIndex = clampDocumentTemplateRuntimeSequenceIndex(targetIndex, sequenceState.entries);
   if (safeIndex === sequenceState.summaryIndex) {
     state.documentTemplateRuntime.sequenceIndex = safeIndex;
+    state.documentTemplateRuntime.activePanel = "fields";
     syncDocumentTemplateEditorChrome();
     renderDocumentTemplateRuntimeContext();
     renderDocumentTemplateFieldRows();
