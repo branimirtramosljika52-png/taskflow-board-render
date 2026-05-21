@@ -56305,11 +56305,224 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
   padding: 0 0 2px;
 }
 
-.document-template-editor-panel.is-fill-mode .document-template-builder-main {
+.document-template-editor-panel.is-fill-mode.has-runtime-status-panel .document-template-builder-shell {
+  grid-template-columns: clamp(220px, 15vw, 240px) minmax(0, 1fr) clamp(230px, 14vw, 260px);
+}
+
+.document-template-runtime-status-panel {
   order: 1;
   grid-column: 1;
   grid-row: 1;
+  position: sticky;
+  top: 82px;
+  display: grid;
+  gap: 12px;
+  align-content: start;
   min-width: 0;
+  max-width: 240px;
+  padding: 14px 13px;
+  border: 1px solid rgba(222, 226, 238, 0.96);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 18px 42px rgba(28, 38, 65, 0.08);
+}
+
+.document-template-runtime-status-panel[hidden] {
+  display: none !important;
+}
+
+.document-template-runtime-status-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.document-template-runtime-status-head > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.document-template-runtime-status-head span:first-child {
+  color: #4c1d95;
+  font-size: 0.66rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.document-template-runtime-status-head strong {
+  color: #111735;
+  font-size: 0.94rem;
+  line-height: 1.15;
+}
+
+.document-template-runtime-status-counter {
+  display: inline-grid;
+  place-items: center;
+  min-width: 38px;
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: rgba(124, 92, 255, 0.12);
+  color: #4f2ed1;
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.document-template-runtime-status-progress {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #edf0f7;
+}
+
+.document-template-runtime-status-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #4f46e5, #7c3aed);
+  box-shadow: 0 0 18px rgba(124, 58, 237, 0.3);
+  transition: width 0.2s ease;
+}
+
+.document-template-runtime-status-list {
+  position: relative;
+  display: grid;
+  gap: 6px;
+}
+
+.document-template-runtime-status-list::before {
+  content: "";
+  position: absolute;
+  top: 16px;
+  bottom: 16px;
+  left: 13px;
+  width: 1px;
+  background: linear-gradient(180deg, rgba(124, 92, 255, 0.18), rgba(17, 24, 39, 0.08));
+  pointer-events: none;
+}
+
+.document-template-runtime-status-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 6px 7px 6px 0;
+  border: 1px solid transparent;
+  border-radius: 13px;
+  background: transparent;
+  color: #182044;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.document-template-runtime-status-item:hover,
+.document-template-runtime-status-item:focus-visible {
+  border-color: rgba(124, 92, 255, 0.24);
+  background: #f8f7ff;
+  box-shadow: 0 10px 22px rgba(76, 29, 149, 0.08);
+  outline: none;
+}
+
+.document-template-runtime-status-item.is-active {
+  border-color: rgba(124, 92, 255, 0.38);
+  background: linear-gradient(180deg, rgba(248, 247, 255, 0.98), rgba(255, 255, 255, 0.98));
+  box-shadow: 0 14px 28px rgba(76, 29, 149, 0.12);
+}
+
+.document-template-runtime-status-step {
+  position: relative;
+  z-index: 1;
+  display: inline-grid;
+  place-items: center;
+  width: 27px;
+  height: 27px;
+  border: 1px solid rgba(124, 92, 255, 0.18);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #4f2ed1;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.document-template-runtime-status-item.is-active .document-template-runtime-status-step {
+  border-color: rgba(124, 92, 255, 0.78);
+  background: #4f2ed1;
+  color: #ffffff;
+  box-shadow: 0 0 0 4px rgba(124, 92, 255, 0.14);
+}
+
+.document-template-runtime-status-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.document-template-runtime-status-copy strong {
+  overflow: hidden;
+  color: #111735;
+  font-size: 0.8rem;
+  line-height: 1.15;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-template-runtime-status-copy small {
+  overflow: hidden;
+  color: #697189;
+  font-size: 0.68rem;
+  font-weight: 750;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-template-runtime-status-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  font-size: 0.58rem;
+  font-weight: 950;
+}
+
+.document-template-runtime-status-item.is-ok .document-template-runtime-status-icon {
+  border: 1px solid rgba(34, 197, 94, 0.28);
+  background: rgba(34, 197, 94, 0.12);
+  color: #15803d;
+}
+
+.document-template-runtime-status-item.is-warning .document-template-runtime-status-icon {
+  border: 1px solid rgba(249, 115, 22, 0.3);
+  background: rgba(249, 115, 22, 0.12);
+  color: #c2410c;
+}
+
+.document-template-runtime-status-footer {
+  padding: 9px 10px;
+  border-radius: 12px;
+  background: #f8f9fd;
+  color: #4b5568;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.document-template-editor-panel.is-fill-mode .document-template-builder-main {
+  order: 2;
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+}
+
+.document-template-editor-panel.is-fill-mode.has-runtime-status-panel .document-template-builder-main {
+  grid-column: 2;
 }
 
 .document-template-editor-panel.is-fill-mode .document-template-builder-main > .document-template-block {
@@ -56444,7 +56657,7 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
 }
 
 .document-template-runtime-side-panel {
-  order: 2;
+  order: 3;
   grid-column: 2;
   grid-row: 1;
   position: sticky;
@@ -56454,6 +56667,10 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
   align-content: start;
   min-width: 0;
   max-width: 260px;
+}
+
+.document-template-editor-panel.is-fill-mode.has-runtime-status-panel .document-template-runtime-side-panel {
+  grid-column: 3;
 }
 
 .document-template-runtime-side-card {
@@ -56828,12 +57045,32 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .document-template-editor-panel.is-fill-mode.has-runtime-status-panel .document-template-builder-shell {
+    grid-template-columns: minmax(200px, 230px) minmax(0, 1fr);
+  }
+
+  .document-template-editor-panel.is-fill-mode.has-runtime-status-panel .document-template-runtime-status-panel {
+    grid-column: 1;
+    grid-row: 1;
+    max-width: none;
+  }
+
+  .document-template-editor-panel.is-fill-mode.has-runtime-status-panel .document-template-builder-main {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
   .document-template-runtime-side-panel {
     position: static;
     max-width: none;
     grid-column: 1;
     grid-row: auto;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .document-template-editor-panel.is-fill-mode.has-runtime-status-panel .document-template-runtime-side-panel {
+    grid-column: 1 / -1;
+    grid-row: 2;
   }
 }
 
@@ -56848,6 +57085,22 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
 
   .document-template-editor-panel.is-fill-mode .document-template-workspace-head {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .document-template-editor-panel.is-fill-mode.has-runtime-status-panel .document-template-builder-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .document-template-editor-panel.is-fill-mode.has-runtime-status-panel .document-template-runtime-status-panel,
+  .document-template-editor-panel.is-fill-mode.has-runtime-status-panel .document-template-builder-main,
+  .document-template-editor-panel.is-fill-mode.has-runtime-status-panel .document-template-runtime-side-panel {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .document-template-runtime-status-panel {
+    position: static;
+    max-width: none;
   }
 
   .document-template-editor-panel.is-fill-mode .document-template-runtime-block-body,

@@ -3877,6 +3877,7 @@ const documentTemplateRuntimeDockSendSignatureButton = document.querySelector("#
 const documentTemplateRuntimeDockPrintAllButton = document.querySelector("#document-template-runtime-dock-print-all");
 const documentTemplateRuntimeDockDuplicateObjectButton = document.querySelector("#document-template-runtime-dock-duplicate-object");
 const documentTemplateRuntimeDockPdfButton = document.querySelector("#document-template-runtime-dock-pdf");
+const documentTemplateRuntimeStatusPanel = document.querySelector("#document-template-runtime-status-panel");
 const documentTemplateRuntimeSidePanel = document.querySelector("#document-template-runtime-side-panel");
 const documentTemplateRuntimeSummaryPanel = document.querySelector("#document-template-runtime-summary-panel");
 const documentTemplateRuntimeSidePreviewPdfButton = document.querySelector("#document-template-runtime-side-preview-pdf");
@@ -63543,6 +63544,13 @@ function renderDocumentTemplateRuntimeContext() {
     documentTemplateRuntimeHeaderBadges.hidden = !fillMode || !hasContext || isSummaryStep || !activeWorkOrder;
     documentTemplateRuntimeHeaderBadges.replaceChildren();
   }
+  if (documentTemplateEditorPanel) {
+    documentTemplateEditorPanel.classList.toggle("has-runtime-status-panel", Boolean(fillMode && hasContext && !isSummaryStep && activeWorkOrder));
+  }
+  if (documentTemplateRuntimeStatusPanel && (!fillMode || !hasContext || isSummaryStep || !activeWorkOrder)) {
+    documentTemplateRuntimeStatusPanel.hidden = true;
+    documentTemplateRuntimeStatusPanel.replaceChildren();
+  }
   if (documentTemplateRuntimeClearButton) {
     documentTemplateRuntimeClearButton.hidden = !hasContext || fillMode;
   }
@@ -69560,6 +69568,127 @@ function getDocumentTemplateRuntimeBlockCompletion(block = {}, workOrder = getDo
   };
 }
 
+function openDocumentTemplateRuntimeStatusBlock(block = {}, blockIndex = 0) {
+  const blockId = getDocumentTemplateRuntimeBlockId(block, blockIndex);
+  setDocumentTemplateRuntimeBlockCollapsed(block, blockIndex, false, { render: false });
+  renderDocumentTemplateFieldRows({ renderSupport: false });
+  window.requestAnimationFrame(() => {
+    const escapedBlockId = typeof CSS !== "undefined" && typeof CSS.escape === "function"
+      ? CSS.escape(blockId)
+      : String(blockId).replace(/["\\]/g, "\\$&");
+    const target = documentTemplateCustomFields?.querySelector(`[data-runtime-block-id="${escapedBlockId}"]`);
+    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
+
+function renderDocumentTemplateRuntimeStatusPanel({
+  template = buildDocumentTemplateDraft(),
+  activeWorkOrder = getDocumentTemplateRuntimeActiveWorkOrder(),
+  blocks = [],
+} = {}) {
+  if (!documentTemplateRuntimeStatusPanel) {
+    return;
+  }
+
+  const fillMode = isDocumentTemplateRuntimeFillMode();
+  const sequenceState = getDocumentTemplateRuntimeSequenceState();
+  const visibleBlocks = (Array.isArray(blocks) ? blocks : [])
+    .filter((block) => block && Array.isArray(block?.items));
+
+  if (!fillMode || sequenceState?.isSummary || !activeWorkOrder || visibleBlocks.length === 0) {
+    documentTemplateEditorPanel?.classList.remove("has-runtime-status-panel");
+    documentTemplateRuntimeStatusPanel.hidden = true;
+    documentTemplateRuntimeStatusPanel.replaceChildren();
+    return;
+  }
+
+  documentTemplateEditorPanel?.classList.add("has-runtime-status-panel");
+  const items = visibleBlocks.map((block, index) => {
+    const completion = getDocumentTemplateRuntimeBlockCompletion(block, activeWorkOrder, template);
+    const collapsed = isDocumentTemplateRuntimeBlockCollapsed(block, index);
+    return {
+      block,
+      index,
+      completion,
+      collapsed,
+      title: block.chapter?.label || `Blok ${index + 1}`,
+      ok: Boolean(completion.ok),
+    };
+  });
+  const openIndex = items.findIndex((item) => !item.collapsed);
+  const firstWarningIndex = items.findIndex((item) => !item.ok);
+  const activeIndex = openIndex >= 0 ? openIndex : Math.max(firstWarningIndex, 0);
+  const okCount = items.filter((item) => item.ok).length;
+  const totalCount = items.length;
+  const progressPercent = totalCount > 0 ? Math.round((okCount / totalCount) * 100) : 0;
+
+  documentTemplateRuntimeStatusPanel.hidden = false;
+  documentTemplateRuntimeStatusPanel.replaceChildren();
+
+  const header = document.createElement("div");
+  header.className = "document-template-runtime-status-head";
+  const headingWrap = document.createElement("div");
+  const kicker = document.createElement("span");
+  kicker.textContent = "SADRŽAJ I VALIDACIJA";
+  const title = document.createElement("strong");
+  title.textContent = "Status zapisnika";
+  headingWrap.append(kicker, title);
+  const counter = document.createElement("span");
+  counter.className = "document-template-runtime-status-counter";
+  counter.textContent = `${okCount}/${totalCount}`;
+  header.append(headingWrap, counter);
+
+  const progress = document.createElement("div");
+  progress.className = "document-template-runtime-status-progress";
+  progress.setAttribute("aria-label", `${okCount} od ${totalCount} sekcija je ispravno`);
+  const progressBar = document.createElement("span");
+  progressBar.style.width = `${progressPercent}%`;
+  progress.append(progressBar);
+
+  const list = document.createElement("div");
+  list.className = "document-template-runtime-status-list";
+
+  items.forEach((item, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "document-template-runtime-status-item";
+    button.classList.toggle("is-active", index === activeIndex);
+    button.classList.toggle("is-ok", item.ok);
+    button.classList.toggle("is-warning", !item.ok);
+    button.setAttribute("aria-current", index === activeIndex ? "step" : "false");
+    button.addEventListener("click", () => {
+      openDocumentTemplateRuntimeStatusBlock(item.block, item.index);
+    });
+
+    const step = document.createElement("span");
+    step.className = "document-template-runtime-status-step";
+    step.textContent = String(index + 1);
+
+    const copy = document.createElement("span");
+    copy.className = "document-template-runtime-status-copy";
+    const itemTitle = document.createElement("strong");
+    itemTitle.textContent = item.title;
+    const meta = document.createElement("small");
+    meta.textContent = item.completion.label || (item.ok ? "OK" : "Provjeri");
+    copy.append(itemTitle, meta);
+
+    const icon = document.createElement("span");
+    icon.className = "document-template-runtime-status-icon";
+    icon.textContent = item.ok ? "OK" : "!";
+    icon.title = item.ok ? "Sve je popunjeno" : "Treba provjeriti";
+    icon.setAttribute("aria-label", icon.title);
+
+    button.append(step, copy, icon);
+    list.append(button);
+  });
+
+  const footer = document.createElement("div");
+  footer.className = "document-template-runtime-status-footer";
+  footer.textContent = `${okCount} / ${totalCount} sekcija ispunjeno`;
+
+  documentTemplateRuntimeStatusPanel.append(header, progress, list, footer);
+}
+
 function getDocumentTemplateRuntimeSequenceEntryMissingRequired(entry = {}) {
   const template = getDocumentTemplateById(entry?.templateId);
   const workOrder = getDocumentTemplateRuntimeWorkOrderById(entry?.workOrderId)
@@ -70920,6 +71049,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
   shell.className = "document-template-runtime-shell";
 
   if (sequenceState?.isSummary) {
+    renderDocumentTemplateRuntimeStatusPanel({ template, activeWorkOrder, blocks: [] });
     const groupedEntries = groupDocumentTemplateRuntimeDockEntries(sequenceState.entries);
     const skippedWorkOrderIds = getDocumentTemplateRuntimeSkippedWorkOrderIdSet();
     const signatureMode = normalizeDocumentTemplateSignatureMethod(state.documentTemplateRuntime.common?.signatureMode);
@@ -71246,6 +71376,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
   }
 
   if (!activeWorkOrder) {
+    renderDocumentTemplateRuntimeStatusPanel({ template, activeWorkOrder, blocks: [] });
     const empty = document.createElement("p");
     empty.className = "helper-copy module-copy";
     empty.textContent = "Odaberi RN kako bi otvorio predložak za unos zapisnika.";
@@ -71256,6 +71387,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
 
   const visibleBlocks = buildDocumentTemplateRuntimeBlockGroups(documentTemplateFieldDrafts);
   if (visibleBlocks.length === 0) {
+    renderDocumentTemplateRuntimeStatusPanel({ template, activeWorkOrder, blocks: [] });
     const empty = document.createElement("p");
     empty.className = "helper-copy module-copy";
     empty.textContent = "Ovaj template nema dodatnih polja za ručni unos. Podaci se povlače iz RN-a i povezanih izvora.";
@@ -71266,6 +71398,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
   }
 
   ensureDocumentTemplateRuntimeBlocksInitiallyCollapsed(template, visibleBlocks);
+  renderDocumentTemplateRuntimeStatusPanel({ template, activeWorkOrder, blocks: visibleBlocks });
 
   const createFieldTitle = (field, fallbackIndex) => field.label || field.wordLabel || `Polje ${fallbackIndex + 1}`;
 
@@ -72548,6 +72681,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
   visibleBlocks.forEach((block, blockIndex) => {
     const blockNode = document.createElement("section");
     blockNode.className = "document-template-runtime-block";
+    blockNode.dataset.runtimeBlockId = getDocumentTemplateRuntimeBlockId(block, blockIndex);
     const collapsed = isDocumentTemplateRuntimeBlockCollapsed(block, blockIndex);
     const completion = getDocumentTemplateRuntimeBlockCompletion(block, activeWorkOrder);
     blockNode.classList.toggle("is-collapsed", collapsed);
