@@ -55114,7 +55114,7 @@ const WORK_ORDER_DOCUMENT_RANDOMIZED_ENVIRONMENT_FORMAT = {
   outsideTemperature: { decimals: 1 },
   relativeHumidity: { decimals: 1 },
   airflowSpeed: { decimals: 2 },
-  groundResistance: { decimals: 0 },
+  groundResistance: { decimals: 1 },
 };
 
 function getStableStringHash(value = "") {
@@ -55145,13 +55145,13 @@ function applyDeterministicEnvironmentVariance(rawValue = "", seedKey = "", fiel
 
   const numericDecimals = (numericMatch[0].split(/[.,]/)[1] || "").length;
   const formatConfig = WORK_ORDER_DOCUMENT_RANDOMIZED_ENVIRONMENT_FORMAT[String(fieldName || "").trim()] || null;
-  const targetDecimals = formatConfig ? formatConfig.decimals : numericDecimals;
+  const targetDecimals = formatConfig ? Math.max(formatConfig.decimals, numericDecimals) : numericDecimals;
   const usesComma = numericMatch[0].includes(",") || (!numericMatch[0].includes(".") && targetDecimals > 0);
   const hash = getStableStringHash(seedKey);
   const ratio = (hash % 2001) / 1000 - 1;
   const nextNumber = originalNumber * (1 + (ratio * spread));
   const roundedValue = targetDecimals > 0
-    ? nextNumber.toFixed(Math.min(targetDecimals, 2))
+    ? nextNumber.toFixed(Math.min(targetDecimals, 3))
     : String(Math.round(nextNumber));
   const localizedValue = usesComma ? roundedValue.replace(".", ",") : roundedValue;
 
@@ -99611,7 +99611,7 @@ function getDocumentTemplateRuntimeValue(workOrderId, fieldName) {
     && state.documentTemplateRuntime.common?.randomizeEnvironment
     && WORK_ORDER_DOCUMENT_RANDOMIZED_ENVIRONMENT_FIELDS.has(normalizedFieldName)
   ) {
-    return applyDeterministicEnvironmentVariance(commonValue, `runtime:${normalizedId}:${normalizedFieldName}`, normalizedFieldName);
+    return applyDeterministicEnvironmentVariance(commonValue, `${normalizedId}:${normalizedFieldName}`, normalizedFieldName);
   }
   return isDateField
     ? normalizeDateInputValue(commonValue)
