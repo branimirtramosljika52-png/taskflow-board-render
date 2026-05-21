@@ -53547,25 +53547,46 @@ function getDocumentTemplateRuntimeSelectedEquipmentIds(
   field = {},
   template = buildDocumentTemplateDraft(),
 ) {
-  const runtimeValue = getDocumentTemplateRuntimeFieldValue(workOrderId, field.id);
-  if (Array.isArray(runtimeValue)) {
-    return runtimeValue.map((value) => String(value || "").trim()).filter(Boolean);
-  }
-
-  const selectedEquipmentCode = String(
+  const availableItems = getDocumentTemplateLinkedEquipmentItems(template);
+  const getSelectedEquipmentCode = () => String(
     getDocumentTemplateRuntimeFieldValue(
       workOrderId,
       getDocumentTemplateRuntimeEquipmentCodeFieldId(field),
     ) ?? "",
   ).trim();
+  const filterIdsToEquipmentCode = (ids = [], selectedEquipmentCode = "") => {
+    const normalizedCode = String(selectedEquipmentCode || "").trim();
+    const normalizedIds = ids.map((value) => String(value || "").trim()).filter(Boolean);
+    if (!normalizedCode) {
+      return normalizedIds;
+    }
+
+    const allowedIds = new Set(
+      availableItems
+        .filter((item) => getDocumentTemplateEquipmentDeviceCode(item) === normalizedCode)
+        .map((item) => String(item?.id || "").trim())
+        .filter(Boolean),
+    );
+    const filteredIds = normalizedIds.filter((id) => allowedIds.has(id));
+    return filteredIds.length > 0 || normalizedIds.length === 0
+      ? filteredIds
+      : [...allowedIds];
+  };
+
+  const runtimeValue = getDocumentTemplateRuntimeFieldValue(workOrderId, field.id);
+  if (Array.isArray(runtimeValue)) {
+    return filterIdsToEquipmentCode(runtimeValue, getSelectedEquipmentCode());
+  }
+
+  const selectedEquipmentCode = getSelectedEquipmentCode();
   if (selectedEquipmentCode) {
-    return getDocumentTemplateLinkedEquipmentItems(template)
+    return availableItems
       .filter((item) => getDocumentTemplateEquipmentDeviceCode(item) === selectedEquipmentCode)
       .map((item) => String(item?.id || "").trim())
       .filter(Boolean);
   }
 
-  return getDocumentTemplateLinkedEquipmentItems(template)
+  return availableItems
     .map((item) => String(item?.id || "").trim())
     .filter(Boolean);
 }
@@ -53613,13 +53634,18 @@ function applyWorkOrderDocumentWizardMeasurementEquipmentGroupDefaults(template 
       const equipmentCodeFieldId = getDocumentTemplateRuntimeEquipmentCodeFieldId(field);
       const currentCodeValue = getDocumentTemplateRuntimeFieldValue(workOrderId, equipmentCodeFieldId);
       const currentCodeSource = getDocumentTemplateRuntimeFieldSource(workOrderId, equipmentCodeFieldId);
+      const currentCode = String(currentCodeValue ?? "").trim();
+      const shouldApplySelectedGroup = currentCode !== selectedGroup;
       if (
-        currentValue !== undefined
-        || currentSource === "blank"
-        || currentSource === "manual"
-        || currentCodeValue !== undefined
-        || currentCodeSource === "blank"
-        || currentCodeSource === "manual"
+        !shouldApplySelectedGroup
+        && (
+          currentValue !== undefined
+          || currentSource === "blank"
+          || currentSource === "manual"
+          || currentCodeValue !== undefined
+          || currentCodeSource === "blank"
+          || currentCodeSource === "manual"
+        )
       ) {
         return;
       }
@@ -53654,26 +53680,28 @@ function getDocumentTemplateEquipmentItemsForField(
     return availableItems;
   }
 
-  const runtimeValue = getDocumentTemplateRuntimeFieldValue(normalizedWorkOrderId, field.id);
-  if (Array.isArray(runtimeValue)) {
-    const selectedIds = new Set(
-      runtimeValue.map((value) => String(value || "").trim()).filter(Boolean),
-    );
-
-    return availableItems.filter((item) => selectedIds.has(String(item?.id || "").trim()));
-  }
-
   const selectedEquipmentCode = String(
     getDocumentTemplateRuntimeFieldValue(
       normalizedWorkOrderId,
       getDocumentTemplateRuntimeEquipmentCodeFieldId(field),
     ) ?? "",
   ).trim();
-  if (selectedEquipmentCode) {
-    return availableItems.filter((item) => getDocumentTemplateEquipmentDeviceCode(item) === selectedEquipmentCode);
+  const scopedItems = selectedEquipmentCode
+    ? availableItems.filter((item) => getDocumentTemplateEquipmentDeviceCode(item) === selectedEquipmentCode)
+    : availableItems;
+  const runtimeValue = getDocumentTemplateRuntimeFieldValue(normalizedWorkOrderId, field.id);
+  if (Array.isArray(runtimeValue)) {
+    const selectedIds = new Set(
+      runtimeValue.map((value) => String(value || "").trim()).filter(Boolean),
+    );
+    const selectedItems = scopedItems.filter((item) => selectedIds.has(String(item?.id || "").trim()));
+
+    return selectedItems.length > 0 || selectedIds.size === 0
+      ? selectedItems
+      : scopedItems;
   }
 
-  return availableItems;
+  return scopedItems;
 }
 
 function getDocumentTemplatePreviewSampleWorkOrder(template = buildDocumentTemplateDraft()) {
@@ -72042,7 +72070,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
 
       const codeHint = document.createElement("small");
       codeHint.textContent = selectedEquipmentCode
-        ? "Uređaji s tom oznakom su već označeni; ostale i dalje možeš ručno dodati."
+        ? "U zapisniku se prikazuje samo oprema s tom oznakom."
         : "Odabirom oznake sustav automatski označi povezane uređaje.";
       codePicker.append(codeLabel, codeSelect, codeHint);
       shellNode.append(codePicker);
@@ -72060,7 +72088,21 @@ function renderDocumentTemplateRuntimeFieldRows() {
       renderDocumentTemplatePreviewContent();
     };
 
-    equipmentItems.forEach((item) => {
+    const visibleEquipmentItems = selectedEquipmentCode
+      ? equipmentItems.filter((item) => getDocumentTemplateEquipmentDeviceCode(item) === selectedEquipmentCode)
+      : equipmentItems;
+
+    if (visibleEquipmentItems.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "helper-copy module-copy";
+      empty.textContent = selectedEquipmentCode
+        ? `Nema povezane opreme za grupu ${selectedEquipmentCode}.`
+        : "Nema opreme za prikaz.";
+      shellNode.append(empty);
+      return shellNode;
+    }
+
+    visibleEquipmentItems.forEach((item) => {
       const option = document.createElement("label");
       option.className = "document-template-runtime-checklist-item";
       if (selectedEquipmentCode && getDocumentTemplateEquipmentDeviceCode(item) === selectedEquipmentCode) {
@@ -72071,7 +72113,11 @@ function renderDocumentTemplateRuntimeFieldRows() {
       checkbox.type = "checkbox";
       checkbox.value = String(item.id || "");
       checkbox.checked = selectedIds.has(String(item.id || ""));
-      checkbox.addEventListener("change", syncSelection);
+      option.classList.toggle("is-selected-equipment", checkbox.checked);
+      checkbox.addEventListener("change", () => {
+        option.classList.toggle("is-selected-equipment", checkbox.checked);
+        syncSelection();
+      });
 
       const copy = document.createElement("div");
       copy.className = "document-template-runtime-checklist-item-copy";
@@ -72101,7 +72147,9 @@ function renderDocumentTemplateRuntimeFieldRows() {
     shellNode.append(list);
     const helper = document.createElement("small");
     helper.className = "document-template-runtime-field-help";
-    helper.textContent = field.helpText || "Odaberi uređaje koji ulaze u ovaj zapisnik.";
+    helper.textContent = selectedEquipmentCode
+      ? `Prikazana je samo oprema iz grupe ${selectedEquipmentCode} koja ide u ovaj zapisnik.`
+      : (field.helpText || "Odaberi uređaje koji ulaze u ovaj zapisnik.");
     shellNode.append(helper);
     return shellNode;
   };
@@ -99758,6 +99806,10 @@ function getDocumentTemplateRuntimePersistedFieldValue(field = {}, workOrderId =
   const commonValidUntilValue = getDocumentTemplateRuntimeCommonValidUntilInitialValue(field, workOrderId);
   if (commonValidUntilValue !== undefined) {
     return commonValidUntilValue;
+  }
+
+  if (String(field?.type || "").trim().toLowerCase() === "equipment_list") {
+    return getDocumentTemplateRuntimeSelectedEquipmentIds(workOrderId, field, template);
   }
 
   const runtimeValue = getDocumentTemplateRuntimeFieldValue(workOrderId, field.id);
