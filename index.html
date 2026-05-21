@@ -8279,6 +8279,40 @@
                           </section>
                         </section>
 
+                        <aside id="document-template-runtime-side-panel" class="document-template-runtime-side-panel" hidden aria-label="Sažetak i brze akcije zapisnika">
+                          <section class="document-template-runtime-side-card document-template-runtime-summary-panel-card" aria-labelledby="document-template-runtime-summary-panel-title">
+                            <div class="document-template-runtime-side-card-head">
+                              <span>Sažetak</span>
+                              <strong id="document-template-runtime-summary-panel-title">Aktivni zapisnik</strong>
+                            </div>
+                            <div id="document-template-runtime-summary-panel" class="document-template-runtime-summary-panel"></div>
+                          </section>
+                          <section class="document-template-runtime-side-card document-template-runtime-quick-actions-card" aria-labelledby="document-template-runtime-quick-actions-title">
+                            <div class="document-template-runtime-side-card-head">
+                              <span>Akcije</span>
+                              <strong id="document-template-runtime-quick-actions-title">Brze akcije</strong>
+                            </div>
+                            <div class="document-template-runtime-quick-actions">
+                              <button id="document-template-runtime-side-preview-pdf" type="button" class="ghost-button document-template-runtime-quick-action">
+                                <span aria-hidden="true">PDF</span>
+                                <strong>Preview PDF</strong>
+                              </button>
+                              <button id="document-template-runtime-side-save-progress" type="button" class="ghost-button document-template-runtime-quick-action">
+                                <span aria-hidden="true">SP</span>
+                                <strong>Spremi skicu</strong>
+                              </button>
+                              <button id="document-template-runtime-side-send-signature" type="button" class="ghost-button document-template-runtime-quick-action">
+                                <span aria-hidden="true">DS</span>
+                                <strong>Digitalni potpis</strong>
+                              </button>
+                              <button id="document-template-runtime-side-duplicate-object" type="button" class="ghost-button document-template-runtime-quick-action">
+                                <span aria-hidden="true">DU</span>
+                                <strong>Poduplaj objekt</strong>
+                              </button>
+                            </div>
+                          </section>
+                        </aside>
+
                         <aside class="document-template-builder-inspector" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="document-template-field-inspector-title">
                           <section class="document-template-block document-template-sidebar-block document-template-inspector-block">
                             <div class="document-template-sidebar-block-head">
@@ -8388,19 +8422,19 @@
                       </div>
                     </section>
 
-                    <section id="document-template-runtime-dock" class="document-template-runtime-dock" hidden>
+                    <section id="document-template-runtime-dock" class="document-template-runtime-dock work-order-bottom-bar" hidden aria-label="Radni nalozi">
                       <div class="document-template-runtime-dock-summary">
-                        <span class="document-template-runtime-dock-kicker">Timeline</span>
-                        <strong id="document-template-runtime-dock-title">Aktivni zapisnik</strong>
+                        <span class="document-template-runtime-dock-kicker">Radni nalozi</span>
+                        <strong id="document-template-runtime-dock-title">Aktivni RN</strong>
                         <span id="document-template-runtime-dock-meta">RN i zapisnik u tijeku</span>
                       </div>
                       <div class="document-template-runtime-dock-track-shell">
-                        <button id="document-template-runtime-dock-scroll-prev" type="button" class="document-template-runtime-dock-scroll" aria-label="Pomakni timeline lijevo">&#8592;</button>
+                        <button id="document-template-runtime-dock-scroll-prev" type="button" class="document-template-runtime-dock-scroll" aria-label="Pomakni radne naloge lijevo">&#8592;</button>
                         <div id="document-template-runtime-dock-track" class="document-template-runtime-dock-track"></div>
-                        <button id="document-template-runtime-dock-scroll-next" type="button" class="document-template-runtime-dock-scroll" aria-label="Pomakni timeline desno">&#8594;</button>
+                        <button id="document-template-runtime-dock-scroll-next" type="button" class="document-template-runtime-dock-scroll" aria-label="Pomakni radne naloge desno">&#8594;</button>
                       </div>
                       <div class="document-template-runtime-dock-actions">
-                        <button id="document-template-runtime-dock-back" type="button" class="ghost-button" hidden>Osnovni podaci</button>
+                        <button id="document-template-runtime-dock-back" type="button" class="ghost-button" hidden>Svi nalozi</button>
                         <div class="document-template-runtime-dock-signature-mode">
                           <button id="document-template-runtime-dock-sign-scan" type="button" class="ghost-button">Potpis</button>
                           <button id="document-template-runtime-dock-sign-digital" type="button" class="ghost-button">Digitalni potpis</button>

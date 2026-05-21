@@ -2136,7 +2136,7 @@ const state = {
     collapsedBlocksInitializedKey: "",
     skippedWorkOrderIds: [],
     exportStatuses: {},
-    aiAssistantHidden: false,
+    aiAssistantHidden: true,
     common: {
       inspectionDate: "",
       issuedDate: "",
@@ -3877,6 +3877,12 @@ const documentTemplateRuntimeDockSendSignatureButton = document.querySelector("#
 const documentTemplateRuntimeDockPrintAllButton = document.querySelector("#document-template-runtime-dock-print-all");
 const documentTemplateRuntimeDockDuplicateObjectButton = document.querySelector("#document-template-runtime-dock-duplicate-object");
 const documentTemplateRuntimeDockPdfButton = document.querySelector("#document-template-runtime-dock-pdf");
+const documentTemplateRuntimeSidePanel = document.querySelector("#document-template-runtime-side-panel");
+const documentTemplateRuntimeSummaryPanel = document.querySelector("#document-template-runtime-summary-panel");
+const documentTemplateRuntimeSidePreviewPdfButton = document.querySelector("#document-template-runtime-side-preview-pdf");
+const documentTemplateRuntimeSideSaveProgressButton = document.querySelector("#document-template-runtime-side-save-progress");
+const documentTemplateRuntimeSideSendSignatureButton = document.querySelector("#document-template-runtime-side-send-signature");
+const documentTemplateRuntimeSideDuplicateObjectButton = document.querySelector("#document-template-runtime-side-duplicate-object");
 const documentTemplateRuntimeSidePrevButton = document.querySelector("#document-template-runtime-side-prev");
 const documentTemplateRuntimeSideNextButton = document.querySelector("#document-template-runtime-side-next");
 const documentTemplateMetaGrid = documentTemplateEditorPanel?.querySelector(".document-template-meta-grid");
@@ -62817,6 +62823,214 @@ function groupDocumentTemplateRuntimeDockEntries(entries = []) {
   return groups;
 }
 
+function getDocumentTemplateRuntimeServiceBadgeLabel(service = {}) {
+  const rawLabel = String(
+    service.serviceCode
+      || service.shortLabel
+      || service.code
+      || service.name
+      || service.serviceName
+      || "",
+  ).trim();
+  if (!rawLabel) {
+    return "N/A";
+  }
+
+  const compact = rawLabel
+    .replace(/\s*\([^)]*\)\s*/g, " ")
+    .split(/[·|,;/]+/)
+    .map((part) => part.trim())
+    .find(Boolean)
+    || rawLabel;
+  const words = compact.split(/\s+/).filter(Boolean);
+  if (words.length > 1) {
+    const initials = words
+      .map((word) => word.replace(/[^A-Za-z0-9ČĆŽŠĐčćžšđ]/g, "").charAt(0))
+      .join("")
+      .toUpperCase();
+    if (initials.length >= 2 && initials.length <= 5) {
+      return initials;
+    }
+  }
+
+  return compact.length > 5 ? compact.slice(0, 5).toUpperCase() : compact.toUpperCase();
+}
+
+function createWorkOrderBottomBarServiceBadge(service = {}, { forceProblem = false } = {}) {
+  const status = getWorkOrderServiceProgressStatus(service);
+  const badge = document.createElement("span");
+  badge.className = "work-order-bottom-card-service";
+  badge.classList.add(
+    status === "completed"
+      ? "is-ok"
+      : (forceProblem || status === "in_progress" ? "is-error" : "is-neutral"),
+  );
+  badge.textContent = getDocumentTemplateRuntimeServiceBadgeLabel(service);
+  badge.title = [
+    service.name || service.serviceName || service.serviceCode || "Usluga",
+    getWorkOrderServiceProgressMeta(service)?.label || "",
+  ].filter(Boolean).join(" · ");
+  return badge;
+}
+
+function createWorkOrderBottomBarCard({
+  group = {},
+  activeIndex = 0,
+  hasSequence = false,
+  sequenceState = null,
+  activeWorkOrder = null,
+} = {}) {
+  const workOrder = getDocumentTemplateRuntimeWorkOrderById(group.workOrderId) || {};
+  const serviceItems = workOrder?.id ? getDocumentTemplateRuntimeResolvedServiceItems(workOrder) : [];
+  const groupItems = Array.isArray(group.items) ? group.items : [];
+  const missingRequired = groupItems
+    .flatMap((entry) => getDocumentTemplateRuntimeSequenceEntryMissingRequired(entry));
+  const allEntriesComplete = groupItems.length > 0 && groupItems.every((entry) => isDocumentTemplateRuntimeSequenceEntryComplete(entry));
+  const allServicesComplete = serviceItems.length > 0 && serviceItems.every((service) => Boolean(service?.isCompleted));
+  const isActive = sequenceState?.isSummary
+    ? false
+    : groupItems.some((entry) => Number(entry.dockIndex) === activeIndex)
+      || String(group.workOrderId || "") === String(activeWorkOrder?.id || "");
+  const hasProblem = missingRequired.length > 0 || serviceItems.some((service) => getWorkOrderServiceProgressStatus(service) === "in_progress");
+
+  const card = document.createElement("button");
+  card.type = "button";
+  card.className = "document-template-runtime-dock-group work-order-bottom-card";
+  card.classList.toggle("is-active", isActive);
+  card.classList.toggle("is-complete", allEntriesComplete && (serviceItems.length === 0 || allServicesComplete) && !hasProblem);
+  card.classList.toggle("is-warning", hasProblem);
+  card.setAttribute("aria-label", `Otvori RN ${group.workOrderNumber || "bez broja"}`);
+  card.addEventListener("click", () => {
+    const firstEntry = groupItems[0] || null;
+    if (hasSequence && firstEntry) {
+      const index = Number(firstEntry.dockIndex);
+      if (Number.isFinite(index) && index >= 0 && index !== activeIndex) {
+        openDocumentTemplateRuntimeSequenceIndex(index);
+      }
+      return;
+    }
+
+    if (String(group.workOrderId || "") !== String(activeWorkOrder?.id || "")) {
+      setDocumentTemplateRuntimeActiveWorkOrder(group.workOrderId, { render: true });
+    }
+  });
+
+  const head = document.createElement("span");
+  head.className = "work-order-bottom-card-head";
+  const dot = document.createElement("span");
+  dot.className = "work-order-bottom-card-dot";
+  dot.classList.add(
+    allServicesComplete && !hasProblem
+      ? "is-ok"
+      : (hasProblem ? "is-error" : "is-neutral"),
+  );
+  dot.setAttribute("aria-hidden", "true");
+  const title = document.createElement("strong");
+  title.textContent = `RN: ${group.workOrderNumber || "bez broja"}`;
+  head.append(dot, title);
+
+  const serviceRow = document.createElement("span");
+  serviceRow.className = "work-order-bottom-card-services";
+  const visibleServices = serviceItems.slice(0, 4);
+  if (visibleServices.length === 0) {
+    const empty = document.createElement("span");
+    empty.className = "work-order-bottom-card-service is-neutral";
+    empty.textContent = "N/A";
+    serviceRow.append(empty);
+  } else {
+    visibleServices.forEach((service) => {
+      serviceRow.append(createWorkOrderBottomBarServiceBadge(service, { forceProblem: hasProblem && !service?.isCompleted }));
+    });
+    if (serviceItems.length > visibleServices.length) {
+      const more = document.createElement("span");
+      more.className = "work-order-bottom-card-service is-neutral";
+      more.textContent = `+${serviceItems.length - visibleServices.length}`;
+      serviceRow.append(more);
+    }
+  }
+
+  card.append(head, serviceRow);
+  return card;
+}
+
+function renderDocumentTemplateRuntimeSidePanel({
+  template = null,
+  fillMode = false,
+  hasContext = false,
+  sequenceState = null,
+  isSummaryStep = false,
+  activeWorkOrder = null,
+  activeSequenceEntry = null,
+  workOrders = [],
+} = {}) {
+  if (!(documentTemplateRuntimeSidePanel instanceof HTMLElement) || !(documentTemplateRuntimeSummaryPanel instanceof HTMLElement)) {
+    return;
+  }
+
+  const shouldShow = Boolean(fillMode && hasContext);
+  documentTemplateRuntimeSidePanel.hidden = !shouldShow;
+  if (!shouldShow) {
+    documentTemplateRuntimeSummaryPanel.replaceChildren();
+    return;
+  }
+
+  const summaryRows = [];
+  if (isSummaryStep) {
+    const groups = groupDocumentTemplateRuntimeDockEntries(sequenceState?.entries || []);
+    const readyGroups = groups.filter((group) => group.items.every((entry) => isDocumentTemplateRuntimeSequenceEntryComplete(entry)));
+    summaryRows.push(
+      ["RN-ovi", `${groups.length}`],
+      ["Zapisnici", `${Array.isArray(sequenceState?.entries) ? sequenceState.entries.length : 0}`],
+      ["Spremno", `${readyGroups.length}/${groups.length}`],
+    );
+  } else if (activeWorkOrder) {
+    const serviceItems = getDocumentTemplateRuntimeResolvedServiceItems(activeWorkOrder);
+    const completedServices = serviceItems.filter((service) => Boolean(service?.isCompleted)).length;
+    summaryRows.push(
+      ["RN", activeWorkOrder.workOrderNumber || "Bez broja"],
+      ["Zapisnik", activeSequenceEntry?.timelineLabel || template?.title || "Zapisnik"],
+      ["Tvrtka", activeWorkOrder.companyName || "Bez tvrtke"],
+      ["Lokacija", activeWorkOrder.locationName || "Bez lokacije"],
+      ["Datum", formatCompactDate(getDocumentTemplateRuntimeValue(activeWorkOrder.id, "inspectionDate")) || "Nije upisano"],
+      ["Usluge", serviceItems.length > 0 ? `${completedServices}/${serviceItems.length}` : "Bez usluga"],
+    );
+  }
+
+  const rows = summaryRows.map(([labelText, valueText]) => {
+    const row = document.createElement("div");
+    row.className = "document-template-runtime-summary-row";
+    const label = document.createElement("span");
+    label.textContent = labelText;
+    const value = document.createElement("strong");
+    value.textContent = valueText || "-";
+    row.append(label, value);
+    return row;
+  });
+
+  documentTemplateRuntimeSummaryPanel.replaceChildren(...rows);
+
+  [
+    documentTemplateRuntimeSidePreviewPdfButton,
+    documentTemplateRuntimeSideSaveProgressButton,
+    documentTemplateRuntimeSideSendSignatureButton,
+    documentTemplateRuntimeSideDuplicateObjectButton,
+  ].forEach((button) => {
+    if (button instanceof HTMLButtonElement) {
+      button.disabled = !fillMode || (!activeWorkOrder && !isSummaryStep);
+    }
+  });
+
+  if (documentTemplateRuntimeSidePreviewPdfButton instanceof HTMLButtonElement) {
+    documentTemplateRuntimeSidePreviewPdfButton.disabled = !fillMode || isSummaryStep || !activeWorkOrder;
+  }
+  if (documentTemplateRuntimeSideSendSignatureButton instanceof HTMLButtonElement) {
+    documentTemplateRuntimeSideSendSignatureButton.disabled = !fillMode || isSummaryStep || !activeWorkOrder;
+  }
+  if (documentTemplateRuntimeSideDuplicateObjectButton instanceof HTMLButtonElement) {
+    documentTemplateRuntimeSideDuplicateObjectButton.disabled = !fillMode || isSummaryStep || !activeWorkOrder;
+  }
+}
+
 function clampDocumentTemplateRuntimeSequenceIndex(targetIndex, entries = getDocumentTemplateRuntimeSequenceEntries()) {
   const normalizedEntries = Array.isArray(entries) ? entries : [];
   if (normalizedEntries.length === 0) {
@@ -63313,6 +63527,16 @@ function renderDocumentTemplateRuntimeContext() {
   const activeSequenceEntry = hasSequence && !isSummaryStep
     ? (Array.isArray(sequenceState?.entries) ? (sequenceState.entries[sequenceState.index] || sequenceState.entries[0] || null) : null)
     : null;
+  renderDocumentTemplateRuntimeSidePanel({
+    template,
+    fillMode,
+    hasContext,
+    sequenceState,
+    isSummaryStep,
+    activeWorkOrder,
+    activeSequenceEntry,
+    workOrders,
+  });
   documentTemplateRuntimeContext.hidden = !hasContext || isSummaryStep || fillMode;
   documentTemplateRuntimeContext.classList.toggle("is-fill-mode", fillMode);
   if (documentTemplateRuntimeHeaderBadges) {
@@ -63407,94 +63631,48 @@ function renderDocumentTemplateRuntimeContext() {
     const groupedEntries = groupDocumentTemplateRuntimeDockEntries(dockEntries);
     documentTemplateRuntimeDock.hidden = dockEntries.length === 0;
     if (sequenceState?.isSummary) {
-      documentTemplateRuntimeDockTitle.textContent = "Summary";
-      documentTemplateRuntimeDockMeta.textContent = "Završetak";
+      documentTemplateRuntimeDockTitle.textContent = "Radni nalozi";
+      documentTemplateRuntimeDockMeta.textContent = `${groupedEntries.length} RN · završni pregled`;
     } else {
-      documentTemplateRuntimeDockTitle.textContent = `RN ${activeEntry?.workOrderNumber || activeWorkOrder.workOrderNumber || "bez broja"}`;
-      documentTemplateRuntimeDockMeta.textContent = activeWorkOrder.companyName || "";
+      documentTemplateRuntimeDockTitle.textContent = "Radni nalozi";
+      documentTemplateRuntimeDockMeta.textContent = `${groupedEntries.length} ${groupedEntries.length === 1 ? "RN" : "RN-ova"}`;
     }
 
-    const dockNodes = groupedEntries.map((group) => {
-      const groupCard = document.createElement("article");
-      groupCard.className = "document-template-runtime-dock-group";
-      if (!sequenceState?.isSummary && String(group.workOrderId) === String(activeEntry?.workOrderId || "")) {
-        groupCard.classList.add("is-active");
-      }
-
-      const groupHead = document.createElement("div");
-      groupHead.className = "document-template-runtime-dock-group-head";
-
-      const groupTitle = document.createElement("strong");
-      groupTitle.textContent = `RN ${group.workOrderNumber}`;
-
-      const groupMeta = document.createElement("span");
-      groupMeta.textContent = "";
-
-      groupHead.append(groupTitle, groupMeta);
-
-      const groupItems = document.createElement("div");
-      groupItems.className = "document-template-runtime-dock-group-items";
-
-      group.items.forEach((entry) => {
-        const index = Number(entry.dockIndex);
-        const itemButton = document.createElement("button");
-        itemButton.type = "button";
-        itemButton.className = "document-template-runtime-dock-item";
-        if (isDocumentTemplateRuntimeSequenceEntryComplete(entry)) {
-          itemButton.classList.add("is-complete");
-        }
-        if (index === activeIndex) {
-          itemButton.classList.add("is-active");
-        }
-        itemButton.textContent = entry.timelineLabel;
-        itemButton.setAttribute("aria-label", `${entry.timelineLabel} za RN ${group.workOrderNumber}`);
-        itemButton.addEventListener("click", () => {
-          if (hasSequence) {
-            if (index !== activeIndex && index >= 0) {
-              openDocumentTemplateRuntimeSequenceIndex(index);
-            }
-            return;
-          }
-
-          if (String(entry.workOrderId || "") !== String(activeWorkOrder?.id || "")) {
-            setDocumentTemplateRuntimeActiveWorkOrder(entry.workOrderId, { render: true });
-          }
-        });
-        groupItems.append(itemButton);
-      });
-
-      groupCard.append(groupHead, groupItems);
-      return groupCard;
-    });
+    const dockNodes = groupedEntries.map((group) => createWorkOrderBottomBarCard({
+      group,
+      activeIndex,
+      hasSequence,
+      sequenceState,
+      activeWorkOrder,
+    }));
 
     if (sequenceState) {
-      const summaryCard = document.createElement("article");
-      summaryCard.className = "document-template-runtime-dock-group is-summary";
+      const summaryCard = document.createElement("button");
+      summaryCard.type = "button";
+      summaryCard.className = "document-template-runtime-dock-group work-order-bottom-card is-summary";
       if (sequenceState.isSummary) {
         summaryCard.classList.add("is-active");
       }
+      summaryCard.setAttribute("aria-label", "Otvori završni pregled svih naloga");
 
       const summaryHead = document.createElement("div");
-      summaryHead.className = "document-template-runtime-dock-group-head";
+      summaryHead.className = "work-order-bottom-card-head";
+      const summaryDot = document.createElement("span");
+      summaryDot.className = "work-order-bottom-card-dot is-neutral";
+      summaryDot.setAttribute("aria-hidden", "true");
       const summaryTitle = document.createElement("strong");
-      summaryTitle.textContent = "Summary";
-      const summaryMeta = document.createElement("span");
-      summaryMeta.textContent = "";
-      summaryHead.append(summaryTitle, summaryMeta);
+      summaryTitle.textContent = "Svi nalozi";
+      summaryHead.append(summaryDot, summaryTitle);
 
       const summaryItems = document.createElement("div");
-      summaryItems.className = "document-template-runtime-dock-group-items";
-      const summaryButton = document.createElement("button");
-      summaryButton.type = "button";
-      summaryButton.className = "document-template-runtime-dock-item";
-      if (sequenceState.isSummary) {
-        summaryButton.classList.add("is-active");
-      }
-      summaryButton.textContent = "Summary";
-      summaryButton.addEventListener("click", () => {
+      summaryItems.className = "work-order-bottom-card-services";
+      const summaryBadge = document.createElement("span");
+      summaryBadge.className = "work-order-bottom-card-service is-neutral";
+      summaryBadge.textContent = `${groupedEntries.length} RN`;
+      summaryItems.append(summaryBadge);
+      summaryCard.addEventListener("click", () => {
         openDocumentTemplateRuntimeSequenceIndex(sequenceState.summaryIndex);
       });
-      summaryItems.append(summaryButton);
 
       summaryCard.append(summaryHead, summaryItems);
       dockNodes.push(summaryCard);
@@ -63772,7 +63950,7 @@ function renderDocumentTemplateRuntimeContext() {
 
   if (fillMode && activeWorkOrder) {
     if (documentTemplateRuntimeDockDuplicateObjectButton) {
-      documentTemplateRuntimeDockDuplicateObjectButton.hidden = false;
+      documentTemplateRuntimeDockDuplicateObjectButton.hidden = true;
       documentTemplateRuntimeDockDuplicateObjectButton.disabled = false;
       documentTemplateRuntimeDockDuplicateObjectButton.title = "Poduplaj zapisnik za novi objekt na istoj lokaciji";
     }
@@ -63800,20 +63978,13 @@ function syncDocumentTemplateEditorChrome() {
   const fillMode = isDocumentTemplateRuntimeFillMode();
   if (documentTemplateEditorTitle) {
     if (fillMode) {
-      const activeWorkOrder = getDocumentTemplateRuntimeActiveWorkOrder();
       const sequenceState = getDocumentTemplateRuntimeSequenceState();
       const sequenceEntries = Array.isArray(sequenceState?.entries) ? sequenceState.entries : [];
-      const activeEntry = sequenceState?.isSummary
-        ? null
-        : (sequenceEntries[sequenceState?.index ?? 0] || sequenceEntries[0] || null);
 
       documentTemplateEditorTitle.textContent = sequenceState?.isSummary
         ? `Summary · ${sequenceEntries.length} ${sequenceEntries.length === 1 ? "zapisnik" : "zapisnika"}`
-        : [
-          activeEntry?.workOrderNumber ? `RN ${activeEntry.workOrderNumber}` : "",
-          activeWorkOrder?.companyName || "",
-        ].filter(Boolean).join(" · ");
-      documentTemplateEditorTitle.hidden = !sequenceState?.isSummary;
+        : "Novi zapisnik";
+      documentTemplateEditorTitle.hidden = false;
     } else {
       documentTemplateEditorTitle.textContent = documentTemplateIdInput?.value
         ? `Uredi template | ${documentTemplateTitleInput?.value?.trim() || "Bez naziva"}`
@@ -98672,7 +98843,7 @@ function clearDocumentTemplateRuntimeContext({ render = true } = {}) {
     collapsedBlocksInitializedKey: "",
     skippedWorkOrderIds: [],
     exportStatuses: {},
-    aiAssistantHidden: false,
+    aiAssistantHidden: true,
     common: {
       inspectionDate: "",
       issuedDate: "",
@@ -99188,7 +99359,7 @@ function setDocumentTemplateRuntimeFromWizard(workOrders = getAllSelectedWorkOrd
     collapsedBlocksInitializedKey: "",
     skippedWorkOrderIds: [],
     exportStatuses: {},
-    aiAssistantHidden: false,
+    aiAssistantHidden: true,
     common: {
       inspectionDate: normalizeDateInputValue(state.workOrderDocumentWizard.common?.inspectionDate ?? ""),
       issuedDate: normalizeDateInputValue(state.workOrderDocumentWizard.common?.issuedDate ?? ""),
@@ -110526,6 +110697,18 @@ documentTemplateRuntimeDockScrollPrevButton?.addEventListener("click", () => {
 });
 documentTemplateRuntimeDockScrollNextButton?.addEventListener("click", () => {
   scrollDocumentTemplateRuntimeDockTrack(1);
+});
+documentTemplateRuntimeSidePreviewPdfButton?.addEventListener("click", () => {
+  void exportDocumentTemplatePdf();
+});
+documentTemplateRuntimeSideSaveProgressButton?.addEventListener("click", () => {
+  void saveActiveDocumentTemplateRuntimeProgress();
+});
+documentTemplateRuntimeSideSendSignatureButton?.addEventListener("click", () => {
+  void queueDocumentTemplateForDigitalSignature();
+});
+documentTemplateRuntimeSideDuplicateObjectButton?.addEventListener("click", () => {
+  void duplicateActiveDocumentTemplateRuntimeForNewObject();
 });
 
 documentTemplateDeleteButton?.addEventListener("click", () => {
