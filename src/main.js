@@ -2097,6 +2097,7 @@ const state = {
       groundCondition: "",
       groundResistance: "",
       randomizeEnvironment: false,
+      measurementEquipmentGroup: "",
       signatureMode: "scan",
       validityMonths: "12",
       electricalValidityMonths: "12",
@@ -2149,6 +2150,7 @@ const state = {
       groundCondition: "",
       groundResistance: "",
       randomizeEnvironment: false,
+      measurementEquipmentGroup: "",
       signatureMode: "scan",
       validityMonths: "12",
       electricalValidityMonths: "12",
@@ -4583,6 +4585,7 @@ const workOrderDocumentWizardSheetBasicPanel = document.querySelector("#work-ord
 const workOrderDocumentWizardSheetValidityPanel = document.querySelector("#work-order-document-wizard-sheet-validity-panel");
 const workOrderDocumentCommonStatusSlot = document.querySelector("#work-order-document-common-status-slot");
 const workOrderDocumentCommonExecutorsSlot = document.querySelector("#work-order-document-common-executors-slot");
+const workOrderDocumentCommonMeasurementEquipmentGroupInput = document.querySelector("#work-order-document-common-measurement-equipment-group");
 const workOrderDocumentWizardDetailsPanel = document.querySelector("#work-order-document-wizard-details");
 const workOrderDocumentWizardTemplatesPanel = document.querySelector("#work-order-document-wizard-templates");
 const workOrderDocumentWizardSelectionSummary = document.querySelector("#work-order-document-wizard-selection-summary");
@@ -53549,9 +53552,95 @@ function getDocumentTemplateRuntimeSelectedEquipmentIds(
     return runtimeValue.map((value) => String(value || "").trim()).filter(Boolean);
   }
 
+  const selectedEquipmentCode = String(
+    getDocumentTemplateRuntimeFieldValue(
+      workOrderId,
+      getDocumentTemplateRuntimeEquipmentCodeFieldId(field),
+    ) ?? "",
+  ).trim();
+  if (selectedEquipmentCode) {
+    return getDocumentTemplateLinkedEquipmentItems(template)
+      .filter((item) => getDocumentTemplateEquipmentDeviceCode(item) === selectedEquipmentCode)
+      .map((item) => String(item?.id || "").trim())
+      .filter(Boolean);
+  }
+
   return getDocumentTemplateLinkedEquipmentItems(template)
     .map((item) => String(item?.id || "").trim())
     .filter(Boolean);
+}
+
+function getDocumentTemplateEquipmentListFields(template = buildDocumentTemplateDraft()) {
+  return (Array.isArray(template?.customFields) ? template.customFields : [])
+    .filter((field) => String(field?.type || "").trim().toLowerCase() === "equipment_list")
+    .filter((field) => String(field?.id || "").trim());
+}
+
+function applyWorkOrderDocumentWizardMeasurementEquipmentGroupDefaults(template = {}, workOrders = []) {
+  const selectedGroup = String(
+    state.documentTemplateRuntime.common?.measurementEquipmentGroup
+      || state.workOrderDocumentWizard.common?.measurementEquipmentGroup
+      || "",
+  ).trim();
+  if (!selectedGroup) {
+    return 0;
+  }
+
+  const equipmentFields = getDocumentTemplateEquipmentListFields(template);
+  if (equipmentFields.length === 0) {
+    return 0;
+  }
+
+  const matchingEquipmentIds = getDocumentTemplateLinkedEquipmentItems(template)
+    .filter((item) => getDocumentTemplateEquipmentDeviceCode(item) === selectedGroup)
+    .map((item) => String(item?.id || "").trim())
+    .filter(Boolean);
+
+  const workOrderIds = (Array.isArray(workOrders) ? workOrders : [])
+    .map((item) => String(item?.id || "").trim())
+    .filter(Boolean);
+  let appliedCount = 0;
+
+  workOrderIds.forEach((workOrderId) => {
+    equipmentFields.forEach((field) => {
+      const fieldId = String(field?.id || "").trim();
+      if (!fieldId) {
+        return;
+      }
+
+      const currentValue = getDocumentTemplateRuntimeFieldValue(workOrderId, fieldId);
+      const currentSource = getDocumentTemplateRuntimeFieldSource(workOrderId, fieldId);
+      const equipmentCodeFieldId = getDocumentTemplateRuntimeEquipmentCodeFieldId(field);
+      const currentCodeValue = getDocumentTemplateRuntimeFieldValue(workOrderId, equipmentCodeFieldId);
+      const currentCodeSource = getDocumentTemplateRuntimeFieldSource(workOrderId, equipmentCodeFieldId);
+      if (
+        currentValue !== undefined
+        || currentSource === "blank"
+        || currentSource === "manual"
+        || currentCodeValue !== undefined
+        || currentCodeSource === "blank"
+        || currentCodeSource === "manual"
+      ) {
+        return;
+      }
+
+      setDocumentTemplateRuntimeFieldValue(
+        workOrderId,
+        equipmentCodeFieldId,
+        selectedGroup,
+        { render: false, preserveBlank: false },
+      );
+      setDocumentTemplateRuntimeFieldValue(
+        workOrderId,
+        fieldId,
+        matchingEquipmentIds,
+        { render: false, preserveBlank: false },
+      );
+      appliedCount += 1;
+    });
+  });
+
+  return appliedCount;
 }
 
 function getDocumentTemplateEquipmentItemsForField(
@@ -53566,15 +53655,25 @@ function getDocumentTemplateEquipmentItemsForField(
   }
 
   const runtimeValue = getDocumentTemplateRuntimeFieldValue(normalizedWorkOrderId, field.id);
-  if (!Array.isArray(runtimeValue)) {
-    return availableItems;
+  if (Array.isArray(runtimeValue)) {
+    const selectedIds = new Set(
+      runtimeValue.map((value) => String(value || "").trim()).filter(Boolean),
+    );
+
+    return availableItems.filter((item) => selectedIds.has(String(item?.id || "").trim()));
   }
 
-  const selectedIds = new Set(
-    runtimeValue.map((value) => String(value || "").trim()).filter(Boolean),
-  );
+  const selectedEquipmentCode = String(
+    getDocumentTemplateRuntimeFieldValue(
+      normalizedWorkOrderId,
+      getDocumentTemplateRuntimeEquipmentCodeFieldId(field),
+    ) ?? "",
+  ).trim();
+  if (selectedEquipmentCode) {
+    return availableItems.filter((item) => getDocumentTemplateEquipmentDeviceCode(item) === selectedEquipmentCode);
+  }
 
-  return availableItems.filter((item) => selectedIds.has(String(item?.id || "").trim()));
+  return availableItems;
 }
 
 function getDocumentTemplatePreviewSampleWorkOrder(template = buildDocumentTemplateDraft()) {
@@ -54687,6 +54786,49 @@ function createWorkOrderDocumentSafetySpecialistPicker() {
   });
   wrapper.append(select);
   return wrapper;
+}
+
+function getWorkOrderDocumentMeasurementEquipmentGroupOptions(selectedValue = "") {
+  const standardGroups = Array.from({ length: 13 }, (_, index) => `Grupa ${String.fromCharCode(65 + index)}`);
+  const selected = String(selectedValue || "").trim();
+  const groups = new Set(standardGroups);
+
+  (state.measurementEquipment ?? []).forEach((item) => {
+    const group = getDocumentTemplateEquipmentDeviceCode(item);
+    if (group) {
+      groups.add(group);
+    }
+  });
+
+  if (selected) {
+    groups.add(selected);
+  }
+
+  return [
+    { value: "", label: "Bez odabira" },
+    ...Array.from(groups)
+      .sort((left, right) => left.localeCompare(right, "hr", { sensitivity: "base", numeric: true }))
+      .map((group) => ({
+        value: group,
+        label: group,
+      })),
+  ];
+}
+
+function syncWorkOrderDocumentMeasurementEquipmentGroupInput() {
+  if (!(workOrderDocumentCommonMeasurementEquipmentGroupInput instanceof HTMLSelectElement)) {
+    return;
+  }
+
+  const selected = String(state.workOrderDocumentWizard.common?.measurementEquipmentGroup || "").trim();
+  replaceSelectOptions(
+    workOrderDocumentCommonMeasurementEquipmentGroupInput,
+    getWorkOrderDocumentMeasurementEquipmentGroupOptions(selected),
+    selected,
+  );
+  state.workOrderDocumentWizard.common.measurementEquipmentGroup = String(
+    workOrderDocumentCommonMeasurementEquipmentGroupInput.value || "",
+  ).trim();
 }
 
 function getWorkOrderDocumentWizardLearningDraft(workOrderId = "", testId = "") {
@@ -71836,9 +71978,12 @@ function renderDocumentTemplateRuntimeFieldRows() {
       return shellNode;
     }
 
-    const equipmentCodes = Array.from(
-      new Set(equipmentItems.map(getDocumentTemplateEquipmentDeviceCode).filter(Boolean)),
-    ).sort((first, second) => first.localeCompare(second, "hr", { sensitivity: "base" }));
+    const equipmentCodeSet = new Set(equipmentItems.map(getDocumentTemplateEquipmentDeviceCode).filter(Boolean));
+    if (selectedEquipmentCode) {
+      equipmentCodeSet.add(selectedEquipmentCode);
+    }
+    const equipmentCodes = Array.from(equipmentCodeSet)
+      .sort((first, second) => first.localeCompare(second, "hr", { sensitivity: "base" }));
 
     if (equipmentCodes.length > 0) {
       const codePicker = document.createElement("label");
@@ -97710,6 +97855,7 @@ function syncWorkOrderDocumentWizardCommonInputs() {
       !normalizeDateInputValue(state.workOrderDocumentWizard.common.issuedDate),
     );
   }
+  syncWorkOrderDocumentMeasurementEquipmentGroupInput();
   if (workOrderDocumentCommonOutsideTemperatureInput) {
     workOrderDocumentCommonOutsideTemperatureInput.value = state.workOrderDocumentWizard.common.outsideTemperature || "";
   }
@@ -97866,6 +98012,9 @@ function getWorkOrderDocumentWizardCommonSummaryParts() {
       : "",
     !sharedStatus.mixed && sharedStatus.value ? `Status ${sharedStatus.value}` : "",
     !sharedExecutors.mixed && sharedExecutorNames ? `Izvršitelji ${sharedExecutorNames}` : "",
+    state.workOrderDocumentWizard.common.measurementEquipmentGroup
+      ? `Oprema ${state.workOrderDocumentWizard.common.measurementEquipmentGroup}`
+      : "",
     ...getWorkOrderDocumentSignaturePersonSummaryParts(
       state.workOrderDocumentWizard.common,
       getWorkOrderDocumentWizardRelevantAreasForBatch(selectedWorkOrders),
@@ -98799,6 +98948,9 @@ function updateDocumentTemplateRuntimeCommon(patch = {}, { render = true } = {})
     randomizeEnvironment: Object.prototype.hasOwnProperty.call(patch, "randomizeEnvironment")
       ? Boolean(patch.randomizeEnvironment)
       : Boolean(state.documentTemplateRuntime.common?.randomizeEnvironment),
+    measurementEquipmentGroup: Object.prototype.hasOwnProperty.call(patch, "measurementEquipmentGroup")
+      ? String(patch.measurementEquipmentGroup ?? "").trim()
+      : String(state.documentTemplateRuntime.common?.measurementEquipmentGroup ?? "").trim(),
     signatureMode: Object.prototype.hasOwnProperty.call(patch, "signatureMode")
       ? normalizeDocumentTemplateSignatureMethod(patch.signatureMode)
       : normalizeDocumentTemplateSignatureMethod(state.documentTemplateRuntime.common?.signatureMode),
@@ -99132,6 +99284,7 @@ function normalizeDocumentTemplateRuntimeCommonDraft(common = {}) {
     groundCondition: String(source.groundCondition ?? "").trim(),
     groundResistance: String(source.groundResistance ?? "").trim(),
     randomizeEnvironment: Boolean(source.randomizeEnvironment),
+    measurementEquipmentGroup: String(source.measurementEquipmentGroup ?? "").trim(),
     signatureMode: normalizeDocumentTemplateSignatureMethod(source.signatureMode),
     validityMonths: normalizeValidityMonthsValue(source.validityMonths ?? "12") || "12",
     electricalValidityMonths: String(source.electricalValidityMonths ?? "12").trim(),
@@ -99509,6 +99662,7 @@ function setDocumentTemplateRuntimeFromWizard(workOrders = getAllSelectedWorkOrd
       groundCondition: String(state.workOrderDocumentWizard.common?.groundCondition ?? "").trim(),
       groundResistance: String(state.workOrderDocumentWizard.common?.groundResistance ?? "").trim(),
       randomizeEnvironment: Boolean(state.workOrderDocumentWizard.common?.randomizeEnvironment),
+      measurementEquipmentGroup: String(state.workOrderDocumentWizard.common?.measurementEquipmentGroup ?? "").trim(),
       signatureMode: normalizeDocumentTemplateSignatureMethod(state.workOrderDocumentWizard.common?.signatureMode),
       validityMonths: normalizeValidityMonthsValue(state.workOrderDocumentWizard.common?.validityMonths ?? "")
         || Object.values(serviceValidityMonths).find(Boolean)
@@ -101142,6 +101296,8 @@ function openDocumentTemplateFromWizard(
     state.documentTemplateRuntime.source = nextIds.length > 0 ? "wizard" : state.documentTemplateRuntime.source;
     state.documentTemplateRuntime.workOrderIds = nextIds;
   }
+
+  applyWorkOrderDocumentWizardMeasurementEquipmentGroupDefaults(template, workOrders);
 
   if (!state.documentTemplateRuntime.returnState) {
     state.documentTemplateRuntime.returnState = {
@@ -106958,6 +107114,17 @@ workOrderDocumentWizardNextButton?.addEventListener("click", (event) => {
       renderWorkOrderDocumentWizardTemplates(getAllSelectedWorkOrdersForDocumentWizard());
     }
   });
+});
+workOrderDocumentCommonMeasurementEquipmentGroupInput?.addEventListener("change", () => {
+  state.workOrderDocumentWizard.common.measurementEquipmentGroup = String(
+    workOrderDocumentCommonMeasurementEquipmentGroupInput.value || "",
+  ).trim();
+  syncWorkOrderDocumentWizardCommonSummaryText();
+  renderWorkOrderDocumentWizardCommonSection();
+  renderWorkOrderDocumentWizardWorkOrders(getAllSelectedWorkOrdersForDocumentWizard());
+  if (state.workOrderDocumentWizard.step === "templates") {
+    renderWorkOrderDocumentWizardTemplates(getAllSelectedWorkOrdersForDocumentWizard());
+  }
 });
 workOrderDocumentCommonRandomizeEnvironmentInput?.addEventListener("change", () => {
   state.workOrderDocumentWizard.common.randomizeEnvironment = Boolean(workOrderDocumentCommonRandomizeEnvironmentInput.checked);

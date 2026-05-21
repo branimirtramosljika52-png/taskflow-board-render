@@ -57254,8 +57254,15 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
 }
 
 .work-order-document-wizard-panel.is-details-step .work-order-document-wizard-block {
-  gap: 9px;
-  padding: 11px 12px;
+  gap: 10px;
+  padding: 13px 14px;
+  border-color: rgba(124, 92, 255, 0.18);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(248, 247, 255, 0.98)),
+    #ffffff;
+  box-shadow:
+    inset 4px 0 0 rgba(109, 93, 252, 0.55),
+    0 18px 42px rgba(31, 42, 71, 0.1);
 }
 
 .work-order-document-wizard-block-head {
@@ -57363,13 +57370,23 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
   padding: 9px 10px;
 }
 
+.work-order-document-wizard-panel.is-details-step .work-order-document-wizard-common-core {
+  border-color: rgba(124, 92, 255, 0.22);
+  background:
+    linear-gradient(135deg, rgba(250, 248, 255, 0.98), rgba(255, 255, 255, 0.99)),
+    #ffffff;
+  box-shadow:
+    inset 3px 0 0 rgba(109, 93, 252, 0.42),
+    0 12px 28px rgba(79, 70, 229, 0.08);
+}
+
 .work-order-document-wizard-common-person-block,
 .work-order-document-selection-person-block {
   background: linear-gradient(180deg, #ffffff, #fbfcff);
 }
 
 .work-order-document-wizard-common-core-grid {
-  grid-template-columns: minmax(136px, 0.75fr) minmax(136px, 0.75fr) minmax(178px, 0.9fr) minmax(280px, 1.42fr);
+  grid-template-columns: minmax(118px, 0.56fr) minmax(118px, 0.56fr) minmax(168px, 0.82fr) minmax(168px, 0.82fr) minmax(240px, 1.3fr);
   gap: 9px;
 }
 
@@ -57421,6 +57438,11 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
   padding: 6px 8px;
 }
 
+.work-order-document-wizard-date-field,
+.work-order-document-selection-date-field {
+  max-width: 170px;
+}
+
 .work-order-document-wizard-common-core-grid .field > span,
 .work-order-document-wizard-common-env-grid .field > span,
 .work-order-document-wizard-common-people-grid .field > span,
@@ -57437,10 +57459,12 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
 }
 
 .work-order-document-wizard-common-core-grid input,
+.work-order-document-wizard-common-core-grid select,
 .work-order-document-wizard-common-env-grid input,
 .work-order-document-selection-basic-grid input,
 .work-order-document-selection-env-grid input,
 .work-order-document-selection-grid input,
+.work-order-document-selection-grid select,
 .work-order-document-selection-grid textarea {
   min-height: 38px;
   border: 1px solid rgba(203, 213, 225, 0.98);
@@ -57452,16 +57476,26 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
 }
 
 .work-order-document-wizard-panel.is-details-step .work-order-document-wizard-common-core-grid input,
+.work-order-document-wizard-panel.is-details-step .work-order-document-wizard-common-core-grid select,
 .work-order-document-wizard-panel.is-details-step .work-order-document-wizard-common-env-grid input {
   min-height: 32px;
   padding-block: 4px;
 }
 
+.work-order-document-wizard-date-field input,
+.work-order-document-selection-date-field input {
+  text-align: center;
+  font-size: 0.84rem;
+  letter-spacing: 0;
+}
+
 .work-order-document-wizard-common-core-grid input:focus,
+.work-order-document-wizard-common-core-grid select:focus,
 .work-order-document-wizard-common-env-grid input:focus,
 .work-order-document-selection-basic-grid input:focus,
 .work-order-document-selection-env-grid input:focus,
 .work-order-document-selection-grid input:focus,
+.work-order-document-selection-grid select:focus,
 .work-order-document-selection-grid textarea:focus {
   border-color: rgba(124, 92, 255, 0.7);
   box-shadow: 0 0 0 4px rgba(124, 92, 255, 0.12);
@@ -57554,9 +57588,12 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
   gap: 10px;
 }
 
-.work-order-document-wizard-work-orders[data-layout="double"],
-.work-order-document-wizard-work-orders[data-layout="triple"] {
+.work-order-document-wizard-work-orders[data-layout="double"] {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.work-order-document-wizard-work-orders[data-layout="triple"] {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .work-order-document-wizard-work-orders[data-layout="single"] {
@@ -57568,21 +57605,21 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
 }
 
 .work-order-document-carousel-shell {
-  grid-template-columns: 36px minmax(0, 1fr) 36px;
-  gap: 9px;
+  grid-template-columns: 40px minmax(0, 1fr) 40px;
+  gap: 10px;
   align-items: stretch;
 }
 
 .work-order-document-carousel-nav {
   align-self: center;
-  width: 36px;
-  min-width: 36px;
-  min-height: 36px;
-  border-radius: 12px;
-  border-color: rgba(203, 213, 225, 0.9);
-  background: #ffffff;
+  width: 40px;
+  min-width: 40px;
+  min-height: 44px;
+  border-radius: 14px;
+  border-color: rgba(124, 92, 255, 0.25);
+  background: linear-gradient(180deg, #ffffff, #f5f3ff);
   color: #4f46e5;
-  box-shadow: 0 12px 24px rgba(31, 42, 71, 0.08);
+  box-shadow: 0 14px 28px rgba(31, 42, 71, 0.12);
 }
 
 .work-order-document-carousel-nav:hover,
@@ -57598,14 +57635,14 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
 
 .work-order-document-carousel-track {
   gap: 12px;
-  padding: 2px 2px 8px;
+  padding: 3px 3px 10px;
   scroll-padding-inline: 2px;
   scrollbar-color: rgba(100, 116, 139, 0.34) transparent;
 }
 
 .work-order-document-carousel-track .work-order-document-selection-card {
-  flex: 0 0 min(520px, calc((100% - 24px) / 3));
-  min-width: min(420px, 86vw);
+  flex: 0 0 calc((100% - 24px) / 3);
+  min-width: 300px;
 }
 
 .work-order-document-selection-card,
@@ -57618,16 +57655,21 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
 }
 
 .work-order-document-selection-card {
-  gap: 10px;
-  padding: 13px;
+  gap: 11px;
+  padding: 14px;
   grid-template-rows: auto minmax(0, 1fr) auto;
   overflow: hidden;
+  box-shadow:
+    0 16px 38px rgba(31, 42, 71, 0.09),
+    inset 0 1px 0 rgba(255, 255, 255, 0.86);
   transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
 }
 
 .work-order-document-selection-card:hover {
-  border-color: rgba(124, 92, 255, 0.26);
-  box-shadow: 0 18px 40px rgba(31, 42, 71, 0.1);
+  border-color: rgba(124, 92, 255, 0.36);
+  box-shadow:
+    0 20px 46px rgba(31, 42, 71, 0.14),
+    0 0 0 3px rgba(124, 92, 255, 0.08);
   transform: translateY(-1px);
 }
 
