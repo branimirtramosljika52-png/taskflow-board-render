@@ -56412,7 +56412,6 @@ function buildDocumentTemplateDigitalSignatureText(field = {}, context = {}) {
   }
 
   return entries.map((entry) => ([
-    `${signatureLabel} - ${entry.role}`,
     entry.name || (entry.user ? getUserDocumentDisplayName(entry.user) : ""),
     ...(entry.metaLines ?? []),
     signatureHint,
@@ -57764,7 +57763,6 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
         return `
           <article class="document-template-preview-person-signature${isRightAligned ? " is-right-aligned" : ""}">
             <div class="document-template-preview-person-copy">
-              <span class="document-template-preview-person-role">${escapeHtml(entry.role || roleLabel)}</span>
               <strong>${escapeHtml(entry.name || roleLabel)}</strong>
               <div class="document-template-preview-person-meta">${metaMarkup}</div>
             </div>
@@ -57819,7 +57817,6 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
         return `
           <article class="document-template-preview-person-signature${isRightAligned ? " is-right-aligned" : ""}">
             <div class="document-template-preview-person-copy">
-              <span class="document-template-preview-person-role">${escapeHtml(entry.role)}</span>
               <strong>${escapeHtml(entryName)}</strong>
               <div class="document-template-preview-person-meta">${metaMarkup}</div>
             </div>
@@ -58545,7 +58542,7 @@ function buildDocumentTemplateFieldExportText(field = {}, context = {}, index = 
 
   if (isDocumentTemplatePersonSignatureFieldType(field.type)) {
     return buildDocumentTemplateQualifiedInspectorEntries(field, context)
-      .map((entry) => [entry.role, entry.name, ...(entry.metaLines ?? [])].filter(Boolean).join("\n"))
+      .map((entry) => [entry.name, ...(entry.metaLines ?? [])].filter(Boolean).join("\n"))
       .join("\n\n");
   }
 
@@ -59124,7 +59121,6 @@ function buildDocumentTemplateHtmlPreviewSignatureGroup(value = {}) {
         const metaLines = Array.isArray(item?.metaLines) ? item.metaLines : [];
         return `
           <section class="safe-nexus-preview-signature">
-            <span>${escapeHtml(item?.role || "Osoba")}</span>
             <strong>${escapeHtml(item?.name || "Potpisnik")}</strong>
             ${metaLines.map((line) => `<small>${escapeHtml(line)}</small>`).join("")}
             <div class="safe-nexus-preview-signature-line">${item?.signatureMode === "digital" ? "Digitalni potpis" : "Potpis"}</div>
@@ -72635,10 +72631,6 @@ function renderDocumentTemplateRuntimeFieldRows() {
         const card = document.createElement("article");
         card.className = "document-template-runtime-digital-signature-slot";
 
-        const role = document.createElement("span");
-        role.className = "document-template-runtime-digital-signature-role";
-        role.textContent = entry.role;
-
         const name = document.createElement("strong");
         name.textContent = entry.name || (entry.user ? getUserDocumentDisplayName(entry.user) : "") || entry.role || "Potpisnik";
 
@@ -72657,7 +72649,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
         marker.textContent = getDocumentTemplateSignatureMethodLabel(signatureMethod);
         footer.append(marker);
 
-        card.append(role, name);
+        card.append(name);
         if (meta.childElementCount > 0) {
           card.append(meta);
         }

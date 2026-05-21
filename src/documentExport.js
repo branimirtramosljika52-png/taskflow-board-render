@@ -1572,7 +1572,6 @@ function normalizeDocxSpecialPlaceholderValue(value) {
 function buildDocxSignatureGroupFallbackText(items = []) {
   return (Array.isArray(items) ? items : [])
     .map((item) => [
-      clean(item?.role),
       clean(item?.name),
       ...((Array.isArray(item?.metaLines) ? item.metaLines : []).map((entry) => clean(entry)).filter(Boolean)),
     ].filter(Boolean).join("\n"))
@@ -1893,7 +1892,6 @@ function buildWordSignatureCellXml(item = null, zip = null, context = {}, xmlFil
     : null;
   const signatureImageXml = buildWordSignatureImageXml(signatureImageRef, item);
   const paragraphs = [
-    buildWordParagraphXml(item.role, { align: "center", size: 18, spacingAfter: 40 }),
     buildWordParagraphXml(item.name, { align: "center", bold: true, size: 22, spacingAfter: 40 }),
     ...((Array.isArray(item.metaLines) ? item.metaLines : []).map((line) => (
       buildWordParagraphXml(line, { align: "center", size: 18, spacingAfter: 20 })
@@ -1934,7 +1932,6 @@ function buildWordCompactSignatureItemXml(item = null, zip = null, context = {},
     .filter(Boolean);
 
   return [
-    buildWordParagraphXml(item.role, { align: "center", size: 16, spacingAfter: 0, line: 180, lineRule: "exact" }),
     buildWordParagraphXml(item.name, { align: "center", bold: true, size: 18, spacingAfter: 0, line: 190, lineRule: "exact" }),
     ...metaLines.map((line) => buildWordParagraphXml(line, { align: "center", size: 16, spacingAfter: 0, line: 180, lineRule: "exact" })),
     signatureImageXml,
@@ -3245,7 +3242,6 @@ function buildHtmlTemplateSignatureGroupPlaceholder(items = []) {
       : "";
     return `
       <section class="safe-nexus-template-signature">
-        <span>${escapeTemplateHtml(clean(item.role) || "Osoba")}</span>
         <strong>${escapeTemplateHtml(clean(item.name) || "Potpisnik")}</strong>
         ${metaLines}
         ${signatureImage}
@@ -6616,7 +6612,6 @@ async function renderPdfSignatureGroup(doc, helpers, title, items = [], signatur
   const columnWidth = Math.max(220, (helpers.availableWidth - columnGap) / 2);
   const drawSignatureCard = async (item, x, y, cardWidth) => {
     const metaLines = normalizePdfLines(item.metaLines ?? []);
-    const role = clean(item.role) || "Osoba";
     const name = clean(item.name) || "Nepoznato";
     const isDigital = clean(item.signatureMode).toLowerCase() === "digital";
     const signatureBuffer = await resolvePdfImageBuffer(item.signatureImageUrl || "");
@@ -6624,16 +6619,12 @@ async function renderPdfSignatureGroup(doc, helpers, title, items = [], signatur
 
     drawRoundedOutline(doc, x, y, cardWidth, estimatedHeight, 18, "#111111");
     drawAccentLine(doc, x, y, estimatedHeight, "#c94cc8");
-    doc.font("dejavu-bold").fontSize(9).fillColor("#7b61ff").text(role, x + 16, y + 12, {
-      width: cardWidth - 32,
-      align: "center",
-    });
-    doc.font("dejavu-bold").fontSize(12).fillColor("#1f2333").text(name, x + 16, y + 28, {
+    doc.font("dejavu-bold").fontSize(12).fillColor("#1f2333").text(name, x + 16, y + 14, {
       width: cardWidth - 32,
       align: "center",
     });
     if (metaLines.length > 0) {
-      doc.font("dejavu").fontSize(9).fillColor("#475569").text(metaLines.join("\n"), x + 16, y + 48, {
+      doc.font("dejavu").fontSize(9).fillColor("#475569").text(metaLines.join("\n"), x + 16, y + 36, {
         width: cardWidth - 32,
         align: "center",
         lineGap: 1,

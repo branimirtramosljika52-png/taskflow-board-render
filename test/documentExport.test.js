@@ -232,7 +232,7 @@ test("docx export keeps digital signature placeholders compact inside template c
   const outputXml = new PizZip(outputBuffer).file("word/document.xml").asText();
 
   assert.equal(outputXml.includes("{{POTPISI}}"), false);
-  assert.match(outputXml, /Odgovorna osoba SPR/);
+  assert.doesNotMatch(outputXml, /Odgovorna osoba SPR/);
   assert.match(outputXml, /Ana Savanovic/);
   assert.match(outputXml, /OIB 35649316156/);
   assert.equal((outputXml.match(/<w:tbl>/g) || []).length, 1);
@@ -288,6 +288,7 @@ test("HTML template export renders escaped placeholders and special table blocks
   assert.match(html, /Zapisnik &lt;script&gt;alert\(1\)&lt;\/script&gt;/);
   assert.match(html, /Prvi red<br>Drugi red &amp; znak/);
   assert.match(html, /Ana Ivić/);
+  assert.doesNotMatch(html, /Ispitiva/);
   assert.doesNotMatch(html, new RegExp(["Scan", "potpisa"].join("\\s+"), "i"));
   assert.match(html, /safe-nexus-template-signature-image/);
   assert.doesNotMatch(html, /<script>alert/);
