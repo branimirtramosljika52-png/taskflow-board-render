@@ -36734,14 +36734,18 @@ body.is-measurement-equipment-export-open {
 
 .document-template-inline-checkbox-body input,
 .document-template-inline-mini-check input {
+  box-sizing: border-box;
   width: 14px;
   min-width: 14px;
+  max-width: 14px;
   height: 14px;
   min-height: 14px;
+  max-height: 14px;
   accent-color: #c640ac;
 }
 
-.document-template-inline-checkbox-body input[type="checkbox"] {
+.document-template-inline-checkbox-body input[type="checkbox"],
+.document-template-inline-mini-check input[type="checkbox"] {
   appearance: none;
   -webkit-appearance: none;
   display: inline-grid;
@@ -36757,7 +36761,8 @@ body.is-measurement-equipment-export-open {
     0 1px 2px rgba(34, 47, 84, 0.1);
 }
 
-.document-template-inline-checkbox-body input[type="checkbox"]::after {
+.document-template-inline-checkbox-body input[type="checkbox"]::after,
+.document-template-inline-mini-check input[type="checkbox"]::after {
   content: "";
   width: 6px;
   height: 3px;
@@ -36769,12 +36774,14 @@ body.is-measurement-equipment-export-open {
   transition: transform 120ms ease;
 }
 
-.document-template-inline-checkbox-body input[type="checkbox"]:checked {
+.document-template-inline-checkbox-body input[type="checkbox"]:checked,
+.document-template-inline-mini-check input[type="checkbox"]:checked {
   border-color: rgba(198, 64, 172, 0.92);
   background: linear-gradient(135deg, #f04f97, #7b5cff);
 }
 
-.document-template-inline-checkbox-body input[type="checkbox"]:checked::after {
+.document-template-inline-checkbox-body input[type="checkbox"]:checked::after,
+.document-template-inline-mini-check input[type="checkbox"]:checked::after {
   transform: rotate(-45deg) scale(1);
 }
 
