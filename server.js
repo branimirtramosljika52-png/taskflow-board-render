@@ -2177,6 +2177,7 @@ function collectMeasurementEquipmentDocumentsForZip(
 async function generatePdfBufferForTemplate(template = {}, {
   placeholders = {},
   fileName = "",
+  appendBlocks = [],
 } = {}) {
   if (!template.referenceDocument) {
     throw new Error("Template još nema učitan HTML ili Word predložak.");
@@ -2187,6 +2188,7 @@ async function generatePdfBufferForTemplate(template = {}, {
     return await buildPdfFromHtmlTemplateBuffer(referenceDocument.buffer, placeholders, {
       fileName: fileName || template.outputFileName || template.title || "zapisnik.html",
       title: template.title || template.documentType || "Zapisnik",
+      appendBlocks,
     });
   }
 
@@ -2201,6 +2203,7 @@ async function generatePdfBufferForTemplate(template = {}, {
     return await buildPdfFromWordDocumentTemplate(referenceDocument.buffer, placeholders, {
       fileName: docxFileName,
       title: template.title || template.documentType || "Zapisnik",
+      appendBlocks,
     });
   }
 
@@ -2210,6 +2213,7 @@ async function generatePdfBufferForTemplate(template = {}, {
 async function buildPdfFromWordDocumentTemplate(referenceBuffer, placeholders = {}, {
   fileName = "",
   title = "",
+  appendBlocks = [],
 } = {}) {
   const docxFileName = sanitizeGeneratedDocumentFileName(
     fileName || title || "zapisnik",
@@ -2218,6 +2222,7 @@ async function buildPdfFromWordDocumentTemplate(referenceBuffer, placeholders = 
   return await buildPdfFromTemplateBuffer(referenceBuffer, placeholders, {
     fileName: docxFileName,
     title: title || fileName || "Zapisnik",
+    appendBlocks,
   });
 }
 
@@ -2277,6 +2282,7 @@ async function generatePdfBuffersForTemplateEntries(entries = [], scopedSnapshot
       pdfBuffers[entryIndex] = await buildPdfFromHtmlTemplateBuffer(referenceDocument.buffer, entry?.placeholders ?? {}, {
         fileName: entry?.fileName || template.outputFileName || template.title || "zapisnik.html",
         title: template.title || template.documentType || "Zapisnik",
+        appendBlocks: entry?.appendBlocks ?? [],
       });
       continue;
     }
@@ -2292,6 +2298,7 @@ async function generatePdfBuffersForTemplateEntries(entries = [], scopedSnapshot
       pdfBuffers[entryIndex] = await buildPdfFromWordDocumentTemplate(referenceDocument.buffer, entry?.placeholders ?? {}, {
         fileName: docxFileName,
         title: template.title || template.documentType || "Zapisnik",
+        appendBlocks: entry?.appendBlocks ?? [],
       });
       continue;
     }
@@ -2407,6 +2414,7 @@ async function generatePdfFileEntriesForTemplateEntries(entries = [], scopedSnap
           await buildPdfFromHtmlTemplateBuffer(referenceDocument.buffer, entry?.placeholders ?? {}, {
             fileName: entry?.fileName || template.outputFileName || template.title || `zapisnik-${entryIndex + 1}.html`,
             title: template.title || template.documentType || "Zapisnik",
+            appendBlocks: entry?.appendBlocks ?? [],
           }),
           entry,
           options.signatureSettings,
@@ -2430,6 +2438,7 @@ async function generatePdfFileEntriesForTemplateEntries(entries = [], scopedSnap
           await buildPdfFromWordDocumentTemplate(referenceDocument.buffer, entry?.placeholders ?? {}, {
             fileName: docxFileName,
             title: template.title || template.documentType || "Zapisnik",
+            appendBlocks: entry?.appendBlocks ?? [],
           }),
           entry,
           options.signatureSettings,
@@ -2559,6 +2568,7 @@ async function generateTemplateDocumentFilesForEntries(entries = [], scopedSnaps
       const pdfBuffer = await buildPdfFromHtmlTemplateBuffer(referenceDocument.buffer, entry?.placeholders ?? {}, {
         fileName: entry?.fileName || template.outputFileName || template.title || `${fallbackName}.html`,
         title: template.title || template.documentType || "Zapisnik",
+        appendBlocks: entry?.appendBlocks ?? [],
       });
       bundle.files.push({
         kind: "pdf",
@@ -2577,6 +2587,7 @@ async function generateTemplateDocumentFilesForEntries(entries = [], scopedSnaps
       const docxRenderStartedAt = Date.now();
       const docxBuffer = await buildDocxFromTemplateBuffer(referenceDocument.buffer, entry?.placeholders ?? {}, {
         fileName: docxFileName,
+        appendBlocks: entry?.appendBlocks ?? [],
       });
       docxRenderMs += Date.now() - docxRenderStartedAt;
       bundle.files.push({
@@ -2680,6 +2691,7 @@ async function generateCombinedHtmlPdfForTemplateEntries(entries = [], scopedSna
     htmlEntries.push({
       templateBuffer: referenceDocument.buffer,
       placeholders: entry?.placeholders ?? {},
+      appendBlocks: entry?.appendBlocks ?? [],
       fileName: entry?.fileName || template.outputFileName || template.title || `zapisnik-${entryIndex + 1}.html`,
       title: template.title || template.documentType || "Zapisnik",
     });
@@ -9712,6 +9724,7 @@ async function handleApiRequest(request, response, url) {
         : await generatePdfBufferForTemplate(template, {
           placeholders: body.placeholders ?? {},
           fileName: body.fileName || template.outputFileName || template.title || "zapisnik.html",
+          appendBlocks: body.appendBlocks ?? [],
         });
       const signedPdfBuffer = await addGeneratedTemplateDigitalSignatureFields(pdfBuffer, body, signatureSettings);
 

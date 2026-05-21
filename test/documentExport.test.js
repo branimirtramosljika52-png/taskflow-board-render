@@ -84,6 +84,72 @@ test("docx export removes an empty optional media placeholder with its standalon
   assert.match(outputXml, /Nastavak/);
 });
 
+test("docx export appends a filled handover protocol at the end", async () => {
+  const templateBuffer = buildMinimalDocxBuffer(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:body>
+        <w:p><w:r><w:t>Glavni zapisnik</w:t></w:r></w:p>
+        <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>
+      </w:body>
+    </w:document>`);
+
+  const outputBuffer = await buildDocxFromTemplateBuffer(templateBuffer, {}, {
+    appendBlocks: [{
+      __docxBlockType: "handover_protocol",
+      workOrderNumber: "26-638",
+      customerName: "PETROL d.o.o.",
+      customerAddress: "Savska Opatovina 36, Zagreb",
+      customerOib: "75550985023",
+      executorName: "ADRIA GRUPA d.o.o.",
+      executorAddress: "Heinzelova 53a, Zagreb",
+      executorOib: "06637660960",
+      location: "PM Zagreb",
+      contractType: "Pausal",
+      rows: [{
+        service: "Ex - elektricna instalacija",
+        documentNumber: "26-638-ExEi",
+        quantity: "4",
+        note: "Ukupno mjerenja: 28",
+      }],
+    }],
+  });
+  const outputXml = new PizZip(outputBuffer).file("word/document.xml").asText();
+
+  assert.match(outputXml, /Glavni zapisnik/);
+  assert.match(outputXml, /PRIMOPREDAJNI ZAPISNIK/);
+  assert.match(outputXml, /26-638/);
+  assert.match(outputXml, /Ex - elektricna instalacija/);
+  assert.match(outputXml, /Ukupno mjerenja: 28/);
+  assert.match(outputXml, /<w:br w:type="page"\/>/);
+  assert.ok(outputXml.indexOf("PRIMOPREDAJNI ZAPISNIK") < outputXml.indexOf("<w:sectPr"));
+});
+
+test("docx export does not duplicate handover protocol placeholders", async () => {
+  const templateBuffer = buildMinimalDocxBuffer(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:body>
+        <w:p><w:r><w:t>{{PRIMOPREDAJNI_ZAPISNIK}}</w:t></w:r></w:p>
+        <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>
+      </w:body>
+    </w:document>`);
+  const handoverProtocol = {
+    __docxBlockType: "handover_protocol",
+    workOrderNumber: "26-638",
+    customerName: "PETROL d.o.o.",
+    executorName: "ADRIA GRUPA d.o.o.",
+    rows: [{ service: "Pregled", documentNumber: "26-638-Z", quantity: "1" }],
+  };
+
+  const outputBuffer = await buildDocxFromTemplateBuffer(templateBuffer, {
+    PRIMOPREDAJNI_ZAPISNIK: handoverProtocol,
+  }, {
+    appendBlocks: [handoverProtocol],
+  });
+  const outputXml = new PizZip(outputBuffer).file("word/document.xml").asText();
+
+  assert.equal((outputXml.match(/PRIMOPREDAJNI ZAPISNIK/g) || []).length, 1);
+});
+
 test("docx export renders signature group placeholders as visible signature blocks", async () => {
   const templateBuffer = buildMinimalDocxBuffer(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
     <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -293,6 +359,64 @@ test("HTML template export renders escaped placeholders and special table blocks
   assert.match(html, /safe-nexus-template-signature-image/);
   assert.doesNotMatch(html, /<script>alert/);
   assert.doesNotMatch(html, /\{\{DOCUMENT_TITLE\}\}/);
+});
+
+test("HTML template export appends a handover protocol block", () => {
+  const html = buildHtmlFromTemplateBuffer(Buffer.from(`
+    <main>
+      <h1>Zapisnik</h1>
+    </main>
+  `, "utf8"), {}, {
+    title: "Zapisnik",
+    appendBlocks: [{
+      __docxBlockType: "handover_protocol",
+      workOrderNumber: "26-638",
+      customerName: "PETROL d.o.o.",
+      customerAddress: "Savska Opatovina 36, Zagreb",
+      customerOib: "75550985023",
+      executorName: "ADRIA GRUPA d.o.o.",
+      executorAddress: "Heinzelova 53a, Zagreb",
+      executorOib: "06637660960",
+      location: "PM Zagreb",
+      contractType: "Pausal",
+      rows: [{
+        service: "Ex - elektricna instalacija",
+        documentNumber: "26-638-ExEi",
+        quantity: "4",
+        note: "Ukupno mjerenja: 28",
+      }],
+    }],
+  });
+
+  assert.match(html, /safe-nexus-template-handover/);
+  assert.match(html, /PRIMOPREDAJNI ZAPISNIK/);
+  assert.match(html, /26-638/);
+  assert.match(html, /PETROL d\.o\.o\./);
+  assert.match(html, /Ex - elektricna instalacija/);
+  assert.match(html, /Ukupno mjerenja: 28/);
+  assert.ok(html.indexOf("Zapisnik") < html.indexOf("PRIMOPREDAJNI ZAPISNIK"));
+});
+
+test("HTML template export does not duplicate handover protocol placeholders", () => {
+  const handoverProtocol = {
+    __docxBlockType: "handover_protocol",
+    workOrderNumber: "26-638",
+    customerName: "PETROL d.o.o.",
+    executorName: "ADRIA GRUPA d.o.o.",
+    rows: [{ service: "Pregled", documentNumber: "26-638-Z", quantity: "1" }],
+  };
+  const html = buildHtmlFromTemplateBuffer(Buffer.from(`
+    <main>
+      {{PRIMOPREDAJNI_ZAPISNIK}}
+    </main>
+  `, "utf8"), {
+    PRIMOPREDAJNI_ZAPISNIK: handoverProtocol,
+  }, {
+    title: "Zapisnik",
+    appendBlocks: [handoverProtocol],
+  });
+
+  assert.equal((html.match(/PRIMOPREDAJNI ZAPISNIK/g) || []).length, 1);
 });
 
 test("HTML template export normalizes Croatian mojibake and UTF-8 metadata", () => {

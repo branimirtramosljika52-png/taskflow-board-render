@@ -58737,6 +58737,236 @@ function buildDocumentTemplateRuntimePlaceholderPayload(template = buildDocument
   return placeholders;
 }
 
+const DOCUMENT_TEMPLATE_HANDOVER_FIELD_KEY = "PRIMOPREDAJNI_ZAPISNIK";
+const DOCUMENT_TEMPLATE_HANDOVER_TITLE = "PRIMOPREDAJNI ZAPISNIK";
+const DOCUMENT_TEMPLATE_HANDOVER_SUBTITLE = "O OBAVLJENIM USLUGAMA IZ PODRUČJA ZAŠTITE NA RADU I ZAŠTITE OD POŽARA";
+
+function normalizeDocumentTemplateHandoverRow(row = {}, index = 0) {
+  const source = row && typeof row === "object" ? row : {};
+  const service = String(source.service || source.serviceName || source.name || source.title || "").trim();
+  const documentNumber = String(source.documentNumber || source.recordNumber || source.number || "").trim();
+  const quantity = String(
+    source.quantity
+    || source.measurementPlaces
+    || source.measurementPlaceCount
+    || source.count
+    || "1"
+  ).trim() || "1";
+  const note = String(source.note || source.remark || source.description || "").trim();
+
+  if (!service && !documentNumber && !note) {
+    return null;
+  }
+
+  return {
+    id: String(source.id || `handover-row-${index + 1}`).trim(),
+    service: service || "Usluga",
+    documentNumber,
+    quantity,
+    note,
+  };
+}
+
+function normalizeDocumentTemplateHandoverProtocol(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  return {
+    type: "handover_protocol",
+    __docxBlockType: "handover_protocol",
+    title: String(source.title || DOCUMENT_TEMPLATE_HANDOVER_TITLE).trim() || DOCUMENT_TEMPLATE_HANDOVER_TITLE,
+    subtitle: String(source.subtitle || DOCUMENT_TEMPLATE_HANDOVER_SUBTITLE).trim() || DOCUMENT_TEMPLATE_HANDOVER_SUBTITLE,
+    workOrderNumber: String(source.workOrderNumber || "").trim(),
+    customerName: String(source.customerName || source.customer?.name || "").trim(),
+    customerAddress: String(source.customerAddress || source.customer?.address || source.customer?.headquarters || "").trim(),
+    customerOib: String(source.customerOib || source.customer?.oib || "").trim(),
+    executorName: String(source.executorName || source.executor?.name || "").trim(),
+    executorAddress: String(source.executorAddress || source.executor?.address || source.executor?.headquarters || "").trim(),
+    executorOib: String(source.executorOib || source.executor?.oib || "").trim(),
+    location: String(source.location || source.locationName || source.testingLocation || "").trim(),
+    contractType: String(source.contractType || source.contract || "").trim(),
+    rows: (Array.isArray(source.rows) ? source.rows : [])
+      .map((row, index) => normalizeDocumentTemplateHandoverRow(row, index))
+      .filter(Boolean),
+    customerSignatureLabel: String(source.customerSignatureLabel || "Ovjerio naručitelj:").trim(),
+    executorSignatureLabel: String(source.executorSignatureLabel || "Ovjerio izvršitelj:").trim(),
+  };
+}
+
+function getDocumentTemplateRuntimeOrganizationForHandover() {
+  return state.organizations.find((item) => String(item.id) === String(state.activeOrganizationId))
+    ?? state.organizations[0]
+    ?? null;
+}
+
+function getDocumentTemplateHandoverServiceQuantity(service = {}) {
+  return String(
+    service.measurementPlaces
+    || service.measurementPlaceCount
+    || service.measurementPoints
+    || service.measurementPointCount
+    || service.quantity
+    || service.count
+    || service.amount
+    || "1"
+  ).trim() || "1";
+}
+
+function getDocumentTemplateHandoverServiceNote(service = {}) {
+  return String(
+    service.note
+    || service.remark
+    || service.remarks
+    || service.measurementSummary
+    || service.description
+    || ""
+  ).trim();
+}
+
+function getDocumentTemplateHandoverServiceCode(service = {}, fallbackIndex = 0) {
+  const raw = String(
+    service.serviceCode
+    || service.code
+    || service.shortLabel
+    || service.name
+    || service.serviceName
+    || `USLUGA-${fallbackIndex + 1}`
+  ).trim();
+  const slug = raw
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/[^A-Za-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug || `USLUGA-${fallbackIndex + 1}`;
+}
+
+function getDocumentTemplateHandoverServiceKey(service = {}, index = 0) {
+  return [
+    service.serviceId,
+    service.id,
+    service.serviceCode,
+    service.code,
+    service.name,
+    service.serviceName,
+    index,
+  ].map((value) => String(value ?? "").trim().toLowerCase()).find(Boolean) || String(index);
+}
+
+function buildDocumentTemplateRuntimeServiceDocumentNumber(service = {}, workOrder = {}, template = buildDocumentTemplateDraft(), index = 0) {
+  const currentNumber = getDocumentTemplateRuntimeDocumentNumber(workOrder, template);
+  const matchedServices = getDocumentTemplateRuntimeMatchedServiceItems(workOrder, template);
+  const serviceKey = getDocumentTemplateHandoverServiceKey(service, index);
+  const matchesCurrentTemplate = matchedServices.some((item, matchedIndex) => (
+    getDocumentTemplateHandoverServiceKey(item, matchedIndex) === serviceKey
+  ));
+  if (matchesCurrentTemplate && currentNumber) {
+    return currentNumber;
+  }
+
+  const workOrderNumber = String(workOrder?.workOrderNumber || "").trim();
+  const serviceCode = getDocumentTemplateHandoverServiceCode(service, index);
+  return [workOrderNumber, serviceCode].filter(Boolean).join("-");
+}
+
+function buildDocumentTemplateRuntimeHandoverDefaultRows(template = buildDocumentTemplateDraft(), workOrder = {}) {
+  const normalizedServices = getDocumentTemplateRuntimeResolvedServiceItems(workOrder);
+  const override = workOrder?.id ? getDocumentTemplateRuntimeOverrideRecord(workOrder.id) : null;
+  const rawServices = Array.isArray(override?.serviceItems)
+    ? override.serviceItems
+    : (Array.isArray(workOrder?.serviceItems) ? workOrder.serviceItems : []);
+  const rows = normalizedServices.map((service, index) => {
+    const rawService = rawServices[index] && typeof rawServices[index] === "object" ? rawServices[index] : {};
+    const mergedService = { ...rawService, ...service };
+    return {
+      id: getDocumentTemplateHandoverServiceKey(mergedService, index),
+      service: String(mergedService.name || mergedService.serviceName || mergedService.serviceCode || "Usluga").trim(),
+      documentNumber: buildDocumentTemplateRuntimeServiceDocumentNumber(mergedService, workOrder, template, index),
+      quantity: getDocumentTemplateHandoverServiceQuantity(mergedService),
+      note: getDocumentTemplateHandoverServiceNote(mergedService),
+    };
+  });
+
+  if (rows.length > 0) {
+    return rows;
+  }
+
+  return [{
+    id: "default-service",
+    service: String(template?.title || template?.documentType || "Zapisnik").trim(),
+    documentNumber: getDocumentTemplateRuntimeDocumentNumber(workOrder, template),
+    quantity: "1",
+    note: "",
+  }];
+}
+
+function mergeDocumentTemplateHandoverRows(defaultRows = [], overrideRows = []) {
+  const defaults = (Array.isArray(defaultRows) ? defaultRows : [])
+    .map((row, index) => normalizeDocumentTemplateHandoverRow(row, index))
+    .filter(Boolean);
+  const overrides = (Array.isArray(overrideRows) ? overrideRows : [])
+    .map((row, index) => normalizeDocumentTemplateHandoverRow(row, index))
+    .filter(Boolean);
+  if (overrides.length === 0) {
+    return defaults;
+  }
+
+  const overrideKeys = new Set(overrides.map((row) => String(row.id || "").trim()).filter(Boolean));
+  return [
+    ...overrides,
+    ...defaults.filter((row) => !overrideKeys.has(String(row.id || "").trim())),
+  ];
+}
+
+function buildDocumentTemplateRuntimeHandoverProtocolModel(
+  template = buildDocumentTemplateDraft(),
+  context = buildDocumentTemplatePreviewContext(template),
+  workOrder = context.sampleWorkOrder,
+) {
+  const company = context.company || getCompany(workOrder?.companyId) || {};
+  const location = getLocation(workOrder?.locationId) || {};
+  const organization = getDocumentTemplateRuntimeOrganizationForHandover() || {};
+  const override = workOrder?.id
+    ? normalizeDocumentTemplateHandoverProtocol(getDocumentTemplateRuntimeOverrideRecord(workOrder.id)?.handoverProtocol)
+    : null;
+  const defaultRows = buildDocumentTemplateRuntimeHandoverDefaultRows(template, workOrder);
+  const defaultLocation = [
+    workOrder?.locationName || location.name || "",
+    workOrder?.locationAddressSnapshot && workOrder.locationAddressSnapshot !== workOrder.locationName
+      ? workOrder.locationAddressSnapshot
+      : "",
+    location.address || "",
+    [location.postalCode, location.city].filter(Boolean).join(" "),
+    workOrder?.region || location.region || "",
+  ].map((value) => String(value || "").trim()).filter(Boolean);
+  const uniqueDefaultLocation = Array.from(new Set(defaultLocation));
+  const defaults = normalizeDocumentTemplateHandoverProtocol({
+    workOrderNumber: workOrder?.workOrderNumber || "",
+    customerName: workOrder?.companyName || company.name || "",
+    customerAddress: workOrder?.headquarters || company.headquarters || company.address || "",
+    customerOib: workOrder?.companyOib || company.oib || "",
+    executorName: organization.name || "SafeWork",
+    executorAddress: [
+      organization.address || "",
+      [organization.postalCode, organization.city].filter(Boolean).join(" "),
+    ].filter(Boolean).join(", "),
+    executorOib: organization.oib || "",
+    location: uniqueDefaultLocation.join(", "),
+    contractType: workOrder?.contractType || company.contractType || "",
+    rows: defaultRows,
+  });
+
+  if (!override) {
+    return defaults;
+  }
+
+  return normalizeDocumentTemplateHandoverProtocol({
+    ...defaults,
+    ...Object.fromEntries(
+      Object.entries(override)
+        .filter(([key, value]) => key === "rows" || String(value ?? "").trim() !== ""),
+    ),
+    rows: mergeDocumentTemplateHandoverRows(defaults.rows, override.rows),
+  });
+}
+
 function buildDocumentTemplateRuntimeExportEntry(
   template = buildDocumentTemplateDraft(),
   workOrder = getDocumentTemplateRuntimeActiveWorkOrder(),
@@ -58749,6 +58979,9 @@ function buildDocumentTemplateRuntimeExportEntry(
   const context = buildDocumentTemplatePreviewContext(template, { workOrder });
   const baseFileName = buildDocumentTemplateRuntimeExportFileBaseName(template, workOrder);
   const systemPlaceholderValues = buildDocumentTemplateSystemPlaceholderValues(template, context);
+  const handoverProtocol = buildDocumentTemplateRuntimeHandoverProtocolModel(template, context, workOrder);
+  const placeholders = buildDocumentTemplateRuntimePlaceholderPayload(template, context);
+  placeholders[DOCUMENT_TEMPLATE_HANDOVER_FIELD_KEY] = handoverProtocol;
 
   return {
     templateId: runtimeTemplateId,
@@ -58757,7 +58990,8 @@ function buildDocumentTemplateRuntimeExportEntry(
     templateReferenceKind: getDocumentTemplateReferenceKind(template.referenceDocument),
     htmlFileName: `${baseFileName}.html`,
     pdfFileName: `${baseFileName}.pdf`,
-    placeholders: buildDocumentTemplateRuntimePlaceholderPayload(template, context),
+    placeholders,
+    appendBlocks: [handoverProtocol],
     documentRecord: buildDocumentTemplateRuntimeDocumentRecordPayload(template, workOrder),
     renderModel: {
       title: String(template.title || template.documentType || "Zapisnik").trim(),
@@ -58786,7 +59020,10 @@ function buildDocumentTemplateRuntimeExportEntry(
         code: String(context.object?.code || "").trim(),
         description: String(context.object?.description || "").trim(),
       },
-      blocks: buildDocumentTemplateRuntimePdfBlocks(template, context),
+      blocks: [
+        ...buildDocumentTemplateRuntimePdfBlocks(template, context),
+        handoverProtocol,
+      ],
     },
   };
 }
@@ -58928,6 +59165,7 @@ function buildDocumentTemplateRuntimePdfPayloadFromEntry(exportEntry = null) {
     useTemplatePdf: usesTemplateDocument,
     pdfEngine: templateEngine,
     placeholders: exportEntry.placeholders,
+    appendBlocks: exportEntry.appendBlocks ?? [],
     documentRecord: exportEntry.documentRecord,
     renderModel: exportEntry.renderModel,
   };
@@ -71550,6 +71788,152 @@ function renderDocumentTemplateRuntimeFieldRows() {
     return;
   }
 
+  const createHandoverProtocolBlock = () => {
+    let protocol = buildDocumentTemplateRuntimeHandoverProtocolModel(template, context, activeWorkOrder);
+    const blockNode = document.createElement("section");
+    blockNode.className = "document-template-runtime-block document-template-runtime-handover-block is-ok";
+
+    const commitProtocol = (nextProtocol, { renderRows = false } = {}) => {
+      protocol = normalizeDocumentTemplateHandoverProtocol(nextProtocol);
+      updateDocumentTemplateRuntimeOverride(activeWorkOrder.id, { handoverProtocol: protocol }, { render: false });
+      renderDocumentTemplatePreviewContent();
+      if (renderRows) {
+        renderDocumentTemplateFieldRows();
+      }
+    };
+
+    const head = document.createElement("div");
+    head.className = "document-template-runtime-block-head";
+    const copy = document.createElement("div");
+    const title = document.createElement("h4");
+    title.textContent = "Primopredajni zapisnik";
+    const meta = document.createElement("p");
+    meta.className = "document-template-runtime-block-meta";
+    meta.textContent = "Automatski popunjeno iz RN-a. Korigiraj usluge, količine i brojeve dokumenata prije exporta.";
+    copy.append(title, meta);
+    const headMeta = document.createElement("div");
+    headMeta.className = "document-template-runtime-block-actions";
+    const statusDot = document.createElement("span");
+    statusDot.className = "document-template-runtime-block-status-dot";
+    statusDot.title = "Primopredajni zapisnik se dodaje na kraj dokumenta";
+    headMeta.append(statusDot, createBadge("Final", "document-template-meta-badge is-success"));
+    head.append(copy, headMeta);
+
+    const body = document.createElement("div");
+    body.className = "document-template-runtime-block-body document-template-runtime-handover-body";
+
+    const details = document.createElement("div");
+    details.className = "document-template-runtime-handover-details";
+    const createProtocolField = (label, key, { wide = false } = {}) => {
+      const field = document.createElement("label");
+      field.className = `field${wide ? " field-span-full" : ""}`;
+      const span = document.createElement("span");
+      span.textContent = label;
+      const input = document.createElement("input");
+      input.type = "text";
+      input.value = String(protocol[key] || "");
+      input.addEventListener("input", () => {
+        commitProtocol({
+          ...protocol,
+          [key]: input.value,
+        });
+      });
+      field.append(span, input);
+      return field;
+    };
+
+    details.append(
+      createProtocolField("Broj RN", "workOrderNumber"),
+      createProtocolField("Vrsta ugovora", "contractType"),
+      createProtocolField("Naručitelj", "customerName"),
+      createProtocolField("OIB naručitelja", "customerOib"),
+      createProtocolField("Sjedište naručitelja", "customerAddress", { wide: true }),
+      createProtocolField("Izvršitelj", "executorName"),
+      createProtocolField("OIB izvršitelja", "executorOib"),
+      createProtocolField("Sjedište izvršitelja", "executorAddress", { wide: true }),
+      createProtocolField("Lokacija ispitivanja", "location", { wide: true }),
+    );
+
+    const tableWrap = document.createElement("div");
+    tableWrap.className = "document-template-runtime-handover-table-wrap";
+    const tableHead = document.createElement("div");
+    tableHead.className = "document-template-runtime-handover-table-head";
+    const tableTitle = document.createElement("strong");
+    tableTitle.textContent = "Popis obavljenih usluga";
+    const addRowButton = createActionButton("+ Usluga", "ghost-button compact-button", () => {
+      commitProtocol({
+        ...protocol,
+        rows: [
+          ...(protocol.rows ?? []),
+          {
+            id: `manual-${Date.now()}`,
+            service: "",
+            documentNumber: "",
+            quantity: "1",
+            note: "",
+          },
+        ],
+      }, { renderRows: true });
+    });
+    tableHead.append(tableTitle, addRowButton);
+
+    const rowGrid = document.createElement("div");
+    rowGrid.className = "document-template-runtime-handover-rows";
+    const headerRow = document.createElement("div");
+    headerRow.className = "document-template-runtime-handover-row is-header";
+    ["Usluga", "Broj dokumenta", "Broj mjernih mjesta", "Napomena", ""].forEach((label) => {
+      const cell = document.createElement("span");
+      cell.textContent = label;
+      headerRow.append(cell);
+    });
+    rowGrid.append(headerRow);
+
+    const updateRow = (rowIndex, key, value) => {
+      const rows = (protocol.rows ?? []).map((row, index) => (
+        index === rowIndex ? { ...row, [key]: value } : row
+      ));
+      commitProtocol({ ...protocol, rows });
+    };
+
+    (protocol.rows ?? []).forEach((row, rowIndex) => {
+      const rowNode = document.createElement("div");
+      rowNode.className = "document-template-runtime-handover-row";
+      const createCellInput = (key, { multiline = false } = {}) => {
+        const control = multiline ? document.createElement("textarea") : document.createElement("input");
+        if (!multiline) {
+          control.type = "text";
+        } else {
+          control.rows = 2;
+        }
+        control.value = String(row[key] || "");
+        control.addEventListener("input", () => {
+          updateRow(rowIndex, key, control.value);
+        });
+        return control;
+      };
+      const removeButton = createActionButton("×", "ghost-button compact-button document-template-runtime-handover-remove", () => {
+        commitProtocol({
+          ...protocol,
+          rows: (protocol.rows ?? []).filter((_, index) => index !== rowIndex),
+        }, { renderRows: true });
+      });
+      removeButton.title = "Ukloni uslugu iz primopredajnog zapisnika";
+      rowNode.append(
+        createCellInput("service"),
+        createCellInput("documentNumber"),
+        createCellInput("quantity"),
+        createCellInput("note", { multiline: true }),
+        removeButton,
+      );
+      rowGrid.append(rowNode);
+    });
+
+    tableWrap.append(tableHead, rowGrid);
+    body.append(details, tableWrap);
+    blockNode.append(head, body);
+    return blockNode;
+  };
+
   const visibleBlocks = buildDocumentTemplateRuntimeBlockGroups(documentTemplateFieldDrafts);
   if (visibleBlocks.length === 0) {
     renderDocumentTemplateRuntimeStatusPanel({ template, activeWorkOrder, blocks: [] });
@@ -71558,6 +71942,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     empty.textContent = "Ovaj template nema dodatnih polja za ručni unos. Podaci se povlače iz RN-a i povezanih izvora.";
     shell.append(createDocumentTemplateRuntimeAiAssistantPanel(template, activeWorkOrder));
     shell.append(empty);
+    shell.append(createHandoverProtocolBlock());
     documentTemplateCustomFields.replaceChildren(shell);
     return;
   }
@@ -72991,6 +73376,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     shell.append(blockNode);
   });
 
+  shell.append(createHandoverProtocolBlock());
   documentTemplateCustomFields.replaceChildren(shell);
 
   const shouldCloseRuntimeSheet = state.measurementSheet.ownerKind === "document_template_runtime_field"
@@ -98631,6 +99017,9 @@ function normalizeDocumentTemplateRuntimeOverrideRecord(record = {}) {
     ...(Object.prototype.hasOwnProperty.call(source, "serviceItems")
       ? { serviceItems: getWorkOrderServiceItems({ serviceItems: source.serviceItems }) }
       : {}),
+    ...(Object.prototype.hasOwnProperty.call(source, "handoverProtocol")
+      ? { handoverProtocol: normalizeDocumentTemplateHandoverProtocol(source.handoverProtocol) }
+      : {}),
     fieldValues,
     fieldSources,
     fieldSheets,
@@ -99099,6 +99488,11 @@ function updateDocumentTemplateRuntimeOverride(workOrderId, patch = {}, { render
     : (Object.prototype.hasOwnProperty.call(record, "serviceItems")
       ? getWorkOrderServiceItems({ serviceItems: record.serviceItems })
       : null);
+  const handoverProtocol = Object.prototype.hasOwnProperty.call(patch, "handoverProtocol")
+    ? normalizeDocumentTemplateHandoverProtocol(patch.handoverProtocol)
+    : (Object.prototype.hasOwnProperty.call(record, "handoverProtocol")
+      ? normalizeDocumentTemplateHandoverProtocol(record.handoverProtocol)
+      : null);
   const validityMonths = Object.prototype.hasOwnProperty.call(patch, "validityMonths")
     ? normalizeValidityMonthsValue(patch.validityMonths)
     : (
@@ -99189,6 +99583,7 @@ function updateDocumentTemplateRuntimeOverride(workOrderId, patch = {}, { render
     ...(hasServiceItemsPatch || Object.prototype.hasOwnProperty.call(record, "serviceItems")
       ? { serviceItems: serviceItems ?? [] }
       : {}),
+    ...(handoverProtocol ? { handoverProtocol } : {}),
     fieldValues: {
       ...(record.fieldValues ?? {}),
     },
@@ -99949,6 +100344,16 @@ function buildDocumentTemplateRuntimeDocumentRecordPayload(template = buildDocum
       fieldValues.VRIJEDI_MJESECI = runtimeValidityMonths;
     }
   }
+
+  const handoverProtocol = buildDocumentTemplateRuntimeHandoverProtocolModel(
+    template,
+    buildDocumentTemplatePreviewContext(template, { workOrder }),
+    workOrder,
+  );
+  if (hasMeaningfulDocumentRecordValue(handoverProtocol)) {
+    fieldValues[DOCUMENT_TEMPLATE_HANDOVER_FIELD_KEY] = handoverProtocol;
+  }
+
   return {
     templateId,
     templateTitle: String(template?.title || getDocumentTemplateTypeLabel(template?.documentType) || "Zapisnik").trim(),

@@ -1371,6 +1371,12 @@ function normalizeDocxSpecialPlaceholderValue(value) {
     };
   }
 
+  if (blockType === "handover_protocol" || blockType === "handover") {
+    return hasHandoverProtocolContent(value)
+      ? normalizeHandoverProtocolValue(value)
+      : { type: "optional_empty" };
+  }
+
   if (blockType === "system_description") {
     const legacyRows = Array.isArray(value.rows) ? value.rows : [];
     const rawBlocks = Array.isArray(value.blocks)
@@ -1591,6 +1597,107 @@ function buildDocxTableFallbackText(table = {}) {
     })
     .filter(Boolean)
     .join("\n");
+}
+
+const HANDOVER_PROTOCOL_TITLE = "PRIMOPREDAJNI ZAPISNIK";
+const HANDOVER_PROTOCOL_SUBTITLE = "O OBAVLJENIM USLUGAMA IZ PODRUČJA ZAŠTITE NA RADU I ZAŠTITE OD POŽARA";
+
+function normalizeHandoverProtocolRow(row = {}, index = 0) {
+  const source = row && typeof row === "object" ? row : {};
+  const service = clean(source.service || source.serviceName || source.name || source.title);
+  const documentNumber = clean(source.documentNumber || source.recordNumber || source.number);
+  const quantity = clean(source.quantity || source.measurementPlaces || source.measurementPlaceCount || source.count || "1") || "1";
+  const note = clean(source.note || source.remark || source.description);
+
+  if (!service && !documentNumber && !note) {
+    return null;
+  }
+
+  return {
+    id: clean(source.id) || `handover-row-${index + 1}`,
+    service: service || "Usluga",
+    documentNumber,
+    quantity,
+    note,
+  };
+}
+
+function normalizeHandoverProtocolValue(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  const rows = (Array.isArray(source.rows) ? source.rows : [])
+    .map((row, index) => normalizeHandoverProtocolRow(row, index))
+    .filter(Boolean);
+
+  return {
+    type: "handover_protocol",
+    __docxBlockType: "handover_protocol",
+    title: clean(source.title) || HANDOVER_PROTOCOL_TITLE,
+    subtitle: clean(source.subtitle) || HANDOVER_PROTOCOL_SUBTITLE,
+    workOrderNumber: clean(source.workOrderNumber || source.rn || source.number),
+    customerName: clean(source.customerName || source.customer?.name || source.clientName || source.client?.name),
+    customerAddress: clean(source.customerAddress || source.customer?.address || source.customer?.headquarters || source.clientAddress || source.client?.address),
+    customerOib: clean(source.customerOib || source.customer?.oib || source.clientOib || source.client?.oib),
+    executorName: clean(source.executorName || source.executor?.name || source.providerName || source.provider?.name),
+    executorAddress: clean(source.executorAddress || source.executor?.address || source.executor?.headquarters || source.providerAddress || source.provider?.address),
+    executorOib: clean(source.executorOib || source.executor?.oib || source.providerOib || source.provider?.oib),
+    location: clean(source.location || source.locationName || source.testingLocation),
+    contractType: clean(source.contractType || source.contract || source.agreementType),
+    rows,
+    customerSignatureLabel: clean(source.customerSignatureLabel) || "Ovjerio naručitelj:",
+    executorSignatureLabel: clean(source.executorSignatureLabel) || "Ovjerio izvršitelj:",
+  };
+}
+
+function hasHandoverProtocolContent(value = {}) {
+  const protocol = normalizeHandoverProtocolValue(value);
+  return Boolean(
+    protocol.workOrderNumber
+    || protocol.customerName
+    || protocol.executorName
+    || protocol.location
+    || protocol.contractType
+    || protocol.rows.length > 0
+  );
+}
+
+function formatHandoverPartyLine({
+  name = "",
+  address = "",
+  oib = "",
+} = {}) {
+  return [
+    clean(name),
+    clean(address),
+    clean(oib) ? `OIB: ${clean(oib)}` : "",
+  ].filter(Boolean).join("; ");
+}
+
+function buildHandoverProtocolFallbackText(value = {}) {
+  const protocol = normalizeHandoverProtocolValue(value);
+  const lines = [
+    protocol.title,
+    protocol.subtitle,
+    protocol.workOrderNumber,
+    formatHandoverPartyLine({
+      name: protocol.customerName,
+      address: protocol.customerAddress,
+      oib: protocol.customerOib,
+    }),
+    formatHandoverPartyLine({
+      name: protocol.executorName,
+      address: protocol.executorAddress,
+      oib: protocol.executorOib,
+    }),
+    protocol.location ? `Lokacija ispitivanja: ${protocol.location}` : "",
+    protocol.contractType ? `Vrsta ugovora: ${protocol.contractType}` : "",
+    ...protocol.rows.map((row) => [
+      row.service,
+      row.documentNumber,
+      row.quantity,
+      row.note,
+    ].filter(Boolean).join(" | ")),
+  ];
+  return lines.filter(Boolean).join("\n");
 }
 
 function buildWordParagraphXml(text = "", {
@@ -1867,6 +1974,131 @@ function buildWordTableXml(table = {}) {
     </w:tbl>
     ${buildWordParagraphXml("", { spacingAfter: 0 })}
   `.replace(/\n\s+/g, "");
+}
+
+function buildWordPageBreakXml() {
+  return '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
+}
+
+function buildWordHandoverProtocolXml(value = {}) {
+  const protocol = normalizeHandoverProtocolValue(value);
+  if (!hasHandoverProtocolContent(protocol)) {
+    return "";
+  }
+
+  const customerLine = formatHandoverPartyLine({
+    name: protocol.customerName,
+    address: protocol.customerAddress,
+    oib: protocol.customerOib,
+  });
+  const executorLine = formatHandoverPartyLine({
+    name: protocol.executorName,
+    address: protocol.executorAddress,
+    oib: protocol.executorOib,
+  });
+  const partyTable = buildWordTableXml({
+    columns: [
+      { id: "customer", label: "Naručitelj usluga:", width: 260 },
+      { id: "executor", label: "Izvršitelj usluga:", width: 260 },
+    ],
+    rows: [
+      {
+        id: "party-head",
+        header: true,
+        cells: [
+          { text: "Naručitelj usluga:", format: { bold: true, align: "center", fillColor: "#F3F4F6" } },
+          { text: "Izvršitelj usluga:", format: { bold: true, align: "center", fillColor: "#F3F4F6" } },
+        ],
+      },
+      {
+        id: "party-values",
+        cells: [
+          { text: customerLine || "-", format: { bold: true, align: "center", fontSize: 11 } },
+          { text: executorLine || "-", format: { bold: true, align: "center", fontSize: 11 } },
+        ],
+      },
+    ],
+    headerRows: ["party-head"],
+  });
+
+  const serviceRows = protocol.rows.length > 0
+    ? protocol.rows
+    : [{ id: "empty", service: "-", documentNumber: "", quantity: "", note: "" }];
+  const serviceTable = buildWordTableXml({
+    columns: [
+      { id: "service", label: "Usluga", width: 245 },
+      { id: "document", label: "Broj dokumenta", width: 150 },
+      { id: "quantity", label: "Broj mjernih mjesta", width: 95 },
+      { id: "note", label: "Napomena", width: 220 },
+    ],
+    rows: [
+      {
+        id: "services-head",
+        header: true,
+        cells: [
+          { text: "Usluga", format: { bold: true, align: "center", fillColor: "#D9D9D9" } },
+          { text: "Broj dokumenta", format: { bold: true, align: "center", fillColor: "#D9D9D9" } },
+          { text: "Broj mjernih mjesta", format: { bold: true, align: "center", fillColor: "#D9D9D9" } },
+          { text: "Napomena", format: { bold: true, align: "center", fillColor: "#D9D9D9" } },
+        ],
+      },
+      ...serviceRows.map((row, index) => ({
+        id: row.id || `service-${index + 1}`,
+        cells: [
+          { text: row.service || "-", format: { align: "center", fontSize: 10 } },
+          { text: row.documentNumber || "-", format: { align: "center", fontSize: 10 } },
+          { text: row.quantity || "-", format: { align: "center", fontSize: 10 } },
+          { text: row.note || "-", format: { align: "center", fontSize: 9 } },
+        ],
+      })),
+    ],
+    headerRows: ["services-head"],
+  });
+
+  const signatureTable = buildWordTableXml({
+    columns: [
+      { id: "customerSignature", label: protocol.customerSignatureLabel, width: 260 },
+      { id: "executorSignature", label: protocol.executorSignatureLabel, width: 260 },
+    ],
+    rows: [
+      {
+        id: "signature-labels",
+        cells: [
+          { text: protocol.customerSignatureLabel, format: { align: "center", fontSize: 10 } },
+          { text: protocol.executorSignatureLabel, format: { align: "center", fontSize: 10 } },
+        ],
+      },
+      {
+        id: "signature-lines",
+        cells: [
+          { text: "\n\n______________________________", format: { align: "center", fontSize: 10 } },
+          { text: "\n\n______________________________", format: { align: "center", fontSize: 10 } },
+        ],
+      },
+    ],
+  });
+
+  return [
+    buildWordParagraphXml(protocol.title, { align: "center", bold: true, size: 28, spacingAfter: 80 }),
+    buildWordParagraphXml(protocol.subtitle, { align: "center", bold: true, size: 16, spacingAfter: 120 }),
+    buildWordParagraphXml(protocol.workOrderNumber || "-", { align: "center", bold: true, size: 24, spacingAfter: 0 }),
+    buildWordParagraphXml("Broj radnog naloga", { align: "center", italic: true, size: 16, spacingAfter: 80 }),
+    partyTable,
+    buildWordParagraphXml(protocol.location ? `Lokacija ispitivanja:    ${protocol.location}` : "Lokacija ispitivanja:", {
+      bold: true,
+      size: 18,
+      spacingBefore: 40,
+      spacingAfter: 80,
+    }),
+    buildWordParagraphXml(protocol.contractType ? `Vrsta ugovora:    ${protocol.contractType}` : "Vrsta ugovora:", {
+      size: 18,
+      spacingAfter: 110,
+    }),
+    buildWordParagraphXml("PRILOG: Popis obavljenih usluga", { bold: true, italic: true, size: 18, spacingAfter: 20 }),
+    serviceTable,
+    buildWordParagraphXml("", { spacingBefore: 340, spacingAfter: 0 }),
+    signatureTable,
+  ].join("");
 }
 
 function buildWordSignatureCellXml(item = null, zip = null, context = {}, xmlFileName = "word/document.xml", options = {}) {
@@ -2520,6 +2752,10 @@ function buildDocxSpecialPlaceholderXml(value, zip = null, context = {}, xmlFile
     return buildWordTableXml(value);
   }
 
+  if (value.type === "handover_protocol") {
+    return buildWordHandoverProtocolXml(value);
+  }
+
   if (value.type === "rich_text") {
     return buildWordRichTextXml(value);
   }
@@ -2586,6 +2822,8 @@ function applyDocxSpecialPlaceholders(zip, specialPlaceholders = new Map()) {
       const fallbackText = escapeWordXmlText(
         value.type === "table"
           ? buildDocxTableFallbackText(value)
+          : value.type === "handover_protocol"
+            ? buildHandoverProtocolFallbackText(value)
           : value.type === "system_description"
             ? buildDocxSystemDescriptionFallbackText(value)
             : buildDocxSignatureGroupFallbackText(value.items),
@@ -2755,6 +2993,70 @@ async function hydrateDocxSpecialPlaceholderImages(specialPlaceholders = new Map
   await Promise.all(pending);
 }
 
+function normalizeDocumentAppendBlocks(blocks = []) {
+  const source = Array.isArray(blocks)
+    ? blocks
+    : (blocks ? [blocks] : []);
+  return source
+    .map((block) => normalizeDocxSpecialPlaceholderValue(block))
+    .filter((block) => block && block.type !== "optional_empty");
+}
+
+function isHandoverProtocolAlreadyRendered(targetText = "", block = {}) {
+  if (clean(block?.type).toLowerCase() !== "handover_protocol") {
+    return false;
+  }
+  const protocol = normalizeHandoverProtocolValue(block);
+  const title = protocol.title || HANDOVER_PROTOCOL_TITLE;
+  return Boolean(title && String(targetText || "").includes(title));
+}
+
+function appendDocxSpecialBlocksToBuffer(buffer = Buffer.alloc(0), blocks = []) {
+  const appendBlocks = normalizeDocumentAppendBlocks(blocks);
+  if (appendBlocks.length === 0) {
+    return buffer;
+  }
+
+  const zip = new PizZip(buffer);
+  const file = zip.file("word/document.xml");
+  if (!file) {
+    return buffer;
+  }
+
+  let xml = file.asText();
+  const pendingBlocks = appendBlocks.filter((block) => !isHandoverProtocolAlreadyRendered(xml, block));
+  if (pendingBlocks.length === 0) {
+    return buffer;
+  }
+
+  const renderContext = {
+    imageCounter: 0,
+    docPrCounter: 5000,
+  };
+  const blocksXml = pendingBlocks
+    .map((block) => buildDocxSpecialPlaceholderXml(block, zip, renderContext, "word/document.xml"))
+    .filter(Boolean)
+    .join("");
+  if (!blocksXml) {
+    return buffer;
+  }
+
+  const appendXml = `${buildWordPageBreakXml()}${blocksXml}`;
+  if (/<w:sectPr\b[\s\S]*?<\/w:sectPr>\s*<\/w:body>/i.test(xml)) {
+    xml = xml.replace(/(<w:sectPr\b[\s\S]*?<\/w:sectPr>\s*<\/w:body>)/i, `${appendXml}$1`);
+  } else if (/<\/w:body>/i.test(xml)) {
+    xml = xml.replace(/<\/w:body>/i, `${appendXml}</w:body>`);
+  } else {
+    xml += appendXml;
+  }
+  zip.file("word/document.xml", ensureDocxDrawingNamespaces(xml));
+
+  return zip.generate({
+    type: "nodebuffer",
+    compression: "DEFLATE",
+  });
+}
+
 export async function buildDocxFromTemplateBuffer(templateBuffer, placeholders = {}, options = {}) {
   const safeBuffer = Buffer.isBuffer(templateBuffer)
     ? templateBuffer
@@ -2777,6 +3079,7 @@ export async function buildDocxFromTemplateBuffer(templateBuffer, placeholders =
         if (specialValue) {
           if (
             specialValue.type === "table"
+            || specialValue.type === "handover_protocol"
             || specialValue.type === "system_description"
             || specialValue.type === "signature_group"
             || specialValue.type === "optional_empty"
@@ -2785,7 +3088,9 @@ export async function buildDocxFromTemplateBuffer(templateBuffer, placeholders =
             specialPlaceholders.set(sentinel, specialValue);
             return [safeKey, sentinel];
           }
-          return [safeKey, buildDocxSignatureGroupFallbackText(specialValue.items)];
+          return [safeKey, specialValue.type === "handover_protocol"
+            ? buildHandoverProtocolFallbackText(specialValue)
+            : buildDocxSignatureGroupFallbackText(specialValue.items)];
         }
 
         return [safeKey, normalizeTemplatePlaceholderValue(value)];
@@ -2818,9 +3123,10 @@ export async function buildDocxFromTemplateBuffer(templateBuffer, placeholders =
 
   try {
     const renderedBuffer = renderWithCurlyDelimiters(safeBuffer);
-    return options.squareBracketPlaceholders
+    const finalBuffer = options.squareBracketPlaceholders
       ? renderWithSquareBracketDelimiters(renderedBuffer)
       : renderedBuffer;
+    return appendDocxSpecialBlocksToBuffer(finalBuffer, options.appendBlocks || options.appendDocxBlocks);
   } catch (error) {
     if (shouldRetryDocxRenderWithEscapedDelimiters(error)) {
       try {
@@ -2829,9 +3135,10 @@ export async function buildDocxFromTemplateBuffer(templateBuffer, placeholders =
           normalizedPlaceholders,
           specialPlaceholders,
         );
-        return options.squareBracketPlaceholders
+        const finalBuffer = options.squareBracketPlaceholders
           ? renderWithSquareBracketDelimiters(renderedBuffer)
           : renderedBuffer;
+        return appendDocxSpecialBlocksToBuffer(finalBuffer, options.appendBlocks || options.appendDocxBlocks);
       } catch (retryError) {
         throw new Error(formatDocxRenderError(retryError));
       }
@@ -3044,6 +3351,8 @@ export async function buildPdfFromTemplateBuffer(templateBuffer, placeholders = 
     const htmlBuffer = Buffer.from(converted.html || "", "utf8");
     return await buildPdfFromHtmlTemplateBuffer(htmlBuffer, {}, {
       ...options,
+      appendBlocks: [],
+      appendHtmlBlocks: [],
       fileName: sanitizeGeneratedDocumentFileName(
         options.fileName || options.title || "zapisnik",
         { fallback: "zapisnik", extension: "html" },
@@ -3074,6 +3383,19 @@ function buildHtmlTemplateDefaultStyles() {
       .safe-nexus-template-table th,
       .safe-nexus-template-table td{border:1px solid #cad8d1;padding:7px 9px;text-align:left;vertical-align:top;word-break:break-word;overflow-wrap:anywhere}
       .safe-nexus-template-table th{background:#eef5f2;font-weight:700}
+      .safe-nexus-template-handover{break-before:page;page-break-before:always;margin:0 auto;padding:10px 0 0;color:#111827;font-family:Arial,sans-serif}
+      .safe-nexus-template-handover h2{margin:0 0 8px;text-align:center;font-size:24px;line-height:1.15;letter-spacing:0;font-weight:800}
+      .safe-nexus-template-handover-subtitle{margin:0 0 16px;text-align:center;font-size:12px;font-weight:700;text-transform:uppercase}
+      .safe-nexus-template-handover-rn{margin:0 0 2px;text-align:center;font-size:20px;font-weight:800}
+      .safe-nexus-template-handover-rn-label{margin:0 0 2px;text-align:center;font-size:10px;font-style:italic}
+      .safe-nexus-template-handover-party-table{margin-top:0}
+      .safe-nexus-template-handover-line{margin:12px 0;font-size:12px}
+      .safe-nexus-template-handover-line strong{display:inline-block;min-width:132px}
+      .safe-nexus-template-handover-annex{margin:12px 0 4px;font-size:12px;font-weight:800;font-style:italic}
+      .safe-nexus-template-handover-signatures{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:120px;margin-top:56px;align-items:end}
+      .safe-nexus-template-handover-signature{text-align:center;font-size:11px}
+      .safe-nexus-template-handover-signature span{display:block;margin-bottom:42px}
+      .safe-nexus-template-handover-signature-line{border-top:1px solid #111;height:1px}
       .safe-nexus-template-signatures{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:28px;margin:24px 0 8px}
       .safe-nexus-template-signature{min-height:116px;text-align:center}
       .safe-nexus-template-signature strong{display:block;margin-top:3px}
@@ -3091,7 +3413,7 @@ function buildHtmlTemplateDefaultStyles() {
       .safe-nexus-template-rich-text table{width:100%;border-collapse:collapse;table-layout:fixed;margin:.35em 0 .75em}
       .safe-nexus-template-rich-text th,.safe-nexus-template-rich-text td{border:1px solid #cad8d1;padding:6px 8px;vertical-align:top}
       .safe-nexus-template-rich-text th{background:#eef5f2;font-weight:700}
-      @media print{.safe-nexus-template-signatures{break-inside:avoid}.safe-nexus-template-system-block,.safe-nexus-template-table{break-inside:auto}}
+      @media print{.safe-nexus-template-signatures,.safe-nexus-template-handover-signatures{break-inside:avoid}.safe-nexus-template-system-block,.safe-nexus-template-table{break-inside:auto}}
     </style>
   `.trim();
 }
@@ -3223,6 +3545,80 @@ function buildHtmlTemplateTablePlaceholder(table = {}) {
   return `<table class="safe-nexus-template-table">${colgroup ? `<colgroup>${colgroup}</colgroup>` : ""}<tbody>${rowHtml}</tbody></table>`;
 }
 
+function buildHtmlTemplateHandoverProtocolPlaceholder(value = {}) {
+  const protocol = normalizeHandoverProtocolValue(value);
+  if (!hasHandoverProtocolContent(protocol)) {
+    return "";
+  }
+
+  const customerLine = formatHandoverPartyLine({
+    name: protocol.customerName,
+    address: protocol.customerAddress,
+    oib: protocol.customerOib,
+  });
+  const executorLine = formatHandoverPartyLine({
+    name: protocol.executorName,
+    address: protocol.executorAddress,
+    oib: protocol.executorOib,
+  });
+  const serviceRows = protocol.rows.length > 0
+    ? protocol.rows
+    : [{ service: "-", documentNumber: "", quantity: "", note: "" }];
+  const servicesHtml = serviceRows.map((row) => `
+    <tr>
+      <td style="text-align:center">${formatTemplateHtmlText(row.service || "-")}</td>
+      <td style="text-align:center">${formatTemplateHtmlText(row.documentNumber || "-")}</td>
+      <td style="text-align:center">${formatTemplateHtmlText(row.quantity || "-")}</td>
+      <td style="text-align:center">${formatTemplateHtmlText(row.note || "-")}</td>
+    </tr>
+  `.trim()).join("");
+
+  return `
+    <section class="safe-nexus-template-handover">
+      <h2>${escapeTemplateHtml(protocol.title)}</h2>
+      <p class="safe-nexus-template-handover-subtitle">${escapeTemplateHtml(protocol.subtitle)}</p>
+      <p class="safe-nexus-template-handover-rn">${escapeTemplateHtml(protocol.workOrderNumber || "-")}</p>
+      <p class="safe-nexus-template-handover-rn-label">Broj radnog naloga</p>
+      <table class="safe-nexus-template-table safe-nexus-template-handover-party-table">
+        <tbody>
+          <tr>
+            <th style="text-align:center">Naručitelj usluga:</th>
+            <th style="text-align:center">Izvršitelj usluga:</th>
+          </tr>
+          <tr>
+            <td style="text-align:center;font-weight:700">${formatTemplateHtmlText(customerLine || "-")}</td>
+            <td style="text-align:center;font-weight:700">${formatTemplateHtmlText(executorLine || "-")}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="safe-nexus-template-handover-line"><strong>Lokacija ispitivanja:</strong> ${formatTemplateHtmlText(protocol.location || "")}</p>
+      <p class="safe-nexus-template-handover-line"><strong>Vrsta ugovora:</strong> ${formatTemplateHtmlText(protocol.contractType || "")}</p>
+      <p class="safe-nexus-template-handover-annex">PRILOG: Popis obavljenih usluga</p>
+      <table class="safe-nexus-template-table">
+        <tbody>
+          <tr>
+            <th style="text-align:center;background:#d9d9d9">Usluga</th>
+            <th style="text-align:center;background:#d9d9d9">Broj dokumenta</th>
+            <th style="text-align:center;background:#d9d9d9">Broj mjernih mjesta</th>
+            <th style="text-align:center;background:#d9d9d9">Napomena</th>
+          </tr>
+          ${servicesHtml}
+        </tbody>
+      </table>
+      <div class="safe-nexus-template-handover-signatures">
+        <div class="safe-nexus-template-handover-signature">
+          <span>${escapeTemplateHtml(protocol.customerSignatureLabel)}</span>
+          <div class="safe-nexus-template-handover-signature-line"></div>
+        </div>
+        <div class="safe-nexus-template-handover-signature">
+          <span>${escapeTemplateHtml(protocol.executorSignatureLabel)}</span>
+          <div class="safe-nexus-template-handover-signature-line"></div>
+        </div>
+      </div>
+    </section>
+  `.trim();
+}
+
 function buildHtmlTemplateSignatureGroupPlaceholder(items = []) {
   const safeItems = Array.isArray(items) ? items.filter(Boolean) : [];
   if (safeItems.length === 0) {
@@ -3301,6 +3697,9 @@ function buildHtmlTemplateSpecialPlaceholder(value) {
   if (specialValue.type === "table") {
     return buildHtmlTemplateTablePlaceholder(specialValue);
   }
+  if (specialValue.type === "handover_protocol") {
+    return buildHtmlTemplateHandoverProtocolPlaceholder(specialValue);
+  }
   if (specialValue.type === "signature_group") {
     return buildHtmlTemplateSignatureGroupPlaceholder(specialValue.items);
   }
@@ -3331,6 +3730,31 @@ function buildHtmlTemplateDocument(html = "", { title = "Zapisnik" } = {}) {
 ${safeHtml}
 </body>
 </html>`;
+}
+
+function appendHtmlTemplateSpecialBlocks(html = "", blocks = []) {
+  const appendBlocks = normalizeDocumentAppendBlocks(blocks);
+  if (appendBlocks.length === 0) {
+    return html;
+  }
+
+  const pendingBlocks = appendBlocks.filter((block) => !isHandoverProtocolAlreadyRendered(html, block));
+  if (pendingBlocks.length === 0) {
+    return html;
+  }
+
+  const appendHtml = pendingBlocks
+    .map((block) => buildHtmlTemplateSpecialPlaceholder(block))
+    .filter(Boolean)
+    .join("\n");
+  if (!appendHtml) {
+    return html;
+  }
+
+  if (/<\/body>/i.test(html)) {
+    return html.replace(/<\/body>/i, `${appendHtml}\n</body>`);
+  }
+  return `${html}\n${appendHtml}`;
 }
 
 function detectHtmlBufferCharset(buffer = Buffer.alloc(0)) {
@@ -5594,9 +6018,10 @@ export function buildHtmlFromTemplateBuffer(templateBuffer, placeholders = {}, o
     return specialHtml === null ? formatTemplateHtmlText(value) : specialHtml;
   });
 
-  return buildHtmlTemplateDocument(repairHtmlTextEncoding(renderedHtml), {
+  const documentHtml = buildHtmlTemplateDocument(repairHtmlTextEncoding(renderedHtml), {
     title: options.title || options.fileName || "Zapisnik",
   });
+  return appendHtmlTemplateSpecialBlocks(documentHtml, options.appendBlocks || options.appendHtmlBlocks);
 }
 
 export async function buildPdfFromHtmlTemplateBuffer(templateBuffer, placeholders = {}, options = {}) {
@@ -5660,6 +6085,7 @@ export async function buildPdfFromHtmlTemplateBatchEntries(entries = [], options
       html: buildHtmlFromTemplateBuffer(entry.templateBuffer, entry.placeholders ?? {}, {
         fileName: entry.fileName || options.fileName || `zapisnik-${index + 1}.html`,
         title: entry.title || options.title || "Zapisnik",
+        appendBlocks: entry.appendBlocks || entry.appendHtmlBlocks,
       }),
     }));
 
@@ -6595,6 +7021,94 @@ function renderPdfTable(doc, helpers, table = {}) {
   doc.moveDown(0.6);
 }
 
+function renderPdfHandoverProtocol(doc, helpers, value = {}) {
+  const protocol = normalizeHandoverProtocolValue(value);
+  if (!hasHandoverProtocolContent(protocol)) {
+    return;
+  }
+
+  helpers.setLayout("portrait", { forceNewPage: true });
+  doc.font("dejavu-bold").fontSize(20).fillColor("#111827").text(protocol.title, {
+    width: helpers.availableWidth,
+    align: "center",
+  });
+  doc.moveDown(0.25);
+  doc.font("dejavu-bold").fontSize(9.5).fillColor("#111827").text(protocol.subtitle, {
+    width: helpers.availableWidth,
+    align: "center",
+  });
+  doc.moveDown(0.65);
+  doc.font("dejavu-bold").fontSize(18).fillColor("#111827").text(protocol.workOrderNumber || "-", {
+    width: helpers.availableWidth,
+    align: "center",
+  });
+  doc.font("dejavu-italic").fontSize(8.5).fillColor("#111827").text("Broj radnog naloga", {
+    width: helpers.availableWidth,
+    align: "center",
+  });
+  doc.moveDown(0.15);
+
+  renderPdfTable(doc, helpers, {
+    columns: ["Naručitelj usluga:", "Izvršitelj usluga:"],
+    rows: [[
+      formatHandoverPartyLine({
+        name: protocol.customerName,
+        address: protocol.customerAddress,
+        oib: protocol.customerOib,
+      }) || "-",
+      formatHandoverPartyLine({
+        name: protocol.executorName,
+        address: protocol.executorAddress,
+        oib: protocol.executorOib,
+      }) || "-",
+    ]],
+  });
+
+  doc.font("dejavu-bold").fontSize(10).fillColor("#111827").text("Lokacija ispitivanja:", {
+    continued: true,
+  });
+  doc.font("dejavu").fontSize(10).text(`  ${normalizePdfText(protocol.location || "")}`);
+  doc.moveDown(0.35);
+  doc.font("dejavu-bold").fontSize(10).fillColor("#111827").text("Vrsta ugovora:", {
+    continued: true,
+  });
+  doc.font("dejavu").fontSize(10).text(`  ${normalizePdfText(protocol.contractType || "")}`);
+  doc.moveDown(0.5);
+  doc.font("dejavu-bold").fontSize(10).fillColor("#111827").text("PRILOG: Popis obavljenih usluga");
+  doc.moveDown(0.15);
+
+  const serviceRows = protocol.rows.length > 0
+    ? protocol.rows
+    : [{ service: "-", documentNumber: "", quantity: "", note: "" }];
+  renderPdfTable(doc, helpers, {
+    columns: ["Usluga", "Broj dokumenta", "Broj mjernih mjesta", "Napomena"],
+    columnWidths: [2.9, 1.8, 1.1, 2.6],
+    rows: serviceRows.map((row) => [
+      row.service || "-",
+      row.documentNumber || "-",
+      row.quantity || "-",
+      row.note || "-",
+    ]),
+  });
+
+  helpers.ensureSpace(105);
+  const gap = 90;
+  const signatureWidth = (helpers.availableWidth - gap) / 2;
+  const y = doc.y + 38;
+  const leftX = doc.page.margins.left;
+  const rightX = leftX + signatureWidth + gap;
+  const drawSignature = (label, x) => {
+    doc.font("dejavu").fontSize(9).fillColor("#111827").text(label, x, y - 28, {
+      width: signatureWidth,
+      align: "center",
+    });
+    doc.moveTo(x, y).lineTo(x + signatureWidth, y).lineWidth(0.8).strokeColor("#111827").stroke();
+  };
+  drawSignature(protocol.customerSignatureLabel, leftX);
+  drawSignature(protocol.executorSignatureLabel, rightX);
+  doc.y = y + 18;
+}
+
 async function renderPdfSignatureGroup(doc, helpers, title, items = [], signatureFields = []) {
   const safeItems = Array.isArray(items) ? items : [];
   if (safeItems.length === 0) {
@@ -6893,6 +7407,12 @@ export async function buildPdfFromRenderModel(renderModel = {}) {
   doc.moveDown(0.8);
 
   for (const block of Array.isArray(renderModel.blocks) ? renderModel.blocks : []) {
+    const blockType = clean(block.type).toLowerCase();
+    if (blockType === "handover_protocol") {
+      renderPdfHandoverProtocol(doc, helpers, block);
+      continue;
+    }
+
     const blockTitle = clean(block.title) || "Blok";
     const blockDescription = clean(block.description);
     helpers.setLayout("portrait", { forceNewPage: false });
