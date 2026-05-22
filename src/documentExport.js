@@ -1391,6 +1391,12 @@ function normalizeDocxSpecialPlaceholderValue(value) {
       : { type: "optional_empty" };
   }
 
+  if (blockType === "handover_specification" || blockType === "specification") {
+    return hasHandoverSpecificationContent(value)
+      ? normalizeHandoverSpecificationValue(value)
+      : { type: "optional_empty" };
+  }
+
   if (blockType === "system_description") {
     const legacyRows = Array.isArray(value.rows) ? value.rows : [];
     const rawBlocks = Array.isArray(value.blocks)
@@ -1615,6 +1621,7 @@ function buildDocxTableFallbackText(table = {}) {
 
 const HANDOVER_PROTOCOL_TITLE = "PRIMOPREDAJNI ZAPISNIK";
 const HANDOVER_PROTOCOL_SUBTITLE = "O OBAVLJENIM USLUGAMA IZ PODRUČJA ZAŠTITE NA RADU I ZAŠTITE OD POŽARA";
+const HANDOVER_SPECIFICATION_TITLE = "PRILOG: Popis obavljenih usluga";
 
 function formatHandoverProtocolDate(value = "") {
   const normalized = clean(value);
@@ -1683,6 +1690,31 @@ function formatHandoverProtocolServiceCell(row = {}, protocol = {}) {
   }
 
   return `${service}\n(${objectName})`;
+}
+
+function normalizeHandoverSpecificationValue(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  const rows = (Array.isArray(source.rows) ? source.rows : [])
+    .map((row, index) => normalizeHandoverProtocolRow(row, index))
+    .filter(Boolean);
+  const sourceType = clean(source.__docxBlockType || source.type).toLowerCase();
+  return {
+    type: "handover_specification",
+    __docxBlockType: "handover_specification",
+    title: clean(
+      source.specificationTitle
+      || source.tableTitle
+      || source.heading
+      || (sourceType === "handover_specification" || sourceType === "specification" ? source.title : "")
+    ) || HANDOVER_SPECIFICATION_TITLE,
+    includeTitle: source.includeTitle !== false,
+    objectName: extractHandoverProtocolObjectName(source),
+    rows,
+  };
+}
+
+function hasHandoverSpecificationContent(value = {}) {
+  return normalizeHandoverSpecificationValue(value).rows.length > 0;
 }
 
 function normalizeHandoverProtocolRow(row = {}, index = 0) {
@@ -1782,6 +1814,20 @@ function buildHandoverProtocolFallbackText(value = {}) {
     formatHandoverProtocolPlaceDate(protocol),
     ...protocol.rows.map((row) => [
       formatHandoverProtocolServiceCell(row, protocol),
+      row.documentNumber,
+      row.quantity,
+      row.note,
+    ].filter(Boolean).join(" | ")),
+  ];
+  return lines.filter(Boolean).join("\n");
+}
+
+function buildHandoverSpecificationFallbackText(value = {}) {
+  const specification = normalizeHandoverSpecificationValue(value);
+  const lines = [
+    specification.includeTitle ? specification.title : "",
+    ...specification.rows.map((row) => [
+      formatHandoverProtocolServiceCell(row, specification),
       row.documentNumber,
       row.quantity,
       row.note,
@@ -2068,6 +2114,58 @@ function buildWordTableXml(table = {}) {
 
 function buildWordPageBreakXml() {
   return '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
+}
+
+function buildHandoverSpecificationTableModel(value = {}) {
+  const specification = normalizeHandoverSpecificationValue(value);
+  const serviceRows = specification.rows.length > 0
+    ? specification.rows
+    : [{ id: "empty", service: "-", documentNumber: "", quantity: "", note: "" }];
+  return {
+    specification,
+    table: {
+      columns: [
+        { id: "service", label: "Usluga", width: 245 },
+        { id: "document", label: "Broj dokumenta", width: 150 },
+        { id: "quantity", label: "Broj mjernih mjesta", width: 95 },
+        { id: "note", label: "Napomena", width: 220 },
+      ],
+      rows: [
+        {
+          id: "services-head",
+          header: true,
+          cells: [
+            { text: "Usluga", format: { bold: true, align: "center", fillColor: "#D9D9D9" } },
+            { text: "Broj dokumenta", format: { bold: true, align: "center", fillColor: "#D9D9D9" } },
+            { text: "Broj mjernih mjesta", format: { bold: true, align: "center", fillColor: "#D9D9D9" } },
+            { text: "Napomena", format: { bold: true, align: "center", fillColor: "#D9D9D9" } },
+          ],
+        },
+        ...serviceRows.map((row, index) => ({
+          id: row.id || `service-${index + 1}`,
+          cells: [
+            { text: formatHandoverProtocolServiceCell(row, specification), format: { align: "center", fontSize: 10 } },
+            { text: row.documentNumber || "-", format: { align: "center", fontSize: 10 } },
+            { text: row.quantity || "-", format: { align: "center", fontSize: 10 } },
+            { text: row.note || "-", format: { align: "center", fontSize: 9 } },
+          ],
+        })),
+      ],
+      headerRows: ["services-head"],
+    },
+  };
+}
+
+function buildWordHandoverSpecificationXml(value = {}) {
+  const { specification, table } = buildHandoverSpecificationTableModel(value);
+  if (!hasHandoverSpecificationContent(specification)) {
+    return "";
+  }
+
+  return [
+    specification.includeTitle ? buildWordParagraphXml(specification.title, { bold: true, italic: true, size: 18, spacingAfter: 20 }) : "",
+    buildWordTableXml(table),
+  ].join("");
 }
 
 function buildWordHandoverProtocolXml(value = {}) {
@@ -2848,6 +2946,10 @@ function buildDocxSpecialPlaceholderXml(value, zip = null, context = {}, xmlFile
     return buildWordHandoverProtocolXml(value);
   }
 
+  if (value.type === "handover_specification") {
+    return buildWordHandoverSpecificationXml(value);
+  }
+
   if (value.type === "rich_text") {
     return buildWordRichTextXml(value);
   }
@@ -2916,6 +3018,8 @@ function applyDocxSpecialPlaceholders(zip, specialPlaceholders = new Map()) {
           ? buildDocxTableFallbackText(value)
           : value.type === "handover_protocol"
             ? buildHandoverProtocolFallbackText(value)
+            : value.type === "handover_specification"
+              ? buildHandoverSpecificationFallbackText(value)
           : value.type === "system_description"
             ? buildDocxSystemDescriptionFallbackText(value)
             : buildDocxSignatureGroupFallbackText(value.items),
@@ -3172,6 +3276,7 @@ export async function buildDocxFromTemplateBuffer(templateBuffer, placeholders =
           if (
             specialValue.type === "table"
             || specialValue.type === "handover_protocol"
+            || specialValue.type === "handover_specification"
             || specialValue.type === "system_description"
             || specialValue.type === "signature_group"
             || specialValue.type === "optional_empty"
@@ -3720,6 +3825,20 @@ function buildHtmlTemplateHandoverProtocolPlaceholder(value = {}) {
   `.trim();
 }
 
+function buildHtmlTemplateHandoverSpecificationPlaceholder(value = {}) {
+  const { specification, table } = buildHandoverSpecificationTableModel(value);
+  if (!hasHandoverSpecificationContent(specification)) {
+    return "";
+  }
+
+  return [
+    specification.includeTitle
+      ? `<p class="safe-nexus-template-handover-annex">${escapeTemplateHtml(specification.title)}</p>`
+      : "",
+    buildHtmlTemplateTablePlaceholder(table),
+  ].join("");
+}
+
 function buildHtmlTemplateSignatureGroupPlaceholder(items = []) {
   const safeItems = Array.isArray(items) ? items.filter(Boolean) : [];
   if (safeItems.length === 0) {
@@ -3800,6 +3919,9 @@ function buildHtmlTemplateSpecialPlaceholder(value) {
   }
   if (specialValue.type === "handover_protocol") {
     return buildHtmlTemplateHandoverProtocolPlaceholder(specialValue);
+  }
+  if (specialValue.type === "handover_specification") {
+    return buildHtmlTemplateHandoverSpecificationPlaceholder(specialValue);
   }
   if (specialValue.type === "signature_group") {
     return buildHtmlTemplateSignatureGroupPlaceholder(specialValue.items);

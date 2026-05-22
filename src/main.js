@@ -452,6 +452,8 @@ const WORK_ORDER_TEMPLATE_PLACEHOLDERS = Object.freeze([
   ]),
 ]);
 const WORK_ORDER_HANDOVER_TEMPLATE_PLACEHOLDERS = Object.freeze([
+  ["{{SPECIFIKACIJA}}", "Gotova tablica specifikacije usluga s brojem dokumenta, količinom i napomenom"],
+  ["{{PRIMOPREDAJNI_ZAPISNIK}}", "Gotov kompletan primopredajni zapisnik sa specifikacijom i potpisima"],
   ["{{PRIMOPREDAJA_RN_BROJ}}", "Broj radnog naloga prikazan u vrhu primopredajnog zapisnika"],
   ["{{RN_BROJ}}", "Alias za broj radnog naloga"],
   ["{{NARUCITELJ_NAZIV}}", "Tvrtka kojoj se predaje zapisnik"],
@@ -57638,6 +57640,16 @@ function getDocumentTemplateSystemPlaceholderDefinitions(template = buildDocumen
       value: values.SIFRA_USLUGE,
     },
     {
+      token: "{{SPECIFIKACIJA}}",
+      label: "Gotova tablica specifikacije usluga",
+      value: "Tablica usluga, brojeva dokumenata, količina i napomena",
+    },
+    {
+      token: "{{PRIMOPREDAJNI_ZAPISNIK}}",
+      label: "Gotov primopredajni zapisnik",
+      value: "Kompletna primopredaja sa specifikacijom i potpisima",
+    },
+    {
       token: "{{ISPITIVACI_POPIS}}",
       label: "Ispitivači - popis imena",
       value: values.ISPITIVACI_POPIS,
@@ -59159,6 +59171,7 @@ function buildDocumentTemplateRuntimePlaceholderPayload(template = buildDocument
 }
 
 const DOCUMENT_TEMPLATE_HANDOVER_FIELD_KEY = "PRIMOPREDAJNI_ZAPISNIK";
+const DOCUMENT_TEMPLATE_SPECIFICATION_FIELD_KEY = "SPECIFIKACIJA";
 const DOCUMENT_TEMPLATE_HANDOVER_TITLE = "PRIMOPREDAJNI ZAPISNIK";
 const DOCUMENT_TEMPLATE_HANDOVER_SUBTITLE = "O OBAVLJENIM USLUGAMA IZ PODRUČJA ZAŠTITE NA RADU I ZAŠTITE OD POŽARA";
 
@@ -59232,6 +59245,26 @@ function normalizeDocumentTemplateHandoverProtocol(value = {}) {
       .filter(Boolean),
     customerSignatureLabel: String(source.customerSignatureLabel || "Ovjerio naručitelj:").trim(),
     executorSignatureLabel: String(source.executorSignatureLabel || "Ovjerio izvršitelj:").trim(),
+  };
+}
+
+function buildDocumentTemplateHandoverSpecificationPlaceholder(protocol = {}) {
+  const normalizedProtocol = normalizeDocumentTemplateHandoverProtocol(protocol);
+  if (!normalizedProtocol.rows.length) {
+    return "";
+  }
+
+  return {
+    type: "handover_specification",
+    __docxBlockType: "handover_specification",
+    rows: normalizedProtocol.rows.map((row, index) => ({
+      id: String(row.id || `specifikacija-${index + 1}`).trim(),
+      service: String(row.service || "").trim(),
+      objectName: String(row.objectName || normalizedProtocol.objectName || "").trim(),
+      documentNumber: String(row.documentNumber || "").trim(),
+      quantity: String(row.quantity || "1").trim() || "1",
+      note: String(row.note || "").trim(),
+    })),
   };
 }
 
@@ -59448,8 +59481,14 @@ function buildDocumentTemplateRuntimeExportEntry(
   const baseFileName = buildDocumentTemplateRuntimeExportFileBaseName(template, workOrder);
   const systemPlaceholderValues = buildDocumentTemplateSystemPlaceholderValues(template, context);
   const handoverProtocol = buildDocumentTemplateRuntimeHandoverProtocolModel(template, context, workOrder);
+  const specificationPlaceholder = handoverProtocol
+    ? buildDocumentTemplateHandoverSpecificationPlaceholder(handoverProtocol)
+    : "";
   const placeholders = buildDocumentTemplateRuntimePlaceholderPayload(template, context);
   placeholders[DOCUMENT_TEMPLATE_HANDOVER_FIELD_KEY] = handoverProtocol || "";
+  placeholders[DOCUMENT_TEMPLATE_SPECIFICATION_FIELD_KEY] = specificationPlaceholder;
+  placeholders.Specifikacija = specificationPlaceholder;
+  placeholders.specifikacija = specificationPlaceholder;
 
   return {
     templateId: runtimeTemplateId,
@@ -98782,7 +98821,7 @@ function renderWorkOrderTemplatePlaceholderList() {
 
   if (workOrderTemplatePlaceholderCopy) {
     workOrderTemplatePlaceholderCopy.textContent = config.key === "handover"
-      ? "Za tablicu usluga u Wordu koristi red s {{#USLUGE_REDOVI}} i {{/USLUGE_REDOVI}} oko ćelija koje se ponavljaju."
+      ? "Za gotovu tablicu stavi {{SPECIFIKACIJA}}. Loop {{#USLUGE_REDOVI}} koristi samo ako želiš ručno složiti tablicu."
       : "Klikni placeholder da ga kopiraš u Word RN predložak. Za usluge u tablici koristi {{#USLUGE_REDOVI}} loop.";
   }
 
@@ -98886,7 +98925,9 @@ function buildWorkOrderTemplatePlaceholderText(kind = "rn") {
   const lines = [
     `SafeNexus ${config.title} placeholderi`,
     "",
-    "U Word predlosku koristi ove oznake. Za tablicne redove koristi Docxtemplater loop: {{#USLUGE_REDOVI}} ... {{/USLUGE_REDOVI}}.",
+    config.key === "handover"
+      ? "U Word predlosku za gotovu specifikaciju stavi {{SPECIFIKACIJA}}. Loop {{#USLUGE_REDOVI}} koristi samo za rucno slaganje tablice."
+      : "U Word predlosku koristi ove oznake. Za tablicne redove koristi Docxtemplater loop: {{#USLUGE_REDOVI}} ... {{/USLUGE_REDOVI}}.",
     "",
     ...config.placeholders.map(([key, description]) => `${key} - ${description}`),
   ];
@@ -101532,6 +101573,7 @@ function buildDocumentTemplateRuntimeDocumentRecordPayload(template = buildDocum
   );
   if (handoverProtocol && hasMeaningfulDocumentRecordValue(handoverProtocol)) {
     fieldValues[DOCUMENT_TEMPLATE_HANDOVER_FIELD_KEY] = handoverProtocol;
+    fieldValues[DOCUMENT_TEMPLATE_SPECIFICATION_FIELD_KEY] = buildDocumentTemplateHandoverSpecificationPlaceholder(handoverProtocol);
   }
 
   return {

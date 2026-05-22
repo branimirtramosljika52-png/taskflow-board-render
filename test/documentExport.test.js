@@ -156,6 +156,36 @@ test("docx export does not duplicate handover protocol placeholders", async () =
   assert.equal((outputXml.match(/PRIMOPREDAJNI ZAPISNIK/g) || []).length, 1);
 });
 
+test("docx export renders a ready-made specification table placeholder", async () => {
+  const templateBuffer = buildMinimalDocxBuffer(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:body>
+        <w:p><w:r><w:t>{{SPECIFIKACIJA}}</w:t></w:r></w:p>
+        <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>
+      </w:body>
+    </w:document>`);
+
+  const outputBuffer = await buildDocxFromTemplateBuffer(templateBuffer, {
+    SPECIFIKACIJA: {
+      __docxBlockType: "handover_specification",
+      rows: [{
+        service: "Ispitivanje panik rasvjete",
+        objectName: "Prodajni prostor",
+        documentNumber: "26-638-SPR",
+        quantity: "16",
+        note: "Bez napomene",
+      }],
+    },
+  });
+  const outputXml = new PizZip(outputBuffer).file("word/document.xml").asText();
+
+  assert.match(outputXml, /PRILOG: Popis obavljenih usluga/);
+  assert.match(outputXml, /Ispitivanje panik rasvjete/);
+  assert.match(outputXml, /Prodajni prostor/);
+  assert.match(outputXml, /26-638-SPR/);
+  assert.match(outputXml, /Broj mjernih mjesta/);
+});
+
 test("docx export renders signature group placeholders as visible signature blocks", async () => {
   const templateBuffer = buildMinimalDocxBuffer(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
     <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -472,6 +502,33 @@ test("HTML template export does not duplicate handover protocol placeholders", (
   });
 
   assert.equal((html.match(/PRIMOPREDAJNI ZAPISNIK/g) || []).length, 1);
+});
+
+test("HTML template export renders a ready-made specification table placeholder", () => {
+  const html = buildHtmlFromTemplateBuffer(Buffer.from(`
+    <main>
+      {{SPECIFIKACIJA}}
+    </main>
+  `, "utf8"), {
+    SPECIFIKACIJA: {
+      __docxBlockType: "handover_specification",
+      rows: [{
+        service: "Ispitivanje panik rasvjete",
+        objectName: "Prodajni prostor",
+        documentNumber: "26-638-SPR",
+        quantity: "16",
+        note: "Bez napomene",
+      }],
+    },
+  }, {
+    title: "Specifikacija",
+  });
+
+  assert.match(html, /PRILOG: Popis obavljenih usluga/);
+  assert.match(html, /Ispitivanje panik rasvjete/);
+  assert.match(html, /Prodajni prostor/);
+  assert.match(html, /26-638-SPR/);
+  assert.match(html, /Broj mjernih mjesta/);
 });
 
 test("HTML template export normalizes Croatian mojibake and UTF-8 metadata", () => {

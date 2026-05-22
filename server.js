@@ -3223,6 +3223,38 @@ function buildWorkOrderTemplateServiceRows(workOrder = {}) {
     : [];
 }
 
+function buildWorkOrderTemplateSpecificationPlaceholder(serviceRows = []) {
+  const rows = (Array.isArray(serviceRows) ? serviceRows : [])
+    .map((row, index) => {
+      const source = row && typeof row === "object" ? row : {};
+      const service = normalizeWorkOrderTemplateValue(source.USLUGA || source.NAZIV || source.service || source.name);
+      const documentNumber = normalizeWorkOrderTemplateValue(source.BROJ_DOKUMENTA || source.documentNumber);
+      const quantity = normalizeWorkOrderTemplateValue(source.KOLICINA || source.quantity);
+      const note = normalizeWorkOrderTemplateValue(source.NAPOMENA || source.NAPOMENA_USLUGE || source.note);
+      const objectName = normalizeWorkOrderTemplateValue(source.USLUGA_OBJEKT || source.OBJEKT || source.objectName);
+      if (!service && !documentNumber && !note) {
+        return null;
+      }
+      return {
+        id: normalizeWorkOrderTemplateValue(source.id) || `specifikacija-${index + 1}`,
+        service: service || "Usluga",
+        objectName,
+        documentNumber,
+        quantity: quantity || "1",
+        note,
+      };
+    })
+    .filter(Boolean);
+
+  return rows.length > 0
+    ? {
+      type: "handover_specification",
+      __docxBlockType: "handover_specification",
+      rows,
+    }
+    : "";
+}
+
 function getWorkOrderTemplateOrganization(scopedSnapshot = {}) {
   return scopedSnapshot.currentOrganization
     || (Array.isArray(scopedSnapshot.organizations)
@@ -3253,6 +3285,7 @@ function buildWorkOrderTemplatePlaceholderPayload(workOrder = {}, scopedSnapshot
   const servicesTableText = serviceRows
     .map((row) => [row.USLUGA_S_OBJEKTOM || row.USLUGA, row.BROJ_DOKUMENTA, row.KOLICINA, row.NAPOMENA].filter(Boolean).join(" | "))
     .join("\n");
+  const specificationPlaceholder = buildWorkOrderTemplateSpecificationPlaceholder(serviceRows);
   const openedDate = normalizedWorkOrder.openedDate ? formatOfferDocumentDate(normalizedWorkOrder.openedDate) : "";
   const dueDate = normalizedWorkOrder.dueDate ? formatOfferDocumentDate(normalizedWorkOrder.dueDate) : "";
   const issuedDateSource = normalizedWorkOrder.issuedDate || normalizedWorkOrder.dateIssued || normalizedWorkOrder.documentDate;
@@ -3301,6 +3334,9 @@ function buildWorkOrderTemplatePlaceholderPayload(workOrder = {}, scopedSnapshot
     USLUGE: services,
     USLUGE_REDOVI: serviceRows,
     USLUGE_TABLICA: servicesTableText,
+    SPECIFIKACIJA: specificationPlaceholder,
+    Specifikacija: specificationPlaceholder,
+    specifikacija: specificationPlaceholder,
     NAPOMENA: normalizeWorkOrderTemplateValue(normalizedWorkOrder.description),
     ODJEL: normalizeWorkOrderTemplateValue(normalizedWorkOrder.department || normalizedWorkOrder.serviceLine),
     KOORDINATE: normalizeWorkOrderTemplateValue(normalizedWorkOrder.coordinates),
