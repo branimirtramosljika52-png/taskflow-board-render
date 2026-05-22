@@ -307,7 +307,7 @@ test("docx export keeps digital signature placeholders compact inside template c
   assert.equal(outputXml.includes('<w:gridCol w:w="4680"/>'), false);
 });
 
-test("docx export keeps floating Word images pinned while inserting blocks", async () => {
+test("docx export preserves existing floating Word image anchors while inserting blocks", async () => {
   const templateBuffer = buildMinimalDocxBuffer(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
     <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:v="urn:schemas-microsoft-com:vml">
       <w:body>
@@ -347,10 +347,8 @@ test("docx export keeps floating Word images pinned while inserting blocks", asy
 
   assert.equal(outputXml.includes("{{POTPISI}}"), false);
   assert.match(outputXml, /Ana Savanovic/);
-  assert.match(outputXml, /<wp:positionV relativeFrom="page"><wp:posOffset>50800<\/wp:posOffset><\/wp:positionV>/);
-  assert.doesNotMatch(outputXml, /<wp:positionV relativeFrom="paragraph"/);
-  assert.match(outputXml, /mso-position-vertical-relative:page/);
-  assert.doesNotMatch(outputXml, /mso-position-vertical-relative:paragraph/);
+  assert.match(outputXml, /<wp:positionV relativeFrom="paragraph"><wp:posOffset>50800<\/wp:posOffset><\/wp:positionV>/);
+  assert.match(outputXml, /mso-position-vertical-relative:paragraph/);
 });
 
 test("HTML template export renders escaped placeholders and special table blocks", () => {

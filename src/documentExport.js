@@ -2636,56 +2636,6 @@ function ensureDocxDrawingNamespaces(xml = "") {
   });
 }
 
-function stabilizeDocxFloatingVisualAnchors(xml = "") {
-  if (!xml) {
-    return xml;
-  }
-
-  return String(xml)
-    .replace(/<wp:anchor\b[\s\S]*?<\/wp:anchor>/gi, (anchorXml = "") => (
-      anchorXml.replace(
-        /(<wp:positionV\b[^>]*\b(?:wp:)?relativeFrom=)(["'])(?:paragraph|line|character|text)\2/gi,
-        "$1$2page$2",
-      )
-    ))
-    .replace(/(<v:(?:shape|rect|oval|line|group)\b[^>]*\bstyle=)(["'])([^"']*)\2/gi, (
-      match,
-      prefix,
-      quote,
-      style,
-    ) => {
-      if (!/position\s*:\s*absolute/i.test(style)) {
-        return match;
-      }
-      const nextStyle = style.replace(
-        /mso-position-vertical-relative\s*:\s*(?:paragraph|line|character|text)\b/gi,
-        "mso-position-vertical-relative:page",
-      );
-      return `${prefix}${quote}${nextStyle}${quote}`;
-    });
-}
-
-function stabilizeDocxFloatingVisualAnchorsInZip(zip) {
-  if (!zip) {
-    return;
-  }
-
-  Object.keys(zip.files ?? {})
-    .filter((fileName) => /^word\/(document|header\d+|footer\d+)\.xml$/i.test(fileName))
-    .forEach((fileName) => {
-      const file = zip.file(fileName);
-      if (!file) {
-        return;
-      }
-
-      const xml = file.asText();
-      const nextXml = stabilizeDocxFloatingVisualAnchors(xml);
-      if (nextXml !== xml) {
-        zip.file(fileName, nextXml);
-      }
-    });
-}
-
 function getDocxSignatureImageData(item = {}) {
   const imageData = item?.signatureImageData;
   if (!imageData || !Buffer.isBuffer(imageData.buffer) || imageData.buffer.length === 0) {
@@ -2980,7 +2930,6 @@ function renderDocxTemplateZip(zip, normalizedPlaceholders = {}, specialPlacehol
 
   doc.render(normalizedPlaceholders);
   applyDocxSpecialPlaceholders(doc.getZip(), specialPlaceholders);
-  stabilizeDocxFloatingVisualAnchorsInZip(doc.getZip());
   return doc.getZip().generate({
     type: "nodebuffer",
     compression: "DEFLATE",
@@ -3101,7 +3050,6 @@ function appendDocxSpecialBlocksToBuffer(buffer = Buffer.alloc(0), blocks = []) 
     xml += appendXml;
   }
   zip.file("word/document.xml", ensureDocxDrawingNamespaces(xml));
-  stabilizeDocxFloatingVisualAnchorsInZip(zip);
 
   return zip.generate({
     type: "nodebuffer",
