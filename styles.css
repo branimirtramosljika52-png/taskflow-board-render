@@ -56038,13 +56038,17 @@ body.is-signature-review-open::before {
 
 .work-item-services-cell {
   align-self: stretch;
-  padding-left: 4px;
+  align-content: center;
+  justify-items: stretch;
+  padding-left: 8px;
 }
 
 .work-item-service-list {
   display: grid;
+  align-self: center;
   gap: 5px;
   min-width: 0;
+  width: 100%;
 }
 
 .work-item-service-list ul {

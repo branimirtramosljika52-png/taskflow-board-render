@@ -200,7 +200,7 @@ const WORK_ORDER_REGION_OPTIONS = Object.freeze([
   "Središnja Hrvatska",
   "Riječko područje",
 ]);
-const WORK_ORDER_LIST_COLUMN_STORAGE_PREFIX = "safenexus.work-order-list-columns.v4";
+const WORK_ORDER_LIST_COLUMN_STORAGE_PREFIX = "safenexus.work-order-list-columns.v5";
 const WORK_ORDER_COLUMN_PANEL_STORAGE_PREFIX = "safenexus.work-order-column-panel.v2";
 const WORK_ORDER_LIST_COLUMN_LAYOUTS = Object.freeze({
   collapsed: Object.freeze([
@@ -210,7 +210,7 @@ const WORK_ORDER_LIST_COLUMN_LAYOUTS = Object.freeze({
     { key: "location", title: "Lokacija", defaultWidth: 224, minWidth: 168 },
     { key: "contact", title: "Kontakt osoba", defaultWidth: 178, minWidth: 140 },
     { key: "priorityTags", title: "Prioritet / tagovi", defaultWidth: 168, minWidth: 138 },
-    { key: "services", title: "Usluge", defaultWidth: 196, minWidth: 150 },
+    { key: "services", title: "Usluge", defaultWidth: 252, minWidth: 192 },
     { key: "executors", title: "Izvršitelji (% / bodovi)", defaultWidth: 226, minWidth: 174 },
     { key: "finance", title: "Financije", defaultWidth: 142, minWidth: 118 },
     { key: "actions", title: "Akcije", defaultWidth: 70, minWidth: 62, resizable: false },
@@ -222,7 +222,7 @@ const WORK_ORDER_LIST_COLUMN_LAYOUTS = Object.freeze({
     { key: "location", title: "Lokacija", defaultWidth: 238, minWidth: 176 },
     { key: "contact", title: "Kontakt osoba", defaultWidth: 190, minWidth: 146 },
     { key: "priorityTags", title: "Prioritet / tagovi", defaultWidth: 178, minWidth: 144 },
-    { key: "services", title: "Usluge", defaultWidth: 210, minWidth: 158 },
+    { key: "services", title: "Usluge", defaultWidth: 268, minWidth: 198 },
     { key: "executors", title: "Izvršitelji (% / bodovi)", defaultWidth: 240, minWidth: 184 },
     { key: "finance", title: "Financije", defaultWidth: 154, minWidth: 124 },
     { key: "actions", title: "Akcije", defaultWidth: 70, minWidth: 62, resizable: false },
