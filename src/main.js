@@ -71886,6 +71886,10 @@ function renderDocumentTemplateRuntimeFieldRows() {
       entryCard.classList.toggle("is-skipped", skipped);
       entryCard.classList.toggle("is-ok", groupOk);
       entryCard.classList.toggle("is-warning", !groupOk && !skipped);
+      const collapseToken = String(group.workOrderId || group.workOrderNumber || "").trim();
+      const collapseKey = collapseToken ? `summary:${collapseToken}` : "";
+      const isCollapsed = Boolean(collapseKey && state.documentTemplateRuntime.collapsedBlocks?.[collapseKey]);
+      entryCard.classList.toggle("is-collapsed", isCollapsed);
 
       const entryHead = document.createElement("div");
       entryHead.className = "document-template-runtime-summary-entry-head";
@@ -71913,7 +71917,32 @@ function renderDocumentTemplateRuntimeFieldRows() {
         ? "1 usluga"
         : `${serviceItems.length} usluga`;
       entryTitleWrap.append(entryTitle, entryMeta);
-      entryHead.append(includeField, entryTitleWrap);
+      const toggleButton = document.createElement("button");
+      toggleButton.type = "button";
+      toggleButton.className = "document-template-runtime-summary-entry-toggle";
+      toggleButton.setAttribute("aria-expanded", String(!isCollapsed));
+      toggleButton.title = isCollapsed ? "Prikaži RN" : "Sakrij RN";
+      const toggleIcon = document.createElement("span");
+      toggleIcon.className = "document-template-runtime-summary-entry-toggle-icon";
+      toggleIcon.setAttribute("aria-hidden", "true");
+      toggleButton.append(entryTitleWrap, toggleIcon);
+      toggleButton.addEventListener("click", () => {
+        if (!collapseKey) {
+          return;
+        }
+        const nextCollapsedBlocks = {
+          ...(state.documentTemplateRuntime.collapsedBlocks ?? {}),
+        };
+        if (isCollapsed) {
+          delete nextCollapsedBlocks[collapseKey];
+        } else {
+          nextCollapsedBlocks[collapseKey] = true;
+        }
+        state.documentTemplateRuntime.collapsedBlocks = nextCollapsedBlocks;
+        saveDocumentTemplateRuntimeLocalDraft({ syncButton: true });
+        renderDocumentTemplateFieldRows();
+      });
+      entryHead.append(includeField, toggleButton);
       let requiredWarning = null;
       if (missingRequired.length > 0) {
         requiredWarning = document.createElement("div");

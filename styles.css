@@ -34331,7 +34331,7 @@ body.is-measurement-equipment-export-open {
 .document-template-runtime-summary-list {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(285px, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
 }
 
@@ -34382,6 +34382,15 @@ body.is-measurement-equipment-export-open {
   background: linear-gradient(180deg, rgba(245, 247, 250, 0.95), rgba(255, 255, 255, 0.98));
 }
 
+.document-template-runtime-summary-entry.is-collapsed {
+  gap: 0;
+}
+
+.document-template-runtime-summary-entry.is-collapsed .document-template-runtime-summary-required-warning,
+.document-template-runtime-summary-entry.is-collapsed .document-template-runtime-summary-services {
+  display: none;
+}
+
 .document-template-runtime-summary-entry-head {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto auto;
@@ -34391,6 +34400,53 @@ body.is-measurement-equipment-export-open {
 
 .document-template-runtime-summary-entry-head.is-simple {
   grid-template-columns: auto minmax(0, 1fr);
+}
+
+.document-template-runtime-summary-entry-toggle {
+  min-width: 0;
+  width: 100%;
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 4px 2px 2px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.document-template-runtime-summary-entry-toggle:hover,
+.document-template-runtime-summary-entry-toggle:focus-visible {
+  outline: none;
+  background: rgba(124, 92, 255, 0.08);
+}
+
+.document-template-runtime-summary-entry-toggle-icon {
+  width: 28px;
+  height: 28px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid rgba(167, 139, 250, 0.22);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.document-template-runtime-summary-entry-toggle-icon::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid #5b42cc;
+  border-bottom: 2px solid #5b42cc;
+  transform: rotate(45deg) translate(-1px, -1px);
+  transition: transform 0.16s ease;
+}
+
+.document-template-runtime-summary-entry.is-collapsed .document-template-runtime-summary-entry-toggle-icon::before {
+  transform: rotate(-45deg) translate(-1px, 1px);
 }
 
 .document-template-runtime-summary-include {
@@ -34618,9 +34674,9 @@ body.is-measurement-equipment-export-open {
 }
 
 .document-template-runtime-summary-services {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -34648,19 +34704,18 @@ body.is-measurement-equipment-export-open {
 
 .document-template-runtime-summary-service,
 .document-template-runtime-summary-service-empty {
-  min-height: 38px;
-  flex: 1 1 190px;
-  min-width: 160px;
+  min-height: 44px;
+  width: 100%;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
-  padding: 6px 8px;
+  padding: 7px 9px;
   border-radius: 13px;
   border: 1px solid rgba(190, 201, 222, 0.72);
   background: rgba(248, 250, 252, 0.9);
   color: #28334d;
-  font-size: 0.72rem;
+  font-size: 0.74rem;
   font-weight: 850;
 }
 
@@ -35327,9 +35382,17 @@ body.is-measurement-equipment-export-open {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .document-template-runtime-summary-entry-head.is-simple {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
   .document-template-runtime-summary-final-actions,
   .document-template-runtime-summary-entry-head {
     justify-items: start;
+  }
+
+  .document-template-runtime-summary-entry-head.is-simple {
+    justify-items: stretch;
   }
 
   .document-template-runtime-dock {
