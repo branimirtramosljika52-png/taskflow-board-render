@@ -222,8 +222,18 @@ export const DOCUMENT_TEMPLATE_FIELD_WIDTH_OPTIONS = [
   { value: "9", label: "9 polja" },
 ];
 
-const DOCUMENT_TEMPLATE_SIGNATURE_META_FIELD_VALUES = ["title", "oib", "classCode", "urbroj", "eBroj"];
+const DOCUMENT_TEMPLATE_SIGNATURE_META_FIELD_VALUES = ["title", "oib", "type", "data1", "data2", "data3", "passedOn"];
 const DOCUMENT_TEMPLATE_SIGNATURE_META_FIELD_SET = new Set(DOCUMENT_TEMPLATE_SIGNATURE_META_FIELD_VALUES);
+const DOCUMENT_TEMPLATE_SIGNATURE_META_FIELD_ALIASES = new Map([
+  ["classcode", "data1"],
+  ["class_code", "data1"],
+  ["urbroj", "data2"],
+  ["e_broj", "data3"],
+  ["ebroj", "data3"],
+  ["passedon", "passedOn"],
+  ["passed_on", "passedOn"],
+  ["passed-on", "passedOn"],
+]);
 const DOCUMENT_TEMPLATE_TEXT_LIST_STYLE_VALUES = new Set(["none", "bullet", "dash"]);
 const DOCUMENT_TEMPLATE_HTML_STYLE_ALIGN_VALUES = new Set(["left", "center", "right"]);
 const DOCUMENT_TEMPLATE_HTML_STYLE_TONE_VALUES = new Set(["default", "soft", "outline", "plain"]);
@@ -250,8 +260,14 @@ function normalizeDocumentTemplateSignatureMetaFields(values = undefined) {
   return Array.from(
     new Set(
       values
-        .map((value) => normalizeText(value))
-        .filter((value) => DOCUMENT_TEMPLATE_SIGNATURE_META_FIELD_SET.has(value)),
+        .map((value) => {
+          const raw = normalizeText(value);
+          if (DOCUMENT_TEMPLATE_SIGNATURE_META_FIELD_SET.has(raw)) {
+            return raw;
+          }
+          return DOCUMENT_TEMPLATE_SIGNATURE_META_FIELD_ALIASES.get(raw.toLowerCase()) || "";
+        })
+        .filter(Boolean),
     ),
   );
 }

@@ -687,6 +687,13 @@ export function mapStoredDocumentTemplateCustomField(field = {}) {
     signatureRole: dbString(source.signatureRole),
     signatureMultiple: source.signatureMultiple === undefined ? undefined : Boolean(source.signatureMultiple),
     signatureIncludeScan: source.signatureIncludeScan === undefined ? undefined : Boolean(source.signatureIncludeScan),
+    signatureMetaFields: source.signatureMetaFields === undefined
+      && source.signature_meta_fields === undefined
+      && source.metaFields === undefined
+      ? undefined
+      : parseJsonArray(source.signatureMetaFields ?? source.signature_meta_fields ?? source.metaFields)
+        .map((entry) => dbString(entry))
+        .filter(Boolean),
     defaultValue: dbString(source.defaultValue),
     helpText: dbString(source.helpText),
     textListStyle: dbString(source.textListStyle ?? source.listStyle),

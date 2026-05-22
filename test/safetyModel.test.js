@@ -857,6 +857,7 @@ test("document templates keep nested builder data and support filtering", () => 
           type: "inspector_signature",
           signatureArea: "elektro",
           fieldHeight: 6,
+          signatureMetaFields: ["oib", "type", "data1", "data2", "data3", "passedOn"],
         },
         {
           label: "Potpis nositelja",
@@ -996,6 +997,7 @@ test("document templates keep nested builder data and support filtering", () => 
   assert.equal(template.customFields[4].type, "inspector_signature");
   assert.equal(template.customFields[4].signatureArea, "elektro");
   assert.equal(template.customFields[4].fieldHeight, 6);
+  assert.deepEqual(template.customFields[4].signatureMetaFields, ["oib", "type", "data1", "data2", "data3", "passedOn"]);
   assert.equal(template.customFields[5].type, "authorization_holder_signature");
   assert.equal(template.customFields[5].signatureArea, "elektro");
   assert.equal(template.customFields[6].type, "qualified_inspectors");
@@ -1067,6 +1069,48 @@ test("document templates keep nested builder data and support filtering", () => 
 
   assert.equal(builderOnlyReference.referenceDocument?.dataUrl, "");
   assert.equal(builderOnlyReference.referenceDocument?.builderDocument?.[0]?.children?.[0]?.props?.merges?.[0]?.colSpan, 3);
+});
+
+test("document templates persist selected signature meta fields", () => {
+  const state = buildState();
+  const template = createDocumentTemplate(
+    {
+      organizationId: "org-1",
+      title: "Signature meta template",
+      customFields: [
+        {
+          label: "Ispitivanje obavili",
+          key: "ISPITIVANJE_OBAVILI",
+          type: "qualified_inspectors",
+          signatureMetaFields: ["oib", "type", "data1", "classCode", "urbroj", "eBroj", "data3", "passedOn", "unknown"],
+        },
+      ],
+    },
+    state,
+    () => "template-signature-meta",
+    () => "2026-05-22T08:00:00.000Z",
+  );
+
+  assert.deepEqual(template.customFields[0].signatureMetaFields, ["oib", "type", "data1", "data2", "data3", "passedOn"]);
+
+  const updated = updateDocumentTemplate(
+    template,
+    {
+      customFields: [
+        {
+          ...template.customFields[0],
+          signatureMetaFields: ["title", "oib"],
+        },
+      ],
+    },
+    {
+      ...state,
+      documentTemplates: [template],
+    },
+    () => "2026-05-22T08:05:00.000Z",
+  );
+
+  assert.deepEqual(updated.customFields[0].signatureMetaFields, ["title", "oib"]);
 });
 
 test("document templates keep Word reference documents for template generation", () => {

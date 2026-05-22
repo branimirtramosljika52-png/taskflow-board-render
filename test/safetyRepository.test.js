@@ -372,6 +372,7 @@ test("stored document template field mapping preserves AI and builder metadata",
     toggleFalseLabel: "Ne zadovoljava",
     toggleTrueText: "Vrijedi do",
     toggleFalseText: "Obaviti ispitivanje nakon otklona.",
+    signatureMetaFields: ["oib", "type", "passedOn"],
     legalFrameworkIds: ["legal-1"],
     defaultLegalFrameworkIds: ["legal-1"],
     columns: ["Pozicija", "Opis"],
@@ -385,6 +386,7 @@ test("stored document template field mapping preserves AI and builder metadata",
   assert.equal(mapped.toggleFalseLabel, "Ne zadovoljava");
   assert.equal(mapped.toggleTrueText, "Vrijedi do");
   assert.equal(mapped.toggleFalseText, "Obaviti ispitivanje nakon otklona.");
+  assert.deepEqual(mapped.signatureMetaFields, ["oib", "type", "passedOn"]);
   assert.deepEqual(mapped.legalFrameworkIds, ["legal-1"]);
   assert.deepEqual(mapped.defaultLegalFrameworkIds, ["legal-1"]);
   assert.deepEqual(mapped.columns, ["Pozicija", "Opis"]);

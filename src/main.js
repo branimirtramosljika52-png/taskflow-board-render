@@ -47725,6 +47725,16 @@ const DOCUMENT_TEMPLATE_SIGNATURE_META_FIELD_OPTIONS = [
 
 const DOCUMENT_TEMPLATE_DEFAULT_SIGNATURE_META_FIELDS = DOCUMENT_TEMPLATE_SIGNATURE_META_FIELD_OPTIONS
   .map((option) => option.value);
+const DOCUMENT_TEMPLATE_SIGNATURE_META_FIELD_ALIASES = new Map([
+  ["classcode", "data1"],
+  ["class_code", "data1"],
+  ["urbroj", "data2"],
+  ["e_broj", "data3"],
+  ["ebroj", "data3"],
+  ["passedon", "passedOn"],
+  ["passed_on", "passedOn"],
+  ["passed-on", "passedOn"],
+]);
 
 const DOCUMENT_TEMPLATE_SIGNATURE_METHOD_OPTIONS = [
   { value: "scan", label: "Potpis" },
@@ -48219,8 +48229,14 @@ function normalizeDocumentTemplateSignatureMetaFieldsLocal(values = undefined) {
   return Array.from(
     new Set(
       values
-        .map((value) => String(value || "").trim())
-        .filter((value) => allowedValues.has(value)),
+        .map((value) => {
+          const raw = String(value || "").trim();
+          if (allowedValues.has(raw)) {
+            return raw;
+          }
+          return DOCUMENT_TEMPLATE_SIGNATURE_META_FIELD_ALIASES.get(raw.toLowerCase()) || "";
+        })
+        .filter(Boolean),
     ),
   );
 }
@@ -74198,6 +74214,7 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
             .filter(Boolean);
           documentTemplateFieldDrafts[draftIndex].signatureMetaFields = normalizeDocumentTemplateSignatureMetaFieldsLocal(nextValues);
           refreshEditorSupport();
+          renderDocumentTemplatePreviewContent();
         });
         const optionCopy = document.createElement("span");
         optionCopy.textContent = option.label;
