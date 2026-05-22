@@ -63398,9 +63398,7 @@ function createWorkOrderBottomBarCard({
   handoverIcon.className = "work-order-bottom-card-service-icon";
   handoverIcon.innerHTML = getWorkOrderIconMarkup("signature");
   handoverIcon.setAttribute("aria-hidden", "true");
-  const handoverText = document.createElement("span");
-  handoverText.textContent = "Primop.";
-  handoverButton.append(handoverIcon, handoverText);
+  handoverButton.append(handoverIcon);
   handoverButton.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();

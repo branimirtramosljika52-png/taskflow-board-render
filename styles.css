@@ -57135,11 +57135,11 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
 }
 
 .work-order-bottom-card-service.is-handover-action {
-  flex: 0 0 auto;
-  min-width: 78px;
-  max-width: 86px;
-  gap: 5px;
+  flex: 0 0 34px;
+  min-width: 34px;
+  max-width: 34px;
   margin-left: auto;
+  padding: 0;
   border-color: rgba(34, 211, 238, 0.26);
   background: rgba(8, 47, 73, 0.78);
   color: #cffafe;
