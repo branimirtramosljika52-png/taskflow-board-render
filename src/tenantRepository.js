@@ -1798,7 +1798,8 @@ async function fetchOrganizations(connection, accessibleIds = null) {
   const [rows] = hasFilter
     ? await connection.query(
       `
-        SELECT id, name, oib, address, city, postal_code, country, contact_email, contact_phone, logo_data_url, status, created_at, updated_at
+        SELECT id, name, oib, address, city, postal_code, country, contact_email, contact_phone,
+               logo_data_url, document_stamp_settings_json, status, created_at, updated_at
         FROM organizations
         WHERE id IN (?)
         ORDER BY name ASC
@@ -1806,7 +1807,8 @@ async function fetchOrganizations(connection, accessibleIds = null) {
       [ids],
     )
     : await connection.query(`
-        SELECT id, name, oib, address, city, postal_code, country, contact_email, contact_phone, logo_data_url, status, created_at, updated_at
+        SELECT id, name, oib, address, city, postal_code, country, contact_email, contact_phone,
+               logo_data_url, document_stamp_settings_json, status, created_at, updated_at
         FROM organizations
         ORDER BY name ASC
       `);
