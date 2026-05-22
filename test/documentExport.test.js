@@ -872,14 +872,12 @@ test("PDF document stamp is drawn on every M.P. anchor", async () => {
   const outputBuffer = await addPdfDocumentStampToBuffer(inputBuffer, {
     imageDataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
     width: 120,
-    offsetX: 0,
-    offsetY: 8,
   });
 
   const streams = inflatePdfContentStreams(outputBuffer).join("\n");
   const imageDraws = streams.match(/\/Image-[^\s]+\s+Do/g) || [];
   assert.equal(imageDraws.length, 2);
-  assert.match(streams, /1 0 0 1 [0-9.]+ 180 cm[\s\S]*120 0 0 120 0 0 cm/);
+  assert.match(streams, /1 0 0 1 [0-9.]+ 172 cm[\s\S]*120 0 0 120 0 0 cm/);
 });
 
 test("PDF signature field is anchored below the last matching signer OIB", async () => {

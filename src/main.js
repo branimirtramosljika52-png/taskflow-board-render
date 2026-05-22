@@ -29724,10 +29724,14 @@ const DEFAULT_DOCUMENT_STAMP_SETTINGS = Object.freeze({
   anchorText: "M.P.",
   width: 126,
   height: 0,
-  offsetX: -4,
-  offsetY: 8,
+  offsetX: 0,
+  offsetY: 0,
   opacity: 1,
   pageMode: "all",
+});
+const LEGACY_DOCUMENT_STAMP_POSITION = Object.freeze({
+  offsetX: -4,
+  offsetY: 8,
 });
 
 function normalizeDocumentStampNumber(value, fallback, { min = Number.NEGATIVE_INFINITY, max = Number.POSITIVE_INFINITY } = {}) {
@@ -29740,7 +29744,7 @@ function normalizeDocumentStampNumber(value, fallback, { min = Number.NEGATIVE_I
 
 function normalizeDocumentStampSettings(settings = {}) {
   const raw = settings && typeof settings === "object" && !Array.isArray(settings) ? settings : {};
-  return {
+  const normalized = {
     enabled: raw.enabled !== false && raw.enabled !== "false",
     imageDataUrl: String(raw.imageDataUrl || raw.dataUrl || raw.stampDataUrl || "").trim(),
     anchorText: String(raw.anchorText || raw.anchor || DEFAULT_DOCUMENT_STAMP_SETTINGS.anchorText).trim()
@@ -29754,6 +29758,14 @@ function normalizeDocumentStampSettings(settings = {}) {
       ? String(raw.pageMode || raw.pages).trim().toLowerCase()
       : DEFAULT_DOCUMENT_STAMP_SETTINGS.pageMode,
   };
+  if (
+    Number(raw.offsetX) === LEGACY_DOCUMENT_STAMP_POSITION.offsetX
+    && Number(raw.offsetY) === LEGACY_DOCUMENT_STAMP_POSITION.offsetY
+  ) {
+    normalized.offsetX = DEFAULT_DOCUMENT_STAMP_SETTINGS.offsetX;
+    normalized.offsetY = DEFAULT_DOCUMENT_STAMP_SETTINGS.offsetY;
+  }
+  return normalized;
 }
 
 function getActiveOrganizationDocumentStampSettings() {

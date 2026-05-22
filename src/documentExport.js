@@ -76,10 +76,14 @@ const DEFAULT_PDF_DOCUMENT_STAMP_SETTINGS = Object.freeze({
   anchorText: "M.P.",
   width: 126,
   height: 0,
-  offsetX: -4,
-  offsetY: 8,
+  offsetX: 0,
+  offsetY: 0,
   opacity: 1,
   pageMode: "all",
+});
+const LEGACY_PDF_DOCUMENT_STAMP_POSITION = Object.freeze({
+  offsetX: -4,
+  offsetY: 8,
 });
 const SOFFICE_CANDIDATES = [
   process.env.SOFFICE_PATH,
@@ -6400,7 +6404,7 @@ function normalizePdfDocumentStampSettings(value = null) {
     }
     return Math.max(min, Math.min(max, number));
   };
-  return {
+  const normalized = {
     enabled: raw.enabled !== false && raw.enabled !== "false",
     imageDataUrl,
     anchorText: clean(raw.anchorText || raw.anchor || DEFAULT_PDF_DOCUMENT_STAMP_SETTINGS.anchorText)
@@ -6414,6 +6418,14 @@ function normalizePdfDocumentStampSettings(value = null) {
       ? clean(raw.pageMode || raw.pages).toLowerCase()
       : DEFAULT_PDF_DOCUMENT_STAMP_SETTINGS.pageMode,
   };
+  if (
+    Number(raw.offsetX) === LEGACY_PDF_DOCUMENT_STAMP_POSITION.offsetX
+    && Number(raw.offsetY) === LEGACY_PDF_DOCUMENT_STAMP_POSITION.offsetY
+  ) {
+    normalized.offsetX = DEFAULT_PDF_DOCUMENT_STAMP_SETTINGS.offsetX;
+    normalized.offsetY = DEFAULT_PDF_DOCUMENT_STAMP_SETTINGS.offsetY;
+  }
+  return normalized;
 }
 
 async function embedPdfDocumentStampImage(pdfDoc, stampSettings = DEFAULT_PDF_DOCUMENT_STAMP_SETTINGS) {
