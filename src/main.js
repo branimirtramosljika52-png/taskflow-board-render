@@ -71856,12 +71856,6 @@ function renderDocumentTemplateRuntimeFieldRows() {
         .filter(Boolean),
     );
     const exportableEntries = sequenceState.entries.filter((entry) => readyWorkOrderIds.has(String(entry.workOrderId || "").trim()));
-    const exportableGroups = groupDocumentTemplateRuntimeDockEntries(exportableEntries);
-    const readyGroupCount = summaryGroupStates.filter((item) => item.groupOk).length;
-    const skippedGroupCount = summaryGroupStates.filter((item) => item.skipped).length;
-    const warningGroupCount = summaryGroupStates.filter((item) => !item.groupOk && !item.skipped).length;
-    const totalSummaryServices = summaryGroupStates.reduce((total, item) => total + item.serviceItems.length, 0);
-    const completedSummaryServices = summaryGroupStates.reduce((total, item) => total + item.completedServices, 0);
     const missingRequiredCount = summaryGroupStates.reduce((total, item) => total + item.missingRequired.length, 0);
 
     const summaryBlock = document.createElement("section");
@@ -71872,67 +71866,11 @@ function renderDocumentTemplateRuntimeFieldRows() {
     const summaryHeadCopy = document.createElement("div");
     const summaryTitle = document.createElement("h4");
     summaryTitle.textContent = "Završni pregled";
-    const summaryMeta = document.createElement("p");
-    summaryMeta.className = "document-template-runtime-block-meta";
-    summaryMeta.textContent = "Sve što je popunjeno za odabrane RN-ove, usluge i spremanje dokumenata.";
-    summaryHeadCopy.append(summaryTitle, summaryMeta);
+    summaryHeadCopy.append(summaryTitle);
     summaryHead.append(summaryHeadCopy);
 
     const summaryBody = document.createElement("div");
     summaryBody.className = "document-template-runtime-block-body document-template-runtime-summary-body";
-
-    const batchCard = document.createElement("article");
-    batchCard.className = "document-template-runtime-summary-card";
-    const batchCardTitle = document.createElement("strong");
-    batchCardTitle.textContent = "Ukupno za spremanje";
-    const batchCardMeta = document.createElement("p");
-    batchCardMeta.className = "helper-copy module-copy";
-    batchCardMeta.textContent = `${exportableGroups.length} ${exportableGroups.length === 1 ? "RN spreman" : "RN-ova spremno"} · ${exportableEntries.length} ${exportableEntries.length === 1 ? "zapisnik" : "zapisnika"}.`;
-    batchCard.append(batchCardTitle, batchCardMeta);
-
-    const overview = document.createElement("div");
-    overview.className = "document-template-runtime-summary-overview";
-    const createOverviewCard = (label, value, detail, tone = "") => {
-      const card = document.createElement("article");
-      card.className = "document-template-runtime-summary-overview-card";
-      if (tone) {
-        card.classList.add(`is-${tone}`);
-      }
-      const valueNode = document.createElement("strong");
-      valueNode.textContent = value;
-      const labelNode = document.createElement("span");
-      labelNode.textContent = label;
-      const detailNode = document.createElement("small");
-      detailNode.textContent = detail;
-      card.append(valueNode, labelNode, detailNode);
-      return card;
-    };
-    overview.append(
-      createOverviewCard(
-        "RN-ovi",
-        `${readyGroupCount}/${summaryGroupStates.length}`,
-        skippedGroupCount > 0 ? `${skippedGroupCount} preskočeno` : "Svi odabrani RN-ovi u pregledu",
-        warningGroupCount > 0 ? "warning" : "ok",
-      ),
-      createOverviewCard(
-        "Zapisnici",
-        `${exportableEntries.length}/${sequenceState.entries.length}`,
-        "Sve forme koje ulaze u spremanje",
-        exportableEntries.length === sequenceState.entries.length ? "ok" : "warning",
-      ),
-      createOverviewCard(
-        "Usluge",
-        totalSummaryServices > 0 ? `${completedSummaryServices}/${totalSummaryServices}` : "0",
-        totalSummaryServices > 0 ? "Status usluga po RN-u" : "Nema usluga na odabiru",
-        totalSummaryServices === 0 || completedSummaryServices === totalSummaryServices ? "ok" : "warning",
-      ),
-      createOverviewCard(
-        "Provjere",
-        missingRequiredCount > 0 ? `${missingRequiredCount}` : "OK",
-        missingRequiredCount > 0 ? "Obavezna polja za dopunu" : "Sva obavezna polja su pokrivena",
-        missingRequiredCount > 0 ? "warning" : "ok",
-      ),
-    );
 
     const groupedList = document.createElement("div");
     groupedList.className = "document-template-runtime-summary-list";
@@ -71940,22 +71878,18 @@ function renderDocumentTemplateRuntimeFieldRows() {
       group,
       skipped,
       serviceItems,
-      completedServices,
       missingRequired,
       groupOk,
-      exportStatus,
     }) => {
       const entryCard = document.createElement("article");
       entryCard.className = "document-template-runtime-summary-entry";
       entryCard.classList.toggle("is-skipped", skipped);
       entryCard.classList.toggle("is-ok", groupOk);
       entryCard.classList.toggle("is-warning", !groupOk && !skipped);
-      if (exportStatus?.kind) {
-        entryCard.classList.add(`is-export-${exportStatus.kind}`);
-      }
 
       const entryHead = document.createElement("div");
       entryHead.className = "document-template-runtime-summary-entry-head";
+      entryHead.classList.add("is-simple");
       const includeField = document.createElement("label");
       includeField.className = "document-template-runtime-summary-include";
       includeField.title = skipped ? "RN je preskočen" : "RN je označen za spremanje";
@@ -71974,50 +71908,12 @@ function renderDocumentTemplateRuntimeFieldRows() {
       entryTitleWrap.className = "document-template-runtime-summary-entry-title";
       const entryTitle = document.createElement("strong");
       entryTitle.textContent = `RN ${group.workOrderNumber}`;
-      const firstItem = group.items[0] || {};
       const entryMeta = document.createElement("span");
-      entryMeta.textContent = [
-        firstItem.companyName || "",
-        firstItem.locationName || "",
-        `${group.items.length} ${group.items.length === 1 ? "zapisnik" : "zapisnika"}`,
-      ].filter(Boolean).join(" · ") || "Povezani zapisnici";
+      entryMeta.textContent = serviceItems.length === 1
+        ? "1 usluga"
+        : `${serviceItems.length} usluga`;
       entryTitleWrap.append(entryTitle, entryMeta);
-      const statusPill = document.createElement("span");
-      statusPill.className = "document-template-runtime-summary-status";
-      if (exportStatus?.kind) {
-        statusPill.classList.add(`is-${exportStatus.kind}`);
-      }
-      statusPill.textContent = exportStatus?.label || (skipped
-        ? "Preskočeno"
-        : (groupOk ? "Spremno" : "Nije završeno"));
-      statusPill.title = exportStatus?.detail || "";
-      entryHead.append(includeField, entryTitleWrap, statusPill);
-      const savedDocuments = Array.isArray(exportStatus?.documents)
-        ? exportStatus.documents.filter(Boolean)
-        : [];
-      if (savedDocuments.length > 0) {
-        const downloadButton = document.createElement("button");
-        downloadButton.type = "button";
-        downloadButton.className = "ghost-button document-template-runtime-summary-download document-template-runtime-summary-download-icon";
-        downloadButton.innerHTML = getWorkOrderIconMarkup("download");
-        downloadButton.title = savedDocuments.length === 1
-          ? "Preuzmi spremljeni dokument"
-          : `Preuzmi spremljene dokumente (${savedDocuments.length})`;
-        downloadButton.setAttribute("aria-label", downloadButton.title);
-        downloadButton.addEventListener("click", async () => {
-          downloadButton.disabled = true;
-          downloadButton.classList.add("is-loading");
-          try {
-            for (const documentItem of savedDocuments) {
-              await downloadDocumentTemplateSavedPdfDocument(documentItem);
-            }
-          } finally {
-            downloadButton.disabled = false;
-            downloadButton.classList.remove("is-loading");
-          }
-        });
-        entryHead.append(downloadButton);
-      }
+      entryHead.append(includeField, entryTitleWrap);
       let requiredWarning = null;
       if (missingRequired.length > 0) {
         requiredWarning = document.createElement("div");
@@ -72025,74 +71921,17 @@ function renderDocumentTemplateRuntimeFieldRows() {
         requiredWarning.textContent = `Fali obavezno: ${Array.from(new Set(missingRequired)).slice(0, 4).join(", ")}${missingRequired.length > 4 ? "..." : ""}`;
       }
 
-      const entryChips = document.createElement("div");
-      entryChips.className = "document-template-runtime-summary-entry-chips";
-      group.items.forEach((entry) => {
-        entryChips.append(createBadge(entry.timelineLabel, "document-template-meta-badge"));
-      });
-      const entryProgress = document.createElement("span");
-      entryProgress.className = "document-template-runtime-summary-entry-progress";
-      entryProgress.textContent = exportStatus?.detail || "";
-
-      const completedServiceLabels = serviceItems
-        .filter((service) => Boolean(service?.isCompleted))
-        .map((service) => service?.name || service?.serviceName || service?.serviceCode || "Usluga");
-      const pendingServiceLabels = serviceItems
-        .filter((service) => !service?.isCompleted)
-        .map((service) => service?.name || service?.serviceName || service?.serviceCode || "Usluga");
-      const entryChecklist = document.createElement("div");
-      entryChecklist.className = "document-template-runtime-summary-checklist";
-      const createChecklistItem = (label, value, tone = "") => {
-        const item = document.createElement("span");
-        item.className = "document-template-runtime-summary-checklist-item";
-        if (tone) {
-          item.classList.add(`is-${tone}`);
-        }
-        const itemLabel = document.createElement("small");
-        itemLabel.textContent = label;
-        const itemValue = document.createElement("strong");
-        itemValue.textContent = value;
-        item.append(itemLabel, itemValue);
-        return item;
-      };
-      entryChecklist.append(
-        createChecklistItem("Zapisnici", `${group.items.length}/${group.items.length}`, "ok"),
-        createChecklistItem(
-          "Usluge",
-          serviceItems.length === 0
-            ? "Bez usluga"
-            : `${completedServices}/${serviceItems.length} završeno`,
-          groupOk ? "ok" : "warning",
-        ),
-        createChecklistItem(
-          "Dokumenti",
-          exportStatus?.kind === "done"
-            ? "Spremljeno"
-            : (groupOk ? "Spremno" : "Čeka usluge"),
-          groupOk ? "ok" : "warning",
-        ),
-      );
-
       const serviceList = document.createElement("div");
       serviceList.className = "document-template-runtime-summary-services";
-      const serviceListTitle = document.createElement("div");
-      serviceListTitle.className = "document-template-runtime-summary-services-title";
-      const serviceListLabel = document.createElement("strong");
-      serviceListLabel.textContent = "Usluge";
-      const serviceListMeta = document.createElement("span");
-      serviceListMeta.textContent = serviceItems.length === 0
-        ? "Bez usluga"
-        : `${completedServiceLabels.length} gotovo · ${pendingServiceLabels.length} otvoreno`;
-      serviceListTitle.append(serviceListLabel, serviceListMeta);
-      serviceList.append(serviceListTitle);
       if (serviceItems.length === 0) {
         const emptyService = document.createElement("span");
         emptyService.className = "document-template-runtime-summary-service-empty";
-        emptyService.textContent = "Nema odabranih usluga na ovom RN-u.";
+        emptyService.textContent = "Bez usluga";
         serviceList.append(emptyService);
       } else {
         serviceItems.forEach((service, serviceIndex) => {
           const serviceLabel = service?.name || service?.serviceName || service?.serviceCode || "Usluga";
+          const serviceBadgeLabel = getDocumentTemplateRuntimeServiceBadgeLabel(service);
           const progressMeta = getWorkOrderServiceProgressMeta(service);
           const serviceRow = document.createElement("label");
           serviceRow.className = "document-template-runtime-summary-service";
@@ -72111,23 +71950,37 @@ function renderDocumentTemplateRuntimeFieldRows() {
               { render: true },
             );
           });
+          const serviceCode = document.createElement("span");
+          serviceCode.className = "document-template-runtime-summary-service-code";
+          serviceCode.textContent = serviceBadgeLabel;
           const serviceName = document.createElement("span");
           serviceName.className = "document-template-runtime-summary-service-name";
           serviceName.textContent = serviceLabel;
-          const serviceStatus = document.createElement("strong");
-          serviceStatus.textContent = progressMeta.label;
-          serviceRow.append(serviceName, serviceStatus, serviceStatusSelect);
+          serviceRow.append(serviceCode, serviceName, serviceStatusSelect);
           serviceList.append(serviceRow);
         });
       }
+      const handoverButton = document.createElement("button");
+      handoverButton.type = "button";
+      handoverButton.className = "document-template-runtime-summary-service document-template-runtime-summary-handover";
+      handoverButton.disabled = skipped;
+      handoverButton.title = "Otvori primopredaju za ovaj RN";
+      const handoverIcon = document.createElement("span");
+      handoverIcon.className = "document-template-runtime-summary-service-code";
+      handoverIcon.innerHTML = getWorkOrderIconMarkup("signature");
+      handoverIcon.setAttribute("aria-hidden", "true");
+      const handoverLabel = document.createElement("span");
+      handoverLabel.className = "document-template-runtime-summary-service-name";
+      handoverLabel.textContent = "Primopredaja";
+      handoverButton.append(handoverIcon, handoverLabel);
+      handoverButton.addEventListener("click", () => {
+        openDocumentTemplateRuntimeHandoverPanel(group.workOrderId);
+      });
+      serviceList.append(handoverButton);
 
       entryCard.append(entryHead);
       if (requiredWarning) {
         entryCard.append(requiredWarning);
-      }
-      entryCard.append(entryChips, entryChecklist);
-      if (entryProgress.textContent) {
-        entryCard.append(entryProgress);
       }
       entryCard.append(serviceList);
       groupedList.append(entryCard);
@@ -72179,7 +72032,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     finalActions.append(signatureField, finishButton);
     finalPanel.append(finalCopy, finalActions);
 
-    summaryBody.append(batchCard, overview, groupedList, finalPanel);
+    summaryBody.append(groupedList, finalPanel);
     summaryBlock.append(summaryHead, summaryBody);
     shell.append(summaryBlock);
     documentTemplateCustomFields.replaceChildren(shell);
