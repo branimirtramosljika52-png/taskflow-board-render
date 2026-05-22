@@ -64764,7 +64764,7 @@ function syncDocumentTemplateEditorChrome() {
       const sequenceEntries = Array.isArray(sequenceState?.entries) ? sequenceState.entries : [];
 
       documentTemplateEditorTitle.textContent = sequenceState?.isSummary
-        ? `Summary · ${sequenceEntries.length} ${sequenceEntries.length === 1 ? "zapisnik" : "zapisnika"}`
+        ? `Završni pregled · ${sequenceEntries.length} ${sequenceEntries.length === 1 ? "zapisnik" : "zapisnika"}`
         : "Novi zapisnik";
       documentTemplateEditorTitle.hidden = false;
     } else {
@@ -71826,7 +71826,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     renderDocumentTemplateRuntimeStatusPanel({ template, activeWorkOrder, blocks: [] });
     const groupedEntries = groupDocumentTemplateRuntimeDockEntries(sequenceState.entries);
     const skippedWorkOrderIds = getDocumentTemplateRuntimeSkippedWorkOrderIdSet();
-    const signatureMode = runtimeSignatureMode;
+    const signatureMode = normalizeDocumentTemplateSignatureMethod(state.documentTemplateRuntime.common?.signatureMode);
     const summaryGroupStates = groupedEntries.map((group) => {
       const workOrder = getDocumentTemplateRuntimeWorkOrderById(group.workOrderId);
       const skipped = skippedWorkOrderIds.has(String(group.workOrderId || "").trim());
@@ -71871,10 +71871,10 @@ function renderDocumentTemplateRuntimeFieldRows() {
     summaryHead.className = "document-template-runtime-block-head";
     const summaryHeadCopy = document.createElement("div");
     const summaryTitle = document.createElement("h4");
-    summaryTitle.textContent = "Summary";
+    summaryTitle.textContent = "Završni pregled";
     const summaryMeta = document.createElement("p");
     summaryMeta.className = "document-template-runtime-block-meta";
-    summaryMeta.textContent = "Pregled RN-ova, usluga i spremljenih dokumenata.";
+    summaryMeta.textContent = "Sve što je popunjeno za odabrane RN-ove, usluge i spremanje dokumenata.";
     summaryHeadCopy.append(summaryTitle, summaryMeta);
     summaryHead.append(summaryHeadCopy);
 
@@ -71884,11 +71884,55 @@ function renderDocumentTemplateRuntimeFieldRows() {
     const batchCard = document.createElement("article");
     batchCard.className = "document-template-runtime-summary-card";
     const batchCardTitle = document.createElement("strong");
-    batchCardTitle.textContent = "Pregled RN-ova";
+    batchCardTitle.textContent = "Ukupno za spremanje";
     const batchCardMeta = document.createElement("p");
     batchCardMeta.className = "helper-copy module-copy";
     batchCardMeta.textContent = `${exportableGroups.length} ${exportableGroups.length === 1 ? "RN spreman" : "RN-ova spremno"} · ${exportableEntries.length} ${exportableEntries.length === 1 ? "zapisnik" : "zapisnika"}.`;
     batchCard.append(batchCardTitle, batchCardMeta);
+
+    const overview = document.createElement("div");
+    overview.className = "document-template-runtime-summary-overview";
+    const createOverviewCard = (label, value, detail, tone = "") => {
+      const card = document.createElement("article");
+      card.className = "document-template-runtime-summary-overview-card";
+      if (tone) {
+        card.classList.add(`is-${tone}`);
+      }
+      const valueNode = document.createElement("strong");
+      valueNode.textContent = value;
+      const labelNode = document.createElement("span");
+      labelNode.textContent = label;
+      const detailNode = document.createElement("small");
+      detailNode.textContent = detail;
+      card.append(valueNode, labelNode, detailNode);
+      return card;
+    };
+    overview.append(
+      createOverviewCard(
+        "RN-ovi",
+        `${readyGroupCount}/${summaryGroupStates.length}`,
+        skippedGroupCount > 0 ? `${skippedGroupCount} preskočeno` : "Svi odabrani RN-ovi u pregledu",
+        warningGroupCount > 0 ? "warning" : "ok",
+      ),
+      createOverviewCard(
+        "Zapisnici",
+        `${exportableEntries.length}/${sequenceState.entries.length}`,
+        "Sve forme koje ulaze u spremanje",
+        exportableEntries.length === sequenceState.entries.length ? "ok" : "warning",
+      ),
+      createOverviewCard(
+        "Usluge",
+        totalSummaryServices > 0 ? `${completedSummaryServices}/${totalSummaryServices}` : "0",
+        totalSummaryServices > 0 ? "Status usluga po RN-u" : "Nema usluga na odabiru",
+        totalSummaryServices === 0 || completedSummaryServices === totalSummaryServices ? "ok" : "warning",
+      ),
+      createOverviewCard(
+        "Provjere",
+        missingRequiredCount > 0 ? `${missingRequiredCount}` : "OK",
+        missingRequiredCount > 0 ? "Obavezna polja za dopunu" : "Sva obavezna polja su pokrivena",
+        missingRequiredCount > 0 ? "warning" : "ok",
+      ),
+    );
 
     const groupedList = document.createElement("div");
     groupedList.className = "document-template-runtime-summary-list";
@@ -72081,6 +72125,10 @@ function renderDocumentTemplateRuntimeFieldRows() {
       if (requiredWarning) {
         entryCard.append(requiredWarning);
       }
+      entryCard.append(entryChips, entryChecklist);
+      if (entryProgress.textContent) {
+        entryCard.append(entryProgress);
+      }
       entryCard.append(serviceList);
       groupedList.append(entryCard);
     });
@@ -72131,7 +72179,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     finalActions.append(signatureField, finishButton);
     finalPanel.append(finalCopy, finalActions);
 
-    summaryBody.append(groupedList, finalPanel);
+    summaryBody.append(batchCard, overview, groupedList, finalPanel);
     summaryBlock.append(summaryHead, summaryBody);
     shell.append(summaryBlock);
     documentTemplateCustomFields.replaceChildren(shell);
