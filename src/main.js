@@ -72640,6 +72640,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     groupedList.className = "document-template-runtime-summary-list";
     summaryGroupStates.forEach(({
       group,
+      workOrder,
       skipped,
       serviceItems,
       selectionState,
@@ -72684,11 +72685,44 @@ function renderDocumentTemplateRuntimeFieldRows() {
       const entryTitleWrap = document.createElement("div");
       entryTitleWrap.className = "document-template-runtime-summary-entry-title";
       const entryTitle = document.createElement("strong");
-      entryTitle.textContent = `RN ${group.workOrderNumber}`;
+      const companyLabel = String(workOrder?.companyName || workOrder?.company?.name || "").trim();
+      entryTitle.textContent = [
+        String(group.workOrderNumber || "").trim(),
+        companyLabel,
+      ].filter(Boolean).join(" ") || `RN ${group.workOrderNumber}`;
       const entryMeta = document.createElement("span");
-      entryMeta.textContent = serviceItems.length > 0 && selectionState.includedServiceCount !== serviceItems.length
-        ? `${selectionState.includedServiceCount}/${serviceItems.length} usluga`
-        : (serviceItems.length === 1 ? "1 usluga" : `${serviceItems.length} usluga`);
+      entryMeta.className = "document-template-runtime-summary-entry-meta";
+      const locationLabel = String(
+        workOrder?.locationName
+        || workOrder?.locationAddressSnapshot
+        || workOrder?.region
+        || "",
+      ).trim();
+      const locationNode = document.createElement("span");
+      locationNode.className = "document-template-runtime-summary-entry-location";
+      locationNode.textContent = locationLabel || "Bez lokacije";
+      const serviceCodes = Array.from(new Set(
+        serviceItems
+          .map((service) => getDocumentTemplateRuntimeServiceBadgeLabel(service))
+          .map((label) => String(label || "").trim())
+          .filter(Boolean),
+      ));
+      const serviceCodeList = document.createElement("span");
+      serviceCodeList.className = "document-template-runtime-summary-entry-codes";
+      if (serviceCodes.length === 0) {
+        const emptyCode = document.createElement("span");
+        emptyCode.className = "document-template-runtime-summary-entry-code is-empty";
+        emptyCode.textContent = "Bez ispitivanja";
+        serviceCodeList.append(emptyCode);
+      } else {
+        serviceCodes.forEach((code) => {
+          const codeNode = document.createElement("span");
+          codeNode.className = "document-template-runtime-summary-entry-code";
+          codeNode.textContent = code;
+          serviceCodeList.append(codeNode);
+        });
+      }
+      entryMeta.append(locationNode, serviceCodeList);
       entryTitleWrap.append(entryTitle, entryMeta);
       const toggleButton = document.createElement("button");
       toggleButton.type = "button";

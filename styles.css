@@ -34624,6 +34624,56 @@ body.is-measurement-equipment-export-open {
   line-height: 1.2;
 }
 
+.document-template-runtime-summary-entry-meta {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.document-template-runtime-summary-entry-location {
+  min-width: 0;
+  max-width: min(360px, 100%);
+  overflow: hidden;
+  color: #55627a;
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-template-runtime-summary-entry-codes {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.document-template-runtime-summary-entry-code {
+  min-height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(124, 92, 255, 0.18);
+  background: rgba(124, 92, 255, 0.08);
+  color: #4f36c7;
+  font-size: 0.58rem;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.document-template-runtime-summary-entry-code.is-empty {
+  border-color: rgba(100, 116, 139, 0.18);
+  background: rgba(241, 245, 249, 0.82);
+  color: #64748b;
+}
+
 .document-template-runtime-summary-entry-actions {
   min-width: 0;
   display: inline-flex;
