@@ -448,6 +448,22 @@ function normalizeMeasurementEquipmentNotificationDay(value, fallback = 1, { min
   return Math.max(min, Math.min(max, Math.round(numeric)));
 }
 
+function normalizeStoredPublicProcurementStatus(value = "") {
+  const status = dbString(value).toLowerCase();
+  const legacyMap = {
+    in_progress: "open",
+    submitted: "sent",
+    awarded: "accepted",
+    cancelled: "rejected",
+  };
+
+  if (legacyMap[status]) {
+    return legacyMap[status];
+  }
+
+  return ["open", "sent", "accepted", "rejected"].includes(status) ? status : "open";
+}
+
 function normalizeOptionalSettingsDay(value, { min = 0, max = 365 } = {}) {
   const rawValue = dbString(value).trim();
   if (!rawValue) {
@@ -3377,10 +3393,13 @@ async function fetchSnapshotFromConnection(connection) {
     ORDER BY
       CASE status
         WHEN 'open' THEN 0
-        WHEN 'in_progress' THEN 1
-        WHEN 'submitted' THEN 2
-        WHEN 'awarded' THEN 3
-        WHEN 'cancelled' THEN 4
+        WHEN 'in_progress' THEN 0
+        WHEN 'sent' THEN 1
+        WHEN 'submitted' THEN 1
+        WHEN 'accepted' THEN 2
+        WHEN 'awarded' THEN 2
+        WHEN 'rejected' THEN 3
+        WHEN 'cancelled' THEN 3
         ELSE 9
       END ASC,
       deadline ASC,
@@ -3396,7 +3415,7 @@ async function fetchSnapshotFromConnection(connection) {
       organizationId: dbString(row.organization_id),
       title: row.title ?? "",
       referenceNumber: row.reference_number ?? "",
-      status: row.status ?? "open",
+      status: normalizeStoredPublicProcurementStatus(row.status),
       deadline: normalizeDateOnly(row.deadline),
       amount: Number(row.amount ?? 0) || 0,
       companyId: dbString(row.company_id),

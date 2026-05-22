@@ -88711,7 +88711,21 @@ async function sendOfferEmailFromModal() {
 }
 
 function getPublicProcurementStatusLabel(status = "open") {
-  return getOptionLabel(PUBLIC_PROCUREMENT_STATUS_OPTIONS, status || "open") || "Otvoreno";
+  return getOptionLabel(PUBLIC_PROCUREMENT_STATUS_OPTIONS, normalizePublicProcurementStatusValue(status || "open")) || "Otvoreno";
+}
+
+function normalizePublicProcurementStatusValue(value = "open") {
+  const status = String(value ?? "").trim().toLowerCase();
+  const legacyMap = {
+    in_progress: "open",
+    submitted: "sent",
+    awarded: "accepted",
+    cancelled: "rejected",
+  };
+  if (legacyMap[status]) {
+    return legacyMap[status];
+  }
+  return PUBLIC_PROCUREMENT_STATUS_OPTIONS.some((option) => option.value === status) ? status : "open";
 }
 
 function getPublicProcurementAmountText(item = {}) {
@@ -88721,8 +88735,8 @@ function getPublicProcurementAmountText(item = {}) {
 
 function getPublicProcurementDeadlineInfo(item = {}) {
   const deadline = String(item.deadline || "").trim();
-  const status = String(item.status || "open");
-  const isComplete = ["submitted", "awarded", "cancelled"].includes(status);
+  const status = normalizePublicProcurementStatusValue(item.status || "open");
+  const isComplete = ["sent", "accepted", "rejected"].includes(status);
 
   if (!deadline) {
     return {
@@ -88778,20 +88792,7 @@ function syncPublicProcurementSelects() {
   }
 
   if (publicProcurementStatusInput) {
-    replaceSelectOptions(publicProcurementStatusInput, PUBLIC_PROCUREMENT_STATUS_OPTIONS, publicProcurementStatusInput.value || "open");
-  }
-
-  if (publicProcurementCompanyIdInput) {
-    const currentValue = publicProcurementCompanyIdInput.value || "";
-    replaceSelectOptions(publicProcurementCompanyIdInput, [
-      { value: "", label: "Bez povezane tvrtke" },
-      ...[...state.companies]
-        .sort((left, right) => String(left.name || "").localeCompare(String(right.name || ""), "hr"))
-        .map((company) => ({
-          value: String(company.id),
-          label: company.name || "Tvrtka bez naziva",
-        })),
-    ], currentValue);
+    replaceSelectOptions(publicProcurementStatusInput, PUBLIC_PROCUREMENT_STATUS_OPTIONS, normalizePublicProcurementStatusValue(publicProcurementStatusInput.value || "open"));
   }
 }
 
@@ -88821,8 +88822,8 @@ function hydratePublicProcurementForm(item = {}) {
   if (publicProcurementTitleInput) publicProcurementTitleInput.value = item.title || "";
   if (publicProcurementDeadlineInput) publicProcurementDeadlineInput.value = item.deadline ? formatDateInputDisplayValue(item.deadline) : "";
   if (publicProcurementAmountInput) publicProcurementAmountInput.value = Number(item.amount || 0) > 0 ? formatOfferMoneyInputDisplayValue(item.amount) : "";
-  if (publicProcurementStatusInput) publicProcurementStatusInput.value = item.status || "open";
-  if (publicProcurementCompanyIdInput) publicProcurementCompanyIdInput.value = item.companyId || "";
+  if (publicProcurementStatusInput) publicProcurementStatusInput.value = normalizePublicProcurementStatusValue(item.status || "open");
+  if (publicProcurementCompanyIdInput) publicProcurementCompanyIdInput.value = item.companyName || "";
   if (publicProcurementReferenceNumberInput) publicProcurementReferenceNumberInput.value = item.referenceNumber || "";
   if (publicProcurementDocumentationUrlInput) publicProcurementDocumentationUrlInput.value = item.documentationUrl || "";
   if (publicProcurementNoteInput) publicProcurementNoteInput.value = item.note || "";
@@ -88839,15 +88840,15 @@ function hydratePublicProcurementForm(item = {}) {
 }
 
 function buildPublicProcurementPayload() {
-  const company = state.companies.find((item) => String(item.id) === String(publicProcurementCompanyIdInput?.value || "")) ?? null;
+  const companyName = String(publicProcurementCompanyIdInput?.value || "").trim();
   return {
     title: String(publicProcurementTitleInput?.value || "").trim(),
     referenceNumber: String(publicProcurementReferenceNumberInput?.value || "").trim(),
-    status: publicProcurementStatusInput?.value || "open",
+    status: normalizePublicProcurementStatusValue(publicProcurementStatusInput?.value || "open"),
     deadline: normalizeDateInputValue(publicProcurementDeadlineInput?.value || "") || null,
     amount: roundMoneyAmount(Math.max(0, parseOfferMoneyInput(publicProcurementAmountInput?.value || "", 0))),
-    companyId: company ? String(company.id) : "",
-    companyName: company?.name || "",
+    companyId: "",
+    companyName,
     documentationUrl: String(publicProcurementDocumentationUrlInput?.value || "").trim(),
     note: String(publicProcurementNoteInput?.value || "").trim(),
     documents: publicProcurementDocumentDrafts.map((document) => ({ ...document })),
@@ -88904,10 +88905,10 @@ function renderPublicProcurementStats(items = []) {
     publicProcurementTotalCount.textContent = String(items.length);
   }
   if (publicProcurementOpenCount) {
-    publicProcurementOpenCount.textContent = String(items.filter((item) => ["open", "in_progress"].includes(item.status)).length);
+    publicProcurementOpenCount.textContent = String(items.filter((item) => normalizePublicProcurementStatusValue(item.status) === "open").length);
   }
   if (publicProcurementSubmittedCount) {
-    publicProcurementSubmittedCount.textContent = String(items.filter((item) => item.status === "submitted").length);
+    publicProcurementSubmittedCount.textContent = String(items.filter((item) => normalizePublicProcurementStatusValue(item.status) === "sent").length);
   }
   if (publicProcurementDocumentCount) {
     publicProcurementDocumentCount.textContent = String(items.reduce((total, item) => total + (item.documents?.length ?? 0), 0));
@@ -88938,8 +88939,9 @@ function renderPublicProcurementModule() {
   }
 
   publicProcurementList.replaceChildren(...visibleItems.map((item) => {
+    const normalizedStatus = normalizePublicProcurementStatusValue(item.status || "open");
     const card = document.createElement("article");
-    card.className = `public-procurement-card is-${item.status || "open"}`;
+    card.className = `public-procurement-card is-${normalizedStatus}`;
     if (String(item.id) === String(publicProcurementIdInput?.value || "")) {
       card.classList.add("is-active");
     }
@@ -88988,7 +88990,7 @@ function renderPublicProcurementModule() {
 
     const meta = document.createElement("div");
     meta.className = "public-procurement-card-meta";
-    const status = createMetaPill(getPublicProcurementStatusLabel(item.status), `is-${slugifyValue(item.status || "open")}`);
+    const status = createMetaPill(getPublicProcurementStatusLabel(normalizedStatus), `is-${slugifyValue(normalizedStatus)}`);
     const docs = document.createElement("span");
     docs.className = "public-procurement-card-document-count";
     docs.textContent = `${item.documents?.length ?? 0} dok.`;

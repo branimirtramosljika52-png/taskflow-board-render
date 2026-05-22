@@ -48,10 +48,9 @@ export const PURCHASE_ORDER_STATUS_OPTIONS = [
 
 export const PUBLIC_PROCUREMENT_STATUS_OPTIONS = [
   { value: "open", label: "Otvoreno" },
-  { value: "in_progress", label: "U pripremi" },
-  { value: "submitted", label: "Predano" },
-  { value: "awarded", label: "Dobiveno" },
-  { value: "cancelled", label: "Otkazano" },
+  { value: "sent", label: "Poslano" },
+  { value: "accepted", label: "Prihvaćeno" },
+  { value: "rejected", label: "Odbijeno" },
 ];
 
 export const RISK_ASSESSMENT_STATUS_OPTIONS = [
@@ -537,10 +536,13 @@ const PURCHASE_ORDER_STATUS_RANK = {
 };
 const PUBLIC_PROCUREMENT_STATUS_RANK = {
   open: 0,
-  in_progress: 1,
-  submitted: 2,
-  awarded: 3,
-  cancelled: 4,
+  sent: 1,
+  accepted: 2,
+  rejected: 3,
+  in_progress: 0,
+  submitted: 1,
+  awarded: 2,
+  cancelled: 3,
 };
 const RISK_ASSESSMENT_STATUS_RANK = {
   draft: 0,
@@ -825,6 +827,15 @@ function normalizePurchaseOrderStatus(value, fallback = "draft") {
 
 function normalizePublicProcurementStatus(value, fallback = "open") {
   const status = normalizeText(value).toLowerCase();
+  const legacyMap = {
+    in_progress: "open",
+    submitted: "sent",
+    awarded: "accepted",
+    cancelled: "rejected",
+  };
+  if (legacyMap[status]) {
+    return legacyMap[status];
+  }
   return PUBLIC_PROCUREMENT_STATUS_SET.has(status) ? status : fallback;
 }
 
@@ -8005,9 +8016,10 @@ export function filterPublicProcurements(
   { query = "", status = "all" } = {},
 ) {
   const normalizedQuery = normalizeText(query).toLowerCase();
+  const normalizedStatus = normalizePublicProcurementStatus(status, "all");
 
   return (procurements ?? []).filter((item) => {
-    if (status !== "all" && item.status !== status) {
+    if (status !== "all" && normalizePublicProcurementStatus(item.status) !== normalizedStatus) {
       return false;
     }
 
@@ -8303,8 +8315,8 @@ export function sortPurchaseOrders(purchaseOrders) {
 
 export function sortPublicProcurements(procurements) {
   return [...(procurements ?? [])].sort((left, right) => {
-    const leftRank = PUBLIC_PROCUREMENT_STATUS_RANK[left.status] ?? Number.MAX_SAFE_INTEGER;
-    const rightRank = PUBLIC_PROCUREMENT_STATUS_RANK[right.status] ?? Number.MAX_SAFE_INTEGER;
+    const leftRank = PUBLIC_PROCUREMENT_STATUS_RANK[normalizePublicProcurementStatus(left.status)] ?? Number.MAX_SAFE_INTEGER;
+    const rightRank = PUBLIC_PROCUREMENT_STATUS_RANK[normalizePublicProcurementStatus(right.status)] ?? Number.MAX_SAFE_INTEGER;
 
     if (leftRank !== rightRank) {
       return leftRank - rightRank;

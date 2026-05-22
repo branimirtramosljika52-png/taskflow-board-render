@@ -2262,8 +2262,9 @@ test("public procurements keep company context, documents, filtering and updates
     {
       organizationId: "55",
       title: "Predana ponuda za edukaciju",
-      status: "submitted",
+      status: "sent",
       deadline: "2026-05-25",
+      companyName: "Rucni unos d.o.o.",
     },
     {
       ...state,
@@ -2276,7 +2277,7 @@ test("public procurements keep company context, documents, filtering and updates
   const updatedTender = updatePublicProcurement(
     openTender,
     {
-      status: "in_progress",
+      status: "accepted",
       note: "Dokumentacija preuzeta, ceka se interna provjera.",
     },
     {
@@ -2288,14 +2289,15 @@ test("public procurements keep company context, documents, filtering and updates
 
   assert.equal(openTender.companyName, "Acme d.o.o.");
   assert.equal(openTender.companyOib, "12345678901");
+  assert.equal(submittedTender.companyName, "Rucni unos d.o.o.");
   assert.equal(openTender.amount, 12500.5);
   assert.equal(openTender.documents.length, 1);
   assert.equal(openTender.documents[0].fileName, "troskovnik.xlsx");
   assert.equal(filterPublicProcurements([openTender, submittedTender], { query: "12500.5" }).length, 1);
   assert.equal(filterPublicProcurements([openTender, submittedTender], { query: "troskovnik" }).length, 1);
-  assert.equal(filterPublicProcurements([openTender, submittedTender], { status: "submitted" })[0].id, "public-procurement-2");
+  assert.equal(filterPublicProcurements([openTender, submittedTender], { status: "sent" })[0].id, "public-procurement-2");
   assert.equal(sortPublicProcurements([submittedTender, openTender])[0].id, "public-procurement-1");
-  assert.equal(updatedTender.status, "in_progress");
+  assert.equal(updatedTender.status, "accepted");
   assert.equal(updatedTender.note, "Dokumentacija preuzeta, ceka se interna provjera.");
   assert.equal(updatedTender.updatedAt, "2026-05-19T11:00:00.000Z");
 });
