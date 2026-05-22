@@ -34485,6 +34485,11 @@ body.is-measurement-equipment-export-open {
   color: #fff;
 }
 
+.document-template-runtime-summary-include input:indeterminate + span {
+  background: linear-gradient(135deg, #f04f97, #7b5cff);
+  color: #fff;
+}
+
 .document-template-runtime-summary-include:focus-within {
   border-color: rgba(37, 99, 235, 0.5);
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
@@ -34707,7 +34712,7 @@ body.is-measurement-equipment-export-open {
   min-height: 44px;
   width: 100%;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: 16px auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   padding: 7px 9px;
@@ -34722,6 +34727,20 @@ body.is-measurement-equipment-export-open {
 .document-template-runtime-summary-service-empty {
   grid-template-columns: minmax(0, 1fr);
   background: rgba(247, 249, 252, 0.86);
+}
+
+.document-template-runtime-summary-service-check {
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+  min-height: 16px;
+  margin: 0;
+}
+
+.document-template-runtime-summary-service.is-deselected {
+  border-color: rgba(190, 201, 222, 0.46);
+  background: rgba(248, 250, 252, 0.52);
+  color: rgba(40, 51, 77, 0.62);
 }
 
 .document-template-runtime-summary-service.is-complete {
@@ -34761,8 +34780,7 @@ body.is-measurement-equipment-export-open {
 }
 
 .document-template-runtime-summary-handover {
-  grid-template-columns: auto minmax(0, 1fr);
-  cursor: pointer;
+  grid-template-columns: 16px auto minmax(0, 1fr) auto;
   border-color: rgba(34, 211, 238, 0.32);
   background: linear-gradient(135deg, rgba(236, 254, 255, 0.96), rgba(255, 255, 255, 0.94));
 }
@@ -34779,9 +34797,33 @@ body.is-measurement-equipment-export-open {
   box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.14);
 }
 
-.document-template-runtime-summary-handover:disabled {
+.document-template-runtime-summary-handover-action {
+  width: 30px;
+  height: 30px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid rgba(34, 211, 238, 0.24);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.86);
+  color: #155e75;
+  cursor: pointer;
+}
+
+.document-template-runtime-summary-handover-action:hover,
+.document-template-runtime-summary-handover-action:focus-visible {
+  outline: none;
+  border-color: rgba(34, 211, 238, 0.54);
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.12);
+}
+
+.document-template-runtime-summary-handover-action:disabled {
   cursor: not-allowed;
-  opacity: 0.54;
+  opacity: 0.48;
+}
+
+.document-template-runtime-summary-handover-action svg {
+  width: 14px;
+  height: 14px;
 }
 
 .document-template-runtime-summary-service-status-select {

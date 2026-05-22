@@ -2138,6 +2138,8 @@ const state = {
     collapsedBlocks: {},
     collapsedBlocksInitializedKey: "",
     skippedWorkOrderIds: [],
+    skippedServiceKeysByWorkOrderId: {},
+    skippedHandoverWorkOrderIds: [],
     exportStatuses: {},
     aiAssistantHidden: true,
     common: {
@@ -54445,7 +54447,7 @@ function normalizeDocumentTemplateSignatureServiceCode(value = "") {
 function getDocumentTemplateSignatureServiceCode(field = {}, context = {}) {
   const workOrder = context.sampleWorkOrder || {};
   const template = context.template || {};
-  const serviceItems = getDocumentTemplateRuntimeResolvedServiceItems(workOrder);
+  const serviceItems = getDocumentTemplateRuntimeIncludedServiceItems(workOrder);
   const primaryService = getDocumentTemplateRuntimePrimaryServiceItem(workOrder, template)
     || serviceItems[0]
     || null;
@@ -57321,7 +57323,7 @@ function buildDocumentTemplateSystemPlaceholderValues(template = buildDocumentTe
   const inspectorNameList = getWorkOrderDocumentQualifiedInspectorNames(workOrder);
   const lookupContext = { ...context, template };
   const lookup = (key) => String(getDocumentTemplateLookupSourcePreviewValue(key, lookupContext) ?? "").trim();
-  const serviceItems = getDocumentTemplateRuntimeResolvedServiceItems(workOrder);
+  const serviceItems = getDocumentTemplateRuntimeIncludedServiceItems(workOrder);
   const primaryService = getDocumentTemplateRuntimePrimaryServiceItem(workOrder, template)
     || serviceItems[0]
     || null;
@@ -59178,12 +59180,12 @@ function buildDocumentTemplateRuntimeServiceDocumentNumber(service = {}, workOrd
 }
 
 function buildDocumentTemplateRuntimeHandoverDefaultRows(template = buildDocumentTemplateDraft(), workOrder = {}) {
-  const normalizedServices = getDocumentTemplateRuntimeResolvedServiceItems(workOrder);
+  const normalizedServices = getDocumentTemplateRuntimeIncludedServiceEntries(workOrder);
   const override = workOrder?.id ? getDocumentTemplateRuntimeOverrideRecord(workOrder.id) : null;
   const rawServices = Array.isArray(override?.serviceItems)
     ? override.serviceItems
     : (Array.isArray(workOrder?.serviceItems) ? workOrder.serviceItems : []);
-  const rows = normalizedServices.map((service, index) => {
+  const rows = normalizedServices.map(({ service, index }) => {
     const rawService = rawServices[index] && typeof rawServices[index] === "object" ? rawServices[index] : {};
     const mergedService = { ...rawService, ...service };
     return {
@@ -59231,6 +59233,10 @@ function buildDocumentTemplateRuntimeHandoverProtocolModel(
   context = buildDocumentTemplatePreviewContext(template),
   workOrder = context.sampleWorkOrder,
 ) {
+  if (workOrder?.id && !isDocumentTemplateRuntimeHandoverIncluded(workOrder.id)) {
+    return null;
+  }
+
   const company = context.company || getCompany(workOrder?.companyId) || {};
   const location = getLocation(workOrder?.locationId) || {};
   const organization = getDocumentTemplateRuntimeOrganizationForHandover() || {};
@@ -59292,7 +59298,7 @@ function buildDocumentTemplateRuntimeExportEntry(
   const systemPlaceholderValues = buildDocumentTemplateSystemPlaceholderValues(template, context);
   const handoverProtocol = buildDocumentTemplateRuntimeHandoverProtocolModel(template, context, workOrder);
   const placeholders = buildDocumentTemplateRuntimePlaceholderPayload(template, context);
-  placeholders[DOCUMENT_TEMPLATE_HANDOVER_FIELD_KEY] = handoverProtocol;
+  placeholders[DOCUMENT_TEMPLATE_HANDOVER_FIELD_KEY] = handoverProtocol || "";
 
   return {
     templateId: runtimeTemplateId,
@@ -59302,7 +59308,7 @@ function buildDocumentTemplateRuntimeExportEntry(
     htmlFileName: `${baseFileName}.html`,
     pdfFileName: `${baseFileName}.pdf`,
     placeholders,
-    appendBlocks: [handoverProtocol],
+    appendBlocks: handoverProtocol ? [handoverProtocol] : [],
     documentRecord: buildDocumentTemplateRuntimeDocumentRecordPayload(template, workOrder),
     renderModel: {
       title: String(template.title || template.documentType || "Zapisnik").trim(),
@@ -59333,7 +59339,7 @@ function buildDocumentTemplateRuntimeExportEntry(
       },
       blocks: [
         ...buildDocumentTemplateRuntimePdfBlocks(template, context),
-        handoverProtocol,
+        ...(handoverProtocol ? [handoverProtocol] : []),
       ],
     },
   };
@@ -61738,6 +61744,27 @@ function getDocumentTemplateRuntimeResolvedServiceItems(workOrder = {}) {
   return getWorkOrderServiceItems(workOrder);
 }
 
+function getDocumentTemplateRuntimeResolvedServiceEntries(workOrder = {}) {
+  const workOrderId = String(workOrder?.id || "").trim();
+  return getDocumentTemplateRuntimeResolvedServiceItems(workOrder)
+    .map((service, index) => ({
+      service,
+      index,
+      key: getDocumentTemplateRuntimeServiceItemKey(service, index),
+      included: isDocumentTemplateRuntimeServiceItemIncluded(workOrderId, service, index),
+    }));
+}
+
+function getDocumentTemplateRuntimeIncludedServiceEntries(workOrder = {}) {
+  return getDocumentTemplateRuntimeResolvedServiceEntries(workOrder)
+    .filter((entry) => entry.included);
+}
+
+function getDocumentTemplateRuntimeIncludedServiceItems(workOrder = {}) {
+  return getDocumentTemplateRuntimeIncludedServiceEntries(workOrder)
+    .map((entry) => entry.service);
+}
+
 function setDocumentTemplateRuntimeServiceItemCompleted(workOrderId = "", serviceIndex = -1, isCompleted = false, { render = true } = {}) {
   setDocumentTemplateRuntimeServiceItemStatus(workOrderId, serviceIndex, isCompleted ? "completed" : "pending", { render });
 }
@@ -61761,10 +61788,7 @@ function setDocumentTemplateRuntimeServiceItemStatus(workOrderId = "", serviceIn
   ));
 
   updateDocumentTemplateRuntimeOverride(normalizedId, { serviceItems: nextItems }, { render: false });
-  state.documentTemplateRuntime.exportStatuses = Object.fromEntries(
-    Object.entries(getDocumentTemplateRuntimeExportStatusMap())
-      .filter(([key]) => !String(key).startsWith(`${normalizedId}::`)),
-  );
+  clearDocumentTemplateRuntimeExportStatusesForWorkOrder(normalizedId);
 
   if (render) {
     syncDocumentTemplateEditorChrome();
@@ -61784,7 +61808,7 @@ function buildDocumentTemplateRuntimeServiceProgressPatch(workOrder = {}, templa
   const normalizedTemplateId = getDocumentTemplateRuntimeTemplateId(template);
   const normalizedTemplateTitle = String(template?.title || "").trim().toLowerCase();
   let matchedCount = 0;
-  const nextItems = currentItems.map((service) => {
+  const nextItems = currentItems.map((service, index) => {
     const templateIds = getWorkOrderServiceTemplateIds(service).map((value) => String(value || "").trim());
     const templateTitles = getResolvedWorkOrderServiceTemplateTitles(service)
       .map((value) => String(value || "").trim().toLowerCase());
@@ -61793,6 +61817,10 @@ function buildDocumentTemplateRuntimeServiceProgressPatch(workOrder = {}, templa
       || (normalizedTemplateTitle && templateTitles.includes(normalizedTemplateTitle))
       || currentItems.length === 1
     );
+
+    if (!isDocumentTemplateRuntimeServiceItemIncluded(workOrderId, service, index)) {
+      return service;
+    }
 
     if (!matchesTemplate) {
       return service;
@@ -61835,7 +61863,7 @@ function getDocumentTemplateRuntimeMatchedServiceItems(workOrder = {}, template 
   const runtimeTemplateId = getDocumentTemplateRuntimeTemplateId(template);
   const normalizedTemplateTitle = String(template?.title || "").trim().toLowerCase();
 
-  return getDocumentTemplateRuntimeResolvedServiceItems(workOrder).filter((service) => {
+  return getDocumentTemplateRuntimeIncludedServiceItems(workOrder).filter((service) => {
     const templateIds = getWorkOrderServiceTemplateIds(service).map((value) => String(value || "").trim());
     if (runtimeTemplateId && templateIds.includes(runtimeTemplateId)) {
       return true;
@@ -69998,7 +70026,208 @@ function isDocumentTemplateRuntimeWorkOrderSkipped(workOrderId = "") {
   return Boolean(normalizedId && getDocumentTemplateRuntimeSkippedWorkOrderIdSet().has(normalizedId));
 }
 
-function setDocumentTemplateRuntimeWorkOrderSkipped(workOrderId = "", skipped = false, { render = true } = {}) {
+function normalizeDocumentTemplateRuntimeSkippedServiceKeyMap(value = {}, validWorkOrderIds = []) {
+  const source = value && typeof value === "object" ? value : {};
+  const validIdSet = new Set(
+    (Array.isArray(validWorkOrderIds) ? validWorkOrderIds : [])
+      .map((item) => String(item ?? "").trim())
+      .filter(Boolean),
+  );
+
+  return Object.fromEntries(
+    Object.entries(source)
+      .map(([workOrderId, keys]) => {
+        const normalizedId = String(workOrderId || "").trim();
+        if (!normalizedId || (validIdSet.size > 0 && !validIdSet.has(normalizedId))) {
+          return null;
+        }
+        const normalizedKeys = Array.from(new Set(
+          (Array.isArray(keys) ? keys : [])
+            .map((key) => String(key ?? "").trim())
+            .filter(Boolean),
+        ));
+        return normalizedKeys.length > 0 ? [normalizedId, normalizedKeys] : null;
+      })
+      .filter(Boolean),
+  );
+}
+
+function normalizeDocumentTemplateRuntimeSkippedHandoverIds(value = [], validWorkOrderIds = []) {
+  const validIdSet = new Set(
+    (Array.isArray(validWorkOrderIds) ? validWorkOrderIds : [])
+      .map((item) => String(item ?? "").trim())
+      .filter(Boolean),
+  );
+  return Array.from(new Set(
+    (Array.isArray(value) ? value : [])
+      .map((item) => String(item ?? "").trim())
+      .filter((item) => item && (validIdSet.size === 0 || validIdSet.has(item))),
+  ));
+}
+
+function getDocumentTemplateRuntimeServiceItemKey(service = {}, serviceIndex = 0) {
+  return getDocumentTemplateHandoverServiceKey(service, serviceIndex);
+}
+
+function getDocumentTemplateRuntimeSkippedServiceKeySet(workOrderId = "") {
+  const normalizedId = String(workOrderId || "").trim();
+  const keys = normalizedId
+    ? state.documentTemplateRuntime.skippedServiceKeysByWorkOrderId?.[normalizedId]
+    : [];
+  return new Set(
+    (Array.isArray(keys) ? keys : [])
+      .map((key) => String(key ?? "").trim())
+      .filter(Boolean),
+  );
+}
+
+function getDocumentTemplateRuntimeSkippedHandoverWorkOrderIdSet() {
+  return new Set(
+    (Array.isArray(state.documentTemplateRuntime.skippedHandoverWorkOrderIds)
+      ? state.documentTemplateRuntime.skippedHandoverWorkOrderIds
+      : [])
+      .map((value) => String(value ?? "").trim())
+      .filter(Boolean),
+  );
+}
+
+function isDocumentTemplateRuntimeServiceItemIncluded(workOrderId = "", service = {}, serviceIndex = 0) {
+  const normalizedId = String(workOrderId || "").trim();
+  const serviceKey = getDocumentTemplateRuntimeServiceItemKey(service, serviceIndex);
+  return Boolean(!normalizedId || !serviceKey || !getDocumentTemplateRuntimeSkippedServiceKeySet(normalizedId).has(serviceKey));
+}
+
+function isDocumentTemplateRuntimeHandoverIncluded(workOrderId = "") {
+  const normalizedId = String(workOrderId || "").trim();
+  return Boolean(!normalizedId || !getDocumentTemplateRuntimeSkippedHandoverWorkOrderIdSet().has(normalizedId));
+}
+
+function clearDocumentTemplateRuntimeExportStatusesForWorkOrder(workOrderId = "") {
+  const normalizedId = String(workOrderId || "").trim();
+  if (!normalizedId) {
+    return;
+  }
+  state.documentTemplateRuntime.exportStatuses = Object.fromEntries(
+    Object.entries(getDocumentTemplateRuntimeExportStatusMap())
+      .filter(([key]) => !String(key).startsWith(`${normalizedId}::`)),
+  );
+}
+
+function getDocumentTemplateRuntimeServiceSelectionState(workOrderId = "", serviceItems = []) {
+  const normalizedId = String(workOrderId || "").trim();
+  const services = Array.isArray(serviceItems) ? serviceItems : [];
+  const includedServiceCount = services.filter((service, index) => (
+    isDocumentTemplateRuntimeServiceItemIncluded(normalizedId, service, index)
+  )).length;
+  const handoverIncluded = isDocumentTemplateRuntimeHandoverIncluded(normalizedId);
+  const totalSelectable = services.length + 1;
+  const selectedSelectable = includedServiceCount + (handoverIncluded ? 1 : 0);
+  const skipped = isDocumentTemplateRuntimeWorkOrderSkipped(normalizedId);
+  return {
+    includedServiceCount,
+    handoverIncluded,
+    totalSelectable,
+    selectedSelectable,
+    checked: !skipped && totalSelectable > 0 && selectedSelectable === totalSelectable,
+    indeterminate: !skipped && selectedSelectable > 0 && selectedSelectable < totalSelectable,
+    skipped,
+  };
+}
+
+function syncDocumentTemplateRuntimeWorkOrderSkipFromSelectableItems(workOrderId = "") {
+  const normalizedId = String(workOrderId || "").trim();
+  if (!normalizedId) {
+    return;
+  }
+
+  const workOrder = getDocumentTemplateRuntimeWorkOrderById(normalizedId);
+  const serviceItems = workOrder ? getDocumentTemplateRuntimeResolvedServiceItems(workOrder) : [];
+  const selectionState = getDocumentTemplateRuntimeServiceSelectionState(normalizedId, serviceItems);
+  const skippedIds = getDocumentTemplateRuntimeSkippedWorkOrderIdSet();
+  if (selectionState.selectedSelectable === 0) {
+    skippedIds.add(normalizedId);
+  } else {
+    skippedIds.delete(normalizedId);
+  }
+  state.documentTemplateRuntime.skippedWorkOrderIds = [...skippedIds];
+}
+
+function setDocumentTemplateRuntimeServiceItemSkipped(workOrderId = "", serviceIndex = -1, skipped = false, { render = true } = {}) {
+  const normalizedId = String(workOrderId || "").trim();
+  const workOrder = getDocumentTemplateRuntimeWorkOrderById(normalizedId);
+  if (!normalizedId || !workOrder) {
+    return;
+  }
+
+  const serviceItems = getDocumentTemplateRuntimeResolvedServiceItems(workOrder);
+  if (serviceIndex < 0 || serviceIndex >= serviceItems.length) {
+    return;
+  }
+
+  const serviceKey = getDocumentTemplateRuntimeServiceItemKey(serviceItems[serviceIndex], serviceIndex);
+  if (!serviceKey) {
+    return;
+  }
+
+  const nextMap = normalizeDocumentTemplateRuntimeSkippedServiceKeyMap(
+    state.documentTemplateRuntime.skippedServiceKeysByWorkOrderId ?? {},
+    state.documentTemplateRuntime.workOrderIds ?? [],
+  );
+  const skippedKeys = new Set(nextMap[normalizedId] ?? []);
+  if (skipped) {
+    skippedKeys.add(serviceKey);
+  } else {
+    skippedKeys.delete(serviceKey);
+  }
+  if (skippedKeys.size > 0) {
+    nextMap[normalizedId] = [...skippedKeys];
+  } else {
+    delete nextMap[normalizedId];
+  }
+
+  state.documentTemplateRuntime.skippedServiceKeysByWorkOrderId = nextMap;
+  syncDocumentTemplateRuntimeWorkOrderSkipFromSelectableItems(normalizedId);
+  clearDocumentTemplateRuntimeExportStatusesForWorkOrder(normalizedId);
+
+  if (render) {
+    syncDocumentTemplateEditorChrome();
+    renderDocumentTemplateRuntimeContext();
+    renderDocumentTemplateFieldRows();
+    renderDocumentTemplatePreviewContent();
+  }
+  saveDocumentTemplateRuntimeLocalDraft({ syncButton: true });
+}
+
+function setDocumentTemplateRuntimeHandoverSkipped(workOrderId = "", skipped = false, { render = true } = {}) {
+  const normalizedId = String(workOrderId || "").trim();
+  if (!normalizedId) {
+    return;
+  }
+
+  const skippedIds = getDocumentTemplateRuntimeSkippedHandoverWorkOrderIdSet();
+  if (skipped) {
+    skippedIds.add(normalizedId);
+  } else {
+    skippedIds.delete(normalizedId);
+  }
+
+  state.documentTemplateRuntime.skippedHandoverWorkOrderIds = normalizeDocumentTemplateRuntimeSkippedHandoverIds(
+    [...skippedIds],
+    state.documentTemplateRuntime.workOrderIds ?? [],
+  );
+  syncDocumentTemplateRuntimeWorkOrderSkipFromSelectableItems(normalizedId);
+  clearDocumentTemplateRuntimeExportStatusesForWorkOrder(normalizedId);
+
+  if (render) {
+    syncDocumentTemplateEditorChrome();
+    renderDocumentTemplateRuntimeContext();
+    renderDocumentTemplateFieldRows();
+    renderDocumentTemplatePreviewContent();
+  }
+  saveDocumentTemplateRuntimeLocalDraft({ syncButton: true });
+}
+
+function setDocumentTemplateRuntimeWorkOrderSkipped(workOrderId = "", skipped = false, { render = true, syncItems = true } = {}) {
   const normalizedId = String(workOrderId || "").trim();
   if (!normalizedId) {
     return;
@@ -70012,10 +70241,38 @@ function setDocumentTemplateRuntimeWorkOrderSkipped(workOrderId = "", skipped = 
   }
 
   state.documentTemplateRuntime.skippedWorkOrderIds = [...skippedIds];
-  state.documentTemplateRuntime.exportStatuses = Object.fromEntries(
-    Object.entries(getDocumentTemplateRuntimeExportStatusMap())
-      .filter(([key]) => !String(key).startsWith(`${normalizedId}::`)),
-  );
+  if (syncItems) {
+    const nextServiceMap = normalizeDocumentTemplateRuntimeSkippedServiceKeyMap(
+      state.documentTemplateRuntime.skippedServiceKeysByWorkOrderId ?? {},
+      state.documentTemplateRuntime.workOrderIds ?? [],
+    );
+    const workOrder = getDocumentTemplateRuntimeWorkOrderById(normalizedId);
+    if (skipped && workOrder) {
+      const serviceKeys = getDocumentTemplateRuntimeResolvedServiceItems(workOrder)
+        .map((service, index) => getDocumentTemplateRuntimeServiceItemKey(service, index))
+        .filter(Boolean);
+      if (serviceKeys.length > 0) {
+        nextServiceMap[normalizedId] = serviceKeys;
+      } else {
+        delete nextServiceMap[normalizedId];
+      }
+    } else {
+      delete nextServiceMap[normalizedId];
+    }
+    state.documentTemplateRuntime.skippedServiceKeysByWorkOrderId = nextServiceMap;
+
+    const skippedHandoverIds = getDocumentTemplateRuntimeSkippedHandoverWorkOrderIdSet();
+    if (skipped) {
+      skippedHandoverIds.add(normalizedId);
+    } else {
+      skippedHandoverIds.delete(normalizedId);
+    }
+    state.documentTemplateRuntime.skippedHandoverWorkOrderIds = normalizeDocumentTemplateRuntimeSkippedHandoverIds(
+      [...skippedHandoverIds],
+      state.documentTemplateRuntime.workOrderIds ?? [],
+    );
+  }
+  clearDocumentTemplateRuntimeExportStatusesForWorkOrder(normalizedId);
 
   if (render) {
     syncDocumentTemplateEditorChrome();
@@ -70238,12 +70495,59 @@ function isDocumentTemplateRuntimeWorkOrderReadyForExport(workOrderId = "") {
     return false;
   }
 
+  const serviceItems = getDocumentTemplateRuntimeResolvedServiceItems(workOrder);
+  if (serviceItems.length > 0 && getDocumentTemplateRuntimeIncludedServiceItems(workOrder).length === 0) {
+    return false;
+  }
+
   return true;
+}
+
+function doesDocumentTemplateRuntimeServiceMatchSequenceEntry(service = {}, entry = {}) {
+  const templateId = String(entry?.templateId || "").trim();
+  const templateTitle = String(entry?.templateTitle || "").trim().toLowerCase();
+  const templateIds = getWorkOrderServiceTemplateIds(service).map((value) => String(value || "").trim());
+  if (templateId && templateIds.includes(templateId)) {
+    return true;
+  }
+
+  if (!templateTitle) {
+    return false;
+  }
+
+  return getResolvedWorkOrderServiceTemplateTitles(service)
+    .map((value) => String(value || "").trim().toLowerCase())
+    .includes(templateTitle);
+}
+
+function isDocumentTemplateRuntimeSequenceEntryIncluded(entry = {}) {
+  const workOrderId = String(entry?.workOrderId || "").trim();
+  if (!isDocumentTemplateRuntimeWorkOrderReadyForExport(workOrderId)) {
+    return false;
+  }
+
+  const workOrder = getDocumentTemplateRuntimeWorkOrderById(workOrderId);
+  if (!workOrder) {
+    return false;
+  }
+
+  const allServices = getDocumentTemplateRuntimeResolvedServiceItems(workOrder);
+  if (allServices.length === 0) {
+    return true;
+  }
+
+  const anyServiceMapsToEntry = allServices.some((service) => doesDocumentTemplateRuntimeServiceMatchSequenceEntry(service, entry));
+  if (!anyServiceMapsToEntry) {
+    return getDocumentTemplateRuntimeIncludedServiceItems(workOrder).length > 0;
+  }
+
+  return getDocumentTemplateRuntimeIncludedServiceItems(workOrder)
+    .some((service) => doesDocumentTemplateRuntimeServiceMatchSequenceEntry(service, entry));
 }
 
 function getDocumentTemplateRuntimeExportableSequenceEntries(entries = getDocumentTemplateRuntimeSequenceEntries()) {
   return (Array.isArray(entries) ? entries : [])
-    .filter((entry) => isDocumentTemplateRuntimeWorkOrderReadyForExport(entry?.workOrderId));
+    .filter((entry) => isDocumentTemplateRuntimeSequenceEntryIncluded(entry));
 }
 
 function ensureDocumentTemplateRuntimeBlocksInitiallyCollapsed(template = buildDocumentTemplateDraft(), blocks = []) {
@@ -71831,10 +72135,12 @@ function renderDocumentTemplateRuntimeFieldRows() {
       const workOrder = getDocumentTemplateRuntimeWorkOrderById(group.workOrderId);
       const skipped = skippedWorkOrderIds.has(String(group.workOrderId || "").trim());
       const serviceItems = workOrder ? getDocumentTemplateRuntimeResolvedServiceItems(workOrder) : [];
+      const selectionState = getDocumentTemplateRuntimeServiceSelectionState(group.workOrderId, serviceItems);
+      const exportableGroupItems = group.items.filter((entry) => isDocumentTemplateRuntimeSequenceEntryIncluded(entry));
       const completedServices = getWorkOrderCompletedServiceCount({ serviceItems });
-      const servicesOk = true;
-      const missingRequired = group.items.flatMap((entry) => getDocumentTemplateRuntimeSequenceEntryMissingRequired(entry));
-      const groupOk = !skipped && servicesOk && missingRequired.length === 0 && group.items.length > 0;
+      const servicesOk = serviceItems.length === 0 || selectionState.includedServiceCount > 0;
+      const missingRequired = exportableGroupItems.flatMap((entry) => getDocumentTemplateRuntimeSequenceEntryMissingRequired(entry));
+      const groupOk = !skipped && servicesOk && missingRequired.length === 0 && exportableGroupItems.length > 0;
       const exportStatus = getDocumentTemplateRuntimeGroupExportStatus(group, { groupOk, skipped });
       queueDocumentTemplateRuntimeSavedPdfDocumentLoad(group, { groupOk, skipped });
       return {
@@ -71842,6 +72148,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
         workOrder,
         skipped,
         serviceItems,
+        selectionState,
         completedServices,
         servicesOk,
         missingRequired,
@@ -71855,7 +72162,8 @@ function renderDocumentTemplateRuntimeFieldRows() {
         .map((item) => String(item.group.workOrderId || "").trim())
         .filter(Boolean),
     );
-    const exportableEntries = sequenceState.entries.filter((entry) => readyWorkOrderIds.has(String(entry.workOrderId || "").trim()));
+    const exportableEntries = getDocumentTemplateRuntimeExportableSequenceEntries(sequenceState.entries)
+      .filter((entry) => readyWorkOrderIds.has(String(entry.workOrderId || "").trim()));
     const missingRequiredCount = summaryGroupStates.reduce((total, item) => total + item.missingRequired.length, 0);
 
     const summaryBlock = document.createElement("section");
@@ -71878,6 +72186,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
       group,
       skipped,
       serviceItems,
+      selectionState,
       missingRequired,
       groupOk,
     }) => {
@@ -71888,7 +72197,10 @@ function renderDocumentTemplateRuntimeFieldRows() {
       entryCard.classList.toggle("is-warning", !groupOk && !skipped);
       const collapseToken = String(group.workOrderId || group.workOrderNumber || "").trim();
       const collapseKey = collapseToken ? `summary:${collapseToken}` : "";
-      const isCollapsed = Boolean(collapseKey && state.documentTemplateRuntime.collapsedBlocks?.[collapseKey]);
+      const hasCollapseState = collapseKey
+        ? Object.prototype.hasOwnProperty.call(state.documentTemplateRuntime.collapsedBlocks ?? {}, collapseKey)
+        : false;
+      const isCollapsed = collapseKey ? (!hasCollapseState || Boolean(state.documentTemplateRuntime.collapsedBlocks?.[collapseKey])) : true;
       entryCard.classList.toggle("is-collapsed", isCollapsed);
 
       const entryHead = document.createElement("div");
@@ -71899,23 +72211,24 @@ function renderDocumentTemplateRuntimeFieldRows() {
       includeField.title = skipped ? "RN je preskočen" : "RN je označen za spremanje";
       const includeInput = document.createElement("input");
       includeInput.type = "checkbox";
-      includeInput.checked = !skipped;
-      includeInput.setAttribute("aria-label", skipped ? "Uključi RN u spremanje" : "RN uključen u spremanje");
+      includeInput.checked = selectionState.checked;
+      includeInput.indeterminate = selectionState.indeterminate;
+      includeInput.setAttribute("aria-label", selectionState.checked ? "RN uključen u spremanje" : "Uključi RN u spremanje");
       includeInput.addEventListener("change", () => {
         setDocumentTemplateRuntimeWorkOrderSkipped(group.workOrderId, !includeInput.checked, { render: true });
       });
       const includeMark = document.createElement("span");
       includeMark.setAttribute("aria-hidden", "true");
-      includeMark.textContent = "✓";
+      includeMark.textContent = selectionState.indeterminate ? "–" : "✓";
       includeField.append(includeInput, includeMark);
       const entryTitleWrap = document.createElement("div");
       entryTitleWrap.className = "document-template-runtime-summary-entry-title";
       const entryTitle = document.createElement("strong");
       entryTitle.textContent = `RN ${group.workOrderNumber}`;
       const entryMeta = document.createElement("span");
-      entryMeta.textContent = serviceItems.length === 1
-        ? "1 usluga"
-        : `${serviceItems.length} usluga`;
+      entryMeta.textContent = serviceItems.length > 0 && selectionState.includedServiceCount !== serviceItems.length
+        ? `${selectionState.includedServiceCount}/${serviceItems.length} usluga`
+        : (serviceItems.length === 1 ? "1 usluga" : `${serviceItems.length} usluga`);
       entryTitleWrap.append(entryTitle, entryMeta);
       const toggleButton = document.createElement("button");
       toggleButton.type = "button";
@@ -71934,7 +72247,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
           ...(state.documentTemplateRuntime.collapsedBlocks ?? {}),
         };
         if (isCollapsed) {
-          delete nextCollapsedBlocks[collapseKey];
+          nextCollapsedBlocks[collapseKey] = false;
         } else {
           nextCollapsedBlocks[collapseKey] = true;
         }
@@ -71962,13 +72275,28 @@ function renderDocumentTemplateRuntimeFieldRows() {
           const serviceLabel = service?.name || service?.serviceName || service?.serviceCode || "Usluga";
           const serviceBadgeLabel = getDocumentTemplateRuntimeServiceBadgeLabel(service);
           const progressMeta = getWorkOrderServiceProgressMeta(service);
-          const serviceRow = document.createElement("label");
+          const serviceIncluded = isDocumentTemplateRuntimeServiceItemIncluded(group.workOrderId, service, serviceIndex);
+          const serviceRow = document.createElement("div");
           serviceRow.className = "document-template-runtime-summary-service";
           serviceRow.classList.toggle("is-complete", Boolean(service?.isCompleted));
           serviceRow.classList.toggle("is-progress", progressMeta.value === "in_progress");
+          serviceRow.classList.toggle("is-deselected", !serviceIncluded);
+          const serviceCheck = document.createElement("input");
+          serviceCheck.type = "checkbox";
+          serviceCheck.className = "document-template-runtime-summary-service-check";
+          serviceCheck.checked = serviceIncluded && !skipped;
+          serviceCheck.setAttribute("aria-label", serviceIncluded ? `Usluga ${serviceLabel} uključena` : `Uključi uslugu ${serviceLabel}`);
+          serviceCheck.addEventListener("change", (event) => {
+            setDocumentTemplateRuntimeServiceItemSkipped(
+              group.workOrderId,
+              serviceIndex,
+              !event.currentTarget.checked,
+              { render: true },
+            );
+          });
           const serviceStatusSelect = document.createElement("select");
           serviceStatusSelect.className = "document-template-runtime-summary-service-status-select";
-          serviceStatusSelect.disabled = skipped;
+          serviceStatusSelect.disabled = skipped || !serviceIncluded;
           serviceStatusSelect.setAttribute("aria-label", `Status usluge ${serviceLabel}`);
           replaceSelectOptions(serviceStatusSelect, WORK_ORDER_SERVICE_PROGRESS_OPTIONS, progressMeta.value);
           serviceStatusSelect.addEventListener("change", (event) => {
@@ -71985,15 +72313,22 @@ function renderDocumentTemplateRuntimeFieldRows() {
           const serviceName = document.createElement("span");
           serviceName.className = "document-template-runtime-summary-service-name";
           serviceName.textContent = serviceLabel;
-          serviceRow.append(serviceCode, serviceName, serviceStatusSelect);
+          serviceRow.append(serviceCheck, serviceCode, serviceName, serviceStatusSelect);
           serviceList.append(serviceRow);
         });
       }
-      const handoverButton = document.createElement("button");
-      handoverButton.type = "button";
-      handoverButton.className = "document-template-runtime-summary-service document-template-runtime-summary-handover";
-      handoverButton.disabled = skipped;
-      handoverButton.title = "Otvori primopredaju za ovaj RN";
+      const handoverIncluded = isDocumentTemplateRuntimeHandoverIncluded(group.workOrderId);
+      const handoverRow = document.createElement("div");
+      handoverRow.className = "document-template-runtime-summary-service document-template-runtime-summary-handover";
+      handoverRow.classList.toggle("is-deselected", !handoverIncluded);
+      const handoverCheck = document.createElement("input");
+      handoverCheck.type = "checkbox";
+      handoverCheck.className = "document-template-runtime-summary-service-check";
+      handoverCheck.checked = handoverIncluded && !skipped;
+      handoverCheck.setAttribute("aria-label", handoverIncluded ? "Primopredaja uključena" : "Uključi primopredaju");
+      handoverCheck.addEventListener("change", (event) => {
+        setDocumentTemplateRuntimeHandoverSkipped(group.workOrderId, !event.currentTarget.checked, { render: true });
+      });
       const handoverIcon = document.createElement("span");
       handoverIcon.className = "document-template-runtime-summary-service-code";
       handoverIcon.innerHTML = getWorkOrderIconMarkup("signature");
@@ -72001,11 +72336,18 @@ function renderDocumentTemplateRuntimeFieldRows() {
       const handoverLabel = document.createElement("span");
       handoverLabel.className = "document-template-runtime-summary-service-name";
       handoverLabel.textContent = "Primopredaja";
-      handoverButton.append(handoverIcon, handoverLabel);
+      const handoverButton = document.createElement("button");
+      handoverButton.type = "button";
+      handoverButton.className = "document-template-runtime-summary-handover-action";
+      handoverButton.disabled = skipped || !handoverIncluded;
+      handoverButton.title = "Otvori primopredaju za ovaj RN";
+      handoverButton.setAttribute("aria-label", "Otvori primopredaju za ovaj RN");
+      handoverButton.innerHTML = getWorkOrderIconMarkup("edit");
       handoverButton.addEventListener("click", () => {
         openDocumentTemplateRuntimeHandoverPanel(group.workOrderId);
       });
-      serviceList.append(handoverButton);
+      handoverRow.append(handoverCheck, handoverIcon, handoverLabel, handoverButton);
+      serviceList.append(handoverRow);
 
       entryCard.append(entryHead);
       if (requiredWarning) {
@@ -72092,7 +72434,11 @@ function renderDocumentTemplateRuntimeFieldRows() {
   }
 
   const createHandoverProtocolBlock = () => {
-    let protocol = buildDocumentTemplateRuntimeHandoverProtocolModel(template, context, activeWorkOrder);
+    let protocol = buildDocumentTemplateRuntimeHandoverProtocolModel(template, context, activeWorkOrder)
+      || normalizeDocumentTemplateHandoverProtocol({
+        workOrderNumber: activeWorkOrder?.workOrderNumber || "",
+        rows: [],
+      });
     const blockNode = document.createElement("section");
     blockNode.className = "document-template-runtime-block document-template-runtime-handover-block is-ok";
     blockNode.dataset.documentTemplateRuntimePanel = "handover";
@@ -100062,6 +100408,8 @@ function clearDocumentTemplateRuntimeContext({ render = true } = {}) {
     collapsedBlocks: {},
     collapsedBlocksInitializedKey: "",
     skippedWorkOrderIds: [],
+    skippedServiceKeysByWorkOrderId: {},
+    skippedHandoverWorkOrderIds: [],
     exportStatuses: {},
     aiAssistantHidden: true,
     common: {
@@ -100151,6 +100499,14 @@ function pruneDocumentTemplateRuntimeContext() {
     : [])
     .map((value) => String(value ?? "").trim())
     .filter((value) => validIds.includes(value));
+  state.documentTemplateRuntime.skippedServiceKeysByWorkOrderId = normalizeDocumentTemplateRuntimeSkippedServiceKeyMap(
+    state.documentTemplateRuntime.skippedServiceKeysByWorkOrderId ?? {},
+    validIds,
+  );
+  state.documentTemplateRuntime.skippedHandoverWorkOrderIds = normalizeDocumentTemplateRuntimeSkippedHandoverIds(
+    state.documentTemplateRuntime.skippedHandoverWorkOrderIds ?? [],
+    validIds,
+  );
   if (state.documentTemplateRuntime.sequenceEntries.length === 0) {
     state.documentTemplateRuntime.sequenceIndex = -1;
   } else {
@@ -100293,6 +100649,14 @@ function buildDocumentTemplateRuntimeLocalDraftSnapshot() {
         : [])
         .map((value) => String(value ?? "").trim())
         .filter(Boolean),
+      skippedServiceKeysByWorkOrderId: normalizeDocumentTemplateRuntimeSkippedServiceKeyMap(
+        state.documentTemplateRuntime.skippedServiceKeysByWorkOrderId ?? {},
+        workOrderIds,
+      ),
+      skippedHandoverWorkOrderIds: normalizeDocumentTemplateRuntimeSkippedHandoverIds(
+        state.documentTemplateRuntime.skippedHandoverWorkOrderIds ?? [],
+        workOrderIds,
+      ),
       common: normalizeDocumentTemplateRuntimeCommonDraft(state.documentTemplateRuntime.common ?? {}),
       overrides,
     },
@@ -100370,6 +100734,14 @@ function normalizeDocumentTemplateRuntimeLocalDraft(snapshot = null) {
       skippedWorkOrderIds: (Array.isArray(runtime.skippedWorkOrderIds) ? runtime.skippedWorkOrderIds : [])
         .map((value) => String(value ?? "").trim())
         .filter((value) => workOrderIds.includes(value)),
+      skippedServiceKeysByWorkOrderId: normalizeDocumentTemplateRuntimeSkippedServiceKeyMap(
+        runtime.skippedServiceKeysByWorkOrderId ?? {},
+        workOrderIds,
+      ),
+      skippedHandoverWorkOrderIds: normalizeDocumentTemplateRuntimeSkippedHandoverIds(
+        runtime.skippedHandoverWorkOrderIds ?? [],
+        workOrderIds,
+      ),
       common: normalizeDocumentTemplateRuntimeCommonDraft(runtime.common ?? {}),
       overrides,
     },
@@ -100494,6 +100866,8 @@ function restoreDocumentTemplateRuntimeLocalDraft() {
     collapsedBlocks: runtime.collapsedBlocks ?? {},
     collapsedBlocksInitializedKey: runtime.collapsedBlocksInitializedKey || "",
     skippedWorkOrderIds: runtime.skippedWorkOrderIds ?? [],
+    skippedServiceKeysByWorkOrderId: runtime.skippedServiceKeysByWorkOrderId ?? {},
+    skippedHandoverWorkOrderIds: runtime.skippedHandoverWorkOrderIds ?? [],
     exportStatuses: {},
     common: runtime.common,
     overrides: runtime.overrides ?? {},
@@ -100583,6 +100957,8 @@ function setDocumentTemplateRuntimeFromWizard(workOrders = getAllSelectedWorkOrd
     collapsedBlocks: {},
     collapsedBlocksInitializedKey: "",
     skippedWorkOrderIds: [],
+    skippedServiceKeysByWorkOrderId: {},
+    skippedHandoverWorkOrderIds: [],
     exportStatuses: {},
     aiAssistantHidden: true,
     common: {
@@ -100794,7 +101170,7 @@ function buildDocumentTemplateRuntimeDocumentRecordPayload(template = buildDocum
     buildDocumentTemplatePreviewContext(template, { workOrder }),
     workOrder,
   );
-  if (hasMeaningfulDocumentRecordValue(handoverProtocol)) {
+  if (handoverProtocol && hasMeaningfulDocumentRecordValue(handoverProtocol)) {
     fieldValues[DOCUMENT_TEMPLATE_HANDOVER_FIELD_KEY] = handoverProtocol;
   }
 
