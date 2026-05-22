@@ -1616,12 +1616,82 @@ function buildDocxTableFallbackText(table = {}) {
 const HANDOVER_PROTOCOL_TITLE = "PRIMOPREDAJNI ZAPISNIK";
 const HANDOVER_PROTOCOL_SUBTITLE = "O OBAVLJENIM USLUGAMA IZ PODRUČJA ZAŠTITE NA RADU I ZAŠTITE OD POŽARA";
 
+function formatHandoverProtocolDate(value = "") {
+  const normalized = clean(value);
+  if (!normalized) {
+    return "";
+  }
+
+  const isoMatch = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) {
+    return `${isoMatch[3]}.${isoMatch[2]}.${isoMatch[1]}.`;
+  }
+
+  const localizedMatch = normalized.match(/^(\d{1,2})\s*[./]\s*(\d{1,2})\s*[./]\s*(\d{4})\.?$/);
+  if (localizedMatch) {
+    return [
+      localizedMatch[1].padStart(2, "0"),
+      localizedMatch[2].padStart(2, "0"),
+      localizedMatch[3],
+    ].join(".") + ".";
+  }
+
+  return normalized.endsWith(".") ? normalized : `${normalized}.`;
+}
+
+function formatHandoverProtocolPlaceDate(protocol = {}) {
+  const issuedDate = formatHandoverProtocolDate(protocol.issuedDate);
+  const issuedPlace = clean(protocol.issuedPlace);
+  if (!issuedDate && !issuedPlace) {
+    return "";
+  }
+
+  if (!issuedPlace) {
+    return issuedDate;
+  }
+
+  const placePrefix = /^u\s+/i.test(issuedPlace) ? issuedPlace : `U ${issuedPlace}`;
+  return [placePrefix, issuedDate].filter(Boolean).join(", ");
+}
+
+function extractHandoverProtocolObjectName(source = {}) {
+  if (!source || typeof source !== "object") {
+    return "";
+  }
+
+  const objectSource = source.object && typeof source.object === "object"
+    ? source.object
+    : null;
+  const locationObjectSource = source.locationObject && typeof source.locationObject === "object"
+    ? source.locationObject
+    : null;
+  return clean(
+    source.objectName
+    || source.locationObjectName
+    || source.objectTitle
+    || objectSource?.name
+    || locationObjectSource?.name
+    || (typeof source.object === "string" ? source.object : "")
+  );
+}
+
+function formatHandoverProtocolServiceCell(row = {}, protocol = {}) {
+  const service = clean(row.service) || "-";
+  const objectName = clean(row.objectName || protocol.objectName);
+  if (!objectName || service.toLowerCase().includes(objectName.toLowerCase())) {
+    return service;
+  }
+
+  return `${service}\n(${objectName})`;
+}
+
 function normalizeHandoverProtocolRow(row = {}, index = 0) {
   const source = row && typeof row === "object" ? row : {};
   const service = clean(source.service || source.serviceName || source.name || source.title);
   const documentNumber = clean(source.documentNumber || source.recordNumber || source.number);
   const quantity = clean(source.quantity || source.measurementPlaces || source.measurementPlaceCount || source.count || "1") || "1";
   const note = clean(source.note || source.remark || source.description);
+  const objectName = extractHandoverProtocolObjectName(source);
 
   if (!service && !documentNumber && !note) {
     return null;
@@ -1633,6 +1703,7 @@ function normalizeHandoverProtocolRow(row = {}, index = 0) {
     documentNumber,
     quantity,
     note,
+    objectName,
   };
 }
 
@@ -1655,7 +1726,10 @@ function normalizeHandoverProtocolValue(value = {}) {
     executorAddress: clean(source.executorAddress || source.executor?.address || source.executor?.headquarters || source.providerAddress || source.provider?.address),
     executorOib: clean(source.executorOib || source.executor?.oib || source.providerOib || source.provider?.oib),
     location: clean(source.location || source.locationName || source.testingLocation),
+    objectName: extractHandoverProtocolObjectName(source),
     contractType: clean(source.contractType || source.contract || source.agreementType),
+    issuedDate: clean(source.issuedDate || source.issueDate || source.dateIssued || source.documentDate),
+    issuedPlace: clean(source.issuedPlace || source.issuePlace || source.placeIssued || source.documentPlace),
     rows,
     customerSignatureLabel: clean(source.customerSignatureLabel) || "Ovjerio naručitelj:",
     executorSignatureLabel: clean(source.executorSignatureLabel) || "Ovjerio izvršitelj:",
@@ -1670,6 +1744,7 @@ function hasHandoverProtocolContent(value = {}) {
     || protocol.executorName
     || protocol.location
     || protocol.contractType
+    || protocol.issuedDate
     || protocol.rows.length > 0
   );
 }
@@ -1704,8 +1779,9 @@ function buildHandoverProtocolFallbackText(value = {}) {
     }),
     protocol.location ? `Lokacija ispitivanja: ${protocol.location}` : "",
     protocol.contractType ? `Vrsta ugovora: ${protocol.contractType}` : "",
+    formatHandoverProtocolPlaceDate(protocol),
     ...protocol.rows.map((row) => [
-      row.service,
+      formatHandoverProtocolServiceCell(row, protocol),
       row.documentNumber,
       row.quantity,
       row.note,
@@ -2038,6 +2114,7 @@ function buildWordHandoverProtocolXml(value = {}) {
   const serviceRows = protocol.rows.length > 0
     ? protocol.rows
     : [{ id: "empty", service: "-", documentNumber: "", quantity: "", note: "" }];
+  const placeDateLine = formatHandoverProtocolPlaceDate(protocol);
   const serviceTable = buildWordTableXml({
     columns: [
       { id: "service", label: "Usluga", width: 245 },
@@ -2059,7 +2136,7 @@ function buildWordHandoverProtocolXml(value = {}) {
       ...serviceRows.map((row, index) => ({
         id: row.id || `service-${index + 1}`,
         cells: [
-          { text: row.service || "-", format: { align: "center", fontSize: 10 } },
+          { text: formatHandoverProtocolServiceCell(row, protocol), format: { align: "center", fontSize: 10 } },
           { text: row.documentNumber || "-", format: { align: "center", fontSize: 10 } },
           { text: row.quantity || "-", format: { align: "center", fontSize: 10 } },
           { text: row.note || "-", format: { align: "center", fontSize: 9 } },
@@ -2112,6 +2189,7 @@ function buildWordHandoverProtocolXml(value = {}) {
     serviceTable,
     buildWordParagraphXml("", { spacingBefore: 340, spacingAfter: 0 }),
     signatureTable,
+    placeDateLine ? buildWordParagraphXml(placeDateLine, { size: 16, spacingBefore: 80, spacingAfter: 0 }) : "",
   ].join("");
 }
 
@@ -3416,6 +3494,7 @@ function buildHtmlTemplateDefaultStyles() {
       .safe-nexus-template-handover-signature{text-align:center;font-size:11px}
       .safe-nexus-template-handover-signature span{display:block;margin-bottom:42px}
       .safe-nexus-template-handover-signature-line{border-top:1px solid #111;height:1px}
+      .safe-nexus-template-handover-date{margin:26px 0 0;font-size:11px}
       .safe-nexus-template-signatures{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:28px;margin:24px 0 8px}
       .safe-nexus-template-signature{min-height:116px;text-align:center}
       .safe-nexus-template-signature strong{display:block;margin-top:3px}
@@ -3584,9 +3663,10 @@ function buildHtmlTemplateHandoverProtocolPlaceholder(value = {}) {
   const serviceRows = protocol.rows.length > 0
     ? protocol.rows
     : [{ service: "-", documentNumber: "", quantity: "", note: "" }];
+  const placeDateLine = formatHandoverProtocolPlaceDate(protocol);
   const servicesHtml = serviceRows.map((row) => `
     <tr>
-      <td style="text-align:center">${formatTemplateHtmlText(row.service || "-")}</td>
+      <td style="text-align:center">${formatTemplateHtmlText(formatHandoverProtocolServiceCell(row, protocol))}</td>
       <td style="text-align:center">${formatTemplateHtmlText(row.documentNumber || "-")}</td>
       <td style="text-align:center">${formatTemplateHtmlText(row.quantity || "-")}</td>
       <td style="text-align:center">${formatTemplateHtmlText(row.note || "-")}</td>
@@ -3635,6 +3715,7 @@ function buildHtmlTemplateHandoverProtocolPlaceholder(value = {}) {
           <div class="safe-nexus-template-handover-signature-line"></div>
         </div>
       </div>
+      ${placeDateLine ? `<p class="safe-nexus-template-handover-date">${escapeTemplateHtml(placeDateLine)}</p>` : ""}
     </section>
   `.trim();
 }
@@ -7270,7 +7351,7 @@ function renderPdfHandoverProtocol(doc, helpers, value = {}) {
     columns: ["Usluga", "Broj dokumenta", "Broj mjernih mjesta", "Napomena"],
     columnWidths: [2.9, 1.8, 1.1, 2.6],
     rows: serviceRows.map((row) => [
-      row.service || "-",
+      formatHandoverProtocolServiceCell(row, protocol),
       row.documentNumber || "-",
       row.quantity || "-",
       row.note || "-",
@@ -7292,7 +7373,14 @@ function renderPdfHandoverProtocol(doc, helpers, value = {}) {
   };
   drawSignature(protocol.customerSignatureLabel, leftX);
   drawSignature(protocol.executorSignatureLabel, rightX);
-  doc.y = y + 18;
+  const placeDateLine = formatHandoverProtocolPlaceDate(protocol);
+  if (placeDateLine) {
+    doc.font("dejavu").fontSize(9).fillColor("#111827").text(placeDateLine, leftX, y + 24, {
+      width: helpers.availableWidth,
+      align: "left",
+    });
+  }
+  doc.y = y + (placeDateLine ? 44 : 18);
 }
 
 async function renderPdfSignatureGroup(doc, helpers, title, items = [], signatureFields = []) {

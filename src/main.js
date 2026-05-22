@@ -409,6 +409,8 @@ const WORK_ORDER_TEMPLATE_PLACEHOLDERS = Object.freeze([
   ["{{RN_PRIORITET}}", "Prioritet RN-a"],
   ["{{RN_DATUM_OTVARANJA}}", "Datum otvaranja u formatu dd.mm.yyyy"],
   ["{{DATUM_OTVARANJA}}", "Alias za datum otvaranja"],
+  ["{{DATUM_IZDAVANJA}}", "Datum izdavanja dokumenta"],
+  ["{{MJESTO_IZDAVANJA}}", "Mjesto izdavanja dokumenta"],
   ["{{RN_ROK_ZAVRSETKA}}", "Rok završetka u formatu dd.mm.yyyy"],
   ["{{ROK_ZAVRSETKA}}", "Alias za rok završetka"],
   ["{{VEZA_RN}}", "Veza RN / povezani nalog ili projekt"],
@@ -420,6 +422,7 @@ const WORK_ORDER_TEMPLATE_PLACEHOLDERS = Object.freeze([
   ["{{OIB}}", "Alias za OIB tvrtke"],
   ["{{LOKACIJA_NAZIV}}", "Odabrana lokacija"],
   ["{{LOKACIJA}}", "Alias za odabranu lokaciju"],
+  ["{{OBJEKT}}", "Objekt ispitivanja ako je odabran"],
   ["{{LOKACIJA_REGIJA}}", "Regija lokacije ili RN-a"],
   ["{{REGIJA}}", "Alias za regiju lokacije ili RN-a"],
   ["{{VRSTA_UGOVORA}}", "Vrsta ugovora s tvrtkom"],
@@ -430,6 +433,8 @@ const WORK_ORDER_TEMPLATE_PLACEHOLDERS = Object.freeze([
   ["{{USLUGE}}", "Popis usluga iz RN-a"],
   ["{{#USLUGE_REDOVI}}", "Početak ponavljanja redova usluga u Word tablici"],
   ["{{USLUGA}}", "Naziv usluge unutar reda"],
+  ["{{USLUGA_S_OBJEKTOM}}", "Naziv usluge s objektom u zagradi ako objekt postoji"],
+  ["{{USLUGA_OBJEKT}}", "Objekt ispitivanja unutar reda"],
   ["{{BROJ_DOKUMENTA}}", "Broj dokumenta unutar reda"],
   ["{{KOLICINA}}", "Količina / broj mjernih mjesta unutar reda"],
   ["{{NAPOMENA_USLUGE}}", "Napomena usluge unutar reda"],
@@ -456,10 +461,16 @@ const WORK_ORDER_HANDOVER_TEMPLATE_PLACEHOLDERS = Object.freeze([
   ["{{IZVRSITELJ_SJEDISTE}}", "Sjedište / adresa izvršitelja"],
   ["{{IZVRSITELJ_OIB}}", "OIB izvršitelja"],
   ["{{LOKACIJA_ISPITIVANJA}}", "Lokacija ispitivanja iz RN-a"],
+  ["{{OBJEKT}}", "Objekt ispitivanja ako je odabran"],
+  ["{{OBJEKT_ISPITIVANJA}}", "Alias za objekt ispitivanja"],
   ["{{VRSTA_UGOVORA}}", "Vrsta ugovora"],
+  ["{{DATUM_IZDAVANJA}}", "Datum izdavanja primopredajnog zapisnika"],
+  ["{{MJESTO_IZDAVANJA}}", "Mjesto izdavanja"],
   ["{{USLUGE_TABLICA}}", "Tekstualni prikaz tablice usluga ako ne koristiš Word loop"],
   ["{{#USLUGE_REDOVI}}", "Početak ponavljanja redova u Word tablici"],
   ["{{USLUGA}}", "Naziv usluge u redu tablice"],
+  ["{{USLUGA_S_OBJEKTOM}}", "Naziv usluge s objektom u zagradi ako objekt postoji"],
+  ["{{USLUGA_OBJEKT}}", "Objekt ispitivanja za red usluge"],
   ["{{BROJ_DOKUMENTA}}", "Broj zapisnika / dokumenta za uslugu"],
   ["{{KOLICINA}}", "Količina ili broj mjernih mjesta"],
   ["{{NAPOMENA}}", "Napomena za uslugu"],
@@ -59163,6 +59174,19 @@ function normalizeDocumentTemplateHandoverRow(row = {}, index = 0) {
     || "1"
   ).trim() || "1";
   const note = String(source.note || source.remark || source.description || "").trim();
+  const objectSource = source.object && typeof source.object === "object" ? source.object : null;
+  const locationObjectSource = source.locationObject && typeof source.locationObject === "object"
+    ? source.locationObject
+    : null;
+  const objectName = String(
+    source.objectName
+    || source.locationObjectName
+    || source.objectTitle
+    || objectSource?.name
+    || locationObjectSource?.name
+    || (typeof source.object === "string" ? source.object : "")
+    || ""
+  ).trim();
 
   if (!service && !documentNumber && !note) {
     return null;
@@ -59174,6 +59198,7 @@ function normalizeDocumentTemplateHandoverRow(row = {}, index = 0) {
     documentNumber,
     quantity,
     note,
+    objectName,
   };
 }
 
@@ -59192,7 +59217,16 @@ function normalizeDocumentTemplateHandoverProtocol(value = {}) {
     executorAddress: String(source.executorAddress || source.executor?.address || source.executor?.headquarters || "").trim(),
     executorOib: String(source.executorOib || source.executor?.oib || "").trim(),
     location: String(source.location || source.locationName || source.testingLocation || "").trim(),
+    objectName: String(
+      source.objectName
+      || source.object?.name
+      || source.locationObjectName
+      || source.locationObject?.name
+      || ""
+    ).trim(),
     contractType: String(source.contractType || source.contract || "").trim(),
+    issuedDate: normalizeDateInputValue(source.issuedDate || source.issueDate || source.dateIssued || source.documentDate || ""),
+    issuedPlace: String(source.issuedPlace || source.issuePlace || source.placeIssued || source.documentPlace || "").trim(),
     rows: (Array.isArray(source.rows) ? source.rows : [])
       .map((row, index) => normalizeDocumentTemplateHandoverRow(row, index))
       .filter(Boolean),
@@ -59278,6 +59312,8 @@ function buildDocumentTemplateRuntimeServiceDocumentNumber(service = {}, workOrd
 
 function buildDocumentTemplateRuntimeHandoverDefaultRows(template = buildDocumentTemplateDraft(), workOrder = {}) {
   const normalizedServices = getDocumentTemplateRuntimeIncludedServiceEntries(workOrder);
+  const locationObject = getDocumentTemplateRuntimeObjectForWorkOrder(workOrder);
+  const objectName = String(workOrder?.objectName || locationObject?.name || "").trim();
   const override = workOrder?.id ? getDocumentTemplateRuntimeOverrideRecord(workOrder.id) : null;
   const rawServices = Array.isArray(override?.serviceItems)
     ? override.serviceItems
@@ -59291,6 +59327,7 @@ function buildDocumentTemplateRuntimeHandoverDefaultRows(template = buildDocumen
       documentNumber: buildDocumentTemplateRuntimeServiceDocumentNumber(mergedService, workOrder, template, index),
       quantity: getDocumentTemplateHandoverServiceQuantity(mergedService),
       note: getDocumentTemplateHandoverServiceNote(mergedService),
+      objectName,
     };
   });
 
@@ -59304,6 +59341,7 @@ function buildDocumentTemplateRuntimeHandoverDefaultRows(template = buildDocumen
     documentNumber: getDocumentTemplateRuntimeDocumentNumber(workOrder, template),
     quantity: "1",
     note: "",
+    objectName,
   }];
 }
 
@@ -59318,9 +59356,21 @@ function mergeDocumentTemplateHandoverRows(defaultRows = [], overrideRows = []) 
     return defaults;
   }
 
+  const defaultById = new Map(defaults.map((row) => [String(row.id || "").trim(), row]));
   const overrideKeys = new Set(overrides.map((row) => String(row.id || "").trim()).filter(Boolean));
+  const mergedOverrides = overrides.map((row) => {
+    const defaultRow = defaultById.get(String(row.id || "").trim());
+    if (!defaultRow) {
+      return row;
+    }
+    return {
+      ...defaultRow,
+      ...row,
+      objectName: row.objectName || defaultRow.objectName || "",
+    };
+  });
   return [
-    ...overrides,
+    ...mergedOverrides,
     ...defaults.filter((row) => !overrideKeys.has(String(row.id || "").trim())),
   ];
 }
@@ -59336,6 +59386,7 @@ function buildDocumentTemplateRuntimeHandoverProtocolModel(
 
   const company = context.company || getCompany(workOrder?.companyId) || {};
   const location = getLocation(workOrder?.locationId) || {};
+  const locationObject = getDocumentTemplateRuntimeObjectForWorkOrder(workOrder);
   const organization = getDocumentTemplateRuntimeOrganizationForHandover() || {};
   const override = workOrder?.id
     ? normalizeDocumentTemplateHandoverProtocol(getDocumentTemplateRuntimeOverrideRecord(workOrder.id)?.handoverProtocol)
@@ -59363,7 +59414,10 @@ function buildDocumentTemplateRuntimeHandoverProtocolModel(
     ].filter(Boolean).join(", "),
     executorOib: organization.oib || "",
     location: uniqueDefaultLocation.join(", "),
+    objectName: workOrder?.objectName || locationObject?.name || "",
     contractType: workOrder?.contractType || company.contractType || "",
+    issuedDate: workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "issuedDate") : "",
+    issuedPlace: workOrder?.id ? getDocumentTemplateRuntimeValue(workOrder.id, "issuedPlace") : "",
     rows: defaultRows,
   });
 
@@ -72571,18 +72625,20 @@ function renderDocumentTemplateRuntimeFieldRows() {
 
     const details = document.createElement("div");
     details.className = "document-template-runtime-handover-details";
-    const createProtocolField = (label, key, { wide = false } = {}) => {
+    const createProtocolField = (label, key, { wide = false, type = "text" } = {}) => {
       const field = document.createElement("label");
       field.className = `field${wide ? " field-span-full" : ""}`;
       const span = document.createElement("span");
       span.textContent = label;
       const input = document.createElement("input");
-      input.type = "text";
-      input.value = String(protocol[key] || "");
+      input.type = type;
+      input.value = type === "date"
+        ? normalizeDateInputValue(protocol[key] || "")
+        : String(protocol[key] || "");
       input.addEventListener("input", () => {
         commitProtocol({
           ...protocol,
-          [key]: input.value,
+          [key]: type === "date" ? normalizeDateInputValue(input.value) : input.value,
         });
       });
       field.append(span, input);
@@ -72592,6 +72648,8 @@ function renderDocumentTemplateRuntimeFieldRows() {
     details.append(
       createProtocolField("Broj RN", "workOrderNumber"),
       createProtocolField("Vrsta ugovora", "contractType"),
+      createProtocolField("Datum izdavanja", "issuedDate", { type: "date" }),
+      createProtocolField("Mjesto izdavanja", "issuedPlace"),
       createProtocolField("Naručitelj", "customerName"),
       createProtocolField("OIB naručitelja", "customerOib"),
       createProtocolField("Sjedište naručitelja", "customerAddress", { wide: true }),
@@ -72599,6 +72657,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
       createProtocolField("OIB izvršitelja", "executorOib"),
       createProtocolField("Sjedište izvršitelja", "executorAddress", { wide: true }),
       createProtocolField("Lokacija ispitivanja", "location", { wide: true }),
+      createProtocolField("Objekt u zagradi kod usluge", "objectName", { wide: true }),
     );
 
     const tableWrap = document.createElement("div");

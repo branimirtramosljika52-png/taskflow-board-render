@@ -3142,14 +3142,42 @@ function getWorkOrderTemplateServiceNote(service = {}) {
   );
 }
 
+function getWorkOrderTemplateObjectName(source = {}) {
+  const value = source && typeof source === "object" ? source : {};
+  const objectSource = value.object && typeof value.object === "object" ? value.object : null;
+  const locationObjectSource = value.locationObject && typeof value.locationObject === "object"
+    ? value.locationObject
+    : null;
+  return normalizeWorkOrderTemplateValue(
+    value.objectName
+    || value.locationObjectName
+    || value.objectTitle
+    || objectSource?.name
+    || locationObjectSource?.name
+    || (typeof value.object === "string" ? value.object : "")
+  );
+}
+
+function formatWorkOrderTemplateServiceWithObject(serviceName = "", objectName = "") {
+  const name = normalizeWorkOrderTemplateValue(serviceName) || "Usluga";
+  const objectLabel = normalizeWorkOrderTemplateValue(objectName);
+  if (!objectLabel || name.toLowerCase().includes(objectLabel.toLowerCase())) {
+    return name;
+  }
+
+  return `${name}\n(${objectLabel})`;
+}
+
 function buildWorkOrderTemplateServiceRows(workOrder = {}) {
   const workOrderNumber = normalizeWorkOrderTemplateValue(workOrder.workOrderNumber);
+  const workOrderObjectName = getWorkOrderTemplateObjectName(workOrder);
   const source = Array.isArray(workOrder.serviceItems) ? workOrder.serviceItems : [];
   const rows = source
     .map((item, index) => {
       const service = item && typeof item === "object" ? item : { name: item };
       const name = normalizeWorkOrderTemplateValue(service.name || service.serviceName || service.title || service.serviceCode);
       const code = getWorkOrderTemplateServiceCode(service, index);
+      const objectName = getWorkOrderTemplateObjectName(service) || workOrderObjectName;
       const documentNumber = normalizeWorkOrderTemplateValue(
         service.documentNumber
         || service.recordNumber
@@ -3167,6 +3195,9 @@ function buildWorkOrderTemplateServiceRows(workOrder = {}) {
         KOLICINA: getWorkOrderTemplateServiceQuantity(service),
         NAPOMENA: getWorkOrderTemplateServiceNote(service),
         NAPOMENA_USLUGE: getWorkOrderTemplateServiceNote(service),
+        OBJEKT: objectName,
+        USLUGA_OBJEKT: objectName,
+        USLUGA_S_OBJEKTOM: formatWorkOrderTemplateServiceWithObject(name || code || "Usluga", objectName),
       };
     })
     .filter(Boolean);
@@ -3185,6 +3216,9 @@ function buildWorkOrderTemplateServiceRows(workOrder = {}) {
       KOLICINA: "1",
       NAPOMENA: "",
       NAPOMENA_USLUGE: "",
+      OBJEKT: workOrderObjectName,
+      USLUGA_OBJEKT: workOrderObjectName,
+      USLUGA_S_OBJEKTOM: formatWorkOrderTemplateServiceWithObject(fallbackService, workOrderObjectName),
     }]
     : [];
 }
@@ -3217,12 +3251,18 @@ function buildWorkOrderTemplatePlaceholderPayload(workOrder = {}, scopedSnapshot
       .join("\n")
     : normalizeWorkOrderTemplateValue(normalizedWorkOrder.serviceLine);
   const servicesTableText = serviceRows
-    .map((row) => [row.USLUGA, row.BROJ_DOKUMENTA, row.KOLICINA, row.NAPOMENA].filter(Boolean).join(" | "))
+    .map((row) => [row.USLUGA_S_OBJEKTOM || row.USLUGA, row.BROJ_DOKUMENTA, row.KOLICINA, row.NAPOMENA].filter(Boolean).join(" | "))
     .join("\n");
   const openedDate = normalizedWorkOrder.openedDate ? formatOfferDocumentDate(normalizedWorkOrder.openedDate) : "";
   const dueDate = normalizedWorkOrder.dueDate ? formatOfferDocumentDate(normalizedWorkOrder.dueDate) : "";
+  const issuedDateSource = normalizedWorkOrder.issuedDate || normalizedWorkOrder.dateIssued || normalizedWorkOrder.documentDate;
+  const issuedDate = issuedDateSource
+    ? formatOfferDocumentDate(issuedDateSource)
+    : formatOfferDocumentDate(new Date().toISOString().slice(0, 10));
+  const issuedPlace = normalizeWorkOrderTemplateValue(normalizedWorkOrder.issuedPlace || normalizedWorkOrder.documentPlace || "");
   const contractType = normalizeWorkOrderTemplateValue(normalizedWorkOrder.contractType || normalizedWorkOrder.contract || "");
   const location = normalizeWorkOrderTemplateValue(normalizedWorkOrder.locationName);
+  const objectName = getWorkOrderTemplateObjectName(normalizedWorkOrder);
   const organizationAddress = [
     organization.address || "",
     [organization.postalCode, organization.city].filter(Boolean).join(" "),
@@ -3234,6 +3274,8 @@ function buildWorkOrderTemplatePlaceholderPayload(workOrder = {}, scopedSnapshot
     RN_PRIORITET: normalizeWorkOrderTemplateValue(normalizedWorkOrder.priority),
     RN_DATUM_OTVARANJA: openedDate,
     DATUM_OTVARANJA: openedDate,
+    DATUM_IZDAVANJA: issuedDate,
+    MJESTO_IZDAVANJA: issuedPlace,
     RN_ROK_ZAVRSETKA: dueDate,
     ROK_ZAVRSETKA: dueDate,
     ROK: dueDate,
@@ -3246,6 +3288,8 @@ function buildWorkOrderTemplatePlaceholderPayload(workOrder = {}, scopedSnapshot
     OIB: normalizeWorkOrderTemplateValue(normalizedWorkOrder.companyOib),
     LOKACIJA_NAZIV: location,
     LOKACIJA: location,
+    OBJEKT: objectName,
+    OBJECT_NAME: objectName,
     LOKACIJA_REGIJA: normalizeWorkOrderTemplateValue(normalizedWorkOrder.region),
     REGIJA: normalizeWorkOrderTemplateValue(normalizedWorkOrder.region),
     VRSTA_UGOVORA: contractType,
@@ -3268,10 +3312,11 @@ function buildWorkOrderTemplatePlaceholderPayload(workOrder = {}, scopedSnapshot
     IZVRSITELJ_SJEDISTE: normalizeWorkOrderTemplateValue(organizationAddress),
     IZVRSITELJ_OIB: normalizeWorkOrderTemplateValue(organization.oib),
     LOKACIJA_ISPITIVANJA: location,
+    OBJEKT_ISPITIVANJA: objectName,
     OVJERIO_NARUCITELJ: "Ovjerio naručitelj:",
     OVJERIO_IZVRSITELJ: "Ovjerio izvršitelj:",
     IZRADIO_IME: normalizeWorkOrderTemplateValue(normalizedWorkOrder.completedBy || normalizedWorkOrder.createdByLabel),
-    MJESTO_DATUM: `U Zagrebu, ${formatOfferDocumentDate(new Date().toISOString().slice(0, 10))}`,
+    MJESTO_DATUM: `${issuedPlace ? `U ${issuedPlace}, ` : "U Zagrebu, "}${issuedDate}`,
   };
 
   for (let index = 0; index < 10; index += 1) {

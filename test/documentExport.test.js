@@ -106,8 +106,11 @@ test("docx export appends a filled handover protocol at the end", async () => {
       executorOib: "06637660960",
       location: "PM Zagreb",
       contractType: "Pausal",
+      issuedDate: "2026-04-21",
+      issuedPlace: "Zagrebu",
       rows: [{
         service: "Ex - elektricna instalacija",
+        objectName: "Benzinska postaja",
         documentNumber: "26-638-ExEi",
         quantity: "4",
         note: "Ukupno mjerenja: 28",
@@ -120,6 +123,8 @@ test("docx export appends a filled handover protocol at the end", async () => {
   assert.match(outputXml, /PRIMOPREDAJNI ZAPISNIK/);
   assert.match(outputXml, /26-638/);
   assert.match(outputXml, /Ex - elektricna instalacija/);
+  assert.match(outputXml, /Benzinska postaja/);
+  assert.match(outputXml, /U Zagrebu, 21\.04\.2026\./);
   assert.match(outputXml, /Ukupno mjerenja: 28/);
   assert.match(outputXml, /<w:br w:type="page"\/>/);
   assert.ok(outputXml.indexOf("PRIMOPREDAJNI ZAPISNIK") < outputXml.indexOf("<w:sectPr"));
@@ -424,8 +429,11 @@ test("HTML template export appends a handover protocol block", () => {
       executorOib: "06637660960",
       location: "PM Zagreb",
       contractType: "Pausal",
+      issuedDate: "2026-04-21",
+      issuedPlace: "Zagrebu",
       rows: [{
         service: "Ex - elektricna instalacija",
+        objectName: "Benzinska postaja",
         documentNumber: "26-638-ExEi",
         quantity: "4",
         note: "Ukupno mjerenja: 28",
@@ -438,6 +446,8 @@ test("HTML template export appends a handover protocol block", () => {
   assert.match(html, /26-638/);
   assert.match(html, /PETROL d\.o\.o\./);
   assert.match(html, /Ex - elektricna instalacija/);
+  assert.match(html, /Benzinska postaja/);
+  assert.match(html, /U Zagrebu, 21\.04\.2026\./);
   assert.match(html, /Ukupno mjerenja: 28/);
   assert.ok(html.indexOf("Zapisnik") < html.indexOf("PRIMOPREDAJNI ZAPISNIK"));
 });
