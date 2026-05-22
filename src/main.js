@@ -2099,7 +2099,7 @@ const state = {
       groundResistance: "",
       randomizeEnvironment: false,
       measurementEquipmentGroup: "",
-      signatureMode: "scan",
+      signatureMode: "digital",
       validityMonths: "12",
       electricalValidityMonths: "12",
       tipkaloValidityMonths: "12",
@@ -2153,7 +2153,7 @@ const state = {
       groundResistance: "",
       randomizeEnvironment: false,
       measurementEquipmentGroup: "",
-      signatureMode: "scan",
+      signatureMode: "digital",
       validityMonths: "12",
       electricalValidityMonths: "12",
       tipkaloValidityMonths: "12",
@@ -56635,11 +56635,12 @@ function getDocumentTemplateDigitalSignatureRoleLabel(role = "inspect") {
   return "Ispitivaci";
 }
 
-function normalizeDocumentTemplateSignatureMethod(value = "") {
-  return String(value || "").trim().toLowerCase() === "digital" ? "digital" : "scan";
+function normalizeDocumentTemplateSignatureMethod(value = "digital") {
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized === "scan" ? "scan" : "digital";
 }
 
-function getDocumentTemplateSignatureMethodLabel(value = "scan") {
+function getDocumentTemplateSignatureMethodLabel(value = "digital") {
   return getOptionLabel(
     DOCUMENT_TEMPLATE_SIGNATURE_METHOD_OPTIONS,
     normalizeDocumentTemplateSignatureMethod(value),
@@ -56651,7 +56652,7 @@ function getDocumentTemplateContextSignatureMethod(context = {}) {
     return normalizeDocumentTemplateSignatureMethod(context.signatureMethod);
   }
 
-  return normalizeDocumentTemplateSignatureMethod(state.documentTemplateRuntime.common?.signatureMode || "scan");
+  return normalizeDocumentTemplateSignatureMethod(state.documentTemplateRuntime.common?.signatureMode || "digital");
 }
 
 function getDocumentTemplateSignatureFieldConfig(field = {}) {
@@ -58732,7 +58733,7 @@ function buildDocumentTemplateSignatureEntry(field = {}, context = {}) {
       ? signaturePreview.metaLines
       : (signaturePreview.summary ? [signaturePreview.summary] : []),
     signatureImageUrl: signaturePreview.signatureImageUrl || "",
-    signatureMode: signaturePreview.signatureMethod || "scan",
+    signatureMode: signaturePreview.signatureMethod || "digital",
     signerUserId: String(signaturePreview.user?.id || "").trim(),
     signerEmail,
     signerOib,
@@ -60357,14 +60358,9 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
       );
     } else {
       loading.complete({
-        message: "Gotovo: svi označeni zapisnici su spremljeni u Documents.",
+        message: "Gotovo.",
       });
-      setDocumentTemplateMessage(
-        hasWordTemplateEntries
-          ? "Gotovo: svaki označeni RN ima svoj DOCX i PDF zapisnik spremljen u Documents."
-          : "Gotovo: svaki označeni RN ima svoj PDF zapisnik spremljen u Documents.",
-        { type: "success" },
-      );
+      setDocumentTemplateMessage("Gotovo.", { type: "success" });
     }
   } catch (error) {
     console.error("Ne mogu generirati batch PDF zapisnike.", error);
@@ -72084,14 +72080,16 @@ function renderDocumentTemplateRuntimeFieldRows() {
     finalCopy.className = "document-template-runtime-summary-final-copy";
     const finalTitle = document.createElement("strong");
     finalTitle.textContent = "Završi";
-    const finalMeta = document.createElement("p");
-    finalMeta.className = "helper-copy module-copy";
-    finalMeta.textContent = missingRequiredCount > 0
+    const finalMetaText = missingRequiredCount > 0
       ? `Popuni ${missingRequiredCount} obaveznih polja prije spremanja. Označeni RN-ovi ostaju kvačicom uključeni.`
-      : exportableEntries.length > 0
-      ? `${exportableGroups.length} ${exportableGroups.length === 1 ? "RN" : "RN-ova"} · ${exportableEntries.length} ${exportableEntries.length === 1 ? "zapisnik" : "zapisnika"} spremno za Documents.`
-      : "Označi kvačicom RN koji želiš spremiti.";
-    finalCopy.append(finalTitle, finalMeta);
+      : (exportableEntries.length === 0 ? "Označi kvačicom RN koji želiš spremiti." : "");
+    finalCopy.append(finalTitle);
+    if (finalMetaText) {
+      const finalMeta = document.createElement("p");
+      finalMeta.className = "helper-copy module-copy";
+      finalMeta.textContent = finalMetaText;
+      finalCopy.append(finalMeta);
+    }
     const finalActions = document.createElement("div");
     finalActions.className = "document-template-runtime-summary-final-actions";
     const signatureField = document.createElement("label");
@@ -98604,7 +98602,7 @@ function clearWorkOrderDocumentSelection({ closeWizard = true } = {}) {
     groundCondition: "",
     groundResistance: "",
     randomizeEnvironment: false,
-    signatureMode: "scan",
+    signatureMode: "digital",
     validityMonths: "12",
     electricalValidityMonths: "12",
     tipkaloValidityMonths: "12",
@@ -100137,7 +100135,7 @@ function clearDocumentTemplateRuntimeContext({ render = true } = {}) {
       groundCondition: "",
       groundResistance: "",
       randomizeEnvironment: false,
-      signatureMode: "scan",
+      signatureMode: "digital",
       validityMonths: "12",
       electricalValidityMonths: "12",
       tipkaloValidityMonths: "12",
