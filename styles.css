@@ -57206,14 +57206,13 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
 }
 
 .document-template-runtime-dock.work-order-bottom-bar {
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   min-height: 92px;
   padding: 12px 16px;
 }
 
-.document-template-runtime-dock.work-order-bottom-bar .document-template-runtime-dock-summary,
-.document-template-runtime-dock.work-order-bottom-bar .document-template-runtime-dock-actions {
+.document-template-runtime-dock.work-order-bottom-bar .document-template-runtime-dock-summary {
   display: none;
 }
 
@@ -57468,27 +57467,71 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  gap: 8px;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: max-content;
 }
 
-.document-template-runtime-dock-signature-mode,
-.document-template-runtime-dock-actions .ghost-button:not(#document-template-runtime-dock-back) {
+.document-template-runtime-dock-actions .ghost-button[hidden],
+.document-template-runtime-dock-signature-mode .ghost-button[hidden] {
   display: none !important;
 }
 
+.document-template-runtime-dock-signature-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid rgba(167, 139, 250, 0.2);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.document-template-runtime-dock-actions .ghost-button,
+.document-template-runtime-dock-signature-mode .ghost-button,
 #document-template-runtime-dock-back {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-height: 40px;
-  padding: 0 13px;
-  border-radius: 13px;
+  justify-content: center;
+  min-height: 34px;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 11px;
   border-color: rgba(167, 139, 250, 0.28);
   background: rgba(255, 255, 255, 0.06);
   color: #ffffff;
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   font-weight: 850;
   white-space: nowrap;
+  box-shadow: none;
+}
+
+.document-template-runtime-dock-actions .ghost-button:hover,
+.document-template-runtime-dock-actions .ghost-button:focus-visible,
+.document-template-runtime-dock-signature-mode .ghost-button:hover,
+.document-template-runtime-dock-signature-mode .ghost-button:focus-visible,
+.document-template-runtime-dock-signature-mode .ghost-button.is-active {
+  border-color: rgba(167, 139, 250, 0.62);
+  background: rgba(124, 92, 255, 0.2);
+  color: #ffffff;
+}
+
+.document-template-runtime-dock-actions .ghost-button:disabled,
+.document-template-runtime-dock-signature-mode .ghost-button:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.document-template-runtime-dock-actions .document-template-runtime-dock-nav {
+  width: 34px;
+  padding: 0;
+  font-size: 1.18rem;
+  line-height: 1;
+}
+
+#document-template-runtime-dock-back {
+  gap: 8px;
+  padding: 0 12px;
 }
 
 #document-template-runtime-dock-back::before {
@@ -57615,13 +57658,20 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .document-template-runtime-dock-actions {
+  .document-template-runtime-dock:not(.work-order-bottom-bar) .document-template-runtime-dock-actions {
     display: none;
   }
 
   .work-order-bottom-bar,
   .document-template-runtime-dock.work-order-bottom-bar {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .document-template-runtime-dock.work-order-bottom-bar .document-template-runtime-dock-actions {
+    justify-content: flex-start;
+    min-width: 0;
+    overflow-x: auto;
+    padding-bottom: 2px;
   }
 }
 

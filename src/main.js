@@ -3890,6 +3890,8 @@ const documentTemplateRuntimeDockTrack = document.querySelector("#document-templ
 const documentTemplateRuntimeDockScrollPrevButton = document.querySelector("#document-template-runtime-dock-scroll-prev");
 const documentTemplateRuntimeDockScrollNextButton = document.querySelector("#document-template-runtime-dock-scroll-next");
 const documentTemplateRuntimeDockBackButton = document.querySelector("#document-template-runtime-dock-back");
+const documentTemplateRuntimeDockPrevButton = document.querySelector("#document-template-runtime-dock-prev");
+const documentTemplateRuntimeDockNextButton = document.querySelector("#document-template-runtime-dock-next");
 const documentTemplateRuntimeDockSignScanButton = document.querySelector("#document-template-runtime-dock-sign-scan");
 const documentTemplateRuntimeDockSignDigitalButton = document.querySelector("#document-template-runtime-dock-sign-digital");
 const documentTemplateRuntimeDockSendSignatureButton = document.querySelector("#document-template-runtime-dock-send-signature");
@@ -64284,6 +64286,7 @@ function renderDocumentTemplateRuntimeContext() {
   const hasSequence = Boolean(sequenceState);
   const isSummaryStep = Boolean(sequenceState?.isSummary);
   const hasWizardRuntime = fillMode && state.documentTemplateRuntime.source === "wizard";
+  const runtimeSignatureMode = normalizeDocumentTemplateSignatureMethod(state.documentTemplateRuntime.common?.signatureMode);
   const workOrders = hasContext ? getDocumentTemplateRuntimeWorkOrders() : [];
   const activeWorkOrder = hasContext ? getDocumentTemplateRuntimeActiveWorkOrder() : null;
   const activeSequenceEntry = hasSequence && !isSummaryStep
@@ -64341,23 +64344,31 @@ function renderDocumentTemplateRuntimeContext() {
   if (documentTemplateRuntimeDockBackButton) {
     documentTemplateRuntimeDockBackButton.hidden = !hasWizardRuntime;
   }
+  if (documentTemplateRuntimeDockPrevButton) {
+    documentTemplateRuntimeDockPrevButton.hidden = !hasSequence;
+    documentTemplateRuntimeDockPrevButton.disabled = !hasSequence || sequenceState.index <= 0;
+  }
+  if (documentTemplateRuntimeDockNextButton) {
+    documentTemplateRuntimeDockNextButton.hidden = !hasSequence;
+    documentTemplateRuntimeDockNextButton.disabled = !hasSequence || sequenceState.index >= sequenceState.total - 1;
+  }
   if (documentTemplateRuntimeDockPrintAllButton) {
-    documentTemplateRuntimeDockPrintAllButton.hidden = true;
+    documentTemplateRuntimeDockPrintAllButton.hidden = !hasSequence;
   }
   if (documentTemplateRuntimeDockSendSignatureButton) {
-    documentTemplateRuntimeDockSendSignatureButton.hidden = true;
+    documentTemplateRuntimeDockSendSignatureButton.hidden = !fillMode || !activeWorkOrder || isSummaryStep || runtimeSignatureMode !== "digital";
   }
   if (documentTemplateRuntimeDockSignScanButton) {
-    documentTemplateRuntimeDockSignScanButton.hidden = true;
+    documentTemplateRuntimeDockSignScanButton.hidden = !fillMode || !activeWorkOrder || isSummaryStep;
   }
   if (documentTemplateRuntimeDockSignDigitalButton) {
-    documentTemplateRuntimeDockSignDigitalButton.hidden = true;
+    documentTemplateRuntimeDockSignDigitalButton.hidden = !fillMode || !activeWorkOrder || isSummaryStep;
   }
   if (documentTemplateRuntimeDockPdfButton) {
-    documentTemplateRuntimeDockPdfButton.hidden = true;
+    documentTemplateRuntimeDockPdfButton.hidden = !fillMode || !activeWorkOrder || isSummaryStep;
   }
   if (documentTemplateRuntimeDockDuplicateObjectButton) {
-    documentTemplateRuntimeDockDuplicateObjectButton.hidden = true;
+    documentTemplateRuntimeDockDuplicateObjectButton.hidden = !fillMode || !activeWorkOrder || isSummaryStep;
     documentTemplateRuntimeDockDuplicateObjectButton.disabled = !fillMode || !activeWorkOrder;
   }
   if (documentTemplateRuntimeSidePrevButton) {
@@ -71815,7 +71826,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     renderDocumentTemplateRuntimeStatusPanel({ template, activeWorkOrder, blocks: [] });
     const groupedEntries = groupDocumentTemplateRuntimeDockEntries(sequenceState.entries);
     const skippedWorkOrderIds = getDocumentTemplateRuntimeSkippedWorkOrderIdSet();
-    const signatureMode = normalizeDocumentTemplateSignatureMethod(state.documentTemplateRuntime.common?.signatureMode);
+    const signatureMode = runtimeSignatureMode;
     const summaryGroupStates = groupedEntries.map((group) => {
       const workOrder = getDocumentTemplateRuntimeWorkOrderById(group.workOrderId);
       const skipped = skippedWorkOrderIds.has(String(group.workOrderId || "").trim());
@@ -111964,6 +111975,20 @@ documentTemplateRuntimeBackButton?.addEventListener("click", () => {
 });
 documentTemplateRuntimeDockBackButton?.addEventListener("click", () => {
   reopenWorkOrderDocumentWizardFromRuntime();
+});
+documentTemplateRuntimeDockPrevButton?.addEventListener("click", () => {
+  const sequenceState = getDocumentTemplateRuntimeSequenceState();
+  if (!sequenceState || sequenceState.index <= 0) {
+    return;
+  }
+  openDocumentTemplateRuntimeSequenceIndex(sequenceState.index - 1);
+});
+documentTemplateRuntimeDockNextButton?.addEventListener("click", () => {
+  const sequenceState = getDocumentTemplateRuntimeSequenceState();
+  if (!sequenceState || sequenceState.index >= sequenceState.total - 1) {
+    return;
+  }
+  openDocumentTemplateRuntimeSequenceIndex(sequenceState.index + 1);
 });
 documentTemplateRuntimePrevButton?.addEventListener("click", () => {
   const sequenceState = getDocumentTemplateRuntimeSequenceState();
