@@ -6675,8 +6675,9 @@ export async function addPdfDocumentStampToBuffer(pdfBuffer = Buffer.alloc(0), s
     const page = pages[pageIndex];
     const { width: pageWidth, height: pageHeight } = page.getSize();
     const anchorCenterX = (Number(anchor.x) || 0) + Math.max(0, Number(anchor.width) || 0) / 2;
+    const anchorCenterY = (Number(anchor.y) || 0) + Math.max(0, Number(anchor.height) || 0) / 2;
     const rawX = anchorCenterX - (width / 2) + stampSettings.offsetX;
-    const rawY = (Number(anchor.y) || 0) - height + stampSettings.offsetY;
+    const rawY = anchorCenterY - (height / 2) + stampSettings.offsetY;
     const x = Math.max(0, Math.min(Math.max(0, pageWidth - width), rawX));
     const y = Math.max(0, Math.min(Math.max(0, pageHeight - height), rawY));
     page.drawImage(stampImage, {
