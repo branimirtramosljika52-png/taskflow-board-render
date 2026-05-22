@@ -71,6 +71,16 @@ const DEFAULT_PDF_SIGNATURE_POSITION_SETTINGS = Object.freeze({
   height: 32,
   alignment: "left",
 });
+const DEFAULT_PDF_DOCUMENT_STAMP_SETTINGS = Object.freeze({
+  enabled: true,
+  anchorText: "M.P.",
+  width: 126,
+  height: 0,
+  offsetX: -4,
+  offsetY: 8,
+  opacity: 1,
+  pageMode: "all",
+});
 const SOFFICE_CANDIDATES = [
   process.env.SOFFICE_PATH,
   process.env.LIBREOFFICE_PATH,
@@ -3342,23 +3352,29 @@ export async function convertDocxBuffersToPdfBuffers(items = []) {
 export async function buildPdfFromTemplateBuffer(templateBuffer, placeholders = {}, options = {}) {
   const generatedWord = await buildDocxFromTemplateBuffer(templateBuffer, placeholders, options);
   try {
-    return await convertDocxBufferToPdfBuffer(generatedWord, options);
+    return await addPdfDocumentStampToBuffer(
+      await convertDocxBufferToPdfBuffer(generatedWord, options),
+      options.documentStampSettings || options.stampSettings || options.pdfStampSettings,
+    );
   } catch (error) {
     console.warn("Word -> PDF conversion failed, using HTML PDF fallback.", error);
     const converted = await convertWordBufferToHtmlTemplate(generatedWord, {
       fileName: options.fileName || "zapisnik.docx",
     });
     const htmlBuffer = Buffer.from(converted.html || "", "utf8");
-    return await buildPdfFromHtmlTemplateBuffer(htmlBuffer, {}, {
-      ...options,
-      appendBlocks: [],
-      appendHtmlBlocks: [],
-      fileName: sanitizeGeneratedDocumentFileName(
-        options.fileName || options.title || "zapisnik",
-        { fallback: "zapisnik", extension: "html" },
-      ),
-      title: options.title || options.fileName || "Zapisnik",
-    });
+    return await addPdfDocumentStampToBuffer(
+      await buildPdfFromHtmlTemplateBuffer(htmlBuffer, {}, {
+        ...options,
+        appendBlocks: [],
+        appendHtmlBlocks: [],
+        fileName: sanitizeGeneratedDocumentFileName(
+          options.fileName || options.title || "zapisnik",
+          { fallback: "zapisnik", extension: "html" },
+        ),
+        title: options.title || options.fileName || "Zapisnik",
+      }),
+      options.documentStampSettings || options.stampSettings || options.pdfStampSettings,
+    );
   }
 }
 
@@ -6374,6 +6390,47 @@ function parsePdfSignatureLogoDataUrl(value = "") {
   }
 }
 
+function normalizePdfDocumentStampSettings(value = null) {
+  const raw = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const imageDataUrl = clean(raw.imageDataUrl || raw.dataUrl || raw.stampDataUrl || "");
+  const parseFiniteNumber = (source, fallback, { min = -Infinity, max = Infinity } = {}) => {
+    const number = Number(source);
+    if (!Number.isFinite(number)) {
+      return fallback;
+    }
+    return Math.max(min, Math.min(max, number));
+  };
+  return {
+    enabled: raw.enabled !== false && raw.enabled !== "false",
+    imageDataUrl,
+    anchorText: clean(raw.anchorText || raw.anchor || DEFAULT_PDF_DOCUMENT_STAMP_SETTINGS.anchorText)
+      || DEFAULT_PDF_DOCUMENT_STAMP_SETTINGS.anchorText,
+    width: parseFiniteNumber(raw.width, DEFAULT_PDF_DOCUMENT_STAMP_SETTINGS.width, { min: 32, max: 320 }),
+    height: parseFiniteNumber(raw.height, DEFAULT_PDF_DOCUMENT_STAMP_SETTINGS.height, { min: 0, max: 260 }),
+    offsetX: parseFiniteNumber(raw.offsetX, DEFAULT_PDF_DOCUMENT_STAMP_SETTINGS.offsetX, { min: -180, max: 180 }),
+    offsetY: parseFiniteNumber(raw.offsetY, DEFAULT_PDF_DOCUMENT_STAMP_SETTINGS.offsetY, { min: -220, max: 220 }),
+    opacity: parseFiniteNumber(raw.opacity, DEFAULT_PDF_DOCUMENT_STAMP_SETTINGS.opacity, { min: 0.05, max: 1 }),
+    pageMode: ["last", "all"].includes(clean(raw.pageMode || raw.pages).toLowerCase())
+      ? clean(raw.pageMode || raw.pages).toLowerCase()
+      : DEFAULT_PDF_DOCUMENT_STAMP_SETTINGS.pageMode,
+  };
+}
+
+async function embedPdfDocumentStampImage(pdfDoc, stampSettings = DEFAULT_PDF_DOCUMENT_STAMP_SETTINGS) {
+  const image = parsePdfSignatureLogoDataUrl(stampSettings.imageDataUrl);
+  if (!image || image.bytes.length === 0) {
+    return null;
+  }
+  try {
+    if (image.mimeType === "image/png") {
+      return await pdfDoc.embedPng(image.bytes);
+    }
+    return await pdfDoc.embedJpg(image.bytes);
+  } catch {
+    return null;
+  }
+}
+
 async function embedPdfSignatureAppearanceLogo(pdfDoc, appearance = DEFAULT_PDF_SIGNATURE_APPEARANCE_SETTINGS) {
   if (!appearance?.showLogo || !appearance?.logoDataUrl) {
     return null;
@@ -6504,6 +6561,122 @@ async function extractPdfSignatureTextAnchors(pdfBuffer = Buffer.alloc(0)) {
     }
   }
   return anchors;
+}
+
+function normalizePdfDocumentStampAnchorText(value = "") {
+  return normalizePdfSignatureAnchorText(value).replace(/\s+/g, "");
+}
+
+function isPdfDocumentStampAnchorMatch(candidate = {}, anchorText = "M.P.") {
+  const target = normalizePdfDocumentStampAnchorText(anchorText);
+  const text = clean(candidate.str || "");
+  const normalized = normalizePdfDocumentStampAnchorText(text);
+  if (!target || !text) {
+    return false;
+  }
+  if (normalized === target || normalized.includes(target)) {
+    return true;
+  }
+  return /\bm\.?\s*p\.?\b/i.test(text);
+}
+
+function getPdfDocumentStampAnchorKey(anchor = {}) {
+  return [
+    anchor.pageNumber,
+    Math.round((Number(anchor.x) || 0) * 10),
+    Math.round((Number(anchor.y) || 0) * 10),
+    normalizePdfDocumentStampAnchorText(anchor.str || ""),
+  ].join(":");
+}
+
+function collectPdfDocumentStampAnchors(textAnchors = [], stampSettings = DEFAULT_PDF_DOCUMENT_STAMP_SETTINGS) {
+  const anchors = [];
+  for (const page of Array.isArray(textAnchors) ? textAnchors : []) {
+    const pageCandidates = [
+      ...(Array.isArray(page.lines) ? page.lines : []),
+      ...(Array.isArray(page.items) ? page.items : []),
+    ]
+      .filter((candidate) => isPdfDocumentStampAnchorMatch(candidate, stampSettings.anchorText))
+      .map((candidate) => ({
+        ...candidate,
+        pageNumber: page.pageNumber,
+      }))
+      .sort((left, right) => {
+        if (Math.abs(Number(left.y) - Number(right.y)) > 2.5) {
+          return Number(left.y) - Number(right.y);
+        }
+        return Number(left.x) - Number(right.x);
+      });
+
+    const usedKeys = new Set();
+    const uniquePageCandidates = pageCandidates.filter((candidate) => {
+      const key = getPdfDocumentStampAnchorKey(candidate);
+      if (usedKeys.has(key)) {
+        return false;
+      }
+      usedKeys.add(key);
+      return true;
+    });
+
+    if (uniquePageCandidates.length > 0) {
+      anchors.push(uniquePageCandidates[0]);
+    }
+  }
+
+  if (stampSettings.pageMode === "last" && anchors.length > 0) {
+    return [anchors[anchors.length - 1]];
+  }
+  return anchors;
+}
+
+export async function addPdfDocumentStampToBuffer(pdfBuffer = Buffer.alloc(0), stampSettingsInput = {}) {
+  const safeBuffer = Buffer.isBuffer(pdfBuffer) ? pdfBuffer : Buffer.from(pdfBuffer ?? []);
+  const stampSettings = normalizePdfDocumentStampSettings(stampSettingsInput);
+  if (safeBuffer.length === 0 || !stampSettings.enabled || !stampSettings.imageDataUrl) {
+    return safeBuffer;
+  }
+
+  const textAnchors = await extractPdfSignatureTextAnchors(safeBuffer);
+  const stampAnchors = collectPdfDocumentStampAnchors(textAnchors, stampSettings);
+  if (stampAnchors.length === 0) {
+    return safeBuffer;
+  }
+
+  const pdfDoc = await PdfLibDocument.load(safeBuffer, { ignoreEncryption: true });
+  const pages = pdfDoc.getPages();
+  if (pages.length === 0) {
+    return safeBuffer;
+  }
+  const stampImage = await embedPdfDocumentStampImage(pdfDoc, stampSettings);
+  if (!stampImage) {
+    return safeBuffer;
+  }
+
+  const imageAspectRatio = stampImage.height > 0 ? stampImage.width / stampImage.height : 1;
+  const width = stampSettings.width;
+  const height = stampSettings.height > 0
+    ? stampSettings.height
+    : Math.max(18, width / Math.max(0.1, imageAspectRatio));
+
+  stampAnchors.forEach((anchor) => {
+    const pageIndex = Math.max(0, Math.min(pages.length - 1, Number(anchor.pageNumber || 1) - 1));
+    const page = pages[pageIndex];
+    const { width: pageWidth, height: pageHeight } = page.getSize();
+    const anchorCenterX = (Number(anchor.x) || 0) + Math.max(0, Number(anchor.width) || 0) / 2;
+    const rawX = anchorCenterX - (width / 2) + stampSettings.offsetX;
+    const rawY = (Number(anchor.y) || 0) - height + stampSettings.offsetY;
+    const x = Math.max(0, Math.min(Math.max(0, pageWidth - width), rawX));
+    const y = Math.max(0, Math.min(Math.max(0, pageHeight - height), rawY));
+    page.drawImage(stampImage, {
+      x,
+      y,
+      width,
+      height,
+      opacity: stampSettings.opacity,
+    });
+  });
+
+  return Buffer.from(await pdfDoc.save());
 }
 
 function getPdfSignatureAnchorKey(anchor = {}) {

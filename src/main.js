@@ -3189,7 +3189,17 @@ const settingsOrganizationLogoUploadButton = document.querySelector("#settings-o
 const settingsOrganizationLogoClearButton = document.querySelector("#settings-organization-logo-clear");
 const settingsOrganizationName = document.querySelector("#settings-organization-name");
 const settingsOrganizationFeedback = document.querySelector("#settings-organization-feedback");
+const settingsDocumentStampDataUrlInput = document.querySelector("#settings-document-stamp-data-url");
+const settingsDocumentStampFileInput = document.querySelector("#settings-document-stamp-file");
+const settingsDocumentStampPreview = document.querySelector("#settings-document-stamp-preview");
+const settingsDocumentStampUploadButton = document.querySelector("#settings-document-stamp-upload");
+const settingsDocumentStampClearButton = document.querySelector("#settings-document-stamp-clear");
+const settingsDocumentStampEnabledInput = document.querySelector("#settings-document-stamp-enabled");
+const settingsDocumentStampWidthInput = document.querySelector("#settings-document-stamp-width");
+const settingsDocumentStampOffsetXInput = document.querySelector("#settings-document-stamp-offset-x");
+const settingsDocumentStampOffsetYInput = document.querySelector("#settings-document-stamp-offset-y");
 let settingsOrganizationLogoDraftTouched = false;
+let settingsDocumentStampDraftTouched = false;
 const settingsNotificationsFeedback = document.querySelector("#settings-notifications-feedback");
 const settingsSafetyAuthorizationNotificationsFeedback = document.querySelector("#settings-safety-authorization-notifications-feedback");
 const settingsAbsenceNotificationsFeedback = document.querySelector("#settings-absence-notifications-feedback");
@@ -29708,6 +29718,118 @@ function getActiveOrganization() {
     ?? null;
 }
 
+const DEFAULT_DOCUMENT_STAMP_SETTINGS = Object.freeze({
+  enabled: true,
+  imageDataUrl: "",
+  anchorText: "M.P.",
+  width: 126,
+  height: 0,
+  offsetX: -4,
+  offsetY: 8,
+  opacity: 1,
+  pageMode: "all",
+});
+
+function normalizeDocumentStampNumber(value, fallback, { min = Number.NEGATIVE_INFINITY, max = Number.POSITIVE_INFINITY } = {}) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return fallback;
+  }
+  return Math.max(min, Math.min(max, number));
+}
+
+function normalizeDocumentStampSettings(settings = {}) {
+  const raw = settings && typeof settings === "object" && !Array.isArray(settings) ? settings : {};
+  return {
+    enabled: raw.enabled !== false && raw.enabled !== "false",
+    imageDataUrl: String(raw.imageDataUrl || raw.dataUrl || raw.stampDataUrl || "").trim(),
+    anchorText: String(raw.anchorText || raw.anchor || DEFAULT_DOCUMENT_STAMP_SETTINGS.anchorText).trim()
+      || DEFAULT_DOCUMENT_STAMP_SETTINGS.anchorText,
+    width: normalizeDocumentStampNumber(raw.width, DEFAULT_DOCUMENT_STAMP_SETTINGS.width, { min: 32, max: 320 }),
+    height: normalizeDocumentStampNumber(raw.height, DEFAULT_DOCUMENT_STAMP_SETTINGS.height, { min: 0, max: 260 }),
+    offsetX: normalizeDocumentStampNumber(raw.offsetX, DEFAULT_DOCUMENT_STAMP_SETTINGS.offsetX, { min: -180, max: 180 }),
+    offsetY: normalizeDocumentStampNumber(raw.offsetY, DEFAULT_DOCUMENT_STAMP_SETTINGS.offsetY, { min: -220, max: 220 }),
+    opacity: normalizeDocumentStampNumber(raw.opacity, DEFAULT_DOCUMENT_STAMP_SETTINGS.opacity, { min: 0.05, max: 1 }),
+    pageMode: ["last", "all"].includes(String(raw.pageMode || raw.pages || "").trim().toLowerCase())
+      ? String(raw.pageMode || raw.pages).trim().toLowerCase()
+      : DEFAULT_DOCUMENT_STAMP_SETTINGS.pageMode,
+  };
+}
+
+function getActiveOrganizationDocumentStampSettings() {
+  return normalizeDocumentStampSettings(getActiveOrganization()?.documentStampSettings);
+}
+
+function getDocumentStampExportSettings() {
+  return getActiveOrganizationDocumentStampSettings();
+}
+
+function syncSettingsDocumentStamp() {
+  const organization = getActiveOrganization();
+  const canManageSettings = getCanManageSettings();
+  const storedSettings = getActiveOrganizationDocumentStampSettings();
+  const draftSettings = settingsDocumentStampDraftTouched
+    ? normalizeDocumentStampSettings({
+      ...storedSettings,
+      enabled: settingsDocumentStampEnabledInput?.checked ?? storedSettings.enabled,
+      imageDataUrl: settingsDocumentStampDataUrlInput?.value || "",
+      width: settingsDocumentStampWidthInput?.value || storedSettings.width,
+      offsetX: settingsDocumentStampOffsetXInput?.value || storedSettings.offsetX,
+      offsetY: settingsDocumentStampOffsetYInput?.value || storedSettings.offsetY,
+    })
+    : storedSettings;
+
+  if (settingsDocumentStampDataUrlInput && !settingsDocumentStampDraftTouched && document.activeElement !== settingsDocumentStampDataUrlInput) {
+    settingsDocumentStampDataUrlInput.value = storedSettings.imageDataUrl || "";
+  }
+  if (settingsDocumentStampEnabledInput && !settingsDocumentStampDraftTouched) {
+    settingsDocumentStampEnabledInput.checked = Boolean(storedSettings.enabled);
+  }
+  if (settingsDocumentStampWidthInput && document.activeElement !== settingsDocumentStampWidthInput) {
+    settingsDocumentStampWidthInput.value = String(draftSettings.width);
+  }
+  if (settingsDocumentStampOffsetXInput && document.activeElement !== settingsDocumentStampOffsetXInput) {
+    settingsDocumentStampOffsetXInput.value = String(draftSettings.offsetX);
+  }
+  if (settingsDocumentStampOffsetYInput && document.activeElement !== settingsDocumentStampOffsetYInput) {
+    settingsDocumentStampOffsetYInput.value = String(draftSettings.offsetY);
+  }
+
+  const hasStamp = isPdfSignerLogoBase64DataUrl(draftSettings.imageDataUrl);
+  if (settingsDocumentStampPreview) {
+    settingsDocumentStampPreview.classList.toggle("has-stamp", hasStamp);
+    settingsDocumentStampPreview.replaceChildren();
+    if (hasStamp) {
+      const image = document.createElement("img");
+      image.src = draftSettings.imageDataUrl;
+      image.alt = "Pečat tvrtke";
+      settingsDocumentStampPreview.append(image);
+    } else {
+      settingsDocumentStampPreview.textContent = draftSettings.imageDataUrl
+        ? "Pečat mora biti PNG/JPG"
+        : "Pečat nije odabran";
+    }
+  }
+
+  [
+    settingsDocumentStampFileInput,
+    settingsDocumentStampUploadButton,
+    settingsDocumentStampClearButton,
+    settingsDocumentStampEnabledInput,
+    settingsDocumentStampWidthInput,
+    settingsDocumentStampOffsetXInput,
+    settingsDocumentStampOffsetYInput,
+  ].forEach((node) => {
+    if (node) {
+      node.disabled = !organization || !canManageSettings;
+    }
+  });
+
+  if (settingsDocumentStampClearButton) {
+    settingsDocumentStampClearButton.hidden = !draftSettings.imageDataUrl;
+  }
+}
+
 function syncSettingsOrganizationLogo() {
   const organization = getActiveOrganization();
   const canManageSettings = getCanManageSettings();
@@ -29756,6 +29878,7 @@ function renderSettingsModule() {
   const periodicsVisualSettings = getPeriodicsVisualSettings();
 
   syncSettingsOrganizationLogo();
+  syncSettingsDocumentStamp();
 
   if (settingsMeasurementLeadDaysInput) {
     if (document.activeElement !== settingsMeasurementLeadDaysInput) {
@@ -29881,7 +30004,7 @@ async function saveOrganizationBrandSettings(options = {}) {
   const organization = getActiveOrganization();
 
   if (!getCanManageSettings()) {
-    setInlineMessage(settingsOrganizationFeedback, "Nemate pravo spremati logo tvrtke.");
+    setInlineMessage(settingsOrganizationFeedback, "Nemate pravo spremati logo i pečat tvrtke.");
     return false;
   }
 
@@ -29891,9 +30014,20 @@ async function saveOrganizationBrandSettings(options = {}) {
   }
 
   const logoDataUrl = settingsOrganizationLogoDataUrlInput?.value || "";
+  const documentStampSettings = normalizeDocumentStampSettings({
+    ...getActiveOrganizationDocumentStampSettings(),
+    enabled: settingsDocumentStampEnabledInput?.checked ?? true,
+    imageDataUrl: settingsDocumentStampDataUrlInput?.value || "",
+    width: settingsDocumentStampWidthInput?.value || DEFAULT_DOCUMENT_STAMP_SETTINGS.width,
+    offsetX: settingsDocumentStampOffsetXInput?.value || DEFAULT_DOCUMENT_STAMP_SETTINGS.offsetX,
+    offsetY: settingsDocumentStampOffsetYInput?.value || DEFAULT_DOCUMENT_STAMP_SETTINGS.offsetY,
+  });
   const success = await runMutation(() => apiRequest(`/organizations/${organization.id}`, {
     method: "PATCH",
-    body: { logoDataUrl },
+    body: {
+      logoDataUrl,
+      documentStampSettings,
+    },
   }), settingsOrganizationFeedback);
 
   if (success) {
@@ -29901,8 +30035,15 @@ async function saveOrganizationBrandSettings(options = {}) {
     if (settingsOrganizationLogoDataUrlInput) {
       settingsOrganizationLogoDataUrlInput.value = refreshedOrganization?.logoDataUrl || logoDataUrl;
     }
+    if (settingsDocumentStampDataUrlInput) {
+      settingsDocumentStampDataUrlInput.value = normalizeDocumentStampSettings(
+        refreshedOrganization?.documentStampSettings || documentStampSettings,
+      ).imageDataUrl;
+    }
     settingsOrganizationLogoDraftTouched = false;
+    settingsDocumentStampDraftTouched = false;
     syncSettingsOrganizationLogo();
+    syncSettingsDocumentStamp();
     syncDocumentTemplateHtmlBuilderBranding();
     setInlineMessage(settingsOrganizationFeedback, successMessage, "success");
   }
@@ -59354,6 +59495,7 @@ async function exportDocumentTemplatePdf() {
       body: {
         ...payload,
         signatureSettings: getPdfSignatureExportSettings(),
+        documentStampSettings: getDocumentStampExportSettings(),
       },
     });
     loading.setPhase(4, { message: "PDF je vraćen, pripremam preuzimanje..." });
@@ -60014,6 +60156,7 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
             body: {
               entries: chunkEntries,
               signatureSettings: getPdfSignatureExportSettings(),
+              documentStampSettings: getDocumentStampExportSettings(),
             },
           });
         } catch (error) {
@@ -113042,6 +113185,68 @@ settingsOrganizationLogoFileInput?.addEventListener("change", () => {
   }).finally(() => {
     if (settingsOrganizationLogoFileInput) {
       settingsOrganizationLogoFileInput.value = "";
+    }
+  });
+});
+
+settingsDocumentStampUploadButton?.addEventListener("click", () => {
+  settingsDocumentStampFileInput?.click();
+});
+
+settingsDocumentStampClearButton?.addEventListener("click", () => {
+  settingsDocumentStampDraftTouched = true;
+  if (settingsDocumentStampDataUrlInput) {
+    settingsDocumentStampDataUrlInput.value = "";
+  }
+  if (settingsDocumentStampFileInput) {
+    settingsDocumentStampFileInput.value = "";
+  }
+  syncSettingsDocumentStamp();
+});
+
+settingsDocumentStampFileInput?.addEventListener("change", () => {
+  const file = settingsDocumentStampFileInput.files?.[0];
+  if (!file) {
+    return;
+  }
+
+  void readSignatureLogoFileAsDataUrl(file).then((stampDataUrl) => {
+    settingsDocumentStampDraftTouched = true;
+    if (settingsDocumentStampDataUrlInput) {
+      settingsDocumentStampDataUrlInput.value = stampDataUrl;
+    }
+    if (settingsDocumentStampEnabledInput) {
+      settingsDocumentStampEnabledInput.checked = true;
+    }
+    setInlineMessage(settingsOrganizationFeedback, "");
+    syncSettingsDocumentStamp();
+  }).catch((error) => {
+    setInlineMessage(settingsOrganizationFeedback, error.message || "Pečat nije moguće učitati.");
+  }).finally(() => {
+    if (settingsDocumentStampFileInput) {
+      settingsDocumentStampFileInput.value = "";
+    }
+  });
+});
+
+[
+  settingsDocumentStampEnabledInput,
+  settingsDocumentStampWidthInput,
+  settingsDocumentStampOffsetXInput,
+  settingsDocumentStampOffsetYInput,
+].forEach((input) => {
+  input?.addEventListener("input", () => {
+    settingsDocumentStampDraftTouched = true;
+    syncSettingsDocumentStamp();
+  });
+  input?.addEventListener("change", () => {
+    settingsDocumentStampDraftTouched = true;
+    syncSettingsDocumentStamp();
+  });
+  input?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void saveAllSettingsBlocks();
     }
   });
 });

@@ -5147,6 +5147,34 @@
                     <button id="settings-organization-logo-clear" type="button" class="ghost-button danger-ghost-button" hidden>Makni logo</button>
                   </div>
                 </div>
+                <input id="settings-document-stamp-data-url" type="hidden" />
+                <input id="settings-document-stamp-file" type="file" accept="image/*" hidden />
+                <div class="settings-stamp-layout">
+                  <div id="settings-document-stamp-preview" class="settings-stamp-preview">Pečat nije odabran</div>
+                  <div class="settings-stamp-copy">
+                    <strong>Pečat za M.P.</strong>
+                    <span>Uploadani pečat se dodaje naknadno na PDF, direktno na poziciju M.P. u zapisniku.</span>
+                    <div class="settings-stamp-controls">
+                      <label><input id="settings-document-stamp-enabled" type="checkbox" /> Aktivno</label>
+                      <label class="field">
+                        <span>Širina</span>
+                        <input id="settings-document-stamp-width" type="number" min="32" max="320" step="1" />
+                      </label>
+                      <label class="field">
+                        <span>X pomak</span>
+                        <input id="settings-document-stamp-offset-x" type="number" min="-180" max="180" step="1" />
+                      </label>
+                      <label class="field">
+                        <span>Y pomak</span>
+                        <input id="settings-document-stamp-offset-y" type="number" min="-220" max="220" step="1" />
+                      </label>
+                    </div>
+                    <div class="settings-brand-actions">
+                      <button id="settings-document-stamp-upload" type="button" class="ghost-button">Upload pečata</button>
+                      <button id="settings-document-stamp-clear" type="button" class="ghost-button danger-ghost-button" hidden>Makni pečat</button>
+                    </div>
+                  </div>
+                </div>
                 <p id="settings-organization-feedback" class="form-error" aria-live="polite"></p>
               </section>
               <section class="panel settings-notifications-panel">

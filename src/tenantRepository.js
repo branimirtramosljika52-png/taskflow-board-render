@@ -1114,6 +1114,7 @@ function sanitizeOrganization(row) {
     contactEmail: row.contact_email ?? "",
     contactPhone: row.contact_phone ?? "",
     logoDataUrl: row.logo_data_url ?? row.logoDataUrl ?? "",
+    documentStampSettings: parseJsonObject(row.document_stamp_settings_json ?? row.documentStampSettings, {}),
     status: row.status ?? "active",
     createdAt: normalizeTimestamp(row.created_at),
     updatedAt: normalizeTimestamp(row.updated_at),
@@ -1240,6 +1241,7 @@ function normalizeOrganizationInput(input = {}) {
     contactEmail: dbString(input.contactEmail),
     contactPhone: dbString(input.contactPhone),
     logoDataUrl: dbString(input.logoDataUrl),
+    documentStampSettings: parseJsonObject(input.documentStampSettings ?? input.document_stamp_settings_json, {}),
     status: dbString(input.status).toLowerCase() === "inactive" ? "inactive" : "active",
   };
 }
@@ -1490,6 +1492,7 @@ async function ensureSchema(connection) {
       contact_email VARCHAR(255) NOT NULL DEFAULT '',
       contact_phone VARCHAR(64) NOT NULL DEFAULT '',
       logo_data_url MEDIUMTEXT NULL,
+      document_stamp_settings_json MEDIUMTEXT NULL,
       status ENUM('active', 'inactive') NOT NULL DEFAULT 'active',
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -1502,6 +1505,12 @@ async function ensureSchema(connection) {
     "organizations",
     "logo_data_url",
     "MEDIUMTEXT NULL AFTER contact_phone",
+  );
+  await ensureColumn(
+    connection,
+    "organizations",
+    "document_stamp_settings_json",
+    "MEDIUMTEXT NULL AFTER logo_data_url",
   );
 
   await connection.query(`
@@ -4032,8 +4041,8 @@ export class MySqlTenantRepository {
       const [result] = await connection.query(
         `
           INSERT INTO organizations
-            (name, oib, address, city, postal_code, country, contact_email, contact_phone, logo_data_url, status)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (name, oib, address, city, postal_code, country, contact_email, contact_phone, logo_data_url, document_stamp_settings_json, status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           normalized.name,
@@ -4045,6 +4054,7 @@ export class MySqlTenantRepository {
           normalized.contactEmail,
           normalized.contactPhone,
           normalized.logoDataUrl,
+          JSON.stringify(normalized.documentStampSettings || {}),
           normalized.status,
         ],
       );
@@ -4087,7 +4097,7 @@ export class MySqlTenantRepository {
         `
           UPDATE organizations
           SET name = ?, oib = ?, address = ?, city = ?, postal_code = ?, country = ?,
-              contact_email = ?, contact_phone = ?, logo_data_url = ?, status = ?
+              contact_email = ?, contact_phone = ?, logo_data_url = ?, document_stamp_settings_json = ?, status = ?
           WHERE id = ?
         `,
         [
@@ -4100,6 +4110,7 @@ export class MySqlTenantRepository {
           normalized.contactEmail,
           normalized.contactPhone,
           normalized.logoDataUrl,
+          JSON.stringify(normalized.documentStampSettings || {}),
           normalized.status,
           Number(organizationId),
         ],

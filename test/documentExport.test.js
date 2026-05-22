@@ -6,6 +6,7 @@ import PizZip from "pizzip";
 import { PDFDocument, PDFName, StandardFonts } from "pdf-lib";
 
 import {
+  addPdfDocumentStampToBuffer,
   addPdfSignatureFieldsToBuffer,
   buildDashboardCalendarReportPdfBuffer,
   buildDocxFromTemplateBuffer,
@@ -857,6 +858,28 @@ test("render model digital signature adds SIGN_ROLE_OIB signature field", async 
   const pdfDoc = await PDFDocument.load(outputBuffer);
   const fields = pdfDoc.getForm().getFields();
   assert.deepEqual(fields.map((field) => field.getName()), ["SIGN_ZNR_91977516569"]);
+});
+
+test("PDF document stamp is drawn on every M.P. anchor", async () => {
+  const sourceDoc = await PDFDocument.create();
+  const font = await sourceDoc.embedFont(StandardFonts.Helvetica);
+  const firstPage = sourceDoc.addPage([595.303937007874, 841.889763779528]);
+  firstPage.drawText("M.P.", { x: 292, y: 292, size: 11, font });
+  const secondPage = sourceDoc.addPage([595.303937007874, 841.889763779528]);
+  secondPage.drawText("M.P.", { x: 292, y: 292, size: 11, font });
+  const inputBuffer = Buffer.from(await sourceDoc.save({ useObjectStreams: false }));
+
+  const outputBuffer = await addPdfDocumentStampToBuffer(inputBuffer, {
+    imageDataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
+    width: 120,
+    offsetX: 0,
+    offsetY: 8,
+  });
+
+  const streams = inflatePdfContentStreams(outputBuffer).join("\n");
+  const imageDraws = streams.match(/\/Image-[^\s]+\s+Do/g) || [];
+  assert.equal(imageDraws.length, 2);
+  assert.match(streams, /1 0 0 1 [0-9.]+ 180 cm[\s\S]*120 0 0 120 0 0 cm/);
 });
 
 test("PDF signature field is anchored below the last matching signer OIB", async () => {

@@ -25,6 +25,7 @@ import {
   buildOfferPdfBuffer,
   buildPurchaseOrderPdfBuffer,
   buildWorkOrderPdfBuffer,
+  addPdfDocumentStampToBuffer,
   addPdfSignatureFieldsToBuffer,
   buildPdfFromHtmlTemplateBatchEntries,
   buildPdfFromHtmlTemplateBuffer,
@@ -2387,10 +2388,10 @@ async function generatePdfFileEntriesForTemplateEntries(entries = [], scopedSnap
           entry,
           template,
           fileName,
-          buffer: await addGeneratedTemplateDigitalSignatureFields(
+          buffer: await finalizeGeneratedTemplatePdfBuffer(
             await buildPdfFromRenderModel(entry.renderModel),
             entry,
-            options.signatureSettings,
+            options,
           ),
         };
       }
@@ -2410,14 +2411,14 @@ async function generatePdfFileEntriesForTemplateEntries(entries = [], scopedSnap
         entry,
         template,
         fileName,
-        buffer: await addGeneratedTemplateDigitalSignatureFields(
+        buffer: await finalizeGeneratedTemplatePdfBuffer(
           await buildPdfFromHtmlTemplateBuffer(referenceDocument.buffer, entry?.placeholders ?? {}, {
             fileName: entry?.fileName || template.outputFileName || template.title || `zapisnik-${entryIndex + 1}.html`,
             title: template.title || template.documentType || "Zapisnik",
             appendBlocks: entry?.appendBlocks ?? [],
           }),
           entry,
-          options.signatureSettings,
+          options,
         ),
       };
     }
@@ -2434,14 +2435,14 @@ async function generatePdfFileEntriesForTemplateEntries(entries = [], scopedSnap
         entry,
         template,
         fileName,
-        buffer: await addGeneratedTemplateDigitalSignatureFields(
+        buffer: await finalizeGeneratedTemplatePdfBuffer(
           await buildPdfFromWordDocumentTemplate(referenceDocument.buffer, entry?.placeholders ?? {}, {
             fileName: docxFileName,
             title: template.title || template.documentType || "Zapisnik",
             appendBlocks: entry?.appendBlocks ?? [],
           }),
           entry,
-          options.signatureSettings,
+          options,
         ),
       };
     }
@@ -2473,6 +2474,15 @@ function normalizeSignatureExportSettings(value = null) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
+function normalizeDocumentStampExportSettings(value = null) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function getDocumentStampExportSettings(payload = {}, fallback = {}) {
+  const direct = payload?.documentStampSettings || payload?.pdfStampSettings || payload?.stampSettings;
+  return normalizeDocumentStampExportSettings(direct && typeof direct === "object" ? direct : fallback);
+}
+
 function getSignatureExportAppearanceSettings(signatureSettings = {}) {
   const safeSettings = normalizeSignatureExportSettings(signatureSettings);
   return safeSettings.appearance && typeof safeSettings.appearance === "object"
@@ -2501,6 +2511,14 @@ async function addGeneratedTemplateDigitalSignatureFields(pdfBuffer = Buffer.all
     appearance: getSignatureExportAppearanceSettings(signatureSettings),
     rolePositioning: getSignatureExportRolePositioningSettings(signatureSettings),
   });
+}
+
+async function finalizeGeneratedTemplatePdfBuffer(pdfBuffer = Buffer.alloc(0), entry = {}, options = {}) {
+  const stampedPdfBuffer = await addPdfDocumentStampToBuffer(
+    pdfBuffer,
+    getDocumentStampExportSettings(entry, options.documentStampSettings || options.stampSettings),
+  );
+  return await addGeneratedTemplateDigitalSignatureFields(stampedPdfBuffer, entry, options.signatureSettings);
 }
 
 async function generateTemplateDocumentFilesForEntries(entries = [], scopedSnapshot = {}, options = {}) {
@@ -2544,10 +2562,10 @@ async function generateTemplateDocumentFilesForEntries(entries = [], scopedSnaps
       bundle.files.push({
         kind: "pdf",
         fileName: pdfFileName,
-        buffer: await addGeneratedTemplateDigitalSignatureFields(
+        buffer: await finalizeGeneratedTemplatePdfBuffer(
           await buildPdfFromRenderModel(entry.renderModel),
           entry,
-          options.signatureSettings,
+          options,
         ),
       });
       renderModelPdfMs += Date.now() - renderModelPdfStartedAt;
@@ -2573,7 +2591,7 @@ async function generateTemplateDocumentFilesForEntries(entries = [], scopedSnaps
       bundle.files.push({
         kind: "pdf",
         fileName: pdfFileName,
-        buffer: await addGeneratedTemplateDigitalSignatureFields(pdfBuffer, entry, options.signatureSettings),
+        buffer: await finalizeGeneratedTemplatePdfBuffer(pdfBuffer, entry, options),
       });
       htmlPdfMs += Date.now() - htmlPdfStartedAt;
       continue;
@@ -2646,7 +2664,7 @@ async function generateTemplateDocumentFilesForEntries(entries = [], scopedSnaps
       item.bundle.files.push({
         kind: "pdf",
         fileName: item.pdfFileName,
-        buffer: await addGeneratedTemplateDigitalSignatureFields(pdfBuffer, item.bundle.entry, options.signatureSettings),
+        buffer: await finalizeGeneratedTemplatePdfBuffer(pdfBuffer, item.bundle.entry, options),
       });
     }
   }
@@ -4368,6 +4386,7 @@ async function saveGeneratedDocumentTemplatePdfDocuments(entries = [], scopedSna
   const generateStartedAt = Date.now();
   const generatedBundles = await generateTemplateDocumentFilesForEntries(entries, scopedSnapshot, {
     signatureSettings: options.signatureSettings,
+    documentStampSettings: options.documentStampSettings,
   });
   const generateMs = Date.now() - generateStartedAt;
   const savedItems = [];
@@ -9719,6 +9738,9 @@ async function handleApiRequest(request, response, url) {
         && (isHtmlTemplateFile(template.referenceDocument) || isWordTemplateFile(template.referenceDocument)),
       );
       const signatureSettings = normalizeSignatureExportSettings(body.signatureSettings || body.pdfSignatureSettings);
+      const documentStampSettings = normalizeDocumentStampExportSettings(
+        body.documentStampSettings || body.pdfStampSettings || body.stampSettings,
+      );
       const pdfBuffer = shouldUseFastTemplateRenderPdf(body) && !hasStoredTemplateReference
         ? await buildPdfFromRenderModel(body.renderModel)
         : await generatePdfBufferForTemplate(template, {
@@ -9726,7 +9748,10 @@ async function handleApiRequest(request, response, url) {
           fileName: body.fileName || template.outputFileName || template.title || "zapisnik.html",
           appendBlocks: body.appendBlocks ?? [],
         });
-      const signedPdfBuffer = await addGeneratedTemplateDigitalSignatureFields(pdfBuffer, body, signatureSettings);
+      const signedPdfBuffer = await finalizeGeneratedTemplatePdfBuffer(pdfBuffer, body, {
+        signatureSettings,
+        documentStampSettings,
+      });
 
       sendBinary(response, 200, signedPdfBuffer, {
         contentType: "application/pdf",
@@ -9752,6 +9777,9 @@ async function handleApiRequest(request, response, url) {
 
       const pdfFiles = await generatePdfFileEntriesForTemplateEntries(entries, scopedSnapshot, {
         signatureSettings: normalizeSignatureExportSettings(body.signatureSettings || body.pdfSignatureSettings),
+        documentStampSettings: normalizeDocumentStampExportSettings(
+          body.documentStampSettings || body.pdfStampSettings || body.stampSettings,
+        ),
       });
       if (pdfFiles.length === 0) {
         sendError(response, 400, "PDF paket nema nijedan generirani zapisnik.");
@@ -9802,6 +9830,9 @@ async function handleApiRequest(request, response, url) {
       const saveStartedAt = Date.now();
       const items = await saveGeneratedDocumentTemplatePdfDocuments(entries, scopedSnapshot, user, {
         signatureSettings: normalizeSignatureExportSettings(body.signatureSettings || body.pdfSignatureSettings),
+        documentStampSettings: normalizeDocumentStampExportSettings(
+          body.documentStampSettings || body.pdfStampSettings || body.stampSettings,
+        ),
       });
       const saveMs = Date.now() - saveStartedAt;
       if (items.length === 0) {
@@ -9833,6 +9864,9 @@ async function handleApiRequest(request, response, url) {
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
       const entries = Array.isArray(body.entries) ? body.entries : [];
+      const documentStampSettings = normalizeDocumentStampExportSettings(
+        body.documentStampSettings || body.pdfStampSettings || body.stampSettings,
+      );
 
       if (entries.length === 0) {
         sendError(response, 400, "Batch PDF nema nijedan zapisnik za obradu.");
@@ -9875,8 +9909,9 @@ async function handleApiRequest(request, response, url) {
         body.fileName || "zapisnici-batch",
         { fallback: "zapisnici-batch", extension: "pdf" },
       );
+      const stampedMergedPdf = await addPdfDocumentStampToBuffer(mergedPdf, documentStampSettings);
 
-      sendBinary(response, 200, mergedPdf, {
+      sendBinary(response, 200, stampedMergedPdf, {
         contentType: "application/pdf",
         fileName,
       });
