@@ -6020,34 +6020,34 @@
                     <div>
                       <p class="section-kicker">Public Procurement</p>
                       <h3>Javna nabava</h3>
-                      <p>Popis svih natječaja, rokova, tvrtki, dokumentacije i internih napomena.</p>
+                      <p>Rokovi, iznosi, statusi i dokumentacija.</p>
                     </div>
-                    <button id="public-procurement-open-form" type="button" class="primary-button">+ New tender</button>
+                    <button id="public-procurement-open-form" type="button" class="primary-button">+ Nova nabava</button>
                   </div>
 
                   <div class="public-procurement-stats" aria-label="Public procurement overview">
                     <article>
-                      <span>All</span>
+                      <span>Ukupno</span>
                       <strong id="public-procurement-total-count">0</strong>
                     </article>
                     <article>
-                      <span>Open</span>
+                      <span>Otvoreno</span>
                       <strong id="public-procurement-open-count">0</strong>
                     </article>
                     <article>
-                      <span>Submitted</span>
+                      <span>Predano</span>
                       <strong id="public-procurement-submitted-count">0</strong>
                     </article>
                     <article>
-                      <span>Documents</span>
+                      <span>Dokumenti</span>
                       <strong id="public-procurement-document-count">0</strong>
                     </article>
                   </div>
 
                   <div class="public-procurement-filters">
                     <label class="field">
-                      <span>Search</span>
-                      <input id="public-procurement-search" type="search" placeholder="Rok, tvrtka, dokumentacija, napomena..." />
+                      <span>Pretraga</span>
+                      <input id="public-procurement-search" type="search" placeholder="Rok, iznos, tvrtka, dokumentacija, napomena..." />
                     </label>
                     <label class="field">
                       <span>Status</span>
@@ -6059,66 +6059,78 @@
                   <p id="public-procurement-empty" class="helper-copy" hidden>Nema javnih nabava za prikaz.</p>
                 </section>
 
-                <section class="panel public-procurement-editor-panel">
-                  <div class="section-heading offers-section-heading">
-                    <div>
-                      <p class="section-kicker">Tender details</p>
-                      <h3 id="public-procurement-editor-title">New public procurement</h3>
+                <div id="public-procurement-editor-backdrop" class="offer-editor-backdrop public-procurement-editor-backdrop" hidden></div>
+                <section id="public-procurement-editor-panel" class="panel public-procurement-editor-panel" role="dialog" aria-modal="true" aria-labelledby="public-procurement-editor-title" hidden>
+                  <div class="offers-editor-fixed-head public-procurement-editor-head">
+                    <div class="section-heading offers-section-heading">
+                      <div>
+                        <p class="section-kicker">Javna nabava</p>
+                        <h3 id="public-procurement-editor-title">Nova javna nabava</h3>
+                      </div>
+                      <div class="public-procurement-editor-actions">
+                        <button id="public-procurement-reset" type="button" class="ghost-button">Očisti</button>
+                        <button id="public-procurement-editor-close" type="button" class="ghost-button">Zatvori</button>
+                      </div>
                     </div>
-                    <button id="public-procurement-reset" type="button" class="ghost-button">Clear</button>
                   </div>
 
-                  <form id="public-procurement-form" class="entity-form public-procurement-form">
-                    <input id="public-procurement-id" type="hidden" />
-                    <div class="form-grid offers-form-grid">
-                      <label class="field field-span-full">
-                        <span>Naziv</span>
-                        <input id="public-procurement-title" maxlength="220" placeholder="Naziv postupka javne nabave..." required />
-                      </label>
-                      <label class="field">
-                        <span>Rok</span>
-                        <input id="public-procurement-deadline" type="text" inputmode="numeric" autocomplete="off" placeholder="dd.mm.yyyy" />
-                      </label>
-                      <label class="field">
-                        <span>Status</span>
-                        <select id="public-procurement-status"></select>
-                      </label>
-                      <label class="field">
-                        <span>Tvrtka</span>
-                        <select id="public-procurement-company-id"></select>
-                      </label>
-                      <label class="field">
-                        <span>Broj / oznaka</span>
-                        <input id="public-procurement-reference-number" maxlength="120" placeholder="EOJN, interni broj..." />
-                      </label>
-                      <label class="field field-span-full">
-                        <span>Dokumentacija URL</span>
-                        <input id="public-procurement-documentation-url" type="url" placeholder="https://..." />
-                      </label>
-                      <label class="field field-span-full">
-                        <span>Napomena</span>
-                        <textarea id="public-procurement-note" rows="5" placeholder="Sažetak dokumentacije, što treba pripremiti, interni dogovor..."></textarea>
-                      </label>
-                    </div>
-
-                    <section class="public-procurement-documents">
-                      <div class="offers-items-head">
-                        <div>
-                          <strong>Dokumentacija</strong>
-                          <p class="inline-help">Upload troškovnika, dokumentacije, upita, potvrda i internih priloga.</p>
-                        </div>
-                        <button id="public-procurement-documents-add" type="button" class="ghost-button">+ Upload</button>
+                  <div class="offers-editor-body public-procurement-editor-body" tabindex="-1">
+                    <form id="public-procurement-form" class="entity-form public-procurement-form">
+                      <input id="public-procurement-id" type="hidden" />
+                      <div class="form-grid offers-form-grid">
+                        <label class="field field-span-full">
+                          <span>Naziv</span>
+                          <input id="public-procurement-title" maxlength="220" placeholder="Naziv postupka javne nabave..." required />
+                        </label>
+                        <label class="field public-procurement-date-field">
+                          <span>Rok</span>
+                          <input id="public-procurement-deadline" type="text" inputmode="numeric" autocomplete="off" placeholder="dd.mm.yyyy" />
+                        </label>
+                        <label class="field is-currency-field">
+                          <span>Iznos</span>
+                          <input id="public-procurement-amount" inputmode="decimal" autocomplete="off" placeholder="0,00" />
+                        </label>
+                        <label class="field">
+                          <span>Status</span>
+                          <select id="public-procurement-status"></select>
+                        </label>
+                        <label class="field">
+                          <span>Tvrtka</span>
+                          <select id="public-procurement-company-id"></select>
+                        </label>
+                        <label class="field">
+                          <span>Broj / oznaka</span>
+                          <input id="public-procurement-reference-number" maxlength="120" placeholder="EOJN, interni broj..." />
+                        </label>
+                        <label class="field field-span-full">
+                          <span>Dokumentacija URL</span>
+                          <input id="public-procurement-documentation-url" type="url" placeholder="https://..." />
+                        </label>
+                        <label class="field field-span-full">
+                          <span>Napomena</span>
+                          <textarea id="public-procurement-note" rows="5" placeholder="Sažetak dokumentacije, što treba pripremiti, interni dogovor..."></textarea>
+                        </label>
                       </div>
-                      <input id="public-procurement-documents-input" type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.jpg,.jpeg,.png,.webp,.txt,.zip" hidden />
-                      <div id="public-procurement-documents-list" class="public-procurement-documents-list"></div>
-                    </section>
 
-                    <p id="public-procurement-error" class="form-error" aria-live="polite"></p>
-                    <div class="form-actions">
-                      <button id="public-procurement-save" type="submit" class="primary-button">Save tender</button>
-                      <button id="public-procurement-delete" type="button" class="card-button card-danger" hidden>Delete</button>
-                    </div>
-                  </form>
+                      <section class="public-procurement-documents">
+                        <div class="offers-items-head">
+                          <div>
+                            <strong>Dokumentacija</strong>
+                            <p class="inline-help">Upload troškovnika, dokumentacije, upita, potvrda i internih priloga.</p>
+                          </div>
+                          <button id="public-procurement-documents-add" type="button" class="ghost-button">+ Upload</button>
+                        </div>
+                        <input id="public-procurement-documents-input" type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.jpg,.jpeg,.png,.webp,.txt,.zip" hidden />
+                        <div id="public-procurement-documents-list" class="public-procurement-documents-list"></div>
+                      </section>
+
+                      <p id="public-procurement-error" class="form-error" aria-live="polite"></p>
+                      <div class="form-actions">
+                        <button id="public-procurement-save" type="submit" class="primary-button">Spremi</button>
+                        <button id="public-procurement-delete" type="button" class="card-button card-danger" hidden>Obriši</button>
+                      </div>
+                    </form>
+                  </div>
                 </section>
               </div>
             </section>

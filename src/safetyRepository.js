@@ -3371,7 +3371,7 @@ async function fetchSnapshotFromConnection(connection) {
   });
 
   const [publicProcurementRows] = await connection.query(`
-    SELECT id, organization_id, title, reference_number, status, deadline, company_id, company_name,
+    SELECT id, organization_id, title, reference_number, status, deadline, amount, company_id, company_name,
            documentation_url, note, documents_json, created_by_user_id, created_by_label, created_at, updated_at
     FROM web_public_procurements
     ORDER BY
@@ -3398,6 +3398,7 @@ async function fetchSnapshotFromConnection(connection) {
       referenceNumber: row.reference_number ?? "",
       status: row.status ?? "open",
       deadline: normalizeDateOnly(row.deadline),
+      amount: Number(row.amount ?? 0) || 0,
       companyId: dbString(row.company_id),
       companyName: company?.name ?? row.company_name ?? "",
       companyOib: company?.oib ?? "",
@@ -6815,6 +6816,7 @@ export class MySqlSafetyRepository {
         reference_number VARCHAR(120) NOT NULL DEFAULT '',
         status VARCHAR(24) NOT NULL DEFAULT 'open',
         deadline DATE NULL,
+        amount DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
         company_id INT NULL,
         company_name VARCHAR(180) NOT NULL DEFAULT '',
         documentation_url TEXT NULL,
@@ -7640,6 +7642,7 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_offers", "contact_phone", "VARCHAR(80) NOT NULL DEFAULT '' AFTER contact_name");
     await ensureColumnExists(this.pool, "web_offers", "contact_email", "VARCHAR(180) NOT NULL DEFAULT '' AFTER contact_phone");
     await ensureColumnExists(this.pool, "web_offer_settings", "reference_document_json", "LONGTEXT NULL");
+    await ensureColumnExists(this.pool, "web_public_procurements", "amount", "DECIMAL(12, 2) NOT NULL DEFAULT 0.00 AFTER deadline");
     await ensureColumnExists(this.pool, "web_purchase_orders", "location_scope", "VARCHAR(16) NOT NULL DEFAULT 'single' AFTER location_id");
     await ensureColumnExists(this.pool, "web_purchase_orders", "location_ids_json", "LONGTEXT NULL AFTER location_scope");
     await ensureColumnExists(this.pool, "web_purchase_orders", "location_names_json", "LONGTEXT NULL AFTER location_ids_json");
@@ -9612,9 +9615,9 @@ export class MySqlSafetyRepository {
       const [result] = await connection.query(
         `
           INSERT INTO web_public_procurements
-            (organization_id, title, reference_number, status, deadline, company_id, company_name,
+            (organization_id, title, reference_number, status, deadline, amount, company_id, company_name,
              documentation_url, note, documents_json, created_by_user_id, created_by_label)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
@@ -9622,6 +9625,7 @@ export class MySqlSafetyRepository {
           draft.referenceNumber ?? "",
           draft.status || "open",
           draft.deadline,
+          Number(draft.amount ?? 0) || 0,
           parseNullableInteger(draft.companyId),
           draft.companyName ?? "",
           draft.documentationUrl ?? "",
@@ -9676,7 +9680,7 @@ export class MySqlSafetyRepository {
       await connection.query(
         `
           UPDATE web_public_procurements
-          SET title = ?, reference_number = ?, status = ?, deadline = ?, company_id = ?, company_name = ?,
+          SET title = ?, reference_number = ?, status = ?, deadline = ?, amount = ?, company_id = ?, company_name = ?,
               documentation_url = ?, note = ?, documents_json = ?
           WHERE id = ?
         `,
@@ -9685,6 +9689,7 @@ export class MySqlSafetyRepository {
           next.referenceNumber ?? "",
           next.status || "open",
           next.deadline,
+          Number(next.amount ?? 0) || 0,
           parseNullableInteger(next.companyId),
           next.companyName ?? "",
           next.documentationUrl ?? "",

@@ -3417,6 +3417,9 @@ function hydratePublicProcurementCore({
     deadline: hasOwn(input, "deadline")
       ? normalizeOptionalDate(input.deadline)
       : normalizeOptionalDate(current?.deadline),
+    amount: hasOwn(input, "amount")
+      ? roundCurrencyAmount(Math.max(0, normalizeFiniteNumber(input.amount, 0)))
+      : roundCurrencyAmount(Math.max(0, normalizeFiniteNumber(current?.amount, 0))),
     companyId,
     companyName: company?.name
       ?? (hasOwn(input, "companyName") ? normalizeText(input.companyName) : normalizeText(current?.companyName)),
@@ -8018,6 +8021,7 @@ export function filterPublicProcurements(
       item.companyName,
       item.companyOib,
       item.headquarters,
+      item.amount,
       item.documentationUrl,
       item.note,
       item.createdByLabel,

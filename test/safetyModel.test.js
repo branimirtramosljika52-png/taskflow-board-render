@@ -2238,6 +2238,7 @@ test("public procurements keep company context, documents, filtering and updates
       referenceNumber: "EOJN-2026-11",
       status: "open",
       deadline: "2026-05-30",
+      amount: "12500,50",
       companyId: "company-1",
       documentationUrl: "https://example.test/dokumentacija",
       note: "Treba pripremiti troskovnik i potvrde.",
@@ -2287,8 +2288,10 @@ test("public procurements keep company context, documents, filtering and updates
 
   assert.equal(openTender.companyName, "Acme d.o.o.");
   assert.equal(openTender.companyOib, "12345678901");
+  assert.equal(openTender.amount, 12500.5);
   assert.equal(openTender.documents.length, 1);
   assert.equal(openTender.documents[0].fileName, "troskovnik.xlsx");
+  assert.equal(filterPublicProcurements([openTender, submittedTender], { query: "12500.5" }).length, 1);
   assert.equal(filterPublicProcurements([openTender, submittedTender], { query: "troskovnik" }).length, 1);
   assert.equal(filterPublicProcurements([openTender, submittedTender], { status: "submitted" })[0].id, "public-procurement-2");
   assert.equal(sortPublicProcurements([submittedTender, openTender])[0].id, "public-procurement-1");

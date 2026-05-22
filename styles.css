@@ -55848,14 +55848,13 @@ body.is-signature-review-open::before {
 }
 
 .public-procurement-layout {
-  display: grid;
-  grid-template-columns: minmax(360px, 0.9fr) minmax(420px, 1.1fr);
-  gap: 16px;
-  align-items: start;
+  display: block;
 }
 
-.public-procurement-list-panel,
-.public-procurement-editor-panel {
+.public-procurement-list-panel {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
   border-color: rgba(214, 224, 244, 0.92);
   background:
     radial-gradient(circle at 0% 0%, rgba(124, 58, 237, 0.08), transparent 32%),
@@ -55863,18 +55862,59 @@ body.is-signature-review-open::before {
   box-shadow: 0 22px 56px rgba(31, 45, 78, 0.09);
 }
 
+.public-procurement-editor-panel {
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+  border-color: rgba(214, 224, 244, 0.92);
+  background: linear-gradient(180deg, #fbfcfe, #f5f7fb);
+  box-shadow: 0 28px 88px rgba(43, 53, 84, 0.24);
+}
+
+.public-procurement-editor-panel.is-modal-open {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  z-index: 69;
+  display: grid;
+  width: min(980px, calc(100vw - 24px));
+  height: calc(100vh - 36px);
+  transform: translateX(-50%);
+  border-radius: 24px;
+}
+
+body.is-public-procurement-editor-open {
+  overflow: hidden;
+}
+
+.public-procurement-editor-backdrop {
+  z-index: 68;
+}
+
+.public-procurement-editor-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.public-procurement-editor-body {
+  padding: 14px 20px 20px;
+}
+
 .public-procurement-hero {
   display: flex;
   justify-content: space-between;
   gap: 14px;
-  align-items: flex-start;
-  padding: 4px 0 14px;
+  align-items: center;
+  padding: 2px 0 0;
 }
 
 .public-procurement-hero h3 {
   margin: 0;
   color: #101828;
-  font-size: 1.2rem;
+  font-size: 1.28rem;
 }
 
 .public-procurement-hero p {
@@ -55889,13 +55929,12 @@ body.is-signature-review-open::before {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
-  margin-bottom: 14px;
 }
 
 .public-procurement-stats article {
-  padding: 12px;
+  padding: 12px 14px;
   border: 1px solid rgba(220, 229, 244, 0.9);
-  border-radius: 15px;
+  border-radius: 16px;
   background: rgba(255, 255, 255, 0.82);
   box-shadow: 0 12px 28px rgba(34, 48, 82, 0.06);
 }
@@ -55921,58 +55960,84 @@ body.is-signature-review-open::before {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 190px;
   gap: 10px;
-  margin-bottom: 14px;
 }
 
 .public-procurement-list {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .public-procurement-card {
   display: grid;
-  gap: 10px;
-  padding: 16px;
+  grid-template-columns: minmax(148px, 0.22fr) minmax(240px, 1fr) minmax(120px, 0.18fr) minmax(110px, 0.14fr) minmax(86px, auto);
+  gap: 12px;
+  align-items: center;
+  min-height: 92px;
+  padding: 14px 16px;
   border: 1px solid rgba(218, 228, 244, 0.94);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 12px 30px rgba(36, 48, 80, 0.06);
+  border-radius: 16px;
+  background:
+    linear-gradient(90deg, rgba(124, 58, 237, 0.05), rgba(255, 255, 255, 0) 34%),
+    rgba(255, 255, 255, 0.96);
+  box-shadow: 0 10px 26px rgba(36, 48, 80, 0.06);
   cursor: pointer;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
 
 .public-procurement-card:hover,
 .public-procurement-card.is-active {
   border-color: rgba(124, 58, 237, 0.36);
-  box-shadow: 0 18px 42px rgba(82, 65, 165, 0.12);
+  box-shadow: 0 18px 42px rgba(82, 65, 165, 0.13);
+  transform: translateY(-1px);
 }
 
-.public-procurement-card-top,
-.public-procurement-card-footer,
+.public-procurement-card-deadline,
+.public-procurement-card-main,
+.public-procurement-card-amount,
+.public-procurement-card-meta,
 .public-procurement-document-row {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.public-procurement-card-copy {
   min-width: 0;
 }
 
-.public-procurement-card-copy h4 {
+.public-procurement-card-deadline,
+.public-procurement-card-amount,
+.public-procurement-card-meta {
+  flex-direction: column;
+  gap: 4px;
+}
+
+.public-procurement-card-main {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.public-procurement-card-main h4 {
   margin: 0;
   color: #111827;
   font-size: 0.98rem;
   font-weight: 900;
+  line-height: 1.25;
 }
 
-.public-procurement-card-copy p,
+.public-procurement-card-subline,
 .public-procurement-card-note,
-.public-procurement-card-footer {
+.public-procurement-card-label,
+.public-procurement-card-value,
+.public-procurement-card-document-count {
   margin: 0;
   color: #68748f;
   font-size: 0.8rem;
   line-height: 1.42;
+}
+
+.public-procurement-card-subline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  font-weight: 760;
 }
 
 .public-procurement-card-note {
@@ -55982,14 +56047,105 @@ body.is-signature-review-open::before {
   overflow: hidden;
 }
 
-.public-procurement-card-footer {
-  color: #7a86a0;
-  font-weight: 700;
+.public-procurement-card-label {
+  color: #8791a7;
+  font-size: 0.67rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.public-procurement-card-value {
+  color: #111827;
+  font-size: 0.94rem;
+  font-weight: 900;
+}
+
+.public-procurement-card-deadline {
+  position: relative;
+  padding: 12px;
+  border: 1px solid rgba(124, 58, 237, 0.16);
+  border-radius: 14px;
+  background: rgba(248, 250, 255, 0.92);
+}
+
+.public-procurement-card-deadline.is-urgent {
+  border-color: rgba(245, 158, 11, 0.42);
+  background: rgba(255, 251, 235, 0.86);
+}
+
+.public-procurement-card-deadline.is-overdue {
+  border-color: rgba(239, 68, 68, 0.36);
+  background: rgba(254, 242, 242, 0.86);
+}
+
+.public-procurement-card-deadline.is-complete {
+  border-color: rgba(34, 197, 94, 0.28);
+  background: rgba(240, 253, 244, 0.84);
+}
+
+.public-procurement-card-date {
+  color: #111827;
+  font-size: 1.02rem;
+  font-weight: 950;
+}
+
+.public-procurement-card-deadline-hint {
+  color: #6b7280;
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.public-procurement-card-amount {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.public-procurement-card-amount .public-procurement-card-value {
+  color: #4c1d95;
+}
+
+.public-procurement-card-meta {
+  align-items: flex-start;
+}
+
+.public-procurement-card-document-count {
+  display: inline-flex;
+  width: max-content;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(241, 245, 249, 0.95);
+  color: #475569;
+  font-weight: 850;
+}
+
+.public-procurement-card-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin-left: auto;
+  border: 1px solid rgba(124, 58, 237, 0.16);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.96);
+  color: #4c1d95;
+}
+
+.public-procurement-card-action svg {
+  width: 18px;
+  height: 18px;
 }
 
 .public-procurement-form {
   display: grid;
   gap: 16px;
+}
+
+.public-procurement-date-field {
+  max-width: 210px;
 }
 
 .public-procurement-documents {
@@ -56043,8 +56199,12 @@ body.is-signature-review-open::before {
     grid-template-columns: repeat(7, minmax(158px, 1fr));
   }
 
-  .public-procurement-layout {
-    grid-template-columns: 1fr;
+  .public-procurement-card {
+    grid-template-columns: minmax(134px, 0.28fr) minmax(220px, 1fr) minmax(110px, 0.24fr) minmax(76px, auto);
+  }
+
+  .public-procurement-card-meta {
+    display: none;
   }
 }
 
@@ -56052,6 +56212,32 @@ body.is-signature-review-open::before {
   .public-procurement-stats,
   .public-procurement-filters {
     grid-template-columns: 1fr;
+  }
+
+  .public-procurement-hero {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .public-procurement-card {
+    grid-template-columns: 1fr;
+  }
+
+  .public-procurement-card-amount {
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .public-procurement-card-action {
+    display: none;
+  }
+
+  .public-procurement-editor-panel.is-modal-open {
+    inset: 10px;
+    width: auto;
+    height: auto;
+    transform: none;
+    border-radius: 20px;
   }
 
   .work-order-premium-summary {

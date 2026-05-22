@@ -1890,6 +1890,7 @@ const state = {
   todoInvitedPickerOpen: false,
   offerEditorOpen: false,
   offerTemplateModalOpen: false,
+  publicProcurementEditorOpen: false,
   offerLocationPickerOpen: false,
   offerTemplateReferenceCollapsed: false,
   contractEditorOpen: false,
@@ -3455,11 +3456,16 @@ const publicProcurementSearchInput = document.querySelector("#public-procurement
 const publicProcurementFilterStatusInput = document.querySelector("#public-procurement-filter-status");
 const publicProcurementList = document.querySelector("#public-procurement-list");
 const publicProcurementEmpty = document.querySelector("#public-procurement-empty");
+const publicProcurementEditorBackdrop = document.querySelector("#public-procurement-editor-backdrop");
+const publicProcurementEditorPanel = document.querySelector("#public-procurement-editor-panel");
+const publicProcurementEditorCloseButton = document.querySelector("#public-procurement-editor-close");
+const publicProcurementEditorBody = publicProcurementEditorPanel?.querySelector(".public-procurement-editor-body");
 const publicProcurementForm = document.querySelector("#public-procurement-form");
 const publicProcurementIdInput = document.querySelector("#public-procurement-id");
 const publicProcurementEditorTitle = document.querySelector("#public-procurement-editor-title");
 const publicProcurementTitleInput = document.querySelector("#public-procurement-title");
 const publicProcurementDeadlineInput = document.querySelector("#public-procurement-deadline");
+const publicProcurementAmountInput = document.querySelector("#public-procurement-amount");
 const publicProcurementStatusInput = document.querySelector("#public-procurement-status");
 const publicProcurementCompanyIdInput = document.querySelector("#public-procurement-company-id");
 const publicProcurementReferenceNumberInput = document.querySelector("#public-procurement-reference-number");
@@ -4632,6 +4638,14 @@ if (offerEditorPanel?.parentElement !== document.body) {
   document.body.append(offerEditorPanel);
 }
 
+if (publicProcurementEditorBackdrop?.parentElement !== document.body) {
+  document.body.append(publicProcurementEditorBackdrop);
+}
+
+if (publicProcurementEditorPanel?.parentElement !== document.body) {
+  document.body.append(publicProcurementEditorPanel);
+}
+
 if (offerEmailBackdrop?.parentElement !== document.body) {
   document.body.append(offerEmailBackdrop);
 }
@@ -4744,6 +4758,15 @@ if (offerEditorBackdrop) {
 if (offerEditorPanel) {
   offerEditorPanel.hidden = true;
   offerEditorPanel.setAttribute("aria-hidden", "true");
+}
+
+if (publicProcurementEditorBackdrop) {
+  publicProcurementEditorBackdrop.hidden = true;
+}
+
+if (publicProcurementEditorPanel) {
+  publicProcurementEditorPanel.hidden = true;
+  publicProcurementEditorPanel.setAttribute("aria-hidden", "true");
 }
 
 if (vehicleEditorBackdrop) {
@@ -8449,6 +8472,8 @@ function applySnapshot(payload, options = {}) {
     resetOfferForm();
   }
   if (publicProcurementIdInput?.value && !state.publicProcurements.some((item) => String(item.id) === String(publicProcurementIdInput.value))) {
+    state.publicProcurementEditorOpen = false;
+    syncPublicProcurementEditorModal();
     resetPublicProcurementForm();
   }
   if (reminderIdInput?.value && !state.reminders.some((item) => String(item.id) === String(reminderIdInput.value))) {
@@ -45419,6 +45444,44 @@ function syncOfferEditorModal() {
   }
 }
 
+function syncPublicProcurementEditorModal() {
+  if (state.publicProcurementEditorOpen && (
+    state.activeView !== "module"
+    || state.activeModuleItem !== "public-procurement"
+    || !state.user
+  )) {
+    state.publicProcurementEditorOpen = false;
+  }
+
+  const isOpen = Boolean(state.publicProcurementEditorOpen);
+
+  publicProcurementEditorPanel?.classList.toggle("is-modal-open", isOpen);
+  document.body.classList.toggle("is-public-procurement-editor-open", isOpen);
+
+  if (publicProcurementEditorPanel) {
+    publicProcurementEditorPanel.hidden = !isOpen;
+    publicProcurementEditorPanel.setAttribute("aria-hidden", String(!isOpen));
+  }
+
+  if (publicProcurementEditorBackdrop) {
+    publicProcurementEditorBackdrop.hidden = !isOpen;
+  }
+
+  if (publicProcurementEditorCloseButton) {
+    publicProcurementEditorCloseButton.hidden = !isOpen;
+  }
+
+  if (isOpen) {
+    requestAnimationFrame(() => {
+      publicProcurementEditorBody?.scrollTo({ top: 0, left: 0 });
+      publicProcurementEditorBody?.focus({ preventScroll: true });
+      window.setTimeout(() => {
+        publicProcurementEditorBody?.scrollTo({ top: 0, left: 0 });
+      }, 0);
+    });
+  }
+}
+
 function syncOfferTemplateModal() {
   if (state.offerTemplateModalOpen && (
     state.activeView !== "module"
@@ -45479,6 +45542,25 @@ function closeOfferEditor({ reset = false } = {}) {
 function dismissOfferEditor() {
   closeOfferEditor({ reset: true });
   renderOffersModule();
+}
+
+function openPublicProcurementEditor() {
+  state.publicProcurementEditorOpen = true;
+  syncPublicProcurementEditorModal();
+}
+
+function closePublicProcurementEditor({ reset = false } = {}) {
+  state.publicProcurementEditorOpen = false;
+  syncPublicProcurementEditorModal();
+
+  if (reset) {
+    resetPublicProcurementForm();
+  }
+}
+
+function dismissPublicProcurementEditor() {
+  closePublicProcurementEditor({ reset: true });
+  renderPublicProcurementModule();
 }
 
 function openOfferTemplateModal() {
@@ -77664,6 +77746,7 @@ function closeTransientNavigationOverlays() {
     "userEditorOpen",
     "offerEditorOpen",
     "offerTemplateModalOpen",
+    "publicProcurementEditorOpen",
     "reminderEditorOpen",
     "todoEditorOpen",
     "legalFrameworkEditorOpen",
@@ -77701,6 +77784,7 @@ function closeTransientNavigationOverlays() {
   syncUserEditorModal();
   syncOfferEditorModal();
   syncOfferTemplateModal();
+  syncPublicProcurementEditorModal();
   syncReminderEditorModal();
   syncTodoEditorModal();
   syncLegalFrameworkEditorModal();
@@ -88630,6 +88714,61 @@ function getPublicProcurementStatusLabel(status = "open") {
   return getOptionLabel(PUBLIC_PROCUREMENT_STATUS_OPTIONS, status || "open") || "Otvoreno";
 }
 
+function getPublicProcurementAmountText(item = {}) {
+  const numericAmount = Number(item.amount ?? 0) || 0;
+  return numericAmount > 0 ? formatCurrencyAmount(numericAmount, "EUR") : "Bez iznosa";
+}
+
+function getPublicProcurementDeadlineInfo(item = {}) {
+  const deadline = String(item.deadline || "").trim();
+  const status = String(item.status || "open");
+  const isComplete = ["submitted", "awarded", "cancelled"].includes(status);
+
+  if (!deadline) {
+    return {
+      className: "is-empty",
+      dateText: "Bez roka",
+      hintText: "Rok nije upisan",
+    };
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const deadlineDate = new Date(`${deadline}T00:00:00`);
+  const diffDays = Math.round((deadlineDate.getTime() - today.getTime()) / 86400000);
+
+  if (isComplete) {
+    return {
+      className: "is-complete",
+      dateText: formatDate(deadline),
+      hintText: getPublicProcurementStatusLabel(status),
+    };
+  }
+
+  if (diffDays < 0) {
+    const count = Math.abs(diffDays);
+    return {
+      className: "is-overdue",
+      dateText: formatDate(deadline),
+      hintText: `Kasni ${count} ${count === 1 ? "dan" : "dana"}`,
+    };
+  }
+
+  if (diffDays === 0) {
+    return {
+      className: "is-urgent",
+      dateText: formatDate(deadline),
+      hintText: "Danas",
+    };
+  }
+
+  return {
+    className: diffDays <= 7 ? "is-urgent" : "is-upcoming",
+    dateText: formatDate(deadline),
+    hintText: `Još ${diffDays} ${diffDays === 1 ? "dan" : "dana"}`,
+  };
+}
+
 function syncPublicProcurementSelects() {
   if (publicProcurementFilterStatusInput) {
     replaceSelectOptions(publicProcurementFilterStatusInput, [
@@ -88660,6 +88799,7 @@ function resetPublicProcurementForm() {
   if (publicProcurementIdInput) publicProcurementIdInput.value = "";
   if (publicProcurementTitleInput) publicProcurementTitleInput.value = "";
   if (publicProcurementDeadlineInput) publicProcurementDeadlineInput.value = "";
+  if (publicProcurementAmountInput) publicProcurementAmountInput.value = "";
   if (publicProcurementStatusInput) publicProcurementStatusInput.value = "open";
   if (publicProcurementCompanyIdInput) publicProcurementCompanyIdInput.value = "";
   if (publicProcurementReferenceNumberInput) publicProcurementReferenceNumberInput.value = "";
@@ -88669,7 +88809,7 @@ function resetPublicProcurementForm() {
   setInlineMessage(publicProcurementError, "");
   renderPublicProcurementDocuments();
   if (publicProcurementEditorTitle) {
-    publicProcurementEditorTitle.textContent = "New public procurement";
+    publicProcurementEditorTitle.textContent = "Nova javna nabava";
   }
   if (publicProcurementDeleteButton) {
     publicProcurementDeleteButton.hidden = true;
@@ -88680,6 +88820,7 @@ function hydratePublicProcurementForm(item = {}) {
   if (publicProcurementIdInput) publicProcurementIdInput.value = item.id || "";
   if (publicProcurementTitleInput) publicProcurementTitleInput.value = item.title || "";
   if (publicProcurementDeadlineInput) publicProcurementDeadlineInput.value = item.deadline ? formatDateInputDisplayValue(item.deadline) : "";
+  if (publicProcurementAmountInput) publicProcurementAmountInput.value = Number(item.amount || 0) > 0 ? formatOfferMoneyInputDisplayValue(item.amount) : "";
   if (publicProcurementStatusInput) publicProcurementStatusInput.value = item.status || "open";
   if (publicProcurementCompanyIdInput) publicProcurementCompanyIdInput.value = item.companyId || "";
   if (publicProcurementReferenceNumberInput) publicProcurementReferenceNumberInput.value = item.referenceNumber || "";
@@ -88689,7 +88830,7 @@ function hydratePublicProcurementForm(item = {}) {
   setInlineMessage(publicProcurementError, "");
   renderPublicProcurementDocuments();
   if (publicProcurementEditorTitle) {
-    publicProcurementEditorTitle.textContent = item.title || "Tender details";
+    publicProcurementEditorTitle.textContent = item.title || "Detalji javne nabave";
   }
   if (publicProcurementDeleteButton) {
     publicProcurementDeleteButton.hidden = !item.id || !getCanEditPublicProcurements();
@@ -88704,6 +88845,7 @@ function buildPublicProcurementPayload() {
     referenceNumber: String(publicProcurementReferenceNumberInput?.value || "").trim(),
     status: publicProcurementStatusInput?.value || "open",
     deadline: normalizeDateInputValue(publicProcurementDeadlineInput?.value || "") || null,
+    amount: roundMoneyAmount(Math.max(0, parseOfferMoneyInput(publicProcurementAmountInput?.value || "", 0))),
     companyId: company ? String(company.id) : "",
     companyName: company?.name || "",
     documentationUrl: String(publicProcurementDocumentationUrlInput?.value || "").trim(),
@@ -88805,39 +88947,63 @@ function renderPublicProcurementModule() {
     card.setAttribute("role", "button");
     card.setAttribute("aria-label", `Otvori javnu nabavu ${item.title || ""}`.trim());
 
-    const top = document.createElement("div");
-    top.className = "public-procurement-card-top";
-    const copy = document.createElement("div");
-    copy.className = "public-procurement-card-copy";
+    const deadlineInfo = getPublicProcurementDeadlineInfo(item);
+    const deadline = document.createElement("div");
+    deadline.className = `public-procurement-card-deadline ${deadlineInfo.className}`;
+    const deadlineLabel = document.createElement("span");
+    deadlineLabel.className = "public-procurement-card-label";
+    deadlineLabel.textContent = "Rok";
+    const deadlineDate = document.createElement("strong");
+    deadlineDate.className = "public-procurement-card-date";
+    deadlineDate.textContent = deadlineInfo.dateText;
+    const deadlineHint = document.createElement("span");
+    deadlineHint.className = "public-procurement-card-deadline-hint";
+    deadlineHint.textContent = deadlineInfo.hintText;
+    deadline.append(deadlineLabel, deadlineDate, deadlineHint);
+
+    const main = document.createElement("div");
+    main.className = "public-procurement-card-main";
     const title = document.createElement("h4");
     title.textContent = item.title || "Bez naziva";
-    const meta = document.createElement("p");
-    meta.textContent = [
+    const subline = document.createElement("p");
+    subline.className = "public-procurement-card-subline";
+    subline.textContent = [
       item.referenceNumber ? `#${item.referenceNumber}` : "",
       item.companyName || "Bez tvrtke",
-      item.deadline ? `Rok ${formatDate(item.deadline)}` : "Bez roka",
     ].filter(Boolean).join(" · ");
-    copy.append(title, meta);
-
-    const status = createMetaPill(getPublicProcurementStatusLabel(item.status), `is-${slugifyValue(item.status || "open")}`);
-    top.append(copy, status);
-
     const note = document.createElement("p");
     note.className = "public-procurement-card-note";
     note.textContent = item.note || "Nema napomene.";
+    main.append(title, subline, note);
 
-    const footer = document.createElement("div");
-    footer.className = "public-procurement-card-footer";
+    const amount = document.createElement("div");
+    amount.className = "public-procurement-card-amount";
+    const amountLabel = document.createElement("span");
+    amountLabel.className = "public-procurement-card-label";
+    amountLabel.textContent = "Iznos";
+    const amountValue = document.createElement("strong");
+    amountValue.className = "public-procurement-card-value";
+    amountValue.textContent = getPublicProcurementAmountText(item);
+    amount.append(amountLabel, amountValue);
+
+    const meta = document.createElement("div");
+    meta.className = "public-procurement-card-meta";
+    const status = createMetaPill(getPublicProcurementStatusLabel(item.status), `is-${slugifyValue(item.status || "open")}`);
     const docs = document.createElement("span");
+    docs.className = "public-procurement-card-document-count";
     docs.textContent = `${item.documents?.length ?? 0} dok.`;
-    const author = document.createElement("span");
-    author.textContent = item.createdByLabel || "SafeNexus";
-    footer.append(docs, author);
+    meta.append(status, docs);
 
-    card.append(top, note, footer);
+    const action = document.createElement("span");
+    action.className = "public-procurement-card-action";
+    action.innerHTML = getWorkOrderIconMarkup("edit");
+    action.setAttribute("aria-hidden", "true");
+
+    card.append(deadline, main, amount, meta, action);
     const open = () => {
       if (getCanEditPublicProcurements()) {
         hydratePublicProcurementForm(item);
+        openPublicProcurementEditor();
       }
     };
     card.addEventListener("click", (event) => {
@@ -91621,6 +91787,7 @@ function renderActiveView() {
   syncLocationEditorModal();
   syncOfferEditorModal();
   syncOfferTemplateModal();
+  syncPublicProcurementEditorModal();
   syncVehicleEditorModal();
   syncVehicleReservationModal();
   syncLegalFrameworkEditorModal();
@@ -109521,7 +109688,10 @@ publicProcurementOpenFormButton?.addEventListener("click", () => {
   }
   resetPublicProcurementForm();
   renderPublicProcurementModule();
-  publicProcurementTitleInput?.focus({ preventScroll: true });
+  openPublicProcurementEditor();
+  requestAnimationFrame(() => {
+    publicProcurementTitleInput?.focus({ preventScroll: true });
+  });
 });
 
 publicProcurementSearchInput?.addEventListener("input", () => {
@@ -109537,6 +109707,10 @@ publicProcurementFilterStatusInput?.addEventListener("change", () => {
 publicProcurementDeadlineInput?.addEventListener("blur", () => {
   const normalized = normalizeDateInputValue(publicProcurementDeadlineInput.value || "");
   publicProcurementDeadlineInput.value = normalized ? formatDateInputDisplayValue(normalized) : publicProcurementDeadlineInput.value.trim();
+});
+
+publicProcurementAmountInput?.addEventListener("blur", () => {
+  publicProcurementAmountInput.value = formatOfferMoneyInputDisplayValue(publicProcurementAmountInput.value || "");
 });
 
 publicProcurementDocumentsAddButton?.addEventListener("click", () => {
@@ -109573,6 +109747,10 @@ publicProcurementDocumentsInput?.addEventListener("change", () => {
 publicProcurementResetButton?.addEventListener("click", () => {
   resetPublicProcurementForm();
   renderPublicProcurementModule();
+  openPublicProcurementEditor();
+  requestAnimationFrame(() => {
+    publicProcurementTitleInput?.focus({ preventScroll: true });
+  });
 });
 
 publicProcurementDeleteButton?.addEventListener("click", () => {
@@ -109587,7 +109765,7 @@ publicProcurementDeleteButton?.addEventListener("click", () => {
     method: "DELETE",
   }), publicProcurementError).then((success) => {
     if (success) {
-      resetPublicProcurementForm();
+      closePublicProcurementEditor({ reset: true });
       renderPublicProcurementModule();
     }
   });
@@ -109615,10 +109793,18 @@ publicProcurementForm?.addEventListener("submit", (event) => {
     body: buildPublicProcurementPayload(),
   }), publicProcurementError).then((success) => {
     if (success) {
-      resetPublicProcurementForm();
+      closePublicProcurementEditor({ reset: true });
       renderPublicProcurementModule();
     }
   });
+});
+
+publicProcurementEditorCloseButton?.addEventListener("click", () => {
+  dismissPublicProcurementEditor();
+});
+
+publicProcurementEditorBackdrop?.addEventListener("click", () => {
+  dismissPublicProcurementEditor();
 });
 
 offersSearchInput?.addEventListener("input", () => {
@@ -117483,6 +117669,11 @@ document.addEventListener("keydown", (event) => {
 
   if (event.key === "Escape" && state.offerEditorOpen) {
     dismissOfferEditor();
+    return;
+  }
+
+  if (event.key === "Escape" && state.publicProcurementEditorOpen) {
+    dismissPublicProcurementEditor();
     return;
   }
 
