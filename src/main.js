@@ -59268,6 +59268,97 @@ function buildDocumentTemplateHandoverSpecificationPlaceholder(protocol = {}) {
   };
 }
 
+function formatDocumentTemplateHandoverServiceWithObject(serviceName = "", objectName = "") {
+  const service = String(serviceName || "").trim() || "Usluga";
+  const objectLabel = String(objectName || "").trim();
+  if (!objectLabel || service.toLowerCase().includes(objectLabel.toLowerCase())) {
+    return service;
+  }
+
+  return `${service}\n(${objectLabel})`;
+}
+
+function buildDocumentTemplateHandoverTemplateRows(protocol = {}) {
+  const normalizedProtocol = normalizeDocumentTemplateHandoverProtocol(protocol);
+  return normalizedProtocol.rows.map((row, index) => {
+    const service = String(row.service || "").trim() || "Usluga";
+    const objectName = String(row.objectName || normalizedProtocol.objectName || "").trim();
+    const note = String(row.note || "").trim();
+    return {
+      id: String(row.id || `handover-service-${index + 1}`).trim(),
+      USLUGA: service,
+      NAZIV: service,
+      SIFRA: "",
+      BROJ_DOKUMENTA: String(row.documentNumber || "").trim(),
+      KOLICINA: String(row.quantity || "1").trim() || "1",
+      NAPOMENA: note,
+      NAPOMENA_USLUGE: note,
+      OBJEKT: objectName,
+      USLUGA_OBJEKT: objectName,
+      USLUGA_S_OBJEKTOM: formatDocumentTemplateHandoverServiceWithObject(service, objectName),
+    };
+  });
+}
+
+function buildDocumentTemplateRuntimeHandoverPlaceholderPayload(protocol = {}, context = {}, workOrder = {}) {
+  const normalizedProtocol = normalizeDocumentTemplateHandoverProtocol(protocol);
+  const rows = buildDocumentTemplateHandoverTemplateRows(normalizedProtocol);
+  const specificationPlaceholder = buildDocumentTemplateHandoverSpecificationPlaceholder(normalizedProtocol);
+  const issuedDate = formatCompactDate(normalizedProtocol.issuedDate) || normalizedProtocol.issuedDate || "";
+  const issuedPlace = normalizedProtocol.issuedPlace || "";
+  const userLabel = getUserDisplayLabel(state.user || {});
+  const servicesTableText = rows
+    .map((row) => [
+      row.USLUGA_S_OBJEKTOM || row.USLUGA,
+      row.BROJ_DOKUMENTA,
+      row.KOLICINA,
+      row.NAPOMENA,
+    ].filter(Boolean).join(" | "))
+    .join("\n");
+
+  return {
+    [DOCUMENT_TEMPLATE_HANDOVER_FIELD_KEY]: normalizedProtocol,
+    [DOCUMENT_TEMPLATE_SPECIFICATION_FIELD_KEY]: specificationPlaceholder,
+    Specifikacija: specificationPlaceholder,
+    specifikacija: specificationPlaceholder,
+    RN_BROJ: normalizedProtocol.workOrderNumber || workOrder?.workOrderNumber || "",
+    BROJ_RADNOG_NALOGA: normalizedProtocol.workOrderNumber || workOrder?.workOrderNumber || "",
+    PRIMOPREDAJA_RN_BROJ: normalizedProtocol.workOrderNumber || workOrder?.workOrderNumber || "",
+    NARUCITELJ_NAZIV: normalizedProtocol.customerName,
+    NARUCITELJ_SJEDISTE: normalizedProtocol.customerAddress,
+    NARUCITELJ_OIB: normalizedProtocol.customerOib,
+    TVRTKA_NAZIV: normalizedProtocol.customerName,
+    TVRTKA: normalizedProtocol.customerName,
+    TVRTKA_SJEDISTE: normalizedProtocol.customerAddress,
+    SJEDISTE: normalizedProtocol.customerAddress,
+    TVRTKA_OIB: normalizedProtocol.customerOib,
+    OIB: normalizedProtocol.customerOib,
+    IZVRSITELJ_NAZIV: normalizedProtocol.executorName,
+    IZVRSITELJ_SJEDISTE: normalizedProtocol.executorAddress,
+    IZVRSITELJ_OIB: normalizedProtocol.executorOib,
+    LOKACIJA_ISPITIVANJA: normalizedProtocol.location,
+    LOKACIJA: normalizedProtocol.location,
+    OBJEKT: normalizedProtocol.objectName,
+    OBJEKT_ISPITIVANJA: normalizedProtocol.objectName,
+    OBJECT_NAME: normalizedProtocol.objectName,
+    VRSTA_UGOVORA: normalizedProtocol.contractType,
+    UGOVOR: normalizedProtocol.contractType,
+    DATUM_IZDAVANJA: issuedDate,
+    MJESTO_IZDAVANJA: issuedPlace,
+    USLUGE_REDOVI: rows,
+    USLUGE_TABLICA: servicesTableText,
+    USLUGE: rows.map((row, index) => `${index + 1}. ${row.USLUGA}`).join("\n"),
+    OVJERIO_NARUCITELJ: normalizedProtocol.customerSignatureLabel || "Ovjerio naručitelj:",
+    OVJERIO_IZVRSITELJ: normalizedProtocol.executorSignatureLabel || "Ovjerio izvršitelj:",
+    IZRADIO_IME: userLabel,
+    MJESTO_DATUM: `${issuedPlace ? `U ${issuedPlace}, ` : "U Zagrebu, "}${issuedDate}`.trim(),
+    COMPANY_NAME: normalizedProtocol.customerName || context.company?.name || "",
+    COMPANY_HEADQUARTERS: normalizedProtocol.customerAddress || context.company?.headquarters || "",
+    COMPANY_OIB: normalizedProtocol.customerOib || context.company?.oib || "",
+    LOCATION_NAME: normalizedProtocol.location || context.location?.name || "",
+  };
+}
+
 function getDocumentTemplateRuntimeOrganizationForHandover() {
   return state.organizations.find((item) => String(item.id) === String(state.activeOrganizationId))
     ?? state.organizations[0]
@@ -59498,7 +59589,7 @@ function buildDocumentTemplateRuntimeExportEntry(
     htmlFileName: `${baseFileName}.html`,
     pdfFileName: `${baseFileName}.pdf`,
     placeholders,
-    appendBlocks: handoverProtocol ? [handoverProtocol] : [],
+    appendBlocks: [],
     documentRecord: buildDocumentTemplateRuntimeDocumentRecordPayload(template, workOrder),
     renderModel: {
       title: String(template.title || template.documentType || "Zapisnik").trim(),
@@ -59529,8 +59620,93 @@ function buildDocumentTemplateRuntimeExportEntry(
       },
       blocks: [
         ...buildDocumentTemplateRuntimePdfBlocks(template, context),
-        ...(handoverProtocol ? [handoverProtocol] : []),
       ],
+    },
+  };
+}
+
+function buildDocumentTemplateRuntimeHandoverExportEntry(
+  template = buildDocumentTemplateDraft(),
+  workOrder = getDocumentTemplateRuntimeActiveWorkOrder(),
+) {
+  if (!workOrder || !isDocumentTemplateRuntimeHandoverIncluded(workOrder.id)) {
+    return null;
+  }
+
+  const context = buildDocumentTemplatePreviewContext(template, { workOrder });
+  const handoverProtocol = buildDocumentTemplateRuntimeHandoverProtocolModel(template, context, workOrder);
+  if (!handoverProtocol || !handoverProtocol.rows.length) {
+    return null;
+  }
+
+  const selectedHandoverTemplate = getSelectedWorkOrderTemplate("handover");
+  const exportTemplate = selectedHandoverTemplate || template;
+  const runtimeTemplateId = getDocumentTemplateRuntimeTemplateId(exportTemplate);
+  if (!runtimeTemplateId) {
+    return null;
+  }
+
+  const usesDedicatedTemplate = Boolean(selectedHandoverTemplate?.id);
+  const workOrderNumber = String(handoverProtocol.workOrderNumber || workOrder.workOrderNumber || "").trim();
+  const baseFileName = sanitizeDocumentTemplateFileName(
+    `Primopredaja ${workOrderNumber || workOrder.id || "RN"}`,
+    "primopredaja",
+  );
+  const placeholders = buildDocumentTemplateRuntimeHandoverPlaceholderPayload(handoverProtocol, context, workOrder);
+  const documentRecord = buildDocumentTemplateRuntimeDocumentRecordPayload(template, workOrder);
+  const fieldValues = {
+    ...(documentRecord.fieldValues ?? {}),
+    ...placeholders,
+  };
+
+  return {
+    templateId: runtimeTemplateId,
+    workOrderId: String(workOrder.id || "").trim(),
+    exportKind: "handover",
+    forceRenderModel: !usesDedicatedTemplate,
+    baseFileName,
+    templateReferenceKind: usesDedicatedTemplate
+      ? getDocumentTemplateReferenceKind(exportTemplate.referenceDocument)
+      : "native",
+    htmlFileName: `${baseFileName}.html`,
+    pdfFileName: `${baseFileName}.pdf`,
+    placeholders,
+    appendBlocks: [],
+    documentRecord: {
+      ...documentRecord,
+      templateId: runtimeTemplateId,
+      templateTitle: "Primopredajni zapisnik",
+      documentType: "Primopredajni zapisnik",
+      fieldValues,
+    },
+    renderModel: {
+      title: DOCUMENT_TEMPLATE_HANDOVER_TITLE,
+      documentType: "Primopredajni zapisnik",
+      workOrderNumber,
+      serviceCode: "PRIMOPREDAJA",
+      status: String(workOrder.status || "").trim(),
+      company: {
+        name: String(context.company?.name || handoverProtocol.customerName || "").trim(),
+        headquarters: String(context.company?.headquarters || handoverProtocol.customerAddress || "").trim(),
+        oib: String(context.company?.oib || handoverProtocol.customerOib || "").trim(),
+        logoUrl: String(
+          context.company?.logoDataUrl
+          || context.company?.logoStorageUrl
+          || context.company?.logoUrl
+          || ""
+        ).trim(),
+      },
+      location: {
+        name: String(context.location?.name || handoverProtocol.location || "").trim(),
+        region: String(context.location?.region || "").trim(),
+        coordinates: String(context.location?.coordinates || "").trim(),
+      },
+      object: {
+        name: String(handoverProtocol.objectName || context.object?.name || "").trim(),
+        code: String(context.object?.code || "").trim(),
+        description: String(context.object?.description || "").trim(),
+      },
+      blocks: [handoverProtocol],
     },
   };
 }
@@ -59671,6 +59847,9 @@ function buildDocumentTemplateRuntimePdfPayloadFromEntry(exportEntry = null) {
     fastPdf: usesTemplateDocument ? false : true,
     useTemplatePdf: usesTemplateDocument,
     pdfEngine: templateEngine,
+    templateReferenceKind: exportEntry.templateReferenceKind,
+    exportKind: exportEntry.exportKind || "",
+    forceRenderModel: Boolean(exportEntry.forceRenderModel),
     placeholders: exportEntry.placeholders,
     appendBlocks: exportEntry.appendBlocks ?? [],
     documentRecord: exportEntry.documentRecord,
@@ -60213,6 +60392,7 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
   renderDocumentTemplateRuntimeSummaryIfVisible();
 
   const exportEntries = [];
+  const preparedHandoverWorkOrderIds = new Set();
   let failureCount = 0;
   let generatedCount = 0;
   const exportFailureDetails = [];
@@ -60285,10 +60465,23 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
           exportEntry,
           payload,
         });
+        const workOrderId = String(workOrder.id || sequenceEntry.workOrderId || "").trim();
+        if (workOrderId && !preparedHandoverWorkOrderIds.has(workOrderId)) {
+          const handoverExportEntry = buildDocumentTemplateRuntimeHandoverExportEntry(template, workOrder);
+          const handoverPayload = buildDocumentTemplateRuntimePdfPayloadFromEntry(handoverExportEntry);
+          if (handoverExportEntry && handoverPayload) {
+            exportEntries.push({
+              sequenceEntry,
+              exportEntry: handoverExportEntry,
+              payload: handoverPayload,
+            });
+            preparedHandoverWorkOrderIds.add(workOrderId);
+          }
+        }
         restorePreviousRuntimeView();
         setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
           status: "pending",
-          message: `${workOrderLabel} čeka spremanje u Documents.`,
+          message: `${workOrderLabel} čeka spremanje PDF dokumenata u Documents.`,
         }, { render: true });
       } catch (error) {
         failureCount += 1;
@@ -60323,20 +60516,23 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
       workOrderId: sequenceEntry.workOrderId || exportEntry.workOrderId,
       objectId: sequenceEntry.objectId || "",
       objectSequence: sequenceEntry.objectSequence || 0,
+      exportKind: exportEntry.exportKind || "",
+      forceRenderModel: Boolean(exportEntry.forceRenderModel),
       fileName: exportEntry.pdfFileName,
     }));
 
     exportEntries.forEach(({ sequenceEntry, exportEntry }, index) => {
       const workOrderLabel = `RN ${sequenceEntry.workOrderNumber || exportEntry.renderModel?.workOrderNumber || index + 1}`;
+      const exportLabel = exportEntry.exportKind === "handover" ? "primopredaju" : "zapisnik";
       setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
         status: "running",
-        message: `Spremam DOCX/PDF zapisnik za ${workOrderLabel} u Documents.`,
+        message: `Spremam PDF ${exportLabel} za ${workOrderLabel} u Documents.`,
       }, { render: true });
     });
 
     const savedItems = [];
     loading.setPhase(2, {
-      message: `Pripremam DOCX predloške i brzi PDF batch...`,
+      message: "Pripremam PDF predloške i primopredaju...",
       progress: 52,
     });
     const hasWordTemplateEntries = exportEntries.some(({ exportEntry }) => (
@@ -60347,12 +60543,13 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
       const rawSavedDocuments = Array.isArray(savedEntry?.documents) && savedEntry.documents.length > 0
         ? savedEntry.documents
         : [savedEntry?.item].filter(Boolean);
-      const savedDocuments = rawSavedDocuments
+      const savedDocuments = mergeDocumentTemplateRuntimePdfDocuments(rawSavedDocuments)
         .filter((item) => item && typeof item === "object" && String(item.id || "").trim());
-      const primaryDocument = savedEntry?.item
-        || savedDocuments.find((item) => String(item?.fileExtension || "").toLowerCase() === "pdf")
-        || savedDocuments[0]
-        || null;
+      const primaryDocument = (
+        savedEntry?.item && isDocumentTemplateRuntimePdfDocumentItem(savedEntry.item)
+          ? savedEntry.item
+          : null
+      ) || savedDocuments[0] || null;
 
       if (!primaryDocument) {
         throw new Error("Server nije vratio spremljeni zapisnik.");
@@ -60373,8 +60570,7 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
         console.warn("Zapisnik je spremljen, ali lokalni prikaz Documentsa nije odmah osvježen.", syncError);
       }
 
-      const savedTypes = new Set(savedDocuments.map((item) => String(item?.fileExtension || "").toLowerCase()));
-      const savedLabel = savedTypes.has("docx") && savedTypes.has("pdf") ? "DOCX i PDF" : "PDF";
+      const savedLabel = savedDocuments.length > 1 ? `${savedDocuments.length} PDF-a` : "PDF";
       try {
         await persistDocumentTemplateRuntimeServiceProgress(
           getDocumentTemplateRuntimeWorkOrderById(sequenceEntry?.workOrderId) || { id: sequenceEntry?.workOrderId },
@@ -60386,9 +60582,10 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
       }
 
       try {
+        const exportLabel = exportEntry?.exportKind === "handover" ? "primopredaja" : "zapisnik";
         setDocumentTemplateRuntimeExportStatus(sequenceEntry, {
           status: "done",
-          message: `${workOrderLabel}: spremljen ${savedLabel} u Documents.`,
+          message: `${workOrderLabel}: spremljen ${savedLabel} (${exportLabel}) u Documents.`,
           document: primaryDocument,
           documents: savedDocuments,
         }, { render: true });
@@ -60399,7 +60596,7 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
 
     loading.setPhase(2, {
       message: hasWordTemplateEntries
-        ? "Spremam zapisnike u malim paketima da LibreOffice ostane stabilan..."
+        ? "Spremam PDF dokumente u malim paketima da LibreOffice ostane stabilan..."
         : "Spremam zapisnike u malim paketima za brži Documents upload...",
       progress: 52,
     });
@@ -60497,9 +60694,13 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
         for (const [offset, meta] of chunkMetas.entries()) {
           const sequenceEntry = meta?.sequenceEntry;
           const runtimeExportEntry = meta?.exportEntry;
+          const runtimeExportKind = String(runtimeExportEntry?.exportKind || "").trim();
           const savedEntry = responseItems.find((item) => (
             String(item?.workOrderId || "") === String(sequenceEntry?.workOrderId || "")
             && (!item?.templateId || !runtimeExportEntry?.templateId || String(item.templateId) === String(runtimeExportEntry.templateId))
+            && (runtimeExportKind
+              ? String(item?.exportKind || "").trim() === runtimeExportKind
+              : !String(item?.exportKind || "").trim())
           )) || responseItems[offset] || null;
           await handleSavedEntry(savedEntry, sequenceEntry, runtimeExportEntry, startIndex + offset);
         }
@@ -60511,9 +60712,13 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
           for (const [offset, meta] of chunkMetas.entries()) {
             const sequenceEntry = meta?.sequenceEntry;
             const runtimeExportEntry = meta?.exportEntry;
+            const runtimeExportKind = String(runtimeExportEntry?.exportKind || "").trim();
             const savedEntry = partialItems.find((item) => (
               String(item?.workOrderId || "") === String(sequenceEntry?.workOrderId || "")
               && (!item?.templateId || !runtimeExportEntry?.templateId || String(item.templateId) === String(runtimeExportEntry.templateId))
+              && (runtimeExportKind
+                ? String(item?.exportKind || "").trim() === runtimeExportKind
+                : !String(item?.exportKind || "").trim())
             )) || null;
             if (savedEntry) {
               handledOffsets.add(offset);
@@ -60552,13 +60757,13 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
         ? ` Detalj: ${exportFailureDetails.slice(0, 3).join(" | ")}`
         : "";
       setDocumentTemplateMessage(
-        `${generatedCount} zapisnika je spremljeno u Documents, ${failureCount} nije spremljeno.${failureDetail}`,
+        `${generatedCount} PDF dokumenata je spremljeno u Documents, ${failureCount} nije spremljeno.${failureDetail}`,
       );
     } else {
       loading.complete({
         message: "Gotovo.",
       });
-      setDocumentTemplateMessage("Gotovo.", { type: "success" });
+      setDocumentTemplateMessage("Gotovo: svi odabrani PDF dokumenti spremljeni su u Documents.", { type: "success" });
     }
   } catch (error) {
     console.error("Ne mogu generirati batch PDF zapisnike.", error);
@@ -70497,6 +70702,50 @@ function getDocumentTemplateRuntimeExportStatusMap() {
   );
 }
 
+function isDocumentTemplateRuntimePdfDocumentItem(item = null) {
+  if (!item || typeof item !== "object") {
+    return false;
+  }
+
+  const extension = String(item.fileExtension || "").trim().toLowerCase();
+  const fileType = String(item.fileType || "").trim().toLowerCase();
+  const sourceType = String(item.sourceType || "").trim().toLowerCase();
+  const fileName = String(item.fileName || "").trim().toLowerCase();
+  return extension === "pdf"
+    || fileType.includes("pdf")
+    || sourceType === "pdf"
+    || fileName.endsWith(".pdf");
+}
+
+function getDocumentTemplateRuntimePdfDocumentKey(item = null) {
+  if (!item || typeof item !== "object") {
+    return "";
+  }
+
+  return String(
+    item.id
+    || [item.workOrderId, item.fileName, item.updatedAt || item.createdAt].filter(Boolean).join("::")
+    || item.fileName
+    || "",
+  ).trim();
+}
+
+function mergeDocumentTemplateRuntimePdfDocuments(...documentLists) {
+  const result = [];
+  const seen = new Set();
+  documentLists.flatMap((items) => (Array.isArray(items) ? items : [items]))
+    .filter(isDocumentTemplateRuntimePdfDocumentItem)
+    .forEach((item) => {
+      const key = getDocumentTemplateRuntimePdfDocumentKey(item);
+      if (!key || seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      result.push(item);
+    });
+  return result;
+}
+
 function setDocumentTemplateRuntimeExportStatus(entry = {}, patch = {}, { render = false } = {}) {
   const key = getDocumentTemplateRuntimeSequenceEntryKey(entry);
   if (!key) {
@@ -70505,11 +70754,28 @@ function setDocumentTemplateRuntimeExportStatus(entry = {}, patch = {}, { render
 
   const current = getDocumentTemplateRuntimeExportStatusMap()[key] ?? {};
   const status = String(patch.status || current.status || "pending").trim().toLowerCase() || "pending";
+  const patchHasDocuments = Object.prototype.hasOwnProperty.call(patch, "documents")
+    || Object.prototype.hasOwnProperty.call(patch, "document");
+  const mergedDocuments = patchHasDocuments
+    ? mergeDocumentTemplateRuntimePdfDocuments(
+      current.documents,
+      current.document,
+      patch.documents,
+      patch.document,
+    )
+    : null;
+  const normalizedPatch = patchHasDocuments
+    ? {
+      ...patch,
+      document: patch.document || mergedDocuments[0] || null,
+      documents: mergedDocuments,
+    }
+    : patch;
   state.documentTemplateRuntime.exportStatuses = {
     ...getDocumentTemplateRuntimeExportStatusMap(),
     [key]: {
       ...current,
-      ...patch,
+      ...normalizedPatch,
       status,
       updatedAt: new Date().toISOString(),
     },
@@ -70579,9 +70845,9 @@ function getDocumentTemplateRuntimeGroupExportStatus(group = {}, { groupOk = fal
   }
 
   if (statuses.length > 0 && statuses.every((item) => item.status === "done")) {
-    const documents = statuses
-      .flatMap((item) => (Array.isArray(item.documents) ? item.documents : [item.document]))
-      .filter(Boolean);
+    const documents = mergeDocumentTemplateRuntimePdfDocuments(
+      ...statuses.map((item) => (Array.isArray(item.documents) ? item.documents : [item.document])),
+    );
     return {
       kind: "done",
       label: "Spremljeno",
@@ -70609,7 +70875,7 @@ function getDocumentTemplateRuntimeSavedPdfDocumentsFromItems(items = [], workOr
   const normalizedWorkOrderId = String(workOrderId || "").trim();
   return (Array.isArray(items) ? items : [])
     .filter((item) => (
-      String(item?.sourceType || "").toLowerCase() === "pdf"
+      isDocumentTemplateRuntimePdfDocumentItem(item)
       && String(item?.documentCategory || "").trim() === GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY
     ))
     .map((item) => ({
@@ -72379,12 +72645,16 @@ function renderDocumentTemplateRuntimeFieldRows() {
       selectionState,
       missingRequired,
       groupOk,
+      exportStatus,
     }) => {
       const entryCard = document.createElement("article");
       entryCard.className = "document-template-runtime-summary-entry";
       entryCard.classList.toggle("is-skipped", skipped);
       entryCard.classList.toggle("is-ok", groupOk);
       entryCard.classList.toggle("is-warning", !groupOk && !skipped);
+      entryCard.classList.toggle("is-export-running", exportStatus.kind === "running");
+      entryCard.classList.toggle("is-export-done", exportStatus.kind === "done");
+      entryCard.classList.toggle("is-export-error", exportStatus.kind === "error");
       const collapseToken = String(group.workOrderId || group.workOrderNumber || "").trim();
       const collapseKey = collapseToken ? `summary:${collapseToken}` : "";
       const hasCollapseState = collapseKey
@@ -72445,7 +72715,36 @@ function renderDocumentTemplateRuntimeFieldRows() {
         saveDocumentTemplateRuntimeLocalDraft({ syncButton: true });
         renderDocumentTemplateFieldRows();
       });
-      entryHead.append(includeField, toggleButton);
+      const entryActions = document.createElement("div");
+      entryActions.className = "document-template-runtime-summary-entry-actions";
+      const statusPill = document.createElement("span");
+      statusPill.className = `document-template-runtime-summary-status is-${exportStatus.kind}`;
+      statusPill.textContent = exportStatus.label;
+      statusPill.title = exportStatus.detail || exportStatus.label;
+      entryActions.append(statusPill);
+      const exportDocuments = mergeDocumentTemplateRuntimePdfDocuments(exportStatus.documents);
+      exportDocuments.slice(0, 4).forEach((documentItem, documentIndex) => {
+        const downloadButton = document.createElement("button");
+        downloadButton.type = "button";
+        downloadButton.className = "ghost-button document-template-runtime-summary-download";
+        downloadButton.innerHTML = getWorkOrderIconMarkup("download");
+        downloadButton.title = documentItem.fileName || `Preuzmi PDF ${documentIndex + 1}`;
+        downloadButton.setAttribute("aria-label", downloadButton.title);
+        downloadButton.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          void downloadDocumentTemplateSavedPdfDocument(documentItem);
+        });
+        entryActions.append(downloadButton);
+      });
+      if (exportDocuments.length > 4) {
+        const extra = document.createElement("span");
+        extra.className = "document-template-runtime-summary-download-more";
+        extra.textContent = `+${exportDocuments.length - 4}`;
+        extra.title = `${exportDocuments.length} PDF dokumenata spremljeno`;
+        entryActions.append(extra);
+      }
+      entryHead.append(includeField, toggleButton, entryActions);
       let requiredWarning = null;
       if (missingRequired.length > 0) {
         requiredWarning = document.createElement("div");

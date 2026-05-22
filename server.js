@@ -2263,6 +2263,10 @@ async function generatePdfBuffersForTemplateEntries(entries = [], scopedSnapshot
       entry?.templateId,
       "Template nije pronaden.",
     );
+    if (entry?.forceRenderModel && hasTemplateRenderPdfModel(entry?.renderModel)) {
+      pdfBuffers[entryIndex] = await buildPdfFromRenderModel(entry.renderModel);
+      continue;
+    }
 
     if (!template.referenceDocument) {
       if (hasTemplateRenderPdfModel(entry?.renderModel)) {
@@ -2381,6 +2385,19 @@ async function generatePdfFileEntriesForTemplateEntries(entries = [], scopedSnap
       entry?.fileName || template.outputFileName || template.title || `zapisnik-${entryIndex + 1}`,
       usedNames,
     );
+
+    if (entry?.forceRenderModel && hasTemplateRenderPdfModel(entry?.renderModel)) {
+      return {
+        entry,
+        template,
+        fileName,
+        buffer: await finalizeGeneratedTemplatePdfBuffer(
+          await buildPdfFromRenderModel(entry.renderModel),
+          entry,
+          options,
+        ),
+      };
+    }
 
     if (!template.referenceDocument) {
       if (hasTemplateRenderPdfModel(entry?.renderModel)) {
@@ -2554,6 +2571,21 @@ async function generateTemplateDocumentFilesForEntries(entries = [], scopedSnaps
     };
     bundles.push(bundle);
 
+    if (entry?.forceRenderModel && hasTemplateRenderPdfModel(entry?.renderModel)) {
+      const renderModelPdfStartedAt = Date.now();
+      bundle.files.push({
+        kind: "pdf",
+        fileName: pdfFileName,
+        buffer: await finalizeGeneratedTemplatePdfBuffer(
+          await buildPdfFromRenderModel(entry.renderModel),
+          entry,
+          options,
+        ),
+      });
+      renderModelPdfMs += Date.now() - renderModelPdfStartedAt;
+      continue;
+    }
+
     if (!template.referenceDocument) {
       if (!hasTemplateRenderPdfModel(entry?.renderModel)) {
         throw new Error("Template jos nema ucitan HTML ili Word predlozak.");
@@ -2608,11 +2640,6 @@ async function generateTemplateDocumentFilesForEntries(entries = [], scopedSnaps
         appendBlocks: entry?.appendBlocks ?? [],
       });
       docxRenderMs += Date.now() - docxRenderStartedAt;
-      bundle.files.push({
-        kind: "docx",
-        fileName: docxFileName,
-        buffer: docxBuffer,
-      });
       wordBundles.push({
         bundle,
         docxBuffer,
@@ -2694,6 +2721,10 @@ async function generateCombinedHtmlPdfForTemplateEntries(entries = [], scopedSna
       entry?.templateId,
       "Template nije pronaÄ‘en.",
     );
+
+    if (entry?.forceRenderModel) {
+      return null;
+    }
 
     if (!template.referenceDocument || !isHtmlTemplateFile(template.referenceDocument)) {
       return null;
@@ -3580,7 +3611,12 @@ function buildGeneratedDocumentTemplatePdfDocumentPayload({
     { fallback: "zapisnik", extension: "pdf" },
   );
   const safeBuffer = Buffer.isBuffer(pdfBuffer) ? pdfBuffer : Buffer.from(pdfBuffer ?? []);
-  const templateTitle = String(template.title || template.documentType || "Zapisnik").trim() || "Zapisnik";
+  const templateTitle = String(
+    entry?.documentRecord?.templateTitle
+    || template.title
+    || template.documentType
+    || "Zapisnik",
+  ).trim() || "Zapisnik";
   const workOrderNumber = String(workOrder.workOrderNumber || "bez broja").trim() || "bez broja";
   const signatureMetadata = resolveGeneratedDocumentTemplateSignatureMetadata(entry);
 
@@ -4608,47 +4644,29 @@ async function saveGeneratedDocumentTemplatePdfDocuments(entries = [], scopedSna
     let primaryPdfItem = null;
 
     for (const file of bundle.files) {
-      if (file.kind === "docx") {
-        const docxPayload = buildGeneratedDocumentTemplateDocxDocumentPayload({
-          workOrder,
-          template: bundle.template,
-          docxBuffer: file.buffer,
-          fileName: file.fileName,
-          entry: bundle.entry,
-        });
-        const docxItems = await domainRepository.addWorkOrderDocuments(
-          workOrderId,
-          [docxPayload],
-          user,
-          { sourceType: "editor" },
-        );
-        if (docxItems[0]) {
-          savedDocuments.push(stripStoredDocumentPayloadForResponse(docxItems[0]));
-        }
+      if (file.kind !== "pdf") {
         continue;
       }
 
-      if (file.kind === "pdf") {
-        const filePayload = buildGeneratedDocumentTemplatePdfDocumentPayload({
-          workOrder,
-          template: bundle.template,
-          pdfBuffer: file.buffer,
-          fileName: file.fileName,
-          entry: bundle.entry,
-        });
-        const pdfItem = typeof domainRepository.upsertWorkOrderGeneratedPdfDocument === "function"
-          ? await domainRepository.upsertWorkOrderGeneratedPdfDocument(workOrderId, filePayload, user)
-          : (await domainRepository.addWorkOrderDocuments(
-            workOrderId,
-            [filePayload],
-            user,
-            { sourceType: "pdf" },
-          ))[0] ?? null;
-        if (pdfItem) {
-          const strippedPdfItem = stripStoredDocumentPayloadForResponse(pdfItem);
-          savedDocuments.push(strippedPdfItem);
-          primaryPdfItem = strippedPdfItem;
-        }
+      const filePayload = buildGeneratedDocumentTemplatePdfDocumentPayload({
+        workOrder,
+        template: bundle.template,
+        pdfBuffer: file.buffer,
+        fileName: file.fileName,
+        entry: bundle.entry,
+      });
+      const pdfItem = typeof domainRepository.upsertWorkOrderGeneratedPdfDocument === "function"
+        ? await domainRepository.upsertWorkOrderGeneratedPdfDocument(workOrderId, filePayload, user)
+        : (await domainRepository.addWorkOrderDocuments(
+          workOrderId,
+          [filePayload],
+          user,
+          { sourceType: "pdf" },
+        ))[0] ?? null;
+      if (pdfItem) {
+        const strippedPdfItem = stripStoredDocumentPayloadForResponse(pdfItem);
+        savedDocuments.push(strippedPdfItem);
+        primaryPdfItem = strippedPdfItem;
       }
     }
 
@@ -4672,7 +4690,13 @@ async function saveGeneratedDocumentTemplatePdfDocuments(entries = [], scopedSna
       companyName: String(workOrder.companyName || "").trim(),
       locationName: String(workOrder.locationName || "").trim(),
       templateId: String(bundle?.entry?.templateId || bundle?.template?.id || "").trim(),
-      templateTitle: String(bundle?.template?.title || bundle?.template?.documentType || "Zapisnik").trim(),
+      templateTitle: String(
+        bundle?.entry?.documentRecord?.templateTitle
+        || bundle?.template?.title
+        || bundle?.template?.documentType
+        || "Zapisnik",
+      ).trim(),
+      exportKind: String(bundle?.entry?.exportKind || "").trim(),
       fileName: primaryPdfItem?.fileName || savedDocuments[0]?.fileName || "",
       item: primaryPdfItem || savedDocuments[0] || null,
       documents: savedDocuments,

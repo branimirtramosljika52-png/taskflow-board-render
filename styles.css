@@ -34511,7 +34511,7 @@ body.is-measurement-equipment-export-open {
 }
 
 .document-template-runtime-summary-entry-head.is-simple {
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
 }
 
 .document-template-runtime-summary-entry-toggle {
@@ -34622,6 +34622,14 @@ body.is-measurement-equipment-export-open {
   color: #6d6280;
   font-size: 0.68rem;
   line-height: 1.2;
+}
+
+.document-template-runtime-summary-entry-actions {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
 .document-template-runtime-summary-status {
@@ -34782,6 +34790,20 @@ body.is-measurement-equipment-export-open {
 .document-template-runtime-summary-download svg {
   width: 15px;
   height: 15px;
+}
+
+.document-template-runtime-summary-download-more {
+  min-width: 26px;
+  height: 26px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(124, 92, 255, 0.24);
+  background: rgba(124, 92, 255, 0.08);
+  color: #4f36c7;
+  font-size: 0.66rem;
+  font-weight: 900;
 }
 
 .document-template-runtime-summary-entry-chips {
@@ -35538,6 +35560,11 @@ body.is-measurement-equipment-export-open {
 
   .document-template-runtime-summary-entry-head.is-simple {
     grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .document-template-runtime-summary-entry-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
   }
 
   .document-template-runtime-summary-final-actions,
