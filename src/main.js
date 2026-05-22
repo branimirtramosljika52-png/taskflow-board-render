@@ -63293,34 +63293,65 @@ function createWorkOrderBottomBarCard({
     .flatMap((entry) => getDocumentTemplateRuntimeSequenceEntryMissingRequired(entry));
   const allEntriesComplete = groupItems.length > 0 && groupItems.every((entry) => isDocumentTemplateRuntimeSequenceEntryComplete(entry));
   const allServicesComplete = serviceItems.length > 0 && serviceItems.every((service) => Boolean(service?.isCompleted));
-  const isActive = sequenceState?.isSummary
+  const isCurrentGroup = sequenceState?.isSummary
     ? false
-    : activePanel !== "handover" && (
+    : (
       groupItems.some((entry) => Number(entry.dockIndex) === activeIndex)
       || String(group.workOrderId || "") === String(activeWorkOrder?.id || "")
     );
+  const isActive = isCurrentGroup;
+  const isHandoverActive = isCurrentGroup && activePanel === "handover";
   const hasProblem = missingRequired.length > 0 || serviceItems.some((service) => getWorkOrderServiceProgressStatus(service) === "in_progress");
 
-  const card = document.createElement("button");
-  card.type = "button";
+  const card = document.createElement("div");
   card.className = "document-template-runtime-dock-group work-order-bottom-card";
+  card.tabIndex = 0;
+  card.setAttribute("role", "button");
   card.classList.toggle("is-active", isActive);
+  card.classList.toggle("is-handover-active", isHandoverActive);
   card.classList.toggle("is-complete", allEntriesComplete && (serviceItems.length === 0 || allServicesComplete) && !hasProblem);
   card.classList.toggle("is-warning", hasProblem);
   card.setAttribute("aria-label", `Otvori RN ${group.workOrderNumber || "bez broja"}`);
-  card.addEventListener("click", () => {
+  const openWorkOrderFields = () => {
     const firstEntry = groupItems[0] || null;
     if (hasSequence && firstEntry) {
       const index = Number(firstEntry.dockIndex);
       if (Number.isFinite(index) && index >= 0 && index !== activeIndex) {
         openDocumentTemplateRuntimeSequenceIndex(index);
+      } else if (activePanel === "handover") {
+        setDocumentTemplateRuntimeActivePanel("fields", { render: true });
       }
       return;
     }
 
     if (String(group.workOrderId || "") !== String(activeWorkOrder?.id || "")) {
       setDocumentTemplateRuntimeActiveWorkOrder(group.workOrderId, { render: true });
+    } else if (activePanel === "handover") {
+      setDocumentTemplateRuntimeActivePanel("fields", { render: true });
     }
+  };
+  const openHandover = () => {
+    const firstEntry = groupItems[0] || null;
+    if (hasSequence && firstEntry) {
+      const index = Number(firstEntry.dockIndex);
+      if (Number.isFinite(index) && index >= 0 && index !== activeIndex) {
+        openDocumentTemplateRuntimeSequenceIndex(index);
+        window.requestAnimationFrame(() => openDocumentTemplateRuntimeHandoverPanel(group.workOrderId));
+        return;
+      }
+    }
+    openDocumentTemplateRuntimeHandoverPanel(group.workOrderId);
+  };
+  card.addEventListener("click", openWorkOrderFields);
+  card.addEventListener("keydown", (event) => {
+    if (event.target instanceof HTMLElement && event.target.closest(".work-order-bottom-card-service.is-handover-action")) {
+      return;
+    }
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+    event.preventDefault();
+    openWorkOrderFields();
   });
 
   const head = document.createElement("span");
@@ -63339,7 +63370,7 @@ function createWorkOrderBottomBarCard({
 
   const serviceRow = document.createElement("span");
   serviceRow.className = "work-order-bottom-card-services";
-  const visibleServices = serviceItems.slice(0, 4);
+  const visibleServices = serviceItems.slice(0, serviceItems.length > 2 ? 1 : 2);
   if (visibleServices.length === 0) {
     const empty = document.createElement("span");
     empty.className = "work-order-bottom-card-service is-neutral";
@@ -63357,54 +63388,25 @@ function createWorkOrderBottomBarCard({
     }
   }
 
-  card.append(head, serviceRow);
-  return card;
-}
-
-function createWorkOrderHandoverBottomBarCard({
-  template = buildDocumentTemplateDraft(),
-  activeWorkOrder = null,
-  activePanel = "fields",
-} = {}) {
-  const protocol = activeWorkOrder
-    ? buildDocumentTemplateRuntimeHandoverProtocolModel(
-      template,
-      buildDocumentTemplatePreviewContext(template, { workOrder: activeWorkOrder }),
-      activeWorkOrder,
-    )
-    : normalizeDocumentTemplateHandoverProtocol();
-  const serviceCount = Array.isArray(protocol.rows) ? protocol.rows.length : 0;
-  const card = document.createElement("button");
-  card.type = "button";
-  card.className = "document-template-runtime-dock-group work-order-bottom-card is-handover";
-  card.classList.toggle("is-active", activePanel === "handover");
-  card.setAttribute("aria-label", "Otvori primopredajni zapisnik");
-  card.addEventListener("click", () => {
-    openDocumentTemplateRuntimeHandoverPanel(activeWorkOrder?.id || "");
+  const handoverButton = document.createElement("button");
+  handoverButton.type = "button";
+  handoverButton.className = "work-order-bottom-card-service is-handover-action";
+  handoverButton.classList.toggle("is-active", isHandoverActive);
+  handoverButton.title = "Primopredaja - usluge, brojevi dokumenata i količine";
+  handoverButton.setAttribute("aria-label", "Otvori primopredaju za ovaj RN");
+  const handoverIcon = document.createElement("span");
+  handoverIcon.className = "work-order-bottom-card-service-icon";
+  handoverIcon.innerHTML = getWorkOrderIconMarkup("signature");
+  handoverIcon.setAttribute("aria-hidden", "true");
+  const handoverText = document.createElement("span");
+  handoverText.textContent = "Primop.";
+  handoverButton.append(handoverIcon, handoverText);
+  handoverButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openHandover();
   });
-
-  const head = document.createElement("span");
-  head.className = "work-order-bottom-card-head";
-  const icon = document.createElement("span");
-  icon.className = "work-order-bottom-card-icon is-handover";
-  icon.innerHTML = getWorkOrderIconMarkup("signature");
-  icon.setAttribute("aria-hidden", "true");
-  const title = document.createElement("strong");
-  title.textContent = "Primopredajni";
-  head.append(icon, title);
-
-  const serviceRow = document.createElement("span");
-  serviceRow.className = "work-order-bottom-card-services";
-  [
-    `${serviceCount || 0} USL`,
-    "BR",
-    "KOL",
-  ].forEach((label, index) => {
-    const badge = document.createElement("span");
-    badge.className = `work-order-bottom-card-service ${index === 0 && serviceCount > 0 ? "is-ok" : "is-neutral"}`;
-    badge.textContent = label;
-    serviceRow.append(badge);
-  });
+  serviceRow.append(handoverButton);
 
   card.append(head, serviceRow);
   return card;
@@ -64111,14 +64113,6 @@ function renderDocumentTemplateRuntimeContext() {
       activeWorkOrder,
       activePanel,
     }));
-
-    if (!sequenceState?.isSummary && activeWorkOrder) {
-      dockNodes.push(createWorkOrderHandoverBottomBarCard({
-        template,
-        activeWorkOrder,
-        activePanel,
-      }));
-    }
 
     if (sequenceState) {
       const summaryCard = document.createElement("button");
