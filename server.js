@@ -3107,12 +3107,104 @@ function getWorkOrderTemplateExecutors(workOrder = {}) {
     .filter(Boolean);
 }
 
-function buildWorkOrderTemplatePlaceholderPayload(workOrder = {}) {
+function getWorkOrderTemplateServiceCode(service = {}, fallbackIndex = 0) {
+  return normalizeWorkOrderTemplateValue(
+    service.serviceCode
+    || service.code
+    || service.shortLabel
+    || service.name
+    || service.serviceName
+    || `USLUGA-${fallbackIndex + 1}`,
+  );
+}
+
+function getWorkOrderTemplateServiceQuantity(service = {}) {
+  return normalizeWorkOrderTemplateValue(
+    service.measurementPlaces
+    || service.measurementPlaceCount
+    || service.measurementPoints
+    || service.measurementPointCount
+    || service.quantity
+    || service.count
+    || service.amount
+    || "1",
+  ) || "1";
+}
+
+function getWorkOrderTemplateServiceNote(service = {}) {
+  return normalizeWorkOrderTemplateValue(
+    service.note
+    || service.remark
+    || service.remarks
+    || service.measurementSummary
+    || service.description
+    || "",
+  );
+}
+
+function buildWorkOrderTemplateServiceRows(workOrder = {}) {
+  const workOrderNumber = normalizeWorkOrderTemplateValue(workOrder.workOrderNumber);
+  const source = Array.isArray(workOrder.serviceItems) ? workOrder.serviceItems : [];
+  const rows = source
+    .map((item, index) => {
+      const service = item && typeof item === "object" ? item : { name: item };
+      const name = normalizeWorkOrderTemplateValue(service.name || service.serviceName || service.title || service.serviceCode);
+      const code = getWorkOrderTemplateServiceCode(service, index);
+      const documentNumber = normalizeWorkOrderTemplateValue(
+        service.documentNumber
+        || service.recordNumber
+        || service.number
+        || [workOrderNumber, code].filter(Boolean).join("-"),
+      );
+      if (!name && !documentNumber && !code) {
+        return null;
+      }
+      return {
+        USLUGA: name || code || "Usluga",
+        NAZIV: name || code || "Usluga",
+        SIFRA: code,
+        BROJ_DOKUMENTA: documentNumber,
+        KOLICINA: getWorkOrderTemplateServiceQuantity(service),
+        NAPOMENA: getWorkOrderTemplateServiceNote(service),
+        NAPOMENA_USLUGE: getWorkOrderTemplateServiceNote(service),
+      };
+    })
+    .filter(Boolean);
+
+  if (rows.length > 0) {
+    return rows;
+  }
+
+  const fallbackService = normalizeWorkOrderTemplateValue(workOrder.serviceLine);
+  return fallbackService
+    ? [{
+      USLUGA: fallbackService,
+      NAZIV: fallbackService,
+      SIFRA: fallbackService,
+      BROJ_DOKUMENTA: workOrderNumber,
+      KOLICINA: "1",
+      NAPOMENA: "",
+      NAPOMENA_USLUGE: "",
+    }]
+    : [];
+}
+
+function getWorkOrderTemplateOrganization(scopedSnapshot = {}) {
+  return scopedSnapshot.currentOrganization
+    || (Array.isArray(scopedSnapshot.organizations)
+      ? scopedSnapshot.organizations.find((item) => String(item.id) === String(scopedSnapshot.activeOrganizationId))
+      : null)
+    || {};
+}
+
+function buildWorkOrderTemplatePlaceholderPayload(workOrder = {}, scopedSnapshot = {}) {
   const normalizedWorkOrder = workOrder && typeof workOrder === "object" ? workOrder : {};
+  const organization = getWorkOrderTemplateOrganization(scopedSnapshot);
   const executors = getWorkOrderTemplateExecutors(normalizedWorkOrder);
   const serviceItems = Array.isArray(normalizedWorkOrder.serviceItems)
     ? normalizedWorkOrder.serviceItems
     : [];
+  const serviceRows = buildWorkOrderTemplateServiceRows(normalizedWorkOrder);
   const services = serviceItems.length > 0
     ? serviceItems
       .map((item, index) => {
@@ -3124,26 +3216,62 @@ function buildWorkOrderTemplatePlaceholderPayload(workOrder = {}) {
       .filter(Boolean)
       .join("\n")
     : normalizeWorkOrderTemplateValue(normalizedWorkOrder.serviceLine);
+  const servicesTableText = serviceRows
+    .map((row) => [row.USLUGA, row.BROJ_DOKUMENTA, row.KOLICINA, row.NAPOMENA].filter(Boolean).join(" | "))
+    .join("\n");
+  const openedDate = normalizedWorkOrder.openedDate ? formatOfferDocumentDate(normalizedWorkOrder.openedDate) : "";
+  const dueDate = normalizedWorkOrder.dueDate ? formatOfferDocumentDate(normalizedWorkOrder.dueDate) : "";
+  const contractType = normalizeWorkOrderTemplateValue(normalizedWorkOrder.contractType || normalizedWorkOrder.contract || "");
+  const location = normalizeWorkOrderTemplateValue(normalizedWorkOrder.locationName);
+  const organizationAddress = [
+    organization.address || "",
+    [organization.postalCode, organization.city].filter(Boolean).join(" "),
+  ].filter(Boolean).join(", ");
   const payload = {
     RN_BROJ: normalizeWorkOrderTemplateValue(normalizedWorkOrder.workOrderNumber) || "Dodijeljen nakon spremanja",
+    BROJ_RADNOG_NALOGA: normalizeWorkOrderTemplateValue(normalizedWorkOrder.workOrderNumber) || "Dodijeljen nakon spremanja",
     RN_STATUS: normalizeWorkOrderTemplateValue(normalizedWorkOrder.status),
     RN_PRIORITET: normalizeWorkOrderTemplateValue(normalizedWorkOrder.priority),
-    RN_DATUM_OTVARANJA: normalizedWorkOrder.openedDate ? formatOfferDocumentDate(normalizedWorkOrder.openedDate) : "",
-    RN_ROK_ZAVRSETKA: normalizedWorkOrder.dueDate ? formatOfferDocumentDate(normalizedWorkOrder.dueDate) : "",
+    RN_DATUM_OTVARANJA: openedDate,
+    DATUM_OTVARANJA: openedDate,
+    RN_ROK_ZAVRSETKA: dueDate,
+    ROK_ZAVRSETKA: dueDate,
+    ROK: dueDate,
     VEZA_RN: normalizeWorkOrderTemplateValue(normalizedWorkOrder.linkReference),
     TVRTKA_NAZIV: normalizeWorkOrderTemplateValue(normalizedWorkOrder.companyName),
+    TVRTKA: normalizeWorkOrderTemplateValue(normalizedWorkOrder.companyName),
     TVRTKA_SJEDISTE: normalizeWorkOrderTemplateValue(normalizedWorkOrder.headquarters),
+    SJEDISTE: normalizeWorkOrderTemplateValue(normalizedWorkOrder.headquarters),
     TVRTKA_OIB: normalizeWorkOrderTemplateValue(normalizedWorkOrder.companyOib),
-    LOKACIJA_NAZIV: normalizeWorkOrderTemplateValue(normalizedWorkOrder.locationName),
+    OIB: normalizeWorkOrderTemplateValue(normalizedWorkOrder.companyOib),
+    LOKACIJA_NAZIV: location,
+    LOKACIJA: location,
     LOKACIJA_REGIJA: normalizeWorkOrderTemplateValue(normalizedWorkOrder.region),
+    REGIJA: normalizeWorkOrderTemplateValue(normalizedWorkOrder.region),
+    VRSTA_UGOVORA: contractType,
+    UGOVOR: contractType,
     KONTAKT_OSOBA: normalizeWorkOrderTemplateValue(normalizedWorkOrder.contactName),
     KONTAKT_TELEFON: normalizeWorkOrderTemplateValue(normalizedWorkOrder.contactPhone),
     KONTAKT_EMAIL: normalizeWorkOrderTemplateValue(normalizedWorkOrder.contactEmail),
     IZVRSITELJI: executors.map((name, index) => `${index + 1}. ${name}`).join("\n"),
     USLUGE: services,
+    USLUGE_REDOVI: serviceRows,
+    USLUGE_TABLICA: servicesTableText,
     NAPOMENA: normalizeWorkOrderTemplateValue(normalizedWorkOrder.description),
     ODJEL: normalizeWorkOrderTemplateValue(normalizedWorkOrder.department || normalizedWorkOrder.serviceLine),
     KOORDINATE: normalizeWorkOrderTemplateValue(normalizedWorkOrder.coordinates),
+    PRIMOPREDAJA_RN_BROJ: normalizeWorkOrderTemplateValue(normalizedWorkOrder.workOrderNumber) || "Dodijeljen nakon spremanja",
+    NARUCITELJ_NAZIV: normalizeWorkOrderTemplateValue(normalizedWorkOrder.companyName),
+    NARUCITELJ_SJEDISTE: normalizeWorkOrderTemplateValue(normalizedWorkOrder.headquarters),
+    NARUCITELJ_OIB: normalizeWorkOrderTemplateValue(normalizedWorkOrder.companyOib),
+    IZVRSITELJ_NAZIV: normalizeWorkOrderTemplateValue(organization.name || "SafeWork"),
+    IZVRSITELJ_SJEDISTE: normalizeWorkOrderTemplateValue(organizationAddress),
+    IZVRSITELJ_OIB: normalizeWorkOrderTemplateValue(organization.oib),
+    LOKACIJA_ISPITIVANJA: location,
+    OVJERIO_NARUCITELJ: "Ovjerio naručitelj:",
+    OVJERIO_IZVRSITELJ: "Ovjerio izvršitelj:",
+    IZRADIO_IME: normalizeWorkOrderTemplateValue(normalizedWorkOrder.completedBy || normalizedWorkOrder.createdByLabel),
+    MJESTO_DATUM: `U Zagrebu, ${formatOfferDocumentDate(new Date().toISOString().slice(0, 10))}`,
   };
 
   for (let index = 0; index < 10; index += 1) {
@@ -3186,7 +3314,7 @@ async function buildWorkOrderPdfExportPayload(workOrder = {}, scopedSnapshot = {
     try {
       const pdfBuffer = await withOperationTimeout(
         generatePdfBufferForTemplate(template, {
-          placeholders: buildWorkOrderTemplatePlaceholderPayload(workOrder),
+          placeholders: buildWorkOrderTemplatePlaceholderPayload(workOrder, scopedSnapshot),
           fileName: sanitizeGeneratedDocumentFileName(
             workOrder.workOrderNumber || workOrder.companyName || "radni-nalog",
             { fallback: "radni-nalog", extension: referenceExtension },

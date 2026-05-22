@@ -404,21 +404,36 @@ const DOCUMENTS_EXPLORER_SERVICE_KEY_HINTS = Object.freeze([
 ]);
 const WORK_ORDER_TEMPLATE_PLACEHOLDERS = Object.freeze([
   ["{{RN_BROJ}}", "Broj radnog naloga, npr. 26-609"],
+  ["{{BROJ_RADNOG_NALOGA}}", "Alias za broj radnog naloga"],
   ["{{RN_STATUS}}", "Status RN-a"],
   ["{{RN_PRIORITET}}", "Prioritet RN-a"],
   ["{{RN_DATUM_OTVARANJA}}", "Datum otvaranja u formatu dd.mm.yyyy"],
+  ["{{DATUM_OTVARANJA}}", "Alias za datum otvaranja"],
   ["{{RN_ROK_ZAVRSETKA}}", "Rok završetka u formatu dd.mm.yyyy"],
+  ["{{ROK_ZAVRSETKA}}", "Alias za rok završetka"],
   ["{{VEZA_RN}}", "Veza RN / povezani nalog ili projekt"],
   ["{{TVRTKA_NAZIV}}", "Naziv tvrtke / naručitelja"],
+  ["{{TVRTKA}}", "Alias za naziv tvrtke / naručitelja"],
   ["{{TVRTKA_SJEDISTE}}", "Sjedište tvrtke"],
+  ["{{SJEDISTE}}", "Alias za sjedište tvrtke"],
   ["{{TVRTKA_OIB}}", "OIB tvrtke"],
+  ["{{OIB}}", "Alias za OIB tvrtke"],
   ["{{LOKACIJA_NAZIV}}", "Odabrana lokacija"],
+  ["{{LOKACIJA}}", "Alias za odabranu lokaciju"],
   ["{{LOKACIJA_REGIJA}}", "Regija lokacije ili RN-a"],
+  ["{{REGIJA}}", "Alias za regiju lokacije ili RN-a"],
+  ["{{VRSTA_UGOVORA}}", "Vrsta ugovora s tvrtkom"],
   ["{{KONTAKT_OSOBA}}", "Kontakt osoba klijenta"],
   ["{{KONTAKT_TELEFON}}", "Telefon kontakta"],
   ["{{KONTAKT_EMAIL}}", "Email kontakta"],
   ["{{IZVRSITELJI}}", "Popis izvršitelja"],
   ["{{USLUGE}}", "Popis usluga iz RN-a"],
+  ["{{#USLUGE_REDOVI}}", "Početak ponavljanja redova usluga u Word tablici"],
+  ["{{USLUGA}}", "Naziv usluge unutar reda"],
+  ["{{BROJ_DOKUMENTA}}", "Broj dokumenta unutar reda"],
+  ["{{KOLICINA}}", "Količina / broj mjernih mjesta unutar reda"],
+  ["{{NAPOMENA_USLUGE}}", "Napomena usluge unutar reda"],
+  ["{{/USLUGE_REDOVI}}", "Kraj ponavljanja redova usluga"],
   ["{{NAPOMENA}}", "Opis, opseg i napomena RN-a"],
   ["{{ODJEL}}", "Odjel ili vrsta izvedbe"],
   ["{{KOORDINATE}}", "Koordinate lokacije"],
@@ -431,6 +446,57 @@ const WORK_ORDER_TEMPLATE_PLACEHOLDERS = Object.freeze([
     `Ime i prezime izvršitelja ${index + 1}`,
   ]),
 ]);
+const WORK_ORDER_HANDOVER_TEMPLATE_PLACEHOLDERS = Object.freeze([
+  ["{{PRIMOPREDAJA_RN_BROJ}}", "Broj radnog naloga prikazan u vrhu primopredajnog zapisnika"],
+  ["{{RN_BROJ}}", "Alias za broj radnog naloga"],
+  ["{{NARUCITELJ_NAZIV}}", "Tvrtka kojoj se predaje zapisnik"],
+  ["{{NARUCITELJ_SJEDISTE}}", "Sjedište / adresa naručitelja"],
+  ["{{NARUCITELJ_OIB}}", "OIB naručitelja"],
+  ["{{IZVRSITELJ_NAZIV}}", "Naziv tvoje organizacije / izvršitelja"],
+  ["{{IZVRSITELJ_SJEDISTE}}", "Sjedište / adresa izvršitelja"],
+  ["{{IZVRSITELJ_OIB}}", "OIB izvršitelja"],
+  ["{{LOKACIJA_ISPITIVANJA}}", "Lokacija ispitivanja iz RN-a"],
+  ["{{VRSTA_UGOVORA}}", "Vrsta ugovora"],
+  ["{{USLUGE_TABLICA}}", "Tekstualni prikaz tablice usluga ako ne koristiš Word loop"],
+  ["{{#USLUGE_REDOVI}}", "Početak ponavljanja redova u Word tablici"],
+  ["{{USLUGA}}", "Naziv usluge u redu tablice"],
+  ["{{BROJ_DOKUMENTA}}", "Broj zapisnika / dokumenta za uslugu"],
+  ["{{KOLICINA}}", "Količina ili broj mjernih mjesta"],
+  ["{{NAPOMENA}}", "Napomena za uslugu"],
+  ["{{/USLUGE_REDOVI}}", "Kraj ponavljanja redova u Word tablici"],
+  ["{{OVJERIO_NARUCITELJ}}", "Labela potpisa naručitelja"],
+  ["{{OVJERIO_IZVRSITELJ}}", "Labela potpisa izvršitelja"],
+  ["{{IZRADIO_IME}}", "Ime korisnika koji je izradio dokument"],
+  ["{{MJESTO_DATUM}}", "Mjesto i datum generiranja"],
+]);
+const WORK_ORDER_TEMPLATE_KIND_CONFIGS = Object.freeze({
+  rn: Object.freeze({
+    key: "rn",
+    title: "Predložak RN",
+    titlePrefix: "RN template",
+    documentType: "Radni nalog",
+    description: "Word predložak za generiranje PDF radnog naloga iz Liste RN.",
+    outputFileName: "RN-{{RN_BROJ}}",
+    emptyLabel: "Nema RN templatea",
+    selectedKey: "selectedTemplateId",
+    fileNameKey: "fileName",
+    updatedAtKey: "updatedAt",
+    placeholders: WORK_ORDER_TEMPLATE_PLACEHOLDERS,
+  }),
+  handover: Object.freeze({
+    key: "handover",
+    title: "Predložak primopredaje",
+    titlePrefix: "Primopredaja template",
+    documentType: "Primopredajni zapisnik",
+    description: "Word predložak za primopredajni zapisnik s uslugama, količinama i potpisima.",
+    outputFileName: "Primopredaja-{{PRIMOPREDAJA_RN_BROJ}}",
+    emptyLabel: "Nema primopredajnog templatea",
+    selectedKey: "selectedHandoverTemplateId",
+    fileNameKey: "handoverFileName",
+    updatedAtKey: "handoverUpdatedAt",
+    placeholders: WORK_ORDER_HANDOVER_TEMPLATE_PLACEHOLDERS,
+  }),
+});
 const DOCUMENT_LIBRARY_CATEGORY_DEFINITIONS = Object.freeze([
   Object.freeze({
     id: "all",
@@ -2190,8 +2256,14 @@ const state = {
   workOrderTemplateSettings: {
     storageScope: "",
     selectedTemplateId: "",
+    selectedHandoverTemplateId: "",
     fileName: "",
+    handoverFileName: "",
     updatedAt: "",
+    handoverUpdatedAt: "",
+    modalOpen: false,
+    placeholderKind: "rn",
+    uploadKind: "rn",
   },
   expandedWorkOrderIds: new Set(),
   workOrderActivity: {
@@ -2855,11 +2927,19 @@ function loadWorkOrderTemplateSettings(force = false) {
   }
 
   const stored = readJsonFromLocalStorage(getWorkOrderTemplateStorageKey(), {});
+  const previous = state.workOrderTemplateSettings ?? {};
   state.workOrderTemplateSettings = {
+    ...previous,
     storageScope: nextScope,
     selectedTemplateId: String(stored.selectedTemplateId || "").trim(),
+    selectedHandoverTemplateId: String(stored.selectedHandoverTemplateId || "").trim(),
     fileName: String(stored.fileName || "").trim(),
+    handoverFileName: String(stored.handoverFileName || "").trim(),
     updatedAt: String(stored.updatedAt || "").trim(),
+    handoverUpdatedAt: String(stored.handoverUpdatedAt || "").trim(),
+    modalOpen: Boolean(previous.modalOpen),
+    placeholderKind: normalizeWorkOrderTemplateKind(previous.placeholderKind || "rn"),
+    uploadKind: normalizeWorkOrderTemplateKind(previous.uploadKind || "rn"),
   };
 }
 
@@ -2870,8 +2950,11 @@ function persistWorkOrderTemplateSettings() {
 
   writeJsonToLocalStorage(getWorkOrderTemplateStorageKey(), {
     selectedTemplateId: state.workOrderTemplateSettings.selectedTemplateId,
+    selectedHandoverTemplateId: state.workOrderTemplateSettings.selectedHandoverTemplateId,
     fileName: state.workOrderTemplateSettings.fileName,
+    handoverFileName: state.workOrderTemplateSettings.handoverFileName,
     updatedAt: state.workOrderTemplateSettings.updatedAt,
+    handoverUpdatedAt: state.workOrderTemplateSettings.handoverUpdatedAt,
   });
 }
 
@@ -4525,11 +4608,25 @@ const workOrderOpenDocumentsButton = document.querySelector("#work-order-open-do
 const workOrderOpenDocumentsLabel = document.querySelector("#work-order-open-documents-label");
 const workOrderOpenDocumentsCount = document.querySelector("#work-order-open-documents-count");
 const workOrderTemplateFileInput = document.querySelector("#work-order-template-file-input");
-const workOrderTemplateUploadButton = document.querySelector("#work-order-template-upload");
+const workOrderTemplateOpenButton = document.querySelector("#work-order-template-open");
 const workOrderTemplatePlaceholdersButton = document.querySelector("#work-order-template-placeholders");
-const workOrderTemplateDeleteButton = document.querySelector("#work-order-template-delete");
 const workOrderTemplateMeta = document.querySelector("#work-order-template-meta");
+const workOrderTemplateBackdrop = document.querySelector("#work-order-template-backdrop");
+const workOrderTemplatePanel = document.querySelector("#work-order-template-panel");
+const workOrderTemplateCloseButton = document.querySelector("#work-order-template-close");
+const workOrderTemplateModalMeta = document.querySelector("#work-order-template-modal-meta");
+const workOrderTemplateRnMeta = document.querySelector("#work-order-template-rn-meta");
+const workOrderTemplateHandoverMeta = document.querySelector("#work-order-template-handover-meta");
 const workOrderTemplateSelect = document.querySelector("#work-order-template-select");
+const workOrderHandoverTemplateSelect = document.querySelector("#work-order-handover-template-select");
+const workOrderTemplatePlaceholderCopy = document.querySelector("#work-order-template-placeholder-copy");
+const workOrderTemplatePlaceholderList = document.querySelector("#work-order-template-placeholder-list");
+const workOrderTemplateDownloadPlaceholdersButton = document.querySelector("#work-order-template-download-placeholders");
+const workOrderTemplateError = document.querySelector("#work-order-template-error");
+const workOrderTemplateUploadButtons = Array.from(document.querySelectorAll("[data-work-order-template-upload]"));
+const workOrderTemplateDownloadButtons = Array.from(document.querySelectorAll("[data-work-order-template-download]"));
+const workOrderTemplateDeleteButtons = Array.from(document.querySelectorAll("[data-work-order-template-delete]"));
+const workOrderTemplatePlaceholderTabs = Array.from(document.querySelectorAll("[data-work-order-template-placeholder-tab]"));
 const workOrderBatchClearButton = document.querySelector("#work-order-batch-clear");
 const workOrderBulkBar = document.querySelector("#work-order-bulk-bar");
 const workOrderBulkCountLabel = document.querySelector("#work-order-bulk-count-label");
@@ -98479,11 +98576,31 @@ function updateWorkOrderDocumentSelectionChrome({ visibleItems = null } = {}) {
   renderWorkOrderBatchBar();
 }
 
-function getWorkOrderTemplateEntries() {
+function getWorkOrderTemplateKindConfig(kind = "rn") {
+  return WORK_ORDER_TEMPLATE_KIND_CONFIGS[String(kind || "").trim()] ?? WORK_ORDER_TEMPLATE_KIND_CONFIGS.rn;
+}
+
+function normalizeWorkOrderTemplateKind(kind = "rn") {
+  return getWorkOrderTemplateKindConfig(kind).key;
+}
+
+function getWorkOrderTemplateEntries(kind = "rn") {
+  const config = getWorkOrderTemplateKindConfig(kind);
   return sortDocumentTemplates(state.documentTemplates ?? []).filter((template) => {
     const title = normalizeLooseName(template.title || "");
     const documentType = normalizeLooseName(template.documentType || "");
     const referenceDocument = template.referenceDocument ?? {};
+    const hasSupportedReference = isDocumentTemplateHtmlReferenceDocument(referenceDocument) || isDocumentTemplateWordReferenceDocument(referenceDocument);
+    if (!hasSupportedReference) {
+      return false;
+    }
+
+    if (config.key === "handover") {
+      return documentType.includes("primopredaj")
+        || title.includes("primopredaj")
+        || title.includes("handover");
+    }
+
     return (isDocumentTemplateHtmlReferenceDocument(referenceDocument) || isDocumentTemplateWordReferenceDocument(referenceDocument))
       && (
         documentType.includes("radni nalog")
@@ -98493,8 +98610,11 @@ function getWorkOrderTemplateEntries() {
   });
 }
 
-function getSelectedWorkOrderTemplateId(templates = getWorkOrderTemplateEntries()) {
-  const selectedTemplateId = String(state.workOrderTemplateSettings.selectedTemplateId || "").trim();
+function getSelectedWorkOrderTemplateId(templatesOrKind = getWorkOrderTemplateEntries("rn"), maybeKind = "rn") {
+  const templates = Array.isArray(templatesOrKind) ? templatesOrKind : getWorkOrderTemplateEntries(templatesOrKind || "rn");
+  const kind = Array.isArray(templatesOrKind) ? maybeKind : templatesOrKind;
+  const config = getWorkOrderTemplateKindConfig(kind);
+  const selectedTemplateId = String(state.workOrderTemplateSettings[config.selectedKey] || "").trim();
   if (selectedTemplateId && templates.some((template) => String(template.id) === selectedTemplateId)) {
     return selectedTemplateId;
   }
@@ -98502,102 +98622,266 @@ function getSelectedWorkOrderTemplateId(templates = getWorkOrderTemplateEntries(
   return templates[0]?.id ? String(templates[0].id) : "";
 }
 
-function getSelectedWorkOrderTemplate(templates = getWorkOrderTemplateEntries()) {
-  const selectedTemplateId = getSelectedWorkOrderTemplateId(templates);
+function getSelectedWorkOrderTemplate(templatesOrKind = getWorkOrderTemplateEntries("rn"), maybeKind = "rn") {
+  const templates = Array.isArray(templatesOrKind) ? templatesOrKind : getWorkOrderTemplateEntries(templatesOrKind || "rn");
+  const kind = Array.isArray(templatesOrKind) ? maybeKind : templatesOrKind;
+  const selectedTemplateId = getSelectedWorkOrderTemplateId(templates, kind);
   return templates.find((template) => String(template.id) === selectedTemplateId) ?? null;
 }
 
-function renderWorkOrderTemplateStrip() {
-  if (!workOrderTemplateMeta || !workOrderTemplateUploadButton || !workOrderTemplatePlaceholdersButton) {
+function getWorkOrderTemplateDisplayName(template = null, kind = "rn") {
+  const config = getWorkOrderTemplateKindConfig(kind);
+  return template?.title
+    || template?.referenceDocument?.fileName
+    || state.workOrderTemplateSettings[config.fileNameKey]
+    || "";
+}
+
+function getWorkOrderTemplateDisplayTimestamp(template = null, kind = "rn") {
+  const config = getWorkOrderTemplateKindConfig(kind);
+  return template?.updatedAt || state.workOrderTemplateSettings[config.updatedAtKey] || "";
+}
+
+function setSelectedWorkOrderTemplate(template = null, kind = "rn") {
+  const config = getWorkOrderTemplateKindConfig(kind);
+  state.workOrderTemplateSettings[config.selectedKey] = template?.id ? String(template.id) : "";
+  state.workOrderTemplateSettings[config.fileNameKey] = getWorkOrderTemplateDisplayName(template, kind);
+  state.workOrderTemplateSettings[config.updatedAtKey] = template?.updatedAt || new Date().toISOString();
+  persistWorkOrderTemplateSettings();
+}
+
+function renderWorkOrderTemplateSelect(kind = "rn") {
+  const config = getWorkOrderTemplateKindConfig(kind);
+  const select = config.key === "handover" ? workOrderHandoverTemplateSelect : workOrderTemplateSelect;
+  if (!select) {
     return;
   }
 
-  const templates = getWorkOrderTemplateEntries();
-  const selectedTemplate = getSelectedWorkOrderTemplate(templates);
-  const selectedTemplateId = selectedTemplate?.id ? String(selectedTemplate.id) : "";
-  const localFileName = state.workOrderTemplateSettings.fileName;
-  const templateLabel = selectedTemplate?.title || localFileName || "";
-  const timestamp = selectedTemplate?.updatedAt || state.workOrderTemplateSettings.updatedAt || "";
+  const templates = getWorkOrderTemplateEntries(config.key);
+  const selectedTemplateId = getSelectedWorkOrderTemplateId(templates, config.key);
+  const options = templates.length > 0
+    ? templates.map((template) => ({
+      value: template.id,
+      label: template.title || template.referenceDocument?.fileName || config.title,
+    }))
+    : [{ value: "", label: config.emptyLabel }];
+  replaceSelectOptions(select, options, selectedTemplateId);
+  select.disabled = templates.length === 0;
+}
 
-  if (workOrderTemplateSelect) {
-    const options = templates.length > 0
-      ? templates.map((template) => ({
-        value: template.id,
-        label: template.title || template.referenceDocument?.fileName || "RN template",
-      }))
-      : [{ value: "", label: "Nema RN templatea" }];
-    replaceSelectOptions(workOrderTemplateSelect, options, selectedTemplateId);
-    workOrderTemplateSelect.disabled = templates.length === 0;
+function renderWorkOrderTemplateKindMeta(kind = "rn") {
+  const config = getWorkOrderTemplateKindConfig(kind);
+  const meta = config.key === "handover" ? workOrderTemplateHandoverMeta : workOrderTemplateRnMeta;
+  if (!meta) {
+    return;
   }
 
-  workOrderTemplateMeta.textContent = templateLabel
-    ? `Aktivan je jedan template: ${templateLabel}${timestamp ? ` · ${formatCompactDateTime(timestamp)}` : ""}`
-    : "Dodaj HTML ili Word template ili preuzmi popis placeholdera za PDF.";
-  workOrderTemplateUploadButton.disabled = !getCanManageMasterData();
-  workOrderTemplateUploadButton.title = getCanManageMasterData()
-    ? "Dodaj .html/.htm ili .docx/.dotx RN template u Template Development"
-    : "Nemaš ovlaštenje za dodavanje templatea.";
+  const templates = getWorkOrderTemplateEntries(config.key);
+  const selectedTemplate = getSelectedWorkOrderTemplate(templates, config.key);
+  const label = getWorkOrderTemplateDisplayName(selectedTemplate, config.key);
+  const timestamp = getWorkOrderTemplateDisplayTimestamp(selectedTemplate, config.key);
+  const countLabel = templates.length === 1 ? "1 spremljen template" : `${templates.length} spremljena templatea`;
+  meta.textContent = label
+    ? `${label}${timestamp ? ` · ${formatCompactDateTime(timestamp)}` : ""} · ${countLabel}`
+    : `${config.emptyLabel}. Uploadaj .docx ili .dotx predložak.`;
 
-  if (workOrderTemplateDeleteButton) {
-    workOrderTemplateDeleteButton.disabled = !selectedTemplate || !getCanManageMasterData();
-    workOrderTemplateDeleteButton.title = selectedTemplate
-      ? `Obriši RN template ${templateLabel || ""}`.trim()
-      : "Nema RN templatea za brisanje.";
+  workOrderTemplateDownloadButtons
+    .filter((button) => normalizeWorkOrderTemplateKind(button.dataset.workOrderTemplateDownload) === config.key)
+    .forEach((button) => {
+      button.disabled = !selectedTemplate;
+      button.title = selectedTemplate ? `Preuzmi ${label}` : config.emptyLabel;
+    });
+
+  workOrderTemplateDeleteButtons
+    .filter((button) => normalizeWorkOrderTemplateKind(button.dataset.workOrderTemplateDelete) === config.key)
+    .forEach((button) => {
+      button.disabled = !selectedTemplate || !getCanManageMasterData();
+      button.title = selectedTemplate ? `Obriši ${label}` : config.emptyLabel;
+    });
+
+  workOrderTemplateUploadButtons
+    .filter((button) => normalizeWorkOrderTemplateKind(button.dataset.workOrderTemplateUpload) === config.key)
+    .forEach((button) => {
+      button.disabled = !getCanManageMasterData();
+      button.title = getCanManageMasterData()
+        ? `Uploadaj ${config.title.toLowerCase()}`
+        : "Nemaš ovlaštenje za dodavanje templatea.";
+    });
+}
+
+function renderWorkOrderTemplatePlaceholderList() {
+  if (!workOrderTemplatePlaceholderList) {
+    return;
+  }
+
+  const config = getWorkOrderTemplateKindConfig(state.workOrderTemplateSettings.placeholderKind || "rn");
+  workOrderTemplatePlaceholderTabs.forEach((tab) => {
+    const tabKind = normalizeWorkOrderTemplateKind(tab.dataset.workOrderTemplatePlaceholderTab);
+    tab.classList.toggle("is-active", tabKind === config.key);
+    tab.setAttribute("aria-selected", tabKind === config.key ? "true" : "false");
+  });
+
+  if (workOrderTemplatePlaceholderCopy) {
+    workOrderTemplatePlaceholderCopy.textContent = config.key === "handover"
+      ? "Za tablicu usluga u Wordu koristi red s {{#USLUGE_REDOVI}} i {{/USLUGE_REDOVI}} oko ćelija koje se ponavljaju."
+      : "Klikni placeholder da ga kopiraš u Word RN predložak. Za usluge u tablici koristi {{#USLUGE_REDOVI}} loop.";
+  }
+
+  workOrderTemplatePlaceholderList.replaceChildren(...config.placeholders.map(([token, description]) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "offer-template-placeholder-chip";
+    button.innerHTML = `
+      <strong>${escapeHtml(token)}</strong>
+      <span>${escapeHtml(description)}</span>
+    `;
+    button.title = `Kopiraj ${token}`;
+    button.addEventListener("click", () => {
+      navigator.clipboard?.writeText(token)
+        .then(() => {
+          if (workOrderTemplateError) {
+            workOrderTemplateError.textContent = `Kopirano ${token}`;
+          }
+        })
+        .catch(() => {
+          if (workOrderTemplateError) {
+            workOrderTemplateError.textContent = `Ne mogu kopirati ${token}`;
+          }
+        });
+    });
+    return button;
+  }));
+}
+
+function syncWorkOrderTemplateModal() {
+  const isOpen = Boolean(state.workOrderTemplateSettings.modalOpen);
+  if (workOrderTemplateBackdrop) {
+    workOrderTemplateBackdrop.hidden = !isOpen;
+    workOrderTemplateBackdrop.classList.toggle("is-modal-open", isOpen);
+  }
+  if (workOrderTemplatePanel) {
+    workOrderTemplatePanel.hidden = !isOpen;
+    workOrderTemplatePanel.classList.toggle("is-modal-open", isOpen);
+  }
+  document.body.classList.toggle("is-work-order-template-open", isOpen);
+
+  if (!isOpen) {
+    return;
+  }
+
+  renderWorkOrderTemplateSelect("rn");
+  renderWorkOrderTemplateSelect("handover");
+  renderWorkOrderTemplateKindMeta("rn");
+  renderWorkOrderTemplateKindMeta("handover");
+  renderWorkOrderTemplatePlaceholderList();
+
+  if (workOrderTemplateModalMeta) {
+    const rnLabel = getWorkOrderTemplateDisplayName(getSelectedWorkOrderTemplate("rn"), "rn") || "bez RN templatea";
+    const handoverLabel = getWorkOrderTemplateDisplayName(getSelectedWorkOrderTemplate("handover"), "handover") || "bez primopredajnog templatea";
+    workOrderTemplateModalMeta.textContent = `Aktivno: RN ${rnLabel} · Primopredaja ${handoverLabel}`;
   }
 }
 
-function buildWorkOrderTemplatePlaceholderText() {
+function setWorkOrderTemplateModalOpen(isOpen = false, { placeholderKind = "" } = {}) {
+  state.workOrderTemplateSettings.modalOpen = Boolean(isOpen);
+  if (placeholderKind) {
+    state.workOrderTemplateSettings.placeholderKind = normalizeWorkOrderTemplateKind(placeholderKind);
+  }
+  if (workOrderTemplateError) {
+    workOrderTemplateError.textContent = "";
+  }
+  syncWorkOrderTemplateModal();
+  if (isOpen) {
+    requestAnimationFrame(() => {
+      workOrderTemplatePanel?.querySelector(".offer-template-body")?.focus({ preventScroll: true });
+    });
+  }
+}
+
+function renderWorkOrderTemplateStrip() {
+  if (!workOrderTemplateMeta || !workOrderTemplateOpenButton || !workOrderTemplatePlaceholdersButton) {
+    return;
+  }
+
+  const rnTemplate = getSelectedWorkOrderTemplate("rn");
+  const handoverTemplate = getSelectedWorkOrderTemplate("handover");
+  const rnLabel = getWorkOrderTemplateDisplayName(rnTemplate, "rn");
+  const handoverLabel = getWorkOrderTemplateDisplayName(handoverTemplate, "handover");
+  const bits = [
+    rnLabel ? `RN: ${rnLabel}` : "RN: nema predloška",
+    handoverLabel ? `Primopredaja: ${handoverLabel}` : "Primopredaja: nema predloška",
+  ];
+
+  workOrderTemplateMeta.textContent = bits.join(" · ");
+  workOrderTemplateOpenButton.disabled = false;
+  workOrderTemplateOpenButton.title = getCanManageMasterData()
+    ? "Uredi Word predloške za RN i primopredaju"
+    : "Pregled predložaka i placeholdera";
+  workOrderTemplatePlaceholdersButton.disabled = false;
+
+  syncWorkOrderTemplateModal();
+}
+
+function buildWorkOrderTemplatePlaceholderText(kind = "rn") {
+  const config = getWorkOrderTemplateKindConfig(kind);
   const lines = [
-    "SafeNexus RN template placeholderi",
+    `SafeNexus ${config.title} placeholderi`,
     "",
-    "U HTML ili Word predlosku koristi ove oznake. Odabran moze biti samo jedan aktivni RN template.",
-    "Za tablicu izvrsitelja koristi npr. {{IZVRSITELJ_1_BROJ}} u stupcu rednog broja i {{IZVRSITELJ_1_IME}} u stupcu ime i prezime.",
+    "U Word predlosku koristi ove oznake. Za tablicne redove koristi Docxtemplater loop: {{#USLUGE_REDOVI}} ... {{/USLUGE_REDOVI}}.",
     "",
-    ...WORK_ORDER_TEMPLATE_PLACEHOLDERS.map(([key, description]) => `${key} - ${description}`),
+    ...config.placeholders.map(([key, description]) => `${key} - ${description}`),
   ];
 
   return lines.join("\r\n");
 }
 
-function downloadWorkOrderTemplatePlaceholders() {
+function downloadWorkOrderTemplatePlaceholders(kind = state.workOrderTemplateSettings.placeholderKind || "rn") {
+  const config = getWorkOrderTemplateKindConfig(kind);
   triggerBlobDownload(
-    new Blob(["\ufeff", buildWorkOrderTemplatePlaceholderText()], { type: "text/plain;charset=utf-8" }),
-    "rn-template-placeholderi.txt",
+    new Blob(["\ufeff", buildWorkOrderTemplatePlaceholderText(config.key)], { type: "text/plain;charset=utf-8" }),
+    `${config.key === "handover" ? "primopredaja" : "rn"}-template-placeholderi.txt`,
   );
 }
 
-async function uploadWorkOrderTemplateFile(file) {
+async function uploadWorkOrderTemplateFile(file, kind = "rn") {
   if (!(file instanceof File) || !getCanManageMasterData()) {
     return;
   }
 
+  const config = getWorkOrderTemplateKindConfig(kind);
   const extension = String(file.name || "").split(".").pop()?.toLowerCase() || "";
-  const isHtmlTemplate = ["html", "htm"].includes(extension);
   const isWordTemplate = ["docx", "dotx"].includes(extension);
-  if (!isHtmlTemplate && !isWordTemplate) {
-    setSyncError("RN template mora biti .html/.htm ili .docx/.dotx dokument.");
+  if (!isWordTemplate) {
+    const message = `${config.title} mora biti .docx ili .dotx Word dokument.`;
+    setSyncError(message);
+    if (workOrderTemplateError) {
+      workOrderTemplateError.textContent = message;
+    }
     return;
   }
 
-  workOrderTemplateUploadButton.disabled = true;
-  workOrderTemplateUploadButton.classList.add("is-loading");
+  const targetButtons = workOrderTemplateUploadButtons.filter((button) => (
+    normalizeWorkOrderTemplateKind(button.dataset.workOrderTemplateUpload) === config.key
+  ));
+  targetButtons.forEach((button) => {
+    button.disabled = true;
+    button.classList.add("is-loading");
+  });
 
   const success = await runMutation(async () => {
     const dataUrl = await readFileAsDataUrl(file, `Ne mogu učitati template ${file.name}.`);
-    const titleBaseName = file.name.replace(/\.(html|htm|docx|dotx)$/i, "");
+    const titleBaseName = file.name.replace(/\.(docx|dotx)$/i, "");
     return apiRequest("/document-templates", {
       method: "POST",
       body: {
-        title: `RN template - ${titleBaseName}`,
-        documentType: "Radni nalog",
+        title: `${config.titlePrefix} - ${titleBaseName}`,
+        documentType: config.documentType,
         status: "active",
-        description: `${isWordTemplate ? "Word" : "HTML"} predložak za generiranje PDF radnog naloga iz Liste RN.`,
-        outputFileName: "RN-{{RN_BROJ}}",
+        description: config.description,
+        outputFileName: config.outputFileName,
         referenceDocument: {
           fileName: file.name,
-          fileType: file.type || (isWordTemplate
-            ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            : "text/html"),
+          fileType: file.type || "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
           fileSize: file.size || 0,
           dataUrl,
           updatedAt: new Date().toISOString(),
@@ -98610,26 +98894,32 @@ async function uploadWorkOrderTemplateFile(file) {
   });
 
   if (success) {
-    const uploadedTitle = `RN template - ${file.name.replace(/\.(html|htm|docx|dotx)$/i, "")}`;
-    const uploadedTemplate = getWorkOrderTemplateEntries().find((template) => (
+    const uploadedTitle = `${config.titlePrefix} - ${file.name.replace(/\.(docx|dotx)$/i, "")}`;
+    const uploadedTemplate = getWorkOrderTemplateEntries(config.key).find((template) => (
       String(template.title || "") === uploadedTitle
       || String(template.referenceDocument?.fileName || "") === String(file.name || "")
     ));
-    state.workOrderTemplateSettings.selectedTemplateId = uploadedTemplate?.id ? String(uploadedTemplate.id) : "";
-    state.workOrderTemplateSettings.fileName = file.name;
-    state.workOrderTemplateSettings.updatedAt = new Date().toISOString();
+    state.workOrderTemplateSettings[config.selectedKey] = uploadedTemplate?.id ? String(uploadedTemplate.id) : "";
+    state.workOrderTemplateSettings[config.fileNameKey] = file.name;
+    state.workOrderTemplateSettings[config.updatedAtKey] = new Date().toISOString();
     persistWorkOrderTemplateSettings();
   }
   renderWorkOrderTemplateStrip();
-  workOrderTemplateUploadButton.classList.remove("is-loading");
+  targetButtons.forEach((button) => {
+    button.classList.remove("is-loading");
+  });
 
   if (success) {
     setSyncError("");
+    if (workOrderTemplateError) {
+      workOrderTemplateError.textContent = "";
+    }
   }
 }
 
-async function deleteSelectedWorkOrderTemplate() {
-  const selectedTemplate = getSelectedWorkOrderTemplate();
+async function deleteSelectedWorkOrderTemplate(kind = "rn") {
+  const config = getWorkOrderTemplateKindConfig(kind);
+  const selectedTemplate = getSelectedWorkOrderTemplate(config.key);
   const templateId = String(selectedTemplate?.id || "").trim();
 
   if (!templateId || !getCanManageMasterData()) {
@@ -98637,31 +98927,42 @@ async function deleteSelectedWorkOrderTemplate() {
   }
 
   const title = selectedTemplate.title || selectedTemplate.referenceDocument?.fileName || "RN template";
-  if (!window.confirm(`Obrisati RN template "${title}"?`)) {
+  if (!window.confirm(`Obrisati ${config.title.toLowerCase()} "${title}"?`)) {
     return;
   }
 
-  if (workOrderTemplateDeleteButton) {
-    workOrderTemplateDeleteButton.disabled = true;
-    workOrderTemplateDeleteButton.classList.add("is-loading");
-  }
+  const targetButtons = workOrderTemplateDeleteButtons.filter((button) => (
+    normalizeWorkOrderTemplateKind(button.dataset.workOrderTemplateDelete) === config.key
+  ));
+  targetButtons.forEach((button) => {
+    button.disabled = true;
+    button.classList.add("is-loading");
+  });
 
   const success = await runMutation(() => apiRequest(`/document-templates/${encodeURIComponent(templateId)}`, {
     method: "DELETE",
   }), null);
 
   if (success) {
-    state.workOrderTemplateSettings.selectedTemplateId = "";
-    state.workOrderTemplateSettings.fileName = "";
-    state.workOrderTemplateSettings.updatedAt = new Date().toISOString();
+    state.workOrderTemplateSettings[config.selectedKey] = "";
+    state.workOrderTemplateSettings[config.fileNameKey] = "";
+    state.workOrderTemplateSettings[config.updatedAtKey] = new Date().toISOString();
     persistWorkOrderTemplateSettings();
     renderDocumentTemplateModule();
     renderWorkOrderTemplateStrip();
     setSyncError("");
   }
 
-  if (workOrderTemplateDeleteButton) {
-    workOrderTemplateDeleteButton.classList.remove("is-loading");
+  targetButtons.forEach((button) => {
+    button.classList.remove("is-loading");
+  });
+}
+
+function downloadSelectedWorkOrderTemplate(kind = "rn") {
+  const config = getWorkOrderTemplateKindConfig(kind);
+  const selectedTemplate = getSelectedWorkOrderTemplate(config.key);
+  if (selectedTemplate?.referenceDocument) {
+    triggerModuleAttachmentDownload(selectedTemplate.referenceDocument);
   }
 }
 
@@ -108179,8 +108480,32 @@ workOrderDownloadPdfButton?.addEventListener("click", () => {
 workOrderBatchClearButton?.addEventListener("click", () => {
   clearWorkOrderDocumentSelection();
 });
-workOrderTemplateUploadButton?.addEventListener("click", () => {
-  workOrderTemplateFileInput?.click();
+workOrderTemplateOpenButton?.addEventListener("click", () => {
+  setWorkOrderTemplateModalOpen(true);
+});
+workOrderTemplatePlaceholdersButton?.addEventListener("click", () => {
+  setWorkOrderTemplateModalOpen(true, { placeholderKind: "rn" });
+});
+workOrderTemplateBackdrop?.addEventListener("click", () => {
+  setWorkOrderTemplateModalOpen(false);
+});
+workOrderTemplateCloseButton?.addEventListener("click", () => {
+  setWorkOrderTemplateModalOpen(false);
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && state.workOrderTemplateSettings.modalOpen) {
+    setWorkOrderTemplateModalOpen(false);
+  }
+});
+workOrderTemplateUploadButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const kind = normalizeWorkOrderTemplateKind(button.dataset.workOrderTemplateUpload);
+    state.workOrderTemplateSettings.uploadKind = kind;
+    if (workOrderTemplateFileInput) {
+      workOrderTemplateFileInput.accept = ".docx,.dotx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.wordprocessingml.template";
+      workOrderTemplateFileInput.click();
+    }
+  });
 });
 workOrderTemplateFileInput?.addEventListener("change", () => {
   const file = workOrderTemplateFileInput.files?.[0];
@@ -108188,23 +108513,43 @@ workOrderTemplateFileInput?.addEventListener("change", () => {
     return;
   }
 
-  void uploadWorkOrderTemplateFile(file).finally(() => {
+  const kind = normalizeWorkOrderTemplateKind(state.workOrderTemplateSettings.uploadKind || "rn");
+  void uploadWorkOrderTemplateFile(file, kind).finally(() => {
     workOrderTemplateFileInput.value = "";
   });
 });
 workOrderTemplateSelect?.addEventListener("change", () => {
-  const selectedTemplate = getWorkOrderTemplateEntries().find((template) => (
+  const selectedTemplate = getWorkOrderTemplateEntries("rn").find((template) => (
     String(template.id) === String(workOrderTemplateSelect.value || "")
   ));
-  state.workOrderTemplateSettings.selectedTemplateId = selectedTemplate?.id ? String(selectedTemplate.id) : "";
-  state.workOrderTemplateSettings.fileName = selectedTemplate?.title || selectedTemplate?.referenceDocument?.fileName || "";
-  state.workOrderTemplateSettings.updatedAt = selectedTemplate?.updatedAt || new Date().toISOString();
-  persistWorkOrderTemplateSettings();
+  setSelectedWorkOrderTemplate(selectedTemplate, "rn");
   renderWorkOrderTemplateStrip();
 });
-workOrderTemplatePlaceholdersButton?.addEventListener("click", downloadWorkOrderTemplatePlaceholders);
-workOrderTemplateDeleteButton?.addEventListener("click", () => {
-  void deleteSelectedWorkOrderTemplate();
+workOrderHandoverTemplateSelect?.addEventListener("change", () => {
+  const selectedTemplate = getWorkOrderTemplateEntries("handover").find((template) => (
+    String(template.id) === String(workOrderHandoverTemplateSelect.value || "")
+  ));
+  setSelectedWorkOrderTemplate(selectedTemplate, "handover");
+  renderWorkOrderTemplateStrip();
+});
+workOrderTemplatePlaceholderTabs.forEach((button) => {
+  button.addEventListener("click", () => {
+    state.workOrderTemplateSettings.placeholderKind = normalizeWorkOrderTemplateKind(button.dataset.workOrderTemplatePlaceholderTab);
+    renderWorkOrderTemplatePlaceholderList();
+  });
+});
+workOrderTemplateDownloadPlaceholdersButton?.addEventListener("click", () => {
+  downloadWorkOrderTemplatePlaceholders();
+});
+workOrderTemplateDownloadButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    downloadSelectedWorkOrderTemplate(button.dataset.workOrderTemplateDownload);
+  });
+});
+workOrderTemplateDeleteButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    void deleteSelectedWorkOrderTemplate(button.dataset.workOrderTemplateDelete);
+  });
 });
 workOrderBulkOpenDocumentsButton?.addEventListener("click", (event) => {
   event.preventDefault();

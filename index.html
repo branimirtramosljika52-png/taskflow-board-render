@@ -1848,41 +1848,105 @@
             </div>
 
             <section class="work-order-template-strip">
-              <input id="work-order-template-file-input" type="file" accept=".html,.htm,text/html,.docx,.dotx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.wordprocessingml.template" hidden />
+              <input id="work-order-template-file-input" type="file" accept=".docx,.dotx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.wordprocessingml.template" hidden />
               <div class="work-order-template-copy">
-                <p class="section-kicker">RN template</p>
-                <h3>Predložak za radni nalog</h3>
-                <span id="work-order-template-meta">Dodaj HTML ili Word template ili preuzmi popis placeholdera za PDF.</span>
-                <label class="work-order-template-select-field">
-                  <span>Aktivni template</span>
-                  <select id="work-order-template-select"></select>
-                </label>
+                <p class="section-kicker">Admin predlošci</p>
+                <h3>Word predlošci za RN i primopredaju</h3>
+                <span id="work-order-template-meta">Dodaj Word predloške i provjeri placeholder tokene za izradu dokumenata.</span>
               </div>
               <div class="work-order-template-actions">
-                <button id="work-order-template-upload" type="button" class="ghost-button work-order-template-action">
+                <button id="work-order-template-open" type="button" class="primary-button work-order-template-action">
                   <span aria-hidden="true">
                     <svg viewBox="0 0 16 16">
-                      <path d="M8 13.75v-7.5M5.25 8.5 8 5.75l2.75 2.75M3 3.75h10" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/>
+                      <path d="M4.25 2.75h5.5L12.75 6v7.25h-8.5zM9.75 2.75V6h3M6.25 8.25h4M6.25 10.5h4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/>
                     </svg>
                   </span>
-                  <span>Dodaj template</span>
+                  <span>Predlošci</span>
                 </button>
                 <button id="work-order-template-placeholders" type="button" class="ghost-button work-order-template-action">
                   <span aria-hidden="true">
                     <svg viewBox="0 0 16 16">
-                      <path d="M8 2.25v7.5M5.25 7.5 8 10.25 10.75 7.5M3 12.25h10" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/>
+                      <path d="M5.25 3.5h5.5M4 6h8M5.25 8.5h5.5M4 11h8" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/>
                     </svg>
                   </span>
                   <span>Placeholderi</span>
                 </button>
-                <button id="work-order-template-delete" type="button" class="ghost-button work-order-template-action is-danger">
-                  <span aria-hidden="true">
-                    <svg viewBox="0 0 16 16">
-                      <path d="M5.25 4.75v7M8 4.75v7M10.75 4.75v7M3.75 3.25h8.5M6.25 3.25l.42-1h2.66l.42 1M4.5 3.25l.45 10.25h6.1l.45-10.25" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/>
-                    </svg>
-                  </span>
-                  <span>Obriši</span>
-                </button>
+              </div>
+            </section>
+
+            <div id="work-order-template-backdrop" class="offer-editor-backdrop work-order-template-backdrop" hidden></div>
+            <section id="work-order-template-panel" class="panel offers-template-panel work-order-template-panel" hidden>
+              <div class="offers-editor-fixed-head">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Lista RN</p>
+                    <h3>Predlošci za radne naloge</h3>
+                    <span id="work-order-template-modal-meta" class="work-order-template-modal-meta">Word predlošci i placeholderi za administratore.</span>
+                  </div>
+                  <button id="work-order-template-close" type="button" class="ghost-button">Zatvori</button>
+                </div>
+              </div>
+
+              <div class="offers-editor-body offer-template-body work-order-template-modal-body" tabindex="-1">
+                <div class="work-order-template-modal-layout">
+                  <section class="offer-template-card work-order-template-admin-card">
+                    <div class="offer-template-card-head">
+                      <div>
+                        <p class="section-kicker">Radni nalog</p>
+                        <h4>Predložak RN</h4>
+                      </div>
+                      <span class="work-order-template-kind-badge">PDF RN</span>
+                    </div>
+                    <p id="work-order-template-rn-meta" class="helper-copy module-copy work-order-template-card-copy">Nema aktivnog RN predloška.</p>
+                    <label class="work-order-template-select-field">
+                      <span>Aktivni RN template</span>
+                      <select id="work-order-template-select"></select>
+                    </label>
+                    <div class="offer-template-actions work-order-template-card-actions">
+                      <button type="button" class="ghost-button" data-work-order-template-upload="rn">Upload Word RN</button>
+                      <button type="button" class="ghost-button" data-work-order-template-download="rn">Preuzmi</button>
+                      <button type="button" class="ghost-button card-danger" data-work-order-template-delete="rn">Obriši</button>
+                    </div>
+                  </section>
+
+                  <section class="offer-template-card work-order-template-admin-card">
+                    <div class="offer-template-card-head">
+                      <div>
+                        <p class="section-kicker">Primopredaja</p>
+                        <h4>Predložak primopredajnog zapisnika</h4>
+                      </div>
+                      <span class="work-order-template-kind-badge is-handover">Tablica usluga</span>
+                    </div>
+                    <p id="work-order-template-handover-meta" class="helper-copy module-copy work-order-template-card-copy">Nema aktivnog predloška primopredaje.</p>
+                    <label class="work-order-template-select-field">
+                      <span>Aktivni primopredajni template</span>
+                      <select id="work-order-handover-template-select"></select>
+                    </label>
+                    <div class="offer-template-actions work-order-template-card-actions">
+                      <button type="button" class="ghost-button" data-work-order-template-upload="handover">Upload Word primopredaje</button>
+                      <button type="button" class="ghost-button" data-work-order-template-download="handover">Preuzmi</button>
+                      <button type="button" class="ghost-button card-danger" data-work-order-template-delete="handover">Obriši</button>
+                    </div>
+                  </section>
+
+                  <section class="offer-template-card work-order-template-placeholder-card">
+                    <div class="offer-template-card-head">
+                      <div>
+                        <p class="section-kicker">Placeholderi</p>
+                        <h4>Tokeni za Word</h4>
+                      </div>
+                      <div class="work-order-template-tabs" role="tablist" aria-label="Vrsta placeholdera">
+                        <button type="button" class="workspace-view-chip is-active" data-work-order-template-placeholder-tab="rn">RN</button>
+                        <button type="button" class="workspace-view-chip" data-work-order-template-placeholder-tab="handover">Primopredaja</button>
+                      </div>
+                    </div>
+                    <p id="work-order-template-placeholder-copy" class="helper-copy module-copy offer-template-copy">Klikni placeholder da ga kopiraš u Word predložak.</p>
+                    <div id="work-order-template-placeholder-list" class="offer-template-placeholder-list work-order-template-placeholder-list"></div>
+                    <button id="work-order-template-download-placeholders" type="button" class="ghost-button work-order-template-download-placeholders">Preuzmi popis placeholdera</button>
+                  </section>
+                </div>
+
+                <p id="work-order-template-error" class="form-error" aria-live="polite"></p>
               </div>
             </section>
 
