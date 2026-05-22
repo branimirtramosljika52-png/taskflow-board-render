@@ -3467,6 +3467,42 @@ function findGeneratedWorkOrderPdfDocument(documents = []) {
   )) ?? null;
 }
 
+function getWorkOrderDocumentZipKind(document = {}, exportKind = "") {
+  const normalizedExportKind = String(exportKind || document?.exportKind || "").trim().toLowerCase();
+  const fileName = String(document?.fileName || "").trim().toLowerCase();
+  const description = String(document?.description || "").trim().toLowerCase();
+  const category = String(document?.documentCategory || "").trim();
+
+  if (
+    normalizedExportKind === "handover"
+    || fileName.includes("primopredaja")
+    || fileName.includes("handover")
+    || description.includes("primopredaj")
+  ) {
+    return "Primopredaja";
+  }
+
+  if (category === GENERATED_WORK_ORDER_PDF_CATEGORY) {
+    return "Radni nalozi";
+  }
+
+  if (category === GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY) {
+    return "Zapisnici";
+  }
+
+  return category || "Dokumenti";
+}
+
+function getWorkOrderDocumentZipFolder(workOrder = {}) {
+  return sanitizeZipPathSegment(
+    [
+      workOrder?.workOrderNumber ? `RN ${workOrder.workOrderNumber}` : "",
+      workOrder?.companyName || "",
+    ].filter(Boolean).join(" - "),
+    `RN-${workOrder?.id || "bez-id"}`,
+  );
+}
+
 async function saveGeneratedWorkOrderPdfDocument(workOrderId, workOrder = {}, scopedSnapshot = {}, user = null, templateId = "") {
   const { pdfBuffer, fileName } = await buildWorkOrderPdfExportPayload(workOrder, scopedSnapshot, templateId);
   const filePayload = buildGeneratedWorkOrderPdfDocumentPayload(workOrder, pdfBuffer, fileName);
@@ -8032,6 +8068,7 @@ async function handleApiRequest(request, response, url) {
     const workOrderPdfDownloadMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/pdf$/);
     const workOrderActivityMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/activity$/);
     const workOrderDocumentsCollectionMatch = url.pathname === "/api/work-order-documents";
+    const workOrderDocumentsZipExportMatch = url.pathname === "/api/work-order-documents/export-zip";
     const workOrderDocumentsMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/documents$/);
     const workOrderDocumentDownloadMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/documents\/([^/]+)\/download$/);
     const workOrderDocumentMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/documents\/([^/]+)$/);
@@ -10441,6 +10478,149 @@ async function handleApiRequest(request, response, url) {
           fileName: document.fileName || getWorkOrderPdfExportFileName(workOrder),
         });
       }
+      return true;
+    }
+
+    if (workOrderDocumentsZipExportMatch && request.method === "POST") {
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const scopedWorkOrders = Array.isArray(scopedSnapshot.workOrders) ? scopedSnapshot.workOrders : [];
+      const workOrderById = new Map(scopedWorkOrders.map((workOrder) => [String(workOrder?.id || ""), workOrder]));
+      const scopedWorkOrderIds = scopedWorkOrders.map((workOrder) => String(workOrder?.id || "").trim()).filter(Boolean);
+      const requestedDocuments = Array.isArray(body?.documents) ? body.documents : [];
+      const requestedDocumentKeys = new Set();
+      const requestedExportKindByKey = new Map();
+
+      requestedDocuments.forEach((entry) => {
+        const workOrderId = String(entry?.workOrderId || "").trim();
+        const documentId = String(entry?.documentId || entry?.id || "").trim();
+        if (!workOrderId || !documentId || !workOrderById.has(workOrderId)) {
+          return;
+        }
+        const key = `${workOrderId}::${documentId}`;
+        requestedDocumentKeys.add(key);
+        requestedExportKindByKey.set(key, String(entry?.exportKind || "").trim());
+      });
+
+      const requestedWorkOrderIds = new Set(
+        [
+          ...requestedDocuments.map((entry) => String(entry?.workOrderId || "").trim()),
+          ...(Array.isArray(body?.workOrderIds) ? body.workOrderIds : []),
+        ]
+          .map((value) => String(value || "").trim())
+          .filter((value) => value && workOrderById.has(value)),
+      );
+      const workOrderIds = requestedWorkOrderIds.size > 0 ? [...requestedWorkOrderIds] : scopedWorkOrderIds;
+      if (workOrderIds.length === 0) {
+        sendError(response, 400, "Nema radnih naloga za ZIP izvoz.");
+        return true;
+      }
+
+      const documentsByWorkOrder = await Promise.all(workOrderIds.map(async (workOrderId) => ({
+        workOrderId,
+        documents: await domainRepository.getWorkOrderDocuments(workOrderId),
+      })));
+      const selectedDocuments = documentsByWorkOrder.flatMap(({ workOrderId, documents }) => (
+        (Array.isArray(documents) ? documents : [])
+          .map((document) => ({ ...document, workOrderId: String(document?.workOrderId || workOrderId).trim() || workOrderId }))
+          .filter((document) => {
+            const key = `${workOrderId}::${String(document?.id || "").trim()}`;
+            if (requestedDocumentKeys.size > 0) {
+              return requestedDocumentKeys.has(key);
+            }
+            const isPdf = String(document?.fileType || "").toLowerCase().includes("pdf")
+              || String(document?.sourceType || "").toLowerCase() === "pdf"
+              || String(document?.fileName || "").toLowerCase().endsWith(".pdf");
+            return isPdf && [
+              GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY,
+              GENERATED_WORK_ORDER_PDF_CATEGORY,
+            ].includes(String(document?.documentCategory || "").trim());
+          })
+      ));
+
+      if (selectedDocuments.length === 0) {
+        sendError(response, 400, "Nema spremljenih PDF dokumenata za ZIP izvoz.");
+        return true;
+      }
+
+      const zip = new JSZip();
+      const usedPaths = new Set();
+      const manifestRows = [[
+        "RN",
+        "Tvrtka",
+        "Lokacija",
+        "Vrsta",
+        "Datoteka",
+        "ZIP putanja",
+      ]];
+      const skippedDocuments = [];
+      let addedCount = 0;
+
+      for (const document of selectedDocuments) {
+        const workOrderId = String(document?.workOrderId || "").trim();
+        const workOrder = workOrderById.get(workOrderId);
+        if (!workOrder) {
+          continue;
+        }
+
+        const documentKey = `${workOrderId}::${String(document?.id || "").trim()}`;
+        const kindLabel = getWorkOrderDocumentZipKind(document, requestedExportKindByKey.get(documentKey));
+        const workOrderFolder = getWorkOrderDocumentZipFolder(workOrder);
+        const kindFolder = sanitizeZipPathSegment(kindLabel, "Dokumenti");
+        const fileName = sanitizeZipPathSegment(
+          String(document?.fileName || "").trim(),
+          `dokument-${addedCount + skippedDocuments.length + 1}.pdf`,
+        );
+        const candidatePath = `${workOrderFolder}/${kindFolder}/${fileName}`;
+
+        try {
+          const stored = await readStoredDocumentBuffer(document);
+          const zipPath = buildUniqueZipPath(candidatePath, usedPaths);
+          zip.file(zipPath, stored.buffer);
+          addedCount += 1;
+          manifestRows.push([
+            String(workOrder.workOrderNumber || ""),
+            String(workOrder.companyName || ""),
+            String(workOrder.locationName || ""),
+            kindLabel,
+            String(document.fileName || ""),
+            zipPath,
+          ]);
+        } catch (error) {
+          skippedDocuments.push(
+            [
+              `RN ${workOrder.workOrderNumber || workOrderId}`,
+              String(document?.fileName || "Dokument"),
+              String(error?.message || "Neuspjelo citanje dokumenta"),
+            ].join(" | "),
+          );
+        }
+      }
+
+      if (addedCount === 0) {
+        sendError(response, 400, "Nijedan PDF dokument nije dostupan za ZIP izvoz.");
+        return true;
+      }
+
+      zip.file("_manifest.csv", buildCsvBuffer(manifestRows));
+      if (skippedDocuments.length > 0) {
+        zip.file("_neuspjeli_dokumenti.txt", skippedDocuments.join("\n"));
+      }
+
+      const zipBuffer = await zip.generateAsync({
+        type: "nodebuffer",
+        compression: "DEFLATE",
+        compressionOptions: { level: 6 },
+      });
+      const requestedFileName = String(body?.fileName || "").trim();
+      const fileName = sanitizeGeneratedDocumentFileName(
+        requestedFileName.replace(/\.zip$/i, "") || `safe-nexus-zapisnici-${new Date().toISOString().slice(0, 10)}`,
+        { fallback: "safe-nexus-zapisnici", extension: "zip" },
+      );
+      sendBinary(response, 200, zipBuffer, {
+        contentType: "application/zip",
+        fileName,
+      });
       return true;
     }
 

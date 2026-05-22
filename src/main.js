@@ -60544,7 +60544,11 @@ async function exportDocumentTemplateBatchPdf({ print = true } = {}) {
         ? savedEntry.documents
         : [savedEntry?.item].filter(Boolean);
       const savedDocuments = mergeDocumentTemplateRuntimePdfDocuments(rawSavedDocuments)
-        .filter((item) => item && typeof item === "object" && String(item.id || "").trim());
+        .filter((item) => item && typeof item === "object" && String(item.id || "").trim())
+        .map((item) => ({
+          ...item,
+          exportKind: String(exportEntry?.exportKind || item?.exportKind || "").trim(),
+        }));
       const primaryDocument = (
         savedEntry?.item && isDocumentTemplateRuntimePdfDocumentItem(savedEntry.item)
           ? savedEntry.item
@@ -60810,6 +60814,53 @@ async function downloadDocumentTemplateSavedPdfDocument(documentItem = {}) {
     setDocumentTemplateMessage(error?.message || "Ne mogu preuzeti spremljeni zapisnik.");
     return false;
   }
+}
+
+async function downloadDocumentTemplateSavedPdfDocumentsZip(documents = [], {
+  fileName = "",
+  message = "ZIP je preuzet.",
+} = {}) {
+  const pdfDocuments = mergeDocumentTemplateRuntimePdfDocuments(documents)
+    .filter((item) => String(item?.workOrderId || "").trim() && String(item?.id || "").trim());
+  if (pdfDocuments.length === 0) {
+    setDocumentTemplateMessage("Nema spremljenih PDF dokumenata za ZIP.");
+    return false;
+  }
+
+  try {
+    const response = await apiBinaryRequest("/work-order-documents/export-zip", {
+      method: "POST",
+      body: {
+        documents: pdfDocuments.map((item) => ({
+          workOrderId: String(item.workOrderId || "").trim(),
+          documentId: String(item.id || "").trim(),
+          exportKind: String(item.exportKind || "").trim(),
+        })),
+        fileName,
+      },
+    });
+    triggerBlobDownload(response.blob, response.fileName || fileName || "zapisnici.zip");
+    setDocumentTemplateMessage(message, { type: "success" });
+    return true;
+  } catch (error) {
+    console.error("Ne mogu preuzeti ZIP zapisnika.", error);
+    setDocumentTemplateMessage(error?.message || "Ne mogu preuzeti ZIP zapisnika.");
+    return false;
+  }
+}
+
+async function downloadDocumentTemplateSavedPdfDocuments(documents = [], options = {}) {
+  const pdfDocuments = mergeDocumentTemplateRuntimePdfDocuments(documents);
+  if (pdfDocuments.length === 0) {
+    setDocumentTemplateMessage("Nema spremljenih PDF dokumenata za preuzimanje.");
+    return false;
+  }
+
+  if (pdfDocuments.length === 1) {
+    return downloadDocumentTemplateSavedPdfDocument(pdfDocuments[0]);
+  }
+
+  return downloadDocumentTemplateSavedPdfDocumentsZip(pdfDocuments, options);
 }
 
 async function queueDocumentTemplateForDigitalSignature() {
@@ -64072,7 +64123,51 @@ function createWorkOrderBottomBarCard({
     }
     openDocumentTemplateRuntimeHandoverPanel(group.workOrderId);
   };
-  card.addEventListener("click", openWorkOrderFields);
+  const canAddServiceFromDock = Boolean(workOrder?.id && getCanEditOperationalData());
+  let serviceAddLongPressTimer = 0;
+  let serviceAddVisibleByLongPress = false;
+  const clearServiceAddLongPressTimer = () => {
+    if (serviceAddLongPressTimer) {
+      window.clearTimeout(serviceAddLongPressTimer);
+      serviceAddLongPressTimer = 0;
+    }
+  };
+  const hideServiceAddButton = () => {
+    clearServiceAddLongPressTimer();
+    card.classList.remove("is-service-add-visible");
+  };
+  if (canAddServiceFromDock) {
+    card.classList.add("has-service-add");
+    card.addEventListener("pointerdown", (event) => {
+      if (
+        event.button !== 0
+        || (event.target instanceof HTMLElement && event.target.closest(".work-order-bottom-card-service.is-handover-action, .work-order-bottom-card-add-service"))
+      ) {
+        return;
+      }
+      clearServiceAddLongPressTimer();
+      serviceAddVisibleByLongPress = false;
+      serviceAddLongPressTimer = window.setTimeout(() => {
+        serviceAddVisibleByLongPress = true;
+        card.classList.add("is-service-add-visible");
+      }, 1000);
+    });
+    ["pointerup", "pointercancel"].forEach((eventName) => {
+      card.addEventListener(eventName, clearServiceAddLongPressTimer);
+    });
+    card.addEventListener("pointerleave", () => {
+      clearServiceAddLongPressTimer();
+    });
+  }
+  card.addEventListener("click", (event) => {
+    if (serviceAddVisibleByLongPress) {
+      serviceAddVisibleByLongPress = false;
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    openWorkOrderFields();
+  });
   card.addEventListener("keydown", (event) => {
     if (event.target instanceof HTMLElement && event.target.closest(".work-order-bottom-card-service.is-handover-action")) {
       return;
@@ -64136,7 +64231,26 @@ function createWorkOrderBottomBarCard({
   });
   serviceRow.append(handoverButton);
 
+  let addServiceButton = null;
+  if (canAddServiceFromDock) {
+    addServiceButton = document.createElement("button");
+    addServiceButton.type = "button";
+    addServiceButton.className = "work-order-bottom-card-add-service";
+    addServiceButton.title = "Dodaj ili izmijeni usluge";
+    addServiceButton.setAttribute("aria-label", "Dodaj ili izmijeni usluge na ovom RN-u");
+    addServiceButton.textContent = "+";
+    addServiceButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      hideServiceAddButton();
+      openWorkOrderInlineServicesEditor(card, workOrder);
+    });
+  }
+
   card.append(head, serviceRow);
+  if (addServiceButton) {
+    card.append(addServiceButton);
+  }
   return card;
 }
 
@@ -70746,6 +70860,35 @@ function mergeDocumentTemplateRuntimePdfDocuments(...documentLists) {
   return result;
 }
 
+function isDocumentTemplateRuntimeHandoverPdfDocument(documentItem = {}) {
+  const exportKind = String(documentItem?.exportKind || "").trim().toLowerCase();
+  const fileName = String(documentItem?.fileName || "").trim().toLowerCase();
+  const title = String(documentItem?.templateTitle || documentItem?.documentType || documentItem?.description || "").trim().toLowerCase();
+  return exportKind === "handover"
+    || fileName.includes("primopredaja")
+    || fileName.includes("handover")
+    || title.includes("primopredaj");
+}
+
+function splitDocumentTemplateRuntimePdfDocumentsByKind(documents = []) {
+  const normalizedDocuments = mergeDocumentTemplateRuntimePdfDocuments(documents);
+  return {
+    reports: normalizedDocuments.filter((documentItem) => !isDocumentTemplateRuntimeHandoverPdfDocument(documentItem)),
+    handovers: normalizedDocuments.filter((documentItem) => isDocumentTemplateRuntimeHandoverPdfDocument(documentItem)),
+    all: normalizedDocuments,
+  };
+}
+
+function getDocumentTemplateRuntimeSavedPdfDocumentsForEntries(entries = []) {
+  const statusMap = getDocumentTemplateRuntimeExportStatusMap();
+  return mergeDocumentTemplateRuntimePdfDocuments(
+    ...(Array.isArray(entries) ? entries : [])
+      .map((entry) => statusMap[getDocumentTemplateRuntimeSequenceEntryKey(entry)])
+      .filter(Boolean)
+      .map((status) => (Array.isArray(status.documents) ? status.documents : [status.document])),
+  );
+}
+
 function setDocumentTemplateRuntimeExportStatus(entry = {}, patch = {}, { render = false } = {}) {
   const key = getDocumentTemplateRuntimeSequenceEntryKey(entry);
   if (!key) {
@@ -72757,27 +72900,49 @@ function renderDocumentTemplateRuntimeFieldRows() {
       statusPill.title = exportStatus.detail || exportStatus.label;
       entryActions.append(statusPill);
       const exportDocuments = mergeDocumentTemplateRuntimePdfDocuments(exportStatus.documents);
-      exportDocuments.slice(0, 4).forEach((documentItem, documentIndex) => {
+      const appendDownloadGroupButton = (documents = [], {
+        label = "PDF",
+        icon = "download",
+        className = "",
+      } = {}) => {
+        if (!documents.length) {
+          return;
+        }
         const downloadButton = document.createElement("button");
         downloadButton.type = "button";
-        downloadButton.className = "ghost-button document-template-runtime-summary-download";
-        downloadButton.innerHTML = getWorkOrderIconMarkup("download");
-        downloadButton.title = documentItem.fileName || `Preuzmi PDF ${documentIndex + 1}`;
+        downloadButton.className = ["ghost-button document-template-runtime-summary-download", className].filter(Boolean).join(" ");
+        const iconNode = document.createElement("span");
+        iconNode.className = "document-template-runtime-summary-download-icon";
+        iconNode.innerHTML = getWorkOrderIconMarkup(icon);
+        iconNode.setAttribute("aria-hidden", "true");
+        const labelNode = document.createElement("span");
+        labelNode.textContent = documents.length > 1 ? `${label} ${documents.length}` : label;
+        downloadButton.append(iconNode, labelNode);
+        downloadButton.title = documents.length > 1
+          ? `Preuzmi ${documents.length} PDF dokumenata u ZIP-u`
+          : (documents[0].fileName || `Preuzmi ${label}`);
         downloadButton.setAttribute("aria-label", downloadButton.title);
         downloadButton.addEventListener("click", (event) => {
           event.preventDefault();
           event.stopPropagation();
-          void downloadDocumentTemplateSavedPdfDocument(documentItem);
+          void downloadDocumentTemplateSavedPdfDocuments(documents, {
+            fileName: `${sanitizeDocumentTemplateFileName(`RN ${group.workOrderNumber || group.workOrderId || "zapisnici"} ${label}`, "zapisnici")}.zip`,
+            message: `${label} za RN ${group.workOrderNumber || "bez broja"} je preuzet.`,
+          });
         });
         entryActions.append(downloadButton);
+      };
+      const splitDownloads = splitDocumentTemplateRuntimePdfDocumentsByKind(exportDocuments);
+      appendDownloadGroupButton(splitDownloads.reports, {
+        label: "Zapisnici",
+        icon: "download",
+        className: "is-report",
       });
-      if (exportDocuments.length > 4) {
-        const extra = document.createElement("span");
-        extra.className = "document-template-runtime-summary-download-more";
-        extra.textContent = `+${exportDocuments.length - 4}`;
-        extra.title = `${exportDocuments.length} PDF dokumenata spremljeno`;
-        entryActions.append(extra);
-      }
+      appendDownloadGroupButton(splitDownloads.handovers, {
+        label: "Primopredaja",
+        icon: "signature",
+        className: "is-handover",
+      });
       entryHead.append(includeField, toggleButton, entryActions);
       let requiredWarning = null;
       if (missingRequired.length > 0) {
@@ -72923,7 +73088,24 @@ function renderDocumentTemplateRuntimeFieldRows() {
       updateDocumentTemplateRuntimeCommon({ signatureMode: signatureSelect.value }, { render: false });
       void exportDocumentTemplateBatchPdf({ print: false });
     });
-    finalActions.append(signatureField, finishButton);
+    const savedPdfDocuments = getDocumentTemplateRuntimeSavedPdfDocumentsForEntries(
+      exportableEntries.length > 0 ? exportableEntries : sequenceState.entries,
+    );
+    const zipDownloadButton = document.createElement("button");
+    zipDownloadButton.type = "button";
+    zipDownloadButton.className = "ghost-button document-template-runtime-summary-zip-button";
+    zipDownloadButton.disabled = savedPdfDocuments.length === 0;
+    zipDownloadButton.title = savedPdfDocuments.length > 0
+      ? `Preuzmi ${savedPdfDocuments.length} spremljenih PDF dokumenata u jednom ZIP-u`
+      : "ZIP je dostupan nakon generiranja i spremanja.";
+    zipDownloadButton.innerHTML = `${getWorkOrderIconMarkup("download")}<span>Preuzmi ZIP</span>`;
+    zipDownloadButton.addEventListener("click", () => {
+      void downloadDocumentTemplateSavedPdfDocumentsZip(savedPdfDocuments, {
+        fileName: `safe-nexus-zapisnici-${new Date().toISOString().slice(0, 10)}.zip`,
+        message: "Svi spremljeni PDF dokumenti preuzeti su u ZIP-u.",
+      });
+    });
+    finalActions.append(zipDownloadButton, signatureField, finishButton);
     finalPanel.append(finalCopy, finalActions);
 
     summaryBody.append(groupedList, finalPanel);
@@ -104888,9 +105070,12 @@ function prepareWorkOrderInlineEditorCell(cell, editorSelector = ".work-order-in
     return false;
   }
 
+  const alreadyPrepared = cell.classList.contains("has-inline-field-editor");
   cell.classList.add("has-inline-editor", "has-inline-field-editor");
   cell.dataset.preventRowOpen = "true";
-  cell.title = [cell.title || "", "Dvoklik za brzu izmjenu."].filter(Boolean).join(" ");
+  if (!alreadyPrepared) {
+    cell.title = [cell.title || "", "Dvoklik za brzu izmjenu."].filter(Boolean).join(" ");
+  }
   ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
     cell.addEventListener(eventName, (event) => {
       if (event.target instanceof HTMLElement && event.target.closest(editorSelector)) {
@@ -105489,158 +105674,164 @@ function attachWorkOrderInlineExecutorsEditor(cell, workOrder = {}) {
   });
 }
 
+function openWorkOrderInlineServicesEditor(cell, workOrder = {}) {
+  if (!(cell instanceof HTMLElement) || !workOrder?.id || !getCanEditOperationalData()) {
+    return false;
+  }
+
+  prepareWorkOrderInlineEditorCell(cell);
+  if (state.workOrderInlineFieldEditor?.anchor === cell) {
+    return true;
+  }
+
+  const { form, grid, saveButton } = createWorkOrderInlineEditorShell(
+    workOrder,
+    "Usluge",
+    "work-order-inline-service-editor",
+  );
+  let draftItems = getWorkOrderServiceItems(workOrder);
+  let searchQuery = "";
+  let selectedType = getWorkOrderSelectionServiceType(draftItems) || "inspection";
+
+  const tabs = document.createElement("div");
+  tabs.className = "work-order-service-type-tabs";
+  const search = document.createElement("input");
+  search.type = "search";
+  search.placeholder = "Pretraži usluge...";
+  search.autocomplete = "off";
+  const selected = document.createElement("div");
+  selected.className = "work-order-inline-chip-row";
+  const list = document.createElement("div");
+  list.className = "work-order-inline-option-list";
+
+  const getSelectedKeys = () => new Set(draftItems.map((item) => getWorkOrderQuickServicePickerValue(item)));
+
+  const renderTabs = () => {
+    tabs.replaceChildren();
+    SERVICE_CATALOG_TYPE_OPTIONS.forEach((option) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `work-order-service-type-tab${option.value === selectedType ? " is-active" : ""}`;
+      button.textContent = option.label;
+      button.addEventListener("click", () => {
+        selectedType = option.value;
+        render();
+      });
+      tabs.append(button);
+    });
+  };
+
+  const renderSelected = () => {
+    selected.replaceChildren();
+    if (draftItems.length === 0) {
+      const empty = document.createElement("span");
+      empty.className = "work-order-quick-picker-selection-empty";
+      empty.textContent = "Bez odabranih usluga";
+      selected.append(empty);
+      return;
+    }
+
+    draftItems.forEach((item) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "work-order-quick-picker-chip";
+      chip.textContent = item.name || item.serviceCode || "Usluga";
+      chip.addEventListener("click", () => {
+        const key = getWorkOrderQuickServicePickerValue(item);
+        draftItems = draftItems.filter((entry) => getWorkOrderQuickServicePickerValue(entry) !== key);
+        render();
+      });
+      selected.append(chip);
+    });
+  };
+
+  const renderOptions = () => {
+    list.replaceChildren();
+    const selectedKeys = getSelectedKeys();
+    const options = getWorkOrderServiceCatalogOptions(draftItems)
+      .filter((option) => getWorkOrderServiceType(option) === selectedType)
+      .filter((option) => matchesWorkOrderServiceSearch(option, searchQuery));
+
+    if (options.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "work-order-quick-picker-empty";
+      empty.textContent = "Nema usluga za ovaj filter.";
+      list.append(empty);
+      return;
+    }
+
+    options.forEach((option) => {
+      const key = getWorkOrderQuickServicePickerValue(option);
+      const isSelected = selectedKeys.has(key);
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `work-item-status-option work-order-inline-option${isSelected ? " is-selected" : ""}`;
+
+      const copy = document.createElement("span");
+      copy.className = "work-order-inline-option-copy";
+      const title = document.createElement("strong");
+      title.textContent = option.name || option.serviceCode || "Usluga";
+      const meta = document.createElement("small");
+      meta.textContent = [option.serviceCode, getServiceCatalogTypeLabel(getWorkOrderServiceType(option))].filter(Boolean).join(" · ");
+      copy.append(title, meta);
+
+      const marker = document.createElement("span");
+      marker.className = "work-order-quick-picker-marker";
+      marker.textContent = isSelected ? "✓" : "+";
+      button.append(copy, marker);
+      button.addEventListener("click", () => {
+        const current = draftItems.find((item) => getWorkOrderQuickServicePickerValue(item) === key) ?? null;
+        draftItems = isSelected
+          ? draftItems.filter((item) => getWorkOrderQuickServicePickerValue(item) !== key)
+          : dedupeWorkOrderQuickServiceItems([...draftItems, buildWorkOrderServiceItemSnapshot(option, current)]);
+        render();
+        search.focus({ preventScroll: true });
+      });
+      list.append(button);
+    });
+  };
+
+  const render = () => {
+    renderTabs();
+    renderSelected();
+    renderOptions();
+  };
+
+  search.addEventListener("input", () => {
+    searchQuery = search.value || "";
+    renderOptions();
+  });
+  grid.append(
+    tabs,
+    createWorkOrderInlineEditorControl("Pretraga", search),
+    selected,
+    list,
+  );
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const serviceItems = dedupeWorkOrderQuickServiceItems(getWorkOrderServiceItems({
+      serviceItems: draftItems.map((item) => buildWorkOrderServiceItemSnapshot(getServiceCatalogItemForWorkOrderService(item) ?? item, item)),
+    }));
+    void saveWorkOrderInlinePatch(workOrder, {
+      serviceItems,
+      serviceLine: getWorkOrderServiceSummary({ serviceItems }),
+    }, saveButton);
+  });
+  render();
+  mountWorkOrderInlineEditor(cell, form, "input");
+  return true;
+}
+
 function attachWorkOrderInlineServicesEditor(cell, workOrder = {}) {
   if (!(cell instanceof HTMLElement) || !workOrder?.id || !getCanEditOperationalData()) {
     return;
   }
 
   prepareWorkOrderInlineEditorCell(cell);
-  const openEditor = () => {
-    if (state.workOrderInlineFieldEditor?.anchor === cell) {
-      return;
-    }
-
-    const { form, grid, saveButton } = createWorkOrderInlineEditorShell(
-      workOrder,
-      "Usluge",
-      "work-order-inline-service-editor",
-    );
-    let draftItems = getWorkOrderServiceItems(workOrder);
-    let searchQuery = "";
-    let selectedType = getWorkOrderSelectionServiceType(draftItems) || "inspection";
-
-    const tabs = document.createElement("div");
-    tabs.className = "work-order-service-type-tabs";
-    const search = document.createElement("input");
-    search.type = "search";
-    search.placeholder = "Pretraži usluge...";
-    search.autocomplete = "off";
-    const selected = document.createElement("div");
-    selected.className = "work-order-inline-chip-row";
-    const list = document.createElement("div");
-    list.className = "work-order-inline-option-list";
-
-    const getSelectedKeys = () => new Set(draftItems.map((item) => getWorkOrderQuickServicePickerValue(item)));
-
-    const renderTabs = () => {
-      tabs.replaceChildren();
-      SERVICE_CATALOG_TYPE_OPTIONS.forEach((option) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = `work-order-service-type-tab${option.value === selectedType ? " is-active" : ""}`;
-        button.textContent = option.label;
-        button.addEventListener("click", () => {
-          selectedType = option.value;
-          render();
-        });
-        tabs.append(button);
-      });
-    };
-
-    const renderSelected = () => {
-      selected.replaceChildren();
-      if (draftItems.length === 0) {
-        const empty = document.createElement("span");
-        empty.className = "work-order-quick-picker-selection-empty";
-        empty.textContent = "Bez odabranih usluga";
-        selected.append(empty);
-        return;
-      }
-
-      draftItems.forEach((item) => {
-        const chip = document.createElement("button");
-        chip.type = "button";
-        chip.className = "work-order-quick-picker-chip";
-        chip.textContent = item.name || item.serviceCode || "Usluga";
-        chip.addEventListener("click", () => {
-          const key = getWorkOrderQuickServicePickerValue(item);
-          draftItems = draftItems.filter((entry) => getWorkOrderQuickServicePickerValue(entry) !== key);
-          render();
-        });
-        selected.append(chip);
-      });
-    };
-
-    const renderOptions = () => {
-      list.replaceChildren();
-      const selectedKeys = getSelectedKeys();
-      const options = getWorkOrderServiceCatalogOptions(draftItems)
-        .filter((option) => getWorkOrderServiceType(option) === selectedType)
-        .filter((option) => matchesWorkOrderServiceSearch(option, searchQuery));
-
-      if (options.length === 0) {
-        const empty = document.createElement("p");
-        empty.className = "work-order-quick-picker-empty";
-        empty.textContent = "Nema usluga za ovaj filter.";
-        list.append(empty);
-        return;
-      }
-
-      options.forEach((option) => {
-        const key = getWorkOrderQuickServicePickerValue(option);
-        const isSelected = selectedKeys.has(key);
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = `work-item-status-option work-order-inline-option${isSelected ? " is-selected" : ""}`;
-
-        const copy = document.createElement("span");
-        copy.className = "work-order-inline-option-copy";
-        const title = document.createElement("strong");
-        title.textContent = option.name || option.serviceCode || "Usluga";
-        const meta = document.createElement("small");
-        meta.textContent = [option.serviceCode, getServiceCatalogTypeLabel(getWorkOrderServiceType(option))].filter(Boolean).join(" · ");
-        copy.append(title, meta);
-
-        const marker = document.createElement("span");
-        marker.className = "work-order-quick-picker-marker";
-        marker.textContent = isSelected ? "✓" : "+";
-        button.append(copy, marker);
-        button.addEventListener("click", () => {
-          const current = draftItems.find((item) => getWorkOrderQuickServicePickerValue(item) === key) ?? null;
-          draftItems = isSelected
-            ? draftItems.filter((item) => getWorkOrderQuickServicePickerValue(item) !== key)
-            : dedupeWorkOrderQuickServiceItems([...draftItems, buildWorkOrderServiceItemSnapshot(option, current)]);
-          render();
-          search.focus({ preventScroll: true });
-        });
-        list.append(button);
-      });
-    };
-
-    const render = () => {
-      renderTabs();
-      renderSelected();
-      renderOptions();
-    };
-
-    search.addEventListener("input", () => {
-      searchQuery = search.value || "";
-      renderOptions();
-    });
-    grid.append(
-      tabs,
-      createWorkOrderInlineEditorControl("Pretraga", search),
-      selected,
-      list,
-    );
-    form.addEventListener("submit", (event) => {
-      event.preventDefault();
-      const serviceItems = dedupeWorkOrderQuickServiceItems(getWorkOrderServiceItems({
-        serviceItems: draftItems.map((item) => buildWorkOrderServiceItemSnapshot(getServiceCatalogItemForWorkOrderService(item) ?? item, item)),
-      }));
-      void saveWorkOrderInlinePatch(workOrder, {
-        serviceItems,
-        serviceLine: getWorkOrderServiceSummary({ serviceItems }),
-      }, saveButton);
-    });
-    render();
-    mountWorkOrderInlineEditor(cell, form, "input");
-  };
-
   cell.addEventListener("dblclick", (event) => {
     event.preventDefault();
     event.stopPropagation();
-    openEditor();
+    openWorkOrderInlineServicesEditor(cell, workOrder);
   });
 }
 
