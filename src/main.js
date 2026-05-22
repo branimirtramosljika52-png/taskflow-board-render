@@ -32819,6 +32819,62 @@ async function readSignatureLogoFileAsDataUrl(file) {
   return dataUrl;
 }
 
+async function readDocumentStampFileAsDataUrl(file) {
+  if (!file) {
+    return "";
+  }
+  const type = String(file.type || "").toLowerCase();
+  const name = String(file.name || "").toLowerCase();
+  if (!type.startsWith("image/") && !/\.(png|jpe?g|webp|svg)$/i.test(name)) {
+    throw new Error("Pečat mora biti slika.");
+  }
+  if (Number(file.size || 0) > PDF_SIGNER_LOGO_MAX_SOURCE_BYTES) {
+    throw new Error("Pečat mora biti manji od 2 MB.");
+  }
+  const sourceDataUrl = await readFileAsDataUrl(file, "Ne mogu učitati pečat.");
+  const image = await loadSignatureLogoImage(sourceDataUrl);
+  const naturalWidth = Number(image.naturalWidth || image.width || 0);
+  const naturalHeight = Number(image.naturalHeight || image.height || 0);
+  if (!naturalWidth || !naturalHeight) {
+    throw new Error("Pečat nema ispravne dimenzije.");
+  }
+
+  const scale = Math.min(1, PDF_SIGNER_LOGO_MAX_SIDE / Math.max(naturalWidth, naturalHeight));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(naturalHeight * scale));
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("Preglednik ne može pripremiti pečat.");
+  }
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+  const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+  const pixels = imageData.data;
+  for (let index = 0; index < pixels.length; index += 4) {
+    const red = pixels[index];
+    const green = pixels[index + 1];
+    const blue = pixels[index + 2];
+    const currentAlpha = pixels[index + 3];
+    const maxChannel = Math.max(red, green, blue);
+    const minChannel = Math.min(red, green, blue);
+    const lowSaturation = maxChannel - minChannel <= 38;
+    if (lowSaturation && minChannel >= 248) {
+      pixels[index + 3] = 0;
+    } else if (lowSaturation && minChannel >= 228) {
+      pixels[index + 3] = Math.round(currentAlpha * ((248 - minChannel) / 20));
+    }
+  }
+  context.putImageData(imageData, 0, 0);
+
+  const dataUrl = canvas.toDataURL("image/png");
+  if (dataUrl.length > PDF_SIGNER_LOGO_MAX_DATA_URL_LENGTH) {
+    throw new Error("Pečat je prevelik nakon obrade. Odaberi manju sliku.");
+  }
+  return dataUrl;
+}
+
 function syncSignatureLogoPicker(appearance = {}) {
   const logoDataUrl = String(appearance.logoDataUrl || signaturesSettingsLogoDataUrlInput?.value || "").trim();
   const hasSupportedLogo = isPdfSignerLogoBase64DataUrl(logoDataUrl);
@@ -113210,7 +113266,7 @@ settingsDocumentStampFileInput?.addEventListener("change", () => {
     return;
   }
 
-  void readSignatureLogoFileAsDataUrl(file).then((stampDataUrl) => {
+  void readDocumentStampFileAsDataUrl(file).then((stampDataUrl) => {
     settingsDocumentStampDraftTouched = true;
     if (settingsDocumentStampDataUrlInput) {
       settingsDocumentStampDataUrlInput.value = stampDataUrl;
