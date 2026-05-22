@@ -61266,11 +61266,11 @@ function getQualifiedUserDocumentMetaLines(
   return [
     visibleFields.has("title") && user.title ? String(user.title).trim() : "",
     visibleFields.has("oib") && user.oib ? `OIB ${String(user.oib).trim()}` : "",
-    visibleFields.has("type") && qualification.type ? `Vrsta ispita ${qualification.type}` : "",
-    (visibleFields.has("data1") || visibleFields.has("classCode")) && qualification.data1 ? `Podatak 1 ${qualification.data1}` : "",
-    (visibleFields.has("data2") || visibleFields.has("urbroj")) && qualification.data2 ? `Podatak 2 ${qualification.data2}` : "",
-    (visibleFields.has("data3") || visibleFields.has("eBroj")) && qualification.data3 ? `Podatak 3 ${qualification.data3}` : "",
-    visibleFields.has("passedOn") && qualification.passedOn ? `Datum polaganja ${formatCompactDate(qualification.passedOn)}` : "",
+    visibleFields.has("type") && qualification.type ? String(qualification.type).trim() : "",
+    (visibleFields.has("data1") || visibleFields.has("classCode")) && qualification.data1 ? String(qualification.data1).trim() : "",
+    (visibleFields.has("data2") || visibleFields.has("urbroj")) && qualification.data2 ? String(qualification.data2).trim() : "",
+    (visibleFields.has("data3") || visibleFields.has("eBroj")) && qualification.data3 ? String(qualification.data3).trim() : "",
+    visibleFields.has("passedOn") && qualification.passedOn ? formatCompactDate(qualification.passedOn) : "",
   ].filter(Boolean);
 }
 

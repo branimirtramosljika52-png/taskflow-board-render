@@ -307,6 +307,52 @@ test("docx export keeps digital signature placeholders compact inside template c
   assert.equal(outputXml.includes('<w:gridCol w:w="4680"/>'), false);
 });
 
+test("docx export keeps floating Word images pinned while inserting blocks", async () => {
+  const templateBuffer = buildMinimalDocxBuffer(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:v="urn:schemas-microsoft-com:vml">
+      <w:body>
+        <w:p><w:r><w:t>{{POTPISI}}</w:t></w:r></w:p>
+        <w:p>
+          <w:r>
+            <w:drawing>
+              <wp:anchor>
+                <wp:positionH relativeFrom="page"><wp:posOffset>914400</wp:posOffset></wp:positionH>
+                <wp:positionV relativeFrom="paragraph"><wp:posOffset>50800</wp:posOffset></wp:positionV>
+                <wp:extent cx="47625" cy="1270000"/>
+                <a:graphic><a:graphicData><a:pic/></a:graphicData></a:graphic>
+              </wp:anchor>
+            </w:drawing>
+            <w:pict>
+              <v:shape style="position:absolute;margin-left:72pt;margin-top:4pt;width:3.75pt;height:100pt;mso-position-horizontal-relative:page;mso-position-vertical-relative:paragraph" fillcolor="#006fc0"/>
+            </w:pict>
+          </w:r>
+        </w:p>
+        <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>
+      </w:body>
+    </w:document>`);
+
+  const outputBuffer = await buildDocxFromTemplateBuffer(templateBuffer, {
+    POTPISI: {
+      __docxBlockType: "signature_group",
+      items: [
+        {
+          name: "Ana Savanovic",
+          metaLines: ["35649316156"],
+          signatureMode: "digital",
+        },
+      ],
+    },
+  });
+  const outputXml = new PizZip(outputBuffer).file("word/document.xml").asText();
+
+  assert.equal(outputXml.includes("{{POTPISI}}"), false);
+  assert.match(outputXml, /Ana Savanovic/);
+  assert.match(outputXml, /<wp:positionV relativeFrom="page"><wp:posOffset>50800<\/wp:posOffset><\/wp:positionV>/);
+  assert.doesNotMatch(outputXml, /<wp:positionV relativeFrom="paragraph"/);
+  assert.match(outputXml, /mso-position-vertical-relative:page/);
+  assert.doesNotMatch(outputXml, /mso-position-vertical-relative:paragraph/);
+});
+
 test("HTML template export renders escaped placeholders and special table blocks", () => {
   const html = buildHtmlFromTemplateBuffer(Buffer.from(`
     <main>
