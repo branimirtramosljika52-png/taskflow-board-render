@@ -28482,8 +28482,7 @@ function buildDocumentRecordLibraryFolders(records = state.documentsExplorer.rec
       });
     }
 
-    const bucket = buckets.get(folderKey);
-    bucket.documents.push(createDocumentRecordLibraryEntryFromContext(record, context, "document-record"));
+    // Zapisnički record ostaje interan za periodiku i lookup; Documents prikazuje samo stvarno spremljene datoteke.
   });
 
   getDocumentsExplorerWorkOrderDocuments({ documentCategory: GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY })
@@ -48588,14 +48587,28 @@ function isDocumentTemplateMediaFieldType(value) {
 
 function getDocumentTemplateMediaFieldKindLabel(type = "image_upload") {
   return String(type || "").trim().toLowerCase() === "sketch_upload"
-    ? "Tlocrt / skica"
+    ? "Dokumenti"
     : "Slika";
 }
 
 function getDocumentTemplateMediaFieldAccept(type = "image_upload") {
   return String(type || "").trim().toLowerCase() === "sketch_upload"
-    ? "image/*,.pdf"
+    ? "image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt"
     : "image/*";
+}
+
+function isDocumentTemplateMediaFieldMultiple(type = "image_upload") {
+  return String(type || "").trim().toLowerCase() === "sketch_upload";
+}
+
+function getDocumentTemplateMediaFieldUploadLabel(type = "image_upload") {
+  return isDocumentTemplateMediaFieldMultiple(type) ? "dokumente" : "sliku";
+}
+
+function getDocumentTemplateMediaFieldAllowedLabel(type = "image_upload") {
+  return isDocumentTemplateMediaFieldMultiple(type)
+    ? "slike, PDF, Word, Excel, CSV ili tekstualne dokumente"
+    : "podržane slike";
 }
 
 function isDocumentTemplateMediaFileAllowed(type = "image_upload", file = null) {
@@ -48605,7 +48618,12 @@ function isDocumentTemplateMediaFileAllowed(type = "image_upload", file = null) 
 
   const safeType = String(type || "").trim().toLowerCase();
   if (safeType === "sketch_upload") {
-    return String(file.type || "").startsWith("image/") || /\.pdf$/i.test(String(file.name || ""));
+    const fileType = String(file.type || "").trim().toLowerCase();
+    const fileName = String(file.name || "").trim();
+    return String(file.type || "").startsWith("image/")
+      || /^(application\/pdf|text\/plain|text\/csv)$/i.test(fileType)
+      || /spreadsheet|wordprocessingml|msword|excel/i.test(fileType)
+      || /\.(pdf|docx?|xlsx?|csv|txt)$/i.test(fileName);
   }
 
   return String(file.type || "").startsWith("image/");
@@ -49317,10 +49335,10 @@ function buildDocumentTemplateToolFieldDraft(tool = "text") {
   if (safeTool === "sketch_upload") {
     return createEmptyDocumentTemplateFieldDraft(
       {
-        label: "Tlocrt",
-        wordLabel: "Tlocrt",
+        label: "Dodaj dokumente",
+        wordLabel: "Dokumenti",
         type: "sketch_upload",
-        helpText: "Kod izrade zapisnika korisnik dodaje skicu ili tlocrt klikom ili drag and dropom.",
+        helpText: "Kod izrade zapisnika korisnik dodaje dokumente, skice ili priloge klikom ili drag and dropom.",
       },
       baseIndex,
     );
@@ -51370,8 +51388,18 @@ function openDocumentTemplateFieldAiWizard(fieldId) {
 function createEmptyDocumentTemplateFieldDraft(initial = {}, index = 0) {
   const fallbackKey = `FIELD_${index + 1}`;
   const type = initial.type || "text";
-  const label = String(initial.label ?? "").trim() || (type === "chapter" ? "Novi blok" : "");
-  const wordLabel = String(initial.wordLabel ?? "").trim() || label;
+  const legacyDocumentUploadLabel = /^(tlocrt(\s*\(skica\))?|grafi[cč]ki\s+(prikaz|prilog))$/i;
+  const rawLabel = String(initial.label ?? "").trim();
+  const rawWordLabel = String(initial.wordLabel ?? "").trim();
+  const rawHelpText = String(initial.helpText ?? "").trim();
+  const shouldRenameLegacyDocumentUpload = (type === "sketch_upload" || type === "chapter")
+    && (legacyDocumentUploadLabel.test(rawLabel) || legacyDocumentUploadLabel.test(rawWordLabel));
+  const label = shouldRenameLegacyDocumentUpload
+    ? "Dodaj dokumente"
+    : (rawLabel || (type === "chapter" ? "Novi blok" : ""));
+  const wordLabel = type === "sketch_upload" && legacyDocumentUploadLabel.test(rawWordLabel)
+    ? "Dokumenti"
+    : (shouldRenameLegacyDocumentUpload ? label : (rawWordLabel || label));
   const defaultColumns = type === "measurement_table"
     ? ["Pozicija", "Opis", "Vrijednost", "Granica", "Napomena"]
     : [];
@@ -51407,7 +51435,9 @@ function createEmptyDocumentTemplateFieldDraft(initial = {}, index = 0) {
     valueColumn: String(initial.valueColumn ?? "").trim().toLowerCase(),
     previousDocumentMode: String(initial.previousDocumentMode ?? "").trim().toUpperCase() || "NONE",
     defaultValue: String(initial.defaultValue ?? "").trim(),
-    helpText: String(initial.helpText ?? "").trim(),
+    helpText: type === "sketch_upload" && (!rawHelpText || /tlocrt|skic/i.test(rawHelpText))
+      ? "Kod izrade zapisnika korisnik dodaje dokumente, skice ili priloge klikom ili drag and dropom."
+      : rawHelpText,
     textListStyle: isDocumentTemplateTextListStyleField(type)
       ? normalizeDocumentTemplateTextListStyleLocal(initial.textListStyle ?? initial.listStyle)
       : "none",
@@ -57345,10 +57375,13 @@ function getDocumentTemplateFieldPreviewValue(field = {}, context = {}, index = 
 
   if (isDocumentTemplateMediaFieldType(field.type)) {
     const runtimeWorkOrderId = String(context.sampleWorkOrder?.id || "").trim();
-    const mediaValue = runtimeWorkOrderId
-      ? normalizeDocumentTemplateMediaFieldValue(getDocumentTemplateRuntimeInitialValue(field, runtimeWorkOrderId))
-      : null;
-    return mediaValue?.fileName || token;
+    const mediaValues = runtimeWorkOrderId
+      ? normalizeDocumentTemplateMediaFieldValues(getDocumentTemplateRuntimeInitialValue(field, runtimeWorkOrderId))
+      : [];
+    if (mediaValues.length > 1) {
+      return `${mediaValues.length} dokumenata`;
+    }
+    return mediaValues[0]?.fileName || token;
   }
 
   const runtimeWorkOrderId = String(context.sampleWorkOrder?.id || "").trim();
@@ -58152,22 +58185,41 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
 
   if (isDocumentTemplateMediaFieldType(field.type)) {
     const runtimeWorkOrderId = String(context.sampleWorkOrder?.id || "").trim();
-    const mediaValue = runtimeWorkOrderId
-      ? normalizeDocumentTemplateMediaFieldValue(getDocumentTemplateRuntimeInitialValue(field, runtimeWorkOrderId))
-      : null;
-    const mediaUrl = getDocumentTemplateMediaFieldPreviewUrl(mediaValue);
+    const mediaValues = runtimeWorkOrderId
+      ? normalizeDocumentTemplateMediaFieldValues(getDocumentTemplateRuntimeInitialValue(field, runtimeWorkOrderId))
+      : [];
     const mediaKind = getDocumentTemplateMediaFieldKindLabel(field.type);
-    const isImage = Boolean(mediaUrl) && !/\.pdf($|\?)/i.test(mediaUrl) && !/application\/pdf/i.test(String(mediaValue?.fileType || ""));
+    const mediaCards = mediaValues.map((mediaValue) => {
+      const mediaUrl = getDocumentTemplateMediaFieldPreviewUrl(mediaValue);
+      const isImage = isDocumentTemplateMediaFieldImageValue(mediaValue) && Boolean(mediaUrl);
+      const fileExtension = getWorkOrderDocumentExtension(mediaValue.fileName, mediaValue.fileType);
+      const fileSummary = [
+        mediaValue.fileType || "",
+        formatFileSize(mediaValue.fileSize),
+      ].filter(Boolean).join(" · ");
+
+      return `
+        <article class="document-template-preview-media-card${isImage ? " is-image" : ""}">
+          ${isImage
+            ? `<div class="document-template-preview-media-frame"><img class="document-template-preview-media-image" src="${escapeHtml(mediaUrl)}" alt="${escapeHtml(mediaValue.fileName || mediaKind)}" loading="lazy" /></div>`
+            : `<div class="document-template-preview-media-file-icon">${escapeHtml(fileExtension || "DOC")}</div>`}
+          <div class="document-template-preview-media-card-copy">
+            <strong>${escapeHtml(mediaValue.fileName || mediaKind)}</strong>
+            <span>${escapeHtml(fileSummary || mediaKind)}</span>
+          </div>
+        </article>
+      `;
+    }).join("");
     const mediaBody = placeholderMode
       ? `<div class="document-template-preview-media-placeholder">${escapeHtml(token)}</div>`
-      : mediaValue
-        ? (isImage
-          ? `<div class="document-template-preview-media-frame"><img class="document-template-preview-media-image" src="${escapeHtml(mediaUrl)}" alt="${escapeHtml(mediaValue.fileName || mediaKind)}" loading="lazy" /></div>`
-          : `<div class="document-template-preview-media-placeholder is-file">${escapeHtml(mediaValue.fileName || mediaKind)}</div>`)
-        : `<div class="document-template-preview-media-placeholder">Klikni ili povuci ${escapeHtml(mediaKind.toLowerCase())} kod izrade zapisnika.</div>`;
+      : mediaValues.length
+        ? `<div class="document-template-preview-media-grid">${mediaCards}</div>`
+        : `<div class="document-template-preview-media-placeholder">Klikni ili povuci ${escapeHtml(getDocumentTemplateMediaFieldUploadLabel(field.type))} kod izrade zapisnika.</div>`;
     const mediaMeta = placeholderMode
       ? escapeHtml(token)
-      : escapeHtml(getDocumentTemplateMediaFieldSummary(mediaValue, field));
+      : escapeHtml(mediaValues.length
+        ? `${mediaValues.length} ${mediaValues.length === 1 ? "datoteka dodana" : "datoteka dodano"}`
+        : getDocumentTemplateMediaFieldSummary(null, field));
 
     return `
       <section${sectionAttrs()}>
@@ -58968,10 +59020,10 @@ function buildDocumentTemplateFieldExportText(field = {}, context = {}, index = 
 
   if (isDocumentTemplateMediaFieldType(field.type)) {
     const runtimeWorkOrderId = String(context.sampleWorkOrder?.id || "").trim();
-    const mediaValue = runtimeWorkOrderId
-      ? normalizeDocumentTemplateMediaFieldValue(getDocumentTemplateRuntimeInitialValue(field, runtimeWorkOrderId))
-      : null;
-    return mediaValue?.fileName || "";
+    const mediaValues = runtimeWorkOrderId
+      ? normalizeDocumentTemplateMediaFieldValues(getDocumentTemplateRuntimeInitialValue(field, runtimeWorkOrderId))
+      : [];
+    return mediaValues.map((mediaValue) => mediaValue.fileName).filter(Boolean).join("\n");
   }
 
   if (field.type === "legal_list") {
@@ -59745,11 +59797,31 @@ function buildDocumentTemplateRuntimePdfBlocks(template = buildDocumentTemplateD
       const title = field.label || field.wordLabel || `Polje ${index + 1}`;
 
       if (isDocumentTemplateMediaFieldType(field.type)) {
-        const mediaValue = normalizeDocumentTemplateMediaFieldValue(
+        const mediaValues = normalizeDocumentTemplateMediaFieldValues(
           context.sampleWorkOrder?.id
             ? getDocumentTemplateRuntimeInitialValue(field, context.sampleWorkOrder.id)
             : null,
         );
+        if (isDocumentTemplateMediaFieldMultiple(field.type)) {
+          return {
+            type: "attachments",
+            title,
+            imageKind: getDocumentTemplateMediaFieldKindLabel(field.type),
+            emptyText: `Nema dodanih dokumenata za ${getDocumentTemplateMediaFieldKindLabel(field.type).toLowerCase()}.`,
+            items: mediaValues.map((mediaValue) => ({
+              fileName: mediaValue.fileName || "",
+              fileType: mediaValue.fileType || "",
+              fileSize: mediaValue.fileSize || 0,
+              fileUrl: getDocumentTemplateMediaFieldPreviewUrl(mediaValue),
+              imageUrl: isDocumentTemplateMediaFieldImageValue(mediaValue)
+                ? getDocumentTemplateMediaFieldPreviewUrl(mediaValue)
+                : "",
+              caption: getDocumentTemplateMediaFieldSummary(mediaValue, field),
+            })),
+          };
+        }
+
+        const mediaValue = mediaValues[0] ?? null;
         return {
           type: "image",
           title,
@@ -61384,12 +61456,37 @@ function createModuleAttachmentDraft(document = {}) {
 }
 
 function normalizeDocumentTemplateMediaFieldValue(value = null) {
+  return normalizeDocumentTemplateMediaFieldValues(value)[0] ?? null;
+}
+
+function normalizeDocumentTemplateMediaFieldValues(value = null) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
+    const values = Array.isArray(value) ? value : [];
+    return values
+      .map((entry) => (entry && typeof entry === "object" ? createModuleAttachmentDraft(entry) : null))
+      .filter((draft) => draft?.fileName && (draft.dataUrl || draft.storageUrl));
   }
 
   const draft = createModuleAttachmentDraft(value);
-  return draft.fileName && (draft.dataUrl || draft.storageUrl) ? draft : null;
+  return draft.fileName && (draft.dataUrl || draft.storageUrl) ? [draft] : [];
+}
+
+function isDocumentTemplateMediaFieldImageValue(value = null) {
+  const mediaValue = normalizeDocumentTemplateMediaFieldValue(value);
+  if (!mediaValue) {
+    return false;
+  }
+
+  const fileType = String(mediaValue.fileType || "").trim();
+  const fileName = String(mediaValue.fileName || "").trim();
+  const url = String(mediaValue.storageUrl || mediaValue.dataUrl || "").trim();
+  if (/^image\//i.test(fileType)) {
+    return true;
+  }
+  if (/\.pdf($|\?)/i.test(url) || /application\/pdf/i.test(fileType)) {
+    return false;
+  }
+  return /\.(png|jpe?g|webp|gif|bmp)$/i.test(fileName) || /^data:image\//i.test(url);
 }
 
 function getDocumentTemplateMediaFieldSummary(value = null, field = {}) {
@@ -61416,7 +61513,7 @@ function getDocumentTemplateMediaFieldPreviewUrl(value = null) {
 
 async function createDocumentTemplateMediaDraftFromFile(file, field = {}) {
   if (!isDocumentTemplateMediaFileAllowed(field?.type, file)) {
-    throw new Error(`${getDocumentTemplateMediaFieldKindLabel(field?.type)} prihvaća samo podržane slike${String(field?.type || "").trim().toLowerCase() === "sketch_upload" ? " ili PDF skicu" : ""}.`);
+    throw new Error(`${getDocumentTemplateMediaFieldKindLabel(field?.type)} prihvaća samo ${getDocumentTemplateMediaFieldAllowedLabel(field?.type)}.`);
   }
 
   const dataUrl = await readFileAsDataUrl(file, "Ne mogu učitati datoteku.");
@@ -74206,19 +74303,21 @@ function renderDocumentTemplateRuntimeFieldRows() {
   const createMediaFieldControl = (field, workOrder) => {
     const shellNode = document.createElement("div");
     shellNode.className = "document-template-runtime-media-field";
+    const isMultiple = isDocumentTemplateMediaFieldMultiple(field.type);
 
     const title = document.createElement("strong");
     title.textContent = createFieldTitle(field, 0);
     appendDocumentTemplateRuntimeTitleAiPill(title, field, workOrder?.id);
 
     const sourcePicker = createPersistedFieldSourcePicker(field, workOrder, { kind: "value" });
-    const currentValue = normalizeDocumentTemplateMediaFieldValue(
+    const currentValues = normalizeDocumentTemplateMediaFieldValues(
       getDocumentTemplateRuntimeInitialValue(field, workOrder.id),
     );
 
     const fileInput = document.createElement("input");
     fileInput.type = "file";
     fileInput.accept = getDocumentTemplateMediaFieldAccept(field.type);
+    fileInput.multiple = isMultiple;
     fileInput.hidden = true;
 
     const dropzone = document.createElement("button");
@@ -74227,16 +74326,18 @@ function renderDocumentTemplateRuntimeFieldRows() {
 
     const mark = document.createElement("span");
     mark.className = "work-order-document-dropzone-mark";
-    mark.textContent = String(field.type || "").trim().toLowerCase() === "sketch_upload" ? "SK" : "IMG";
+    mark.textContent = isMultiple ? "DOC" : "IMG";
 
     const dropzoneCopy = document.createElement("span");
     dropzoneCopy.className = "work-order-document-dropzone-copy";
     const dropzoneTitle = document.createElement("strong");
-    dropzoneTitle.textContent = currentValue
-      ? "Zamijeni datoteku"
-      : `Dodaj ${getDocumentTemplateMediaFieldKindLabel(field.type).toLowerCase()}`;
+    dropzoneTitle.textContent = isMultiple && currentValues.length
+      ? "Dodaj još dokumenata"
+      : `Dodaj ${getDocumentTemplateMediaFieldUploadLabel(field.type)}`;
     const dropzoneSubtitle = document.createElement("span");
-    dropzoneSubtitle.textContent = "Klikni za odabir datoteke ili je povuci ovdje.";
+    dropzoneSubtitle.textContent = isMultiple
+      ? "Povuci više datoteka ovdje ili klikni za odabir."
+      : "Klikni za odabir datoteke ili je povuci ovdje.";
     dropzoneCopy.append(dropzoneTitle, dropzoneSubtitle);
     dropzone.append(mark, dropzoneCopy);
 
@@ -74244,73 +74345,91 @@ function renderDocumentTemplateRuntimeFieldRows() {
     previewCard.className = "document-template-runtime-media-preview";
 
     const renderPreview = (value = null) => {
-      const mediaValue = normalizeDocumentTemplateMediaFieldValue(value);
+      const mediaValues = normalizeDocumentTemplateMediaFieldValues(value);
       previewCard.replaceChildren();
 
-      if (!mediaValue) {
+      if (!mediaValues.length) {
         const empty = document.createElement("p");
         empty.className = "helper-copy module-copy";
-        empty.textContent = `Još nema dodane datoteke za ${getDocumentTemplateMediaFieldKindLabel(field.type).toLowerCase()}.`;
+        empty.textContent = `Još nema dodanih ${getDocumentTemplateMediaFieldUploadLabel(field.type)}.`;
         previewCard.append(empty);
         return;
       }
 
-      const row = document.createElement("article");
-      row.className = "module-attachment-row document-template-runtime-media-row";
+      const previewHead = document.createElement("div");
+      previewHead.className = "document-template-runtime-media-preview-head";
+      const count = document.createElement("strong");
+      count.textContent = `${mediaValues.length} ${mediaValues.length === 1 ? "datoteka" : "datoteke"}`;
+      const allowed = document.createElement("span");
+      allowed.textContent = `Podržano: ${getDocumentTemplateMediaFieldAllowedLabel(field.type)}.`;
+      previewHead.append(count, allowed);
 
-      const copy = document.createElement("div");
-      copy.className = "module-attachment-copy";
+      const list = document.createElement("div");
+      list.className = "document-template-runtime-media-preview-list";
 
-      const titleNode = document.createElement("strong");
-      titleNode.textContent = mediaValue.fileName || getDocumentTemplateMediaFieldKindLabel(field.type);
+      mediaValues.forEach((mediaValue) => {
+        const row = document.createElement("article");
+        row.className = "module-attachment-row document-template-runtime-media-row";
 
-      const meta = document.createElement("span");
-      meta.className = "module-attachment-meta";
-      meta.textContent = getDocumentTemplateMediaFieldSummary(mediaValue, field);
+        const badge = document.createElement("span");
+        badge.className = "document-template-runtime-media-file-badge";
+        badge.textContent = getWorkOrderDocumentExtension(mediaValue.fileName, mediaValue.fileType) || (isMultiple ? "DOC" : "IMG");
 
-      copy.append(titleNode, meta);
+        const copy = document.createElement("div");
+        copy.className = "module-attachment-copy";
 
-      const previewUrl = getDocumentTemplateMediaFieldPreviewUrl(mediaValue);
-      const isImagePreview = Boolean(previewUrl)
-        && !/\.pdf($|\?)/i.test(previewUrl)
-        && !/application\/pdf/i.test(String(mediaValue.fileType || ""));
+        const titleNode = document.createElement("strong");
+        titleNode.textContent = mediaValue.fileName || getDocumentTemplateMediaFieldKindLabel(field.type);
 
-      if (isImagePreview) {
-        const previewImage = document.createElement("img");
-        previewImage.className = "document-template-runtime-media-image";
-        previewImage.src = previewUrl;
-        previewImage.alt = mediaValue.fileName || getDocumentTemplateMediaFieldKindLabel(field.type);
-        previewImage.loading = "lazy";
-        copy.append(previewImage);
-      }
+        const meta = document.createElement("span");
+        meta.className = "module-attachment-meta";
+        meta.textContent = getDocumentTemplateMediaFieldSummary(mediaValue, field);
 
-      const actions = document.createElement("div");
-      actions.className = "module-attachment-actions";
+        copy.append(titleNode, meta);
 
-      const openButton = createActionButton("Otvori", "card-button", () => {
-        const href = String(mediaValue.storageUrl || mediaValue.dataUrl || "").trim();
-        if (!href) {
-          return;
+        const previewUrl = getDocumentTemplateMediaFieldPreviewUrl(mediaValue);
+        if (isDocumentTemplateMediaFieldImageValue(mediaValue) && previewUrl) {
+          const previewImage = document.createElement("img");
+          previewImage.className = "document-template-runtime-media-image";
+          previewImage.src = previewUrl;
+          previewImage.alt = mediaValue.fileName || getDocumentTemplateMediaFieldKindLabel(field.type);
+          previewImage.loading = "lazy";
+          copy.append(previewImage);
         }
 
-        const link = document.createElement("a");
-        link.href = href;
-        link.target = "_blank";
-        link.rel = "noopener";
-        document.body.append(link);
-        link.click();
-        link.remove();
+        const actions = document.createElement("div");
+        actions.className = "module-attachment-actions";
+
+        const openButton = createActionButton("Otvori", "card-button", () => {
+          const href = String(mediaValue.storageUrl || mediaValue.dataUrl || "").trim();
+          if (!href) {
+            return;
+          }
+
+          const link = document.createElement("a");
+          link.href = href;
+          link.target = "_blank";
+          link.rel = "noopener";
+          document.body.append(link);
+          link.click();
+          link.remove();
+        });
+
+        const removeButton = createActionButton("Makni", "card-button card-danger", () => {
+          const nextValues = isMultiple
+            ? mediaValues.filter((entry) => String(entry.id || "") !== String(mediaValue.id || ""))
+            : null;
+          setDocumentTemplateRuntimeFieldValue(workOrder.id, field.id, isMultiple ? nextValues : null, { render: false });
+          renderDocumentTemplateFieldRows();
+          renderDocumentTemplatePreviewContent();
+        });
+
+        actions.append(openButton, removeButton);
+        row.append(badge, copy, actions);
+        list.append(row);
       });
 
-      const removeButton = createActionButton("Makni", "card-button card-danger", () => {
-        setDocumentTemplateRuntimeFieldValue(workOrder.id, field.id, null, { render: false });
-        renderDocumentTemplateFieldRows();
-        renderDocumentTemplatePreviewContent();
-      });
-
-      actions.append(openButton, removeButton);
-      row.append(copy, actions);
-      previewCard.append(row);
+      previewCard.append(previewHead, list);
     };
 
     const applyFiles = async (files) => {
@@ -74319,15 +74438,25 @@ function renderDocumentTemplateRuntimeFieldRows() {
         return;
       }
 
-      const nextFile = selectedFiles.find((entry) => isDocumentTemplateMediaFileAllowed(field.type, entry));
-      if (!nextFile) {
-        setDocumentTemplateMessage(`${getDocumentTemplateMediaFieldKindLabel(field.type)} prihvaća samo podržane slike${String(field.type || "").trim().toLowerCase() === "sketch_upload" ? " ili PDF skicu" : ""}.`);
+      const nextFiles = selectedFiles.filter((entry) => isDocumentTemplateMediaFileAllowed(field.type, entry));
+      if (!nextFiles.length) {
+        setDocumentTemplateMessage(`${getDocumentTemplateMediaFieldKindLabel(field.type)} prihvaća samo ${getDocumentTemplateMediaFieldAllowedLabel(field.type)}.`);
         return;
       }
 
       try {
-        const mediaDraft = await createDocumentTemplateMediaDraftFromFile(nextFile, field);
-        setDocumentTemplateRuntimeFieldValue(workOrder.id, field.id, mediaDraft, { render: false });
+        const mediaDrafts = await Promise.all(
+          (isMultiple ? nextFiles : nextFiles.slice(0, 1)).map((file) => createDocumentTemplateMediaDraftFromFile(file, field)),
+        );
+        const existingValues = normalizeDocumentTemplateMediaFieldValues(
+          getDocumentTemplateRuntimeInitialValue(field, workOrder.id),
+        );
+        setDocumentTemplateRuntimeFieldValue(
+          workOrder.id,
+          field.id,
+          isMultiple ? [...existingValues, ...mediaDrafts] : mediaDrafts[0],
+          { render: false },
+        );
         renderDocumentTemplateFieldRows();
         renderDocumentTemplatePreviewContent();
       } catch (error) {
@@ -74382,7 +74511,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
       void applyFiles(event.dataTransfer?.files);
     });
 
-    renderPreview(currentValue);
+    renderPreview(currentValues);
 
     shellNode.append(title);
     if (sourcePicker) {
@@ -75886,7 +76015,7 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
       const specialInfoValue = document.createElement("div");
       specialInfoValue.className = "document-template-inline-special-value";
       specialInfoValue.textContent = String(field.type || "").trim().toLowerCase() === "sketch_upload"
-        ? "Korisnik ovdje kasnije dodaje tlocrt ili skicu. Podržani su klik na polje i drag and drop."
+        ? "Korisnik ovdje kasnije dodaje dokumente, skice ili priloge. Podržani su klik na polje i drag and drop."
         : "Korisnik ovdje kasnije dodaje sliku. Podržani su klik na polje i drag and drop.";
       specialInfoField.append(specialInfoValue);
     } else if (field.type === "qualified_inspectors") {

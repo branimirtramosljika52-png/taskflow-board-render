@@ -7610,6 +7610,109 @@ async function renderPdfSignatureGroup(doc, helpers, title, items = [], signatur
   }
 }
 
+function formatPdfFileSize(value = 0) {
+  const size = Number(value);
+  if (!Number.isFinite(size) || size <= 0) {
+    return "";
+  }
+  if (size >= 1024 * 1024) {
+    return `${(size / (1024 * 1024)).toFixed(size >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
+  }
+  return `${Math.max(1, Math.round(size / 1024))} KB`;
+}
+
+function getPdfFileExtension(fileName = "", fileType = "") {
+  const match = clean(fileName).match(/\.([a-z0-9]{2,5})$/i);
+  if (match) {
+    return match[1].toUpperCase();
+  }
+  const type = clean(fileType).toLowerCase();
+  if (type.includes("pdf")) return "PDF";
+  if (type.includes("word")) return "DOC";
+  if (type.includes("excel") || type.includes("spreadsheet")) return "XLS";
+  if (type.startsWith("image/")) return "IMG";
+  return "DOC";
+}
+
+async function renderPdfAttachmentListBlock(doc, helpers, title, items = [], emptyText = "") {
+  const safeItems = (Array.isArray(items) ? items : []).filter((item) => item && typeof item === "object");
+  if (!safeItems.length) {
+    renderPdfFieldCard(doc, helpers, title, emptyText || "Nema dodanih dokumenata.");
+    return;
+  }
+
+  helpers.ensureSpace(64);
+  doc.font("dejavu-bold").fontSize(12).fillColor("#1f2333").text(title, {
+    width: helpers.availableWidth,
+  });
+  doc.moveDown(0.35);
+
+  for (const item of safeItems) {
+    const imageBuffer = await resolvePdfImageBuffer(item.imageUrl || "");
+    const rowHeight = imageBuffer ? 112 : 76;
+    helpers.ensureSpace(rowHeight + 8);
+
+    const startX = doc.page.margins.left;
+    const startY = doc.y;
+    const cardWidth = helpers.availableWidth;
+    drawRoundedOutline(doc, startX, startY, cardWidth, rowHeight, 14, "#cfd8ea");
+
+    const mediaX = startX + 12;
+    const mediaY = startY + 12;
+    const mediaWidth = imageBuffer ? 96 : 56;
+    const mediaHeight = rowHeight - 24;
+
+    if (imageBuffer) {
+      try {
+        doc.image(imageBuffer, mediaX, mediaY, {
+          fit: [mediaWidth, mediaHeight],
+          align: "center",
+          valign: "center",
+        });
+      } catch {
+        drawRoundedOutline(doc, mediaX, mediaY, mediaWidth, mediaHeight, 10, "#d8e3f5");
+      }
+    } else {
+      drawRoundedOutline(doc, mediaX, mediaY + 4, mediaWidth, Math.min(48, mediaHeight), 12, "#d8e3f5");
+      doc.font("dejavu-bold").fontSize(10).fillColor("#285064").text(
+        getPdfFileExtension(item.fileName, item.fileType),
+        mediaX,
+        mediaY + 21,
+        { width: mediaWidth, align: "center" },
+      );
+    }
+
+    const copyX = mediaX + mediaWidth + 14;
+    const copyWidth = cardWidth - (copyX - startX) - 16;
+    const metaParts = [
+      item.fileType || "",
+      formatPdfFileSize(item.fileSize),
+    ].filter(Boolean);
+    doc.font("dejavu-bold").fontSize(10.5).fillColor("#172033").text(
+      normalizePdfText(item.fileName || "Dokument"),
+      copyX,
+      startY + 14,
+      { width: copyWidth, lineGap: 1 },
+    );
+    doc.font("dejavu").fontSize(8.8).fillColor("#64748b").text(
+      metaParts.join(" | ") || "Prilog",
+      copyX,
+      doc.y + 3,
+      { width: copyWidth },
+    );
+    if (clean(item.caption) && clean(item.caption) !== clean(item.fileName)) {
+      doc.font("dejavu").fontSize(8.5).fillColor("#53627a").text(
+        clean(item.caption),
+        copyX,
+        doc.y + 5,
+        { width: copyWidth, lineGap: 1 },
+      );
+    }
+
+    doc.y = startY + rowHeight + 8;
+  }
+}
+
 async function renderPdfImageBlock(doc, helpers, title, item = {}) {
   const imageBuffer = await resolvePdfImageBuffer(item.imageUrl || "");
   if (!imageBuffer) {
@@ -7862,6 +7965,11 @@ export async function buildPdfFromRenderModel(renderModel = {}) {
 
       if (itemType === "image") {
         await renderPdfImageBlock(doc, helpers, item.title || "Slika", item);
+        continue;
+      }
+
+      if (itemType === "attachments") {
+        await renderPdfAttachmentListBlock(doc, helpers, item.title || "Dokumenti", item.items || [], item.emptyText || "");
         continue;
       }
 
