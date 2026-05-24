@@ -1939,6 +1939,8 @@ const state = {
   userManagementScope: "people",
   peopleUserSheet: "active",
   companyEditorOpen: false,
+  companyEditorActiveTab: "overview",
+  companyExpandedIds: new Set(),
   locationEditorOpen: false,
   vehicleEditorOpen: false,
   vehicleReservationEditorOpen: false,
@@ -5180,6 +5182,14 @@ const companyEditorStatusPill = document.querySelector("#company-editor-status-p
 const companyEditorCloseButton = document.querySelector("#company-editor-close");
 const companyEditorBody = document.querySelector("#company-editor-body");
 const companyEditorFormShell = document.querySelector("#company-editor-form-shell");
+const companyWorkspaceHero = document.querySelector("#company-workspace-hero");
+const companyWorkspaceLogo = document.querySelector("#company-workspace-logo");
+const companyWorkspaceName = document.querySelector("#company-workspace-name");
+const companyWorkspaceMeta = document.querySelector("#company-workspace-meta");
+const companyWorkspaceStats = document.querySelector("#company-workspace-stats");
+const companyEditorTabs = document.querySelector("#company-editor-tabs");
+const companyEditorTabButtons = Array.from(document.querySelectorAll("[data-company-editor-tab]"));
+const companyEditorTabPanels = Array.from(document.querySelectorAll("[data-company-tab-panel]"));
 const companySubmitButton = companyForm?.querySelector('button[type="submit"]') ?? null;
 const companyResetButton = document.querySelector("#company-reset");
 const companyDeleteButton = document.querySelector("#company-delete");
@@ -27127,7 +27137,10 @@ function getLocationObjectsForWorkOrder(workOrder = {}) {
 
   return (state.locationObjects ?? [])
     .filter((item) => (
-      String(item.companyId || "") === companyId
+      (
+        String(item.companyId || "").trim() === companyId
+        || String(item.locationId || "").trim() === locationId
+      )
       && String(item.locationId || "") === locationId
       && item.isActive !== false
     ))
@@ -44027,6 +44040,8 @@ function getCompanySearchHaystack(company = {}) {
     return "";
   }
 
+  const linkedLocations = getLocationsForCompany(String(company.id || ""));
+  const linkedObjects = getCompanyLocationObjects(String(company.id || ""));
   const employeeSize = normalizeCompanyEmployeeSize(company.employeeSize);
   const managerSummary = getCompanyManagerSummaryText(company);
   const signature = [
@@ -44047,6 +44062,8 @@ function getCompanySearchHaystack(company = {}) {
     company.period,
     company.note,
     company.isActive ? "1" : "0",
+    linkedLocations.map((location) => [location.name, location.region, location.coordinates, location.representative].filter(Boolean).join("|")).join("~"),
+    linkedObjects.map((object) => [object.name, object.note].filter(Boolean).join("|")).join("~"),
   ].join("~~");
   const cached = companySearchHaystackCache.get(company);
   if (cached?.signature === signature) {
@@ -44079,6 +44096,18 @@ function getCompanySearchHaystack(company = {}) {
     company.period,
     company.note,
     company.isActive ? "aktivno" : "neaktivno",
+    ...linkedLocations.flatMap((location) => [
+      location.name,
+      location.region,
+      location.coordinates,
+      location.representative,
+      location.period,
+      location.note,
+    ]),
+    ...linkedObjects.flatMap((object) => [
+      object.name,
+      object.note,
+    ]),
   ].filter(Boolean).join(" "));
   companySearchHaystackCache.set(company, { signature, haystack });
   return haystack;
@@ -44201,10 +44230,41 @@ function createStackCell({
   return cell;
 }
 
-function createCompanyIdentityCell(company) {
+function toggleCompanyListExpansion(companyId = "") {
+  const normalizedCompanyId = String(companyId || "").trim();
+  if (!normalizedCompanyId) {
+    return;
+  }
+
+  if (state.companyExpandedIds.has(normalizedCompanyId)) {
+    state.companyExpandedIds.delete(normalizedCompanyId);
+  } else {
+    state.companyExpandedIds.add(normalizedCompanyId);
+  }
+  companiesListRenderSignature = "";
+  renderCompanies();
+}
+
+function createCompanyIdentityCell(company, rowSnapshot = null) {
   const cell = document.createElement("td");
   const stack = document.createElement("div");
   stack.className = "company-list-cell";
+
+  if (rowSnapshot) {
+    const expandButton = document.createElement("button");
+    expandButton.type = "button";
+    expandButton.className = "company-list-expand-toggle";
+    expandButton.dataset.companyExpandToggle = String(company.id || "");
+    expandButton.setAttribute("aria-label", rowSnapshot.isExpanded ? "Sakrij lokacije" : "Prikaži lokacije");
+    expandButton.setAttribute("aria-expanded", String(rowSnapshot.isExpanded));
+    expandButton.innerHTML = getWorkOrderIconMarkup(rowSnapshot.isExpanded ? "collapse" : "expand");
+    expandButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleCompanyListExpansion(company.id || "");
+    });
+    stack.append(expandButton);
+  }
 
   const logo = document.createElement("span");
   logo.className = "company-list-logo";
@@ -44290,6 +44350,212 @@ function createCompanyContractsCell(rowSnapshot = {}) {
   return cell;
 }
 
+function getCompanyStructureSummary(companyId = "") {
+  const normalizedCompanyId = String(companyId || "").trim();
+  const locations = getCompanyLocations(normalizedCompanyId);
+  const objects = getCompanyLocationObjects(normalizedCompanyId);
+  const workOrders = getCompanyWorkOrders(normalizedCompanyId);
+  const objectsByLocation = new Map();
+  const workOrdersByLocation = new Map();
+
+  objects.forEach((object) => {
+    const locationId = String(object.locationId || "").trim();
+    const bucket = objectsByLocation.get(locationId) ?? [];
+    bucket.push(object);
+    objectsByLocation.set(locationId, bucket);
+  });
+
+  workOrders.forEach((workOrder) => {
+    const locationId = String(workOrder.locationId || "").trim();
+    const bucket = workOrdersByLocation.get(locationId) ?? [];
+    bucket.push(workOrder);
+    workOrdersByLocation.set(locationId, bucket);
+  });
+
+  return {
+    locations,
+    objects,
+    workOrders,
+    objectsByLocation,
+    workOrdersByLocation,
+    signature: [
+      locations.map((location) => [location.id, location.name, location.region, location.isActive].join(":")).join("|"),
+      objects.map((object) => [object.id, object.locationId, object.name, object.isActive].join(":")).join("|"),
+      workOrders.map((workOrder) => [workOrder.id, workOrder.locationId, workOrder.workOrderNumber, workOrder.status, workOrder.objectId].join(":")).join("|"),
+    ].join("||"),
+  };
+}
+
+function createCompanyLocationTree(companyId = "", { compact = false } = {}) {
+  const structure = getCompanyStructureSummary(companyId);
+  const tree = document.createElement("div");
+  tree.className = `company-location-tree${compact ? " is-compact" : ""}`;
+
+  if (structure.locations.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "company-location-tree-empty";
+    empty.textContent = "Još nema lokacija za ovu tvrtku.";
+    tree.append(empty);
+    return tree;
+  }
+
+  structure.locations.forEach((location) => {
+    const locationId = String(location.id || "").trim();
+    const linkedObjects = structure.objectsByLocation.get(locationId) ?? [];
+    const linkedWorkOrders = sortWorkOrders([...(structure.workOrdersByLocation.get(locationId) ?? [])]);
+    const contacts = buildLocationContacts(location);
+
+    const card = document.createElement("article");
+    card.className = "company-location-tree-card";
+
+    const head = document.createElement("div");
+    head.className = "company-location-tree-head";
+
+    const icon = document.createElement("span");
+    icon.className = "company-location-tree-icon";
+    icon.innerHTML = getWorkOrderIconMarkup("location");
+
+    const copy = document.createElement("div");
+    copy.className = "company-location-tree-copy";
+    const title = document.createElement("strong");
+    title.textContent = location.name || "Lokacija";
+    const meta = document.createElement("span");
+    meta.textContent = [
+      location.region || "",
+      location.coordinates || "",
+      location.period ? `Periodika ${location.period}` : "",
+    ].filter(Boolean).join(" · ") || "Bez dodatnih podataka";
+    copy.append(title, meta);
+
+    const badges = document.createElement("div");
+    badges.className = "company-location-tree-badges";
+    badges.append(
+      createMetaPill(`${linkedObjects.length} objekata`, linkedObjects.length ? "is-accent" : "is-muted"),
+      createMetaPill(`${linkedWorkOrders.length} RN`, linkedWorkOrders.length ? "is-info" : "is-muted"),
+      createMetaPill(location.isActive ? "Aktivna" : "Neaktivna", location.isActive ? "is-success" : "is-danger"),
+    );
+
+    const openButton = createActionButton("Otvori", "card-button card-button-light", (event) => {
+      event.stopPropagation();
+      openCompanyContextRecord({ kind: "location", record: location });
+    });
+
+    head.append(icon, copy, badges, openButton);
+
+    const details = document.createElement("div");
+    details.className = "company-location-tree-details";
+
+    const objectsWrap = document.createElement("div");
+    objectsWrap.className = "company-location-tree-objects";
+    const objectsTitle = document.createElement("span");
+    objectsTitle.className = "company-location-tree-label";
+    objectsTitle.textContent = "Objekti";
+    const objectsList = document.createElement("div");
+    objectsList.className = "company-location-object-list";
+    if (linkedObjects.length > 0) {
+      linkedObjects.slice(0, compact ? 6 : 12).forEach((object) => {
+        const chip = document.createElement("span");
+        chip.className = "company-location-object-chip";
+        chip.textContent = object.name || "Objekt";
+        objectsList.append(chip);
+      });
+      if (compact && linkedObjects.length > 6) {
+        objectsList.append(createMetaPill(`+${linkedObjects.length - 6}`, "is-muted"));
+      }
+    } else {
+      const emptyObject = document.createElement("span");
+      emptyObject.className = "company-location-tree-muted";
+      emptyObject.textContent = "Nema objekata";
+      objectsList.append(emptyObject);
+    }
+    objectsWrap.append(objectsTitle, objectsList);
+
+    const workOrdersWrap = document.createElement("div");
+    workOrdersWrap.className = "company-location-tree-workorders";
+    const workOrdersTitle = document.createElement("span");
+    workOrdersTitle.className = "company-location-tree-label";
+    workOrdersTitle.textContent = "RN";
+    const workOrdersList = document.createElement("div");
+    workOrdersList.className = "company-location-rn-list";
+    if (linkedWorkOrders.length > 0) {
+      linkedWorkOrders.slice(0, compact ? 3 : 6).forEach((workOrder) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "company-location-rn-chip";
+        button.innerHTML = `<strong>${escapeHtml(workOrder.workOrderNumber || "RN")}</strong><span>${escapeHtml(getWorkOrderServiceSummary(workOrder) || workOrder.status || "Radni nalog")}</span>`;
+        button.addEventListener("click", (event) => {
+          event.stopPropagation();
+          openCompanyContextRecord({ kind: "work-order", record: workOrder });
+        });
+        workOrdersList.append(button);
+      });
+      if (compact && linkedWorkOrders.length > 3) {
+        workOrdersList.append(createMetaPill(`+${linkedWorkOrders.length - 3} RN`, "is-muted"));
+      }
+    } else {
+      const emptyWorkOrder = document.createElement("span");
+      emptyWorkOrder.className = "company-location-tree-muted";
+      emptyWorkOrder.textContent = "Bez RN-a";
+      workOrdersList.append(emptyWorkOrder);
+    }
+    workOrdersWrap.append(workOrdersTitle, workOrdersList);
+
+    const contactsWrap = document.createElement("div");
+    contactsWrap.className = "company-location-tree-contact";
+    const contactTitle = document.createElement("span");
+    contactTitle.className = "company-location-tree-label";
+    contactTitle.textContent = "Kontakt";
+    const contactCopy = document.createElement("span");
+    contactCopy.className = "company-location-tree-muted";
+    const primaryContact = contacts[0] ?? {};
+    contactCopy.textContent = [
+      primaryContact.name || location.representative || "Bez kontakt osobe",
+      primaryContact.email || primaryContact.phone || "",
+    ].filter(Boolean).join(" · ");
+    contactsWrap.append(contactTitle, contactCopy);
+
+    details.append(objectsWrap, workOrdersWrap, contactsWrap);
+    card.append(head, details);
+    tree.append(card);
+  });
+
+  return tree;
+}
+
+function createCompanyListExpansion(rowSnapshot = {}) {
+  const shell = document.createElement("div");
+  shell.className = "company-list-expansion";
+
+  const summary = document.createElement("div");
+  summary.className = "company-list-expansion-summary";
+  summary.append(
+    createCompanyWorkspaceStatCard({
+      icon: "location",
+      label: "Lokacije",
+      value: String(rowSnapshot.locationCount || 0),
+      detail: `${rowSnapshot.objectCount || 0} objekata`,
+      tone: rowSnapshot.locationCount ? "info" : "muted",
+    }),
+    createCompanyWorkspaceStatCard({
+      icon: "number",
+      label: "Radni nalozi",
+      value: String(rowSnapshot.workOrderCount || 0),
+      detail: `${rowSnapshot.activeWorkOrderCount || 0} otvorenih`,
+      tone: rowSnapshot.activeWorkOrderCount ? "success" : "muted",
+    }),
+    createCompanyWorkspaceStatCard({
+      icon: "service",
+      label: "Usluge",
+      value: String(rowSnapshot.serviceCodes?.length || 0),
+      detail: rowSnapshot.serviceCodes?.length ? rowSnapshot.serviceCodes.join(" · ") : "Bez usluga",
+      tone: rowSnapshot.serviceCodes?.length ? "accent" : "muted",
+    }),
+  );
+
+  shell.append(summary, createCompanyLocationTree(rowSnapshot.companyId, { compact: true }));
+  return shell;
+}
+
 function getCompanyContractValidityLabelFromSummary(company = {}, contractSummary = null) {
   const explicitValidFrom = normalizeCompanyDateValue(company.contractValidFrom);
   const explicitValidTo = normalizeCompanyDateValue(company.contractValidTo);
@@ -44314,6 +44580,10 @@ function getCompanyContractValidityLabelFromSummary(company = {}, contractSummar
 
 function buildCompanyListRowSnapshot(company = {}, contractSummary = null) {
   const companyId = String(company.id || "").trim();
+  const structure = getCompanyStructureSummary(companyId);
+  const isExpanded = state.companyExpandedIds.has(companyId);
+  const activeWorkOrderCount = structure.workOrders.filter((workOrder) => String(workOrder.status || "") === "Otvoreni RN").length;
+  const serviceCodes = getCompanyServiceCodes(companyId);
   const managerSummary = getCompanyManagerSummaryText(company);
   const contractCount = Math.max(0, Number(contractSummary?.count) || 0);
   const activeContracts = Array.isArray(contractSummary?.activeContracts) ? contractSummary.activeContracts : [];
@@ -44330,6 +44600,12 @@ function buildCompanyListRowSnapshot(company = {}, contractSummary = null) {
   return {
     company,
     companyId,
+    isExpanded,
+    locationCount: structure.locations.length,
+    objectCount: structure.objects.length,
+    workOrderCount: structure.workOrders.length,
+    activeWorkOrderCount,
+    serviceCodes,
     ariaLabel: `Uredi tvrtku ${company.name || "tvrtku"}`,
     contactEyebrow: company.representativeRole || "",
     contactTitle: company.representative || "Bez kontakt osobe",
@@ -44379,6 +44655,8 @@ function buildCompanyListRowSnapshot(company = {}, contractSummary = null) {
       contractCount,
       contractSummary?.validFrom || "",
       contractSummary?.validTo || "",
+      structure.signature,
+      isExpanded ? "expanded" : "collapsed",
     ].join("~~"),
   };
 }
@@ -78771,6 +79049,83 @@ function getCompanyLocations(companyId = companyIdInput?.value || "") {
     .sort((left, right) => String(left.name || "").localeCompare(String(right.name || ""), "hr"));
 }
 
+function getCompanyLocationObjects(companyId = "", locationId = "") {
+  const normalizedCompanyId = String(companyId || "").trim();
+  const normalizedLocationId = String(locationId || "").trim();
+  if (!normalizedCompanyId) {
+    return [];
+  }
+
+  const companyLocationIds = new Set(getCompanyLocations(normalizedCompanyId).map((location) => String(location.id || "").trim()).filter(Boolean));
+  return (state.locationObjects ?? [])
+    .filter((object) => {
+      const objectCompanyId = String(object.companyId || "").trim();
+      const objectLocationId = String(object.locationId || "").trim();
+      return (
+        (objectCompanyId === normalizedCompanyId || companyLocationIds.has(objectLocationId))
+        && (!normalizedLocationId || objectLocationId === normalizedLocationId)
+      );
+    })
+    .sort((left, right) => (
+      String(left.name || "").localeCompare(String(right.name || ""), "hr", { numeric: true, sensitivity: "base" })
+      || String(left.id || "").localeCompare(String(right.id || ""), "hr", { numeric: true, sensitivity: "base" })
+    ));
+}
+
+function getCompanyWorkOrders(companyId = "") {
+  const normalizedCompanyId = String(companyId || "").trim();
+  if (!normalizedCompanyId) {
+    return [];
+  }
+
+  return sortWorkOrders((state.workOrders ?? []).filter((workOrder) => String(workOrder.companyId || "").trim() === normalizedCompanyId));
+}
+
+function getCompanyServiceCodes(companyId = "") {
+  const codes = new Set();
+  getCompanyWorkOrders(companyId).forEach((workOrder) => {
+    (Array.isArray(workOrder.serviceItems) ? workOrder.serviceItems : []).forEach((service) => {
+      const code = String(service.serviceCode || service.code || service.shortCode || "").trim();
+      if (code) {
+        codes.add(code.toUpperCase());
+      }
+    });
+    if (codes.size === 0 && workOrder.serviceLine) {
+      codes.add(String(workOrder.serviceLine).trim());
+    }
+  });
+  return [...codes].slice(0, 8);
+}
+
+function getCompanyDashboardStats(companyId = companyIdInput?.value || "") {
+  const normalizedCompanyId = String(companyId || "").trim();
+  const company = getCompany(normalizedCompanyId);
+  const locations = getCompanyLocations(normalizedCompanyId);
+  const locationIds = new Set(locations.map((location) => String(location.id || "").trim()).filter(Boolean));
+  const objects = getCompanyLocationObjects(normalizedCompanyId);
+  const workOrders = getCompanyWorkOrders(normalizedCompanyId);
+  const activeWorkOrders = workOrders.filter((workOrder) => String(workOrder.status || "") === "Otvoreni RN");
+  const contracts = getCompanyLinkedContracts(normalizedCompanyId);
+  const activeContracts = contracts.filter((contract) => isContractCurrentlyValid(contract));
+  const clientUsers = getCompanyClientUsers(normalizedCompanyId);
+  const contactsCount = locations.reduce((total, location) => total + buildLocationContacts(location).length, 0);
+  const serviceCodes = getCompanyServiceCodes(normalizedCompanyId);
+  return {
+    company,
+    locations,
+    locationIds,
+    objects,
+    workOrders,
+    activeWorkOrders,
+    contracts,
+    activeContracts,
+    clientUsers,
+    contactsCount,
+    serviceCodes,
+    templateCount: Array.isArray(company?.templateAssignments) ? company.templateAssignments.length : 0,
+  };
+}
+
 function getCompanyClientUsers(companyId = companyIdInput?.value || "") {
   const normalizedCompanyId = String(companyId || "").trim();
   if (!normalizedCompanyId) {
@@ -78891,6 +79246,140 @@ function toggleCompanyClientLocationSelection(locationId = "") {
 
   option.selected = !option.selected;
   renderCompanyClientLocationList();
+}
+
+function createCompanyWorkspaceStatCard({ icon = "company", label = "", value = "0", detail = "", tone = "" } = {}) {
+  const card = document.createElement("article");
+  card.className = `company-workspace-stat${tone ? ` is-${tone}` : ""}`;
+
+  const iconNode = document.createElement("span");
+  iconNode.className = "company-workspace-stat-icon";
+  iconNode.innerHTML = getWorkOrderIconMarkup(icon);
+
+  const copy = document.createElement("div");
+  copy.className = "company-workspace-stat-copy";
+  const labelNode = document.createElement("span");
+  labelNode.textContent = label;
+  const valueNode = document.createElement("strong");
+  valueNode.textContent = value;
+  const detailNode = document.createElement("small");
+  detailNode.textContent = detail || "Bez dodatnih podataka";
+  copy.append(labelNode, valueNode, detailNode);
+
+  card.append(iconNode, copy);
+  return card;
+}
+
+function setCompanyEditorTabCount(tabKey = "", value = "") {
+  const node = document.querySelector(`#company-tab-${tabKey}-count`);
+  if (node) {
+    node.textContent = String(value);
+  }
+}
+
+function syncCompanyEditorTabs() {
+  const normalizedTab = String(state.companyEditorActiveTab || "overview").trim() || "overview";
+  const activeTab = companyEditorTabButtons.some((button) => button.dataset.companyEditorTab === normalizedTab)
+    ? normalizedTab
+    : "overview";
+  state.companyEditorActiveTab = activeTab;
+
+  companyEditorTabButtons.forEach((button) => {
+    const isActive = button.dataset.companyEditorTab === activeTab;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-selected", String(isActive));
+  });
+
+  companyEditorTabPanels.forEach((panel) => {
+    panel.classList.toggle("is-company-tab-hidden", panel.dataset.companyTabPanel !== activeTab);
+  });
+}
+
+function renderCompanyWorkspaceDashboard(companyId = companyIdInput?.value || "") {
+  if (!companyWorkspaceHero) {
+    return;
+  }
+
+  const normalizedCompanyId = String(companyId || "").trim();
+  const stats = getCompanyDashboardStats(normalizedCompanyId);
+  const company = stats.company;
+  companyWorkspaceHero.classList.toggle("is-empty", !company);
+
+  if (companyWorkspaceLogo) {
+    renderCompanyLogo(companyWorkspaceLogo, company || {
+      name: companyNameInput?.value || "Tvrtka",
+      logoDataUrl: companyLogoDataUrlInput?.value || "",
+    });
+  }
+
+  if (companyWorkspaceName) {
+    companyWorkspaceName.textContent = company?.name || companyNameInput?.value || "Nova tvrtka";
+  }
+
+  if (companyWorkspaceMeta) {
+    companyWorkspaceMeta.textContent = company
+      ? [
+        company.headquarters || "Bez sjedišta",
+        company.oib ? `OIB ${company.oib}` : "Bez OIB-a",
+        getCompanyContractValidityLabel(company, stats.contracts),
+      ].filter(Boolean).join(" · ")
+      : "Spremi tvrtku da se povežu lokacije, objekti i radni nalozi.";
+  }
+
+  if (companyWorkspaceStats) {
+    const serviceLabel = stats.serviceCodes.length > 0 ? stats.serviceCodes.join(" · ") : "Bez aktivnih usluga";
+    companyWorkspaceStats.replaceChildren(
+      createCompanyWorkspaceStatCard({
+        icon: "location",
+        label: "Lokacije",
+        value: String(stats.locations.length),
+        detail: `${stats.objects.length} objekata`,
+        tone: stats.locations.length ? "info" : "muted",
+      }),
+      createCompanyWorkspaceStatCard({
+        icon: "folder",
+        label: "Objekti",
+        value: String(stats.objects.length),
+        detail: stats.objects.length ? "Po lokacijama" : "Još nema objekata",
+        tone: stats.objects.length ? "accent" : "muted",
+      }),
+      createCompanyWorkspaceStatCard({
+        icon: "number",
+        label: "Radni nalozi",
+        value: String(stats.workOrders.length),
+        detail: `${stats.activeWorkOrders.length} otvorenih`,
+        tone: stats.activeWorkOrders.length ? "success" : "muted",
+      }),
+      createCompanyWorkspaceStatCard({
+        icon: "document",
+        label: "Ugovori",
+        value: String(stats.contracts.length),
+        detail: `${stats.activeContracts.length} važećih`,
+        tone: stats.activeContracts.length ? "success" : "muted",
+      }),
+      createCompanyWorkspaceStatCard({
+        icon: "assignees",
+        label: "Portal",
+        value: String(stats.clientUsers.length),
+        detail: `${stats.contactsCount} kontakata`,
+        tone: stats.clientUsers.length ? "info" : "muted",
+      }),
+      createCompanyWorkspaceStatCard({
+        icon: "service",
+        label: "Usluge",
+        value: stats.serviceCodes.length ? String(stats.serviceCodes.length) : "0",
+        detail: serviceLabel,
+        tone: stats.serviceCodes.length ? "accent" : "muted",
+      }),
+    );
+  }
+
+  setCompanyEditorTabCount("overview", stats.locations.length + stats.workOrders.length);
+  setCompanyEditorTabCount("locations", stats.locations.length ? `${stats.locations.length}/${stats.objects.length}` : "0");
+  setCompanyEditorTabCount("contracts", stats.contracts.length);
+  setCompanyEditorTabCount("portal", stats.clientUsers.length);
+  setCompanyEditorTabCount("documents", stats.templateCount);
+  syncCompanyEditorTabs();
 }
 
 function resetCompanyClientUserForm() {
@@ -80211,6 +80700,8 @@ function syncCompanyEditorChrome() {
   if (companyDeleteButton) {
     companyDeleteButton.hidden = !companyIdInput?.value || !getCanDeleteCompany(companyIdInput?.value || "");
   }
+
+  renderCompanyWorkspaceDashboard(companyIdInput?.value || "");
 }
 
 function getCompanyLinkedContracts(companyId = "") {
@@ -80511,7 +81002,10 @@ function renderCompanyLinkedLocations(companyId = companyIdInput?.value || "") {
 
   const normalizedCompanyId = String(companyId || "").trim();
   const linkedLocations = getCompanyLinkedLocations(normalizedCompanyId);
-  companyLinkedLocationsCount.textContent = String(linkedLocations.length);
+  const linkedObjects = getCompanyLocationObjects(normalizedCompanyId);
+  companyLinkedLocationsCount.textContent = linkedObjects.length
+    ? `${linkedLocations.length}/${linkedObjects.length}`
+    : String(linkedLocations.length);
 
   if (!normalizedCompanyId) {
     companyLinkedLocationsList.replaceChildren();
@@ -80528,81 +81022,7 @@ function renderCompanyLinkedLocations(companyId = companyIdInput?.value || "") {
   }
 
   companyLinkedLocationsEmpty.hidden = true;
-  const locationIds = new Set(linkedLocations.map((item) => String(item.id || "").trim()).filter(Boolean));
-  const workOrdersByLocation = new Map();
-  for (const workOrder of state.workOrders ?? []) {
-    const locationId = String(workOrder?.locationId || "").trim();
-    if (!locationIds.has(locationId)) {
-      continue;
-    }
-    const bucket = workOrdersByLocation.get(locationId);
-    if (bucket) {
-      bucket.push(workOrder);
-    } else {
-      workOrdersByLocation.set(locationId, [workOrder]);
-    }
-  }
-
-  companyLinkedLocationsList.replaceChildren(...linkedLocations.map((location) => {
-    const linkedWorkOrders = sortWorkOrders([...(workOrdersByLocation.get(String(location.id || "").trim()) ?? [])]);
-    const contactCount = buildLocationContacts(location).length;
-    const card = document.createElement("article");
-    card.className = "company-contract-card";
-    card.tabIndex = 0;
-    card.setAttribute("role", "button");
-    card.setAttribute("aria-label", `Otvori lokaciju ${location.name}`);
-
-    const copy = document.createElement("div");
-    copy.className = "company-contract-card-copy";
-
-    const head = document.createElement("div");
-    head.className = "company-contract-card-head";
-    const number = document.createElement("strong");
-    number.textContent = location.name || "Lokacija";
-    const countBadge = createMetaPill(`${linkedWorkOrders.length} RN`, linkedWorkOrders.length > 0 ? "is-info" : "is-muted");
-    head.append(number, countBadge);
-
-    const title = document.createElement("span");
-    title.className = "company-contract-card-title";
-    title.textContent = location.representative || location.region || "Povezana lokacija";
-
-    const meta = document.createElement("span");
-    meta.className = "company-contract-card-meta";
-    meta.textContent = [
-      location.region || "",
-      location.period ? `Periodika ${location.period}` : "",
-      contactCount > 0 ? `${contactCount} kontakta` : "",
-      linkedWorkOrders.length === 0 ? "Bez RN-a" : "",
-    ].filter(Boolean).join(" · ");
-
-    copy.append(head, title, meta);
-
-    const actions = document.createElement("div");
-    actions.className = "company-contract-card-actions";
-    actions.append(
-      createActionButton("Otvori", "card-button card-button-light", (event) => {
-        event.stopPropagation();
-        openCompanyContextRecord({ kind: "location", record: location });
-      }),
-    );
-
-    card.addEventListener("click", (event) => {
-      if (isInteractiveWorkOrderTarget(event.target)) {
-        return;
-      }
-      openCompanyContextRecord({ kind: "location", record: location });
-    });
-    card.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter" && event.key !== " ") {
-        return;
-      }
-      event.preventDefault();
-      openCompanyContextRecord({ kind: "location", record: location });
-    });
-
-    card.append(copy, actions);
-    return card;
-  }));
+  companyLinkedLocationsList.replaceChildren(createCompanyLocationTree(normalizedCompanyId));
 }
 
 function syncLocationCompanyActions() {
@@ -81051,6 +81471,7 @@ function renderCompanyActivityPanelSafe(companyId = companyIdInput?.value || "")
 }
 
 function renderCompanyEditorRelatedData(companyId = companyIdInput?.value || "") {
+  renderCompanyWorkspaceDashboard(companyId);
   renderCompanyLinkedContractsSafe(companyId);
   renderCompanyLinkedLocationsSafe(companyId);
   renderCompanyActivityPanelSafe(companyId);
@@ -81114,6 +81535,7 @@ function scheduleCompanyEditorRelatedData(companyId = companyIdInput?.value || "
     if (normalizedCompanyId && !isCompanyEditorRenderTargetActive(normalizedCompanyId)) {
       return;
     }
+    renderCompanyWorkspaceDashboard(normalizedCompanyId);
     renderCompanyLinkedContractsSafe(normalizedCompanyId);
     companyEditorRelatedDataTimeoutId = window.setTimeout(() => {
       companyEditorRelatedDataTimeoutId = 0;
@@ -81521,6 +81943,7 @@ function resetCompanyForm() {
   cancelScheduledCompanyEditorRelatedData();
   companyForm.reset();
   companyIdInput.value = "";
+  state.companyEditorActiveTab = "overview";
   if (companyLogoDataUrlInput) {
     companyLogoDataUrlInput.value = "";
   }
@@ -81537,6 +81960,7 @@ function resetCompanyForm() {
   }
   resetCompanyClientUserForm();
   renderCompanyClientPortalPanel();
+  renderCompanyWorkspaceDashboard("");
   syncCompanyEditorChrome();
   scheduleCompanyEditorRelatedData("", { defer: false });
 }
@@ -81746,8 +82170,10 @@ function hydrateCompanyForm(company) {
   if (companyEditorTitle) {
     companyEditorTitle.textContent = `Uredi tvrtku · ${company.name}`;
   }
+  state.companyEditorActiveTab = "overview";
   resetCompanyClientUserForm();
   renderCompanyClientPortalPanel();
+  renderCompanyWorkspaceDashboard(company.id);
   syncCompanyEditorChrome();
   openCompanyEditor();
   scheduleCompanyEditorRelatedData(company.id, { defer: true });
@@ -106750,6 +107176,7 @@ function renderCompanies() {
     rowSnapshots.forEach((rowSnapshot) => {
       const row = document.createElement("tr");
       row.className = "list-row company-list-row";
+      row.classList.toggle("is-expanded", rowSnapshot.isExpanded);
       row.dataset.companyId = rowSnapshot.companyId;
 
       if (canEditCompany) {
@@ -106759,7 +107186,7 @@ function renderCompanies() {
       }
 
       row.append(
-        createCompanyIdentityCell(rowSnapshot.company),
+        createCompanyIdentityCell(rowSnapshot.company, rowSnapshot),
         createStackCell({
           eyebrow: rowSnapshot.contactEyebrow,
           title: rowSnapshot.contactTitle,
@@ -106772,6 +107199,15 @@ function renderCompanies() {
       );
 
       fragment.append(row);
+      if (rowSnapshot.isExpanded) {
+        const detailRow = document.createElement("tr");
+        detailRow.className = "company-list-expand-row";
+        const detailCell = document.createElement("td");
+        detailCell.colSpan = 4;
+        detailCell.append(createCompanyListExpansion(rowSnapshot));
+        detailRow.append(detailCell);
+        fragment.append(detailRow);
+      }
     });
 
     companiesBody.replaceChildren(fragment);
@@ -114185,6 +114621,17 @@ companyNameInput?.addEventListener("input", () => {
   syncCompanyEditorChrome();
 });
 
+companyEditorTabs?.addEventListener("click", (event) => {
+  const button = event.target instanceof Element
+    ? event.target.closest("[data-company-editor-tab]")
+    : null;
+  if (!(button instanceof HTMLButtonElement) || !companyEditorTabs.contains(button)) {
+    return;
+  }
+  state.companyEditorActiveTab = button.dataset.companyEditorTab || "overview";
+  syncCompanyEditorTabs();
+});
+
 companyIsActiveInput?.addEventListener("change", () => {
   syncCompanyEditorChrome();
 });
@@ -114245,6 +114692,9 @@ companiesBody?.addEventListener("click", (event) => {
   if (!getCanEditCompany()) {
     return;
   }
+  if (isInteractiveWorkOrderTarget(event.target)) {
+    return;
+  }
 
   const row = event.target instanceof Element
     ? event.target.closest("tr[data-company-id]")
@@ -114263,6 +114713,9 @@ companiesBody?.addEventListener("click", (event) => {
 
 companiesBody?.addEventListener("keydown", (event) => {
   if ((event.key !== "Enter" && event.key !== " ") || !getCanEditCompany()) {
+    return;
+  }
+  if (isInteractiveWorkOrderTarget(event.target)) {
     return;
   }
 
