@@ -30842,25 +30842,229 @@ async function saveCompanyRolePermissions(options = {}) {
 }
 
 async function saveAllSettingsBlocks() {
-  const brandSaved = await saveOrganizationBrandSettings({
-    successMessage: "Sve postavke su spremljene.",
+  const successMessage = "Sve postavke su spremljene.";
+
+  if (!getCanManageSettings()) {
+    const permissionMessage = "Nemate pravo spremati postavke.";
+    [
+      settingsOrganizationFeedback,
+      settingsNotificationsFeedback,
+      settingsSafetyAuthorizationNotificationsFeedback,
+      settingsAbsenceNotificationsFeedback,
+      settingsVehicleNotificationsFeedback,
+      settingsPeriodicsVisualFeedback,
+      settingsWorkOrderPointsFeedback,
+    ].forEach((feedbackNode) => setInlineMessage(feedbackNode, permissionMessage));
+    return false;
+  }
+
+  const organization = getActiveOrganization();
+  if (!organization?.id) {
+    setInlineMessage(settingsOrganizationFeedback, "Odaberi organizaciju prije spremanja postavki.");
+    return false;
+  }
+
+  const logoDataUrl = settingsOrganizationLogoDataUrlInput?.value || "";
+  const documentStampSettings = normalizeDocumentStampSettings({
+    ...getActiveOrganizationDocumentStampSettings(),
+    enabled: settingsDocumentStampEnabledInput?.checked ?? true,
+    imageDataUrl: settingsDocumentStampDataUrlInput?.value || "",
+    width: settingsDocumentStampWidthInput?.value || DEFAULT_DOCUMENT_STAMP_SETTINGS.width,
+    offsetX: settingsDocumentStampOffsetXInput?.value || DEFAULT_DOCUMENT_STAMP_SETTINGS.offsetX,
+    offsetY: settingsDocumentStampOffsetYInput?.value || DEFAULT_DOCUMENT_STAMP_SETTINGS.offsetY,
   });
-  const measurementSaved = await saveMeasurementEquipmentNotificationSettings({
-    successMessage: "Sve postavke su spremljene.",
+  const measurementLeadDays = normalizeNotificationDayValue(
+    settingsMeasurementLeadDaysInput?.value,
+    DEFAULT_MEASUREMENT_EQUIPMENT_NOTIFICATION_SETTINGS.leadDaysBeforeExpiry,
+    { min: 1, max: 365 },
+  );
+  const measurementRepeatEveryDays = normalizeNotificationDayValue(
+    settingsMeasurementRepeatDaysInput?.value,
+    DEFAULT_MEASUREMENT_EQUIPMENT_NOTIFICATION_SETTINGS.repeatEveryDays,
+    { min: 1, max: 90 },
+  );
+  const safetyAuthorizationLeadDaysBeforeExpiry = normalizeNotificationDayValue(
+    settingsSafetyAuthorizationLeadDaysInput?.value,
+    DEFAULT_SAFETY_AUTHORIZATION_NOTIFICATION_SETTINGS.leadDaysBeforeExpiry,
+    { min: 1, max: 365 },
+  );
+  const safetyAuthorizationRepeatEveryDays = normalizeNotificationDayValue(
+    settingsSafetyAuthorizationRepeatDaysInput?.value,
+    DEFAULT_SAFETY_AUTHORIZATION_NOTIFICATION_SETTINGS.repeatEveryDays,
+    { min: 1, max: 90 },
+  );
+  const absenceLeadDaysBeforeStart = normalizeNotificationDayValue(
+    settingsAbsenceLeadDaysInput?.value,
+    DEFAULT_ABSENCE_NOTIFICATION_SETTINGS.leadDaysBeforeStart,
+    { min: 1, max: 365 },
+  );
+  const absenceRepeatEveryDays = normalizeNotificationDayValue(
+    settingsAbsenceRepeatDaysInput?.value,
+    DEFAULT_ABSENCE_NOTIFICATION_SETTINGS.repeatEveryDays,
+    { min: 1, max: 90 },
+  );
+  const registrationLeadDaysBeforeExpiry = normalizeNotificationDayValue(
+    settingsVehicleRegistrationLeadDaysInput?.value,
+    DEFAULT_VEHICLE_NOTIFICATION_SETTINGS.registrationLeadDaysBeforeExpiry,
+    { min: 1, max: 365 },
+  );
+  const registrationRepeatEveryDays = normalizeNotificationDayValue(
+    settingsVehicleRegistrationRepeatDaysInput?.value,
+    DEFAULT_VEHICLE_NOTIFICATION_SETTINGS.registrationRepeatEveryDays,
+    { min: 1, max: 90 },
+  );
+  const tireLeadDaysBeforeDue = normalizeNotificationDayValue(
+    settingsVehicleTireLeadDaysInput?.value,
+    DEFAULT_VEHICLE_NOTIFICATION_SETTINGS.tireLeadDaysBeforeDue,
+    { min: 1, max: 365 },
+  );
+  const tireRepeatEveryDays = normalizeNotificationDayValue(
+    settingsVehicleTireRepeatDaysInput?.value,
+    DEFAULT_VEHICLE_NOTIFICATION_SETTINGS.tireRepeatEveryDays,
+    { min: 1, max: 90 },
+  );
+  const criticalDays = normalizeNotificationDayValue(
+    settingsPeriodicsCriticalDaysInput?.value,
+    DEFAULT_PERIODICS_VISUAL_SETTINGS.criticalDays,
+    { min: 1, max: 120 },
+  );
+  const warningDaysRaw = normalizeNotificationDayValue(
+    settingsPeriodicsWarningDaysInput?.value,
+    DEFAULT_PERIODICS_VISUAL_SETTINGS.warningDays,
+    { min: 1, max: 365 },
+  );
+  const warningDays = Math.max(criticalDays, warningDaysRaw);
+  const workOrderDefaultDueDays = normalizeOptionalDayValue(
+    settingsWorkOrderDefaultDueDaysInput?.value,
+    { min: 0, max: 365 },
+  );
+  const workOrderFieldSharePercent = normalizePercentValue(
+    settingsWorkOrderFieldShareInput?.value,
+    DEFAULT_PERIODICS_VISUAL_SETTINGS.workOrderFieldSharePercent,
+  );
+  const workOrderCompletionSharePercent = 100 - workOrderFieldSharePercent;
+  const workOrderServicePointFactors = normalizeWorkOrderServicePointFactors(
+    collectSettingsWorkOrderServicePointFactors(),
+  );
+
+  if (settingsMeasurementLeadDaysInput) settingsMeasurementLeadDaysInput.value = String(measurementLeadDays);
+  if (settingsMeasurementRepeatDaysInput) settingsMeasurementRepeatDaysInput.value = String(measurementRepeatEveryDays);
+  if (settingsSafetyAuthorizationLeadDaysInput) settingsSafetyAuthorizationLeadDaysInput.value = String(safetyAuthorizationLeadDaysBeforeExpiry);
+  if (settingsSafetyAuthorizationRepeatDaysInput) settingsSafetyAuthorizationRepeatDaysInput.value = String(safetyAuthorizationRepeatEveryDays);
+  if (settingsAbsenceLeadDaysInput) settingsAbsenceLeadDaysInput.value = String(absenceLeadDaysBeforeStart);
+  if (settingsAbsenceRepeatDaysInput) settingsAbsenceRepeatDaysInput.value = String(absenceRepeatEveryDays);
+  if (settingsVehicleRegistrationLeadDaysInput) settingsVehicleRegistrationLeadDaysInput.value = String(registrationLeadDaysBeforeExpiry);
+  if (settingsVehicleRegistrationRepeatDaysInput) settingsVehicleRegistrationRepeatDaysInput.value = String(registrationRepeatEveryDays);
+  if (settingsVehicleTireLeadDaysInput) settingsVehicleTireLeadDaysInput.value = String(tireLeadDaysBeforeDue);
+  if (settingsVehicleTireRepeatDaysInput) settingsVehicleTireRepeatDaysInput.value = String(tireRepeatEveryDays);
+  if (settingsPeriodicsCriticalDaysInput) settingsPeriodicsCriticalDaysInput.value = String(criticalDays);
+  if (settingsPeriodicsWarningDaysInput) settingsPeriodicsWarningDaysInput.value = String(warningDays);
+  if (settingsWorkOrderDefaultDueDaysInput) settingsWorkOrderDefaultDueDaysInput.value = workOrderDefaultDueDays;
+  if (settingsWorkOrderFieldShareInput) settingsWorkOrderFieldShareInput.value = String(workOrderFieldSharePercent);
+  if (settingsWorkOrderCompletionShareInput) settingsWorkOrderCompletionShareInput.value = String(workOrderCompletionSharePercent);
+  renderSettingsWorkOrderPointsPreview({
+    workOrderFieldSharePercent,
+    workOrderCompletionSharePercent,
+    workOrderServicePointFactors,
   });
-  const safetyAuthorizationSaved = await saveSafetyAuthorizationNotificationSettings({
-    successMessage: "Sve postavke su spremljene.",
-  });
-  const absenceSaved = await saveAbsenceNotificationSettings({
-    successMessage: "Sve postavke su spremljene.",
-  });
-  const vehicleSaved = await saveVehicleNotificationSettings({
-    successMessage: "Sve postavke su spremljene.",
-  });
-  const periodicsSaved = await savePeriodicsVisualSettings({
-    successMessage: "Sve postavke su spremljene.",
-  });
-  return brandSaved && measurementSaved && safetyAuthorizationSaved && absenceSaved && vehicleSaved && periodicsSaved;
+
+  [
+    settingsOrganizationFeedback,
+    settingsNotificationsFeedback,
+    settingsSafetyAuthorizationNotificationsFeedback,
+    settingsAbsenceNotificationsFeedback,
+    settingsVehicleNotificationsFeedback,
+    settingsPeriodicsVisualFeedback,
+    settingsWorkOrderPointsFeedback,
+  ].forEach((feedbackNode) => setInlineMessage(feedbackNode, ""));
+
+  if (settingsSaveAllButton) {
+    settingsSaveAllButton.disabled = true;
+  }
+
+  try {
+    let payload = await apiRequest(`/organizations/${organization.id}`, {
+      method: "PATCH",
+      body: {
+        logoDataUrl,
+        documentStampSettings,
+      },
+    });
+    payload = await apiRequest("/measurement-equipment/notification-settings", {
+      method: "POST",
+      body: {
+        leadDaysBeforeExpiry: measurementLeadDays,
+        repeatEveryDays: measurementRepeatEveryDays,
+      },
+    });
+    payload = await apiRequest("/safety-authorizations/notification-settings", {
+      method: "POST",
+      body: {
+        leadDaysBeforeExpiry: safetyAuthorizationLeadDaysBeforeExpiry,
+        repeatEveryDays: safetyAuthorizationRepeatEveryDays,
+      },
+    });
+    payload = await apiRequest("/absence/notification-settings", {
+      method: "POST",
+      body: {
+        leadDaysBeforeStart: absenceLeadDaysBeforeStart,
+        repeatEveryDays: absenceRepeatEveryDays,
+      },
+    });
+    payload = await apiRequest("/vehicles/notification-settings", {
+      method: "POST",
+      body: {
+        registrationLeadDaysBeforeExpiry,
+        registrationRepeatEveryDays,
+        tireLeadDaysBeforeDue,
+        tireRepeatEveryDays,
+      },
+    });
+    payload = await apiRequest("/periodics/visual-settings", {
+      method: "POST",
+      body: {
+        criticalDays,
+        warningDays,
+        workOrderDefaultDueDays,
+        workOrderFieldSharePercent,
+        workOrderCompletionSharePercent,
+        workOrderServicePointFactors,
+      },
+    });
+
+    if (payload && typeof payload === "object" && Object.prototype.hasOwnProperty.call(payload, "storage")) {
+      applySnapshot(payload);
+    }
+
+    settingsOrganizationLogoDraftTouched = false;
+    settingsDocumentStampDraftTouched = false;
+    syncSettingsOrganizationLogo();
+    syncSettingsDocumentStamp();
+    syncDocumentTemplateHtmlBuilderBranding();
+    [
+      settingsOrganizationFeedback,
+      settingsNotificationsFeedback,
+      settingsSafetyAuthorizationNotificationsFeedback,
+      settingsAbsenceNotificationsFeedback,
+      settingsVehicleNotificationsFeedback,
+      settingsPeriodicsVisualFeedback,
+      settingsWorkOrderPointsFeedback,
+    ].forEach((feedbackNode) => setInlineMessage(feedbackNode, successMessage, "success"));
+    return true;
+  } catch (error) {
+    if (error.statusCode === 401) {
+      state.user = null;
+      renderAuthState();
+      setSyncError("");
+      return false;
+    }
+    setInlineMessage(settingsWorkOrderPointsFeedback || settingsPeriodicsVisualFeedback || settingsOrganizationFeedback, error.message);
+    return false;
+  } finally {
+    if (settingsSaveAllButton) {
+      settingsSaveAllButton.disabled = !getCanManageSettings();
+    }
+  }
 }
 
 function formatDocumentsRefreshTimestamp(value = "") {
