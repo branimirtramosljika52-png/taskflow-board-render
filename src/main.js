@@ -79894,12 +79894,30 @@ function setCompanyEditorTabCount(tabKey = "", value = "") {
   }
 }
 
+function setCompanyEditorTabMeta(tabKey = "", value = "") {
+  const node = document.querySelector(`#company-tab-${tabKey}-meta`);
+  if (node) {
+    node.textContent = String(value || "");
+  }
+}
+
+function hydrateCompanyEditorTabIcons() {
+  companyEditorTabButtons.forEach((button) => {
+    const iconSlot = button.querySelector(".company-editor-tab-icon");
+    if (!iconSlot || iconSlot.hasChildNodes()) {
+      return;
+    }
+    iconSlot.innerHTML = getWorkOrderIconMarkup(button.dataset.companyEditorTabIcon || "company");
+  });
+}
+
 function syncCompanyEditorTabs() {
   const normalizedTab = String(state.companyEditorActiveTab || "overview").trim() || "overview";
   const activeTab = companyEditorTabButtons.some((button) => button.dataset.companyEditorTab === normalizedTab)
     ? normalizedTab
     : "overview";
   state.companyEditorActiveTab = activeTab;
+  hydrateCompanyEditorTabIcons();
 
   companyEditorTabButtons.forEach((button) => {
     const isActive = button.dataset.companyEditorTab === activeTab;
@@ -79991,11 +80009,23 @@ function renderCompanyWorkspaceDashboard(companyId = companyIdInput?.value || ""
     );
   }
 
-  setCompanyEditorTabCount("overview", stats.locations.length + stats.workOrders.length);
-  setCompanyEditorTabCount("locations", stats.locations.length ? `${stats.locations.length}/${stats.objects.length}` : "0");
+  setCompanyEditorTabCount("overview", stats.workOrders.length ? `${stats.workOrders.length} RN` : "0 RN");
+  setCompanyEditorTabMeta(
+    "overview",
+    stats.serviceCodes.length
+      ? `${stats.activeWorkOrders.length} otvorenih · ${stats.serviceCodes.join(" · ")}`
+      : `${stats.activeWorkOrders.length} otvorenih · bez usluga`,
+  );
+  setCompanyEditorTabCount("locations", `${stats.locations.length} / ${stats.objects.length}`);
+  setCompanyEditorTabMeta("locations", "Lokacije / objekti");
   setCompanyEditorTabCount("contracts", stats.contracts.length);
+  setCompanyEditorTabMeta("contracts", `${stats.activeContracts.length} važećih`);
   setCompanyEditorTabCount("portal", stats.clientUsers.length);
+  setCompanyEditorTabMeta("portal", `${stats.contactsCount} kontakata`);
   setCompanyEditorTabCount("documents", stats.templateCount);
+  setCompanyEditorTabMeta("documents", "Predlošci i datoteke");
+  setCompanyEditorTabCount("settings", company ? (company.isActive === false ? "Neaktivno" : "Aktivno") : "Info");
+  setCompanyEditorTabMeta("settings", company?.oib ? `OIB ${company.oib}` : "Podaci tvrtke");
   syncCompanyEditorTabs();
 }
 

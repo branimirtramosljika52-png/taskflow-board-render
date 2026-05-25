@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260525-company-locations-v10" />
+    <link rel="stylesheet" href="/styles.css?v=20260525-company-dashboard-v11" />
     <link rel="stylesheet" href="/src/styles/variables.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/reset.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/builder.css?v=20260509e" />
@@ -3267,33 +3267,57 @@
                           <span id="company-workspace-meta">Spremi tvrtku da se povežu lokacije, objekti i radni nalozi.</span>
                         </div>
                       </div>
-                      <div id="company-workspace-stats" class="company-workspace-stats"></div>
+                      <div id="company-workspace-stats" class="company-workspace-stats" hidden></div>
                     </section>
 
                     <nav id="company-editor-tabs" class="company-editor-tabs" aria-label="Sekcije tvrtke">
-                      <button type="button" class="company-editor-tab is-active" data-company-editor-tab="overview">
-                        <span>Pregled</span>
-                        <strong id="company-tab-overview-count">0</strong>
+                      <button type="button" class="company-editor-tab is-active" data-company-editor-tab="overview" data-company-editor-tab-icon="company" data-company-tab-tone="overview">
+                        <span class="company-editor-tab-icon" aria-hidden="true"></span>
+                        <span class="company-editor-tab-copy">
+                          <span class="company-editor-tab-label">Pregled</span>
+                          <strong id="company-tab-overview-count">0 RN</strong>
+                          <small id="company-tab-overview-meta">Status tvrtke</small>
+                        </span>
                       </button>
-                      <button type="button" class="company-editor-tab" data-company-editor-tab="locations">
-                        <span>Lokacije i objekti</span>
-                        <strong id="company-tab-locations-count">0</strong>
+                      <button type="button" class="company-editor-tab" data-company-editor-tab="locations" data-company-editor-tab-icon="location" data-company-tab-tone="locations">
+                        <span class="company-editor-tab-icon" aria-hidden="true"></span>
+                        <span class="company-editor-tab-copy">
+                          <span class="company-editor-tab-label">Lokacije i objekti</span>
+                          <strong id="company-tab-locations-count">0 / 0</strong>
+                          <small id="company-tab-locations-meta">Lokacije / objekti</small>
+                        </span>
                       </button>
-                      <button type="button" class="company-editor-tab" data-company-editor-tab="contracts">
-                        <span>Ugovori</span>
-                        <strong id="company-tab-contracts-count">0</strong>
+                      <button type="button" class="company-editor-tab" data-company-editor-tab="contracts" data-company-editor-tab-icon="document" data-company-tab-tone="contracts">
+                        <span class="company-editor-tab-icon" aria-hidden="true"></span>
+                        <span class="company-editor-tab-copy">
+                          <span class="company-editor-tab-label">Ugovori</span>
+                          <strong id="company-tab-contracts-count">0</strong>
+                          <small id="company-tab-contracts-meta">0 važećih</small>
+                        </span>
                       </button>
-                      <button type="button" class="company-editor-tab" data-company-editor-tab="portal">
-                        <span>Portal</span>
-                        <strong id="company-tab-portal-count">0</strong>
+                      <button type="button" class="company-editor-tab" data-company-editor-tab="portal" data-company-editor-tab-icon="assignees" data-company-tab-tone="portal">
+                        <span class="company-editor-tab-icon" aria-hidden="true"></span>
+                        <span class="company-editor-tab-copy">
+                          <span class="company-editor-tab-label">Portal</span>
+                          <strong id="company-tab-portal-count">0</strong>
+                          <small id="company-tab-portal-meta">0 kontakata</small>
+                        </span>
                       </button>
-                      <button type="button" class="company-editor-tab" data-company-editor-tab="documents">
-                        <span>Dokumenti</span>
-                        <strong id="company-tab-documents-count">0</strong>
+                      <button type="button" class="company-editor-tab" data-company-editor-tab="documents" data-company-editor-tab-icon="folder" data-company-tab-tone="documents">
+                        <span class="company-editor-tab-icon" aria-hidden="true"></span>
+                        <span class="company-editor-tab-copy">
+                          <span class="company-editor-tab-label">Dokumenti</span>
+                          <strong id="company-tab-documents-count">0</strong>
+                          <small id="company-tab-documents-meta">Predlošci i datoteke</small>
+                        </span>
                       </button>
-                      <button type="button" class="company-editor-tab" data-company-editor-tab="settings">
-                        <span>Postavke</span>
-                        <strong>Info</strong>
+                      <button type="button" class="company-editor-tab" data-company-editor-tab="settings" data-company-editor-tab-icon="notes" data-company-tab-tone="settings">
+                        <span class="company-editor-tab-icon" aria-hidden="true"></span>
+                        <span class="company-editor-tab-copy">
+                          <span class="company-editor-tab-label">Postavke</span>
+                          <strong id="company-tab-settings-count">Info</strong>
+                          <small id="company-tab-settings-meta">Podaci tvrtke</small>
+                        </span>
                       </button>
                     </nav>
 
@@ -8783,6 +8807,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260525-company-locations-v10"></script>
+    <script type="module" src="/src/main.js?v=20260525-company-dashboard-v11"></script>
   </body>
 </html>
