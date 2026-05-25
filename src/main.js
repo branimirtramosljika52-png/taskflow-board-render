@@ -30267,26 +30267,22 @@ function renderSettingsWorkOrderPointsPreview(settings = getPeriodicsVisualSetti
     DEFAULT_PERIODICS_VISUAL_SETTINGS.workOrderFieldSharePercent,
   );
   const completionShare = 100 - fieldShare;
-  const totalPoints = 10;
-  const sampleFieldCount = 2;
-  const fieldPointsPerPerson = (totalPoints * (fieldShare / 100)) / sampleFieldCount;
-  const completionPoints = totalPoints * (completionShare / 100);
   const serviceFactorCount = Object.keys(normalizeWorkOrderServicePointFactors(settings.workOrderServicePointFactors)).length;
   settingsWorkOrderPointsPreview.innerHTML = `
     <div>
-      <span>Ukupni faktor</span>
-      <strong>${formatCompactDecimal(totalPoints)} b</strong>
-      <small>${serviceFactorCount || state.serviceCatalog.length} faktora usluga</small>
+      <span>Ukupni bodovi RN-a</span>
+      <strong>Po uslugama</strong>
+      <small>faktor usluge x količina · ${serviceFactorCount || state.serviceCatalog.length} faktora</small>
     </div>
     <div>
       <span>Teren</span>
       <strong>${fieldShare}%</strong>
-      <small>2 osobe · ${formatCompactDecimal(fieldPointsPerPerson)} b po osobi</small>
+      <small>Dijeli se između izvršitelja RN-a</small>
     </div>
     <div>
       <span>Završetak</span>
       <strong>${completionShare}%</strong>
-      <small>1 osoba · ${formatCompactDecimal(completionPoints)} b</small>
+      <small>Dobiva osoba iz polja RN završio</small>
     </div>
   `;
 }
@@ -106736,11 +106732,7 @@ function getWorkOrderPointTotal(item = {}) {
     }
   }
 
-  const numericWeight = parseOfferMoneyInput(item.weight, Number.NaN);
-  if (Number.isFinite(numericWeight) && numericWeight > 0 && numericWeight <= 100) {
-    return numericWeight;
-  }
-  return 10;
+  return 0;
 }
 
 function getWorkOrderPointServiceRows(item = {}) {
@@ -106776,7 +106768,7 @@ function buildWorkOrderPointDistribution(item = {}) {
   const { fieldSharePercent, completionSharePercent } = getWorkOrderPointDistributionSettings();
   const executors = normalizeWorkOrderExecutorValues(getWorkOrderExecutors(item));
   const completedPeople = normalizeWorkOrderExecutorValues(
-    splitWorkOrderCompletedByValue(item.completedBy || (isClosedWorkOrder(item.status) ? executors[0] || "" : "")),
+    splitWorkOrderCompletedByValue(item.completedBy),
   );
   const allocations = new Map();
   const addAllocation = (name, role, points, percent) => {
@@ -106799,12 +106791,14 @@ function buildWorkOrderPointDistribution(item = {}) {
 
   const fieldPoints = executors.length > 0 ? (totalPoints * fieldSharePercent) / 100 : 0;
   const completionPoints = completedPeople.length > 0 ? (totalPoints * completionSharePercent) / 100 : 0;
-  executors.forEach((executor) => {
-    addAllocation(executor, "Teren", fieldPoints / executors.length, fieldSharePercent / executors.length);
-  });
-  completedPeople.forEach((person) => {
-    addAllocation(person, "Završetak", completionPoints / completedPeople.length, completionSharePercent / completedPeople.length);
-  });
+  if (totalPoints > 0) {
+    executors.forEach((executor) => {
+      addAllocation(executor, "Teren", fieldPoints / executors.length, fieldSharePercent / executors.length);
+    });
+    completedPeople.forEach((person) => {
+      addAllocation(person, "Završetak", completionPoints / completedPeople.length, completionSharePercent / completedPeople.length);
+    });
+  }
 
   const people = [...allocations.values()]
     .map((entry) => ({
@@ -106863,6 +106857,16 @@ function createWorkOrderPointDistributionCard(item = {}) {
       sources.append(more);
     }
     wrap.append(sources);
+  }
+
+  if (distribution.totalPoints <= 0) {
+    const empty = document.createElement("span");
+    empty.className = "work-executor-empty work-executor-load-empty";
+    empty.textContent = distribution.serviceRows.length > 0
+      ? "— Faktori ili količine su 0 b"
+      : "— Dodaj usluge i količine za bodove";
+    wrap.append(empty);
+    return wrap;
   }
 
   if (distribution.people.length === 0) {
