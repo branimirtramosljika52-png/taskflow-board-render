@@ -5198,6 +5198,14 @@ const companyWorkspaceStats = document.querySelector("#company-workspace-stats")
 const companyEditorTabs = document.querySelector("#company-editor-tabs");
 const companyEditorTabButtons = Array.from(document.querySelectorAll("[data-company-editor-tab]"));
 const companyEditorTabPanels = Array.from(document.querySelectorAll("[data-company-tab-panel]"));
+const companyPeriodicsRefreshButton = document.querySelector("#company-periodics-refresh");
+const companyPeriodicsHelper = document.querySelector("#company-periodics-helper");
+const companyPeriodicsOverdueCount = document.querySelector("#company-periodics-overdue-count");
+const companyPeriodicsWarningCount = document.querySelector("#company-periodics-warning-count");
+const companyPeriodicsTotalCount = document.querySelector("#company-periodics-total-count");
+const companyPeriodicsNextDate = document.querySelector("#company-periodics-next-date");
+const companyPeriodicsList = document.querySelector("#company-periodics-list");
+const companyPeriodicsEmpty = document.querySelector("#company-periodics-empty");
 const companySubmitButton = companyForm?.querySelector('button[type="submit"]') ?? null;
 const companyResetButton = document.querySelector("#company-reset");
 const companyDeleteButton = document.querySelector("#company-delete");
@@ -37821,6 +37829,9 @@ async function loadPeriodicsFeed({ force = false } = {}) {
 
   if (state.activeView === "module" && state.activeModuleItem === "periodics") {
     renderPeriodicsModule();
+  }
+  if (state.companyEditorOpen && state.activeView === "companies") {
+    renderCompanyWorkspaceDashboard(companyIdInput?.value || "");
   }
 }
 
@@ -79911,6 +79922,242 @@ function hydrateCompanyEditorTabIcons() {
   });
 }
 
+function doesCompanyPeriodicsEntryMatchCompany(entry = {}, company = {}) {
+  const companyId = String(company?.id || "").trim();
+  if (companyId && String(entry?.companyId || "").trim() === companyId) {
+    return true;
+  }
+
+  const companyOib = String(company?.oib || "").replace(/\D/g, "");
+  const entryOib = String(entry?.companyOib || "").replace(/\D/g, "");
+  if (companyOib && entryOib && companyOib === entryOib) {
+    return true;
+  }
+
+  const companyNameKey = normalizeLooseName(company?.name || "");
+  const entryNameKey = normalizeLooseName(entry?.companyName || "");
+  const companyHeadquartersKey = normalizeLooseName(company?.headquarters || "");
+  const entryHeadquartersKey = normalizeLooseName(entry?.headquarters || "");
+  return Boolean(
+    companyNameKey
+    && entryNameKey
+    && companyNameKey === entryNameKey
+    && (!companyHeadquartersKey || !entryHeadquartersKey || companyHeadquartersKey === entryHeadquartersKey)
+  );
+}
+
+function createCompanyContractPeriodicsEntries(company = {}) {
+  const todayDate = new Date();
+  todayDate.setHours(0, 0, 0, 0);
+  const visualSettings = getPeriodicsVisualSettings();
+  const rows = [];
+  const companyId = String(company?.id || "").trim();
+  const seenKeys = new Set();
+
+  const pushContractRow = ({
+    id = "",
+    title = "",
+    contractNumber = "",
+    validFrom = "",
+    validTo = "",
+    status = "",
+    source = "",
+  } = {}) => {
+    const dueDate = normalizeCompanyDateValue(validTo);
+    if (!dueDate) {
+      return;
+    }
+    const key = [source, id, contractNumber, dueDate].map((value) => String(value || "").trim()).join("|");
+    if (seenKeys.has(key)) {
+      return;
+    }
+    seenKeys.add(key);
+    rows.push({
+      id: `company-periodics-contract-${key || dueDate}`,
+      kind: "contract",
+      categoryLabel: "Ugovor",
+      dueDate,
+      dueState: getPeriodicsDueState(dueDate, todayDate, visualSettings),
+      title: title || "Važenje ugovora",
+      subtitle: contractNumber ? `Broj ${contractNumber}` : "Ugovorni rok",
+      detail: [
+        formatContractValidityRangeLabel(validFrom, validTo),
+        status ? getContractStatusLabel(status) : "",
+      ].filter(Boolean).join(" · "),
+      searchText: [title, contractNumber, validFrom, validTo, status].filter(Boolean).join(" "),
+    });
+  };
+
+  getCompanyLinkedContracts(companyId).forEach((contract) => {
+    pushContractRow({
+      id: contract?.id,
+      title: getCompanyContractDisplayTitle(contract),
+      contractNumber: contract?.contractNumber,
+      validFrom: contract?.validFrom,
+      validTo: contract?.validTo,
+      status: contract?.status,
+      source: "linked",
+    });
+  });
+
+  if (normalizeCompanyDateValue(company?.contractValidTo)) {
+    pushContractRow({
+      id: companyId,
+      title: company?.contractType || "Ugovor tvrtke",
+      contractNumber: company?.contractNumber,
+      validFrom: company?.contractValidFrom,
+      validTo: company?.contractValidTo,
+      status: String(company?.isActive ?? "true") === "false" ? "inactive" : "active",
+      source: "company",
+    });
+  }
+
+  return rows;
+}
+
+function createCompanyInspectionPeriodicsEntries(company = {}) {
+  if (!company?.id && !company?.name) {
+    return [];
+  }
+  return buildPeriodicsInspectionEntries(getPeriodicsDocumentRecords())
+    .filter((entry) => doesCompanyPeriodicsEntryMatchCompany(entry, company))
+    .map((entry) => ({
+      ...entry,
+      kind: "inspection",
+      categoryLabel: "Ispitivanje",
+      title: entry.serviceLabel || "Ispitivanje",
+      subtitle: [
+        entry.locationName || "Bez lokacije",
+        entry.objectName || "",
+      ].filter(Boolean).join(" · "),
+      detail: [
+        entry.workOrderNumber ? `RN ${entry.workOrderNumber}` : "",
+        entry.templateLabel || "",
+      ].filter(Boolean).join(" · "),
+    }));
+}
+
+function getCompanyPeriodicsEntries(companyId = companyIdInput?.value || "") {
+  const company = getCompany(companyId);
+  if (!company) {
+    return [];
+  }
+  return [
+    ...createCompanyInspectionPeriodicsEntries(company),
+    ...createCompanyContractPeriodicsEntries(company),
+  ].sort((left, right) => (
+    String(left.dueDate || "9999-12-31").localeCompare(String(right.dueDate || "9999-12-31"))
+    || String(left.categoryLabel || "").localeCompare(String(right.categoryLabel || ""), "hr")
+    || String(left.title || "").localeCompare(String(right.title || ""), "hr")
+  ));
+}
+
+function getCompanyPeriodicsSummary(companyId = companyIdInput?.value || "") {
+  const entries = getCompanyPeriodicsEntries(companyId);
+  const visualSettings = getPeriodicsVisualSettings();
+  const counts = getPeriodicsEntryCounts(entries, visualSettings);
+  const warningDays = normalizePeriodicsVisualSettings(visualSettings).warningDays;
+  const soonCount = entries.filter((entry) => {
+    const daysUntil = Number(entry?.dueState?.daysUntil);
+    return Number.isFinite(daysUntil) && daysUntil >= 0 && daysUntil <= warningDays;
+  }).length;
+  return {
+    entries,
+    totalCount: entries.length,
+    overdueCount: counts.overdueCount,
+    warningCount: soonCount,
+    urgentCount: counts.overdueCount + soonCount,
+    nextEntry: entries[0] || null,
+  };
+}
+
+function getCompanyPeriodicsTabValue(summary = {}) {
+  if (Number(summary.urgentCount || 0) > 0) {
+    return `${summary.urgentCount} hitno`;
+  }
+  const totalCount = Number(summary.totalCount || 0);
+  if (totalCount === 1) {
+    return "1 rok";
+  }
+  if (totalCount >= 2 && totalCount <= 4) {
+    return `${totalCount} roka`;
+  }
+  return `${totalCount} rokova`;
+}
+
+function renderCompanyPeriodicsRow(entry = {}) {
+  const row = document.createElement("article");
+  row.className = `company-periodics-row ${entry.dueState?.toneClass || ""}`.trim();
+
+  const type = document.createElement("span");
+  type.className = `company-periodics-type is-${entry.kind || "other"}`;
+  type.textContent = entry.categoryLabel || "Rok";
+
+  const copy = document.createElement("div");
+  copy.className = "company-periodics-copy";
+  const title = document.createElement("strong");
+  title.textContent = entry.title || entry.categoryLabel || "Rok";
+  const meta = document.createElement("span");
+  meta.textContent = [entry.subtitle, entry.detail].filter(Boolean).join(" · ");
+  copy.append(title, meta);
+
+  const due = createPeriodicsDueCell(entry.dueDate, entry.dueState);
+  due.classList.add("company-periodics-due");
+
+  row.append(type, copy, due);
+  return row;
+}
+
+function renderCompanyPeriodicsPanel(companyId = companyIdInput?.value || "") {
+  const company = getCompany(companyId);
+  const activeOrganizationId = String(state.activeOrganizationId || "").trim();
+  const periodicsOrganizationId = String(state.periodicsFeed.organizationId || "").trim();
+  if (
+    company
+    && activeOrganizationId
+    && !state.periodicsFeed.loading
+    && (
+      !state.periodicsFeed.loaded
+      || periodicsOrganizationId !== activeOrganizationId
+    )
+  ) {
+    void loadPeriodicsFeed();
+  }
+
+  const summary = getCompanyPeriodicsSummary(companyId);
+  const entries = summary.entries;
+  if (companyPeriodicsOverdueCount) {
+    companyPeriodicsOverdueCount.textContent = String(summary.overdueCount || 0);
+  }
+  if (companyPeriodicsWarningCount) {
+    companyPeriodicsWarningCount.textContent = String(summary.warningCount || 0);
+  }
+  if (companyPeriodicsTotalCount) {
+    companyPeriodicsTotalCount.textContent = String(summary.totalCount || 0);
+  }
+  if (companyPeriodicsNextDate) {
+    companyPeriodicsNextDate.textContent = summary.nextEntry?.dueDate ? formatCompactDate(summary.nextEntry.dueDate) : "—";
+  }
+  if (companyPeriodicsHelper) {
+    if (!company) {
+      companyPeriodicsHelper.textContent = "Spremi tvrtku da se mogu prikazati povezani rokovi.";
+    } else if (state.periodicsFeed.loading && entries.length === 0) {
+      companyPeriodicsHelper.textContent = "Učitavanje periodičkih zapisa...";
+    } else if (entries.length === 0) {
+      companyPeriodicsHelper.textContent = "Nema evidentiranih isteka za ovu tvrtku.";
+    } else {
+      companyPeriodicsHelper.textContent = "Rokovi iz zapisnika i ugovora za odabranu tvrtku.";
+    }
+  }
+  if (companyPeriodicsList) {
+    companyPeriodicsList.replaceChildren(...entries.map((entry) => renderCompanyPeriodicsRow(entry)));
+  }
+  if (companyPeriodicsEmpty) {
+    companyPeriodicsEmpty.hidden = entries.length > 0 || state.periodicsFeed.loading;
+  }
+  return summary;
+}
+
 function syncCompanyEditorTabs() {
   const normalizedTab = String(state.companyEditorActiveTab || "overview").trim() || "overview";
   const activeTab = companyEditorTabButtons.some((button) => button.dataset.companyEditorTab === normalizedTab)
@@ -79937,6 +80184,7 @@ function renderCompanyWorkspaceDashboard(companyId = companyIdInput?.value || ""
 
   const normalizedCompanyId = String(companyId || "").trim();
   const stats = getCompanyDashboardStats(normalizedCompanyId);
+  const periodicsSummary = renderCompanyPeriodicsPanel(normalizedCompanyId);
   const company = stats.company;
   companyWorkspaceHero.classList.toggle("is-empty", !company);
 
@@ -80018,6 +80266,13 @@ function renderCompanyWorkspaceDashboard(companyId = companyIdInput?.value || ""
   );
   setCompanyEditorTabCount("locations", `${stats.locations.length} / ${stats.objects.length}`);
   setCompanyEditorTabMeta("locations", "Lokacije / objekti");
+  setCompanyEditorTabCount("periodics", getCompanyPeriodicsTabValue(periodicsSummary));
+  setCompanyEditorTabMeta(
+    "periodics",
+    periodicsSummary.totalCount
+      ? `${periodicsSummary.overdueCount} isteklo · ${periodicsSummary.warningCount} uskoro`
+      : "Nema evidentiranih isteka",
+  );
   setCompanyEditorTabCount("contracts", stats.contracts.length);
   setCompanyEditorTabMeta("contracts", `${stats.activeContracts.length} važećih`);
   setCompanyEditorTabCount("portal", stats.clientUsers.length);
@@ -115516,6 +115771,9 @@ companyEditorTabs?.addEventListener("click", (event) => {
   }
   state.companyEditorActiveTab = button.dataset.companyEditorTab || "overview";
   syncCompanyEditorTabs();
+  if (state.companyEditorActiveTab === "periodics") {
+    renderCompanyPeriodicsPanel(companyIdInput?.value || "");
+  }
 });
 
 companyIsActiveInput?.addEventListener("change", () => {
@@ -115636,6 +115894,20 @@ companyOpenFormButton?.addEventListener("click", () => {
 companyAddLocationButton?.addEventListener("click", (event) => {
   event.preventDefault();
   openLocationEditorForCompany(companyIdInput?.value || "");
+});
+
+companyPeriodicsRefreshButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  if (companyPeriodicsRefreshButton instanceof HTMLButtonElement) {
+    companyPeriodicsRefreshButton.disabled = true;
+  }
+  void loadPeriodicsFeed({ force: true })
+    .finally(() => {
+      if (companyPeriodicsRefreshButton instanceof HTMLButtonElement) {
+        companyPeriodicsRefreshButton.disabled = false;
+      }
+      renderCompanyWorkspaceDashboard(companyIdInput?.value || "");
+    });
 });
 
 companyEditorCloseButton?.addEventListener("click", () => {
