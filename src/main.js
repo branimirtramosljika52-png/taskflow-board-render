@@ -1942,6 +1942,7 @@ const state = {
   peopleUserSheet: "active",
   companyEditorOpen: false,
   companyEditorActiveTab: "overview",
+  companyOverviewEditMode: false,
   companyExpandedIds: new Set(),
   locationEditorOpen: false,
   vehicleEditorOpen: false,
@@ -5206,6 +5207,11 @@ const companyPeriodicsTotalCount = document.querySelector("#company-periodics-to
 const companyPeriodicsNextDate = document.querySelector("#company-periodics-next-date");
 const companyPeriodicsList = document.querySelector("#company-periodics-list");
 const companyPeriodicsEmpty = document.querySelector("#company-periodics-empty");
+const companyOverviewEditToggle = document.querySelector("#company-overview-edit-toggle");
+const companyOverviewSummary = document.querySelector("#company-overview-summary");
+const companyLinkedWorkOrdersList = document.querySelector("#company-linked-workorders-list");
+const companyLinkedWorkOrdersEmpty = document.querySelector("#company-linked-workorders-empty");
+const companyLinkedWorkOrdersCount = document.querySelector("#company-linked-workorders-count");
 const companySubmitButton = companyForm?.querySelector('button[type="submit"]') ?? null;
 const companyResetButton = document.querySelector("#company-reset");
 const companyDeleteButton = document.querySelector("#company-delete");
@@ -79922,6 +79928,119 @@ function hydrateCompanyEditorTabIcons() {
   });
 }
 
+function getCompanyOverviewSummarySource(companyId = companyIdInput?.value || "") {
+  const persistedCompany = getCompany(companyId) || {};
+  const managerUserIds = getCompanyManagerSelectedUserIds(companyManagerUserIdsInput);
+  return {
+    ...persistedCompany,
+    name: companyNameInput?.value ?? persistedCompany.name ?? "",
+    headquarters: companyHeadquartersInput?.value ?? persistedCompany.headquarters ?? "",
+    oib: companyOibInput?.value ?? persistedCompany.oib ?? "",
+    employeeSize: companyEmployeeSizeInput?.value ?? persistedCompany.employeeSize ?? "",
+    managerUserIds: managerUserIds.length ? managerUserIds : (persistedCompany.managerUserIds || []),
+    managerUserLabels: managerUserIds.length
+      ? getCompanyManagerSelectedUserLabels(managerUserIds)
+      : (persistedCompany.managerUserLabels || []),
+    contractType: companyContractTypeInput?.value ?? persistedCompany.contractType ?? "",
+    contractNumber: companyContractNumberInput?.value ?? persistedCompany.contractNumber ?? "",
+    contractValidFrom: companyContractValidFromInput?.value ?? persistedCompany.contractValidFrom ?? "",
+    contractValidTo: companyContractValidToInput?.value ?? persistedCompany.contractValidTo ?? "",
+    isActive: companyIsActiveInput?.value !== "false",
+    representative: companyRepresentativeInput?.value ?? persistedCompany.representative ?? "",
+    representativeRole: companyRepresentativeRoleInput?.value ?? persistedCompany.representativeRole ?? "",
+    representativeOib: companyRepresentativeOibInput?.value ?? persistedCompany.representativeOib ?? "",
+    contactPhone: companyContactPhoneInput?.value ?? persistedCompany.contactPhone ?? "",
+    contactEmail: companyContactEmailInput?.value ?? persistedCompany.contactEmail ?? "",
+  };
+}
+
+function createCompanyOverviewSummaryCard({ label = "", value = "", detail = "", tone = "" } = {}) {
+  const card = document.createElement("article");
+  card.className = `company-overview-summary-card${tone ? ` is-${tone}` : ""}`;
+
+  const labelNode = document.createElement("span");
+  labelNode.textContent = label;
+  const valueNode = document.createElement("strong");
+  valueNode.textContent = value || "Nije upisano";
+  const detailNode = document.createElement("small");
+  detailNode.textContent = detail || "Bez dodatnih podataka";
+
+  card.append(labelNode, valueNode, detailNode);
+  return card;
+}
+
+function renderCompanyOverviewSummary(companyId = companyIdInput?.value || "") {
+  if (!companyOverviewSummary) {
+    return;
+  }
+
+  const company = getCompanyOverviewSummarySource(companyId);
+  const linkedContracts = getCompanyLinkedContracts(companyId);
+  const locations = getCompanyLocations(companyId);
+  const workOrders = getCompanyWorkOrders(companyId);
+  const managerSummary = getCompanyManagerSummaryText(company)
+    || getCompanyManagerSelectedUserLabels(company.managerUserIds || []).join(", ");
+  const serviceCodes = getCompanyServiceCodes(companyId);
+  const statusLabel = company?.isActive === false || String(companyIsActiveInput?.value || "") === "false"
+    ? "Neaktivno"
+    : "Aktivno";
+
+  companyOverviewSummary.replaceChildren(
+    createCompanyOverviewSummaryCard({
+      label: "Naziv",
+      value: company.name || "Nova tvrtka",
+      detail: company.headquarters || "Bez sjedišta",
+      tone: "primary",
+    }),
+    createCompanyOverviewSummaryCard({
+      label: "OIB",
+      value: company.oib || "Nije upisano",
+      detail: statusLabel,
+      tone: statusLabel === "Aktivno" ? "success" : "warning",
+    }),
+    createCompanyOverviewSummaryCard({
+      label: "Kontakt",
+      value: company.representative || "Bez odgovorne osobe",
+      detail: [company.contactPhone, company.contactEmail].filter(Boolean).join(" · ") || "Bez kontakta",
+    }),
+    createCompanyOverviewSummaryCard({
+      label: "Voditelji",
+      value: managerSummary || "Nisu odabrani",
+      detail: getCompanyEmployeeSizeLabel(company.employeeSize),
+    }),
+    createCompanyOverviewSummaryCard({
+      label: "Ugovor",
+      value: company.contractType || "Bez ugovora",
+      detail: [
+        company.contractNumber || "",
+        getCompanyContractValidityLabel(company, linkedContracts),
+      ].filter(Boolean).join(" · "),
+      tone: "warning",
+    }),
+    createCompanyOverviewSummaryCard({
+      label: "Operativa",
+      value: `${locations.length} lok. · ${workOrders.length} RN`,
+      detail: serviceCodes.length ? serviceCodes.join(" · ") : "Bez aktivnih usluga",
+      tone: workOrders.length ? "success" : "",
+    }),
+  );
+}
+
+function syncCompanyOverviewEditMode() {
+  const isNewCompany = !String(companyIdInput?.value || "").trim();
+  const canEdit = isNewCompany ? getCanCreateCompany() : getCanEditCompany(companyIdInput?.value || "");
+  const isEditingOverview = Boolean(isNewCompany || state.companyOverviewEditMode);
+
+  companyEditorPanel?.classList.toggle("is-company-overview-editing", isEditingOverview);
+  companyEditorPanel?.classList.toggle("is-company-overview-readonly", !isEditingOverview);
+
+  if (companyOverviewEditToggle) {
+    companyOverviewEditToggle.hidden = !canEdit;
+    companyOverviewEditToggle.textContent = isEditingOverview ? "Prikaži pregled" : "Uredi";
+    companyOverviewEditToggle.setAttribute("aria-pressed", String(isEditingOverview));
+  }
+}
+
 function doesCompanyPeriodicsEntryMatchCompany(entry = {}, company = {}) {
   const companyId = String(company?.id || "").trim();
   if (companyId && String(entry?.companyId || "").trim() === companyId) {
@@ -80165,6 +80284,9 @@ function syncCompanyEditorTabs() {
     : "overview";
   state.companyEditorActiveTab = activeTab;
   hydrateCompanyEditorTabIcons();
+  if (companyEditorPanel) {
+    companyEditorPanel.dataset.companyActiveTab = activeTab;
+  }
 
   companyEditorTabButtons.forEach((button) => {
     const isActive = button.dataset.companyEditorTab === activeTab;
@@ -80257,6 +80379,9 @@ function renderCompanyWorkspaceDashboard(companyId = companyIdInput?.value || ""
     );
   }
 
+  renderCompanyOverviewSummary(normalizedCompanyId);
+  syncCompanyOverviewEditMode();
+
   setCompanyEditorTabCount("overview", stats.workOrders.length ? `${stats.workOrders.length} RN` : "0 RN");
   setCompanyEditorTabMeta(
     "overview",
@@ -80266,6 +80391,8 @@ function renderCompanyWorkspaceDashboard(companyId = companyIdInput?.value || ""
   );
   setCompanyEditorTabCount("locations", `${stats.locations.length} / ${stats.objects.length}`);
   setCompanyEditorTabMeta("locations", "Lokacije / objekti");
+  setCompanyEditorTabCount("work-orders", stats.workOrders.length ? `${stats.workOrders.length} RN` : "0 RN");
+  setCompanyEditorTabMeta("work-orders", `${stats.activeWorkOrders.length} otvorenih`);
   setCompanyEditorTabCount("periodics", getCompanyPeriodicsTabValue(periodicsSummary));
   setCompanyEditorTabMeta(
     "periodics",
@@ -81924,6 +82051,92 @@ function renderCompanyLinkedContracts(companyId = companyIdInput?.value || "") {
   }));
 }
 
+function renderCompanyLinkedWorkOrders(companyId = companyIdInput?.value || "") {
+  if (!companyLinkedWorkOrdersList || !companyLinkedWorkOrdersEmpty || !companyLinkedWorkOrdersCount) {
+    return;
+  }
+
+  const normalizedCompanyId = String(companyId || "").trim();
+  const linkedWorkOrders = getCompanyWorkOrders(normalizedCompanyId);
+  companyLinkedWorkOrdersCount.textContent = String(linkedWorkOrders.length);
+
+  if (!normalizedCompanyId) {
+    companyLinkedWorkOrdersList.replaceChildren();
+    companyLinkedWorkOrdersEmpty.textContent = "Spremi tvrtku pa će se ovdje pojaviti radni nalozi.";
+    companyLinkedWorkOrdersEmpty.hidden = false;
+    return;
+  }
+
+  if (linkedWorkOrders.length === 0) {
+    companyLinkedWorkOrdersList.replaceChildren();
+    companyLinkedWorkOrdersEmpty.textContent = "Još nema radnih naloga vezanih uz ovu tvrtku.";
+    companyLinkedWorkOrdersEmpty.hidden = false;
+    return;
+  }
+
+  companyLinkedWorkOrdersEmpty.hidden = true;
+  companyLinkedWorkOrdersList.replaceChildren(...linkedWorkOrders.map((workOrder) => {
+    const location = getLocation(workOrder.locationId || "");
+    const card = document.createElement("article");
+    card.className = "company-contract-card company-workorder-card";
+    card.tabIndex = 0;
+    card.setAttribute("role", "button");
+    card.setAttribute("aria-label", `Otvori RN ${workOrder.workOrderNumber || "bez broja"}`);
+
+    const copy = document.createElement("div");
+    copy.className = "company-contract-card-copy";
+
+    const head = document.createElement("div");
+    head.className = "company-contract-card-head";
+    const number = document.createElement("strong");
+    number.textContent = workOrder.workOrderNumber || "RN bez broja";
+    const status = createMetaPill(
+      getOptionLabel(WORK_ORDER_STATUS_OPTIONS, workOrder.status || "") || (workOrder.status || "RN"),
+      `is-${slugifyValue(workOrder.status || "rn")}`,
+    );
+    head.append(number, status);
+
+    const title = document.createElement("span");
+    title.className = "company-contract-card-title";
+    title.textContent = getWorkOrderServiceSummary(workOrder) || workOrder.department || "Radni nalog";
+
+    const meta = document.createElement("span");
+    meta.className = "company-contract-card-meta";
+    meta.textContent = [
+      location?.name || workOrder.locationName || "",
+      workOrder.openedDate ? `otvoren ${formatDate(workOrder.openedDate)}` : "",
+      workOrder.dueDate ? `rok ${formatDate(workOrder.dueDate)}` : "",
+      getWorkOrderExecutors(workOrder).slice(0, 2).join(", "),
+    ].filter(Boolean).join(" · ");
+
+    copy.append(head, title, meta);
+
+    const actions = document.createElement("div");
+    actions.className = "company-contract-card-actions";
+    actions.append(createActionButton("Otvori RN", "card-button card-button-light", (event) => {
+      event.stopPropagation();
+      openCompanyContextRecord({ kind: "work-order", record: workOrder });
+    }));
+
+    card.addEventListener("click", (event) => {
+      if (isInteractiveWorkOrderTarget(event.target)) {
+        return;
+      }
+      openCompanyContextRecord({ kind: "work-order", record: workOrder });
+    });
+    card.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") {
+        return;
+      }
+      event.preventDefault();
+      openCompanyContextRecord({ kind: "work-order", record: workOrder });
+    });
+
+    card.append(copy, actions);
+    return card;
+  }));
+}
+
 function renderCompanyLinkedLocations(companyId = companyIdInput?.value || "") {
   if (!companyLinkedLocationsList || !companyLinkedLocationsEmpty || !companyLinkedLocationsCount) {
     return;
@@ -82364,6 +82577,24 @@ function renderCompanyLinkedContractsSafe(companyId = companyIdInput?.value || "
   }
 }
 
+function renderCompanyLinkedWorkOrdersSafe(companyId = companyIdInput?.value || "") {
+  try {
+    renderCompanyLinkedWorkOrders(companyId);
+  } catch (error) {
+    console.error("Company linked work orders render failed", error);
+    if (companyLinkedWorkOrdersList) {
+      companyLinkedWorkOrdersList.replaceChildren();
+    }
+    if (companyLinkedWorkOrdersCount) {
+      companyLinkedWorkOrdersCount.textContent = "0";
+    }
+    if (companyLinkedWorkOrdersEmpty) {
+      companyLinkedWorkOrdersEmpty.textContent = "Povezane RN-ove trenutno nije moguće prikazati.";
+      companyLinkedWorkOrdersEmpty.hidden = false;
+    }
+  }
+}
+
 function renderCompanyLinkedLocationsSafe(companyId = companyIdInput?.value || "") {
   try {
     renderCompanyLinkedLocations(companyId);
@@ -82404,6 +82635,7 @@ function renderCompanyEditorRelatedData(companyId = companyIdInput?.value || "")
   renderCompanyWorkspaceDashboard(companyId);
   renderCompanyLinkedContractsSafe(companyId);
   renderCompanyLinkedLocationsSafe(companyId);
+  renderCompanyLinkedWorkOrdersSafe(companyId);
   renderCompanyActivityPanelSafe(companyId);
 }
 
@@ -82467,6 +82699,7 @@ function scheduleCompanyEditorRelatedData(companyId = companyIdInput?.value || "
     }
     renderCompanyWorkspaceDashboard(normalizedCompanyId);
     renderCompanyLinkedContractsSafe(normalizedCompanyId);
+    renderCompanyLinkedWorkOrdersSafe(normalizedCompanyId);
     companyEditorRelatedDataTimeoutId = window.setTimeout(() => {
       companyEditorRelatedDataTimeoutId = 0;
       if (normalizedCompanyId && !isCompanyEditorRenderTargetActive(normalizedCompanyId)) {
@@ -82874,6 +83107,7 @@ function resetCompanyForm() {
   companyForm.reset();
   companyIdInput.value = "";
   state.companyEditorActiveTab = "overview";
+  state.companyOverviewEditMode = true;
   if (companyLogoDataUrlInput) {
     companyLogoDataUrlInput.value = "";
   }
@@ -83136,6 +83370,7 @@ function hydrateCompanyForm(company) {
     companyEditorTitle.textContent = `Uredi tvrtku · ${company.name}`;
   }
   state.companyEditorActiveTab = "overview";
+  state.companyOverviewEditMode = false;
   resetCompanyClientUserForm();
   renderCompanyClientPortalPanel();
   renderCompanyWorkspaceDashboard(company.id);
@@ -115778,6 +116013,44 @@ companyEditorTabs?.addEventListener("click", (event) => {
 
 companyIsActiveInput?.addEventListener("change", () => {
   syncCompanyEditorChrome();
+});
+
+companyOverviewEditToggle?.addEventListener("click", () => {
+  const isNewCompany = !String(companyIdInput?.value || "").trim();
+  if (isNewCompany) {
+    state.companyOverviewEditMode = true;
+  } else {
+    state.companyOverviewEditMode = !state.companyOverviewEditMode;
+  }
+  renderCompanyOverviewSummary(companyIdInput?.value || "");
+  syncCompanyOverviewEditMode();
+  if (state.companyOverviewEditMode) {
+    requestAnimationFrame(() => {
+      companyNameInput?.focus({ preventScroll: true });
+    });
+  }
+});
+
+[
+  companyHeadquartersInput,
+  companyOibInput,
+  companyEmployeeSizeInput,
+  companyContractTypeInput,
+  companyContractNumberInput,
+  companyContractValidFromInput,
+  companyContractValidToInput,
+  companyRepresentativeInput,
+  companyRepresentativeRoleInput,
+  companyRepresentativeOibInput,
+  companyContactPhoneInput,
+  companyContactEmailInput,
+].forEach((input) => {
+  input?.addEventListener("input", () => {
+    renderCompanyOverviewSummary(companyIdInput?.value || "");
+  });
+  input?.addEventListener("change", () => {
+    renderCompanyOverviewSummary(companyIdInput?.value || "");
+  });
 });
 
 companiesSearchInput?.addEventListener("input", () => {

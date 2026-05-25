@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260525-company-contrast-v13" />
+    <link rel="stylesheet" href="/styles.css?v=20260525-company-overview-v14" />
     <link rel="stylesheet" href="/src/styles/variables.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/reset.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/builder.css?v=20260509e" />
@@ -3282,9 +3282,25 @@
                       <button type="button" class="company-editor-tab" data-company-editor-tab="locations" data-company-editor-tab-icon="location" data-company-tab-tone="locations">
                         <span class="company-editor-tab-icon" aria-hidden="true"></span>
                         <span class="company-editor-tab-copy">
-                          <span class="company-editor-tab-label">Lokacije i objekti</span>
+                          <span class="company-editor-tab-label">Lokacije</span>
                           <strong id="company-tab-locations-count">0 / 0</strong>
                           <small id="company-tab-locations-meta">Lokacije / objekti</small>
+                        </span>
+                      </button>
+                      <button type="button" class="company-editor-tab" data-company-editor-tab="work-orders" data-company-editor-tab-icon="number" data-company-tab-tone="work-orders">
+                        <span class="company-editor-tab-icon" aria-hidden="true"></span>
+                        <span class="company-editor-tab-copy">
+                          <span class="company-editor-tab-label">Radni nalozi</span>
+                          <strong id="company-tab-work-orders-count">0 RN</strong>
+                          <small id="company-tab-work-orders-meta">0 otvorenih</small>
+                        </span>
+                      </button>
+                      <button type="button" class="company-editor-tab" data-company-editor-tab="documents" data-company-editor-tab-icon="folder" data-company-tab-tone="documents">
+                        <span class="company-editor-tab-icon" aria-hidden="true"></span>
+                        <span class="company-editor-tab-copy">
+                          <span class="company-editor-tab-label">Temeljni dokumenti</span>
+                          <strong id="company-tab-documents-count">0</strong>
+                          <small id="company-tab-documents-meta">Predlošci i datoteke</small>
                         </span>
                       </button>
                       <button type="button" class="company-editor-tab" data-company-editor-tab="periodics" data-company-editor-tab-icon="dates" data-company-tab-tone="periodics">
@@ -3311,18 +3327,10 @@
                           <small id="company-tab-portal-meta">0 kontakata</small>
                         </span>
                       </button>
-                      <button type="button" class="company-editor-tab" data-company-editor-tab="documents" data-company-editor-tab-icon="folder" data-company-tab-tone="documents">
-                        <span class="company-editor-tab-icon" aria-hidden="true"></span>
-                        <span class="company-editor-tab-copy">
-                          <span class="company-editor-tab-label">Dokumenti</span>
-                          <strong id="company-tab-documents-count">0</strong>
-                          <small id="company-tab-documents-meta">Predlošci i datoteke</small>
-                        </span>
-                      </button>
                       <button type="button" class="company-editor-tab" data-company-editor-tab="settings" data-company-editor-tab-icon="notes" data-company-tab-tone="settings">
                         <span class="company-editor-tab-icon" aria-hidden="true"></span>
                         <span class="company-editor-tab-copy">
-                          <span class="company-editor-tab-label">Postavke</span>
+                          <span class="company-editor-tab-label">Ostalo</span>
                           <strong id="company-tab-settings-count">Info</strong>
                           <small id="company-tab-settings-meta">Podaci tvrtke</small>
                         </span>
@@ -3335,6 +3343,7 @@
                           <p class="section-kicker">Tvrtka</p>
                           <h4 class="subsection-title">Osnovni podaci</h4>
                         </div>
+                        <button id="company-overview-edit-toggle" type="button" class="card-button card-button-light company-overview-edit-button">Uredi</button>
                       </div>
 
                       <div class="company-logo-upload-row company-logo-upload-row-compact">
@@ -3361,6 +3370,8 @@
                           </button>
                         </div>
                       </div>
+
+                      <div id="company-overview-summary" class="company-overview-summary" aria-live="polite"></div>
 
                       <div class="form-grid masterdata-company-grid">
                         <label class="field field-company-name">
@@ -3475,8 +3486,8 @@
                     <section class="masterdata-group-card company-template-map-card" aria-labelledby="company-template-map-title" data-company-tab-panel="documents">
                       <div class="masterdata-group-head">
                         <div>
-                          <p class="section-kicker">Templatei</p>
-                          <h4 id="company-template-map-title" class="subsection-title">Templatei osposobljavanja</h4>
+                          <p class="section-kicker">Temeljni dokumenti</p>
+                          <h4 id="company-template-map-title" class="subsection-title">Predlošci i dokumenti tvrtke</h4>
                         </div>
                       </div>
                       <p class="helper-copy module-copy">
@@ -3582,6 +3593,20 @@
                             <input id="company-contact-email" type="email" maxlength="160" />
                           </label>
                         </div>
+                      </section>
+
+                      <section class="masterdata-group-card company-related-workorders-card" data-company-tab-panel="work-orders">
+                        <div class="company-related-contracts-head">
+                          <div>
+                            <p class="section-kicker">Radni nalozi</p>
+                            <h4 class="subsection-title">Radni nalozi tvrtke</h4>
+                          </div>
+                          <span id="company-linked-workorders-count" class="work-order-activity-count is-compact">0</span>
+                        </div>
+                        <div id="company-linked-workorders-list" class="company-linked-contracts-list company-linked-workorders-list"></div>
+                        <p id="company-linked-workorders-empty" class="work-order-activity-empty is-compact">
+                          Još nema radnih naloga vezanih uz ovu tvrtku.
+                        </p>
                       </section>
 
                       <section class="masterdata-group-card company-periodics-card" data-company-tab-panel="periodics">
@@ -8850,6 +8875,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260525-company-contrast-v13"></script>
+    <script type="module" src="/src/main.js?v=20260525-company-overview-v14"></script>
   </body>
 </html>
