@@ -107000,7 +107000,7 @@ function buildWorkOrderPointDistribution(item = {}) {
       addAllocation(executor, "Teren", fieldPoints / executors.length, fieldSharePercent / executors.length);
     });
     completedPeople.forEach((person) => {
-      addAllocation(person, "Završetak", completionPoints / completedPeople.length, completionSharePercent / completedPeople.length);
+      addAllocation(person, "RN završio", completionPoints / completedPeople.length, completionSharePercent / completedPeople.length);
     });
   }
 
@@ -107036,13 +107036,19 @@ function createWorkOrderPointDistributionCard(item = {}) {
   const head = document.createElement("div");
   head.className = "work-executor-score-head";
   const headCopy = document.createElement("div");
-  const label = document.createElement("span");
-  label.textContent = "Ukupni težinski faktor";
+  headCopy.className = "work-executor-score-total";
   const total = document.createElement("strong");
   total.textContent = `${formatCompactDecimal(distribution.totalPoints)} b`;
-  headCopy.append(label, total);
-  const split = document.createElement("small");
-  split.textContent = `${distribution.fieldSharePercent}% teren · ${distribution.completionSharePercent}% završetak`;
+  headCopy.append(total);
+  const split = document.createElement("div");
+  split.className = "work-executor-score-split";
+  const fieldSplit = document.createElement("span");
+  fieldSplit.className = "is-field";
+  fieldSplit.textContent = `Teren ${distribution.fieldSharePercent}%`;
+  const completedSplit = document.createElement("span");
+  completedSplit.className = "is-completed";
+  completedSplit.textContent = `RN završio ${distribution.completionSharePercent}%`;
+  split.append(fieldSplit, completedSplit);
   head.append(headCopy, split);
   wrap.append(head);
 
@@ -107097,8 +107103,16 @@ function createWorkOrderPointDistributionCard(item = {}) {
     copy.className = "work-executor-score-copy";
     const title = document.createElement("strong");
     title.textContent = entry.name;
-    const roles = document.createElement("span");
-    roles.textContent = entry.roles.join(" + ");
+    const roles = document.createElement("div");
+    roles.className = "work-executor-score-roles";
+    entry.roles.forEach((role) => {
+      const rolePill = document.createElement("span");
+      rolePill.className = role === "Teren"
+        ? "is-field"
+        : "is-completed";
+      rolePill.textContent = role;
+      roles.append(rolePill);
+    });
     copy.append(title, roles);
 
     const value = document.createElement("div");
@@ -107127,8 +107141,8 @@ function createWorkOrderPointDistributionCard(item = {}) {
   const foot = document.createElement("div");
   foot.className = "work-executor-score-foot";
   const completedLabel = distribution.completedPeople.length > 0
-    ? `Završio/la: ${distribution.completedPeople.join(", ")}`
-    : "Završetak nije upisan";
+    ? `RN završio: ${distribution.completedPeople.join(", ")}`
+    : "RN završio nije upisan";
   foot.textContent = completedLabel;
   if (distribution.unallocatedPoints > 0.01) {
     const unallocated = document.createElement("span");
