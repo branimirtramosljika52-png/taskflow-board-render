@@ -57119,7 +57119,7 @@ body.is-signature-review-open::before {
   gap: 7px;
   min-width: 0;
   width: 100%;
-  padding: 10px;
+  padding: 8px;
   border: 1px solid rgba(185, 196, 226, 0.9);
   border-radius: 16px;
   background:
@@ -57139,28 +57139,20 @@ body.is-signature-review-open::before {
 .work-executor-score-total {
   display: grid;
   place-items: center;
-  min-width: 45px;
-  height: 32px;
-  padding: 0 10px;
+  min-width: 34px;
+  height: 26px;
+  padding: 0 8px;
   border: 1px solid rgba(91, 77, 255, 0.18);
-  border-radius: 12px;
+  border-radius: 10px;
   background:
     linear-gradient(135deg, rgba(91, 77, 255, 0.12), rgba(45, 212, 191, 0.08)),
     rgba(255, 255, 255, 0.82);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.88);
 }
 
-.work-executor-score-foot {
-  color: #667085;
-  font-size: 0.62rem;
-  font-weight: 850;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
 .work-executor-score-head strong {
   color: #0d1b4c;
-  font-size: 1.02rem;
+  font-size: 0.86rem;
   font-weight: 950;
   line-height: 1;
   white-space: nowrap;
@@ -57170,26 +57162,6 @@ body.is-signature-review-open::before {
   display: grid;
   gap: 6px;
   min-width: 0;
-}
-
-.work-executor-score-sources {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  min-width: 0;
-}
-
-.work-executor-score-sources span {
-  max-width: 100%;
-  overflow: hidden;
-  padding: 4px 7px;
-  border-radius: 999px;
-  background: rgba(15, 23, 42, 0.05);
-  color: #475569;
-  font-size: 0.61rem;
-  font-weight: 850;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .work-executor-score-row {
@@ -57282,29 +57254,9 @@ body.is-signature-review-open::before {
 
 .work-executor-score-value strong {
   color: #102062;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 950;
   white-space: nowrap;
-}
-
-.work-executor-score-value span {
-  color: #667085;
-  font-size: 0.62rem;
-  font-weight: 850;
-}
-
-.work-executor-score-foot {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding-top: 2px;
-  text-transform: none;
-  letter-spacing: 0;
-}
-
-.work-executor-score-foot span {
-  color: #b45309;
-  font-weight: 900;
 }
 
 .work-item-finance-cell {

@@ -107055,27 +107055,10 @@ function createWorkOrderPointDistributionCard(item = {}) {
   const headCopy = document.createElement("div");
   headCopy.className = "work-executor-score-total";
   const total = document.createElement("strong");
-  total.textContent = `${formatCompactDecimal(distribution.totalPoints)} b`;
+  total.textContent = formatCompactDecimal(distribution.totalPoints);
   headCopy.append(total);
   head.append(headCopy);
   wrap.append(head);
-
-  if (distribution.serviceRows.length > 0) {
-    const sources = document.createElement("div");
-    sources.className = "work-executor-score-sources";
-    distribution.serviceRows.slice(0, 3).forEach((row) => {
-      const source = document.createElement("span");
-      const label = row.service.serviceCode || row.service.name || "Usluga";
-      source.textContent = `${label}: ${formatCompactDecimal(row.factor)} x ${formatCompactDecimal(row.quantity)} = ${formatCompactDecimal(row.points)} b`;
-      sources.append(source);
-    });
-    if (distribution.serviceRows.length > 3) {
-      const more = document.createElement("span");
-      more.textContent = `+${distribution.serviceRows.length - 3} usluga`;
-      sources.append(more);
-    }
-    wrap.append(sources);
-  }
 
   if (distribution.totalPoints <= 0) {
     const empty = document.createElement("span");
@@ -107126,10 +107109,8 @@ function createWorkOrderPointDistributionCard(item = {}) {
     const value = document.createElement("div");
     value.className = "work-executor-score-value";
     const points = document.createElement("strong");
-    points.textContent = `${formatCompactDecimal(entry.points)} b`;
-    const percent = document.createElement("span");
-    percent.textContent = `${formatCompactDecimal(entry.percent, 1)}%`;
-    value.append(points, percent);
+    points.textContent = formatCompactDecimal(entry.points);
+    value.append(points);
 
     row.append(avatar, copy, value);
     if (index === 0) {
@@ -107145,19 +107126,6 @@ function createWorkOrderPointDistributionCard(item = {}) {
     list.append(more);
   }
   wrap.append(list);
-
-  const foot = document.createElement("div");
-  foot.className = "work-executor-score-foot";
-  const completedLabel = distribution.completedPeople.length > 0
-    ? `RN završio: ${distribution.completedPeople.join(", ")}`
-    : "RN završio nije upisan";
-  foot.textContent = completedLabel;
-  if (distribution.unallocatedPoints > 0.01) {
-    const unallocated = document.createElement("span");
-    unallocated.textContent = `Neraspoređeno ${formatCompactDecimal(distribution.unallocatedPoints)} b`;
-    foot.append(unallocated);
-  }
-  wrap.append(foot);
 
   return wrap;
 }
