@@ -2179,6 +2179,7 @@ async function generatePdfBufferForTemplate(template = {}, {
   placeholders = {},
   fileName = "",
   appendBlocks = [],
+  disableHtmlFallback = false,
 } = {}) {
   if (!template.referenceDocument) {
     throw new Error("Template još nema učitan HTML ili Word predložak.");
@@ -2205,6 +2206,7 @@ async function generatePdfBufferForTemplate(template = {}, {
       fileName: docxFileName,
       title: template.title || template.documentType || "Zapisnik",
       appendBlocks,
+      disableHtmlFallback,
     });
   }
 
@@ -2215,6 +2217,7 @@ async function buildPdfFromWordDocumentTemplate(referenceBuffer, placeholders = 
   fileName = "",
   title = "",
   appendBlocks = [],
+  disableHtmlFallback = false,
 } = {}) {
   const docxFileName = sanitizeGeneratedDocumentFileName(
     fileName || title || "zapisnik",
@@ -2224,7 +2227,22 @@ async function buildPdfFromWordDocumentTemplate(referenceBuffer, placeholders = 
     fileName: docxFileName,
     title: title || fileName || "Zapisnik",
     appendBlocks,
+    disableHtmlFallback,
   });
+}
+
+function isHandoverTemplateExportEntry(entry = {}) {
+  return String(entry?.exportKind || "").trim().toLowerCase() === "handover";
+}
+
+function assertHandoverUsesWordTemplate(entry = {}, template = {}) {
+  if (!isHandoverTemplateExportEntry(entry)) {
+    return;
+  }
+
+  if (entry?.forceRenderModel || !template?.referenceDocument || !isWordTemplateFile(template.referenceDocument)) {
+    throw new Error("Primopredajni zapisnik mora se generirati iz Word predloska (.docx/.dotx).");
+  }
 }
 
 function hasTemplateRenderPdfModel(value = null) {
@@ -2263,6 +2281,7 @@ async function generatePdfBuffersForTemplateEntries(entries = [], scopedSnapshot
       entry?.templateId,
       "Template nije pronaden.",
     );
+    assertHandoverUsesWordTemplate(entry, template);
     if (entry?.forceRenderModel && hasTemplateRenderPdfModel(entry?.renderModel)) {
       pdfBuffers[entryIndex] = await buildPdfFromRenderModel(entry.renderModel);
       continue;
@@ -2304,6 +2323,7 @@ async function generatePdfBuffersForTemplateEntries(entries = [], scopedSnapshot
         fileName: docxFileName,
         title: template.title || template.documentType || "Zapisnik",
         appendBlocks: entry?.appendBlocks ?? [],
+        disableHtmlFallback: isHandoverTemplateExportEntry(entry),
       });
       continue;
     }
@@ -2381,6 +2401,7 @@ async function generatePdfFileEntriesForTemplateEntries(entries = [], scopedSnap
       entry?.templateId,
       "Template nije pronaden.",
     );
+    assertHandoverUsesWordTemplate(entry, template);
     const fileName = ensureUniquePdfZipFileName(
       entry?.fileName || template.outputFileName || template.title || `zapisnik-${entryIndex + 1}`,
       usedNames,
@@ -2457,6 +2478,7 @@ async function generatePdfFileEntriesForTemplateEntries(entries = [], scopedSnap
             fileName: docxFileName,
             title: template.title || template.documentType || "Zapisnik",
             appendBlocks: entry?.appendBlocks ?? [],
+            disableHtmlFallback: isHandoverTemplateExportEntry(entry),
           }),
           entry,
           options,
@@ -2558,6 +2580,7 @@ async function generateTemplateDocumentFilesForEntries(entries = [], scopedSnaps
       entry?.templateId,
       "Template nije pronaden.",
     );
+    assertHandoverUsesWordTemplate(entry, template);
     const fallbackName = `zapisnik-${entryIndex + 1}`;
     const sourceName = entry?.fileName || template.outputFileName || template.title || fallbackName;
     const pdfFileName = ensureUniqueGeneratedDocumentFileName(sourceName, usedPdfNames, {
@@ -2671,6 +2694,9 @@ async function generateTemplateDocumentFilesForEntries(entries = [], scopedSnaps
           pdfBuffers[startIndex + offset] = buffer;
         });
       } catch (error) {
+        if (slice.some((item) => isHandoverTemplateExportEntry(item.bundle?.entry))) {
+          throw error;
+        }
         console.warn("LibreOffice Word -> PDF conversion failed, using SafeNexus HTML fallback for this chunk.", error);
         for (const [offset, item] of slice.entries()) {
           const wordPdfStartedAt = Date.now();
@@ -2721,6 +2747,10 @@ async function generateCombinedHtmlPdfForTemplateEntries(entries = [], scopedSna
       entry?.templateId,
       "Template nije pronaÄ‘en.",
     );
+
+    if (isHandoverTemplateExportEntry(entry)) {
+      return null;
+    }
 
     if (entry?.forceRenderModel) {
       return null;
@@ -3417,28 +3447,28 @@ async function buildWorkOrderPdfExportPayload(workOrder = {}, scopedSnapshot = {
       "RN template nije pronaden.",
     );
 
-    if (!template.referenceDocument || (!isHtmlTemplateFile(template.referenceDocument) && !isWordTemplateFile(template.referenceDocument))) {
-      throw new Error("RN template mora imati .html/.htm ili .docx/.dotx predlozak.");
+    if (!template.referenceDocument || !isWordTemplateFile(template.referenceDocument)) {
+      throw new Error("RN template mora biti Word predlozak (.docx/.dotx).");
     }
 
-    const referenceExtension = isWordTemplateFile(template.referenceDocument) ? "docx" : "html";
-
-    try {
-      const pdfBuffer = await withOperationTimeout(
-        generatePdfBufferForTemplate(template, {
-          placeholders: buildWorkOrderTemplatePlaceholderPayload(workOrder, scopedSnapshot),
+    const referenceDocument = await readStoredDocumentBuffer(template.referenceDocument);
+    const pdfBuffer = await withOperationTimeout(
+      buildPdfFromWordDocumentTemplate(
+        referenceDocument.buffer,
+        buildWorkOrderTemplatePlaceholderPayload(workOrder, scopedSnapshot),
+        {
           fileName: sanitizeGeneratedDocumentFileName(
             workOrder.workOrderNumber || workOrder.companyName || "radni-nalog",
-            { fallback: "radni-nalog", extension: referenceExtension },
+            { fallback: "radni-nalog", extension: "docx" },
           ),
-        }),
-        WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS,
-        "RN template PDF nije zavrsio na vrijeme.",
-      );
-      return { pdfBuffer, fileName };
-    } catch (error) {
-      console.warn("RN template PDF nije uspio, koristim standardni RN PDF.", error);
-    }
+          title: template.title || template.documentType || "Radni nalog",
+          disableHtmlFallback: true,
+        },
+      ),
+      WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS,
+      "RN template PDF nije zavrsio na vrijeme.",
+    );
+    return { pdfBuffer, fileName };
   }
 
   const pdfBuffer = await buildWorkOrderPdfBuffer(workOrder);
@@ -10029,12 +10059,14 @@ async function handleApiRequest(request, response, url) {
       const documentStampSettings = normalizeDocumentStampExportSettings(
         body.documentStampSettings || body.pdfStampSettings || body.stampSettings,
       );
+      assertHandoverUsesWordTemplate(body, template);
       const pdfBuffer = shouldUseFastTemplateRenderPdf(body) && !hasStoredTemplateReference
         ? await buildPdfFromRenderModel(body.renderModel)
         : await generatePdfBufferForTemplate(template, {
           placeholders: body.placeholders ?? {},
           fileName: body.fileName || template.outputFileName || template.title || "zapisnik.html",
           appendBlocks: body.appendBlocks ?? [],
+          disableHtmlFallback: isHandoverTemplateExportEntry(body),
         });
       const signedPdfBuffer = await finalizeGeneratedTemplatePdfBuffer(pdfBuffer, body, {
         signatureSettings,
@@ -10467,6 +10499,10 @@ async function handleApiRequest(request, response, url) {
       const templateId = String(body?.templateId ?? "").trim();
       const documents = await domainRepository.getWorkOrderDocuments(workOrderPdfDownloadMatch[1]);
       let document = findGeneratedWorkOrderPdfDocument(documents);
+
+      if (templateId && canManageWorkOrders(user)) {
+        document = await saveGeneratedWorkOrderPdfDocument(workOrderPdfDownloadMatch[1], workOrder, scopedSnapshot, user, templateId);
+      }
 
       if (!document && canManageWorkOrders(user)) {
         document = await saveGeneratedWorkOrderPdfDocument(workOrderPdfDownloadMatch[1], workOrder, scopedSnapshot, user, templateId);

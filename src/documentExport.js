@@ -3544,6 +3544,9 @@ export async function buildPdfFromTemplateBuffer(templateBuffer, placeholders = 
       options.documentStampSettings || options.stampSettings || options.pdfStampSettings,
     );
   } catch (error) {
+    if (options.disableHtmlFallback || options.strictWordPdf) {
+      throw error;
+    }
     console.warn("Word -> PDF conversion failed, using HTML PDF fallback.", error);
     const converted = await convertWordBufferToHtmlTemplate(generatedWord, {
       fileName: options.fileName || "zapisnik.docx",

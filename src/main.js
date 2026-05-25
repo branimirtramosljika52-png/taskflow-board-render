@@ -29704,10 +29704,19 @@ async function previewDocumentsLibraryEntry(entry = null) {
   }
 
   if (entry.previewType === "generated-pdf" && entry.exportPath) {
+    const requestBody = {};
     if (entry.sourceTarget?.kind === "work-order" && entry.sourceTarget?.record?.id) {
       await saveGeneratedWorkOrderPdf(entry.sourceTarget.record.id);
+      const templateId = getSelectedWorkOrderTemplateId("rn");
+      if (templateId) {
+        requestBody.templateId = templateId;
+      }
+      requestBody.signatureSettings = getPdfSignatureExportSettings();
     }
-    const { blob, fileName } = await apiBinaryRequest(entry.exportPath, { method: "POST" });
+    const { blob, fileName } = await apiBinaryRequest(entry.exportPath, {
+      method: "POST",
+      ...(Object.keys(requestBody).length > 0 ? { body: requestBody } : {}),
+    });
     previewBlobInNewTab(blob, fileName || entry.fileName || "dokument.pdf");
     return;
   }
@@ -29737,10 +29746,19 @@ async function downloadDocumentsLibraryEntry(entry = null) {
   }
 
   if (entry.previewType === "generated-pdf" && entry.exportPath) {
+    const requestBody = {};
     if (entry.sourceTarget?.kind === "work-order" && entry.sourceTarget?.record?.id) {
       await saveGeneratedWorkOrderPdf(entry.sourceTarget.record.id);
+      const templateId = getSelectedWorkOrderTemplateId("rn");
+      if (templateId) {
+        requestBody.templateId = templateId;
+      }
+      requestBody.signatureSettings = getPdfSignatureExportSettings();
     }
-    const { blob, fileName } = await apiBinaryRequest(entry.exportPath, { method: "POST" });
+    const { blob, fileName } = await apiBinaryRequest(entry.exportPath, {
+      method: "POST",
+      ...(Object.keys(requestBody).length > 0 ? { body: requestBody } : {}),
+    });
     triggerBlobDownload(blob, fileName || entry.fileName || "dokument.pdf");
     return;
   }
@@ -60529,13 +60547,16 @@ function buildDocumentTemplateRuntimeHandoverExportEntry(
   }
 
   const selectedHandoverTemplate = getSelectedWorkOrderTemplate("handover");
-  const exportTemplate = selectedHandoverTemplate || template;
+  if (!selectedHandoverTemplate?.id || getDocumentTemplateReferenceKind(selectedHandoverTemplate.referenceDocument) !== "word") {
+    throw new Error("Za primopredajni zapisnik odaberi Word predložak (.docx/.dotx) u Lista RN > Word predlošci.");
+  }
+
+  const exportTemplate = selectedHandoverTemplate;
   const runtimeTemplateId = getDocumentTemplateRuntimeTemplateId(exportTemplate);
   if (!runtimeTemplateId) {
     return null;
   }
 
-  const usesDedicatedTemplate = Boolean(selectedHandoverTemplate?.id);
   const workOrderNumber = String(handoverProtocol.workOrderNumber || workOrder.workOrderNumber || "").trim();
   const baseFileName = sanitizeDocumentTemplateFileName(
     `Primopredaja ${workOrderNumber || workOrder.id || "RN"}`,
@@ -60552,11 +60573,9 @@ function buildDocumentTemplateRuntimeHandoverExportEntry(
     templateId: runtimeTemplateId,
     workOrderId: String(workOrder.id || "").trim(),
     exportKind: "handover",
-    forceRenderModel: !usesDedicatedTemplate,
+    forceRenderModel: false,
     baseFileName,
-    templateReferenceKind: usesDedicatedTemplate
-      ? getDocumentTemplateReferenceKind(exportTemplate.referenceDocument)
-      : "native",
+    templateReferenceKind: "word",
     htmlFileName: `${baseFileName}.html`,
     pdfFileName: `${baseFileName}.pdf`,
     placeholders,
@@ -100282,7 +100301,7 @@ function getWorkOrderTemplateEntries(kind = "rn") {
     const title = normalizeLooseName(template.title || "");
     const documentType = normalizeLooseName(template.documentType || "");
     const referenceDocument = template.referenceDocument ?? {};
-    const hasSupportedReference = isDocumentTemplateHtmlReferenceDocument(referenceDocument) || isDocumentTemplateWordReferenceDocument(referenceDocument);
+    const hasSupportedReference = isDocumentTemplateWordReferenceDocument(referenceDocument);
     if (!hasSupportedReference) {
       return false;
     }
@@ -100293,12 +100312,9 @@ function getWorkOrderTemplateEntries(kind = "rn") {
         || title.includes("handover");
     }
 
-    return (isDocumentTemplateHtmlReferenceDocument(referenceDocument) || isDocumentTemplateWordReferenceDocument(referenceDocument))
-      && (
-        documentType.includes("radni nalog")
-        || title.includes("rn template")
-        || title.includes("radni nalog")
-      );
+    return documentType.includes("radni nalog")
+      || title.includes("rn template")
+      || title.includes("radni nalog");
   });
 }
 
@@ -100669,9 +100685,11 @@ async function saveGeneratedWorkOrderPdf(workOrderId = "", { refreshDocuments = 
   workOrderPdfSaveInFlight.add(normalizedId);
 
   try {
+    const templateId = getSelectedWorkOrderTemplateId("rn");
     await apiRequest(`/work-orders/${encodeURIComponent(normalizedId)}/save-pdf`, {
       method: "POST",
       body: {
+        ...(templateId ? { templateId } : {}),
         signatureSettings: getPdfSignatureExportSettings(),
       },
     });
@@ -100702,7 +100720,7 @@ function queueGeneratedWorkOrderPdfSave(workOrderId = "") {
   }, WORK_ORDER_PDF_AUTOSAVE_DELAY_MS));
 }
 
-async function downloadWorkOrderPdf(workOrder = {}, { saveFirst = false, useTemplate = false } = {}) {
+async function downloadWorkOrderPdf(workOrder = {}, { saveFirst = false, useTemplate = true } = {}) {
   const workOrderId = String(workOrder?.id || "").trim();
   if (!workOrderId) {
     return false;
