@@ -1459,7 +1459,7 @@ const VIEW_TO_SIDEBAR_GROUP = {
   todo: "home",
   notifications: "home",
   companies: "company",
-  locations: "locations",
+  locations: "company",
   management: "organisations",
   module: "home",
 };
@@ -1469,7 +1469,7 @@ const VIEW_TO_ALLOWED_SIDEBAR_GROUPS = {
   todo: ["home"],
   notifications: ["home"],
   companies: ["company"],
-  locations: ["locations"],
+  locations: ["company"],
   management: ["organisations"],
   module: ALL_SIDEBAR_GROUPS,
 };
@@ -1662,8 +1662,8 @@ const SIDEBAR_ITEM_CONFIG = {
   "add-company": { group: "company", view: "companies", focus: "form" },
   "client-portal": { group: "company", view: "module", module: "client-portal" },
   contract: { group: "company", view: "module", module: "contract" },
-  "list-location": { group: "locations", view: "locations", focus: "list" },
-  "add-location": { group: "locations", view: "locations", focus: "form" },
+  "list-location": { group: "company", view: "companies", focus: "list" },
+  "add-location": { group: "company", view: "companies", focus: "location-form" },
   documents: { group: "documents", view: "module", module: "documents" },
   tests: { group: "learning", view: "module", module: "tests" },
   "people-training": { group: "learning", view: "module", module: "people-training" },
@@ -5230,6 +5230,7 @@ const companyLinkedContractsCount = document.querySelector("#company-linked-cont
 const companyLinkedLocationsList = document.querySelector("#company-linked-locations-list");
 const companyLinkedLocationsEmpty = document.querySelector("#company-linked-locations-empty");
 const companyLinkedLocationsCount = document.querySelector("#company-linked-locations-count");
+const companyAddLocationButton = document.querySelector("#company-add-location");
 const companyClientPortalCard = document.querySelector("#company-client-portal-card");
 const companyClientUsersCount = document.querySelector("#company-client-users-count");
 const companyClientFirstNameInput = document.querySelector("#company-client-first-name");
@@ -21161,7 +21162,7 @@ function isSidebarGroupAccessible(groupName) {
   }
 
   if (groupName === "locations") {
-    return getCanViewLocations();
+    return false;
   }
 
   return ALL_SIDEBAR_GROUPS.includes(groupName);
@@ -21260,6 +21261,16 @@ function focusCompanyArea(target = "list") {
       }
 
       companyNameInput?.focus({ preventScroll: true });
+    }
+
+    if (target === "location-form") {
+      if (state.companies.length === 1) {
+        openLocationEditorForCompany(state.companies[0].id);
+      } else {
+        state.companyEditorActiveTab = "locations";
+        syncCompanyEditorTabs();
+        companiesSearchInput?.focus({ preventScroll: true });
+      }
     }
 
     workspaceViews.companies?.scrollIntoView({
@@ -44855,6 +44866,17 @@ function createCompanyIdentityCell(company, rowSnapshot = null) {
     createListLine(company.oib ? `OIB ${company.oib}` : "Bez OIB-a", "list-tertiary"),
   );
 
+  if (rowSnapshot) {
+    const metaRow = document.createElement("div");
+    metaRow.className = "list-meta-row company-list-structure-meta";
+    metaRow.append(
+      createMetaPill(`${rowSnapshot.locationCount || 0} lokacija`, rowSnapshot.locationCount ? "is-info" : "is-muted"),
+      createMetaPill(`${rowSnapshot.objectCount || 0} objekata`, rowSnapshot.objectCount ? "is-accent" : "is-muted"),
+      createMetaPill(`${rowSnapshot.workOrderCount || 0} RN`, rowSnapshot.workOrderCount ? "is-success" : "is-muted"),
+    );
+    copy.append(metaRow);
+  }
+
   stack.append(logo, copy);
   cell.append(stack);
   return cell;
@@ -45129,7 +45151,18 @@ function createCompanyListExpansion(rowSnapshot = {}) {
     }),
   );
 
-  shell.append(summary, createCompanyLocationTree(rowSnapshot.companyId, { compact: true }));
+  if (getCanCreateLocations()) {
+    const actions = document.createElement("div");
+    actions.className = "company-list-expansion-actions";
+    const addLocationButton = createActionButton("+ Lokacija", "card-button card-button-light", (event) => {
+      event.stopPropagation();
+      openLocationEditorForCompany(rowSnapshot.companyId);
+    });
+    actions.append(addLocationButton);
+    shell.append(summary, actions, createCompanyLocationTree(rowSnapshot.companyId, { compact: true }));
+  } else {
+    shell.append(summary, createCompanyLocationTree(rowSnapshot.companyId, { compact: true }));
+  }
   return shell;
 }
 
@@ -46885,7 +46918,8 @@ function syncCompanyEditorModal() {
 }
 
 function syncLocationEditorModal() {
-  if (state.locationEditorOpen && (state.activeView !== "locations" || !state.user)) {
+  const canHostLocationEditor = state.activeView === "locations" || state.activeView === "companies";
+  if (state.locationEditorOpen && (!canHostLocationEditor || !state.user)) {
     state.locationEditorOpen = false;
   }
 
@@ -46969,7 +47003,12 @@ function closeLocationEditor({ reset = false } = {}) {
 
 function dismissLocationEditor() {
   closeLocationEditor({ reset: true });
-  renderLocations();
+  if (state.activeView === "locations") {
+    renderLocations();
+  } else if (state.activeView === "companies") {
+    renderCompanies();
+    scheduleCompanyEditorRelatedData(companyIdInput?.value || "", { defer: false });
+  }
 }
 
 function scrollLegalFrameworkEditorToTop() {
@@ -78785,10 +78824,10 @@ function renderAuthState() {
       state.activeSidebarItem = "dashboard";
       state.activeSidebarGroup = "home";
     }
-    if (!getCanViewLocations() && state.activeView === "locations") {
-      state.activeView = "selfdash";
-      state.activeSidebarItem = "dashboard";
-      state.activeSidebarGroup = "home";
+    if (state.activeView === "locations") {
+      state.activeView = canViewCompanies ? "companies" : "selfdash";
+      state.activeSidebarItem = canViewCompanies ? "list-company" : "dashboard";
+      state.activeSidebarGroup = canViewCompanies ? "company" : "home";
     }
     if (!getCanManageClientPortal() && state.activeView === "module" && state.activeModuleItem === "client-portal") {
       state.activeView = "selfdash";
@@ -80226,7 +80265,7 @@ function closeTransientNavigationOverlays() {
 function activateLocationsRailShortcut(event) {
   event?.preventDefault();
   event?.stopImmediatePropagation();
-  activateSidebarGroup("locations", {
+  activateSidebarGroup("company", {
     navigate: true,
     expandSidebar: state.sidebarCollapsed,
   });
@@ -81279,6 +81318,7 @@ function syncCompanyEditorChrome() {
     companyDeleteButton.hidden = !companyIdInput?.value || !getCanDeleteCompany(companyIdInput?.value || "");
   }
 
+  syncCompanyLocationActions(companyIdInput?.value || "");
   renderCompanyWorkspaceDashboard(companyIdInput?.value || "");
 }
 
@@ -81363,6 +81403,20 @@ function getCompanyLinkedLocations(companyId = "") {
   return getLocationsForCompany(normalizedCompanyId);
 }
 
+function syncCompanyLocationActions(companyId = companyIdInput?.value || "") {
+  if (!companyAddLocationButton) {
+    return;
+  }
+
+  const normalizedCompanyId = String(companyId || "").trim();
+  const canCreate = getCanCreateLocations();
+  companyAddLocationButton.hidden = !canCreate;
+  companyAddLocationButton.disabled = !normalizedCompanyId || !canCreate;
+  companyAddLocationButton.title = normalizedCompanyId
+    ? "Dodaj lokaciju za ovu tvrtku"
+    : "Prvo spremi tvrtku pa dodaj lokaciju";
+}
+
 function getLocationLinkedWorkOrders(locationId = "") {
   const normalizedLocationId = String(locationId || "").trim();
   if (!normalizedLocationId) {
@@ -81391,20 +81445,21 @@ function openCompanyContextRecord(target = {}) {
     return;
   }
 
+  if (target.kind === "location") {
+    state.companyEditorActiveTab = "locations";
+    syncCompanyEditorTabs();
+    requestAnimationFrame(() => {
+      hydrateLocationForm(target.record, { preserveActiveView: true });
+    });
+    return;
+  }
+
   closeCompanyEditor({ reset: false });
 
   if (target.kind === "contract") {
     activateSidebarItem("contract", { expandSidebar: state.sidebarCollapsed });
     requestAnimationFrame(() => {
       hydrateContractForm(target.record);
-    });
-    return;
-  }
-
-  if (target.kind === "location") {
-    activateSidebarItem("list-location", { expandSidebar: state.sidebarCollapsed });
-    requestAnimationFrame(() => {
-      hydrateLocationForm(target.record);
     });
     return;
   }
@@ -81471,10 +81526,21 @@ function openWorkOrderTraceabilityTarget(kind = "company") {
       return;
     }
 
+    const company = getCompany(location.companyId);
     closeWorkOrderEditor({ reset: false });
-    activateSidebarItem("list-location", { expandSidebar: state.sidebarCollapsed });
+    activateSidebarItem("list-company", { expandSidebar: state.sidebarCollapsed });
     requestAnimationFrame(() => {
-      hydrateLocationForm(location);
+      if (company) {
+        hydrateCompanyForm(company);
+        state.companyEditorActiveTab = "locations";
+        syncCompanyEditorTabs();
+        requestAnimationFrame(() => {
+          hydrateLocationForm(location, { preserveActiveView: true });
+        });
+        return;
+      }
+
+      hydrateLocationForm(location, { preserveActiveView: true });
     });
   }
 }
@@ -81581,6 +81647,7 @@ function renderCompanyLinkedLocations(companyId = companyIdInput?.value || "") {
   const normalizedCompanyId = String(companyId || "").trim();
   const linkedLocations = getCompanyLinkedLocations(normalizedCompanyId);
   const linkedObjects = getCompanyLocationObjects(normalizedCompanyId);
+  syncCompanyLocationActions(normalizedCompanyId);
   companyLinkedLocationsCount.textContent = linkedObjects.length
     ? `${linkedLocations.length}/${linkedObjects.length}`
     : String(linkedLocations.length);
@@ -82564,6 +82631,41 @@ function resetLocationForm() {
   renderLocationEditorRelatedData("");
 }
 
+function openLocationEditorForCompany(companyId = companyIdInput?.value || "") {
+  const normalizedCompanyId = String(companyId || "").trim();
+  const company = getCompany(normalizedCompanyId);
+
+  if (!getCanCreateLocations()) {
+    setInlineMessage(companyError, "Nemate pravo dodavati lokacije.");
+    return;
+  }
+
+  if (!company) {
+    setInlineMessage(companyError, "Prvo spremi ili odaberi tvrtku za novu lokaciju.");
+    return;
+  }
+
+  resetLocationForm();
+  rebuildLocationCompanyOptions(normalizedCompanyId);
+  if (locationCompanyIdInput) {
+    locationCompanyIdInput.value = normalizedCompanyId;
+  }
+  syncCompanySelectionPreview(
+    normalizedCompanyId,
+    locationCompanyPreview,
+    locationCompanyPreviewLogo,
+    locationCompanyPreviewName,
+    locationCompanyPreviewMeta,
+  );
+  syncLocationCompanyActions();
+  state.companyEditorActiveTab = "locations";
+  syncCompanyEditorTabs();
+  openLocationEditor();
+  requestAnimationFrame(() => {
+    locationNameInput?.focus({ preventScroll: true });
+  });
+}
+
 function resetOrganizationForm() {
   organizationForm.reset();
   organizationIdInput.value = "";
@@ -82757,9 +82859,13 @@ function hydrateCompanyForm(company) {
   scheduleCompanyEditorRelatedData(company.id, { defer: true });
 }
 
-function hydrateLocationForm(location) {
-  state.activeView = "locations";
-  renderActiveView();
+function hydrateLocationForm(location, options = {}) {
+  const { preserveActiveView = false } = options;
+  const canStayInCompanyWorkspace = preserveActiveView && state.activeView === "companies";
+  if (!canStayInCompanyWorkspace) {
+    state.activeView = preserveActiveView ? "companies" : "locations";
+    renderActiveView();
+  }
   locationIdInput.value = location.id;
   rebuildLocationCompanyOptions(location.companyId);
   locationNameInput.value = location.name;
@@ -94125,7 +94231,7 @@ function renderActiveView() {
     state.companyEditorOpen = false;
   }
 
-  if (state.activeView !== "locations") {
+  if (state.activeView !== "locations" && state.activeView !== "companies") {
     state.locationEditorOpen = false;
   }
 
@@ -108687,7 +108793,7 @@ function getGeneralHelpTourSteps() {
     },
     {
       title: "Lijeva navigacija",
-      body: "Lijevo biraš grupe modula: Home, Operations, Company, Locations, Documents i Health And Safety. Aktivna stavka uvijek pokazuje gdje se nalaziš.",
+      body: "Lijevo biraš grupe modula: Home, Operations, Company, Documents i Health And Safety. Lokacije su sada dio Company radnog prostora.",
       target: "#app-sidebar",
       points: ["Klik na grupu otvara njezine module.", "Ako je sidebar minimiziran, vodič ga širi dok traje objašnjenje."],
       prepare: "general",
@@ -108934,17 +109040,10 @@ const HELP_TOUR_MENU_GROUPS = [
   {
     label: "Company",
     items: [
-      { kind: "list-company", label: "List Company", description: "Popis tvrtki, pretraga, statusi i povezani podaci." },
+      { kind: "list-company", label: "List Company", description: "Popis tvrtki, lokacije, objekti, pretraga i povezani podaci." },
       { kind: "add-company", label: "Add New Company", description: "Unos nove tvrtke, kontakti, portal i predlošci." },
       { kind: "client-portal", label: "Client Portal", description: "Pristupi klijenata po tvrtki i lokaciji." },
       { kind: "contract", label: "Contract", description: "Ugovori, aneksi, templatei i statusi." },
-    ],
-  },
-  {
-    label: "Locations",
-    items: [
-      { kind: "list-location", label: "List Location", description: "Popis lokacija, tvrtke, kontakti i povezani RN." },
-      { kind: "add-location", label: "Add New Location", description: "Unos lokacije, kontakti i klijentski pristupi." },
     ],
   },
   {
@@ -109272,38 +109371,38 @@ const MODULE_HELP_TOUR_DEFINITIONS = {
     points: ["Aneksi ostaju povezani s ugovorom.", "Status pomaže odvojiti aktivne, nacrte i arhivu."],
   },
   "list-location": {
-    navItem: "list-location",
-    title: "List Location",
-    body: "List Location prikazuje lokacije po tvrtki, regiji, kontaktima i povezanim radnim nalozima.",
-    target: "#locations-view",
-    primaryActionTarget: "#location-open-form",
-    primaryActionTitle: "Nova lokacija",
-    primaryActionBody: "Gumb otvara editor lokacije. Isti editor se koristi za uređivanje postojeće lokacije iz liste.",
-    filtersTarget: "#locations-view .companies-filters-block",
-    filtersBody: "Pretraga pronalazi lokacije po nazivu, tvrtki, regiji i kontaktu.",
-    listTarget: "#locations-body",
-    listBody: "Tablica lokacija je grupirani list view. Klik na red otvara kontakte, portal pristupe i povezane RN-ove.",
-    secondaryTarget: "#locations-helper",
-    secondaryTitle: "Veza s tvrtkom",
-    secondaryBody: "Lokacija uvijek pripada tvrtki i koristi se u RN-u, ponudama, client portalu i dokumentima.",
-    points: ["Lokacije pomažu precizno vezati rad na terenu.", "Pretraga je najbrži ulaz kada ih ima puno."],
+    navItem: "list-company",
+    title: "Lokacije u tvrtki",
+    body: "Lokacije su sada u Company radnom prostoru. Expand u listi tvrtki i tab Lokacije i objekti prikazuju sve adrese, objekte i povezane RN-ove.",
+    target: "#companies-view",
+    primaryActionTarget: "#companies-body",
+    primaryActionTitle: "Expand tvrtke",
+    primaryActionBody: "Otvaranjem tvrtke vidiš lokacije, objekte i RN-ove bez posebnog modula.",
+    filtersTarget: "#companies-view .companies-filters-block",
+    filtersBody: "Pretraga tvrtki pronalazi i nazive lokacija, regije, kontakte i objekte.",
+    listTarget: "#companies-body",
+    listBody: "Lista tvrtki prikazuje strukturu tvrtke, a expand drži sažetak lokacija i objekata.",
+    secondaryTarget: "#company-editor-panel",
+    secondaryTitle: "Tab lokacija",
+    secondaryBody: "U editoru tvrtke tab Lokacije i objekti otvara i dodaje lokacije za odabranu tvrtku.",
+    points: ["Lokacije ostaju vezane uz tvrtku.", "Novi unos radi iz konteksta tvrtke."],
   },
   "add-location": {
-    navItem: "add-location",
-    title: "Add New Location",
-    body: "Add New Location odmah otvara editor za unos nove lokacije.",
-    target: "#location-editor-panel",
-    primaryActionTarget: "#location-form",
-    primaryActionTitle: "Podaci lokacije",
-    primaryActionBody: "U editoru biraš tvrtku, naziv lokacije, adresu, regiju, kontakt podatke i napomene.",
-    filtersTarget: "#location-contacts-list",
-    filtersBody: "Kontakti lokacije ostaju odvojeni od glavnih podataka i mogu se koristiti u operativnim modulima.",
-    listTarget: "#location-linked-work-orders-list",
-    listBody: "Nakon spremanja lokacija može prikazati povezane radne naloge i client portal pristupe.",
-    secondaryTarget: "#location-client-users-list",
-    secondaryTitle: "Client portal",
-    secondaryBody: "Lokaciju možeš povezati s klijentskim korisnicima koji smiju vidjeti njezine dokumente.",
-    points: ["Ništa se ne sprema dok ne potvrdiš formu.", "Lokacija se kasnije bira u RN-u, ponudama i dokumentima."],
+    navItem: "list-company",
+    title: "Nova lokacija iz tvrtke",
+    body: "Nova lokacija se dodaje iz editora tvrtke, u tabu Lokacije i objekti.",
+    target: "#companies-view",
+    primaryActionTarget: "#company-add-location",
+    primaryActionTitle: "Dodaj lokaciju",
+    primaryActionBody: "Gumb je aktivan kada je tvrtka spremljena i otvara isti editor lokacije, već vezan na tu tvrtku.",
+    filtersTarget: "#company-linked-locations-list",
+    filtersBody: "Povezane lokacije ostaju u istom Company popupu.",
+    listTarget: "#company-linked-locations-list",
+    listBody: "Nakon spremanja lokacija se odmah vraća u pregled tvrtke.",
+    secondaryTarget: "#location-editor-panel",
+    secondaryTitle: "Editor lokacije",
+    secondaryBody: "Editor se otvara iznad tvrtke, pa ostaje jasno kojem klijentu lokacija pripada.",
+    points: ["Nema više odvojenog modula za lokacije.", "Lokacija se kasnije bira u RN-u, ponudama i dokumentima."],
   },
   documents: {
     navItem: "documents",
@@ -115504,6 +115603,11 @@ companyOpenFormButton?.addEventListener("click", () => {
   });
 });
 
+companyAddLocationButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  openLocationEditorForCompany(companyIdInput?.value || "");
+});
+
 companyEditorCloseButton?.addEventListener("click", () => {
   dismissCompanyEditor();
 });
@@ -115621,6 +115725,7 @@ locationForm.addEventListener("submit", (event) => {
   }
   const path = isEditing ? `/locations/${locationIdInput.value}` : "/locations";
   const method = isEditing ? "PATCH" : "POST";
+  const savedCompanyId = locationCompanyIdInput?.value || companyIdInput?.value || "";
 
   void runMutation(() => apiRequest(path, {
     method,
@@ -115628,6 +115733,12 @@ locationForm.addEventListener("submit", (event) => {
   }), locationError).then((success) => {
     if (success) {
       closeLocationEditor({ reset: true });
+      if (state.activeView === "companies") {
+        state.companyEditorActiveTab = "locations";
+        syncCompanyEditorTabs();
+        renderCompanies();
+        scheduleCompanyEditorRelatedData(savedCompanyId, { defer: false });
+      }
     }
   });
 });

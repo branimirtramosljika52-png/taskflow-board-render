@@ -5984,8 +5984,8 @@ body.is-location-editor-open {
 }
 
 .company-editor-panel.is-modal-open {
-  width: min(1460px, calc(100vw - 24px));
-  height: min(950px, calc(100dvh - 28px));
+  width: min(1680px, calc(100vw - 16px));
+  height: min(980px, calc(100dvh - 16px));
   top: 50%;
   transform: translate(-50%, -50%);
   z-index: 129;
@@ -6068,7 +6068,17 @@ body.is-location-editor-open {
 }
 
 .location-editor-panel.is-modal-open {
-  width: min(1120px, calc(100vw - 24px));
+  width: min(1220px, calc(100vw - 24px));
+  height: min(860px, calc(100dvh - 32px));
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 131;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.location-editor-backdrop {
+  z-index: 130;
 }
 
 .masterdata-editor-fixed-head {
@@ -6110,13 +6120,13 @@ body.is-location-editor-open {
 }
 
 .company-editor-body {
-  padding: 10px 18px 18px;
+  padding: 12px 20px 20px;
   overflow: hidden;
 }
 
 .company-editor-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 360px);
   gap: 16px;
   min-height: 0;
   height: 100%;
@@ -6415,6 +6425,22 @@ body.is-location-editor-open {
   gap: 12px;
 }
 
+.company-related-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.company-related-actions .card-button {
+  min-height: 34px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
 .company-related-contracts-head > div {
   display: grid;
   gap: 4px;
@@ -6462,14 +6488,25 @@ body.is-location-editor-open {
 }
 
 .company-location-tree-card {
+  position: relative;
   display: grid;
   gap: 10px;
-  padding: 12px;
-  border: 1px solid rgba(188, 204, 232, 0.76);
-  border-radius: 18px;
+  overflow: hidden;
+  padding: 14px;
+  border: 1px solid rgba(141, 113, 244, 0.28);
+  border-radius: 20px;
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(247, 250, 255, 0.96));
-  box-shadow: 0 12px 26px rgba(47, 58, 89, 0.06);
+    radial-gradient(circle at 0 0, rgba(124, 90, 255, 0.12), transparent 34%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.99), rgba(247, 250, 255, 0.97));
+  box-shadow: 0 16px 34px rgba(47, 58, 89, 0.08);
+}
+
+.company-location-tree-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: linear-gradient(180deg, #7c5aff, #25c2a0);
 }
 
 .company-location-tree-head {
@@ -6482,11 +6519,12 @@ body.is-location-editor-open {
 .company-location-tree-icon {
   display: inline-grid;
   place-items: center;
-  width: 38px;
-  height: 38px;
-  border-radius: 14px;
+  width: 42px;
+  height: 42px;
+  border-radius: 16px;
   color: #285ab8;
-  background: rgba(226, 238, 255, 0.96);
+  background: linear-gradient(135deg, rgba(226, 238, 255, 0.98), rgba(235, 228, 255, 0.98));
+  box-shadow: inset 0 0 0 1px rgba(124, 90, 255, 0.12);
 }
 
 .company-location-tree-icon svg {
@@ -6530,8 +6568,10 @@ body.is-location-editor-open {
   display: grid;
   grid-template-columns: minmax(180px, 1fr) minmax(220px, 1fr) minmax(180px, 0.8fr);
   gap: 10px;
-  padding-top: 10px;
+  padding: 10px;
   border-top: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.64);
 }
 
 .company-location-tree-objects,
@@ -24099,29 +24139,34 @@ body.is-resizing-work-order-column {
   width: auto;
   min-width: 100%;
   table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0 10px;
 }
 
 .companies-table tbody td {
-  border-bottom: 1px solid rgba(188, 205, 191, 0.68);
-  background: rgba(255, 255, 255, 0.95);
+  border-top: 1px solid rgba(190, 202, 226, 0.76);
+  border-bottom: 1px solid rgba(190, 202, 226, 0.76);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(249, 251, 255, 0.98));
+  box-shadow: 0 10px 28px rgba(47, 58, 89, 0.05);
 }
 
 .companies-table tbody tr + tr td {
-  border-top: 8px solid rgba(242, 247, 242, 0.95);
+  border-top-width: 1px;
 }
 
 .companies-table tbody td:first-child {
-  border-left: 1px solid rgba(188, 205, 191, 0.68);
-  border-radius: 14px 0 0 14px;
+  border-left: 1px solid rgba(190, 202, 226, 0.76);
+  border-radius: 18px 0 0 18px;
 }
 
 .companies-table tbody td:last-child {
-  border-right: 1px solid rgba(188, 205, 191, 0.68);
-  border-radius: 0 14px 14px 0;
+  border-right: 1px solid rgba(190, 202, 226, 0.76);
+  border-radius: 0 18px 18px 0;
 }
 
 .companies-table tbody tr:last-child td {
-  border-bottom: 1px solid rgba(188, 205, 191, 0.68);
+  border-bottom: 1px solid rgba(190, 202, 226, 0.76);
 }
 
 .companies-column-header {
@@ -24176,7 +24221,9 @@ body.is-resizing-companies-column .companies-column-resize-handle::before {
 
 .company-list-row[role="button"]:hover td,
 .company-list-row[role="button"]:focus-visible td {
-  background: #f8fbf8;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(246, 250, 255, 0.99));
+  box-shadow: 0 14px 32px rgba(67, 78, 124, 0.08);
 }
 
 .companies-table tbody tr.company-list-row.is-expanded td {
@@ -24195,9 +24242,9 @@ body.is-resizing-companies-column .companies-column-resize-handle::before {
 
 .companies-table tbody tr.company-list-expand-row td {
   padding: 0 12px 14px;
-  border-right: 1px solid rgba(188, 205, 191, 0.68);
-  border-bottom: 1px solid rgba(188, 205, 191, 0.68);
-  border-left: 1px solid rgba(188, 205, 191, 0.68);
+  border-right: 1px solid rgba(157, 176, 217, 0.72);
+  border-bottom: 1px solid rgba(157, 176, 217, 0.72);
+  border-left: 1px solid rgba(157, 176, 217, 0.72);
   border-radius: 0 0 18px 18px;
   background:
     linear-gradient(180deg, rgba(250, 247, 255, 0.96), rgba(247, 250, 255, 0.98));
@@ -24206,10 +24253,26 @@ body.is-resizing-companies-column .companies-column-resize-handle::before {
 .company-list-expansion {
   display: grid;
   gap: 12px;
-  padding: 12px;
-  border: 1px solid rgba(124, 90, 255, 0.12);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.72);
+  padding: 14px;
+  border: 1px solid rgba(124, 90, 255, 0.18);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at top left, rgba(124, 90, 255, 0.1), transparent 32%),
+    rgba(255, 255, 255, 0.78);
+}
+
+.company-list-expansion-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.company-list-expansion-actions .card-button {
+  min-height: 34px;
+  border-radius: 12px;
+  font-size: 0.78rem;
+  font-weight: 850;
 }
 
 .company-list-cell {
@@ -24257,6 +24320,10 @@ body.is-resizing-companies-column .companies-column-resize-handle::before {
   display: grid;
   gap: 5px;
   min-width: 0;
+}
+
+.company-list-structure-meta {
+  gap: 5px;
 }
 
 .company-contracts-cell {
