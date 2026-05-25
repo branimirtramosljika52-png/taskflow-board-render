@@ -107045,6 +107045,57 @@ function createWorkOrderExecutorsColumnRatio() {
   return ratio;
 }
 
+const WORK_ORDER_SCORE_SEGMENT_COLORS = Object.freeze([
+  "#5b4dff",
+  "#14b8a6",
+  "#f59e0b",
+  "#ec4899",
+  "#0ea5e9",
+]);
+
+function createWorkOrderScoreDistributionRail(distribution = {}) {
+  const totalPoints = Number(distribution.totalPoints);
+  const people = Array.isArray(distribution.people) ? distribution.people : [];
+  if (!Number.isFinite(totalPoints) || totalPoints <= 0 || people.length === 0) {
+    return null;
+  }
+
+  const rail = document.createElement("div");
+  rail.className = "work-executor-score-rail";
+  rail.setAttribute(
+    "aria-label",
+    people
+      .map((entry) => `${entry.name}: ${formatCompactDecimal(entry.points)}`)
+      .join(", "),
+  );
+
+  const visiblePeople = people.slice(0, 5);
+  visiblePeople.forEach((entry, index) => {
+    const segment = document.createElement("span");
+    segment.className = "work-executor-score-segment";
+    const share = Math.max(4, Math.min(100, (Number(entry.points) / totalPoints) * 100));
+    segment.style.setProperty("--score-share", `${share.toFixed(2)}%`);
+    segment.style.setProperty("--score-color", WORK_ORDER_SCORE_SEGMENT_COLORS[index % WORK_ORDER_SCORE_SEGMENT_COLORS.length]);
+    segment.title = `${entry.name}: ${formatCompactDecimal(entry.points)}`;
+    rail.append(segment);
+  });
+
+  if (people.length > visiblePeople.length) {
+    const morePoints = people
+      .slice(visiblePeople.length)
+      .reduce((sum, entry) => sum + (Number(entry.points) || 0), 0);
+    const more = document.createElement("span");
+    more.className = "work-executor-score-segment is-more";
+    const share = Math.max(4, Math.min(100, (morePoints / totalPoints) * 100));
+    more.style.setProperty("--score-share", `${share.toFixed(2)}%`);
+    more.style.setProperty("--score-color", "#94a3b8");
+    more.title = `Ostali: ${formatCompactDecimal(morePoints)}`;
+    rail.append(more);
+  }
+
+  return rail;
+}
+
 function createWorkOrderPointDistributionCard(item = {}) {
   const distribution = buildWorkOrderPointDistribution(item);
   const wrap = document.createElement("div");
@@ -107058,6 +107109,10 @@ function createWorkOrderPointDistributionCard(item = {}) {
   total.textContent = formatCompactDecimal(distribution.totalPoints);
   headCopy.append(total);
   head.append(headCopy);
+  const rail = createWorkOrderScoreDistributionRail(distribution);
+  if (rail) {
+    head.append(rail);
+  }
   wrap.append(head);
 
   if (distribution.totalPoints <= 0) {
