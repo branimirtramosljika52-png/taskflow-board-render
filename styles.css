@@ -5984,8 +5984,8 @@ body.is-location-editor-open {
 }
 
 .company-editor-panel.is-modal-open {
-  width: min(1780px, calc(100vw - 8px));
-  height: min(1040px, calc(100dvh - 8px));
+  width: min(1920px, calc(100vw - 2px));
+  height: min(1120px, calc(100dvh - 2px));
   top: 50%;
   transform: translate(-50%, -50%);
   z-index: 129;
@@ -6300,116 +6300,131 @@ body.is-location-editor-open {
   top: 0;
   z-index: 3;
   display: grid;
-  grid-template-columns: repeat(7, minmax(150px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(7, minmax(176px, 1fr));
+  gap: 12px;
   overflow-x: auto;
-  padding: 10px;
-  border: 1px solid rgba(209, 218, 236, 0.86);
-  border-radius: 24px;
+  padding: 12px;
+  border: 1px solid rgba(187, 198, 224, 0.98);
+  border-radius: 26px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 255, 0.94));
-  box-shadow: 0 18px 34px rgba(56, 68, 105, 0.09);
+    radial-gradient(circle at top left, rgba(124, 90, 255, 0.14), transparent 30%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(242, 246, 255, 0.96));
+  box-shadow: 0 22px 42px rgba(45, 56, 94, 0.13);
   scrollbar-width: thin;
 }
 
 .company-editor-tab {
   --company-tab-accent: #5b6ff1;
-  --company-tab-soft: rgba(91, 111, 241, 0.1);
-  --company-tab-border: rgba(91, 111, 241, 0.24);
+  --company-tab-soft: rgba(91, 111, 241, 0.18);
+  --company-tab-strong: rgba(91, 111, 241, 0.28);
+  --company-tab-border: rgba(91, 111, 241, 0.45);
   appearance: none;
   position: relative;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 11px;
+  gap: 13px;
   min-width: 0;
-  min-height: 82px;
-  padding: 12px;
+  min-height: 104px;
+  padding: 15px;
   overflow: hidden;
-  border: 1px solid rgba(209, 218, 236, 0.9);
-  border-radius: 18px;
+  border: 1.5px solid var(--company-tab-border);
+  border-radius: 22px;
   background:
-    radial-gradient(circle at top right, var(--company-tab-soft), transparent 52%),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.96));
+    radial-gradient(circle at top right, var(--company-tab-strong), transparent 48%),
+    radial-gradient(circle at bottom left, var(--company-tab-soft), transparent 58%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.99), rgba(245, 248, 255, 0.96));
   color: #59657a;
   font: inherit;
   font-size: 0.82rem;
   font-weight: 800;
   cursor: pointer;
   text-align: left;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.96);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.98),
+    0 14px 28px rgba(44, 53, 91, 0.08);
   transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
 }
 
 .company-editor-tab::after {
   content: "";
   position: absolute;
-  inset: auto 12px 8px 12px;
-  height: 3px;
+  inset: auto 14px 10px 14px;
+  height: 5px;
   border-radius: 999px;
   background: var(--company-tab-accent);
-  opacity: 0;
-  transform: scaleX(0.42);
+  opacity: 0.22;
+  transform: scaleX(0.52);
   transform-origin: left center;
   transition: opacity 0.18s ease, transform 0.18s ease;
 }
 
 .company-editor-tab[data-company-tab-tone="overview"] {
-  --company-tab-accent: #3b6df6;
-  --company-tab-soft: rgba(59, 109, 246, 0.12);
-  --company-tab-border: rgba(59, 109, 246, 0.34);
+  --company-tab-accent: #2457e8;
+  --company-tab-soft: rgba(36, 87, 232, 0.2);
+  --company-tab-strong: rgba(36, 87, 232, 0.32);
+  --company-tab-border: rgba(36, 87, 232, 0.5);
 }
 
 .company-editor-tab[data-company-tab-tone="locations"] {
-  --company-tab-accent: #159c73;
-  --company-tab-soft: rgba(21, 156, 115, 0.12);
-  --company-tab-border: rgba(21, 156, 115, 0.34);
+  --company-tab-accent: #07815f;
+  --company-tab-soft: rgba(7, 129, 95, 0.2);
+  --company-tab-strong: rgba(7, 129, 95, 0.32);
+  --company-tab-border: rgba(7, 129, 95, 0.5);
 }
 
 .company-editor-tab[data-company-tab-tone="periodics"] {
-  --company-tab-accent: #dc3f7d;
-  --company-tab-soft: rgba(220, 63, 125, 0.12);
-  --company-tab-border: rgba(220, 63, 125, 0.34);
+  --company-tab-accent: #d51f6f;
+  --company-tab-soft: rgba(213, 31, 111, 0.2);
+  --company-tab-strong: rgba(213, 31, 111, 0.32);
+  --company-tab-border: rgba(213, 31, 111, 0.52);
 }
 
 .company-editor-tab[data-company-tab-tone="contracts"] {
-  --company-tab-accent: #b06908;
-  --company-tab-soft: rgba(245, 158, 11, 0.14);
-  --company-tab-border: rgba(176, 105, 8, 0.34);
+  --company-tab-accent: #a45400;
+  --company-tab-soft: rgba(164, 84, 0, 0.2);
+  --company-tab-strong: rgba(245, 158, 11, 0.34);
+  --company-tab-border: rgba(164, 84, 0, 0.52);
 }
 
 .company-editor-tab[data-company-tab-tone="portal"] {
-  --company-tab-accent: #1d7b8f;
-  --company-tab-soft: rgba(29, 123, 143, 0.12);
-  --company-tab-border: rgba(29, 123, 143, 0.32);
+  --company-tab-accent: #06758f;
+  --company-tab-soft: rgba(6, 117, 143, 0.2);
+  --company-tab-strong: rgba(6, 117, 143, 0.32);
+  --company-tab-border: rgba(6, 117, 143, 0.5);
 }
 
 .company-editor-tab[data-company-tab-tone="documents"] {
-  --company-tab-accent: #7e3af2;
-  --company-tab-soft: rgba(126, 58, 242, 0.12);
-  --company-tab-border: rgba(126, 58, 242, 0.32);
+  --company-tab-accent: #6f2de2;
+  --company-tab-soft: rgba(111, 45, 226, 0.2);
+  --company-tab-strong: rgba(111, 45, 226, 0.32);
+  --company-tab-border: rgba(111, 45, 226, 0.52);
 }
 
 .company-editor-tab[data-company-tab-tone="settings"] {
-  --company-tab-accent: #64748b;
-  --company-tab-soft: rgba(100, 116, 139, 0.12);
-  --company-tab-border: rgba(100, 116, 139, 0.3);
+  --company-tab-accent: #475569;
+  --company-tab-soft: rgba(71, 85, 105, 0.18);
+  --company-tab-strong: rgba(71, 85, 105, 0.28);
+  --company-tab-border: rgba(71, 85, 105, 0.45);
 }
 
 .company-editor-tab-icon {
   display: inline-grid;
   place-items: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 15px;
+  width: 54px;
+  height: 54px;
+  border-radius: 19px;
   color: var(--company-tab-accent);
-  background: var(--company-tab-soft);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.94), var(--company-tab-soft));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.86),
+    0 12px 22px rgba(48, 59, 98, 0.12);
 }
 
 .company-editor-tab-icon svg {
-  width: 19px;
-  height: 19px;
+  width: 23px;
+  height: 23px;
 }
 
 .company-editor-tab-copy {
@@ -6420,8 +6435,8 @@ body.is-location-editor-open {
 
 .company-editor-tab-label {
   overflow: hidden;
-  color: #5f6b80;
-  font-size: 0.66rem;
+  color: #364153;
+  font-size: 0.72rem;
   font-weight: 900;
   letter-spacing: 0;
   line-height: 1.2;
@@ -6432,8 +6447,9 @@ body.is-location-editor-open {
 
 .company-editor-tab strong {
   overflow: hidden;
-  color: #162033;
-  font-size: 1.04rem;
+  color: #0f172a;
+  font-size: 1.24rem;
+  font-weight: 950;
   line-height: 1.12;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -6441,9 +6457,9 @@ body.is-location-editor-open {
 
 .company-editor-tab small {
   overflow: hidden;
-  color: #6b768b;
-  font-size: 0.74rem;
-  font-weight: 700;
+  color: #40506a;
+  font-size: 0.8rem;
+  font-weight: 800;
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -6453,10 +6469,13 @@ body.is-location-editor-open {
 .company-editor-tab.is-active {
   border-color: var(--company-tab-border);
   background:
-    radial-gradient(circle at top right, var(--company-tab-soft), transparent 46%),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.99), rgba(248, 250, 255, 0.98));
+    radial-gradient(circle at top right, var(--company-tab-strong), transparent 44%),
+    radial-gradient(circle at bottom left, var(--company-tab-soft), transparent 56%),
+    linear-gradient(135deg, rgba(255, 255, 255, 1), rgba(242, 247, 255, 0.98));
   color: #172033;
-  box-shadow: 0 16px 30px rgba(74, 91, 145, 0.12);
+  box-shadow:
+    0 18px 36px rgba(50, 62, 105, 0.18),
+    0 0 0 3px var(--company-tab-soft);
   transform: translateY(-1px);
 }
 
@@ -6468,7 +6487,11 @@ body.is-location-editor-open {
 
 .company-editor-tab.is-active .company-editor-tab-icon {
   color: #ffffff;
-  background: var(--company-tab-accent);
+  background:
+    linear-gradient(135deg, var(--company-tab-accent), color-mix(in srgb, var(--company-tab-accent) 74%, #111827));
+  box-shadow:
+    0 16px 28px var(--company-tab-soft),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.25);
 }
 
 [data-company-tab-panel].is-company-tab-hidden {
@@ -6593,29 +6616,31 @@ body.is-location-editor-open {
 .company-periodics-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  gap: 12px;
 }
 
 .company-periodics-summary-card {
   position: relative;
   display: grid;
-  gap: 6px;
-  min-height: 78px;
+  gap: 8px;
+  min-height: 96px;
   overflow: hidden;
-  padding: 13px 14px;
-  border: 1px solid rgba(211, 220, 238, 0.9);
-  border-radius: 18px;
+  padding: 16px 18px;
+  border: 1.5px solid rgba(185, 198, 226, 0.98);
+  border-radius: 22px;
   background:
-    radial-gradient(circle at top right, rgba(124, 90, 255, 0.08), transparent 48%),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.96));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.96);
+    radial-gradient(circle at top right, rgba(124, 90, 255, 0.16), transparent 46%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.99), rgba(243, 247, 255, 0.96));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.98),
+    0 14px 28px rgba(47, 58, 89, 0.08);
 }
 
 .company-periodics-summary-card::before {
   content: "";
   position: absolute;
   inset: 0 auto 0 0;
-  width: 4px;
+  width: 6px;
   background: #64748b;
 }
 
@@ -6636,8 +6661,8 @@ body.is-location-editor-open {
 }
 
 .company-periodics-summary-card span {
-  color: #64748b;
-  font-size: 0.68rem;
+  color: #344054;
+  font-size: 0.74rem;
   font-weight: 900;
   letter-spacing: 0;
   line-height: 1.2;
@@ -6645,8 +6670,8 @@ body.is-location-editor-open {
 }
 
 .company-periodics-summary-card strong {
-  color: #172033;
-  font-size: 1.2rem;
+  color: #0f172a;
+  font-size: 1.45rem;
   line-height: 1;
 }
 
@@ -8883,9 +8908,10 @@ body.is-location-editor-open {
   }
 
   .company-editor-panel.is-modal-open {
-    top: 10px;
+    top: 4px;
     transform: translateX(-50%);
-    height: calc(100vh - 20px);
+    width: calc(100vw - 8px);
+    height: calc(100vh - 8px);
   }
 
   .offer-item-metrics {
@@ -9156,9 +9182,10 @@ body.is-location-editor-open {
   }
 
   .company-editor-panel.is-modal-open {
-    top: 8px;
+    top: 4px;
     transform: translateX(-50%);
-    height: calc(100vh - 16px);
+    width: calc(100vw - 8px);
+    height: calc(100vh - 8px);
   }
 
   .masterdata-panel-actions {
