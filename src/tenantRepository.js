@@ -2348,6 +2348,8 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
         criticalDays: 7,
         warningDays: 60,
         workOrderDefaultDueDays: "",
+        workOrderFieldSharePercent: 80,
+        workOrderCompletionSharePercent: 20,
       };
       const settingsEntry = (rawSnapshot.periodicsVisualSettings ?? []).find((item) => (
         String(item.organizationId) === String(organizationId)
@@ -2362,11 +2364,19 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       const warningDaysRaw = Number.isFinite(Number(settingsEntry.warningDays))
         ? Math.max(1, Math.min(365, Math.round(Number(settingsEntry.warningDays))))
         : defaults.warningDays;
+      const fieldSharePercent = Number.isFinite(Number(settingsEntry.workOrderFieldSharePercent))
+        ? Math.max(0, Math.min(100, Math.round(Number(settingsEntry.workOrderFieldSharePercent))))
+        : (Number.isFinite(Number(settingsEntry.workOrderCompletionSharePercent))
+          ? 100 - Math.max(0, Math.min(100, Math.round(Number(settingsEntry.workOrderCompletionSharePercent))))
+          : defaults.workOrderFieldSharePercent);
+      const normalizedFieldSharePercent = Math.max(0, Math.min(100, Math.round(fieldSharePercent)));
 
       return {
         criticalDays,
         warningDays: Math.max(criticalDays, warningDaysRaw),
         workOrderDefaultDueDays: String(settingsEntry.workOrderDefaultDueDays ?? "").trim(),
+        workOrderFieldSharePercent: normalizedFieldSharePercent,
+        workOrderCompletionSharePercent: 100 - normalizedFieldSharePercent,
       };
     })(),
     appCapabilities: (() => {

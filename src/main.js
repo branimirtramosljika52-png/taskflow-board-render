@@ -717,7 +717,6 @@ const MEASUREMENT_EQUIPMENT_SORT_OPTIONS = Object.freeze([
 const MEASUREMENT_EQUIPMENT_COMMENT_NOTE_PREFIX = "[KOMENTAR]";
 const DEFAULT_OFFER_NOTE = "Ponuda vrijedi 30 dana, rok plaćanja 30 dana od slanja računa.";
 const DEFAULT_PURCHASE_ORDER_NOTE = "";
-const OFFER_HTML_TEMPLATE_ACCEPT_LABEL = ".html,.htm,text/html";
 const OFFER_TEMPLATE_ACCEPT_LABEL = ".docx,.dotx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.wordprocessingml.template";
 const OFFER_TEMPLATE_PLACEHOLDER_DEFINITIONS = Object.freeze([
   Object.freeze({ key: "OFFER_NUMBER", label: "Broj ponude", description: "Generirani broj ponude nakon spremanja." }),
@@ -737,8 +736,8 @@ const OFFER_TEMPLATE_PLACEHOLDER_DEFINITIONS = Object.freeze([
   Object.freeze({ key: "PREPARED_BY", label: "Izradio", description: "Alias za osobu koja je izradila ponudu." }),
   Object.freeze({ key: "SERVICE_LINE", label: "Vrsta ponude", description: "Tip ponude ili glavna vrsta usluge za ponudu." }),
   Object.freeze({ key: "OFFER_TYPE", label: "Vrsta ponude", description: "Alias za vrstu ponude, za predloške gdje želiš odvojeno ime placeholdera." }),
-  Object.freeze({ key: "OFFER_TEXT_1", label: "Tekst ponude 1", description: "Prvi slobodni tekst za zakone, obuhvat, uvjete ili posebni dio HTML predloška." }),
-  Object.freeze({ key: "OFFER_TEXT_2", label: "Tekst ponude 2", description: "Drugi slobodni tekst za dodatne uvjete ili posebni dio HTML predloška." }),
+  Object.freeze({ key: "OFFER_TEXT_1", label: "Tekst ponude 1", description: "Prvi slobodni tekst za zakone, obuhvat, uvjete ili posebni dio Word predloška." }),
+  Object.freeze({ key: "OFFER_TEXT_2", label: "Tekst ponude 2", description: "Drugi slobodni tekst za dodatne uvjete ili posebni dio Word predloška." }),
   Object.freeze({ key: "ITEMS_TABLE", label: "Tablica stavki", description: "Sve stavke ponude s količinama, razradom i iznosima." }),
   Object.freeze({ key: "MONTHLY_FEES_TABLE", label: "Mjesečne naknade", description: "Posebna tablica samo za mjesečni/fiksni dio ponude." }),
   Object.freeze({ key: "SERVICE_PRICING_TABLE", label: "Cjenik usluga", description: "Posebna tablica samo za dodatne usluge i razradu po zapisniku ili mjernim mjestima." }),
@@ -861,14 +860,14 @@ const COMMERCIAL_DOCUMENT_MODULE_CONFIG = Object.freeze({
     submitLabel: "Spremi ponudu",
     deleteConfirmLabel: "Obrisati ovu ponudu?",
     templateKicker: "Template",
-    templateTitle: "HTML template za ponude",
-    templateWordTitle: "Aktivni HTML predložak",
-    templatePlaceholderTitle: "Tokeni za HTML",
-    templateCopy: "HTML predložak služi za preview ponude, a PDF se radi najbržim native rendererom bez čekanja browsera.",
+    templateTitle: "Word template za ponude",
+    templateWordTitle: "Aktivni Word predložak",
+    templatePlaceholderTitle: "Tokeni za Word",
+    templateCopy: "Klikni placeholder da ga kopiraš u Word predložak ponude. PDF se generira iz tog Word dokumenta.",
     templatePlaceholderDocTitle: "SafeNexus · Offer placeholderi",
     templatePlaceholderDocName: "safe-nexus-offer-placeholderi",
-    templateEmptyText: "Ugrađeni HTML predložak Ponuda v1.0.0 je aktivan.",
-    templateRemoveConfirm: "Maknuti ručno učitani HTML predložak za ponude?",
+    templateEmptyText: "Još nema učitanog Word predloška za ponude.",
+    templateRemoveConfirm: "Maknuti Word predložak za ponude?",
     numberFallback: "Bez broja",
     untitledLabel: "Nova ponuda",
     noContactLabel: "Bez odabranog kontakta",
@@ -877,8 +876,8 @@ const COMMERCIAL_DOCUMENT_MODULE_CONFIG = Object.freeze({
     emailSubjectLabel: "Naslov emaila",
     emailMessageLabel: "Poruka emaila",
     emailSuccessLabel: "Ponuda je poslana na",
-    previewButtonLabel: "Preview HTML ponude",
-    downloadButtonLabel: "Brzi PDF",
+    previewButtonLabel: "Preview PDF ponude",
+    downloadButtonLabel: "Preuzmi PDF",
     emailButtonLabel: "Pošalji email",
   }),
   "purchase-orders": Object.freeze({
@@ -1065,6 +1064,8 @@ const DEFAULT_PERIODICS_VISUAL_SETTINGS = Object.freeze({
   criticalDays: 7,
   warningDays: 60,
   workOrderDefaultDueDays: "",
+  workOrderFieldSharePercent: 80,
+  workOrderCompletionSharePercent: 20,
 });
 const WORK_ORDER_SERVICE_PROGRESS_OPTIONS = Object.freeze([
   { value: "pending", label: "Nije završeno", tone: "pending" },
@@ -3281,6 +3282,9 @@ const settingsVehicleTireRepeatDaysInput = document.querySelector("#settings-veh
 const settingsPeriodicsCriticalDaysInput = document.querySelector("#settings-periodics-critical-days");
 const settingsPeriodicsWarningDaysInput = document.querySelector("#settings-periodics-warning-days");
 const settingsWorkOrderDefaultDueDaysInput = document.querySelector("#settings-work-order-default-due-days");
+const settingsWorkOrderFieldShareInput = document.querySelector("#settings-work-order-field-share");
+const settingsWorkOrderCompletionShareInput = document.querySelector("#settings-work-order-completion-share");
+const settingsWorkOrderPointsPreview = document.querySelector("#settings-work-order-points-preview");
 const settingsSaveAllButton = document.querySelector("#settings-save-all");
 const settingsOrganizationLogoDataUrlInput = document.querySelector("#settings-organization-logo-data-url");
 const settingsOrganizationLogoFileInput = document.querySelector("#settings-organization-logo-file");
@@ -3305,6 +3309,7 @@ const settingsSafetyAuthorizationNotificationsFeedback = document.querySelector(
 const settingsAbsenceNotificationsFeedback = document.querySelector("#settings-absence-notifications-feedback");
 const settingsVehicleNotificationsFeedback = document.querySelector("#settings-vehicle-notifications-feedback");
 const settingsPeriodicsVisualFeedback = document.querySelector("#settings-periodics-visual-feedback");
+const settingsWorkOrderPointsFeedback = document.querySelector("#settings-work-order-points-feedback");
 const documentsSearchInput = document.querySelector("#documents-search");
 const documentsFilterKindInput = document.querySelector("#documents-filter-kind");
 const documentsRefreshButton = document.querySelector("#documents-refresh");
@@ -7877,6 +7882,14 @@ function normalizeOptionalDayValue(value, { min = 0, max = 365 } = {}) {
   return String(Math.max(min, Math.min(max, Math.round(numeric))));
 }
 
+function normalizePercentValue(value, fallback = 0, { min = 0, max = 100 } = {}) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return Math.max(min, Math.min(max, Math.round(Number(fallback) || 0)));
+  }
+  return Math.max(min, Math.min(max, Math.round(numeric)));
+}
+
 function normalizeMeasurementEquipmentNotificationSettings(value = {}) {
   const source = value && typeof value === "object"
     ? value
@@ -7995,6 +8008,26 @@ function normalizePeriodicsVisualSettings(value = {}) {
     { min: 1, max: 365 },
   );
   const warningDays = Math.max(criticalDays, warningDaysRaw);
+  const hasFieldShare = Object.prototype.hasOwnProperty.call(source, "workOrderFieldSharePercent")
+    || Object.prototype.hasOwnProperty.call(source, "fieldSharePercent")
+    || Object.prototype.hasOwnProperty.call(source, "fieldPercent")
+    || Object.prototype.hasOwnProperty.call(source, "terrainPercent");
+  const hasCompletionShare = Object.prototype.hasOwnProperty.call(source, "workOrderCompletionSharePercent")
+    || Object.prototype.hasOwnProperty.call(source, "completionSharePercent")
+    || Object.prototype.hasOwnProperty.call(source, "completionPercent")
+    || Object.prototype.hasOwnProperty.call(source, "finishedPercent");
+  const fieldSharePercent = hasFieldShare
+    ? normalizePercentValue(
+      source.workOrderFieldSharePercent ?? source.fieldSharePercent ?? source.fieldPercent ?? source.terrainPercent,
+      fallback.workOrderFieldSharePercent,
+    )
+    : (hasCompletionShare
+      ? 100 - normalizePercentValue(
+        source.workOrderCompletionSharePercent ?? source.completionSharePercent ?? source.completionPercent ?? source.finishedPercent,
+        fallback.workOrderCompletionSharePercent,
+      )
+      : fallback.workOrderFieldSharePercent);
+  const normalizedFieldSharePercent = normalizePercentValue(fieldSharePercent, fallback.workOrderFieldSharePercent);
   return {
     criticalDays,
     warningDays,
@@ -8002,6 +8035,8 @@ function normalizePeriodicsVisualSettings(value = {}) {
       source.workOrderDefaultDueDays ?? source.workOrderDueDays ?? source.defaultWorkOrderDueDays,
       { min: 0, max: 365 },
     ),
+    workOrderFieldSharePercent: normalizedFieldSharePercent,
+    workOrderCompletionSharePercent: 100 - normalizedFieldSharePercent,
   };
 }
 
@@ -30003,6 +30038,74 @@ function syncSettingsOrganizationLogo() {
   }
 }
 
+function formatCompactDecimal(value = 0, maximumFractionDigits = 2) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return "0";
+  }
+  return new Intl.NumberFormat("hr-HR", {
+    maximumFractionDigits,
+  }).format(numeric);
+}
+
+function renderSettingsWorkOrderPointsPreview(settings = getPeriodicsVisualSettings()) {
+  if (!settingsWorkOrderPointsPreview) {
+    return;
+  }
+
+  const fieldShare = normalizePercentValue(
+    settings.workOrderFieldSharePercent,
+    DEFAULT_PERIODICS_VISUAL_SETTINGS.workOrderFieldSharePercent,
+  );
+  const completionShare = 100 - fieldShare;
+  const totalPoints = 10;
+  const sampleFieldCount = 2;
+  const fieldPointsPerPerson = (totalPoints * (fieldShare / 100)) / sampleFieldCount;
+  const completionPoints = totalPoints * (completionShare / 100);
+  settingsWorkOrderPointsPreview.innerHTML = `
+    <div>
+      <span>Ukupni faktor</span>
+      <strong>${formatCompactDecimal(totalPoints)} b</strong>
+    </div>
+    <div>
+      <span>Teren</span>
+      <strong>${fieldShare}%</strong>
+      <small>2 osobe · ${formatCompactDecimal(fieldPointsPerPerson)} b po osobi</small>
+    </div>
+    <div>
+      <span>Završetak</span>
+      <strong>${completionShare}%</strong>
+      <small>1 osoba · ${formatCompactDecimal(completionPoints)} b</small>
+    </div>
+  `;
+}
+
+function syncSettingsWorkOrderPointShareInputs(changedInput = null) {
+  const fallback = getPeriodicsVisualSettings();
+  const fieldInput = settingsWorkOrderFieldShareInput;
+  const completionInput = settingsWorkOrderCompletionShareInput;
+
+  if (!fieldInput || !completionInput) {
+    renderSettingsWorkOrderPointsPreview(fallback);
+    return;
+  }
+
+  if (changedInput === completionInput) {
+    const completionShare = normalizePercentValue(completionInput.value, fallback.workOrderCompletionSharePercent);
+    completionInput.value = String(completionShare);
+    fieldInput.value = String(100 - completionShare);
+  } else {
+    const fieldShare = normalizePercentValue(fieldInput.value, fallback.workOrderFieldSharePercent);
+    fieldInput.value = String(fieldShare);
+    completionInput.value = String(100 - fieldShare);
+  }
+
+  renderSettingsWorkOrderPointsPreview({
+    workOrderFieldSharePercent: fieldInput.value,
+    workOrderCompletionSharePercent: completionInput.value,
+  });
+}
+
 function renderSettingsModule() {
   if (!settingsModule) {
     return;
@@ -30109,6 +30212,22 @@ function renderSettingsModule() {
     settingsWorkOrderDefaultDueDaysInput.disabled = !canManageSettings;
   }
 
+  if (settingsWorkOrderFieldShareInput) {
+    if (document.activeElement !== settingsWorkOrderFieldShareInput) {
+      settingsWorkOrderFieldShareInput.value = String(periodicsVisualSettings.workOrderFieldSharePercent);
+    }
+    settingsWorkOrderFieldShareInput.disabled = !canManageSettings;
+  }
+
+  if (settingsWorkOrderCompletionShareInput) {
+    if (document.activeElement !== settingsWorkOrderCompletionShareInput) {
+      settingsWorkOrderCompletionShareInput.value = String(periodicsVisualSettings.workOrderCompletionSharePercent);
+    }
+    settingsWorkOrderCompletionShareInput.disabled = !canManageSettings;
+  }
+
+  renderSettingsWorkOrderPointsPreview(periodicsVisualSettings);
+
   if (settingsSaveAllButton) {
     settingsSaveAllButton.disabled = !canManageSettings;
     settingsSaveAllButton.hidden = !canManageSettings;
@@ -30121,6 +30240,7 @@ function renderSettingsModule() {
     settingsAbsenceNotificationsFeedback,
     settingsVehicleNotificationsFeedback,
     settingsPeriodicsVisualFeedback,
+    settingsWorkOrderPointsFeedback,
   ].forEach((feedbackNode) => {
     if (!feedbackNode) {
       return;
@@ -30414,6 +30534,11 @@ async function savePeriodicsVisualSettings(options = {}) {
     settingsWorkOrderDefaultDueDaysInput?.value,
     { min: 0, max: 365 },
   );
+  const workOrderFieldSharePercent = normalizePercentValue(
+    settingsWorkOrderFieldShareInput?.value,
+    DEFAULT_PERIODICS_VISUAL_SETTINGS.workOrderFieldSharePercent,
+  );
+  const workOrderCompletionSharePercent = 100 - workOrderFieldSharePercent;
 
   if (settingsPeriodicsCriticalDaysInput) {
     settingsPeriodicsCriticalDaysInput.value = String(criticalDays);
@@ -30424,6 +30549,16 @@ async function savePeriodicsVisualSettings(options = {}) {
   if (settingsWorkOrderDefaultDueDaysInput) {
     settingsWorkOrderDefaultDueDaysInput.value = workOrderDefaultDueDays;
   }
+  if (settingsWorkOrderFieldShareInput) {
+    settingsWorkOrderFieldShareInput.value = String(workOrderFieldSharePercent);
+  }
+  if (settingsWorkOrderCompletionShareInput) {
+    settingsWorkOrderCompletionShareInput.value = String(workOrderCompletionSharePercent);
+  }
+  renderSettingsWorkOrderPointsPreview({
+    workOrderFieldSharePercent,
+    workOrderCompletionSharePercent,
+  });
 
   const success = await runMutation(() => apiRequest("/periodics/visual-settings", {
     method: "POST",
@@ -30431,11 +30566,18 @@ async function savePeriodicsVisualSettings(options = {}) {
       criticalDays,
       warningDays,
       workOrderDefaultDueDays,
+      workOrderFieldSharePercent,
+      workOrderCompletionSharePercent,
     },
   }), settingsPeriodicsVisualFeedback);
 
-  if (success && settingsPeriodicsVisualFeedback) {
-    settingsPeriodicsVisualFeedback.textContent = successMessage;
+  if (success) {
+    if (settingsPeriodicsVisualFeedback) {
+      settingsPeriodicsVisualFeedback.textContent = successMessage;
+    }
+    if (settingsWorkOrderPointsFeedback) {
+      settingsWorkOrderPointsFeedback.textContent = successMessage;
+    }
   }
 
   return success;
@@ -90122,7 +90264,7 @@ function renderOfferTemplateReferenceMeta() {
 
   const card = document.createElement("article");
   card.className = "offer-template-reference-card";
-  const badge = createMetaPill(isPurchaseOrdersContextActive() ? "Word povezan" : "HTML povezan", "is-success");
+  const badge = createMetaPill("Word povezan", "is-success");
   const title = document.createElement("strong");
   title.textContent = entry.fileName;
   const meta = document.createElement("span");
@@ -90226,11 +90368,10 @@ async function saveOfferTemplateReference(file) {
   const fileName = String(file?.name || "").trim();
   const fileType = String(file?.type || "").trim();
   const isOfferTemplate = !isPurchaseOrdersContextActive();
-  const isSupportedHtmlTemplate = /\.(html|htm)$/i.test(fileName) || /^text\/html\b/i.test(fileType);
   const isSupportedWordTemplate = /\.(docx|dotx)$/i.test(fileName)
     || /officedocument\.wordprocessingml\.(document|template)/i.test(fileType);
-  if (isOfferTemplate && !isSupportedHtmlTemplate) {
-    throw new Error("Template ponude mora biti .html ili .htm HTML predložak.");
+  if (isOfferTemplate && !isSupportedWordTemplate) {
+    throw new Error("Template ponude mora biti .docx ili .dotx Word predložak.");
   }
   if (!isOfferTemplate && !isSupportedWordTemplate) {
     throw new Error("Template ponude mora biti .docx ili .dotx Word predložak.");
@@ -90241,7 +90382,7 @@ async function saveOfferTemplateReference(file) {
     body: {
       referenceDocument: {
         fileName: file.name,
-        fileType: file.type || (isOfferTemplate ? "text/html" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+        fileType: file.type || "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         dataUrl,
       },
     },
@@ -90263,11 +90404,14 @@ async function removeOfferTemplateReference() {
 
 async function downloadOfferPdf(offerId, { preview = false, apiBasePath = getActiveCommercialApiBasePath() } = {}) {
   const normalizedOfferId = String(offerId || "").trim();
+  const useWordEngine = apiBasePath === "/offers" || apiBasePath === "/purchase-orders";
   const response = await apiBinaryRequest(
     normalizedOfferId ? `${apiBasePath}/${normalizedOfferId}/export-pdf` : `${apiBasePath}/export-pdf-draft`,
     {
       method: "POST",
-      body: normalizedOfferId ? undefined : { document: buildOfferDraftPreviewData() },
+      body: normalizedOfferId
+        ? { pdfEngine: useWordEngine ? "word" : "" }
+        : { document: buildOfferDraftPreviewData(), pdfEngine: useWordEngine ? "word" : "" },
     },
   );
 
@@ -106390,6 +106534,169 @@ function attachWorkOrderInlineServicesEditor(cell, workOrder = {}) {
   });
 }
 
+function getWorkOrderPointTotal(item = {}) {
+  const numericWeight = parseOfferMoneyInput(item.weight, Number.NaN);
+  if (Number.isFinite(numericWeight) && numericWeight > 0 && numericWeight <= 100) {
+    return numericWeight;
+  }
+  return 10;
+}
+
+function getWorkOrderPointDistributionSettings() {
+  const settings = getPeriodicsVisualSettings();
+  const fieldSharePercent = normalizePercentValue(
+    settings.workOrderFieldSharePercent,
+    DEFAULT_PERIODICS_VISUAL_SETTINGS.workOrderFieldSharePercent,
+  );
+  return {
+    fieldSharePercent,
+    completionSharePercent: 100 - fieldSharePercent,
+  };
+}
+
+function buildWorkOrderPointDistribution(item = {}) {
+  const totalPoints = getWorkOrderPointTotal(item);
+  const { fieldSharePercent, completionSharePercent } = getWorkOrderPointDistributionSettings();
+  const executors = normalizeWorkOrderExecutorValues(getWorkOrderExecutors(item));
+  const completedPeople = normalizeWorkOrderExecutorValues(
+    splitWorkOrderCompletedByValue(item.completedBy || (isClosedWorkOrder(item.status) ? executors[0] || "" : "")),
+  );
+  const allocations = new Map();
+  const addAllocation = (name, role, points, percent) => {
+    const normalizedName = String(name || "").trim();
+    if (!normalizedName) {
+      return;
+    }
+    const key = normalizeLooseName(normalizedName) || normalizedName.toLowerCase();
+    const current = allocations.get(key) ?? {
+      name: normalizedName,
+      roles: new Set(),
+      points: 0,
+      percent: 0,
+    };
+    current.roles.add(role);
+    current.points += points;
+    current.percent += percent;
+    allocations.set(key, current);
+  };
+
+  const fieldPoints = executors.length > 0 ? (totalPoints * fieldSharePercent) / 100 : 0;
+  const completionPoints = completedPeople.length > 0 ? (totalPoints * completionSharePercent) / 100 : 0;
+  executors.forEach((executor) => {
+    addAllocation(executor, "Teren", fieldPoints / executors.length, fieldSharePercent / executors.length);
+  });
+  completedPeople.forEach((person) => {
+    addAllocation(person, "Završetak", completionPoints / completedPeople.length, completionSharePercent / completedPeople.length);
+  });
+
+  const people = [...allocations.values()]
+    .map((entry) => ({
+      ...entry,
+      roles: [...entry.roles],
+    }))
+    .sort((left, right) => (
+      right.points - left.points
+      || left.name.localeCompare(right.name, "hr", { sensitivity: "base" })
+    ));
+  const allocatedPoints = people.reduce((sum, entry) => sum + entry.points, 0);
+
+  return {
+    totalPoints,
+    fieldSharePercent,
+    completionSharePercent,
+    executors,
+    completedPeople,
+    people,
+    allocatedPoints,
+    unallocatedPoints: Math.max(0, totalPoints - allocatedPoints),
+  };
+}
+
+function createWorkOrderPointDistributionCard(item = {}) {
+  const distribution = buildWorkOrderPointDistribution(item);
+  const wrap = document.createElement("div");
+  wrap.className = "work-executor-score-card";
+
+  const head = document.createElement("div");
+  head.className = "work-executor-score-head";
+  const headCopy = document.createElement("div");
+  const label = document.createElement("span");
+  label.textContent = "Ukupni težinski faktor";
+  const total = document.createElement("strong");
+  total.textContent = `${formatCompactDecimal(distribution.totalPoints)} b`;
+  headCopy.append(label, total);
+  const split = document.createElement("small");
+  split.textContent = `${distribution.fieldSharePercent}% teren · ${distribution.completionSharePercent}% završetak`;
+  head.append(headCopy, split);
+  wrap.append(head);
+
+  if (distribution.people.length === 0) {
+    const empty = document.createElement("span");
+    empty.className = "work-executor-empty work-executor-load-empty";
+    empty.textContent = "— Nije dodijeljeno";
+    wrap.append(empty);
+    return wrap;
+  }
+
+  const list = document.createElement("div");
+  list.className = "work-executor-score-list";
+  const visiblePeople = distribution.people.slice(0, 4);
+  visiblePeople.forEach((entry, index) => {
+    const row = document.createElement("div");
+    row.className = "work-executor-score-row";
+    row.style.setProperty("--score", `${Math.min(100, Math.max(0, entry.percent)).toFixed(2)}%`);
+
+    const avatar = createWorkOrderMiniExecutor(entry.name, {
+      className: "work-order-mini-executor work-executor-score-avatar",
+    });
+
+    const copy = document.createElement("div");
+    copy.className = "work-executor-score-copy";
+    const title = document.createElement("strong");
+    title.textContent = entry.name;
+    const roles = document.createElement("span");
+    roles.textContent = entry.roles.join(" + ");
+    copy.append(title, roles);
+
+    const value = document.createElement("div");
+    value.className = "work-executor-score-value";
+    const points = document.createElement("strong");
+    points.textContent = `${formatCompactDecimal(entry.points)} b`;
+    const percent = document.createElement("span");
+    percent.textContent = `${formatCompactDecimal(entry.percent, 1)}%`;
+    value.append(points, percent);
+
+    row.append(avatar, copy, value);
+    if (index === 0) {
+      row.classList.add("is-primary");
+    }
+    list.append(row);
+  });
+
+  if (distribution.people.length > visiblePeople.length) {
+    const more = document.createElement("span");
+    more.className = "work-executor-load-more";
+    more.textContent = `+${distribution.people.length - visiblePeople.length} osoba`;
+    list.append(more);
+  }
+  wrap.append(list);
+
+  const foot = document.createElement("div");
+  foot.className = "work-executor-score-foot";
+  const completedLabel = distribution.completedPeople.length > 0
+    ? `Završio/la: ${distribution.completedPeople.join(", ")}`
+    : "Završetak nije upisan";
+  foot.textContent = completedLabel;
+  if (distribution.unallocatedPoints > 0.01) {
+    const unallocated = document.createElement("span");
+    unallocated.textContent = `Neraspoređeno ${formatCompactDecimal(distribution.unallocatedPoints)} b`;
+    foot.append(unallocated);
+  }
+  wrap.append(foot);
+
+  return wrap;
+}
+
 function renderCompactWorkOrdersList() {
   const filtered = getFilteredWorkOrders();
   const visibleItems = filtered.slice(0, state.workOrderRenderLimit);
@@ -106457,62 +106764,6 @@ function renderCompactWorkOrdersList() {
 
   const body = document.createElement("div");
   body.className = "work-group-body";
-
-  const createExecutorLoadStack = (executors, item = {}) => {
-    const wrap = document.createElement("div");
-    wrap.className = "work-executor-load-list";
-
-    if (executors.length === 0) {
-      const empty = document.createElement("span");
-      empty.className = "work-executor-empty work-executor-load-empty";
-      empty.textContent = "— Nije dodijeljeno";
-      wrap.append(empty);
-      return wrap;
-    }
-
-    const visibleExecutors = executors.slice(0, 3);
-    visibleExecutors.forEach((executor, index) => {
-      const row = document.createElement("div");
-      row.className = "work-executor-load-row";
-      const name = document.createElement("span");
-      name.textContent = executor;
-      const percent = executors.length === 1
-        ? 100
-        : index === 0
-          ? 80
-          : Math.max(10, Math.round(20 / Math.max(1, executors.length - 1)));
-      const meta = document.createElement("strong");
-      meta.textContent = `${percent}% (${Math.max(1, Math.round(percent / 10))}b)`;
-      row.append(name, meta);
-      wrap.append(row);
-    });
-
-    if (executors.length > visibleExecutors.length) {
-      const extra = document.createElement("span");
-      extra.className = "work-executor-load-more";
-      extra.textContent = `+${executors.length - visibleExecutors.length} izvršitelja`;
-      wrap.append(extra);
-    }
-
-    const completedLine = document.createElement("div");
-    completedLine.className = "work-executor-completed-line";
-    const completedBy = String(item.completedBy || "").trim();
-    if (completedBy || isClosedWorkOrder(item.status)) {
-      completedLine.classList.add("is-completed");
-      completedLine.textContent = `✓ Završila ${completedBy || executors[0] || "izvršitelj"}`;
-      if (item.executionDate) {
-        const date = document.createElement("span");
-        date.textContent = formatCompactDate(item.executionDate);
-        completedLine.append(date);
-      }
-    } else {
-      completedLine.classList.add("is-pending");
-      completedLine.textContent = "— Nije završeno";
-    }
-    wrap.append(completedLine);
-
-    return wrap;
-  };
 
   visibleItems.forEach((item) => {
       const rowCard = document.createElement("section");
@@ -106781,7 +107032,6 @@ function renderCompactWorkOrdersList() {
         return rawValue;
       };
 
-      const executorValues = getWorkOrderExecutors(item);
       rowCard.classList.add("is-clickable");
       const openWorkOrderFromRow = (event) => {
         if (isInteractiveWorkOrderTarget(event.target)) {
@@ -107022,7 +107272,7 @@ function renderCompactWorkOrdersList() {
 
       const executorsCell = document.createElement("div");
       executorsCell.className = "work-item-cell work-item-cell-group work-item-executors-cell";
-      executorsCell.append(createExecutorLoadStack(executorValues, item));
+      executorsCell.append(createWorkOrderPointDistributionCard(item));
       attachWorkOrderInlineExecutorsEditor(executorsCell, item);
 
       const actionsCell = document.createElement("div");
@@ -112170,9 +112420,7 @@ offerTemplateDownloadPlaceholdersButton?.addEventListener("click", () => {
 
 offerTemplateUploadButton?.addEventListener("click", () => {
   if (offerTemplateFileInput) {
-    offerTemplateFileInput.accept = isPurchaseOrdersContextActive()
-      ? OFFER_TEMPLATE_ACCEPT_LABEL
-      : OFFER_HTML_TEMPLATE_ACCEPT_LABEL;
+    offerTemplateFileInput.accept = OFFER_TEMPLATE_ACCEPT_LABEL;
     offerTemplateFileInput.click();
   }
 });
@@ -112213,12 +112461,10 @@ offerPreviewButton?.addEventListener("click", () => {
     return;
   }
 
-  if (isPurchaseOrdersContextActive()) {
-    void runMutation(() => downloadOfferPdf("", { preview: true }), offerError);
-    return;
-  }
-
-  void runMutation(() => openOfferHtmlPreview("", { apiBasePath: "/offers" }), offerError);
+  void runMutation(() => downloadOfferPdf("", {
+    preview: true,
+    apiBasePath: getActiveCommercialApiBasePath(),
+  }), offerError);
 });
 
 offerDownloadPdfButton?.addEventListener("click", () => {
@@ -112268,12 +112514,10 @@ offerEmailTemplatePreviewButton?.addEventListener("click", () => {
     return;
   }
 
-  if (isPurchaseOrdersContextActive()) {
-    void runMutation(() => downloadOfferPdf("", { preview: true }), offerEmailError);
-    return;
-  }
-
-  void runMutation(() => openOfferHtmlPreview("", { apiBasePath: "/offers" }), offerEmailError);
+  void runMutation(() => downloadOfferPdf("", {
+    preview: true,
+    apiBasePath: getActiveCommercialApiBasePath(),
+  }), offerEmailError);
 });
 
 offerEmailDownloadButton?.addEventListener("click", () => {
@@ -115261,6 +115505,22 @@ settingsWorkOrderDefaultDueDaysInput?.addEventListener("keydown", (event) => {
     event.preventDefault();
     void saveAllSettingsBlocks();
   }
+});
+
+[settingsWorkOrderFieldShareInput, settingsWorkOrderCompletionShareInput].forEach((input) => {
+  input?.addEventListener("input", () => {
+    syncSettingsWorkOrderPointShareInputs(input);
+  });
+  input?.addEventListener("change", () => {
+    syncSettingsWorkOrderPointShareInputs(input);
+  });
+  input?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      syncSettingsWorkOrderPointShareInputs(input);
+      void saveAllSettingsBlocks();
+    }
+  });
 });
 
 notificationsTrigger?.addEventListener("click", (event) => {

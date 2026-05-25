@@ -431,6 +431,8 @@ const DEFAULT_PERIODICS_VISUAL_SETTINGS = Object.freeze({
   criticalDays: 7,
   warningDays: 60,
   workOrderDefaultDueDays: "",
+  workOrderFieldSharePercent: 80,
+  workOrderCompletionSharePercent: 20,
 });
 const APP_CAPABILITY_STATUS_VALUES = new Set([
   "implemented",
@@ -476,6 +478,14 @@ function normalizeOptionalSettingsDay(value, { min = 0, max = 365 } = {}) {
   }
 
   return String(Math.max(min, Math.min(max, Math.round(numeric))));
+}
+
+function normalizeSettingsPercent(value, fallback = 0, { min = 0, max = 100 } = {}) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return Math.max(min, Math.min(max, Math.round(Number(fallback) || 0)));
+  }
+  return Math.max(min, Math.min(max, Math.round(numeric)));
 }
 
 function normalizeMeasurementEquipmentNotificationSettings(value = {}) {
@@ -579,6 +589,26 @@ function normalizePeriodicsVisualSettings(value = {}) {
     fallback.warningDays,
     { min: 1, max: 365 },
   );
+  const hasFieldShare = Object.prototype.hasOwnProperty.call(source, "workOrderFieldSharePercent")
+    || Object.prototype.hasOwnProperty.call(source, "fieldSharePercent")
+    || Object.prototype.hasOwnProperty.call(source, "fieldPercent")
+    || Object.prototype.hasOwnProperty.call(source, "terrainPercent");
+  const hasCompletionShare = Object.prototype.hasOwnProperty.call(source, "workOrderCompletionSharePercent")
+    || Object.prototype.hasOwnProperty.call(source, "completionSharePercent")
+    || Object.prototype.hasOwnProperty.call(source, "completionPercent")
+    || Object.prototype.hasOwnProperty.call(source, "finishedPercent");
+  const fieldSharePercent = hasFieldShare
+    ? normalizeSettingsPercent(
+      source.workOrderFieldSharePercent ?? source.fieldSharePercent ?? source.fieldPercent ?? source.terrainPercent,
+      fallback.workOrderFieldSharePercent,
+    )
+    : (hasCompletionShare
+      ? 100 - normalizeSettingsPercent(
+        source.workOrderCompletionSharePercent ?? source.completionSharePercent ?? source.completionPercent ?? source.finishedPercent,
+        fallback.workOrderCompletionSharePercent,
+      )
+      : fallback.workOrderFieldSharePercent);
+  const normalizedFieldSharePercent = normalizeSettingsPercent(fieldSharePercent, fallback.workOrderFieldSharePercent);
   return {
     criticalDays,
     warningDays: Math.max(criticalDays, warningDaysRaw),
@@ -586,6 +616,8 @@ function normalizePeriodicsVisualSettings(value = {}) {
       source.workOrderDefaultDueDays ?? source.workOrderDueDays ?? source.defaultWorkOrderDueDays,
       { min: 0, max: 365 },
     ),
+    workOrderFieldSharePercent: normalizedFieldSharePercent,
+    workOrderCompletionSharePercent: 100 - normalizedFieldSharePercent,
   };
 }
 

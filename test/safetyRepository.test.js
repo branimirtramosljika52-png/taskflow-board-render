@@ -392,6 +392,31 @@ test("stored document template field mapping preserves AI and builder metadata",
   assert.deepEqual(mapped.columns, ["Pozicija", "Opis"]);
 });
 
+test("periodics visual settings store work order point split as complementary percentages", async () => {
+  const repository = new InMemorySafetyRepository();
+  await repository.init();
+
+  const saved = await repository.upsertPeriodicsVisualSettings({
+    organizationId: "org-1",
+    visualSettings: {
+      workOrderFieldSharePercent: 65,
+    },
+  });
+
+  assert.equal(saved.workOrderFieldSharePercent, 65);
+  assert.equal(saved.workOrderCompletionSharePercent, 35);
+
+  const updated = await repository.upsertPeriodicsVisualSettings({
+    organizationId: "org-1",
+    visualSettings: {
+      workOrderCompletionSharePercent: 45,
+    },
+  });
+
+  assert.equal(updated.workOrderFieldSharePercent, 55);
+  assert.equal(updated.workOrderCompletionSharePercent, 45);
+});
+
 test("in-memory safety repository stores app role permissions per organization", async () => {
   const repository = new InMemorySafetyRepository();
   await repository.init();

@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260524-company-workspace" />
+    <link rel="stylesheet" href="/styles.css?v=20260525-points-offer-word" />
     <link rel="stylesheet" href="/src/styles/variables.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/reset.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/builder.css?v=20260509e" />
@@ -5421,6 +5421,28 @@
                 </div>
                 <p id="settings-periodics-visual-feedback" class="form-error" aria-live="polite"></p>
               </section>
+              <section class="panel settings-notifications-panel settings-work-order-points-panel">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Radni nalozi</p>
+                    <h3>Raspodjela bodova</h3>
+                  </div>
+                </div>
+                <div class="settings-points-layout">
+                  <div class="settings-points-grid">
+                    <label class="field">
+                      <span>Teren %</span>
+                      <input id="settings-work-order-field-share" type="number" min="0" max="100" step="1" inputmode="numeric" />
+                    </label>
+                    <label class="field">
+                      <span>Završetak RN %</span>
+                      <input id="settings-work-order-completion-share" type="number" min="0" max="100" step="1" inputmode="numeric" />
+                    </label>
+                  </div>
+                  <div id="settings-work-order-points-preview" class="settings-points-preview"></div>
+                </div>
+                <p id="settings-work-order-points-feedback" class="form-error" aria-live="polite"></p>
+              </section>
               <div class="settings-module-actions">
                 <button id="settings-save-all" type="button" class="primary-button">Spremi postavke</button>
               </div>
@@ -5971,7 +5993,7 @@
                       </label>
                       <label class="checkbox-field offer-extra-text-toggle">
                         <input id="offer-extra-text-enabled" type="checkbox" />
-                        <span>Dodaj dodatne tekstove u HTML/PDF predložak</span>
+                        <span>Dodaj dodatne tekstove u Word/PDF predložak</span>
                       </label>
                       <div id="offer-text-blocks" class="offer-text-blocks" hidden>
                         <label class="field offer-text-block-field">
@@ -5980,7 +6002,7 @@
                         </label>
                         <label class="field offer-text-block-field">
                           <span>Tekst za template 2</span>
-                          <textarea id="offer-text-block-2" rows="4" placeholder="Dodatni tekst za HTML/PDF predložak ili posebne napomene..."></textarea>
+                          <textarea id="offer-text-block-2" rows="4" placeholder="Dodatni tekst za Word/PDF predložak ili posebne napomene..."></textarea>
                         </label>
                       </div>
 
@@ -6057,7 +6079,7 @@
                     <div class="section-heading offers-section-heading">
                       <div>
                         <p id="offer-template-kicker" class="section-kicker">Offer template</p>
-                        <h3 id="offer-template-title">HTML template i Word fallback</h3>
+                        <h3 id="offer-template-title">Word template za ponude</h3>
                       </div>
                       <button id="offer-template-close" type="button" class="ghost-button">Zatvori</button>
                     </div>
@@ -6068,15 +6090,15 @@
                       <section class="offer-template-card">
                         <div class="offer-template-card-head">
                           <div>
-                            <p class="section-kicker">HTML template</p>
-                            <h4 id="offer-template-word-title">Brzi HTML predložak</h4>
+                            <p class="section-kicker">Word template</p>
+                            <h4 id="offer-template-word-title">Aktivni Word predložak</h4>
                           </div>
                           <button id="offer-template-toggle-reference" type="button" class="ghost-button">Sakrij</button>
                         </div>
                         <div id="offer-template-reference-body" class="offer-template-reference-body">
                           <div class="offer-template-actions">
                             <button id="offer-template-download-placeholders" type="button" class="ghost-button">Placeholderi</button>
-                            <button id="offer-template-upload" type="button" class="ghost-button">Upload Word fallback</button>
+                            <button id="offer-template-upload" type="button" class="ghost-button">Upload Word</button>
                             <button id="offer-template-download" type="button" class="ghost-button">Preuzmi Word</button>
                             <button id="offer-template-remove" type="button" class="ghost-button card-danger">Makni Word</button>
                           </div>
@@ -6088,11 +6110,11 @@
                       <section class="offer-template-card">
                         <div class="offer-template-card-head">
                           <div>
-                            <p class="section-kicker">Fallback</p>
-                            <h4 id="offer-template-placeholder-title">Tokeni za Word fallback</h4>
+                            <p class="section-kicker">Placeholderi</p>
+                            <h4 id="offer-template-placeholder-title">Tokeni za Word</h4>
                           </div>
                         </div>
-                        <p id="offer-template-copy" class="helper-copy module-copy offer-template-copy">PDF sada koristi brzi HTML predložak. Word tokeni ostaju za ručni Word/fallback predložak.</p>
+                        <p id="offer-template-copy" class="helper-copy module-copy offer-template-copy">Klikni placeholder da ga kopiraš u Word predložak ponude.</p>
                         <div id="offer-template-placeholder-list" class="offer-template-placeholder-list"></div>
                       </section>
                     </div>
@@ -6133,7 +6155,7 @@
                     </div>
                     <p id="offer-email-error" class="form-error" aria-live="polite"></p>
                     <div class="form-actions">
-                      <button id="offer-email-template-preview" type="button" class="ghost-button">Preview HTML</button>
+                      <button id="offer-email-template-preview" type="button" class="ghost-button">Preview PDF</button>
                       <button id="offer-email-preview" type="button" class="ghost-button">Preview PDF</button>
                       <button id="offer-email-download" type="button" class="ghost-button">Download PDF</button>
                       <button id="offer-email-submit" type="submit" class="primary-button">Pošalji email</button>
@@ -8747,6 +8769,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260524-company-workspace"></script>
+    <script type="module" src="/src/main.js?v=20260525-points-offer-word"></script>
   </body>
 </html>

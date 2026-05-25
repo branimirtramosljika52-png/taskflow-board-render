@@ -5122,15 +5122,20 @@ async function buildOfferPdfExportPayload(offer = {}, organizationId = "", optio
   const useWordTemplate = ["word", "docx", "template", "libreoffice"].includes(pdfEngine);
   const useHtmlTemplate = ["html", "html-pdf", "chromium"].includes(pdfEngine);
 
-  if (!useWordTemplate && !useHtmlTemplate) {
+  const offerTemplateSettings = await domainRepository.getOfferTemplateSettings(organizationId).catch(() => null);
+  const offerTemplateDocument = offerTemplateSettings?.referenceDocument ?? null;
+  const shouldUseWordTemplate = useWordTemplate
+    || (!useHtmlTemplate && offerTemplateDocument && isWordTemplateFile(offerTemplateDocument));
+
+  if (!shouldUseWordTemplate && !useHtmlTemplate) {
     const pdfBuffer = await buildOfferPdfBuffer(offer, { currency: offer.currency || "EUR" });
     return { pdfBuffer, fileName };
   }
 
-  const offerTemplateSettings = await domainRepository.getOfferTemplateSettings(organizationId).catch(() => null);
-  const offerTemplateDocument = offerTemplateSettings?.referenceDocument ?? null;
-
-  if (useWordTemplate && offerTemplateDocument) {
+  if (shouldUseWordTemplate) {
+    if (!offerTemplateDocument) {
+      throw new Error("Najprije ucitaj Word predlozak za ponude.");
+    }
     if (!isWordTemplateFile(offerTemplateDocument)) {
       throw new Error("Uploadani template ponude mora biti .docx ili .dotx Word predložak.");
     }
@@ -8694,9 +8699,14 @@ async function handleApiRequest(request, response, url) {
 
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
+      const referenceDocument = body?.referenceDocument ?? null;
+      if (referenceDocument && !isWordTemplateFile(referenceDocument)) {
+        sendError(response, 400, "Template ponude mora biti .docx ili .dotx Word predlozak.");
+        return true;
+      }
       const entry = await domainRepository.upsertOfferTemplateSettings({
         organizationId: scopedSnapshot.activeOrganizationId,
-        referenceDocument: body?.referenceDocument ?? null,
+        referenceDocument,
       });
       sendJson(response, 200, {
         item: entry?.referenceDocument ?? null,
@@ -8738,9 +8748,14 @@ async function handleApiRequest(request, response, url) {
 
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
+      const referenceDocument = body?.referenceDocument ?? null;
+      if (referenceDocument && !isWordTemplateFile(referenceDocument)) {
+        sendError(response, 400, "Template narudzbenice mora biti .docx ili .dotx Word predlozak.");
+        return true;
+      }
       const entry = await domainRepository.upsertPurchaseOrderTemplateSettings({
         organizationId: scopedSnapshot.activeOrganizationId,
-        referenceDocument: body?.referenceDocument ?? null,
+        referenceDocument,
       });
       sendJson(response, 200, {
         item: entry?.referenceDocument ?? null,
@@ -9397,6 +9412,8 @@ async function handleApiRequest(request, response, url) {
           criticalDays: body?.criticalDays,
           warningDays: body?.warningDays,
           workOrderDefaultDueDays: body?.workOrderDefaultDueDays,
+          workOrderFieldSharePercent: body?.workOrderFieldSharePercent,
+          workOrderCompletionSharePercent: body?.workOrderCompletionSharePercent,
         },
       });
       await writeSnapshot(response, user, request);
@@ -11270,7 +11287,9 @@ async function handleApiRequest(request, response, url) {
         return true;
       }
 
-      const { pdfBuffer, fileName } = await buildOfferPdfExportPayload(offer, scopedSnapshot.activeOrganizationId);
+      const { pdfBuffer, fileName } = await buildOfferPdfExportPayload(offer, scopedSnapshot.activeOrganizationId, {
+        pdfEngine: "word",
+      });
       const subject = String(body?.subject ?? "").trim() || `${offer.offerNumber || "Ponuda"} · ${offer.title || offer.companyName || "SafeNexus"}`;
       const message = String(body?.message ?? "").trim();
       const htmlMessage = message
