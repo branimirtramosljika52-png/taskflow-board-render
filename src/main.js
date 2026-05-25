@@ -211,7 +211,7 @@ const WORK_ORDER_LIST_COLUMN_LAYOUTS = Object.freeze({
     { key: "contact", title: "Kontakt osoba", defaultWidth: 178, minWidth: 140 },
     { key: "priorityTags", title: "Prioritet / tagovi", defaultWidth: 168, minWidth: 138 },
     { key: "services", title: "Usluge", defaultWidth: 252, minWidth: 192 },
-    { key: "executors", title: "Izvršitelji (% / bodovi)", defaultWidth: 226, minWidth: 174 },
+    { key: "executors", title: "Izvršitelji", defaultWidth: 226, minWidth: 174 },
     { key: "finance", title: "Financije", defaultWidth: 142, minWidth: 118 },
     { key: "actions", title: "Akcije", defaultWidth: 70, minWidth: 62, resizable: false },
   ]),
@@ -223,7 +223,7 @@ const WORK_ORDER_LIST_COLUMN_LAYOUTS = Object.freeze({
     { key: "contact", title: "Kontakt osoba", defaultWidth: 190, minWidth: 146 },
     { key: "priorityTags", title: "Prioritet / tagovi", defaultWidth: 178, minWidth: 144 },
     { key: "services", title: "Usluge", defaultWidth: 268, minWidth: 198 },
-    { key: "executors", title: "Izvršitelji (% / bodovi)", defaultWidth: 240, minWidth: 184 },
+    { key: "executors", title: "Izvršitelji", defaultWidth: 240, minWidth: 184 },
     { key: "finance", title: "Financije", defaultWidth: 154, minWidth: 124 },
     { key: "actions", title: "Akcije", defaultWidth: 70, minWidth: 62, resizable: false },
   ]),
@@ -107028,6 +107028,23 @@ function buildWorkOrderPointDistribution(item = {}) {
   };
 }
 
+function createWorkOrderExecutorsColumnRatio() {
+  const { fieldSharePercent, completionSharePercent } = getWorkOrderPointDistributionSettings();
+  const ratio = document.createElement("span");
+  ratio.className = "work-group-column-ratio";
+
+  const field = document.createElement("span");
+  field.className = "is-field";
+  field.textContent = `Teren ${fieldSharePercent}%`;
+
+  const paperwork = document.createElement("span");
+  paperwork.className = "is-paper";
+  paperwork.textContent = `Papir ${completionSharePercent}%`;
+
+  ratio.append(field, paperwork);
+  return ratio;
+}
+
 function createWorkOrderPointDistributionCard(item = {}) {
   const distribution = buildWorkOrderPointDistribution(item);
   const wrap = document.createElement("div");
@@ -107040,16 +107057,7 @@ function createWorkOrderPointDistributionCard(item = {}) {
   const total = document.createElement("strong");
   total.textContent = `${formatCompactDecimal(distribution.totalPoints)} b`;
   headCopy.append(total);
-  const split = document.createElement("div");
-  split.className = "work-executor-score-split";
-  const fieldSplit = document.createElement("span");
-  fieldSplit.className = "is-field";
-  fieldSplit.textContent = `Teren ${distribution.fieldSharePercent}%`;
-  const completedSplit = document.createElement("span");
-  completedSplit.className = "is-completed";
-  completedSplit.textContent = `RN završio ${distribution.completionSharePercent}%`;
-  split.append(fieldSplit, completedSplit);
-  head.append(headCopy, split);
+  head.append(headCopy);
   wrap.append(head);
 
   if (distribution.serviceRows.length > 0) {
@@ -107215,6 +107223,9 @@ function renderCompactWorkOrdersList() {
     title.textContent = column.title;
 
     cell.append(title);
+    if (column.key === "executors") {
+      cell.append(createWorkOrderExecutorsColumnRatio());
+    }
     appendWorkOrderListColumnResizeHandle(cell, column, columnIndex, columnMode);
     columns.append(cell);
   });

@@ -21938,6 +21938,45 @@ body.is-resizing-work-order-column {
   text-shadow: 0 0 0.01px currentColor;
 }
 
+.work-group-column-ratio {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  min-width: 0;
+}
+
+.work-group-column-ratio span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 3px 6px;
+  border-radius: 999px;
+  font-size: 0.58rem;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.work-group-column-ratio span::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.work-group-column-ratio .is-field {
+  background: rgba(20, 184, 166, 0.11);
+  color: #0f766e;
+}
+
+.work-group-column-ratio .is-paper {
+  background: rgba(86, 64, 214, 0.1);
+  color: #4f37c7;
+}
+
 .work-group-column-subtitle {
   color: #9096aa;
   font-size: 0.72rem;
@@ -57111,15 +57150,6 @@ body.is-signature-review-open::before {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.88);
 }
 
-.work-executor-score-split {
-  display: flex;
-  flex: 1 1 auto;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 5px;
-  min-width: 0;
-}
-
 .work-executor-score-foot {
   color: #667085;
   font-size: 0.62rem;
@@ -57134,42 +57164,6 @@ body.is-signature-review-open::before {
   font-weight: 950;
   line-height: 1;
   white-space: nowrap;
-}
-
-.work-executor-score-split span {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 5px 8px;
-  border-radius: 999px;
-  font-size: 0.62rem;
-  font-weight: 900;
-  line-height: 1;
-  white-space: nowrap;
-}
-
-.work-executor-score-split span::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: currentColor;
-  box-shadow: 0 0 0 3px rgba(91, 77, 255, 0.12);
-}
-
-.work-executor-score-split .is-field::before {
-  box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.12);
-}
-
-.work-executor-score-split .is-field {
-  background: rgba(20, 184, 166, 0.12);
-  color: #0f766e;
-}
-
-.work-executor-score-split .is-completed {
-  background: rgba(86, 64, 214, 0.11);
-  color: #4f37c7;
 }
 
 .work-executor-score-list {
