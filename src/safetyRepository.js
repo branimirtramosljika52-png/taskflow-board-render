@@ -433,6 +433,7 @@ const DEFAULT_PERIODICS_VISUAL_SETTINGS = Object.freeze({
   workOrderDefaultDueDays: "",
   workOrderFieldSharePercent: 80,
   workOrderCompletionSharePercent: 20,
+  workOrderServicePointFactors: Object.freeze({}),
 });
 const APP_CAPABILITY_STATUS_VALUES = new Set([
   "implemented",
@@ -486,6 +487,28 @@ function normalizeSettingsPercent(value, fallback = 0, { min = 0, max = 100 } = 
     return Math.max(min, Math.min(max, Math.round(Number(fallback) || 0)));
   }
   return Math.max(min, Math.min(max, Math.round(numeric)));
+}
+
+function normalizeSettingsPointFactor(value, fallback = 1) {
+  const numeric = Number(String(value ?? "").trim().replace(",", "."));
+  if (!Number.isFinite(numeric)) {
+    return Number(fallback) || 1;
+  }
+  return Math.max(0, Math.min(1000, Math.round(numeric * 100) / 100));
+}
+
+function normalizeWorkOrderServicePointFactors(value = {}) {
+  const source = value && typeof value === "object" && !Array.isArray(value)
+    ? value
+    : {};
+  return Object.fromEntries(
+    Object.entries(source)
+      .map(([key, rawValue]) => [
+        dbString(key),
+        normalizeSettingsPointFactor(rawValue, 1),
+      ])
+      .filter(([key, factor]) => key && Number.isFinite(factor) && factor >= 0),
+  );
 }
 
 function normalizeMeasurementEquipmentNotificationSettings(value = {}) {
@@ -618,6 +641,9 @@ function normalizePeriodicsVisualSettings(value = {}) {
     ),
     workOrderFieldSharePercent: normalizedFieldSharePercent,
     workOrderCompletionSharePercent: 100 - normalizedFieldSharePercent,
+    workOrderServicePointFactors: normalizeWorkOrderServicePointFactors(
+      source.workOrderServicePointFactors ?? source.servicePointFactors ?? source.serviceWeightFactors,
+    ),
   };
 }
 
@@ -1444,6 +1470,7 @@ function areWorkOrderActivityValuesEqual(fieldKey, left, right) {
       String(item.serviceId) === String(rightItems[index]?.serviceId)
       && String(item.name) === String(rightItems[index]?.name)
       && String(item.serviceCode) === String(rightItems[index]?.serviceCode)
+      && String(item.quantity || "1") === String(rightItems[index]?.quantity || "1")
       && String(item.serviceStatus || "pending") === String(rightItems[index]?.serviceStatus || "pending")
       && Boolean(item.isCompleted) === Boolean(rightItems[index]?.isCompleted)
     ));
@@ -3110,6 +3137,7 @@ async function fetchSnapshotFromConnection(connection) {
         linkedTemplateIds: parseJsonArray(item.linkedTemplateIds).map((value) => dbString(value)).filter(Boolean),
         linkedTemplateTitles: parseJsonArray(item.linkedTemplateTitles).map((value) => dbString(value)).filter(Boolean),
         linkedQualificationKeys: parseJsonArray(item.linkedQualificationKeys ?? item.linkedQualificationExamKeys).map((value) => dbString(value)).filter(Boolean),
+        quantity: dbString(item.quantity ?? item.measurementQuantity ?? item.count ?? "1") || "1",
         isTraining: Boolean(item.isTraining),
         serviceStatus: dbString(item.serviceStatus || item.progressStatus || item.workStatus),
         isCompleted: Boolean(item.isCompleted),

@@ -1668,6 +1668,7 @@ test("work orders can store service catalog items with completion state", () => 
       serviceItems: [
         {
           serviceId: "service-1",
+          quantity: "2.5",
           isCompleted: false,
         },
       ],
@@ -1680,6 +1681,7 @@ test("work orders can store service catalog items with completion state", () => 
 
   assert.equal(getWorkOrderServiceItems(workOrder).length, 1);
   assert.equal(getWorkOrderServiceItems(workOrder)[0].name, "Panik rasvjeta");
+  assert.equal(getWorkOrderServiceItems(workOrder)[0].quantity, "2.5");
   assert.equal(getWorkOrderServiceItems(workOrder)[0].validityMonths, "36");
   assert.equal(getWorkOrderServiceSummary(workOrder), "Panik rasvjeta");
   assert.equal(getWorkOrderServiceSummary(null), "");
@@ -1691,6 +1693,7 @@ test("work orders can store service catalog items with completion state", () => 
       serviceItems: [
         {
           serviceId: "service-1",
+          quantity: "3",
           isCompleted: true,
         },
       ],
@@ -1703,6 +1706,7 @@ test("work orders can store service catalog items with completion state", () => 
   );
 
   assert.equal(getWorkOrderCompletedServiceCount(updated), 1);
+  assert.equal(getWorkOrderServiceItems(updated)[0].quantity, "3");
   assert.equal(getWorkOrderServiceItems(updated)[0].linkedTemplateTitles[0], "Zapisnik panik rasvjete");
 });
 

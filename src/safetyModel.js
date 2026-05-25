@@ -2106,6 +2106,14 @@ function normalizeWorkOrderServiceProgressStatus(value = "", fallback = "pending
   return WORK_ORDER_SERVICE_PROGRESS_VALUES.has(normalizedFallback) ? normalizedFallback : "pending";
 }
 
+function normalizeWorkOrderServiceQuantity(value = 1) {
+  const numeric = Number(String(value ?? "").trim().replace(",", "."));
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return "1";
+  }
+  return String(Math.round(numeric * 100) / 100);
+}
+
 function normalizeWorkOrderServiceItemSnapshot(item = {}) {
   const name = normalizeText(item.name);
   const serviceCode = normalizeText(item.serviceCode);
@@ -2142,6 +2150,7 @@ function normalizeWorkOrderServiceItemSnapshot(item = {}) {
     linkedLearningTestIds,
     linkedLearningTestTitles: Array.from(new Set(linkedLearningTestTitles)),
     linkedQualificationKeys,
+    quantity: normalizeWorkOrderServiceQuantity(item.quantity ?? item.measurementQuantity ?? item.count ?? 1),
     isTraining: normalizeServiceCatalogType(
       item.serviceType,
       normalizeBoolean(item.isTraining, false) ? "znr" : "inspection",
@@ -2221,6 +2230,7 @@ function normalizeWorkOrderServiceItemsInput(items = [], state, currentItems = [
       ),
       ...templateSnapshot,
       ...learningTestSnapshot,
+      quantity: normalizeWorkOrderServiceQuantity(entry?.quantity ?? entry?.measurementQuantity ?? current?.quantity ?? 1),
       isTraining: serviceType === "znr",
       serviceStatus,
       isCompleted: serviceStatus === "completed",

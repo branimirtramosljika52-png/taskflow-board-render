@@ -9414,6 +9414,7 @@ async function handleApiRequest(request, response, url) {
           workOrderDefaultDueDays: body?.workOrderDefaultDueDays,
           workOrderFieldSharePercent: body?.workOrderFieldSharePercent,
           workOrderCompletionSharePercent: body?.workOrderCompletionSharePercent,
+          workOrderServicePointFactors: body?.workOrderServicePointFactors,
         },
       });
       await writeSnapshot(response, user, request);

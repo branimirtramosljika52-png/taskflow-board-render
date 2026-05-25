@@ -2350,6 +2350,7 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
         workOrderDefaultDueDays: "",
         workOrderFieldSharePercent: 80,
         workOrderCompletionSharePercent: 20,
+        workOrderServicePointFactors: {},
       };
       const settingsEntry = (rawSnapshot.periodicsVisualSettings ?? []).find((item) => (
         String(item.organizationId) === String(organizationId)
@@ -2377,6 +2378,9 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
         workOrderDefaultDueDays: String(settingsEntry.workOrderDefaultDueDays ?? "").trim(),
         workOrderFieldSharePercent: normalizedFieldSharePercent,
         workOrderCompletionSharePercent: 100 - normalizedFieldSharePercent,
+        workOrderServicePointFactors: settingsEntry.workOrderServicePointFactors && typeof settingsEntry.workOrderServicePointFactors === "object"
+          ? { ...settingsEntry.workOrderServicePointFactors }
+          : {},
       };
     })(),
     appCapabilities: (() => {

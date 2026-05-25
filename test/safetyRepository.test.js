@@ -400,21 +400,29 @@ test("periodics visual settings store work order point split as complementary pe
     organizationId: "org-1",
     visualSettings: {
       workOrderFieldSharePercent: 65,
+      workOrderServicePointFactors: {
+        "id:service-1": "2.5",
+      },
     },
   });
 
   assert.equal(saved.workOrderFieldSharePercent, 65);
   assert.equal(saved.workOrderCompletionSharePercent, 35);
+  assert.equal(saved.workOrderServicePointFactors["id:service-1"], 2.5);
 
   const updated = await repository.upsertPeriodicsVisualSettings({
     organizationId: "org-1",
     visualSettings: {
       workOrderCompletionSharePercent: 45,
+      workOrderServicePointFactors: {
+        "id:service-1": "4",
+      },
     },
   });
 
   assert.equal(updated.workOrderFieldSharePercent, 55);
   assert.equal(updated.workOrderCompletionSharePercent, 45);
+  assert.equal(updated.workOrderServicePointFactors["id:service-1"], 4);
 });
 
 test("in-memory safety repository stores app role permissions per organization", async () => {

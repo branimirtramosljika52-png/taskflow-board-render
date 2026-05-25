@@ -4998,6 +4998,104 @@ body.is-profile-modal-open {
   white-space: nowrap;
 }
 
+.settings-service-factors {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid rgba(196, 208, 232, 0.78);
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(248, 250, 255, 0.96), rgba(255, 255, 255, 0.98));
+}
+
+.settings-service-factors-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-service-factors-head h4 {
+  margin: 0;
+  color: #111b36;
+  font-size: 0.98rem;
+}
+
+.settings-service-factors-head > span {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: rgba(91, 77, 255, 0.09);
+  color: #4f37c7;
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.settings-service-factor-list {
+  display: grid;
+  gap: 7px;
+  max-height: 300px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.settings-service-factor-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 86px auto;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(217, 225, 238, 0.92);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.settings-service-factor-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.settings-service-factor-copy strong,
+.settings-service-factor-copy small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-service-factor-copy strong {
+  color: #13213f;
+  font-size: 0.8rem;
+}
+
+.settings-service-factor-copy small,
+.settings-service-factor-suffix {
+  color: #667085;
+  font-size: 0.68rem;
+  font-weight: 780;
+}
+
+.settings-service-factor-row input {
+  width: 86px;
+  height: 34px;
+  padding: 0 9px;
+  border: 1px solid rgba(196, 208, 232, 0.95);
+  border-radius: 10px;
+  text-align: right;
+}
+
+.settings-service-factor-empty {
+  padding: 12px;
+  border: 1px dashed rgba(148, 163, 184, 0.7);
+  border-radius: 14px;
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 760;
+  text-align: center;
+}
+
 .settings-module-actions {
   display: flex;
   justify-content: flex-end;
@@ -5032,6 +5130,15 @@ body.is-profile-modal-open {
   .settings-points-grid,
   .settings-points-preview {
     grid-template-columns: 1fr;
+  }
+
+  .settings-service-factors-head,
+  .settings-service-factor-row {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-service-factors-head {
+    display: grid;
   }
 
   .settings-brand-layout {
@@ -20233,15 +20340,38 @@ body.is-document-template-editor-open .chat-dock {
 .work-order-service-picker-selection-chip {
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   min-height: 30px;
-  padding: 0 10px;
+  padding: 3px 7px;
   border: 1px solid #dde5f1;
   border-radius: 999px;
   background: #f6f8fd;
   color: #405072;
-  cursor: pointer;
   font-size: 0.72rem;
   font-weight: 700;
+}
+
+.work-order-service-picker-selection-name {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
+.work-order-service-picker-quantity {
+  width: 54px;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid rgba(196, 208, 232, 0.92);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #111b36;
+  font-size: 0.68rem;
+  font-weight: 850;
+  text-align: center;
 }
 
 .work-order-service-picker-selection-chip.is-completed {
@@ -57003,6 +57133,26 @@ body.is-signature-review-open::before {
   display: grid;
   gap: 6px;
   min-width: 0;
+}
+
+.work-executor-score-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+
+.work-executor-score-sources span {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.05);
+  color: #475569;
+  font-size: 0.61rem;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .work-executor-score-row {

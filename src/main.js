@@ -1066,6 +1066,7 @@ const DEFAULT_PERIODICS_VISUAL_SETTINGS = Object.freeze({
   workOrderDefaultDueDays: "",
   workOrderFieldSharePercent: 80,
   workOrderCompletionSharePercent: 20,
+  workOrderServicePointFactors: Object.freeze({}),
 });
 const WORK_ORDER_SERVICE_PROGRESS_OPTIONS = Object.freeze([
   { value: "pending", label: "Nije završeno", tone: "pending" },
@@ -3285,6 +3286,7 @@ const settingsWorkOrderDefaultDueDaysInput = document.querySelector("#settings-w
 const settingsWorkOrderFieldShareInput = document.querySelector("#settings-work-order-field-share");
 const settingsWorkOrderCompletionShareInput = document.querySelector("#settings-work-order-completion-share");
 const settingsWorkOrderPointsPreview = document.querySelector("#settings-work-order-points-preview");
+const settingsWorkOrderServiceFactorsList = document.querySelector("#settings-work-order-service-factors");
 const settingsSaveAllButton = document.querySelector("#settings-save-all");
 const settingsOrganizationLogoDataUrlInput = document.querySelector("#settings-organization-logo-data-url");
 const settingsOrganizationLogoFileInput = document.querySelector("#settings-organization-logo-file");
@@ -5014,6 +5016,7 @@ const workOrderDepartmentInput = document.querySelector("#work-order-department"
 const workOrderLinkReferenceInput = document.querySelector("#work-order-link-reference");
 const workOrderWeightInput = document.querySelector("#work-order-weight");
 const workOrderCompletedByInput = document.querySelector("#work-order-completed-by");
+const workOrderCompletedByOptions = document.querySelector("#work-order-completed-by-options");
 const workOrderInvoiceDateInput = document.querySelector("#work-order-invoice-date");
 const workOrderTagTextInput = document.querySelector("#work-order-tag-text");
 const workOrderDescriptionInput = document.querySelector("#work-order-description");
@@ -7890,6 +7893,28 @@ function normalizePercentValue(value, fallback = 0, { min = 0, max = 100 } = {})
   return Math.max(min, Math.min(max, Math.round(numeric)));
 }
 
+function parseWorkOrderPointFactorValue(value, fallback = 1) {
+  const numeric = Number(String(value ?? "").trim().replace(",", "."));
+  if (!Number.isFinite(numeric)) {
+    return Number(fallback) || 1;
+  }
+  return Math.max(0, Math.min(1000, Math.round(numeric * 100) / 100));
+}
+
+function normalizeWorkOrderServicePointFactors(value = {}) {
+  const source = value && typeof value === "object" && !Array.isArray(value)
+    ? value
+    : {};
+  return Object.fromEntries(
+    Object.entries(source)
+      .map(([key, rawValue]) => [
+        String(key || "").trim(),
+        parseWorkOrderPointFactorValue(rawValue, 1),
+      ])
+      .filter(([key, factor]) => key && Number.isFinite(factor) && factor >= 0),
+  );
+}
+
 function normalizeMeasurementEquipmentNotificationSettings(value = {}) {
   const source = value && typeof value === "object"
     ? value
@@ -8037,6 +8062,9 @@ function normalizePeriodicsVisualSettings(value = {}) {
     ),
     workOrderFieldSharePercent: normalizedFieldSharePercent,
     workOrderCompletionSharePercent: 100 - normalizedFieldSharePercent,
+    workOrderServicePointFactors: normalizeWorkOrderServicePointFactors(
+      source.workOrderServicePointFactors ?? source.servicePointFactors ?? source.serviceWeightFactors,
+    ),
   };
 }
 
@@ -14821,6 +14849,19 @@ function writeWorkOrderExecutorSelection(values = [], { dispatchEventName = "", 
   if (renderPicker) {
     renderWorkOrderEditorExecutorPicker();
   }
+  renderWorkOrderCompletedByOptions(normalized);
+}
+
+function renderWorkOrderCompletedByOptions(values = readWorkOrderExecutorSelection()) {
+  if (!workOrderCompletedByOptions) {
+    return;
+  }
+  const normalized = normalizeWorkOrderExecutorValues(values);
+  workOrderCompletedByOptions.replaceChildren(...normalized.map((value) => {
+    const option = document.createElement("option");
+    option.value = value;
+    return option;
+  }));
 }
 
 function readWorkOrderCompletedBySelection() {
@@ -14936,6 +14977,7 @@ function buildWorkOrderServiceItemSnapshot(service, current = null) {
     linkedQualificationKeys: getServiceCatalogQualificationKeys(service).length > 0
       ? getServiceCatalogQualificationKeys(service)
       : normalizeQualificationExamKeyList(current?.linkedQualificationKeys ?? current?.linkedQualificationExamKeys ?? []),
+    quantity: String(service?.quantity ?? current?.quantity ?? current?.measurementQuantity ?? 1).trim() || "1",
     isTraining: String(service?.serviceType ?? current?.serviceType ?? (service?.isTraining ?? current?.isTraining ? "znr" : "inspection")).trim().toLowerCase() === "znr",
     serviceStatus: normalizeWorkOrderServiceProgressStatus(
       current?.serviceStatus ?? current?.progressStatus ?? current?.workStatus,
@@ -23969,16 +24011,36 @@ function createWorkOrderEditorServicesContent(selectedServiceItems = []) {
           selection.append(empty);
         } else {
           draftItems.forEach((item) => {
-            const chip = document.createElement("button");
-            chip.type = "button";
+            const chip = document.createElement("div");
             chip.className = `work-order-service-picker-selection-chip${item.isCompleted ? " is-completed" : ""}`;
-            chip.textContent = item.name || item.serviceCode || "Usluga";
-            chip.addEventListener("click", (event) => {
+            const name = document.createElement("button");
+            name.type = "button";
+            name.className = "work-order-service-picker-selection-name";
+            name.textContent = item.name || item.serviceCode || "Usluga";
+            name.addEventListener("click", (event) => {
               event.stopPropagation();
               draftItems = draftItems.filter((entry) => String(entry.serviceId) !== String(item.serviceId));
               dirty = true;
               render();
             });
+            const quantity = document.createElement("input");
+            quantity.type = "number";
+            quantity.min = "0.01";
+            quantity.step = "0.25";
+            quantity.inputMode = "decimal";
+            quantity.className = "work-order-service-picker-quantity";
+            quantity.value = formatWorkOrderServiceQuantity(item.quantity);
+            quantity.title = "Količina za bodove i primopredaju";
+            quantity.addEventListener("click", (event) => event.stopPropagation());
+            quantity.addEventListener("input", () => {
+              draftItems = draftItems.map((entry) => (
+                String(entry.serviceId) === String(item.serviceId)
+                  ? { ...entry, quantity: String(quantity.value || "1").trim() || "1" }
+                  : entry
+              ));
+              dirty = true;
+            });
+            chip.append(name, quantity);
             selection.append(chip);
           });
         }
@@ -26633,12 +26695,14 @@ function renderWorkOrderServicePicker() {
         selection.append(empty);
       } else {
         draftItems.forEach((item) => {
-          const chip = document.createElement("button");
-          chip.type = "button";
+          const chip = document.createElement("div");
           chip.className = `work-order-service-picker-selection-chip${item.isCompleted ? " is-completed" : ""}`;
-          chip.textContent = item.name || item.serviceCode || "Usluga";
-          chip.title = `Makni ${item.name || item.serviceCode}`;
-          chip.addEventListener("click", () => {
+          const name = document.createElement("button");
+          name.type = "button";
+          name.className = "work-order-service-picker-selection-name";
+          name.textContent = item.name || item.serviceCode || "Usluga";
+          name.title = `Makni ${item.name || item.serviceCode}`;
+          name.addEventListener("click", () => {
             draftItems = draftItems.filter((entry) => String(entry.serviceId) !== String(item.serviceId));
             writeWorkOrderServiceSelection(draftItems, {
               dispatchEventName: "change",
@@ -26648,6 +26712,27 @@ function renderWorkOrderServicePicker() {
             setCurrentItems(draftItems);
             syncMenuState();
           });
+          const quantity = document.createElement("input");
+          quantity.type = "number";
+          quantity.min = "0.01";
+          quantity.step = "0.25";
+          quantity.inputMode = "decimal";
+          quantity.className = "work-order-service-picker-quantity";
+          quantity.value = formatWorkOrderServiceQuantity(item.quantity);
+          quantity.title = "Količina za bodove i primopredaju";
+          quantity.addEventListener("click", (event) => event.stopPropagation());
+          quantity.addEventListener("input", () => {
+            draftItems = draftItems.map((entry) => (
+              String(entry.serviceId) === String(item.serviceId)
+                ? { ...entry, quantity: String(quantity.value || "1").trim() || "1" }
+                : entry
+            ));
+            writeWorkOrderServiceSelection(draftItems, {
+              dispatchEventName: "change",
+              renderPicker: false,
+            });
+          });
+          chip.append(name, quantity);
           selection.append(chip);
         });
       }
@@ -30048,6 +30133,130 @@ function formatCompactDecimal(value = 0, maximumFractionDigits = 2) {
   }).format(numeric);
 }
 
+function getWorkOrderServiceFactorKey(service = {}) {
+  const serviceId = String(service?.serviceId || service?.id || "").trim();
+  if (serviceId) {
+    return `id:${serviceId}`;
+  }
+  const serviceCode = normalizeLooseName(service?.serviceCode || service?.code || "");
+  if (serviceCode) {
+    return `code:${serviceCode}`;
+  }
+  const serviceName = normalizeLooseName(service?.name || service?.serviceName || "");
+  return serviceName ? `name:${serviceName}` : "";
+}
+
+function getWorkOrderServiceFactorCandidateKeys(service = {}) {
+  return Array.from(new Set([
+    getWorkOrderServiceFactorKey(service),
+    String(service?.serviceId || service?.id || "").trim(),
+    service?.serviceCode ? `code:${normalizeLooseName(service.serviceCode)}` : "",
+    service?.name ? `name:${normalizeLooseName(service.name)}` : "",
+  ].filter(Boolean)));
+}
+
+function getWorkOrderServicePointFactor(service = {}, factors = getPeriodicsVisualSettings().workOrderServicePointFactors) {
+  const normalizedFactors = normalizeWorkOrderServicePointFactors(factors);
+  const candidates = getWorkOrderServiceFactorCandidateKeys(service);
+  const matchedKey = candidates.find((key) => Object.prototype.hasOwnProperty.call(normalizedFactors, key));
+  if (matchedKey) {
+    return normalizedFactors[matchedKey];
+  }
+  return 1;
+}
+
+function getWorkOrderServiceQuantityValue(service = {}) {
+  const rawValue = service?.quantity ?? service?.measurementQuantity ?? service?.amount ?? service?.count ?? 1;
+  const numeric = Number(String(rawValue ?? "").trim().replace(",", "."));
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return 1;
+  }
+  return Math.round(numeric * 100) / 100;
+}
+
+function formatWorkOrderServiceQuantity(value = 1) {
+  return formatCompactDecimal(getWorkOrderServiceQuantityValue({ quantity: value }), 2);
+}
+
+function renderSettingsWorkOrderServiceFactors(settings = getPeriodicsVisualSettings()) {
+  if (!settingsWorkOrderServiceFactorsList) {
+    return;
+  }
+
+  const services = sortServiceCatalogItems(state.serviceCatalog ?? []);
+  const factors = normalizeWorkOrderServicePointFactors(settings.workOrderServicePointFactors);
+  settingsWorkOrderServiceFactorsList.replaceChildren();
+
+  if (services.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "settings-service-factor-empty";
+    empty.textContent = "Još nema usluga u katalogu.";
+    settingsWorkOrderServiceFactorsList.append(empty);
+    return;
+  }
+
+  services.forEach((service) => {
+    const factorKey = getWorkOrderServiceFactorKey(service);
+    const row = document.createElement("label");
+    row.className = "settings-service-factor-row";
+
+    const copy = document.createElement("span");
+    copy.className = "settings-service-factor-copy";
+    const title = document.createElement("strong");
+    title.textContent = service.name || service.serviceCode || "Usluga";
+    const meta = document.createElement("small");
+    meta.textContent = [
+      service.serviceCode || "",
+      getServiceCatalogTypeLabel(service.serviceType),
+      service.status === "inactive" ? "Neaktivna" : "Aktivna",
+    ].filter(Boolean).join(" · ");
+    copy.append(title, meta);
+
+    const input = document.createElement("input");
+    input.type = "number";
+    input.min = "0";
+    input.max = "1000";
+    input.step = "0.25";
+    input.inputMode = "decimal";
+    input.value = String(factors[factorKey] ?? 1);
+    input.dataset.serviceFactorKey = factorKey;
+    input.disabled = !getCanManageSettings();
+    input.addEventListener("input", () => {
+      const nextSettings = {
+        ...getPeriodicsVisualSettings(),
+        workOrderServicePointFactors: collectSettingsWorkOrderServicePointFactors(),
+      };
+      renderSettingsWorkOrderPointsPreview(nextSettings);
+    });
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        void saveAllSettingsBlocks();
+      }
+    });
+
+    const suffix = document.createElement("span");
+    suffix.className = "settings-service-factor-suffix";
+    suffix.textContent = "bod / kom";
+
+    row.append(copy, input, suffix);
+    settingsWorkOrderServiceFactorsList.append(row);
+  });
+}
+
+function collectSettingsWorkOrderServicePointFactors() {
+  if (!settingsWorkOrderServiceFactorsList) {
+    return getPeriodicsVisualSettings().workOrderServicePointFactors;
+  }
+  const entries = Array.from(settingsWorkOrderServiceFactorsList.querySelectorAll("[data-service-factor-key]"))
+    .map((input) => [
+      String(input.dataset.serviceFactorKey || "").trim(),
+      parseWorkOrderPointFactorValue(input.value, 1),
+    ])
+    .filter(([key]) => key);
+  return Object.fromEntries(entries);
+}
+
 function renderSettingsWorkOrderPointsPreview(settings = getPeriodicsVisualSettings()) {
   if (!settingsWorkOrderPointsPreview) {
     return;
@@ -30062,10 +30271,12 @@ function renderSettingsWorkOrderPointsPreview(settings = getPeriodicsVisualSetti
   const sampleFieldCount = 2;
   const fieldPointsPerPerson = (totalPoints * (fieldShare / 100)) / sampleFieldCount;
   const completionPoints = totalPoints * (completionShare / 100);
+  const serviceFactorCount = Object.keys(normalizeWorkOrderServicePointFactors(settings.workOrderServicePointFactors)).length;
   settingsWorkOrderPointsPreview.innerHTML = `
     <div>
       <span>Ukupni faktor</span>
       <strong>${formatCompactDecimal(totalPoints)} b</strong>
+      <small>${serviceFactorCount || state.serviceCatalog.length} faktora usluga</small>
     </div>
     <div>
       <span>Teren</span>
@@ -30226,6 +30437,7 @@ function renderSettingsModule() {
     settingsWorkOrderCompletionShareInput.disabled = !canManageSettings;
   }
 
+  renderSettingsWorkOrderServiceFactors(periodicsVisualSettings);
   renderSettingsWorkOrderPointsPreview(periodicsVisualSettings);
 
   if (settingsSaveAllButton) {
@@ -30539,6 +30751,9 @@ async function savePeriodicsVisualSettings(options = {}) {
     DEFAULT_PERIODICS_VISUAL_SETTINGS.workOrderFieldSharePercent,
   );
   const workOrderCompletionSharePercent = 100 - workOrderFieldSharePercent;
+  const workOrderServicePointFactors = normalizeWorkOrderServicePointFactors(
+    collectSettingsWorkOrderServicePointFactors(),
+  );
 
   if (settingsPeriodicsCriticalDaysInput) {
     settingsPeriodicsCriticalDaysInput.value = String(criticalDays);
@@ -30558,6 +30773,7 @@ async function savePeriodicsVisualSettings(options = {}) {
   renderSettingsWorkOrderPointsPreview({
     workOrderFieldSharePercent,
     workOrderCompletionSharePercent,
+    workOrderServicePointFactors,
   });
 
   const success = await runMutation(() => apiRequest("/periodics/visual-settings", {
@@ -30568,6 +30784,7 @@ async function savePeriodicsVisualSettings(options = {}) {
       workOrderDefaultDueDays,
       workOrderFieldSharePercent,
       workOrderCompletionSharePercent,
+      workOrderServicePointFactors,
     },
   }), settingsPeriodicsVisualFeedback);
 
@@ -98337,65 +98554,28 @@ function getWorkOrderFinishedInspectorState(targets = []) {
 }
 
 function getWorkOrderFinishedInspectorOptions(targets = [], currentLabels = []) {
-  const activeUserIds = new Set(getActiveOrganizationUsers().map((user) => String(user.id)));
-  const areas = getWorkOrderFinishedInspectorAreas(targets);
-  const byUserId = new Map();
+  const byLabel = new Map();
 
-  areas.forEach((area) => {
-    getQualifiedUsersForSignatureArea("inspect", area).forEach((user) => {
-      const userId = String(user?.id || "").trim();
-      if (!userId || (activeUserIds.size > 0 && !activeUserIds.has(userId))) {
+  (Array.isArray(targets) ? targets : []).forEach((workOrder) => {
+    getWorkOrderExecutors(workOrder).forEach((executor) => {
+      const label = String(executor || "").trim();
+      const key = normalizePersonLookupValue(label);
+      if (!key || byLabel.has(key)) {
         return;
       }
-
-      const existing = byUserId.get(userId) ?? {
-        value: `user:${userId}`,
-        label: getUserDocumentDisplayName(user),
+      const user = findUserForExecutor(label);
+      byLabel.set(key, {
+        value: `executor:${key}`,
+        label,
         user,
-        areas: new Set(),
-      };
-      existing.areas.add(area);
-      byUserId.set(userId, existing);
+        summary: workOrder.workOrderNumber
+          ? `Izvršitelj na RN ${workOrder.workOrderNumber}`
+          : "Izvršitelj RN-a",
+      });
     });
   });
 
-  if (byUserId.size === 0) {
-    getActiveOrganizationUsers().forEach((user) => {
-      const userId = String(user?.id || "").trim();
-      if (!userId) {
-        return;
-      }
-      byUserId.set(userId, {
-        value: `user:${userId}`,
-        label: getUserDocumentDisplayName(user),
-        user,
-        areas: new Set(),
-        fallback: true,
-      });
-    });
-  }
-
-  const options = [...byUserId.values()]
-    .map((entry) => {
-      const areaLabels = [...entry.areas].map((area) => getSignatureAreaLabel(area));
-      const qualificationParts = [...entry.areas].flatMap((area) => {
-        const qualification = getUserElectricalQualification(entry.user, area);
-        return [
-          qualification.type ? `Vrsta ispita ${qualification.type}` : "",
-          qualification.data1 ? `Podatak 1 ${qualification.data1}` : "",
-          qualification.data2 ? `Podatak 2 ${qualification.data2}` : "",
-          qualification.data3 ? `Podatak 3 ${qualification.data3}` : "",
-        ].filter(Boolean);
-      });
-      return {
-        value: entry.value,
-        label: entry.label,
-        user: entry.user,
-        summary: entry.fallback
-          ? [entry.user?.title || "", entry.user?.email || ""].filter(Boolean).join(" · ") || "Osoba iz People"
-          : [`Ispitivač`, areaLabels.join(", "), ...qualificationParts].filter(Boolean).join(" · "),
-      };
-    })
+  const options = [...byLabel.values()]
     .sort((left, right) => left.label.localeCompare(right.label, "hr"));
 
   currentLabels.forEach((label) => {
@@ -98494,10 +98674,10 @@ function createWorkOrderFinishedInspectorPicker({
     const names = getWorkOrderFinishedInspectorNames(draftValues, options);
     trigger.replaceChildren();
     trigger.title = mixedSelection && names.length === 0
-      ? "Različiti ispitivači"
+      ? "Različiti izvršitelji"
       : names.length > 0
         ? names.join(", ")
-        : "Odaberi ispitivače";
+        : "Odaberi izvršitelje";
     trigger.setAttribute("aria-label", trigger.title);
 
     const icon = createWorkOrderActionIcon("assignees");
@@ -98530,12 +98710,12 @@ function createWorkOrderFinishedInspectorPicker({
     const label = document.createElement("span");
     label.className = "work-order-bulk-action-label work-order-row-inspector-trigger-label";
     label.textContent = mixedSelection && names.length === 0
-      ? "Različiti ispitivači"
+      ? "Različiti izvršitelji"
       : names.length === 0
-        ? "Odaberi ispitivače"
+        ? "Odaberi izvršitelje"
         : names.length === 1
           ? names[0]
-          : `${names.length} ispitivača`;
+          : `${names.length} izvršitelja`;
     trigger.append(label);
   };
 
@@ -98585,7 +98765,7 @@ function createWorkOrderFinishedInspectorPicker({
     const menu = document.createElement("div");
     menu.className = "work-item-status-menu work-item-status-menu-portal work-order-calendar-executor-menu-portal work-order-row-inspector-menu-portal";
     menu.setAttribute("role", "dialog");
-    menu.setAttribute("aria-label", "Odabir ispitivača za RN završio");
+    menu.setAttribute("aria-label", "Odabir izvršitelja za RN završio");
 
     ["pointerdown", "mousedown", "click", "keydown"].forEach((eventName) => {
       menu.addEventListener(eventName, (event) => {
@@ -98598,7 +98778,7 @@ function createWorkOrderFinishedInspectorPicker({
     const searchInput = document.createElement("input");
     searchInput.type = "search";
     searchInput.className = "work-order-calendar-executor-search-input";
-    searchInput.placeholder = "Traži ispitivača";
+    searchInput.placeholder = "Traži izvršitelja";
     searchInput.autocomplete = "off";
     searchInput.spellcheck = false;
     searchWrap.append(searchInput);
@@ -98638,14 +98818,14 @@ function createWorkOrderFinishedInspectorPicker({
       if (mixedSelection && names.length === 0) {
         const empty = document.createElement("span");
         empty.className = "work-order-calendar-executor-selection-empty";
-        empty.textContent = "Odaberi novi set ispitivača za sve odabrane RN-ove.";
+        empty.textContent = "Odaberi novi set izvršitelja za sve odabrane RN-ove.";
         selection.append(empty);
         return;
       }
       if (names.length === 0) {
         const empty = document.createElement("span");
         empty.className = "work-order-calendar-executor-selection-empty";
-        empty.textContent = "Nema odabranih ispitivača.";
+        empty.textContent = "Nema odabranih izvršitelja.";
         selection.append(empty);
         return;
       }
@@ -98679,7 +98859,7 @@ function createWorkOrderFinishedInspectorPicker({
       if (!visibleOptions.length) {
         const empty = document.createElement("p");
         empty.className = "work-order-calendar-executor-empty";
-        empty.textContent = "Nema ispitivača za ovaj pojam.";
+        empty.textContent = "Nema izvršitelja za ovaj pojam.";
         optionsList.append(empty);
         return;
       }
@@ -98720,8 +98900,8 @@ function createWorkOrderFinishedInspectorPicker({
       renderSelection();
       renderOptions();
       helper.textContent = draftValues.length > 0
-        ? `${draftValues.length} odabranih ispitivača.`
-        : "Odaberi jednog ili više ispitivača za završetak RN-a.";
+        ? `${draftValues.length} odabranih izvršitelja.`
+        : "Odaberi jednog ili više izvršitelja za završetak RN-a.";
       clearButton.hidden = draftValues.length === 0 && !mixedSelection;
       requestAnimationFrame(() => positionMenuPortal(menu));
     };
@@ -106050,7 +106230,20 @@ function attachWorkOrderInlineFieldEditor(cell, workOrder = {}, config = {}) {
         input.inputMode = "numeric";
         input.pattern = "[0-9.\\-/\\s]*";
       }
-      label.append(labelText, input);
+      if (field.key === "completedBy") {
+        const listId = `work-order-inline-completed-by-${String(workOrder.id || "").replace(/[^A-Za-z0-9_-]/g, "")}`;
+        const datalist = document.createElement("datalist");
+        datalist.id = listId;
+        datalist.replaceChildren(...getWorkOrderExecutors(workOrder).map((executor) => {
+          const option = document.createElement("option");
+          option.value = executor;
+          return option;
+        }));
+        input.setAttribute("list", listId);
+        label.append(labelText, input, datalist);
+      } else {
+        label.append(labelText, input);
+      }
       grid.append(label);
       inputs.set(field.key, { input, field, initialValue: input.value });
     });
@@ -106535,11 +106728,34 @@ function attachWorkOrderInlineServicesEditor(cell, workOrder = {}) {
 }
 
 function getWorkOrderPointTotal(item = {}) {
+  const serviceRows = getWorkOrderPointServiceRows(item);
+  if (serviceRows.length > 0) {
+    const total = serviceRows.reduce((sum, row) => sum + row.points, 0);
+    if (Number.isFinite(total)) {
+      return Math.round(total * 100) / 100;
+    }
+  }
+
   const numericWeight = parseOfferMoneyInput(item.weight, Number.NaN);
   if (Number.isFinite(numericWeight) && numericWeight > 0 && numericWeight <= 100) {
     return numericWeight;
   }
   return 10;
+}
+
+function getWorkOrderPointServiceRows(item = {}) {
+  return getWorkOrderServiceItems(item)
+    .map((service) => {
+      const factor = getWorkOrderServicePointFactor(service);
+      const quantity = getWorkOrderServiceQuantityValue(service);
+      const points = Math.round(factor * quantity * 100) / 100;
+      return {
+        service,
+        factor,
+        quantity,
+        points,
+      };
+    });
 }
 
 function getWorkOrderPointDistributionSettings() {
@@ -106556,6 +106772,7 @@ function getWorkOrderPointDistributionSettings() {
 
 function buildWorkOrderPointDistribution(item = {}) {
   const totalPoints = getWorkOrderPointTotal(item);
+  const serviceRows = getWorkOrderPointServiceRows(item);
   const { fieldSharePercent, completionSharePercent } = getWorkOrderPointDistributionSettings();
   const executors = normalizeWorkOrderExecutorValues(getWorkOrderExecutors(item));
   const completedPeople = normalizeWorkOrderExecutorValues(
@@ -106609,6 +106826,7 @@ function buildWorkOrderPointDistribution(item = {}) {
     people,
     allocatedPoints,
     unallocatedPoints: Math.max(0, totalPoints - allocatedPoints),
+    serviceRows,
   };
 }
 
@@ -106629,6 +106847,23 @@ function createWorkOrderPointDistributionCard(item = {}) {
   split.textContent = `${distribution.fieldSharePercent}% teren · ${distribution.completionSharePercent}% završetak`;
   head.append(headCopy, split);
   wrap.append(head);
+
+  if (distribution.serviceRows.length > 0) {
+    const sources = document.createElement("div");
+    sources.className = "work-executor-score-sources";
+    distribution.serviceRows.slice(0, 3).forEach((row) => {
+      const source = document.createElement("span");
+      const label = row.service.serviceCode || row.service.name || "Usluga";
+      source.textContent = `${label}: ${formatCompactDecimal(row.factor)} x ${formatCompactDecimal(row.quantity)} = ${formatCompactDecimal(row.points)} b`;
+      sources.append(source);
+    });
+    if (distribution.serviceRows.length > 3) {
+      const more = document.createElement("span");
+      more.textContent = `+${distribution.serviceRows.length - 3} usluga`;
+      sources.append(more);
+    }
+    wrap.append(sources);
+  }
 
   if (distribution.people.length === 0) {
     const empty = document.createElement("span");
@@ -106965,7 +107200,11 @@ function renderCompactWorkOrdersList() {
 
       const createServiceBulletList = (items = [], fallbackSummary = "") => {
         const labels = Array.from(new Set([
-          ...items.map((service) => String(service.name || service.serviceName || service.serviceCode || "").trim()),
+          ...items.map((service) => {
+            const label = String(service.name || service.serviceName || service.serviceCode || "").trim();
+            const quantity = getWorkOrderServiceQuantityValue(service);
+            return label ? `${label}${quantity !== 1 ? ` x ${formatCompactDecimal(quantity)}` : ""}` : "";
+          }),
           ...String(fallbackSummary || "")
             .split(/[·|,;/]+/u)
             .map((entry) => entry.trim()),
