@@ -17,6 +17,7 @@ import {
   createContractTemplate,
   createDashboardWidget,
   createDocumentTemplate,
+  createJob,
   createLegalFramework,
   createLearningTest,
   createLocation,
@@ -41,6 +42,7 @@ import {
   filterContractTemplates,
   filterReminders,
   filterDocumentTemplates,
+  filterJobs,
   filterLegalFrameworks,
   filterMeasurementEquipmentItems,
   filterOffers,
@@ -75,6 +77,7 @@ import {
   sortReminders,
   sortDashboardWidgets,
   sortDocumentTemplates,
+  sortJobs,
   sortLegalFrameworks,
   sortMeasurementEquipmentItems,
   sortOffers,
@@ -91,6 +94,7 @@ import {
   updateAbsenceEntry,
   updateDashboardWidget,
   updateDocumentTemplate,
+  updateJob,
   updateCompany,
   updateDrawingProject,
   updateLegalFramework,
@@ -149,6 +153,7 @@ function buildState() {
     offers: [],
     publicProcurements: [],
     purchaseOrders: [],
+    jobs: [],
     contracts: [],
     drawings: [],
     contractTemplates: [],
@@ -162,6 +167,71 @@ function buildState() {
     activeOrganizationId: "org-1",
   };
 }
+
+test("jobs keep environment, conditions and hazard catalog details", () => {
+  const state = buildState();
+  const job = createJob(
+    {
+      organizationId: "org-1",
+      title: "Serviser sustava dojave požara",
+      status: "active",
+      description: "Obavlja servis i provjeru sustava kod klijenata.",
+      environment: {
+        machinesEnabled: true,
+        machinesText: "Ručni alat, mjerna oprema i ljestve.",
+        workplaceEnabled: true,
+        workplaceOptions: ["u zatvorenom", "na visini"],
+        organizationEnabled: true,
+        fieldWork: "često",
+      },
+      conditions: {
+        trainingRequired: true,
+        computerOver4h: false,
+        bodyPositions: ["rad stojeći", "u pokretu"],
+        importantFunctions: ["vid na daljinu"],
+        workConditions: ["rad na visini"],
+        notes: {
+          trainingRequired: "Potrebno osposobljavanje za siguran rad.",
+        },
+      },
+      hazards: [
+        {
+          catalogCode: "2.1.3",
+          catalogLabel: "S visine",
+          probability: "v",
+          consequence: "sš",
+          riskLevel: "Srednji rizik",
+          measures: "Koristiti ispravne ljestve i zaštitu od pada.",
+        },
+      ],
+    },
+    state,
+    () => "job-1",
+    () => "2026-05-26T08:00:00.000Z",
+  );
+
+  assert.equal(job.id, "job-1");
+  assert.equal(job.environment.machinesEnabled, true);
+  assert.deepEqual(job.environment.workplaceOptions, ["u zatvorenom", "na visini"]);
+  assert.equal(job.conditions.trainingRequired, true);
+  assert.equal(job.hazards[0].catalogLabel, "S visine");
+
+  const updated = updateJob(
+    job,
+    {
+      status: "archived",
+      hazards: [...job.hazards, { catalogCode: "3.1", catalogLabel: "Buka" }],
+    },
+    { ...state, jobs: [job] },
+    () => "2026-05-26T09:00:00.000Z",
+  );
+
+  assert.equal(updated.status, "archived");
+  assert.equal(updated.hazards.length, 2);
+  assert.equal(filterJobs([updated], { query: "buka" }).length, 1);
+  assert.equal(filterJobs([updated], { status: "active" }).length, 0);
+  assert.equal(sortJobs([updated, job])[0].id, "job-1");
+});
 
 test("risk assessments keep detailed ARMOR job rows and eligibility data", () => {
   const state = buildState();

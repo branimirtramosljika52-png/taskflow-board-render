@@ -26,6 +26,7 @@
   PERSON_TRAINING_TYPE_OPTIONS,
   PUBLIC_PROCUREMENT_STATUS_OPTIONS,
   PURCHASE_ORDER_STATUS_OPTIONS,
+  JOB_STATUS_OPTIONS,
   RISK_ASSESSMENT_STATUS_OPTIONS,
   REMINDER_STATUS_OPTIONS,
   PRIORITY_OPTIONS,
@@ -53,6 +54,7 @@
   filterOffers,
   filterPublicProcurements,
   filterPurchaseOrders,
+  filterJobs,
   filterRiskAssessments,
   filterAbsenceEntries,
   filterReminders,
@@ -81,6 +83,7 @@
   sortOffers,
   sortPublicProcurements,
   sortPurchaseOrders,
+  sortJobs,
   sortRiskAssessments,
   sortReminders,
   sortDashboardWidgets,
@@ -1622,6 +1625,12 @@ const MODULE_VIEW_DEFINITIONS = {
     description: "Evidencija osposobljavanja po osobi, tvrtki, RN-u, online testu i uvjerenjima za klijentski portal.",
     chips: ["RN", "Ispiti", "Uvjerenja"],
   },
+  jobs: {
+    kicker: "Health And Safety",
+    title: "Jobs",
+    description: "Katalog poslova s opisima, radnim okruženjem, uvjetima rada i opasnostima za procjene rizika.",
+    chips: ["Poslovi", "NexAI", "Opasnosti"],
+  },
   "learning-people": {
     kicker: "Health And Safety",
     title: "People",
@@ -1668,6 +1677,7 @@ const SIDEBAR_ITEM_CONFIG = {
   documents: { group: "documents", view: "module", module: "documents" },
   tests: { group: "learning", view: "module", module: "tests" },
   "people-training": { group: "learning", view: "module", module: "people-training" },
+  jobs: { group: "learning", view: "module", module: "jobs" },
   "risk-assessment": { group: "learning", view: "module", module: "risk-assessment" },
   "learning-people": { group: "learning", view: "module", module: "learning-people" },
 };
@@ -1721,6 +1731,7 @@ const SIDEBAR_ITEM_LABELS = {
   documents: "Documents",
   tests: "Test",
   "people-training": "Osposobljavanja",
+  jobs: "Jobs",
   "risk-assessment": "Risk Assessment",
   "learning-people": "People",
 };
@@ -1805,6 +1816,7 @@ const state = {
   offers: [],
   publicProcurements: [],
   purchaseOrders: [],
+  jobs: [],
   riskAssessments: [],
   contracts: [],
   drawings: [],
@@ -2047,6 +2059,13 @@ const state = {
     trainingType: "all",
     status: "all",
   },
+  jobFilters: {
+    query: "",
+    status: "all",
+  },
+  activeJobId: "",
+  jobEditorOpen: false,
+  jobEditorSheet: "basic",
   peopleTrainingExamSelection: "rn",
   peopleTrainingExamQuery: "",
   peopleTrainingExamCollapsed: false,
@@ -5916,6 +5935,40 @@ const peopleTrainingBulkOpenButton = document.querySelector("#people-training-bu
 const peopleTrainingListCount = document.querySelector("#people-training-list-count");
 const peopleTrainingList = document.querySelector("#people-training-list");
 const peopleTrainingEmpty = document.querySelector("#people-training-empty");
+const jobsModule = document.querySelector("#jobs-module");
+const jobNewButton = document.querySelector("#job-new");
+const jobSearchInput = document.querySelector("#job-search");
+const jobStatusFilterInput = document.querySelector("#job-status-filter");
+const jobList = document.querySelector("#job-list");
+const jobEmpty = document.querySelector("#job-empty");
+const jobTotalCount = document.querySelector("#job-total-count");
+const jobActiveCount = document.querySelector("#job-active-count");
+const jobHazardCount = document.querySelector("#job-hazard-count");
+const jobAiCount = document.querySelector("#job-ai-count");
+const jobEditorBackdrop = document.querySelector("#job-editor-backdrop");
+const jobEditorPanel = document.querySelector("#job-editor-panel");
+const jobForm = document.querySelector("#job-form");
+const jobIdInput = document.querySelector("#job-id");
+const jobEditorTitle = document.querySelector("#job-editor-title");
+const jobEditorMeta = document.querySelector("#job-editor-meta");
+const jobEditorCloseButton = document.querySelector("#job-editor-close");
+const jobCopySourceInput = document.querySelector("#job-copy-source");
+const jobTitleInput = document.querySelector("#job-title");
+const jobStatusInput = document.querySelector("#job-status");
+const jobDescriptionInput = document.querySelector("#job-description");
+const jobDescriptionAiButton = document.querySelector("#job-description-ai");
+const jobEnvironmentSections = document.querySelector("#job-environment-sections");
+const jobConditionSections = document.querySelector("#job-condition-sections");
+const jobHazardCatalogSearch = document.querySelector("#job-hazard-catalog-search");
+const jobHazardCatalog = document.querySelector("#job-hazard-catalog");
+const jobSelectedHazards = document.querySelector("#job-selected-hazards");
+const jobSelectedHazardCount = document.querySelector("#job-selected-hazard-count");
+const jobFormFeedback = document.querySelector("#job-form-feedback");
+const jobSubmitButton = document.querySelector("#job-submit");
+const jobResetButton = document.querySelector("#job-reset");
+const jobDeleteButton = document.querySelector("#job-delete");
+const jobSheetButtons = Array.from(document.querySelectorAll("[data-job-sheet]"));
+const jobSheetPanels = Array.from(document.querySelectorAll("[data-job-sheet-panel]"));
 const riskAssessmentModule = document.querySelector("#risk-assessment-module");
 const riskAssessmentNewButton = document.querySelector("#risk-assessment-new");
 const riskAssessmentSearchInput = document.querySelector("#risk-assessment-search");
@@ -5963,6 +6016,7 @@ const riskAssessmentError = document.querySelector("#risk-assessment-error");
 const riskAssessmentSubmitButton = document.querySelector("#risk-assessment-submit");
 const riskAssessmentResetButton = document.querySelector("#risk-assessment-reset");
 const riskAssessmentDeleteButton = document.querySelector("#risk-assessment-delete");
+let jobHazardDrafts = [];
 let riskAssessmentMeasureDrafts = [];
 let riskAssessmentOrganizationUnitDrafts = [];
 let riskAssessmentJobDrafts = [];
@@ -8588,6 +8642,7 @@ function applySnapshot(payload, options = {}) {
   state.offers = payload.offers ?? [];
   state.publicProcurements = payload.publicProcurements ?? [];
   state.purchaseOrders = payload.purchaseOrders ?? [];
+  state.jobs = payload.jobs ?? [];
   state.riskAssessments = payload.riskAssessments ?? [];
   state.contracts = payload.contracts ?? [];
   state.drawings = payload.drawings ?? [];
@@ -8731,6 +8786,11 @@ function applySnapshot(payload, options = {}) {
     state.learningTestEditorOpen = false;
     syncLearningTestEditorModal();
     resetLearningTestForm();
+  }
+  if (jobIdInput?.value && !state.jobs.some((item) => String(item.id) === String(jobIdInput.value))) {
+    state.jobEditorOpen = false;
+    syncJobEditorModal();
+    resetJobForm();
   }
   if (serviceCatalogIdInput?.value && !state.serviceCatalog.some((item) => String(item.id) === String(serviceCatalogIdInput.value))) {
     state.serviceCatalogEditorOpen = false;
@@ -18142,6 +18202,15 @@ function ensurePeopleTrainingPanelInModuleView() {
   }
 }
 
+function ensureJobsModuleInModuleView() {
+  if (!jobsModule || !workspaceViews.module) {
+    return;
+  }
+  if (jobsModule.parentElement !== workspaceViews.module) {
+    workspaceViews.module.append(jobsModule);
+  }
+}
+
 function ensureRiskAssessmentModuleInModuleView() {
   if (!riskAssessmentModule || !workspaceViews.module) {
     return;
@@ -18170,6 +18239,7 @@ function renderModuleView() {
   const isLegalFrameworkModule = state.activeModuleItem === "legal-framework";
   const isLearningTestsModule = state.activeModuleItem === "tests";
   const isPeopleTrainingModule = state.activeModuleItem === "people-training";
+  const isJobsModule = state.activeModuleItem === "jobs";
   const isRiskAssessmentModule = state.activeModuleItem === "risk-assessment";
   const isLearningPeopleModule = state.activeModuleItem === "learning-people";
   const isServiceCatalogModule = state.activeModuleItem === "services-catalog";
@@ -18192,10 +18262,11 @@ function renderModuleView() {
     && !isDrawingStudioModule
     && !isVehiclesModule
     && !isPeopleTrainingModule
+    && !isJobsModule
     && !isRiskAssessmentModule;
 
   if (modulePanel) {
-    modulePanel.hidden = isPeopleTrainingModule || isRiskAssessmentModule;
+    modulePanel.hidden = isPeopleTrainingModule || isJobsModule || isRiskAssessmentModule;
   }
 
   if (moduleViewKicker) {
@@ -18252,6 +18323,13 @@ function renderModuleView() {
       ensurePeopleTrainingPanelInModuleView();
     }
     peopleTrainingPanel.hidden = !isPeopleTrainingModule;
+  }
+
+  if (jobsModule) {
+    if (isJobsModule) {
+      ensureJobsModuleInModuleView();
+    }
+    jobsModule.hidden = !isJobsModule;
   }
 
   if (riskAssessmentModule) {
@@ -18331,6 +18409,10 @@ function renderModuleView() {
 
   if (isPeopleTrainingModule) {
     renderPeopleTrainingModule();
+  }
+
+  if (isJobsModule) {
+    renderJobsModule();
   }
 
   if (isRiskAssessmentModule) {
@@ -115184,6 +115266,222 @@ learningTestsFilterStatusInput?.addEventListener("change", () => {
   renderLearningTestsModule();
 });
 
+jobSearchInput?.addEventListener("input", () => {
+  state.jobFilters.query = jobSearchInput.value.trim();
+  renderJobsModule();
+});
+
+jobStatusFilterInput?.addEventListener("change", () => {
+  state.jobFilters.status = jobStatusFilterInput.value || "all";
+  renderJobsModule();
+});
+
+jobNewButton?.addEventListener("click", () => {
+  resetJobForm();
+  openJobEditor();
+});
+
+jobEditorCloseButton?.addEventListener("click", () => {
+  setJobEditorOpen(false);
+});
+
+jobEditorBackdrop?.addEventListener("click", () => {
+  setJobEditorOpen(false);
+});
+
+jobSheetButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    state.jobEditorSheet = normalizeJobSheet(button.dataset.jobSheet);
+    syncJobSheets();
+  });
+});
+
+jobCopySourceInput?.addEventListener("change", () => {
+  const sourceId = String(jobCopySourceInput.value || "").trim();
+  if (!sourceId) {
+    return;
+  }
+  const source = state.jobs.find((item) => String(item.id) === sourceId);
+  if (!source) {
+    return;
+  }
+  const copied = cloneJobDraft(source);
+  copied.id = "";
+  copied.title = source.title || "";
+  hydrateJobForm(copied);
+  setInlineMessage(jobFormFeedback, "Podaci su kopirani iz postojećeg posla. Pregledaj i spremi kao novi posao.", "success");
+});
+
+jobDescriptionAiButton?.addEventListener("click", () => {
+  if (jobDescriptionInput) {
+    jobDescriptionInput.value = getJobNexAiText("description");
+  }
+});
+
+jobEnvironmentSections?.addEventListener("click", (event) => {
+  const target = event.target instanceof Element ? event.target : null;
+  const suggestionButton = target?.closest("[data-job-env-suggestion]");
+  if (suggestionButton instanceof HTMLElement) {
+    suggestionButton.classList.toggle("is-selected");
+    const sectionKey = suggestionButton.dataset.jobEnvSuggestion || "";
+    const textarea = jobEnvironmentSections.querySelector(`[data-job-env-text="${sectionKey}"]`);
+    if (textarea instanceof HTMLTextAreaElement) {
+      const selected = Array.from(jobEnvironmentSections.querySelectorAll(`[data-job-env-suggestion="${sectionKey}"].is-selected`))
+        .map((button) => String(button.dataset.value || "").trim())
+        .filter(Boolean);
+      if (selected.length && !textarea.value.trim()) {
+        textarea.value = selected.join(", ");
+      }
+    }
+    return;
+  }
+  const aiButton = target?.closest("[data-job-nexai]");
+  if (aiButton instanceof HTMLElement) {
+    const key = aiButton.dataset.jobNexai || "";
+    const textarea = jobEnvironmentSections.querySelector(`[data-job-env-text="${key}"]`);
+    if (textarea instanceof HTMLTextAreaElement) {
+      textarea.value = getJobNexAiText(key);
+    }
+  }
+});
+
+jobEnvironmentSections?.addEventListener("change", (event) => {
+  const target = event.target instanceof Element ? event.target : null;
+  const toggle = target?.closest("[data-job-env-enabled]");
+  if (toggle instanceof HTMLInputElement) {
+    toggle.closest("[data-job-environment-card]")?.classList.toggle("is-enabled", toggle.checked);
+  }
+});
+
+jobConditionSections?.addEventListener("click", (event) => {
+  const target = event.target instanceof Element ? event.target : null;
+  const choiceButton = target?.closest("[data-job-condition-choice]");
+  if (choiceButton instanceof HTMLElement) {
+    choiceButton.classList.toggle("is-selected");
+    return;
+  }
+  const aiButton = target?.closest("[data-job-nexai]");
+  if (aiButton instanceof HTMLElement) {
+    const key = aiButton.dataset.jobNexai || "";
+    if (key.startsWith("condition:")) {
+      const noteKey = key.replace("condition:", "");
+      const textarea = jobConditionSections.querySelector(`[data-job-condition-note="${noteKey}"]`);
+      if (textarea instanceof HTMLTextAreaElement) {
+        textarea.value = getJobNexAiText(key);
+      }
+    }
+  }
+});
+
+jobConditionSections?.addEventListener("change", (event) => {
+  const target = event.target instanceof Element ? event.target : null;
+  const toggle = target?.closest("[data-job-condition-flag]");
+  if (toggle instanceof HTMLInputElement) {
+    toggle.closest("[data-job-condition-card]")?.classList.toggle("is-enabled", toggle.checked);
+  }
+});
+
+jobHazardCatalogSearch?.addEventListener("input", renderJobHazardCatalog);
+
+jobHazardCatalog?.addEventListener("click", (event) => {
+  const button = event.target instanceof Element ? event.target.closest("[data-job-hazard-add]") : null;
+  if (!(button instanceof HTMLElement)) {
+    return;
+  }
+  const key = button.dataset.jobHazardAdd || "";
+  const row = getJobHazardCatalogRows().find((entry) => `${entry.code || ""}::${entry.hazard || ""}` === key);
+  if (!row) {
+    return;
+  }
+  const exists = jobHazardDrafts.some((hazard) => `${hazard.catalogCode}::${hazard.catalogLabel}` === key);
+  if (!exists) {
+    jobHazardDrafts.push(createJobHazardDraft(row));
+  }
+  renderJobHazardCatalog();
+  renderJobSelectedHazards();
+});
+
+jobSelectedHazards?.addEventListener("input", (event) => {
+  const target = event.target instanceof Element ? event.target : null;
+  const field = target?.closest("[data-job-hazard-field]");
+  const card = target?.closest("[data-job-hazard-index]");
+  if (!(field instanceof HTMLElement) || !(card instanceof HTMLElement)) {
+    return;
+  }
+  const index = Number(card.dataset.jobHazardIndex);
+  const hazard = jobHazardDrafts[index];
+  if (!hazard) {
+    return;
+  }
+  hazard[field.dataset.jobHazardField] = "value" in field ? String(field.value || "") : "";
+});
+
+jobSelectedHazards?.addEventListener("change", (event) => {
+  const target = event.target instanceof Element ? event.target : null;
+  const field = target?.closest("[data-job-hazard-field]");
+  const card = target?.closest("[data-job-hazard-index]");
+  if (!(field instanceof HTMLElement) || !(card instanceof HTMLElement)) {
+    return;
+  }
+  const index = Number(card.dataset.jobHazardIndex);
+  const hazard = jobHazardDrafts[index];
+  if (!hazard) {
+    return;
+  }
+  hazard[field.dataset.jobHazardField] = "value" in field ? String(field.value || "") : "";
+});
+
+jobSelectedHazards?.addEventListener("click", (event) => {
+  const button = event.target instanceof Element ? event.target.closest("[data-job-hazard-remove]") : null;
+  if (!(button instanceof HTMLElement)) {
+    return;
+  }
+  const index = Number(button.dataset.jobHazardRemove);
+  if (Number.isInteger(index)) {
+    jobHazardDrafts.splice(index, 1);
+    renderJobHazardCatalog();
+    renderJobSelectedHazards();
+  }
+});
+
+jobResetButton?.addEventListener("click", () => {
+  resetJobForm();
+});
+
+jobDeleteButton?.addEventListener("click", () => {
+  const id = jobIdInput?.value || "";
+  if (!id || !window.confirm("Obrisati posao iz kataloga?")) {
+    return;
+  }
+  void runMutation(() => apiRequest(`/jobs/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  }), jobFormFeedback).then((success) => {
+    if (success) {
+      setJobEditorOpen(false);
+      resetJobForm();
+      renderJobsModule();
+    }
+  });
+});
+
+jobForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const id = jobIdInput?.value || "";
+  const isEditing = Boolean(id);
+  const path = isEditing ? `/jobs/${encodeURIComponent(id)}` : "/jobs";
+  const method = isEditing ? "PATCH" : "POST";
+  void runMutation(() => apiRequest(path, {
+    method,
+    body: buildJobPayload(),
+  }), jobFormFeedback).then((success) => {
+    if (success) {
+      setJobEditorOpen(false);
+      resetJobForm();
+      renderJobsModule();
+    }
+  });
+});
+
 riskAssessmentSearchInput?.addEventListener("input", () => {
   state.riskAssessmentFilters.query = riskAssessmentSearchInput.value.trim();
   renderRiskAssessmentModule();
@@ -119231,6 +119529,556 @@ const RISK_ASSESSMENT_CATALOG_ROWS = Object.freeze([
   ...RISK_ASSESSMENT_CATALOG_EXTRA_ROWS,
 ]);
 
+const JOB_ENVIRONMENT_SECTIONS = Object.freeze([
+  {
+    key: "machines",
+    title: "Strojevi, alati i aparati",
+    helper: "Čime radnik rukuje ili što poslužuje.",
+    placeholder: "npr. ručni alat, prijenosni mjerni instrumenti, ljestve, računalna oprema...",
+    suggestions: ["ručni alat", "mehanizirani alat", "mjerna oprema", "ljestve", "radno vozilo", "računalo"],
+  },
+  {
+    key: "substances",
+    title: "Radne tvari",
+    helper: "Tvari s kojima radnik rukuje ili dolazi u dodir.",
+    placeholder: "npr. sredstva za čišćenje, goriva, ulja, plinovi, prašina...",
+    suggestions: ["kemikalije", "sredstva za čišćenje", "ulja i maziva", "zapaljive tvari", "prašina", "nema značajnih tvari"],
+  },
+  {
+    key: "workplace",
+    title: "Mjesto rada",
+    helper: "Odaberi tipična mjesta rada i dopiši opis.",
+    placeholder: "npr. u zatvorenom prostoru i povremeno na otvorenom kod klijenta...",
+    suggestions: ["u zatvorenom", "na otvorenom", "na visini", "u jami", "u vodi", "u prometu", "kod klijenta"],
+  },
+  {
+    key: "organization",
+    title: "Organizacija rada",
+    helper: "Radno vrijeme, način rada, ritam, stanke i posebnosti organizacije.",
+    placeholder: "npr. puno radno vrijeme, terenski rad po nalogu, dnevna smjena, redovne stanke...",
+    suggestions: ["jedna smjena", "puno radno vrijeme", "terenski rad", "rad od kuće", "prekovremeni rad po potrebi", "bez noćnog rada"],
+  },
+]);
+
+const JOB_ORGANIZATION_FIELDS = Object.freeze([
+  { key: "workTimeMode", label: "Način rada", options: ["jedna smjena", "dvije smjene", "tri smjene", "klizno radno vrijeme", "po pozivu"] },
+  { key: "dailyDuration", label: "Dnevno trajanje", options: ["8 sati", "do 4 sata", "više od 8 sati po potrebi", "neujednačeno"] },
+  { key: "overtime", label: "Prekovremeni rad", options: ["ne", "povremeno", "da"] },
+  { key: "nightWork", label: "Noćni rad (22-06h)", options: ["ne", "povremeno", "da"] },
+  { key: "breakRest", label: "Odmor / stanka", options: ["prema rasporedu", "30 minuta", "više kraćih stanki", "po potrebi"] },
+  { key: "weeklyRest", label: "Tjedni odmor", options: ["subota i nedjelja", "prema rasporedu", "rotacijski"] },
+  { key: "fieldWork", label: "Rad na terenu / put", options: ["ne", "povremeno", "često"] },
+  { key: "remoteWork", label: "Rad od kuće", options: ["ne", "povremeno", "da"] },
+  { key: "workRhythm", label: "Ritam rada", options: ["normalan", "pojačan u rokovima", "normiran", "neujednačen"] },
+  { key: "monotony", label: "Monotonija", options: ["ne", "povremeno", "izraženo"] },
+]);
+
+const JOB_CONDITION_TOGGLES = Object.freeze([
+  { key: "educationRequired", group: "Stručna sprema i osposobljavanje", label: "Obvezna razina stručne spreme ili posebna osposobljenost", suggestion: "Za obavljanje posla potrebna je odgovarajuća stručna sprema i osposobljenost za rad na siguran način." },
+  { key: "trainingRequired", group: "Stručna sprema i osposobljavanje", label: "Potrebno stručno osposobljavanje", suggestion: "Radnik mora biti osposobljen za siguran rad, upoznat s uputama poslodavca i pravilima zaštite na radu." },
+  { key: "computerOver4h", group: "Posebni uvjeti rada", label: "Rad na računalu dulje od 4 sata dnevno", suggestion: "Posao uključuje rad s računalom dulje od 4 sata dnevno, uz potrebu ergonomskog uređenja radnog mjesta i redovitih pauza." },
+  { key: "increasedInsurance", group: "Posebni uvjeti rada", label: "Staž osiguranja s povećanim trajanjem", suggestion: "Za ovaj posao potrebno je dodatno provjeriti primjenjuje li se staž osiguranja s povećanim trajanjem." },
+  { key: "manualHandling", group: "Posebni uvjeti rada", label: "Ručno rukovanje teretom", suggestion: "Povremeno je prisutno ručno rukovanje teretom te je potrebno primijeniti sigurne tehnike podizanja i pomoćna sredstva." },
+  { key: "normedWork", group: "Posebni uvjeti rada", label: "Normirani poslovi", suggestion: "Rad se može odvijati uz zadane rokove ili norme, pa je potrebno pratiti opterećenje i organizirati odmore." },
+  { key: "repetitiveTasks", group: "Posebni uvjeti rada", label: "Ponavljajući radni zadaci", suggestion: "Prisutan je ponavljajući radni obrazac, pa treba omogućiti promjenu položaja tijela i kratke pauze." },
+]);
+
+const JOB_BODY_POSITION_OPTIONS = Object.freeze(["rad stojeći", "rad sjedeći", "u pokretu", "kombinirano", "učestalo sagibanje", "klečanje", "čučanje", "rad iznad ramena", "ponavljajući pokreti"]);
+const JOB_IMPORTANT_FUNCTION_OPTIONS = Object.freeze(["vid na daljinu", "vid na blizinu", "raspoznavanje boja", "dobar sluh", "jasan govor", "preciznost ruku", "koordinacija pokreta"]);
+const JOB_WORK_CONDITION_OPTIONS = Object.freeze(["buka", "vibracije", "mikroklima", "prašina", "kemijske štetnosti", "biološke štetnosti", "rad na visini", "rad na otvorenom", "rad u prometu"]);
+
+function normalizeJobSheet(value = "basic") {
+  const normalized = String(value || "").trim();
+  return ["basic", "environment", "conditions", "hazards"].includes(normalized) ? normalized : "basic";
+}
+
+function getJobStatusOption(value = "draft") {
+  return JOB_STATUS_OPTIONS.find((option) => option.value === value) ?? JOB_STATUS_OPTIONS[0];
+}
+
+function renderJobOptions(options, selectedValue = "") {
+  return options.map((option) => (
+    `<option value="${escapeHtml(option.value)}"${String(option.value) === String(selectedValue ?? "") ? " selected" : ""}>${escapeHtml(option.label)}</option>`
+  )).join("");
+}
+
+function renderJobPlainOptions(values = [], selectedValue = "") {
+  return [
+    `<option value="">Odaberi</option>`,
+    ...values.map((value) => `<option value="${escapeHtml(value)}"${String(value) === String(selectedValue ?? "") ? " selected" : ""}>${escapeHtml(value)}</option>`),
+  ].join("");
+}
+
+function cloneJobDraft(job = {}) {
+  try {
+    return JSON.parse(JSON.stringify(job ?? {}));
+  } catch {
+    return {};
+  }
+}
+
+function getJobHazardCatalogRows() {
+  const seen = new Set();
+  return RISK_ASSESSMENT_CATALOG_ROWS.filter((row) => {
+    const key = `${row.category || ""}::${row.group || ""}::${row.code || ""}::${row.hazard || ""}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function createJobHazardDraft(row = {}) {
+  return {
+    id: crypto.randomUUID(),
+    catalogCode: String(row.catalogCode ?? row.code ?? "").trim(),
+    catalogLabel: String(row.catalogLabel ?? row.hazard ?? "").trim(),
+    category: String(row.category ?? "").trim(),
+    group: String(row.group ?? "").trim(),
+    unwantedEvent: String(row.unwantedEvent ?? row.possibleEvent ?? "").trim(),
+    probability: String(row.probability ?? "").trim(),
+    consequence: String(row.consequence ?? "").trim(),
+    riskLevel: String(row.riskLevel ?? "").trim(),
+    measures: String(row.measures ?? row.existingMeasures ?? "").trim(),
+    purPoint: String(row.purPoint ?? "").trim(),
+    ppeText: String(row.ppeText ?? "").trim(),
+    note: String(row.note ?? "").trim(),
+  };
+}
+
+function getJobNexAiText(kind = "description") {
+  const title = String(jobTitleInput?.value || "Odabrani posao").trim() || "Odabrani posao";
+  const environment = getJobEnvironmentDraftFromForm();
+  const conditions = getJobConditionsDraftFromForm();
+  const selectedWorkplaces = environment.workplaceOptions?.length ? environment.workplaceOptions.join(", ") : "radnom prostoru poslodavca i/ili kod klijenta";
+  if (kind === "machines") {
+    return `Radnik rukuje standardnim alatima i opremom potrebnom za posao "${title}". Oprema se koristi prema uputama proizvođača, uz prethodnu vizualnu provjeru ispravnosti i primjenu propisane osobne zaštitne opreme.`;
+  }
+  if (kind === "substances") {
+    return `Radnik može povremeno doći u dodir s radnim tvarima potrebnima za obavljanje posla. Tvari se koriste u označenoj ambalaži, uz primjenu sigurnosno-tehničkih listova, higijenskih mjera i odgovarajuće OZO.`;
+  }
+  if (kind === "workplace") {
+    return `Posao se obavlja na lokacijama: ${selectedWorkplaces}. Radni prostor mora biti prohodan, osvijetljen, organiziran tako da se smanji rizik od pada, spoticanja i neželjenog događaja.`;
+  }
+  if (kind === "organization") {
+    return `Rad se organizira prema nalogu poslodavca, uz jasno definirane zadatke, odgovornosti i rokove. Stanke, tjedni odmor i preraspodjela rada provode se u skladu s internim pravilima i važećim propisima.`;
+  }
+  if (kind.startsWith("condition:")) {
+    const key = kind.replace("condition:", "");
+    const definition = JOB_CONDITION_TOGGLES.find((entry) => entry.key === key);
+    return definition?.suggestion || "Za odabrani uvjet rada potrebno je opisati okolnosti, učestalost i mjere zaštite.";
+  }
+  const conditionSummary = [
+    ...conditions.bodyPositions,
+    ...conditions.importantFunctions,
+    ...conditions.workConditions,
+  ].slice(0, 8).join(", ");
+  return `${title} obuhvaća obavljanje redovnih radnih zadataka prema uputama poslodavca, pravilima struke i zahtjevima zaštite na radu. Posao se izvodi u ${selectedWorkplaces}, uz korištenje potrebne opreme, alata i dokumentacije. Radnik mora biti osposobljen za siguran rad, upoznat s opasnostima i obvezan primjenjivati propisane mjere zaštite${conditionSummary ? `, posebno u dijelu: ${conditionSummary}` : ""}.`;
+}
+
+function syncJobEditorModal() {
+  const isOpen = Boolean(state.jobEditorOpen);
+  if (jobEditorBackdrop) {
+    jobEditorBackdrop.hidden = !isOpen;
+  }
+  if (jobEditorPanel) {
+    jobEditorPanel.hidden = !isOpen;
+    jobEditorPanel.setAttribute("aria-hidden", isOpen ? "false" : "true");
+  }
+}
+
+function setJobEditorOpen(open) {
+  state.jobEditorOpen = Boolean(open);
+  syncJobEditorModal();
+  if (open) {
+    requestAnimationFrame(() => {
+      jobTitleInput?.focus({ preventScroll: true });
+    });
+  }
+}
+
+function syncJobSheets() {
+  const activeSheet = normalizeJobSheet(state.jobEditorSheet);
+  state.jobEditorSheet = activeSheet;
+  jobSheetButtons.forEach((button) => {
+    const isActive = button.dataset.jobSheet === activeSheet;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
+  jobSheetPanels.forEach((panel) => {
+    const isActive = panel.dataset.jobSheetPanel === activeSheet;
+    panel.hidden = !isActive;
+    panel.classList.toggle("is-active", isActive);
+  });
+}
+
+function renderJobEnvironmentSections(environment = {}) {
+  if (!jobEnvironmentSections) {
+    return;
+  }
+  jobEnvironmentSections.replaceChildren(...JOB_ENVIRONMENT_SECTIONS.map((section) => {
+    const enabled = Boolean(environment[`${section.key}Enabled`]);
+    const textValue = String(environment[`${section.key}Text`] ?? "").trim();
+    const selectedWorkplaces = new Set(section.key === "workplace" ? (environment.workplaceOptions ?? []) : []);
+    const article = document.createElement("article");
+    article.className = `job-smart-card ${enabled ? "is-enabled" : ""}`;
+    article.dataset.jobEnvironmentCard = section.key;
+    const chips = section.suggestions.map((suggestion) => `
+      <button type="button" class="${selectedWorkplaces.has(suggestion) ? "is-selected" : ""}" data-job-env-suggestion="${escapeHtml(section.key)}" data-value="${escapeHtml(suggestion)}">${escapeHtml(suggestion)}</button>
+    `).join("");
+    const organizationFields = section.key === "organization"
+      ? `<div class="job-organization-grid">
+          ${JOB_ORGANIZATION_FIELDS.map((field) => `
+            <label>
+              <span>${escapeHtml(field.label)}</span>
+              <select data-job-organization-field="${escapeHtml(field.key)}">${renderJobPlainOptions(field.options, environment[field.key] || "")}</select>
+            </label>
+          `).join("")}
+          <label class="job-switch-line is-compact">
+            <input type="checkbox" data-job-environment-flag="psychosocialRelevant" ${environment.psychosocialRelevant ? "checked" : ""} />
+            <span>Procjena psihosocijalnih rizika je relevantna za ovaj posao</span>
+          </label>
+        </div>`
+      : "";
+    article.innerHTML = `
+      <div class="job-smart-card-head">
+        <label class="job-switch-line">
+          <input type="checkbox" data-job-env-enabled="${escapeHtml(section.key)}" ${enabled ? "checked" : ""} />
+          <span>DA</span>
+        </label>
+        <div>
+          <strong>${escapeHtml(section.title)}</strong>
+          <small>${escapeHtml(section.helper)}</small>
+        </div>
+        <button type="button" class="ghost-button jobs-nexai-button" data-job-nexai="${escapeHtml(section.key)}">NexAI</button>
+      </div>
+      <div class="job-suggestion-row">${chips}</div>
+      ${organizationFields}
+      <textarea data-job-env-text="${escapeHtml(section.key)}" rows="4" placeholder="${escapeHtml(section.placeholder)}">${escapeHtml(textValue)}</textarea>
+    `;
+    return article;
+  }));
+}
+
+function renderJobConditionSections(conditions = {}) {
+  if (!jobConditionSections) {
+    return;
+  }
+  const notes = conditions.notes ?? {};
+  const groupedToggles = JOB_CONDITION_TOGGLES.reduce((groups, item) => {
+    if (!groups.has(item.group)) {
+      groups.set(item.group, []);
+    }
+    groups.get(item.group).push(item);
+    return groups;
+  }, new Map());
+  const togglePanels = [...groupedToggles.entries()].map(([group, items]) => {
+    const article = document.createElement("article");
+    article.className = "job-condition-card";
+    article.innerHTML = `
+      <div class="job-condition-card-head">
+        <strong>${escapeHtml(group)}</strong>
+        <span>${items.filter((item) => Boolean(conditions[item.key])).length}/${items.length}</span>
+      </div>
+      <div class="job-condition-toggle-list">
+        ${items.map((item) => `
+          <div class="job-condition-toggle ${conditions[item.key] ? "is-enabled" : ""}" data-job-condition-card="${escapeHtml(item.key)}">
+            <label class="job-switch-line">
+              <input type="checkbox" data-job-condition-flag="${escapeHtml(item.key)}" ${conditions[item.key] ? "checked" : ""} />
+              <span>DA</span>
+            </label>
+            <div>
+              <strong>${escapeHtml(item.label)}</strong>
+              <textarea data-job-condition-note="${escapeHtml(item.key)}" rows="2" placeholder="Tekst za ovaj uvjet rada...">${escapeHtml(notes[item.key] || "")}</textarea>
+            </div>
+            <button type="button" class="ghost-button jobs-nexai-button" data-job-nexai="condition:${escapeHtml(item.key)}">NexAI</button>
+          </div>
+        `).join("")}
+      </div>
+    `;
+    return article;
+  });
+  const selectionPanel = document.createElement("article");
+  selectionPanel.className = "job-condition-card is-wide";
+  selectionPanel.innerHTML = `
+    <div class="job-condition-card-head">
+      <strong>Položaj tijela i uvjeti rada</strong>
+      <span>odabiri za zapisnik</span>
+    </div>
+    ${renderJobMultiChoiceBlock("bodyPositions", "Položaj tijela i aktivnosti", JOB_BODY_POSITION_OPTIONS, conditions.bodyPositions ?? [], "bodyText", conditions.bodyText || "")}
+    ${renderJobMultiChoiceBlock("importantFunctions", "U poslu je važan", JOB_IMPORTANT_FUNCTION_OPTIONS, conditions.importantFunctions ?? [], "functionsText", conditions.functionsText || "")}
+    ${renderJobMultiChoiceBlock("workConditions", "Uvjeti rada", JOB_WORK_CONDITION_OPTIONS, conditions.workConditions ?? [], "conditionsText", conditions.conditionsText || "")}
+  `;
+  jobConditionSections.replaceChildren(...togglePanels, selectionPanel);
+}
+
+function renderJobMultiChoiceBlock(field, label, options, selectedValues = [], textField, textValue = "") {
+  const selected = new Set(selectedValues);
+  return `
+    <div class="job-multichoice-block">
+      <span>${escapeHtml(label)}</span>
+      <div class="job-suggestion-row">
+        ${options.map((option) => `
+          <button type="button" class="${selected.has(option) ? "is-selected" : ""}" data-job-condition-choice="${escapeHtml(field)}" data-value="${escapeHtml(option)}">${escapeHtml(option)}</button>
+        `).join("")}
+      </div>
+      <textarea data-job-condition-text="${escapeHtml(textField)}" rows="2" placeholder="Dodatni opis...">${escapeHtml(textValue)}</textarea>
+    </div>
+  `;
+}
+
+function renderJobHazardCatalog() {
+  if (!jobHazardCatalog) {
+    return;
+  }
+  const query = String(jobHazardCatalogSearch?.value || "").trim().toLowerCase();
+  const selectedKeys = new Set(jobHazardDrafts.map((item) => `${item.catalogCode}::${item.catalogLabel}`));
+  const rows = getJobHazardCatalogRows().filter((row) => {
+    if (!query) {
+      return true;
+    }
+    return [row.category, row.group, row.code, row.hazard, row.measures].join(" ").toLowerCase().includes(query);
+  }).slice(0, 120);
+  if (rows.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "inline-help";
+    empty.textContent = "Nema stavki za odabranu pretragu.";
+    jobHazardCatalog.replaceChildren(empty);
+    return;
+  }
+  jobHazardCatalog.replaceChildren(...rows.map((row) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "job-hazard-catalog-item";
+    const key = `${row.code || ""}::${row.hazard || ""}`;
+    button.classList.toggle("is-selected", selectedKeys.has(key));
+    button.dataset.jobHazardAdd = key;
+    button.innerHTML = `
+      <span>${escapeHtml(row.code || "-")}</span>
+      <strong>${escapeHtml(row.hazard || "Opasnost")}</strong>
+      <small>${escapeHtml(row.group || row.category || "Katalog")}</small>
+    `;
+    return button;
+  }));
+}
+
+function renderJobSelectedHazards() {
+  if (!jobSelectedHazards) {
+    return;
+  }
+  if (jobSelectedHazardCount) {
+    jobSelectedHazardCount.textContent = `${jobHazardDrafts.length} stavki`;
+  }
+  if (jobHazardDrafts.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "inline-help";
+    empty.textContent = "Dodaj opasnost iz kataloga lijevo. Svaka stavka dobiva vlastitu karticu procjene.";
+    jobSelectedHazards.replaceChildren(empty);
+    return;
+  }
+  jobSelectedHazards.replaceChildren(...jobHazardDrafts.map((hazard, index) => {
+    const article = document.createElement("article");
+    article.className = "job-selected-hazard-card";
+    article.dataset.jobHazardIndex = String(index);
+    article.innerHTML = `
+      <div class="job-selected-hazard-head">
+        <div>
+          <span>${escapeHtml(hazard.catalogCode || "-")}</span>
+          <strong>${escapeHtml(hazard.catalogLabel || "Opasnost")}</strong>
+          <small>${escapeHtml(hazard.group || hazard.category || "")}</small>
+        </div>
+        <button type="button" class="ghost-button card-danger" data-job-hazard-remove="${index}">Ukloni</button>
+      </div>
+      <div class="job-hazard-fields">
+        <label class="field field-span-full"><span>Mogući neželjeni događaj</span><textarea data-job-hazard-field="unwantedEvent" rows="2">${escapeHtml(hazard.unwantedEvent || "")}</textarea></label>
+        <label class="field"><span>Vjerojatnost</span><select data-job-hazard-field="probability">${renderRiskAssessmentOptions(RISK_ASSESSMENT_PROBABILITY_OPTIONS, hazard.probability || "")}</select></label>
+        <label class="field"><span>Posljedica</span><select data-job-hazard-field="consequence">${renderRiskAssessmentOptions(RISK_ASSESSMENT_CONSEQUENCE_OPTIONS, hazard.consequence || "")}</select></label>
+        <label class="field"><span>Rizik</span><select data-job-hazard-field="riskLevel">${renderRiskAssessmentOptions(RISK_ASSESSMENT_RISK_LEVEL_OPTIONS, hazard.riskLevel || "")}</select></label>
+        <label class="field field-span-full"><span>Mjere za uklanjanje/smanjivanje opasnosti</span><textarea data-job-hazard-field="measures" rows="2">${escapeHtml(hazard.measures || "")}</textarea></label>
+        <label class="field"><span>Točka PUR-a</span><input data-job-hazard-field="purPoint" value="${escapeHtml(hazard.purPoint || "")}" /></label>
+        <label class="field"><span>Obvezna zaštitna oprema (OZS)</span><input data-job-hazard-field="ppeText" value="${escapeHtml(hazard.ppeText || "")}" /></label>
+      </div>
+    `;
+    return article;
+  }));
+}
+
+function getJobEnvironmentDraftFromForm() {
+  const environment = {};
+  JOB_ENVIRONMENT_SECTIONS.forEach((section) => {
+    environment[`${section.key}Enabled`] = Boolean(jobEnvironmentSections?.querySelector(`[data-job-env-enabled="${section.key}"]`)?.checked);
+    environment[`${section.key}Text`] = String(jobEnvironmentSections?.querySelector(`[data-job-env-text="${section.key}"]`)?.value || "").trim();
+  });
+  environment.workplaceOptions = Array.from(jobEnvironmentSections?.querySelectorAll('[data-job-env-suggestion="workplace"].is-selected') ?? [])
+    .map((button) => String(button.dataset.value || "").trim())
+    .filter(Boolean);
+  JOB_ORGANIZATION_FIELDS.forEach((field) => {
+    environment[field.key] = String(jobEnvironmentSections?.querySelector(`[data-job-organization-field="${field.key}"]`)?.value || "").trim();
+  });
+  environment.psychosocialRelevant = Boolean(jobEnvironmentSections?.querySelector('[data-job-environment-flag="psychosocialRelevant"]')?.checked);
+  return environment;
+}
+
+function getJobConditionsDraftFromForm() {
+  const notes = {};
+  const conditions = {
+    notes,
+    bodyPositions: [],
+    importantFunctions: [],
+    workConditions: [],
+    bodyText: "",
+    functionsText: "",
+    conditionsText: "",
+  };
+  JOB_CONDITION_TOGGLES.forEach((item) => {
+    conditions[item.key] = Boolean(jobConditionSections?.querySelector(`[data-job-condition-flag="${item.key}"]`)?.checked);
+    const note = String(jobConditionSections?.querySelector(`[data-job-condition-note="${item.key}"]`)?.value || "").trim();
+    if (note) {
+      notes[item.key] = note;
+    }
+  });
+  ["bodyPositions", "importantFunctions", "workConditions"].forEach((field) => {
+    conditions[field] = Array.from(jobConditionSections?.querySelectorAll(`[data-job-condition-choice="${field}"].is-selected`) ?? [])
+      .map((button) => String(button.dataset.value || "").trim())
+      .filter(Boolean);
+  });
+  ["bodyText", "functionsText", "conditionsText"].forEach((field) => {
+    conditions[field] = String(jobConditionSections?.querySelector(`[data-job-condition-text="${field}"]`)?.value || "").trim();
+  });
+  return conditions;
+}
+
+function buildJobPayload() {
+  return {
+    title: jobTitleInput?.value || "",
+    status: jobStatusInput?.value || "draft",
+    description: jobDescriptionInput?.value || "",
+    environment: getJobEnvironmentDraftFromForm(),
+    conditions: getJobConditionsDraftFromForm(),
+    hazards: jobHazardDrafts,
+  };
+}
+
+function hydrateJobForm(item = {}) {
+  const draft = cloneJobDraft(item);
+  if (jobIdInput) jobIdInput.value = draft.id || "";
+  if (jobTitleInput) jobTitleInput.value = draft.title || "";
+  if (jobStatusInput) replaceSelectOptionsIfChanged(jobStatusInput, JOB_STATUS_OPTIONS, draft.status || "draft");
+  if (jobDescriptionInput) jobDescriptionInput.value = draft.description || "";
+  jobHazardDrafts = (draft.hazards ?? []).map((hazard) => createJobHazardDraft(hazard));
+  renderJobEnvironmentSections(draft.environment ?? {});
+  renderJobConditionSections(draft.conditions ?? {});
+  renderJobHazardCatalog();
+  renderJobSelectedHazards();
+  syncJobCopySourceOptions(draft.id || "");
+  if (jobEditorTitle) {
+    jobEditorTitle.textContent = draft.id ? (draft.title || "Uredi posao") : "Novi posao";
+  }
+  if (jobEditorMeta) {
+    const hazardText = `${jobHazardDrafts.length} opasnosti`;
+    jobEditorMeta.textContent = draft.id ? `${getJobStatusOption(draft.status).label} · ${hazardText}` : "Osnovni podaci, radno okruženje, uvjeti rada i opasnosti.";
+  }
+  if (jobDeleteButton) {
+    jobDeleteButton.hidden = !draft.id;
+  }
+  setInlineMessage(jobFormFeedback, "");
+  syncJobSheets();
+}
+
+function resetJobForm() {
+  hydrateJobForm({
+    status: "draft",
+    environment: {},
+    conditions: {},
+    hazards: [],
+  });
+}
+
+function syncJobCopySourceOptions(currentId = "") {
+  replaceSelectOptionsIfChanged(jobCopySourceInput, [
+    { value: "", label: "Odaberi postojeći posao za kopiranje" },
+    ...sortJobs(state.jobs ?? [])
+      .filter((item) => String(item.id) !== String(currentId))
+      .map((item) => ({ value: item.id, label: item.title || "Bez naziva" })),
+  ], "");
+}
+
+function openJobEditor(item = null) {
+  state.jobEditorSheet = "basic";
+  state.activeJobId = item?.id || "";
+  hydrateJobForm(item ?? {});
+  setJobEditorOpen(true);
+}
+
+function renderJobCard(item = {}) {
+  const card = document.createElement("article");
+  card.className = `job-card is-${item.status || "draft"}`;
+  card.tabIndex = 0;
+  card.dataset.jobId = String(item.id || "");
+  const status = getJobStatusOption(item.status);
+  const environment = item.environment ?? {};
+  const conditions = item.conditions ?? {};
+  const enabledEnvironmentCount = JOB_ENVIRONMENT_SECTIONS.filter((section) => environment[`${section.key}Enabled`]).length;
+  const selectedConditions = JOB_CONDITION_TOGGLES.filter((entry) => Boolean(conditions[entry.key])).length;
+  card.innerHTML = `
+    <div class="job-card-status-dot"></div>
+    <div class="job-card-main">
+      <span class="section-kicker">${escapeHtml(status.label)}</span>
+      <strong>${escapeHtml(item.title || "Bez naziva")}</strong>
+      <p>${escapeHtml(item.description || "Opis još nije popunjen.")}</p>
+    </div>
+    <div class="job-card-metrics">
+      <span>${enabledEnvironmentCount}/4 okruženje</span>
+      <span>${selectedConditions} uvjeta</span>
+      <span>${(item.hazards ?? []).length} opasnosti</span>
+    </div>
+  `;
+  card.addEventListener("click", () => openJobEditor(item));
+  card.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openJobEditor(item);
+    }
+  });
+  return card;
+}
+
+function renderJobsModule() {
+  if (!jobsModule) {
+    return;
+  }
+  const canManage = getCanManageRiskAssessments();
+  if (jobNewButton) {
+    jobNewButton.hidden = !canManage;
+    jobNewButton.disabled = !canManage;
+  }
+  const filters = {
+    query: jobSearchInput?.value?.trim() || state.jobFilters.query || "",
+    status: jobStatusFilterInput?.value || state.jobFilters.status || "all",
+  };
+  state.jobFilters = filters;
+  replaceSelectOptionsIfChanged(jobStatusFilterInput, [
+    { value: "all", label: "Svi statusi" },
+    ...JOB_STATUS_OPTIONS,
+  ], filters.status);
+  replaceSelectOptionsIfChanged(jobStatusInput, JOB_STATUS_OPTIONS, jobStatusInput?.value || "draft");
+  if (jobSearchInput && jobSearchInput.value !== filters.query) {
+    jobSearchInput.value = filters.query;
+  }
+  const allJobs = state.jobs ?? [];
+  const visible = sortJobs(filterJobs(allJobs, filters));
+  if (jobTotalCount) jobTotalCount.textContent = String(allJobs.length);
+  if (jobActiveCount) jobActiveCount.textContent = String(allJobs.filter((item) => item.status === "active").length);
+  if (jobHazardCount) jobHazardCount.textContent = String(allJobs.reduce((sum, item) => sum + (item.hazards ?? []).length, 0));
+  if (jobAiCount) jobAiCount.textContent = String(allJobs.filter((item) => String(item.description || "").trim()).length);
+  jobList?.replaceChildren(...visible.map((item) => renderJobCard(item)));
+  if (jobEmpty) {
+    jobEmpty.hidden = visible.length > 0;
+  }
+  syncJobCopySourceOptions(jobIdInput?.value || "");
+}
+
 function renderRiskAssessmentOptions(options, selectedValue = "") {
   return options.map((option) => (
     `<option value="${escapeHtml(option.value)}"${String(option.value) === String(selectedValue ?? "") ? " selected" : ""}>${escapeHtml(option.label)}</option>`
@@ -121394,6 +122242,9 @@ function resetAuthenticatedWorkspaceState() {
   state.safetyAuthorizations = [];
   state.documentTemplates = [];
   state.dashboardWidgets = [];
+  state.jobs = [];
+  state.activeJobId = "";
+  state.jobEditorOpen = false;
   state.peopleTrainingRecords = [];
   state.peopleTrainingSelectedRecordIds = new Set();
   state.activePeopleTrainingRecordId = "";

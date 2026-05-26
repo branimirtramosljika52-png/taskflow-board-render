@@ -2138,6 +2138,23 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       items: (item.items ?? []).map((entry) => ({ ...entry })),
       documents: (item.documents ?? []).map((document) => ({ ...document })),
     })),
+    jobs: (rawSnapshot.jobs ?? []).filter((item) => (
+      String(item.organizationId) === String(organizationId)
+    )).map((item) => ({
+      ...item,
+      environment: {
+        ...(item.environment ?? {}),
+        workplaceOptions: [...(item.environment?.workplaceOptions ?? [])],
+      },
+      conditions: {
+        ...(item.conditions ?? {}),
+        notes: { ...(item.conditions?.notes ?? {}) },
+        bodyPositions: [...(item.conditions?.bodyPositions ?? [])],
+        importantFunctions: [...(item.conditions?.importantFunctions ?? [])],
+        workConditions: [...(item.conditions?.workConditions ?? [])],
+      },
+      hazards: (item.hazards ?? []).map((hazard) => ({ ...hazard })),
+    })),
     riskAssessments: (rawSnapshot.riskAssessments ?? []).filter(isOrganizationOrCompanyItemVisible).map((item) => ({
       ...item,
       measures: (item.measures ?? []).map((entry) => ({ ...entry })),
@@ -2998,6 +3015,7 @@ export class MemoryTenantRepository {
       offers: [],
       publicProcurements: [],
       purchaseOrders: [],
+      jobs: [],
       riskAssessments: [],
       contracts: [],
       drawings: [],
@@ -3948,6 +3966,7 @@ export class MySqlTenantRepository {
       offers: [],
       publicProcurements: [],
       purchaseOrders: [],
+      jobs: [],
       riskAssessments: [],
       contracts: [],
       drawings: [],
@@ -4005,6 +4024,7 @@ export class MySqlTenantRepository {
       offers: [],
       publicProcurements: [],
       purchaseOrders: [],
+      jobs: [],
       riskAssessments: [],
       contracts: [],
       drawings: [],

@@ -8061,6 +8061,7 @@ async function handleApiRequest(request, response, url) {
     const purchaseOrderPdfExportMatch = url.pathname.match(/^\/api\/purchase-orders\/([^/]+)\/export-pdf$/);
     const purchaseOrderEmailMatch = url.pathname.match(/^\/api\/purchase-orders\/([^/]+)\/email$/);
     const riskAssessmentMatch = url.pathname.match(/^\/api\/risk-assessments\/([^/]+)$/);
+    const jobMatch = url.pathname.match(/^\/api\/jobs\/([^/]+)$/);
     const contractTemplateMatch = url.pathname.match(/^\/api\/contract-templates\/([^/]+)$/);
     const contractMatch = url.pathname.match(/^\/api\/contracts\/([^/]+)$/);
     const appCapabilitiesPdfExportMatch = url.pathname === "/api/app-capabilities/export-pdf";
@@ -8902,6 +8903,22 @@ async function handleApiRequest(request, response, url) {
       assertCompanyPayloadInScope(scopedSnapshot, body);
       assertLocationPayloadInScope(scopedSnapshot, body);
       await domainRepository.createRiskAssessment({
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      }, user);
+      await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/jobs") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati poslovima.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      await domainRepository.createJob({
         ...body,
         organizationId: scopedSnapshot.activeOrganizationId,
       }, user);
@@ -11059,6 +11076,29 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (jobMatch && request.method === "PATCH") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati poslovima.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.jobs ?? [], jobMatch[1], "Posao nije pronađen.");
+      const updated = await domainRepository.updateJob(jobMatch[1], {
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      }, user);
+
+      if (!updated) {
+        sendError(response, 404, "Posao nije pronađen.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
     if (contractTemplateMatch && request.method === "PATCH") {
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
@@ -11905,6 +11945,25 @@ async function handleApiRequest(request, response, url) {
 
       if (!deleted) {
         sendError(response, 404, "Procjena rizika nije pronađena.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (jobMatch && request.method === "DELETE") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo brisati poslove.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.jobs ?? [], jobMatch[1], "Posao nije pronađen.");
+      const deleted = await domainRepository.deleteJob(jobMatch[1]);
+
+      if (!deleted) {
+        sendError(response, 404, "Posao nije pronađen.");
         return true;
       }
 

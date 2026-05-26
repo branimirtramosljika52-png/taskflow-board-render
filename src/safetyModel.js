@@ -60,6 +60,12 @@ export const RISK_ASSESSMENT_STATUS_OPTIONS = [
   { value: "archived", label: "Arhivirana" },
 ];
 
+export const JOB_STATUS_OPTIONS = [
+  { value: "draft", label: "Skica" },
+  { value: "active", label: "Aktivan" },
+  { value: "archived", label: "Arhiviran" },
+];
+
 export const CONTRACT_STATUS_OPTIONS = [
   { value: "draft", label: "Skica" },
   { value: "pending_signature", label: "Na potpisu" },
@@ -565,6 +571,11 @@ const RISK_ASSESSMENT_STATUS_RANK = {
   in_review: 1,
   active: 2,
   archived: 3,
+};
+const JOB_STATUS_RANK = {
+  active: 0,
+  draft: 1,
+  archived: 2,
 };
 const CONTRACT_STATUS_RANK = {
   draft: 0,
@@ -5192,6 +5203,146 @@ function normalizeRiskAssessmentRiskTemplates(items = []) {
   })).filter((item) => item.name && (item.riskRows.length > 0 || item.ppeItems.length > 0));
 }
 
+function normalizeJobStatus(value, fallback = "draft") {
+  const normalized = normalizeText(value).toLowerCase();
+  return JOB_STATUS_OPTIONS.some((option) => option.value === normalized) ? normalized : fallback;
+}
+
+function normalizeJobOptionValues(values = []) {
+  const source = Array.isArray(values) ? values : [values];
+  return Array.from(new Set(
+    source
+      .flatMap((entry) => Array.isArray(entry) ? entry : [entry])
+      .map((entry) => normalizeText(entry))
+      .filter(Boolean),
+  )).slice(0, 80);
+}
+
+function normalizeJobEnvironment(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  return {
+    machinesEnabled: normalizeBoolean(source.machinesEnabled, false),
+    machinesText: normalizeText(source.machinesText),
+    substancesEnabled: normalizeBoolean(source.substancesEnabled, false),
+    substancesText: normalizeText(source.substancesText),
+    workplaceEnabled: normalizeBoolean(source.workplaceEnabled, false),
+    workplaceText: normalizeText(source.workplaceText),
+    workplaceOptions: normalizeJobOptionValues(source.workplaceOptions),
+    organizationEnabled: normalizeBoolean(source.organizationEnabled, false),
+    organizationText: normalizeText(source.organizationText),
+    workTimeMode: normalizeText(source.workTimeMode),
+    dailyDuration: normalizeText(source.dailyDuration),
+    overtime: normalizeText(source.overtime),
+    nightWork: normalizeText(source.nightWork),
+    breakRest: normalizeText(source.breakRest),
+    weeklyRest: normalizeText(source.weeklyRest),
+    fieldWork: normalizeText(source.fieldWork),
+    remoteWork: normalizeText(source.remoteWork),
+    workRhythm: normalizeText(source.workRhythm),
+    monotony: normalizeText(source.monotony),
+    psychosocialRelevant: normalizeBoolean(source.psychosocialRelevant, false),
+  };
+}
+
+function normalizeJobConditionNotes(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  return Object.fromEntries(
+    Object.entries(source)
+      .map(([key, text]) => [normalizeText(key), normalizeText(text)])
+      .filter(([key, text]) => key && text),
+  );
+}
+
+function normalizeJobConditions(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  return {
+    educationRequired: normalizeBoolean(source.educationRequired, false),
+    trainingRequired: normalizeBoolean(source.trainingRequired, false),
+    computerOver4h: normalizeBoolean(source.computerOver4h, false),
+    increasedInsurance: normalizeBoolean(source.increasedInsurance, false),
+    manualHandling: normalizeBoolean(source.manualHandling, false),
+    normedWork: normalizeBoolean(source.normedWork, false),
+    repetitiveTasks: normalizeBoolean(source.repetitiveTasks, false),
+    notes: normalizeJobConditionNotes(source.notes),
+    bodyPositions: normalizeJobOptionValues(source.bodyPositions),
+    importantFunctions: normalizeJobOptionValues(source.importantFunctions),
+    workConditions: normalizeJobOptionValues(source.workConditions),
+    bodyText: normalizeText(source.bodyText),
+    functionsText: normalizeText(source.functionsText),
+    conditionsText: normalizeText(source.conditionsText),
+  };
+}
+
+function normalizeJobHazards(items = []) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items.map((item) => ({
+    id: normalizeId(item?.id) || crypto.randomUUID(),
+    catalogCode: normalizeText(item?.catalogCode ?? item?.code),
+    catalogLabel: normalizeText(item?.catalogLabel ?? item?.hazard),
+    category: normalizeText(item?.category),
+    group: normalizeText(item?.group),
+    unwantedEvent: normalizeText(item?.unwantedEvent ?? item?.possibleEvent),
+    probability: normalizeText(item?.probability),
+    consequence: normalizeText(item?.consequence),
+    riskLevel: normalizeText(item?.riskLevel),
+    measures: normalizeText(item?.measures ?? item?.existingMeasures),
+    purPoint: normalizeText(item?.purPoint),
+    ppeText: normalizeText(item?.ppeText),
+    note: normalizeText(item?.note),
+  })).filter((item) => (
+    item.catalogCode
+    || item.catalogLabel
+    || item.unwantedEvent
+    || item.probability
+    || item.consequence
+    || item.riskLevel
+    || item.measures
+    || item.purPoint
+    || item.ppeText
+    || item.note
+  ));
+}
+
+function hydrateJobCore({
+  current = null,
+  input,
+  timestamp,
+}) {
+  const organizationId = hasOwn(input, "organizationId")
+    ? requireText(input.organizationId, "Organizacija")
+    : requireText(current?.organizationId, "Organizacija");
+
+  return {
+    id: current?.id ?? "",
+    organizationId,
+    title: hasOwn(input, "title") || hasOwn(input, "name") || hasOwn(input, "jobTitle")
+      ? requireText(input.title ?? input.name ?? input.jobTitle, "Naziv posla")
+      : requireText(current?.title, "Naziv posla"),
+    status: hasOwn(input, "status") ? normalizeJobStatus(input.status) : normalizeJobStatus(current?.status),
+    description: hasOwn(input, "description") ? normalizeText(input.description) : current?.description ?? "",
+    environment: hasOwn(input, "environment")
+      ? normalizeJobEnvironment(input.environment)
+      : normalizeJobEnvironment(current?.environment),
+    conditions: hasOwn(input, "conditions")
+      ? normalizeJobConditions(input.conditions)
+      : normalizeJobConditions(current?.conditions),
+    hazards: hasOwn(input, "hazards")
+      ? normalizeJobHazards(input.hazards)
+      : normalizeJobHazards(current?.hazards ?? []),
+    createdByUserId: hasOwn(input, "createdByUserId")
+      ? normalizeId(input.createdByUserId)
+      : normalizeId(current?.createdByUserId),
+    createdByLabel: hasOwn(input, "createdByLabel")
+      ? normalizeText(input.createdByLabel)
+      : normalizeText(current?.createdByLabel),
+    createdAt: current?.createdAt ?? timestamp,
+    updatedAt: timestamp,
+  };
+}
+
 function normalizeRiskAssessmentComments(items = []) {
   if (!Array.isArray(items)) {
     return [];
@@ -7815,6 +7966,36 @@ export function updateRiskAssessment(current, patch, state, now = isoNow) {
   });
 }
 
+export function createJob(
+  input,
+  state,
+  createId = () => crypto.randomUUID(),
+  now = isoNow,
+) {
+  const timestamp = now();
+  const item = hydrateJobCore({
+    state,
+    input,
+    timestamp,
+  });
+
+  return {
+    ...item,
+    id: createId(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+export function updateJob(current, patch, state, now = isoNow) {
+  return hydrateJobCore({
+    current,
+    state,
+    input: patch,
+    timestamp: now(),
+  });
+}
+
 export function createContractTemplate(
   input,
   state,
@@ -8240,6 +8421,71 @@ export function filterRiskAssessments(
   });
 }
 
+export function filterJobs(
+  jobs,
+  { query = "", status = "all" } = {},
+) {
+  const normalizedQuery = normalizeText(query).toLowerCase();
+  const normalizedStatus = normalizeText(status);
+
+  return (jobs ?? []).filter((item) => {
+    if (normalizedStatus && normalizedStatus !== "all" && item.status !== normalizedStatus) {
+      return false;
+    }
+
+    if (!normalizedQuery) {
+      return true;
+    }
+
+    const environment = item.environment ?? {};
+    const conditions = item.conditions ?? {};
+    const haystack = [
+      item.title,
+      item.description,
+      item.status,
+      environment.machinesText,
+      environment.substancesText,
+      environment.workplaceText,
+      environment.organizationText,
+      environment.workTimeMode,
+      environment.dailyDuration,
+      environment.overtime,
+      environment.nightWork,
+      environment.breakRest,
+      environment.weeklyRest,
+      environment.fieldWork,
+      environment.remoteWork,
+      environment.workRhythm,
+      environment.monotony,
+      ...(environment.workplaceOptions ?? []),
+      ...(conditions.bodyPositions ?? []),
+      ...(conditions.importantFunctions ?? []),
+      ...(conditions.workConditions ?? []),
+      conditions.bodyText,
+      conditions.functionsText,
+      conditions.conditionsText,
+      ...Object.values(conditions.notes ?? {}),
+      ...(item.hazards ?? []).flatMap((hazard) => [
+        hazard.catalogCode,
+        hazard.catalogLabel,
+        hazard.category,
+        hazard.group,
+        hazard.unwantedEvent,
+        hazard.probability,
+        hazard.consequence,
+        hazard.riskLevel,
+        hazard.measures,
+        hazard.purPoint,
+        hazard.ppeText,
+        hazard.note,
+      ]),
+      item.createdByLabel,
+    ].join(" ").toLowerCase();
+
+    return haystack.includes(normalizedQuery);
+  });
+}
+
 export function filterContractTemplates(
   templates,
   { query = "", status = "all" } = {},
@@ -8437,6 +8683,19 @@ export function sortRiskAssessments(riskAssessments) {
 
     if (leftDate && rightDate && leftDate !== rightDate) {
       return rightDate.localeCompare(leftDate);
+    }
+
+    return String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? ""));
+  });
+}
+
+export function sortJobs(jobs) {
+  return [...(jobs ?? [])].sort((left, right) => {
+    const leftRank = JOB_STATUS_RANK[left.status] ?? Number.MAX_SAFE_INTEGER;
+    const rightRank = JOB_STATUS_RANK[right.status] ?? Number.MAX_SAFE_INTEGER;
+
+    if (leftRank !== rightRank) {
+      return leftRank - rightRank;
     }
 
     return String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? ""));

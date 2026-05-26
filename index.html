@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260526-company-overview-blocks-v24" />
+    <link rel="stylesheet" href="/styles.css?v=20260526-jobs-module-v1" />
     <link rel="stylesheet" href="/src/styles/variables.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/reset.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/builder.css?v=20260509e" />
@@ -765,6 +765,16 @@
                     </svg>
                   </span>
                   <strong>Osposobljavanja</strong>
+                </button>
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="jobs">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <path d="M10 6h4a2 2 0 0 1 2 2v1h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3V8a2 2 0 0 1 2-2Z"></path>
+                      <path d="M8 9h8"></path>
+                      <path d="M9 14h6"></path>
+                    </svg>
+                  </span>
+                  <strong>Jobs</strong>
                 </button>
                 <button type="button" class="tab-button sidebar-link" data-sidebar-item="risk-assessment">
                   <span class="tab-button-icon" aria-hidden="true">
@@ -4508,6 +4518,169 @@
                 <p id="people-training-empty" class="empty-state" hidden>Nema evidentiranih osposobljavanja za odabrane filtere.</p>
               </section>
             </div>
+          </section>
+
+          <section id="jobs-module" class="jobs-module" hidden>
+            <section class="panel jobs-list-panel">
+              <div class="section-heading offers-section-heading jobs-hero-heading">
+                <div>
+                  <p class="section-kicker">Health And Safety</p>
+                  <h3>Jobs</h3>
+                  <p class="module-copy">Katalog poslova za sistematizaciju, procjene rizika i NexAI prijedloge.</p>
+                </div>
+                <div class="vehicles-panel-head-actions">
+                  <button id="job-new" type="button" class="primary-button">+ Novi posao</button>
+                </div>
+              </div>
+
+              <div class="jobs-stat-grid" aria-label="Sažetak poslova">
+                <article class="jobs-stat-card is-total">
+                  <span>Ukupno</span>
+                  <strong id="job-total-count">0</strong>
+                  <small>poslova u katalogu</small>
+                </article>
+                <article class="jobs-stat-card is-active">
+                  <span>Aktivno</span>
+                  <strong id="job-active-count">0</strong>
+                  <small>spremno za korištenje</small>
+                </article>
+                <article class="jobs-stat-card is-risk">
+                  <span>Opasnosti</span>
+                  <strong id="job-hazard-count">0</strong>
+                  <small>mapiranih stavki</small>
+                </article>
+                <article class="jobs-stat-card is-ai">
+                  <span>NexAI</span>
+                  <strong id="job-ai-count">0</strong>
+                  <small>poslova s opisom</small>
+                </article>
+              </div>
+
+              <div class="offers-filters jobs-filters">
+                <label class="field">
+                  <span>Pretraga</span>
+                  <input id="job-search" type="search" placeholder="Naziv posla, opis, opasnost, radno okruženje..." />
+                </label>
+                <label class="field">
+                  <span>Status</span>
+                  <select id="job-status-filter"></select>
+                </label>
+              </div>
+
+              <div id="job-list" class="job-list"></div>
+              <p id="job-empty" class="empty-state" hidden>Nema poslova za odabrane filtere.</p>
+            </section>
+
+            <div id="job-editor-backdrop" class="offer-editor-backdrop job-editor-backdrop" hidden></div>
+            <section id="job-editor-panel" class="panel job-editor-panel" hidden>
+              <div class="job-editor-fixed-head">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Jobs</p>
+                    <h3 id="job-editor-title">Novi posao</h3>
+                    <p id="job-editor-meta" class="module-copy">Osnovni podaci, radno okruženje, uvjeti rada i opasnosti.</p>
+                  </div>
+                  <button id="job-editor-close" type="button" class="ghost-button">Zatvori</button>
+                </div>
+                <nav class="job-sheet-tabs" aria-label="Jobs sheetovi">
+                  <button type="button" class="is-active" data-job-sheet="basic"><span>01</span><strong>Osnovni podaci</strong></button>
+                  <button type="button" data-job-sheet="environment"><span>02</span><strong>Radno okruženje</strong></button>
+                  <button type="button" data-job-sheet="conditions"><span>03</span><strong>Uvjeti rada</strong></button>
+                  <button type="button" data-job-sheet="hazards"><span>04</span><strong>Opasnosti</strong></button>
+                </nav>
+              </div>
+
+              <form id="job-form" class="job-editor-body">
+                <input id="job-id" type="hidden" />
+                <section class="job-sheet-panel is-active" data-job-sheet-panel="basic">
+                  <div class="job-sheet-intro">
+                    <span class="jobs-nexai-badge">NexAI</span>
+                    <div>
+                      <strong>Definiranje posla</strong>
+                      <p>Popuni ručno, preuzmi podatke iz postojećeg posla ili zatraži NexAI prijedlog opisa.</p>
+                    </div>
+                  </div>
+                  <div class="form-grid offers-form-grid">
+                    <label class="field field-span-full">
+                      <span>Popuni podatke iz postojećeg posla</span>
+                      <select id="job-copy-source"></select>
+                    </label>
+                    <label class="field field-span-full">
+                      <span>Naziv posla</span>
+                      <input id="job-title" type="text" maxlength="220" placeholder="npr. Serviser sustava dojave požara" required />
+                    </label>
+                    <label class="field">
+                      <span>Status</span>
+                      <select id="job-status"></select>
+                    </label>
+                    <label class="field field-span-full jobs-description-field">
+                      <span>Opis posla</span>
+                      <div class="jobs-textarea-shell">
+                        <button id="job-description-ai" type="button" class="ghost-button jobs-nexai-button" title="Popuni opis preko NexAI">NexAI</button>
+                        <textarea id="job-description" rows="8" placeholder="Opis poslova i aktivnosti koji se prikazuje u dokumentima."></textarea>
+                      </div>
+                    </label>
+                  </div>
+                </section>
+
+                <section class="job-sheet-panel" data-job-sheet-panel="environment" hidden>
+                  <div class="job-sheet-intro">
+                    <span class="jobs-sheet-icon">02</span>
+                    <div>
+                      <strong>Radno okruženje</strong>
+                      <p>Za svaku stavku uključi DA, odaberi prijedloge i po potrebi dopiši tekst.</p>
+                    </div>
+                  </div>
+                  <div id="job-environment-sections" class="job-smart-grid"></div>
+                </section>
+
+                <section class="job-sheet-panel" data-job-sheet-panel="conditions" hidden>
+                  <div class="job-sheet-intro">
+                    <span class="jobs-sheet-icon">03</span>
+                    <div>
+                      <strong>Uvjeti rada</strong>
+                      <p>Stručna sprema, posebni uvjeti, položaji tijela, funkcije i radni uvjeti.</p>
+                    </div>
+                  </div>
+                  <div id="job-condition-sections" class="job-condition-layout"></div>
+                </section>
+
+                <section class="job-sheet-panel" data-job-sheet-panel="hazards" hidden>
+                  <div class="job-sheet-intro">
+                    <span class="jobs-sheet-icon is-danger">04</span>
+                    <div>
+                      <strong>Opasnosti</strong>
+                      <p>Dodaj opasnosti, štetnosti ili napore te za svaku stavku popuni rizik i mjere.</p>
+                    </div>
+                  </div>
+                  <div class="job-hazard-layout">
+                    <aside class="job-hazard-catalog-panel">
+                      <label class="field">
+                        <span>Katalog opasnosti</span>
+                        <input id="job-hazard-catalog-search" type="search" placeholder="Pretraži šifru, grupu ili naziv..." />
+                      </label>
+                      <div id="job-hazard-catalog" class="job-hazard-catalog"></div>
+                    </aside>
+                    <section class="job-hazard-selected-panel">
+                      <div class="job-hazard-selected-head">
+                        <div>
+                          <span class="section-kicker">Odabrano</span>
+                          <strong id="job-selected-hazard-count">0 stavki</strong>
+                        </div>
+                      </div>
+                      <div id="job-selected-hazards" class="job-selected-hazards"></div>
+                    </section>
+                  </div>
+                </section>
+
+                <p id="job-form-feedback" class="form-error" aria-live="polite"></p>
+                <div class="job-editor-footer">
+                  <button id="job-submit" type="submit" class="primary-button">Spremi posao</button>
+                  <button id="job-reset" type="button" class="ghost-button">Očisti</button>
+                  <button id="job-delete" type="button" class="card-button card-danger" hidden>Obriši</button>
+                </div>
+              </form>
+            </section>
           </section>
 
           <section id="risk-assessment-module" class="risk-assessment-module" hidden>

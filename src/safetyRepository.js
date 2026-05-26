@@ -19,6 +19,7 @@ import {
   createDrawingProject,
   createDashboardWidget,
   createDocumentTemplate,
+  createJob,
   createLearningTest,
   createLegalFramework,
   createLocation,
@@ -54,6 +55,7 @@ import {
   updateAbsenceBalanceEntry,
   updateAbsenceEntry,
   updateDocumentTemplate,
+  updateJob,
   updateLearningTest,
   updateLegalFramework,
   updateLocation,
@@ -2043,6 +2045,29 @@ function mapRiskAssessmentEntry(row = {}, companiesById = new Map(), locationsBy
   };
 }
 
+function mapJobEntry(row = {}) {
+  const id = dbString(row.id);
+  const organizationId = dbString(row.organization_id);
+  if (!id || !organizationId) {
+    return null;
+  }
+
+  return {
+    id,
+    organizationId,
+    title: dbString(row.title),
+    status: dbString(row.status) || "draft",
+    description: dbString(row.description_text),
+    environment: parseJsonObject(row.environment_json),
+    conditions: parseJsonObject(row.conditions_json),
+    hazards: parseJsonArray(row.hazards_json),
+    createdByUserId: dbString(row.created_by_user_id),
+    createdByLabel: dbString(row.created_by_label),
+    createdAt: normalizeTimestamp(row.created_at),
+    updatedAt: normalizeTimestamp(row.updated_at),
+  };
+}
+
 function mapContractTemplateEntry(row = {}) {
   const organizationId = dbString(row.organization_id);
   const id = dbString(row.id);
@@ -3657,6 +3682,25 @@ async function fetchSnapshotFromConnection(connection) {
     .map((row) => mapRiskAssessmentEntry(row, companiesById, locationsById))
     .filter(Boolean);
 
+  const [jobRows] = await connection.query(`
+    SELECT id, organization_id, title, status, description_text, environment_json, conditions_json, hazards_json,
+           created_by_user_id, created_by_label, created_at, updated_at
+    FROM web_jobs
+    ORDER BY
+      CASE status
+        WHEN 'active' THEN 0
+        WHEN 'draft' THEN 1
+        WHEN 'archived' THEN 2
+        ELSE 9
+      END ASC,
+      updated_at DESC,
+      id DESC
+  `);
+
+  const jobs = jobRows
+    .map((row) => mapJobEntry(row))
+    .filter(Boolean);
+
   const [vehicleRows] = await connection.query(`
     SELECT id, organization_id, name, plate_number, vin_number, make_name, model_name, category, model_year,
            color, fuel_type, transmission, seat_count, odometer_km, service_due_date,
@@ -4345,6 +4389,7 @@ async function fetchSnapshotFromConnection(connection) {
     purchaseOrders,
     purchaseOrderTemplateSettings,
     riskAssessments,
+    jobs,
     contracts,
     contractTemplates,
     drawings,
@@ -4449,6 +4494,7 @@ export class InMemorySafetyRepository {
       publicProcurements: [],
       purchaseOrders: [],
       riskAssessments: [],
+      jobs: [],
       contracts: [],
       contractTemplates: [],
       drawings: [],
@@ -4610,6 +4656,21 @@ export class InMemorySafetyRepository {
         })),
         attachments: (item.attachments ?? []).map((document) => ({ ...document })),
         comments: (item.comments ?? []).map((comment) => ({ ...comment })),
+      })),
+      jobs: this.snapshot.jobs.map((item) => ({
+        ...item,
+        environment: {
+          ...(item.environment ?? {}),
+          workplaceOptions: [...(item.environment?.workplaceOptions ?? [])],
+        },
+        conditions: {
+          ...(item.conditions ?? {}),
+          notes: { ...(item.conditions?.notes ?? {}) },
+          bodyPositions: [...(item.conditions?.bodyPositions ?? [])],
+          importantFunctions: [...(item.conditions?.importantFunctions ?? [])],
+          workConditions: [...(item.conditions?.workConditions ?? [])],
+        },
+        hazards: (item.hazards ?? []).map((hazard) => ({ ...hazard })),
       })),
       contracts: this.snapshot.contracts.map((item) => ({
         ...item,
@@ -5524,6 +5585,38 @@ export class InMemorySafetyRepository {
     const before = this.snapshot.riskAssessments.length;
     this.snapshot.riskAssessments = this.snapshot.riskAssessments.filter((item) => item.id !== id);
     return this.snapshot.riskAssessments.length !== before;
+  }
+
+  async createJob(input, actor = null) {
+    const item = createJob({
+      ...input,
+      createdByUserId: String(actor?.id ?? input.createdByUserId ?? ""),
+      createdByLabel: actor?.fullName || actor?.username || input.createdByLabel || "SafeNexus",
+    }, this.snapshot, () => crypto.randomUUID(), () => new Date().toISOString());
+    this.snapshot.jobs = [item, ...this.snapshot.jobs];
+    return item;
+  }
+
+  async updateJob(id, patch, actor = null) {
+    const current = this.snapshot.jobs.find((item) => item.id === id);
+
+    if (!current) {
+      return null;
+    }
+
+    const next = updateJob(current, {
+      ...patch,
+      createdByUserId: current.createdByUserId || String(actor?.id ?? ""),
+      createdByLabel: current.createdByLabel || actor?.fullName || actor?.username || "SafeNexus",
+    }, this.snapshot, () => new Date().toISOString());
+    this.snapshot.jobs = this.snapshot.jobs.map((item) => (item.id === id ? next : item));
+    return next;
+  }
+
+  async deleteJob(id) {
+    const before = this.snapshot.jobs.length;
+    this.snapshot.jobs = this.snapshot.jobs.filter((item) => item.id !== id);
+    return this.snapshot.jobs.length !== before;
   }
 
   async getPurchaseOrderTemplateSettings(organizationId = "") {
@@ -7010,6 +7103,24 @@ export class MySqlSafetyRepository {
         INDEX idx_web_risk_assessments_company (company_id),
         INDEX idx_web_risk_assessments_location (location_id),
         INDEX idx_web_risk_assessments_status (organization_id, status)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_jobs (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        title VARCHAR(220) NOT NULL,
+        status VARCHAR(24) NOT NULL DEFAULT 'draft',
+        description_text LONGTEXT NULL,
+        environment_json LONGTEXT NULL,
+        conditions_json LONGTEXT NULL,
+        hazards_json LONGTEXT NULL,
+        created_by_user_id INT NULL,
+        created_by_label VARCHAR(160) NOT NULL DEFAULT '',
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_web_jobs_org_status (organization_id, status),
+        INDEX idx_web_jobs_title (title)
       )
     `);
     await this.pool.query(`
@@ -10383,6 +10494,104 @@ export class MySqlSafetyRepository {
     } finally {
       connection.release();
     }
+  }
+
+  async createJob(input, actor = null) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const draft = createJob({
+        ...input,
+        createdByUserId: String(actor?.id ?? input.createdByUserId ?? ""),
+        createdByLabel: actor?.fullName || actor?.username || input.createdByLabel || "SafeNexus",
+      }, snapshot, () => "pending", () => new Date().toISOString());
+
+      const [result] = await connection.query(
+        `
+          INSERT INTO web_jobs
+            (organization_id, title, status, description_text, environment_json, conditions_json, hazards_json,
+             created_by_user_id, created_by_label)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          Number(draft.organizationId),
+          draft.title,
+          draft.status,
+          draft.description,
+          JSON.stringify(draft.environment ?? {}),
+          JSON.stringify(draft.conditions ?? {}),
+          JSON.stringify(draft.hazards ?? []),
+          parseNullableInteger(draft.createdByUserId),
+          draft.createdByLabel,
+        ],
+      );
+
+      await connection.commit();
+      return {
+        ...draft,
+        id: String(result.insertId),
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updateJob(id, patch, actor = null) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const current = snapshot.jobs.find((item) => item.id === id);
+
+      if (!current) {
+        await connection.rollback();
+        return null;
+      }
+
+      const next = updateJob(current, {
+        ...patch,
+        createdByUserId: current.createdByUserId || String(actor?.id ?? ""),
+        createdByLabel: current.createdByLabel || actor?.fullName || actor?.username || "SafeNexus",
+      }, snapshot, () => new Date().toISOString());
+
+      await connection.query(
+        `
+          UPDATE web_jobs
+          SET title = ?, status = ?, description_text = ?, environment_json = ?, conditions_json = ?, hazards_json = ?
+          WHERE id = ?
+        `,
+        [
+          next.title,
+          next.status,
+          next.description,
+          JSON.stringify(next.environment ?? {}),
+          JSON.stringify(next.conditions ?? {}),
+          JSON.stringify(next.hazards ?? []),
+          Number(id),
+        ],
+      );
+
+      await connection.commit();
+      return next;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async deleteJob(id) {
+    const [result] = await this.pool.query("DELETE FROM web_jobs WHERE id = ?", [Number(id)]);
+    return result.affectedRows > 0;
   }
 
   async getPurchaseOrderTemplateSettings(organizationId = "") {
