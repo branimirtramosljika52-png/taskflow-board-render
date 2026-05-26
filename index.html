@@ -4616,7 +4616,9 @@
                     <label class="field field-span-full jobs-description-field">
                       <span>Opis posla</span>
                       <div class="jobs-textarea-shell">
-                        <button id="job-description-ai" type="button" class="ghost-button jobs-nexai-button" title="Popuni opis preko NexAI">NexAI</button>
+                        <div class="job-nexai-actions">
+                          <button id="job-description-ai" type="button" class="ghost-button jobs-nexai-button" title="Popuni opis preko NexAI">NexAI</button>
+                        </div>
                         <textarea id="job-description" rows="8" placeholder="Opis poslova i aktivnosti koji se prikazuje u dokumentima."></textarea>
                       </div>
                     </label>
@@ -5788,6 +5790,18 @@
                   <div id="settings-work-order-service-factors" class="settings-service-factor-list"></div>
                 </div>
                 <p id="settings-work-order-points-feedback" class="form-error" aria-live="polite"></p>
+              </section>
+              <section class="panel settings-notifications-panel settings-job-ai-panel">
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Jobs · NexAI</p>
+                    <h3>Upute za AI polja</h3>
+                  </div>
+                  <button id="settings-job-ai-save" type="button" class="ghost-button">Spremi NexAI upute</button>
+                </div>
+                <p class="helper-copy module-copy">Ove upute vrijede globalno za Jobs modul i koriste se svaki put kada korisnik popunjava polje preko NexAI.</p>
+                <div id="settings-job-ai-fields" class="settings-job-ai-fields"></div>
+                <p id="settings-job-ai-feedback" class="form-error" aria-live="polite"></p>
               </section>
               <div class="settings-module-actions">
                 <button id="settings-save-all" type="button" class="primary-button">Spremi postavke</button>

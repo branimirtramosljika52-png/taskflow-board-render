@@ -194,6 +194,14 @@ test("jobs keep environment, conditions and hazard catalog details", () => {
           trainingRequired: "Potrebno osposobljavanje za siguran rad.",
         },
       },
+      aiInstructions: {
+        description: {
+          instruction: "Pisi kratko i strucno za procjenu rizika.",
+          mustInclude: "rad kod klijenta",
+          avoid: "ne izmisljati opremu",
+          style: "short",
+        },
+      },
       hazards: [
         {
           catalogCode: "2.1.3",
@@ -214,6 +222,8 @@ test("jobs keep environment, conditions and hazard catalog details", () => {
   assert.equal(job.environment.machinesEnabled, true);
   assert.deepEqual(job.environment.workplaceOptions, ["u zatvorenom", "na visini"]);
   assert.equal(job.conditions.trainingRequired, true);
+  assert.equal(job.aiInstructions.description.style, "short");
+  assert.equal(job.aiInstructions.description.mustInclude, "rad kod klijenta");
   assert.equal(job.hazards[0].catalogLabel, "S visine");
 
   const updated = updateJob(

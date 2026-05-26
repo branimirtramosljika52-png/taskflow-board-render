@@ -57,6 +57,10 @@ export const APP_ROLE_PERMISSION_DEFINITIONS = Object.freeze([
   Object.freeze({ key: "documentTemplates.create", label: "Izrada Template" }),
   Object.freeze({ key: "people.manage", label: "Uredivanje ljudskih resursa" }),
   Object.freeze({ key: "safetyAuthorizations.manage", label: "Uredivanje ovlastenja" }),
+  Object.freeze({ key: "jobs.view", label: "Prikaz Jobs kataloga" }),
+  Object.freeze({ key: "jobs.manage", label: "Dodavanje i uredivanje Jobs poslova" }),
+  Object.freeze({ key: "jobs.nexai.use", label: "Korištenje NexAI prijedloga u Jobs" }),
+  Object.freeze({ key: "jobs.nexai.manage", label: "Uredivanje Jobs NexAI uputa" }),
   Object.freeze({ key: "workOrders.create", label: "Otvaranje radnih naloga" }),
   Object.freeze({ key: "workOrders.changeStatus", label: "Promjena statusa radnih naloga" }),
   Object.freeze({ key: "workOrders.cancel", label: "Storno radnih naloga" }),
@@ -89,8 +93,11 @@ const APP_PROFILE_DEFAULT_VIEW_PERMISSION_KEYS = Object.freeze([
   "vehicles.view",
   "legalFramework.view",
   "serviceCatalog.view",
+  "jobs.view",
 ]);
 const APP_PROFILE_DEFAULT_OPERATION_PERMISSION_KEYS = Object.freeze([
+  "jobs.manage",
+  "jobs.nexai.use",
   "workOrders.create",
   "workOrders.changeStatus",
   "workOrders.cancel",

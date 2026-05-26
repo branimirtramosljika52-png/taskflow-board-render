@@ -5253,6 +5253,24 @@ function normalizeJobConditionNotes(value = {}) {
   );
 }
 
+export function normalizeJobAiInstructions(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  return Object.fromEntries(
+    Object.entries(source)
+      .map(([key, config]) => {
+        const normalizedKey = normalizeText(key);
+        const data = config && typeof config === "object" ? config : {};
+        return [normalizedKey, {
+          instruction: normalizeText(data.instruction),
+          mustInclude: normalizeText(data.mustInclude),
+          avoid: normalizeText(data.avoid),
+          style: normalizeText(data.style) || "professional",
+        }];
+      })
+      .filter(([, data]) => data.instruction || data.mustInclude || data.avoid || data.style !== "professional"),
+  );
+}
+
 function normalizeJobConditions(value = {}) {
   const source = value && typeof value === "object" ? value : {};
   return {
@@ -5329,6 +5347,9 @@ function hydrateJobCore({
     conditions: hasOwn(input, "conditions")
       ? normalizeJobConditions(input.conditions)
       : normalizeJobConditions(current?.conditions),
+    aiInstructions: hasOwn(input, "aiInstructions")
+      ? normalizeJobAiInstructions(input.aiInstructions)
+      : normalizeJobAiInstructions(current?.aiInstructions),
     hazards: hasOwn(input, "hazards")
       ? normalizeJobHazards(input.hazards)
       : normalizeJobHazards(current?.hazards ?? []),
@@ -8465,6 +8486,11 @@ export function filterJobs(
       conditions.functionsText,
       conditions.conditionsText,
       ...Object.values(conditions.notes ?? {}),
+      ...Object.values(item.aiInstructions ?? {}).flatMap((config) => [
+        config?.instruction,
+        config?.mustInclude,
+        config?.avoid,
+      ]),
       ...(item.hazards ?? []).flatMap((hazard) => [
         hazard.catalogCode,
         hazard.catalogLabel,

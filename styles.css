@@ -5096,6 +5096,117 @@ body.is-profile-modal-open {
   text-align: center;
 }
 
+.settings-job-ai-panel {
+  border-color: rgba(111, 86, 255, 0.22);
+  background:
+    radial-gradient(circle at 8% 0%, rgba(111, 86, 255, 0.08), transparent 32%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(247, 250, 255, 0.96));
+}
+
+.settings-job-ai-fields {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.settings-job-ai-group {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(196, 208, 232, 0.76);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.settings-job-ai-group-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-job-ai-group-head strong {
+  color: #111b36;
+  font-size: 0.86rem;
+}
+
+.settings-job-ai-group-head span,
+.settings-job-ai-card summary small {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(91, 77, 255, 0.08);
+  color: #513bd6;
+  font-size: 0.68rem;
+  font-weight: 850;
+}
+
+.settings-job-ai-card-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.settings-job-ai-card {
+  min-width: 0;
+  border: 1px solid rgba(211, 220, 237, 0.94);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.9);
+  overflow: hidden;
+  box-shadow: 0 10px 24px rgba(40, 55, 95, 0.05);
+}
+
+.settings-job-ai-card.is-configured {
+  border-color: rgba(110, 86, 255, 0.42);
+  box-shadow: 0 14px 30px rgba(91, 77, 255, 0.12);
+}
+
+.settings-job-ai-card summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.settings-job-ai-card summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-job-ai-card summary span {
+  min-width: 0;
+  overflow: hidden;
+  color: #13213f;
+  font-size: 0.82rem;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-job-ai-card-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  padding: 0 12px 12px;
+}
+
+.settings-job-ai-card-body textarea {
+  min-height: 86px;
+  resize: vertical;
+}
+
+.settings-job-ai-card-body .field-span-full {
+  grid-column: 1 / -1;
+}
+
+#settings-job-ai-save {
+  height: 34px;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
 .settings-module-actions {
   display: flex;
   justify-content: flex-end;
@@ -5133,7 +5244,9 @@ body.is-profile-modal-open {
   }
 
   .settings-service-factors-head,
-  .settings-service-factor-row {
+  .settings-service-factor-row,
+  .settings-job-ai-card-list,
+  .settings-job-ai-card-body {
     grid-template-columns: 1fr;
   }
 
@@ -54154,7 +54267,14 @@ button.work-order-editor-section-head:focus-visible {
   font-weight: 900;
 }
 
-.jobs-textarea-shell .jobs-nexai-button {
+.job-nexai-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.jobs-textarea-shell .job-nexai-actions {
   position: absolute;
   top: 8px;
   right: 8px;

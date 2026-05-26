@@ -203,6 +203,10 @@ test("app role permissions resolve module access by profile role", () => {
   }, "5", ROLE_USER), true);
   assert.equal(hasAppPermission(junior, rolePermissions, "measurementEquipment.view"), true);
   assert.equal(hasAppPermission(junior, rolePermissions, "measurementEquipment.edit"), false);
+  assert.equal(hasAppPermission(junior, rolePermissions, "jobs.view"), true);
+  assert.equal(hasAppPermission(junior, rolePermissions, "jobs.manage"), true);
+  assert.equal(hasAppPermission(junior, rolePermissions, "jobs.nexai.use"), true);
+  assert.equal(hasAppPermission(junior, rolePermissions, "jobs.nexai.manage"), false);
   assert.equal(hasAppPermission(junior, rolePermissions, "workOrders.create"), true);
   assert.equal(hasAppPermission(junior, rolePermissions, "workOrders.changeStatus"), true);
   assert.equal(hasAppPermission(junior, rolePermissions, "workOrders.billing.write"), true);

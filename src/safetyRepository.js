@@ -40,6 +40,7 @@ import {
   createWorkOrder,
   deleteVehicleReservation,
   deriveOfferInitials,
+  normalizeJobAiInstructions,
   normalizeWorkOrderMeasurementSheet,
   getWorkOrderExecutors,
   getWorkOrderServiceItems,
@@ -2060,9 +2061,24 @@ function mapJobEntry(row = {}) {
     description: dbString(row.description_text),
     environment: parseJsonObject(row.environment_json),
     conditions: parseJsonObject(row.conditions_json),
+    aiInstructions: parseJsonObject(row.ai_instructions_json),
     hazards: parseJsonArray(row.hazards_json),
     createdByUserId: dbString(row.created_by_user_id),
     createdByLabel: dbString(row.created_by_label),
+    createdAt: normalizeTimestamp(row.created_at),
+    updatedAt: normalizeTimestamp(row.updated_at),
+  };
+}
+
+function mapJobAiSettingsEntry(row = {}) {
+  const organizationId = dbString(row.organization_id);
+  if (!organizationId) {
+    return null;
+  }
+
+  return {
+    organizationId,
+    aiInstructions: normalizeJobAiInstructions(parseJsonObject(row.ai_instructions_json)),
     createdAt: normalizeTimestamp(row.created_at),
     updatedAt: normalizeTimestamp(row.updated_at),
   };
@@ -3683,7 +3699,7 @@ async function fetchSnapshotFromConnection(connection) {
     .filter(Boolean);
 
   const [jobRows] = await connection.query(`
-    SELECT id, organization_id, title, status, description_text, environment_json, conditions_json, hazards_json,
+    SELECT id, organization_id, title, status, description_text, environment_json, conditions_json, ai_instructions_json, hazards_json,
            created_by_user_id, created_by_label, created_at, updated_at
     FROM web_jobs
     ORDER BY
@@ -3699,6 +3715,16 @@ async function fetchSnapshotFromConnection(connection) {
 
   const jobs = jobRows
     .map((row) => mapJobEntry(row))
+    .filter(Boolean);
+
+  const [jobAiSettingsRows] = await connection.query(`
+    SELECT organization_id, ai_instructions_json, created_at, updated_at
+    FROM web_job_ai_settings
+    ORDER BY organization_id ASC
+  `);
+
+  const jobAiSettings = jobAiSettingsRows
+    .map((row) => mapJobAiSettingsEntry(row))
     .filter(Boolean);
 
   const [vehicleRows] = await connection.query(`
@@ -4390,6 +4416,7 @@ async function fetchSnapshotFromConnection(connection) {
     purchaseOrderTemplateSettings,
     riskAssessments,
     jobs,
+    jobAiSettings,
     contracts,
     contractTemplates,
     drawings,
@@ -4495,6 +4522,7 @@ export class InMemorySafetyRepository {
       purchaseOrders: [],
       riskAssessments: [],
       jobs: [],
+      jobAiSettings: [],
       contracts: [],
       contractTemplates: [],
       drawings: [],
@@ -4670,7 +4698,16 @@ export class InMemorySafetyRepository {
           importantFunctions: [...(item.conditions?.importantFunctions ?? [])],
           workConditions: [...(item.conditions?.workConditions ?? [])],
         },
+        aiInstructions: Object.fromEntries(
+          Object.entries(item.aiInstructions ?? {}).map(([key, config]) => [key, { ...(config ?? {}) }]),
+        ),
         hazards: (item.hazards ?? []).map((hazard) => ({ ...hazard })),
+      })),
+      jobAiSettings: this.snapshot.jobAiSettings.map((item) => ({
+        ...item,
+        aiInstructions: Object.fromEntries(
+          Object.entries(item.aiInstructions ?? {}).map(([key, config]) => [key, { ...(config ?? {}) }]),
+        ),
       })),
       contracts: this.snapshot.contracts.map((item) => ({
         ...item,
@@ -5617,6 +5654,39 @@ export class InMemorySafetyRepository {
     const before = this.snapshot.jobs.length;
     this.snapshot.jobs = this.snapshot.jobs.filter((item) => item.id !== id);
     return this.snapshot.jobs.length !== before;
+  }
+
+  async upsertJobAiSettings({ organizationId = "", aiInstructions = {} } = {}) {
+    const safeOrganizationId = dbString(organizationId);
+    if (!safeOrganizationId) {
+      throw new Error("Organizacija je obavezna za Jobs NexAI upute.");
+    }
+
+    const timestamp = new Date().toISOString();
+    const nextEntry = {
+      organizationId: safeOrganizationId,
+      aiInstructions: normalizeJobAiInstructions(aiInstructions),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+
+    const currentIndex = this.snapshot.jobAiSettings.findIndex((entry) => (
+      String(entry.organizationId) === safeOrganizationId
+    ));
+    if (currentIndex >= 0) {
+      const previous = this.snapshot.jobAiSettings[currentIndex];
+      this.snapshot.jobAiSettings[currentIndex] = {
+        ...previous,
+        ...nextEntry,
+        createdAt: previous.createdAt || nextEntry.createdAt,
+      };
+    } else {
+      this.snapshot.jobAiSettings.push(nextEntry);
+    }
+
+    return this.snapshot.jobAiSettings.find((entry) => (
+      String(entry.organizationId) === safeOrganizationId
+    )) ?? nextEntry;
   }
 
   async getPurchaseOrderTemplateSettings(organizationId = "") {
@@ -7114,6 +7184,7 @@ export class MySqlSafetyRepository {
         description_text LONGTEXT NULL,
         environment_json LONGTEXT NULL,
         conditions_json LONGTEXT NULL,
+        ai_instructions_json LONGTEXT NULL,
         hazards_json LONGTEXT NULL,
         created_by_user_id INT NULL,
         created_by_label VARCHAR(160) NOT NULL DEFAULT '',
@@ -7121,6 +7192,17 @@ export class MySqlSafetyRepository {
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_web_jobs_org_status (organization_id, status),
         INDEX idx_web_jobs_title (title)
+      )
+    `);
+    await ensureColumnExists(this.pool, "web_jobs", "ai_instructions_json", "LONGTEXT NULL AFTER conditions_json");
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_job_ai_settings (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        ai_instructions_json LONGTEXT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_web_job_ai_settings_org (organization_id)
       )
     `);
     await this.pool.query(`
@@ -10512,9 +10594,9 @@ export class MySqlSafetyRepository {
       const [result] = await connection.query(
         `
           INSERT INTO web_jobs
-            (organization_id, title, status, description_text, environment_json, conditions_json, hazards_json,
+            (organization_id, title, status, description_text, environment_json, conditions_json, ai_instructions_json, hazards_json,
              created_by_user_id, created_by_label)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
@@ -10523,6 +10605,7 @@ export class MySqlSafetyRepository {
           draft.description,
           JSON.stringify(draft.environment ?? {}),
           JSON.stringify(draft.conditions ?? {}),
+          JSON.stringify(draft.aiInstructions ?? {}),
           JSON.stringify(draft.hazards ?? []),
           parseNullableInteger(draft.createdByUserId),
           draft.createdByLabel,
@@ -10565,7 +10648,7 @@ export class MySqlSafetyRepository {
       await connection.query(
         `
           UPDATE web_jobs
-          SET title = ?, status = ?, description_text = ?, environment_json = ?, conditions_json = ?, hazards_json = ?
+          SET title = ?, status = ?, description_text = ?, environment_json = ?, conditions_json = ?, ai_instructions_json = ?, hazards_json = ?
           WHERE id = ?
         `,
         [
@@ -10574,6 +10657,7 @@ export class MySqlSafetyRepository {
           next.description,
           JSON.stringify(next.environment ?? {}),
           JSON.stringify(next.conditions ?? {}),
+          JSON.stringify(next.aiInstructions ?? {}),
           JSON.stringify(next.hazards ?? []),
           Number(id),
         ],
@@ -10592,6 +10676,31 @@ export class MySqlSafetyRepository {
   async deleteJob(id) {
     const [result] = await this.pool.query("DELETE FROM web_jobs WHERE id = ?", [Number(id)]);
     return result.affectedRows > 0;
+  }
+
+  async upsertJobAiSettings({ organizationId = "", aiInstructions = {} } = {}) {
+    const safeOrganizationId = Number(organizationId);
+    if (!Number.isFinite(safeOrganizationId) || safeOrganizationId <= 0) {
+      throw new Error("Organizacija je obavezna za Jobs NexAI upute.");
+    }
+
+    const normalizedInstructions = normalizeJobAiInstructions(aiInstructions);
+    await this.pool.query(
+      `
+        INSERT INTO web_job_ai_settings (organization_id, ai_instructions_json)
+        VALUES (?, ?)
+        ON DUPLICATE KEY UPDATE
+          ai_instructions_json = VALUES(ai_instructions_json),
+          updated_at = CURRENT_TIMESTAMP
+      `,
+      [safeOrganizationId, JSON.stringify(normalizedInstructions)],
+    );
+
+    return {
+      organizationId: String(safeOrganizationId),
+      aiInstructions: normalizedInstructions,
+      updatedAt: new Date().toISOString(),
+    };
   }
 
   async getPurchaseOrderTemplateSettings(organizationId = "") {

@@ -8911,7 +8911,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "POST" && url.pathname === "/api/jobs") {
-      if (!canManageWorkOrders(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "jobs.manage"))) {
         sendError(response, 403, "Nemate pravo upravljati poslovima.");
         return true;
       }
@@ -8923,6 +8923,22 @@ async function handleApiRequest(request, response, url) {
         organizationId: scopedSnapshot.activeOrganizationId,
       }, user);
       await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/jobs/ai-settings") {
+      if (!(await canUseAnyScopedAppPermission(user, request, ["jobs.nexai.manage", "settings.manage"]))) {
+        sendError(response, 403, "Nemate pravo upravljati Jobs NexAI uputama.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      await domainRepository.upsertJobAiSettings({
+        organizationId: scopedSnapshot.activeOrganizationId,
+        aiInstructions: body?.aiInstructions ?? {},
+      });
+      await writeSnapshot(response, user, request);
       return true;
     }
 
@@ -11077,7 +11093,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (jobMatch && request.method === "PATCH") {
-      if (!canManageWorkOrders(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "jobs.manage"))) {
         sendError(response, 403, "Nemate pravo upravljati poslovima.");
         return true;
       }
@@ -11953,7 +11969,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (jobMatch && request.method === "DELETE") {
-      if (!canManageWorkOrders(user)) {
+      if (!(await canUseScopedAppPermission(user, request, "jobs.manage"))) {
         sendError(response, 403, "Nemate pravo brisati poslove.");
         return true;
       }

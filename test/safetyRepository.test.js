@@ -476,6 +476,29 @@ test("in-memory safety repository stores app role permissions per organization",
   assert.equal(orgTwoEntries.find((entry) => entry.profileRole === "junior_user")?.["serviceCatalog.create"], true);
 });
 
+test("in-memory safety repository stores Jobs NexAI settings per organization", async () => {
+  const repository = new InMemorySafetyRepository();
+  await repository.init();
+
+  const saved = await repository.upsertJobAiSettings({
+    organizationId: "org-1",
+    aiInstructions: {
+      description: {
+        instruction: "Pisi za procjenu rizika.",
+        mustInclude: "rad kod klijenta",
+        avoid: "ne izmisljati opremu",
+        style: "short",
+      },
+    },
+  });
+
+  assert.equal(saved.aiInstructions.description.style, "short");
+
+  const snapshot = await repository.getSnapshot();
+  assert.equal(snapshot.jobAiSettings.length, 1);
+  assert.equal(snapshot.jobAiSettings[0].aiInstructions.description.mustInclude, "rad kod klijenta");
+});
+
 test("learning test scoring supports single, multiple and ordered answers", async () => {
   const repository = new InMemorySafetyRepository();
   await repository.init();

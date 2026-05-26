@@ -1187,6 +1187,18 @@ const APP_ROLE_PERMISSION_MODULES = Object.freeze([
     ],
   },
   {
+    key: "jobs",
+    title: "Jobs / NexAI",
+    description: "Poslovi, sistematizacija i NexAI upute za Jobs polja.",
+    type: "app",
+    rows: [
+      { key: "jobs.view", label: "Prikaz Jobs modula" },
+      { key: "jobs.manage", label: "Dodavanje i uredivanje poslova" },
+      { key: "jobs.nexai.use", label: "Koristenje NexAI prijedloga" },
+      { key: "jobs.nexai.manage", label: "Uredivanje NexAI uputa u Settings" },
+    ],
+  },
+  {
     key: "work-orders",
     title: "Radni nalozi",
     description: "Otvaranje, statusi, storno i fakturiranje radnih naloga.",
@@ -1817,6 +1829,9 @@ const state = {
   publicProcurements: [],
   purchaseOrders: [],
   jobs: [],
+  jobAiSettings: {
+    aiInstructions: {},
+  },
   riskAssessments: [],
   contracts: [],
   drawings: [],
@@ -3314,6 +3329,9 @@ const settingsWorkOrderFieldShareInput = document.querySelector("#settings-work-
 const settingsWorkOrderCompletionShareInput = document.querySelector("#settings-work-order-completion-share");
 const settingsWorkOrderPointsPreview = document.querySelector("#settings-work-order-points-preview");
 const settingsWorkOrderServiceFactorsList = document.querySelector("#settings-work-order-service-factors");
+const settingsJobAiFields = document.querySelector("#settings-job-ai-fields");
+const settingsJobAiSaveButton = document.querySelector("#settings-job-ai-save");
+const settingsJobAiFeedback = document.querySelector("#settings-job-ai-feedback");
 const settingsSaveAllButton = document.querySelector("#settings-save-all");
 const settingsOrganizationLogoDataUrlInput = document.querySelector("#settings-organization-logo-data-url");
 const settingsOrganizationLogoFileInput = document.querySelector("#settings-organization-logo-file");
@@ -7468,6 +7486,27 @@ function getCanManageSettings() {
   return hasAppPermissionClient("settings.manage");
 }
 
+function getCanViewJobs() {
+  return [
+    "jobs.view",
+    "jobs.manage",
+    "jobs.nexai.use",
+    "jobs.nexai.manage",
+  ].some((permissionKey) => hasAppPermissionClient(permissionKey));
+}
+
+function getCanManageJobs() {
+  return hasAppPermissionClient("jobs.manage");
+}
+
+function getCanUseJobNexAi() {
+  return hasAppPermissionClient("jobs.nexai.use") || hasAppPermissionClient("jobs.nexai.manage");
+}
+
+function getCanManageJobNexAiSettings() {
+  return hasAppPermissionClient("jobs.nexai.manage") || getCanManageSettings();
+}
+
 function getCanViewMeasurementEquipment() {
   return hasAppPermissionClient("measurementEquipment.view");
 }
@@ -8643,6 +8682,7 @@ function applySnapshot(payload, options = {}) {
   state.publicProcurements = payload.publicProcurements ?? [];
   state.purchaseOrders = payload.purchaseOrders ?? [];
   state.jobs = payload.jobs ?? [];
+  state.jobAiSettings = normalizeJobAiSettings(payload.jobAiSettings ?? {});
   state.riskAssessments = payload.riskAssessments ?? [];
   state.contracts = payload.contracts ?? [];
   state.drawings = payload.drawings ?? [];
@@ -21457,6 +21497,9 @@ function activateSidebarItem(itemName, options = {}) {
     if (itemConfig.module === "client-portal" && !getCanManageClientPortal()) {
       return;
     }
+    if (itemConfig.module === "jobs" && !getCanViewJobs()) {
+      return;
+    }
     state.activeModuleItem = itemConfig.module;
     state.activeView = "module";
     renderModuleView();
@@ -30475,6 +30518,8 @@ function renderSettingsModule() {
   const absenceNotificationSettings = getAbsenceNotificationSettings();
   const vehicleNotificationSettings = getVehicleNotificationSettings();
   const periodicsVisualSettings = getPeriodicsVisualSettings();
+  const jobAiSettings = getJobAiSettings();
+  const canManageJobNexAi = getCanManageJobNexAiSettings();
 
   syncSettingsOrganizationLogo();
   syncSettingsDocumentStamp();
@@ -30586,10 +30631,15 @@ function renderSettingsModule() {
 
   renderSettingsWorkOrderServiceFactors(periodicsVisualSettings);
   renderSettingsWorkOrderPointsPreview(periodicsVisualSettings);
+  renderSettingsJobAiFields(jobAiSettings);
 
   if (settingsSaveAllButton) {
     settingsSaveAllButton.disabled = !canManageSettings;
     settingsSaveAllButton.hidden = !canManageSettings;
+  }
+  if (settingsJobAiSaveButton) {
+    settingsJobAiSaveButton.disabled = !canManageJobNexAi;
+    settingsJobAiSaveButton.hidden = !canManageJobNexAi;
   }
 
   [
@@ -30612,6 +30662,15 @@ function renderSettingsModule() {
       feedbackNode.textContent = "";
     }
   });
+
+  if (settingsJobAiFeedback) {
+    const permissionMessage = "Samo rola s Jobs NexAI Settings pravom moze mijenjati ove upute.";
+    if (!canManageJobNexAi) {
+      settingsJobAiFeedback.textContent = permissionMessage;
+    } else if (settingsJobAiFeedback.textContent === permissionMessage) {
+      settingsJobAiFeedback.textContent = "";
+    }
+  }
 }
 
 async function saveOrganizationBrandSettings(options = {}) {
@@ -30663,6 +30722,47 @@ async function saveOrganizationBrandSettings(options = {}) {
     syncSettingsDocumentStamp();
     syncDocumentTemplateHtmlBuilderBranding();
     setInlineMessage(settingsOrganizationFeedback, successMessage, "success");
+  }
+
+  return success;
+}
+
+async function saveSettingsJobAiSettings(options = {}) {
+  const successMessage = typeof options.successMessage === "string" && options.successMessage.trim()
+    ? options.successMessage.trim()
+    : "Jobs NexAI upute su spremljene.";
+
+  if (!getCanManageJobNexAiSettings()) {
+    setInlineMessage(settingsJobAiFeedback, "Nemate pravo spremati Jobs NexAI upute.");
+    return false;
+  }
+
+  if (!state.activeOrganizationId) {
+    setInlineMessage(settingsJobAiFeedback, "Odaberi organizaciju prije spremanja NexAI uputa.");
+    return false;
+  }
+
+  if (settingsJobAiSaveButton) {
+    settingsJobAiSaveButton.disabled = true;
+  }
+
+  const aiInstructions = normalizeJobAiInstructionDrafts(collectSettingsJobAiInstructions());
+  const success = await runMutation(async () => apiRequest("/jobs/ai-settings", {
+    method: "POST",
+    body: { aiInstructions },
+  }), settingsJobAiFeedback);
+
+  if (settingsJobAiSaveButton) {
+    settingsJobAiSaveButton.disabled = !getCanManageJobNexAiSettings();
+  }
+
+  if (success) {
+    state.jobAiSettings = normalizeJobAiSettings({
+      organizationId: state.activeOrganizationId,
+      aiInstructions,
+    });
+    renderSettingsJobAiFields(state.jobAiSettings);
+    setInlineMessage(settingsJobAiFeedback, successMessage, "success");
   }
 
   return success;
@@ -31005,6 +31105,7 @@ async function saveAllSettingsBlocks() {
       settingsVehicleNotificationsFeedback,
       settingsPeriodicsVisualFeedback,
       settingsWorkOrderPointsFeedback,
+      settingsJobAiFeedback,
     ].forEach((feedbackNode) => setInlineMessage(feedbackNode, permissionMessage));
     return false;
   }
@@ -31097,6 +31198,7 @@ async function saveAllSettingsBlocks() {
   const workOrderServicePointFactors = normalizeWorkOrderServicePointFactors(
     collectSettingsWorkOrderServicePointFactors(),
   );
+  const jobAiInstructions = normalizeJobAiInstructionDrafts(collectSettingsJobAiInstructions());
 
   if (settingsMeasurementLeadDaysInput) settingsMeasurementLeadDaysInput.value = String(measurementLeadDays);
   if (settingsMeasurementRepeatDaysInput) settingsMeasurementRepeatDaysInput.value = String(measurementRepeatEveryDays);
@@ -31127,6 +31229,7 @@ async function saveAllSettingsBlocks() {
     settingsVehicleNotificationsFeedback,
     settingsPeriodicsVisualFeedback,
     settingsWorkOrderPointsFeedback,
+    settingsJobAiFeedback,
   ].forEach((feedbackNode) => setInlineMessage(feedbackNode, ""));
 
   if (settingsSaveAllButton) {
@@ -31182,6 +31285,12 @@ async function saveAllSettingsBlocks() {
         workOrderServicePointFactors,
       },
     });
+    payload = await apiRequest("/jobs/ai-settings", {
+      method: "POST",
+      body: {
+        aiInstructions: jobAiInstructions,
+      },
+    });
 
     if (payload && typeof payload === "object" && Object.prototype.hasOwnProperty.call(payload, "storage")) {
       applySnapshot(payload);
@@ -31200,6 +31309,7 @@ async function saveAllSettingsBlocks() {
       settingsVehicleNotificationsFeedback,
       settingsPeriodicsVisualFeedback,
       settingsWorkOrderPointsFeedback,
+      settingsJobAiFeedback,
     ].forEach((feedbackNode) => setInlineMessage(feedbackNode, successMessage, "success"));
     return true;
   } catch (error) {
@@ -115277,6 +115387,9 @@ jobStatusFilterInput?.addEventListener("change", () => {
 });
 
 jobNewButton?.addEventListener("click", () => {
+  if (!getCanManageJobs()) {
+    return;
+  }
   resetJobForm();
   openJobEditor();
 });
@@ -115313,6 +115426,10 @@ jobCopySourceInput?.addEventListener("change", () => {
 });
 
 jobDescriptionAiButton?.addEventListener("click", () => {
+  if (!getCanUseJobNexAi()) {
+    setInlineMessage(jobFormFeedback, "Nemate pravo koristiti NexAI za Jobs.", "error");
+    return;
+  }
   if (jobDescriptionInput) {
     jobDescriptionInput.value = getJobNexAiText("description");
   }
@@ -115337,6 +115454,10 @@ jobEnvironmentSections?.addEventListener("click", (event) => {
   }
   const aiButton = target?.closest("[data-job-nexai]");
   if (aiButton instanceof HTMLElement) {
+    if (!getCanUseJobNexAi()) {
+      setInlineMessage(jobFormFeedback, "Nemate pravo koristiti NexAI za Jobs.", "error");
+      return;
+    }
     const key = aiButton.dataset.jobNexai || "";
     const textarea = jobEnvironmentSections.querySelector(`[data-job-env-text="${key}"]`);
     if (textarea instanceof HTMLTextAreaElement) {
@@ -115362,6 +115483,10 @@ jobConditionSections?.addEventListener("click", (event) => {
   }
   const aiButton = target?.closest("[data-job-nexai]");
   if (aiButton instanceof HTMLElement) {
+    if (!getCanUseJobNexAi()) {
+      setInlineMessage(jobFormFeedback, "Nemate pravo koristiti NexAI za Jobs.", "error");
+      return;
+    }
     const key = aiButton.dataset.jobNexai || "";
     if (key.startsWith("condition:")) {
       const noteKey = key.replace("condition:", "");
@@ -115445,10 +115570,17 @@ jobSelectedHazards?.addEventListener("click", (event) => {
 });
 
 jobResetButton?.addEventListener("click", () => {
+  if (!getCanManageJobs()) {
+    return;
+  }
   resetJobForm();
 });
 
 jobDeleteButton?.addEventListener("click", () => {
+  if (!getCanManageJobs()) {
+    setInlineMessage(jobFormFeedback, "Nemate pravo brisati poslove.", "error");
+    return;
+  }
   const id = jobIdInput?.value || "";
   if (!id || !window.confirm("Obrisati posao iz kataloga?")) {
     return;
@@ -115466,6 +115598,10 @@ jobDeleteButton?.addEventListener("click", () => {
 
 jobForm?.addEventListener("submit", (event) => {
   event.preventDefault();
+  if (!getCanManageJobs()) {
+    setInlineMessage(jobFormFeedback, "Nemate pravo spremati poslove.", "error");
+    return;
+  }
   const id = jobIdInput?.value || "";
   const isEditing = Boolean(id);
   const path = isEditing ? `/jobs/${encodeURIComponent(id)}` : "/jobs";
@@ -117983,6 +118119,10 @@ settingsSaveAllButton?.addEventListener("click", () => {
   void saveAllSettingsBlocks();
 });
 
+settingsJobAiSaveButton?.addEventListener("click", () => {
+  void saveSettingsJobAiSettings();
+});
+
 settingsOrganizationLogoUploadButton?.addEventListener("click", () => {
   settingsOrganizationLogoFileInput?.click();
 });
@@ -119586,6 +119726,12 @@ const JOB_CONDITION_TOGGLES = Object.freeze([
 const JOB_BODY_POSITION_OPTIONS = Object.freeze(["rad stojeći", "rad sjedeći", "u pokretu", "kombinirano", "učestalo sagibanje", "klečanje", "čučanje", "rad iznad ramena", "ponavljajući pokreti"]);
 const JOB_IMPORTANT_FUNCTION_OPTIONS = Object.freeze(["vid na daljinu", "vid na blizinu", "raspoznavanje boja", "dobar sluh", "jasan govor", "preciznost ruku", "koordinacija pokreta"]);
 const JOB_WORK_CONDITION_OPTIONS = Object.freeze(["buka", "vibracije", "mikroklima", "prašina", "kemijske štetnosti", "biološke štetnosti", "rad na visini", "rad na otvorenom", "rad u prometu"]);
+const JOB_AI_STYLE_LABELS = Object.freeze({
+  professional: "stručno i jasno",
+  short: "kratko",
+  detailed: "detaljno",
+  legal: "formalno / dokumentacijski",
+});
 
 function normalizeJobSheet(value = "basic") {
   const normalized = String(value || "").trim();
@@ -119647,34 +119793,221 @@ function createJobHazardDraft(row = {}) {
   };
 }
 
+function normalizeJobAiInstructionConfig(config = {}) {
+  const source = config && typeof config === "object" ? config : {};
+  const style = String(source.style || "professional").trim();
+  return {
+    instruction: String(source.instruction || "").trim(),
+    mustInclude: String(source.mustInclude || "").trim(),
+    avoid: String(source.avoid || "").trim(),
+    style: JOB_AI_STYLE_LABELS[style] ? style : "professional",
+  };
+}
+
+function hasJobAiInstructionConfig(config = {}) {
+  const normalized = normalizeJobAiInstructionConfig(config);
+  return Boolean(normalized.instruction || normalized.mustInclude || normalized.avoid || normalized.style !== "professional");
+}
+
+function normalizeJobAiInstructionDrafts(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  return Object.fromEntries(
+    Object.entries(source)
+      .map(([key, config]) => [String(key || "").trim(), normalizeJobAiInstructionConfig(config)])
+      .filter(([key, config]) => key && hasJobAiInstructionConfig(config)),
+  );
+}
+
+function getJobAiInstructionsDraft() {
+  return {};
+}
+
+function normalizeJobAiSettings(value = {}) {
+  const source = Array.isArray(value)
+    ? (value.find((entry) => String(entry?.organizationId ?? "") === String(state.activeOrganizationId ?? "")) ?? value[0] ?? {})
+    : (value && typeof value === "object" ? value : {});
+  return {
+    organizationId: String(source.organizationId ?? state.activeOrganizationId ?? "").trim(),
+    aiInstructions: normalizeJobAiInstructionDrafts(source.aiInstructions ?? {}),
+  };
+}
+
+function getJobAiFieldLabel(kind = "description") {
+  const key = String(kind || "").trim();
+  if (key === "description") {
+    return "Opis posla";
+  }
+  if (key.startsWith("condition:")) {
+    const conditionKey = key.replace("condition:", "");
+    return JOB_CONDITION_TOGGLES.find((item) => item.key === conditionKey)?.label || "Uvjet rada";
+  }
+  return JOB_ENVIRONMENT_SECTIONS.find((section) => section.key === key)?.title || "NexAI polje";
+}
+
+function getJobAiSettings() {
+  return normalizeJobAiSettings(state.jobAiSettings);
+}
+
+function getJobAiInstruction(kind = "description") {
+  return normalizeJobAiInstructionConfig(getJobAiSettings().aiInstructions[String(kind || "").trim()] ?? {});
+}
+
+function getJobAiSettingsFieldDefinitions() {
+  return [
+    { key: "description", group: "Osnovni podaci", label: "Opis posla" },
+    ...JOB_ENVIRONMENT_SECTIONS.map((section) => ({
+      key: section.key,
+      group: "Radno okruženje",
+      label: section.title,
+    })),
+    ...JOB_CONDITION_TOGGLES.map((item) => ({
+      key: `condition:${item.key}`,
+      group: item.group,
+      label: item.label,
+    })),
+  ];
+}
+
+function collectSettingsJobAiInstructions() {
+  if (!settingsJobAiFields) {
+    return getJobAiSettings().aiInstructions;
+  }
+  const entries = Array.from(settingsJobAiFields.querySelectorAll("[data-settings-job-ai-key]"))
+    .map((card) => {
+      const key = String(card.dataset.settingsJobAiKey || "").trim();
+      const config = normalizeJobAiInstructionConfig({
+        instruction: card.querySelector('[data-settings-job-ai-field="instruction"]')?.value || "",
+        mustInclude: card.querySelector('[data-settings-job-ai-field="mustInclude"]')?.value || "",
+        avoid: card.querySelector('[data-settings-job-ai-field="avoid"]')?.value || "",
+        style: card.querySelector('[data-settings-job-ai-field="style"]')?.value || "professional",
+      });
+      return [key, config];
+    })
+    .filter(([key, config]) => key && hasJobAiInstructionConfig(config));
+  return Object.fromEntries(entries);
+}
+
+function renderSettingsJobAiFields(settings = getJobAiSettings()) {
+  if (!settingsJobAiFields) {
+    return;
+  }
+
+  const canManage = getCanManageJobNexAiSettings();
+  const instructions = normalizeJobAiInstructionDrafts(settings.aiInstructions ?? {});
+  const groups = getJobAiSettingsFieldDefinitions().reduce((map, field) => {
+    if (!map.has(field.group)) {
+      map.set(field.group, []);
+    }
+    map.get(field.group).push(field);
+    return map;
+  }, new Map());
+
+  settingsJobAiFields.replaceChildren(...Array.from(groups.entries()).map(([group, fields]) => {
+    const section = document.createElement("article");
+    section.className = "settings-job-ai-group";
+    const cards = fields.map((field) => {
+      const config = normalizeJobAiInstructionConfig(instructions[field.key] ?? {});
+      const configured = hasJobAiInstructionConfig(config);
+      return `
+        <details class="settings-job-ai-card ${configured ? "is-configured" : ""}" data-settings-job-ai-key="${escapeHtml(field.key)}">
+          <summary>
+            <span>${escapeHtml(field.label)}</span>
+            <small>${configured ? "Upute postavljene" : "Default NexAI"}</small>
+          </summary>
+          <div class="settings-job-ai-card-body">
+            <label class="field field-span-full">
+              <span>Uputa za NexAI</span>
+              <textarea data-settings-job-ai-field="instruction" rows="3" placeholder="Kako NexAI treba popuniti ovo polje..." ${canManage ? "" : "disabled"}>${escapeHtml(config.instruction)}</textarea>
+            </label>
+            <label class="field">
+              <span>Stil odgovora</span>
+              <select data-settings-job-ai-field="style" ${canManage ? "" : "disabled"}>
+                ${Object.entries(JOB_AI_STYLE_LABELS).map(([value, label]) => (
+                  `<option value="${escapeHtml(value)}"${value === config.style ? " selected" : ""}>${escapeHtml(label)}</option>`
+                )).join("")}
+              </select>
+            </label>
+            <label class="field">
+              <span>Mora uključiti</span>
+              <input data-settings-job-ai-field="mustInclude" value="${escapeHtml(config.mustInclude)}" placeholder="Npr. mjere zaštite, učestalost, OZO..." ${canManage ? "" : "disabled"} />
+            </label>
+            <label class="field field-span-full">
+              <span>NexAI ne smije</span>
+              <input data-settings-job-ai-field="avoid" value="${escapeHtml(config.avoid)}" placeholder="Npr. ne izmišljati opremu ili zakone..." ${canManage ? "" : "disabled"} />
+            </label>
+          </div>
+        </details>
+      `;
+    }).join("");
+    section.innerHTML = `
+      <div class="settings-job-ai-group-head">
+        <strong>${escapeHtml(group)}</strong>
+        <span>${fields.filter((field) => hasJobAiInstructionConfig(instructions[field.key])).length}/${fields.length}</span>
+      </div>
+      <div class="settings-job-ai-card-list">${cards}</div>
+    `;
+    return section;
+  }));
+
+  if (settingsJobAiSaveButton) {
+    settingsJobAiSaveButton.hidden = !canManage;
+    settingsJobAiSaveButton.disabled = !canManage;
+  }
+}
+
+function applyJobAiInstructionToText(text = "", kind = "description") {
+  const config = getJobAiInstruction(kind);
+  if (!hasJobAiInstructionConfig(config)) {
+    return text;
+  }
+
+  let output = String(text || "").trim();
+  if (config.style === "short") {
+    output = output.split(/(?<=[.!?])\s+/).slice(0, 2).join(" ").trim() || output;
+  } else if (config.style === "detailed") {
+    output = `${output} U opisu je potrebno navesti okolnosti rada, učestalost, opremu, očekivane uvjete i mjere zaštite koje su bitne za taj posao.`;
+  } else if (config.style === "legal") {
+    output = `${output} Formulacija se priprema za uporabu u dokumentaciji zaštite na radu te mora biti jasna, provjerljiva i bez nepotrebnih pretpostavki.`;
+  }
+
+  const additions = [];
+  if (config.instruction) {
+    additions.push(`Posebno obraditi: ${config.instruction}.`);
+  }
+  if (config.mustInclude) {
+    additions.push(`Obavezno uključiti: ${config.mustInclude}.`);
+  }
+  return [output, ...additions].filter(Boolean).join(" ");
+}
+
 function getJobNexAiText(kind = "description") {
   const title = String(jobTitleInput?.value || "Odabrani posao").trim() || "Odabrani posao";
   const environment = getJobEnvironmentDraftFromForm();
   const conditions = getJobConditionsDraftFromForm();
   const selectedWorkplaces = environment.workplaceOptions?.length ? environment.workplaceOptions.join(", ") : "radnom prostoru poslodavca i/ili kod klijenta";
   if (kind === "machines") {
-    return `Radnik rukuje standardnim alatima i opremom potrebnom za posao "${title}". Oprema se koristi prema uputama proizvođača, uz prethodnu vizualnu provjeru ispravnosti i primjenu propisane osobne zaštitne opreme.`;
+    return applyJobAiInstructionToText(`Radnik rukuje standardnim alatima i opremom potrebnom za posao "${title}". Oprema se koristi prema uputama proizvođača, uz prethodnu vizualnu provjeru ispravnosti i primjenu propisane osobne zaštitne opreme.`, kind);
   }
   if (kind === "substances") {
-    return `Radnik može povremeno doći u dodir s radnim tvarima potrebnima za obavljanje posla. Tvari se koriste u označenoj ambalaži, uz primjenu sigurnosno-tehničkih listova, higijenskih mjera i odgovarajuće OZO.`;
+    return applyJobAiInstructionToText(`Radnik može povremeno doći u dodir s radnim tvarima potrebnima za obavljanje posla. Tvari se koriste u označenoj ambalaži, uz primjenu sigurnosno-tehničkih listova, higijenskih mjera i odgovarajuće OZO.`, kind);
   }
   if (kind === "workplace") {
-    return `Posao se obavlja na lokacijama: ${selectedWorkplaces}. Radni prostor mora biti prohodan, osvijetljen, organiziran tako da se smanji rizik od pada, spoticanja i neželjenog događaja.`;
+    return applyJobAiInstructionToText(`Posao se obavlja na lokacijama: ${selectedWorkplaces}. Radni prostor mora biti prohodan, osvijetljen, organiziran tako da se smanji rizik od pada, spoticanja i neželjenog događaja.`, kind);
   }
   if (kind === "organization") {
-    return `Rad se organizira prema nalogu poslodavca, uz jasno definirane zadatke, odgovornosti i rokove. Stanke, tjedni odmor i preraspodjela rada provode se u skladu s internim pravilima i važećim propisima.`;
+    return applyJobAiInstructionToText(`Rad se organizira prema nalogu poslodavca, uz jasno definirane zadatke, odgovornosti i rokove. Stanke, tjedni odmor i preraspodjela rada provode se u skladu s internim pravilima i važećim propisima.`, kind);
   }
   if (kind.startsWith("condition:")) {
     const key = kind.replace("condition:", "");
     const definition = JOB_CONDITION_TOGGLES.find((entry) => entry.key === key);
-    return definition?.suggestion || "Za odabrani uvjet rada potrebno je opisati okolnosti, učestalost i mjere zaštite.";
+    return applyJobAiInstructionToText(definition?.suggestion || "Za odabrani uvjet rada potrebno je opisati okolnosti, učestalost i mjere zaštite.", kind);
   }
   const conditionSummary = [
     ...conditions.bodyPositions,
     ...conditions.importantFunctions,
     ...conditions.workConditions,
   ].slice(0, 8).join(", ");
-  return `${title} obuhvaća obavljanje redovnih radnih zadataka prema uputama poslodavca, pravilima struke i zahtjevima zaštite na radu. Posao se izvodi u ${selectedWorkplaces}, uz korištenje potrebne opreme, alata i dokumentacije. Radnik mora biti osposobljen za siguran rad, upoznat s opasnostima i obvezan primjenjivati propisane mjere zaštite${conditionSummary ? `, posebno u dijelu: ${conditionSummary}` : ""}.`;
+  return applyJobAiInstructionToText(`${title} obuhvaća obavljanje redovnih radnih zadataka prema uputama poslodavca, pravilima struke i zahtjevima zaštite na radu. Posao se izvodi u ${selectedWorkplaces}, uz korištenje potrebne opreme, alata i dokumentacije. Radnik mora biti osposobljen za siguran rad, upoznat s opasnostima i obvezan primjenjivati propisane mjere zaštite${conditionSummary ? `, posebno u dijelu: ${conditionSummary}` : ""}.`, "description");
 }
 
 function syncJobEditorModal() {
@@ -119717,6 +120050,7 @@ function renderJobEnvironmentSections(environment = {}) {
   if (!jobEnvironmentSections) {
     return;
   }
+  const canUseNexAi = getCanUseJobNexAi();
   jobEnvironmentSections.replaceChildren(...JOB_ENVIRONMENT_SECTIONS.map((section) => {
     const enabled = Boolean(environment[`${section.key}Enabled`]);
     const textValue = String(environment[`${section.key}Text`] ?? "").trim();
@@ -119751,7 +120085,9 @@ function renderJobEnvironmentSections(environment = {}) {
           <strong>${escapeHtml(section.title)}</strong>
           <small>${escapeHtml(section.helper)}</small>
         </div>
-        <button type="button" class="ghost-button jobs-nexai-button" data-job-nexai="${escapeHtml(section.key)}">NexAI</button>
+        <div class="job-nexai-actions">
+          <button type="button" class="ghost-button jobs-nexai-button" data-job-nexai="${escapeHtml(section.key)}" ${canUseNexAi ? "" : "disabled"}>NexAI</button>
+        </div>
       </div>
       <div class="job-suggestion-row">${chips}</div>
       ${organizationFields}
@@ -119765,6 +120101,7 @@ function renderJobConditionSections(conditions = {}) {
   if (!jobConditionSections) {
     return;
   }
+  const canUseNexAi = getCanUseJobNexAi();
   const notes = conditions.notes ?? {};
   const groupedToggles = JOB_CONDITION_TOGGLES.reduce((groups, item) => {
     if (!groups.has(item.group)) {
@@ -119792,7 +120129,9 @@ function renderJobConditionSections(conditions = {}) {
               <strong>${escapeHtml(item.label)}</strong>
               <textarea data-job-condition-note="${escapeHtml(item.key)}" rows="2" placeholder="Tekst za ovaj uvjet rada...">${escapeHtml(notes[item.key] || "")}</textarea>
             </div>
-            <button type="button" class="ghost-button jobs-nexai-button" data-job-nexai="condition:${escapeHtml(item.key)}">NexAI</button>
+            <div class="job-nexai-actions">
+              <button type="button" class="ghost-button jobs-nexai-button" data-job-nexai="condition:${escapeHtml(item.key)}" ${canUseNexAi ? "" : "disabled"}>NexAI</button>
+            </div>
           </div>
         `).join("")}
       </div>
@@ -119956,8 +120295,28 @@ function buildJobPayload() {
     description: jobDescriptionInput?.value || "",
     environment: getJobEnvironmentDraftFromForm(),
     conditions: getJobConditionsDraftFromForm(),
+    aiInstructions: getJobAiInstructionsDraft(),
     hazards: jobHazardDrafts,
   };
+}
+
+function syncJobFormAccess() {
+  const canManage = getCanManageJobs();
+  const canUseNexAi = getCanUseJobNexAi();
+  jobForm?.querySelectorAll("input, textarea, select").forEach((field) => {
+    field.disabled = !canManage;
+  });
+  jobForm?.querySelectorAll(".jobs-nexai-button").forEach((button) => {
+    button.disabled = !canUseNexAi || !canManage;
+  });
+  if (jobSubmitButton) {
+    jobSubmitButton.hidden = !canManage;
+    jobSubmitButton.disabled = !canManage;
+  }
+  if (jobResetButton) {
+    jobResetButton.hidden = !canManage;
+    jobResetButton.disabled = !canManage;
+  }
 }
 
 function hydrateJobForm(item = {}) {
@@ -119980,8 +120339,10 @@ function hydrateJobForm(item = {}) {
     jobEditorMeta.textContent = draft.id ? `${getJobStatusOption(draft.status).label} · ${hazardText}` : "Osnovni podaci, radno okruženje, uvjeti rada i opasnosti.";
   }
   if (jobDeleteButton) {
-    jobDeleteButton.hidden = !draft.id;
+    jobDeleteButton.hidden = !draft.id || !getCanManageJobs();
+    jobDeleteButton.disabled = !getCanManageJobs();
   }
+  syncJobFormAccess();
   setInlineMessage(jobFormFeedback, "");
   syncJobSheets();
 }
@@ -120048,10 +120409,34 @@ function renderJobsModule() {
   if (!jobsModule) {
     return;
   }
-  const canManage = getCanManageRiskAssessments();
+  const canView = getCanViewJobs();
+  const canManage = getCanManageJobs();
+  const canUseNexAi = getCanUseJobNexAi();
   if (jobNewButton) {
     jobNewButton.hidden = !canManage;
     jobNewButton.disabled = !canManage;
+  }
+  if (jobDescriptionAiButton) {
+    jobDescriptionAiButton.disabled = !canUseNexAi;
+    jobDescriptionAiButton.title = canUseNexAi
+      ? "Popuni opis preko NexAI"
+      : "NexAI nije dostupan za tvoju rolu.";
+  }
+  [jobSubmitButton, jobResetButton].forEach((button) => {
+    if (button) button.disabled = !canManage;
+  });
+  if (jobDeleteButton) {
+    jobDeleteButton.hidden = jobDeleteButton.hidden || !canManage;
+    jobDeleteButton.disabled = !canManage;
+  }
+  syncJobFormAccess();
+  if (!canView) {
+    jobList?.replaceChildren();
+    if (jobEmpty) {
+      jobEmpty.hidden = false;
+      jobEmpty.textContent = "Nemate pravo za prikaz Jobs modula.";
+    }
+    return;
   }
   const filters = {
     query: jobSearchInput?.value?.trim() || state.jobFilters.query || "",
@@ -120075,6 +120460,7 @@ function renderJobsModule() {
   jobList?.replaceChildren(...visible.map((item) => renderJobCard(item)));
   if (jobEmpty) {
     jobEmpty.hidden = visible.length > 0;
+    jobEmpty.textContent = "Nema poslova za odabrane filtere.";
   }
   syncJobCopySourceOptions(jobIdInput?.value || "");
 }

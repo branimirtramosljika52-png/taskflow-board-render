@@ -2008,6 +2008,12 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
     || ["locations.view", "locations.create", "locations.edit", "clientPortal.manage"].some((permissionKey) => hasAppPermission(permissionKey));
   const canViewContracts = actorIsClientPortal
     || ["contracts.view", "contracts.create"].some((permissionKey) => hasAppPermission(permissionKey));
+  const canViewJobs = [
+    "jobs.view",
+    "jobs.manage",
+    "jobs.nexai.use",
+    "jobs.nexai.manage",
+  ].some((permissionKey) => hasAppPermission(permissionKey));
   const canViewDocumentTemplates = [
     "documentTemplates.create",
     "measurementEquipment.create",
@@ -2138,7 +2144,7 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       items: (item.items ?? []).map((entry) => ({ ...entry })),
       documents: (item.documents ?? []).map((document) => ({ ...document })),
     })),
-    jobs: (rawSnapshot.jobs ?? []).filter((item) => (
+    jobs: (canViewJobs ? (rawSnapshot.jobs ?? []) : []).filter((item) => (
       String(item.organizationId) === String(organizationId)
     )).map((item) => ({
       ...item,
@@ -2155,6 +2161,19 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       },
       hazards: (item.hazards ?? []).map((hazard) => ({ ...hazard })),
     })),
+    jobAiSettings: (() => {
+      const entry = (rawSnapshot.jobAiSettings ?? []).find((item) => (
+        String(item.organizationId) === String(organizationId)
+      ));
+      return entry
+        ? {
+          ...entry,
+          aiInstructions: Object.fromEntries(
+            Object.entries(entry.aiInstructions ?? {}).map(([key, config]) => [key, { ...(config ?? {}) }]),
+          ),
+        }
+        : { organizationId: String(organizationId), aiInstructions: {} };
+    })(),
     riskAssessments: (rawSnapshot.riskAssessments ?? []).filter(isOrganizationOrCompanyItemVisible).map((item) => ({
       ...item,
       measures: (item.measures ?? []).map((entry) => ({ ...entry })),
@@ -3016,6 +3035,7 @@ export class MemoryTenantRepository {
       publicProcurements: [],
       purchaseOrders: [],
       jobs: [],
+      jobAiSettings: [],
       riskAssessments: [],
       contracts: [],
       drawings: [],
@@ -3967,6 +3987,7 @@ export class MySqlTenantRepository {
       publicProcurements: [],
       purchaseOrders: [],
       jobs: [],
+      jobAiSettings: [],
       riskAssessments: [],
       contracts: [],
       drawings: [],
@@ -4025,6 +4046,7 @@ export class MySqlTenantRepository {
       publicProcurements: [],
       purchaseOrders: [],
       jobs: [],
+      jobAiSettings: [],
       riskAssessments: [],
       contracts: [],
       drawings: [],
