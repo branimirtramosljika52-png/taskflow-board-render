@@ -372,11 +372,12 @@ const SESSION_IDLE_ACTIVITY_EVENTS = Object.freeze(["pointerdown", "keydown", "t
 const SESSION_IDLE_LOGOUT_MESSAGE = "Sesija je zakljucana zbog neaktivnosti. Prijavi se ponovno.";
 const COMPANY_EDITOR_RELATED_RENDER_DELAY_MS = 120;
 const COMPANY_EDITOR_ACTIVITY_IDLE_TIMEOUT_MS = 1200;
-const COMPANIES_COLUMN_LAYOUT_STORAGE_KEY = "safenexus.companies.column-widths.v2";
+const COMPANIES_COLUMN_LAYOUT_STORAGE_KEY = "safenexus.companies.column-widths.v3";
 const COMPANIES_COLUMN_LAYOUT = Object.freeze([
-  Object.freeze({ key: "company", defaultWidth: 430, minWidth: 300 }),
-  Object.freeze({ key: "contacts", defaultWidth: 330, minWidth: 250 }),
-  Object.freeze({ key: "contract", defaultWidth: 310, minWidth: 240 }),
+  Object.freeze({ key: "company", defaultWidth: 400, minWidth: 300 }),
+  Object.freeze({ key: "contacts", defaultWidth: 300, minWidth: 240 }),
+  Object.freeze({ key: "portal", defaultWidth: 285, minWidth: 230 }),
+  Object.freeze({ key: "contract", defaultWidth: 300, minWidth: 240 }),
   Object.freeze({ key: "activity", defaultWidth: 340, minWidth: 260 }),
 ]);
 const OFFER_LOCATION_ALL_VALUE = "__all__";
@@ -45021,8 +45022,12 @@ function getCompanySearchHaystack(company = {}) {
 
   const linkedLocations = getLocationsForCompany(String(company.id || ""));
   const linkedObjects = getCompanyLocationObjects(String(company.id || ""));
+  const clientPortalUsers = getCompanyClientUsers(String(company.id || ""));
   const employeeSize = normalizeCompanyEmployeeSize(company.employeeSize);
   const managerSummary = getCompanyManagerSummaryText(company);
+  const clientPortalSignature = clientPortalUsers
+    .map((user) => [user.fullName, user.firstName, user.lastName, user.oib, user.email].filter(Boolean).join("|"))
+    .join("~");
   const signature = [
     company.name,
     company.headquarters,
@@ -45040,6 +45045,7 @@ function getCompanySearchHaystack(company = {}) {
     company.representativeRole,
     company.representativeOib,
     managerSummary,
+    clientPortalSignature,
     company.contactPhone,
     company.contactEmail,
     company.period,
@@ -45083,6 +45089,12 @@ function getCompanySearchHaystack(company = {}) {
     company.representativeRole,
     company.representativeOib,
     managerSummary,
+    ...clientPortalUsers.flatMap((user) => [
+      formatCompanyPortalUserLabel(user),
+      user.oib,
+      user.email,
+      "klijent portal",
+    ]),
     company.contactPhone,
     company.contactEmail,
     company.period,
@@ -45358,6 +45370,71 @@ function createCompanyContactCell(rowSnapshot = {}) {
   }
 
   stack.append(lines);
+  cell.append(stack);
+  return cell;
+}
+
+function formatCompanyPortalUserLabel(user = {}) {
+  return String(
+    user.fullName
+    || [user.firstName, user.lastName].filter(Boolean).join(" ")
+    || user.displayName
+    || user.email
+    || "Klijent",
+  ).trim() || "Klijent";
+}
+
+function createCompanyPortalCell(rowSnapshot = {}) {
+  const cell = document.createElement("td");
+  cell.className = "company-list-portal-table-cell";
+
+  const stack = document.createElement("div");
+  stack.className = "company-list-info-card company-portal-cell";
+
+  const users = Array.isArray(rowSnapshot.clientPortalUsers) ? rowSnapshot.clientPortalUsers : [];
+  const hasAccess = users.length > 0;
+
+  const statusRow = document.createElement("div");
+  statusRow.className = "company-portal-status-row";
+  const label = document.createElement("span");
+  label.className = "company-list-card-kicker";
+  label.textContent = "Portal";
+  const status = document.createElement("span");
+  status.className = `company-portal-status-pill ${hasAccess ? "is-enabled" : "is-disabled"}`;
+  status.textContent = hasAccess ? "DA" : "NE";
+  statusRow.append(label, status);
+
+  const list = document.createElement("div");
+  list.className = "company-portal-user-list";
+
+  if (!hasAccess) {
+    const empty = document.createElement("span");
+    empty.className = "company-portal-empty";
+    empty.textContent = "Nije dodijeljen pristup.";
+    list.append(empty);
+  } else {
+    users.slice(0, 2).forEach((user) => {
+      const item = document.createElement("div");
+      item.className = "company-portal-user";
+
+      const name = document.createElement("strong");
+      name.textContent = formatCompanyPortalUserLabel(user);
+      const meta = document.createElement("span");
+      meta.textContent = user.oib ? `OIB ${user.oib}` : (user.email || "Bez OIB-a");
+
+      item.append(name, meta);
+      list.append(item);
+    });
+
+    if (users.length > 2) {
+      const more = document.createElement("span");
+      more.className = "company-portal-more";
+      more.textContent = `+${users.length - 2}`;
+      list.append(more);
+    }
+  }
+
+  stack.append(statusRow, list);
   cell.append(stack);
   return cell;
 }
@@ -45680,7 +45757,8 @@ function buildCompanyListRowSnapshot(company = {}, contractSummary = null) {
   const isExpanded = state.companyExpandedIds.has(companyId);
   const activeWorkOrderCount = structure.workOrders.filter((workOrder) => String(workOrder.status || "") === "Otvoreni RN").length;
   const serviceCodes = getCompanyServiceCodes(companyId);
-  const clientPortalUsersCount = getCompanyClientUsers(companyId).length;
+  const clientPortalUsers = getCompanyClientUsers(companyId);
+  const clientPortalUsersCount = clientPortalUsers.length;
   const periodicsSummary = getCompanyPeriodicsSummary(companyId);
   const managerSummary = getCompanyManagerSummaryText(company);
   const priceListCount = normalizeCompanyContractPriceList(company.contractPriceList).length;
@@ -45704,6 +45782,7 @@ function buildCompanyListRowSnapshot(company = {}, contractSummary = null) {
     objectCount: structure.objects.length,
     workOrderCount: structure.workOrders.length,
     activeWorkOrderCount,
+    clientPortalUsers,
     clientPortalUsersCount,
     periodicsSummary,
     serviceCodes,
@@ -45759,6 +45838,14 @@ function buildCompanyListRowSnapshot(company = {}, contractSummary = null) {
       company.period,
       company.isActive ? "1" : "0",
       managerSummary,
+      clientPortalUsers.map((user) => [
+        user.id,
+        user.fullName,
+        user.firstName,
+        user.lastName,
+        user.oib,
+        user.email,
+      ].join("::")).join("~~"),
       ...activeContracts.map((contract) => [
         contract.id,
         contract.title,
@@ -109482,6 +109569,7 @@ function renderCompanies() {
       row.append(
         createCompanyIdentityCell(rowSnapshot.company, rowSnapshot),
         createCompanyContactCell(rowSnapshot),
+        createCompanyPortalCell(rowSnapshot),
         createCompanyContractsCell(rowSnapshot),
         createCompanyActivityCell(rowSnapshot),
       );
@@ -109491,7 +109579,7 @@ function renderCompanies() {
         const detailRow = document.createElement("tr");
         detailRow.className = "company-list-expand-row";
         const detailCell = document.createElement("td");
-        detailCell.colSpan = 4;
+        detailCell.colSpan = 5;
         detailCell.append(createCompanyListExpansion(rowSnapshot));
         detailRow.append(detailCell);
         fragment.append(detailRow);

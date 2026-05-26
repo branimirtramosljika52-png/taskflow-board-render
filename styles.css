@@ -25602,6 +25602,91 @@ body.is-resizing-companies-column .companies-column-resize-handle::before {
     linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(247, 250, 255, 0.88));
 }
 
+.company-portal-cell {
+  background:
+    radial-gradient(circle at top left, rgba(14, 165, 233, 0.12), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.93), rgba(240, 249, 255, 0.88));
+}
+
+.company-portal-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.company-portal-status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 950;
+  letter-spacing: 0.04em;
+}
+
+.company-portal-status-pill.is-enabled {
+  border: 1px solid rgba(34, 197, 94, 0.28);
+  background: rgba(220, 252, 231, 0.82);
+  color: #047857;
+}
+
+.company-portal-status-pill.is-disabled {
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(241, 245, 249, 0.88);
+  color: #64748b;
+}
+
+.company-portal-user-list {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.company-portal-user {
+  display: grid;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(191, 219, 254, 0.76);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.company-portal-user strong,
+.company-portal-user span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.company-portal-user strong {
+  color: #12213f;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.company-portal-user span,
+.company-portal-empty {
+  color: #64748b;
+  font-size: 0.7rem;
+  font-weight: 760;
+}
+
+.company-portal-more {
+  display: inline-flex;
+  justify-self: start;
+  min-height: 24px;
+  padding: 4px 9px;
+  border: 1px solid rgba(124, 90, 255, 0.22);
+  border-radius: 999px;
+  background: rgba(237, 233, 254, 0.72);
+  color: #5b21b6;
+  font-size: 0.7rem;
+  font-weight: 950;
+}
+
 .company-list-card-kicker {
   margin-bottom: -2px;
   color: #64748b;
