@@ -7151,6 +7151,10 @@ export function createDocumentTemplate(
     id: createId(),
     organizationId,
     title: requireText(input.title, "Naziv templatea"),
+    useAi: normalizeBoolean(
+      input.useAi ?? input.useAI ?? input.useNexAi ?? input.nexAiEnabled ?? input.aiEnabled ?? input.ai_enabled,
+      false,
+    ),
     documentType: normalizeDocumentTemplateType(input.documentType),
     status: normalizeDocumentTemplateStatus(input.status),
     description: normalizeText(input.description),
@@ -7198,10 +7202,22 @@ export function updateDocumentTemplate(current, patch, state, now = isoNow) {
       && String(item.organizationId) === String(current.organizationId)
     )))
     : normalizeIdList(current.selectedLegalFrameworkIds);
+  const hasUseAiPatch = ["useAi", "useAI", "useNexAi", "nexAiEnabled", "aiEnabled", "ai_enabled"]
+    .some((key) => hasOwn(patch, key));
+  const nextUseAi = hasUseAiPatch
+    ? normalizeBoolean(
+      patch.useAi ?? patch.useAI ?? patch.useNexAi ?? patch.nexAiEnabled ?? patch.aiEnabled ?? patch.ai_enabled,
+      false,
+    )
+    : normalizeBoolean(
+      current.useAi ?? current.useAI ?? current.useNexAi ?? current.nexAiEnabled ?? current.aiEnabled ?? current.ai_enabled,
+      false,
+    );
 
   return {
     ...current,
     title: hasOwn(patch, "title") ? requireText(patch.title, "Naziv templatea") : current.title,
+    useAi: nextUseAi,
     documentType: hasOwn(patch, "documentType") ? normalizeDocumentTemplateType(patch.documentType) : current.documentType,
     status: hasOwn(patch, "status") ? normalizeDocumentTemplateStatus(patch.status) : current.status,
     description: hasOwn(patch, "description") ? normalizeText(patch.description) : current.description,

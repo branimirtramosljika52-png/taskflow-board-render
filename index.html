@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260526-company-locations-objects-v22" />
+    <link rel="stylesheet" href="/styles.css?v=20260526-nexai-company-contracts-v23" />
     <link rel="stylesheet" href="/src/styles/variables.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/reset.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/builder.css?v=20260509e" />
@@ -662,14 +662,6 @@
                   </span>
                   <strong>List Company</strong>
                 </button>
-                <button type="button" class="tab-button sidebar-link" data-sidebar-item="add-company">
-                  <span class="tab-button-icon" aria-hidden="true">
-                    <svg class="icon-svg" viewBox="0 0 24 24">
-                      <path d="M12 5v14M5 12h14"></path>
-                    </svg>
-                  </span>
-                  <strong>Add New</strong>
-                </button>
                 <button type="button" class="tab-button sidebar-link" data-sidebar-item="client-portal">
                   <span class="tab-button-icon" aria-hidden="true">
                     <svg class="icon-svg" viewBox="0 0 24 24">
@@ -679,16 +671,6 @@
                     </svg>
                   </span>
                   <strong>Client Portal</strong>
-                </button>
-                <button type="button" class="tab-button sidebar-link" data-sidebar-item="contract">
-                  <span class="tab-button-icon" aria-hidden="true">
-                    <svg class="icon-svg" viewBox="0 0 24 24">
-                      <path d="M8 4h8l3 3v13H8a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"></path>
-                      <path d="M16 4v4h4"></path>
-                      <path d="M9 13h6"></path>
-                    </svg>
-                  </span>
-                  <strong>Contract</strong>
                 </button>
               </div>
             </section>
@@ -2533,21 +2515,21 @@
                   </div>
 
                   <div class="measurement-toolbar-ai">
-                    <button id="measurement-ai-button" type="button" class="ghost-button measurement-toolbar-icon-button" title="AI postavke kolone" aria-label="AI postavke kolone">AI</button>
+                    <button id="measurement-ai-button" type="button" class="ghost-button measurement-toolbar-icon-button" title="NexAI postavke kolone" aria-label="NexAI postavke kolone">NexAI</button>
                     <div id="measurement-ai-popover" class="measurement-ai-popover" hidden>
                       <div class="measurement-ai-dialog" role="dialog" aria-modal="true" aria-labelledby="measurement-ai-title">
                         <div class="measurement-ai-popover-head">
                           <div>
-                            <strong id="measurement-ai-title">AI postavke kolone</strong>
+                            <strong id="measurement-ai-title">NexAI postavke kolone</strong>
                             <span id="measurement-ai-column-label">Odaberi kolonu</span>
-                            <span id="measurement-ai-connection-status" class="measurement-ai-connection-status">OpenAI veza: nije provjereno</span>
+                            <span id="measurement-ai-connection-status" class="measurement-ai-connection-status">NexAI veza: nije provjereno</span>
                           </div>
                           <button id="measurement-ai-close" type="button" class="ghost-button measurement-ai-close">Zatvori</button>
                         </div>
 
                         <label class="measurement-validation-checkbox measurement-ai-full">
                           <input id="measurement-ai-enabled" type="checkbox" />
-                          <span>AI smije popuniti ovu kolonu</span>
+                          <span>NexAI smije popuniti ovu kolonu</span>
                         </label>
 
                         <label class="measurement-toolbar-format">
@@ -2562,7 +2544,7 @@
 
                         <label class="measurement-toolbar-format is-compact">
                           <span class="measurement-toolbar-label">Tip podatka</span>
-                          <select id="measurement-ai-format" aria-label="AI format vrijednosti">
+                          <select id="measurement-ai-format" aria-label="NexAI format vrijednosti">
                             <option value="text">Tekst</option>
                             <option value="number">Broj</option>
                             <option value="date">Datum</option>
@@ -2594,12 +2576,12 @@
                         </label>
 
                         <label class="measurement-toolbar-format">
-                          <span class="measurement-toolbar-label">AI traži</span>
+                          <span class="measurement-toolbar-label">NexAI traži</span>
                           <input id="measurement-ai-synonyms" type="text" placeholder="prepreke, pristup, stabilnost..." />
                         </label>
 
                         <label class="measurement-toolbar-format">
-                          <span class="measurement-toolbar-label">AI ne smije</span>
+                          <span class="measurement-toolbar-label">NexAI ne smije</span>
                           <input id="measurement-ai-avoid" type="text" placeholder="Ne zaključuj ako nije vidljivo." />
                         </label>
 
@@ -2630,7 +2612,7 @@
 
                         <label class="measurement-validation-checkbox">
                           <input id="measurement-ai-required" type="checkbox" />
-                          <span>Obavezna kolona za AI popunjavanje</span>
+                          <span>Obavezna kolona za NexAI popunjavanje</span>
                         </label>
 
                         <label class="measurement-validation-checkbox">
@@ -2640,7 +2622,7 @@
 
                         <label class="measurement-toolbar-format">
                           <span class="measurement-toolbar-label">Sigurnost</span>
-                          <select id="measurement-ai-confidence-required" aria-label="Minimalna AI sigurnost">
+                          <select id="measurement-ai-confidence-required" aria-label="Minimalna NexAI sigurnost">
                             <option value="high">High</option>
                             <option value="medium">Medium</option>
                             <option value="low">Low</option>
@@ -2662,7 +2644,7 @@
                           <textarea id="measurement-ai-validation-rules" rows="3" placeholder="Ako nije vidljivo, ne smije biti ispravno."></textarea>
                         </label>
 
-                        <p class="measurement-ai-helper">Ovo ne mijenja izgled tablice. Služi kao precizna uputa AI-ju kako mapirati stari zapisnik u tvoju Excel kolonu.</p>
+                        <p class="measurement-ai-helper">Ovo ne mijenja izgled tablice. Služi kao precizna uputa NexAI-ju kako mapirati stari zapisnik u tvoju Excel kolonu.</p>
                       </div>
                     </div>
                   </div>
@@ -3520,6 +3502,10 @@
                           <div>
                             <p class="section-kicker">Ugovor</p>
                             <h4 class="subsection-title">Ugovor i periodika</h4>
+                          </div>
+                          <div class="company-contract-head-actions">
+                            <button id="company-contract-open-template" type="button" class="ghost-button">Templatei ugovora</button>
+                            <button id="company-contract-open-form" type="button" class="primary-button">+ Novi ugovor</button>
                           </div>
                         </div>
 
@@ -8474,6 +8460,16 @@
                     <p id="document-template-error" class="form-error" aria-live="polite"></p>
 
                     <div class="form-grid document-template-meta-grid">
+                      <label class="field field-span-full document-template-nexai-toggle">
+                        <span>NexAI</span>
+                        <span class="document-template-nexai-toggle-card">
+                          <input id="document-template-use-ai" type="checkbox" />
+                          <span class="document-template-nexai-toggle-copy">
+                            <strong>Koristi AI</strong>
+                            <small>Kada izrađuješ zapisnik, na početku će se prikazati NexAI dio za upload starog zapisnika i prijedloge popunjavanja.</small>
+                          </span>
+                        </span>
+                      </label>
                       <label class="field field-span-full">
                         <span>Naziv templatea</span>
                         <input id="document-template-title" maxlength="180" placeholder="Zapisnik redovnog pregleda..." required />
@@ -8956,6 +8952,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260526-company-locations-objects-v22"></script>
+    <script type="module" src="/src/main.js?v=20260526-nexai-company-contracts-v23"></script>
   </body>
 </html>

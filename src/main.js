@@ -1594,9 +1594,9 @@ const MODULE_VIEW_DEFINITIONS = {
   },
   contract: {
     kicker: "Company",
-    title: "Contract",
-    description: "Ovdje mozemo kasnije izdvojiti ugovore, broj ugovora, anekse i povezane komercijalne dokumente.",
-    chips: ["Contracts", "Renewals", "Annexes"],
+    title: "Ugovori u tvrtkama",
+    description: "Ugovori, aneksi i Word templatei vode se izravno u kartici Tvrtke.",
+    chips: ["Tvrtke", "Ugovori", "Aneksi"],
   },
   "client-portal": {
     kicker: "Company",
@@ -1662,7 +1662,7 @@ const SIDEBAR_ITEM_CONFIG = {
   "list-company": { group: "company", view: "companies", focus: "list" },
   "add-company": { group: "company", view: "companies", focus: "form" },
   "client-portal": { group: "company", view: "module", module: "client-portal" },
-  contract: { group: "company", view: "module", module: "contract" },
+  contract: { group: "company", view: "companies", focus: "list" },
   "list-location": { group: "company", view: "companies", focus: "list" },
   "add-location": { group: "company", view: "companies", focus: "location-form" },
   documents: { group: "documents", view: "module", module: "documents" },
@@ -3984,6 +3984,7 @@ const documentTemplateCopySourceInput = document.querySelector("#document-templa
 const documentTemplateCopyButton = document.querySelector("#document-template-copy-button");
 const documentTemplateCopyMeta = document.querySelector("#document-template-copy-meta");
 const documentTemplateTitleInput = document.querySelector("#document-template-title");
+const documentTemplateUseAiInput = document.querySelector("#document-template-use-ai");
 const documentTemplateTypeInput = document.querySelector("#document-template-type");
 const documentTemplateStatusInput = document.querySelector("#document-template-status");
 const documentTemplateRuntimeContext = document.querySelector("#document-template-runtime-context");
@@ -5248,6 +5249,8 @@ const companyContractMonthlyPriceInput = document.querySelector("#company-contra
 const companyContractPriceList = document.querySelector("#company-contract-price-list");
 const companyContractPriceListAddButton = document.querySelector("#company-contract-price-list-add");
 const companyContractPriceListEmpty = document.querySelector("#company-contract-price-list-empty");
+const companyContractOpenFormButton = document.querySelector("#company-contract-open-form");
+const companyContractOpenTemplateButton = document.querySelector("#company-contract-open-template");
 const companyEmployeeSizeInput = document.querySelector("#company-employee-size");
 const companyManagerPickerSlot = document.querySelector("#company-manager-picker");
 const companyManagerUserIdsInput = document.querySelector("#company-manager-user-ids");
@@ -8405,21 +8408,21 @@ async function apiRequest(path, options = {}, retryOnAuthFailure = true) {
 function getOpenAiIntegrationStatusLabel() {
   const status = state.openAiIntegration;
   if (status.status === "loading") {
-    return "OpenAI veza: provjeravam...";
+    return "NexAI veza: provjeravam...";
   }
   if (status.status === "error") {
-    return status.error || "OpenAI veza: nije dostupna.";
+    return status.error || "NexAI veza: nije dostupna.";
   }
   if (!status.keyConfigured) {
-    return "OpenAI veza: ključ nije postavljen.";
+    return "NexAI veza: ključ nije postavljen.";
   }
   if (status.dryRun) {
-    return "OpenAI veza spremna - dry-run, tokeni se ne troše.";
+    return "NexAI veza spremna - dry-run, tokeni se ne troše.";
   }
   if (status.liveCallsEnabled) {
-    return "OpenAI live pozivi su uključeni.";
+    return "NexAI live pozivi su uključeni.";
   }
-  return "OpenAI veza spremna - live pozivi su zaključani.";
+  return "NexAI veza spremna - live pozivi su zaključani.";
 }
 
 function applyOpenAiIntegrationStatusClass(element) {
@@ -8476,7 +8479,7 @@ async function loadOpenAiIntegrationStatus({ force = false } = {}) {
       ...state.openAiIntegration,
       status: "error",
       loadedAt: Date.now(),
-      error: error?.message || "OpenAI status nije dostupan.",
+      error: error?.message || "NexAI status nije dostupan.",
       keyConfigured: false,
       endpointReady: false,
     };
@@ -37945,9 +37948,9 @@ const MEASUREMENT_AI_COLUMN_FORMATS = new Set([
 const AI_CONFIDENCE_LEVELS = new Set(["high", "medium", "low"]);
 
 const AI_CONFIDENCE_LABELS = {
-  high: "AI visoka sigurnost",
-  medium: "AI srednja sigurnost",
-  low: "AI niska sigurnost",
+  high: "NexAI visoka sigurnost",
+  medium: "NexAI srednja sigurnost",
+  low: "NexAI niska sigurnost",
 };
 
 function normalizeAiConfigListLocal(value, maxItems = 120) {
@@ -41045,10 +41048,10 @@ function syncMeasurementToolbar() {
   if (measurementAiButton instanceof HTMLButtonElement) {
     measurementAiButton.disabled = !aiColumn;
     measurementAiButton.classList.toggle("is-active", hasAiMapping);
-    measurementAiButton.textContent = hasAiMapping ? "AI*" : "AI";
+    measurementAiButton.textContent = hasAiMapping ? "NexAI*" : "NexAI";
     measurementAiButton.title = hasAiMapping
-      ? "AI opis kolone je postavljen"
-      : "AI opis kolone";
+      ? "NexAI opis kolone je postavljen"
+      : "NexAI opis kolone";
   }
 
   if (measurementAiPopover instanceof HTMLElement) {
@@ -43458,8 +43461,8 @@ function renderMeasurementSheet() {
       const aiConfidence = normalizeAiConfidenceLevelLocal(aiMapping.confidenceRequired, "medium");
       const aiBadge = document.createElement("span");
       aiBadge.className = `measurement-column-ai-badge is-${aiConfidence}`;
-      aiBadge.textContent = "AI";
-      aiBadge.title = `${AI_CONFIDENCE_LABELS[aiConfidence] || "AI postavke"} za mapiranje starih zapisnika`;
+      aiBadge.textContent = "NexAI";
+      aiBadge.title = `${AI_CONFIDENCE_LABELS[aiConfidence] || "NexAI postavke"} za mapiranje starih zapisnika`;
       head.append(aiBadge);
     }
     th.append(head);
@@ -45541,8 +45544,9 @@ function createCompanyLocationTree(
 ) {
   const structure = getCompanyStructureSummary(companyId);
   const tree = document.createElement("div");
+  const useSimpleInlineObjects = !showWorkOrders && !showContact && !showOpenButton;
   tree.className = `company-location-tree${compact ? " is-compact" : ""}`;
-  tree.classList.toggle("is-simple", !showWorkOrders && !showContact && !showOpenButton);
+  tree.classList.toggle("is-simple", useSimpleInlineObjects);
 
   if (structure.locations.length === 0) {
     const empty = document.createElement("p");
@@ -45599,11 +45603,6 @@ function createCompanyLocationTree(
       event.stopPropagation();
       openCompanyContextRecord({ kind: "location", record: location });
     });
-
-    head.append(icon, copy, badges);
-    if (showOpenButton) {
-      head.append(openButton);
-    }
 
     const details = document.createElement("div");
     details.className = "company-location-tree-details";
@@ -45685,8 +45684,18 @@ function createCompanyLocationTree(
       detailNodes.push(contactsWrap);
     }
 
-    details.append(...detailNodes);
-    card.append(head, details);
+    if (useSimpleInlineObjects) {
+      objectsWrap.classList.add("is-inline");
+      head.append(icon, copy, objectsWrap, badges);
+      card.append(head);
+    } else {
+      head.append(icon, copy, badges);
+      if (showOpenButton) {
+        head.append(openButton);
+      }
+      details.append(...detailNodes);
+      card.append(head, details);
+    }
     tree.append(card);
   });
 
@@ -51115,15 +51124,15 @@ function createDocumentTemplateAiStatusPill(field = {}, options = {}) {
   if (runtimeMeta) {
     pill.classList.add("is-filled");
   }
-  pill.textContent = "AI";
+  pill.textContent = "NexAI";
   const titleParts = runtimeMeta
     ? [
-      `${AI_CONFIDENCE_LABELS[confidence] || "AI"} - AI je popunio ovo polje.`,
+      `${AI_CONFIDENCE_LABELS[confidence] || "NexAI"} - NexAI je popunio ovo polje.`,
       runtimeMeta.reason ? `Razlog: ${runtimeMeta.reason}` : "",
       runtimeMeta.sourceFile ? `Izvor: ${runtimeMeta.sourceFile}` : "",
     ]
     : [
-      `${AI_CONFIDENCE_LABELS[confidence] || "AI postavke"} - ${config.aiDescription || "Polje ima AI upute."}`,
+      `${AI_CONFIDENCE_LABELS[confidence] || "NexAI postavke"} - ${config.aiDescription || "Polje ima NexAI upute."}`,
     ];
   pill.title = titleParts.filter(Boolean).join(" ");
   pill.setAttribute("aria-label", pill.title);
@@ -51149,6 +51158,24 @@ function appendDocumentTemplateRuntimeTitleAiPill(titleNode, field = {}, workOrd
   titleNode.append(pill);
 }
 
+function isDocumentTemplateNexAiEnabled(template = {}) {
+  return Boolean(
+    template?.useAi
+    ?? template?.useAI
+    ?? template?.useNexAi
+    ?? template?.nexAiEnabled
+    ?? template?.aiEnabled
+    ?? template?.ai_enabled,
+  );
+}
+
+function appendDocumentTemplateRuntimeNexAiPanel(shell, template = {}, workOrder = {}) {
+  if (!(shell instanceof HTMLElement) || !isDocumentTemplateNexAiEnabled(template)) {
+    return;
+  }
+  shell.append(createDocumentTemplateRuntimeAiAssistantPanel(template, workOrder));
+}
+
 function getDocumentTemplateRuntimeAiFieldsFromBlock(block = {}) {
   return (Array.isArray(block?.items) ? block.items : [])
     .map((entry) => entry?.field)
@@ -51165,9 +51192,9 @@ function createDocumentTemplateRuntimeBlockAiPill(block = {}) {
     return null;
   }
   pill.classList.add("is-block-runtime");
-  pill.textContent = aiFields.length > 1 ? `AI ${aiFields.length}` : "AI";
+  pill.textContent = aiFields.length > 1 ? `NexAI ${aiFields.length}` : "NexAI";
   pill.title = aiFields.length > 1
-    ? `${aiFields.length} polja u ovom bloku imaju AI postavke.`
+    ? `${aiFields.length} polja u ovom bloku imaju NexAI postavke.`
     : pill.title;
   pill.setAttribute("aria-label", pill.title);
   return pill;
@@ -51246,7 +51273,7 @@ function setDocumentTemplateRuntimeAiModelTier(modelTier, template = {}, workOrd
   assistant.modelTier = normalizeDocumentTemplateRuntimeAiModelTier(modelTier);
   assistant.lastPlan = null;
   assistant.message = assistant.files?.length
-    ? `Model postavljen na ${getDocumentTemplateRuntimeAiModelTierOption(assistant.modelTier).label}. Spremno za AI pripremu.`
+    ? `Model postavljen na ${getDocumentTemplateRuntimeAiModelTierOption(assistant.modelTier).label}. Spremno za NexAI pripremu.`
     : "Odaberi snagu modela, zatim dodaj stari zapisnik.";
   assistant.status = assistant.files?.length ? "ready" : "idle";
   renderDocumentTemplateFieldRows({ renderSupport: false });
@@ -51308,14 +51335,14 @@ async function addDocumentTemplateRuntimeAiFiles(files, template = {}, workOrder
   const fileList = Array.from(files ?? []);
   if (fileList.length > 0) {
     assistant.status = "loading";
-    assistant.message = "Učitavam datoteke za AI obradu...";
+    assistant.message = "Učitavam datoteke za NexAI obradu...";
     renderDocumentTemplateFieldRows({ renderSupport: false });
   }
   const incoming = (await Promise.all(fileList.map(createDocumentTemplateRuntimeAiFileMeta)))
     .filter((file) => file.name);
   if (incoming.length === 0) {
     assistant.status = "error";
-    assistant.message = "Nisam dobio datoteku za AI pripremu.";
+    assistant.message = "Nisam dobio datoteku za NexAI pripremu.";
     renderDocumentTemplateFieldRows({ renderSupport: false });
     return;
   }
@@ -51330,8 +51357,8 @@ async function addDocumentTemplateRuntimeAiFiles(files, template = {}, workOrder
   const inlineCount = assistant.files.filter((file) => file.inlineReady || file.contentDataUrl).length;
   const fileLabel = assistant.files.length === 1 ? "1 datoteka" : `${assistant.files.length} datoteka`;
   assistant.message = inlineCount > 0
-    ? `${fileLabel} spremno. ${inlineCount} ide direktno u OpenAI analizu.`
-    : `${fileLabel} spremno, ali bez čitljivog PDF/slika/tekst sadržaja za direktnu AI analizu.`;
+    ? `${fileLabel} spremno. ${inlineCount} ide direktno u NexAI analizu.`
+    : `${fileLabel} spremno, ali bez čitljivog PDF/slika/tekst sadržaja za direktnu NexAI analizu.`;
   renderDocumentTemplateFieldRows({ renderSupport: false });
 }
 
@@ -51342,8 +51369,8 @@ function removeDocumentTemplateRuntimeAiFile(fileId, template = {}, workOrder = 
   assistant.status = assistant.files.length > 0 ? "ready" : "idle";
   assistant.message = assistant.files.length > 0
     ? (assistant.files.length === 1
-      ? "1 datoteka ostaje za AI pripremu."
-      : `${assistant.files.length} datoteka ostaje za AI pripremu.`)
+      ? "1 datoteka ostaje za NexAI pripremu."
+      : `${assistant.files.length} datoteka ostaje za NexAI pripremu.`)
     : "";
   renderDocumentTemplateFieldRows({ renderSupport: false });
 }
@@ -52112,7 +52139,7 @@ function createDocumentTemplateRuntimeAiSuggestionsPanel(payload = {}, template 
   const head = document.createElement("div");
   head.className = "document-template-runtime-ai-suggestions-head";
   const title = document.createElement("strong");
-  title.textContent = "AI prijedlozi";
+  title.textContent = "NexAI prijedlozi";
   const meta = document.createElement("span");
   meta.textContent = `${fieldSuggestions.length} polja · ${measurementSuggestions.length} Excel tablica`;
   head.append(title, meta);
@@ -52246,7 +52273,7 @@ function createDocumentTemplateRuntimeAiSuggestionsPanel(payload = {}, template 
     valueNode.textContent = preparedRows?.rows?.length
       ? `${preparedRows.rows.length} redaka spremno za upis u dokument.`
       : rows.length
-        ? `${rows.length} redaka je stiglo od AI-ja, ali kolone nisu prepoznate za upis.`
+        ? `${rows.length} redaka je stiglo od NexAI-ja, ali kolone nisu prepoznate za upis.`
       : "Nema redaka u ovom prijedlogu.";
 
     const footer = document.createElement("div");
@@ -52297,7 +52324,7 @@ async function runDocumentTemplateRuntimeAiAssistant(template = {}, workOrder = 
   const modelOption = getDocumentTemplateRuntimeAiModelTierOption(assistant.modelTier);
   if (!assistant.files?.length) {
     assistant.status = "error";
-    assistant.message = "Prvo dodaj stari zapisnik ili sliku pa pokreni AI.";
+    assistant.message = "Prvo dodaj stari zapisnik ili sliku pa pokreni NexAI.";
     renderDocumentTemplateFieldRows({ renderSupport: false });
     return;
   }
@@ -52305,7 +52332,7 @@ async function runDocumentTemplateRuntimeAiAssistant(template = {}, workOrder = 
   const fields = getDocumentTemplateRuntimeAiFields(template);
   const columns = getDocumentTemplateRuntimeAiMeasurementColumns(template);
   assistant.status = "loading";
-  assistant.message = `Šaljem zapisnik OpenAI-ju (${modelOption.label}) i čekam prijedloge...`;
+  assistant.message = `Šaljem zapisnik NexAI-ju (${modelOption.label}) i čekam prijedloge...`;
   assistant.lastPlan = null;
   renderDocumentTemplateFieldRows({ renderSupport: false });
 
@@ -52348,12 +52375,12 @@ async function runDocumentTemplateRuntimeAiAssistant(template = {}, workOrder = 
     } else {
       const elapsed = formatDocumentTemplateRuntimeAiDuration(payload?.timings?.totalMs);
       assistant.message = [
-        `OpenAI live test prošao${elapsed ? ` za ${elapsed}` : ""} (${payload?.model || payload?.modelLabel || modelOption.label}).`,
+        `NexAI live test prošao${elapsed ? ` za ${elapsed}` : ""} (${payload?.model || payload?.modelLabel || modelOption.label}).`,
         appliedCount || appliedMeasurementCount
-          ? `AI je popunio ${appliedCount} polja i ${appliedMeasurementCount} Excel tablica. Boja AI oznake pokazuje sigurnost.`
-          : "AI je vratio prijedloge, ali nema polja koja se mogu automatski upisati.",
+          ? `NexAI je popunio ${appliedCount} polja i ${appliedMeasurementCount} Excel tablica. Boja NexAI oznake pokazuje sigurnost.`
+          : "NexAI je vratio prijedloge, ali nema polja koja se mogu automatski upisati.",
         fieldSuggestionCount || measurementSuggestionCount
-          ? `Prijedlozi su prikazani ispod AI kontrole: ${fieldSuggestionLabel}, ${measurementSuggestionLabel}.`
+          ? `Prijedlozi su prikazani ispod NexAI kontrole: ${fieldSuggestionLabel}, ${measurementSuggestionLabel}.`
           : "",
       ].filter(Boolean).join(" ");
     }
@@ -52363,7 +52390,7 @@ async function runDocumentTemplateRuntimeAiAssistant(template = {}, workOrder = 
     }
   } catch (error) {
     assistant.status = "error";
-    assistant.message = error?.message || "AI priprema trenutno nije dostupna.";
+    assistant.message = error?.message || "NexAI priprema trenutno nije dostupna.";
   }
 
   renderDocumentTemplateFieldRows({ renderSupport: false });
@@ -52382,13 +52409,13 @@ function createDocumentTemplateRuntimeAiAssistantPanel(template = {}, workOrder 
     collapsedPanel.className = "document-template-runtime-ai-assistant-togglebar";
     collapsedPanel.tabIndex = 0;
     collapsedPanel.setAttribute("role", "button");
-    collapsedPanel.setAttribute("aria-label", "Prikaži AI asistent");
+    collapsedPanel.setAttribute("aria-label", "Prikaži NexAI");
     const copy = document.createElement("span");
-    copy.textContent = "AI asistent je sakriven za ovaj unos.";
+    copy.textContent = "NexAI je sakriven za ovaj unos.";
     const showButton = document.createElement("button");
     showButton.type = "button";
     showButton.className = "ghost-button compact-button";
-    showButton.textContent = "Prikaži AI";
+    showButton.textContent = "Prikaži NexAI";
     showButton.addEventListener("click", () => {
       setDocumentTemplateRuntimeAiAssistantHidden(false);
     });
@@ -52413,7 +52440,7 @@ function createDocumentTemplateRuntimeAiAssistantPanel(template = {}, workOrder 
   const modelOption = getDocumentTemplateRuntimeAiModelTierOption(assistant.modelTier);
 
   const panel = document.createElement("section");
-  panel.className = "document-template-runtime-ai-assistant";
+  panel.className = "document-template-runtime-ai-assistant document-template-runtime-nexai-assistant";
   panel.classList.toggle("is-loading", assistant.status === "loading");
   panel.classList.toggle("is-success", assistant.status === "success");
   panel.classList.toggle("is-error", assistant.status === "error");
@@ -52430,7 +52457,7 @@ function createDocumentTemplateRuntimeAiAssistantPanel(template = {}, workOrder 
   introHead.className = "document-template-runtime-ai-head document-template-runtime-ai-collapsible-head";
   introHead.tabIndex = 0;
   introHead.setAttribute("role", "button");
-  introHead.setAttribute("aria-label", "Sakrij AI asistent");
+  introHead.setAttribute("aria-label", "Sakrij NexAI");
   const mark = document.createElement("span");
   mark.className = "document-template-runtime-ai-mark";
   mark.innerHTML = getWorkOrderIconMarkup("document");
@@ -52438,11 +52465,11 @@ function createDocumentTemplateRuntimeAiAssistantPanel(template = {}, workOrder 
   copy.className = "document-template-runtime-ai-copy";
   const eyebrow = document.createElement("span");
   eyebrow.className = "document-template-runtime-ai-eyebrow";
-  eyebrow.textContent = "AI asistent";
+  eyebrow.textContent = "NexAI";
   const title = document.createElement("strong");
   title.textContent = "Uvezi stari zapisnik i pripremi popunjavanje";
   const description = document.createElement("p");
-  description.textContent = "Dodaj PDF, sliku ili tekst starog zapisnika. OpenAI čita datoteku, vraća prijedloge i automatski popunjava samo sigurnija polja.";
+  description.textContent = "Dodaj PDF, sliku ili tekst starog zapisnika. NexAI čita datoteku, vraća prijedloge i automatski popunjava samo sigurnija polja.";
   const connectionStatus = document.createElement("span");
   connectionStatus.className = "document-template-ai-connection-status document-template-runtime-ai-connection";
   syncOpenAiIntegrationStatusTargets(connectionStatus);
@@ -52454,7 +52481,7 @@ function createDocumentTemplateRuntimeAiAssistantPanel(template = {}, workOrder 
   const hideButton = document.createElement("button");
   hideButton.type = "button";
   hideButton.className = "ghost-button compact-button document-template-runtime-ai-hide";
-  hideButton.textContent = "Sakrij AI";
+  hideButton.textContent = "Sakrij NexAI";
   hideButton.addEventListener("click", () => {
     setDocumentTemplateRuntimeAiAssistantHidden(true);
   });
@@ -52553,7 +52580,7 @@ function createDocumentTemplateRuntimeAiAssistantPanel(template = {}, workOrder 
       fileMeta.textContent = [
         formatFileSize(file.size),
         file.type || "datoteka",
-        file.inlineReady || file.contentDataUrl ? "AI sadržaj spreman" : "samo metapodaci",
+        file.inlineReady || file.contentDataUrl ? "NexAI sadržaj spreman" : "samo metapodaci",
       ].filter(Boolean).join(" · ");
       fileCopy.append(fileName, fileMeta);
       const removeButton = document.createElement("button");
@@ -52575,17 +52602,17 @@ function createDocumentTemplateRuntimeAiAssistantPanel(template = {}, workOrder 
   const action = document.createElement("div");
   action.className = "document-template-runtime-ai-action";
   const actionTitle = document.createElement("strong");
-  actionTitle.textContent = assistant.status === "loading" ? "AI priprema..." : "Spremno za provjeru";
+  actionTitle.textContent = assistant.status === "loading" ? "NexAI priprema..." : "Spremno za provjeru";
   const actionMeta = document.createElement("span");
   actionMeta.textContent = assistant.status === "success"
-    ? "Rezultat je vraćen iz OpenAI-ja. Provjeri prijedloge prije završnog exporta."
+    ? "Rezultat je vraćen iz NexAI-ja. Provjeri prijedloge prije završnog exporta."
     : "Odaberi snagu modela i pokreni live analizu.";
   const modelPicker = document.createElement("label");
   modelPicker.className = "document-template-runtime-ai-model";
   const modelHeader = document.createElement("span");
   modelHeader.className = "document-template-runtime-ai-model-head";
   const modelTitle = document.createElement("strong");
-  modelTitle.textContent = "Snaga AI modela";
+  modelTitle.textContent = "Snaga NexAI modela";
   const modelStrength = document.createElement("small");
   modelStrength.textContent = modelOption.strength;
   modelHeader.append(modelTitle, modelStrength);
@@ -52612,14 +52639,14 @@ function createDocumentTemplateRuntimeAiAssistantPanel(template = {}, workOrder 
   runIcon.className = "document-template-runtime-ai-run-icon";
   runIcon.innerHTML = getWorkOrderIconMarkup("measurement");
   const runLabel = document.createElement("span");
-  runLabel.textContent = assistant.status === "loading" ? "Pripremam..." : "Pokreni AI";
+  runLabel.textContent = assistant.status === "loading" ? "Pripremam..." : "Pokreni NexAI";
   runButton.append(runIcon, runLabel);
   runButton.addEventListener("click", () => {
     void runDocumentTemplateRuntimeAiAssistant(template, workOrder);
   });
   const status = document.createElement("p");
   status.className = "document-template-runtime-ai-message";
-  status.textContent = assistant.message || "Upload starog zapisnika pa pokreni AI pripremu.";
+  status.textContent = assistant.message || "Upload starog zapisnika pa pokreni NexAI pripremu.";
   action.append(actionTitle, actionMeta, modelPicker, runButton, status);
 
   const suggestionsPanel = createDocumentTemplateRuntimeAiSuggestionsPanel(assistant.lastPlan, template, workOrder);
@@ -52740,15 +52767,15 @@ function openDocumentTemplateFieldAiWizard(fieldId) {
   const copy = document.createElement("div");
   const eyebrow = document.createElement("span");
   eyebrow.className = "document-template-ai-wizard-eyebrow";
-  eyebrow.textContent = "AI polje";
+  eyebrow.textContent = "NexAI polje";
   const title = document.createElement("strong");
   title.id = "document-template-ai-wizard-title";
-  title.textContent = field.label || field.wordLabel || "Postavke AI polja";
+  title.textContent = field.label || field.wordLabel || "Postavke NexAI polja";
   const subtitle = document.createElement("p");
-  subtitle.textContent = "Ovdje opisuješ što AI smije prepoznati iz uploadanih zapisnika, slika ili PDF-ova.";
+  subtitle.textContent = "Ovdje opisuješ što NexAI smije prepoznati iz uploadanih zapisnika, slika ili PDF-ova.";
   const connectionStatus = document.createElement("span");
   connectionStatus.className = "document-template-ai-connection-status";
-  connectionStatus.textContent = "OpenAI veza: provjeravam...";
+  connectionStatus.textContent = "NexAI veza: provjeravam...";
   copy.append(eyebrow, title, subtitle, connectionStatus);
   syncOpenAiIntegrationStatusTargets(connectionStatus);
   void loadOpenAiIntegrationStatus().then(() => {
@@ -52766,7 +52793,7 @@ function openDocumentTemplateFieldAiWizard(fieldId) {
   enabledInput.name = "enabled";
   enabledInput.checked = Boolean(config.enabled);
   const enabledText = document.createElement("span");
-  enabledText.textContent = "AI smije popuniti ovo polje";
+  enabledText.textContent = "NexAI smije popuniti ovo polje";
   enabledLabel.append(enabledInput, enabledText);
   form.append(enabledLabel);
 
@@ -52791,9 +52818,9 @@ function openDocumentTemplateFieldAiWizard(fieldId) {
     },
     { name: "unit", label: "Jedinica", placeholder: "mm2, A, ohm, lux" },
     { name: "description", label: "Opis polja", kind: "textarea", rows: 3, full: true, placeholder: "Što ovo polje znači u zapisniku." },
-    { name: "aiDescription", label: "AI opis", kind: "textarea", rows: 3, full: true, placeholder: "Što AI treba tražiti u dokumentu ili slici." },
-    { name: "aiLookFor", label: "AI neka gleda", full: true, placeholder: "prepreke, pristup, stabilnost, prostor oko stroja" },
-    { name: "aiAvoid", label: "AI ne smije", full: true, placeholder: "Ne zaključuj ako nije vidljivo." },
+    { name: "aiDescription", label: "NexAI opis", kind: "textarea", rows: 3, full: true, placeholder: "Što NexAI treba tražiti u dokumentu ili slici." },
+    { name: "aiLookFor", label: "NexAI neka gleda", full: true, placeholder: "prepreke, pristup, stabilnost, prostor oko stroja" },
+    { name: "aiAvoid", label: "NexAI ne smije", full: true, placeholder: "Ne zaključuj ako nije vidljivo." },
     { name: "allowedValues", label: "Dopuštene vrijednosti", placeholder: "uredno, neuredno, nije vidljivo" },
     { name: "commonValues", label: "Česte vrijednosti", placeholder: "uredno" },
     { name: "examples", label: "Primjeri", full: true, placeholder: "Smještaj stroja je uredan..." },
@@ -52843,14 +52870,14 @@ function openDocumentTemplateFieldAiWizard(fieldId) {
   const saveButton = document.createElement("button");
   saveButton.type = "submit";
   saveButton.className = "primary-button";
-  saveButton.textContent = "Spremi AI postavke";
-  const clearButton = createActionButton("Makni AI", "ghost-button", () => {
+  saveButton.textContent = "Spremi NexAI postavke";
+  const clearButton = createActionButton("Makni NexAI", "ghost-button", () => {
     documentTemplateFieldDrafts[fieldIndex].ai = normalizeDocumentTemplateFieldAiConfig({}, field);
     invalidateDocumentTemplateDraftCache();
     closeDocumentTemplateFieldAiWizard({ render: true });
-    setDocumentTemplateMessage("Spremam uklanjanje AI postavki...");
+    setDocumentTemplateMessage("Spremam uklanjanje NexAI postavki...");
     void persistDocumentTemplateAiFieldConfig(normalizedFieldId, documentTemplateFieldDrafts[fieldIndex].ai, {
-      successMessage: "AI postavke su uklonjene i template je spremljen.",
+      successMessage: "NexAI postavke su uklonjene i template je spremljen.",
       scrollToTop: false,
     });
   });
@@ -52863,9 +52890,9 @@ function openDocumentTemplateFieldAiWizard(fieldId) {
     documentTemplateFieldDrafts[fieldIndex].ai = nextAiConfig;
     invalidateDocumentTemplateDraftCache();
     closeDocumentTemplateFieldAiWizard({ render: true });
-    setDocumentTemplateMessage("Spremam AI postavke u template...");
+    setDocumentTemplateMessage("Spremam NexAI postavke u template...");
     void persistDocumentTemplateAiFieldConfig(normalizedFieldId, nextAiConfig, {
-      successMessage: "AI postavke su spremljene i odmah aktivne u izradi zapisnika.",
+      successMessage: "NexAI postavke su spremljene i odmah aktivne u izradi zapisnika.",
       scrollToTop: false,
     });
   });
@@ -55102,6 +55129,7 @@ function buildDocumentTemplateDraft() {
     id: documentTemplateIdInput?.value || "",
     organizationId: state.activeOrganizationId || "",
     title: documentTemplateTitleInput?.value || "",
+    useAi: Boolean(documentTemplateUseAiInput?.checked),
     documentType: documentTemplateTypeInput?.value || "Zapisnik",
     status: documentTemplateStatusInput?.value || "draft",
     outputFileName: documentTemplateOutputFileNameInput?.value || "",
@@ -55156,7 +55184,7 @@ async function persistDocumentTemplateAiFieldConfig(
   fieldId = "",
   aiConfig = {},
   {
-    successMessage = "AI postavke su spremljene.",
+    successMessage = "NexAI postavke su spremljene.",
     scrollToTop = false,
   } = {},
 ) {
@@ -55167,7 +55195,7 @@ async function persistDocumentTemplateAiFieldConfig(
   const normalizedFieldId = String(fieldId || "").trim();
   const fieldIndex = documentTemplateFieldDrafts.findIndex((field) => String(field?.id || "") === normalizedFieldId);
   if (fieldIndex < 0) {
-    setDocumentTemplateMessage("Ne mogu pronaći polje za spremanje AI postavki.");
+    setDocumentTemplateMessage("Ne mogu pronaći polje za spremanje NexAI postavki.");
     scrollDocumentTemplateMessageIntoView();
     return false;
   }
@@ -74904,7 +74932,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     const empty = document.createElement("p");
     empty.className = "helper-copy module-copy";
     empty.textContent = "Ovaj template nema dodatnih polja za ručni unos. Podaci se povlače iz RN-a i povezanih izvora.";
-    shell.append(createDocumentTemplateRuntimeAiAssistantPanel(template, activeWorkOrder));
+    appendDocumentTemplateRuntimeNexAiPanel(shell, template, activeWorkOrder);
     shell.append(empty);
     documentTemplateCustomFields.replaceChildren(shell);
     return;
@@ -76297,7 +76325,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
     return bundle;
   };
 
-  shell.append(createDocumentTemplateRuntimeAiAssistantPanel(template, activeWorkOrder));
+  appendDocumentTemplateRuntimeNexAiPanel(shell, template, activeWorkOrder);
 
   visibleBlocks.forEach((block, blockIndex) => {
     const blockNode = document.createElement("section");
@@ -76677,10 +76705,10 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
     settingsButton.addEventListener("click", (event) => {
       event.stopPropagation();
     });
-    const aiButton = createActionButton("AI", "ghost-button document-template-canvas-ai", () => {
+    const aiButton = createActionButton("NexAI", "ghost-button document-template-canvas-ai", () => {
       openDocumentTemplateFieldAiWizard(fieldId);
     });
-    aiButton.title = "AI postavke polja";
+    aiButton.title = "NexAI postavke polja";
     aiButton.classList.toggle("is-enabled", hasDocumentTemplateFieldAiConfig(field.ai ?? field.aiConfig, field));
     aiButton.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -78711,6 +78739,9 @@ function resetDocumentTemplateForm() {
   if (documentTemplateTypeInput) {
     documentTemplateTypeInput.value = "Zapisnik";
   }
+  if (documentTemplateUseAiInput) {
+    documentTemplateUseAiInput.checked = false;
+  }
   if (documentTemplateStatusInput) {
     documentTemplateStatusInput.value = "draft";
   }
@@ -78773,6 +78804,9 @@ function hydrateDocumentTemplateForm(
   }
   if (documentTemplateTitleInput) {
     documentTemplateTitleInput.value = template.title || "";
+  }
+  if (documentTemplateUseAiInput) {
+    documentTemplateUseAiInput.checked = isDocumentTemplateNexAiEnabled(template);
   }
   if (documentTemplateTypeInput) {
     documentTemplateTypeInput.value = template.documentType || "Zapisnik";
@@ -93892,6 +93926,12 @@ function renderContractModule() {
   }
   if (contractOpenTemplateButton) {
     contractOpenTemplateButton.hidden = !canCreateContracts;
+  }
+  if (companyContractOpenFormButton) {
+    companyContractOpenFormButton.hidden = !canCreateContracts;
+  }
+  if (companyContractOpenTemplateButton) {
+    companyContractOpenTemplateButton.hidden = !canCreateContracts;
   }
 
   if (contractSearchInput && contractSearchInput.value !== (state.contractFilters.query || "")) {
@@ -114690,6 +114730,56 @@ contractOpenFormButton?.addEventListener("click", () => {
   requestAnimationFrame(() => {
     contractTitleInput?.focus({ preventScroll: true });
   });
+});
+
+function openCompanyContractEditorForActiveCompany() {
+  if (!getCanCreateContracts()) {
+    return;
+  }
+  const normalizedCompanyId = String(companyIdInput?.value || "").trim();
+  if (!normalizedCompanyId) {
+    setInlineMessage(companyError, "Prvo spremi tvrtku pa dodaj ugovor.");
+    return;
+  }
+
+  resetContractForm();
+  rebuildContractCompanyOptions(normalizedCompanyId);
+  if (contractCompanyIdInput) {
+    contractCompanyIdInput.value = normalizedCompanyId;
+  }
+  syncCompanySelectionPreview(
+    normalizedCompanyId,
+    contractCompanyPreview,
+    contractCompanyPreviewLogo,
+    contractCompanyPreviewName,
+    contractCompanyPreviewMeta,
+  );
+  renderContractOffersPicker([]);
+  renderContractModule();
+  openContractEditor();
+  requestAnimationFrame(() => {
+    contractTitleInput?.focus({ preventScroll: true });
+  });
+}
+
+companyContractOpenFormButton?.addEventListener("click", () => {
+  openCompanyContractEditorForActiveCompany();
+});
+
+companyContractOpenTemplateButton?.addEventListener("click", () => {
+  if (!getCanCreateContracts()) {
+    return;
+  }
+  if (contractTemplateError) {
+    contractTemplateError.textContent = "";
+  }
+  if (!state.activeContractTemplateId && state.contractTemplates.length > 0) {
+    hydrateContractTemplateForm(state.contractTemplates[0]);
+  } else if (!state.activeContractTemplateId) {
+    resetContractTemplateForm();
+  }
+  openContractTemplateModal();
+  renderContractModule();
 });
 
 contractSearchInput?.addEventListener("input", () => {
