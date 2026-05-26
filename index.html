@@ -14,7 +14,7 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/styles.css?v=20260525-company-overview-v14" />
+    <link rel="stylesheet" href="/styles.css?v=20260526-company-workspace-v16" />
     <link rel="stylesheet" href="/src/styles/variables.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/reset.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/builder.css?v=20260509e" />
@@ -3267,6 +3267,10 @@
                           <span id="company-workspace-meta">Spremi tvrtku da se povežu lokacije, objekti i radni nalozi.</span>
                         </div>
                       </div>
+                      <div class="company-workspace-actions">
+                        <button id="company-overview-edit-toggle" type="button" class="card-button card-button-light company-overview-edit-button">Uredi tvrtku</button>
+                        <button type="button" class="ghost-button company-workspace-more-button" aria-label="Dodatne opcije" title="Dodatne opcije">⋮</button>
+                      </div>
                       <div id="company-workspace-stats" class="company-workspace-stats" hidden></div>
                     </section>
 
@@ -3337,13 +3341,23 @@
                       </button>
                     </nav>
 
-                    <section class="masterdata-group-card masterdata-company-identity-card" data-company-tab-panel="overview">
+                    <section class="masterdata-group-card company-dashboard-panel" data-company-tab-panel="overview">
+                      <div class="company-dashboard-preview-head">
+                        <div>
+                          <p class="section-kicker">Dashboard</p>
+                          <h4 class="subsection-title">Kratki pregled tvrtke</h4>
+                        </div>
+                        <span id="company-dashboard-preview-status" class="company-state-pill is-active">Aktivno</span>
+                      </div>
+                      <div id="company-overview-preview-grid" class="company-overview-preview-grid"></div>
+                    </section>
+
+                    <section class="masterdata-group-card masterdata-company-identity-card" data-company-tab-panel="settings">
                       <div class="masterdata-group-head">
                         <div>
-                          <p class="section-kicker">Tvrtka</p>
+                          <p class="section-kicker">Uredi tvrtku</p>
                           <h4 class="subsection-title">Osnovni podaci</h4>
                         </div>
-                        <button id="company-overview-edit-toggle" type="button" class="card-button card-button-light company-overview-edit-button">Uredi</button>
                       </div>
 
                       <div class="company-logo-upload-row company-logo-upload-row-compact">
@@ -3493,6 +3507,7 @@
                       <p class="helper-copy module-copy">
                         Odaberi Word dokument koji ce se koristiti za zapisnik po svakoj usluzi iz List of Services.
                       </p>
+                      <div id="company-document-overview" class="company-document-overview"></div>
                       <div id="company-template-map-list" class="company-template-map-list"></div>
                     </section>
 
@@ -3559,7 +3574,7 @@
                         </section>
                       </section>
 
-                      <section class="masterdata-group-card masterdata-company-contact-card" data-company-tab-panel="overview">
+                      <section class="masterdata-group-card masterdata-company-contact-card" data-company-tab-panel="settings">
                         <div class="masterdata-group-head">
                           <div>
                             <p class="section-kicker">Kontakti</p>
@@ -3601,7 +3616,36 @@
                             <p class="section-kicker">Radni nalozi</p>
                             <h4 class="subsection-title">Radni nalozi tvrtke</h4>
                           </div>
-                          <span id="company-linked-workorders-count" class="work-order-activity-count is-compact">0</span>
+                          <div class="company-related-actions">
+                            <span id="company-linked-workorders-count" class="work-order-activity-count is-compact">0</span>
+                            <button id="company-add-workorder" type="button" class="primary-button company-module-primary-button">+ Novi radni nalog</button>
+                          </div>
+                        </div>
+                        <div class="company-module-toolbar company-workorders-toolbar">
+                          <label class="company-module-search">
+                            <span>Pretraga</span>
+                            <input id="company-workorders-search" type="search" placeholder="RN, usluga, lokacija..." autocomplete="off" />
+                          </label>
+                          <label class="company-module-filter">
+                            <span>Status</span>
+                            <select id="company-workorders-status-filter">
+                              <option value="all">Svi statusi</option>
+                              <option value="Otvoreni RN">Otvoreni RN</option>
+                              <option value="Gotov RN">Gotov RN</option>
+                              <option value="Ovjeren RN">Ovjeren RN</option>
+                              <option value="Fakturiran RN">Fakturiran RN</option>
+                              <option value="Storno RN">Storno RN</option>
+                            </select>
+                          </label>
+                          <label class="company-module-filter">
+                            <span>Sortiranje</span>
+                            <select id="company-workorders-sort">
+                              <option value="newest">Zadnja izmjena</option>
+                              <option value="due">Rok</option>
+                              <option value="number">Broj RN</option>
+                              <option value="status">Status</option>
+                            </select>
+                          </label>
                         </div>
                         <div id="company-linked-workorders-list" class="company-linked-contracts-list company-linked-workorders-list"></div>
                         <p id="company-linked-workorders-empty" class="work-order-activity-empty is-compact">
@@ -8875,6 +8919,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260525-company-overview-v14"></script>
+    <script type="module" src="/src/main.js?v=20260526-company-workspace-v16"></script>
   </body>
 </html>

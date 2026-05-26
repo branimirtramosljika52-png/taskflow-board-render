@@ -1943,6 +1943,11 @@ const state = {
   companyEditorOpen: false,
   companyEditorActiveTab: "overview",
   companyOverviewEditMode: false,
+  companyWorkOrderFilters: {
+    query: "",
+    status: "all",
+    sort: "newest",
+  },
   companyExpandedIds: new Set(),
   locationEditorOpen: false,
   vehicleEditorOpen: false,
@@ -5209,6 +5214,13 @@ const companyPeriodicsList = document.querySelector("#company-periodics-list");
 const companyPeriodicsEmpty = document.querySelector("#company-periodics-empty");
 const companyOverviewEditToggle = document.querySelector("#company-overview-edit-toggle");
 const companyOverviewSummary = document.querySelector("#company-overview-summary");
+const companyOverviewPreviewGrid = document.querySelector("#company-overview-preview-grid");
+const companyDashboardPreviewStatus = document.querySelector("#company-dashboard-preview-status");
+const companyDocumentOverview = document.querySelector("#company-document-overview");
+const companyWorkOrdersSearchInput = document.querySelector("#company-workorders-search");
+const companyWorkOrdersStatusFilterInput = document.querySelector("#company-workorders-status-filter");
+const companyWorkOrdersSortInput = document.querySelector("#company-workorders-sort");
+const companyAddWorkOrderButton = document.querySelector("#company-add-workorder");
 const companyLinkedWorkOrdersList = document.querySelector("#company-linked-workorders-list");
 const companyLinkedWorkOrdersEmpty = document.querySelector("#company-linked-workorders-empty");
 const companyLinkedWorkOrdersCount = document.querySelector("#company-linked-workorders-count");
@@ -80030,13 +80042,14 @@ function syncCompanyOverviewEditMode() {
   const isNewCompany = !String(companyIdInput?.value || "").trim();
   const canEdit = isNewCompany ? getCanCreateCompany() : getCanEditCompany(companyIdInput?.value || "");
   const isEditingOverview = Boolean(isNewCompany || state.companyOverviewEditMode);
+  const isSettingsTab = String(state.companyEditorActiveTab || "") === "settings";
 
   companyEditorPanel?.classList.toggle("is-company-overview-editing", isEditingOverview);
   companyEditorPanel?.classList.toggle("is-company-overview-readonly", !isEditingOverview);
 
   if (companyOverviewEditToggle) {
     companyOverviewEditToggle.hidden = !canEdit;
-    companyOverviewEditToggle.textContent = isEditingOverview ? "Prikaži pregled" : "Uredi";
+    companyOverviewEditToggle.textContent = isSettingsTab && isEditingOverview ? "Pregled" : "Uredi tvrtku";
     companyOverviewEditToggle.setAttribute("aria-pressed", String(isEditingOverview));
   }
 }
@@ -80277,6 +80290,298 @@ function renderCompanyPeriodicsPanel(companyId = companyIdInput?.value || "") {
   return summary;
 }
 
+function activateCompanyEditorTab(tabKey = "overview") {
+  state.companyEditorActiveTab = String(tabKey || "overview").trim() || "overview";
+  syncCompanyEditorTabs();
+  syncCompanyOverviewEditMode();
+
+  const companyId = companyIdInput?.value || "";
+  if (state.companyEditorActiveTab === "periodics") {
+    renderCompanyPeriodicsPanel(companyId);
+  }
+  if (state.companyEditorActiveTab === "work-orders") {
+    renderCompanyLinkedWorkOrdersSafe(companyId);
+  }
+  if (state.companyEditorActiveTab === "documents") {
+    renderCompanyDocumentOverview(companyId);
+  }
+}
+
+function createCompanyPreviewAction(label = "", targetTab = "overview") {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "ghost-button company-preview-action";
+  button.textContent = label;
+  button.addEventListener("click", () => {
+    activateCompanyEditorTab(targetTab);
+  });
+  return button;
+}
+
+function createCompanyPreviewRow({ eyebrow = "", title = "", meta = "", tone = "" } = {}) {
+  const row = document.createElement("article");
+  row.className = `company-preview-row${tone ? ` is-${tone}` : ""}`;
+
+  const badge = document.createElement("span");
+  badge.className = "company-preview-row-badge";
+  badge.textContent = eyebrow || "Info";
+
+  const copy = document.createElement("div");
+  copy.className = "company-preview-row-copy";
+  const titleNode = document.createElement("strong");
+  titleNode.textContent = title || "Bez naziva";
+  const metaNode = document.createElement("small");
+  metaNode.textContent = meta || "Bez dodatnih podataka";
+  copy.append(titleNode, metaNode);
+
+  row.append(badge, copy);
+  return row;
+}
+
+function createCompanyPreviewSection({ title = "", subtitle = "", rows = [], empty = "", actionLabel = "", targetTab = "overview" } = {}) {
+  const section = document.createElement("section");
+  section.className = "company-preview-section";
+
+  const head = document.createElement("div");
+  head.className = "company-preview-section-head";
+  const copy = document.createElement("div");
+  const titleNode = document.createElement("strong");
+  titleNode.textContent = title;
+  const subtitleNode = document.createElement("span");
+  subtitleNode.textContent = subtitle;
+  copy.append(titleNode, subtitleNode);
+  head.append(copy);
+  if (actionLabel) {
+    head.append(createCompanyPreviewAction(actionLabel, targetTab));
+  }
+
+  const list = document.createElement("div");
+  list.className = "company-preview-list";
+  if (rows.length) {
+    list.replaceChildren(...rows);
+  } else {
+    const emptyNode = document.createElement("p");
+    emptyNode.className = "work-order-activity-empty is-compact";
+    emptyNode.textContent = empty || "Nema podataka za prikaz.";
+    list.append(emptyNode);
+  }
+
+  section.append(head, list);
+  return section;
+}
+
+function ensureCompanyDocumentRecordsLoaded(companyId = "") {
+  const activeOrganizationId = String(state.activeOrganizationId || "").trim();
+  const loadedOrganizationId = String(state.documentsExplorer.organizationId || "").trim();
+  const shouldLoad = Boolean(companyId)
+    && !state.documentsExplorer.loading
+    && (!state.documentsExplorer.loaded || loadedOrganizationId !== activeOrganizationId);
+
+  if (!shouldLoad) {
+    return;
+  }
+
+  void loadDocumentsExplorerRecords().then(() => {
+    if (!isCompanyEditorRenderTargetActive(companyId)) {
+      return;
+    }
+    renderCompanyWorkspaceDashboard(companyId);
+    renderCompanyDocumentOverview(companyId);
+  });
+}
+
+function getCompanyDocumentItems(companyId = companyIdInput?.value || "") {
+  const company = getCompany(companyId);
+  const assignments = Array.isArray(company?.templateAssignments) ? company.templateAssignments : [];
+  const records = getClientPortalDocumentRecordPreviews(companyId).map(({ record, context }) => ({
+    kind: "record",
+    title: record?.title || record?.documentTitle || context?.templateTitle || context?.workOrderNumber || "Zapisnik",
+    category: "Ostali dokumenti",
+    status: record?.status || "Spremljeno",
+    revisionDate: normalizeCompanyDateValue(record?.issuedDate || record?.inspectionDate || String(record?.createdAt || "").slice(0, 10)),
+    expiresAt: normalizeCompanyDateValue(record?.expirationDate || record?.validUntil || ""),
+    version: record?.version || record?.templateVersion || "",
+    owner: record?.createdByLabel || record?.inspectorName || "",
+  }));
+  const templates = assignments.map((assignment) => ({
+    kind: "template",
+    title: assignment.templateTitle || assignment.serviceName || assignment.serviceCode || "Predložak",
+    category: String(assignment.kind || "") === "is_znr" ? "Programi osposobljavanja" : "Ostali dokumenti",
+    status: "Predložak",
+    revisionDate: "",
+    expiresAt: "",
+    version: assignment.serviceCode || "",
+    owner: "SafeNexus",
+  }));
+  const riskAssessments = (state.riskAssessments ?? [])
+    .filter((item) => String(item?.companyId || "") === String(companyId || ""))
+    .map((item) => ({
+      kind: "risk",
+      title: item.title || item.name || "Procjena rizika",
+      category: "Procjene rizika",
+      status: item.status || "Aktivno",
+      revisionDate: normalizeCompanyDateValue(item.updatedAt || item.createdAt || ""),
+      expiresAt: normalizeCompanyDateValue(item.validUntil || item.dueDate || ""),
+      version: item.version || "",
+      owner: item.ownerName || item.responsiblePerson || "",
+    }));
+
+  return [...riskAssessments, ...records, ...templates].sort((left, right) => (
+    String(right.revisionDate || "").localeCompare(String(left.revisionDate || ""))
+    || String(left.title || "").localeCompare(String(right.title || ""), "hr", { numeric: true, sensitivity: "base" })
+  ));
+}
+
+function getCompanyDocumentCategorySummary(companyId = companyIdInput?.value || "") {
+  const items = getCompanyDocumentItems(companyId);
+  return ["Procjene rizika", "Pravilnici", "Programi osposobljavanja", "Ostali dokumenti"].map((label) => ({
+    label,
+    count: items.filter((item) => item.category === label).length,
+  }));
+}
+
+function renderCompanyDocumentOverview(companyId = companyIdInput?.value || "") {
+  if (!companyDocumentOverview) {
+    return;
+  }
+
+  ensureCompanyDocumentRecordsLoaded(companyId);
+  const categories = getCompanyDocumentCategorySummary(companyId);
+  const items = getCompanyDocumentItems(companyId);
+
+  const categoryGrid = document.createElement("div");
+  categoryGrid.className = "company-document-category-grid";
+  categoryGrid.replaceChildren(...categories.map((category) => {
+    const card = document.createElement("article");
+    card.className = "company-document-category-card";
+    const count = document.createElement("strong");
+    count.textContent = String(category.count);
+    const label = document.createElement("span");
+    label.textContent = category.label;
+    const status = document.createElement("small");
+    status.textContent = category.count ? "Aktivno u evidenciji" : "Nema zapisa";
+    card.append(count, label, status);
+    return card;
+  }));
+
+  const recent = document.createElement("div");
+  recent.className = "company-document-recent-list";
+  if (items.length) {
+    recent.replaceChildren(...items.slice(0, 5).map((item) => createCompanyPreviewRow({
+      eyebrow: item.kind === "template" ? "TMP" : "DOC",
+      title: item.title,
+      meta: [
+        item.category,
+        item.status,
+        item.revisionDate ? `Revizija ${formatCompactDate(item.revisionDate)}` : "",
+        item.expiresAt ? `Istek ${formatCompactDate(item.expiresAt)}` : "",
+        item.version ? `v ${item.version}` : "",
+        item.owner || "",
+      ].filter(Boolean).join(" · "),
+      tone: item.expiresAt ? "warning" : "",
+    })));
+  } else {
+    const empty = document.createElement("p");
+    empty.className = "work-order-activity-empty is-compact";
+    empty.textContent = state.documentsExplorer.loading ? "Učitavam dokumente..." : "Nema dokumenata za ovu tvrtku.";
+    recent.append(empty);
+  }
+
+  companyDocumentOverview.replaceChildren(categoryGrid, recent);
+}
+
+function renderCompanyOverviewPreviews(companyId = companyIdInput?.value || "") {
+  if (!companyOverviewPreviewGrid) {
+    return;
+  }
+
+  ensureCompanyDocumentRecordsLoaded(companyId);
+  const locations = getCompanyLocations(companyId);
+  const objects = getCompanyLocationObjects(companyId);
+  const workOrders = getCompanyWorkOrders(companyId);
+  const documents = getCompanyDocumentItems(companyId);
+  const periodics = getCompanyPeriodicsSummary(companyId).entries;
+
+  const workOrderRows = workOrders.slice(0, 5).map((workOrder) => createCompanyPreviewRow({
+    eyebrow: workOrder.workOrderNumber || "RN",
+    title: getWorkOrderServiceSummary(workOrder) || workOrder.department || "Radni nalog",
+    meta: [
+      getLocation(workOrder.locationId)?.name || workOrder.locationName || "Bez lokacije",
+      getOptionLabel(WORK_ORDER_STATUS_OPTIONS, workOrder.status || "") || workOrder.status || "",
+      workOrder.dueDate ? `Rok ${formatCompactDate(workOrder.dueDate)}` : "",
+    ].filter(Boolean).join(" · "),
+    tone: "info",
+  }));
+  const locationRows = locations.slice(0, 4).map((location) => {
+    const locationObjects = objects.filter((object) => String(object.locationId) === String(location.id));
+    const locationWorkOrders = workOrders.filter((workOrder) => String(workOrder.locationId) === String(location.id));
+    return createCompanyPreviewRow({
+      eyebrow: location.isActive ? "OK" : "OFF",
+      title: location.name || "Lokacija",
+      meta: [
+        location.region || location.coordinates || "Bez adrese",
+        `${locationObjects.length} objekata`,
+        `${locationWorkOrders.length} RN`,
+      ].join(" · "),
+      tone: location.isActive ? "success" : "muted",
+    });
+  });
+  const documentRows = documents.slice(0, 4).map((item) => createCompanyPreviewRow({
+    eyebrow: item.kind === "template" ? "TMP" : "DOC",
+    title: item.title,
+    meta: [
+      item.category,
+      item.revisionDate ? formatCompactDate(item.revisionDate) : "",
+      item.expiresAt ? `Istek ${formatCompactDate(item.expiresAt)}` : "",
+    ].filter(Boolean).join(" · "),
+    tone: item.expiresAt ? "warning" : "",
+  }));
+  const periodicsRows = periodics.slice(0, 4).map((entry) => createCompanyPreviewRow({
+    eyebrow: entry.categoryLabel || "Rok",
+    title: entry.title || "Periodika",
+    meta: [
+      entry.subtitle || "",
+      entry.dueDate ? `Rok ${formatCompactDate(entry.dueDate)}` : "",
+    ].filter(Boolean).join(" · "),
+    tone: entry.dueState?.toneClass || "",
+  }));
+
+  companyOverviewPreviewGrid.replaceChildren(
+    createCompanyPreviewSection({
+      title: "Radni nalozi",
+      subtitle: "Zadnjih 5 RN-ova ove tvrtke.",
+      rows: workOrderRows,
+      empty: "Nema radnih naloga.",
+      actionLabel: "Pogledaj sve radne naloge",
+      targetTab: "work-orders",
+    }),
+    createCompanyPreviewSection({
+      title: "Lokacije",
+      subtitle: "Kratki pregled lokacija i objekata.",
+      rows: locationRows,
+      empty: "Nema lokacija.",
+      actionLabel: "Pogledaj sve lokacije",
+      targetTab: "locations",
+    }),
+    createCompanyPreviewSection({
+      title: "Temeljni dokumenti",
+      subtitle: "Zadnji dokumenti i predlošci.",
+      rows: documentRows,
+      empty: state.documentsExplorer.loading ? "Učitavam dokumente..." : "Nema dokumenata.",
+      actionLabel: "Pogledaj sve dokumente",
+      targetTab: "documents",
+    }),
+    createCompanyPreviewSection({
+      title: "Periodika",
+      subtitle: "Najbliži rokovi i isteci.",
+      rows: periodicsRows,
+      empty: "Nema evidentiranih rokova.",
+      actionLabel: "Otvori periodiku",
+      targetTab: "periodics",
+    }),
+  );
+}
+
 function syncCompanyEditorTabs() {
   const normalizedTab = String(state.companyEditorActiveTab || "overview").trim() || "overview";
   const activeTab = companyEditorTabButtons.some((button) => button.dataset.companyEditorTab === normalizedTab)
@@ -80307,6 +80612,7 @@ function renderCompanyWorkspaceDashboard(companyId = companyIdInput?.value || ""
   const normalizedCompanyId = String(companyId || "").trim();
   const stats = getCompanyDashboardStats(normalizedCompanyId);
   const periodicsSummary = renderCompanyPeriodicsPanel(normalizedCompanyId);
+  const documentItems = getCompanyDocumentItems(normalizedCompanyId);
   const company = stats.company;
   companyWorkspaceHero.classList.toggle("is-empty", !company);
 
@@ -80329,6 +80635,13 @@ function renderCompanyWorkspaceDashboard(companyId = companyIdInput?.value || ""
         getCompanyContractValidityLabel(company, stats.contracts),
       ].filter(Boolean).join(" · ")
       : "Spremi tvrtku da se povežu lokacije, objekti i radni nalozi.";
+  }
+
+  if (companyDashboardPreviewStatus) {
+    const isActive = company?.isActive !== false && companyIsActiveInput?.value !== "false";
+    companyDashboardPreviewStatus.textContent = isActive ? "Aktivno" : "Neaktivno";
+    companyDashboardPreviewStatus.classList.toggle("is-active", isActive);
+    companyDashboardPreviewStatus.classList.toggle("is-inactive", !isActive);
   }
 
   if (companyWorkspaceStats) {
@@ -80380,6 +80693,8 @@ function renderCompanyWorkspaceDashboard(companyId = companyIdInput?.value || ""
   }
 
   renderCompanyOverviewSummary(normalizedCompanyId);
+  renderCompanyOverviewPreviews(normalizedCompanyId);
+  renderCompanyDocumentOverview(normalizedCompanyId);
   syncCompanyOverviewEditMode();
 
   setCompanyEditorTabCount("overview", stats.workOrders.length ? `${stats.workOrders.length} RN` : "0 RN");
@@ -80404,10 +80719,10 @@ function renderCompanyWorkspaceDashboard(companyId = companyIdInput?.value || ""
   setCompanyEditorTabMeta("contracts", `${stats.activeContracts.length} važećih`);
   setCompanyEditorTabCount("portal", stats.clientUsers.length);
   setCompanyEditorTabMeta("portal", `${stats.contactsCount} kontakata`);
-  setCompanyEditorTabCount("documents", stats.templateCount);
-  setCompanyEditorTabMeta("documents", "Predlošci i datoteke");
+  setCompanyEditorTabCount("documents", documentItems.length);
+  setCompanyEditorTabMeta("documents", documentItems.length ? "Dokumenti i predlošci" : "Predlošci i datoteke");
   setCompanyEditorTabCount("settings", company ? (company.isActive === false ? "Neaktivno" : "Aktivno") : "Info");
-  setCompanyEditorTabMeta("settings", company?.oib ? `OIB ${company.oib}` : "Podaci tvrtke");
+  setCompanyEditorTabMeta("settings", "Kontakti i postavke");
   syncCompanyEditorTabs();
 }
 
@@ -82057,8 +82372,56 @@ function renderCompanyLinkedWorkOrders(companyId = companyIdInput?.value || "") 
   }
 
   const normalizedCompanyId = String(companyId || "").trim();
-  const linkedWorkOrders = getCompanyWorkOrders(normalizedCompanyId);
-  companyLinkedWorkOrdersCount.textContent = String(linkedWorkOrders.length);
+  const allWorkOrders = getCompanyWorkOrders(normalizedCompanyId);
+  const queryNeedle = normalizeLooseName(state.companyWorkOrderFilters.query || "");
+  const statusFilter = String(state.companyWorkOrderFilters.status || "all");
+  const sortMode = String(state.companyWorkOrderFilters.sort || "newest");
+  const linkedWorkOrders = allWorkOrders
+    .filter((workOrder) => {
+      if (statusFilter !== "all" && String(workOrder.status || "") !== statusFilter) {
+        return false;
+      }
+      if (!queryNeedle) {
+        return true;
+      }
+      return normalizeLooseName([
+        workOrder.workOrderNumber,
+        getWorkOrderServiceSummary(workOrder),
+        workOrder.serviceLine,
+        getLocation(workOrder.locationId)?.name,
+        workOrder.locationName,
+        workOrder.status,
+        workOrder.priority,
+        getWorkOrderExecutors(workOrder).join(" "),
+      ].filter(Boolean).join(" ")).includes(queryNeedle);
+    })
+    .sort((left, right) => {
+      if (sortMode === "due") {
+        return String(left.dueDate || "9999-12-31").localeCompare(String(right.dueDate || "9999-12-31"))
+          || String(right.updatedAt || right.createdAt || "").localeCompare(String(left.updatedAt || left.createdAt || ""));
+      }
+      if (sortMode === "number") {
+        return String(right.workOrderNumber || "").localeCompare(String(left.workOrderNumber || ""), "hr", { numeric: true, sensitivity: "base" });
+      }
+      if (sortMode === "status") {
+        return String(left.status || "").localeCompare(String(right.status || ""), "hr")
+          || String(right.updatedAt || right.createdAt || "").localeCompare(String(left.updatedAt || left.createdAt || ""));
+      }
+      return String(right.updatedAt || right.createdAt || right.openedDate || "").localeCompare(String(left.updatedAt || left.createdAt || left.openedDate || ""))
+        || String(right.workOrderNumber || "").localeCompare(String(left.workOrderNumber || ""), "hr", { numeric: true, sensitivity: "base" });
+    });
+
+  companyLinkedWorkOrdersCount.textContent = `${linkedWorkOrders.length}/${allWorkOrders.length}`;
+
+  if (companyWorkOrdersSearchInput && companyWorkOrdersSearchInput.value !== state.companyWorkOrderFilters.query) {
+    companyWorkOrdersSearchInput.value = state.companyWorkOrderFilters.query;
+  }
+  if (companyWorkOrdersStatusFilterInput && companyWorkOrdersStatusFilterInput.value !== statusFilter) {
+    companyWorkOrdersStatusFilterInput.value = statusFilter;
+  }
+  if (companyWorkOrdersSortInput && companyWorkOrdersSortInput.value !== sortMode) {
+    companyWorkOrdersSortInput.value = sortMode;
+  }
 
   if (!normalizedCompanyId) {
     companyLinkedWorkOrdersList.replaceChildren();
@@ -82067,74 +82430,94 @@ function renderCompanyLinkedWorkOrders(companyId = companyIdInput?.value || "") 
     return;
   }
 
-  if (linkedWorkOrders.length === 0) {
+  if (allWorkOrders.length === 0) {
     companyLinkedWorkOrdersList.replaceChildren();
     companyLinkedWorkOrdersEmpty.textContent = "Još nema radnih naloga vezanih uz ovu tvrtku.";
     companyLinkedWorkOrdersEmpty.hidden = false;
     return;
   }
 
+  if (linkedWorkOrders.length === 0) {
+    companyLinkedWorkOrdersList.replaceChildren();
+    companyLinkedWorkOrdersEmpty.textContent = "Nema RN-ova za odabrane filtere.";
+    companyLinkedWorkOrdersEmpty.hidden = false;
+    return;
+  }
+
   companyLinkedWorkOrdersEmpty.hidden = true;
-  companyLinkedWorkOrdersList.replaceChildren(...linkedWorkOrders.map((workOrder) => {
+
+  const table = document.createElement("div");
+  table.className = "company-workorders-table";
+
+  const header = document.createElement("div");
+  header.className = "company-workorders-table-row is-head";
+  ["RN", "Naziv", "Lokacija", "Tip", "Prioritet", "Status", "Rok", "Zadnja izmjena", "Akcije"].forEach((label) => {
+    const cell = document.createElement("span");
+    cell.textContent = label;
+    header.append(cell);
+  });
+  table.append(header);
+
+  linkedWorkOrders.forEach((workOrder) => {
     const location = getLocation(workOrder.locationId || "");
-    const card = document.createElement("article");
-    card.className = "company-contract-card company-workorder-card";
-    card.tabIndex = 0;
-    card.setAttribute("role", "button");
-    card.setAttribute("aria-label", `Otvori RN ${workOrder.workOrderNumber || "bez broja"}`);
+    const row = document.createElement("article");
+    row.className = "company-workorders-table-row";
+    row.tabIndex = 0;
+    row.setAttribute("role", "button");
+    row.setAttribute("aria-label", `Otvori RN ${workOrder.workOrderNumber || "bez broja"}`);
 
-    const copy = document.createElement("div");
-    copy.className = "company-contract-card-copy";
+    const rn = document.createElement("strong");
+    rn.className = "company-workorders-rn";
+    rn.textContent = workOrder.workOrderNumber || "RN";
 
-    const head = document.createElement("div");
-    head.className = "company-contract-card-head";
-    const number = document.createElement("strong");
-    number.textContent = workOrder.workOrderNumber || "RN bez broja";
+    const name = document.createElement("span");
+    name.className = "company-workorders-title";
+    name.textContent = getWorkOrderServiceSummary(workOrder) || workOrder.department || "Radni nalog";
+
+    const locationNode = document.createElement("span");
+    locationNode.textContent = location?.name || workOrder.locationName || "Bez lokacije";
+
+    const type = document.createElement("span");
+    type.textContent = workOrder.type || workOrder.department || "RN";
+
+    const priority = createMetaPill(workOrder.priority || "Normal", `is-${slugifyValue(workOrder.priority || "normal")}`);
     const status = createMetaPill(
       getOptionLabel(WORK_ORDER_STATUS_OPTIONS, workOrder.status || "") || (workOrder.status || "RN"),
       `is-${slugifyValue(workOrder.status || "rn")}`,
     );
-    head.append(number, status);
 
-    const title = document.createElement("span");
-    title.className = "company-contract-card-title";
-    title.textContent = getWorkOrderServiceSummary(workOrder) || workOrder.department || "Radni nalog";
+    const due = document.createElement("span");
+    due.textContent = workOrder.dueDate ? formatCompactDate(workOrder.dueDate) : "Bez roka";
 
-    const meta = document.createElement("span");
-    meta.className = "company-contract-card-meta";
-    meta.textContent = [
-      location?.name || workOrder.locationName || "",
-      workOrder.openedDate ? `otvoren ${formatDate(workOrder.openedDate)}` : "",
-      workOrder.dueDate ? `rok ${formatDate(workOrder.dueDate)}` : "",
-      getWorkOrderExecutors(workOrder).slice(0, 2).join(", "),
-    ].filter(Boolean).join(" · ");
-
-    copy.append(head, title, meta);
+    const updated = document.createElement("span");
+    const updatedValue = String(workOrder.updatedAt || workOrder.createdAt || workOrder.openedDate || "").slice(0, 10);
+    updated.textContent = updatedValue ? formatCompactDate(updatedValue) : "—";
 
     const actions = document.createElement("div");
-    actions.className = "company-contract-card-actions";
-    actions.append(createActionButton("Otvori RN", "card-button card-button-light", (event) => {
+    actions.className = "company-workorders-actions";
+    actions.append(createIconActionButton("Otvori", "preview", "", (event) => {
       event.stopPropagation();
       openCompanyContextRecord({ kind: "work-order", record: workOrder });
     }));
 
-    card.addEventListener("click", (event) => {
+    row.append(rn, name, locationNode, type, priority, status, due, updated, actions);
+    row.addEventListener("click", (event) => {
       if (isInteractiveWorkOrderTarget(event.target)) {
         return;
       }
       openCompanyContextRecord({ kind: "work-order", record: workOrder });
     });
-    card.addEventListener("keydown", (event) => {
+    row.addEventListener("keydown", (event) => {
       if (event.key !== "Enter" && event.key !== " ") {
         return;
       }
       event.preventDefault();
       openCompanyContextRecord({ kind: "work-order", record: workOrder });
     });
+    table.append(row);
+  });
 
-    card.append(copy, actions);
-    return card;
-  }));
+  companyLinkedWorkOrdersList.replaceChildren(table);
 }
 
 function renderCompanyLinkedLocations(companyId = companyIdInput?.value || "") {
@@ -83106,8 +83489,13 @@ function resetCompanyForm() {
   cancelScheduledCompanyEditorRelatedData();
   companyForm.reset();
   companyIdInput.value = "";
-  state.companyEditorActiveTab = "overview";
+  state.companyEditorActiveTab = "settings";
   state.companyOverviewEditMode = true;
+  state.companyWorkOrderFilters = {
+    query: "",
+    status: "all",
+    sort: "newest",
+  };
   if (companyLogoDataUrlInput) {
     companyLogoDataUrlInput.value = "";
   }
@@ -83120,7 +83508,7 @@ function resetCompanyForm() {
   rebuildCompanyManagerUserOptions([]);
   renderCompanyTemplateAssignments([]);
   if (companyEditorTitle) {
-    companyEditorTitle.textContent = "Nova tvrtka";
+    companyEditorTitle.textContent = "Company workspace";
   }
   resetCompanyClientUserForm();
   renderCompanyClientPortalPanel();
@@ -83367,10 +83755,15 @@ function hydrateCompanyForm(company) {
   companyNoteInput.value = company.note;
   companyError.textContent = "";
   if (companyEditorTitle) {
-    companyEditorTitle.textContent = `Uredi tvrtku · ${company.name}`;
+    companyEditorTitle.textContent = "Company workspace";
   }
   state.companyEditorActiveTab = "overview";
   state.companyOverviewEditMode = false;
+  state.companyWorkOrderFilters = {
+    query: "",
+    status: "all",
+    sort: "newest",
+  };
   resetCompanyClientUserForm();
   renderCompanyClientPortalPanel();
   renderCompanyWorkspaceDashboard(company.id);
@@ -116004,11 +116397,7 @@ companyEditorTabs?.addEventListener("click", (event) => {
   if (!(button instanceof HTMLButtonElement) || !companyEditorTabs.contains(button)) {
     return;
   }
-  state.companyEditorActiveTab = button.dataset.companyEditorTab || "overview";
-  syncCompanyEditorTabs();
-  if (state.companyEditorActiveTab === "periodics") {
-    renderCompanyPeriodicsPanel(companyIdInput?.value || "");
-  }
+  activateCompanyEditorTab(button.dataset.companyEditorTab || "overview");
 });
 
 companyIsActiveInput?.addEventListener("change", () => {
@@ -116017,10 +116406,13 @@ companyIsActiveInput?.addEventListener("change", () => {
 
 companyOverviewEditToggle?.addEventListener("click", () => {
   const isNewCompany = !String(companyIdInput?.value || "").trim();
-  if (isNewCompany) {
-    state.companyOverviewEditMode = true;
+  const isAlreadyEditingSettings = state.companyEditorActiveTab === "settings" && state.companyOverviewEditMode;
+  if (!isNewCompany && isAlreadyEditingSettings) {
+    state.companyOverviewEditMode = false;
+    activateCompanyEditorTab("overview");
   } else {
-    state.companyOverviewEditMode = !state.companyOverviewEditMode;
+    state.companyOverviewEditMode = true;
+    activateCompanyEditorTab("settings");
   }
   renderCompanyOverviewSummary(companyIdInput?.value || "");
   syncCompanyOverviewEditMode();
@@ -116029,6 +116421,39 @@ companyOverviewEditToggle?.addEventListener("click", () => {
       companyNameInput?.focus({ preventScroll: true });
     });
   }
+});
+
+companyWorkOrdersSearchInput?.addEventListener("input", () => {
+  state.companyWorkOrderFilters.query = companyWorkOrdersSearchInput.value || "";
+  renderCompanyLinkedWorkOrdersSafe(companyIdInput?.value || "");
+});
+
+companyWorkOrdersStatusFilterInput?.addEventListener("change", () => {
+  state.companyWorkOrderFilters.status = companyWorkOrdersStatusFilterInput.value || "all";
+  renderCompanyLinkedWorkOrdersSafe(companyIdInput?.value || "");
+});
+
+companyWorkOrdersSortInput?.addEventListener("change", () => {
+  state.companyWorkOrderFilters.sort = companyWorkOrdersSortInput.value || "newest";
+  renderCompanyLinkedWorkOrdersSafe(companyIdInput?.value || "");
+});
+
+companyAddWorkOrderButton?.addEventListener("click", () => {
+  const companyId = String(companyIdInput?.value || "").trim();
+  if (!companyId || !getCompany(companyId)) {
+    setInlineMessage(companyError, "Prvo spremi ili odaberi tvrtku za novi radni nalog.");
+    return;
+  }
+  const defaultLocationId = getCompanyLocations(companyId)[0]?.id || "";
+  closeCompanyEditor({ reset: false });
+  activateSidebarItem("rn", { expandSidebar: state.sidebarCollapsed });
+  requestAnimationFrame(() => {
+    focusWorkOrderComposer({
+      companyId,
+      locationId: defaultLocationId,
+      status: "Otvoreni RN",
+    });
+  });
 });
 
 [
