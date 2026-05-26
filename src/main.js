@@ -45156,22 +45156,10 @@ function createCompanyActivityCell(rowSnapshot = {}) {
   const cell = document.createElement("td");
   cell.className = "company-list-activity-table-cell";
   const stack = document.createElement("div");
-  stack.className = "company-list-info-card company-activity-cell";
-
-  const periodics = rowSnapshot.periodicsSummary || {};
-  const periodicsTotal = Number(periodics.totalCount || 0);
-  const periodicsOverdue = Number(periodics.overdueCount || 0);
-  const periodicsWarning = Number(periodics.warningCount || 0);
-  const periodicsDetail = periodicsOverdue > 0
-    ? `${periodicsOverdue} isteklo`
-    : periodicsWarning > 0
-      ? `${periodicsWarning} uskoro`
-      : periodicsTotal > 0
-        ? "Bez isteka"
-        : "Nema rokova";
+  stack.className = "company-list-info-card company-activity-cell company-structure-cell";
 
   const statusGrid = document.createElement("div");
-  statusGrid.className = "company-list-kpi-grid";
+  statusGrid.className = "company-list-kpi-grid company-list-location-object-grid";
   statusGrid.append(
     createCompanyListKpiCard({
       icon: "location",
@@ -45181,18 +45169,11 @@ function createCompanyActivityCell(rowSnapshot = {}) {
       tone: rowSnapshot.locationCount ? "info" : "muted",
     }),
     createCompanyListKpiCard({
-      icon: "number",
-      label: "Radni nalozi",
-      value: String(rowSnapshot.workOrderCount || 0),
-      detail: `${rowSnapshot.activeWorkOrderCount || 0} otvorenih`,
-      tone: rowSnapshot.activeWorkOrderCount ? "success" : "muted",
-    }),
-    createCompanyListKpiCard({
-      icon: "dates",
-      label: "Periodika",
-      value: String(periodicsTotal),
-      detail: periodicsDetail,
-      tone: periodicsOverdue > 0 ? "danger" : periodicsWarning > 0 ? "warning" : periodicsTotal > 0 ? "success" : "muted",
+      icon: "company",
+      label: "Objekti",
+      value: String(rowSnapshot.objectCount || 0),
+      detail: `${rowSnapshot.locationCount || 0} lokacija`,
+      tone: rowSnapshot.objectCount ? "accent" : "muted",
     }),
   );
 
@@ -45271,6 +45252,10 @@ function toggleCompanyListExpansion(companyId = "") {
   renderCompanies();
 }
 
+function getCompanyListExpandIconMarkup() {
+  return '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4.25 6.25 3.75 3.75 3.75-3.75" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.65"/></svg>';
+}
+
 function createCompanyIdentityCell(company, rowSnapshot = null) {
   const cell = document.createElement("td");
   cell.className = "company-list-company-cell";
@@ -45284,7 +45269,8 @@ function createCompanyIdentityCell(company, rowSnapshot = null) {
     expandButton.dataset.companyExpandToggle = String(company.id || "");
     expandButton.setAttribute("aria-label", rowSnapshot.isExpanded ? "Sakrij lokacije" : "Prikaži lokacije");
     expandButton.setAttribute("aria-expanded", String(rowSnapshot.isExpanded));
-    expandButton.innerHTML = getWorkOrderIconMarkup(rowSnapshot.isExpanded ? "collapse" : "expand");
+    expandButton.classList.toggle("is-expanded", Boolean(rowSnapshot.isExpanded));
+    expandButton.innerHTML = getCompanyListExpandIconMarkup();
     expandButton.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -45543,10 +45529,20 @@ function getCompanyStructureSummary(companyId = "") {
   };
 }
 
-function createCompanyLocationTree(companyId = "", { compact = false } = {}) {
+function createCompanyLocationTree(
+  companyId = "",
+  {
+    compact = false,
+    showWorkOrders = true,
+    showContact = true,
+    showOpenButton = true,
+    showLocationStatus = true,
+  } = {},
+) {
   const structure = getCompanyStructureSummary(companyId);
   const tree = document.createElement("div");
   tree.className = `company-location-tree${compact ? " is-compact" : ""}`;
+  tree.classList.toggle("is-simple", !showWorkOrders && !showContact && !showOpenButton);
 
   if (structure.locations.length === 0) {
     const empty = document.createElement("p");
@@ -45559,7 +45555,9 @@ function createCompanyLocationTree(companyId = "", { compact = false } = {}) {
   structure.locations.forEach((location) => {
     const locationId = String(location.id || "").trim();
     const linkedObjects = structure.objectsByLocation.get(locationId) ?? [];
-    const linkedWorkOrders = sortWorkOrders([...(structure.workOrdersByLocation.get(locationId) ?? [])]);
+    const linkedWorkOrders = showWorkOrders
+      ? sortWorkOrders([...(structure.workOrdersByLocation.get(locationId) ?? [])])
+      : [];
     const contacts = buildLocationContacts(location);
 
     const card = document.createElement("article");
@@ -45577,27 +45575,35 @@ function createCompanyLocationTree(companyId = "", { compact = false } = {}) {
     const title = document.createElement("strong");
     title.textContent = location.name || "Lokacija";
     const meta = document.createElement("span");
-    meta.textContent = [
+    const locationMeta = [
       location.region || "",
       location.coordinates || "",
-      location.period ? `Periodika ${location.period}` : "",
-    ].filter(Boolean).join(" · ") || "Bez dodatnih podataka";
+    ];
+    if (showWorkOrders || showContact) {
+      locationMeta.push(location.period ? `Periodika ${location.period}` : "");
+    }
+    meta.textContent = locationMeta.filter(Boolean).join(" · ") || "Bez dodatnih podataka";
     copy.append(title, meta);
 
     const badges = document.createElement("div");
     badges.className = "company-location-tree-badges";
-    badges.append(
-      createMetaPill(`${linkedObjects.length} objekata`, linkedObjects.length ? "is-accent" : "is-muted"),
-      createMetaPill(`${linkedWorkOrders.length} RN`, linkedWorkOrders.length ? "is-info" : "is-muted"),
-      createMetaPill(location.isActive ? "Aktivna" : "Neaktivna", location.isActive ? "is-success" : "is-danger"),
-    );
+    badges.append(createMetaPill(`${linkedObjects.length} objekata`, linkedObjects.length ? "is-accent" : "is-muted"));
+    if (showWorkOrders) {
+      badges.append(createMetaPill(`${linkedWorkOrders.length} RN`, linkedWorkOrders.length ? "is-info" : "is-muted"));
+    }
+    if (showLocationStatus) {
+      badges.append(createMetaPill(location.isActive ? "Aktivna" : "Neaktivna", location.isActive ? "is-success" : "is-danger"));
+    }
 
     const openButton = createActionButton("Otvori", "card-button card-button-light", (event) => {
       event.stopPropagation();
       openCompanyContextRecord({ kind: "location", record: location });
     });
 
-    head.append(icon, copy, badges, openButton);
+    head.append(icon, copy, badges);
+    if (showOpenButton) {
+      head.append(openButton);
+    }
 
     const details = document.createElement("div");
     details.className = "company-location-tree-details";
@@ -45627,51 +45633,59 @@ function createCompanyLocationTree(companyId = "", { compact = false } = {}) {
     }
     objectsWrap.append(objectsTitle, objectsList);
 
-    const workOrdersWrap = document.createElement("div");
-    workOrdersWrap.className = "company-location-tree-workorders";
-    const workOrdersTitle = document.createElement("span");
-    workOrdersTitle.className = "company-location-tree-label";
-    workOrdersTitle.textContent = "RN";
-    const workOrdersList = document.createElement("div");
-    workOrdersList.className = "company-location-rn-list";
-    if (linkedWorkOrders.length > 0) {
-      linkedWorkOrders.slice(0, compact ? 3 : 6).forEach((workOrder) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "company-location-rn-chip";
-        button.innerHTML = `<strong>${escapeHtml(workOrder.workOrderNumber || "RN")}</strong><span>${escapeHtml(getWorkOrderServiceSummary(workOrder) || workOrder.status || "Radni nalog")}</span>`;
-        button.addEventListener("click", (event) => {
-          event.stopPropagation();
-          openCompanyContextRecord({ kind: "work-order", record: workOrder });
+    const detailNodes = [objectsWrap];
+
+    if (showWorkOrders) {
+      const workOrdersWrap = document.createElement("div");
+      workOrdersWrap.className = "company-location-tree-workorders";
+      const workOrdersTitle = document.createElement("span");
+      workOrdersTitle.className = "company-location-tree-label";
+      workOrdersTitle.textContent = "RN";
+      const workOrdersList = document.createElement("div");
+      workOrdersList.className = "company-location-rn-list";
+      if (linkedWorkOrders.length > 0) {
+        linkedWorkOrders.slice(0, compact ? 3 : 6).forEach((workOrder) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "company-location-rn-chip";
+          button.innerHTML = `<strong>${escapeHtml(workOrder.workOrderNumber || "RN")}</strong><span>${escapeHtml(getWorkOrderServiceSummary(workOrder) || workOrder.status || "Radni nalog")}</span>`;
+          button.addEventListener("click", (event) => {
+            event.stopPropagation();
+            openCompanyContextRecord({ kind: "work-order", record: workOrder });
+          });
+          workOrdersList.append(button);
         });
-        workOrdersList.append(button);
-      });
-      if (compact && linkedWorkOrders.length > 3) {
-        workOrdersList.append(createMetaPill(`+${linkedWorkOrders.length - 3} RN`, "is-muted"));
+        if (compact && linkedWorkOrders.length > 3) {
+          workOrdersList.append(createMetaPill(`+${linkedWorkOrders.length - 3} RN`, "is-muted"));
+        }
+      } else {
+        const emptyWorkOrder = document.createElement("span");
+        emptyWorkOrder.className = "company-location-tree-muted";
+        emptyWorkOrder.textContent = "Bez RN-a";
+        workOrdersList.append(emptyWorkOrder);
       }
-    } else {
-      const emptyWorkOrder = document.createElement("span");
-      emptyWorkOrder.className = "company-location-tree-muted";
-      emptyWorkOrder.textContent = "Bez RN-a";
-      workOrdersList.append(emptyWorkOrder);
+      workOrdersWrap.append(workOrdersTitle, workOrdersList);
+      detailNodes.push(workOrdersWrap);
     }
-    workOrdersWrap.append(workOrdersTitle, workOrdersList);
 
-    const contactsWrap = document.createElement("div");
-    contactsWrap.className = "company-location-tree-contact";
-    const contactTitle = document.createElement("span");
-    contactTitle.className = "company-location-tree-label";
-    contactTitle.textContent = "Kontakt";
-    const contactCopy = document.createElement("span");
-    contactCopy.className = "company-location-tree-muted";
-    const primaryContact = contacts[0] ?? {};
-    contactCopy.textContent = [
-      primaryContact.name || location.representative || "Bez kontakt osobe",
-      primaryContact.email || primaryContact.phone || "",
-    ].filter(Boolean).join(" · ");
-    contactsWrap.append(contactTitle, contactCopy);
+    if (showContact) {
+      const contactsWrap = document.createElement("div");
+      contactsWrap.className = "company-location-tree-contact";
+      const contactTitle = document.createElement("span");
+      contactTitle.className = "company-location-tree-label";
+      contactTitle.textContent = "Kontakt";
+      const contactCopy = document.createElement("span");
+      contactCopy.className = "company-location-tree-muted";
+      const primaryContact = contacts[0] ?? {};
+      contactCopy.textContent = [
+        primaryContact.name || location.representative || "Bez kontakt osobe",
+        primaryContact.email || primaryContact.phone || "",
+      ].filter(Boolean).join(" · ");
+      contactsWrap.append(contactTitle, contactCopy);
+      detailNodes.push(contactsWrap);
+    }
 
-    details.append(objectsWrap, workOrdersWrap, contactsWrap);
+    details.append(...detailNodes);
     card.append(head, details);
     tree.append(card);
   });
@@ -45683,44 +45697,30 @@ function createCompanyListExpansion(rowSnapshot = {}) {
   const shell = document.createElement("div");
   shell.className = "company-list-expansion";
 
-  const summary = document.createElement("div");
-  summary.className = "company-list-expansion-summary";
-  summary.append(
-    createCompanyWorkspaceStatCard({
-      icon: "location",
-      label: "Lokacije",
-      value: String(rowSnapshot.locationCount || 0),
-      detail: `${rowSnapshot.objectCount || 0} objekata`,
-      tone: rowSnapshot.locationCount ? "info" : "muted",
-    }),
-    createCompanyWorkspaceStatCard({
-      icon: "number",
-      label: "Radni nalozi",
-      value: String(rowSnapshot.workOrderCount || 0),
-      detail: `${rowSnapshot.activeWorkOrderCount || 0} otvorenih`,
-      tone: rowSnapshot.activeWorkOrderCount ? "success" : "muted",
-    }),
-    createCompanyWorkspaceStatCard({
-      icon: "service",
-      label: "Usluge",
-      value: String(rowSnapshot.serviceCodes?.length || 0),
-      detail: rowSnapshot.serviceCodes?.length ? rowSnapshot.serviceCodes.join(" · ") : "Bez usluga",
-      tone: rowSnapshot.serviceCodes?.length ? "accent" : "muted",
+  const heading = document.createElement("div");
+  heading.className = "company-list-expansion-heading";
+  const headingIcon = document.createElement("span");
+  headingIcon.className = "company-list-expansion-heading-icon";
+  headingIcon.innerHTML = getWorkOrderIconMarkup("location");
+  const headingCopy = document.createElement("div");
+  headingCopy.className = "company-list-expansion-heading-copy";
+  const title = document.createElement("strong");
+  title.textContent = "Lokacije i objekti";
+  const meta = document.createElement("span");
+  meta.textContent = `${rowSnapshot.locationCount || 0} lokacija · ${rowSnapshot.objectCount || 0} objekata`;
+  headingCopy.append(title, meta);
+  heading.append(headingIcon, headingCopy);
+
+  shell.append(
+    heading,
+    createCompanyLocationTree(rowSnapshot.companyId, {
+      compact: true,
+      showWorkOrders: false,
+      showContact: false,
+      showOpenButton: false,
+      showLocationStatus: false,
     }),
   );
-
-  if (getCanCreateLocations()) {
-    const actions = document.createElement("div");
-    actions.className = "company-list-expansion-actions";
-    const addLocationButton = createActionButton("+ Lokacija", "card-button card-button-light", (event) => {
-      event.stopPropagation();
-      openLocationEditorForCompany(rowSnapshot.companyId);
-    });
-    actions.append(addLocationButton);
-    shell.append(summary, actions, createCompanyLocationTree(rowSnapshot.companyId, { compact: true }));
-  } else {
-    shell.append(summary, createCompanyLocationTree(rowSnapshot.companyId, { compact: true }));
-  }
   return shell;
 }
 
