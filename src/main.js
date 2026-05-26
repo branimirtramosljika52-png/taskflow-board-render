@@ -45536,6 +45536,7 @@ function createCompanyLocationTree(
   companyId = "",
   {
     compact = false,
+    showObjects = true,
     showWorkOrders = true,
     showContact = true,
     showOpenButton = true,
@@ -45544,7 +45545,7 @@ function createCompanyLocationTree(
 ) {
   const structure = getCompanyStructureSummary(companyId);
   const tree = document.createElement("div");
-  const useSimpleInlineObjects = !showWorkOrders && !showContact && !showOpenButton;
+  const useSimpleInlineObjects = showObjects && !showWorkOrders && !showContact && !showOpenButton;
   tree.className = `company-location-tree${compact ? " is-compact" : ""}`;
   tree.classList.toggle("is-simple", useSimpleInlineObjects);
 
@@ -45591,7 +45592,9 @@ function createCompanyLocationTree(
 
     const badges = document.createElement("div");
     badges.className = "company-location-tree-badges";
-    badges.append(createMetaPill(`${linkedObjects.length} objekata`, linkedObjects.length ? "is-accent" : "is-muted"));
+    if (showObjects) {
+      badges.append(createMetaPill(`${linkedObjects.length} objekata`, linkedObjects.length ? "is-accent" : "is-muted"));
+    }
     if (showWorkOrders) {
       badges.append(createMetaPill(`${linkedWorkOrders.length} RN`, linkedWorkOrders.length ? "is-info" : "is-muted"));
     }
@@ -45607,32 +45610,35 @@ function createCompanyLocationTree(
     const details = document.createElement("div");
     details.className = "company-location-tree-details";
 
-    const objectsWrap = document.createElement("div");
-    objectsWrap.className = "company-location-tree-objects";
-    const objectsTitle = document.createElement("span");
-    objectsTitle.className = "company-location-tree-label";
-    objectsTitle.textContent = "Objekti";
-    const objectsList = document.createElement("div");
-    objectsList.className = "company-location-object-list";
-    if (linkedObjects.length > 0) {
-      linkedObjects.slice(0, compact ? 6 : 12).forEach((object) => {
-        const chip = document.createElement("span");
-        chip.className = "company-location-object-chip";
-        chip.textContent = object.name || "Objekt";
-        objectsList.append(chip);
-      });
-      if (compact && linkedObjects.length > 6) {
-        objectsList.append(createMetaPill(`+${linkedObjects.length - 6}`, "is-muted"));
+    const detailNodes = [];
+    let objectsWrap = null;
+    if (showObjects) {
+      objectsWrap = document.createElement("div");
+      objectsWrap.className = "company-location-tree-objects";
+      const objectsTitle = document.createElement("span");
+      objectsTitle.className = "company-location-tree-label";
+      objectsTitle.textContent = "Objekti";
+      const objectsList = document.createElement("div");
+      objectsList.className = "company-location-object-list";
+      if (linkedObjects.length > 0) {
+        linkedObjects.slice(0, compact ? 6 : 12).forEach((object) => {
+          const chip = document.createElement("span");
+          chip.className = "company-location-object-chip";
+          chip.textContent = object.name || "Objekt";
+          objectsList.append(chip);
+        });
+        if (compact && linkedObjects.length > 6) {
+          objectsList.append(createMetaPill(`+${linkedObjects.length - 6}`, "is-muted"));
+        }
+      } else {
+        const emptyObject = document.createElement("span");
+        emptyObject.className = "company-location-tree-muted";
+        emptyObject.textContent = "Nema objekata";
+        objectsList.append(emptyObject);
       }
-    } else {
-      const emptyObject = document.createElement("span");
-      emptyObject.className = "company-location-tree-muted";
-      emptyObject.textContent = "Nema objekata";
-      objectsList.append(emptyObject);
+      objectsWrap.append(objectsTitle, objectsList);
+      detailNodes.push(objectsWrap);
     }
-    objectsWrap.append(objectsTitle, objectsList);
-
-    const detailNodes = [objectsWrap];
 
     if (showWorkOrders) {
       const workOrdersWrap = document.createElement("div");
@@ -45693,8 +45699,12 @@ function createCompanyLocationTree(
       if (showOpenButton) {
         head.append(openButton);
       }
-      details.append(...detailNodes);
-      card.append(head, details);
+      if (detailNodes.length > 0) {
+        details.append(...detailNodes);
+        card.append(head, details);
+      } else {
+        card.append(head);
+      }
     }
     tree.append(card);
   });
@@ -81029,7 +81039,7 @@ function getCompanyDocumentItems(companyId = companyIdInput?.value || "") {
     .map((item) => ({
       kind: "risk",
       title: item.title || item.name || "Procjena rizika",
-      category: "Procjene rizika",
+      category: "Procjena rizika",
       status: item.status || "Aktivno",
       revisionDate: normalizeCompanyDateValue(item.updatedAt || item.createdAt || ""),
       expiresAt: normalizeCompanyDateValue(item.validUntil || item.dueDate || ""),
@@ -81045,9 +81055,15 @@ function getCompanyDocumentItems(companyId = companyIdInput?.value || "") {
 
 function getCompanyDocumentCategorySummary(companyId = companyIdInput?.value || "") {
   const items = getCompanyDocumentItems(companyId);
-  return ["Procjene rizika", "Pravilnici", "Programi osposobljavanja", "Ostali dokumenti"].map((label) => ({
-    label,
-    count: items.filter((item) => item.category === label).length,
+  const categories = [
+    { label: "Procjena rizika", aliases: ["Procjena rizika", "Procjene rizika"] },
+    { label: "Pravilnici", aliases: ["Pravilnici", "Pravilnik"] },
+    { label: "Programi osposobljavanja", aliases: ["Programi osposobljavanja"] },
+    { label: "Ostali dokumenti", aliases: ["Ostali dokumenti"] },
+  ];
+  return categories.map((category) => ({
+    label: category.label,
+    count: items.filter((item) => category.aliases.includes(item.category)).length,
   }));
 }
 
@@ -81108,9 +81124,7 @@ function renderCompanyOverviewPreviews(companyId = companyIdInput?.value || "") 
 
   ensureCompanyDocumentRecordsLoaded(companyId);
   const locations = getCompanyLocations(companyId);
-  const objects = getCompanyLocationObjects(companyId);
   const workOrders = getCompanyWorkOrders(companyId);
-  const documents = getCompanyDocumentItems(companyId);
   const periodics = getCompanyPeriodicsSummary(companyId).entries;
 
   const workOrderRows = workOrders.slice(0, 5).map((workOrder) => createCompanyPreviewRow({
@@ -81124,29 +81138,27 @@ function renderCompanyOverviewPreviews(companyId = companyIdInput?.value || "") 
     tone: "info",
   }));
   const locationRows = locations.slice(0, 4).map((location) => {
-    const locationObjects = objects.filter((object) => String(object.locationId) === String(location.id));
-    const locationWorkOrders = workOrders.filter((workOrder) => String(workOrder.locationId) === String(location.id));
     return createCompanyPreviewRow({
       eyebrow: location.isActive ? "OK" : "OFF",
       title: location.name || "Lokacija",
       meta: [
-        location.region || location.coordinates || "Bez adrese",
-        `${locationObjects.length} objekata`,
-        `${locationWorkOrders.length} RN`,
-      ].join(" · "),
+        location.region || "",
+        location.coordinates || "",
+        location.isActive ? "Aktivna lokacija" : "Neaktivna lokacija",
+      ].filter(Boolean).join(" · ") || "Bez dodatnih podataka",
       tone: location.isActive ? "success" : "muted",
     });
   });
-  const documentRows = documents.slice(0, 4).map((item) => createCompanyPreviewRow({
-    eyebrow: item.kind === "template" ? "TMP" : "DOC",
-    title: item.title,
-    meta: [
-      item.category,
-      item.revisionDate ? formatCompactDate(item.revisionDate) : "",
-      item.expiresAt ? `Istek ${formatCompactDate(item.expiresAt)}` : "",
-    ].filter(Boolean).join(" · "),
-    tone: item.expiresAt ? "warning" : "",
-  }));
+  const documentCategories = getCompanyDocumentCategorySummary(companyId);
+  const requiredDocumentCategories = new Set(["Procjena rizika", "Pravilnici"]);
+  const documentRows = documentCategories
+    .filter((category) => requiredDocumentCategories.has(category.label))
+    .map((category) => createCompanyPreviewRow({
+      eyebrow: String(category.count),
+      title: category.label,
+      meta: category.count ? "Aktivno u evidenciji" : "Nema zapisa",
+      tone: category.count ? "info" : "muted",
+    }));
   const periodicsRows = periodics.slice(0, 4).map((entry) => createCompanyPreviewRow({
     eyebrow: entry.categoryLabel || "Rok",
     title: entry.title || "Periodika",
@@ -81168,7 +81180,7 @@ function renderCompanyOverviewPreviews(companyId = companyIdInput?.value || "") 
     }),
     createCompanyPreviewSection({
       title: "Lokacije",
-      subtitle: "Kratki pregled lokacija i objekata.",
+      subtitle: "Kratki pregled lokacija.",
       rows: locationRows,
       empty: "Nema lokacija.",
       actionLabel: "Pogledaj sve lokacije",
@@ -81176,7 +81188,7 @@ function renderCompanyOverviewPreviews(companyId = companyIdInput?.value || "") 
     }),
     createCompanyPreviewSection({
       title: "Temeljni dokumenti",
-      subtitle: "Zadnji dokumenti i predlošci.",
+      subtitle: "Procjene rizika, pravilnici i osnovni dokumenti.",
       rows: documentRows,
       empty: state.documentsExplorer.loading ? "Učitavam dokumente..." : "Nema dokumenata.",
       actionLabel: "Pogledaj sve dokumente",
@@ -83142,15 +83154,12 @@ function renderCompanyLinkedLocations(companyId = companyIdInput?.value || "") {
 
   const normalizedCompanyId = String(companyId || "").trim();
   const linkedLocations = getCompanyLinkedLocations(normalizedCompanyId);
-  const linkedObjects = getCompanyLocationObjects(normalizedCompanyId);
   syncCompanyLocationActions(normalizedCompanyId);
-  companyLinkedLocationsCount.textContent = linkedObjects.length
-    ? `${linkedLocations.length}/${linkedObjects.length}`
-    : String(linkedLocations.length);
+  companyLinkedLocationsCount.textContent = String(linkedLocations.length);
 
   if (!normalizedCompanyId) {
     companyLinkedLocationsList.replaceChildren();
-    companyLinkedLocationsEmpty.textContent = "Spremi tvrtku pa će se ovdje pojaviti lokacije i RN-ovi.";
+    companyLinkedLocationsEmpty.textContent = "Spremi tvrtku pa će se ovdje pojaviti lokacije.";
     companyLinkedLocationsEmpty.hidden = false;
     return;
   }
@@ -83163,7 +83172,13 @@ function renderCompanyLinkedLocations(companyId = companyIdInput?.value || "") {
   }
 
   companyLinkedLocationsEmpty.hidden = true;
-  companyLinkedLocationsList.replaceChildren(createCompanyLocationTree(normalizedCompanyId));
+  companyLinkedLocationsList.replaceChildren(createCompanyLocationTree(normalizedCompanyId, {
+    showObjects: false,
+    showWorkOrders: false,
+    showContact: false,
+    showOpenButton: true,
+    showLocationStatus: true,
+  }));
 }
 
 function syncLocationCompanyActions() {
