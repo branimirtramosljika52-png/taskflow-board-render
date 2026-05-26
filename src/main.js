@@ -44426,9 +44426,18 @@ function createMetaPill(text, className = "") {
   return pill;
 }
 
-function createCompanyListKpiCard({ icon = "company", label = "", value = "0", detail = "", tone = "muted" } = {}) {
+function createCompanyListKpiCard({
+  icon = "company",
+  label = "",
+  value = "0",
+  detail = "",
+  tone = "muted",
+  meta = [],
+  emphasis = false,
+} = {}) {
   const card = document.createElement("article");
   card.className = `company-list-kpi-card is-${tone || "muted"}`;
+  card.classList.toggle("is-emphasis", Boolean(emphasis));
 
   const iconNode = document.createElement("span");
   iconNode.className = "company-list-kpi-icon";
@@ -44450,6 +44459,21 @@ function createCompanyListKpiCard({ icon = "company", label = "", value = "0", d
   detailNode.textContent = detail || "Bez podataka";
 
   copy.append(labelNode, valueNode, detailNode);
+
+  const metaItems = (Array.isArray(meta) ? meta : [meta])
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+  if (metaItems.length > 0) {
+    const metaRow = document.createElement("span");
+    metaRow.className = "company-list-kpi-meta";
+    metaItems.forEach((item) => {
+      const chip = document.createElement("span");
+      chip.textContent = item;
+      metaRow.append(chip);
+    });
+    copy.append(metaRow);
+  }
+
   card.append(iconNode, copy);
   return card;
 }
@@ -44654,6 +44678,11 @@ function renderCompaniesKpiRow(companies = [], contractSummaryMap = new Map()) {
   }
 
   const activeCompanies = companies.filter((company) => company?.isActive !== false);
+  const inactiveCompaniesCount = Math.max(0, companies.length - activeCompanies.length);
+  const companyIds = new Set(companies.map((company) => String(company?.id || "").trim()).filter(Boolean));
+  const locationsForCompanies = (state.locations ?? []).filter((location) => companyIds.has(String(location?.companyId || "").trim()));
+  const objectsForCompanies = (state.locationObjects ?? []).filter((object) => companyIds.has(String(object?.companyId || "").trim()));
+  const companiesWithLocations = new Set(locationsForCompanies.map((location) => String(location?.companyId || "").trim()).filter(Boolean)).size;
   const monthlyCompanies = activeCompanies.filter((company) => parseCompanyMoneyValue(company?.contractMonthlyPrice || "") > 0);
   const monthlyAmount = monthlyCompanies.reduce((sum, company) => sum + parseCompanyMoneyValue(company?.contractMonthlyPrice || ""), 0);
   const activeContracts = companies.reduce((count, company) => {
@@ -44665,8 +44694,12 @@ function renderCompaniesKpiRow(companies = [], contractSummaryMap = new Map()) {
       && (company?.contractName || company?.contractType || company?.contractNumber);
     return count + linkedActiveCount + (inlineActive ? 1 : 0);
   }, 0);
+  const fixedContracts = companies.filter((company) => normalizeCompanyContractType(company?.contractType) === "Fixed").length;
+  const hybridContracts = companies.filter((company) => normalizeCompanyContractType(company?.contractType) === "Hybrid").length;
   const companiesWithPeriodics = companies.filter((company) => normalizeCompanyPeriodStatus(company?.period) === "active").length;
   const overdueCompanies = companies.filter((company) => getCompanyPeriodicsSummary(company?.id || "").overdueCount > 0).length;
+  const periodicsTotal = companies.reduce((sum, company) => sum + (Number(getCompanyPeriodicsSummary(company?.id || "").totalCount) || 0), 0);
+  const periodicsWarnings = companies.reduce((sum, company) => sum + (Number(getCompanyPeriodicsSummary(company?.id || "").warningCount) || 0), 0);
   const currentMonthKey = new Date().toISOString().slice(0, 7);
   const previousMonthKey = getPreviousMonthKey(currentMonthKey);
   const currentInvoices = getCompanyInvoiceMonthStats(currentMonthKey);
@@ -44677,30 +44710,58 @@ function renderCompaniesKpiRow(companies = [], contractSummaryMap = new Map()) {
     createCompanyListKpiCard({
       icon: "billing",
       label: "Mjesečne fakture",
-      value: String(monthlyCompanies.length),
-      detail: monthlyAmount > 0 ? `${formatCurrencyAmount(monthlyAmount, "EUR")} mjesečno` : "Nema mjesečnih cijena",
+      value: monthlyAmount > 0 ? formatCurrencyAmount(monthlyAmount, "EUR") : "0,00 EUR",
+      detail: "mjesečni ugovoreni iznos",
+      meta: [
+        `${monthlyCompanies.length} ugovora`,
+        `rast ${invoiceChange}`,
+      ],
       tone: monthlyCompanies.length ? "success" : "muted",
+      emphasis: true,
     }),
     createCompanyListKpiCard({
-      icon: "number",
-      label: "Rast faktura",
-      value: invoiceChange,
-      detail: `${currentInvoices.count} faktura ovaj mjesec`,
-      tone: currentInvoices.amount >= previousInvoices.amount ? "info" : "warning",
+      icon: "company",
+      label: "Tvrtke",
+      value: String(companies.length),
+      detail: "ukupno u bazi",
+      meta: [
+        `${activeCompanies.length} aktivno`,
+        `${inactiveCompaniesCount} neaktivno`,
+      ],
+      tone: companies.length ? "info" : "muted",
+    }),
+    createCompanyListKpiCard({
+      icon: "location",
+      label: "Lokacije",
+      value: String(locationsForCompanies.length),
+      detail: "ukupno lokacija",
+      meta: [
+        `${objectsForCompanies.length} objekata`,
+        `${companiesWithLocations} tvrtki`,
+      ],
+      tone: locationsForCompanies.length ? "info" : "muted",
     }),
     createCompanyListKpiCard({
       icon: "document",
       label: "Aktivni ugovori",
       value: String(activeContracts),
-      detail: `${activeCompanies.length} aktivnih tvrtki`,
+      detail: "ugovori u radu",
+      meta: [
+        `${fixedContracts} Fixed`,
+        `${hybridContracts} Hybrid`,
+      ],
       tone: activeContracts ? "success" : "muted",
     }),
     createCompanyListKpiCard({
       icon: "dates",
       label: "Periodika",
-      value: String(companiesWithPeriodics),
-      detail: overdueCompanies ? `${overdueCompanies} tvrtki s istekom` : "Bez kritičnih rokova",
-      tone: overdueCompanies ? "danger" : companiesWithPeriodics ? "info" : "muted",
+      value: String(periodicsTotal),
+      detail: "ukupno rokova",
+      meta: [
+        `${companiesWithPeriodics} tvrtki`,
+        overdueCompanies ? `${overdueCompanies} isteklo` : `${periodicsWarnings} uskoro`,
+      ],
+      tone: overdueCompanies ? "danger" : periodicsWarnings ? "warning" : periodicsTotal ? "success" : "muted",
     }),
   );
 }
