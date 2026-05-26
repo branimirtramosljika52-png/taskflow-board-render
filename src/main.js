@@ -372,12 +372,12 @@ const SESSION_IDLE_ACTIVITY_EVENTS = Object.freeze(["pointerdown", "keydown", "t
 const SESSION_IDLE_LOGOUT_MESSAGE = "Sesija je zakljucana zbog neaktivnosti. Prijavi se ponovno.";
 const COMPANY_EDITOR_RELATED_RENDER_DELAY_MS = 120;
 const COMPANY_EDITOR_ACTIVITY_IDLE_TIMEOUT_MS = 1200;
-const COMPANIES_COLUMN_LAYOUT_STORAGE_KEY = "safenexus.companies.column-widths.v1";
+const COMPANIES_COLUMN_LAYOUT_STORAGE_KEY = "safenexus.companies.column-widths.v2";
 const COMPANIES_COLUMN_LAYOUT = Object.freeze([
-  Object.freeze({ key: "company", defaultWidth: 360, minWidth: 260 }),
-  Object.freeze({ key: "contacts", defaultWidth: 300, minWidth: 230 }),
-  Object.freeze({ key: "contract", defaultWidth: 260, minWidth: 210 }),
-  Object.freeze({ key: "activity", defaultWidth: 270, minWidth: 220 }),
+  Object.freeze({ key: "company", defaultWidth: 430, minWidth: 300 }),
+  Object.freeze({ key: "contacts", defaultWidth: 330, minWidth: 250 }),
+  Object.freeze({ key: "contract", defaultWidth: 310, minWidth: 240 }),
+  Object.freeze({ key: "activity", defaultWidth: 340, minWidth: 260 }),
 ]);
 const OFFER_LOCATION_ALL_VALUE = "__all__";
 const OFFER_LOCATION_NONE_VALUE = "__none__";
@@ -44765,10 +44765,12 @@ function matchesLocationSearch(location = {}, queryNeedle = "") {
   return getLocationSearchHaystack(location).includes(queryNeedle);
 }
 
-function createCompanyActivityCell(company = {}) {
+function createCompanyActivityCell(rowSnapshot = {}) {
+  const company = rowSnapshot.company || rowSnapshot || {};
   const cell = document.createElement("td");
+  cell.className = "company-list-activity-table-cell";
   const stack = document.createElement("div");
-  stack.className = "list-cell company-activity-cell";
+  stack.className = "company-list-info-card company-activity-cell";
 
   const normalizedPeriod = normalizeCompanyPeriodStatus(company.period);
   const periodTone = normalizedPeriod === "active"
@@ -44783,11 +44785,41 @@ function createCompanyActivityCell(company = {}) {
       : "Neaktivno";
   const activityTone = company.isActive ? "active" : "inactive";
 
-  stack.append(
+  const statusGrid = document.createElement("div");
+  statusGrid.className = "company-list-status-grid";
+  statusGrid.append(
     createCompanyStatusLine("Periodika", periodLabel, periodTone),
     createCompanyStatusLine("Aktivnost", company.isActive ? "Aktivno" : "Neaktivno", activityTone),
   );
 
+  const operationalMeta = document.createElement("div");
+  operationalMeta.className = "list-meta-row company-list-operational-meta";
+  operationalMeta.append(
+    createMetaPill(
+      `${rowSnapshot.activeWorkOrderCount || 0}/${rowSnapshot.workOrderCount || 0} otvoreno`,
+      rowSnapshot.activeWorkOrderCount ? "is-info" : "is-muted",
+    ),
+    createMetaPill(
+      `${rowSnapshot.clientPortalUsersCount || 0} portal`,
+      rowSnapshot.clientPortalUsersCount ? "is-accent" : "is-muted",
+    ),
+  );
+
+  const serviceCodes = Array.isArray(rowSnapshot.serviceCodes) ? rowSnapshot.serviceCodes : [];
+  const serviceStrip = document.createElement("div");
+  serviceStrip.className = "company-list-service-strip";
+  if (serviceCodes.length > 0) {
+    serviceCodes.slice(0, 5).forEach((code) => {
+      serviceStrip.append(createMetaPill(code, "is-success"));
+    });
+    if (serviceCodes.length > 5) {
+      serviceStrip.append(createMetaPill(`+${serviceCodes.length - 5}`, "is-muted"));
+    }
+  } else {
+    serviceStrip.append(createMetaPill("Bez usluga", "is-muted"));
+  }
+
+  stack.append(statusGrid, operationalMeta, serviceStrip);
   cell.append(stack);
   return cell;
 }
@@ -44864,6 +44896,7 @@ function toggleCompanyListExpansion(companyId = "") {
 
 function createCompanyIdentityCell(company, rowSnapshot = null) {
   const cell = document.createElement("td");
+  cell.className = "company-list-company-cell";
   const stack = document.createElement("div");
   stack.className = "company-list-cell";
 
@@ -44889,10 +44922,18 @@ function createCompanyIdentityCell(company, rowSnapshot = null) {
 
   const copy = document.createElement("div");
   copy.className = "company-list-copy";
+
+  const titleRow = document.createElement("div");
+  titleRow.className = "company-list-title-row";
+  titleRow.append(createListLine(company.name || "Tvrtka", "list-primary company-list-title"));
+  if (company.isActive !== undefined) {
+    titleRow.append(createMetaPill(company.isActive ? "Aktivna" : "Neaktivna", company.isActive ? "is-success" : "is-danger"));
+  }
+
   copy.append(
-    createListLine(company.name || "Tvrtka", "list-primary"),
-    createListLine(company.headquarters || "Bez sjedišta", "list-secondary"),
-    createListLine(company.oib ? `OIB ${company.oib}` : "Bez OIB-a", "list-tertiary"),
+    titleRow,
+    createListLine(company.headquarters || "Bez sjedišta", "list-secondary company-list-address"),
+    createListLine(company.oib ? `OIB ${company.oib}` : "Bez OIB-a", "list-tertiary company-list-oib"),
   );
 
   if (rowSnapshot) {
@@ -44911,10 +44952,61 @@ function createCompanyIdentityCell(company, rowSnapshot = null) {
   return cell;
 }
 
+function createCompanyListDetailItem(label, value, className = "") {
+  const item = document.createElement("div");
+  item.className = ["company-list-detail-item", className].filter(Boolean).join(" ");
+
+  const labelNode = document.createElement("span");
+  labelNode.className = "company-list-detail-label";
+  labelNode.textContent = label;
+
+  const valueNode = document.createElement("strong");
+  valueNode.className = "company-list-detail-value";
+  valueNode.textContent = value || "Nije definirano";
+
+  item.append(labelNode, valueNode);
+  return item;
+}
+
+function createCompanyContactCell(rowSnapshot = {}) {
+  const cell = document.createElement("td");
+  cell.className = "company-list-contact-table-cell";
+
+  const stack = document.createElement("div");
+  stack.className = "company-list-info-card company-list-contact-card";
+
+  const role = String(rowSnapshot.contactEyebrow || "").trim();
+  if (role) {
+    stack.append(createListLine(role, "list-eyebrow company-list-card-kicker"));
+  }
+
+  stack.append(createListLine(rowSnapshot.contactTitle || "Bez kontakt osobe", "list-primary"));
+
+  const detailGrid = document.createElement("div");
+  detailGrid.className = "company-list-detail-grid";
+  detailGrid.append(
+    createCompanyListDetailItem("Telefon", rowSnapshot.contactSubtitle || "Bez broja"),
+    createCompanyListDetailItem("Email", rowSnapshot.contactTertiary || "Bez emaila"),
+  );
+  stack.append(detailGrid);
+
+  const metaItems = (rowSnapshot.contactMeta ?? []).filter(Boolean);
+  if (metaItems.length > 0) {
+    const metaRow = document.createElement("div");
+    metaRow.className = "list-meta-row company-list-contact-meta";
+    metaItems.forEach((item) => metaRow.append(createMetaPill(item, "is-muted")));
+    stack.append(metaRow);
+  }
+
+  cell.append(stack);
+  return cell;
+}
+
 function createCompanyContractsCell(rowSnapshot = {}) {
   const cell = document.createElement("td");
+  cell.className = "company-list-contract-table-cell";
   const stack = document.createElement("div");
-  stack.className = "list-cell company-contracts-cell";
+  stack.className = "company-list-info-card company-contracts-cell";
 
   const activeContracts = Array.isArray(rowSnapshot.activeContracts) ? rowSnapshot.activeContracts : [];
 
@@ -45223,6 +45315,7 @@ function buildCompanyListRowSnapshot(company = {}, contractSummary = null) {
   const isExpanded = state.companyExpandedIds.has(companyId);
   const activeWorkOrderCount = structure.workOrders.filter((workOrder) => String(workOrder.status || "") === "Otvoreni RN").length;
   const serviceCodes = getCompanyServiceCodes(companyId);
+  const clientPortalUsersCount = getCompanyClientUsers(companyId).length;
   const managerSummary = getCompanyManagerSummaryText(company);
   const contractCount = Math.max(0, Number(contractSummary?.count) || 0);
   const activeContracts = Array.isArray(contractSummary?.activeContracts) ? contractSummary.activeContracts : [];
@@ -45244,6 +45337,7 @@ function buildCompanyListRowSnapshot(company = {}, contractSummary = null) {
     objectCount: structure.objects.length,
     workOrderCount: structure.workOrders.length,
     activeWorkOrderCount,
+    clientPortalUsersCount,
     serviceCodes,
     ariaLabel: `Uredi tvrtku ${company.name || "tvrtku"}`,
     contactEyebrow: company.representativeRole || "",
@@ -45295,6 +45389,7 @@ function buildCompanyListRowSnapshot(company = {}, contractSummary = null) {
       contractSummary?.validFrom || "",
       contractSummary?.validTo || "",
       structure.signature,
+      clientPortalUsersCount,
       isExpanded ? "expanded" : "collapsed",
     ].join("~~"),
   };
@@ -108969,15 +109064,9 @@ function renderCompanies() {
 
       row.append(
         createCompanyIdentityCell(rowSnapshot.company, rowSnapshot),
-        createStackCell({
-          eyebrow: rowSnapshot.contactEyebrow,
-          title: rowSnapshot.contactTitle,
-          subtitle: rowSnapshot.contactSubtitle,
-          tertiary: rowSnapshot.contactTertiary,
-          meta: rowSnapshot.contactMeta,
-        }),
+        createCompanyContactCell(rowSnapshot),
         createCompanyContractsCell(rowSnapshot),
-        createCompanyActivityCell(rowSnapshot.company),
+        createCompanyActivityCell(rowSnapshot),
       );
 
       fragment.append(row);
