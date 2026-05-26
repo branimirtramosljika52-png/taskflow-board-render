@@ -796,6 +796,31 @@ function normalizeCompanyTemplateAssignments(values = []) {
     .slice(0, 240);
 }
 
+function normalizeCompanyContractPriceList(values = []) {
+  const source = Array.isArray(values) ? values : [values];
+
+  return source
+    .map((entry) => (entry && typeof entry === "object" && !Array.isArray(entry) ? entry : {}))
+    .map((entry) => {
+      const name = normalizeText(entry.name ?? entry.title ?? entry.service);
+      const unit = normalizeText(entry.unit ?? entry.measureUnit);
+      const price = normalizeText(entry.price ?? entry.unitPrice ?? entry.amount);
+      const note = normalizeText(entry.note ?? entry.description);
+      if (!name && !unit && !price && !note) {
+        return null;
+      }
+      return {
+        id: normalizeText(entry.id) || crypto.randomUUID(),
+        name,
+        unit,
+        price,
+        note,
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 120);
+}
+
 function normalizePriority(value) {
   const priority = normalizeText(value);
   return PRIORITY_SET.has(priority) ? priority : "Normal";
@@ -3842,16 +3867,21 @@ function selectLocationContact(location, preferredSlot) {
 
 export function createCompany(input, existingCompanies = [], createId = () => crypto.randomUUID(), now = isoNow) {
   const timestamp = now();
+  const contractValidForever = normalizeBoolean(input.contractValidForever, false);
   const company = {
     id: createId(),
     name: requireText(input.name, "Naziv tvrtke"),
     logoDataUrl: normalizeText(input.logoDataUrl),
     headquarters: normalizeText(input.headquarters),
     oib: normalizeOib(input.oib),
+    contractName: normalizeText(input.contractName),
     contractType: normalizeText(input.contractType),
     contractNumber: normalizeText(input.contractNumber),
     contractValidFrom: normalizeOptionalDate(input.contractValidFrom),
-    contractValidTo: normalizeOptionalDate(input.contractValidTo),
+    contractValidForever,
+    contractValidTo: contractValidForever ? "" : normalizeOptionalDate(input.contractValidTo),
+    contractMonthlyPrice: normalizeText(input.contractMonthlyPrice),
+    contractPriceList: normalizeCompanyContractPriceList(input.contractPriceList),
     employeeSize: normalizeCompanyEmployeeSize(input.employeeSize),
     managerUserIds: normalizeIdList(input.managerUserIds).slice(0, 24),
     managerUserLabels: normalizeCompanyManagerLabels(input.managerUserLabels),
@@ -3876,20 +3906,33 @@ export function createCompany(input, existingCompanies = [], createId = () => cr
 }
 
 export function updateCompany(current, patch, existingCompanies = [], now = isoNow) {
+  const contractValidForever = hasOwn(patch, "contractValidForever")
+    ? normalizeBoolean(patch.contractValidForever, current.contractValidForever)
+    : normalizeBoolean(current.contractValidForever, false);
   const next = {
     ...current,
     name: hasOwn(patch, "name") ? requireText(patch.name, "Naziv tvrtke") : current.name,
     logoDataUrl: hasOwn(patch, "logoDataUrl") ? normalizeText(patch.logoDataUrl) : current.logoDataUrl,
     headquarters: hasOwn(patch, "headquarters") ? normalizeText(patch.headquarters) : current.headquarters,
     oib: hasOwn(patch, "oib") ? normalizeOib(patch.oib) : current.oib,
+    contractName: hasOwn(patch, "contractName") ? normalizeText(patch.contractName) : normalizeText(current.contractName),
     contractType: hasOwn(patch, "contractType") ? normalizeText(patch.contractType) : current.contractType,
     contractNumber: hasOwn(patch, "contractNumber") ? normalizeText(patch.contractNumber) : current.contractNumber,
     contractValidFrom: hasOwn(patch, "contractValidFrom")
       ? normalizeOptionalDate(patch.contractValidFrom)
       : normalizeOptionalDate(current.contractValidFrom),
-    contractValidTo: hasOwn(patch, "contractValidTo")
+    contractValidForever,
+    contractValidTo: contractValidForever
+      ? ""
+      : hasOwn(patch, "contractValidTo")
       ? normalizeOptionalDate(patch.contractValidTo)
       : normalizeOptionalDate(current.contractValidTo),
+    contractMonthlyPrice: hasOwn(patch, "contractMonthlyPrice")
+      ? normalizeText(patch.contractMonthlyPrice)
+      : normalizeText(current.contractMonthlyPrice),
+    contractPriceList: hasOwn(patch, "contractPriceList")
+      ? normalizeCompanyContractPriceList(patch.contractPriceList)
+      : normalizeCompanyContractPriceList(current.contractPriceList),
     employeeSize: hasOwn(patch, "employeeSize")
       ? normalizeCompanyEmployeeSize(patch.employeeSize)
       : normalizeCompanyEmployeeSize(current.employeeSize),

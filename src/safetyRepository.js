@@ -2965,7 +2965,8 @@ function sanitizeUser(row) {
 
 async function fetchSnapshotFromConnection(connection) {
   const [companyRows] = await connection.query(`
-    SELECT id, naziv_tvrtke, sjediste, oib, vrsta_ugovora, broj_ugovora, periodika,
+    SELECT id, naziv_tvrtke, sjediste, oib, naziv_ugovora, vrsta_ugovora, broj_ugovora,
+           ugovor_vrijedi_od, ugovor_vrijedi_do, ugovor_vrijedi_trajno, mjesecna_cijena, cjenik_json, periodika,
            aktivno, predstavnik_korisnika, odgovorna_pozicija, odgovorna_osoba_oib, broj_zaposlenih,
            kontakt_broj, kontakt_email, voditelji_korisnik_ids_json, voditelji_oznaka_json, template_assignments_json, napomena,
            logo_data_url, logo_storage_provider, logo_storage_bucket, logo_storage_key, logo_storage_url,
@@ -2993,8 +2994,14 @@ async function fetchSnapshotFromConnection(connection) {
       logoStorageUrl: storedLogo.storageUrl,
       headquarters: row.sjediste ?? "",
       oib: row.oib ?? "",
+      contractName: row.naziv_ugovora ?? "",
       contractType: row.vrsta_ugovora ?? "",
       contractNumber: row.broj_ugovora ?? "",
+      contractValidFrom: normalizeDateOnly(row.ugovor_vrijedi_od),
+      contractValidTo: normalizeDateOnly(row.ugovor_vrijedi_do),
+      contractValidForever: Boolean(Number(row.ugovor_vrijedi_trajno ?? 0)),
+      contractMonthlyPrice: row.mjesecna_cijena ?? "",
+      contractPriceList: parseJsonArray(row.cjenik_json),
       employeeSize: row.broj_zaposlenih ?? "",
       managerUserIds: parseJsonArray(row.voditelji_korisnik_ids_json).map((value) => dbString(value)).filter(Boolean),
       managerUserLabels: parseJsonArray(row.voditelji_oznaka_json).map((value) => dbString(value)).filter(Boolean),
@@ -7654,6 +7661,12 @@ export class MySqlSafetyRepository {
       )
     `);
     await ensureCompanyRolePermissionScopeSchema(this.pool);
+    await ensureColumnExists(this.pool, "firme", "naziv_ugovora", "VARCHAR(180) NOT NULL DEFAULT '' AFTER vrsta_ugovora");
+    await ensureColumnExists(this.pool, "firme", "ugovor_vrijedi_od", "DATE NULL AFTER broj_ugovora");
+    await ensureColumnExists(this.pool, "firme", "ugovor_vrijedi_do", "DATE NULL AFTER ugovor_vrijedi_od");
+    await ensureColumnExists(this.pool, "firme", "ugovor_vrijedi_trajno", "TINYINT(1) NOT NULL DEFAULT 0 AFTER ugovor_vrijedi_do");
+    await ensureColumnExists(this.pool, "firme", "mjesecna_cijena", "VARCHAR(80) NOT NULL DEFAULT '' AFTER ugovor_vrijedi_trajno");
+    await ensureColumnExists(this.pool, "firme", "cjenik_json", "LONGTEXT NULL AFTER mjesecna_cijena");
     await ensureColumnExists(this.pool, "radni_nalozi", "izvrsitelji_json", "LONGTEXT NULL AFTER izvrsitelj_rn2");
     await ensureColumnExists(this.pool, "radni_nalozi", "tim_rn", "VARCHAR(160) NOT NULL DEFAULT '' AFTER izvrsitelji_json");
     await ensureColumnExists(this.pool, "radni_nalozi", "datum_izvrsenja", "DATE NULL AFTER rok_zavrsetka");
@@ -7958,12 +7971,14 @@ export class MySqlSafetyRepository {
       const [result] = await connection.query(
         `
           INSERT INTO firme
-            (naziv_tvrtke, sjediste, oib, predstavnik_korisnika, periodika, vrsta_ugovora,
-             odgovorna_pozicija, odgovorna_osoba_oib, broj_zaposlenih, broj_ugovora, napomena, aktivno, kontakt_broj, kontakt_email,
+            (naziv_tvrtke, sjediste, oib, predstavnik_korisnika, periodika, naziv_ugovora, vrsta_ugovora,
+             odgovorna_pozicija, odgovorna_osoba_oib, broj_zaposlenih, broj_ugovora,
+             ugovor_vrijedi_od, ugovor_vrijedi_do, ugovor_vrijedi_trajno, mjesecna_cijena, cjenik_json,
+             napomena, aktivno, kontakt_broj, kontakt_email,
              voditelji_korisnik_ids_json, voditelji_oznaka_json, template_assignments_json,
              logo_data_url, logo_storage_provider, logo_storage_bucket, logo_storage_key, logo_storage_url,
              datum_izmjene, izmjenu_unio)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)
         `,
         [
           company.name,
@@ -7971,11 +7986,17 @@ export class MySqlSafetyRepository {
           company.oib,
           company.representative,
           company.period,
+          company.contractName,
           company.contractType,
           company.representativeRole,
           company.representativeOib,
           company.employeeSize,
           company.contractNumber,
+          company.contractValidFrom || null,
+          company.contractValidTo || null,
+          company.contractValidForever ? 1 : 0,
+          company.contractMonthlyPrice,
+          JSON.stringify(company.contractPriceList ?? []),
           company.note,
           activeLabel(company.isActive),
           company.contactPhone,
@@ -8032,7 +8053,9 @@ export class MySqlSafetyRepository {
         `
           UPDATE firme
           SET naziv_tvrtke = ?, sjediste = ?, oib = ?, predstavnik_korisnika = ?, periodika = ?,
-              vrsta_ugovora = ?, odgovorna_pozicija = ?, odgovorna_osoba_oib = ?, broj_zaposlenih = ?, broj_ugovora = ?, napomena = ?, aktivno = ?, kontakt_broj = ?,
+              naziv_ugovora = ?, vrsta_ugovora = ?, odgovorna_pozicija = ?, odgovorna_osoba_oib = ?, broj_zaposlenih = ?, broj_ugovora = ?,
+              ugovor_vrijedi_od = ?, ugovor_vrijedi_do = ?, ugovor_vrijedi_trajno = ?, mjesecna_cijena = ?, cjenik_json = ?,
+              napomena = ?, aktivno = ?, kontakt_broj = ?,
               kontakt_email = ?, voditelji_korisnik_ids_json = ?, voditelji_oznaka_json = ?, template_assignments_json = ?,
               logo_data_url = ?, logo_storage_provider = ?, logo_storage_bucket = ?,
               logo_storage_key = ?, logo_storage_url = ?, datum_izmjene = NOW(), izmjenu_unio = ?
@@ -8044,11 +8067,17 @@ export class MySqlSafetyRepository {
           next.oib,
           next.representative,
           next.period,
+          next.contractName,
           next.contractType,
           next.representativeRole,
           next.representativeOib,
           next.employeeSize,
           next.contractNumber,
+          next.contractValidFrom || null,
+          next.contractValidTo || null,
+          next.contractValidForever ? 1 : 0,
+          next.contractMonthlyPrice,
+          JSON.stringify(next.contractPriceList ?? []),
           next.note,
           activeLabel(next.isActive),
           next.contactPhone,

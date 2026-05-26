@@ -1948,6 +1948,7 @@ const state = {
     status: "all",
     sort: "newest",
   },
+  companyContractPriceListDraft: [],
   companyExpandedIds: new Set(),
   locationEditorOpen: false,
   vehicleEditorOpen: false,
@@ -5236,10 +5237,16 @@ const companyLogoClearButton = document.querySelector("#company-logo-clear");
 const companyNameInput = document.querySelector("#company-name");
 const companyHeadquartersInput = document.querySelector("#company-headquarters");
 const companyOibInput = document.querySelector("#company-oib");
+const companyContractNameInput = document.querySelector("#company-contract-name");
 const companyContractTypeInput = document.querySelector("#company-contract-type");
 const companyContractNumberInput = document.querySelector("#company-contract-number");
 const companyContractValidFromInput = document.querySelector("#company-contract-valid-from");
 const companyContractValidToInput = document.querySelector("#company-contract-valid-to");
+const companyContractValidForeverInput = document.querySelector("#company-contract-valid-forever");
+const companyContractMonthlyPriceInput = document.querySelector("#company-contract-monthly-price");
+const companyContractPriceList = document.querySelector("#company-contract-price-list");
+const companyContractPriceListAddButton = document.querySelector("#company-contract-price-list-add");
+const companyContractPriceListEmpty = document.querySelector("#company-contract-price-list-empty");
 const companyEmployeeSizeInput = document.querySelector("#company-employee-size");
 const companyManagerPickerSlot = document.querySelector("#company-manager-picker");
 const companyManagerUserIdsInput = document.querySelector("#company-manager-user-ids");
@@ -5280,6 +5287,7 @@ const companyNoteInput = document.querySelector("#company-note");
 const companiesSearchInput = document.querySelector("#companies-search");
 const companiesPeriodFilterInput = document.querySelector("#companies-filter-period");
 const companiesActivityFilterInput = document.querySelector("#companies-filter-activity");
+const companiesKpiRow = document.querySelector("#companies-kpi-row");
 const companiesTable = document.querySelector(".companies-table");
 const companiesBody = document.querySelector("#companies-body");
 const companiesEmpty = document.querySelector("#companies-empty");
@@ -44446,6 +44454,257 @@ function createCompanyListKpiCard({ icon = "company", label = "", value = "0", d
   return card;
 }
 
+function normalizeCompanyContractType(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "";
+  }
+  const normalized = raw.toLowerCase();
+  if (normalized === "fixed") {
+    return "Fixed";
+  }
+  if (normalized === "hybrid") {
+    return "Hybrid";
+  }
+  return "";
+}
+
+function normalizeCompanyContractPriceList(items = []) {
+  const source = Array.isArray(items) ? items : [items];
+  return source
+    .map((item) => (item && typeof item === "object" && !Array.isArray(item) ? item : {}))
+    .map((item) => {
+      const name = String(item.name ?? item.title ?? item.service ?? "").trim();
+      const unit = String(item.unit ?? item.measureUnit ?? "").trim();
+      const price = String(item.price ?? item.unitPrice ?? item.amount ?? "").trim();
+      const note = String(item.note ?? item.description ?? "").trim();
+      if (!name && !unit && !price && !note) {
+        return null;
+      }
+      return {
+        id: String(item.id || createClientSideId("company-price")).trim(),
+        name,
+        unit,
+        price,
+        note,
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 120);
+}
+
+function parseCompanyMoneyValue(value = "") {
+  const raw = String(value ?? "").trim();
+  if (!raw) {
+    return 0;
+  }
+  const money = raw
+    .replace(/[^\d,.-]/g, "")
+    .replace(/(?!^)-/g, "");
+  const hasComma = money.includes(",");
+  const hasDot = money.includes(".");
+  const normalized = hasComma && hasDot
+    ? money.replace(/\./g, "").replace(",", ".")
+    : money.replace(",", ".");
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatCompanyKpiChange(currentValue = 0, previousValue = 0) {
+  const current = Number(currentValue) || 0;
+  const previous = Number(previousValue) || 0;
+  if (previous <= 0) {
+    return current > 0 ? "Novo" : "0%";
+  }
+  const change = ((current - previous) / previous) * 100;
+  const rounded = Math.round(change);
+  return `${rounded > 0 ? "+" : ""}${rounded}%`;
+}
+
+function getPreviousMonthKey(monthKey = new Date().toISOString().slice(0, 7)) {
+  const [yearText, monthText] = String(monthKey || "").split("-");
+  const year = Number.parseInt(yearText, 10);
+  const month = Number.parseInt(monthText, 10);
+  if (!Number.isFinite(year) || !Number.isFinite(month)) {
+    return "";
+  }
+  const date = new Date(Date.UTC(year, month - 2, 1));
+  return date.toISOString().slice(0, 7);
+}
+
+function getCompanyInvoiceMonthStats(monthKey = new Date().toISOString().slice(0, 7)) {
+  const stats = { count: 0, amount: 0 };
+  (state.workOrders ?? []).forEach((workOrder) => {
+    const invoiceDate = normalizeCompanyDateValue(workOrder?.invoiceDate || "");
+    if (!invoiceDate || invoiceDate.slice(0, 7) !== monthKey) {
+      return;
+    }
+    stats.count += 1;
+    stats.amount += parseCompanyMoneyValue(workOrder?.weight || "");
+  });
+  return stats;
+}
+
+function createCompanyPriceListField(label = "", field = "", value = "", placeholder = "") {
+  const wrapper = document.createElement("label");
+  wrapper.className = "field";
+
+  const labelNode = document.createElement("span");
+  labelNode.textContent = label;
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = value || "";
+  input.placeholder = placeholder;
+  input.dataset.companyPriceField = field;
+  input.maxLength = field === "note" ? 220 : 120;
+  if (field === "price") {
+    input.inputMode = "decimal";
+  }
+
+  input.addEventListener("input", () => {
+    const row = input.closest("[data-company-price-row]");
+    const id = String(row?.dataset.companyPriceRow || "").trim();
+    const draft = state.companyContractPriceListDraft.find((item) => item.id === id);
+    if (draft) {
+      draft[field] = input.value;
+    }
+  });
+
+  wrapper.append(labelNode, input);
+  return wrapper;
+}
+
+function renderCompanyContractPriceList() {
+  if (!companyContractPriceList) {
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  state.companyContractPriceListDraft.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "company-contract-price-row";
+    row.dataset.companyPriceRow = item.id;
+
+    const removeButton = createIconActionButton(
+      "Ukloni stavku",
+      "trash",
+      "company-contract-price-row-remove",
+      () => {
+        state.companyContractPriceListDraft = state.companyContractPriceListDraft.filter((entry) => entry.id !== item.id);
+        renderCompanyContractPriceList();
+      },
+    );
+
+    row.append(
+      createCompanyPriceListField("Stavka", "name", item.name, "npr. Ispitivanje panik rasvjete"),
+      createCompanyPriceListField("Jedinica", "unit", item.unit, "kom / mj"),
+      createCompanyPriceListField("Cijena", "price", item.price, "npr. 25 EUR"),
+      createCompanyPriceListField("Napomena", "note", item.note, "Opcionalno"),
+      removeButton,
+    );
+    fragment.append(row);
+  });
+
+  companyContractPriceList.replaceChildren(fragment);
+  if (companyContractPriceListEmpty) {
+    companyContractPriceListEmpty.hidden = state.companyContractPriceListDraft.length > 0;
+  }
+}
+
+function setCompanyContractPriceListDraft(items = []) {
+  state.companyContractPriceListDraft = normalizeCompanyContractPriceList(items);
+  renderCompanyContractPriceList();
+}
+
+function collectCompanyContractPriceList() {
+  if (!(companyContractPriceList instanceof HTMLElement)) {
+    return normalizeCompanyContractPriceList(state.companyContractPriceListDraft);
+  }
+
+  const rows = Array.from(companyContractPriceList.querySelectorAll("[data-company-price-row]"));
+  const values = rows.map((row) => ({
+    id: row.dataset.companyPriceRow || "",
+    name: row.querySelector('[data-company-price-field="name"]')?.value || "",
+    unit: row.querySelector('[data-company-price-field="unit"]')?.value || "",
+    price: row.querySelector('[data-company-price-field="price"]')?.value || "",
+    note: row.querySelector('[data-company-price-field="note"]')?.value || "",
+  }));
+  state.companyContractPriceListDraft = normalizeCompanyContractPriceList(values);
+  return state.companyContractPriceListDraft;
+}
+
+function syncCompanyContractValidityControls() {
+  const isForever = Boolean(companyContractValidForeverInput?.checked);
+  const validToField = companyContractValidToInput?.closest(".field");
+  if (validToField) {
+    validToField.hidden = isForever;
+  }
+  if (companyContractValidToInput) {
+    companyContractValidToInput.disabled = isForever;
+    if (isForever) {
+      companyContractValidToInput.value = "";
+    }
+  }
+}
+
+function renderCompaniesKpiRow(companies = [], contractSummaryMap = new Map()) {
+  if (!companiesKpiRow) {
+    return;
+  }
+
+  const activeCompanies = companies.filter((company) => company?.isActive !== false);
+  const monthlyCompanies = activeCompanies.filter((company) => parseCompanyMoneyValue(company?.contractMonthlyPrice || "") > 0);
+  const monthlyAmount = monthlyCompanies.reduce((sum, company) => sum + parseCompanyMoneyValue(company?.contractMonthlyPrice || ""), 0);
+  const activeContracts = companies.reduce((count, company) => {
+    const companyId = String(company?.id || "").trim();
+    const summary = contractSummaryMap.get(companyId);
+    const linkedActiveCount = Array.isArray(summary?.activeContracts) ? summary.activeContracts.length : 0;
+    const inlineActive = !linkedActiveCount
+      && company?.isActive !== false
+      && (company?.contractName || company?.contractType || company?.contractNumber);
+    return count + linkedActiveCount + (inlineActive ? 1 : 0);
+  }, 0);
+  const companiesWithPeriodics = companies.filter((company) => normalizeCompanyPeriodStatus(company?.period) === "active").length;
+  const overdueCompanies = companies.filter((company) => getCompanyPeriodicsSummary(company?.id || "").overdueCount > 0).length;
+  const currentMonthKey = new Date().toISOString().slice(0, 7);
+  const previousMonthKey = getPreviousMonthKey(currentMonthKey);
+  const currentInvoices = getCompanyInvoiceMonthStats(currentMonthKey);
+  const previousInvoices = getCompanyInvoiceMonthStats(previousMonthKey);
+  const invoiceChange = formatCompanyKpiChange(currentInvoices.amount, previousInvoices.amount);
+
+  companiesKpiRow.replaceChildren(
+    createCompanyListKpiCard({
+      icon: "billing",
+      label: "Mjesečne fakture",
+      value: String(monthlyCompanies.length),
+      detail: monthlyAmount > 0 ? `${formatCurrencyAmount(monthlyAmount, "EUR")} mjesečno` : "Nema mjesečnih cijena",
+      tone: monthlyCompanies.length ? "success" : "muted",
+    }),
+    createCompanyListKpiCard({
+      icon: "number",
+      label: "Rast faktura",
+      value: invoiceChange,
+      detail: `${currentInvoices.count} faktura ovaj mjesec`,
+      tone: currentInvoices.amount >= previousInvoices.amount ? "info" : "warning",
+    }),
+    createCompanyListKpiCard({
+      icon: "document",
+      label: "Aktivni ugovori",
+      value: String(activeContracts),
+      detail: `${activeCompanies.length} aktivnih tvrtki`,
+      tone: activeContracts ? "success" : "muted",
+    }),
+    createCompanyListKpiCard({
+      icon: "dates",
+      label: "Periodika",
+      value: String(companiesWithPeriodics),
+      detail: overdueCompanies ? `${overdueCompanies} tvrtki s istekom` : "Bez kritičnih rokova",
+      tone: overdueCompanies ? "danger" : companiesWithPeriodics ? "info" : "muted",
+    }),
+  );
+}
+
 function createStatusPill(text, isActive = true) {
   return createMetaPill(text, isActive ? "is-success" : "is-muted");
 }
@@ -44634,6 +44893,13 @@ function getActiveContractsCountLabel(count = 0) {
 function resolveCompanyContractValidity(company = {}, linkedContracts = []) {
   const explicitValidFrom = normalizeCompanyDateValue(company.contractValidFrom);
   const explicitValidTo = normalizeCompanyDateValue(company.contractValidTo);
+  if (company.contractValidForever) {
+    return {
+      validFrom: explicitValidFrom,
+      validTo: "",
+      source: "company-forever",
+    };
+  }
   if (explicitValidFrom || explicitValidTo) {
     return {
       validFrom: explicitValidFrom,
@@ -44665,6 +44931,11 @@ function resolveCompanyContractValidity(company = {}, linkedContracts = []) {
 
 function getCompanyContractValidityLabel(company = {}, linkedContracts = []) {
   const validity = resolveCompanyContractValidity(company, linkedContracts);
+  if (validity.source === "company-forever") {
+    return validity.validFrom
+      ? `Vrijedi trajno od ${formatCompactDate(validity.validFrom)}`
+      : "Vrijedi trajno";
+  }
   const label = formatContractValidityLabel(validity.validFrom, validity.validTo, { prefix: "Važenje" });
   if (!label) {
     return "Važenje nije definirano";
@@ -44695,10 +44966,14 @@ function getCompanySearchHaystack(company = {}) {
     company.name,
     company.headquarters,
     company.oib,
+    company.contractName,
     company.contractType,
     company.contractNumber,
     company.contractValidFrom,
     company.contractValidTo,
+    company.contractValidForever ? "vrijedi trajno" : "",
+    company.contractMonthlyPrice,
+    normalizeCompanyContractPriceList(company.contractPriceList).map((item) => [item.name, item.unit, item.price, item.note].join("|")).join("~"),
     employeeSize,
     company.representative,
     company.representativeRole,
@@ -44726,10 +45001,19 @@ function getCompanySearchHaystack(company = {}) {
     company.name,
     company.headquarters,
     company.oib,
+    company.contractName,
     company.contractType,
     company.contractNumber,
     company.contractValidFrom,
     company.contractValidTo,
+    company.contractValidForever ? "vrijedi trajno trajno" : "",
+    company.contractMonthlyPrice,
+    ...normalizeCompanyContractPriceList(company.contractPriceList).flatMap((item) => [
+      item.name,
+      item.unit,
+      item.price,
+      item.note,
+    ]),
     formatContractValidityLabel(company.contractValidFrom, company.contractValidTo),
     employeeSize,
     getCompanyEmployeeSizeLabel(employeeSize),
@@ -45305,6 +45589,11 @@ function createCompanyListExpansion(rowSnapshot = {}) {
 function getCompanyContractValidityLabelFromSummary(company = {}, contractSummary = null) {
   const explicitValidFrom = normalizeCompanyDateValue(company.contractValidFrom);
   const explicitValidTo = normalizeCompanyDateValue(company.contractValidTo);
+  if (company.contractValidForever) {
+    return explicitValidFrom
+      ? `Vrijedi trajno od ${formatCompactDate(explicitValidFrom)}`
+      : "Vrijedi trajno";
+  }
   const fallbackValidFrom = normalizeCompanyDateValue(contractSummary?.validFrom);
   const fallbackValidTo = normalizeCompanyDateValue(contractSummary?.validTo);
   const label = formatContractValidityLabel(
@@ -45333,6 +45622,7 @@ function buildCompanyListRowSnapshot(company = {}, contractSummary = null) {
   const clientPortalUsersCount = getCompanyClientUsers(companyId).length;
   const periodicsSummary = getCompanyPeriodicsSummary(companyId);
   const managerSummary = getCompanyManagerSummaryText(company);
+  const priceListCount = normalizeCompanyContractPriceList(company.contractPriceList).length;
   const contractCount = Math.max(0, Number(contractSummary?.count) || 0);
   const activeContracts = Array.isArray(contractSummary?.activeContracts) ? contractSummary.activeContracts : [];
   const hasLinkedContracts = contractCount > 0;
@@ -45365,12 +45655,14 @@ function buildCompanyListRowSnapshot(company = {}, contractSummary = null) {
     managerSummary,
     contactMeta,
     activeContracts,
-    contractTitle: hasLinkedContracts ? "Nema važećih ugovora" : (company.contractType || "Bez ugovora"),
+    contractTitle: hasLinkedContracts ? "Nema važećih ugovora" : (company.contractName || company.contractType || "Bez ugovora"),
     contractSubtitle: hasLinkedContracts
       ? "Provjeri datume ili status povezanih ugovora."
-      : (company.contractNumber || "Bez broja ugovora"),
+      : [company.contractType, company.contractNumber || "Bez broja ugovora"].filter(Boolean).join(" · "),
     contractValidityLabel,
     contractMeta: [
+      company.contractMonthlyPrice ? `${company.contractMonthlyPrice} mjesečno` : "",
+      priceListCount ? `${priceListCount} stavki cjenika` : "",
       `Zaposleni: ${employeeSizeLabel}`,
       ...(activeContracts.length ? [
         getActiveContractsCountLabel(activeContracts.length),
@@ -45388,10 +45680,20 @@ function buildCompanyListRowSnapshot(company = {}, contractSummary = null) {
       company.representativeOib,
       company.contactPhone,
       company.contactEmail,
+      company.contractName,
       company.contractType,
       company.contractNumber,
       company.contractValidFrom,
       company.contractValidTo,
+      company.contractValidForever ? "forever" : "",
+      company.contractMonthlyPrice,
+      normalizeCompanyContractPriceList(company.contractPriceList).map((item) => [
+        item.id,
+        item.name,
+        item.unit,
+        item.price,
+        item.note,
+      ].join("::")).join("~~"),
       company.employeeSize,
       company.period,
       company.isActive ? "1" : "0",
@@ -80070,10 +80372,18 @@ function getCompanyOverviewSummarySource(companyId = companyIdInput?.value || ""
     managerUserLabels: managerUserIds.length
       ? getCompanyManagerSelectedUserLabels(managerUserIds)
       : (persistedCompany.managerUserLabels || []),
-    contractType: companyContractTypeInput?.value ?? persistedCompany.contractType ?? "",
+    contractName: companyContractNameInput?.value ?? persistedCompany.contractName ?? "",
+    contractType: normalizeCompanyContractType(companyContractTypeInput?.value ?? persistedCompany.contractType ?? ""),
     contractNumber: companyContractNumberInput?.value ?? persistedCompany.contractNumber ?? "",
     contractValidFrom: companyContractValidFromInput?.value ?? persistedCompany.contractValidFrom ?? "",
-    contractValidTo: companyContractValidToInput?.value ?? persistedCompany.contractValidTo ?? "",
+    contractValidForever: Boolean(companyContractValidForeverInput?.checked ?? persistedCompany.contractValidForever ?? false),
+    contractValidTo: companyContractValidForeverInput?.checked
+      ? ""
+      : (companyContractValidToInput?.value ?? persistedCompany.contractValidTo ?? ""),
+    contractMonthlyPrice: companyContractMonthlyPriceInput?.value ?? persistedCompany.contractMonthlyPrice ?? "",
+    contractPriceList: companyContractPriceList
+      ? collectCompanyContractPriceList()
+      : normalizeCompanyContractPriceList(persistedCompany.contractPriceList ?? []),
     isActive: companyIsActiveInput?.value !== "false",
     representative: companyRepresentativeInput?.value ?? persistedCompany.representative ?? "",
     representativeRole: companyRepresentativeRoleInput?.value ?? persistedCompany.representativeRole ?? "",
@@ -80139,9 +80449,11 @@ function renderCompanyOverviewSummary(companyId = companyIdInput?.value || "") {
     }),
     createCompanyOverviewSummaryCard({
       label: "Ugovor",
-      value: company.contractType || "Bez ugovora",
+      value: company.contractName || company.contractType || "Bez ugovora",
       detail: [
+        company.contractType || "",
         company.contractNumber || "",
+        company.contractMonthlyPrice ? `${company.contractMonthlyPrice} mjesečno` : "",
         getCompanyContractValidityLabel(company, linkedContracts),
       ].filter(Boolean).join(" · "),
       tone: "warning",
@@ -80249,10 +80561,10 @@ function createCompanyContractPeriodicsEntries(company = {}) {
     });
   });
 
-  if (normalizeCompanyDateValue(company?.contractValidTo)) {
+  if (!company?.contractValidForever && normalizeCompanyDateValue(company?.contractValidTo)) {
     pushContractRow({
       id: companyId,
-      title: company?.contractType || "Ugovor tvrtke",
+      title: company?.contractName || company?.contractType || "Ugovor tvrtke",
       contractNumber: company?.contractNumber,
       validFrom: company?.contractValidFrom,
       validTo: company?.contractValidTo,
@@ -82113,10 +82425,14 @@ function buildCompanyPayload() {
     logoDataUrl: companyLogoDataUrlInput?.value || "",
     headquarters: companyHeadquartersInput.value,
     oib: companyOibInput.value,
-    contractType: companyContractTypeInput.value,
+    contractName: companyContractNameInput?.value || "",
+    contractType: normalizeCompanyContractType(companyContractTypeInput?.value || ""),
     contractNumber: companyContractNumberInput.value,
     contractValidFrom: companyContractValidFromInput?.value || "",
-    contractValidTo: companyContractValidToInput?.value || "",
+    contractValidForever: Boolean(companyContractValidForeverInput?.checked),
+    contractValidTo: companyContractValidForeverInput?.checked ? "" : (companyContractValidToInput?.value || ""),
+    contractMonthlyPrice: companyContractMonthlyPriceInput?.value || "",
+    contractPriceList: collectCompanyContractPriceList(),
     employeeSize: normalizeCompanyEmployeeSize(companyEmployeeSizeInput?.value || ""),
     managerUserIds,
     managerUserLabels: getCompanyManagerSelectedUserLabels(managerUserIds),
@@ -83624,6 +83940,11 @@ function resetCompanyForm() {
   syncCompanyEmployeeSizeInput("");
   rebuildCompanyManagerUserOptions([]);
   renderCompanyTemplateAssignments([]);
+  setCompanyContractPriceListDraft([]);
+  if (companyContractValidForeverInput) {
+    companyContractValidForeverInput.checked = false;
+  }
+  syncCompanyContractValidityControls();
   if (companyEditorTitle) {
     companyEditorTitle.textContent = "Company workspace";
   }
@@ -83847,14 +84168,25 @@ function hydrateCompanyForm(company) {
   companyNameInput.value = company.name;
   companyHeadquartersInput.value = company.headquarters;
   companyOibInput.value = company.oib;
-  companyContractTypeInput.value = company.contractType;
+  if (companyContractNameInput) {
+    companyContractNameInput.value = company.contractName || "";
+  }
+  companyContractTypeInput.value = normalizeCompanyContractType(company.contractType || "");
   companyContractNumberInput.value = company.contractNumber;
   if (companyContractValidFromInput) {
     companyContractValidFromInput.value = normalizeCompanyDateValue(company.contractValidFrom || "");
   }
+  if (companyContractValidForeverInput) {
+    companyContractValidForeverInput.checked = Boolean(company.contractValidForever);
+  }
   if (companyContractValidToInput) {
     companyContractValidToInput.value = normalizeCompanyDateValue(company.contractValidTo || "");
   }
+  if (companyContractMonthlyPriceInput) {
+    companyContractMonthlyPriceInput.value = company.contractMonthlyPrice || "";
+  }
+  setCompanyContractPriceListDraft(company.contractPriceList || []);
+  syncCompanyContractValidityControls();
   syncCompanyEmployeeSizeInput(company.employeeSize || "");
   rebuildCompanyManagerUserOptions(Array.isArray(company.managerUserIds) ? company.managerUserIds : []);
   renderCompanyTemplateAssignments(company.templateAssignments ?? []);
@@ -109005,6 +109337,7 @@ function renderCompanies() {
 
   if (!canViewCompanies) {
     companiesListRenderSignature = "";
+    companiesKpiRow?.replaceChildren();
     companiesBody.replaceChildren();
     companiesEmpty.hidden = false;
     companiesEmpty.textContent = "Nemaš ovlaštenje za pregled tvrtki.";
@@ -109016,6 +109349,7 @@ function renderCompanies() {
     .slice()
     .sort((left, right) => left.name.localeCompare(right.name, "hr"));
   const contractSummaryMap = buildCompanyListContractSummaryMap(state.contracts);
+  renderCompaniesKpiRow(sortedCompanies, contractSummaryMap);
   const queryNeedle = normalizeLooseName(state.companyFilters.query || "");
   const periodFilter = ["all", "active", "inactive"].includes(state.companyFilters.periodStatus)
     ? state.companyFilters.periodStatus
@@ -116571,10 +116905,13 @@ companyAddWorkOrderButton?.addEventListener("click", () => {
   companyHeadquartersInput,
   companyOibInput,
   companyEmployeeSizeInput,
+  companyContractNameInput,
   companyContractTypeInput,
   companyContractNumberInput,
   companyContractValidFromInput,
   companyContractValidToInput,
+  companyContractValidForeverInput,
+  companyContractMonthlyPriceInput,
   companyRepresentativeInput,
   companyRepresentativeRoleInput,
   companyRepresentativeOibInput,
@@ -116585,8 +116922,31 @@ companyAddWorkOrderButton?.addEventListener("click", () => {
     renderCompanyOverviewSummary(companyIdInput?.value || "");
   });
   input?.addEventListener("change", () => {
+    if (input === companyContractValidForeverInput) {
+      syncCompanyContractValidityControls();
+    }
     renderCompanyOverviewSummary(companyIdInput?.value || "");
   });
+});
+
+companyContractValidForeverInput?.addEventListener("input", () => {
+  syncCompanyContractValidityControls();
+});
+
+companyContractPriceListAddButton?.addEventListener("click", () => {
+  state.companyContractPriceListDraft = normalizeCompanyContractPriceList([
+    ...state.companyContractPriceListDraft,
+    {
+      id: createClientSideId("company-price"),
+      name: "",
+      unit: "",
+      price: "",
+      note: "",
+    },
+  ]);
+  renderCompanyContractPriceList();
+  const lastRow = companyContractPriceList?.querySelector("[data-company-price-row]:last-child");
+  lastRow?.querySelector("input")?.focus({ preventScroll: true });
 });
 
 companiesSearchInput?.addEventListener("input", () => {

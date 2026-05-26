@@ -375,6 +375,58 @@ test("companies keep uploaded logo data through create and update", () => {
   assert.equal(updated.representativeOib, "12345678903");
 });
 
+test("companies store contract billing settings and price list", () => {
+  const company = createCompany(
+    {
+      name: "Billing Test d.o.o.",
+      oib: "32345678901",
+      contractName: "Godišnji servis",
+      contractType: "Hybrid",
+      contractNumber: "UG-2026-01",
+      contractValidFrom: "2026-01-01",
+      contractValidTo: "2026-12-31",
+      contractValidForever: true,
+      contractMonthlyPrice: "450 EUR",
+      contractPriceList: [
+        { id: "price-1", name: "Panik rasvjeta", unit: "kom", price: "25 EUR", note: "Po lokaciji" },
+      ],
+    },
+    [],
+    () => "company-billing",
+    () => "2026-04-01T09:00:00.000Z",
+  );
+
+  assert.equal(company.contractName, "Godišnji servis");
+  assert.equal(company.contractType, "Hybrid");
+  assert.equal(company.contractValidForever, true);
+  assert.equal(company.contractValidTo, "");
+  assert.equal(company.contractMonthlyPrice, "450 EUR");
+  assert.deepEqual(company.contractPriceList, [
+    { id: "price-1", name: "Panik rasvjeta", unit: "kom", price: "25 EUR", note: "Po lokaciji" },
+  ]);
+
+  const updated = updateCompany(
+    company,
+    {
+      contractValidForever: false,
+      contractValidTo: "2027-12-31",
+      contractMonthlyPrice: "500 EUR",
+      contractPriceList: [
+        { id: "price-2", name: "Tipkalo", unit: "kom", price: "15 EUR", note: "" },
+      ],
+    },
+    [company],
+    () => "2026-04-01T10:00:00.000Z",
+  );
+
+  assert.equal(updated.contractValidForever, false);
+  assert.equal(updated.contractValidTo, "2027-12-31");
+  assert.equal(updated.contractMonthlyPrice, "500 EUR");
+  assert.deepEqual(updated.contractPriceList, [
+    { id: "price-2", name: "Tipkalo", unit: "kom", price: "15 EUR", note: "" },
+  ]);
+});
+
 test("createLocation requires a real company and keeps names unique per company", () => {
   const state = buildState();
 
