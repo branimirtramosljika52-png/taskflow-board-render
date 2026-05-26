@@ -21957,6 +21957,8 @@ function getWorkOrderIconMarkup(iconName) {
     status: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.25 8.25 6.2 11.2 12.75 4.75" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.4"/></svg>',
     priority: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 13.5V2.5M4 3h7l-1.6 2.55L11 8H4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
     number: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 3.25h8M4 7.25h8M4 11.25h8M6 1.75l-1 12.5M11 1.75l-1 12.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.1"/></svg>',
+    phone: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.1 2.5 6.45 5.4 5.2 6.45c.75 1.55 1.9 2.7 3.45 3.45l1.05-1.25 2.9 1.35-.4 2.2c-.1.55-.58.95-1.14.95C6.58 13.15 2.85 9.42 2.85 4.94c0-.56.4-1.04.95-1.14l1.3-.3Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
+    id: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.75 4.25h10.5v7.5H2.75zM5 6.25h2.25M5 8.25h2.25M9 6.25h2M9 8.25h2M5 10.25h6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
     contact: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.75 6.5a2.25 2.25 0 1 0 0-4.5 2.25 2.25 0 0 0 0 4.5ZM2.75 12.75a3 3 0 0 1 6 0M10.25 4.25h3M10.25 7.25h3M10.25 10.25h2.25" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"/></svg>',
     team: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.75 4.75h4.5v3.5h-4.5zM8.75 4.75h4.5v3.5h-4.5zM5.75 9.75h4.5v3.5h-4.5z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.2"/></svg>',
     tags: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2.75h-3.5a.75.75 0 0 0-.75.75V7l5.25 5.25a1 1 0 0 0 1.41 0l3.84-3.84a1 1 0 0 0 0-1.41L8 2.75ZM5 5.25a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5Z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.2"/></svg>',
@@ -44416,6 +44418,34 @@ function createMetaPill(text, className = "") {
   return pill;
 }
 
+function createCompanyListKpiCard({ icon = "company", label = "", value = "0", detail = "", tone = "muted" } = {}) {
+  const card = document.createElement("article");
+  card.className = `company-list-kpi-card is-${tone || "muted"}`;
+
+  const iconNode = document.createElement("span");
+  iconNode.className = "company-list-kpi-icon";
+  iconNode.innerHTML = getWorkOrderIconMarkup(icon);
+
+  const copy = document.createElement("span");
+  copy.className = "company-list-kpi-copy";
+
+  const labelNode = document.createElement("span");
+  labelNode.className = "company-list-kpi-label";
+  labelNode.textContent = label;
+
+  const valueNode = document.createElement("strong");
+  valueNode.className = "company-list-kpi-value";
+  valueNode.textContent = value;
+
+  const detailNode = document.createElement("small");
+  detailNode.className = "company-list-kpi-detail";
+  detailNode.textContent = detail || "Bez podataka";
+
+  copy.append(labelNode, valueNode, detailNode);
+  card.append(iconNode, copy);
+  return card;
+}
+
 function createStatusPill(text, isActive = true) {
   return createMetaPill(text, isActive ? "is-success" : "is-muted");
 }
@@ -44766,60 +44796,50 @@ function matchesLocationSearch(location = {}, queryNeedle = "") {
 }
 
 function createCompanyActivityCell(rowSnapshot = {}) {
-  const company = rowSnapshot.company || rowSnapshot || {};
   const cell = document.createElement("td");
   cell.className = "company-list-activity-table-cell";
   const stack = document.createElement("div");
   stack.className = "company-list-info-card company-activity-cell";
 
-  const normalizedPeriod = normalizeCompanyPeriodStatus(company.period);
-  const periodTone = normalizedPeriod === "active"
-    ? "active"
-    : normalizedPeriod === "inactive"
-      ? "inactive"
-      : "neutral";
-  const periodLabel = periodTone === "neutral"
-    ? (String(company.period || "").trim() || "Nedefinirano")
-    : normalizedPeriod === "active"
-      ? "Aktivno"
-      : "Neaktivno";
-  const activityTone = company.isActive ? "active" : "inactive";
+  const periodics = rowSnapshot.periodicsSummary || {};
+  const periodicsTotal = Number(periodics.totalCount || 0);
+  const periodicsOverdue = Number(periodics.overdueCount || 0);
+  const periodicsWarning = Number(periodics.warningCount || 0);
+  const periodicsDetail = periodicsOverdue > 0
+    ? `${periodicsOverdue} isteklo`
+    : periodicsWarning > 0
+      ? `${periodicsWarning} uskoro`
+      : periodicsTotal > 0
+        ? "Bez isteka"
+        : "Nema rokova";
 
   const statusGrid = document.createElement("div");
-  statusGrid.className = "company-list-status-grid";
+  statusGrid.className = "company-list-kpi-grid";
   statusGrid.append(
-    createCompanyStatusLine("Periodika", periodLabel, periodTone),
-    createCompanyStatusLine("Aktivnost", company.isActive ? "Aktivno" : "Neaktivno", activityTone),
+    createCompanyListKpiCard({
+      icon: "location",
+      label: "Lokacije",
+      value: String(rowSnapshot.locationCount || 0),
+      detail: `${rowSnapshot.objectCount || 0} objekata`,
+      tone: rowSnapshot.locationCount ? "info" : "muted",
+    }),
+    createCompanyListKpiCard({
+      icon: "number",
+      label: "Radni nalozi",
+      value: String(rowSnapshot.workOrderCount || 0),
+      detail: `${rowSnapshot.activeWorkOrderCount || 0} otvorenih`,
+      tone: rowSnapshot.activeWorkOrderCount ? "success" : "muted",
+    }),
+    createCompanyListKpiCard({
+      icon: "dates",
+      label: "Periodika",
+      value: String(periodicsTotal),
+      detail: periodicsDetail,
+      tone: periodicsOverdue > 0 ? "danger" : periodicsWarning > 0 ? "warning" : periodicsTotal > 0 ? "success" : "muted",
+    }),
   );
 
-  const operationalMeta = document.createElement("div");
-  operationalMeta.className = "list-meta-row company-list-operational-meta";
-  operationalMeta.append(
-    createMetaPill(
-      `${rowSnapshot.activeWorkOrderCount || 0}/${rowSnapshot.workOrderCount || 0} otvoreno`,
-      rowSnapshot.activeWorkOrderCount ? "is-info" : "is-muted",
-    ),
-    createMetaPill(
-      `${rowSnapshot.clientPortalUsersCount || 0} portal`,
-      rowSnapshot.clientPortalUsersCount ? "is-accent" : "is-muted",
-    ),
-  );
-
-  const serviceCodes = Array.isArray(rowSnapshot.serviceCodes) ? rowSnapshot.serviceCodes : [];
-  const serviceStrip = document.createElement("div");
-  serviceStrip.className = "company-list-service-strip";
-  if (serviceCodes.length > 0) {
-    serviceCodes.slice(0, 5).forEach((code) => {
-      serviceStrip.append(createMetaPill(code, "is-success"));
-    });
-    if (serviceCodes.length > 5) {
-      serviceStrip.append(createMetaPill(`+${serviceCodes.length - 5}`, "is-muted"));
-    }
-  } else {
-    serviceStrip.append(createMetaPill("Bez usluga", "is-muted"));
-  }
-
-  stack.append(statusGrid, operationalMeta, serviceStrip);
+  stack.append(statusGrid);
   cell.append(stack);
   return cell;
 }
@@ -44936,36 +44956,37 @@ function createCompanyIdentityCell(company, rowSnapshot = null) {
     createListLine(company.oib ? `OIB ${company.oib}` : "Bez OIB-a", "list-tertiary company-list-oib"),
   );
 
-  if (rowSnapshot) {
-    const metaRow = document.createElement("div");
-    metaRow.className = "list-meta-row company-list-structure-meta";
-    metaRow.append(
-      createMetaPill(`${rowSnapshot.locationCount || 0} lokacija`, rowSnapshot.locationCount ? "is-info" : "is-muted"),
-      createMetaPill(`${rowSnapshot.objectCount || 0} objekata`, rowSnapshot.objectCount ? "is-accent" : "is-muted"),
-      createMetaPill(`${rowSnapshot.workOrderCount || 0} RN`, rowSnapshot.workOrderCount ? "is-success" : "is-muted"),
-    );
-    copy.append(metaRow);
-  }
-
   stack.append(logo, copy);
   cell.append(stack);
   return cell;
 }
 
-function createCompanyListDetailItem(label, value, className = "") {
-  const item = document.createElement("div");
-  item.className = ["company-list-detail-item", className].filter(Boolean).join(" ");
+function createCompanyContactLine(icon = "contact", label = "", value = "", detail = "") {
+  const line = document.createElement("div");
+  line.className = "company-list-contact-line";
 
-  const labelNode = document.createElement("span");
-  labelNode.className = "company-list-detail-label";
+  const iconNode = document.createElement("span");
+  iconNode.className = "company-list-contact-icon";
+  iconNode.innerHTML = getWorkOrderIconMarkup(icon);
+
+  const copy = document.createElement("span");
+  copy.className = "company-list-contact-line-copy";
+
+  const labelNode = document.createElement("small");
   labelNode.textContent = label;
 
   const valueNode = document.createElement("strong");
-  valueNode.className = "company-list-detail-value";
   valueNode.textContent = value || "Nije definirano";
 
-  item.append(labelNode, valueNode);
-  return item;
+  copy.append(labelNode, valueNode);
+  if (detail) {
+    const detailNode = document.createElement("span");
+    detailNode.textContent = detail;
+    copy.append(detailNode);
+  }
+
+  line.append(iconNode, copy);
+  return line;
 }
 
 function createCompanyContactCell(rowSnapshot = {}) {
@@ -44975,29 +44996,23 @@ function createCompanyContactCell(rowSnapshot = {}) {
   const stack = document.createElement("div");
   stack.className = "company-list-info-card company-list-contact-card";
 
-  const role = String(rowSnapshot.contactEyebrow || "").trim();
-  if (role) {
-    stack.append(createListLine(role, "list-eyebrow company-list-card-kicker"));
-  }
-
-  stack.append(createListLine(rowSnapshot.contactTitle || "Bez kontakt osobe", "list-primary"));
-
-  const detailGrid = document.createElement("div");
-  detailGrid.className = "company-list-detail-grid";
-  detailGrid.append(
-    createCompanyListDetailItem("Telefon", rowSnapshot.contactSubtitle || "Bez broja"),
-    createCompanyListDetailItem("Email", rowSnapshot.contactTertiary || "Bez emaila"),
+  const lines = document.createElement("div");
+  lines.className = "company-list-contact-stack";
+  lines.append(
+    createCompanyContactLine("contact", "Kontakt", rowSnapshot.contactTitle || "Bez kontakt osobe", rowSnapshot.contactEyebrow || ""),
+    createCompanyContactLine("phone", "Telefon", rowSnapshot.contactSubtitle || "Bez broja"),
+    createCompanyContactLine("mail", "Email", rowSnapshot.contactTertiary || "Bez emaila"),
   );
-  stack.append(detailGrid);
 
-  const metaItems = (rowSnapshot.contactMeta ?? []).filter(Boolean);
-  if (metaItems.length > 0) {
-    const metaRow = document.createElement("div");
-    metaRow.className = "list-meta-row company-list-contact-meta";
-    metaItems.forEach((item) => metaRow.append(createMetaPill(item, "is-muted")));
-    stack.append(metaRow);
+  if (rowSnapshot.representativeOib) {
+    lines.append(createCompanyContactLine("id", "OIB", rowSnapshot.representativeOib));
   }
 
+  if (rowSnapshot.managerSummary) {
+    lines.append(createCompanyContactLine("team", "Voditelji", rowSnapshot.managerSummary));
+  }
+
+  stack.append(lines);
   cell.append(stack);
   return cell;
 }
@@ -45316,6 +45331,7 @@ function buildCompanyListRowSnapshot(company = {}, contractSummary = null) {
   const activeWorkOrderCount = structure.workOrders.filter((workOrder) => String(workOrder.status || "") === "Otvoreni RN").length;
   const serviceCodes = getCompanyServiceCodes(companyId);
   const clientPortalUsersCount = getCompanyClientUsers(companyId).length;
+  const periodicsSummary = getCompanyPeriodicsSummary(companyId);
   const managerSummary = getCompanyManagerSummaryText(company);
   const contractCount = Math.max(0, Number(contractSummary?.count) || 0);
   const activeContracts = Array.isArray(contractSummary?.activeContracts) ? contractSummary.activeContracts : [];
@@ -45338,12 +45354,15 @@ function buildCompanyListRowSnapshot(company = {}, contractSummary = null) {
     workOrderCount: structure.workOrders.length,
     activeWorkOrderCount,
     clientPortalUsersCount,
+    periodicsSummary,
     serviceCodes,
     ariaLabel: `Uredi tvrtku ${company.name || "tvrtku"}`,
     contactEyebrow: company.representativeRole || "",
     contactTitle: company.representative || "Bez kontakt osobe",
     contactSubtitle: company.contactPhone || "Bez kontaktnog broja",
     contactTertiary: company.contactEmail || "Bez kontaktnog emaila",
+    representativeOib: company.representativeOib || "",
+    managerSummary,
     contactMeta,
     activeContracts,
     contractTitle: hasLinkedContracts ? "Nema važećih ugovora" : (company.contractType || "Bez ugovora"),
@@ -45390,6 +45409,9 @@ function buildCompanyListRowSnapshot(company = {}, contractSummary = null) {
       contractSummary?.validTo || "",
       structure.signature,
       clientPortalUsersCount,
+      periodicsSummary.totalCount || 0,
+      periodicsSummary.overdueCount || 0,
+      periodicsSummary.warningCount || 0,
       isExpanded ? "expanded" : "collapsed",
     ].join("~~"),
   };
