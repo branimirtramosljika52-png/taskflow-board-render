@@ -54342,6 +54342,74 @@ button.work-order-editor-section-head:focus-visible {
   accent-color: #7c3aed;
 }
 
+.job-toggle-control {
+  display: inline-grid;
+  grid-template-columns: auto auto;
+  gap: 7px;
+  align-items: center;
+  width: max-content;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.job-toggle-control input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.job-toggle-control em {
+  min-width: 20px;
+  font-style: normal;
+  line-height: 1;
+}
+
+.job-toggle-track {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 42px;
+  height: 24px;
+  padding: 3px;
+  border: 1px solid rgba(148, 163, 184, 0.52);
+  border-radius: 999px;
+  background: linear-gradient(145deg, rgba(226, 232, 240, 0.95), rgba(248, 250, 252, 0.98));
+  box-shadow: inset 0 1px 3px rgba(15, 23, 42, 0.12);
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.job-toggle-track span {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.22);
+  transform: translateX(0);
+  transition: transform 160ms ease, background 160ms ease;
+}
+
+.job-toggle-control input:checked + .job-toggle-track {
+  border-color: rgba(124, 58, 237, 0.48);
+  background: linear-gradient(135deg, #6d28d9, #22c55e);
+  box-shadow: 0 8px 18px rgba(109, 40, 217, 0.2);
+}
+
+.job-toggle-control input:checked + .job-toggle-track span {
+  transform: translateX(18px);
+}
+
+.job-toggle-control:focus-within .job-toggle-track {
+  outline: 3px solid rgba(124, 58, 237, 0.16);
+  outline-offset: 2px;
+}
+
 .job-suggestion-row {
   display: flex;
   flex-wrap: wrap;
@@ -54358,6 +54426,16 @@ button.work-order-editor-section-head:focus-visible {
   font-size: 0.76rem;
   font-weight: 800;
   cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease, color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+
+.job-suggestion-row button:hover,
+.job-suggestion-row button:focus-visible {
+  border-color: rgba(124, 58, 237, 0.36);
+  background: rgba(245, 243, 255, 0.92);
+  box-shadow: 0 8px 18px rgba(76, 29, 149, 0.09);
+  transform: translateY(-1px);
+  outline: none;
 }
 
 .job-suggestion-row button.is-selected {
@@ -54426,9 +54504,29 @@ button.work-order-editor-section-head:focus-visible {
   background: rgba(255, 255, 255, 0.7);
 }
 
-.job-multichoice-block > span {
+.job-multichoice-block.is-enabled {
+  border-color: rgba(34, 197, 94, 0.32);
+  background: linear-gradient(145deg, rgba(240, 253, 244, 0.72), rgba(255, 255, 255, 0.9));
+}
+
+.job-multichoice-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.job-multichoice-head strong {
   color: #334155;
   font-weight: 900;
+}
+
+.job-multichoice-head small {
+  display: block;
+  margin-top: 2px;
+  color: #64748b;
+  font-size: 0.74rem;
+  font-weight: 700;
 }
 
 .job-hazard-layout {
@@ -54491,20 +54589,71 @@ button.work-order-editor-section-head:focus-visible {
 
 .job-selected-hazards {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
 .job-selected-hazard-card {
   display: grid;
-  gap: 12px;
-  padding: 12px;
-  border: 1px solid rgba(244, 63, 94, 0.22);
+  gap: 10px;
+  padding: 12px 12px 14px;
+  border: 1px solid rgba(190, 204, 232, 0.82);
+  border-left: 5px solid rgba(148, 163, 184, 0.64);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.84);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.9));
+  box-shadow: 0 12px 26px rgba(15, 23, 42, 0.07);
 }
 
-.job-selected-hazard-head span {
+.job-selected-hazard-card.is-low {
+  border-left-color: #22c55e;
+}
+
+.job-selected-hazard-card.is-medium {
+  border-left-color: #f59e0b;
+}
+
+.job-selected-hazard-card.is-high {
+  border-left-color: #ef4444;
+}
+
+.job-selected-hazard-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.job-selected-hazard-title {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+}
+
+.job-selected-hazard-title > div {
+  min-width: 0;
+}
+
+.job-selected-hazard-title strong {
+  display: block;
+  overflow: hidden;
+  color: #10172f;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.job-selected-hazard-title small {
+  display: block;
+  overflow: hidden;
+  color: #64748b;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.job-hazard-code {
   display: inline-grid;
+  place-items: center;
   width: fit-content;
   padding: 5px 8px;
   border-radius: 9px;
@@ -54512,6 +54661,81 @@ button.work-order-editor-section-head:focus-visible {
   color: #be123c;
   font-size: 0.74rem;
   font-weight: 900;
+}
+
+.job-selected-hazard-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+  align-items: center;
+}
+
+.job-hazard-risk-pill,
+.job-hazard-summary-strip span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 5px 9px;
+  border: 1px solid rgba(199, 210, 254, 0.7);
+  border-radius: 999px;
+  background: rgba(248, 250, 252, 0.92);
+  color: #334155;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.job-hazard-risk-pill.is-low {
+  border-color: rgba(34, 197, 94, 0.28);
+  background: rgba(220, 252, 231, 0.86);
+  color: #166534;
+}
+
+.job-hazard-risk-pill.is-medium {
+  border-color: rgba(245, 158, 11, 0.3);
+  background: rgba(254, 243, 199, 0.9);
+  color: #92400e;
+}
+
+.job-hazard-risk-pill.is-high {
+  border-color: rgba(239, 68, 68, 0.32);
+  background: rgba(254, 226, 226, 0.94);
+  color: #991b1b;
+}
+
+.job-hazard-remove-button {
+  min-height: 28px;
+  padding: 5px 9px;
+  border: 1px solid rgba(226, 232, 240, 0.94);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #94a3b8;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 850;
+  cursor: pointer;
+  transition: border-color 140ms ease, color 140ms ease, background 140ms ease;
+}
+
+.job-hazard-remove-button:hover,
+.job-hazard-remove-button:focus-visible {
+  border-color: rgba(248, 113, 113, 0.42);
+  background: rgba(255, 241, 242, 0.88);
+  color: #be123c;
+  outline: none;
+}
+
+.job-hazard-summary-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.job-hazard-summary-strip strong {
+  margin-right: 5px;
+  color: #64748b;
+  font-size: 0.66rem;
+  text-transform: uppercase;
 }
 
 .job-editor-footer {

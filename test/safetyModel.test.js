@@ -178,10 +178,13 @@ test("jobs keep environment, conditions and hazard catalog details", () => {
       description: "Obavlja servis i provjeru sustava kod klijenata.",
       environment: {
         machinesEnabled: true,
+        machinesOptions: ["ruÄŤni alat", "mjerna oprema"],
+        substancesOptions: ["nema znaÄŤajnih tvari"],
         machinesText: "Ručni alat, mjerna oprema i ljestve.",
         workplaceEnabled: true,
         workplaceOptions: ["u zatvorenom", "na visini"],
         organizationEnabled: true,
+        organizationOptions: ["terenski rad"],
         fieldWork: "često",
       },
       conditions: {
@@ -220,7 +223,10 @@ test("jobs keep environment, conditions and hazard catalog details", () => {
 
   assert.equal(job.id, "job-1");
   assert.equal(job.environment.machinesEnabled, true);
+  assert.deepEqual(job.environment.machinesOptions, ["ruÄŤni alat", "mjerna oprema"]);
+  assert.deepEqual(job.environment.substancesOptions, ["nema znaÄŤajnih tvari"]);
   assert.deepEqual(job.environment.workplaceOptions, ["u zatvorenom", "na visini"]);
+  assert.deepEqual(job.environment.organizationOptions, ["terenski rad"]);
   assert.equal(job.conditions.trainingRequired, true);
   assert.equal(job.aiInstructions.description.style, "short");
   assert.equal(job.aiInstructions.description.mustInclude, "rad kod klijenta");

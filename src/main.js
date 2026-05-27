@@ -115441,15 +115441,15 @@ jobEnvironmentSections?.addEventListener("click", (event) => {
   if (suggestionButton instanceof HTMLElement) {
     suggestionButton.classList.toggle("is-selected");
     const sectionKey = suggestionButton.dataset.jobEnvSuggestion || "";
-    const textarea = jobEnvironmentSections.querySelector(`[data-job-env-text="${sectionKey}"]`);
-    if (textarea instanceof HTMLTextAreaElement) {
-      const selected = Array.from(jobEnvironmentSections.querySelectorAll(`[data-job-env-suggestion="${sectionKey}"].is-selected`))
-        .map((button) => String(button.dataset.value || "").trim())
-        .filter(Boolean);
-      if (selected.length && !textarea.value.trim()) {
-        textarea.value = selected.join(", ");
-      }
+    const card = suggestionButton.closest("[data-job-environment-card]");
+    const toggle = card?.querySelector(`[data-job-env-enabled="${sectionKey}"]`);
+    if (toggle instanceof HTMLInputElement && !toggle.checked) {
+      toggle.checked = true;
+      card?.classList.add("is-enabled");
+      const label = toggle.closest(".job-toggle-control")?.querySelector("em");
+      if (label) label.textContent = "Da";
     }
+    syncJobEnvironmentTextarea(sectionKey, { force: true });
     return;
   }
   const aiButton = target?.closest("[data-job-nexai]");
@@ -115470,7 +115470,25 @@ jobEnvironmentSections?.addEventListener("change", (event) => {
   const target = event.target instanceof Element ? event.target : null;
   const toggle = target?.closest("[data-job-env-enabled]");
   if (toggle instanceof HTMLInputElement) {
-    toggle.closest("[data-job-environment-card]")?.classList.toggle("is-enabled", toggle.checked);
+    const card = toggle.closest("[data-job-environment-card]");
+    card?.classList.toggle("is-enabled", toggle.checked);
+    const label = toggle.closest(".job-toggle-control")?.querySelector("em");
+    if (label) label.textContent = toggle.checked ? "Da" : "Ne";
+    if (toggle.checked) {
+      syncJobEnvironmentTextarea(toggle.dataset.jobEnvEnabled || "", { force: true });
+    }
+    return;
+  }
+  const organizationField = target?.closest("[data-job-organization-field], [data-job-environment-flag]");
+  if (organizationField instanceof HTMLElement) {
+    const toggle = jobEnvironmentSections.querySelector('[data-job-env-enabled="organization"]');
+    if (toggle instanceof HTMLInputElement && !toggle.checked) {
+      toggle.checked = true;
+      toggle.closest("[data-job-environment-card]")?.classList.add("is-enabled");
+      const label = toggle.closest(".job-toggle-control")?.querySelector("em");
+      if (label) label.textContent = "Da";
+    }
+    syncJobEnvironmentTextarea("organization", { force: true });
   }
 });
 
@@ -115479,6 +115497,7 @@ jobConditionSections?.addEventListener("click", (event) => {
   const choiceButton = target?.closest("[data-job-condition-choice]");
   if (choiceButton instanceof HTMLElement) {
     choiceButton.classList.toggle("is-selected");
+    syncJobConditionChoiceText(choiceButton.dataset.jobConditionChoice || "", { force: true });
     return;
   }
   const aiButton = target?.closest("[data-job-nexai]");
@@ -115502,7 +115521,36 @@ jobConditionSections?.addEventListener("change", (event) => {
   const target = event.target instanceof Element ? event.target : null;
   const toggle = target?.closest("[data-job-condition-flag]");
   if (toggle instanceof HTMLInputElement) {
-    toggle.closest("[data-job-condition-card]")?.classList.toggle("is-enabled", toggle.checked);
+    const card = toggle.closest("[data-job-condition-card]");
+    card?.classList.toggle("is-enabled", toggle.checked);
+    const label = toggle.closest(".job-toggle-control")?.querySelector("em");
+    if (label) label.textContent = toggle.checked ? "Da" : "Ne";
+    if (toggle.checked) {
+      const noteKey = toggle.dataset.jobConditionFlag || "";
+      const textarea = jobConditionSections.querySelector(`[data-job-condition-note="${noteKey}"]`);
+      if (textarea instanceof HTMLTextAreaElement && !textarea.value.trim()) {
+        textarea.value = buildJobConditionToggleSentence(noteKey);
+      }
+    }
+    return;
+  }
+  const blockToggle = target?.closest("[data-job-condition-block-enabled]");
+  if (blockToggle instanceof HTMLInputElement) {
+    const field = blockToggle.dataset.jobConditionBlockEnabled || "";
+    const block = blockToggle.closest("[data-job-condition-block]");
+    block?.classList.toggle("is-enabled", blockToggle.checked);
+    const label = blockToggle.closest(".job-toggle-control")?.querySelector("em");
+    if (label) label.textContent = blockToggle.checked ? "Da" : "Ne";
+    if (!blockToggle.checked && block instanceof HTMLElement) {
+      block.querySelectorAll(`[data-job-condition-choice="${field}"].is-selected`).forEach((button) => button.classList.remove("is-selected"));
+      const definition = JOB_CONDITION_CHOICE_BLOCKS.find((item) => item.field === field);
+      const textarea = definition ? block.querySelector(`[data-job-condition-text="${definition.textField}"]`) : null;
+      if (textarea instanceof HTMLTextAreaElement) {
+        textarea.value = "";
+      }
+    } else {
+      syncJobConditionChoiceText(field, { force: true, forceEnabled: true });
+    }
   }
 });
 
@@ -119726,6 +119774,35 @@ const JOB_CONDITION_TOGGLES = Object.freeze([
 const JOB_BODY_POSITION_OPTIONS = Object.freeze(["rad stojeći", "rad sjedeći", "u pokretu", "kombinirano", "učestalo sagibanje", "klečanje", "čučanje", "rad iznad ramena", "ponavljajući pokreti"]);
 const JOB_IMPORTANT_FUNCTION_OPTIONS = Object.freeze(["vid na daljinu", "vid na blizinu", "raspoznavanje boja", "dobar sluh", "jasan govor", "preciznost ruku", "koordinacija pokreta"]);
 const JOB_WORK_CONDITION_OPTIONS = Object.freeze(["buka", "vibracije", "mikroklima", "prašina", "kemijske štetnosti", "biološke štetnosti", "rad na visini", "rad na otvorenom", "rad u prometu"]);
+const JOB_ENVIRONMENT_OPTION_FIELD_BY_KEY = Object.freeze({
+  machines: "machinesOptions",
+  substances: "substancesOptions",
+  workplace: "workplaceOptions",
+  organization: "organizationOptions",
+});
+const JOB_CONDITION_CHOICE_BLOCKS = Object.freeze([
+  {
+    field: "bodyPositions",
+    label: "Položaj tijela i aktivnosti",
+    helper: "Odaberi položaje koji se stvarno ponavljaju tijekom rada.",
+    textField: "bodyText",
+    options: JOB_BODY_POSITION_OPTIONS,
+  },
+  {
+    field: "importantFunctions",
+    label: "U poslu je važan",
+    helper: "Označi funkcije bez kojih se posao ne može sigurno obavljati.",
+    textField: "functionsText",
+    options: JOB_IMPORTANT_FUNCTION_OPTIONS,
+  },
+  {
+    field: "workConditions",
+    label: "Uvjeti rada",
+    helper: "Odaberi uvjete i izloženosti koji se pojavljuju na poslu.",
+    textField: "conditionsText",
+    options: JOB_WORK_CONDITION_OPTIONS,
+  },
+]);
 const JOB_AI_STYLE_LABELS = Object.freeze({
   professional: "stručno i jasno",
   short: "kratko",
@@ -119980,6 +120057,153 @@ function applyJobAiInstructionToText(text = "", kind = "description") {
   return [output, ...additions].filter(Boolean).join(" ");
 }
 
+function formatJobSentenceList(values = [], fallback = "") {
+  const items = Array.from(new Set(
+    (Array.isArray(values) ? values : [values])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean),
+  ));
+  if (items.length === 0) {
+    return fallback;
+  }
+  if (items.length === 1) {
+    return items[0];
+  }
+  if (items.length === 2) {
+    return `${items[0]} i ${items[1]}`;
+  }
+  return `${items.slice(0, -1).join(", ")} i ${items[items.length - 1]}`;
+}
+
+function getJobSentenceTitle() {
+  return String(jobTitleInput?.value || "odabrani posao").trim() || "odabrani posao";
+}
+
+function getJobEnvironmentOptionField(sectionKey = "") {
+  return JOB_ENVIRONMENT_OPTION_FIELD_BY_KEY[String(sectionKey || "").trim()] || "";
+}
+
+function getSelectedJobEnvironmentOptions(sectionKey = "") {
+  return Array.from(jobEnvironmentSections?.querySelectorAll(`[data-job-env-suggestion="${sectionKey}"].is-selected`) ?? [])
+    .map((button) => String(button.dataset.value || "").trim())
+    .filter(Boolean);
+}
+
+function getJobOrganizationDetailsFromForm(environment = null) {
+  const source = environment && typeof environment === "object" ? environment : null;
+  return JOB_ORGANIZATION_FIELDS
+    .map((field) => {
+      const value = source
+        ? String(source[field.key] || "").trim()
+        : String(jobEnvironmentSections?.querySelector(`[data-job-organization-field="${field.key}"]`)?.value || "").trim();
+      return value ? `${field.label.toLowerCase()}: ${value}` : "";
+    })
+    .filter(Boolean);
+}
+
+function buildJobEnvironmentSentence(sectionKey = "", selectedValues = [], environment = {}) {
+  const title = getJobSentenceTitle();
+  const selected = Array.from(new Set((selectedValues ?? []).map((value) => String(value || "").trim()).filter(Boolean)));
+  const selectedList = formatJobSentenceList(selected);
+
+  if (sectionKey === "machines") {
+    const equipment = selectedList || "alat i opremu potrebnu za obavljanje posla";
+    return `Radnik pri obavljanju posla "${title}" koristi ${equipment}. Sva sredstva rada moraju biti ispravna, pregledana prije uporabe i korištena prema uputama proizvođača, uz primjenu propisane osobne zaštitne opreme i postupaka za rad na siguran način.`;
+  }
+
+  if (sectionKey === "substances") {
+    if (selected.some((value) => value.toLocaleLowerCase("hr").includes("nema značajnih"))) {
+      return `Za posao "${title}" nisu predviđene značajne radne tvari u redovnom procesu rada. Ako radnik iznimno dođe u dodir s kemikalijama, sredstvima za čišćenje ili drugim tvarima, potrebno je primijeniti upute proizvođača, označenu ambalažu i odgovarajuće higijenske mjere.`;
+    }
+    const substances = selectedList || "radne tvari potrebne za obavljanje posla";
+    return `Radnik tijekom obavljanja posla "${title}" rukuje ili može doći u dodir s tvarima kao što su ${substances}. Tvari se moraju koristiti u označenoj ambalaži, prema sigurnosno-tehničkim listovima i internim uputama, uz sprječavanje prolijevanja, udisanja i nepotrebnog kontakta s kožom.`;
+  }
+
+  if (sectionKey === "workplace") {
+    const places = selectedList || "radnom prostoru poslodavca i po potrebi kod klijenta";
+    return `Posao "${title}" obavlja se na mjestima rada kao što su ${places}. Radni prostor mora biti uredan, prohodan, dovoljno osvijetljen i organiziran tako da se smanji rizik od spoticanja, pada, neželjenog kontakta s opremom i drugih opasnosti koje proizlaze iz konkretnog mjesta rada.`;
+  }
+
+  if (sectionKey === "organization") {
+    const organizationSelections = selected.length ? [`organizacijske značajke: ${selectedList}`] : [];
+    const organizationDetails = [
+      ...organizationSelections,
+      ...getJobOrganizationDetailsFromForm(environment),
+      environment.psychosocialRelevant ? "procjena psihosocijalnih rizika relevantna" : "",
+    ].filter(Boolean);
+    const organizationText = formatJobSentenceList(organizationDetails, "redovnu organizaciju rada prema nalogu poslodavca");
+    return `Rad za posao "${title}" organizira se kroz ${organizationText}. Zadatke, rokove, stanke, odmore i odgovornosti potrebno je planirati tako da radnik može obaviti posao sigurno, bez nepotrebnog preopterećenja i uz jasne upute neposredno nadređene osobe.`;
+  }
+
+  return selectedList;
+}
+
+function syncJobEnvironmentTextarea(sectionKey = "", options = {}) {
+  const textarea = jobEnvironmentSections?.querySelector(`[data-job-env-text="${sectionKey}"]`);
+  if (!(textarea instanceof HTMLTextAreaElement)) {
+    return;
+  }
+  const selected = getSelectedJobEnvironmentOptions(sectionKey);
+  const draft = getJobEnvironmentDraftFromForm();
+  const nextText = buildJobEnvironmentSentence(sectionKey, selected, draft);
+  if (nextText || options.force) {
+    textarea.value = nextText;
+  }
+}
+
+function buildJobConditionToggleSentence(key = "") {
+  const definition = JOB_CONDITION_TOGGLES.find((entry) => entry.key === key);
+  if (!definition) {
+    return "Za odabrani uvjet rada potrebno je opisati okolnosti, učestalost, trajanje izloženosti i mjere zaštite koje poslodavac mora provoditi.";
+  }
+  return `${definition.suggestion} U zapisniku je potrebno navesti kada se ovaj uvjet pojavljuje, koliko često utječe na radnika i koje organizacijske, tehničke ili osobne mjere zaštite se primjenjuju.`;
+}
+
+function buildJobConditionChoiceSentence(field = "", selectedValues = []) {
+  const selected = Array.from(new Set((selectedValues ?? []).map((value) => String(value || "").trim()).filter(Boolean)));
+  const selectedList = formatJobSentenceList(selected);
+  if (!selectedList) {
+    return "";
+  }
+  if (field === "bodyPositions") {
+    return `Radnik tijekom rada najčešće zauzima sljedeće položaje ili izvodi aktivnosti: ${selectedList}. Posao je potrebno organizirati tako da se omogući izmjena položaja tijela, smanji dugotrajno statičko opterećenje i uvedu kratke pauze kada priroda posla to zahtijeva.`;
+  }
+  if (field === "importantFunctions") {
+    return `Za sigurno obavljanje posla posebno su važne sljedeće funkcije radnika: ${selectedList}. Prije raspoređivanja na posao potrebno je osigurati da radnik može pouzdano obavljati navedene funkcije te da su upute, signalizacija i radni postupci jasni i razumljivi.`;
+  }
+  if (field === "workConditions") {
+    return `Posao se može odvijati u uvjetima kao što su ${selectedList}. Za navedene uvjete potrebno je procijeniti razinu izloženosti, osigurati odgovarajuće tehničke i organizacijske mjere te radniku dati jasne upute o sigurnom postupanju.`;
+  }
+  return selectedList;
+}
+
+function syncJobConditionChoiceText(field = "", options = {}) {
+  const block = jobConditionSections?.querySelector(`[data-job-condition-block="${field}"]`);
+  const definition = JOB_CONDITION_CHOICE_BLOCKS.find((item) => item.field === field);
+  if (!(block instanceof HTMLElement) || !definition) {
+    return;
+  }
+  const selected = Array.from(block.querySelectorAll(`[data-job-condition-choice="${field}"].is-selected`))
+    .map((button) => String(button.dataset.value || "").trim())
+    .filter(Boolean);
+  const toggle = block.querySelector(`[data-job-condition-block-enabled="${field}"]`);
+  if (toggle instanceof HTMLInputElement) {
+    toggle.checked = options.forceEnabled || selected.length > 0 || Boolean(block.querySelector(`[data-job-condition-text="${definition.textField}"]`)?.value?.trim());
+    const label = toggle.closest(".job-toggle-control")?.querySelector("em");
+    if (label) {
+      label.textContent = toggle.checked ? "Da" : "Ne";
+    }
+  }
+  block.classList.toggle("is-enabled", Boolean(toggle?.checked || selected.length));
+  const textarea = block.querySelector(`[data-job-condition-text="${definition.textField}"]`);
+  if (textarea instanceof HTMLTextAreaElement) {
+    const nextText = buildJobConditionChoiceSentence(field, selected);
+    if (nextText || options.force) {
+      textarea.value = nextText;
+    }
+  }
+}
+
 function getJobNexAiText(kind = "description") {
   const title = String(jobTitleInput?.value || "Odabrani posao").trim() || "Odabrani posao";
   const environment = getJobEnvironmentDraftFromForm();
@@ -119999,8 +120223,7 @@ function getJobNexAiText(kind = "description") {
   }
   if (kind.startsWith("condition:")) {
     const key = kind.replace("condition:", "");
-    const definition = JOB_CONDITION_TOGGLES.find((entry) => entry.key === key);
-    return applyJobAiInstructionToText(definition?.suggestion || "Za odabrani uvjet rada potrebno je opisati okolnosti, učestalost i mjere zaštite.", kind);
+    return applyJobAiInstructionToText(buildJobConditionToggleSentence(key), kind);
   }
   const conditionSummary = [
     ...conditions.bodyPositions,
@@ -120054,12 +120277,14 @@ function renderJobEnvironmentSections(environment = {}) {
   jobEnvironmentSections.replaceChildren(...JOB_ENVIRONMENT_SECTIONS.map((section) => {
     const enabled = Boolean(environment[`${section.key}Enabled`]);
     const textValue = String(environment[`${section.key}Text`] ?? "").trim();
-    const selectedWorkplaces = new Set(section.key === "workplace" ? (environment.workplaceOptions ?? []) : []);
+    const optionField = getJobEnvironmentOptionField(section.key);
+    const selectedOptions = new Set(environment[optionField] ?? []);
+    const resolvedTextValue = textValue || (enabled || selectedOptions.size ? buildJobEnvironmentSentence(section.key, [...selectedOptions], environment) : "");
     const article = document.createElement("article");
     article.className = `job-smart-card ${enabled ? "is-enabled" : ""}`;
     article.dataset.jobEnvironmentCard = section.key;
     const chips = section.suggestions.map((suggestion) => `
-      <button type="button" class="${selectedWorkplaces.has(suggestion) ? "is-selected" : ""}" data-job-env-suggestion="${escapeHtml(section.key)}" data-value="${escapeHtml(suggestion)}">${escapeHtml(suggestion)}</button>
+      <button type="button" class="${selectedOptions.has(suggestion) ? "is-selected" : ""}" data-job-env-suggestion="${escapeHtml(section.key)}" data-value="${escapeHtml(suggestion)}">${escapeHtml(suggestion)}</button>
     `).join("");
     const organizationFields = section.key === "organization"
       ? `<div class="job-organization-grid">
@@ -120077,9 +120302,10 @@ function renderJobEnvironmentSections(environment = {}) {
       : "";
     article.innerHTML = `
       <div class="job-smart-card-head">
-        <label class="job-switch-line">
+        <label class="job-toggle-control">
           <input type="checkbox" data-job-env-enabled="${escapeHtml(section.key)}" ${enabled ? "checked" : ""} />
-          <span>DA</span>
+          <span class="job-toggle-track" aria-hidden="true"><span></span></span>
+          <em>${enabled ? "Da" : "Ne"}</em>
         </label>
         <div>
           <strong>${escapeHtml(section.title)}</strong>
@@ -120091,7 +120317,7 @@ function renderJobEnvironmentSections(environment = {}) {
       </div>
       <div class="job-suggestion-row">${chips}</div>
       ${organizationFields}
-      <textarea data-job-env-text="${escapeHtml(section.key)}" rows="4" placeholder="${escapeHtml(section.placeholder)}">${escapeHtml(textValue)}</textarea>
+      <textarea data-job-env-text="${escapeHtml(section.key)}" rows="4" placeholder="${escapeHtml(section.placeholder)}">${escapeHtml(resolvedTextValue)}</textarea>
     `;
     return article;
   }));
@@ -120121,13 +120347,14 @@ function renderJobConditionSections(conditions = {}) {
       <div class="job-condition-toggle-list">
         ${items.map((item) => `
           <div class="job-condition-toggle ${conditions[item.key] ? "is-enabled" : ""}" data-job-condition-card="${escapeHtml(item.key)}">
-            <label class="job-switch-line">
+            <label class="job-toggle-control">
               <input type="checkbox" data-job-condition-flag="${escapeHtml(item.key)}" ${conditions[item.key] ? "checked" : ""} />
-              <span>DA</span>
+              <span class="job-toggle-track" aria-hidden="true"><span></span></span>
+              <em>${conditions[item.key] ? "Da" : "Ne"}</em>
             </label>
             <div>
               <strong>${escapeHtml(item.label)}</strong>
-              <textarea data-job-condition-note="${escapeHtml(item.key)}" rows="2" placeholder="Tekst za ovaj uvjet rada...">${escapeHtml(notes[item.key] || "")}</textarea>
+              <textarea data-job-condition-note="${escapeHtml(item.key)}" rows="2" placeholder="Tekst za ovaj uvjet rada...">${escapeHtml(notes[item.key] || (conditions[item.key] ? buildJobConditionToggleSentence(item.key) : ""))}</textarea>
             </div>
             <div class="job-nexai-actions">
               <button type="button" class="ghost-button jobs-nexai-button" data-job-nexai="condition:${escapeHtml(item.key)}" ${canUseNexAi ? "" : "disabled"}>NexAI</button>
@@ -120145,24 +120372,42 @@ function renderJobConditionSections(conditions = {}) {
       <strong>Položaj tijela i uvjeti rada</strong>
       <span>odabiri za zapisnik</span>
     </div>
-    ${renderJobMultiChoiceBlock("bodyPositions", "Položaj tijela i aktivnosti", JOB_BODY_POSITION_OPTIONS, conditions.bodyPositions ?? [], "bodyText", conditions.bodyText || "")}
-    ${renderJobMultiChoiceBlock("importantFunctions", "U poslu je važan", JOB_IMPORTANT_FUNCTION_OPTIONS, conditions.importantFunctions ?? [], "functionsText", conditions.functionsText || "")}
-    ${renderJobMultiChoiceBlock("workConditions", "Uvjeti rada", JOB_WORK_CONDITION_OPTIONS, conditions.workConditions ?? [], "conditionsText", conditions.conditionsText || "")}
+    ${JOB_CONDITION_CHOICE_BLOCKS.map((block) => renderJobMultiChoiceBlock(
+      block.field,
+      block.label,
+      block.options,
+      conditions[block.field] ?? [],
+      block.textField,
+      conditions[block.textField] || "",
+      block.helper,
+    )).join("")}
   `;
   jobConditionSections.replaceChildren(...togglePanels, selectionPanel);
 }
 
-function renderJobMultiChoiceBlock(field, label, options, selectedValues = [], textField, textValue = "") {
+function renderJobMultiChoiceBlock(field, label, options, selectedValues = [], textField, textValue = "", helper = "") {
   const selected = new Set(selectedValues);
+  const enabled = selected.size > 0 || Boolean(String(textValue || "").trim());
+  const resolvedTextValue = String(textValue || "").trim() || (selected.size ? buildJobConditionChoiceSentence(field, [...selected]) : "");
   return `
-    <div class="job-multichoice-block">
-      <span>${escapeHtml(label)}</span>
+    <div class="job-multichoice-block ${enabled ? "is-enabled" : ""}" data-job-condition-block="${escapeHtml(field)}">
+      <div class="job-multichoice-head">
+        <label class="job-toggle-control">
+          <input type="checkbox" data-job-condition-block-enabled="${escapeHtml(field)}" ${enabled ? "checked" : ""} />
+          <span class="job-toggle-track" aria-hidden="true"><span></span></span>
+          <em>${enabled ? "Da" : "Ne"}</em>
+        </label>
+        <div>
+          <strong>${escapeHtml(label)}</strong>
+          <small>${escapeHtml(helper)}</small>
+        </div>
+      </div>
       <div class="job-suggestion-row">
         ${options.map((option) => `
           <button type="button" class="${selected.has(option) ? "is-selected" : ""}" data-job-condition-choice="${escapeHtml(field)}" data-value="${escapeHtml(option)}">${escapeHtml(option)}</button>
         `).join("")}
       </div>
-      <textarea data-job-condition-text="${escapeHtml(textField)}" rows="2" placeholder="Dodatni opis...">${escapeHtml(textValue)}</textarea>
+      <textarea data-job-condition-text="${escapeHtml(textField)}" rows="2" placeholder="Dodatni opis...">${escapeHtml(resolvedTextValue)}</textarea>
     </div>
   `;
 }
@@ -120202,6 +120447,20 @@ function renderJobHazardCatalog() {
   }));
 }
 
+function getJobHazardRiskTone(value = "") {
+  const normalized = String(value || "").toLocaleLowerCase("hr");
+  if (normalized.includes("velik")) {
+    return "high";
+  }
+  if (normalized.includes("sred")) {
+    return "medium";
+  }
+  if (normalized.includes("mal")) {
+    return "low";
+  }
+  return "neutral";
+}
+
 function renderJobSelectedHazards() {
   if (!jobSelectedHazards) {
     return;
@@ -120218,16 +120477,28 @@ function renderJobSelectedHazards() {
   }
   jobSelectedHazards.replaceChildren(...jobHazardDrafts.map((hazard, index) => {
     const article = document.createElement("article");
-    article.className = "job-selected-hazard-card";
+    const riskTone = getJobHazardRiskTone(hazard.riskLevel);
+    article.className = `job-selected-hazard-card is-${riskTone}`;
     article.dataset.jobHazardIndex = String(index);
+    const riskLabel = String(hazard.riskLevel || "Rizik nije određen").trim();
     article.innerHTML = `
       <div class="job-selected-hazard-head">
-        <div>
-          <span>${escapeHtml(hazard.catalogCode || "-")}</span>
-          <strong>${escapeHtml(hazard.catalogLabel || "Opasnost")}</strong>
-          <small>${escapeHtml(hazard.group || hazard.category || "")}</small>
+        <div class="job-selected-hazard-title">
+          <span class="job-hazard-code">${escapeHtml(hazard.catalogCode || "-")}</span>
+          <div>
+            <strong>${escapeHtml(hazard.catalogLabel || "Opasnost")}</strong>
+            <small>${escapeHtml(hazard.group || hazard.category || "")}</small>
+          </div>
         </div>
-        <button type="button" class="ghost-button card-danger" data-job-hazard-remove="${index}">Ukloni</button>
+        <div class="job-selected-hazard-actions">
+          <span class="job-hazard-risk-pill is-${riskTone}">${escapeHtml(riskLabel)}</span>
+          <button type="button" class="job-hazard-remove-button" data-job-hazard-remove="${index}" aria-label="Ukloni opasnost">Ukloni</button>
+        </div>
+      </div>
+      <div class="job-hazard-summary-strip">
+        <span><strong>V</strong>${escapeHtml(hazard.probability || "-")}</span>
+        <span><strong>P</strong>${escapeHtml(hazard.consequence || "-")}</span>
+        <span><strong>OZO</strong>${escapeHtml(hazard.ppeText || "-")}</span>
       </div>
       <div class="job-hazard-fields">
         <label class="field field-span-full"><span>Mogući neželjeni događaj</span><textarea data-job-hazard-field="unwantedEvent" rows="2">${escapeHtml(hazard.unwantedEvent || "")}</textarea></label>
@@ -120248,10 +120519,11 @@ function getJobEnvironmentDraftFromForm() {
   JOB_ENVIRONMENT_SECTIONS.forEach((section) => {
     environment[`${section.key}Enabled`] = Boolean(jobEnvironmentSections?.querySelector(`[data-job-env-enabled="${section.key}"]`)?.checked);
     environment[`${section.key}Text`] = String(jobEnvironmentSections?.querySelector(`[data-job-env-text="${section.key}"]`)?.value || "").trim();
+    const optionField = getJobEnvironmentOptionField(section.key);
+    if (optionField) {
+      environment[optionField] = getSelectedJobEnvironmentOptions(section.key);
+    }
   });
-  environment.workplaceOptions = Array.from(jobEnvironmentSections?.querySelectorAll('[data-job-env-suggestion="workplace"].is-selected') ?? [])
-    .map((button) => String(button.dataset.value || "").trim())
-    .filter(Boolean);
   JOB_ORGANIZATION_FIELDS.forEach((field) => {
     environment[field.key] = String(jobEnvironmentSections?.querySelector(`[data-job-organization-field="${field.key}"]`)?.value || "").trim();
   });
@@ -120305,6 +120577,9 @@ function syncJobFormAccess() {
   const canUseNexAi = getCanUseJobNexAi();
   jobForm?.querySelectorAll("input, textarea, select").forEach((field) => {
     field.disabled = !canManage;
+  });
+  jobForm?.querySelectorAll("[data-job-env-suggestion], [data-job-condition-choice], [data-job-hazard-add], [data-job-hazard-remove]").forEach((button) => {
+    button.disabled = !canManage;
   });
   jobForm?.querySelectorAll(".jobs-nexai-button").forEach((button) => {
     button.disabled = !canUseNexAi || !canManage;
