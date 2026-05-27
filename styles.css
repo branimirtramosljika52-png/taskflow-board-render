@@ -56174,44 +56174,111 @@ button.work-order-editor-section-head:focus-visible {
 }
 
 .risk-assessment-ppe-panel {
+  position: relative;
   display: grid;
-  gap: 10px;
-  padding: 12px;
-  border: 1px solid rgba(147, 197, 253, 0.62);
-  border-radius: 14px;
-  background: linear-gradient(135deg, rgba(240, 249, 255, 0.94), rgba(255, 255, 255, 0.92));
+  gap: 12px;
+  overflow: hidden;
+  padding: 14px;
+  border: 1px solid rgba(147, 197, 253, 0.64);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 12% 6%, rgba(34, 211, 238, 0.14), transparent 30%),
+    radial-gradient(circle at 92% 0%, rgba(124, 58, 237, 0.12), transparent 26%),
+    linear-gradient(135deg, rgba(248, 252, 255, 0.98), rgba(255, 255, 255, 0.94));
+  box-shadow: 0 18px 42px rgba(37, 99, 235, 0.09);
+}
+
+.risk-assessment-ppe-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(37, 99, 235, 0.12), transparent 16%, transparent 84%, rgba(168, 85, 247, 0.1));
+  pointer-events: none;
+}
+
+.risk-assessment-ppe-panel > * {
+  position: relative;
+  z-index: 1;
 }
 
 .risk-assessment-ppe-filters button {
   cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.risk-assessment-ppe-filters button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(37, 99, 235, 0.5);
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.12);
 }
 
 .risk-assessment-ppe-filters button.is-active {
-  border-color: rgba(37, 99, 235, 0.56);
-  background: rgba(219, 234, 254, 0.96);
+  border-color: rgba(37, 99, 235, 0.58);
+  background: linear-gradient(135deg, rgba(219, 234, 254, 0.98), rgba(239, 246, 255, 0.94));
   color: #1d4ed8;
+  box-shadow: inset 0 -2px 0 rgba(37, 99, 235, 0.22), 0 12px 26px rgba(37, 99, 235, 0.1);
 }
 
 .risk-assessment-ppe-layout {
   display: grid;
-  grid-template-columns: minmax(170px, 0.32fr) minmax(0, 1fr);
-  gap: 14px;
-  align-items: start;
+  grid-template-columns: minmax(340px, 0.42fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: stretch;
 }
 
 .risk-assessment-worker-preview {
+  position: relative;
+  isolation: isolate;
   display: grid;
   place-items: center;
-  min-height: 330px;
-  border: 1px solid rgba(203, 213, 225, 0.82);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.78);
+  min-height: 430px;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.46);
+  border-radius: 18px;
+  background:
+    radial-gradient(ellipse at 50% 84%, rgba(15, 23, 42, 0.18), transparent 34%),
+    radial-gradient(circle at 50% 18%, rgba(255, 255, 255, 0.96), transparent 27%),
+    linear-gradient(160deg, rgba(238, 247, 255, 0.96), rgba(248, 250, 252, 0.96) 46%, rgba(239, 246, 255, 0.96));
+  perspective: 900px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86), inset 0 -30px 70px rgba(37, 99, 235, 0.08);
+}
+
+.risk-assessment-worker-preview::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 44px;
+  width: 76%;
+  height: 70px;
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse, rgba(30, 41, 59, 0.18), rgba(59, 130, 246, 0.08) 44%, transparent 70%);
+  transform: translateX(-50%) rotateX(68deg);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.risk-assessment-worker-preview::after {
+  content: "";
+  position: absolute;
+  inset: 26px 24px auto;
+  height: 74px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.74), transparent);
+  filter: blur(4px);
+  opacity: 0.7;
+  z-index: 0;
+  pointer-events: none;
 }
 
 .risk-assessment-worker-figure {
   position: relative;
-  width: 150px;
-  height: 285px;
+  z-index: 1;
+  width: 220px;
+  height: 370px;
+  transform: rotateX(5deg) rotateY(-7deg);
+  transform-style: preserve-3d;
+  filter: drop-shadow(0 26px 32px rgba(15, 23, 42, 0.18));
 }
 
 .risk-assessment-worker-figure span {
@@ -56219,205 +56286,628 @@ button.work-order-editor-section-head:focus-visible {
   display: block;
 }
 
-.worker-head {
-  top: 16px;
-  left: 55px;
-  width: 40px;
-  height: 44px;
+.risk-assessment-worker-figure span::before,
+.risk-assessment-worker-figure span::after {
+  box-sizing: border-box;
+}
+
+.worker-shadow {
+  left: 28px;
+  bottom: 13px;
+  width: 166px;
+  height: 32px;
   border-radius: 50%;
-  background: #cbd5e1;
+  background: radial-gradient(ellipse, rgba(15, 23, 42, 0.3), rgba(15, 23, 42, 0.08) 58%, transparent 72%);
+  transform: rotateX(70deg);
+  z-index: 0;
+}
+
+.worker-head {
+  top: 36px;
+  left: 83px;
+  width: 55px;
+  height: 62px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 48% 48% 44% 44%;
+  background:
+    radial-gradient(circle at 66% 27%, rgba(255, 255, 255, 0.72), transparent 13%),
+    linear-gradient(145deg, #eef3fb 0%, #ccd7e8 52%, #b4c2d4 100%);
+  box-shadow:
+    inset -11px -7px 15px rgba(15, 23, 42, 0.12),
+    inset 9px 5px 14px rgba(255, 255, 255, 0.86),
+    0 10px 18px rgba(15, 23, 42, 0.12);
+  z-index: 8;
+}
+
+.worker-face {
+  top: 58px;
+  left: 98px;
+  width: 24px;
+  height: 28px;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 30% 30%, rgba(51, 65, 85, 0.46) 0 2px, transparent 3px),
+    radial-gradient(circle at 70% 30%, rgba(51, 65, 85, 0.46) 0 2px, transparent 3px),
+    linear-gradient(180deg, transparent 67%, rgba(51, 65, 85, 0.28) 68% 72%, transparent 73%);
+  opacity: 0.62;
+  z-index: 9;
 }
 
 .worker-neck {
-  top: 56px;
-  left: 68px;
-  width: 14px;
-  height: 18px;
-  border-radius: 8px;
-  background: #cbd5e1;
+  top: 94px;
+  left: 101px;
+  width: 18px;
+  height: 26px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #d9e3ef, #aebdce);
+  box-shadow: inset -4px 0 6px rgba(15, 23, 42, 0.1);
+  z-index: 4;
 }
 
 .worker-body {
-  top: 70px;
-  left: 42px;
-  width: 66px;
-  height: 112px;
-  border-radius: 30px 30px 22px 22px;
-  background: #cbd5e1;
+  top: 112px;
+  left: 69px;
+  width: 84px;
+  height: 130px;
+  border-radius: 34px 34px 24px 24px;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.18) 0 14%, transparent 17% 76%, rgba(15, 23, 42, 0.13) 100%),
+    linear-gradient(160deg, #475569, #334155 56%, #1f2937);
+  box-shadow:
+    inset 11px 0 16px rgba(255, 255, 255, 0.16),
+    inset -12px -8px 18px rgba(15, 23, 42, 0.2),
+    0 14px 24px rgba(15, 23, 42, 0.14);
+  z-index: 3;
+}
+
+.worker-body::before {
+  content: "";
+  position: absolute;
+  top: 18px;
+  left: 40px;
+  width: 4px;
+  height: 98px;
+  border-radius: 999px;
+  background: rgba(226, 232, 240, 0.58);
+}
+
+.worker-body::after {
+  content: "";
+  position: absolute;
+  top: 19px;
+  left: 13px;
+  width: 58px;
+  height: 28px;
+  border-radius: 999px 999px 15px 15px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.16), transparent);
 }
 
 .worker-arm {
-  top: 78px;
-  width: 24px;
-  height: 108px;
+  top: 119px;
+  width: 34px;
+  height: 132px;
   border-radius: 999px;
-  background: #cbd5e1;
-}
-
-.worker-arm.is-left {
-  left: 20px;
-  transform: rotate(8deg);
-}
-
-.worker-arm.is-right {
-  right: 20px;
-  transform: rotate(-8deg);
-}
-
-.worker-leg {
-  top: 172px;
-  width: 26px;
-  height: 96px;
-  border-radius: 999px;
-  background: #cbd5e1;
-}
-
-.worker-leg.is-left {
-  left: 48px;
-}
-
-.worker-leg.is-right {
-  right: 48px;
-}
-
-.ppe-layer {
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.24), transparent 38%, rgba(15, 23, 42, 0.16)),
+    linear-gradient(180deg, #d5dfeb, #b8c7d8);
+  box-shadow: inset -7px -4px 12px rgba(15, 23, 42, 0.12), 0 10px 18px rgba(15, 23, 42, 0.08);
   z-index: 2;
 }
 
+.worker-arm.is-left {
+  left: 39px;
+  transform: rotate(8deg);
+  transform-origin: top right;
+}
+
+.worker-arm.is-right {
+  right: 39px;
+  transform: rotate(-8deg);
+  transform-origin: top left;
+}
+
+.worker-leg {
+  top: 231px;
+  width: 36px;
+  height: 106px;
+  border-radius: 999px 999px 18px 18px;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.18), transparent 42%, rgba(15, 23, 42, 0.18)),
+    linear-gradient(180deg, #cbd5e1, #aebdce);
+  box-shadow: inset -7px -7px 13px rgba(15, 23, 42, 0.13), 0 12px 20px rgba(15, 23, 42, 0.1);
+  z-index: 2;
+}
+
+.worker-leg::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: 43px;
+  width: 20px;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(71, 85, 105, 0.12);
+}
+
+.worker-leg.is-left {
+  left: 75px;
+}
+
+.worker-leg.is-right {
+  right: 75px;
+}
+
+.ppe-layer {
+  z-index: 20;
+  pointer-events: none;
+}
+
 .ppe-helmet {
-  top: 8px;
-  left: 48px;
-  width: 54px;
-  height: 24px;
-  border-radius: 24px 24px 8px 8px;
-  background: #facc15;
-  box-shadow: inset 0 -4px 0 rgba(161, 98, 7, 0.22);
+  top: 22px;
+  left: 74px;
+  width: 72px;
+  height: 36px;
+  border-radius: 38px 38px 13px 13px;
+  background:
+    radial-gradient(circle at 35% 16%, rgba(255, 255, 255, 0.7), transparent 12%),
+    linear-gradient(150deg, #fde68a 0%, #facc15 46%, #eab308 100%);
+  border: 1px solid rgba(161, 98, 7, 0.22);
+  box-shadow: inset 0 -8px 0 rgba(161, 98, 7, 0.16), 0 9px 16px rgba(146, 64, 14, 0.18);
+  z-index: 32;
+}
+
+.ppe-helmet::before {
+  content: "";
+  position: absolute;
+  left: -8px;
+  right: -8px;
+  bottom: -5px;
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #fbbf24, #ca8a04);
+  box-shadow: 0 4px 8px rgba(146, 64, 14, 0.18);
+}
+
+.ppe-helmet::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 31px;
+  width: 10px;
+  height: 30px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(161, 98, 7, 0.12));
 }
 
 .ppe-glasses {
-  top: 36px;
-  left: 51px;
-  width: 48px;
-  height: 11px;
+  top: 63px;
+  left: 81px;
+  width: 58px;
+  height: 22px;
   border: 3px solid #0f172a;
+  border-radius: 14px;
+  background:
+    linear-gradient(135deg, rgba(186, 230, 253, 0.78), rgba(14, 165, 233, 0.22));
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.35), 0 5px 10px rgba(15, 23, 42, 0.12);
+  z-index: 34;
+}
+
+.ppe-glasses::before {
+  content: "";
+  position: absolute;
+  left: 24px;
+  top: -2px;
+  width: 5px;
+  height: 22px;
   border-radius: 999px;
+  background: #0f172a;
+}
+
+.ppe-glasses::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 4px;
+  width: 42px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.48);
 }
 
 .ppe-earmuffs {
-  top: 30px;
-  left: 44px;
-  width: 62px;
-  height: 36px;
-  border-left: 10px solid #2563eb;
-  border-right: 10px solid #2563eb;
-  border-radius: 999px;
+  top: 50px;
+  left: 68px;
+  width: 84px;
+  height: 58px;
+  border-top: 5px solid #2563eb;
+  border-radius: 48px 48px 20px 20px;
+  z-index: 30;
+}
+
+.ppe-earmuffs::before,
+.ppe-earmuffs::after {
+  content: "";
+  position: absolute;
+  top: 20px;
+  width: 17px;
+  height: 33px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #60a5fa, #1d4ed8);
+  box-shadow: inset 3px 0 6px rgba(255, 255, 255, 0.35), 0 5px 10px rgba(37, 99, 235, 0.2);
+}
+
+.ppe-earmuffs::before {
+  left: -5px;
+}
+
+.ppe-earmuffs::after {
+  right: -5px;
 }
 
 .ppe-mask {
-  top: 45px;
-  left: 58px;
-  width: 34px;
-  height: 18px;
-  border-radius: 6px 6px 14px 14px;
-  background: #e2e8f0;
-  border: 2px solid #64748b;
+  top: 81px;
+  left: 91px;
+  width: 39px;
+  height: 28px;
+  border: 2px solid rgba(71, 85, 105, 0.72);
+  border-radius: 9px 9px 18px 18px;
+  background:
+    radial-gradient(circle at 50% 62%, rgba(100, 116, 139, 0.5) 0 3px, transparent 4px),
+    linear-gradient(145deg, #f8fafc, #cbd5e1);
+  box-shadow: 0 5px 10px rgba(15, 23, 42, 0.13);
+  z-index: 35;
+}
+
+.ppe-mask::before,
+.ppe-mask::after {
+  content: "";
+  position: absolute;
+  top: 10px;
+  width: 11px;
+  height: 13px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #94a3b8, #475569);
+}
+
+.ppe-mask::before {
+  left: -9px;
+}
+
+.ppe-mask::after {
+  right: -9px;
+}
+
+.ppe-gloves {
+  inset: 0;
+  z-index: 27;
 }
 
 .ppe-gloves::before,
 .ppe-gloves::after {
   content: "";
   position: absolute;
-  top: 172px;
-  width: 24px;
-  height: 18px;
-  border-radius: 10px;
-  background: #22c55e;
+  top: 238px;
+  width: 35px;
+  height: 26px;
+  border-radius: 15px 15px 13px 13px;
+  background:
+    radial-gradient(circle at 30% 22%, rgba(255, 255, 255, 0.5), transparent 13%),
+    linear-gradient(145deg, #4ade80, #16a34a);
+  box-shadow: inset -6px -4px 8px rgba(22, 101, 52, 0.22), 0 8px 13px rgba(22, 163, 74, 0.2);
 }
 
 .ppe-gloves::before {
-  left: 9px;
+  left: 35px;
+  transform: rotate(10deg);
 }
 
 .ppe-gloves::after {
-  right: 9px;
+  right: 35px;
+  transform: rotate(-10deg);
 }
 
 .ppe-vest {
-  top: 78px;
-  left: 45px;
-  width: 60px;
-  height: 84px;
-  border-radius: 20px;
+  top: 118px;
+  left: 73px;
+  width: 76px;
+  height: 116px;
+  border: 1px solid rgba(194, 65, 12, 0.28);
+  border-radius: 26px 26px 19px 19px;
   background:
-    linear-gradient(90deg, transparent 45%, rgba(255,255,255,0.8) 45% 55%, transparent 55%),
-    #fb923c;
-  opacity: 0.92;
+    linear-gradient(90deg, transparent 0 26%, rgba(255, 255, 255, 0.82) 27% 33%, transparent 34% 66%, rgba(255, 255, 255, 0.82) 67% 73%, transparent 74%),
+    linear-gradient(180deg, transparent 0 41%, rgba(255, 255, 255, 0.82) 42% 49%, transparent 50%),
+    radial-gradient(circle at 32% 14%, rgba(255, 255, 255, 0.72), transparent 14%),
+    linear-gradient(145deg, #fb923c, #f97316 58%, #ea580c);
+  box-shadow: inset -10px -9px 16px rgba(124, 45, 18, 0.18), 0 10px 18px rgba(249, 115, 22, 0.18);
+  opacity: 0.96;
+  z-index: 22;
+}
+
+.ppe-boots {
+  inset: 0;
+  z-index: 25;
 }
 
 .ppe-boots::before,
 .ppe-boots::after {
   content: "";
   position: absolute;
-  top: 255px;
-  width: 34px;
-  height: 16px;
-  border-radius: 8px 10px 5px 5px;
-  background: #0f172a;
+  top: 323px;
+  width: 47px;
+  height: 23px;
+  border-radius: 10px 15px 7px 7px;
+  background:
+    linear-gradient(180deg, #334155 0 28%, #0f172a 29% 100%);
+  box-shadow: inset -6px -3px 8px rgba(255, 255, 255, 0.07), 0 9px 13px rgba(15, 23, 42, 0.2);
 }
 
 .ppe-boots::before {
-  left: 36px;
+  left: 59px;
+  transform: skewX(-8deg);
 }
 
 .ppe-boots::after {
-  right: 36px;
+  right: 59px;
+  transform: skewX(8deg);
 }
 
 .ppe-harness {
-  top: 82px;
-  left: 46px;
-  width: 58px;
-  height: 94px;
-  border-left: 5px solid #dc2626;
-  border-right: 5px solid #dc2626;
-  border-bottom: 5px solid #dc2626;
-  transform: skewX(-6deg);
+  top: 117px;
+  left: 74px;
+  width: 74px;
+  height: 122px;
+  border-radius: 26px 26px 17px 17px;
+  background:
+    linear-gradient(60deg, transparent 0 41%, #dc2626 42% 47%, transparent 48%),
+    linear-gradient(120deg, transparent 0 41%, #dc2626 42% 47%, transparent 48%),
+    linear-gradient(90deg, transparent 0 16%, #dc2626 17% 23%, transparent 24% 76%, #dc2626 77% 83%, transparent 84%),
+    linear-gradient(180deg, transparent 0 72%, #dc2626 73% 79%, transparent 80%);
+  filter: drop-shadow(0 7px 10px rgba(220, 38, 38, 0.16));
+  z-index: 33;
+}
+
+.ppe-harness::before {
+  content: "";
+  position: absolute;
+  left: 31px;
+  top: 57px;
+  width: 12px;
+  height: 12px;
+  border: 3px solid #fef2f2;
+  border-radius: 50%;
+  background: #dc2626;
 }
 
 .risk-assessment-ppe-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(275px, 1fr));
+  gap: 9px;
+  align-content: start;
 }
 
 .risk-assessment-ppe-option {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  gap: 8px;
-  align-items: start;
+  grid-template-columns: 18px 48px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
   min-width: 0;
+  min-height: 70px;
   padding: 10px;
-  border: 1px solid rgba(203, 213, 225, 0.82);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(191, 219, 254, 0.78);
+  border-radius: 15px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.92));
   cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
 }
 
-.risk-assessment-ppe-option span {
+.risk-assessment-ppe-option:hover {
+  transform: translateY(-1px);
+  border-color: rgba(37, 99, 235, 0.48);
+  box-shadow: 0 14px 28px rgba(37, 99, 235, 0.1);
+}
+
+.risk-assessment-ppe-option:has(input:checked) {
+  border-color: rgba(34, 197, 94, 0.58);
+  background:
+    linear-gradient(135deg, rgba(240, 253, 244, 0.98), rgba(239, 246, 255, 0.94));
+  box-shadow: inset 3px 0 0 rgba(34, 197, 94, 0.5), 0 14px 30px rgba(34, 197, 94, 0.1);
+}
+
+.risk-assessment-ppe-option-icon {
+  position: relative;
   display: grid;
-  gap: 2px;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  overflow: hidden;
+  border: 1px solid rgba(191, 219, 254, 0.9);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 28% 18%, rgba(255, 255, 255, 0.9), transparent 20%),
+    linear-gradient(145deg, rgba(219, 234, 254, 0.95), rgba(241, 245, 249, 0.96));
+  box-shadow: inset -7px -6px 12px rgba(30, 64, 175, 0.09), 0 10px 18px rgba(37, 99, 235, 0.1);
+}
+
+.risk-assessment-ppe-option-icon::before,
+.risk-assessment-ppe-option-icon::after {
+  content: "";
+  position: absolute;
+}
+
+.risk-assessment-ppe-option-icon.is-head::before {
+  left: 9px;
+  top: 12px;
+  width: 28px;
+  height: 17px;
+  border-radius: 18px 18px 6px 6px;
+  background: linear-gradient(145deg, #fde68a, #eab308);
+}
+
+.risk-assessment-ppe-option-icon.is-head::after {
+  left: 6px;
+  top: 27px;
+  width: 34px;
+  height: 6px;
+  border-radius: 999px;
+  background: #ca8a04;
+}
+
+.risk-assessment-ppe-option-icon.is-eyes::before {
+  left: 8px;
+  top: 17px;
+  width: 30px;
+  height: 13px;
+  border: 3px solid #0f172a;
+  border-radius: 999px;
+  background: rgba(125, 211, 252, 0.48);
+}
+
+.risk-assessment-ppe-option-icon.is-eyes::after {
+  left: 22px;
+  top: 18px;
+  width: 3px;
+  height: 11px;
+  background: #0f172a;
+}
+
+.risk-assessment-ppe-option-icon.is-hearing::before {
+  left: 11px;
+  top: 11px;
+  width: 24px;
+  height: 25px;
+  border-top: 4px solid #2563eb;
+  border-radius: 999px;
+}
+
+.risk-assessment-ppe-option-icon.is-hearing::after {
+  left: 8px;
+  top: 23px;
+  width: 9px;
+  height: 14px;
+  border-radius: 8px;
+  background: #2563eb;
+  box-shadow: 21px 0 0 #2563eb;
+}
+
+.risk-assessment-ppe-option-icon.is-respiratory::before {
+  left: 13px;
+  top: 15px;
+  width: 20px;
+  height: 18px;
+  border: 2px solid #64748b;
+  border-radius: 8px 8px 14px 14px;
+  background: linear-gradient(145deg, #f8fafc, #cbd5e1);
+}
+
+.risk-assessment-ppe-option-icon.is-respiratory::after {
+  left: 8px;
+  top: 22px;
+  width: 8px;
+  height: 9px;
+  border-radius: 50%;
+  background: #475569;
+  box-shadow: 23px 0 0 #475569;
+}
+
+.risk-assessment-ppe-option-icon.is-hands::before {
+  left: 9px;
+  top: 13px;
+  width: 19px;
+  height: 25px;
+  border-radius: 12px 12px 10px 10px;
+  background: linear-gradient(145deg, #4ade80, #16a34a);
+  transform: rotate(-15deg);
+}
+
+.risk-assessment-ppe-option-icon.is-hands::after {
+  left: 26px;
+  top: 13px;
+  width: 12px;
+  height: 19px;
+  border-radius: 999px;
+  background: #22c55e;
+  transform: rotate(18deg);
+}
+
+.risk-assessment-ppe-option-icon.is-body::before {
+  left: 13px;
+  top: 10px;
+  width: 21px;
+  height: 28px;
+  border-radius: 10px 10px 7px 7px;
+  background:
+    linear-gradient(90deg, transparent 0 34%, rgba(255, 255, 255, 0.9) 35% 45%, transparent 46% 55%, rgba(255, 255, 255, 0.9) 56% 66%, transparent 67%),
+    linear-gradient(145deg, #fb923c, #ea580c);
+}
+
+.risk-assessment-ppe-option-icon.is-body::after {
+  left: 12px;
+  top: 24px;
+  width: 23px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.risk-assessment-ppe-option-icon.is-feet::before {
+  left: 7px;
+  top: 25px;
+  width: 29px;
+  height: 12px;
+  border-radius: 5px 10px 5px 5px;
+  background: linear-gradient(180deg, #334155, #0f172a);
+  transform: skewX(-10deg);
+}
+
+.risk-assessment-ppe-option-icon.is-feet::after {
+  left: 18px;
+  top: 16px;
+  width: 17px;
+  height: 14px;
+  border-radius: 4px 4px 0 0;
+  background: linear-gradient(145deg, #64748b, #1f2937);
+}
+
+.risk-assessment-ppe-option-icon.is-fall::before {
+  left: 12px;
+  top: 10px;
+  width: 22px;
+  height: 28px;
+  border-radius: 10px;
+  background:
+    linear-gradient(55deg, transparent 0 39%, #dc2626 40% 48%, transparent 49%),
+    linear-gradient(125deg, transparent 0 39%, #dc2626 40% 48%, transparent 49%),
+    linear-gradient(90deg, transparent 0 17%, #dc2626 18% 27%, transparent 28% 72%, #dc2626 73% 82%, transparent 83%);
+}
+
+.risk-assessment-ppe-option-icon.is-fall::after {
+  left: 20px;
+  top: 24px;
+  width: 7px;
+  height: 7px;
+  border: 2px solid #dc2626;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.risk-assessment-ppe-option-copy {
+  display: grid;
+  gap: 3px;
   min-width: 0;
 }
 
 .risk-assessment-ppe-option strong {
   color: #172033;
   font-size: 0.82rem;
+  line-height: 1.2;
 }
 
 .risk-assessment-ppe-option small {
   color: #64748b;
   font-size: 0.7rem;
   font-weight: 760;
+  line-height: 1.28;
 }
 
 .risk-assessment-ppe-selected {
@@ -56430,9 +56920,11 @@ button.work-order-editor-section-head:focus-visible {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
   padding: 10px;
-  border: 1px solid rgba(203, 213, 225, 0.78);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.84);
+  border: 1px solid rgba(191, 219, 254, 0.74);
+  border-radius: 14px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(248, 250, 252, 0.82));
+  box-shadow: 0 10px 22px rgba(30, 64, 175, 0.05);
 }
 
 .risk-assessment-ppe-selected-row label {

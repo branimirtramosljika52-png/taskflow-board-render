@@ -122052,16 +122052,28 @@ function renderRiskAssessmentJobDocumentPreview(job = {}, index = 0) {
   `;
 }
 
+function getRiskAssessmentPpeIconClass(ppe = {}) {
+  const id = String(ppe.id || "");
+  const bodyPart = String(ppe.bodyPart || "item");
+  if (id.includes("face") || id.includes("goggles")) return "eyes";
+  if (id.includes("respirator") || id.includes("filter")) return "respiratory";
+  if (id.includes("gloves")) return "hands";
+  if (id.includes("shoes")) return "feet";
+  if (id.includes("harness")) return "fall";
+  return bodyPart || "item";
+}
+
 function renderRiskAssessmentPpeVisual(job = {}, jobIndex = 0) {
   const selectedSet = getRiskAssessmentSelectedPpeSet(job);
   const activeFilter = String(job.ppeFilter || "all");
   const selectedBodyParts = new Set((job.ppeItems ?? []).map((item) => item.bodyPart));
   const catalogItems = RISK_ASSESSMENT_PPE_CATALOG.filter((item) => activeFilter === "all" || item.bodyPart === activeFilter);
+  const selectedCount = job.ppeItems?.length ?? 0;
   return `
     <div class="risk-assessment-ppe-panel">
       <div class="risk-assessment-mini-title">
         <strong>Osobna zaštitna oprema</strong>
-        <span>Vizualni odabir OZO prema dijelovima tijela.</span>
+        <span>${selectedCount ? `${selectedCount} odabranih komada OZO` : "Odaberi opremu i odmah vidi kako se nosi."}</span>
       </div>
       <div class="risk-assessment-ppe-filters">
         ${RISK_ASSESSMENT_PPE_BODY_FILTERS.map((filter) => `
@@ -122071,7 +122083,9 @@ function renderRiskAssessmentPpeVisual(job = {}, jobIndex = 0) {
       <div class="risk-assessment-ppe-layout">
         <div class="risk-assessment-worker-preview" aria-label="Vizualni prikaz OZO">
           <div class="risk-assessment-worker-figure">
+            <span class="worker-shadow"></span>
             <span class="worker-head"></span>
+            <span class="worker-face"></span>
             <span class="worker-neck"></span>
             <span class="worker-body"></span>
             <span class="worker-arm is-left"></span>
@@ -122092,7 +122106,8 @@ function renderRiskAssessmentPpeVisual(job = {}, jobIndex = 0) {
           ${catalogItems.map((ppe) => `
             <label class="risk-assessment-ppe-option">
               <input type="checkbox" data-risk-ppe-toggle="${escapeHtml(ppe.id)}" ${selectedSet.has(ppe.id) ? "checked" : ""} />
-              <span>
+              <span class="risk-assessment-ppe-option-icon is-${escapeHtml(getRiskAssessmentPpeIconClass(ppe))}" aria-hidden="true"></span>
+              <span class="risk-assessment-ppe-option-copy">
                 <strong>${escapeHtml(ppe.name)}</strong>
                 <small>${escapeHtml(ppe.category)} · ${escapeHtml(ppe.norm)}</small>
               </span>
