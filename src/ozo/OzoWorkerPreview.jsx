@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { createOzoWorkerScene } from "./ozoWorkerScene.js";
+
+const ASSET_VERSION = "20260527-ozo-ai-v1";
 
 const PART_LABELS = {
   head: "Glava",
@@ -52,10 +53,36 @@ const EXCLUSIVE_GEAR = [
   ["respirator", "mask"],
 ];
 
+const WORKER_VARIANTS = [
+  { id: "base", label: "Bez dodatne OZO", file: "base.png", gear: [] },
+  { id: "helmet", label: "Kacige", file: "helmet.png", gear: ["helmet"] },
+  { id: "earmuffs", label: "Antifoni", file: "earmuffs.png", gear: ["earmuffs"] },
+  { id: "glasses", label: "Naočale", file: "glasses.png", gear: ["glasses"] },
+  { id: "face-shield", label: "Viziri", file: "face-shield.png", gear: ["faceShield"] },
+  { id: "respirator", label: "Respiratori", file: "respirator.png", gear: ["respirator"] },
+  { id: "vest", label: "Reflektirajući prsluci", file: "vest.png", gear: ["vest"] },
+  { id: "gloves", label: "Rukavice", file: "gloves.png", gear: ["gloves"] },
+  { id: "helmet-vest", label: "Kacige i prsluci", file: "helmet-vest.png", gear: ["helmet", "vest"] },
+  { id: "helmet-earmuffs", label: "Kacige i antifoni", file: "helmet-earmuffs.png", gear: ["helmet", "earmuffs"] },
+  { id: "helmet-face-shield", label: "Kacige i viziri", file: "helmet-face-shield.png", gear: ["helmet", "faceShield"] },
+  { id: "helmet-respirator", label: "Kacige i respiratori", file: "helmet-respirator.png", gear: ["helmet", "respirator"] },
+  { id: "helmet-glasses", label: "Kacige i naočale", file: "helmet-glasses.png", gear: ["helmet", "glasses"] },
+  { id: "helmet-glasses-vest", label: "Kacige, naočale i prsluci", file: "helmet-glasses-vest.png", gear: ["helmet", "glasses", "vest"] },
+  { id: "helmet-glasses-vest-gloves", label: "Kacige, naočale, prsluci i rukavice", file: "helmet-glasses-vest-gloves.png", gear: ["helmet", "glasses", "vest", "gloves"] },
+  { id: "helmet-glasses-earmuffs-vest-gloves", label: "Kacige, naočale, antifoni, prsluci i rukavice", file: "helmet-glasses-earmuffs-vest-gloves.png", gear: ["helmet", "glasses", "earmuffs", "vest", "gloves"] },
+  { id: "vest-gloves", label: "Prsluci i rukavice", file: "vest-gloves.png", gear: ["vest", "gloves"] },
+  { id: "helmet-face-shield-respirator", label: "Kacige, viziri i respiratori", file: "helmet-face-shield-respirator.png", gear: ["helmet", "faceShield", "respirator"] },
+  { id: "full", label: "Kompletna OZO", file: "full.png", gear: ["helmet", "glasses", "earmuffs", "respirator", "vest", "gloves"] },
+].map((variant) => ({
+  ...variant,
+  src: `/assets/ozo/worker-ai/${variant.file}?v=${ASSET_VERSION}`,
+  gearSet: new Set(variant.gear),
+}));
+
 function normalizeText(value = "") {
   return String(value || "")
     .normalize("NFD")
-    .replace(/[đĐ]/g, "d")
+    .replace(/[\u0111\u0110]/g, "d")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
 }
@@ -153,37 +180,67 @@ function buildGearItems(selectedItems, selectedBodyParts) {
   return GEAR_ORDER.filter((kind) => byKind.has(kind)).map((kind) => byKind.get(kind));
 }
 
+function normalizeVariantGear(kind) {
+  if (kind === "cap") return "helmet";
+  if (kind === "mask") return "respirator";
+  if (kind === "coverall") return "vest";
+  if (kind === "harness" || kind === "kneepads" || kind === "boots") return null;
+  return kind;
+}
+
+function chooseWorkerVariant(gearKinds = []) {
+  const wanted = new Set(gearKinds.map(normalizeVariantGear).filter(Boolean));
+  if (!wanted.size) return WORKER_VARIANTS[0];
+
+  let bestVariant = WORKER_VARIANTS[0];
+  let bestScore = Number.NEGATIVE_INFINITY;
+
+  WORKER_VARIANTS.forEach((variant) => {
+    let overlap = 0;
+    let missing = 0;
+    let extras = 0;
+
+    wanted.forEach((kind) => {
+      if (variant.gearSet.has(kind)) overlap += 1;
+      else missing += 1;
+    });
+
+    variant.gearSet.forEach((kind) => {
+      if (!wanted.has(kind)) extras += 1;
+    });
+
+    const exactBonus = missing === 0 && extras === 0 ? 24 : 0;
+    const fullBonus = wanted.size >= 5 && variant.id === "full" ? 12 : 0;
+    const score = overlap * 14 - missing * 9 - extras * 4 + exactBonus + fullBonus;
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestVariant = variant;
+    }
+  });
+
+  return bestVariant;
+}
+
 export function OzoWorkerPreview({
   selectedItems = [],
   selectedBodyParts = [],
 }) {
-  const canvasRef = useRef(null);
-  const stageRef = useRef(null);
   const gearItems = useMemo(() => buildGearItems(selectedItems, selectedBodyParts), [selectedItems, selectedBodyParts]);
   const gearKinds = useMemo(() => gearItems.map((gear) => gear.kind), [gearItems]);
-  const gearSignature = gearKinds.join("|") || "empty";
   const activeParts = useMemo(() => Array.from(new Set(gearItems.map((gear) => gear.part || "other"))), [gearItems]);
-
-  useEffect(() => {
-    if (!canvasRef.current || !stageRef.current) return undefined;
-    const scene = createOzoWorkerScene({
-      canvas: canvasRef.current,
-      stage: stageRef.current,
-      gearKinds,
-    });
-    return () => scene.dispose();
-  }, [gearSignature]);
+  const workerVariant = useMemo(() => chooseWorkerVariant(gearKinds), [gearKinds]);
 
   return (
-    <section className="ozo-worker-panel" aria-label="Realistični 3D prikaz radnika s OZO">
-      <div className="ozo-worker-hero is-three">
+    <section className="ozo-worker-panel" aria-label="Realisticni prikaz radnika s OZO">
+      <div className="ozo-worker-hero is-ai">
         <div className="ozo-worker-stage-copy">
-          <span>3D worker preview</span>
-          <strong>Oprema sjeda direktno na 3D model</strong>
+          <span>AI realistic worker preview</span>
+          <strong>Realni radnici i oprema prema odabiru</strong>
         </div>
         <div className="ozo-stage-tags" aria-label="Aktivne zone zaštite">
           <AnimatePresence initial={false}>
-            {gearItems.length ? gearItems.map((gear) => (
+            {gearItems.length ? gearItems.slice(0, 6).map((gear) => (
               <motion.span
                 key={gear.kind}
                 initial={{ opacity: 0, y: -8 }}
@@ -197,18 +254,23 @@ export function OzoWorkerPreview({
           </AnimatePresence>
         </div>
         <div
-          className="ozo-worker-canvas-wrap"
-          data-ozo-gear-signature={gearSignature}
-          ref={stageRef}
+          className="ozo-worker-image-wrap"
+          data-ozo-worker-variant={workerVariant.id}
         >
-          <canvas
-            aria-label="Muški i ženski 3D industrijski radnik s modularnom osobnom zaštitnom opremom"
-            className="ozo-worker-canvas"
-            data-ozo-worker-canvas
-            ref={canvasRef}
-          />
-          <div className="ozo-worker-depth-grid" aria-hidden="true" />
-          <div className="ozo-worker-floor-glow" aria-hidden="true" />
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.img
+              key={workerVariant.id}
+              className="ozo-ai-worker-image"
+              src={workerVariant.src}
+              alt="Muški i ženski industrijski radnik s odabranom osobnom zaštitnom opremom"
+              initial={{ opacity: 0, scale: 1.018, y: 14 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.992, y: -8 }}
+              transition={{ duration: 0.34, ease: "easeOut" }}
+              loading="eager"
+            />
+          </AnimatePresence>
+          <div className="ozo-worker-image-sheen" aria-hidden="true" />
           <div className="ozo-gear-markers" aria-hidden="true">
             {gearKinds.flatMap((kind) => ["male", "female"].map((worker) => (
               <span data-ozo-gear-kind={kind} data-ozo-worker={worker} key={`${worker}-${kind}`} />
@@ -220,6 +282,10 @@ export function OzoWorkerPreview({
         <div>
           <span>OZO status</span>
           <strong>{selectedItems.length ? `${selectedItems.length} odabrano` : "Bez OZO"}</strong>
+        </div>
+        <div>
+          <span>AI render</span>
+          <strong>{workerVariant.label}</strong>
         </div>
         <div>
           <span>Zone zaštite</span>

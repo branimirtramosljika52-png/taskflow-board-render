@@ -24,8 +24,6 @@ export function OzoEquipmentPanel({
   newDraft = {},
   newFormOpen = false,
   sourceUrl = "",
-  workerImageUrl = "/assets/ozo/ozo-worker-duo-v1.png",
-  imageFallbacks = {},
   iconFallbacks = {},
 }) {
   const [activeFilter, setActiveFilter] = useState(initialFilter || "all");
@@ -113,7 +111,6 @@ export function OzoEquipmentPanel({
 
       <div className="ozo-layout">
         <OzoWorkerPreview
-          workerImageUrl={workerImageUrl}
           selectedItems={selectedItems}
           selectedBodyParts={selectedBodyParts}
         />
@@ -130,7 +127,7 @@ export function OzoEquipmentPanel({
               <span data-risk-ppe-match-count>{visibleCatalog.length}</span>
               <small>prikazanih stavki</small>
             </div>
-            <strong>OZO katalog</strong>
+            <strong>Moderni OZO popis</strong>
           </div>
           <div className="ozo-card-grid">
             <AnimatePresence mode="popLayout">
@@ -141,7 +138,6 @@ export function OzoEquipmentPanel({
                   index={index}
                   isSelected={selectedSet.has(String(item.id))}
                   iconUrl={item.iconUrl || iconFallbacks[item.bodyPart] || iconFallbacks.other}
-                  imageUrl={item.imageUrl || imageFallbacks[item.bodyPart] || imageFallbacks.other}
                 />
               ))}
             </AnimatePresence>

@@ -119647,7 +119647,6 @@ const RISK_ASSESSMENT_PPE_BODY_FILTERS = Object.freeze([
 const RISK_ASSESSMENT_PPE_CATALOG = DEFAULT_RISK_PPE_CATALOG;
 
 const RISK_ASSESSMENT_PPE_THREE_MODULE_URL = "/assets/vendor/three.module.js?v=20260527-risk-ppe-3d-v2";
-const RISK_ASSESSMENT_PPE_WORKER_IMAGE_URL = "/assets/ozo/ozo-worker-base-v2.png?v=20260527-ozo-3d-v7";
 
 const RISK_ASSESSMENT_ARMOR_TEMPLATE_ROWS = Object.freeze([
   { category: "I. OPASNOSTI", group: "1. Mehaničke opasnosti", code: "1.1.1", hazard: "Ručni alati", probability: "mv", consequence: "sš", riskLevel: "Mali rizik", measures: "Koristiti ispravan alat, osposobiti radnike za rad na siguran način i po potrebi koristiti propisanu osobnu zaštitnu opremu." },
@@ -122462,8 +122461,6 @@ function renderRiskAssessmentPpeVisual(job = {}, jobIndex = 0) {
     newDraft: getRiskAssessmentPpeNewDraft(job),
     newFormOpen: Boolean(job.ppeNewOpen),
     sourceUrl: RISK_PPE_SOURCE_URL,
-    workerImageUrl: RISK_ASSESSMENT_PPE_WORKER_IMAGE_URL,
-    imageFallbacks: RISK_PPE_CATEGORY_IMAGES,
     iconFallbacks: RISK_PPE_CATEGORY_ICONS,
   };
 
