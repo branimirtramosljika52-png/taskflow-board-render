@@ -12,10 +12,22 @@ export const RISK_PPE_CATEGORY_IMAGES = Object.freeze({
   "other": "https://images.unsplash.com/photo-1581092162384-8987c1d64718?auto=format&fit=crop&w=640&q=80"
 });
 
+export const RISK_PPE_CATEGORY_ICONS = Object.freeze({
+  "head": "https://commons.wikimedia.org/wiki/Special:Redirect/file/CCOHS_PPE_icon_01_Head_protection.svg",
+  "eyes": "https://commons.wikimedia.org/wiki/Special:Redirect/file/CCOHS_PPE_icon_02_Eye_protection.svg",
+  "hearing": "https://commons.wikimedia.org/wiki/Special:Redirect/file/CCOHS_PPE_icon_04_Hearing_protection.svg",
+  "respiratory": "https://commons.wikimedia.org/wiki/Special:Redirect/file/CCOHS_PPE_icon_06_Respiratory_protection.svg",
+  "hands": "https://commons.wikimedia.org/wiki/Special:Redirect/file/CCOHS_PPE_icon_14_Protective_gloves.svg",
+  "body": "https://commons.wikimedia.org/wiki/Special:Redirect/file/CCOHS_PPE_icon_09_Reflective_vest.svg",
+  "feet": "https://commons.wikimedia.org/wiki/Special:Redirect/file/CCOHS_PPE_icon_13_Protective_boots.svg",
+  "fall": "https://commons.wikimedia.org/wiki/Special:Redirect/file/CCOHS_PPE_icon_08_Fall_protection.svg",
+  "other": "https://commons.wikimedia.org/wiki/Special:Redirect/file/CCOHS_PPE_icon_10_Kneepads.svg"
+});
+
 function normalizeRiskPpeCatalogText(value = "") {
   return String(value || "")
     .normalize("NFD")
-    .replace(/[đĐ]/g, "d")
+    .replace(/[\u0111\u0110]/g, "d")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
 }
@@ -32,7 +44,27 @@ function isRiskPpeEquipmentCatalogItem(item = {}) {
     "nazivlje",
     "ispitivanje na probijanje"
   ];
-  return !methodOnlyPatterns.some((pattern) => name.includes(pattern));
+  const nonIndustrialPatterns = [
+    "mala djeca",
+    "djec",
+    "sport",
+    "biciklist",
+    "koturaljk",
+    "skijas",
+    "skijask",
+    "daskas",
+    "jahac",
+    "jahack",
+    "kanu",
+    "divljim vodama",
+    "saonic",
+    "motocikl",
+    "moped",
+    "rekreacijsk",
+    "plovilu"
+  ];
+  return !methodOnlyPatterns.some((pattern) => name.includes(pattern))
+    && !nonIndustrialPatterns.some((pattern) => name.includes(pattern));
 }
 
 export const DEFAULT_RISK_PPE_CATALOG = Object.freeze([

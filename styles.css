@@ -56190,26 +56190,64 @@ button.work-order-editor-section-head:focus-visible {
 .risk-assessment-ppe-panel {
   position: relative;
   display: grid;
-  gap: 12px;
+  gap: 14px;
   overflow: hidden;
-  padding: 14px;
-  border: 1px solid rgba(147, 197, 253, 0.64);
-  border-radius: 14px;
-  background: linear-gradient(135deg, rgba(248, 252, 255, 0.98), rgba(255, 255, 255, 0.94));
-  box-shadow: 0 18px 42px rgba(37, 99, 235, 0.09);
+  padding: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.46);
+  border-radius: 18px;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.88), rgba(248, 250, 252, 0.72)),
+    radial-gradient(circle at 15% 22%, rgba(250, 204, 21, 0.18), transparent 18%),
+    radial-gradient(circle at 82% 18%, rgba(14, 165, 233, 0.12), transparent 20%),
+    linear-gradient(135deg, #f8fafc, #edf2f7 48%, #f9fbfd);
+  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.12);
 }
 
 .risk-assessment-ppe-panel::before {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, rgba(37, 99, 235, 0.08), transparent 20%, transparent 82%, rgba(15, 118, 110, 0.06));
+  background:
+    linear-gradient(90deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px) 0 0 / 44px 100%,
+    linear-gradient(180deg, rgba(15, 23, 42, 0.045) 1px, transparent 1px) 0 0 / 100% 44px,
+    linear-gradient(90deg, rgba(15, 23, 42, 0.04), transparent 18%, transparent 82%, rgba(15, 23, 42, 0.04));
+  opacity: 0.62;
   pointer-events: none;
 }
 
 .risk-assessment-ppe-panel > * {
   position: relative;
   z-index: 1;
+}
+
+.risk-assessment-ppe-title {
+  justify-items: center;
+  text-align: center;
+}
+
+.risk-assessment-ppe-title strong {
+  color: #08192b;
+  font-size: clamp(1.5rem, 2.4vw, 2.8rem);
+  font-weight: 950;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
+.risk-assessment-ppe-title span {
+  max-width: 720px;
+  color: #172033;
+  font-size: 0.86rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.risk-assessment-ppe-title::after {
+  content: "";
+  width: 86px;
+  height: 4px;
+  border-radius: 999px;
+  background: #facc15;
+  box-shadow: 0 8px 18px rgba(250, 204, 21, 0.28);
 }
 
 .risk-assessment-ppe-filters button {
@@ -56322,8 +56360,8 @@ button.work-order-editor-section-head:focus-visible {
 
 .risk-assessment-ppe-layout {
   display: grid;
-  grid-template-columns: minmax(340px, 0.42fr) minmax(0, 1fr);
-  gap: 16px;
+  grid-template-columns: minmax(360px, 0.46fr) minmax(0, 1fr);
+  gap: 18px;
   align-items: stretch;
 }
 
@@ -56334,14 +56372,15 @@ button.work-order-editor-section-head:focus-visible {
   place-items: center;
   min-height: 430px;
   overflow: hidden;
-  border: 1px solid rgba(148, 163, 184, 0.46);
-  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 16px;
   background:
-    radial-gradient(ellipse at 50% 84%, rgba(15, 23, 42, 0.18), transparent 34%),
-    radial-gradient(circle at 50% 18%, rgba(255, 255, 255, 0.96), transparent 27%),
-    linear-gradient(160deg, rgba(238, 247, 255, 0.96), rgba(248, 250, 252, 0.96) 46%, rgba(239, 246, 255, 0.96));
+    linear-gradient(90deg, rgba(255, 255, 255, 0.52), transparent 18%, transparent 82%, rgba(255, 255, 255, 0.52)),
+    radial-gradient(ellipse at 50% 84%, rgba(15, 23, 42, 0.16), transparent 34%),
+    radial-gradient(circle at 50% 18%, rgba(255, 255, 255, 0.98), transparent 27%),
+    linear-gradient(160deg, rgba(241, 245, 249, 0.96), rgba(255, 255, 255, 0.94) 46%, rgba(229, 236, 245, 0.96));
   perspective: 900px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86), inset 0 -30px 70px rgba(37, 99, 235, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92), inset 0 -34px 74px rgba(15, 23, 42, 0.08);
 }
 
 .risk-assessment-worker-preview::before {
@@ -56397,6 +56436,73 @@ button.work-order-editor-section-head:focus-visible {
 
 .risk-assessment-worker-preview:not(.is-webgl-ready) .risk-assessment-worker-figure {
   animation: risk-assessment-worker-fallback-spin 8s linear infinite;
+}
+
+.risk-assessment-ppe-callouts {
+  position: absolute;
+  inset: 16px 14px auto;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  pointer-events: none;
+}
+
+.risk-assessment-ppe-callout {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 7px;
+  align-items: center;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid rgba(203, 213, 225, 0.74);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.84);
+  color: #0f172a;
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.12);
+  transform: translateZ(34px);
+  animation: risk-ppe-callout-forward 520ms cubic-bezier(0.2, 0.9, 0.2, 1) both;
+  animation-delay: calc(var(--ppe-callout-index, 0) * 45ms);
+  backdrop-filter: blur(10px);
+}
+
+.risk-assessment-ppe-callout img {
+  display: block;
+  width: 34px;
+  height: 34px;
+  padding: 5px;
+  border-radius: 50%;
+  background: #07192d;
+  object-fit: contain;
+}
+
+.risk-assessment-ppe-callout b {
+  min-width: 0;
+  overflow: hidden;
+  color: #08192b;
+  font-size: 0.64rem;
+  font-weight: 950;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+@keyframes risk-ppe-callout-forward {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) translateZ(-80px) scale(0.72);
+  }
+
+  62% {
+    opacity: 1;
+    transform: translateY(-4px) translateZ(48px) scale(1.05);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) translateZ(34px) scale(1);
+  }
 }
 
 .risk-assessment-worker-preview-meta {
@@ -56621,6 +56727,27 @@ button.work-order-editor-section-head:focus-visible {
 .ppe-layer {
   z-index: 20;
   pointer-events: none;
+  animation: risk-ppe-layer-forward 520ms cubic-bezier(0.18, 0.9, 0.22, 1) both;
+}
+
+@keyframes risk-ppe-layer-forward {
+  0% {
+    opacity: 0;
+    transform: translateZ(-70px) scale(0.72);
+    filter: blur(1px);
+  }
+
+  58% {
+    opacity: 1;
+    transform: translateZ(46px) scale(1.08);
+    filter: blur(0);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateZ(0) scale(1);
+    filter: none;
+  }
 }
 
 .ppe-helmet {
@@ -56882,26 +57009,26 @@ button.work-order-editor-section-head:focus-visible {
 
 .risk-assessment-ppe-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 10px;
   align-content: start;
   max-height: 520px;
   overflow: auto;
-  padding-right: 4px;
+  padding: 2px 6px 2px 2px;
   scrollbar-gutter: stable;
 }
 
 .risk-assessment-ppe-option {
   display: grid;
-  grid-template-columns: 18px 82px minmax(0, 1fr) 46px;
-  gap: 10px;
+  grid-template-columns: 18px 58px 92px minmax(0, 1fr);
+  gap: 12px;
   align-items: center;
   min-width: 0;
-  min-height: 86px;
-  padding: 8px;
-  border: 1px solid rgba(191, 219, 254, 0.78);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.92);
+  min-height: 92px;
+  padding: 10px;
+  border: 1px solid rgba(203, 213, 225, 0.82);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.94);
   cursor: pointer;
   transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
 }
@@ -56913,19 +57040,84 @@ button.work-order-editor-section-head:focus-visible {
 }
 
 .risk-assessment-ppe-option:has(input:checked) {
-  border-color: rgba(34, 197, 94, 0.58);
-  background: linear-gradient(135deg, rgba(240, 253, 244, 0.98), rgba(248, 250, 252, 0.96));
-  box-shadow: inset 3px 0 0 rgba(34, 197, 94, 0.5), 0 14px 30px rgba(34, 197, 94, 0.1);
+  border-color: rgba(250, 204, 21, 0.72);
+  background: linear-gradient(135deg, rgba(255, 251, 235, 0.98), rgba(255, 255, 255, 0.96));
+  box-shadow: inset 4px 0 0 rgba(250, 204, 21, 0.82), 0 18px 36px rgba(15, 23, 42, 0.12);
+}
+
+.risk-assessment-ppe-option.is-selected {
+  animation: risk-ppe-option-forward 560ms cubic-bezier(0.18, 0.9, 0.22, 1) both;
+}
+
+.risk-assessment-ppe-option.is-selected .risk-assessment-ppe-option-symbol,
+.risk-assessment-ppe-option.is-selected .risk-assessment-ppe-option-photo {
+  animation: risk-ppe-media-forward 620ms cubic-bezier(0.18, 0.9, 0.22, 1) both;
+}
+
+@keyframes risk-ppe-option-forward {
+  0% {
+    opacity: 0.58;
+    transform: perspective(900px) translateY(14px) translateZ(-120px) rotateX(14deg) scale(0.92);
+  }
+
+  60% {
+    opacity: 1;
+    transform: perspective(900px) translateY(-5px) translateZ(70px) rotateX(-2deg) scale(1.03);
+  }
+
+  100% {
+    opacity: 1;
+    transform: perspective(900px) translateY(0) translateZ(0) rotateX(0) scale(1);
+  }
+}
+
+@keyframes risk-ppe-media-forward {
+  0% {
+    transform: translateX(-10px) scale(0.78);
+    filter: saturate(0.8) blur(1px);
+  }
+
+  58% {
+    transform: translateX(4px) scale(1.12);
+    filter: saturate(1.1) blur(0);
+  }
+
+  100% {
+    transform: translateX(0) scale(1);
+    filter: none;
+  }
+}
+
+.risk-assessment-ppe-option-symbol {
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  overflow: hidden;
+  border: 1px solid rgba(8, 25, 43, 0.08);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 28% 16%, rgba(255, 255, 255, 0.32), transparent 24%),
+    linear-gradient(145deg, #08192b, #0f2a44);
+  box-shadow: inset -8px -8px 14px rgba(0, 0, 0, 0.18), 0 12px 20px rgba(8, 25, 43, 0.16);
+}
+
+.risk-assessment-ppe-option-symbol img {
+  display: block;
+  width: 42px;
+  height: 42px;
+  object-fit: contain;
 }
 
 .risk-assessment-ppe-option-photo {
   display: block;
-  width: 82px;
-  height: 62px;
+  width: 92px;
+  height: 66px;
   overflow: hidden;
-  border-radius: 8px;
+  border-radius: 10px;
   border: 1px solid rgba(203, 213, 225, 0.76);
-  background: #e2e8f0;
+  background: #f8fafc;
+  box-shadow: 0 10px 18px rgba(15, 23, 42, 0.08);
 }
 
 .risk-assessment-ppe-option-photo img {
@@ -56936,18 +57128,7 @@ button.work-order-editor-section-head:focus-visible {
 }
 
 .risk-assessment-ppe-option-icon {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 46px;
-  height: 46px;
-  overflow: hidden;
-  border: 1px solid rgba(191, 219, 254, 0.9);
-  border-radius: 14px;
-  background:
-    radial-gradient(circle at 28% 18%, rgba(255, 255, 255, 0.9), transparent 20%),
-    linear-gradient(145deg, rgba(219, 234, 254, 0.95), rgba(241, 245, 249, 0.96));
-  box-shadow: inset -7px -6px 12px rgba(30, 64, 175, 0.09), 0 10px 18px rgba(37, 99, 235, 0.1);
+  display: none;
 }
 
 .risk-assessment-ppe-option-icon::before,
@@ -57114,25 +57295,27 @@ button.work-order-editor-section-head:focus-visible {
 
 .risk-assessment-ppe-option-copy {
   display: grid;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
 }
 
 .risk-assessment-ppe-option strong {
-  color: #172033;
-  font-size: 0.82rem;
-  line-height: 1.2;
+  color: #08192b;
+  font-size: 0.9rem;
+  font-weight: 950;
+  line-height: 1.15;
+  text-transform: uppercase;
 }
 
 .risk-assessment-ppe-option small {
-  color: #64748b;
-  font-size: 0.7rem;
-  font-weight: 760;
+  color: #0f4ea2;
+  font-size: 0.76rem;
+  font-weight: 900;
   line-height: 1.28;
 }
 
 .risk-assessment-ppe-option em {
-  color: #0f766e;
+  color: #64748b;
   font-size: 0.66rem;
   font-style: normal;
   font-weight: 850;
@@ -57382,9 +57565,42 @@ button.work-order-editor-section-head:focus-visible {
     justify-items: start;
   }
 
+  .risk-assessment-ppe-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .risk-assessment-ppe-option {
+    grid-template-columns: 18px 52px minmax(76px, 88px) minmax(0, 1fr);
+  }
+
+  .risk-assessment-ppe-option-symbol {
+    width: 52px;
+    height: 52px;
+  }
+
+  .risk-assessment-ppe-option-symbol img {
+    width: 38px;
+    height: 38px;
+  }
+
+  .risk-assessment-ppe-callouts {
+    grid-template-columns: minmax(0, 1fr);
+    inset-inline: 10px;
+  }
+
   .risk-assessment-card-meta {
     grid-auto-flow: row;
     justify-content: start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .risk-assessment-ppe-option.is-selected,
+  .risk-assessment-ppe-option.is-selected .risk-assessment-ppe-option-symbol,
+  .risk-assessment-ppe-option.is-selected .risk-assessment-ppe-option-photo,
+  .risk-assessment-ppe-callout,
+  .ppe-layer {
+    animation: none !important;
   }
 }
 /* Signatures module */

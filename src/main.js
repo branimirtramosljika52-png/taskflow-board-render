@@ -168,6 +168,7 @@ import {
 } from "./pdfSignerExtensionBridge.js";
 import {
   DEFAULT_RISK_PPE_CATALOG,
+  RISK_PPE_CATEGORY_ICONS,
   RISK_PPE_CATEGORY_IMAGES,
   RISK_PPE_SOURCE_URL,
 } from "./riskPpeCatalog.js";
@@ -119938,6 +119939,7 @@ function normalizeJobAiSettings(value = {}) {
 function normalizeRiskPpeCatalogItem(item = {}) {
   const bodyPart = String(item.bodyPart || "other").trim() || "other";
   const fallbackImage = RISK_PPE_CATEGORY_IMAGES[bodyPart] || RISK_PPE_CATEGORY_IMAGES.other || "";
+  const fallbackIcon = RISK_PPE_CATEGORY_ICONS[bodyPart] || RISK_PPE_CATEGORY_ICONS.other || "";
   return {
     id: String(item.id || item.catalogId || item.norm || item.name || "").trim(),
     organizationId: String(item.organizationId || "").trim(),
@@ -119948,6 +119950,7 @@ function normalizeRiskPpeCatalogItem(item = {}) {
     standardCode: String(item.standardCode || "").trim(),
     description: String(item.description || "").trim(),
     imageUrl: String(item.imageUrl || fallbackImage).trim(),
+    iconUrl: String(item.iconUrl || fallbackIcon).trim(),
     sourceRef: String(item.sourceRef || "").trim(),
     sourceUrl: String(item.sourceUrl || "").trim(),
     isCustom: Boolean(item.isCustom),
@@ -119987,6 +119990,7 @@ function getRiskAssessmentPpeCatalogItem(catalogId = "") {
 function normalizeRiskAssessmentPpeSearchValue(value = "") {
   return String(value || "")
     .normalize("NFD")
+    .replace(/[\u0111\u0110]/g, "d")
     .replace(/[\u0300-\u036f]/g, "")
     .toLocaleLowerCase("hr")
     .trim();
@@ -121514,6 +121518,7 @@ function createRiskAssessmentPpeDraft(initial = {}) {
     standardCode: String(initial.standardCode || source.standardCode || ""),
     description: String(initial.description || source.description || ""),
     imageUrl: String(initial.imageUrl || source.imageUrl || ""),
+    iconUrl: String(initial.iconUrl || source.iconUrl || ""),
     sourceRef: String(initial.sourceRef || source.sourceRef || ""),
     sourceUrl: String(initial.sourceUrl || source.sourceUrl || ""),
     hazardLinks: String(initial.hazardLinks || ""),
@@ -122270,11 +122275,14 @@ function renderRiskAssessmentPpeVisual(job = {}, jobIndex = 0) {
   const bodyPartLabel = Array.from(selectedBodyParts)
     .map((part) => RISK_ASSESSMENT_PPE_BODY_FILTERS.find((filter) => filter.value === part)?.label || part)
     .join(", ");
+  const selectedPreviewItems = (job.ppeItems ?? [])
+    .slice(0, 6)
+    .map((item) => normalizeRiskPpeCatalogItem(item));
   return `
     <div class="risk-assessment-ppe-panel" data-risk-ppe-panel="${jobIndex}">
-      <div class="risk-assessment-mini-title">
-        <strong>Osobna zaštitna oprema</strong>
-        <span>${selectedCount ? `${selectedCount} odabranih komada OZO` : "Odaberi opremu i odmah vidi kako se nosi."} Katalog: ${catalog.length} stvarnih OZO stavki.</span>
+      <div class="risk-assessment-mini-title risk-assessment-ppe-title">
+        <strong>OSOBNA ZAŠTITNA OPREMA</strong>
+        <span>Zaštiti sebe. Zaštiti druge. Radi sigurno. ${selectedCount ? `${selectedCount} odabranih komada OZO.` : ""} Katalog: ${catalog.length} stvarnih OZO stavki.</span>
       </div>
       <div class="risk-assessment-ppe-toolbar">
         <label class="risk-assessment-ppe-search">
@@ -122333,6 +122341,14 @@ function renderRiskAssessmentPpeVisual(job = {}, jobIndex = 0) {
             ${selectedBodyParts.has("feet") ? `<span class="ppe-layer ppe-boots"></span>` : ""}
             ${selectedBodyParts.has("fall") ? `<span class="ppe-layer ppe-harness"></span>` : ""}
           </div>
+          <div class="risk-assessment-ppe-callouts" aria-hidden="true">
+            ${selectedPreviewItems.map((item, itemIndex) => `
+              <span class="risk-assessment-ppe-callout is-${escapeHtml(item.bodyPart || "other")}" style="--ppe-callout-index: ${itemIndex};">
+                <img src="${escapeHtml(item.iconUrl || RISK_PPE_CATEGORY_ICONS[item.bodyPart] || RISK_PPE_CATEGORY_ICONS.other || "")}" alt="" loading="lazy" />
+                <b>${escapeHtml(item.name)}</b>
+              </span>
+            `).join("")}
+          </div>
           <div class="risk-assessment-worker-preview-meta">
             <strong>${selectedCount || 0}</strong>
             <span>${escapeHtml(bodyPartLabel || "Bez OZO")}</span>
@@ -122354,9 +122370,13 @@ function renderRiskAssessmentPpeVisual(job = {}, jobIndex = 0) {
                 ppe.sourceRef,
               ].join(" "));
               const isVisible = visibleCatalogIds.has(String(ppe.id));
+              const isSelected = selectedSet.has(ppe.id);
               return `
-            <label class="risk-assessment-ppe-option" data-risk-ppe-option-card data-risk-ppe-option-body-part="${escapeHtml(ppe.bodyPart)}" data-risk-ppe-option-search="${escapeHtml(searchText)}" ${isVisible ? "" : "hidden"}>
-              <input type="checkbox" data-risk-ppe-toggle="${escapeHtml(ppe.id)}" ${selectedSet.has(ppe.id) ? "checked" : ""} />
+            <label class="risk-assessment-ppe-option ${isSelected ? "is-selected" : ""}" data-risk-ppe-option-card data-risk-ppe-option-body-part="${escapeHtml(ppe.bodyPart)}" data-risk-ppe-option-search="${escapeHtml(searchText)}" ${isVisible ? "" : "hidden"}>
+              <input type="checkbox" data-risk-ppe-toggle="${escapeHtml(ppe.id)}" ${isSelected ? "checked" : ""} />
+              <span class="risk-assessment-ppe-option-symbol">
+                <img src="${escapeHtml(ppe.iconUrl || RISK_PPE_CATEGORY_ICONS[ppe.bodyPart] || RISK_PPE_CATEGORY_ICONS.other || "")}" alt="" loading="lazy" />
+              </span>
               <span class="risk-assessment-ppe-option-photo">
                 <img src="${escapeHtml(ppe.imageUrl || RISK_PPE_CATEGORY_IMAGES[ppe.bodyPart] || RISK_PPE_CATEGORY_IMAGES.other || "")}" alt="" loading="lazy" />
               </span>
