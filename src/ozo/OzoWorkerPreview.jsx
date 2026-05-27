@@ -52,8 +52,24 @@ const EXCLUSIVE_GEAR = [
 ];
 
 const WORKERS = [
-  { id: "male", label: "Muški radnik", skin: "#d8a271", hair: "#2f2119", jaw: "M 98 82 C 101 104 117 115 140 114 C 162 113 177 101 181 82 C 177 51 158 34 139 34 C 119 34 101 51 98 82 Z" },
-  { id: "female", label: "Ženska radnica", skin: "#e4b184", hair: "#4b2c20", jaw: "M 100 83 C 104 106 120 117 140 117 C 160 117 176 106 180 83 C 177 53 158 36 140 36 C 121 36 103 53 100 83 Z" },
+  {
+    id: "male",
+    label: "Muški radnik",
+    skin: "#d8a271",
+    skinLight: "#efc39a",
+    skinDark: "#b9794b",
+    hair: "#2f2119",
+    jaw: "M 96 82 C 99 108 116 123 140 123 C 164 123 181 108 184 82 C 181 50 162 31 140 31 C 118 31 99 50 96 82 Z",
+  },
+  {
+    id: "female",
+    label: "Ženska radnica",
+    skin: "#e4b184",
+    skinLight: "#f3caa5",
+    skinDark: "#be8258",
+    hair: "#4b2c20",
+    jaw: "M 99 83 C 103 109 120 124 140 124 C 160 124 177 109 181 83 C 178 52 159 34 140 34 C 121 34 102 52 99 83 Z",
+  },
 ];
 
 function normalizeText(value = "") {
@@ -286,6 +302,12 @@ function GearLayer({ kind }) {
 }
 
 function WorkerFigure({ worker, gearItems }) {
+  const skinGradient = `url(#ozo-skin-${worker.id})`;
+  const uniformGradient = `url(#ozo-uniform-${worker.id})`;
+  const sleeveGradient = `url(#ozo-sleeve-${worker.id})`;
+  const pantsGradient = `url(#ozo-pants-${worker.id})`;
+  const bootGradient = `url(#ozo-boot-${worker.id})`;
+
   return (
     <motion.div
       className={`ozo-worker-figure is-${worker.id}`}
@@ -293,37 +315,84 @@ function WorkerFigure({ worker, gearItems }) {
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.42, ease: "easeOut" }}
     >
-      <svg viewBox="0 0 280 430" role="img" aria-label={worker.label}>
+      <svg className={`ozo-worker-svg is-${worker.id}`} viewBox="0 0 280 430" role="img" aria-label={worker.label}>
         <defs>
+          <linearGradient id={`ozo-skin-${worker.id}`} x1="0.25" y1="0.08" x2="0.78" y2="0.95">
+            <stop offset="0%" stopColor={worker.skinLight} />
+            <stop offset="54%" stopColor={worker.skin} />
+            <stop offset="100%" stopColor={worker.skinDark} />
+          </linearGradient>
           <linearGradient id={`ozo-uniform-${worker.id}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#18385f" />
+            <stop offset="0%" stopColor="#244d7a" />
+            <stop offset="48%" stopColor="#15365c" />
             <stop offset="100%" stopColor="#0b1e35" />
           </linearGradient>
           <linearGradient id={`ozo-sleeve-${worker.id}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#1f436c" />
+            <stop offset="0%" stopColor="#285783" />
+            <stop offset="46%" stopColor="#1a3b62" />
             <stop offset="100%" stopColor="#12233c" />
+          </linearGradient>
+          <linearGradient id={`ozo-pants-${worker.id}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#163a63" />
+            <stop offset="52%" stopColor="#102a48" />
+            <stop offset="100%" stopColor="#07182b" />
+          </linearGradient>
+          <linearGradient id={`ozo-boot-${worker.id}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#8a5525" />
+            <stop offset="58%" stopColor="#5b351b" />
+            <stop offset="100%" stopColor="#111827" />
           </linearGradient>
         </defs>
         <ellipse className="ozo-svg-shadow" cx="140" cy="414" rx="82" ry="14" />
-        {worker.id === "female" && <path className="ozo-svg-hair-back" d="M92 86 C91 48 111 25 140 25 C169 25 190 48 188 88 C186 128 172 151 140 151 C108 151 94 126 92 86 Z" fill={worker.hair} />}
-        <path className="ozo-svg-leg" d="M103 273 L130 273 L126 390 L92 390 Z" />
-        <path className="ozo-svg-leg" d="M150 273 L177 273 L188 390 L154 390 Z" />
-        <path className="ozo-svg-boot-base" d="M92 386 L125 386 L130 410 L82 410 C78 399 83 391 92 386 Z" />
-        <path className="ozo-svg-boot-base" d="M155 386 L188 386 C197 391 202 399 198 410 L150 410 Z" />
-        <path className="ozo-svg-arm" d="M93 166 C72 183 62 215 54 259 L80 266 C89 225 98 197 113 179 Z" />
-        <path className="ozo-svg-arm" d="M187 166 C208 183 218 215 226 259 L200 266 C191 225 182 197 167 179 Z" />
-        <path className="ozo-svg-hand" d="M51 260 C62 252 78 256 82 268 C78 282 62 287 52 278 C45 272 46 264 51 260 Z" fill={worker.skin} />
-        <path className="ozo-svg-hand" d="M229 260 C218 252 202 256 198 268 C202 282 218 287 228 278 C235 272 234 264 229 260 Z" fill={worker.skin} />
-        <path className="ozo-svg-neck" d="M128 128 L152 128 L155 154 C147 160 133 160 125 154 Z" fill={worker.skin} />
-        <path className="ozo-svg-body" d="M92 160 L118 146 L132 174 L148 174 L162 146 L188 160 L180 280 L100 280 Z" />
-        <path className="ozo-svg-zip" d="M140 174 L140 280" />
-        <path className="ozo-svg-collar" d="M118 147 L140 176 L162 147" />
-        {worker.id === "male" && <path className="ozo-svg-hair" d="M98 77 C104 45 120 31 140 31 C164 31 180 49 182 78 C168 63 150 61 132 66 C118 70 107 75 98 77 Z" fill={worker.hair} />}
-        <path className="ozo-svg-head" d={worker.jaw} fill={worker.skin} />
-        {worker.id === "female" && <path className="ozo-svg-hair" d="M99 80 C103 48 121 34 140 34 C161 34 177 50 181 81 C166 65 154 62 140 66 C126 62 114 66 99 80 Z" fill={worker.hair} />}
-        <circle className="ozo-svg-eye" cx="126" cy="88" r="2.5" />
-        <circle className="ozo-svg-eye" cx="154" cy="88" r="2.5" />
-        <path className="ozo-svg-face-line" d="M133 107 C138 111 145 111 150 107" />
+        {worker.id === "female" && <path className="ozo-svg-hair-back" d="M91 83 C89 47 111 22 140 22 C170 22 192 48 190 86 C188 127 172 154 140 157 C108 154 93 126 91 83 Z" fill={worker.hair} />}
+        <path className="ozo-svg-leg" fill={pantsGradient} d="M99 273 C107 269 121 269 131 274 L126 390 L91 390 C91 345 93 306 99 273 Z" />
+        <path className="ozo-svg-leg" fill={pantsGradient} d="M149 274 C159 269 173 269 181 273 C187 306 189 345 189 390 L154 390 Z" />
+        <path className="ozo-svg-leg-highlight" d="M113 286 C111 318 109 351 108 382" />
+        <path className="ozo-svg-leg-highlight" d="M167 286 C169 318 171 351 172 382" />
+        <rect className="ozo-svg-knee" x="98" y="318" width="29" height="34" rx="9" />
+        <rect className="ozo-svg-knee" x="153" y="318" width="29" height="34" rx="9" />
+        <path className="ozo-svg-cargo" d="M91 296 L124 292 L125 316 L92 320 Z" />
+        <path className="ozo-svg-cargo" d="M156 292 L189 296 L188 320 L155 316 Z" />
+        <path className="ozo-svg-boot-base" fill={bootGradient} d="M91 384 L125 384 L131 410 L80 410 C77 398 82 390 91 384 Z" />
+        <path className="ozo-svg-boot-base" fill={bootGradient} d="M155 384 L189 384 C198 390 203 398 200 410 L149 410 Z" />
+        <path className="ozo-svg-sole" d="M80 408 L132 408" />
+        <path className="ozo-svg-sole" d="M148 408 L200 408" />
+        <path className="ozo-svg-boot-detail" d="M94 393 C103 397 115 397 124 393" />
+        <path className="ozo-svg-boot-detail" d="M156 393 C165 397 177 397 186 393" />
+        <path className="ozo-svg-arm" fill={sleeveGradient} d="M92 162 C72 180 61 214 52 258 C58 265 70 269 82 266 C90 226 99 198 114 178 Z" />
+        <path className="ozo-svg-arm" fill={sleeveGradient} d="M188 162 C208 180 219 214 228 258 C222 265 210 269 198 266 C190 226 181 198 166 178 Z" />
+        <path className="ozo-svg-arm-highlight" d="M78 183 C69 205 63 229 59 255" />
+        <path className="ozo-svg-arm-highlight" d="M202 183 C211 205 217 229 221 255" />
+        <path className="ozo-svg-hand" fill={skinGradient} d="M50 258 C63 249 80 254 84 268 C80 283 63 289 52 279 C45 273 44 264 50 258 Z" />
+        <path className="ozo-svg-hand" fill={skinGradient} d="M230 258 C217 249 200 254 196 268 C200 283 217 289 228 279 C235 273 236 264 230 258 Z" />
+        <path className="ozo-svg-neck" fill={skinGradient} d="M127 126 L153 126 L157 153 C149 161 131 161 123 153 Z" />
+        <path className="ozo-svg-body" fill={uniformGradient} d="M90 159 L118 145 L132 174 L148 174 L162 145 L190 159 L181 281 L99 281 Z" />
+        <path className="ozo-svg-jacket-yoke" d="M98 167 C116 158 126 156 140 158 C154 156 164 158 182 167 L176 189 C156 181 124 181 104 189 Z" />
+        <path className="ozo-svg-jacket-panel is-left" d="M101 191 L134 181 L133 279 L100 279 Z" />
+        <path className="ozo-svg-jacket-panel is-right" d="M146 181 L179 191 L180 279 L147 279 Z" />
+        <rect className="ozo-svg-pocket" x="107" y="196" width="25" height="27" rx="5" />
+        <rect className="ozo-svg-pocket" x="148" y="196" width="25" height="27" rx="5" />
+        <path className="ozo-svg-pocket-flap" d="M109 201 L130 201" />
+        <path className="ozo-svg-pocket-flap" d="M150 201 L171 201" />
+        <path className="ozo-svg-zip" d="M140 176 L140 280" />
+        <path className="ozo-svg-collar" d="M118 146 L140 176 L162 146" />
+        <path className="ozo-svg-seam" d="M105 236 L134 236" />
+        <path className="ozo-svg-seam" d="M146 236 L175 236" />
+        <ellipse className="ozo-svg-ear" cx="97" cy="87" rx="8" ry="13" fill={skinGradient} />
+        <ellipse className="ozo-svg-ear" cx="183" cy="87" rx="8" ry="13" fill={skinGradient} />
+        {worker.id === "male" && <path className="ozo-svg-hair" d="M97 78 C101 43 120 27 141 27 C166 27 182 48 184 79 C169 62 151 59 132 65 C117 70 106 75 97 78 Z" fill={worker.hair} />}
+        <path className="ozo-svg-head" d={worker.jaw} fill={skinGradient} />
+        {worker.id === "female" && <path className="ozo-svg-hair" d="M98 79 C102 48 121 32 140 32 C162 32 178 50 182 82 C166 65 154 61 140 65 C126 61 114 65 98 79 Z" fill={worker.hair} />}
+        <path className="ozo-svg-face-shadow" d="M160 53 C172 65 175 93 167 108 C161 119 149 124 138 122 C153 113 161 97 160 53 Z" />
+        {worker.id === "male" && <path className="ozo-svg-beard" d="M105 96 C115 118 130 126 145 124 C162 122 174 112 179 94 C171 115 154 118 140 117 C124 118 112 113 105 96 Z" />}
+        <path className="ozo-svg-brow" d="M116 80 C123 76 130 77 135 80" />
+        <path className="ozo-svg-brow" d="M146 80 C153 76 160 77 166 80" />
+        <circle className="ozo-svg-eye" cx="126" cy="89" r="3" />
+        <circle className="ozo-svg-eye" cx="154" cy="89" r="3" />
+        <path className="ozo-svg-nose" d="M140 92 C137 101 136 106 142 108" />
+        <path className="ozo-svg-cheek" d="M115 101 C121 104 127 104 132 101" />
+        <path className="ozo-svg-cheek" d="M148 101 C154 104 161 104 166 101" />
+        <path className="ozo-svg-face-line" d="M130 113 C137 118 146 118 153 113" />
         <AnimatePresence initial={false}>
           {gearItems.map((gear) => <GearLayer key={`${worker.id}-${gear.kind}`} kind={gear.kind} />)}
         </AnimatePresence>
