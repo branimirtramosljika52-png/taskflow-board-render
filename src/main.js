@@ -115456,9 +115456,25 @@ jobEnvironmentSections?.addEventListener("click", (event) => {
     }
     const key = aiButton.dataset.jobNexai || "";
     const textarea = jobEnvironmentSections.querySelector(`[data-job-env-text="${key}"]`);
+    if (key === "organization") {
+      const text = getJobNexAiText(key);
+      if (textarea instanceof HTMLTextAreaElement) {
+        textarea.value = text;
+      }
+      syncJobOrganizationSentenceList({ sourceText: text, preserveExisting: false });
+      return;
+    }
     if (textarea instanceof HTMLTextAreaElement) {
       textarea.value = getJobNexAiText(key);
     }
+  }
+});
+
+jobEnvironmentSections?.addEventListener("input", (event) => {
+  const target = event.target instanceof Element ? event.target : null;
+  const sentence = target?.closest("[data-job-organization-sentence]");
+  if (sentence instanceof HTMLTextAreaElement) {
+    syncJobOrganizationHiddenText(sentence.closest("[data-job-environment-card]"));
   }
 });
 
@@ -120161,18 +120177,172 @@ function buildJobOrganizationFieldSentence(field = {}, value = "") {
 }
 
 function buildJobOrganizationSentences(selected = [], environment = {}) {
-  const title = getJobSentenceTitle();
-  const sentences = [
-    ...selected.map((value) => buildJobOrganizationSelectionSentence(value, title)),
-    ...JOB_ORGANIZATION_FIELDS.map((field) => buildJobOrganizationFieldSentence(field, environment[field.key])),
-    environment.psychosocialRelevant ? "Procjena psihosocijalnih rizika relevantna je za ovaj posao." : "",
-  ].map(normalizeJobSentence).filter(Boolean);
+  return getJobOrganizationSentenceDefinitions(selected, environment)
+    .map((item) => normalizeJobSentence(item.text))
+    .filter(Boolean)
+    .join("\n");
+}
 
-  if (sentences.length === 0) {
-    sentences.push("Rad se organizira prema nalogu poslodavca.");
+function getJobOrganizationSentenceDefinitions(selected = [], environment = {}) {
+  const title = getJobSentenceTitle();
+  const selectedValues = Array.from(new Set((selected ?? [])
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)));
+  const definitions = [
+    ...selectedValues.map((value) => ({
+      key: `selection:${value}`,
+      label: value,
+      text: buildJobOrganizationSelectionSentence(value, title),
+    })),
+    ...JOB_ORGANIZATION_FIELDS
+      .map((field) => {
+        const value = String(environment[field.key] || "").trim();
+        return value
+          ? {
+            key: `field:${field.key}:${value}`,
+            label: field.label,
+            text: buildJobOrganizationFieldSentence(field, value),
+          }
+          : null;
+      })
+      .filter(Boolean),
+    environment.psychosocialRelevant
+      ? {
+        key: "flag:psychosocialRelevant",
+        label: "Psihosocijalni rizici",
+        text: "Procjena psihosocijalnih rizika relevantna je za ovaj posao.",
+      }
+      : null,
+  ].filter(Boolean);
+
+  if (definitions.length === 0) {
+    definitions.push({
+      key: "base",
+      label: "Organizacija rada",
+      text: "Rad se organizira prema nalogu poslodavca.",
+    });
   }
-  sentences.push("Zadaci, rokovi, stanke, odmori i odgovornosti planiraju se tako da radnik može obaviti posao sigurno, bez nepotrebnog preopterećenja i uz jasne upute neposredno nadređene osobe.");
-  return Array.from(new Set(sentences)).join("\n");
+
+  definitions.push({
+    key: "summary",
+    label: "Planiranje rada",
+    text: "Zadaci, rokovi, stanke, odmori i odgovornosti planiraju se tako da radnik može obaviti posao sigurno, bez nepotrebnog preopterećenja i uz jasne upute neposredno nadređene osobe.",
+  });
+
+  const seen = new Set();
+  return definitions.filter((definition) => {
+    const sentence = normalizeJobSentence(definition.text);
+    if (!sentence || seen.has(sentence)) {
+      return false;
+    }
+    seen.add(sentence);
+    return true;
+  });
+}
+
+function splitJobOrganizationTextRows(text = "") {
+  return String(text || "")
+    .split(/\n+/)
+    .flatMap((part) => String(part || "").match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [])
+    .map(normalizeJobSentence)
+    .filter(Boolean);
+}
+
+function getJobOrganizationSentenceOverrides() {
+  return new Map(
+    Array.from(jobEnvironmentSections?.querySelectorAll("[data-job-organization-sentence]") ?? [])
+      .map((textarea) => [
+        String(textarea.dataset.jobOrganizationSentence || "").trim(),
+        String(textarea.value || "").trim(),
+      ])
+      .filter(([key, value]) => key && value),
+  );
+}
+
+function buildJobOrganizationSentenceRows(selected = [], environment = {}, options = {}) {
+  const definitions = getJobOrganizationSentenceDefinitions(selected, environment);
+  const sourceLines = splitJobOrganizationTextRows(options.sourceText || "");
+  const overrides = options.preserveExisting === false
+    ? new Map()
+    : (options.overrides instanceof Map ? options.overrides : getJobOrganizationSentenceOverrides());
+  const usedLines = [];
+  const rows = definitions.map((definition, index) => {
+    const fallback = normalizeJobSentence(definition.text);
+    const value = overrides.get(definition.key) || sourceLines[index] || fallback;
+    if (sourceLines[index]) {
+      usedLines.push(index);
+    }
+    return {
+      ...definition,
+      text: value,
+    };
+  });
+
+  sourceLines.forEach((line, index) => {
+    if (!usedLines.includes(index) && !rows.some((row) => normalizeJobSentence(row.text) === line)) {
+      rows.push({
+        key: `custom:${index}`,
+        label: `Rečenica ${rows.length + 1}`,
+        text: line,
+      });
+    }
+  });
+
+  return rows;
+}
+
+function renderJobOrganizationSentenceRows(rows = []) {
+  return `
+    <div class="job-organization-sentence-list" data-job-organization-sentences>
+      ${rows.map((row, index) => `
+        <label class="job-organization-sentence-item">
+          <span>${escapeHtml(row.label || `Rečenica ${index + 1}`)}</span>
+          <textarea data-job-organization-sentence="${escapeHtml(row.key || `custom:${index}`)}" rows="1">${escapeHtml(normalizeJobSentence(row.text))}</textarea>
+        </label>
+      `).join("")}
+    </div>
+  `;
+}
+
+function collectJobOrganizationSentenceText() {
+  return Array.from(jobEnvironmentSections?.querySelectorAll("[data-job-organization-sentence]") ?? [])
+    .map((textarea) => String(textarea.value || "").trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
+function syncJobOrganizationHiddenText(card = null) {
+  const root = card instanceof HTMLElement
+    ? card
+    : jobEnvironmentSections?.querySelector('[data-job-environment-card="organization"]');
+  const hidden = root?.querySelector('[data-job-env-text="organization"]');
+  if (hidden instanceof HTMLTextAreaElement) {
+    hidden.value = collectJobOrganizationSentenceText();
+  }
+}
+
+function syncJobOrganizationSentenceList(options = {}) {
+  const card = jobEnvironmentSections?.querySelector('[data-job-environment-card="organization"]');
+  if (!(card instanceof HTMLElement)) {
+    return;
+  }
+  const list = card.querySelector("[data-job-organization-sentences]");
+  if (!(list instanceof HTMLElement)) {
+    return;
+  }
+  const selected = getSelectedJobEnvironmentOptions("organization");
+  const draft = getJobEnvironmentDraftFromForm();
+  const rows = buildJobOrganizationSentenceRows(selected, draft, {
+    sourceText: options.sourceText || "",
+    preserveExisting: options.preserveExisting,
+  });
+  list.innerHTML = rows.map((row, index) => `
+    <label class="job-organization-sentence-item">
+      <span>${escapeHtml(row.label || `Rečenica ${index + 1}`)}</span>
+      <textarea data-job-organization-sentence="${escapeHtml(row.key || `custom:${index}`)}" rows="1">${escapeHtml(normalizeJobSentence(row.text))}</textarea>
+    </label>
+  `).join("");
+  syncJobOrganizationHiddenText(card);
 }
 
 function buildJobEnvironmentSentence(sectionKey = "", selectedValues = [], environment = {}) {
@@ -120206,6 +120376,13 @@ function buildJobEnvironmentSentence(sectionKey = "", selectedValues = [], envir
 }
 
 function syncJobEnvironmentTextarea(sectionKey = "", options = {}) {
+  if (sectionKey === "organization") {
+    syncJobOrganizationSentenceList({
+      preserveExisting: options.preserveExisting,
+      sourceText: options.sourceText || "",
+    });
+    return;
+  }
   const textarea = jobEnvironmentSections?.querySelector(`[data-job-env-text="${sectionKey}"]`);
   if (!(textarea instanceof HTMLTextAreaElement)) {
     return;
@@ -120347,6 +120524,9 @@ function renderJobEnvironmentSections(environment = {}) {
     const optionField = getJobEnvironmentOptionField(section.key);
     const selectedOptions = new Set(environment[optionField] ?? []);
     const resolvedTextValue = textValue || (enabled || selectedOptions.size ? buildJobEnvironmentSentence(section.key, [...selectedOptions], environment) : "");
+    const organizationRows = section.key === "organization"
+      ? buildJobOrganizationSentenceRows([...selectedOptions], environment, { sourceText: resolvedTextValue, preserveExisting: false })
+      : [];
     const article = document.createElement("article");
     article.className = `job-smart-card ${enabled ? "is-enabled" : ""}`;
     article.dataset.jobEnvironmentCard = section.key;
@@ -120384,7 +120564,9 @@ function renderJobEnvironmentSections(environment = {}) {
       </div>
       <div class="job-suggestion-row">${chips}</div>
       ${organizationFields}
-      <textarea data-job-env-text="${escapeHtml(section.key)}" rows="4" placeholder="${escapeHtml(section.placeholder)}">${escapeHtml(resolvedTextValue)}</textarea>
+      ${section.key === "organization"
+        ? `<textarea class="job-organization-hidden-text" data-job-env-text="organization" hidden aria-hidden="true">${escapeHtml(resolvedTextValue)}</textarea>${renderJobOrganizationSentenceRows(organizationRows)}`
+        : `<textarea data-job-env-text="${escapeHtml(section.key)}" rows="4" placeholder="${escapeHtml(section.placeholder)}">${escapeHtml(resolvedTextValue)}</textarea>`}
     `;
     return article;
   }));
@@ -120607,7 +120789,9 @@ function getJobEnvironmentDraftFromForm() {
   const environment = {};
   JOB_ENVIRONMENT_SECTIONS.forEach((section) => {
     environment[`${section.key}Enabled`] = Boolean(jobEnvironmentSections?.querySelector(`[data-job-env-enabled="${section.key}"]`)?.checked);
-    environment[`${section.key}Text`] = String(jobEnvironmentSections?.querySelector(`[data-job-env-text="${section.key}"]`)?.value || "").trim();
+    environment[`${section.key}Text`] = section.key === "organization"
+      ? (collectJobOrganizationSentenceText() || String(jobEnvironmentSections?.querySelector('[data-job-env-text="organization"]')?.value || "").trim())
+      : String(jobEnvironmentSections?.querySelector(`[data-job-env-text="${section.key}"]`)?.value || "").trim();
     const optionField = getJobEnvironmentOptionField(section.key);
     if (optionField) {
       environment[optionField] = getSelectedJobEnvironmentOptions(section.key);

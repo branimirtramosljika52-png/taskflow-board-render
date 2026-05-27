@@ -54408,6 +54408,34 @@ button.work-order-editor-section-head:focus-visible {
   font-weight: 800;
 }
 
+.job-organization-sentence-list {
+  display: grid;
+  gap: 8px;
+}
+
+.job-organization-sentence-item {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid rgba(199, 210, 254, 0.72);
+  border-radius: 14px;
+  background:
+    linear-gradient(135deg, rgba(248, 250, 252, 0.96), rgba(255, 255, 255, 0.9));
+}
+
+.job-organization-sentence-item span {
+  color: #475569;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.job-smart-card .job-organization-sentence-item textarea {
+  min-height: 42px;
+  resize: vertical;
+}
+
 .job-condition-card-head,
 .job-hazard-selected-head {
   display: flex;
