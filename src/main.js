@@ -6042,6 +6042,8 @@ let riskAssessmentDraftAutosaveTimer = null;
 let riskAssessmentActiveBlock = "basic";
 let riskAssessmentActiveRichEditorKey = "";
 let riskAssessmentRichEditorSelection = null;
+let riskAssessmentPpeThreeModulePromise = null;
+const riskAssessmentPpeSceneControllers = new Map();
 let closePeopleTrainingItemMenuHandler = null;
 let peopleTrainingLastBulkOpenSummary = {
   assignedTests: 0,
@@ -119641,6 +119643,8 @@ const RISK_ASSESSMENT_PPE_CATALOG = Object.freeze([
   { id: "fall-harness", name: "Sigurnosni pojas i sustav za zaustavljanje pada", category: "Zaštita od pada s visine", bodyPart: "fall", norm: "HRN EN 361 / HRN EN 363 / HRN EN 355", description: "Zaštita pri radu na visini." },
 ]);
 
+const RISK_ASSESSMENT_PPE_THREE_MODULE_URL = "/assets/vendor/three.module.js?v=20260527-risk-ppe-3d-v2";
+
 const RISK_ASSESSMENT_ARMOR_TEMPLATE_ROWS = Object.freeze([
   { category: "I. OPASNOSTI", group: "1. Mehaničke opasnosti", code: "1.1.1", hazard: "Ručni alati", probability: "mv", consequence: "sš", riskLevel: "Mali rizik", measures: "Koristiti ispravan alat, osposobiti radnike za rad na siguran način i po potrebi koristiti propisanu osobnu zaštitnu opremu." },
   { category: "I. OPASNOSTI", group: "1. Mehaničke opasnosti", code: "1.1.2", hazard: "Mehanizirani alati", probability: "v", consequence: "sš", riskLevel: "Srednji rizik", measures: "Provjeravati ispravnost alata, koristiti ga prema uputama proizvođača i zabraniti rad neosposobljenim osobama." },
@@ -121450,6 +121454,46 @@ function getRiskAssessmentSelectedPpeSet(job = {}) {
   return new Set((job.ppeItems ?? []).map((item) => item.catalogId || item.id).filter(Boolean));
 }
 
+function getRiskAssessmentPpeCatalogKey(item = {}) {
+  return String(item.catalogId || item.id || item.name || "").trim();
+}
+
+function getRiskAssessmentPpeBodyParts(ppeItems = []) {
+  return new Set((ppeItems ?? [])
+    .map((item) => String(item.bodyPart || "").trim())
+    .filter(Boolean));
+}
+
+function getRiskAssessmentPpeCatalogIds(ppeItems = []) {
+  return new Set((ppeItems ?? [])
+    .map((item) => getRiskAssessmentPpeCatalogKey(item))
+    .filter(Boolean));
+}
+
+function buildRiskAssessmentPpeSummary(ppeItems = []) {
+  const lines = (ppeItems ?? [])
+    .map((item) => {
+      const name = String(item.name || "").trim();
+      if (!name) {
+        return "";
+      }
+      const norm = String(item.norm || "").trim();
+      const required = item.required !== false && item.mandatory !== false;
+      return `${name}${norm ? ` (${norm})` : ""}${required ? " - obvezno" : " - prema potrebi"}`;
+    })
+    .filter(Boolean);
+  return lines.join("; ");
+}
+
+function syncRiskAssessmentPpeSummaryText(job = {}, nextPpeItems = []) {
+  const currentText = String(job.ppeText || "").trim();
+  const previousSummary = buildRiskAssessmentPpeSummary(job.ppeItems ?? []);
+  if (!currentText || currentText === previousSummary) {
+    return buildRiskAssessmentPpeSummary(nextPpeItems);
+  }
+  return job.ppeText || "";
+}
+
 function getRiskAssessmentJobCompletion(job = {}) {
   const riskCount = getRiskAssessmentFilledRiskRowCount(job);
   const required = [
@@ -121897,6 +121941,51 @@ function renderRiskAssessmentJobAiProposal(job = {}, index = 0) {
   return renderRiskAssessmentAiProposalCard({ proposal, prefix: "job", index });
 }
 
+function renderRiskAssessmentDocumentPpeSection(job = {}) {
+  const ppeItems = job.ppeItems ?? [];
+  const ppeText = String(job.ppeText || "").trim();
+  if (ppeItems.length === 0 && !ppeText) {
+    return "";
+  }
+
+  return `
+    <section class="risk-assessment-document-section">
+      <div class="risk-assessment-document-section-head">
+        <span>05</span>
+        <strong>Osobna zaštitna oprema</strong>
+      </div>
+      ${ppeText ? `
+        <div class="risk-assessment-document-content">
+          ${renderRiskAssessmentDocumentParagraphs(ppeText)}
+        </div>
+      ` : ""}
+      <div class="risk-assessment-document-ppe-table">
+        <div class="is-head">
+          <span>OZO</span>
+          <span>Norma</span>
+          <span>Primjena</span>
+          <span>Status</span>
+        </div>
+        ${ppeItems.length ? ppeItems.map((ppe) => `
+          <div>
+            <span>
+              <strong>${escapeHtml(ppe.name || "OZO")}</strong>
+              <small>${escapeHtml([ppe.category, ppe.bodyPart].filter(Boolean).join(" / ") || "-")}</small>
+            </span>
+            <span>${escapeHtml(ppe.norm || "-")}</span>
+            <span>${escapeHtml([ppe.description, ppe.hazardLinks, ppe.note].filter(Boolean).join(" · ") || "-")}</span>
+            <span>${ppe.required === false && ppe.mandatory === false ? "Prema potrebi" : "Obvezna"}</span>
+          </div>
+        `).join("") : `
+          <div class="is-empty">
+            <span>OZO nije odabrana iz kataloga.</span>
+          </div>
+        `}
+      </div>
+    </section>
+  `;
+}
+
 function renderRiskAssessmentJobDocumentPreview(job = {}, index = 0) {
   const riskRows = (job.riskRows ?? []).filter((risk) => getRiskAssessmentRiskRowKey(risk) || risk.riskLevel || risk.existingMeasures || risk.measures);
   const sourceJobs = (job.sourceJobIds ?? [])
@@ -122047,6 +122136,7 @@ function renderRiskAssessmentJobDocumentPreview(job = {}, index = 0) {
             `}
           </div>
         </section>
+        ${renderRiskAssessmentDocumentPpeSection(job)}
       </div>
     </details>
   `;
@@ -122066,9 +122156,13 @@ function getRiskAssessmentPpeIconClass(ppe = {}) {
 function renderRiskAssessmentPpeVisual(job = {}, jobIndex = 0) {
   const selectedSet = getRiskAssessmentSelectedPpeSet(job);
   const activeFilter = String(job.ppeFilter || "all");
-  const selectedBodyParts = new Set((job.ppeItems ?? []).map((item) => item.bodyPart));
+  const selectedBodyParts = getRiskAssessmentPpeBodyParts(job.ppeItems ?? []);
+  const selectedCatalogIds = getRiskAssessmentPpeCatalogIds(job.ppeItems ?? []);
   const catalogItems = RISK_ASSESSMENT_PPE_CATALOG.filter((item) => activeFilter === "all" || item.bodyPart === activeFilter);
   const selectedCount = job.ppeItems?.length ?? 0;
+  const bodyPartLabel = Array.from(selectedBodyParts)
+    .map((part) => RISK_ASSESSMENT_PPE_BODY_FILTERS.find((filter) => filter.value === part)?.label || part)
+    .join(", ");
   return `
     <div class="risk-assessment-ppe-panel">
       <div class="risk-assessment-mini-title">
@@ -122082,7 +122176,14 @@ function renderRiskAssessmentPpeVisual(job = {}, jobIndex = 0) {
       </div>
       <div class="risk-assessment-ppe-layout">
         <div class="risk-assessment-worker-preview" aria-label="Vizualni prikaz OZO">
-          <div class="risk-assessment-worker-figure">
+          <div
+            class="risk-assessment-worker-canvas"
+            data-risk-ppe-scene="${jobIndex}"
+            data-risk-ppe-body-parts="${escapeHtml(Array.from(selectedBodyParts).join(","))}"
+            data-risk-ppe-catalog-ids="${escapeHtml(Array.from(selectedCatalogIds).join(","))}"
+            aria-hidden="true"
+          ></div>
+          <div class="risk-assessment-worker-figure" aria-hidden="true">
             <span class="worker-shadow"></span>
             <span class="worker-head"></span>
             <span class="worker-face"></span>
@@ -122100,6 +122201,10 @@ function renderRiskAssessmentPpeVisual(job = {}, jobIndex = 0) {
             ${selectedBodyParts.has("body") ? `<span class="ppe-layer ppe-vest"></span>` : ""}
             ${selectedBodyParts.has("feet") ? `<span class="ppe-layer ppe-boots"></span>` : ""}
             ${selectedBodyParts.has("fall") ? `<span class="ppe-layer ppe-harness"></span>` : ""}
+          </div>
+          <div class="risk-assessment-worker-preview-meta">
+            <strong>${selectedCount || 0}</strong>
+            <span>${escapeHtml(bodyPartLabel || "Bez OZO")}</span>
           </div>
         </div>
         <div class="risk-assessment-ppe-list">
@@ -122131,6 +122236,368 @@ function renderRiskAssessmentPpeVisual(job = {}, jobIndex = 0) {
       </div>
     </div>
   `;
+}
+
+function parseRiskAssessmentPpeSceneSet(value = "") {
+  return new Set(String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean));
+}
+
+function loadRiskAssessmentPpeThreeModule() {
+  if (!riskAssessmentPpeThreeModulePromise) {
+    riskAssessmentPpeThreeModulePromise = import(RISK_ASSESSMENT_PPE_THREE_MODULE_URL);
+  }
+  return riskAssessmentPpeThreeModulePromise;
+}
+
+function disposeRiskAssessmentPpeScenes() {
+  riskAssessmentPpeSceneControllers.forEach((controller) => {
+    controller?.dispose?.();
+  });
+  riskAssessmentPpeSceneControllers.clear();
+}
+
+function initializeRiskAssessmentPpeScenes() {
+  const hosts = Array.from(riskAssessmentJobsList?.querySelectorAll("[data-risk-ppe-scene]") ?? []);
+  hosts.forEach((host) => {
+    if (!(host instanceof HTMLElement) || riskAssessmentPpeSceneControllers.has(host) || host.dataset.riskPpeLoading === "true") {
+      return;
+    }
+
+    host.dataset.riskPpeLoading = "true";
+    void loadRiskAssessmentPpeThreeModule()
+      .then((THREE) => {
+        if (!host.isConnected) {
+          return;
+        }
+        const controller = createRiskAssessmentPpeThreeScene(THREE, host, {
+          bodyParts: parseRiskAssessmentPpeSceneSet(host.dataset.riskPpeBodyParts || ""),
+          catalogIds: parseRiskAssessmentPpeSceneSet(host.dataset.riskPpeCatalogIds || ""),
+        });
+        if (controller) {
+          riskAssessmentPpeSceneControllers.set(host, controller);
+        }
+      })
+      .catch(() => {
+        host.closest(".risk-assessment-worker-preview")?.classList.add("is-webgl-fallback");
+      })
+      .finally(() => {
+        delete host.dataset.riskPpeLoading;
+      });
+  });
+}
+
+function createRiskAssessmentPpeThreeScene(THREE, host, selection = {}) {
+  const preview = host.closest(".risk-assessment-worker-preview");
+  const bodyParts = selection.bodyParts ?? new Set();
+  const catalogIds = selection.catalogIds ?? new Set();
+  const hasPart = (part) => bodyParts.has(part);
+  const hasCatalog = (id) => catalogIds.has(id);
+  const hasAnyCatalog = (...ids) => ids.some((id) => hasCatalog(id));
+  const geometries = new Set();
+  const materials = new Set();
+  const materialCache = new Map();
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 40);
+  camera.position.set(0, 0.75, 4.4);
+  camera.lookAt(0, 0.7, 0);
+
+  let renderer;
+  try {
+    renderer = new THREE.WebGLRenderer({
+      alpha: true,
+      antialias: true,
+      powerPreference: "high-performance",
+    });
+  } catch {
+    preview?.classList.add("is-webgl-fallback");
+    return null;
+  }
+
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  if (THREE.SRGBColorSpace) {
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+  }
+  host.replaceChildren(renderer.domElement);
+  preview?.classList.add("is-webgl-ready");
+
+  const group = new THREE.Group();
+  group.rotation.set(0.05, -0.34, 0);
+  scene.add(group);
+
+  const ambientLight = new THREE.HemisphereLight(0xf8fbff, 0x9aa9bd, 2.1);
+  scene.add(ambientLight);
+  const keyLight = new THREE.DirectionalLight(0xffffff, 2.4);
+  keyLight.position.set(2.8, 4.2, 3.8);
+  scene.add(keyLight);
+  const rimLight = new THREE.DirectionalLight(0x93c5fd, 1.3);
+  rimLight.position.set(-3, 2.2, -2.2);
+  scene.add(rimLight);
+
+  function getMaterial(key, options = {}, MaterialType = THREE.MeshStandardMaterial) {
+    if (materialCache.has(key)) {
+      return materialCache.get(key);
+    }
+    const material = new MaterialType(options);
+    materialCache.set(key, material);
+    materials.add(material);
+    return material;
+  }
+
+  function rememberGeometry(geometry) {
+    geometries.add(geometry);
+    return geometry;
+  }
+
+  function addMesh(geometry, material, position = [0, 0, 0], rotation = [0, 0, 0], scale = [1, 1, 1], parent = group) {
+    const mesh = new THREE.Mesh(rememberGeometry(geometry), material);
+    mesh.position.set(position[0], position[1], position[2]);
+    mesh.rotation.set(rotation[0], rotation[1], rotation[2]);
+    mesh.scale.set(scale[0], scale[1], scale[2]);
+    parent.add(mesh);
+    return mesh;
+  }
+
+  function addCylinderBetween(start, end, radius, material, segments = 24, parent = group) {
+    const startVector = new THREE.Vector3(start[0], start[1], start[2]);
+    const endVector = new THREE.Vector3(end[0], end[1], end[2]);
+    const direction = new THREE.Vector3().subVectors(endVector, startVector);
+    const length = direction.length();
+    if (length <= 0) {
+      return null;
+    }
+    const mesh = new THREE.Mesh(rememberGeometry(new THREE.CylinderGeometry(radius, radius, length, segments)), material);
+    mesh.position.copy(startVector).add(endVector).multiplyScalar(0.5);
+    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize());
+    parent.add(mesh);
+    return mesh;
+  }
+
+  const materialSkin = getMaterial("skin", {
+    color: 0xd7e2ee,
+    roughness: 0.68,
+    metalness: 0.02,
+  });
+  const materialSuit = getMaterial("suit", {
+    color: 0x334155,
+    roughness: 0.58,
+    metalness: 0.04,
+  });
+  const materialJoint = getMaterial("joint", {
+    color: 0xaebdd0,
+    roughness: 0.7,
+    metalness: 0.02,
+  });
+  const materialSole = getMaterial("sole", {
+    color: 0x111827,
+    roughness: 0.72,
+    metalness: 0.03,
+  });
+
+  addMesh(new THREE.CircleGeometry(1.05, 72), getMaterial("floor", {
+    color: 0x93c5fd,
+    transparent: true,
+    opacity: 0.15,
+    roughness: 0.9,
+    side: THREE.DoubleSide,
+  }), [0, -0.68, 0], [-Math.PI / 2, 0, 0], [1.45, 0.62, 1]);
+
+  addMesh(new THREE.SphereGeometry(0.23, 32, 24), materialSkin, [0, 1.61, 0], [0, 0, 0], [0.88, 1.04, 0.82]);
+  addMesh(new THREE.CylinderGeometry(0.075, 0.09, 0.2, 24), materialJoint, [0, 1.34, 0], [0, 0, 0], [1, 1, 0.92]);
+  addMesh(new THREE.CylinderGeometry(0.32, 0.42, 0.88, 36), materialSuit, [0, 0.83, 0], [0, 0, 0], [1, 1, 0.72]);
+  addMesh(new THREE.SphereGeometry(0.18, 24, 16), materialSuit, [-0.31, 1.2, 0], [0, 0, 0], [0.9, 0.72, 0.8]);
+  addMesh(new THREE.SphereGeometry(0.18, 24, 16), materialSuit, [0.31, 1.2, 0], [0, 0, 0], [0.9, 0.72, 0.8]);
+  addCylinderBetween([-0.36, 1.13, 0], [-0.58, 0.47, 0.03], 0.07, materialJoint);
+  addCylinderBetween([0.36, 1.13, 0], [0.58, 0.47, 0.03], 0.07, materialJoint);
+  addMesh(new THREE.SphereGeometry(0.085, 20, 14), materialSkin, [-0.61, 0.39, 0.04], [0, 0, 0], [1.08, 0.86, 0.86]);
+  addMesh(new THREE.SphereGeometry(0.085, 20, 14), materialSkin, [0.61, 0.39, 0.04], [0, 0, 0], [1.08, 0.86, 0.86]);
+  addCylinderBetween([-0.17, 0.38, 0], [-0.2, -0.47, 0.02], 0.09, materialJoint, 28);
+  addCylinderBetween([0.17, 0.38, 0], [0.2, -0.47, 0.02], 0.09, materialJoint, 28);
+  addMesh(new THREE.BoxGeometry(0.32, 0.12, 0.52), materialSole, [-0.2, -0.61, 0.11], [0, -0.06, 0], [1, 1, 1]);
+  addMesh(new THREE.BoxGeometry(0.32, 0.12, 0.52), materialSole, [0.2, -0.61, 0.11], [0, 0.06, 0], [1, 1, 1]);
+
+  if (hasPart("body")) {
+    const suitColor = hasAnyCatalog("chemical-suit") ? 0x93c5fd : hasAnyCatalog("heat-cold") ? 0x64748b : 0x475569;
+    const materialCoverall = getMaterial(`coverall-${suitColor}`, {
+      color: suitColor,
+      roughness: 0.54,
+      metalness: 0.04,
+    });
+    if (hasAnyCatalog("chemical-suit", "protective-clothing", "heat-cold")) {
+      addMesh(new THREE.CylinderGeometry(0.34, 0.44, 0.9, 36), materialCoverall, [0, 0.82, 0.01], [0, 0, 0], [1.04, 1, 0.76]);
+      addCylinderBetween([-0.36, 1.12, 0.02], [-0.58, 0.48, 0.05], 0.078, materialCoverall);
+      addCylinderBetween([0.36, 1.12, 0.02], [0.58, 0.48, 0.05], 0.078, materialCoverall);
+      addCylinderBetween([-0.17, 0.38, 0.02], [-0.2, -0.47, 0.04], 0.098, materialCoverall, 28);
+      addCylinderBetween([0.17, 0.38, 0.02], [0.2, -0.47, 0.04], 0.098, materialCoverall, 28);
+    }
+
+    if (hasCatalog("hi-vis") || !hasAnyCatalog("chemical-suit", "protective-clothing", "heat-cold")) {
+      const vestMaterial = getMaterial("hi-vis-vest", {
+        color: 0xf97316,
+        roughness: 0.44,
+        metalness: 0.02,
+      });
+      const reflectiveMaterial = getMaterial("reflective", {
+        color: 0xf8fafc,
+        emissive: 0xdbeafe,
+        emissiveIntensity: 0.18,
+        roughness: 0.22,
+        metalness: 0.02,
+      });
+      addMesh(new THREE.CylinderGeometry(0.33, 0.42, 0.66, 32, 1, true), vestMaterial, [0, 0.9, 0.02], [0, 0, 0], [1.06, 1, 0.82]);
+      addMesh(new THREE.BoxGeometry(0.045, 0.5, 0.02), reflectiveMaterial, [-0.14, 0.91, 0.32]);
+      addMesh(new THREE.BoxGeometry(0.045, 0.5, 0.02), reflectiveMaterial, [0.14, 0.91, 0.32]);
+      addMesh(new THREE.BoxGeometry(0.46, 0.045, 0.02), reflectiveMaterial, [0, 0.78, 0.33]);
+    }
+  }
+
+  if (hasPart("head")) {
+    const helmetColor = hasCatalog("bump-cap") ? 0x2563eb : 0xfacc15;
+    const helmetMaterial = getMaterial(`helmet-${helmetColor}`, {
+      color: helmetColor,
+      roughness: 0.36,
+      metalness: 0.03,
+    });
+    addMesh(new THREE.SphereGeometry(0.29, 36, 16, 0, Math.PI * 2, 0, Math.PI / 2), helmetMaterial, [0, 1.7, 0.005], [0, 0, 0], [1, 0.72, 0.88]);
+    addMesh(new THREE.CylinderGeometry(0.33, 0.31, 0.045, 36), helmetMaterial, [0, 1.69, 0.055], [0, 0, 0], [1, 1, 0.62]);
+  }
+
+  if (hasPart("eyes")) {
+    const lensMaterial = getMaterial("goggles-lens", {
+      color: 0x7dd3fc,
+      transparent: true,
+      opacity: 0.62,
+      roughness: 0.08,
+      metalness: 0.02,
+      side: THREE.DoubleSide,
+    }, THREE.MeshPhysicalMaterial || THREE.MeshStandardMaterial);
+    const frameMaterial = getMaterial("goggles-frame", {
+      color: 0x0f172a,
+      roughness: 0.42,
+    });
+    addMesh(new THREE.BoxGeometry(0.18, 0.08, 0.035), lensMaterial, [-0.1, 1.62, 0.19]);
+    addMesh(new THREE.BoxGeometry(0.18, 0.08, 0.035), lensMaterial, [0.1, 1.62, 0.19]);
+    addMesh(new THREE.BoxGeometry(0.42, 0.025, 0.045), frameMaterial, [0, 1.62, 0.21]);
+    if (hasCatalog("face-shield")) {
+      addMesh(new THREE.PlaneGeometry(0.52, 0.48), lensMaterial, [0, 1.5, 0.31], [0, 0, 0], [1, 1, 1]);
+    }
+  }
+
+  if (hasPart("hearing")) {
+    const hearingMaterial = getMaterial("hearing-blue", {
+      color: 0x2563eb,
+      roughness: 0.34,
+      metalness: 0.04,
+    });
+    addMesh(new THREE.TorusGeometry(0.28, 0.018, 8, 48), hearingMaterial, [0, 1.67, -0.01], [Math.PI / 2, 0, 0], [1, 0.72, 1]);
+    addMesh(new THREE.SphereGeometry(0.105, 24, 18), hearingMaterial, [-0.26, 1.58, 0], [0, 0, 0], [0.68, 1, 0.72]);
+    addMesh(new THREE.SphereGeometry(0.105, 24, 18), hearingMaterial, [0.26, 1.58, 0], [0, 0, 0], [0.68, 1, 0.72]);
+  }
+
+  if (hasPart("respiratory")) {
+    const maskMaterial = getMaterial("mask", {
+      color: 0xe2e8f0,
+      roughness: 0.48,
+      metalness: 0.02,
+    });
+    const filterMaterial = getMaterial("mask-filter", {
+      color: 0x64748b,
+      roughness: 0.38,
+      metalness: 0.06,
+    });
+    addMesh(new THREE.SphereGeometry(0.16, 28, 18), maskMaterial, [0, 1.49, 0.2], [0, 0, 0], [1, 0.62, 0.46]);
+    addMesh(new THREE.CylinderGeometry(0.055, 0.06, 0.1, 18), filterMaterial, [-0.13, 1.48, 0.23], [Math.PI / 2, 0, 0]);
+    addMesh(new THREE.CylinderGeometry(0.055, 0.06, 0.1, 18), filterMaterial, [0.13, 1.48, 0.23], [Math.PI / 2, 0, 0]);
+  }
+
+  if (hasPart("hands")) {
+    const gloveColor = hasCatalog("gloves-electrical") ? 0x7c3aed : hasCatalog("gloves-chemical") ? 0x2563eb : 0x16a34a;
+    const gloveMaterial = getMaterial(`glove-${gloveColor}`, {
+      color: gloveColor,
+      roughness: 0.5,
+      metalness: 0.02,
+    });
+    addMesh(new THREE.SphereGeometry(0.11, 24, 16), gloveMaterial, [-0.62, 0.38, 0.05], [0, 0, 0], [1.2, 0.86, 0.9]);
+    addMesh(new THREE.SphereGeometry(0.11, 24, 16), gloveMaterial, [0.62, 0.38, 0.05], [0, 0, 0], [1.2, 0.86, 0.9]);
+  }
+
+  if (hasPart("feet")) {
+    const bootMaterial = getMaterial("safety-boot", {
+      color: 0x0f172a,
+      roughness: 0.64,
+      metalness: 0.06,
+    });
+    const toeMaterial = getMaterial("steel-toe", {
+      color: 0x94a3b8,
+      roughness: 0.28,
+      metalness: 0.5,
+    });
+    addMesh(new THREE.BoxGeometry(0.36, 0.16, 0.56), bootMaterial, [-0.2, -0.58, 0.13], [0, -0.05, 0], [1, 1, 1]);
+    addMesh(new THREE.BoxGeometry(0.36, 0.16, 0.56), bootMaterial, [0.2, -0.58, 0.13], [0, 0.05, 0], [1, 1, 1]);
+    addMesh(new THREE.BoxGeometry(0.22, 0.05, 0.08), toeMaterial, [-0.2, -0.53, 0.42]);
+    addMesh(new THREE.BoxGeometry(0.22, 0.05, 0.08), toeMaterial, [0.2, -0.53, 0.42]);
+  }
+
+  if (hasPart("fall")) {
+    const harnessMaterial = getMaterial("fall-harness", {
+      color: 0xdc2626,
+      roughness: 0.38,
+      metalness: 0.03,
+    });
+    const ringMaterial = getMaterial("harness-ring", {
+      color: 0xf8fafc,
+      roughness: 0.18,
+      metalness: 0.42,
+    });
+    addCylinderBetween([-0.23, 1.22, 0.34], [0.19, 0.55, 0.34], 0.018, harnessMaterial, 12);
+    addCylinderBetween([0.23, 1.22, 0.34], [-0.19, 0.55, 0.34], 0.018, harnessMaterial, 12);
+    addCylinderBetween([-0.29, 0.67, 0.33], [0.29, 0.67, 0.33], 0.018, harnessMaterial, 12);
+    addMesh(new THREE.TorusGeometry(0.07, 0.012, 8, 28), ringMaterial, [0, 0.74, 0.35], [0, 0, 0]);
+    addCylinderBetween([0, 1.17, -0.27], [0, 1.7, -0.72], 0.015, harnessMaterial, 12);
+  }
+
+  const resize = () => {
+    const width = Math.max(host.clientWidth || 1, 1);
+    const height = Math.max(host.clientHeight || 1, 1);
+    renderer.setSize(width, height, false);
+    camera.aspect = width / height;
+    camera.updateProjectionMatrix();
+  };
+
+  const resizeObserver = typeof ResizeObserver !== "undefined" ? new ResizeObserver(resize) : null;
+  resizeObserver?.observe(host);
+  window.addEventListener("resize", resize);
+  resize();
+
+  const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+  const clock = new THREE.Clock();
+  let frameId = 0;
+  const animate = () => {
+    const delta = Math.min(clock.getDelta(), 0.05);
+    if (!reduceMotion) {
+      group.rotation.y += delta * 0.55;
+    }
+    group.rotation.x = 0.06 + Math.sin(group.rotation.y * 1.2) * 0.02;
+    renderer.render(scene, camera);
+    frameId = window.requestAnimationFrame(animate);
+  };
+  animate();
+
+  return {
+    dispose() {
+      window.cancelAnimationFrame(frameId);
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", resize);
+      geometries.forEach((geometry) => geometry.dispose?.());
+      materials.forEach((material) => material.dispose?.());
+      renderer.dispose();
+      host.replaceChildren();
+      preview?.classList.remove("is-webgl-ready");
+    },
+  };
 }
 
 function createRiskAssessmentEligibilityDraft(initial = {}) {
@@ -122759,6 +123226,7 @@ function toggleRiskAssessmentPpeItem(jobIndex, catalogId = "", checked = false) 
   riskAssessmentJobDrafts[jobIndex] = {
     ...current,
     ppeItems: existing,
+    ppeText: syncRiskAssessmentPpeSummaryText(current, existing),
   };
   renderRiskAssessmentJobs();
   renderRiskAssessmentOverview();
@@ -122781,7 +123249,9 @@ function updateRiskAssessmentPpeItemField(jobIndex, ppeIndex, field = "", value)
   riskAssessmentJobDrafts[jobIndex] = {
     ...current,
     ppeItems,
+    ppeText: syncRiskAssessmentPpeSummaryText(current, ppeItems),
   };
+  refreshRiskAssessmentJobDocumentPreview(jobIndex);
   renderRiskAssessmentOverview();
   scheduleRiskAssessmentDraftAutosave();
 }
@@ -123023,15 +123493,17 @@ function handleRiskAssessmentJobsListClick(event) {
     }
     const job = riskAssessmentJobDrafts[jobIndex];
     const existingPpeIds = new Set((job.ppeItems ?? []).map((ppe) => ppe.catalogId || ppe.name));
+    const nextPpeItems = [
+      ...(job.ppeItems ?? []),
+      ...(template.ppeItems ?? [])
+        .filter((ppe) => !existingPpeIds.has(ppe.catalogId || ppe.name))
+        .map((ppe) => createRiskAssessmentPpeDraft({ ...ppe, id: crypto.randomUUID(), jobId: job.id })),
+    ];
     riskAssessmentJobDrafts[jobIndex] = {
       ...job,
       riskRows: mergeRiskAssessmentRiskRows(job.riskRows, template.riskRows ?? []),
-      ppeItems: [
-        ...(job.ppeItems ?? []),
-        ...(template.ppeItems ?? [])
-          .filter((ppe) => !existingPpeIds.has(ppe.catalogId || ppe.name))
-          .map((ppe) => createRiskAssessmentPpeDraft({ ...ppe, id: crypto.randomUUID(), jobId: job.id })),
-      ],
+      ppeItems: nextPpeItems,
+      ppeText: syncRiskAssessmentPpeSummaryText(job, nextPpeItems),
     };
     renderRiskAssessmentJobs();
     renderRiskAssessmentOverview();
@@ -123095,15 +123567,17 @@ function handleRiskAssessmentJobsListClick(event) {
     }
     if (proposal.action === "risks") {
       const existingPpeIds = new Set((job.ppeItems ?? []).map((ppe) => ppe.catalogId || ppe.name));
+      const nextPpeItems = [
+        ...(job.ppeItems ?? []),
+        ...(proposal.ppeItems ?? [])
+          .filter((ppe) => !existingPpeIds.has(ppe.catalogId || ppe.name))
+          .map((ppe) => createRiskAssessmentPpeDraft({ ...ppe, id: crypto.randomUUID(), jobId: job.id })),
+      ];
       riskAssessmentJobDrafts[jobIndex] = {
         ...job,
         riskRows: mergeRiskAssessmentRiskRows(job.riskRows, proposal.riskRows ?? []),
-        ppeItems: [
-          ...(job.ppeItems ?? []),
-          ...(proposal.ppeItems ?? [])
-            .filter((ppe) => !existingPpeIds.has(ppe.catalogId || ppe.name))
-            .map((ppe) => createRiskAssessmentPpeDraft({ ...ppe, id: crypto.randomUUID(), jobId: job.id })),
-        ],
+        ppeItems: nextPpeItems,
+        ppeText: syncRiskAssessmentPpeSummaryText(job, nextPpeItems),
         aiProposal: null,
       };
     } else {
@@ -123214,6 +123688,7 @@ function renderRiskAssessmentJobs() {
     return;
   }
   syncRiskAssessmentJobCatalogOptions();
+  disposeRiskAssessmentPpeScenes();
 
   if (riskAssessmentJobDrafts.length === 0) {
     const empty = document.createElement("p");
@@ -123330,6 +123805,7 @@ function renderRiskAssessmentJobs() {
     return row;
   }));
   setRiskAssessmentActiveBlock(riskAssessmentActiveBlock || "basic");
+  initializeRiskAssessmentPpeScenes();
   renderRiskAssessmentOverview();
 }
 

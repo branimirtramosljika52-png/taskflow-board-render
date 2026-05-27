@@ -109,6 +109,7 @@ await cp(resolve(rootDir, "browser-extension"), resolve(distDir, "browser-extens
 await cp(resolve(rootDir, "src", "styles"), resolve(distDir, "src", "styles"), { recursive: true });
 await cp(resolve(rootDir, "assets", "safenexus-logo.png"), resolve(distDir, "assets", "safenexus-logo.png"));
 await cp(resolve(rootDir, "assets", "safenexus-mark.png"), resolve(distDir, "assets", "safenexus-mark.png"));
+await cp(resolve(rootDir, "node_modules", "three", "build", "three.module.js"), resolve(distDir, "assets", "vendor", "three.module.js"));
 const cadviewCoreSource = await readFile(resolve(rootDir, "node_modules", "@cadview", "core", "dist", "index.js"), "utf8");
 await writeFile(
   resolve(distDir, "assets", "vendor", "cadview-core.js"),
