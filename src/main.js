@@ -5959,10 +5959,6 @@ const jobSearchInput = document.querySelector("#job-search");
 const jobStatusFilterInput = document.querySelector("#job-status-filter");
 const jobList = document.querySelector("#job-list");
 const jobEmpty = document.querySelector("#job-empty");
-const jobTotalCount = document.querySelector("#job-total-count");
-const jobActiveCount = document.querySelector("#job-active-count");
-const jobHazardCount = document.querySelector("#job-hazard-count");
-const jobAiCount = document.querySelector("#job-ai-count");
 const jobEditorBackdrop = document.querySelector("#job-editor-backdrop");
 const jobEditorPanel = document.querySelector("#job-editor-panel");
 const jobForm = document.querySelector("#job-form");
@@ -115586,7 +115582,12 @@ jobSelectedHazards?.addEventListener("input", (event) => {
   if (!hazard) {
     return;
   }
-  hazard[field.dataset.jobHazardField] = "value" in field ? String(field.value || "") : "";
+  const fieldName = field.dataset.jobHazardField;
+  hazard[fieldName] = "value" in field ? String(field.value || "") : "";
+  if (fieldName === "probability" || fieldName === "consequence") {
+    hazard.riskLevel = calculateJobHazardRiskLevel(hazard.probability, hazard.consequence) || "";
+    renderJobSelectedHazards();
+  }
 });
 
 jobSelectedHazards?.addEventListener("change", (event) => {
@@ -115601,7 +115602,12 @@ jobSelectedHazards?.addEventListener("change", (event) => {
   if (!hazard) {
     return;
   }
-  hazard[field.dataset.jobHazardField] = "value" in field ? String(field.value || "") : "";
+  const fieldName = field.dataset.jobHazardField;
+  hazard[fieldName] = "value" in field ? String(field.value || "") : "";
+  if (fieldName === "probability" || fieldName === "consequence") {
+    hazard.riskLevel = calculateJobHazardRiskLevel(hazard.probability, hazard.consequence) || "";
+    renderJobSelectedHazards();
+  }
 });
 
 jobSelectedHazards?.addEventListener("click", (event) => {
@@ -119532,16 +119538,16 @@ const RISK_ASSESSMENT_ELIGIBILITY_ROWS = Object.freeze([
 
 const RISK_ASSESSMENT_PROBABILITY_OPTIONS = Object.freeze([
   { value: "", label: "-" },
-  { value: "mv", label: "mv" },
-  { value: "v", label: "v" },
-  { value: "vv", label: "vv" },
+  { value: "mv", label: "Mala vjerojatnost" },
+  { value: "v", label: "Srednja vjerojatnost" },
+  { value: "vv", label: "Velika vjerojatnost" },
 ]);
 
 const RISK_ASSESSMENT_CONSEQUENCE_OPTIONS = Object.freeze([
   { value: "", label: "-" },
-  { value: "mš", label: "mš" },
-  { value: "sš", label: "sš" },
-  { value: "iš", label: "iš" },
+  { value: "mš", label: "Mala posljedica" },
+  { value: "sš", label: "Srednja posljedica" },
+  { value: "iš", label: "Velika posljedica" },
 ]);
 
 const RISK_ASSESSMENT_RISK_LEVEL_OPTIONS = Object.freeze([
@@ -120447,6 +120453,22 @@ function renderJobHazardCatalog() {
   }));
 }
 
+function getRiskAssessmentOptionLabel(options = [], value = "", fallback = "-") {
+  const option = options.find((entry) => String(entry.value) === String(value ?? ""));
+  return option?.label || fallback;
+}
+
+function calculateJobHazardRiskLevel(probability = "", consequence = "") {
+  const probabilityKey = String(probability || "").trim();
+  const consequenceKey = String(consequence || "").trim();
+  const matrix = {
+    mv: { "mš": "Mali rizik", "sš": "Mali rizik", "iš": "Srednji rizik" },
+    v: { "mš": "Mali rizik", "sš": "Srednji rizik", "iš": "Veliki rizik" },
+    vv: { "mš": "Srednji rizik", "sš": "Veliki rizik", "iš": "Veliki rizik" },
+  };
+  return matrix[probabilityKey]?.[consequenceKey] || "";
+}
+
 function getJobHazardRiskTone(value = "") {
   const normalized = String(value || "").toLocaleLowerCase("hr");
   if (normalized.includes("velik")) {
@@ -120477,10 +120499,16 @@ function renderJobSelectedHazards() {
   }
   jobSelectedHazards.replaceChildren(...jobHazardDrafts.map((hazard, index) => {
     const article = document.createElement("article");
+    const calculatedRiskLevel = calculateJobHazardRiskLevel(hazard.probability, hazard.consequence);
+    if (calculatedRiskLevel) {
+      hazard.riskLevel = calculatedRiskLevel;
+    }
     const riskTone = getJobHazardRiskTone(hazard.riskLevel);
     article.className = `job-selected-hazard-card is-${riskTone}`;
     article.dataset.jobHazardIndex = String(index);
     const riskLabel = String(hazard.riskLevel || "Rizik nije određen").trim();
+    const probabilityLabel = getRiskAssessmentOptionLabel(RISK_ASSESSMENT_PROBABILITY_OPTIONS, hazard.probability);
+    const consequenceLabel = getRiskAssessmentOptionLabel(RISK_ASSESSMENT_CONSEQUENCE_OPTIONS, hazard.consequence);
     article.innerHTML = `
       <div class="job-selected-hazard-head">
         <div class="job-selected-hazard-title">
@@ -120496,16 +120524,16 @@ function renderJobSelectedHazards() {
         </div>
       </div>
       <div class="job-hazard-summary-strip">
-        <span><strong>V</strong>${escapeHtml(hazard.probability || "-")}</span>
-        <span><strong>P</strong>${escapeHtml(hazard.consequence || "-")}</span>
+        <span><strong>Vjerojatnost</strong>${escapeHtml(probabilityLabel)}</span>
+        <span><strong>Posljedica</strong>${escapeHtml(consequenceLabel)}</span>
         <span><strong>OZO</strong>${escapeHtml(hazard.ppeText || "-")}</span>
       </div>
       <div class="job-hazard-fields">
-        <label class="field field-span-full"><span>Mogući neželjeni događaj</span><textarea data-job-hazard-field="unwantedEvent" rows="2">${escapeHtml(hazard.unwantedEvent || "")}</textarea></label>
+        <label class="field field-span-full job-hazard-compact-textarea"><span>Mogući neželjeni događaj</span><textarea data-job-hazard-field="unwantedEvent" rows="1">${escapeHtml(hazard.unwantedEvent || "")}</textarea></label>
         <label class="field"><span>Vjerojatnost</span><select data-job-hazard-field="probability">${renderRiskAssessmentOptions(RISK_ASSESSMENT_PROBABILITY_OPTIONS, hazard.probability || "")}</select></label>
         <label class="field"><span>Posljedica</span><select data-job-hazard-field="consequence">${renderRiskAssessmentOptions(RISK_ASSESSMENT_CONSEQUENCE_OPTIONS, hazard.consequence || "")}</select></label>
-        <label class="field"><span>Rizik</span><select data-job-hazard-field="riskLevel">${renderRiskAssessmentOptions(RISK_ASSESSMENT_RISK_LEVEL_OPTIONS, hazard.riskLevel || "")}</select></label>
-        <label class="field field-span-full"><span>Mjere za uklanjanje/smanjivanje opasnosti</span><textarea data-job-hazard-field="measures" rows="2">${escapeHtml(hazard.measures || "")}</textarea></label>
+        <label class="field job-risk-output-field"><span>Rizik</span><output class="job-risk-output is-${riskTone}">${escapeHtml(riskLabel)}</output></label>
+        <label class="field field-span-full job-hazard-compact-textarea"><span>Mjere za uklanjanje/smanjivanje opasnosti</span><textarea data-job-hazard-field="measures" rows="1">${escapeHtml(hazard.measures || "")}</textarea></label>
         <label class="field"><span>Točka PUR-a</span><input data-job-hazard-field="purPoint" value="${escapeHtml(hazard.purPoint || "")}" /></label>
         <label class="field"><span>Obvezna zaštitna oprema (OZS)</span><input data-job-hazard-field="ppeText" value="${escapeHtml(hazard.ppeText || "")}" /></label>
       </div>
@@ -120728,10 +120756,6 @@ function renderJobsModule() {
   }
   const allJobs = state.jobs ?? [];
   const visible = sortJobs(filterJobs(allJobs, filters));
-  if (jobTotalCount) jobTotalCount.textContent = String(allJobs.length);
-  if (jobActiveCount) jobActiveCount.textContent = String(allJobs.filter((item) => item.status === "active").length);
-  if (jobHazardCount) jobHazardCount.textContent = String(allJobs.reduce((sum, item) => sum + (item.hazards ?? []).length, 0));
-  if (jobAiCount) jobAiCount.textContent = String(allJobs.filter((item) => String(item.description || "").trim()).length);
   jobList?.replaceChildren(...visible.map((item) => renderJobCard(item)));
   if (jobEmpty) {
     jobEmpty.hidden = visible.length > 0;

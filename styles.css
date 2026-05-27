@@ -53972,57 +53972,6 @@ button.work-order-editor-section-head:focus-visible {
   max-width: 620px;
 }
 
-.jobs-stat-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.jobs-stat-card {
-  display: grid;
-  gap: 5px;
-  min-height: 108px;
-  padding: 16px;
-  border: 1px solid rgba(188, 204, 235, 0.78);
-  border-radius: 18px;
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.94), rgba(247, 250, 255, 0.86));
-  box-shadow: 0 16px 34px rgba(36, 51, 91, 0.08);
-}
-
-.jobs-stat-card span {
-  color: #64748b;
-  font-size: 0.7rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.jobs-stat-card strong {
-  color: #111936;
-  font-size: 1.7rem;
-  line-height: 1;
-}
-
-.jobs-stat-card small {
-  color: #64748b;
-  font-weight: 700;
-}
-
-.jobs-stat-card.is-active {
-  border-color: rgba(34, 197, 94, 0.34);
-  background: linear-gradient(145deg, rgba(240, 253, 244, 0.96), rgba(255, 255, 255, 0.9));
-}
-
-.jobs-stat-card.is-risk {
-  border-color: rgba(244, 63, 94, 0.30);
-  background: linear-gradient(145deg, rgba(255, 241, 242, 0.94), rgba(255, 255, 255, 0.9));
-}
-
-.jobs-stat-card.is-ai {
-  border-color: rgba(124, 58, 237, 0.32);
-  background: linear-gradient(145deg, rgba(245, 243, 255, 0.96), rgba(255, 255, 255, 0.9));
-}
-
 .jobs-filters {
   grid-template-columns: minmax(260px, 1fr) minmax(180px, 0.32fr);
 }
@@ -54621,6 +54570,26 @@ button.work-order-editor-section-head:focus-visible {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
   align-items: center;
+  padding: 10px 11px;
+  border: 1px solid rgba(199, 210, 254, 0.58);
+  border-radius: 14px;
+  background:
+    linear-gradient(135deg, rgba(248, 250, 252, 0.96), rgba(255, 255, 255, 0.88));
+}
+
+.job-selected-hazard-card.is-low .job-selected-hazard-head {
+  border-color: rgba(34, 197, 94, 0.24);
+  background: linear-gradient(135deg, rgba(220, 252, 231, 0.88), rgba(255, 255, 255, 0.9));
+}
+
+.job-selected-hazard-card.is-medium .job-selected-hazard-head {
+  border-color: rgba(245, 158, 11, 0.28);
+  background: linear-gradient(135deg, rgba(254, 243, 199, 0.92), rgba(255, 255, 255, 0.9));
+}
+
+.job-selected-hazard-card.is-high .job-selected-hazard-head {
+  border-color: rgba(239, 68, 68, 0.26);
+  background: linear-gradient(135deg, rgba(254, 226, 226, 0.92), rgba(255, 255, 255, 0.9));
 }
 
 .job-selected-hazard-title {
@@ -54736,6 +54705,46 @@ button.work-order-editor-section-head:focus-visible {
   color: #64748b;
   font-size: 0.66rem;
   text-transform: uppercase;
+}
+
+.job-hazard-compact-textarea textarea {
+  min-height: 44px;
+  max-height: none;
+  resize: vertical;
+}
+
+.job-risk-output-field {
+  align-content: start;
+}
+
+.job-risk-output {
+  display: inline-flex;
+  align-items: center;
+  min-height: 37px;
+  padding: 9px 12px;
+  border: 1px solid rgba(199, 210, 254, 0.72);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.94);
+  color: #334155;
+  font-weight: 900;
+}
+
+.job-risk-output.is-low {
+  border-color: rgba(34, 197, 94, 0.32);
+  background: rgba(220, 252, 231, 0.86);
+  color: #166534;
+}
+
+.job-risk-output.is-medium {
+  border-color: rgba(245, 158, 11, 0.34);
+  background: rgba(254, 243, 199, 0.92);
+  color: #92400e;
+}
+
+.job-risk-output.is-high {
+  border-color: rgba(239, 68, 68, 0.34);
+  background: rgba(254, 226, 226, 0.94);
+  color: #991b1b;
 }
 
 .job-editor-footer {
