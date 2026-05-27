@@ -64528,7 +64528,7 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
 .ozo-layout {
   display: grid;
   gap: 18px;
-  grid-template-columns: minmax(420px, 0.95fr) minmax(210px, 0.42fr) minmax(460px, 1.18fr);
+  grid-template-columns: minmax(500px, 1.05fr) minmax(190px, 0.38fr) minmax(400px, 1fr);
   min-width: 0;
 }
 
@@ -65852,5 +65852,111 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
   .ozo-worker-figure svg,
   .ozo-worker-figure.is-female svg {
     max-width: 158px;
+  }
+}
+
+/* Premium 3D OZO worker stage */
+.ozo-worker-hero.is-three {
+  background:
+    radial-gradient(circle at 50% 88%, rgba(15, 23, 42, 0.15), transparent 28%),
+    radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.95), transparent 28%),
+    linear-gradient(135deg, #ffffff 0%, #f8fafc 46%, #e8eef6 100%);
+  min-height: 545px;
+}
+
+.ozo-worker-hero.is-three .ozo-worker-stage-copy {
+  max-width: 100%;
+}
+
+.ozo-worker-hero.is-three .ozo-stage-tags {
+  justify-content: flex-start;
+  left: 18px;
+  right: 18px;
+  top: 78px;
+}
+
+.ozo-worker-canvas-wrap {
+  bottom: 0;
+  left: 0;
+  overflow: hidden;
+  position: absolute;
+  right: 0;
+  top: 116px;
+  z-index: 1;
+}
+
+.ozo-worker-canvas {
+  display: block;
+  height: 100%;
+  position: relative;
+  width: 100%;
+  z-index: 2;
+}
+
+.ozo-worker-depth-grid {
+  background:
+    linear-gradient(90deg, rgba(15, 23, 42, 0.045) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(15, 23, 42, 0.035) 1px, transparent 1px);
+  background-size: 48px 48px;
+  inset: 14px 10px 86px;
+  mask-image: radial-gradient(circle at 50% 56%, rgba(0, 0, 0, 0.55), transparent 70%);
+  opacity: 0.7;
+  position: absolute;
+  z-index: 0;
+}
+
+.ozo-worker-floor-glow {
+  background:
+    radial-gradient(ellipse at 50% 65%, rgba(15, 23, 42, 0.16), transparent 38%),
+    radial-gradient(ellipse at 50% 74%, rgba(250, 204, 21, 0.12), transparent 42%);
+  bottom: 12px;
+  height: 170px;
+  left: 8%;
+  position: absolute;
+  right: 8%;
+  z-index: 0;
+}
+
+.ozo-gear-markers {
+  display: none;
+}
+
+.ozo-worker-hero.is-three .ozo-worker-stage-copy,
+.ozo-worker-hero.is-three .ozo-stage-tags {
+  z-index: 5;
+}
+
+.ozo-worker-hero.is-three .ozo-stage-tags span {
+  backdrop-filter: blur(10px);
+}
+
+@media (max-width: 1360px) {
+  .ozo-worker-hero.is-three {
+    min-height: 525px;
+  }
+}
+
+@media (max-width: 980px) {
+  .ozo-worker-hero.is-three {
+    min-height: 520px;
+  }
+}
+
+@media (max-width: 640px) {
+  .ozo-worker-hero.is-three {
+    min-height: 440px;
+  }
+
+  .ozo-worker-hero.is-three .ozo-stage-tags {
+    top: 82px;
+  }
+
+  .ozo-worker-canvas-wrap {
+    top: 136px;
+  }
+
+  .ozo-worker-depth-grid {
+    background-size: 38px 38px;
+    inset: 8px 4px 72px;
   }
 }
