@@ -1,6 +1,6 @@
 export const RISK_PPE_SOURCE_URL = "https://narodne-novine.nn.hr/clanci/sluzbeni/2009_09_110_2825.html";
 
-export const RISK_PPE_CATEGORY_IMAGES = Object.freeze({
+const RISK_PPE_LEGACY_CATEGORY_IMAGES = Object.freeze({
   "head": "https://images.unsplash.com/photo-1504917595217-d4dc5ebe6122?auto=format&fit=crop&w=640&q=80",
   "eyes": "https://images.unsplash.com/photo-1581092160562-40aa08e78837?auto=format&fit=crop&w=640&q=80",
   "hearing": "https://images.unsplash.com/photo-1581092918056-0c4c3acd3789?auto=format&fit=crop&w=640&q=80",
@@ -12,16 +12,30 @@ export const RISK_PPE_CATEGORY_IMAGES = Object.freeze({
   "other": "https://images.unsplash.com/photo-1581092162384-8987c1d64718?auto=format&fit=crop&w=640&q=80"
 });
 
+export const RISK_PPE_LEGACY_CATEGORY_IMAGE_URLS = Object.freeze(Object.values(RISK_PPE_LEGACY_CATEGORY_IMAGES));
+
+export const RISK_PPE_CATEGORY_IMAGES = Object.freeze({
+  "head": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/35/A_Hard_Hat.JPG/960px-A_Hard_Hat.JPG",
+  "eyes": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0a/Safety_Goggles.jpg/960px-Safety_Goggles.jpg",
+  "hearing": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e4/Peltor_earmuffs.jpg/960px-Peltor_earmuffs.jpg",
+  "respiratory": "https://upload.wikimedia.org/wikipedia/commons/d/d1/N95_filtering-facepiece_respirator.png",
+  "hands": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Cryo_protecting_gloves.jpg/960px-Cryo_protecting_gloves.jpg",
+  "body": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/59/High-visibility_vest_clothing_standards_markings.jpg/960px-High-visibility_vest_clothing_standards_markings.jpg",
+  "feet": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cc/S3_safety_footwear.jpg/960px-S3_safety_footwear.jpg",
+  "fall": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b8/Worker_with_safety_harness_%289248564334%29.jpg/960px-Worker_with_safety_harness_%289248564334%29.jpg",
+  "other": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/38/CERT_equipment_%284533128825%29.jpg/960px-CERT_equipment_%284533128825%29.jpg"
+});
+
 export const RISK_PPE_CATEGORY_ICONS = Object.freeze({
-  "head": "https://commons.wikimedia.org/wiki/Special:Redirect/file/CCOHS_PPE_icon_01_Head_protection.svg",
-  "eyes": "https://commons.wikimedia.org/wiki/Special:Redirect/file/CCOHS_PPE_icon_02_Eye_protection.svg",
-  "hearing": "https://commons.wikimedia.org/wiki/Special:Redirect/file/CCOHS_PPE_icon_04_Hearing_protection.svg",
-  "respiratory": "https://commons.wikimedia.org/wiki/Special:Redirect/file/CCOHS_PPE_icon_06_Respiratory_protection.svg",
-  "hands": "https://commons.wikimedia.org/wiki/Special:Redirect/file/CCOHS_PPE_icon_14_Protective_gloves.svg",
-  "body": "https://commons.wikimedia.org/wiki/Special:Redirect/file/CCOHS_PPE_icon_09_Reflective_vest.svg",
-  "feet": "https://commons.wikimedia.org/wiki/Special:Redirect/file/CCOHS_PPE_icon_13_Protective_boots.svg",
-  "fall": "https://commons.wikimedia.org/wiki/Special:Redirect/file/CCOHS_PPE_icon_08_Fall_protection.svg",
-  "other": "https://commons.wikimedia.org/wiki/Special:Redirect/file/CCOHS_PPE_icon_10_Kneepads.svg"
+  "head": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/54/CCOHS_PPE_icon_01_Head_protection.svg/250px-CCOHS_PPE_icon_01_Head_protection.svg.png",
+  "eyes": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4c/CCOHS_PPE_icon_02_Eye_protection.svg/250px-CCOHS_PPE_icon_02_Eye_protection.svg.png",
+  "hearing": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b6/CCOHS_PPE_icon_04_Hearing_protection.svg/250px-CCOHS_PPE_icon_04_Hearing_protection.svg.png",
+  "respiratory": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/76/CCOHS_PPE_icon_06_Respiratory_protection.svg/250px-CCOHS_PPE_icon_06_Respiratory_protection.svg.png",
+  "hands": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9b/CCOHS_PPE_icon_14_Protective_gloves.svg/250px-CCOHS_PPE_icon_14_Protective_gloves.svg.png",
+  "body": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ae/CCOHS_PPE_icon_09_Reflective_vest.svg/250px-CCOHS_PPE_icon_09_Reflective_vest.svg.png",
+  "feet": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c8/CCOHS_PPE_icon_13_Protective_boots.svg/250px-CCOHS_PPE_icon_13_Protective_boots.svg.png",
+  "fall": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/84/CCOHS_PPE_icon_08_Fall_protection.svg/250px-CCOHS_PPE_icon_08_Fall_protection.svg.png",
+  "other": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a8/CCOHS_PPE_icon_10_Kneepads.svg/250px-CCOHS_PPE_icon_10_Kneepads.svg.png"
 });
 
 function normalizeRiskPpeCatalogText(value = "") {

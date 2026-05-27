@@ -170,6 +170,7 @@ import {
   DEFAULT_RISK_PPE_CATALOG,
   RISK_PPE_CATEGORY_ICONS,
   RISK_PPE_CATEGORY_IMAGES,
+  RISK_PPE_LEGACY_CATEGORY_IMAGE_URLS,
   RISK_PPE_SOURCE_URL,
 } from "./riskPpeCatalog.js";
 
@@ -119940,6 +119941,10 @@ function normalizeRiskPpeCatalogItem(item = {}) {
   const bodyPart = String(item.bodyPart || "other").trim() || "other";
   const fallbackImage = RISK_PPE_CATEGORY_IMAGES[bodyPart] || RISK_PPE_CATEGORY_IMAGES.other || "";
   const fallbackIcon = RISK_PPE_CATEGORY_ICONS[bodyPart] || RISK_PPE_CATEGORY_ICONS.other || "";
+  const itemImageUrl = String(item.imageUrl || "").trim();
+  const imageUrl = itemImageUrl && !RISK_PPE_LEGACY_CATEGORY_IMAGE_URLS.includes(itemImageUrl)
+    ? itemImageUrl
+    : fallbackImage;
   return {
     id: String(item.id || item.catalogId || item.norm || item.name || "").trim(),
     organizationId: String(item.organizationId || "").trim(),
@@ -119949,7 +119954,7 @@ function normalizeRiskPpeCatalogItem(item = {}) {
     norm: String(item.norm || "").trim(),
     standardCode: String(item.standardCode || "").trim(),
     description: String(item.description || "").trim(),
-    imageUrl: String(item.imageUrl || fallbackImage).trim(),
+    imageUrl,
     iconUrl: String(item.iconUrl || fallbackIcon).trim(),
     sourceRef: String(item.sourceRef || "").trim(),
     sourceUrl: String(item.sourceUrl || "").trim(),
