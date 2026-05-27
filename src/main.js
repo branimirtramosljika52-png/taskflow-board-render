@@ -48317,6 +48317,15 @@ function escapeHtml(value = "") {
     .replace(/'/g, "&#39;");
 }
 
+function serializeJsonForHtml(value) {
+  return JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+}
+
 function sanitizeDocumentTemplateFileName(value = "", fallback = "zapisnik-template") {
   const slug = slugifyValue(value).replace(/-+/g, "-").replace(/^-+|-+$/g, "");
   return slug || fallback;
@@ -119638,6 +119647,7 @@ const RISK_ASSESSMENT_PPE_BODY_FILTERS = Object.freeze([
 const RISK_ASSESSMENT_PPE_CATALOG = DEFAULT_RISK_PPE_CATALOG;
 
 const RISK_ASSESSMENT_PPE_THREE_MODULE_URL = "/assets/vendor/three.module.js?v=20260527-risk-ppe-3d-v2";
+const RISK_ASSESSMENT_PPE_WORKER_IMAGE_URL = "/assets/ozo/ozo-worker-duo-v1.png?v=20260527-ozo-ui-v1";
 
 const RISK_ASSESSMENT_ARMOR_TEMPLATE_ROWS = Object.freeze([
   { category: "I. OPASNOSTI", group: "1. Mehaničke opasnosti", code: "1.1.1", hazard: "Ručni alati", probability: "mv", consequence: "sš", riskLevel: "Mali rizik", measures: "Koristiti ispravan alat, osposobiti radnike za rad na siguran način i po potrebi koristiti propisanu osobnu zaštitnu opremu." },
@@ -122261,7 +122271,7 @@ function getRiskAssessmentPpeNewDraft(job = {}) {
   };
 }
 
-function renderRiskAssessmentPpeVisual(job = {}, jobIndex = 0) {
+function renderRiskAssessmentPpeVisualLegacy(job = {}, jobIndex = 0) {
   const selectedSet = getRiskAssessmentSelectedPpeSet(job);
   const activeFilter = String(job.ppeFilter || "all");
   const searchValue = String(job.ppeSearch || "");
@@ -122411,6 +122421,60 @@ function renderRiskAssessmentPpeVisual(job = {}, jobIndex = 0) {
             <label><span>Napomena</span><input data-risk-ppe-index="${ppeIndex}" data-risk-ppe-field="note" value="${escapeHtml(ppe.note || "")}" /></label>
           </div>
         `).join("") : `<p class="inline-help">Odabrana oprema će se ovdje prikazati i na lutki.</p>`}
+      </div>
+    </div>
+  `;
+}
+
+function renderRiskAssessmentPpeVisual(job = {}, jobIndex = 0) {
+  const selectedSet = getRiskAssessmentSelectedPpeSet(job);
+  const activeFilter = String(job.ppeFilter || "all");
+  const searchValue = String(job.ppeSearch || "");
+  const selectedBodyParts = Array.from(getRiskAssessmentPpeBodyParts(job.ppeItems ?? []));
+  const catalog = getRiskAssessmentPpeCatalog();
+  const countByBodyPart = RISK_ASSESSMENT_PPE_BODY_FILTERS.reduce((accumulator, filter) => {
+    accumulator[filter.value] = filter.value === "all"
+      ? catalog.length
+      : catalog.filter((item) => item.bodyPart === filter.value).length;
+    return accumulator;
+  }, {});
+  const catalogPayload = catalog.map((item) => ({
+    ...normalizeRiskPpeCatalogItem(item),
+    searchText: normalizeRiskAssessmentPpeSearchValue([
+      item.name,
+      item.category,
+      item.norm,
+      item.standardCode,
+      item.description,
+      item.sourceRef,
+    ].join(" ")),
+  }));
+  const payload = {
+    jobIndex,
+    catalog: catalogPayload,
+    filters: RISK_ASSESSMENT_PPE_BODY_FILTERS,
+    counts: countByBodyPart,
+    selectedIds: Array.from(selectedSet),
+    selectedItems: (job.ppeItems ?? []).map((item) => normalizeRiskPpeCatalogItem(item)),
+    selectedBodyParts,
+    activeFilter,
+    searchValue,
+    newDraft: getRiskAssessmentPpeNewDraft(job),
+    newFormOpen: Boolean(job.ppeNewOpen),
+    sourceUrl: RISK_PPE_SOURCE_URL,
+    workerImageUrl: RISK_ASSESSMENT_PPE_WORKER_IMAGE_URL,
+    imageFallbacks: RISK_PPE_CATEGORY_IMAGES,
+    iconFallbacks: RISK_PPE_CATEGORY_ICONS,
+  };
+
+  return `
+    <div class="risk-assessment-ppe-panel ozo-react-panel" data-ozo-equipment-panel="${jobIndex}">
+      <script type="application/json" data-ozo-equipment-payload>${serializeJsonForHtml(payload)}</script>
+      <div class="ozo-equipment-react-root" data-ozo-equipment-root="${jobIndex}">
+        <div class="ozo-loading-shell">
+          <strong>OSOBNA ZAŠTITNA OPREMA</strong>
+          <span>Učitavam profesionalni OZO prikaz...</span>
+        </div>
       </div>
     </div>
   `;

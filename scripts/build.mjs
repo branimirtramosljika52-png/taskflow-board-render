@@ -1,7 +1,9 @@
 import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
 import { dirname, extname, relative, resolve } from "node:path";
 import { brotliCompress, constants as zlibConstants, gzip } from "node:zlib";
 import { promisify } from "node:util";
+import esbuild from "esbuild";
 
 const rootDir = process.cwd();
 const distDir = resolve(rootDir, "dist");
@@ -95,6 +97,59 @@ async function compressDistAssets() {
   }));
 }
 
+async function copyOptionalDirectory(sourcePath, targetPath) {
+  try {
+    await cp(sourcePath, targetPath, { recursive: true });
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      throw error;
+    }
+  }
+}
+
+async function buildOzoPanelBundle() {
+  await esbuild.build({
+    entryPoints: [resolve(rootDir, "src", "ozo", "index.jsx")],
+    outfile: resolve(distDir, "assets", "ozo-panel.js"),
+    bundle: true,
+    format: "esm",
+    target: "es2020",
+    minify: true,
+    sourcemap: false,
+    jsx: "automatic",
+    define: {
+      "process.env.NODE_ENV": "\"production\"",
+    },
+  });
+}
+
+async function buildOzoTailwindCss() {
+  const executable = resolve(rootDir, "node_modules", ".bin", process.platform === "win32" ? "tailwindcss.cmd" : "tailwindcss");
+  const args = [
+    "-c",
+    resolve(rootDir, "tailwind.config.cjs"),
+    "-i",
+    resolve(rootDir, "src", "ozo", "tailwind.css"),
+    "-o",
+    resolve(distDir, "assets", "ozo-tailwind.css"),
+    "--minify",
+  ];
+  await new Promise((resolvePromise, reject) => {
+    const child = spawn(executable, args, {
+      shell: process.platform === "win32",
+      stdio: "inherit",
+    });
+    child.on("error", reject);
+    child.on("exit", (code) => {
+      if (code === 0) {
+        resolvePromise();
+      } else {
+        reject(new Error(`Tailwind OZO build failed with exit code ${code}`));
+      }
+    });
+  });
+}
+
 await rm(distDir, { recursive: true, force: true });
 await mkdir(resolve(distDir, "src"), { recursive: true });
 await mkdir(resolve(distDir, "assets"), { recursive: true });
@@ -109,6 +164,7 @@ await cp(resolve(rootDir, "browser-extension"), resolve(distDir, "browser-extens
 await cp(resolve(rootDir, "src", "styles"), resolve(distDir, "src", "styles"), { recursive: true });
 await cp(resolve(rootDir, "assets", "safenexus-logo.png"), resolve(distDir, "assets", "safenexus-logo.png"));
 await cp(resolve(rootDir, "assets", "safenexus-mark.png"), resolve(distDir, "assets", "safenexus-mark.png"));
+await copyOptionalDirectory(resolve(rootDir, "assets", "ozo"), resolve(distDir, "assets", "ozo"));
 await cp(resolve(rootDir, "node_modules", "three", "build", "three.module.js"), resolve(distDir, "assets", "vendor", "three.module.js"));
 const cadviewCoreSource = await readFile(resolve(rootDir, "node_modules", "@cadview", "core", "dist", "index.js"), "utf8");
 await writeFile(
@@ -131,4 +187,6 @@ for (const entryModulePath of browserEntryModules) {
   await copyBrowserModule(entryModulePath, copiedBrowserModules);
 }
 
+await buildOzoPanelBundle();
+await buildOzoTailwindCss();
 await compressDistAssets();
