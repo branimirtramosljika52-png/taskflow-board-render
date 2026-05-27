@@ -56360,9 +56360,10 @@ button.work-order-editor-section-head:focus-visible {
 
 .risk-assessment-ppe-layout {
   display: grid;
-  grid-template-columns: minmax(360px, 0.46fr) minmax(0, 1fr);
+  grid-template-columns: minmax(340px, 430px) minmax(0, 1fr);
   gap: 18px;
-  align-items: stretch;
+  align-items: start;
+  min-width: 0;
 }
 
 .risk-assessment-worker-preview {
@@ -56370,7 +56371,7 @@ button.work-order-editor-section-head:focus-visible {
   isolation: isolate;
   display: grid;
   place-items: center;
-  min-height: 430px;
+  min-height: 500px;
   overflow: hidden;
   border: 1px solid rgba(148, 163, 184, 0.4);
   border-radius: 16px;
@@ -56990,7 +56991,9 @@ button.work-order-editor-section-head:focus-visible {
   display: grid;
   align-content: start;
   gap: 8px;
+  min-width: 0;
   min-height: 0;
+  overflow: hidden;
 }
 
 .risk-assessment-ppe-list-head {
@@ -57009,28 +57012,35 @@ button.work-order-editor-section-head:focus-visible {
 
 .risk-assessment-ppe-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   align-content: start;
   max-height: 520px;
   overflow: auto;
+  overflow-x: hidden;
   padding: 2px 6px 2px 2px;
   scrollbar-gutter: stable;
 }
 
 .risk-assessment-ppe-option {
   display: grid;
-  grid-template-columns: 18px 58px 92px minmax(0, 1fr);
-  gap: 12px;
-  align-items: center;
+  grid-template-columns: 18px 54px minmax(72px, 82px) minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
   min-width: 0;
-  min-height: 92px;
-  padding: 10px;
+  min-height: 104px;
+  padding: 10px 12px;
   border: 1px solid rgba(203, 213, 225, 0.82);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.94);
   cursor: pointer;
+  overflow: hidden;
   transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.risk-assessment-ppe-option input {
+  align-self: center;
+  margin-top: 0;
 }
 
 .risk-assessment-ppe-option:hover {
@@ -57091,8 +57101,8 @@ button.work-order-editor-section-head:focus-visible {
 .risk-assessment-ppe-option-symbol {
   display: grid;
   place-items: center;
-  width: 58px;
-  height: 58px;
+  width: 54px;
+  height: 54px;
   overflow: hidden;
   border: 1px solid rgba(8, 25, 43, 0.08);
   border-radius: 50%;
@@ -57104,15 +57114,15 @@ button.work-order-editor-section-head:focus-visible {
 
 .risk-assessment-ppe-option-symbol img {
   display: block;
-  width: 42px;
-  height: 42px;
+  width: 39px;
+  height: 39px;
   object-fit: contain;
 }
 
 .risk-assessment-ppe-option-photo {
   display: block;
-  width: 92px;
-  height: 66px;
+  width: 82px;
+  height: 62px;
   overflow: hidden;
   border-radius: 10px;
   border: 1px solid rgba(203, 213, 225, 0.76);
@@ -57295,31 +57305,46 @@ button.work-order-editor-section-head:focus-visible {
 
 .risk-assessment-ppe-option-copy {
   display: grid;
-  gap: 4px;
+  gap: 5px;
   min-width: 0;
+  align-self: stretch;
 }
 
 .risk-assessment-ppe-option strong {
+  display: -webkit-box;
+  overflow: hidden;
   color: #08192b;
-  font-size: 0.9rem;
+  font-size: 0.82rem;
   font-weight: 950;
-  line-height: 1.15;
+  line-height: 1.18;
+  overflow-wrap: anywhere;
   text-transform: uppercase;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 
 .risk-assessment-ppe-option small {
+  display: -webkit-box;
+  overflow: hidden;
   color: #0f4ea2;
-  font-size: 0.76rem;
+  font-size: 0.72rem;
   font-weight: 900;
   line-height: 1.28;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .risk-assessment-ppe-option em {
+  display: block;
+  overflow: hidden;
   color: #64748b;
   font-size: 0.66rem;
   font-style: normal;
   font-weight: 850;
   line-height: 1.22;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .risk-assessment-ppe-empty[hidden] {
@@ -57591,6 +57616,24 @@ button.work-order-editor-section-head:focus-visible {
   .risk-assessment-card-meta {
     grid-auto-flow: row;
     justify-content: start;
+  }
+}
+
+@media (max-width: 620px) {
+  .risk-assessment-ppe-panel {
+    padding: 12px;
+  }
+
+  .risk-assessment-worker-preview {
+    min-height: 420px;
+  }
+
+  .risk-assessment-ppe-option {
+    grid-template-columns: 18px 50px minmax(0, 1fr);
+  }
+
+  .risk-assessment-ppe-option-photo {
+    display: none;
   }
 }
 

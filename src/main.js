@@ -122377,7 +122377,7 @@ function renderRiskAssessmentPpeVisual(job = {}, jobIndex = 0) {
               const isVisible = visibleCatalogIds.has(String(ppe.id));
               const isSelected = selectedSet.has(ppe.id);
               return `
-            <label class="risk-assessment-ppe-option ${isSelected ? "is-selected" : ""}" data-risk-ppe-option-card data-risk-ppe-option-body-part="${escapeHtml(ppe.bodyPart)}" data-risk-ppe-option-search="${escapeHtml(searchText)}" ${isVisible ? "" : "hidden"}>
+            <label class="risk-assessment-ppe-option ${isSelected ? "is-selected" : ""}" data-risk-ppe-option-card data-risk-ppe-option-body-part="${escapeHtml(ppe.bodyPart)}" data-risk-ppe-option-search="${escapeHtml(searchText)}" title="${escapeHtml([ppe.name, ppe.norm, ppe.category].filter(Boolean).join(" · "))}" ${isVisible ? "" : "hidden"}>
               <input type="checkbox" data-risk-ppe-toggle="${escapeHtml(ppe.id)}" ${isSelected ? "checked" : ""} />
               <span class="risk-assessment-ppe-option-symbol">
                 <img src="${escapeHtml(ppe.iconUrl || RISK_PPE_CATEGORY_ICONS[ppe.bodyPart] || RISK_PPE_CATEGORY_ICONS.other || "")}" alt="" loading="lazy" />
@@ -122548,8 +122548,8 @@ function createRiskAssessmentPpeThreeScene(THREE, host, selection = {}) {
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 40);
-  camera.position.set(0, 0.75, 4.4);
-  camera.lookAt(0, 0.7, 0);
+  camera.position.set(0, 0.82, 5.15);
+  camera.lookAt(0, 0.72, 0);
 
   let renderer;
   try {
@@ -122622,97 +122622,191 @@ function createRiskAssessmentPpeThreeScene(THREE, host, selection = {}) {
     return mesh;
   }
 
-  const materialSkin = getMaterial("skin", {
-    color: 0xd7e2ee,
-    roughness: 0.68,
-    metalness: 0.02,
-  });
-  const materialSuit = getMaterial("suit", {
-    color: 0x334155,
-    roughness: 0.58,
-    metalness: 0.04,
-  });
-  const materialJoint = getMaterial("joint", {
-    color: 0xaebdd0,
-    roughness: 0.7,
-    metalness: 0.02,
-  });
-  const materialSole = getMaterial("sole", {
-    color: 0x111827,
-    roughness: 0.72,
-    metalness: 0.03,
-  });
-
-  addMesh(new THREE.CircleGeometry(1.05, 72), getMaterial("floor", {
+  addMesh(new THREE.CircleGeometry(1.28, 72), getMaterial("floor", {
     color: 0x93c5fd,
     transparent: true,
     opacity: 0.15,
     roughness: 0.9,
     side: THREE.DoubleSide,
-  }), [0, -0.68, 0], [-Math.PI / 2, 0, 0], [1.45, 0.62, 1]);
+  }), [0, -0.68, 0], [-Math.PI / 2, 0, 0], [1.55, 0.64, 1]);
 
-  addMesh(new THREE.SphereGeometry(0.23, 32, 24), materialSkin, [0, 1.61, 0], [0, 0, 0], [0.88, 1.04, 0.82]);
-  addMesh(new THREE.CylinderGeometry(0.075, 0.09, 0.2, 24), materialJoint, [0, 1.34, 0], [0, 0, 0], [1, 1, 0.92]);
-  addMesh(new THREE.CylinderGeometry(0.32, 0.42, 0.88, 36), materialSuit, [0, 0.83, 0], [0, 0, 0], [1, 1, 0.72]);
-  addMesh(new THREE.SphereGeometry(0.18, 24, 16), materialSuit, [-0.31, 1.2, 0], [0, 0, 0], [0.9, 0.72, 0.8]);
-  addMesh(new THREE.SphereGeometry(0.18, 24, 16), materialSuit, [0.31, 1.2, 0], [0, 0, 0], [0.9, 0.72, 0.8]);
-  addCylinderBetween([-0.36, 1.13, 0], [-0.58, 0.47, 0.03], 0.07, materialJoint);
-  addCylinderBetween([0.36, 1.13, 0], [0.58, 0.47, 0.03], 0.07, materialJoint);
-  addMesh(new THREE.SphereGeometry(0.085, 20, 14), materialSkin, [-0.61, 0.39, 0.04], [0, 0, 0], [1.08, 0.86, 0.86]);
-  addMesh(new THREE.SphereGeometry(0.085, 20, 14), materialSkin, [0.61, 0.39, 0.04], [0, 0, 0], [1.08, 0.86, 0.86]);
-  addCylinderBetween([-0.17, 0.38, 0], [-0.2, -0.47, 0.02], 0.09, materialJoint, 28);
-  addCylinderBetween([0.17, 0.38, 0], [0.2, -0.47, 0.02], 0.09, materialJoint, 28);
-  addMesh(new THREE.BoxGeometry(0.32, 0.12, 0.52), materialSole, [-0.2, -0.61, 0.11], [0, -0.06, 0], [1, 1, 1]);
-  addMesh(new THREE.BoxGeometry(0.32, 0.12, 0.52), materialSole, [0.2, -0.61, 0.11], [0, 0.06, 0], [1, 1, 1]);
+  const workerProfiles = [
+    { key: "male", x: -0.44, scale: 0.94, yaw: 0.1, skin: 0xd4a17f, hair: 0x2b211d, torsoTop: 0.3, torsoBottom: 0.38, shoulder: 0.36, hip: 0.19 },
+    { key: "female", x: 0.48, scale: 0.9, yaw: -0.12, skin: 0xe4b799, hair: 0x40271d, torsoTop: 0.26, torsoBottom: 0.31, shoulder: 0.32, hip: 0.16 },
+  ];
+  workerProfiles.forEach((profile) => buildWorkerAvatar(profile));
 
-  if (hasPart("body")) {
-    const suitColor = hasAnyCatalog("chemical-suit") ? 0x93c5fd : hasAnyCatalog("heat-cold") ? 0x64748b : 0x475569;
-    const materialCoverall = getMaterial(`coverall-${suitColor}`, {
-      color: suitColor,
-      roughness: 0.54,
-      metalness: 0.04,
+  function buildWorkerAvatar(profile) {
+    const avatar = new THREE.Group();
+    avatar.position.set(profile.x, -0.02, 0);
+    avatar.rotation.y = profile.yaw;
+    avatar.scale.setScalar(profile.scale);
+    group.add(avatar);
+
+    const materialSkin = getMaterial(`${profile.key}-skin`, {
+      color: profile.skin,
+      roughness: 0.66,
+      metalness: 0.02,
     });
-    if (hasAnyCatalog("chemical-suit", "protective-clothing", "heat-cold")) {
-      addMesh(new THREE.CylinderGeometry(0.34, 0.44, 0.9, 36), materialCoverall, [0, 0.82, 0.01], [0, 0, 0], [1.04, 1, 0.76]);
-      addCylinderBetween([-0.36, 1.12, 0.02], [-0.58, 0.48, 0.05], 0.078, materialCoverall);
-      addCylinderBetween([0.36, 1.12, 0.02], [0.58, 0.48, 0.05], 0.078, materialCoverall);
-      addCylinderBetween([-0.17, 0.38, 0.02], [-0.2, -0.47, 0.04], 0.098, materialCoverall, 28);
-      addCylinderBetween([0.17, 0.38, 0.02], [0.2, -0.47, 0.04], 0.098, materialCoverall, 28);
-    }
-
-    if (hasCatalog("hi-vis") || !hasAnyCatalog("chemical-suit", "protective-clothing", "heat-cold")) {
-      const vestMaterial = getMaterial("hi-vis-vest", {
-        color: 0xf97316,
-        roughness: 0.44,
-        metalness: 0.02,
-      });
-      const reflectiveMaterial = getMaterial("reflective", {
-        color: 0xf8fafc,
-        emissive: 0xdbeafe,
-        emissiveIntensity: 0.18,
-        roughness: 0.22,
-        metalness: 0.02,
-      });
-      addMesh(new THREE.CylinderGeometry(0.33, 0.42, 0.66, 32, 1, true), vestMaterial, [0, 0.9, 0.02], [0, 0, 0], [1.06, 1, 0.82]);
-      addMesh(new THREE.BoxGeometry(0.045, 0.5, 0.02), reflectiveMaterial, [-0.14, 0.91, 0.32]);
-      addMesh(new THREE.BoxGeometry(0.045, 0.5, 0.02), reflectiveMaterial, [0.14, 0.91, 0.32]);
-      addMesh(new THREE.BoxGeometry(0.46, 0.045, 0.02), reflectiveMaterial, [0, 0.78, 0.33]);
-    }
-  }
-
-  if (hasPart("head")) {
-    const helmetColor = hasCatalog("bump-cap") ? 0x2563eb : 0xfacc15;
-    const helmetMaterial = getMaterial(`helmet-${helmetColor}`, {
-      color: helmetColor,
-      roughness: 0.36,
+    const materialHair = getMaterial(`${profile.key}-hair`, {
+      color: profile.hair,
+      roughness: 0.72,
+      metalness: 0.01,
+    });
+    const materialShirt = getMaterial(`${profile.key}-shirt`, {
+      color: 0x172b45,
+      roughness: 0.54,
       metalness: 0.03,
     });
-    addMesh(new THREE.SphereGeometry(0.29, 36, 16, 0, Math.PI * 2, 0, Math.PI / 2), helmetMaterial, [0, 1.7, 0.005], [0, 0, 0], [1, 0.72, 0.88]);
-    addMesh(new THREE.CylinderGeometry(0.33, 0.31, 0.045, 36), helmetMaterial, [0, 1.69, 0.055], [0, 0, 0], [1, 1, 0.62]);
+    const materialPants = getMaterial(`${profile.key}-pants`, {
+      color: 0x0f2034,
+      roughness: 0.58,
+      metalness: 0.03,
+    });
+    const materialBootBase = getMaterial(`${profile.key}-boot-base`, {
+      color: 0x3b2a1d,
+      roughness: 0.68,
+      metalness: 0.04,
+    });
+    const materialEye = getMaterial(`${profile.key}-eye`, {
+      color: 0x111827,
+      roughness: 0.4,
+      metalness: 0.02,
+    });
+    const materialTrim = getMaterial(`${profile.key}-trim`, {
+      color: 0xf8fafc,
+      emissive: 0xe0f2fe,
+      emissiveIntensity: 0.12,
+      roughness: 0.28,
+      metalness: 0.02,
+    });
+
+    addMesh(new THREE.CircleGeometry(0.46, 48), getMaterial(`${profile.key}-shadow`, {
+      color: 0x0f172a,
+      transparent: true,
+      opacity: 0.13,
+      roughness: 0.9,
+      side: THREE.DoubleSide,
+    }), [0, -0.63, 0.03], [-Math.PI / 2, 0, 0], [1.05, 0.42, 1], avatar);
+
+    addMesh(new THREE.SphereGeometry(0.22, 36, 24), materialSkin, [0, 1.61, 0.02], [0, 0, 0], [0.86, 1.02, 0.78], avatar);
+    addMesh(new THREE.SphereGeometry(0.215, 32, 18), materialHair, [0, 1.64, -0.06], [0, 0, 0], [0.92, 0.84, 0.68], avatar);
+    if (profile.key === "female") {
+      addMesh(new THREE.SphereGeometry(0.075, 20, 14), materialHair, [0.16, 1.38, -0.1], [0, 0, -0.1], [0.9, 1.35, 0.85], avatar);
+    }
+    addMesh(new THREE.SphereGeometry(0.018, 12, 8), materialEye, [-0.065, 1.62, 0.19], [0, 0, 0], [1, 1, 0.55], avatar);
+    addMesh(new THREE.SphereGeometry(0.018, 12, 8), materialEye, [0.065, 1.62, 0.19], [0, 0, 0], [1, 1, 0.55], avatar);
+    addMesh(new THREE.BoxGeometry(0.08, 0.012, 0.012), materialEye, [0, 1.535, 0.195], [0, 0, 0], [1, 1, 1], avatar);
+    addMesh(new THREE.CylinderGeometry(0.072, 0.084, 0.18, 24), materialSkin, [0, 1.36, 0.01], [0, 0, 0], [1, 1, 0.9], avatar);
+
+    addMesh(new THREE.CylinderGeometry(profile.torsoTop, profile.torsoBottom, 0.82, 36), materialShirt, [0, 0.88, 0], [0, 0, 0], [1, 1, 0.62], avatar);
+    addMesh(new THREE.SphereGeometry(0.145, 24, 16), materialShirt, [-profile.shoulder, 1.19, 0], [0, 0, 0], [0.9, 0.7, 0.76], avatar);
+    addMesh(new THREE.SphereGeometry(0.145, 24, 16), materialShirt, [profile.shoulder, 1.19, 0], [0, 0, 0], [0.9, 0.7, 0.76], avatar);
+    addMesh(new THREE.BoxGeometry(0.035, 0.62, 0.018), materialTrim, [-0.12, 0.92, 0.25], [0, 0, 0], [1, 1, 1], avatar);
+    addMesh(new THREE.BoxGeometry(0.035, 0.62, 0.018), materialTrim, [0.12, 0.92, 0.25], [0, 0, 0], [1, 1, 1], avatar);
+
+    addCylinderBetween([-profile.shoulder, 1.12, 0], [-0.5, 0.68, 0.04], 0.062, materialShirt, 24, avatar);
+    addCylinderBetween([profile.shoulder, 1.12, 0], [0.5, 0.68, 0.04], 0.062, materialShirt, 24, avatar);
+    addCylinderBetween([-0.5, 0.68, 0.04], [-0.58, 0.43, 0.08], 0.052, hasPart("hands") ? getWorkerGloveMaterial(profile.key) : materialSkin, 20, avatar);
+    addCylinderBetween([0.5, 0.68, 0.04], [0.58, 0.43, 0.08], 0.052, hasPart("hands") ? getWorkerGloveMaterial(profile.key) : materialSkin, 20, avatar);
+    addMesh(new THREE.SphereGeometry(0.075, 18, 12), hasPart("hands") ? getWorkerGloveMaterial(profile.key) : materialSkin, [-0.59, 0.37, 0.09], [0, 0, 0], [1.15, 0.82, 0.9], avatar);
+    addMesh(new THREE.SphereGeometry(0.075, 18, 12), hasPart("hands") ? getWorkerGloveMaterial(profile.key) : materialSkin, [0.59, 0.37, 0.09], [0, 0, 0], [1.15, 0.82, 0.9], avatar);
+
+    addCylinderBetween([-profile.hip, 0.44, 0], [-0.22, -0.43, 0.02], 0.082, materialPants, 28, avatar);
+    addCylinderBetween([profile.hip, 0.44, 0], [0.22, -0.43, 0.02], 0.082, materialPants, 28, avatar);
+    addWorkerBoot(profile.key, -0.22, materialBootBase, avatar);
+    addWorkerBoot(profile.key, 0.22, materialBootBase, avatar);
+
+    if (hasPart("body")) {
+      addWorkerBodyProtection(profile, avatar, materialTrim);
+    }
+    if (hasPart("head")) {
+      addWorkerHelmet(profile.key, avatar);
+    }
+    if (hasPart("eyes")) {
+      addWorkerEyeProtection(avatar);
+    }
+    if (hasPart("hearing")) {
+      addWorkerHearingProtection(avatar);
+    }
+    if (hasPart("respiratory")) {
+      addWorkerRespirator(avatar);
+    }
+    if (hasPart("feet")) {
+      addWorkerSafetyToe(-0.22, avatar);
+      addWorkerSafetyToe(0.22, avatar);
+    }
+    if (hasPart("fall")) {
+      addWorkerHarness(profile, avatar);
+    }
   }
 
-  if (hasPart("eyes")) {
-    const lensMaterial = getMaterial("goggles-lens", {
+  function getWorkerGloveMaterial(key) {
+    const gloveColor = hasCatalog("gloves-electrical") ? 0x7c3aed : hasCatalog("gloves-chemical") ? 0x2563eb : 0x111827;
+    return getMaterial(`${key}-glove-${gloveColor}`, {
+      color: gloveColor,
+      roughness: 0.5,
+      metalness: 0.02,
+    });
+  }
+
+  function addWorkerBoot(key, x, fallbackMaterial, parent) {
+    const bootMaterial = hasPart("feet")
+      ? getMaterial(`${key}-safety-boot`, { color: 0x111827, roughness: 0.64, metalness: 0.06 })
+      : fallbackMaterial;
+    addMesh(new THREE.BoxGeometry(0.27, 0.12, 0.44), bootMaterial, [x, -0.58, 0.13], [0, x < 0 ? -0.07 : 0.07, 0], [1, 1, 1], parent);
+  }
+
+  function addWorkerSafetyToe(x, parent) {
+    addMesh(new THREE.BoxGeometry(0.16, 0.04, 0.07), getMaterial("steel-toe", {
+      color: 0x94a3b8,
+      roughness: 0.28,
+      metalness: 0.5,
+    }), [x, -0.53, 0.35], [0, 0, 0], [1, 1, 1], parent);
+  }
+
+  function addWorkerBodyProtection(profile, parent, reflectiveMaterial) {
+    const coverallColor = hasAnyCatalog("chemical-suit") ? 0x93c5fd : hasAnyCatalog("heat-cold") ? 0x64748b : 0xfacc15;
+    if (hasAnyCatalog("chemical-suit", "protective-clothing", "heat-cold")) {
+      const materialCoverall = getMaterial(`${profile.key}-coverall-${coverallColor}`, {
+        color: coverallColor,
+        roughness: 0.54,
+        metalness: 0.04,
+      });
+      addMesh(new THREE.CylinderGeometry(profile.torsoTop + 0.02, profile.torsoBottom + 0.03, 0.84, 36), materialCoverall, [0, 0.87, 0.02], [0, 0, 0], [1.02, 1, 0.66], parent);
+      addCylinderBetween([-profile.shoulder, 1.12, 0.02], [-0.58, 0.43, 0.06], 0.064, materialCoverall, 24, parent);
+      addCylinderBetween([profile.shoulder, 1.12, 0.02], [0.58, 0.43, 0.06], 0.064, materialCoverall, 24, parent);
+    } else {
+      const vestMaterial = getMaterial(`${profile.key}-hi-vis-vest`, {
+        color: 0xfacc15,
+        roughness: 0.42,
+        metalness: 0.02,
+      });
+      addMesh(new THREE.CylinderGeometry(profile.torsoTop + 0.025, profile.torsoBottom + 0.03, 0.64, 32, 1, true), vestMaterial, [0, 0.92, 0.03], [0, 0, 0], [1.02, 1, 0.7], parent);
+      addMesh(new THREE.BoxGeometry(0.04, 0.48, 0.024), reflectiveMaterial, [-0.13, 0.93, 0.26], [0, 0, 0], [1, 1, 1], parent);
+      addMesh(new THREE.BoxGeometry(0.04, 0.48, 0.024), reflectiveMaterial, [0.13, 0.93, 0.26], [0, 0, 0], [1, 1, 1], parent);
+      addMesh(new THREE.BoxGeometry(0.4, 0.04, 0.024), reflectiveMaterial, [0, 0.78, 0.27], [0, 0, 0], [1, 1, 1], parent);
+    }
+  }
+
+  function addWorkerHelmet(key, parent) {
+    const helmetColor = hasCatalog("bump-cap") ? 0x2563eb : 0xfacc15;
+    const helmetMaterial = getMaterial(`${key}-helmet-${helmetColor}`, {
+      color: helmetColor,
+      roughness: 0.34,
+      metalness: 0.04,
+    });
+    addMesh(new THREE.SphereGeometry(0.25, 36, 16, 0, Math.PI * 2, 0, Math.PI / 2), helmetMaterial, [0, 1.72, 0.02], [0, 0, 0], [1, 0.72, 0.86], parent);
+    addMesh(new THREE.BoxGeometry(0.38, 0.04, 0.15), helmetMaterial, [0, 1.68, 0.15], [0, 0, 0], [1, 1, 1], parent);
+    addMesh(new THREE.BoxGeometry(0.035, 0.12, 0.02), getMaterial(`${key}-helmet-rib`, {
+      color: 0xeab308,
+      roughness: 0.36,
+      metalness: 0.03,
+    }), [0, 1.75, 0.2], [0, 0, 0], [1, 1, 1], parent);
+  }
+
+  function addWorkerEyeProtection(parent) {
+    const lensMaterial = getMaterial("duo-goggles-lens", {
       color: 0x7dd3fc,
       transparent: true,
       opacity: 0.62,
@@ -122720,89 +122814,61 @@ function createRiskAssessmentPpeThreeScene(THREE, host, selection = {}) {
       metalness: 0.02,
       side: THREE.DoubleSide,
     }, THREE.MeshPhysicalMaterial || THREE.MeshStandardMaterial);
-    const frameMaterial = getMaterial("goggles-frame", {
+    const frameMaterial = getMaterial("duo-goggles-frame", {
       color: 0x0f172a,
       roughness: 0.42,
     });
-    addMesh(new THREE.BoxGeometry(0.18, 0.08, 0.035), lensMaterial, [-0.1, 1.62, 0.19]);
-    addMesh(new THREE.BoxGeometry(0.18, 0.08, 0.035), lensMaterial, [0.1, 1.62, 0.19]);
-    addMesh(new THREE.BoxGeometry(0.42, 0.025, 0.045), frameMaterial, [0, 1.62, 0.21]);
+    addMesh(new THREE.BoxGeometry(0.14, 0.065, 0.032), lensMaterial, [-0.08, 1.62, 0.2], [0, 0, 0], [1, 1, 1], parent);
+    addMesh(new THREE.BoxGeometry(0.14, 0.065, 0.032), lensMaterial, [0.08, 1.62, 0.2], [0, 0, 0], [1, 1, 1], parent);
+    addMesh(new THREE.BoxGeometry(0.34, 0.022, 0.04), frameMaterial, [0, 1.62, 0.215], [0, 0, 0], [1, 1, 1], parent);
     if (hasCatalog("face-shield")) {
-      addMesh(new THREE.PlaneGeometry(0.52, 0.48), lensMaterial, [0, 1.5, 0.31], [0, 0, 0], [1, 1, 1]);
+      addMesh(new THREE.PlaneGeometry(0.44, 0.42), lensMaterial, [0, 1.5, 0.3], [0, 0, 0], [1, 1, 1], parent);
     }
   }
 
-  if (hasPart("hearing")) {
-    const hearingMaterial = getMaterial("hearing-blue", {
+  function addWorkerHearingProtection(parent) {
+    const hearingMaterial = getMaterial("duo-hearing-blue", {
       color: 0x2563eb,
       roughness: 0.34,
       metalness: 0.04,
     });
-    addMesh(new THREE.TorusGeometry(0.28, 0.018, 8, 48), hearingMaterial, [0, 1.67, -0.01], [Math.PI / 2, 0, 0], [1, 0.72, 1]);
-    addMesh(new THREE.SphereGeometry(0.105, 24, 18), hearingMaterial, [-0.26, 1.58, 0], [0, 0, 0], [0.68, 1, 0.72]);
-    addMesh(new THREE.SphereGeometry(0.105, 24, 18), hearingMaterial, [0.26, 1.58, 0], [0, 0, 0], [0.68, 1, 0.72]);
+    addMesh(new THREE.TorusGeometry(0.24, 0.016, 8, 48), hearingMaterial, [0, 1.67, -0.01], [Math.PI / 2, 0, 0], [1, 0.72, 1], parent);
+    addMesh(new THREE.SphereGeometry(0.085, 24, 18), hearingMaterial, [-0.22, 1.58, 0], [0, 0, 0], [0.68, 1, 0.72], parent);
+    addMesh(new THREE.SphereGeometry(0.085, 24, 18), hearingMaterial, [0.22, 1.58, 0], [0, 0, 0], [0.68, 1, 0.72], parent);
   }
 
-  if (hasPart("respiratory")) {
-    const maskMaterial = getMaterial("mask", {
+  function addWorkerRespirator(parent) {
+    const maskMaterial = getMaterial("duo-mask", {
       color: 0xe2e8f0,
       roughness: 0.48,
       metalness: 0.02,
     });
-    const filterMaterial = getMaterial("mask-filter", {
+    const filterMaterial = getMaterial("duo-mask-filter", {
       color: 0x64748b,
       roughness: 0.38,
       metalness: 0.06,
     });
-    addMesh(new THREE.SphereGeometry(0.16, 28, 18), maskMaterial, [0, 1.49, 0.2], [0, 0, 0], [1, 0.62, 0.46]);
-    addMesh(new THREE.CylinderGeometry(0.055, 0.06, 0.1, 18), filterMaterial, [-0.13, 1.48, 0.23], [Math.PI / 2, 0, 0]);
-    addMesh(new THREE.CylinderGeometry(0.055, 0.06, 0.1, 18), filterMaterial, [0.13, 1.48, 0.23], [Math.PI / 2, 0, 0]);
+    addMesh(new THREE.SphereGeometry(0.13, 28, 18), maskMaterial, [0, 1.49, 0.205], [0, 0, 0], [1, 0.62, 0.46], parent);
+    addMesh(new THREE.CylinderGeometry(0.044, 0.05, 0.085, 18), filterMaterial, [-0.105, 1.48, 0.235], [Math.PI / 2, 0, 0], [1, 1, 1], parent);
+    addMesh(new THREE.CylinderGeometry(0.044, 0.05, 0.085, 18), filterMaterial, [0.105, 1.48, 0.235], [Math.PI / 2, 0, 0], [1, 1, 1], parent);
   }
 
-  if (hasPart("hands")) {
-    const gloveColor = hasCatalog("gloves-electrical") ? 0x7c3aed : hasCatalog("gloves-chemical") ? 0x2563eb : 0x16a34a;
-    const gloveMaterial = getMaterial(`glove-${gloveColor}`, {
-      color: gloveColor,
-      roughness: 0.5,
-      metalness: 0.02,
-    });
-    addMesh(new THREE.SphereGeometry(0.11, 24, 16), gloveMaterial, [-0.62, 0.38, 0.05], [0, 0, 0], [1.2, 0.86, 0.9]);
-    addMesh(new THREE.SphereGeometry(0.11, 24, 16), gloveMaterial, [0.62, 0.38, 0.05], [0, 0, 0], [1.2, 0.86, 0.9]);
-  }
-
-  if (hasPart("feet")) {
-    const bootMaterial = getMaterial("safety-boot", {
-      color: 0x0f172a,
-      roughness: 0.64,
-      metalness: 0.06,
-    });
-    const toeMaterial = getMaterial("steel-toe", {
-      color: 0x94a3b8,
-      roughness: 0.28,
-      metalness: 0.5,
-    });
-    addMesh(new THREE.BoxGeometry(0.36, 0.16, 0.56), bootMaterial, [-0.2, -0.58, 0.13], [0, -0.05, 0], [1, 1, 1]);
-    addMesh(new THREE.BoxGeometry(0.36, 0.16, 0.56), bootMaterial, [0.2, -0.58, 0.13], [0, 0.05, 0], [1, 1, 1]);
-    addMesh(new THREE.BoxGeometry(0.22, 0.05, 0.08), toeMaterial, [-0.2, -0.53, 0.42]);
-    addMesh(new THREE.BoxGeometry(0.22, 0.05, 0.08), toeMaterial, [0.2, -0.53, 0.42]);
-  }
-
-  if (hasPart("fall")) {
-    const harnessMaterial = getMaterial("fall-harness", {
+  function addWorkerHarness(profile, parent) {
+    const harnessMaterial = getMaterial(`${profile.key}-fall-harness`, {
       color: 0xdc2626,
       roughness: 0.38,
       metalness: 0.03,
     });
-    const ringMaterial = getMaterial("harness-ring", {
+    const ringMaterial = getMaterial("duo-harness-ring", {
       color: 0xf8fafc,
       roughness: 0.18,
       metalness: 0.42,
     });
-    addCylinderBetween([-0.23, 1.22, 0.34], [0.19, 0.55, 0.34], 0.018, harnessMaterial, 12);
-    addCylinderBetween([0.23, 1.22, 0.34], [-0.19, 0.55, 0.34], 0.018, harnessMaterial, 12);
-    addCylinderBetween([-0.29, 0.67, 0.33], [0.29, 0.67, 0.33], 0.018, harnessMaterial, 12);
-    addMesh(new THREE.TorusGeometry(0.07, 0.012, 8, 28), ringMaterial, [0, 0.74, 0.35], [0, 0, 0]);
-    addCylinderBetween([0, 1.17, -0.27], [0, 1.7, -0.72], 0.015, harnessMaterial, 12);
+    addCylinderBetween([-0.21, 1.2, 0.29], [0.17, 0.58, 0.29], 0.015, harnessMaterial, 12, parent);
+    addCylinderBetween([0.21, 1.2, 0.29], [-0.17, 0.58, 0.29], 0.015, harnessMaterial, 12, parent);
+    addCylinderBetween([-0.26, 0.68, 0.29], [0.26, 0.68, 0.29], 0.015, harnessMaterial, 12, parent);
+    addMesh(new THREE.TorusGeometry(0.055, 0.01, 8, 28), ringMaterial, [0, 0.74, 0.31], [0, 0, 0], [1, 1, 1], parent);
+    addCylinderBetween([0, 1.16, -0.24], [0, 1.66, -0.62], 0.013, harnessMaterial, 12, parent);
   }
 
   const resize = () => {
@@ -122826,11 +122892,12 @@ function createRiskAssessmentPpeThreeScene(THREE, host, selection = {}) {
     if (!running) {
       return;
     }
-    const delta = Math.min(clock.getDelta(), 0.05);
+    clock.getDelta();
     if (!reduceMotion) {
-      group.rotation.y += delta * 0.86;
+      const elapsed = clock.getElapsedTime();
+      group.rotation.y = -0.16 + Math.sin(elapsed * 0.58) * 0.44;
     }
-    group.rotation.x = 0.06 + Math.sin(group.rotation.y * 1.2) * 0.02;
+    group.rotation.x = 0.06 + Math.sin(group.rotation.y * 1.4) * 0.018;
     renderer.render(scene, camera);
     frameId = window.requestAnimationFrame(animate);
   };
