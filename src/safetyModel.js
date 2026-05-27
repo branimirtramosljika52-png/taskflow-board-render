@@ -5119,6 +5119,11 @@ function normalizeRiskAssessmentJobs(items = []) {
 
     return {
       id: normalizeId(item?.id) || crypto.randomUUID(),
+      sourceJobIds: Array.from(new Set(
+        (Array.isArray(item?.sourceJobIds) ? item.sourceJobIds : [])
+          .map((value) => normalizeId(value))
+          .filter(Boolean),
+      )),
       organizationUnitId: normalizeId(item?.organizationUnitId),
       order: Number.isFinite(Number(item?.order)) ? Number(item.order) : index + 1,
       status: normalizeText(item?.status || "draft"),
@@ -5168,6 +5173,7 @@ function normalizeRiskAssessmentJobs(items = []) {
     };
   }).filter((item) => (
     item.organizationUnitId
+    || item.sourceJobIds.length > 0
     || item.jobTitle
     || item.shortDescription
     || item.detailedDescription

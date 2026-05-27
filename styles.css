@@ -55219,6 +55219,46 @@ button.work-order-editor-section-head:focus-visible {
   padding: 7px 11px;
 }
 
+.risk-assessment-job-import-panel {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.8fr) minmax(260px, 1fr) minmax(220px, 0.55fr);
+  gap: 12px;
+  align-items: end;
+  padding: 14px;
+  border: 1px solid rgba(147, 197, 253, 0.62);
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(239, 246, 255, 0.94), rgba(255, 255, 255, 0.9)),
+    radial-gradient(circle at top right, rgba(20, 184, 166, 0.14), transparent 36%);
+  box-shadow: 0 16px 34px rgba(37, 99, 235, 0.08);
+}
+
+.risk-assessment-job-import-panel > div:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.risk-assessment-job-import-panel strong {
+  color: #172033;
+  font-size: 0.96rem;
+}
+
+.risk-assessment-job-import-actions {
+  display: grid;
+  gap: 10px;
+  justify-items: stretch;
+}
+
+.risk-assessment-job-import-actions .primary-button {
+  min-height: 42px;
+}
+
+.risk-assessment-job-import-panel select[multiple] {
+  min-height: 118px;
+  padding: 8px;
+}
+
 .risk-assessment-risk-line {
   grid-template-columns: minmax(180px, 1fr) minmax(120px, 0.45fr) minmax(180px, 1fr);
 }
@@ -55241,6 +55281,302 @@ button.work-order-editor-section-head:focus-visible {
 
 .risk-assessment-detail-grid .field-span-full {
   grid-column: 1 / -1;
+}
+
+.risk-assessment-job-document {
+  overflow: hidden;
+  border: 1px solid rgba(59, 130, 246, 0.28);
+  border-radius: 18px;
+  background:
+    linear-gradient(145deg, rgba(248, 250, 255, 0.96), rgba(255, 255, 255, 0.92));
+  box-shadow: 0 18px 42px rgba(37, 99, 235, 0.08);
+}
+
+.risk-assessment-job-document summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 13px 14px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.risk-assessment-job-document summary::-webkit-details-marker {
+  display: none;
+}
+
+.risk-assessment-job-document summary strong {
+  color: #111936;
+  font-size: 0.95rem;
+}
+
+.risk-assessment-job-document summary small {
+  display: block;
+  margin-top: 2px;
+  color: #64748b;
+  font-weight: 760;
+}
+
+.risk-assessment-document-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(59, 130, 246, 0.22);
+  border-radius: 13px;
+  background: linear-gradient(135deg, rgba(219, 234, 254, 0.96), rgba(236, 253, 245, 0.92));
+  color: #1d4ed8;
+  font-size: 0.68rem;
+  font-weight: 950;
+}
+
+.risk-assessment-document-paper {
+  display: grid;
+  gap: 12px;
+  margin: 0 12px 12px;
+  padding: 14px;
+  border: 1px solid rgba(203, 213, 225, 0.78);
+  border-radius: 16px;
+  background: #ffffff;
+}
+
+.risk-assessment-document-title {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(49, 46, 129, 0.92));
+  color: #ffffff;
+}
+
+.risk-assessment-document-title span {
+  color: rgba(191, 219, 254, 0.96);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.risk-assessment-document-title h4 {
+  margin: 0;
+  font-size: 1.02rem;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+
+.risk-assessment-document-title p {
+  margin: 0;
+  color: rgba(226, 232, 240, 0.92);
+  font-weight: 800;
+}
+
+.risk-assessment-document-section,
+.risk-assessment-document-grid article {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(203, 213, 225, 0.72);
+  border-radius: 14px;
+  background: linear-gradient(145deg, rgba(248, 250, 252, 0.96), rgba(255, 255, 255, 0.95));
+}
+
+.risk-assessment-document-section-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: #172033;
+  font-weight: 900;
+}
+
+.risk-assessment-document-section-head span {
+  display: inline-grid;
+  place-items: center;
+  min-width: 30px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 9px;
+  background: rgba(237, 233, 254, 0.92);
+  color: #5b21b6;
+  font-size: 0.7rem;
+}
+
+.risk-assessment-document-facts {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.risk-assessment-document-facts > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(199, 210, 254, 0.68);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.risk-assessment-document-facts span,
+.risk-assessment-document-grid article > span {
+  color: #64748b;
+  font-size: 0.66rem;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.risk-assessment-document-facts strong {
+  overflow-wrap: anywhere;
+  color: #111936;
+  font-size: 0.9rem;
+}
+
+.risk-assessment-document-content ul,
+.risk-assessment-document-grid ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.risk-assessment-document-content li,
+.risk-assessment-document-grid li {
+  color: #1f2a44;
+  font-weight: 780;
+}
+
+.risk-assessment-document-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.risk-assessment-document-grid article.is-wide {
+  grid-column: 1 / -1;
+}
+
+.risk-assessment-document-grid p,
+.risk-assessment-document-risk-table p {
+  margin: 0 0 6px;
+  color: #1f2a44;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.risk-assessment-document-grid p:last-child,
+.risk-assessment-document-risk-table p:last-child {
+  margin-bottom: 0;
+}
+
+.risk-assessment-document-grid .is-muted,
+.risk-assessment-document-risk-table .is-muted {
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.risk-assessment-document-yesno,
+.risk-assessment-document-risk-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  min-height: 26px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.risk-assessment-document-yesno.is-yes,
+.risk-assessment-document-risk-pill.is-low {
+  border: 1px solid rgba(34, 197, 94, 0.28);
+  background: rgba(220, 252, 231, 0.9);
+  color: #166534;
+}
+
+.risk-assessment-document-yesno.is-no {
+  border: 1px solid rgba(59, 130, 246, 0.22);
+  background: rgba(219, 234, 254, 0.92);
+  color: #1d4ed8;
+}
+
+.risk-assessment-document-yesno.is-np {
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(241, 245, 249, 0.92);
+  color: #64748b;
+}
+
+.risk-assessment-document-risk-pill.is-medium {
+  border: 1px solid rgba(245, 158, 11, 0.34);
+  background: rgba(254, 243, 199, 0.92);
+  color: #92400e;
+}
+
+.risk-assessment-document-risk-pill.is-high {
+  border: 1px solid rgba(239, 68, 68, 0.32);
+  background: rgba(254, 226, 226, 0.94);
+  color: #991b1b;
+}
+
+.risk-assessment-document-eligibility,
+.risk-assessment-document-risk-table {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid rgba(203, 213, 225, 0.78);
+  border-radius: 14px;
+}
+
+.risk-assessment-document-eligibility > div,
+.risk-assessment-document-risk-table > div {
+  display: grid;
+  gap: 8px;
+  align-items: start;
+  padding: 9px 10px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.86);
+}
+
+.risk-assessment-document-eligibility > div {
+  grid-template-columns: minmax(190px, 1fr) minmax(90px, 0.25fr) minmax(160px, 0.8fr);
+}
+
+.risk-assessment-document-risk-table > div {
+  grid-template-columns: minmax(220px, 1fr) minmax(130px, 0.45fr) minmax(180px, 0.8fr) minmax(240px, 1.1fr);
+}
+
+.risk-assessment-document-eligibility > div:last-child,
+.risk-assessment-document-risk-table > div:last-child {
+  border-bottom: 0;
+}
+
+.risk-assessment-document-eligibility .is-head,
+.risk-assessment-document-risk-table .is-head {
+  background: rgba(241, 245, 249, 0.96);
+  color: #475569;
+  font-size: 0.68rem;
+  font-weight: 950;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.risk-assessment-document-risk-table strong {
+  display: block;
+  color: #111936;
+  font-size: 0.82rem;
+}
+
+.risk-assessment-document-risk-table small {
+  display: block;
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 760;
+}
+
+.risk-assessment-document-risk-table .is-empty {
+  grid-template-columns: 1fr;
+  color: #64748b;
+  font-weight: 800;
 }
 
 .risk-assessment-eligibility-block,
@@ -56281,6 +56617,11 @@ button.work-order-editor-section-head:focus-visible {
   .risk-assessment-eligibility-table,
   .risk-assessment-risk-line,
   .risk-assessment-risk-card-grid,
+  .risk-assessment-job-import-panel,
+  .risk-assessment-document-facts,
+  .risk-assessment-document-grid,
+  .risk-assessment-document-eligibility > div,
+  .risk-assessment-document-risk-table > div,
   .risk-assessment-ppe-layout,
   .risk-assessment-ppe-selected-row,
   .risk-assessment-ai-split,
