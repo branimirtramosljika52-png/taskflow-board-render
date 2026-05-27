@@ -13,8 +13,23 @@ const ATTACH_POINTS = {
   other: { label: "Ostalo", style: { left: "50%", top: "62%" } },
 };
 
+const WORKER_KEYS = ["male", "female"];
+
 function getBodyPartLabel(part = "other") {
   return ATTACH_POINTS[part]?.label || ATTACH_POINTS.other.label;
+}
+
+function WearableGear({ part, worker }) {
+  return (
+    <motion.span
+      className={`ozo-gear ozo-gear-${part} is-${worker}`}
+      initial={{ opacity: 0, scale: 0.78, y: 22 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.86, y: 12 }}
+      transition={{ duration: 0.34, ease: "easeOut" }}
+      aria-hidden="true"
+    />
+  );
 }
 
 export function OzoWorkerPreview({
@@ -33,12 +48,17 @@ export function OzoWorkerPreview({
         <motion.img
           key={animationKey}
           src={workerImageUrl}
-          alt="Realistični 3D prikaz muškog i ženskog industrijskog radnika s OZO"
+          alt="Realistični 3D prikaz muškog i ženskog industrijskog radnika bez odabrane OZO"
           initial={{ opacity: 0.92, scale: 1.025, y: 12 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           transition={{ duration: 0.45, ease: "easeOut" }}
         />
         <div className="ozo-worker-gradient" aria-hidden="true" />
+        <AnimatePresence initial={false}>
+          {WORKER_KEYS.flatMap((worker) => activeParts.map((part) => (
+            <WearableGear part={part} worker={worker} key={`${worker}-${part}`} />
+          )))}
+        </AnimatePresence>
         <AnimatePresence>
           {activeParts.map((part) => {
             const point = ATTACH_POINTS[part] || ATTACH_POINTS.other;
