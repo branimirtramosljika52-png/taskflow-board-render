@@ -120095,16 +120095,84 @@ function getSelectedJobEnvironmentOptions(sectionKey = "") {
     .filter(Boolean);
 }
 
-function getJobOrganizationDetailsFromForm(environment = null) {
-  const source = environment && typeof environment === "object" ? environment : null;
-  return JOB_ORGANIZATION_FIELDS
-    .map((field) => {
-      const value = source
-        ? String(source[field.key] || "").trim()
-        : String(jobEnvironmentSections?.querySelector(`[data-job-organization-field="${field.key}"]`)?.value || "").trim();
-      return value ? `${field.label.toLowerCase()}: ${value}` : "";
-    })
-    .filter(Boolean);
+function normalizeJobSentence(text = "") {
+  const sentence = String(text || "").replace(/\s+/g, " ").trim();
+  if (!sentence) {
+    return "";
+  }
+  return /[.!?]$/.test(sentence) ? sentence : `${sentence}.`;
+}
+
+function buildJobOrganizationSelectionSentence(value = "", title = getJobSentenceTitle()) {
+  const normalized = String(value || "").trim().toLocaleLowerCase("hr");
+  const sentences = {
+    "jedna smjena": "Rad se obavlja u jednoj smjeni.",
+    "puno radno vrijeme": "Radnik obavlja posao u punom radnom vremenu.",
+    "terenski rad": "Terenski rad obavlja se prema nalogu poslodavca, uz prethodno dogovorene lokacije, rokove i odgovornosti.",
+    "rad od kuće": "Rad od kuće moguć je kada su zadaci, komunikacija i očekivani rokovi jasno definirani.",
+    "prekovremeni rad po potrebi": "Prekovremeni rad može se organizirati samo po potrebi i u skladu s važećim pravilima.",
+    "bez noćnog rada": "Noćni rad nije predviđen za ovaj posao.",
+  };
+  return sentences[normalized] || `Za posao "${title}" evidentirana je organizacijska značajka: ${value}.`;
+}
+
+function buildJobOrganizationFieldSentence(field = {}, value = "") {
+  const normalized = String(value || "").trim();
+  if (!normalized) {
+    return "";
+  }
+  const lower = normalized.toLocaleLowerCase("hr");
+  switch (field.key) {
+    case "workTimeMode":
+      return `Način rada organiziran je kao ${normalized}.`;
+    case "dailyDuration":
+      return `Dnevno trajanje rada je ${normalized}.`;
+    case "overtime":
+      if (lower === "ne") return "Prekovremeni rad nije predviđen kao redovit dio posla.";
+      if (lower === "povremeno") return "Prekovremeni rad može se pojaviti povremeno, prema potrebi posla i organizaciji poslodavca.";
+      return "Prekovremeni rad je moguć uz prethodnu organizaciju i poštivanje važećih propisa.";
+    case "nightWork":
+      if (lower === "ne") return "Noćni rad u razdoblju 22-06 h nije predviđen.";
+      if (lower === "povremeno") return "Noćni rad u razdoblju 22-06 h može se pojaviti povremeno.";
+      return "Noćni rad u razdoblju 22-06 h predviđen je za ovaj posao.";
+    case "breakRest":
+      return lower === "30 minuta"
+        ? "Odmor odnosno stanka traje 30 minuta."
+        : `Odmor odnosno stanka koristi se ${normalized}.`;
+    case "weeklyRest":
+      return `Tjedni odmor koristi se ${normalized}.`;
+    case "fieldWork":
+      if (lower === "ne") return "Rad na terenu i službeni put nisu predviđeni kao redovit dio posla.";
+      if (lower === "povremeno") return "Rad na terenu ili službeni put pojavljuju se povremeno, prema nalogu poslodavca.";
+      return "Rad na terenu ili službeni put čest su dio organizacije posla.";
+    case "remoteWork":
+      if (lower === "ne") return "Rad od kuće nije predviđen za ovaj posao.";
+      if (lower === "povremeno") return "Rad od kuće može se odobriti povremeno, kada priroda zadataka to dopušta.";
+      return "Rad od kuće predviđen je kao dio organizacije posla.";
+    case "workRhythm":
+      return `Ritam rada je ${normalized}.`;
+    case "monotony":
+      if (lower === "ne") return "Monotonija nije izražena kao značajan čimbenik rada.";
+      if (lower === "povremeno") return "Monotonija se može pojaviti povremeno kod ponavljajućih zadataka.";
+      return "Monotonija je izražena i potrebno ju je uzeti u obzir pri organizaciji rada.";
+    default:
+      return `${field.label || "Organizacijski podatak"}: ${normalized}.`;
+  }
+}
+
+function buildJobOrganizationSentences(selected = [], environment = {}) {
+  const title = getJobSentenceTitle();
+  const sentences = [
+    ...selected.map((value) => buildJobOrganizationSelectionSentence(value, title)),
+    ...JOB_ORGANIZATION_FIELDS.map((field) => buildJobOrganizationFieldSentence(field, environment[field.key])),
+    environment.psychosocialRelevant ? "Procjena psihosocijalnih rizika relevantna je za ovaj posao." : "",
+  ].map(normalizeJobSentence).filter(Boolean);
+
+  if (sentences.length === 0) {
+    sentences.push("Rad se organizira prema nalogu poslodavca.");
+  }
+  sentences.push("Zadaci, rokovi, stanke, odmori i odgovornosti planiraju se tako da radnik može obaviti posao sigurno, bez nepotrebnog preopterećenja i uz jasne upute neposredno nadređene osobe.");
+  return Array.from(new Set(sentences)).join("\n");
 }
 
 function buildJobEnvironmentSentence(sectionKey = "", selectedValues = [], environment = {}) {
@@ -120131,14 +120199,7 @@ function buildJobEnvironmentSentence(sectionKey = "", selectedValues = [], envir
   }
 
   if (sectionKey === "organization") {
-    const organizationSelections = selected.length ? [`organizacijske značajke: ${selectedList}`] : [];
-    const organizationDetails = [
-      ...organizationSelections,
-      ...getJobOrganizationDetailsFromForm(environment),
-      environment.psychosocialRelevant ? "procjena psihosocijalnih rizika relevantna" : "",
-    ].filter(Boolean);
-    const organizationText = formatJobSentenceList(organizationDetails, "redovnu organizaciju rada prema nalogu poslodavca");
-    return `Rad za posao "${title}" organizira se kroz ${organizationText}. Zadatke, rokove, stanke, odmore i odgovornosti potrebno je planirati tako da radnik može obaviti posao sigurno, bez nepotrebnog preopterećenja i uz jasne upute neposredno nadređene osobe.`;
+    return buildJobOrganizationSentences(selected, environment);
   }
 
   return selectedList;
@@ -120225,7 +120286,7 @@ function getJobNexAiText(kind = "description") {
     return applyJobAiInstructionToText(`Posao se obavlja na lokacijama: ${selectedWorkplaces}. Radni prostor mora biti prohodan, osvijetljen, organiziran tako da se smanji rizik od pada, spoticanja i neželjenog događaja.`, kind);
   }
   if (kind === "organization") {
-    return applyJobAiInstructionToText(`Rad se organizira prema nalogu poslodavca, uz jasno definirane zadatke, odgovornosti i rokove. Stanke, tjedni odmor i preraspodjela rada provode se u skladu s internim pravilima i važećim propisima.`, kind);
+    return applyJobAiInstructionToText(buildJobOrganizationSentences(environment.organizationOptions ?? [], environment), kind);
   }
   if (kind.startsWith("condition:")) {
     const key = kind.replace("condition:", "");
