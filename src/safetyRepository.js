@@ -2084,6 +2084,65 @@ function mapJobAiSettingsEntry(row = {}) {
   };
 }
 
+const RISK_PPE_BODY_PARTS = new Set(["head", "eyes", "hearing", "respiratory", "hands", "body", "feet", "fall", "other"]);
+
+function normalizeRiskPpeBodyPart(value = "") {
+  const normalized = dbString(value).toLowerCase();
+  return RISK_PPE_BODY_PARTS.has(normalized) ? normalized : "other";
+}
+
+function normalizeRiskPpeCatalogEntry(input = {}, options = {}) {
+  const name = dbString(input.name).slice(0, 260);
+  const organizationId = dbString(input.organizationId ?? input.organization_id ?? options.organizationId);
+
+  return {
+    id: dbString(input.id),
+    organizationId,
+    name,
+    category: dbString(input.category).slice(0, 160),
+    bodyPart: normalizeRiskPpeBodyPart(input.bodyPart ?? input.body_part),
+    norm: dbString(input.norm).slice(0, 220),
+    standardCode: dbString(input.standardCode ?? input.standard_code).slice(0, 220),
+    description: dbString(input.description),
+    imageUrl: dbString(input.imageUrl ?? input.image_url),
+    sourceRef: dbString(input.sourceRef ?? input.source_ref).slice(0, 160),
+    sourceUrl: dbString(input.sourceUrl ?? input.source_url),
+    isCustom: input.isCustom === undefined ? true : Boolean(input.isCustom),
+    createdByUserId: dbString(input.createdByUserId ?? input.created_by_user_id),
+    createdByLabel: dbString(input.createdByLabel ?? input.created_by_label),
+    createdAt: normalizeTimestamp(input.createdAt ?? input.created_at),
+    updatedAt: normalizeTimestamp(input.updatedAt ?? input.updated_at),
+  };
+}
+
+function mapRiskPpeCatalogEntry(row = {}) {
+  const id = dbString(row.id);
+  const organizationId = dbString(row.organization_id);
+  const name = dbString(row.name);
+  if (!id || !organizationId || !name) {
+    return null;
+  }
+
+  return normalizeRiskPpeCatalogEntry({
+    id,
+    organization_id: organizationId,
+    name,
+    category: row.category,
+    body_part: row.body_part,
+    norm: row.norm,
+    standard_code: row.standard_code,
+    description: row.description,
+    image_url: row.image_url,
+    source_ref: row.source_ref,
+    source_url: row.source_url,
+    isCustom: row.is_custom == null ? true : Boolean(Number(row.is_custom)),
+    created_by_user_id: row.created_by_user_id,
+    created_by_label: row.created_by_label,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  });
+}
+
 function mapContractTemplateEntry(row = {}) {
   const organizationId = dbString(row.organization_id);
   const id = dbString(row.id);
@@ -3727,6 +3786,18 @@ async function fetchSnapshotFromConnection(connection) {
     .map((row) => mapJobAiSettingsEntry(row))
     .filter(Boolean);
 
+  const [riskPpeCatalogRows] = await connection.query(`
+    SELECT id, organization_id, name, category, body_part, norm, standard_code, description,
+           image_url, source_ref, source_url, is_custom, created_by_user_id, created_by_label,
+           created_at, updated_at
+    FROM web_risk_ppe_catalog
+    ORDER BY updated_at DESC, id DESC
+  `);
+
+  const riskPpeCatalog = riskPpeCatalogRows
+    .map((row) => mapRiskPpeCatalogEntry(row))
+    .filter(Boolean);
+
   const [vehicleRows] = await connection.query(`
     SELECT id, organization_id, name, plate_number, vin_number, make_name, model_name, category, model_year,
            color, fuel_type, transmission, seat_count, odometer_km, service_due_date,
@@ -4417,6 +4488,7 @@ async function fetchSnapshotFromConnection(connection) {
     riskAssessments,
     jobs,
     jobAiSettings,
+    riskPpeCatalog,
     contracts,
     contractTemplates,
     drawings,
@@ -4523,6 +4595,7 @@ export class InMemorySafetyRepository {
       riskAssessments: [],
       jobs: [],
       jobAiSettings: [],
+      riskPpeCatalog: [],
       contracts: [],
       contractTemplates: [],
       drawings: [],
@@ -4709,6 +4782,7 @@ export class InMemorySafetyRepository {
           Object.entries(item.aiInstructions ?? {}).map(([key, config]) => [key, { ...(config ?? {}) }]),
         ),
       })),
+      riskPpeCatalog: this.snapshot.riskPpeCatalog.map((item) => ({ ...item })),
       contracts: this.snapshot.contracts.map((item) => ({
         ...item,
         linkedOfferIds: [...(item.linkedOfferIds ?? [])],
@@ -5687,6 +5761,33 @@ export class InMemorySafetyRepository {
     return this.snapshot.jobAiSettings.find((entry) => (
       String(entry.organizationId) === safeOrganizationId
     )) ?? nextEntry;
+  }
+
+  async createRiskPpeCatalogItem(input = {}, actor = null) {
+    const safeOrganizationId = dbString(input.organizationId);
+    if (!safeOrganizationId) {
+      throw new Error("Organizacija je obavezna za OZO katalog.");
+    }
+
+    const timestamp = new Date().toISOString();
+    const item = normalizeRiskPpeCatalogEntry({
+      ...input,
+      id: crypto.randomUUID(),
+      organizationId: safeOrganizationId,
+      sourceRef: input.sourceRef || "Korisnicki unos",
+      isCustom: true,
+      createdByUserId: String(actor?.id ?? input.createdByUserId ?? ""),
+      createdByLabel: actor?.fullName || actor?.username || input.createdByLabel || "SafeNexus",
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
+
+    if (!item.name) {
+      throw new Error("Naziv OZO stavke je obavezan.");
+    }
+
+    this.snapshot.riskPpeCatalog = [item, ...this.snapshot.riskPpeCatalog];
+    return item;
   }
 
   async getPurchaseOrderTemplateSettings(organizationId = "") {
@@ -7203,6 +7304,28 @@ export class MySqlSafetyRepository {
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         UNIQUE KEY uniq_web_job_ai_settings_org (organization_id)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_risk_ppe_catalog (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        name VARCHAR(260) NOT NULL,
+        category VARCHAR(160) NOT NULL DEFAULT '',
+        body_part VARCHAR(40) NOT NULL DEFAULT 'other',
+        norm VARCHAR(220) NOT NULL DEFAULT '',
+        standard_code VARCHAR(220) NOT NULL DEFAULT '',
+        description TEXT NULL,
+        image_url TEXT NULL,
+        source_ref VARCHAR(160) NOT NULL DEFAULT '',
+        source_url TEXT NULL,
+        is_custom TINYINT(1) NOT NULL DEFAULT 1,
+        created_by_user_id INT NULL,
+        created_by_label VARCHAR(160) NOT NULL DEFAULT '',
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_web_risk_ppe_catalog_org_body (organization_id, body_part),
+        INDEX idx_web_risk_ppe_catalog_norm (norm)
       )
     `);
     await this.pool.query(`
@@ -10699,6 +10822,56 @@ export class MySqlSafetyRepository {
     return {
       organizationId: String(safeOrganizationId),
       aiInstructions: normalizedInstructions,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  async createRiskPpeCatalogItem(input = {}, actor = null) {
+    const safeOrganizationId = Number(input.organizationId);
+    if (!Number.isFinite(safeOrganizationId) || safeOrganizationId <= 0) {
+      throw new Error("Organizacija je obavezna za OZO katalog.");
+    }
+
+    const draft = normalizeRiskPpeCatalogEntry({
+      ...input,
+      organizationId: String(safeOrganizationId),
+      sourceRef: input.sourceRef || "Korisnicki unos",
+      isCustom: true,
+      createdByUserId: String(actor?.id ?? input.createdByUserId ?? ""),
+      createdByLabel: actor?.fullName || actor?.username || input.createdByLabel || "SafeNexus",
+    });
+    if (!draft.name) {
+      throw new Error("Naziv OZO stavke je obavezan.");
+    }
+
+    const [result] = await this.pool.query(
+      `
+        INSERT INTO web_risk_ppe_catalog
+          (organization_id, name, category, body_part, norm, standard_code, description,
+           image_url, source_ref, source_url, is_custom, created_by_user_id, created_by_label)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        safeOrganizationId,
+        draft.name,
+        draft.category,
+        draft.bodyPart,
+        draft.norm,
+        draft.standardCode,
+        draft.description,
+        draft.imageUrl,
+        draft.sourceRef,
+        draft.sourceUrl,
+        draft.isCustom ? 1 : 0,
+        parseNullableInteger(draft.createdByUserId),
+        draft.createdByLabel,
+      ],
+    );
+
+    return {
+      ...draft,
+      id: String(result.insertId),
+      createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
   }

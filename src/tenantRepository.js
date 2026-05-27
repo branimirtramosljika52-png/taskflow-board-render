@@ -2174,6 +2174,9 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
         }
         : { organizationId: String(organizationId), aiInstructions: {} };
     })(),
+    riskPpeCatalog: (rawSnapshot.riskPpeCatalog ?? []).filter((item) => (
+      String(item.organizationId) === String(organizationId)
+    )).map((item) => ({ ...item })),
     riskAssessments: (rawSnapshot.riskAssessments ?? []).filter(isOrganizationOrCompanyItemVisible).map((item) => ({
       ...item,
       measures: (item.measures ?? []).map((entry) => ({ ...entry })),
@@ -3036,6 +3039,7 @@ export class MemoryTenantRepository {
       purchaseOrders: [],
       jobs: [],
       jobAiSettings: [],
+      riskPpeCatalog: [],
       riskAssessments: [],
       contracts: [],
       drawings: [],
@@ -3988,6 +3992,7 @@ export class MySqlTenantRepository {
       purchaseOrders: [],
       jobs: [],
       jobAiSettings: [],
+      riskPpeCatalog: [],
       riskAssessments: [],
       contracts: [],
       drawings: [],
@@ -4047,6 +4052,7 @@ export class MySqlTenantRepository {
       purchaseOrders: [],
       jobs: [],
       jobAiSettings: [],
+      riskPpeCatalog: [],
       riskAssessments: [],
       contracts: [],
       drawings: [],

@@ -166,6 +166,11 @@ import {
   signDocumentsWithPdfSignerExtension,
   testSignerTokenDetectionWithPdfSignerExtension,
 } from "./pdfSignerExtensionBridge.js";
+import {
+  DEFAULT_RISK_PPE_CATALOG,
+  RISK_PPE_CATEGORY_IMAGES,
+  RISK_PPE_SOURCE_URL,
+} from "./riskPpeCatalog.js";
 
 const API_BASE = "/api";
 const WORK_ORDER_BATCH_SIZE = 60;
@@ -1832,6 +1837,7 @@ const state = {
   jobAiSettings: {
     aiInstructions: {},
   },
+  riskPpeCatalog: [],
   riskAssessments: [],
   contracts: [],
   drawings: [],
@@ -6044,6 +6050,7 @@ let riskAssessmentActiveRichEditorKey = "";
 let riskAssessmentRichEditorSelection = null;
 let riskAssessmentPpeThreeModulePromise = null;
 const riskAssessmentPpeSceneControllers = new Map();
+let riskAssessmentPpeSceneObserver = null;
 let closePeopleTrainingItemMenuHandler = null;
 let peopleTrainingLastBulkOpenSummary = {
   assignedTests: 0,
@@ -8684,6 +8691,7 @@ function applySnapshot(payload, options = {}) {
   state.purchaseOrders = payload.purchaseOrders ?? [];
   state.jobs = payload.jobs ?? [];
   state.jobAiSettings = normalizeJobAiSettings(payload.jobAiSettings ?? {});
+  state.riskPpeCatalog = normalizeRiskPpeCatalog(payload.riskPpeCatalog ?? []);
   state.riskAssessments = payload.riskAssessments ?? [];
   state.contracts = payload.contracts ?? [];
   state.drawings = payload.drawings ?? [];
@@ -119622,26 +119630,10 @@ const RISK_ASSESSMENT_PPE_BODY_FILTERS = Object.freeze([
   { value: "body", label: "Tijelo" },
   { value: "feet", label: "Noge" },
   { value: "fall", label: "Pad s visine" },
+  { value: "other", label: "Ostalo" },
 ]);
 
-const RISK_ASSESSMENT_PPE_CATALOG = Object.freeze([
-  { id: "helmet", name: "Zaštitna kaciga", category: "Zaštita glave", bodyPart: "head", norm: "HRN EN 397", description: "Zaštita od udara i pada predmeta." },
-  { id: "bump-cap", name: "Zaštitna kapa", category: "Zaštita glave", bodyPart: "head", norm: "HRN EN 812", description: "Zaštita od lakših udaraca glavom." },
-  { id: "goggles", name: "Zaštitne naočale", category: "Zaštita očiju i lica", bodyPart: "eyes", norm: "HRN EN 166", description: "Zaštita očiju od čestica, prašine i prskanja." },
-  { id: "face-shield", name: "Vizir", category: "Zaštita očiju i lica", bodyPart: "eyes", norm: "HRN EN 166", description: "Zaštita lica pri brušenju, rezanju ili prskanju." },
-  { id: "earmuffs", name: "Antifoni / čepići", category: "Zaštita sluha", bodyPart: "hearing", norm: "HRN EN 352", description: "Smanjenje izloženosti buci." },
-  { id: "respirator", name: "Respirator / polumaska", category: "Zaštita dišnih organa", bodyPart: "respiratory", norm: "HRN EN 149 / HRN EN 140", description: "Zaštita od prašine, aerosola i para prema odabranom filtru." },
-  { id: "filter", name: "Filtar za masku", category: "Zaštita dišnih organa", bodyPart: "respiratory", norm: "HRN EN 143 / HRN EN 14387", description: "Filtar prema vrsti čestica, plinova ili para." },
-  { id: "gloves-mechanical", name: "Zaštitne rukavice", category: "Zaštita ruku", bodyPart: "hands", norm: "HRN EN 388", description: "Zaštita od mehaničkih opasnosti." },
-  { id: "gloves-chemical", name: "Kemijske rukavice", category: "Zaštita od kemikalija", bodyPart: "hands", norm: "HRN EN ISO 374", description: "Zaštita pri radu s kemikalijama." },
-  { id: "gloves-electrical", name: "Elektroizolacijske rukavice", category: "Zaštita od električne opasnosti", bodyPart: "hands", norm: "HRN EN 60903", description: "Zaštita pri radu u blizini električnog napona." },
-  { id: "safety-shoes", name: "Zaštitna obuća", category: "Zaštita nogu", bodyPart: "feet", norm: "HRN EN ISO 20345", description: "Zaštita stopala od udara, probijanja i klizanja." },
-  { id: "hi-vis", name: "Reflektirajući prsluk", category: "Zaštitna odjeća", bodyPart: "body", norm: "HRN EN ISO 20471", description: "Povećana vidljivost radnika." },
-  { id: "protective-clothing", name: "Zaštitno odijelo", category: "Zaštita tijela", bodyPart: "body", norm: "HRN EN ISO 13688", description: "Osnovni zahtjevi za zaštitnu odjeću." },
-  { id: "chemical-suit", name: "Kemijsko zaštitno odijelo", category: "Zaštita od kemikalija", bodyPart: "body", norm: "HRN EN 14605 / HRN EN 13034", description: "Zaštita tijela od kemijskih štetnosti." },
-  { id: "heat-cold", name: "Odjeća za toplinu/hladnoću", category: "Zaštita od topline i hladnoće", bodyPart: "body", norm: "HRN EN ISO 11612 / HRN EN 342", description: "Zaštita od toplinskih ili hladnih uvjeta." },
-  { id: "fall-harness", name: "Sigurnosni pojas i sustav za zaustavljanje pada", category: "Zaštita od pada s visine", bodyPart: "fall", norm: "HRN EN 361 / HRN EN 363 / HRN EN 355", description: "Zaštita pri radu na visini." },
-]);
+const RISK_ASSESSMENT_PPE_CATALOG = DEFAULT_RISK_PPE_CATALOG;
 
 const RISK_ASSESSMENT_PPE_THREE_MODULE_URL = "/assets/vendor/three.module.js?v=20260527-risk-ppe-3d-v2";
 
@@ -119941,6 +119933,85 @@ function normalizeJobAiSettings(value = {}) {
     organizationId: String(source.organizationId ?? state.activeOrganizationId ?? "").trim(),
     aiInstructions: normalizeJobAiInstructionDrafts(source.aiInstructions ?? {}),
   };
+}
+
+function normalizeRiskPpeCatalogItem(item = {}) {
+  const bodyPart = String(item.bodyPart || "other").trim() || "other";
+  const fallbackImage = RISK_PPE_CATEGORY_IMAGES[bodyPart] || RISK_PPE_CATEGORY_IMAGES.other || "";
+  return {
+    id: String(item.id || item.catalogId || item.norm || item.name || "").trim(),
+    organizationId: String(item.organizationId || "").trim(),
+    name: String(item.name || "").trim(),
+    category: String(item.category || "").trim(),
+    bodyPart,
+    norm: String(item.norm || "").trim(),
+    standardCode: String(item.standardCode || "").trim(),
+    description: String(item.description || "").trim(),
+    imageUrl: String(item.imageUrl || fallbackImage).trim(),
+    sourceRef: String(item.sourceRef || "").trim(),
+    sourceUrl: String(item.sourceUrl || "").trim(),
+    isCustom: Boolean(item.isCustom),
+  };
+}
+
+function normalizeRiskPpeCatalog(value = []) {
+  return (Array.isArray(value) ? value : [])
+    .map((item) => normalizeRiskPpeCatalogItem(item))
+    .filter((item) => item.id && item.name);
+}
+
+function getRiskAssessmentPpeCatalog() {
+  const items = [
+    ...normalizeRiskPpeCatalog(state.riskPpeCatalog ?? []),
+    ...RISK_ASSESSMENT_PPE_CATALOG.map((item) => normalizeRiskPpeCatalogItem(item)),
+  ];
+  const seen = new Set();
+  return items.filter((item) => {
+    const key = String(item.id || `${item.norm}::${item.name}`).toLowerCase();
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function getRiskAssessmentPpeCatalogItem(catalogId = "") {
+  const key = String(catalogId || "").trim();
+  if (!key) {
+    return null;
+  }
+  return getRiskAssessmentPpeCatalog().find((item) => String(item.id) === key) ?? null;
+}
+
+function normalizeRiskAssessmentPpeSearchValue(value = "") {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("hr")
+    .trim();
+}
+
+function filterRiskAssessmentPpeCatalogItems(catalog = [], filter = "all", query = "") {
+  const normalizedFilter = String(filter || "all");
+  const normalizedQuery = normalizeRiskAssessmentPpeSearchValue(query);
+  return catalog.filter((item) => {
+    if (normalizedFilter !== "all" && item.bodyPart !== normalizedFilter) {
+      return false;
+    }
+    if (!normalizedQuery) {
+      return true;
+    }
+    const haystack = [
+      item.name,
+      item.category,
+      item.norm,
+      item.standardCode,
+      item.description,
+      item.sourceRef,
+    ].join(" ");
+    return normalizeRiskAssessmentPpeSearchValue(haystack).includes(normalizedQuery);
+  });
 }
 
 function getJobAiFieldLabel(kind = "description") {
@@ -121430,7 +121501,7 @@ function renderRiskAssessmentJobUnitOptions(selectedValue = "") {
 
 function createRiskAssessmentPpeDraft(initial = {}) {
   const catalog = initial.catalogId
-    ? RISK_ASSESSMENT_PPE_CATALOG.find((item) => item.id === initial.catalogId)
+    ? getRiskAssessmentPpeCatalogItem(initial.catalogId)
     : null;
   const source = catalog || initial;
   return {
@@ -121440,7 +121511,11 @@ function createRiskAssessmentPpeDraft(initial = {}) {
     category: String(initial.category || source.category || ""),
     bodyPart: String(initial.bodyPart || source.bodyPart || ""),
     norm: String(initial.norm || source.norm || ""),
+    standardCode: String(initial.standardCode || source.standardCode || ""),
     description: String(initial.description || source.description || ""),
+    imageUrl: String(initial.imageUrl || source.imageUrl || ""),
+    sourceRef: String(initial.sourceRef || source.sourceRef || ""),
+    sourceUrl: String(initial.sourceUrl || source.sourceUrl || ""),
     hazardLinks: String(initial.hazardLinks || ""),
     required: initial.required === undefined ? true : Boolean(initial.required),
     mandatory: initial.mandatory === undefined ? (initial.required === undefined ? true : Boolean(initial.required)) : Boolean(initial.mandatory),
@@ -121516,7 +121591,7 @@ function getRiskAssessmentJobStatusOption(status = "") {
 }
 
 function sanitizeRiskAssessmentTransientJob(job = {}) {
-  const { catalogOpen, catalogSelection, aiProposal, ppeFilter, ...persisted } = job;
+  const { catalogOpen, catalogSelection, aiProposal, ppeFilter, ppeSearch, ppeNewOpen, ppeNewDraft, ...persisted } = job;
   return persisted;
 }
 
@@ -121869,7 +121944,7 @@ function buildRiskAssessmentAiPpeSuggestions(job = {}, riskRows = []) {
   if (/elektr|napon|struj/.test(text)) {
     ids.add("gloves-electrical");
   }
-  return RISK_ASSESSMENT_PPE_CATALOG
+  return getRiskAssessmentPpeCatalog()
     .filter((item) => ids.has(item.id))
     .map((item) => createRiskAssessmentPpeDraft({
       catalogId: item.id,
@@ -122153,26 +122228,82 @@ function getRiskAssessmentPpeIconClass(ppe = {}) {
   return bodyPart || "item";
 }
 
+function renderRiskAssessmentPpeBodyPartOptions(selectedValue = "other") {
+  return RISK_ASSESSMENT_PPE_BODY_FILTERS
+    .filter((filter) => filter.value !== "all")
+    .map((filter) => `
+      <option value="${escapeHtml(filter.value)}" ${String(selectedValue || "other") === filter.value ? "selected" : ""}>
+        ${escapeHtml(filter.label)}
+      </option>
+    `).join("");
+}
+
+function getRiskAssessmentPpeNewDraft(job = {}) {
+  const draft = job.ppeNewDraft && typeof job.ppeNewDraft === "object" ? job.ppeNewDraft : {};
+  return {
+    name: String(draft.name || ""),
+    category: String(draft.category || ""),
+    bodyPart: String(draft.bodyPart || "other"),
+    norm: String(draft.norm || ""),
+    standardCode: String(draft.standardCode || ""),
+    description: String(draft.description || ""),
+    imageUrl: String(draft.imageUrl || ""),
+  };
+}
+
 function renderRiskAssessmentPpeVisual(job = {}, jobIndex = 0) {
   const selectedSet = getRiskAssessmentSelectedPpeSet(job);
   const activeFilter = String(job.ppeFilter || "all");
+  const searchValue = String(job.ppeSearch || "");
   const selectedBodyParts = getRiskAssessmentPpeBodyParts(job.ppeItems ?? []);
   const selectedCatalogIds = getRiskAssessmentPpeCatalogIds(job.ppeItems ?? []);
-  const catalogItems = RISK_ASSESSMENT_PPE_CATALOG.filter((item) => activeFilter === "all" || item.bodyPart === activeFilter);
+  const catalog = getRiskAssessmentPpeCatalog();
+  const visibleCatalogItems = filterRiskAssessmentPpeCatalogItems(catalog, activeFilter, searchValue);
+  const visibleCatalogIds = new Set(visibleCatalogItems.map((item) => String(item.id)));
+  const countByBodyPart = catalog.reduce((accumulator, item) => {
+    accumulator[item.bodyPart] = (accumulator[item.bodyPart] || 0) + 1;
+    return accumulator;
+  }, { all: catalog.length });
   const selectedCount = job.ppeItems?.length ?? 0;
+  const newDraft = getRiskAssessmentPpeNewDraft(job);
+  const newFormOpen = Boolean(job.ppeNewOpen);
   const bodyPartLabel = Array.from(selectedBodyParts)
     .map((part) => RISK_ASSESSMENT_PPE_BODY_FILTERS.find((filter) => filter.value === part)?.label || part)
     .join(", ");
   return `
-    <div class="risk-assessment-ppe-panel">
+    <div class="risk-assessment-ppe-panel" data-risk-ppe-panel="${jobIndex}">
       <div class="risk-assessment-mini-title">
         <strong>Osobna zaštitna oprema</strong>
-        <span>${selectedCount ? `${selectedCount} odabranih komada OZO` : "Odaberi opremu i odmah vidi kako se nosi."}</span>
+        <span>${selectedCount ? `${selectedCount} odabranih komada OZO` : "Odaberi opremu i odmah vidi kako se nosi."} Katalog: ${catalog.length} stvarnih OZO stavki.</span>
+      </div>
+      <div class="risk-assessment-ppe-toolbar">
+        <label class="risk-assessment-ppe-search">
+          <span>Pretraga</span>
+          <input data-risk-ppe-search value="${escapeHtml(searchValue)}" placeholder="Maska, rukavice, HRN EN 397..." />
+        </label>
+        <a class="risk-assessment-ppe-source" href="${escapeHtml(RISK_PPE_SOURCE_URL)}" target="_blank" rel="noopener noreferrer">Narodne novine 110/2009</a>
+        <button type="button" class="secondary-button" data-risk-ppe-new-toggle>${newFormOpen ? "Zatvori unos" : "+ Nova OZO"}</button>
       </div>
       <div class="risk-assessment-ppe-filters">
         ${RISK_ASSESSMENT_PPE_BODY_FILTERS.map((filter) => `
-          <button type="button" class="${activeFilter === filter.value ? "is-active" : ""}" data-risk-ppe-filter="${escapeHtml(filter.value)}">${escapeHtml(filter.label)}</button>
+          <button type="button" class="${activeFilter === filter.value ? "is-active" : ""}" data-risk-ppe-filter="${escapeHtml(filter.value)}">
+            <span>${escapeHtml(filter.label)}</span>
+            <small>${countByBodyPart[filter.value] || 0}</small>
+          </button>
         `).join("")}
+      </div>
+      <div class="risk-assessment-ppe-new-form" ${newFormOpen ? "" : "hidden"}>
+        <label><span>Naziv</span><input data-risk-ppe-new-field="name" value="${escapeHtml(newDraft.name)}" placeholder="npr. Štitnik za koljena" /></label>
+        <label><span>Norma</span><input data-risk-ppe-new-field="norm" value="${escapeHtml(newDraft.norm)}" placeholder="npr. HRN EN 14404" /></label>
+        <label><span>Kategorija</span><input data-risk-ppe-new-field="category" value="${escapeHtml(newDraft.category)}" placeholder="npr. Zaštita nogu" /></label>
+        <label><span>Dio tijela</span><select data-risk-ppe-new-field="bodyPart">${renderRiskAssessmentPpeBodyPartOptions(newDraft.bodyPart)}</select></label>
+        <label><span>EN norma</span><input data-risk-ppe-new-field="standardCode" value="${escapeHtml(newDraft.standardCode)}" placeholder="npr. EN 14404" /></label>
+        <label><span>URL slike</span><input data-risk-ppe-new-field="imageUrl" value="${escapeHtml(newDraft.imageUrl)}" placeholder="https://..." /></label>
+        <label class="field-span-full"><span>Opis primjene</span><textarea data-risk-ppe-new-field="description" rows="2">${escapeHtml(newDraft.description)}</textarea></label>
+        <div class="risk-assessment-ppe-new-actions">
+          <span>Spremi u bazu i odmah dodaj na ovo radno mjesto.</span>
+          <button type="button" class="primary-button" data-risk-ppe-new-save>Spremi OZO</button>
+        </div>
       </div>
       <div class="risk-assessment-ppe-layout">
         <div class="risk-assessment-worker-preview" aria-label="Vizualni prikaz OZO">
@@ -122207,17 +122338,39 @@ function renderRiskAssessmentPpeVisual(job = {}, jobIndex = 0) {
             <span>${escapeHtml(bodyPartLabel || "Bez OZO")}</span>
           </div>
         </div>
-        <div class="risk-assessment-ppe-list">
-          ${catalogItems.map((ppe) => `
-            <label class="risk-assessment-ppe-option">
+        <div class="risk-assessment-ppe-list-wrap">
+           <div class="risk-assessment-ppe-list-head">
+            <strong data-risk-ppe-match-count>${visibleCatalogItems.length}</strong>
+            <span>prikazanih OZO stavki</span>
+          </div>
+          <div class="risk-assessment-ppe-list">
+            ${catalog.map((ppe) => {
+              const searchText = normalizeRiskAssessmentPpeSearchValue([
+                ppe.name,
+                ppe.category,
+                ppe.norm,
+                ppe.standardCode,
+                ppe.description,
+                ppe.sourceRef,
+              ].join(" "));
+              const isVisible = visibleCatalogIds.has(String(ppe.id));
+              return `
+            <label class="risk-assessment-ppe-option" data-risk-ppe-option-card data-risk-ppe-option-body-part="${escapeHtml(ppe.bodyPart)}" data-risk-ppe-option-search="${escapeHtml(searchText)}" ${isVisible ? "" : "hidden"}>
               <input type="checkbox" data-risk-ppe-toggle="${escapeHtml(ppe.id)}" ${selectedSet.has(ppe.id) ? "checked" : ""} />
-              <span class="risk-assessment-ppe-option-icon is-${escapeHtml(getRiskAssessmentPpeIconClass(ppe))}" aria-hidden="true"></span>
+              <span class="risk-assessment-ppe-option-photo">
+                <img src="${escapeHtml(ppe.imageUrl || RISK_PPE_CATEGORY_IMAGES[ppe.bodyPart] || RISK_PPE_CATEGORY_IMAGES.other || "")}" alt="" loading="lazy" />
+              </span>
               <span class="risk-assessment-ppe-option-copy">
                 <strong>${escapeHtml(ppe.name)}</strong>
-                <small>${escapeHtml(ppe.category)} · ${escapeHtml(ppe.norm)}</small>
+                <small>${escapeHtml([ppe.category, ppe.norm].filter(Boolean).join(" · "))}</small>
+                <em>${escapeHtml(ppe.sourceRef || (ppe.isCustom ? "Korisnički unos" : "Katalog"))}</em>
               </span>
+              <span class="risk-assessment-ppe-option-icon is-${escapeHtml(getRiskAssessmentPpeIconClass(ppe))}" aria-hidden="true"></span>
             </label>
-          `).join("")}
+              `;
+            }).join("")}
+          </div>
+          <p class="inline-help risk-assessment-ppe-empty" ${visibleCatalogItems.length ? "hidden" : ""}>Nema OZO stavki za odabrani filter ili pretragu.</p>
         </div>
       </div>
       <div class="risk-assessment-ppe-selected">
@@ -122238,6 +122391,41 @@ function renderRiskAssessmentPpeVisual(job = {}, jobIndex = 0) {
   `;
 }
 
+function applyRiskAssessmentPpeCatalogDomFilter(jobIndex) {
+  const job = riskAssessmentJobDrafts[jobIndex];
+  const panel = riskAssessmentJobsList?.querySelector(`[data-risk-ppe-panel="${jobIndex}"]`);
+  if (!job || !(panel instanceof HTMLElement)) {
+    return;
+  }
+
+  const activeFilter = String(job.ppeFilter || "all");
+  const searchText = normalizeRiskAssessmentPpeSearchValue(job.ppeSearch || "");
+  let visibleCount = 0;
+  panel.querySelectorAll("[data-risk-ppe-filter]").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.riskPpeFilter === activeFilter);
+  });
+  panel.querySelectorAll("[data-risk-ppe-option-card]").forEach((card) => {
+    if (!(card instanceof HTMLElement)) {
+      return;
+    }
+    const matchesBodyPart = activeFilter === "all" || card.dataset.riskPpeOptionBodyPart === activeFilter;
+    const matchesSearch = !searchText || String(card.dataset.riskPpeOptionSearch || "").includes(searchText);
+    const isVisible = matchesBodyPart && matchesSearch;
+    card.hidden = !isVisible;
+    if (isVisible) {
+      visibleCount += 1;
+    }
+  });
+  const countElement = panel.querySelector("[data-risk-ppe-match-count]");
+  if (countElement) {
+    countElement.textContent = String(visibleCount);
+  }
+  const emptyElement = panel.querySelector(".risk-assessment-ppe-empty");
+  if (emptyElement instanceof HTMLElement) {
+    emptyElement.hidden = visibleCount > 0;
+  }
+}
+
 function parseRiskAssessmentPpeSceneSet(value = "") {
   return new Set(String(value || "")
     .split(",")
@@ -122253,39 +122441,72 @@ function loadRiskAssessmentPpeThreeModule() {
 }
 
 function disposeRiskAssessmentPpeScenes() {
+  riskAssessmentPpeSceneObserver?.disconnect();
+  riskAssessmentPpeSceneObserver = null;
   riskAssessmentPpeSceneControllers.forEach((controller) => {
     controller?.dispose?.();
   });
   riskAssessmentPpeSceneControllers.clear();
 }
 
+function loadRiskAssessmentPpeSceneHost(host) {
+  if (!(host instanceof HTMLElement) || riskAssessmentPpeSceneControllers.has(host) || host.dataset.riskPpeLoading === "true") {
+    return;
+  }
+
+  host.dataset.riskPpeLoading = "true";
+  void loadRiskAssessmentPpeThreeModule()
+    .then((THREE) => {
+      if (!host.isConnected) {
+        return;
+      }
+      const controller = createRiskAssessmentPpeThreeScene(THREE, host, {
+        bodyParts: parseRiskAssessmentPpeSceneSet(host.dataset.riskPpeBodyParts || ""),
+        catalogIds: parseRiskAssessmentPpeSceneSet(host.dataset.riskPpeCatalogIds || ""),
+      });
+      if (controller) {
+        riskAssessmentPpeSceneControllers.set(host, controller);
+      }
+    })
+    .catch(() => {
+      host.closest(".risk-assessment-worker-preview")?.classList.add("is-webgl-fallback");
+    })
+    .finally(() => {
+      delete host.dataset.riskPpeLoading;
+    });
+}
+
 function initializeRiskAssessmentPpeScenes() {
   const hosts = Array.from(riskAssessmentJobsList?.querySelectorAll("[data-risk-ppe-scene]") ?? []);
-  hosts.forEach((host) => {
-    if (!(host instanceof HTMLElement) || riskAssessmentPpeSceneControllers.has(host) || host.dataset.riskPpeLoading === "true") {
-      return;
-    }
-
-    host.dataset.riskPpeLoading = "true";
-    void loadRiskAssessmentPpeThreeModule()
-      .then((THREE) => {
-        if (!host.isConnected) {
+  if (typeof IntersectionObserver !== "undefined") {
+    riskAssessmentPpeSceneObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        const host = entry.target;
+        if (!(host instanceof HTMLElement)) {
           return;
         }
-        const controller = createRiskAssessmentPpeThreeScene(THREE, host, {
-          bodyParts: parseRiskAssessmentPpeSceneSet(host.dataset.riskPpeBodyParts || ""),
-          catalogIds: parseRiskAssessmentPpeSceneSet(host.dataset.riskPpeCatalogIds || ""),
-        });
-        if (controller) {
-          riskAssessmentPpeSceneControllers.set(host, controller);
+        if (entry.isIntersecting) {
+          loadRiskAssessmentPpeSceneHost(host);
+          riskAssessmentPpeSceneControllers.get(host)?.start?.();
+        } else {
+          riskAssessmentPpeSceneControllers.get(host)?.stop?.();
         }
-      })
-      .catch(() => {
-        host.closest(".risk-assessment-worker-preview")?.classList.add("is-webgl-fallback");
-      })
-      .finally(() => {
-        delete host.dataset.riskPpeLoading;
       });
+    }, {
+      root: null,
+      rootMargin: "220px",
+      threshold: 0.05,
+    });
+    hosts.forEach((host) => {
+      if (host instanceof HTMLElement) {
+        riskAssessmentPpeSceneObserver?.observe(host);
+      }
+    });
+    return;
+  }
+
+  hosts.forEach((host) => {
+    loadRiskAssessmentPpeSceneHost(host);
   });
 }
 
@@ -122317,7 +122538,7 @@ function createRiskAssessmentPpeThreeScene(THREE, host, selection = {}) {
     return null;
   }
 
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, window.innerWidth < 720 ? 1.35 : 1.75));
   if (THREE.SRGBColorSpace) {
     renderer.outputColorSpace = THREE.SRGBColorSpace;
   }
@@ -122575,22 +122796,51 @@ function createRiskAssessmentPpeThreeScene(THREE, host, selection = {}) {
   const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
   const clock = new THREE.Clock();
   let frameId = 0;
+  let running = false;
   const animate = () => {
+    if (!running) {
+      return;
+    }
     const delta = Math.min(clock.getDelta(), 0.05);
     if (!reduceMotion) {
-      group.rotation.y += delta * 0.55;
+      group.rotation.y += delta * 0.86;
     }
     group.rotation.x = 0.06 + Math.sin(group.rotation.y * 1.2) * 0.02;
     renderer.render(scene, camera);
     frameId = window.requestAnimationFrame(animate);
   };
-  animate();
+  const stop = () => {
+    running = false;
+    window.cancelAnimationFrame(frameId);
+    frameId = 0;
+  };
+  const start = () => {
+    if (running || document.visibilityState === "hidden") {
+      return;
+    }
+    running = true;
+    clock.getDelta();
+    animate();
+  };
+  const handleVisibilityChange = () => {
+    if (document.visibilityState === "hidden") {
+      stop();
+    } else {
+      start();
+    }
+  };
+  document.addEventListener("visibilitychange", handleVisibilityChange);
+  renderer.render(scene, camera);
+  start();
 
   return {
+    start,
+    stop,
     dispose() {
-      window.cancelAnimationFrame(frameId);
+      stop();
       resizeObserver?.disconnect();
       window.removeEventListener("resize", resize);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       geometries.forEach((geometry) => geometry.dispose?.());
       materials.forEach((material) => material.dispose?.());
       renderer.dispose();
@@ -123212,7 +123462,7 @@ function toggleRiskAssessmentPpeItem(jobIndex, catalogId = "", checked = false) 
   const existing = [...(current.ppeItems ?? [])];
   const existingIndex = existing.findIndex((item) => String(item.catalogId || item.id) === String(catalogId));
   if (checked && existingIndex < 0) {
-    const catalog = RISK_ASSESSMENT_PPE_CATALOG.find((item) => item.id === catalogId);
+    const catalog = getRiskAssessmentPpeCatalogItem(catalogId);
     if (catalog) {
       existing.push(createRiskAssessmentPpeDraft({
         catalogId,
@@ -123227,6 +123477,78 @@ function toggleRiskAssessmentPpeItem(jobIndex, catalogId = "", checked = false) 
     ...current,
     ppeItems: existing,
     ppeText: syncRiskAssessmentPpeSummaryText(current, existing),
+  };
+  renderRiskAssessmentJobs();
+  renderRiskAssessmentOverview();
+  scheduleRiskAssessmentDraftAutosave();
+}
+
+function updateRiskAssessmentPpeNewDraftField(jobIndex, field = "", value = "") {
+  const current = riskAssessmentJobDrafts[jobIndex];
+  if (!current || !field) {
+    return;
+  }
+  riskAssessmentJobDrafts[jobIndex] = {
+    ...current,
+    ppeNewDraft: {
+      ...getRiskAssessmentPpeNewDraft(current),
+      [field]: value,
+    },
+  };
+}
+
+async function saveRiskAssessmentPpeCatalogItem(jobIndex) {
+  const current = riskAssessmentJobDrafts[jobIndex];
+  if (!current) {
+    return;
+  }
+
+  const draft = getRiskAssessmentPpeNewDraft(current);
+  const name = draft.name.trim();
+  if (!name) {
+    setSyncError("Naziv OZO stavke je obavezan.");
+    return;
+  }
+
+  const requestBody = {
+    ...draft,
+    name,
+    category: draft.category.trim() || RISK_ASSESSMENT_PPE_BODY_FILTERS.find((filter) => filter.value === draft.bodyPart)?.label || "",
+  };
+  const success = await runMutation(() => apiRequest("/risk-ppe-catalog", {
+    method: "POST",
+    body: requestBody,
+  }));
+  if (!success) {
+    return;
+  }
+
+  const savedItem = getRiskAssessmentPpeCatalog()
+    .find((item) => item.isCustom && item.name === requestBody.name && item.norm === requestBody.norm)
+    ?? normalizeRiskPpeCatalogItem({
+      ...requestBody,
+      id: `custom-${crypto.randomUUID()}`,
+      isCustom: true,
+    });
+  const updated = riskAssessmentJobDrafts[jobIndex];
+  if (!updated) {
+    return;
+  }
+  const existing = [...(updated.ppeItems ?? [])];
+  if (!existing.some((item) => String(item.catalogId || item.id) === String(savedItem.id))) {
+    existing.push(createRiskAssessmentPpeDraft({
+      ...savedItem,
+      catalogId: savedItem.id,
+      jobId: updated.id,
+      hazardLinks: (updated.riskRows ?? []).map((risk) => risk.hazard).filter(Boolean).slice(0, 4).join(", "),
+    }));
+  }
+  riskAssessmentJobDrafts[jobIndex] = {
+    ...updated,
+    ppeNewOpen: false,
+    ppeNewDraft: {},
+    ppeItems: existing,
+    ppeText: syncRiskAssessmentPpeSummaryText(updated, existing),
   };
   renderRiskAssessmentJobs();
   renderRiskAssessmentOverview();
@@ -123313,6 +123635,20 @@ function handleRiskAssessmentJobsListInput(event) {
 
   if (target.dataset.riskPpeToggle) {
     toggleRiskAssessmentPpeItem(jobIndex, target.dataset.riskPpeToggle, target.checked);
+    return;
+  }
+
+  if (target.dataset.riskPpeSearch !== undefined) {
+    riskAssessmentJobDrafts[jobIndex] = {
+      ...riskAssessmentJobDrafts[jobIndex],
+      ppeSearch: target.value,
+    };
+    applyRiskAssessmentPpeCatalogDomFilter(jobIndex);
+    return;
+  }
+
+  if (target.dataset.riskPpeNewField) {
+    updateRiskAssessmentPpeNewDraftField(jobIndex, target.dataset.riskPpeNewField, target.value);
     return;
   }
 
@@ -123517,7 +123853,23 @@ function handleRiskAssessmentJobsListClick(event) {
       ...riskAssessmentJobDrafts[jobIndex],
       ppeFilter: button.dataset.riskPpeFilter || "all",
     };
+    applyRiskAssessmentPpeCatalogDomFilter(jobIndex);
+    return;
+  }
+
+  if (button.matches("[data-risk-ppe-new-toggle]")) {
+    event.preventDefault();
+    riskAssessmentJobDrafts[jobIndex] = {
+      ...riskAssessmentJobDrafts[jobIndex],
+      ppeNewOpen: !riskAssessmentJobDrafts[jobIndex]?.ppeNewOpen,
+    };
     renderRiskAssessmentJobs();
+    return;
+  }
+
+  if (button.matches("[data-risk-ppe-new-save]")) {
+    event.preventDefault();
+    void saveRiskAssessmentPpeCatalogItem(jobIndex);
     return;
   }
 

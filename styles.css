@@ -56194,11 +56194,8 @@ button.work-order-editor-section-head:focus-visible {
   overflow: hidden;
   padding: 14px;
   border: 1px solid rgba(147, 197, 253, 0.64);
-  border-radius: 18px;
-  background:
-    radial-gradient(circle at 12% 6%, rgba(34, 211, 238, 0.14), transparent 30%),
-    radial-gradient(circle at 92% 0%, rgba(124, 58, 237, 0.12), transparent 26%),
-    linear-gradient(135deg, rgba(248, 252, 255, 0.98), rgba(255, 255, 255, 0.94));
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(248, 252, 255, 0.98), rgba(255, 255, 255, 0.94));
   box-shadow: 0 18px 42px rgba(37, 99, 235, 0.09);
 }
 
@@ -56206,7 +56203,7 @@ button.work-order-editor-section-head:focus-visible {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, rgba(37, 99, 235, 0.12), transparent 16%, transparent 84%, rgba(168, 85, 247, 0.1));
+  background: linear-gradient(90deg, rgba(37, 99, 235, 0.08), transparent 20%, transparent 82%, rgba(15, 118, 110, 0.06));
   pointer-events: none;
 }
 
@@ -56216,8 +56213,24 @@ button.work-order-editor-section-head:focus-visible {
 }
 
 .risk-assessment-ppe-filters button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   cursor: pointer;
   transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.risk-assessment-ppe-filters button small {
+  display: inline-grid;
+  place-items: center;
+  min-width: 22px;
+  min-height: 20px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(226, 232, 240, 0.86);
+  color: #475569;
+  font-size: 0.68rem;
+  font-weight: 900;
 }
 
 .risk-assessment-ppe-filters button:hover {
@@ -56231,6 +56244,80 @@ button.work-order-editor-section-head:focus-visible {
   background: linear-gradient(135deg, rgba(219, 234, 254, 0.98), rgba(239, 246, 255, 0.94));
   color: #1d4ed8;
   box-shadow: inset 0 -2px 0 rgba(37, 99, 235, 0.22), 0 12px 26px rgba(37, 99, 235, 0.1);
+}
+
+.risk-assessment-ppe-toolbar {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) auto auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.risk-assessment-ppe-search {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.risk-assessment-ppe-search span,
+.risk-assessment-ppe-new-form label span {
+  color: #64748b;
+  font-size: 0.66rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.risk-assessment-ppe-source {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid rgba(20, 184, 166, 0.28);
+  border-radius: 10px;
+  background: rgba(240, 253, 250, 0.86);
+  color: #0f766e;
+  font-size: 0.78rem;
+  font-weight: 850;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.risk-assessment-ppe-new-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid rgba(20, 184, 166, 0.26);
+  border-radius: 12px;
+  background: rgba(240, 253, 250, 0.72);
+}
+
+.risk-assessment-ppe-new-form[hidden] {
+  display: none;
+}
+
+.risk-assessment-ppe-new-form label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.risk-assessment-ppe-new-form .field-span-full {
+  grid-column: 1 / -1;
+}
+
+.risk-assessment-ppe-new-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.risk-assessment-ppe-new-actions span {
+  color: #0f766e;
+  font-size: 0.76rem;
+  font-weight: 780;
 }
 
 .risk-assessment-ppe-layout {
@@ -56772,25 +56859,49 @@ button.work-order-editor-section-head:focus-visible {
   background: #dc2626;
 }
 
+.risk-assessment-ppe-list-wrap {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 0;
+}
+
+.risk-assessment-ppe-list-head {
+  display: flex;
+  gap: 7px;
+  align-items: baseline;
+  color: #64748b;
+  font-size: 0.76rem;
+  font-weight: 780;
+}
+
+.risk-assessment-ppe-list-head strong {
+  color: #172033;
+  font-size: 1.02rem;
+}
+
 .risk-assessment-ppe-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(275px, 1fr));
-  gap: 9px;
+  grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+  gap: 8px;
   align-content: start;
+  max-height: 520px;
+  overflow: auto;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
 }
 
 .risk-assessment-ppe-option {
   display: grid;
-  grid-template-columns: 18px 48px minmax(0, 1fr);
+  grid-template-columns: 18px 82px minmax(0, 1fr) 46px;
   gap: 10px;
   align-items: center;
   min-width: 0;
-  min-height: 70px;
-  padding: 10px;
+  min-height: 86px;
+  padding: 8px;
   border: 1px solid rgba(191, 219, 254, 0.78);
-  border-radius: 15px;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.92));
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.92);
   cursor: pointer;
   transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
 }
@@ -56803,9 +56914,25 @@ button.work-order-editor-section-head:focus-visible {
 
 .risk-assessment-ppe-option:has(input:checked) {
   border-color: rgba(34, 197, 94, 0.58);
-  background:
-    linear-gradient(135deg, rgba(240, 253, 244, 0.98), rgba(239, 246, 255, 0.94));
+  background: linear-gradient(135deg, rgba(240, 253, 244, 0.98), rgba(248, 250, 252, 0.96));
   box-shadow: inset 3px 0 0 rgba(34, 197, 94, 0.5), 0 14px 30px rgba(34, 197, 94, 0.1);
+}
+
+.risk-assessment-ppe-option-photo {
+  display: block;
+  width: 82px;
+  height: 62px;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid rgba(203, 213, 225, 0.76);
+  background: #e2e8f0;
+}
+
+.risk-assessment-ppe-option-photo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .risk-assessment-ppe-option-icon {
@@ -57002,6 +57129,18 @@ button.work-order-editor-section-head:focus-visible {
   font-size: 0.7rem;
   font-weight: 760;
   line-height: 1.28;
+}
+
+.risk-assessment-ppe-option em {
+  color: #0f766e;
+  font-size: 0.66rem;
+  font-style: normal;
+  font-weight: 850;
+  line-height: 1.22;
+}
+
+.risk-assessment-ppe-empty[hidden] {
+  display: none;
 }
 
 .risk-assessment-ppe-selected {
@@ -57209,6 +57348,8 @@ button.work-order-editor-section-head:focus-visible {
   .risk-assessment-document-eligibility > div,
   .risk-assessment-document-risk-table > div,
   .risk-assessment-document-ppe-table > div,
+  .risk-assessment-ppe-toolbar,
+  .risk-assessment-ppe-new-form,
   .risk-assessment-ppe-layout,
   .risk-assessment-ppe-selected-row,
   .risk-assessment-ai-split,
@@ -57234,6 +57375,11 @@ button.work-order-editor-section-head:focus-visible {
 
   .risk-assessment-mini-title {
     display: grid;
+  }
+
+  .risk-assessment-ppe-new-actions {
+    display: grid;
+    justify-items: start;
   }
 
   .risk-assessment-card-meta {

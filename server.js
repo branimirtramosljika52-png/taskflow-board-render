@@ -8942,6 +8942,22 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (request.method === "POST" && url.pathname === "/api/risk-ppe-catalog") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati OZO katalogom.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      await domainRepository.createRiskPpeCatalogItem({
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      }, user);
+      await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
     if (request.method === "POST" && url.pathname === "/api/contract-templates") {
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
