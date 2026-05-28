@@ -51,6 +51,7 @@ import {
   buildPubChemLookupPayload,
 } from "./src/pubchemClient.js";
 import { createSafetyRepository } from "./src/safetyRepository.js";
+import { extractStlChemicalDataFromFile } from "./src/stlChemicalExtractor.js";
 import { createTenantRepository } from "./src/tenantRepository.js";
 import {
   clearAuthCookies,
@@ -7968,6 +7969,68 @@ async function handleApiRequest(request, response, url) {
         }));
       } catch (error) {
         sendError(response, Number(error?.statusCode || 502), error?.message || "PubChem trenutno nije dostupan.");
+      }
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/risk-assessments/chemicals/extract-stl") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo dodavati kemikalije u procjenu rizika.");
+        return true;
+      }
+
+      try {
+        const body = await readJsonBody(request);
+        const extracted = await extractStlChemicalDataFromFile({
+          fileName: body.fileName || body.name || "stl-dokument",
+          mimeType: body.fileType || body.mimeType || body.type || "",
+          dataUrl: body.dataUrl || body.fileDataUrl || "",
+        });
+        const chemicals = [];
+        for (const chemical of extracted.chemicals ?? []) {
+          const lookupQuery = chemical.casNumber || chemical.name || "";
+          let pubChem = null;
+          if (lookupQuery) {
+            try {
+              const pubChemPayload = await buildPubChemLookupPayload(lookupQuery, {
+                includeSafety: true,
+                maxResults: 1,
+              });
+              pubChem = pubChemPayload.compound || null;
+            } catch {
+              pubChem = null;
+            }
+          }
+          chemicals.push({
+            ...chemical,
+            formula: chemical.formula || pubChem?.molecularFormula || "",
+            molecularWeight: chemical.molecularWeight || pubChem?.molecularWeight || "",
+            iupacName: chemical.iupacName || pubChem?.iupacName || "",
+            pubChemCid: pubChem?.cid ? String(pubChem.cid) : "",
+            pubChemUrl: pubChem?.pubChemUrl || "",
+            pubChemName: pubChem?.name || "",
+            pubChemCasNumbers: Array.isArray(pubChem?.casNumbers) ? pubChem.casNumbers : [],
+            hazardStatements: chemical.hazardStatements?.length
+              ? chemical.hazardStatements
+              : (pubChem?.safety?.hazardStatements ?? []),
+            precautionaryStatements: chemical.precautionaryStatements?.length
+              ? chemical.precautionaryStatements
+              : (pubChem?.safety?.precautionaryStatements ?? []),
+            signalWords: chemical.signalWords?.length
+              ? chemical.signalWords
+              : (pubChem?.safety?.signalWords ?? []),
+            pictograms: chemical.pictograms?.length
+              ? chemical.pictograms
+              : (pubChem?.safety?.pictograms ?? []),
+          });
+        }
+        sendJson(response, 200, {
+          ...extracted,
+          provider: "stl-extractor",
+          chemicals,
+        });
+      } catch (error) {
+        sendError(response, Number(error?.statusCode || 400), error?.message || "Ne mogu izvući podatke iz STL dokumenta.");
       }
       return true;
     }

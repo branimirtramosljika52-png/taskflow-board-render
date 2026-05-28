@@ -5218,6 +5218,71 @@ function normalizeRiskAssessmentRiskTemplates(items = []) {
   })).filter((item) => item.name && (item.riskRows.length > 0 || item.ppeItems.length > 0));
 }
 
+function normalizeRiskAssessmentChemicalTextList(value = []) {
+  const source = Array.isArray(value)
+    ? value
+    : String(value ?? "").split(/\n+|;+/);
+  return Array.from(new Set(source
+    .map((entry) => normalizeText(entry))
+    .filter(Boolean)))
+    .slice(0, 80);
+}
+
+function normalizeRiskAssessmentChemicals(items = []) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items.map((item, index) => ({
+    id: normalizeId(item?.id) || crypto.randomUUID(),
+    order: Number.isFinite(Number(item?.order)) ? Number(item.order) : index + 1,
+    name: normalizeText(item?.name),
+    casNumber: normalizeText(item?.casNumber ?? item?.cas),
+    ecNumber: normalizeText(item?.ecNumber ?? item?.ec),
+    reachNumber: normalizeText(item?.reachNumber ?? item?.reach),
+    formula: normalizeText(item?.formula ?? item?.molecularFormula),
+    molecularWeight: normalizeText(item?.molecularWeight),
+    iupacName: normalizeText(item?.iupacName),
+    supplier: normalizeText(item?.supplier),
+    recommendedUse: normalizeText(item?.recommendedUse),
+    classification: normalizeText(item?.classification),
+    signalWords: normalizeRiskAssessmentChemicalTextList(item?.signalWords),
+    pictograms: normalizeRiskAssessmentChemicalTextList(item?.pictograms),
+    hazardStatements: normalizeRiskAssessmentChemicalTextList(item?.hazardStatements),
+    precautionaryStatements: normalizeRiskAssessmentChemicalTextList(item?.precautionaryStatements),
+    exposureLimits: normalizeText(item?.exposureLimits),
+    ppe: normalizeText(item?.ppe),
+    storage: normalizeText(item?.storage),
+    firstAid: normalizeText(item?.firstAid),
+    fireMeasures: normalizeText(item?.fireMeasures),
+    spillMeasures: normalizeText(item?.spillMeasures),
+    source: normalizeText(item?.source),
+    sourceFileName: normalizeText(item?.sourceFileName),
+    pubChemCid: normalizeText(item?.pubChemCid ?? item?.cid),
+    pubChemUrl: normalizeText(item?.pubChemUrl),
+    pubChemName: normalizeText(item?.pubChemName),
+    note: normalizeText(item?.note),
+    usedInJobIds: Array.from(new Set(
+      (Array.isArray(item?.usedInJobIds) ? item.usedInJobIds : [])
+        .map((value) => normalizeId(value))
+        .filter(Boolean),
+    )),
+  })).filter((item) => (
+    item.name
+    || item.casNumber
+    || item.ecNumber
+    || item.reachNumber
+    || item.formula
+    || item.classification
+    || item.hazardStatements.length > 0
+    || item.precautionaryStatements.length > 0
+    || item.exposureLimits
+    || item.ppe
+    || item.storage
+    || item.note
+  ));
+}
+
 function normalizeJobStatus(value, fallback = "draft") {
   const normalized = normalizeText(value).toLowerCase();
   return JOB_STATUS_OPTIONS.some((option) => option.value === normalized) ? normalized : fallback;
@@ -5593,6 +5658,9 @@ function hydrateRiskAssessmentCore({
     riskTemplates: hasOwn(input, "riskTemplates")
       ? normalizeRiskAssessmentRiskTemplates(input.riskTemplates)
       : normalizeRiskAssessmentRiskTemplates(current?.riskTemplates ?? []),
+    chemicals: hasOwn(input, "chemicals")
+      ? normalizeRiskAssessmentChemicals(input.chemicals)
+      : normalizeRiskAssessmentChemicals(current?.chemicals ?? []),
     attachments: hasOwn(input, "attachments")
       ? normalizeAttachmentDocuments(input.attachments)
       : normalizeAttachmentDocuments(current?.attachments ?? []),
@@ -8563,6 +8631,31 @@ export function filterRiskAssessments(
         entry.jobHint,
         ...(entry.riskRows ?? []).map((risk) => risk.hazard),
         ...(entry.ppeItems ?? []).map((ppe) => ppe.name),
+      ]),
+      ...(item.chemicals ?? []).flatMap((entry) => [
+        entry.name,
+        entry.casNumber,
+        entry.ecNumber,
+        entry.reachNumber,
+        entry.formula,
+        entry.iupacName,
+        entry.supplier,
+        entry.recommendedUse,
+        entry.classification,
+        ...(entry.signalWords ?? []),
+        ...(entry.pictograms ?? []),
+        ...(entry.hazardStatements ?? []),
+        ...(entry.precautionaryStatements ?? []),
+        entry.exposureLimits,
+        entry.ppe,
+        entry.storage,
+        entry.firstAid,
+        entry.fireMeasures,
+        entry.spillMeasures,
+        entry.source,
+        entry.sourceFileName,
+        entry.pubChemCid,
+        entry.note,
       ]),
     ].join(" ").toLowerCase();
 

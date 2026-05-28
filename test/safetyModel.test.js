@@ -378,6 +378,50 @@ test("risk assessments keep organization units and PPE details", () => {
   assert.equal(filterRiskAssessments([assessment], { query: "20345" }).length, 1);
 });
 
+test("risk assessments keep chemical registry data from PubChem and STL", () => {
+  const state = buildState();
+  const assessment = createRiskAssessment(
+    {
+      organizationId: "org-1",
+      companyId: "company-1",
+      locationId: "location-1",
+      title: "Procjena rizika - kemikalije",
+      chemicals: [
+        {
+          name: "Ethanol",
+          casNumber: "64-17-5",
+          formula: "C2H6O",
+          molecularWeight: "46.07",
+          signalWords: ["Danger"],
+          hazardStatements: ["H225: Highly flammable liquid and vapor"],
+          precautionaryStatements: ["P210: Keep away from heat"],
+          ppe: "Zastitne naocale i rukavice.",
+          source: "PubChem",
+          pubChemCid: "702",
+          pubChemUrl: "https://pubchem.ncbi.nlm.nih.gov/compound/702",
+        },
+        {
+          name: "Alcolan XL",
+          casNumber: "67-63-0",
+          classification: "Flam. Liq. 2",
+          hazardStatements: "H225\nH319",
+          source: "STL",
+          sourceFileName: "alcolan-stl.pdf",
+        },
+      ],
+    },
+    state,
+    () => "risk-chemicals-1",
+    () => "2026-05-02T08:00:00.000Z",
+  );
+
+  assert.equal(assessment.chemicals.length, 2);
+  assert.equal(assessment.chemicals[0].pubChemCid, "702");
+  assert.deepEqual(assessment.chemicals[1].hazardStatements, ["H225", "H319"]);
+  assert.equal(filterRiskAssessments([assessment], { query: "64-17-5" }).length, 1);
+  assert.equal(filterRiskAssessments([assessment], { query: "alcolan" }).length, 1);
+});
+
 test("risk assessments link only matching risk assessment work orders and keep employer data", () => {
   const state = {
     ...buildState(),

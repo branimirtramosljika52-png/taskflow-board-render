@@ -14,8 +14,8 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/assets/ozo-tailwind.css?v=20260528-risk-word-v1" />
-    <link rel="stylesheet" href="/styles.css?v=20260528-risk-word-v1" />
+    <link rel="stylesheet" href="/assets/ozo-tailwind.css?v=20260528-risk-chemicals-v2" />
+    <link rel="stylesheet" href="/styles.css?v=20260528-risk-chemicals-v2" />
     <link rel="stylesheet" href="/src/styles/variables.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/reset.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/builder.css?v=20260509e" />
@@ -5106,13 +5106,79 @@
                     </label>
                   </section>
 
-                  <section id="risk-assessment-block-overview" class="risk-assessment-editor-section risk-assessment-subpanel" data-risk-assessment-block="overview">
+                  <section id="risk-assessment-block-chemicals" class="risk-assessment-editor-section risk-assessment-subpanel" data-risk-assessment-block="chemicals">
                     <div class="risk-assessment-editor-section-head">
                       <div>
                         <span>10</span>
+                        <strong>Kemikalije i STL</strong>
+                      </div>
+                      <p>Registar kemikalija za procjenu rizika, PubChem podaci i automatsko izvlačenje iz sigurnosno-tehničkih listova.</p>
+                    </div>
+                    <div class="risk-assessment-chemical-workspace">
+                      <section class="risk-assessment-chemical-panel">
+                        <div>
+                          <span class="section-kicker">PubChem</span>
+                          <strong>Dodaj kemikaliju iz baze</strong>
+                          <p class="inline-help">Pretraži naziv, CAS broj ili trgovački naziv. Sustav povlači CID, formulu, CAS, GHS oznake i sigurnosne izjave.</p>
+                        </div>
+                        <div class="risk-assessment-chemical-search">
+                          <input id="risk-assessment-chemical-search" type="search" placeholder="npr. ethanol, acetone, 64-17-5..." />
+                          <button id="risk-assessment-chemical-search-button" type="button" class="primary-button">Pretraži</button>
+                        </div>
+                        <p id="risk-assessment-chemical-search-message" class="inline-help" aria-live="polite"></p>
+                        <div id="risk-assessment-chemical-results" class="risk-assessment-chemical-results"></div>
+                      </section>
+
+                      <section class="risk-assessment-chemical-panel is-import">
+                        <div>
+                          <span class="section-kicker">STL AI ekstrakcija</span>
+                          <strong>Učitaj PDF ili DOCX sigurnosno-tehnički list</strong>
+                          <p class="inline-help">Iz dokumenta se izvlače naziv, CAS, klasifikacija, H/P izjave, OZO, skladištenje, prva pomoć i mjere kod izlijevanja.</p>
+                        </div>
+                        <div class="risk-assessment-chemical-upload">
+                          <input id="risk-assessment-chemical-stl-file" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+                          <button id="risk-assessment-chemical-stl-button" type="button" class="secondary-button">Izvuci iz STL-a</button>
+                        </div>
+                        <p id="risk-assessment-chemical-import-message" class="inline-help" aria-live="polite"></p>
+                      </section>
+                    </div>
+
+                    <section class="risk-assessment-chemical-panel is-official">
+                      <div>
+                        <span class="section-kicker">Službena baza tvari</span>
+                        <strong>Narodne novine 91/2018: GVI, KGVI i BGV</strong>
+                        <p class="inline-help">Pretraži službeni popis tvari iz pravilnika i dodaj tvar u procjenu s graničnim vrijednostima izloženosti.</p>
+                      </div>
+                      <div class="risk-assessment-official-substance-toolbar">
+                        <input id="risk-assessment-official-substance-search" type="search" placeholder="Naziv tvari, CAS, EC, direktiva..." />
+                        <select id="risk-assessment-official-substance-type">
+                          <option value="all">Sve vrijednosti</option>
+                          <option value="gvi">GVI / KGVI</option>
+                          <option value="bgv">BGV</option>
+                        </select>
+                        <a class="ghost-button" href="https://narodne-novine.nn.hr/clanci/sluzbeni/2018_10_91_1774.html" target="_blank" rel="noopener noreferrer">NN 91/2018</a>
+                      </div>
+                      <p id="risk-assessment-official-substances-summary" class="inline-help" aria-live="polite"></p>
+                      <div id="risk-assessment-official-substances" class="risk-assessment-official-substances"></div>
+                    </section>
+
+                    <div class="offers-items-head">
+                      <div>
+                        <strong>Popis kemikalija u procjeni</strong>
+                        <p class="inline-help">Svaku stavku možeš ručno urediti, povezati s poslovima i koristiti kao izvor za radne tvari i kemijske štetnosti.</p>
+                      </div>
+                      <button id="risk-assessment-add-chemical" type="button" class="ghost-button">+ Kemikalija</button>
+                    </div>
+                    <div id="risk-assessment-chemicals" class="risk-assessment-chemical-list"></div>
+                  </section>
+
+                  <section id="risk-assessment-block-overview" class="risk-assessment-editor-section risk-assessment-subpanel" data-risk-assessment-block="overview">
+                    <div class="risk-assessment-editor-section-head">
+                      <div>
+                        <span>11</span>
                         <strong>Pregled</strong>
                       </div>
-                      <p>Sažetak procjene po jedinicama, poslovima, rizicima, mjerama i OZO.</p>
+                      <p>Sažetak procjene po jedinicama, poslovima, rizicima, mjerama, kemikalijama i OZO.</p>
                     </div>
                     <div id="risk-assessment-overview" class="risk-assessment-overview"></div>
                   </section>
@@ -5135,6 +5201,7 @@
                 <button type="button" data-risk-assessment-jump="measures"><strong>Mjere</strong><span>Plan mjera</span></button>
                 <button type="button" data-risk-assessment-jump="structure"><strong>Struktura</strong><span>Jedinice</span></button>
                 <button type="button" data-risk-assessment-jump="jobs"><strong>Poslovi</strong><span>Rizici i ARMOR</span></button>
+                <button type="button" data-risk-assessment-jump="chemicals"><strong>Kemikalije</strong><span>STL i GHS</span></button>
                 <button type="button" data-risk-assessment-jump="overview"><strong>Pregled</strong><span>Sažetak</span></button>
               </nav>
             </section>
@@ -9285,7 +9352,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260528-risk-word-v1"></script>
-    <script type="module" src="/assets/ozo-panel.js?v=20260528-risk-word-v1"></script>
+    <script type="module" src="/src/main.js?v=20260528-risk-chemicals-v2"></script>
+    <script type="module" src="/assets/ozo-panel.js?v=20260528-risk-chemicals-v2"></script>
   </body>
 </html>
