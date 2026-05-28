@@ -66001,21 +66001,21 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
   overflow: hidden;
   position: absolute;
   right: 0;
-  top: 106px;
+  top: 96px;
   z-index: 1;
 }
 
 .ozo-ai-worker-image {
   display: block;
   height: 100%;
-  object-fit: cover;
-  object-position: center bottom;
+  object-fit: contain;
+  object-position: center top;
   width: 100%;
 }
 
 .ozo-worker-image-sheen {
   background:
-    linear-gradient(180deg, rgba(248, 250, 252, 0.84) 0%, rgba(248, 250, 252, 0.08) 19%, rgba(15, 23, 42, 0.08) 100%),
+    linear-gradient(180deg, rgba(248, 250, 252, 0.18) 0%, rgba(248, 250, 252, 0.02) 28%, rgba(15, 23, 42, 0.06) 100%),
     linear-gradient(90deg, rgba(255, 255, 255, 0.42), transparent 24%, transparent 76%, rgba(255, 255, 255, 0.32));
   inset: 0;
   pointer-events: none;
@@ -66205,7 +66205,7 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
   }
 
   .ozo-worker-image-wrap {
-    top: 126px;
+    top: 116px;
   }
 
   .ozo-equipment-card.is-compact {

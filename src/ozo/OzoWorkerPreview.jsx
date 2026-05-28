@@ -1,7 +1,7 @@
 import React, { useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
-const ASSET_VERSION = "20260527-ozo-ai-v1";
+const ASSET_VERSION = "20260528-ozo-ai-v2";
 
 const PART_LABELS = {
   head: "Glava",
@@ -70,6 +70,7 @@ const WORKER_VARIANTS = [
   { id: "helmet-glasses-vest", label: "Kacige, naočale i prsluci", file: "helmet-glasses-vest.png", gear: ["helmet", "glasses", "vest"] },
   { id: "helmet-glasses-vest-gloves", label: "Kacige, naočale, prsluci i rukavice", file: "helmet-glasses-vest-gloves.png", gear: ["helmet", "glasses", "vest", "gloves"] },
   { id: "helmet-glasses-earmuffs-vest-gloves", label: "Kacige, naočale, antifoni, prsluci i rukavice", file: "helmet-glasses-earmuffs-vest-gloves.png", gear: ["helmet", "glasses", "earmuffs", "vest", "gloves"] },
+  { id: "vest-earmuffs", label: "Prsluci i antifoni", file: "vest-earmuffs.png", gear: ["vest", "earmuffs"] },
   { id: "vest-gloves", label: "Prsluci i rukavice", file: "vest-gloves.png", gear: ["vest", "gloves"] },
   { id: "helmet-face-shield-respirator", label: "Kacige, viziri i respiratori", file: "helmet-face-shield-respirator.png", gear: ["helmet", "faceShield", "respirator"] },
   { id: "full", label: "Kompletna OZO", file: "full.png", gear: ["helmet", "glasses", "earmuffs", "respirator", "vest", "gloves"] },
