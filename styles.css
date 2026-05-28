@@ -55166,6 +55166,7 @@ button.work-order-editor-section-head:focus-visible {
   line-height: 1.6;
   outline: none;
   overflow: auto;
+  word-break: normal;
 }
 
 .risk-assessment-rich-surface:focus {
@@ -55179,14 +55180,31 @@ button.work-order-editor-section-head:focus-visible {
   font-weight: 700;
 }
 
+.risk-assessment-rich-surface:empty::before {
+  content: "Upisi tekst, zalijepi iz Worda ili umetni sliku...";
+}
+
+.risk-assessment-section-grid .risk-assessment-rich-surface {
+  min-height: 220px;
+}
+
+.risk-assessment-rich-surface h1,
+.risk-assessment-rich-surface h2,
 .risk-assessment-rich-surface h3,
 .risk-assessment-rich-surface h4,
+.risk-assessment-rich-surface h5,
+.risk-assessment-rich-surface h6,
 .risk-assessment-rich-surface p,
+.risk-assessment-rich-surface div,
 .risk-assessment-rich-surface ul,
-.risk-assessment-rich-surface ol {
+.risk-assessment-rich-surface ol,
+.risk-assessment-rich-surface blockquote,
+.risk-assessment-rich-surface pre {
   margin: 0 0 10px;
 }
 
+.risk-assessment-rich-surface h1,
+.risk-assessment-rich-surface h2,
 .risk-assessment-rich-surface h3 {
   color: #172033;
   font-size: 1.08rem;
@@ -55200,6 +55218,46 @@ button.work-order-editor-section-head:focus-visible {
 .risk-assessment-rich-surface ul,
 .risk-assessment-rich-surface ol {
   padding-left: 22px;
+}
+
+.risk-assessment-rich-surface blockquote {
+  padding: 10px 12px;
+  border-left: 4px solid rgba(37, 99, 235, 0.25);
+  background: rgba(239, 246, 255, 0.7);
+}
+
+.risk-assessment-rich-surface pre {
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f8fafc;
+  white-space: pre-wrap;
+}
+
+.risk-assessment-rich-surface table {
+  width: auto;
+  max-width: 100%;
+  margin: 12px 0;
+  border-collapse: collapse;
+  background: #ffffff;
+}
+
+.risk-assessment-rich-surface th,
+.risk-assessment-rich-surface td {
+  min-width: 44px;
+  padding: 7px 9px;
+  border: 1px solid rgba(148, 163, 184, 0.72);
+  vertical-align: top;
+}
+
+.risk-assessment-rich-surface th {
+  background: rgba(241, 245, 249, 0.9);
+  font-weight: 800;
+}
+
+.risk-assessment-rich-surface a {
+  color: #1d4ed8;
+  text-decoration: underline;
 }
 
 .risk-assessment-rich-surface img {

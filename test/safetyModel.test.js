@@ -413,6 +413,9 @@ test("risk assessments link only matching risk assessment work orders and keep e
       teamLeadUserIds: ["user-1"],
       collaborators: "Marko Novak",
       collaboratorUserIds: ["user-2"],
+      intro: `<p style="text-align:center;color:#111827">Uvod <strong>procjene</strong></p><script>alert(1)</script>`,
+      generalData: `<table style="border-collapse:collapse"><tr><td style="border:1pt solid #000">Objekt</td></tr></table>`,
+      conclusion: "Zaključak u običnom tekstu",
       employerData: {
         fullName: "Acme d.o.o.",
         address: "Zagreb",
@@ -435,6 +438,11 @@ test("risk assessments link only matching risk assessment work orders and keep e
   assert.deepEqual(assessment.teamLeadUserIds, ["user-1"]);
   assert.deepEqual(assessment.collaboratorUserIds, ["user-2"]);
   assert.equal(assessment.employerData.nkdActivity, "20.11 Proizvodnja industrijskih plinova");
+  assert.match(assessment.intro, /style="text-align:center;color:#111827"/);
+  assert.match(assessment.generalData, /<table style="border-collapse:collapse">/);
+  assert.match(assessment.conclusion, /<p>Zaključak u običnom tekstu<\/p>/);
+  assert.doesNotMatch(assessment.intro, /script|alert/i);
+  assert.equal(filterRiskAssessments([assessment], { query: "Objekt" }).length, 1);
 
   assert.throws(() => createRiskAssessment(
     {

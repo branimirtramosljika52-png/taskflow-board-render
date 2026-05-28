@@ -1,4 +1,5 @@
 import { normalizeMeasurementCellFormat } from "./measurementFormatting.js";
+import { normalizeRichTextHtml, richTextHtmlToPlainText } from "./utils/richText.js";
 
 const MEASUREMENT_COLUMN_MIN_WIDTH = 32;
 
@@ -638,6 +639,14 @@ function hasOwn(input, key) {
 
 function normalizeText(value) {
   return String(value ?? "").trim();
+}
+
+function normalizeRiskAssessmentRichText(value) {
+  return normalizeRichTextHtml(normalizeText(value));
+}
+
+function normalizeRiskAssessmentRichTextSearch(value) {
+  return richTextHtmlToPlainText(value) || normalizeText(value);
 }
 
 function requireText(value, label) {
@@ -5560,17 +5569,17 @@ function hydrateRiskAssessmentCore({
         oib: company.oib ?? "",
         headquarters: company.headquarters ?? "",
       }),
-    intro: hasOwn(input, "intro") ? normalizeText(input.intro) : current?.intro ?? "",
+    intro: hasOwn(input, "intro") ? normalizeRiskAssessmentRichText(input.intro) : current?.intro ?? "",
     workProcessDescription: hasOwn(input, "workProcessDescription")
-      ? normalizeText(input.workProcessDescription)
+      ? normalizeRiskAssessmentRichText(input.workProcessDescription)
       : current?.workProcessDescription ?? "",
-    generalData: hasOwn(input, "generalData") ? normalizeText(input.generalData) : current?.generalData ?? "",
-    computerWorkplaces: hasOwn(input, "computerWorkplaces") ? normalizeText(input.computerWorkplaces) : current?.computerWorkplaces ?? "",
-    basicRules: hasOwn(input, "basicRules") ? normalizeText(input.basicRules) : current?.basicRules ?? "",
-    specialRules: hasOwn(input, "specialRules") ? normalizeText(input.specialRules) : current?.specialRules ?? "",
-    omissionsBasic: hasOwn(input, "omissionsBasic") ? normalizeText(input.omissionsBasic) : current?.omissionsBasic ?? "",
-    omissionsSpecial: hasOwn(input, "omissionsSpecial") ? normalizeText(input.omissionsSpecial) : current?.omissionsSpecial ?? "",
-    conclusion: hasOwn(input, "conclusion") ? normalizeText(input.conclusion) : current?.conclusion ?? "",
+    generalData: hasOwn(input, "generalData") ? normalizeRiskAssessmentRichText(input.generalData) : current?.generalData ?? "",
+    computerWorkplaces: hasOwn(input, "computerWorkplaces") ? normalizeRiskAssessmentRichText(input.computerWorkplaces) : current?.computerWorkplaces ?? "",
+    basicRules: hasOwn(input, "basicRules") ? normalizeRiskAssessmentRichText(input.basicRules) : current?.basicRules ?? "",
+    specialRules: hasOwn(input, "specialRules") ? normalizeRiskAssessmentRichText(input.specialRules) : current?.specialRules ?? "",
+    omissionsBasic: hasOwn(input, "omissionsBasic") ? normalizeRiskAssessmentRichText(input.omissionsBasic) : current?.omissionsBasic ?? "",
+    omissionsSpecial: hasOwn(input, "omissionsSpecial") ? normalizeRiskAssessmentRichText(input.omissionsSpecial) : current?.omissionsSpecial ?? "",
+    conclusion: hasOwn(input, "conclusion") ? normalizeRiskAssessmentRichText(input.conclusion) : current?.conclusion ?? "",
     clientNote: hasOwn(input, "clientNote") ? normalizeText(input.clientNote) : current?.clientNote ?? "",
     measures: hasOwn(input, "measures")
       ? normalizeRiskAssessmentMeasureItems(input.measures)
@@ -8473,8 +8482,15 @@ export function filterRiskAssessments(
       ...(item.teamLeadUserIds ?? []),
       ...(item.collaboratorUserIds ?? []),
       ...Object.values(item.employerData ?? {}),
-      item.intro,
-      item.workProcessDescription,
+      normalizeRiskAssessmentRichTextSearch(item.intro),
+      normalizeRiskAssessmentRichTextSearch(item.workProcessDescription),
+      normalizeRiskAssessmentRichTextSearch(item.generalData),
+      normalizeRiskAssessmentRichTextSearch(item.computerWorkplaces),
+      normalizeRiskAssessmentRichTextSearch(item.basicRules),
+      normalizeRiskAssessmentRichTextSearch(item.specialRules),
+      normalizeRiskAssessmentRichTextSearch(item.omissionsBasic),
+      normalizeRiskAssessmentRichTextSearch(item.omissionsSpecial),
+      normalizeRiskAssessmentRichTextSearch(item.conclusion),
       item.clientNote,
       ...(item.measures ?? []).flatMap((entry) => [entry.measure, entry.responsiblePerson, entry.deadline]),
       ...(item.organizationUnits ?? []).flatMap((entry) => [

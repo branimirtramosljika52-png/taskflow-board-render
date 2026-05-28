@@ -14,8 +14,8 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/assets/ozo-tailwind.css?v=20260528-risk-basic-v1" />
-    <link rel="stylesheet" href="/styles.css?v=20260528-risk-basic-v1" />
+    <link rel="stylesheet" href="/assets/ozo-tailwind.css?v=20260528-risk-word-v1" />
+    <link rel="stylesheet" href="/styles.css?v=20260528-risk-word-v1" />
     <link rel="stylesheet" href="/src/styles/variables.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/reset.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/builder.css?v=20260509e" />
@@ -4826,7 +4826,7 @@
                           <input type="file" accept="image/*" data-risk-rich-file="intro" hidden />
                         </div>
                         <div id="risk-assessment-intro-editor" class="risk-assessment-rich-surface" data-risk-rich-editor="intro" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Uvod"></div>
-                        <textarea id="risk-assessment-intro" class="risk-assessment-rich-value" hidden></textarea>
+                        <textarea id="risk-assessment-intro" class="risk-assessment-rich-value" data-risk-rich-storage="intro" hidden></textarea>
                       </div>
                     </label>
                   </section>
@@ -4855,7 +4855,7 @@
                           <input type="file" accept="image/*" data-risk-rich-file="process" hidden />
                         </div>
                         <div id="risk-assessment-work-process-editor" class="risk-assessment-rich-surface" data-risk-rich-editor="process" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Opis radnog procesa"></div>
-                        <textarea id="risk-assessment-work-process" class="risk-assessment-rich-value" hidden></textarea>
+                        <textarea id="risk-assessment-work-process" class="risk-assessment-rich-value" data-risk-rich-storage="process" hidden></textarea>
                       </div>
                     </label>
                   </section>
@@ -4869,13 +4869,43 @@
                       <p>Opći uvjeti rada i posebna napomena za radna mjesta s računalom.</p>
                     </div>
                     <div class="risk-assessment-section-grid">
-                      <label class="field">
+                      <label class="field field-span-full risk-assessment-rich-field">
                         <span>Opći podaci</span>
-                        <textarea id="risk-assessment-general-data" rows="4"></textarea>
+                        <div class="risk-assessment-rich-editor">
+                          <div class="risk-assessment-rich-toolbar" data-risk-rich-toolbar="generalData" aria-label="Alati za uređivanje općih podataka">
+                            <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h3">Naslov</button>
+                            <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h4">Podnaslov</button>
+                            <button type="button" data-risk-rich-command="bold"><strong>B</strong></button>
+                            <button type="button" data-risk-rich-command="italic"><em>I</em></button>
+                            <button type="button" data-risk-rich-command="underline"><u>U</u></button>
+                            <button type="button" data-risk-rich-command="insertUnorderedList">• Lista</button>
+                            <button type="button" data-risk-rich-command="insertOrderedList">1. Lista</button>
+                            <button type="button" data-risk-rich-image="file">Slika</button>
+                            <button type="button" data-risk-rich-image="url">URL slike</button>
+                            <input type="file" accept="image/*" data-risk-rich-file="generalData" hidden />
+                          </div>
+                          <div id="risk-assessment-general-data-editor" class="risk-assessment-rich-surface" data-risk-rich-editor="generalData" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Opći podaci"></div>
+                          <textarea id="risk-assessment-general-data" class="risk-assessment-rich-value" data-risk-rich-storage="generalData" hidden></textarea>
+                        </div>
                       </label>
-                      <label class="field">
+                      <label class="field field-span-full risk-assessment-rich-field">
                         <span>Radna mjesta s računalom</span>
-                        <textarea id="risk-assessment-computer-workplaces" rows="4"></textarea>
+                        <div class="risk-assessment-rich-editor">
+                          <div class="risk-assessment-rich-toolbar" data-risk-rich-toolbar="computerWorkplaces" aria-label="Alati za uređivanje radnih mjesta s računalom">
+                            <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h3">Naslov</button>
+                            <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h4">Podnaslov</button>
+                            <button type="button" data-risk-rich-command="bold"><strong>B</strong></button>
+                            <button type="button" data-risk-rich-command="italic"><em>I</em></button>
+                            <button type="button" data-risk-rich-command="underline"><u>U</u></button>
+                            <button type="button" data-risk-rich-command="insertUnorderedList">• Lista</button>
+                            <button type="button" data-risk-rich-command="insertOrderedList">1. Lista</button>
+                            <button type="button" data-risk-rich-image="file">Slika</button>
+                            <button type="button" data-risk-rich-image="url">URL slike</button>
+                            <input type="file" accept="image/*" data-risk-rich-file="computerWorkplaces" hidden />
+                          </div>
+                          <div id="risk-assessment-computer-workplaces-editor" class="risk-assessment-rich-surface" data-risk-rich-editor="computerWorkplaces" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Radna mjesta s računalom"></div>
+                          <textarea id="risk-assessment-computer-workplaces" class="risk-assessment-rich-value" data-risk-rich-storage="computerWorkplaces" hidden></textarea>
+                        </div>
                       </label>
                     </div>
                   </section>
@@ -4889,13 +4919,43 @@
                       <p>Osnovna i posebna pravila koja se primjenjuju na poslove i radni prostor.</p>
                     </div>
                     <div class="risk-assessment-section-grid">
-                      <label class="field">
+                      <label class="field field-span-full risk-assessment-rich-field">
                         <span>Osnovna pravila ZNR</span>
-                        <textarea id="risk-assessment-basic-rules" rows="4"></textarea>
+                        <div class="risk-assessment-rich-editor">
+                          <div class="risk-assessment-rich-toolbar" data-risk-rich-toolbar="basicRules" aria-label="Alati za uređivanje osnovnih pravila">
+                            <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h3">Naslov</button>
+                            <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h4">Podnaslov</button>
+                            <button type="button" data-risk-rich-command="bold"><strong>B</strong></button>
+                            <button type="button" data-risk-rich-command="italic"><em>I</em></button>
+                            <button type="button" data-risk-rich-command="underline"><u>U</u></button>
+                            <button type="button" data-risk-rich-command="insertUnorderedList">• Lista</button>
+                            <button type="button" data-risk-rich-command="insertOrderedList">1. Lista</button>
+                            <button type="button" data-risk-rich-image="file">Slika</button>
+                            <button type="button" data-risk-rich-image="url">URL slike</button>
+                            <input type="file" accept="image/*" data-risk-rich-file="basicRules" hidden />
+                          </div>
+                          <div id="risk-assessment-basic-rules-editor" class="risk-assessment-rich-surface" data-risk-rich-editor="basicRules" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Osnovna pravila ZNR"></div>
+                          <textarea id="risk-assessment-basic-rules" class="risk-assessment-rich-value" data-risk-rich-storage="basicRules" hidden></textarea>
+                        </div>
                       </label>
-                      <label class="field">
+                      <label class="field field-span-full risk-assessment-rich-field">
                         <span>Posebna pravila ZNR</span>
-                        <textarea id="risk-assessment-special-rules" rows="4"></textarea>
+                        <div class="risk-assessment-rich-editor">
+                          <div class="risk-assessment-rich-toolbar" data-risk-rich-toolbar="specialRules" aria-label="Alati za uređivanje posebnih pravila">
+                            <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h3">Naslov</button>
+                            <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h4">Podnaslov</button>
+                            <button type="button" data-risk-rich-command="bold"><strong>B</strong></button>
+                            <button type="button" data-risk-rich-command="italic"><em>I</em></button>
+                            <button type="button" data-risk-rich-command="underline"><u>U</u></button>
+                            <button type="button" data-risk-rich-command="insertUnorderedList">• Lista</button>
+                            <button type="button" data-risk-rich-command="insertOrderedList">1. Lista</button>
+                            <button type="button" data-risk-rich-image="file">Slika</button>
+                            <button type="button" data-risk-rich-image="url">URL slike</button>
+                            <input type="file" accept="image/*" data-risk-rich-file="specialRules" hidden />
+                          </div>
+                          <div id="risk-assessment-special-rules-editor" class="risk-assessment-rich-surface" data-risk-rich-editor="specialRules" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Posebna pravila ZNR"></div>
+                          <textarea id="risk-assessment-special-rules" class="risk-assessment-rich-value" data-risk-rich-storage="specialRules" hidden></textarea>
+                        </div>
                       </label>
                     </div>
                   </section>
@@ -4909,17 +4969,62 @@
                       <p>Uočeni propusti osnovnih i posebnih pravila te završni zaključak procjene.</p>
                     </div>
                     <div class="risk-assessment-section-grid">
-                      <label class="field">
+                      <label class="field field-span-full risk-assessment-rich-field">
                         <span>Propusti - osnovna pravila</span>
-                        <textarea id="risk-assessment-omissions-basic" rows="4"></textarea>
+                        <div class="risk-assessment-rich-editor">
+                          <div class="risk-assessment-rich-toolbar" data-risk-rich-toolbar="omissionsBasic" aria-label="Alati za uređivanje propusta osnovnih pravila">
+                            <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h3">Naslov</button>
+                            <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h4">Podnaslov</button>
+                            <button type="button" data-risk-rich-command="bold"><strong>B</strong></button>
+                            <button type="button" data-risk-rich-command="italic"><em>I</em></button>
+                            <button type="button" data-risk-rich-command="underline"><u>U</u></button>
+                            <button type="button" data-risk-rich-command="insertUnorderedList">• Lista</button>
+                            <button type="button" data-risk-rich-command="insertOrderedList">1. Lista</button>
+                            <button type="button" data-risk-rich-image="file">Slika</button>
+                            <button type="button" data-risk-rich-image="url">URL slike</button>
+                            <input type="file" accept="image/*" data-risk-rich-file="omissionsBasic" hidden />
+                          </div>
+                          <div id="risk-assessment-omissions-basic-editor" class="risk-assessment-rich-surface" data-risk-rich-editor="omissionsBasic" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Propusti osnovna pravila"></div>
+                          <textarea id="risk-assessment-omissions-basic" class="risk-assessment-rich-value" data-risk-rich-storage="omissionsBasic" hidden></textarea>
+                        </div>
                       </label>
-                      <label class="field">
+                      <label class="field field-span-full risk-assessment-rich-field">
                         <span>Propusti - posebna pravila</span>
-                        <textarea id="risk-assessment-omissions-special" rows="4"></textarea>
+                        <div class="risk-assessment-rich-editor">
+                          <div class="risk-assessment-rich-toolbar" data-risk-rich-toolbar="omissionsSpecial" aria-label="Alati za uređivanje propusta posebnih pravila">
+                            <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h3">Naslov</button>
+                            <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h4">Podnaslov</button>
+                            <button type="button" data-risk-rich-command="bold"><strong>B</strong></button>
+                            <button type="button" data-risk-rich-command="italic"><em>I</em></button>
+                            <button type="button" data-risk-rich-command="underline"><u>U</u></button>
+                            <button type="button" data-risk-rich-command="insertUnorderedList">• Lista</button>
+                            <button type="button" data-risk-rich-command="insertOrderedList">1. Lista</button>
+                            <button type="button" data-risk-rich-image="file">Slika</button>
+                            <button type="button" data-risk-rich-image="url">URL slike</button>
+                            <input type="file" accept="image/*" data-risk-rich-file="omissionsSpecial" hidden />
+                          </div>
+                          <div id="risk-assessment-omissions-special-editor" class="risk-assessment-rich-surface" data-risk-rich-editor="omissionsSpecial" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Propusti posebna pravila"></div>
+                          <textarea id="risk-assessment-omissions-special" class="risk-assessment-rich-value" data-risk-rich-storage="omissionsSpecial" hidden></textarea>
+                        </div>
                       </label>
-                      <label class="field field-span-full">
+                      <label class="field field-span-full risk-assessment-rich-field">
                         <span>Zaključak</span>
-                        <textarea id="risk-assessment-conclusion" rows="4"></textarea>
+                        <div class="risk-assessment-rich-editor">
+                          <div class="risk-assessment-rich-toolbar" data-risk-rich-toolbar="conclusion" aria-label="Alati za uređivanje zaključka">
+                            <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h3">Naslov</button>
+                            <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h4">Podnaslov</button>
+                            <button type="button" data-risk-rich-command="bold"><strong>B</strong></button>
+                            <button type="button" data-risk-rich-command="italic"><em>I</em></button>
+                            <button type="button" data-risk-rich-command="underline"><u>U</u></button>
+                            <button type="button" data-risk-rich-command="insertUnorderedList">• Lista</button>
+                            <button type="button" data-risk-rich-command="insertOrderedList">1. Lista</button>
+                            <button type="button" data-risk-rich-image="file">Slika</button>
+                            <button type="button" data-risk-rich-image="url">URL slike</button>
+                            <input type="file" accept="image/*" data-risk-rich-file="conclusion" hidden />
+                          </div>
+                          <div id="risk-assessment-conclusion-editor" class="risk-assessment-rich-surface" data-risk-rich-editor="conclusion" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Zaključak"></div>
+                          <textarea id="risk-assessment-conclusion" class="risk-assessment-rich-value" data-risk-rich-storage="conclusion" hidden></textarea>
+                        </div>
                       </label>
                     </div>
                   </section>
@@ -9180,7 +9285,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260528-risk-basic-v1"></script>
-    <script type="module" src="/assets/ozo-panel.js?v=20260528-risk-basic-v1"></script>
+    <script type="module" src="/src/main.js?v=20260528-risk-word-v1"></script>
+    <script type="module" src="/assets/ozo-panel.js?v=20260528-risk-word-v1"></script>
   </body>
 </html>
