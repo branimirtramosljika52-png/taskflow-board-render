@@ -378,6 +378,76 @@ test("risk assessments keep organization units and PPE details", () => {
   assert.equal(filterRiskAssessments([assessment], { query: "20345" }).length, 1);
 });
 
+test("risk assessments link only matching risk assessment work orders and keep employer data", () => {
+  const state = {
+    ...buildState(),
+    users: [
+      { id: "user-1", fullName: "Ana Horvat", isActive: true, organizationId: "org-1" },
+      { id: "user-2", fullName: "Marko Novak", isActive: true, organizationId: "org-1" },
+    ],
+    workOrders: [
+      {
+        id: "work-order-1",
+        companyId: "company-1",
+        locationId: "location-1",
+        workOrderNumber: "RN-2026-001",
+        serviceItems: [{ name: "Procjena rizika" }],
+      },
+      {
+        id: "work-order-2",
+        companyId: "company-1",
+        workOrderNumber: "RN-2026-002",
+        serviceItems: [{ name: "Ispitivanje elektroinstalacija" }],
+      },
+    ],
+  };
+
+  const assessment = createRiskAssessment(
+    {
+      organizationId: "org-1",
+      companyId: "company-1",
+      locationId: "location-1",
+      workOrderId: "work-order-1",
+      assessmentDate: "28.05.2026",
+      teamLead: "Ana Horvat",
+      teamLeadUserIds: ["user-1"],
+      collaborators: "Marko Novak",
+      collaboratorUserIds: ["user-2"],
+      employerData: {
+        fullName: "Acme d.o.o.",
+        address: "Zagreb",
+        mbs: "081234567",
+        oib: "12345678901",
+        nkdActivity: "20.11 Proizvodnja industrijskih plinova",
+        employeeCount: "9 radnika",
+        headquarters: "Zagreb",
+        detachedLocations: "Pogon Jankomir",
+      },
+    },
+    state,
+    () => "risk-1",
+    () => "2026-05-28T08:00:00.000Z",
+  );
+
+  assert.equal(assessment.workOrderId, "work-order-1");
+  assert.equal(assessment.workOrderNumber, "RN-2026-001");
+  assert.equal(assessment.assessmentDate, "2026-05-28");
+  assert.deepEqual(assessment.teamLeadUserIds, ["user-1"]);
+  assert.deepEqual(assessment.collaboratorUserIds, ["user-2"]);
+  assert.equal(assessment.employerData.nkdActivity, "20.11 Proizvodnja industrijskih plinova");
+
+  assert.throws(() => createRiskAssessment(
+    {
+      organizationId: "org-1",
+      companyId: "company-1",
+      workOrderId: "work-order-2",
+    },
+    state,
+    () => "risk-2",
+    () => "2026-05-28T08:00:00.000Z",
+  ), /procjene rizika/);
+});
+
 test("createCompany blocks duplicate OIB values", () => {
   const existing = [
     createCompany(

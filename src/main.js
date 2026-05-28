@@ -6008,6 +6008,7 @@ const riskAssessmentForm = document.querySelector("#risk-assessment-form");
 const riskAssessmentIdInput = document.querySelector("#risk-assessment-id");
 const riskAssessmentCompanyInput = document.querySelector("#risk-assessment-company");
 const riskAssessmentLocationInput = document.querySelector("#risk-assessment-location");
+const riskAssessmentWorkOrderInput = document.querySelector("#risk-assessment-work-order");
 const riskAssessmentNumberInput = document.querySelector("#risk-assessment-number");
 const riskAssessmentStatusInput = document.querySelector("#risk-assessment-status");
 const riskAssessmentTitleInput = document.querySelector("#risk-assessment-title");
@@ -6015,6 +6016,14 @@ const riskAssessmentDateInput = document.querySelector("#risk-assessment-date");
 const riskAssessmentRevisionDateInput = document.querySelector("#risk-assessment-revision-date");
 const riskAssessmentTeamLeadInput = document.querySelector("#risk-assessment-team-lead");
 const riskAssessmentCollaboratorsInput = document.querySelector("#risk-assessment-collaborators");
+const riskAssessmentEmployerCompanyNameInput = document.querySelector("#risk-assessment-employer-company-name");
+const riskAssessmentEmployerAddressInput = document.querySelector("#risk-assessment-employer-address");
+const riskAssessmentEmployerMbsInput = document.querySelector("#risk-assessment-employer-mbs");
+const riskAssessmentEmployerOibInput = document.querySelector("#risk-assessment-employer-oib");
+const riskAssessmentEmployerNkdInput = document.querySelector("#risk-assessment-employer-nkd");
+const riskAssessmentEmployerEmployeesInput = document.querySelector("#risk-assessment-employer-employees");
+const riskAssessmentEmployerHeadquartersInput = document.querySelector("#risk-assessment-employer-headquarters");
+const riskAssessmentEmployerDetachedLocationsInput = document.querySelector("#risk-assessment-employer-detached-locations");
 const riskAssessmentIntroInput = document.querySelector("#risk-assessment-intro");
 const riskAssessmentIntroEditor = document.querySelector('[data-risk-rich-editor="intro"]');
 const riskAssessmentWorkProcessInput = document.querySelector("#risk-assessment-work-process");
@@ -115749,7 +115758,35 @@ riskAssessmentDock?.addEventListener("click", (event) => {
 });
 
 riskAssessmentCompanyInput?.addEventListener("change", () => {
-  replaceSelectOptions(riskAssessmentLocationInput, buildRiskAssessmentLocationOptions(riskAssessmentCompanyInput.value), "");
+  const companyId = riskAssessmentCompanyInput.value || "";
+  replaceSelectOptions(riskAssessmentLocationInput, buildRiskAssessmentLocationOptions(companyId), "");
+  replaceSelectOptions(riskAssessmentWorkOrderInput, buildRiskAssessmentWorkOrderOptions(companyId), "");
+  if (riskAssessmentTitleInput) {
+    riskAssessmentTitleInput.value = buildRiskAssessmentGeneratedTitle(companyId);
+  }
+  setRiskAssessmentEmployerData(buildRiskAssessmentDefaultEmployerData(companyId));
+});
+
+riskAssessmentWorkOrderInput?.addEventListener("change", () => {
+  const linkedWorkOrder = getRiskAssessmentWorkOrderById(riskAssessmentWorkOrderInput.value || "");
+  if (!linkedWorkOrder) {
+    return;
+  }
+  if (linkedWorkOrder.locationId && riskAssessmentLocationInput) {
+    replaceSelectOptions(
+      riskAssessmentLocationInput,
+      buildRiskAssessmentLocationOptions(riskAssessmentCompanyInput?.value || linkedWorkOrder.companyId || ""),
+      linkedWorkOrder.locationId,
+    );
+  }
+});
+
+riskAssessmentDateInput?.addEventListener("blur", () => {
+  if (!riskAssessmentDateInput) {
+    return;
+  }
+  const normalizedDate = normalizeDateInputValue(riskAssessmentDateInput.value);
+  riskAssessmentDateInput.value = normalizedDate ? formatDateInputDisplayValue(normalizedDate) : riskAssessmentDateInput.value.trim();
 });
 
 riskAssessmentAddMeasureButton?.addEventListener("click", () => {
@@ -119176,6 +119213,283 @@ function buildRiskAssessmentLocationOptions(companyId = "") {
   return [{ value: "", label: "Sve lokacije / nije vezano" }, ...options];
 }
 
+function normalizeRiskAssessmentMatchText(value = "") {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
+}
+
+function isRiskAssessmentServiceText(value = "") {
+  const normalized = normalizeRiskAssessmentMatchText(value);
+  return normalized.includes("procjena rizika")
+    || normalized.includes("procjene rizika")
+    || normalized.includes("risk assessment")
+    || normalized.includes("risk-assessment");
+}
+
+function getRiskAssessmentServiceCatalogItem(serviceItem = {}) {
+  const serviceId = String(serviceItem?.serviceId || serviceItem?.serviceCatalogId || "").trim();
+  if (!serviceId) {
+    return null;
+  }
+  return (state.serviceCatalog ?? []).find((item) => String(item.id) === serviceId) ?? null;
+}
+
+function isRiskAssessmentWorkOrderServiceItem(serviceItem = {}) {
+  const catalogItem = getRiskAssessmentServiceCatalogItem(serviceItem);
+  return isRiskAssessmentServiceText([
+    serviceItem?.name,
+    serviceItem?.serviceCode,
+    serviceItem?.description,
+    catalogItem?.name,
+    catalogItem?.serviceCode,
+    catalogItem?.description,
+    catalogItem?.note,
+  ].filter(Boolean).join(" "));
+}
+
+function workOrderHasRiskAssessmentService(workOrder = {}) {
+  const serviceItems = getWorkOrderServiceItems(workOrder);
+  return serviceItems.some((item) => isRiskAssessmentWorkOrderServiceItem(item))
+    || isRiskAssessmentServiceText([
+      workOrder?.serviceLine,
+      workOrder?.description,
+      workOrder?.tagText,
+    ].filter(Boolean).join(" "));
+}
+
+function getRiskAssessmentWorkOrderById(workOrderId = "") {
+  const normalizedId = String(workOrderId || "").trim();
+  if (!normalizedId) {
+    return null;
+  }
+  return (state.workOrders ?? []).find((item) => String(item.id) === normalizedId) ?? null;
+}
+
+function buildRiskAssessmentWorkOrderLabel(workOrder = {}) {
+  const serviceNames = getWorkOrderServiceItems(workOrder)
+    .filter((item) => isRiskAssessmentWorkOrderServiceItem(item))
+    .map((item) => item.name || item.serviceCode)
+    .filter(Boolean);
+  const services = serviceNames.length ? serviceNames.join(", ") : "Procjena rizika";
+  return [
+    workOrder.workOrderNumber ? `RN ${workOrder.workOrderNumber}` : `RN ${workOrder.id || ""}`.trim(),
+    workOrder.locationName || "Sve lokacije",
+    services,
+  ].filter(Boolean).join(" · ");
+}
+
+function buildRiskAssessmentWorkOrderOptions(companyId = "", selectedValue = "") {
+  const normalizedCompanyId = String(companyId || "").trim();
+  const selectedId = String(selectedValue || "").trim();
+  const options = (state.workOrders ?? [])
+    .filter((workOrder) => {
+      if (!normalizedCompanyId) {
+        return false;
+      }
+      return String(workOrder.companyId || "") === normalizedCompanyId
+        && workOrderHasRiskAssessmentService(workOrder);
+    })
+    .sort((left, right) => String(right.openedDate || "").localeCompare(String(left.openedDate || "")))
+    .map((workOrder) => ({
+      value: String(workOrder.id),
+      label: buildRiskAssessmentWorkOrderLabel(workOrder),
+    }));
+
+  if (selectedId && !options.some((option) => String(option.value) === selectedId)) {
+    const selectedWorkOrder = getRiskAssessmentWorkOrderById(selectedId);
+    if (selectedWorkOrder) {
+      options.unshift({
+        value: String(selectedWorkOrder.id),
+        label: `${buildRiskAssessmentWorkOrderLabel(selectedWorkOrder)} · spremljena veza`,
+      });
+    }
+  }
+
+  const emptyLabel = normalizedCompanyId
+    ? "Bez veze RN"
+    : "Prvo odaberi tvrtku";
+  return [{ value: "", label: emptyLabel }, ...options];
+}
+
+function replaceMultiSelectOptions(select, options = [], selectedValues = []) {
+  if (!(select instanceof HTMLSelectElement)) {
+    return;
+  }
+  const selectedSet = new Set((Array.isArray(selectedValues) ? selectedValues : [selectedValues])
+    .map((value) => String(value ?? ""))
+    .filter(Boolean));
+  select.replaceChildren(...options.map((option) => {
+    const element = createOption(option.value, option.label, "", option.data);
+    element.selected = selectedSet.has(String(option.value ?? ""));
+    return element;
+  }));
+}
+
+function splitRiskAssessmentPersonLabels(value = "") {
+  return String(value || "")
+    .split(/[,\n;]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function getRiskAssessmentPersonOptions(selectedUserIds = [], legacyLabels = []) {
+  const selectedIdSet = new Set((selectedUserIds ?? []).map((value) => String(value || "").trim()).filter(Boolean));
+  const userById = new Map();
+  [...getActiveOrganizationUsers(), ...(state.users ?? [])].forEach((user) => {
+    const userId = String(user?.id || "").trim();
+    if (userId && (!userById.has(userId) || selectedIdSet.has(userId))) {
+      userById.set(userId, user);
+    }
+  });
+
+  const selectedValues = [];
+  const options = [...userById.values()]
+    .sort((left, right) => getUserDisplayLabel(left).localeCompare(getUserDisplayLabel(right), "hr", { sensitivity: "base" }))
+    .map((user) => {
+      const value = String(user.id || "").trim();
+      const label = getUserDisplayLabel(user);
+      if (selectedIdSet.has(value)) {
+        selectedValues.push(value);
+      }
+      return { value, label, data: { label } };
+    });
+
+  const knownLabels = new Set(options.map((option) => normalizeLooseName(option.data.label)).filter(Boolean));
+  legacyLabels.forEach((label, index) => {
+    const normalizedLabel = normalizeLooseName(label);
+    if (!normalizedLabel || knownLabels.has(normalizedLabel)) {
+      return;
+    }
+    const value = `legacy:${index}:${label}`;
+    options.push({ value, label: `${label} (ručno)`, data: { label } });
+    selectedValues.push(value);
+  });
+
+  if (!options.length) {
+    options.push({ value: "", label: "Nema aktivnih korisnika", data: { label: "" } });
+  }
+
+  return { options, selectedValues };
+}
+
+function setRiskAssessmentPeopleSelect(select, userIds = [], legacyText = "") {
+  const resolvedUserIds = new Set((Array.isArray(userIds) ? userIds : [])
+    .map((value) => String(value || "").trim())
+    .filter(Boolean));
+  const legacyLabels = [];
+  splitRiskAssessmentPersonLabels(legacyText).forEach((label) => {
+    const matchedUser = findUserForExecutor(label);
+    const matchedUserId = String(matchedUser?.id || "").trim();
+    if (matchedUserId) {
+      resolvedUserIds.add(matchedUserId);
+    } else {
+      legacyLabels.push(label);
+    }
+  });
+  const selection = getRiskAssessmentPersonOptions([...resolvedUserIds], legacyLabels);
+  replaceMultiSelectOptions(select, selection.options, selection.selectedValues);
+}
+
+function readRiskAssessmentPeopleSelection(select) {
+  const labels = [];
+  const userIds = [];
+  Array.from(select?.selectedOptions ?? []).forEach((option) => {
+    const value = String(option.value || "").trim();
+    const label = String(option.dataset.label || option.textContent || "").replace(/\s+\(ručno\)$/, "").trim();
+    if (!value || !label) {
+      return;
+    }
+    if (!value.startsWith("legacy:")) {
+      userIds.push(value);
+    }
+    labels.push(label);
+  });
+  return {
+    userIds: Array.from(new Set(userIds)),
+    labels: Array.from(new Set(labels)),
+  };
+}
+
+function getRiskAssessmentCompany(companyId = riskAssessmentCompanyInput?.value || "") {
+  const normalizedId = String(companyId || "").trim();
+  return (state.companies ?? []).find((company) => String(company.id) === normalizedId) ?? null;
+}
+
+function getRiskAssessmentCompanyLocations(companyId = riskAssessmentCompanyInput?.value || "") {
+  const normalizedId = String(companyId || "").trim();
+  return (state.locations ?? [])
+    .filter((location) => String(location.companyId) === normalizedId)
+    .sort((left, right) => String(left.name || "").localeCompare(String(right.name || ""), "hr", { sensitivity: "base" }));
+}
+
+function formatRiskAssessmentLocationLine(location = {}) {
+  return [location.name, location.region].filter(Boolean).join(", ");
+}
+
+function buildRiskAssessmentDefaultEmployerData(companyId = riskAssessmentCompanyInput?.value || "") {
+  const company = getRiskAssessmentCompany(companyId);
+  const companyLocations = getRiskAssessmentCompanyLocations(companyId);
+  const employeeLabel = company?.employeeSize && getCompanyEmployeeSizeLabel(company.employeeSize) !== "Nije definirano"
+    ? getCompanyEmployeeSizeLabel(company.employeeSize)
+    : "";
+  return {
+    fullName: company?.name || "",
+    address: company?.headquarters || "",
+    mbs: "",
+    oib: company?.oib || "",
+    nkdActivity: company?.industry || company?.activity || "",
+    employeeCount: employeeLabel,
+    headquarters: company?.headquarters || "",
+    detachedLocations: companyLocations.map(formatRiskAssessmentLocationLine).filter(Boolean).join("\n"),
+  };
+}
+
+function getRiskAssessmentEmployerDataInputs() {
+  return {
+    fullName: riskAssessmentEmployerCompanyNameInput,
+    address: riskAssessmentEmployerAddressInput,
+    mbs: riskAssessmentEmployerMbsInput,
+    oib: riskAssessmentEmployerOibInput,
+    nkdActivity: riskAssessmentEmployerNkdInput,
+    employeeCount: riskAssessmentEmployerEmployeesInput,
+    headquarters: riskAssessmentEmployerHeadquartersInput,
+    detachedLocations: riskAssessmentEmployerDetachedLocationsInput,
+  };
+}
+
+function setRiskAssessmentEmployerData(data = {}) {
+  const inputs = getRiskAssessmentEmployerDataInputs();
+  Object.entries(inputs).forEach(([key, input]) => {
+    if (input) {
+      input.value = data[key] || "";
+    }
+  });
+}
+
+function readRiskAssessmentEmployerData() {
+  const inputs = getRiskAssessmentEmployerDataInputs();
+  return Object.fromEntries(Object.entries(inputs).map(([key, input]) => [
+    key,
+    String(input?.value || "").trim(),
+  ]));
+}
+
+function buildRiskAssessmentEmployerDataForItem(item = {}) {
+  return {
+    ...buildRiskAssessmentDefaultEmployerData(item.companyId || riskAssessmentCompanyInput?.value || ""),
+    ...(item.employerData && typeof item.employerData === "object" ? item.employerData : {}),
+  };
+}
+
+function buildRiskAssessmentGeneratedTitle(companyId = riskAssessmentCompanyInput?.value || "") {
+  const company = getRiskAssessmentCompany(companyId);
+  return `Procjena rizika - ${company?.name || "tvrtka"}`;
+}
+
 function getRiskAssessmentEditorBlocks() {
   return Array.from(riskAssessmentForm?.querySelectorAll("[data-risk-assessment-block]") ?? []);
 }
@@ -119479,9 +119793,19 @@ function resetRiskAssessmentForm() {
   riskAssessmentRiskTemplateDrafts = [];
   replaceSelectOptions(riskAssessmentCompanyInput, buildRiskAssessmentCompanyOptions(false), "");
   replaceSelectOptions(riskAssessmentLocationInput, buildRiskAssessmentLocationOptions(""), "");
+  replaceSelectOptions(riskAssessmentWorkOrderInput, buildRiskAssessmentWorkOrderOptions(""), "");
   replaceSelectOptions(riskAssessmentStatusInput, RISK_ASSESSMENT_STATUS_OPTIONS, "draft");
+  setRiskAssessmentPeopleSelect(riskAssessmentTeamLeadInput, [], "");
+  setRiskAssessmentPeopleSelect(riskAssessmentCollaboratorsInput, [], "");
+  setRiskAssessmentEmployerData(buildRiskAssessmentDefaultEmployerData(""));
+  if (riskAssessmentTitleInput) {
+    riskAssessmentTitleInput.value = buildRiskAssessmentGeneratedTitle("");
+  }
+  if (riskAssessmentRevisionDateInput) {
+    riskAssessmentRevisionDateInput.value = "";
+  }
   if (riskAssessmentDateInput) {
-    riskAssessmentDateInput.value = new Date().toISOString().slice(0, 10);
+    riskAssessmentDateInput.value = formatDateInputDisplayValue(new Date().toISOString().slice(0, 10));
   }
   if (riskAssessmentNumberInput) {
     riskAssessmentNumberInput.value = "";
@@ -119513,14 +119837,16 @@ function hydrateRiskAssessmentForm(item = {}) {
   state.activeRiskAssessmentId = String(item.id || "");
   replaceSelectOptions(riskAssessmentCompanyInput, buildRiskAssessmentCompanyOptions(false), item.companyId || "");
   replaceSelectOptions(riskAssessmentLocationInput, buildRiskAssessmentLocationOptions(item.companyId || ""), item.locationId || "");
+  replaceSelectOptions(riskAssessmentWorkOrderInput, buildRiskAssessmentWorkOrderOptions(item.companyId || "", item.workOrderId || ""), item.workOrderId || "");
   replaceSelectOptions(riskAssessmentStatusInput, RISK_ASSESSMENT_STATUS_OPTIONS, item.status || "draft");
   riskAssessmentIdInput.value = item.id || "";
   riskAssessmentNumberInput.value = item.assessmentNumber || "";
-  riskAssessmentTitleInput.value = item.title || "";
-  riskAssessmentDateInput.value = item.assessmentDate || "";
-  riskAssessmentRevisionDateInput.value = item.revisionDate || "";
-  riskAssessmentTeamLeadInput.value = item.teamLead || "";
-  riskAssessmentCollaboratorsInput.value = item.collaborators || "";
+  riskAssessmentTitleInput.value = item.title || buildRiskAssessmentGeneratedTitle(item.companyId || "");
+  riskAssessmentDateInput.value = item.assessmentDate ? formatDateInputDisplayValue(item.assessmentDate) : "";
+  riskAssessmentRevisionDateInput.value = "";
+  setRiskAssessmentPeopleSelect(riskAssessmentTeamLeadInput, item.teamLeadUserIds ?? [], item.teamLead || "");
+  setRiskAssessmentPeopleSelect(riskAssessmentCollaboratorsInput, item.collaboratorUserIds ?? [], item.collaborators || "");
+  setRiskAssessmentEmployerData(buildRiskAssessmentEmployerDataForItem(item));
   setRiskAssessmentRichValue("intro", item.intro || "");
   setRiskAssessmentRichValue("process", item.workProcessDescription || "");
   riskAssessmentGeneralDataInput.value = item.generalData || "";
@@ -124321,17 +124647,25 @@ function buildRiskAssessmentPayload() {
     };
   }
   syncRiskAssessmentRichValues();
+  const leadSelection = readRiskAssessmentPeopleSelection(riskAssessmentTeamLeadInput);
+  const collaboratorSelection = readRiskAssessmentPeopleSelection(riskAssessmentCollaboratorsInput);
+  const companyId = riskAssessmentCompanyInput?.value || "";
+  const assessmentDate = normalizeDateInputValue(riskAssessmentDateInput?.value || "");
 
   return {
-    companyId: riskAssessmentCompanyInput?.value || "",
+    companyId,
     locationId: riskAssessmentLocationInput?.value || "",
+    workOrderId: riskAssessmentWorkOrderInput?.value || "",
     assessmentNumber: riskAssessmentNumberInput?.value || "",
     status: riskAssessmentStatusInput?.value || "draft",
-    title: riskAssessmentTitleInput?.value || "",
-    assessmentDate: riskAssessmentDateInput?.value || "",
-    revisionDate: riskAssessmentRevisionDateInput?.value || "",
-    teamLead: riskAssessmentTeamLeadInput?.value || "",
-    collaborators: riskAssessmentCollaboratorsInput?.value || "",
+    title: riskAssessmentTitleInput?.value || buildRiskAssessmentGeneratedTitle(companyId),
+    assessmentDate,
+    revisionDate: "",
+    teamLead: leadSelection.labels.join(", "),
+    teamLeadUserIds: leadSelection.userIds,
+    collaborators: collaboratorSelection.labels.join(", "),
+    collaboratorUserIds: collaboratorSelection.userIds,
+    employerData: readRiskAssessmentEmployerData(),
     intro: riskAssessmentIntroInput?.value || "",
     workProcessDescription: riskAssessmentWorkProcessInput?.value || "",
     generalData: riskAssessmentGeneralDataInput?.value || "",
@@ -124359,18 +124693,19 @@ function renderRiskAssessmentCard(item = {}) {
   const unitsCount = (item.organizationUnits ?? []).length;
   const ppeCount = (item.jobs ?? []).reduce((sum, job) => sum + (job.ppeItems ?? []).length, 0);
   const locationText = item.locationName || "Sve lokacije / nije vezano";
+  const workOrderText = item.workOrderNumber ? `RN ${item.workOrderNumber}` : "";
   card.innerHTML = `
     <div class="risk-assessment-card-main">
       <span class="section-kicker">${escapeHtml(status.label)}</span>
       <strong>${escapeHtml(item.assessmentNumber || "Bez broja")} · ${escapeHtml(item.title || "Procjena rizika")}</strong>
-      <span>${escapeHtml(item.companyName || "Tvrtka")} · ${escapeHtml(locationText)}</span>
+      <span>${escapeHtml([item.companyName || "Tvrtka", locationText, workOrderText].filter(Boolean).join(" · "))}</span>
     </div>
     <div class="risk-assessment-card-meta">
       <span class="soft-pill">${unitsCount} jedinica</span>
       <span class="soft-pill">${jobsCount} poslova</span>
       <span class="soft-pill">${ppeCount} OZO</span>
       <span class="soft-pill">${measuresOpen} mjera</span>
-      <span class="soft-pill">${escapeHtml(item.assessmentDate || "Bez datuma")}</span>
+      <span class="soft-pill">${escapeHtml(item.assessmentDate ? formatCompactDate(item.assessmentDate) : "Bez datuma")}</span>
     </div>
   `;
   card.addEventListener("click", () => hydrateRiskAssessmentForm(item));

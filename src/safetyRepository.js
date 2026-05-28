@@ -2013,6 +2013,8 @@ function mapRiskAssessmentEntry(row = {}, companiesById = new Map(), locationsBy
     locationName: location?.name ?? row.location_name ?? "",
     region: location?.region ?? "",
     coordinates: location?.coordinates ?? "",
+    workOrderId: dbString(row.work_order_id),
+    workOrderNumber: row.work_order_number ?? "",
     assessmentNumber: row.assessment_number ?? "",
     title: row.title ?? "",
     status: row.status ?? "draft",
@@ -2020,7 +2022,10 @@ function mapRiskAssessmentEntry(row = {}, companiesById = new Map(), locationsBy
     revisionDate: normalizeDateOnly(row.revision_date),
     assessmentType: row.assessment_type ?? "Procjena rizika",
     teamLead: row.team_lead ?? "",
+    teamLeadUserIds: parseJsonArray(row.team_lead_user_ids_json).map((value) => dbString(value)).filter(Boolean),
     collaborators: row.collaborators ?? "",
+    collaboratorUserIds: parseJsonArray(row.collaborator_user_ids_json).map((value) => dbString(value)).filter(Boolean),
+    employerData: parseJsonObject(row.employer_data_json),
     intro: row.intro_text ?? "",
     workProcessDescription: row.work_process_description ?? "",
     generalData: row.general_data ?? "",
@@ -3733,8 +3738,10 @@ async function fetchSnapshotFromConnection(connection) {
   });
 
   const [riskAssessmentRows] = await connection.query(`
-    SELECT id, organization_id, company_id, location_id, assessment_number, title, status,
-           assessment_date, revision_date, assessment_type, team_lead, collaborators,
+    SELECT id, organization_id, company_id, location_id, work_order_id, work_order_number,
+           assessment_number, title, status,
+           assessment_date, revision_date, assessment_type, team_lead, team_lead_user_ids_json,
+           collaborators, collaborator_user_ids_json, employer_data_json,
            intro_text, work_process_description, general_data, computer_workplaces,
            basic_rules, special_rules, omissions_basic, omissions_special, conclusion_text,
            client_note, measures_json, organization_units_json, jobs_json, risk_templates_json, attachments_json, comments_json,
@@ -4750,6 +4757,9 @@ export class InMemorySafetyRepository {
       })),
       riskAssessments: this.snapshot.riskAssessments.map((item) => ({
         ...item,
+        teamLeadUserIds: [...(item.teamLeadUserIds ?? [])],
+        collaboratorUserIds: [...(item.collaboratorUserIds ?? [])],
+        employerData: { ...(item.employerData ?? {}) },
         measures: (item.measures ?? []).map((entry) => ({ ...entry })),
         jobs: (item.jobs ?? []).map((entry) => ({
           ...entry,
@@ -7242,6 +7252,8 @@ export class MySqlSafetyRepository {
         organization_id INT NOT NULL,
         company_id INT NOT NULL,
         location_id INT NULL,
+        work_order_id INT NULL,
+        work_order_number VARCHAR(80) NOT NULL DEFAULT '',
         assessment_number VARCHAR(80) NOT NULL,
         title VARCHAR(220) NOT NULL,
         status VARCHAR(24) NOT NULL DEFAULT 'draft',
@@ -7249,7 +7261,10 @@ export class MySqlSafetyRepository {
         revision_date DATE NULL,
         assessment_type VARCHAR(120) NOT NULL DEFAULT 'Procjena rizika',
         team_lead VARCHAR(180) NOT NULL DEFAULT '',
+        team_lead_user_ids_json LONGTEXT NULL,
         collaborators TEXT NOT NULL,
+        collaborator_user_ids_json LONGTEXT NULL,
+        employer_data_json LONGTEXT NULL,
         intro_text LONGTEXT NULL,
         work_process_description LONGTEXT NULL,
         general_data LONGTEXT NULL,
@@ -7273,6 +7288,7 @@ export class MySqlSafetyRepository {
         UNIQUE KEY uniq_web_risk_assessments_org_number (organization_id, assessment_number),
         INDEX idx_web_risk_assessments_company (company_id),
         INDEX idx_web_risk_assessments_location (location_id),
+        INDEX idx_web_risk_assessments_work_order (work_order_id),
         INDEX idx_web_risk_assessments_status (organization_id, status)
       )
     `);
@@ -7859,6 +7875,11 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_safety_authorizations", "linked_service_catalog_ids_json", "LONGTEXT NULL AFTER linked_template_ids_json");
     await ensureColumnExists(this.pool, "web_risk_assessments", "organization_units_json", "LONGTEXT NULL AFTER measures_json");
     await ensureColumnExists(this.pool, "web_risk_assessments", "risk_templates_json", "LONGTEXT NULL AFTER jobs_json");
+    await ensureColumnExists(this.pool, "web_risk_assessments", "work_order_id", "INT NULL AFTER location_id");
+    await ensureColumnExists(this.pool, "web_risk_assessments", "work_order_number", "VARCHAR(80) NOT NULL DEFAULT '' AFTER work_order_id");
+    await ensureColumnExists(this.pool, "web_risk_assessments", "team_lead_user_ids_json", "LONGTEXT NULL AFTER team_lead");
+    await ensureColumnExists(this.pool, "web_risk_assessments", "collaborator_user_ids_json", "LONGTEXT NULL AFTER collaborators");
+    await ensureColumnExists(this.pool, "web_risk_assessments", "employer_data_json", "LONGTEXT NULL AFTER collaborator_user_ids_json");
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS web_document_records (
         id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -10540,17 +10561,20 @@ export class MySqlSafetyRepository {
       const [result] = await connection.query(
         `
           INSERT INTO web_risk_assessments
-            (organization_id, company_id, location_id, assessment_number, title, status, assessment_date,
-             revision_date, assessment_type, team_lead, collaborators, intro_text, work_process_description,
+            (organization_id, company_id, location_id, work_order_id, work_order_number, assessment_number, title, status, assessment_date,
+             revision_date, assessment_type, team_lead, team_lead_user_ids_json, collaborators, collaborator_user_ids_json,
+             employer_data_json, intro_text, work_process_description,
              general_data, computer_workplaces, basic_rules, special_rules, omissions_basic, omissions_special,
              conclusion_text, client_note, measures_json, organization_units_json, jobs_json, risk_templates_json, attachments_json, comments_json,
              created_by_user_id, created_by_label)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
           Number(draft.companyId),
           parseNullableInteger(draft.locationId),
+          parseNullableInteger(draft.workOrderId),
+          draft.workOrderNumber,
           draft.assessmentNumber,
           draft.title,
           draft.status,
@@ -10558,7 +10582,10 @@ export class MySqlSafetyRepository {
           draft.revisionDate,
           draft.assessmentType,
           draft.teamLead,
+          JSON.stringify(draft.teamLeadUserIds ?? []),
           draft.collaborators,
+          JSON.stringify(draft.collaboratorUserIds ?? []),
+          JSON.stringify(draft.employerData ?? {}),
           draft.intro,
           draft.workProcessDescription,
           draft.generalData,
@@ -10624,9 +10651,9 @@ export class MySqlSafetyRepository {
       await connection.query(
         `
           UPDATE web_risk_assessments
-          SET company_id = ?, location_id = ?, assessment_number = ?, title = ?, status = ?, assessment_date = ?,
-              revision_date = ?, assessment_type = ?, team_lead = ?, collaborators = ?, intro_text = ?,
-              work_process_description = ?, general_data = ?, computer_workplaces = ?, basic_rules = ?,
+          SET company_id = ?, location_id = ?, work_order_id = ?, work_order_number = ?, assessment_number = ?, title = ?, status = ?, assessment_date = ?,
+              revision_date = ?, assessment_type = ?, team_lead = ?, team_lead_user_ids_json = ?, collaborators = ?,
+              collaborator_user_ids_json = ?, employer_data_json = ?, intro_text = ?, work_process_description = ?, general_data = ?, computer_workplaces = ?, basic_rules = ?,
               special_rules = ?, omissions_basic = ?, omissions_special = ?, conclusion_text = ?,
               client_note = ?, measures_json = ?, organization_units_json = ?, jobs_json = ?, risk_templates_json = ?, attachments_json = ?, comments_json = ?
           WHERE id = ?
@@ -10634,6 +10661,8 @@ export class MySqlSafetyRepository {
         [
           Number(next.companyId),
           parseNullableInteger(next.locationId),
+          parseNullableInteger(next.workOrderId),
+          next.workOrderNumber,
           next.assessmentNumber,
           next.title,
           next.status,
@@ -10641,7 +10670,10 @@ export class MySqlSafetyRepository {
           next.revisionDate,
           next.assessmentType,
           next.teamLead,
+          JSON.stringify(next.teamLeadUserIds ?? []),
           next.collaborators,
+          JSON.stringify(next.collaboratorUserIds ?? []),
+          JSON.stringify(next.employerData ?? {}),
           next.intro,
           next.workProcessDescription,
           next.generalData,

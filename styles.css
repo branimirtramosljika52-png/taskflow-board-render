@@ -54890,6 +54890,7 @@ button.work-order-editor-section-head:focus-visible {
 #risk-assessment-editor-backdrop.offer-editor-backdrop {
   background: rgba(17, 21, 31, 0.18);
   backdrop-filter: none;
+  z-index: 2180;
 }
 
 .risk-assessment-editor-panel.is-modal-open,
@@ -54899,7 +54900,7 @@ button.work-order-editor-section-head:focus-visible {
   right: 14px;
   bottom: 14px;
   left: 14px;
-  z-index: 150;
+  z-index: 2190;
   width: auto;
   max-width: none;
   overflow: hidden;
@@ -55023,6 +55024,92 @@ button.work-order-editor-section-head:focus-visible {
   font-weight: 740;
   line-height: 1.45;
   text-align: right;
+}
+
+.risk-assessment-basic-grid {
+  align-items: start;
+}
+
+.risk-assessment-basic-grid .field small {
+  display: block;
+  margin-top: 6px;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 720;
+  line-height: 1.35;
+}
+
+.risk-assessment-people-select {
+  min-height: 132px;
+  padding: 8px;
+}
+
+.risk-assessment-people-select option {
+  min-height: 30px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  color: #172033;
+  font-weight: 760;
+}
+
+.risk-assessment-people-select option:checked {
+  background: linear-gradient(135deg, #facc15, #fde68a);
+  color: #0f172a;
+}
+
+.risk-assessment-employer-card {
+  display: grid;
+  gap: 12px;
+  margin-top: 4px;
+  padding: 14px;
+  border: 1px solid rgba(226, 232, 240, 0.96);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.risk-assessment-employer-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+.risk-assessment-employer-head div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.risk-assessment-employer-head span {
+  color: #2563eb;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.risk-assessment-employer-head strong {
+  color: #0f172a;
+  font-size: 0.92rem;
+}
+
+.risk-assessment-employer-head p {
+  margin: 0;
+  max-width: 42ch;
+  color: #64748b;
+  font-size: 0.74rem;
+  font-weight: 720;
+  line-height: 1.45;
+  text-align: right;
+}
+
+.risk-assessment-employer-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
 }
 
 .risk-assessment-section-grid {
@@ -57542,6 +57629,7 @@ button.work-order-editor-section-head:focus-visible {
 @media (max-width: 980px) {
   .risk-assessment-filters,
   .risk-assessment-section-grid,
+  .risk-assessment-employer-grid,
   .risk-assessment-repeat-row.is-measure,
   .risk-assessment-job-head,
   .risk-assessment-org-card-head,
@@ -57575,6 +57663,20 @@ button.work-order-editor-section-head:focus-visible {
   .risk-assessment-editor-section-head p {
     max-width: none;
     text-align: left;
+  }
+
+  .risk-assessment-employer-head {
+    display: grid;
+  }
+
+  .risk-assessment-employer-head p {
+    max-width: none;
+    text-align: left;
+  }
+
+  .risk-assessment-basic-grid .field-span-2,
+  .risk-assessment-employer-grid .field-span-2 {
+    grid-column: 1 / -1;
   }
 
   .risk-assessment-job-tools {

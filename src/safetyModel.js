@@ -5387,6 +5387,79 @@ function normalizeRiskAssessmentComments(items = []) {
   })).filter((item) => item.message);
 }
 
+function normalizeRiskAssessmentEmployerData(input = {}, current = {}) {
+  const source = input && typeof input === "object" ? input : {};
+  const fallback = current && typeof current === "object" ? current : {};
+  return {
+    fullName: normalizeText(source.fullName ?? source.companyName ?? fallback.fullName).slice(0, 220),
+    address: normalizeText(source.address ?? fallback.address).slice(0, 220),
+    mbs: normalizeText(source.mbs ?? fallback.mbs).slice(0, 60),
+    oib: normalizeText(source.oib ?? fallback.oib).slice(0, 32),
+    nkdActivity: normalizeText(source.nkdActivity ?? source.nkd ?? fallback.nkdActivity).slice(0, 500),
+    employeeCount: normalizeText(source.employeeCount ?? source.employees ?? fallback.employeeCount).slice(0, 500),
+    headquarters: normalizeText(source.headquarters ?? fallback.headquarters).slice(0, 500),
+    detachedLocations: normalizeText(source.detachedLocations ?? source.locations ?? fallback.detachedLocations).slice(0, 2000),
+  };
+}
+
+function normalizeRiskAssessmentServiceMatchText(value = "") {
+  return normalizeText(value)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
+}
+
+function isRiskAssessmentServiceText(value = "") {
+  const normalized = normalizeRiskAssessmentServiceMatchText(value);
+  return normalized.includes("procjena rizika")
+    || normalized.includes("procjene rizika")
+    || normalized.includes("risk assessment")
+    || normalized.includes("risk-assessment");
+}
+
+function getRiskAssessmentServiceCatalogItem(state, serviceItem = {}) {
+  const serviceId = normalizeId(serviceItem?.serviceId ?? serviceItem?.serviceCatalogId);
+  if (!serviceId) {
+    return null;
+  }
+  return (state.serviceCatalog ?? []).find((item) => String(item.id) === String(serviceId)) ?? null;
+}
+
+function isRiskAssessmentWorkOrderServiceItem(state, serviceItem = {}) {
+  const catalogItem = getRiskAssessmentServiceCatalogItem(state, serviceItem);
+  return isRiskAssessmentServiceText([
+    serviceItem?.name,
+    serviceItem?.serviceCode,
+    serviceItem?.description,
+    catalogItem?.name,
+    catalogItem?.serviceCode,
+    catalogItem?.description,
+    catalogItem?.note,
+  ].filter(Boolean).join(" "));
+}
+
+function workOrderHasRiskAssessmentService(state, workOrder = {}) {
+  return getWorkOrderServiceItems(workOrder).some((item) => isRiskAssessmentWorkOrderServiceItem(state, item))
+    || isRiskAssessmentServiceText([
+      workOrder?.serviceLine,
+      workOrder?.description,
+      workOrder?.tagText,
+    ].filter(Boolean).join(" "));
+}
+
+function findRiskAssessmentWorkOrder(state, workOrderId = "", companyId = "") {
+  const normalizedWorkOrderId = normalizeId(workOrderId);
+  if (!normalizedWorkOrderId) {
+    return null;
+  }
+  const workOrder = (state.workOrders ?? []).find((item) => String(item.id) === normalizedWorkOrderId) ?? null;
+  if (!workOrder || (companyId && String(workOrder.companyId) !== String(companyId))) {
+    return null;
+  }
+  return workOrderHasRiskAssessmentService(state, workOrder) ? workOrder : null;
+}
+
 function nextRiskAssessmentNumber(items = [], timestamp = isoNow()) {
   const year = Number(String(timestamp).slice(0, 4)) || new Date().getFullYear();
   const prefix = `PR-${String(year)}`;
@@ -5433,6 +5506,16 @@ function hydrateRiskAssessmentCore({
       ? input.assessmentNumber
       : assessmentNumber || current?.assessmentNumber,
   ) || nextRiskAssessmentNumber(state.riskAssessments ?? [], timestamp);
+  const requestedWorkOrderId = hasOwn(input, "workOrderId")
+    ? normalizeId(input.workOrderId)
+    : normalizeId(current?.workOrderId);
+  const linkedWorkOrder = requestedWorkOrderId
+    ? findRiskAssessmentWorkOrder(state, requestedWorkOrderId, companyId)
+    : null;
+
+  if (requestedWorkOrderId && !linkedWorkOrder) {
+    throw new Error("Povezani RN mora pripadati tvrtki i imati uslugu procjene rizika.");
+  }
 
   return {
     id: current?.id ?? "",
@@ -5445,6 +5528,8 @@ function hydrateRiskAssessmentCore({
     locationName: location?.name ?? "",
     region: location?.region ?? "",
     coordinates: location?.coordinates ?? "",
+    workOrderId: linkedWorkOrder?.id ?? requestedWorkOrderId,
+    workOrderNumber: linkedWorkOrder?.workOrderNumber ?? (requestedWorkOrderId ? current?.workOrderNumber ?? "" : ""),
     assessmentNumber: resolvedNumber,
     title: hasOwn(input, "title")
       ? (normalizeText(input.title) || `Procjena rizika - ${company.name}`)
@@ -5460,7 +5545,21 @@ function hydrateRiskAssessmentCore({
       : normalizeOptionalDate(current?.revisionDate),
     assessmentType: hasOwn(input, "assessmentType") ? normalizeText(input.assessmentType) : current?.assessmentType ?? "Procjena rizika",
     teamLead: hasOwn(input, "teamLead") ? normalizeText(input.teamLead) : current?.teamLead ?? "",
+    teamLeadUserIds: hasOwn(input, "teamLeadUserIds")
+      ? normalizeIdList(input.teamLeadUserIds).slice(0, 24)
+      : normalizeIdList(current?.teamLeadUserIds ?? []).slice(0, 24),
     collaborators: hasOwn(input, "collaborators") ? normalizeText(input.collaborators) : current?.collaborators ?? "",
+    collaboratorUserIds: hasOwn(input, "collaboratorUserIds")
+      ? normalizeIdList(input.collaboratorUserIds).slice(0, 48)
+      : normalizeIdList(current?.collaboratorUserIds ?? []).slice(0, 48),
+    employerData: hasOwn(input, "employerData")
+      ? normalizeRiskAssessmentEmployerData(input.employerData, current?.employerData)
+      : normalizeRiskAssessmentEmployerData(current?.employerData ?? {
+        fullName: company.name ?? "",
+        address: company.headquarters ?? "",
+        oib: company.oib ?? "",
+        headquarters: company.headquarters ?? "",
+      }),
     intro: hasOwn(input, "intro") ? normalizeText(input.intro) : current?.intro ?? "",
     workProcessDescription: hasOwn(input, "workProcessDescription")
       ? normalizeText(input.workProcessDescription)
@@ -8368,8 +8467,12 @@ export function filterRiskAssessments(
       item.companyOib,
       item.headquarters,
       item.locationName,
+      item.workOrderNumber,
       item.teamLead,
       item.collaborators,
+      ...(item.teamLeadUserIds ?? []),
+      ...(item.collaboratorUserIds ?? []),
+      ...Object.values(item.employerData ?? {}),
       item.intro,
       item.workProcessDescription,
       item.clientNote,

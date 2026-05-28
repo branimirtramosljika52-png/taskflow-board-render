@@ -14,8 +14,8 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/assets/ozo-tailwind.css?v=20260528-ozo-ai-v2" />
-    <link rel="stylesheet" href="/styles.css?v=20260528-ozo-ai-v2" />
+    <link rel="stylesheet" href="/assets/ozo-tailwind.css?v=20260528-risk-basic-v1" />
+    <link rel="stylesheet" href="/styles.css?v=20260528-risk-basic-v1" />
     <link rel="stylesheet" href="/src/styles/variables.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/reset.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/builder.css?v=20260509e" />
@@ -4709,15 +4709,17 @@
               <div class="offers-editor-body risk-assessment-editor-body" tabindex="-1">
                 <form id="risk-assessment-form" class="entity-form">
                   <input id="risk-assessment-id" type="hidden" />
+                  <input id="risk-assessment-title" type="hidden" />
+                  <input id="risk-assessment-revision-date" type="hidden" />
                   <section id="risk-assessment-block-basic" class="risk-assessment-editor-section" data-risk-assessment-block="basic">
                     <div class="risk-assessment-editor-section-head">
                       <div>
                         <span>01</span>
                         <strong>Osnovni podaci</strong>
                       </div>
-                      <p>Tvrtka, lokacija, broj, status, naziv, datumi i osobe koje su izradile procjenu.</p>
+                      <p>Tvrtka, lokacija, veza RN, datumi i osobe koje su izradile procjenu.</p>
                     </div>
-                    <div class="form-grid offers-form-grid">
+                    <div class="form-grid offers-form-grid risk-assessment-basic-grid">
                       <label class="field">
                         <span>Tvrtka</span>
                         <select id="risk-assessment-company" required></select>
@@ -4725,6 +4727,11 @@
                       <label class="field">
                         <span>Lokacija</span>
                         <select id="risk-assessment-location"></select>
+                      </label>
+                      <label class="field field-span-2">
+                        <span>Veza RN</span>
+                        <select id="risk-assessment-work-order"></select>
+                        <small>Prikazuju se samo RN-ovi s uslugom procjene rizika za odabranu tvrtku.</small>
                       </label>
                       <label class="field">
                         <span>Broj procjene</span>
@@ -4734,26 +4741,64 @@
                         <span>Status</span>
                         <select id="risk-assessment-status"></select>
                       </label>
-                      <label class="field field-span-full">
-                        <span>Naziv</span>
-                        <input id="risk-assessment-title" type="text" maxlength="220" placeholder="Procjena rizika za tvrtku..." required />
-                      </label>
                       <label class="field">
                         <span>Datum procjene</span>
-                        <input id="risk-assessment-date" type="date" />
+                        <input id="risk-assessment-date" type="text" inputmode="numeric" placeholder="dd.mm.yyyy" />
                       </label>
                       <label class="field">
-                        <span>Revizija</span>
-                        <input id="risk-assessment-revision-date" type="date" />
-                      </label>
-                      <label class="field">
-                        <span>Voditelj izrade</span>
-                        <input id="risk-assessment-team-lead" type="text" maxlength="180" />
+                        <span>Voditelji izrade</span>
+                        <select id="risk-assessment-team-lead" class="risk-assessment-people-select" multiple size="5"></select>
+                        <small>Odabir iz People liste.</small>
                       </label>
                       <label class="field">
                         <span>Suradnici</span>
-                        <input id="risk-assessment-collaborators" type="text" placeholder="Ime, ime..." />
+                        <select id="risk-assessment-collaborators" class="risk-assessment-people-select" multiple size="5"></select>
+                        <small>Možeš odabrati više osoba.</small>
                       </label>
+                    </div>
+
+                    <div class="risk-assessment-employer-card">
+                      <div class="risk-assessment-employer-head">
+                        <div>
+                          <span>Opći podaci</span>
+                          <strong>Podaci o poslodavcu i objektima namijenjenim za rad</strong>
+                        </div>
+                        <p>Polja se popune iz tvrtke i lokacija, a možeš ih doraditi za dokument procjene.</p>
+                      </div>
+                      <div class="risk-assessment-employer-grid">
+                        <label class="field field-span-2">
+                          <span>Puni naziv tvrtke</span>
+                          <input id="risk-assessment-employer-company-name" type="text" maxlength="220" />
+                        </label>
+                        <label class="field field-span-2">
+                          <span>Adresa</span>
+                          <input id="risk-assessment-employer-address" type="text" maxlength="220" />
+                        </label>
+                        <label class="field">
+                          <span>MBS</span>
+                          <input id="risk-assessment-employer-mbs" type="text" maxlength="60" />
+                        </label>
+                        <label class="field">
+                          <span>OIB</span>
+                          <input id="risk-assessment-employer-oib" type="text" maxlength="32" />
+                        </label>
+                        <label class="field field-span-2">
+                          <span>NKD djelatnost</span>
+                          <input id="risk-assessment-employer-nkd" type="text" maxlength="500" placeholder="npr. 20.11 Proizvodnja industrijskih plinova" />
+                        </label>
+                        <label class="field field-span-2">
+                          <span>Broj zaposlenih</span>
+                          <input id="risk-assessment-employer-employees" type="text" maxlength="500" placeholder="npr. 9 radnika temeljem ugovora o radu (od toga 2 žene)" />
+                        </label>
+                        <label class="field field-span-2">
+                          <span>Sjedište tvrtke</span>
+                          <textarea id="risk-assessment-employer-headquarters" rows="3"></textarea>
+                        </label>
+                        <label class="field field-span-2">
+                          <span>Izdvojene lokacije</span>
+                          <textarea id="risk-assessment-employer-detached-locations" rows="3"></textarea>
+                        </label>
+                      </div>
                     </div>
                   </section>
 
@@ -9135,7 +9180,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260528-ozo-ai-v2"></script>
-    <script type="module" src="/assets/ozo-panel.js?v=20260528-ozo-ai-v2"></script>
+    <script type="module" src="/src/main.js?v=20260528-risk-basic-v1"></script>
+    <script type="module" src="/assets/ozo-panel.js?v=20260528-risk-basic-v1"></script>
   </body>
 </html>
