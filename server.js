@@ -46,6 +46,10 @@ import {
 } from "./src/documentExport.js";
 import { createLiveChatStore } from "./src/liveChatStore.js";
 import { sendMail } from "./src/mailer.js";
+import {
+  buildPubChemCompoundPayload,
+  buildPubChemLookupPayload,
+} from "./src/pubchemClient.js";
 import { createSafetyRepository } from "./src/safetyRepository.js";
 import { createTenantRepository } from "./src/tenantRepository.js";
 import {
@@ -7936,6 +7940,46 @@ async function handleApiRequest(request, response, url) {
         sendJson(response, 200, await buildOpenWeatherPayload(getOpenWeatherRequestedCities(url)));
       } catch (error) {
         sendError(response, Number(error?.statusCode || 502), error?.message || "Vrijeme trenutno nije dostupno.");
+      }
+      return true;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/pubchem/status") {
+      sendJson(response, 200, {
+        ok: true,
+        provider: "pubchem",
+        endpointReady: true,
+        api: "PUG-REST",
+        sourceUrl: "https://pubchem.ncbi.nlm.nih.gov/rest/pug",
+        docsUrl: "https://pubchem.ncbi.nlm.nih.gov/docs/pug-rest",
+      });
+      return true;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/pubchem/lookup") {
+      try {
+        const query = url.searchParams.get("q")
+          || url.searchParams.get("query")
+          || url.searchParams.get("name")
+          || "";
+        sendJson(response, 200, await buildPubChemLookupPayload(query, {
+          includeSafety: normalizeEnvBoolean(url.searchParams.get("safety"), false),
+          maxResults: Number(url.searchParams.get("limit") || 10),
+        }));
+      } catch (error) {
+        sendError(response, Number(error?.statusCode || 502), error?.message || "PubChem trenutno nije dostupan.");
+      }
+      return true;
+    }
+
+    const pubChemCompoundMatch = url.pathname.match(/^\/api\/pubchem\/compound\/(\d+)$/);
+    if (request.method === "GET" && pubChemCompoundMatch) {
+      try {
+        sendJson(response, 200, await buildPubChemCompoundPayload(pubChemCompoundMatch[1], {
+          includeSafety: normalizeEnvBoolean(url.searchParams.get("safety"), true),
+        }));
+      } catch (error) {
+        sendError(response, Number(error?.statusCode || 502), error?.message || "PubChem tvar trenutno nije dostupna.");
       }
       return true;
     }
