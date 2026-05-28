@@ -6058,6 +6058,7 @@ const riskAssessmentChemicalResults = document.querySelector("#risk-assessment-c
 const riskAssessmentChemicalStlFileInput = document.querySelector("#risk-assessment-chemical-stl-file");
 const riskAssessmentChemicalStlButton = document.querySelector("#risk-assessment-chemical-stl-button");
 const riskAssessmentChemicalImportMessage = document.querySelector("#risk-assessment-chemical-import-message");
+const riskAssessmentChemicalStlPreview = document.querySelector("#risk-assessment-chemical-stl-preview");
 const riskAssessmentOfficialSubstanceSearchInput = document.querySelector("#risk-assessment-official-substance-search");
 const riskAssessmentOfficialSubstanceTypeSelect = document.querySelector("#risk-assessment-official-substance-type");
 const riskAssessmentOfficialSubstancesSummary = document.querySelector("#risk-assessment-official-substances-summary");
@@ -6077,6 +6078,7 @@ let riskAssessmentChemicalDrafts = [];
 let riskAssessmentChemicalSearchResultsDraft = [];
 let riskAssessmentChemicalSearchBusy = false;
 let riskAssessmentChemicalImportBusy = false;
+let riskAssessmentLastStlImportSummary = null;
 let riskAssessmentOfficialSubstanceQuery = "";
 let riskAssessmentOfficialSubstanceType = "all";
 let riskAssessmentDraftAutosaveTimer = null;
@@ -119830,6 +119832,7 @@ function resetRiskAssessmentForm() {
   riskAssessmentRiskTemplateDrafts = [];
   riskAssessmentChemicalDrafts = [];
   riskAssessmentChemicalSearchResultsDraft = [];
+  riskAssessmentLastStlImportSummary = null;
   riskAssessmentOfficialSubstanceQuery = "";
   riskAssessmentOfficialSubstanceType = "all";
   if (riskAssessmentOfficialSubstanceSearchInput) {
@@ -119914,6 +119917,7 @@ function hydrateRiskAssessmentForm(item = {}) {
   }));
   riskAssessmentChemicalDrafts = (item.chemicals ?? []).map((entry) => createRiskAssessmentChemicalDraft(entry));
   riskAssessmentChemicalSearchResultsDraft = [];
+  riskAssessmentLastStlImportSummary = null;
   riskAssessmentOfficialSubstanceQuery = "";
   riskAssessmentOfficialSubstanceType = "all";
   if (riskAssessmentOfficialSubstanceSearchInput) {
@@ -120183,6 +120187,100 @@ function getRiskAssessmentChemicalSummary(chemical = {}) {
   ].filter(Boolean).join(" · ");
 }
 
+function getRiskAssessmentChemicalPreviewSnippet(value = "", maxLength = 130) {
+  const text = Array.isArray(value)
+    ? value.join("; ")
+    : String(value || "");
+  const compact = text.replace(/\s+/g, " ").trim();
+  if (!compact) {
+    return "";
+  }
+  return compact.length > maxLength ? `${compact.slice(0, maxLength - 1).trim()}...` : compact;
+}
+
+function buildRiskAssessmentStlImportSummary(fileName = "", chemicals = []) {
+  return {
+    fileName,
+    importedAt: new Date().toISOString(),
+    count: chemicals.length,
+    chemicals: chemicals.map((chemical) => ({
+      name: chemical.name || "Kemikalija iz STL-a",
+      casNumber: chemical.casNumber || "",
+      ecNumber: chemical.ecNumber || "",
+      classification: getRiskAssessmentChemicalPreviewSnippet(chemical.classification),
+      signalWords: normalizeRiskAssessmentChemicalTextList(chemical.signalWords).slice(0, 4),
+      pictograms: normalizeRiskAssessmentChemicalTextList(chemical.pictograms).slice(0, 6),
+      hazardStatements: normalizeRiskAssessmentChemicalTextList(chemical.hazardStatements).slice(0, 5),
+      precautionaryStatements: normalizeRiskAssessmentChemicalTextList(chemical.precautionaryStatements).slice(0, 4),
+      exposureLimits: getRiskAssessmentChemicalPreviewSnippet(chemical.exposureLimits),
+      ppe: getRiskAssessmentChemicalPreviewSnippet(chemical.ppe),
+      storage: getRiskAssessmentChemicalPreviewSnippet(chemical.storage),
+      firstAid: getRiskAssessmentChemicalPreviewSnippet(chemical.firstAid),
+    })),
+  };
+}
+
+function renderRiskAssessmentStlImportPreview() {
+  if (!riskAssessmentChemicalStlPreview) {
+    return;
+  }
+  const summary = riskAssessmentLastStlImportSummary;
+  if (!summary || !summary.count) {
+    riskAssessmentChemicalStlPreview.hidden = true;
+    riskAssessmentChemicalStlPreview.innerHTML = "";
+    return;
+  }
+  const importedAt = summary.importedAt
+    ? new Date(summary.importedAt).toLocaleString("hr-HR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+    : "";
+  riskAssessmentChemicalStlPreview.hidden = false;
+  riskAssessmentChemicalStlPreview.innerHTML = `
+    <div class="risk-assessment-stl-preview-head">
+      <span class="risk-assessment-stl-preview-status">Dodano u procjenu</span>
+      <div>
+        <strong>${escapeHtml(summary.count === 1 ? "STL ekstrakcija je dodala 1 kemikaliju" : `STL ekstrakcija je dodala ${summary.count} kemikalija`)}</strong>
+        <small>${escapeHtml([summary.fileName, importedAt].filter(Boolean).join(" · "))}</small>
+      </div>
+    </div>
+    <div class="risk-assessment-stl-preview-list">
+      ${summary.chemicals.map((chemical) => {
+        const tags = [
+          chemical.casNumber ? `CAS ${chemical.casNumber}` : "",
+          chemical.ecNumber ? `EC ${chemical.ecNumber}` : "",
+          ...chemical.signalWords,
+          ...chemical.pictograms,
+        ].filter(Boolean).slice(0, 8);
+        const details = [
+          chemical.classification ? `<span><b>Klasifikacija</b>${escapeHtml(chemical.classification)}</span>` : "",
+          chemical.hazardStatements.length ? `<span><b>H izjave</b>${escapeHtml(chemical.hazardStatements.join("; "))}</span>` : "",
+          chemical.precautionaryStatements.length ? `<span><b>P izjave</b>${escapeHtml(chemical.precautionaryStatements.join("; "))}</span>` : "",
+          chemical.exposureLimits ? `<span><b>GVI/OEL</b>${escapeHtml(chemical.exposureLimits)}</span>` : "",
+          chemical.ppe ? `<span><b>OZO</b>${escapeHtml(chemical.ppe)}</span>` : "",
+          chemical.storage ? `<span><b>Skladištenje</b>${escapeHtml(chemical.storage)}</span>` : "",
+          chemical.firstAid ? `<span><b>Prva pomoć</b>${escapeHtml(chemical.firstAid)}</span>` : "",
+        ].filter(Boolean);
+        return `
+          <article class="risk-assessment-stl-preview-card">
+            <div>
+              <strong>${escapeHtml(chemical.name)}</strong>
+              <small>${tags.map((tag) => `<em>${escapeHtml(tag)}</em>`).join("") || "<em>Bez CAS oznake</em>"}</small>
+            </div>
+            <div class="risk-assessment-stl-preview-details">
+              ${details.length ? details.join("") : "<span><b>Status</b>Dodano je ono što je bilo prepoznatljivo u dokumentu.</span>"}
+            </div>
+          </article>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
 function renderRiskAssessmentChemicalResults() {
   if (!riskAssessmentChemicalResults) {
     return;
@@ -120217,6 +120315,7 @@ function renderRiskAssessmentChemicals() {
 
   renderRiskAssessmentChemicalResults();
   renderRiskAssessmentOfficialSubstances();
+  renderRiskAssessmentStlImportPreview();
   if (riskAssessmentChemicalDrafts.length === 0) {
     const empty = document.createElement("p");
     empty.className = "inline-help";
@@ -120430,12 +120529,22 @@ async function importRiskAssessmentChemicalStlFile() {
     });
     const chemicals = (Array.isArray(payload.chemicals) ? payload.chemicals : [])
       .map(mapStlChemicalToRiskAssessmentChemical);
+    if (!chemicals.length) {
+      riskAssessmentLastStlImportSummary = null;
+      renderRiskAssessmentStlImportPreview();
+      setInlineMessage(riskAssessmentChemicalImportMessage, "STL je pročitan, ali nije pronađena kemikalija za dodavanje.", "error");
+      return;
+    }
+    riskAssessmentLastStlImportSummary = buildRiskAssessmentStlImportSummary(file.name, chemicals);
     addRiskAssessmentChemicalDrafts(chemicals, `Iz STL-a je dodano ${chemicals.length} kemikalija.`);
-    setInlineMessage(riskAssessmentChemicalImportMessage, `STL obrađen: ${file.name}`, "success");
+    renderRiskAssessmentStlImportPreview();
+    setInlineMessage(riskAssessmentChemicalImportMessage, `STL obrađen i dodan u popis: ${file.name}`, "success");
     if (riskAssessmentChemicalStlFileInput) {
       riskAssessmentChemicalStlFileInput.value = "";
     }
   } catch (error) {
+    riskAssessmentLastStlImportSummary = null;
+    renderRiskAssessmentStlImportPreview();
     setInlineMessage(riskAssessmentChemicalImportMessage, error?.message || "Ne mogu izvući podatke iz STL dokumenta.", "error");
   } finally {
     riskAssessmentChemicalImportBusy = false;
