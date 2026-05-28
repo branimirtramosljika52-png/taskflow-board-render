@@ -2183,7 +2183,13 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       jobs: (item.jobs ?? []).map((entry) => ({
         ...entry,
         riskRows: (entry.riskRows ?? []).map((risk) => ({ ...risk })),
+        ppeItems: (entry.ppeItems ?? []).map((ppe) => ({ ...ppe })),
       })),
+      chemicals: (item.chemicals ?? []).map((chemical) => ({ ...chemical })),
+      reportTemplate: {
+        ...(item.reportTemplate ?? {}),
+        sections: (item.reportTemplate?.sections ?? []).map((section) => ({ ...section })),
+      },
       attachments: (item.attachments ?? []).map((document) => ({ ...document })),
       comments: (item.comments ?? []).map((comment) => ({ ...comment })),
     })),

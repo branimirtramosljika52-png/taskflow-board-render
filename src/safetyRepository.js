@@ -2040,6 +2040,8 @@ function mapRiskAssessmentEntry(row = {}, companiesById = new Map(), locationsBy
     organizationUnits: parseJsonArray(row.organization_units_json),
     jobs: parseJsonArray(row.jobs_json),
     riskTemplates: parseJsonArray(row.risk_templates_json),
+    chemicals: parseJsonArray(row.chemicals_json),
+    reportTemplate: parseJsonObject(row.report_template_json),
     attachments: parseJsonArray(row.attachments_json)
       .map((document) => mapStoredAttachmentDocument(document))
       .filter((document) => document.fileName && (document.dataUrl || document.storageUrl)),
@@ -3744,7 +3746,7 @@ async function fetchSnapshotFromConnection(connection) {
            collaborators, collaborator_user_ids_json, employer_data_json,
            intro_text, work_process_description, general_data, computer_workplaces,
            basic_rules, special_rules, omissions_basic, omissions_special, conclusion_text,
-           client_note, measures_json, organization_units_json, jobs_json, risk_templates_json, attachments_json, comments_json,
+           client_note, measures_json, organization_units_json, jobs_json, risk_templates_json, chemicals_json, report_template_json, attachments_json, comments_json,
            created_by_user_id, created_by_label, created_at, updated_at
     FROM web_risk_assessments
     ORDER BY
@@ -4764,7 +4766,13 @@ export class InMemorySafetyRepository {
         jobs: (item.jobs ?? []).map((entry) => ({
           ...entry,
           riskRows: (entry.riskRows ?? []).map((risk) => ({ ...risk })),
+          ppeItems: (entry.ppeItems ?? []).map((ppe) => ({ ...ppe })),
         })),
+        chemicals: (item.chemicals ?? []).map((chemical) => ({ ...chemical })),
+        reportTemplate: {
+          ...(item.reportTemplate ?? {}),
+          sections: (item.reportTemplate?.sections ?? []).map((section) => ({ ...section })),
+        },
         attachments: (item.attachments ?? []).map((document) => ({ ...document })),
         comments: (item.comments ?? []).map((comment) => ({ ...comment })),
       })),
@@ -7279,6 +7287,8 @@ export class MySqlSafetyRepository {
         organization_units_json LONGTEXT NULL,
         jobs_json LONGTEXT NULL,
         risk_templates_json LONGTEXT NULL,
+        chemicals_json LONGTEXT NULL,
+        report_template_json LONGTEXT NULL,
         attachments_json LONGTEXT NULL,
         comments_json LONGTEXT NULL,
         created_by_user_id INT NULL,
@@ -7875,6 +7885,8 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_safety_authorizations", "linked_service_catalog_ids_json", "LONGTEXT NULL AFTER linked_template_ids_json");
     await ensureColumnExists(this.pool, "web_risk_assessments", "organization_units_json", "LONGTEXT NULL AFTER measures_json");
     await ensureColumnExists(this.pool, "web_risk_assessments", "risk_templates_json", "LONGTEXT NULL AFTER jobs_json");
+    await ensureColumnExists(this.pool, "web_risk_assessments", "chemicals_json", "LONGTEXT NULL AFTER risk_templates_json");
+    await ensureColumnExists(this.pool, "web_risk_assessments", "report_template_json", "LONGTEXT NULL AFTER chemicals_json");
     await ensureColumnExists(this.pool, "web_risk_assessments", "work_order_id", "INT NULL AFTER location_id");
     await ensureColumnExists(this.pool, "web_risk_assessments", "work_order_number", "VARCHAR(80) NOT NULL DEFAULT '' AFTER work_order_id");
     await ensureColumnExists(this.pool, "web_risk_assessments", "team_lead_user_ids_json", "LONGTEXT NULL AFTER team_lead");
@@ -10565,9 +10577,9 @@ export class MySqlSafetyRepository {
              revision_date, assessment_type, team_lead, team_lead_user_ids_json, collaborators, collaborator_user_ids_json,
              employer_data_json, intro_text, work_process_description,
              general_data, computer_workplaces, basic_rules, special_rules, omissions_basic, omissions_special,
-             conclusion_text, client_note, measures_json, organization_units_json, jobs_json, risk_templates_json, attachments_json, comments_json,
+             conclusion_text, client_note, measures_json, organization_units_json, jobs_json, risk_templates_json, chemicals_json, report_template_json, attachments_json, comments_json,
              created_by_user_id, created_by_label)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
@@ -10600,6 +10612,8 @@ export class MySqlSafetyRepository {
           JSON.stringify(draft.organizationUnits ?? []),
           JSON.stringify(draft.jobs ?? []),
           JSON.stringify(draft.riskTemplates ?? []),
+          JSON.stringify(draft.chemicals ?? []),
+          JSON.stringify(draft.reportTemplate ?? {}),
           JSON.stringify(preparedDocuments.nextDocuments ?? []),
           JSON.stringify(draft.comments ?? []),
           parseNullableInteger(draft.createdByUserId),
@@ -10655,7 +10669,7 @@ export class MySqlSafetyRepository {
               revision_date = ?, assessment_type = ?, team_lead = ?, team_lead_user_ids_json = ?, collaborators = ?,
               collaborator_user_ids_json = ?, employer_data_json = ?, intro_text = ?, work_process_description = ?, general_data = ?, computer_workplaces = ?, basic_rules = ?,
               special_rules = ?, omissions_basic = ?, omissions_special = ?, conclusion_text = ?,
-              client_note = ?, measures_json = ?, organization_units_json = ?, jobs_json = ?, risk_templates_json = ?, attachments_json = ?, comments_json = ?
+              client_note = ?, measures_json = ?, organization_units_json = ?, jobs_json = ?, risk_templates_json = ?, chemicals_json = ?, report_template_json = ?, attachments_json = ?, comments_json = ?
           WHERE id = ?
         `,
         [
@@ -10688,6 +10702,8 @@ export class MySqlSafetyRepository {
           JSON.stringify(next.organizationUnits ?? []),
           JSON.stringify(next.jobs ?? []),
           JSON.stringify(next.riskTemplates ?? []),
+          JSON.stringify(next.chemicals ?? []),
+          JSON.stringify(next.reportTemplate ?? {}),
           JSON.stringify(preparedDocuments.nextDocuments ?? []),
           JSON.stringify(next.comments ?? []),
           Number(id),

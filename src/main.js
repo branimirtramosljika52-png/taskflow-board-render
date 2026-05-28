@@ -6063,6 +6063,13 @@ const riskAssessmentOfficialSubstanceSearchInput = document.querySelector("#risk
 const riskAssessmentOfficialSubstanceTypeSelect = document.querySelector("#risk-assessment-official-substance-type");
 const riskAssessmentOfficialSubstancesSummary = document.querySelector("#risk-assessment-official-substances-summary");
 const riskAssessmentOfficialSubstancesList = document.querySelector("#risk-assessment-official-substances");
+const riskAssessmentTemplateTitleInput = document.querySelector("#risk-assessment-template-title");
+const riskAssessmentTemplateDescriptionInput = document.querySelector("#risk-assessment-template-description");
+const riskAssessmentTemplatePresetSelect = document.querySelector("#risk-assessment-template-preset");
+const riskAssessmentTemplateApplyPresetButton = document.querySelector("#risk-assessment-template-apply-preset");
+const riskAssessmentTemplateAddSectionButton = document.querySelector("#risk-assessment-template-add-section");
+const riskAssessmentTemplateSectionsList = document.querySelector("#risk-assessment-template-sections");
+const riskAssessmentTemplatePreview = document.querySelector("#risk-assessment-template-preview");
 const riskAssessmentOverview = document.querySelector("#risk-assessment-overview");
 const riskAssessmentClientNoteInput = document.querySelector("#risk-assessment-client-note");
 const riskAssessmentError = document.querySelector("#risk-assessment-error");
@@ -6081,6 +6088,7 @@ let riskAssessmentChemicalImportBusy = false;
 let riskAssessmentLastStlImportSummary = null;
 let riskAssessmentOfficialSubstanceQuery = "";
 let riskAssessmentOfficialSubstanceType = "all";
+let riskAssessmentReportTemplateDraft = null;
 let riskAssessmentDraftAutosaveTimer = null;
 let riskAssessmentActiveBlock = "basic";
 let riskAssessmentActiveRichEditorKey = "";
@@ -6095,6 +6103,46 @@ const RISK_ASSESSMENT_RICH_FIELD_KEYS = Object.freeze([
   "omissionsBasic",
   "omissionsSpecial",
   "conclusion",
+]);
+const RISK_ASSESSMENT_TEMPLATE_PLACEHOLDERS = Object.freeze([
+  { key: "cover", token: "{{RISK_COVER}}", label: "Naslovnica i identifikacija", defaultTitle: "Procjena rizika" },
+  { key: "employer", token: "{{RISK_EMPLOYER}}", label: "Podaci o poslodavcu i objektima", defaultTitle: "Podaci o poslodavcu i objektima namijenjenim za rad" },
+  { key: "intro", token: "{{RISK_INTRO}}", label: "Uvod i pravna osnova", defaultTitle: "Uvod" },
+  { key: "process", token: "{{RISK_PROCESS}}", label: "Radni proces", defaultTitle: "Opis radnog procesa" },
+  { key: "general", token: "{{RISK_GENERAL}}", label: "Opći uvjeti rada", defaultTitle: "Opći podaci i uvjeti rada" },
+  { key: "computer", token: "{{RISK_COMPUTER}}", label: "Rad s računalom", defaultTitle: "Radna mjesta s računalom" },
+  { key: "rules", token: "{{RISK_RULES}}", label: "Pravila zaštite na radu", defaultTitle: "Osnovna i posebna pravila zaštite na radu" },
+  { key: "findings", token: "{{RISK_FINDINGS}}", label: "Propusti i zaključak", defaultTitle: "Propusti i zaključak" },
+  { key: "measures", token: "{{RISK_MEASURES}}", label: "Plan mjera", defaultTitle: "Plan mjera" },
+  { key: "structure", token: "{{RISK_STRUCTURE}}", label: "Sistematizacija", defaultTitle: "Struktura organizacijskih jedinica" },
+  { key: "jobs", token: "{{RISK_JOBS}}", label: "Poslovi i procjena rizika", defaultTitle: "Analiza radnih mjesta i procjena rizika" },
+  { key: "chemicals", token: "{{RISK_CHEMICALS}}", label: "Kemikalije i STL", defaultTitle: "Kemikalije i sigurnosno-tehnički listovi" },
+  { key: "ppe", token: "{{RISK_PPE}}", label: "Osobna zaštitna oprema", defaultTitle: "Osobna zaštitna oprema" },
+  { key: "overview", token: "{{RISK_OVERVIEW}}", label: "Sažetak procjene", defaultTitle: "Sažetak procjene" },
+  { key: "signatures", token: "{{RISK_SIGNATURES}}", label: "Izrada, suradnici i potpisi", defaultTitle: "Izrada procjene i potpisi" },
+]);
+const RISK_ASSESSMENT_TEMPLATE_PLACEHOLDER_BY_KEY = new Map(
+  RISK_ASSESSMENT_TEMPLATE_PLACEHOLDERS.map((entry) => [entry.key, entry]),
+);
+const RISK_ASSESSMENT_TEMPLATE_PRESETS = Object.freeze([
+  {
+    id: "complete",
+    label: "Cijela procjena rizika",
+    description: "Puni dokument za klijenta s općim dijelom, poslovima, mjerama, kemikalijama, OZO i potpisima.",
+    sections: ["cover", "employer", "intro", "process", "general", "rules", "findings", "measures", "structure", "jobs", "chemicals", "ppe", "overview", "signatures"],
+  },
+  {
+    id: "operations",
+    label: "Operativni HSE dokument",
+    description: "Naglasak na radnim mjestima, rizicima, mjerama, kemikalijama i OZO za terensku uporabu.",
+    sections: ["cover", "employer", "process", "structure", "jobs", "chemicals", "ppe", "measures", "overview", "signatures"],
+  },
+  {
+    id: "legal",
+    label: "Pravna osnova i zaključak",
+    description: "Kompaktniji dokument za reviziju s općim dijelom, pravilima, propustima i planom mjera.",
+    sections: ["cover", "employer", "intro", "general", "rules", "findings", "measures", "overview", "signatures"],
+  },
 ]);
 let riskAssessmentPpeThreeModulePromise = null;
 const riskAssessmentPpeSceneControllers = new Map();
@@ -115887,6 +115935,38 @@ riskAssessmentOfficialSubstanceTypeSelect?.addEventListener("change", (event) =>
   renderRiskAssessmentOfficialSubstances();
 });
 
+riskAssessmentTemplateTitleInput?.addEventListener("input", () => {
+  riskAssessmentReportTemplateDraft = createRiskAssessmentReportTemplateDraft({
+    ...riskAssessmentReportTemplateDraft,
+    title: riskAssessmentTemplateTitleInput.value,
+  });
+  renderRiskAssessmentTemplatePreview();
+  scheduleRiskAssessmentDraftAutosave();
+});
+
+riskAssessmentTemplateDescriptionInput?.addEventListener("input", () => {
+  riskAssessmentReportTemplateDraft = createRiskAssessmentReportTemplateDraft({
+    ...riskAssessmentReportTemplateDraft,
+    description: riskAssessmentTemplateDescriptionInput.value,
+  });
+  renderRiskAssessmentTemplatePreview();
+  scheduleRiskAssessmentDraftAutosave();
+});
+
+riskAssessmentTemplateApplyPresetButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  applyRiskAssessmentTemplatePreset(riskAssessmentTemplatePresetSelect?.value || "complete");
+});
+
+riskAssessmentTemplateAddSectionButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  addRiskAssessmentTemplateSection();
+});
+
+riskAssessmentTemplateSectionsList?.addEventListener("input", handleRiskAssessmentTemplateSectionsInput);
+riskAssessmentTemplateSectionsList?.addEventListener("change", handleRiskAssessmentTemplateSectionsInput);
+riskAssessmentTemplateSectionsList?.addEventListener("click", handleRiskAssessmentTemplateSectionsClick);
+
 riskAssessmentOrganizationUnitsList?.addEventListener("input", handleRiskAssessmentOrganizationUnitsInput);
 riskAssessmentOrganizationUnitsList?.addEventListener("change", handleRiskAssessmentOrganizationUnitsInput);
 riskAssessmentOrganizationUnitsList?.addEventListener("click", handleRiskAssessmentOrganizationUnitsClick);
@@ -119835,6 +119915,7 @@ function resetRiskAssessmentForm() {
   riskAssessmentLastStlImportSummary = null;
   riskAssessmentOfficialSubstanceQuery = "";
   riskAssessmentOfficialSubstanceType = "all";
+  riskAssessmentReportTemplateDraft = createRiskAssessmentReportTemplateDraft();
   if (riskAssessmentOfficialSubstanceSearchInput) {
     riskAssessmentOfficialSubstanceSearchInput.value = "";
   }
@@ -119874,6 +119955,7 @@ function resetRiskAssessmentForm() {
   renderRiskAssessmentOrganizationUnits();
   renderRiskAssessmentJobs();
   renderRiskAssessmentChemicals();
+  renderRiskAssessmentTemplateBuilder();
   renderRiskAssessmentOverview();
   setRiskAssessmentActiveBlock("basic");
   syncRiskAssessmentEditorAccess();
@@ -119920,6 +120002,7 @@ function hydrateRiskAssessmentForm(item = {}) {
   riskAssessmentLastStlImportSummary = null;
   riskAssessmentOfficialSubstanceQuery = "";
   riskAssessmentOfficialSubstanceType = "all";
+  riskAssessmentReportTemplateDraft = createRiskAssessmentReportTemplateDraft(item.reportTemplate);
   if (riskAssessmentOfficialSubstanceSearchInput) {
     riskAssessmentOfficialSubstanceSearchInput.value = "";
   }
@@ -119936,6 +120019,7 @@ function hydrateRiskAssessmentForm(item = {}) {
   renderRiskAssessmentOrganizationUnits();
   renderRiskAssessmentJobs();
   renderRiskAssessmentChemicals();
+  renderRiskAssessmentTemplateBuilder();
   renderRiskAssessmentOverview();
   setRiskAssessmentActiveBlock("basic");
   setRiskAssessmentEditorOpen(true);
@@ -122203,6 +122287,258 @@ function joinUniqueRiskAssessmentTextBlocks(values = []) {
     .join("\n");
 }
 
+function getRiskAssessmentTemplatePlaceholder(key = "") {
+  return RISK_ASSESSMENT_TEMPLATE_PLACEHOLDER_BY_KEY.get(String(key || "").trim())
+    || RISK_ASSESSMENT_TEMPLATE_PLACEHOLDERS[0];
+}
+
+function createRiskAssessmentTemplateSectionDraft(initial = {}, index = 0) {
+  const placeholder = getRiskAssessmentTemplatePlaceholder(initial.key || initial.placeholderKey || "intro");
+  return {
+    id: String(initial.id || crypto.randomUUID()),
+    key: placeholder.key,
+    placeholder: String(initial.placeholder || placeholder.token),
+    title: String(initial.title || placeholder.defaultTitle || placeholder.label),
+    enabled: initial.enabled !== false,
+    pageBreakBefore: Boolean(initial.pageBreakBefore ?? (index > 0 && ["jobs", "chemicals", "overview", "signatures"].includes(placeholder.key))),
+    includeInToc: initial.includeInToc !== false && placeholder.key !== "cover",
+    note: String(initial.note || ""),
+    order: Number.isFinite(Number(initial.order)) ? Number(initial.order) : index + 1,
+  };
+}
+
+function createRiskAssessmentReportTemplateDraft(initial = {}) {
+  const preset = RISK_ASSESSMENT_TEMPLATE_PRESETS[0];
+  const sectionsSource = Array.isArray(initial.sections) && initial.sections.length
+    ? initial.sections
+    : preset.sections.map((key, index) => ({ key, order: index + 1 }));
+  return {
+    id: String(initial.id || "risk-assessment-template-default"),
+    title: String(initial.title || "Standardni predložak procjene rizika"),
+    description: String(initial.description || "Dokument se slaže iz odjeljaka procjene kao velikih placeholder blokova."),
+    version: String(initial.version || "1.0"),
+    sections: sectionsSource
+      .map((section, index) => createRiskAssessmentTemplateSectionDraft(section, index))
+      .sort((left, right) => left.order - right.order)
+      .map((section, index) => ({ ...section, order: index + 1 })),
+    updatedAt: initial.updatedAt || new Date().toISOString(),
+  };
+}
+
+function sanitizeRiskAssessmentReportTemplateDraft(template = {}) {
+  return createRiskAssessmentReportTemplateDraft({
+    ...template,
+    title: template.title || riskAssessmentTemplateTitleInput?.value || "",
+    description: template.description || riskAssessmentTemplateDescriptionInput?.value || "",
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+function getRiskAssessmentTemplateSectionIndex(element) {
+  const row = element?.closest?.("[data-risk-template-section-index]");
+  const index = Number(row?.dataset?.riskTemplateSectionIndex);
+  return Number.isInteger(index) && index >= 0 ? index : -1;
+}
+
+function getRiskAssessmentTemplatePlaceholderOptions(selectedKey = "") {
+  return RISK_ASSESSMENT_TEMPLATE_PLACEHOLDERS.map((placeholder) => `
+    <option value="${escapeHtml(placeholder.key)}"${placeholder.key === selectedKey ? " selected" : ""}>${escapeHtml(placeholder.label)}</option>
+  `).join("");
+}
+
+function getRiskAssessmentTemplatePresetOptions(selectedValue = "complete") {
+  return RISK_ASSESSMENT_TEMPLATE_PRESETS.map((preset) => `
+    <option value="${escapeHtml(preset.id)}"${preset.id === selectedValue ? " selected" : ""}>${escapeHtml(preset.label)}</option>
+  `).join("");
+}
+
+function renderRiskAssessmentTemplateSections() {
+  if (!riskAssessmentTemplateSectionsList) {
+    return;
+  }
+  const template = riskAssessmentReportTemplateDraft || createRiskAssessmentReportTemplateDraft();
+  if (!template.sections.length) {
+    riskAssessmentTemplateSectionsList.innerHTML = `<p class="inline-help">Dodaj barem jedan odjeljak templatea.</p>`;
+    return;
+  }
+  riskAssessmentTemplateSectionsList.innerHTML = template.sections.map((section, index) => {
+    const placeholder = getRiskAssessmentTemplatePlaceholder(section.key);
+    return `
+      <article class="risk-assessment-template-section-card" data-risk-template-section-index="${index}">
+        <div class="risk-assessment-template-section-order">
+          <strong>${String(index + 1).padStart(2, "0")}</strong>
+          <span>${escapeHtml(section.placeholder || placeholder.token)}</span>
+        </div>
+        <div class="risk-assessment-template-section-main">
+          <div class="risk-assessment-template-section-grid">
+            <label><span>Placeholder odjeljak</span><select data-risk-template-section-field="key">${getRiskAssessmentTemplatePlaceholderOptions(section.key)}</select></label>
+            <label><span>Naslov u dokumentu</span><input data-risk-template-section-field="title" value="${escapeHtml(section.title || placeholder.defaultTitle)}" /></label>
+            <label class="field-span-full"><span>Napomena za template</span><input data-risk-template-section-field="note" value="${escapeHtml(section.note || "")}" placeholder="npr. obavezno nakon općeg dijela" /></label>
+          </div>
+          <div class="risk-assessment-template-section-flags">
+            <label><input type="checkbox" data-risk-template-section-field="enabled" ${section.enabled ? "checked" : ""} /> Uključi</label>
+            <label><input type="checkbox" data-risk-template-section-field="pageBreakBefore" ${section.pageBreakBefore ? "checked" : ""} /> Nova stranica prije</label>
+            <label><input type="checkbox" data-risk-template-section-field="includeInToc" ${section.includeInToc ? "checked" : ""} /> U sadržaj</label>
+          </div>
+        </div>
+        <div class="risk-assessment-template-section-actions">
+          <button type="button" class="ghost-button" data-risk-template-copy-token="${escapeHtml(section.placeholder || placeholder.token)}">Token</button>
+          <button type="button" class="ghost-button" data-risk-template-section-up="${index}" ${index === 0 ? "disabled" : ""}>Gore</button>
+          <button type="button" class="ghost-button" data-risk-template-section-down="${index}" ${index === template.sections.length - 1 ? "disabled" : ""}>Dolje</button>
+          <button type="button" class="ghost-button card-danger" data-risk-template-section-remove="${index}">Ukloni</button>
+        </div>
+      </article>
+    `;
+  }).join("");
+}
+
+function renderRiskAssessmentTemplateBuilder() {
+  riskAssessmentReportTemplateDraft = createRiskAssessmentReportTemplateDraft(riskAssessmentReportTemplateDraft || {});
+  if (riskAssessmentTemplateTitleInput && riskAssessmentTemplateTitleInput.value !== riskAssessmentReportTemplateDraft.title) {
+    riskAssessmentTemplateTitleInput.value = riskAssessmentReportTemplateDraft.title;
+  }
+  if (riskAssessmentTemplateDescriptionInput && riskAssessmentTemplateDescriptionInput.value !== riskAssessmentReportTemplateDraft.description) {
+    riskAssessmentTemplateDescriptionInput.value = riskAssessmentReportTemplateDraft.description;
+  }
+  if (riskAssessmentTemplatePresetSelect && !riskAssessmentTemplatePresetSelect.children.length) {
+    riskAssessmentTemplatePresetSelect.innerHTML = getRiskAssessmentTemplatePresetOptions("complete");
+  }
+  renderRiskAssessmentTemplateSections();
+  renderRiskAssessmentTemplatePreview();
+}
+
+function addRiskAssessmentTemplateSection() {
+  const template = riskAssessmentReportTemplateDraft || createRiskAssessmentReportTemplateDraft();
+  const used = new Set(template.sections.map((section) => section.key));
+  const nextPlaceholder = RISK_ASSESSMENT_TEMPLATE_PLACEHOLDERS.find((placeholder) => !used.has(placeholder.key))
+    || RISK_ASSESSMENT_TEMPLATE_PLACEHOLDERS[0];
+  riskAssessmentReportTemplateDraft = createRiskAssessmentReportTemplateDraft({
+    ...template,
+    sections: [
+      ...template.sections,
+      createRiskAssessmentTemplateSectionDraft({ key: nextPlaceholder.key }, template.sections.length),
+    ],
+  });
+  renderRiskAssessmentTemplateBuilder();
+  scheduleRiskAssessmentDraftAutosave();
+}
+
+function applyRiskAssessmentTemplatePreset(presetId = "complete") {
+  const preset = RISK_ASSESSMENT_TEMPLATE_PRESETS.find((entry) => entry.id === presetId) || RISK_ASSESSMENT_TEMPLATE_PRESETS[0];
+  riskAssessmentReportTemplateDraft = createRiskAssessmentReportTemplateDraft({
+    ...riskAssessmentReportTemplateDraft,
+    title: riskAssessmentTemplateTitleInput?.value || preset.label,
+    description: preset.description,
+    sections: preset.sections.map((key, index) => ({ key, order: index + 1 })),
+  });
+  renderRiskAssessmentTemplateBuilder();
+  scheduleRiskAssessmentDraftAutosave();
+  setInlineMessage(riskAssessmentError, `Primijenjen je template: ${preset.label}.`, "success");
+}
+
+function updateRiskAssessmentTemplateSection(index, patch = {}) {
+  const template = riskAssessmentReportTemplateDraft || createRiskAssessmentReportTemplateDraft();
+  if (!template.sections[index]) {
+    return;
+  }
+  const nextSections = template.sections.map((section, sectionIndex) => {
+    if (sectionIndex !== index) {
+      return section;
+    }
+    const merged = { ...section, ...patch };
+    const placeholder = getRiskAssessmentTemplatePlaceholder(merged.key);
+    return {
+      ...merged,
+      key: placeholder.key,
+      placeholder: placeholder.token,
+      title: patch.key && !patch.title ? placeholder.defaultTitle : merged.title,
+    };
+  });
+  riskAssessmentReportTemplateDraft = createRiskAssessmentReportTemplateDraft({ ...template, sections: nextSections });
+  renderRiskAssessmentTemplatePreview();
+  scheduleRiskAssessmentDraftAutosave();
+}
+
+function moveRiskAssessmentTemplateSection(index, direction) {
+  const template = riskAssessmentReportTemplateDraft || createRiskAssessmentReportTemplateDraft();
+  const target = index + direction;
+  if (index < 0 || target < 0 || target >= template.sections.length) {
+    return;
+  }
+  const nextSections = [...template.sections];
+  [nextSections[index], nextSections[target]] = [nextSections[target], nextSections[index]];
+  riskAssessmentReportTemplateDraft = createRiskAssessmentReportTemplateDraft({ ...template, sections: nextSections });
+  renderRiskAssessmentTemplateBuilder();
+  scheduleRiskAssessmentDraftAutosave();
+}
+
+function removeRiskAssessmentTemplateSection(index) {
+  const template = riskAssessmentReportTemplateDraft || createRiskAssessmentReportTemplateDraft();
+  riskAssessmentReportTemplateDraft = createRiskAssessmentReportTemplateDraft({
+    ...template,
+    sections: template.sections.filter((_, sectionIndex) => sectionIndex !== index),
+  });
+  renderRiskAssessmentTemplateBuilder();
+  scheduleRiskAssessmentDraftAutosave();
+}
+
+function handleRiskAssessmentTemplateSectionsInput(event) {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) {
+    return;
+  }
+  const index = getRiskAssessmentTemplateSectionIndex(target);
+  if (index < 0) {
+    return;
+  }
+  const field = target.dataset.riskTemplateSectionField;
+  if (!field) {
+    return;
+  }
+  updateRiskAssessmentTemplateSection(index, {
+    [field]: target instanceof HTMLInputElement && target.type === "checkbox" ? target.checked : target.value,
+  });
+  if (field === "key") {
+    renderRiskAssessmentTemplateSections();
+  }
+}
+
+function handleRiskAssessmentTemplateSectionsClick(event) {
+  const copyButton = event.target?.closest?.("[data-risk-template-copy-token]");
+  if (copyButton) {
+    event.preventDefault();
+    const token = copyButton.dataset.riskTemplateCopyToken || "";
+    const clipboardWrite = navigator.clipboard?.writeText?.(token);
+    if (clipboardWrite?.then) {
+      void clipboardWrite.then(() => {
+        setInlineMessage(riskAssessmentError, `Kopiran placeholder ${token}.`, "success");
+      }).catch(() => {
+        setInlineMessage(riskAssessmentError, token, "success");
+      });
+    } else {
+      setInlineMessage(riskAssessmentError, token, "success");
+    }
+    return;
+  }
+  const upButton = event.target?.closest?.("[data-risk-template-section-up]");
+  if (upButton) {
+    event.preventDefault();
+    moveRiskAssessmentTemplateSection(Number(upButton.dataset.riskTemplateSectionUp), -1);
+    return;
+  }
+  const downButton = event.target?.closest?.("[data-risk-template-section-down]");
+  if (downButton) {
+    event.preventDefault();
+    moveRiskAssessmentTemplateSection(Number(downButton.dataset.riskTemplateSectionDown), 1);
+    return;
+  }
+  const removeButton = event.target?.closest?.("[data-risk-template-section-remove]");
+  if (removeButton) {
+    event.preventDefault();
+    removeRiskAssessmentTemplateSection(Number(removeButton.dataset.riskTemplateSectionRemove));
+  }
+}
+
 function renderRiskAssessmentDocumentParagraphs(text = "", fallback = "Nije uneseno.") {
   const lines = splitRiskAssessmentTextLines(text);
   if (lines.length === 0) {
@@ -122217,6 +122553,251 @@ function renderRiskAssessmentDocumentBullets(text = "", fallback = "Nije uneseno
     return `<p class="is-muted">${escapeHtml(fallback)}</p>`;
   }
   return `<ul>${lines.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul>`;
+}
+
+function renderRiskAssessmentTemplateRichHtml(value = "", fallback = "Nije uneseno.") {
+  const html = String(value || "").trim();
+  if (!html) {
+    return `<p class="is-muted">${escapeHtml(fallback)}</p>`;
+  }
+  return `<div class="risk-assessment-template-rich">${sanitizeRichTextHtml(html)}</div>`;
+}
+
+function renderRiskAssessmentTemplateFacts(items = []) {
+  const rows = items.filter((item) => item?.label || item?.value);
+  if (!rows.length) {
+    return `<p class="is-muted">Nema podataka.</p>`;
+  }
+  return `
+    <div class="risk-assessment-template-facts">
+      ${rows.map((item) => `
+        <div>
+          <span>${escapeHtml(item.label || "")}</span>
+          <strong>${escapeHtml(item.value || "-")}</strong>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderRiskAssessmentTemplateStructureContent() {
+  if (!riskAssessmentOrganizationUnitDrafts.length) {
+    return `<p class="is-muted">Organizacijske jedinice nisu dodane.</p>`;
+  }
+  return `
+    <div class="risk-assessment-template-card-grid">
+      ${riskAssessmentOrganizationUnitDrafts.map((unit) => {
+        const linkedJobs = riskAssessmentJobDrafts.filter((job) => String(job.organizationUnitId) === String(unit.id));
+        return `
+          <article>
+            <span>${escapeHtml(unit.responsiblePerson || "Bez odgovorne osobe")}</span>
+            <strong>${escapeHtml(unit.name || "Organizacijska jedinica")}</strong>
+            <small>${escapeHtml(unit.workerCount ? `${unit.workerCount} radnika` : "Broj radnika nije unesen")}</small>
+            ${unit.description || unit.shortDescription ? `<p>${escapeHtml(unit.description || unit.shortDescription)}</p>` : ""}
+            <div>${linkedJobs.map((job) => `<em>${escapeHtml(job.jobTitle || "Radno mjesto")}</em>`).join("") || "<em>Nema povezanih poslova</em>"}</div>
+          </article>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function renderRiskAssessmentTemplateMeasuresContent() {
+  if (!riskAssessmentMeasureDrafts.length) {
+    return `<p class="is-muted">Plan mjera nije dodan.</p>`;
+  }
+  return `
+    <div class="risk-assessment-template-table">
+      <div class="is-head"><span>Mjera</span><span>Rok</span><span>Odgovorna osoba</span><span>Kontrola</span></div>
+      ${riskAssessmentMeasureDrafts.map((measure) => `
+        <div>
+          <span>${escapeHtml(measure.measure || "-")}</span>
+          <span>${escapeHtml(measure.deadline || "-")}</span>
+          <span>${escapeHtml(measure.responsiblePerson || "-")}</span>
+          <span>${escapeHtml(measure.controlMethod || "-")}</span>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderRiskAssessmentTemplateChemicalsContent() {
+  if (!riskAssessmentChemicalDrafts.length) {
+    return `<p class="is-muted">Kemikalije nisu dodane.</p>`;
+  }
+  return `
+    <div class="risk-assessment-template-card-grid">
+      ${riskAssessmentChemicalDrafts.map((chemical) => `
+        <article>
+          <span>${escapeHtml([chemical.source, chemical.casNumber ? `CAS ${chemical.casNumber}` : ""].filter(Boolean).join(" · ") || "Kemikalija")}</span>
+          <strong>${escapeHtml(chemical.name || "Kemikalija")}</strong>
+          <small>${escapeHtml([chemical.formula, chemical.signalWords?.join(", ")].filter(Boolean).join(" · ") || "Bez dodatnih oznaka")}</small>
+          ${chemical.hazardStatements?.length ? `<p>${escapeHtml(chemical.hazardStatements.slice(0, 4).join("; "))}</p>` : ""}
+          ${chemical.ppe ? `<p><b>OZO:</b> ${escapeHtml(chemical.ppe)}</p>` : ""}
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderRiskAssessmentTemplatePpeContent() {
+  const items = riskAssessmentJobDrafts.flatMap((job) => (
+    (job.ppeItems ?? []).map((ppe) => ({ ...ppe, jobTitle: job.jobTitle }))
+  ));
+  if (!items.length) {
+    return `<p class="is-muted">OZO nije odabrana na poslovima.</p>`;
+  }
+  return `
+    <div class="risk-assessment-template-table">
+      <div class="is-head"><span>OZO</span><span>Norma</span><span>Posao</span><span>Primjena</span></div>
+      ${items.map((ppe) => `
+        <div>
+          <span>${escapeHtml(ppe.name || "OZO")}</span>
+          <span>${escapeHtml(ppe.norm || "-")}</span>
+          <span>${escapeHtml(ppe.jobTitle || "-")}</span>
+          <span>${escapeHtml([ppe.description, ppe.hazardLinks, ppe.note].filter(Boolean).join(" · ") || "-")}</span>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderRiskAssessmentTemplateOverviewContent() {
+  const totalRisks = riskAssessmentJobDrafts.reduce((sum, job) => sum + getRiskAssessmentFilledRiskRowCount(job), 0);
+  const totalPpe = riskAssessmentJobDrafts.reduce((sum, job) => sum + (job.ppeItems ?? []).length, 0);
+  return `
+    <div class="risk-assessment-template-metrics">
+      <span><strong>${escapeHtml(String(riskAssessmentOrganizationUnitDrafts.length))}</strong> jedinica</span>
+      <span><strong>${escapeHtml(String(riskAssessmentJobDrafts.length))}</strong> poslova</span>
+      <span><strong>${escapeHtml(String(totalRisks))}</strong> rizika</span>
+      <span><strong>${escapeHtml(String(riskAssessmentMeasureDrafts.length))}</strong> mjera</span>
+      <span><strong>${escapeHtml(String(riskAssessmentChemicalDrafts.length))}</strong> kemikalija</span>
+      <span><strong>${escapeHtml(String(totalPpe))}</strong> OZO</span>
+    </div>
+  `;
+}
+
+function renderRiskAssessmentTemplateSectionContent(key = "", sectionNumber = 1) {
+  const employer = readRiskAssessmentEmployerData();
+  const companyName = riskAssessmentCompanyInput?.selectedOptions?.[0]?.textContent?.trim() || employer.fullName || "Tvrtka";
+  const locationName = riskAssessmentLocationInput?.selectedOptions?.[0]?.textContent?.trim() || "Sve lokacije / nije vezano";
+  switch (key) {
+    case "cover":
+      return `
+        <div class="risk-assessment-template-cover">
+          <span>Procjena rizika</span>
+          <h3>${escapeHtml(riskAssessmentTitleInput?.value || `Procjena rizika - ${companyName}`)}</h3>
+          <p>${escapeHtml([riskAssessmentNumberInput?.value, formatDateInputDisplayValue(riskAssessmentDateInput?.value || "")].filter(Boolean).join(" · "))}</p>
+          ${renderRiskAssessmentTemplateFacts([
+            { label: "Tvrtka", value: companyName },
+            { label: "Lokacija", value: locationName },
+            { label: "Povezani RN", value: riskAssessmentWorkOrderInput?.selectedOptions?.[0]?.textContent?.trim() || "" },
+            { label: "Voditelj izrade", value: riskAssessmentTeamLeadInput?.selectedOptions ? Array.from(riskAssessmentTeamLeadInput.selectedOptions).map((option) => option.textContent).join(", ") : "" },
+            { label: "Suradnici", value: riskAssessmentCollaboratorsInput?.selectedOptions ? Array.from(riskAssessmentCollaboratorsInput.selectedOptions).map((option) => option.textContent).join(", ") : "" },
+          ])}
+        </div>
+      `;
+    case "employer":
+      return renderRiskAssessmentTemplateFacts([
+        { label: "Puni naziv tvrtke", value: employer.fullName || companyName },
+        { label: "Adresa", value: employer.address },
+        { label: "MBS", value: employer.mbs },
+        { label: "OIB", value: employer.oib },
+        { label: "NKD djelatnost", value: employer.nkdActivity },
+        { label: "Broj zaposlenih", value: employer.employeeCount },
+        { label: "Sjedište", value: employer.headquarters },
+        { label: "Izdvojene lokacije", value: employer.detachedLocations },
+      ]);
+    case "intro":
+      return renderRiskAssessmentTemplateRichHtml(riskAssessmentIntroInput?.value || "");
+    case "process":
+      return renderRiskAssessmentTemplateRichHtml(riskAssessmentWorkProcessInput?.value || "");
+    case "general":
+      return `
+        ${renderRiskAssessmentTemplateRichHtml(riskAssessmentGeneralDataInput?.value || "")}
+        ${renderRiskAssessmentTemplateRichHtml(riskAssessmentComputerWorkplacesInput?.value || "", "Radna mjesta s računalom nisu posebno unesena.")}
+      `;
+    case "computer":
+      return renderRiskAssessmentTemplateRichHtml(riskAssessmentComputerWorkplacesInput?.value || "");
+    case "rules":
+      return `
+        <h4>Osnovna pravila zaštite na radu</h4>
+        ${renderRiskAssessmentTemplateRichHtml(riskAssessmentBasicRulesInput?.value || "")}
+        <h4>Posebna pravila zaštite na radu</h4>
+        ${renderRiskAssessmentTemplateRichHtml(riskAssessmentSpecialRulesInput?.value || "")}
+      `;
+    case "findings":
+      return `
+        <h4>Propusti osnovnih pravila</h4>
+        ${renderRiskAssessmentTemplateRichHtml(riskAssessmentOmissionsBasicInput?.value || "")}
+        <h4>Propusti posebnih pravila</h4>
+        ${renderRiskAssessmentTemplateRichHtml(riskAssessmentOmissionsSpecialInput?.value || "")}
+        <h4>Zaključak</h4>
+        ${renderRiskAssessmentTemplateRichHtml(riskAssessmentConclusionInput?.value || "")}
+      `;
+    case "measures":
+      return renderRiskAssessmentTemplateMeasuresContent();
+    case "structure":
+      return renderRiskAssessmentTemplateStructureContent();
+    case "jobs":
+      return riskAssessmentJobDrafts.length
+        ? riskAssessmentJobDrafts.map((job, index) => renderRiskAssessmentJobDocumentPreview(job, index)).join("")
+        : `<p class="is-muted">Radna mjesta nisu dodana.</p>`;
+    case "chemicals":
+      return renderRiskAssessmentTemplateChemicalsContent();
+    case "ppe":
+      return renderRiskAssessmentTemplatePpeContent();
+    case "overview":
+      return renderRiskAssessmentTemplateOverviewContent();
+    case "signatures":
+      return renderRiskAssessmentTemplateFacts([
+        { label: "Voditelj izrade", value: riskAssessmentTeamLeadInput?.selectedOptions ? Array.from(riskAssessmentTeamLeadInput.selectedOptions).map((option) => option.textContent).join(", ") : "" },
+        { label: "Suradnici", value: riskAssessmentCollaboratorsInput?.selectedOptions ? Array.from(riskAssessmentCollaboratorsInput.selectedOptions).map((option) => option.textContent).join(", ") : "" },
+        { label: "Datum", value: formatDateInputDisplayValue(riskAssessmentDateInput?.value || "") },
+        { label: "Potpis", value: "____________________________" },
+      ]);
+    default:
+      return `<p class="is-muted">Placeholder ${escapeHtml(key)} nema renderer.</p>`;
+  }
+}
+
+function renderRiskAssessmentTemplatePreview() {
+  if (!riskAssessmentTemplatePreview) {
+    return;
+  }
+  const template = riskAssessmentReportTemplateDraft || createRiskAssessmentReportTemplateDraft();
+  const enabledSections = template.sections.filter((section) => section.enabled);
+  if (!enabledSections.length) {
+    riskAssessmentTemplatePreview.innerHTML = `<p class="inline-help">Uključi barem jedan placeholder odjeljak za pregled dokumenta.</p>`;
+    return;
+  }
+  const toc = enabledSections.filter((section) => section.includeInToc && section.key !== "cover");
+  riskAssessmentTemplatePreview.innerHTML = `
+    <div class="risk-assessment-template-document">
+      <header>
+        <span class="section-kicker">${escapeHtml(template.version ? `v${template.version}` : "Template")}</span>
+        <h3>${escapeHtml(template.title || "Predložak procjene rizika")}</h3>
+        <p>${escapeHtml(template.description || "Dokument se slaže iz placeholder odjeljaka.")}</p>
+      </header>
+      ${toc.length ? `
+        <nav class="risk-assessment-template-toc">
+          ${toc.map((section, index) => `<span>${String(index + 1).padStart(2, "0")} ${escapeHtml(section.title || getRiskAssessmentTemplatePlaceholder(section.key).defaultTitle)}</span>`).join("")}
+        </nav>
+      ` : ""}
+      ${enabledSections.map((section, index) => `
+        <section class="risk-assessment-template-preview-section ${section.pageBreakBefore ? "has-page-break" : ""}">
+          <div class="risk-assessment-document-section-head">
+            <span>${String(index + 1).padStart(2, "0")}</span>
+            <strong>${escapeHtml(section.title || getRiskAssessmentTemplatePlaceholder(section.key).defaultTitle)}</strong>
+          </div>
+          <div class="risk-assessment-template-token">${escapeHtml(section.placeholder || getRiskAssessmentTemplatePlaceholder(section.key).token)}</div>
+          <div class="risk-assessment-template-section-body">
+            ${renderRiskAssessmentTemplateSectionContent(section.key, index + 1)}
+          </div>
+        </section>
+      `).join("")}
+    </div>
+  `;
 }
 
 function renderRiskAssessmentYesNoPill(value = "") {
@@ -124347,6 +124928,17 @@ function syncRiskAssessmentEditorAccess() {
   if (riskAssessmentChemicalStlButton) {
     riskAssessmentChemicalStlButton.disabled = !canManage || riskAssessmentChemicalImportBusy;
   }
+  [
+    riskAssessmentTemplateTitleInput,
+    riskAssessmentTemplateDescriptionInput,
+    riskAssessmentTemplatePresetSelect,
+    riskAssessmentTemplateApplyPresetButton,
+    riskAssessmentTemplateAddSectionButton,
+  ].forEach((control) => {
+    if (control) {
+      control.disabled = !canManage;
+    }
+  });
   if (riskAssessmentDeleteButton) {
     riskAssessmentDeleteButton.hidden = !canManage || !riskAssessmentIdInput?.value;
   }
@@ -124447,6 +125039,7 @@ function renderRiskAssessmentOverview() {
     <div class="risk-assessment-overview-grid">${unitsHtml}</div>
     ${chemicalsHtml}
   `;
+  renderRiskAssessmentTemplatePreview();
 }
 
 function getRiskAssessmentJobIndexFromElement(element) {
@@ -125444,6 +126037,7 @@ function buildRiskAssessmentPayload() {
     jobs: riskAssessmentJobDrafts.map((job) => sanitizeRiskAssessmentTransientJob(job)),
     riskTemplates: riskAssessmentRiskTemplateDrafts,
     chemicals: riskAssessmentChemicalDrafts.map((chemical) => sanitizeRiskAssessmentTransientChemical(chemical)),
+    reportTemplate: sanitizeRiskAssessmentReportTemplateDraft(riskAssessmentReportTemplateDraft || {}),
   };
 }
 

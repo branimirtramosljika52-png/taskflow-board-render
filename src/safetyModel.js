@@ -5283,6 +5283,89 @@ function normalizeRiskAssessmentChemicals(items = []) {
   ));
 }
 
+const RISK_ASSESSMENT_REPORT_TEMPLATE_SECTION_KEYS = new Set([
+  "cover",
+  "employer",
+  "intro",
+  "process",
+  "general",
+  "computer",
+  "rules",
+  "findings",
+  "measures",
+  "structure",
+  "jobs",
+  "chemicals",
+  "ppe",
+  "overview",
+  "signatures",
+]);
+
+const DEFAULT_RISK_ASSESSMENT_REPORT_TEMPLATE_SECTIONS = Object.freeze([
+  "cover",
+  "employer",
+  "intro",
+  "process",
+  "general",
+  "rules",
+  "findings",
+  "measures",
+  "structure",
+  "jobs",
+  "chemicals",
+  "ppe",
+  "overview",
+  "signatures",
+]);
+
+function normalizeRiskAssessmentReportTemplateSectionKey(value = "") {
+  const normalized = normalizeText(value).toLowerCase();
+  return RISK_ASSESSMENT_REPORT_TEMPLATE_SECTION_KEYS.has(normalized) ? normalized : "intro";
+}
+
+function normalizeRiskAssessmentReportTemplateSections(items = []) {
+  const source = Array.isArray(items) && items.length
+    ? items
+    : DEFAULT_RISK_ASSESSMENT_REPORT_TEMPLATE_SECTIONS.map((key) => ({ key }));
+  const seen = new Set();
+
+  return source.map((item, index) => {
+    const key = normalizeRiskAssessmentReportTemplateSectionKey(item?.key ?? item?.placeholderKey);
+    let id = normalizeId(item?.id);
+    if (!id || seen.has(id)) {
+      id = crypto.randomUUID();
+    }
+    seen.add(id);
+
+    return {
+      id,
+      key,
+      placeholder: normalizeText(item?.placeholder) || `{{RISK_${key.toUpperCase()}}}`,
+      title: normalizeText(item?.title),
+      enabled: normalizeBoolean(item?.enabled, true),
+      pageBreakBefore: normalizeBoolean(item?.pageBreakBefore, index > 0 && ["jobs", "chemicals", "overview", "signatures"].includes(key)),
+      includeInToc: normalizeBoolean(item?.includeInToc, key !== "cover"),
+      note: normalizeText(item?.note),
+      order: Number.isFinite(Number(item?.order)) ? Number(item.order) : index + 1,
+    };
+  }).filter((item) => item.key)
+    .sort((left, right) => left.order - right.order)
+    .map((item, index) => ({ ...item, order: index + 1 }));
+}
+
+function normalizeRiskAssessmentReportTemplate(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  const sections = normalizeRiskAssessmentReportTemplateSections(source.sections ?? source.placeholders ?? []);
+  return {
+    id: normalizeId(source.id) || "risk-assessment-template-default",
+    title: normalizeText(source.title) || "Standardni predložak procjene rizika",
+    description: normalizeText(source.description) || "Dokument se slaže iz odjeljaka procjene kao velikih placeholder blokova.",
+    version: normalizeText(source.version) || "1.0",
+    sections,
+    updatedAt: normalizeOptionalDateTime(source.updatedAt) ?? isoNow(),
+  };
+}
+
 function normalizeJobStatus(value, fallback = "draft") {
   const normalized = normalizeText(value).toLowerCase();
   return JOB_STATUS_OPTIONS.some((option) => option.value === normalized) ? normalized : fallback;
@@ -5661,6 +5744,9 @@ function hydrateRiskAssessmentCore({
     chemicals: hasOwn(input, "chemicals")
       ? normalizeRiskAssessmentChemicals(input.chemicals)
       : normalizeRiskAssessmentChemicals(current?.chemicals ?? []),
+    reportTemplate: hasOwn(input, "reportTemplate")
+      ? normalizeRiskAssessmentReportTemplate(input.reportTemplate)
+      : normalizeRiskAssessmentReportTemplate(current?.reportTemplate ?? {}),
     attachments: hasOwn(input, "attachments")
       ? normalizeAttachmentDocuments(input.attachments)
       : normalizeAttachmentDocuments(current?.attachments ?? []),
@@ -8655,6 +8741,14 @@ export function filterRiskAssessments(
         entry.source,
         entry.sourceFileName,
         entry.pubChemCid,
+        entry.note,
+      ]),
+      item.reportTemplate?.title,
+      item.reportTemplate?.description,
+      ...(item.reportTemplate?.sections ?? []).flatMap((entry) => [
+        entry.title,
+        entry.placeholder,
+        entry.key,
         entry.note,
       ]),
     ].join(" ").toLowerCase();

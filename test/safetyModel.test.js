@@ -105,6 +105,7 @@ import {
   updatePublicProcurement,
   updatePurchaseOrder,
   updateReminder,
+  updateRiskAssessment,
   updateSafetyAuthorization,
   updateServiceCatalogItem,
   updateTodoTask,
@@ -420,6 +421,55 @@ test("risk assessments keep chemical registry data from PubChem and STL", () => 
   assert.deepEqual(assessment.chemicals[1].hazardStatements, ["H225", "H319"]);
   assert.equal(filterRiskAssessments([assessment], { query: "64-17-5" }).length, 1);
   assert.equal(filterRiskAssessments([assessment], { query: "alcolan" }).length, 1);
+});
+
+test("risk assessments keep report templates with section placeholders", () => {
+  const state = buildState();
+  const assessment = createRiskAssessment(
+    {
+      organizationId: "org-1",
+      companyId: "company-1",
+      locationId: "location-1",
+      title: "Procjena rizika - template",
+      reportTemplate: {
+        title: "Industrijski template procjene",
+        description: "Veliki placeholderi za cijele odjeljke dokumenta.",
+        sections: [
+          { key: "cover", title: "Naslovnica", placeholder: "{{RISK_COVER}}", includeInToc: false },
+          { key: "jobs", title: "Analiza poslova", placeholder: "{{RISK_JOBS}}", pageBreakBefore: true },
+          { key: "chemicals", title: "Kemikalije", placeholder: "{{RISK_CHEMICALS}}" },
+        ],
+      },
+    },
+    state,
+    () => "risk-template-1",
+    () => "2026-05-02T08:00:00.000Z",
+  );
+
+  assert.equal(assessment.reportTemplate.title, "Industrijski template procjene");
+  assert.equal(assessment.reportTemplate.sections.length, 3);
+  assert.equal(assessment.reportTemplate.sections[1].key, "jobs");
+  assert.equal(assessment.reportTemplate.sections[1].pageBreakBefore, true);
+  assert.equal(assessment.reportTemplate.sections[2].placeholder, "{{RISK_CHEMICALS}}");
+  assert.equal(filterRiskAssessments([assessment], { query: "RISK_JOBS" }).length, 1);
+
+  const updated = updateRiskAssessment(
+    assessment,
+    {
+      reportTemplate: {
+        ...assessment.reportTemplate,
+        sections: [
+          ...assessment.reportTemplate.sections,
+          { key: "ppe", title: "OZO", placeholder: "{{RISK_PPE}}" },
+        ],
+      },
+    },
+    { ...state, riskAssessments: [assessment] },
+    () => "2026-05-02T09:00:00.000Z",
+  );
+
+  assert.equal(updated.reportTemplate.sections.at(-1).key, "ppe");
+  assert.equal(updated.reportTemplate.sections.at(-1).order, 4);
 });
 
 test("risk assessments link only matching risk assessment work orders and keep employer data", () => {
