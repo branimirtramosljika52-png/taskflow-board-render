@@ -6098,6 +6098,7 @@ const riskAssessmentSpecialRulesInput = document.querySelector("#risk-assessment
 const riskAssessmentOmissionsBasicInput = document.querySelector("#risk-assessment-omissions-basic");
 const riskAssessmentOmissionsSpecialInput = document.querySelector("#risk-assessment-omissions-special");
 const riskAssessmentConclusionInput = document.querySelector("#risk-assessment-conclusion");
+const riskAssessmentBiologicalHazardsInput = document.querySelector("#risk-assessment-biological-hazards");
 const riskAssessmentWorkplaceJobsList = document.querySelector("#risk-assessment-workplace-jobs");
 const riskAssessmentAddWorkplaceJobButton = document.querySelector("#risk-assessment-add-workplace-job");
 const riskAssessmentAppendixChemicalRiskInput = document.querySelector("#risk-assessment-appendix-chemical-risk");
@@ -6186,22 +6187,24 @@ const RISK_ASSESSMENT_RICH_FIELD_KEYS = Object.freeze([
   "omissionsBasic",
   "omissionsSpecial",
   "conclusion",
+  "biologicalHazards",
 ]);
 const RISK_ASSESSMENT_TEMPLATE_PLACEHOLDERS = Object.freeze([
   { key: "cover", token: "{{RISK_COVER}}", label: "Naslovnica i identifikacija", defaultTitle: "Procjena rizika" },
   { key: "employer", token: "{{RISK_EMPLOYER}}", label: "Podaci o poslodavcu i objektima", defaultTitle: "Podaci o poslodavcu i objektima namijenjenim za rad" },
   { key: "intro", token: "{{RISK_INTRO}}", label: "Uvod i pravna osnova", defaultTitle: "Uvod" },
-  { key: "process", token: "{{RISK_PROCESS}}", label: "Podaci prikupljeni na mjestu rada", defaultTitle: "Podaci prikupljeni na mjestu rada" },
+  { key: "process", token: "{{RISK_PROCESS}}", label: "Podaci prikupljeni na mjestima rada", defaultTitle: "Podaci prikupljeni na mjestima rada" },
   { key: "general", token: "{{RISK_GENERAL}}", label: "Uređenje mjesta rada", defaultTitle: "Uređenje mjesta rada" },
   { key: "computer", token: "{{RISK_SENSITIVE_GROUPS}}", label: "Posebno osjetljive skupine radnika", defaultTitle: "Posebno osjetljive skupine radnika" },
   { key: "rules", token: "{{RISK_RULES}}", label: "Pravila zaštite na radu", defaultTitle: "Osnovna i posebna pravila zaštite na radu" },
-  { key: "findings", token: "{{RISK_APPENDICES}}", label: "Popis priloga", defaultTitle: "Popis priloga" },
-  { key: "measures", token: "{{RISK_MEASURES}}", label: "Plan mjera", defaultTitle: "Plan mjera" },
   { key: "structure", token: "{{RISK_STRUCTURE}}", label: "Sistematizacija", defaultTitle: "Struktura organizacijskih jedinica" },
+  { key: "findings", token: "{{RISK_APPENDICES}}", label: "Prilozi", defaultTitle: "Prilozi" },
+  { key: "measures", token: "{{RISK_MEASURES}}", label: "Plan mjera", defaultTitle: "Plan mjera" },
   { key: "jobs", token: "{{RISK_JOBS}}", label: "Poslovi i procjena rizika", defaultTitle: "Analiza radnih mjesta i procjena rizika" },
-  { key: "manual_handling", token: "{{RISK_MANUAL_HANDLING}}", label: "Ručno prenošenje tereta", defaultTitle: "Ručno prenošenje tereta" },
   { key: "chemicals", token: "{{RISK_CHEMICALS}}", label: "Kemikalije i STL", defaultTitle: "Kemikalije i sigurnosno-tehnički listovi" },
+  { key: "biological", token: "{{RISK_BIOLOGICAL}}", label: "Biološke štetnosti", defaultTitle: "Biološke štetnosti" },
   { key: "ppe", token: "{{RISK_PPE}}", label: "Osobna zaštitna oprema", defaultTitle: "Osobna zaštitna oprema" },
+  { key: "manual_handling", token: "{{RISK_MANUAL_HANDLING}}", label: "Ručno prenošenje tereta", defaultTitle: "Ručno prenošenje tereta" },
   { key: "overview", token: "{{RISK_OVERVIEW}}", label: "Sažetak procjene", defaultTitle: "Sažetak procjene" },
   { key: "signatures", token: "{{RISK_SIGNATURES}}", label: "Izrada, suradnici i potpisi", defaultTitle: "Izrada procjene i potpisi" },
 ]);
@@ -6211,13 +6214,14 @@ const RISK_ASSESSMENT_TEMPLATE_PLACEHOLDER_BY_KEY = new Map(
 const RISK_ASSESSMENT_TEMPLATE_BLOCKS = Object.freeze([
   { block: "basic", label: "Osnovni podaci", sectionKeys: ["cover", "employer"], tokenLabel: "{{RISK_COVER}} + {{RISK_EMPLOYER}}" },
   { block: "intro", label: "Uvod", sectionKeys: ["intro"], tokenLabel: "{{RISK_INTRO}}" },
-  { block: "process", label: "Mjesto rada i pravila ZNR", sectionKeys: ["process", "general", "computer", "rules"], tokenLabel: "{{RISK_PROCESS}} + {{RISK_GENERAL}} + {{RISK_SENSITIVE_GROUPS}} + {{RISK_RULES}}" },
-  { block: "findings", label: "Popis priloga", sectionKeys: ["findings"], tokenLabel: "{{RISK_APPENDICES}}" },
-  { block: "measures", label: "Mjere", sectionKeys: ["measures"], tokenLabel: "{{RISK_MEASURES}}" },
+  { block: "process", label: "Podaci prikupljeni na mjestima rada", sectionKeys: ["process", "general", "computer", "rules"], tokenLabel: "{{RISK_PROCESS}} + {{RISK_GENERAL}} + {{RISK_SENSITIVE_GROUPS}} + {{RISK_RULES}}" },
   { block: "structure", label: "Struktura", sectionKeys: ["structure"], tokenLabel: "{{RISK_STRUCTURE}}" },
+  { block: "findings", label: "Prilozi", sectionKeys: ["findings"], tokenLabel: "{{RISK_APPENDICES}}" },
+  { block: "measures", label: "Mjere", sectionKeys: ["measures"], tokenLabel: "{{RISK_MEASURES}}" },
   { block: "jobs", label: "Analiza radnih mjesta", sectionKeys: ["jobs", "ppe"], tokenLabel: "{{RISK_JOBS}} + {{RISK_PPE}}" },
-  { block: "manual-handling", label: "Ručno prenošenje tereta", sectionKeys: ["manual_handling"], tokenLabel: "{{RISK_MANUAL_HANDLING}}" },
   { block: "chemicals", label: "Kemikalije", sectionKeys: ["chemicals"], tokenLabel: "{{RISK_CHEMICALS}}" },
+  { block: "biological", label: "Biološke štetnosti", sectionKeys: ["biological"], tokenLabel: "{{RISK_BIOLOGICAL}}" },
+  { block: "manual-handling", label: "Ručno prenošenje tereta", sectionKeys: ["manual_handling"], tokenLabel: "{{RISK_MANUAL_HANDLING}}" },
   { block: "overview", label: "Pregled", sectionKeys: ["overview", "signatures"], tokenLabel: "{{RISK_OVERVIEW}} + {{RISK_SIGNATURES}}" },
 ]);
 const RISK_ASSESSMENT_TEMPLATE_BLOCK_BY_KEY = new Map(
@@ -6228,19 +6232,19 @@ const RISK_ASSESSMENT_TEMPLATE_PRESETS = Object.freeze([
     id: "complete",
     label: "Cijela procjena rizika",
     description: "Puni dokument za klijenta s općim dijelom, poslovima, mjerama, kemikalijama, OZO i potpisima.",
-    sections: ["cover", "employer", "intro", "process", "general", "computer", "rules", "findings", "measures", "structure", "jobs", "manual_handling", "chemicals", "ppe", "overview", "signatures"],
+    sections: ["cover", "employer", "intro", "process", "general", "computer", "rules", "structure", "findings", "measures", "jobs", "chemicals", "biological", "ppe", "manual_handling", "overview", "signatures"],
   },
   {
     id: "operations",
     label: "Operativni HSE dokument",
     description: "Naglasak na radnim mjestima, rizicima, mjerama, kemikalijama i OZO za terensku uporabu.",
-    sections: ["cover", "employer", "process", "structure", "jobs", "manual_handling", "chemicals", "ppe", "measures", "overview", "signatures"],
+    sections: ["cover", "employer", "process", "structure", "jobs", "chemicals", "biological", "ppe", "measures", "manual_handling", "overview", "signatures"],
   },
   {
     id: "legal",
     label: "Pravna osnova i zaključak",
     description: "Kompaktniji dokument za reviziju s općim dijelom, pravilima, propustima i planom mjera.",
-    sections: ["cover", "employer", "intro", "general", "computer", "rules", "findings", "measures", "overview", "signatures"],
+    sections: ["cover", "employer", "intro", "general", "computer", "rules", "structure", "findings", "measures", "overview", "signatures"],
   },
 ]);
 const RISK_ASSESSMENT_RICH_PRESETS = Object.freeze({
@@ -6252,6 +6256,7 @@ const RISK_ASSESSMENT_RICH_PRESETS = Object.freeze({
   testingAndSpecialConditions: `<p>Popis ispitivanja i poslova s posebnim uvjetima rada utvrđuje se prema poslovima, radnoj opremi, instalacijama, radnom okolišu i posebnim propisima. U procjeni se navode obvezna ispitivanja, rokovi, posebni uvjeti rada i povezana osposobljavanja ili zdravstveni pregledi.</p>`,
   basicRules: `<p>Osnovna pravila zaštite na radu primjenjuju se radi uklanjanja ili smanjivanja rizika na izvoru. Uključuju ispravno projektiranje i uređenje mjesta rada, sigurne radne površine i putove kretanja, zaštitu od mehaničkih opasnosti, električne struje, požara i eksplozije te osiguravanje stabilnosti i sigurnosti radne opreme.</p>`,
   specialRules: `<p>Posebna pravila zaštite na radu primjenjuju se kada opasnosti, štetnosti i napore nije moguće u potpunosti ukloniti osnovnim pravilima. Obuhvaćaju osposobljavanje radnika, upute za rad na siguran način, uporabu osobne zaštitne opreme, zdravstvene preglede, posebne uvjete rada i organizacijske mjere.</p>`,
+  biologicalHazards: `<p>Biološke štetnosti procjenjuju se prema mogućim izvorima izloženosti, načinu prijenosa, skupinama radnika, trajanju i učestalosti izloženosti te postojećim higijenskim, tehničkim i organizacijskim mjerama. Ako biološki agensi nisu utvrđeni u redovnom procesu rada, navodi se da se ne očekuje značajna izloženost uz primjenu osnovnih higijenskih mjera.</p>`,
 });
 const RISK_ASSESSMENT_RICH_TEMPLATE_STORAGE_KEY = "safe-nexus-risk-assessment-rich-templates-v1";
 const RISK_ASSESSMENT_RICH_TEMPLATE_FIELDS = Object.freeze({
@@ -6283,6 +6288,12 @@ const RISK_ASSESSMENT_RICH_TEMPLATE_FIELDS = Object.freeze({
     label: "Posebna pravila ZNR",
     defaultTemplates: [
       { id: "specialRules", label: "Posebna pravila ZNR", html: RISK_ASSESSMENT_RICH_PRESETS.specialRules },
+    ],
+  },
+  biologicalHazards: {
+    label: "Biološke štetnosti",
+    defaultTemplates: [
+      { id: "biologicalHazards", label: "Standardna procjena bioloških štetnosti", html: RISK_ASSESSMENT_RICH_PRESETS.biologicalHazards },
     ],
   },
 });
@@ -121127,6 +121138,7 @@ function hydrateRiskAssessmentForm(item = {}) {
   setRiskAssessmentRichValue("omissionsBasic", item.omissionsBasic || "");
   setRiskAssessmentRichValue("omissionsSpecial", item.omissionsSpecial || "");
   setRiskAssessmentRichValue("conclusion", item.conclusion || "");
+  setRiskAssessmentRichValue("biologicalHazards", item.biologicalHazards || "");
   renderRiskAssessmentRichTemplateControls();
   riskAssessmentClientNoteInput.value = item.clientNote || "";
   riskAssessmentMeasureDrafts = (item.measures ?? []).map((entry) => ({ ...entry }));
@@ -123471,7 +123483,7 @@ function createRiskAssessmentTemplateSectionDraft(initial = {}, index = 0) {
     placeholder: String(initial.placeholder || placeholder.token),
     title: String(initial.title || placeholder.defaultTitle || placeholder.label),
     enabled: initial.enabled !== false,
-    pageBreakBefore: Boolean(initial.pageBreakBefore ?? (index > 0 && ["jobs", "chemicals", "overview", "signatures"].includes(placeholder.key))),
+    pageBreakBefore: Boolean(initial.pageBreakBefore ?? (index > 0 && ["jobs", "chemicals", "biological", "manual_handling", "overview", "signatures"].includes(placeholder.key))),
     includeInToc: initial.includeInToc !== false && placeholder.key !== "cover",
     note: String(initial.note || ""),
     order: Number.isFinite(Number(initial.order)) ? Number(initial.order) : index + 1,
@@ -124180,11 +124192,26 @@ function renderRiskAssessmentTemplateManualHandlingContent() {
   `;
 }
 
+function getRiskAssessmentWorkplaceLocationCount() {
+  const selectedLines = getRiskAssessmentSelectedLocationLines();
+  if (selectedLines.length) {
+    return selectedLines.length;
+  }
+  const employer = readRiskAssessmentEmployerData();
+  return String(employer.detachedLocations || "")
+    .split(/\r?\n/)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .length;
+}
+
 function renderRiskAssessmentTemplateOverviewContent() {
   const totalRisks = riskAssessmentJobDrafts.reduce((sum, job) => sum + getRiskAssessmentFilledRiskRowCount(job), 0);
   const totalPpe = riskAssessmentJobDrafts.reduce((sum, job) => sum + (job.ppeItems ?? []).length, 0);
+  const workplaceCount = getRiskAssessmentWorkplaceLocationCount();
   return `
     <div class="risk-assessment-template-metrics">
+      <span><strong>${escapeHtml(String(workplaceCount))}</strong> mjesta rada</span>
       <span><strong>${escapeHtml(String(riskAssessmentOrganizationUnitDrafts.length))}</strong> jedinica</span>
       <span><strong>${escapeHtml(String(riskAssessmentJobDrafts.length))}</strong> poslova</span>
       <span><strong>${escapeHtml(String(totalRisks))}</strong> rizika</span>
@@ -124352,6 +124379,11 @@ function renderRiskAssessmentTemplateSectionContent(key = "", sectionNumber = 1)
       return renderRiskAssessmentTemplateManualHandlingContent();
     case "chemicals":
       return renderRiskAssessmentTemplateChemicalsContent();
+    case "biological":
+      return renderRiskAssessmentTemplateRichHtml(
+        riskAssessmentBiologicalHazardsInput?.value || "",
+        "Biološke štetnosti nisu posebno unesene.",
+      );
     case "ppe":
       return renderRiskAssessmentTemplatePpeContent();
     case "overview":
@@ -126934,6 +126966,7 @@ function renderRiskAssessmentOverview() {
   const highManualHandling = riskAssessmentManualHandlingDrafts
     .map((entry) => calculateRiskAssessmentManualHandling(entry))
     .filter((entry) => ["danger", "critical"].includes(entry.tone)).length;
+  const workplaceCount = getRiskAssessmentWorkplaceLocationCount();
   const units = riskAssessmentOrganizationUnitDrafts.length;
   const jobs = riskAssessmentJobDrafts.length;
   const readyJobs = riskAssessmentJobDrafts.filter((job) => getRiskAssessmentJobCompletion(job) >= 85).length;
@@ -126966,6 +126999,7 @@ function renderRiskAssessmentOverview() {
 
   riskAssessmentOverview.innerHTML = `
     <div class="risk-assessment-overview-stats">
+      <span><strong>${escapeHtml(String(workplaceCount))}</strong> mjesta rada</span>
       <span><strong>${escapeHtml(String(units))}</strong> jedinica</span>
       <span><strong>${escapeHtml(String(jobs))}</strong> poslova</span>
       <span><strong>${escapeHtml(String(readyJobs))}</strong> spremno</span>
@@ -128042,6 +128076,7 @@ function buildRiskAssessmentPayload() {
     omissionsBasic: riskAssessmentOmissionsBasicInput?.value || "",
     omissionsSpecial: riskAssessmentOmissionsSpecialInput?.value || "",
     conclusion: riskAssessmentConclusionInput?.value || "",
+    biologicalHazards: riskAssessmentBiologicalHazardsInput?.value || "",
     clientNote: riskAssessmentClientNoteInput?.value || "",
     measures: riskAssessmentMeasureDrafts,
     organizationUnits: riskAssessmentOrganizationUnitDrafts.map((unit) => sanitizeRiskAssessmentTransientUnit(unit)),

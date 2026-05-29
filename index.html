@@ -14,8 +14,8 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/assets/ozo-tailwind.css?v=20260529-risk-workplace-unified-v1" />
-    <link rel="stylesheet" href="/styles.css?v=20260529-risk-workplace-unified-v1" />
+    <link rel="stylesheet" href="/assets/ozo-tailwind.css?v=20260529-risk-template-sheets-v1" />
+    <link rel="stylesheet" href="/styles.css?v=20260529-risk-template-sheets-v1" />
     <link rel="stylesheet" href="/src/styles/variables.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/reset.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/builder.css?v=20260509e" />
@@ -4689,8 +4689,8 @@
                 <div class="risk-assessment-word-template-top">
                   <div>
                     <span class="section-kicker">Word template procjene</span>
-                    <strong>Predložak i placeholderi za završni dokument</strong>
-                    <p class="inline-help">Učitaj .docx ili .dotx template na početnom ekranu modula. Nova procjena preuzima ovaj template, a odjeljke koji ulaze u dokument biraš gore na svakom sheetu.</p>
+                    <strong>Jedan Word template za procjenu rizika</strong>
+                    <p class="inline-help">Učitaj zadani .docx ili .dotx dokument. Sve nove procjene koriste isti template, a svaki sheet gore ima svoju odluku ide li u završnu procjenu.</p>
                   </div>
                   <div class="risk-assessment-word-template-actions">
                     <input id="risk-assessment-template-word-file" type="file" accept=".docx,.dotx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.wordprocessingml.template" hidden />
@@ -4701,7 +4701,7 @@
                 </div>
                 <p id="risk-assessment-template-word-meta" class="inline-help">Nema učitanog Word templatea.</p>
                 <p id="risk-assessment-template-feedback" class="form-error" aria-live="polite"></p>
-                <div class="risk-assessment-template-settings">
+                <div class="risk-assessment-template-settings" hidden aria-hidden="true">
                   <label class="field">
                     <span>Naziv templatea</span>
                     <input id="risk-assessment-template-title" type="text" placeholder="Standardna procjena rizika" />
@@ -4718,8 +4718,8 @@
                 </div>
                 <div class="risk-assessment-template-placeholder-cta">
                   <div>
-                    <strong>Placeholderi za Word</strong>
-                    <p class="inline-help">Tokeni su u posebnom prozoru da početni ekran ostane čist.</p>
+                    <strong>Placeholder odjeljci</strong>
+                    <p class="inline-help">Otvori popis tokena koji predstavljaju cijele odjeljke dokumenta.</p>
                   </div>
                   <div class="risk-assessment-word-template-actions">
                     <button id="risk-assessment-template-placeholder-open" type="button" class="secondary-button">Otvori placeholder odjeljke</button>
@@ -5001,7 +5001,7 @@
                     <div class="risk-assessment-editor-section-head">
                       <div>
                         <span>03</span>
-                        <strong>Mjesto rada i pravila ZNR</strong>
+                        <strong>Podaci prikupljeni na mjestima rada</strong>
                       </div>
                       <p>Jedan operativni blok za tehnološki proces, poslove, uređenje mjesta rada, osjetljive skupine i osnovna/posebna pravila ZNR.</p>
                     </div>
@@ -5154,8 +5154,8 @@
                   <section id="risk-assessment-block-findings" class="risk-assessment-editor-section" data-risk-assessment-block="findings">
                     <div class="risk-assessment-editor-section-head">
                       <div>
-                        <span>04</span>
-                        <strong>Popis priloga</strong>
+                        <span>05</span>
+                        <strong>Prilozi</strong>
                       </div>
                       <p>Prilozi i popisi koji prate procjenu: štetnosti, radna oprema, OZO, ispitivanja, posebni uvjeti, kemijske štetnosti i sudjelovanje radnika.</p>
                     </div>
@@ -5248,7 +5248,7 @@
                   <section id="risk-assessment-block-measures" class="risk-assessment-editor-section risk-assessment-subpanel" data-risk-assessment-block="measures">
                     <div class="risk-assessment-editor-section-head">
                       <div>
-                        <span>05</span>
+                        <span>06</span>
                         <strong>Plan mjera</strong>
                       </div>
                       <p>Mjera, rok, odgovorna osoba i način kontrole.</p>
@@ -5266,7 +5266,7 @@
                   <section id="risk-assessment-block-structure" class="risk-assessment-editor-section risk-assessment-subpanel" data-risk-assessment-block="structure">
                     <div class="risk-assessment-editor-section-head">
                       <div>
-                        <span>06</span>
+                        <span>04</span>
                         <strong>Sistematizacija</strong>
                       </div>
                       <p>Hijerarhija organizacijskih jedinica, odgovorne osobe i povezani poslovi.</p>
@@ -5325,7 +5325,7 @@
                   <section id="risk-assessment-block-manual-handling" class="risk-assessment-editor-section risk-assessment-subpanel" data-risk-assessment-block="manual-handling">
                     <div class="risk-assessment-editor-section-head">
                       <div>
-                        <span>08</span>
+                        <span>10</span>
                         <strong>Ručno prenošenje tereta</strong>
                       </div>
                       <p>Orijentacijski izračun opterećenja pri ručnom podizanju, nošenju i premještanju tereta.</p>
@@ -5343,7 +5343,7 @@
                   <section id="risk-assessment-block-chemicals" class="risk-assessment-editor-section risk-assessment-subpanel" data-risk-assessment-block="chemicals">
                     <div class="risk-assessment-editor-section-head">
                       <div>
-                        <span>09</span>
+                        <span>08</span>
                         <strong>Kemikalije i STL</strong>
                       </div>
                       <p>Registar kemikalija za procjenu rizika, PubChem podaci i automatsko izvlačenje iz sigurnosno-tehničkih listova.</p>
@@ -5407,10 +5407,42 @@
                     <div id="risk-assessment-chemicals" class="risk-assessment-chemical-list"></div>
                   </section>
 
+                  <section id="risk-assessment-block-biological" class="risk-assessment-editor-section risk-assessment-subpanel" data-risk-assessment-block="biological">
+                    <div class="risk-assessment-editor-section-head">
+                      <div>
+                        <span>09</span>
+                        <strong>Biološke štetnosti</strong>
+                      </div>
+                      <p>Biološki agensi, izvori izloženosti, skupine radnika i mjere zaštite povezane s poslovima i mjestima rada.</p>
+                    </div>
+                    <label class="field field-span-full risk-assessment-rich-field">
+                      <span>Procjena bioloških štetnosti</span>
+                      <div class="risk-assessment-rich-editor">
+                        <div class="risk-assessment-rich-toolbar" data-risk-rich-toolbar="biologicalHazards" aria-label="Alati za uređivanje bioloških štetnosti">
+                          <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h3">Naslov</button>
+                          <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h4">Podnaslov</button>
+                          <button type="button" data-risk-rich-command="bold"><strong>B</strong></button>
+                          <button type="button" data-risk-rich-command="italic"><em>I</em></button>
+                          <button type="button" data-risk-rich-command="underline"><u>U</u></button>
+                          <button type="button" data-risk-rich-command="insertUnorderedList">• Lista</button>
+                          <button type="button" data-risk-rich-command="insertOrderedList">1. Lista</button>
+                          <button type="button" data-risk-rich-preset="biologicalHazards" data-risk-rich-preset-key="biologicalHazards">Predefinirani tekst</button>
+                          <select data-risk-rich-template-select="biologicalHazards" aria-label="Predložak za biološke štetnosti"></select>
+                          <button type="button" data-risk-rich-template-save="biologicalHazards">Spremi predložak</button>
+                          <button type="button" data-risk-rich-image="file">Slika</button>
+                          <button type="button" data-risk-rich-image="url">URL slike</button>
+                          <input type="file" accept="image/*" data-risk-rich-file="biologicalHazards" hidden />
+                        </div>
+                        <div id="risk-assessment-biological-hazards-editor" class="risk-assessment-rich-surface" data-risk-rich-editor="biologicalHazards" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Procjena bioloških štetnosti"></div>
+                        <textarea id="risk-assessment-biological-hazards" class="risk-assessment-rich-value" data-risk-rich-storage="biologicalHazards" hidden></textarea>
+                      </div>
+                    </label>
+                  </section>
+
                   <section id="risk-assessment-block-overview" class="risk-assessment-editor-section risk-assessment-subpanel" data-risk-assessment-block="overview">
                     <div class="risk-assessment-editor-section-head">
                       <div>
-                        <span>10</span>
+                        <span>11</span>
                         <strong>Pregled</strong>
                       </div>
                       <p>Sažetak procjene po jedinicama, poslovima, rizicima, mjerama, kemikalijama i OZO.</p>
@@ -5429,13 +5461,14 @@
               <nav id="risk-assessment-dock" class="risk-assessment-dock" aria-label="Navigacija procjene rizika">
                 <button type="button" class="is-active" data-risk-assessment-jump="basic"><strong>Osnovno</strong><span>Tvrtka i datumi</span></button>
                 <button type="button" data-risk-assessment-jump="intro"><strong>Uvod</strong><span>Pravna osnova</span></button>
-                <button type="button" data-risk-assessment-jump="process"><strong>Mjesto rada</strong><span>Proces, skupine i pravila</span></button>
+                <button type="button" data-risk-assessment-jump="process"><strong>Mjesta rada</strong><span>Podaci prikupljeni</span></button>
+                <button type="button" data-risk-assessment-jump="structure"><strong>Struktura</strong><span>Jedinice</span></button>
                 <button type="button" data-risk-assessment-jump="findings"><strong>Prilozi</strong><span>Popisi i dokazi</span></button>
                 <button type="button" data-risk-assessment-jump="measures"><strong>Mjere</strong><span>Plan mjera</span></button>
-                <button type="button" data-risk-assessment-jump="structure"><strong>Struktura</strong><span>Jedinice</span></button>
                 <button type="button" data-risk-assessment-jump="jobs"><strong>Analiza</strong><span>Radna mjesta</span></button>
-                <button type="button" data-risk-assessment-jump="manual-handling"><strong>Teret</strong><span>Ručno prenošenje</span></button>
                 <button type="button" data-risk-assessment-jump="chemicals"><strong>Kemikalije</strong><span>STL i GHS</span></button>
+                <button type="button" data-risk-assessment-jump="biological"><strong>Biološke</strong><span>Štetnosti</span></button>
+                <button type="button" data-risk-assessment-jump="manual-handling"><strong>Teret</strong><span>Ručno prenošenje</span></button>
                 <button type="button" data-risk-assessment-jump="overview"><strong>Pregled</strong><span>Sažetak</span></button>
               </nav>
             </section>
@@ -9586,7 +9619,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260529-risk-workplace-unified-v1"></script>
-    <script type="module" src="/assets/ozo-panel.js?v=20260529-risk-workplace-unified-v1"></script>
+    <script type="module" src="/src/main.js?v=20260529-risk-template-sheets-v1"></script>
+    <script type="module" src="/assets/ozo-panel.js?v=20260529-risk-template-sheets-v1"></script>
   </body>
 </html>
