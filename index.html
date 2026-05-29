@@ -14,8 +14,8 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/assets/ozo-tailwind.css?v=20260529-risk-word-template-v2" />
-    <link rel="stylesheet" href="/styles.css?v=20260529-risk-word-template-v2" />
+    <link rel="stylesheet" href="/assets/ozo-tailwind.css?v=20260529-risk-word-template-v3" />
+    <link rel="stylesheet" href="/styles.css?v=20260529-risk-word-template-v3" />
     <link rel="stylesheet" href="/src/styles/variables.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/reset.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/builder.css?v=20260509e" />
@@ -4706,15 +4706,30 @@
                   </label>
                   <button id="risk-assessment-template-apply-preset" type="button" class="secondary-button">Primijeni</button>
                 </div>
-                <div class="offers-items-head">
+                <div class="risk-assessment-template-placeholder-cta">
                   <div>
                     <strong>Placeholderi za Word</strong>
-                    <p class="inline-help">Klik na token ga kopira. Svaki token predstavlja cijeli odjeljak dokumenta.</p>
+                    <p class="inline-help">Tokeni su u posebnom prozoru da početni ekran ostane čist.</p>
                   </div>
-                  <button id="risk-assessment-template-download-placeholders" type="button" class="ghost-button">Preuzmi popis</button>
+                  <div class="risk-assessment-word-template-actions">
+                    <button id="risk-assessment-template-placeholder-open" type="button" class="secondary-button">Otvori placeholder odjeljke</button>
+                    <button id="risk-assessment-template-download-placeholders" type="button" class="ghost-button">Preuzmi popis</button>
+                  </div>
+                </div>
+              </div>
+
+              <div id="risk-assessment-template-placeholder-backdrop" class="offer-editor-backdrop risk-assessment-placeholder-backdrop" hidden></div>
+              <section id="risk-assessment-template-placeholder-dialog" class="panel risk-assessment-placeholder-dialog" role="dialog" aria-modal="true" aria-labelledby="risk-assessment-template-placeholder-title" hidden>
+                <div class="section-heading offers-section-heading">
+                  <div>
+                    <p class="section-kicker">Word placeholderi</p>
+                    <h3 id="risk-assessment-template-placeholder-title">Odjeljci završne procjene</h3>
+                    <p class="module-copy">Klik na token ga kopira. Svaki token predstavlja cijeli odjeljak dokumenta.</p>
+                  </div>
+                  <button id="risk-assessment-template-placeholder-close" type="button" class="ghost-button">Zatvori</button>
                 </div>
                 <div id="risk-assessment-template-placeholder-list" class="risk-assessment-template-placeholder-list"></div>
-              </div>
+              </section>
 
               <div class="offers-filters risk-assessment-filters">
                 <label class="field">
@@ -4760,52 +4775,77 @@
                       </div>
                       <p>Tvrtka, lokacija, veza RN, datumi i osobe koje su izradile procjenu.</p>
                     </div>
-                    <div class="form-grid offers-form-grid risk-assessment-basic-grid">
-                      <label class="field">
-                        <span>Tvrtka</span>
-                        <select id="risk-assessment-company" required></select>
-                      </label>
-                      <label class="field">
-                        <span>Lokacija</span>
-                        <select id="risk-assessment-location"></select>
-                      </label>
-                      <label class="field field-span-2">
-                        <span>Veza RN</span>
-                        <select id="risk-assessment-work-order"></select>
-                        <small>Prikazuju se samo RN-ovi s uslugom procjene rizika za odabranu tvrtku.</small>
-                      </label>
-                      <label class="field">
-                        <span>Broj procjene</span>
-                        <input id="risk-assessment-number" type="text" placeholder="Dodjeljuje se automatski" />
-                      </label>
-                      <label class="field">
-                        <span>Status</span>
-                        <select id="risk-assessment-status"></select>
-                      </label>
-                      <label class="field">
-                        <span>Datum procjene</span>
-                        <input id="risk-assessment-date" type="text" inputmode="numeric" placeholder="dd.mm.yyyy" />
-                      </label>
-                      <label class="field">
-                        <span>Voditelji izrade</span>
-                        <select id="risk-assessment-team-lead" class="risk-assessment-people-select" multiple size="5"></select>
-                        <small>Odabir iz People liste.</small>
-                      </label>
-                      <label class="field">
-                        <span>Suradnici</span>
-                        <select id="risk-assessment-collaborators" class="risk-assessment-people-select" multiple size="5"></select>
-                        <small>Možeš odabrati više osoba.</small>
-                      </label>
+                    <div class="risk-assessment-basic-shell">
+                      <section class="risk-assessment-basic-card is-identity">
+                        <div class="risk-assessment-basic-card-head">
+                          <div>
+                            <span class="section-kicker">Identitet procjene</span>
+                            <strong>Tvrtka, lokacija i radni nalog</strong>
+                          </div>
+                          <p>RN izbornik prikazuje samo naloge s uslugom procjene rizika za odabranu tvrtku.</p>
+                        </div>
+                        <div id="risk-assessment-basic-summary" class="risk-assessment-basic-summary"></div>
+                        <div class="form-grid offers-form-grid risk-assessment-basic-grid">
+                          <label class="field">
+                            <span>Tvrtka</span>
+                            <select id="risk-assessment-company" required></select>
+                          </label>
+                          <label class="field">
+                            <span>Lokacija</span>
+                            <select id="risk-assessment-location"></select>
+                          </label>
+                          <label class="field field-span-2">
+                            <span>Veza RN</span>
+                            <select id="risk-assessment-work-order"></select>
+                          </label>
+                          <label class="field">
+                            <span>Broj procjene</span>
+                            <input id="risk-assessment-number" type="text" placeholder="Dodjeljuje se automatski" />
+                          </label>
+                          <label class="field">
+                            <span>Status</span>
+                            <select id="risk-assessment-status"></select>
+                          </label>
+                          <label class="field">
+                            <span>Datum procjene</span>
+                            <input id="risk-assessment-date" type="text" inputmode="numeric" placeholder="dd.mm.yyyy" />
+                          </label>
+                        </div>
+                      </section>
+
+                      <section class="risk-assessment-basic-card is-team">
+                        <div class="risk-assessment-basic-card-head">
+                          <div>
+                            <span class="section-kicker">Tim izrade</span>
+                            <strong>Izvršitelji i suradnici iz People modula</strong>
+                          </div>
+                          <p>Odaberi osobe kroz čipove. Sustav ih sprema kao voditelje izrade i suradnike u dokumentu.</p>
+                        </div>
+                        <div class="risk-assessment-team-picker-grid">
+                          <label class="field risk-assessment-people-field">
+                            <span>Voditelji izrade</span>
+                            <select id="risk-assessment-team-lead" class="risk-assessment-people-select" multiple size="5"></select>
+                            <div id="risk-assessment-team-lead-picker" class="risk-assessment-people-picker"></div>
+                            <small>Odabir iz People liste.</small>
+                          </label>
+                          <label class="field risk-assessment-people-field">
+                            <span>Suradnici</span>
+                            <select id="risk-assessment-collaborators" class="risk-assessment-people-select" multiple size="5"></select>
+                            <div id="risk-assessment-collaborators-picker" class="risk-assessment-people-picker"></div>
+                            <small>Možeš odabrati više osoba.</small>
+                          </label>
+                        </div>
+                      </section>
                     </div>
 
-                    <div class="risk-assessment-employer-card">
-                      <div class="risk-assessment-employer-head">
+                    <details class="risk-assessment-employer-card">
+                      <summary class="risk-assessment-employer-head">
                         <div>
-                          <span>Opći podaci</span>
+                          <span>Dokumentni podaci</span>
                           <strong>Podaci o poslodavcu i objektima namijenjenim za rad</strong>
                         </div>
-                        <p>Polja se popune iz tvrtke i lokacija, a možeš ih doraditi za dokument procjene.</p>
-                      </div>
+                        <p>Polja se popune iz tvrtke i lokacija. Otvori samo kad ih treba doraditi za dokument.</p>
+                      </summary>
                       <div class="risk-assessment-employer-grid">
                         <label class="field field-span-2">
                           <span>Puni naziv tvrtke</span>
@@ -4840,7 +4880,7 @@
                           <textarea id="risk-assessment-employer-detached-locations" rows="3"></textarea>
                         </label>
                       </div>
-                    </div>
+                    </details>
                   </section>
 
                   <section id="risk-assessment-block-intro" class="risk-assessment-editor-section" data-risk-assessment-block="intro">
@@ -9394,7 +9434,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260529-risk-word-template-v2"></script>
-    <script type="module" src="/assets/ozo-panel.js?v=20260529-risk-word-template-v2"></script>
+    <script type="module" src="/src/main.js?v=20260529-risk-word-template-v3"></script>
+    <script type="module" src="/assets/ozo-panel.js?v=20260529-risk-word-template-v3"></script>
   </body>
 </html>

@@ -6056,6 +6056,9 @@ const riskAssessmentDateInput = document.querySelector("#risk-assessment-date");
 const riskAssessmentRevisionDateInput = document.querySelector("#risk-assessment-revision-date");
 const riskAssessmentTeamLeadInput = document.querySelector("#risk-assessment-team-lead");
 const riskAssessmentCollaboratorsInput = document.querySelector("#risk-assessment-collaborators");
+const riskAssessmentBasicSummary = document.querySelector("#risk-assessment-basic-summary");
+const riskAssessmentTeamLeadPicker = document.querySelector("#risk-assessment-team-lead-picker");
+const riskAssessmentCollaboratorsPicker = document.querySelector("#risk-assessment-collaborators-picker");
 const riskAssessmentEmployerCompanyNameInput = document.querySelector("#risk-assessment-employer-company-name");
 const riskAssessmentEmployerAddressInput = document.querySelector("#risk-assessment-employer-address");
 const riskAssessmentEmployerMbsInput = document.querySelector("#risk-assessment-employer-mbs");
@@ -6112,6 +6115,10 @@ const riskAssessmentTemplateWordRemoveButton = document.querySelector("#risk-ass
 const riskAssessmentTemplateWordMeta = document.querySelector("#risk-assessment-template-word-meta");
 const riskAssessmentTemplatePlaceholderList = document.querySelector("#risk-assessment-template-placeholder-list");
 const riskAssessmentTemplateFeedback = document.querySelector("#risk-assessment-template-feedback");
+const riskAssessmentTemplatePlaceholderOpenButton = document.querySelector("#risk-assessment-template-placeholder-open");
+const riskAssessmentTemplatePlaceholderBackdrop = document.querySelector("#risk-assessment-template-placeholder-backdrop");
+const riskAssessmentTemplatePlaceholderDialog = document.querySelector("#risk-assessment-template-placeholder-dialog");
+const riskAssessmentTemplatePlaceholderCloseButton = document.querySelector("#risk-assessment-template-placeholder-close");
 const riskAssessmentTemplateDownloadPlaceholdersButton = document.querySelector("#risk-assessment-template-download-placeholders");
 const riskAssessmentOverview = document.querySelector("#risk-assessment-overview");
 const riskAssessmentClientNoteInput = document.querySelector("#risk-assessment-client-note");
@@ -115911,20 +115918,21 @@ riskAssessmentCompanyInput?.addEventListener("change", () => {
     riskAssessmentTitleInput.value = buildRiskAssessmentGeneratedTitle(companyId);
   }
   setRiskAssessmentEmployerData(buildRiskAssessmentDefaultEmployerData(companyId));
+  renderRiskAssessmentBasicSummary();
+  scheduleRiskAssessmentDraftAutosave();
 });
 
 riskAssessmentWorkOrderInput?.addEventListener("change", () => {
   const linkedWorkOrder = getRiskAssessmentWorkOrderById(riskAssessmentWorkOrderInput.value || "");
-  if (!linkedWorkOrder) {
-    return;
-  }
-  if (linkedWorkOrder.locationId && riskAssessmentLocationInput) {
+  if (linkedWorkOrder?.locationId && riskAssessmentLocationInput) {
     replaceSelectOptions(
       riskAssessmentLocationInput,
       buildRiskAssessmentLocationOptions(riskAssessmentCompanyInput?.value || linkedWorkOrder.companyId || ""),
       linkedWorkOrder.locationId,
     );
   }
+  renderRiskAssessmentBasicSummary();
+  scheduleRiskAssessmentDraftAutosave();
 });
 
 riskAssessmentDateInput?.addEventListener("blur", () => {
@@ -115933,6 +115941,26 @@ riskAssessmentDateInput?.addEventListener("blur", () => {
   }
   const normalizedDate = normalizeDateInputValue(riskAssessmentDateInput.value);
   riskAssessmentDateInput.value = normalizedDate ? formatDateInputDisplayValue(normalizedDate) : riskAssessmentDateInput.value.trim();
+  renderRiskAssessmentBasicSummary();
+});
+
+[
+  riskAssessmentLocationInput,
+  riskAssessmentNumberInput,
+  riskAssessmentStatusInput,
+  riskAssessmentDateInput,
+  riskAssessmentTeamLeadInput,
+  riskAssessmentCollaboratorsInput,
+].forEach((input) => {
+  input?.addEventListener("input", () => {
+    renderRiskAssessmentBasicSummary();
+    scheduleRiskAssessmentDraftAutosave();
+  });
+  input?.addEventListener("change", () => {
+    renderRiskAssessmentPeoplePickers();
+    renderRiskAssessmentBasicSummary();
+    scheduleRiskAssessmentDraftAutosave();
+  });
 });
 
 riskAssessmentAddMeasureButton?.addEventListener("click", () => {
@@ -116023,6 +116051,20 @@ riskAssessmentTemplateDescriptionInput?.addEventListener("input", () => {
 riskAssessmentTemplateApplyPresetButton?.addEventListener("click", (event) => {
   event.preventDefault();
   applyRiskAssessmentTemplatePreset(riskAssessmentTemplatePresetSelect?.value || "complete");
+});
+
+riskAssessmentTemplatePlaceholderOpenButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  setRiskAssessmentPlaceholderDialogOpen(true);
+});
+
+riskAssessmentTemplatePlaceholderCloseButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  setRiskAssessmentPlaceholderDialogOpen(false);
+});
+
+riskAssessmentTemplatePlaceholderBackdrop?.addEventListener("click", () => {
+  setRiskAssessmentPlaceholderDialogOpen(false);
 });
 
 riskAssessmentTemplateAddSectionButton?.addEventListener("click", (event) => {
@@ -119637,6 +119679,7 @@ function setRiskAssessmentPeopleSelect(select, userIds = [], legacyText = "") {
   });
   const selection = getRiskAssessmentPersonOptions([...resolvedUserIds], legacyLabels);
   replaceMultiSelectOptions(select, selection.options, selection.selectedValues);
+  renderRiskAssessmentPeoplePickers();
 }
 
 function readRiskAssessmentPeopleSelection(select) {
@@ -119657,6 +119700,86 @@ function readRiskAssessmentPeopleSelection(select) {
     userIds: Array.from(new Set(userIds)),
     labels: Array.from(new Set(labels)),
   };
+}
+
+function getRiskAssessmentPeoplePickerForSelect(select) {
+  if (select === riskAssessmentTeamLeadInput) {
+    return riskAssessmentTeamLeadPicker;
+  }
+  if (select === riskAssessmentCollaboratorsInput) {
+    return riskAssessmentCollaboratorsPicker;
+  }
+  return null;
+}
+
+function renderRiskAssessmentPeoplePicker(select) {
+  const picker = getRiskAssessmentPeoplePickerForSelect(select);
+  if (!(select instanceof HTMLSelectElement) || !picker) {
+    return;
+  }
+  const options = Array.from(select.options).filter((option) => String(option.value || "").trim());
+  if (!options.length) {
+    picker.innerHTML = `<p class="inline-help">Nema aktivnih osoba u People modulu.</p>`;
+    return;
+  }
+  picker.replaceChildren(...options.map((option) => {
+    const label = String(option.dataset.label || option.textContent || "Korisnik").replace(/\s+\(ručno\)$/, "").trim();
+    const user = (state.users ?? []).find((entry) => String(entry?.id || "") === String(option.value || ""));
+    const role = [
+      getUserDocumentTitle(user),
+      user?.email && !String(label).includes(String(user.email)) ? user.email : "",
+    ].filter(Boolean).join(" · ");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "risk-assessment-person-chip";
+    button.classList.toggle("is-selected", option.selected);
+    button.dataset.riskPersonValue = option.value;
+    button.innerHTML = `
+      <span class="risk-assessment-person-avatar">${escapeHtml(getUserInitials(user || { fullName: label || "SN" }))}</span>
+      <span class="risk-assessment-person-copy">
+        <strong>${escapeHtml(label)}</strong>
+        <small>${escapeHtml(role || (option.value.startsWith("legacy:") ? "Ručno uneseno" : "People modul"))}</small>
+      </span>
+      <span class="risk-assessment-person-check" aria-hidden="true">${option.selected ? "✓" : "+"}</span>
+    `;
+    button.addEventListener("click", () => {
+      option.selected = !option.selected;
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    return button;
+  }));
+}
+
+function renderRiskAssessmentPeoplePickers() {
+  renderRiskAssessmentPeoplePicker(riskAssessmentTeamLeadInput);
+  renderRiskAssessmentPeoplePicker(riskAssessmentCollaboratorsInput);
+  renderRiskAssessmentBasicSummary();
+}
+
+function getRiskAssessmentSelectedPeopleText(select) {
+  return Array.from(select?.selectedOptions ?? [])
+    .map((option) => String(option.dataset.label || option.textContent || "").replace(/\s+\(ručno\)$/, "").trim())
+    .filter(Boolean)
+    .join(", ");
+}
+
+function renderRiskAssessmentBasicSummary() {
+  if (!riskAssessmentBasicSummary) {
+    return;
+  }
+  const company = riskAssessmentCompanyInput?.selectedOptions?.[0]?.textContent?.trim() || "Tvrtka nije odabrana";
+  const location = riskAssessmentLocationInput?.selectedOptions?.[0]?.textContent?.trim() || "Sve lokacije / nije vezano";
+  const workOrder = riskAssessmentWorkOrderInput?.selectedOptions?.[0]?.textContent?.trim() || "Bez RN veze";
+  const status = riskAssessmentStatusInput?.selectedOptions?.[0]?.textContent?.trim() || "Status nije odabran";
+  const date = riskAssessmentDateInput?.value?.trim() || "Datum nije unesen";
+  const leads = getRiskAssessmentSelectedPeopleText(riskAssessmentTeamLeadInput) || "Voditelj nije odabran";
+  riskAssessmentBasicSummary.innerHTML = `
+    <article><span>Tvrtka</span><strong>${escapeHtml(company)}</strong></article>
+    <article><span>Lokacija</span><strong>${escapeHtml(location)}</strong></article>
+    <article><span>RN</span><strong>${escapeHtml(workOrder)}</strong></article>
+    <article><span>Status i datum</span><strong>${escapeHtml(`${status} · ${date}`)}</strong></article>
+    <article class="is-wide"><span>Voditelji izrade</span><strong>${escapeHtml(leads)}</strong></article>
+  `;
 }
 
 function getRiskAssessmentCompany(companyId = riskAssessmentCompanyInput?.value || "") {
@@ -120049,6 +120172,8 @@ function resetRiskAssessmentForm() {
   renderRiskAssessmentChemicals();
   renderRiskAssessmentTemplateBuilder();
   renderRiskAssessmentOverview();
+  renderRiskAssessmentPeoplePickers();
+  renderRiskAssessmentBasicSummary();
   setRiskAssessmentActiveBlock("basic");
   syncRiskAssessmentEditorAccess();
 }
@@ -120113,6 +120238,8 @@ function hydrateRiskAssessmentForm(item = {}) {
   renderRiskAssessmentChemicals();
   renderRiskAssessmentTemplateBuilder();
   renderRiskAssessmentOverview();
+  renderRiskAssessmentPeoplePickers();
+  renderRiskAssessmentBasicSummary();
   setRiskAssessmentActiveBlock("basic");
   setRiskAssessmentEditorOpen(true);
   syncRiskAssessmentEditorAccess();
@@ -121273,6 +121400,9 @@ function filterRiskAssessmentPpeCatalogItems(catalog = [], filter = "all", query
 
 function getJobAiFieldLabel(kind = "description") {
   const key = String(kind || "").trim();
+  if (key.startsWith("riskJob:")) {
+    return getJobAiSettingsFieldDefinitions().find((field) => field.key === key)?.label || "Polje posla u procjeni";
+  }
   if (key === "description") {
     return "Opis posla";
   }
@@ -121303,6 +121433,30 @@ function getJobAiSettingsFieldDefinitions() {
       key: `condition:${item.key}`,
       group: item.group,
       label: item.label,
+    })),
+    ...[
+      { key: "jobTitle", label: "Radno mjesto" },
+      { key: "shortDescription", label: "Kratki opis posla" },
+      { key: "detailedDescription", label: "Detaljni opis posla" },
+      { key: "workplaceDescription", label: "Opis radnog mjesta" },
+      { key: "tasks", label: "Poslovi / radni zadaci" },
+      { key: "description", label: "Opis poslova i aktivnosti" },
+      { key: "requiredQualification", label: "Stručna sprema / osposobljenost" },
+      { key: "workOrganization", label: "Organizacija rada" },
+      { key: "workSubstances", label: "Radne tvari" },
+      { key: "workEquipment", label: "Radna oprema" },
+      { key: "toolsAndMachines", label: "Alati i strojevi" },
+      { key: "workplaces", label: "Mjesta rada" },
+      { key: "workplaceArrangement", label: "Uređenje mjesta rada" },
+      { key: "harmfulSources", label: "Fizikalne, kemijske i biološke štetnosti" },
+      { key: "trainings", label: "Potrebna osposobljavanja" },
+      { key: "medicalExams", label: "Liječnički pregledi" },
+      { key: "ppeText", label: "Osobna zaštitna oprema" },
+      { key: "riskRows", label: "Opasnosti, štetnosti, napori i mjere" },
+    ].map((field) => ({
+      key: `riskJob:${field.key}`,
+      group: "Procjena rizika · posao",
+      label: field.label,
     })),
   ];
 }
@@ -122585,6 +122739,24 @@ function getRiskAssessmentTemplateFeedbackTarget() {
   return riskAssessmentTemplateFeedback || riskAssessmentError;
 }
 
+function setRiskAssessmentPlaceholderDialogOpen(open) {
+  const isOpen = Boolean(open);
+  if (riskAssessmentTemplatePlaceholderBackdrop) {
+    riskAssessmentTemplatePlaceholderBackdrop.hidden = !isOpen;
+  }
+  if (riskAssessmentTemplatePlaceholderDialog) {
+    riskAssessmentTemplatePlaceholderDialog.hidden = !isOpen;
+    riskAssessmentTemplatePlaceholderDialog.classList.toggle("is-open", isOpen);
+  }
+  document.body.classList.toggle("is-risk-placeholder-dialog-open", isOpen);
+  if (isOpen) {
+    renderRiskAssessmentTemplatePlaceholderList();
+    requestAnimationFrame(() => {
+      riskAssessmentTemplatePlaceholderCloseButton?.focus({ preventScroll: true });
+    });
+  }
+}
+
 function renderRiskAssessmentTemplateWordMeta() {
   const wordTemplate = riskAssessmentReportTemplateDraft?.wordTemplate;
   const canManage = getCanManageRiskAssessments();
@@ -122613,6 +122785,7 @@ function syncRiskAssessmentTemplatePanelAccess() {
     riskAssessmentTemplateApplyPresetButton,
     riskAssessmentTemplateWordFileInput,
     riskAssessmentTemplateWordUploadButton,
+    riskAssessmentTemplatePlaceholderOpenButton,
   ].forEach((control) => {
     if (control) {
       control.disabled = !canManage;
@@ -123909,24 +124082,69 @@ function renderRiskAssessmentOrganizationUnits() {
   }));
 }
 
+function applyRiskAssessmentJobAiInstruction(text = "", field = "description") {
+  return applyJobAiInstructionToText(text, `riskJob:${field}`);
+}
+
+function getRiskAssessmentJobAiTitle(job = {}) {
+  return String(job.jobTitle || "").trim() || "radno mjesto";
+}
+
 function buildRiskAssessmentJobTextSuggestion(job = {}, action = "description") {
   const title = job.jobTitle || "radno mjesto";
   const unitName = getRiskAssessmentUnitName(job.organizationUnitId);
   if (action === "shortDescription") {
-    return `${title} obavlja ključne radne zadatke u okviru ${unitName || "organizacijske jedinice"}, uz primjenu propisanih pravila zaštite na radu.`;
+    return applyRiskAssessmentJobAiInstruction(`${title} obavlja ključne radne zadatke u okviru ${unitName || "organizacijske jedinice"}, uz primjenu propisanih pravila zaštite na radu.`, "shortDescription");
   }
   if (action === "tasks") {
-    return [
+    return applyRiskAssessmentJobAiInstruction([
       `Obavljanje svakodnevnih radnih zadataka za posao ${title}.`,
       "Priprema radnog mjesta, opreme i potrebne dokumentacije.",
       "Primjena uputa za rad na siguran način i korištenje propisane OZO.",
       "Prijava neispravnosti, opasnih stanja i potrebe za dodatnim mjerama.",
-    ].join("\n");
+    ].join("\n"), "tasks");
   }
   if (action === "measures") {
-    return "Osigurati osposobljenost radnika, redovitu kontrolu opreme i radnog prostora, jasne upute za rad, dostupnu osobnu zaštitnu opremu i nadzor provedbe mjera zaštite na radu.";
+    return applyRiskAssessmentJobAiInstruction("Osigurati osposobljenost radnika, redovitu kontrolu opreme i radnog prostora, jasne upute za rad, dostupnu osobnu zaštitnu opremu i nadzor provedbe mjera zaštite na radu.", "ppeText");
   }
-  return `${title} obuhvaća radne aktivnosti koje se izvode u zadanim prostorima i uvjetima rada poslodavca. Radnik koristi propisanu radnu opremu, alate i radne tvari, postupa prema uputama za rad na siguran način te primjenjuje osnovna i posebna pravila zaštite na radu. U procjeni se za ovo radno mjesto evidentiraju mjesta rada, način organizacije rada, izvori opasnosti i štetnosti, napori, potrebna osposobljavanja, zdravstveni pregledi i osobna zaštitna oprema.`;
+  if (action === "harmfulSources") {
+    return applyRiskAssessmentJobAiInstruction("Mogući izvori štetnosti uključuju buku, nepovoljne mikroklimatske uvjete, prašinu ili aerosole, kemijske tvari prema sigurnosno-tehničkim listovima, biološke agense ako su prisutni u radnom procesu te statodinamičke i psihofiziološke napore povezane s načinom rada.", "harmfulSources");
+  }
+  return applyRiskAssessmentJobAiInstruction(`${title} obuhvaća radne aktivnosti koje se izvode u zadanim prostorima i uvjetima rada poslodavca. Radnik koristi propisanu radnu opremu, alate i radne tvari, postupa prema uputama za rad na siguran način te primjenjuje osnovna i posebna pravila zaštite na radu. U procjeni se za ovo radno mjesto evidentiraju mjesta rada, način organizacije rada, izvori opasnosti i štetnosti, napori, potrebna osposobljavanja, zdravstveni pregledi i osobna zaštitna oprema.`, "description");
+}
+
+function buildRiskAssessmentJobFullAiProposal(job = {}) {
+  const title = getRiskAssessmentJobAiTitle(job);
+  const unitName = getRiskAssessmentUnitName(job.organizationUnitId) || "organizacijske jedinice";
+  const baseWorkplace = job.workplace || job.workplaces || "radni prostor poslodavca i lokacije izvođenja radova";
+  const riskRows = buildRiskAssessmentAiRiskSuggestions(job).map((risk) => createRiskAssessmentRiskRowDraft(risk));
+  const ppeItems = buildRiskAssessmentAiPpeSuggestions(job, riskRows);
+  const ppeText = syncRiskAssessmentPpeSummaryText(job, ppeItems)
+    || "Obvezno koristiti osobnu zaštitnu opremu prema utvrđenim opasnostima, štetnostima i naporima za radno mjesto.";
+  const patch = {
+    shortDescription: applyRiskAssessmentJobAiInstruction(`${title} izvodi tipične radne zadatke u okviru ${unitName}, uz poštivanje uputa za siguran rad i propisanih mjera zaštite.`, "shortDescription"),
+    detailedDescription: applyRiskAssessmentJobAiInstruction(`${title} obavlja poslove koji uključuju pripremu radnog mjesta, provjeru ispravnosti opreme, izvođenje radnih aktivnosti prema tehnologiji rada, komunikaciju s odgovornim osobama i prijavu uočenih nepravilnosti. Rad se provodi uz primjenu osnovnih i posebnih pravila zaštite na radu.`, "detailedDescription"),
+    workplaceDescription: applyRiskAssessmentJobAiInstruction(`Poslovi se obavljaju na mjestima rada: ${baseWorkplace}. Radni prostor mora biti organiziran, prohodan, osvijetljen i prilagođen sigurnom kretanju radnika, opreme i materijala.`, "workplaceDescription"),
+    tasks: buildRiskAssessmentJobTextSuggestion(job, "tasks"),
+    description: buildRiskAssessmentJobTextSuggestion(job, "description"),
+    requiredQualification: applyRiskAssessmentJobAiInstruction("Radnik mora biti osposobljen za rad na siguran način, upoznat s procjenom rizika, uputama za rad i mjerama zaštite. Posebna stručna osposobljenost primjenjuje se kada je propisana za radnu opremu, radne tvari ili posebne uvjete rada.", "requiredQualification"),
+    workOrganization: applyRiskAssessmentJobAiInstruction("Rad se organizira prema rasporedu poslodavca, uz jasno definirane odgovornosti, nadzor provedbe mjera zaštite, dostupnost uputa za rad i obvezu prijave opasnih stanja prije nastavka rada.", "workOrganization"),
+    workSubstances: applyRiskAssessmentJobAiInstruction("Radne tvari koriste se samo ako su potrebne za radni proces, u označenoj ambalaži i prema sigurnosno-tehničkim listovima. Kod kemikalija se posebno evidentiraju opasna svojstva, OZO, skladištenje i postupanje u slučaju izlijevanja.", "workSubstances"),
+    workEquipment: applyRiskAssessmentJobAiInstruction("Radna oprema obuhvaća alate, uređaje, strojeve i pomoćnu opremu potrebnu za sigurno izvođenje posla. Prije uporabe provjerava se ispravnost, zaštitne naprave i uvjeti uporabe.", "workEquipment"),
+    toolsAndMachines: applyRiskAssessmentJobAiInstruction("Koriste se ručni alati, električni alati, mjerni uređaji i druga oprema primjerena konkretnom radnom zadatku. Neispravna oprema se izuzima iz uporabe i prijavljuje odgovornoj osobi.", "toolsAndMachines"),
+    workplaces: applyRiskAssessmentJobAiInstruction(baseWorkplace, "workplaces"),
+    workplaceArrangement: applyRiskAssessmentJobAiInstruction("Mjesto rada održava se urednim, prohodnim i bez nepotrebnih prepreka. Materijali, alati i oprema odlažu se tako da ne stvaraju dodatne rizike od spoticanja, pada, udara ili požara.", "workplaceArrangement"),
+    harmfulSources: buildRiskAssessmentJobTextSuggestion(job, "harmfulSources"),
+    trainings: applyRiskAssessmentJobAiInstruction("Osposobljavanje za rad na siguran način, upoznavanje s uputama za rad, korištenje OZO, postupanje u slučaju nezgode te dodatna osposobljavanja propisana za posebnu radnu opremu ili radne tvari.", "trainings"),
+    medicalExams: applyRiskAssessmentJobAiInstruction("Liječnički pregledi se utvrđuju prema posebnim uvjetima rada, izloženostima, radnoj opremi i zahtjevima radnog mjesta.", "medicalExams"),
+    ppeText: applyRiskAssessmentJobAiInstruction(ppeText, "ppeText"),
+  };
+  return {
+    patch,
+    riskRows,
+    ppeItems,
+    text: `NexAI je pripremio cjeloviti prijedlog za ${title}: opis posla, radne zadatke, štetnosti, radne tvari, opremu, mjere, rizike i OZO. Pregledaj popis ispod pa prihvati ako odgovara stvarnom stanju.`,
+  };
 }
 
 function buildRiskAssessmentAiRiskSuggestions(job = {}) {
@@ -124013,6 +124231,20 @@ function setRiskAssessmentJobAiProposal(jobIndex, action = "description") {
   if (!job) {
     return;
   }
+  if (action === "full") {
+    const proposal = buildRiskAssessmentJobFullAiProposal(job);
+    riskAssessmentJobDrafts[jobIndex] = {
+      ...job,
+      aiProposal: {
+        id: crypto.randomUUID(),
+        action,
+        title: "NexAI cjelovito popunjavanje posla",
+        ...proposal,
+      },
+    };
+    renderRiskAssessmentJobs();
+    return;
+  }
   if (action === "risks") {
     const riskRows = buildRiskAssessmentAiRiskSuggestions(job).map((risk) => createRiskAssessmentRiskRowDraft(risk));
     const ppeItems = buildRiskAssessmentAiPpeSuggestions(job, riskRows);
@@ -124035,14 +124267,16 @@ function setRiskAssessmentJobAiProposal(jobIndex, action = "description") {
     aiProposal: {
       id: crypto.randomUUID(),
       action,
-      field: action === "shortDescription" ? "shortDescription" : action === "tasks" ? "tasks" : action === "measures" ? "ppeText" : "description",
+      field: action === "shortDescription" ? "shortDescription" : action === "tasks" ? "tasks" : action === "measures" ? "ppeText" : action === "harmfulSources" ? "harmfulSources" : "description",
       title: action === "shortDescription"
         ? "NexAI kratki opis"
         : action === "tasks"
           ? "NexAI radni zadaci"
           : action === "measures"
             ? "NexAI mjere zaštite"
-            : "NexAI opis posla",
+            : action === "harmfulSources"
+              ? "NexAI štetnosti"
+              : "NexAI opis posla",
       text: buildRiskAssessmentJobTextSuggestion(job, action),
     },
   };
@@ -124053,6 +124287,27 @@ function renderRiskAssessmentJobAiProposal(job = {}, index = 0) {
   const proposal = job.aiProposal;
   if (!proposal) {
     return "";
+  }
+  if (proposal.action === "full") {
+    const patchEntries = Object.entries(proposal.patch ?? {})
+      .filter(([, value]) => String(value || "").trim())
+      .slice(0, 18);
+    const extraHtml = `
+      <div class="risk-assessment-ai-split is-full">
+        <div>
+          <strong>Polja koja će se popuniti</strong>
+          ${patchEntries.map(([field, value]) => `
+            <span><b>${escapeHtml(getJobAiFieldLabel(`riskJob:${field}`))}</b>${escapeHtml(String(value).replace(/\s+/g, " ").slice(0, 120))}${String(value).length > 120 ? "..." : ""}</span>
+          `).join("")}
+        </div>
+        <div>
+          <strong>Rizici i OZO</strong>
+          <span>${escapeHtml(String((proposal.riskRows ?? []).length))} predloženih rizika / štetnosti / napora</span>
+          <span>${escapeHtml(String((proposal.ppeItems ?? []).length))} predloženih OZO stavki</span>
+        </div>
+      </div>
+    `;
+    return renderRiskAssessmentAiProposalCard({ proposal, prefix: "job", index, extraHtml });
   }
   if (proposal.action === "risks") {
     const extraHtml = `
@@ -125273,6 +125528,7 @@ function syncRiskAssessmentEditorAccess() {
   const canManage = getCanManageRiskAssessments();
   const canComment = isClientPortalUser(state.user);
   const allowClientNote = canManage || canComment;
+  const canUseJobNexAi = getCanUseJobNexAi();
 
   riskAssessmentForm?.querySelectorAll("input, select, textarea, button").forEach((control) => {
     if (!(control instanceof HTMLElement)) {
@@ -125321,6 +125577,9 @@ function syncRiskAssessmentEditorAccess() {
   if (riskAssessmentChemicalStlButton) {
     riskAssessmentChemicalStlButton.disabled = !canManage || riskAssessmentChemicalImportBusy;
   }
+  riskAssessmentForm?.querySelectorAll("[data-risk-job-ai], [data-risk-unit-ai]").forEach((control) => {
+    control.disabled = !canManage || !canUseJobNexAi;
+  });
   [
     riskAssessmentTemplateTitleInput,
     riskAssessmentTemplateDescriptionInput,
@@ -126144,7 +126403,23 @@ function handleRiskAssessmentJobsListClick(event) {
     if (!job || !proposal) {
       return;
     }
-    if (proposal.action === "risks") {
+    if (proposal.action === "full") {
+      const existingPpeIds = new Set((job.ppeItems ?? []).map((ppe) => ppe.catalogId || ppe.name));
+      const nextPpeItems = [
+        ...(job.ppeItems ?? []),
+        ...(proposal.ppeItems ?? [])
+          .filter((ppe) => !existingPpeIds.has(ppe.catalogId || ppe.name))
+          .map((ppe) => createRiskAssessmentPpeDraft({ ...ppe, id: crypto.randomUUID(), jobId: job.id })),
+      ];
+      riskAssessmentJobDrafts[jobIndex] = {
+        ...job,
+        ...(proposal.patch ?? {}),
+        riskRows: mergeRiskAssessmentRiskRows(job.riskRows, proposal.riskRows ?? []),
+        ppeItems: nextPpeItems,
+        ppeText: proposal.patch?.ppeText || syncRiskAssessmentPpeSummaryText(job, nextPpeItems),
+        aiProposal: null,
+      };
+    } else if (proposal.action === "risks") {
       const existingPpeIds = new Set((job.ppeItems ?? []).map((ppe) => ppe.catalogId || ppe.name));
       const nextPpeItems = [
         ...(job.ppeItems ?? []),
@@ -126295,9 +126570,11 @@ function renderRiskAssessmentJobs() {
           <small>${escapeHtml(`${status.label} · ${completion}% popunjeno · ${riskCount} rizika · ${(item.ppeItems ?? []).length} OZO`)}</small>
         </div>
         <div class="risk-assessment-job-tools">
+          <button type="button" class="primary-button risk-assessment-nexai-button" data-risk-job-ai="full">NexAI popuni sve</button>
           <button type="button" class="ghost-button risk-assessment-nexai-button" data-risk-job-ai="description">NexAI opis</button>
           <button type="button" class="ghost-button" data-risk-job-ai="shortDescription">Kratki opis</button>
           <button type="button" class="ghost-button" data-risk-job-ai="tasks">Radni zadaci</button>
+          <button type="button" class="ghost-button" data-risk-job-ai="harmfulSources">Štetnosti</button>
           <button type="button" class="ghost-button" data-risk-job-ai="risks">Predloži rizike/OZO</button>
           <button type="button" class="ghost-button" data-risk-job-catalog="${index}">${item.catalogOpen ? "Sakrij izbornik" : "Izbornik opasnosti"}</button>
           <button type="button" class="ghost-button" data-risk-job-template="${index}">ARMOR retci</button>
@@ -127691,6 +127968,12 @@ document.addEventListener("pointermove", handleDrawingStagePointerMove);
 document.addEventListener("pointerup", handleDrawingStagePointerUp);
 
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && riskAssessmentTemplatePlaceholderDialog && !riskAssessmentTemplatePlaceholderDialog.hidden) {
+    event.preventDefault();
+    setRiskAssessmentPlaceholderDialogOpen(false);
+    return;
+  }
+
   if (event.key === "Escape" && weatherMenuOpen) {
     event.preventDefault();
     setWeatherMenuOpen(false);
