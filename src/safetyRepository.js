@@ -4771,6 +4771,7 @@ export class InMemorySafetyRepository {
         chemicals: (item.chemicals ?? []).map((chemical) => ({ ...chemical })),
         reportTemplate: {
           ...(item.reportTemplate ?? {}),
+          wordTemplate: item.reportTemplate?.wordTemplate ? { ...item.reportTemplate.wordTemplate } : null,
           sections: (item.reportTemplate?.sections ?? []).map((section) => ({ ...section })),
         },
         attachments: (item.attachments ?? []).map((document) => ({ ...document })),

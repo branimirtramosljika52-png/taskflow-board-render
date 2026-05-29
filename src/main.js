@@ -6070,6 +6070,13 @@ const riskAssessmentTemplateApplyPresetButton = document.querySelector("#risk-as
 const riskAssessmentTemplateAddSectionButton = document.querySelector("#risk-assessment-template-add-section");
 const riskAssessmentTemplateSectionsList = document.querySelector("#risk-assessment-template-sections");
 const riskAssessmentTemplatePreview = document.querySelector("#risk-assessment-template-preview");
+const riskAssessmentTemplateWordFileInput = document.querySelector("#risk-assessment-template-word-file");
+const riskAssessmentTemplateWordUploadButton = document.querySelector("#risk-assessment-template-word-upload");
+const riskAssessmentTemplateWordDownloadButton = document.querySelector("#risk-assessment-template-word-download");
+const riskAssessmentTemplateWordRemoveButton = document.querySelector("#risk-assessment-template-word-remove");
+const riskAssessmentTemplateWordMeta = document.querySelector("#risk-assessment-template-word-meta");
+const riskAssessmentTemplatePlaceholderList = document.querySelector("#risk-assessment-template-placeholder-list");
+const riskAssessmentTemplateDownloadPlaceholdersButton = document.querySelector("#risk-assessment-template-download-placeholders");
 const riskAssessmentOverview = document.querySelector("#risk-assessment-overview");
 const riskAssessmentClientNoteInput = document.querySelector("#risk-assessment-client-note");
 const riskAssessmentError = document.querySelector("#risk-assessment-error");
@@ -6124,12 +6131,28 @@ const RISK_ASSESSMENT_TEMPLATE_PLACEHOLDERS = Object.freeze([
 const RISK_ASSESSMENT_TEMPLATE_PLACEHOLDER_BY_KEY = new Map(
   RISK_ASSESSMENT_TEMPLATE_PLACEHOLDERS.map((entry) => [entry.key, entry]),
 );
+const RISK_ASSESSMENT_TEMPLATE_BLOCKS = Object.freeze([
+  { block: "basic", label: "Osnovni podaci", sectionKeys: ["cover", "employer"], tokenLabel: "{{RISK_COVER}} + {{RISK_EMPLOYER}}" },
+  { block: "intro", label: "Uvod", sectionKeys: ["intro"], tokenLabel: "{{RISK_INTRO}}" },
+  { block: "process", label: "Proces", sectionKeys: ["process"], tokenLabel: "{{RISK_PROCESS}}" },
+  { block: "general", label: "Opći dio", sectionKeys: ["general", "computer"], tokenLabel: "{{RISK_GENERAL}} + {{RISK_COMPUTER}}" },
+  { block: "rules", label: "Pravila", sectionKeys: ["rules"], tokenLabel: "{{RISK_RULES}}" },
+  { block: "findings", label: "Propusti", sectionKeys: ["findings"], tokenLabel: "{{RISK_FINDINGS}}" },
+  { block: "measures", label: "Mjere", sectionKeys: ["measures"], tokenLabel: "{{RISK_MEASURES}}" },
+  { block: "structure", label: "Struktura", sectionKeys: ["structure"], tokenLabel: "{{RISK_STRUCTURE}}" },
+  { block: "jobs", label: "Poslovi", sectionKeys: ["jobs", "ppe"], tokenLabel: "{{RISK_JOBS}} + {{RISK_PPE}}" },
+  { block: "chemicals", label: "Kemikalije", sectionKeys: ["chemicals"], tokenLabel: "{{RISK_CHEMICALS}}" },
+  { block: "overview", label: "Pregled", sectionKeys: ["overview", "signatures"], tokenLabel: "{{RISK_OVERVIEW}} + {{RISK_SIGNATURES}}" },
+]);
+const RISK_ASSESSMENT_TEMPLATE_BLOCK_BY_KEY = new Map(
+  RISK_ASSESSMENT_TEMPLATE_BLOCKS.map((entry) => [entry.block, entry]),
+);
 const RISK_ASSESSMENT_TEMPLATE_PRESETS = Object.freeze([
   {
     id: "complete",
     label: "Cijela procjena rizika",
     description: "Puni dokument za klijenta s općim dijelom, poslovima, mjerama, kemikalijama, OZO i potpisima.",
-    sections: ["cover", "employer", "intro", "process", "general", "rules", "findings", "measures", "structure", "jobs", "chemicals", "ppe", "overview", "signatures"],
+    sections: ["cover", "employer", "intro", "process", "general", "computer", "rules", "findings", "measures", "structure", "jobs", "chemicals", "ppe", "overview", "signatures"],
   },
   {
     id: "operations",
@@ -6141,7 +6164,7 @@ const RISK_ASSESSMENT_TEMPLATE_PRESETS = Object.freeze([
     id: "legal",
     label: "Pravna osnova i zaključak",
     description: "Kompaktniji dokument za reviziju s općim dijelom, pravilima, propustima i planom mjera.",
-    sections: ["cover", "employer", "intro", "general", "rules", "findings", "measures", "overview", "signatures"],
+    sections: ["cover", "employer", "intro", "general", "computer", "rules", "findings", "measures", "overview", "signatures"],
   },
 ]);
 let riskAssessmentPpeThreeModulePromise = null;
@@ -115966,6 +115989,28 @@ riskAssessmentTemplateAddSectionButton?.addEventListener("click", (event) => {
 riskAssessmentTemplateSectionsList?.addEventListener("input", handleRiskAssessmentTemplateSectionsInput);
 riskAssessmentTemplateSectionsList?.addEventListener("change", handleRiskAssessmentTemplateSectionsInput);
 riskAssessmentTemplateSectionsList?.addEventListener("click", handleRiskAssessmentTemplateSectionsClick);
+riskAssessmentTemplateWordUploadButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  riskAssessmentTemplateWordFileInput?.click();
+});
+riskAssessmentTemplateWordFileInput?.addEventListener("change", () => {
+  const file = riskAssessmentTemplateWordFileInput.files?.[0];
+  if (file) {
+    void uploadRiskAssessmentWordTemplateFile(file);
+  }
+});
+riskAssessmentTemplateWordDownloadButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  downloadRiskAssessmentWordTemplate();
+});
+riskAssessmentTemplateWordRemoveButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  removeRiskAssessmentWordTemplate();
+});
+riskAssessmentTemplateDownloadPlaceholdersButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  downloadRiskAssessmentTemplatePlaceholders();
+});
 
 riskAssessmentOrganizationUnitsList?.addEventListener("input", handleRiskAssessmentOrganizationUnitsInput);
 riskAssessmentOrganizationUnitsList?.addEventListener("change", handleRiskAssessmentOrganizationUnitsInput);
@@ -122307,6 +122352,22 @@ function createRiskAssessmentTemplateSectionDraft(initial = {}, index = 0) {
   };
 }
 
+function createRiskAssessmentReportWordTemplateDraft(initial = null) {
+  const source = initial && typeof initial === "object" ? initial : {};
+  const fileName = String(source.fileName || "").trim();
+  const dataUrl = String(source.dataUrl || "").trim();
+  if (!fileName && !dataUrl) {
+    return null;
+  }
+  return {
+    fileName,
+    fileType: String(source.fileType || "application/vnd.openxmlformats-officedocument.wordprocessingml.document").trim(),
+    fileSize: Number.isFinite(Number(source.fileSize)) ? Number(source.fileSize) : 0,
+    dataUrl,
+    uploadedAt: source.uploadedAt || source.updatedAt || new Date().toISOString(),
+  };
+}
+
 function createRiskAssessmentReportTemplateDraft(initial = {}) {
   const preset = RISK_ASSESSMENT_TEMPLATE_PRESETS[0];
   const sectionsSource = Array.isArray(initial.sections) && initial.sections.length
@@ -122317,6 +122378,7 @@ function createRiskAssessmentReportTemplateDraft(initial = {}) {
     title: String(initial.title || "Standardni predložak procjene rizika"),
     description: String(initial.description || "Dokument se slaže iz odjeljaka procjene kao velikih placeholder blokova."),
     version: String(initial.version || "1.0"),
+    wordTemplate: createRiskAssessmentReportWordTemplateDraft(initial.wordTemplate || initial.referenceDocument || null),
     sections: sectionsSource
       .map((section, index) => createRiskAssessmentTemplateSectionDraft(section, index))
       .sort((left, right) => left.order - right.order)
@@ -122332,6 +122394,250 @@ function sanitizeRiskAssessmentReportTemplateDraft(template = {}) {
     description: template.description || riskAssessmentTemplateDescriptionInput?.value || "",
     updatedAt: new Date().toISOString(),
   });
+}
+
+function normalizeRiskAssessmentTemplateMode(value = "") {
+  return ["include", "page-break", "exclude"].includes(value) ? value : "include";
+}
+
+function ensureRiskAssessmentTemplateSections(sectionKeys = []) {
+  const template = riskAssessmentReportTemplateDraft || createRiskAssessmentReportTemplateDraft();
+  const existingKeys = new Set(template.sections.map((section) => section.key));
+  const missing = sectionKeys
+    .filter((key) => !existingKeys.has(key))
+    .map((key, index) => createRiskAssessmentTemplateSectionDraft({ key }, template.sections.length + index));
+  if (!missing.length) {
+    riskAssessmentReportTemplateDraft = createRiskAssessmentReportTemplateDraft(template);
+    return riskAssessmentReportTemplateDraft;
+  }
+  riskAssessmentReportTemplateDraft = createRiskAssessmentReportTemplateDraft({
+    ...template,
+    sections: [...template.sections, ...missing],
+  });
+  return riskAssessmentReportTemplateDraft;
+}
+
+function getRiskAssessmentTemplateBlockMode(blockKey = "") {
+  const block = RISK_ASSESSMENT_TEMPLATE_BLOCK_BY_KEY.get(String(blockKey || "").trim());
+  if (!block) {
+    return "include";
+  }
+  const template = ensureRiskAssessmentTemplateSections(block.sectionKeys);
+  const related = template.sections.filter((section) => block.sectionKeys.includes(section.key));
+  if (related.length && related.every((section) => !section.enabled)) {
+    return "exclude";
+  }
+  if (related.some((section) => section.pageBreakBefore)) {
+    return "page-break";
+  }
+  return "include";
+}
+
+function setRiskAssessmentTemplateBlockMode(blockKey = "", modeValue = "include") {
+  const block = RISK_ASSESSMENT_TEMPLATE_BLOCK_BY_KEY.get(String(blockKey || "").trim());
+  if (!block) {
+    return;
+  }
+  const mode = normalizeRiskAssessmentTemplateMode(modeValue);
+  const template = ensureRiskAssessmentTemplateSections(block.sectionKeys);
+  const nextSections = template.sections.map((section) => {
+    if (!block.sectionKeys.includes(section.key)) {
+      return section;
+    }
+    const enabled = mode !== "exclude";
+    return {
+      ...section,
+      enabled,
+      pageBreakBefore: enabled && mode === "page-break",
+      includeInToc: enabled && section.key !== "cover",
+    };
+  });
+  riskAssessmentReportTemplateDraft = createRiskAssessmentReportTemplateDraft({
+    ...template,
+    sections: nextSections,
+    updatedAt: new Date().toISOString(),
+  });
+  renderRiskAssessmentDocumentRoutingControls();
+  renderRiskAssessmentTemplatePlaceholderList();
+  renderRiskAssessmentTemplatePreview();
+  renderRiskAssessmentOverview();
+  scheduleRiskAssessmentDraftAutosave();
+}
+
+function renderRiskAssessmentDocumentRoutingControls() {
+  if (!riskAssessmentForm) {
+    return;
+  }
+  RISK_ASSESSMENT_TEMPLATE_BLOCKS.forEach((block) => {
+    const section = riskAssessmentForm.querySelector(`[data-risk-assessment-block="${block.block}"]`);
+    const head = section?.querySelector(".risk-assessment-editor-section-head");
+    if (!head) {
+      return;
+    }
+    let control = head.querySelector(`[data-risk-template-routing="${block.block}"]`);
+    if (!control) {
+      control = document.createElement("label");
+      control.className = "risk-assessment-section-document-menu";
+      control.dataset.riskTemplateRouting = block.block;
+      control.innerHTML = `
+        <span>Dokument</span>
+        <select data-risk-template-routing-select="${escapeHtml(block.block)}">
+          <option value="include">Ide u procjenu</option>
+          <option value="page-break">Ide u procjenu + nova stranica</option>
+          <option value="exclude">Ne ide u procjenu</option>
+        </select>
+        <small>${escapeHtml(block.tokenLabel)}</small>
+      `;
+      const select = control.querySelector("select");
+      select?.addEventListener("change", () => {
+        setRiskAssessmentTemplateBlockMode(block.block, select.value);
+      });
+      head.append(control);
+    }
+    const select = control.querySelector("select");
+    if (select) {
+      select.value = getRiskAssessmentTemplateBlockMode(block.block);
+      select.disabled = !getCanManageRiskAssessments();
+    }
+  });
+}
+
+function renderRiskAssessmentTemplatePlaceholderList() {
+  if (!riskAssessmentTemplatePlaceholderList) {
+    return;
+  }
+  const template = riskAssessmentReportTemplateDraft || createRiskAssessmentReportTemplateDraft();
+  const enabledKeys = new Set(template.sections.filter((section) => section.enabled).map((section) => section.key));
+  riskAssessmentTemplatePlaceholderList.replaceChildren(...RISK_ASSESSMENT_TEMPLATE_PLACEHOLDERS.map((placeholder) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "risk-assessment-template-placeholder-chip";
+    button.classList.toggle("is-muted", !enabledKeys.has(placeholder.key));
+    button.innerHTML = `
+      <strong>${escapeHtml(placeholder.token)}</strong>
+      <span>${escapeHtml(placeholder.defaultTitle || placeholder.label)}</span>
+    `;
+    button.title = `Kopiraj ${placeholder.token}`;
+    button.addEventListener("click", () => {
+      const clipboardWrite = navigator.clipboard?.writeText?.(placeholder.token);
+      if (clipboardWrite?.then) {
+        void clipboardWrite.then(() => {
+          setInlineMessage(riskAssessmentError, `Kopiran placeholder ${placeholder.token}.`, "success");
+        }).catch(() => {
+          setInlineMessage(riskAssessmentError, placeholder.token, "success");
+        });
+      } else {
+        setInlineMessage(riskAssessmentError, placeholder.token, "success");
+      }
+    });
+    return button;
+  }));
+}
+
+function renderRiskAssessmentTemplateWordMeta() {
+  const wordTemplate = riskAssessmentReportTemplateDraft?.wordTemplate;
+  if (riskAssessmentTemplateWordMeta) {
+    riskAssessmentTemplateWordMeta.textContent = wordTemplate?.fileName
+      ? `${wordTemplate.fileName} · ${formatFileSize(wordTemplate.fileSize || 0)} · ${formatCompactDateTime(wordTemplate.uploadedAt || "")}`
+      : "Nema učitanog Word templatea.";
+  }
+  if (riskAssessmentTemplateWordDownloadButton) {
+    riskAssessmentTemplateWordDownloadButton.disabled = !wordTemplate?.dataUrl;
+  }
+  if (riskAssessmentTemplateWordRemoveButton) {
+    riskAssessmentTemplateWordRemoveButton.disabled = !wordTemplate?.fileName && !wordTemplate?.dataUrl;
+  }
+}
+
+function buildRiskAssessmentTemplatePlaceholderText() {
+  const template = riskAssessmentReportTemplateDraft || createRiskAssessmentReportTemplateDraft();
+  const enabledKeys = new Set(template.sections.filter((section) => section.enabled).map((section) => section.key));
+  return [
+    "SafeNexus placeholderi za procjenu rizika",
+    "",
+    "Svaki placeholder predstavlja cijeli odjeljak dokumenta. U Word template ubaci tokene na mjesta gdje želiš da se odjeljci generiraju.",
+    "",
+    ...RISK_ASSESSMENT_TEMPLATE_PLACEHOLDERS.map((placeholder) => (
+      `${placeholder.token} - ${placeholder.defaultTitle || placeholder.label}${enabledKeys.has(placeholder.key) ? "" : " (trenutno isključeno)"}`
+    )),
+  ].join("\r\n");
+}
+
+function downloadRiskAssessmentTemplatePlaceholders() {
+  triggerBlobDownload(
+    new Blob(["\ufeff", buildRiskAssessmentTemplatePlaceholderText()], { type: "text/plain;charset=utf-8" }),
+    `procjena-rizika-placeholderi-${new Date().toISOString().slice(0, 10)}.txt`,
+  );
+}
+
+function downloadRiskAssessmentWordTemplate() {
+  const wordTemplate = riskAssessmentReportTemplateDraft?.wordTemplate;
+  if (!wordTemplate?.dataUrl) {
+    return;
+  }
+  const link = document.createElement("a");
+  link.href = wordTemplate.dataUrl;
+  link.download = wordTemplate.fileName || "procjena-rizika-template.docx";
+  document.body.append(link);
+  link.click();
+  link.remove();
+}
+
+async function uploadRiskAssessmentWordTemplateFile(file) {
+  if (!(file instanceof File)) {
+    return;
+  }
+  const extension = String(file.name || "").split(".").pop()?.toLowerCase() || "";
+  if (!["docx", "dotx"].includes(extension)) {
+    setInlineMessage(riskAssessmentError, "Word template mora biti .docx ili .dotx dokument.", "error");
+    return;
+  }
+  if (riskAssessmentTemplateWordUploadButton) {
+    riskAssessmentTemplateWordUploadButton.disabled = true;
+    riskAssessmentTemplateWordUploadButton.classList.add("is-loading");
+  }
+  try {
+    const dataUrl = await readFileAsDataUrl(file, `Ne mogu učitati Word template ${file.name}.`);
+    riskAssessmentReportTemplateDraft = createRiskAssessmentReportTemplateDraft({
+      ...riskAssessmentReportTemplateDraft,
+      wordTemplate: {
+        fileName: file.name,
+        fileType: file.type || "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        fileSize: file.size || 0,
+        dataUrl,
+        uploadedAt: new Date().toISOString(),
+      },
+      updatedAt: new Date().toISOString(),
+    });
+    renderRiskAssessmentTemplateBuilder();
+    scheduleRiskAssessmentDraftAutosave();
+    setInlineMessage(riskAssessmentError, `Word template "${file.name}" je dodan u procjenu.`, "success");
+  } catch (error) {
+    setInlineMessage(riskAssessmentError, error?.message || "Ne mogu učitati Word template.", "error");
+  } finally {
+    if (riskAssessmentTemplateWordUploadButton) {
+      riskAssessmentTemplateWordUploadButton.disabled = !getCanManageRiskAssessments();
+      riskAssessmentTemplateWordUploadButton.classList.remove("is-loading");
+    }
+    if (riskAssessmentTemplateWordFileInput) {
+      riskAssessmentTemplateWordFileInput.value = "";
+    }
+  }
+}
+
+function removeRiskAssessmentWordTemplate() {
+  const wordTemplate = riskAssessmentReportTemplateDraft?.wordTemplate;
+  if (!wordTemplate?.fileName && !wordTemplate?.dataUrl) {
+    return;
+  }
+  riskAssessmentReportTemplateDraft = createRiskAssessmentReportTemplateDraft({
+    ...riskAssessmentReportTemplateDraft,
+    wordTemplate: null,
+    updatedAt: new Date().toISOString(),
+  });
+  renderRiskAssessmentTemplateBuilder();
+  scheduleRiskAssessmentDraftAutosave();
+  setInlineMessage(riskAssessmentError, "Word template je maknut iz procjene.", "success");
 }
 
 function getRiskAssessmentTemplateSectionIndex(element) {
@@ -122404,6 +122710,9 @@ function renderRiskAssessmentTemplateBuilder() {
     riskAssessmentTemplatePresetSelect.innerHTML = getRiskAssessmentTemplatePresetOptions("complete");
   }
   renderRiskAssessmentTemplateSections();
+  renderRiskAssessmentTemplatePlaceholderList();
+  renderRiskAssessmentTemplateWordMeta();
+  renderRiskAssessmentDocumentRoutingControls();
   renderRiskAssessmentTemplatePreview();
 }
 

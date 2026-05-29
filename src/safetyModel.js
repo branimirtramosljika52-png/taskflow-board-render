@@ -5307,6 +5307,7 @@ const DEFAULT_RISK_ASSESSMENT_REPORT_TEMPLATE_SECTIONS = Object.freeze([
   "intro",
   "process",
   "general",
+  "computer",
   "rules",
   "findings",
   "measures",
@@ -5353,6 +5354,22 @@ function normalizeRiskAssessmentReportTemplateSections(items = []) {
     .map((item, index) => ({ ...item, order: index + 1 }));
 }
 
+function normalizeRiskAssessmentReportWordTemplate(value = null) {
+  const source = value && typeof value === "object" ? value : {};
+  const fileName = normalizeText(source.fileName);
+  const dataUrl = normalizeText(source.dataUrl);
+  if (!fileName && !dataUrl) {
+    return null;
+  }
+  return {
+    fileName,
+    fileType: normalizeText(source.fileType) || "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    fileSize: Number.isFinite(Number(source.fileSize)) ? Number(source.fileSize) : 0,
+    dataUrl,
+    uploadedAt: normalizeOptionalDateTime(source.uploadedAt ?? source.updatedAt) ?? isoNow(),
+  };
+}
+
 function normalizeRiskAssessmentReportTemplate(value = {}) {
   const source = value && typeof value === "object" ? value : {};
   const sections = normalizeRiskAssessmentReportTemplateSections(source.sections ?? source.placeholders ?? []);
@@ -5361,6 +5378,7 @@ function normalizeRiskAssessmentReportTemplate(value = {}) {
     title: normalizeText(source.title) || "Standardni predložak procjene rizika",
     description: normalizeText(source.description) || "Dokument se slaže iz odjeljaka procjene kao velikih placeholder blokova.",
     version: normalizeText(source.version) || "1.0",
+    wordTemplate: normalizeRiskAssessmentReportWordTemplate(source.wordTemplate ?? source.referenceDocument ?? null),
     sections,
     updatedAt: normalizeOptionalDateTime(source.updatedAt) ?? isoNow(),
   };
@@ -8745,6 +8763,8 @@ export function filterRiskAssessments(
       ]),
       item.reportTemplate?.title,
       item.reportTemplate?.description,
+      item.reportTemplate?.wordTemplate?.fileName,
+      item.reportTemplate?.wordTemplate?.fileType,
       ...(item.reportTemplate?.sections ?? []).flatMap((entry) => [
         entry.title,
         entry.placeholder,

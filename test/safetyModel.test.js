@@ -434,10 +434,17 @@ test("risk assessments keep report templates with section placeholders", () => {
       reportTemplate: {
         title: "Industrijski template procjene",
         description: "Veliki placeholderi za cijele odjeljke dokumenta.",
+        wordTemplate: {
+          fileName: "procjena-rizika.docx",
+          fileType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          fileSize: 12345,
+          dataUrl: "data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,AAAA",
+          uploadedAt: "2026-05-02T07:30:00.000Z",
+        },
         sections: [
           { key: "cover", title: "Naslovnica", placeholder: "{{RISK_COVER}}", includeInToc: false },
           { key: "jobs", title: "Analiza poslova", placeholder: "{{RISK_JOBS}}", pageBreakBefore: true },
-          { key: "chemicals", title: "Kemikalije", placeholder: "{{RISK_CHEMICALS}}" },
+          { key: "chemicals", title: "Kemikalije", placeholder: "{{RISK_CHEMICALS}}", enabled: false },
         ],
       },
     },
@@ -447,11 +454,15 @@ test("risk assessments keep report templates with section placeholders", () => {
   );
 
   assert.equal(assessment.reportTemplate.title, "Industrijski template procjene");
+  assert.equal(assessment.reportTemplate.wordTemplate.fileName, "procjena-rizika.docx");
+  assert.equal(assessment.reportTemplate.wordTemplate.fileSize, 12345);
   assert.equal(assessment.reportTemplate.sections.length, 3);
   assert.equal(assessment.reportTemplate.sections[1].key, "jobs");
   assert.equal(assessment.reportTemplate.sections[1].pageBreakBefore, true);
   assert.equal(assessment.reportTemplate.sections[2].placeholder, "{{RISK_CHEMICALS}}");
+  assert.equal(assessment.reportTemplate.sections[2].enabled, false);
   assert.equal(filterRiskAssessments([assessment], { query: "RISK_JOBS" }).length, 1);
+  assert.equal(filterRiskAssessments([assessment], { query: "procjena-rizika.docx" }).length, 1);
 
   const updated = updateRiskAssessment(
     assessment,

@@ -56517,6 +56517,121 @@ button.work-order-editor-section-head:focus-visible {
   font-weight: 820;
 }
 
+.risk-assessment-word-template-panel {
+  display: grid;
+  gap: 14px;
+  margin: 0 0 18px;
+  padding: 16px;
+  border: 1px solid rgba(191, 219, 254, 0.78);
+  border-radius: 20px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.95));
+  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.07);
+}
+
+.risk-assessment-word-template-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+}
+
+.risk-assessment-word-template-top strong {
+  display: block;
+  margin-top: 3px;
+  color: #0f172a;
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.risk-assessment-word-template-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.risk-assessment-section-document-menu {
+  display: grid;
+  min-width: 230px;
+  gap: 5px;
+  justify-self: end;
+}
+
+.risk-assessment-section-document-menu > span {
+  display: block;
+  width: auto;
+  height: auto;
+  place-items: initial;
+  border-radius: 0;
+  background: transparent;
+  color: #64748b;
+  font-size: 0.65rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.risk-assessment-section-document-menu select {
+  min-height: 34px;
+  padding: 7px 30px 7px 10px;
+  border: 1px solid rgba(203, 213, 225, 0.92);
+  border-radius: 999px;
+  background: #fff;
+  color: #0f172a;
+  font-size: 0.74rem;
+  font-weight: 850;
+}
+
+.risk-assessment-section-document-menu small {
+  color: #64748b;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.65rem;
+  font-weight: 760;
+}
+
+.risk-assessment-template-placeholder-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 9px;
+}
+
+.risk-assessment-template-placeholder-chip {
+  display: grid;
+  gap: 4px;
+  min-height: 58px;
+  padding: 10px 12px;
+  border: 1px solid rgba(191, 219, 254, 0.78);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #0f172a;
+  text-align: left;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.055);
+  transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.risk-assessment-template-placeholder-chip:hover {
+  transform: translateY(-1px);
+  border-color: rgba(250, 204, 21, 0.88);
+  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.09);
+}
+
+.risk-assessment-template-placeholder-chip strong {
+  color: #0f172a;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.73rem;
+}
+
+.risk-assessment-template-placeholder-chip span {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 760;
+}
+
+.risk-assessment-template-placeholder-chip.is-muted {
+  opacity: 0.58;
+}
+
 .risk-assessment-template-builder {
   display: grid;
   gap: 14px;
@@ -58440,6 +58555,7 @@ button.work-order-editor-section-head:focus-visible {
   .risk-assessment-ppe-layout,
   .risk-assessment-ppe-selected-row,
   .risk-assessment-chemical-workspace,
+  .risk-assessment-word-template-top,
   .risk-assessment-template-settings,
   .risk-assessment-template-section-card,
   .risk-assessment-template-section-grid,
@@ -58468,6 +58584,15 @@ button.work-order-editor-section-head:focus-visible {
   .risk-assessment-editor-section-head p {
     max-width: none;
     text-align: left;
+  }
+
+  .risk-assessment-section-document-menu {
+    width: 100%;
+    justify-self: stretch;
+  }
+
+  .risk-assessment-word-template-actions {
+    justify-content: start;
   }
 
   .risk-assessment-employer-head {
