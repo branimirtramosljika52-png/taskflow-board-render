@@ -5324,6 +5324,8 @@ const companyLogoClearButton = document.querySelector("#company-logo-clear");
 const companyNameInput = document.querySelector("#company-name");
 const companyHeadquartersInput = document.querySelector("#company-headquarters");
 const companyOibInput = document.querySelector("#company-oib");
+const companyMbsInput = document.querySelector("#company-mbs");
+const companyNkdActivityInput = document.querySelector("#company-nkd-activity");
 const companyContractNameInput = document.querySelector("#company-contract-name");
 const companyContractTypeInput = document.querySelector("#company-contract-type");
 const companyContractNumberInput = document.querySelector("#company-contract-number");
@@ -6053,6 +6055,7 @@ const riskAssessmentNumberInput = document.querySelector("#risk-assessment-numbe
 const riskAssessmentStatusInput = document.querySelector("#risk-assessment-status");
 const riskAssessmentTitleInput = document.querySelector("#risk-assessment-title");
 const riskAssessmentDateInput = document.querySelector("#risk-assessment-date");
+const riskAssessmentCompletionDateInput = document.querySelector("#risk-assessment-completion-date");
 const riskAssessmentRevisionDateInput = document.querySelector("#risk-assessment-revision-date");
 const riskAssessmentTeamLeadInput = document.querySelector("#risk-assessment-team-lead");
 const riskAssessmentCollaboratorsInput = document.querySelector("#risk-assessment-collaborators");
@@ -6087,6 +6090,8 @@ const riskAssessmentAddJobButton = document.querySelector("#risk-assessment-add-
 const riskAssessmentJobCatalogSelect = document.querySelector("#risk-assessment-job-catalog-select");
 const riskAssessmentJobCatalogGroupInput = document.querySelector("#risk-assessment-job-catalog-group");
 const riskAssessmentImportJobsButton = document.querySelector("#risk-assessment-import-jobs");
+const riskAssessmentManualHandlingList = document.querySelector("#risk-assessment-manual-handling");
+const riskAssessmentAddManualHandlingButton = document.querySelector("#risk-assessment-add-manual-handling");
 const riskAssessmentChemicalsList = document.querySelector("#risk-assessment-chemicals");
 const riskAssessmentAddChemicalButton = document.querySelector("#risk-assessment-add-chemical");
 const riskAssessmentChemicalSearchInput = document.querySelector("#risk-assessment-chemical-search");
@@ -6131,6 +6136,7 @@ let riskAssessmentMeasureDrafts = [];
 let riskAssessmentOrganizationUnitDrafts = [];
 let riskAssessmentJobDrafts = [];
 let riskAssessmentRiskTemplateDrafts = [];
+let riskAssessmentManualHandlingDrafts = [];
 let riskAssessmentChemicalDrafts = [];
 let riskAssessmentChemicalSearchResultsDraft = [];
 let riskAssessmentChemicalSearchBusy = false;
@@ -6168,6 +6174,7 @@ const RISK_ASSESSMENT_TEMPLATE_PLACEHOLDERS = Object.freeze([
   { key: "measures", token: "{{RISK_MEASURES}}", label: "Plan mjera", defaultTitle: "Plan mjera" },
   { key: "structure", token: "{{RISK_STRUCTURE}}", label: "Sistematizacija", defaultTitle: "Struktura organizacijskih jedinica" },
   { key: "jobs", token: "{{RISK_JOBS}}", label: "Poslovi i procjena rizika", defaultTitle: "Analiza radnih mjesta i procjena rizika" },
+  { key: "manual_handling", token: "{{RISK_MANUAL_HANDLING}}", label: "Ručno prenošenje tereta", defaultTitle: "Ručno prenošenje tereta" },
   { key: "chemicals", token: "{{RISK_CHEMICALS}}", label: "Kemikalije i STL", defaultTitle: "Kemikalije i sigurnosno-tehnički listovi" },
   { key: "ppe", token: "{{RISK_PPE}}", label: "Osobna zaštitna oprema", defaultTitle: "Osobna zaštitna oprema" },
   { key: "overview", token: "{{RISK_OVERVIEW}}", label: "Sažetak procjene", defaultTitle: "Sažetak procjene" },
@@ -6186,6 +6193,7 @@ const RISK_ASSESSMENT_TEMPLATE_BLOCKS = Object.freeze([
   { block: "measures", label: "Mjere", sectionKeys: ["measures"], tokenLabel: "{{RISK_MEASURES}}" },
   { block: "structure", label: "Struktura", sectionKeys: ["structure"], tokenLabel: "{{RISK_STRUCTURE}}" },
   { block: "jobs", label: "Poslovi", sectionKeys: ["jobs", "ppe"], tokenLabel: "{{RISK_JOBS}} + {{RISK_PPE}}" },
+  { block: "manual-handling", label: "Ručno prenošenje tereta", sectionKeys: ["manual_handling"], tokenLabel: "{{RISK_MANUAL_HANDLING}}" },
   { block: "chemicals", label: "Kemikalije", sectionKeys: ["chemicals"], tokenLabel: "{{RISK_CHEMICALS}}" },
   { block: "overview", label: "Pregled", sectionKeys: ["overview", "signatures"], tokenLabel: "{{RISK_OVERVIEW}} + {{RISK_SIGNATURES}}" },
 ]);
@@ -6197,13 +6205,13 @@ const RISK_ASSESSMENT_TEMPLATE_PRESETS = Object.freeze([
     id: "complete",
     label: "Cijela procjena rizika",
     description: "Puni dokument za klijenta s općim dijelom, poslovima, mjerama, kemikalijama, OZO i potpisima.",
-    sections: ["cover", "employer", "intro", "process", "general", "computer", "rules", "findings", "measures", "structure", "jobs", "chemicals", "ppe", "overview", "signatures"],
+    sections: ["cover", "employer", "intro", "process", "general", "computer", "rules", "findings", "measures", "structure", "jobs", "manual_handling", "chemicals", "ppe", "overview", "signatures"],
   },
   {
     id: "operations",
     label: "Operativni HSE dokument",
     description: "Naglasak na radnim mjestima, rizicima, mjerama, kemikalijama i OZO za terensku uporabu.",
-    sections: ["cover", "employer", "process", "structure", "jobs", "chemicals", "ppe", "measures", "overview", "signatures"],
+    sections: ["cover", "employer", "process", "structure", "jobs", "manual_handling", "chemicals", "ppe", "measures", "overview", "signatures"],
   },
   {
     id: "legal",
@@ -80933,6 +80941,8 @@ function getCompanyOverviewSummarySource(companyId = companyIdInput?.value || ""
     name: companyNameInput?.value ?? persistedCompany.name ?? "",
     headquarters: companyHeadquartersInput?.value ?? persistedCompany.headquarters ?? "",
     oib: companyOibInput?.value ?? persistedCompany.oib ?? "",
+    mbs: companyMbsInput?.value ?? persistedCompany.mbs ?? "",
+    nkdActivity: companyNkdActivityInput?.value ?? persistedCompany.nkdActivity ?? "",
     employeeSize: companyEmployeeSizeInput?.value ?? persistedCompany.employeeSize ?? "",
     managerUserIds: managerUserIds.length ? managerUserIds : (persistedCompany.managerUserIds || []),
     managerUserLabels: managerUserIds.length
@@ -81000,8 +81010,13 @@ function renderCompanyOverviewSummary(companyId = companyIdInput?.value || "") {
     createCompanyOverviewSummaryCard({
       label: "OIB",
       value: company.oib || "Nije upisano",
-      detail: statusLabel,
+      detail: [company.mbs ? `MBS ${company.mbs}` : "", statusLabel].filter(Boolean).join(" · "),
       tone: statusLabel === "Aktivno" ? "success" : "warning",
+    }),
+    createCompanyOverviewSummaryCard({
+      label: "NKD",
+      value: company.nkdActivity || "Nije upisano",
+      detail: "Djelatnost za dokumente i procjene rizika",
     }),
     createCompanyOverviewSummaryCard({
       label: "Kontakt",
@@ -82993,6 +83008,8 @@ function buildCompanyPayload() {
     logoDataUrl: companyLogoDataUrlInput?.value || "",
     headquarters: companyHeadquartersInput.value,
     oib: companyOibInput.value,
+    mbs: companyMbsInput?.value || "",
+    nkdActivity: companyNkdActivityInput?.value || "",
     contractName: companyContractNameInput?.value || "",
     contractType: normalizeCompanyContractType(companyContractTypeInput?.value || ""),
     contractNumber: companyContractNumberInput.value,
@@ -84739,6 +84756,12 @@ function hydrateCompanyForm(company) {
   companyNameInput.value = company.name;
   companyHeadquartersInput.value = company.headquarters;
   companyOibInput.value = company.oib;
+  if (companyMbsInput) {
+    companyMbsInput.value = company.mbs || "";
+  }
+  if (companyNkdActivityInput) {
+    companyNkdActivityInput.value = company.nkdActivity || "";
+  }
   if (companyContractNameInput) {
     companyContractNameInput.value = company.contractName || "";
   }
@@ -115914,6 +115937,7 @@ riskAssessmentCompanyInput?.addEventListener("change", () => {
   const companyId = riskAssessmentCompanyInput.value || "";
   replaceSelectOptions(riskAssessmentLocationInput, buildRiskAssessmentLocationOptions(companyId), "");
   replaceSelectOptions(riskAssessmentWorkOrderInput, buildRiskAssessmentWorkOrderOptions(companyId), "");
+  refreshRiskAssessmentAutoNumber("");
   if (riskAssessmentTitleInput) {
     riskAssessmentTitleInput.value = buildRiskAssessmentGeneratedTitle(companyId);
   }
@@ -115931,24 +115955,33 @@ riskAssessmentWorkOrderInput?.addEventListener("change", () => {
       linkedWorkOrder.locationId,
     );
   }
+  refreshRiskAssessmentAutoNumber();
   renderRiskAssessmentBasicSummary();
   scheduleRiskAssessmentDraftAutosave();
 });
 
-riskAssessmentDateInput?.addEventListener("blur", () => {
-  if (!riskAssessmentDateInput) {
+function normalizeRiskAssessmentDateInput(input) {
+  if (!input) {
     return;
   }
-  const normalizedDate = normalizeDateInputValue(riskAssessmentDateInput.value);
-  riskAssessmentDateInput.value = normalizedDate ? formatDateInputDisplayValue(normalizedDate) : riskAssessmentDateInput.value.trim();
+  const normalizedDate = normalizeDateInputValue(input.value);
+  input.value = normalizedDate ? formatDateInputDisplayValue(normalizedDate) : input.value.trim();
   renderRiskAssessmentBasicSummary();
+}
+
+riskAssessmentDateInput?.addEventListener("blur", () => {
+  normalizeRiskAssessmentDateInput(riskAssessmentDateInput);
+});
+
+riskAssessmentCompletionDateInput?.addEventListener("blur", () => {
+  normalizeRiskAssessmentDateInput(riskAssessmentCompletionDateInput);
 });
 
 [
   riskAssessmentLocationInput,
-  riskAssessmentNumberInput,
   riskAssessmentStatusInput,
   riskAssessmentDateInput,
+  riskAssessmentCompletionDateInput,
   riskAssessmentTeamLeadInput,
   riskAssessmentCollaboratorsInput,
 ].forEach((input) => {
@@ -115989,6 +116022,13 @@ riskAssessmentAddJobButton?.addEventListener("click", () => {
 riskAssessmentImportJobsButton?.addEventListener("click", (event) => {
   event.preventDefault();
   importSelectedJobsIntoRiskAssessment();
+});
+
+riskAssessmentAddManualHandlingButton?.addEventListener("click", () => {
+  riskAssessmentManualHandlingDrafts.push(createRiskAssessmentManualHandlingDraft());
+  renderRiskAssessmentManualHandling();
+  renderRiskAssessmentOverview();
+  scheduleRiskAssessmentDraftAutosave();
 });
 
 riskAssessmentAddChemicalButton?.addEventListener("click", () => {
@@ -116108,6 +116148,9 @@ riskAssessmentJobsList?.addEventListener("input", handleRiskAssessmentJobsListIn
 riskAssessmentJobsList?.addEventListener("change", handleRiskAssessmentJobsListInput);
 riskAssessmentJobsList?.addEventListener("click", handleRiskAssessmentJobsListClick);
 riskAssessmentJobsList?.addEventListener("dragstart", handleRiskAssessmentJobsDragStart);
+riskAssessmentManualHandlingList?.addEventListener("input", handleRiskAssessmentManualHandlingInput);
+riskAssessmentManualHandlingList?.addEventListener("change", handleRiskAssessmentManualHandlingInput);
+riskAssessmentManualHandlingList?.addEventListener("click", handleRiskAssessmentManualHandlingClick);
 riskAssessmentChemicalsList?.addEventListener("input", handleRiskAssessmentChemicalsInput);
 riskAssessmentChemicalsList?.addEventListener("change", handleRiskAssessmentChemicalsInput);
 riskAssessmentChemicalsList?.addEventListener("click", handleRiskAssessmentChemicalsClick);
@@ -119602,6 +119645,24 @@ function buildRiskAssessmentWorkOrderOptions(companyId = "", selectedValue = "")
   return [{ value: "", label: emptyLabel }, ...options];
 }
 
+function buildRiskAssessmentNumberFromWorkOrder(workOrder = null) {
+  const number = String(workOrder?.workOrderNumber || "").trim();
+  if (!number) {
+    return "";
+  }
+  return /-PR$/i.test(number) ? number : `${number}-PR`;
+}
+
+function refreshRiskAssessmentAutoNumber(fallbackNumber = "") {
+  if (!riskAssessmentNumberInput) {
+    return "";
+  }
+  const linkedWorkOrder = getRiskAssessmentWorkOrderById(riskAssessmentWorkOrderInput?.value || "");
+  const automaticNumber = buildRiskAssessmentNumberFromWorkOrder(linkedWorkOrder);
+  riskAssessmentNumberInput.value = automaticNumber || String(fallbackNumber || "").trim();
+  return riskAssessmentNumberInput.value;
+}
+
 function replaceMultiSelectOptions(select, options = [], selectedValues = []) {
   if (!(select instanceof HTMLSelectElement)) {
     return;
@@ -119807,9 +119868,9 @@ function buildRiskAssessmentDefaultEmployerData(companyId = riskAssessmentCompan
   return {
     fullName: company?.name || "",
     address: company?.headquarters || "",
-    mbs: "",
+    mbs: company?.mbs || "",
     oib: company?.oib || "",
-    nkdActivity: company?.industry || company?.activity || "",
+    nkdActivity: company?.nkdActivity || company?.industry || company?.activity || "",
     employeeCount: employeeLabel,
     headquarters: company?.headquarters || "",
     detachedLocations: companyLocations.map(formatRiskAssessmentLocationLine).filter(Boolean).join("\n"),
@@ -120125,6 +120186,7 @@ function resetRiskAssessmentForm() {
   riskAssessmentOrganizationUnitDrafts = [];
   riskAssessmentJobDrafts = [];
   riskAssessmentRiskTemplateDrafts = [];
+  riskAssessmentManualHandlingDrafts = [];
   riskAssessmentChemicalDrafts = [];
   riskAssessmentChemicalSearchResultsDraft = [];
   riskAssessmentLastStlImportSummary = null;
@@ -120153,6 +120215,9 @@ function resetRiskAssessmentForm() {
   if (riskAssessmentDateInput) {
     riskAssessmentDateInput.value = formatDateInputDisplayValue(new Date().toISOString().slice(0, 10));
   }
+  if (riskAssessmentCompletionDateInput) {
+    riskAssessmentCompletionDateInput.value = "";
+  }
   if (riskAssessmentNumberInput) {
     riskAssessmentNumberInput.value = "";
   }
@@ -120169,6 +120234,7 @@ function resetRiskAssessmentForm() {
   renderRiskAssessmentMeasures();
   renderRiskAssessmentOrganizationUnits();
   renderRiskAssessmentJobs();
+  renderRiskAssessmentManualHandling();
   renderRiskAssessmentChemicals();
   renderRiskAssessmentTemplateBuilder();
   renderRiskAssessmentOverview();
@@ -120190,8 +120256,12 @@ function hydrateRiskAssessmentForm(item = {}) {
   replaceSelectOptions(riskAssessmentStatusInput, RISK_ASSESSMENT_STATUS_OPTIONS, item.status || "draft");
   riskAssessmentIdInput.value = item.id || "";
   riskAssessmentNumberInput.value = item.assessmentNumber || "";
+  refreshRiskAssessmentAutoNumber(item.assessmentNumber || "");
   riskAssessmentTitleInput.value = item.title || buildRiskAssessmentGeneratedTitle(item.companyId || "");
   riskAssessmentDateInput.value = item.assessmentDate ? formatDateInputDisplayValue(item.assessmentDate) : "";
+  if (riskAssessmentCompletionDateInput) {
+    riskAssessmentCompletionDateInput.value = item.completionDate ? formatDateInputDisplayValue(item.completionDate) : "";
+  }
   riskAssessmentRevisionDateInput.value = "";
   setRiskAssessmentPeopleSelect(riskAssessmentTeamLeadInput, item.teamLeadUserIds ?? [], item.teamLead || "");
   setRiskAssessmentPeopleSelect(riskAssessmentCollaboratorsInput, item.collaboratorUserIds ?? [], item.collaborators || "");
@@ -120215,6 +120285,7 @@ function hydrateRiskAssessmentForm(item = {}) {
     ppeItems: (entry.ppeItems ?? []).map((ppe) => createRiskAssessmentPpeDraft(ppe)),
   }));
   riskAssessmentChemicalDrafts = (item.chemicals ?? []).map((entry) => createRiskAssessmentChemicalDraft(entry));
+  riskAssessmentManualHandlingDrafts = (item.manualHandling ?? item.manualHandlingItems ?? []).map((entry) => createRiskAssessmentManualHandlingDraft(entry));
   riskAssessmentChemicalSearchResultsDraft = [];
   riskAssessmentLastStlImportSummary = null;
   riskAssessmentOfficialSubstanceQuery = "";
@@ -120235,6 +120306,7 @@ function hydrateRiskAssessmentForm(item = {}) {
   renderRiskAssessmentMeasures();
   renderRiskAssessmentOrganizationUnits();
   renderRiskAssessmentJobs();
+  renderRiskAssessmentManualHandling();
   renderRiskAssessmentChemicals();
   renderRiskAssessmentTemplateBuilder();
   renderRiskAssessmentOverview();
@@ -123228,6 +123300,33 @@ function renderRiskAssessmentTemplatePpeContent() {
   `;
 }
 
+function renderRiskAssessmentTemplateManualHandlingContent() {
+  if (!riskAssessmentManualHandlingDrafts.length) {
+    return `<p class="is-muted">Izračuni ručnog prenošenja tereta nisu dodani.</p>`;
+  }
+  return `
+    <div class="risk-assessment-template-table">
+      <div class="is-head"><span>Aktivnost</span><span>Opterećenje</span><span>Razina</span><span>Mjere</span></div>
+      ${riskAssessmentManualHandlingDrafts.map((entry) => {
+        const calculation = calculateRiskAssessmentManualHandling(entry);
+        const job = riskAssessmentJobDrafts.find((item) => String(item.id) === String(entry.jobId));
+        return `
+          <div>
+            <span>${escapeHtml([entry.activity || "Aktivnost", job?.jobTitle].filter(Boolean).join(" · "))}</span>
+            <span>${escapeHtml([
+              entry.loadWeightKg ? `${entry.loadWeightKg} kg` : "",
+              entry.transfersPerHour ? `${entry.transfersPerHour}/h` : "",
+              calculation.dailyLoadKg ? `${calculation.dailyLoadKg} kg/dan` : "",
+            ].filter(Boolean).join(" · ") || "-")}</span>
+            <span>${escapeHtml(`${calculation.level} (${calculation.score})`)}</span>
+            <span>${escapeHtml(entry.existingMeasures || calculation.recommendation)}</span>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
 function renderRiskAssessmentTemplateOverviewContent() {
   const totalRisks = riskAssessmentJobDrafts.reduce((sum, job) => sum + getRiskAssessmentFilledRiskRowCount(job), 0);
   const totalPpe = riskAssessmentJobDrafts.reduce((sum, job) => sum + (job.ppeItems ?? []).length, 0);
@@ -123253,7 +123352,11 @@ function renderRiskAssessmentTemplateSectionContent(key = "", sectionNumber = 1)
         <div class="risk-assessment-template-cover">
           <span>Procjena rizika</span>
           <h3>${escapeHtml(riskAssessmentTitleInput?.value || `Procjena rizika - ${companyName}`)}</h3>
-          <p>${escapeHtml([riskAssessmentNumberInput?.value, formatDateInputDisplayValue(riskAssessmentDateInput?.value || "")].filter(Boolean).join(" · "))}</p>
+          <p>${escapeHtml([
+            riskAssessmentNumberInput?.value,
+            formatDateInputDisplayValue(riskAssessmentDateInput?.value || ""),
+            riskAssessmentCompletionDateInput?.value ? `Završetak ${formatDateInputDisplayValue(riskAssessmentCompletionDateInput.value)}` : "",
+          ].filter(Boolean).join(" · "))}</p>
           ${renderRiskAssessmentTemplateFacts([
             { label: "Tvrtka", value: companyName },
             { label: "Lokacija", value: locationName },
@@ -123309,6 +123412,8 @@ function renderRiskAssessmentTemplateSectionContent(key = "", sectionNumber = 1)
       return riskAssessmentJobDrafts.length
         ? riskAssessmentJobDrafts.map((job, index) => renderRiskAssessmentJobDocumentPreview(job, index)).join("")
         : `<p class="is-muted">Radna mjesta nisu dodana.</p>`;
+    case "manual_handling":
+      return renderRiskAssessmentTemplateManualHandlingContent();
     case "chemicals":
       return renderRiskAssessmentTemplateChemicalsContent();
     case "ppe":
@@ -123320,6 +123425,7 @@ function renderRiskAssessmentTemplateSectionContent(key = "", sectionNumber = 1)
         { label: "Voditelj izrade", value: riskAssessmentTeamLeadInput?.selectedOptions ? Array.from(riskAssessmentTeamLeadInput.selectedOptions).map((option) => option.textContent).join(", ") : "" },
         { label: "Suradnici", value: riskAssessmentCollaboratorsInput?.selectedOptions ? Array.from(riskAssessmentCollaboratorsInput.selectedOptions).map((option) => option.textContent).join(", ") : "" },
         { label: "Datum", value: formatDateInputDisplayValue(riskAssessmentDateInput?.value || "") },
+        { label: "Datum završetka", value: formatDateInputDisplayValue(riskAssessmentCompletionDateInput?.value || "") },
         { label: "Potpis", value: "____________________________" },
       ]);
     default:
@@ -125568,6 +125674,9 @@ function syncRiskAssessmentEditorAccess() {
   if (riskAssessmentImportJobsButton) {
     riskAssessmentImportJobsButton.disabled = !canManage || (state.jobs ?? []).length === 0;
   }
+  if (riskAssessmentAddManualHandlingButton) {
+    riskAssessmentAddManualHandlingButton.hidden = !canManage;
+  }
   if (riskAssessmentAddChemicalButton) {
     riskAssessmentAddChemicalButton.hidden = !canManage;
   }
@@ -125642,6 +125751,226 @@ function renderRiskAssessmentMeasures() {
   }));
 }
 
+const RISK_ASSESSMENT_MANUAL_POSTURE_OPTIONS = Object.freeze([
+  { value: "neutral", label: "Neutralno držanje", points: 0 },
+  { value: "bent", label: "Saginjanje / rad ispod koljena", points: 2 },
+  { value: "twist", label: "Rotacija trupa", points: 2 },
+  { value: "overhead", label: "Podizanje iznad ramena", points: 3 },
+]);
+
+const RISK_ASSESSMENT_MANUAL_GRIP_OPTIONS = Object.freeze([
+  { value: "good", label: "Dobar prihvat", points: 0 },
+  { value: "limited", label: "Ograničen prihvat", points: 1 },
+  { value: "poor", label: "Loš prihvat / klizavo", points: 2 },
+]);
+
+function parseRiskAssessmentManualNumber(value = "") {
+  const normalized = String(value ?? "").replace(",", ".").replace(/[^0-9.-]/g, "");
+  const number = Number(normalized);
+  return Number.isFinite(number) && number > 0 ? number : 0;
+}
+
+function getRiskAssessmentManualOption(options = [], value = "") {
+  return options.find((option) => option.value === value) ?? options[0];
+}
+
+function getRiskAssessmentManualRiskTone(score = 0) {
+  if (score >= 13) {
+    return { level: "Vrlo visok rizik", tone: "critical", recommendation: "Preprojektirati rad, uvesti mehanička pomagala ili timsko rukovanje prije redovnog rada." };
+  }
+  if (score >= 9) {
+    return { level: "Visok rizik", tone: "danger", recommendation: "Smanjiti masu, učestalost ili udaljenost nošenja te uvesti pomoćna sredstva i nadzor." };
+  }
+  if (score >= 5) {
+    return { level: "Povišen rizik", tone: "warning", recommendation: "Optimizirati organizaciju rada, put nošenja, visinu zahvata i pauze." };
+  }
+  return { level: "Nizak rizik", tone: "success", recommendation: "Rizik je prihvatljiv uz osposobljavanje, uredan prostor i praćenje promjena uvjeta." };
+}
+
+function calculateRiskAssessmentManualHandling(entry = {}) {
+  const mass = parseRiskAssessmentManualNumber(entry.loadWeightKg);
+  const transfersPerHour = parseRiskAssessmentManualNumber(entry.transfersPerHour);
+  const durationMinutes = parseRiskAssessmentManualNumber(entry.durationMinutes);
+  const carryingDistanceMeters = parseRiskAssessmentManualNumber(entry.carryingDistanceMeters);
+  const verticalLiftCm = parseRiskAssessmentManualNumber(entry.verticalLiftCm);
+  const horizontalReachCm = parseRiskAssessmentManualNumber(entry.horizontalReachCm);
+  const posture = getRiskAssessmentManualOption(RISK_ASSESSMENT_MANUAL_POSTURE_OPTIONS, entry.posture);
+  const grip = getRiskAssessmentManualOption(RISK_ASSESSMENT_MANUAL_GRIP_OPTIONS, entry.gripQuality);
+  const dailyLoadKg = Math.round(mass * transfersPerHour * (durationMinutes / 60));
+  const tonnage = dailyLoadKg / 1000;
+  const massPoints = mass > 25 ? 6 : mass > 15 ? 4 : mass > 10 ? 2 : mass > 5 ? 1 : 0;
+  const frequencyPoints = transfersPerHour > 120 ? 4 : transfersPerHour > 30 ? 2 : transfersPerHour > 6 ? 1 : 0;
+  const durationPoints = durationMinutes > 240 ? 2 : durationMinutes > 60 ? 1 : 0;
+  const distancePoints = carryingDistanceMeters > 10 ? 2 : carryingDistanceMeters > 2 ? 1 : 0;
+  const verticalPoints = verticalLiftCm > 100 ? 2 : verticalLiftCm > 50 ? 1 : 0;
+  const reachPoints = horizontalReachCm > 50 ? 2 : horizontalReachCm > 25 ? 1 : 0;
+  const score = massPoints + frequencyPoints + durationPoints + distancePoints + verticalPoints + reachPoints + posture.points + grip.points;
+  return {
+    mass,
+    transfersPerHour,
+    durationMinutes,
+    dailyLoadKg,
+    tonnage,
+    score,
+    postureLabel: posture.label,
+    gripLabel: grip.label,
+    ...getRiskAssessmentManualRiskTone(score),
+  };
+}
+
+function createRiskAssessmentManualHandlingDraft(initial = {}) {
+  return {
+    id: String(initial.id || crypto.randomUUID()),
+    activity: String(initial.activity || initial.title || ""),
+    jobId: String(initial.jobId || ""),
+    loadWeightKg: String(initial.loadWeightKg ?? initial.massKg ?? ""),
+    transfersPerHour: String(initial.transfersPerHour ?? initial.frequencyPerHour ?? ""),
+    durationMinutes: String(initial.durationMinutes ?? ""),
+    carryingDistanceMeters: String(initial.carryingDistanceMeters ?? initial.distanceMeters ?? ""),
+    verticalLiftCm: String(initial.verticalLiftCm ?? ""),
+    horizontalReachCm: String(initial.horizontalReachCm ?? ""),
+    posture: String(initial.posture || "neutral"),
+    gripQuality: String(initial.gripQuality || "good"),
+    existingMeasures: String(initial.existingMeasures || initial.measures || ""),
+    note: String(initial.note || ""),
+  };
+}
+
+function sanitizeRiskAssessmentManualHandlingDraft(entry = {}) {
+  const draft = createRiskAssessmentManualHandlingDraft(entry);
+  return {
+    id: draft.id,
+    activity: draft.activity.trim(),
+    jobId: draft.jobId,
+    loadWeightKg: draft.loadWeightKg.trim(),
+    transfersPerHour: draft.transfersPerHour.trim(),
+    durationMinutes: draft.durationMinutes.trim(),
+    carryingDistanceMeters: draft.carryingDistanceMeters.trim(),
+    verticalLiftCm: draft.verticalLiftCm.trim(),
+    horizontalReachCm: draft.horizontalReachCm.trim(),
+    posture: draft.posture,
+    gripQuality: draft.gripQuality,
+    existingMeasures: draft.existingMeasures.trim(),
+    note: draft.note.trim(),
+  };
+}
+
+function renderRiskAssessmentManualOptionList(options = [], value = "") {
+  return options.map((option) => `
+    <option value="${escapeHtml(option.value)}" ${option.value === value ? "selected" : ""}>${escapeHtml(option.label)}</option>
+  `).join("");
+}
+
+function renderRiskAssessmentManualJobOptions(selectedValue = "") {
+  const options = [{ value: "", label: "Nije vezano uz posao" }].concat(
+    riskAssessmentJobDrafts.map((job, index) => ({
+      value: String(job.id || `job-${index}`),
+      label: job.jobTitle || `Posao ${index + 1}`,
+    })),
+  );
+  return options.map((option) => `
+    <option value="${escapeHtml(option.value)}" ${String(option.value) === String(selectedValue) ? "selected" : ""}>${escapeHtml(option.label)}</option>
+  `).join("");
+}
+
+function refreshRiskAssessmentManualHandlingCard(card = null, index = -1) {
+  const entry = riskAssessmentManualHandlingDrafts[index];
+  if (!card || !entry) {
+    return;
+  }
+  const calculation = calculateRiskAssessmentManualHandling(entry);
+  card.dataset.riskTone = calculation.tone;
+  const result = card.querySelector("[data-risk-manual-result]");
+  if (result) {
+    result.textContent = calculation.level;
+    result.className = `risk-assessment-manual-result is-${calculation.tone}`;
+  }
+  const score = card.querySelector("[data-risk-manual-score]");
+  if (score) {
+    score.textContent = String(calculation.score);
+  }
+  const daily = card.querySelector("[data-risk-manual-daily]");
+  if (daily) {
+    daily.textContent = calculation.dailyLoadKg ? `${calculation.dailyLoadKg} kg/dan` : "Nije izračunato";
+  }
+  const tonnage = card.querySelector("[data-risk-manual-tonnage]");
+  if (tonnage) {
+    tonnage.textContent = calculation.tonnage ? `${calculation.tonnage.toLocaleString("hr-HR", { maximumFractionDigits: 2 })} t/dan` : "0 t/dan";
+  }
+  const recommendation = card.querySelector("[data-risk-manual-recommendation]");
+  if (recommendation) {
+    recommendation.textContent = calculation.recommendation;
+  }
+}
+
+function updateRiskAssessmentManualHandlingField(index, field = "", value = "", card = null) {
+  const current = riskAssessmentManualHandlingDrafts[index];
+  if (!current || !field) {
+    return;
+  }
+  riskAssessmentManualHandlingDrafts[index] = {
+    ...current,
+    [field]: value,
+  };
+  refreshRiskAssessmentManualHandlingCard(card, index);
+  renderRiskAssessmentOverview();
+  scheduleRiskAssessmentDraftAutosave();
+}
+
+function renderRiskAssessmentManualHandling() {
+  if (!riskAssessmentManualHandlingList) {
+    return;
+  }
+  if (!riskAssessmentManualHandlingDrafts.length) {
+    const empty = document.createElement("p");
+    empty.className = "inline-help";
+    empty.textContent = "Dodaj aktivnost za izračun ručnog prenošenja tereta.";
+    riskAssessmentManualHandlingList.replaceChildren(empty);
+    return;
+  }
+
+  riskAssessmentManualHandlingList.replaceChildren(...riskAssessmentManualHandlingDrafts.map((entry, index) => {
+    const calculation = calculateRiskAssessmentManualHandling(entry);
+    const row = document.createElement("article");
+    row.className = "risk-assessment-manual-card";
+    row.dataset.riskManualIndex = String(index);
+    row.dataset.riskTone = calculation.tone;
+    row.innerHTML = `
+      <div class="risk-assessment-manual-head">
+        <div>
+          <span class="section-kicker">Izračun ${index + 1}</span>
+          <strong>${escapeHtml(entry.activity || "Aktivnost ručnog prenošenja")}</strong>
+          <small data-risk-manual-recommendation>${escapeHtml(calculation.recommendation)}</small>
+        </div>
+        <div class="risk-assessment-manual-metrics">
+          <span data-risk-manual-result class="risk-assessment-manual-result is-${escapeHtml(calculation.tone)}">${escapeHtml(calculation.level)}</span>
+          <span><b data-risk-manual-score>${escapeHtml(String(calculation.score))}</b> bodova</span>
+          <span data-risk-manual-daily>${escapeHtml(calculation.dailyLoadKg ? `${calculation.dailyLoadKg} kg/dan` : "Nije izračunato")}</span>
+          <span data-risk-manual-tonnage>${escapeHtml(calculation.tonnage ? `${calculation.tonnage.toLocaleString("hr-HR", { maximumFractionDigits: 2 })} t/dan` : "0 t/dan")}</span>
+        </div>
+      </div>
+      <div class="risk-assessment-manual-grid">
+        <label><span>Aktivnost</span><input data-risk-manual-field="activity" value="${escapeHtml(entry.activity)}" placeholder="npr. Premještanje boca / kutija" /></label>
+        <label><span>Povezani posao</span><select data-risk-manual-field="jobId">${renderRiskAssessmentManualJobOptions(entry.jobId)}</select></label>
+        <label><span>Masa tereta (kg)</span><input data-risk-manual-field="loadWeightKg" inputmode="decimal" value="${escapeHtml(entry.loadWeightKg)}" /></label>
+        <label><span>Prenošenja / sat</span><input data-risk-manual-field="transfersPerHour" inputmode="decimal" value="${escapeHtml(entry.transfersPerHour)}" /></label>
+        <label><span>Trajanje (min)</span><input data-risk-manual-field="durationMinutes" inputmode="decimal" value="${escapeHtml(entry.durationMinutes)}" /></label>
+        <label><span>Udaljenost nošenja (m)</span><input data-risk-manual-field="carryingDistanceMeters" inputmode="decimal" value="${escapeHtml(entry.carryingDistanceMeters)}" /></label>
+        <label><span>Vertikalno podizanje (cm)</span><input data-risk-manual-field="verticalLiftCm" inputmode="decimal" value="${escapeHtml(entry.verticalLiftCm)}" /></label>
+        <label><span>Horizontalni doseg (cm)</span><input data-risk-manual-field="horizontalReachCm" inputmode="decimal" value="${escapeHtml(entry.horizontalReachCm)}" /></label>
+        <label><span>Položaj tijela</span><select data-risk-manual-field="posture">${renderRiskAssessmentManualOptionList(RISK_ASSESSMENT_MANUAL_POSTURE_OPTIONS, entry.posture)}</select></label>
+        <label><span>Prihvat tereta</span><select data-risk-manual-field="gripQuality">${renderRiskAssessmentManualOptionList(RISK_ASSESSMENT_MANUAL_GRIP_OPTIONS, entry.gripQuality)}</select></label>
+        <label class="field-span-full"><span>Postojeće / potrebne mjere</span><textarea data-risk-manual-field="existingMeasures" rows="2">${escapeHtml(entry.existingMeasures)}</textarea></label>
+        <label class="field-span-full"><span>Napomena</span><textarea data-risk-manual-field="note" rows="2">${escapeHtml(entry.note)}</textarea></label>
+      </div>
+      <div class="risk-assessment-manual-actions">
+        <button type="button" class="ghost-button card-danger" data-risk-manual-remove="${index}">Ukloni izračun</button>
+      </div>
+    `;
+    return row;
+  }));
+}
+
 function renderRiskAssessmentOverview() {
   if (!riskAssessmentOverview) {
     return;
@@ -125649,6 +125978,10 @@ function renderRiskAssessmentOverview() {
   const totalRisks = riskAssessmentJobDrafts.reduce((sum, job) => sum + getRiskAssessmentFilledRiskRowCount(job), 0);
   const totalPpe = riskAssessmentJobDrafts.reduce((sum, job) => sum + (job.ppeItems ?? []).length, 0);
   const totalChemicals = riskAssessmentChemicalDrafts.length;
+  const totalManualHandling = riskAssessmentManualHandlingDrafts.length;
+  const highManualHandling = riskAssessmentManualHandlingDrafts
+    .map((entry) => calculateRiskAssessmentManualHandling(entry))
+    .filter((entry) => ["danger", "critical"].includes(entry.tone)).length;
   const units = riskAssessmentOrganizationUnitDrafts.length;
   const jobs = riskAssessmentJobDrafts.length;
   const readyJobs = riskAssessmentJobDrafts.filter((job) => getRiskAssessmentJobCompletion(job) >= 85).length;
@@ -125685,6 +126018,8 @@ function renderRiskAssessmentOverview() {
       <span><strong>${escapeHtml(String(jobs))}</strong> poslova</span>
       <span><strong>${escapeHtml(String(readyJobs))}</strong> spremno</span>
       <span><strong>${escapeHtml(String(totalRisks))}</strong> rizika</span>
+      <span><strong>${escapeHtml(String(totalManualHandling))}</strong> teret</span>
+      <span><strong>${escapeHtml(String(highManualHandling))}</strong> visoki teret</span>
       <span><strong>${escapeHtml(String(totalChemicals))}</strong> kemikalija</span>
       <span><strong>${escapeHtml(String(totalPpe))}</strong> OZO</span>
     </div>
@@ -125704,6 +126039,51 @@ function getRiskAssessmentUnitIndexFromElement(element) {
   const row = element?.closest?.("[data-risk-unit-index]");
   const index = Number(row?.dataset?.riskUnitIndex);
   return Number.isInteger(index) && index >= 0 ? index : -1;
+}
+
+function getRiskAssessmentManualIndexFromElement(element) {
+  const row = element?.closest?.("[data-risk-manual-index]");
+  const index = Number(row?.dataset?.riskManualIndex);
+  return Number.isInteger(index) && index >= 0 ? index : -1;
+}
+
+function handleRiskAssessmentManualHandlingInput(event) {
+  const target = event.target;
+  if (!(
+    target instanceof HTMLInputElement
+    || target instanceof HTMLTextAreaElement
+    || target instanceof HTMLSelectElement
+  )) {
+    return;
+  }
+  if (event.type === "input" && target instanceof HTMLSelectElement) {
+    return;
+  }
+  if (event.type === "change" && !(target instanceof HTMLSelectElement)) {
+    return;
+  }
+  const field = target.dataset.riskManualField;
+  if (!field) {
+    return;
+  }
+  const card = target.closest("[data-risk-manual-index]");
+  const index = getRiskAssessmentManualIndexFromElement(target);
+  updateRiskAssessmentManualHandlingField(index, field, target.value, card);
+}
+
+function handleRiskAssessmentManualHandlingClick(event) {
+  const removeButton = event.target?.closest?.("[data-risk-manual-remove]");
+  if (!removeButton) {
+    return;
+  }
+  const index = Number(removeButton.dataset.riskManualRemove);
+  if (!Number.isInteger(index) || index < 0) {
+    return;
+  }
+  riskAssessmentManualHandlingDrafts.splice(index, 1);
+  renderRiskAssessmentManualHandling();
+  renderRiskAssessmentOverview();
+  scheduleRiskAssessmentDraftAutosave();
 }
 
 function refreshRiskAssessmentJobDocumentPreview(jobIndex) {
@@ -126662,6 +127042,7 @@ function renderRiskAssessmentJobs() {
   }));
   setRiskAssessmentActiveBlock(riskAssessmentActiveBlock || "basic");
   initializeRiskAssessmentPpeScenes();
+  renderRiskAssessmentManualHandling();
   renderRiskAssessmentChemicals();
   renderRiskAssessmentOverview();
 }
@@ -126677,15 +127058,18 @@ function buildRiskAssessmentPayload() {
   const collaboratorSelection = readRiskAssessmentPeopleSelection(riskAssessmentCollaboratorsInput);
   const companyId = riskAssessmentCompanyInput?.value || "";
   const assessmentDate = normalizeDateInputValue(riskAssessmentDateInput?.value || "");
+  const completionDate = normalizeDateInputValue(riskAssessmentCompletionDateInput?.value || "");
+  const assessmentNumber = refreshRiskAssessmentAutoNumber(riskAssessmentNumberInput?.value || "");
 
   return {
     companyId,
     locationId: riskAssessmentLocationInput?.value || "",
     workOrderId: riskAssessmentWorkOrderInput?.value || "",
-    assessmentNumber: riskAssessmentNumberInput?.value || "",
+    assessmentNumber,
     status: riskAssessmentStatusInput?.value || "draft",
     title: riskAssessmentTitleInput?.value || buildRiskAssessmentGeneratedTitle(companyId),
     assessmentDate,
+    completionDate,
     revisionDate: "",
     teamLead: leadSelection.labels.join(", "),
     teamLeadUserIds: leadSelection.userIds,
@@ -126706,6 +127090,7 @@ function buildRiskAssessmentPayload() {
     organizationUnits: riskAssessmentOrganizationUnitDrafts.map((unit) => sanitizeRiskAssessmentTransientUnit(unit)),
     jobs: riskAssessmentJobDrafts.map((job) => sanitizeRiskAssessmentTransientJob(job)),
     riskTemplates: riskAssessmentRiskTemplateDrafts,
+    manualHandling: riskAssessmentManualHandlingDrafts.map((entry) => sanitizeRiskAssessmentManualHandlingDraft(entry)),
     chemicals: riskAssessmentChemicalDrafts.map((chemical) => sanitizeRiskAssessmentTransientChemical(chemical)),
     reportTemplate: sanitizeRiskAssessmentReportTemplateDraft(riskAssessmentReportTemplateDraft || {}),
   };
@@ -126721,6 +127106,7 @@ function renderRiskAssessmentCard(item = {}) {
   const unitsCount = (item.organizationUnits ?? []).length;
   const ppeCount = (item.jobs ?? []).reduce((sum, job) => sum + (job.ppeItems ?? []).length, 0);
   const chemicalCount = (item.chemicals ?? []).length;
+  const manualCount = (item.manualHandling ?? item.manualHandlingItems ?? []).length;
   const locationText = item.locationName || "Sve lokacije / nije vezano";
   const workOrderText = item.workOrderNumber ? `RN ${item.workOrderNumber}` : "";
   card.innerHTML = `
@@ -126732,10 +127118,12 @@ function renderRiskAssessmentCard(item = {}) {
     <div class="risk-assessment-card-meta">
       <span class="soft-pill">${unitsCount} jedinica</span>
       <span class="soft-pill">${jobsCount} poslova</span>
+      <span class="soft-pill">${manualCount} teret</span>
       <span class="soft-pill">${chemicalCount} kemikalija</span>
       <span class="soft-pill">${ppeCount} OZO</span>
       <span class="soft-pill">${measuresOpen} mjera</span>
       <span class="soft-pill">${escapeHtml(item.assessmentDate ? formatCompactDate(item.assessmentDate) : "Bez datuma")}</span>
+      ${item.completionDate ? `<span class="soft-pill">Završetak ${escapeHtml(formatCompactDate(item.completionDate))}</span>` : ""}
     </div>
   `;
   card.addEventListener("click", () => hydrateRiskAssessmentForm(item));

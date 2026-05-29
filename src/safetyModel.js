@@ -3894,6 +3894,8 @@ export function createCompany(input, existingCompanies = [], createId = () => cr
     logoDataUrl: normalizeText(input.logoDataUrl),
     headquarters: normalizeText(input.headquarters),
     oib: normalizeOib(input.oib),
+    mbs: normalizeText(input.mbs).slice(0, 60),
+    nkdActivity: normalizeText(input.nkdActivity ?? input.nkd ?? input.industry ?? input.activity).slice(0, 500),
     contractName: normalizeText(input.contractName),
     contractType: normalizeText(input.contractType),
     contractNumber: normalizeText(input.contractNumber),
@@ -3935,6 +3937,10 @@ export function updateCompany(current, patch, existingCompanies = [], now = isoN
     logoDataUrl: hasOwn(patch, "logoDataUrl") ? normalizeText(patch.logoDataUrl) : current.logoDataUrl,
     headquarters: hasOwn(patch, "headquarters") ? normalizeText(patch.headquarters) : current.headquarters,
     oib: hasOwn(patch, "oib") ? normalizeOib(patch.oib) : current.oib,
+    mbs: hasOwn(patch, "mbs") ? normalizeText(patch.mbs).slice(0, 60) : normalizeText(current.mbs).slice(0, 60),
+    nkdActivity: hasOwn(patch, "nkdActivity") || hasOwn(patch, "nkd") || hasOwn(patch, "industry") || hasOwn(patch, "activity")
+      ? normalizeText(patch.nkdActivity ?? patch.nkd ?? patch.industry ?? patch.activity).slice(0, 500)
+      : normalizeText(current.nkdActivity ?? current.nkd ?? current.industry ?? current.activity).slice(0, 500),
     contractName: hasOwn(patch, "contractName") ? normalizeText(patch.contractName) : normalizeText(current.contractName),
     contractType: hasOwn(patch, "contractType") ? normalizeText(patch.contractType) : current.contractType,
     contractNumber: hasOwn(patch, "contractNumber") ? normalizeText(patch.contractNumber) : current.contractNumber,
@@ -5283,6 +5289,37 @@ function normalizeRiskAssessmentChemicals(items = []) {
   ));
 }
 
+function normalizeRiskAssessmentManualHandlingItems(items = []) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items.map((item, index) => ({
+    id: normalizeId(item?.id) || crypto.randomUUID(),
+    order: Number.isFinite(Number(item?.order)) ? Number(item.order) : index + 1,
+    activity: normalizeText(item?.activity ?? item?.title).slice(0, 220),
+    jobId: normalizeId(item?.jobId),
+    loadWeightKg: normalizeText(item?.loadWeightKg ?? item?.massKg).slice(0, 40),
+    transfersPerHour: normalizeText(item?.transfersPerHour ?? item?.frequencyPerHour).slice(0, 40),
+    durationMinutes: normalizeText(item?.durationMinutes).slice(0, 40),
+    carryingDistanceMeters: normalizeText(item?.carryingDistanceMeters ?? item?.distanceMeters).slice(0, 40),
+    verticalLiftCm: normalizeText(item?.verticalLiftCm).slice(0, 40),
+    horizontalReachCm: normalizeText(item?.horizontalReachCm).slice(0, 40),
+    posture: normalizeText(item?.posture || "neutral").slice(0, 40),
+    gripQuality: normalizeText(item?.gripQuality || "good").slice(0, 40),
+    existingMeasures: normalizeText(item?.existingMeasures ?? item?.measures).slice(0, 2000),
+    note: normalizeText(item?.note).slice(0, 2000),
+  })).filter((item) => (
+    item.activity
+    || item.loadWeightKg
+    || item.transfersPerHour
+    || item.durationMinutes
+    || item.carryingDistanceMeters
+    || item.existingMeasures
+    || item.note
+  )).map((item, index) => ({ ...item, order: index + 1 }));
+}
+
 const RISK_ASSESSMENT_REPORT_TEMPLATE_SECTION_KEYS = new Set([
   "cover",
   "employer",
@@ -5295,6 +5332,7 @@ const RISK_ASSESSMENT_REPORT_TEMPLATE_SECTION_KEYS = new Set([
   "measures",
   "structure",
   "jobs",
+  "manual_handling",
   "chemicals",
   "ppe",
   "overview",
@@ -5313,6 +5351,7 @@ const DEFAULT_RISK_ASSESSMENT_REPORT_TEMPLATE_SECTIONS = Object.freeze([
   "measures",
   "structure",
   "jobs",
+  "manual_handling",
   "chemicals",
   "ppe",
   "overview",
@@ -5344,7 +5383,7 @@ function normalizeRiskAssessmentReportTemplateSections(items = []) {
       placeholder: normalizeText(item?.placeholder) || `{{RISK_${key.toUpperCase()}}}`,
       title: normalizeText(item?.title),
       enabled: normalizeBoolean(item?.enabled, true),
-      pageBreakBefore: normalizeBoolean(item?.pageBreakBefore, index > 0 && ["jobs", "chemicals", "overview", "signatures"].includes(key)),
+      pageBreakBefore: normalizeBoolean(item?.pageBreakBefore, index > 0 && ["jobs", "manual_handling", "chemicals", "overview", "signatures"].includes(key)),
       includeInToc: normalizeBoolean(item?.includeInToc, key !== "cover"),
       note: normalizeText(item?.note),
       order: Number.isFinite(Number(item?.order)) ? Number(item.order) : index + 1,
@@ -5648,6 +5687,14 @@ function nextRiskAssessmentNumber(items = [], timestamp = isoNow()) {
   return `${prefix}-${String(sequence).padStart(4, "0")}`;
 }
 
+function buildRiskAssessmentNumberFromWorkOrderNumber(value = "") {
+  const number = normalizeText(value);
+  if (!number) {
+    return "";
+  }
+  return /-PR$/i.test(number) ? number : `${number}-PR`;
+}
+
 function hydrateRiskAssessmentCore({
   current = null,
   state,
@@ -5676,11 +5723,6 @@ function hydrateRiskAssessmentCore({
     throw new Error("Odabrana lokacija ne pripada tvrtki.");
   }
 
-  const resolvedNumber = normalizeText(
-    hasOwn(input, "assessmentNumber")
-      ? input.assessmentNumber
-      : assessmentNumber || current?.assessmentNumber,
-  ) || nextRiskAssessmentNumber(state.riskAssessments ?? [], timestamp);
   const requestedWorkOrderId = hasOwn(input, "workOrderId")
     ? normalizeId(input.workOrderId)
     : normalizeId(current?.workOrderId);
@@ -5691,6 +5733,14 @@ function hydrateRiskAssessmentCore({
   if (requestedWorkOrderId && !linkedWorkOrder) {
     throw new Error("Povezani RN mora pripadati tvrtki i imati uslugu procjene rizika.");
   }
+  const workOrderAssessmentNumber = buildRiskAssessmentNumberFromWorkOrderNumber(
+    linkedWorkOrder?.workOrderNumber ?? (requestedWorkOrderId ? current?.workOrderNumber ?? "" : ""),
+  );
+  const resolvedNumber = workOrderAssessmentNumber || normalizeText(
+    hasOwn(input, "assessmentNumber")
+      ? input.assessmentNumber
+      : assessmentNumber || current?.assessmentNumber,
+  ) || nextRiskAssessmentNumber(state.riskAssessments ?? [], timestamp);
 
   return {
     id: current?.id ?? "",
@@ -5715,6 +5765,9 @@ function hydrateRiskAssessmentCore({
     assessmentDate: hasOwn(input, "assessmentDate")
       ? (normalizeOptionalDate(input.assessmentDate) ?? timestamp.slice(0, 10))
       : (normalizeOptionalDate(current?.assessmentDate) ?? timestamp.slice(0, 10)),
+    completionDate: hasOwn(input, "completionDate")
+      ? normalizeOptionalDate(input.completionDate)
+      : normalizeOptionalDate(current?.completionDate),
     revisionDate: hasOwn(input, "revisionDate")
       ? normalizeOptionalDate(input.revisionDate)
       : normalizeOptionalDate(current?.revisionDate),
@@ -5732,7 +5785,9 @@ function hydrateRiskAssessmentCore({
       : normalizeRiskAssessmentEmployerData(current?.employerData ?? {
         fullName: company.name ?? "",
         address: company.headquarters ?? "",
+        mbs: company.mbs ?? "",
         oib: company.oib ?? "",
+        nkdActivity: company.nkdActivity ?? "",
         headquarters: company.headquarters ?? "",
       }),
     intro: hasOwn(input, "intro") ? normalizeRiskAssessmentRichText(input.intro) : current?.intro ?? "",
@@ -5759,6 +5814,9 @@ function hydrateRiskAssessmentCore({
     riskTemplates: hasOwn(input, "riskTemplates")
       ? normalizeRiskAssessmentRiskTemplates(input.riskTemplates)
       : normalizeRiskAssessmentRiskTemplates(current?.riskTemplates ?? []),
+    manualHandling: hasOwn(input, "manualHandling") || hasOwn(input, "manualHandlingItems")
+      ? normalizeRiskAssessmentManualHandlingItems(input.manualHandling ?? input.manualHandlingItems)
+      : normalizeRiskAssessmentManualHandlingItems(current?.manualHandling ?? current?.manualHandlingItems ?? []),
     chemicals: hasOwn(input, "chemicals")
       ? normalizeRiskAssessmentChemicals(input.chemicals)
       : normalizeRiskAssessmentChemicals(current?.chemicals ?? []),
@@ -8649,6 +8707,8 @@ export function filterRiskAssessments(
       item.headquarters,
       item.locationName,
       item.workOrderNumber,
+      item.assessmentDate,
+      item.completionDate,
       item.teamLead,
       item.collaborators,
       ...(item.teamLeadUserIds ?? []),
@@ -8735,6 +8795,19 @@ export function filterRiskAssessments(
         entry.jobHint,
         ...(entry.riskRows ?? []).map((risk) => risk.hazard),
         ...(entry.ppeItems ?? []).map((ppe) => ppe.name),
+      ]),
+      ...(item.manualHandling ?? item.manualHandlingItems ?? []).flatMap((entry) => [
+        entry.activity,
+        entry.loadWeightKg,
+        entry.transfersPerHour,
+        entry.durationMinutes,
+        entry.carryingDistanceMeters,
+        entry.verticalLiftCm,
+        entry.horizontalReachCm,
+        entry.posture,
+        entry.gripQuality,
+        entry.existingMeasures,
+        entry.note,
       ]),
       ...(item.chemicals ?? []).flatMap((entry) => [
         entry.name,

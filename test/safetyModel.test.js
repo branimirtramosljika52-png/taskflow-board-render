@@ -118,6 +118,8 @@ function buildState() {
       name: "Acme d.o.o.",
       headquarters: "Zagreb",
       oib: "12345678901",
+      mbs: "081521195",
+      nkdActivity: "20.11 Proizvodnja industrijskih plinova",
       contractType: "Pausal",
       representative: "Ana Kovac",
     },
@@ -514,6 +516,7 @@ test("risk assessments link only matching risk assessment work orders and keep e
       locationId: "location-1",
       workOrderId: "work-order-1",
       assessmentDate: "28.05.2026",
+      completionDate: "29.05.2026",
       teamLead: "Ana Horvat",
       teamLeadUserIds: ["user-1"],
       collaborators: "Marko Novak",
@@ -531,6 +534,18 @@ test("risk assessments link only matching risk assessment work orders and keep e
         headquarters: "Zagreb",
         detachedLocations: "Pogon Jankomir",
       },
+      manualHandling: [
+        {
+          activity: "Premještanje boca",
+          jobId: "job-asu",
+          loadWeightKg: "18",
+          transfersPerHour: "12",
+          durationMinutes: "90",
+          carryingDistanceMeters: "4",
+          posture: "twist",
+          existingMeasures: "Koristiti kolica i rad u paru.",
+        },
+      ],
     },
     state,
     () => "risk-1",
@@ -539,15 +554,20 @@ test("risk assessments link only matching risk assessment work orders and keep e
 
   assert.equal(assessment.workOrderId, "work-order-1");
   assert.equal(assessment.workOrderNumber, "RN-2026-001");
+  assert.equal(assessment.assessmentNumber, "RN-2026-001-PR");
   assert.equal(assessment.assessmentDate, "2026-05-28");
+  assert.equal(assessment.completionDate, "2026-05-29");
   assert.deepEqual(assessment.teamLeadUserIds, ["user-1"]);
   assert.deepEqual(assessment.collaboratorUserIds, ["user-2"]);
   assert.equal(assessment.employerData.nkdActivity, "20.11 Proizvodnja industrijskih plinova");
+  assert.equal(assessment.manualHandling[0].activity, "Premještanje boca");
+  assert.equal(assessment.manualHandling[0].existingMeasures, "Koristiti kolica i rad u paru.");
   assert.match(assessment.intro, /style="text-align:center;color:#111827"/);
   assert.match(assessment.generalData, /<table style="border-collapse:collapse">/);
   assert.match(assessment.conclusion, /<p>Zaključak u običnom tekstu<\/p>/);
   assert.doesNotMatch(assessment.intro, /script|alert/i);
   assert.equal(filterRiskAssessments([assessment], { query: "Objekt" }).length, 1);
+  assert.equal(filterRiskAssessments([assessment], { query: "Premještanje boca" }).length, 1);
 
   assert.throws(() => createRiskAssessment(
     {
@@ -593,6 +613,8 @@ test("companies keep uploaded logo data through create and update", () => {
     {
       name: "Logo Test d.o.o.",
       oib: "22345678901",
+      mbs: "081521195",
+      nkdActivity: "62.01 Računalno programiranje",
       logoDataUrl: "data:image/png;base64,AAA",
       employeeSize: "Do 49 zaposlenih",
       contractValidFrom: "2026-01-01",
@@ -609,6 +631,8 @@ test("companies keep uploaded logo data through create and update", () => {
   );
 
   assert.equal(company.logoDataUrl, "data:image/png;base64,AAA");
+  assert.equal(company.mbs, "081521195");
+  assert.equal(company.nkdActivity, "62.01 Računalno programiranje");
   assert.equal(company.employeeSize, "do-49");
   assert.equal(company.contractValidFrom, "2026-01-01");
   assert.equal(company.contractValidTo, "2026-12-31");
@@ -628,6 +652,7 @@ test("companies keep uploaded logo data through create and update", () => {
       managerUserIds: ["user-2", "user-3"],
       managerUserLabels: ["Marko Juric", "Ivana Horvat"],
       representativeRole: "Clan uprave",
+      nkdActivity: "71.20 Tehničko ispitivanje i analiza",
     },
     [company],
     () => "2026-03-30T09:05:00.000Z",
@@ -641,6 +666,8 @@ test("companies keep uploaded logo data through create and update", () => {
   assert.deepEqual(updated.managerUserIds, ["user-2", "user-3"]);
   assert.deepEqual(updated.managerUserLabels, ["Marko Juric", "Ivana Horvat"]);
   assert.equal(updated.representativeRole, "Clan uprave");
+  assert.equal(updated.mbs, "081521195");
+  assert.equal(updated.nkdActivity, "71.20 Tehničko ispitivanje i analiza");
   assert.equal(updated.representativeOib, "12345678903");
 });
 

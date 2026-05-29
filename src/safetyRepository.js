@@ -2019,6 +2019,7 @@ function mapRiskAssessmentEntry(row = {}, companiesById = new Map(), locationsBy
     title: row.title ?? "",
     status: row.status ?? "draft",
     assessmentDate: normalizeDateOnly(row.assessment_date),
+    completionDate: normalizeDateOnly(row.completion_date),
     revisionDate: normalizeDateOnly(row.revision_date),
     assessmentType: row.assessment_type ?? "Procjena rizika",
     teamLead: row.team_lead ?? "",
@@ -2040,6 +2041,7 @@ function mapRiskAssessmentEntry(row = {}, companiesById = new Map(), locationsBy
     organizationUnits: parseJsonArray(row.organization_units_json),
     jobs: parseJsonArray(row.jobs_json),
     riskTemplates: parseJsonArray(row.risk_templates_json),
+    manualHandling: parseJsonArray(row.manual_handling_json),
     chemicals: parseJsonArray(row.chemicals_json),
     reportTemplate: parseJsonObject(row.report_template_json),
     attachments: parseJsonArray(row.attachments_json)
@@ -3072,7 +3074,7 @@ function sanitizeUser(row) {
 
 async function fetchSnapshotFromConnection(connection) {
   const [companyRows] = await connection.query(`
-    SELECT id, naziv_tvrtke, sjediste, oib, naziv_ugovora, vrsta_ugovora, broj_ugovora,
+    SELECT id, naziv_tvrtke, sjediste, oib, mbs, nkd_djelatnost, naziv_ugovora, vrsta_ugovora, broj_ugovora,
            ugovor_vrijedi_od, ugovor_vrijedi_do, ugovor_vrijedi_trajno, mjesecna_cijena, cjenik_json, periodika,
            aktivno, predstavnik_korisnika, odgovorna_pozicija, odgovorna_osoba_oib, broj_zaposlenih,
            kontakt_broj, kontakt_email, voditelji_korisnik_ids_json, voditelji_oznaka_json, template_assignments_json, napomena,
@@ -3101,6 +3103,8 @@ async function fetchSnapshotFromConnection(connection) {
       logoStorageUrl: storedLogo.storageUrl,
       headquarters: row.sjediste ?? "",
       oib: row.oib ?? "",
+      mbs: row.mbs ?? "",
+      nkdActivity: row.nkd_djelatnost ?? "",
       contractName: row.naziv_ugovora ?? "",
       contractType: row.vrsta_ugovora ?? "",
       contractNumber: row.broj_ugovora ?? "",
@@ -3742,11 +3746,11 @@ async function fetchSnapshotFromConnection(connection) {
   const [riskAssessmentRows] = await connection.query(`
     SELECT id, organization_id, company_id, location_id, work_order_id, work_order_number,
            assessment_number, title, status,
-           assessment_date, revision_date, assessment_type, team_lead, team_lead_user_ids_json,
+           assessment_date, completion_date, revision_date, assessment_type, team_lead, team_lead_user_ids_json,
            collaborators, collaborator_user_ids_json, employer_data_json,
            intro_text, work_process_description, general_data, computer_workplaces,
            basic_rules, special_rules, omissions_basic, omissions_special, conclusion_text,
-           client_note, measures_json, organization_units_json, jobs_json, risk_templates_json, chemicals_json, report_template_json, attachments_json, comments_json,
+           client_note, measures_json, organization_units_json, jobs_json, risk_templates_json, manual_handling_json, chemicals_json, report_template_json, attachments_json, comments_json,
            created_by_user_id, created_by_label, created_at, updated_at
     FROM web_risk_assessments
     ORDER BY
@@ -7267,6 +7271,7 @@ export class MySqlSafetyRepository {
         title VARCHAR(220) NOT NULL,
         status VARCHAR(24) NOT NULL DEFAULT 'draft',
         assessment_date DATE NULL,
+        completion_date DATE NULL,
         revision_date DATE NULL,
         assessment_type VARCHAR(120) NOT NULL DEFAULT 'Procjena rizika',
         team_lead VARCHAR(180) NOT NULL DEFAULT '',
@@ -7288,6 +7293,7 @@ export class MySqlSafetyRepository {
         organization_units_json LONGTEXT NULL,
         jobs_json LONGTEXT NULL,
         risk_templates_json LONGTEXT NULL,
+        manual_handling_json LONGTEXT NULL,
         chemicals_json LONGTEXT NULL,
         report_template_json LONGTEXT NULL,
         attachments_json LONGTEXT NULL,
@@ -7886,8 +7892,10 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "web_safety_authorizations", "linked_service_catalog_ids_json", "LONGTEXT NULL AFTER linked_template_ids_json");
     await ensureColumnExists(this.pool, "web_risk_assessments", "organization_units_json", "LONGTEXT NULL AFTER measures_json");
     await ensureColumnExists(this.pool, "web_risk_assessments", "risk_templates_json", "LONGTEXT NULL AFTER jobs_json");
-    await ensureColumnExists(this.pool, "web_risk_assessments", "chemicals_json", "LONGTEXT NULL AFTER risk_templates_json");
+    await ensureColumnExists(this.pool, "web_risk_assessments", "manual_handling_json", "LONGTEXT NULL AFTER risk_templates_json");
+    await ensureColumnExists(this.pool, "web_risk_assessments", "chemicals_json", "LONGTEXT NULL AFTER manual_handling_json");
     await ensureColumnExists(this.pool, "web_risk_assessments", "report_template_json", "LONGTEXT NULL AFTER chemicals_json");
+    await ensureColumnExists(this.pool, "web_risk_assessments", "completion_date", "DATE NULL AFTER assessment_date");
     await ensureColumnExists(this.pool, "web_risk_assessments", "work_order_id", "INT NULL AFTER location_id");
     await ensureColumnExists(this.pool, "web_risk_assessments", "work_order_number", "VARCHAR(80) NOT NULL DEFAULT '' AFTER work_order_id");
     await ensureColumnExists(this.pool, "web_risk_assessments", "team_lead_user_ids_json", "LONGTEXT NULL AFTER team_lead");
@@ -8060,6 +8068,8 @@ export class MySqlSafetyRepository {
     await ensureColumnExists(this.pool, "firme", "logo_storage_bucket", "VARCHAR(128) NULL AFTER logo_storage_provider");
     await ensureColumnExists(this.pool, "firme", "logo_storage_key", "VARCHAR(512) NULL AFTER logo_storage_bucket");
     await ensureColumnExists(this.pool, "firme", "logo_storage_url", "TEXT NULL AFTER logo_storage_key");
+    await ensureColumnExists(this.pool, "firme", "mbs", "VARCHAR(60) NOT NULL DEFAULT '' AFTER oib");
+    await ensureColumnExists(this.pool, "firme", "nkd_djelatnost", "VARCHAR(500) NOT NULL DEFAULT '' AFTER mbs");
     await ensureColumnExists(this.pool, "firme", "odgovorna_pozicija", "VARCHAR(120) NOT NULL DEFAULT '' AFTER predstavnik_korisnika");
     await ensureColumnExists(this.pool, "firme", "odgovorna_osoba_oib", "VARCHAR(11) NOT NULL DEFAULT '' AFTER odgovorna_pozicija");
     await ensureColumnExists(this.pool, "firme", "broj_zaposlenih", "VARCHAR(24) NOT NULL DEFAULT '' AFTER odgovorna_osoba_oib");
@@ -8321,19 +8331,21 @@ export class MySqlSafetyRepository {
       const [result] = await connection.query(
         `
           INSERT INTO firme
-            (naziv_tvrtke, sjediste, oib, predstavnik_korisnika, periodika, naziv_ugovora, vrsta_ugovora,
+            (naziv_tvrtke, sjediste, oib, mbs, nkd_djelatnost, predstavnik_korisnika, periodika, naziv_ugovora, vrsta_ugovora,
              odgovorna_pozicija, odgovorna_osoba_oib, broj_zaposlenih, broj_ugovora,
              ugovor_vrijedi_od, ugovor_vrijedi_do, ugovor_vrijedi_trajno, mjesecna_cijena, cjenik_json,
              napomena, aktivno, kontakt_broj, kontakt_email,
              voditelji_korisnik_ids_json, voditelji_oznaka_json, template_assignments_json,
              logo_data_url, logo_storage_provider, logo_storage_bucket, logo_storage_key, logo_storage_url,
              datum_izmjene, izmjenu_unio)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)
         `,
         [
           company.name,
           company.headquarters,
           company.oib,
+          company.mbs,
+          company.nkdActivity,
           company.representative,
           company.period,
           company.contractName,
@@ -8402,7 +8414,7 @@ export class MySqlSafetyRepository {
       await connection.query(
         `
           UPDATE firme
-          SET naziv_tvrtke = ?, sjediste = ?, oib = ?, predstavnik_korisnika = ?, periodika = ?,
+          SET naziv_tvrtke = ?, sjediste = ?, oib = ?, mbs = ?, nkd_djelatnost = ?, predstavnik_korisnika = ?, periodika = ?,
               naziv_ugovora = ?, vrsta_ugovora = ?, odgovorna_pozicija = ?, odgovorna_osoba_oib = ?, broj_zaposlenih = ?, broj_ugovora = ?,
               ugovor_vrijedi_od = ?, ugovor_vrijedi_do = ?, ugovor_vrijedi_trajno = ?, mjesecna_cijena = ?, cjenik_json = ?,
               napomena = ?, aktivno = ?, kontakt_broj = ?,
@@ -8415,6 +8427,8 @@ export class MySqlSafetyRepository {
           next.name,
           next.headquarters,
           next.oib,
+          next.mbs,
+          next.nkdActivity,
           next.representative,
           next.period,
           next.contractName,
@@ -10575,12 +10589,12 @@ export class MySqlSafetyRepository {
         `
           INSERT INTO web_risk_assessments
             (organization_id, company_id, location_id, work_order_id, work_order_number, assessment_number, title, status, assessment_date,
-             revision_date, assessment_type, team_lead, team_lead_user_ids_json, collaborators, collaborator_user_ids_json,
+             completion_date, revision_date, assessment_type, team_lead, team_lead_user_ids_json, collaborators, collaborator_user_ids_json,
              employer_data_json, intro_text, work_process_description,
              general_data, computer_workplaces, basic_rules, special_rules, omissions_basic, omissions_special,
-             conclusion_text, client_note, measures_json, organization_units_json, jobs_json, risk_templates_json, chemicals_json, report_template_json, attachments_json, comments_json,
+             conclusion_text, client_note, measures_json, organization_units_json, jobs_json, risk_templates_json, manual_handling_json, chemicals_json, report_template_json, attachments_json, comments_json,
              created_by_user_id, created_by_label)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
@@ -10592,6 +10606,7 @@ export class MySqlSafetyRepository {
           draft.title,
           draft.status,
           draft.assessmentDate,
+          draft.completionDate,
           draft.revisionDate,
           draft.assessmentType,
           draft.teamLead,
@@ -10613,6 +10628,7 @@ export class MySqlSafetyRepository {
           JSON.stringify(draft.organizationUnits ?? []),
           JSON.stringify(draft.jobs ?? []),
           JSON.stringify(draft.riskTemplates ?? []),
+          JSON.stringify(draft.manualHandling ?? []),
           JSON.stringify(draft.chemicals ?? []),
           JSON.stringify(draft.reportTemplate ?? {}),
           JSON.stringify(preparedDocuments.nextDocuments ?? []),
@@ -10667,10 +10683,10 @@ export class MySqlSafetyRepository {
         `
           UPDATE web_risk_assessments
           SET company_id = ?, location_id = ?, work_order_id = ?, work_order_number = ?, assessment_number = ?, title = ?, status = ?, assessment_date = ?,
-              revision_date = ?, assessment_type = ?, team_lead = ?, team_lead_user_ids_json = ?, collaborators = ?,
+              completion_date = ?, revision_date = ?, assessment_type = ?, team_lead = ?, team_lead_user_ids_json = ?, collaborators = ?,
               collaborator_user_ids_json = ?, employer_data_json = ?, intro_text = ?, work_process_description = ?, general_data = ?, computer_workplaces = ?, basic_rules = ?,
               special_rules = ?, omissions_basic = ?, omissions_special = ?, conclusion_text = ?,
-              client_note = ?, measures_json = ?, organization_units_json = ?, jobs_json = ?, risk_templates_json = ?, chemicals_json = ?, report_template_json = ?, attachments_json = ?, comments_json = ?
+              client_note = ?, measures_json = ?, organization_units_json = ?, jobs_json = ?, risk_templates_json = ?, manual_handling_json = ?, chemicals_json = ?, report_template_json = ?, attachments_json = ?, comments_json = ?
           WHERE id = ?
         `,
         [
@@ -10682,6 +10698,7 @@ export class MySqlSafetyRepository {
           next.title,
           next.status,
           next.assessmentDate,
+          next.completionDate,
           next.revisionDate,
           next.assessmentType,
           next.teamLead,
@@ -10703,6 +10720,7 @@ export class MySqlSafetyRepository {
           JSON.stringify(next.organizationUnits ?? []),
           JSON.stringify(next.jobs ?? []),
           JSON.stringify(next.riskTemplates ?? []),
+          JSON.stringify(next.manualHandling ?? []),
           JSON.stringify(next.chemicals ?? []),
           JSON.stringify(next.reportTemplate ?? {}),
           JSON.stringify(preparedDocuments.nextDocuments ?? []),
