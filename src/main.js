@@ -599,20 +599,6 @@ const DOCUMENT_LIBRARY_CATEGORY_DEFINITIONS = Object.freeze([
     toneClass: "is-contracts",
   }),
   Object.freeze({
-    id: "contract-templates",
-    label: "Predlošci ugovora",
-    description: "Word predlošci za ugovore i anekse.",
-    iconName: "document",
-    toneClass: "is-contract-templates",
-  }),
-  Object.freeze({
-    id: "document-templates",
-    label: "Predlošci zapisnika",
-    description: "Template Development reference dokumenti.",
-    iconName: "document",
-    toneClass: "is-document-templates",
-  }),
-  Object.freeze({
     id: "people-training",
     label: "Osposobljavanja",
     description: "Uvjerenja, prilozi i PDF dokumenti osposobljavanja.",
@@ -29419,16 +29405,12 @@ function buildCompanyDocumentLibraryFolders(records = state.documentsExplorer.re
     }));
   });
 
-  const contractTemplates = sortContractTemplates(state.contractTemplates ?? []);
   sortContracts(state.contracts ?? []).forEach((item) => {
     if (!item?.id) {
       return;
     }
     const company = companyById.get(String(item?.companyId || "")) || null;
     const sourceTarget = { kind: "contract", record: item };
-    const linkedTemplate = contractTemplates.find((template) => String(template?.id || "") === String(item?.templateId || "")) ?? null;
-    const linkedTemplateDocument = linkedTemplate?.referenceDocument ?? null;
-    const linkedTemplateHref = getDocumentLibraryAttachmentHref(linkedTemplateDocument);
     const folder = getCompanyDocumentFolder(folders, {
       company,
       companyId: item?.companyId || "",
@@ -29450,22 +29432,6 @@ function buildCompanyDocumentLibraryFolders(records = state.documentsExplorer.re
         sourceTarget,
         searchTerms: [item?.companyName || "", item?.templateTitle || ""],
       }),
-      linkedTemplateDocument?.fileName && linkedTemplateHref
-        ? createDocumentLibraryEntry({
-          id: `companies:contracts:template:${String(item.id)}`,
-          label: linkedTemplateDocument.fileName,
-          description: "Povezani Word predložak za ovaj ugovor.",
-          fileName: linkedTemplateDocument.fileName,
-          fileType: linkedTemplateDocument.fileType || "",
-          fileSize: linkedTemplateDocument.fileSize || 0,
-          href: linkedTemplateHref,
-          fileKind: resolveDocumentLibraryAttachmentFileKind(linkedTemplateDocument),
-          updatedAt: linkedTemplateDocument.updatedAt || linkedTemplate?.updatedAt || item?.updatedAt || "",
-          metaParts: ["Predložak ugovora"],
-          sourceTarget: { kind: "contract-template", record: linkedTemplate },
-          searchTerms: [linkedTemplate?.title || ""],
-        })
-        : null,
     );
   });
 
@@ -29482,7 +29448,6 @@ function buildDocumentsLibraryFolders() {
   ), "hr", { sensitivity: "base" }));
 
   const contracts = sortContracts(state.contracts ?? []);
-  const contractTemplates = sortContractTemplates(state.contractTemplates ?? []);
 
   const folders = [
     ...buildDocumentRecordLibraryFolders(state.documentsExplorer.records),
@@ -29669,9 +29634,6 @@ function buildDocumentsLibraryFolders() {
         return null;
       }
       const sourceTarget = { kind: "contract", record: item };
-      const linkedTemplate = contractTemplates.find((template) => String(template?.id || "") === String(item?.templateId || "")) ?? null;
-      const linkedTemplateDocument = linkedTemplate?.referenceDocument ?? null;
-      const linkedTemplateHref = getDocumentLibraryAttachmentHref(linkedTemplateDocument);
       return finalizeDocumentLibraryFolder({
         id: `contracts:folder:${String(item.id)}`,
         categoryId: "contracts",
@@ -29682,7 +29644,7 @@ function buildDocumentsLibraryFolders() {
           getContractStatusLabel(item?.status || "draft"),
         ].filter(Boolean).join(" · "),
         metaParts: [
-          item?.templateTitle || linkedTemplate?.title || "",
+          item?.templateTitle || "",
           item?.validTo ? `Vrijedi do ${formatCompactDate(item.validTo)}` : "",
         ].filter(Boolean),
         searchTerms: [
@@ -29703,71 +29665,9 @@ function buildDocumentsLibraryFolders() {
             sourceTarget,
             searchTerms: [item?.companyName || "", item?.templateTitle || ""],
           }),
-          linkedTemplateDocument?.fileName && linkedTemplateHref
-            ? createDocumentLibraryEntry({
-              id: `contracts:template:${String(item.id)}`,
-              label: linkedTemplateDocument.fileName,
-              description: "Povezani Word predložak za ovaj ugovor.",
-              fileName: linkedTemplateDocument.fileName,
-              fileType: linkedTemplateDocument.fileType || "",
-              fileSize: linkedTemplateDocument.fileSize || 0,
-              href: linkedTemplateHref,
-              fileKind: resolveDocumentLibraryAttachmentFileKind(linkedTemplateDocument),
-              updatedAt: linkedTemplateDocument.updatedAt || linkedTemplate?.updatedAt || item?.updatedAt || "",
-              metaParts: ["Predložak ugovora"],
-              sourceTarget: { kind: "contract-template", record: linkedTemplate },
-              searchTerms: [linkedTemplate?.title || ""],
-            })
-            : null,
         ],
       });
     }).filter(Boolean),
-    ...buildDocumentLibraryAttachmentFolders(contractTemplates, {
-      categoryId: "contract-templates",
-      getFolderLabel: (item) => item?.title || "Predložak ugovora",
-      getFolderSubtitle: (item) => [
-        getContractTemplateStatusLabel(item?.status || "active"),
-        item?.description || "",
-      ].filter(Boolean).join(" · "),
-      getFolderSearchTerms: (item) => [
-        item?.title || "",
-        item?.description || "",
-        item?.status || "",
-      ],
-      getDocuments: (item) => item?.referenceDocument?.fileName ? [item.referenceDocument] : [],
-      getSourceTarget: (item) => ({ kind: "contract-template", record: item }),
-      mapDocument: (document, item) => ({
-        description: "Word predložak ugovora.",
-        updatedAt: document?.updatedAt || item?.updatedAt || item?.createdAt || "",
-        metaParts: [
-          getContractTemplateStatusLabel(item?.status || "active"),
-          formatFileSize(document?.fileSize || 0),
-        ].filter(Boolean),
-      }),
-    }),
-    ...buildDocumentLibraryAttachmentFolders(sortDocumentTemplates(state.documentTemplates ?? []), {
-      categoryId: "document-templates",
-      getFolderLabel: (item) => item?.title || item?.documentType || "Predložak zapisnika",
-      getFolderSubtitle: (item) => [
-        item?.documentType || "",
-        item?.status || "",
-      ].filter(Boolean).join(" · "),
-      getFolderSearchTerms: (item) => [
-        item?.title || "",
-        item?.documentType || "",
-        item?.description || "",
-      ],
-      getDocuments: (item) => item?.referenceDocument?.fileName ? [item.referenceDocument] : [],
-      getSourceTarget: (item) => ({ kind: "document-template", record: item }),
-      mapDocument: (document, item) => ({
-        description: "Reference dokument za Template Development.",
-        updatedAt: document?.updatedAt || item?.updatedAt || item?.createdAt || "",
-        metaParts: [
-          item?.status || "",
-          formatFileSize(document?.fileSize || 0),
-        ].filter(Boolean),
-      }),
-    }),
     ...buildDocumentLibraryAttachmentFolders(sortPersonTrainingRecords(state.peopleTrainingRecords ?? []), {
       categoryId: "people-training",
       getFolderLabel: (item) => getPeopleTrainingRecordDisplayName(item),
@@ -30080,6 +29980,28 @@ function createDocumentsLibraryFolderIcon(categoryId = "all") {
   return icon;
 }
 
+function getDocumentLibraryFileIconName(fileKind = "other") {
+  switch (normalizeDocumentLibraryFileKind(fileKind)) {
+    case "record":
+      return "number";
+    case "image":
+      return "preview";
+    case "pdf":
+    case "word":
+    case "other":
+    default:
+      return "document";
+  }
+}
+
+function createDocumentLibraryFileIcon(fileKind = "other") {
+  const normalizedKind = normalizeDocumentLibraryFileKind(fileKind);
+  return createDocumentsExplorerIcon(
+    getDocumentLibraryFileIconName(normalizedKind),
+    `is-file is-${normalizedKind}`,
+  );
+}
+
 function openDocumentsLibrarySource(target = null) {
   if (!target?.kind) {
     return;
@@ -30296,7 +30218,10 @@ function renderDocumentsLibraryCategories(model = buildDocumentsLibraryViewModel
   ].filter(Boolean).join(" ");
   const allTitle = document.createElement("strong");
   allTitle.textContent = allDefinition.label;
-  allButton.append(createDocumentsLibraryCategoryIcon("all"), allTitle);
+  const allCount = document.createElement("span");
+  allCount.className = "documents-category-count";
+  allCount.textContent = String(model.totals.files);
+  allButton.append(createDocumentsLibraryCategoryIcon("all"), allTitle, allCount);
   allButton.setAttribute("aria-current", model.selectedCategory === "all" ? "page" : "false");
   allButton.addEventListener("click", () => {
     selectDocumentsLibraryCategory("all");
@@ -30306,22 +30231,25 @@ function renderDocumentsLibraryCategories(model = buildDocumentsLibraryViewModel
   model.categories
     .filter((category) => category.documentCount > 0 || model.selectedCategory === category.id)
     .forEach((category) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = [
-      "documents-category-card",
-      category.toneClass,
-      model.selectedCategory === category.id ? "is-active" : "",
-    ].filter(Boolean).join(" ");
-    const title = document.createElement("strong");
-    title.textContent = category.label;
-    button.append(createDocumentsLibraryCategoryIcon(category.id), title);
-    button.setAttribute("aria-current", model.selectedCategory === category.id ? "page" : "false");
-    button.addEventListener("click", () => {
-      selectDocumentsLibraryCategory(category.id);
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = [
+        "documents-category-card",
+        category.toneClass,
+        model.selectedCategory === category.id ? "is-active" : "",
+      ].filter(Boolean).join(" ");
+      const title = document.createElement("strong");
+      title.textContent = category.label;
+      const count = document.createElement("span");
+      count.className = "documents-category-count";
+      count.textContent = String(category.documentCount);
+      button.append(createDocumentsLibraryCategoryIcon(category.id), title, count);
+      button.setAttribute("aria-current", model.selectedCategory === category.id ? "page" : "false");
+      button.addEventListener("click", () => {
+        selectDocumentsLibraryCategory(category.id);
+      });
+      cards.push(button);
     });
-    cards.push(button);
-  });
 
   documentsCategoryList.replaceChildren(...cards);
 }
@@ -30361,7 +30289,10 @@ function renderDocumentsLibraryFolders(model = buildDocumentsLibraryViewModel())
     const title = document.createElement("strong");
     title.className = "documents-folder-title";
     title.textContent = folder.label;
-    titleRow.append(title);
+    const countBadge = document.createElement("span");
+    countBadge.className = "documents-folder-count";
+    countBadge.textContent = `${folder.visibleDocumentCount} dok.`;
+    titleRow.append(title, countBadge);
 
     const subtitle = document.createElement("span");
     subtitle.className = "documents-folder-subtitle";
@@ -30402,7 +30333,7 @@ function renderDocumentsLibraryFolders(model = buildDocumentsLibraryViewModel())
 
       const fileTitleRow = document.createElement("div");
       fileTitleRow.className = "documents-file-title-row";
-      fileTitleRow.append(createDocumentsExplorerIcon("document"));
+      fileTitleRow.append(createDocumentLibraryFileIcon(entry.fileKind));
       const fileTitle = document.createElement("strong");
       fileTitle.className = "documents-file-title";
       fileTitle.textContent = entry.label;

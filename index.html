@@ -14,8 +14,8 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/assets/ozo-tailwind.css?v=20260529-risk-template-sheets-v1" />
-    <link rel="stylesheet" href="/styles.css?v=20260529-risk-template-sheets-v1" />
+    <link rel="stylesheet" href="/assets/ozo-tailwind.css?v=20260529-documents-library-v1" />
+    <link rel="stylesheet" href="/styles.css?v=20260529-documents-library-v1" />
     <link rel="stylesheet" href="/src/styles/variables.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/reset.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/builder.css?v=20260509e" />
@@ -5744,17 +5744,21 @@
               <div class="documents-explorer-shell">
                 <section class="panel documents-explorer-topbar">
                   <div>
-                    <p class="section-kicker">Documents</p>
-                    <h3>Centralni pregled dokumenata</h3>
+                    <p class="section-kicker">Dokumenti</p>
+                    <h3>Dokumentoteka</h3>
+                    <p class="documents-topbar-copy">Stvarne datoteke, spremljeni zapisnici i generirani PDF-ovi bez predložaka u glavnom pregledu.</p>
                     <p id="documents-last-refresh" class="documents-refresh-meta">Zadnje osvježeno: -</p>
                   </div>
-                  <button id="documents-refresh" type="button" class="ghost-button documents-refresh-button" title="Osvježi prikaz" aria-label="Osvježi prikaz">&#10227;</button>
+                  <div class="documents-topbar-actions">
+                    <span class="documents-scope-pill">Samo dokumenti</span>
+                    <button id="documents-refresh" type="button" class="ghost-button documents-refresh-button" title="Osvježi prikaz" aria-label="Osvježi prikaz">&#10227;</button>
+                  </div>
                 </section>
                 <section class="panel documents-categories-panel">
                   <div class="section-heading offers-section-heading">
                     <div>
-                      <p class="section-kicker">Mape</p>
-                      <h3>Kategorije</h3>
+                      <p class="section-kicker">Izvori</p>
+                      <h3>Grupe dokumenata</h3>
                     </div>
                   </div>
                   <div id="documents-category-list" class="documents-category-list"></div>
@@ -5764,14 +5768,14 @@
                   <div class="section-heading offers-section-heading">
                     <div>
                       <p class="section-kicker">Sadržaj</p>
-                      <h3>Folderi</h3>
+                      <h3>Folderi i datoteke</h3>
                     </div>
                     <button id="documents-toggle-folders" type="button" class="ghost-button documents-toggle-folders-button" aria-label="Otvori sve" title="Otvori sve"></button>
                   </div>
                   <div class="documents-filters">
                     <label class="field">
                       <span>Pretraga</span>
-                      <input id="documents-search" type="search" placeholder="Dokument, folder, tvrtka, oprema, ponuda..." />
+                      <input id="documents-search" type="search" placeholder="Naziv dokumenta, tvrtka, RN, oprema, ponuda..." />
                     </label>
                     <label class="field">
                       <span>Vrsta</span>
@@ -9619,7 +9623,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260529-risk-template-sheets-v1"></script>
-    <script type="module" src="/assets/ozo-panel.js?v=20260529-risk-template-sheets-v1"></script>
+    <script type="module" src="/src/main.js?v=20260529-documents-library-v1"></script>
+    <script type="module" src="/assets/ozo-panel.js?v=20260529-documents-library-v1"></script>
   </body>
 </html>
