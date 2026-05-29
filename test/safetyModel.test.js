@@ -543,8 +543,18 @@ test("risk assessments link only matching risk assessment work orders and keep e
         znrRepresentatives: "Povjerenik radnika",
         znrCommitteeParticipation: "Odbor sudjeluje pregledom prijedloga mjera.",
         hasZnrAuthorization: true,
+        znrAuthorizationDocument: {
+          fileName: "ovlastenje.pdf",
+          fileType: "application/pdf",
+          fileSize: 42,
+          dataUrl: "data:application/pdf;base64,JVBERi0x",
+          uploadedAt: "2026-05-28T08:00:00.000Z",
+        },
         assessmentMembers: "Ivana Peric",
         assessmentMemberUserIds: ["user-3"],
+        companyCollaborators: [
+          { fullName: "Marko Novak", title: "direktor", jobTitle: "Voditelj proizvodnje", oib: "12345678903" },
+        ],
         workplaceJobs: [
           { jobTitle: "Operater postrojenja", maleCount: "7", femaleCount: "2", note: "Smjenski rad" },
         ],
@@ -580,7 +590,9 @@ test("risk assessments link only matching risk assessment work orders and keep e
   assert.deepEqual(assessment.employerData.selectedLocationIds, ["location-1"]);
   assert.equal(assessment.employerData.authorizedPersons[0].jobTitle, "Direktor proizvodnje");
   assert.equal(assessment.employerData.hasZnrAuthorization, true);
+  assert.equal(assessment.employerData.znrAuthorizationDocument.fileName, "ovlastenje.pdf");
   assert.deepEqual(assessment.employerData.assessmentMemberUserIds, ["user-3"]);
+  assert.equal(assessment.employerData.companyCollaborators[0].title, "direktor");
   assert.equal(assessment.employerData.workplaceJobs[0].femaleCount, "2");
   assert.equal(assessment.manualHandling[0].activity, "Premještanje boca");
   assert.equal(assessment.manualHandling[0].existingMeasures, "Koristiti kolica i rad u paru.");
@@ -590,6 +602,8 @@ test("risk assessments link only matching risk assessment work orders and keep e
   assert.doesNotMatch(assessment.intro, /script|alert/i);
   assert.equal(filterRiskAssessments([assessment], { query: "Objekt" }).length, 1);
   assert.equal(filterRiskAssessments([assessment], { query: "Direktor proizvodnje" }).length, 1);
+  assert.equal(filterRiskAssessments([assessment], { query: "Voditelj proizvodnje" }).length, 1);
+  assert.equal(filterRiskAssessments([assessment], { query: "ovlastenje.pdf" }).length, 1);
   assert.equal(filterRiskAssessments([assessment], { query: "Operater postrojenja" }).length, 1);
   assert.equal(filterRiskAssessments([assessment], { query: "Premještanje boca" }).length, 1);
 

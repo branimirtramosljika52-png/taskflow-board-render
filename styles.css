@@ -55028,18 +55028,18 @@ button.work-order-editor-section-head:focus-visible {
 
 .risk-assessment-basic-shell {
   display: grid;
-  gap: 14px;
+  gap: 12px;
 }
 
 .risk-assessment-basic-card {
   display: grid;
-  gap: 14px;
-  padding: 14px;
+  gap: 12px;
+  padding: 12px;
   border: 1px solid rgba(214, 224, 242, 0.92);
-  border-radius: 18px;
+  border-radius: 16px;
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.92));
-  box-shadow: 0 16px 34px rgba(35, 49, 84, 0.06);
+  box-shadow: 0 12px 28px rgba(35, 49, 84, 0.055);
 }
 
 .risk-assessment-basic-card.is-identity {
@@ -55050,7 +55050,7 @@ button.work-order-editor-section-head:focus-visible {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 14px;
+  gap: 12px;
 }
 
 .risk-assessment-basic-card-head > div {
@@ -55068,7 +55068,7 @@ button.work-order-editor-section-head:focus-visible {
   margin: 0;
   max-width: 42ch;
   color: #64748b;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 720;
   line-height: 1.45;
   text-align: right;
@@ -55135,6 +55135,88 @@ button.work-order-editor-section-head:focus-visible {
   grid-column: span 2;
 }
 
+.risk-assessment-basic-stack {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+
+.risk-assessment-field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.risk-assessment-template-inline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: min(100%, 430px);
+}
+
+.risk-assessment-template-inline select {
+  min-width: 190px;
+  min-height: 34px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  border-color: rgba(203, 213, 225, 0.96);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.96);
+  font-size: 0.74rem;
+}
+
+.risk-assessment-template-inline .ghost-button,
+.risk-assessment-file-control .ghost-button {
+  min-height: 34px;
+  padding: 7px 11px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  white-space: nowrap;
+}
+
+.risk-assessment-basic-stack textarea {
+  min-height: 76px;
+  resize: vertical;
+}
+
+.risk-assessment-authorization-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(191, 219, 254, 0.86);
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(239, 246, 255, 0.78), rgba(255, 255, 255, 0.94));
+}
+
+.risk-assessment-file-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.risk-assessment-file-control span {
+  overflow: hidden;
+  max-width: 280px;
+  color: #52627a;
+  font-size: 0.74rem;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.risk-assessment-card-subhead {
+  margin-top: 2px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(226, 232, 240, 0.86);
+}
+
 .risk-assessment-basic-grid .field small,
 .risk-assessment-people-field small {
   display: block;
@@ -55181,6 +55263,10 @@ button.work-order-editor-section-head:focus-visible {
 
 .risk-assessment-compact-row.is-workplace-job {
   grid-template-columns: minmax(220px, 1.4fr) minmax(80px, 0.45fr) minmax(80px, 0.45fr) minmax(180px, 1fr) auto;
+}
+
+.risk-assessment-compact-row.is-company-collaborator {
+  grid-template-columns: minmax(180px, 1.15fr) minmax(110px, 0.72fr) minmax(170px, 1fr) minmax(110px, 0.68fr) auto;
 }
 
 .risk-assessment-compact-row label {
@@ -59057,7 +59143,12 @@ button.work-order-editor-section-head:focus-visible {
   .risk-assessment-job-import-panel,
   .risk-assessment-manual-head,
   .risk-assessment-manual-grid,
+  .risk-assessment-field-head,
+  .risk-assessment-template-inline,
+  .risk-assessment-authorization-panel,
+  .risk-assessment-file-control,
   .risk-assessment-compact-row,
+  .risk-assessment-compact-row.is-company-collaborator,
   .risk-assessment-compact-row.is-workplace-job,
   .risk-assessment-appendix-cards,
   .risk-assessment-document-facts,
@@ -59104,6 +59195,24 @@ button.work-order-editor-section-head:focus-visible {
   .risk-assessment-editor-section-head p {
     max-width: none;
     text-align: left;
+  }
+
+  .risk-assessment-field-head,
+  .risk-assessment-authorization-panel {
+    align-items: stretch;
+  }
+
+  .risk-assessment-template-inline,
+  .risk-assessment-file-control {
+    width: 100%;
+    min-width: 0;
+    justify-content: stretch;
+  }
+
+  .risk-assessment-template-inline select,
+  .risk-assessment-file-control span {
+    max-width: none;
+    width: 100%;
   }
 
   .risk-assessment-section-document-menu {

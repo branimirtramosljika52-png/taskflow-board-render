@@ -4867,21 +4867,45 @@
                           <button id="risk-assessment-add-authorized-person" type="button" class="ghost-button">+ Ovlaštenik</button>
                         </div>
                         <div id="risk-assessment-authorized-persons" class="risk-assessment-compact-list"></div>
-                        <div class="risk-assessment-section-grid">
-                          <label class="field field-span-full">
-                            <span>Način obavljanja poslova zaštite na radu</span>
+                        <div class="risk-assessment-basic-stack">
+                          <label class="field">
+                            <div class="risk-assessment-field-head">
+                              <span>Način obavljanja poslova zaštite na radu</span>
+                              <div class="risk-assessment-template-inline">
+                                <select data-risk-basic-template-select="znrServiceMode" aria-label="Predložak za način obavljanja poslova ZNR"></select>
+                                <button type="button" class="ghost-button" data-risk-basic-template-save="znrServiceMode">Spremi predložak</button>
+                              </div>
+                            </div>
                             <textarea id="risk-assessment-znr-service-mode" rows="3" data-risk-autogrow placeholder="npr. poslovi zaštite na radu obavljaju se putem ugovorenog stručnjaka / ovlaštene osobe..."></textarea>
                           </label>
                           <label class="field">
-                            <span>Stručnjaci zaštite na radu</span>
+                            <div class="risk-assessment-field-head">
+                              <span>Stručnjaci zaštite na radu</span>
+                              <div class="risk-assessment-template-inline">
+                                <select data-risk-basic-template-select="znrExperts" aria-label="Predložak za stručnjake zaštite na radu"></select>
+                                <button type="button" class="ghost-button" data-risk-basic-template-save="znrExperts">Spremi predložak</button>
+                              </div>
+                            </div>
                             <textarea id="risk-assessment-znr-experts" rows="3" data-risk-autogrow></textarea>
                           </label>
                           <label class="field">
-                            <span>Povjerenici za zaštitu na radu</span>
+                            <div class="risk-assessment-field-head">
+                              <span>Povjerenici za zaštitu na radu</span>
+                              <div class="risk-assessment-template-inline">
+                                <select data-risk-basic-template-select="znrRepresentatives" aria-label="Predložak za povjerenike zaštite na radu"></select>
+                                <button type="button" class="ghost-button" data-risk-basic-template-save="znrRepresentatives">Spremi predložak</button>
+                              </div>
+                            </div>
                             <textarea id="risk-assessment-znr-representatives" rows="3" data-risk-autogrow></textarea>
                           </label>
-                          <label class="field field-span-full">
-                            <span>Način sudjelovanja odbora zaštite na radu</span>
+                          <label class="field">
+                            <div class="risk-assessment-field-head">
+                              <span>Način sudjelovanja odbora zaštite na radu</span>
+                              <div class="risk-assessment-template-inline">
+                                <select data-risk-basic-template-select="znrCommitteeParticipation" aria-label="Predložak za sudjelovanje odbora zaštite na radu"></select>
+                                <button type="button" class="ghost-button" data-risk-basic-template-save="znrCommitteeParticipation">Spremi predložak</button>
+                              </div>
+                            </div>
                             <textarea id="risk-assessment-znr-committee-participation" rows="3" data-risk-autogrow></textarea>
                           </label>
                         </div>
@@ -4893,12 +4917,20 @@
                             <span class="section-kicker">Tim izrade</span>
                             <strong>Tko je izradio procjenu</strong>
                           </div>
-                          <p>Voditelj i članovi su naši izvršitelji, a suradnici mogu biti radnici tvrtke iz People evidencije.</p>
+                          <p>Voditelj i članovi su naši izvršitelji. Suradnici su osobe poslodavca i unose se kao dio podataka tvrtke.</p>
                         </div>
-                        <label class="risk-assessment-checkbox-line">
-                          <input id="risk-assessment-znr-authorization" type="checkbox" />
-                          <span>Izrađivač ima ovlaštenja za obavljanje poslova zaštite na radu</span>
-                        </label>
+                        <div class="risk-assessment-authorization-panel">
+                          <label class="risk-assessment-checkbox-line">
+                            <input id="risk-assessment-znr-authorization" type="checkbox" />
+                            <span>Izrađivač ima ovlaštenja za obavljanje poslova zaštite na radu</span>
+                          </label>
+                          <div class="risk-assessment-file-control">
+                            <input id="risk-assessment-znr-authorization-file" type="file" accept="application/pdf,.pdf" hidden />
+                            <button id="risk-assessment-znr-authorization-upload" type="button" class="ghost-button">Dodaj PDF ovlaštenja</button>
+                            <button id="risk-assessment-znr-authorization-remove" type="button" class="ghost-button" hidden>Ukloni PDF</button>
+                            <span id="risk-assessment-znr-authorization-file-meta">PDF ovlaštenja nije dodan.</span>
+                          </div>
+                        </div>
                         <div class="risk-assessment-team-picker-grid">
                           <label class="field risk-assessment-people-field">
                             <span>Voditelj izrade</span>
@@ -4912,13 +4944,17 @@
                             <div id="risk-assessment-members-picker" class="risk-assessment-people-picker"></div>
                             <small>Dodatni izrađivači procjene.</small>
                           </label>
-                          <label class="field risk-assessment-people-field field-span-full">
-                            <span>Suradnici od tvrtke</span>
-                            <select id="risk-assessment-collaborators" class="risk-assessment-people-select" multiple size="5"></select>
-                            <div id="risk-assessment-collaborators-picker" class="risk-assessment-people-picker"></div>
-                            <small>Odaberi radnike tvrtke ili osobe iz People modula.</small>
-                          </label>
                         </div>
+                        <select id="risk-assessment-collaborators" class="risk-assessment-people-select" multiple size="5" hidden></select>
+                        <div id="risk-assessment-collaborators-picker" hidden></div>
+                        <div class="offers-items-head is-compact risk-assessment-card-subhead">
+                          <div>
+                            <strong>Suradnici od tvrtke</strong>
+                            <p class="inline-help">Unesi osobe poslodavca: ime i prezime, titulu, radno mjesto i OIB.</p>
+                          </div>
+                          <button id="risk-assessment-add-company-collaborator" type="button" class="ghost-button">+ Suradnik</button>
+                        </div>
+                        <div id="risk-assessment-company-collaborators" class="risk-assessment-compact-list"></div>
                       </section>
                     </div>
 

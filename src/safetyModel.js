@@ -5611,9 +5611,25 @@ function normalizeRiskAssessmentEmployerData(input = {}, current = {}) {
     return items.map((item) => ({
       id: normalizeId(item?.id) || crypto.randomUUID(),
       fullName: normalizeText(item?.fullName ?? item?.name).slice(0, 180),
+      title: normalizeText(item?.title ?? item?.role).slice(0, 120),
       oib: normalizeText(item?.oib).slice(0, 11),
       jobTitle: normalizeText(item?.jobTitle ?? item?.workplace).slice(0, 180),
-    })).filter((item) => item.fullName || item.oib || item.jobTitle);
+    })).filter((item) => item.fullName || item.title || item.oib || item.jobTitle);
+  };
+  const normalizePdfDocument = (document = null) => {
+    const candidate = document && typeof document === "object" ? document : {};
+    const fileName = normalizeText(candidate.fileName ?? candidate.name).slice(0, 240);
+    const dataUrl = normalizeText(candidate.dataUrl);
+    if (!fileName && !dataUrl) {
+      return null;
+    }
+    return {
+      fileName,
+      fileType: normalizeText(candidate.fileType ?? candidate.mimeType).slice(0, 160) || "application/pdf",
+      fileSize: Number.isFinite(Number(candidate.fileSize)) ? Math.max(0, Math.round(Number(candidate.fileSize))) : 0,
+      dataUrl,
+      uploadedAt: normalizeOptionalDateTime(candidate.uploadedAt ?? candidate.updatedAt) ?? isoNow(),
+    };
   };
   const normalizeWorkplaceJobs = (items = []) => {
     if (!Array.isArray(items)) {
@@ -5644,8 +5660,10 @@ function normalizeRiskAssessmentEmployerData(input = {}, current = {}) {
     znrRepresentatives: normalizeText(source.znrRepresentatives ?? fallback.znrRepresentatives).slice(0, 2000),
     znrCommitteeParticipation: normalizeText(source.znrCommitteeParticipation ?? fallback.znrCommitteeParticipation).slice(0, 3000),
     hasZnrAuthorization: normalizeBoolean(source.hasZnrAuthorization ?? fallback.hasZnrAuthorization, false),
+    znrAuthorizationDocument: normalizePdfDocument(source.znrAuthorizationDocument ?? fallback.znrAuthorizationDocument ?? null),
     assessmentMembers: normalizeText(source.assessmentMembers ?? fallback.assessmentMembers).slice(0, 2000),
     assessmentMemberUserIds: normalizeIdList(source.assessmentMemberUserIds ?? fallback.assessmentMemberUserIds ?? []).slice(0, 48),
+    companyCollaborators: normalizePersonItems(source.companyCollaborators ?? fallback.companyCollaborators ?? []),
     workplaceJobs: normalizeWorkplaceJobs(source.workplaceJobs ?? fallback.workplaceJobs ?? []),
     appendixChemicalRisk: normalizeText(source.appendixChemicalRisk ?? fallback.appendixChemicalRisk).slice(0, 4000),
     appendixWorkerParticipation: normalizeText(source.appendixWorkerParticipation ?? fallback.appendixWorkerParticipation).slice(0, 4000),
@@ -8751,6 +8769,8 @@ export function filterRiskAssessments(
       ...(item.collaboratorUserIds ?? []),
       ...Object.values(item.employerData ?? {}),
       ...(item.employerData?.authorizedPersons ?? []).flatMap((entry) => [entry.fullName, entry.oib, entry.jobTitle]),
+      ...(item.employerData?.companyCollaborators ?? []).flatMap((entry) => [entry.fullName, entry.title, entry.oib, entry.jobTitle]),
+      item.employerData?.znrAuthorizationDocument?.fileName,
       ...(item.employerData?.workplaceJobs ?? []).flatMap((entry) => [entry.jobTitle, entry.maleCount, entry.femaleCount, entry.note]),
       ...(item.employerData?.assessmentMemberUserIds ?? []),
       ...(item.employerData?.selectedLocationIds ?? []),
