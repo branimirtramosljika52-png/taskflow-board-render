@@ -55159,6 +55159,81 @@ button.work-order-editor-section-head:focus-visible {
   gap: 12px;
 }
 
+.risk-assessment-team-picker-grid .field-span-full {
+  grid-column: 1 / -1;
+}
+
+.risk-assessment-compact-list {
+  display: grid;
+  gap: 10px;
+}
+
+.risk-assessment-compact-row {
+  display: grid;
+  grid-template-columns: minmax(190px, 1.2fr) minmax(120px, 0.7fr) minmax(170px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+  padding: 10px;
+  border: 1px solid rgba(226, 232, 240, 0.96);
+  border-radius: 14px;
+  background: rgba(248, 250, 252, 0.82);
+}
+
+.risk-assessment-compact-row.is-workplace-job {
+  grid-template-columns: minmax(220px, 1.4fr) minmax(80px, 0.45fr) minmax(80px, 0.45fr) minmax(180px, 1fr) auto;
+}
+
+.risk-assessment-compact-row label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.risk-assessment-compact-row label span {
+  color: #52627a;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+.risk-assessment-compact-row input {
+  min-height: 38px;
+}
+
+.risk-assessment-appendix-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.risk-assessment-appendix-cards article {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(191, 219, 254, 0.78);
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(239, 246, 255, 0.72), rgba(255, 255, 255, 0.94));
+}
+
+.risk-assessment-appendix-cards span,
+.risk-assessment-appendix-cards strong {
+  display: block;
+}
+
+.risk-assessment-appendix-cards span {
+  color: #2563eb;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.risk-assessment-appendix-cards strong {
+  margin-top: 5px;
+  color: #0f172a;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
 .risk-assessment-people-field {
   position: relative;
 }
@@ -58982,6 +59057,9 @@ button.work-order-editor-section-head:focus-visible {
   .risk-assessment-job-import-panel,
   .risk-assessment-manual-head,
   .risk-assessment-manual-grid,
+  .risk-assessment-compact-row,
+  .risk-assessment-compact-row.is-workplace-job,
+  .risk-assessment-appendix-cards,
   .risk-assessment-document-facts,
   .risk-assessment-document-grid,
   .risk-assessment-document-eligibility > div,

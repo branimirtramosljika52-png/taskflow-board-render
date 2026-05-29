@@ -14,8 +14,8 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/assets/ozo-tailwind.css?v=20260529-risk-manual-handling-v1" />
-    <link rel="stylesheet" href="/styles.css?v=20260529-risk-manual-handling-v1" />
+    <link rel="stylesheet" href="/assets/ozo-tailwind.css?v=20260529-risk-assessment-structure-v1" />
+    <link rel="stylesheet" href="/styles.css?v=20260529-risk-assessment-structure-v1" />
     <link rel="stylesheet" href="/src/styles/variables.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/reset.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/builder.css?v=20260509e" />
@@ -4799,10 +4799,7 @@
                             <span>Tvrtka</span>
                             <select id="risk-assessment-company" required></select>
                           </label>
-                          <label class="field">
-                            <span>Lokacija</span>
-                            <select id="risk-assessment-location"></select>
-                          </label>
+                          <select id="risk-assessment-location" hidden></select>
                           <label class="field risk-assessment-compact-field">
                             <span>Veza RN</span>
                             <select id="risk-assessment-work-order"></select>
@@ -4816,12 +4813,76 @@
                             <select id="risk-assessment-status"></select>
                           </label>
                           <label class="field">
-                            <span>Datum procjene</span>
+                            <span>Datum početka izrade</span>
                             <input id="risk-assessment-date" type="text" inputmode="numeric" placeholder="dd.mm.yyyy" />
                           </label>
                           <label class="field">
-                            <span>Datum završetka</span>
+                            <span>Datum završetka izrade</span>
                             <input id="risk-assessment-completion-date" type="text" inputmode="numeric" placeholder="dd.mm.yyyy" />
+                          </label>
+                        </div>
+                      </section>
+
+                      <section class="risk-assessment-basic-card is-employer">
+                        <div class="risk-assessment-basic-card-head">
+                          <div>
+                            <span class="section-kicker">Poslodavac i lokacije</span>
+                            <strong>Podaci koji idu u opći dio procjene</strong>
+                          </div>
+                          <p>NKD, broj zaposlenih i izdvojene lokacije pune se iz tvrtke i lokacija, ali ih možeš urediti za konkretnu procjenu.</p>
+                        </div>
+                        <div class="form-grid offers-form-grid risk-assessment-basic-grid">
+                          <label class="field">
+                            <span>NKD djelatnost</span>
+                            <input id="risk-assessment-employer-nkd" type="text" maxlength="500" placeholder="npr. 20.11 Proizvodnja industrijskih plinova" />
+                          </label>
+                          <label class="field">
+                            <span>Broj zaposlenih</span>
+                            <input id="risk-assessment-employer-employees" type="text" maxlength="500" placeholder="npr. 9 radnika temeljem ugovora o radu" />
+                          </label>
+                          <label class="field">
+                            <span>Izdvojene lokacije</span>
+                            <select id="risk-assessment-location-ids" multiple size="5"></select>
+                            <label class="risk-assessment-checkbox-line">
+                              <input id="risk-assessment-all-locations" type="checkbox" checked />
+                              <span>Obuhvati sve lokacije tvrtke</span>
+                            </label>
+                          </label>
+                        </div>
+                      </section>
+
+                      <section class="risk-assessment-basic-card is-znr">
+                        <div class="risk-assessment-basic-card-head">
+                          <div>
+                            <span class="section-kicker">Organizacija ZNR</span>
+                            <strong>Ovlaštenici, stručnjaci, povjerenici i odbor</strong>
+                          </div>
+                          <p>Ovdje se vodi opis načina obavljanja poslova zaštite na radu i osobe uključene na strani poslodavca.</p>
+                        </div>
+                        <div class="offers-items-head is-compact">
+                          <div>
+                            <strong>Ovlaštenici poslodavca</strong>
+                            <p class="inline-help">Ime i prezime, OIB i radno mjesto.</p>
+                          </div>
+                          <button id="risk-assessment-add-authorized-person" type="button" class="ghost-button">+ Ovlaštenik</button>
+                        </div>
+                        <div id="risk-assessment-authorized-persons" class="risk-assessment-compact-list"></div>
+                        <div class="risk-assessment-section-grid">
+                          <label class="field field-span-full">
+                            <span>Način obavljanja poslova zaštite na radu</span>
+                            <textarea id="risk-assessment-znr-service-mode" rows="3" data-risk-autogrow placeholder="npr. poslovi zaštite na radu obavljaju se putem ugovorenog stručnjaka / ovlaštene osobe..."></textarea>
+                          </label>
+                          <label class="field">
+                            <span>Stručnjaci zaštite na radu</span>
+                            <textarea id="risk-assessment-znr-experts" rows="3" data-risk-autogrow></textarea>
+                          </label>
+                          <label class="field">
+                            <span>Povjerenici za zaštitu na radu</span>
+                            <textarea id="risk-assessment-znr-representatives" rows="3" data-risk-autogrow></textarea>
+                          </label>
+                          <label class="field field-span-full">
+                            <span>Način sudjelovanja odbora zaštite na radu</span>
+                            <textarea id="risk-assessment-znr-committee-participation" rows="3" data-risk-autogrow></textarea>
                           </label>
                         </div>
                       </section>
@@ -4830,22 +4891,32 @@
                         <div class="risk-assessment-basic-card-head">
                           <div>
                             <span class="section-kicker">Tim izrade</span>
-                            <strong>Izvršitelji i suradnici iz People modula</strong>
+                            <strong>Tko je izradio procjenu</strong>
                           </div>
-                          <p>Odaberi osobe kroz čipove. Sustav ih sprema kao voditelje izrade i suradnike u dokumentu.</p>
+                          <p>Voditelj i članovi su naši izvršitelji, a suradnici mogu biti radnici tvrtke iz People evidencije.</p>
                         </div>
+                        <label class="risk-assessment-checkbox-line">
+                          <input id="risk-assessment-znr-authorization" type="checkbox" />
+                          <span>Izrađivač ima ovlaštenja za obavljanje poslova zaštite na radu</span>
+                        </label>
                         <div class="risk-assessment-team-picker-grid">
                           <label class="field risk-assessment-people-field">
-                            <span>Voditelji izrade</span>
+                            <span>Voditelj izrade</span>
                             <select id="risk-assessment-team-lead" class="risk-assessment-people-select" multiple size="5"></select>
                             <div id="risk-assessment-team-lead-picker" class="risk-assessment-people-picker"></div>
                             <small>Odabir iz People liste.</small>
                           </label>
                           <label class="field risk-assessment-people-field">
-                            <span>Suradnici</span>
+                            <span>Članovi</span>
+                            <select id="risk-assessment-members" class="risk-assessment-people-select" multiple size="5"></select>
+                            <div id="risk-assessment-members-picker" class="risk-assessment-people-picker"></div>
+                            <small>Dodatni izrađivači procjene.</small>
+                          </label>
+                          <label class="field risk-assessment-people-field field-span-full">
+                            <span>Suradnici od tvrtke</span>
                             <select id="risk-assessment-collaborators" class="risk-assessment-people-select" multiple size="5"></select>
                             <div id="risk-assessment-collaborators-picker" class="risk-assessment-people-picker"></div>
-                            <small>Možeš odabrati više osoba.</small>
+                            <small>Odaberi radnike tvrtke ili osobe iz People modula.</small>
                           </label>
                         </div>
                       </section>
@@ -4856,8 +4927,6 @@
                       <input id="risk-assessment-employer-address" type="hidden" />
                       <input id="risk-assessment-employer-mbs" type="hidden" />
                       <input id="risk-assessment-employer-oib" type="hidden" />
-                      <input id="risk-assessment-employer-nkd" type="hidden" />
-                      <input id="risk-assessment-employer-employees" type="hidden" />
                       <textarea id="risk-assessment-employer-headquarters"></textarea>
                       <textarea id="risk-assessment-employer-detached-locations"></textarea>
                     </div>
@@ -4896,14 +4965,46 @@
                     <div class="risk-assessment-editor-section-head">
                       <div>
                         <span>03</span>
-                        <strong>Opis radnog procesa</strong>
+                        <strong>Podaci prikupljeni na mjestu rada</strong>
                       </div>
-                      <p>Kako se posao odvija, gdje se radi i koji su bitni tehnološki koraci.</p>
+                      <p>Tehnološki proces, poslovi na mjestu rada i uređenje mjesta rada uz osnovna i posebna pravila ZNR.</p>
                     </div>
+                    <div class="risk-assessment-section-grid">
+                      <label class="field field-span-full risk-assessment-rich-field">
+                        <span>Opis tehnološkog procesa</span>
+                        <div class="risk-assessment-rich-editor">
+                          <div class="risk-assessment-rich-toolbar" data-risk-rich-toolbar="process" aria-label="Alati za uređivanje opisa tehnološkog procesa">
+                            <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h3">Naslov</button>
+                            <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h4">Podnaslov</button>
+                            <button type="button" data-risk-rich-command="bold"><strong>B</strong></button>
+                            <button type="button" data-risk-rich-command="italic"><em>I</em></button>
+                            <button type="button" data-risk-rich-command="underline"><u>U</u></button>
+                            <button type="button" data-risk-rich-command="insertUnorderedList">• Lista</button>
+                            <button type="button" data-risk-rich-command="insertOrderedList">1. Lista</button>
+                            <button type="button" data-risk-rich-preset="process" data-risk-rich-preset-key="technology">Predefinirani tekst</button>
+                            <button type="button" data-risk-rich-image="file">Slika</button>
+                            <button type="button" data-risk-rich-image="url">URL slike</button>
+                            <input type="file" accept="image/*" data-risk-rich-file="process" hidden />
+                          </div>
+                          <div id="risk-assessment-work-process-editor" class="risk-assessment-rich-surface" data-risk-rich-editor="process" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Opis tehnološkog procesa"></div>
+                          <textarea id="risk-assessment-work-process" class="risk-assessment-rich-value" data-risk-rich-storage="process" hidden></textarea>
+                        </div>
+                      </label>
+                    </div>
+
+                    <div class="offers-items-head is-compact">
+                      <div>
+                        <strong>Poslovi koji se obavljaju na mjestu rada</strong>
+                        <p class="inline-help">Tablični popis poslova s brojem radnika po spolu. Kasnije se može povezati s analizom radnih mjesta.</p>
+                      </div>
+                      <button id="risk-assessment-add-workplace-job" type="button" class="ghost-button">+ Posao u tablicu</button>
+                    </div>
+                    <div id="risk-assessment-workplace-jobs" class="risk-assessment-compact-list"></div>
+
                     <label class="field field-span-full risk-assessment-rich-field">
-                      <span>Opis radnog procesa</span>
+                      <span>Uređenje mjesta rada</span>
                       <div class="risk-assessment-rich-editor">
-                        <div class="risk-assessment-rich-toolbar" data-risk-rich-toolbar="process" aria-label="Alati za uređivanje opisa procesa">
+                        <div class="risk-assessment-rich-toolbar" data-risk-rich-toolbar="generalData" aria-label="Alati za uređivanje uređenja mjesta rada">
                           <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h3">Naslov</button>
                           <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h4">Podnaslov</button>
                           <button type="button" data-risk-rich-command="bold"><strong>B</strong></button>
@@ -4911,64 +5012,45 @@
                           <button type="button" data-risk-rich-command="underline"><u>U</u></button>
                           <button type="button" data-risk-rich-command="insertUnorderedList">• Lista</button>
                           <button type="button" data-risk-rich-command="insertOrderedList">1. Lista</button>
+                          <button type="button" data-risk-rich-preset="generalData" data-risk-rich-preset-key="workplaceArrangement">Predefinirani tekst</button>
                           <button type="button" data-risk-rich-image="file">Slika</button>
                           <button type="button" data-risk-rich-image="url">URL slike</button>
-                          <input type="file" accept="image/*" data-risk-rich-file="process" hidden />
+                          <input type="file" accept="image/*" data-risk-rich-file="generalData" hidden />
                         </div>
-                        <div id="risk-assessment-work-process-editor" class="risk-assessment-rich-surface" data-risk-rich-editor="process" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Opis radnog procesa"></div>
-                        <textarea id="risk-assessment-work-process" class="risk-assessment-rich-value" data-risk-rich-storage="process" hidden></textarea>
+                        <div id="risk-assessment-general-data-editor" class="risk-assessment-rich-surface" data-risk-rich-editor="generalData" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Uređenje mjesta rada"></div>
+                        <textarea id="risk-assessment-general-data" class="risk-assessment-rich-value" data-risk-rich-storage="generalData" hidden></textarea>
                       </div>
                     </label>
                   </section>
 
-                  <section id="risk-assessment-block-general" class="risk-assessment-editor-section" data-risk-assessment-block="general">
+                  <section id="risk-assessment-block-sensitive" class="risk-assessment-editor-section" data-risk-assessment-block="sensitive">
                     <div class="risk-assessment-editor-section-head">
                       <div>
                         <span>04</span>
-                        <strong>Opći podaci</strong>
+                        <strong>Posebno osjetljive skupine radnika</strong>
                       </div>
-                      <p>Opći uvjeti rada i posebna napomena za radna mjesta s računalom.</p>
+                      <p>Poseban list za maloljetnike, trudnice, radnike smanjenih sposobnosti i druge osjetljive skupine.</p>
                     </div>
-                    <div class="risk-assessment-section-grid">
-                      <label class="field field-span-full risk-assessment-rich-field">
-                        <span>Opći podaci</span>
-                        <div class="risk-assessment-rich-editor">
-                          <div class="risk-assessment-rich-toolbar" data-risk-rich-toolbar="generalData" aria-label="Alati za uređivanje općih podataka">
-                            <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h3">Naslov</button>
-                            <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h4">Podnaslov</button>
-                            <button type="button" data-risk-rich-command="bold"><strong>B</strong></button>
-                            <button type="button" data-risk-rich-command="italic"><em>I</em></button>
-                            <button type="button" data-risk-rich-command="underline"><u>U</u></button>
-                            <button type="button" data-risk-rich-command="insertUnorderedList">• Lista</button>
-                            <button type="button" data-risk-rich-command="insertOrderedList">1. Lista</button>
-                            <button type="button" data-risk-rich-image="file">Slika</button>
-                            <button type="button" data-risk-rich-image="url">URL slike</button>
-                            <input type="file" accept="image/*" data-risk-rich-file="generalData" hidden />
-                          </div>
-                          <div id="risk-assessment-general-data-editor" class="risk-assessment-rich-surface" data-risk-rich-editor="generalData" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Opći podaci"></div>
-                          <textarea id="risk-assessment-general-data" class="risk-assessment-rich-value" data-risk-rich-storage="generalData" hidden></textarea>
+                    <label class="field field-span-full risk-assessment-rich-field">
+                      <span>Posebno osjetljive skupine radnika</span>
+                      <div class="risk-assessment-rich-editor">
+                        <div class="risk-assessment-rich-toolbar" data-risk-rich-toolbar="computerWorkplaces" aria-label="Alati za uređivanje posebno osjetljivih skupina">
+                          <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h3">Naslov</button>
+                          <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h4">Podnaslov</button>
+                          <button type="button" data-risk-rich-command="bold"><strong>B</strong></button>
+                          <button type="button" data-risk-rich-command="italic"><em>I</em></button>
+                          <button type="button" data-risk-rich-command="underline"><u>U</u></button>
+                          <button type="button" data-risk-rich-command="insertUnorderedList">• Lista</button>
+                          <button type="button" data-risk-rich-command="insertOrderedList">1. Lista</button>
+                          <button type="button" data-risk-rich-preset="computerWorkplaces" data-risk-rich-preset-key="sensitiveGroups">Predefinirani tekst</button>
+                          <button type="button" data-risk-rich-image="file">Slika</button>
+                          <button type="button" data-risk-rich-image="url">URL slike</button>
+                          <input type="file" accept="image/*" data-risk-rich-file="computerWorkplaces" hidden />
                         </div>
-                      </label>
-                      <label class="field field-span-full risk-assessment-rich-field">
-                        <span>Radna mjesta s računalom</span>
-                        <div class="risk-assessment-rich-editor">
-                          <div class="risk-assessment-rich-toolbar" data-risk-rich-toolbar="computerWorkplaces" aria-label="Alati za uređivanje radnih mjesta s računalom">
-                            <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h3">Naslov</button>
-                            <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h4">Podnaslov</button>
-                            <button type="button" data-risk-rich-command="bold"><strong>B</strong></button>
-                            <button type="button" data-risk-rich-command="italic"><em>I</em></button>
-                            <button type="button" data-risk-rich-command="underline"><u>U</u></button>
-                            <button type="button" data-risk-rich-command="insertUnorderedList">• Lista</button>
-                            <button type="button" data-risk-rich-command="insertOrderedList">1. Lista</button>
-                            <button type="button" data-risk-rich-image="file">Slika</button>
-                            <button type="button" data-risk-rich-image="url">URL slike</button>
-                            <input type="file" accept="image/*" data-risk-rich-file="computerWorkplaces" hidden />
-                          </div>
-                          <div id="risk-assessment-computer-workplaces-editor" class="risk-assessment-rich-surface" data-risk-rich-editor="computerWorkplaces" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Radna mjesta s računalom"></div>
-                          <textarea id="risk-assessment-computer-workplaces" class="risk-assessment-rich-value" data-risk-rich-storage="computerWorkplaces" hidden></textarea>
-                        </div>
-                      </label>
-                    </div>
+                        <div id="risk-assessment-computer-workplaces-editor" class="risk-assessment-rich-surface" data-risk-rich-editor="computerWorkplaces" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Posebno osjetljive skupine radnika"></div>
+                        <textarea id="risk-assessment-computer-workplaces" class="risk-assessment-rich-value" data-risk-rich-storage="computerWorkplaces" hidden></textarea>
+                      </div>
+                    </label>
                   </section>
 
                   <section id="risk-assessment-block-rules" class="risk-assessment-editor-section" data-risk-assessment-block="rules">
@@ -5025,15 +5107,15 @@
                     <div class="risk-assessment-editor-section-head">
                       <div>
                         <span>06</span>
-                        <strong>Propusti i zaključak</strong>
+                        <strong>Popis priloga</strong>
                       </div>
-                      <p>Uočeni propusti osnovnih i posebnih pravila te završni zaključak procjene.</p>
+                      <p>Prilozi i popisi koji prate procjenu: štetnosti, radna oprema, OZO, ispitivanja, posebni uvjeti, kemijske štetnosti i sudjelovanje radnika.</p>
                     </div>
                     <div class="risk-assessment-section-grid">
                       <label class="field field-span-full risk-assessment-rich-field">
-                        <span>Propusti - osnovna pravila</span>
+                        <span>Podaci o fizikalnim, biološkim i kemijskim štetnostima</span>
                         <div class="risk-assessment-rich-editor">
-                          <div class="risk-assessment-rich-toolbar" data-risk-rich-toolbar="omissionsBasic" aria-label="Alati za uređivanje propusta osnovnih pravila">
+                          <div class="risk-assessment-rich-toolbar" data-risk-rich-toolbar="omissionsBasic" aria-label="Alati za uređivanje podataka o štetnostima">
                             <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h3">Naslov</button>
                             <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h4">Podnaslov</button>
                             <button type="button" data-risk-rich-command="bold"><strong>B</strong></button>
@@ -5041,18 +5123,19 @@
                             <button type="button" data-risk-rich-command="underline"><u>U</u></button>
                             <button type="button" data-risk-rich-command="insertUnorderedList">• Lista</button>
                             <button type="button" data-risk-rich-command="insertOrderedList">1. Lista</button>
+                            <button type="button" data-risk-rich-preset="omissionsBasic" data-risk-rich-preset-key="harmfulData">Predefinirani tekst</button>
                             <button type="button" data-risk-rich-image="file">Slika</button>
                             <button type="button" data-risk-rich-image="url">URL slike</button>
                             <input type="file" accept="image/*" data-risk-rich-file="omissionsBasic" hidden />
                           </div>
-                          <div id="risk-assessment-omissions-basic-editor" class="risk-assessment-rich-surface" data-risk-rich-editor="omissionsBasic" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Propusti osnovna pravila"></div>
+                          <div id="risk-assessment-omissions-basic-editor" class="risk-assessment-rich-surface" data-risk-rich-editor="omissionsBasic" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Podaci o štetnostima"></div>
                           <textarea id="risk-assessment-omissions-basic" class="risk-assessment-rich-value" data-risk-rich-storage="omissionsBasic" hidden></textarea>
                         </div>
                       </label>
                       <label class="field field-span-full risk-assessment-rich-field">
-                        <span>Propusti - posebna pravila</span>
+                        <span>Popis radne opreme</span>
                         <div class="risk-assessment-rich-editor">
-                          <div class="risk-assessment-rich-toolbar" data-risk-rich-toolbar="omissionsSpecial" aria-label="Alati za uređivanje propusta posebnih pravila">
+                          <div class="risk-assessment-rich-toolbar" data-risk-rich-toolbar="omissionsSpecial" aria-label="Alati za uređivanje popisa radne opreme">
                             <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h3">Naslov</button>
                             <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h4">Podnaslov</button>
                             <button type="button" data-risk-rich-command="bold"><strong>B</strong></button>
@@ -5060,18 +5143,19 @@
                             <button type="button" data-risk-rich-command="underline"><u>U</u></button>
                             <button type="button" data-risk-rich-command="insertUnorderedList">• Lista</button>
                             <button type="button" data-risk-rich-command="insertOrderedList">1. Lista</button>
+                            <button type="button" data-risk-rich-preset="omissionsSpecial" data-risk-rich-preset-key="workEquipment">Predefinirani tekst</button>
                             <button type="button" data-risk-rich-image="file">Slika</button>
                             <button type="button" data-risk-rich-image="url">URL slike</button>
                             <input type="file" accept="image/*" data-risk-rich-file="omissionsSpecial" hidden />
                           </div>
-                          <div id="risk-assessment-omissions-special-editor" class="risk-assessment-rich-surface" data-risk-rich-editor="omissionsSpecial" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Propusti posebna pravila"></div>
+                          <div id="risk-assessment-omissions-special-editor" class="risk-assessment-rich-surface" data-risk-rich-editor="omissionsSpecial" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Popis radne opreme"></div>
                           <textarea id="risk-assessment-omissions-special" class="risk-assessment-rich-value" data-risk-rich-storage="omissionsSpecial" hidden></textarea>
                         </div>
                       </label>
                       <label class="field field-span-full risk-assessment-rich-field">
-                        <span>Zaključak</span>
+                        <span>Popis ispitivanja i poslova s posebnim uvjetima rada</span>
                         <div class="risk-assessment-rich-editor">
-                          <div class="risk-assessment-rich-toolbar" data-risk-rich-toolbar="conclusion" aria-label="Alati za uređivanje zaključka">
+                          <div class="risk-assessment-rich-toolbar" data-risk-rich-toolbar="conclusion" aria-label="Alati za uređivanje popisa ispitivanja">
                             <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h3">Naslov</button>
                             <button type="button" data-risk-rich-command="formatBlock" data-risk-rich-value="h4">Podnaslov</button>
                             <button type="button" data-risk-rich-command="bold"><strong>B</strong></button>
@@ -5079,14 +5163,37 @@
                             <button type="button" data-risk-rich-command="underline"><u>U</u></button>
                             <button type="button" data-risk-rich-command="insertUnorderedList">• Lista</button>
                             <button type="button" data-risk-rich-command="insertOrderedList">1. Lista</button>
+                            <button type="button" data-risk-rich-preset="conclusion" data-risk-rich-preset-key="testingAndSpecialConditions">Predefinirani tekst</button>
                             <button type="button" data-risk-rich-image="file">Slika</button>
                             <button type="button" data-risk-rich-image="url">URL slike</button>
                             <input type="file" accept="image/*" data-risk-rich-file="conclusion" hidden />
                           </div>
-                          <div id="risk-assessment-conclusion-editor" class="risk-assessment-rich-surface" data-risk-rich-editor="conclusion" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Zaključak"></div>
+                          <div id="risk-assessment-conclusion-editor" class="risk-assessment-rich-surface" data-risk-rich-editor="conclusion" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Popis ispitivanja i poslova s posebnim uvjetima rada"></div>
                           <textarea id="risk-assessment-conclusion" class="risk-assessment-rich-value" data-risk-rich-storage="conclusion" hidden></textarea>
                         </div>
                       </label>
+                      <label class="field">
+                        <span>Procjena rizika od kemijskih štetnosti</span>
+                        <textarea id="risk-assessment-appendix-chemical-risk" rows="4" data-risk-autogrow placeholder="Sažetak procjene kemijskih štetnosti i povezanih STL podataka."></textarea>
+                      </label>
+                      <label class="field">
+                        <span>Sudjelovanje radnika</span>
+                        <textarea id="risk-assessment-appendix-worker-participation" rows="4" data-risk-autogrow placeholder="Način uključivanja radnika, povjerenika i predstavnika u izradu procjene."></textarea>
+                      </label>
+                      <div class="risk-assessment-appendix-cards field-span-full">
+                        <article>
+                          <span>Popis osobne zaštitne opreme</span>
+                          <strong>Automatski iz analize radnih mjesta</strong>
+                        </article>
+                        <article>
+                          <span>Kemikalije i STL</span>
+                          <strong>Automatski iz registra kemikalija</strong>
+                        </article>
+                        <article>
+                          <span>Ručno prenošenje tereta</span>
+                          <strong>Automatski iz izračuna opterećenja</strong>
+                        </article>
+                      </div>
                     </div>
                   </section>
 
@@ -5130,9 +5237,9 @@
                     <div class="risk-assessment-editor-section-head">
                       <div>
                         <span>09</span>
-                        <strong>Poslovi i rizici</strong>
+                        <strong>Analiza radnih mjesta</strong>
                       </div>
-                      <p>Radna mjesta, uvjeti rada, katalog opasnosti, procjena rizika i vizualni odabir OZO.</p>
+                      <p>Poslovi, radna mjesta, uvjeti rada, katalog opasnosti, procjena rizika i vizualni odabir OZO.</p>
                     </div>
                     <div class="offers-items-head">
                       <div>
@@ -5274,13 +5381,13 @@
               <nav id="risk-assessment-dock" class="risk-assessment-dock" aria-label="Navigacija procjene rizika">
                 <button type="button" class="is-active" data-risk-assessment-jump="basic"><strong>Osnovno</strong><span>Tvrtka i datumi</span></button>
                 <button type="button" data-risk-assessment-jump="intro"><strong>Uvod</strong><span>Pravna osnova</span></button>
-                <button type="button" data-risk-assessment-jump="process"><strong>Proces</strong><span>Radni proces</span></button>
-                <button type="button" data-risk-assessment-jump="general"><strong>Opći</strong><span>Uvjeti rada</span></button>
+                <button type="button" data-risk-assessment-jump="process"><strong>Mjesto rada</strong><span>Proces i poslovi</span></button>
+                <button type="button" data-risk-assessment-jump="sensitive"><strong>Skupine</strong><span>Osjetljivi radnici</span></button>
                 <button type="button" data-risk-assessment-jump="rules"><strong>Pravila</strong><span>ZNR pravila</span></button>
-                <button type="button" data-risk-assessment-jump="findings"><strong>Propusti</strong><span>Zaključak</span></button>
+                <button type="button" data-risk-assessment-jump="findings"><strong>Prilozi</strong><span>Popisi i dokazi</span></button>
                 <button type="button" data-risk-assessment-jump="measures"><strong>Mjere</strong><span>Plan mjera</span></button>
                 <button type="button" data-risk-assessment-jump="structure"><strong>Struktura</strong><span>Jedinice</span></button>
-                <button type="button" data-risk-assessment-jump="jobs"><strong>Poslovi</strong><span>Rizici i ARMOR</span></button>
+                <button type="button" data-risk-assessment-jump="jobs"><strong>Analiza</strong><span>Radna mjesta</span></button>
                 <button type="button" data-risk-assessment-jump="manual-handling"><strong>Teret</strong><span>Ručno prenošenje</span></button>
                 <button type="button" data-risk-assessment-jump="chemicals"><strong>Kemikalije</strong><span>STL i GHS</span></button>
                 <button type="button" data-risk-assessment-jump="overview"><strong>Pregled</strong><span>Sažetak</span></button>
@@ -9433,7 +9540,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260529-risk-manual-handling-v1"></script>
-    <script type="module" src="/assets/ozo-panel.js?v=20260529-risk-manual-handling-v1"></script>
+    <script type="module" src="/src/main.js?v=20260529-risk-assessment-structure-v1"></script>
+    <script type="module" src="/assets/ozo-panel.js?v=20260529-risk-assessment-structure-v1"></script>
   </body>
 </html>

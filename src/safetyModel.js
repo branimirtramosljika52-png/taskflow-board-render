@@ -5604,6 +5604,29 @@ function normalizeRiskAssessmentComments(items = []) {
 function normalizeRiskAssessmentEmployerData(input = {}, current = {}) {
   const source = input && typeof input === "object" ? input : {};
   const fallback = current && typeof current === "object" ? current : {};
+  const normalizePersonItems = (items = []) => {
+    if (!Array.isArray(items)) {
+      return [];
+    }
+    return items.map((item) => ({
+      id: normalizeId(item?.id) || crypto.randomUUID(),
+      fullName: normalizeText(item?.fullName ?? item?.name).slice(0, 180),
+      oib: normalizeText(item?.oib).slice(0, 11),
+      jobTitle: normalizeText(item?.jobTitle ?? item?.workplace).slice(0, 180),
+    })).filter((item) => item.fullName || item.oib || item.jobTitle);
+  };
+  const normalizeWorkplaceJobs = (items = []) => {
+    if (!Array.isArray(items)) {
+      return [];
+    }
+    return items.map((item) => ({
+      id: normalizeId(item?.id) || crypto.randomUUID(),
+      jobTitle: normalizeText(item?.jobTitle ?? item?.title).slice(0, 180),
+      maleCount: normalizeText(item?.maleCount ?? item?.male).slice(0, 40),
+      femaleCount: normalizeText(item?.femaleCount ?? item?.female).slice(0, 40),
+      note: normalizeText(item?.note).slice(0, 500),
+    })).filter((item) => item.jobTitle || item.maleCount || item.femaleCount || item.note);
+  };
   return {
     fullName: normalizeText(source.fullName ?? source.companyName ?? fallback.fullName).slice(0, 220),
     address: normalizeText(source.address ?? fallback.address).slice(0, 220),
@@ -5613,6 +5636,19 @@ function normalizeRiskAssessmentEmployerData(input = {}, current = {}) {
     employeeCount: normalizeText(source.employeeCount ?? source.employees ?? fallback.employeeCount).slice(0, 500),
     headquarters: normalizeText(source.headquarters ?? fallback.headquarters).slice(0, 500),
     detachedLocations: normalizeText(source.detachedLocations ?? source.locations ?? fallback.detachedLocations).slice(0, 2000),
+    locationScope: normalizeText(source.locationScope ?? fallback.locationScope) === "selected" ? "selected" : "all",
+    selectedLocationIds: normalizeIdList(source.selectedLocationIds ?? fallback.selectedLocationIds ?? []).slice(0, 200),
+    authorizedPersons: normalizePersonItems(source.authorizedPersons ?? fallback.authorizedPersons ?? []),
+    znrServiceMode: normalizeText(source.znrServiceMode ?? fallback.znrServiceMode).slice(0, 4000),
+    znrExperts: normalizeText(source.znrExperts ?? fallback.znrExperts).slice(0, 2000),
+    znrRepresentatives: normalizeText(source.znrRepresentatives ?? fallback.znrRepresentatives).slice(0, 2000),
+    znrCommitteeParticipation: normalizeText(source.znrCommitteeParticipation ?? fallback.znrCommitteeParticipation).slice(0, 3000),
+    hasZnrAuthorization: normalizeBoolean(source.hasZnrAuthorization ?? fallback.hasZnrAuthorization, false),
+    assessmentMembers: normalizeText(source.assessmentMembers ?? fallback.assessmentMembers).slice(0, 2000),
+    assessmentMemberUserIds: normalizeIdList(source.assessmentMemberUserIds ?? fallback.assessmentMemberUserIds ?? []).slice(0, 48),
+    workplaceJobs: normalizeWorkplaceJobs(source.workplaceJobs ?? fallback.workplaceJobs ?? []),
+    appendixChemicalRisk: normalizeText(source.appendixChemicalRisk ?? fallback.appendixChemicalRisk).slice(0, 4000),
+    appendixWorkerParticipation: normalizeText(source.appendixWorkerParticipation ?? fallback.appendixWorkerParticipation).slice(0, 4000),
   };
 }
 
@@ -8714,6 +8750,10 @@ export function filterRiskAssessments(
       ...(item.teamLeadUserIds ?? []),
       ...(item.collaboratorUserIds ?? []),
       ...Object.values(item.employerData ?? {}),
+      ...(item.employerData?.authorizedPersons ?? []).flatMap((entry) => [entry.fullName, entry.oib, entry.jobTitle]),
+      ...(item.employerData?.workplaceJobs ?? []).flatMap((entry) => [entry.jobTitle, entry.maleCount, entry.femaleCount, entry.note]),
+      ...(item.employerData?.assessmentMemberUserIds ?? []),
+      ...(item.employerData?.selectedLocationIds ?? []),
       normalizeRiskAssessmentRichTextSearch(item.intro),
       normalizeRiskAssessmentRichTextSearch(item.workProcessDescription),
       normalizeRiskAssessmentRichTextSearch(item.generalData),

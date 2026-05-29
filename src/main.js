@@ -6050,6 +6050,8 @@ const riskAssessmentForm = document.querySelector("#risk-assessment-form");
 const riskAssessmentIdInput = document.querySelector("#risk-assessment-id");
 const riskAssessmentCompanyInput = document.querySelector("#risk-assessment-company");
 const riskAssessmentLocationInput = document.querySelector("#risk-assessment-location");
+const riskAssessmentLocationIdsInput = document.querySelector("#risk-assessment-location-ids");
+const riskAssessmentAllLocationsInput = document.querySelector("#risk-assessment-all-locations");
 const riskAssessmentWorkOrderInput = document.querySelector("#risk-assessment-work-order");
 const riskAssessmentNumberInput = document.querySelector("#risk-assessment-number");
 const riskAssessmentStatusInput = document.querySelector("#risk-assessment-status");
@@ -6058,9 +6060,11 @@ const riskAssessmentDateInput = document.querySelector("#risk-assessment-date");
 const riskAssessmentCompletionDateInput = document.querySelector("#risk-assessment-completion-date");
 const riskAssessmentRevisionDateInput = document.querySelector("#risk-assessment-revision-date");
 const riskAssessmentTeamLeadInput = document.querySelector("#risk-assessment-team-lead");
+const riskAssessmentMembersInput = document.querySelector("#risk-assessment-members");
 const riskAssessmentCollaboratorsInput = document.querySelector("#risk-assessment-collaborators");
 const riskAssessmentBasicSummary = document.querySelector("#risk-assessment-basic-summary");
 const riskAssessmentTeamLeadPicker = document.querySelector("#risk-assessment-team-lead-picker");
+const riskAssessmentMembersPicker = document.querySelector("#risk-assessment-members-picker");
 const riskAssessmentCollaboratorsPicker = document.querySelector("#risk-assessment-collaborators-picker");
 const riskAssessmentEmployerCompanyNameInput = document.querySelector("#risk-assessment-employer-company-name");
 const riskAssessmentEmployerAddressInput = document.querySelector("#risk-assessment-employer-address");
@@ -6070,6 +6074,13 @@ const riskAssessmentEmployerNkdInput = document.querySelector("#risk-assessment-
 const riskAssessmentEmployerEmployeesInput = document.querySelector("#risk-assessment-employer-employees");
 const riskAssessmentEmployerHeadquartersInput = document.querySelector("#risk-assessment-employer-headquarters");
 const riskAssessmentEmployerDetachedLocationsInput = document.querySelector("#risk-assessment-employer-detached-locations");
+const riskAssessmentAuthorizedPersonsList = document.querySelector("#risk-assessment-authorized-persons");
+const riskAssessmentAddAuthorizedPersonButton = document.querySelector("#risk-assessment-add-authorized-person");
+const riskAssessmentZnrServiceModeInput = document.querySelector("#risk-assessment-znr-service-mode");
+const riskAssessmentZnrExpertsInput = document.querySelector("#risk-assessment-znr-experts");
+const riskAssessmentZnrRepresentativesInput = document.querySelector("#risk-assessment-znr-representatives");
+const riskAssessmentZnrCommitteeParticipationInput = document.querySelector("#risk-assessment-znr-committee-participation");
+const riskAssessmentZnrAuthorizationInput = document.querySelector("#risk-assessment-znr-authorization");
 const riskAssessmentIntroInput = document.querySelector("#risk-assessment-intro");
 const riskAssessmentIntroEditor = document.querySelector('[data-risk-rich-editor="intro"]');
 const riskAssessmentWorkProcessInput = document.querySelector("#risk-assessment-work-process");
@@ -6081,6 +6092,10 @@ const riskAssessmentSpecialRulesInput = document.querySelector("#risk-assessment
 const riskAssessmentOmissionsBasicInput = document.querySelector("#risk-assessment-omissions-basic");
 const riskAssessmentOmissionsSpecialInput = document.querySelector("#risk-assessment-omissions-special");
 const riskAssessmentConclusionInput = document.querySelector("#risk-assessment-conclusion");
+const riskAssessmentWorkplaceJobsList = document.querySelector("#risk-assessment-workplace-jobs");
+const riskAssessmentAddWorkplaceJobButton = document.querySelector("#risk-assessment-add-workplace-job");
+const riskAssessmentAppendixChemicalRiskInput = document.querySelector("#risk-assessment-appendix-chemical-risk");
+const riskAssessmentAppendixWorkerParticipationInput = document.querySelector("#risk-assessment-appendix-worker-participation");
 const riskAssessmentMeasuresList = document.querySelector("#risk-assessment-measures");
 const riskAssessmentAddMeasureButton = document.querySelector("#risk-assessment-add-measure");
 const riskAssessmentOrganizationUnitsList = document.querySelector("#risk-assessment-organization-units");
@@ -6132,6 +6147,8 @@ const riskAssessmentSubmitButton = document.querySelector("#risk-assessment-subm
 const riskAssessmentResetButton = document.querySelector("#risk-assessment-reset");
 const riskAssessmentDeleteButton = document.querySelector("#risk-assessment-delete");
 let jobHazardDrafts = [];
+let riskAssessmentAuthorizedPersonDrafts = [];
+let riskAssessmentWorkplaceJobDrafts = [];
 let riskAssessmentMeasureDrafts = [];
 let riskAssessmentOrganizationUnitDrafts = [];
 let riskAssessmentJobDrafts = [];
@@ -6166,11 +6183,11 @@ const RISK_ASSESSMENT_TEMPLATE_PLACEHOLDERS = Object.freeze([
   { key: "cover", token: "{{RISK_COVER}}", label: "Naslovnica i identifikacija", defaultTitle: "Procjena rizika" },
   { key: "employer", token: "{{RISK_EMPLOYER}}", label: "Podaci o poslodavcu i objektima", defaultTitle: "Podaci o poslodavcu i objektima namijenjenim za rad" },
   { key: "intro", token: "{{RISK_INTRO}}", label: "Uvod i pravna osnova", defaultTitle: "Uvod" },
-  { key: "process", token: "{{RISK_PROCESS}}", label: "Radni proces", defaultTitle: "Opis radnog procesa" },
-  { key: "general", token: "{{RISK_GENERAL}}", label: "Opći uvjeti rada", defaultTitle: "Opći podaci i uvjeti rada" },
-  { key: "computer", token: "{{RISK_COMPUTER}}", label: "Rad s računalom", defaultTitle: "Radna mjesta s računalom" },
+  { key: "process", token: "{{RISK_PROCESS}}", label: "Podaci prikupljeni na mjestu rada", defaultTitle: "Podaci prikupljeni na mjestu rada" },
+  { key: "general", token: "{{RISK_GENERAL}}", label: "Uređenje mjesta rada", defaultTitle: "Uređenje mjesta rada" },
+  { key: "computer", token: "{{RISK_SENSITIVE_GROUPS}}", label: "Posebno osjetljive skupine radnika", defaultTitle: "Posebno osjetljive skupine radnika" },
   { key: "rules", token: "{{RISK_RULES}}", label: "Pravila zaštite na radu", defaultTitle: "Osnovna i posebna pravila zaštite na radu" },
-  { key: "findings", token: "{{RISK_FINDINGS}}", label: "Propusti i zaključak", defaultTitle: "Propusti i zaključak" },
+  { key: "findings", token: "{{RISK_APPENDICES}}", label: "Popis priloga", defaultTitle: "Popis priloga" },
   { key: "measures", token: "{{RISK_MEASURES}}", label: "Plan mjera", defaultTitle: "Plan mjera" },
   { key: "structure", token: "{{RISK_STRUCTURE}}", label: "Sistematizacija", defaultTitle: "Struktura organizacijskih jedinica" },
   { key: "jobs", token: "{{RISK_JOBS}}", label: "Poslovi i procjena rizika", defaultTitle: "Analiza radnih mjesta i procjena rizika" },
@@ -6186,13 +6203,13 @@ const RISK_ASSESSMENT_TEMPLATE_PLACEHOLDER_BY_KEY = new Map(
 const RISK_ASSESSMENT_TEMPLATE_BLOCKS = Object.freeze([
   { block: "basic", label: "Osnovni podaci", sectionKeys: ["cover", "employer"], tokenLabel: "{{RISK_COVER}} + {{RISK_EMPLOYER}}" },
   { block: "intro", label: "Uvod", sectionKeys: ["intro"], tokenLabel: "{{RISK_INTRO}}" },
-  { block: "process", label: "Proces", sectionKeys: ["process"], tokenLabel: "{{RISK_PROCESS}}" },
-  { block: "general", label: "Opći dio", sectionKeys: ["general", "computer"], tokenLabel: "{{RISK_GENERAL}} + {{RISK_COMPUTER}}" },
+  { block: "process", label: "Podaci na mjestu rada", sectionKeys: ["process", "general"], tokenLabel: "{{RISK_PROCESS}} + {{RISK_GENERAL}}" },
+  { block: "sensitive", label: "Posebno osjetljive skupine", sectionKeys: ["computer"], tokenLabel: "{{RISK_SENSITIVE_GROUPS}}" },
   { block: "rules", label: "Pravila", sectionKeys: ["rules"], tokenLabel: "{{RISK_RULES}}" },
-  { block: "findings", label: "Propusti", sectionKeys: ["findings"], tokenLabel: "{{RISK_FINDINGS}}" },
+  { block: "findings", label: "Popis priloga", sectionKeys: ["findings"], tokenLabel: "{{RISK_APPENDICES}}" },
   { block: "measures", label: "Mjere", sectionKeys: ["measures"], tokenLabel: "{{RISK_MEASURES}}" },
   { block: "structure", label: "Struktura", sectionKeys: ["structure"], tokenLabel: "{{RISK_STRUCTURE}}" },
-  { block: "jobs", label: "Poslovi", sectionKeys: ["jobs", "ppe"], tokenLabel: "{{RISK_JOBS}} + {{RISK_PPE}}" },
+  { block: "jobs", label: "Analiza radnih mjesta", sectionKeys: ["jobs", "ppe"], tokenLabel: "{{RISK_JOBS}} + {{RISK_PPE}}" },
   { block: "manual-handling", label: "Ručno prenošenje tereta", sectionKeys: ["manual_handling"], tokenLabel: "{{RISK_MANUAL_HANDLING}}" },
   { block: "chemicals", label: "Kemikalije", sectionKeys: ["chemicals"], tokenLabel: "{{RISK_CHEMICALS}}" },
   { block: "overview", label: "Pregled", sectionKeys: ["overview", "signatures"], tokenLabel: "{{RISK_OVERVIEW}} + {{RISK_SIGNATURES}}" },
@@ -6220,6 +6237,14 @@ const RISK_ASSESSMENT_TEMPLATE_PRESETS = Object.freeze([
     sections: ["cover", "employer", "intro", "general", "computer", "rules", "findings", "measures", "overview", "signatures"],
   },
 ]);
+const RISK_ASSESSMENT_RICH_PRESETS = Object.freeze({
+  technology: `<p>Tehnološki proces obuhvaća pripremu mjesta rada, izvođenje redovnih radnih aktivnosti, korištenje radne opreme i materijala te završnu kontrolu izvršenih poslova. Poslovi se obavljaju prema uputama poslodavca, pravilima struke i propisanim mjerama zaštite na radu.</p>`,
+  workplaceArrangement: `<p>Mjesta rada uređena su tako da omogućuju sigurno kretanje radnika, pristup radnoj opremi i održavanje radnog prostora. Primjenjuju se osnovna pravila zaštite na radu, a posebna pravila zaštite na radu primjenjuju se za poslove i uvjete kod kojih opasnosti nije moguće ukloniti osnovnim pravilima.</p>`,
+  sensitiveGroups: `<p>Procjenom se posebno razmatraju radnici koji pripadaju posebno osjetljivim skupinama, uključujući maloljetnike, trudnice, radnice koje su nedavno rodile ili doje, radnike smanjenih radnih sposobnosti i radnike kod kojih postoji povećana osjetljivost na pojedine štetnosti. Za takve radnike utvrđuju se ograničenja rada i prilagodbe prema važećim propisima i mišljenju nadležnih stručnih osoba.</p>`,
+  harmfulData: `<p>Podaci o fizikalnim, biološkim i kemijskim štetnostima prikupljaju se pregledom mjesta rada, dostupne dokumentacije, sigurnosno-tehničkih listova, rezultata ispitivanja i razgovorom s radnicima. Utvrđene štetnosti povezuju se s poslovima, mjestima rada, izvorima izloženosti i mjerama zaštite.</p>`,
+  workEquipment: `<p>Popis radne opreme obuhvaća strojeve, uređaje, alate, instalacije i pomoćnu opremu koja se koristi pri obavljanju poslova. Za radnu opremu se provjerava namjena, stanje, dostupnost uputa, potreba za ispitivanjem i primjena zaštitnih naprava.</p>`,
+  testingAndSpecialConditions: `<p>Popis ispitivanja i poslova s posebnim uvjetima rada utvrđuje se prema poslovima, radnoj opremi, instalacijama, radnom okolišu i posebnim propisima. U procjeni se navode obvezna ispitivanja, rokovi, posebni uvjeti rada i povezana osposobljavanja ili zdravstveni pregledi.</p>`,
+});
 let riskAssessmentPpeThreeModulePromise = null;
 const riskAssessmentPpeSceneControllers = new Map();
 let riskAssessmentPpeSceneObserver = null;
@@ -115954,6 +115979,12 @@ riskAssessmentWorkOrderInput?.addEventListener("change", () => {
       buildRiskAssessmentLocationOptions(riskAssessmentCompanyInput?.value || linkedWorkOrder.companyId || ""),
       linkedWorkOrder.locationId,
     );
+    syncRiskAssessmentLocationControls(
+      riskAssessmentCompanyInput?.value || linkedWorkOrder.companyId || "",
+      [linkedWorkOrder.locationId],
+      false,
+    );
+    refreshRiskAssessmentLocationDerivedText(riskAssessmentCompanyInput?.value || linkedWorkOrder.companyId || "");
   }
   refreshRiskAssessmentAutoNumber();
   renderRiskAssessmentBasicSummary();
@@ -115983,17 +116014,112 @@ riskAssessmentCompletionDateInput?.addEventListener("blur", () => {
   riskAssessmentDateInput,
   riskAssessmentCompletionDateInput,
   riskAssessmentTeamLeadInput,
+  riskAssessmentMembersInput,
   riskAssessmentCollaboratorsInput,
+  riskAssessmentLocationIdsInput,
+  riskAssessmentAllLocationsInput,
+  riskAssessmentEmployerNkdInput,
+  riskAssessmentEmployerEmployeesInput,
+  riskAssessmentZnrServiceModeInput,
+  riskAssessmentZnrExpertsInput,
+  riskAssessmentZnrRepresentativesInput,
+  riskAssessmentZnrCommitteeParticipationInput,
+  riskAssessmentZnrAuthorizationInput,
+  riskAssessmentAppendixChemicalRiskInput,
+  riskAssessmentAppendixWorkerParticipationInput,
 ].forEach((input) => {
   input?.addEventListener("input", () => {
+    autoGrowRiskAssessmentTextareas();
+    if (input === riskAssessmentLocationIdsInput || input === riskAssessmentAllLocationsInput) {
+      refreshRiskAssessmentLocationDerivedText();
+    }
     renderRiskAssessmentBasicSummary();
     scheduleRiskAssessmentDraftAutosave();
   });
   input?.addEventListener("change", () => {
+    if (input === riskAssessmentAllLocationsInput && riskAssessmentLocationIdsInput) {
+      riskAssessmentLocationIdsInput.disabled = Boolean(riskAssessmentAllLocationsInput.checked);
+      if (riskAssessmentAllLocationsInput.checked) {
+        Array.from(riskAssessmentLocationIdsInput.options).forEach((option) => { option.selected = false; });
+      }
+    }
+    if (input === riskAssessmentLocationIdsInput || input === riskAssessmentAllLocationsInput) {
+      const selectedIds = getRiskAssessmentSelectedLocationIds();
+      if (riskAssessmentLocationInput) {
+        riskAssessmentLocationInput.value = Boolean(riskAssessmentAllLocationsInput?.checked) ? "" : (selectedIds[0] || "");
+      }
+      refreshRiskAssessmentLocationDerivedText();
+    }
     renderRiskAssessmentPeoplePickers();
     renderRiskAssessmentBasicSummary();
     scheduleRiskAssessmentDraftAutosave();
   });
+});
+
+riskAssessmentAddAuthorizedPersonButton?.addEventListener("click", () => {
+  riskAssessmentAuthorizedPersonDrafts.push(createRiskAssessmentAuthorizedPersonDraft());
+  renderRiskAssessmentAuthorizedPersons();
+  scheduleRiskAssessmentDraftAutosave();
+});
+
+riskAssessmentAuthorizedPersonsList?.addEventListener("input", (event) => {
+  const row = event.target?.closest?.("[data-risk-authorized-person]");
+  const field = event.target?.dataset?.riskAuthorizedField;
+  const index = Number(row?.dataset?.riskAuthorizedPerson);
+  if (!Number.isInteger(index) || !field || !riskAssessmentAuthorizedPersonDrafts[index]) {
+    return;
+  }
+  riskAssessmentAuthorizedPersonDrafts[index] = {
+    ...riskAssessmentAuthorizedPersonDrafts[index],
+    [field]: event.target.value,
+  };
+  scheduleRiskAssessmentDraftAutosave();
+});
+
+riskAssessmentAuthorizedPersonsList?.addEventListener("click", (event) => {
+  const button = event.target?.closest?.("[data-risk-authorized-remove]");
+  if (!button) {
+    return;
+  }
+  const index = Number(button.dataset.riskAuthorizedRemove);
+  if (Number.isInteger(index)) {
+    riskAssessmentAuthorizedPersonDrafts.splice(index, 1);
+    renderRiskAssessmentAuthorizedPersons();
+    scheduleRiskAssessmentDraftAutosave();
+  }
+});
+
+riskAssessmentAddWorkplaceJobButton?.addEventListener("click", () => {
+  riskAssessmentWorkplaceJobDrafts.push(createRiskAssessmentWorkplaceJobDraft());
+  renderRiskAssessmentWorkplaceJobs();
+  scheduleRiskAssessmentDraftAutosave();
+});
+
+riskAssessmentWorkplaceJobsList?.addEventListener("input", (event) => {
+  const row = event.target?.closest?.("[data-risk-workplace-job]");
+  const field = event.target?.dataset?.riskWorkplaceJobField;
+  const index = Number(row?.dataset?.riskWorkplaceJob);
+  if (!Number.isInteger(index) || !field || !riskAssessmentWorkplaceJobDrafts[index]) {
+    return;
+  }
+  riskAssessmentWorkplaceJobDrafts[index] = {
+    ...riskAssessmentWorkplaceJobDrafts[index],
+    [field]: event.target.value,
+  };
+  scheduleRiskAssessmentDraftAutosave();
+});
+
+riskAssessmentWorkplaceJobsList?.addEventListener("click", (event) => {
+  const button = event.target?.closest?.("[data-risk-workplace-job-remove]");
+  if (!button) {
+    return;
+  }
+  const index = Number(button.dataset.riskWorkplaceJobRemove);
+  if (Number.isInteger(index)) {
+    riskAssessmentWorkplaceJobDrafts.splice(index, 1);
+    renderRiskAssessmentWorkplaceJobs();
+    scheduleRiskAssessmentDraftAutosave();
+  }
 });
 
 riskAssessmentAddMeasureButton?.addEventListener("click", () => {
@@ -119543,6 +119669,48 @@ function buildRiskAssessmentLocationOptions(companyId = "") {
   return [{ value: "", label: "Sve lokacije / nije vezano" }, ...options];
 }
 
+function buildRiskAssessmentLocationMultiOptions(companyId = "") {
+  return buildRiskAssessmentLocationOptions(companyId)
+    .filter((option) => String(option.value || "").trim());
+}
+
+function getRiskAssessmentSelectedLocationIds() {
+  return Array.from(riskAssessmentLocationIdsInput?.selectedOptions ?? [])
+    .map((option) => String(option.value || "").trim())
+    .filter(Boolean);
+}
+
+function getRiskAssessmentSelectedLocationLines(companyId = riskAssessmentCompanyInput?.value || "") {
+  const selectedIds = new Set(getRiskAssessmentSelectedLocationIds());
+  const locations = getRiskAssessmentCompanyLocations(companyId);
+  const useAll = Boolean(riskAssessmentAllLocationsInput?.checked) || selectedIds.size === 0;
+  return locations
+    .filter((location) => useAll || selectedIds.has(String(location.id)))
+    .map(formatRiskAssessmentLocationLine)
+    .filter(Boolean);
+}
+
+function syncRiskAssessmentLocationControls(companyId = riskAssessmentCompanyInput?.value || "", selectedIds = [], useAll = true) {
+  const options = buildRiskAssessmentLocationMultiOptions(companyId);
+  replaceMultiSelectOptions(riskAssessmentLocationIdsInput, options, selectedIds);
+  if (riskAssessmentAllLocationsInput) {
+    riskAssessmentAllLocationsInput.checked = Boolean(useAll) || selectedIds.length === 0;
+  }
+  if (riskAssessmentLocationIdsInput) {
+    riskAssessmentLocationIdsInput.disabled = Boolean(riskAssessmentAllLocationsInput?.checked);
+  }
+  if (riskAssessmentLocationInput) {
+    riskAssessmentLocationInput.value = Boolean(riskAssessmentAllLocationsInput?.checked) ? "" : (selectedIds[0] || "");
+  }
+}
+
+function refreshRiskAssessmentLocationDerivedText(companyId = riskAssessmentCompanyInput?.value || "") {
+  const lines = getRiskAssessmentSelectedLocationLines(companyId);
+  if (riskAssessmentEmployerDetachedLocationsInput) {
+    riskAssessmentEmployerDetachedLocationsInput.value = lines.join("\n");
+  }
+}
+
 function normalizeRiskAssessmentMatchText(value = "") {
   return String(value ?? "")
     .trim()
@@ -119707,6 +119875,29 @@ function getRiskAssessmentPersonOptions(selectedUserIds = [], legacyLabels = [])
     });
 
   const knownLabels = new Set(options.map((option) => normalizeLooseName(option.data.label)).filter(Boolean));
+  const selectedCompanyId = String(riskAssessmentCompanyInput?.value || "").trim();
+  (state.peopleTrainingRecords ?? [])
+    .filter((record) => selectedCompanyId && String(record?.companyId || "") === selectedCompanyId)
+    .forEach((record) => {
+      const label = [record.firstName, record.lastName].filter(Boolean).join(" ").trim()
+        || record.fullName
+        || record.personName
+        || "";
+      const normalizedLabel = normalizeLooseName(label);
+      if (!normalizedLabel || knownLabels.has(normalizedLabel)) {
+        return;
+      }
+      knownLabels.add(normalizedLabel);
+      options.push({
+        value: `worker:${record.id || normalizedLabel}`,
+        label,
+        data: {
+          label,
+          role: [record.workPlace, record.jobTitle, record.oib ? `OIB ${record.oib}` : ""].filter(Boolean).join(" · "),
+        },
+      });
+    });
+
   legacyLabels.forEach((label, index) => {
     const normalizedLabel = normalizeLooseName(label);
     if (!normalizedLabel || knownLabels.has(normalizedLabel)) {
@@ -119752,7 +119943,7 @@ function readRiskAssessmentPeopleSelection(select) {
     if (!value || !label) {
       return;
     }
-    if (!value.startsWith("legacy:")) {
+    if (!value.startsWith("legacy:") && !value.startsWith("worker:")) {
       userIds.push(value);
     }
     labels.push(label);
@@ -119766,6 +119957,9 @@ function readRiskAssessmentPeopleSelection(select) {
 function getRiskAssessmentPeoplePickerForSelect(select) {
   if (select === riskAssessmentTeamLeadInput) {
     return riskAssessmentTeamLeadPicker;
+  }
+  if (select === riskAssessmentMembersInput) {
+    return riskAssessmentMembersPicker;
   }
   if (select === riskAssessmentCollaboratorsInput) {
     return riskAssessmentCollaboratorsPicker;
@@ -119786,7 +119980,7 @@ function renderRiskAssessmentPeoplePicker(select) {
   picker.replaceChildren(...options.map((option) => {
     const label = String(option.dataset.label || option.textContent || "Korisnik").replace(/\s+\(ručno\)$/, "").trim();
     const user = (state.users ?? []).find((entry) => String(entry?.id || "") === String(option.value || ""));
-    const role = [
+    const role = option.dataset.role || [
       getUserDocumentTitle(user),
       user?.email && !String(label).includes(String(user.email)) ? user.email : "",
     ].filter(Boolean).join(" · ");
@@ -119813,6 +120007,7 @@ function renderRiskAssessmentPeoplePicker(select) {
 
 function renderRiskAssessmentPeoplePickers() {
   renderRiskAssessmentPeoplePicker(riskAssessmentTeamLeadInput);
+  renderRiskAssessmentPeoplePicker(riskAssessmentMembersInput);
   renderRiskAssessmentPeoplePicker(riskAssessmentCollaboratorsInput);
   renderRiskAssessmentBasicSummary();
 }
@@ -119829,17 +120024,21 @@ function renderRiskAssessmentBasicSummary() {
     return;
   }
   const company = riskAssessmentCompanyInput?.selectedOptions?.[0]?.textContent?.trim() || "Tvrtka nije odabrana";
-  const location = riskAssessmentLocationInput?.selectedOptions?.[0]?.textContent?.trim() || "Sve lokacije / nije vezano";
+  const locationLines = getRiskAssessmentSelectedLocationLines();
+  const location = Boolean(riskAssessmentAllLocationsInput?.checked)
+    ? "Sve lokacije tvrtke"
+    : (locationLines.join(", ") || "Sve lokacije / nije vezano");
   const workOrder = riskAssessmentWorkOrderInput?.selectedOptions?.[0]?.textContent?.trim() || "Bez RN veze";
   const status = riskAssessmentStatusInput?.selectedOptions?.[0]?.textContent?.trim() || "Status nije odabran";
   const date = riskAssessmentDateInput?.value?.trim() || "Datum nije unesen";
   const leads = getRiskAssessmentSelectedPeopleText(riskAssessmentTeamLeadInput) || "Voditelj nije odabran";
+  const members = getRiskAssessmentSelectedPeopleText(riskAssessmentMembersInput);
   riskAssessmentBasicSummary.innerHTML = `
     <article><span>Tvrtka</span><strong>${escapeHtml(company)}</strong></article>
     <article><span>Lokacija</span><strong>${escapeHtml(location)}</strong></article>
     <article><span>RN</span><strong>${escapeHtml(workOrder)}</strong></article>
     <article><span>Status i datum</span><strong>${escapeHtml(`${status} · ${date}`)}</strong></article>
-    <article class="is-wide"><span>Voditelji izrade</span><strong>${escapeHtml(leads)}</strong></article>
+    <article class="is-wide"><span>Izrada</span><strong>${escapeHtml([leads, members].filter(Boolean).join(" · "))}</strong></article>
   `;
 }
 
@@ -119874,6 +120073,19 @@ function buildRiskAssessmentDefaultEmployerData(companyId = riskAssessmentCompan
     employeeCount: employeeLabel,
     headquarters: company?.headquarters || "",
     detachedLocations: companyLocations.map(formatRiskAssessmentLocationLine).filter(Boolean).join("\n"),
+    locationScope: "all",
+    selectedLocationIds: [],
+    authorizedPersons: [],
+    znrServiceMode: "",
+    znrExperts: "",
+    znrRepresentatives: "",
+    znrCommitteeParticipation: "",
+    hasZnrAuthorization: false,
+    assessmentMembers: "",
+    assessmentMemberUserIds: [],
+    workplaceJobs: [],
+    appendixChemicalRisk: "",
+    appendixWorkerParticipation: "",
   };
 }
 
@@ -119887,6 +120099,50 @@ function getRiskAssessmentEmployerDataInputs() {
     employeeCount: riskAssessmentEmployerEmployeesInput,
     headquarters: riskAssessmentEmployerHeadquartersInput,
     detachedLocations: riskAssessmentEmployerDetachedLocationsInput,
+    znrServiceMode: riskAssessmentZnrServiceModeInput,
+    znrExperts: riskAssessmentZnrExpertsInput,
+    znrRepresentatives: riskAssessmentZnrRepresentativesInput,
+    znrCommitteeParticipation: riskAssessmentZnrCommitteeParticipationInput,
+    appendixChemicalRisk: riskAssessmentAppendixChemicalRiskInput,
+    appendixWorkerParticipation: riskAssessmentAppendixWorkerParticipationInput,
+  };
+}
+
+function createRiskAssessmentAuthorizedPersonDraft(initial = {}) {
+  return {
+    id: String(initial.id || crypto.randomUUID()),
+    fullName: String(initial.fullName || initial.name || ""),
+    oib: String(initial.oib || ""),
+    jobTitle: String(initial.jobTitle || initial.workplace || ""),
+  };
+}
+
+function sanitizeRiskAssessmentAuthorizedPersonDraft(item = {}) {
+  return {
+    id: String(item.id || crypto.randomUUID()),
+    fullName: String(item.fullName || "").trim(),
+    oib: String(item.oib || "").trim(),
+    jobTitle: String(item.jobTitle || "").trim(),
+  };
+}
+
+function createRiskAssessmentWorkplaceJobDraft(initial = {}) {
+  return {
+    id: String(initial.id || crypto.randomUUID()),
+    jobTitle: String(initial.jobTitle || initial.title || ""),
+    maleCount: String(initial.maleCount || initial.male || ""),
+    femaleCount: String(initial.femaleCount || initial.female || ""),
+    note: String(initial.note || ""),
+  };
+}
+
+function sanitizeRiskAssessmentWorkplaceJobDraft(item = {}) {
+  return {
+    id: String(item.id || crypto.randomUUID()),
+    jobTitle: String(item.jobTitle || "").trim(),
+    maleCount: String(item.maleCount || "").trim(),
+    femaleCount: String(item.femaleCount || "").trim(),
+    note: String(item.note || "").trim(),
   };
 }
 
@@ -119897,14 +120153,47 @@ function setRiskAssessmentEmployerData(data = {}) {
       input.value = data[key] || "";
     }
   });
+  if (riskAssessmentZnrAuthorizationInput) {
+    riskAssessmentZnrAuthorizationInput.checked = Boolean(data.hasZnrAuthorization);
+  }
+  syncRiskAssessmentLocationControls(
+    riskAssessmentCompanyInput?.value || "",
+    Array.isArray(data.selectedLocationIds) ? data.selectedLocationIds : [],
+    (data.locationScope || "all") === "all",
+  );
+  refreshRiskAssessmentLocationDerivedText(riskAssessmentCompanyInput?.value || "");
+  riskAssessmentAuthorizedPersonDrafts = (data.authorizedPersons ?? []).map((entry) => createRiskAssessmentAuthorizedPersonDraft(entry));
+  riskAssessmentWorkplaceJobDrafts = (data.workplaceJobs ?? []).map((entry) => createRiskAssessmentWorkplaceJobDraft(entry));
+  setRiskAssessmentPeopleSelect(riskAssessmentMembersInput, data.assessmentMemberUserIds ?? [], data.assessmentMembers || "");
+  renderRiskAssessmentAuthorizedPersons();
+  renderRiskAssessmentWorkplaceJobs();
+  autoGrowRiskAssessmentTextareas();
 }
 
 function readRiskAssessmentEmployerData() {
   const inputs = getRiskAssessmentEmployerDataInputs();
-  return Object.fromEntries(Object.entries(inputs).map(([key, input]) => [
+  const data = Object.fromEntries(Object.entries(inputs).map(([key, input]) => [
     key,
     String(input?.value || "").trim(),
   ]));
+  const selectedLocationIds = getRiskAssessmentSelectedLocationIds();
+  const useAllLocations = Boolean(riskAssessmentAllLocationsInput?.checked) || selectedLocationIds.length === 0;
+  const memberSelection = readRiskAssessmentPeopleSelection(riskAssessmentMembersInput);
+  return {
+    ...data,
+    locationScope: useAllLocations ? "all" : "selected",
+    selectedLocationIds: useAllLocations ? [] : selectedLocationIds,
+    detachedLocations: getRiskAssessmentSelectedLocationLines().join("\n") || data.detachedLocations,
+    authorizedPersons: riskAssessmentAuthorizedPersonDrafts
+      .map((entry) => sanitizeRiskAssessmentAuthorizedPersonDraft(entry))
+      .filter((entry) => entry.fullName || entry.oib || entry.jobTitle),
+    hasZnrAuthorization: Boolean(riskAssessmentZnrAuthorizationInput?.checked),
+    assessmentMembers: memberSelection.labels.join(", "),
+    assessmentMemberUserIds: memberSelection.userIds,
+    workplaceJobs: riskAssessmentWorkplaceJobDrafts
+      .map((entry) => sanitizeRiskAssessmentWorkplaceJobDraft(entry))
+      .filter((entry) => entry.jobTitle || entry.maleCount || entry.femaleCount || entry.note),
+  };
 }
 
 function buildRiskAssessmentEmployerDataForItem(item = {}) {
@@ -119912,6 +120201,53 @@ function buildRiskAssessmentEmployerDataForItem(item = {}) {
     ...buildRiskAssessmentDefaultEmployerData(item.companyId || riskAssessmentCompanyInput?.value || ""),
     ...(item.employerData && typeof item.employerData === "object" ? item.employerData : {}),
   };
+}
+
+function autoGrowRiskAssessmentTextareas(scope = riskAssessmentForm) {
+  scope?.querySelectorAll?.("textarea[data-risk-autogrow]").forEach((textarea) => {
+    if (!(textarea instanceof HTMLTextAreaElement)) {
+      return;
+    }
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.max(textarea.scrollHeight, 92)}px`;
+  });
+}
+
+function renderRiskAssessmentAuthorizedPersons() {
+  if (!riskAssessmentAuthorizedPersonsList) {
+    return;
+  }
+  if (!riskAssessmentAuthorizedPersonDrafts.length) {
+    riskAssessmentAuthorizedPersonsList.innerHTML = `<p class="inline-help">Dodaj ovlaštenike poslodavca koji sudjeluju u provedbi zaštite na radu.</p>`;
+    return;
+  }
+  riskAssessmentAuthorizedPersonsList.innerHTML = riskAssessmentAuthorizedPersonDrafts.map((item, index) => `
+    <article class="risk-assessment-compact-row" data-risk-authorized-person="${index}">
+      <label><span>Ime i prezime</span><input data-risk-authorized-field="fullName" value="${escapeHtml(item.fullName || "")}" placeholder="Ime i prezime" /></label>
+      <label><span>OIB</span><input data-risk-authorized-field="oib" value="${escapeHtml(item.oib || "")}" inputmode="numeric" maxlength="11" /></label>
+      <label><span>Radno mjesto</span><input data-risk-authorized-field="jobTitle" value="${escapeHtml(item.jobTitle || "")}" /></label>
+      <button type="button" class="ghost-button" data-risk-authorized-remove="${index}">Ukloni</button>
+    </article>
+  `).join("");
+}
+
+function renderRiskAssessmentWorkplaceJobs() {
+  if (!riskAssessmentWorkplaceJobsList) {
+    return;
+  }
+  if (!riskAssessmentWorkplaceJobDrafts.length) {
+    riskAssessmentWorkplaceJobsList.innerHTML = `<p class="inline-help">Dodaj poslove koji se stvarno obavljaju na mjestu rada, s brojem muškaraca i žena.</p>`;
+    return;
+  }
+  riskAssessmentWorkplaceJobsList.innerHTML = riskAssessmentWorkplaceJobDrafts.map((item, index) => `
+    <article class="risk-assessment-compact-row is-workplace-job" data-risk-workplace-job="${index}">
+      <label><span>Posao / radno mjesto</span><input data-risk-workplace-job-field="jobTitle" value="${escapeHtml(item.jobTitle || "")}" placeholder="npr. ASU operater" /></label>
+      <label><span>Muški</span><input data-risk-workplace-job-field="maleCount" value="${escapeHtml(item.maleCount || "")}" inputmode="numeric" /></label>
+      <label><span>Žene</span><input data-risk-workplace-job-field="femaleCount" value="${escapeHtml(item.femaleCount || "")}" inputmode="numeric" /></label>
+      <label><span>Napomena</span><input data-risk-workplace-job-field="note" value="${escapeHtml(item.note || "")}" /></label>
+      <button type="button" class="ghost-button" data-risk-workplace-job-remove="${index}">Ukloni</button>
+    </article>
+  `).join("");
 }
 
 function buildRiskAssessmentGeneratedTitle(companyId = riskAssessmentCompanyInput?.value || "") {
@@ -120105,6 +120441,20 @@ function handleRiskAssessmentRichEditorClick(event) {
     return;
   }
 
+  const presetButton = event.target?.closest?.("[data-risk-rich-preset]");
+  if (presetButton) {
+    event.preventDefault();
+    const key = presetButton.dataset.riskRichPreset || riskAssessmentActiveRichEditorKey || "intro";
+    const presetKey = presetButton.dataset.riskRichPresetKey || "";
+    const html = RISK_ASSESSMENT_RICH_PRESETS[presetKey] || "";
+    if (html) {
+      const current = syncRiskAssessmentRichValue(key);
+      setRiskAssessmentRichValue(key, current ? `${current}${html}` : html);
+      scheduleRiskAssessmentDraftAutosave();
+    }
+    return;
+  }
+
   const imageButton = event.target?.closest?.("[data-risk-rich-image]");
   if (!imageButton) {
     return;
@@ -120182,6 +120532,8 @@ function resetRiskAssessmentForm() {
 
   riskAssessmentForm.reset();
   state.activeRiskAssessmentId = "";
+  riskAssessmentAuthorizedPersonDrafts = [];
+  riskAssessmentWorkplaceJobDrafts = [];
   riskAssessmentMeasureDrafts = [];
   riskAssessmentOrganizationUnitDrafts = [];
   riskAssessmentJobDrafts = [];
@@ -120204,6 +120556,7 @@ function resetRiskAssessmentForm() {
   replaceSelectOptions(riskAssessmentWorkOrderInput, buildRiskAssessmentWorkOrderOptions(""), "");
   replaceSelectOptions(riskAssessmentStatusInput, RISK_ASSESSMENT_STATUS_OPTIONS, "draft");
   setRiskAssessmentPeopleSelect(riskAssessmentTeamLeadInput, [], "");
+  setRiskAssessmentPeopleSelect(riskAssessmentMembersInput, [], "");
   setRiskAssessmentPeopleSelect(riskAssessmentCollaboratorsInput, [], "");
   setRiskAssessmentEmployerData(buildRiskAssessmentDefaultEmployerData(""));
   if (riskAssessmentTitleInput) {
@@ -123342,10 +123695,50 @@ function renderRiskAssessmentTemplateOverviewContent() {
   `;
 }
 
+function renderRiskAssessmentTemplateWorkplaceJobsContent() {
+  const employer = readRiskAssessmentEmployerData();
+  const items = employer.workplaceJobs ?? [];
+  if (!items.length) {
+    return `<p class="is-muted">Popis poslova na mjestu rada nije dodan.</p>`;
+  }
+  return `
+    <div class="risk-assessment-template-table">
+      <div class="is-head"><span>Posao</span><span>Muški</span><span>Žene</span><span>Napomena</span></div>
+      ${items.map((item) => `
+        <div>
+          <span>${escapeHtml(item.jobTitle || "-")}</span>
+          <span>${escapeHtml(item.maleCount || "-")}</span>
+          <span>${escapeHtml(item.femaleCount || "-")}</span>
+          <span>${escapeHtml(item.note || "-")}</span>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderRiskAssessmentTemplateAuthorizedPersonsContent(items = []) {
+  if (!items.length) {
+    return "";
+  }
+  return `
+    <h4>Ovlaštenici poslodavca</h4>
+    <div class="risk-assessment-template-table">
+      <div class="is-head"><span>Ime i prezime</span><span>OIB</span><span>Radno mjesto</span></div>
+      ${items.map((item) => `
+        <div>
+          <span>${escapeHtml(item.fullName || "-")}</span>
+          <span>${escapeHtml(item.oib || "-")}</span>
+          <span>${escapeHtml(item.jobTitle || "-")}</span>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
 function renderRiskAssessmentTemplateSectionContent(key = "", sectionNumber = 1) {
   const employer = readRiskAssessmentEmployerData();
   const companyName = riskAssessmentCompanyInput?.selectedOptions?.[0]?.textContent?.trim() || employer.fullName || "Tvrtka";
-  const locationName = riskAssessmentLocationInput?.selectedOptions?.[0]?.textContent?.trim() || "Sve lokacije / nije vezano";
+  const locationName = employer.detachedLocations || riskAssessmentLocationInput?.selectedOptions?.[0]?.textContent?.trim() || "Sve lokacije / nije vezano";
   switch (key) {
     case "cover":
       return `
@@ -123367,27 +123760,40 @@ function renderRiskAssessmentTemplateSectionContent(key = "", sectionNumber = 1)
         </div>
       `;
     case "employer":
-      return renderRiskAssessmentTemplateFacts([
-        { label: "Puni naziv tvrtke", value: employer.fullName || companyName },
-        { label: "Adresa", value: employer.address },
-        { label: "MBS", value: employer.mbs },
-        { label: "OIB", value: employer.oib },
-        { label: "NKD djelatnost", value: employer.nkdActivity },
-        { label: "Broj zaposlenih", value: employer.employeeCount },
-        { label: "Sjedište", value: employer.headquarters },
-        { label: "Izdvojene lokacije", value: employer.detachedLocations },
-      ]);
+      return `
+        ${renderRiskAssessmentTemplateFacts([
+          { label: "Puni naziv tvrtke", value: employer.fullName || companyName },
+          { label: "Adresa", value: employer.address },
+          { label: "MBS", value: employer.mbs },
+          { label: "OIB", value: employer.oib },
+          { label: "NKD djelatnost", value: employer.nkdActivity },
+          { label: "Broj zaposlenih", value: employer.employeeCount },
+          { label: "Sjedište", value: employer.headquarters },
+          { label: "Izdvojene lokacije", value: employer.detachedLocations },
+          { label: "Način obavljanja poslova ZNR", value: employer.znrServiceMode },
+          { label: "Stručnjaci ZNR", value: employer.znrExperts },
+          { label: "Povjerenici ZNR", value: employer.znrRepresentatives },
+          { label: "Odbor ZNR", value: employer.znrCommitteeParticipation },
+          { label: "Ovlaštenja za ZNR", value: employer.hasZnrAuthorization ? "Da" : "Nije označeno" },
+        ])}
+        ${renderRiskAssessmentTemplateAuthorizedPersonsContent(employer.authorizedPersons ?? [])}
+      `;
     case "intro":
       return renderRiskAssessmentTemplateRichHtml(riskAssessmentIntroInput?.value || "");
     case "process":
-      return renderRiskAssessmentTemplateRichHtml(riskAssessmentWorkProcessInput?.value || "");
+      return `
+        <h4>Opis tehnološkog procesa</h4>
+        ${renderRiskAssessmentTemplateRichHtml(riskAssessmentWorkProcessInput?.value || "")}
+        <h4>Poslovi koji se obavljaju na mjestu rada</h4>
+        ${renderRiskAssessmentTemplateWorkplaceJobsContent()}
+      `;
     case "general":
       return `
+        <h4>Uređenje mjesta rada</h4>
         ${renderRiskAssessmentTemplateRichHtml(riskAssessmentGeneralDataInput?.value || "")}
-        ${renderRiskAssessmentTemplateRichHtml(riskAssessmentComputerWorkplacesInput?.value || "", "Radna mjesta s računalom nisu posebno unesena.")}
       `;
     case "computer":
-      return renderRiskAssessmentTemplateRichHtml(riskAssessmentComputerWorkplacesInput?.value || "");
+      return renderRiskAssessmentTemplateRichHtml(riskAssessmentComputerWorkplacesInput?.value || "", "Posebno osjetljive skupine radnika nisu posebno unesene.");
     case "rules":
       return `
         <h4>Osnovna pravila zaštite na radu</h4>
@@ -123397,12 +123803,20 @@ function renderRiskAssessmentTemplateSectionContent(key = "", sectionNumber = 1)
       `;
     case "findings":
       return `
-        <h4>Propusti osnovnih pravila</h4>
+        <h4>Podaci o fizikalnim, biološkim i kemijskim štetnostima</h4>
         ${renderRiskAssessmentTemplateRichHtml(riskAssessmentOmissionsBasicInput?.value || "")}
-        <h4>Propusti posebnih pravila</h4>
+        <h4>Popis radne opreme</h4>
         ${renderRiskAssessmentTemplateRichHtml(riskAssessmentOmissionsSpecialInput?.value || "")}
-        <h4>Zaključak</h4>
+        <h4>Popis ispitivanja i poslova s posebnim uvjetima rada</h4>
         ${renderRiskAssessmentTemplateRichHtml(riskAssessmentConclusionInput?.value || "")}
+        <h4>Procjena rizika od kemijskih štetnosti</h4>
+        ${renderRiskAssessmentDocumentParagraphs(employer.appendixChemicalRisk, "Nije uneseno.")}
+        <h4>Sudjelovanje radnika</h4>
+        ${renderRiskAssessmentDocumentParagraphs(employer.appendixWorkerParticipation, "Nije uneseno.")}
+        <h4>Popis osobne zaštitne opreme</h4>
+        ${renderRiskAssessmentTemplatePpeContent()}
+        <h4>Izračun opterećenja pri ručnom prenošenju</h4>
+        ${renderRiskAssessmentTemplateManualHandlingContent()}
       `;
     case "measures":
       return renderRiskAssessmentTemplateMeasuresContent();
@@ -123423,6 +123837,7 @@ function renderRiskAssessmentTemplateSectionContent(key = "", sectionNumber = 1)
     case "signatures":
       return renderRiskAssessmentTemplateFacts([
         { label: "Voditelj izrade", value: riskAssessmentTeamLeadInput?.selectedOptions ? Array.from(riskAssessmentTeamLeadInput.selectedOptions).map((option) => option.textContent).join(", ") : "" },
+        { label: "Članovi", value: employer.assessmentMembers },
         { label: "Suradnici", value: riskAssessmentCollaboratorsInput?.selectedOptions ? Array.from(riskAssessmentCollaboratorsInput.selectedOptions).map((option) => option.textContent).join(", ") : "" },
         { label: "Datum", value: formatDateInputDisplayValue(riskAssessmentDateInput?.value || "") },
         { label: "Datum završetka", value: formatDateInputDisplayValue(riskAssessmentCompletionDateInput?.value || "") },
@@ -125665,6 +126080,12 @@ function syncRiskAssessmentEditorAccess() {
   if (riskAssessmentAddJobButton) {
     riskAssessmentAddJobButton.hidden = !canManage;
   }
+  if (riskAssessmentAddAuthorizedPersonButton) {
+    riskAssessmentAddAuthorizedPersonButton.hidden = !canManage;
+  }
+  if (riskAssessmentAddWorkplaceJobButton) {
+    riskAssessmentAddWorkplaceJobButton.hidden = !canManage;
+  }
   if (riskAssessmentJobCatalogSelect) {
     riskAssessmentJobCatalogSelect.disabled = !canManage || (state.jobs ?? []).length === 0;
   }
@@ -127060,10 +127481,14 @@ function buildRiskAssessmentPayload() {
   const assessmentDate = normalizeDateInputValue(riskAssessmentDateInput?.value || "");
   const completionDate = normalizeDateInputValue(riskAssessmentCompletionDateInput?.value || "");
   const assessmentNumber = refreshRiskAssessmentAutoNumber(riskAssessmentNumberInput?.value || "");
+  const selectedLocationIds = getRiskAssessmentSelectedLocationIds();
+  const locationId = Boolean(riskAssessmentAllLocationsInput?.checked)
+    ? ""
+    : (riskAssessmentLocationInput?.value || selectedLocationIds[0] || "");
 
   return {
     companyId,
-    locationId: riskAssessmentLocationInput?.value || "",
+    locationId,
     workOrderId: riskAssessmentWorkOrderInput?.value || "",
     assessmentNumber,
     status: riskAssessmentStatusInput?.value || "draft",

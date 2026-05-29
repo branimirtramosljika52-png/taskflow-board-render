@@ -533,6 +533,23 @@ test("risk assessments link only matching risk assessment work orders and keep e
         employeeCount: "9 radnika",
         headquarters: "Zagreb",
         detachedLocations: "Pogon Jankomir",
+        locationScope: "selected",
+        selectedLocationIds: ["location-1"],
+        authorizedPersons: [
+          { fullName: "Ivan Ivic", oib: "12345678903", jobTitle: "Direktor proizvodnje" },
+        ],
+        znrServiceMode: "Poslovi zastite na radu obavljaju se putem ovlastene osobe.",
+        znrExperts: "Ana Horvat, strucnjak ZNR",
+        znrRepresentatives: "Povjerenik radnika",
+        znrCommitteeParticipation: "Odbor sudjeluje pregledom prijedloga mjera.",
+        hasZnrAuthorization: true,
+        assessmentMembers: "Ivana Peric",
+        assessmentMemberUserIds: ["user-3"],
+        workplaceJobs: [
+          { jobTitle: "Operater postrojenja", maleCount: "7", femaleCount: "2", note: "Smjenski rad" },
+        ],
+        appendixChemicalRisk: "Kemijske stetnosti obradene su prema STL dokumentima.",
+        appendixWorkerParticipation: "Radnici su sudjelovali kroz razgovor na mjestu rada.",
       },
       manualHandling: [
         {
@@ -560,6 +577,11 @@ test("risk assessments link only matching risk assessment work orders and keep e
   assert.deepEqual(assessment.teamLeadUserIds, ["user-1"]);
   assert.deepEqual(assessment.collaboratorUserIds, ["user-2"]);
   assert.equal(assessment.employerData.nkdActivity, "20.11 Proizvodnja industrijskih plinova");
+  assert.deepEqual(assessment.employerData.selectedLocationIds, ["location-1"]);
+  assert.equal(assessment.employerData.authorizedPersons[0].jobTitle, "Direktor proizvodnje");
+  assert.equal(assessment.employerData.hasZnrAuthorization, true);
+  assert.deepEqual(assessment.employerData.assessmentMemberUserIds, ["user-3"]);
+  assert.equal(assessment.employerData.workplaceJobs[0].femaleCount, "2");
   assert.equal(assessment.manualHandling[0].activity, "Premještanje boca");
   assert.equal(assessment.manualHandling[0].existingMeasures, "Koristiti kolica i rad u paru.");
   assert.match(assessment.intro, /style="text-align:center;color:#111827"/);
@@ -567,6 +589,8 @@ test("risk assessments link only matching risk assessment work orders and keep e
   assert.match(assessment.conclusion, /<p>Zaključak u običnom tekstu<\/p>/);
   assert.doesNotMatch(assessment.intro, /script|alert/i);
   assert.equal(filterRiskAssessments([assessment], { query: "Objekt" }).length, 1);
+  assert.equal(filterRiskAssessments([assessment], { query: "Direktor proizvodnje" }).length, 1);
+  assert.equal(filterRiskAssessments([assessment], { query: "Operater postrojenja" }).length, 1);
   assert.equal(filterRiskAssessments([assessment], { query: "Premještanje boca" }).length, 1);
 
   assert.throws(() => createRiskAssessment(
