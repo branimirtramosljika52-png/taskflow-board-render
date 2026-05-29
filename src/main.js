@@ -186,6 +186,7 @@ const WORK_ORDER_AUTOSAVE_DELAY_MS = 900;
 const DOCUMENT_TEMPLATE_RUNTIME_AUTOSAVE_DELAY_MS = 1400;
 const DOCUMENT_TEMPLATE_RUNTIME_DRAFT_STORAGE_PREFIX = "safenexus.document-template-runtime-draft.v1";
 const WORK_ORDER_TEMPLATE_STORAGE_PREFIX = "safenexus.work-order-template.v1";
+const RISK_ASSESSMENT_TEMPLATE_STORAGE_PREFIX = "safenexus.risk-assessment-template.v1";
 const WORK_ORDER_DOCUMENT_MAX_SIZE_BYTES = 12 * 1024 * 1024;
 const WORK_ORDER_DOCUMENT_ACCEPT_LABEL = ".pdf,.png,.jpg,.jpeg,.gif,.webp,.bmp,.svg,.tif,.tiff,.heic,.eml,.msg,.doc,.docx,.dotx,.xls,.xlsx,.xlsm,.csv,.ods,.odt,.rtf,.txt,.zip,.rar,.7z,.xml";
 const LEGAL_FRAMEWORK_DOCUMENT_ACCEPT_LABEL = ".pdf,application/pdf";
@@ -2787,6 +2788,40 @@ function getWorkOrderTemplateStorageScope() {
 
 function getWorkOrderTemplateStorageKey() {
   return `${WORK_ORDER_TEMPLATE_STORAGE_PREFIX}:${getWorkOrderTemplateStorageScope()}`;
+}
+
+function getRiskAssessmentTemplateStorageScope() {
+  const organizationId = state.activeOrganizationId || "global";
+  const userId = state.user?.id || "guest";
+  return `${userId}:${organizationId}`;
+}
+
+function getRiskAssessmentTemplateStorageKey(scope = getRiskAssessmentTemplateStorageScope()) {
+  return `${RISK_ASSESSMENT_TEMPLATE_STORAGE_PREFIX}:${scope}`;
+}
+
+function loadRiskAssessmentModuleTemplate(force = false) {
+  const nextScope = getRiskAssessmentTemplateStorageScope();
+  if (!force && riskAssessmentTemplateStorageScope === nextScope && riskAssessmentModuleReportTemplateDraft) {
+    return riskAssessmentModuleReportTemplateDraft;
+  }
+  const stored = readJsonFromLocalStorage(getRiskAssessmentTemplateStorageKey(nextScope), {});
+  riskAssessmentTemplateStorageScope = nextScope;
+  riskAssessmentModuleReportTemplateDraft = createRiskAssessmentReportTemplateDraft(stored);
+  return riskAssessmentModuleReportTemplateDraft;
+}
+
+function persistRiskAssessmentModuleTemplate() {
+  if (!riskAssessmentTemplateStorageScope) {
+    riskAssessmentTemplateStorageScope = getRiskAssessmentTemplateStorageScope();
+  }
+  const template = createRiskAssessmentReportTemplateDraft(riskAssessmentReportTemplateDraft || riskAssessmentModuleReportTemplateDraft || {});
+  riskAssessmentModuleReportTemplateDraft = template;
+  writeJsonToLocalStorage(getRiskAssessmentTemplateStorageKey(riskAssessmentTemplateStorageScope), template);
+}
+
+function getRiskAssessmentModuleTemplateDraft() {
+  return createRiskAssessmentReportTemplateDraft(loadRiskAssessmentModuleTemplate() || {});
 }
 
 function getNotificationsResolvedStorageScope() {
@@ -6076,6 +6111,7 @@ const riskAssessmentTemplateWordDownloadButton = document.querySelector("#risk-a
 const riskAssessmentTemplateWordRemoveButton = document.querySelector("#risk-assessment-template-word-remove");
 const riskAssessmentTemplateWordMeta = document.querySelector("#risk-assessment-template-word-meta");
 const riskAssessmentTemplatePlaceholderList = document.querySelector("#risk-assessment-template-placeholder-list");
+const riskAssessmentTemplateFeedback = document.querySelector("#risk-assessment-template-feedback");
 const riskAssessmentTemplateDownloadPlaceholdersButton = document.querySelector("#risk-assessment-template-download-placeholders");
 const riskAssessmentOverview = document.querySelector("#risk-assessment-overview");
 const riskAssessmentClientNoteInput = document.querySelector("#risk-assessment-client-note");
@@ -6095,6 +6131,8 @@ let riskAssessmentChemicalImportBusy = false;
 let riskAssessmentLastStlImportSummary = null;
 let riskAssessmentOfficialSubstanceQuery = "";
 let riskAssessmentOfficialSubstanceType = "all";
+let riskAssessmentTemplateStorageScope = "";
+let riskAssessmentModuleReportTemplateDraft = null;
 let riskAssessmentReportTemplateDraft = null;
 let riskAssessmentDraftAutosaveTimer = null;
 let riskAssessmentActiveBlock = "basic";
@@ -115963,8 +116001,11 @@ riskAssessmentTemplateTitleInput?.addEventListener("input", () => {
     ...riskAssessmentReportTemplateDraft,
     title: riskAssessmentTemplateTitleInput.value,
   });
+  persistRiskAssessmentModuleTemplate();
   renderRiskAssessmentTemplatePreview();
-  scheduleRiskAssessmentDraftAutosave();
+  if (state.riskAssessmentEditorOpen) {
+    scheduleRiskAssessmentDraftAutosave();
+  }
 });
 
 riskAssessmentTemplateDescriptionInput?.addEventListener("input", () => {
@@ -115972,8 +116013,11 @@ riskAssessmentTemplateDescriptionInput?.addEventListener("input", () => {
     ...riskAssessmentReportTemplateDraft,
     description: riskAssessmentTemplateDescriptionInput.value,
   });
+  persistRiskAssessmentModuleTemplate();
   renderRiskAssessmentTemplatePreview();
-  scheduleRiskAssessmentDraftAutosave();
+  if (state.riskAssessmentEditorOpen) {
+    scheduleRiskAssessmentDraftAutosave();
+  }
 });
 
 riskAssessmentTemplateApplyPresetButton?.addEventListener("click", (event) => {
@@ -119941,6 +119985,9 @@ function setRiskAssessmentEditorOpen(open) {
       riskAssessmentEditorBody?.focus({ preventScroll: true });
       setRiskAssessmentActiveBlock(riskAssessmentActiveBlock || "basic");
     });
+  } else {
+    riskAssessmentReportTemplateDraft = getRiskAssessmentModuleTemplateDraft();
+    renderRiskAssessmentTemplateBuilder();
   }
 }
 
@@ -119960,7 +120007,7 @@ function resetRiskAssessmentForm() {
   riskAssessmentLastStlImportSummary = null;
   riskAssessmentOfficialSubstanceQuery = "";
   riskAssessmentOfficialSubstanceType = "all";
-  riskAssessmentReportTemplateDraft = createRiskAssessmentReportTemplateDraft();
+  riskAssessmentReportTemplateDraft = getRiskAssessmentModuleTemplateDraft();
   if (riskAssessmentOfficialSubstanceSearchInput) {
     riskAssessmentOfficialSubstanceSearchInput.value = "";
   }
@@ -122522,30 +122569,57 @@ function renderRiskAssessmentTemplatePlaceholderList() {
       const clipboardWrite = navigator.clipboard?.writeText?.(placeholder.token);
       if (clipboardWrite?.then) {
         void clipboardWrite.then(() => {
-          setInlineMessage(riskAssessmentError, `Kopiran placeholder ${placeholder.token}.`, "success");
+          setInlineMessage(getRiskAssessmentTemplateFeedbackTarget(), `Kopiran placeholder ${placeholder.token}.`, "success");
         }).catch(() => {
-          setInlineMessage(riskAssessmentError, placeholder.token, "success");
+          setInlineMessage(getRiskAssessmentTemplateFeedbackTarget(), placeholder.token, "success");
         });
       } else {
-        setInlineMessage(riskAssessmentError, placeholder.token, "success");
+        setInlineMessage(getRiskAssessmentTemplateFeedbackTarget(), placeholder.token, "success");
       }
     });
     return button;
   }));
 }
 
+function getRiskAssessmentTemplateFeedbackTarget() {
+  return riskAssessmentTemplateFeedback || riskAssessmentError;
+}
+
 function renderRiskAssessmentTemplateWordMeta() {
   const wordTemplate = riskAssessmentReportTemplateDraft?.wordTemplate;
+  const canManage = getCanManageRiskAssessments();
   if (riskAssessmentTemplateWordMeta) {
     riskAssessmentTemplateWordMeta.textContent = wordTemplate?.fileName
       ? `${wordTemplate.fileName} · ${formatFileSize(wordTemplate.fileSize || 0)} · ${formatCompactDateTime(wordTemplate.uploadedAt || "")}`
       : "Nema učitanog Word templatea.";
   }
+  if (riskAssessmentTemplateWordUploadButton) {
+    riskAssessmentTemplateWordUploadButton.disabled = !canManage;
+  }
   if (riskAssessmentTemplateWordDownloadButton) {
     riskAssessmentTemplateWordDownloadButton.disabled = !wordTemplate?.dataUrl;
   }
   if (riskAssessmentTemplateWordRemoveButton) {
-    riskAssessmentTemplateWordRemoveButton.disabled = !wordTemplate?.fileName && !wordTemplate?.dataUrl;
+    riskAssessmentTemplateWordRemoveButton.disabled = !canManage || (!wordTemplate?.fileName && !wordTemplate?.dataUrl);
+  }
+}
+
+function syncRiskAssessmentTemplatePanelAccess() {
+  const canManage = getCanManageRiskAssessments();
+  [
+    riskAssessmentTemplateTitleInput,
+    riskAssessmentTemplateDescriptionInput,
+    riskAssessmentTemplatePresetSelect,
+    riskAssessmentTemplateApplyPresetButton,
+    riskAssessmentTemplateWordFileInput,
+    riskAssessmentTemplateWordUploadButton,
+  ].forEach((control) => {
+    if (control) {
+      control.disabled = !canManage;
+    }
+  });
+  if (riskAssessmentTemplateWordRemoveButton) {
+    riskAssessmentTemplateWordRemoveButton.disabled = !canManage || riskAssessmentTemplateWordRemoveButton.disabled;
   }
 }
 
@@ -122589,7 +122663,7 @@ async function uploadRiskAssessmentWordTemplateFile(file) {
   }
   const extension = String(file.name || "").split(".").pop()?.toLowerCase() || "";
   if (!["docx", "dotx"].includes(extension)) {
-    setInlineMessage(riskAssessmentError, "Word template mora biti .docx ili .dotx dokument.", "error");
+    setInlineMessage(getRiskAssessmentTemplateFeedbackTarget(), "Word template mora biti .docx ili .dotx dokument.", "error");
     return;
   }
   if (riskAssessmentTemplateWordUploadButton) {
@@ -122610,10 +122684,13 @@ async function uploadRiskAssessmentWordTemplateFile(file) {
       updatedAt: new Date().toISOString(),
     });
     renderRiskAssessmentTemplateBuilder();
-    scheduleRiskAssessmentDraftAutosave();
-    setInlineMessage(riskAssessmentError, `Word template "${file.name}" je dodan u procjenu.`, "success");
+    persistRiskAssessmentModuleTemplate();
+    if (state.riskAssessmentEditorOpen) {
+      scheduleRiskAssessmentDraftAutosave();
+    }
+    setInlineMessage(getRiskAssessmentTemplateFeedbackTarget(), `Word template "${file.name}" je postavljen kao zadani template modula.`, "success");
   } catch (error) {
-    setInlineMessage(riskAssessmentError, error?.message || "Ne mogu učitati Word template.", "error");
+    setInlineMessage(getRiskAssessmentTemplateFeedbackTarget(), error?.message || "Ne mogu učitati Word template.", "error");
   } finally {
     if (riskAssessmentTemplateWordUploadButton) {
       riskAssessmentTemplateWordUploadButton.disabled = !getCanManageRiskAssessments();
@@ -122636,8 +122713,11 @@ function removeRiskAssessmentWordTemplate() {
     updatedAt: new Date().toISOString(),
   });
   renderRiskAssessmentTemplateBuilder();
-  scheduleRiskAssessmentDraftAutosave();
-  setInlineMessage(riskAssessmentError, "Word template je maknut iz procjene.", "success");
+  persistRiskAssessmentModuleTemplate();
+  if (state.riskAssessmentEditorOpen) {
+    scheduleRiskAssessmentDraftAutosave();
+  }
+  setInlineMessage(getRiskAssessmentTemplateFeedbackTarget(), "Word template je maknut iz zadanog templatea.", "success");
 }
 
 function getRiskAssessmentTemplateSectionIndex(element) {
@@ -122712,6 +122792,7 @@ function renderRiskAssessmentTemplateBuilder() {
   renderRiskAssessmentTemplateSections();
   renderRiskAssessmentTemplatePlaceholderList();
   renderRiskAssessmentTemplateWordMeta();
+  syncRiskAssessmentTemplatePanelAccess();
   renderRiskAssessmentDocumentRoutingControls();
   renderRiskAssessmentTemplatePreview();
 }
@@ -122741,8 +122822,11 @@ function applyRiskAssessmentTemplatePreset(presetId = "complete") {
     sections: preset.sections.map((key, index) => ({ key, order: index + 1 })),
   });
   renderRiskAssessmentTemplateBuilder();
-  scheduleRiskAssessmentDraftAutosave();
-  setInlineMessage(riskAssessmentError, `Primijenjen je template: ${preset.label}.`, "success");
+  persistRiskAssessmentModuleTemplate();
+  if (state.riskAssessmentEditorOpen) {
+    scheduleRiskAssessmentDraftAutosave();
+  }
+  setInlineMessage(getRiskAssessmentTemplateFeedbackTarget(), `Primijenjen je template: ${preset.label}.`, "success");
 }
 
 function updateRiskAssessmentTemplateSection(index, patch = {}) {
@@ -122820,12 +122904,12 @@ function handleRiskAssessmentTemplateSectionsClick(event) {
     const clipboardWrite = navigator.clipboard?.writeText?.(token);
     if (clipboardWrite?.then) {
       void clipboardWrite.then(() => {
-        setInlineMessage(riskAssessmentError, `Kopiran placeholder ${token}.`, "success");
+        setInlineMessage(getRiskAssessmentTemplateFeedbackTarget(), `Kopiran placeholder ${token}.`, "success");
       }).catch(() => {
-        setInlineMessage(riskAssessmentError, token, "success");
+        setInlineMessage(getRiskAssessmentTemplateFeedbackTarget(), token, "success");
       });
     } else {
-      setInlineMessage(riskAssessmentError, token, "success");
+      setInlineMessage(getRiskAssessmentTemplateFeedbackTarget(), token, "success");
     }
     return;
   }
@@ -126393,6 +126477,11 @@ function renderRiskAssessmentModule() {
   }
 
   const canManage = getCanManageRiskAssessments();
+  loadRiskAssessmentModuleTemplate();
+  if (!state.riskAssessmentEditorOpen) {
+    riskAssessmentReportTemplateDraft = getRiskAssessmentModuleTemplateDraft();
+    renderRiskAssessmentTemplateBuilder();
+  }
   if (riskAssessmentNewButton) {
     riskAssessmentNewButton.hidden = !canManage;
     riskAssessmentNewButton.disabled = !canManage;
