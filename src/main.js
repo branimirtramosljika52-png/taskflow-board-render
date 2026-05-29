@@ -6211,9 +6211,7 @@ const RISK_ASSESSMENT_TEMPLATE_PLACEHOLDER_BY_KEY = new Map(
 const RISK_ASSESSMENT_TEMPLATE_BLOCKS = Object.freeze([
   { block: "basic", label: "Osnovni podaci", sectionKeys: ["cover", "employer"], tokenLabel: "{{RISK_COVER}} + {{RISK_EMPLOYER}}" },
   { block: "intro", label: "Uvod", sectionKeys: ["intro"], tokenLabel: "{{RISK_INTRO}}" },
-  { block: "process", label: "Podaci na mjestu rada", sectionKeys: ["process", "general"], tokenLabel: "{{RISK_PROCESS}} + {{RISK_GENERAL}}" },
-  { block: "sensitive", label: "Posebno osjetljive skupine", sectionKeys: ["computer"], tokenLabel: "{{RISK_SENSITIVE_GROUPS}}" },
-  { block: "rules", label: "Pravila", sectionKeys: ["rules"], tokenLabel: "{{RISK_RULES}}" },
+  { block: "process", label: "Mjesto rada i pravila ZNR", sectionKeys: ["process", "general", "computer", "rules"], tokenLabel: "{{RISK_PROCESS}} + {{RISK_GENERAL}} + {{RISK_SENSITIVE_GROUPS}} + {{RISK_RULES}}" },
   { block: "findings", label: "Popis priloga", sectionKeys: ["findings"], tokenLabel: "{{RISK_APPENDICES}}" },
   { block: "measures", label: "Mjere", sectionKeys: ["measures"], tokenLabel: "{{RISK_MEASURES}}" },
   { block: "structure", label: "Struktura", sectionKeys: ["structure"], tokenLabel: "{{RISK_STRUCTURE}}" },
@@ -6252,6 +6250,41 @@ const RISK_ASSESSMENT_RICH_PRESETS = Object.freeze({
   harmfulData: `<p>Podaci o fizikalnim, biološkim i kemijskim štetnostima prikupljaju se pregledom mjesta rada, dostupne dokumentacije, sigurnosno-tehničkih listova, rezultata ispitivanja i razgovorom s radnicima. Utvrđene štetnosti povezuju se s poslovima, mjestima rada, izvorima izloženosti i mjerama zaštite.</p>`,
   workEquipment: `<p>Popis radne opreme obuhvaća strojeve, uređaje, alate, instalacije i pomoćnu opremu koja se koristi pri obavljanju poslova. Za radnu opremu se provjerava namjena, stanje, dostupnost uputa, potreba za ispitivanjem i primjena zaštitnih naprava.</p>`,
   testingAndSpecialConditions: `<p>Popis ispitivanja i poslova s posebnim uvjetima rada utvrđuje se prema poslovima, radnoj opremi, instalacijama, radnom okolišu i posebnim propisima. U procjeni se navode obvezna ispitivanja, rokovi, posebni uvjeti rada i povezana osposobljavanja ili zdravstveni pregledi.</p>`,
+  basicRules: `<p>Osnovna pravila zaštite na radu primjenjuju se radi uklanjanja ili smanjivanja rizika na izvoru. Uključuju ispravno projektiranje i uređenje mjesta rada, sigurne radne površine i putove kretanja, zaštitu od mehaničkih opasnosti, električne struje, požara i eksplozije te osiguravanje stabilnosti i sigurnosti radne opreme.</p>`,
+  specialRules: `<p>Posebna pravila zaštite na radu primjenjuju se kada opasnosti, štetnosti i napore nije moguće u potpunosti ukloniti osnovnim pravilima. Obuhvaćaju osposobljavanje radnika, upute za rad na siguran način, uporabu osobne zaštitne opreme, zdravstvene preglede, posebne uvjete rada i organizacijske mjere.</p>`,
+});
+const RISK_ASSESSMENT_RICH_TEMPLATE_STORAGE_KEY = "safe-nexus-risk-assessment-rich-templates-v1";
+const RISK_ASSESSMENT_RICH_TEMPLATE_FIELDS = Object.freeze({
+  process: {
+    label: "Opis tehnološkog procesa",
+    defaultTemplates: [
+      { id: "technology", label: "Standardni tehnološki proces", html: RISK_ASSESSMENT_RICH_PRESETS.technology },
+    ],
+  },
+  generalData: {
+    label: "Uređenje mjesta rada",
+    defaultTemplates: [
+      { id: "workplaceArrangement", label: "Uređenje i pravila prostora", html: RISK_ASSESSMENT_RICH_PRESETS.workplaceArrangement },
+    ],
+  },
+  computerWorkplaces: {
+    label: "Posebno osjetljive skupine",
+    defaultTemplates: [
+      { id: "sensitiveGroups", label: "Osjetljive skupine radnika", html: RISK_ASSESSMENT_RICH_PRESETS.sensitiveGroups },
+    ],
+  },
+  basicRules: {
+    label: "Osnovna pravila ZNR",
+    defaultTemplates: [
+      { id: "basicRules", label: "Osnovna pravila ZNR", html: RISK_ASSESSMENT_RICH_PRESETS.basicRules },
+    ],
+  },
+  specialRules: {
+    label: "Posebna pravila ZNR",
+    defaultTemplates: [
+      { id: "specialRules", label: "Posebna pravila ZNR", html: RISK_ASSESSMENT_RICH_PRESETS.specialRules },
+    ],
+  },
 });
 const RISK_ASSESSMENT_BASIC_TEXT_TEMPLATE_STORAGE_KEY = "safe-nexus-risk-assessment-basic-text-templates-v1";
 const RISK_ASSESSMENT_BASIC_TEXT_TEMPLATE_FIELDS = Object.freeze({
@@ -116235,6 +116268,12 @@ riskAssessmentZnrAuthorizationRemoveButton?.addEventListener("click", () => {
 });
 
 riskAssessmentForm?.addEventListener("change", (event) => {
+  const richTemplateSelect = event.target?.closest?.("[data-risk-rich-template-select]");
+  if (richTemplateSelect) {
+    applyRiskAssessmentRichTemplate(richTemplateSelect.dataset.riskRichTemplateSelect || "", richTemplateSelect.value || "");
+    richTemplateSelect.value = "";
+    return;
+  }
   const select = event.target?.closest?.("[data-risk-basic-template-select]");
   if (!select) {
     return;
@@ -116244,6 +116283,12 @@ riskAssessmentForm?.addEventListener("change", (event) => {
 });
 
 riskAssessmentForm?.addEventListener("click", (event) => {
+  const richTemplateButton = event.target?.closest?.("[data-risk-rich-template-save]");
+  if (richTemplateButton) {
+    event.preventDefault();
+    saveRiskAssessmentRichTemplate(richTemplateButton.dataset.riskRichTemplateSave || "");
+    return;
+  }
   const button = event.target?.closest?.("[data-risk-basic-template-save]");
   if (!button) {
     return;
@@ -120717,6 +120762,96 @@ function syncRiskAssessmentRichValues() {
   });
 }
 
+function readRiskAssessmentRichTemplates() {
+  const stored = readJsonFromLocalStorage(RISK_ASSESSMENT_RICH_TEMPLATE_STORAGE_KEY, {});
+  return Object.entries(RISK_ASSESSMENT_RICH_TEMPLATE_FIELDS).reduce((templates, [fieldKey, config]) => {
+    const customItems = Array.isArray(stored?.[fieldKey]) ? stored[fieldKey] : [];
+    templates[fieldKey] = [
+      ...config.defaultTemplates.map((item) => ({
+        id: String(item.id || crypto.randomUUID()),
+        label: String(item.label || config.label || "Predložak").trim(),
+        html: normalizeRiskAssessmentRichHtml(item.html || ""),
+        source: "default",
+      })).filter((item) => item.label && item.html),
+      ...customItems.map((item) => ({
+        id: String(item?.id || crypto.randomUUID()),
+        label: String(item?.label || "").trim(),
+        html: normalizeRiskAssessmentRichHtml(item?.html || item?.text || ""),
+        source: "custom",
+      })).filter((item) => item.label && item.html),
+    ];
+    return templates;
+  }, {});
+}
+
+function writeRiskAssessmentRichTemplates(nextTemplates = {}) {
+  const customOnly = Object.entries(RISK_ASSESSMENT_RICH_TEMPLATE_FIELDS).reduce((result, [fieldKey]) => {
+    result[fieldKey] = (nextTemplates[fieldKey] ?? [])
+      .filter((item) => item.source === "custom")
+      .map((item) => ({
+        id: String(item.id || crypto.randomUUID()),
+        label: String(item.label || "").trim(),
+        html: normalizeRiskAssessmentRichHtml(item.html || ""),
+      }))
+      .filter((item) => item.label && item.html);
+    return result;
+  }, {});
+  writeJsonToLocalStorage(RISK_ASSESSMENT_RICH_TEMPLATE_STORAGE_KEY, customOnly);
+}
+
+function renderRiskAssessmentRichTemplateControls() {
+  const templates = readRiskAssessmentRichTemplates();
+  riskAssessmentForm?.querySelectorAll?.("[data-risk-rich-template-select]").forEach((select) => {
+    const fieldKey = select.dataset.riskRichTemplateSelect || "";
+    const options = [
+      { value: "", label: "Predložak" },
+      ...(templates[fieldKey] ?? []).map((item) => ({
+        value: item.id,
+        label: item.source === "custom" ? `${item.label} · moj` : item.label,
+      })),
+    ];
+    replaceSelectOptions(select, options, "");
+  });
+}
+
+function applyRiskAssessmentRichTemplate(fieldKey = "", templateId = "") {
+  const template = (readRiskAssessmentRichTemplates()[fieldKey] ?? [])
+    .find((item) => String(item.id) === String(templateId));
+  if (!template?.html) {
+    return;
+  }
+  const current = syncRiskAssessmentRichValue(fieldKey);
+  setRiskAssessmentRichValue(fieldKey, current ? `${current}${template.html}` : template.html);
+  scheduleRiskAssessmentDraftAutosave();
+}
+
+function saveRiskAssessmentRichTemplate(fieldKey = "") {
+  const html = syncRiskAssessmentRichValue(fieldKey);
+  if (!html) {
+    setInlineMessage(riskAssessmentError, "Upiši tekst koji želiš spremiti kao predložak.");
+    return;
+  }
+  const config = RISK_ASSESSMENT_RICH_TEMPLATE_FIELDS[fieldKey];
+  const plainText = html.replace(/<[^>]+>/g, " ");
+  const fallbackName = plainText.trim().split(/\s+/).slice(0, 6).join(" ").slice(0, 70) || config?.label || "Predložak";
+  const label = String(window.prompt("Naziv predloška", fallbackName) || "").trim();
+  if (!label) {
+    return;
+  }
+  const templates = readRiskAssessmentRichTemplates();
+  templates[fieldKey] = [
+    ...(templates[fieldKey] ?? []),
+    {
+      id: crypto.randomUUID(),
+      label,
+      html,
+      source: "custom",
+    },
+  ];
+  writeRiskAssessmentRichTemplates(templates);
+  renderRiskAssessmentRichTemplateControls();
+}
+
 function rememberRiskAssessmentRichEditorSelection(editor = null) {
   if (!(editor instanceof HTMLElement)) {
     return;
@@ -120947,6 +121082,7 @@ function resetRiskAssessmentForm() {
     riskAssessmentDeleteButton.hidden = true;
   }
   RISK_ASSESSMENT_RICH_FIELD_KEYS.forEach((key) => setRiskAssessmentRichValue(key, ""));
+  renderRiskAssessmentRichTemplateControls();
   renderRiskAssessmentMeasures();
   renderRiskAssessmentOrganizationUnits();
   renderRiskAssessmentJobs();
@@ -120991,6 +121127,7 @@ function hydrateRiskAssessmentForm(item = {}) {
   setRiskAssessmentRichValue("omissionsBasic", item.omissionsBasic || "");
   setRiskAssessmentRichValue("omissionsSpecial", item.omissionsSpecial || "");
   setRiskAssessmentRichValue("conclusion", item.conclusion || "");
+  renderRiskAssessmentRichTemplateControls();
   riskAssessmentClientNoteInput.value = item.clientNote || "";
   riskAssessmentMeasureDrafts = (item.measures ?? []).map((entry) => ({ ...entry }));
   riskAssessmentOrganizationUnitDrafts = (item.organizationUnits ?? []).map((entry) => createRiskAssessmentOrganizationUnitDraft(entry));

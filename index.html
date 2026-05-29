@@ -14,8 +14,8 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/assets/ozo-tailwind.css?v=20260529-risk-assessment-structure-v1" />
-    <link rel="stylesheet" href="/styles.css?v=20260529-risk-assessment-structure-v1" />
+    <link rel="stylesheet" href="/assets/ozo-tailwind.css?v=20260529-risk-workplace-unified-v1" />
+    <link rel="stylesheet" href="/styles.css?v=20260529-risk-workplace-unified-v1" />
     <link rel="stylesheet" href="/src/styles/variables.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/reset.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/builder.css?v=20260509e" />
@@ -5001,9 +5001,9 @@
                     <div class="risk-assessment-editor-section-head">
                       <div>
                         <span>03</span>
-                        <strong>Podaci prikupljeni na mjestu rada</strong>
+                        <strong>Mjesto rada i pravila ZNR</strong>
                       </div>
-                      <p>Tehnološki proces, poslovi na mjestu rada i uređenje mjesta rada uz osnovna i posebna pravila ZNR.</p>
+                      <p>Jedan operativni blok za tehnološki proces, poslove, uređenje mjesta rada, osjetljive skupine i osnovna/posebna pravila ZNR.</p>
                     </div>
                     <div class="risk-assessment-section-grid">
                       <label class="field field-span-full risk-assessment-rich-field">
@@ -5018,6 +5018,8 @@
                             <button type="button" data-risk-rich-command="insertUnorderedList">• Lista</button>
                             <button type="button" data-risk-rich-command="insertOrderedList">1. Lista</button>
                             <button type="button" data-risk-rich-preset="process" data-risk-rich-preset-key="technology">Predefinirani tekst</button>
+                            <select data-risk-rich-template-select="process" aria-label="Predložak za opis tehnološkog procesa"></select>
+                            <button type="button" data-risk-rich-template-save="process">Spremi predložak</button>
                             <button type="button" data-risk-rich-image="file">Slika</button>
                             <button type="button" data-risk-rich-image="url">URL slike</button>
                             <input type="file" accept="image/*" data-risk-rich-file="process" hidden />
@@ -5049,6 +5051,8 @@
                           <button type="button" data-risk-rich-command="insertUnorderedList">• Lista</button>
                           <button type="button" data-risk-rich-command="insertOrderedList">1. Lista</button>
                           <button type="button" data-risk-rich-preset="generalData" data-risk-rich-preset-key="workplaceArrangement">Predefinirani tekst</button>
+                          <select data-risk-rich-template-select="generalData" aria-label="Predložak za uređenje mjesta rada"></select>
+                          <button type="button" data-risk-rich-template-save="generalData">Spremi predložak</button>
                           <button type="button" data-risk-rich-image="file">Slika</button>
                           <button type="button" data-risk-rich-image="url">URL slike</button>
                           <input type="file" accept="image/*" data-risk-rich-file="generalData" hidden />
@@ -5059,13 +5063,13 @@
                     </label>
                   </section>
 
-                  <section id="risk-assessment-block-sensitive" class="risk-assessment-editor-section" data-risk-assessment-block="sensitive">
+                  <section id="risk-assessment-block-sensitive" class="risk-assessment-editor-section risk-assessment-linked-section" data-risk-assessment-block="process">
                     <div class="risk-assessment-editor-section-head">
                       <div>
-                        <span>04</span>
+                        <span>3B</span>
                         <strong>Posebno osjetljive skupine radnika</strong>
                       </div>
-                      <p>Poseban list za maloljetnike, trudnice, radnike smanjenih sposobnosti i druge osjetljive skupine.</p>
+                      <p>Dio podataka prikupljenih na mjestu rada za maloljetnike, trudnice, radnike smanjenih sposobnosti i druge osjetljive skupine.</p>
                     </div>
                     <label class="field field-span-full risk-assessment-rich-field">
                       <span>Posebno osjetljive skupine radnika</span>
@@ -5079,6 +5083,8 @@
                           <button type="button" data-risk-rich-command="insertUnorderedList">• Lista</button>
                           <button type="button" data-risk-rich-command="insertOrderedList">1. Lista</button>
                           <button type="button" data-risk-rich-preset="computerWorkplaces" data-risk-rich-preset-key="sensitiveGroups">Predefinirani tekst</button>
+                          <select data-risk-rich-template-select="computerWorkplaces" aria-label="Predložak za posebno osjetljive skupine"></select>
+                          <button type="button" data-risk-rich-template-save="computerWorkplaces">Spremi predložak</button>
                           <button type="button" data-risk-rich-image="file">Slika</button>
                           <button type="button" data-risk-rich-image="url">URL slike</button>
                           <input type="file" accept="image/*" data-risk-rich-file="computerWorkplaces" hidden />
@@ -5089,13 +5095,13 @@
                     </label>
                   </section>
 
-                  <section id="risk-assessment-block-rules" class="risk-assessment-editor-section" data-risk-assessment-block="rules">
+                  <section id="risk-assessment-block-rules" class="risk-assessment-editor-section risk-assessment-linked-section" data-risk-assessment-block="process">
                     <div class="risk-assessment-editor-section-head">
                       <div>
-                        <span>05</span>
+                        <span>3C</span>
                         <strong>Pravila zaštite na radu</strong>
                       </div>
-                      <p>Osnovna i posebna pravila koja se primjenjuju na poslove i radni prostor.</p>
+                      <p>Osnovna i posebna pravila povezana s radnim prostorom, poslovima i utvrđenim uvjetima rada.</p>
                     </div>
                     <div class="risk-assessment-section-grid">
                       <label class="field field-span-full risk-assessment-rich-field">
@@ -5109,6 +5115,9 @@
                             <button type="button" data-risk-rich-command="underline"><u>U</u></button>
                             <button type="button" data-risk-rich-command="insertUnorderedList">• Lista</button>
                             <button type="button" data-risk-rich-command="insertOrderedList">1. Lista</button>
+                            <button type="button" data-risk-rich-preset="basicRules" data-risk-rich-preset-key="basicRules">Predefinirani tekst</button>
+                            <select data-risk-rich-template-select="basicRules" aria-label="Predložak za osnovna pravila ZNR"></select>
+                            <button type="button" data-risk-rich-template-save="basicRules">Spremi predložak</button>
                             <button type="button" data-risk-rich-image="file">Slika</button>
                             <button type="button" data-risk-rich-image="url">URL slike</button>
                             <input type="file" accept="image/*" data-risk-rich-file="basicRules" hidden />
@@ -5128,6 +5137,9 @@
                             <button type="button" data-risk-rich-command="underline"><u>U</u></button>
                             <button type="button" data-risk-rich-command="insertUnorderedList">• Lista</button>
                             <button type="button" data-risk-rich-command="insertOrderedList">1. Lista</button>
+                            <button type="button" data-risk-rich-preset="specialRules" data-risk-rich-preset-key="specialRules">Predefinirani tekst</button>
+                            <select data-risk-rich-template-select="specialRules" aria-label="Predložak za posebna pravila ZNR"></select>
+                            <button type="button" data-risk-rich-template-save="specialRules">Spremi predložak</button>
                             <button type="button" data-risk-rich-image="file">Slika</button>
                             <button type="button" data-risk-rich-image="url">URL slike</button>
                             <input type="file" accept="image/*" data-risk-rich-file="specialRules" hidden />
@@ -5142,7 +5154,7 @@
                   <section id="risk-assessment-block-findings" class="risk-assessment-editor-section" data-risk-assessment-block="findings">
                     <div class="risk-assessment-editor-section-head">
                       <div>
-                        <span>06</span>
+                        <span>04</span>
                         <strong>Popis priloga</strong>
                       </div>
                       <p>Prilozi i popisi koji prate procjenu: štetnosti, radna oprema, OZO, ispitivanja, posebni uvjeti, kemijske štetnosti i sudjelovanje radnika.</p>
@@ -5236,7 +5248,7 @@
                   <section id="risk-assessment-block-measures" class="risk-assessment-editor-section risk-assessment-subpanel" data-risk-assessment-block="measures">
                     <div class="risk-assessment-editor-section-head">
                       <div>
-                        <span>07</span>
+                        <span>05</span>
                         <strong>Plan mjera</strong>
                       </div>
                       <p>Mjera, rok, odgovorna osoba i način kontrole.</p>
@@ -5254,7 +5266,7 @@
                   <section id="risk-assessment-block-structure" class="risk-assessment-editor-section risk-assessment-subpanel" data-risk-assessment-block="structure">
                     <div class="risk-assessment-editor-section-head">
                       <div>
-                        <span>08</span>
+                        <span>06</span>
                         <strong>Sistematizacija</strong>
                       </div>
                       <p>Hijerarhija organizacijskih jedinica, odgovorne osobe i povezani poslovi.</p>
@@ -5272,7 +5284,7 @@
                   <section id="risk-assessment-block-jobs" class="risk-assessment-editor-section risk-assessment-subpanel" data-risk-assessment-block="jobs">
                     <div class="risk-assessment-editor-section-head">
                       <div>
-                        <span>09</span>
+                        <span>07</span>
                         <strong>Analiza radnih mjesta</strong>
                       </div>
                       <p>Poslovi, radna mjesta, uvjeti rada, katalog opasnosti, procjena rizika i vizualni odabir OZO.</p>
@@ -5313,7 +5325,7 @@
                   <section id="risk-assessment-block-manual-handling" class="risk-assessment-editor-section risk-assessment-subpanel" data-risk-assessment-block="manual-handling">
                     <div class="risk-assessment-editor-section-head">
                       <div>
-                        <span>10</span>
+                        <span>08</span>
                         <strong>Ručno prenošenje tereta</strong>
                       </div>
                       <p>Orijentacijski izračun opterećenja pri ručnom podizanju, nošenju i premještanju tereta.</p>
@@ -5331,7 +5343,7 @@
                   <section id="risk-assessment-block-chemicals" class="risk-assessment-editor-section risk-assessment-subpanel" data-risk-assessment-block="chemicals">
                     <div class="risk-assessment-editor-section-head">
                       <div>
-                        <span>11</span>
+                        <span>09</span>
                         <strong>Kemikalije i STL</strong>
                       </div>
                       <p>Registar kemikalija za procjenu rizika, PubChem podaci i automatsko izvlačenje iz sigurnosno-tehničkih listova.</p>
@@ -5398,7 +5410,7 @@
                   <section id="risk-assessment-block-overview" class="risk-assessment-editor-section risk-assessment-subpanel" data-risk-assessment-block="overview">
                     <div class="risk-assessment-editor-section-head">
                       <div>
-                        <span>12</span>
+                        <span>10</span>
                         <strong>Pregled</strong>
                       </div>
                       <p>Sažetak procjene po jedinicama, poslovima, rizicima, mjerama, kemikalijama i OZO.</p>
@@ -5417,9 +5429,7 @@
               <nav id="risk-assessment-dock" class="risk-assessment-dock" aria-label="Navigacija procjene rizika">
                 <button type="button" class="is-active" data-risk-assessment-jump="basic"><strong>Osnovno</strong><span>Tvrtka i datumi</span></button>
                 <button type="button" data-risk-assessment-jump="intro"><strong>Uvod</strong><span>Pravna osnova</span></button>
-                <button type="button" data-risk-assessment-jump="process"><strong>Mjesto rada</strong><span>Proces i poslovi</span></button>
-                <button type="button" data-risk-assessment-jump="sensitive"><strong>Skupine</strong><span>Osjetljivi radnici</span></button>
-                <button type="button" data-risk-assessment-jump="rules"><strong>Pravila</strong><span>ZNR pravila</span></button>
+                <button type="button" data-risk-assessment-jump="process"><strong>Mjesto rada</strong><span>Proces, skupine i pravila</span></button>
                 <button type="button" data-risk-assessment-jump="findings"><strong>Prilozi</strong><span>Popisi i dokazi</span></button>
                 <button type="button" data-risk-assessment-jump="measures"><strong>Mjere</strong><span>Plan mjera</span></button>
                 <button type="button" data-risk-assessment-jump="structure"><strong>Struktura</strong><span>Jedinice</span></button>
@@ -9576,7 +9586,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260529-risk-assessment-structure-v1"></script>
-    <script type="module" src="/assets/ozo-panel.js?v=20260529-risk-assessment-structure-v1"></script>
+    <script type="module" src="/src/main.js?v=20260529-risk-workplace-unified-v1"></script>
+    <script type="module" src="/assets/ozo-panel.js?v=20260529-risk-workplace-unified-v1"></script>
   </body>
 </html>
