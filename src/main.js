@@ -127820,6 +127820,29 @@ function getRiskAssessmentRiskShortLabel(value = "") {
   return "N/P";
 }
 
+function getRiskAssessmentRiskType(risk = {}) {
+  const source = [risk.topCategory, risk.category, risk.group]
+    .filter(Boolean)
+    .join(" ")
+    .toLocaleLowerCase("hr");
+  if (source.includes("napor")) {
+    return { value: "effort", label: "Napor" };
+  }
+  if (source.includes("štetnost") || source.includes("stetnost")) {
+    return { value: "harm", label: "Štetnost" };
+  }
+  if (source.includes("opasnost")) {
+    return { value: "hazard", label: "Opasnost" };
+  }
+  return { value: "item", label: "Stavka" };
+}
+
+function getRiskAssessmentRiskScoreValue(risk = {}) {
+  const probabilityScore = { mv: 1, v: 2, vv: 3 }[String(risk.probability || "").toLowerCase()] || 0;
+  const consequenceScore = { "mš": 1, "ms": 1, "sš": 2, "ss": 2, "iš": 3, "is": 3 }[String(risk.consequence || "").toLowerCase()] || 0;
+  return probabilityScore && consequenceScore ? String(probabilityScore * consequenceScore) : "";
+}
+
 function renderRiskAssessmentCompactOptions(options = [], selectedValue = "") {
   return options.map((option) => {
     const compactLabel = String(option.label || "")
@@ -127863,6 +127886,8 @@ function renderRiskAssessmentRiskCards(item = {}) {
         const riskLevel = getRiskAssessmentRiskDisplayLevel(risk);
         const riskTone = getRiskAssessmentRiskDisplayTone(risk);
         const riskShortLabel = getRiskAssessmentRiskShortLabel(riskLevel);
+        const riskScore = getRiskAssessmentRiskScoreValue(risk);
+        const riskType = getRiskAssessmentRiskType(risk);
         const classificationText = [risk.topCategory, risk.category, risk.group].filter(Boolean).join(" / ");
         return `
         <article class="risk-assessment-risk-card is-${riskTone}">
@@ -127876,8 +127901,9 @@ function renderRiskAssessmentRiskCards(item = {}) {
               <button type="submit" class="risk-assessment-risk-primary-action">Spremi procjenu</button>
             </div>
           </div>
-          <div class="risk-assessment-risk-classification" ${classificationText ? "" : "hidden"}>
-            ${escapeHtml(classificationText)}
+          <div class="risk-assessment-risk-meta-row">
+            <span class="risk-assessment-risk-type-pill is-${escapeHtml(riskType.value)}">${escapeHtml(riskType.label)}</span>
+            <span class="risk-assessment-risk-classification">${escapeHtml(classificationText || "Ručno dodana stavka procjene")}</span>
           </div>
           <div class="risk-assessment-risk-score-grid">
             ${renderRiskAssessmentRiskScorePanel({
@@ -127903,6 +127929,7 @@ function renderRiskAssessmentRiskCards(item = {}) {
               <output class="risk-assessment-risk-result is-${riskTone}" data-risk-row-output="${riskIndex}">
                 <i aria-hidden="true"></i>
                 <strong>${escapeHtml(riskShortLabel)}</strong>
+                ${riskScore ? `<em>${escapeHtml(riskScore)}</em>` : ""}
               </output>
             </section>
           </div>
