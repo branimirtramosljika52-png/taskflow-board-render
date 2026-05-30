@@ -127812,24 +127812,47 @@ function getRiskAssessmentRiskDisplayTone(risk = {}) {
   return getJobHazardRiskTone(getRiskAssessmentRiskDisplayLevel(risk));
 }
 
-function renderRiskAssessmentRiskCalculationColumn(risk = {}, riskIndex = 0) {
-  const riskLevel = getRiskAssessmentRiskDisplayLevel(risk);
-  const riskTone = getRiskAssessmentRiskDisplayTone(risk);
-  const probabilityLabel = getRiskAssessmentOptionLabel(RISK_ASSESSMENT_PROBABILITY_OPTIONS, risk.probability, "-");
-  const consequenceLabel = getRiskAssessmentOptionLabel(RISK_ASSESSMENT_CONSEQUENCE_OPTIONS, risk.consequence, "-");
+function getRiskAssessmentRiskShortLabel(value = "") {
+  const normalized = String(value || "").toLocaleLowerCase("hr");
+  if (normalized.includes("mali")) return "Mali";
+  if (normalized.includes("srednji")) return "Srednji";
+  if (normalized.includes("veliki")) return "Veliki";
+  return "N/P";
+}
+
+function renderRiskAssessmentCompactOptions(options = [], selectedValue = "") {
+  return options.map((option) => {
+    const compactLabel = String(option.label || "")
+      .replace(/\s+vjerojatnost$/i, "")
+      .replace(/\s+posljedica$/i, "")
+      .trim() || option.label;
+    return `
+      <option value="${escapeHtml(option.value)}" ${String(option.value) === String(selectedValue) ? "selected" : ""}>
+        ${escapeHtml(compactLabel)}
+      </option>
+    `;
+  }).join("");
+}
+
+function renderRiskAssessmentRiskScorePanel({
+  title = "",
+  field = "",
+  value = "",
+  options = [],
+  riskIndex = 0,
+  tone = "unknown",
+  required = false,
+} = {}) {
   return `
-    <section class="risk-assessment-risk-table-cell is-calculation">
-      <div class="risk-assessment-risk-table-heading">Vjerojatnost / posljedice: rizik</div>
-      <div class="risk-assessment-risk-mini-grid">
-        <label><span>Vjerojatnost</span><select data-risk-row-index="${riskIndex}" data-risk-row-field="probability">${renderRiskAssessmentOptions(RISK_ASSESSMENT_PROBABILITY_OPTIONS, risk.probability || "")}</select></label>
-        <label><span>Posljedica</span><select data-risk-row-index="${riskIndex}" data-risk-row-field="consequence">${renderRiskAssessmentOptions(RISK_ASSESSMENT_CONSEQUENCE_OPTIONS, risk.consequence || "")}</select></label>
+    <label class="risk-assessment-risk-score-panel">
+      <span>${escapeHtml(title)}${required ? " *" : ""}</span>
+      <div class="risk-assessment-risk-select-shell is-${tone}">
+        <i aria-hidden="true"></i>
+        <select data-risk-row-index="${riskIndex}" data-risk-row-field="${escapeHtml(field)}">
+          ${renderRiskAssessmentCompactOptions(options, value || "")}
+        </select>
       </div>
-      <output class="risk-assessment-risk-output is-${riskTone}" data-risk-row-output="${riskIndex}">
-        <span>Izračun</span>
-        <strong>${escapeHtml(riskLevel)}</strong>
-        <small>${escapeHtml(probabilityLabel)} / ${escapeHtml(consequenceLabel)}</small>
-      </output>
-    </section>
+    </label>
   `;
 }
 
@@ -127839,41 +127862,64 @@ function renderRiskAssessmentRiskCards(item = {}) {
       ${(item.riskRows ?? []).map((risk, riskIndex) => {
         const riskLevel = getRiskAssessmentRiskDisplayLevel(risk);
         const riskTone = getRiskAssessmentRiskDisplayTone(risk);
+        const riskShortLabel = getRiskAssessmentRiskShortLabel(riskLevel);
+        const classificationText = [risk.topCategory, risk.category, risk.group].filter(Boolean).join(" / ");
         return `
         <article class="risk-assessment-risk-card is-${riskTone}">
           <div class="risk-assessment-risk-card-head">
-            <div>
-              <span>Stavka procjene rizika</span>
-              <strong>${escapeHtml(risk.code || "-")} ${escapeHtml(risk.hazard || "Nova stavka")}</strong>
-              <small>Rizik se računa automatski iz vjerojatnosti i posljedice.</small>
+            <div class="risk-assessment-risk-title-shell">
+              <input class="risk-assessment-risk-code-input" data-risk-row-index="${riskIndex}" data-risk-row-field="code" value="${escapeHtml(risk.code || "")}" placeholder="2.1.1" aria-label="Broj stavke rizika" />
+              <input class="risk-assessment-risk-title-input" data-risk-row-index="${riskIndex}" data-risk-row-field="hazard" value="${escapeHtml(risk.hazard || "")}" placeholder="Naziv opasnosti, štetnosti ili napora" aria-label="Naziv stavke rizika" />
             </div>
             <div class="risk-assessment-risk-head-actions">
-              <span class="risk-assessment-risk-pill is-${riskTone}">${escapeHtml(riskLevel)}</span>
-              <button type="button" class="ghost-button card-danger" data-risk-row-remove="${riskIndex}">Ukloni</button>
+              <button type="button" class="risk-assessment-risk-secondary-action" data-risk-row-remove="${riskIndex}">Odustani</button>
+              <button type="submit" class="risk-assessment-risk-primary-action">Spremi procjenu</button>
             </div>
           </div>
-          <div class="risk-assessment-risk-category-row">
-            <label><span>Kategorija</span><input data-risk-row-index="${riskIndex}" data-risk-row-field="category" value="${escapeHtml(risk.category || "")}" placeholder="npr. 2. Biološke štetnosti" /></label>
-            <label><span>Skupina</span><input data-risk-row-index="${riskIndex}" data-risk-row-field="group" value="${escapeHtml(risk.group || "")}" placeholder="npr. 2.5. Opasne životinje" /></label>
+          <div class="risk-assessment-risk-classification" ${classificationText ? "" : "hidden"}>
+            ${escapeHtml(classificationText)}
           </div>
-          <div class="risk-assessment-risk-table">
-            <section class="risk-assessment-risk-table-cell is-hazard">
-              <div class="risk-assessment-risk-table-heading">Opasnosti, štetnosti i napori</div>
-              <div class="risk-assessment-risk-mini-grid">
-                <label><span>Broj</span><input data-risk-row-index="${riskIndex}" data-risk-row-field="code" value="${escapeHtml(risk.code || "")}" placeholder="1.1.1" /></label>
-                <label><span>Naziv</span><input data-risk-row-index="${riskIndex}" data-risk-row-field="hazard" value="${escapeHtml(risk.hazard || "")}" placeholder="Naziv stavke" /></label>
+          <div class="risk-assessment-risk-score-grid">
+            ${renderRiskAssessmentRiskScorePanel({
+              title: "Vjerojatnost",
+              field: "probability",
+              value: risk.probability,
+              options: RISK_ASSESSMENT_PROBABILITY_OPTIONS,
+              riskIndex,
+              tone: riskTone,
+              required: true,
+            })}
+            ${renderRiskAssessmentRiskScorePanel({
+              title: "Posljedica",
+              field: "consequence",
+              value: risk.consequence,
+              options: RISK_ASSESSMENT_CONSEQUENCE_OPTIONS,
+              riskIndex,
+              tone: riskTone,
+              required: true,
+            })}
+            <section class="risk-assessment-risk-score-panel is-result">
+              <span>Rizik</span>
+              <output class="risk-assessment-risk-result is-${riskTone}" data-risk-row-output="${riskIndex}">
+                <i aria-hidden="true"></i>
+                <strong>${escapeHtml(riskShortLabel)}</strong>
+              </output>
+            </section>
+          </div>
+          <div class="risk-assessment-risk-detail-grid">
+            <section class="risk-assessment-risk-large-field">
+              <div>
+                <strong>Poslovi / napomena</strong>
+                <span>Navedite poslove i dodatne napomene.</span>
               </div>
-              <label><span>Opis / izvor</span><textarea data-risk-row-index="${riskIndex}" data-risk-row-field="source" rows="4" placeholder="Kratko opiši opasnost, štetnost ili napor.">${escapeHtml(risk.source || risk.description || "")}</textarea></label>
+              <textarea data-risk-row-index="${riskIndex}" data-risk-row-field="workNote" rows="8" placeholder="Unesite poslove i dodatne napomene...">${escapeHtml(risk.workNote || risk.note || risk.possibleConsequences || "")}</textarea>
             </section>
-            ${renderRiskAssessmentRiskCalculationColumn(risk, riskIndex)}
-            <section class="risk-assessment-risk-table-cell is-work-note">
-              <div class="risk-assessment-risk-table-heading">Poslovi / napomena</div>
-              <label><span>Poslovi / napomena</span><textarea data-risk-row-index="${riskIndex}" data-risk-row-field="workNote" rows="7" placeholder="Na kojim poslovima se pojavljuje i što treba posebno navesti.">${escapeHtml(risk.workNote || risk.note || risk.possibleConsequences || "")}</textarea></label>
-            </section>
-            <section class="risk-assessment-risk-table-cell is-measures">
-              <div class="risk-assessment-risk-table-heading">Pravila, mjere, postupci i aktivnosti za smanjivanje razine rizika</div>
-              <label><span>Mjere i postupci</span><textarea data-risk-row-index="${riskIndex}" data-risk-row-field="existingMeasures" rows="5" placeholder="Upiši pravila, mjere, postupke i aktivnosti.">${escapeHtml(risk.existingMeasures || risk.measures || "")}</textarea></label>
-              <label><span>Dodatne aktivnosti</span><textarea data-risk-row-index="${riskIndex}" data-risk-row-field="additionalMeasures" rows="3" placeholder="Po potrebi dodatne mjere.">${escapeHtml(risk.additionalMeasures || "")}</textarea></label>
+            <section class="risk-assessment-risk-large-field">
+              <div>
+                <strong>Pravila, mjere, postupci i aktivnosti za smanjivanje razine rizika</strong>
+                <span>Navedite pravila, mjere i aktivnosti.</span>
+              </div>
+              <textarea data-risk-row-index="${riskIndex}" data-risk-row-field="existingMeasures" rows="8" placeholder="Unesite pravila, mjere i aktivnosti...">${escapeHtml(risk.existingMeasures || risk.measures || risk.additionalMeasures || "")}</textarea>
             </section>
           </div>
         </article>
