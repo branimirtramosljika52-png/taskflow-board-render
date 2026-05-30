@@ -123189,16 +123189,6 @@ function renderJobSelectedHazards() {
             <textarea data-job-hazard-field="measures" rows="4" placeholder="Unesite pravila, mjere i aktivnosti...">${escapeHtml(measuresValue)}</textarea>
             <small class="job-hazard-character-count">${escapeHtml(String(getRiskAssessmentTextareaCount(measuresValue)))} / 1000</small>
           </section>
-          <div class="job-hazard-support-grid">
-            <label>
-              <span>Točka PUR-a</span>
-              <input data-job-hazard-field="purPoint" value="${escapeHtml(hazard.purPoint || "")}" placeholder="npr. 1.2.3" />
-            </label>
-            <label>
-              <span>Obvezna zaštitna oprema (OZS)</span>
-              <input data-job-hazard-field="ppeText" value="${escapeHtml(hazard.ppeText || "")}" placeholder="npr. kaciga, naočale, rukavice" />
-            </label>
-          </div>
         </div>
       </div>
     `;
