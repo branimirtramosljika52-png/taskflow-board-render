@@ -9457,6 +9457,8 @@ function getPeopleTrainingItemStatus(item = {}) {
 const PEOPLE_TRAINING_ATTACHMENT_CATEGORY_DEFAULTS = [
   "Uvjerenje",
   "Liječnički pregled",
+  "Uvjerenje zdravstvene sposobnosti",
+  "Pregled vida",
   "ADR potvrda",
   "Zapisnik ispita",
   "Radni nalog",
@@ -9618,6 +9620,8 @@ const PEOPLE_TRAINING_EDITOR_FALLBACK_OPTIONS = Object.freeze([
   Object.freeze({ value: "fire_initial", label: "Početno gašenje požara", shortLabel: "PGP" }),
   Object.freeze({ value: "flammable_storage", label: "Skladištenje zapaljivih tekućina i plinova", shortLabel: "SPZTP" }),
   Object.freeze({ value: "adr", label: "ADR", shortLabel: "ADR" }),
+  Object.freeze({ value: "medical_fitness_certificate", label: "Uvjerenje o zdravstvenoj sposobnosti za rad", shortLabel: "ZDR" }),
+  Object.freeze({ value: "vision_exam", label: "Pregled vida", shortLabel: "VID" }),
 ]);
 
 const peopleTrainingUiCache = {
@@ -115726,6 +115730,11 @@ jobDescriptionAiButton?.addEventListener("click", () => {
 
 jobEnvironmentSections?.addEventListener("click", (event) => {
   const target = event.target instanceof Element ? event.target : null;
+  const presetButton = target?.closest("[data-job-work-preset]");
+  if (presetButton instanceof HTMLElement) {
+    applyJobWorkProfilePreset(presetButton.dataset.jobWorkPreset || "");
+    return;
+  }
   const suggestionButton = target?.closest("[data-job-env-suggestion]");
   if (suggestionButton instanceof HTMLElement) {
     suggestionButton.classList.toggle("is-selected");
@@ -115799,6 +115808,18 @@ jobEnvironmentSections?.addEventListener("change", (event) => {
 
 jobConditionSections?.addEventListener("click", (event) => {
   const target = event.target instanceof Element ? event.target : null;
+  const purButton = target?.closest("[data-job-pur-point]");
+  if (purButton instanceof HTMLElement) {
+    purButton.classList.toggle("is-selected");
+    const panel = purButton.closest(".job-pur-panel");
+    const summary = panel?.querySelector(".job-pur-panel-head > span");
+    if (summary) {
+      const selected = Array.from(panel?.querySelectorAll("[data-job-pur-point].is-selected") ?? [])
+        .map((button) => String(button.dataset.jobPurPoint || "").trim());
+      summary.textContent = getJobPurPointSummary(selected);
+    }
+    return;
+  }
   const choiceButton = target?.closest("[data-job-condition-choice]");
   if (choiceButton instanceof HTMLElement) {
     choiceButton.classList.toggle("is-selected");
@@ -122710,14 +122731,14 @@ const JOB_ENVIRONMENT_SECTIONS = Object.freeze([
     title: "Mjesto rada",
     helper: "Odaberi tipična mjesta rada i dopiši opis.",
     placeholder: "npr. u zatvorenom prostoru i povremeno na otvorenom kod klijenta...",
-    suggestions: ["u zatvorenom", "na otvorenom", "na visini", "u jami", "u vodi", "u prometu", "kod klijenta"],
+    suggestions: ["u zatvorenom", "na otvorenom", "na visini", "u jami", "u vodi", "pod vodom", "u mokrom", "u prometu", "kod klijenta"],
   },
   {
     key: "organization",
     title: "Organizacija rada",
     helper: "Radno vrijeme, način rada, ritam, stanke i posebnosti organizacije.",
     placeholder: "npr. puno radno vrijeme, terenski rad po nalogu, dnevna smjena, redovne stanke...",
-    suggestions: ["jedna smjena", "puno radno vrijeme", "terenski rad", "rad od kuće", "prekovremeni rad po potrebi", "bez noćnog rada"],
+    suggestions: ["jedna smjena", "u smjenama", "noćni rad", "terenski rad", "radi sam", "radi s grupom", "rad na traci", "brzi tempo rada", "ritam određen", "monotonija", "bez noćnog rada"],
   },
 ]);
 
@@ -122737,6 +122758,9 @@ const JOB_ORGANIZATION_FIELDS = Object.freeze([
 const JOB_CONDITION_TOGGLES = Object.freeze([
   { key: "educationRequired", group: "Stručna sprema i osposobljavanje", label: "Obvezna razina stručne spreme ili posebna osposobljenost", suggestion: "Za obavljanje posla potrebna je odgovarajuća stručna sprema i osposobljenost za rad na siguran način." },
   { key: "trainingRequired", group: "Stručna sprema i osposobljavanje", label: "Potrebno stručno osposobljavanje", suggestion: "Radnik mora biti osposobljen za siguran rad, upoznat s uputama poslodavca i pravilima zaštite na radu." },
+  { key: "safeWorkTrainingCertificate", group: "Stručna sprema i osposobljavanje", label: "Osposobljavanje za rad na siguran način", suggestion: "Opis poslova povezuje se s osposobljavanjem za rad na siguran način; radnik mora biti upoznat s opasnostima, mjerama zaštite, radnim uputama i pravilnom uporabom OZO." },
+  { key: "medicalFitnessCertificate", group: "Zdravstvena sposobnost i pregledi", label: "Uvjerenje o zdravstvenoj sposobnosti za rad", suggestion: "Za posao je potrebno uvjerenje o zdravstvenoj sposobnosti radnika prema opisu poslova, uvjetima rada i posebnim uvjetima rada ako su primjenjivi." },
+  { key: "visionCheck", group: "Zdravstvena sposobnost i pregledi", label: "Pregled vida", suggestion: "Za posao je potreban pregled vida, osobito kada su za siguran rad bitni vid na daljinu, vid na blizinu ili raspoznavanje boja." },
   { key: "computerOver4h", group: "Posebni uvjeti rada", label: "Rad na računalu dulje od 4 sata dnevno", suggestion: "Posao uključuje rad s računalom dulje od 4 sata dnevno, uz potrebu ergonomskog uređenja radnog mjesta i redovitih pauza." },
   { key: "increasedInsurance", group: "Posebni uvjeti rada", label: "Staž osiguranja s povećanim trajanjem", suggestion: "Za ovaj posao potrebno je dodatno provjeriti primjenjuje li se staž osiguranja s povećanim trajanjem." },
   { key: "manualHandling", group: "Posebni uvjeti rada", label: "Ručno rukovanje teretom", suggestion: "Povremeno je prisutno ručno rukovanje teretom te je potrebno primijeniti sigurne tehnike podizanja i pomoćna sredstva." },
@@ -122744,9 +122768,9 @@ const JOB_CONDITION_TOGGLES = Object.freeze([
   { key: "repetitiveTasks", group: "Posebni uvjeti rada", label: "Ponavljajući radni zadaci", suggestion: "Prisutan je ponavljajući radni obrazac, pa treba omogućiti promjenu položaja tijela i kratke pauze." },
 ]);
 
-const JOB_BODY_POSITION_OPTIONS = Object.freeze(["rad stojeći", "rad sjedeći", "u pokretu", "kombinirano", "učestalo sagibanje", "klečanje", "čučanje", "rad iznad ramena", "ponavljajući pokreti"]);
+const JOB_BODY_POSITION_OPTIONS = Object.freeze(["rad stojeći", "rad sjedeći", "u pokretu", "kombinirano", "hodanje", "učestalo sagibanje", "klečanje", "čučanje", "uspinjanje ljestvama", "uspinjanje stepenicama", "rad iznad ramena", "ponavljajući pokreti", "dizanje tereta", "prenošenje tereta", "guranje tereta"]);
 const JOB_IMPORTANT_FUNCTION_OPTIONS = Object.freeze(["vid na daljinu", "vid na blizinu", "raspoznavanje boja", "dobar sluh", "jasan govor", "preciznost ruku", "koordinacija pokreta"]);
-const JOB_WORK_CONDITION_OPTIONS = Object.freeze(["buka", "vibracije", "mikroklima", "prašina", "kemijske štetnosti", "biološke štetnosti", "rad na visini", "rad na otvorenom", "rad u prometu"]);
+const JOB_WORK_CONDITION_OPTIONS = Object.freeze(["visoka temperatura", "niska temperatura", "visoka vlažnost", "buka", "vibracije stroja ili alata", "vibracije poda", "povišeni atmosferski tlak", "povećana izloženost ozljedama", "ionizirajuća zračenja", "neionizirajuća zračenja", "prašina", "kemijske štetnosti", "biološke štetnosti", "rad na visini", "rad na otvorenom", "rad u prometu"]);
 const JOB_ENVIRONMENT_OPTION_FIELD_BY_KEY = Object.freeze({
   machines: "machinesOptions",
   substances: "substancesOptions",
@@ -122774,6 +122798,143 @@ const JOB_CONDITION_CHOICE_BLOCKS = Object.freeze([
     helper: "Odaberi uvjete i izloženosti koji se pojavljuju na poslu.",
     textField: "conditionsText",
     options: JOB_WORK_CONDITION_OPTIONS,
+  },
+]);
+
+const JOB_PUR_POINTS = Object.freeze([
+  { value: "1", label: "Strojevi i uređaji na mehanizirani pogon", shortLabel: "1. Strojevi", description: "Rukovanje i upravljanje strojevima i uređajima na mehanizirani pogon kod kojih se ne može u cijelosti primijeniti zaštita od mehaničkih opasnosti." },
+  { value: "2", label: "Samohodni strojevi", shortLabel: "2. Samohodni strojevi", description: "Upravljanje samohodnim strojevima na mehanizirani pogon, kao što su kombajni, grejderi, utovarivači, bageri, buldožeri i strojevi za sabijanje tla." },
+  { value: "3", label: "Postrojenja za naftu i plin", shortLabel: "3. Nafta i plin", description: "Upravljanje uređajima na postrojenjima za dobivanje i preradu sirove nafte i plina." },
+  { value: "4", label: "Kotlovska i energetska postrojenja", shortLabel: "4. Kotlovi / energija", description: "Upravljanje kotlovskim postrojenjima, kompresorskim stanicama, energetskim postrojenjima, stanicama i posudama s komprimiranim plinovima." },
+  { value: "5", label: "Dizalice na mehanizirani pogon", shortLabel: "5. Dizalice", description: "Upravljanje dizalicama na mehanizirani pogon." },
+  { value: "6", label: "Signalisti", shortLabel: "6. Signalisti", description: "Poslovi signalista pri vezivanju tereta, davanju upozorenja kod dizalica i usmjeravanju prometa." },
+  { value: "7", label: "Zapaljive i eksplozivne tvari", shortLabel: "7. Zapaljivo / eksplozivno", description: "Upravljanje postrojenjima za skladištenje i preradu lakozapaljivih i eksplozivnih tekućina i plinova." },
+  { value: "8", label: "Ronilački poslovi", shortLabel: "8. Ronjenje", description: "Ronilački poslovi." },
+  { value: "9", label: "Opskrba zrakom", shortLabel: "9. Opskrba zrakom", description: "Upravljanje uređajima za opskrbu zrakom radnika u rudnicima, kesonima i pri ronilačkim poslovima." },
+  { value: "10", label: "Električne instalacije iznad 250 V / 220 V", shortLabel: "10. Elektrika", description: "Montaža, održavanje i ispitivanje električnih instalacija, uređaja i postrojenja napona iznad 250 V i 220 V s posebnim zahtjevima." },
+  { value: "11", label: "Skele, oplate i ograde", shortLabel: "11. Skele", description: "Podizanje skela i postavljanje oplata i ograda pri izvođenju građevinskih radova." },
+  { value: "12", label: "Izrada i rukovanje eksplozivom", shortLabel: "12. Eksploziv", description: "Izrada eksploziva i rukovanje eksplozivom." },
+  { value: "13", label: "Punjenje i paljenje mina", shortLabel: "13. Mine", description: "Punjenje i paljenje mina." },
+  { value: "14", label: "Vatrogasni poslovi", shortLabel: "14. Vatrogasci", description: "Poslovi vatrogasaca." },
+  { value: "15", label: "Čuvanje ljudi i imovine vatrenim oružjem", shortLabel: "15. Oružje", description: "Čuvanje ljudi i imovine vatrenim oružjem." },
+  { value: "16", label: "Teško fizičko naprezanje", shortLabel: "16. Teški fizički rad", description: "Poslovi s teškim fizičkim naprezanjem, ručnim rukovanjem većim teretima, nefiziološkim ili prisilnim položajem tijela." },
+  { value: "17", label: "Rad na visini većoj od 3 m", shortLabel: "17. Rad na visini", description: "Rad na visini većoj od 3 m kada se osnovnim pravilima zaštite na radu ne može spriječiti povećana opasnost od pada." },
+  { value: "18", label: "Pretežna izloženost štetnostima", shortLabel: "18. Štetnosti", description: "Poslovi s pretežnom izloženošću fizikalnim, kemijskim ili biološkim štetnostima, uključujući mikroklimu, buku, vibracije, tlak, zračenja, prašine, metale, kiseline, lužine, plinove, pesticide i biološke agense." },
+  { value: "19", label: "Poslovi prema posebnim propisima", shortLabel: "19. Posebni propisi", description: "Poslovi određeni posebnim propisima iz prometa, zdravstva, šumarstva, građevinarstva, industrije i drugih područja." },
+]);
+
+const JOB_WORK_PROFILE_PRESETS = Object.freeze([
+  {
+    key: "daily",
+    label: "Dnevna smjena",
+    description: "8 sati, bez noćnog rada",
+    environment: {
+      organizationOptions: ["jedna smjena", "bez noćnog rada"],
+      workTimeMode: "jedna smjena",
+      dailyDuration: "8 sati",
+      overtime: "povremeno",
+      nightWork: "ne",
+      breakRest: "30 minuta",
+      weeklyRest: "subota i nedjelja",
+      fieldWork: "ne",
+      remoteWork: "ne",
+      workRhythm: "normalan",
+      monotony: "ne",
+    },
+    flags: { shiftWork: false, nightWork: false, fieldWork: false },
+  },
+  {
+    key: "shifts",
+    label: "Smjenski rad",
+    description: "dvije ili tri smjene",
+    environment: {
+      organizationOptions: ["u smjenama", "ritam određen"],
+      workTimeMode: "dvije smjene",
+      dailyDuration: "8 sati",
+      overtime: "povremeno",
+      nightWork: "povremeno",
+      breakRest: "prema rasporedu",
+      weeklyRest: "prema rasporedu",
+      fieldWork: "ne",
+      workRhythm: "normiran",
+      monotony: "povremeno",
+    },
+    conditions: { medicalFitnessCertificate: true },
+    flags: { shiftWork: true, nightWork: true },
+  },
+  {
+    key: "field",
+    label: "Terenski rad",
+    description: "rad kod klijenata / lokacija",
+    environment: {
+      workplaceOptions: ["na otvorenom", "kod klijenta"],
+      organizationOptions: ["terenski rad", "brzi tempo rada"],
+      workTimeMode: "po pozivu",
+      dailyDuration: "neujednačeno",
+      overtime: "povremeno",
+      fieldWork: "često",
+      workRhythm: "neujednačen",
+    },
+    flags: { fieldWork: true, outdoorWork: true },
+  },
+  {
+    key: "height",
+    label: "Rad na visini",
+    description: "visina, ljestve, skele",
+    environment: {
+      workplaceOptions: ["na visini", "na otvorenom"],
+      organizationOptions: ["radi s grupom"],
+    },
+    conditions: {
+      medicalFitnessCertificate: true,
+      trainingRequired: true,
+      workConditions: ["rad na visini", "povećana izloženost ozljedama"],
+      bodyPositions: ["uspinjanje ljestvama", "rad stojeći"],
+      purPoints: ["17"],
+    },
+    flags: { workAtHeight: true, outdoorWork: true },
+  },
+  {
+    key: "manual",
+    label: "Ručni tereti",
+    description: "dizanje, nošenje, guranje",
+    conditions: {
+      manualHandling: true,
+      medicalFitnessCertificate: true,
+      bodyPositions: ["dizanje tereta", "prenošenje tereta", "guranje tereta", "učestalo sagibanje"],
+      purPoints: ["16"],
+    },
+    flags: { physicalHazardsWork: true },
+  },
+  {
+    key: "screen",
+    label: "Računalo / vid",
+    description: "rad s računalom i pregled vida",
+    environment: {
+      workplaceOptions: ["u zatvorenom"],
+      organizationOptions: ["jedna smjena"],
+    },
+    conditions: {
+      computerOver4h: true,
+      visionCheck: true,
+      importantFunctions: ["vid na daljinu", "vid na blizinu", "raspoznavanje boja"],
+    },
+    flags: { computerWork: true },
+  },
+  {
+    key: "chemicals",
+    label: "Kemikalije",
+    description: "STL, GVI i zaštita",
+    environment: {
+      substancesOptions: ["kemikalije"],
+      workplaceOptions: ["u zatvorenom"],
+    },
+    conditions: {
+      medicalFitnessCertificate: true,
+      workConditions: ["kemijske štetnosti", "prašina"],
+      purPoints: ["18"],
+    },
+    flags: { chemicalWork: true },
   },
 ]);
 const JOB_AI_STYLE_LABELS = Object.freeze({
@@ -123173,6 +123334,111 @@ function getSelectedJobEnvironmentOptions(sectionKey = "") {
   return Array.from(jobEnvironmentSections?.querySelectorAll(`[data-job-env-suggestion="${sectionKey}"].is-selected`) ?? [])
     .map((button) => String(button.dataset.value || "").trim())
     .filter(Boolean);
+}
+
+function uniqueJobValues(values = []) {
+  return Array.from(new Set(
+    (Array.isArray(values) ? values : [values])
+      .flatMap((value) => Array.isArray(value) ? value : [value])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean),
+  ));
+}
+
+function mergeJobValues(...groups) {
+  return uniqueJobValues(groups.flat());
+}
+
+function normalizeJobPurPointValues(values = []) {
+  const allowed = new Set(JOB_PUR_POINTS.map((point) => point.value));
+  return uniqueJobValues(values).filter((value) => allowed.has(value)).slice(0, 19);
+}
+
+function getJobPurPoint(value = "") {
+  return JOB_PUR_POINTS.find((point) => point.value === String(value || "").trim()) ?? null;
+}
+
+function getJobPurPointLabel(value = "") {
+  const point = getJobPurPoint(value);
+  return point ? `${point.value}. ${point.label}` : String(value || "").trim();
+}
+
+function getJobPurPointSummary(values = []) {
+  const labels = normalizeJobPurPointValues(values).map((value) => getJobPurPoint(value)?.shortLabel || getJobPurPointLabel(value));
+  return labels.length ? labels.join(", ") : "Nema odabranih PUR točaka";
+}
+
+function renderJobPurPointPicker(selectedValues = [], dataAttribute = "data-job-pur-point") {
+  const selected = new Set(normalizeJobPurPointValues(selectedValues));
+  return `
+    <div class="job-pur-picker">
+      ${JOB_PUR_POINTS.map((point) => `
+        <button type="button"
+          class="job-pur-option ${selected.has(point.value) ? "is-selected" : ""}"
+          ${dataAttribute}="${escapeHtml(point.value)}"
+          title="${escapeHtml(point.description)}">
+          <span>${escapeHtml(point.value)}</span>
+          <strong>${escapeHtml(point.label)}</strong>
+        </button>
+      `).join("")}
+    </div>
+  `;
+}
+
+function getJobWorkProfilePreset(key = "") {
+  return JOB_WORK_PROFILE_PRESETS.find((preset) => preset.key === String(key || "").trim()) ?? null;
+}
+
+function mergeJobPresetEnvironment(current = {}, preset = {}) {
+  const environment = { ...current };
+  const presetEnvironment = preset.environment ?? {};
+  JOB_ENVIRONMENT_SECTIONS.forEach((section) => {
+    const optionField = getJobEnvironmentOptionField(section.key);
+    if (optionField && presetEnvironment[optionField]) {
+      environment[optionField] = mergeJobValues(environment[optionField] ?? [], presetEnvironment[optionField]);
+      environment[`${section.key}Enabled`] = true;
+    }
+  });
+  JOB_ORGANIZATION_FIELDS.forEach((field) => {
+    if (presetEnvironment[field.key]) {
+      environment[field.key] = presetEnvironment[field.key];
+    }
+  });
+  if (Object.prototype.hasOwnProperty.call(presetEnvironment, "psychosocialRelevant")) {
+    environment.psychosocialRelevant = Boolean(presetEnvironment.psychosocialRelevant);
+  }
+  return environment;
+}
+
+function mergeJobPresetConditions(current = {}, preset = {}) {
+  const conditions = { ...current, notes: { ...(current.notes ?? {}) } };
+  const presetConditions = preset.conditions ?? {};
+  JOB_CONDITION_TOGGLES.forEach((toggle) => {
+    if (Object.prototype.hasOwnProperty.call(presetConditions, toggle.key)) {
+      conditions[toggle.key] = Boolean(presetConditions[toggle.key]);
+    }
+  });
+  JOB_CONDITION_CHOICE_BLOCKS.forEach((block) => {
+    if (presetConditions[block.field]) {
+      conditions[block.field] = mergeJobValues(conditions[block.field] ?? [], presetConditions[block.field]);
+    }
+  });
+  if (presetConditions.purPoints) {
+    conditions.purPoints = normalizeJobPurPointValues([...(conditions.purPoints ?? []), ...presetConditions.purPoints]);
+  }
+  return conditions;
+}
+
+function applyJobWorkProfilePreset(key = "") {
+  const preset = getJobWorkProfilePreset(key);
+  if (!preset) {
+    return;
+  }
+  const environment = mergeJobPresetEnvironment(getJobEnvironmentDraftFromForm(), preset);
+  const conditions = mergeJobPresetConditions(getJobConditionsDraftFromForm(), preset);
+  renderJobEnvironmentSections(environment);
+  renderJobConditionSections(conditions);
+  setInlineMessage(jobFormFeedback, `Primijenjen brzi izbor: ${preset.label}.`, "success");
 }
 
 function normalizeJobSentence(text = "") {
@@ -123598,7 +123864,15 @@ function renderJobEnvironmentSections(environment = {}) {
       <button type="button" class="${selectedOptions.has(suggestion) ? "is-selected" : ""}" data-job-env-suggestion="${escapeHtml(section.key)}" data-value="${escapeHtml(suggestion)}">${escapeHtml(suggestion)}</button>
     `).join("");
     const organizationFields = section.key === "organization"
-      ? `<div class="job-organization-grid">
+      ? `<div class="job-work-profile-presets" aria-label="Brzi izbor načina rada">
+          ${JOB_WORK_PROFILE_PRESETS.map((preset) => `
+            <button type="button" data-job-work-preset="${escapeHtml(preset.key)}">
+              <strong>${escapeHtml(preset.label)}</strong>
+              <span>${escapeHtml(preset.description)}</span>
+            </button>
+          `).join("")}
+        </div>
+        <div class="job-organization-grid">
           ${JOB_ORGANIZATION_FIELDS.map((field) => `
             <label>
               <span>${escapeHtml(field.label)}</span>
@@ -123682,8 +123956,18 @@ function renderJobConditionSections(conditions = {}) {
   selectionPanel.className = "job-condition-card is-wide";
   selectionPanel.innerHTML = `
     <div class="job-condition-card-head">
-      <strong>Položaj tijela i uvjeti rada</strong>
-      <span>odabiri za zapisnik</span>
+      <strong>Podaci za uputnicu i opis rada</strong>
+      <span>položaj, funkcije, uvjeti</span>
+    </div>
+    <div class="job-pur-panel">
+      <div class="job-pur-panel-head">
+        <div>
+          <strong>Posebni uvjeti rada (PUR)</strong>
+          <small>Točke iz članka 3. pravilnika. Odabir se prenosi u procjenu rizika i uputnicu.</small>
+        </div>
+        <span>${escapeHtml(getJobPurPointSummary(conditions.purPoints ?? []))}</span>
+      </div>
+      ${renderJobPurPointPicker(conditions.purPoints ?? [], "data-job-pur-point")}
     </div>
     ${JOB_CONDITION_CHOICE_BLOCKS.map((block) => renderJobMultiChoiceBlock(
       block.field,
@@ -123918,6 +124202,7 @@ function getJobConditionsDraftFromForm() {
     bodyPositions: [],
     importantFunctions: [],
     workConditions: [],
+    purPoints: [],
     bodyText: "",
     functionsText: "",
     conditionsText: "",
@@ -123937,6 +124222,8 @@ function getJobConditionsDraftFromForm() {
   ["bodyText", "functionsText", "conditionsText"].forEach((field) => {
     conditions[field] = String(jobConditionSections?.querySelector(`[data-job-condition-text="${field}"]`)?.value || "").trim();
   });
+  conditions.purPoints = normalizeJobPurPointValues(Array.from(jobConditionSections?.querySelectorAll("[data-job-pur-point].is-selected") ?? [])
+    .map((button) => String(button.dataset.jobPurPoint || "").trim()));
   return conditions;
 }
 
@@ -123958,7 +124245,7 @@ function syncJobFormAccess() {
   jobForm?.querySelectorAll("input, textarea, select").forEach((field) => {
     field.disabled = !canManage;
   });
-  jobForm?.querySelectorAll("[data-job-env-suggestion], [data-job-condition-choice], [data-job-hazard-add], [data-job-hazard-remove]").forEach((button) => {
+  jobForm?.querySelectorAll("[data-job-env-suggestion], [data-job-work-preset], [data-job-condition-choice], [data-job-pur-point], [data-job-hazard-add], [data-job-hazard-remove]").forEach((button) => {
     button.disabled = !canManage;
   });
   jobForm?.querySelectorAll(".jobs-nexai-button").forEach((button) => {
@@ -125181,13 +125468,19 @@ function createRiskAssessmentJobDraftFromCatalogJob(job = {}) {
     ...(conditions.workConditions ?? []).map((value) => `Mogući uvjet rada: ${value}.`),
   ]);
   const ppeText = joinUniqueRiskAssessmentTextBlocks((job.hazards ?? []).map((hazard) => hazard.ppeText));
+  const purPoints = normalizeJobPurPointValues(conditions.purPoints ?? []);
+  const visionCheckRequired = Boolean(conditions.visionCheck || (conditions.importantFunctions ?? []).some((value) => String(value || "").toLocaleLowerCase("hr").includes("vid")));
+  const safeWorkTrainingRequired = Boolean(conditions.safeWorkTrainingCertificate || conditions.trainingRequired);
+  const medicalFitnessRequired = Boolean(conditions.medicalFitnessCertificate || purPoints.length > 0);
   const hasSpecialWorkConditions = [
     conditions.computerOver4h,
     conditions.manualHandling,
     conditions.normedWork,
     conditions.repetitiveTasks,
     conditions.increasedInsurance,
+    medicalFitnessRequired,
     Boolean(conditionNotes.length),
+    purPoints.length > 0,
   ].some(Boolean);
 
   return createRiskAssessmentJobDraft({
@@ -125201,6 +125494,12 @@ function createRiskAssessmentJobDraftFromCatalogJob(job = {}) {
     workEnvironment: enabledEnvironment.join(", "),
     workplace: (environment.workplaceOptions ?? []).join(", "),
     workplaces: getJobCatalogEnvironmentText(job, "workplace"),
+    workplaceOptions: environment.workplaceOptions ?? [],
+    organizationOptions: environment.organizationOptions ?? [],
+    bodyPositions: conditions.bodyPositions ?? [],
+    importantFunctions: conditions.importantFunctions ?? [],
+    workConditions: conditions.workConditions ?? [],
+    purPoints,
     workOrganization: getJobCatalogEnvironmentText(job, "organization"),
     organization: getJobCatalogEnvironmentText(job, "organization"),
     workSubstances: getJobCatalogEnvironmentText(job, "substances"),
@@ -125216,6 +125515,20 @@ function createRiskAssessmentJobDraftFromCatalogJob(job = {}) {
     increasedInsurance: conditions.increasedInsurance ? "da" : "ne",
     requiredQualification: qualificationText,
     qualifications: qualificationText,
+    safeWorkTrainingRequired,
+    medicalFitnessRequired,
+    visionCheckRequired,
+    trainings: joinUniqueRiskAssessmentTextBlocks([
+      safeWorkTrainingRequired ? "Osposobljavanje za rad na siguran način povezano je s opisom poslova, radnim uputama, OZO i mjerama iz procjene rizika." : "",
+      getJobCatalogConditionNote(job, "trainingRequired"),
+      getJobCatalogConditionNote(job, "safeWorkTrainingCertificate"),
+    ]),
+    medicalExams: joinUniqueRiskAssessmentTextBlocks([
+      medicalFitnessRequired ? "Uvjerenje o zdravstvenoj sposobnosti za rad prema uputnici i posebnim uvjetima rada." : "",
+      visionCheckRequired ? "Pregled vida za poslove gdje su bitni vid na daljinu, vid na blizinu ili raspoznavanje boja." : "",
+      getJobCatalogConditionNote(job, "medicalFitnessCertificate"),
+      getJobCatalogConditionNote(job, "visionCheck"),
+    ]),
     ppeText,
     riskRows: createRiskAssessmentRiskRowsFromCatalogJob(job),
   });
@@ -125244,6 +125557,12 @@ function mergeCatalogJobsIntoRiskAssessmentJob(jobs = []) {
     workEnvironment: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.workEnvironment)),
     workplace: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.workplace)),
     workplaces: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.workplaces)),
+    workplaceOptions: mergeJobValues(drafts.map((draft) => draft.workplaceOptions ?? [])),
+    organizationOptions: mergeJobValues(drafts.map((draft) => draft.organizationOptions ?? [])),
+    bodyPositions: mergeJobValues(drafts.map((draft) => draft.bodyPositions ?? [])),
+    importantFunctions: mergeJobValues(drafts.map((draft) => draft.importantFunctions ?? [])),
+    workConditions: mergeJobValues(drafts.map((draft) => draft.workConditions ?? [])),
+    purPoints: normalizeJobPurPointValues(drafts.map((draft) => draft.purPoints ?? [])),
     workOrganization: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.workOrganization)),
     organization: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.workOrganization)),
     workSubstances: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.workSubstances)),
@@ -125257,6 +125576,11 @@ function mergeCatalogJobsIntoRiskAssessmentJob(jobs = []) {
     increasedInsurance: drafts.some((draft) => draft.increasedInsurance === "da") ? "da" : "ne",
     requiredQualification: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.requiredQualification)),
     qualifications: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.requiredQualification)),
+    safeWorkTrainingRequired: drafts.some((draft) => draft.safeWorkTrainingRequired),
+    medicalFitnessRequired: drafts.some((draft) => draft.medicalFitnessRequired),
+    visionCheckRequired: drafts.some((draft) => draft.visionCheckRequired),
+    trainings: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.trainings)),
+    medicalExams: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.medicalExams)),
     ppeText: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.ppeText)),
     riskRows,
   });
@@ -125565,6 +125889,248 @@ function getRiskAssessmentJobStatusOption(status = "") {
 function sanitizeRiskAssessmentTransientJob(job = {}) {
   const { catalogOpen, catalogSelection, aiProposal, ppeFilter, ppeSearch, ppeNewOpen, ppeNewDraft, ...persisted } = job;
   return persisted;
+}
+
+function buildRiskAssessmentPurReason(values = []) {
+  return normalizeJobPurPointValues(values)
+    .map((value) => {
+      const point = getJobPurPoint(value);
+      return point ? `${point.value}. ${point.label} - ${point.description}` : "";
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function buildRiskAssessmentSafeWorkTrainingText(job = {}) {
+  const title = String(job.jobTitle || "odabrani posao").trim();
+  const description = String(job.description || job.shortDescription || job.tasks || "").trim();
+  return [
+    `Osposobljavanje za rad na siguran način provodi se za posao ${title}.`,
+    description ? `Opis poslova koji ulazi u osposobljavanje: ${description}` : "",
+    "Radnik se upoznaje s opasnostima, štetnostima, naporima, radnim uputama, mjerama zaštite, uporabom OZO i postupanjem u slučaju izvanrednog događaja.",
+  ].filter(Boolean).join(" ");
+}
+
+function buildRiskAssessmentMedicalText(job = {}) {
+  const purSummary = getJobPurPointSummary(job.purPoints ?? []);
+  const parts = [
+    job.medicalFitnessRequired ? "Potrebno je uvjerenje o zdravstvenoj sposobnosti za rad prema uputnici." : "",
+    job.visionCheckRequired ? "Potrebno je uključiti pregled vida." : "",
+    (job.purPoints ?? []).length ? `Posebni uvjeti rada: ${purSummary}.` : "",
+  ];
+  return parts.filter(Boolean).join(" ");
+}
+
+function buildRiskAssessmentPresetSchedule(preset = {}) {
+  const env = preset.environment ?? {};
+  return [
+    env.workTimeMode ? `Način rada: ${env.workTimeMode}` : "",
+    env.dailyDuration ? `dnevno trajanje ${env.dailyDuration}` : "",
+    env.nightWork ? `noćni rad: ${env.nightWork}` : "",
+    env.breakRest ? `stanka/odmor: ${env.breakRest}` : "",
+    env.weeklyRest ? `tjedni odmor: ${env.weeklyRest}` : "",
+  ].filter(Boolean).join("; ");
+}
+
+function applyRiskAssessmentJobWorkProfilePreset(jobIndex, key = "") {
+  const preset = getJobWorkProfilePreset(key);
+  const current = riskAssessmentJobDrafts[jobIndex];
+  if (!preset || !current) {
+    return;
+  }
+  const presetEnvironment = preset.environment ?? {};
+  const presetConditions = preset.conditions ?? {};
+  const nextPurPoints = normalizeJobPurPointValues([
+    ...(current.purPoints ?? []),
+    ...(presetConditions.purPoints ?? []),
+  ]);
+  const next = {
+    ...current,
+    workplaceOptions: mergeJobValues(current.workplaceOptions ?? [], presetEnvironment.workplaceOptions ?? []),
+    organizationOptions: mergeJobValues(current.organizationOptions ?? [], presetEnvironment.organizationOptions ?? []),
+    bodyPositions: mergeJobValues(current.bodyPositions ?? [], presetConditions.bodyPositions ?? []),
+    importantFunctions: mergeJobValues(current.importantFunctions ?? [], presetConditions.importantFunctions ?? []),
+    workConditions: mergeJobValues(current.workConditions ?? [], presetConditions.workConditions ?? []),
+    purPoints: nextPurPoints,
+    workSchedule: current.workSchedule || buildRiskAssessmentPresetSchedule(preset),
+    workOrganization: current.workOrganization || buildJobOrganizationSentences(presetEnvironment.organizationOptions ?? [], presetEnvironment),
+    organization: current.organization || buildJobOrganizationSentences(presetEnvironment.organizationOptions ?? [], presetEnvironment),
+    workplace: current.workplace || (presetEnvironment.workplaceOptions ?? []).join(", "),
+    specialWorkConditions: nextPurPoints.length || current.specialWorkConditions === "da" ? "da" : current.specialWorkConditions,
+    specialWorkReason: current.specialWorkReason || buildRiskAssessmentPurReason(nextPurPoints),
+    specialConditions: current.specialConditions || buildRiskAssessmentPurReason(nextPurPoints),
+    safeWorkTrainingRequired: Boolean(current.safeWorkTrainingRequired || presetConditions.safeWorkTrainingCertificate || presetConditions.trainingRequired),
+    medicalFitnessRequired: Boolean(current.medicalFitnessRequired || presetConditions.medicalFitnessCertificate || nextPurPoints.length),
+    visionCheckRequired: Boolean(current.visionCheckRequired || presetConditions.visionCheck),
+    ...preset.flags,
+  };
+  if (next.safeWorkTrainingRequired && !next.trainings) {
+    next.trainings = buildRiskAssessmentSafeWorkTrainingText(next);
+  }
+  if ((next.medicalFitnessRequired || next.visionCheckRequired) && !next.medicalExams) {
+    next.medicalExams = buildRiskAssessmentMedicalText(next);
+  }
+  riskAssessmentJobDrafts[jobIndex] = next;
+  renderRiskAssessmentJobs();
+  renderRiskAssessmentOverview();
+  scheduleRiskAssessmentDraftAutosave();
+}
+
+function renderRiskAssessmentJobChoiceBlock(job = {}, field = "", label = "", options = []) {
+  const selected = new Set(uniqueJobValues(job[field] ?? []));
+  return `
+    <div class="risk-assessment-job-choice-block">
+      <span>${escapeHtml(label)}</span>
+      <div>
+        ${options.map((option) => `
+          <button type="button"
+            class="${selected.has(option) ? "is-selected" : ""}"
+            data-risk-job-choice="${escapeHtml(field)}"
+            data-value="${escapeHtml(option)}">${escapeHtml(option)}</button>
+        `).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderRiskAssessmentJobProfile(item = {}, index = 0) {
+  const purPoints = normalizeJobPurPointValues(item.purPoints ?? []);
+  const referralHighlights = [
+    item.safeWorkTrainingRequired ? "Rad na siguran način" : "",
+    item.medicalFitnessRequired ? "Zdravstvena sposobnost" : "",
+    item.visionCheckRequired ? "Pregled vida" : "",
+    purPoints.length ? getJobPurPointSummary(purPoints) : "",
+  ].filter(Boolean);
+  return `
+    <div class="risk-assessment-job-profile">
+      <div class="risk-assessment-job-profile-top">
+        <div>
+          <span class="section-kicker">Profil posla i uputnica</span>
+          <strong>Kako se posao stvarno obavlja</strong>
+          <small>${escapeHtml(referralHighlights.join(" · ") || "Odaberi smjene, uvjete rada, PUR i evidencije.")}</small>
+        </div>
+        <div class="risk-assessment-job-preset-strip">
+          ${JOB_WORK_PROFILE_PRESETS.map((preset) => `
+            <button type="button" data-risk-job-work-preset="${escapeHtml(preset.key)}">
+              <strong>${escapeHtml(preset.label)}</strong>
+              <span>${escapeHtml(preset.description)}</span>
+            </button>
+          `).join("")}
+        </div>
+      </div>
+
+      <div class="risk-assessment-job-core-grid">
+        <label><span>Organizacijska jedinica</span><select data-risk-job-field="organizationUnitId">${renderRiskAssessmentJobUnitOptions(item.organizationUnitId || "")}</select></label>
+        <label><span>Status posla</span><select data-risk-job-field="status">${renderRiskAssessmentOptions(RISK_ASSESSMENT_JOB_STATUS_OPTIONS, item.status || "draft")}</select></label>
+        <label><span>Radno mjesto</span><input data-risk-job-field="jobTitle" value="${escapeHtml(item.jobTitle || "")}" placeholder="npr. ASU operater" /></label>
+        <label><span>Broj radnika</span><input data-risk-job-field="workerCount" value="${escapeHtml(item.workerCount || "")}" /></label>
+        <label><span>Alkohol u krvi</span><input data-risk-job-field="alcoholLimit" value="${escapeHtml(item.alcoholLimit || "")}" placeholder="0,00 g/kg" /></label>
+      </div>
+
+      <div class="risk-assessment-job-profile-layout">
+        <section class="risk-assessment-job-profile-card is-risk">
+          <div class="risk-assessment-job-profile-card-head">
+            <span>${renderRiskAssessmentRiskIcon("briefcase")}</span>
+            <div>
+              <strong>Opis posla i organizacija rada</strong>
+              <small>Jedan unos za raspored, smjene i opis poslova.</small>
+            </div>
+          </div>
+          <div class="risk-assessment-job-profile-grid">
+            <label><span>Mjesto rada</span><input data-risk-job-field="workplace" value="${escapeHtml(item.workplace || "")}" placeholder="npr. pogon, skladište, teren" /></label>
+            <label><span>Raspored rada</span><input data-risk-job-field="workSchedule" value="${escapeHtml(item.workSchedule || "")}" placeholder="npr. jedna smjena, 8 sati" /></label>
+            <label class="field-span-full"><span>Organizacija rada</span><textarea data-risk-job-field="workOrganization" rows="2">${escapeHtml(item.workOrganization || item.organization || "")}</textarea></label>
+            <label class="field-span-full"><span>Opis poslova za procjenu i osposobljavanje</span><textarea data-risk-job-field="description" rows="3" placeholder="Opis poslova koji se koristi i za osposobljavanje za rad na siguran način.">${escapeHtml(item.description || "")}</textarea></label>
+            <label class="field-span-full"><span>Radni zadaci</span><textarea data-risk-job-field="tasks" rows="2" placeholder="Jedan zadatak po retku ili kratki opis.">${escapeHtml(item.tasks || "")}</textarea></label>
+          </div>
+          <div class="risk-assessment-work-flags is-profile">
+            ${RISK_ASSESSMENT_WORK_FLAGS.map((flag) => `
+              <label class="${item[flag.key] ? "is-selected" : ""}">
+                <input type="checkbox" data-risk-job-flag="${escapeHtml(flag.key)}" ${item[flag.key] ? "checked" : ""} />
+                <span>${escapeHtml(flag.label)}</span>
+              </label>
+            `).join("")}
+          </div>
+        </section>
+
+        <section class="risk-assessment-job-profile-card is-referral">
+          <div class="risk-assessment-job-profile-card-head">
+            <span>${renderRiskAssessmentRiskIcon("shield")}</span>
+            <div>
+              <strong>Uputnica, PUR i evidencije</strong>
+              <small>Podaci za zdravstvenu sposobnost, pregled vida i posebne uvjete rada.</small>
+            </div>
+          </div>
+          <div class="risk-assessment-job-referral-toggles">
+            <label class="${item.safeWorkTrainingRequired ? "is-selected" : ""}">
+              <input type="checkbox" data-risk-job-boolean="safeWorkTrainingRequired" ${item.safeWorkTrainingRequired ? "checked" : ""} />
+              <span>Rad na siguran način</span>
+            </label>
+            <label class="${item.medicalFitnessRequired ? "is-selected" : ""}">
+              <input type="checkbox" data-risk-job-boolean="medicalFitnessRequired" ${item.medicalFitnessRequired ? "checked" : ""} />
+              <span>Zdravstvena sposobnost</span>
+            </label>
+            <label class="${item.visionCheckRequired ? "is-selected" : ""}">
+              <input type="checkbox" data-risk-job-boolean="visionCheckRequired" ${item.visionCheckRequired ? "checked" : ""} />
+              <span>Pregled vida</span>
+            </label>
+          </div>
+          <div class="risk-assessment-job-pur">
+            <div class="risk-assessment-job-pur-head">
+              <strong>Točke posebnih uvjeta rada</strong>
+              <span>${escapeHtml(getJobPurPointSummary(purPoints))}</span>
+            </div>
+            ${renderJobPurPointPicker(purPoints, "data-risk-job-pur-point")}
+          </div>
+          <div class="risk-assessment-job-profile-grid">
+            <label><span>Posebni uvjeti rada</span><select data-risk-job-field="specialWorkConditions">${renderRiskAssessmentOptions(RISK_ASSESSMENT_YES_NO_OPTIONS, item.specialWorkConditions || "")}</select></label>
+            <label><span>Povećani staž</span><select data-risk-job-field="increasedInsurance">${renderRiskAssessmentOptions(RISK_ASSESSMENT_YES_NO_OPTIONS, item.increasedInsurance || "")}</select></label>
+            <label><span>Stručna sprema / osposobljenost</span><textarea data-risk-job-field="requiredQualification" rows="2">${escapeHtml(item.requiredQualification || item.qualifications || "")}</textarea></label>
+            <label class="field-span-full"><span>Napomena za posebne uvjete rada</span><textarea data-risk-job-field="specialWorkReason" rows="2">${escapeHtml(item.specialWorkReason || item.specialConditions || buildRiskAssessmentPurReason(purPoints))}</textarea></label>
+            <label class="field-span-full"><span>Potrebna osposobljavanja</span><textarea data-risk-job-field="trainings" rows="2">${escapeHtml(item.trainings || (item.safeWorkTrainingRequired ? buildRiskAssessmentSafeWorkTrainingText(item) : ""))}</textarea></label>
+            <label class="field-span-full"><span>Liječnički pregledi i vid</span><textarea data-risk-job-field="medicalExams" rows="2">${escapeHtml(item.medicalExams || buildRiskAssessmentMedicalText(item))}</textarea></label>
+          </div>
+        </section>
+      </div>
+
+      <section class="risk-assessment-job-profile-card is-uputnica">
+        <div class="risk-assessment-job-profile-card-head">
+          <span>${renderRiskAssessmentRiskIcon("note")}</span>
+          <div>
+            <strong>Detalji za uputnicu RA-1</strong>
+            <small>Odabiri odgovaraju poljima: mjesto rada, organizacija, položaj tijela, funkcije i uvjeti rada.</small>
+          </div>
+        </div>
+        <div class="risk-assessment-job-choice-grid">
+          ${renderRiskAssessmentJobChoiceBlock(item, "workplaceOptions", "Mjesto rada", ["u zatvorenom", "na otvorenom", "na visini", "u jami", "u vodi", "pod vodom", "u mokrom"])}
+          ${renderRiskAssessmentJobChoiceBlock(item, "organizationOptions", "Organizacija", ["u smjenama", "noćni rad", "terenski rad", "radi sam", "radi s grupom", "radi sa strankama", "rad na traci", "brzi tempo rada", "ritam određen", "monotonija"])}
+          ${renderRiskAssessmentJobChoiceBlock(item, "bodyPositions", "Položaj tijela i aktivnosti", JOB_BODY_POSITION_OPTIONS)}
+          ${renderRiskAssessmentJobChoiceBlock(item, "importantFunctions", "U poslu je bitno", JOB_IMPORTANT_FUNCTION_OPTIONS)}
+          ${renderRiskAssessmentJobChoiceBlock(item, "workConditions", "Uvjeti rada", JOB_WORK_CONDITION_OPTIONS)}
+        </div>
+      </section>
+
+      <section class="risk-assessment-job-profile-card is-resources">
+        <div class="risk-assessment-job-profile-card-head">
+          <span>${renderRiskAssessmentRiskIcon("note")}</span>
+          <div>
+            <strong>Oprema, tvari i mjesta rada</strong>
+            <small>Sažeto za procjenu, bez ponavljanja istih kategorija.</small>
+          </div>
+        </div>
+        <div class="risk-assessment-job-profile-grid">
+          <label><span>Strojevi, alati, aparati</span><textarea data-risk-job-field="toolsAndMachines" rows="2">${escapeHtml(item.toolsAndMachines || "")}</textarea></label>
+          <label><span>Popis radne opreme</span><textarea data-risk-job-field="workEquipment" rows="2">${escapeHtml(item.workEquipment || "")}</textarea></label>
+          <label><span>Radne tvari</span><textarea data-risk-job-field="workSubstances" rows="2">${escapeHtml(item.workSubstances || "")}</textarea></label>
+          <label><span>Mjesta rada</span><textarea data-risk-job-field="workplaces" rows="2">${escapeHtml(item.workplaces || "")}</textarea></label>
+          <label><span>Uređenje mjesta rada</span><textarea data-risk-job-field="workplaceArrangement" rows="2">${escapeHtml(item.workplaceArrangement || "")}</textarea></label>
+          <label><span>Štetnosti / izvori</span><textarea data-risk-job-field="harmfulSources" rows="2">${escapeHtml(item.harmfulSources || "")}</textarea></label>
+          <label class="field-span-full"><span>OZO - opis</span><textarea data-risk-job-field="ppeText" rows="2">${escapeHtml(item.ppeText || "")}</textarea></label>
+          <label class="field-span-full"><span>Napomena</span><textarea data-risk-job-field="note" rows="2">${escapeHtml(item.note || "")}</textarea></label>
+        </div>
+      </section>
+    </div>
+  `;
 }
 
 function sanitizeRiskAssessmentTransientUnit(unit = {}) {
@@ -127116,6 +127682,12 @@ function createRiskAssessmentJobDraft(initial = {}) {
     workEquipment: String(initial.workEquipment || ""),
     toolsAndMachines: String(initial.toolsAndMachines || ""),
     workplaces: String(initial.workplaces || ""),
+    workplaceOptions: uniqueJobValues(initial.workplaceOptions ?? []),
+    organizationOptions: uniqueJobValues(initial.organizationOptions ?? []),
+    bodyPositions: uniqueJobValues(initial.bodyPositions ?? []),
+    importantFunctions: uniqueJobValues(initial.importantFunctions ?? []),
+    workConditions: uniqueJobValues(initial.workConditions ?? []),
+    purPoints: normalizeJobPurPointValues(initial.purPoints ?? []),
     workplaceArrangement: String(initial.workplaceArrangement || ""),
     harmfulSources: String(initial.harmfulSources || ""),
     shiftWork: Boolean(initial.shiftWork),
@@ -127129,6 +127701,9 @@ function createRiskAssessmentJobDraft(initial = {}) {
     chemicalWork: Boolean(initial.chemicalWork),
     biologicalWork: Boolean(initial.biologicalWork),
     physicalHazardsWork: Boolean(initial.physicalHazardsWork),
+    safeWorkTrainingRequired: Boolean(initial.safeWorkTrainingRequired),
+    medicalFitnessRequired: Boolean(initial.medicalFitnessRequired),
+    visionCheckRequired: Boolean(initial.visionCheckRequired),
     trainings: String(initial.trainings || ""),
     medicalExams: String(initial.medicalExams || ""),
     ppeText: String(initial.ppeText || ""),
@@ -128069,6 +128644,27 @@ function updateRiskAssessmentJobDraftField(jobIndex, field, value) {
   scheduleRiskAssessmentDraftAutosave();
 }
 
+function updateRiskAssessmentJobBooleanField(jobIndex, field = "", checked = false) {
+  const current = riskAssessmentJobDrafts[jobIndex];
+  if (!current || !field) {
+    return;
+  }
+  const next = {
+    ...current,
+    [field]: Boolean(checked),
+  };
+  if (field === "safeWorkTrainingRequired" && checked && !next.trainings) {
+    next.trainings = buildRiskAssessmentSafeWorkTrainingText(next);
+  }
+  if ((field === "medicalFitnessRequired" || field === "visionCheckRequired") && checked && !next.medicalExams) {
+    next.medicalExams = buildRiskAssessmentMedicalText(next);
+  }
+  riskAssessmentJobDrafts[jobIndex] = next;
+  renderRiskAssessmentJobs();
+  renderRiskAssessmentOverview();
+  scheduleRiskAssessmentDraftAutosave();
+}
+
 function updateRiskAssessmentRiskRowDraftField(jobIndex, riskIndex, field, value) {
   const current = riskAssessmentJobDrafts[jobIndex];
   if (!current || !field || !Number.isInteger(riskIndex) || riskIndex < 0) {
@@ -128290,6 +128886,12 @@ function handleRiskAssessmentJobsListInput(event) {
 
   if (target.dataset.riskJobFlag) {
     updateRiskAssessmentJobDraftField(jobIndex, target.dataset.riskJobFlag, target.checked);
+    target.closest("label")?.classList.toggle("is-selected", target.checked);
+    return;
+  }
+
+  if (target.dataset.riskJobBoolean) {
+    updateRiskAssessmentJobBooleanField(jobIndex, target.dataset.riskJobBoolean, target.checked);
     return;
   }
 
@@ -128392,6 +128994,72 @@ function handleRiskAssessmentJobsListClick(event) {
       catalogOpen: !riskAssessmentJobDrafts[jobIndex]?.catalogOpen,
     };
     renderRiskAssessmentJobs();
+    return;
+  }
+
+  if (button.matches("[data-risk-job-work-preset]")) {
+    event.preventDefault();
+    applyRiskAssessmentJobWorkProfilePreset(jobIndex, button.dataset.riskJobWorkPreset || "");
+    return;
+  }
+
+  if (button.matches("[data-risk-job-choice]")) {
+    event.preventDefault();
+    const field = button.dataset.riskJobChoice || "";
+    const value = String(button.dataset.value || "").trim();
+    const current = riskAssessmentJobDrafts[jobIndex];
+    if (current && field && value) {
+      const selected = new Set(uniqueJobValues(current[field] ?? []));
+      if (selected.has(value)) {
+        selected.delete(value);
+      } else {
+        selected.add(value);
+      }
+      const next = {
+        ...current,
+        [field]: Array.from(selected),
+      };
+      if (field === "importantFunctions") {
+        next.visionCheckRequired = next.visionCheckRequired || Array.from(selected).some((entry) => String(entry || "").toLocaleLowerCase("hr").includes("vid"));
+      }
+      riskAssessmentJobDrafts[jobIndex] = next;
+      renderRiskAssessmentJobs();
+      renderRiskAssessmentOverview();
+      scheduleRiskAssessmentDraftAutosave();
+    }
+    return;
+  }
+
+  if (button.matches("[data-risk-job-pur-point]")) {
+    event.preventDefault();
+    const value = String(button.dataset.riskJobPurPoint || "").trim();
+    const current = riskAssessmentJobDrafts[jobIndex];
+    if (current && value) {
+      const selected = new Set(normalizeJobPurPointValues(current.purPoints ?? []));
+      if (selected.has(value)) {
+        selected.delete(value);
+      } else {
+        selected.add(value);
+      }
+      const purPoints = normalizeJobPurPointValues(Array.from(selected));
+      const next = {
+        ...current,
+        purPoints,
+        specialWorkConditions: purPoints.length ? "da" : current.specialWorkConditions,
+        medicalFitnessRequired: current.medicalFitnessRequired || purPoints.length > 0,
+      };
+      if (purPoints.length && !next.specialWorkReason) {
+        next.specialWorkReason = buildRiskAssessmentPurReason(purPoints);
+        next.specialConditions = next.specialWorkReason;
+      }
+      if (next.medicalFitnessRequired && !next.medicalExams) {
+        next.medicalExams = buildRiskAssessmentMedicalText(next);
+      }
+      riskAssessmentJobDrafts[jobIndex] = next;
+      renderRiskAssessmentJobs();
+      renderRiskAssessmentOverview();
+      scheduleRiskAssessmentDraftAutosave();
+    }
     return;
   }
 
@@ -128935,47 +129603,9 @@ function renderRiskAssessmentJobs() {
       ${renderRiskAssessmentJobAiProposal(item, index)}
       ${renderRiskAssessmentJobTemplateActions()}
 
-      <div class="risk-assessment-detail-grid">
-        <label><span>Organizacijska jedinica</span><select data-risk-job-field="organizationUnitId">${renderRiskAssessmentJobUnitOptions(item.organizationUnitId || "")}</select></label>
-        <label><span>Status posla</span><select data-risk-job-field="status">${renderRiskAssessmentOptions(RISK_ASSESSMENT_JOB_STATUS_OPTIONS, item.status || "draft")}</select></label>
-        <label><span>Radno mjesto</span><input data-risk-job-field="jobTitle" value="${escapeHtml(item.jobTitle || "")}" placeholder="npr. ASU operater" /></label>
-        <label><span>Broj radnika</span><input data-risk-job-field="workerCount" value="${escapeHtml(item.workerCount || "")}" /></label>
-        <label><span>Alkohol u krvi</span><input data-risk-job-field="alcoholLimit" value="${escapeHtml(item.alcoholLimit || "")}" placeholder="0,00 g/kg" /></label>
-        <label><span>Mjesto rada</span><input data-risk-job-field="workplace" value="${escapeHtml(item.workplace || "")}" /></label>
-        <label><span>Posebni uvjeti rada</span><select data-risk-job-field="specialWorkConditions">${renderRiskAssessmentOptions(RISK_ASSESSMENT_YES_NO_OPTIONS, item.specialWorkConditions || "")}</select></label>
-        <label><span>Povećani staž</span><select data-risk-job-field="increasedInsurance">${renderRiskAssessmentOptions(RISK_ASSESSMENT_YES_NO_OPTIONS, item.increasedInsurance || "")}</select></label>
-        <label><span>Radno okruženje</span><input data-risk-job-field="workEnvironment" value="${escapeHtml(item.workEnvironment || "")}" /></label>
-        <label><span>Raspored radnog vremena</span><input data-risk-job-field="workSchedule" value="${escapeHtml(item.workSchedule || "")}" /></label>
-        <label class="field-span-full"><span>Kratki opis posla</span><textarea data-risk-job-field="shortDescription" rows="2">${escapeHtml(item.shortDescription || "")}</textarea></label>
-        <label class="field-span-full"><span>Detaljni opis posla</span><textarea data-risk-job-field="detailedDescription" rows="3">${escapeHtml(item.detailedDescription || "")}</textarea></label>
-        <label class="field-span-full"><span>Opis radnog mjesta</span><textarea data-risk-job-field="workplaceDescription" rows="3">${escapeHtml(item.workplaceDescription || "")}</textarea></label>
-        <label class="field-span-full"><span>Poslovi / radni zadaci</span><textarea data-risk-job-field="tasks" rows="3" placeholder="Jedan zadatak po retku ili u punom opisu.">${escapeHtml(item.tasks || "")}</textarea></label>
-        <label class="field-span-full"><span>Opis poslova i aktivnosti</span><textarea data-risk-job-field="description" rows="4" placeholder="Detaljno opiši što radnik radi na tom radnom mjestu.">${escapeHtml(item.description || "")}</textarea></label>
-        <label class="field-span-full"><span>Ako DA, zbog kojih okolnosti / napomena za posebne uvjete</span><textarea data-risk-job-field="specialWorkReason" rows="2">${escapeHtml(item.specialWorkReason || item.specialConditions || "")}</textarea></label>
-        <label><span>Stručna sprema / osposobljenost</span><textarea data-risk-job-field="requiredQualification" rows="2">${escapeHtml(item.requiredQualification || item.qualifications || "")}</textarea></label>
-        <label><span>Organizacija rada i radno vrijeme</span><textarea data-risk-job-field="workOrganization" rows="2">${escapeHtml(item.workOrganization || item.organization || "")}</textarea></label>
-        <label><span>Radne tvari</span><textarea data-risk-job-field="workSubstances" rows="2">${escapeHtml(item.workSubstances || "")}</textarea></label>
-        <label><span>Popis radne opreme</span><textarea data-risk-job-field="workEquipment" rows="2">${escapeHtml(item.workEquipment || "")}</textarea></label>
-        <label><span>Alati i strojevi</span><textarea data-risk-job-field="toolsAndMachines" rows="2">${escapeHtml(item.toolsAndMachines || "")}</textarea></label>
-        <label><span>Mjesta rada</span><textarea data-risk-job-field="workplaces" rows="2">${escapeHtml(item.workplaces || "")}</textarea></label>
-        <label><span>Uređenje mjesta rada</span><textarea data-risk-job-field="workplaceArrangement" rows="2">${escapeHtml(item.workplaceArrangement || "")}</textarea></label>
-        <label><span>Izvori fizikalnih, kemijskih i bioloških štetnosti</span><textarea data-risk-job-field="harmfulSources" rows="2">${escapeHtml(item.harmfulSources || "")}</textarea></label>
-        <label><span>Potrebna osposobljavanja</span><textarea data-risk-job-field="trainings" rows="2">${escapeHtml(item.trainings || "")}</textarea></label>
-        <label><span>Liječnički pregledi</span><textarea data-risk-job-field="medicalExams" rows="2">${escapeHtml(item.medicalExams || "")}</textarea></label>
-        <label><span>Osobna zaštitna oprema - opis</span><textarea data-risk-job-field="ppeText" rows="2">${escapeHtml(item.ppeText || "")}</textarea></label>
-        <label class="field-span-full"><span>Napomena</span><textarea data-risk-job-field="note" rows="2">${escapeHtml(item.note || "")}</textarea></label>
-      </div>
+      ${renderRiskAssessmentJobProfile(item, index)}
 
       ${renderRiskAssessmentJobDocumentPreview(item, index)}
-
-      <div class="risk-assessment-work-flags">
-        ${RISK_ASSESSMENT_WORK_FLAGS.map((flag) => `
-          <label>
-            <input type="checkbox" data-risk-job-flag="${escapeHtml(flag.key)}" ${item[flag.key] ? "checked" : ""} />
-            <span>${escapeHtml(flag.label)}</span>
-          </label>
-        `).join("")}
-      </div>
 
       <div class="risk-assessment-eligibility-block">
         <div class="risk-assessment-mini-title">

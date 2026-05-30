@@ -192,10 +192,14 @@ test("jobs keep environment, conditions and hazard catalog details", () => {
       },
       conditions: {
         trainingRequired: true,
+        safeWorkTrainingCertificate: true,
+        medicalFitnessCertificate: true,
+        visionCheck: true,
         computerOver4h: false,
         bodyPositions: ["rad stojeći", "u pokretu"],
         importantFunctions: ["vid na daljinu"],
         workConditions: ["rad na visini"],
+        purPoints: ["17"],
         notes: {
           trainingRequired: "Potrebno osposobljavanje za siguran rad.",
         },
@@ -231,6 +235,10 @@ test("jobs keep environment, conditions and hazard catalog details", () => {
   assert.deepEqual(job.environment.workplaceOptions, ["u zatvorenom", "na visini"]);
   assert.deepEqual(job.environment.organizationOptions, ["terenski rad"]);
   assert.equal(job.conditions.trainingRequired, true);
+  assert.equal(job.conditions.safeWorkTrainingCertificate, true);
+  assert.equal(job.conditions.medicalFitnessCertificate, true);
+  assert.equal(job.conditions.visionCheck, true);
+  assert.deepEqual(job.conditions.purPoints, ["17"]);
   assert.equal(job.aiInstructions.description.style, "short");
   assert.equal(job.aiInstructions.description.mustInclude, "rad kod klijenta");
   assert.equal(job.hazards[0].catalogLabel, "S visine");
@@ -272,8 +280,17 @@ test("risk assessments keep detailed ARMOR job rows and eligibility data", () =>
           workOrganization: "Smjenski rad.",
           workEquipment: "Postrojenje, ručni alat, transportna sredstva.",
           workplaces: "Pogon, skladište i vanjski plato.",
+          workplaceOptions: ["u zatvorenom", "na otvorenom"],
+          organizationOptions: ["u smjenama", "noćni rad"],
+          bodyPositions: ["rad stojeći"],
+          importantFunctions: ["vid na daljinu"],
+          workConditions: ["buka"],
+          purPoints: ["18"],
           workplaceArrangement: "Prohodne komunikacije i označene zone.",
           harmfulSources: "Kisik, dušik, buka i mikroklima.",
+          safeWorkTrainingRequired: true,
+          medicalFitnessRequired: true,
+          visionCheckRequired: true,
           eligibility: {
             pregnantWorkers: { allowed: "ne", note: "Nije dopušten rad u zoni plinova." },
             minorWorkers: { allowed: "np", note: "" },
@@ -300,6 +317,10 @@ test("risk assessments keep detailed ARMOR job rows and eligibility data", () =>
   );
 
   assert.equal(assessment.jobs[0].specialWorkConditions, "da");
+  assert.deepEqual(assessment.jobs[0].purPoints, ["18"]);
+  assert.equal(assessment.jobs[0].safeWorkTrainingRequired, true);
+  assert.equal(assessment.jobs[0].medicalFitnessRequired, true);
+  assert.equal(assessment.jobs[0].visionCheckRequired, true);
   assert.equal(assessment.jobs[0].eligibility.pregnantWorkers.allowed, "ne");
   assert.equal(assessment.jobs[0].riskRows[0].group, "1. Kemijske štetnosti");
   assert.equal(assessment.jobs[0].riskRows[0].workNote, "Rad u blizini spremnika i instalacija.");
@@ -932,7 +953,7 @@ test("people training records normalize certificates, statuses and filters", () 
   assert.equal(record.workPlace, "Pogon Jankomir");
   assert.equal(record.activityStatus, "DA");
   assert.equal(record.email, "ivan@acme.hr");
-  assert.equal(record.trainingItems.length, 6);
+  assert.equal(record.trainingItems.length, 8);
   assert.equal(record.trainingItems.find((item) => item.type === "safe_work").recordNumber, "RN 26-615-ZNR-123456");
   assert.equal(record.trainingItems.find((item) => item.type === "safe_work").details.theoryDate, "2026-01-15");
   assert.equal(record.trainingItems.find((item) => item.type === "safe_work").details.jobDescription, "Utovar robe i rad s paletnim viličarom");

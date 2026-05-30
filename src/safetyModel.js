@@ -162,6 +162,8 @@ export const PERSON_TRAINING_TYPE_OPTIONS = [
   { value: "flammable_storage", label: "Skladištenje zapaljivih tekućina i plinova", shortLabel: "Zapaljivo" },
   { value: "adr", label: "ADR", shortLabel: "ADR" },
   { value: "medical_exam", label: "Liječnički pregled", shortLabel: "Liječnički" },
+  { value: "medical_fitness_certificate", label: "Uvjerenje o zdravstvenoj sposobnosti za rad", shortLabel: "Zdravstvena" },
+  { value: "vision_exam", label: "Pregled vida", shortLabel: "Vid" },
   { value: "professional_training", label: "Stručno osposobljavanje", shortLabel: "Stručno" },
 ];
 
@@ -5166,6 +5168,12 @@ function normalizeRiskAssessmentJobs(items = []) {
       workEquipment: normalizeText(item?.workEquipment),
       toolsAndMachines: normalizeText(item?.toolsAndMachines),
       workplaces: normalizeText(item?.workplaces),
+      workplaceOptions: normalizeJobOptionValues(item?.workplaceOptions),
+      organizationOptions: normalizeJobOptionValues(item?.organizationOptions),
+      bodyPositions: normalizeJobOptionValues(item?.bodyPositions),
+      importantFunctions: normalizeJobOptionValues(item?.importantFunctions),
+      workConditions: normalizeJobOptionValues(item?.workConditions),
+      purPoints: normalizeJobOptionValues(item?.purPoints).slice(0, 19),
       workplaceArrangement: normalizeText(item?.workplaceArrangement),
       harmfulSources: normalizeText(item?.harmfulSources),
       shiftWork: normalizeBoolean(item?.shiftWork, false),
@@ -5179,6 +5187,9 @@ function normalizeRiskAssessmentJobs(items = []) {
       chemicalWork: normalizeBoolean(item?.chemicalWork, false),
       biologicalWork: normalizeBoolean(item?.biologicalWork, false),
       physicalHazardsWork: normalizeBoolean(item?.physicalHazardsWork, false),
+      safeWorkTrainingRequired: normalizeBoolean(item?.safeWorkTrainingRequired, false),
+      medicalFitnessRequired: normalizeBoolean(item?.medicalFitnessRequired, false),
+      visionCheckRequired: normalizeBoolean(item?.visionCheckRequired, false),
       trainings: normalizeText(item?.trainings),
       medicalExams: normalizeText(item?.medicalExams),
       ppeText: normalizeText(item?.ppeText),
@@ -5201,6 +5212,12 @@ function normalizeRiskAssessmentJobs(items = []) {
     || item.workEquipment
     || item.toolsAndMachines
     || item.workplaces
+    || item.workplaceOptions.length > 0
+    || item.organizationOptions.length > 0
+    || item.bodyPositions.length > 0
+    || item.importantFunctions.length > 0
+    || item.workConditions.length > 0
+    || item.purPoints.length > 0
     || item.harmfulSources
     || item.trainings
     || item.medicalExams
@@ -5515,6 +5532,9 @@ function normalizeJobConditions(value = {}) {
   return {
     educationRequired: normalizeBoolean(source.educationRequired, false),
     trainingRequired: normalizeBoolean(source.trainingRequired, false),
+    safeWorkTrainingCertificate: normalizeBoolean(source.safeWorkTrainingCertificate, false),
+    medicalFitnessCertificate: normalizeBoolean(source.medicalFitnessCertificate, false),
+    visionCheck: normalizeBoolean(source.visionCheck, false),
     computerOver4h: normalizeBoolean(source.computerOver4h, false),
     increasedInsurance: normalizeBoolean(source.increasedInsurance, false),
     manualHandling: normalizeBoolean(source.manualHandling, false),
@@ -5524,6 +5544,7 @@ function normalizeJobConditions(value = {}) {
     bodyPositions: normalizeJobOptionValues(source.bodyPositions),
     importantFunctions: normalizeJobOptionValues(source.importantFunctions),
     workConditions: normalizeJobOptionValues(source.workConditions),
+    purPoints: normalizeJobOptionValues(source.purPoints).slice(0, 19),
     bodyText: normalizeText(source.bodyText),
     functionsText: normalizeText(source.functionsText),
     conditionsText: normalizeText(source.conditionsText),
@@ -8831,6 +8852,12 @@ export function filterRiskAssessments(
         entry.workEquipment,
         entry.toolsAndMachines,
         entry.workplaces,
+        ...(entry.workplaceOptions ?? []),
+        ...(entry.organizationOptions ?? []),
+        ...(entry.bodyPositions ?? []),
+        ...(entry.importantFunctions ?? []),
+        ...(entry.workConditions ?? []),
+        ...(entry.purPoints ?? []),
         entry.workplaceArrangement,
         entry.harmfulSources,
         entry.trainings,
@@ -8985,6 +9012,7 @@ export function filterJobs(
       ...(conditions.bodyPositions ?? []),
       ...(conditions.importantFunctions ?? []),
       ...(conditions.workConditions ?? []),
+      ...(conditions.purPoints ?? []),
       conditions.bodyText,
       conditions.functionsText,
       conditions.conditionsText,
