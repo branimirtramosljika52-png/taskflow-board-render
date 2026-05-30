@@ -174,9 +174,11 @@ import {
   RISK_PPE_SOURCE_URL,
 } from "./riskPpeCatalog.js";
 import {
+  findRiskChemicalOfficialGvi,
   RISK_CHEMICAL_SUBSTANCES_CATALOG,
   RISK_CHEMICAL_SUBSTANCES_SOURCE_URL,
   RISK_CHEMICAL_SUBSTANCES_STATS,
+  resolveRiskChemicalPrilogIiGuideline,
 } from "./riskChemicalSubstancesCatalog.js";
 
 const API_BASE = "/api";
@@ -121309,9 +121311,61 @@ function sanitizeRiskAssessmentTransientChemical(chemical = {}) {
   return createRiskAssessmentChemicalDraft(chemical);
 }
 
+function formatRiskAssessmentPrilogIiExposure(guideline = {}) {
+  if (!guideline?.division) {
+    return "";
+  }
+  const matches = guideline.matchingHazardCodes?.length
+    ? `H oznake: ${guideline.matchingHazardCodes.join(", ")}.`
+    : "Bez H oznaka iz podjela B-E ili H oznake nisu prepoznate.";
+  return [
+    `Prilog II smjernica za utvrđivanje GVI: podjela ${guideline.division}.`,
+    `Pare: ${guideline.vaporGvi}.`,
+    `Prašina: ${guideline.dustGvi}.`,
+    matches,
+  ].filter(Boolean).join(" ");
+}
+
+function enrichRiskAssessmentChemicalWithOfficialExposure(chemical = {}) {
+  const draft = createRiskAssessmentChemicalDraft(chemical);
+  const officialGvi = findRiskChemicalOfficialGvi(draft);
+  if (officialGvi) {
+    const officialExposure = formatRiskAssessmentOfficialExposure(officialGvi);
+    return createRiskAssessmentChemicalDraft({
+      ...draft,
+      exposureLimits: joinUniqueRiskAssessmentTextBlocks([
+        officialExposure ? `Službeni GVI/KGVI prema Prilogu I: ${officialExposure}` : "",
+        draft.exposureLimits,
+      ]),
+      note: joinUniqueRiskAssessmentTextBlocks([
+        draft.note,
+        `Službena GVI/KGVI vrijednost pronađena u Prilogu I za ${officialGvi.name || draft.name}.`,
+        officialGvi.directive ? `Direktiva: ${officialGvi.directive}` : "",
+        officialGvi.note ? `Napomena: ${officialGvi.note}` : "",
+        `Izvor: ${RISK_CHEMICAL_SUBSTANCES_SOURCE_URL}`,
+      ]),
+    });
+  }
+  const guideline = resolveRiskChemicalPrilogIiGuideline(draft);
+  const prilogIiExposure = formatRiskAssessmentPrilogIiExposure(guideline);
+  return createRiskAssessmentChemicalDraft({
+    ...draft,
+    exposureLimits: joinUniqueRiskAssessmentTextBlocks([
+      draft.exposureLimits,
+      prilogIiExposure,
+    ]),
+    note: joinUniqueRiskAssessmentTextBlocks([
+      draft.note,
+      `Nije pronađen službeni GVI/KGVI u Prilogu I; primijenjena je smjernica iz Priloga II (${guideline.division}).`,
+      guideline.description,
+      `Izvor: ${RISK_CHEMICAL_SUBSTANCES_SOURCE_URL}`,
+    ]),
+  });
+}
+
 function mapPubChemCompoundToRiskAssessmentChemical(compound = {}) {
   const safety = compound.safety || {};
-  return createRiskAssessmentChemicalDraft({
+  return enrichRiskAssessmentChemicalWithOfficialExposure({
     name: compound.name || compound.title || compound.iupacName || "",
     casNumber: Array.isArray(compound.casNumbers) ? compound.casNumbers[0] : "",
     formula: compound.molecularFormula || "",
@@ -121330,7 +121384,7 @@ function mapPubChemCompoundToRiskAssessmentChemical(compound = {}) {
 }
 
 function mapStlChemicalToRiskAssessmentChemical(chemical = {}) {
-  return createRiskAssessmentChemicalDraft({
+  return enrichRiskAssessmentChemicalWithOfficialExposure({
     ...chemical,
     source: chemical.source || "STL",
   });

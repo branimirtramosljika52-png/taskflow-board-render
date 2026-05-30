@@ -8774,3 +8774,153 @@ export const RISK_CHEMICAL_SUBSTANCES_STATS = Object.freeze({
   bgvCount: 91,
   totalCount: 639,
 });
+
+export const RISK_CHEMICAL_PRILOG_II_GUIDELINES = Object.freeze([
+  {
+    division: "A",
+    vaporGvi: ">50-500 ppm",
+    dustGvi: ">1-10 mg/m3",
+    hazardCodes: Object.freeze(["H315", "H319"]),
+    description: "Nadražaj kože/očiju ili tvari bez H oznaka iz podjela B-E.",
+  },
+  {
+    division: "B",
+    vaporGvi: ">5-50 ppm",
+    dustGvi: ">0,1-1 mg/m3",
+    hazardCodes: Object.freeze(["H302", "H312", "H332", "H335", "H336", "H304"]),
+    description: "Akutna toksičnost 4, TCOJ 3 ili aspiracijska toksičnost 1.",
+  },
+  {
+    division: "C",
+    vaporGvi: ">0,5-5 ppm",
+    dustGvi: ">0,01-0,1 mg/m3",
+    hazardCodes: Object.freeze([
+      "H301",
+      "H311",
+      "H331",
+      "H314",
+      "H318",
+      "H317",
+      "H341",
+      "H351",
+      "H361",
+      "H361F",
+      "H361D",
+      "H361FD",
+      "H362",
+      "H371",
+      "H373",
+    ]),
+    description: "Akutna toksičnost 3, nagrizanje kože, ozbiljno oštećenje oka, senzibilizacija kože, Muta. 2, Karc. 2, Repr. 2, laktacija, TCOJ/TCOP 2.",
+  },
+  {
+    division: "D",
+    vaporGvi: "<0,5 ppm",
+    dustGvi: "<0,01 mg/m3",
+    hazardCodes: Object.freeze([
+      "H300",
+      "H310",
+      "H330",
+      "H360",
+      "H360F",
+      "H360D",
+      "H360FD",
+      "H360DF",
+      "H370",
+      "H372",
+    ]),
+    description: "Akutna toksičnost 1/2, Repr. 1A/1B, TCOJ 1 ili TCOP 1.",
+  },
+  {
+    division: "E",
+    vaporGvi: "Potražiti savjet specijalista",
+    dustGvi: "Potražiti savjet specijalista",
+    hazardCodes: Object.freeze(["H334", "H340", "H350", "H350I"]),
+    description: "Respiratorna senzibilizacija, Muta. 1A/1B ili Karc. 1A/1B.",
+  },
+]);
+
+const RISK_CHEMICAL_PRILOG_II_PRIORITY = Object.freeze(["E", "D", "C", "B"]);
+const RISK_CHEMICAL_PRILOG_II_BY_DIVISION = new Map(
+  RISK_CHEMICAL_PRILOG_II_GUIDELINES.map((item) => [item.division, item]),
+);
+
+function normalizeRiskChemicalCatalogText(value = "") {
+  return String(value || "")
+    .toLocaleLowerCase("hr-HR")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeRiskChemicalCatalogCode(value = "") {
+  return String(value || "")
+    .trim()
+    .toLocaleUpperCase("hr-HR")
+    .replace(/\s+/g, "");
+}
+
+function extractRiskChemicalHazardCodes(value = {}) {
+  const raw = [
+    value.classification,
+    value.signalWords,
+    value.pictograms,
+    value.hazardStatements,
+    value.precautionaryStatements,
+    value.note,
+  ].flatMap((entry) => Array.isArray(entry) ? entry : [entry]).join(" ");
+  return Array.from(new Set(
+    Array.from(String(raw || "").matchAll(/\bH\d{3}[A-Za-z]*\b/g))
+      .map((match) => normalizeRiskChemicalCatalogCode(match[0])),
+  ));
+}
+
+export function findRiskChemicalOfficialGvi(value = {}) {
+  const casNumber = normalizeRiskChemicalCatalogCode(value.casNumber || value.cas || "");
+  const ecNumber = normalizeRiskChemicalCatalogCode(value.ecNumber || value.ec || "");
+  const name = normalizeRiskChemicalCatalogText(value.name || value.title || value.pubChemName || "");
+  const hasOfficialGviValue = (item) => Boolean(item.gviPpm || item.gviMgM3 || item.kgviPpm || item.kgviMgM3);
+  const gviItems = RISK_CHEMICAL_SUBSTANCES_CATALOG.filter((item) => item.type === "gvi" && hasOfficialGviValue(item));
+  if (casNumber) {
+    const byCas = gviItems.find((item) => normalizeRiskChemicalCatalogCode(item.casNumber) === casNumber);
+    if (byCas) {
+      return byCas;
+    }
+  }
+  if (ecNumber) {
+    const byEc = gviItems.find((item) => normalizeRiskChemicalCatalogCode(item.ecNumber) === ecNumber);
+    if (byEc) {
+      return byEc;
+    }
+  }
+  if (!name) {
+    return null;
+  }
+  return gviItems.find((item) => {
+    const catalogName = normalizeRiskChemicalCatalogText(item.name);
+    return catalogName === name || catalogName.split(" ").includes(name) || name.includes(catalogName);
+  }) || null;
+}
+
+export function resolveRiskChemicalPrilogIiGuideline(value = {}) {
+  const hazardCodes = extractRiskChemicalHazardCodes(value);
+  for (const division of RISK_CHEMICAL_PRILOG_II_PRIORITY) {
+    const guideline = RISK_CHEMICAL_PRILOG_II_BY_DIVISION.get(division);
+    const matchingHazardCodes = hazardCodes.filter((code) => guideline.hazardCodes.includes(code));
+    if (matchingHazardCodes.length) {
+      return {
+        ...guideline,
+        source: "Narodne novine 91/2018, Prilog II",
+        matchingHazardCodes,
+      };
+    }
+  }
+  const fallback = RISK_CHEMICAL_PRILOG_II_BY_DIVISION.get("A");
+  return {
+    ...fallback,
+    source: "Narodne novine 91/2018, Prilog II",
+    matchingHazardCodes: hazardCodes.filter((code) => fallback.hazardCodes.includes(code)),
+  };
+}
