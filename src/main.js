@@ -115884,6 +115884,12 @@ jobSelectedHazards?.addEventListener("input", (event) => {
   }
   const fieldName = field.dataset.jobHazardField;
   hazard[fieldName] = "value" in field ? String(field.value || "") : "";
+  if (field instanceof HTMLTextAreaElement && (fieldName === "unwantedEvent" || fieldName === "measures")) {
+    const counter = field.closest(".job-hazard-large-field")?.querySelector(".job-hazard-character-count");
+    if (counter) {
+      counter.textContent = `${getRiskAssessmentTextareaCount(field.value)} / 1000`;
+    }
+  }
   if (fieldName === "probability" || fieldName === "consequence") {
     hazard.riskLevel = calculateJobHazardRiskLevel(hazard.probability, hazard.consequence) || "";
     renderJobSelectedHazards();
@@ -123109,38 +123115,91 @@ function renderJobSelectedHazards() {
       hazard.riskLevel = calculatedRiskLevel;
     }
     const riskTone = getJobHazardRiskTone(hazard.riskLevel);
+    const riskType = getRiskAssessmentRiskType(hazard);
+    const riskScore = getRiskAssessmentRiskScoreValue(hazard);
     article.className = `job-selected-hazard-card is-${riskTone}`;
     article.dataset.jobHazardIndex = String(index);
     const riskLabel = String(hazard.riskLevel || "Rizik nije određen").trim();
-    const probabilityLabel = getRiskAssessmentOptionLabel(RISK_ASSESSMENT_PROBABILITY_OPTIONS, hazard.probability);
-    const consequenceLabel = getRiskAssessmentOptionLabel(RISK_ASSESSMENT_CONSEQUENCE_OPTIONS, hazard.consequence);
+    const classificationText = [hazard.category, hazard.group].filter(Boolean).join(" / ");
+    const unwantedEventValue = hazard.unwantedEvent || "";
+    const measuresValue = hazard.measures || "";
     article.innerHTML = `
       <div class="job-selected-hazard-head">
+        <span class="job-hazard-back-indicator" aria-hidden="true">${renderRiskAssessmentRiskIcon("back")}</span>
         <div class="job-selected-hazard-title">
-          <span class="job-hazard-code">${escapeHtml(hazard.catalogCode || "-")}</span>
-          <div>
-            <strong>${escapeHtml(hazard.catalogLabel || "Opasnost")}</strong>
-            <small>${escapeHtml(hazard.group || hazard.category || "")}</small>
+          <div class="job-hazard-title-row">
+            <input class="job-hazard-code" data-job-hazard-field="catalogCode" value="${escapeHtml(hazard.catalogCode || "")}" placeholder="1.2" aria-label="Broj stavke opasnosti" />
+            <input class="job-hazard-title-input" data-job-hazard-field="catalogLabel" value="${escapeHtml(hazard.catalogLabel || "Opasnost")}" placeholder="Naziv opasnosti, štetnosti ili napora" aria-label="Naziv stavke opasnosti" />
+          </div>
+          <div class="job-hazard-meta-row">
+            <span class="job-hazard-type-pill is-${escapeHtml(riskType.value)}">${escapeHtml(riskType.label)}</span>
+            <span>${escapeHtml(classificationText || "Ručno dodana stavka")}</span>
           </div>
         </div>
         <div class="job-selected-hazard-actions">
-          <span class="job-hazard-risk-pill is-${riskTone}">${escapeHtml(riskLabel)}</span>
-          <button type="button" class="job-hazard-remove-button" data-job-hazard-remove="${index}" aria-label="Ukloni opasnost">Ukloni</button>
+          <button type="button" class="job-hazard-remove-button" data-job-hazard-remove="${index}" aria-label="Ukloni opasnost">${renderRiskAssessmentRiskIcon("close")}<span>Ukloni</span></button>
+          <button type="submit" class="job-hazard-save-button">${renderRiskAssessmentRiskIcon("save")}<span>Spremi posao</span></button>
         </div>
       </div>
-      <div class="job-hazard-summary-strip">
-        <span><strong>Vjerojatnost</strong>${escapeHtml(probabilityLabel)}</span>
-        <span><strong>Posljedica</strong>${escapeHtml(consequenceLabel)}</span>
-        <span><strong>OZO</strong>${escapeHtml(hazard.ppeText || "-")}</span>
-      </div>
-      <div class="job-hazard-fields">
-        <label class="field field-span-full job-hazard-compact-textarea"><span>Mogući neželjeni događaj</span><textarea data-job-hazard-field="unwantedEvent" rows="1">${escapeHtml(hazard.unwantedEvent || "")}</textarea></label>
-        <label class="field"><span>Vjerojatnost</span><select data-job-hazard-field="probability">${renderRiskAssessmentOptions(RISK_ASSESSMENT_PROBABILITY_OPTIONS, hazard.probability || "")}</select></label>
-        <label class="field"><span>Posljedica</span><select data-job-hazard-field="consequence">${renderRiskAssessmentOptions(RISK_ASSESSMENT_CONSEQUENCE_OPTIONS, hazard.consequence || "")}</select></label>
-        <label class="field job-risk-output-field"><span>Rizik</span><output class="job-risk-output is-${riskTone}">${escapeHtml(riskLabel)}</output></label>
-        <label class="field field-span-full job-hazard-compact-textarea"><span>Mjere za uklanjanje/smanjivanje opasnosti</span><textarea data-job-hazard-field="measures" rows="1">${escapeHtml(hazard.measures || "")}</textarea></label>
-        <label class="field"><span>Točka PUR-a</span><input data-job-hazard-field="purPoint" value="${escapeHtml(hazard.purPoint || "")}" /></label>
-        <label class="field"><span>Obvezna zaštitna oprema (OZS)</span><input data-job-hazard-field="ppeText" value="${escapeHtml(hazard.ppeText || "")}" /></label>
+      <div class="job-hazard-body">
+        <section class="job-hazard-assessment-panel">
+          <div class="job-hazard-panel-title">
+            <span class="job-hazard-panel-icon">${renderRiskAssessmentRiskIcon("shield")}</span>
+            <strong>Procjena rizika</strong>
+          </div>
+          <div class="job-hazard-risk-grid">
+            <label class="job-hazard-score-panel">
+              <span>Vjerojatnost <small aria-hidden="true">i</small></span>
+              <div class="job-hazard-select-shell is-${riskTone}">
+                <i aria-hidden="true"></i>
+                <select data-job-hazard-field="probability">${renderRiskAssessmentCompactOptions(RISK_ASSESSMENT_PROBABILITY_OPTIONS, hazard.probability || "")}</select>
+              </div>
+            </label>
+            <label class="job-hazard-score-panel">
+              <span>Posljedica <small aria-hidden="true">i</small></span>
+              <div class="job-hazard-select-shell is-${riskTone}">
+                <i aria-hidden="true"></i>
+                <select data-job-hazard-field="consequence">${renderRiskAssessmentCompactOptions(RISK_ASSESSMENT_CONSEQUENCE_OPTIONS, hazard.consequence || "")}</select>
+              </div>
+            </label>
+            <section class="job-hazard-score-panel">
+              <span>Rizik</span>
+              <output class="job-risk-output is-${riskTone}">
+                <i aria-hidden="true"></i>
+                <strong>${escapeHtml(riskLabel)}</strong>
+                ${riskScore ? `<em>${escapeHtml(riskScore)}</em>` : ""}
+              </output>
+            </section>
+          </div>
+        </section>
+        <div class="job-hazard-detail-grid">
+          <section class="job-hazard-large-field">
+            <div>
+              <span class="job-hazard-panel-icon">${renderRiskAssessmentRiskIcon("note")}</span>
+              <strong>Mogući neželjeni događaj</strong>
+            </div>
+            <textarea data-job-hazard-field="unwantedEvent" rows="4" placeholder="Unesite mogući neželjeni događaj...">${escapeHtml(unwantedEventValue)}</textarea>
+            <small class="job-hazard-character-count">${escapeHtml(String(getRiskAssessmentTextareaCount(unwantedEventValue)))} / 1000</small>
+          </section>
+          <section class="job-hazard-large-field">
+            <div>
+              <span class="job-hazard-panel-icon">${renderRiskAssessmentRiskIcon("shield")}</span>
+              <strong>Mjere za uklanjanje/smanjivanje opasnosti</strong>
+            </div>
+            <textarea data-job-hazard-field="measures" rows="4" placeholder="Unesite pravila, mjere i aktivnosti...">${escapeHtml(measuresValue)}</textarea>
+            <small class="job-hazard-character-count">${escapeHtml(String(getRiskAssessmentTextareaCount(measuresValue)))} / 1000</small>
+          </section>
+          <div class="job-hazard-support-grid">
+            <label>
+              <span>Točka PUR-a</span>
+              <input data-job-hazard-field="purPoint" value="${escapeHtml(hazard.purPoint || "")}" placeholder="npr. 1.2.3" />
+            </label>
+            <label>
+              <span>Obvezna zaštitna oprema (OZS)</span>
+              <input data-job-hazard-field="ppeText" value="${escapeHtml(hazard.ppeText || "")}" placeholder="npr. kaciga, naočale, rukavice" />
+            </label>
+          </div>
+        </div>
       </div>
     `;
     return article;
