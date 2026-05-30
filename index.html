@@ -14,8 +14,8 @@
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="/assets/ozo-tailwind.css?v=20260530-stl-premium-import-v1" />
-    <link rel="stylesheet" href="/styles.css?v=20260530-stl-premium-import-v1" />
+    <link rel="stylesheet" href="/assets/ozo-tailwind.css?v=20260530-stl-multi-import-v1" />
+    <link rel="stylesheet" href="/styles.css?v=20260530-stl-multi-import-v1" />
     <link rel="stylesheet" href="/src/styles/variables.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/reset.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/builder.css?v=20260509e" />
@@ -5379,17 +5379,17 @@
                           <div>
                             <span class="section-kicker">STL AI ekstrakcija</span>
                             <strong>Premium uvoz sigurnosno-tehničkog lista</strong>
-                            <p class="inline-help">PDF ili DOCX se očita, pretvori u kemikalije i prikaže s provjerom izvučenih sigurnosnih polja.</p>
+                            <p class="inline-help">Jedan ili više PDF/DOCX STL dokumenata očitavaju se odvojeno, a svaki rezultat dobiva vlastitu provjeru izvučenih polja.</p>
                           </div>
                           <span class="risk-assessment-stl-ai-badge">AI</span>
                         </div>
                         <div id="risk-assessment-chemical-stl-dropzone" class="risk-assessment-stl-dropzone" data-stl-phase="idle">
-                          <input id="risk-assessment-chemical-stl-file" class="sr-only" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+                          <input id="risk-assessment-chemical-stl-file" class="sr-only" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple />
                           <label for="risk-assessment-chemical-stl-file" class="risk-assessment-stl-dropzone-label">
                             <span class="risk-assessment-stl-dropzone-icon">STL</span>
                             <span>
-                              <strong>Odaberi ili povuci dokument</strong>
-                              <small>Podržani su PDF i DOCX. Nakon obrade vidiš točno koja polja su prepoznata.</small>
+                              <strong>Odaberi ili povuci STL dokumente</strong>
+                              <small>Podržani su PDF i DOCX. Svaki dokument se obrađuje zasebno i dobiva zaseban pregled.</small>
                             </span>
                           </label>
                           <div id="risk-assessment-chemical-stl-file-meta" class="risk-assessment-stl-file-meta">Nema odabranog dokumenta.</div>
@@ -9658,7 +9658,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260530-stl-premium-import-v1"></script>
-    <script type="module" src="/assets/ozo-panel.js?v=20260530-stl-premium-import-v1"></script>
+    <script type="module" src="/src/main.js?v=20260530-stl-multi-import-v1"></script>
+    <script type="module" src="/assets/ozo-panel.js?v=20260530-stl-multi-import-v1"></script>
   </body>
 </html>
