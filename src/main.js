@@ -127462,6 +127462,12 @@ function handleRiskAssessmentJobsListInput(event) {
       target.dataset.riskRowField,
       target.value,
     );
+    if (target instanceof HTMLTextAreaElement && ["workNote", "existingMeasures"].includes(target.dataset.riskRowField)) {
+      const counter = target.closest(".risk-assessment-risk-large-field")?.querySelector(".risk-assessment-risk-character-count");
+      if (counter) {
+        counter.textContent = `${getRiskAssessmentTextareaCount(target.value)} / 1000`;
+      }
+    }
     if (["probability", "consequence"].includes(target.dataset.riskRowField)) {
       renderRiskAssessmentJobs();
     }
@@ -127843,6 +127849,21 @@ function getRiskAssessmentRiskScoreValue(risk = {}) {
   return probabilityScore && consequenceScore ? String(probabilityScore * consequenceScore) : "";
 }
 
+function renderRiskAssessmentRiskIcon(name = "note") {
+  const icons = {
+    back: '<path d="M19 12H5" /><path d="m12 19-7-7 7-7" />',
+    close: '<path d="M18 6 6 18" /><path d="m6 6 12 12" />',
+    save: '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z" /><path d="M17 21v-8H7v8" /><path d="M7 3v5h8" />',
+    shield: '<path d="M20 13c0 5-3.5 7.5-7.3 8.8a2 2 0 0 1-1.4 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.4a1.3 1.3 0 0 1 1.6 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1v7Z" /><path d="m9 12 2 2 4-4" />',
+    note: '<path d="M8 2v4" /><path d="M16 2v4" /><rect width="16" height="18" x="4" y="4" rx="2" /><path d="M8 10h8" /><path d="M8 14h5" />',
+  };
+  return `<svg class="risk-assessment-risk-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${icons[name] || icons.note}</svg>`;
+}
+
+function getRiskAssessmentTextareaCount(value = "") {
+  return String(value || "").length;
+}
+
 function renderRiskAssessmentCompactOptions(options = [], selectedValue = "") {
   return options.map((option) => {
     const compactLabel = String(option.label || "")
@@ -127868,7 +127889,7 @@ function renderRiskAssessmentRiskScorePanel({
 } = {}) {
   return `
     <label class="risk-assessment-risk-score-panel">
-      <span>${escapeHtml(title)}${required ? " *" : ""}</span>
+      <span>${escapeHtml(title)}${required ? " *" : ""}<small aria-hidden="true">i</small></span>
       <div class="risk-assessment-risk-select-shell is-${tone}">
         <i aria-hidden="true"></i>
         <select data-risk-row-index="${riskIndex}" data-risk-row-field="${escapeHtml(field)}">
@@ -127889,65 +127910,80 @@ function renderRiskAssessmentRiskCards(item = {}) {
         const riskScore = getRiskAssessmentRiskScoreValue(risk);
         const riskType = getRiskAssessmentRiskType(risk);
         const classificationText = [risk.topCategory, risk.category, risk.group].filter(Boolean).join(" / ");
+        const workNoteValue = risk.workNote || risk.note || risk.possibleConsequences || "";
+        const measuresValue = risk.existingMeasures || risk.measures || risk.additionalMeasures || "";
         return `
         <article class="risk-assessment-risk-card is-${riskTone}">
           <div class="risk-assessment-risk-card-head">
+            <span class="risk-assessment-risk-back-indicator" aria-hidden="true">${renderRiskAssessmentRiskIcon("back")}</span>
             <div class="risk-assessment-risk-title-shell">
-              <input class="risk-assessment-risk-code-input" data-risk-row-index="${riskIndex}" data-risk-row-field="code" value="${escapeHtml(risk.code || "")}" placeholder="2.1.1" aria-label="Broj stavke rizika" />
-              <input class="risk-assessment-risk-title-input" data-risk-row-index="${riskIndex}" data-risk-row-field="hazard" value="${escapeHtml(risk.hazard || "")}" placeholder="Naziv opasnosti, štetnosti ili napora" aria-label="Naziv stavke rizika" />
+              <div class="risk-assessment-risk-title-row">
+                <input class="risk-assessment-risk-code-input" data-risk-row-index="${riskIndex}" data-risk-row-field="code" value="${escapeHtml(risk.code || "")}" placeholder="2.1.1" aria-label="Broj stavke rizika" />
+                <input class="risk-assessment-risk-title-input" data-risk-row-index="${riskIndex}" data-risk-row-field="hazard" value="${escapeHtml(risk.hazard || "")}" placeholder="Naziv opasnosti, štetnosti ili napora" aria-label="Naziv stavke rizika" />
+              </div>
+              <div class="risk-assessment-risk-meta-row">
+                <span class="risk-assessment-risk-type-pill is-${escapeHtml(riskType.value)}">${escapeHtml(riskType.label)}</span>
+                <span class="risk-assessment-risk-classification">${escapeHtml(classificationText || "Ručno dodana stavka procjene")}</span>
+              </div>
             </div>
             <div class="risk-assessment-risk-head-actions">
-              <button type="button" class="risk-assessment-risk-secondary-action" data-risk-row-remove="${riskIndex}">Odustani</button>
-              <button type="submit" class="risk-assessment-risk-primary-action">Spremi procjenu</button>
+              <button type="button" class="risk-assessment-risk-secondary-action" data-risk-row-remove="${riskIndex}">${renderRiskAssessmentRiskIcon("close")}<span>Odustani</span></button>
+              <button type="submit" class="risk-assessment-risk-primary-action">${renderRiskAssessmentRiskIcon("save")}<span>Spremi procjenu</span></button>
             </div>
           </div>
-          <div class="risk-assessment-risk-meta-row">
-            <span class="risk-assessment-risk-type-pill is-${escapeHtml(riskType.value)}">${escapeHtml(riskType.label)}</span>
-            <span class="risk-assessment-risk-classification">${escapeHtml(classificationText || "Ručno dodana stavka procjene")}</span>
-          </div>
-          <div class="risk-assessment-risk-score-grid">
-            ${renderRiskAssessmentRiskScorePanel({
-              title: "Vjerojatnost",
-              field: "probability",
-              value: risk.probability,
-              options: RISK_ASSESSMENT_PROBABILITY_OPTIONS,
-              riskIndex,
-              tone: riskTone,
-              required: true,
-            })}
-            ${renderRiskAssessmentRiskScorePanel({
-              title: "Posljedica",
-              field: "consequence",
-              value: risk.consequence,
-              options: RISK_ASSESSMENT_CONSEQUENCE_OPTIONS,
-              riskIndex,
-              tone: riskTone,
-              required: true,
-            })}
-            <section class="risk-assessment-risk-score-panel is-result">
-              <span>Rizik</span>
-              <output class="risk-assessment-risk-result is-${riskTone}" data-risk-row-output="${riskIndex}">
-                <i aria-hidden="true"></i>
-                <strong>${escapeHtml(riskShortLabel)}</strong>
-                ${riskScore ? `<em>${escapeHtml(riskScore)}</em>` : ""}
-              </output>
-            </section>
-          </div>
-          <div class="risk-assessment-risk-detail-grid">
-            <section class="risk-assessment-risk-large-field">
-              <div>
-                <strong>Poslovi / napomena</strong>
-                <span>Navedite poslove i dodatne napomene.</span>
+          <div class="risk-assessment-risk-body">
+            <section class="risk-assessment-risk-assessment-panel">
+              <div class="risk-assessment-risk-panel-title">
+                <span class="risk-assessment-risk-panel-icon">${renderRiskAssessmentRiskIcon("shield")}</span>
+                <strong>Procjena rizika</strong>
               </div>
-              <textarea data-risk-row-index="${riskIndex}" data-risk-row-field="workNote" rows="8" placeholder="Unesite poslove i dodatne napomene...">${escapeHtml(risk.workNote || risk.note || risk.possibleConsequences || "")}</textarea>
-            </section>
-            <section class="risk-assessment-risk-large-field">
-              <div>
-                <strong>Pravila, mjere, postupci i aktivnosti za smanjivanje razine rizika</strong>
-                <span>Navedite pravila, mjere i aktivnosti.</span>
+              <div class="risk-assessment-risk-score-grid">
+                ${renderRiskAssessmentRiskScorePanel({
+                  title: "Vjerojatnost",
+                  field: "probability",
+                  value: risk.probability,
+                  options: RISK_ASSESSMENT_PROBABILITY_OPTIONS,
+                  riskIndex,
+                  tone: riskTone,
+                  required: true,
+                })}
+                ${renderRiskAssessmentRiskScorePanel({
+                  title: "Posljedica",
+                  field: "consequence",
+                  value: risk.consequence,
+                  options: RISK_ASSESSMENT_CONSEQUENCE_OPTIONS,
+                  riskIndex,
+                  tone: riskTone,
+                  required: true,
+                })}
+                <section class="risk-assessment-risk-score-panel is-result">
+                  <span>Rizik</span>
+                  <output class="risk-assessment-risk-result is-${riskTone}" data-risk-row-output="${riskIndex}">
+                    <i aria-hidden="true"></i>
+                    <strong>${escapeHtml(riskLevel || `${riskShortLabel} rizik`)}</strong>
+                    ${riskScore ? `<em>${escapeHtml(riskScore)}</em>` : ""}
+                  </output>
+                </section>
               </div>
-              <textarea data-risk-row-index="${riskIndex}" data-risk-row-field="existingMeasures" rows="8" placeholder="Unesite pravila, mjere i aktivnosti...">${escapeHtml(risk.existingMeasures || risk.measures || risk.additionalMeasures || "")}</textarea>
             </section>
+            <div class="risk-assessment-risk-detail-grid">
+              <section class="risk-assessment-risk-large-field">
+                <div>
+                  <span class="risk-assessment-risk-panel-icon">${renderRiskAssessmentRiskIcon("note")}</span>
+                  <strong>Poslovi / napomena</strong>
+                </div>
+                <textarea data-risk-row-index="${riskIndex}" data-risk-row-field="workNote" rows="4" placeholder="Unesite poslove i dodatne napomene...">${escapeHtml(workNoteValue)}</textarea>
+                <small class="risk-assessment-risk-character-count">${escapeHtml(String(getRiskAssessmentTextareaCount(workNoteValue)))} / 1000</small>
+              </section>
+              <section class="risk-assessment-risk-large-field">
+                <div>
+                  <span class="risk-assessment-risk-panel-icon">${renderRiskAssessmentRiskIcon("shield")}</span>
+                  <strong>Pravila, mjere, postupci i aktivnosti za smanjivanje razine rizika</strong>
+                </div>
+                <textarea data-risk-row-index="${riskIndex}" data-risk-row-field="existingMeasures" rows="4" placeholder="Unesite pravila, mjere i aktivnosti...">${escapeHtml(measuresValue)}</textarea>
+                <small class="risk-assessment-risk-character-count">${escapeHtml(String(getRiskAssessmentTextareaCount(measuresValue)))} / 1000</small>
+              </section>
+            </div>
           </div>
         </article>
       `;
