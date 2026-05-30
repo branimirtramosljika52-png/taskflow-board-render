@@ -403,6 +403,12 @@ test("risk assessments keep chemical registry data from PubChem and STL", () => 
           source: "PubChem",
           pubChemCid: "702",
           pubChemUrl: "https://pubchem.ncbi.nlm.nih.gov/compound/702",
+          probability: "mv",
+          consequence: "mš",
+          riskLevel: "Mali rizik",
+          officialGviPpm: "500",
+          officialKgviPpm: "1000",
+          officialLimitNote: "koža",
         },
         {
           name: "Alcolan XL",
@@ -411,6 +417,9 @@ test("risk assessments keep chemical registry data from PubChem and STL", () => 
           hazardStatements: "H225\nH319",
           source: "STL",
           sourceFileName: "alcolan-stl.pdf",
+          prilogIiDivision: "A",
+          prilogIiVaporGvi: ">50-500 ppm",
+          estimatedConsequenceSize: "Mala štetnost",
         },
       ],
     },
@@ -422,7 +431,10 @@ test("risk assessments keep chemical registry data from PubChem and STL", () => 
   assert.equal(assessment.chemicals.length, 2);
   assert.match(assessment.biologicalHazards, /Biološki agensi/);
   assert.equal(assessment.chemicals[0].pubChemCid, "702");
+  assert.equal(assessment.chemicals[0].officialGviPpm, "500");
+  assert.equal(assessment.chemicals[0].riskLevel, "Mali rizik");
   assert.deepEqual(assessment.chemicals[1].hazardStatements, ["H225", "H319"]);
+  assert.equal(assessment.chemicals[1].prilogIiDivision, "A");
   assert.equal(filterRiskAssessments([assessment], { query: "64-17-5" }).length, 1);
   assert.equal(filterRiskAssessments([assessment], { query: "alcolan" }).length, 1);
   assert.equal(filterRiskAssessments([assessment], { query: "biološki agensi" }).length, 1);

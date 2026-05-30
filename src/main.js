@@ -121274,6 +121274,8 @@ function createRiskAssessmentChemicalDraft(initial = {}) {
   const precautionaryStatements = normalizeRiskAssessmentChemicalTextList(initial.precautionaryStatements);
   const signalWords = normalizeRiskAssessmentChemicalTextList(initial.signalWords);
   const pictograms = normalizeRiskAssessmentChemicalTextList(initial.pictograms);
+  const probability = String(initial.probability || "mv");
+  const consequence = String(initial.consequence || "mš");
   return {
     id: String(initial.id || crypto.randomUUID()),
     order: initial.order || "",
@@ -121302,6 +121304,20 @@ function createRiskAssessmentChemicalDraft(initial = {}) {
     pubChemCid: String(initial.pubChemCid || initial.cid || ""),
     pubChemUrl: String(initial.pubChemUrl || ""),
     pubChemName: String(initial.pubChemName || ""),
+    probability,
+    consequence,
+    riskLevel: String(initial.riskLevel || calculateJobHazardRiskLevel(probability, consequence) || ""),
+    officialGviPpm: String(initial.officialGviPpm || ""),
+    officialGviMgM3: String(initial.officialGviMgM3 || ""),
+    officialKgviPpm: String(initial.officialKgviPpm || ""),
+    officialKgviMgM3: String(initial.officialKgviMgM3 || ""),
+    officialLimitNote: String(initial.officialLimitNote || ""),
+    officialDirective: String(initial.officialDirective || ""),
+    prilogIiDivision: String(initial.prilogIiDivision || ""),
+    prilogIiVaporGvi: String(initial.prilogIiVaporGvi || ""),
+    prilogIiDustGvi: String(initial.prilogIiDustGvi || ""),
+    prilogIiHazardCodes: normalizeRiskAssessmentChemicalTextList(initial.prilogIiHazardCodes),
+    estimatedConsequenceSize: String(initial.estimatedConsequenceSize || ""),
     note: String(initial.note || ""),
     usedInJobIds: Array.isArray(initial.usedInJobIds) ? initial.usedInJobIds.map(String).filter(Boolean) : [],
   };
@@ -121326,13 +121342,38 @@ function formatRiskAssessmentPrilogIiExposure(guideline = {}) {
   ].filter(Boolean).join(" ");
 }
 
+function getRiskAssessmentChemicalEstimatedConsequence(guideline = {}) {
+  const division = String(guideline?.division || "").toUpperCase();
+  if (division === "E" || division === "D") {
+    return { value: "iš", label: "Velika štetnost" };
+  }
+  if (division === "C" || division === "B") {
+    return { value: "sš", label: "Srednja štetnost" };
+  }
+  return { value: "mš", label: "Mala štetnost" };
+}
+
 function enrichRiskAssessmentChemicalWithOfficialExposure(chemical = {}) {
   const draft = createRiskAssessmentChemicalDraft(chemical);
+  const guidelineForRisk = resolveRiskChemicalPrilogIiGuideline(draft);
+  const estimatedConsequence = getRiskAssessmentChemicalEstimatedConsequence(guidelineForRisk);
+  const probability = String(chemical.probability || draft.probability || "mv");
+  const consequence = String(chemical.consequence || estimatedConsequence.value || draft.consequence || "mš");
   const officialGvi = findRiskChemicalOfficialGvi(draft);
   if (officialGvi) {
     const officialExposure = formatRiskAssessmentOfficialExposure(officialGvi);
     return createRiskAssessmentChemicalDraft({
       ...draft,
+      probability,
+      consequence,
+      riskLevel: chemical.riskLevel || calculateJobHazardRiskLevel(probability, consequence),
+      officialGviPpm: officialGvi.gviPpm || "",
+      officialGviMgM3: officialGvi.gviMgM3 || "",
+      officialKgviPpm: officialGvi.kgviPpm || "",
+      officialKgviMgM3: officialGvi.kgviMgM3 || "",
+      officialLimitNote: officialGvi.note || "",
+      officialDirective: officialGvi.directive || "",
+      estimatedConsequenceSize: draft.estimatedConsequenceSize || estimatedConsequence.label,
       exposureLimits: joinUniqueRiskAssessmentTextBlocks([
         officialExposure ? `Službeni GVI/KGVI prema Prilogu I: ${officialExposure}` : "",
         draft.exposureLimits,
@@ -121346,10 +121387,18 @@ function enrichRiskAssessmentChemicalWithOfficialExposure(chemical = {}) {
       ]),
     });
   }
-  const guideline = resolveRiskChemicalPrilogIiGuideline(draft);
+  const guideline = guidelineForRisk;
   const prilogIiExposure = formatRiskAssessmentPrilogIiExposure(guideline);
   return createRiskAssessmentChemicalDraft({
     ...draft,
+    probability,
+    consequence,
+    riskLevel: chemical.riskLevel || calculateJobHazardRiskLevel(probability, consequence),
+    prilogIiDivision: guideline.division || "",
+    prilogIiVaporGvi: guideline.vaporGvi || "",
+    prilogIiDustGvi: guideline.dustGvi || "",
+    prilogIiHazardCodes: guideline.matchingHazardCodes || [],
+    estimatedConsequenceSize: draft.estimatedConsequenceSize || estimatedConsequence.label,
     exposureLimits: joinUniqueRiskAssessmentTextBlocks([
       draft.exposureLimits,
       prilogIiExposure,
@@ -121471,6 +121520,12 @@ function mapOfficialSubstanceToRiskAssessmentChemical(substance = {}) {
     exposureLimits,
     classification: substance.note || "",
     source: sourceLabel,
+    officialGviPpm: substance.type === "gvi" ? substance.gviPpm || "" : "",
+    officialGviMgM3: substance.type === "gvi" ? substance.gviMgM3 || "" : "",
+    officialKgviPpm: substance.type === "gvi" ? substance.kgviPpm || "" : "",
+    officialKgviMgM3: substance.type === "gvi" ? substance.kgviMgM3 || "" : "",
+    officialLimitNote: substance.note || "",
+    officialDirective: substance.directive || "",
     note,
   });
 }
@@ -121911,6 +121966,159 @@ function renderRiskAssessmentChemicalResults() {
   }).join("");
 }
 
+function extractRiskAssessmentChemicalCodes(value = [], pattern) {
+  const source = Array.isArray(value) ? value : [value];
+  const raw = source.flatMap((entry) => normalizeRiskAssessmentChemicalTextList(entry)).join(" ");
+  return Array.from(new Set(
+    Array.from(raw.matchAll(pattern)).map((match) => match[0].toLocaleUpperCase("hr-HR").replace(/\s+/g, "")),
+  ));
+}
+
+function renderRiskAssessmentChemicalTableCellLines(value = [], fallback = "-") {
+  const lines = normalizeRiskAssessmentChemicalTextList(value).slice(0, 10);
+  if (!lines.length) {
+    return `<span>${escapeHtml(fallback)}</span>`;
+  }
+  return lines.map((line) => `<span>${escapeHtml(line)}</span>`).join("");
+}
+
+function formatRiskAssessmentChemicalLimitValue(ppm = "", mgM3 = "") {
+  return [
+    ppm ? `${ppm} ppm` : "",
+    mgM3 ? `${mgM3} mg/m³` : "",
+  ].filter(Boolean).join(" / ");
+}
+
+function extractRiskAssessmentOfficialExposurePart(chemical = {}, label = "GVI") {
+  const exposureText = String(chemical.exposureLimits || "");
+  const regex = new RegExp(`(?:^|[:·]\\s*)${label}\\s+([^·\\n]+)`, "i");
+  return exposureText.match(regex)?.[1]?.trim() || "";
+}
+
+function getRiskAssessmentChemicalOfficialGviText(chemical = {}) {
+  return formatRiskAssessmentChemicalLimitValue(chemical.officialGviPpm, chemical.officialGviMgM3)
+    || extractRiskAssessmentOfficialExposurePart(chemical, "GVI")
+    || "-";
+}
+
+function getRiskAssessmentChemicalOfficialKgviText(chemical = {}) {
+  return formatRiskAssessmentChemicalLimitValue(chemical.officialKgviPpm, chemical.officialKgviMgM3)
+    || extractRiskAssessmentOfficialExposurePart(chemical, "KGVI")
+    || "-";
+}
+
+function getRiskAssessmentChemicalPrilogIiText(chemical = {}) {
+  if (chemical.prilogIiDivision) {
+    return [
+      `Podjela ${chemical.prilogIiDivision}`,
+      chemical.prilogIiVaporGvi ? `pare ${chemical.prilogIiVaporGvi}` : "",
+      chemical.prilogIiDustGvi ? `prašina ${chemical.prilogIiDustGvi}` : "",
+    ].filter(Boolean).join(" · ");
+  }
+  const exposureText = String(chemical.exposureLimits || "");
+  const match = exposureText.match(/Prilog II smjernica[^.\n]*(?:\.[^.\n]*){0,3}/i);
+  return match?.[0]?.trim() || "-";
+}
+
+function getRiskAssessmentChemicalRiskScore(chemical = {}) {
+  const probabilityScore = { mv: 1, v: 2, vv: 3 }[String(chemical.probability || "").toLowerCase()] || 0;
+  const consequenceScore = { "mš": 1, ms: 1, "sš": 2, ss: 2, "iš": 3, is: 3 }[String(chemical.consequence || "").toLowerCase()] || 0;
+  return probabilityScore && consequenceScore ? String(probabilityScore * consequenceScore) : "";
+}
+
+function getRiskAssessmentChemicalRiskDisplay(chemical = {}) {
+  const riskLevel = calculateJobHazardRiskLevel(chemical.probability, chemical.consequence) || chemical.riskLevel || "";
+  const score = getRiskAssessmentChemicalRiskScore(chemical);
+  return { riskLevel, score, tone: getJobHazardRiskTone(riskLevel) };
+}
+
+function renderRiskAssessmentChemicalRegisterTable() {
+  const regulationTitle = "Pravilnik o zaštiti radnika od izloženosti opasnim kemikalijama na radu, graničnim vrijednostima izloženosti i biološkim graničnim vrijednostima";
+  const clpTitle = "Uredba EZ o razvrstavanju, označavanju i pakiranju tvari i smjesa br. 1272/08";
+  return `
+    <div class="risk-assessment-chemical-register-head">
+      <div>
+        <span class="section-kicker">STL tablični pregled</span>
+        <strong>Procjena kemijskih štetnosti</strong>
+        <small>GVI/KGVI se uzima iz Priloga I kada postoji, a ako ne postoji koristi se smjernica iz Priloga II.</small>
+      </div>
+      <span>${escapeHtml(String(riskAssessmentChemicalDrafts.length))} kemikalija</span>
+    </div>
+    <div class="risk-assessment-chemical-register-scroll">
+      <table class="risk-assessment-chemical-register-table">
+        <thead>
+          <tr>
+            <th rowspan="3">Red.<br />br.</th>
+            <th rowspan="3">Kemikalija</th>
+            <th rowspan="3">CAS<br />br.</th>
+            <th colspan="5">${escapeHtml(regulationTitle)}<br /><small>(N.N. br. 91/18, 01/21, 148/23 i 135/25)</small></th>
+            <th colspan="3">${escapeHtml(clpTitle)}</th>
+            <th rowspan="3">Oznake<br />obavijesti<br />(P)</th>
+            <th colspan="3">Procijenjeni rizik</th>
+          </tr>
+          <tr>
+            <th rowspan="2">GVI</th>
+            <th rowspan="2">KGVI</th>
+            <th rowspan="2">Napomena</th>
+            <th rowspan="2">GVI prema<br />Prilogu II</th>
+            <th rowspan="2">Procijenjena veličina posljedica - štetnosti</th>
+            <th colspan="3">Razvrstavanje i označavanje</th>
+            <th rowspan="2" class="is-vertical">Vjerojatnost</th>
+            <th rowspan="2" class="is-vertical">Posljedice</th>
+            <th rowspan="2" class="is-vertical">Rizik</th>
+          </tr>
+          <tr>
+            <th>Piktogrami<br />Oznake opasnosti</th>
+            <th>Oznake<br />upozorenja</th>
+            <th>Dodatne oznake<br />upozorenja</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${riskAssessmentChemicalDrafts.map((chemical, index) => {
+            const hCodes = extractRiskAssessmentChemicalCodes([chemical.hazardStatements, chemical.classification], /\bH\d{3}[A-Za-z]*\b/g);
+            const euhCodes = extractRiskAssessmentChemicalCodes([chemical.hazardStatements, chemical.classification], /\bEUH\d{3}[A-Za-z]*\b/g);
+            const pCodes = extractRiskAssessmentChemicalCodes(chemical.precautionaryStatements, /\bP\d{3}(?:\s*\+\s*\d{3})*/g);
+            const pictogramLines = [
+              ...normalizeRiskAssessmentChemicalTextList(chemical.pictograms),
+              ...normalizeRiskAssessmentChemicalTextList(chemical.signalWords),
+            ];
+            const probabilityLabel = getRiskAssessmentOptionLabel(RISK_ASSESSMENT_PROBABILITY_OPTIONS, chemical.probability, "-");
+            const consequenceLabel = getRiskAssessmentOptionLabel(RISK_ASSESSMENT_CONSEQUENCE_OPTIONS, chemical.consequence, "-");
+            const risk = getRiskAssessmentChemicalRiskDisplay(chemical);
+            const officialNote = [chemical.officialLimitNote, chemical.officialDirective ? `Direktiva: ${chemical.officialDirective}` : ""].filter(Boolean);
+            return `
+              <tr>
+                <td class="is-index">${escapeHtml(String(index + 1))}.</td>
+                <td><strong>${escapeHtml(chemical.name || "Kemikalija")}</strong></td>
+                <td>${renderRiskAssessmentChemicalTableCellLines(chemical.casNumber)}</td>
+                <td>${renderRiskAssessmentChemicalTableCellLines(getRiskAssessmentChemicalOfficialGviText(chemical))}</td>
+                <td>${renderRiskAssessmentChemicalTableCellLines(getRiskAssessmentChemicalOfficialKgviText(chemical))}</td>
+                <td>${renderRiskAssessmentChemicalTableCellLines(officialNote)}</td>
+                <td>${renderRiskAssessmentChemicalTableCellLines(getRiskAssessmentChemicalPrilogIiText(chemical))}</td>
+                <td>${renderRiskAssessmentChemicalTableCellLines(chemical.estimatedConsequenceSize)}</td>
+                <td>${renderRiskAssessmentChemicalTableCellLines(pictogramLines)}</td>
+                <td>${renderRiskAssessmentChemicalTableCellLines(hCodes)}</td>
+                <td>${renderRiskAssessmentChemicalTableCellLines(euhCodes)}</td>
+                <td>${renderRiskAssessmentChemicalTableCellLines(pCodes)}</td>
+                <td class="is-score">${escapeHtml(probabilityLabel)}<small>${escapeHtml(String({ mv: 1, v: 2, vv: 3 }[chemical.probability] || ""))}</small></td>
+                <td class="is-score">${escapeHtml(consequenceLabel)}<small>${escapeHtml(String({ "mš": 1, "sš": 2, "iš": 3 }[chemical.consequence] || ""))}</small></td>
+                <td class="is-risk is-${escapeHtml(risk.tone)}"><strong>${escapeHtml(risk.score || "-")}</strong><span>${escapeHtml(risk.riskLevel || "-")}</span></td>
+              </tr>
+            `;
+          }).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderRiskAssessmentChemicalRegisterPreview() {
+  const preview = document.querySelector("#risk-assessment-chemical-register-preview");
+  if (preview) {
+    preview.innerHTML = renderRiskAssessmentChemicalRegisterTable();
+  }
+}
+
 function renderRiskAssessmentChemicals() {
   if (!riskAssessmentChemicalsList) {
     return;
@@ -121928,12 +122136,18 @@ function renderRiskAssessmentChemicals() {
     return;
   }
 
-  riskAssessmentChemicalsList.replaceChildren(...riskAssessmentChemicalDrafts.map((item, index) => {
+  const registerPreview = document.createElement("section");
+  registerPreview.id = "risk-assessment-chemical-register-preview";
+  registerPreview.className = "risk-assessment-chemical-register";
+  registerPreview.innerHTML = renderRiskAssessmentChemicalRegisterTable();
+
+  riskAssessmentChemicalsList.replaceChildren(registerPreview, ...riskAssessmentChemicalDrafts.map((item, index) => {
     const card = document.createElement("article");
     card.className = "risk-assessment-chemical-card";
     card.dataset.riskChemicalIndex = String(index);
     const summary = getRiskAssessmentChemicalSummary(item) || "Ručno unesena kemikalija";
     const sourceLabel = [item.source, item.sourceFileName].filter(Boolean).join(" · ") || "Ručno";
+    const chemicalRisk = getRiskAssessmentChemicalRiskDisplay(item);
     card.innerHTML = `
       <div class="risk-assessment-chemical-card-head">
         <div>
@@ -121958,6 +122172,9 @@ function renderRiskAssessmentChemicals() {
         <label><span>Dobavljač</span><input data-risk-chemical-field="supplier" value="${escapeHtml(item.supplier || "")}" /></label>
         <label><span>Preporučena uporaba</span><input data-risk-chemical-field="recommendedUse" value="${escapeHtml(item.recommendedUse || "")}" /></label>
         <label><span>Povezani poslovi</span><select data-risk-chemical-jobs multiple size="4">${renderRiskAssessmentChemicalJobSelect(item.usedInJobIds)}</select></label>
+        <label><span>Vjerojatnost</span><select data-risk-chemical-field="probability">${renderRiskAssessmentCompactOptions(RISK_ASSESSMENT_PROBABILITY_OPTIONS, item.probability || "")}</select></label>
+        <label><span>Posljedica</span><select data-risk-chemical-field="consequence">${renderRiskAssessmentCompactOptions(RISK_ASSESSMENT_CONSEQUENCE_OPTIONS, item.consequence || "")}</select></label>
+        <label><span>Izračun rizika</span><output class="risk-assessment-chemical-risk-output is-${escapeHtml(chemicalRisk.tone)}"><strong>${escapeHtml(chemicalRisk.score || "-")}</strong><em>${escapeHtml(chemicalRisk.riskLevel || "Rizik nije određen")}</em></output></label>
         <label class="field-span-full"><span>Klasifikacija</span><textarea data-risk-chemical-field="classification" rows="2">${escapeHtml(item.classification || "")}</textarea></label>
         <label><span>Signalne riječi</span><textarea data-risk-chemical-list-field="signalWords" rows="2">${escapeHtml(joinRiskAssessmentChemicalValues(item.signalWords))}</textarea></label>
         <label><span>Piktogrami</span><textarea data-risk-chemical-list-field="pictograms" rows="2">${escapeHtml(joinRiskAssessmentChemicalValues(item.pictograms))}</textarea></label>
@@ -121993,10 +122210,21 @@ function updateRiskAssessmentChemicalField(index, field, value) {
   if (!riskAssessmentChemicalDrafts[index]) {
     return;
   }
-  riskAssessmentChemicalDrafts[index] = {
+  const nextChemical = {
     ...riskAssessmentChemicalDrafts[index],
     [field]: value,
   };
+  if (field === "probability" || field === "consequence") {
+    nextChemical.riskLevel = calculateJobHazardRiskLevel(nextChemical.probability, nextChemical.consequence) || "";
+  }
+  riskAssessmentChemicalDrafts[index] = nextChemical;
+  if (field === "probability" || field === "consequence") {
+    renderRiskAssessmentChemicals();
+    renderRiskAssessmentOverview();
+    scheduleRiskAssessmentDraftAutosave();
+    return;
+  }
+  renderRiskAssessmentChemicalRegisterPreview();
   renderRiskAssessmentOverview();
   scheduleRiskAssessmentDraftAutosave();
 }
@@ -122021,6 +122249,9 @@ function buildRiskAssessmentChemicalWorkSubstanceLine(chemical = {}) {
 
 function buildRiskAssessmentChemicalRiskRow(chemical = {}) {
   const hazardText = chemical.hazardStatements?.slice(0, 4).join("; ") || chemical.classification || "Moguća kemijska štetnost.";
+  const probability = chemical.probability || "mv";
+  const consequence = chemical.consequence || "mš";
+  const riskLevel = calculateJobHazardRiskLevel(probability, consequence) || chemical.riskLevel || "Mali rizik";
   const measuresText = joinUniqueRiskAssessmentTextBlocks([
     chemical.ppe ? `Primijeniti OZO: ${chemical.ppe}` : "",
     chemical.storage ? `Skladištenje: ${chemical.storage}` : "",
@@ -122035,9 +122266,9 @@ function buildRiskAssessmentChemicalRiskRow(chemical = {}) {
     description: hazardText,
     source: buildRiskAssessmentChemicalWorkSubstanceLine(chemical),
     possibleConsequences: hazardText,
-    probability: "v",
-    consequence: "sš",
-    riskLevel: "Srednji rizik",
+    probability,
+    consequence,
+    riskLevel,
     existingMeasures: measuresText || "Raditi prema sigurnosno-tehničkom listu, označenoj ambalaži, internim uputama i uz odgovarajuću osobnu zaštitnu opremu.",
   });
 }
@@ -124574,16 +124805,8 @@ function renderRiskAssessmentTemplateChemicalsContent() {
     return `<p class="is-muted">Kemikalije nisu dodane.</p>`;
   }
   return `
-    <div class="risk-assessment-template-card-grid">
-      ${riskAssessmentChemicalDrafts.map((chemical) => `
-        <article>
-          <span>${escapeHtml([chemical.source, chemical.casNumber ? `CAS ${chemical.casNumber}` : ""].filter(Boolean).join(" · ") || "Kemikalija")}</span>
-          <strong>${escapeHtml(chemical.name || "Kemikalija")}</strong>
-          <small>${escapeHtml([chemical.formula, chemical.signalWords?.join(", ")].filter(Boolean).join(" · ") || "Bez dodatnih oznaka")}</small>
-          ${chemical.hazardStatements?.length ? `<p>${escapeHtml(chemical.hazardStatements.slice(0, 4).join("; "))}</p>` : ""}
-          ${chemical.ppe ? `<p><b>OZO:</b> ${escapeHtml(chemical.ppe)}</p>` : ""}
-        </article>
-      `).join("")}
+    <div class="risk-assessment-template-chemical-register">
+      ${renderRiskAssessmentChemicalRegisterTable()}
     </div>
   `;
 }
