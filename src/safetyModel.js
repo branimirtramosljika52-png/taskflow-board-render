@@ -5273,6 +5273,8 @@ function normalizeRiskAssessmentJobs(items = []) {
       description: normalizeText(item?.description),
       tasks: normalizeText(item?.tasks),
       workSubstances: normalizeText(item?.workSubstances),
+      chemicalSubstances: normalizeText(item?.chemicalSubstances ?? item?.workSubstances),
+      biologicalHazards: normalizeText(item?.biologicalHazards),
       workEquipment: normalizeText(item?.workEquipment),
       toolsAndMachines: normalizeText(item?.toolsAndMachines),
       workplaces: normalizeText(item?.workplaces),
@@ -5281,6 +5283,9 @@ function normalizeRiskAssessmentJobs(items = []) {
       bodyPositions: normalizeJobOptionValues(item?.bodyPositions),
       importantFunctions: normalizeJobOptionValues(item?.importantFunctions),
       workConditions: normalizeJobOptionValues(item?.workConditions),
+      toolsAndMachinesOptions: normalizeJobOptionValues(item?.toolsAndMachinesOptions),
+      chemicalSubstanceOptions: normalizeJobOptionValues(item?.chemicalSubstanceOptions),
+      biologicalHazardOptions: normalizeJobOptionValues(item?.biologicalHazardOptions),
       purPoints: normalizeJobOptionValues(item?.purPoints).slice(0, 19),
       workplaceArrangement: normalizeText(item?.workplaceArrangement),
       harmfulSources: normalizeText(item?.harmfulSources),
@@ -5322,6 +5327,8 @@ function normalizeRiskAssessmentJobs(items = []) {
     || item.description
     || item.tasks
     || item.workSubstances
+    || item.chemicalSubstances
+    || item.biologicalHazards
     || item.workEquipment
     || item.toolsAndMachines
     || item.workplaces
@@ -5330,6 +5337,9 @@ function normalizeRiskAssessmentJobs(items = []) {
     || item.bodyPositions.length > 0
     || item.importantFunctions.length > 0
     || item.workConditions.length > 0
+    || item.toolsAndMachinesOptions.length > 0
+    || item.chemicalSubstanceOptions.length > 0
+    || item.biologicalHazardOptions.length > 0
     || item.purPoints.length > 0
     || item.harmfulSources
     || item.psychosocialRelevant
@@ -9080,6 +9090,8 @@ export function filterRiskAssessments(
         entry.workOrganization,
         entry.workSchedule,
         entry.workSubstances,
+        entry.chemicalSubstances,
+        entry.biologicalHazards,
         entry.workEquipment,
         entry.toolsAndMachines,
         entry.workplaces,
@@ -9088,6 +9100,9 @@ export function filterRiskAssessments(
         ...(entry.bodyPositions ?? []),
         ...(entry.importantFunctions ?? []),
         ...(entry.workConditions ?? []),
+        ...(entry.toolsAndMachinesOptions ?? []),
+        ...(entry.chemicalSubstanceOptions ?? []),
+        ...(entry.biologicalHazardOptions ?? []),
         ...(entry.purPoints ?? []),
         entry.workplaceArrangement,
         entry.harmfulSources,

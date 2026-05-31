@@ -59848,6 +59848,44 @@ button.work-order-editor-section-head:focus-visible {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
 }
 
+.risk-assessment-job-profile.is-compact {
+  gap: 10px;
+  padding: 10px;
+}
+
+.risk-assessment-job-start-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(191, 219, 254, 0.84);
+  border-left: 4px solid #2563eb;
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(239, 246, 255, 0.9), rgba(255, 255, 255, 0.98));
+  box-shadow: 0 14px 30px rgba(37, 99, 235, 0.06);
+}
+
+.risk-assessment-job-start-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(260px, 1.2fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.risk-assessment-job-start-grid label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.risk-assessment-job-start-grid label span {
+  color: #475569;
+  font-size: 0.68rem;
+  font-weight: 950;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
 .risk-assessment-job-profile-top {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -59886,6 +59924,10 @@ button.work-order-editor-section-head:focus-visible {
 
 .risk-assessment-job-profile-grid {
   grid-template-columns: minmax(0, 1fr);
+}
+
+.risk-assessment-job-profile-grid.is-compact-text {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .risk-assessment-job-core-grid label,
@@ -59973,6 +60015,12 @@ button.work-order-editor-section-head:focus-visible {
   box-shadow: 0 12px 28px rgba(36, 51, 91, 0.05);
 }
 
+.risk-assessment-job-profile-card.is-basic {
+  border-color: rgba(148, 163, 184, 0.42);
+  background:
+    linear-gradient(135deg, rgba(248, 250, 252, 0.92), rgba(255, 255, 255, 0.96));
+}
+
 .risk-assessment-job-profile-card.is-referral {
   border-color: rgba(250, 204, 21, 0.42);
   background:
@@ -59998,6 +60046,13 @@ button.work-order-editor-section-head:focus-visible {
   background:
     linear-gradient(135deg, rgba(245, 243, 255, 0.84), rgba(255, 255, 255, 0.96));
   box-shadow: 0 16px 34px rgba(91, 33, 182, 0.06);
+}
+
+.risk-assessment-job-profile-card.is-armor {
+  border-color: rgba(244, 63, 94, 0.3);
+  background:
+    linear-gradient(135deg, rgba(255, 241, 242, 0.7), rgba(255, 255, 255, 0.96));
+  box-shadow: 0 16px 34px rgba(190, 18, 60, 0.06);
 }
 
 .risk-assessment-job-profile-card-head {
@@ -60028,6 +60083,17 @@ button.work-order-editor-section-head:focus-visible {
   color: #64748b;
   font-size: 0.74rem;
   font-weight: 760;
+}
+
+.risk-assessment-armor-quickbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid rgba(254, 205, 211, 0.76);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.82);
 }
 
 .risk-assessment-job-visibility {
@@ -60323,6 +60389,12 @@ button.work-order-editor-section-head:focus-visible {
   --risk-choice-border: rgba(125, 211, 252, 0.74);
 }
 
+.risk-assessment-job-choice-block.is-indigo {
+  --risk-choice-accent: #4f46e5;
+  --risk-choice-soft: rgba(238, 242, 255, 0.74);
+  --risk-choice-border: rgba(165, 180, 252, 0.78);
+}
+
 .risk-assessment-job-choice-block.is-violet {
   --risk-choice-accent: #7c3aed;
   --risk-choice-soft: rgba(237, 233, 254, 0.74);
@@ -60381,6 +60453,10 @@ button.work-order-editor-section-head:focus-visible {
   display: flex;
   flex-wrap: wrap;
   gap: 7px;
+}
+
+.risk-assessment-job-choice-grid.is-ra1 {
+  gap: 10px;
 }
 
 .risk-assessment-job-choice-block button {
@@ -63389,8 +63465,10 @@ button.work-order-editor-section-head:focus-visible {
   .risk-assessment-chemical-grid,
   .risk-assessment-job-profile-top,
   .risk-assessment-job-profile-layout,
+  .risk-assessment-job-start-grid,
   .risk-assessment-job-core-grid,
   .risk-assessment-job-profile-grid,
+  .risk-assessment-job-profile-grid.is-compact-text,
   .risk-assessment-ai-split,
   .risk-assessment-catalog-controls,
   .risk-assessment-job-import-head,

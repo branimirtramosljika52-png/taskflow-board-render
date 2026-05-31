@@ -285,11 +285,16 @@ test("risk assessments keep detailed ARMOR job rows and eligibility data", () =>
           workOrganization: "Smjenski rad.",
           workEquipment: "Postrojenje, ručni alat, transportna sredstva.",
           workplaces: "Pogon, skladište i vanjski plato.",
+          chemicalSubstances: "Kisik, dušik, ulja i maziva.",
+          biologicalHazards: "Nema značajnih bioloških štetnosti.",
           workplaceOptions: ["u zatvorenom", "na otvorenom"],
           organizationOptions: ["u smjenama", "noćni rad"],
           bodyPositions: ["rad stojeći"],
           importantFunctions: ["vid na daljinu"],
           workConditions: ["buka"],
+          toolsAndMachinesOptions: ["strojevi", "mjerna oprema"],
+          chemicalSubstanceOptions: ["plinovi", "ulja i maziva"],
+          biologicalHazardOptions: ["nema značajnih bioloških štetnosti"],
           purPoints: ["18"],
           psychosocialRelevant: true,
           psychosocialLevel: "3",
@@ -343,6 +348,11 @@ test("risk assessments keep detailed ARMOR job rows and eligibility data", () =>
   assert.equal(assessment.jobs[0].safeWorkTrainingRequired, true);
   assert.equal(assessment.jobs[0].medicalFitnessRequired, true);
   assert.equal(assessment.jobs[0].visionCheckRequired, true);
+  assert.equal(assessment.jobs[0].chemicalSubstances, "Kisik, dušik, ulja i maziva.");
+  assert.equal(assessment.jobs[0].biologicalHazards, "Nema značajnih bioloških štetnosti.");
+  assert.deepEqual(assessment.jobs[0].toolsAndMachinesOptions, ["strojevi", "mjerna oprema"]);
+  assert.deepEqual(assessment.jobs[0].chemicalSubstanceOptions, ["plinovi", "ulja i maziva"]);
+  assert.deepEqual(assessment.jobs[0].biologicalHazardOptions, ["nema značajnih bioloških štetnosti"]);
   assert.equal(assessment.jobs[0].psychosocialRelevant, true);
   assert.equal(assessment.jobs[0].psychosocialLevel, "3");
   assert.deepEqual(assessment.jobs[0].hiddenBlocks, ["ppe"]);

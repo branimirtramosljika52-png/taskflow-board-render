@@ -123843,6 +123843,11 @@ const JOB_CONDITION_TOGGLES = Object.freeze([
 const JOB_BODY_POSITION_OPTIONS = Object.freeze(["rad stojeći", "rad sjedeći", "u pokretu", "kombinirano", "hodanje", "učestalo sagibanje", "klečanje", "čučanje", "uspinjanje ljestvama", "uspinjanje stepenicama", "rad iznad ramena", "ponavljajući pokreti", "dizanje tereta", "prenošenje tereta", "guranje tereta"]);
 const JOB_IMPORTANT_FUNCTION_OPTIONS = Object.freeze(["vid na daljinu", "vid na blizinu", "raspoznavanje boja", "dobar sluh", "jasan govor", "preciznost ruku", "koordinacija pokreta"]);
 const JOB_WORK_CONDITION_OPTIONS = Object.freeze(["visoka temperatura", "niska temperatura", "visoka vlažnost", "buka", "vibracije stroja ili alata", "vibracije poda", "povišeni atmosferski tlak", "povećana izloženost ozljedama", "ionizirajuća zračenja", "neionizirajuća zračenja", "prašina", "kemijske štetnosti", "biološke štetnosti", "rad na visini", "rad na otvorenom", "rad u prometu"]);
+const RISK_ASSESSMENT_WORKPLACE_OPTIONS = Object.freeze(["u zatvorenom", "na otvorenom", "na visini", "u jami", "u vodi", "pod vodom", "u mokrom", "u prometu", "kod klijenta"]);
+const RISK_ASSESSMENT_ORGANIZATION_OPTIONS = Object.freeze(["puno radno vrijeme", "jedna smjena", "u smjenama", "noćni rad", "bez noćnog rada", "terenski rad", "po pozivu", "radi sam", "radi s grupom", "radi sa strankama", "rad na traci", "brzi tempo rada", "ritam određen", "monotonija"]);
+const RISK_ASSESSMENT_TOOLS_OPTIONS = Object.freeze(["ručni alat", "mehanizirani alat", "strojevi", "aparati", "mjerna oprema", "ljestve", "radno vozilo", "računalo"]);
+const RISK_ASSESSMENT_CHEMICAL_SUBSTANCE_OPTIONS = Object.freeze(["kemikalije", "sredstva za čišćenje", "ulja i maziva", "goriva", "boje i lakovi", "otapala", "plinovi", "prašina", "nema značajnih kemijskih tvari"]);
+const RISK_ASSESSMENT_BIOLOGICAL_HAZARD_OPTIONS = Object.freeze(["kontakt s ljudima", "otpad", "kanalizacija", "tlo i voda", "životinje", "plijesni", "ubodi/posjekotine", "nema značajnih bioloških štetnosti"]);
 const JOB_PSYCHOSOCIAL_LEVELS = Object.freeze([
   { value: "1", label: "Niska", marker: "1", tone: "low", description: "Nema potrebe za posebnim mjerama, dovoljna je redovna organizacija rada." },
   { value: "2", label: "Umjerena", marker: "2", tone: "moderate", description: "Pratiti opterećenje, rokove, komunikaciju i preventivne mjere." },
@@ -126816,16 +126821,23 @@ function createRiskAssessmentJobDraftFromCatalogJob(job = {}) {
     bodyPositions: conditions.bodyPositions ?? [],
     importantFunctions: conditions.importantFunctions ?? [],
     workConditions: conditions.workConditions ?? [],
+    chemicalSubstanceOptions: environment.substancesOptions ?? [],
+    biologicalHazardOptions: (conditions.workConditions ?? []).filter((value) => String(value || "").toLocaleLowerCase("hr").includes("biolo")),
     purPoints,
     workOrganization: getJobCatalogEnvironmentText(job, "organization"),
     organization: getJobCatalogEnvironmentText(job, "organization"),
     workSubstances: getJobCatalogEnvironmentText(job, "substances"),
+    chemicalSubstances: getJobCatalogEnvironmentText(job, "substances"),
     workEquipment: getJobCatalogEnvironmentText(job, "machines"),
     toolsAndMachines: getJobCatalogEnvironmentText(job, "machines"),
+    toolsAndMachinesOptions: environment.machinesOptions ?? [],
     workplaceArrangement: getJobCatalogEnvironmentText(job, "workplace")
       ? "Mjesto rada mora biti uredno, prohodno, dovoljno osvijetljeno i organizirano tako da se smanji rizik od pada, spoticanja, neželjenog kontakta s opremom i drugih opasnosti."
       : "",
     harmfulSources,
+    biologicalHazards: (conditions.workConditions ?? []).some((value) => String(value || "").toLocaleLowerCase("hr").includes("biolo"))
+      ? "Moguće biološke štetnosti procjenjuju se prema stvarnom mjestu rada, kontaktima i radnim tvarima."
+      : "",
     specialWorkConditions: hasSpecialWorkConditions ? "da" : "",
     specialWorkReason: joinUniqueRiskAssessmentTextBlocks(conditionNotes),
     specialConditions: joinUniqueRiskAssessmentTextBlocks(conditionNotes),
@@ -126882,14 +126894,19 @@ function mergeCatalogJobsIntoRiskAssessmentJob(jobs = []) {
     bodyPositions: mergeJobValues(drafts.map((draft) => draft.bodyPositions ?? [])),
     importantFunctions: mergeJobValues(drafts.map((draft) => draft.importantFunctions ?? [])),
     workConditions: mergeJobValues(drafts.map((draft) => draft.workConditions ?? [])),
+    chemicalSubstanceOptions: mergeJobValues(drafts.map((draft) => draft.chemicalSubstanceOptions ?? [])),
+    biologicalHazardOptions: mergeJobValues(drafts.map((draft) => draft.biologicalHazardOptions ?? [])),
     purPoints: normalizeJobPurPointValues(drafts.map((draft) => draft.purPoints ?? [])),
     workOrganization: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.workOrganization)),
     organization: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.workOrganization)),
     workSubstances: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.workSubstances)),
+    chemicalSubstances: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.chemicalSubstances || draft.workSubstances)),
     workEquipment: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.workEquipment)),
     toolsAndMachines: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.toolsAndMachines)),
+    toolsAndMachinesOptions: mergeJobValues(drafts.map((draft) => draft.toolsAndMachinesOptions ?? [])),
     workplaceArrangement: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.workplaceArrangement)),
     harmfulSources: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.harmfulSources)),
+    biologicalHazards: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.biologicalHazards)),
     specialWorkConditions: drafts.some((draft) => draft.specialWorkConditions === "da") ? "da" : "",
     specialWorkReason: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.specialWorkReason)),
     specialConditions: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.specialWorkReason)),
@@ -127117,6 +127134,17 @@ function renderRiskAssessmentJobUnitOptions(selectedValue = "") {
   ], selectedValue || "");
 }
 
+function renderRiskAssessmentJobSourceOptions(item = {}) {
+  const selectedValue = String(item.sourceJobIds?.[0] || "");
+  return renderRiskAssessmentOptions([
+    { value: "", label: "Odaberi posao iz Jobs baze" },
+    ...sortJobs(state.jobs ?? []).map((job) => ({
+      value: job.id,
+      label: job.title || "Posao bez naziva",
+    })),
+  ], selectedValue);
+}
+
 function createRiskAssessmentPpeDraft(initial = {}) {
   const catalog = initial.catalogId
     ? getRiskAssessmentPpeCatalogItem(initial.catalogId)
@@ -127191,13 +127219,14 @@ function syncRiskAssessmentPpeSummaryText(job = {}, nextPpeItems = []) {
 function getRiskAssessmentJobCompletion(job = {}) {
   const riskCount = getRiskAssessmentFilledRiskRowCount(job);
   const required = [
+    Boolean(job.organizationUnitId),
     Boolean(job.jobTitle),
     Boolean(job.workerCount),
     Boolean(job.description || job.shortDescription || job.detailedDescription),
-    Boolean(job.workplaces || job.workplace),
+    Boolean(job.tasks),
+    Boolean((job.workplaceOptions ?? []).length || job.workplaces || job.workplace),
     Boolean(job.workOrganization || job.workSchedule),
     riskCount > 0,
-    (job.ppeItems ?? []).length > 0 || Boolean(job.ppeText),
   ];
   const done = required.filter(Boolean).length;
   return Math.round((done / required.length) * 100);
@@ -127606,151 +127635,127 @@ function renderRiskAssessmentJobVisibilityControls(job = {}) {
 
 function renderRiskAssessmentJobProfile(item = {}, index = 0) {
   const purPoints = normalizeJobPurPointValues(item.purPoints ?? []);
-  const referralHighlights = [
-    item.safeWorkTrainingRequired ? "Rad na siguran način" : "",
-    item.medicalFitnessRequired ? "Zdravstvena sposobnost" : "",
-    item.visionCheckRequired ? "Pregled vida" : "",
-    purPoints.length ? getJobPurPointSummary(purPoints) : "",
-  ].filter(Boolean);
+  const selectedSourceJob = (state.jobs ?? []).find((job) => String(job.id) === String(item.sourceJobIds?.[0] || ""));
   return `
-    <div class="risk-assessment-job-profile">
-      <div class="risk-assessment-job-profile-top">
-        <div>
-          <span class="section-kicker">Profil posla i uputnica</span>
-          <strong>Kako se posao stvarno obavlja</strong>
-          <small>${escapeHtml(referralHighlights.join(" · ") || "Odaberi smjene, uvjete rada, PUR i evidencije.")}</small>
-        </div>
-        <div class="risk-assessment-job-preset-strip">
-          ${JOB_WORK_PROFILE_PRESETS.map((preset) => `
-            <button type="button" data-risk-job-work-preset="${escapeHtml(preset.key)}">
-              <strong>${escapeHtml(preset.label)}</strong>
-              <span>${escapeHtml(preset.description)}</span>
-            </button>
-          `).join("")}
-        </div>
-      </div>
-
-      <div class="risk-assessment-job-core-grid">
-        <label><span>Organizacijska jedinica</span><select data-risk-job-field="organizationUnitId">${renderRiskAssessmentJobUnitOptions(item.organizationUnitId || "")}</select></label>
-        <label><span>Status posla</span><select data-risk-job-field="status">${renderRiskAssessmentOptions(RISK_ASSESSMENT_JOB_STATUS_OPTIONS, item.status || "draft")}</select></label>
-        <label><span>Radno mjesto</span><input data-risk-job-field="jobTitle" value="${escapeHtml(item.jobTitle || "")}" placeholder="npr. ASU operater" /></label>
-        <label><span>Broj radnika</span><input data-risk-job-field="workerCount" value="${escapeHtml(item.workerCount || "")}" /></label>
-        <label><span>Alkohol u krvi</span><input data-risk-job-field="alcoholLimit" value="${escapeHtml(item.alcoholLimit || "")}" placeholder="0,00 g/kg" /></label>
-      </div>
-
-      <div class="risk-assessment-job-profile-layout">
-        <section class="risk-assessment-job-profile-card is-risk">
-          <div class="risk-assessment-job-profile-card-head">
-            <span>${renderRiskAssessmentRiskIcon("briefcase")}</span>
-            <div>
-              <strong>Opis posla i organizacija rada</strong>
-              <small>Jedan unos za raspored, smjene i opis poslova.</small>
-            </div>
-          </div>
-          <div class="risk-assessment-job-profile-grid">
-            <label><span>Mjesto rada</span><input data-risk-job-field="workplace" value="${escapeHtml(item.workplace || "")}" placeholder="npr. pogon, skladište, teren" /></label>
-            <label><span>Raspored rada</span><input data-risk-job-field="workSchedule" value="${escapeHtml(item.workSchedule || "")}" placeholder="npr. jedna smjena, 8 sati" /></label>
-            <section class="risk-assessment-organization-panel field-span-full">
-              <div class="risk-assessment-organization-panel-head">
-                <span>${renderRiskAssessmentRiskIcon("briefcase")}</span>
-                <div>
-                  <strong>Organizacija rada</strong>
-                  <small>Brzi odabiri i jedan jasan tekst za smjene, ritam, stanke i posebnosti rada.</small>
-                </div>
-              </div>
-              ${renderRiskAssessmentJobChoiceBlock(item, "organizationOptions", "Brzi odabiri", ["puno radno vrijeme", "jedna smjena", "u smjenama", "noćni rad", "bez noćnog rada", "terenski rad", "po pozivu", "radi sam", "radi s grupom", "radi sa strankama", "rad na traci", "brzi tempo rada", "ritam određen", "monotonija"], "Koristi se i za uputnicu RA-1.")}
-              <label><span>Tekst organizacije rada</span><textarea data-risk-job-field="workOrganization" rows="3" placeholder="npr. Rad se obavlja u jednoj smjeni, uz redovne stanke i povremeni terenski rad prema nalogu poslodavca.">${escapeHtml(item.workOrganization || item.organization || "")}</textarea></label>
-            </section>
-            <label class="field-span-full"><span>Opis poslova za procjenu i osposobljavanje</span><textarea data-risk-job-field="description" rows="3" placeholder="Opis poslova koji se koristi i za osposobljavanje za rad na siguran način.">${escapeHtml(item.description || "")}</textarea></label>
-            <label class="field-span-full"><span>Radni zadaci</span><textarea data-risk-job-field="tasks" rows="2" placeholder="Jedan zadatak po retku ili kratki opis.">${escapeHtml(item.tasks || "")}</textarea></label>
-          </div>
-          <div class="risk-assessment-work-flags is-profile">
-            ${RISK_ASSESSMENT_WORK_FLAGS.map((flag) => `
-              <label class="${item[flag.key] ? "is-selected" : ""}">
-                <input type="checkbox" data-risk-job-flag="${escapeHtml(flag.key)}" ${item[flag.key] ? "checked" : ""} />
-                <span>${escapeHtml(flag.label)}</span>
-              </label>
-            `).join("")}
-          </div>
-        </section>
-
-        <section class="risk-assessment-job-profile-card is-referral">
-          <div class="risk-assessment-job-profile-card-head">
-            <span>${renderRiskAssessmentRiskIcon("shield")}</span>
-            <div>
-              <strong>Uputnica, PUR i evidencije</strong>
-              <small>Podaci za zdravstvenu sposobnost, pregled vida i posebne uvjete rada.</small>
-            </div>
-          </div>
-          <div class="risk-assessment-job-referral-toggles">
-            <label class="${item.safeWorkTrainingRequired ? "is-selected" : ""}">
-              <input type="checkbox" data-risk-job-boolean="safeWorkTrainingRequired" ${item.safeWorkTrainingRequired ? "checked" : ""} />
-              <span>Rad na siguran način</span>
-            </label>
-            <label class="${item.medicalFitnessRequired ? "is-selected" : ""}">
-              <input type="checkbox" data-risk-job-boolean="medicalFitnessRequired" ${item.medicalFitnessRequired ? "checked" : ""} />
-              <span>Zdravstvena sposobnost</span>
-            </label>
-            <label class="${item.visionCheckRequired ? "is-selected" : ""}">
-              <input type="checkbox" data-risk-job-boolean="visionCheckRequired" ${item.visionCheckRequired ? "checked" : ""} />
-              <span>Pregled vida</span>
-            </label>
-          </div>
-          <div class="risk-assessment-job-pur">
-            <div class="risk-assessment-job-pur-head">
-              <strong>Točke posebnih uvjeta rada</strong>
-              <span>${escapeHtml(getJobPurPointSummary(purPoints))}</span>
-            </div>
-            ${renderJobPurPointPicker(purPoints, "data-risk-job-pur-point")}
-          </div>
-          <div class="risk-assessment-job-profile-grid">
-            <label><span>Posebni uvjeti rada</span><select data-risk-job-field="specialWorkConditions">${renderRiskAssessmentOptions(RISK_ASSESSMENT_YES_NO_OPTIONS, item.specialWorkConditions || "")}</select></label>
-            <label><span>Povećani staž</span><select data-risk-job-field="increasedInsurance">${renderRiskAssessmentOptions(RISK_ASSESSMENT_YES_NO_OPTIONS, item.increasedInsurance || "")}</select></label>
-            <label><span>Stručna sprema / osposobljenost</span><textarea data-risk-job-field="requiredQualification" rows="2">${escapeHtml(item.requiredQualification || item.qualifications || "")}</textarea></label>
-            <label class="field-span-full"><span>Napomena za posebne uvjete rada</span><textarea data-risk-job-field="specialWorkReason" rows="2">${escapeHtml(item.specialWorkReason || item.specialConditions || buildRiskAssessmentPurReason(purPoints))}</textarea></label>
-            <label class="field-span-full"><span>Potrebna osposobljavanja</span><textarea data-risk-job-field="trainings" rows="2">${escapeHtml(item.trainings || (item.safeWorkTrainingRequired ? buildRiskAssessmentSafeWorkTrainingText(item) : ""))}</textarea></label>
-            <label class="field-span-full"><span>Liječnički pregledi i vid</span><textarea data-risk-job-field="medicalExams" rows="2">${escapeHtml(item.medicalExams || buildRiskAssessmentMedicalText(item))}</textarea></label>
-          </div>
-        </section>
-      </div>
-
-      <section class="risk-assessment-job-profile-card is-uputnica">
+    <div class="risk-assessment-job-profile is-compact">
+      <section class="risk-assessment-job-start-card">
         <div class="risk-assessment-job-profile-card-head">
-          <span>${renderRiskAssessmentRiskIcon("note")}</span>
+          <span>${renderRiskAssessmentRiskIcon("briefcase")}</span>
           <div>
-            <strong>Detalji za uputnicu RA-1</strong>
-            <small>Odabiri odgovaraju poljima: mjesto rada, organizacija, položaj tijela, funkcije i uvjeti rada.</small>
+            <span class="section-kicker">Korak 1</span>
+            <strong>Organizacijska jedinica i posao</strong>
+            <small>Prvo odaberi jedinicu iz Strukture, zatim posao iz baze ili otvori novi posao u Jobs modulu.</small>
           </div>
         </div>
-        <div class="risk-assessment-job-choice-grid">
-          ${renderRiskAssessmentJobChoiceBlock(item, "workplaceOptions", "Mjesto rada", ["u zatvorenom", "na otvorenom", "na visini", "u jami", "u vodi", "pod vodom", "u mokrom"], "Podaci se koriste za uputnicu i opis mjesta rada.", "map", "sky")}
-          ${renderRiskAssessmentJobChoiceBlock(item, "bodyPositions", "Položaj tijela i aktivnosti", JOB_BODY_POSITION_OPTIONS, "Označi položaje i aktivnosti koje se stvarno ponavljaju.", "activity", "violet")}
-          ${renderRiskAssessmentJobChoiceBlock(item, "importantFunctions", "U poslu je bitno", JOB_IMPORTANT_FUNCTION_OPTIONS, "Ovi odabiri pomažu kod pregleda vida, sluha i zdravstvene sposobnosti.", "eye", "emerald")}
-          ${renderRiskAssessmentJobChoiceBlock(item, "workConditions", "Uvjeti rada", JOB_WORK_CONDITION_OPTIONS, "Odaberi uvjete koji se povlače u uputnicu i procjenu rizika.", "thermometer", "amber")}
+        <div class="risk-assessment-job-start-grid">
+          <label><span>Organizacijska jedinica</span><select data-risk-job-field="organizationUnitId">${renderRiskAssessmentJobUnitOptions(item.organizationUnitId || "")}</select></label>
+          <label><span>Posao iz baze</span><select data-risk-job-source-select>${renderRiskAssessmentJobSourceOptions(item)}</select></label>
+          <button type="button" class="ghost-button" data-risk-job-open-job-module>+ Novi posao u Jobs</button>
         </div>
+        <p class="inline-help">${escapeHtml(selectedSourceJob ? `Povezano s Jobs stavkom: ${selectedSourceJob.title || "posao"}.` : "Ako posao već postoji u Jobs bazi, odabir automatski povlači opis, RA-1 odabire, PUR i početne ARMOR stavke.")}</p>
       </section>
 
-      <section class="risk-assessment-job-profile-card is-resources">
+      <section class="risk-assessment-job-profile-card is-basic">
         <div class="risk-assessment-job-profile-card-head">
           <span>${renderRiskAssessmentRiskIcon("note")}</span>
           <div>
-            <strong>Oprema, tvari i mjesta rada</strong>
-            <small>Sažeto za procjenu, bez ponavljanja istih kategorija.</small>
+            <span class="section-kicker">Korak 2</span>
+            <strong>Osnovni podaci radnog mjesta</strong>
+            <small>Jedan izvor istine za naziv radnog mjesta, broj radnika, opis posla i popis poslova.</small>
           </div>
         </div>
         <div class="risk-assessment-job-profile-grid">
-          ${renderRiskAssessmentJobResourceField(item, "toolsAndMachines", "Strojevi, alati, aparati", "tools", "sky")}
-          ${renderRiskAssessmentJobResourceField(item, "workEquipment", "Popis radne opreme", "briefcase", "indigo")}
-          ${renderRiskAssessmentJobResourceField(item, "workSubstances", "Radne tvari", "flask", "amber")}
-          ${renderRiskAssessmentJobResourceField(item, "workplaces", "Mjesta rada", "map", "emerald")}
-          ${renderRiskAssessmentJobResourceField(item, "workplaceArrangement", "Uređenje mjesta rada", "building", "violet")}
-          ${renderRiskAssessmentJobResourceField(item, "harmfulSources", "Štetnosti / izvori", "activity", "rose")}
-          ${renderRiskAssessmentJobResourceField(item, "ppeText", "OZO - opis", "shield", "yellow", 3)}
-          ${renderRiskAssessmentJobResourceField(item, "note", "Napomena", "note", "slate", 3)}
+          <label><span>Radno mjesto</span><input data-risk-job-field="jobTitle" value="${escapeHtml(item.jobTitle || "")}" placeholder="npr. Serviser automobila" /></label>
+          <label><span>Broj radnika</span><input data-risk-job-field="workerCount" value="${escapeHtml(item.workerCount || "")}" placeholder="npr. 4, od toga 1 žena" /></label>
+          <label class="field-span-full"><span>Opis posla</span><textarea data-risk-job-field="description" rows="3" placeholder="Kratko i jasno opiši što radnik radi na ovom radnom mjestu.">${escapeHtml(item.description || "")}</textarea></label>
+          <label class="field-span-full"><span>Popis poslova / radni zadaci</span><textarea data-risk-job-field="tasks" rows="3" placeholder="Npr. servisiranje vozila, zamjena dijelova, probni rad, komunikacija s klijentom...">${escapeHtml(item.tasks || "")}</textarea></label>
         </div>
       </section>
 
-      ${renderRiskAssessmentJobPsychosocialPanel(item)}
+      <section class="risk-assessment-job-profile-card is-uputnica">
+        <div class="risk-assessment-job-profile-card-head">
+          <span>${renderRiskAssessmentRiskIcon("shield")}</span>
+          <div>
+            <span class="section-kicker">Korak 3</span>
+            <strong>Podaci za uputnicu RA-1</strong>
+            <small>Odaberi samo ono što se stvarno odnosi na posao. Svaka skupina je odvojena i ne ponavlja se drugdje.</small>
+          </div>
+        </div>
+        <div class="risk-assessment-job-choice-grid is-ra1">
+          ${renderRiskAssessmentJobChoiceBlock(item, "workplaceOptions", "Mjesto rada", RISK_ASSESSMENT_WORKPLACE_OPTIONS, "Podaci za polje Mjesto rada.", "map", "sky")}
+          ${renderRiskAssessmentJobChoiceBlock(item, "organizationOptions", "Organizacija", RISK_ASSESSMENT_ORGANIZATION_OPTIONS, "Smjene, ritam rada, samostalan/grupni rad i posebnosti organizacije.", "briefcase", "indigo")}
+          ${renderRiskAssessmentJobChoiceBlock(item, "bodyPositions", "Položaj tijela i aktivnosti", JOB_BODY_POSITION_OPTIONS, "Položaji i aktivnosti koje se redovito ponavljaju.", "activity", "violet")}
+          ${renderRiskAssessmentJobChoiceBlock(item, "importantFunctions", "U poslu je važan", JOB_IMPORTANT_FUNCTION_OPTIONS, "Funkcije bitne za sigurno obavljanje posla.", "eye", "emerald")}
+          ${renderRiskAssessmentJobChoiceBlock(item, "workConditions", "Uvjeti rada", JOB_WORK_CONDITION_OPTIONS, "Uvjeti i izloženosti koje treba povući u RA-1 i procjenu.", "thermometer", "amber")}
+          ${renderRiskAssessmentJobChoiceBlock(item, "toolsAndMachinesOptions", "Strojevi, alati, aparati", RISK_ASSESSMENT_TOOLS_OPTIONS, "Brzi odabir opreme kojom radnik rukuje.", "tools", "sky")}
+          ${renderRiskAssessmentJobChoiceBlock(item, "chemicalSubstanceOptions", "Kemijske tvari", RISK_ASSESSMENT_CHEMICAL_SUBSTANCE_OPTIONS, "Tvari s kojima radnik rukuje ili dolazi u dodir.", "flask", "amber")}
+          ${renderRiskAssessmentJobChoiceBlock(item, "biologicalHazardOptions", "Biološke štetnosti", RISK_ASSESSMENT_BIOLOGICAL_HAZARD_OPTIONS, "Moguće biološke štetnosti i izvori izloženosti.", "activity", "emerald")}
+        </div>
+        <div class="risk-assessment-job-profile-grid is-compact-text">
+          ${renderRiskAssessmentJobResourceField(item, "toolsAndMachines", "Strojevi, alati, aparati", "tools", "sky", 2)}
+          ${renderRiskAssessmentJobResourceField(item, "chemicalSubstances", "Kemijske tvari", "flask", "amber", 2)}
+          ${renderRiskAssessmentJobResourceField(item, "biologicalHazards", "Biološke štetnosti", "activity", "emerald", 2)}
+          <label class="field-span-full"><span>Organizacija rada - tekst</span><textarea data-risk-job-field="workOrganization" rows="2" placeholder="Po potrebi dopiši sažetak organizacije rada.">${escapeHtml(item.workOrganization || item.organization || "")}</textarea></label>
+        </div>
+      </section>
+
+      <section class="risk-assessment-job-profile-card is-referral">
+        <div class="risk-assessment-job-profile-card-head">
+          <span>${renderRiskAssessmentRiskIcon("shield")}</span>
+          <div>
+            <span class="section-kicker">Korak 4</span>
+            <strong>PUR i obvezne evidencije</strong>
+            <small>Odaberi točke posebnih uvjeta rada te označi osposobljavanje, zdravstvenu sposobnost i pregled vida.</small>
+          </div>
+        </div>
+        <div class="risk-assessment-job-referral-toggles">
+          <label class="${item.safeWorkTrainingRequired ? "is-selected" : ""}">
+            <input type="checkbox" data-risk-job-boolean="safeWorkTrainingRequired" ${item.safeWorkTrainingRequired ? "checked" : ""} />
+            <span>Rad na siguran način</span>
+          </label>
+          <label class="${item.medicalFitnessRequired ? "is-selected" : ""}">
+            <input type="checkbox" data-risk-job-boolean="medicalFitnessRequired" ${item.medicalFitnessRequired ? "checked" : ""} />
+            <span>Zdravstvena sposobnost</span>
+          </label>
+          <label class="${item.visionCheckRequired ? "is-selected" : ""}">
+            <input type="checkbox" data-risk-job-boolean="visionCheckRequired" ${item.visionCheckRequired ? "checked" : ""} />
+            <span>Pregled vida</span>
+          </label>
+        </div>
+        <div class="risk-assessment-job-pur">
+          <div class="risk-assessment-job-pur-head">
+            <strong>Točke posebnih uvjeta rada</strong>
+            <span>${escapeHtml(getJobPurPointSummary(purPoints))}</span>
+          </div>
+          ${renderJobPurPointPicker(purPoints, "data-risk-job-pur-point")}
+        </div>
+        <label class="risk-assessment-job-resource-field is-yellow field-span-full">
+          <span class="risk-assessment-job-resource-head">
+            <i aria-hidden="true">${renderRiskAssessmentRiskIcon("note")}</i>
+            <strong>Napomena za PUR / zdravstvene uvjete</strong>
+          </span>
+          <textarea data-risk-job-field="specialWorkReason" rows="2">${escapeHtml(item.specialWorkReason || item.specialConditions || buildRiskAssessmentPurReason(purPoints))}</textarea>
+        </label>
+      </section>
+
+      <section class="risk-assessment-job-profile-card is-armor">
+        <div class="risk-assessment-job-profile-card-head">
+          <span>${renderRiskAssessmentRiskIcon("activity")}</span>
+          <div>
+            <span class="section-kicker">Korak 5</span>
+            <strong>ARMOR - opasnosti, štetnosti, napori i mjere</strong>
+            <small>Ovdje ostaju samo ARMOR stavke i procjena rizika za ovo radno mjesto.</small>
+          </div>
+        </div>
+        <div class="risk-assessment-armor-quickbar">
+          <button type="button" class="ghost-button" data-risk-job-catalog="${index}">${item.catalogOpen ? "Sakrij ARMOR izbornik" : "Otvori ARMOR izbornik"}</button>
+          <button type="button" class="ghost-button" data-risk-job-template="${index}">Dodaj ARMOR predložak</button>
+          <button type="button" class="ghost-button" data-risk-row-add="${index}">+ ARMOR stavka</button>
+          <button type="button" class="ghost-button risk-assessment-nexai-button" data-risk-job-ai="risks">NexAI procijeni ARMOR</button>
+        </div>
+        ${item.catalogOpen ? renderRiskAssessmentCatalogPicker(item) : ""}
+        ${renderRiskAssessmentRiskCards(item)}
+      </section>
     </div>
   `;
 }
@@ -129614,6 +129619,8 @@ function createRiskAssessmentJobDraft(initial = {}) {
     description: String(initial.description || ""),
     tasks: String(initial.tasks || ""),
     workSubstances: String(initial.workSubstances || ""),
+    chemicalSubstances: String(initial.chemicalSubstances || initial.workSubstances || ""),
+    biologicalHazards: String(initial.biologicalHazards || ""),
     workEquipment: String(initial.workEquipment || ""),
     toolsAndMachines: String(initial.toolsAndMachines || ""),
     workplaces: String(initial.workplaces || ""),
@@ -129622,6 +129629,9 @@ function createRiskAssessmentJobDraft(initial = {}) {
     bodyPositions: uniqueJobValues(initial.bodyPositions ?? []),
     importantFunctions: uniqueJobValues(initial.importantFunctions ?? []),
     workConditions: uniqueJobValues(initial.workConditions ?? []),
+    toolsAndMachinesOptions: uniqueJobValues(initial.toolsAndMachinesOptions ?? []),
+    chemicalSubstanceOptions: uniqueJobValues(initial.chemicalSubstanceOptions ?? []),
+    biologicalHazardOptions: uniqueJobValues(initial.biologicalHazardOptions ?? []),
     purPoints: normalizeJobPurPointValues(initial.purPoints ?? []),
     workplaceArrangement: String(initial.workplaceArrangement || ""),
     harmfulSources: String(initial.harmfulSources || ""),
@@ -129941,6 +129951,66 @@ function importSelectedJobsIntoRiskAssessment() {
       : `Dodano ${selectedJobs.length} Jobs stavki u procjenu.`,
     "success",
   );
+}
+
+function applyRiskAssessmentSourceJob(jobIndex, sourceJobId = "") {
+  const current = riskAssessmentJobDrafts[jobIndex];
+  const source = (state.jobs ?? []).find((job) => String(job.id) === String(sourceJobId));
+  if (!current || !source) {
+    return;
+  }
+
+  const imported = createRiskAssessmentJobDraftFromCatalogJob(source);
+  riskAssessmentJobDrafts[jobIndex] = createRiskAssessmentJobDraft({
+    ...sanitizeRiskAssessmentTransientJob(imported),
+    id: current.id,
+    order: current.order,
+    organizationUnitId: current.organizationUnitId || imported.organizationUnitId,
+    status: current.status || imported.status || "draft",
+    workerCount: current.workerCount || imported.workerCount,
+    alcoholLimit: current.alcoholLimit || imported.alcoholLimit,
+    hiddenBlocks: current.hiddenBlocks ?? imported.hiddenBlocks,
+    clientInput: current.clientInput,
+  });
+  renderRiskAssessmentOrganizationUnits();
+  renderRiskAssessmentJobs();
+  renderRiskAssessmentOverview();
+  scheduleRiskAssessmentDraftAutosave();
+}
+
+function openJobsModuleForRiskAssessmentJob(jobIndex) {
+  if (!getCanManageJobs()) {
+    setInlineMessage(riskAssessmentError, "Nemate pravo dodavati poslove u Jobs bazu.", "error");
+    return;
+  }
+
+  const current = riskAssessmentJobDrafts[jobIndex] || {};
+  scheduleRiskAssessmentDraftAutosave();
+  setRiskAssessmentEditorOpen(false);
+  activateSidebarItem("jobs", { expandSidebar: true });
+  openJobEditor({
+    title: current.jobTitle || "",
+    description: current.description || current.shortDescription || "",
+    status: "draft",
+    environment: {
+      workplaceOptions: current.workplaceOptions ?? [],
+      organizationOptions: current.organizationOptions ?? [],
+      substancesText: current.chemicalSubstances || current.workSubstances || "",
+      machinesText: current.toolsAndMachines || current.workEquipment || "",
+      workplaceText: current.workplaces || current.workplace || "",
+      organizationText: current.workOrganization || current.organization || "",
+    },
+    conditions: {
+      bodyPositions: current.bodyPositions ?? [],
+      importantFunctions: current.importantFunctions ?? [],
+      workConditions: current.workConditions ?? [],
+      purPoints: current.purPoints ?? [],
+      bodyText: "",
+      functionsText: "",
+      conditionsText: current.biologicalHazards || current.harmfulSources || "",
+    },
+    hazards: [],
+  });
 }
 
 function getCanManageRiskAssessments() {
@@ -130619,6 +130689,12 @@ function updateRiskAssessmentJobDraftField(jobIndex, field, value) {
   if (field === "workOrganization") {
     riskAssessmentJobDrafts[jobIndex].organization = value;
   }
+  if (field === "chemicalSubstances") {
+    riskAssessmentJobDrafts[jobIndex].workSubstances = value;
+  }
+  if (field === "workSubstances") {
+    riskAssessmentJobDrafts[jobIndex].chemicalSubstances = value;
+  }
   if (["catalogQuery", "catalogType", "organizationUnitId", "status"].includes(field)) {
     renderRiskAssessmentOrganizationUnits();
     renderRiskAssessmentOverview();
@@ -130995,6 +131071,11 @@ function handleRiskAssessmentJobsListInput(event) {
     return;
   }
 
+  if (target.dataset.riskJobSourceSelect !== undefined) {
+    applyRiskAssessmentSourceJob(jobIndex, target.value);
+    return;
+  }
+
   if (target.dataset.riskCatalogSelect !== undefined) {
     const selection = new Set(riskAssessmentJobDrafts[jobIndex]?.catalogSelection ?? []);
     if (target.checked) {
@@ -131128,6 +131209,12 @@ function handleRiskAssessmentJobsListClick(event) {
     return;
   }
 
+  if (button.matches("[data-risk-job-open-job-module]")) {
+    event.preventDefault();
+    openJobsModuleForRiskAssessmentJob(jobIndex);
+    return;
+  }
+
   if (button.matches("[data-risk-job-toggle-block]")) {
     event.preventDefault();
     const block = String(button.dataset.riskJobToggleBlock || "").trim();
@@ -131190,6 +131277,18 @@ function handleRiskAssessmentJobsListClick(event) {
       };
       if (field === "importantFunctions") {
         next.visionCheckRequired = next.visionCheckRequired || Array.from(selected).some((entry) => String(entry || "").toLocaleLowerCase("hr").includes("vid"));
+      }
+      const textFieldByChoice = {
+        toolsAndMachinesOptions: "toolsAndMachines",
+        chemicalSubstanceOptions: "chemicalSubstances",
+        biologicalHazardOptions: "biologicalHazards",
+      };
+      const linkedTextField = textFieldByChoice[field];
+      if (linkedTextField) {
+        next[linkedTextField] = Array.from(selected).join(", ");
+        if (linkedTextField === "chemicalSubstances") {
+          next.workSubstances = next[linkedTextField];
+        }
       }
       riskAssessmentJobDrafts[jobIndex] = next;
       renderRiskAssessmentJobs();
@@ -131775,62 +131874,20 @@ function renderRiskAssessmentJobs() {
         <div>
           <span class="section-kicker">${escapeHtml(getRiskAssessmentUnitName(item.organizationUnitId) || "Bez jedinice")}</span>
           <strong>${escapeHtml(selectedJobTitle)}</strong>
-          <small>${escapeHtml(`${status.label} · ${completion}% popunjeno · ${riskCount} rizika · ${(item.ppeItems ?? []).length} OZO`)}</small>
+          <small>${escapeHtml(`${status.label} · ${completion}% popunjeno · ${riskCount} ARMOR stavki`)}</small>
         </div>
         <div class="risk-assessment-job-tools">
-          <button type="button" class="primary-button risk-assessment-nexai-button" data-risk-job-ai="full">NexAI popuni sve</button>
-          <button type="button" class="ghost-button risk-assessment-nexai-button" data-risk-job-ai="description">NexAI opis</button>
-          <button type="button" class="ghost-button" data-risk-job-ai="shortDescription">Kratki opis</button>
-          <button type="button" class="ghost-button" data-risk-job-ai="tasks">Radni zadaci</button>
-          <button type="button" class="ghost-button" data-risk-job-ai="harmfulSources">Štetnosti</button>
-          <button type="button" class="ghost-button risk-assessment-nexai-button" data-risk-job-ai="risks">NexAI procijeni rizike</button>
-          <button type="button" class="ghost-button" data-risk-job-catalog="${index}">${item.catalogOpen ? "Sakrij izbornik" : "Izbornik opasnosti"}</button>
-          <button type="button" class="ghost-button" data-risk-job-template="${index}">ARMOR retci</button>
-          <button type="button" class="ghost-button" data-risk-row-add="${index}">+ Rizik</button>
-          <button type="button" class="ghost-button" data-risk-job-save-template="${index}">Spremi predložak</button>
-          <button type="button" class="ghost-button" data-risk-job-copy="${index}">Kopiraj posao</button>
+          <button type="button" class="ghost-button" data-risk-job-copy="${index}">Kopiraj</button>
           <button type="button" class="ghost-button card-danger" data-risk-job-remove="${index}">Ukloni</button>
         </div>
       </div>
 
       ${renderRiskAssessmentJobAiProposal(item, index)}
-      ${renderRiskAssessmentJobTemplateActions()}
-      ${renderRiskAssessmentJobVisibilityControls(item)}
 
       ${hiddenBlocks.has("profile") ? "" : renderRiskAssessmentJobProfile(item, index)}
 
       ${showClientInput ? renderRiskAssessmentClientPortalJobInput(item, index) : ""}
       ${showClientLockedNotice ? renderRiskAssessmentClientPortalLockedNotice() : ""}
-
-      ${hiddenBlocks.has("document") ? "" : renderRiskAssessmentJobDocumentPreview(item, index)}
-
-      ${hiddenBlocks.has("eligibility") ? "" : `<div class="risk-assessment-eligibility-block">
-        <div class="risk-assessment-mini-title">
-          <strong>Tko smije raditi na poslovima</strong>
-          <span>Da / Ne / N/P i napomena</span>
-        </div>
-        <div class="risk-assessment-eligibility-table">
-          ${RISK_ASSESSMENT_ELIGIBILITY_ROWS.map((eligibilityRow) => {
-            const eligibility = item.eligibility?.[eligibilityRow.key] ?? { allowed: "np", note: "" };
-            return `
-              <div class="risk-assessment-eligibility-row">
-                <span>${escapeHtml(eligibilityRow.label)}</span>
-                <select data-risk-eligibility-key="${escapeHtml(eligibilityRow.key)}" data-risk-eligibility-field="allowed">${renderRiskAssessmentOptions(RISK_ASSESSMENT_YES_NO_OPTIONS, eligibility.allowed || "np")}</select>
-                <input data-risk-eligibility-key="${escapeHtml(eligibilityRow.key)}" data-risk-eligibility-field="note" value="${escapeHtml(eligibility.note || "")}" placeholder="Napomena" />
-              </div>
-            `;
-          }).join("")}
-        </div>
-      </div>`}
-
-      ${item.catalogOpen ? renderRiskAssessmentCatalogPicker(item) : ""}
-
-      ${hiddenBlocks.has("risks") ? "" : `<div class="risk-assessment-mini-title">
-        <strong>Opasnosti, štetnosti, napori i mjere</strong>
-        <span>Za svaku stavku popunjava se kartica procjene rizika.</span>
-      </div>
-      ${renderRiskAssessmentRiskCards(item)}`}
-      ${hiddenBlocks.has("ppe") ? "" : renderRiskAssessmentPpeVisual(item, index)}
     `;
     return row;
   }));
