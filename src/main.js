@@ -125566,13 +125566,19 @@ function renderRiskAssessmentDocumentRoutingControls() {
       control.className = "risk-assessment-section-document-menu";
       control.dataset.riskTemplateRouting = block.block;
       control.innerHTML = `
-        <span>Dokument</span>
+        <div class="risk-assessment-section-document-menu-head">
+          <span class="risk-assessment-section-document-icon">${renderRiskAssessmentRiskIcon("note")}</span>
+          <div class="risk-assessment-section-document-copy">
+            <strong>Dio u procjeni</strong>
+            <small>Odredi kako ovaj odlomak ulazi u završni dokument.</small>
+          </div>
+        </div>
         <select data-risk-template-routing-select="${escapeHtml(block.block)}">
           <option value="include">Ide u procjenu</option>
           <option value="page-break">Ide u procjenu + nova stranica</option>
           <option value="exclude">Ne ide u procjenu</option>
         </select>
-        <small>${escapeHtml(block.tokenLabel)}</small>
+        <em>Placeholder: ${escapeHtml(block.tokenLabel)}</em>
       `;
       const select = control.querySelector("select");
       select?.addEventListener("change", () => {
