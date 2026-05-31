@@ -127175,12 +127175,17 @@ function applyRiskAssessmentJobWorkProfilePreset(jobIndex, key = "") {
   scheduleRiskAssessmentDraftAutosave();
 }
 
-function renderRiskAssessmentJobChoiceBlock(job = {}, field = "", label = "", options = [], helper = "") {
+function renderRiskAssessmentJobChoiceBlock(job = {}, field = "", label = "", options = [], helper = "", icon = "note", tone = "slate") {
   const selected = new Set(uniqueJobValues(job[field] ?? []));
   return `
-    <div class="risk-assessment-job-choice-block">
-      <span>${escapeHtml(label)}</span>
-      ${helper ? `<small>${escapeHtml(helper)}</small>` : ""}
+    <div class="risk-assessment-job-choice-block is-${escapeHtml(tone)}">
+      <div class="risk-assessment-job-choice-block-head">
+        <span class="risk-assessment-job-choice-icon" aria-hidden="true">${renderRiskAssessmentRiskIcon(icon)}</span>
+        <div>
+          <strong>${escapeHtml(label)}</strong>
+          ${helper ? `<small>${escapeHtml(helper)}</small>` : ""}
+        </div>
+      </div>
       <div>
         ${options.map((option) => `
           <button type="button"
@@ -127190,6 +127195,18 @@ function renderRiskAssessmentJobChoiceBlock(job = {}, field = "", label = "", op
         `).join("")}
       </div>
     </div>
+  `;
+}
+
+function renderRiskAssessmentJobResourceField(item = {}, field = "", label = "", icon = "note", tone = "slate", rows = 2) {
+  return `
+    <label class="risk-assessment-job-resource-field is-${escapeHtml(tone)} ${rows > 2 ? "field-span-full" : ""}">
+      <span class="risk-assessment-job-resource-head">
+        <i aria-hidden="true">${renderRiskAssessmentRiskIcon(icon)}</i>
+        <strong>${escapeHtml(label)}</strong>
+      </span>
+      <textarea data-risk-job-field="${escapeHtml(field)}" rows="${escapeHtml(String(rows))}">${escapeHtml(item[field] || "")}</textarea>
+    </label>
   `;
 }
 
@@ -127312,10 +127329,10 @@ function renderRiskAssessmentJobProfile(item = {}, index = 0) {
           </div>
         </div>
         <div class="risk-assessment-job-choice-grid">
-          ${renderRiskAssessmentJobChoiceBlock(item, "workplaceOptions", "Mjesto rada", ["u zatvorenom", "na otvorenom", "na visini", "u jami", "u vodi", "pod vodom", "u mokrom"], "Podaci se koriste za uputnicu i opis mjesta rada.")}
-          ${renderRiskAssessmentJobChoiceBlock(item, "bodyPositions", "Položaj tijela i aktivnosti", JOB_BODY_POSITION_OPTIONS, "Označi položaje i aktivnosti koje se stvarno ponavljaju.")}
-          ${renderRiskAssessmentJobChoiceBlock(item, "importantFunctions", "U poslu je bitno", JOB_IMPORTANT_FUNCTION_OPTIONS, "Ovi odabiri pomažu kod pregleda vida, sluha i zdravstvene sposobnosti.")}
-          ${renderRiskAssessmentJobChoiceBlock(item, "workConditions", "Uvjeti rada", JOB_WORK_CONDITION_OPTIONS, "Odaberi uvjete koji se povlače u uputnicu i procjenu rizika.")}
+          ${renderRiskAssessmentJobChoiceBlock(item, "workplaceOptions", "Mjesto rada", ["u zatvorenom", "na otvorenom", "na visini", "u jami", "u vodi", "pod vodom", "u mokrom"], "Podaci se koriste za uputnicu i opis mjesta rada.", "map", "sky")}
+          ${renderRiskAssessmentJobChoiceBlock(item, "bodyPositions", "Položaj tijela i aktivnosti", JOB_BODY_POSITION_OPTIONS, "Označi položaje i aktivnosti koje se stvarno ponavljaju.", "activity", "violet")}
+          ${renderRiskAssessmentJobChoiceBlock(item, "importantFunctions", "U poslu je bitno", JOB_IMPORTANT_FUNCTION_OPTIONS, "Ovi odabiri pomažu kod pregleda vida, sluha i zdravstvene sposobnosti.", "eye", "emerald")}
+          ${renderRiskAssessmentJobChoiceBlock(item, "workConditions", "Uvjeti rada", JOB_WORK_CONDITION_OPTIONS, "Odaberi uvjete koji se povlače u uputnicu i procjenu rizika.", "thermometer", "amber")}
         </div>
       </section>
 
@@ -127328,14 +127345,14 @@ function renderRiskAssessmentJobProfile(item = {}, index = 0) {
           </div>
         </div>
         <div class="risk-assessment-job-profile-grid">
-          <label><span>Strojevi, alati, aparati</span><textarea data-risk-job-field="toolsAndMachines" rows="2">${escapeHtml(item.toolsAndMachines || "")}</textarea></label>
-          <label><span>Popis radne opreme</span><textarea data-risk-job-field="workEquipment" rows="2">${escapeHtml(item.workEquipment || "")}</textarea></label>
-          <label><span>Radne tvari</span><textarea data-risk-job-field="workSubstances" rows="2">${escapeHtml(item.workSubstances || "")}</textarea></label>
-          <label><span>Mjesta rada</span><textarea data-risk-job-field="workplaces" rows="2">${escapeHtml(item.workplaces || "")}</textarea></label>
-          <label><span>Uređenje mjesta rada</span><textarea data-risk-job-field="workplaceArrangement" rows="2">${escapeHtml(item.workplaceArrangement || "")}</textarea></label>
-          <label><span>Štetnosti / izvori</span><textarea data-risk-job-field="harmfulSources" rows="2">${escapeHtml(item.harmfulSources || "")}</textarea></label>
-          <label class="field-span-full"><span>OZO - opis</span><textarea data-risk-job-field="ppeText" rows="2">${escapeHtml(item.ppeText || "")}</textarea></label>
-          <label class="field-span-full"><span>Napomena</span><textarea data-risk-job-field="note" rows="2">${escapeHtml(item.note || "")}</textarea></label>
+          ${renderRiskAssessmentJobResourceField(item, "toolsAndMachines", "Strojevi, alati, aparati", "tools", "sky")}
+          ${renderRiskAssessmentJobResourceField(item, "workEquipment", "Popis radne opreme", "briefcase", "indigo")}
+          ${renderRiskAssessmentJobResourceField(item, "workSubstances", "Radne tvari", "flask", "amber")}
+          ${renderRiskAssessmentJobResourceField(item, "workplaces", "Mjesta rada", "map", "emerald")}
+          ${renderRiskAssessmentJobResourceField(item, "workplaceArrangement", "Uređenje mjesta rada", "building", "violet")}
+          ${renderRiskAssessmentJobResourceField(item, "harmfulSources", "Štetnosti / izvori", "activity", "rose")}
+          ${renderRiskAssessmentJobResourceField(item, "ppeText", "OZO - opis", "shield", "yellow", 3)}
+          ${renderRiskAssessmentJobResourceField(item, "note", "Napomena", "note", "slate", 3)}
         </div>
       </section>
     </div>
@@ -130945,6 +130962,13 @@ function renderRiskAssessmentRiskIcon(name = "note") {
     shield: '<path d="M20 13c0 5-3.5 7.5-7.3 8.8a2 2 0 0 1-1.4 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.4a1.3 1.3 0 0 1 1.6 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1v7Z" /><path d="m9 12 2 2 4-4" />',
     note: '<path d="M8 2v4" /><path d="M16 2v4" /><rect width="16" height="18" x="4" y="4" rx="2" /><path d="M8 10h8" /><path d="M8 14h5" />',
     briefcase: '<path d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /><rect width="20" height="14" x="2" y="6" rx="2" /><path d="M2 13h20" />',
+    map: '<path d="M9 18 3 21V6l6-3 6 3 6-3v15l-6 3-6-3Z" /><path d="M9 3v15" /><path d="M15 6v15" />',
+    activity: '<path d="M22 12h-4l-3 8L9 4l-3 8H2" />',
+    eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" />',
+    thermometer: '<path d="M14 14.8V5a2 2 0 0 0-4 0v9.8a4 4 0 1 0 4 0Z" />',
+    tools: '<path d="M14.7 6.3a4 4 0 0 0-5.6 5.6L3 18l3 3 6.1-6.1a4 4 0 0 0 5.6-5.6l-2.8 2.8-2-2 2.8-2.8Z" />',
+    flask: '<path d="M9 2h6" /><path d="M10 2v6.7L4.7 18A3 3 0 0 0 7.3 22h9.4a3 3 0 0 0 2.6-4L14 8.7V2" /><path d="M7 16h10" />',
+    building: '<path d="M3 21h18" /><path d="M5 21V7l8-4v18" /><path d="M19 21V11l-6-4" /><path d="M9 9h1" /><path d="M9 13h1" /><path d="M9 17h1" />',
     check: '<path d="M20 6 9 17l-5-5" />',
   };
   return `<svg class="risk-assessment-risk-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${icons[name] || icons.note}</svg>`;
