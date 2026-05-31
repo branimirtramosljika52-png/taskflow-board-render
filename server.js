@@ -8177,6 +8177,7 @@ async function handleApiRequest(request, response, url) {
     const contractWordExportMatch = url.pathname.match(/^\/api\/contracts\/([^/]+)\/export-word$/);
     const contractPdfExportMatch = url.pathname.match(/^\/api\/contracts\/([^/]+)\/export-pdf$/);
     const legalFrameworkMatch = url.pathname.match(/^\/api\/legal-frameworks\/([^/]+)$/);
+    const rulebookMatch = url.pathname.match(/^\/api\/rulebooks\/([^/]+)$/);
     const learningTestMatch = url.pathname.match(/^\/api\/learning-tests\/([^/]+)$/);
     const learningTestAssignmentEmailMatch = url.pathname.match(/^\/api\/learning-tests\/([^/]+)\/assignments\/([^/]+)\/email$/);
     const serviceCatalogMatch = url.pathname.match(/^\/api\/service-catalog\/([^/]+)$/);
@@ -8974,6 +8975,22 @@ async function handleApiRequest(request, response, url) {
       const { scopedSnapshot } = await getScopedState(user, request);
       assertDocumentTemplateIdsPayloadInScope(scopedSnapshot, body, "linkedTemplateIds");
       await domainRepository.createLegalFramework({
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      });
+      await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/rulebooks") {
+      if (!(await canUseScopedAppPermission(user, request, "rulebooks.manage"))) {
+        sendError(response, 403, "Nemate pravo upravljati pravilnicima.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      await domainRepository.createRulebook({
         ...body,
         organizationId: scopedSnapshot.activeOrganizationId,
       });
@@ -11645,6 +11662,29 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (rulebookMatch && request.method === "PATCH") {
+      if (!(await canUseScopedAppPermission(user, request, "rulebooks.manage"))) {
+        sendError(response, 403, "Nemate pravo upravljati pravilnicima.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.rulebooks ?? [], rulebookMatch[1], "Pravilnik nije pronađen.");
+      const updated = await domainRepository.updateRulebook(rulebookMatch[1], {
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      });
+
+      if (!updated) {
+        sendError(response, 404, "Pravilnik nije pronađen.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
     if (learningTestMatch && request.method === "PATCH") {
       if (!canManageMasterData(user)) {
         sendError(response, 403, "Nemate pravo upravljati eLearning testovima.");
@@ -12141,6 +12181,25 @@ async function handleApiRequest(request, response, url) {
 
       if (!deleted) {
         sendError(response, 404, "Propis nije pronađen.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (rulebookMatch && request.method === "DELETE") {
+      if (!(await canUseScopedAppPermission(user, request, "rulebooks.manage"))) {
+        sendError(response, 403, "Nemate pravo brisati pravilnike.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      assertInScope(scopedSnapshot.rulebooks ?? [], rulebookMatch[1], "Pravilnik nije pronađen.");
+      const deleted = await domainRepository.deleteRulebook(rulebookMatch[1]);
+
+      if (!deleted) {
+        sendError(response, 404, "Pravilnik nije pronađen.");
         return true;
       }
 

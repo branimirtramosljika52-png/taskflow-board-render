@@ -28,6 +28,8 @@
   PURCHASE_ORDER_STATUS_OPTIONS,
   JOB_STATUS_OPTIONS,
   RISK_ASSESSMENT_STATUS_OPTIONS,
+  RULEBOOK_STATUS_OPTIONS,
+  RULEBOOK_TYPE_OPTIONS,
   REMINDER_STATUS_OPTIONS,
   PRIORITY_OPTIONS,
   SERVICE_CATALOG_STATUS_OPTIONS,
@@ -56,6 +58,7 @@
   filterPurchaseOrders,
   filterJobs,
   filterRiskAssessments,
+  filterRulebooks,
   filterAbsenceEntries,
   filterReminders,
   filterSafetyAuthorizations,
@@ -85,6 +88,7 @@
   sortPurchaseOrders,
   sortJobs,
   sortRiskAssessments,
+  sortRulebooks,
   sortReminders,
   sortDashboardWidgets,
   sortDocumentTemplates,
@@ -192,6 +196,29 @@ const RISK_ASSESSMENT_TEMPLATE_STORAGE_PREFIX = "safenexus.risk-assessment-templ
 const WORK_ORDER_DOCUMENT_MAX_SIZE_BYTES = 12 * 1024 * 1024;
 const WORK_ORDER_DOCUMENT_ACCEPT_LABEL = ".pdf,.png,.jpg,.jpeg,.gif,.webp,.bmp,.svg,.tif,.tiff,.heic,.eml,.msg,.doc,.docx,.dotx,.xls,.xlsx,.xlsm,.csv,.ods,.odt,.rtf,.txt,.zip,.rar,.7z,.xml";
 const LEGAL_FRAMEWORK_DOCUMENT_ACCEPT_LABEL = ".pdf,application/pdf";
+const RULEBOOK_PRESETS = Object.freeze([
+  Object.freeze({
+    type: "znr",
+    title: "Pravilnik o zaštiti na radu",
+    shortTitle: "Zaštita na radu",
+    summary: "Interni pravilnik kojim se uređuju organizacija, odgovornosti i provedba zaštite na radu.",
+    scope: "Primjenjuje se na radnike, ovlaštenike, stručnjake zaštite na radu i sve osobe koje sudjeluju u radu kod poslodavca.",
+  }),
+  Object.freeze({
+    type: "fire",
+    title: "Pravilnik o zaštiti od požara",
+    shortTitle: "Zaštita od požara",
+    summary: "Interni pravilnik za organizaciju zaštite od požara, odgovorne osobe, opremu, evakuaciju i postupanje u slučaju požara.",
+    scope: "Primjenjuje se na prostore, radnike i procese u kojima se provode mjere zaštite od požara.",
+  }),
+  Object.freeze({
+    type: "alcohol_drugs",
+    title: "Pravilnik o testiranju na alkohol i droge",
+    shortTitle: "Alkohol i droge",
+    summary: "Interni pravilnik kojim se uređuje postupak provjere alkoholiziranosti i utjecaja droga na radnom mjestu.",
+    scope: "Primjenjuje se na radnike i druge osobe kada je potrebno provesti provjeru sposobnosti za siguran rad.",
+  }),
+]);
 const WORK_ORDER_DOCUMENT_CATEGORY_OPTIONS = Object.freeze([
   { value: "Ovjereni Radni nalog", label: "Ovjereni Radni nalog" },
   { value: "Radni listovi", label: "Radni listovi" },
@@ -1178,6 +1205,16 @@ const APP_ROLE_PERMISSION_MODULES = Object.freeze([
     ],
   },
   {
+    key: "rulebooks",
+    title: "Pravilnici",
+    description: "Pregled i uredivanje internih pravilnika.",
+    type: "app",
+    rows: [
+      { key: "rulebooks.view", label: "Prikaz pravilnika" },
+      { key: "rulebooks.manage", label: "Uredivanje pravilnika" },
+    ],
+  },
+  {
     key: "service-catalog",
     title: "Usluge",
     description: "Pregled usluga i dodavanje novih usluga.",
@@ -1656,6 +1693,12 @@ const MODULE_VIEW_DEFINITIONS = {
     description: "Procjene rizika po tvrtkama, lokacijama, poslovima, planu mjera i komunikaciji s klijentom.",
     chips: ["Procjena rizika", "Plan mjera", "Klijent"],
   },
+  rulebooks: {
+    kicker: "Health And Safety",
+    title: "Pravilnici",
+    description: "Interni pravilnici za zaštitu na radu, požar te testiranje na alkohol i droge.",
+    chips: ["ZNR", "Požar", "Alkohol i droge"],
+  },
 };
 const SIDEBAR_ITEM_CONFIG = {
   dashboard: { group: "home", view: "selfdash", focus: "top" },
@@ -1692,6 +1735,7 @@ const SIDEBAR_ITEM_CONFIG = {
   "people-training": { group: "learning", view: "module", module: "people-training" },
   jobs: { group: "learning", view: "module", module: "jobs" },
   "risk-assessment": { group: "learning", view: "module", module: "risk-assessment" },
+  rulebooks: { group: "learning", view: "module", module: "rulebooks" },
   "learning-people": { group: "learning", view: "module", module: "learning-people" },
 };
 const SIDEBAR_GROUP_DEFAULT_ITEM = {
@@ -1746,6 +1790,7 @@ const SIDEBAR_ITEM_LABELS = {
   "people-training": "Osposobljavanja",
   jobs: "Jobs",
   "risk-assessment": "Risk Assessment",
+  rulebooks: "Pravilnici",
   "learning-people": "People",
 };
 const PEOPLE_WORKSPACE_TAB_DEFINITIONS = Object.freeze({
@@ -1840,6 +1885,7 @@ const state = {
   contractTemplates: [],
   vehicles: [],
   legalFrameworks: [],
+  rulebooks: [],
   learningTests: [],
   documentTemplates: [],
   serviceCatalog: [],
@@ -1945,6 +1991,7 @@ const state = {
   activeVehicleId: "",
   activeVehicleReservationId: "",
   activeLegalFrameworkId: "",
+  activeRulebookId: "",
   activeLearningTestId: "",
   activeServiceCatalogId: "",
   activeMeasurementEquipmentId: "",
@@ -1988,6 +2035,7 @@ const state = {
   vehicleActivitySectionExpanded: true,
   vehicleDocumentsSectionExpanded: true,
   legalFrameworkEditorOpen: false,
+  rulebookEditorOpen: false,
   learningTestEditorOpen: false,
   serviceCatalogEditorOpen: false,
   measurementEquipmentEditorOpen: false,
@@ -2034,6 +2082,11 @@ const state = {
   legalFrameworkFilters: {
     query: "",
     status: "all",
+  },
+  rulebookFilters: {
+    query: "",
+    status: "all",
+    rulebookType: "all",
   },
   serviceCatalogFilters: {
     query: "",
@@ -4022,6 +4075,36 @@ const legalFrameworkNoteInput = document.querySelector("#legal-framework-note");
 const legalFrameworkError = document.querySelector("#legal-framework-error");
 const legalFrameworkResetButton = document.querySelector("#legal-framework-reset");
 const legalFrameworkDeleteButton = document.querySelector("#legal-framework-delete");
+const rulebooksModule = document.querySelector("#rulebooks-module");
+const rulebookPresetList = document.querySelector("#rulebook-preset-list");
+const rulebookSearchInput = document.querySelector("#rulebook-search");
+const rulebookFilterTypeInput = document.querySelector("#rulebook-filter-type");
+const rulebookFilterStatusInput = document.querySelector("#rulebook-filter-status");
+const rulebookHelper = document.querySelector("#rulebook-helper");
+const rulebookList = document.querySelector("#rulebook-list");
+const rulebookEmpty = document.querySelector("#rulebook-empty");
+const rulebookOpenFormButton = document.querySelector("#rulebook-open-form");
+const rulebookEditorBackdrop = document.querySelector("#rulebook-editor-backdrop");
+const rulebookEditorPanel = document.querySelector("#rulebook-editor-panel");
+const rulebookEditorCloseButton = document.querySelector("#rulebook-editor-close");
+const rulebookEditorBody = rulebookEditorPanel?.querySelector(".rulebook-editor-body");
+const rulebookEditorTitle = document.querySelector("#rulebook-editor-title");
+const rulebookForm = document.querySelector("#rulebook-form");
+const rulebookIdInput = document.querySelector("#rulebook-id");
+const rulebookTitleInput = document.querySelector("#rulebook-title");
+const rulebookTypeInput = document.querySelector("#rulebook-type");
+const rulebookStatusInput = document.querySelector("#rulebook-status");
+const rulebookEffectiveFromInput = document.querySelector("#rulebook-effective-from");
+const rulebookReviewDateInput = document.querySelector("#rulebook-review-date");
+const rulebookOwnerInput = document.querySelector("#rulebook-owner");
+const rulebookScopeInput = document.querySelector("#rulebook-scope");
+const rulebookSummaryInput = document.querySelector("#rulebook-summary");
+const rulebookDocumentsInput = document.querySelector("#rulebook-documents-input");
+const rulebookDocumentsUploadButton = document.querySelector("#rulebook-documents-upload");
+const rulebookDocumentsList = document.querySelector("#rulebook-documents-list");
+const rulebookError = document.querySelector("#rulebook-error");
+const rulebookResetButton = document.querySelector("#rulebook-reset");
+const rulebookDeleteButton = document.querySelector("#rulebook-delete");
 const templateDevelopmentModule = document.querySelector("#template-development-module");
 const documentTemplateTotalCount = document.querySelector("#document-template-total-count");
 const documentTemplateActiveCount = document.querySelector("#document-template-active-count");
@@ -4464,6 +4547,7 @@ let measurementEquipmentActivityDrafts = [];
 let measurementEquipmentSideComments = [];
 let measurementEquipmentSpecDrafts = [];
 let legalFrameworkDocumentDrafts = [];
+let rulebookDocumentDrafts = [];
 let safetyAuthorizationDocumentDrafts = [];
 let absenceDocumentDrafts = [];
 let absenceBalanceDrafts = [];
@@ -7859,6 +7943,14 @@ function getCanEditLegalFramework() {
   return hasAppPermissionClient("legalFramework.edit");
 }
 
+function getCanViewRulebooks() {
+  return hasAppPermissionClient("rulebooks.view") || hasAppPermissionClient("rulebooks.manage");
+}
+
+function getCanManageRulebooks() {
+  return hasAppPermissionClient("rulebooks.manage");
+}
+
 function getCanViewServiceCatalog() {
   return hasAppPermissionClient("serviceCatalog.view");
 }
@@ -9010,6 +9102,7 @@ function applySnapshot(payload, options = {}) {
   state.contractTemplates = payload.contractTemplates ?? [];
   state.vehicles = payload.vehicles ?? [];
   state.legalFrameworks = payload.legalFrameworks ?? [];
+  state.rulebooks = payload.rulebooks ?? [];
   state.learningTests = payload.learningTests ?? [];
   state.serviceCatalog = payload.serviceCatalog ?? [];
   state.measurementEquipment = payload.measurementEquipment ?? [];
@@ -9142,6 +9235,11 @@ function applySnapshot(payload, options = {}) {
     state.legalFrameworkEditorOpen = false;
     syncLegalFrameworkEditorModal();
     resetLegalFrameworkForm();
+  }
+  if (rulebookIdInput?.value && !state.rulebooks.some((item) => String(item.id) === String(rulebookIdInput.value))) {
+    state.rulebookEditorOpen = false;
+    syncRulebookEditorModal();
+    resetRulebookForm();
   }
   if (learningTestIdInput?.value && !state.learningTests.some((item) => String(item.id) === String(learningTestIdInput.value))) {
     state.learningTestEditorOpen = false;
@@ -18602,6 +18700,7 @@ function renderModuleView() {
   const isVehiclesModule = state.activeModuleItem === "vehicles";
   const isMeasurementEquipmentModule = state.activeModuleItem === "measurement-equipment";
   const isLegalFrameworkModule = state.activeModuleItem === "legal-framework";
+  const isRulebooksModule = state.activeModuleItem === "rulebooks";
   const isLearningTestsModule = state.activeModuleItem === "tests";
   const isPeopleTrainingModule = state.activeModuleItem === "people-training";
   const isJobsModule = state.activeModuleItem === "jobs";
@@ -18616,6 +18715,7 @@ function renderModuleView() {
     && !isOffersModule
     && !isPublicProcurementModule
     && !isLegalFrameworkModule
+    && !isRulebooksModule
     && !isMeasurementEquipmentModule
     && !isContractModule
     && !isClientPortalModule
@@ -18740,6 +18840,10 @@ function renderModuleView() {
     legalFrameworkModule.hidden = !isLegalFrameworkModule;
   }
 
+  if (rulebooksModule) {
+    rulebooksModule.hidden = !isRulebooksModule;
+  }
+
   if (serviceCatalogModule) {
     serviceCatalogModule.hidden = !isServiceCatalogModule;
   }
@@ -18818,6 +18922,10 @@ function renderModuleView() {
 
   if (isLegalFrameworkModule) {
     renderLegalFrameworkModule();
+  }
+
+  if (isRulebooksModule) {
+    renderRulebooksModule();
   }
 
   if (isServiceCatalogModule) {
@@ -48272,6 +48380,47 @@ function syncLegalFrameworkEditorModal() {
   }
 }
 
+function scrollRulebookEditorToTop() {
+  rulebookEditorBody?.scrollTo({ top: 0, left: 0, behavior: "auto" });
+}
+
+function syncRulebookEditorModal() {
+  if (state.rulebookEditorOpen && (
+    state.activeView !== "module"
+    || state.activeModuleItem !== "rulebooks"
+    || !state.user
+  )) {
+    state.rulebookEditorOpen = false;
+  }
+
+  const isOpen = state.rulebookEditorOpen;
+  rulebookEditorPanel?.classList.toggle("is-modal-open", isOpen);
+  document.body.classList.toggle("is-rulebook-editor-open", isOpen);
+
+  if (rulebookEditorPanel) {
+    rulebookEditorPanel.hidden = !isOpen;
+    rulebookEditorPanel.setAttribute("aria-hidden", String(!isOpen));
+  }
+
+  if (rulebookEditorBackdrop) {
+    rulebookEditorBackdrop.hidden = !isOpen;
+  }
+
+  if (rulebookEditorCloseButton) {
+    rulebookEditorCloseButton.hidden = !isOpen;
+  }
+
+  if (isOpen) {
+    requestAnimationFrame(() => {
+      scrollRulebookEditorToTop();
+      rulebookEditorBody?.focus({ preventScroll: true });
+      window.setTimeout(() => {
+        scrollRulebookEditorToTop();
+      }, 0);
+    });
+  }
+}
+
 function syncDocumentTemplateEditorModal() {
   const runtimeFillMode = state.documentTemplateEditorOpen
     && String(state.documentTemplateRuntime.mode || "").trim().toLowerCase() === "fill";
@@ -67824,6 +67973,400 @@ function renderLegalFrameworkModule() {
   legalFrameworkEmpty.hidden = visibleItems.length !== 0;
 }
 
+function getRulebookTypeLabel(value) {
+  return getOptionLabel(RULEBOOK_TYPE_OPTIONS, value || "custom");
+}
+
+function getRulebookStatusLabel(value) {
+  return getOptionLabel(RULEBOOK_STATUS_OPTIONS, value || "draft");
+}
+
+function getRulebookPreset(rulebookType = "") {
+  return RULEBOOK_PRESETS.find((preset) => preset.type === String(rulebookType || "")) ?? null;
+}
+
+function getRulebookIconName(rulebookType = "") {
+  switch (String(rulebookType || "")) {
+    case "fire":
+      return "flame";
+    case "alcohol_drugs":
+      return "shield-alert";
+    case "znr":
+      return "shield";
+    default:
+      return "file";
+  }
+}
+
+function renderRulebookIcon(name = "file") {
+  const icons = {
+    shield: '<path d="M12 3 5 6v5c0 4.2 2.8 7.5 7 9 4.2-1.5 7-4.8 7-9V6z"></path><path d="m9 12 2 2 4-5"></path>',
+    flame: '<path d="M12 21c3.3 0 6-2.4 6-5.8 0-2.8-1.6-4.6-3.4-6.2-.9-.8-1.8-1.8-2.1-3.1-.1-.4-.6-.6-.9-.3-1.9 1.5-3 3.5-2.6 6.2-1.1-.6-1.9-1.5-2.4-2.7-.1-.4-.7-.4-.9-.1A8.2 8.2 0 0 0 6 15.2C6 18.6 8.7 21 12 21Z"></path>',
+    "shield-alert": '<path d="M12 3 5 6v5c0 4.2 2.8 7.5 7 9 4.2-1.5 7-4.8 7-9V6z"></path><path d="M12 8v5"></path><path d="M12 16h.01"></path>',
+    file: '<path d="M6 4h9l3 3v13H6z"></path><path d="M15 4v4h4"></path><path d="M9 12h6M9 16h4"></path>',
+  };
+  return `<svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">${icons[name] || icons.file}</svg>`;
+}
+
+function setRulebookDocumentDrafts(items = []) {
+  rulebookDocumentDrafts = (Array.isArray(items) ? items : [])
+    .map((item) => createModuleAttachmentDraft(item))
+    .filter((item) => item.fileName && (item.dataUrl || item.storageUrl));
+}
+
+function renderRulebookDocuments() {
+  if (!rulebookDocumentsList) {
+    return;
+  }
+
+  if (rulebookDocumentDrafts.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "helper-copy module-copy";
+    empty.textContent = "Još nema dodanih dokumenata za ovaj pravilnik.";
+    rulebookDocumentsList.replaceChildren(empty);
+    return;
+  }
+
+  rulebookDocumentsList.replaceChildren(...rulebookDocumentDrafts.map((entry) => {
+    const row = document.createElement("article");
+    row.className = "module-attachment-row rulebook-document-row";
+
+    const copy = document.createElement("div");
+    copy.className = "module-attachment-copy";
+
+    const title = document.createElement("strong");
+    title.textContent = entry.fileName || "Dokument";
+
+    const meta = document.createElement("span");
+    meta.textContent = [
+      entry.documentCategory || "Pravilnik",
+      formatFileSize(entry.fileSize),
+      entry.updatedAt ? formatCompactDateTime(entry.updatedAt) : "",
+    ].filter(Boolean).join(" | ");
+
+    copy.append(title, meta);
+
+    const actions = document.createElement("div");
+    actions.className = "module-attachment-actions";
+    actions.append(
+      createIconActionButton("Preuzmi dokument", "download", "", () => {
+        triggerModuleAttachmentDownload(entry);
+      }),
+      createIconActionButton("Makni dokument", "trash", "card-danger", () => {
+        rulebookDocumentDrafts = rulebookDocumentDrafts.filter((item) => String(item.id) !== String(entry.id));
+        renderRulebookDocuments();
+      }),
+    );
+
+    row.append(copy, actions);
+    return row;
+  }));
+}
+
+async function queueRulebookDocuments(files) {
+  const uploadFiles = Array.from(files ?? []).filter((file) => file instanceof File);
+
+  if (!uploadFiles.length) {
+    return;
+  }
+
+  for (const file of uploadFiles) {
+    if (file.size > WORK_ORDER_DOCUMENT_MAX_SIZE_BYTES) {
+      throw new Error(`Datoteka ${file.name} mora biti manja od 12 MB.`);
+    }
+  }
+
+  const nextDocuments = await Promise.all(uploadFiles.map(async (file) => createModuleAttachmentDraft({
+    fileName: file.name,
+    fileType: file.type || "application/octet-stream",
+    fileSize: file.size || 0,
+    documentCategory: "Pravilnik",
+    dataUrl: await readFileAsDataUrl(file, `Ne mogu učitati datoteku ${file.name}.`),
+    updatedAt: new Date().toISOString(),
+  })));
+
+  rulebookDocumentDrafts = [
+    ...rulebookDocumentDrafts,
+    ...nextDocuments,
+  ];
+  renderRulebookDocuments();
+}
+
+function syncRulebookEditorChrome() {
+  if (rulebookEditorTitle) {
+    rulebookEditorTitle.textContent = rulebookIdInput?.value
+      ? `Uredi pravilnik | ${rulebookTitleInput?.value?.trim() || "Bez naziva"}`
+      : "Novi pravilnik";
+  }
+
+  if (rulebookDeleteButton) {
+    rulebookDeleteButton.hidden = !rulebookIdInput?.value || !getCanManageRulebooks();
+  }
+}
+
+function buildRulebookPayload() {
+  return {
+    organizationId: state.activeOrganizationId || "",
+    title: rulebookTitleInput?.value || "",
+    rulebookType: rulebookTypeInput?.value || "custom",
+    status: rulebookStatusInput?.value || "draft",
+    effectiveFrom: rulebookEffectiveFromInput?.value || "",
+    reviewDate: rulebookReviewDateInput?.value || "",
+    owner: rulebookOwnerInput?.value || "",
+    scope: rulebookScopeInput?.value || "",
+    summary: rulebookSummaryInput?.value || "",
+    documents: rulebookDocumentDrafts.map((item) => serializeModuleAttachmentDraft(item)),
+  };
+}
+
+function applyRulebookPresetToForm(preset = null) {
+  if (!preset) {
+    return;
+  }
+
+  if (rulebookTitleInput) {
+    rulebookTitleInput.value = preset.title;
+  }
+  if (rulebookTypeInput) {
+    rulebookTypeInput.value = preset.type;
+  }
+  if (rulebookScopeInput) {
+    rulebookScopeInput.value = preset.scope;
+  }
+  if (rulebookSummaryInput) {
+    rulebookSummaryInput.value = preset.summary;
+  }
+}
+
+function resetRulebookForm({ preset = null } = {}) {
+  if (!rulebookForm) {
+    return;
+  }
+
+  rulebookForm.reset();
+  state.activeRulebookId = "";
+  if (rulebookIdInput) {
+    rulebookIdInput.value = "";
+  }
+  if (rulebookStatusInput) {
+    rulebookStatusInput.value = "draft";
+  }
+  if (rulebookTypeInput) {
+    rulebookTypeInput.value = "znr";
+  }
+  if (rulebookError) {
+    rulebookError.textContent = "";
+  }
+  applyRulebookPresetToForm(preset);
+  setRulebookDocumentDrafts([]);
+  renderRulebookDocuments();
+  syncRulebookEditorChrome();
+}
+
+function hydrateRulebookForm(item) {
+  state.activeView = "module";
+  state.activeModuleItem = "rulebooks";
+  renderActiveView();
+  renderModuleView();
+  state.activeRulebookId = item.id;
+  rulebookIdInput.value = item.id || "";
+  rulebookTitleInput.value = item.title || "";
+  rulebookTypeInput.value = item.rulebookType || "custom";
+  rulebookStatusInput.value = item.status || "draft";
+  rulebookEffectiveFromInput.value = item.effectiveFrom || "";
+  rulebookReviewDateInput.value = item.reviewDate || "";
+  rulebookOwnerInput.value = item.owner || "";
+  rulebookScopeInput.value = item.scope || "";
+  rulebookSummaryInput.value = item.summary || "";
+  setRulebookDocumentDrafts(item.documents ?? []);
+  renderRulebookDocuments();
+  if (rulebookError) {
+    rulebookError.textContent = "";
+  }
+  syncRulebookEditorChrome();
+  openRulebookEditor();
+  requestAnimationFrame(() => {
+    rulebookTitleInput?.focus({ preventScroll: true });
+  });
+}
+
+function openRulebookEditor() {
+  state.rulebookEditorOpen = true;
+  syncRulebookEditorModal();
+}
+
+function closeRulebookEditor({ reset = false } = {}) {
+  state.rulebookEditorOpen = false;
+  syncRulebookEditorModal();
+
+  if (reset) {
+    resetRulebookForm();
+  }
+}
+
+function dismissRulebookEditor() {
+  closeRulebookEditor({ reset: true });
+  renderRulebooksModule();
+}
+
+function createRulebookStatusBadge(status) {
+  return createBadge(
+    getRulebookStatusLabel(status),
+    `rulebook-status-badge is-${slugifyValue(status || "draft")}`,
+  );
+}
+
+function renderRulebookPresets(items = []) {
+  if (!rulebookPresetList) {
+    return;
+  }
+
+  const itemsByType = new Map((items ?? []).map((item) => [String(item.rulebookType || ""), item]));
+  const canManage = getCanManageRulebooks();
+
+  rulebookPresetList.replaceChildren(...RULEBOOK_PRESETS.map((preset) => {
+    const existing = itemsByType.get(preset.type) ?? null;
+    const card = document.createElement("article");
+    card.className = `rulebook-preset-card is-${preset.type}`;
+
+    const icon = document.createElement("span");
+    icon.className = "rulebook-preset-icon";
+    icon.innerHTML = renderRulebookIcon(getRulebookIconName(preset.type));
+
+    const copy = document.createElement("div");
+    copy.className = "rulebook-preset-copy";
+    const title = document.createElement("strong");
+    title.textContent = preset.title;
+    const meta = document.createElement("span");
+    meta.textContent = existing
+      ? [
+        getRulebookStatusLabel(existing.status),
+        existing.documents?.length ? `${existing.documents.length} dok.` : "Bez dokumenta",
+      ].filter(Boolean).join(" | ")
+      : "Predložak spreman za unos";
+    copy.append(title, meta);
+
+    const action = document.createElement("button");
+    action.type = "button";
+    action.className = existing ? "ghost-button" : "secondary-button";
+    action.textContent = existing ? "Otvori" : "Dodaj";
+    action.disabled = !canManage;
+    action.addEventListener("click", () => {
+      if (!canManage) {
+        return;
+      }
+      if (existing) {
+        hydrateRulebookForm(existing);
+        return;
+      }
+      resetRulebookForm({ preset });
+      renderRulebooksModule();
+      openRulebookEditor();
+    });
+
+    card.append(icon, copy, action);
+    return card;
+  }));
+}
+
+function renderRulebooksModule() {
+  if (!rulebooksModule || !rulebookList || !rulebookEmpty) {
+    return;
+  }
+
+  const filters = {
+    query: rulebookSearchInput?.value?.trim() || state.rulebookFilters.query || "",
+    status: rulebookFilterStatusInput?.value || state.rulebookFilters.status || "all",
+    rulebookType: rulebookFilterTypeInput?.value || state.rulebookFilters.rulebookType || "all",
+  };
+  state.rulebookFilters = filters;
+
+  const canManage = getCanManageRulebooks();
+  const canAccess = getCanViewRulebooks() || canManage;
+  const allItems = canAccess ? sortRulebooks(state.rulebooks ?? []) : [];
+  const visibleItems = sortRulebooks(filterRulebooks(allItems, filters));
+
+  if (rulebookOpenFormButton) {
+    rulebookOpenFormButton.hidden = !canManage;
+  }
+  if (rulebookDeleteButton) {
+    rulebookDeleteButton.hidden = !rulebookIdInput?.value || !canManage;
+  }
+  if (rulebookHelper) {
+    rulebookHelper.textContent = visibleItems.length === allItems.length
+      ? `Prikazano ${visibleItems.length} pravilnika.`
+      : `Prikazano ${visibleItems.length} od ${allItems.length} pravilnika.`;
+  }
+
+  renderRulebookPresets(allItems);
+
+  rulebookList.replaceChildren(...visibleItems.map((item) => {
+    const card = document.createElement("article");
+    card.className = `rulebook-card is-${slugifyValue(item.status || "draft")}`;
+    if (canManage) {
+      card.tabIndex = 0;
+      card.setAttribute("role", "button");
+    }
+    if (String(item.id) === String(rulebookIdInput?.value || "")) {
+      card.classList.add("is-active");
+    }
+
+    const icon = document.createElement("span");
+    icon.className = "rulebook-card-icon";
+    icon.innerHTML = renderRulebookIcon(getRulebookIconName(item.rulebookType));
+
+    const main = document.createElement("div");
+    main.className = "rulebook-card-main";
+    const top = document.createElement("div");
+    top.className = "rulebook-card-top";
+    const titleBlock = document.createElement("div");
+    titleBlock.className = "rulebook-card-title";
+    const title = document.createElement("h4");
+    title.textContent = item.title || "Bez naziva";
+    const type = document.createElement("p");
+    type.textContent = getRulebookTypeLabel(item.rulebookType);
+    titleBlock.append(title, type);
+    const status = createRulebookStatusBadge(item.status);
+    top.append(titleBlock, status);
+
+    const summary = document.createElement("p");
+    summary.className = "rulebook-card-summary";
+    summary.textContent = item.summary || "Dodaj sažetak pravilnika i najvažnije obveze.";
+
+    const meta = document.createElement("div");
+    meta.className = "rulebook-card-meta";
+    const documentCount = Array.isArray(item.documents) ? item.documents.length : 0;
+    meta.append(
+      createBadge(documentCount ? `${documentCount} dokumenata` : "Bez dokumenata", "rulebook-meta-badge"),
+      createBadge(item.effectiveFrom ? `Primjena ${formatCompactDate(item.effectiveFrom)}` : "Bez datuma primjene", "rulebook-meta-badge"),
+      createBadge(item.reviewDate ? `Revizija ${formatCompactDate(item.reviewDate)}` : "Bez revizije", item.reviewDate && isUpcomingIsoDate(item.reviewDate) ? "rulebook-meta-badge is-review" : "rulebook-meta-badge"),
+    );
+
+    main.append(top, summary, meta);
+    card.append(icon, main);
+
+    const openCard = () => {
+      if (!canManage) {
+        return;
+      }
+      hydrateRulebookForm(item);
+    };
+    if (canManage) {
+      card.addEventListener("click", openCard);
+      card.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") {
+          return;
+        }
+        event.preventDefault();
+        openCard();
+      });
+    }
+    return card;
+  }));
+
+  rulebookEmpty.hidden = visibleItems.length !== 0;
+}
+
 function buildServiceCatalogPayload() {
   const selectedType = normalizeServiceCatalogTypeUi(serviceCatalogTypeInput?.value || "inspection");
   const appliesToPeople = Boolean(serviceCatalogAppliesToPeopleInput?.checked || selectedType === "znr");
@@ -82036,6 +82579,7 @@ function closeTransientNavigationOverlays() {
     "reminderEditorOpen",
     "todoEditorOpen",
     "legalFrameworkEditorOpen",
+    "rulebookEditorOpen",
     "serviceCatalogEditorOpen",
     "measurementEquipmentEditorOpen",
     "measurementEquipmentDocumentPreviewOpen",
@@ -82074,6 +82618,7 @@ function closeTransientNavigationOverlays() {
   syncReminderEditorModal();
   syncTodoEditorModal();
   syncLegalFrameworkEditorModal();
+  syncRulebookEditorModal();
   syncServiceCatalogEditorModal();
   syncMeasurementEquipmentEditorModal();
   syncMeasurementEquipmentDocumentPreviewModal();
@@ -96308,6 +96853,7 @@ function renderActiveView() {
   syncVehicleEditorModal();
   syncVehicleReservationModal();
   syncLegalFrameworkEditorModal();
+  syncRulebookEditorModal();
   syncServiceCatalogEditorModal();
   syncMeasurementEquipmentEditorModal();
   syncMeasurementEquipmentExportDialogModal();
@@ -96334,6 +96880,9 @@ function renderSharedOptions() {
   }
   if (legalFrameworkSearchInput && legalFrameworkSearchInput.value !== state.legalFrameworkFilters.query) {
     legalFrameworkSearchInput.value = state.legalFrameworkFilters.query;
+  }
+  if (rulebookSearchInput && rulebookSearchInput.value !== state.rulebookFilters.query) {
+    rulebookSearchInput.value = state.rulebookFilters.query;
   }
   if (serviceCatalogSearchInput && serviceCatalogSearchInput.value !== state.serviceCatalogFilters.query) {
     serviceCatalogSearchInput.value = state.serviceCatalogFilters.query;
@@ -96392,6 +96941,12 @@ function renderSharedOptions() {
   if (legalFrameworkStatusInput) {
     replaceSelectOptions(legalFrameworkStatusInput, LEGAL_FRAMEWORK_STATUS_OPTIONS, legalFrameworkStatusInput.value || "active");
   }
+  if (rulebookStatusInput) {
+    replaceSelectOptions(rulebookStatusInput, RULEBOOK_STATUS_OPTIONS, rulebookStatusInput.value || "draft");
+  }
+  if (rulebookTypeInput) {
+    replaceSelectOptions(rulebookTypeInput, RULEBOOK_TYPE_OPTIONS, rulebookTypeInput.value || "znr");
+  }
   if (learningTestStatusInput) {
     replaceSelectOptions(learningTestStatusInput, LEARNING_TEST_STATUS_OPTIONS, learningTestStatusInput.value || "draft");
   }
@@ -96406,6 +96961,18 @@ function renderSharedOptions() {
       { value: "all", label: "Svi statusi" },
       ...LEGAL_FRAMEWORK_STATUS_OPTIONS,
     ], state.legalFrameworkFilters.status || "all");
+  }
+  if (rulebookFilterStatusInput) {
+    replaceSelectOptions(rulebookFilterStatusInput, [
+      { value: "all", label: "Svi statusi" },
+      ...RULEBOOK_STATUS_OPTIONS,
+    ], state.rulebookFilters.status || "all");
+  }
+  if (rulebookFilterTypeInput) {
+    replaceSelectOptions(rulebookFilterTypeInput, [
+      { value: "all", label: "Sve vrste" },
+      ...RULEBOOK_TYPE_OPTIONS,
+    ], state.rulebookFilters.rulebookType || "all");
   }
   if (serviceCatalogStatusInput) {
     replaceSelectOptions(serviceCatalogStatusInput, SERVICE_CATALOG_STATUS_OPTIONS, serviceCatalogStatusInput.value || "active");
@@ -96550,6 +97117,9 @@ function renderSharedOptions() {
   }
   if (legalFrameworkDocumentsInput) {
     legalFrameworkDocumentsInput.accept = LEGAL_FRAMEWORK_DOCUMENT_ACCEPT_LABEL;
+  }
+  if (rulebookDocumentsInput) {
+    rulebookDocumentsInput.accept = WORK_ORDER_DOCUMENT_ACCEPT_LABEL;
   }
   if (safetyAuthorizationDocumentsInput) {
     safetyAuthorizationDocumentsInput.accept = LEGAL_FRAMEWORK_DOCUMENT_ACCEPT_LABEL;
@@ -111106,6 +111676,7 @@ const HELP_TOUR_MENU_GROUPS = [
       { kind: "tests", label: "Test", description: "Grupe edukacija, materijali, pitanja i live preview." },
       { kind: "people-training", label: "Osposobljavanja", description: "Evidencija po osobama, RN ispiti i uvjerenja." },
       { kind: "risk-assessment", label: "Risk Assessment", description: "Procjene rizika, mjere i klijentski status." },
+      { kind: "rulebooks", label: "Pravilnici", description: "Interni pravilnici ZNR, požar i alkohol/droge." },
     ],
   },
 ];
@@ -115656,6 +116227,111 @@ legalFrameworkForm?.addEventListener("submit", (event) => {
     if (success) {
       closeLegalFrameworkEditor({ reset: true });
       renderLegalFrameworkModule();
+    }
+  });
+});
+
+rulebookSearchInput?.addEventListener("input", () => {
+  state.rulebookFilters.query = rulebookSearchInput.value.trim();
+  renderRulebooksModule();
+});
+
+rulebookFilterTypeInput?.addEventListener("change", () => {
+  state.rulebookFilters.rulebookType = rulebookFilterTypeInput.value || "all";
+  renderRulebooksModule();
+});
+
+rulebookFilterStatusInput?.addEventListener("change", () => {
+  state.rulebookFilters.status = rulebookFilterStatusInput.value || "all";
+  renderRulebooksModule();
+});
+
+rulebookOpenFormButton?.addEventListener("click", () => {
+  if (!getCanManageRulebooks()) {
+    return;
+  }
+  resetRulebookForm();
+  renderRulebooksModule();
+  openRulebookEditor();
+  requestAnimationFrame(() => {
+    rulebookTitleInput?.focus({ preventScroll: true });
+  });
+});
+
+rulebookDocumentsUploadButton?.addEventListener("click", () => {
+  rulebookDocumentsInput?.click();
+});
+
+rulebookDocumentsInput?.addEventListener("change", () => {
+  const files = Array.from(rulebookDocumentsInput.files ?? []);
+
+  if (files.length === 0) {
+    return;
+  }
+
+  void runMutation(() => queueRulebookDocuments(files), rulebookError).then(() => {
+    rulebookDocumentsInput.value = "";
+  });
+});
+
+rulebookEditorCloseButton?.addEventListener("click", () => {
+  dismissRulebookEditor();
+});
+
+rulebookEditorBackdrop?.addEventListener("click", () => {
+  dismissRulebookEditor();
+});
+
+rulebookResetButton?.addEventListener("click", () => {
+  if (!getCanManageRulebooks()) {
+    return;
+  }
+  resetRulebookForm();
+  renderRulebooksModule();
+  openRulebookEditor();
+});
+
+rulebookDeleteButton?.addEventListener("click", () => {
+  if (!getCanManageRulebooks()) {
+    return;
+  }
+  const rulebookId = rulebookIdInput?.value || "";
+
+  if (!rulebookId || !window.confirm("Obrisati ovaj pravilnik?")) {
+    return;
+  }
+
+  void runMutation(() => apiRequest(`/rulebooks/${rulebookId}`, {
+    method: "DELETE",
+  }), rulebookError).then((success) => {
+    if (success) {
+      closeRulebookEditor({ reset: true });
+      renderRulebooksModule();
+    }
+  });
+});
+
+rulebookForm?.addEventListener("input", () => {
+  syncRulebookEditorChrome();
+});
+
+rulebookForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (!getCanManageRulebooks()) {
+    return;
+  }
+
+  const isEditing = Boolean(rulebookIdInput?.value);
+  const path = isEditing ? `/rulebooks/${rulebookIdInput.value}` : "/rulebooks";
+  const method = isEditing ? "PATCH" : "POST";
+
+  void runMutation(() => apiRequest(path, {
+    method,
+    body: buildRulebookPayload(),
+  }), rulebookError).then((success) => {
+    if (success) {
+      closeRulebookEditor({ reset: true });
+      renderRulebooksModule();
     }
   });
 });
@@ -130282,6 +130958,7 @@ function resetAuthenticatedWorkspaceState() {
   state.purchaseOrders = [];
   state.vehicles = [];
   state.legalFrameworks = [];
+  state.rulebooks = [];
   state.serviceCatalog = [];
   state.measurementEquipment = [];
   state.measurementEquipmentCardTemplate = null;
@@ -130364,6 +131041,7 @@ function resetAuthenticatedWorkspaceState() {
   state.activeTodoTaskId = "";
   state.activeDashboardWidgetId = "";
   state.activeLegalFrameworkId = "";
+  state.activeRulebookId = "";
   state.activeServiceCatalogId = "";
   state.activeMeasurementEquipmentId = "";
   state.activeSafetyAuthorizationId = "";
@@ -130394,7 +131072,9 @@ function resetAuthenticatedWorkspaceState() {
   setInlineMessage(changePasswordError, "");
   closeMeasurementSheet();
   resetOfferForm();
+  state.rulebookEditorOpen = false;
   resetLegalFrameworkForm();
+  resetRulebookForm();
   resetServiceCatalogForm();
   resetMeasurementEquipmentForm();
   resetSafetyAuthorizationForm();
@@ -131373,6 +132053,11 @@ document.addEventListener("keydown", (event) => {
     return;
   }
 
+  if (event.key === "Escape" && state.rulebookEditorOpen) {
+    dismissRulebookEditor();
+    return;
+  }
+
   if (event.key === "Escape" && state.locationEditorOpen) {
     dismissLocationEditor();
     return;
@@ -131438,6 +132123,7 @@ resetVehicleForm();
 resetOfferForm();
 resetDrawingForm();
 resetLegalFrameworkForm();
+resetRulebookForm();
 resetDocumentTemplateForm();
 resetCompanyForm();
 resetLocationForm();

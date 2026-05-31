@@ -2236,6 +2236,12 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       linkedTemplateIds: [...(item.linkedTemplateIds ?? [])],
       linkedTemplateTitles: [...(item.linkedTemplateTitles ?? [])],
     })),
+    rulebooks: (["rulebooks.view", "rulebooks.manage"].some((permissionKey) => hasAppPermission(permissionKey)) ? (rawSnapshot.rulebooks ?? []) : []).filter((item) => (
+      String(item.organizationId) === String(organizationId)
+    )).map((item) => ({
+      ...item,
+      documents: (item.documents ?? []).map((document) => ({ ...document })),
+    })),
     documentTemplates: (canViewDocumentTemplates ? (rawSnapshot.documentTemplates ?? []) : []).filter((item) => (
       String(item.organizationId) === String(organizationId)
     )).map((item) => ({
@@ -3053,6 +3059,7 @@ export class MemoryTenantRepository {
       contractTemplates: [],
     vehicles: [],
     legalFrameworks: [],
+    rulebooks: [],
     documentTemplates: [],
     learningTests: [],
     serviceCatalog: [],
@@ -4006,6 +4013,7 @@ export class MySqlTenantRepository {
       contractTemplates: [],
     vehicles: [],
     legalFrameworks: [],
+    rulebooks: [],
     documentTemplates: [],
     learningTests: [],
     serviceCatalog: [],
@@ -4066,6 +4074,7 @@ export class MySqlTenantRepository {
       contractTemplates: [],
         vehicles: [],
         legalFrameworks: [],
+        rulebooks: [],
         documentTemplates: [],
         learningTests: [],
         serviceCatalog: [],

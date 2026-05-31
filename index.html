@@ -786,6 +786,17 @@
                   </span>
                   <strong>Risk Assessment</strong>
                 </button>
+                <button type="button" class="tab-button sidebar-link" data-sidebar-item="rulebooks">
+                  <span class="tab-button-icon" aria-hidden="true">
+                    <svg class="icon-svg" viewBox="0 0 24 24">
+                      <path d="M6 4h9l3 3v13H6z"></path>
+                      <path d="M15 4v4h4"></path>
+                      <path d="M9 11h6M9 15h4"></path>
+                      <path d="M5 20h14"></path>
+                    </svg>
+                  </span>
+                  <strong>Pravilnici</strong>
+                </button>
               </div>
             </section>
           </nav>
@@ -8216,6 +8227,120 @@
                     <p id="drawing-error" class="form-error" aria-live="polite"></p>
                   </form>
                   </section>
+                </div>
+              </section>
+            </section>
+
+            <section id="rulebooks-module" class="rulebooks-module" hidden>
+              <section class="panel rulebooks-hero-panel">
+                <div class="section-heading offers-section-heading rulebooks-list-heading">
+                  <div>
+                    <p class="section-kicker">Health And Safety</p>
+                    <h3>Pravilnici</h3>
+                  </div>
+                  <button id="rulebook-open-form" type="button" class="primary-button">+ Novi pravilnik</button>
+                </div>
+                <p class="helper-copy module-copy">
+                  Interni pravilnici za zaštitu na radu, zaštitu od požara i testiranje na alkohol i droge.
+                </p>
+                <div id="rulebook-preset-list" class="rulebook-preset-list"></div>
+              </section>
+
+              <section class="panel rulebooks-list-panel">
+                <div class="rulebooks-filters">
+                  <label class="field">
+                    <span>Pretraga</span>
+                    <input id="rulebook-search" type="search" placeholder="Naziv, odgovorna osoba, dokument ili napomena..." />
+                  </label>
+                  <label class="field">
+                    <span>Vrsta</span>
+                    <select id="rulebook-filter-type"></select>
+                  </label>
+                  <label class="field">
+                    <span>Status</span>
+                    <select id="rulebook-filter-status"></select>
+                  </label>
+                </div>
+                <p id="rulebook-helper" class="helper-copy module-copy">Nema pravilnika za prikaz.</p>
+                <div id="rulebook-list" class="rulebook-list"></div>
+                <p id="rulebook-empty" class="helper-copy" hidden>Nema pravilnika za odabrane filtere.</p>
+              </section>
+
+              <div id="rulebook-editor-backdrop" class="offer-editor-backdrop rulebook-editor-backdrop" hidden></div>
+              <section id="rulebook-editor-panel" class="panel rulebook-editor-panel" hidden>
+                <div class="offers-editor-fixed-head">
+                  <div class="section-heading offers-section-heading">
+                    <div>
+                      <p class="section-kicker">Pravilnici</p>
+                      <h3 id="rulebook-editor-title">Novi pravilnik</h3>
+                    </div>
+                    <button id="rulebook-editor-close" type="button" class="ghost-button">Zatvori</button>
+                  </div>
+                </div>
+
+                <div class="rulebook-editor-body" tabindex="-1">
+                  <form id="rulebook-form" class="entity-form">
+                    <input id="rulebook-id" type="hidden" />
+                    <div class="form-grid rulebook-form-grid">
+                      <label class="field field-span-full">
+                        <span>Naziv pravilnika</span>
+                        <input id="rulebook-title" maxlength="220" placeholder="Pravilnik o zaštiti na radu" required />
+                      </label>
+                      <label class="field">
+                        <span>Vrsta pravilnika</span>
+                        <select id="rulebook-type"></select>
+                      </label>
+                      <label class="field">
+                        <span>Status</span>
+                        <select id="rulebook-status"></select>
+                      </label>
+                      <label class="field">
+                        <span>Datum primjene</span>
+                        <input id="rulebook-effective-from" type="date" />
+                      </label>
+                      <label class="field">
+                        <span>Revizija do</span>
+                        <input id="rulebook-review-date" type="date" />
+                      </label>
+                      <label class="field field-span-full">
+                        <span>Odgovorna osoba / nositelj</span>
+                        <input id="rulebook-owner" maxlength="180" placeholder="npr. Stručnjak zaštite na radu, Uprava..." />
+                      </label>
+                    </div>
+
+                    <label class="field field-span-full">
+                      <span>Područje primjene</span>
+                      <textarea id="rulebook-scope" rows="3" placeholder="Za koje lokacije, odjele ili radnike se pravilnik primjenjuje..."></textarea>
+                    </label>
+
+                    <label class="field field-span-full">
+                      <span>Sažetak / napomena</span>
+                      <textarea id="rulebook-summary" rows="5" placeholder="Kratki opis pravilnika, obveze, rokovi, posebne napomene..."></textarea>
+                    </label>
+
+                    <section class="service-catalog-template-block rulebook-documents-block">
+                      <div class="section-heading offers-section-heading">
+                        <div>
+                          <p class="section-kicker">Dokumenti</p>
+                          <h3>Prilozi pravilnika</h3>
+                        </div>
+                        <div class="document-template-reference-actions">
+                          <input id="rulebook-documents-input" type="file" multiple hidden />
+                          <button id="rulebook-documents-upload" type="button" class="ghost-button">Dodaj dokument</button>
+                        </div>
+                      </div>
+                      <p class="helper-copy module-copy">Dodaj PDF, Word ili drugi dokument pravilnika.</p>
+                      <div id="rulebook-documents-list" class="module-attachment-list"></div>
+                    </section>
+
+                    <p id="rulebook-error" class="form-error" aria-live="polite"></p>
+
+                    <div class="form-actions">
+                      <button type="submit" class="primary-button">Spremi pravilnik</button>
+                      <button id="rulebook-reset" type="button" class="ghost-button">Novi pravilnik</button>
+                      <button id="rulebook-delete" type="button" class="card-button card-danger" hidden>Obriši</button>
+                    </div>
+                  </form>
                 </div>
               </section>
             </section>

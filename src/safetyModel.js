@@ -112,6 +112,20 @@ export const LEGAL_FRAMEWORK_STATUS_OPTIONS = [
   { value: "inactive", label: "Neaktivan" },
 ];
 
+export const RULEBOOK_STATUS_OPTIONS = [
+  { value: "draft", label: "Skica" },
+  { value: "active", label: "Aktivan" },
+  { value: "review", label: "U reviziji" },
+  { value: "archived", label: "Arhiviran" },
+];
+
+export const RULEBOOK_TYPE_OPTIONS = [
+  { value: "znr", label: "Pravilnik o zaštiti na radu" },
+  { value: "fire", label: "Pravilnik o zaštiti od požara" },
+  { value: "alcohol_drugs", label: "Pravilnik o testiranju na alkohol i droge" },
+  { value: "custom", label: "Drugi pravilnik" },
+];
+
 export const SERVICE_CATALOG_STATUS_OPTIONS = [
   { value: "active", label: "Aktivna" },
   { value: "inactive", label: "Neaktivna" },
@@ -501,6 +515,8 @@ const CONTRACT_TEMPLATE_STATUS_SET = new Set(CONTRACT_TEMPLATE_STATUS_OPTIONS.ma
 const VEHICLE_STATUS_SET = new Set(VEHICLE_STATUS_OPTIONS.map((option) => option.value));
 const VEHICLE_RESERVATION_STATUS_SET = new Set(VEHICLE_RESERVATION_STATUS_OPTIONS.map((option) => option.value));
 const LEGAL_FRAMEWORK_STATUS_SET = new Set(LEGAL_FRAMEWORK_STATUS_OPTIONS.map((option) => option.value));
+const RULEBOOK_STATUS_SET = new Set(RULEBOOK_STATUS_OPTIONS.map((option) => option.value));
+const RULEBOOK_TYPE_SET = new Set(RULEBOOK_TYPE_OPTIONS.map((option) => option.value));
 const SERVICE_CATALOG_STATUS_SET = new Set(SERVICE_CATALOG_STATUS_OPTIONS.map((option) => option.value));
 const SERVICE_CATALOG_TYPE_SET = new Set(SERVICE_CATALOG_TYPE_OPTIONS.map((option) => option.value));
 const MEASUREMENT_EQUIPMENT_KIND_SET = new Set(MEASUREMENT_EQUIPMENT_KIND_OPTIONS.map((option) => option.value));
@@ -600,6 +616,12 @@ const DRAWING_PROJECT_STATUS_RANK = {
 const LEGAL_FRAMEWORK_STATUS_RANK = {
   active: 0,
   inactive: 1,
+};
+const RULEBOOK_STATUS_RANK = {
+  active: 0,
+  review: 1,
+  draft: 2,
+  archived: 3,
 };
 const DOCUMENT_TEMPLATE_STATUS_RANK = {
   active: 0,
@@ -924,6 +946,16 @@ function normalizeVehicleReservationStatus(value) {
 function normalizeLegalFrameworkStatus(value) {
   const status = normalizeText(value).toLowerCase();
   return LEGAL_FRAMEWORK_STATUS_SET.has(status) ? status : "active";
+}
+
+function normalizeRulebookStatus(value) {
+  const status = normalizeText(value).toLowerCase();
+  return RULEBOOK_STATUS_SET.has(status) ? status : "draft";
+}
+
+function normalizeRulebookType(value) {
+  const type = normalizeText(value).toLowerCase();
+  return RULEBOOK_TYPE_SET.has(type) ? type : "custom";
 }
 
 function normalizeDocumentTemplateStatus(value) {
@@ -6168,6 +6200,115 @@ export function sortLegalFrameworks(items) {
   return [...(items ?? [])].sort((left, right) => {
     const leftRank = LEGAL_FRAMEWORK_STATUS_RANK[left.status] ?? Number.MAX_SAFE_INTEGER;
     const rightRank = LEGAL_FRAMEWORK_STATUS_RANK[right.status] ?? Number.MAX_SAFE_INTEGER;
+
+    if (leftRank !== rightRank) {
+      return leftRank - rightRank;
+    }
+
+    if (left.reviewDate && right.reviewDate && left.reviewDate !== right.reviewDate) {
+      return left.reviewDate.localeCompare(right.reviewDate);
+    }
+
+    if (left.reviewDate && !right.reviewDate) {
+      return -1;
+    }
+
+    if (!left.reviewDate && right.reviewDate) {
+      return 1;
+    }
+
+    return String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? ""));
+  });
+}
+
+export function createRulebook(
+  input,
+  createId = () => crypto.randomUUID(),
+  now = isoNow,
+) {
+  const timestamp = now();
+  const organizationId = requireText(input.organizationId, "Organizacija");
+
+  return {
+    id: createId(),
+    organizationId,
+    title: requireText(input.title, "Naziv pravilnika"),
+    rulebookType: normalizeRulebookType(input.rulebookType ?? input.type),
+    status: normalizeRulebookStatus(input.status),
+    effectiveFrom: normalizeOptionalDate(input.effectiveFrom),
+    reviewDate: normalizeOptionalDate(input.reviewDate),
+    owner: normalizeText(input.owner).slice(0, 180),
+    scope: normalizeText(input.scope),
+    summary: normalizeText(input.summary ?? input.note),
+    documents: normalizeAttachmentDocuments(input.documents),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+export function updateRulebook(current, patch, now = isoNow) {
+  return {
+    ...current,
+    organizationId: hasOwn(patch, "organizationId")
+      ? requireText(patch.organizationId, "Organizacija")
+      : current.organizationId,
+    title: hasOwn(patch, "title") ? requireText(patch.title, "Naziv pravilnika") : current.title,
+    rulebookType: hasOwn(patch, "rulebookType") || hasOwn(patch, "type")
+      ? normalizeRulebookType(patch.rulebookType ?? patch.type)
+      : current.rulebookType,
+    status: hasOwn(patch, "status") ? normalizeRulebookStatus(patch.status) : current.status,
+    effectiveFrom: hasOwn(patch, "effectiveFrom") ? normalizeOptionalDate(patch.effectiveFrom) : current.effectiveFrom,
+    reviewDate: hasOwn(patch, "reviewDate") ? normalizeOptionalDate(patch.reviewDate) : current.reviewDate,
+    owner: hasOwn(patch, "owner") ? normalizeText(patch.owner).slice(0, 180) : current.owner,
+    scope: hasOwn(patch, "scope") ? normalizeText(patch.scope) : current.scope,
+    summary: hasOwn(patch, "summary") || hasOwn(patch, "note")
+      ? normalizeText(patch.summary ?? patch.note)
+      : current.summary,
+    documents: hasOwn(patch, "documents")
+      ? normalizeAttachmentDocuments(patch.documents)
+      : normalizeAttachmentDocuments(current.documents),
+    updatedAt: now(),
+  };
+}
+
+export function filterRulebooks(
+  items,
+  { query = "", status = "all", rulebookType = "all" } = {},
+) {
+  const normalizedQuery = normalizeText(query).toLowerCase();
+  const normalizedStatus = normalizeText(status).toLowerCase() || "all";
+  const normalizedType = normalizeText(rulebookType).toLowerCase() || "all";
+
+  return (items ?? []).filter((item) => {
+    if (normalizedStatus !== "all" && item.status !== normalizedStatus) {
+      return false;
+    }
+
+    if (normalizedType !== "all" && item.rulebookType !== normalizedType) {
+      return false;
+    }
+
+    if (!normalizedQuery) {
+      return true;
+    }
+
+    const haystack = [
+      item.title,
+      item.rulebookType,
+      item.owner,
+      item.scope,
+      item.summary,
+      ...(item.documents ?? []).flatMap((document) => [document.fileName, document.description]),
+    ].join(" ").toLowerCase();
+
+    return haystack.includes(normalizedQuery);
+  });
+}
+
+export function sortRulebooks(items) {
+  return [...(items ?? [])].sort((left, right) => {
+    const leftRank = RULEBOOK_STATUS_RANK[left.status] ?? Number.MAX_SAFE_INTEGER;
+    const rightRank = RULEBOOK_STATUS_RANK[right.status] ?? Number.MAX_SAFE_INTEGER;
 
     if (leftRank !== rightRank) {
       return leftRank - rightRank;

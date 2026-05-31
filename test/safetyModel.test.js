@@ -28,6 +28,7 @@ import {
   createPurchaseOrder,
   createRiskAssessment,
   createReminder,
+  createRulebook,
   createSafetyAuthorization,
   createServiceCatalogItem,
   createTodoTask,
@@ -50,6 +51,7 @@ import {
   filterPublicProcurements,
   filterPurchaseOrders,
   filterRiskAssessments,
+  filterRulebooks,
   filterSafetyAuthorizations,
   filterServiceCatalogItems,
   filterTodoTasks,
@@ -84,6 +86,7 @@ import {
   sortPersonTrainingRecords,
   sortPublicProcurements,
   sortPurchaseOrders,
+  sortRulebooks,
   sortSafetyAuthorizations,
   sortServiceCatalogItems,
   sortVehicles,
@@ -106,6 +109,7 @@ import {
   updatePurchaseOrder,
   updateReminder,
   updateRiskAssessment,
+  updateRulebook,
   updateSafetyAuthorization,
   updateServiceCatalogItem,
   updateTodoTask,
@@ -1224,6 +1228,63 @@ test("legal framework create, update, filter and sort work together", () => {
 
   const sorted = sortLegalFrameworks([updatedSecond, first]);
   assert.equal(sorted[0].id, "legal-1");
+});
+
+test("rulebooks create, update, filter and sort as a separate HSE register", () => {
+  const znr = createRulebook(
+    {
+      organizationId: "org-1",
+      title: "Pravilnik o zaštiti na radu",
+      rulebookType: "znr",
+      status: "active",
+      effectiveFrom: "01.06.2026.",
+      reviewDate: "2026-12-31",
+      owner: "Stručnjak ZNR",
+      scope: "Svi radnici i lokacije.",
+      summary: "Organizacija zaštite na radu i odgovornosti.",
+      documents: [
+        {
+          id: "rulebook-doc-1",
+          fileName: "pravilnik-znr.docx",
+          fileType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          dataUrl: "data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,AAAA",
+        },
+      ],
+    },
+    () => "rulebook-1",
+    () => "2026-05-31T09:00:00.000Z",
+  );
+  const fire = createRulebook(
+    {
+      organizationId: "org-1",
+      title: "Pravilnik o zaštiti od požara",
+      rulebookType: "fire",
+      status: "draft",
+      reviewDate: "2026-10-10",
+    },
+    () => "rulebook-2",
+    () => "2026-05-31T10:00:00.000Z",
+  );
+
+  const updatedFire = updateRulebook(
+    fire,
+    {
+      status: "review",
+      summary: "Evakuacija, odgovorne osobe i oprema za početno gašenje požara.",
+    },
+    () => "2026-05-31T11:00:00.000Z",
+  );
+  const filtered = filterRulebooks([znr, updatedFire], {
+    query: "evakuacija",
+    status: "review",
+    rulebookType: "fire",
+  });
+
+  assert.equal(znr.documents.length, 1);
+  assert.equal(znr.effectiveFrom, "2026-06-01");
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].id, "rulebook-2");
+  assert.equal(sortRulebooks([updatedFire, znr])[0].id, "rulebook-1");
 });
 
 test("document templates keep nested builder data and support filtering", () => {

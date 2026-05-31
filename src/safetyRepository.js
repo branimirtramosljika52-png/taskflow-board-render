@@ -31,6 +31,7 @@ import {
   createPurchaseOrder,
   createRiskAssessment,
   createReminder,
+  createRulebook,
   createSafetyAuthorization,
   createServiceCatalogItem,
   createTodoTask,
@@ -67,6 +68,7 @@ import {
   updatePurchaseOrder,
   updateRiskAssessment,
   updateReminder,
+  updateRulebook,
   updateSafetyAuthorization,
   updateServiceCatalogItem,
   updateTodoTask,
@@ -4132,6 +4134,41 @@ async function fetchSnapshotFromConnection(connection) {
     };
   });
 
+  const [rulebookRows] = await connection.query(`
+    SELECT id, organization_id, title, rulebook_type, status, effective_from, review_date,
+           owner_name, scope_text, summary_text, documents_json, created_at, updated_at
+    FROM web_rulebooks
+    ORDER BY
+      CASE status
+        WHEN 'active' THEN 0
+        WHEN 'review' THEN 1
+        WHEN 'draft' THEN 2
+        WHEN 'archived' THEN 3
+        ELSE 9
+      END ASC,
+      review_date ASC,
+      updated_at DESC,
+      id DESC
+  `);
+
+  const rulebooks = rulebookRows.map((row) => ({
+    id: String(row.id),
+    organizationId: dbString(row.organization_id),
+    title: row.title ?? "",
+    rulebookType: row.rulebook_type ?? "custom",
+    status: row.status ?? "draft",
+    effectiveFrom: normalizeDateOnly(row.effective_from),
+    reviewDate: normalizeDateOnly(row.review_date),
+    owner: row.owner_name ?? "",
+    scope: row.scope_text ?? "",
+    summary: row.summary_text ?? "",
+    documents: parseJsonArray(row.documents_json)
+      .map((document) => mapStoredAttachmentDocument(document))
+      .filter((document) => document.fileName && (document.dataUrl || document.storageUrl)),
+    createdAt: normalizeTimestamp(row.created_at),
+    updatedAt: normalizeTimestamp(row.updated_at),
+  }));
+
   const [measurementEquipmentRows] = await connection.query(`
     SELECT id, organization_id, name, equipment_kind, manufacturer, device_type, device_code, serial_number, inventory_number,
            entered_by, approved_by, entry_date,
@@ -4507,6 +4544,7 @@ async function fetchSnapshotFromConnection(connection) {
     drawings,
     vehicles,
     legalFrameworks,
+    rulebooks,
     documentTemplates,
     learningTests,
     serviceCatalog,
@@ -4614,6 +4652,7 @@ export class InMemorySafetyRepository {
       drawings: [],
       vehicles: [],
       legalFrameworks: [],
+      rulebooks: [],
       documentTemplates: [],
       documentRecords: [],
       learningTests: [],
@@ -4841,6 +4880,10 @@ export class InMemorySafetyRepository {
         linkedServiceCatalogTitles: [...(item.linkedServiceCatalogTitles ?? [])],
         linkedTemplateIds: [...(item.linkedTemplateIds ?? [])],
         linkedTemplateTitles: [...(item.linkedTemplateTitles ?? [])],
+        documents: (item.documents ?? []).map((document) => ({ ...document })),
+      })),
+      rulebooks: this.snapshot.rulebooks.map((item) => ({
+        ...item,
         documents: (item.documents ?? []).map((document) => ({ ...document })),
       })),
       documentTemplates: this.snapshot.documentTemplates.map((item) => ({
@@ -6094,6 +6137,32 @@ export class InMemorySafetyRepository {
         : item.updatedAt,
     }));
     return this.snapshot.legalFrameworks.length !== before;
+  }
+
+  async createRulebook(input) {
+    const timestamp = new Date().toISOString();
+    const item = createRulebook(input, () => crypto.randomUUID(), () => timestamp);
+    this.snapshot.rulebooks = [item, ...this.snapshot.rulebooks];
+    return item;
+  }
+
+  async updateRulebook(id, patch) {
+    const current = this.snapshot.rulebooks.find((item) => item.id === id);
+
+    if (!current) {
+      return null;
+    }
+
+    const timestamp = new Date().toISOString();
+    const next = updateRulebook(current, patch, () => timestamp);
+    this.snapshot.rulebooks = this.snapshot.rulebooks.map((item) => (item.id === id ? next : item));
+    return next;
+  }
+
+  async deleteRulebook(id) {
+    const before = this.snapshot.rulebooks.length;
+    this.snapshot.rulebooks = this.snapshot.rulebooks.filter((item) => item.id !== id);
+    return this.snapshot.rulebooks.length !== before;
   }
 
   async createServiceCatalogItem(input) {
@@ -7504,6 +7573,26 @@ export class MySqlSafetyRepository {
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_web_legal_frameworks_org_status (organization_id, status),
         INDEX idx_web_legal_frameworks_review (review_date)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_rulebooks (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        title VARCHAR(220) NOT NULL,
+        rulebook_type VARCHAR(40) NOT NULL DEFAULT 'custom',
+        status VARCHAR(24) NOT NULL DEFAULT 'draft',
+        effective_from DATE NULL,
+        review_date DATE NULL,
+        owner_name VARCHAR(180) NOT NULL DEFAULT '',
+        scope_text TEXT NULL,
+        summary_text TEXT NULL,
+        documents_json LONGTEXT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_web_rulebooks_org_status (organization_id, status),
+        INDEX idx_web_rulebooks_type (organization_id, rulebook_type),
+        INDEX idx_web_rulebooks_review (review_date)
       )
     `);
     await this.pool.query(`
@@ -13030,6 +13119,112 @@ export class MySqlSafetyRepository {
       }
 
       const [result] = await connection.query("DELETE FROM web_legal_frameworks WHERE id = ?", [Number(id)]);
+      await connection.commit();
+      return result.affectedRows > 0;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async createRulebook(input) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const timestamp = new Date().toISOString();
+      const draft = createRulebook(input, () => "pending-rulebook", () => timestamp);
+      const [result] = await connection.query(
+        `
+          INSERT INTO web_rulebooks
+            (organization_id, title, rulebook_type, status, effective_from, review_date,
+             owner_name, scope_text, summary_text, documents_json)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          Number(draft.organizationId),
+          draft.title,
+          draft.rulebookType,
+          draft.status,
+          draft.effectiveFrom,
+          draft.reviewDate,
+          draft.owner,
+          draft.scope,
+          draft.summary,
+          JSON.stringify(draft.documents ?? []),
+        ],
+      );
+
+      await connection.commit();
+      return {
+        ...draft,
+        id: String(result.insertId),
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updateRulebook(id, patch) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const current = snapshot.rulebooks.find((item) => item.id === id);
+
+      if (!current) {
+        await connection.rollback();
+        return null;
+      }
+
+      const timestamp = new Date().toISOString();
+      const next = updateRulebook(current, patch, () => timestamp);
+
+      await connection.query(
+        `
+          UPDATE web_rulebooks
+          SET title = ?, rulebook_type = ?, status = ?, effective_from = ?, review_date = ?,
+              owner_name = ?, scope_text = ?, summary_text = ?, documents_json = ?
+          WHERE id = ?
+        `,
+        [
+          next.title,
+          next.rulebookType,
+          next.status,
+          next.effectiveFrom,
+          next.reviewDate,
+          next.owner,
+          next.scope,
+          next.summary,
+          JSON.stringify(next.documents ?? []),
+          Number(id),
+        ],
+      );
+
+      await connection.commit();
+      return next;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async deleteRulebook(id) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+      const [result] = await connection.query("DELETE FROM web_rulebooks WHERE id = ?", [Number(id)]);
       await connection.commit();
       return result.affectedRows > 0;
     } catch (error) {
