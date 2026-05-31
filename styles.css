@@ -5109,6 +5109,37 @@ body.is-profile-modal-open {
   margin-top: 12px;
 }
 
+.settings-job-ai-rulebook {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.settings-job-ai-rulebook article {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(199, 210, 254, 0.82);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 10px 24px rgba(40, 55, 95, 0.045);
+}
+
+.settings-job-ai-rulebook strong {
+  color: #111b36;
+  font-size: 0.82rem;
+  font-weight: 950;
+}
+
+.settings-job-ai-rulebook span {
+  color: #64748b;
+  font-size: 0.74rem;
+  font-weight: 740;
+  line-height: 1.4;
+}
+
 .settings-job-ai-group {
   display: grid;
   gap: 8px;
@@ -5245,6 +5276,7 @@ body.is-profile-modal-open {
 
   .settings-service-factors-head,
   .settings-service-factor-row,
+  .settings-job-ai-rulebook,
   .settings-job-ai-card-list,
   .settings-job-ai-card-body {
     grid-template-columns: 1fr;
@@ -60521,6 +60553,99 @@ button.work-order-editor-section-head:focus-visible {
   color: #0f172a;
   font-size: 0.72rem;
   font-weight: 900;
+}
+
+.risk-assessment-ai-risk-preview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+  gap: 8px;
+}
+
+.risk-assessment-ai-risk-preview article {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 11px;
+  border: 1px solid rgba(203, 213, 225, 0.86);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.risk-assessment-ai-risk-preview article.is-low {
+  border-color: rgba(34, 197, 94, 0.28);
+  background: rgba(240, 253, 244, 0.82);
+}
+
+.risk-assessment-ai-risk-preview article.is-medium {
+  border-color: rgba(245, 158, 11, 0.32);
+  background: rgba(255, 251, 235, 0.86);
+}
+
+.risk-assessment-ai-risk-preview article.is-high {
+  border-color: rgba(239, 68, 68, 0.32);
+  background: rgba(254, 242, 242, 0.86);
+}
+
+.risk-assessment-ai-risk-preview article > div:first-child {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.risk-assessment-ai-risk-preview strong {
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 0.84rem;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.risk-assessment-ai-risk-preview small {
+  overflow: hidden;
+  color: #64748b;
+  font-size: 0.7rem;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.risk-assessment-ai-risk-preview dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+}
+
+.risk-assessment-ai-risk-preview dl div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 7px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.risk-assessment-ai-risk-preview dt,
+.risk-assessment-ai-risk-preview dd {
+  min-width: 0;
+  margin: 0;
+}
+
+.risk-assessment-ai-risk-preview dt {
+  color: #64748b;
+  font-size: 0.62rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.risk-assessment-ai-risk-preview dd {
+  overflow: hidden;
+  color: #172033;
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .risk-assessment-catalog-actions {

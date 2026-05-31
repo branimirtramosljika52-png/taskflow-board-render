@@ -124245,6 +124245,15 @@ function getJobAiSettingsFieldDefinitions() {
       label: item.label,
     })),
     ...[
+      { key: "riskDiscoveryRules", label: "Što je opasnost, štetnost ili napor" },
+      { key: "riskDiscoveryAvoid", label: "Što ne smije ući u procjenu" },
+      { key: "riskScoringRules", label: "Pravila za vjerojatnost i posljedicu" },
+    ].map((field) => ({
+      key: `riskJob:${field.key}`,
+      group: "Procjena rizika · AI kriteriji",
+      label: field.label,
+    })),
+    ...[
       { key: "jobTitle", label: "Radno mjesto" },
       { key: "shortDescription", label: "Kratki opis posla" },
       { key: "detailedDescription", label: "Detaljni opis posla" },
@@ -127656,53 +127665,313 @@ function buildRiskAssessmentJobFullAiProposal(job = {}) {
   };
 }
 
-function buildRiskAssessmentAiRiskSuggestions(job = {}) {
-  const text = [
+function normalizeRiskAssessmentAiText(value = "") {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0111\u0110]/g, "d")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("hr")
+    .replace(/[^a-z0-9\s./-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getRiskAssessmentAiContext(job = {}) {
+  const selected = [
+    ...(job.workplaceOptions ?? []),
+    ...(job.organizationOptions ?? []),
+    ...(job.bodyPositions ?? []),
+    ...(job.importantFunctions ?? []),
+    ...(job.workConditions ?? []),
+    ...(job.purPoints ?? []).map((value) => getJobPurPointLabel(value)),
+  ];
+  const raw = [
     job.jobTitle,
     job.description,
     job.shortDescription,
     job.detailedDescription,
     job.tasks,
+    job.workOrganization,
+    job.workSchedule,
+    job.workEquipment,
+    job.toolsAndMachines,
+    job.workSubstances,
+    job.workplaces,
+    job.workplace,
+    job.workplaceArrangement,
+    job.harmfulSources,
+    job.specialWorkReason,
+    job.ppeText,
+    selected.join(" "),
+  ].join(" ");
+  return {
+    title: getRiskAssessmentJobAiTitle(job),
+    raw,
+    text: normalizeRiskAssessmentAiText(raw),
+    selected: normalizeRiskAssessmentAiText(selected.join(" ")),
+    hasMeaningfulText: normalizeRiskAssessmentAiText(raw).length > 16,
+  };
+}
+
+const RISK_ASSESSMENT_AI_RULES = Object.freeze([
+  {
+    label: "Strojevi, alati i pokretni dijelovi",
+    context: ["stroj", "strojevi", "oprema", "alat", "rucni alat", "elektricni alat", "busil", "brus", "rez", "noz", "mehaniz"],
+    row: ["rucni alat", "mehanizirani alat", "strojevi", "oprema", "mehanicke opasnosti", "rukovanje predmetima"],
+    probability: "v",
+    consequence: "ss",
+  },
+  {
+    label: "Viličari, vozila i horizontalni prijenos",
+    context: ["vilic", "vilič", "palet", "transport", "vozil", "kamion", "utovar", "istovar", "skladist"],
+    row: ["vilic", "transportna sredstva", "horizontalni prijenos", "prijevozna vozila"],
+    probability: "v",
+    consequence: "is",
+  },
+  {
+    label: "Dizalice, podizanje i pad predmeta",
+    context: ["dizalic", "teret", "podiz", "spust", "kran", "signalist", "vezivanje"],
+    row: ["dizalice", "vertikalni prijenos", "pad predmeta", "rukovanje predmetima", "teski fizicki rad"],
+    probability: "v",
+    consequence: "is",
+  },
+  {
+    label: "Padovi, ljestve, skele i rad na visini",
+    context: ["visin", "ljest", "skel", "krov", "rub", "otvor", "podest", "penjanje", "s visine", "u dubinu"],
+    row: ["pad", "visine", "dubinu", "ljest", "skele"],
+    probability: "v",
+    consequence: "is",
+  },
+  {
+    label: "Električna struja",
+    context: ["struj", "elektr", "napon", "instalacij", "razvod", "uticnic", "kabel"],
+    row: ["elektricna struja", "naponom", "elektricnih instalacija", "dodir"],
+    probability: "v",
+    consequence: "is",
+  },
+  {
+    label: "Požar, eksplozija i zapaljive tvari",
+    context: ["pozar", "požar", "eksploz", "zapalj", "plin", "goriv", "otapal", "lak", "boja", "iskra", "tlak"],
+    row: ["pozar", "eksploz", "zapalj", "smjese", "plin"],
+    probability: "v",
+    consequence: "is",
+  },
+  {
+    label: "Kemijske štetnosti",
+    context: ["kem", "stl", "sds", "kisel", "luz", "luž", "otrov", "otapal", "koroz", "nadraz", "pesticid", "aerosol", "para"],
+    row: ["kemijske stetnosti", "otrovi", "korozivi", "nadrazljivci", "opasne kemikalije", "organski spojevi"],
+    probability: "v",
+    consequence: "ss",
+  },
+  {
+    label: "Zagušljivci, inertni plinovi i ograničeni prostori",
+    context: ["zagus", "zaguš", "kisik", "dusik", "dušik", "argon", "co2", "inert", "zatvoreni prostor", "ogranicen prostor", "spremnik"],
+    row: ["zagusljivci", "inertni", "plin", "kisik", "ventilacij"],
+    probability: "vv",
+    consequence: "ss",
+  },
+  {
+    label: "Buka i vibracije",
+    context: ["buka", "vibracij", "kompres", "agregat", "brusilic", "busilic", "udarni alat"],
+    row: ["buka", "vibracije", "fizikalne stetnosti"],
+    probability: "v",
+    consequence: "ss",
+  },
+  {
+    label: "Mikroklima i rad na otvorenom",
+    context: ["otvorenom", "sunce", "hladn", "toplin", "vruc", "vruć", "vlaga", "mikroklim", "teren", "gradilist"],
+    row: ["mikroklima", "rad na otvorenom", "klimatski", "hladan", "vruci", "vrući"],
+    probability: "v",
+    consequence: "ss",
+  },
+  {
+    label: "Biološke štetnosti",
+    context: ["biolos", "biološ", "zaraz", "kontamin", "otpad", "krv", "zivotinj", "životinj", "biljk"],
+    row: ["bioloske stetnosti", "zarazni", "kontamin", "zivotinje", "biljke", "agensi"],
+    probability: "mv",
+    consequence: "ss",
+  },
+  {
+    label: "Ručno rukovanje teretom i prisilni položaji",
+    context: ["dizanje", "nosenje", "nošenje", "guranje", "vucenje", "vučenje", "teret", "sagib", "klecan", "čuč", "cuc", "stajanje", "sjedenje"],
+    row: ["statodinamicki", "dinamicki", "dizanje", "nosenje", "guranje", "prisilan polozaj", "dugotrajno sjedenje", "dugotrajno stajanje"],
+    probability: "v",
+    consequence: "ms",
+  },
+  {
+    label: "Računalo, vid i uredski rad",
+    context: ["racunal", "računal", "monitor", "zaslon", "ured", "dokumentacij", "vid", "tipkovnic"],
+    row: ["naprezanje vida", "napori vida", "osvijetljenost", "dugotrajno sjedenje"],
+    probability: "v",
+    consequence: "ms",
+  },
+  {
+    label: "Psihofiziološki napori, smjene i tempo",
+    context: ["smjen", "nocni", "noćni", "tempo", "rok", "monoton", "stres", "odgovornost", "samostalno", "strank"],
+    row: ["psihofizioloski", "stres", "radni ritam", "nocni rad", "monoton", "socijalnih potreba", "produljeni rad"],
+    probability: "v",
+    consequence: "ss",
+  },
+]);
+
+const RISK_ASSESSMENT_AI_FALLBACK_ROWS = Object.freeze([
+  { category: "I. OPASNOSTI", code: "1.1.1" },
+  { category: "I. OPASNOSTI", code: "1.5" },
+  { category: "I. OPASNOSTI", code: "2.1" },
+  { category: "III. NAPORI", code: "2.1" },
+]);
+
+function getRiskAssessmentAiRowText(row = {}) {
+  return normalizeRiskAssessmentAiText([
+    row.category,
+    row.group,
+    row.code,
+    row.hazard,
+    row.measures,
+  ].join(" "));
+}
+
+function hasRiskAssessmentAiAnyTerm(text = "", terms = []) {
+  return terms.some((term) => text.includes(normalizeRiskAssessmentAiText(term)));
+}
+
+function getRiskAssessmentAiTermHits(text = "", terms = []) {
+  return terms.filter((term) => text.includes(normalizeRiskAssessmentAiText(term))).length;
+}
+
+function normalizeRiskAssessmentConsequenceKey(value = "") {
+  const normalized = String(value || "").toLowerCase();
+  if (normalized === "ms" || normalized === "mš") return "mš";
+  if (normalized === "ss" || normalized === "sš") return "sš";
+  if (normalized === "is" || normalized === "iš") return "iš";
+  return "";
+}
+
+function getRiskAssessmentAiScoredCandidates(job = {}) {
+  const context = getRiskAssessmentAiContext(job);
+  const avoidConfig = getJobAiInstruction("riskJob:riskDiscoveryAvoid");
+  const avoidTerms = normalizeRiskAssessmentAiText([avoidConfig.instruction, avoidConfig.avoid].filter(Boolean).join(" "))
+    .split(/\s*,\s*|\s*;\s*/)
+    .map((term) => term.trim())
+    .filter((term) => term.length >= 4);
+  const candidates = new Map();
+
+  RISK_ASSESSMENT_AI_RULES.forEach((rule) => {
+    const contextHits = getRiskAssessmentAiTermHits(context.text, rule.context);
+    if (!contextHits) {
+      return;
+    }
+    RISK_ASSESSMENT_CATALOG_ROWS.forEach((row) => {
+      const rowText = getRiskAssessmentAiRowText(row);
+      const rowHits = getRiskAssessmentAiTermHits(rowText, rule.row);
+      if (!rowHits) {
+        return;
+      }
+      if (avoidTerms.some((term) => term && rowText.includes(term))) {
+        return;
+      }
+      const rowKey = `${row.category || ""}::${row.code || ""}`;
+      const score = (contextHits * 12) + (rowHits * 7) + (String(row.riskLevel || "").includes("N/P") ? -2 : 3);
+      const previous = candidates.get(rowKey);
+      if (!previous || score > previous.score) {
+        candidates.set(rowKey, { row, rule, score, contextHits, rowHits });
+      }
+    });
+  });
+
+  if (candidates.size === 0) {
+    RISK_ASSESSMENT_AI_FALLBACK_ROWS.forEach((fallback) => {
+      const row = RISK_ASSESSMENT_ARMOR_TEMPLATE_ROWS.find((entry) => (
+        entry.category === fallback.category && entry.code === fallback.code
+      ));
+      if (row) {
+        candidates.set(`${row.category || ""}::${row.code || ""}`, {
+          row,
+          rule: { label: "Osnovni oprezni prijedlog", probability: row.probability || "mv", consequence: row.consequence || "ss" },
+          score: 1,
+          contextHits: 0,
+          rowHits: 0,
+        });
+      }
+    });
+  }
+
+  return Array.from(candidates.values())
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 14)
+    .map((candidate) => ({ ...candidate, context }));
+}
+
+function chooseRiskAssessmentAiProbability(row = {}, context = {}, rule = {}) {
+  const text = context.text || "";
+  const base = String(rule.probability || row.probability || "v").toLowerCase();
+  if (/(stalno|svakodnevno|cesto|često|pretežno|kontinuirano|smjen|nocni|noćni)/.test(text)) {
+    return base === "mv" ? "v" : base || "v";
+  }
+  if (/(povremeno|rijetko|iznimno|po potrebi)/.test(text) && base === "vv") {
+    return "v";
+  }
+  if (/(povremeno|rijetko|iznimno|po potrebi)/.test(text) && !/(visin|struj|plin|eksploz|vilic|dizalic)/.test(text)) {
+    return "mv";
+  }
+  return ["mv", "v", "vv"].includes(base) ? base : "v";
+}
+
+function chooseRiskAssessmentAiConsequence(row = {}, context = {}, rule = {}) {
+  const rowText = getRiskAssessmentAiRowText(row);
+  const text = `${context.text || ""} ${rowText}`;
+  const base = String(rule.consequence || row.consequence || "").toLowerCase();
+  if (/(visin|dubinu|elektr|napon|eksploz|pozar|požar|dizalic|vilic|vilič|zagus|zaguš|kriogen|plin|teski fizicki|teški fizički)/.test(text)) {
+    return "iš";
+  }
+  if (/(kemij|koroz|otrov|buka|vibracij|mikroklim|biolos|biološ|teret|stres|nocni|noćni)/.test(text)) {
+    return normalizeRiskAssessmentConsequenceKey(base) === "iš" ? "iš" : "sš";
+  }
+  return normalizeRiskAssessmentConsequenceKey(base) || "sš";
+}
+
+function buildRiskAssessmentAiWorkNote(row = {}, job = {}, context = {}, rule = {}) {
+  const activity = compactJobContextText([
+    job.tasks,
+    job.description,
     job.workEquipment,
     job.toolsAndMachines,
     job.workplaces,
-    job.workplace,
-    job.harmfulSources,
-  ].join(" ").toLocaleLowerCase("hr");
-  const matchers = [
-    { terms: ["zidar", "građ", "grad", "skel", "krov"], keys: ["2. Opasnost od padova::2.2", "2. Opasnost od padova::2.3", "1. Mehaničke opasnosti::1.1.1", "1. Mehaničke opasnosti::1.5", "3. Fizikalne štetnosti::3.1"] },
-    { terms: ["vilič", "vilicar", "transport", "palet"], keys: ["1. Mehaničke opasnosti::1.3.2", "1. Mehaničke opasnosti::1.5", "2. Opasnost od padova::2.1"] },
-    { terms: ["plin", "kisik", "dušik", "dusik", "argon", "co2", "zaguš", "zagush"], keys: ["1. Kemijske štetnosti::1.4.1", "4. Požar i eksplozija::4.1", "4. Požar i eksplozija::4.2", "5. Termičke opasnosti::5.2"] },
-    { terms: ["kem", "otapal", "kisel", "luž", "luz"], keys: ["1. Kemijske štetnosti::1.1", "4. Požar i eksplozija::4.2"] },
-    { terms: ["alat", "bušil", "brus", "rez"], keys: ["1. Mehaničke opasnosti::1.1.1", "1. Mehaničke opasnosti::1.1.2", "1. Mehaničke opasnosti::1.2"] },
-    { terms: ["visin", "ljest", "skel", "krov"], keys: ["2. Opasnost od padova::2.2", "2. Opasnost od padova::2.3", "2. Opasnost od padova::2.5"] },
-    { terms: ["struj", "napon", "elektr"], keys: ["3. Električna struja::3.1", "3. Električna struja::3.2"] },
-    { terms: ["buka", "kompres", "agregat"], keys: ["3. Fizikalne štetnosti::3.1"] },
-    { terms: ["ured", "računal", "racunal", "monitor"], keys: ["1. Statodinamički napori::1.1.1", "3. Napori vida i govora::3.1"] },
-  ];
-  const keys = new Set();
-  matchers.forEach((matcher) => {
-    if (matcher.terms.some((term) => text.includes(term))) {
-      matcher.keys.forEach((key) => keys.add(key));
-    }
-  });
-  if (keys.size === 0) {
-    [
-      "1. Mehaničke opasnosti::1.1.1",
-      "1. Mehaničke opasnosti::1.5",
-      "2. Opasnost od padova::2.1",
-      "3. Električna struja::3.2",
-      "2. Psihofiziološki napori::2.1",
-    ].forEach((key) => keys.add(key));
-  }
-  return RISK_ASSESSMENT_ARMOR_TEMPLATE_ROWS
-    .filter((row) => keys.has(getRiskAssessmentTemplateMatchKey(row)))
-    .map((row) => ({
+  ].filter(Boolean).join(" "), 260);
+  const base = activity
+    ? `Stavka je predložena jer se u opisu posla pojavljuje: ${activity}.`
+    : `Stavka je predložena kao oprezni početni rizik za radno mjesto "${context.title}".`;
+  const ruleText = `Kriterij: ${rule.label || "povezanost s opisom posla"}.`;
+  return applyRiskAssessmentJobAiInstruction(`${base} ${ruleText} Provjeriti stvarnu izloženost radnika prije završnog spremanja procjene.`, "riskJob:riskRows");
+}
+
+function buildRiskAssessmentAiMeasures(row = {}, job = {}, context = {}) {
+  const base = String(row.measures || row.existingMeasures || "").trim()
+    || "Primijeniti odgovarajuće tehničke, organizacijske i osobne mjere zaštite te radniku dati jasne upute za siguran rad.";
+  const scoringRules = getJobAiInstruction("riskJob:riskScoringRules");
+  const scoringText = hasJobAiInstructionConfig(scoringRules)
+    ? ` Procjena vjerojatnosti i posljedice usklađena je s pravilima iz Settingsa.`
+    : "";
+  const linked = ` Mjere povezati s opisom posla "${context.title}", osposobljavanjem za rad na siguran način, nadzorom rada i OZO kada je potrebna.`;
+  return applyRiskAssessmentJobAiInstruction(`${base}${linked}${scoringText}`, "riskJob:riskRows");
+}
+
+function buildRiskAssessmentAiRiskSuggestions(job = {}) {
+  return getRiskAssessmentAiScoredCandidates(job).map(({ row, rule, score, context }) => {
+    const probability = chooseRiskAssessmentAiProbability(row, context, rule);
+    const consequence = chooseRiskAssessmentAiConsequence(row, context, rule);
+    return {
       ...row,
-      workNote: job.tasks || job.description || "",
-      source: job.workEquipment || job.toolsAndMachines || job.workplaces || "",
-      existingMeasures: row.measures || "",
-    }));
+      probability,
+      consequence,
+      riskLevel: calculateRiskAssessmentRiskLevel(probability, consequence) || row.riskLevel || "",
+      workNote: buildRiskAssessmentAiWorkNote(row, job, context, rule),
+      source: `NexAI kandidat (${Math.max(1, Math.round(score))}): ${rule.label || "opis posla"}`,
+      existingMeasures: buildRiskAssessmentAiMeasures(row, job, context),
+      additionalMeasures: "",
+      measures: "",
+    };
+  });
 }
 
 function buildRiskAssessmentAiPpeSuggestions(job = {}, riskRows = []) {
@@ -127792,6 +128061,36 @@ function setRiskAssessmentJobAiProposal(jobIndex, action = "description") {
   renderRiskAssessmentJobs();
 }
 
+function renderRiskAssessmentAiRiskPreview(riskRows = []) {
+  const rows = (riskRows ?? []).slice(0, 14);
+  if (!rows.length) {
+    return `<p class="inline-help">NexAI nije pronašao dovoljno povezanih stavki. Dopuni opis posla, opremu ili uvjete rada pa pokušaj ponovno.</p>`;
+  }
+  return `
+    <div class="risk-assessment-ai-risk-preview">
+      ${rows.map((risk) => {
+        const type = getRiskAssessmentRiskType(risk);
+        const level = getRiskAssessmentRiskDisplayLevel(risk);
+        const tone = getRiskAssessmentRiskDisplayTone(risk);
+        return `
+          <article class="is-${escapeHtml(tone)}">
+            <div>
+              <span class="risk-assessment-risk-type-pill is-${escapeHtml(type.value)}">${escapeHtml(type.label)}</span>
+              <strong>${escapeHtml([risk.code, risk.hazard].filter(Boolean).join(" ") || "Predložena stavka")}</strong>
+              <small>${escapeHtml([risk.category, risk.group].filter(Boolean).join(" / "))}</small>
+            </div>
+            <dl>
+              <div><dt>Vjerojatnost</dt><dd>${escapeHtml(getRiskAssessmentOptionLabel(RISK_ASSESSMENT_PROBABILITY_OPTIONS, risk.probability, "-"))}</dd></div>
+              <div><dt>Posljedica</dt><dd>${escapeHtml(getRiskAssessmentOptionLabel(RISK_ASSESSMENT_CONSEQUENCE_OPTIONS, risk.consequence, "-"))}</dd></div>
+              <div><dt>Rizik</dt><dd>${escapeHtml(level)}</dd></div>
+            </dl>
+          </article>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
 function renderRiskAssessmentJobAiProposal(job = {}, index = 0) {
   const proposal = job.aiProposal;
   if (!proposal) {
@@ -127813,8 +128112,10 @@ function renderRiskAssessmentJobAiProposal(job = {}, index = 0) {
           <strong>Rizici i OZO</strong>
           <span>${escapeHtml(String((proposal.riskRows ?? []).length))} predloženih rizika / štetnosti / napora</span>
           <span>${escapeHtml(String((proposal.ppeItems ?? []).length))} predloženih OZO stavki</span>
+          <span>Vjerojatnost i posljedica su procijenjene iz opisa posla i uvjeta rada.</span>
         </div>
       </div>
+      ${renderRiskAssessmentAiRiskPreview(proposal.riskRows ?? [])}
     `;
     return renderRiskAssessmentAiProposalCard({ proposal, prefix: "job", index, extraHtml });
   }
@@ -127822,14 +128123,16 @@ function renderRiskAssessmentJobAiProposal(job = {}, index = 0) {
     const extraHtml = `
       <div class="risk-assessment-ai-split">
         <div>
-          <strong>Predloženi rizici</strong>
-          ${(proposal.riskRows ?? []).map((risk) => `<span>${escapeHtml(risk.code || "")} ${escapeHtml(risk.hazard || "")}</span>`).join("")}
+          <strong>Kako je NexAI odlučio</strong>
+          <span>Traži stvarnu vezu između opisa posla, opreme, mjesta rada, uvjeta rada i kataloga opasnosti.</span>
+          <span>Ne sprema prijedlog dok ga ne prihvatiš, pa svaku stavku možeš provjeriti prije upisa.</span>
         </div>
         <div>
           <strong>Predložena OZO</strong>
           ${(proposal.ppeItems ?? []).map((ppe) => `<span>${escapeHtml(ppe.name || "")} · ${escapeHtml(ppe.norm || "")}</span>`).join("")}
         </div>
       </div>
+      ${renderRiskAssessmentAiRiskPreview(proposal.riskRows ?? [])}
     `;
     return renderRiskAssessmentAiProposalCard({ proposal, prefix: "job", index, extraHtml });
   }
@@ -130823,7 +131126,7 @@ function renderRiskAssessmentJobs() {
           <button type="button" class="ghost-button" data-risk-job-ai="shortDescription">Kratki opis</button>
           <button type="button" class="ghost-button" data-risk-job-ai="tasks">Radni zadaci</button>
           <button type="button" class="ghost-button" data-risk-job-ai="harmfulSources">Štetnosti</button>
-          <button type="button" class="ghost-button" data-risk-job-ai="risks">Predloži rizike/OZO</button>
+          <button type="button" class="ghost-button risk-assessment-nexai-button" data-risk-job-ai="risks">NexAI procijeni rizike</button>
           <button type="button" class="ghost-button" data-risk-job-catalog="${index}">${item.catalogOpen ? "Sakrij izbornik" : "Izbornik opasnosti"}</button>
           <button type="button" class="ghost-button" data-risk-job-template="${index}">ARMOR retci</button>
           <button type="button" class="ghost-button" data-risk-row-add="${index}">+ Rizik</button>
