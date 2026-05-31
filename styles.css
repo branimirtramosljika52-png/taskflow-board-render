@@ -60157,6 +60157,19 @@ button.work-order-editor-section-head:focus-visible {
   box-shadow: 0 18px 40px rgba(37, 99, 235, 0.07);
 }
 
+.risk-assessment-client-input-card.is-locked {
+  border-color: rgba(148, 163, 184, 0.48);
+  border-left-color: #64748b;
+  background:
+    linear-gradient(135deg, rgba(248, 250, 252, 0.94), rgba(255, 255, 255, 0.96));
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.05);
+}
+
+.risk-assessment-client-input-card.is-locked .risk-assessment-client-input-head > span {
+  background: #e2e8f0;
+  color: #475569;
+}
+
 .risk-assessment-client-input-head {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -60234,6 +60247,44 @@ button.work-order-editor-section-head:focus-visible {
 
 .risk-assessment-client-input-section .job-pur-dropdown summary {
   border-color: rgba(37, 99, 235, 0.28);
+}
+
+.risk-assessment-client-portal-permission {
+  padding: 14px;
+  border: 1px solid rgba(250, 204, 21, 0.38);
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(254, 252, 232, 0.92), rgba(255, 255, 255, 0.96));
+  box-shadow: 0 16px 34px rgba(202, 138, 4, 0.08);
+}
+
+.risk-assessment-checkbox-line.is-portal-toggle {
+  align-items: flex-start;
+  gap: 11px;
+  width: 100%;
+}
+
+.risk-assessment-checkbox-line.is-portal-toggle input {
+  margin-top: 3px;
+  accent-color: #facc15;
+}
+
+.risk-assessment-checkbox-line.is-portal-toggle span {
+  display: grid;
+  gap: 3px;
+}
+
+.risk-assessment-checkbox-line.is-portal-toggle strong {
+  color: #0f172a;
+  font-size: 0.92rem;
+  font-weight: 950;
+}
+
+.risk-assessment-checkbox-line.is-portal-toggle small {
+  color: #64748b;
+  font-size: 0.74rem;
+  font-weight: 760;
+  line-height: 1.45;
 }
 
 .risk-assessment-job-pur {

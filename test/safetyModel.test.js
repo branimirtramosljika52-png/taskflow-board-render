@@ -272,6 +272,7 @@ test("risk assessments keep detailed ARMOR job rows and eligibility data", () =>
       companyId: "company-1",
       locationId: "location-1",
       title: "Procjena rizika - pogon",
+      clientJobInputEnabled: true,
       jobs: [
         {
           jobTitle: "ASU operater",
@@ -345,6 +346,7 @@ test("risk assessments keep detailed ARMOR job rows and eligibility data", () =>
   assert.equal(assessment.jobs[0].psychosocialRelevant, true);
   assert.equal(assessment.jobs[0].psychosocialLevel, "3");
   assert.deepEqual(assessment.jobs[0].hiddenBlocks, ["ppe"]);
+  assert.equal(assessment.clientJobInputEnabled, true);
   assert.equal(assessment.jobs[0].clientInput.workSchedule, "dvije smjene");
   assert.deepEqual(assessment.jobs[0].clientInput.purPoints, ["10", "18"]);
   assert.equal(assessment.jobs[0].clientInput.psychosocialLevel, "4");

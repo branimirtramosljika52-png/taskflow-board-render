@@ -6237,6 +6237,7 @@ const riskAssessmentTemplatePlaceholderCloseButton = document.querySelector("#ri
 const riskAssessmentTemplateDownloadPlaceholdersButton = document.querySelector("#risk-assessment-template-download-placeholders");
 const riskAssessmentOverview = document.querySelector("#risk-assessment-overview");
 const riskAssessmentClientNoteInput = document.querySelector("#risk-assessment-client-note");
+const riskAssessmentClientJobInputEnabledInput = document.querySelector("#risk-assessment-client-job-input-enabled");
 const riskAssessmentError = document.querySelector("#risk-assessment-error");
 const riskAssessmentSubmitButton = document.querySelector("#risk-assessment-submit");
 const riskAssessmentResetButton = document.querySelector("#risk-assessment-reset");
@@ -116820,6 +116821,13 @@ riskAssessmentCompletionDateInput?.addEventListener("blur", () => {
   normalizeRiskAssessmentDateInput(riskAssessmentCompletionDateInput);
 });
 
+riskAssessmentClientJobInputEnabledInput?.addEventListener("change", () => {
+  renderRiskAssessmentJobs();
+  renderRiskAssessmentOverview();
+  syncRiskAssessmentEditorAccess();
+  scheduleRiskAssessmentDraftAutosave();
+});
+
 [
   riskAssessmentLocationInput,
   riskAssessmentStatusInput,
@@ -122197,6 +122205,9 @@ function resetRiskAssessmentForm() {
   if (riskAssessmentNumberInput) {
     riskAssessmentNumberInput.value = "";
   }
+  if (riskAssessmentClientJobInputEnabledInput) {
+    riskAssessmentClientJobInputEnabledInput.checked = false;
+  }
   if (riskAssessmentEditorTitle) {
     riskAssessmentEditorTitle.textContent = "Nova procjena";
   }
@@ -122255,6 +122266,9 @@ function hydrateRiskAssessmentForm(item = {}) {
   setRiskAssessmentRichValue("biologicalHazards", item.biologicalHazards || "");
   renderRiskAssessmentRichTemplateControls();
   riskAssessmentClientNoteInput.value = item.clientNote || "";
+  if (riskAssessmentClientJobInputEnabledInput) {
+    riskAssessmentClientJobInputEnabledInput.checked = Boolean(item.clientJobInputEnabled);
+  }
   riskAssessmentMeasureDrafts = (item.measures ?? []).map((entry) => ({ ...entry }));
   riskAssessmentOrganizationUnitDrafts = (item.organizationUnits ?? []).map((entry) => createRiskAssessmentOrganizationUnitDraft(entry));
   riskAssessmentJobDrafts = (item.jobs ?? []).map((entry) => createRiskAssessmentJobDraft(entry));
@@ -127552,6 +127566,20 @@ function renderRiskAssessmentClientPortalJobInput(job = {}) {
   `;
 }
 
+function renderRiskAssessmentClientPortalLockedNotice() {
+  return `
+    <section class="risk-assessment-client-input-card is-locked">
+      <div class="risk-assessment-client-input-head">
+        <span>${renderRiskAssessmentRiskIcon("lock")}</span>
+        <div>
+          <strong>Klijentski unos po radnim mjestima nije omogućen</strong>
+          <small>Možete poslati opću napomenu, a detaljan unos po radnim mjestima otvara interni tim.</small>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
 function getRiskAssessmentJobHiddenBlocks(job = {}) {
   return new Set(uniqueJobValues(job.hiddenBlocks ?? []));
 }
@@ -129919,6 +129947,10 @@ function getCanManageRiskAssessments() {
   return getCanEditOperationalData();
 }
 
+function getRiskAssessmentClientJobInputEnabled() {
+  return Boolean(riskAssessmentClientJobInputEnabledInput?.checked);
+}
+
 function syncRiskAssessmentEditorAccess() {
   if (!state.riskAssessmentEditorOpen && riskAssessmentEditorPanel?.hidden) {
     return;
@@ -129926,8 +129958,9 @@ function syncRiskAssessmentEditorAccess() {
 
   const canManage = getCanManageRiskAssessments();
   const canComment = isClientPortalUser(state.user);
+  const clientJobInputEnabled = getRiskAssessmentClientJobInputEnabled();
   const allowClientNote = canManage || canComment;
-  const allowClientPortalInput = canManage || canComment;
+  const allowClientPortalInput = canManage || (canComment && clientJobInputEnabled);
   const canUseJobNexAi = getCanUseJobNexAi();
 
   riskAssessmentForm?.querySelectorAll("input, select, textarea, button").forEach((control) => {
@@ -129944,7 +129977,9 @@ function syncRiskAssessmentEditorAccess() {
   });
 
   if (riskAssessmentSubmitButton) {
-    riskAssessmentSubmitButton.textContent = canManage ? "Spremi procjenu" : "Pošalji podatke";
+    riskAssessmentSubmitButton.textContent = canManage
+      ? "Spremi procjenu"
+      : (clientJobInputEnabled ? "Pošalji podatke" : "Pošalji napomenu");
     riskAssessmentSubmitButton.hidden = !allowClientNote;
   }
   if (riskAssessmentResetButton) {
@@ -131561,6 +131596,7 @@ function renderRiskAssessmentRiskIcon(name = "note") {
     flask: '<path d="M9 2h6" /><path d="M10 2v6.7L4.7 18A3 3 0 0 0 7.3 22h9.4a3 3 0 0 0 2.6-4L14 8.7V2" /><path d="M7 16h10" />',
     building: '<path d="M3 21h18" /><path d="M5 21V7l8-4v18" /><path d="M19 21V11l-6-4" /><path d="M9 9h1" /><path d="M9 13h1" /><path d="M9 17h1" />',
     check: '<path d="M20 6 9 17l-5-5" />',
+    lock: '<rect width="18" height="11" x="3" y="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />',
   };
   return `<svg class="risk-assessment-risk-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${icons[name] || icons.note}</svg>`;
 }
@@ -131729,7 +131765,11 @@ function renderRiskAssessmentJobs() {
     const selectedJobTitle = item.jobTitle || `Radno mjesto ${index + 1}`;
     const completion = getRiskAssessmentJobCompletion(item);
     const status = getRiskAssessmentJobStatusOption(item.status);
-    const showClientInput = isClientPortalUser(state.user) || hasRiskAssessmentClientJobInput(item.clientInput);
+    const isClientPortalActor = isClientPortalUser(state.user);
+    const clientJobInputEnabled = getRiskAssessmentClientJobInputEnabled();
+    const showClientInput = (isClientPortalActor && clientJobInputEnabled)
+      || (!isClientPortalActor && hasRiskAssessmentClientJobInput(item.clientInput));
+    const showClientLockedNotice = isClientPortalActor && !clientJobInputEnabled;
     row.innerHTML = `
       <div class="risk-assessment-job-head">
         <div>
@@ -131760,6 +131800,7 @@ function renderRiskAssessmentJobs() {
       ${hiddenBlocks.has("profile") ? "" : renderRiskAssessmentJobProfile(item, index)}
 
       ${showClientInput ? renderRiskAssessmentClientPortalJobInput(item, index) : ""}
+      ${showClientLockedNotice ? renderRiskAssessmentClientPortalLockedNotice() : ""}
 
       ${hiddenBlocks.has("document") ? "" : renderRiskAssessmentJobDocumentPreview(item, index)}
 
@@ -131802,9 +131843,14 @@ function renderRiskAssessmentJobs() {
 
 function buildRiskAssessmentPayload() {
   if (!getCanManageRiskAssessments() && isClientPortalUser(state.user)) {
-    return {
+    const payload = {
       clientNote: riskAssessmentClientNoteInput?.value || "",
-      jobs: riskAssessmentJobDrafts.map((job) => sanitizeRiskAssessmentClientPortalJobPayload(job)),
+    };
+    if (getRiskAssessmentClientJobInputEnabled()) {
+      payload.jobs = riskAssessmentJobDrafts.map((job) => sanitizeRiskAssessmentClientPortalJobPayload(job));
+    }
+    return {
+      ...payload,
     };
   }
   syncRiskAssessmentRichValues();
@@ -131846,6 +131892,7 @@ function buildRiskAssessmentPayload() {
     conclusion: riskAssessmentConclusionInput?.value || "",
     biologicalHazards: riskAssessmentBiologicalHazardsInput?.value || "",
     clientNote: riskAssessmentClientNoteInput?.value || "",
+    clientJobInputEnabled: getRiskAssessmentClientJobInputEnabled(),
     measures: riskAssessmentMeasureDrafts,
     organizationUnits: riskAssessmentOrganizationUnitDrafts.map((unit) => sanitizeRiskAssessmentTransientUnit(unit)),
     jobs: riskAssessmentJobDrafts.map((job) => sanitizeRiskAssessmentTransientJob(job)),

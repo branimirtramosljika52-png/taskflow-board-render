@@ -6012,6 +6012,9 @@ function hydrateRiskAssessmentCore({
     conclusion: hasOwn(input, "conclusion") ? normalizeRiskAssessmentRichText(input.conclusion) : current?.conclusion ?? "",
     biologicalHazards: hasOwn(input, "biologicalHazards") ? normalizeRiskAssessmentRichText(input.biologicalHazards) : current?.biologicalHazards ?? "",
     clientNote: hasOwn(input, "clientNote") ? normalizeText(input.clientNote) : current?.clientNote ?? "",
+    clientJobInputEnabled: hasOwn(input, "clientJobInputEnabled")
+      ? normalizeBoolean(input.clientJobInputEnabled, false)
+      : normalizeBoolean(current?.clientJobInputEnabled, false),
     measures: hasOwn(input, "measures")
       ? normalizeRiskAssessmentMeasureItems(input.measures)
       : normalizeRiskAssessmentMeasureItems(current?.measures ?? []),
@@ -9050,6 +9053,7 @@ export function filterRiskAssessments(
       normalizeRiskAssessmentRichTextSearch(item.conclusion),
       normalizeRiskAssessmentRichTextSearch(item.biologicalHazards),
       item.clientNote,
+      item.clientJobInputEnabled ? "klijentski unos omogucen portal radna mjesta" : "",
       ...(item.measures ?? []).flatMap((entry) => [entry.measure, entry.responsiblePerson, entry.deadline]),
       ...(item.organizationUnits ?? []).flatMap((entry) => [
         entry.name,

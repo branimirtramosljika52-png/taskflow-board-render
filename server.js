@@ -5973,6 +5973,11 @@ function normalizeClientPortalRiskAssessmentJobInput(input = {}, user = {}) {
 }
 
 function buildClientPortalRiskAssessmentPatch(currentRiskAssessment = {}, rawBody = {}, user = {}) {
+  const clientNote = normalizeClientPortalText(rawBody?.clientNote ?? currentRiskAssessment.clientNote ?? "");
+  if (!currentRiskAssessment.clientJobInputEnabled) {
+    return { clientNote };
+  }
+
   const incomingJobs = Array.isArray(rawBody?.jobs) ? rawBody.jobs : [];
   const incomingById = new Map(incomingJobs
     .map((job) => [String(job?.id || "").trim(), job])
@@ -5990,7 +5995,7 @@ function buildClientPortalRiskAssessmentPatch(currentRiskAssessment = {}, rawBod
   });
 
   return {
-    clientNote: normalizeClientPortalText(rawBody?.clientNote ?? currentRiskAssessment.clientNote ?? ""),
+    clientNote,
     jobs,
   };
 }
