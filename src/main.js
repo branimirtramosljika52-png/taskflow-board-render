@@ -6189,6 +6189,7 @@ const riskAssessmentOrganizationUnitsList = document.querySelector("#risk-assess
 const riskAssessmentAddUnitButton = document.querySelector("#risk-assessment-add-unit");
 const riskAssessmentJobsList = document.querySelector("#risk-assessment-jobs");
 const riskAssessmentAddJobButton = document.querySelector("#risk-assessment-add-job");
+const riskAssessmentArmorAllButton = document.querySelector("#risk-assessment-armor-all");
 const riskAssessmentJobCatalogSelect = document.querySelector("#risk-assessment-job-catalog-select");
 const riskAssessmentJobCatalogSearchInput = document.querySelector("#risk-assessment-job-catalog-search");
 const riskAssessmentJobCatalogList = document.querySelector("#risk-assessment-job-catalog-list");
@@ -116417,6 +116418,21 @@ jobDescriptionAiButton?.addEventListener("click", () => {
 
 jobEnvironmentSections?.addEventListener("click", (event) => {
   const target = event.target instanceof Element ? event.target : null;
+  const psychosocialLevelButton = target?.closest("[data-job-psychosocial-level]");
+  if (psychosocialLevelButton instanceof HTMLElement) {
+    const panel = psychosocialLevelButton.closest(".job-psychosocial-panel");
+    panel?.querySelectorAll("[data-job-psychosocial-level].is-selected").forEach((button) => button.classList.remove("is-selected"));
+    psychosocialLevelButton.classList.add("is-selected");
+    panel?.classList.add("is-enabled");
+    const toggle = panel?.querySelector('[data-job-environment-flag="psychosocialRelevant"]');
+    if (toggle instanceof HTMLInputElement) {
+      toggle.checked = true;
+      const label = toggle.closest(".job-toggle-control")?.querySelector("em");
+      if (label) label.textContent = "Da";
+    }
+    syncJobEnvironmentTextarea("organization", { force: true });
+    return;
+  }
   const presetButton = target?.closest("[data-job-work-preset]");
   if (presetButton instanceof HTMLElement) {
     applyJobWorkProfilePreset(presetButton.dataset.jobWorkPreset || "");
@@ -116482,6 +116498,15 @@ jobEnvironmentSections?.addEventListener("change", (event) => {
   }
   const organizationField = target?.closest("[data-job-organization-field], [data-job-environment-flag]");
   if (organizationField instanceof HTMLElement) {
+    if (organizationField.matches('[data-job-environment-flag="psychosocialRelevant"]')) {
+      const panel = organizationField.closest(".job-psychosocial-panel");
+      panel?.classList.toggle("is-enabled", organizationField.checked);
+      const label = organizationField.closest(".job-toggle-control")?.querySelector("em");
+      if (label) label.textContent = organizationField.checked ? "Da" : "Ne";
+      if (!organizationField.checked) {
+        panel?.querySelectorAll("[data-job-psychosocial-level].is-selected").forEach((button) => button.classList.remove("is-selected"));
+      }
+    }
     const toggle = jobEnvironmentSections.querySelector('[data-job-env-enabled="organization"]');
     if (toggle instanceof HTMLInputElement && !toggle.checked) {
       toggle.checked = true;
@@ -116500,10 +116525,18 @@ jobConditionSections?.addEventListener("click", (event) => {
     purButton.classList.toggle("is-selected");
     const panel = purButton.closest(".job-pur-panel");
     const summary = panel?.querySelector(".job-pur-panel-head > span");
+    const dropdownCount = panel?.querySelector("[data-job-pur-dropdown-count]");
+    const dropdownSummary = panel?.querySelector("[data-job-pur-dropdown-summary]");
     if (summary) {
       const selected = Array.from(panel?.querySelectorAll("[data-job-pur-point].is-selected") ?? [])
         .map((button) => String(button.dataset.jobPurPoint || "").trim());
       summary.textContent = getJobPurPointSummary(selected);
+      if (dropdownCount) {
+        dropdownCount.textContent = selected.length ? `${selected.length} odabrano` : "Otvori popis";
+      }
+      if (dropdownSummary) {
+        dropdownSummary.textContent = getJobPurPointSummary(selected);
+      }
     }
     return;
   }
@@ -117019,6 +117052,13 @@ riskAssessmentAddJobButton?.addEventListener("click", () => {
   renderRiskAssessmentJobs();
   renderRiskAssessmentOverview();
   scheduleRiskAssessmentDraftAutosave();
+});
+
+riskAssessmentArmorAllButton?.addEventListener("click", () => {
+  if (!getCanManageRiskAssessments()) {
+    return;
+  }
+  applyRiskAssessmentArmorTemplateRowsToJobs();
 });
 
 riskAssessmentImportJobsButton?.addEventListener("click", (event) => {
@@ -123786,6 +123826,13 @@ const JOB_CONDITION_TOGGLES = Object.freeze([
 const JOB_BODY_POSITION_OPTIONS = Object.freeze(["rad stojeći", "rad sjedeći", "u pokretu", "kombinirano", "hodanje", "učestalo sagibanje", "klečanje", "čučanje", "uspinjanje ljestvama", "uspinjanje stepenicama", "rad iznad ramena", "ponavljajući pokreti", "dizanje tereta", "prenošenje tereta", "guranje tereta"]);
 const JOB_IMPORTANT_FUNCTION_OPTIONS = Object.freeze(["vid na daljinu", "vid na blizinu", "raspoznavanje boja", "dobar sluh", "jasan govor", "preciznost ruku", "koordinacija pokreta"]);
 const JOB_WORK_CONDITION_OPTIONS = Object.freeze(["visoka temperatura", "niska temperatura", "visoka vlažnost", "buka", "vibracije stroja ili alata", "vibracije poda", "povišeni atmosferski tlak", "povećana izloženost ozljedama", "ionizirajuća zračenja", "neionizirajuća zračenja", "prašina", "kemijske štetnosti", "biološke štetnosti", "rad na visini", "rad na otvorenom", "rad u prometu"]);
+const JOB_PSYCHOSOCIAL_LEVELS = Object.freeze([
+  { value: "1", label: "Niska", marker: "1", tone: "low", description: "Nema potrebe za posebnim mjerama, dovoljna je redovna organizacija rada." },
+  { value: "2", label: "Umjerena", marker: "2", tone: "moderate", description: "Pratiti opterećenje, rokove, komunikaciju i preventivne mjere." },
+  { value: "3", label: "Umjerena do povišena", marker: "3", tone: "elevated", description: "Potrebna je pojačana pažnja na ritam rada, smjene i odgovornost." },
+  { value: "4", label: "Povišena", marker: "4", tone: "high", description: "Definirati konkretne mjere za smanjenje stresa i opterećenja." },
+  { value: "5", label: "Visoka", marker: "5", tone: "critical", description: "Potrebne su ciljane preventivne mjere i praćenje provedbe." },
+]);
 const JOB_ENVIRONMENT_OPTION_FIELD_BY_KEY = Object.freeze({
   machines: "machinesOptions",
   substances: "substancesOptions",
@@ -123799,6 +123846,8 @@ const JOB_CONDITION_CHOICE_BLOCKS = Object.freeze([
     helper: "Odaberi položaje koji se stvarno ponavljaju tijekom rada.",
     textField: "bodyText",
     options: JOB_BODY_POSITION_OPTIONS,
+    icon: "activity",
+    tone: "violet",
   },
   {
     field: "importantFunctions",
@@ -123806,6 +123855,8 @@ const JOB_CONDITION_CHOICE_BLOCKS = Object.freeze([
     helper: "Označi funkcije bez kojih se posao ne može sigurno obavljati.",
     textField: "functionsText",
     options: JOB_IMPORTANT_FUNCTION_OPTIONS,
+    icon: "eye",
+    tone: "emerald",
   },
   {
     field: "workConditions",
@@ -123813,6 +123864,8 @@ const JOB_CONDITION_CHOICE_BLOCKS = Object.freeze([
     helper: "Odaberi uvjete i izloženosti koji se pojavljuju na poslu.",
     textField: "conditionsText",
     options: JOB_WORK_CONDITION_OPTIONS,
+    icon: "thermometer",
+    tone: "amber",
   },
 ]);
 
@@ -124458,18 +124511,31 @@ function getJobPurPointSummary(values = []) {
 
 function renderJobPurPointPicker(selectedValues = [], dataAttribute = "data-job-pur-point") {
   const selected = new Set(normalizeJobPurPointValues(selectedValues));
+  const selectedCount = selected.size;
+  const selectedSummary = getJobPurPointSummary(selectedValues);
   return `
-    <div class="job-pur-picker">
-      ${JOB_PUR_POINTS.map((point) => `
-        <button type="button"
-          class="job-pur-option ${selected.has(point.value) ? "is-selected" : ""}"
-          ${dataAttribute}="${escapeHtml(point.value)}"
-          title="${escapeHtml(point.description)}">
-          <span>${escapeHtml(point.value)}</span>
-          <strong>${escapeHtml(point.label)}</strong>
-        </button>
-      `).join("")}
-    </div>
+    <details class="job-pur-dropdown" ${selectedCount ? "open" : ""}>
+      <summary>
+        <span>
+          <strong>Odaberi PUR točke</strong>
+          <small>Višestruki odabir, svaka točka ostaje jasno odvojena.</small>
+        </span>
+        <em data-job-pur-dropdown-count>${escapeHtml(selectedCount ? `${selectedCount} odabrano` : "Otvori popis")}</em>
+      </summary>
+      <div class="job-pur-selected-summary" data-job-pur-dropdown-summary>${escapeHtml(selectedSummary)}</div>
+      <div class="job-pur-picker">
+        ${JOB_PUR_POINTS.map((point) => `
+          <button type="button"
+            class="job-pur-option ${selected.has(point.value) ? "is-selected" : ""}"
+            ${dataAttribute}="${escapeHtml(point.value)}"
+            title="${escapeHtml(point.description)}">
+            <span>${escapeHtml(point.value)}</span>
+            <strong>${escapeHtml(point.shortLabel || point.label)}</strong>
+            <small>${escapeHtml(point.description)}</small>
+          </button>
+        `).join("")}
+      </div>
+    </details>
   `;
 }
 
@@ -124735,6 +124801,41 @@ function renderJobOrganizationSentenceRows(rows = []) {
         </label>
       `).join("")}
     </div>
+  `;
+}
+
+function renderJobPsychosocialPanel(environment = {}) {
+  const selectedLevel = String(environment.psychosocialLevel || "").trim();
+  const relevant = Boolean(environment.psychosocialRelevant || selectedLevel || environment.psychosocialText);
+  return `
+    <section class="job-psychosocial-panel ${relevant ? "is-enabled" : ""}">
+      <div class="job-psychosocial-head">
+        <label class="job-toggle-control">
+          <input type="checkbox" data-job-environment-flag="psychosocialRelevant" ${relevant ? "checked" : ""} />
+          <span class="job-toggle-track" aria-hidden="true"><span></span></span>
+          <em>${relevant ? "Da" : "Ne"}</em>
+        </label>
+        <div>
+          <strong>Procjena psihosocijalnih rizika</strong>
+          <small>Tempo, odgovornost, smjene, monotoni rad, rad samostalno, rad sa strankama i opterećenje.</small>
+        </div>
+      </div>
+      <div class="job-psychosocial-scale" aria-label="Razina psihosocijalnog rizika">
+        ${JOB_PSYCHOSOCIAL_LEVELS.map((level) => `
+          <button type="button"
+            class="job-psychosocial-level is-${escapeHtml(level.tone)} ${selectedLevel === level.value ? "is-selected" : ""}"
+            data-job-psychosocial-level="${escapeHtml(level.value)}">
+            <span>${escapeHtml(level.marker)}</span>
+            <strong>${escapeHtml(level.label)}</strong>
+            <small>${escapeHtml(level.description)}</small>
+          </button>
+        `).join("")}
+      </div>
+      <label class="job-psychosocial-text">
+        <span>Opis psihosocijalnih rizika i mjere</span>
+        <textarea data-job-psychosocial-text rows="3" placeholder="npr. Rad se obavlja uz povremeni pritisak rokova; potrebno je jasno planirati zadatke, odmore i komunikaciju.">${escapeHtml(environment.psychosocialText || "")}</textarea>
+      </label>
+    </section>
   `;
 }
 
@@ -125015,13 +125116,7 @@ function renderJobEnvironmentSections(environment = {}) {
               </section>
             `).join("")}
           </div>
-          <label class="job-organization-check-card">
-            <input type="checkbox" data-job-environment-flag="psychosocialRelevant" ${environment.psychosocialRelevant ? "checked" : ""} />
-            <span>
-              <strong>Psihosocijalni rizici</strong>
-              <small>Uključi kada su relevantni tempo, odgovornost, smjene, rad samostalno ili rad sa strankama.</small>
-            </span>
-          </label>
+          ${renderJobPsychosocialPanel(environment)}
         </div>`
       : "";
     article.innerHTML = `
@@ -125117,23 +125212,26 @@ function renderJobConditionSections(conditions = {}) {
       block.textField,
       conditions[block.textField] || "",
       block.helper,
+      block.icon,
+      block.tone,
     )).join("")}
   `;
   jobConditionSections.replaceChildren(...togglePanels, selectionPanel);
 }
 
-function renderJobMultiChoiceBlock(field, label, options, selectedValues = [], textField, textValue = "", helper = "") {
+function renderJobMultiChoiceBlock(field, label, options, selectedValues = [], textField, textValue = "", helper = "", icon = "note", tone = "slate") {
   const selected = new Set(selectedValues);
   const enabled = selected.size > 0 || Boolean(String(textValue || "").trim());
   const resolvedTextValue = String(textValue || "").trim() || (selected.size ? buildJobConditionChoiceSentence(field, [...selected]) : "");
   return `
-    <div class="job-multichoice-block ${enabled ? "is-enabled" : ""}" data-job-condition-block="${escapeHtml(field)}">
+    <div class="job-multichoice-block is-${escapeHtml(tone)} ${enabled ? "is-enabled" : ""}" data-job-condition-block="${escapeHtml(field)}">
       <div class="job-multichoice-head">
         <label class="job-toggle-control">
           <input type="checkbox" data-job-condition-block-enabled="${escapeHtml(field)}" ${enabled ? "checked" : ""} />
           <span class="job-toggle-track" aria-hidden="true"><span></span></span>
           <em>${enabled ? "Da" : "Ne"}</em>
         </label>
+        <span class="job-multichoice-icon" aria-hidden="true">${renderRiskAssessmentRiskIcon(icon)}</span>
         <div>
           <strong>${escapeHtml(label)}</strong>
           <small>${escapeHtml(helper)}</small>
@@ -125338,6 +125436,8 @@ function getJobEnvironmentDraftFromForm() {
     environment[field.key] = String(jobEnvironmentSections?.querySelector(`[data-job-organization-field="${field.key}"]`)?.value || "").trim();
   });
   environment.psychosocialRelevant = Boolean(jobEnvironmentSections?.querySelector('[data-job-environment-flag="psychosocialRelevant"]')?.checked);
+  environment.psychosocialLevel = String(jobEnvironmentSections?.querySelector("[data-job-psychosocial-level].is-selected")?.dataset.jobPsychosocialLevel || "").trim();
+  environment.psychosocialText = String(jobEnvironmentSections?.querySelector("[data-job-psychosocial-text]")?.value || "").trim();
   return environment;
 }
 
@@ -125391,7 +125491,7 @@ function syncJobFormAccess() {
   jobForm?.querySelectorAll("input, textarea, select").forEach((field) => {
     field.disabled = !canManage;
   });
-  jobForm?.querySelectorAll("[data-job-env-suggestion], [data-job-work-preset], [data-job-condition-choice], [data-job-pur-point], [data-job-hazard-add], [data-job-hazard-remove]").forEach((button) => {
+  jobForm?.querySelectorAll("[data-job-env-suggestion], [data-job-work-preset], [data-job-psychosocial-level], [data-job-condition-choice], [data-job-pur-point], [data-job-hazard-add], [data-job-hazard-remove]").forEach((button) => {
     button.disabled = !canManage;
   });
   jobForm?.querySelectorAll(".jobs-nexai-button").forEach((button) => {
@@ -126671,6 +126771,7 @@ function createRiskAssessmentJobDraftFromCatalogJob(job = {}) {
   const visionCheckRequired = Boolean(conditions.visionCheck || (conditions.importantFunctions ?? []).some((value) => String(value || "").toLocaleLowerCase("hr").includes("vid")));
   const safeWorkTrainingRequired = Boolean(conditions.safeWorkTrainingCertificate || conditions.trainingRequired);
   const medicalFitnessRequired = Boolean(conditions.medicalFitnessCertificate || purPoints.length > 0);
+  const psychosocialRelevant = Boolean(environment.psychosocialRelevant || environment.psychosocialLevel || environment.psychosocialText);
   const hasSpecialWorkConditions = [
     conditions.computerOver4h,
     conditions.manualHandling,
@@ -126717,6 +126818,9 @@ function createRiskAssessmentJobDraftFromCatalogJob(job = {}) {
     safeWorkTrainingRequired,
     medicalFitnessRequired,
     visionCheckRequired,
+    psychosocialRelevant,
+    psychosocialLevel: String(environment.psychosocialLevel || "").trim(),
+    psychosocialText: String(environment.psychosocialText || "").trim(),
     trainings: joinUniqueRiskAssessmentTextBlocks([
       safeWorkTrainingRequired ? "Osposobljavanje za rad na siguran način povezano je s opisom poslova, radnim uputama, OZO i mjerama iz procjene rizika." : "",
       getJobCatalogConditionNote(job, "trainingRequired"),
@@ -126778,6 +126882,9 @@ function mergeCatalogJobsIntoRiskAssessmentJob(jobs = []) {
     safeWorkTrainingRequired: drafts.some((draft) => draft.safeWorkTrainingRequired),
     medicalFitnessRequired: drafts.some((draft) => draft.medicalFitnessRequired),
     visionCheckRequired: drafts.some((draft) => draft.visionCheckRequired),
+    psychosocialRelevant: drafts.some((draft) => draft.psychosocialRelevant),
+    psychosocialLevel: drafts.map((draft) => Number(draft.psychosocialLevel || 0)).filter(Boolean).sort((a, b) => b - a)[0]?.toString() || "",
+    psychosocialText: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.psychosocialText)),
     trainings: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.trainings)),
     medicalExams: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.medicalExams)),
     ppeText: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.ppeText)),
@@ -127210,6 +127317,68 @@ function renderRiskAssessmentJobResourceField(item = {}, field = "", label = "",
   `;
 }
 
+function renderRiskAssessmentJobPsychosocialPanel(job = {}) {
+  const selectedLevel = String(job.psychosocialLevel || "").trim();
+  const relevant = Boolean(job.psychosocialRelevant || selectedLevel || job.psychosocialText);
+  return `
+    <section class="risk-assessment-job-profile-card is-psychosocial">
+      <div class="risk-assessment-job-profile-card-head">
+        <span>${renderRiskAssessmentRiskIcon("activity")}</span>
+        <div>
+          <strong>Psihosocijalni rizici</strong>
+          <small>Procjena stresa, ritma rada, smjena, odgovornosti, monotonije i rada sa strankama.</small>
+        </div>
+      </div>
+      <label class="risk-assessment-psychosocial-toggle ${relevant ? "is-selected" : ""}">
+        <input type="checkbox" data-risk-job-boolean="psychosocialRelevant" ${relevant ? "checked" : ""} />
+        <span>Procjena psihosocijalnih rizika relevantna je za ovo radno mjesto</span>
+      </label>
+      <div class="job-psychosocial-scale is-risk-assessment" aria-label="Razina psihosocijalnog rizika">
+        ${JOB_PSYCHOSOCIAL_LEVELS.map((level) => `
+          <button type="button"
+            class="job-psychosocial-level is-${escapeHtml(level.tone)} ${selectedLevel === level.value ? "is-selected" : ""}"
+            data-risk-job-psychosocial-level="${escapeHtml(level.value)}">
+            <span>${escapeHtml(level.marker)}</span>
+            <strong>${escapeHtml(level.label)}</strong>
+            <small>${escapeHtml(level.description)}</small>
+          </button>
+        `).join("")}
+      </div>
+      <label class="risk-assessment-job-resource-field is-violet field-span-full">
+        <span class="risk-assessment-job-resource-head">
+          <i aria-hidden="true">${renderRiskAssessmentRiskIcon("note")}</i>
+          <strong>Opis psihosocijalnih rizika i mjere</strong>
+        </span>
+        <textarea data-risk-job-field="psychosocialText" rows="3" placeholder="npr. Rad se obavlja uz povremene rokove i povećanu odgovornost; mjere uključuju jasnu raspodjelu zadataka, odmore i komunikaciju s nadređenima.">${escapeHtml(job.psychosocialText || "")}</textarea>
+      </label>
+    </section>
+  `;
+}
+
+function getRiskAssessmentJobHiddenBlocks(job = {}) {
+  return new Set(uniqueJobValues(job.hiddenBlocks ?? []));
+}
+
+function renderRiskAssessmentJobVisibilityControls(job = {}) {
+  const hidden = getRiskAssessmentJobHiddenBlocks(job);
+  const blocks = [
+    { key: "profile", label: "Profil" },
+    { key: "document", label: "Dokumentni pregled" },
+    { key: "eligibility", label: "Tko smije raditi" },
+    { key: "risks", label: "Rizici" },
+    { key: "ppe", label: "OZO prikaz" },
+  ];
+  return `
+    <div class="risk-assessment-job-visibility">
+      <span>Prikaz blokova</span>
+      ${blocks.map((block) => {
+        const isHidden = hidden.has(block.key);
+        return `<button type="button" class="${isHidden ? "is-hidden" : "is-visible"}" data-risk-job-toggle-block="${escapeHtml(block.key)}">${isHidden ? "Prikaži" : "Sakrij"} ${escapeHtml(block.label)}</button>`;
+      }).join("")}
+    </div>
+  `;
+}
+
 function renderRiskAssessmentJobProfile(item = {}, index = 0) {
   const purPoints = normalizeJobPurPointValues(item.purPoints ?? []);
   const referralHighlights = [
@@ -127355,6 +127524,8 @@ function renderRiskAssessmentJobProfile(item = {}, index = 0) {
           ${renderRiskAssessmentJobResourceField(item, "note", "Napomena", "note", "slate", 3)}
         </div>
       </section>
+
+      ${renderRiskAssessmentJobPsychosocialPanel(item)}
     </div>
   `;
 }
@@ -129243,6 +129414,9 @@ function createRiskAssessmentJobDraft(initial = {}) {
     safeWorkTrainingRequired: Boolean(initial.safeWorkTrainingRequired),
     medicalFitnessRequired: Boolean(initial.medicalFitnessRequired),
     visionCheckRequired: Boolean(initial.visionCheckRequired),
+    psychosocialRelevant: Boolean(initial.psychosocialRelevant),
+    psychosocialLevel: String(initial.psychosocialLevel || ""),
+    psychosocialText: String(initial.psychosocialText || ""),
     trainings: String(initial.trainings || ""),
     medicalExams: String(initial.medicalExams || ""),
     ppeText: String(initial.ppeText || ""),
@@ -129254,6 +129428,7 @@ function createRiskAssessmentJobDraft(initial = {}) {
     catalogSelection: Array.isArray(initial.catalogSelection) ? initial.catalogSelection.map(String) : [],
     ppeFilter: String(initial.ppeFilter || "all"),
     aiProposal: initial.aiProposal || null,
+    hiddenBlocks: uniqueJobValues(initial.hiddenBlocks ?? []),
     eligibility: createRiskAssessmentEligibilityDraft(initial.eligibility || {}),
     riskRows: riskRows.length > 0 ? riskRows : [createRiskAssessmentRiskRowDraft()],
   };
@@ -129311,6 +129486,26 @@ function applyRiskAssessmentArmorTemplateRows(jobIndex) {
   renderRiskAssessmentJobs();
   renderRiskAssessmentOverview();
   scheduleRiskAssessmentDraftAutosave();
+}
+
+function applyRiskAssessmentArmorTemplateRowsToJobs(indexes = null) {
+  const targetIndexes = Array.isArray(indexes)
+    ? indexes.filter((index) => Number.isInteger(index) && riskAssessmentJobDrafts[index])
+    : riskAssessmentJobDrafts.map((_, index) => index);
+  if (!targetIndexes.length) {
+    setInlineMessage(riskAssessmentError, "Dodaj barem jedno radno mjesto prije dodavanja ARMOR redaka.", "error");
+    return;
+  }
+  const targetSet = new Set(targetIndexes);
+  riskAssessmentJobDrafts = riskAssessmentJobDrafts.map((job, index) => (
+    targetSet.has(index)
+      ? { ...job, riskRows: mergeRiskAssessmentRiskRows(job.riskRows, RISK_ASSESSMENT_ARMOR_TEMPLATE_ROWS) }
+      : job
+  ));
+  renderRiskAssessmentJobs();
+  renderRiskAssessmentOverview();
+  scheduleRiskAssessmentDraftAutosave();
+  setInlineMessage(riskAssessmentError, `ARMOR retci dodani su na ${targetIndexes.length} radnih mjesta.`, "success");
 }
 
 function getRiskAssessmentJobCatalogSelectedIds() {
@@ -129381,6 +129576,9 @@ function renderRiskAssessmentJobCatalogPicker() {
   const jobs = sortJobs(state.jobs ?? []);
   const visibleJobs = getVisibleRiskAssessmentCatalogJobs();
   const selectedIds = getRiskAssessmentJobCatalogSelectedIds();
+  if (riskAssessmentJobCatalogGroupInput && selectedIds.size > 1) {
+    riskAssessmentJobCatalogGroupInput.checked = true;
+  }
   renderRiskAssessmentJobCatalogStats(jobs, visibleJobs, selectedIds);
 
   if (riskAssessmentJobCatalogSelectVisibleButton) {
@@ -129498,7 +129696,7 @@ function importSelectedJobsIntoRiskAssessment() {
     return;
   }
 
-  const shouldGroup = riskAssessmentJobCatalogGroupInput?.checked !== false;
+  const shouldGroup = selectedJobs.length > 1 || riskAssessmentJobCatalogGroupInput?.checked !== false;
   const incomingJobs = shouldGroup
     ? [mergeCatalogJobsIntoRiskAssessmentJob(selectedJobs)]
     : selectedJobs.map((job) => createRiskAssessmentJobDraftFromCatalogJob(job));
@@ -129562,6 +129760,10 @@ function syncRiskAssessmentEditorAccess() {
   if (riskAssessmentAddJobButton) {
     riskAssessmentAddJobButton.hidden = !canManage;
   }
+  if (riskAssessmentArmorAllButton) {
+    riskAssessmentArmorAllButton.hidden = !canManage;
+    riskAssessmentArmorAllButton.disabled = !canManage || riskAssessmentJobDrafts.length === 0;
+  }
   if (riskAssessmentAddAuthorizedPersonButton) {
     riskAssessmentAddAuthorizedPersonButton.hidden = !canManage;
   }
@@ -129609,6 +129811,9 @@ function syncRiskAssessmentEditorAccess() {
   }
   riskAssessmentForm?.querySelectorAll("[data-risk-job-ai], [data-risk-unit-ai]").forEach((control) => {
     control.disabled = !canManage || !canUseJobNexAi;
+  });
+  riskAssessmentForm?.querySelectorAll("[data-risk-job-toggle-block], [data-risk-job-psychosocial-level], [data-risk-job-pur-point], [data-risk-job-template]").forEach((control) => {
+    control.disabled = !canManage;
   });
   [
     riskAssessmentTemplateTitleInput,
@@ -130540,6 +130745,44 @@ function handleRiskAssessmentJobsListClick(event) {
     return;
   }
 
+  if (button.matches("[data-risk-job-toggle-block]")) {
+    event.preventDefault();
+    const block = String(button.dataset.riskJobToggleBlock || "").trim();
+    const current = riskAssessmentJobDrafts[jobIndex];
+    if (current && block) {
+      const hidden = getRiskAssessmentJobHiddenBlocks(current);
+      if (hidden.has(block)) {
+        hidden.delete(block);
+      } else {
+        hidden.add(block);
+      }
+      riskAssessmentJobDrafts[jobIndex] = {
+        ...current,
+        hiddenBlocks: Array.from(hidden),
+      };
+      renderRiskAssessmentJobs();
+      scheduleRiskAssessmentDraftAutosave();
+    }
+    return;
+  }
+
+  if (button.matches("[data-risk-job-psychosocial-level]")) {
+    event.preventDefault();
+    const level = String(button.dataset.riskJobPsychosocialLevel || "").trim();
+    const current = riskAssessmentJobDrafts[jobIndex];
+    if (current && level) {
+      riskAssessmentJobDrafts[jobIndex] = {
+        ...current,
+        psychosocialRelevant: true,
+        psychosocialLevel: level,
+      };
+      renderRiskAssessmentJobs();
+      renderRiskAssessmentOverview();
+      scheduleRiskAssessmentDraftAutosave();
+    }
+    return;
+  }
+
   if (button.matches("[data-risk-job-work-preset]")) {
     event.preventDefault();
     applyRiskAssessmentJobWorkProfilePreset(jobIndex, button.dataset.riskJobWorkPreset || "");
@@ -131133,6 +131376,7 @@ function renderRiskAssessmentJobs() {
     row.className = "risk-assessment-repeat-row is-job";
     row.dataset.riskJobIndex = String(index);
     row.draggable = true;
+    const hiddenBlocks = getRiskAssessmentJobHiddenBlocks(item);
     const riskCount = getRiskAssessmentFilledRiskRowCount(item);
     const selectedJobTitle = item.jobTitle || `Radno mjesto ${index + 1}`;
     const completion = getRiskAssessmentJobCompletion(item);
@@ -131162,12 +131406,13 @@ function renderRiskAssessmentJobs() {
 
       ${renderRiskAssessmentJobAiProposal(item, index)}
       ${renderRiskAssessmentJobTemplateActions()}
+      ${renderRiskAssessmentJobVisibilityControls(item)}
 
-      ${renderRiskAssessmentJobProfile(item, index)}
+      ${hiddenBlocks.has("profile") ? "" : renderRiskAssessmentJobProfile(item, index)}
 
-      ${renderRiskAssessmentJobDocumentPreview(item, index)}
+      ${hiddenBlocks.has("document") ? "" : renderRiskAssessmentJobDocumentPreview(item, index)}
 
-      <div class="risk-assessment-eligibility-block">
+      ${hiddenBlocks.has("eligibility") ? "" : `<div class="risk-assessment-eligibility-block">
         <div class="risk-assessment-mini-title">
           <strong>Tko smije raditi na poslovima</strong>
           <span>Da / Ne / N/P i napomena</span>
@@ -131184,16 +131429,16 @@ function renderRiskAssessmentJobs() {
             `;
           }).join("")}
         </div>
-      </div>
+      </div>`}
 
       ${item.catalogOpen ? renderRiskAssessmentCatalogPicker(item) : ""}
 
-      <div class="risk-assessment-mini-title">
+      ${hiddenBlocks.has("risks") ? "" : `<div class="risk-assessment-mini-title">
         <strong>Opasnosti, štetnosti, napori i mjere</strong>
         <span>Za svaku stavku popunjava se kartica procjene rizika.</span>
       </div>
-      ${renderRiskAssessmentRiskCards(item)}
-      ${renderRiskAssessmentPpeVisual(item, index)}
+      ${renderRiskAssessmentRiskCards(item)}`}
+      ${hiddenBlocks.has("ppe") ? "" : renderRiskAssessmentPpeVisual(item, index)}
     `;
     return row;
   }));
