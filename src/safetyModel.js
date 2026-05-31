@@ -5157,6 +5157,80 @@ function normalizeRiskAssessmentPpeItems(items = []) {
   ));
 }
 
+function normalizeRiskAssessmentClientJobInput(input = {}) {
+  const source = input && typeof input === "object" ? input : {};
+  return {
+    workerCount: normalizeText(source.workerCount),
+    workplace: normalizeText(source.workplace),
+    workSchedule: normalizeText(source.workSchedule),
+    workOrganization: normalizeText(source.workOrganization),
+    description: normalizeText(source.description),
+    tasks: normalizeText(source.tasks),
+    workplaceOptions: normalizeJobOptionValues(source.workplaceOptions),
+    organizationOptions: normalizeJobOptionValues(source.organizationOptions),
+    bodyPositions: normalizeJobOptionValues(source.bodyPositions),
+    importantFunctions: normalizeJobOptionValues(source.importantFunctions),
+    workConditions: normalizeJobOptionValues(source.workConditions),
+    purPoints: normalizeJobOptionValues(source.purPoints).slice(0, 19),
+    safeWorkTrainingRequired: normalizeBoolean(source.safeWorkTrainingRequired, false),
+    medicalFitnessRequired: normalizeBoolean(source.medicalFitnessRequired, false),
+    visionCheckRequired: normalizeBoolean(source.visionCheckRequired, false),
+    specialWorkReason: normalizeText(source.specialWorkReason),
+    trainings: normalizeText(source.trainings),
+    medicalExams: normalizeText(source.medicalExams),
+    toolsAndMachines: normalizeText(source.toolsAndMachines),
+    workEquipment: normalizeText(source.workEquipment),
+    workSubstances: normalizeText(source.workSubstances),
+    workplaces: normalizeText(source.workplaces),
+    workplaceArrangement: normalizeText(source.workplaceArrangement),
+    harmfulSources: normalizeText(source.harmfulSources),
+    ppeText: normalizeText(source.ppeText),
+    psychosocialRelevant: normalizeBoolean(source.psychosocialRelevant, false),
+    psychosocialLevel: normalizeText(source.psychosocialLevel),
+    psychosocialText: normalizeText(source.psychosocialText),
+    armorNotes: normalizeText(source.armorNotes),
+    note: normalizeText(source.note),
+    submittedByUserId: normalizeId(source.submittedByUserId),
+    submittedByLabel: normalizeText(source.submittedByLabel),
+    submittedAt: normalizeText(source.submittedAt),
+  };
+}
+
+function hasRiskAssessmentClientJobInput(input = {}) {
+  return Boolean(
+    input.workerCount
+    || input.workplace
+    || input.workSchedule
+    || input.workOrganization
+    || input.description
+    || input.tasks
+    || input.workplaceOptions.length > 0
+    || input.organizationOptions.length > 0
+    || input.bodyPositions.length > 0
+    || input.importantFunctions.length > 0
+    || input.workConditions.length > 0
+    || input.purPoints.length > 0
+    || input.safeWorkTrainingRequired
+    || input.medicalFitnessRequired
+    || input.visionCheckRequired
+    || input.specialWorkReason
+    || input.trainings
+    || input.medicalExams
+    || input.toolsAndMachines
+    || input.workEquipment
+    || input.workSubstances
+    || input.workplaces
+    || input.workplaceArrangement
+    || input.harmfulSources
+    || input.ppeText
+    || input.psychosocialRelevant
+    || input.psychosocialLevel
+    || input.psychosocialText
+    || input.armorNotes
+    || input.note
+  );
+}
+
 function normalizeRiskAssessmentJobs(items = []) {
   if (!Array.isArray(items)) {
     return [];
@@ -5166,6 +5240,7 @@ function normalizeRiskAssessmentJobs(items = []) {
     const specialConditions = normalizeText(item?.specialConditions ?? item?.specialWorkReason);
     const qualifications = normalizeText(item?.qualifications ?? item?.requiredQualification);
     const organization = normalizeText(item?.organization ?? item?.workOrganization);
+    const clientInput = normalizeRiskAssessmentClientJobInput(item?.clientInput);
 
     return {
       id: normalizeId(item?.id) || crypto.randomUUID(),
@@ -5223,10 +5298,15 @@ function normalizeRiskAssessmentJobs(items = []) {
       safeWorkTrainingRequired: normalizeBoolean(item?.safeWorkTrainingRequired, false),
       medicalFitnessRequired: normalizeBoolean(item?.medicalFitnessRequired, false),
       visionCheckRequired: normalizeBoolean(item?.visionCheckRequired, false),
+      psychosocialRelevant: normalizeBoolean(item?.psychosocialRelevant, false),
+      psychosocialLevel: normalizeText(item?.psychosocialLevel),
+      psychosocialText: normalizeText(item?.psychosocialText),
       trainings: normalizeText(item?.trainings),
       medicalExams: normalizeText(item?.medicalExams),
       ppeText: normalizeText(item?.ppeText),
       ppeItems: normalizeRiskAssessmentPpeItems(item?.ppeItems ?? []),
+      hiddenBlocks: normalizeJobOptionValues(item?.hiddenBlocks),
+      clientInput,
       eligibility: normalizeRiskAssessmentEligibility(item?.eligibility),
       riskRows: normalizeRiskAssessmentRiskRows(item?.riskRows ?? []),
     };
@@ -5252,10 +5332,15 @@ function normalizeRiskAssessmentJobs(items = []) {
     || item.workConditions.length > 0
     || item.purPoints.length > 0
     || item.harmfulSources
+    || item.psychosocialRelevant
+    || item.psychosocialLevel
+    || item.psychosocialText
     || item.trainings
     || item.medicalExams
     || item.ppeText
     || item.ppeItems.length > 0
+    || item.hiddenBlocks.length > 0
+    || hasRiskAssessmentClientJobInput(item.clientInput)
     || item.riskRows.length > 0
   ));
 }
@@ -9002,9 +9087,38 @@ export function filterRiskAssessments(
         ...(entry.purPoints ?? []),
         entry.workplaceArrangement,
         entry.harmfulSources,
+        entry.psychosocialLevel,
+        entry.psychosocialText,
         entry.trainings,
         entry.medicalExams,
         entry.ppeText,
+        entry.clientInput?.workerCount,
+        entry.clientInput?.workplace,
+        entry.clientInput?.workSchedule,
+        entry.clientInput?.workOrganization,
+        entry.clientInput?.description,
+        entry.clientInput?.tasks,
+        ...(entry.clientInput?.workplaceOptions ?? []),
+        ...(entry.clientInput?.organizationOptions ?? []),
+        ...(entry.clientInput?.bodyPositions ?? []),
+        ...(entry.clientInput?.importantFunctions ?? []),
+        ...(entry.clientInput?.workConditions ?? []),
+        ...(entry.clientInput?.purPoints ?? []),
+        entry.clientInput?.specialWorkReason,
+        entry.clientInput?.trainings,
+        entry.clientInput?.medicalExams,
+        entry.clientInput?.toolsAndMachines,
+        entry.clientInput?.workEquipment,
+        entry.clientInput?.workSubstances,
+        entry.clientInput?.workplaces,
+        entry.clientInput?.workplaceArrangement,
+        entry.clientInput?.harmfulSources,
+        entry.clientInput?.ppeText,
+        entry.clientInput?.psychosocialLevel,
+        entry.clientInput?.psychosocialText,
+        entry.clientInput?.armorNotes,
+        entry.clientInput?.note,
+        entry.clientInput?.submittedByLabel,
         ...(Object.values(entry.eligibility ?? {}).flatMap((eligibility) => [eligibility?.allowed, eligibility?.note])),
         ...(entry.ppeItems ?? []).flatMap((ppe) => [
           ppe.name,

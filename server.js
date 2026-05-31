@@ -5912,6 +5912,89 @@ function normalizeRequestBoolean(value, fallback = false) {
   return Boolean(value);
 }
 
+function normalizeClientPortalText(value = "", maxLength = 6000) {
+  return String(value ?? "").trim().slice(0, maxLength);
+}
+
+function normalizeClientPortalValueList(values = [], limit = 80) {
+  const source = Array.isArray(values)
+    ? values
+    : String(values ?? "").split(/\n+|;+/);
+  return Array.from(new Set(
+    source
+      .map((value) => normalizeClientPortalText(value, 180))
+      .filter(Boolean),
+  )).slice(0, limit);
+}
+
+function normalizeClientPortalRiskAssessmentJobInput(input = {}, user = {}) {
+  const source = input && typeof input === "object" ? input : {};
+  const submittedByLabel = [
+    user.displayName,
+    user.fullName,
+    [user.firstName, user.lastName].filter(Boolean).join(" "),
+    user.email,
+  ].map((value) => normalizeClientPortalText(value, 180)).find(Boolean) || "Klijentski portal";
+  return {
+    workerCount: normalizeClientPortalText(source.workerCount),
+    workplace: normalizeClientPortalText(source.workplace),
+    workSchedule: normalizeClientPortalText(source.workSchedule),
+    workOrganization: normalizeClientPortalText(source.workOrganization),
+    description: normalizeClientPortalText(source.description),
+    tasks: normalizeClientPortalText(source.tasks),
+    workplaceOptions: normalizeClientPortalValueList(source.workplaceOptions),
+    organizationOptions: normalizeClientPortalValueList(source.organizationOptions),
+    bodyPositions: normalizeClientPortalValueList(source.bodyPositions),
+    importantFunctions: normalizeClientPortalValueList(source.importantFunctions),
+    workConditions: normalizeClientPortalValueList(source.workConditions),
+    purPoints: normalizeClientPortalValueList(source.purPoints, 19),
+    safeWorkTrainingRequired: normalizeRequestBoolean(source.safeWorkTrainingRequired, false),
+    medicalFitnessRequired: normalizeRequestBoolean(source.medicalFitnessRequired, false),
+    visionCheckRequired: normalizeRequestBoolean(source.visionCheckRequired, false),
+    specialWorkReason: normalizeClientPortalText(source.specialWorkReason),
+    trainings: normalizeClientPortalText(source.trainings),
+    medicalExams: normalizeClientPortalText(source.medicalExams),
+    toolsAndMachines: normalizeClientPortalText(source.toolsAndMachines),
+    workEquipment: normalizeClientPortalText(source.workEquipment),
+    workSubstances: normalizeClientPortalText(source.workSubstances),
+    workplaces: normalizeClientPortalText(source.workplaces),
+    workplaceArrangement: normalizeClientPortalText(source.workplaceArrangement),
+    harmfulSources: normalizeClientPortalText(source.harmfulSources),
+    ppeText: normalizeClientPortalText(source.ppeText),
+    psychosocialRelevant: normalizeRequestBoolean(source.psychosocialRelevant, false),
+    psychosocialLevel: normalizeClientPortalText(source.psychosocialLevel, 20),
+    psychosocialText: normalizeClientPortalText(source.psychosocialText),
+    armorNotes: normalizeClientPortalText(source.armorNotes),
+    note: normalizeClientPortalText(source.note),
+    submittedByUserId: normalizeClientPortalText(user.id, 120),
+    submittedByLabel,
+    submittedAt: new Date().toISOString(),
+  };
+}
+
+function buildClientPortalRiskAssessmentPatch(currentRiskAssessment = {}, rawBody = {}, user = {}) {
+  const incomingJobs = Array.isArray(rawBody?.jobs) ? rawBody.jobs : [];
+  const incomingById = new Map(incomingJobs
+    .map((job) => [String(job?.id || "").trim(), job])
+    .filter(([id]) => Boolean(id)));
+  const currentJobs = Array.isArray(currentRiskAssessment.jobs) ? currentRiskAssessment.jobs : [];
+  const jobs = currentJobs.map((job) => {
+    const incoming = incomingById.get(String(job?.id || ""));
+    if (!incoming) {
+      return job;
+    }
+    return {
+      ...job,
+      clientInput: normalizeClientPortalRiskAssessmentJobInput(incoming.clientInput || {}, user),
+    };
+  });
+
+  return {
+    clientNote: normalizeClientPortalText(rawBody?.clientNote ?? currentRiskAssessment.clientNote ?? ""),
+    jobs,
+  };
+}
+
 function isClientPortalUserPayload(body = {}) {
   const profileRole = String(body.profileRole ?? body.profile_role ?? "").trim().toLowerCase();
   return profileRole === "client_user"
@@ -11214,7 +11297,7 @@ async function handleApiRequest(request, response, url) {
       const { scopedSnapshot } = await getScopedState(user, request);
       const currentRiskAssessment = assertInScope(scopedSnapshot.riskAssessments ?? [], riskAssessmentMatch[1], "Procjena rizika nije pronađena.");
       const body = !canManageWorkOrders(user) && isClientPortalUser(user)
-        ? { clientNote: String(rawBody?.clientNote ?? currentRiskAssessment.clientNote ?? "").trim() }
+        ? buildClientPortalRiskAssessmentPatch(currentRiskAssessment, rawBody, user)
         : rawBody;
       assertCompanyPayloadInScope(scopedSnapshot, body);
       assertLocationPayloadInScope(scopedSnapshot, body);

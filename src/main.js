@@ -83324,7 +83324,10 @@ function createClientPortalRiskAssessmentPreviewRow(item = {}) {
   jobs.textContent = `${(item.jobs ?? []).length} poslova`;
   const measures = document.createElement("span");
   measures.textContent = `${(item.measures ?? []).length} mjera`;
-  meta.append(jobs, measures);
+  const clientInputs = document.createElement("span");
+  const filledClientInputs = (item.jobs ?? []).filter((job) => hasRiskAssessmentClientJobInput(job.clientInput)).length;
+  clientInputs.textContent = `${filledClientInputs}/${(item.jobs ?? []).length} dopunjeno`;
+  meta.append(jobs, measures, clientInputs);
 
   const badge = document.createElement("span");
   badge.className = `client-portal-preview-row-badge is-risk-assessment is-${item.status || "draft"}`;
@@ -83418,7 +83421,7 @@ function renderClientPortalPreview() {
   const riskAssessmentSection = createClientPortalPreviewSection({
     key: "riskAssessments",
     title: "Procjene rizika",
-    subtitle: "Klijent vidi procjene rizika i može vratiti napomenu kroz isti zapis.",
+    subtitle: "Klijent vidi procjene rizika i dopunjava podatke po svakom radnom mjestu.",
     rows: riskAssessmentRows,
     emptyMessage: companyId ? "Nema procjena rizika za odabrani opseg." : "Odaberi tvrtku za preview procjena rizika.",
   });
@@ -127355,6 +127358,200 @@ function renderRiskAssessmentJobPsychosocialPanel(job = {}) {
   `;
 }
 
+function createRiskAssessmentClientJobInputDraft(initial = {}) {
+  return {
+    workerCount: String(initial.workerCount || ""),
+    workplace: String(initial.workplace || ""),
+    workSchedule: String(initial.workSchedule || ""),
+    workOrganization: String(initial.workOrganization || ""),
+    description: String(initial.description || ""),
+    tasks: String(initial.tasks || ""),
+    workplaceOptions: uniqueJobValues(initial.workplaceOptions ?? []),
+    organizationOptions: uniqueJobValues(initial.organizationOptions ?? []),
+    bodyPositions: uniqueJobValues(initial.bodyPositions ?? []),
+    importantFunctions: uniqueJobValues(initial.importantFunctions ?? []),
+    workConditions: uniqueJobValues(initial.workConditions ?? []),
+    purPoints: normalizeJobPurPointValues(initial.purPoints ?? []),
+    safeWorkTrainingRequired: Boolean(initial.safeWorkTrainingRequired),
+    medicalFitnessRequired: Boolean(initial.medicalFitnessRequired),
+    visionCheckRequired: Boolean(initial.visionCheckRequired),
+    specialWorkReason: String(initial.specialWorkReason || ""),
+    trainings: String(initial.trainings || ""),
+    medicalExams: String(initial.medicalExams || ""),
+    toolsAndMachines: String(initial.toolsAndMachines || ""),
+    workEquipment: String(initial.workEquipment || ""),
+    workSubstances: String(initial.workSubstances || ""),
+    workplaces: String(initial.workplaces || ""),
+    workplaceArrangement: String(initial.workplaceArrangement || ""),
+    harmfulSources: String(initial.harmfulSources || ""),
+    ppeText: String(initial.ppeText || ""),
+    psychosocialRelevant: Boolean(initial.psychosocialRelevant),
+    psychosocialLevel: String(initial.psychosocialLevel || ""),
+    psychosocialText: String(initial.psychosocialText || ""),
+    armorNotes: String(initial.armorNotes || ""),
+    note: String(initial.note || ""),
+    submittedByUserId: String(initial.submittedByUserId || ""),
+    submittedByLabel: String(initial.submittedByLabel || ""),
+    submittedAt: String(initial.submittedAt || ""),
+  };
+}
+
+function hasRiskAssessmentClientJobInput(input = {}) {
+  const draft = createRiskAssessmentClientJobInputDraft(input);
+  return Boolean(
+    draft.workerCount
+    || draft.workplace
+    || draft.workSchedule
+    || draft.workOrganization
+    || draft.description
+    || draft.tasks
+    || draft.workplaceOptions.length
+    || draft.organizationOptions.length
+    || draft.bodyPositions.length
+    || draft.importantFunctions.length
+    || draft.workConditions.length
+    || draft.purPoints.length
+    || draft.safeWorkTrainingRequired
+    || draft.medicalFitnessRequired
+    || draft.visionCheckRequired
+    || draft.specialWorkReason
+    || draft.trainings
+    || draft.medicalExams
+    || draft.toolsAndMachines
+    || draft.workEquipment
+    || draft.workSubstances
+    || draft.workplaces
+    || draft.workplaceArrangement
+    || draft.harmfulSources
+    || draft.ppeText
+    || draft.psychosocialRelevant
+    || draft.psychosocialLevel
+    || draft.psychosocialText
+    || draft.armorNotes
+    || draft.note
+  );
+}
+
+function renderRiskAssessmentClientChoiceBlock(input = {}, field = "", label = "", options = [], helper = "", icon = "note", tone = "slate") {
+  const selected = new Set(uniqueJobValues(input[field] ?? []));
+  return `
+    <div class="risk-assessment-job-choice-block is-${escapeHtml(tone)}">
+      <div class="risk-assessment-job-choice-block-head">
+        <span class="risk-assessment-job-choice-icon" aria-hidden="true">${renderRiskAssessmentRiskIcon(icon)}</span>
+        <div>
+          <strong>${escapeHtml(label)}</strong>
+          ${helper ? `<small>${escapeHtml(helper)}</small>` : ""}
+        </div>
+      </div>
+      <div>
+        ${options.map((option) => `
+          <button type="button"
+            class="${selected.has(option) ? "is-selected" : ""}"
+            data-risk-client-choice="${escapeHtml(field)}"
+            data-value="${escapeHtml(option)}">${escapeHtml(option)}</button>
+        `).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderRiskAssessmentClientPortalJobInput(job = {}) {
+  const input = createRiskAssessmentClientJobInputDraft(job.clientInput || {});
+  const purPoints = normalizeJobPurPointValues(input.purPoints ?? []);
+  const selectedPsychosocialLevel = String(input.psychosocialLevel || "").trim();
+  const submittedMeta = input.submittedAt
+    ? `Zadnja dopuna: ${formatCompactDate(input.submittedAt)}${input.submittedByLabel ? ` · ${input.submittedByLabel}` : ""}`
+    : "Klijent unosi podatke po svakom radnom mjestu.";
+  return `
+    <section class="risk-assessment-client-input-card">
+      <div class="risk-assessment-client-input-head">
+        <span>${renderRiskAssessmentRiskIcon("clipboard")}</span>
+        <div>
+          <strong>Klijentski unos za ovo radno mjesto</strong>
+          <small>${escapeHtml(submittedMeta)}</small>
+        </div>
+      </div>
+      <div class="risk-assessment-job-preset-strip is-client">
+        ${JOB_WORK_PROFILE_PRESETS.map((preset) => `
+          <button type="button" data-risk-client-preset="${escapeHtml(preset.key)}">
+            <strong>${escapeHtml(preset.label)}</strong>
+            <span>${escapeHtml(preset.description)}</span>
+          </button>
+        `).join("")}
+      </div>
+      <div class="risk-assessment-client-input-grid">
+        <label><span>Broj radnika</span><input data-risk-client-field="workerCount" value="${escapeHtml(input.workerCount)}" placeholder="${escapeHtml(job.workerCount || "npr. 4")}" /></label>
+        <label><span>Mjesto rada</span><input data-risk-client-field="workplace" value="${escapeHtml(input.workplace)}" placeholder="${escapeHtml(job.workplace || "pogon, skladište, teren")}" /></label>
+        <label><span>Raspored / smjene</span><input data-risk-client-field="workSchedule" value="${escapeHtml(input.workSchedule)}" placeholder="${escapeHtml(job.workSchedule || "jedna smjena, dvije smjene, noćni rad...")}" /></label>
+        <label class="field-span-full"><span>Organizacija rada</span><textarea data-risk-client-field="workOrganization" rows="3" placeholder="Kako se posao stvarno organizira: smjene, stanke, ritam, rad sam/u grupi, teren...">${escapeHtml(input.workOrganization)}</textarea></label>
+        <label class="field-span-full"><span>Opis poslova</span><textarea data-risk-client-field="description" rows="3" placeholder="Kratko opišite što radnik radi na ovom radnom mjestu.">${escapeHtml(input.description)}</textarea></label>
+        <label class="field-span-full"><span>Radni zadaci</span><textarea data-risk-client-field="tasks" rows="2" placeholder="Jedan zadatak po retku ili kratki popis zadataka.">${escapeHtml(input.tasks)}</textarea></label>
+      </div>
+      <div class="risk-assessment-job-choice-grid">
+        ${renderRiskAssessmentClientChoiceBlock(input, "organizationOptions", "Brzi izbor organizacije rada", ["puno radno vrijeme", "jedna smjena", "u smjenama", "noćni rad", "bez noćnog rada", "terenski rad", "po pozivu", "radi sam", "radi s grupom", "radi sa strankama", "rad na traci", "brzi tempo rada", "ritam određen", "monotonija"], "Ovo se koristi za smjene i opis rada.", "briefcase", "indigo")}
+        ${renderRiskAssessmentClientChoiceBlock(input, "workplaceOptions", "Mjesto rada", ["u zatvorenom", "na otvorenom", "na visini", "u jami", "u vodi", "pod vodom", "u mokrom", "u prometu", "kod klijenta"], "Podaci za uputnicu RA-1.", "map", "sky")}
+        ${renderRiskAssessmentClientChoiceBlock(input, "bodyPositions", "Položaj tijela i aktivnosti", JOB_BODY_POSITION_OPTIONS, "Odaberite aktivnosti koje se stvarno ponavljaju.", "activity", "violet")}
+        ${renderRiskAssessmentClientChoiceBlock(input, "importantFunctions", "U poslu je bitno", JOB_IMPORTANT_FUNCTION_OPTIONS, "Vid, sluh, govor, preciznost i koordinacija.", "eye", "emerald")}
+        ${renderRiskAssessmentClientChoiceBlock(input, "workConditions", "Uvjeti rada", JOB_WORK_CONDITION_OPTIONS, "Buka, temperatura, kemikalije, rad na visini i slično.", "thermometer", "amber")}
+      </div>
+      <div class="risk-assessment-client-input-grid">
+        <section class="risk-assessment-client-input-section field-span-full">
+          <div class="risk-assessment-job-pur-head">
+            <strong>Točke posebnih uvjeta rada</strong>
+            <span>${escapeHtml(getJobPurPointSummary(purPoints))}</span>
+          </div>
+          ${renderJobPurPointPicker(purPoints, "data-risk-client-pur-point")}
+        </section>
+        <section class="risk-assessment-client-input-section field-span-full">
+          <div class="risk-assessment-job-referral-toggles">
+            <label class="${input.safeWorkTrainingRequired ? "is-selected" : ""}">
+              <input type="checkbox" data-risk-client-boolean="safeWorkTrainingRequired" ${input.safeWorkTrainingRequired ? "checked" : ""} />
+              <span>Rad na siguran način</span>
+            </label>
+            <label class="${input.medicalFitnessRequired ? "is-selected" : ""}">
+              <input type="checkbox" data-risk-client-boolean="medicalFitnessRequired" ${input.medicalFitnessRequired ? "checked" : ""} />
+              <span>Zdravstvena sposobnost</span>
+            </label>
+            <label class="${input.visionCheckRequired ? "is-selected" : ""}">
+              <input type="checkbox" data-risk-client-boolean="visionCheckRequired" ${input.visionCheckRequired ? "checked" : ""} />
+              <span>Pregled vida</span>
+            </label>
+          </div>
+          <label><span>Napomena za PUR / zdravstvene uvjete</span><textarea data-risk-client-field="specialWorkReason" rows="2">${escapeHtml(input.specialWorkReason)}</textarea></label>
+        </section>
+        <label><span>Strojevi, alati, aparati</span><textarea data-risk-client-field="toolsAndMachines" rows="2">${escapeHtml(input.toolsAndMachines)}</textarea></label>
+        <label><span>Radna oprema</span><textarea data-risk-client-field="workEquipment" rows="2">${escapeHtml(input.workEquipment)}</textarea></label>
+        <label><span>Radne tvari</span><textarea data-risk-client-field="workSubstances" rows="2">${escapeHtml(input.workSubstances)}</textarea></label>
+        <label><span>Mjesta rada</span><textarea data-risk-client-field="workplaces" rows="2">${escapeHtml(input.workplaces)}</textarea></label>
+        <label class="field-span-full"><span>OZO / oprema koja se koristi</span><textarea data-risk-client-field="ppeText" rows="2">${escapeHtml(input.ppeText)}</textarea></label>
+        <label class="field-span-full"><span>ARMOR / opasnosti i napomene klijenta</span><textarea data-risk-client-field="armorNotes" rows="3" placeholder="Navedite opasnosti, štetnosti, napore, nezgode, postojeće mjere ili posebnosti posla koje treba uzeti u obzir.">${escapeHtml(input.armorNotes)}</textarea></label>
+      </div>
+      <section class="risk-assessment-client-input-section">
+        <label class="risk-assessment-psychosocial-toggle ${input.psychosocialRelevant || selectedPsychosocialLevel ? "is-selected" : ""}">
+          <input type="checkbox" data-risk-client-boolean="psychosocialRelevant" ${input.psychosocialRelevant || selectedPsychosocialLevel ? "checked" : ""} />
+          <span>Psihosocijalni rizici su relevantni za ovo radno mjesto</span>
+        </label>
+        <div class="job-psychosocial-scale is-risk-assessment">
+          ${JOB_PSYCHOSOCIAL_LEVELS.map((level) => `
+            <button type="button"
+              class="job-psychosocial-level is-${escapeHtml(level.tone)} ${selectedPsychosocialLevel === level.value ? "is-selected" : ""}"
+              data-risk-client-psychosocial-level="${escapeHtml(level.value)}">
+              <span>${escapeHtml(level.marker)}</span>
+              <strong>${escapeHtml(level.label)}</strong>
+              <small>${escapeHtml(level.description)}</small>
+            </button>
+          `).join("")}
+        </div>
+        <label><span>Opis psihosocijalnih rizika</span><textarea data-risk-client-field="psychosocialText" rows="3">${escapeHtml(input.psychosocialText)}</textarea></label>
+      </section>
+      <label class="risk-assessment-client-input-note">
+        <span>Dodatna napomena klijenta</span>
+        <textarea data-risk-client-field="note" rows="2">${escapeHtml(input.note)}</textarea>
+      </label>
+    </section>
+  `;
+}
+
 function getRiskAssessmentJobHiddenBlocks(job = {}) {
   return new Set(uniqueJobValues(job.hiddenBlocks ?? []));
 }
@@ -129429,6 +129626,7 @@ function createRiskAssessmentJobDraft(initial = {}) {
     ppeFilter: String(initial.ppeFilter || "all"),
     aiProposal: initial.aiProposal || null,
     hiddenBlocks: uniqueJobValues(initial.hiddenBlocks ?? []),
+    clientInput: createRiskAssessmentClientJobInputDraft(initial.clientInput || {}),
     eligibility: createRiskAssessmentEligibilityDraft(initial.eligibility || {}),
     riskRows: riskRows.length > 0 ? riskRows : [createRiskAssessmentRiskRowDraft()],
   };
@@ -129729,6 +129927,7 @@ function syncRiskAssessmentEditorAccess() {
   const canManage = getCanManageRiskAssessments();
   const canComment = isClientPortalUser(state.user);
   const allowClientNote = canManage || canComment;
+  const allowClientPortalInput = canManage || canComment;
   const canUseJobNexAi = getCanUseJobNexAi();
 
   riskAssessmentForm?.querySelectorAll("input, select, textarea, button").forEach((control) => {
@@ -129745,7 +129944,7 @@ function syncRiskAssessmentEditorAccess() {
   });
 
   if (riskAssessmentSubmitButton) {
-    riskAssessmentSubmitButton.textContent = canManage ? "Spremi procjenu" : "Pošalji napomenu";
+    riskAssessmentSubmitButton.textContent = canManage ? "Spremi procjenu" : "Pošalji podatke";
     riskAssessmentSubmitButton.hidden = !allowClientNote;
   }
   if (riskAssessmentResetButton) {
@@ -129814,6 +130013,9 @@ function syncRiskAssessmentEditorAccess() {
   });
   riskAssessmentForm?.querySelectorAll("[data-risk-job-toggle-block], [data-risk-job-psychosocial-level], [data-risk-job-pur-point], [data-risk-job-template]").forEach((control) => {
     control.disabled = !canManage;
+  });
+  riskAssessmentForm?.querySelectorAll("[data-risk-client-field], [data-risk-client-boolean], [data-risk-client-choice], [data-risk-client-pur-point], [data-risk-client-psychosocial-level], [data-risk-client-preset]").forEach((control) => {
+    control.disabled = !allowClientPortalInput;
   });
   [
     riskAssessmentTemplateTitleInput,
@@ -130413,6 +130615,111 @@ function updateRiskAssessmentJobBooleanField(jobIndex, field = "", checked = fal
   scheduleRiskAssessmentDraftAutosave();
 }
 
+function updateRiskAssessmentClientJobInput(jobIndex, patch = {}, { rerender = false } = {}) {
+  const current = riskAssessmentJobDrafts[jobIndex];
+  if (!current) {
+    return;
+  }
+  riskAssessmentJobDrafts[jobIndex] = {
+    ...current,
+    clientInput: createRiskAssessmentClientJobInputDraft({
+      ...(current.clientInput || {}),
+      ...patch,
+    }),
+  };
+  if (rerender) {
+    renderRiskAssessmentJobs();
+  }
+  renderRiskAssessmentOverview();
+  scheduleRiskAssessmentDraftAutosave();
+}
+
+function updateRiskAssessmentClientJobInputField(jobIndex, field = "", value = "") {
+  if (!field) {
+    return;
+  }
+  updateRiskAssessmentClientJobInput(jobIndex, { [field]: value });
+}
+
+function updateRiskAssessmentClientJobInputBoolean(jobIndex, field = "", checked = false) {
+  if (!field) {
+    return;
+  }
+  updateRiskAssessmentClientJobInput(jobIndex, { [field]: Boolean(checked) }, { rerender: true });
+}
+
+function toggleRiskAssessmentClientJobInputChoice(jobIndex, field = "", value = "") {
+  const current = riskAssessmentJobDrafts[jobIndex];
+  if (!current || !field || !value) {
+    return;
+  }
+  const input = createRiskAssessmentClientJobInputDraft(current.clientInput || {});
+  const selected = new Set(uniqueJobValues(input[field] ?? []));
+  if (selected.has(value)) {
+    selected.delete(value);
+  } else {
+    selected.add(value);
+  }
+  updateRiskAssessmentClientJobInput(jobIndex, { [field]: Array.from(selected) }, { rerender: true });
+}
+
+function toggleRiskAssessmentClientJobInputPurPoint(jobIndex, value = "") {
+  const current = riskAssessmentJobDrafts[jobIndex];
+  if (!current || !value) {
+    return;
+  }
+  const input = createRiskAssessmentClientJobInputDraft(current.clientInput || {});
+  const selected = new Set(normalizeJobPurPointValues(input.purPoints ?? []));
+  if (selected.has(value)) {
+    selected.delete(value);
+  } else {
+    selected.add(value);
+  }
+  const purPoints = normalizeJobPurPointValues(Array.from(selected));
+  updateRiskAssessmentClientJobInput(jobIndex, {
+    purPoints,
+    medicalFitnessRequired: input.medicalFitnessRequired || purPoints.length > 0,
+    specialWorkReason: input.specialWorkReason || buildRiskAssessmentPurReason(purPoints),
+  }, { rerender: true });
+}
+
+function applyRiskAssessmentClientJobPreset(jobIndex, key = "") {
+  const preset = getJobWorkProfilePreset(key);
+  const current = riskAssessmentJobDrafts[jobIndex];
+  if (!preset || !current) {
+    return;
+  }
+  const input = createRiskAssessmentClientJobInputDraft(current.clientInput || {});
+  const presetEnvironment = preset.environment ?? {};
+  const presetConditions = preset.conditions ?? {};
+  const nextPurPoints = normalizeJobPurPointValues([
+    ...(input.purPoints ?? []),
+    ...(presetConditions.purPoints ?? []),
+  ]);
+  updateRiskAssessmentClientJobInput(jobIndex, {
+    workplaceOptions: mergeJobValues(input.workplaceOptions ?? [], presetEnvironment.workplaceOptions ?? []),
+    organizationOptions: mergeJobValues(input.organizationOptions ?? [], presetEnvironment.organizationOptions ?? []),
+    bodyPositions: mergeJobValues(input.bodyPositions ?? [], presetConditions.bodyPositions ?? []),
+    importantFunctions: mergeJobValues(input.importantFunctions ?? [], presetConditions.importantFunctions ?? []),
+    workConditions: mergeJobValues(input.workConditions ?? [], presetConditions.workConditions ?? []),
+    purPoints: nextPurPoints,
+    workSchedule: input.workSchedule || buildRiskAssessmentPresetSchedule(preset),
+    workOrganization: input.workOrganization || buildJobOrganizationSentences(presetEnvironment.organizationOptions ?? [], presetEnvironment),
+    workplace: input.workplace || (presetEnvironment.workplaceOptions ?? []).join(", "),
+    safeWorkTrainingRequired: Boolean(input.safeWorkTrainingRequired || presetConditions.safeWorkTrainingCertificate || presetConditions.trainingRequired),
+    medicalFitnessRequired: Boolean(input.medicalFitnessRequired || presetConditions.medicalFitnessCertificate || nextPurPoints.length),
+    visionCheckRequired: Boolean(input.visionCheckRequired || presetConditions.visionCheck),
+    specialWorkReason: input.specialWorkReason || buildRiskAssessmentPurReason(nextPurPoints),
+  }, { rerender: true });
+}
+
+function sanitizeRiskAssessmentClientPortalJobPayload(job = {}) {
+  return {
+    id: String(job.id || ""),
+    clientInput: createRiskAssessmentClientJobInputDraft(job.clientInput || {}),
+  };
+}
+
 function updateRiskAssessmentRiskRowDraftField(jobIndex, riskIndex, field, value) {
   const current = riskAssessmentJobDrafts[jobIndex];
   if (!current || !field || !Number.isInteger(riskIndex) || riskIndex < 0) {
@@ -130618,6 +130925,16 @@ function handleRiskAssessmentJobsListInput(event) {
     return;
   }
 
+  if (target.dataset.riskClientField) {
+    updateRiskAssessmentClientJobInputField(jobIndex, target.dataset.riskClientField, target.value);
+    return;
+  }
+
+  if (target.dataset.riskClientBoolean) {
+    updateRiskAssessmentClientJobInputBoolean(jobIndex, target.dataset.riskClientBoolean, target.checked);
+    return;
+  }
+
   if (target.dataset.riskJobAiText !== undefined) {
     const proposal = riskAssessmentJobDrafts[jobIndex]?.aiProposal;
     if (proposal) {
@@ -130732,6 +131049,37 @@ function handleRiskAssessmentJobsListClick(event) {
 
   const jobIndex = getRiskAssessmentJobIndexFromElement(button);
   if (jobIndex < 0) {
+    return;
+  }
+
+  if (button.matches("[data-risk-client-preset]")) {
+    event.preventDefault();
+    applyRiskAssessmentClientJobPreset(jobIndex, button.dataset.riskClientPreset || "");
+    return;
+  }
+
+  if (button.matches("[data-risk-client-choice]")) {
+    event.preventDefault();
+    toggleRiskAssessmentClientJobInputChoice(
+      jobIndex,
+      button.dataset.riskClientChoice || "",
+      button.dataset.value || "",
+    );
+    return;
+  }
+
+  if (button.matches("[data-risk-client-pur-point]")) {
+    event.preventDefault();
+    toggleRiskAssessmentClientJobInputPurPoint(jobIndex, button.dataset.riskClientPurPoint || "");
+    return;
+  }
+
+  if (button.matches("[data-risk-client-psychosocial-level]")) {
+    event.preventDefault();
+    updateRiskAssessmentClientJobInput(jobIndex, {
+      psychosocialRelevant: true,
+      psychosocialLevel: String(button.dataset.riskClientPsychosocialLevel || "").trim(),
+    }, { rerender: true });
     return;
   }
 
@@ -131381,6 +131729,7 @@ function renderRiskAssessmentJobs() {
     const selectedJobTitle = item.jobTitle || `Radno mjesto ${index + 1}`;
     const completion = getRiskAssessmentJobCompletion(item);
     const status = getRiskAssessmentJobStatusOption(item.status);
+    const showClientInput = isClientPortalUser(state.user) || hasRiskAssessmentClientJobInput(item.clientInput);
     row.innerHTML = `
       <div class="risk-assessment-job-head">
         <div>
@@ -131409,6 +131758,8 @@ function renderRiskAssessmentJobs() {
       ${renderRiskAssessmentJobVisibilityControls(item)}
 
       ${hiddenBlocks.has("profile") ? "" : renderRiskAssessmentJobProfile(item, index)}
+
+      ${showClientInput ? renderRiskAssessmentClientPortalJobInput(item, index) : ""}
 
       ${hiddenBlocks.has("document") ? "" : renderRiskAssessmentJobDocumentPreview(item, index)}
 
@@ -131453,6 +131804,7 @@ function buildRiskAssessmentPayload() {
   if (!getCanManageRiskAssessments() && isClientPortalUser(state.user)) {
     return {
       clientNote: riskAssessmentClientNoteInput?.value || "",
+      jobs: riskAssessmentJobDrafts.map((job) => sanitizeRiskAssessmentClientPortalJobPayload(job)),
     };
   }
   syncRiskAssessmentRichValues();

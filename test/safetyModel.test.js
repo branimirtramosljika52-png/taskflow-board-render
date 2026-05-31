@@ -290,6 +290,23 @@ test("risk assessments keep detailed ARMOR job rows and eligibility data", () =>
           importantFunctions: ["vid na daljinu"],
           workConditions: ["buka"],
           purPoints: ["18"],
+          psychosocialRelevant: true,
+          psychosocialLevel: "3",
+          psychosocialText: "Povremeni pritisak rokova i smjenski rad.",
+          hiddenBlocks: ["ppe"],
+          clientInput: {
+            workerCount: "4",
+            workSchedule: "dvije smjene",
+            organizationOptions: ["u smjenama", "noćni rad"],
+            purPoints: ["10", "18"],
+            safeWorkTrainingRequired: true,
+            medicalFitnessRequired: true,
+            psychosocialRelevant: true,
+            psychosocialLevel: "4",
+            armorNotes: "Klijent navodi dodatni rad na visini i buku.",
+            submittedByLabel: "Klijent",
+            submittedAt: "2026-05-02T07:00:00.000Z",
+          },
           workplaceArrangement: "Prohodne komunikacije i označene zone.",
           harmfulSources: "Kisik, dušik, buka i mikroklima.",
           safeWorkTrainingRequired: true,
@@ -325,6 +342,13 @@ test("risk assessments keep detailed ARMOR job rows and eligibility data", () =>
   assert.equal(assessment.jobs[0].safeWorkTrainingRequired, true);
   assert.equal(assessment.jobs[0].medicalFitnessRequired, true);
   assert.equal(assessment.jobs[0].visionCheckRequired, true);
+  assert.equal(assessment.jobs[0].psychosocialRelevant, true);
+  assert.equal(assessment.jobs[0].psychosocialLevel, "3");
+  assert.deepEqual(assessment.jobs[0].hiddenBlocks, ["ppe"]);
+  assert.equal(assessment.jobs[0].clientInput.workSchedule, "dvije smjene");
+  assert.deepEqual(assessment.jobs[0].clientInput.purPoints, ["10", "18"]);
+  assert.equal(assessment.jobs[0].clientInput.psychosocialLevel, "4");
+  assert.equal(assessment.jobs[0].clientInput.armorNotes, "Klijent navodi dodatni rad na visini i buku.");
   assert.equal(assessment.jobs[0].eligibility.pregnantWorkers.allowed, "ne");
   assert.equal(assessment.jobs[0].riskRows[0].group, "1. Kemijske štetnosti");
   assert.equal(assessment.jobs[0].riskRows[0].workNote, "Rad u blizini spremnika i instalacija.");
