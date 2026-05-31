@@ -72580,3 +72580,94 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
     justify-self: start;
   }
 }
+
+.risk-assessment-ppe-worker-preview {
+  overflow: hidden;
+  border-color: rgba(14, 165, 233, 0.28);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.075);
+}
+
+.risk-assessment-ppe-compact .risk-assessment-ppe-worker-preview {
+  margin-top: 2px;
+}
+
+.risk-assessment-ppe-compact .ozo-worker-hero.is-ai {
+  min-height: 430px;
+  border-radius: 16px 16px 0 0;
+  background:
+    radial-gradient(circle at 50% 84%, rgba(15, 23, 42, 0.12), transparent 28%),
+    linear-gradient(135deg, #ffffff 0%, #f8fafc 44%, #e8eef6 100%);
+}
+
+.risk-assessment-ppe-compact .ozo-worker-hero.is-ai .ozo-worker-stage-copy {
+  max-width: 62%;
+}
+
+.risk-assessment-ppe-compact .ozo-worker-hero.is-ai .ozo-stage-tags {
+  top: 76px;
+}
+
+.risk-assessment-ppe-compact .ozo-worker-image-wrap {
+  top: 104px;
+}
+
+.risk-assessment-ppe-compact .ozo-ai-worker-image {
+  animation: risk-ozo-worker-swap 360ms ease-out both;
+}
+
+@keyframes risk-ozo-worker-swap {
+  from {
+    opacity: 0.72;
+    transform: translateY(12px) scale(1.015);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.risk-assessment-ppe-compact .ozo-worker-panel .ozo-worker-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px;
+}
+
+.risk-assessment-ppe-compact .ozo-worker-selected-strip {
+  min-height: 40px;
+  padding: 0 10px 10px;
+}
+
+.risk-assessment-ppe-compact .ozo-worker-selected-strip:empty {
+  display: none;
+}
+
+@media (max-width: 980px) {
+  .risk-assessment-ppe-compact .ozo-worker-hero.is-ai {
+    min-height: 390px;
+  }
+
+  .risk-assessment-ppe-compact .ozo-worker-panel .ozo-worker-summary {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .risk-assessment-ppe-compact .ozo-worker-hero.is-ai {
+    min-height: 340px;
+  }
+
+  .risk-assessment-ppe-compact .ozo-worker-hero.is-ai .ozo-worker-stage-copy {
+    max-width: 74%;
+  }
+
+  .risk-assessment-ppe-compact .ozo-worker-hero.is-ai .ozo-stage-tags {
+    top: 88px;
+  }
+
+  .risk-assessment-ppe-compact .ozo-worker-image-wrap {
+    top: 118px;
+  }
+}

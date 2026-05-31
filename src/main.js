@@ -123656,6 +123656,73 @@ const RISK_ASSESSMENT_PPE_BODY_FILTERS = Object.freeze([
   { value: "other", label: "Ostalo" },
 ]);
 
+const RISK_ASSESSMENT_PPE_WORKER_ASSET_VERSION = "20260528-ozo-ai-v2";
+
+const RISK_ASSESSMENT_PPE_WORKER_GEAR_LABELS = Object.freeze({
+  helmet: "Kaciga",
+  cap: "Zaštitna kapa",
+  faceShield: "Vizir",
+  glasses: "Naočale",
+  earmuffs: "Antifoni",
+  mask: "Maska",
+  respirator: "Respirator",
+  vest: "Prsluk",
+  coverall: "Radna odjeća",
+  harness: "Pojas",
+  gloves: "Rukavice",
+  boots: "Obuća",
+  kneepads: "Dodatna zaštita",
+});
+
+const RISK_ASSESSMENT_PPE_WORKER_GEAR_ORDER = Object.freeze([
+  "coverall",
+  "vest",
+  "harness",
+  "boots",
+  "kneepads",
+  "gloves",
+  "earmuffs",
+  "helmet",
+  "cap",
+  "faceShield",
+  "glasses",
+  "mask",
+  "respirator",
+]);
+
+const RISK_ASSESSMENT_PPE_WORKER_EXCLUSIVE_GEAR = Object.freeze([
+  ["helmet", "cap"],
+  ["faceShield", "glasses"],
+  ["respirator", "mask"],
+]);
+
+const RISK_ASSESSMENT_PPE_WORKER_VARIANTS = Object.freeze([
+  { id: "base", label: "Bez dodatne OZO", file: "base.png", gear: [] },
+  { id: "helmet", label: "Kacige", file: "helmet.png", gear: ["helmet"] },
+  { id: "earmuffs", label: "Antifoni", file: "earmuffs.png", gear: ["earmuffs"] },
+  { id: "glasses", label: "Naočale", file: "glasses.png", gear: ["glasses"] },
+  { id: "face-shield", label: "Viziri", file: "face-shield.png", gear: ["faceShield"] },
+  { id: "respirator", label: "Respiratori", file: "respirator.png", gear: ["respirator"] },
+  { id: "vest", label: "Reflektirajući prsluci", file: "vest.png", gear: ["vest"] },
+  { id: "gloves", label: "Rukavice", file: "gloves.png", gear: ["gloves"] },
+  { id: "helmet-vest", label: "Kacige i prsluci", file: "helmet-vest.png", gear: ["helmet", "vest"] },
+  { id: "helmet-earmuffs", label: "Kacige i antifoni", file: "helmet-earmuffs.png", gear: ["helmet", "earmuffs"] },
+  { id: "helmet-face-shield", label: "Kacige i viziri", file: "helmet-face-shield.png", gear: ["helmet", "faceShield"] },
+  { id: "helmet-respirator", label: "Kacige i respiratori", file: "helmet-respirator.png", gear: ["helmet", "respirator"] },
+  { id: "helmet-glasses", label: "Kacige i naočale", file: "helmet-glasses.png", gear: ["helmet", "glasses"] },
+  { id: "helmet-glasses-vest", label: "Kacige, naočale i prsluci", file: "helmet-glasses-vest.png", gear: ["helmet", "glasses", "vest"] },
+  { id: "helmet-glasses-vest-gloves", label: "Kacige, naočale, prsluci i rukavice", file: "helmet-glasses-vest-gloves.png", gear: ["helmet", "glasses", "vest", "gloves"] },
+  { id: "helmet-glasses-earmuffs-vest-gloves", label: "Kacige, naočale, antifoni, prsluci i rukavice", file: "helmet-glasses-earmuffs-vest-gloves.png", gear: ["helmet", "glasses", "earmuffs", "vest", "gloves"] },
+  { id: "vest-earmuffs", label: "Prsluci i antifoni", file: "vest-earmuffs.png", gear: ["vest", "earmuffs"] },
+  { id: "vest-gloves", label: "Prsluci i rukavice", file: "vest-gloves.png", gear: ["vest", "gloves"] },
+  { id: "helmet-face-shield-respirator", label: "Kacige, viziri i respiratori", file: "helmet-face-shield-respirator.png", gear: ["helmet", "faceShield", "respirator"] },
+  { id: "full", label: "Kompletna OZO", file: "full.png", gear: ["helmet", "glasses", "earmuffs", "respirator", "vest", "gloves"] },
+].map((variant) => ({
+  ...variant,
+  src: `/assets/ozo/worker-ai/${variant.file}?v=${RISK_ASSESSMENT_PPE_WORKER_ASSET_VERSION}`,
+  gearSet: new Set(variant.gear),
+})));
+
 const RISK_ASSESSMENT_PPE_CATALOG = DEFAULT_RISK_PPE_CATALOG;
 
 const RISK_ASSESSMENT_PPE_THREE_MODULE_URL = "/assets/vendor/three.module.js?v=20260527-risk-ppe-3d-v2";
@@ -128839,6 +128906,192 @@ function getRiskAssessmentPpeNewDraft(job = {}) {
   };
 }
 
+function getRiskAssessmentPpeBodyPartLabel(bodyPart = "other") {
+  return RISK_ASSESSMENT_PPE_BODY_FILTERS.find((filter) => filter.value === bodyPart)?.label || "Ostalo";
+}
+
+function getRiskAssessmentPpeWorkerGearKind(item = {}) {
+  const normalized = normalizeRiskPpeCatalogItem(item);
+  const bodyPart = normalized.bodyPart || "other";
+  const text = normalizeRiskAssessmentPpeSearchValue([
+    normalized.name,
+    normalized.category,
+    normalized.norm,
+    normalized.standardCode,
+    normalized.description,
+  ].join(" "));
+
+  if (text.includes("vizir") || text.includes("stitnik lica") || text.includes("stitnik za lice") || text.includes("face shield")) {
+    return "faceShield";
+  }
+  if (text.includes("respirator") || text.includes("aparat") || text.includes("boca") || text.includes("izolacij")) {
+    return "respirator";
+  }
+  if (text.includes("maska") || text.includes("polumaska")) {
+    return "mask";
+  }
+  if (bodyPart === "head") {
+    return text.includes("kapa") || text.includes("kapuljaca") || text.includes("hood") ? "cap" : "helmet";
+  }
+  if (bodyPart === "eyes") {
+    return "glasses";
+  }
+  if (bodyPart === "hearing") {
+    return "earmuffs";
+  }
+  if (bodyPart === "respiratory") {
+    return text.includes("aparat") || text.includes("boca") || text.includes("scba") ? "respirator" : "mask";
+  }
+  if (bodyPart === "hands") {
+    return "gloves";
+  }
+  if (bodyPart === "feet") {
+    return "boots";
+  }
+  if (bodyPart === "fall") {
+    return "harness";
+  }
+  if (bodyPart === "body") {
+    if (text.includes("prsluk") || text.includes("reflektir")) {
+      return "vest";
+    }
+    if (text.includes("odijelo") || text.includes("kombinezon") || text.includes("odjeca") || text.includes("pregaca") || text.includes("hlace")) {
+      return "coverall";
+    }
+    return "vest";
+  }
+  return "kneepads";
+}
+
+function getRiskAssessmentPpeWorkerGearItems(ppeItems = []) {
+  const byKind = new Map();
+  (ppeItems ?? []).forEach((item) => {
+    const normalized = normalizeRiskPpeCatalogItem(item);
+    const kind = getRiskAssessmentPpeWorkerGearKind(normalized);
+    if (!byKind.has(kind)) {
+      byKind.set(kind, {
+        kind,
+        label: RISK_ASSESSMENT_PPE_WORKER_GEAR_LABELS[kind] || normalized.name || "OZO",
+        part: normalized.bodyPart || "other",
+      });
+    }
+  });
+
+  RISK_ASSESSMENT_PPE_WORKER_EXCLUSIVE_GEAR.forEach(([primary, secondary]) => {
+    if (byKind.has(primary) && byKind.has(secondary)) {
+      byKind.delete(secondary);
+    }
+  });
+
+  return RISK_ASSESSMENT_PPE_WORKER_GEAR_ORDER
+    .filter((kind) => byKind.has(kind))
+    .map((kind) => byKind.get(kind));
+}
+
+function normalizeRiskAssessmentPpeWorkerVariantKind(kind = "") {
+  if (kind === "cap") {
+    return "helmet";
+  }
+  if (kind === "mask") {
+    return "respirator";
+  }
+  if (kind === "coverall") {
+    return "vest";
+  }
+  if (kind === "harness" || kind === "kneepads" || kind === "boots") {
+    return null;
+  }
+  return kind;
+}
+
+function getRiskAssessmentPpeWorkerVariant(gearItems = []) {
+  const wanted = new Set((gearItems ?? [])
+    .map((gear) => normalizeRiskAssessmentPpeWorkerVariantKind(gear.kind))
+    .filter(Boolean));
+  if (!wanted.size) {
+    return RISK_ASSESSMENT_PPE_WORKER_VARIANTS[0];
+  }
+
+  let bestVariant = RISK_ASSESSMENT_PPE_WORKER_VARIANTS[0];
+  let bestScore = Number.NEGATIVE_INFINITY;
+  RISK_ASSESSMENT_PPE_WORKER_VARIANTS.forEach((variant) => {
+    let overlap = 0;
+    let missing = 0;
+    let extras = 0;
+    wanted.forEach((kind) => {
+      if (variant.gearSet.has(kind)) {
+        overlap += 1;
+      } else {
+        missing += 1;
+      }
+    });
+    variant.gearSet.forEach((kind) => {
+      if (!wanted.has(kind)) {
+        extras += 1;
+      }
+    });
+    const exactBonus = missing === 0 && extras === 0 ? 24 : 0;
+    const fullBonus = wanted.size >= 5 && variant.id === "full" ? 12 : 0;
+    const score = overlap * 14 - missing * 9 - extras * 4 + exactBonus + fullBonus;
+    if (score > bestScore) {
+      bestScore = score;
+      bestVariant = variant;
+    }
+  });
+  return bestVariant;
+}
+
+function renderRiskAssessmentPpeWorkerPreview(job = {}) {
+  const selectedItems = job.ppeItems ?? [];
+  const gearItems = getRiskAssessmentPpeWorkerGearItems(selectedItems);
+  const workerVariant = getRiskAssessmentPpeWorkerVariant(gearItems);
+  const activeParts = Array.from(new Set(gearItems.map((gear) => gear.part || "other")));
+  const selectedCount = selectedItems.length;
+  const gearLabels = gearItems.length
+    ? gearItems.slice(0, 7).map((gear) => gear.label)
+    : ["Bez odabrane OZO"];
+
+  return `
+    <section class="risk-assessment-ppe-worker-preview ozo-worker-panel" aria-label="Prikaz radnika s odabranom OZO">
+      <div class="ozo-worker-hero is-ai">
+        <div class="ozo-worker-stage-copy">
+          <span>AI realistic worker preview</span>
+          <strong>Radnici i oprema prema odabiru</strong>
+        </div>
+        <div class="ozo-stage-tags" aria-label="Aktivne zone zaštite">
+          ${gearLabels.map((label) => `<span>${escapeHtml(label)}</span>`).join("")}
+        </div>
+        <div class="ozo-worker-image-wrap" data-ozo-worker-variant="${escapeHtml(workerVariant.id)}">
+          <img
+            class="ozo-ai-worker-image"
+            src="${escapeHtml(workerVariant.src)}"
+            alt="Muški i ženski industrijski radnik s odabranom osobnom zaštitnom opremom"
+            loading="eager"
+          />
+          <div class="ozo-worker-image-sheen" aria-hidden="true"></div>
+        </div>
+      </div>
+      <div class="ozo-worker-summary">
+        <div>
+          <span>OZO status</span>
+          <strong>${escapeHtml(selectedCount ? `${selectedCount} odabrano` : "Bez OZO")}</strong>
+        </div>
+        <div>
+          <span>Prikaz radnika</span>
+          <strong>${escapeHtml(workerVariant.label)}</strong>
+        </div>
+        <div>
+          <span>Zone zaštite</span>
+          <strong>${escapeHtml(activeParts.length ? activeParts.map((part) => getRiskAssessmentPpeBodyPartLabel(part)).join(", ") : "Nije odabrano")}</strong>
+        </div>
+      </div>
+      <div class="ozo-worker-selected-strip">
+        ${selectedItems.slice(0, 5).map((item) => `<span>${escapeHtml(item.name || "OZO")}</span>`).join("")}
+      </div>
+    </section>
+  `;
+}
+
 function renderRiskAssessmentPpeCompactPicker(job = {}, jobIndex = 0) {
   const selectedSet = getRiskAssessmentSelectedPpeSet(job);
   const activeFilter = String(job.ppeFilter || "all");
@@ -128893,6 +129146,8 @@ function renderRiskAssessmentPpeCompactPicker(job = {}, jobIndex = 0) {
           <button type="button" class="primary-button" data-risk-ppe-new-save>Spremi OZO</button>
         </div>
       </div>
+
+      ${renderRiskAssessmentPpeWorkerPreview(job)}
 
       <div class="risk-assessment-ppe-compact-body">
         <section class="risk-assessment-ppe-compact-pane">
