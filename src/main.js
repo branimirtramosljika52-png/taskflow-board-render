@@ -127738,11 +127738,23 @@ function renderRiskAssessmentJobProfile(item = {}, index = 0) {
         </label>
       </section>
 
+      <section class="risk-assessment-job-profile-card is-ppe">
+        <div class="risk-assessment-job-profile-card-head">
+          <span>${renderRiskAssessmentRiskIcon("shield")}</span>
+          <div>
+            <span class="section-kicker">Korak 5</span>
+            <strong>Osobna zaštitna oprema (OZO)</strong>
+            <small>Odaberi opremu iz kataloga ili dodaj novu stavku. OZO se sprema uz ovo radno mjesto i ulazi u procjenu.</small>
+          </div>
+        </div>
+        ${renderRiskAssessmentPpeCompactPicker(item, index)}
+      </section>
+
       <section class="risk-assessment-job-profile-card is-armor">
         <div class="risk-assessment-job-profile-card-head">
           <span>${renderRiskAssessmentRiskIcon("activity")}</span>
           <div>
-            <span class="section-kicker">Korak 5</span>
+            <span class="section-kicker">Korak 6</span>
             <strong>ARMOR - opasnosti, štetnosti, napori i mjere</strong>
             <small>Ovdje ostaju samo ARMOR stavke i procjena rizika za ovo radno mjesto.</small>
           </div>
@@ -128457,6 +128469,23 @@ function setRiskAssessmentJobAiProposal(jobIndex, action = "description") {
     renderRiskAssessmentJobs();
     return;
   }
+  if (action === "ppe") {
+    const riskRows = (job.riskRows ?? []).some((risk) => getRiskAssessmentRiskRowKey(risk))
+      ? (job.riskRows ?? [])
+      : buildRiskAssessmentAiRiskSuggestions(job);
+    const ppeItems = buildRiskAssessmentAiPpeSuggestions(job, riskRows);
+    riskAssessmentJobDrafts[jobIndex] = {
+      ...job,
+      aiProposal: {
+        id: crypto.randomUUID(),
+        action,
+        title: "NexAI prijedlog osobne zaštitne opreme",
+        ppeItems,
+      },
+    };
+    renderRiskAssessmentJobs();
+    return;
+  }
 
   riskAssessmentJobDrafts[jobIndex] = {
     ...job,
@@ -128551,6 +128580,24 @@ function renderRiskAssessmentJobAiProposal(job = {}, index = 0) {
         </div>
       </div>
       ${renderRiskAssessmentAiRiskPreview(proposal.riskRows ?? [])}
+    `;
+    return renderRiskAssessmentAiProposalCard({ proposal, prefix: "job", index, extraHtml });
+  }
+  if (proposal.action === "ppe") {
+    const extraHtml = `
+      <div class="risk-assessment-ai-split">
+        <div>
+          <strong>Kako je NexAI odabrao OZO</strong>
+          <span>Gleda opis posla, alate, kemikalije, mjesta rada, PUR i već unesene ARMOR stavke.</span>
+          <span>Prijedlog se dodaje tek kada ga prihvatiš, pa ga možeš provjeriti prije spremanja.</span>
+        </div>
+        <div>
+          <strong>Predložena OZO</strong>
+          ${(proposal.ppeItems ?? []).length
+            ? (proposal.ppeItems ?? []).map((ppe) => `<span>${escapeHtml(ppe.name || "")} · ${escapeHtml(ppe.norm || "")}</span>`).join("")
+            : `<span>Nema dovoljno podataka za prijedlog. Dopuni opis posla, uvjete rada ili ARMOR stavke.</span>`}
+        </div>
+      </div>
     `;
     return renderRiskAssessmentAiProposalCard({ proposal, prefix: "job", index, extraHtml });
   }
@@ -128790,6 +128837,138 @@ function getRiskAssessmentPpeNewDraft(job = {}) {
     description: String(draft.description || ""),
     imageUrl: String(draft.imageUrl || ""),
   };
+}
+
+function renderRiskAssessmentPpeCompactPicker(job = {}, jobIndex = 0) {
+  const selectedSet = getRiskAssessmentSelectedPpeSet(job);
+  const activeFilter = String(job.ppeFilter || "all");
+  const searchValue = String(job.ppeSearch || "");
+  const catalog = getRiskAssessmentPpeCatalog();
+  const visibleCatalogItems = filterRiskAssessmentPpeCatalogItems(catalog, activeFilter, searchValue);
+  const visibleCatalogIds = new Set(visibleCatalogItems.map((item) => String(item.id)));
+  const countByBodyPart = catalog.reduce((accumulator, item) => {
+    accumulator[item.bodyPart] = (accumulator[item.bodyPart] || 0) + 1;
+    return accumulator;
+  }, { all: catalog.length });
+  const selectedItems = job.ppeItems ?? [];
+  const selectedCount = selectedItems.length;
+  const newDraft = getRiskAssessmentPpeNewDraft(job);
+  const newFormOpen = Boolean(job.ppeNewOpen);
+  const selectedBodyPartLabels = Array.from(getRiskAssessmentPpeBodyParts(selectedItems))
+    .map((part) => RISK_ASSESSMENT_PPE_BODY_FILTERS.find((filter) => filter.value === part)?.label || part)
+    .filter(Boolean);
+
+  return `
+    <div class="risk-assessment-ppe-compact" data-risk-ppe-panel="${jobIndex}">
+      <div class="risk-assessment-ppe-compact-toolbar">
+        <label class="risk-assessment-ppe-search">
+          <span>Pretraga OZO kataloga</span>
+          <input data-risk-ppe-search value="${escapeHtml(searchValue)}" placeholder="npr. kaciga, rukavice, HRN EN 397..." />
+        </label>
+        <div class="risk-assessment-ppe-compact-actions">
+          <button type="button" class="ghost-button" data-risk-job-ai="ppe">NexAI predloži OZO</button>
+          <button type="button" class="secondary-button" data-risk-ppe-new-toggle>${newFormOpen ? "Zatvori unos" : "+ Nova OZO"}</button>
+        </div>
+      </div>
+
+      <div class="risk-assessment-ppe-filters">
+        ${RISK_ASSESSMENT_PPE_BODY_FILTERS.map((filter) => `
+          <button type="button" class="${activeFilter === filter.value ? "is-active" : ""}" data-risk-ppe-filter="${escapeHtml(filter.value)}">
+            <span>${escapeHtml(filter.label)}</span>
+            <small>${countByBodyPart[filter.value] || 0}</small>
+          </button>
+        `).join("")}
+      </div>
+
+      <div class="risk-assessment-ppe-new-form is-compact" ${newFormOpen ? "" : "hidden"}>
+        <label><span>Naziv</span><input data-risk-ppe-new-field="name" value="${escapeHtml(newDraft.name)}" placeholder="npr. Štitnik za koljena" /></label>
+        <label><span>Norma</span><input data-risk-ppe-new-field="norm" value="${escapeHtml(newDraft.norm)}" placeholder="npr. HRN EN 14404" /></label>
+        <label><span>Kategorija</span><input data-risk-ppe-new-field="category" value="${escapeHtml(newDraft.category)}" placeholder="npr. Zaštita nogu" /></label>
+        <label><span>Dio tijela</span><select data-risk-ppe-new-field="bodyPart">${renderRiskAssessmentPpeBodyPartOptions(newDraft.bodyPart)}</select></label>
+        <label><span>EN norma</span><input data-risk-ppe-new-field="standardCode" value="${escapeHtml(newDraft.standardCode)}" placeholder="npr. EN 14404" /></label>
+        <label><span>URL slike</span><input data-risk-ppe-new-field="imageUrl" value="${escapeHtml(newDraft.imageUrl)}" placeholder="https://..." /></label>
+        <label class="field-span-full"><span>Opis primjene</span><textarea data-risk-ppe-new-field="description" rows="2">${escapeHtml(newDraft.description)}</textarea></label>
+        <div class="risk-assessment-ppe-new-actions">
+          <span>Spremi u bazu i odmah dodaj na ovo radno mjesto.</span>
+          <button type="button" class="primary-button" data-risk-ppe-new-save>Spremi OZO</button>
+        </div>
+      </div>
+
+      <div class="risk-assessment-ppe-compact-body">
+        <section class="risk-assessment-ppe-compact-pane">
+          <div class="risk-assessment-ppe-compact-pane-head">
+            <div>
+              <strong>Katalog OZO</strong>
+              <small><b data-risk-ppe-match-count>${visibleCatalogItems.length}</b> prikazanih stavki</small>
+            </div>
+            <a href="${escapeHtml(RISK_PPE_SOURCE_URL)}" target="_blank" rel="noopener noreferrer">NN 110/2009</a>
+          </div>
+          <div class="risk-assessment-ppe-compact-list">
+            ${catalog.map((ppe) => {
+              const searchText = normalizeRiskAssessmentPpeSearchValue([
+                ppe.name,
+                ppe.category,
+                ppe.norm,
+                ppe.standardCode,
+                ppe.description,
+                ppe.sourceRef,
+              ].join(" "));
+              const isVisible = visibleCatalogIds.has(String(ppe.id));
+              const isSelected = selectedSet.has(ppe.id);
+              const iconUrl = ppe.iconUrl || RISK_PPE_CATEGORY_ICONS[ppe.bodyPart] || RISK_PPE_CATEGORY_ICONS.other || "";
+              const norm = ppe.norm || ppe.standardCode || "Norma nije upisana";
+              return `
+                <label class="risk-assessment-ppe-compact-option ${isSelected ? "is-selected" : ""}" data-risk-ppe-option-card data-risk-ppe-option-body-part="${escapeHtml(ppe.bodyPart)}" data-risk-ppe-option-search="${escapeHtml(searchText)}" title="${escapeHtml([ppe.name, norm, ppe.category].filter(Boolean).join(" · "))}" ${isVisible ? "" : "hidden"}>
+                  <input type="checkbox" data-risk-ppe-toggle="${escapeHtml(ppe.id)}" ${isSelected ? "checked" : ""} />
+                  <span class="risk-assessment-ppe-compact-icon"><img src="${escapeHtml(iconUrl)}" alt="" loading="lazy" /></span>
+                  <span class="risk-assessment-ppe-compact-copy">
+                    <strong>${escapeHtml(ppe.name)}</strong>
+                    <small>${escapeHtml(norm)}</small>
+                    <em>${escapeHtml(ppe.category || "OZO")}</em>
+                  </span>
+                </label>
+              `;
+            }).join("")}
+          </div>
+          <p class="inline-help risk-assessment-ppe-empty" ${visibleCatalogItems.length ? "hidden" : ""}>Nema OZO stavki za odabrani filter ili pretragu.</p>
+        </section>
+
+        <section class="risk-assessment-ppe-compact-pane is-selected">
+          <div class="risk-assessment-ppe-compact-pane-head">
+            <div>
+              <strong>Odabrana OZO</strong>
+              <small>${escapeHtml(selectedCount ? `${selectedCount} stavki · ${selectedBodyPartLabels.join(", ") || "bez kategorije"}` : "Odaberi OZO iz kataloga")}</small>
+            </div>
+            <span>${escapeHtml(String(selectedCount))}</span>
+          </div>
+          <div class="risk-assessment-ppe-selected-compact-list">
+            ${selectedItems.length ? selectedItems.map((ppe, ppeIndex) => {
+              const normalized = normalizeRiskPpeCatalogItem(ppe);
+              const iconUrl = normalized.iconUrl || RISK_PPE_CATEGORY_ICONS[normalized.bodyPart] || RISK_PPE_CATEGORY_ICONS.other || "";
+              return `
+                <article class="risk-assessment-ppe-selected-compact-row">
+                  <span class="risk-assessment-ppe-selected-compact-icon"><img src="${escapeHtml(iconUrl)}" alt="" loading="lazy" /></span>
+                  <div class="risk-assessment-ppe-selected-compact-grid">
+                    <label><span>Naziv</span><input data-risk-ppe-index="${ppeIndex}" data-risk-ppe-field="name" value="${escapeHtml(ppe.name || "")}" /></label>
+                    <label><span>Norma</span><input data-risk-ppe-index="${ppeIndex}" data-risk-ppe-field="norm" value="${escapeHtml(ppe.norm || "")}" /></label>
+                    <label><span>Kategorija</span><input data-risk-ppe-index="${ppeIndex}" data-risk-ppe-field="category" value="${escapeHtml(ppe.category || "")}" /></label>
+                    <label><span>Primjena / opasnosti</span><input data-risk-ppe-index="${ppeIndex}" data-risk-ppe-field="hazardLinks" value="${escapeHtml(ppe.hazardLinks || "")}" placeholder="npr. pad predmeta, kemikalije..." /></label>
+                    <label class="risk-assessment-checkbox-line"><input type="checkbox" data-risk-ppe-index="${ppeIndex}" data-risk-ppe-field="required" ${ppe.required === false ? "" : "checked"} /><span>Obvezna</span></label>
+                    <label class="field-span-full"><span>Opis primjene</span><textarea data-risk-ppe-index="${ppeIndex}" data-risk-ppe-field="description" rows="2">${escapeHtml(ppe.description || "")}</textarea></label>
+                  </div>
+                  <button type="button" class="ghost-button card-danger" data-risk-ppe-remove="${ppeIndex}">Ukloni</button>
+                </article>
+              `;
+            }).join("") : `<p class="inline-help">Ovdje će se prikazati odabrana oprema s normom i primjenom.</p>`}
+          </div>
+          <label class="risk-assessment-ppe-summary-field">
+            <span>Tekst za procjenu</span>
+            <textarea data-risk-job-field="ppeText" rows="2" placeholder="Automatski se slaže iz odabranih OZO stavki.">${escapeHtml(job.ppeText || buildRiskAssessmentPpeSummary(selectedItems))}</textarea>
+          </label>
+        </section>
+      </div>
+    </div>
+  `;
 }
 
 function renderRiskAssessmentPpeVisualLegacy(job = {}, jobIndex = 0) {
@@ -131015,6 +131194,26 @@ function updateRiskAssessmentPpeItemField(jobIndex, ppeIndex, field = "", value)
   scheduleRiskAssessmentDraftAutosave();
 }
 
+function removeRiskAssessmentPpeItem(jobIndex, ppeIndex) {
+  const current = riskAssessmentJobDrafts[jobIndex];
+  if (!current || !Number.isInteger(ppeIndex) || ppeIndex < 0) {
+    return;
+  }
+  const ppeItems = [...(current.ppeItems ?? [])];
+  if (!ppeItems[ppeIndex]) {
+    return;
+  }
+  ppeItems.splice(ppeIndex, 1);
+  riskAssessmentJobDrafts[jobIndex] = {
+    ...current,
+    ppeItems,
+    ppeText: syncRiskAssessmentPpeSummaryText(current, ppeItems),
+  };
+  renderRiskAssessmentJobs();
+  renderRiskAssessmentOverview();
+  scheduleRiskAssessmentDraftAutosave();
+}
+
 function handleRiskAssessmentJobsListInput(event) {
   const target = event.target;
   if (!(
@@ -131481,6 +131680,12 @@ function handleRiskAssessmentJobsListClick(event) {
     return;
   }
 
+  if (button.matches("[data-risk-ppe-remove]")) {
+    event.preventDefault();
+    removeRiskAssessmentPpeItem(jobIndex, Number(button.dataset.riskPpeRemove));
+    return;
+  }
+
   if (button.matches("[data-risk-ppe-new-toggle]")) {
     event.preventDefault();
     riskAssessmentJobDrafts[jobIndex] = {
@@ -131568,6 +131773,20 @@ function handleRiskAssessmentJobsListClick(event) {
       riskAssessmentJobDrafts[jobIndex] = {
         ...job,
         riskRows: mergeRiskAssessmentRiskRows(job.riskRows, proposal.riskRows ?? []),
+        ppeItems: nextPpeItems,
+        ppeText: syncRiskAssessmentPpeSummaryText(job, nextPpeItems),
+        aiProposal: null,
+      };
+    } else if (proposal.action === "ppe") {
+      const existingPpeIds = new Set((job.ppeItems ?? []).map((ppe) => ppe.catalogId || ppe.name));
+      const nextPpeItems = [
+        ...(job.ppeItems ?? []),
+        ...(proposal.ppeItems ?? [])
+          .filter((ppe) => !existingPpeIds.has(ppe.catalogId || ppe.name))
+          .map((ppe) => createRiskAssessmentPpeDraft({ ...ppe, id: crypto.randomUUID(), jobId: job.id })),
+      ];
+      riskAssessmentJobDrafts[jobIndex] = {
+        ...job,
         ppeItems: nextPpeItems,
         ppeText: syncRiskAssessmentPpeSummaryText(job, nextPpeItems),
         aiProposal: null,
