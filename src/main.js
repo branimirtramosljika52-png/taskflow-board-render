@@ -6091,6 +6091,7 @@ const riskAssessmentWorkplaceJobsList = document.querySelector("#risk-assessment
 const riskAssessmentAddWorkplaceJobButton = document.querySelector("#risk-assessment-add-workplace-job");
 const riskAssessmentAppendixChemicalRiskInput = document.querySelector("#risk-assessment-appendix-chemical-risk");
 const riskAssessmentAppendixWorkerParticipationInput = document.querySelector("#risk-assessment-appendix-worker-participation");
+const riskAssessmentLinkedAppendix = document.querySelector("#risk-assessment-linked-appendix");
 const riskAssessmentMeasuresList = document.querySelector("#risk-assessment-measures");
 const riskAssessmentAddMeasureButton = document.querySelector("#risk-assessment-add-measure");
 const riskAssessmentOrganizationUnitsList = document.querySelector("#risk-assessment-organization-units");
@@ -120495,6 +120496,7 @@ function renderRiskAssessmentBasicSummary() {
     <article><span>Status i datum</span><strong>${escapeHtml(`${status} · ${date}`)}</strong></article>
     <article class="is-wide"><span>Izrada</span><strong>${escapeHtml([leads, members].filter(Boolean).join(" · "))}</strong></article>
   `;
+  renderRiskAssessmentLinkedAppendix();
 }
 
 function getRiskAssessmentCompany(companyId = riskAssessmentCompanyInput?.value || "") {
@@ -120511,6 +120513,313 @@ function getRiskAssessmentCompanyLocations(companyId = riskAssessmentCompanyInpu
 
 function formatRiskAssessmentLocationLine(location = {}) {
   return [location.name, location.region].filter(Boolean).join(", ");
+}
+
+function getRiskAssessmentLocationScope(companyId = riskAssessmentCompanyInput?.value || "") {
+  const normalizedCompanyId = String(companyId || "").trim();
+  const companyLocations = normalizedCompanyId ? getRiskAssessmentCompanyLocations(normalizedCompanyId) : [];
+  const companyLocationSet = new Set(companyLocations.map((location) => String(location.id || "").trim()).filter(Boolean));
+  const selectedIds = getRiskAssessmentSelectedLocationIds()
+    .filter((locationId) => companyLocationSet.has(String(locationId || "").trim()));
+  const useAll = Boolean(riskAssessmentAllLocationsInput?.checked) || selectedIds.length === 0;
+  const locationIds = useAll ? Array.from(companyLocationSet) : selectedIds;
+  return {
+    companyId: normalizedCompanyId,
+    company: getRiskAssessmentCompany(normalizedCompanyId),
+    companyLocations,
+    companyLocationSet,
+    useAll,
+    locationIds,
+    locationSet: new Set(locationIds),
+    locationNameSet: new Set(
+      companyLocations
+        .filter((location) => useAll || selectedIds.includes(String(location.id || "").trim()))
+        .flatMap((location) => [location.name, formatRiskAssessmentLocationLine(location)])
+        .map((value) => normalizeLooseName(value))
+        .filter(Boolean),
+    ),
+  };
+}
+
+function isRiskAssessmentRecordInLocationScope(locationId = "", locationName = "", scope = getRiskAssessmentLocationScope()) {
+  if (!scope.companyId) {
+    return false;
+  }
+  const normalizedLocationId = String(locationId || "").trim();
+  if (scope.useAll) {
+    return !normalizedLocationId || scope.companyLocationSet.has(normalizedLocationId);
+  }
+  if (normalizedLocationId) {
+    return scope.locationSet.has(normalizedLocationId);
+  }
+  const normalizedName = normalizeLooseName(locationName);
+  return Boolean(normalizedName && scope.locationNameSet.has(normalizedName));
+}
+
+function getRiskAssessmentAppendixLocationLabel(locationId = "", fallback = "") {
+  const location = getLocation(String(locationId || "").trim());
+  return location?.name || String(fallback || "").trim() || "Sve lokacije";
+}
+
+function getRiskAssessmentAppendixScopeLabel(scope = getRiskAssessmentLocationScope()) {
+  if (!scope.companyId) {
+    return "Odaberi tvrtku za automatski prilog.";
+  }
+  if (scope.useAll) {
+    return `Sve lokacije tvrtke${scope.companyLocations.length ? ` (${scope.companyLocations.length})` : ""}`;
+  }
+  const selectedLines = getRiskAssessmentSelectedLocationLines(scope.companyId);
+  return selectedLines.join(", ") || "Odabrane lokacije";
+}
+
+function addRiskAssessmentAppendixRow(rowsByKey, row = {}, { preferDueDate = false } = {}) {
+  const key = [
+    row.kind || "row",
+    normalizeLooseName(row.name || row.inspectionName || ""),
+    normalizeLooseName(row.locationName || ""),
+    normalizeLooseName(row.objectName || ""),
+    normalizeLooseName(row.reference || ""),
+  ].join("|");
+  if (!key.replace(/\|/g, "")) {
+    return;
+  }
+  const current = rowsByKey.get(key);
+  if (!current || (preferDueDate && row.dueDate && !current.dueDate)) {
+    rowsByKey.set(key, row);
+  }
+}
+
+function getRiskAssessmentScopedWorkEquipmentItems() {
+  const scope = getRiskAssessmentLocationScope();
+  if (!scope.companyId) {
+    return [];
+  }
+
+  const rowsByKey = new Map();
+  (state.locationObjects ?? []).forEach((object) => {
+    const objectLocationId = String(object?.locationId || "").trim();
+    const objectCompanyId = String(object?.companyId || "").trim();
+    const belongsToCompany = objectCompanyId === scope.companyId || scope.companyLocationSet.has(objectLocationId);
+    if (!belongsToCompany || object?.isActive === false) {
+      return;
+    }
+    if (!isRiskAssessmentRecordInLocationScope(objectLocationId, object?.locationName || "", scope)) {
+      return;
+    }
+    addRiskAssessmentAppendixRow(rowsByKey, {
+      kind: "equipment",
+      id: String(object?.id || ""),
+      name: String(object?.name || "Radna oprema").trim() || "Radna oprema",
+      locationName: getRiskAssessmentAppendixLocationLabel(objectLocationId, object?.locationName || ""),
+      code: String(object?.code || "").trim(),
+      description: String(object?.description || "").trim(),
+      source: "Lokacije tvrtke",
+      status: "Aktivno",
+    });
+  });
+
+  if (rowsByKey.size === 0) {
+    const scopeLabel = getRiskAssessmentAppendixScopeLabel(scope);
+    riskAssessmentJobDrafts.forEach((job) => {
+      splitRiskAssessmentTextLines(joinUniqueRiskAssessmentTextBlocks([job.workEquipment, job.toolsAndMachines]))
+        .slice(0, 18)
+        .forEach((line) => {
+          addRiskAssessmentAppendixRow(rowsByKey, {
+            kind: "equipment",
+            id: `job-${job.id || job.jobTitle}-${line}`,
+            name: line,
+            locationName: scopeLabel,
+            code: "",
+            description: job.jobTitle ? `Iz analize radnog mjesta: ${job.jobTitle}` : "Iz analize radnih mjesta",
+            source: "Analiza radnih mjesta",
+            status: "U procjeni",
+          });
+        });
+    });
+  }
+
+  return Array.from(rowsByKey.values()).sort((left, right) => (
+    String(left.locationName || "").localeCompare(String(right.locationName || ""), "hr", { numeric: true, sensitivity: "base" })
+    || String(left.name || "").localeCompare(String(right.name || ""), "hr", { numeric: true, sensitivity: "base" })
+  ));
+}
+
+function isRiskAssessmentAppendixInspectionService(service = {}) {
+  if (!service || typeof service !== "object") {
+    return false;
+  }
+  if (service.isTraining || String(service.serviceType || "").trim() === "znr") {
+    return false;
+  }
+  if (isRiskAssessmentWorkOrderServiceItem(service)) {
+    return false;
+  }
+  const text = [
+    service.name,
+    service.serviceCode,
+    service.description,
+    ...(Array.isArray(service.linkedTemplateTitles) ? service.linkedTemplateTitles : []),
+  ].filter(Boolean).join(" ");
+  return Boolean(String(text || "").trim());
+}
+
+function getRiskAssessmentScopedInspectionItems() {
+  const scope = getRiskAssessmentLocationScope();
+  if (!scope.companyId) {
+    return [];
+  }
+
+  const rowsByKey = new Map();
+  const companyNameKey = normalizeLooseName(scope.company?.name || "");
+  buildPeriodicsInspectionEntries().forEach((entry) => {
+    const entryCompanyId = String(entry?.companyId || "").trim();
+    const matchesCompany = entryCompanyId
+      ? entryCompanyId === scope.companyId
+      : normalizeLooseName(entry?.companyName || "") === companyNameKey;
+    if (!matchesCompany) {
+      return;
+    }
+    if (!isRiskAssessmentRecordInLocationScope(entry?.locationId || "", entry?.locationName || "", scope)) {
+      return;
+    }
+    const dueLabel = entry?.dueDate
+      ? `Vrijedi do ${formatCompactDate(entry.dueDate)}${entry?.dueState?.badgeLabel ? ` · ${entry.dueState.badgeLabel}` : ""}`
+      : "Bez roka";
+    addRiskAssessmentAppendixRow(rowsByKey, {
+      kind: "inspection",
+      id: String(entry?.id || ""),
+      inspectionName: String(entry?.serviceLabel || entry?.templateLabel || "Ispitivanje").trim() || "Ispitivanje",
+      locationName: getRiskAssessmentAppendixLocationLabel(entry?.locationId || "", entry?.locationName || ""),
+      objectName: String(entry?.objectName || "").trim(),
+      reference: [entry?.workOrderNumber ? `RN ${entry.workOrderNumber}` : "", entry?.templateLabel || ""].filter(Boolean).join(" · "),
+      dueDate: String(entry?.dueDate || "").trim(),
+      status: dueLabel,
+      source: "Zapisnici / periodika",
+      toneClass: entry?.dueState?.toneClass || "",
+    }, { preferDueDate: true });
+  });
+
+  (state.workOrders ?? []).forEach((workOrder) => {
+    if (String(workOrder?.companyId || "").trim() !== scope.companyId) {
+      return;
+    }
+    if (!isRiskAssessmentRecordInLocationScope(workOrder?.locationId || "", workOrder?.locationName || "", scope)) {
+      return;
+    }
+    const services = getWorkOrderServiceItems(workOrder);
+    const sourceServices = services.length
+      ? services
+      : (workOrder?.serviceLine ? [{ name: workOrder.serviceLine, serviceType: "inspection" }] : []);
+    sourceServices
+      .filter((service) => isRiskAssessmentAppendixInspectionService(service))
+      .forEach((service) => {
+        const statusLabel = getOptionLabel(WORK_ORDER_STATUS_OPTIONS, workOrder.status || "") || String(workOrder.status || "");
+        const dateLabel = workOrder.executionDate
+          ? `Izvršeno ${formatCompactDate(workOrder.executionDate)}`
+          : (workOrder.dueDate ? `Rok ${formatCompactDate(workOrder.dueDate)}` : "Bez roka");
+        addRiskAssessmentAppendixRow(rowsByKey, {
+          kind: "inspection",
+          id: `${String(workOrder?.id || "")}-${String(service.serviceId || service.name || "")}`,
+          inspectionName: String(service.name || service.serviceCode || "Ispitivanje").trim() || "Ispitivanje",
+          locationName: getRiskAssessmentAppendixLocationLabel(workOrder?.locationId || "", workOrder?.locationName || ""),
+          objectName: String(workOrder?.objectName || "").trim(),
+          reference: [
+            workOrder?.workOrderNumber ? `RN ${workOrder.workOrderNumber}` : "",
+            ...(Array.isArray(service.linkedTemplateTitles) ? service.linkedTemplateTitles.slice(0, 2) : []),
+          ].filter(Boolean).join(" · "),
+          dueDate: String(workOrder?.dueDate || workOrder?.executionDate || "").trim(),
+          status: [dateLabel, statusLabel].filter(Boolean).join(" · "),
+          source: "Radni nalozi",
+          toneClass: "",
+        });
+      });
+  });
+
+  return Array.from(rowsByKey.values()).sort((left, right) => (
+    String(left.locationName || "").localeCompare(String(right.locationName || ""), "hr", { numeric: true, sensitivity: "base" })
+    || String(left.inspectionName || "").localeCompare(String(right.inspectionName || ""), "hr", { numeric: true, sensitivity: "base" })
+    || String(left.dueDate || "9999-12-31").localeCompare(String(right.dueDate || "9999-12-31"))
+  ));
+}
+
+function getRiskAssessmentLinkedAppendixData() {
+  const scope = getRiskAssessmentLocationScope();
+  return {
+    scope,
+    equipmentItems: getRiskAssessmentScopedWorkEquipmentItems(),
+    inspectionItems: getRiskAssessmentScopedInspectionItems(),
+  };
+}
+
+function renderRiskAssessmentLinkedAppendixRows(headers = [], rows = [], emptyText = "", modifier = "") {
+  if (!rows.length) {
+    return `<p class="inline-help">${escapeHtml(emptyText || "Nema podataka za odabrani opseg.")}</p>`;
+  }
+  return `
+    <div class="risk-assessment-linked-table ${escapeHtml(modifier)}">
+      <div class="is-head">${headers.map((header) => `<span>${escapeHtml(header)}</span>`).join("")}</div>
+      ${rows.map((row) => `
+        <div>${row.map((cell) => `<span>${escapeHtml(cell || "-")}</span>`).join("")}</div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderRiskAssessmentLinkedAppendix() {
+  if (!riskAssessmentLinkedAppendix) {
+    return;
+  }
+  const { scope, equipmentItems, inspectionItems } = getRiskAssessmentLinkedAppendixData();
+  if (!scope.companyId) {
+    riskAssessmentLinkedAppendix.innerHTML = `
+      <section class="risk-assessment-linked-appendix-panel is-empty">
+        <div class="risk-assessment-linked-appendix-head">
+          <div>
+            <span>Automatski prilog</span>
+            <strong>Radna oprema i ispitivanja</strong>
+            <p>Odaberi tvrtku i lokacije da se popisi povežu s postojećim podacima.</p>
+          </div>
+        </div>
+      </section>
+    `;
+    return;
+  }
+  const scopeLabel = getRiskAssessmentAppendixScopeLabel(scope);
+  riskAssessmentLinkedAppendix.innerHTML = `
+    <section class="risk-assessment-linked-appendix-panel">
+      <div class="risk-assessment-linked-appendix-head">
+        <div>
+          <span>Automatski prilog</span>
+          <strong>Radna oprema i ispitivanja</strong>
+          <p>${escapeHtml(scope.company?.name || "Tvrtka")} · ${escapeHtml(scopeLabel)}</p>
+        </div>
+        <div class="risk-assessment-linked-appendix-kpis">
+          <em><b>${escapeHtml(String(equipmentItems.length))}</b> radna oprema</em>
+          <em><b>${escapeHtml(String(inspectionItems.length))}</b> ispitivanja</em>
+        </div>
+      </div>
+      <div class="risk-assessment-linked-appendix-grid">
+        <article>
+          <h4>Popis radne opreme</h4>
+          ${renderRiskAssessmentLinkedAppendixRows(
+            ["Lokacija", "Radna oprema", "Oznaka", "Opis", "Izvor"],
+            equipmentItems.map((item) => [item.locationName, item.name, item.code, item.description || item.status, item.source]),
+            "Nema radne opreme/objekata za odabranu tvrtku i lokacije.",
+            "is-equipment",
+          )}
+        </article>
+        <article>
+          <h4>Popis ispitivanja</h4>
+          ${renderRiskAssessmentLinkedAppendixRows(
+            ["Lokacija", "Objekt", "Ispitivanje", "RN / zapisnik", "Rok / status"],
+            inspectionItems.map((item) => [item.locationName, item.objectName, item.inspectionName, item.reference || item.source, item.status]),
+            "Nema povezanih ispitivanja za odabranu tvrtku i lokacije.",
+            "is-inspections",
+          )}
+        </article>
+      </div>
+    </section>
+  `;
 }
 
 function buildRiskAssessmentDefaultEmployerData(companyId = riskAssessmentCompanyInput?.value || "") {
@@ -125237,6 +125546,51 @@ function renderRiskAssessmentTemplateCompanyCollaboratorsContent(items = []) {
   `;
 }
 
+function renderRiskAssessmentTemplateOptionalRichHtml(value = "") {
+  const html = String(value || "").trim();
+  return html ? `<div class="risk-assessment-template-rich">${sanitizeRichTextHtml(html)}</div>` : "";
+}
+
+function renderRiskAssessmentTemplateWorkEquipmentAppendixContent() {
+  const items = getRiskAssessmentScopedWorkEquipmentItems();
+  if (!items.length) {
+    return `<p class="is-muted">Nema povezane radne opreme za odabranu tvrtku i lokacije.</p>`;
+  }
+  return `
+    <div class="risk-assessment-template-table risk-assessment-template-table--appendix">
+      <div class="is-head"><span>Radna oprema</span><span>Lokacija</span><span>Oznaka</span><span>Opis / izvor</span></div>
+      ${items.map((item) => `
+        <div>
+          <span>${escapeHtml(item.name || "-")}</span>
+          <span>${escapeHtml(item.locationName || "-")}</span>
+          <span>${escapeHtml(item.code || "-")}</span>
+          <span>${escapeHtml([item.description, item.source].filter(Boolean).join(" · ") || item.status || "-")}</span>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderRiskAssessmentTemplateInspectionAppendixContent() {
+  const items = getRiskAssessmentScopedInspectionItems();
+  if (!items.length) {
+    return `<p class="is-muted">Nema povezanih ispitivanja za odabranu tvrtku i lokacije.</p>`;
+  }
+  return `
+    <div class="risk-assessment-template-table risk-assessment-template-table--appendix">
+      <div class="is-head"><span>Ispitivanje</span><span>Lokacija</span><span>RN / zapisnik</span><span>Rok / status</span></div>
+      ${items.map((item) => `
+        <div>
+          <span>${escapeHtml([item.inspectionName, item.objectName].filter(Boolean).join(" · ") || "-")}</span>
+          <span>${escapeHtml(item.locationName || "-")}</span>
+          <span>${escapeHtml(item.reference || item.source || "-")}</span>
+          <span>${escapeHtml(item.status || "-")}</span>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
 function renderRiskAssessmentTemplateSectionContent(key = "", sectionNumber = 1) {
   const employer = readRiskAssessmentEmployerData();
   const companyName = riskAssessmentCompanyInput?.selectedOptions?.[0]?.textContent?.trim() || employer.fullName || "Tvrtka";
@@ -125310,9 +125664,11 @@ function renderRiskAssessmentTemplateSectionContent(key = "", sectionNumber = 1)
         <h4>Podaci o fizikalnim, biološkim i kemijskim štetnostima</h4>
         ${renderRiskAssessmentTemplateRichHtml(riskAssessmentOmissionsBasicInput?.value || "")}
         <h4>Popis radne opreme</h4>
-        ${renderRiskAssessmentTemplateRichHtml(riskAssessmentOmissionsSpecialInput?.value || "")}
+        ${renderRiskAssessmentTemplateWorkEquipmentAppendixContent()}
+        ${renderRiskAssessmentTemplateOptionalRichHtml(riskAssessmentOmissionsSpecialInput?.value || "")}
         <h4>Popis ispitivanja i poslova s posebnim uvjetima rada</h4>
-        ${renderRiskAssessmentTemplateRichHtml(riskAssessmentConclusionInput?.value || "")}
+        ${renderRiskAssessmentTemplateInspectionAppendixContent()}
+        ${renderRiskAssessmentTemplateOptionalRichHtml(riskAssessmentConclusionInput?.value || "")}
         <h4>Procjena rizika od kemijskih štetnosti</h4>
         ${renderRiskAssessmentDocumentParagraphs(employer.appendixChemicalRisk, "Nije uneseno.")}
         <h4>Sudjelovanje radnika</h4>
@@ -128361,6 +128717,7 @@ function renderRiskAssessmentOverview() {
   const totalPpe = riskAssessmentJobDrafts.reduce((sum, job) => sum + (job.ppeItems ?? []).length, 0);
   const totalChemicals = riskAssessmentChemicalDrafts.length;
   const totalManualHandling = riskAssessmentManualHandlingDrafts.length;
+  const appendixData = getRiskAssessmentLinkedAppendixData();
   const highManualHandling = riskAssessmentManualHandlingDrafts
     .map((entry) => calculateRiskAssessmentManualHandling(entry))
     .filter((entry) => ["danger", "critical"].includes(entry.tone)).length;
@@ -128405,11 +128762,14 @@ function renderRiskAssessmentOverview() {
       <span><strong>${escapeHtml(String(totalManualHandling))}</strong> teret</span>
       <span><strong>${escapeHtml(String(highManualHandling))}</strong> visoki teret</span>
       <span><strong>${escapeHtml(String(totalChemicals))}</strong> kemikalija</span>
+      <span><strong>${escapeHtml(String(appendixData.equipmentItems.length))}</strong> oprema</span>
+      <span><strong>${escapeHtml(String(appendixData.inspectionItems.length))}</strong> ispitivanja</span>
       <span><strong>${escapeHtml(String(totalPpe))}</strong> OZO</span>
     </div>
     <div class="risk-assessment-overview-grid">${unitsHtml}</div>
     ${chemicalsHtml}
   `;
+  renderRiskAssessmentLinkedAppendix();
   renderRiskAssessmentTemplatePreview();
 }
 

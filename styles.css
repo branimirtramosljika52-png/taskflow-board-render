@@ -56402,6 +56402,161 @@ button.work-order-editor-section-head:focus-visible {
   line-height: 1.35;
 }
 
+.risk-assessment-linked-appendix {
+  display: grid;
+  min-width: 0;
+}
+
+.risk-assessment-linked-appendix-panel {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid rgba(191, 219, 254, 0.86);
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(248, 250, 252, 0.96), rgba(255, 255, 255, 0.98)),
+    radial-gradient(circle at 12% 0%, rgba(250, 204, 21, 0.13), transparent 30%);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.07);
+}
+
+.risk-assessment-linked-appendix-panel.is-empty {
+  border-style: dashed;
+  box-shadow: none;
+}
+
+.risk-assessment-linked-appendix-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.risk-assessment-linked-appendix-head span {
+  display: block;
+  color: #2563eb;
+  font-size: 0.68rem;
+  font-weight: 920;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.risk-assessment-linked-appendix-head strong {
+  display: block;
+  margin-top: 4px;
+  color: #0f172a;
+  font-size: 1rem;
+  font-weight: 950;
+}
+
+.risk-assessment-linked-appendix-head p {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 760;
+}
+
+.risk-assessment-linked-appendix-kpis {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.risk-assessment-linked-appendix-kpis em {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #475569;
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.risk-assessment-linked-appendix-kpis b {
+  color: #0f172a;
+  font-size: 0.88rem;
+}
+
+.risk-assessment-linked-appendix-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.risk-assessment-linked-appendix-grid article {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(226, 232, 240, 0.92);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.risk-assessment-linked-appendix-grid h4 {
+  margin: 0;
+  color: #111827;
+  font-size: 0.9rem;
+  font-weight: 950;
+}
+
+.risk-assessment-linked-table {
+  display: grid;
+  max-height: 280px;
+  overflow: auto;
+  border: 1px solid rgba(226, 232, 240, 0.96);
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.risk-assessment-linked-table > div {
+  display: grid;
+  align-items: stretch;
+  min-width: 720px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.86);
+}
+
+.risk-assessment-linked-table > div:last-child {
+  border-bottom: 0;
+}
+
+.risk-assessment-linked-table.is-equipment > div {
+  grid-template-columns: 0.95fr 1.2fr 0.58fr 1.35fr 0.76fr;
+}
+
+.risk-assessment-linked-table.is-inspections > div {
+  grid-template-columns: 0.9fr 0.72fr 1.18fr 1.1fr 1.05fr;
+}
+
+.risk-assessment-linked-table span {
+  min-width: 0;
+  padding: 8px 9px;
+  color: #334155;
+  font-size: 0.74rem;
+  font-weight: 760;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.risk-assessment-linked-table .is-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.risk-assessment-linked-table .is-head span {
+  background: #0f172a;
+  color: #ffffff;
+  font-size: 0.64rem;
+  font-weight: 950;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .risk-assessment-people-field {
   position: relative;
 }
@@ -62026,6 +62181,8 @@ button.work-order-editor-section-head:focus-visible {
   .risk-assessment-compact-row.is-company-collaborator,
   .risk-assessment-compact-row.is-workplace-job,
   .risk-assessment-appendix-cards,
+  .risk-assessment-linked-appendix-head,
+  .risk-assessment-linked-appendix-grid,
   .risk-assessment-document-facts,
   .risk-assessment-document-grid,
   .risk-assessment-document-eligibility > div,
@@ -62077,6 +62234,14 @@ button.work-order-editor-section-head:focus-visible {
   .risk-assessment-editor-section-head {
     display: grid;
     justify-items: start;
+  }
+
+  .risk-assessment-linked-appendix-head {
+    display: grid;
+  }
+
+  .risk-assessment-linked-appendix-kpis {
+    justify-content: flex-start;
   }
 
   .risk-assessment-editor-section-head p {
