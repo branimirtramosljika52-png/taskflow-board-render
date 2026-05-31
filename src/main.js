@@ -129041,15 +129041,66 @@ function getRiskAssessmentPpeWorkerVariant(gearItems = []) {
   return bestVariant;
 }
 
+function getRiskAssessmentPpeWorkerOverlayClass(kind = "") {
+  if (kind === "helmet" || kind === "cap") {
+    return "head";
+  }
+  if (kind === "faceShield" || kind === "glasses") {
+    return "eyes";
+  }
+  if (kind === "earmuffs") {
+    return "hearing";
+  }
+  if (kind === "mask" || kind === "respirator") {
+    return "respiratory";
+  }
+  if (kind === "vest" || kind === "coverall") {
+    return "body";
+  }
+  if (kind === "gloves") {
+    return "hands";
+  }
+  if (kind === "boots") {
+    return "feet";
+  }
+  if (kind === "harness") {
+    return "fall";
+  }
+  if (kind === "kneepads") {
+    return "knees";
+  }
+  return "other";
+}
+
+function getRiskAssessmentPpeWorkerOverlayGear(gearItems = [], workerVariant = {}) {
+  const represented = workerVariant.gearSet instanceof Set ? workerVariant.gearSet : new Set(workerVariant.gear ?? []);
+  const seenOverlayClasses = new Set();
+  return (gearItems ?? []).filter((gear) => {
+    const normalizedKind = normalizeRiskAssessmentPpeWorkerVariantKind(gear.kind);
+    if (normalizedKind && represented.has(normalizedKind)) {
+      return false;
+    }
+    const overlayClass = getRiskAssessmentPpeWorkerOverlayClass(gear.kind);
+    const key = `${overlayClass}:${gear.part || "other"}`;
+    if (seenOverlayClasses.has(key)) {
+      return false;
+    }
+    seenOverlayClasses.add(key);
+    return true;
+  });
+}
+
 function renderRiskAssessmentPpeWorkerPreview(job = {}) {
   const selectedItems = job.ppeItems ?? [];
   const gearItems = getRiskAssessmentPpeWorkerGearItems(selectedItems);
   const workerVariant = getRiskAssessmentPpeWorkerVariant(gearItems);
+  const overlayGear = getRiskAssessmentPpeWorkerOverlayGear(gearItems, workerVariant);
   const activeParts = Array.from(new Set(gearItems.map((gear) => gear.part || "other")));
   const selectedCount = selectedItems.length;
   const gearLabels = gearItems.length
     ? gearItems.slice(0, 7).map((gear) => gear.label)
     : ["Bez odabrane OZO"];
+  const renderMode = overlayGear.length ? `${workerVariant.label} + dopuna opreme` : workerVariant.label;
 
   return `
     <section class="risk-assessment-ppe-worker-preview ozo-worker-panel" aria-label="Prikaz radnika s odabranom OZO">
@@ -129069,6 +129120,11 @@ function renderRiskAssessmentPpeWorkerPreview(job = {}) {
             loading="eager"
           />
           <div class="ozo-worker-image-sheen" aria-hidden="true"></div>
+          <div class="ozo-gear-markers ${overlayGear.length ? "is-active" : ""}" aria-hidden="true">
+            ${overlayGear.flatMap((gear) => ["male", "female"].map((worker) => `
+              <span class="ozo-gear ozo-gear-${escapeHtml(getRiskAssessmentPpeWorkerOverlayClass(gear.kind))} is-${worker}"></span>
+            `)).join("")}
+          </div>
         </div>
       </div>
       <div class="ozo-worker-summary">
@@ -129078,7 +129134,7 @@ function renderRiskAssessmentPpeWorkerPreview(job = {}) {
         </div>
         <div>
           <span>Prikaz radnika</span>
-          <strong>${escapeHtml(workerVariant.label)}</strong>
+          <strong>${escapeHtml(renderMode)}</strong>
         </div>
         <div>
           <span>Zone zaštite</span>
