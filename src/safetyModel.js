@@ -123,6 +123,7 @@ export const RULEBOOK_TYPE_OPTIONS = [
   { value: "znr", label: "Pravilnik o zaštiti na radu" },
   { value: "fire", label: "Pravilnik o zaštiti od požara" },
   { value: "alcohol_drugs", label: "Pravilnik o testiranju na alkohol i droge" },
+  { value: "training_program", label: "Program osposobljavanja" },
   { value: "custom", label: "Drugi pravilnik" },
 ];
 

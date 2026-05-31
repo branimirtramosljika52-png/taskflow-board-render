@@ -218,6 +218,13 @@ const RULEBOOK_PRESETS = Object.freeze([
     summary: "Interni pravilnik kojim se uređuje postupak provjere alkoholiziranosti i utjecaja droga na radnom mjestu.",
     scope: "Primjenjuje se na radnike i druge osobe kada je potrebno provesti provjeru sposobnosti za siguran rad.",
   }),
+  Object.freeze({
+    type: "training_program",
+    title: "Program osposobljavanja",
+    shortTitle: "Osposobljavanje",
+    summary: "Program kojim se definiraju sadržaj, način provedbe, provjera znanja i evidencija osposobljavanja za rad na siguran način.",
+    scope: "Primjenjuje se na radnike, osobe na osposobljavanju i druge sudionike koji moraju biti osposobljeni za siguran rad.",
+  }),
 ]);
 const WORK_ORDER_DOCUMENT_CATEGORY_OPTIONS = Object.freeze([
   { value: "Ovjereni Radni nalog", label: "Ovjereni Radni nalog" },
@@ -1696,8 +1703,8 @@ const MODULE_VIEW_DEFINITIONS = {
   rulebooks: {
     kicker: "Health And Safety",
     title: "Pravilnici",
-    description: "Interni pravilnici za zaštitu na radu, požar te testiranje na alkohol i droge.",
-    chips: ["ZNR", "Požar", "Alkohol i droge"],
+    description: "Interni pravilnici i programi za zaštitu na radu, požar, alkohol/droge i osposobljavanje.",
+    chips: ["ZNR", "Požar", "Alkohol i droge", "Osposobljavanje"],
   },
 };
 const SIDEBAR_ITEM_CONFIG = {
@@ -67991,6 +67998,8 @@ function getRulebookIconName(rulebookType = "") {
       return "flame";
     case "alcohol_drugs":
       return "shield-alert";
+    case "training_program":
+      return "book-open";
     case "znr":
       return "shield";
     default:
@@ -68003,6 +68012,7 @@ function renderRulebookIcon(name = "file") {
     shield: '<path d="M12 3 5 6v5c0 4.2 2.8 7.5 7 9 4.2-1.5 7-4.8 7-9V6z"></path><path d="m9 12 2 2 4-5"></path>',
     flame: '<path d="M12 21c3.3 0 6-2.4 6-5.8 0-2.8-1.6-4.6-3.4-6.2-.9-.8-1.8-1.8-2.1-3.1-.1-.4-.6-.6-.9-.3-1.9 1.5-3 3.5-2.6 6.2-1.1-.6-1.9-1.5-2.4-2.7-.1-.4-.7-.4-.9-.1A8.2 8.2 0 0 0 6 15.2C6 18.6 8.7 21 12 21Z"></path>',
     "shield-alert": '<path d="M12 3 5 6v5c0 4.2 2.8 7.5 7 9 4.2-1.5 7-4.8 7-9V6z"></path><path d="M12 8v5"></path><path d="M12 16h.01"></path>',
+    "book-open": '<path d="M12 7v14"></path><path d="M3 5.5A2.5 2.5 0 0 1 5.5 3H12v18H5.5A2.5 2.5 0 0 1 3 18.5z"></path><path d="M21 5.5A2.5 2.5 0 0 0 18.5 3H12v18h6.5a2.5 2.5 0 0 0 2.5-2.5z"></path><path d="M7 8h2"></path><path d="M15 8h2"></path>',
     file: '<path d="M6 4h9l3 3v13H6z"></path><path d="M15 4v4h4"></path><path d="M9 12h6M9 16h4"></path>',
   };
   return `<svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">${icons[name] || icons.file}</svg>`;
@@ -111676,7 +111686,7 @@ const HELP_TOUR_MENU_GROUPS = [
       { kind: "tests", label: "Test", description: "Grupe edukacija, materijali, pitanja i live preview." },
       { kind: "people-training", label: "Osposobljavanja", description: "Evidencija po osobama, RN ispiti i uvjerenja." },
       { kind: "risk-assessment", label: "Risk Assessment", description: "Procjene rizika, mjere i klijentski status." },
-      { kind: "rulebooks", label: "Pravilnici", description: "Interni pravilnici ZNR, požar i alkohol/droge." },
+      { kind: "rulebooks", label: "Pravilnici", description: "Interni pravilnici i programi ZNR, požar, alkohol/droge i osposobljavanje." },
     ],
   },
 ];

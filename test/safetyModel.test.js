@@ -1274,16 +1274,34 @@ test("rulebooks create, update, filter and sort as a separate HSE register", () 
     },
     () => "2026-05-31T11:00:00.000Z",
   );
+  const trainingProgram = createRulebook(
+    {
+      organizationId: "org-1",
+      title: "Program osposobljavanja",
+      rulebookType: "training_program",
+      status: "draft",
+      summary: "Sadržaj osposobljavanja, provjera znanja i evidencija provedbe.",
+    },
+    () => "rulebook-3",
+    () => "2026-05-31T12:00:00.000Z",
+  );
   const filtered = filterRulebooks([znr, updatedFire], {
     query: "evakuacija",
     status: "review",
     rulebookType: "fire",
   });
+  const trainingFiltered = filterRulebooks([znr, updatedFire, trainingProgram], {
+    query: "provjera znanja",
+    rulebookType: "training_program",
+  });
 
   assert.equal(znr.documents.length, 1);
   assert.equal(znr.effectiveFrom, "2026-06-01");
+  assert.equal(trainingProgram.rulebookType, "training_program");
   assert.equal(filtered.length, 1);
   assert.equal(filtered[0].id, "rulebook-2");
+  assert.equal(trainingFiltered.length, 1);
+  assert.equal(trainingFiltered[0].id, "rulebook-3");
   assert.equal(sortRulebooks([updatedFire, znr])[0].id, "rulebook-1");
 });
 
