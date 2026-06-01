@@ -51,7 +51,7 @@ import {
   buildPubChemLookupPayload,
 } from "./src/pubchemClient.js";
 import { createSafetyRepository } from "./src/safetyRepository.js";
-import { extractStlChemicalDataFromFile } from "./src/stlChemicalExtractor.js";
+import { extractStlChemicalDataFromFile, extractStlTextFromFile } from "./src/stlChemicalExtractor.js";
 import { createTenantRepository } from "./src/tenantRepository.js";
 import {
   clearAuthCookies,
@@ -78,6 +78,141 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
+
+function normalizeRiskStructureText(value = "") {
+  return String(value ?? "")
+    .replace(/\u00a0/g, " ")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\r\n?/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function cleanRiskStructureLine(value = "") {
+  return normalizeRiskStructureText(value)
+    .replace(/^[•*\-\u2013\u2014]+\s*/, "")
+    .replace(/^\d+(?:[.)]|\.\d+)*\s*/, "")
+    .replace(/^(organizacijska jedinica|ustrojstvena jedinica|radno mjesto|naziv radnog mjesta|posao)\s*[:\-]\s*/i, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function getRiskStructureWorkerCount(line = "") {
+  const source = String(line || "");
+  const labeled = source.match(/\b(\d{1,4})\s*(?:radnika|zaposlenih|izvršitelja|izvrsitelja|osoba)\b/i);
+  if (labeled) {
+    return labeled[1];
+  }
+  const trailing = source.match(/\b(?:broj\s*)?(?:radnika|zaposlenih|izvršitelja|izvrsitelja)\s*[:\-]?\s*(\d{1,4})\b/i);
+  return trailing?.[1] || "";
+}
+
+function getRiskStructureResponsiblePerson(line = "") {
+  const match = String(line || "").match(/\b(?:odgovorna osoba|voditelj|rukovoditelj)\s*[:\-]\s*([^;|,\n]{3,80})/i);
+  return match?.[1]?.trim() || "";
+}
+
+function isRiskStructureLikelyUnit(line = "") {
+  const text = cleanRiskStructureLine(line);
+  const lower = text.toLocaleLowerCase("hr-HR");
+  if (!text || text.length > 90) {
+    return false;
+  }
+  if (/\b(uprava|direkcija|sektor|služba|sluzba|odjel|pogon|proizvodnja|skladište|skladiste|održavanje|odrzavanje|administracija|računovodstvo|racunovodstvo|logistika|prodaja|nabava|laboratorij|kvaliteta|zaštita|zastita)\b/i.test(lower)) {
+    return true;
+  }
+  const letters = text.replace(/[^A-Za-zČĆŽŠĐčćžšđ]/g, "");
+  const upper = letters.replace(/[^A-ZČĆŽŠĐ]/g, "");
+  return letters.length >= 4 && upper.length / letters.length > 0.76 && text.length <= 60;
+}
+
+function isRiskStructureLikelyWorkplace(line = "") {
+  const text = cleanRiskStructureLine(line);
+  const lower = text.toLocaleLowerCase("hr-HR");
+  if (!text || text.length > 110) {
+    return false;
+  }
+  return /\b(radnik|radnica|referent|tajnica|direktor|predsjednik|voditelj|rukovatelj|operater|serviser|skladištar|skladistar|vozač|vozac|monter|tehničar|tehnicar|inženjer|inzenjer|majstor|čistač|cistac|administrator|knjigovođa|knjigovoda)\b/i.test(lower)
+    || /\b\d{1,4}\s*(?:radnika|zaposlenih|izvršitelja|izvrsitelja|osoba)\b/i.test(lower);
+}
+
+function buildRiskAssessmentStructureUnitsFromText(text = "") {
+  const lines = normalizeRiskStructureText(text)
+    .split(/\n+/)
+    .map(cleanRiskStructureLine)
+    .filter((line) => line.length >= 2 && line.length <= 140)
+    .filter((line) => !/^(stranica|page|red\.?\s*br|rb\.?|sistematizacija radnih mjesta)$/i.test(line))
+    .slice(0, 220);
+
+  const units = [];
+  const known = new Set();
+  let currentRootId = "";
+  let currentParentId = "";
+
+  const addUnit = ({ name = "", type = "unit", parentId = "", sourceLine = "" } = {}) => {
+    const cleanName = cleanRiskStructureLine(name).replace(/\s+\d{1,4}\s*(?:radnika|zaposlenih|izvršitelja|izvrsitelja|osoba)\b/i, "").trim();
+    if (!cleanName || cleanName.length < 2) {
+      return null;
+    }
+    const key = `${parentId}:${type}:${cleanName.toLocaleLowerCase("hr-HR")}`;
+    if (known.has(key)) {
+      return units.find((unit) => `${unit.parentId}:${unit.type}:${unit.name.toLocaleLowerCase("hr-HR")}` === key) || null;
+    }
+    known.add(key);
+    const unit = {
+      id: randomUUID(),
+      parentId,
+      type,
+      name: cleanName.slice(0, 120),
+      responsiblePerson: getRiskStructureResponsiblePerson(sourceLine),
+      workerCount: getRiskStructureWorkerCount(sourceLine),
+      shortDescription: "",
+      description: "",
+      detailedDescription: "",
+      note: sourceLine && sourceLine !== cleanName ? `Prepoznato iz dokumenta: ${sourceLine.slice(0, 240)}` : "",
+    };
+    units.push(unit);
+    return unit;
+  };
+
+  for (const line of lines) {
+    if (units.length >= 80) {
+      break;
+    }
+    const lower = line.toLocaleLowerCase("hr-HR");
+    if (isRiskStructureLikelyUnit(line) && !isRiskStructureLikelyWorkplace(line)) {
+      const isSubunit = Boolean(currentRootId) && /\b(odjel|služba|sluzba|tim|grupa|radionica)\b/i.test(lower);
+      const unit = addUnit({
+        name: line,
+        type: isSubunit ? "subunit" : "unit",
+        parentId: isSubunit ? currentRootId : "",
+        sourceLine: line,
+      });
+      if (unit) {
+        if (isSubunit) {
+          currentParentId = unit.id;
+        } else {
+          currentRootId = unit.id;
+          currentParentId = unit.id;
+        }
+      }
+      continue;
+    }
+    if (isRiskStructureLikelyWorkplace(line)) {
+      const unit = addUnit({
+        name: line.replace(/\b(?:broj\s*)?(?:radnika|zaposlenih|izvršitelja|izvrsitelja)\s*[:\-]?\s*\d{1,4}\b/gi, "").trim(),
+        type: "workplace",
+        parentId: currentParentId || currentRootId || "",
+        sourceLine: line,
+      });
+      if (unit && !currentParentId && !currentRootId) {
+        currentRootId = unit.id;
+      }
+    }
+  }
+
+  return units;
+}
 const requestUserSymbol = Symbol("requestUser");
 const responseRequestSymbol = Symbol("responseRequest");
 const jwtSecret = resolveJwtSecret();
@@ -8057,6 +8192,34 @@ async function handleApiRequest(request, response, url) {
         }));
       } catch (error) {
         sendError(response, Number(error?.statusCode || 502), error?.message || "PubChem trenutno nije dostupan.");
+      }
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/risk-assessments/structure/extract") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo uređivati organizacijsku strukturu procjene rizika.");
+        return true;
+      }
+
+      try {
+        const body = await readJsonBody(request);
+        const extracted = await extractStlTextFromFile({
+          fileName: body.fileName || body.name || "sistematizacija",
+          mimeType: body.fileType || body.mimeType || body.type || "",
+          dataUrl: body.dataUrl || body.fileDataUrl || "",
+        });
+        const units = buildRiskAssessmentStructureUnitsFromText(extracted.text || "");
+        sendJson(response, 200, {
+          provider: "risk-structure-extractor",
+          fileName: body.fileName || body.name || "",
+          kind: extracted.kind || "",
+          unitCount: units.length,
+          confidence: units.length >= 8 ? "visoka sigurnost" : units.length >= 3 ? "srednja sigurnost" : "niska sigurnost",
+          units,
+        });
+      } catch (error) {
+        sendError(response, Number(error?.statusCode || 400), error?.message || "Ne mogu izvući organizacijsku strukturu iz dokumenta.");
       }
       return true;
     }

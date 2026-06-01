@@ -6189,6 +6189,12 @@ const riskAssessmentMeasuresList = document.querySelector("#risk-assessment-meas
 const riskAssessmentAddMeasureButton = document.querySelector("#risk-assessment-add-measure");
 const riskAssessmentOrganizationUnitsList = document.querySelector("#risk-assessment-organization-units");
 const riskAssessmentAddUnitButton = document.querySelector("#risk-assessment-add-unit");
+const riskAssessmentStructureFileInput = document.querySelector("#risk-assessment-structure-file");
+const riskAssessmentStructureUploadButton = document.querySelector("#risk-assessment-structure-upload-button");
+const riskAssessmentStructureImportButton = document.querySelector("#risk-assessment-structure-import-button");
+const riskAssessmentStructureDropzone = document.querySelector("#risk-assessment-structure-dropzone");
+const riskAssessmentStructureFileMeta = document.querySelector("#risk-assessment-structure-file-meta");
+const riskAssessmentStructureImportMessage = document.querySelector("#risk-assessment-structure-import-message");
 const riskAssessmentJobsList = document.querySelector("#risk-assessment-jobs");
 const riskAssessmentAddJobButton = document.querySelector("#risk-assessment-add-job");
 const riskAssessmentArmorAllButton = document.querySelector("#risk-assessment-armor-all");
@@ -6284,11 +6290,11 @@ const RISK_ASSESSMENT_TEMPLATE_PLACEHOLDERS = Object.freeze([
   { key: "cover", token: "{{RISK_COVER}}", label: "Naslovnica i identifikacija", defaultTitle: "Procjena rizika" },
   { key: "employer", token: "{{RISK_EMPLOYER}}", label: "Podaci o poslodavcu i objektima", defaultTitle: "Podaci o poslodavcu i objektima namijenjenim za rad" },
   { key: "intro", token: "{{RISK_INTRO}}", label: "Uvod i pravna osnova", defaultTitle: "Uvod" },
+  { key: "structure", token: "{{RISK_STRUCTURE}}", label: "Organizacijska struktura", defaultTitle: "Organizacijska struktura" },
   { key: "process", token: "{{RISK_PROCESS}}", label: "Podaci prikupljeni na mjestima rada", defaultTitle: "Podaci prikupljeni na mjestima rada" },
   { key: "general", token: "{{RISK_GENERAL}}", label: "Uređenje mjesta rada", defaultTitle: "Uređenje mjesta rada" },
   { key: "computer", token: "{{RISK_SENSITIVE_GROUPS}}", label: "Posebno osjetljive skupine radnika", defaultTitle: "Posebno osjetljive skupine radnika" },
   { key: "rules", token: "{{RISK_RULES}}", label: "Pravila zaštite na radu", defaultTitle: "Osnovna i posebna pravila zaštite na radu" },
-  { key: "structure", token: "{{RISK_STRUCTURE}}", label: "Sistematizacija", defaultTitle: "Struktura organizacijskih jedinica" },
   { key: "findings", token: "{{RISK_APPENDICES}}", label: "Prilozi", defaultTitle: "Prilozi" },
   { key: "measures", token: "{{RISK_MEASURES}}", label: "Plan mjera", defaultTitle: "Plan mjera" },
   { key: "jobs", token: "{{RISK_JOBS}}", label: "Poslovi i procjena rizika", defaultTitle: "Analiza radnih mjesta i procjena rizika" },
@@ -6305,8 +6311,8 @@ const RISK_ASSESSMENT_TEMPLATE_PLACEHOLDER_BY_KEY = new Map(
 const RISK_ASSESSMENT_TEMPLATE_BLOCKS = Object.freeze([
   { block: "basic", label: "Osnovni podaci", sectionKeys: ["cover", "employer"], tokenLabel: "{{RISK_COVER}} + {{RISK_EMPLOYER}}" },
   { block: "intro", label: "Uvod", sectionKeys: ["intro"], tokenLabel: "{{RISK_INTRO}}" },
+  { block: "structure", label: "Organizacijska struktura", sectionKeys: ["structure"], tokenLabel: "{{RISK_STRUCTURE}}" },
   { block: "process", label: "Podaci prikupljeni na mjestima rada", sectionKeys: ["process", "general", "computer", "rules"], tokenLabel: "{{RISK_PROCESS}} + {{RISK_GENERAL}} + {{RISK_SENSITIVE_GROUPS}} + {{RISK_RULES}}" },
-  { block: "structure", label: "Struktura", sectionKeys: ["structure"], tokenLabel: "{{RISK_STRUCTURE}}" },
   { block: "findings", label: "Prilozi", sectionKeys: ["findings"], tokenLabel: "{{RISK_APPENDICES}}" },
   { block: "measures", label: "Mjere", sectionKeys: ["measures"], tokenLabel: "{{RISK_MEASURES}}" },
   { block: "jobs", label: "Analiza radnih mjesta", sectionKeys: ["jobs", "ppe"], tokenLabel: "{{RISK_JOBS}} + {{RISK_PPE}}" },
@@ -117138,10 +117144,47 @@ riskAssessmentAddMeasureButton?.addEventListener("click", () => {
 });
 
 riskAssessmentAddUnitButton?.addEventListener("click", () => {
-  riskAssessmentOrganizationUnitDrafts.push(createRiskAssessmentOrganizationUnitDraft());
+  riskAssessmentOrganizationUnitDrafts.push(createRiskAssessmentOrganizationUnitDraft({
+    type: "unit",
+    name: "Nova organizacijska jedinica",
+  }));
   renderRiskAssessmentOrganizationUnits();
   renderRiskAssessmentOverview();
   scheduleRiskAssessmentDraftAutosave();
+});
+
+riskAssessmentStructureUploadButton?.addEventListener("click", () => {
+  riskAssessmentStructureFileInput?.click();
+});
+
+riskAssessmentStructureFileInput?.addEventListener("change", () => {
+  syncRiskAssessmentStructureFileMeta();
+  const file = riskAssessmentStructureFileInput.files?.[0] || null;
+  setInlineMessage(
+    riskAssessmentStructureImportMessage,
+    file ? "Dokument je spreman za AI slaganje strukture." : "",
+    file ? "success" : "",
+  );
+});
+
+riskAssessmentStructureImportButton?.addEventListener("click", () => {
+  void importRiskAssessmentStructureDocument();
+});
+
+riskAssessmentStructureDropzone?.addEventListener("dragover", (event) => {
+  event.preventDefault();
+  riskAssessmentStructureDropzone.classList.add("is-drop-target");
+});
+
+riskAssessmentStructureDropzone?.addEventListener("dragleave", () => {
+  riskAssessmentStructureDropzone.classList.remove("is-drop-target");
+});
+
+riskAssessmentStructureDropzone?.addEventListener("drop", (event) => {
+  event.preventDefault();
+  riskAssessmentStructureDropzone.classList.remove("is-drop-target");
+  const file = Array.from(event.dataTransfer?.files || []).find(isRiskAssessmentStructureFileSupported);
+  setRiskAssessmentStructureInputFile(file || null);
 });
 
 riskAssessmentAddJobButton?.addEventListener("click", () => {
@@ -122515,6 +122558,10 @@ function resetRiskAssessmentForm() {
   riskAssessmentOfficialSubstanceQuery = "";
   riskAssessmentOfficialSubstanceType = "all";
   riskAssessmentReportTemplateDraft = getRiskAssessmentModuleTemplateDraft();
+  if (riskAssessmentStructureFileInput) {
+    riskAssessmentStructureFileInput.value = "";
+  }
+  syncRiskAssessmentStructureFileMeta();
   syncRiskAssessmentStlFileMeta();
   setRiskAssessmentStlImportPhase("idle");
   if (riskAssessmentOfficialSubstanceSearchInput) {
@@ -122628,6 +122675,10 @@ function hydrateRiskAssessmentForm(item = {}) {
   if (riskAssessmentChemicalStlFileInput) {
     riskAssessmentChemicalStlFileInput.value = "";
   }
+  if (riskAssessmentStructureFileInput) {
+    riskAssessmentStructureFileInput.value = "";
+  }
+  syncRiskAssessmentStructureFileMeta();
   syncRiskAssessmentStlFileMeta();
   setRiskAssessmentStlImportPhase("idle");
   if (riskAssessmentOfficialSubstanceSearchInput) {
@@ -127713,10 +127764,34 @@ function getRiskAssessmentCompanyContext() {
   };
 }
 
+const RISK_ASSESSMENT_ORGANIZATION_UNIT_TYPE_OPTIONS = Object.freeze([
+  { value: "unit", label: "Organizacijska jedinica" },
+  { value: "subunit", label: "Podorganizacija" },
+  { value: "workplace", label: "Radno mjesto" },
+]);
+
+function normalizeRiskAssessmentUnitType(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["subunit", "department", "podorganizacija", "odjel"].includes(normalized)) {
+    return "subunit";
+  }
+  if (["workplace", "job", "radno_mjesto", "radno mjesto", "position"].includes(normalized)) {
+    return "workplace";
+  }
+  return "unit";
+}
+
+function getRiskAssessmentUnitTypeLabel(value = "") {
+  const normalized = normalizeRiskAssessmentUnitType(value);
+  return RISK_ASSESSMENT_ORGANIZATION_UNIT_TYPE_OPTIONS.find((option) => option.value === normalized)?.label
+    || "Organizacijska jedinica";
+}
+
 function createRiskAssessmentOrganizationUnitDraft(initial = {}) {
   return {
     id: String(initial.id || crypto.randomUUID()),
     parentId: String(initial.parentId || ""),
+    type: normalizeRiskAssessmentUnitType(initial.type || initial.unitType || initial.kind || ""),
     order: initial.order || "",
     name: String(initial.name || ""),
     shortDescription: String(initial.shortDescription || ""),
@@ -127737,23 +127812,218 @@ function getRiskAssessmentUnitName(unitId = "") {
 
 function renderRiskAssessmentUnitOptions(selectedValue = "", currentUnitId = "") {
   const options = [{ value: "", label: "Bez nadređene jedinice" }];
+  const childrenByParent = new Map();
+  const knownIds = new Set(riskAssessmentOrganizationUnitDrafts.map((unit) => String(unit.id || "")));
   riskAssessmentOrganizationUnitDrafts.forEach((unit) => {
-    if (currentUnitId && String(unit.id) === String(currentUnitId)) {
-      return;
-    }
-    options.push({ value: unit.id, label: unit.name || "Organizacijska jedinica" });
+    const parentId = knownIds.has(String(unit.parentId || "")) && String(unit.parentId || "") !== String(unit.id || "")
+      ? String(unit.parentId || "")
+      : "";
+    const list = childrenByParent.get(parentId) || [];
+    list.push(unit);
+    childrenByParent.set(parentId, list);
   });
+  const appendOptions = (parentId = "", depth = 0) => {
+    (childrenByParent.get(parentId) || []).forEach((unit) => {
+      if (currentUnitId && String(unit.id) === String(currentUnitId)) {
+        return;
+      }
+      options.push({
+        value: unit.id,
+        label: `${"— ".repeat(Math.min(depth, 4))}${unit.name || getRiskAssessmentUnitTypeLabel(unit.type)}`,
+      });
+      appendOptions(String(unit.id), depth + 1);
+    });
+  };
+  appendOptions("");
   return renderRiskAssessmentOptions(options, selectedValue || "");
 }
 
 function renderRiskAssessmentJobUnitOptions(selectedValue = "") {
-  return renderRiskAssessmentOptions([
-    { value: "", label: "Odaberi organizacijsku jedinicu" },
-    ...riskAssessmentOrganizationUnitDrafts.map((unit) => ({
-      value: unit.id,
-      label: unit.name || "Organizacijska jedinica",
-    })),
-  ], selectedValue || "");
+  const options = [{ value: "", label: "Odaberi organizacijsku jedinicu" }];
+  const childrenByParent = new Map();
+  const knownIds = new Set(riskAssessmentOrganizationUnitDrafts.map((unit) => String(unit.id || "")));
+  riskAssessmentOrganizationUnitDrafts.forEach((unit) => {
+    const parentId = knownIds.has(String(unit.parentId || "")) && String(unit.parentId || "") !== String(unit.id || "")
+      ? String(unit.parentId || "")
+      : "";
+    const list = childrenByParent.get(parentId) || [];
+    list.push(unit);
+    childrenByParent.set(parentId, list);
+  });
+  const appendOptions = (parentId = "", depth = 0) => {
+    (childrenByParent.get(parentId) || []).forEach((unit) => {
+      options.push({
+        value: unit.id,
+        label: `${"— ".repeat(Math.min(depth, 4))}${unit.name || getRiskAssessmentUnitTypeLabel(unit.type)}`,
+      });
+      appendOptions(String(unit.id), depth + 1);
+    });
+  };
+  appendOptions("");
+  return renderRiskAssessmentOptions(options, selectedValue || "");
+}
+
+function renderRiskAssessmentUnitTypeOptions(selectedValue = "") {
+  return renderRiskAssessmentOptions(RISK_ASSESSMENT_ORGANIZATION_UNIT_TYPE_OPTIONS, normalizeRiskAssessmentUnitType(selectedValue));
+}
+
+function getRiskAssessmentUnitChildrenMap() {
+  const childrenByParent = new Map();
+  const knownIds = new Set(riskAssessmentOrganizationUnitDrafts.map((unit) => String(unit.id || "")));
+  riskAssessmentOrganizationUnitDrafts.forEach((unit) => {
+    const parentId = knownIds.has(String(unit.parentId || "")) && String(unit.parentId || "") !== String(unit.id || "")
+      ? String(unit.parentId || "")
+      : "";
+    const list = childrenByParent.get(parentId) || [];
+    list.push(unit);
+    childrenByParent.set(parentId, list);
+  });
+  return childrenByParent;
+}
+
+function getRiskAssessmentUnitPath(unit = {}) {
+  const byId = new Map(riskAssessmentOrganizationUnitDrafts.map((entry) => [String(entry.id || ""), entry]));
+  const path = [];
+  let current = unit;
+  let guard = 0;
+  while (current && guard < 20) {
+    path.unshift(current.name || getRiskAssessmentUnitTypeLabel(current.type));
+    current = byId.get(String(current.parentId || ""));
+    guard += 1;
+  }
+  return path.join(" / ");
+}
+
+function getRiskAssessmentUnitDepth(unit = {}) {
+  const byId = new Map(riskAssessmentOrganizationUnitDrafts.map((entry) => [String(entry.id || ""), entry]));
+  let depth = 0;
+  let current = byId.get(String(unit.parentId || ""));
+  let guard = 0;
+  while (current && guard < 20) {
+    depth += 1;
+    current = byId.get(String(current.parentId || ""));
+    guard += 1;
+  }
+  return depth;
+}
+
+function isRiskAssessmentStructureFileSupported(file = null) {
+  if (!file) {
+    return false;
+  }
+  const name = String(file.name || "").toLowerCase();
+  const type = String(file.type || "").toLowerCase();
+  return name.endsWith(".pdf")
+    || name.endsWith(".docx")
+    || type.includes("pdf")
+    || type.includes("wordprocessingml.document");
+}
+
+function syncRiskAssessmentStructureFileMeta() {
+  if (!riskAssessmentStructureFileMeta) {
+    return;
+  }
+  const file = riskAssessmentStructureFileInput?.files?.[0] || null;
+  if (!file) {
+    riskAssessmentStructureFileMeta.textContent = "Nema odabranog dokumenta.";
+    riskAssessmentStructureDropzone?.classList.remove("has-file");
+    return;
+  }
+  riskAssessmentStructureDropzone?.classList.toggle("has-file", isRiskAssessmentStructureFileSupported(file));
+  riskAssessmentStructureFileMeta.textContent = `${file.name}${file.size ? ` · ${formatRiskAssessmentStlFileSize(file.size)}` : ""}`;
+}
+
+function setRiskAssessmentStructureInputFile(file = null) {
+  if (!riskAssessmentStructureFileInput || !file) {
+    return;
+  }
+  if (!isRiskAssessmentStructureFileSupported(file)) {
+    setInlineMessage(riskAssessmentStructureImportMessage, "Podržani su PDF i DOCX dokumenti sistematizacije.", "error");
+    return;
+  }
+  try {
+    const transfer = new DataTransfer();
+    transfer.items.add(file);
+    riskAssessmentStructureFileInput.files = transfer.files;
+    syncRiskAssessmentStructureFileMeta();
+    setInlineMessage(riskAssessmentStructureImportMessage, "Dokument je spreman za AI slaganje strukture.", "success");
+  } catch {
+    setInlineMessage(riskAssessmentStructureImportMessage, "Ne mogu preuzeti dokument iz povlačenja. Odaberi ga ručno.", "error");
+  }
+}
+
+async function importRiskAssessmentStructureDocument() {
+  const file = riskAssessmentStructureFileInput?.files?.[0] || null;
+  if (!file || !isRiskAssessmentStructureFileSupported(file)) {
+    setInlineMessage(riskAssessmentStructureImportMessage, "Odaberi PDF ili DOCX sistematizaciju radnih mjesta.", "error");
+    return;
+  }
+  if (riskAssessmentStructureImportButton) {
+    riskAssessmentStructureImportButton.disabled = true;
+    riskAssessmentStructureImportButton.textContent = "AI čita dokument...";
+  }
+  setInlineMessage(riskAssessmentStructureImportMessage, "Čitam dokument i slažem hijerarhiju jedinica i radnih mjesta...", "loading");
+  try {
+    const dataUrl = await readFileAsDataUrl(file, `Ne mogu učitati dokument ${file.name}.`);
+    const payload = await apiRequest("/risk-assessments/structure/extract", {
+      method: "POST",
+      body: {
+        fileName: file.name,
+        fileType: file.type,
+        dataUrl,
+      },
+    });
+    const importedUnits = (Array.isArray(payload.units) ? payload.units : [])
+      .map((unit) => createRiskAssessmentOrganizationUnitDraft(unit))
+      .filter((unit) => unit.name);
+    if (!importedUnits.length) {
+      setInlineMessage(riskAssessmentStructureImportMessage, "Dokument je pročitan, ali nije pronađena jasna organizacijska struktura.", "error");
+      return;
+    }
+    const existingKeys = new Set(riskAssessmentOrganizationUnitDrafts.map((unit) => `${String(unit.parentId || "")}:${String(unit.name || "").trim().toLowerCase()}`));
+    const uniqueImportedUnits = importedUnits.filter((unit) => {
+      const key = `${String(unit.parentId || "")}:${String(unit.name || "").trim().toLowerCase()}`;
+      if (existingKeys.has(key)) {
+        return false;
+      }
+      existingKeys.add(key);
+      return true;
+    });
+    riskAssessmentOrganizationUnitDrafts = [...riskAssessmentOrganizationUnitDrafts, ...uniqueImportedUnits];
+    renderRiskAssessmentOrganizationUnits();
+    renderRiskAssessmentJobs();
+    renderRiskAssessmentOverview();
+    scheduleRiskAssessmentDraftAutosave();
+    setInlineMessage(
+      riskAssessmentStructureImportMessage,
+      `Dodano ${uniqueImportedUnits.length} stavki iz dokumenta${payload.confidence ? ` · ${payload.confidence}` : ""}.`,
+      "success",
+    );
+  } catch (error) {
+    setInlineMessage(riskAssessmentStructureImportMessage, error?.message || "AI slaganje strukture trenutno nije dostupno.", "error");
+  } finally {
+    if (riskAssessmentStructureImportButton) {
+      riskAssessmentStructureImportButton.disabled = !getCanManageRiskAssessments();
+      riskAssessmentStructureImportButton.textContent = "AI složi strukturu";
+    }
+  }
+}
+
+function addRiskAssessmentChildUnit(parentIndex = -1, type = "subunit") {
+  const parent = riskAssessmentOrganizationUnitDrafts[parentIndex];
+  if (!parent) {
+    return;
+  }
+  const normalizedType = normalizeRiskAssessmentUnitType(type);
+  riskAssessmentOrganizationUnitDrafts.push(createRiskAssessmentOrganizationUnitDraft({
+    parentId: parent.id,
+    type: normalizedType,
+    name: normalizedType === "workplace" ? "Novo radno mjesto" : "Nova podorganizacija",
+  }));
+  renderRiskAssessmentOrganizationUnits();
+  renderRiskAssessmentJobs();
+  renderRiskAssessmentOverview();
+  scheduleRiskAssessmentDraftAutosave();
 }
 
 function renderRiskAssessmentJobSourceOptions(item = {}) {
@@ -128712,7 +128982,7 @@ function renderRiskAssessmentOrganizationUnits() {
   if (riskAssessmentOrganizationUnitDrafts.length === 0) {
     const empty = document.createElement("p");
     empty.className = "inline-help";
-    empty.textContent = "Dodaj organizacijske jedinice pa u njih poveži poslove/radna mjesta.";
+    empty.textContent = "Dodaj glavnu organizacijsku jedinicu ili učitaj sistematizaciju radnih mjesta.";
     riskAssessmentOrganizationUnitsList.replaceChildren(empty);
     return;
   }
@@ -128727,46 +128997,81 @@ function renderRiskAssessmentOrganizationUnits() {
     linkedJobsByUnit.set(job.organizationUnitId, list);
   });
 
-  riskAssessmentOrganizationUnitsList.replaceChildren(...riskAssessmentOrganizationUnitDrafts.map((unit, index) => {
+  const childrenByParent = getRiskAssessmentUnitChildrenMap();
+  const renderUnitNode = (unit, depth = 0, visited = new Set()) => {
+    const index = riskAssessmentOrganizationUnitDrafts.findIndex((entry) => String(entry.id) === String(unit.id));
+    const nextVisited = new Set(visited);
+    nextVisited.add(String(unit.id || ""));
     const row = document.createElement("article");
-    row.className = "risk-assessment-org-card";
+    const type = normalizeRiskAssessmentUnitType(unit.type);
+    const linkedJobs = linkedJobsByUnit.get(unit.id) || [];
+    const children = childrenByParent.get(String(unit.id)) || [];
+    const path = getRiskAssessmentUnitPath(unit);
+    row.className = `risk-assessment-org-card is-${type}`;
     row.dataset.riskUnitIndex = String(index);
     row.dataset.riskUnitDrop = unit.id;
-    const linkedJobs = linkedJobsByUnit.get(unit.id) || [];
+    row.style.setProperty("--org-depth", String(Math.min(depth, 6)));
     row.innerHTML = `
       <div class="risk-assessment-org-card-head">
+        <span class="risk-assessment-org-node-icon" aria-hidden="true">${renderRiskAssessmentRiskIcon(type === "workplace" ? "briefcase" : "building")}</span>
         <div>
-          <span class="section-kicker">Organizacijska jedinica</span>
-          <strong>${escapeHtml(unit.name || `Jedinica ${index + 1}`)}</strong>
-          <small>${escapeHtml(linkedJobs.length ? `${linkedJobs.length} povezanih poslova` : "Povuci posao ovdje ili odaberi jedinicu na poslu.")}</small>
+          <span class="section-kicker">${escapeHtml(getRiskAssessmentUnitTypeLabel(type))}</span>
+          <strong>${escapeHtml(unit.name || (type === "workplace" ? "Radno mjesto" : `Jedinica ${index + 1}`))}</strong>
+          <small>${escapeHtml(path || "Vrh organizacije")}</small>
         </div>
-        <div class="risk-assessment-job-tools">
-          <button type="button" class="ghost-button" data-risk-unit-ai="${index}" data-risk-unit-ai-action="generate">Generiraj opis pomoću AI</button>
-          <button type="button" class="ghost-button" data-risk-unit-ai="${index}" data-risk-unit-ai-action="shorten">Skrati opis</button>
-          <button type="button" class="ghost-button" data-risk-unit-ai="${index}" data-risk-unit-ai-action="expand">Proširi opis</button>
-          <button type="button" class="ghost-button" data-risk-unit-ai="${index}" data-risk-unit-ai-action="professional">Preformuliraj stručno</button>
-          <button type="button" class="ghost-button card-danger" data-risk-unit-remove="${index}">Ukloni</button>
+        <div class="risk-assessment-org-summary">
+          ${unit.responsiblePerson ? `<span>${renderRiskAssessmentRiskIcon("shield")} ${escapeHtml(unit.responsiblePerson)}</span>` : ""}
+          ${unit.workerCount ? `<span>${renderRiskAssessmentRiskIcon("activity")} ${escapeHtml(unit.workerCount)} radnika</span>` : ""}
+          <span>${renderRiskAssessmentRiskIcon("briefcase")} ${escapeHtml(String(linkedJobs.length))} poslova</span>
+          <span>${renderRiskAssessmentRiskIcon("building")} ${escapeHtml(String(children.length))} podstavki</span>
+        </div>
+        <div class="risk-assessment-org-actions">
+          <button type="button" class="ghost-button" data-risk-unit-add-child="${index}" data-risk-unit-child-type="subunit">+ Podorganizacija</button>
+          <button type="button" class="ghost-button" data-risk-unit-add-child="${index}" data-risk-unit-child-type="workplace">+ Radno mjesto</button>
+          <button type="button" class="ghost-button card-danger" data-risk-unit-remove="${index}" aria-label="Ukloni organizacijsku stavku">${renderRiskAssessmentRiskIcon("close")}</button>
         </div>
       </div>
-      ${renderRiskAssessmentAiProposalCard({ proposal: unit.aiProposal, prefix: "unit", index })}
       <div class="risk-assessment-detail-grid is-structure">
-        <label><span>Naziv organizacijske jedinice</span><input data-risk-unit-field="name" value="${escapeHtml(unit.name || "")}" placeholder="npr. Proizvodnja" /></label>
-        <label><span>Nadređena jedinica</span><select data-risk-unit-field="parentId">${renderRiskAssessmentUnitOptions(unit.parentId, unit.id)}</select></label>
-        <label><span>Odgovorna osoba</span><input data-risk-unit-field="responsiblePerson" value="${escapeHtml(unit.responsiblePerson || "")}" /></label>
-        <label><span>Broj radnika</span><input data-risk-unit-field="workerCount" value="${escapeHtml(unit.workerCount || "")}" /></label>
-        <label class="field-span-full"><span>Kratki opis</span><textarea data-risk-unit-field="shortDescription" rows="2">${escapeHtml(unit.shortDescription || "")}</textarea></label>
-        <label class="field-span-full"><span>Opis</span><textarea data-risk-unit-field="description" rows="3">${escapeHtml(unit.description || "")}</textarea></label>
-        <label class="field-span-full"><span>Detaljni opis</span><textarea data-risk-unit-field="detailedDescription" rows="4">${escapeHtml(unit.detailedDescription || "")}</textarea></label>
-        <label class="field-span-full"><span>Napomena</span><textarea data-risk-unit-field="note" rows="2">${escapeHtml(unit.note || "")}</textarea></label>
+        <label><span>Naziv</span><input data-risk-unit-field="name" value="${escapeHtml(unit.name || "")}" placeholder="${type === "workplace" ? "npr. Tajnica" : "npr. Uprava"}" /></label>
+        <label><span>Vrsta</span><select data-risk-unit-field="type">${renderRiskAssessmentUnitTypeOptions(type)}</select></label>
+        <label><span>Pod čime je</span><select data-risk-unit-field="parentId">${renderRiskAssessmentUnitOptions(unit.parentId, unit.id)}</select></label>
+        <label><span>Odgovorna osoba</span><input data-risk-unit-field="responsiblePerson" value="${escapeHtml(unit.responsiblePerson || "")}" placeholder="Ime i prezime" /></label>
+        <label><span>Broj radnika</span><input data-risk-unit-field="workerCount" value="${escapeHtml(unit.workerCount || "")}" inputmode="numeric" placeholder="npr. 4" /></label>
       </div>
+      <details class="risk-assessment-org-advanced">
+        <summary>
+          <span>Opisi, AI i napomene</span>
+          <small>${escapeHtml(unit.shortDescription || unit.description ? "Opisi su uneseni" : "Skriveno dok ne treba")}</small>
+        </summary>
+        <div class="risk-assessment-org-ai-actions">
+          <button type="button" class="ghost-button" data-risk-unit-ai="${index}" data-risk-unit-ai-action="generate">AI opis</button>
+          <button type="button" class="ghost-button" data-risk-unit-ai="${index}" data-risk-unit-ai-action="shorten">Skrati</button>
+          <button type="button" class="ghost-button" data-risk-unit-ai="${index}" data-risk-unit-ai-action="expand">Proširi</button>
+          <button type="button" class="ghost-button" data-risk-unit-ai="${index}" data-risk-unit-ai-action="professional">Stručno</button>
+        </div>
+        ${renderRiskAssessmentAiProposalCard({ proposal: unit.aiProposal, prefix: "unit", index })}
+        <div class="risk-assessment-detail-grid is-structure is-hidden-copy">
+          <label class="field-span-full"><span>Kratki opis</span><textarea data-risk-unit-field="shortDescription" rows="2">${escapeHtml(unit.shortDescription || "")}</textarea></label>
+          <label class="field-span-full"><span>Opis</span><textarea data-risk-unit-field="description" rows="3">${escapeHtml(unit.description || "")}</textarea></label>
+          <label class="field-span-full"><span>Detaljni opis</span><textarea data-risk-unit-field="detailedDescription" rows="4">${escapeHtml(unit.detailedDescription || "")}</textarea></label>
+          <label class="field-span-full"><span>Napomena</span><textarea data-risk-unit-field="note" rows="2">${escapeHtml(unit.note || "")}</textarea></label>
+        </div>
+      </details>
       <div class="risk-assessment-linked-jobs">
         ${linkedJobs.length
           ? linkedJobs.map((job) => `<span>${escapeHtml(job.jobTitle || "Radno mjesto")}</span>`).join("")
           : `<span class="is-empty">Nema povezanih poslova.</span>`}
       </div>
     `;
-    return row;
-  }));
+    return [row, ...children
+      .filter((child) => !nextVisited.has(String(child.id || "")))
+      .flatMap((child) => renderUnitNode(child, depth + 1, nextVisited))];
+  };
+
+  const rootUnits = (childrenByParent.get("") || []).length
+    ? (childrenByParent.get("") || [])
+    : riskAssessmentOrganizationUnitDrafts;
+  riskAssessmentOrganizationUnitsList.replaceChildren(...rootUnits.flatMap((unit) => renderUnitNode(unit)));
 }
 
 function applyRiskAssessmentJobAiInstruction(text = "", field = "description") {
@@ -131222,6 +131527,12 @@ function syncRiskAssessmentEditorAccess() {
   if (riskAssessmentAddUnitButton) {
     riskAssessmentAddUnitButton.hidden = !canManage;
   }
+  if (riskAssessmentStructureUploadButton) {
+    riskAssessmentStructureUploadButton.hidden = !canManage;
+  }
+  if (riskAssessmentStructureImportButton) {
+    riskAssessmentStructureImportButton.disabled = !canManage;
+  }
   if (riskAssessmentAddJobButton) {
     riskAssessmentAddJobButton.hidden = !canManage;
   }
@@ -131734,8 +132045,12 @@ function handleRiskAssessmentOrganizationUnitsInput(event) {
   }
   riskAssessmentOrganizationUnitDrafts[unitIndex] = {
     ...riskAssessmentOrganizationUnitDrafts[unitIndex],
-    [field]: target.value,
+    [field]: field === "type" ? normalizeRiskAssessmentUnitType(target.value) : target.value,
   };
+  if (["parentId", "type"].includes(field)) {
+    renderRiskAssessmentOrganizationUnits();
+    renderRiskAssessmentJobs();
+  }
   renderRiskAssessmentOverview();
   scheduleRiskAssessmentDraftAutosave();
 }
@@ -131747,6 +132062,11 @@ function handleRiskAssessmentOrganizationUnitsClick(event) {
   }
   const unitIndex = getRiskAssessmentUnitIndexFromElement(button);
   if (unitIndex < 0) {
+    return;
+  }
+  if (button.matches("[data-risk-unit-add-child]")) {
+    event.preventDefault();
+    addRiskAssessmentChildUnit(unitIndex, button.dataset.riskUnitChildType || "subunit");
     return;
   }
   if (button.matches("[data-risk-unit-ai]")) {

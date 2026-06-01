@@ -5011,10 +5011,42 @@
                     </label>
                   </section>
 
-                  <section id="risk-assessment-block-process" class="risk-assessment-editor-section" data-risk-assessment-block="process">
+                  <section id="risk-assessment-block-structure" class="risk-assessment-editor-section risk-assessment-subpanel" data-risk-assessment-block="structure">
                     <div class="risk-assessment-editor-section-head">
                       <div>
                         <span>03</span>
+                        <strong>Organizacijska struktura</strong>
+                      </div>
+                      <p>Hijerarhija od organizacijskih jedinica i podorganizacija do radnih mjesta.</p>
+                    </div>
+                    <div class="risk-assessment-structure-ai-panel">
+                      <div>
+                        <span class="section-kicker">AI sistematizacija</span>
+                        <strong>Učitaj sistematizaciju radnih mjesta</strong>
+                        <p class="inline-help">PDF ili DOCX dokument se čita kao nacrt strukture. Prepoznate jedinice i radna mjesta možeš odmah doraditi.</p>
+                      </div>
+                      <div class="risk-assessment-structure-upload" id="risk-assessment-structure-dropzone">
+                        <input id="risk-assessment-structure-file" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden />
+                        <button id="risk-assessment-structure-upload-button" type="button" class="ghost-button">Upload dokumenta</button>
+                        <button id="risk-assessment-structure-import-button" type="button" class="primary-button">AI složi strukturu</button>
+                        <span id="risk-assessment-structure-file-meta">Nema odabranog dokumenta.</span>
+                      </div>
+                      <p id="risk-assessment-structure-import-message" class="inline-help" aria-live="polite"></p>
+                    </div>
+                    <div class="offers-items-head">
+                      <div>
+                        <strong>Organizacijske jedinice</strong>
+                        <p class="inline-help">Dodaj glavnu jedinicu, zatim podorganizacije i radna mjesta. Detaljni opisi su skriveni dok ih ne otvoriš.</p>
+                      </div>
+                      <button id="risk-assessment-add-unit" type="button" class="ghost-button">+ Organizacijska jedinica</button>
+                    </div>
+                    <div id="risk-assessment-organization-units" class="risk-assessment-org-list"></div>
+                  </section>
+
+                  <section id="risk-assessment-block-process" class="risk-assessment-editor-section" data-risk-assessment-block="process">
+                    <div class="risk-assessment-editor-section-head">
+                      <div>
+                        <span>04</span>
                         <strong>Podaci prikupljeni na mjestima rada</strong>
                       </div>
                       <p>Jedan operativni blok za tehnološki proces, poslove, uređenje mjesta rada, osjetljive skupine i osnovna/posebna pravila ZNR.</p>
@@ -5080,7 +5112,7 @@
                   <section id="risk-assessment-block-sensitive" class="risk-assessment-editor-section risk-assessment-linked-section" data-risk-assessment-block="process">
                     <div class="risk-assessment-editor-section-head">
                       <div>
-                        <span>3B</span>
+                        <span>4B</span>
                         <strong>Posebno osjetljive skupine radnika</strong>
                       </div>
                       <p>Dio podataka prikupljenih na mjestu rada za maloljetnike, trudnice, radnike smanjenih sposobnosti i druge osjetljive skupine.</p>
@@ -5112,7 +5144,7 @@
                   <section id="risk-assessment-block-rules" class="risk-assessment-editor-section risk-assessment-linked-section" data-risk-assessment-block="process">
                     <div class="risk-assessment-editor-section-head">
                       <div>
-                        <span>3C</span>
+                        <span>4C</span>
                         <strong>Pravila zaštite na radu</strong>
                       </div>
                       <p>Osnovna i posebna pravila povezana s radnim prostorom, poslovima i utvrđenim uvjetima rada.</p>
@@ -5276,24 +5308,6 @@
                       <button id="risk-assessment-add-measure" type="button" class="ghost-button">+ Mjera</button>
                     </div>
                     <div id="risk-assessment-measures" class="risk-assessment-repeat-list"></div>
-                  </section>
-
-                  <section id="risk-assessment-block-structure" class="risk-assessment-editor-section risk-assessment-subpanel" data-risk-assessment-block="structure">
-                    <div class="risk-assessment-editor-section-head">
-                      <div>
-                        <span>04</span>
-                        <strong>Sistematizacija</strong>
-                      </div>
-                      <p>Hijerarhija organizacijskih jedinica, odgovorne osobe i povezani poslovi.</p>
-                    </div>
-                    <div class="offers-items-head">
-                      <div>
-                        <strong>Organizacijske jedinice</strong>
-                        <p class="inline-help">Dodaj jedinice i podjedinice, opise i odgovorne osobe. Poslove možeš povući u jedinicu.</p>
-                      </div>
-                      <button id="risk-assessment-add-unit" type="button" class="ghost-button">+ Jedinica</button>
-                    </div>
-                    <div id="risk-assessment-organization-units" class="risk-assessment-org-list"></div>
                   </section>
 
                   <section id="risk-assessment-block-jobs" class="risk-assessment-editor-section risk-assessment-subpanel" data-risk-assessment-block="jobs">
@@ -5524,8 +5538,8 @@
               <nav id="risk-assessment-dock" class="risk-assessment-dock" aria-label="Navigacija procjene rizika">
                 <button type="button" class="is-active" data-risk-assessment-jump="basic"><strong>Osnovno</strong><span>Tvrtka i datumi</span></button>
                 <button type="button" data-risk-assessment-jump="intro"><strong>Uvod</strong><span>Pravna osnova</span></button>
+                <button type="button" data-risk-assessment-jump="structure"><strong>Org. struktura</strong><span>Jedinice</span></button>
                 <button type="button" data-risk-assessment-jump="process"><strong>Mjesta rada</strong><span>Podaci prikupljeni</span></button>
-                <button type="button" data-risk-assessment-jump="structure"><strong>Struktura</strong><span>Jedinice</span></button>
                 <button type="button" data-risk-assessment-jump="findings"><strong>Prilozi</strong><span>Popisi i dokazi</span></button>
                 <button type="button" data-risk-assessment-jump="measures"><strong>Mjere</strong><span>Plan mjera</span></button>
                 <button type="button" data-risk-assessment-jump="jobs"><strong>Analiza</strong><span>Radna mjesta</span></button>
