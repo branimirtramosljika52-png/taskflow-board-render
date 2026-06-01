@@ -456,7 +456,7 @@ export function extractStlChemicalDataFromText(text = "", metadata = {}) {
   const hazardStatements = extractRegexMatches(extractSectionText(normalizedText, [2]) || normalizedText, STL_HAZARD_PATTERN, 40);
   const precautionaryStatements = extractRegexMatches(extractSectionText(normalizedText, [2]) || normalizedText, STL_PRECAUTION_PATTERN, 40);
 
-  const baseChemical = {
+  const chemical = {
     name: buildStlChemicalName(lines),
     casNumber: selectedCasNumbers[0] || "",
     casNumbers: selectedCasNumbers,
@@ -481,31 +481,14 @@ export function extractStlChemicalDataFromText(text = "", metadata = {}) {
     sourceFileName: String(metadata.fileName || ""),
     extractedAt: new Date().toISOString(),
   };
-  const chemicals = (selectedCasNumbers.length > 1
-    ? selectedCasNumbers.map((casNumber) => ({
-      ...baseChemical,
-      name: findStlChemicalNameNearCas(lines, casNumber) || baseChemical.name,
-      casNumber,
-      casNumbers: [casNumber],
-    }))
-    : [{
-      ...baseChemical,
-      name: baseChemical.name || findStlChemicalNameNearCas(lines, baseChemical.casNumber),
-    }]
-  ).filter((item, index, array) => (
-    array.findIndex((candidate) => (
-      candidate.casNumber
-        ? candidate.casNumber === item.casNumber
-        : String(candidate.name || "").toLocaleLowerCase("hr-HR") === String(item.name || "").toLocaleLowerCase("hr-HR")
-    )) === index
-  ));
+  chemical.name = chemical.name || findStlChemicalNameNearCas(lines, chemical.casNumber);
 
   return {
     ok: true,
     source: "stl",
     fileName: String(metadata.fileName || ""),
     textPreview: normalizedText.slice(0, 4000),
-    chemicals: chemicals.filter((item) => (
+    chemicals: [chemical].filter((item) => (
       item.name
       || item.casNumber
       || item.classification

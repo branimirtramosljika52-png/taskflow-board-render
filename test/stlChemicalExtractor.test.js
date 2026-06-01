@@ -49,7 +49,7 @@ test("STL file kind detection accepts PDF, DOC and DOCX", () => {
   assert.equal(detectStlFileKind({ fileName: "stl.doc" }), "doc");
 });
 
-test("STL chemical extractor creates separate chemicals for multiple CAS numbers", () => {
+test("STL chemical extractor keeps one chemical per STL while preserving CAS candidates", () => {
   const payload = extractStlChemicalDataFromText(`
     SIGURNOSNO-TEHNICKI LIST
     Naziv proizvoda: Smjesa za odmascivanje
@@ -66,10 +66,10 @@ test("STL chemical extractor creates separate chemicals for multiple CAS numbers
   `, { fileName: "smjesa.pdf" });
 
   assert.equal(payload.ok, true);
-  assert.equal(payload.chemicals.length, 2);
-  assert.deepEqual(payload.chemicals.map((item) => item.casNumber), ["71-36-3", "64-17-5"]);
-  assert.match(payload.chemicals[0].name, /butanol/i);
-  assert.match(payload.chemicals[1].name, /etanol/i);
+  assert.equal(payload.chemicals.length, 1);
+  assert.equal(payload.chemicals[0].name, "Smjesa za odmascivanje");
+  assert.equal(payload.chemicals[0].casNumber, "71-36-3");
+  assert.deepEqual(payload.chemicals[0].casNumbers, ["71-36-3", "64-17-5"]);
 });
 
 test("legacy DOC extraction keeps readable STL identifiers", () => {
