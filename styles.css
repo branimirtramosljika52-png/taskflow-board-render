@@ -72455,7 +72455,7 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
 }
 
 .ozo-worker-actor {
-  animation-duration: 1200ms;
+  animation-duration: 1120ms;
   animation-fill-mode: both;
   animation-timing-function: cubic-bezier(0.16, 0.95, 0.2, 1);
   bottom: 0;
@@ -72478,43 +72478,98 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
   will-change: transform;
 }
 
-.ozo-worker-part.is-body {
-  animation: risk-ozo-walk-body 1200ms cubic-bezier(0.16, 0.95, 0.2, 1) both;
-  clip-path: polygon(23% 0, 78% 0, 83% 58%, 70% 62%, 60% 54%, 40% 54%, 30% 62%, 16% 58%);
+.ozo-worker-zone {
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.ozo-worker-zone.is-zone-head {
+  clip-path: polygon(29% 0, 72% 0, 77% 18%, 24% 18%);
+}
+
+.ozo-worker-zone.is-zone-eyes {
+  clip-path: polygon(34% 11%, 66% 11%, 67% 17%, 33% 17%);
+}
+
+.ozo-worker-zone.is-zone-hearing {
+  clip-path: polygon(24% 8%, 76% 8%, 81% 22%, 19% 22%);
+}
+
+.ozo-worker-part.is-head {
+  clip-path: polygon(31% 0, 68% 0, 73% 22%, 28% 22%);
+  z-index: 6;
+}
+
+.ozo-worker-part.is-torso {
+  clip-path: polygon(19% 18%, 81% 18%, 88% 57%, 66% 61%, 58% 52%, 42% 52%, 34% 61%, 12% 57%);
   z-index: 3;
 }
 
 .ozo-worker-part.is-arm-left {
-  animation: risk-ozo-walk-arm-a 1200ms cubic-bezier(0.16, 0.95, 0.2, 1) both;
-  clip-path: polygon(10% 23%, 34% 22%, 39% 61%, 18% 64%);
+  clip-path: polygon(6% 23%, 34% 21%, 41% 63%, 16% 66%);
   transform-origin: 31% 25%;
-  z-index: 2;
+  z-index: 4;
 }
 
 .ozo-worker-part.is-arm-right {
-  animation: risk-ozo-walk-arm-b 1200ms cubic-bezier(0.16, 0.95, 0.2, 1) both;
-  clip-path: polygon(63% 22%, 90% 23%, 80% 64%, 58% 61%);
+  clip-path: polygon(66% 21%, 94% 23%, 84% 66%, 59% 63%);
   transform-origin: 68% 25%;
-  z-index: 2;
+  z-index: 4;
+}
+
+.ozo-worker-part.is-hands {
+  clip-path: polygon(4% 53%, 26% 53%, 28% 68%, 2% 68%, 72% 53%, 96% 53%, 98% 68%, 70% 68%);
+  z-index: 5;
 }
 
 .ozo-worker-part.is-leg-left {
-  animation: risk-ozo-walk-leg-a 1200ms cubic-bezier(0.16, 0.95, 0.2, 1) both;
-  clip-path: polygon(27% 54%, 51% 53%, 53% 98%, 21% 98%);
+  clip-path: polygon(27% 52%, 51% 51%, 54% 90%, 21% 90%);
   transform-origin: 43% 56%;
   z-index: 1;
 }
 
 .ozo-worker-part.is-leg-right {
-  animation: risk-ozo-walk-leg-b 1200ms cubic-bezier(0.16, 0.95, 0.2, 1) both;
-  clip-path: polygon(49% 53%, 73% 54%, 79% 98%, 47% 98%);
+  clip-path: polygon(49% 51%, 73% 52%, 80% 90%, 46% 90%);
   transform-origin: 57% 56%;
   z-index: 1;
 }
 
+.ozo-worker-part.is-feet {
+  clip-path: polygon(17% 86%, 55% 86%, 55% 100%, 14% 100%, 48% 86%, 84% 86%, 88% 100%, 48% 100%);
+  z-index: 2;
+}
+
+.ozo-worker-cinema.is-ozo-animating .ozo-worker-part.is-head,
+.ozo-worker-cinema.is-ozo-animating .ozo-worker-part.is-torso,
+.ozo-worker-cinema.is-ozo-animating .ozo-worker-part.is-hands,
+.ozo-worker-cinema.is-ozo-animating .ozo-worker-part.is-feet {
+  animation: risk-ozo-walk-core 1120ms cubic-bezier(0.16, 0.95, 0.2, 1) both;
+}
+
+.ozo-worker-cinema.is-ozo-animating .ozo-worker-part.is-arm-left {
+  animation: risk-ozo-walk-arm-a 1120ms cubic-bezier(0.16, 0.95, 0.2, 1) both;
+}
+
+.ozo-worker-cinema.is-ozo-animating .ozo-worker-part.is-arm-right {
+  animation: risk-ozo-walk-arm-b 1120ms cubic-bezier(0.16, 0.95, 0.2, 1) both;
+}
+
+.ozo-worker-cinema.is-ozo-animating .ozo-worker-part.is-leg-left {
+  animation: risk-ozo-walk-leg-a 1120ms cubic-bezier(0.16, 0.95, 0.2, 1) both;
+}
+
+.ozo-worker-cinema.is-ozo-animating .ozo-worker-part.is-leg-right {
+  animation: risk-ozo-walk-leg-b 1120ms cubic-bezier(0.16, 0.95, 0.2, 1) both;
+}
+
 .ozo-worker-actor.is-male {
-  animation-name: risk-ozo-actor-male-arrive;
   left: 25%;
+}
+
+.ozo-worker-cinema.is-ozo-animating .ozo-worker-actor.is-male {
+  animation-name: risk-ozo-actor-male-arrive;
 }
 
 .ozo-worker-actor.is-male .ozo-worker-part {
@@ -72523,9 +72578,12 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
 
 .ozo-worker-actor.is-female {
   animation-delay: 90ms;
-  animation-name: risk-ozo-actor-female-arrive;
   left: 65%;
   width: clamp(128px, 10.4vw, 196px);
+}
+
+.ozo-worker-cinema.is-ozo-animating .ozo-worker-actor.is-female {
+  animation-name: risk-ozo-actor-female-arrive;
 }
 
 .ozo-worker-actor.is-female .ozo-worker-part {
@@ -72534,7 +72592,6 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
 }
 
 .ozo-worker-floor-shadow {
-  animation: risk-ozo-actor-shadow-arrive 1180ms cubic-bezier(0.16, 0.95, 0.2, 1) both;
   background: radial-gradient(ellipse at center, rgba(15, 23, 42, 0.28), rgba(15, 23, 42, 0.08) 44%, transparent 72%);
   bottom: 4.5%;
   height: 9%;
@@ -72542,6 +72599,10 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
   transform-origin: center;
   width: clamp(130px, 10.6vw, 205px);
   z-index: 2;
+}
+
+.ozo-worker-cinema.is-ozo-animating .ozo-worker-floor-shadow {
+  animation: risk-ozo-actor-shadow-arrive 1120ms cubic-bezier(0.16, 0.95, 0.2, 1) both;
 }
 
 .ozo-worker-floor-shadow.is-male {
@@ -72567,31 +72628,37 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
 }
 
 .ozo-gear-worker-layer.is-male {
-  animation-name: risk-ozo-actor-male-arrive;
   left: 25%;
+}
+
+.ozo-worker-cinema.is-ozo-animating .ozo-gear-worker-layer.is-male {
+  animation-name: risk-ozo-actor-male-arrive;
 }
 
 .ozo-gear-worker-layer.is-female {
   animation-delay: 90ms;
-  animation-name: risk-ozo-actor-female-arrive;
   left: 65%;
   width: clamp(128px, 10.4vw, 196px);
 }
 
-.ozo-worker-cinema .ozo-gear-worker-layer.is-male .ozo-gear-head { left: 32%; top: 5.8%; width: 24%; height: 5.2%; }
-.ozo-worker-cinema .ozo-gear-worker-layer.is-female .ozo-gear-head { left: 39%; top: 6%; width: 22%; height: 4.8%; }
-.ozo-worker-cinema .ozo-gear-worker-layer.is-male .ozo-gear-eyes { left: 35.5%; top: 13.8%; width: 15.5%; height: 1.5%; }
-.ozo-worker-cinema .ozo-gear-worker-layer.is-female .ozo-gear-eyes { left: 43%; top: 13.8%; width: 13.8%; height: 1.35%; }
-.ozo-worker-cinema .ozo-gear-worker-layer.is-male .ozo-gear-hearing { left: 31%; top: 11.8%; width: 20%; height: 5%; }
-.ozo-worker-cinema .ozo-gear-worker-layer.is-female .ozo-gear-hearing { left: 39%; top: 12%; width: 18%; height: 4.5%; }
-.ozo-worker-cinema .ozo-gear-worker-layer.is-male .ozo-gear-respiratory { left: 38.5%; top: 16.3%; width: 10%; height: 3.1%; }
-.ozo-worker-cinema .ozo-gear-worker-layer.is-female .ozo-gear-respiratory { left: 45.2%; top: 16.1%; width: 9.5%; height: 2.8%; }
-.ozo-worker-cinema .ozo-gear-worker-layer.is-male .ozo-gear-body { left: 29%; top: 22.3%; width: 34%; height: 25%; }
-.ozo-worker-cinema .ozo-gear-worker-layer.is-female .ozo-gear-body { left: 36%; top: 22.6%; width: 32%; height: 24.2%; }
-.ozo-worker-cinema .ozo-gear-worker-layer.is-male .ozo-gear-hands { left: 18%; top: 49.5%; width: 50%; height: 8.2%; }
-.ozo-worker-cinema .ozo-gear-worker-layer.is-female .ozo-gear-hands { left: 28%; top: 49.6%; width: 46%; height: 7.8%; }
-.ozo-worker-cinema .ozo-gear-worker-layer.is-male .ozo-gear-feet { left: 19%; top: 90.2%; width: 42%; height: 6.4%; }
-.ozo-worker-cinema .ozo-gear-worker-layer.is-female .ozo-gear-feet { left: 30%; top: 90.6%; width: 39%; height: 6%; }
+.ozo-worker-cinema.is-ozo-animating .ozo-gear-worker-layer.is-female {
+  animation-name: risk-ozo-actor-female-arrive;
+}
+
+.ozo-worker-cinema .ozo-gear-worker-layer.is-male .ozo-gear-head { left: 30.5%; top: 4.9%; width: 27%; height: 6.4%; }
+.ozo-worker-cinema .ozo-gear-worker-layer.is-female .ozo-gear-head { left: 37.7%; top: 5.1%; width: 24.5%; height: 5.9%; }
+.ozo-worker-cinema .ozo-gear-worker-layer.is-male .ozo-gear-eyes { left: 34.7%; top: 13.5%; width: 17%; height: 2%; }
+.ozo-worker-cinema .ozo-gear-worker-layer.is-female .ozo-gear-eyes { left: 42.4%; top: 13.4%; width: 15.2%; height: 1.85%; }
+.ozo-worker-cinema .ozo-gear-worker-layer.is-male .ozo-gear-hearing { left: 29.7%; top: 10.6%; width: 22.8%; height: 6.5%; }
+.ozo-worker-cinema .ozo-gear-worker-layer.is-female .ozo-gear-hearing { left: 37.8%; top: 10.8%; width: 20.8%; height: 6%; }
+.ozo-worker-cinema .ozo-gear-worker-layer.is-male .ozo-gear-respiratory { left: 38.1%; top: 16.2%; width: 10.8%; height: 3.5%; }
+.ozo-worker-cinema .ozo-gear-worker-layer.is-female .ozo-gear-respiratory { left: 44.9%; top: 16%; width: 10.2%; height: 3.2%; }
+.ozo-worker-cinema .ozo-gear-worker-layer.is-male .ozo-gear-body { left: 27.8%; top: 21.2%; width: 36.2%; height: 28.4%; }
+.ozo-worker-cinema .ozo-gear-worker-layer.is-female .ozo-gear-body { left: 35%; top: 21.4%; width: 34.2%; height: 27.4%; }
+.ozo-worker-cinema .ozo-gear-worker-layer.is-male .ozo-gear-hands { left: 15.2%; top: 49.3%; width: 55%; height: 8.4%; }
+.ozo-worker-cinema .ozo-gear-worker-layer.is-female .ozo-gear-hands { left: 25.6%; top: 49.4%; width: 51.2%; height: 8%; }
+.ozo-worker-cinema .ozo-gear-worker-layer.is-male .ozo-gear-feet { left: 16.4%; top: 89.6%; width: 47%; height: 7.1%; }
+.ozo-worker-cinema .ozo-gear-worker-layer.is-female .ozo-gear-feet { left: 27.7%; top: 90%; width: 43.3%; height: 6.7%; }
 .ozo-worker-cinema .ozo-gear-worker-layer.is-male .ozo-gear-knees { left: 23%; top: 68.5%; width: 36%; height: 5.4%; }
 .ozo-worker-cinema .ozo-gear-worker-layer.is-female .ozo-gear-knees { left: 32%; top: 68.7%; width: 35%; height: 5.1%; }
 .ozo-worker-cinema .ozo-gear-worker-layer.is-male .ozo-gear-fall { left: 29%; top: 22.1%; width: 34%; height: 28%; }
@@ -72867,8 +72934,11 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
 }
 
 .risk-assessment-ppe-compact .ozo-gear-markers.is-active .ozo-gear {
-  animation: risk-ozo-gear-arrive 640ms cubic-bezier(0.18, 0.9, 0.22, 1) 90ms both;
   opacity: 0.94;
+}
+
+.risk-assessment-ppe-compact .ozo-worker-cinema.is-ozo-animating .ozo-gear-markers.is-active .ozo-gear {
+  animation: risk-ozo-gear-arrive 620ms cubic-bezier(0.18, 0.9, 0.22, 1) 260ms both;
 }
 
 @keyframes risk-ozo-worker-arrive {
@@ -72915,13 +72985,25 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
   0% {
     opacity: 0;
     filter: blur(1.8px) saturate(0.9);
-    transform: perspective(1200px) translate3d(-10%, 42px, -260px) rotateY(7deg) scale(0.82);
+    transform: perspective(1200px) translate3d(-12%, 52px, -320px) rotateY(7deg) scale(0.78);
   }
 
-  62% {
+  24% {
+    opacity: 0.86;
+    filter: blur(0.7px) saturate(0.98);
+    transform: perspective(1200px) translate3d(-5%, 24px, -150px) rotateY(3.4deg) scale(0.89);
+  }
+
+  48% {
+    opacity: 1;
+    filter: blur(0.2px) saturate(1.03);
+    transform: perspective(1200px) translate3d(0.8%, 7px, -46px) rotateY(-1.8deg) scale(0.98);
+  }
+
+  72% {
     opacity: 1;
     filter: blur(0) saturate(1.04);
-    transform: perspective(1200px) translate3d(1.5%, -5px, 38px) rotateY(-1.4deg) scale(1.035);
+    transform: perspective(1200px) translate3d(1.5%, -5px, 34px) rotateY(-1.2deg) scale(1.026);
   }
 
   100% {
@@ -72935,13 +73017,25 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
   0% {
     opacity: 0;
     filter: blur(1.8px) saturate(0.9);
-    transform: perspective(1200px) translate3d(10%, 42px, -260px) rotateY(-7deg) scale(0.82);
+    transform: perspective(1200px) translate3d(12%, 52px, -320px) rotateY(-7deg) scale(0.78);
   }
 
-  62% {
+  24% {
+    opacity: 0.86;
+    filter: blur(0.7px) saturate(0.98);
+    transform: perspective(1200px) translate3d(5%, 24px, -150px) rotateY(-3.4deg) scale(0.89);
+  }
+
+  48% {
+    opacity: 1;
+    filter: blur(0.2px) saturate(1.03);
+    transform: perspective(1200px) translate3d(-0.8%, 7px, -46px) rotateY(1.8deg) scale(0.98);
+  }
+
+  72% {
     opacity: 1;
     filter: blur(0) saturate(1.04);
-    transform: perspective(1200px) translate3d(-1.5%, -5px, 38px) rotateY(1.4deg) scale(1.035);
+    transform: perspective(1200px) translate3d(-1.5%, -5px, 34px) rotateY(1.2deg) scale(1.026);
   }
 
   100% {
@@ -72968,25 +73062,25 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
   }
 }
 
-@keyframes risk-ozo-walk-body {
+@keyframes risk-ozo-walk-core {
   0% {
-    transform: translateY(10px) rotate(-1.2deg) scale(0.985);
+    transform: translateY(10px) rotate(-0.7deg) scale(0.985);
   }
 
-  18% {
-    transform: translateY(3px) rotate(0.9deg) scale(1.01);
+  22% {
+    transform: translateY(3px) rotate(0.55deg) scale(1.006);
   }
 
-  36% {
-    transform: translateY(8px) rotate(-0.8deg) scale(1);
+  44% {
+    transform: translateY(8px) rotate(-0.5deg) scale(0.998);
   }
 
-  58% {
-    transform: translateY(1px) rotate(0.45deg) scale(1.006);
+  66% {
+    transform: translateY(1px) rotate(0.28deg) scale(1.004);
   }
 
-  78% {
-    transform: translateY(4px) rotate(-0.25deg) scale(1.002);
+  84% {
+    transform: translateY(3px) rotate(-0.16deg) scale(1.001);
   }
 
   100% {
@@ -73120,5 +73214,18 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
   .ozo-worker-floor-shadow.is-female {
     left: 55%;
     width: clamp(94px, 26vw, 124px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ozo-worker-cinema.is-ozo-animating .ozo-worker-actor,
+  .ozo-worker-cinema.is-ozo-animating .ozo-worker-part,
+  .ozo-worker-cinema.is-ozo-animating .ozo-worker-floor-shadow,
+  .ozo-worker-cinema.is-ozo-animating .ozo-gear-worker-layer,
+  .risk-assessment-ppe-compact .ozo-worker-cinema.is-ozo-animating .ozo-gear-markers.is-active .ozo-gear {
+    animation: none !important;
+    filter: none !important;
+    opacity: 1 !important;
+    transform: none !important;
   }
 }
