@@ -5409,6 +5409,11 @@ function normalizeRiskAssessmentChemicals(items = []) {
     spillMeasures: normalizeText(item?.spillMeasures),
     source: normalizeText(item?.source),
     sourceFileName: normalizeText(item?.sourceFileName),
+    stlFileName: normalizeText(item?.stlFileName ?? item?.sourceFileName),
+    stlFileType: normalizeText(item?.stlFileType),
+    stlFileSize: Number.isFinite(Number(item?.stlFileSize)) ? Number(item.stlFileSize) : 0,
+    stlUploadedAt: normalizeOptionalDateTime(item?.stlUploadedAt ?? item?.extractedAt) ?? "",
+    stlTextPreview: normalizeText(item?.stlTextPreview).slice(0, 12000),
     pubChemCid: normalizeText(item?.pubChemCid ?? item?.cid),
     pubChemUrl: normalizeText(item?.pubChemUrl),
     pubChemName: normalizeText(item?.pubChemName),
@@ -5444,6 +5449,8 @@ function normalizeRiskAssessmentChemicals(items = []) {
     || item.exposureLimits
     || item.ppe
     || item.storage
+    || item.stlFileName
+    || item.stlTextPreview
     || item.note
   ));
 }
@@ -9217,6 +9224,9 @@ export function filterRiskAssessments(
         entry.spillMeasures,
         entry.source,
         entry.sourceFileName,
+        entry.stlFileName,
+        entry.stlFileType,
+        entry.stlTextPreview,
         entry.pubChemCid,
         entry.probability,
         entry.consequence,

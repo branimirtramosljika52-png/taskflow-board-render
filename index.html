@@ -5384,31 +5384,16 @@
                         <span>08</span>
                         <strong>Kemikalije i STL</strong>
                       </div>
-                      <p>Registar kemikalija za procjenu rizika, PubChem podaci i automatsko izvlačenje iz sigurnosno-tehničkih listova.</p>
+                      <p>STL upload i uređiva tablica kemikalija za procjenu rizika.</p>
                     </div>
                     <div class="risk-assessment-chemical-workspace">
-                      <section class="risk-assessment-chemical-panel">
-                        <div>
-                          <span class="section-kicker">PubChem</span>
-                          <strong>Dodaj kemikaliju iz baze</strong>
-                          <p class="inline-help">Pretraži naziv, CAS broj ili trgovački naziv. Sustav povlači CID, formulu, CAS, GHS oznake i sigurnosne izjave.</p>
-                        </div>
-                        <div class="risk-assessment-chemical-search">
-                          <input id="risk-assessment-chemical-search" type="search" placeholder="npr. ethanol, acetone, 64-17-5..." />
-                          <button id="risk-assessment-chemical-search-button" type="button" class="primary-button">Pretraži</button>
-                        </div>
-                        <p id="risk-assessment-chemical-search-message" class="inline-help" aria-live="polite"></p>
-                        <div id="risk-assessment-chemical-results" class="risk-assessment-chemical-results"></div>
-                      </section>
-
                       <section class="risk-assessment-chemical-panel is-import">
                         <div class="risk-assessment-stl-assistant-head">
                           <div>
-                            <span class="section-kicker">STL AI ekstrakcija</span>
-                            <strong>Premium uvoz sigurnosno-tehničkog lista</strong>
-                            <p class="inline-help">Jedan ili više PDF/DOC/DOCX STL dokumenata očitavaju se odvojeno. Svaki STL dokument dodaje jednu kemijsku stavku s provjerom CAS broja i ključnih polja.</p>
+                            <span class="section-kicker">STL upload</span>
+                            <strong>Učitaj sigurnosno-tehnički list</strong>
+                            <p class="inline-help">PDF/DOC/DOCX STL očita se u zaseban red tablice. Naziv dokumenta i izvučeni tekst spremaju se u procjenu za kasnije pretraživanje.</p>
                           </div>
-                          <span class="risk-assessment-stl-ai-badge">AI</span>
                         </div>
                         <div id="risk-assessment-chemical-stl-dropzone" class="risk-assessment-stl-dropzone" data-stl-phase="idle">
                           <input id="risk-assessment-chemical-stl-file" class="sr-only" type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple />
@@ -5421,17 +5406,6 @@
                           </label>
                           <div id="risk-assessment-chemical-stl-file-meta" class="risk-assessment-stl-file-meta">Nema odabranog dokumenta.</div>
                         </div>
-                        <ol class="risk-assessment-stl-workflow" aria-label="Koraci obrade STL dokumenta">
-                          <li data-stl-step="idle" class="is-active"><span>1</span><strong>Odabir</strong><small>PDF/DOC/DOCX</small></li>
-                          <li data-stl-step="reading"><span>2</span><strong>AI očitanje</strong><small>Tekst i tablice</small></li>
-                          <li data-stl-step="review"><span>3</span><strong>Provjera</strong><small>H/P, OZO, GVI</small></li>
-                          <li data-stl-step="complete"><span>4</span><strong>Dodano</strong><small>Procjena</small></li>
-                        </ol>
-                        <div class="risk-assessment-stl-extract-grid" aria-label="Polja koja se izvlače iz STL-a">
-                          <span><strong>Identifikacija</strong><small>Naziv, CAS, EC</small></span>
-                          <span><strong>GHS</strong><small>Klasifikacija i piktogrami</small></span>
-                          <span><strong>Zaštita</strong><small>OZO, prva pomoć, skladištenje</small></span>
-                        </div>
                         <div class="risk-assessment-chemical-upload">
                           <button id="risk-assessment-chemical-stl-button" type="button" class="primary-button">Pokreni STL ekstrakciju</button>
                         </div>
@@ -5440,31 +5414,12 @@
                       </section>
                     </div>
 
-                    <section class="risk-assessment-chemical-panel is-official">
-                      <div>
-                        <span class="section-kicker">Službena baza tvari</span>
-                        <strong>Narodne novine 91/2018: GVI, KGVI i BGV</strong>
-                        <p class="inline-help">Pretraži službeni popis tvari iz pravilnika. Pri uvozu kemikalija sustav prvo traži GVI/KGVI iz Priloga I, a ako ga nema dodaje smjernicu iz Priloga II.</p>
-                      </div>
-                      <div class="risk-assessment-official-substance-toolbar">
-                        <input id="risk-assessment-official-substance-search" type="search" placeholder="Naziv tvari, CAS, EC, direktiva..." />
-                        <select id="risk-assessment-official-substance-type">
-                          <option value="all">Sve vrijednosti</option>
-                          <option value="gvi">GVI / KGVI</option>
-                          <option value="bgv">BGV</option>
-                        </select>
-                        <a class="ghost-button" href="https://narodne-novine.nn.hr/clanci/sluzbeni/2018_10_91_1774.html" target="_blank" rel="noopener noreferrer">NN 91/2018</a>
-                      </div>
-                      <p id="risk-assessment-official-substances-summary" class="inline-help" aria-live="polite"></p>
-                      <div id="risk-assessment-official-substances" class="risk-assessment-official-substances"></div>
-                    </section>
-
                     <div class="offers-items-head">
                       <div>
-                        <strong>Popis kemikalija u procjeni</strong>
-                        <p class="inline-help">Svaku stavku možeš ručno urediti, povezati s poslovima i koristiti kao izvor za radne tvari i kemijske štetnosti.</p>
+                        <strong>Tablica kemikalija u procjeni</strong>
+                        <p class="inline-help">Svaki red možeš ručno mijenjati. GVI/KGVI se popunjava iz Priloga I; ako ga nema, koristi se Prilog II/III smjernica.</p>
                       </div>
-                      <button id="risk-assessment-add-chemical" type="button" class="ghost-button">+ Kemikalija</button>
+                      <button id="risk-assessment-add-chemical" type="button" class="ghost-button">+ Redak</button>
                     </div>
                     <div id="risk-assessment-chemicals" class="risk-assessment-chemical-list"></div>
                   </section>

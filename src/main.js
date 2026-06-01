@@ -122901,6 +122901,11 @@ function createRiskAssessmentChemicalDraft(initial = {}) {
     spillMeasures: String(initial.spillMeasures || ""),
     source: String(initial.source || ""),
     sourceFileName: String(initial.sourceFileName || ""),
+    stlFileName: String(initial.stlFileName || initial.sourceFileName || ""),
+    stlFileType: String(initial.stlFileType || ""),
+    stlFileSize: Number.isFinite(Number(initial.stlFileSize)) ? Number(initial.stlFileSize) : 0,
+    stlUploadedAt: String(initial.stlUploadedAt || initial.extractedAt || ""),
+    stlTextPreview: String(initial.stlTextPreview || "").slice(0, 12000),
     pubChemCid: String(initial.pubChemCid || initial.cid || ""),
     pubChemUrl: String(initial.pubChemUrl || ""),
     pubChemName: String(initial.pubChemName || ""),
@@ -123507,18 +123512,15 @@ function renderRiskAssessmentStlImportPreview() {
     return;
   }
   const importedAt = formatRiskAssessmentStlImportedAt(summary.importedAt || imports[0]?.importedAt || "");
-  const averageCompleteness = Number(summary.averageCompleteness || 0);
-  const averageTone = getRiskAssessmentStlCompletenessTone(averageCompleteness);
-  const averageLabel = getRiskAssessmentStlCompletenessLabel(averageCompleteness);
   const fileCount = Number(summary.fileCount || imports.length + failures.length);
-  const headerTitle = fileCount > 1
-    ? `${fileCount} STL dokumenta obrađena zasebno`
-    : totalCount === 1
-      ? "STL ekstrakcija je dodala 1 kemikaliju"
-      : `STL ekstrakcija je dodala ${totalCount} kemikalija`;
-  const headerMeta = fileCount > 1
-    ? `${imports.length} uspješno · ${failures.length} za provjeru · ${totalCount} kemikalija${importedAt ? ` · ${importedAt}` : ""}`
-    : [imports[0]?.fileName, importedAt].filter(Boolean).join(" · ");
+  const headerTitle = totalCount
+    ? `Dodano ${totalCount} redaka iz STL-a`
+    : "STL je obrađen bez dodanih redaka";
+  const headerMeta = [
+    `${fileCount} ${fileCount === 1 ? "dokument" : "dokumenta"}`,
+    failures.length ? `${failures.length} za ručnu provjeru` : "",
+    importedAt,
+  ].filter(Boolean).join(" · ");
   riskAssessmentChemicalStlPreview.hidden = false;
   riskAssessmentChemicalStlPreview.innerHTML = `
     <div class="risk-assessment-stl-preview-head">
@@ -123528,46 +123530,6 @@ function renderRiskAssessmentStlImportPreview() {
         <small>${escapeHtml(headerMeta)}</small>
       </div>
       <button type="button" class="ghost-button" data-risk-stl-review-open>Otvori pregled</button>
-    </div>
-    <div class="risk-assessment-stl-preview-score is-${escapeHtml(averageTone)}">
-      <div>
-        <strong>${escapeHtml(averageLabel)}</strong>
-        <small>${escapeHtml(`${averageCompleteness}% prosječno popunjenih ključnih polja`)}</small>
-      </div>
-      <span aria-hidden="true"><i style="width: ${Math.max(4, Math.min(100, averageCompleteness))}%"></i></span>
-    </div>
-    <div class="risk-assessment-stl-preview-list">
-      ${imports.map((item) => {
-        const itemPercent = Number(item.averageCompleteness || 0);
-        const itemTone = getRiskAssessmentStlCompletenessTone(itemPercent);
-        const itemImportedAt = formatRiskAssessmentStlImportedAt(item.importedAt);
-        return `
-          <section class="risk-assessment-stl-preview-file">
-            <div class="risk-assessment-stl-preview-file-head">
-              <span>STL</span>
-              <div>
-                <strong>${escapeHtml(item.fileName || "STL dokument")}</strong>
-                <small>${escapeHtml(`${item.count || 0} kemikalija · ${itemPercent}% popunjenost${itemImportedAt ? ` · ${itemImportedAt}` : ""}`)}</small>
-              </div>
-              <span class="risk-assessment-stl-file-score is-${escapeHtml(itemTone)}">${escapeHtml(getRiskAssessmentStlCompletenessLabel(itemPercent))}</span>
-            </div>
-            ${item.chemicals.map(renderRiskAssessmentStlChemicalPreviewCard).join("")}
-          </section>
-        `;
-      }).join("")}
-      ${failures.map((failure) => `
-        <article class="risk-assessment-stl-preview-file is-warning">
-          <div class="risk-assessment-stl-preview-file-head">
-            <span>!</span>
-            <div>
-              <strong>${escapeHtml(failure.fileName || "STL dokument")}</strong>
-              <small>${escapeHtml(failure.message || "Dokument je obrađen, ali nije dodana kemikalija.")}</small>
-            </div>
-            <span class="risk-assessment-stl-file-score is-warning">Provjeri ručno</span>
-          </div>
-          <p class="inline-help">Ovaj dokument nije pomiješan s ostalima. Možeš ga ponovno učitati ili ručno dodati kemikaliju.</p>
-        </article>
-      `).join("")}
     </div>
   `;
   if (riskAssessmentStlReviewOpen) {
@@ -123871,6 +123833,122 @@ function getRiskAssessmentChemicalRiskDisplay(chemical = {}) {
   return { riskLevel, score, tone: getJobHazardRiskTone(riskLevel) };
 }
 
+function renderRiskAssessmentChemicalEditorTextInput(field, value = "", placeholder = "", extraAttributes = "") {
+  return `<input data-risk-chemical-field="${escapeHtml(field)}" value="${escapeHtml(value || "")}" placeholder="${escapeHtml(placeholder)}"${extraAttributes ? ` ${extraAttributes}` : ""} />`;
+}
+
+function renderRiskAssessmentChemicalEditorTextarea(field, value = "", rows = 2, placeholder = "") {
+  return `<textarea data-risk-chemical-field="${escapeHtml(field)}" rows="${escapeHtml(String(rows))}" placeholder="${escapeHtml(placeholder)}">${escapeHtml(value || "")}</textarea>`;
+}
+
+function renderRiskAssessmentChemicalEditorListTextarea(field, value = [], rows = 2, placeholder = "") {
+  return `<textarea data-risk-chemical-list-field="${escapeHtml(field)}" rows="${escapeHtml(String(rows))}" placeholder="${escapeHtml(placeholder)}">${escapeHtml(joinRiskAssessmentChemicalValues(value))}</textarea>`;
+}
+
+function getRiskAssessmentChemicalSourceMeta(chemical = {}) {
+  return [
+    chemical.stlFileName || chemical.sourceFileName ? `STL: ${chemical.stlFileName || chemical.sourceFileName}` : "",
+    chemical.stlUploadedAt ? formatRiskAssessmentStlImportedAt(chemical.stlUploadedAt) : "",
+    chemical.source && chemical.source !== "STL" ? chemical.source : "",
+  ].filter(Boolean).join(" · ");
+}
+
+function renderRiskAssessmentChemicalEditorTable() {
+  return `
+    <div class="risk-assessment-chemical-register-head">
+      <div>
+        <span class="section-kicker">Uređiva tablica</span>
+        <strong>Procjena kemijskih štetnosti</strong>
+        <small>Svaki STL i ručni unos je zaseban red. Redovi se spremaju s procjenom i ulaze u pretragu.</small>
+      </div>
+      <span>${escapeHtml(String(riskAssessmentChemicalDrafts.length))} kemikalija</span>
+    </div>
+    <div class="risk-assessment-chemical-register-scroll">
+      <table class="risk-assessment-chemical-register-table risk-assessment-chemical-editor-table">
+        <thead>
+          <tr>
+            <th>Red.</th>
+            <th>Kemikalija</th>
+            <th>CAS</th>
+            <th>GVI</th>
+            <th>KGVI</th>
+            <th>Napomena</th>
+            <th>Prilog II/III</th>
+            <th>Štetnost</th>
+            <th>GHS</th>
+            <th>H oznake</th>
+            <th>EUH</th>
+            <th>P oznake</th>
+            <th>Vjerojatnost</th>
+            <th>Posljedice</th>
+            <th>Rizik</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${riskAssessmentChemicalDrafts.length ? riskAssessmentChemicalDrafts.map((chemical, index) => {
+            const risk = getRiskAssessmentChemicalRiskDisplay(chemical);
+            const sourceMeta = getRiskAssessmentChemicalSourceMeta(chemical);
+            return `
+              <tr data-risk-chemical-index="${escapeHtml(String(index))}">
+                <td class="is-index">${escapeHtml(String(index + 1))}.</td>
+                <td class="is-chemical-name">
+                  ${renderRiskAssessmentChemicalEditorTextInput("name", chemical.name, "Naziv tvari")}
+                  ${sourceMeta ? `<small>${escapeHtml(sourceMeta)}</small>` : ""}
+                </td>
+                <td>${renderRiskAssessmentChemicalEditorTextInput("casNumber", chemical.casNumber, "CAS")}</td>
+                <td class="is-limit-cell">
+                  ${renderRiskAssessmentChemicalEditorTextInput("officialGviPpm", chemical.officialGviPpm, "ppm")}
+                  ${renderRiskAssessmentChemicalEditorTextInput("officialGviMgM3", chemical.officialGviMgM3, "mg/m3")}
+                </td>
+                <td class="is-limit-cell">
+                  ${renderRiskAssessmentChemicalEditorTextInput("officialKgviPpm", chemical.officialKgviPpm, "ppm")}
+                  ${renderRiskAssessmentChemicalEditorTextInput("officialKgviMgM3", chemical.officialKgviMgM3, "mg/m3")}
+                </td>
+                <td class="is-note-cell">
+                  ${renderRiskAssessmentChemicalEditorTextInput("officialLimitNote", chemical.officialLimitNote, "Napomena")}
+                  ${renderRiskAssessmentChemicalEditorTextInput("officialDirective", chemical.officialDirective, "Direktiva")}
+                </td>
+                <td class="is-prilog-cell">
+                  ${renderRiskAssessmentChemicalEditorTextInput("prilogIiDivision", chemical.prilogIiDivision, "A-E")}
+                  ${renderRiskAssessmentChemicalEditorTextInput("prilogIiVaporGvi", chemical.prilogIiVaporGvi, "pare")}
+                  ${renderRiskAssessmentChemicalEditorTextInput("prilogIiDustGvi", chemical.prilogIiDustGvi, "prašina")}
+                </td>
+                <td>${renderRiskAssessmentChemicalEditorTextInput("estimatedConsequenceSize", chemical.estimatedConsequenceSize, "Mala/Srednja/Velika")}</td>
+                <td class="is-list-cell">
+                  ${renderRiskAssessmentChemicalEditorListTextarea("pictograms", chemical.pictograms, 2, "GHS02...")}
+                  ${renderRiskAssessmentChemicalEditorListTextarea("signalWords", chemical.signalWords, 1, "Opasnost/Upozorenje")}
+                </td>
+                <td>${renderRiskAssessmentChemicalEditorListTextarea("hazardStatements", chemical.hazardStatements, 3, "H225...")}</td>
+                <td>${renderRiskAssessmentChemicalEditorTextInput("classification", chemical.classification, "EUH/klasifikacija")}</td>
+                <td>${renderRiskAssessmentChemicalEditorListTextarea("precautionaryStatements", chemical.precautionaryStatements, 3, "P210...")}</td>
+                <td>
+                  <select data-risk-chemical-field="probability">${renderRiskAssessmentCompactOptions(RISK_ASSESSMENT_PROBABILITY_OPTIONS, chemical.probability || "")}</select>
+                </td>
+                <td>
+                  <select data-risk-chemical-field="consequence">${renderRiskAssessmentCompactOptions(RISK_ASSESSMENT_CONSEQUENCE_OPTIONS, chemical.consequence || "")}</select>
+                </td>
+                <td class="is-risk is-${escapeHtml(risk.tone)}">
+                  <strong>${escapeHtml(risk.score || "-")}</strong>
+                  <span>${escapeHtml(risk.riskLevel || "-")}</span>
+                </td>
+                <td class="is-row-actions">
+                  <button type="button" class="ghost-button" data-risk-chemical-apply="${escapeHtml(String(index))}">Poslovi</button>
+                  <button type="button" class="ghost-button card-danger" data-risk-chemical-remove="${escapeHtml(String(index))}">Ukloni</button>
+                </td>
+              </tr>
+            `;
+          }).join("") : `
+            <tr>
+              <td colspan="16" class="is-empty-row">Nema redaka. Učitaj STL ili dodaj novi redak.</td>
+            </tr>
+          `}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
 function renderRiskAssessmentChemicalRegisterTable() {
   const regulationTitle = "Pravilnik o zaštiti radnika od izloženosti opasnim kemikalijama na radu, graničnim vrijednostima izloženosti i biološkim graničnim vrijednostima";
   const clpTitle = "Uredba EZ o razvrstavanju, označavanju i pakiranju tvari i smjesa br. 1272/08";
@@ -123955,7 +124033,7 @@ function renderRiskAssessmentChemicalRegisterTable() {
 function renderRiskAssessmentChemicalRegisterPreview() {
   const preview = document.querySelector("#risk-assessment-chemical-register-preview");
   if (preview) {
-    preview.innerHTML = renderRiskAssessmentChemicalRegisterTable();
+    preview.innerHTML = renderRiskAssessmentChemicalEditorTable();
   }
 }
 
@@ -123967,70 +124045,13 @@ function renderRiskAssessmentChemicals() {
   renderRiskAssessmentChemicalResults();
   renderRiskAssessmentOfficialSubstances();
   renderRiskAssessmentStlImportPreview();
-  if (riskAssessmentChemicalDrafts.length === 0) {
-    const empty = document.createElement("p");
-    empty.className = "inline-help";
-    empty.textContent = "Dodaj kemikalije iz PubChema, STL dokumenta ili ručno.";
-    riskAssessmentChemicalsList.replaceChildren(empty);
-    renderRiskAssessmentOverview();
-    return;
-  }
 
   const registerPreview = document.createElement("section");
   registerPreview.id = "risk-assessment-chemical-register-preview";
   registerPreview.className = "risk-assessment-chemical-register";
-  registerPreview.innerHTML = renderRiskAssessmentChemicalRegisterTable();
+  registerPreview.innerHTML = renderRiskAssessmentChemicalEditorTable();
 
-  riskAssessmentChemicalsList.replaceChildren(registerPreview, ...riskAssessmentChemicalDrafts.map((item, index) => {
-    const card = document.createElement("article");
-    card.className = "risk-assessment-chemical-card";
-    card.dataset.riskChemicalIndex = String(index);
-    const summary = getRiskAssessmentChemicalSummary(item) || "Ručno unesena kemikalija";
-    const sourceLabel = [item.source, item.sourceFileName].filter(Boolean).join(" · ") || "Ručno";
-    const chemicalRisk = getRiskAssessmentChemicalRiskDisplay(item);
-    card.innerHTML = `
-      <div class="risk-assessment-chemical-card-head">
-        <div>
-          <span class="section-kicker">${escapeHtml(sourceLabel)}</span>
-          <strong>${escapeHtml(item.name || `Kemikalija ${index + 1}`)}</strong>
-          <small>${escapeHtml(summary)}</small>
-        </div>
-        <div class="risk-assessment-chemical-card-actions">
-          ${item.pubChemUrl ? `<a class="ghost-button" href="${escapeHtml(item.pubChemUrl)}" target="_blank" rel="noopener noreferrer">PubChem</a>` : ""}
-          <button type="button" class="ghost-button" data-risk-chemical-apply="${index}">Dodaj u radne tvari</button>
-          <button type="button" class="ghost-button card-danger" data-risk-chemical-remove="${index}">Ukloni</button>
-        </div>
-      </div>
-      <div class="risk-assessment-chemical-grid">
-        <label><span>Naziv</span><input data-risk-chemical-field="name" value="${escapeHtml(item.name || "")}" placeholder="Naziv kemikalije" /></label>
-        <label><span>CAS</span><input data-risk-chemical-field="casNumber" value="${escapeHtml(item.casNumber || "")}" placeholder="npr. 64-17-5" /></label>
-        <label><span>EC</span><input data-risk-chemical-field="ecNumber" value="${escapeHtml(item.ecNumber || "")}" /></label>
-        <label><span>REACH</span><input data-risk-chemical-field="reachNumber" value="${escapeHtml(item.reachNumber || "")}" /></label>
-        <label><span>Formula</span><input data-risk-chemical-field="formula" value="${escapeHtml(item.formula || "")}" /></label>
-        <label><span>Mol. masa</span><input data-risk-chemical-field="molecularWeight" value="${escapeHtml(item.molecularWeight || "")}" /></label>
-        <label class="field-span-full"><span>IUPAC / identifikacija</span><input data-risk-chemical-field="iupacName" value="${escapeHtml(item.iupacName || "")}" /></label>
-        <label><span>Dobavljač</span><input data-risk-chemical-field="supplier" value="${escapeHtml(item.supplier || "")}" /></label>
-        <label><span>Preporučena uporaba</span><input data-risk-chemical-field="recommendedUse" value="${escapeHtml(item.recommendedUse || "")}" /></label>
-        <label><span>Povezani poslovi</span><select data-risk-chemical-jobs multiple size="4">${renderRiskAssessmentChemicalJobSelect(item.usedInJobIds)}</select></label>
-        <label><span>Vjerojatnost</span><select data-risk-chemical-field="probability">${renderRiskAssessmentCompactOptions(RISK_ASSESSMENT_PROBABILITY_OPTIONS, item.probability || "")}</select></label>
-        <label><span>Posljedica</span><select data-risk-chemical-field="consequence">${renderRiskAssessmentCompactOptions(RISK_ASSESSMENT_CONSEQUENCE_OPTIONS, item.consequence || "")}</select></label>
-        <label><span>Izračun rizika</span><output class="risk-assessment-chemical-risk-output is-${escapeHtml(chemicalRisk.tone)}"><strong>${escapeHtml(chemicalRisk.score || "-")}</strong><em>${escapeHtml(chemicalRisk.riskLevel || "Rizik nije određen")}</em></output></label>
-        <label class="field-span-full"><span>Klasifikacija</span><textarea data-risk-chemical-field="classification" rows="2">${escapeHtml(item.classification || "")}</textarea></label>
-        <label><span>Signalne riječi</span><textarea data-risk-chemical-list-field="signalWords" rows="2">${escapeHtml(joinRiskAssessmentChemicalValues(item.signalWords))}</textarea></label>
-        <label><span>Piktogrami</span><textarea data-risk-chemical-list-field="pictograms" rows="2">${escapeHtml(joinRiskAssessmentChemicalValues(item.pictograms))}</textarea></label>
-        <label class="field-span-full"><span>H izjave</span><textarea data-risk-chemical-list-field="hazardStatements" rows="3">${escapeHtml(joinRiskAssessmentChemicalValues(item.hazardStatements))}</textarea></label>
-        <label class="field-span-full"><span>P izjave</span><textarea data-risk-chemical-list-field="precautionaryStatements" rows="3">${escapeHtml(joinRiskAssessmentChemicalValues(item.precautionaryStatements))}</textarea></label>
-        <label><span>GVI/KGVI/OEL</span><textarea data-risk-chemical-field="exposureLimits" rows="3">${escapeHtml(item.exposureLimits || "")}</textarea></label>
-        <label><span>OZO prema STL-u</span><textarea data-risk-chemical-field="ppe" rows="3">${escapeHtml(item.ppe || "")}</textarea></label>
-        <label><span>Skladištenje</span><textarea data-risk-chemical-field="storage" rows="3">${escapeHtml(item.storage || "")}</textarea></label>
-        <label><span>Prva pomoć</span><textarea data-risk-chemical-field="firstAid" rows="3">${escapeHtml(item.firstAid || "")}</textarea></label>
-        <label><span>Požar</span><textarea data-risk-chemical-field="fireMeasures" rows="3">${escapeHtml(item.fireMeasures || "")}</textarea></label>
-        <label><span>Izlijevanje</span><textarea data-risk-chemical-field="spillMeasures" rows="3">${escapeHtml(item.spillMeasures || "")}</textarea></label>
-        <label class="field-span-full"><span>Napomena</span><textarea data-risk-chemical-field="note" rows="2">${escapeHtml(item.note || "")}</textarea></label>
-      </div>
-    `;
-    return card;
-  }));
+  riskAssessmentChemicalsList.replaceChildren(registerPreview);
   renderRiskAssessmentOverview();
 }
 
@@ -124046,6 +124067,19 @@ function addRiskAssessmentChemicalDrafts(items = [], message = "") {
   setInlineMessage(riskAssessmentError, message || `Dodano ${drafts.length} kemikalija u procjenu.`, "success");
 }
 
+const RISK_ASSESSMENT_OFFICIAL_LIMIT_FIELDS = new Set([
+  "officialGviPpm",
+  "officialGviMgM3",
+  "officialKgviPpm",
+  "officialKgviMgM3",
+]);
+
+const RISK_ASSESSMENT_PRILOG_LIMIT_FIELDS = new Set([
+  "prilogIiDivision",
+  "prilogIiVaporGvi",
+  "prilogIiDustGvi",
+]);
+
 function updateRiskAssessmentChemicalField(index, field, value) {
   if (!riskAssessmentChemicalDrafts[index]) {
     return;
@@ -124054,6 +124088,20 @@ function updateRiskAssessmentChemicalField(index, field, value) {
     ...riskAssessmentChemicalDrafts[index],
     [field]: value,
   };
+  if (RISK_ASSESSMENT_OFFICIAL_LIMIT_FIELDS.has(field) && String(value || "").trim()) {
+    nextChemical.prilogIiDivision = "";
+    nextChemical.prilogIiVaporGvi = "";
+    nextChemical.prilogIiDustGvi = "";
+    nextChemical.prilogIiHazardCodes = [];
+  }
+  if (RISK_ASSESSMENT_PRILOG_LIMIT_FIELDS.has(field) && String(value || "").trim()) {
+    nextChemical.officialGviPpm = "";
+    nextChemical.officialGviMgM3 = "";
+    nextChemical.officialKgviPpm = "";
+    nextChemical.officialKgviMgM3 = "";
+    nextChemical.officialLimitNote = "";
+    nextChemical.officialDirective = "";
+  }
   if (field === "probability" || field === "consequence") {
     nextChemical.riskLevel = calculateJobHazardRiskLevel(nextChemical.probability, nextChemical.consequence) || "";
   }
@@ -124064,7 +124112,6 @@ function updateRiskAssessmentChemicalField(index, field, value) {
     scheduleRiskAssessmentDraftAutosave();
     return;
   }
-  renderRiskAssessmentChemicalRegisterPreview();
   renderRiskAssessmentOverview();
   scheduleRiskAssessmentDraftAutosave();
 }
@@ -124218,6 +124265,11 @@ async function importRiskAssessmentChemicalStlFile() {
           .map((chemical) => mapStlChemicalToRiskAssessmentChemical({
             ...chemical,
             sourceFileName: chemical.sourceFileName || file.name,
+            stlFileName: file.name,
+            stlFileType: file.type || payload.kind || "",
+            stlFileSize: file.size || 0,
+            stlUploadedAt: new Date().toISOString(),
+            stlTextPreview: payload.textPreview || "",
           }));
         if (!chemicals.length) {
           failures.push({
@@ -124251,7 +124303,6 @@ async function importRiskAssessmentChemicalStlFile() {
       ? `Dodano ${allChemicals.length} kemikalija iz ${summaries.length} STL dokumenata. ${failures.length} dokumenta su odvojena za ručnu provjeru.`
       : `STL obrada završena: dodano ${allChemicals.length} kemikalija iz ${summaries.length} dokumenta.`;
     setInlineMessage(riskAssessmentChemicalImportMessage, successMessage, failures.length ? "error" : "success");
-    setRiskAssessmentStlReviewOpen(true);
     if (riskAssessmentChemicalStlFileInput) {
       riskAssessmentChemicalStlFileInput.value = "";
     }
@@ -124296,7 +124347,14 @@ function handleRiskAssessmentChemicalsInput(event) {
     return;
   }
   if (target.dataset.riskChemicalField) {
-    updateRiskAssessmentChemicalField(index, target.dataset.riskChemicalField, target.value);
+    const field = target.dataset.riskChemicalField;
+    updateRiskAssessmentChemicalField(index, field, target.value);
+    if (
+      event.type === "change"
+      && (RISK_ASSESSMENT_OFFICIAL_LIMIT_FIELDS.has(field) || RISK_ASSESSMENT_PRILOG_LIMIT_FIELDS.has(field))
+    ) {
+      renderRiskAssessmentChemicals();
+    }
   }
 }
 

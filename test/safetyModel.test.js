@@ -478,6 +478,11 @@ test("risk assessments keep chemical registry data from PubChem and STL", () => 
           hazardStatements: "H225\nH319",
           source: "STL",
           sourceFileName: "alcolan-stl.pdf",
+          stlFileName: "alcolan-stl.pdf",
+          stlFileType: "application/pdf",
+          stlFileSize: 12345,
+          stlUploadedAt: "2026-05-02T08:10:00.000Z",
+          stlTextPreview: "ODJELJAK 7 Skladistiti u dobro prozracenom prostoru.",
           prilogIiDivision: "A",
           prilogIiVaporGvi: ">50-500 ppm",
           estimatedConsequenceSize: "Mala štetnost",
@@ -496,8 +501,11 @@ test("risk assessments keep chemical registry data from PubChem and STL", () => 
   assert.equal(assessment.chemicals[0].riskLevel, "Mali rizik");
   assert.deepEqual(assessment.chemicals[1].hazardStatements, ["H225", "H319"]);
   assert.equal(assessment.chemicals[1].prilogIiDivision, "A");
+  assert.equal(assessment.chemicals[1].stlFileName, "alcolan-stl.pdf");
+  assert.match(assessment.chemicals[1].stlTextPreview, /prozracenom/);
   assert.equal(filterRiskAssessments([assessment], { query: "64-17-5" }).length, 1);
   assert.equal(filterRiskAssessments([assessment], { query: "alcolan" }).length, 1);
+  assert.equal(filterRiskAssessments([assessment], { query: "prozracenom prostoru" }).length, 1);
   assert.equal(filterRiskAssessments([assessment], { query: "biološki agensi" }).length, 1);
 });
 

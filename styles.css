@@ -58226,7 +58226,7 @@ button.work-order-editor-section-head:focus-visible {
 
 .risk-assessment-chemical-workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1.08fr) minmax(320px, 0.92fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   align-items: stretch;
 }
@@ -59370,6 +59370,82 @@ body.is-risk-stl-review-open {
 .risk-assessment-chemical-register-table td span,
 .risk-assessment-chemical-register-table td small {
   display: block;
+}
+
+.risk-assessment-chemical-editor-table th,
+.risk-assessment-chemical-editor-table td {
+  min-width: 104px;
+  vertical-align: top;
+}
+
+.risk-assessment-chemical-editor-table .is-index {
+  min-width: 48px;
+}
+
+.risk-assessment-chemical-editor-table .is-chemical-name {
+  min-width: 210px;
+}
+
+.risk-assessment-chemical-editor-table .is-limit-cell,
+.risk-assessment-chemical-editor-table .is-note-cell,
+.risk-assessment-chemical-editor-table .is-prilog-cell,
+.risk-assessment-chemical-editor-table .is-list-cell {
+  min-width: 142px;
+}
+
+.risk-assessment-chemical-editor-table input,
+.risk-assessment-chemical-editor-table textarea,
+.risk-assessment-chemical-editor-table select {
+  width: 100%;
+  min-height: 32px;
+  margin: 0 0 6px;
+  padding: 7px 8px;
+  border: 1px solid rgba(203, 213, 225, 0.95);
+  border-radius: 7px;
+  background: #ffffff;
+  color: #0f172a;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 760;
+}
+
+.risk-assessment-chemical-editor-table textarea {
+  min-height: 56px;
+  resize: vertical;
+}
+
+.risk-assessment-chemical-editor-table input:focus,
+.risk-assessment-chemical-editor-table textarea:focus,
+.risk-assessment-chemical-editor-table select:focus {
+  border-color: rgba(37, 99, 235, 0.72);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  outline: none;
+}
+
+.risk-assessment-chemical-editor-table td small {
+  color: #64748b;
+  font-size: 0.66rem;
+  font-weight: 740;
+  line-height: 1.35;
+}
+
+.risk-assessment-chemical-editor-table .is-row-actions {
+  min-width: 96px;
+}
+
+.risk-assessment-chemical-editor-table .is-row-actions .ghost-button {
+  width: 100%;
+  min-height: 30px;
+  margin-bottom: 6px;
+  padding: 6px 8px;
+  font-size: 0.68rem;
+}
+
+.risk-assessment-chemical-editor-table .is-empty-row {
+  padding: 18px;
+  color: #64748b;
+  font-weight: 820;
+  text-align: center;
 }
 
 .risk-assessment-chemical-register-table .is-index {
