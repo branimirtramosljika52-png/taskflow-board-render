@@ -129193,8 +129193,40 @@ function normalizeRiskAssessmentPpeWorkerVariantKind(kind = "") {
 }
 
 function getRiskAssessmentPpeWorkerVariant(gearItems = []) {
-  return RISK_ASSESSMENT_PPE_WORKER_VARIANTS.find((variant) => variant.id === "base")
-    ?? RISK_ASSESSMENT_PPE_WORKER_VARIANTS[0];
+  const wanted = new Set((gearItems ?? [])
+    .map((gear) => normalizeRiskAssessmentPpeWorkerVariantKind(gear.kind))
+    .filter(Boolean));
+  if (!wanted.size) {
+    return RISK_ASSESSMENT_PPE_WORKER_VARIANTS[0];
+  }
+
+  let bestVariant = RISK_ASSESSMENT_PPE_WORKER_VARIANTS[0];
+  let bestScore = Number.NEGATIVE_INFINITY;
+  RISK_ASSESSMENT_PPE_WORKER_VARIANTS.forEach((variant) => {
+    let overlap = 0;
+    let missing = 0;
+    let extras = 0;
+    wanted.forEach((kind) => {
+      if (variant.gearSet.has(kind)) {
+        overlap += 1;
+      } else {
+        missing += 1;
+      }
+    });
+    variant.gearSet.forEach((kind) => {
+      if (!wanted.has(kind)) {
+        extras += 1;
+      }
+    });
+    const exactBonus = missing === 0 && extras === 0 ? 24 : 0;
+    const fullBonus = wanted.size >= 5 && variant.id === "full" ? 12 : 0;
+    const score = overlap * 14 - missing * 9 - extras * 4 + exactBonus + fullBonus;
+    if (score > bestScore) {
+      bestScore = score;
+      bestVariant = variant;
+    }
+  });
+  return bestVariant;
 }
 
 function getRiskAssessmentPpeWorkerOverlayClass(kind = "") {
@@ -129243,77 +129275,32 @@ function getRiskAssessmentPpeWorkerOverlayGear(gearItems = [], workerVariant = {
 
 function renderRiskAssessmentPpeWorkerPreview(job = {}) {
   const selectedItems = job.ppeItems ?? [];
-  const gearItems = applyPpeToWorker(selectedItems);
+  const gearItems = getRiskAssessmentPpeWorkerGearItems(selectedItems);
   const workerVariant = getRiskAssessmentPpeWorkerVariant(gearItems);
-  const overlayGear = getRiskAssessmentPpeWorkerOverlayGear(gearItems, workerVariant);
   const activeParts = Array.from(new Set(gearItems.map((gear) => gear.part || "other")));
   const selectedCount = selectedItems.length;
   const gearLabels = gearItems.length
     ? gearItems.slice(0, 7).map((gear) => gear.label)
     : ["Bez odabrane OZO"];
-  const renderMode = overlayGear.length ? "Slojeviti prikaz OZO" : workerVariant.label;
-  const animationKey = normalizeRiskAssessmentPpeSearchValue(
-    gearItems.map((gear) => `${gear.kind}:${gear.part}:${gear.label}`).join("|"),
-  ) || "bez-ozo";
 
   return `
     <section class="risk-assessment-ppe-worker-preview ozo-worker-panel" aria-label="Prikaz radnika s odabranom OZO">
       <div class="ozo-worker-hero is-ai">
         <div class="ozo-worker-stage-copy">
-          <span>Slojeviti OZO preview</span>
+          <span>AI realistic worker preview</span>
           <strong>Radnici i oprema prema odabiru</strong>
         </div>
         <div class="ozo-stage-tags" aria-label="Aktivne zone zaštite">
           ${gearLabels.map((label) => `<span>${escapeHtml(label)}</span>`).join("")}
         </div>
-        <div class="ozo-worker-image-wrap ozo-worker-cinema is-ozo-animating" data-ozo-worker-variant="${escapeHtml(workerVariant.id)}" data-ozo-animation-key="${escapeHtml(animationKey)}" style="--ozo-worker-frame: url(${escapeHtml(workerVariant.src)});">
+        <div class="ozo-worker-image-wrap" data-ozo-worker-variant="${escapeHtml(workerVariant.id)}">
           <img
             class="ozo-ai-worker-image"
             src="${escapeHtml(workerVariant.src)}"
             alt="Muški i ženski industrijski radnik s odabranom osobnom zaštitnom opremom"
             loading="eager"
           />
-          <div class="ozo-cinema-backplate" aria-hidden="true"></div>
-          <div class="ozo-cinema-actors" aria-hidden="true">
-            <span class="ozo-worker-floor-shadow is-male"></span>
-            <span class="ozo-worker-floor-shadow is-female"></span>
-            <span class="ozo-worker-actor is-male">
-              <span class="ozo-worker-part is-leg-left"></span>
-              <span class="ozo-worker-part is-leg-right"></span>
-              <span class="ozo-worker-part is-feet"></span>
-              <span class="ozo-worker-part is-torso"></span>
-              <span class="ozo-worker-part is-arm-left"></span>
-              <span class="ozo-worker-part is-arm-right"></span>
-              <span class="ozo-worker-part is-hands"></span>
-              <span class="ozo-worker-part is-head"></span>
-              <span class="ozo-worker-zone is-zone-head"></span>
-              <span class="ozo-worker-zone is-zone-eyes"></span>
-              <span class="ozo-worker-zone is-zone-hearing"></span>
-            </span>
-            <span class="ozo-worker-actor is-female">
-              <span class="ozo-worker-part is-leg-left"></span>
-              <span class="ozo-worker-part is-leg-right"></span>
-              <span class="ozo-worker-part is-feet"></span>
-              <span class="ozo-worker-part is-torso"></span>
-              <span class="ozo-worker-part is-arm-left"></span>
-              <span class="ozo-worker-part is-arm-right"></span>
-              <span class="ozo-worker-part is-hands"></span>
-              <span class="ozo-worker-part is-head"></span>
-              <span class="ozo-worker-zone is-zone-head"></span>
-              <span class="ozo-worker-zone is-zone-eyes"></span>
-              <span class="ozo-worker-zone is-zone-hearing"></span>
-            </span>
-          </div>
           <div class="ozo-worker-image-sheen" aria-hidden="true"></div>
-          <div class="ozo-gear-markers ${overlayGear.length ? "is-active" : ""}" aria-hidden="true">
-            ${["male", "female"].map((worker) => `
-              <div class="ozo-gear-worker-layer is-${worker}">
-                ${overlayGear.map((gear) => `
-                  <span class="ozo-gear ozo-gear-${escapeHtml(getRiskAssessmentPpeWorkerOverlayClass(gear.kind))} is-${worker}" data-ozo-gear-kind="${escapeHtml(gear.kind)}" data-ozo-gear-zone="${escapeHtml(gear.part || "other")}"></span>
-                `).join("")}
-              </div>
-            `).join("")}
-          </div>
         </div>
       </div>
       <div class="ozo-worker-summary">
@@ -129323,7 +129310,7 @@ function renderRiskAssessmentPpeWorkerPreview(job = {}) {
         </div>
         <div>
           <span>Prikaz radnika</span>
-          <strong>${escapeHtml(renderMode)}</strong>
+          <strong>${escapeHtml(workerVariant.label)}</strong>
         </div>
         <div>
           <span>Zone zaštite</span>
@@ -129335,34 +129322,6 @@ function renderRiskAssessmentPpeWorkerPreview(job = {}) {
       </div>
     </section>
   `;
-}
-
-function restartRiskAssessmentPpeWorkerAnimation(root = null) {
-  if (typeof document === "undefined") {
-    return;
-  }
-  const scope = root && typeof root.querySelectorAll === "function" ? root : document;
-  scope.querySelectorAll(".ozo-worker-cinema").forEach((preview) => {
-    preview.classList.remove("is-ozo-animating");
-    void preview.offsetWidth;
-    preview.classList.add("is-ozo-animating");
-  });
-}
-
-function replayWorkerWalkAnimation(root = null) {
-  restartRiskAssessmentPpeWorkerAnimation(root);
-}
-
-function scheduleRiskAssessmentPpeWorkerAnimationRestart(root = null) {
-  if (typeof document === "undefined") {
-    return;
-  }
-  const run = () => replayWorkerWalkAnimation(root || riskAssessmentJobsList || document);
-  if (typeof requestAnimationFrame === "function") {
-    requestAnimationFrame(run);
-    return;
-  }
-  run();
 }
 
 function renderRiskAssessmentPpeCompactPicker(job = {}, jobIndex = 0) {
@@ -132640,7 +132599,6 @@ function renderRiskAssessmentJobs() {
   }));
   setRiskAssessmentActiveBlock(riskAssessmentActiveBlock || "basic");
   initializeRiskAssessmentPpeScenes();
-  scheduleRiskAssessmentPpeWorkerAnimationRestart(riskAssessmentJobsList);
   renderRiskAssessmentManualHandling();
   renderRiskAssessmentChemicals();
   renderRiskAssessmentOverview();
