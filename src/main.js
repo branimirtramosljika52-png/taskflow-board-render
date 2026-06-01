@@ -129185,8 +129185,20 @@ function renderRiskAssessmentPpeWorkerPreview(job = {}) {
           <div class="ozo-cinema-actors" aria-hidden="true">
             <span class="ozo-worker-floor-shadow is-male"></span>
             <span class="ozo-worker-floor-shadow is-female"></span>
-            <span class="ozo-worker-actor is-male"></span>
-            <span class="ozo-worker-actor is-female"></span>
+            <span class="ozo-worker-actor is-male">
+              <span class="ozo-worker-part is-body"></span>
+              <span class="ozo-worker-part is-arm-left"></span>
+              <span class="ozo-worker-part is-arm-right"></span>
+              <span class="ozo-worker-part is-leg-left"></span>
+              <span class="ozo-worker-part is-leg-right"></span>
+            </span>
+            <span class="ozo-worker-actor is-female">
+              <span class="ozo-worker-part is-body"></span>
+              <span class="ozo-worker-part is-arm-left"></span>
+              <span class="ozo-worker-part is-arm-right"></span>
+              <span class="ozo-worker-part is-leg-left"></span>
+              <span class="ozo-worker-part is-leg-right"></span>
+            </span>
           </div>
           <div class="ozo-worker-image-sheen" aria-hidden="true"></div>
           <div class="ozo-gear-markers ${overlayGear.length ? "is-active" : ""}" aria-hidden="true">
