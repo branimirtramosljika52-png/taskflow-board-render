@@ -55903,8 +55903,8 @@ button.work-order-editor-section-head:focus-visible {
 .job-selected-hazard-head {
   grid-template-columns: 44px minmax(0, 1fr) auto;
   gap: 12px;
-  min-height: 74px;
-  padding: 14px 16px;
+  min-height: 62px;
+  padding: 10px 14px;
   border: 0;
   border-bottom: 1px solid rgba(226, 232, 240, 0.92);
   border-radius: 0;
@@ -56091,9 +56091,10 @@ button.work-order-editor-section-head:focus-visible {
 
 .job-hazard-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(260px, 0.55fr) minmax(420px, 1fr);
   gap: 10px;
-  padding: 12px;
+  align-items: stretch;
+  padding: 10px;
   background: #f8fafc;
 }
 
@@ -56101,11 +56102,11 @@ button.work-order-editor-section-head:focus-visible {
 .job-hazard-large-field {
   display: grid;
   align-content: start;
-  gap: 12px;
+  gap: 10px;
   min-width: 0;
-  padding: 16px;
+  padding: 14px;
   border: 1px solid rgba(226, 232, 240, 0.96);
-  border-radius: 12px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.045);
 }
@@ -56307,17 +56308,17 @@ button.work-order-editor-section-head:focus-visible {
 .job-hazard-detail-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
 }
 
 .job-hazard-large-field {
   position: relative;
-  min-height: 154px;
+  min-height: 132px;
 }
 
 .job-hazard-large-field textarea {
-  min-height: 96px;
+  min-height: 74px;
   padding: 12px 13px 28px;
   border: 1px solid rgba(217, 226, 240, 0.96);
   border-radius: 8px;
@@ -61671,7 +61672,7 @@ button.work-order-editor-section-head:focus-visible {
 
 .risk-assessment-risk-cards {
   display: grid;
-  gap: 18px;
+  gap: 12px;
 }
 
 .risk-assessment-risk-card {
@@ -61704,10 +61705,10 @@ button.work-order-editor-section-head:focus-visible {
 .risk-assessment-risk-card-head {
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr) auto;
-  gap: 14px;
+  gap: 12px;
   align-items: center;
-  min-height: 74px;
-  padding: 14px 16px;
+  min-height: 62px;
+  padding: 10px 14px;
   border-bottom: 1px solid rgba(226, 232, 240, 0.92);
   background:
     linear-gradient(180deg, #fbfbff 0%, #ffffff 100%);
@@ -62126,19 +62127,20 @@ button.work-order-editor-section-head:focus-visible {
 
 .risk-assessment-risk-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(260px, 0.55fr) minmax(420px, 1fr);
   gap: 10px;
-  padding: 12px;
+  align-items: stretch;
+  padding: 10px;
   background: #f8fafc;
 }
 
 .risk-assessment-risk-assessment-panel {
   display: grid;
-  gap: 14px;
+  gap: 12px;
   min-width: 0;
-  padding: 20px;
+  padding: 14px;
   border: 1px solid rgba(226, 232, 240, 0.95);
-  border-radius: 8px;
+  border-radius: 10px;
   background: #ffffff;
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.045);
 }
@@ -62172,7 +62174,7 @@ button.work-order-editor-section-head:focus-visible {
 
 .risk-assessment-risk-body .risk-assessment-risk-score-grid {
   grid-template-columns: minmax(0, 1fr);
-  gap: 12px;
+  gap: 10px;
   margin: 0;
   border: 0;
   border-radius: 0;
@@ -62244,16 +62246,16 @@ button.work-order-editor-section-head:focus-visible {
 .risk-assessment-risk-body .risk-assessment-risk-detail-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 10px;
+  gap: 8px;
   padding: 0;
 }
 
 .risk-assessment-risk-body .risk-assessment-risk-large-field {
   position: relative;
   gap: 10px;
-  min-height: 150px;
-  padding: 18px;
-  border-radius: 8px;
+  min-height: 132px;
+  padding: 14px;
+  border-radius: 10px;
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.045);
 }
 
@@ -62284,17 +62286,17 @@ button.work-order-editor-section-head:focus-visible {
 }
 
 .risk-assessment-risk-body .risk-assessment-risk-large-field textarea {
-  min-height: 86px;
+  min-height: 74px;
   padding: 13px 14px 28px;
-  border-radius: 7px;
+  border-radius: 8px;
   font-size: 0.86rem;
   line-height: 1.5;
 }
 
 .risk-assessment-risk-character-count {
   position: absolute;
-  right: 28px;
-  bottom: 28px;
+  right: 24px;
+  bottom: 22px;
   color: #475569;
   font-size: 0.7rem;
   font-weight: 850;

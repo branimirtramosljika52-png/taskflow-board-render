@@ -125651,11 +125651,11 @@ function renderJobSelectedHazards() {
             <div>
               <span class="job-hazard-panel-icon">${renderRiskAssessmentRiskIcon("note")}</span>
               <span>
-                <strong>Mogući neželjeni događaj</strong>
-                <small>Opiši aktivnost, izloženog radnika i što se realno može dogoditi.</small>
+                <strong>Poslovi / napomena</strong>
+                <small>Upiši kod kojeg zadatka se stavka pojavljuje i koga obuhvaća.</small>
               </span>
             </div>
-            <textarea data-job-hazard-field="unwantedEvent" rows="4" placeholder="Unesite mogući neželjeni događaj...">${escapeHtml(unwantedEventValue)}</textarea>
+            <textarea data-job-hazard-field="unwantedEvent" rows="4" placeholder="Unesite poslove i dodatne napomene...">${escapeHtml(unwantedEventValue)}</textarea>
             <small class="job-hazard-character-count">${escapeHtml(String(getRiskAssessmentTextareaCount(unwantedEventValue)))} / 1000</small>
           </section>
           <section class="job-hazard-large-field">
