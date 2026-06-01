@@ -129441,17 +129441,12 @@ function renderRiskAssessmentPpeCompactPicker(job = {}, jobIndex = 0) {
                     <label><span>Kategorija</span><input data-risk-ppe-index="${ppeIndex}" data-risk-ppe-field="category" value="${escapeHtml(ppe.category || "")}" /></label>
                     <label><span>Primjena / opasnosti</span><input data-risk-ppe-index="${ppeIndex}" data-risk-ppe-field="hazardLinks" value="${escapeHtml(ppe.hazardLinks || "")}" placeholder="npr. pad predmeta, kemikalije..." /></label>
                     <label class="risk-assessment-checkbox-line"><input type="checkbox" data-risk-ppe-index="${ppeIndex}" data-risk-ppe-field="required" ${ppe.required === false ? "" : "checked"} /><span>Obvezna</span></label>
-                    <label class="field-span-full"><span>Opis primjene</span><textarea data-risk-ppe-index="${ppeIndex}" data-risk-ppe-field="description" rows="2">${escapeHtml(ppe.description || "")}</textarea></label>
                   </div>
                   <button type="button" class="ghost-button card-danger" data-risk-ppe-remove="${ppeIndex}">Ukloni</button>
                 </article>
               `;
             }).join("") : `<p class="inline-help">Ovdje će se prikazati odabrana oprema s normom i primjenom.</p>`}
           </div>
-          <label class="risk-assessment-ppe-summary-field">
-            <span>Tekst za procjenu</span>
-            <textarea data-risk-job-field="ppeText" rows="2" placeholder="Automatski se slaže iz odabranih OZO stavki.">${escapeHtml(job.ppeText || buildRiskAssessmentPpeSummary(selectedItems))}</textarea>
-          </label>
         </section>
       </div>
     </div>
