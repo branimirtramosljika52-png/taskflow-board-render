@@ -57263,6 +57263,10 @@ button.work-order-editor-section-head:focus-visible {
   grid-template-columns: 0.9fr 0.72fr 1.18fr 1.1fr 1.05fr;
 }
 
+.risk-assessment-linked-table.is-work-environment > div {
+  grid-template-columns: 1fr 0.86fr 1fr 1.2fr 1.05fr;
+}
+
 .risk-assessment-linked-table span {
   min-width: 0;
   padding: 8px 9px;
@@ -60176,8 +60180,8 @@ button.work-order-editor-section-head:focus-visible {
 
 .risk-assessment-job-profile {
   display: grid;
-  gap: 12px;
-  padding: 12px;
+  gap: 10px;
+  padding: 10px;
   border: 1px solid rgba(203, 213, 225, 0.78);
   border-radius: 18px;
   background:
@@ -60192,8 +60196,8 @@ button.work-order-editor-section-head:focus-visible {
 
 .risk-assessment-job-start-card {
   display: grid;
-  gap: 12px;
-  padding: 14px;
+  gap: 10px;
+  padding: 12px;
   border: 1px solid rgba(191, 219, 254, 0.84);
   border-left: 4px solid #2563eb;
   border-radius: 16px;
@@ -60204,7 +60208,7 @@ button.work-order-editor-section-head:focus-visible {
 
 .risk-assessment-job-start-grid {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(260px, 1.2fr) auto;
+  grid-template-columns: minmax(220px, 1fr) minmax(240px, 1fr) auto auto;
   gap: 10px;
   align-items: end;
 }
@@ -60289,8 +60293,14 @@ button.work-order-editor-section-head:focus-visible {
 }
 
 .risk-assessment-job-profile-grid textarea {
-  min-height: 74px;
+  min-height: 68px;
   resize: vertical;
+}
+
+.risk-assessment-short-description-field textarea {
+  min-height: 54px;
+  border-color: rgba(191, 219, 254, 0.92);
+  background: linear-gradient(135deg, rgba(239, 246, 255, 0.62), rgba(255, 255, 255, 0.98));
 }
 
 .risk-assessment-organization-panel {
@@ -60344,8 +60354,8 @@ button.work-order-editor-section-head:focus-visible {
 
 .risk-assessment-job-profile-card {
   display: grid;
-  gap: 12px;
-  padding: 12px;
+  gap: 10px;
+  padding: 11px;
   border: 1px solid rgba(203, 213, 225, 0.82);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.88);
@@ -60409,8 +60419,8 @@ button.work-order-editor-section-head:focus-visible {
 .risk-assessment-job-profile-card-head > span {
   display: inline-grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   border-radius: 13px;
   background: rgba(237, 233, 254, 0.94);
   color: #4f46e5;
@@ -60788,9 +60798,16 @@ button.work-order-editor-section-head:focus-visible {
 
 .risk-assessment-ppe-selected-compact-grid {
   display: grid;
-  grid-template-columns: minmax(150px, 1.35fr) minmax(110px, 0.8fr) minmax(135px, 1fr) minmax(160px, 1.2fr) auto;
+  grid-template-columns: minmax(220px, 1fr) auto;
   gap: 6px;
   align-items: end;
+  min-width: 0;
+}
+
+.risk-assessment-ppe-name-norm-fields {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(96px, 0.42fr);
+  gap: 6px;
   min-width: 0;
 }
 
@@ -60831,6 +60848,7 @@ button.work-order-editor-section-head:focus-visible {
   .risk-assessment-ppe-compact-body,
   .risk-assessment-ppe-selected-compact-row,
   .risk-assessment-ppe-selected-compact-grid,
+  .risk-assessment-ppe-name-norm-fields,
   .risk-assessment-load-weight-grid {
     grid-template-columns: 1fr;
   }
@@ -61085,6 +61103,13 @@ button.work-order-editor-section-head:focus-visible {
   box-shadow: 0 16px 34px rgba(202, 138, 4, 0.08);
 }
 
+.risk-assessment-client-portal-permission.is-company-setting {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  box-shadow: none;
+}
+
 .risk-assessment-checkbox-line.is-portal-toggle {
   align-items: flex-start;
   gap: 11px;
@@ -61218,6 +61243,10 @@ button.work-order-editor-section-head:focus-visible {
 
 .risk-assessment-job-choice-grid.is-ra1 {
   gap: 10px;
+}
+
+.risk-assessment-job-choice-grid > .risk-assessment-load-weight-panel {
+  grid-column: 1 / -1;
 }
 
 .risk-assessment-job-choice-block button {
