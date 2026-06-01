@@ -124264,8 +124264,60 @@ function normalizeJobAiSettings(value = {}) {
   };
 }
 
+function normalizeRiskPpeCanonicalText(value = "") {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0111\u0110]/g, "d")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("hr")
+    .trim();
+}
+
+function inferRiskPpeCatalogBodyPart(item = {}) {
+  const explicitBodyPart = String(item.bodyPart || "").trim();
+  const signature = normalizeRiskPpeCanonicalText([
+    item.id,
+    item.catalogId,
+    item.name,
+    item.category,
+    item.norm,
+    item.standardCode,
+    item.description,
+  ].join(" "));
+
+  if (/(earmuffs?|antifon|cepici|usne skoljke|stitnici sluha|zastita sluha|en\s*352)/.test(signature)) {
+    return "hearing";
+  }
+  if (/(face[-\s]?shield|goggles?|glasses?|vizir|naocale|stitnik lica|stitnik za lice|en\s*166)/.test(signature)) {
+    return "eyes";
+  }
+  if (/(respirator|filter|maska|polumaska|disnih organa|en\s*149|en\s*140|en\s*143)/.test(signature)) {
+    return "respiratory";
+  }
+  if (/(helmet|kacig|zastitna kapa|industrijska kapa|en\s*397|en\s*812)/.test(signature)) {
+    return "head";
+  }
+  if (/(gloves?|rukavic|en\s*388|en\s*374|en\s*60903)/.test(signature)) {
+    return "hands";
+  }
+  if (/(shoes?|boots?|obuca|cipele|en\s*20345|en\s*20346|en\s*20347)/.test(signature)) {
+    return "feet";
+  }
+  if (/(harness|pojas|pad s visine|fall[-\s]?arrest|en\s*361|en\s*358)/.test(signature)) {
+    return "fall";
+  }
+  if (/(koljena|kneepads?|en\s*14404)/.test(signature)) {
+    return "other";
+  }
+  if (/(hi[-\s]?vis|prsluk|reflektir|odijelo|odjeca|kombinezon|pregaca|hlace|en\s*20471|en\s*13688)/.test(signature)) {
+    return "body";
+  }
+
+  return explicitBodyPart || "other";
+}
+
 function normalizeRiskPpeCatalogItem(item = {}) {
-  const bodyPart = String(item.bodyPart || "other").trim() || "other";
+  const bodyPart = inferRiskPpeCatalogBodyPart(item);
   const fallbackImage = RISK_PPE_CATEGORY_IMAGES[bodyPart] || RISK_PPE_CATEGORY_IMAGES.other || "";
   const fallbackIcon = RISK_PPE_CATEGORY_ICONS[bodyPart] || RISK_PPE_CATEGORY_ICONS.other || "";
   const itemImageUrl = String(item.imageUrl || "").trim();
@@ -127217,19 +127269,24 @@ function createRiskAssessmentPpeDraft(initial = {}) {
     ? getRiskAssessmentPpeCatalogItem(initial.catalogId)
     : null;
   const source = catalog || initial;
+  const normalizedSource = normalizeRiskPpeCatalogItem({
+    ...source,
+    ...initial,
+    id: initial.catalogId || initial.id || source.id,
+  });
   return {
     id: String(initial.id || crypto.randomUUID()),
     catalogId: String(initial.catalogId || catalog?.id || ""),
-    name: String(initial.name || source.name || ""),
-    category: String(initial.category || source.category || ""),
-    bodyPart: String(initial.bodyPart || source.bodyPart || ""),
-    norm: String(initial.norm || source.norm || ""),
-    standardCode: String(initial.standardCode || source.standardCode || ""),
-    description: String(initial.description || source.description || ""),
-    imageUrl: String(initial.imageUrl || source.imageUrl || ""),
-    iconUrl: String(initial.iconUrl || source.iconUrl || ""),
-    sourceRef: String(initial.sourceRef || source.sourceRef || ""),
-    sourceUrl: String(initial.sourceUrl || source.sourceUrl || ""),
+    name: String(initial.name || normalizedSource.name || ""),
+    category: String(initial.category || normalizedSource.category || ""),
+    bodyPart: String(normalizedSource.bodyPart || ""),
+    norm: String(initial.norm || normalizedSource.norm || ""),
+    standardCode: String(initial.standardCode || normalizedSource.standardCode || ""),
+    description: String(initial.description || normalizedSource.description || ""),
+    imageUrl: String(initial.imageUrl || normalizedSource.imageUrl || ""),
+    iconUrl: String(initial.iconUrl || normalizedSource.iconUrl || ""),
+    sourceRef: String(initial.sourceRef || normalizedSource.sourceRef || ""),
+    sourceUrl: String(initial.sourceUrl || normalizedSource.sourceUrl || ""),
     hazardLinks: String(initial.hazardLinks || ""),
     required: initial.required === undefined ? true : Boolean(initial.required),
     mandatory: initial.mandatory === undefined ? (initial.required === undefined ? true : Boolean(initial.required)) : Boolean(initial.mandatory),
@@ -128914,6 +128971,8 @@ function getRiskAssessmentPpeWorkerGearKind(item = {}) {
   const normalized = normalizeRiskPpeCatalogItem(item);
   const bodyPart = normalized.bodyPart || "other";
   const text = normalizeRiskAssessmentPpeSearchValue([
+    normalized.id,
+    normalized.catalogId,
     normalized.name,
     normalized.category,
     normalized.norm,
@@ -128921,6 +128980,9 @@ function getRiskAssessmentPpeWorkerGearKind(item = {}) {
     normalized.description,
   ].join(" "));
 
+  if (text.includes("earmuff") || text.includes("antifon") || text.includes("cepici") || text.includes("usne skoljke") || text.includes("stitnici sluha") || text.includes("zastita sluha") || text.includes("en 352")) {
+    return "earmuffs";
+  }
   if (text.includes("vizir") || text.includes("stitnik lica") || text.includes("stitnik za lice") || text.includes("face shield")) {
     return "faceShield";
   }
@@ -129112,18 +129174,29 @@ function renderRiskAssessmentPpeWorkerPreview(job = {}) {
         <div class="ozo-stage-tags" aria-label="Aktivne zone zaštite">
           ${gearLabels.map((label) => `<span>${escapeHtml(label)}</span>`).join("")}
         </div>
-        <div class="ozo-worker-image-wrap" data-ozo-worker-variant="${escapeHtml(workerVariant.id)}">
+        <div class="ozo-worker-image-wrap ozo-worker-cinema" data-ozo-worker-variant="${escapeHtml(workerVariant.id)}" style="--ozo-worker-frame: url(${escapeHtml(workerVariant.src)});">
           <img
             class="ozo-ai-worker-image"
             src="${escapeHtml(workerVariant.src)}"
             alt="Muški i ženski industrijski radnik s odabranom osobnom zaštitnom opremom"
             loading="eager"
           />
+          <div class="ozo-cinema-backplate" aria-hidden="true"></div>
+          <div class="ozo-cinema-actors" aria-hidden="true">
+            <span class="ozo-worker-floor-shadow is-male"></span>
+            <span class="ozo-worker-floor-shadow is-female"></span>
+            <span class="ozo-worker-actor is-male"></span>
+            <span class="ozo-worker-actor is-female"></span>
+          </div>
           <div class="ozo-worker-image-sheen" aria-hidden="true"></div>
           <div class="ozo-gear-markers ${overlayGear.length ? "is-active" : ""}" aria-hidden="true">
-            ${overlayGear.flatMap((gear) => ["male", "female"].map((worker) => `
-              <span class="ozo-gear ozo-gear-${escapeHtml(getRiskAssessmentPpeWorkerOverlayClass(gear.kind))} is-${worker}"></span>
-            `)).join("")}
+            ${["male", "female"].map((worker) => `
+              <div class="ozo-gear-worker-layer is-${worker}">
+                ${overlayGear.map((gear) => `
+                  <span class="ozo-gear ozo-gear-${escapeHtml(getRiskAssessmentPpeWorkerOverlayClass(gear.kind))} is-${worker}"></span>
+                `).join("")}
+              </div>
+            `).join("")}
           </div>
         </div>
       </div>

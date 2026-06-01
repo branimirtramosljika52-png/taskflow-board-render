@@ -72399,6 +72399,171 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
   width: 100%;
 }
 
+.ozo-worker-cinema {
+  perspective: 1200px;
+}
+
+.ozo-worker-cinema .ozo-ai-worker-image {
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.ozo-cinema-backplate {
+  background:
+    radial-gradient(ellipse at 24% 88%, rgba(15, 23, 42, 0.16), transparent 20%),
+    radial-gradient(ellipse at 75% 88%, rgba(15, 23, 42, 0.14), transparent 18%),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.64), transparent 20%, transparent 80%, rgba(255, 255, 255, 0.54)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(248, 250, 252, 0.74) 48%, rgba(226, 232, 240, 0.96) 100%);
+  inset: 0;
+  overflow: hidden;
+  position: absolute;
+  z-index: 0;
+}
+
+.ozo-cinema-backplate::before {
+  background:
+    linear-gradient(90deg, rgba(15, 23, 42, 0.045) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(15, 23, 42, 0.035) 1px, transparent 1px);
+  background-size: 54px 54px;
+  content: "";
+  inset: 8px 0 76px;
+  mask-image: radial-gradient(circle at 50% 58%, rgba(0, 0, 0, 0.45), transparent 70%);
+  opacity: 0.62;
+  position: absolute;
+}
+
+.ozo-cinema-backplate::after {
+  background:
+    radial-gradient(ellipse at 50% 68%, rgba(250, 204, 21, 0.13), transparent 38%),
+    radial-gradient(ellipse at 50% 74%, rgba(15, 23, 42, 0.12), transparent 43%);
+  bottom: 0;
+  content: "";
+  height: 42%;
+  left: 8%;
+  position: absolute;
+  right: 8%;
+}
+
+.ozo-cinema-actors {
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  transform-style: preserve-3d;
+  z-index: 3;
+}
+
+.ozo-worker-actor {
+  animation-duration: 1200ms;
+  animation-fill-mode: both;
+  animation-timing-function: cubic-bezier(0.16, 0.95, 0.2, 1);
+  bottom: 0;
+  filter: drop-shadow(0 22px 22px rgba(15, 23, 42, 0.16));
+  overflow: hidden;
+  position: absolute;
+  top: 0;
+  transform-origin: center bottom;
+  will-change: transform, opacity, filter;
+}
+
+.ozo-worker-actor::before {
+  background-image: var(--ozo-worker-frame);
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  content: "";
+  inset: 0 auto 0 0;
+  position: absolute;
+  top: 0;
+  width: 322.6%;
+}
+
+.ozo-worker-actor.is-male {
+  animation-name: risk-ozo-actor-male-arrive;
+  left: 12%;
+  width: 31%;
+}
+
+.ozo-worker-actor.is-male::before {
+  left: -38.7%;
+}
+
+.ozo-worker-actor.is-female {
+  animation-delay: 90ms;
+  animation-name: risk-ozo-actor-female-arrive;
+  left: 59%;
+  width: 31%;
+}
+
+.ozo-worker-actor.is-female::before {
+  left: -190.3%;
+}
+
+.ozo-worker-floor-shadow {
+  animation: risk-ozo-actor-shadow-arrive 1180ms cubic-bezier(0.16, 0.95, 0.2, 1) both;
+  background: radial-gradient(ellipse at center, rgba(15, 23, 42, 0.28), rgba(15, 23, 42, 0.08) 44%, transparent 72%);
+  bottom: 4.5%;
+  height: 9%;
+  position: absolute;
+  transform-origin: center;
+  width: 23%;
+  z-index: 2;
+}
+
+.ozo-worker-floor-shadow.is-male {
+  left: 16%;
+}
+
+.ozo-worker-floor-shadow.is-female {
+  animation-delay: 90ms;
+  left: 63.6%;
+  width: 21%;
+}
+
+.ozo-gear-worker-layer {
+  animation-duration: 1200ms;
+  animation-fill-mode: both;
+  animation-timing-function: cubic-bezier(0.16, 0.95, 0.2, 1);
+  bottom: 0;
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  transform-origin: center bottom;
+  width: 31%;
+}
+
+.ozo-gear-worker-layer.is-male {
+  animation-name: risk-ozo-actor-male-arrive;
+  left: 12%;
+}
+
+.ozo-gear-worker-layer.is-female {
+  animation-delay: 90ms;
+  animation-name: risk-ozo-actor-female-arrive;
+  left: 59%;
+}
+
+.ozo-worker-cinema .ozo-gear-worker-layer.is-male .ozo-gear-head { left: 31.3%; top: 5.8%; width: 26.5%; height: 5.2%; }
+.ozo-worker-cinema .ozo-gear-worker-layer.is-female .ozo-gear-head { left: 39%; top: 6%; width: 23.2%; height: 4.8%; }
+.ozo-worker-cinema .ozo-gear-worker-layer.is-male .ozo-gear-eyes { left: 35.2%; top: 13.8%; width: 17.1%; height: 1.5%; }
+.ozo-worker-cinema .ozo-gear-worker-layer.is-female .ozo-gear-eyes { left: 43.2%; top: 13.8%; width: 14.8%; height: 1.35%; }
+.ozo-worker-cinema .ozo-gear-worker-layer.is-male .ozo-gear-hearing { left: 30.3%; top: 11.8%; width: 21.6%; height: 5%; }
+.ozo-worker-cinema .ozo-gear-worker-layer.is-female .ozo-gear-hearing { left: 38.7%; top: 12%; width: 19%; height: 4.5%; }
+.ozo-worker-cinema .ozo-gear-worker-layer.is-male .ozo-gear-respiratory { left: 38.1%; top: 16.3%; width: 11%; height: 3.1%; }
+.ozo-worker-cinema .ozo-gear-worker-layer.is-female .ozo-gear-respiratory { left: 45.2%; top: 16.1%; width: 10%; height: 2.8%; }
+.ozo-worker-cinema .ozo-gear-worker-layer.is-male .ozo-gear-body { left: 27.4%; top: 22.3%; width: 38.4%; height: 25%; }
+.ozo-worker-cinema .ozo-gear-worker-layer.is-female .ozo-gear-body { left: 35.2%; top: 22.6%; width: 35.2%; height: 24.2%; }
+.ozo-worker-cinema .ozo-gear-worker-layer.is-male .ozo-gear-hands { left: 15.5%; top: 49.5%; width: 56.5%; height: 8.2%; }
+.ozo-worker-cinema .ozo-gear-worker-layer.is-female .ozo-gear-hands { left: 25.2%; top: 49.6%; width: 52.6%; height: 7.8%; }
+.ozo-worker-cinema .ozo-gear-worker-layer.is-male .ozo-gear-feet { left: 16.8%; top: 90.2%; width: 47.7%; height: 6.4%; }
+.ozo-worker-cinema .ozo-gear-worker-layer.is-female .ozo-gear-feet { left: 27.4%; top: 90.6%; width: 43.9%; height: 6%; }
+.ozo-worker-cinema .ozo-gear-worker-layer.is-male .ozo-gear-knees { left: 20.3%; top: 68.5%; width: 42.6%; height: 5.4%; }
+.ozo-worker-cinema .ozo-gear-worker-layer.is-female .ozo-gear-knees { left: 30.3%; top: 68.7%; width: 39.4%; height: 5.1%; }
+.ozo-worker-cinema .ozo-gear-worker-layer.is-male .ozo-gear-fall { left: 27.1%; top: 22.1%; width: 39.4%; height: 28%; }
+.ozo-worker-cinema .ozo-gear-worker-layer.is-female .ozo-gear-fall { left: 34.8%; top: 22.4%; width: 36.1%; height: 27%; }
+.ozo-worker-cinema .ozo-gear-worker-layer.is-male .ozo-gear-other { left: 39%; top: 55.5%; width: 11.3%; height: 6.3%; }
+.ozo-worker-cinema .ozo-gear-worker-layer.is-female .ozo-gear-other { left: 46.5%; top: 55.5%; width: 10.3%; height: 6%; }
+
 .ozo-worker-image-sheen {
   background:
     linear-gradient(180deg, rgba(248, 250, 252, 0.18) 0%, rgba(248, 250, 252, 0.02) 28%, rgba(15, 23, 42, 0.06) 100%),
@@ -72407,6 +72572,12 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
   pointer-events: none;
   position: absolute;
   z-index: 2;
+}
+
+.ozo-worker-cinema .ozo-worker-image-sheen {
+  mix-blend-mode: screen;
+  opacity: 0.54;
+  z-index: 4;
 }
 
 .ozo-worker-panel .ozo-worker-summary {
@@ -72633,15 +72804,23 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
 
 .risk-assessment-ppe-compact .ozo-worker-image-wrap {
   top: 104px;
+}
+
+.risk-assessment-ppe-compact .ozo-worker-image-wrap:not(.ozo-worker-cinema) {
   animation: risk-ozo-worker-arrive 720ms cubic-bezier(0.18, 0.9, 0.22, 1) both;
   transform-origin: center bottom;
   will-change: transform, opacity, filter;
 }
 
-.risk-assessment-ppe-compact .ozo-ai-worker-image {
+.risk-assessment-ppe-compact .ozo-worker-image-wrap:not(.ozo-worker-cinema) .ozo-ai-worker-image {
   animation: risk-ozo-worker-swap 720ms cubic-bezier(0.18, 0.9, 0.22, 1) both;
   transform-origin: center bottom;
   will-change: transform, opacity, filter;
+}
+
+.risk-assessment-ppe-compact .ozo-worker-cinema .ozo-ai-worker-image {
+  animation: none;
+  opacity: 0;
 }
 
 .risk-assessment-ppe-compact .ozo-gear-markers.is-active {
@@ -72693,6 +72872,63 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
   100% {
     opacity: 1;
     filter: none;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes risk-ozo-actor-male-arrive {
+  0% {
+    opacity: 0;
+    filter: blur(1.8px) saturate(0.9);
+    transform: perspective(1200px) translate3d(-10%, 42px, -260px) rotateY(7deg) scale(0.82);
+  }
+
+  62% {
+    opacity: 1;
+    filter: blur(0) saturate(1.04);
+    transform: perspective(1200px) translate3d(1.5%, -5px, 38px) rotateY(-1.4deg) scale(1.035);
+  }
+
+  100% {
+    opacity: 1;
+    filter: none;
+    transform: perspective(1200px) translate3d(0, 0, 0) rotateY(0) scale(1);
+  }
+}
+
+@keyframes risk-ozo-actor-female-arrive {
+  0% {
+    opacity: 0;
+    filter: blur(1.8px) saturate(0.9);
+    transform: perspective(1200px) translate3d(10%, 42px, -260px) rotateY(-7deg) scale(0.82);
+  }
+
+  62% {
+    opacity: 1;
+    filter: blur(0) saturate(1.04);
+    transform: perspective(1200px) translate3d(-1.5%, -5px, 38px) rotateY(1.4deg) scale(1.035);
+  }
+
+  100% {
+    opacity: 1;
+    filter: none;
+    transform: perspective(1200px) translate3d(0, 0, 0) rotateY(0) scale(1);
+  }
+}
+
+@keyframes risk-ozo-actor-shadow-arrive {
+  0% {
+    opacity: 0;
+    transform: translateY(18px) scale(0.58);
+  }
+
+  66% {
+    opacity: 0.82;
+    transform: translateY(0) scale(1.08);
+  }
+
+  100% {
+    opacity: 0.68;
     transform: translateY(0) scale(1);
   }
 }

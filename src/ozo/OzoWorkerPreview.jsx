@@ -103,12 +103,18 @@ function getFallbackGear(part = "other") {
 function getGearKind(item = {}) {
   const part = item.bodyPart || "other";
   const text = normalizeText([
+    item.id,
+    item.catalogId,
     item.name,
     item.category,
     item.norm,
     item.standardCode,
     item.description,
   ].join(" "));
+
+  if (text.includes("earmuff") || text.includes("antifon") || text.includes("cepici") || text.includes("usne skoljke") || text.includes("stitnici sluha") || text.includes("zastita sluha") || text.includes("en 352")) {
+    return "earmuffs";
+  }
 
   if (text.includes("vizir") || text.includes("stitnik lica") || text.includes("stitnik za lice") || text.includes("face shield")) {
     return "faceShield";
