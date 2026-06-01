@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   detectStlFileKind,
+  extractTextFromStlDocBuffer,
   extractStlChemicalDataFromText,
 } from "../src/stlChemicalExtractor.js";
 
@@ -42,8 +43,39 @@ test("STL chemical extractor reads core SDS fields from text", () => {
   assert.match(payload.chemicals[0].storage, /prozracenom/i);
 });
 
-test("STL file kind detection accepts PDF and DOCX", () => {
+test("STL file kind detection accepts PDF, DOC and DOCX", () => {
   assert.equal(detectStlFileKind({ fileName: "stl.pdf" }), "pdf");
   assert.equal(detectStlFileKind({ fileName: "stl.docx" }), "docx");
   assert.equal(detectStlFileKind({ fileName: "stl.doc" }), "doc");
+});
+
+test("STL chemical extractor creates separate chemicals for multiple CAS numbers", () => {
+  const payload = extractStlChemicalDataFromText(`
+    SIGURNOSNO-TEHNICKI LIST
+    Naziv proizvoda: Smjesa za odmascivanje
+
+    ODJELJAK 3: Sastav/informacije o sastojcima
+    1-butanol CAS br. 71-
+    36-3 30 %
+    Etanol CAS: 64-17-5 40 %
+
+    ODJELJAK 2: Identifikacija opasnosti
+    Opasnost
+    GHS02
+    H226: Zapaljiva tekucina i para.
+  `, { fileName: "smjesa.pdf" });
+
+  assert.equal(payload.ok, true);
+  assert.equal(payload.chemicals.length, 2);
+  assert.deepEqual(payload.chemicals.map((item) => item.casNumber), ["71-36-3", "64-17-5"]);
+  assert.match(payload.chemicals[0].name, /butanol/i);
+  assert.match(payload.chemicals[1].name, /etanol/i);
+});
+
+test("legacy DOC extraction keeps readable STL identifiers", () => {
+  const buffer = Buffer.from("SIGURNOSNO-TEHNICKI LIST\0Naziv proizvoda: Test\0CAS: 64-17-5", "utf16le");
+  const text = extractTextFromStlDocBuffer(buffer);
+
+  assert.match(text, /CAS/i);
+  assert.match(text, /64-17-5/);
 });

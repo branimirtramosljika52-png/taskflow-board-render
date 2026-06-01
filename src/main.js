@@ -117294,12 +117294,12 @@ riskAssessmentChemicalStlFileInput?.addEventListener("change", () => {
   if (files.length && !supportedFiles.length) {
     riskAssessmentChemicalStlFileInput.value = "";
     syncRiskAssessmentStlFileMeta();
-    setInlineMessage(riskAssessmentChemicalImportMessage, "Podržani su samo PDF i DOCX STL dokumenti.", "error");
+    setInlineMessage(riskAssessmentChemicalImportMessage, "Podržani su samo PDF, DOC i DOCX STL dokumenti.", "error");
     return;
   }
   if (supportedFiles.length !== files.length) {
     setRiskAssessmentStlInputFiles(supportedFiles);
-    setInlineMessage(riskAssessmentChemicalImportMessage, "Preskočene su datoteke koje nisu PDF ili DOCX.", "error");
+    setInlineMessage(riskAssessmentChemicalImportMessage, "Preskočene su datoteke koje nisu PDF, DOC ili DOCX.", "error");
     return;
   }
   syncRiskAssessmentStlFileMeta();
@@ -117338,12 +117338,12 @@ riskAssessmentChemicalStlDropzone?.addEventListener("drop", (event) => {
   const files = Array.from(event.dataTransfer?.files || []);
   const supportedFiles = files.filter(isSupportedRiskAssessmentStlFile);
   if (!supportedFiles.length) {
-    setInlineMessage(riskAssessmentChemicalImportMessage, "Povuci PDF ili DOCX STL dokument.", "error");
+    setInlineMessage(riskAssessmentChemicalImportMessage, "Povuci PDF, DOC ili DOCX STL dokument.", "error");
     return;
   }
   setRiskAssessmentStlInputFiles(supportedFiles);
   if (supportedFiles.length !== files.length) {
-    setInlineMessage(riskAssessmentChemicalImportMessage, "Dodan je samo PDF/DOCX dio odabranih datoteka.", "error");
+    setInlineMessage(riskAssessmentChemicalImportMessage, "Dodan je samo PDF/DOC/DOCX dio odabranih datoteka.", "error");
   }
 });
 
@@ -123145,8 +123145,10 @@ function isSupportedRiskAssessmentStlFile(file) {
   const name = String(file.name || "").toLocaleLowerCase("hr-HR");
   const type = String(file.type || "").toLocaleLowerCase("hr-HR");
   return name.endsWith(".pdf")
+    || name.endsWith(".doc")
     || name.endsWith(".docx")
     || type === "application/pdf"
+    || type === "application/msword"
     || type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 }
 
@@ -123211,7 +123213,7 @@ function setRiskAssessmentStlInputFiles(files = []) {
   }
   const supportedFiles = files.filter(isSupportedRiskAssessmentStlFile);
   if (!supportedFiles.length) {
-    setInlineMessage(riskAssessmentChemicalImportMessage, "Podržani su samo PDF i DOCX STL dokumenti.", "error");
+    setInlineMessage(riskAssessmentChemicalImportMessage, "Podržani su samo PDF, DOC i DOCX STL dokumenti.", "error");
     return;
   }
   try {
@@ -123876,7 +123878,7 @@ async function searchRiskAssessmentPubChemChemicals() {
 async function importRiskAssessmentChemicalStlFile() {
   const files = getSelectedRiskAssessmentStlFiles();
   if (!files.length) {
-    setInlineMessage(riskAssessmentChemicalImportMessage, "Odaberi jedan ili više PDF/DOCX STL dokumenata.", "error");
+    setInlineMessage(riskAssessmentChemicalImportMessage, "Odaberi jedan ili više PDF/DOC/DOCX STL dokumenata.", "error");
     return;
   }
   riskAssessmentChemicalImportBusy = true;

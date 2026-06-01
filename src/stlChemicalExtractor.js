@@ -2,7 +2,8 @@ import mammoth from "mammoth";
 import { getDocument as getPdfJsDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 
 const STL_MAX_TEXT_CHARS = 120000;
-const STL_CAS_PATTERN = /\b\d{2,7}-\d{2}-\d\b/g;
+const STL_CAS_PATTERN = /\b\d{2,7}\s*-\s*\d{2}\s*-\s*\d\b/g;
+const STL_CAS_STRICT_PATTERN = /\b\d{2,7}-\d{2}-\d\b/;
 const STL_EC_PATTERN = /\b(?:E[CZ]\s*(?:broj|number|no\.?)?\s*[:\-]?\s*)?(\d{3}-\d{3}-\d)\b/gi;
 const STL_REACH_PATTERN = /\b\d{2}-\d{10}-\d{2}-\d{4}\b/g;
 const STL_HAZARD_PATTERN = /\b(?:EUH\d{3}|H\d{3}[A-Z]?)\b[^.\n;]*(?:[.;][^\n]*)?/gi;
@@ -30,6 +31,32 @@ function uniqueStrings(values = [], limit = Number.POSITIVE_INFINITY) {
     result.push(text);
   });
   return result.slice(0, limit);
+}
+
+function normalizeCasNumber(value = "") {
+  const compact = String(value || "").replace(/\s+/g, "");
+  return compact.match(STL_CAS_STRICT_PATTERN)?.[0] || "";
+}
+
+function isValidCasNumber(value = "") {
+  const casNumber = normalizeCasNumber(value);
+  if (!casNumber) {
+    return false;
+  }
+  const digits = casNumber.replace(/-/g, "");
+  const checkDigit = Number(digits.slice(-1));
+  const bodyDigits = digits.slice(0, -1).split("").reverse();
+  const checksum = bodyDigits.reduce((sum, digit, index) => sum + (Number(digit) * (index + 1)), 0) % 10;
+  return checksum === checkDigit;
+}
+
+function extractCasNumbers(text = "", limit = 40) {
+  return uniqueStrings(
+    [...String(text || "").matchAll(STL_CAS_PATTERN)]
+      .map((match) => normalizeCasNumber(match[0]))
+      .filter(isValidCasNumber),
+    limit,
+  );
 }
 
 function getDataUrlMeta(dataUrl = "") {
@@ -116,6 +143,25 @@ export async function extractTextFromStlDocxBuffer(buffer = Buffer.alloc(0)) {
   return normalizeStlText(result.value || "").slice(0, STL_MAX_TEXT_CHARS);
 }
 
+function extractReadableStlSegments(value = "") {
+  return String(value || "")
+    .replace(/\u0000/g, " ")
+    .replace(/[^\p{L}\p{N}\s.,:;/%()+\-#]/gu, " ")
+    .split(/\s{2,}|\n+/)
+    .map((line) => normalizeStlText(line))
+    .filter((line) => line.length >= 3 && /[\p{L}\p{N}]/u.test(line));
+}
+
+export function extractTextFromStlDocBuffer(buffer = Buffer.alloc(0)) {
+  const sources = [
+    buffer.toString("utf8"),
+    buffer.toString("utf16le"),
+    buffer.toString("latin1"),
+  ];
+  return normalizeStlText(uniqueStrings(sources.flatMap(extractReadableStlSegments), 5000).join("\n"))
+    .slice(0, STL_MAX_TEXT_CHARS);
+}
+
 export async function extractStlTextFromFile({ fileName = "", mimeType = "", dataUrl = "" } = {}) {
   const buffer = readStlDataUrlBuffer(dataUrl);
   if (!buffer.length) {
@@ -135,9 +181,12 @@ export async function extractStlTextFromFile({ fileName = "", mimeType = "", dat
     };
   }
   if (kind === "doc") {
-    throw new Error("Stari .doc format nije podržan za automatsko čitanje. Spremi STL kao .docx ili PDF.");
+    return {
+      kind,
+      text: extractTextFromStlDocBuffer(buffer),
+    };
   }
-  throw new Error("Podržani su STL dokumenti u PDF ili DOCX formatu.");
+  throw new Error("Podržani su STL dokumenti u PDF, DOC ili DOCX formatu.");
 }
 
 function getLines(text = "") {
@@ -310,6 +359,69 @@ function extractPictograms(text = "") {
   return uniqueStrings(String(text || "").match(/\bGHS0?[1-9]\b/gi) || [], 12);
 }
 
+function getCasFlexiblePattern(casNumber = "") {
+  const normalized = normalizeCasNumber(casNumber);
+  if (!normalized) {
+    return null;
+  }
+  return new RegExp(normalized.replace(/-/g, "\\s*-\\s*"), "i");
+}
+
+function cleanStlChemicalNameCandidate(value = "") {
+  return normalizeStlText(value)
+    .replace(STL_CAS_PATTERN, " ")
+    .replace(/\bCAS\s*(?:br\.?|broj|no\.?|number)?[\s:.-]*/gi, " ")
+    .replace(/\b(?:E[CZ]\s*(?:broj|number|no\.?)?[:\-\s]*)?\d{3}-\d{3}-\d\b/gi, " ")
+    .replace(STL_REACH_PATTERN, " ")
+    .replace(/\b(?:EUH\d{3}|H\d{3}[A-Z]?|P\d{3}[A-Z]?|GHS0?[1-9]|GVI|KGVI|OEL|TLV|TWA|STEL)\b/gi, " ")
+    .replace(/\b\d+(?:[,.]\d+)?\s*(?:%|ppm|mg\/m3|mg\/m³|g\/mol|kg|l)\b/gi, " ")
+    .replace(/\b(?:broj|number|koncentracija|concentration|napomena|note|sastojak|ingredient|komponenta|component)\b/gi, " ")
+    .replace(/[|_]+/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .replace(/^[:;.,\-\s]+|[:;.,\-\s]+$/g, "")
+    .trim();
+}
+
+function isLikelyStlChemicalName(value = "") {
+  const text = cleanStlChemicalNameCandidate(value);
+  if (text.length < 2 || text.length > 90) {
+    return false;
+  }
+  if (STL_CAS_STRICT_PATTERN.test(text) || /^[\d\s.,;:%/+()-]+$/.test(text)) {
+    return false;
+  }
+  if (/\b(?:odjeljak|section|sigurnosno|tehnički|tehnicki|safety data sheet|classification|klasifikacija|opasnost|upozorenje)\b/i.test(text)) {
+    return false;
+  }
+  return /[\p{L}]/u.test(text);
+}
+
+function findStlChemicalNameNearCas(lines = [], casNumber = "") {
+  const pattern = getCasFlexiblePattern(casNumber);
+  if (!pattern) {
+    return "";
+  }
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] || "";
+    const windowText = [line, lines[index + 1]].filter(Boolean).join(" ");
+    if (!pattern.test(windowText)) {
+      continue;
+    }
+    const parts = windowText.split(pattern);
+    const candidates = [
+      parts[0],
+      parts.slice(1).join(" "),
+      lines[index - 1],
+      lines[index + 1],
+    ].map(cleanStlChemicalNameCandidate);
+    const match = candidates.find(isLikelyStlChemicalName);
+    if (match) {
+      return match;
+    }
+  }
+  return "";
+}
+
 function buildStlChemicalName(lines = []) {
   const value = findValueAfterLabel(lines, [
     "naziv proizvoda",
@@ -335,16 +447,19 @@ function buildStlChemicalName(lines = []) {
 export function extractStlChemicalDataFromText(text = "", metadata = {}) {
   const normalizedText = normalizeStlText(text);
   const lines = getLines(normalizedText);
-  const casNumbers = extractRegexMatches(normalizedText, STL_CAS_PATTERN, 12);
+  const identityText = extractSectionText(normalizedText, [1, 3]) || normalizedText;
+  const casNumbers = extractCasNumbers(identityText, 24);
+  const allCasNumbers = extractCasNumbers(normalizedText, 40);
+  const selectedCasNumbers = casNumbers.length ? casNumbers : allCasNumbers;
   const ecNumbers = uniqueStrings([...normalizedText.matchAll(STL_EC_PATTERN)].map((match) => match[1]), 8);
   const reachNumbers = extractRegexMatches(normalizedText, STL_REACH_PATTERN, 8);
   const hazardStatements = extractRegexMatches(extractSectionText(normalizedText, [2]) || normalizedText, STL_HAZARD_PATTERN, 40);
   const precautionaryStatements = extractRegexMatches(extractSectionText(normalizedText, [2]) || normalizedText, STL_PRECAUTION_PATTERN, 40);
 
-  const chemical = {
+  const baseChemical = {
     name: buildStlChemicalName(lines),
-    casNumber: casNumbers[0] || "",
-    casNumbers,
+    casNumber: selectedCasNumbers[0] || "",
+    casNumbers: selectedCasNumbers,
     ecNumber: ecNumbers[0] || "",
     ecNumbers,
     reachNumber: reachNumbers[0] || "",
@@ -366,13 +481,31 @@ export function extractStlChemicalDataFromText(text = "", metadata = {}) {
     sourceFileName: String(metadata.fileName || ""),
     extractedAt: new Date().toISOString(),
   };
+  const chemicals = (selectedCasNumbers.length > 1
+    ? selectedCasNumbers.map((casNumber) => ({
+      ...baseChemical,
+      name: findStlChemicalNameNearCas(lines, casNumber) || baseChemical.name,
+      casNumber,
+      casNumbers: [casNumber],
+    }))
+    : [{
+      ...baseChemical,
+      name: baseChemical.name || findStlChemicalNameNearCas(lines, baseChemical.casNumber),
+    }]
+  ).filter((item, index, array) => (
+    array.findIndex((candidate) => (
+      candidate.casNumber
+        ? candidate.casNumber === item.casNumber
+        : String(candidate.name || "").toLocaleLowerCase("hr-HR") === String(item.name || "").toLocaleLowerCase("hr-HR")
+    )) === index
+  ));
 
   return {
     ok: true,
     source: "stl",
     fileName: String(metadata.fileName || ""),
     textPreview: normalizedText.slice(0, 4000),
-    chemicals: [chemical].filter((item) => (
+    chemicals: chemicals.filter((item) => (
       item.name
       || item.casNumber
       || item.classification
