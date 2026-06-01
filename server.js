@@ -8441,6 +8441,8 @@ async function handleApiRequest(request, response, url) {
     const measurementEquipmentZipExportMatch = url.pathname === "/api/measurement-equipment/export-files-zip";
     const measurementEquipmentWordExportMatch = url.pathname === "/api/measurement-equipment/export-word";
     const measurementEquipmentPdfExportMatch = url.pathname === "/api/measurement-equipment/export-pdf";
+    const riskAssessmentWordExportMatch = url.pathname === "/api/risk-assessments/export-word";
+    const riskAssessmentPdfExportMatch = url.pathname === "/api/risk-assessments/export-pdf";
     const documentTemplateMatch = url.pathname.match(/^\/api\/document-templates\/([^/]+)$/);
     const documentTemplatePdfExportMatch = url.pathname.match(/^\/api\/document-templates\/([^/]+)\/export-pdf$/);
     const documentTemplateBatchPdfExportMatch = url.pathname === "/api/document-templates/export-pdf-batch";
@@ -10408,6 +10410,55 @@ async function handleApiRequest(request, response, url) {
 
       sendBinary(response, 200, generatedWord, {
         contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        fileName,
+      });
+      return true;
+    }
+
+    if ((riskAssessmentWordExportMatch || riskAssessmentPdfExportMatch) && request.method === "POST") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo generirati procjenu rizika.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const templateDocument = body?.templateDocument && typeof body.templateDocument === "object"
+        ? body.templateDocument
+        : null;
+
+      if (!templateDocument) {
+        sendError(response, 400, "Prvo učitaj Word template procjene (.docx/.dotx).");
+        return true;
+      }
+
+      if (!isWordTemplateFile(templateDocument)) {
+        sendError(response, 400, "Template procjene mora biti .docx ili .dotx datoteka.");
+        return true;
+      }
+
+      const placeholders = body?.placeholders && typeof body.placeholders === "object" && !Array.isArray(body.placeholders)
+        ? body.placeholders
+        : {};
+      const referenceDocument = await readStoredDocumentBuffer(templateDocument);
+      const isPdfExport = Boolean(riskAssessmentPdfExportMatch);
+      const fileName = sanitizeGeneratedDocumentFileName(
+        body.fileName || templateDocument.fileName || "procjena-rizika",
+        { fallback: "procjena-rizika", extension: isPdfExport ? "pdf" : "docx" },
+      );
+      const generatedDocument = isPdfExport
+        ? await buildPdfFromTemplateBuffer(referenceDocument.buffer, placeholders, {
+          fileName,
+          title: "Procjena rizika",
+        })
+        : await buildDocxFromTemplateBuffer(referenceDocument.buffer, placeholders, {
+          fileName,
+          title: "Procjena rizika",
+        });
+
+      sendBinary(response, 200, generatedDocument, {
+        contentType: isPdfExport
+          ? "application/pdf"
+          : "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         fileName,
       });
       return true;

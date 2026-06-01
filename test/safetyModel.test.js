@@ -523,6 +523,9 @@ test("risk assessments keep report templates with section placeholders", () => {
           { key: "cover", title: "Naslovnica", placeholder: "{{RISK_COVER}}", includeInToc: false },
           { key: "jobs", title: "Analiza poslova", placeholder: "{{RISK_JOBS}}", pageBreakBefore: true },
           { key: "chemicals", title: "Kemikalije", placeholder: "{{RISK_CHEMICALS}}", enabled: false },
+          { key: "work_equipment", title: "Radna oprema", placeholder: "{{RISK_WORK_EQUIPMENT}}" },
+          { key: "work_environment", title: "Radni okoliš", placeholder: "{{RISK_WORK_ENVIRONMENT}}" },
+          { key: "inspections", title: "Popis ispitivanja", placeholder: "{{RISK_INSPECTIONS}}" },
           { key: "biological", title: "Biološke štetnosti", placeholder: "{{RISK_BIOLOGICAL}}" },
         ],
       },
@@ -535,12 +538,15 @@ test("risk assessments keep report templates with section placeholders", () => {
   assert.equal(assessment.reportTemplate.title, "Industrijski template procjene");
   assert.equal(assessment.reportTemplate.wordTemplate.fileName, "procjena-rizika.docx");
   assert.equal(assessment.reportTemplate.wordTemplate.fileSize, 12345);
-  assert.equal(assessment.reportTemplate.sections.length, 4);
+  assert.equal(assessment.reportTemplate.sections.length, 7);
   assert.equal(assessment.reportTemplate.sections[1].key, "jobs");
   assert.equal(assessment.reportTemplate.sections[1].pageBreakBefore, true);
   assert.equal(assessment.reportTemplate.sections[2].placeholder, "{{RISK_CHEMICALS}}");
   assert.equal(assessment.reportTemplate.sections[2].enabled, false);
-  assert.equal(assessment.reportTemplate.sections[3].key, "biological");
+  assert.equal(assessment.reportTemplate.sections[3].key, "work_equipment");
+  assert.equal(assessment.reportTemplate.sections[4].key, "work_environment");
+  assert.equal(assessment.reportTemplate.sections[5].key, "inspections");
+  assert.equal(assessment.reportTemplate.sections[6].key, "biological");
   assert.equal(filterRiskAssessments([assessment], { query: "RISK_JOBS" }).length, 1);
   assert.equal(filterRiskAssessments([assessment], { query: "procjena-rizika.docx" }).length, 1);
 
@@ -560,7 +566,7 @@ test("risk assessments keep report templates with section placeholders", () => {
   );
 
   assert.equal(updated.reportTemplate.sections.at(-1).key, "ppe");
-  assert.equal(updated.reportTemplate.sections.at(-1).order, 5);
+  assert.equal(updated.reportTemplate.sections.at(-1).order, 8);
 });
 
 test("risk assessments link only matching risk assessment work orders and keep employer data", () => {

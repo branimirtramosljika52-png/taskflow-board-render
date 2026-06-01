@@ -6236,6 +6236,8 @@ const riskAssessmentTemplateSectionsList = document.querySelector("#risk-assessm
 const riskAssessmentTemplatePreview = document.querySelector("#risk-assessment-template-preview");
 const riskAssessmentTemplateWordFileInput = document.querySelector("#risk-assessment-template-word-file");
 const riskAssessmentTemplateWordUploadButton = document.querySelector("#risk-assessment-template-word-upload");
+const riskAssessmentTemplateWordGenerateButton = document.querySelector("#risk-assessment-template-word-generate");
+const riskAssessmentTemplatePdfGenerateButton = document.querySelector("#risk-assessment-template-pdf-generate");
 const riskAssessmentTemplateWordDownloadButton = document.querySelector("#risk-assessment-template-word-download");
 const riskAssessmentTemplateWordRemoveButton = document.querySelector("#risk-assessment-template-word-remove");
 const riskAssessmentTemplateWordMeta = document.querySelector("#risk-assessment-template-word-meta");
@@ -6253,6 +6255,8 @@ const riskAssessmentError = document.querySelector("#risk-assessment-error");
 const riskAssessmentSubmitButton = document.querySelector("#risk-assessment-submit");
 const riskAssessmentResetButton = document.querySelector("#risk-assessment-reset");
 const riskAssessmentDeleteButton = document.querySelector("#risk-assessment-delete");
+const riskAssessmentExportDocxButton = document.querySelector("#risk-assessment-export-docx");
+const riskAssessmentExportPdfButton = document.querySelector("#risk-assessment-export-pdf");
 let jobHazardDrafts = [];
 let riskAssessmentAuthorizedPersonDrafts = [];
 let riskAssessmentCompanyCollaboratorDrafts = [];
@@ -6273,6 +6277,7 @@ let riskAssessmentOfficialSubstanceType = "all";
 let riskAssessmentTemplateStorageScope = "";
 let riskAssessmentModuleReportTemplateDraft = null;
 let riskAssessmentReportTemplateDraft = null;
+let riskAssessmentWordExportBusy = false;
 let riskAssessmentDraftAutosaveTimer = null;
 let riskAssessmentActiveBlock = "basic";
 let riskAssessmentActiveRichEditorKey = "";
@@ -117427,6 +117432,14 @@ riskAssessmentTemplateWordDownloadButton?.addEventListener("click", (event) => {
   event.preventDefault();
   downloadRiskAssessmentWordTemplate();
 });
+riskAssessmentTemplateWordGenerateButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  void runMutation(() => exportRiskAssessmentDocument("docx"), getRiskAssessmentTemplateFeedbackTarget());
+});
+riskAssessmentTemplatePdfGenerateButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  void runMutation(() => exportRiskAssessmentDocument("pdf"), getRiskAssessmentTemplateFeedbackTarget());
+});
 riskAssessmentTemplateWordRemoveButton?.addEventListener("click", (event) => {
   event.preventDefault();
   removeRiskAssessmentWordTemplate();
@@ -117434,6 +117447,14 @@ riskAssessmentTemplateWordRemoveButton?.addEventListener("click", (event) => {
 riskAssessmentTemplateDownloadPlaceholdersButton?.addEventListener("click", (event) => {
   event.preventDefault();
   downloadRiskAssessmentTemplatePlaceholders();
+});
+riskAssessmentExportDocxButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  void runMutation(() => exportRiskAssessmentDocument("docx"), riskAssessmentError);
+});
+riskAssessmentExportPdfButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  void runMutation(() => exportRiskAssessmentDocument("pdf"), riskAssessmentError);
 });
 
 riskAssessmentOrganizationUnitsList?.addEventListener("input", handleRiskAssessmentOrganizationUnitsInput);
@@ -126459,7 +126480,7 @@ function createRiskAssessmentTemplateSectionDraft(initial = {}, index = 0) {
     placeholder: String(initial.placeholder || placeholder.token),
     title: String(initial.title || placeholder.defaultTitle || placeholder.label),
     enabled: isAlwaysIncludedIntro ? true : initial.enabled !== false,
-    pageBreakBefore: isAlwaysIncludedIntro ? false : Boolean(initial.pageBreakBefore ?? (index > 0 && ["jobs", "chemicals", "biological", "manual_handling", "overview", "signatures"].includes(placeholder.key))),
+    pageBreakBefore: isAlwaysIncludedIntro ? false : Boolean(initial.pageBreakBefore ?? (index > 0 && ["work_equipment", "work_environment", "inspections", "jobs", "chemicals", "biological", "manual_handling", "overview", "signatures"].includes(placeholder.key))),
     includeInToc: initial.includeInToc !== false && placeholder.key !== "cover",
     note: String(initial.note || ""),
     order: Number.isFinite(Number(initial.order)) ? Number(initial.order) : index + 1,
@@ -126697,6 +126718,7 @@ function renderRiskAssessmentTemplateWordMeta() {
   if (riskAssessmentTemplateWordRemoveButton) {
     riskAssessmentTemplateWordRemoveButton.disabled = !canManage || (!wordTemplate?.fileName && !wordTemplate?.dataUrl);
   }
+  syncRiskAssessmentDocumentExportControls();
 }
 
 function syncRiskAssessmentTemplatePanelAccess() {
@@ -126708,6 +126730,8 @@ function syncRiskAssessmentTemplatePanelAccess() {
     riskAssessmentTemplateApplyPresetButton,
     riskAssessmentTemplateWordFileInput,
     riskAssessmentTemplateWordUploadButton,
+    riskAssessmentTemplateWordGenerateButton,
+    riskAssessmentTemplatePdfGenerateButton,
     riskAssessmentTemplatePlaceholderOpenButton,
   ].forEach((control) => {
     if (control) {
@@ -126717,6 +126741,7 @@ function syncRiskAssessmentTemplatePanelAccess() {
   if (riskAssessmentTemplateWordRemoveButton) {
     riskAssessmentTemplateWordRemoveButton.disabled = !canManage || riskAssessmentTemplateWordRemoveButton.disabled;
   }
+  syncRiskAssessmentDocumentExportControls();
 }
 
 function buildRiskAssessmentTemplatePlaceholderText() {
@@ -126751,6 +126776,169 @@ function downloadRiskAssessmentWordTemplate() {
   document.body.append(link);
   link.click();
   link.remove();
+}
+
+function getRiskAssessmentWordPlaceholderName(value = "") {
+  return String(value || "")
+    .replace(/^\s*\{\{\s*/, "")
+    .replace(/\s*\}\}\s*$/, "")
+    .trim();
+}
+
+function getRiskAssessmentExportFileBaseName() {
+  const assessmentNumber = riskAssessmentNumberInput?.value?.trim() || refreshRiskAssessmentAutoNumber("");
+  const companyName = riskAssessmentCompanyInput?.selectedOptions?.[0]?.textContent?.trim()
+    || riskAssessmentEmployerCompanyNameInput?.value?.trim()
+    || "procjena-rizika";
+  const title = riskAssessmentTitleInput?.value?.trim() || `Procjena rizika ${companyName}`;
+  return sanitizeDocumentTemplateFileName(
+    [assessmentNumber, title].filter(Boolean).join(" "),
+    "procjena-rizika",
+  );
+}
+
+function buildRiskAssessmentSectionExportHtml(section = {}, index = 0) {
+  const placeholder = getRiskAssessmentTemplatePlaceholder(section.key);
+  const title = section.title || placeholder.defaultTitle || placeholder.label;
+  const body = renderRiskAssessmentTemplateSectionContent(section.key, index + 1);
+  if (section.key === "cover") {
+    return body;
+  }
+  return `
+    <section>
+      <h2>${escapeHtml(title)}</h2>
+      ${body}
+    </section>
+  `;
+}
+
+function getRiskAssessmentExportSections() {
+  const template = ensureRiskAssessmentTemplateSections(
+    RISK_ASSESSMENT_TEMPLATE_PLACEHOLDERS.map((placeholder) => placeholder.key),
+  );
+  return template.sections
+    .slice()
+    .sort((left, right) => left.order - right.order);
+}
+
+function buildRiskAssessmentExportPlaceholders() {
+  const employer = readRiskAssessmentEmployerData();
+  const sections = getRiskAssessmentExportSections();
+  const companyName = riskAssessmentCompanyInput?.selectedOptions?.[0]?.textContent?.trim()
+    || employer.fullName
+    || "";
+  const locationName = getRiskAssessmentSelectedLocationLines(riskAssessmentCompanyInput?.value || "").join("\n")
+    || riskAssessmentLocationInput?.selectedOptions?.[0]?.textContent?.trim()
+    || employer.detachedLocations
+    || "";
+  const assessmentNumber = riskAssessmentNumberInput?.value?.trim() || refreshRiskAssessmentAutoNumber("");
+  const teamLead = getRiskAssessmentSelectedPeopleText(riskAssessmentTeamLeadInput);
+  const members = getRiskAssessmentSelectedPeopleText(riskAssessmentMembersInput);
+  const collaborators = getRiskAssessmentCompanyCollaboratorSummary();
+  const placeholders = {
+    RISK_TITLE: riskAssessmentTitleInput?.value?.trim() || `Procjena rizika - ${companyName || "poslodavac"}`,
+    RISK_NUMBER: assessmentNumber,
+    RISK_COMPANY: companyName,
+    RISK_EMPLOYER_NAME: employer.fullName || companyName,
+    RISK_EMPLOYER_ADDRESS: employer.address || "",
+    RISK_EMPLOYER_OIB: employer.oib || "",
+    RISK_EMPLOYER_MBS: employer.mbs || "",
+    RISK_EMPLOYER_NKD: employer.nkdActivity || "",
+    RISK_EMPLOYEE_COUNT: employer.employeeCount || "",
+    RISK_LOCATION: locationName,
+    RISK_WORK_ORDER: riskAssessmentWorkOrderInput?.selectedOptions?.[0]?.textContent?.trim() || "",
+    RISK_STATUS: riskAssessmentStatusInput?.selectedOptions?.[0]?.textContent?.trim() || "",
+    RISK_DATE: formatDateInputDisplayValue(riskAssessmentDateInput?.value || ""),
+    RISK_COMPLETION_DATE: formatDateInputDisplayValue(riskAssessmentCompletionDateInput?.value || ""),
+    RISK_TEAM_LEAD: teamLead,
+    RISK_MEMBERS: members,
+    RISK_COLLABORATORS: collaborators,
+    RISK_GENERATED_AT: formatCompactDateTime(new Date().toISOString()),
+  };
+
+  sections.forEach((section, index) => {
+    const placeholder = getRiskAssessmentTemplatePlaceholder(section.key);
+    const blockValue = section.enabled
+      ? {
+        __docxBlockType: "rich_text",
+        html: buildRiskAssessmentSectionExportHtml(section, index),
+      }
+      : { __docxBlockType: "optional_empty" };
+    [
+      placeholder.token,
+      section.placeholder,
+    ].forEach((token) => {
+      const key = getRiskAssessmentWordPlaceholderName(token);
+      if (key) {
+        placeholders[key] = blockValue;
+      }
+    });
+  });
+
+  return placeholders;
+}
+
+function getRiskAssessmentTemplateDocumentForExport() {
+  const moduleTemplate = riskAssessmentModuleReportTemplateDraft || getRiskAssessmentModuleTemplateDraft();
+  const wordTemplate = riskAssessmentReportTemplateDraft?.wordTemplate || moduleTemplate?.wordTemplate;
+  if (!wordTemplate?.dataUrl) {
+    throw new Error("Prvo učitaj Word template procjene (.docx ili .dotx).");
+  }
+  return wordTemplate;
+}
+
+function syncRiskAssessmentDocumentExportControls() {
+  const canManage = getCanManageRiskAssessments();
+  const wordTemplate = riskAssessmentReportTemplateDraft?.wordTemplate || riskAssessmentModuleReportTemplateDraft?.wordTemplate;
+  const hasDraft = Boolean(state.riskAssessmentEditorOpen || riskAssessmentIdInput?.value || riskAssessmentCompanyInput?.value);
+  const canExport = canManage && hasDraft && Boolean(wordTemplate?.dataUrl) && !riskAssessmentWordExportBusy;
+  [
+    riskAssessmentTemplateWordGenerateButton,
+    riskAssessmentTemplatePdfGenerateButton,
+    riskAssessmentExportDocxButton,
+    riskAssessmentExportPdfButton,
+  ].forEach((button) => {
+    if (!button) {
+      return;
+    }
+    button.disabled = !canExport;
+    button.classList.toggle("is-loading", riskAssessmentWordExportBusy);
+  });
+}
+
+async function exportRiskAssessmentDocument(format = "docx") {
+  if (!state.riskAssessmentEditorOpen && !riskAssessmentIdInput?.value && !riskAssessmentCompanyInput?.value) {
+    throw new Error("Otvori procjenu koju želiš izvesti pa generiraj DOCX ili PDF.");
+  }
+
+  const safeFormat = String(format || "").trim().toLowerCase() === "pdf" ? "pdf" : "docx";
+  const templateDocument = getRiskAssessmentTemplateDocumentForExport();
+  const fileName = `${getRiskAssessmentExportFileBaseName()}.${safeFormat}`;
+  const endpoint = safeFormat === "pdf"
+    ? "/risk-assessments/export-pdf"
+    : "/risk-assessments/export-word";
+
+  riskAssessmentWordExportBusy = true;
+  syncRiskAssessmentDocumentExportControls();
+  try {
+    const response = await apiBinaryRequest(endpoint, {
+      method: "POST",
+      body: {
+        templateDocument,
+        placeholders: buildRiskAssessmentExportPlaceholders(),
+        fileName,
+      },
+    });
+    triggerBlobDownload(response.blob, response.fileName || fileName);
+    setInlineMessage(
+      state.riskAssessmentEditorOpen ? riskAssessmentError : getRiskAssessmentTemplateFeedbackTarget(),
+      `${safeFormat.toUpperCase()} procjene rizika je generiran.`,
+      "success",
+    );
+  } finally {
+    riskAssessmentWordExportBusy = false;
+    syncRiskAssessmentDocumentExportControls();
+  }
 }
 
 async function uploadRiskAssessmentWordTemplateFile(file) {
@@ -131721,6 +131909,7 @@ function syncRiskAssessmentEditorAccess() {
   if (riskAssessmentEditorPanel) {
     riskAssessmentEditorPanel.classList.toggle("is-client-note-mode", !canManage && canComment);
   }
+  syncRiskAssessmentDocumentExportControls();
 }
 
 function renderRiskAssessmentMeasures() {

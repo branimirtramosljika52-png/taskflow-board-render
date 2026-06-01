@@ -3279,6 +3279,7 @@ export async function buildDocxFromTemplateBuffer(templateBuffer, placeholders =
             || specialValue.type === "handover_specification"
             || specialValue.type === "system_description"
             || specialValue.type === "signature_group"
+            || specialValue.type === "rich_text"
             || specialValue.type === "optional_empty"
           ) {
             const sentinel = `__TASKFLOW_DOCX_BLOCK_${index}_${Date.now()}__`;
