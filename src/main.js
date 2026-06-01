@@ -116547,7 +116547,11 @@ jobConditionSections?.addEventListener("click", (event) => {
   const choiceButton = target?.closest("[data-job-condition-choice]");
   if (choiceButton instanceof HTMLElement) {
     choiceButton.classList.toggle("is-selected");
-    syncJobConditionChoiceText(choiceButton.dataset.jobConditionChoice || "", { force: true });
+    const field = choiceButton.dataset.jobConditionChoice || "";
+    syncJobConditionChoiceText(field, { force: true });
+    if (field === "bodyPositions") {
+      renderJobConditionSections(getJobConditionsDraftFromForm());
+    }
     return;
   }
   const aiButton = target?.closest("[data-job-nexai]");
@@ -123875,8 +123879,8 @@ const JOB_ENVIRONMENT_SECTIONS = Object.freeze([
     key: "workplace",
     title: "Mjesto rada",
     helper: "Odaberi tipična mjesta rada i dopiši opis.",
-    placeholder: "npr. u zatvorenom prostoru i povremeno na otvorenom kod klijenta...",
-    suggestions: ["u zatvorenom", "na otvorenom", "na visini", "u jami", "u vodi", "pod vodom", "u mokrom", "u prometu", "kod klijenta", "skladište", "proizvodnja", "radionica", "ured", "gradilište", "ograničen prostor", "vozilo"],
+    placeholder: "npr. u zatvorenom prostoru, na otvorenom ili na visini...",
+    suggestions: ["u zatvorenom", "na otvorenom", "na visini", "u jami", "u vodi", "pod vodom", "u mokrom", "skladište", "proizvodnja", "radionica", "ured", "gradilište", "ograničen prostor", "vozilo"],
   },
   {
     key: "organization",
@@ -123930,14 +123934,32 @@ const JOB_CONDITION_TOGGLES = Object.freeze([
   { key: "repetitiveTasks", group: "Posebni uvjeti rada", label: "Ponavljajući radni zadaci", suggestion: "Prisutan je ponavljajući radni obrazac, pa treba omogućiti promjenu položaja tijela i kratke pauze." },
 ]);
 
-const JOB_BODY_POSITION_OPTIONS = Object.freeze(["rad stojeći", "rad sjedeći", "u pokretu", "kombinirano", "hodanje", "učestalo sagibanje", "klečanje", "čučanje", "uspinjanje ljestvama", "uspinjanje stepenicama", "rad iznad ramena", "ponavljajući pokreti", "dizanje tereta", "prenošenje tereta", "guranje tereta"]);
-const JOB_IMPORTANT_FUNCTION_OPTIONS = Object.freeze(["vid na daljinu", "vid na blizinu", "raspoznavanje boja", "dobar sluh", "jasan govor", "preciznost ruku", "koordinacija pokreta"]);
-const JOB_WORK_CONDITION_OPTIONS = Object.freeze(["visoka temperatura", "niska temperatura", "visoka vlažnost", "buka", "vibracije stroja ili alata", "vibracije poda", "povišeni atmosferski tlak", "povećana izloženost ozljedama", "ionizirajuća zračenja", "neionizirajuća zračenja", "prašina", "kemijske štetnosti", "biološke štetnosti", "rad na visini", "rad na otvorenom", "rad u prometu"]);
-const RISK_ASSESSMENT_WORKPLACE_OPTIONS = Object.freeze(["u zatvorenom", "na otvorenom", "na visini", "u jami", "u vodi", "pod vodom", "u mokrom", "u prometu", "kod klijenta"]);
-const RISK_ASSESSMENT_ORGANIZATION_OPTIONS = Object.freeze(["puno radno vrijeme", "jedna smjena", "u smjenama", "noćni rad", "bez noćnog rada", "terenski rad", "po pozivu", "radi sam", "radi s grupom", "radi sa strankama", "rad na traci", "brzi tempo rada", "ritam određen", "monotonija"]);
+const JOB_BODY_POSITION_OPTIONS = Object.freeze(["rad stojeći", "učestalo sagibanje", "podvlačenje", "rad sjedeći", "zakretanje trupa", "balansiranje", "u pokretu", "klečanje", "uspinjanje ljestvama", "kombinirano", "čučanje", "uspinjanje stepenicama", "dizanje tereta", "prenošenje tereta", "guranje tereta"]);
+const JOB_IMPORTANT_FUNCTION_OPTIONS = Object.freeze(["vid na daljinu", "vid na blizinu", "raspoznavanje boja", "dobar sluh", "jasan govor"]);
+const JOB_WORK_CONDITION_OPTIONS = Object.freeze(["visoka temperatura", "visoka vlažnost", "niska temperatura", "buka", "vibracije stroja ili alata", "vibracije poda", "povišeni atmosferski tlak", "povećana izloženost ozljedama", "ionizirajuća zračenja", "neionizirajuća zračenja", "prašina"]);
+const RISK_ASSESSMENT_WORKPLACE_OPTIONS = Object.freeze(["u zatvorenom", "na otvorenom", "na visini", "u jami", "u vodi", "pod vodom", "u mokrom"]);
+const RISK_ASSESSMENT_ORGANIZATION_OPTIONS = Object.freeze(["u smjenama", "noćni rad", "terenski rad", "radi sam", "radi s grupom", "radi sa strankama", "rad na traci", "brzi tempo rada", "ritam određen", "monotonija"]);
 const RISK_ASSESSMENT_TOOLS_OPTIONS = Object.freeze(["ručni alat", "mehanizirani alat", "strojevi", "aparati", "mjerna oprema", "ljestve", "radno vozilo", "računalo"]);
 const RISK_ASSESSMENT_CHEMICAL_SUBSTANCE_OPTIONS = Object.freeze(["kemikalije", "sredstva za čišćenje", "ulja i maziva", "goriva", "boje i lakovi", "otapala", "plinovi", "prašina", "nema značajnih kemijskih tvari"]);
 const RISK_ASSESSMENT_BIOLOGICAL_HAZARD_OPTIONS = Object.freeze(["kontakt s ljudima", "otpad", "kanalizacija", "tlo i voda", "životinje", "plijesni", "ubodi/posjekotine", "nema značajnih bioloških štetnosti"]);
+const RISK_ASSESSMENT_LOAD_WEIGHT_FIELDS = Object.freeze([
+  { option: "dizanje tereta", key: "lifting", label: "Dizanje tereta" },
+  { option: "prenošenje tereta", key: "carrying", label: "Prenošenje tereta" },
+  { option: "guranje tereta", key: "pushing", label: "Guranje tereta" },
+]);
+const RISK_ASSESSMENT_LOAD_WEIGHT_OPTIONS = Object.freeze(["do 5 kg", "5-10 kg", "10-15 kg", "15-25 kg", "više od 25 kg"]);
+function filterJobValuesByAllowedOptions(values = [], options = []) {
+  const allowed = new Set((options ?? []).map((option) => String(option || "").trim()));
+  return uniqueJobValues(values).filter((value) => allowed.has(value));
+}
+
+function normalizeRiskAssessmentLoadWeights(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  return RISK_ASSESSMENT_LOAD_WEIGHT_FIELDS.reduce((weights, item) => {
+    weights[item.key] = String(source[item.key] || "");
+    return weights;
+  }, {});
+}
 const JOB_PSYCHOSOCIAL_LEVELS = Object.freeze([
   { value: "1", label: "Niska", marker: "1", tone: "low", description: "Nema potrebe za posebnim mjerama, dovoljna je redovna organizacija rada." },
   { value: "2", label: "Umjerena", marker: "2", tone: "moderate", description: "Pratiti opterećenje, rokove, komunikaciju i preventivne mjere." },
@@ -124047,7 +124069,7 @@ const JOB_WORK_PROFILE_PRESETS = Object.freeze([
     label: "Terenski rad",
     description: "rad kod klijenata / lokacija",
     environment: {
-      workplaceOptions: ["na otvorenom", "kod klijenta"],
+      workplaceOptions: ["na otvorenom"],
       organizationOptions: ["terenski rad", "brzi tempo rada"],
       workTimeMode: "po pozivu",
       dailyDuration: "neujednačeno",
@@ -124068,7 +124090,7 @@ const JOB_WORK_PROFILE_PRESETS = Object.freeze([
     conditions: {
       medicalFitnessCertificate: true,
       trainingRequired: true,
-      workConditions: ["rad na visini", "povećana izloženost ozljedama"],
+      workConditions: ["povećana izloženost ozljedama"],
       bodyPositions: ["uspinjanje ljestvama", "rad stojeći"],
       purPoints: ["17"],
     },
@@ -124082,6 +124104,7 @@ const JOB_WORK_PROFILE_PRESETS = Object.freeze([
       manualHandling: true,
       medicalFitnessCertificate: true,
       bodyPositions: ["dizanje tereta", "prenošenje tereta", "guranje tereta", "učestalo sagibanje"],
+      loadWeights: { lifting: "10-15 kg", carrying: "10-15 kg", pushing: "15-25 kg" },
       purPoints: ["16"],
     },
     flags: { physicalHazardsWork: true },
@@ -124111,7 +124134,7 @@ const JOB_WORK_PROFILE_PRESETS = Object.freeze([
     },
     conditions: {
       medicalFitnessCertificate: true,
-      workConditions: ["kemijske štetnosti", "prašina"],
+      workConditions: ["prašina"],
       purPoints: ["18"],
     },
     flags: { chemicalWork: true },
@@ -124836,6 +124859,12 @@ function mergeJobPresetConditions(current = {}, preset = {}) {
   if (presetConditions.purPoints) {
     conditions.purPoints = normalizeJobPurPointValues([...(conditions.purPoints ?? []), ...presetConditions.purPoints]);
   }
+  if (presetConditions.loadWeights) {
+    conditions.loadWeights = normalizeRiskAssessmentLoadWeights({
+      ...(conditions.loadWeights || {}),
+      ...presetConditions.loadWeights,
+    });
+  }
   return conditions;
 }
 
@@ -125155,7 +125184,7 @@ function buildJobEnvironmentSentence(sectionKey = "", selectedValues = [], envir
   }
 
   if (sectionKey === "workplace") {
-    const places = selectedList || "radnom prostoru poslodavca i po potrebi kod klijenta";
+    const places = selectedList || "radnom prostoru poslodavca";
     return `Posao "${title}" obavlja se na mjestima rada kao što su ${places}. Radni prostor mora biti uredan, prohodan, dovoljno osvijetljen i organiziran tako da se smanji rizik od spoticanja, pada, neželjenog kontakta s opremom i drugih opasnosti koje proizlaze iz konkretnog mjesta rada.`;
   }
 
@@ -125243,7 +125272,7 @@ function getJobNexAiText(kind = "description") {
   const title = String(jobTitleInput?.value || "Odabrani posao").trim() || "Odabrani posao";
   const environment = getJobEnvironmentDraftFromForm();
   const conditions = getJobConditionsDraftFromForm();
-  const selectedWorkplaces = environment.workplaceOptions?.length ? environment.workplaceOptions.join(", ") : "radnom prostoru poslodavca i/ili kod klijenta";
+  const selectedWorkplaces = environment.workplaceOptions?.length ? environment.workplaceOptions.join(", ") : "radnom prostoru poslodavca";
   if (kind === "machines") {
     return applyJobAiInstructionToText(`Radnik rukuje standardnim alatima i opremom potrebnom za posao "${title}". Oprema se koristi prema uputama proizvođača, uz prethodnu vizualnu provjeru ispravnosti i primjenu propisane osobne zaštitne opreme.`, kind);
   }
@@ -125447,7 +125476,7 @@ function renderJobConditionSections(conditions = {}) {
   selectionPanel.className = "job-condition-card is-wide";
   selectionPanel.innerHTML = `
     <div class="job-condition-card-head">
-      <strong>Podaci za uputnicu i opis rada</strong>
+      <strong>Organizacija posla</strong>
       <span>položaj, funkcije, uvjeti</span>
     </div>
     <div class="job-pur-panel">
@@ -125470,12 +125499,13 @@ function renderJobConditionSections(conditions = {}) {
       block.helper,
       block.icon,
       block.tone,
+      conditions.loadWeights || {},
     )).join("")}
   `;
   jobConditionSections.replaceChildren(...togglePanels, selectionPanel);
 }
 
-function renderJobMultiChoiceBlock(field, label, options, selectedValues = [], textField, textValue = "", helper = "", icon = "note", tone = "slate") {
+function renderJobMultiChoiceBlock(field, label, options, selectedValues = [], textField, textValue = "", helper = "", icon = "note", tone = "slate", loadWeights = {}) {
   const selected = new Set(selectedValues);
   const enabled = selected.size > 0 || Boolean(String(textValue || "").trim());
   const resolvedTextValue = String(textValue || "").trim() || (selected.size ? buildJobConditionChoiceSentence(field, [...selected]) : "");
@@ -125499,6 +125529,7 @@ function renderJobMultiChoiceBlock(field, label, options, selectedValues = [], t
         `).join("")}
       </div>
       <textarea data-job-condition-text="${escapeHtml(textField)}" rows="2" placeholder="Dodatni opis...">${escapeHtml(resolvedTextValue)}</textarea>
+      ${field === "bodyPositions" ? renderJobLoadWeightControls([...selected], loadWeights) : ""}
     </div>
   `;
 }
@@ -125599,7 +125630,6 @@ function renderJobSelectedHazards() {
     const measuresValue = hazard.measures || "";
     article.innerHTML = `
       <div class="job-selected-hazard-head">
-        <span class="job-hazard-back-indicator" aria-hidden="true">${renderRiskAssessmentRiskIcon("back")}</span>
         <div class="job-selected-hazard-title">
           <div class="job-hazard-title-row">
             <input class="job-hazard-code" data-job-hazard-field="catalogCode" value="${escapeHtml(hazard.catalogCode || "")}" placeholder="1.2" aria-label="Broj stavke opasnosti" />
@@ -125611,8 +125641,7 @@ function renderJobSelectedHazards() {
           </div>
         </div>
         <div class="job-selected-hazard-actions">
-          <button type="button" class="job-hazard-remove-button" data-job-hazard-remove="${index}" aria-label="Ukloni opasnost">${renderRiskAssessmentRiskIcon("close")}<span>Ukloni</span></button>
-          <button type="submit" class="job-hazard-save-button">${renderRiskAssessmentRiskIcon("save")}<span>Spremi posao</span></button>
+          <button type="button" class="job-hazard-remove-button" data-job-hazard-remove="${index}" aria-label="Ukloni opasnost">${renderRiskAssessmentRiskIcon("close")}</button>
         </div>
       </div>
       <div class="job-hazard-body">
@@ -125704,6 +125733,7 @@ function getJobConditionsDraftFromForm() {
     bodyPositions: [],
     importantFunctions: [],
     workConditions: [],
+    loadWeights: normalizeRiskAssessmentLoadWeights({}),
     purPoints: [],
     bodyText: "",
     functionsText: "",
@@ -125723,6 +125753,19 @@ function getJobConditionsDraftFromForm() {
   });
   ["bodyText", "functionsText", "conditionsText"].forEach((field) => {
     conditions[field] = String(jobConditionSections?.querySelector(`[data-job-condition-text="${field}"]`)?.value || "").trim();
+  });
+  const loadWeights = {};
+  jobConditionSections?.querySelectorAll("[data-job-load-weight]").forEach((select) => {
+    if (select instanceof HTMLSelectElement) {
+      loadWeights[select.dataset.jobLoadWeight || ""] = select.value;
+    }
+  });
+  conditions.loadWeights = normalizeRiskAssessmentLoadWeights(loadWeights);
+  const activeBodyPositions = new Set(conditions.bodyPositions);
+  RISK_ASSESSMENT_LOAD_WEIGHT_FIELDS.forEach((item) => {
+    if (!activeBodyPositions.has(item.option)) {
+      conditions.loadWeights[item.key] = "";
+    }
   });
   conditions.purPoints = normalizeJobPurPointValues(Array.from(jobConditionSections?.querySelectorAll("[data-job-pur-point].is-selected") ?? [])
     .map((button) => String(button.dataset.jobPurPoint || "").trim()));
@@ -127055,6 +127098,7 @@ function createRiskAssessmentJobDraftFromCatalogJob(job = {}) {
     bodyPositions: conditions.bodyPositions ?? [],
     importantFunctions: conditions.importantFunctions ?? [],
     workConditions: conditions.workConditions ?? [],
+    loadWeights: conditions.loadWeights ?? {},
     chemicalSubstanceOptions: environment.substancesOptions ?? [],
     biologicalHazardOptions: (conditions.workConditions ?? []).filter((value) => String(value || "").toLocaleLowerCase("hr").includes("biolo")),
     purPoints,
@@ -127537,11 +127581,15 @@ function applyRiskAssessmentJobWorkProfilePreset(jobIndex, key = "") {
   ]);
   const next = {
     ...current,
-    workplaceOptions: mergeJobValues(current.workplaceOptions ?? [], presetEnvironment.workplaceOptions ?? []),
-    organizationOptions: mergeJobValues(current.organizationOptions ?? [], presetEnvironment.organizationOptions ?? []),
-    bodyPositions: mergeJobValues(current.bodyPositions ?? [], presetConditions.bodyPositions ?? []),
-    importantFunctions: mergeJobValues(current.importantFunctions ?? [], presetConditions.importantFunctions ?? []),
-    workConditions: mergeJobValues(current.workConditions ?? [], presetConditions.workConditions ?? []),
+    workplaceOptions: filterJobValuesByAllowedOptions(mergeJobValues(current.workplaceOptions ?? [], presetEnvironment.workplaceOptions ?? []), RISK_ASSESSMENT_WORKPLACE_OPTIONS),
+    organizationOptions: filterJobValuesByAllowedOptions(mergeJobValues(current.organizationOptions ?? [], presetEnvironment.organizationOptions ?? []), RISK_ASSESSMENT_ORGANIZATION_OPTIONS),
+    bodyPositions: filterJobValuesByAllowedOptions(mergeJobValues(current.bodyPositions ?? [], presetConditions.bodyPositions ?? []), JOB_BODY_POSITION_OPTIONS),
+    importantFunctions: filterJobValuesByAllowedOptions(mergeJobValues(current.importantFunctions ?? [], presetConditions.importantFunctions ?? []), JOB_IMPORTANT_FUNCTION_OPTIONS),
+    workConditions: filterJobValuesByAllowedOptions(mergeJobValues(current.workConditions ?? [], presetConditions.workConditions ?? []), JOB_WORK_CONDITION_OPTIONS),
+    loadWeights: normalizeRiskAssessmentLoadWeights({
+      ...(current.loadWeights || {}),
+      ...(presetConditions.loadWeights || {}),
+    }),
     purPoints: nextPurPoints,
     workSchedule: current.workSchedule || buildRiskAssessmentPresetSchedule(preset),
     workOrganization: current.workOrganization || buildJobOrganizationSentences(presetEnvironment.organizationOptions ?? [], presetEnvironment),
@@ -127584,6 +127632,99 @@ function renderRiskAssessmentJobChoiceBlock(job = {}, field = "", label = "", op
             class="${selected.has(option) ? "is-selected" : ""}"
             data-risk-job-choice="${escapeHtml(field)}"
             data-value="${escapeHtml(option)}">${escapeHtml(option)}</button>
+        `).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderRiskAssessmentLoadWeightControls(job = {}) {
+  const selected = new Set(uniqueJobValues(job.bodyPositions ?? []));
+  const activeFields = RISK_ASSESSMENT_LOAD_WEIGHT_FIELDS.filter((item) => selected.has(item.option));
+  if (!activeFields.length) {
+    return "";
+  }
+  const weights = normalizeRiskAssessmentLoadWeights(job.loadWeights || {});
+  return `
+    <div class="risk-assessment-load-weight-panel">
+      <div class="risk-assessment-load-weight-head">
+        <span>${renderRiskAssessmentRiskIcon("activity")}</span>
+        <div>
+          <strong>Tereti u kg</strong>
+          <small>Za odabrano dizanje, prenošenje ili guranje upiši masu koja ide u RA-1.</small>
+        </div>
+      </div>
+      <div class="risk-assessment-load-weight-grid">
+        ${activeFields.map((item) => `
+          <label>
+            <span>${escapeHtml(item.label)}</span>
+            <select data-risk-job-load-weight="${escapeHtml(item.key)}">
+              <option value="">Odaberi kg</option>
+              ${RISK_ASSESSMENT_LOAD_WEIGHT_OPTIONS.map((option) => `<option value="${escapeHtml(option)}" ${weights[item.key] === option ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}
+            </select>
+          </label>
+        `).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderRiskAssessmentClientLoadWeightControls(input = {}) {
+  const selected = new Set(uniqueJobValues(input.bodyPositions ?? []));
+  const activeFields = RISK_ASSESSMENT_LOAD_WEIGHT_FIELDS.filter((item) => selected.has(item.option));
+  if (!activeFields.length) {
+    return "";
+  }
+  const weights = normalizeRiskAssessmentLoadWeights(input.loadWeights || {});
+  return `
+    <div class="risk-assessment-load-weight-panel is-client">
+      <div class="risk-assessment-load-weight-head">
+        <span>${renderRiskAssessmentRiskIcon("activity")}</span>
+        <div>
+          <strong>Tereti u kg</strong>
+          <small>Klijent upisuje masu samo za označeno dizanje, prenošenje ili guranje.</small>
+        </div>
+      </div>
+      <div class="risk-assessment-load-weight-grid">
+        ${activeFields.map((item) => `
+          <label>
+            <span>${escapeHtml(item.label)}</span>
+            <select data-risk-client-load-weight="${escapeHtml(item.key)}">
+              <option value="">Odaberi kg</option>
+              ${RISK_ASSESSMENT_LOAD_WEIGHT_OPTIONS.map((option) => `<option value="${escapeHtml(option)}" ${weights[item.key] === option ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}
+            </select>
+          </label>
+        `).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderJobLoadWeightControls(selectedValues = [], loadWeights = {}) {
+  const selected = new Set(uniqueJobValues(selectedValues));
+  const activeFields = RISK_ASSESSMENT_LOAD_WEIGHT_FIELDS.filter((item) => selected.has(item.option));
+  if (!activeFields.length) {
+    return "";
+  }
+  const weights = normalizeRiskAssessmentLoadWeights(loadWeights || {});
+  return `
+    <div class="risk-assessment-load-weight-panel is-jobs">
+      <div class="risk-assessment-load-weight-head">
+        <span>${renderRiskAssessmentRiskIcon("activity")}</span>
+        <div>
+          <strong>Tereti u kg</strong>
+          <small>Upiši masu samo za označene radnje.</small>
+        </div>
+      </div>
+      <div class="risk-assessment-load-weight-grid">
+        ${activeFields.map((item) => `
+          <label>
+            <span>${escapeHtml(item.label)}</span>
+            <select data-job-load-weight="${escapeHtml(item.key)}">
+              <option value="">Odaberi kg</option>
+              ${RISK_ASSESSMENT_LOAD_WEIGHT_OPTIONS.map((option) => `<option value="${escapeHtml(option)}" ${weights[item.key] === option ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}
+            </select>
+          </label>
         `).join("")}
       </div>
     </div>
@@ -127648,11 +127789,12 @@ function createRiskAssessmentClientJobInputDraft(initial = {}) {
     workOrganization: String(initial.workOrganization || ""),
     description: String(initial.description || ""),
     tasks: String(initial.tasks || ""),
-    workplaceOptions: uniqueJobValues(initial.workplaceOptions ?? []),
-    organizationOptions: uniqueJobValues(initial.organizationOptions ?? []),
-    bodyPositions: uniqueJobValues(initial.bodyPositions ?? []),
-    importantFunctions: uniqueJobValues(initial.importantFunctions ?? []),
-    workConditions: uniqueJobValues(initial.workConditions ?? []),
+    workplaceOptions: filterJobValuesByAllowedOptions(initial.workplaceOptions ?? [], RISK_ASSESSMENT_WORKPLACE_OPTIONS),
+    organizationOptions: filterJobValuesByAllowedOptions(initial.organizationOptions ?? [], RISK_ASSESSMENT_ORGANIZATION_OPTIONS),
+    bodyPositions: filterJobValuesByAllowedOptions(initial.bodyPositions ?? [], JOB_BODY_POSITION_OPTIONS),
+    importantFunctions: filterJobValuesByAllowedOptions(initial.importantFunctions ?? [], JOB_IMPORTANT_FUNCTION_OPTIONS),
+    workConditions: filterJobValuesByAllowedOptions(initial.workConditions ?? [], JOB_WORK_CONDITION_OPTIONS),
+    loadWeights: normalizeRiskAssessmentLoadWeights(initial.loadWeights || {}),
     purPoints: normalizeJobPurPointValues(initial.purPoints ?? []),
     safeWorkTrainingRequired: Boolean(initial.safeWorkTrainingRequired),
     medicalFitnessRequired: Boolean(initial.medicalFitnessRequired),
@@ -127692,6 +127834,7 @@ function hasRiskAssessmentClientJobInput(input = {}) {
     || draft.bodyPositions.length
     || draft.importantFunctions.length
     || draft.workConditions.length
+    || Object.values(draft.loadWeights || {}).some(Boolean)
     || draft.purPoints.length
     || draft.safeWorkTrainingRequired
     || draft.medicalFitnessRequired
@@ -127770,12 +127913,13 @@ function renderRiskAssessmentClientPortalJobInput(job = {}) {
         <label class="field-span-full"><span>Radni zadaci</span><textarea data-risk-client-field="tasks" rows="2" placeholder="Jedan zadatak po retku ili kratki popis zadataka.">${escapeHtml(input.tasks)}</textarea></label>
       </div>
       <div class="risk-assessment-job-choice-grid">
-        ${renderRiskAssessmentClientChoiceBlock(input, "organizationOptions", "Brzi izbor organizacije rada", ["puno radno vrijeme", "jedna smjena", "u smjenama", "noćni rad", "bez noćnog rada", "terenski rad", "po pozivu", "radi sam", "radi s grupom", "radi sa strankama", "rad na traci", "brzi tempo rada", "ritam određen", "monotonija"], "Ovo se koristi za smjene i opis rada.", "briefcase", "indigo")}
-        ${renderRiskAssessmentClientChoiceBlock(input, "workplaceOptions", "Mjesto rada", ["u zatvorenom", "na otvorenom", "na visini", "u jami", "u vodi", "pod vodom", "u mokrom", "u prometu", "kod klijenta"], "Podaci za uputnicu RA-1.", "map", "sky")}
+        ${renderRiskAssessmentClientChoiceBlock(input, "organizationOptions", "Brzi izbor organizacije rada", RISK_ASSESSMENT_ORGANIZATION_OPTIONS, "Ovo se koristi za smjene i opis rada.", "briefcase", "indigo")}
+        ${renderRiskAssessmentClientChoiceBlock(input, "workplaceOptions", "Mjesto rada", RISK_ASSESSMENT_WORKPLACE_OPTIONS, "Odaberi samo stavke iz RA-1 obrasca.", "map", "sky")}
         ${renderRiskAssessmentClientChoiceBlock(input, "bodyPositions", "Položaj tijela i aktivnosti", JOB_BODY_POSITION_OPTIONS, "Odaberite aktivnosti koje se stvarno ponavljaju.", "activity", "violet")}
-        ${renderRiskAssessmentClientChoiceBlock(input, "importantFunctions", "U poslu je bitno", JOB_IMPORTANT_FUNCTION_OPTIONS, "Vid, sluh, govor, preciznost i koordinacija.", "eye", "emerald")}
-        ${renderRiskAssessmentClientChoiceBlock(input, "workConditions", "Uvjeti rada", JOB_WORK_CONDITION_OPTIONS, "Buka, temperatura, kemikalije, rad na visini i slično.", "thermometer", "amber")}
+        ${renderRiskAssessmentClientChoiceBlock(input, "importantFunctions", "U poslu je bitno", JOB_IMPORTANT_FUNCTION_OPTIONS, "Vid, sluh i jasan govor.", "eye", "emerald")}
+        ${renderRiskAssessmentClientChoiceBlock(input, "workConditions", "Uvjeti rada", JOB_WORK_CONDITION_OPTIONS, "Temperatura, vlaga, buka, vibracije, tlak, zračenja i prašina.", "thermometer", "amber")}
       </div>
+      ${renderRiskAssessmentClientLoadWeightControls(input)}
       <div class="risk-assessment-client-input-grid">
         <section class="risk-assessment-client-input-section field-span-full">
           <div class="risk-assessment-job-pur-head">
@@ -127916,8 +128060,8 @@ function renderRiskAssessmentJobProfile(item = {}, index = 0) {
           <span>${renderRiskAssessmentRiskIcon("shield")}</span>
           <div>
             <span class="section-kicker">Korak 3</span>
-            <strong>Podaci za uputnicu RA-1</strong>
-            <small>Odaberi samo ono što se stvarno odnosi na posao. Svaka skupina je odvojena i ne ponavlja se drugdje.</small>
+            <strong>Organizacija posla</strong>
+            <small>Odaberi samo označive stavke iz RA-1 obrasca. Svaka skupina je odvojena i ne ponavlja se drugdje.</small>
           </div>
         </div>
         <div class="risk-assessment-job-choice-grid is-ra1">
@@ -127930,6 +128074,7 @@ function renderRiskAssessmentJobProfile(item = {}, index = 0) {
           ${renderRiskAssessmentJobChoiceBlock(item, "chemicalSubstanceOptions", "Kemijske tvari", RISK_ASSESSMENT_CHEMICAL_SUBSTANCE_OPTIONS, "Tvari s kojima radnik rukuje ili dolazi u dodir.", "flask", "amber")}
           ${renderRiskAssessmentJobChoiceBlock(item, "biologicalHazardOptions", "Biološke štetnosti", RISK_ASSESSMENT_BIOLOGICAL_HAZARD_OPTIONS, "Moguće biološke štetnosti i izvori izloženosti.", "activity", "emerald")}
         </div>
+        ${renderRiskAssessmentLoadWeightControls(item)}
         <div class="risk-assessment-job-profile-grid is-compact-text">
           ${renderRiskAssessmentJobResourceField(item, "toolsAndMachines", "Strojevi, alati, aparati", "tools", "sky", 2)}
           ${renderRiskAssessmentJobResourceField(item, "chemicalSubstances", "Kemijske tvari", "flask", "amber", 2)}
@@ -127995,17 +128140,28 @@ function renderRiskAssessmentJobProfile(item = {}, index = 0) {
           <div>
             <span class="section-kicker">Korak 6</span>
             <strong>ARMOR - opasnosti, štetnosti, napori i mjere</strong>
-            <small>Ovdje ostaju samo ARMOR stavke i procjena rizika za ovo radno mjesto.</small>
+            <small>Lijevo je stalni katalog po točkama, desno su ARMOR kartice za ovo radno mjesto.</small>
           </div>
         </div>
-        <div class="risk-assessment-armor-quickbar">
-          <button type="button" class="ghost-button" data-risk-job-catalog="${index}">${item.catalogOpen ? "Sakrij ARMOR izbornik" : "Otvori ARMOR izbornik"}</button>
-          <button type="button" class="ghost-button" data-risk-job-template="${index}">Dodaj ARMOR predložak</button>
-          <button type="button" class="ghost-button" data-risk-row-add="${index}">+ ARMOR stavka</button>
-          <button type="button" class="ghost-button risk-assessment-nexai-button" data-risk-job-ai="risks">NexAI procijeni ARMOR</button>
+        <div class="risk-assessment-armor-workbench">
+          <aside class="risk-assessment-armor-sidebar">
+            ${renderRiskAssessmentCatalogPicker(item)}
+          </aside>
+          <div class="risk-assessment-armor-workspace">
+            <div class="risk-assessment-armor-workspace-head">
+              <div>
+                <strong>ARMOR stavke radnog mjesta</strong>
+                <small>${escapeHtml(`${getRiskAssessmentFilledRiskRowCount(item)} stavki · ${item.jobTitle || "radno mjesto"}`)}</small>
+              </div>
+              <div>
+                <button type="button" class="ghost-button" data-risk-job-template="${index}">Predložak</button>
+                <button type="button" class="ghost-button" data-risk-row-add="${index}">+ Stavka</button>
+                <button type="button" class="ghost-button risk-assessment-nexai-button" data-risk-job-ai="risks">NexAI</button>
+              </div>
+            </div>
+            ${renderRiskAssessmentRiskCards(item)}
+          </div>
         </div>
-        ${item.catalogOpen ? renderRiskAssessmentCatalogPicker(item) : ""}
-        ${renderRiskAssessmentRiskCards(item)}
       </section>
     </div>
   `;
@@ -129345,53 +129501,56 @@ function renderRiskAssessmentPpeCompactPicker(job = {}, jobIndex = 0) {
 
   return `
     <div class="risk-assessment-ppe-compact" data-risk-ppe-panel="${jobIndex}">
-      <div class="risk-assessment-ppe-compact-toolbar">
-        <label class="risk-assessment-ppe-search">
-          <span>Pretraga OZO kataloga</span>
-          <input data-risk-ppe-search value="${escapeHtml(searchValue)}" placeholder="npr. kaciga, rukavice, HRN EN 397..." />
-        </label>
-        <div class="risk-assessment-ppe-compact-actions">
-          <button type="button" class="ghost-button" data-risk-job-ai="ppe">NexAI predloži OZO</button>
-          <button type="button" class="secondary-button" data-risk-ppe-new-toggle>${newFormOpen ? "Zatvori unos" : "+ Nova OZO"}</button>
-        </div>
-      </div>
-
-      <div class="risk-assessment-ppe-filters">
-        ${RISK_ASSESSMENT_PPE_BODY_FILTERS.map((filter) => `
-          <button type="button" class="${activeFilter === filter.value ? "is-active" : ""}" data-risk-ppe-filter="${escapeHtml(filter.value)}">
-            <span>${escapeHtml(filter.label)}</span>
-            <small>${countByBodyPart[filter.value] || 0}</small>
-          </button>
-        `).join("")}
-      </div>
-
-      <div class="risk-assessment-ppe-new-form is-compact" ${newFormOpen ? "" : "hidden"}>
-        <label><span>Naziv</span><input data-risk-ppe-new-field="name" value="${escapeHtml(newDraft.name)}" placeholder="npr. Štitnik za koljena" /></label>
-        <label><span>Norma</span><input data-risk-ppe-new-field="norm" value="${escapeHtml(newDraft.norm)}" placeholder="npr. HRN EN 14404" /></label>
-        <label><span>Kategorija</span><input data-risk-ppe-new-field="category" value="${escapeHtml(newDraft.category)}" placeholder="npr. Zaštita nogu" /></label>
-        <label><span>Dio tijela</span><select data-risk-ppe-new-field="bodyPart">${renderRiskAssessmentPpeBodyPartOptions(newDraft.bodyPart)}</select></label>
-        <label><span>EN norma</span><input data-risk-ppe-new-field="standardCode" value="${escapeHtml(newDraft.standardCode)}" placeholder="npr. EN 14404" /></label>
-        <label><span>URL slike</span><input data-risk-ppe-new-field="imageUrl" value="${escapeHtml(newDraft.imageUrl)}" placeholder="https://..." /></label>
-        <label class="field-span-full"><span>Opis primjene</span><textarea data-risk-ppe-new-field="description" rows="2">${escapeHtml(newDraft.description)}</textarea></label>
-        <div class="risk-assessment-ppe-new-actions">
-          <span>Spremi u bazu i odmah dodaj na ovo radno mjesto.</span>
-          <button type="button" class="primary-button" data-risk-ppe-new-save>Spremi OZO</button>
-        </div>
-      </div>
-
-      ${renderRiskAssessmentPpeWorkerPreview(job)}
-
-      <div class="risk-assessment-ppe-compact-body">
-        <section class="risk-assessment-ppe-compact-pane">
-          <div class="risk-assessment-ppe-compact-pane-head">
-            <div>
-              <strong>Katalog OZO</strong>
-              <small><b data-risk-ppe-match-count>${visibleCatalogItems.length}</b> prikazanih stavki</small>
+      <div class="risk-assessment-ppe-compact-layout">
+        <aside class="risk-assessment-ppe-worker-column">
+          ${renderRiskAssessmentPpeWorkerPreview(job)}
+        </aside>
+        <div class="risk-assessment-ppe-picker-column">
+          <div class="risk-assessment-ppe-compact-toolbar">
+            <label class="risk-assessment-ppe-search">
+              <span>Pretraga OZO kataloga</span>
+              <input data-risk-ppe-search value="${escapeHtml(searchValue)}" placeholder="npr. kaciga, rukavice, HRN EN 397..." />
+            </label>
+            <div class="risk-assessment-ppe-compact-actions">
+              <button type="button" class="ghost-button" data-risk-job-ai="ppe">NexAI predloži OZO</button>
+              <button type="button" class="secondary-button" data-risk-ppe-new-toggle>${newFormOpen ? "Zatvori unos" : "+ Nova OZO"}</button>
             </div>
-            <a href="${escapeHtml(RISK_PPE_SOURCE_URL)}" target="_blank" rel="noopener noreferrer">NN 110/2009</a>
           </div>
-          <div class="risk-assessment-ppe-compact-list">
-            ${catalog.map((ppe) => {
+
+          <div class="risk-assessment-ppe-filters">
+            ${RISK_ASSESSMENT_PPE_BODY_FILTERS.map((filter) => `
+              <button type="button" class="${activeFilter === filter.value ? "is-active" : ""}" data-risk-ppe-filter="${escapeHtml(filter.value)}">
+                <span>${escapeHtml(filter.label)}</span>
+                <small>${countByBodyPart[filter.value] || 0}</small>
+              </button>
+            `).join("")}
+          </div>
+
+          <div class="risk-assessment-ppe-new-form is-compact" ${newFormOpen ? "" : "hidden"}>
+            <label><span>Naziv</span><input data-risk-ppe-new-field="name" value="${escapeHtml(newDraft.name)}" placeholder="npr. Štitnik za koljena" /></label>
+            <label><span>Norma</span><input data-risk-ppe-new-field="norm" value="${escapeHtml(newDraft.norm)}" placeholder="npr. HRN EN 14404" /></label>
+            <label><span>Kategorija</span><input data-risk-ppe-new-field="category" value="${escapeHtml(newDraft.category)}" placeholder="npr. Zaštita nogu" /></label>
+            <label><span>Dio tijela</span><select data-risk-ppe-new-field="bodyPart">${renderRiskAssessmentPpeBodyPartOptions(newDraft.bodyPart)}</select></label>
+            <label><span>EN norma</span><input data-risk-ppe-new-field="standardCode" value="${escapeHtml(newDraft.standardCode)}" placeholder="npr. EN 14404" /></label>
+            <label><span>URL slike</span><input data-risk-ppe-new-field="imageUrl" value="${escapeHtml(newDraft.imageUrl)}" placeholder="https://..." /></label>
+            <label class="field-span-full"><span>Opis primjene</span><textarea data-risk-ppe-new-field="description" rows="2">${escapeHtml(newDraft.description)}</textarea></label>
+            <div class="risk-assessment-ppe-new-actions">
+              <span>Spremi u bazu i odmah dodaj na ovo radno mjesto.</span>
+              <button type="button" class="primary-button" data-risk-ppe-new-save>Spremi OZO</button>
+            </div>
+          </div>
+
+          <div class="risk-assessment-ppe-compact-body">
+            <section class="risk-assessment-ppe-compact-pane">
+              <div class="risk-assessment-ppe-compact-pane-head">
+                <div>
+                  <strong>Katalog OZO</strong>
+                  <small><b data-risk-ppe-match-count>${visibleCatalogItems.length}</b> prikazanih stavki</small>
+                </div>
+                <a href="${escapeHtml(RISK_PPE_SOURCE_URL)}" target="_blank" rel="noopener noreferrer">NN 110/2009</a>
+              </div>
+              <div class="risk-assessment-ppe-compact-list">
+                ${catalog.map((ppe) => {
               const searchText = normalizeRiskAssessmentPpeSearchValue([
                 ppe.name,
                 ppe.category,
@@ -129415,21 +129574,21 @@ function renderRiskAssessmentPpeCompactPicker(job = {}, jobIndex = 0) {
                   </span>
                 </label>
               `;
-            }).join("")}
-          </div>
-          <p class="inline-help risk-assessment-ppe-empty" ${visibleCatalogItems.length ? "hidden" : ""}>Nema OZO stavki za odabrani filter ili pretragu.</p>
-        </section>
+                }).join("")}
+              </div>
+              <p class="inline-help risk-assessment-ppe-empty" ${visibleCatalogItems.length ? "hidden" : ""}>Nema OZO stavki za odabrani filter ili pretragu.</p>
+            </section>
 
-        <section class="risk-assessment-ppe-compact-pane is-selected">
-          <div class="risk-assessment-ppe-compact-pane-head">
-            <div>
-              <strong>Odabrana OZO</strong>
-              <small>${escapeHtml(selectedCount ? `${selectedCount} stavki · ${selectedBodyPartLabels.join(", ") || "bez kategorije"}` : "Odaberi OZO iz kataloga")}</small>
-            </div>
-            <span>${escapeHtml(String(selectedCount))}</span>
-          </div>
-          <div class="risk-assessment-ppe-selected-compact-list">
-            ${selectedItems.length ? selectedItems.map((ppe, ppeIndex) => {
+            <section class="risk-assessment-ppe-compact-pane is-selected">
+              <div class="risk-assessment-ppe-compact-pane-head">
+                <div>
+                  <strong>Odabrana OZO</strong>
+                  <small>${escapeHtml(selectedCount ? `${selectedCount} stavki · ${selectedBodyPartLabels.join(", ") || "bez kategorije"}` : "Odaberi OZO iz kataloga")}</small>
+                </div>
+                <span>${escapeHtml(String(selectedCount))}</span>
+              </div>
+              <div class="risk-assessment-ppe-selected-compact-list">
+                ${selectedItems.length ? selectedItems.map((ppe, ppeIndex) => {
               const normalized = normalizeRiskPpeCatalogItem(ppe);
               const iconUrl = normalized.iconUrl || RISK_PPE_CATEGORY_ICONS[normalized.bodyPart] || RISK_PPE_CATEGORY_ICONS.other || "";
               return `
@@ -129445,9 +129604,11 @@ function renderRiskAssessmentPpeCompactPicker(job = {}, jobIndex = 0) {
                   <button type="button" class="ghost-button card-danger" data-risk-ppe-remove="${ppeIndex}">Ukloni</button>
                 </article>
               `;
-            }).join("") : `<p class="inline-help">Ovdje će se prikazati odabrana oprema s normom i primjenom.</p>`}
+                }).join("") : `<p class="inline-help">Ovdje će se prikazati odabrana oprema s normom i primjenom.</p>`}
+              </div>
+            </section>
           </div>
-        </section>
+        </div>
       </div>
     </div>
   `;
@@ -130285,11 +130446,12 @@ function createRiskAssessmentJobDraft(initial = {}) {
     workEquipment: String(initial.workEquipment || ""),
     toolsAndMachines: String(initial.toolsAndMachines || ""),
     workplaces: String(initial.workplaces || ""),
-    workplaceOptions: uniqueJobValues(initial.workplaceOptions ?? []),
-    organizationOptions: uniqueJobValues(initial.organizationOptions ?? []),
-    bodyPositions: uniqueJobValues(initial.bodyPositions ?? []),
-    importantFunctions: uniqueJobValues(initial.importantFunctions ?? []),
-    workConditions: uniqueJobValues(initial.workConditions ?? []),
+    workplaceOptions: filterJobValuesByAllowedOptions(initial.workplaceOptions ?? [], RISK_ASSESSMENT_WORKPLACE_OPTIONS),
+    organizationOptions: filterJobValuesByAllowedOptions(initial.organizationOptions ?? [], RISK_ASSESSMENT_ORGANIZATION_OPTIONS),
+    bodyPositions: filterJobValuesByAllowedOptions(initial.bodyPositions ?? [], JOB_BODY_POSITION_OPTIONS),
+    importantFunctions: filterJobValuesByAllowedOptions(initial.importantFunctions ?? [], JOB_IMPORTANT_FUNCTION_OPTIONS),
+    workConditions: filterJobValuesByAllowedOptions(initial.workConditions ?? [], JOB_WORK_CONDITION_OPTIONS),
+    loadWeights: normalizeRiskAssessmentLoadWeights(initial.loadWeights || initial.conditions?.loadWeights || {}),
     toolsAndMachinesOptions: uniqueJobValues(initial.toolsAndMachinesOptions ?? []),
     chemicalSubstanceOptions: uniqueJobValues(initial.chemicalSubstanceOptions ?? []),
     biologicalHazardOptions: uniqueJobValues(initial.biologicalHazardOptions ?? []),
@@ -131432,7 +131594,18 @@ function toggleRiskAssessmentClientJobInputChoice(jobIndex, field = "", value = 
   } else {
     selected.add(value);
   }
-  updateRiskAssessmentClientJobInput(jobIndex, { [field]: Array.from(selected) }, { rerender: true });
+  const patch = { [field]: Array.from(selected) };
+  if (field === "bodyPositions") {
+    const weights = normalizeRiskAssessmentLoadWeights(input.loadWeights || {});
+    const activeLoadOptions = new Set(Array.from(selected));
+    RISK_ASSESSMENT_LOAD_WEIGHT_FIELDS.forEach((item) => {
+      if (!activeLoadOptions.has(item.option)) {
+        weights[item.key] = "";
+      }
+    });
+    patch.loadWeights = weights;
+  }
+  updateRiskAssessmentClientJobInput(jobIndex, patch, { rerender: true });
 }
 
 function toggleRiskAssessmentClientJobInputPurPoint(jobIndex, value = "") {
@@ -131469,11 +131642,15 @@ function applyRiskAssessmentClientJobPreset(jobIndex, key = "") {
     ...(presetConditions.purPoints ?? []),
   ]);
   updateRiskAssessmentClientJobInput(jobIndex, {
-    workplaceOptions: mergeJobValues(input.workplaceOptions ?? [], presetEnvironment.workplaceOptions ?? []),
-    organizationOptions: mergeJobValues(input.organizationOptions ?? [], presetEnvironment.organizationOptions ?? []),
-    bodyPositions: mergeJobValues(input.bodyPositions ?? [], presetConditions.bodyPositions ?? []),
-    importantFunctions: mergeJobValues(input.importantFunctions ?? [], presetConditions.importantFunctions ?? []),
-    workConditions: mergeJobValues(input.workConditions ?? [], presetConditions.workConditions ?? []),
+    workplaceOptions: filterJobValuesByAllowedOptions(mergeJobValues(input.workplaceOptions ?? [], presetEnvironment.workplaceOptions ?? []), RISK_ASSESSMENT_WORKPLACE_OPTIONS),
+    organizationOptions: filterJobValuesByAllowedOptions(mergeJobValues(input.organizationOptions ?? [], presetEnvironment.organizationOptions ?? []), RISK_ASSESSMENT_ORGANIZATION_OPTIONS),
+    bodyPositions: filterJobValuesByAllowedOptions(mergeJobValues(input.bodyPositions ?? [], presetConditions.bodyPositions ?? []), JOB_BODY_POSITION_OPTIONS),
+    importantFunctions: filterJobValuesByAllowedOptions(mergeJobValues(input.importantFunctions ?? [], presetConditions.importantFunctions ?? []), JOB_IMPORTANT_FUNCTION_OPTIONS),
+    workConditions: filterJobValuesByAllowedOptions(mergeJobValues(input.workConditions ?? [], presetConditions.workConditions ?? []), JOB_WORK_CONDITION_OPTIONS),
+    loadWeights: normalizeRiskAssessmentLoadWeights({
+      ...(input.loadWeights || {}),
+      ...(presetConditions.loadWeights || {}),
+    }),
     purPoints: nextPurPoints,
     workSchedule: input.workSchedule || buildRiskAssessmentPresetSchedule(preset),
     workOrganization: input.workOrganization || buildJobOrganizationSentences(presetEnvironment.organizationOptions ?? [], presetEnvironment),
@@ -131727,6 +131904,18 @@ function handleRiskAssessmentJobsListInput(event) {
     return;
   }
 
+  if (target.dataset.riskClientLoadWeight) {
+    const current = riskAssessmentJobDrafts[jobIndex];
+    const input = createRiskAssessmentClientJobInputDraft(current?.clientInput || {});
+    updateRiskAssessmentClientJobInput(jobIndex, {
+      loadWeights: {
+        ...normalizeRiskAssessmentLoadWeights(input.loadWeights || {}),
+        [target.dataset.riskClientLoadWeight]: target.value,
+      },
+    });
+    return;
+  }
+
   if (target.dataset.riskJobAiText !== undefined) {
     const proposal = riskAssessmentJobDrafts[jobIndex]?.aiProposal;
     if (proposal) {
@@ -131798,6 +131987,21 @@ function handleRiskAssessmentJobsListInput(event) {
       target.dataset.riskPpeField,
       target.type === "checkbox" ? target.checked : target.value,
     );
+    return;
+  }
+
+  if (target.dataset.riskJobLoadWeight) {
+    const current = riskAssessmentJobDrafts[jobIndex];
+    if (current) {
+      riskAssessmentJobDrafts[jobIndex] = {
+        ...current,
+        loadWeights: {
+          ...normalizeRiskAssessmentLoadWeights(current.loadWeights || {}),
+          [target.dataset.riskJobLoadWeight]: target.value,
+        },
+      };
+      scheduleRiskAssessmentDraftAutosave();
+    }
     return;
   }
 
@@ -131958,6 +132162,16 @@ function handleRiskAssessmentJobsListClick(event) {
       };
       if (field === "importantFunctions") {
         next.visionCheckRequired = next.visionCheckRequired || Array.from(selected).some((entry) => String(entry || "").toLocaleLowerCase("hr").includes("vid"));
+      }
+      if (field === "bodyPositions") {
+        const activeLoadOptions = new Set(Array.from(selected));
+        const currentWeights = normalizeRiskAssessmentLoadWeights(next.loadWeights || {});
+        RISK_ASSESSMENT_LOAD_WEIGHT_FIELDS.forEach((item) => {
+          if (!activeLoadOptions.has(item.option)) {
+            currentWeights[item.key] = "";
+          }
+        });
+        next.loadWeights = currentWeights;
       }
       const textFieldByChoice = {
         toolsAndMachinesOptions: "toolsAndMachines",
@@ -132456,7 +132670,6 @@ function renderRiskAssessmentRiskCards(item = {}) {
         return `
         <article class="risk-assessment-risk-card is-${riskTone}">
           <div class="risk-assessment-risk-card-head">
-            <span class="risk-assessment-risk-back-indicator" aria-hidden="true">${renderRiskAssessmentRiskIcon("back")}</span>
             <div class="risk-assessment-risk-title-shell">
               <div class="risk-assessment-risk-title-row">
                 <input class="risk-assessment-risk-code-input" data-risk-row-index="${riskIndex}" data-risk-row-field="code" value="${escapeHtml(risk.code || "")}" placeholder="2.1.1" aria-label="Broj stavke rizika" />
@@ -132468,8 +132681,7 @@ function renderRiskAssessmentRiskCards(item = {}) {
               </div>
             </div>
             <div class="risk-assessment-risk-head-actions">
-              <button type="button" class="risk-assessment-risk-secondary-action" data-risk-row-remove="${riskIndex}">${renderRiskAssessmentRiskIcon("close")}<span>Odustani</span></button>
-              <button type="submit" class="risk-assessment-risk-primary-action">${renderRiskAssessmentRiskIcon("save")}<span>Spremi procjenu</span></button>
+              <button type="button" class="risk-assessment-risk-remove-icon" data-risk-row-remove="${riskIndex}" aria-label="Ukloni ARMOR stavku">${renderRiskAssessmentRiskIcon("close")}</button>
             </div>
           </div>
           <div class="risk-assessment-risk-body">
