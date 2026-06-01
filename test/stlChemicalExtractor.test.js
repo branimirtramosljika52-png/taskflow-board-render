@@ -72,6 +72,17 @@ test("STL chemical extractor keeps one chemical per STL while preserving CAS can
   assert.deepEqual(payload.chemicals[0].casNumbers, ["71-36-3", "64-17-5"]);
 });
 
+test("STL chemical extractor trims product name from single-line PDF text", () => {
+  const payload = extractStlChemicalDataFromText(
+    "SIGURNOSNO - TEHNICKI LIST sukladan Uredbi Stranica 2 od 22 Naziv proizvoda BENZEN KONCENTRAT Datum: 12.01.2022. Izdanje: 9 CAS br. 71-43-2 ODJELJAK 2 Elementi oznacavanja GHS02 H225 P210",
+    { fileName: "benzen-koncentrat.pdf" },
+  );
+
+  assert.equal(payload.ok, true);
+  assert.equal(payload.chemicals[0].name, "BENZEN KONCENTRAT");
+  assert.equal(payload.chemicals[0].casNumber, "71-43-2");
+});
+
 test("legacy DOC extraction keeps readable STL identifiers", () => {
   const buffer = Buffer.from("SIGURNOSNO-TEHNICKI LIST\0Naziv proizvoda: Test\0CAS: 64-17-5", "utf16le");
   const text = extractTextFromStlDocBuffer(buffer);

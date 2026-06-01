@@ -196,6 +196,35 @@ function getLines(text = "") {
     .filter(Boolean);
 }
 
+function escapeStlRegex(value = "") {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function trimStlInlineFieldValue(value = "") {
+  let text = normalizeStlText(value).replace(/\n+/g, " ");
+  const boundaryIndex = text.search(/\s+(?=(?:datum|date|izdanje|edition|rep\.?|revizija|revision|verzija|version|stranica|page|ufi|cas(?:\s*(?:br\.?|broj|no\.?|number))?|e[cz]\s*(?:broj|number|no\.?)?|reach|klasa|ur\.?\s*broj|urbroj|odjeljak|section|dobavlja[c\u010d]|supplier|proizvo[d\u0111]a[c\u010d]|manufacturer|elementi\s+ozna[c\u010d]avanja|classification|razvrstavanje|sastav|composition)\b\s*:?)/iu);
+  if (boundaryIndex > 0) {
+    text = text.slice(0, boundaryIndex);
+  }
+  return text
+    .replace(/^[:;.,\-\s]+|[:;.,\-\s]+$/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function findInlineValueAfterLabel(line = "", labels = []) {
+  const source = normalizeStlText(line).replace(/\n+/g, " ");
+  for (const label of labels) {
+    const pattern = new RegExp(`(?:^|[\\s.;|])${escapeStlRegex(label)}\\s*(?:[:\\-\\u2013]\\s*)?(.+)$`, "iu");
+    const match = source.match(pattern);
+    const value = trimStlInlineFieldValue(match?.[1] || "");
+    if (value) {
+      return value;
+    }
+  }
+  return "";
+}
+
 function findValueAfterLabel(lines = [], labels = []) {
   const normalizedLabels = labels.map((label) => String(label).toLowerCase());
   for (let index = 0; index < lines.length; index += 1) {
@@ -423,6 +452,22 @@ function findStlChemicalNameNearCas(lines = [], casNumber = "") {
 }
 
 function buildStlChemicalName(lines = []) {
+  const nameLabels = [
+    "naziv proizvoda",
+    "trgovacki naziv",
+    "identifikacijska oznaka",
+    "identifikacija tvari",
+    "product name",
+    "trade name",
+    "substance name",
+  ];
+  const inlineValue = lines
+    .map((line) => findInlineValueAfterLabel(line, nameLabels))
+    .map((value) => cleanStlChemicalNameCandidate(value))
+    .find(isLikelyStlChemicalName);
+  if (inlineValue) {
+    return inlineValue;
+  }
   const value = findValueAfterLabel(lines, [
     "naziv proizvoda",
     "trgovački naziv",
@@ -434,7 +479,7 @@ function buildStlChemicalName(lines = []) {
     "substance name",
   ]);
   if (value) {
-    return value.replace(/^[:\-\s]+/, "").trim();
+    return cleanStlChemicalNameCandidate(trimStlInlineFieldValue(value)) || value.replace(/^[:\-\s]+/, "").trim();
   }
   const titleLine = lines.find((line) => (
     !/sigurnosno[-\s]?tehnički|sigurnosno[-\s]?tehnicki|safety data sheet|odjeljak|section/i.test(line)
