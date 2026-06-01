@@ -4797,64 +4797,53 @@
                       <p>Jedan izvor podataka za tvrtku, RN, datume i tim izrade.</p>
                     </div>
                     <div class="risk-assessment-basic-shell">
-                      <section class="risk-assessment-basic-card is-identity">
+                      <section class="risk-assessment-basic-card is-core">
                         <div class="risk-assessment-basic-card-head">
                           <div>
-                            <span class="section-kicker">Identitet procjene</span>
-                            <strong>Osnovni podaci bez ponavljanja</strong>
+                            <span class="section-kicker">Osnovno</span>
+                            <strong>Podaci procjene, poslodavca i lokacija</strong>
                           </div>
-                          <p>Odaberi tvrtku jednom. Povezani RN se nudi samo ako ima uslugu procjene rizika, a broj procjene se formira automatski.</p>
+                          <p>Tvrtka se bira jednom, a povezani RN, broj procjene i lokacije ostaju u istom pregledu.</p>
                         </div>
-                        <div class="form-grid offers-form-grid risk-assessment-basic-grid">
-                          <label class="field">
+                        <div class="form-grid offers-form-grid risk-assessment-basic-grid is-core">
+                          <label class="field risk-assessment-field-company">
                             <span>Tvrtka</span>
                             <select id="risk-assessment-company" required></select>
                           </label>
                           <select id="risk-assessment-location" hidden></select>
-                          <label class="field risk-assessment-compact-field">
+                          <label class="field risk-assessment-field-work-order">
                             <span>Veza RN</span>
                             <select id="risk-assessment-work-order"></select>
                           </label>
-                          <label class="field risk-assessment-compact-field">
+                          <label class="field risk-assessment-field-number risk-assessment-compact-field">
                             <span>Broj procjene</span>
                             <input id="risk-assessment-number" type="text" placeholder="Automatski" readonly />
                           </label>
-                          <label class="field">
+                          <label class="field risk-assessment-field-status">
                             <span>Status</span>
                             <select id="risk-assessment-status"></select>
                           </label>
-                          <label class="field">
+                          <label class="field risk-assessment-field-date risk-assessment-compact-field">
                             <span>Datum početka izrade</span>
                             <input id="risk-assessment-date" type="text" inputmode="numeric" placeholder="dd.mm.yyyy" />
                           </label>
-                          <label class="field">
+                          <label class="field risk-assessment-field-date risk-assessment-compact-field">
                             <span>Datum završetka izrade</span>
                             <input id="risk-assessment-completion-date" type="text" inputmode="numeric" placeholder="dd.mm.yyyy" />
                           </label>
-                        </div>
-                      </section>
-
-                      <section class="risk-assessment-basic-card is-employer">
-                        <div class="risk-assessment-basic-card-head">
-                          <div>
-                            <span class="section-kicker">Poslodavac i lokacije</span>
-                            <strong>Podaci koji idu u opći dio procjene</strong>
-                          </div>
-                          <p>NKD, broj zaposlenih i izdvojene lokacije pune se iz tvrtke i lokacija, ali ih možeš urediti za konkretnu procjenu.</p>
-                        </div>
-                        <div class="form-grid offers-form-grid risk-assessment-basic-grid">
-                          <label class="field">
+                          <label class="field risk-assessment-field-nkd">
                             <span>NKD djelatnost</span>
                             <input id="risk-assessment-employer-nkd" type="text" maxlength="500" placeholder="npr. 20.11 Proizvodnja industrijskih plinova" />
                           </label>
-                          <label class="field">
+                          <label class="field risk-assessment-field-employees">
                             <span>Broj zaposlenih</span>
                             <input id="risk-assessment-employer-employees" type="text" maxlength="500" placeholder="npr. 9 radnika temeljem ugovora o radu" />
                           </label>
-                          <label class="field">
+                          <label class="field risk-assessment-location-field">
                             <span>Izdvojene lokacije</span>
-                            <select id="risk-assessment-location-ids" multiple size="5"></select>
-                            <label class="risk-assessment-checkbox-line">
+                            <select id="risk-assessment-location-ids" multiple size="5" hidden></select>
+                            <div id="risk-assessment-location-picker" class="risk-assessment-location-picker"></div>
+                            <label class="risk-assessment-checkbox-line is-location-scope">
                               <input id="risk-assessment-all-locations" type="checkbox" checked />
                               <span>Obuhvati sve lokacije tvrtke</span>
                             </label>
@@ -4875,10 +4864,20 @@
                             <strong>Ovlaštenici poslodavca</strong>
                             <p class="inline-help">Ime i prezime, OIB i radno mjesto.</p>
                           </div>
-                          <button id="risk-assessment-add-authorized-person" type="button" class="ghost-button">+ Ovlaštenik</button>
+                          <button id="risk-assessment-add-authorized-person" type="button" class="ghost-button">+ Osoba</button>
                         </div>
                         <div id="risk-assessment-authorized-persons" class="risk-assessment-compact-list"></div>
                         <div class="risk-assessment-basic-stack">
+                          <label class="field">
+                            <div class="risk-assessment-field-head">
+                              <span>Ovlaštenici za zaštitu na radu</span>
+                              <div class="risk-assessment-template-inline">
+                                <select data-risk-basic-template-select="znrAuthorizedDescription" aria-label="Predložak za ovlaštenike zaštite na radu"></select>
+                                <button type="button" class="ghost-button" data-risk-basic-template-save="znrAuthorizedDescription">Spremi predložak</button>
+                              </div>
+                            </div>
+                            <textarea id="risk-assessment-znr-authorized-description" rows="3" data-risk-autogrow></textarea>
+                          </label>
                           <label class="field">
                             <div class="risk-assessment-field-head">
                               <span>Način obavljanja poslova zaštite na radu</span>
@@ -4945,12 +4944,14 @@
                         <div class="risk-assessment-team-picker-grid">
                           <label class="field risk-assessment-people-field">
                             <span>Voditelj izrade</span>
+                            <input class="risk-assessment-people-search" type="search" data-risk-people-search="teamLead" placeholder="Pretraži ljude..." />
                             <select id="risk-assessment-team-lead" class="risk-assessment-people-select" multiple size="5"></select>
                             <div id="risk-assessment-team-lead-picker" class="risk-assessment-people-picker"></div>
                             <small>Odabir iz People liste.</small>
                           </label>
                           <label class="field risk-assessment-people-field">
                             <span>Članovi</span>
+                            <input class="risk-assessment-people-search" type="search" data-risk-people-search="members" placeholder="Pretraži ljude..." />
                             <select id="risk-assessment-members" class="risk-assessment-people-select" multiple size="5"></select>
                             <div id="risk-assessment-members-picker" class="risk-assessment-people-picker"></div>
                             <small>Dodatni izrađivači procjene.</small>
@@ -4998,6 +4999,8 @@
                           <button type="button" data-risk-rich-command="underline"><u>U</u></button>
                           <button type="button" data-risk-rich-command="insertUnorderedList">• Lista</button>
                           <button type="button" data-risk-rich-command="insertOrderedList">1. Lista</button>
+                          <select data-risk-rich-template-select="intro" aria-label="Predložak za uvod"></select>
+                          <button type="button" data-risk-rich-template-save="intro">Spremi predložak</button>
                           <button type="button" data-risk-rich-image="file">Slika</button>
                           <button type="button" data-risk-rich-image="url">URL slike</button>
                           <input type="file" accept="image/*" data-risk-rich-file="intro" hidden />

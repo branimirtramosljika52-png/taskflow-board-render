@@ -6130,6 +6130,7 @@ const riskAssessmentIdInput = document.querySelector("#risk-assessment-id");
 const riskAssessmentCompanyInput = document.querySelector("#risk-assessment-company");
 const riskAssessmentLocationInput = document.querySelector("#risk-assessment-location");
 const riskAssessmentLocationIdsInput = document.querySelector("#risk-assessment-location-ids");
+const riskAssessmentLocationPicker = document.querySelector("#risk-assessment-location-picker");
 const riskAssessmentAllLocationsInput = document.querySelector("#risk-assessment-all-locations");
 const riskAssessmentWorkOrderInput = document.querySelector("#risk-assessment-work-order");
 const riskAssessmentNumberInput = document.querySelector("#risk-assessment-number");
@@ -6155,6 +6156,7 @@ const riskAssessmentEmployerHeadquartersInput = document.querySelector("#risk-as
 const riskAssessmentEmployerDetachedLocationsInput = document.querySelector("#risk-assessment-employer-detached-locations");
 const riskAssessmentAuthorizedPersonsList = document.querySelector("#risk-assessment-authorized-persons");
 const riskAssessmentAddAuthorizedPersonButton = document.querySelector("#risk-assessment-add-authorized-person");
+const riskAssessmentZnrAuthorizedDescriptionInput = document.querySelector("#risk-assessment-znr-authorized-description");
 const riskAssessmentZnrServiceModeInput = document.querySelector("#risk-assessment-znr-service-mode");
 const riskAssessmentZnrExpertsInput = document.querySelector("#risk-assessment-znr-experts");
 const riskAssessmentZnrRepresentativesInput = document.querySelector("#risk-assessment-znr-representatives");
@@ -6337,6 +6339,7 @@ const RISK_ASSESSMENT_TEMPLATE_PRESETS = Object.freeze([
   },
 ]);
 const RISK_ASSESSMENT_RICH_PRESETS = Object.freeze({
+  introLegalBasis: `<h3>Uvod</h3><p>Procjena rizika izrađuje se radi sustavnog utvrđivanja opasnosti, štetnosti i napora na mjestima rada te određivanja mjera za uklanjanje ili smanjivanje rizika na prihvatljivu razinu.</p><p>Procjena se temelji na podacima poslodavca, obilasku mjesta rada, razgovoru s radnicima i dostupnoj dokumentaciji, uz primjenu važećih propisa iz područja zaštite na radu.</p>`,
   technology: `<p>Tehnološki proces obuhvaća pripremu mjesta rada, izvođenje redovnih radnih aktivnosti, korištenje radne opreme i materijala te završnu kontrolu izvršenih poslova. Poslovi se obavljaju prema uputama poslodavca, pravilima struke i propisanim mjerama zaštite na radu.</p>`,
   workplaceArrangement: `<p>Mjesta rada uređena su tako da omogućuju sigurno kretanje radnika, pristup radnoj opremi i održavanje radnog prostora. Primjenjuju se osnovna pravila zaštite na radu, a posebna pravila zaštite na radu primjenjuju se za poslove i uvjete kod kojih opasnosti nije moguće ukloniti osnovnim pravilima.</p>`,
   sensitiveGroups: `<p>Procjenom se posebno razmatraju radnici koji pripadaju posebno osjetljivim skupinama, uključujući maloljetnike, trudnice, radnice koje su nedavno rodile ili doje, radnike smanjenih radnih sposobnosti i radnike kod kojih postoji povećana osjetljivost na pojedine štetnosti. Za takve radnike utvrđuju se ograničenja rada i prilagodbe prema važećim propisima i mišljenju nadležnih stručnih osoba.</p>`,
@@ -6349,6 +6352,12 @@ const RISK_ASSESSMENT_RICH_PRESETS = Object.freeze({
 });
 const RISK_ASSESSMENT_RICH_TEMPLATE_STORAGE_KEY = "safe-nexus-risk-assessment-rich-templates-v1";
 const RISK_ASSESSMENT_RICH_TEMPLATE_FIELDS = Object.freeze({
+  intro: {
+    label: "Uvod",
+    defaultTemplates: [
+      { id: "introLegalBasis", label: "Uvod i pravna osnova", html: RISK_ASSESSMENT_RICH_PRESETS.introLegalBasis },
+    ],
+  },
   process: {
     label: "Opis tehnološkog procesa",
     defaultTemplates: [
@@ -6388,6 +6397,19 @@ const RISK_ASSESSMENT_RICH_TEMPLATE_FIELDS = Object.freeze({
 });
 const RISK_ASSESSMENT_BASIC_TEXT_TEMPLATE_STORAGE_KEY = "safe-nexus-risk-assessment-basic-text-templates-v1";
 const RISK_ASSESSMENT_BASIC_TEXT_TEMPLATE_FIELDS = Object.freeze({
+  znrAuthorizedDescription: {
+    label: "Ovlaštenici ZNR",
+    inputId: "risk-assessment-znr-authorized-description",
+    defaults: [
+      {
+        id: "authorized-persons-selected",
+        label: "Ovlaštenici izabrani",
+        text: `Ovlaštenik poslodavca za zaštitu na radu je radnik koji je u skladu sa Zakonom o zaštiti na radu (NN br. 71/14, 118/14, 94/18, 96/18) ovlašten da zastupa interese poslodavca na području zaštite na radu.
+
+U {{COMPANY_NAME}} su izabrani ovlaštenici poslodavca za zaštitu na radu.`,
+      },
+    ],
+  },
   znrServiceMode: {
     label: "Način obavljanja poslova ZNR",
     inputId: "risk-assessment-znr-service-mode",
@@ -6395,7 +6417,7 @@ const RISK_ASSESSMENT_BASIC_TEXT_TEMPLATE_FIELDS = Object.freeze({
       {
         id: "external-authorized-person",
         label: "Ugovorena ovlaštena osoba",
-        text: "Poslovi zaštite na radu obavljaju se putem ugovorene ovlaštene osobe za poslove zaštite na radu. Poslodavac osigurava suradnju s ovlaštenom osobom, dostupnost dokumentacije i provedbu predloženih mjera.",
+        text: `Poslodavac za praćenje, kontrolu i nadzor zaštite na radu ne zapošljava stručnjaka zaštite na radu, ali je ugovorio obavljanje poslova zaštite na radu s ovlaštenom tvrtkom za zaštitu na radu, što je u skladu sa čl. 20 Zakona o zaštiti na radu (NN br. 71/14, 118/14, 94/18, 96/18) i Pravilnikom o obavljanju poslova zaštite na radu (NN br. 126/19, 154/22).`,
       },
       {
         id: "internal-expert",
@@ -6411,7 +6433,19 @@ const RISK_ASSESSMENT_BASIC_TEXT_TEMPLATE_FIELDS = Object.freeze({
       {
         id: "expert-appointed",
         label: "Imenovani stručnjak",
-        text: "Stručnjak zaštite na radu sudjeluje u prikupljanju podataka, obilasku mjesta rada, analizi opasnosti, štetnosti i napora te predlaganju mjera za smanjenje rizika.",
+        text: `Stručnjak zaštite na radu je radnik kojeg je poslodavac odredio za obavljanje poslova zaštite na radu i koji ispunjava propisane uvjete za obavljanje tih poslova. Poslodavac je obvezan utvrditi i obavljati poslove zaštite na radu u skladu s procjenom rizika, stanjem zaštite na radu i brojem radnika.
+
+Poslodavac koji zapošljava do uključivo 49 radnika poslove zaštite na radu može obavljati on sam ili njegov ovlaštenik, ako ispunjava propisane uvjete za stručnjaka zaštite na radu I. stupnja sukladno Pravilniku o obavljanju poslova zaštite na radu (NN br. 126/19, 154/22). Poslove zaštite na radu I. stupnja obavlja najmanje jedan stručnjak zaštite na radu I. stupnja.
+
+Stručnjak zaštite na radu I. stupnja je osoba koja ima najmanje srednju školsku ili srednju stručnu spremu i koja:
+
+1) je položila opći dio stručnog ispita za stručnjaka zaštite na radu, ili
+
+2) ima srednju školsku ili srednju stručnu spremu i priznat joj je status stručnjaka zaštite na radu, ili
+
+3) posjeduje uvjerenje o položenom specijalističkom usavršavanju iz zaštite na radu po programu odobrenom od tijela nadležnog za obrazovanje.
+
+Tvrtka {{COMPANY_NAME}} ne zapošljava stručnjaka zaštite na radu što je u skladu sa čl. 20 Zakona o zaštiti na radu (NN br. 71/14, 118/14, 94/18, 96/18).`,
       },
       {
         id: "expert-none",
@@ -6427,7 +6461,9 @@ const RISK_ASSESSMENT_BASIC_TEXT_TEMPLATE_FIELDS = Object.freeze({
       {
         id: "representative-participates",
         label: "Povjerenik sudjeluje",
-        text: "Povjerenik radnika za zaštitu na radu sudjeluje u razmatranju uvjeta rada, daje prijedloge i prenosi zapažanja radnika vezana uz opasnosti, štetnosti, napore i potrebne mjere.",
+        text: `Povjerenik radnika za zaštitu na radu je radnik koji je u skladu sa Zakonom o zaštiti na radu (NN br. 71/14, 118/14, 94/18, 96/18) izabran da zastupa interese radnika na području zaštite na radu.
+
+Tvrtka {{COMPANY_NAME}} izjavljuje i potvrđuje da u društvu od strane zaposlenika nije imenovan i izabran povjerenik radnika za zaštitu na radu, odnosno zaposlenici društva {{COMPANY_NAME}} nisu do danas iskoristili svoje pravo iz čl. 70. Zakona o zaštiti na radu za izborom povjerenika radnika za zaštitu na radu.`,
       },
       {
         id: "representative-not-appointed",
@@ -6443,7 +6479,22 @@ const RISK_ASSESSMENT_BASIC_TEXT_TEMPLATE_FIELDS = Object.freeze({
       {
         id: "committee-review",
         label: "Odbor razmatra mjere",
-        text: "Odbor zaštite na radu razmatra stanje zaštite na radu, rezultate procjene rizika i predložene mjere te prati provedbu mjera u rokovima i odgovornostima koje odredi poslodavac.",
+        text: `Temeljem Zakona o zaštiti na radu (NN br. 71/14, 118/14, 94/18, 96/18), poslodavac koji zapošljava 50 ili više radnika obvezan je osnovati odbor zaštite na radu (u daljnjem tekstu: odbor) kao svoje savjetodavno tijelo za unaprjeđivanje zaštite na radu.
+
+Način na koji je Odbor sudjelovao u izradi Procjene rizika:
+U {{COMPANY_NAME}} nije osnovan Odbor zaštite na radu kao savjetodavno tijelo poslodavca što je u skladu sa Zakonom o zaštiti na radu (NN br. 71/14, 118/14, 94/18, 96/18).
+
+Sa svrhom stalnog unaprjeđivanja zaštite na radu, odbor planira i nadzire:
+
+1) primjenu pravila zaštite na radu kod poslodavca
+
+2) organizaciju obavljanja poslova zaštite na radu
+
+3) obavješćivanje i osposobljavanje u vezi sa zaštitom na radu
+
+4) prevenciju rizika na radu i u vezi s radom te njezine učinke na zdravlje i sigurnost radnika.
+
+Odbor čine poslodavac ili njegov ovlaštenik, stručnjak zaštite na radu koji obavlja poslove zaštite na radu kod poslodavca, specijalist medicine rada izabran u skladu s posebnim propisom te povjerenik radnika za zaštitu na radu ili njihov koordinator.`,
       },
       {
         id: "committee-not-established",
@@ -116844,6 +116895,7 @@ riskAssessmentClientJobInputEnabledInput?.addEventListener("change", () => {
   riskAssessmentAllLocationsInput,
   riskAssessmentEmployerNkdInput,
   riskAssessmentEmployerEmployeesInput,
+  riskAssessmentZnrAuthorizedDescriptionInput,
   riskAssessmentZnrServiceModeInput,
   riskAssessmentZnrExpertsInput,
   riskAssessmentZnrRepresentativesInput,
@@ -116873,6 +116925,7 @@ riskAssessmentClientJobInputEnabledInput?.addEventListener("change", () => {
         riskAssessmentLocationInput.value = Boolean(riskAssessmentAllLocationsInput?.checked) ? "" : (selectedIds[0] || "");
       }
       refreshRiskAssessmentLocationDerivedText();
+      renderRiskAssessmentLocationPicker();
     }
     renderRiskAssessmentPeoplePickers();
     renderRiskAssessmentBasicSummary();
@@ -116895,9 +116948,41 @@ riskAssessmentAuthorizedPersonsList?.addEventListener("input", (event) => {
   }
   riskAssessmentAuthorizedPersonDrafts[index] = {
     ...riskAssessmentAuthorizedPersonDrafts[index],
-    [field]: event.target.value,
+    [field]: field === "role" ? normalizeRiskAssessmentAuthorizedPersonRole(event.target.value) : event.target.value,
   };
   scheduleRiskAssessmentDraftAutosave();
+});
+
+riskAssessmentAuthorizedPersonsList?.addEventListener("change", (event) => {
+  const row = event.target?.closest?.("[data-risk-authorized-person]");
+  const index = Number(row?.dataset?.riskAuthorizedPerson);
+  if (!Number.isInteger(index) || !riskAssessmentAuthorizedPersonDrafts[index]) {
+    return;
+  }
+  const field = event.target?.dataset?.riskAuthorizedField;
+  if (field === "role") {
+    riskAssessmentAuthorizedPersonDrafts[index] = {
+      ...riskAssessmentAuthorizedPersonDrafts[index],
+      role: normalizeRiskAssessmentAuthorizedPersonRole(event.target.value),
+    };
+    scheduleRiskAssessmentDraftAutosave();
+    return;
+  }
+  if (event.target?.dataset?.riskAuthorizedSource) {
+    const sourceId = String(event.target.value || "").trim();
+    const source = getRiskAssessmentCompanyPersonBySourceId(sourceId);
+    riskAssessmentAuthorizedPersonDrafts[index] = {
+      ...riskAssessmentAuthorizedPersonDrafts[index],
+      sourceId,
+      ...(source ? {
+        fullName: source.fullName,
+        oib: source.oib,
+        jobTitle: source.jobTitle,
+      } : {}),
+    };
+    renderRiskAssessmentAuthorizedPersons();
+    scheduleRiskAssessmentDraftAutosave();
+  }
 });
 
 riskAssessmentAuthorizedPersonsList?.addEventListener("click", (event) => {
@@ -117317,6 +117402,11 @@ riskAssessmentChemicalsList?.addEventListener("change", handleRiskAssessmentChem
 riskAssessmentChemicalsList?.addEventListener("click", handleRiskAssessmentChemicalsClick);
 riskAssessmentChemicalResults?.addEventListener("click", handleRiskAssessmentChemicalsClick);
 riskAssessmentOfficialSubstancesList?.addEventListener("click", handleRiskAssessmentChemicalsClick);
+riskAssessmentForm?.addEventListener("input", (event) => {
+  if (event.target?.matches?.("[data-risk-people-search]")) {
+    renderRiskAssessmentPeoplePickers();
+  }
+});
 riskAssessmentForm?.addEventListener("input", handleRiskAssessmentRichEditorInput);
 riskAssessmentForm?.addEventListener("paste", handleRiskAssessmentRichEditorPaste);
 riskAssessmentForm?.addEventListener("click", handleRiskAssessmentRichEditorClick);
@@ -120737,6 +120827,7 @@ function syncRiskAssessmentLocationControls(companyId = riskAssessmentCompanyInp
   if (riskAssessmentLocationInput) {
     riskAssessmentLocationInput.value = Boolean(riskAssessmentAllLocationsInput?.checked) ? "" : (selectedIds[0] || "");
   }
+  renderRiskAssessmentLocationPicker();
 }
 
 function refreshRiskAssessmentLocationDerivedText(companyId = riskAssessmentCompanyInput?.value || "") {
@@ -120744,6 +120835,72 @@ function refreshRiskAssessmentLocationDerivedText(companyId = riskAssessmentComp
   if (riskAssessmentEmployerDetachedLocationsInput) {
     riskAssessmentEmployerDetachedLocationsInput.value = lines.join("\n");
   }
+}
+
+function renderRiskAssessmentLocationPicker() {
+  if (!riskAssessmentLocationPicker) {
+    return;
+  }
+  const companyId = riskAssessmentCompanyInput?.value || "";
+  const locations = getRiskAssessmentCompanyLocations(companyId);
+  const selectedIds = new Set(getRiskAssessmentSelectedLocationIds());
+  const useAll = Boolean(riskAssessmentAllLocationsInput?.checked) || selectedIds.size === 0;
+  if (!companyId) {
+    riskAssessmentLocationPicker.innerHTML = `<p class="inline-help">Odaberi tvrtku za prikaz lokacija.</p>`;
+    return;
+  }
+  if (!locations.length) {
+    riskAssessmentLocationPicker.innerHTML = `<p class="inline-help">Za ovu tvrtku nisu unesene izdvojene lokacije.</p>`;
+    return;
+  }
+  riskAssessmentLocationPicker.replaceChildren(...locations.map((location) => {
+    const locationId = String(location.id || "").trim();
+    const isSelected = useAll || selectedIds.has(locationId);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "risk-assessment-location-chip";
+    button.classList.toggle("is-selected", isSelected);
+    button.classList.toggle("is-all-scope", useAll);
+    button.disabled = !getCanManageRiskAssessments();
+    button.dataset.riskLocationId = locationId;
+    button.innerHTML = `
+      <span class="risk-assessment-location-chip-icon" aria-hidden="true">${renderRiskAssessmentRiskIcon("map")}</span>
+      <span class="risk-assessment-location-chip-copy">
+        <strong>${escapeHtml(location.name || "Lokacija")}</strong>
+        <small>${escapeHtml(location.region || location.address || "Izdvojena lokacija")}</small>
+      </span>
+      <span class="risk-assessment-location-chip-check" aria-hidden="true">${isSelected ? "✓" : "+"}</span>
+    `;
+    button.addEventListener("click", () => {
+      if (!riskAssessmentLocationIdsInput) {
+        return;
+      }
+      if (riskAssessmentAllLocationsInput?.checked) {
+        riskAssessmentAllLocationsInput.checked = false;
+        Array.from(riskAssessmentLocationIdsInput.options).forEach((option) => {
+          option.selected = false;
+        });
+      }
+      const option = Array.from(riskAssessmentLocationIdsInput.options)
+        .find((entry) => String(entry.value || "") === locationId);
+      if (option) {
+        option.selected = !option.selected;
+      }
+      if (getRiskAssessmentSelectedLocationIds().length === 0 && riskAssessmentAllLocationsInput) {
+        riskAssessmentAllLocationsInput.checked = true;
+      }
+      riskAssessmentLocationIdsInput.disabled = Boolean(riskAssessmentAllLocationsInput?.checked);
+      if (riskAssessmentLocationInput) {
+        const nextSelected = getRiskAssessmentSelectedLocationIds();
+        riskAssessmentLocationInput.value = Boolean(riskAssessmentAllLocationsInput?.checked) ? "" : (nextSelected[0] || "");
+      }
+      refreshRiskAssessmentLocationDerivedText();
+      renderRiskAssessmentLocationPicker();
+      renderRiskAssessmentBasicSummary();
+      scheduleRiskAssessmentDraftAutosave();
+    });
+    return button;
+  }));
 }
 
 function normalizeRiskAssessmentMatchText(value = "") {
@@ -120887,6 +121044,86 @@ function splitRiskAssessmentPersonLabels(value = "") {
     .filter(Boolean);
 }
 
+const RISK_ASSESSMENT_AUTHORIZED_PERSON_ROLE_OPTIONS = Object.freeze([
+  { value: "authorized", label: "Ovlaštenik" },
+  { value: "representative", label: "Povjerenik" },
+  { value: "employer", label: "Poslodavac" },
+]);
+
+function normalizeRiskAssessmentAuthorizedPersonRole(value = "") {
+  const normalized = String(value || "").trim();
+  return RISK_ASSESSMENT_AUTHORIZED_PERSON_ROLE_OPTIONS.some((option) => option.value === normalized)
+    ? normalized
+    : "authorized";
+}
+
+function getRiskAssessmentAuthorizedPersonRoleLabel(value = "") {
+  return RISK_ASSESSMENT_AUTHORIZED_PERSON_ROLE_OPTIONS
+    .find((option) => option.value === normalizeRiskAssessmentAuthorizedPersonRole(value))?.label || "Ovlaštenik";
+}
+
+function getRiskAssessmentCompanyPersonOptions() {
+  const selectedCompanyId = String(riskAssessmentCompanyInput?.value || "").trim();
+  const company = getRiskAssessmentCompany(selectedCompanyId);
+  const options = [];
+  const knownKeys = new Set();
+  const addOption = (option = {}) => {
+    const value = String(option.value || "").trim();
+    const fullName = String(option.fullName || "").trim();
+    const key = normalizeLooseName([fullName, option.oib].filter(Boolean).join(" "));
+    if (!value || !fullName || knownKeys.has(key)) {
+      return;
+    }
+    knownKeys.add(key);
+    options.push({
+      value,
+      label: fullName,
+      fullName,
+      oib: String(option.oib || "").trim(),
+      jobTitle: String(option.jobTitle || "").trim(),
+      meta: String(option.meta || "").trim(),
+    });
+  };
+
+  if (company?.representative) {
+    addOption({
+      value: `company:${company.id || selectedCompanyId}:representative`,
+      fullName: company.representative,
+      oib: company.representativeOib,
+      jobTitle: company.representativeRole || "Poslodavac / odgovorna osoba",
+      meta: "Tvrtka",
+    });
+  }
+
+  (state.peopleTrainingRecords ?? [])
+    .filter((record) => selectedCompanyId && String(record?.companyId || "") === selectedCompanyId)
+    .sort((left, right) => {
+      const leftName = [left.firstName, left.lastName].filter(Boolean).join(" ") || left.fullName || "";
+      const rightName = [right.firstName, right.lastName].filter(Boolean).join(" ") || right.fullName || "";
+      return leftName.localeCompare(rightName, "hr", { sensitivity: "base" });
+    })
+    .forEach((record) => {
+      const fullName = [record.firstName, record.lastName].filter(Boolean).join(" ").trim()
+        || record.fullName
+        || record.personName
+        || "";
+      addOption({
+        value: `training:${record.id || record.oib || normalizeLooseName(fullName)}`,
+        fullName,
+        oib: record.oib,
+        jobTitle: record.jobTitle || record.workPlace,
+        meta: [record.workPlace, record.jobTitle, record.oib ? `OIB ${record.oib}` : ""].filter(Boolean).join(" · "),
+      });
+    });
+
+  return options;
+}
+
+function getRiskAssessmentCompanyPersonBySourceId(sourceId = "") {
+  const normalizedSourceId = String(sourceId || "").trim();
+  return getRiskAssessmentCompanyPersonOptions().find((option) => option.value === normalizedSourceId) ?? null;
+}
+
 function getRiskAssessmentPersonOptions(selectedUserIds = [], legacyLabels = []) {
   const selectedIdSet = new Set((selectedUserIds ?? []).map((value) => String(value || "").trim()).filter(Boolean));
   const userById = new Map();
@@ -121002,14 +121239,41 @@ function getRiskAssessmentPeoplePickerForSelect(select) {
   return null;
 }
 
+function getRiskAssessmentPeopleSearchKey(select) {
+  if (select === riskAssessmentTeamLeadInput) {
+    return "teamLead";
+  }
+  if (select === riskAssessmentMembersInput) {
+    return "members";
+  }
+  if (select === riskAssessmentCollaboratorsInput) {
+    return "collaborators";
+  }
+  return "";
+}
+
 function renderRiskAssessmentPeoplePicker(select) {
   const picker = getRiskAssessmentPeoplePickerForSelect(select);
   if (!(select instanceof HTMLSelectElement) || !picker) {
     return;
   }
-  const options = Array.from(select.options).filter((option) => String(option.value || "").trim());
+  const searchKey = getRiskAssessmentPeopleSearchKey(select);
+  const query = normalizeLooseName(riskAssessmentForm?.querySelector(`[data-risk-people-search="${searchKey}"]`)?.value || "");
+  const options = Array.from(select.options)
+    .filter((option) => String(option.value || "").trim())
+    .filter((option) => {
+      if (!query) {
+        return true;
+      }
+      const haystack = normalizeLooseName([
+        option.dataset.label,
+        option.textContent,
+        option.dataset.role,
+      ].filter(Boolean).join(" "));
+      return haystack.includes(query);
+    });
   if (!options.length) {
-    picker.innerHTML = `<p class="inline-help">Nema aktivnih osoba u People modulu.</p>`;
+    picker.innerHTML = `<p class="inline-help">Nema osoba za odabrani prikaz.</p>`;
     return;
   }
   picker.replaceChildren(...options.map((option) => {
@@ -121111,16 +121375,70 @@ function normalizeRiskAssessmentAuthorizationDocument(value = null) {
   };
 }
 
+function getRiskAssessmentSafetyAuthorizationSource() {
+  const today = new Date(new Date().setHours(0, 0, 0, 0));
+  const matches = (state.safetyAuthorizations ?? [])
+    .filter((item) => {
+      const haystack = [
+        item.title,
+        item.scope,
+        item.note,
+        ...(item.linkedServiceCatalogTitles ?? []),
+        ...(item.linkedTemplateTitles ?? []),
+        ...(item.documents ?? []).map((document) => document.fileName),
+      ].join(" ").toLowerCase();
+      const valid = item.validForever
+        || !item.validUntil
+        || !parseDateValue(item.validUntil)
+        || parseDateValue(item.validUntil) >= today;
+      return valid
+        && Array.isArray(item.documents)
+        && item.documents.length > 0
+        && (haystack.includes("ovlašten") || haystack.includes("ovlasten"))
+        && (haystack.includes("zaštit") || haystack.includes("zastit") || haystack.includes("znr"));
+    })
+    .sort((left, right) => String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? "")));
+  const authorization = matches[0] ?? null;
+  const document = authorization?.documents?.[0] ?? null;
+  if (!authorization || !document) {
+    return null;
+  }
+  return {
+    authorization,
+    document: normalizeRiskAssessmentAuthorizationDocument({
+      fileName: document.fileName || authorization.title || "Ovlaštenje za poslove zaštite na radu.pdf",
+      fileType: document.fileType || document.mimeType || "application/pdf",
+      fileSize: document.fileSize || 0,
+      dataUrl: document.dataUrl || "",
+      uploadedAt: document.updatedAt || authorization.updatedAt || authorization.issuedOn || new Date().toISOString(),
+    }),
+  };
+}
+
+function syncRiskAssessmentSafetyAuthorizationDocument() {
+  const source = getRiskAssessmentSafetyAuthorizationSource();
+  riskAssessmentZnrAuthorizationDocumentDraft = source?.document ?? null;
+  if (riskAssessmentZnrAuthorizationInput) {
+    riskAssessmentZnrAuthorizationInput.checked = Boolean(source?.document);
+    riskAssessmentZnrAuthorizationInput.disabled = true;
+  }
+}
+
 function renderRiskAssessmentAuthorizationDocument() {
+  syncRiskAssessmentSafetyAuthorizationDocument();
+  const source = getRiskAssessmentSafetyAuthorizationSource();
   const document = normalizeRiskAssessmentAuthorizationDocument(riskAssessmentZnrAuthorizationDocumentDraft);
   riskAssessmentZnrAuthorizationDocumentDraft = document;
   if (riskAssessmentZnrAuthorizationFileMeta) {
     riskAssessmentZnrAuthorizationFileMeta.textContent = document?.fileName
-      ? `${document.fileName}${document.fileSize ? ` · ${formatFileSize(document.fileSize)}` : ""}`
-      : "PDF ovlaštenja nije dodan.";
+      ? `${document.fileName}${document.fileSize ? ` · ${formatFileSize(document.fileSize)}` : ""}${source?.authorization?.title ? ` · Safety Authorization: ${source.authorization.title}` : ""}`
+      : "Nema PDF-a u Safety Authorization za ovlaštenje za poslove zaštite na radu.";
+  }
+  if (riskAssessmentZnrAuthorizationUploadButton) {
+    riskAssessmentZnrAuthorizationUploadButton.hidden = true;
   }
   if (riskAssessmentZnrAuthorizationRemoveButton) {
-    riskAssessmentZnrAuthorizationRemoveButton.hidden = !document;
+    riskAssessmentZnrAuthorizationRemoveButton.hidden = true;
   }
 }
 
@@ -121186,7 +121504,10 @@ function applyRiskAssessmentBasicTextTemplate(fieldKey = "", templateId = "") {
   if (!template || !(textarea instanceof HTMLTextAreaElement)) {
     return;
   }
-  textarea.value = template.text;
+  const companyName = riskAssessmentCompanyInput?.selectedOptions?.[0]?.textContent?.trim()
+    || riskAssessmentEmployerCompanyNameInput?.value?.trim()
+    || "tvrtka";
+  textarea.value = String(template.text || "").replaceAll("{{COMPANY_NAME}}", companyName);
   autoGrowRiskAssessmentTextareas();
   renderRiskAssessmentBasicSummary();
   scheduleRiskAssessmentDraftAutosave();
@@ -121584,6 +121905,7 @@ function buildRiskAssessmentDefaultEmployerData(companyId = riskAssessmentCompan
     locationScope: "all",
     selectedLocationIds: [],
     authorizedPersons: [],
+    znrAuthorizedDescription: "",
     znrServiceMode: "",
     znrExperts: "",
     znrRepresentatives: "",
@@ -121609,6 +121931,7 @@ function getRiskAssessmentEmployerDataInputs() {
     employeeCount: riskAssessmentEmployerEmployeesInput,
     headquarters: riskAssessmentEmployerHeadquartersInput,
     detachedLocations: riskAssessmentEmployerDetachedLocationsInput,
+    znrAuthorizedDescription: riskAssessmentZnrAuthorizedDescriptionInput,
     znrServiceMode: riskAssessmentZnrServiceModeInput,
     znrExperts: riskAssessmentZnrExpertsInput,
     znrRepresentatives: riskAssessmentZnrRepresentativesInput,
@@ -121621,6 +121944,8 @@ function getRiskAssessmentEmployerDataInputs() {
 function createRiskAssessmentAuthorizedPersonDraft(initial = {}) {
   return {
     id: String(initial.id || crypto.randomUUID()),
+    role: normalizeRiskAssessmentAuthorizedPersonRole(initial.role || initial.type),
+    sourceId: String(initial.sourceId || ""),
     fullName: String(initial.fullName || initial.name || ""),
     oib: String(initial.oib || ""),
     jobTitle: String(initial.jobTitle || initial.workplace || ""),
@@ -121630,6 +121955,8 @@ function createRiskAssessmentAuthorizedPersonDraft(initial = {}) {
 function sanitizeRiskAssessmentAuthorizedPersonDraft(item = {}) {
   return {
     id: String(item.id || crypto.randomUUID()),
+    role: normalizeRiskAssessmentAuthorizedPersonRole(item.role || item.type),
+    sourceId: String(item.sourceId || "").trim(),
     fullName: String(item.fullName || "").trim(),
     oib: String(item.oib || "").trim(),
     jobTitle: String(item.jobTitle || "").trim(),
@@ -121742,11 +122069,21 @@ function renderRiskAssessmentAuthorizedPersons() {
     return;
   }
   if (!riskAssessmentAuthorizedPersonDrafts.length) {
-    riskAssessmentAuthorizedPersonsList.innerHTML = `<p class="inline-help">Dodaj ovlaštenike poslodavca koji sudjeluju u provedbi zaštite na radu.</p>`;
+    riskAssessmentAuthorizedPersonsList.innerHTML = `<p class="inline-help">Dodaj ovlaštenika, povjerenika ili poslodavca iz People/osposobljavanja, ili unesi novu osobu ručno.</p>`;
     return;
   }
+  const peopleOptions = getRiskAssessmentCompanyPersonOptions();
+  const renderRoleOptions = (selectedRole = "") => RISK_ASSESSMENT_AUTHORIZED_PERSON_ROLE_OPTIONS
+    .map((option) => `<option value="${escapeHtml(option.value)}"${normalizeRiskAssessmentAuthorizedPersonRole(selectedRole) === option.value ? " selected" : ""}>${escapeHtml(option.label)}</option>`)
+    .join("");
+  const renderPeopleOptions = (selectedSourceId = "") => [
+    `<option value="">Novi unos</option>`,
+    ...peopleOptions.map((option) => `<option value="${escapeHtml(option.value)}"${String(selectedSourceId || "") === option.value ? " selected" : ""}>${escapeHtml([option.label, option.meta].filter(Boolean).join(" · "))}</option>`),
+  ].join("");
   riskAssessmentAuthorizedPersonsList.innerHTML = riskAssessmentAuthorizedPersonDrafts.map((item, index) => `
-    <article class="risk-assessment-compact-row" data-risk-authorized-person="${index}">
+    <article class="risk-assessment-compact-row is-authorized-person" data-risk-authorized-person="${index}">
+      <label><span>Uloga</span><select data-risk-authorized-field="role">${renderRoleOptions(item.role)}</select></label>
+      <label><span>Osoba iz baze</span><select data-risk-authorized-source="sourceId">${renderPeopleOptions(item.sourceId)}</select></label>
       <label><span>Ime i prezime</span><input data-risk-authorized-field="fullName" value="${escapeHtml(item.fullName || "")}" placeholder="Ime i prezime" /></label>
       <label><span>OIB</span><input data-risk-authorized-field="oib" value="${escapeHtml(item.oib || "")}" inputmode="numeric" maxlength="11" /></label>
       <label><span>Radno mjesto</span><input data-risk-authorized-field="jobTitle" value="${escapeHtml(item.jobTitle || "")}" /></label>
@@ -125985,13 +126322,14 @@ function getRiskAssessmentTemplatePlaceholder(key = "") {
 
 function createRiskAssessmentTemplateSectionDraft(initial = {}, index = 0) {
   const placeholder = getRiskAssessmentTemplatePlaceholder(initial.key || initial.placeholderKey || "intro");
+  const isAlwaysIncludedIntro = placeholder.key === "intro";
   return {
     id: String(initial.id || crypto.randomUUID()),
     key: placeholder.key,
     placeholder: String(initial.placeholder || placeholder.token),
     title: String(initial.title || placeholder.defaultTitle || placeholder.label),
-    enabled: initial.enabled !== false,
-    pageBreakBefore: Boolean(initial.pageBreakBefore ?? (index > 0 && ["jobs", "chemicals", "biological", "manual_handling", "overview", "signatures"].includes(placeholder.key))),
+    enabled: isAlwaysIncludedIntro ? true : initial.enabled !== false,
+    pageBreakBefore: isAlwaysIncludedIntro ? false : Boolean(initial.pageBreakBefore ?? (index > 0 && ["jobs", "chemicals", "biological", "manual_handling", "overview", "signatures"].includes(placeholder.key))),
     includeInToc: initial.includeInToc !== false && placeholder.key !== "cover",
     note: String(initial.note || ""),
     order: Number.isFinite(Number(initial.order)) ? Number(initial.order) : index + 1,
@@ -126084,7 +126422,7 @@ function setRiskAssessmentTemplateBlockMode(blockKey = "", modeValue = "include"
   if (!block) {
     return;
   }
-  const mode = normalizeRiskAssessmentTemplateMode(modeValue);
+  const mode = block.block === "intro" ? "include" : normalizeRiskAssessmentTemplateMode(modeValue);
   const template = ensureRiskAssessmentTemplateSections(block.sectionKeys);
   const nextSections = template.sections.map((section) => {
     if (!block.sectionKeys.includes(section.key)) {
@@ -126120,6 +126458,10 @@ function renderRiskAssessmentDocumentRoutingControls() {
     if (!head) {
       return;
     }
+    if (block.block === "intro") {
+      head.querySelector(`[data-risk-template-routing="${block.block}"]`)?.remove();
+      return;
+    }
     let control = head.querySelector(`[data-risk-template-routing="${block.block}"]`);
     if (!control) {
       control = document.createElement("label");
@@ -126129,8 +126471,8 @@ function renderRiskAssessmentDocumentRoutingControls() {
         <div class="risk-assessment-section-document-menu-head">
           <span class="risk-assessment-section-document-icon">${renderRiskAssessmentRiskIcon("note")}</span>
           <div class="risk-assessment-section-document-copy">
-            <strong>Dio u procjeni</strong>
-            <small>Odredi kako ovaj odlomak ulazi u završni dokument.</small>
+            <strong>Dokument</strong>
+            <small>Uključi ili sakrij odjeljak.</small>
           </div>
         </div>
         <select data-risk-template-routing-select="${escapeHtml(block.block)}">
@@ -126754,11 +127096,12 @@ function renderRiskAssessmentTemplateAuthorizedPersonsContent(items = []) {
     return "";
   }
   return `
-    <h4>Ovlaštenici poslodavca</h4>
+    <h4>Osobe poslodavca u organizaciji zaštite na radu</h4>
     <div class="risk-assessment-template-table">
-      <div class="is-head"><span>Ime i prezime</span><span>OIB</span><span>Radno mjesto</span></div>
+      <div class="is-head"><span>Uloga</span><span>Ime i prezime</span><span>OIB</span><span>Radno mjesto</span></div>
       ${items.map((item) => `
         <div>
+          <span>${escapeHtml(getRiskAssessmentAuthorizedPersonRoleLabel(item.role))}</span>
           <span>${escapeHtml(item.fullName || "-")}</span>
           <span>${escapeHtml(item.oib || "-")}</span>
           <span>${escapeHtml(item.jobTitle || "-")}</span>
@@ -126868,6 +127211,7 @@ function renderRiskAssessmentTemplateSectionContent(key = "", sectionNumber = 1)
           { label: "Broj zaposlenih", value: employer.employeeCount },
           { label: "Sjedište", value: employer.headquarters },
           { label: "Izdvojene lokacije", value: employer.detachedLocations },
+          { label: "Ovlaštenici za zaštitu na radu", value: employer.znrAuthorizedDescription },
           { label: "Način obavljanja poslova ZNR", value: employer.znrServiceMode },
           { label: "Stručnjaci ZNR", value: employer.znrExperts },
           { label: "Povjerenici ZNR", value: employer.znrRepresentatives },
@@ -130767,13 +131111,7 @@ function importSelectedJobsIntoRiskAssessment() {
   renderRiskAssessmentOrganizationUnits();
   renderRiskAssessmentOverview();
   scheduleRiskAssessmentDraftAutosave();
-  setInlineMessage(
-    riskAssessmentError,
-    shouldGroup && selectedJobs.length > 1
-      ? `Dodano ${selectedJobs.length} Jobs stavki kao jedan grupirani obrazac.`
-      : `Dodano ${selectedJobs.length} Jobs stavki u procjenu.`,
-    "success",
-  );
+  setInlineMessage(riskAssessmentError, "");
 }
 
 function applyRiskAssessmentSourceJob(jobIndex, sourceJobId = "") {
@@ -130898,10 +131236,10 @@ function syncRiskAssessmentEditorAccess() {
     riskAssessmentAddCompanyCollaboratorButton.hidden = !canManage;
   }
   if (riskAssessmentZnrAuthorizationUploadButton) {
-    riskAssessmentZnrAuthorizationUploadButton.hidden = !canManage;
+    riskAssessmentZnrAuthorizationUploadButton.hidden = true;
   }
   if (riskAssessmentZnrAuthorizationRemoveButton) {
-    riskAssessmentZnrAuthorizationRemoveButton.hidden = !canManage || !riskAssessmentZnrAuthorizationDocumentDraft;
+    riskAssessmentZnrAuthorizationRemoveButton.hidden = true;
   }
   if (riskAssessmentAddWorkplaceJobButton) {
     riskAssessmentAddWorkplaceJobButton.hidden = !canManage;
