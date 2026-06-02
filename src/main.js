@@ -678,6 +678,7 @@ const DOCUMENT_LIBRARY_FILE_KIND_LABELS = Object.freeze({
 const PERIODICS_MAX_RECORDS = 10000;
 const PERIODICS_FILTERS_STORAGE_KEY_PREFIX = "safenexus.periodics.filters.v1:";
 const PERIODICS_EXPANDED_GROUPS_STORAGE_KEY_PREFIX = "safenexus.periodics.expanded-groups.v1:";
+const PERIODICS_DATE_EXPANDED_GROUPS_STORAGE_KEY_PREFIX = "safenexus.periodics.date-expanded-groups.v1:";
 const DRAWING_REFERENCE_MAX_SIZE_BYTES = 25 * 1024 * 1024;
 const DRAWING_REFERENCE_ALLOWED_EXTENSIONS = new Set(["dwg", "dxf", "pdf", "png", "jpg", "jpeg", "webp", "svg"]);
 const DRAWING_REFERENCE_PREVIEW_CATEGORY = "cad-preview";
@@ -2224,6 +2225,7 @@ const state = {
     inspectionGroupKey: "",
   },
   periodicsInspectionExpandedGroups: {},
+  periodicsDateExpandedGroups: {},
   periodicsPreferencesScope: "",
   periodicsViewMode: "list",
   periodicsCalendar: {
@@ -2932,6 +2934,10 @@ function getPeriodicsExpandedGroupsStorageKey(scope = getPeriodicsPreferencesSco
   return `${PERIODICS_EXPANDED_GROUPS_STORAGE_KEY_PREFIX}${scope}`;
 }
 
+function getPeriodicsDateExpandedGroupsStorageKey(scope = getPeriodicsPreferencesScope()) {
+  return `${PERIODICS_DATE_EXPANDED_GROUPS_STORAGE_KEY_PREFIX}${scope}`;
+}
+
 function normalizePeriodicsStoredFilters(filters = {}) {
   return {
     query: String(filters?.query || "").trim(),
@@ -2975,12 +2981,19 @@ function loadPeriodicsPreferences(force = false) {
   const fallbackExpandedRaw = scope === fallbackScope
     ? {}
     : readJsonFromLocalStorage(getPeriodicsExpandedGroupsStorageKey(fallbackScope), {});
+  const storedDateExpandedRaw = readJsonFromLocalStorage(getPeriodicsDateExpandedGroupsStorageKey(scope), null);
+  const fallbackDateExpandedRaw = scope === fallbackScope
+    ? {}
+    : readJsonFromLocalStorage(getPeriodicsDateExpandedGroupsStorageKey(fallbackScope), {});
   state.periodicsFilters = {
     ...state.periodicsFilters,
     ...storedFilters,
   };
   state.periodicsInspectionExpandedGroups = normalizePeriodicsExpandedGroupsPreference(
     hasStoredPeriodicsPreference(storedExpandedRaw) ? storedExpandedRaw : fallbackExpandedRaw,
+  );
+  state.periodicsDateExpandedGroups = normalizePeriodicsExpandedGroupsPreference(
+    hasStoredPeriodicsPreference(storedDateExpandedRaw) ? storedDateExpandedRaw : fallbackDateExpandedRaw,
   );
   state.periodicsPreferencesScope = scope;
 }
@@ -2994,12 +3007,20 @@ function persistPeriodicsPreferences() {
     getPeriodicsExpandedGroupsStorageKey(scope),
     normalizePeriodicsExpandedGroupsPreference(state.periodicsInspectionExpandedGroups),
   );
+  writeJsonToLocalStorage(
+    getPeriodicsDateExpandedGroupsStorageKey(scope),
+    normalizePeriodicsExpandedGroupsPreference(state.periodicsDateExpandedGroups),
+  );
   const fallbackScope = getPeriodicsFallbackPreferencesScope();
   if (fallbackScope !== scope) {
     writeJsonToLocalStorage(getPeriodicsFiltersStorageKey(fallbackScope), filters);
     writeJsonToLocalStorage(
       getPeriodicsExpandedGroupsStorageKey(fallbackScope),
       normalizePeriodicsExpandedGroupsPreference(state.periodicsInspectionExpandedGroups),
+    );
+    writeJsonToLocalStorage(
+      getPeriodicsDateExpandedGroupsStorageKey(fallbackScope),
+      normalizePeriodicsExpandedGroupsPreference(state.periodicsDateExpandedGroups),
     );
   }
 }
@@ -35784,66 +35805,73 @@ function buildPeriodicsVehicleEntries() {
       return !vehicleOrganizationId || vehicleOrganizationId === activeOrganizationId;
     })
     .forEach((vehicle) => {
-    const vehicleName = String(vehicle?.name || "Vozilo").trim() || "Vozilo";
-    const plateNumber = String(vehicle?.plateNumber || "").trim();
-    const vinNumber = String(vehicle?.vinNumber || "").trim();
+      const vehicleId = String(vehicle?.id || "").trim();
+      const vehicleName = String(vehicle?.name || "Vozilo").trim() || "Vozilo";
+      const plateNumber = String(vehicle?.plateNumber || "").trim();
+      const vinNumber = String(vehicle?.vinNumber || "").trim();
 
-    const registrationDueDate = String(vehicle?.registrationExpiresOn || "").trim();
-    if (registrationDueDate) {
-      const dueState = getPeriodicsDueState(registrationDueDate, todayDate, visualSettings);
-      rows.push({
-        id: `periodics-vehicle-registration-${String(vehicle?.id || "")}-${registrationDueDate}`,
-        dueDate: registrationDueDate,
-        dueState,
-        vehicleName,
-        plateNumber,
-        vinNumber,
-        periodicLabel: "Registracija",
-        detail: "Istek prometne dozvole",
-        searchText: [vehicleName, plateNumber, vinNumber, "registracija"].filter(Boolean).join(" "),
-      });
-    }
-
-    const serviceDueDate = String(vehicle?.serviceDueDate || "").trim();
-    if (serviceDueDate) {
-      const dueState = getPeriodicsDueState(serviceDueDate, todayDate, visualSettings);
-      rows.push({
-        id: `periodics-vehicle-service-${String(vehicle?.id || "")}-${serviceDueDate}`,
-        dueDate: serviceDueDate,
-        dueState,
-        vehicleName,
-        plateNumber,
-        vinNumber,
-        periodicLabel: "Servis",
-        detail: "Planirani servisni rok",
-        searchText: [vehicleName, plateNumber, vinNumber, "servis"].filter(Boolean).join(" "),
-      });
-    }
-
-    (Array.isArray(vehicle?.activityItems) ? vehicle.activityItems : []).forEach((activityItem) => {
-      const dueDate = String(activityItem?.validUntil || "").trim();
-      if (!dueDate) {
-        return;
+      const registrationDueDate = String(vehicle?.registrationExpiresOn || "").trim();
+      if (registrationDueDate) {
+        const dueState = getPeriodicsDueState(registrationDueDate, todayDate, visualSettings);
+        rows.push({
+          id: `periodics-vehicle-registration-${vehicleId}-${registrationDueDate}`,
+          vehicleId,
+          periodicsGroupType: "registration",
+          dueDate: registrationDueDate,
+          dueState,
+          vehicleName,
+          plateNumber,
+          vinNumber,
+          periodicLabel: "Registracija",
+          detail: "Istek prometne dozvole",
+          searchText: [vehicleName, plateNumber, vinNumber, "registracija"].filter(Boolean).join(" "),
+        });
       }
-      const activityType = normalizeVehicleActivityTypeValue(activityItem?.activityType || activityItem?.type || "");
-      const activityLabel = getVehicleActivityTypeLabel(activityType);
-      const detail = [
-        String(activityItem?.performedBy || "").trim(),
-        String(activityItem?.workSummary || "").trim(),
-      ].filter(Boolean).join(" · ");
-      const dueState = getPeriodicsDueState(dueDate, todayDate, visualSettings);
-      rows.push({
-        id: `periodics-vehicle-activity-${String(vehicle?.id || "")}-${String(activityItem?.id || "")}-${dueDate}`,
-        dueDate,
-        dueState,
-        vehicleName,
-        plateNumber,
-        vinNumber,
-        periodicLabel: activityLabel,
-        detail: detail || "Evidencija vozila",
-        searchText: [vehicleName, plateNumber, vinNumber, activityLabel, detail].filter(Boolean).join(" "),
+
+      const serviceDueDate = String(vehicle?.serviceDueDate || "").trim();
+      if (serviceDueDate) {
+        const dueState = getPeriodicsDueState(serviceDueDate, todayDate, visualSettings);
+        rows.push({
+          id: `periodics-vehicle-service-${vehicleId}-${serviceDueDate}`,
+          vehicleId,
+          periodicsGroupType: "service",
+          dueDate: serviceDueDate,
+          dueState,
+          vehicleName,
+          plateNumber,
+          vinNumber,
+          periodicLabel: "Servis",
+          detail: "Planirani servisni rok",
+          searchText: [vehicleName, plateNumber, vinNumber, "servis"].filter(Boolean).join(" "),
+        });
+      }
+
+      (Array.isArray(vehicle?.activityItems) ? vehicle.activityItems : []).forEach((activityItem) => {
+        const dueDate = String(activityItem?.validUntil || "").trim();
+        if (!dueDate) {
+          return;
+        }
+        const activityType = normalizeVehicleActivityTypeValue(activityItem?.activityType || activityItem?.type || "");
+        const activityLabel = getVehicleActivityTypeLabel(activityType);
+        const detail = [
+          String(activityItem?.performedBy || "").trim(),
+          String(activityItem?.workSummary || "").trim(),
+        ].filter(Boolean).join(" · ");
+        const dueState = getPeriodicsDueState(dueDate, todayDate, visualSettings);
+        rows.push({
+          id: `periodics-vehicle-activity-${vehicleId}-${String(activityItem?.id || "")}-${dueDate}`,
+          vehicleId,
+          periodicsGroupType: `activity:${activityType || activityLabel}`,
+          dueDate,
+          dueState,
+          vehicleName,
+          plateNumber,
+          vinNumber,
+          periodicLabel: activityLabel,
+          detail: detail || "Evidencija vozila",
+          searchText: [vehicleName, plateNumber, vinNumber, activityLabel, detail].filter(Boolean).join(" "),
+        });
       });
-    });
     });
 
   return rows.sort((left, right) => (
@@ -35860,6 +35888,7 @@ function buildPeriodicsPeopleEntries() {
   const areaDefinitions = getQualificationExamDefinitions();
 
   getActiveOrganizationUsers().forEach((user) => {
+    const userId = String(user?.id || "").trim();
     const userName = getUserDocumentDisplayName(user);
     const userEmail = String(user?.email || "").trim();
 
@@ -35886,7 +35915,9 @@ function buildPeriodicsPeopleEntries() {
       ].filter(Boolean).join(" · ");
 
       rows.push({
-        id: `periodics-people-${String(user?.id || "")}-${areaDefinition.key}-${dueDate}`,
+        id: `periodics-people-${userId}-${areaDefinition.key}-${dueDate}`,
+        userId,
+        periodicsGroupType: areaDefinition.key,
         dueDate,
         dueState,
         userName,
@@ -35929,6 +35960,7 @@ function buildPeriodicsMeasurementEquipmentEntries() {
       return !itemOrganizationId || itemOrganizationId === activeOrganizationId;
     })
     .forEach((item) => {
+      const equipmentId = String(item?.id || "").trim();
       const equipmentName = String(item?.name || "Oprema").trim() || "Oprema";
       const manufacturerModel = [
         String(item?.manufacturer || "").trim(),
@@ -35997,7 +36029,9 @@ function buildPeriodicsMeasurementEquipmentEntries() {
         ].filter(Boolean).join(" ");
 
         rows.push({
-          id: `periodics-equipment-${String(item?.id || "")}-${dueDate}-${index}`,
+          id: `periodics-equipment-${equipmentId}-${dueDate}-${index}`,
+          equipmentId,
+          periodicsGroupType: normalizeLooseName(periodicLabel) || `rok-${index}`,
           dueDate,
           dueState,
           equipmentName,
@@ -36920,6 +36954,222 @@ function createPeriodicsRow(cells = [], toneClass = "") {
   return row;
 }
 
+function getPeriodicsDateExpandedGroups() {
+  if (!state.periodicsDateExpandedGroups || typeof state.periodicsDateExpandedGroups !== "object") {
+    state.periodicsDateExpandedGroups = {};
+  }
+  return state.periodicsDateExpandedGroups;
+}
+
+function isPeriodicsDateGroupExpanded(groupKey = "") {
+  return Boolean(getPeriodicsDateExpandedGroups()[String(groupKey || "")]);
+}
+
+function togglePeriodicsDateGroupExpansion(groupKey = "") {
+  const key = String(groupKey || "").trim();
+  if (!key) {
+    return;
+  }
+  const expandedGroups = getPeriodicsDateExpandedGroups();
+  expandedGroups[key] = !expandedGroups[key];
+  persistPeriodicsPreferences();
+  renderPeriodicsModule();
+}
+
+function getPeriodicsDateGroupKeyPart(value = "", fallback = "bez-vrijednosti") {
+  return normalizeDocumentsExplorerKey(value) || fallback;
+}
+
+function createPeriodicsDateGroupKey(entry = {}, category = "periodika") {
+  const normalizedCategory = String(category || "periodika").trim().toLowerCase() || "periodika";
+  const categoryKey = getPeriodicsDateGroupKeyPart(normalizedCategory, "periodika");
+
+  if (normalizedCategory === "inspection") {
+    return [
+      "date",
+      categoryKey,
+      getPeriodicsDateGroupKeyPart(entry.companyId || entry.companyOib || entry.companyName, "bez-tvrtke"),
+      getPeriodicsDateGroupKeyPart(entry.locationId || entry.locationName, "bez-lokacije"),
+      getPeriodicsDateGroupKeyPart(entry.objectId || entry.objectName, "bez-objekta"),
+      getPeriodicsDateGroupKeyPart(entry.serviceLabel || entry.templateLabel, "ispitivanje"),
+      getPeriodicsDateGroupKeyPart(entry.templateLabel, "zapisnik"),
+    ].join(":");
+  }
+
+  if (normalizedCategory === "vehicle") {
+    return [
+      "date",
+      categoryKey,
+      getPeriodicsDateGroupKeyPart(entry.vehicleId || entry.vinNumber || entry.plateNumber || entry.vehicleName, "vozilo"),
+      getPeriodicsDateGroupKeyPart(entry.periodicsGroupType || entry.periodicLabel, "rok"),
+    ].join(":");
+  }
+
+  if (normalizedCategory === "people") {
+    return [
+      "date",
+      categoryKey,
+      getPeriodicsDateGroupKeyPart(entry.userId || entry.userEmail || entry.userName, "osoba"),
+      getPeriodicsDateGroupKeyPart(entry.periodicsGroupType || entry.areaLabel, "ovlast"),
+    ].join(":");
+  }
+
+  if (normalizedCategory === "equipment") {
+    return [
+      "date",
+      categoryKey,
+      getPeriodicsDateGroupKeyPart(entry.equipmentId || entry.codeSummary || entry.equipmentName, "oprema"),
+      getPeriodicsDateGroupKeyPart(entry.periodicsGroupType || entry.periodicLabel, "rok"),
+    ].join(":");
+  }
+
+  return [
+    "date",
+    categoryKey,
+    getPeriodicsDateGroupKeyPart(entry.id || entry.searchText || entry.dueDate, "stavka"),
+  ].join(":");
+}
+
+function getPeriodicsEntryDateValue(entry = {}) {
+  const normalizedDate = normalizeDateInputValue(entry?.dueDate || "");
+  if (!normalizedDate) {
+    return Number.NEGATIVE_INFINITY;
+  }
+  const timestamp = Date.parse(normalizedDate);
+  return Number.isFinite(timestamp) ? timestamp : Number.NEGATIVE_INFINITY;
+}
+
+function comparePeriodicsEntriesNewestDate(left = {}, right = {}) {
+  const dateDifference = getPeriodicsEntryDateValue(right) - getPeriodicsEntryDateValue(left);
+  if (dateDifference !== 0) {
+    return dateDifference;
+  }
+
+  return String(right?.freshnessKey || right?.id || "").localeCompare(
+    String(left?.freshnessKey || left?.id || ""),
+    "hr",
+    { numeric: true },
+  );
+}
+
+function comparePeriodicsEntriesByDueDate(left = {}, right = {}) {
+  return (
+    String(left?.dueDate || "9999-12-31").localeCompare(String(right?.dueDate || "9999-12-31"))
+    || String(left?.searchText || left?.id || "").localeCompare(String(right?.searchText || right?.id || ""), "hr", {
+      numeric: true,
+      sensitivity: "base",
+    })
+  );
+}
+
+function buildPeriodicsCurrentDateEntries(entries = [], category = "periodika") {
+  const groups = new Map();
+  (Array.isArray(entries) ? entries : []).forEach((entry, index) => {
+    const key = createPeriodicsDateGroupKey(entry, category);
+    const current = groups.get(key) || {
+      key,
+      items: [],
+    };
+    current.items.push({
+      ...entry,
+      periodicsOriginalIndex: index,
+    });
+    groups.set(key, current);
+  });
+
+  return Array.from(groups.values())
+    .map((group) => {
+      const sortedItems = group.items.slice().sort(comparePeriodicsEntriesNewestDate);
+      const [primaryEntry, ...otherEntries] = sortedItems;
+      return {
+        ...primaryEntry,
+        periodicsDateGroupKey: group.key,
+        periodicsDateGroupCount: sortedItems.length,
+        periodicsOtherDateEntries: otherEntries
+          .slice()
+          .sort(comparePeriodicsEntriesNewestDate)
+          .map((entry) => ({
+            ...entry,
+            periodicsDateGroupKey: group.key,
+            periodicsDateGroupCount: sortedItems.length,
+            periodicsOtherDateEntries: [],
+            periodicsIsOtherDate: true,
+          })),
+      };
+    })
+    .filter(Boolean)
+    .sort(comparePeriodicsEntriesByDueDate);
+}
+
+function formatPeriodicsOtherDateCount(count = 0) {
+  const normalizedCount = Number(count || 0);
+  return normalizedCount === 1 ? "još 1 datum" : `još ${normalizedCount} datuma`;
+}
+
+function createPeriodicsDateExpandRow(entry = {}) {
+  const otherEntries = Array.isArray(entry?.periodicsOtherDateEntries)
+    ? entry.periodicsOtherDateEntries
+    : [];
+  const groupKey = String(entry?.periodicsDateGroupKey || "").trim();
+  if (!groupKey || otherEntries.length === 0) {
+    return null;
+  }
+
+  const expanded = isPeriodicsDateGroupExpanded(groupKey);
+  const row = document.createElement("article");
+  row.className = "periodics-grid-row periodics-date-expand-row";
+  row.dataset.preventRowOpen = "true";
+
+  const cell = document.createElement("div");
+  cell.className = "periodics-date-expand-cell";
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "periodics-date-expand-button";
+  button.setAttribute("aria-expanded", String(expanded));
+  button.textContent = expanded
+    ? "Sakrij ostale datume"
+    : `Prikaži ${formatPeriodicsOtherDateCount(otherEntries.length)}`;
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    togglePeriodicsDateGroupExpansion(groupKey);
+  });
+
+  const meta = document.createElement("span");
+  meta.className = "periodics-date-expand-meta";
+  meta.textContent = entry?.dueDate
+    ? `Aktualno prikazano ${formatCompactDate(entry.dueDate)}`
+    : "Aktualni rok je prikazan iznad";
+
+  cell.append(button, meta);
+  row.append(cell);
+  return row;
+}
+
+function createPeriodicsDateRows(entry = {}, renderRow) {
+  const primaryRow = renderRow(entry);
+  primaryRow.classList.add("periodics-current-date-row");
+
+  const rows = [primaryRow];
+  const expandRow = createPeriodicsDateExpandRow(entry);
+  if (!expandRow) {
+    return rows;
+  }
+
+  rows.push(expandRow);
+  if (isPeriodicsDateGroupExpanded(entry.periodicsDateGroupKey)) {
+    const otherRows = (entry.periodicsOtherDateEntries ?? []).map((otherEntry) => {
+      const row = renderRow(otherEntry);
+      row.classList.add("periodics-other-date-row");
+      return row;
+    });
+    rows.push(...otherRows);
+  }
+
+  return rows;
+}
+
 function getPeriodicsInspectionNestedGroupKey(parentKey = "", type = "location", id = "", title = "") {
   return [
     String(parentKey || "").trim(),
@@ -37069,13 +37319,17 @@ function createPeriodicsInspectionRow(entry = {}, { detail = false, hideLocation
   return bindPeriodicsInspectionWorkOrderContext(row, [entry]);
 }
 
+function createPeriodicsInspectionDateRows(entry = {}, options = {}) {
+  return createPeriodicsDateRows(entry, (rowEntry) => createPeriodicsInspectionRow(rowEntry, options));
+}
+
 function createPeriodicsInspectionObjectRows(objectGroup = {}, { hideLocation = true } = {}) {
   if (Number(objectGroup.count || 0) > 1) {
     const expanded = isPeriodicsInspectionGroupExpanded(objectGroup.key);
     return [
       createPeriodicsInspectionSubgroupRow(objectGroup, "object"),
       ...(expanded
-        ? objectGroup.items.map((entry) => createPeriodicsInspectionRow(entry, {
+        ? objectGroup.items.flatMap((entry) => createPeriodicsInspectionDateRows(entry, {
           detail: true,
           hideLocation,
           hideObject: true,
@@ -37084,7 +37338,7 @@ function createPeriodicsInspectionObjectRows(objectGroup = {}, { hideLocation = 
     ];
   }
 
-  return objectGroup.items.map((entry) => createPeriodicsInspectionRow(entry, {
+  return objectGroup.items.flatMap((entry) => createPeriodicsInspectionDateRows(entry, {
     detail: true,
     hideLocation,
   }));
@@ -37105,7 +37359,7 @@ function createPeriodicsInspectionLocationRows(locationGroup = {}) {
     ];
   }
 
-  return locationGroup.items.map((entry) => createPeriodicsInspectionRow(entry, { detail: true }));
+  return locationGroup.items.flatMap((entry) => createPeriodicsInspectionDateRows(entry, { detail: true }));
 }
 
 function createPeriodicsInspectionCompanyRows(group = {}) {
@@ -37123,7 +37377,7 @@ function createPeriodicsInspectionCompanyRows(group = {}) {
 function createPeriodicsInspectionRows(entries = [], groupMode = "location-object") {
   const mode = normalizePeriodicsInspectionGroupMode(groupMode);
   if (mode === "item") {
-    return entries.map((entry) => createPeriodicsInspectionRow(entry));
+    return entries.flatMap((entry) => createPeriodicsInspectionDateRows(entry));
   }
 
   const groups = new Map();
@@ -38347,8 +38601,12 @@ function renderPeriodicsModule() {
   const rawVehicleEntries = buildPeriodicsVehicleEntries();
   const rawPeopleEntries = buildPeriodicsPeopleEntries();
   const rawEquipmentEntries = buildPeriodicsMeasurementEquipmentEntries();
+  const currentInspectionEntries = buildPeriodicsCurrentDateEntries(rawInspectionEntries, "inspection");
+  const currentVehicleEntries = buildPeriodicsCurrentDateEntries(rawVehicleEntries, "vehicle");
+  const currentPeopleEntries = buildPeriodicsCurrentDateEntries(rawPeopleEntries, "people");
+  const currentEquipmentEntries = buildPeriodicsCurrentDateEntries(rawEquipmentEntries, "equipment");
 
-  const inspectionSearchEntries = applyPeriodicsFilters(rawInspectionEntries, {
+  const inspectionSearchEntries = applyPeriodicsFilters(currentInspectionEntries, {
     ...state.periodicsFilters,
     horizon: "all",
   });
@@ -38360,14 +38618,14 @@ function renderPeriodicsModule() {
     state.periodicsFilters.inspectionGroupKey = selectedInspectionGroupKey;
   }
   const inspectionEntries = applyPeriodicsInspectionGroupFilter(inspectionSearchEntries, state.periodicsFilters);
-  const vehicleEntries = rawVehicleEntries;
-  const peopleEntries = rawPeopleEntries;
-  const equipmentEntries = rawEquipmentEntries;
+  const vehicleEntries = currentVehicleEntries;
+  const peopleEntries = currentPeopleEntries;
+  const equipmentEntries = currentEquipmentEntries;
   const calendarData = buildPeriodicsCalendarData({
-    inspectionEntries: rawInspectionEntries,
-    vehicleEntries: rawVehicleEntries,
-    peopleEntries: rawPeopleEntries,
-    equipmentEntries: rawEquipmentEntries,
+    inspectionEntries: currentInspectionEntries,
+    vehicleEntries: currentVehicleEntries,
+    peopleEntries: currentPeopleEntries,
+    equipmentEntries: currentEquipmentEntries,
     query: "",
     visibility: state.periodicsCalendar.visibility,
   });
@@ -38388,28 +38646,28 @@ function renderPeriodicsModule() {
     state.periodicsFilters.inspectionGroup,
   );
 
-  const vehicleRows = vehicleEntries.map((entry) => createPeriodicsRow([
-    createPeriodicsCell(entry.vehicleName, entry.plateNumber || "Bez registracije"),
-    createPeriodicsCell(entry.vinNumber || "—", "", { dimmed: !entry.vinNumber }),
-    createPeriodicsCell(entry.periodicLabel),
-    createPeriodicsCell(entry.detail),
-    createPeriodicsDueCell(entry.dueDate, entry.dueState),
-  ], entry.dueState?.toneClass));
+  const vehicleRows = vehicleEntries.flatMap((entry) => createPeriodicsDateRows(entry, (rowEntry) => createPeriodicsRow([
+    createPeriodicsCell(rowEntry.vehicleName, rowEntry.plateNumber || "Bez registracije"),
+    createPeriodicsCell(rowEntry.vinNumber || "—", "", { dimmed: !rowEntry.vinNumber }),
+    createPeriodicsCell(rowEntry.periodicLabel),
+    createPeriodicsCell(rowEntry.detail),
+    createPeriodicsDueCell(rowEntry.dueDate, rowEntry.dueState),
+  ], rowEntry.dueState?.toneClass)));
 
-  const peopleRows = peopleEntries.map((entry) => createPeriodicsRow([
-    createPeriodicsCell(entry.userName, entry.userEmail || "Bez e-maila"),
-    createPeriodicsCell(entry.areaLabel),
-    createPeriodicsCell(entry.qualificationLabel),
-    createPeriodicsDueCell(entry.dueDate, entry.dueState),
-  ], entry.dueState?.toneClass));
+  const peopleRows = peopleEntries.flatMap((entry) => createPeriodicsDateRows(entry, (rowEntry) => createPeriodicsRow([
+    createPeriodicsCell(rowEntry.userName, rowEntry.userEmail || "Bez e-maila"),
+    createPeriodicsCell(rowEntry.areaLabel),
+    createPeriodicsCell(rowEntry.qualificationLabel),
+    createPeriodicsDueCell(rowEntry.dueDate, rowEntry.dueState),
+  ], rowEntry.dueState?.toneClass)));
 
-  const equipmentRows = equipmentEntries.map((entry) => createPeriodicsRow([
-    createPeriodicsCell(entry.equipmentName, entry.manufacturerModel || "Bez modela"),
-    createPeriodicsCell(entry.kindLabel, entry.periodicLabel),
-    createPeriodicsCell(entry.detail || "Bez detalja", entry.templateSummary || ""),
-    createPeriodicsCell(entry.codeSummary || "—", "", { dimmed: !entry.codeSummary }),
-    createPeriodicsDueCell(entry.dueDate, entry.dueState),
-  ], entry.dueState?.toneClass));
+  const equipmentRows = equipmentEntries.flatMap((entry) => createPeriodicsDateRows(entry, (rowEntry) => createPeriodicsRow([
+    createPeriodicsCell(rowEntry.equipmentName, rowEntry.manufacturerModel || "Bez modela"),
+    createPeriodicsCell(rowEntry.kindLabel, rowEntry.periodicLabel),
+    createPeriodicsCell(rowEntry.detail || "Bez detalja", rowEntry.templateSummary || ""),
+    createPeriodicsCell(rowEntry.codeSummary || "—", "", { dimmed: !rowEntry.codeSummary }),
+    createPeriodicsDueCell(rowEntry.dueDate, rowEntry.dueState),
+  ], rowEntry.dueState?.toneClass)));
 
   renderPeriodicsRows(periodicsInspectionPeriodicsList, inspectionPeriodicsRows);
   renderPeriodicsRows(periodicsVehiclesList, vehicleRows);
@@ -38539,9 +38797,9 @@ function renderPeriodicsModule() {
     } else if (allEntries.length === 0) {
       periodicsHelper.textContent = "Nema periodičkih obveza za aktivnu organizaciju.";
     } else if (state.periodicsFeed.error) {
-      periodicsHelper.textContent = `Periodika Ispitivanja ${inspectionEntries.length} · Vozila ${vehicleEntries.length} · Ljudi ${peopleEntries.length} · Oprema ${equipmentEntries.length}.`;
+      periodicsHelper.textContent = `Aktualni rokovi: Ispitivanja ${inspectionEntries.length} · Vozila ${vehicleEntries.length} · Ljudi ${peopleEntries.length} · Oprema ${equipmentEntries.length}.`;
     } else {
-      periodicsHelper.textContent = `Periodika Ispitivanja ${inspectionEntries.length} · Vozila ${vehicleEntries.length} · Ljudi ${peopleEntries.length} · Oprema ${equipmentEntries.length}.`;
+      periodicsHelper.textContent = `Aktualni rokovi: Ispitivanja ${inspectionEntries.length} · Vozila ${vehicleEntries.length} · Ljudi ${peopleEntries.length} · Oprema ${equipmentEntries.length}.`;
     }
   }
 
@@ -136280,6 +136538,7 @@ function resetAuthenticatedWorkspaceState() {
     inspectionGroupKey: "",
   };
   state.periodicsInspectionExpandedGroups = {};
+  state.periodicsDateExpandedGroups = {};
   state.periodicsPreferencesScope = "";
   state.periodicsSections = {
     inspectionPeriodicsCollapsed: false,
