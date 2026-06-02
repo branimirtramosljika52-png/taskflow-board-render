@@ -5134,6 +5134,26 @@ function findMatchingXmlElement(xml = "", startIndex = 0, tagName = "") {
   return -1;
 }
 
+function getXmlElementsPreservingNested(xml = "", tagName = "") {
+  const source = String(xml || "");
+  const safeTagName = String(tagName || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const openRegex = new RegExp(`<${safeTagName}\\b`, "gi");
+  const elements = [];
+  let index = 0;
+  let match;
+  while ((match = openRegex.exec(source.slice(index)))) {
+    const startIndex = index + match.index;
+    const endIndex = findMatchingXmlElement(source, startIndex, tagName);
+    if (endIndex <= startIndex) {
+      break;
+    }
+    elements.push(source.slice(startIndex, endIndex));
+    index = endIndex;
+    openRegex.lastIndex = 0;
+  }
+  return elements;
+}
+
 function extractDocxBodyBlocks(bodyXml = "") {
   const source = String(bodyXml || "");
   const blocks = [];
@@ -5586,12 +5606,12 @@ async function renderDocxParagraphHtml(pXml = "", context = {}) {
 }
 
 function parseDocxTableRows(tblXml = "") {
-  return getXmlElements(tblXml, "w:tr").map((rowXml) => ({
+  return getXmlElementsPreservingNested(tblXml, "w:tr").map((rowXml) => ({
     xml: rowXml,
     trPr: getFirstXmlElement(rowXml, "w:trPr"),
     cells: (() => {
       let columnIndex = 0;
-      return getXmlElements(rowXml, "w:tc").map((cellXml) => {
+      return getXmlElementsPreservingNested(rowXml, "w:tc").map((cellXml) => {
         const tcPr = getFirstXmlElement(cellXml, "w:tcPr");
         const gridSpan = Math.max(1, Number.parseInt(getXmlVal(getFirstXmlEmptyOrElement(tcPr, "w:gridSpan"), "1"), 10) || 1);
         const vMergeElement = getFirstXmlEmptyOrElement(tcPr, "w:vMerge");

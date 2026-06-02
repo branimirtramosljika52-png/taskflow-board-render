@@ -244,6 +244,15 @@ test("docx export renders a multi-block table section placeholder", async () => 
   assert.match(outputXml, /w:color="94A3B8"/);
   assert.equal((outputXml.match(/w:orient="landscape"/g) || []).length, 1);
   assert.equal((outputXml.match(/<w:tbl>/g) || []).length, 2);
+
+  const fallbackHtml = (await convertWordBufferToHtmlTemplate(outputBuffer, {
+    fileName: "procjena-rizika.docx",
+    allowLibreOfficeFallback: false,
+  })).html;
+  assert.match(fallbackHtml, /Srednji rizik/);
+  assert.match(fallbackHtml, /background-color:#FEF3C7/);
+  assert.match(fallbackHtml, /border-top:0\.75pt solid #94A3B8/);
+  assert.ok((fallbackHtml.match(/<table/g) || []).length >= 2);
 });
 
 test("docx export renders signature group placeholders as visible signature blocks", async () => {
