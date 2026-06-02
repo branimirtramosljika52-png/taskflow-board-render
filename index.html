@@ -5352,7 +5352,10 @@
                         <button id="risk-assessment-import-jobs" type="button" class="primary-button">Dodaj odabrane poslove</button>
                       </div>
                     </div>
-                    <div id="risk-assessment-jobs" class="risk-assessment-repeat-list"></div>
+                    <div class="risk-assessment-job-analysis-shell">
+                      <aside id="risk-assessment-job-tree" class="risk-assessment-job-tree" aria-label="Stablo radnih mjesta"></aside>
+                      <div id="risk-assessment-jobs" class="risk-assessment-repeat-list"></div>
+                    </div>
 
                     <label class="field field-span-full">
                       <span>Poruka / napomena klijenta</span>
@@ -5382,9 +5385,9 @@
                     <div class="risk-assessment-editor-section-head">
                       <div>
                         <span>12</span>
-                        <strong>Kemikalije i STL</strong>
+                        <strong>Kemijske štetnosti</strong>
                       </div>
-                      <p>STL upload i uređiva tablica kemikalija za procjenu rizika.</p>
+                      <p>STL upload i uređiva tablica kemijskih štetnosti za procjenu rizika.</p>
                     </div>
                     <div class="risk-assessment-chemical-workspace">
                       <section class="risk-assessment-chemical-panel is-import">
@@ -5432,6 +5435,21 @@
                       </div>
                       <p>Biološki agensi, izvori izloženosti, skupine radnika i mjere zaštite povezane s poslovima i mjestima rada.</p>
                     </div>
+                    <section class="risk-assessment-biological-rule-panel">
+                      <div class="risk-assessment-biological-rule-head">
+                        <div>
+                          <span class="section-kicker">NN 129/2020</span>
+                          <strong>Pravilnik o biološkim štetnostima</strong>
+                          <p class="inline-help">Podaci iz pravilnika služe kao baza za procjenu prirode, stupnja i trajanja izloženosti, skupinu agensa i mjere izolacije.</p>
+                        </div>
+                        <div class="risk-assessment-biological-rule-actions">
+                          <button type="button" class="secondary-button" data-risk-biological-insert="summary">Umetni pregled</button>
+                          <button type="button" class="ghost-button" data-risk-biological-insert="catalog">Dodaj katalog agensa</button>
+                        </div>
+                      </div>
+                      <div id="risk-assessment-biological-rule-content" class="risk-assessment-biological-rule-content"></div>
+                      <p id="risk-assessment-biological-rule-message" class="inline-help" aria-live="polite"></p>
+                    </section>
                     <label class="field field-span-full risk-assessment-rich-field">
                       <span>Procjena bioloških štetnosti</span>
                       <div class="risk-assessment-rich-editor">
@@ -5469,7 +5487,7 @@
 
                   <p id="risk-assessment-error" class="form-error" aria-live="polite"></p>
                   <div class="form-actions">
-                    <button id="risk-assessment-submit" type="submit" class="primary-button">Spremi procjenu</button>
+                    <span id="risk-assessment-autosave-status" class="risk-assessment-autosave-status" aria-live="polite">Automatsko spremanje spremno.</span>
                     <button id="risk-assessment-reset" type="button" class="ghost-button">Nova procjena</button>
                     <button id="risk-assessment-delete" type="button" class="card-button card-danger" hidden>Obriši</button>
                   </div>
@@ -5486,8 +5504,8 @@
                 <button type="button" data-risk-assessment-jump="inspections"><strong>Ispitivanja</strong><span>Popis</span></button>
                 <button type="button" data-risk-assessment-jump="measures"><strong>Mjere</strong><span>Plan mjera</span></button>
                 <button type="button" data-risk-assessment-jump="jobs"><strong>Analiza</strong><span>Radna mjesta</span></button>
-                <button type="button" data-risk-assessment-jump="chemicals"><strong>Kemikalije</strong><span>STL i GHS</span></button>
-                <button type="button" data-risk-assessment-jump="biological"><strong>Biološke</strong><span>Štetnosti</span></button>
+                <button type="button" data-risk-assessment-jump="chemicals"><strong>Kemijske štetnosti</strong><span>STL i GHS</span></button>
+                <button type="button" data-risk-assessment-jump="biological"><strong>Biološke štetnosti</strong><span>NN 129/2020</span></button>
                 <button type="button" data-risk-assessment-jump="manual-handling"><strong>Teret</strong><span>Ručno prenošenje</span></button>
                 <button type="button" data-risk-assessment-jump="overview"><strong>Pregled</strong><span>Izvoz</span></button>
               </nav>

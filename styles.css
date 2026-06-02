@@ -13965,6 +13965,43 @@ button:hover {
   flex-wrap: wrap;
 }
 
+.risk-assessment-autosave-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid rgba(203, 213, 225, 0.88);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #475569;
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.risk-assessment-autosave-status[data-tone="saving"] {
+  border-color: rgba(37, 99, 235, 0.32);
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.risk-assessment-autosave-status[data-tone="saved"] {
+  border-color: rgba(34, 197, 94, 0.3);
+  background: #f0fdf4;
+  color: #15803d;
+}
+
+.risk-assessment-autosave-status[data-tone="warning"] {
+  border-color: rgba(245, 158, 11, 0.34);
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.risk-assessment-autosave-status[data-tone="error"] {
+  border-color: rgba(239, 68, 68, 0.28);
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
 .form-error {
   min-height: 1.2rem;
   margin: 0;
@@ -58090,6 +58127,135 @@ button.work-order-editor-section-head:focus-visible {
   background: rgba(255, 255, 255, 0.76);
 }
 
+.risk-assessment-job-analysis-shell {
+  display: grid;
+  grid-template-columns: minmax(188px, 0.24fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.risk-assessment-job-tree {
+  position: sticky;
+  top: 10px;
+  display: grid;
+  gap: 8px;
+  max-height: min(72vh, 760px);
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid rgba(203, 213, 225, 0.86);
+  border-radius: 10px;
+  background: rgba(248, 250, 252, 0.92);
+}
+
+.risk-assessment-job-tree-head,
+.risk-assessment-job-tree-empty {
+  display: grid;
+  gap: 2px;
+  padding: 4px 2px 8px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+.risk-assessment-job-tree-head strong,
+.risk-assessment-job-tree-empty strong {
+  color: #0f172a;
+  font-size: 0.82rem;
+  font-weight: 920;
+}
+
+.risk-assessment-job-tree-head span,
+.risk-assessment-job-tree-empty span {
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 780;
+}
+
+.risk-assessment-job-tree-section {
+  display: grid;
+  gap: 5px;
+  padding-left: calc(var(--unit-depth, 0) * 10px);
+}
+
+.risk-assessment-job-tree-section > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+  color: #475569;
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.risk-assessment-job-tree-section > div strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.risk-assessment-job-tree-section > div span {
+  display: inline-grid;
+  min-width: 22px;
+  min-height: 22px;
+  place-items: center;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #334155;
+  font-size: 0.66rem;
+}
+
+.risk-assessment-job-tree button {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 9px;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0f172a;
+  text-align: left;
+  cursor: pointer;
+}
+
+.risk-assessment-job-tree button:hover,
+.risk-assessment-job-tree button:focus-visible {
+  border-color: rgba(37, 99, 235, 0.38);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
+.risk-assessment-job-tree button span {
+  overflow: hidden;
+  font-size: 0.76rem;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.risk-assessment-job-tree button small {
+  overflow: hidden;
+  color: #64748b;
+  font-size: 0.65rem;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.risk-assessment-repeat-row.is-job {
+  gap: 8px;
+  padding: 10px;
+  border-radius: 10px;
+}
+
+.risk-assessment-repeat-row.is-job.is-tree-focus {
+  border-color: rgba(37, 99, 235, 0.58);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.risk-assessment-repeat-row.is-job .risk-assessment-job-head {
+  gap: 8px;
+  padding-bottom: 6px;
+}
+
 .risk-assessment-manual-list {
   display: grid;
   gap: 14px;
@@ -59617,6 +59783,68 @@ body.is-risk-stl-review-open {
 
 .risk-assessment-chemical-grid .field-span-full {
   grid-column: 1 / -1;
+}
+
+.risk-assessment-biological-rule-panel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(34, 197, 94, 0.24);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.risk-assessment-biological-rule-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+}
+
+.risk-assessment-biological-rule-head > div:first-child {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.risk-assessment-biological-rule-head strong {
+  color: #0f172a;
+  font-size: 0.98rem;
+}
+
+.risk-assessment-biological-rule-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.risk-assessment-biological-rule-content {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.risk-assessment-biological-rule-content article {
+  display: grid;
+  gap: 4px;
+  min-height: 92px;
+  padding: 10px;
+  border: 1px solid rgba(203, 213, 225, 0.78);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.risk-assessment-biological-rule-content strong {
+  color: #0f172a;
+  font-size: 0.84rem;
+}
+
+.risk-assessment-biological-rule-content small {
+  color: #64748b;
+  font-size: 0.7rem;
+  font-weight: 760;
+  line-height: 1.35;
 }
 
 .risk-assessment-risk-line {
@@ -64829,6 +65057,7 @@ body.is-risk-stl-review-open {
   .risk-assessment-section-grid,
   .risk-assessment-employer-grid,
   .risk-assessment-repeat-row.is-measure,
+  .risk-assessment-job-analysis-shell,
   .risk-assessment-job-head,
   .risk-assessment-org-card-head,
   .risk-assessment-detail-grid,
@@ -64887,6 +65116,8 @@ body.is-risk-stl-review-open {
   .risk-assessment-stl-review-kpis,
   .risk-assessment-chemical-card-head,
   .risk-assessment-chemical-grid,
+  .risk-assessment-biological-rule-head,
+  .risk-assessment-biological-rule-content,
   .risk-assessment-structure-ai-panel,
   .risk-assessment-structure-upload,
   .risk-assessment-job-profile-top,
@@ -64907,6 +65138,15 @@ body.is-risk-stl-review-open {
   }
 
   .risk-assessment-overview-export-actions {
+    justify-content: flex-start;
+  }
+
+  .risk-assessment-job-tree {
+    position: static;
+    max-height: 260px;
+  }
+
+  .risk-assessment-biological-rule-actions {
     justify-content: flex-start;
   }
 

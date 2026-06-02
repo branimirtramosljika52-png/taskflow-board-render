@@ -5395,10 +5395,24 @@ function isRiskAssessmentChemicalNameBoilerplate(value = "") {
   return /\b(?:sigurnosno\s*-?\s*tehnicki\s+list|safety\s+data\s+sheet|sukladno\s+uredbi|sukladan\s+uredbi|according\s+to\s+regulation)\b/i.test(normalized);
 }
 
+function trimRiskAssessmentChemicalInlineName(value = "") {
+  let text = normalizeText(value).replace(/\s+/g, " ").trim();
+  const boundaryIndex = text.search(/\s+(?=(?:datum|date|izdanje|edition|rep\.?|revizija|revision|verzija|version|stranica|page|ufi|cas(?:\s*(?:br\.?|broj|no\.?|number))?|ec\s*(?:broj|number|no\.?)?|reach|klasa|ur\.?\s*broj|urbroj|odjeljak|section)\b\s*:?)/i);
+  if (boundaryIndex > 0) {
+    text = text.slice(0, boundaryIndex);
+  }
+  return text.replace(/^[:;.,\-\s]+|[:;.,\-\s]+$/g, "").trim();
+}
+
 function normalizeRiskAssessmentChemicalName(value = "", casNumber = "") {
   const name = normalizeText(value);
   if (!isRiskAssessmentChemicalNameBoilerplate(name)) {
     return name;
+  }
+  const productNameMatch = name.match(/\b(?:naziv\s+proizvoda|product\s+name|trade\s+name|substance\s+name)\s*:?\s*(.+)$/i);
+  const productName = trimRiskAssessmentChemicalInlineName(productNameMatch?.[1] || "");
+  if (productName && !isRiskAssessmentChemicalNameBoilerplate(productName)) {
+    return productName;
   }
   return RISK_ASSESSMENT_CAS_NAME_ALIASES.get(normalizeRiskAssessmentChemicalCasNumber(casNumber)) || "";
 }
@@ -5479,6 +5493,20 @@ function normalizeRiskAssessmentChemicals(items = []) {
   ));
 }
 
+function normalizeRiskAssessmentManualPosture(value = "") {
+  const normalized = normalizeText(value);
+  if (normalized === "bent" || normalized === "twist") {
+    return "slight";
+  }
+  if (normalized === "overhead") {
+    return "unfavorable";
+  }
+  if (normalized === "neutral") {
+    return "upright";
+  }
+  return normalized || "upright";
+}
+
 function normalizeRiskAssessmentManualHandlingItems(items = []) {
   if (!Array.isArray(items)) {
     return [];
@@ -5489,13 +5517,16 @@ function normalizeRiskAssessmentManualHandlingItems(items = []) {
     order: Number.isFinite(Number(item?.order)) ? Number(item.order) : index + 1,
     activity: normalizeText(item?.activity ?? item?.title).slice(0, 220),
     jobId: normalizeId(item?.jobId),
+    operationType: normalizeText(item?.operationType || "lift").slice(0, 40),
+    workerGender: normalizeText(item?.workerGender || "male").slice(0, 40),
     loadWeightKg: normalizeText(item?.loadWeightKg ?? item?.massKg).slice(0, 40),
     transfersPerHour: normalizeText(item?.transfersPerHour ?? item?.frequencyPerHour).slice(0, 40),
     durationMinutes: normalizeText(item?.durationMinutes).slice(0, 40),
     carryingDistanceMeters: normalizeText(item?.carryingDistanceMeters ?? item?.distanceMeters).slice(0, 40),
     verticalLiftCm: normalizeText(item?.verticalLiftCm).slice(0, 40),
     horizontalReachCm: normalizeText(item?.horizontalReachCm).slice(0, 40),
-    posture: normalizeText(item?.posture || "neutral").slice(0, 40),
+    posture: normalizeRiskAssessmentManualPosture(item?.posture).slice(0, 40),
+    workConditions: normalizeText(item?.workConditions || "good").slice(0, 40),
     gripQuality: normalizeText(item?.gripQuality || "good").slice(0, 40),
     existingMeasures: normalizeText(item?.existingMeasures ?? item?.measures).slice(0, 2000),
     note: normalizeText(item?.note).slice(0, 2000),
