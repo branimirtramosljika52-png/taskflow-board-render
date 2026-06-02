@@ -8086,6 +8086,27 @@ body.is-location-editor-open {
   gap: 16px;
 }
 
+.client-portal-hero {
+  order: 0;
+}
+
+.client-portal-register-panel {
+  order: 1;
+}
+
+.client-portal-layout {
+  order: 2;
+}
+
+.client-portal-preview-panel {
+  order: 3;
+}
+
+.client-portal-modal-backdrop,
+.client-portal-modal {
+  order: 4;
+}
+
 .client-portal-hero,
 .client-portal-access-panel,
 .client-portal-users-panel,
@@ -8594,6 +8615,7 @@ body.is-location-editor-open {
 .client-portal-record-summary-card.is-fire { --record-accent: #2563eb; --record-accent-soft: #eff6ff; }
 .client-portal-record-summary-card.is-defect { --record-accent: #7c3aed; --record-accent-soft: #f5f3ff; }
 .client-portal-record-summary-card.is-inspection { --record-accent: #4f46e5; --record-accent-soft: #eef2ff; }
+.client-portal-record-summary-card.is-training { --record-accent: #0e7490; --record-accent-soft: #ecfeff; }
 
 .client-portal-record-summary-icon,
 .client-portal-record-tab-icon,
@@ -8920,6 +8942,49 @@ body.is-location-editor-open {
   background: rgba(248, 250, 252, 0.74);
   color: #667085;
   font-size: 0.84rem;
+}
+
+.client-portal-worker-training-dashboard {
+  display: grid;
+  gap: 8px;
+}
+
+.client-portal-worker-training-dashboard-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.92fr);
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid rgba(207, 235, 244, 0.9);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(247, 254, 255, 0.9));
+  color: #172033;
+  text-align: left;
+  cursor: pointer;
+}
+
+.client-portal-worker-training-dashboard-copy,
+.client-portal-worker-training-dashboard-summary {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.client-portal-worker-training-dashboard-copy strong {
+  color: #123347;
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.client-portal-worker-training-dashboard-copy small,
+.client-portal-worker-training-dashboard-summary {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 
 .client-portal-ppe-table {
@@ -9488,6 +9553,124 @@ body.is-location-editor-open {
   border: 1px solid rgba(196, 209, 232, 0.8);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.78);
+}
+
+.client-portal-worker-training-block {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(207, 235, 244, 0.92);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(240, 253, 250, 0.82), rgba(255, 255, 255, 0.9));
+}
+
+.client-portal-worker-training-block.has-attention {
+  border-color: rgba(253, 230, 138, 0.92);
+  background:
+    linear-gradient(180deg, rgba(255, 251, 235, 0.86), rgba(255, 255, 255, 0.92));
+}
+
+.client-portal-worker-training-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.client-portal-worker-training-head strong {
+  color: #164e63;
+  font-size: 0.78rem;
+}
+
+.client-portal-worker-training-head span,
+.client-portal-worker-training-empty,
+.client-portal-worker-training-more {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.client-portal-worker-training-empty {
+  margin: 0;
+}
+
+.client-portal-worker-training-list {
+  display: grid;
+  gap: 7px;
+}
+
+.client-portal-worker-training-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(140px, auto);
+  gap: 8px;
+  align-items: center;
+  padding-top: 7px;
+  border-top: 1px solid rgba(226, 232, 240, 0.78);
+}
+
+.client-portal-worker-training-copy,
+.client-portal-worker-training-statuses {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+  min-width: 0;
+}
+
+.client-portal-worker-training-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.client-portal-worker-training-copy strong,
+.client-portal-worker-training-copy small {
+  overflow-wrap: anywhere;
+}
+
+.client-portal-worker-training-copy strong {
+  color: #123347;
+  font-size: 0.78rem;
+}
+
+.client-portal-worker-training-copy small {
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.client-portal-training-mini-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 3px 7px;
+  border: 1px solid rgba(203, 213, 225, 0.82);
+  border-radius: 999px;
+  background: rgba(248, 250, 252, 0.92);
+  color: #475569;
+  font-size: 0.66rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.client-portal-training-mini-pill.is-valid {
+  border-color: rgba(187, 247, 208, 0.9);
+  background: rgba(240, 253, 244, 0.92);
+  color: #15803d;
+}
+
+.client-portal-training-mini-pill.is-expiring {
+  border-color: rgba(253, 230, 138, 0.92);
+  background: rgba(255, 251, 235, 0.94);
+  color: #b45309;
+}
+
+.client-portal-training-mini-pill.is-expired,
+.client-portal-training-mini-pill.is-missing {
+  border-color: rgba(254, 202, 202, 0.92);
+  background: rgba(254, 242, 242, 0.94);
+  color: #b91c1c;
 }
 
 .client-portal-record-empty {
@@ -75143,6 +75326,11 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
 
   .client-portal-dashboard-row {
     grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .client-portal-worker-training-dashboard-row,
+  .client-portal-worker-training-row {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .client-portal-dashboard-row-date,

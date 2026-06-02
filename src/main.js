@@ -4061,6 +4061,7 @@ const clientPortalLocationList = document.querySelector("#client-portal-location
 const clientPortalLocationIdsInput = document.querySelector("#client-portal-location-ids");
 const clientPortalFeedback = document.querySelector("#client-portal-feedback");
 const clientPortalCreateUserButton = document.querySelector("#client-portal-create-user");
+const clientPortalFillTestUserButton = document.querySelector("#client-portal-fill-test-user");
 const clientPortalClearUserButton = document.querySelector("#client-portal-clear-user");
 const clientPortalSearchInput = document.querySelector("#client-portal-search");
 const clientPortalRefreshButton = document.querySelector("#client-portal-refresh");
@@ -82968,7 +82969,7 @@ function openClientPortalAccessModal() {
   state.clientPortalAccessModalOpen = true;
   syncClientPortalAccessModal();
   requestAnimationFrame(() => {
-    clientPortalFirstNameInput?.focus();
+    clientPortalFirstNameInput?.focus({ preventScroll: true });
   });
 }
 
@@ -83244,6 +83245,56 @@ function resetClientPortalUserForm() {
   rebuildClientPortalLocationOptions([]);
   setInlineMessage(clientPortalFeedback, "");
   renderClientPortalPreview();
+}
+
+function buildClientPortalTestUserEmail(companyId = "") {
+  const company = getCompany(companyId);
+  const companySlug = normalizeLooseName(company?.name || "klijent").replace(/\s+/g, ".") || "klijent";
+  const baseEmail = `klijent.test.${companySlug}@safe-nexus.org`;
+  const usedEmails = new Set((state.users ?? [])
+    .map((user) => String(user.email || "").trim().toLowerCase())
+    .filter(Boolean));
+  if (!usedEmails.has(baseEmail.toLowerCase())) {
+    return baseEmail;
+  }
+
+  for (let index = 2; index < 100; index += 1) {
+    const candidate = `klijent.test.${companySlug}.${index}@safe-nexus.org`;
+    if (!usedEmails.has(candidate.toLowerCase())) {
+      return candidate;
+    }
+  }
+  return `klijent.test.${companySlug}.${Date.now()}@safe-nexus.org`;
+}
+
+function fillClientPortalTestUserForm() {
+  const companyId = getClientPortalSelectedCompanyId();
+  if (!companyId || !getCanEditCompany(companyId)) {
+    setInlineMessage(clientPortalFeedback, "Odaberi tvrtku za testni pristup.");
+    return;
+  }
+
+  if (clientPortalFirstNameInput) {
+    clientPortalFirstNameInput.value = "Testni";
+  }
+  if (clientPortalLastNameInput) {
+    clientPortalLastNameInput.value = "Klijent";
+  }
+  if (clientPortalOibInput) {
+    clientPortalOibInput.value = "";
+  }
+  if (clientPortalEmailInput) {
+    clientPortalEmailInput.value = buildClientPortalTestUserEmail(companyId);
+  }
+  if (clientPortalAllLocationsInput) {
+    clientPortalAllLocationsInput.checked = true;
+  }
+  if (clientPortalLocationSearchInput) {
+    clientPortalLocationSearchInput.value = "";
+  }
+  rebuildClientPortalLocationOptions([]);
+  renderClientPortalPreview();
+  setInlineMessage(clientPortalFeedback, "Testni pristup je popunjen. Klikni Dodaj i pošalji pristup za slanje privremene lozinke.", "success");
 }
 
 function buildClientPortalUserPayload() {
@@ -84610,14 +84661,237 @@ function createClientPortalRecordAttachmentChips(record = {}) {
   return wrap;
 }
 
+function getClientPortalPersonEmail(value = "") {
+  return String(value || "").trim().toLowerCase();
+}
+
+function getClientPortalPersonOib(value = "") {
+  return String(value || "").replace(/\D+/g, "").trim();
+}
+
+function getClientPortalWorkerDisplayName(record = {}) {
+  const details = record.details ?? {};
+  return String(details.fullName || record.title || "").trim();
+}
+
+function getClientPortalWorkerTrainingRecords(workerRecord = {}) {
+  const details = workerRecord.details ?? {};
+  const companyId = String(workerRecord.companyId || "").trim();
+  const locationId = String(workerRecord.locationId || "").trim();
+  const workerName = normalizeLooseName(getClientPortalWorkerDisplayName(workerRecord));
+  const workerOib = getClientPortalPersonOib(details.oib);
+  const workerEmail = getClientPortalPersonEmail(details.email);
+
+  if (!companyId || (!workerName && !workerOib && !workerEmail)) {
+    return [];
+  }
+
+  return sortPersonTrainingRecords((state.peopleTrainingRecords ?? []).filter((trainingRecord) => {
+    if (String(trainingRecord.companyId || "").trim() !== companyId) {
+      return false;
+    }
+
+    const trainingLocationId = String(trainingRecord.locationId || "").trim();
+    if (locationId && trainingLocationId && trainingLocationId !== locationId) {
+      return false;
+    }
+
+    const trainingName = normalizeLooseName(getPeopleTrainingRecordDisplayName(trainingRecord));
+    const trainingOib = getClientPortalPersonOib(trainingRecord.oib);
+    const trainingEmail = getClientPortalPersonEmail(trainingRecord.email);
+    return Boolean(
+      (workerOib && trainingOib && workerOib === trainingOib)
+      || (workerEmail && trainingEmail && workerEmail === trainingEmail)
+      || (workerName && trainingName && workerName === trainingName),
+    );
+  }));
+}
+
+function getClientPortalTrainingStatusCounts(trainingRecords = []) {
+  const counts = {
+    records: trainingRecords.length,
+    valid: 0,
+    expiring: 0,
+    expired: 0,
+    missing: 0,
+    attentionRecords: 0,
+  };
+
+  trainingRecords.forEach((record) => {
+    const overall = getPeopleTrainingOverallStatus(record);
+    if (overall === "expired" || overall === "expiring" || overall === "missing") {
+      counts.attentionRecords += 1;
+    }
+    normalizePeopleTrainingItemsForUi(record.trainingItems).forEach((item) => {
+      const status = String(item.status || "missing").trim().toLowerCase();
+      if (status === "valid" || status === "not_required") {
+        counts.valid += 1;
+      } else if (status === "expiring") {
+        counts.expiring += 1;
+      } else if (status === "expired") {
+        counts.expired += 1;
+      } else {
+        counts.missing += 1;
+      }
+    });
+  });
+
+  return counts;
+}
+
+function getClientPortalWorkerTrainingSummary(workerRecord = {}) {
+  const records = getClientPortalWorkerTrainingRecords(workerRecord);
+  return {
+    records,
+    counts: getClientPortalTrainingStatusCounts(records),
+  };
+}
+
+function getClientPortalTrainingSummaryLine(counts = {}) {
+  if (!counts.records) {
+    return "Osposobljavanja: nema povezane evidencije";
+  }
+
+  const parts = [
+    `${counts.records} zapis(a)`,
+    counts.valid ? `${counts.valid} važećih` : "",
+    counts.expiring ? `${counts.expiring} istječe` : "",
+    counts.expired ? `${counts.expired} isteklo` : "",
+    counts.missing ? `${counts.missing} bez podatka` : "",
+  ].filter(Boolean);
+  return `Osposobljavanja: ${parts.join(" · ")}`;
+}
+
+function getClientPortalCompanyTrainingSummary(companyId = "") {
+  const records = sortPersonTrainingRecords(filterClientPortalRecordsByScope(
+    state.peopleTrainingRecords ?? [],
+    companyId,
+    [],
+  ));
+  return getClientPortalTrainingStatusCounts(records);
+}
+
+function createClientPortalWorkerTrainingBlock(workerRecord = {}) {
+  const { records, counts } = getClientPortalWorkerTrainingSummary(workerRecord);
+  const block = document.createElement("div");
+  block.className = "client-portal-worker-training-block";
+  block.classList.toggle("has-attention", Boolean(counts.expiring || counts.expired || counts.missing));
+
+  const head = document.createElement("div");
+  head.className = "client-portal-worker-training-head";
+  const title = document.createElement("strong");
+  title.textContent = "Osposobljavanja radnika";
+  const meta = document.createElement("span");
+  meta.textContent = getClientPortalTrainingSummaryLine(counts).replace(/^Osposobljavanja:\s*/i, "");
+  head.append(title, meta);
+  block.append(head);
+
+  if (!records.length) {
+    const empty = document.createElement("p");
+    empty.className = "client-portal-worker-training-empty";
+    empty.textContent = "Nema povezane evidencije osposobljavanja za ovog radnika.";
+    block.append(empty);
+    return block;
+  }
+
+  const list = document.createElement("div");
+  list.className = "client-portal-worker-training-list";
+  records.slice(0, 3).forEach((record) => {
+    const row = document.createElement("div");
+    row.className = "client-portal-worker-training-row";
+
+    const copy = document.createElement("span");
+    copy.className = "client-portal-worker-training-copy";
+    const name = document.createElement("strong");
+    name.textContent = getPeopleTrainingRecordDisplayName(record);
+    const company = document.createElement("small");
+    company.textContent = [
+      record.jobTitle || "",
+      record.locationName || getPeopleTrainingLocation(record.locationId)?.name || "",
+    ].filter(Boolean).join(" · ") || "Osoba u evidenciji osposobljavanja";
+    copy.append(name, company);
+
+    const statusWrap = document.createElement("span");
+    statusWrap.className = "client-portal-worker-training-statuses";
+    const highlightedItems = normalizePeopleTrainingItemsForUi(record.trainingItems)
+      .filter((item) => item.status !== "missing")
+      .slice(0, 4);
+    if (highlightedItems.length > 0) {
+      highlightedItems.forEach((item) => {
+        const pill = document.createElement("span");
+        pill.className = `client-portal-training-mini-pill ${getPeopleTrainingStatusClass(item.status)}`;
+        pill.textContent = item.shortLabel || item.label || getPeopleTrainingStatusLabel(item.status);
+        statusWrap.append(pill);
+      });
+    } else {
+      const pill = document.createElement("span");
+      pill.className = "client-portal-training-mini-pill is-missing";
+      pill.textContent = getPeopleTrainingStatusLabel("missing");
+      statusWrap.append(pill);
+    }
+
+    row.append(copy, statusWrap);
+    list.append(row);
+  });
+
+  if (records.length > 3) {
+    const more = document.createElement("small");
+    more.className = "client-portal-worker-training-more";
+    more.textContent = `+${records.length - 3} dodatnih zapisa`;
+    list.append(more);
+  }
+
+  block.append(list);
+  return block;
+}
+
+function createClientPortalWorkerTrainingDashboard(records = []) {
+  if (records.length === 0) {
+    return createClientPortalEmptyLine("Još nema dodanih radnika.");
+  }
+
+  const list = document.createElement("div");
+  list.className = "client-portal-worker-training-dashboard";
+  records.slice(0, 5).forEach((record) => {
+    const { counts } = getClientPortalWorkerTrainingSummary(record);
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "client-portal-worker-training-dashboard-row";
+    row.addEventListener("click", () => {
+      openClientPortalRecordModal("worker", record.id);
+    });
+
+    const copy = document.createElement("span");
+    copy.className = "client-portal-worker-training-dashboard-copy";
+    const name = document.createElement("strong");
+    name.textContent = getClientPortalWorkerDisplayName(record) || record.title || "Radnik";
+    const meta = document.createElement("small");
+    meta.textContent = [
+      record.details?.jobTitle || "",
+      record.locationName || "",
+    ].filter(Boolean).join(" · ") || "Radnik u evidenciji";
+    copy.append(name, meta);
+
+    const summary = document.createElement("span");
+    summary.className = "client-portal-worker-training-dashboard-summary";
+    summary.textContent = getClientPortalTrainingSummaryLine(counts).replace(/^Osposobljavanja:\s*/i, "");
+
+    row.append(copy, summary);
+    list.append(row);
+  });
+  return list;
+}
+
 function getClientPortalRecordDetailLines(record = {}) {
   const details = record.details ?? {};
   if (record.type === "worker") {
+    const trainingSummary = getClientPortalWorkerTrainingSummary(record);
     return [
       details.jobTitle,
       details.email,
       details.phone,
       details.oib ? `OIB ${details.oib}` : "",
+      getClientPortalTrainingSummaryLine(trainingSummary.counts),
     ].filter(Boolean);
   }
   if (record.type === "vehicle") {
@@ -84766,7 +85040,11 @@ function createClientPortalRecordCard(record = {}) {
   }
 
   const attachments = createClientPortalRecordAttachmentChips(record);
+  const workerTrainingBlock = record.type === "worker" ? createClientPortalWorkerTrainingBlock(record) : null;
   card.append(head, lines);
+  if (workerTrainingBlock) {
+    card.append(workerTrainingBlock);
+  }
   if (attachments) {
     card.append(attachments);
   }
@@ -84808,12 +85086,15 @@ function createClientPortalRecordOverview(records = [], company = null) {
   const extinguisherCount = records.filter((record) => record.type === "fire_extinguisher").length;
   const openDefectCount = records.filter((record) => record.type === "defect_report" && isClientPortalRecordOpen(record)).length;
   const internalInspectionCount = records.filter((record) => record.type === "internal_inspection").length;
+  const trainingCounts = getClientPortalCompanyTrainingSummary(company?.id || getClientPortalRecordsCompanyId());
+  const trainingAttentionCount = trainingCounts.expiring + trainingCounts.expired + trainingCounts.missing;
   const overview = document.createElement("div");
   overview.className = "client-portal-record-overview";
   overview.append(
     createClientPortalRecordSummaryCard("Istekli rokovi", String(overdueCount), overdueCount ? "potrebna hitna akcija" : "nema kašnjenja", "deadline", overdueCount ? "danger" : "ok"),
     createClientPortalRecordSummaryCard("Uskoro ističe", String(soonCount), "u narednih 30 dana", "deadline", soonCount ? "attention" : "ok"),
     createClientPortalRecordSummaryCard("Zaposlenici", String(workerCount), company?.name || "aktivni radnici", "worker", "worker"),
+    createClientPortalRecordSummaryCard("Osposobljavanja", String(trainingCounts.records), trainingAttentionCount ? `${trainingAttentionCount} za pažnju` : "povezano s radnicima", "worker", trainingAttentionCount ? "training" : "ok"),
     createClientPortalRecordSummaryCard("Vatrogasni aparati", String(extinguisherCount), "u evidenciji", "fire_extinguisher", "fire"),
     createClientPortalRecordSummaryCard("Otvoreni nedostaci", String(openDefectCount), "za rješavanje", "defect_report", openDefectCount ? "defect" : "ok"),
     createClientPortalRecordSummaryCard("Unutarnji nadzori", String(internalInspectionCount), "nalazi i mjere", "internal_inspection", "inspection"),
@@ -84876,18 +85157,24 @@ function openClientPortalRecordModal(type = "worker", editId = "") {
   requestAnimationFrame(() => {
     const firstInput = clientPortalRecordsRoot?.querySelector(".client-portal-record-modal input, .client-portal-record-modal select, .client-portal-record-modal textarea");
     if (firstInput instanceof HTMLElement) {
-      firstInput.focus();
+      firstInput.focus({ preventScroll: true });
     }
   });
 }
 
-function focusClientPortalRecordType(type = "worker") {
+function focusClientPortalRecordType(type = "worker", { scroll = false } = {}) {
   state.clientPortalRecordsUi.activeType = normalizeClientPortalRecordUiType(type);
   state.clientPortalRecordsUi.editId = "";
   state.clientPortalRecordsUi.modalOpen = false;
   setInlineMessage(clientPortalRecordsFeedback, "");
   renderClientPortalRecordsPanel();
-  clientPortalRegisterPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (scroll) {
+    requestAnimationFrame(() => {
+      clientPortalRecordsRoot
+        ?.querySelector(".client-portal-record-list-section")
+        ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+  }
 }
 
 function createClientPortalRecordForm(activeType = "worker", editingRecord = null, companyId = "", company = null) {
@@ -85322,12 +85609,14 @@ function createClientPortalRecordsDashboard(records = []) {
 
   const ppeRecords = records.filter((record) => record.type === "ppe_assignment").slice(0, 5);
   const documentRecords = records.filter((record) => record.type === "document").slice(0, 5);
+  const workerRecords = records.filter((record) => record.type === "worker").slice(0, 5);
 
   const insightGrid = document.createElement("div");
   insightGrid.className = "client-portal-dashboard-grid";
   insightGrid.append(
     quick,
     createClientPortalDashboardPanel("Uskoro ističe", "deadline", soonList),
+    createClientPortalDashboardPanel("Radnici i osposobljavanja", "worker", createClientPortalWorkerTrainingDashboard(workerRecords)),
     createClientPortalDashboardPanel("Zadnja zaduženja OZO opreme", "ppe_assignment", createClientPortalPpeTable(ppeRecords)),
     createClientPortalDashboardPanel("Otvoreni nedostaci", "defect_report", defectList),
     createClientPortalDashboardPanel("Unutarnji nadzori", "internal_inspection", internalInspectionList),
@@ -121355,6 +121644,10 @@ document.addEventListener("keydown", (event) => {
 
 clientPortalCreateUserButton?.addEventListener("click", () => {
   void createClientPortalUserFromModule();
+});
+
+clientPortalFillTestUserButton?.addEventListener("click", () => {
+  fillClientPortalTestUserForm();
 });
 
 clientPortalClearUserButton?.addEventListener("click", () => {
