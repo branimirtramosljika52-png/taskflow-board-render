@@ -64477,6 +64477,177 @@ body.is-risk-stl-review-open {
   gap: 12px;
 }
 
+.risk-assessment-overview-hero,
+.risk-assessment-overview-export-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid rgba(191, 219, 254, 0.86);
+  border-radius: 12px;
+  background:
+    linear-gradient(135deg, rgba(239, 246, 255, 0.94), rgba(255, 255, 255, 0.96));
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.08);
+}
+
+.risk-assessment-overview-hero h3 {
+  margin: 4px 0;
+  color: #0f172a;
+  font-size: 1.22rem;
+  line-height: 1.2;
+}
+
+.risk-assessment-overview-hero p,
+.risk-assessment-overview-export-copy small,
+.risk-assessment-overview-export-copy em {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 760;
+  line-height: 1.45;
+}
+
+.risk-assessment-overview-readiness {
+  display: grid;
+  justify-items: center;
+  min-width: 118px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(203, 213, 225, 0.72);
+}
+
+.risk-assessment-overview-readiness strong {
+  color: #0f172a;
+  font-size: 1.55rem;
+  line-height: 1;
+}
+
+.risk-assessment-overview-readiness span {
+  margin-top: 5px;
+  color: #475569;
+  font-size: 0.68rem;
+  font-weight: 860;
+  text-transform: uppercase;
+}
+
+.risk-assessment-overview-readiness.is-ready {
+  border-color: rgba(34, 197, 94, 0.34);
+  background: rgba(240, 253, 244, 0.92);
+}
+
+.risk-assessment-overview-readiness.is-ready strong {
+  color: #15803d;
+}
+
+.risk-assessment-overview-readiness.is-warning {
+  border-color: rgba(245, 158, 11, 0.36);
+  background: rgba(255, 251, 235, 0.94);
+}
+
+.risk-assessment-overview-readiness.is-warning strong {
+  color: #b45309;
+}
+
+.risk-assessment-overview-readiness.is-draft {
+  border-color: rgba(59, 130, 246, 0.28);
+  background: rgba(239, 246, 255, 0.96);
+}
+
+.risk-assessment-overview-export-panel {
+  border-color: rgba(203, 213, 225, 0.86);
+  background:
+    linear-gradient(135deg, rgba(248, 250, 252, 0.96), rgba(255, 255, 255, 0.98));
+}
+
+.risk-assessment-overview-export-copy {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.risk-assessment-overview-export-copy strong {
+  color: #0f172a;
+  font-size: 1rem;
+}
+
+.risk-assessment-overview-export-copy em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-style: normal;
+}
+
+.risk-assessment-overview-export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.risk-assessment-overview-export-actions .primary-button,
+.risk-assessment-overview-export-actions .secondary-button,
+.risk-assessment-overview-export-actions .ghost-button {
+  min-height: 42px;
+  padding: 10px 16px;
+  white-space: nowrap;
+}
+
+.risk-assessment-overview-checklist {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+}
+
+.risk-assessment-overview-checklist article {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid rgba(203, 213, 225, 0.78);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.risk-assessment-overview-checklist article > span {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.risk-assessment-overview-checklist article.is-ok > span {
+  background: #16a34a;
+}
+
+.risk-assessment-overview-checklist article.is-missing > span {
+  background: #f59e0b;
+}
+
+.risk-assessment-overview-checklist strong,
+.risk-assessment-overview-checklist small {
+  display: block;
+}
+
+.risk-assessment-overview-checklist strong {
+  color: #0f172a;
+  font-size: 0.82rem;
+}
+
+.risk-assessment-overview-checklist small {
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
 .risk-assessment-overview-stats {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -64728,9 +64899,15 @@ body.is-risk-stl-review-open {
   .risk-assessment-catalog-controls,
   .risk-assessment-job-import-head,
   .risk-assessment-job-catalog-toolbar,
+  .risk-assessment-overview-hero,
+  .risk-assessment-overview-export-panel,
   .risk-assessment-overview-stats,
   .risk-assessment-card {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .risk-assessment-overview-export-actions {
+    justify-content: flex-start;
   }
 
   .risk-assessment-org-card {

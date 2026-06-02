@@ -117462,6 +117462,21 @@ riskAssessmentExportPdfButton?.addEventListener("click", (event) => {
   event.preventDefault();
   void runMutation(() => exportRiskAssessmentDocument("pdf"), riskAssessmentError);
 });
+riskAssessmentOverview?.addEventListener("click", (event) => {
+  const uploadButton = event.target?.closest?.("[data-risk-overview-template-upload]");
+  if (uploadButton) {
+    event.preventDefault();
+    riskAssessmentTemplateWordFileInput?.click();
+    return;
+  }
+  const exportButton = event.target?.closest?.("[data-risk-overview-export]");
+  if (!exportButton) {
+    return;
+  }
+  event.preventDefault();
+  const format = exportButton.dataset.riskOverviewExport === "pdf" ? "pdf" : "docx";
+  void runMutation(() => exportRiskAssessmentDocument(format), riskAssessmentError);
+});
 
 riskAssessmentOrganizationUnitsList?.addEventListener("input", handleRiskAssessmentOrganizationUnitsInput);
 riskAssessmentOrganizationUnitsList?.addEventListener("change", handleRiskAssessmentOrganizationUnitsInput);
@@ -122310,6 +122325,9 @@ function setRiskAssessmentActiveBlock(blockKey = "basic", { resetScroll = false 
     block.classList.toggle("is-active", isActive);
   });
   setRiskAssessmentDockActive(activeKey);
+  if (activeKey === "overview") {
+    renderRiskAssessmentOverview();
+  }
   if (resetScroll && riskAssessmentEditorBody) {
     riskAssessmentEditorBody.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -127271,6 +127289,7 @@ function syncRiskAssessmentDocumentExportControls() {
     riskAssessmentTemplatePdfGenerateButton,
     riskAssessmentExportDocxButton,
     riskAssessmentExportPdfButton,
+    ...document.querySelectorAll("[data-risk-overview-export]"),
   ].forEach((button) => {
     if (!button) {
       return;
@@ -127346,6 +127365,7 @@ async function uploadRiskAssessmentWordTemplateFile(file) {
     if (state.riskAssessmentEditorOpen) {
       scheduleRiskAssessmentDraftAutosave();
     }
+    renderRiskAssessmentOverview();
     setInlineMessage(getRiskAssessmentTemplateFeedbackTarget(), `Word template "${file.name}" je postavljen kao zadani template modula.`, "success");
   } catch (error) {
     setInlineMessage(getRiskAssessmentTemplateFeedbackTarget(), error?.message || "Ne mogu učitati Word template.", "error");
@@ -127745,19 +127765,94 @@ function getRiskAssessmentWorkplaceLocationCount() {
     .length;
 }
 
-function renderRiskAssessmentTemplateOverviewContent() {
+function getRiskAssessmentFinalSummaryData() {
   const totalRisks = riskAssessmentJobDrafts.reduce((sum, job) => sum + getRiskAssessmentFilledRiskRowCount(job), 0);
   const totalPpe = riskAssessmentJobDrafts.reduce((sum, job) => sum + (job.ppeItems ?? []).length, 0);
+  const totalChemicals = riskAssessmentChemicalDrafts.length;
+  const totalManualHandling = riskAssessmentManualHandlingDrafts.length;
+  const appendixData = getRiskAssessmentLinkedAppendixData();
+  const highManualHandling = riskAssessmentManualHandlingDrafts
+    .map((entry) => calculateRiskAssessmentManualHandling(entry))
+    .filter((entry) => ["danger", "critical"].includes(entry.tone)).length;
   const workplaceCount = getRiskAssessmentWorkplaceLocationCount();
+  const units = riskAssessmentOrganizationUnitDrafts.length;
+  const jobs = riskAssessmentJobDrafts.length;
+  const readyJobs = riskAssessmentJobDrafts.filter((job) => getRiskAssessmentJobCompletion(job) >= 85).length;
+  const companyName = riskAssessmentCompanyInput?.selectedOptions?.[0]?.textContent?.trim()
+    || riskAssessmentEmployerCompanyNameInput?.value?.trim()
+    || "";
+  const status = riskAssessmentStatusInput?.selectedOptions?.[0]?.textContent?.trim() || "";
+  const assessmentDate = formatDateInputDisplayValue(riskAssessmentDateInput?.value || "");
+  const completionDate = formatDateInputDisplayValue(riskAssessmentCompletionDateInput?.value || "");
+  const wordTemplate = riskAssessmentReportTemplateDraft?.wordTemplate || riskAssessmentModuleReportTemplateDraft?.wordTemplate;
+  const enabledSections = (riskAssessmentReportTemplateDraft?.sections ?? [])
+    .filter((section) => section.enabled !== false).length;
+  const checklist = [
+    { label: "Tvrtka i opseg", ok: Boolean(companyName && riskAssessmentCompanyInput?.value), detail: companyName || "Odaberi tvrtku" },
+    { label: "Datum procjene", ok: Boolean(assessmentDate), detail: assessmentDate || "Unesi datum" },
+    { label: "Radna mjesta", ok: jobs > 0, detail: jobs ? `${jobs} poslova` : "Dodaj barem jedno radno mjesto" },
+    { label: "Rizici", ok: totalRisks > 0, detail: totalRisks ? `${totalRisks} redaka rizika` : "Dodaj rizike u analizi" },
+    { label: "Word template", ok: Boolean(wordTemplate?.dataUrl), detail: wordTemplate?.fileName || "Učitaj .docx/.dotx template" },
+    { label: "Odjeljci dokumenta", ok: enabledSections > 0, detail: enabledSections ? `${enabledSections} odjeljaka uključeno` : "Uključi odjeljke" },
+  ];
+  const readinessPercent = Math.round((checklist.filter((item) => item.ok).length / checklist.length) * 100);
+  return {
+    appendixData,
+    assessmentDate,
+    checklist,
+    companyName,
+    completionDate,
+    enabledSections,
+    fileBaseName: getRiskAssessmentExportFileBaseName(),
+    highManualHandling,
+    jobs,
+    measures: riskAssessmentMeasureDrafts.length,
+    readyJobs,
+    readinessPercent,
+    status,
+    totalChemicals,
+    totalManualHandling,
+    totalPpe,
+    totalRisks,
+    units,
+    wordTemplate,
+    workplaceCount,
+  };
+}
+
+function getRiskAssessmentFinalReadinessTone(percent = 0) {
+  if (percent >= 90) {
+    return "ready";
+  }
+  if (percent >= 65) {
+    return "warning";
+  }
+  return "draft";
+}
+
+function renderRiskAssessmentTemplateOverviewContent() {
+  const summary = getRiskAssessmentFinalSummaryData();
   return `
     <div class="risk-assessment-template-metrics">
-      <span><strong>${escapeHtml(String(workplaceCount))}</strong> mjesta rada</span>
-      <span><strong>${escapeHtml(String(riskAssessmentOrganizationUnitDrafts.length))}</strong> jedinica</span>
-      <span><strong>${escapeHtml(String(riskAssessmentJobDrafts.length))}</strong> poslova</span>
-      <span><strong>${escapeHtml(String(totalRisks))}</strong> rizika</span>
-      <span><strong>${escapeHtml(String(riskAssessmentMeasureDrafts.length))}</strong> mjera</span>
-      <span><strong>${escapeHtml(String(riskAssessmentChemicalDrafts.length))}</strong> kemikalija</span>
-      <span><strong>${escapeHtml(String(totalPpe))}</strong> OZO</span>
+      <span><strong>${escapeHtml(String(summary.workplaceCount))}</strong> mjesta rada</span>
+      <span><strong>${escapeHtml(String(summary.units))}</strong> jedinica</span>
+      <span><strong>${escapeHtml(String(summary.jobs))}</strong> poslova</span>
+      <span><strong>${escapeHtml(String(summary.readyJobs))}</strong> spremno</span>
+      <span><strong>${escapeHtml(String(summary.totalRisks))}</strong> rizika</span>
+      <span><strong>${escapeHtml(String(summary.measures))}</strong> mjera</span>
+      <span><strong>${escapeHtml(String(summary.totalChemicals))}</strong> kemikalija</span>
+      <span><strong>${escapeHtml(String(summary.totalPpe))}</strong> OZO</span>
+    </div>
+    <h4>Završna provjera</h4>
+    <div class="risk-assessment-template-table">
+      <div class="is-head"><span>Stavka</span><span>Status</span><span>Detalj</span></div>
+      ${summary.checklist.map((item) => `
+        <div>
+          <span>${escapeHtml(item.label)}</span>
+          <span>${escapeHtml(item.ok ? "Spremno" : "Za dopunu")}</span>
+          <span>${escapeHtml(item.detail)}</span>
+        </div>
+      `).join("")}
     </div>
   `;
 }
@@ -132553,18 +132648,18 @@ function renderRiskAssessmentOverview() {
   if (!riskAssessmentOverview) {
     return;
   }
-  const totalRisks = riskAssessmentJobDrafts.reduce((sum, job) => sum + getRiskAssessmentFilledRiskRowCount(job), 0);
-  const totalPpe = riskAssessmentJobDrafts.reduce((sum, job) => sum + (job.ppeItems ?? []).length, 0);
-  const totalChemicals = riskAssessmentChemicalDrafts.length;
-  const totalManualHandling = riskAssessmentManualHandlingDrafts.length;
-  const appendixData = getRiskAssessmentLinkedAppendixData();
-  const highManualHandling = riskAssessmentManualHandlingDrafts
-    .map((entry) => calculateRiskAssessmentManualHandling(entry))
-    .filter((entry) => ["danger", "critical"].includes(entry.tone)).length;
-  const workplaceCount = getRiskAssessmentWorkplaceLocationCount();
-  const units = riskAssessmentOrganizationUnitDrafts.length;
-  const jobs = riskAssessmentJobDrafts.length;
-  const readyJobs = riskAssessmentJobDrafts.filter((job) => getRiskAssessmentJobCompletion(job) >= 85).length;
+  const summary = getRiskAssessmentFinalSummaryData();
+  const readinessTone = getRiskAssessmentFinalReadinessTone(summary.readinessPercent);
+  const readinessLabel = readinessTone === "ready"
+    ? "Spremno za izvoz"
+    : readinessTone === "warning"
+      ? "Skoro spremno"
+      : "U izradi";
+  const canManage = getCanManageRiskAssessments();
+  const canExport = canManage
+    && Boolean(summary.wordTemplate?.dataUrl)
+    && Boolean(state.riskAssessmentEditorOpen || riskAssessmentIdInput?.value || riskAssessmentCompanyInput?.value)
+    && !riskAssessmentWordExportBusy;
   const unitsHtml = riskAssessmentOrganizationUnitDrafts.length
     ? riskAssessmentOrganizationUnitDrafts.map((unit) => {
       const unitJobs = riskAssessmentJobDrafts.filter((job) => String(job.organizationUnitId) === String(unit.id));
@@ -132593,18 +132688,57 @@ function renderRiskAssessmentOverview() {
     : "";
 
   riskAssessmentOverview.innerHTML = `
+    <section class="risk-assessment-overview-hero">
+      <div>
+        <span class="section-kicker">Završni sheet</span>
+        <h3>${escapeHtml(summary.companyName ? `Pregled za ${summary.companyName}` : "Pregled procjene rizika")}</h3>
+        <p>${escapeHtml([
+          summary.status || "Status nije odabran",
+          summary.assessmentDate ? `Datum ${summary.assessmentDate}` : "",
+          summary.completionDate ? `Završetak ${summary.completionDate}` : "",
+        ].filter(Boolean).join(" · "))}</p>
+      </div>
+      <div class="risk-assessment-overview-readiness is-${escapeHtml(readinessTone)}">
+        <strong>${escapeHtml(String(summary.readinessPercent))}%</strong>
+        <span>${escapeHtml(readinessLabel)}</span>
+      </div>
+    </section>
+    <section class="risk-assessment-overview-export-panel">
+      <div class="risk-assessment-overview-export-copy">
+        <span class="section-kicker">Izvoz dokumenta</span>
+        <strong>${escapeHtml(summary.wordTemplate?.fileName ? "Template je učitan" : "Word template nije učitan")}</strong>
+        <small>${escapeHtml(summary.wordTemplate?.fileName || "Učitaj .docx/.dotx template da bi DOCX i PDF export bili dostupni.")}</small>
+        <em>${escapeHtml(summary.fileBaseName)}</em>
+      </div>
+      <div class="risk-assessment-overview-export-actions">
+        ${summary.wordTemplate?.dataUrl ? "" : `<button type="button" class="ghost-button" data-risk-overview-template-upload ${canManage ? "" : "disabled"}>Učitaj Word template</button>`}
+        <button type="button" class="secondary-button" data-risk-overview-export="docx" ${canExport ? "" : "disabled"}>Word DOCX</button>
+        <button type="button" class="primary-button" data-risk-overview-export="pdf" ${canExport ? "" : "disabled"}>PDF</button>
+      </div>
+    </section>
+    <div class="risk-assessment-overview-checklist">
+      ${summary.checklist.map((item) => `
+        <article class="${item.ok ? "is-ok" : "is-missing"}">
+          <span>${item.ok ? "✓" : "!"}</span>
+          <div>
+            <strong>${escapeHtml(item.label)}</strong>
+            <small>${escapeHtml(item.detail)}</small>
+          </div>
+        </article>
+      `).join("")}
+    </div>
     <div class="risk-assessment-overview-stats">
-      <span><strong>${escapeHtml(String(workplaceCount))}</strong> mjesta rada</span>
-      <span><strong>${escapeHtml(String(units))}</strong> jedinica</span>
-      <span><strong>${escapeHtml(String(jobs))}</strong> poslova</span>
-      <span><strong>${escapeHtml(String(readyJobs))}</strong> spremno</span>
-      <span><strong>${escapeHtml(String(totalRisks))}</strong> rizika</span>
-      <span><strong>${escapeHtml(String(totalManualHandling))}</strong> teret</span>
-      <span><strong>${escapeHtml(String(highManualHandling))}</strong> visoki teret</span>
-      <span><strong>${escapeHtml(String(totalChemicals))}</strong> kemikalija</span>
-      <span><strong>${escapeHtml(String(appendixData.equipmentItems.length))}</strong> oprema</span>
-      <span><strong>${escapeHtml(String(appendixData.inspectionItems.length))}</strong> ispitivanja</span>
-      <span><strong>${escapeHtml(String(totalPpe))}</strong> OZO</span>
+      <span><strong>${escapeHtml(String(summary.workplaceCount))}</strong> mjesta rada</span>
+      <span><strong>${escapeHtml(String(summary.units))}</strong> jedinica</span>
+      <span><strong>${escapeHtml(String(summary.jobs))}</strong> poslova</span>
+      <span><strong>${escapeHtml(String(summary.readyJobs))}</strong> spremno</span>
+      <span><strong>${escapeHtml(String(summary.totalRisks))}</strong> rizika</span>
+      <span><strong>${escapeHtml(String(summary.totalManualHandling))}</strong> teret</span>
+      <span><strong>${escapeHtml(String(summary.highManualHandling))}</strong> visoki teret</span>
+      <span><strong>${escapeHtml(String(summary.totalChemicals))}</strong> kemikalija</span>
+      <span><strong>${escapeHtml(String(summary.appendixData.equipmentItems.length))}</strong> oprema</span>
+      <span><strong>${escapeHtml(String(summary.appendixData.inspectionItems.length))}</strong> ispitivanja</span>
+      <span><strong>${escapeHtml(String(summary.totalPpe))}</strong> OZO</span>
     </div>
     <div class="risk-assessment-overview-grid">${unitsHtml}</div>
     ${chemicalsHtml}
