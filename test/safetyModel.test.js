@@ -3600,20 +3600,92 @@ test("client portal records keep simple registers and worker links", () => {
     () => "2026-06-02T07:03:00.000Z",
   );
 
+  state.clientPortalRecords = [deadline, vehicle, ppe, worker];
+
+  const defect = createClientPortalRecord(
+    {
+      organizationId: "org-1",
+      companyId: "company-1",
+      type: "defect_report",
+      status: "attention",
+      details: {
+        defectTitle: "Nedostaje oznaka izlaza",
+        priority: "Visok",
+        dueDate: "2026-06-15",
+        description: "Skladiste nema citljivu oznaku.",
+      },
+    },
+    state,
+    () => "client-defect-1",
+    () => "2026-06-02T07:04:00.000Z",
+  );
+
+  const alcoholTest = createClientPortalRecord(
+    {
+      organizationId: "org-1",
+      companyId: "company-1",
+      type: "alcohol_test",
+      status: "active",
+      details: {
+        workerRecordId: worker.id,
+        testDate: "2026-06-02",
+        result: "Negativan",
+        measuredValue: "0,00",
+        nextTestDate: "2026-07-02",
+      },
+    },
+    state,
+    () => "client-alcohol-1",
+    () => "2026-06-02T07:05:00.000Z",
+  );
+
+  const document = createClientPortalRecord(
+    {
+      organizationId: "org-1",
+      companyId: "company-1",
+      type: "document",
+      status: "active",
+      details: {
+        documentName: "Plan evakuacije",
+        documentType: "PDF",
+        fileName: "plan-evakuacije.pdf",
+        validUntil: "2027-01-15",
+      },
+    },
+    state,
+    () => "client-document-1",
+    () => "2026-06-02T07:06:00.000Z",
+  );
+
   assert.equal(ppe.details.workerName, "Test Radnik");
   assert.equal(vehicle.details.responsibleWorkerName, "Test Radnik");
+  assert.equal(alcoholTest.details.workerName, "Test Radnik");
   assert.equal(vehicle.details.plateNumber, "ZG-1234-CD");
   assert.equal(deadline.dueDate, "2026-09-15");
+  assert.equal(defect.dueDate, "2026-06-15");
+  assert.equal(document.dueDate, "2027-01-15");
 
-  const records = [ppe, worker, vehicle, deadline];
+  const records = [ppe, worker, vehicle, deadline, defect, alcoholTest, document];
   assert.deepEqual(
     sortClientPortalRecords(records).map((item) => item.id),
-    ["client-deadline-1", "client-vehicle-1", "client-ppe-1", "client-worker-1"],
+    [
+      "client-defect-1",
+      "client-alcohol-1",
+      "client-deadline-1",
+      "client-vehicle-1",
+      "client-document-1",
+      "client-ppe-1",
+      "client-worker-1",
+    ],
   );
   assert.equal(filterClientPortalRecords(records, {
     type: "ppe_assignment",
     query: "naocale",
   })[0].id, ppe.id);
+  assert.equal(filterClientPortalRecords(records, {
+    type: "document",
+    query: "evakuacije",
+  })[0].id, document.id);
 });
 
 test("vehicles create reservations, block overlaps and derive availability", () => {

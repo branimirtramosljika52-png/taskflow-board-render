@@ -83618,6 +83618,24 @@ function getClientPortalRecordTypeMeta(type = "worker") {
       title: "OZO",
       accent: "amber",
     },
+    defect_report: {
+      icon: "defect_report",
+      eyebrow: "Nedostaci i prijave",
+      title: "Prijave",
+      accent: "rose",
+    },
+    alcohol_test: {
+      icon: "alcohol_test",
+      eyebrow: "Evidencija alkotesta",
+      title: "Alkotest",
+      accent: "cyan",
+    },
+    document: {
+      icon: "document",
+      eyebrow: "Dokumenti i potvrde",
+      title: "Dokumenti",
+      accent: "green",
+    },
     deadline: {
       icon: "deadline",
       eyebrow: "Ostali rokovi",
@@ -83635,6 +83653,9 @@ function getClientPortalRecordIconMarkup(type = "worker") {
     vehicle: '<path d="M4.25 13.5h15.5"></path><path d="M5.25 13.5l1.4-4.5A2 2 0 0 1 8.56 7.6h6.88a2 2 0 0 1 1.91 1.4l1.4 4.5"></path><path d="M7.25 13.5v2"></path><path d="M16.75 13.5v2"></path><path d="M7.4 10.75h1.4"></path><path d="M15.2 10.75h1.4"></path>',
     fire_extinguisher: '<path d="M9 4h6"></path><path d="M12 4v3"></path><path d="M9.5 7h5l.65 11.25a1.5 1.5 0 0 1-1.5 1.6h-2.3a1.5 1.5 0 0 1-1.5-1.6Z"></path><path d="M10.25 11.25h4.5"></path><path d="M15 5.25c2.4.35 3.75 1.55 4.05 3.6"></path>',
     ppe_assignment: '<path d="M5.75 5.25 12 3l6.25 2.25v4.9c0 4.05-2.5 6.8-6.25 8.35-3.75-1.55-6.25-4.3-6.25-8.35Z"></path><path d="m9.25 11.5 1.75 1.75 3.75-4.25"></path>',
+    defect_report: '<path d="M12 4.25 20 18.5H4Z"></path><path d="M12 9v4"></path><path d="M12 16h.01"></path>',
+    alcohol_test: '<path d="M9.5 3.75h5"></path><path d="M11 3.75v5.05l-3.7 6.4A2.8 2.8 0 0 0 9.72 19.5h4.56a2.8 2.8 0 0 0 2.42-4.3L13 8.8V3.75"></path><path d="M9.25 14.25h5.5"></path><path d="M10.25 16.5h3.5"></path>',
+    document: '<path d="M6.5 3.5h7l4 4v13h-11Z"></path><path d="M13.5 3.5v4h4"></path><path d="M9 12h5.5"></path><path d="M9 15h5.5"></path><path d="M9 18h3.5"></path>',
     deadline: '<path d="M5.25 4.5h13.5"></path><path d="M7 2.75v3.5"></path><path d="M17 2.75v3.5"></path><path d="M6.25 5.25h11.5a1.5 1.5 0 0 1 1.5 1.5v10a1.5 1.5 0 0 1-1.5 1.5H6.25a1.5 1.5 0 0 1-1.5-1.5v-10a1.5 1.5 0 0 1 1.5-1.5Z"></path><path d="M8.5 10.25h3.25"></path><path d="M8.5 14h6.25"></path>',
   };
   return `<svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">${icons[iconName] || icons.worker}</svg>`;
@@ -83679,6 +83700,20 @@ function isClientPortalRecordOpen(record = {}) {
 
 function isClientPortalRecordAttention(record = {}) {
   return ["is-overdue", "is-attention"].includes(getClientPortalRecordDueState(record).className);
+}
+
+function getClientPortalRecordDaysUntilDue(record = {}) {
+  const rawDate = String(record.dueDate || "").slice(0, 10);
+  if (!rawDate) {
+    return null;
+  }
+  const dueDate = new Date(`${rawDate}T00:00:00`);
+  if (Number.isNaN(dueDate.getTime())) {
+    return null;
+  }
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.ceil((dueDate.getTime() - today.getTime()) / 86400000);
 }
 
 function getClientPortalRecordsCompanyId() {
@@ -83791,6 +83826,28 @@ function getClientPortalRecordFormFields(type = "worker", record = null, company
     ...locations.map((location) => ({ value: String(location.id), label: location.name || "Lokacija" })),
   ];
   const statusOptions = CLIENT_PORTAL_RECORD_STATUS_OPTIONS.map((option) => ({ value: option.value, label: option.label }));
+  const defectPriorityOptions = [
+    { value: "Nizak", label: "Nizak" },
+    { value: "Srednji", label: "Srednji" },
+    { value: "Visok", label: "Visok" },
+    { value: "Kritično", label: "Kritično" },
+  ];
+  const alcoholResultOptions = [
+    { value: "", label: "Odaberi rezultat" },
+    { value: "Negativan", label: "Negativan" },
+    { value: "Pozitivan", label: "Pozitivan" },
+    { value: "Odbio test", label: "Odbio test" },
+    { value: "Nije provedeno", label: "Nije provedeno" },
+  ];
+  const documentTypeOptions = [
+    { value: "PDF", label: "PDF" },
+    { value: "DOC", label: "Word / DOC" },
+    { value: "XLS", label: "Excel / XLS" },
+    { value: "Potvrda", label: "Potvrda" },
+    { value: "Plan", label: "Plan" },
+    { value: "Link", label: "Link" },
+    { value: "Ostalo", label: "Ostalo" },
+  ];
   const fields = [
     createClientPortalRecordField({
       name: "locationId",
@@ -83857,6 +83914,49 @@ function getClientPortalRecordFormFields(type = "worker", record = null, company
     return fields;
   }
 
+  if (type === "defect_report") {
+    fields.push(
+      createClientPortalRecordField({ name: "defectTitle", label: "Nedostatak / prijava", value: details.defectTitle, required: true }),
+      createClientPortalRecordField({ name: "priority", label: "Prioritet", value: details.priority || "Srednji", options: defectPriorityOptions }),
+      createClientPortalRecordField({ name: "category", label: "Kategorija", value: details.category, placeholder: "Sigurnost, održavanje, požar..." }),
+      createClientPortalRecordField({ name: "reportedDate", label: "Datum prijave", value: details.reportedDate, type: "date" }),
+      createClientPortalRecordField({ name: "dueDate", label: "Rok rješavanja", value: details.dueDate, type: "date" }),
+      createClientPortalRecordField({ name: "reportedBy", label: "Prijavio", value: details.reportedBy }),
+      createClientPortalRecordField({ name: "locationText", label: "Mjesto", value: details.locationText }),
+      createClientPortalRecordField({ name: "description", label: "Opis", value: details.description, textarea: true }),
+      createClientPortalRecordField({ name: "action", label: "Mjera / komentar", value: details.action, textarea: true }),
+    );
+    return fields;
+  }
+
+  if (type === "alcohol_test") {
+    fields.push(
+      createClientPortalRecordField({ name: "workerRecordId", label: "Radnik", value: details.workerRecordId, options: workerOptions, required: true }),
+      createClientPortalRecordField({ name: "testDate", label: "Datum testiranja", value: details.testDate, type: "date" }),
+      createClientPortalRecordField({ name: "result", label: "Rezultat", value: details.result, options: alcoholResultOptions, required: true }),
+      createClientPortalRecordField({ name: "measuredValue", label: "Vrijednost", value: details.measuredValue, placeholder: "npr. 0,00 promila" }),
+      createClientPortalRecordField({ name: "testerName", label: "Testirao", value: details.testerName }),
+      createClientPortalRecordField({ name: "nextTestDate", label: "Sljedeća kontrola", value: details.nextTestDate, type: "date" }),
+      createClientPortalRecordField({ name: "documentName", label: "Dokument / zapisnik", value: details.documentName }),
+      createClientPortalRecordField({ name: "note", label: "Napomena", value: details.note, textarea: true }),
+    );
+    return fields;
+  }
+
+  if (type === "document") {
+    fields.push(
+      createClientPortalRecordField({ name: "documentName", label: "Naziv dokumenta", value: details.documentName, required: true }),
+      createClientPortalRecordField({ name: "documentType", label: "Tip", value: details.documentType || "PDF", options: documentTypeOptions }),
+      createClientPortalRecordField({ name: "fileName", label: "Naziv datoteke", value: details.fileName, placeholder: "npr. zapisnik.pdf" }),
+      createClientPortalRecordField({ name: "documentDate", label: "Datum dokumenta", value: details.documentDate, type: "date" }),
+      createClientPortalRecordField({ name: "validUntil", label: "Vrijedi do", value: details.validUntil, type: "date" }),
+      createClientPortalRecordField({ name: "ownerName", label: "Vlasnik / osoba", value: details.ownerName }),
+      createClientPortalRecordField({ name: "fileUrl", label: "Link dokumenta", value: details.fileUrl, type: "url", placeholder: "https://..." }),
+      createClientPortalRecordField({ name: "note", label: "Napomena", value: details.note, textarea: true }),
+    );
+    return fields;
+  }
+
   fields.push(
     createClientPortalRecordField({ name: "deadlineName", label: "Rok", value: details.deadlineName, required: true }),
     createClientPortalRecordField({ name: "dueDate", label: "Datum", value: details.dueDate, type: "date", required: true }),
@@ -83916,6 +84016,43 @@ function buildClientPortalRecordPayloadFromForm(form, type = "worker", companyId
       returnedDate: getValue("returnedDate"),
       note: getValue("note"),
     });
+  } else if (type === "defect_report") {
+    Object.assign(details, {
+      defectTitle: getValue("defectTitle"),
+      priority: getValue("priority"),
+      category: getValue("category"),
+      reportedDate: getValue("reportedDate"),
+      dueDate: getValue("dueDate"),
+      reportedBy: getValue("reportedBy"),
+      locationText: getValue("locationText"),
+      description: getValue("description"),
+      action: getValue("action"),
+    });
+  } else if (type === "alcohol_test") {
+    const workerRecordId = getValue("workerRecordId");
+    const worker = getClientPortalWorkerRecords(companyId).find((item) => String(item.id) === workerRecordId) ?? null;
+    Object.assign(details, {
+      workerRecordId,
+      workerName: worker?.title || worker?.details?.fullName || "",
+      testDate: getValue("testDate"),
+      result: getValue("result"),
+      measuredValue: getValue("measuredValue"),
+      testerName: getValue("testerName"),
+      nextTestDate: getValue("nextTestDate"),
+      documentName: getValue("documentName"),
+      note: getValue("note"),
+    });
+  } else if (type === "document") {
+    Object.assign(details, {
+      documentName: getValue("documentName"),
+      documentType: getValue("documentType"),
+      fileName: getValue("fileName"),
+      fileUrl: getValue("fileUrl"),
+      documentDate: getValue("documentDate"),
+      validUntil: getValue("validUntil"),
+      ownerName: getValue("ownerName"),
+      note: getValue("note"),
+    });
   } else {
     Object.assign(details, {
       deadlineName: getValue("deadlineName"),
@@ -83970,6 +84107,40 @@ function getClientPortalRecordDetailLines(record = {}) {
       details.assignedDate ? `Zaduženo: ${formatCompactDate(details.assignedDate)}` : "",
       details.dueDate ? `Rok: ${formatCompactDate(details.dueDate)}` : "",
       details.returnedDate ? `Razduženo: ${formatCompactDate(details.returnedDate)}` : "",
+      details.note,
+    ].filter(Boolean);
+  }
+  if (record.type === "defect_report") {
+    return [
+      details.priority ? `Prioritet: ${details.priority}` : "",
+      details.category,
+      details.locationText,
+      details.reportedDate ? `Prijava: ${formatCompactDate(details.reportedDate)}` : "",
+      details.dueDate ? `Rok: ${formatCompactDate(details.dueDate)}` : "",
+      details.reportedBy ? `Prijavio: ${details.reportedBy}` : "",
+      details.description,
+    ].filter(Boolean);
+  }
+  if (record.type === "alcohol_test") {
+    return [
+      details.workerName ? `Radnik: ${details.workerName}` : "",
+      details.testDate ? `Datum: ${formatCompactDate(details.testDate)}` : "",
+      details.result ? `Rezultat: ${details.result}` : "",
+      details.measuredValue,
+      details.testerName ? `Testirao: ${details.testerName}` : "",
+      details.nextTestDate ? `Kontrola: ${formatCompactDate(details.nextTestDate)}` : "",
+      details.documentName,
+      details.note,
+    ].filter(Boolean);
+  }
+  if (record.type === "document") {
+    return [
+      details.documentType,
+      details.fileName,
+      details.documentDate ? `Datum: ${formatCompactDate(details.documentDate)}` : "",
+      details.validUntil ? `Vrijedi do: ${formatCompactDate(details.validUntil)}` : "",
+      details.ownerName ? `Osoba: ${details.ownerName}` : "",
+      details.fileUrl,
       details.note,
     ].filter(Boolean);
   }
@@ -84067,17 +84238,25 @@ function createClientPortalRecordSummaryCard(label = "", value = "0", detail = "
 
 function createClientPortalRecordOverview(records = [], company = null) {
   const openRecords = records.filter(isClientPortalRecordOpen);
-  const attentionRecords = records.filter((record) => isClientPortalRecordOpen(record) && isClientPortalRecordAttention(record));
+  const overdueCount = openRecords.filter((record) => {
+    const days = getClientPortalRecordDaysUntilDue(record);
+    return Number.isFinite(days) && days < 0;
+  }).length;
+  const soonCount = openRecords.filter((record) => {
+    const days = getClientPortalRecordDaysUntilDue(record);
+    return Number.isFinite(days) && days >= 0 && days <= 30;
+  }).length;
   const workerCount = records.filter((record) => record.type === "worker").length;
-  const deadlineCount = records.filter((record) => record.dueDate && isClientPortalRecordOpen(record)).length;
+  const extinguisherCount = records.filter((record) => record.type === "fire_extinguisher").length;
+  const openDefectCount = records.filter((record) => record.type === "defect_report" && isClientPortalRecordOpen(record)).length;
   const overview = document.createElement("div");
   overview.className = "client-portal-record-overview";
   overview.append(
-    createClientPortalRecordSummaryCard("Tvrtka", company?.name || "Odaberi tvrtku", `${records.length}`, "ukupno zapisa", "worker", "company"),
-    createClientPortalRecordSummaryCard("Otvoreno", String(openRecords.length), "aktivne evidencije", "deadline", "open"),
-    createClientPortalRecordSummaryCard("Pažnja", String(attentionRecords.length), "rokovi i upozorenja", "fire_extinguisher", attentionRecords.length ? "attention" : "ok"),
-    createClientPortalRecordSummaryCard("Radnici", String(workerCount), "osnova za OZO", "ppe_assignment", "worker"),
-    createClientPortalRecordSummaryCard("Rokovi", String(deadlineCount), "stavke s datumom", "vehicle", "deadline"),
+    createClientPortalRecordSummaryCard("Istekli rokovi", String(overdueCount), overdueCount ? "potrebna hitna akcija" : "nema kašnjenja", "deadline", overdueCount ? "danger" : "ok"),
+    createClientPortalRecordSummaryCard("Uskoro ističe", String(soonCount), "u narednih 30 dana", "deadline", soonCount ? "attention" : "ok"),
+    createClientPortalRecordSummaryCard("Zaposlenici", String(workerCount), company?.name || "aktivni radnici", "worker", "worker"),
+    createClientPortalRecordSummaryCard("Vatrogasni aparati", String(extinguisherCount), "u evidenciji", "fire_extinguisher", "fire"),
+    createClientPortalRecordSummaryCard("Otvoreni nedostaci", String(openDefectCount), "za rješavanje", "defect_report", openDefectCount ? "defect" : "ok"),
   );
   return overview;
 }
@@ -84114,6 +84293,223 @@ function createClientPortalRecordTabs(activeType = "worker", records = []) {
     return button;
   }));
   return tabs;
+}
+
+function focusClientPortalRecordType(type = "worker") {
+  state.clientPortalRecordsUi.activeType = normalizeClientPortalRecordUiType(type);
+  state.clientPortalRecordsUi.editId = "";
+  setInlineMessage(clientPortalRecordsFeedback, "");
+  renderClientPortalRecordsPanel();
+  clientPortalRegisterPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function createClientPortalActionCard(type = "worker", label = "", description = "") {
+  const typeMeta = getClientPortalRecordTypeMeta(type);
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `client-portal-action-card is-${typeMeta.accent}`;
+  button.addEventListener("click", () => focusClientPortalRecordType(type));
+  const icon = document.createElement("span");
+  icon.className = "client-portal-action-icon";
+  icon.innerHTML = getClientPortalRecordIconMarkup(type);
+  const title = document.createElement("strong");
+  title.textContent = label || getClientPortalRecordTypeLabel(type);
+  const meta = document.createElement("small");
+  meta.textContent = description || typeMeta.eyebrow;
+  button.append(icon, title, meta);
+  return button;
+}
+
+function createClientPortalDashboardPanel(title = "", actionType = "", contentNode = null) {
+  const panel = document.createElement("section");
+  panel.className = "client-portal-dashboard-panel";
+  const head = document.createElement("div");
+  head.className = "client-portal-dashboard-panel-head";
+  const heading = document.createElement("strong");
+  heading.textContent = title;
+  head.append(heading);
+  if (actionType) {
+    const action = document.createElement("button");
+    action.type = "button";
+    action.className = "client-portal-dashboard-link";
+    action.textContent = "Prikaži sve";
+    action.addEventListener("click", () => focusClientPortalRecordType(actionType));
+    head.append(action);
+  }
+  panel.append(head);
+  if (contentNode) {
+    panel.append(contentNode);
+  }
+  return panel;
+}
+
+function createClientPortalDashboardRow(record = {}) {
+  const row = document.createElement("button");
+  row.type = "button";
+  row.className = `client-portal-dashboard-row is-${getClientPortalRecordTypeMeta(record.type).accent}`;
+  row.addEventListener("click", () => {
+    state.clientPortalRecordsUi.activeType = normalizeClientPortalRecordUiType(record.type);
+    state.clientPortalRecordsUi.editId = String(record.id || "");
+    renderClientPortalRecordsPanel();
+  });
+  const icon = document.createElement("span");
+  icon.className = "client-portal-dashboard-row-icon";
+  icon.innerHTML = getClientPortalRecordIconMarkup(record.type);
+  const copy = document.createElement("span");
+  copy.className = "client-portal-dashboard-row-copy";
+  const title = document.createElement("strong");
+  title.textContent = record.title || getClientPortalRecordTypeLabel(record.type);
+  const meta = document.createElement("small");
+  meta.textContent = [record.locationName, getClientPortalRecordStatusLabel(record.status)].filter(Boolean).join(" · ");
+  copy.append(title, meta);
+  const date = document.createElement("span");
+  date.className = "client-portal-dashboard-row-date";
+  date.textContent = record.dueDate ? formatCompactDate(record.dueDate) : "Bez roka";
+  const dueState = getClientPortalRecordDueState(record);
+  const pill = document.createElement("span");
+  pill.className = `client-portal-record-due-pill ${dueState.className}`;
+  pill.textContent = dueState.label;
+  row.append(icon, copy, date, pill);
+  return row;
+}
+
+function createClientPortalEmptyLine(message = "Nema zapisa za prikaz.") {
+  const empty = document.createElement("p");
+  empty.className = "client-portal-dashboard-empty";
+  empty.textContent = message;
+  return empty;
+}
+
+function createClientPortalPpeTable(records = []) {
+  if (records.length === 0) {
+    return createClientPortalEmptyLine("Još nema OZO zaduženja.");
+  }
+  const table = document.createElement("div");
+  table.className = "client-portal-ppe-table";
+  const head = document.createElement("div");
+  head.className = "client-portal-ppe-row is-head";
+  ["Zaposlenik", "Oprema", "Količina", "Zaduženo", "Vrijedi do"].forEach((label) => {
+    const cell = document.createElement("span");
+    cell.textContent = label;
+    head.append(cell);
+  });
+  table.append(head);
+  records.forEach((record) => {
+    const details = record.details ?? {};
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "client-portal-ppe-row";
+    row.addEventListener("click", () => {
+      state.clientPortalRecordsUi.activeType = "ppe_assignment";
+      state.clientPortalRecordsUi.editId = String(record.id || "");
+      renderClientPortalRecordsPanel();
+    });
+    [
+      details.workerName || "-",
+      details.ppeName || record.title || "-",
+      details.quantity || "-",
+      details.assignedDate ? formatCompactDate(details.assignedDate) : "-",
+      details.dueDate ? formatCompactDate(details.dueDate) : "-",
+    ].forEach((value) => {
+      const cell = document.createElement("span");
+      cell.textContent = value;
+      row.append(cell);
+    });
+    table.append(row);
+  });
+  return table;
+}
+
+function createClientPortalDocumentStrip(records = []) {
+  if (records.length === 0) {
+    return createClientPortalEmptyLine("Još nema dodanih dokumenata.");
+  }
+  const strip = document.createElement("div");
+  strip.className = "client-portal-document-strip";
+  records.forEach((record) => {
+    const details = record.details ?? {};
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "client-portal-document-tile";
+    card.addEventListener("click", () => {
+      state.clientPortalRecordsUi.activeType = "document";
+      state.clientPortalRecordsUi.editId = String(record.id || "");
+      renderClientPortalRecordsPanel();
+    });
+    const type = document.createElement("span");
+    type.className = `client-portal-document-type is-${String(details.documentType || "DOC").toLowerCase()}`;
+    type.textContent = details.documentType || "DOC";
+    const copy = document.createElement("span");
+    const title = document.createElement("strong");
+    title.textContent = record.title || details.documentName || "Dokument";
+    const meta = document.createElement("small");
+    meta.textContent = [
+      details.fileName,
+      details.documentDate ? formatCompactDate(details.documentDate) : "",
+      details.validUntil ? `vrijedi do ${formatCompactDate(details.validUntil)}` : "",
+    ].filter(Boolean).join(" · ");
+    copy.append(title, meta);
+    card.append(type, copy);
+    strip.append(card);
+  });
+  return strip;
+}
+
+function createClientPortalRecordsDashboard(records = []) {
+  const dashboard = document.createElement("div");
+  dashboard.className = "client-portal-dashboard";
+
+  const quick = document.createElement("section");
+  quick.className = "client-portal-quick-actions";
+  const quickHead = document.createElement("div");
+  quickHead.className = "client-portal-dashboard-panel-head";
+  const quickTitle = document.createElement("strong");
+  quickTitle.textContent = "Brze akcije";
+  quickHead.append(quickTitle);
+  const quickGrid = document.createElement("div");
+  quickGrid.className = "client-portal-action-grid";
+  quickGrid.append(
+    createClientPortalActionCard("ppe_assignment", "Zaduži OZO opremu", "radnik, oprema, rok"),
+    createClientPortalActionCard("fire_extinguisher", "Vatrogasni aparati", "servisi i lokacije"),
+    createClientPortalActionCard("defect_report", "Prijavi nedostatak", "prioritet i opis"),
+    createClientPortalActionCard("alcohol_test", "Alkotest", "radnik i rezultat"),
+    createClientPortalActionCard("document", "Dokumenti", "PDF, DOC, potvrde"),
+    createClientPortalActionCard("worker", "Zaposlenici", "popis radnika"),
+    createClientPortalActionCard("vehicle", "Vozni park", "registracije i servisi"),
+    createClientPortalActionCard("deadline", "Ostali rokovi", "datum i opis"),
+  );
+  quick.append(quickHead, quickGrid);
+
+  const soonRecords = records
+    .filter((record) => isClientPortalRecordOpen(record) && record.dueDate)
+    .sort((left, right) => String(left.dueDate).localeCompare(String(right.dueDate)))
+    .slice(0, 5);
+  const soonList = document.createElement("div");
+  soonList.className = "client-portal-dashboard-list";
+  soonList.replaceChildren(...(soonRecords.length ? soonRecords.map(createClientPortalDashboardRow) : [createClientPortalEmptyLine("Nema rokova koji uskoro ističu.")]));
+
+  const defectRecords = records
+    .filter((record) => record.type === "defect_report" && isClientPortalRecordOpen(record))
+    .slice(0, 5);
+  const defectList = document.createElement("div");
+  defectList.className = "client-portal-dashboard-list";
+  defectList.replaceChildren(...(defectRecords.length ? defectRecords.map(createClientPortalDashboardRow) : [createClientPortalEmptyLine("Nema otvorenih nedostataka.")]));
+
+  const ppeRecords = records.filter((record) => record.type === "ppe_assignment").slice(0, 5);
+  const documentRecords = records.filter((record) => record.type === "document").slice(0, 5);
+
+  const insightGrid = document.createElement("div");
+  insightGrid.className = "client-portal-dashboard-grid";
+  insightGrid.append(
+    quick,
+    createClientPortalDashboardPanel("Uskoro ističe", "deadline", soonList),
+    createClientPortalDashboardPanel("Zadnja zaduženja OZO opreme", "ppe_assignment", createClientPortalPpeTable(ppeRecords)),
+    createClientPortalDashboardPanel("Otvoreni nedostaci", "defect_report", defectList),
+    createClientPortalDashboardPanel("Zadnji dokumenti", "document", createClientPortalDocumentStrip(documentRecords)),
+  );
+
+  dashboard.append(insightGrid);
+  return dashboard;
 }
 
 async function saveClientPortalRecordFromForm(form) {
@@ -84196,6 +84592,7 @@ function renderClientPortalRecordsPanel() {
 
   const overview = createClientPortalRecordOverview(scopedRecords, company);
   const tabs = createClientPortalRecordTabs(activeType, scopedRecords);
+  const dashboard = company ? createClientPortalRecordsDashboard(scopedRecords) : null;
 
   if (!company) {
     const empty = document.createElement("p");
@@ -84276,7 +84673,7 @@ function renderClientPortalRecordsPanel() {
   workspace.className = "client-portal-record-workspace";
   workspace.append(form, listSection);
 
-  clientPortalRecordsRoot.replaceChildren(overview, tabs, workspace);
+  clientPortalRecordsRoot.replaceChildren(overview, dashboard, tabs, workspace);
 }
 
 function renderClientPortalModule() {

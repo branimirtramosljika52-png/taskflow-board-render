@@ -6219,14 +6219,14 @@ function assertClientPortalRecordPayloadInScope(scopedSnapshot, body = {}) {
 
   const type = String(body.type ?? "").trim();
   const workerRecordId = String(body.details?.workerRecordId ?? "").trim();
-  if (type === "ppe_assignment" && workerRecordId) {
+  if (["ppe_assignment", "alcohol_test"].includes(type) && workerRecordId) {
     const worker = (scopedSnapshot.clientPortalRecords ?? []).find((item) => (
       String(item.id) === workerRecordId
       && String(item.companyId) === companyId
       && String(item.type) === "worker"
     ));
     if (!worker) {
-      const error = new Error("Odabrani radnik nije dostupan za ovo OZO zaduzenje.");
+      const error = new Error("Odabrani radnik nije dostupan za ovu klijentsku evidenciju.");
       error.statusCode = 400;
       throw error;
     }

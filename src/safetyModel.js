@@ -109,9 +109,12 @@ export const VEHICLE_RESERVATION_STATUS_OPTIONS = [
 
 export const CLIENT_PORTAL_RECORD_TYPE_OPTIONS = [
   { value: "worker", label: "Radnici" },
-  { value: "vehicle", label: "Vozni park" },
-  { value: "fire_extinguisher", label: "Vatrogasni aparati" },
   { value: "ppe_assignment", label: "OZO zaduzenja" },
+  { value: "fire_extinguisher", label: "Vatrogasni aparati" },
+  { value: "defect_report", label: "Nedostaci / prijave" },
+  { value: "alcohol_test", label: "Alkotest" },
+  { value: "document", label: "Dokumenti" },
+  { value: "vehicle", label: "Vozni park" },
   { value: "deadline", label: "Ostali rokovi" },
 ];
 
@@ -3083,6 +3086,47 @@ function normalizeClientPortalRecordDetails(inputDetails = {}, type = "deadline"
     };
   }
 
+  if (type === "defect_report") {
+    return {
+      defectTitle: text(details.defectTitle ?? details.title ?? details.name, 220),
+      priority: text(details.priority ?? details.severity, 80),
+      category: text(details.category, 140),
+      reportedDate: date(details.reportedDate ?? details.date),
+      dueDate: date(details.dueDate),
+      reportedBy: text(details.reportedBy ?? details.ownerName, 180),
+      locationText: text(details.locationText ?? details.location, 180),
+      description: text(details.description ?? details.note, 2000),
+      action: text(details.action ?? details.correctiveAction, 2000),
+    };
+  }
+
+  if (type === "alcohol_test") {
+    return {
+      workerRecordId: text(details.workerRecordId, 80),
+      workerName: text(details.workerName, 180),
+      testDate: date(details.testDate ?? details.date ?? details.testedDate),
+      result: text(details.result, 120),
+      measuredValue: text(details.measuredValue ?? details.value, 80),
+      testerName: text(details.testerName ?? details.ownerName, 180),
+      nextTestDate: date(details.nextTestDate ?? details.dueDate),
+      documentName: text(details.documentName ?? details.fileName, 220),
+      note: text(details.note, 1200),
+    };
+  }
+
+  if (type === "document") {
+    return {
+      documentName: text(details.documentName ?? details.title ?? details.name, 220),
+      documentType: text(details.documentType ?? details.type, 120),
+      fileName: text(details.fileName, 220),
+      fileUrl: text(details.fileUrl ?? details.url, 1200),
+      documentDate: date(details.documentDate ?? details.issuedDate ?? details.date),
+      validUntil: date(details.validUntil ?? details.dueDate),
+      ownerName: text(details.ownerName ?? details.owner, 180),
+      note: text(details.note ?? details.description, 1200),
+    };
+  }
+
   return {
     deadlineName: text(details.deadlineName ?? details.name, 220),
     dueDate: date(details.dueDate),
@@ -3105,6 +3149,15 @@ function resolveClientPortalRecordDueDate(type, details = {}, input = {}, curren
   }
   if (type === "ppe_assignment") {
     return details.dueDate || details.returnedDate || null;
+  }
+  if (type === "defect_report") {
+    return details.dueDate || null;
+  }
+  if (type === "alcohol_test") {
+    return details.nextTestDate || null;
+  }
+  if (type === "document") {
+    return details.validUntil || null;
   }
   if (type === "deadline") {
     return details.dueDate || null;
@@ -3129,6 +3182,15 @@ function buildClientPortalRecordTitle(type, details = {}, input = {}, current = 
   }
   if (type === "ppe_assignment") {
     return [details.ppeName, details.workerName].filter(Boolean).join(" - ").slice(0, 220) || "OZO zaduzenje";
+  }
+  if (type === "defect_report") {
+    return (details.defectTitle || details.description || "Nedostatak").slice(0, 220);
+  }
+  if (type === "alcohol_test") {
+    return [details.workerName, details.result || "Alkotest"].filter(Boolean).join(" - ").slice(0, 220) || "Alkotest";
+  }
+  if (type === "document") {
+    return (details.documentName || details.fileName || "Dokument").slice(0, 220);
   }
   return (details.deadlineName || "Rok").slice(0, 220);
 }
@@ -3161,6 +3223,17 @@ function hydrateClientPortalRecordCore({
     ? (state.locations ?? []).find((item) => String(item.id) === String(locationId)) ?? null
     : null;
   if (type === "ppe_assignment" && details.workerRecordId && !details.workerName) {
+    const worker = (state.clientPortalRecords ?? []).find((item) => (
+      String(item.id) === String(details.workerRecordId)
+      && String(item.companyId) === String(companyId)
+      && String(item.type) === "worker"
+    ));
+    details = {
+      ...details,
+      workerName: worker?.title || worker?.details?.fullName || "",
+    };
+  }
+  if (type === "alcohol_test" && details.workerRecordId && !details.workerName) {
     const worker = (state.clientPortalRecords ?? []).find((item) => (
       String(item.id) === String(details.workerRecordId)
       && String(item.companyId) === String(companyId)
