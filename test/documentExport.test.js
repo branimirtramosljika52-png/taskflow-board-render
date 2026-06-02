@@ -284,6 +284,57 @@ test("docx export renders a multi-block table section placeholder", async () => 
   assert.ok(tableTextIndex < landscapeIndex);
 });
 
+test("docx export preserves template landscape section around risk placeholder", async () => {
+  const templateBuffer = buildMinimalDocxBuffer(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:body>
+        <w:p><w:r><w:t>Portrait dio</w:t></w:r></w:p>
+        <w:p><w:pPr><w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr></w:pPr></w:p>
+        <w:tbl><w:tblPr><w:tblW w:w="5000" w:type="pct"/></w:tblPr><w:tblGrid><w:gridCol w:w="12000"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w="12000" w:type="dxa"/></w:tcPr><w:p><w:r><w:t>{{RISK_JOBS}}</w:t></w:r></w:p></w:tc></w:tr></w:tbl>
+        <w:sectPr><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/><w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720"/></w:sectPr>
+      </w:body>
+    </w:document>`);
+
+  const outputBuffer = await buildDocxFromTemplateBuffer(templateBuffer, {
+    RISK_JOBS: {
+      __docxBlockType: "blocks",
+      blocks: [
+        { type: "heading", text: "Opasnosti, stetnosti, napori i mjere", level: 4 },
+        {
+          __docxBlockType: "table",
+          pageOrientation: "landscape",
+          columns: [
+            { id: "risk", label: "Identifikacija opasnosti", width: 260 },
+            { id: "probability", label: "Vjerojatnost", width: 120 },
+            { id: "matrix", label: "Matrica procjene rizika", width: 140 },
+          ],
+          rows: [
+            { id: "head", header: true, cells: [{ text: "Identifikacija opasnosti" }, { text: "Vjerojatnost" }, { text: "Matrica procjene rizika" }] },
+            { id: "row-1", cells: [{ text: "Strojevi i oprema" }, { text: "Srednja vjerojatnost" }, { text: "Veliki rizik (3)" }] },
+          ],
+        },
+      ],
+    },
+  });
+  const outputXml = new PizZip(outputBuffer).file("word/document.xml").asText();
+
+  assert.equal(outputXml.includes("{{RISK_JOBS}}"), false);
+  assert.match(outputXml, /Portrait dio/);
+  assert.match(outputXml, /Opasnosti, stetnosti, napori i mjere/);
+  assert.match(outputXml, /Strojevi i oprema/);
+  assert.equal((outputXml.match(/<w:sectPr\b/g) || []).length, 2);
+  assert.equal((outputXml.match(/w:orient="landscape"/g) || []).length, 1);
+  assert.ok(outputXml.indexOf("Opasnosti, stetnosti, napori i mjere") > outputXml.indexOf('<w:pgSz w:w="11906" w:h="16838"'));
+  assert.ok(outputXml.indexOf("Strojevi i oprema") < outputXml.indexOf('<w:pgSz w:w="16838" w:h="11906" w:orient="landscape"'));
+
+  const fallbackHtml = (await convertWordBufferToHtmlTemplate(outputBuffer, {
+    fileName: "procjena-rizika-template-section.docx",
+    allowLibreOfficeFallback: false,
+  })).html;
+  assert.match(fallbackHtml, /data-word-orientation="landscape"/);
+  assert.match(fallbackHtml, /Strojevi i oprema/);
+});
+
 test("docx export honors risk section page break metadata", async () => {
   const templateBuffer = buildMinimalDocxBuffer(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
     <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">

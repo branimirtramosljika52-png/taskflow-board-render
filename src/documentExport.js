@@ -2311,9 +2311,9 @@ function buildWordSectionBreakXml(orientation = "portrait", options = {}) {
   `.replace(/\n\s+/g, "");
 }
 
-function buildWordTableBlockXml(table = {}) {
+function buildWordTableBlockXml(table = {}, context = {}) {
   const tableXml = buildWordTableXml(table);
-  if (table.pageOrientation !== "landscape") {
+  if (table.pageOrientation !== "landscape" || context.currentSectionOrientation === "landscape") {
     return tableXml;
   }
   return [
@@ -2348,7 +2348,13 @@ function buildWordParagraphBlockXml(block = {}) {
   })).join("");
 }
 
-function buildWordLandscapeHeadingTableGroupXml(heading = {}, table = {}) {
+function buildWordLandscapeHeadingTableGroupXml(heading = {}, table = {}, context = {}) {
+  if (context.currentSectionOrientation === "landscape") {
+    return [
+      buildWordHeadingBlockXml(heading),
+      buildWordTableXml(table),
+    ].join("");
+  }
   return [
     buildWordSectionBreakXml("portrait"),
     buildWordHeadingBlockXml(heading),
@@ -2369,7 +2375,7 @@ function buildWordBlocksXml(value = {}, zip = null, context = {}, xmlFileName = 
     if (block.type === "heading") {
       const nextBlock = blocks[index + 1];
       if (nextBlock?.type === "table" && nextBlock.pageOrientation === "landscape") {
-        xmlParts.push(buildWordLandscapeHeadingTableGroupXml(block, nextBlock));
+        xmlParts.push(buildWordLandscapeHeadingTableGroupXml(block, nextBlock, context));
         index += 1;
         continue;
       }
@@ -3224,7 +3230,7 @@ function buildDocxSpecialPlaceholderXml(value, zip = null, context = {}, xmlFile
   }
 
   if (value.type === "table") {
-    return withConfiguredPageBreak(buildWordTableBlockXml(value));
+    return withConfiguredPageBreak(buildWordTableBlockXml(value, context));
   }
 
   if (value.type === "handover_protocol") {
@@ -3248,6 +3254,39 @@ function buildDocxSpecialPlaceholderXml(value, zip = null, context = {}, xmlFile
   }
 
   return "";
+}
+
+function getDocxSectionOrientationFromPropertiesXml(sectPrXml = "") {
+  const pgSz = String(sectPrXml || "").match(/<w:pgSz\b[^>]*>/i)?.[0] || "";
+  const orient = clean(pgSz.match(/\bw:orient=["']([^"']+)["']/i)?.[1] || pgSz.match(/\borient=["']([^"']+)["']/i)?.[1]).toLowerCase();
+  if (orient === "landscape") {
+    return "landscape";
+  }
+  const width = Number.parseFloat(pgSz.match(/\bw:w=["']([^"']+)["']/i)?.[1] || pgSz.match(/\bw=["']([^"']+)["']/i)?.[1]);
+  const height = Number.parseFloat(pgSz.match(/\bw:h=["']([^"']+)["']/i)?.[1] || pgSz.match(/\bh=["']([^"']+)["']/i)?.[1]);
+  if (Number.isFinite(width) && Number.isFinite(height) && width > height) {
+    return "landscape";
+  }
+  return "portrait";
+}
+
+function getDocxSectionOrientationForOffset(xml = "", offset = 0) {
+  const ranges = [];
+  const sectionPattern = /<w:sectPr\b[\s\S]*?<\/w:sectPr>/gi;
+  let match = null;
+  while ((match = sectionPattern.exec(String(xml || ""))) !== null) {
+    ranges.push({
+      start: match.index,
+      xml: match[0],
+    });
+  }
+  if (ranges.length === 0) {
+    return "";
+  }
+
+  const safeOffset = Math.max(0, Number(offset) || 0);
+  const currentSection = ranges.find((range) => range.start >= safeOffset) || ranges[ranges.length - 1];
+  return getDocxSectionOrientationFromPropertiesXml(currentSection.xml);
 }
 
 function applyDocxSpecialPlaceholders(zip, specialPlaceholders = new Map()) {
@@ -3277,7 +3316,22 @@ function applyDocxSpecialPlaceholders(zip, specialPlaceholders = new Map()) {
         return;
       }
 
-      const replacementXml = buildDocxSpecialPlaceholderXml(value, zip, renderContext, fileName);
+      const buildReplacementXml = (offset = null) => {
+        const previousOrientation = renderContext.currentSectionOrientation;
+        if (Number.isFinite(Number(offset))) {
+          renderContext.currentSectionOrientation = getDocxSectionOrientationForOffset(xml, Number(offset));
+        }
+        try {
+          return buildDocxSpecialPlaceholderXml(value, zip, renderContext, fileName);
+        } finally {
+          if (previousOrientation) {
+            renderContext.currentSectionOrientation = previousOrientation;
+          } else {
+            delete renderContext.currentSectionOrientation;
+          }
+        }
+      };
+      const replacementXml = buildReplacementXml();
       if (!replacementXml) {
         const nextXml = removeDocxOptionalPlaceholderBlock(xml, sentinel);
         if (nextXml !== xml) {
@@ -3296,7 +3350,7 @@ function applyDocxSpecialPlaceholders(zip, specialPlaceholders = new Map()) {
           if (value.type === "signature_group" && isDocxXmlOffsetInsideTableCell(xml, offset)) {
             return buildWordCompactSignatureGroupXml(value.items, zip, renderContext, fileName);
           }
-          return replacementXml;
+          return buildReplacementXml(offset);
         });
         changed = true;
         return;
