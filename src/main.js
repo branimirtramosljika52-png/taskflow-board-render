@@ -6296,6 +6296,7 @@ const riskAssessmentOverview = document.querySelector("#risk-assessment-overview
 const riskAssessmentClientNoteInput = document.querySelector("#risk-assessment-client-note");
 const riskAssessmentClientJobInputEnabledInput = document.querySelector("#risk-assessment-client-job-input-enabled");
 const riskAssessmentError = document.querySelector("#risk-assessment-error");
+const riskAssessmentExportStatus = document.querySelector("#risk-assessment-export-status");
 const riskAssessmentAutosaveStatus = document.querySelector("#risk-assessment-autosave-status");
 const riskAssessmentResetButton = document.querySelector("#risk-assessment-reset");
 const riskAssessmentDeleteButton = document.querySelector("#risk-assessment-delete");
@@ -119779,11 +119780,11 @@ riskAssessmentTemplateDownloadPlaceholdersButton?.addEventListener("click", (eve
 });
 riskAssessmentExportDocxButton?.addEventListener("click", (event) => {
   event.preventDefault();
-  void runMutation(() => exportRiskAssessmentDocument("docx"), riskAssessmentError);
+  void runMutation(() => exportRiskAssessmentDocument("docx"), getRiskAssessmentExportFeedbackTarget());
 });
 riskAssessmentExportPdfButton?.addEventListener("click", (event) => {
   event.preventDefault();
-  void runMutation(() => exportRiskAssessmentDocument("pdf"), riskAssessmentError);
+  void runMutation(() => exportRiskAssessmentDocument("pdf"), getRiskAssessmentExportFeedbackTarget());
 });
 riskAssessmentOverview?.addEventListener("click", (event) => {
   const exportButton = event.target?.closest?.("[data-risk-overview-export]");
@@ -119792,7 +119793,7 @@ riskAssessmentOverview?.addEventListener("click", (event) => {
   }
   event.preventDefault();
   const format = exportButton.dataset.riskOverviewExport === "pdf" ? "pdf" : "docx";
-  void runMutation(() => exportRiskAssessmentDocument(format), riskAssessmentError);
+  void runMutation(() => exportRiskAssessmentDocument(format), getRiskAssessmentExportFeedbackTarget());
 });
 
 riskAssessmentOrganizationUnitsList?.addEventListener("input", handleRiskAssessmentOrganizationUnitsInput);
@@ -129537,6 +129538,12 @@ function getRiskAssessmentTemplateFeedbackTarget() {
   return riskAssessmentTemplateFeedback || riskAssessmentError;
 }
 
+function getRiskAssessmentExportFeedbackTarget() {
+  return state.riskAssessmentEditorOpen
+    ? (riskAssessmentExportStatus || riskAssessmentError)
+    : getRiskAssessmentTemplateFeedbackTarget();
+}
+
 function setRiskAssessmentPlaceholderDialogOpen(open) {
   const isOpen = Boolean(open);
   if (riskAssessmentTemplatePlaceholderBackdrop) {
@@ -130511,8 +130518,14 @@ async function exportRiskAssessmentDocument(format = "docx") {
   const endpoint = safeFormat === "pdf"
     ? "/risk-assessments/export-pdf"
     : "/risk-assessments/export-word";
+  const feedbackTarget = getRiskAssessmentExportFeedbackTarget();
 
   riskAssessmentWordExportBusy = true;
+  setInlineMessage(
+    feedbackTarget,
+    `${safeFormat.toUpperCase()} procjene rizika se izrađuje...`,
+    "success",
+  );
   syncRiskAssessmentDocumentExportControls();
   try {
     const response = await apiBinaryRequest(endpoint, {
@@ -130525,7 +130538,7 @@ async function exportRiskAssessmentDocument(format = "docx") {
     });
     triggerBlobDownload(response.blob, response.fileName || fileName);
     setInlineMessage(
-      state.riskAssessmentEditorOpen ? riskAssessmentError : getRiskAssessmentTemplateFeedbackTarget(),
+      feedbackTarget,
       `${safeFormat.toUpperCase()} procjene rizika je generiran.`,
       "success",
     );

@@ -10507,6 +10507,8 @@ async function handleApiRequest(request, response, url) {
           fileName,
           title: "Procjena rizika",
           preferHtmlConversion: true,
+          preferWarmChromium: true,
+          disableHtmlPdfCliFallback: true,
         })
         : await buildDocxFromTemplateBuffer(referenceDocument.buffer, placeholders, {
           fileName,

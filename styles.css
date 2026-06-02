@@ -57790,6 +57790,22 @@ button.work-order-editor-section-head:focus-visible {
   will-change: scroll-position;
 }
 
+.risk-assessment-export-status {
+  min-height: 0;
+  margin: 0;
+  padding: 0 20px 10px;
+  font-size: 0.78rem;
+  font-weight: 760;
+}
+
+.risk-assessment-export-status:empty {
+  display: none;
+}
+
+.risk-assessment-export-status.is-success {
+  color: #047857;
+}
+
 .risk-assessment-editor-section {
   display: grid;
   gap: 12px;

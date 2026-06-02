@@ -6748,6 +6748,8 @@ export async function buildPdfFromHtmlTemplateBuffer(templateBuffer, placeholder
       { fallback: "zapisnik", extension: "html" },
     ),
     title: options.title || options.fileName || "Zapisnik",
+    preferWarmChromium: Boolean(options.preferWarmChromium),
+    disableCliFallback: Boolean(options.disableHtmlPdfCliFallback),
   });
 }
 
@@ -10071,10 +10073,6 @@ async function launchWarmChromium() {
 }
 
 async function getWarmChromium() {
-  if (String(process.env.HTML_PDF_WARM_CHROMIUM || "").trim().toLowerCase() !== "true") {
-    throw new Error("Warm Chromium je iskljucen konfiguracijom.");
-  }
-
   if (warmChromiumInstance?.child && !warmChromiumInstance.child.killed) {
     return warmChromiumInstance;
   }
@@ -10243,20 +10241,27 @@ async function convertPreparedHtmlToPdfBufferWithCli(printableHtml = "", {
 export async function convertHtmlToPdfBuffer(html = "", {
   fileName = "ponuda.html",
   title = "Ponuda",
+  preferWarmChromium = false,
+  disableCliFallback = false,
 } = {}) {
   const pdfHtml = buildHtmlPdfDocument(html, { title });
   const printableHtml = prepareHtmlForGeneratedPageNumberPdf(pdfHtml);
   let pdfBuffer = null;
+  const useWarmChromium = Boolean(preferWarmChromium)
+    || String(process.env.HTML_PDF_WARM_CHROMIUM || "").trim().toLowerCase() === "true";
 
-  if (String(process.env.HTML_PDF_WARM_CHROMIUM || "").trim().toLowerCase() === "true") {
+  if (useWarmChromium) {
     try {
       pdfBuffer = await convertPreparedHtmlToPdfBufferWithWarmChromium(printableHtml, {
         fileName,
         title,
       });
     } catch (warmChromiumError) {
-      console.warn("Warm Chromium HTML -> PDF nije uspio, koristim CLI fallback.", warmChromiumError);
       await resetWarmChromiumInstance();
+      if (disableCliFallback) {
+        throw warmChromiumError;
+      }
+      console.warn("Warm Chromium HTML -> PDF nije uspio, koristim CLI fallback.", warmChromiumError);
       pdfBuffer = await convertPreparedHtmlToPdfBufferWithCli(printableHtml, {
         fileName,
         title,
