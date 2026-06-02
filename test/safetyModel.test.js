@@ -3592,6 +3592,7 @@ test("client portal records keep simple registers and worker links", () => {
       status: "active",
       details: {
         deadlineName: "Polica osiguranja",
+        deadlineType: "Polica / ugovor",
         dueDate: "2026-09-15",
         description: "Provjeriti obnovu.",
       },
@@ -3692,6 +3693,7 @@ test("client portal records keep simple registers and worker links", () => {
         locationText: "Skladiste",
         extinguisherType: "S9",
         lastInspectionDate: "2027-03-10",
+        lastInternalInspectionDate: "2027-03-10",
         lastServiceDate: "2027-03-10",
         attachments: [
           {
@@ -3713,11 +3715,13 @@ test("client portal records keep simple registers and worker links", () => {
   assert.equal(alcoholTest.details.workerName, "Test Radnik");
   assert.equal(vehicle.details.plateNumber, "ZG-1234-CD");
   assert.equal(deadline.dueDate, "2026-09-15");
+  assert.equal(deadline.details.deadlineType, "Polica / ugovor");
   assert.equal(defect.dueDate, "2026-06-15");
   assert.equal(document.dueDate, "2027-01-15");
   assert.equal(internalInspection.dueDate, "2026-06-20");
   assert.equal(internalInspection.title, "Unutarnji nadzor skladista");
   assert.equal(fireExtinguisher.details.nextInspectionDate, "2027-06-10");
+  assert.equal(fireExtinguisher.details.nextInternalInspectionDate, "2032-03-10");
   assert.equal(fireExtinguisher.details.nextServiceDate, "2028-03-10");
   assert.equal(fireExtinguisher.dueDate, "2027-06-10");
   assert.equal(fireExtinguisher.details.attachments[0].fileName, "servis-aparata.pdf");

@@ -84250,6 +84250,18 @@ function getClientPortalRecordFormFields(type = "worker", record = null, company
     { value: "Link", label: "Link" },
     { value: "Ostalo", label: "Ostalo" },
   ];
+  const deadlineTypeOptions = [
+    { value: "", label: "Odaberi vrstu roka" },
+    { value: "Liječnički pregled", label: "Liječnički pregled" },
+    { value: "Osposobljavanje", label: "Osposobljavanje" },
+    { value: "Ispitivanje", label: "Ispitivanje" },
+    { value: "Servis", label: "Servis" },
+    { value: "Registracija", label: "Registracija" },
+    { value: "Polica / ugovor", label: "Polica / ugovor" },
+    { value: "Interni rok", label: "Interni rok" },
+    { value: "Dokument", label: "Dokument" },
+    { value: "Ostalo", label: "Ostalo" },
+  ];
   const fields = [
     createClientPortalRecordField({
       name: "locationId",
@@ -84298,6 +84310,8 @@ function getClientPortalRecordFormFields(type = "worker", record = null, company
       createClientPortalRecordField({ name: "extinguisherType", label: "Tip aparata", value: details.extinguisherType }),
       createClientPortalRecordField({ name: "lastInspectionDate", label: "Zadnji 3-mjesečni pregled", value: details.lastInspectionDate, type: "date" }),
       createClientPortalRecordField({ name: "nextInspectionDate", label: "Sljedeći pregled", value: details.nextInspectionDate, type: "date" }),
+      createClientPortalRecordField({ name: "lastInternalInspectionDate", label: "Zadnji unutarnji pregled", value: details.lastInternalInspectionDate, type: "date" }),
+      createClientPortalRecordField({ name: "nextInternalInspectionDate", label: "Sljedeći unutarnji pregled", value: details.nextInternalInspectionDate, type: "date" }),
       createClientPortalRecordField({ name: "lastServiceDate", label: "Zadnji servis", value: details.lastServiceDate, type: "date" }),
       createClientPortalRecordField({ name: "nextServiceDate", label: "Sljedeći godišnji servis", value: details.nextServiceDate, type: "date" }),
       createClientPortalRecordField({ name: "note", label: "Napomena", value: details.note, textarea: true }),
@@ -84377,6 +84391,7 @@ function getClientPortalRecordFormFields(type = "worker", record = null, company
   }
 
   fields.push(
+    createClientPortalRecordField({ name: "deadlineType", label: "Vrsta roka", value: details.deadlineType, options: deadlineTypeOptions }),
     createClientPortalRecordField({ name: "deadlineName", label: "Rok", value: details.deadlineName, required: true }),
     createClientPortalRecordField({ name: "dueDate", label: "Datum", value: details.dueDate, type: "date", required: true }),
     createClientPortalRecordField({ name: "ownerName", label: "Odgovorna osoba", value: details.ownerName }),
@@ -84420,6 +84435,8 @@ function buildClientPortalRecordPayloadFromForm(form, type = "worker", companyId
       extinguisherType: getValue("extinguisherType"),
       lastInspectionDate: getValue("lastInspectionDate"),
       nextInspectionDate: getValue("nextInspectionDate"),
+      lastInternalInspectionDate: getValue("lastInternalInspectionDate"),
+      nextInternalInspectionDate: getValue("nextInternalInspectionDate"),
       lastServiceDate: getValue("lastServiceDate"),
       nextServiceDate: getValue("nextServiceDate"),
       note: getValue("note"),
@@ -84489,6 +84506,7 @@ function buildClientPortalRecordPayloadFromForm(form, type = "worker", companyId
   } else {
     Object.assign(details, {
       deadlineName: getValue("deadlineName"),
+      deadlineType: getValue("deadlineType"),
       dueDate: getValue("dueDate"),
       ownerName: getValue("ownerName"),
       description: getValue("description"),
@@ -84618,6 +84636,8 @@ function getClientPortalRecordDetailLines(record = {}) {
       details.extinguisherType,
       details.lastInspectionDate ? `Zadnji pregled: ${formatCompactDate(details.lastInspectionDate)}` : "",
       details.nextInspectionDate ? `Sljedeći pregled: ${formatCompactDate(details.nextInspectionDate)}` : "",
+      details.lastInternalInspectionDate ? `Zadnji unutarnji: ${formatCompactDate(details.lastInternalInspectionDate)}` : "",
+      details.nextInternalInspectionDate ? `Unutarnji pregled: ${formatCompactDate(details.nextInternalInspectionDate)}` : "",
       details.lastServiceDate ? `Zadnji servis: ${formatCompactDate(details.lastServiceDate)}` : "",
       details.nextServiceDate ? `Godišnji servis: ${formatCompactDate(details.nextServiceDate)}` : "",
       details.note,
@@ -84680,6 +84700,7 @@ function getClientPortalRecordDetailLines(record = {}) {
     ].filter(Boolean);
   }
   return [
+    details.deadlineType,
     details.dueDate ? `Datum: ${formatCompactDate(details.dueDate)}` : "",
     details.ownerName ? `Odgovoran: ${details.ownerName}` : "",
     details.description,
@@ -85092,6 +85113,8 @@ function createClientPortalFireExtinguisherRegister(records = []) {
     "Tip",
     "Zadnji pregled",
     "Sljedeći pregled",
+    "Zadnji unutarnji",
+    "Sljedeći unutarnji",
     "Zadnji servis",
     "Godišnji servis",
     "Prilozi",
@@ -85117,6 +85140,8 @@ function createClientPortalFireExtinguisherRegister(records = []) {
       details.extinguisherType || "-",
       formatClientPortalRegisterDate(details.lastInspectionDate),
       formatClientPortalRegisterDate(details.nextInspectionDate),
+      formatClientPortalRegisterDate(details.lastInternalInspectionDate),
+      formatClientPortalRegisterDate(details.nextInternalInspectionDate),
       formatClientPortalRegisterDate(details.lastServiceDate),
       formatClientPortalRegisterDate(details.nextServiceDate),
       attachments.length ? `${attachments.length} prilog(a)` : "-",
@@ -85144,6 +85169,8 @@ function buildClientPortalFireExtinguisherPrintHtml(records = [], company = null
         <td>${escapeHtml(details.extinguisherType || "-")}</td>
         <td>${escapeHtml(formatClientPortalRegisterDate(details.lastInspectionDate))}</td>
         <td>${escapeHtml(formatClientPortalRegisterDate(details.nextInspectionDate))}</td>
+        <td>${escapeHtml(formatClientPortalRegisterDate(details.lastInternalInspectionDate))}</td>
+        <td>${escapeHtml(formatClientPortalRegisterDate(details.nextInternalInspectionDate))}</td>
         <td>${escapeHtml(formatClientPortalRegisterDate(details.lastServiceDate))}</td>
         <td>${escapeHtml(formatClientPortalRegisterDate(details.nextServiceDate))}</td>
         <td>${escapeHtml(attachments || "-")}</td>
@@ -85172,7 +85199,7 @@ function buildClientPortalFireExtinguisherPrintHtml(records = [], company = null
 <body>
   <header>
     <h1>Evidencija vatrogasnih aparata</h1>
-    <p>${escapeHtml(company?.name || "Klijentska tvrtka")} · pregled aparata svaka 3 mjeseca · servis jednom godišnje</p>
+    <p>${escapeHtml(company?.name || "Klijentska tvrtka")} · pregled svaka 3 mjeseca · servis godišnje · unutarnji pregled svakih 5 godina</p>
     <p>Generirano: ${escapeHtml(formatCompactDate(new Date()))}</p>
   </header>
   <table>
@@ -85184,6 +85211,8 @@ function buildClientPortalFireExtinguisherPrintHtml(records = [], company = null
         <th>Tip</th>
         <th>Zadnji pregled</th>
         <th>Sljedeći pregled</th>
+        <th>Zadnji unutarnji</th>
+        <th>Sljedeći unutarnji</th>
         <th>Zadnji servis</th>
         <th>Godišnji servis</th>
         <th>Prilozi</th>
@@ -85191,7 +85220,7 @@ function buildClientPortalFireExtinguisherPrintHtml(records = [], company = null
       </tr>
     </thead>
     <tbody>
-      ${rows || '<tr><td colspan="10">Nema evidentiranih vatrogasnih aparata.</td></tr>'}
+      ${rows || '<tr><td colspan="12">Nema evidentiranih vatrogasnih aparata.</td></tr>'}
     </tbody>
   </table>
   <div class="footer">

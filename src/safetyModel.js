@@ -3134,6 +3134,9 @@ function normalizeClientPortalRecordDetails(inputDetails = {}, type = "deadline"
     const lastInspectionDate = date(details.lastInspectionDate ?? details.lastCheckDate ?? details.lastControlDate);
     const nextInspectionDate = date(details.nextInspectionDate ?? details.nextCheckDate ?? details.nextControlDate)
       || addMonthsToOptionalDate(lastInspectionDate, 3);
+    const lastInternalInspectionDate = date(details.lastInternalInspectionDate ?? details.lastInternalReviewDate ?? details.lastInternalControlDate);
+    const nextInternalInspectionDate = date(details.nextInternalInspectionDate ?? details.nextInternalReviewDate ?? details.nextInternalControlDate)
+      || addMonthsToOptionalDate(lastInternalInspectionDate, 60);
     const lastServiceDate = date(details.lastServiceDate);
     const nextServiceDate = date(details.nextServiceDate ?? details.dueDate)
       || addMonthsToOptionalDate(lastServiceDate, 12);
@@ -3143,6 +3146,8 @@ function normalizeClientPortalRecordDetails(inputDetails = {}, type = "deadline"
       extinguisherType: text(details.extinguisherType ?? details.type, 120),
       lastInspectionDate,
       nextInspectionDate,
+      lastInternalInspectionDate,
+      nextInternalInspectionDate,
       lastServiceDate,
       nextServiceDate,
       note: text(details.note, 1200),
@@ -3219,6 +3224,7 @@ function normalizeClientPortalRecordDetails(inputDetails = {}, type = "deadline"
 
   return withClientPortalRecordAttachments(details, {
     deadlineName: text(details.deadlineName ?? details.name, 220),
+    deadlineType: text(details.deadlineType ?? details.type ?? details.category, 160),
     dueDate: date(details.dueDate),
     ownerName: text(details.ownerName ?? details.owner, 180),
     description: text(details.description ?? details.note, 2000),
@@ -3235,7 +3241,7 @@ function resolveClientPortalRecordDueDate(type, details = {}, input = {}, curren
     return details.serviceDate || details.registrationDate || details.insuranceDate || null;
   }
   if (type === "fire_extinguisher") {
-    return getEarliestOptionalDate(details.nextInspectionDate, details.nextServiceDate);
+    return getEarliestOptionalDate(details.nextInspectionDate, details.nextServiceDate, details.nextInternalInspectionDate);
   }
   if (type === "ppe_assignment") {
     return details.dueDate || details.returnedDate || null;
@@ -3331,7 +3337,7 @@ function getClientPortalRecordDuplicateIdentity(record = {}) {
   } else if (type === "document") {
     identity = compositeKey(details.documentName || titleKey, details.fileName, details.documentDate || details.validUntil);
   } else {
-    identity = compositeKey(details.deadlineName || titleKey, details.dueDate, details.ownerName);
+    identity = compositeKey(details.deadlineName || titleKey, details.deadlineType, details.dueDate, details.ownerName);
   }
 
   if (!companyKey || !identity) {
