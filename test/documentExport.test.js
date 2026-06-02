@@ -203,6 +203,7 @@ test("docx export renders a multi-block table section placeholder", async () => 
         { type: "paragraph", text: "Automatski izradene tablice procjene." },
         {
           __docxBlockType: "table",
+          pageOrientation: "landscape",
           columns: [
             { id: "job", label: "Posao", width: 220 },
             { id: "risk", label: "Rizik", width: 120 },
@@ -223,6 +224,7 @@ test("docx export renders a multi-block table section placeholder", async () => 
   assert.match(outputXml, /Automatski izradene tablice procjene\./);
   assert.match(outputXml, /Laboratorij/);
   assert.match(outputXml, /Srednji rizik/);
+  assert.match(outputXml, /w:orient="landscape"/);
   assert.equal((outputXml.match(/<w:tbl>/g) || []).length, 1);
 });
 

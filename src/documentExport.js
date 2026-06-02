@@ -1632,6 +1632,9 @@ function normalizeDocxSpecialPlaceholderValue(value) {
       };
     })
     .filter((merge) => merge?.rowId && merge?.columnId);
+  const pageOrientation = clean(value.pageOrientation || value.orientation).toLowerCase() === "landscape"
+    ? "landscape"
+    : "";
 
   if (columns.length === 0) {
     return null;
@@ -1643,6 +1646,7 @@ function normalizeDocxSpecialPlaceholderValue(value) {
     rows,
     headerRows,
     merges,
+    pageOrientation,
   };
 }
 
@@ -2072,7 +2076,7 @@ function buildWordTableXml(table = {}) {
     return buildWordParagraphXml("", { spacingAfter: 0 });
   }
 
-  const totalGridWidth = 9360;
+  const totalGridWidth = table.pageOrientation === "landscape" ? 13440 : 9360;
   const rawWidths = columns.map((column) => Math.max(MEASUREMENT_COLUMN_MIN_WIDTH, Number(column.width) || 140));
   const rawTotalWidth = rawWidths.reduce((sum, value) => sum + value, 0) || (columns.length * 140);
   const columnWidths = rawWidths.map((value) => Math.max(240, Math.round((value / rawTotalWidth) * totalGridWidth)));
@@ -2198,6 +2202,35 @@ function buildWordTableXml(table = {}) {
 
 function buildWordPageBreakXml() {
   return '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
+}
+
+function buildWordSectionBreakXml(orientation = "portrait") {
+  const isLandscape = clean(orientation).toLowerCase() === "landscape";
+  const pageWidth = isLandscape ? 16838 : 11906;
+  const pageHeight = isLandscape ? 11906 : 16838;
+  return `
+    <w:p>
+      <w:pPr>
+        <w:sectPr>
+          <w:type w:val="nextPage"/>
+          <w:pgSz w:w="${pageWidth}" w:h="${pageHeight}"${isLandscape ? ' w:orient="landscape"' : ""}/>
+          <w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720" w:header="360" w:footer="360" w:gutter="0"/>
+        </w:sectPr>
+      </w:pPr>
+    </w:p>
+  `.replace(/\n\s+/g, "");
+}
+
+function buildWordTableBlockXml(table = {}) {
+  const tableXml = buildWordTableXml(table);
+  if (table.pageOrientation !== "landscape") {
+    return tableXml;
+  }
+  return [
+    buildWordSectionBreakXml("portrait"),
+    tableXml,
+    buildWordSectionBreakXml("landscape"),
+  ].join("");
 }
 
 function buildWordBlocksXml(value = {}, zip = null, context = {}, xmlFileName = "word/document.xml") {
@@ -3065,7 +3098,7 @@ function buildDocxSpecialPlaceholderXml(value, zip = null, context = {}, xmlFile
   }
 
   if (value.type === "table") {
-    return buildWordTableXml(value);
+    return buildWordTableBlockXml(value);
   }
 
   if (value.type === "handover_protocol") {

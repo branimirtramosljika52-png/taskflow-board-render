@@ -129726,13 +129726,17 @@ function createRiskAssessmentExportRow(id = "", cells = [], header = false) {
 }
 
 function createRiskAssessmentExportTable(columns = [], rows = [], options = {}) {
-  return {
+  const table = {
     __docxBlockType: "table",
     columns,
     rows,
     headerRows: rows.filter((row) => row.header).map((row) => row.id),
     merges: options.merges || [],
   };
+  if (options.pageOrientation) {
+    table.pageOrientation = options.pageOrientation;
+  }
+  return table;
 }
 
 function createRiskAssessmentExportBlocks(blocks = []) {
@@ -129772,6 +129776,30 @@ function getRiskAssessmentExportRiskLevelText(risk = {}) {
   const level = getRiskAssessmentRiskDisplayLevel(risk);
   const number = getRiskAssessmentExportRiskLevelNumber(risk);
   return [level, number ? `(${number})` : ""].filter(Boolean).join(" ");
+}
+
+function getRiskAssessmentExportProbabilityFill(value = "") {
+  const normalized = String(value || "").toLowerCase();
+  if (normalized === "vv") return "#FEE2E2";
+  if (normalized === "v") return "#FEF3C7";
+  if (normalized === "mv") return "#DCFCE7";
+  return "#F8FAFC";
+}
+
+function getRiskAssessmentExportConsequenceFill(value = "") {
+  const normalized = String(value || "").toLowerCase();
+  if (normalized === "iš" || normalized === "is") return "#FEE2E2";
+  if (normalized === "sš" || normalized === "ss") return "#FEF3C7";
+  if (normalized === "mš" || normalized === "ms") return "#DCFCE7";
+  return "#F8FAFC";
+}
+
+function getRiskAssessmentExportRiskFill(risk = {}) {
+  const level = getRiskAssessmentRiskDisplayLevel(risk).toLocaleLowerCase("hr-HR");
+  if (level.includes("velik")) return "#FEE2E2";
+  if (level.includes("sred")) return "#FEF3C7";
+  if (level.includes("mal")) return "#BBF7D0";
+  return "#F8FAFC";
 }
 
 function buildRiskAssessmentJobsOverviewExportTable() {
@@ -129891,9 +129919,24 @@ function buildRiskAssessmentJobRiskExportTable(job = {}) {
           [risk.code, risk.hazard].filter(Boolean).join(" "),
           risk.possibleConsequences,
         ].filter(Boolean).join("\n"), { fontSize: 7, bold: true }),
-        createRiskAssessmentExportCell(getRiskAssessmentOptionLabel(RISK_ASSESSMENT_PROBABILITY_OPTIONS, risk.probability, "-"), { fontSize: 7, align: "center" }),
-        createRiskAssessmentExportCell(getRiskAssessmentOptionLabel(RISK_ASSESSMENT_CONSEQUENCE_OPTIONS, risk.consequence, "-"), { fontSize: 7, align: "center" }),
-        createRiskAssessmentExportCell(getRiskAssessmentExportRiskLevelText(risk), { fontSize: 7, align: "center", bold: true }),
+        createRiskAssessmentExportCell(getRiskAssessmentOptionLabel(RISK_ASSESSMENT_PROBABILITY_OPTIONS, risk.probability, "-"), {
+          fontSize: 7,
+          align: "center",
+          bold: true,
+          fillColor: getRiskAssessmentExportProbabilityFill(risk.probability),
+        }),
+        createRiskAssessmentExportCell(getRiskAssessmentOptionLabel(RISK_ASSESSMENT_CONSEQUENCE_OPTIONS, risk.consequence, "-"), {
+          fontSize: 7,
+          align: "center",
+          bold: true,
+          fillColor: getRiskAssessmentExportConsequenceFill(risk.consequence),
+        }),
+        createRiskAssessmentExportCell(getRiskAssessmentExportRiskLevelText(risk), {
+          fontSize: 7,
+          align: "center",
+          bold: true,
+          fillColor: getRiskAssessmentExportRiskFill(risk),
+        }),
         createRiskAssessmentExportCell(formatRiskAssessmentExportYesNo(job.specialWorkConditions, "Ne"), { fontSize: 7, align: "center" }),
         createRiskAssessmentExportCell(joinUniqueRiskAssessmentTextBlocks([risk.workNote, risk.note, risk.source]), { fontSize: 7 }),
         createRiskAssessmentExportCell(measuresText, { fontSize: 7 }),
@@ -129910,7 +129953,7 @@ function buildRiskAssessmentJobRiskExportTable(job = {}) {
     { rowId: "h1", columnId: "probability", colSpan: 3 },
     { rowId: "h1", columnId: "special", colSpan: 3 },
   ];
-  return createRiskAssessmentExportTable(columns, rows, { merges });
+  return createRiskAssessmentExportTable(columns, rows, { merges, pageOrientation: "landscape" });
 }
 
 function buildRiskAssessmentJobsExportBlocks() {
