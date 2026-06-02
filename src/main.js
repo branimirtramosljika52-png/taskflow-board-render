@@ -83985,6 +83985,15 @@ function getClientPortalRecordDaysUntilDue(record = {}) {
   return Math.ceil((dueDate.getTime() - today.getTime()) / 86400000);
 }
 
+const CLIENT_PORTAL_RECORD_ATTACHMENT_MAX_BYTES = 8 * 1024 * 1024;
+
+function createClientPortalRecordAttachmentId() {
+  if (window.crypto?.randomUUID) {
+    return window.crypto.randomUUID();
+  }
+  return `attachment-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 function getClientPortalRecordsCompanyId() {
   if (getCanManageClientPortal()) {
     return getClientPortalSelectedCompanyId();
@@ -84077,6 +84086,122 @@ function createClientPortalRecordField({
   return wrapper;
 }
 
+function getClientPortalRecordAttachmentKey(attachment = {}, index = 0) {
+  return String(attachment.id
+    || [attachment.fileName, attachment.fileUrl, String(attachment.dataUrl || "").slice(0, 120), index].filter(Boolean).join("::")
+    || index);
+}
+
+function getClientPortalRecordAttachmentName(attachment = {}, index = 0) {
+  return String(attachment.fileName || attachment.name || attachment.fileUrl || `Prilog ${index + 1}`).trim();
+}
+
+function getClientPortalRecordAttachmentHref(attachment = {}) {
+  return String(attachment.dataUrl || attachment.fileUrl || attachment.url || "").trim();
+}
+
+function createClientPortalRecordAttachmentSection(attachments = []) {
+  const section = document.createElement("div");
+  section.className = "client-portal-record-attachment-field client-portal-record-field is-wide";
+
+  const head = document.createElement("div");
+  head.className = "client-portal-record-attachment-head";
+  const title = document.createElement("span");
+  title.textContent = "Prilozi";
+  const meta = document.createElement("small");
+  meta.textContent = "Dodaj datoteku ili link uz ovaj zapis.";
+  head.append(title, meta);
+  section.append(head);
+
+  const existingList = document.createElement("div");
+  existingList.className = "client-portal-record-attachment-existing";
+  const normalizedAttachments = Array.isArray(attachments) ? attachments : [];
+  if (normalizedAttachments.length > 0) {
+    normalizedAttachments.forEach((attachment, index) => {
+      const row = document.createElement("label");
+      row.className = "client-portal-record-attachment-row";
+      const copy = document.createElement("span");
+      copy.className = "client-portal-record-attachment-copy";
+      const name = document.createElement("strong");
+      name.textContent = getClientPortalRecordAttachmentName(attachment, index);
+      const details = document.createElement("small");
+      details.textContent = [
+        attachment.fileSize ? formatFileSize(attachment.fileSize) : "",
+        attachment.description || "",
+      ].filter(Boolean).join(" · ");
+      copy.append(name, details);
+
+      const href = getClientPortalRecordAttachmentHref(attachment);
+      if (href) {
+        const link = document.createElement("a");
+        link.href = href;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.download = attachment.dataUrl ? getClientPortalRecordAttachmentName(attachment, index) : "";
+        link.className = "client-portal-record-attachment-open";
+        link.textContent = "Otvori";
+        link.addEventListener("click", (event) => event.stopPropagation());
+        row.append(copy, link);
+      } else {
+        row.append(copy);
+      }
+
+      const remove = document.createElement("input");
+      remove.type = "checkbox";
+      remove.name = "removeAttachmentKeys";
+      remove.value = getClientPortalRecordAttachmentKey(attachment, index);
+      const removeLabel = document.createElement("span");
+      removeLabel.className = "client-portal-record-attachment-remove";
+      removeLabel.textContent = "Ukloni";
+      row.append(remove, removeLabel);
+      existingList.append(row);
+    });
+  } else {
+    const empty = document.createElement("p");
+    empty.className = "client-portal-record-attachment-empty";
+    empty.textContent = "Nema priloženih datoteka.";
+    existingList.append(empty);
+  }
+  section.append(existingList);
+
+  const addGrid = document.createElement("div");
+  addGrid.className = "client-portal-record-attachment-add-grid";
+  const fileLabel = document.createElement("label");
+  fileLabel.className = "field";
+  const fileLabelText = document.createElement("span");
+  fileLabelText.textContent = "Datoteka";
+  const fileInput = document.createElement("input");
+  fileInput.type = "file";
+  fileInput.name = "attachmentFiles";
+  fileInput.multiple = true;
+  fileLabel.append(fileLabelText, fileInput);
+
+  const descriptionField = createClientPortalRecordField({
+    name: "attachmentDescription",
+    label: "Opis priloga",
+    placeholder: "npr. zapisnik, fotografija, potvrda...",
+  });
+  const linkNameField = createClientPortalRecordField({
+    name: "attachmentLinkName",
+    label: "Naziv linka",
+    placeholder: "npr. zapisnik u oblaku",
+  });
+  const linkUrlField = createClientPortalRecordField({
+    name: "attachmentLinkUrl",
+    label: "Link priloga",
+    type: "url",
+    placeholder: "https://...",
+  });
+  addGrid.append(fileLabel, descriptionField, linkNameField, linkUrlField);
+  section.append(addGrid);
+  return section;
+}
+
+function appendClientPortalAttachmentFields(fields = [], details = {}) {
+  fields.push(createClientPortalRecordAttachmentSection(details.attachments));
+  return fields;
+}
+
 function getClientPortalRecordFormFields(type = "worker", record = null, companyId = "") {
   const draft = getClientPortalRecordDraft(record);
   const details = draft.details ?? {};
@@ -84149,7 +84274,7 @@ function getClientPortalRecordFormFields(type = "worker", record = null, company
       createClientPortalRecordField({ name: "oib", label: "OIB", value: details.oib, placeholder: "11 znamenki" }),
       createClientPortalRecordField({ name: "note", label: "Napomena", value: details.note, textarea: true }),
     );
-    return fields;
+    return appendClientPortalAttachmentFields(fields, details);
   }
 
   if (type === "vehicle") {
@@ -84163,7 +84288,7 @@ function getClientPortalRecordFormFields(type = "worker", record = null, company
       createClientPortalRecordField({ name: "serviceDate", label: "Sljedeći servis", value: details.serviceDate, type: "date" }),
       createClientPortalRecordField({ name: "note", label: "Napomena", value: details.note, textarea: true }),
     );
-    return fields;
+    return appendClientPortalAttachmentFields(fields, details);
   }
 
   if (type === "fire_extinguisher") {
@@ -84171,11 +84296,13 @@ function getClientPortalRecordFormFields(type = "worker", record = null, company
       createClientPortalRecordField({ name: "code", label: "Oznaka aparata", value: details.code, required: true }),
       createClientPortalRecordField({ name: "locationText", label: "Mjesto", value: details.locationText }),
       createClientPortalRecordField({ name: "extinguisherType", label: "Tip aparata", value: details.extinguisherType }),
+      createClientPortalRecordField({ name: "lastInspectionDate", label: "Zadnji 3-mjesečni pregled", value: details.lastInspectionDate, type: "date" }),
+      createClientPortalRecordField({ name: "nextInspectionDate", label: "Sljedeći pregled", value: details.nextInspectionDate, type: "date" }),
       createClientPortalRecordField({ name: "lastServiceDate", label: "Zadnji servis", value: details.lastServiceDate, type: "date" }),
-      createClientPortalRecordField({ name: "nextServiceDate", label: "Sljedeći servis", value: details.nextServiceDate, type: "date" }),
+      createClientPortalRecordField({ name: "nextServiceDate", label: "Sljedeći godišnji servis", value: details.nextServiceDate, type: "date" }),
       createClientPortalRecordField({ name: "note", label: "Napomena", value: details.note, textarea: true }),
     );
-    return fields;
+    return appendClientPortalAttachmentFields(fields, details);
   }
 
   if (type === "ppe_assignment") {
@@ -84188,7 +84315,7 @@ function getClientPortalRecordFormFields(type = "worker", record = null, company
       createClientPortalRecordField({ name: "returnedDate", label: "Razduženo", value: details.returnedDate, type: "date" }),
       createClientPortalRecordField({ name: "note", label: "Napomena", value: details.note, textarea: true }),
     );
-    return fields;
+    return appendClientPortalAttachmentFields(fields, details);
   }
 
   if (type === "defect_report") {
@@ -84203,7 +84330,7 @@ function getClientPortalRecordFormFields(type = "worker", record = null, company
       createClientPortalRecordField({ name: "description", label: "Opis", value: details.description, textarea: true }),
       createClientPortalRecordField({ name: "action", label: "Mjera / komentar", value: details.action, textarea: true }),
     );
-    return fields;
+    return appendClientPortalAttachmentFields(fields, details);
   }
 
   if (type === "internal_inspection") {
@@ -84218,7 +84345,7 @@ function getClientPortalRecordFormFields(type = "worker", record = null, company
       createClientPortalRecordField({ name: "finding", label: "Nalaz", value: details.finding, textarea: true }),
       createClientPortalRecordField({ name: "correctiveAction", label: "Mjera / zaduženje", value: details.correctiveAction, textarea: true }),
     );
-    return fields;
+    return appendClientPortalAttachmentFields(fields, details);
   }
 
   if (type === "alcohol_test") {
@@ -84232,7 +84359,7 @@ function getClientPortalRecordFormFields(type = "worker", record = null, company
       createClientPortalRecordField({ name: "documentName", label: "Dokument / zapisnik", value: details.documentName }),
       createClientPortalRecordField({ name: "note", label: "Napomena", value: details.note, textarea: true }),
     );
-    return fields;
+    return appendClientPortalAttachmentFields(fields, details);
   }
 
   if (type === "document") {
@@ -84246,7 +84373,7 @@ function getClientPortalRecordFormFields(type = "worker", record = null, company
       createClientPortalRecordField({ name: "fileUrl", label: "Link dokumenta", value: details.fileUrl, type: "url", placeholder: "https://..." }),
       createClientPortalRecordField({ name: "note", label: "Napomena", value: details.note, textarea: true }),
     );
-    return fields;
+    return appendClientPortalAttachmentFields(fields, details);
   }
 
   fields.push(
@@ -84255,7 +84382,7 @@ function getClientPortalRecordFormFields(type = "worker", record = null, company
     createClientPortalRecordField({ name: "ownerName", label: "Odgovorna osoba", value: details.ownerName }),
     createClientPortalRecordField({ name: "description", label: "Opis", value: details.description, textarea: true }),
   );
-  return fields;
+  return appendClientPortalAttachmentFields(fields, details);
 }
 
 function buildClientPortalRecordPayloadFromForm(form, type = "worker", companyId = "") {
@@ -84291,6 +84418,8 @@ function buildClientPortalRecordPayloadFromForm(form, type = "worker", companyId
       code: getValue("code"),
       locationText: getValue("locationText"),
       extinguisherType: getValue("extinguisherType"),
+      lastInspectionDate: getValue("lastInspectionDate"),
+      nextInspectionDate: getValue("nextInspectionDate"),
       lastServiceDate: getValue("lastServiceDate"),
       nextServiceDate: getValue("nextServiceDate"),
       note: getValue("note"),
@@ -84375,6 +84504,94 @@ function buildClientPortalRecordPayloadFromForm(form, type = "worker", companyId
   };
 }
 
+async function resolveClientPortalRecordAttachmentsFromForm(form, currentAttachments = []) {
+  const data = new FormData(form);
+  const getValue = (name) => String(data.get(name) || "").trim();
+  const removeKeys = new Set(data.getAll("removeAttachmentKeys").map((value) => String(value || "")));
+  const retainedAttachments = (Array.isArray(currentAttachments) ? currentAttachments : [])
+    .filter((attachment, index) => !removeKeys.has(getClientPortalRecordAttachmentKey(attachment, index)))
+    .map((attachment) => ({ ...attachment }));
+  const description = getValue("attachmentDescription");
+  const addedAttachments = [];
+  const fileInput = form.querySelector('input[name="attachmentFiles"]');
+  const files = fileInput instanceof HTMLInputElement && fileInput.files
+    ? Array.from(fileInput.files)
+    : [];
+
+  for (const file of files) {
+    if (file.size > CLIENT_PORTAL_RECORD_ATTACHMENT_MAX_BYTES) {
+      throw new Error(`Prilog ${file.name || "datoteka"} je veći od ${formatFileSize(CLIENT_PORTAL_RECORD_ATTACHMENT_MAX_BYTES)}.`);
+    }
+    addedAttachments.push({
+      id: createClientPortalRecordAttachmentId(),
+      fileName: file.name || "prilog",
+      fileSize: file.size || null,
+      mimeType: file.type || "",
+      dataUrl: await readFileAsDataUrl(file, "Ne mogu učitati prilog."),
+      fileUrl: "",
+      description,
+      uploadedAt: new Date().toISOString(),
+    });
+  }
+
+  const linkUrl = getValue("attachmentLinkUrl");
+  const linkName = getValue("attachmentLinkName");
+  if (linkUrl || linkName) {
+    if (!linkUrl) {
+      throw new Error("Za link priloga upiši i URL.");
+    }
+    addedAttachments.push({
+      id: createClientPortalRecordAttachmentId(),
+      fileName: linkName || linkUrl,
+      fileUrl: linkUrl,
+      dataUrl: "",
+      fileSize: null,
+      mimeType: "",
+      description,
+      uploadedAt: new Date().toISOString(),
+    });
+  }
+
+  return [...retainedAttachments, ...addedAttachments].slice(0, 20);
+}
+
+function getClientPortalRecordAttachments(record = {}) {
+  const attachments = record.details?.attachments;
+  return Array.isArray(attachments) ? attachments.filter(Boolean) : [];
+}
+
+function createClientPortalRecordAttachmentChips(record = {}) {
+  const attachments = getClientPortalRecordAttachments(record);
+  if (attachments.length === 0) {
+    return null;
+  }
+  const wrap = document.createElement("div");
+  wrap.className = "client-portal-record-attachment-chips";
+  attachments.slice(0, 6).forEach((attachment, index) => {
+    const name = getClientPortalRecordAttachmentName(attachment, index);
+    const href = getClientPortalRecordAttachmentHref(attachment);
+    const chip = href ? document.createElement("a") : document.createElement("span");
+    chip.className = "client-portal-record-attachment-chip";
+    chip.textContent = name;
+    if (href) {
+      chip.href = href;
+      chip.target = "_blank";
+      chip.rel = "noopener noreferrer";
+      if (attachment.dataUrl) {
+        chip.download = name;
+      }
+    }
+    wrap.append(chip);
+  });
+  if (attachments.length > 6) {
+    const more = document.createElement("span");
+    more.className = "client-portal-record-attachment-chip";
+    more.textContent = `+${attachments.length - 6}`;
+    wrap.append(more);
+  }
+  return wrap;
+}
+
 function getClientPortalRecordDetailLines(record = {}) {
   const details = record.details ?? {};
   if (record.type === "worker") {
@@ -84399,8 +84616,10 @@ function getClientPortalRecordDetailLines(record = {}) {
     return [
       details.locationText,
       details.extinguisherType,
+      details.lastInspectionDate ? `Zadnji pregled: ${formatCompactDate(details.lastInspectionDate)}` : "",
+      details.nextInspectionDate ? `Sljedeći pregled: ${formatCompactDate(details.nextInspectionDate)}` : "",
       details.lastServiceDate ? `Zadnji servis: ${formatCompactDate(details.lastServiceDate)}` : "",
-      details.nextServiceDate ? `Sljedeći servis: ${formatCompactDate(details.nextServiceDate)}` : "",
+      details.nextServiceDate ? `Godišnji servis: ${formatCompactDate(details.nextServiceDate)}` : "",
       details.note,
     ].filter(Boolean);
   }
@@ -84525,7 +84744,11 @@ function createClientPortalRecordCard(record = {}) {
     }));
   }
 
+  const attachments = createClientPortalRecordAttachmentChips(record);
   card.append(head, lines);
+  if (attachments) {
+    card.append(attachments);
+  }
   return card;
 }
 
@@ -84851,6 +85074,140 @@ function createClientPortalPpeTable(records = []) {
   return table;
 }
 
+function formatClientPortalRegisterDate(value) {
+  return value ? formatCompactDate(value) : "-";
+}
+
+function createClientPortalFireExtinguisherRegister(records = []) {
+  if (records.length === 0) {
+    return createClientPortalEmptyLine("Nema evidentiranih vatrogasnih aparata.");
+  }
+  const table = document.createElement("div");
+  table.className = "client-portal-fire-register";
+  const head = document.createElement("div");
+  head.className = "client-portal-fire-register-row is-head";
+  [
+    "Oznaka",
+    "Mjesto",
+    "Tip",
+    "Zadnji pregled",
+    "Sljedeći pregled",
+    "Zadnji servis",
+    "Godišnji servis",
+    "Prilozi",
+  ].forEach((label) => {
+    const cell = document.createElement("span");
+    cell.textContent = label;
+    head.append(cell);
+  });
+  table.append(head);
+
+  records.forEach((record) => {
+    const details = record.details ?? {};
+    const attachments = getClientPortalRecordAttachments(record);
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "client-portal-fire-register-row";
+    row.addEventListener("click", () => {
+      openClientPortalRecordModal("fire_extinguisher", record.id);
+    });
+    [
+      details.code || record.title || "-",
+      details.locationText || record.locationName || "-",
+      details.extinguisherType || "-",
+      formatClientPortalRegisterDate(details.lastInspectionDate),
+      formatClientPortalRegisterDate(details.nextInspectionDate),
+      formatClientPortalRegisterDate(details.lastServiceDate),
+      formatClientPortalRegisterDate(details.nextServiceDate),
+      attachments.length ? `${attachments.length} prilog(a)` : "-",
+    ].forEach((value) => {
+      const cell = document.createElement("span");
+      cell.textContent = value;
+      row.append(cell);
+    });
+    table.append(row);
+  });
+  return table;
+}
+
+function buildClientPortalFireExtinguisherPrintHtml(records = [], company = null) {
+  const rows = records.map((record, index) => {
+    const details = record.details ?? {};
+    const attachments = getClientPortalRecordAttachments(record)
+      .map((attachment, attachmentIndex) => getClientPortalRecordAttachmentName(attachment, attachmentIndex))
+      .join(", ");
+    return `
+      <tr>
+        <td>${index + 1}</td>
+        <td>${escapeHtml(details.code || record.title || "-")}</td>
+        <td>${escapeHtml(details.locationText || record.locationName || "-")}</td>
+        <td>${escapeHtml(details.extinguisherType || "-")}</td>
+        <td>${escapeHtml(formatClientPortalRegisterDate(details.lastInspectionDate))}</td>
+        <td>${escapeHtml(formatClientPortalRegisterDate(details.nextInspectionDate))}</td>
+        <td>${escapeHtml(formatClientPortalRegisterDate(details.lastServiceDate))}</td>
+        <td>${escapeHtml(formatClientPortalRegisterDate(details.nextServiceDate))}</td>
+        <td>${escapeHtml(attachments || "-")}</td>
+        <td>${escapeHtml(details.note || "")}</td>
+      </tr>`;
+  }).join("");
+  return `<!DOCTYPE html>
+<html lang="hr">
+<head>
+  <meta charset="utf-8" />
+  <title>Evidencija vatrogasnih aparata</title>
+  <style>
+    @page { margin: 14mm; }
+    body { font-family: Arial, sans-serif; color: #172033; margin: 0; }
+    header { display: grid; gap: 6px; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 2px solid #1d4ed8; }
+    h1 { margin: 0; font-size: 22px; color: #0f172a; }
+    p { margin: 0; color: #475569; font-size: 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 10.5px; }
+    th, td { border: 1px solid #cbd5e1; padding: 6px; text-align: left; vertical-align: top; }
+    th { background: #eff6ff; color: #1e3a8a; font-weight: 700; }
+    tbody tr:nth-child(even) td { background: #f8fafc; }
+    .footer { margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; color: #475569; font-size: 11px; }
+    .signature { min-height: 52px; border-top: 1px solid #94a3b8; padding-top: 6px; margin-top: 42px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Evidencija vatrogasnih aparata</h1>
+    <p>${escapeHtml(company?.name || "Klijentska tvrtka")} · pregled aparata svaka 3 mjeseca · servis jednom godišnje</p>
+    <p>Generirano: ${escapeHtml(formatCompactDate(new Date()))}</p>
+  </header>
+  <table>
+    <thead>
+      <tr>
+        <th>Red. br.</th>
+        <th>Oznaka</th>
+        <th>Mjesto</th>
+        <th>Tip</th>
+        <th>Zadnji pregled</th>
+        <th>Sljedeći pregled</th>
+        <th>Zadnji servis</th>
+        <th>Godišnji servis</th>
+        <th>Prilozi</th>
+        <th>Napomena</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rows || '<tr><td colspan="10">Nema evidentiranih vatrogasnih aparata.</td></tr>'}
+    </tbody>
+  </table>
+  <div class="footer">
+    <div class="signature">Odgovorna osoba</div>
+    <div class="signature">Potpis</div>
+  </div>
+</body>
+</html>`;
+}
+
+function printClientPortalFireExtinguisherRegister(records = [], company = null) {
+  const fileBase = sanitizeDocumentTemplateFileName(`evidencija-vatrogasnih-aparata-${company?.name || "klijent"}`, "evidencija-vatrogasnih-aparata");
+  const html = buildClientPortalFireExtinguisherPrintHtml(records, company);
+  triggerBlobPrint(new Blob(["\ufeff", html], { type: "text/html;charset=utf-8" }), `${fileBase}.pdf`);
+}
+
 function createClientPortalDocumentStrip(records = []) {
   if (records.length === 0) {
     return createClientPortalEmptyLine("Još nema dodanih dokumenata.");
@@ -84963,8 +85320,17 @@ async function saveClientPortalRecordFromForm(form) {
 
   setInlineMessage(feedbackTarget, "");
   setInlineMessage(clientPortalRecordsFeedback, "");
-  const payload = buildClientPortalRecordPayloadFromForm(form, type, companyId);
   const editId = String(state.clientPortalRecordsUi.editId || "");
+  const editingRecord = editId
+    ? (state.clientPortalRecords ?? []).find((record) => String(record.id) === editId) ?? null
+    : null;
+  const payload = buildClientPortalRecordPayloadFromForm(form, type, companyId);
+  try {
+    payload.details.attachments = await resolveClientPortalRecordAttachmentsFromForm(form, editingRecord?.details?.attachments ?? []);
+  } catch (error) {
+    setInlineMessage(feedbackTarget, error?.message || "Ne mogu spremiti prilog.");
+    return false;
+  }
   const path = editId
     ? `/client-portal-records/${encodeURIComponent(editId)}`
     : "/client-portal-records";
@@ -85070,13 +85436,28 @@ function renderClientPortalRecordsPanel() {
   addButton.textContent = "+ Dodaj zapis";
   const listActions = document.createElement("div");
   listActions.className = "client-portal-record-list-actions";
-  listActions.append(listPill, addButton);
+  listActions.append(listPill);
+  if (activeType === "fire_extinguisher") {
+    const printButton = document.createElement("button");
+    printButton.type = "button";
+    printButton.className = "ghost-button client-portal-record-print-button";
+    printButton.textContent = "Ispis evidencije";
+    printButton.addEventListener("click", () => {
+      printClientPortalFireExtinguisherRegister(visibleRecords, company);
+    });
+    listActions.append(printButton);
+  }
+  listActions.append(addButton);
   listHead.append(listCopy, listActions);
 
   const list = document.createElement("div");
   list.className = "client-portal-record-list";
   if (visibleRecords.length > 0) {
-    list.replaceChildren(...visibleRecords.map(createClientPortalRecordCard));
+    if (activeType === "fire_extinguisher") {
+      list.replaceChildren(createClientPortalFireExtinguisherRegister(visibleRecords));
+    } else {
+      list.replaceChildren(...visibleRecords.map(createClientPortalRecordCard));
+    }
   } else {
     const empty = document.createElement("p");
     empty.className = "client-portal-record-empty";

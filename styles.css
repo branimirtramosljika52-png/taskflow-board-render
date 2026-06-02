@@ -8959,6 +8959,48 @@ body.is-location-editor-open {
   cursor: default;
 }
 
+.client-portal-fire-register {
+  display: grid;
+  overflow-x: auto;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  border-radius: 8px;
+}
+
+.client-portal-fire-register-row {
+  display: grid;
+  grid-template-columns: 0.75fr 1.15fr 0.85fr 0.85fr 0.85fr 0.85fr 0.85fr 0.65fr;
+  gap: 8px;
+  align-items: center;
+  min-width: 980px;
+  width: 100%;
+  padding: 9px 11px;
+  border: 0;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.82);
+  background: rgba(255, 255, 255, 0.92);
+  color: #344054;
+  text-align: left;
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+
+.client-portal-fire-register-row:last-child {
+  border-bottom: 0;
+}
+
+.client-portal-fire-register-row.is-head {
+  background: rgba(239, 246, 255, 0.96);
+  color: #1e3a8a;
+  font-size: 0.66rem;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  cursor: default;
+}
+
+.client-portal-fire-register-row span {
+  overflow-wrap: anywhere;
+}
+
 .client-portal-document-strip {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -9142,6 +9184,120 @@ body.is-location-editor-open {
 
 .client-portal-record-field.is-wide {
   grid-column: 1 / -1;
+}
+
+.client-portal-record-attachment-field {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  border-radius: 8px;
+  background: rgba(248, 250, 252, 0.82);
+}
+
+.client-portal-record-attachment-head {
+  display: grid;
+  gap: 3px;
+}
+
+.client-portal-record-attachment-head span {
+  color: #172033;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.client-portal-record-attachment-head small,
+.client-portal-record-attachment-empty {
+  color: #667085;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.client-portal-record-attachment-existing {
+  display: grid;
+  gap: 7px;
+}
+
+.client-portal-record-attachment-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.client-portal-record-attachment-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.client-portal-record-attachment-copy strong,
+.client-portal-record-attachment-copy small {
+  overflow-wrap: anywhere;
+}
+
+.client-portal-record-attachment-copy strong {
+  color: #172033;
+  font-size: 0.78rem;
+}
+
+.client-portal-record-attachment-copy small {
+  color: #667085;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.client-portal-record-attachment-open,
+.client-portal-record-attachment-remove,
+.client-portal-record-attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(191, 219, 254, 0.86);
+  background: rgba(239, 246, 255, 0.92);
+  color: #1d4ed8;
+  font-size: 0.7rem;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.client-portal-record-attachment-remove {
+  border-color: rgba(254, 202, 202, 0.86);
+  background: rgba(254, 242, 242, 0.92);
+  color: #b91c1c;
+}
+
+.client-portal-record-attachment-empty {
+  margin: 0;
+  padding: 9px;
+  border: 1px dashed rgba(148, 163, 184, 0.58);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.64);
+}
+
+.client-portal-record-attachment-add-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.client-portal-record-attachment-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.client-portal-record-attachment-chip {
+  border-color: rgba(203, 213, 225, 0.86);
+  background: rgba(255, 255, 255, 0.86);
+  color: #475569;
 }
 
 .client-portal-record-form-actions,

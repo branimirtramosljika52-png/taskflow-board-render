@@ -3681,6 +3681,33 @@ test("client portal records keep simple registers and worker links", () => {
     () => "2026-06-02T07:07:00.000Z",
   );
 
+  const fireExtinguisher = createClientPortalRecord(
+    {
+      organizationId: "org-1",
+      companyId: "company-1",
+      type: "fire_extinguisher",
+      status: "active",
+      details: {
+        code: "VP-1",
+        locationText: "Skladiste",
+        extinguisherType: "S9",
+        lastInspectionDate: "2027-03-10",
+        lastServiceDate: "2027-03-10",
+        attachments: [
+          {
+            fileName: "servis-aparata.pdf",
+            dataUrl: "data:application/pdf;base64,AA==",
+            fileSize: 2048,
+            description: "Zapisnik servisa",
+          },
+        ],
+      },
+    },
+    state,
+    () => "client-fire-1",
+    () => "2026-06-02T07:08:00.000Z",
+  );
+
   assert.equal(ppe.details.workerName, "Test Radnik");
   assert.equal(vehicle.details.responsibleWorkerName, "Test Radnik");
   assert.equal(alcoholTest.details.workerName, "Test Radnik");
@@ -3690,8 +3717,12 @@ test("client portal records keep simple registers and worker links", () => {
   assert.equal(document.dueDate, "2027-01-15");
   assert.equal(internalInspection.dueDate, "2026-06-20");
   assert.equal(internalInspection.title, "Unutarnji nadzor skladista");
+  assert.equal(fireExtinguisher.details.nextInspectionDate, "2027-06-10");
+  assert.equal(fireExtinguisher.details.nextServiceDate, "2028-03-10");
+  assert.equal(fireExtinguisher.dueDate, "2027-06-10");
+  assert.equal(fireExtinguisher.details.attachments[0].fileName, "servis-aparata.pdf");
 
-  const records = [ppe, worker, vehicle, deadline, defect, alcoholTest, document, internalInspection];
+  const records = [ppe, worker, vehicle, deadline, defect, alcoholTest, document, internalInspection, fireExtinguisher];
   assert.deepEqual(
     sortClientPortalRecords(records).map((item) => item.id),
     [
@@ -3702,6 +3733,7 @@ test("client portal records keep simple registers and worker links", () => {
       "client-vehicle-1",
       "client-document-1",
       "client-ppe-1",
+      "client-fire-1",
       "client-worker-1",
     ],
   );
@@ -3717,6 +3749,10 @@ test("client portal records keep simple registers and worker links", () => {
     type: "internal_inspection",
     query: "skladiste",
   })[0].id, internalInspection.id);
+  assert.equal(filterClientPortalRecords(records, {
+    type: "fire_extinguisher",
+    query: "servis-aparata",
+  })[0].id, fireExtinguisher.id);
 });
 
 test("client portal records reject duplicate register entries", () => {

@@ -984,6 +984,73 @@ function normalizeClientPortalRecordStatus(value, fallback = "active") {
   return CLIENT_PORTAL_RECORD_STATUS_SET.has(fallback) ? fallback : "active";
 }
 
+function addMonthsToOptionalDate(value, monthsValue) {
+  const normalizedDate = normalizeOptionalDate(value);
+  const months = Number.parseInt(String(monthsValue ?? "").trim(), 10);
+  if (!normalizedDate || !Number.isFinite(months) || months <= 0) {
+    return null;
+  }
+
+  const [year, month, day] = normalizedDate.split("-").map((part) => Number.parseInt(part, 10));
+  const date = new Date(year, month - 1, day, 12, 0, 0, 0);
+  const originalDay = date.getDate();
+  date.setMonth(date.getMonth() + months);
+  if (date.getDate() !== originalDay) {
+    date.setDate(0);
+  }
+  return date.toISOString().slice(0, 10);
+}
+
+function getEarliestOptionalDate(...values) {
+  return values
+    .map((value) => normalizeOptionalDate(value))
+    .filter(Boolean)
+    .sort((left, right) => left.localeCompare(right))[0] ?? null;
+}
+
+function normalizeClientPortalRecordAttachments(value = []) {
+  const source = Array.isArray(value) ? value : [value];
+  const seen = new Set();
+  return source
+    .map((entry) => (entry && typeof entry === "object" && !Array.isArray(entry) ? entry : { fileName: entry }))
+    .map((entry) => {
+      const fileName = normalizeText(entry.fileName ?? entry.name ?? entry.title).slice(0, 220);
+      const fileUrl = normalizeText(entry.fileUrl ?? entry.url).slice(0, 1400);
+      const dataUrl = normalizeText(entry.dataUrl);
+      const description = normalizeText(entry.description ?? entry.note).slice(0, 600);
+      const mimeType = normalizeText(entry.mimeType ?? entry.type).slice(0, 120);
+      const fileSize = Number.parseInt(String(entry.fileSize ?? entry.size ?? ""), 10);
+      if (!fileName && !fileUrl && !dataUrl) {
+        return null;
+      }
+      const key = [fileName, fileUrl, dataUrl.slice(0, 160)].join("::");
+      if (seen.has(key)) {
+        return null;
+      }
+      seen.add(key);
+      return {
+        id: normalizeText(entry.id) || crypto.randomUUID(),
+        fileName,
+        fileUrl,
+        dataUrl,
+        fileSize: Number.isFinite(fileSize) && fileSize > 0 ? Math.min(fileSize, 50_000_000) : null,
+        mimeType,
+        description,
+        uploadedAt: normalizeOptionalDateTime(entry.uploadedAt) || normalizeOptionalDateTime(entry.createdAt) || "",
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 20);
+}
+
+function withClientPortalRecordAttachments(inputDetails = {}, normalizedDetails = {}) {
+  const attachmentInput = inputDetails.attachments ?? inputDetails.documents ?? inputDetails.files ?? [];
+  return {
+    ...normalizedDetails,
+    attachments: normalizeClientPortalRecordAttachments(attachmentInput),
+  };
+}
+
 function normalizeLegalFrameworkStatus(value) {
   const status = normalizeText(value).toLowerCase();
   return LEGAL_FRAMEWORK_STATUS_SET.has(status) ? status : "active";
@@ -3039,18 +3106,18 @@ function normalizeClientPortalRecordDetails(inputDetails = {}, type = "deadline"
   const date = (value) => normalizeOptionalDate(value);
 
   if (type === "worker") {
-    return {
+    return withClientPortalRecordAttachments(details, {
       fullName: text(details.fullName ?? details.name, 180),
       jobTitle: text(details.jobTitle ?? details.role, 180),
       email: text(details.email, 180),
       phone: text(details.phone, 80),
       oib: text(details.oib, 32),
       note: text(details.note, 1200),
-    };
+    });
   }
 
   if (type === "vehicle") {
-    return {
+    return withClientPortalRecordAttachments(details, {
       vehicleName: text(details.vehicleName ?? details.name, 180),
       plateNumber: text(details.plateNumber ?? details.registration, 60).toUpperCase(),
       vehicleType: text(details.vehicleType ?? details.category, 120),
@@ -3060,22 +3127,30 @@ function normalizeClientPortalRecordDetails(inputDetails = {}, type = "deadline"
       insuranceDate: date(details.insuranceDate),
       serviceDate: date(details.serviceDate ?? details.nextServiceDate),
       note: text(details.note, 1200),
-    };
+    });
   }
 
   if (type === "fire_extinguisher") {
-    return {
+    const lastInspectionDate = date(details.lastInspectionDate ?? details.lastCheckDate ?? details.lastControlDate);
+    const nextInspectionDate = date(details.nextInspectionDate ?? details.nextCheckDate ?? details.nextControlDate)
+      || addMonthsToOptionalDate(lastInspectionDate, 3);
+    const lastServiceDate = date(details.lastServiceDate);
+    const nextServiceDate = date(details.nextServiceDate ?? details.dueDate)
+      || addMonthsToOptionalDate(lastServiceDate, 12);
+    return withClientPortalRecordAttachments(details, {
       code: text(details.code ?? details.inventoryCode, 120),
       locationText: text(details.locationText ?? details.location, 180),
       extinguisherType: text(details.extinguisherType ?? details.type, 120),
-      lastServiceDate: date(details.lastServiceDate),
-      nextServiceDate: date(details.nextServiceDate ?? details.dueDate),
+      lastInspectionDate,
+      nextInspectionDate,
+      lastServiceDate,
+      nextServiceDate,
       note: text(details.note, 1200),
-    };
+    });
   }
 
   if (type === "ppe_assignment") {
-    return {
+    return withClientPortalRecordAttachments(details, {
       workerRecordId: text(details.workerRecordId, 80),
       workerName: text(details.workerName, 180),
       ppeName: text(details.ppeName ?? details.name, 180),
@@ -3084,11 +3159,11 @@ function normalizeClientPortalRecordDetails(inputDetails = {}, type = "deadline"
       dueDate: date(details.dueDate),
       returnedDate: date(details.returnedDate),
       note: text(details.note, 1200),
-    };
+    });
   }
 
   if (type === "defect_report") {
-    return {
+    return withClientPortalRecordAttachments(details, {
       defectTitle: text(details.defectTitle ?? details.title ?? details.name, 220),
       priority: text(details.priority ?? details.severity, 80),
       category: text(details.category, 140),
@@ -3098,11 +3173,11 @@ function normalizeClientPortalRecordDetails(inputDetails = {}, type = "deadline"
       locationText: text(details.locationText ?? details.location, 180),
       description: text(details.description ?? details.note, 2000),
       action: text(details.action ?? details.correctiveAction, 2000),
-    };
+    });
   }
 
   if (type === "internal_inspection") {
-    return {
+    return withClientPortalRecordAttachments(details, {
       inspectionTitle: text(details.inspectionTitle ?? details.title ?? details.name, 220),
       area: text(details.area ?? details.scope ?? details.category, 180),
       inspectionDate: date(details.inspectionDate ?? details.date),
@@ -3112,11 +3187,11 @@ function normalizeClientPortalRecordDetails(inputDetails = {}, type = "deadline"
       finding: text(details.finding ?? details.description ?? details.note, 2000),
       correctiveAction: text(details.correctiveAction ?? details.action, 2000),
       documentName: text(details.documentName ?? details.fileName, 220),
-    };
+    });
   }
 
   if (type === "alcohol_test") {
-    return {
+    return withClientPortalRecordAttachments(details, {
       workerRecordId: text(details.workerRecordId, 80),
       workerName: text(details.workerName, 180),
       testDate: date(details.testDate ?? details.date ?? details.testedDate),
@@ -3126,11 +3201,11 @@ function normalizeClientPortalRecordDetails(inputDetails = {}, type = "deadline"
       nextTestDate: date(details.nextTestDate ?? details.dueDate),
       documentName: text(details.documentName ?? details.fileName, 220),
       note: text(details.note, 1200),
-    };
+    });
   }
 
   if (type === "document") {
-    return {
+    return withClientPortalRecordAttachments(details, {
       documentName: text(details.documentName ?? details.title ?? details.name, 220),
       documentType: text(details.documentType ?? details.type, 120),
       fileName: text(details.fileName, 220),
@@ -3139,15 +3214,15 @@ function normalizeClientPortalRecordDetails(inputDetails = {}, type = "deadline"
       validUntil: date(details.validUntil ?? details.dueDate),
       ownerName: text(details.ownerName ?? details.owner, 180),
       note: text(details.note ?? details.description, 1200),
-    };
+    });
   }
 
-  return {
+  return withClientPortalRecordAttachments(details, {
     deadlineName: text(details.deadlineName ?? details.name, 220),
     dueDate: date(details.dueDate),
     ownerName: text(details.ownerName ?? details.owner, 180),
     description: text(details.description ?? details.note, 2000),
-  };
+  });
 }
 
 function resolveClientPortalRecordDueDate(type, details = {}, input = {}, current = null) {
@@ -3160,7 +3235,7 @@ function resolveClientPortalRecordDueDate(type, details = {}, input = {}, curren
     return details.serviceDate || details.registrationDate || details.insuranceDate || null;
   }
   if (type === "fire_extinguisher") {
-    return details.nextServiceDate || null;
+    return getEarliestOptionalDate(details.nextInspectionDate, details.nextServiceDate);
   }
   if (type === "ppe_assignment") {
     return details.dueDate || details.returnedDate || null;
@@ -10161,12 +10236,22 @@ export function filterClientPortalRecords(
     }
 
     const details = record.details ?? {};
+    const attachmentText = Array.isArray(details.attachments)
+      ? details.attachments.map((attachment) => [
+        attachment?.fileName,
+        attachment?.fileUrl,
+        attachment?.description,
+      ].filter(Boolean).join(" ")).join(" ")
+      : "";
     const haystack = [
       record.title,
       record.companyName,
       record.locationName,
       record.note,
-      ...Object.values(details),
+      ...Object.entries(details)
+        .filter(([key]) => key !== "attachments")
+        .map(([, value]) => value),
+      attachmentText,
     ].join(" ").toLowerCase();
 
     return haystack.includes(normalizedQuery);
