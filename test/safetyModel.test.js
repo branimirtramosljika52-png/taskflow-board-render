@@ -3658,6 +3658,29 @@ test("client portal records keep simple registers and worker links", () => {
     () => "2026-06-02T07:06:00.000Z",
   );
 
+  const internalInspection = createClientPortalRecord(
+    {
+      organizationId: "org-1",
+      companyId: "company-1",
+      type: "internal_inspection",
+      status: "attention",
+      details: {
+        inspectionTitle: "Unutarnji nadzor skladista",
+        area: "Skladiste",
+        inspectionDate: "2026-06-05",
+        dueDate: "2026-06-20",
+        inspectorName: "Marko Horvat",
+        result: "Potrebne mjere",
+        finding: "Nedostaje oznaka.",
+        correctiveAction: "Postaviti oznaku.",
+        documentName: "UN-01/2026",
+      },
+    },
+    state,
+    () => "client-inspection-1",
+    () => "2026-06-02T07:07:00.000Z",
+  );
+
   assert.equal(ppe.details.workerName, "Test Radnik");
   assert.equal(vehicle.details.responsibleWorkerName, "Test Radnik");
   assert.equal(alcoholTest.details.workerName, "Test Radnik");
@@ -3665,12 +3688,15 @@ test("client portal records keep simple registers and worker links", () => {
   assert.equal(deadline.dueDate, "2026-09-15");
   assert.equal(defect.dueDate, "2026-06-15");
   assert.equal(document.dueDate, "2027-01-15");
+  assert.equal(internalInspection.dueDate, "2026-06-20");
+  assert.equal(internalInspection.title, "Unutarnji nadzor skladista");
 
-  const records = [ppe, worker, vehicle, deadline, defect, alcoholTest, document];
+  const records = [ppe, worker, vehicle, deadline, defect, alcoholTest, document, internalInspection];
   assert.deepEqual(
     sortClientPortalRecords(records).map((item) => item.id),
     [
       "client-defect-1",
+      "client-inspection-1",
       "client-alcohol-1",
       "client-deadline-1",
       "client-vehicle-1",
@@ -3687,6 +3713,10 @@ test("client portal records keep simple registers and worker links", () => {
     type: "document",
     query: "evakuacije",
   })[0].id, document.id);
+  assert.equal(filterClientPortalRecords(records, {
+    type: "internal_inspection",
+    query: "skladiste",
+  })[0].id, internalInspection.id);
 });
 
 test("client portal records reject duplicate register entries", () => {
@@ -3765,6 +3795,45 @@ test("client portal records reject duplicate register entries", () => {
     /vec postoji/,
   );
 
+  const internalInspection = createClientPortalRecord(
+    {
+      organizationId: "org-1",
+      companyId: "company-1",
+      type: "internal_inspection",
+      status: "active",
+      details: {
+        inspectionTitle: "Unutarnji nadzor skladista",
+        area: "Skladiste",
+        inspectionDate: "2026-06-05",
+      },
+    },
+    state,
+    () => "client-inspection-1",
+    () => "2026-06-02T07:04:00.000Z",
+  );
+  state.clientPortalRecords = [internalInspection, vehicle, worker];
+
+  assert.throws(
+    () => createClientPortalRecord(
+      {
+        organizationId: "org-1",
+        companyId: "company-1",
+        type: "internal_inspection",
+        status: "active",
+        details: {
+          inspectionTitle: "Unutarnji nadzor skladista",
+          area: "Skladiste",
+          inspectionDate: "2026-06-05",
+          finding: "Drugi opis istog nadzora.",
+        },
+      },
+      state,
+      () => "client-inspection-duplicate",
+      () => "2026-06-02T07:05:00.000Z",
+    ),
+    /vec postoji/,
+  );
+
   const updated = updateClientPortalRecord(
     vehicle,
     {
@@ -3774,7 +3843,7 @@ test("client portal records reject duplicate register entries", () => {
       },
     },
     state,
-    () => "2026-06-02T07:04:00.000Z",
+    () => "2026-06-02T07:06:00.000Z",
   );
   assert.equal(updated.id, vehicle.id);
   assert.equal(updated.status, "attention");

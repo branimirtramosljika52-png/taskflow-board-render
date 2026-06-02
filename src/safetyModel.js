@@ -112,6 +112,7 @@ export const CLIENT_PORTAL_RECORD_TYPE_OPTIONS = [
   { value: "ppe_assignment", label: "OZO zaduzenja" },
   { value: "fire_extinguisher", label: "Vatrogasni aparati" },
   { value: "defect_report", label: "Nedostaci / prijave" },
+  { value: "internal_inspection", label: "Unutarnji nadzori" },
   { value: "alcohol_test", label: "Alkotest" },
   { value: "document", label: "Dokumenti" },
   { value: "vehicle", label: "Vozni park" },
@@ -3100,6 +3101,20 @@ function normalizeClientPortalRecordDetails(inputDetails = {}, type = "deadline"
     };
   }
 
+  if (type === "internal_inspection") {
+    return {
+      inspectionTitle: text(details.inspectionTitle ?? details.title ?? details.name, 220),
+      area: text(details.area ?? details.scope ?? details.category, 180),
+      inspectionDate: date(details.inspectionDate ?? details.date),
+      dueDate: date(details.dueDate ?? details.nextInspectionDate),
+      inspectorName: text(details.inspectorName ?? details.ownerName ?? details.responsiblePerson, 180),
+      result: text(details.result ?? details.statusText, 120),
+      finding: text(details.finding ?? details.description ?? details.note, 2000),
+      correctiveAction: text(details.correctiveAction ?? details.action, 2000),
+      documentName: text(details.documentName ?? details.fileName, 220),
+    };
+  }
+
   if (type === "alcohol_test") {
     return {
       workerRecordId: text(details.workerRecordId, 80),
@@ -3153,6 +3168,9 @@ function resolveClientPortalRecordDueDate(type, details = {}, input = {}, curren
   if (type === "defect_report") {
     return details.dueDate || null;
   }
+  if (type === "internal_inspection") {
+    return details.dueDate || details.inspectionDate || null;
+  }
   if (type === "alcohol_test") {
     return details.nextTestDate || null;
   }
@@ -3185,6 +3203,9 @@ function buildClientPortalRecordTitle(type, details = {}, input = {}, current = 
   }
   if (type === "defect_report") {
     return (details.defectTitle || details.description || "Nedostatak").slice(0, 220);
+  }
+  if (type === "internal_inspection") {
+    return (details.inspectionTitle || details.area || "Unutarnji nadzor").slice(0, 220);
   }
   if (type === "alcohol_test") {
     return [details.workerName, details.result || "Alkotest"].filter(Boolean).join(" - ").slice(0, 220) || "Alkotest";
@@ -3228,6 +3249,8 @@ function getClientPortalRecordDuplicateIdentity(record = {}) {
     identity = compositeKey(details.workerRecordId || details.workerName, details.ppeName, details.assignedDate || details.dueDate);
   } else if (type === "defect_report") {
     identity = compositeKey(details.defectTitle || titleKey, details.locationText || locationKey, details.reportedDate);
+  } else if (type === "internal_inspection") {
+    identity = compositeKey(details.inspectionTitle || titleKey, details.area, details.inspectionDate || details.dueDate);
   } else if (type === "alcohol_test") {
     identity = compositeKey(details.workerRecordId || details.workerName, details.testDate, details.result);
   } else if (type === "document") {
