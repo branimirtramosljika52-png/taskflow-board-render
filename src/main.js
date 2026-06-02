@@ -129760,12 +129760,18 @@ function formatRiskAssessmentExportYesNo(value = "", fallback = "-") {
   return fallback;
 }
 
-function getRiskAssessmentExportRiskBandValue(risk = {}, band = "low") {
+function getRiskAssessmentExportRiskLevelNumber(risk = {}) {
   const level = getRiskAssessmentRiskDisplayLevel(risk).toLocaleLowerCase("hr-HR");
-  if (band === "low" && level.includes("mal")) return "1";
-  if (band === "medium" && level.includes("sred")) return "2";
-  if (band === "high" && level.includes("velik")) return "3";
+  if (level.includes("mal")) return "1";
+  if (level.includes("sred")) return "2";
+  if (level.includes("velik")) return "3";
   return "";
+}
+
+function getRiskAssessmentExportRiskLevelText(risk = {}) {
+  const level = getRiskAssessmentRiskDisplayLevel(risk);
+  const number = getRiskAssessmentExportRiskLevelNumber(risk);
+  return [level, number ? `(${number})` : ""].filter(Boolean).join(" ");
 }
 
 function buildRiskAssessmentJobsOverviewExportTable() {
@@ -129849,31 +129855,19 @@ function buildRiskAssessmentJobRiskExportTable(job = {}) {
     getRiskAssessmentRiskRowKey(risk) || risk.riskLevel || risk.existingMeasures || risk.measures || risk.workNote
   ));
   const columns = [
-    { id: "risk", label: "Identifikacija opasnosti, štetnosti i napora", width: 230 },
-    { id: "p-low", label: "Malo vjerojatno", width: 48 },
-    { id: "p-medium", label: "Vjerojatno", width: 48 },
-    { id: "p-high", label: "Vrlo vjerojatno", width: 48 },
-    { id: "c-low", label: "Malo štetno", width: 48 },
-    { id: "c-medium", label: "Srednje štetno", width: 48 },
-    { id: "c-high", label: "Izrazito štetno", width: 48 },
-    { id: "r-low", label: "Mali rizik (1)", width: 48 },
-    { id: "r-medium", label: "Srednji rizik (2)", width: 48 },
-    { id: "r-high", label: "Veliki rizik (3)", width: 48 },
-    { id: "special", label: "Posebni uvjeti rada", width: 70 },
-    { id: "note", label: "Objašnjenje / napomena", width: 210 },
-    { id: "measures", label: "Primijenjena pravila, mjere i postupci za smanjivanje razine rizika", width: 230 },
+    { id: "risk", label: "Identifikacija opasnosti, štetnosti i napora", width: 250 },
+    { id: "probability", label: "Vjerojatnost", width: 105 },
+    { id: "consequence", label: "Posljedice", width: 105 },
+    { id: "matrix", label: "Matrica procjene rizika", width: 115 },
+    { id: "special", label: "Poslovi s posebnim uvjetima rada (DA/NE)", width: 95 },
+    { id: "note", label: "Objašnjenje / napomena", width: 235 },
+    { id: "measures", label: "Primijenjena pravila, mjere i postupci za smanjivanje razine rizika", width: 245 },
   ];
-  const headerFormat = { fontSize: 7, align: "center" };
+  const headerFormat = { fontSize: 8, align: "center" };
   const rows = [
     createRiskAssessmentExportRow("h1", [
       createRiskAssessmentExportHeaderCell("Identifikacija opasnosti, štetnosti i napora", headerFormat),
       createRiskAssessmentExportHeaderCell("Procjenjivanje opasnosti, štetnosti i napora", headerFormat),
-      createRiskAssessmentExportHeaderCell("", headerFormat),
-      createRiskAssessmentExportHeaderCell("", headerFormat),
-      createRiskAssessmentExportHeaderCell("", headerFormat),
-      createRiskAssessmentExportHeaderCell("", headerFormat),
-      createRiskAssessmentExportHeaderCell("", headerFormat),
-      createRiskAssessmentExportHeaderCell("", headerFormat),
       createRiskAssessmentExportHeaderCell("", headerFormat),
       createRiskAssessmentExportHeaderCell("", headerFormat),
       createRiskAssessmentExportHeaderCell("Analiza prikupljenih podataka", headerFormat),
@@ -129883,22 +129877,13 @@ function buildRiskAssessmentJobRiskExportTable(job = {}) {
     createRiskAssessmentExportRow("h2", [
       createRiskAssessmentExportHeaderCell("Opasnosti / štetnosti / napori", headerFormat),
       createRiskAssessmentExportHeaderCell("Vjerojatnost", headerFormat),
-      createRiskAssessmentExportHeaderCell("", headerFormat),
-      createRiskAssessmentExportHeaderCell("", headerFormat),
       createRiskAssessmentExportHeaderCell("Posljedice", headerFormat),
-      createRiskAssessmentExportHeaderCell("", headerFormat),
-      createRiskAssessmentExportHeaderCell("", headerFormat),
       createRiskAssessmentExportHeaderCell("Matrica procjene rizika", headerFormat),
-      createRiskAssessmentExportHeaderCell("", headerFormat),
-      createRiskAssessmentExportHeaderCell("", headerFormat),
       createRiskAssessmentExportHeaderCell("Poslovi s posebnim uvjetima rada (DA/NE)", headerFormat),
       createRiskAssessmentExportHeaderCell("Objašnjenje / napomena", headerFormat),
       createRiskAssessmentExportHeaderCell("Primijenjena pravila, mjere i postupci", headerFormat),
     ], true),
-    createRiskAssessmentExportRow("h3", columns.map((column) => createRiskAssessmentExportHeaderCell(column.label, headerFormat)), true),
     ...(riskRows.length ? riskRows.map((risk, riskIndex) => {
-      const probability = String(risk.probability || "").toLowerCase();
-      const consequence = String(risk.consequence || "").toLowerCase();
       const measuresText = joinUniqueRiskAssessmentTextBlocks([risk.existingMeasures, risk.additionalMeasures, risk.measures]);
       return createRiskAssessmentExportRow(`risk-${riskIndex + 1}`, [
         createRiskAssessmentExportCell([
@@ -129906,15 +129891,9 @@ function buildRiskAssessmentJobRiskExportTable(job = {}) {
           [risk.code, risk.hazard].filter(Boolean).join(" "),
           risk.possibleConsequences,
         ].filter(Boolean).join("\n"), { fontSize: 7, bold: true }),
-        createRiskAssessmentExportCell(probability === "mv" ? "X" : "", { fontSize: 7, align: "center" }),
-        createRiskAssessmentExportCell(probability === "v" ? "X" : "", { fontSize: 7, align: "center" }),
-        createRiskAssessmentExportCell(probability === "vv" ? "X" : "", { fontSize: 7, align: "center" }),
-        createRiskAssessmentExportCell(["mš", "ms"].includes(consequence) ? "X" : "", { fontSize: 7, align: "center" }),
-        createRiskAssessmentExportCell(["sš", "ss"].includes(consequence) ? "X" : "", { fontSize: 7, align: "center" }),
-        createRiskAssessmentExportCell(["iš", "is"].includes(consequence) ? "X" : "", { fontSize: 7, align: "center" }),
-        createRiskAssessmentExportCell(getRiskAssessmentExportRiskBandValue(risk, "low"), { fontSize: 7, align: "center" }),
-        createRiskAssessmentExportCell(getRiskAssessmentExportRiskBandValue(risk, "medium"), { fontSize: 7, align: "center" }),
-        createRiskAssessmentExportCell(getRiskAssessmentExportRiskBandValue(risk, "high"), { fontSize: 7, align: "center" }),
+        createRiskAssessmentExportCell(getRiskAssessmentOptionLabel(RISK_ASSESSMENT_PROBABILITY_OPTIONS, risk.probability, "-"), { fontSize: 7, align: "center" }),
+        createRiskAssessmentExportCell(getRiskAssessmentOptionLabel(RISK_ASSESSMENT_CONSEQUENCE_OPTIONS, risk.consequence, "-"), { fontSize: 7, align: "center" }),
+        createRiskAssessmentExportCell(getRiskAssessmentExportRiskLevelText(risk), { fontSize: 7, align: "center", bold: true }),
         createRiskAssessmentExportCell(formatRiskAssessmentExportYesNo(job.specialWorkConditions, "Ne"), { fontSize: 7, align: "center" }),
         createRiskAssessmentExportCell(joinUniqueRiskAssessmentTextBlocks([risk.workNote, risk.note, risk.source]), { fontSize: 7 }),
         createRiskAssessmentExportCell(measuresText, { fontSize: 7 }),
@@ -129928,14 +129907,8 @@ function buildRiskAssessmentJobRiskExportTable(job = {}) {
   ];
   const merges = [
     { rowId: "h1", columnId: "risk", rowSpan: 2 },
-    { rowId: "h1", columnId: "p-low", colSpan: 9 },
+    { rowId: "h1", columnId: "probability", colSpan: 3 },
     { rowId: "h1", columnId: "special", colSpan: 3 },
-    { rowId: "h2", columnId: "p-low", colSpan: 3 },
-    { rowId: "h2", columnId: "c-low", colSpan: 3 },
-    { rowId: "h2", columnId: "r-low", colSpan: 3 },
-    { rowId: "h2", columnId: "special", rowSpan: 2 },
-    { rowId: "h2", columnId: "note", rowSpan: 2 },
-    { rowId: "h2", columnId: "measures", rowSpan: 2 },
   ];
   return createRiskAssessmentExportTable(columns, rows, { merges });
 }
