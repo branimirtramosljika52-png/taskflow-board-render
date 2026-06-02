@@ -6836,6 +6836,247 @@ function pdfBufferFromDocument(doc) {
   });
 }
 
+const RISK_ASSESSMENT_NATIVE_PDF_PLACEHOLDER_KEYS = Object.freeze([
+  "RISK_COVER",
+  "RISK_EMPLOYER",
+  "RISK_INTRO",
+  "RISK_STRUCTURE",
+  "RISK_PROCESS",
+  "RISK_GENERAL",
+  "RISK_SENSITIVE_GROUPS",
+  "RISK_RULES",
+  "RISK_HARMFUL_DATA",
+  "RISK_WORK_EQUIPMENT",
+  "RISK_WORK_ENVIRONMENT",
+  "RISK_INSPECTIONS",
+  "RISK_MEASURES",
+  "RISK_JOBS",
+  "RISK_CHEMICALS",
+  "RISK_BIOLOGICAL",
+  "RISK_PPE",
+  "RISK_MANUAL_HANDLING",
+  "RISK_OVERVIEW",
+  "RISK_SIGNATURES",
+]);
+
+function normalizeRiskAssessmentNativePdfText(value = "", fallback = "-") {
+  const text = Array.isArray(value) ? value.join("\n") : String(value ?? "");
+  return clean(text.replace(/\r\n/g, "\n")) || fallback;
+}
+
+function getRiskAssessmentNativePdfBlocks(placeholders = {}) {
+  const blocks = [];
+  RISK_ASSESSMENT_NATIVE_PDF_PLACEHOLDER_KEYS.forEach((key) => {
+    const value = placeholders?.[key];
+    if (!value || value.__docxBlockType === "optional_empty") {
+      return;
+    }
+    blocks.push(value);
+  });
+  return blocks;
+}
+
+function getRiskAssessmentNativePdfCellText(cell = {}) {
+  if (cell && typeof cell === "object" && !Array.isArray(cell)) {
+    return normalizeRiskAssessmentNativePdfText(cell.text, "");
+  }
+  return normalizeRiskAssessmentNativePdfText(cell, "");
+}
+
+function getRiskAssessmentNativePdfCellFormat(cell = {}, row = {}) {
+  return {
+    ...(row.header ? { bold: true, fillColor: "#E5E7EB", align: "center" } : {}),
+    ...((cell && typeof cell === "object" && !Array.isArray(cell)) ? (cell.format || {}) : {}),
+  };
+}
+
+function renderRiskAssessmentNativePdfText(doc, helpers, text = "", {
+  bold = false,
+  fontSize = 9,
+  color = "#1f2333",
+  align = "left",
+  spacingAfter = 6,
+} = {}) {
+  const safeText = normalizeRiskAssessmentNativePdfText(text, "");
+  if (!safeText) {
+    return;
+  }
+  if (helpers.layout !== "portrait") {
+    helpers.setLayout("portrait", { forceNewPage: true });
+  }
+  const width = helpers.availableWidth;
+  const height = doc.heightOfString(safeText, { width, lineGap: 1 }) + spacingAfter;
+  helpers.ensureSpace(height, { layout: "portrait" });
+  doc.font(bold ? "dejavu-bold" : "dejavu").fontSize(fontSize).fillColor(color).text(safeText, {
+    width,
+    align,
+    lineGap: 1,
+  });
+  doc.moveDown(spacingAfter / Math.max(fontSize, 1));
+}
+
+function renderRiskAssessmentNativePdfRichText(doc, helpers, html = "") {
+  const text = richTextHtmlToPlainText(String(html || ""));
+  renderRiskAssessmentNativePdfText(doc, helpers, text, { fontSize: 9, spacingAfter: 8 });
+}
+
+function drawRiskAssessmentNativePdfCellBackground(doc, x, y, width, height, format = {}, header = false) {
+  const fillColor = format.fillColor || (header ? "#E5E7EB" : "");
+  doc.save();
+  doc.rect(x, y, width, height);
+  doc.lineWidth(0.7);
+  if (fillColor) {
+    doc.fillAndStroke(fillColor, "#111827");
+  } else {
+    doc.strokeColor("#111827").stroke();
+  }
+  doc.restore();
+}
+
+function renderRiskAssessmentNativePdfTable(doc, helpers, table = {}) {
+  const columns = Array.isArray(table.columns) ? table.columns : [];
+  const rows = Array.isArray(table.rows) ? table.rows : [];
+  if (!columns.length || !rows.length) {
+    return;
+  }
+  const layout = table.pageOrientation === "landscape" ? "landscape" : "portrait";
+  if (helpers.layout !== layout) {
+    helpers.setLayout(layout, { forceNewPage: true });
+  }
+  helpers.ensureSpace(72, { layout });
+
+  const paddingX = columns.length > 10 ? 3 : 5;
+  const paddingY = columns.length > 10 ? 3 : 4;
+  const baseFontSize = Math.max(5.8, Math.min(8.5, columns.length > 10 ? 6.2 : columns.length > 6 ? 7 : 8));
+  const rawWidths = columns.map((column) => Math.max(24, Number(column.width) || 100));
+  const rawTotal = rawWidths.reduce((sum, width) => sum + width, 0) || columns.length;
+  const columnWidths = rawWidths.map((width) => (helpers.availableWidth * width) / rawTotal);
+
+  rows.forEach((row) => {
+    const cells = Array.isArray(row.cells) ? row.cells : [];
+    const rowCells = columns.map((_, index) => cells[index] ?? {});
+    const cellHeights = rowCells.map((cell, index) => {
+      const format = getRiskAssessmentNativePdfCellFormat(cell, row);
+      const text = getRiskAssessmentNativePdfCellText(cell);
+      const fontSize = Number.isFinite(Number(format.fontSize)) ? Math.max(5.5, Math.min(10, Number(format.fontSize))) : baseFontSize;
+      doc.font(format.bold || row.header ? "dejavu-bold" : "dejavu").fontSize(fontSize);
+      return doc.heightOfString(text || "-", {
+        width: Math.max(12, columnWidths[index] - paddingX * 2),
+        lineGap: 0.4,
+      }) + paddingY * 2;
+    });
+    const rowHeight = Math.max(18, Math.min(132, ...cellHeights));
+    helpers.ensureSpace(rowHeight + 6, { layout });
+    const startX = doc.page.margins.left;
+    const startY = doc.y;
+    let x = startX;
+
+    rowCells.forEach((cell, index) => {
+      const format = getRiskAssessmentNativePdfCellFormat(cell, row);
+      const text = getRiskAssessmentNativePdfCellText(cell) || "-";
+      const width = columnWidths[index];
+      const fontSize = Number.isFinite(Number(format.fontSize)) ? Math.max(5.5, Math.min(10, Number(format.fontSize))) : baseFontSize;
+      drawRiskAssessmentNativePdfCellBackground(doc, x, startY, width, rowHeight, format, row.header);
+      if (format.card) {
+        const cardFill = format.card.fillColor || "#FFFFFF";
+        const cardBorder = format.card.borderColor || "#94A3B8";
+        doc.save();
+        doc.roundedRect(x + 4, startY + 4, Math.max(12, width - 8), Math.max(10, rowHeight - 8), 4)
+          .fillAndStroke(cardFill, cardBorder);
+        doc.restore();
+      }
+      doc.font(format.bold || row.header ? "dejavu-bold" : "dejavu").fontSize(fontSize).fillColor(format.card?.textColor || "#111827").text(text, x + paddingX, startY + paddingY, {
+        width: Math.max(12, width - paddingX * 2),
+        align: format.align === "center" || row.header ? "center" : format.align === "right" ? "right" : "left",
+        lineGap: 0.4,
+        height: Math.max(10, rowHeight - paddingY * 2),
+        ellipsis: true,
+      });
+      x += width;
+    });
+    doc.y = startY + rowHeight;
+  });
+
+  doc.moveDown(0.7);
+  if (layout === "landscape") {
+    helpers.setLayout("portrait", { forceNewPage: true });
+  }
+}
+
+function renderRiskAssessmentNativePdfBlock(doc, helpers, block = {}) {
+  if (!block) {
+    return;
+  }
+  if (block.__docxBlockType === "blocks") {
+    (Array.isArray(block.blocks) ? block.blocks : []).forEach((entry) => renderRiskAssessmentNativePdfBlock(doc, helpers, entry));
+    return;
+  }
+  if (block.__docxBlockType === "table") {
+    renderRiskAssessmentNativePdfTable(doc, helpers, block);
+    return;
+  }
+  if (block.__docxBlockType === "rich_text") {
+    renderRiskAssessmentNativePdfRichText(doc, helpers, block.html || "");
+    return;
+  }
+  if (block.type === "heading") {
+    const level = Math.max(1, Math.min(4, Number(block.level) || 2));
+    renderRiskAssessmentNativePdfText(doc, helpers, block.text, {
+      bold: true,
+      fontSize: level <= 1 ? 18 : level === 2 ? 14 : level === 3 ? 11.5 : 10,
+      color: level <= 2 ? "#111827" : "#17233f",
+      spacingAfter: level <= 2 ? 8 : 5,
+    });
+    return;
+  }
+  if (block.type === "paragraph") {
+    renderRiskAssessmentNativePdfText(doc, helpers, block.text, { fontSize: 9, spacingAfter: 5 });
+  }
+}
+
+export async function buildRiskAssessmentNativePdfBuffer(placeholders = {}, options = {}) {
+  const doc = new PDFDocument({
+    autoFirstPage: true,
+    size: "A4",
+    layout: "portrait",
+    margins: {
+      top: 40,
+      bottom: 40,
+      left: 42,
+      right: 42,
+    },
+    info: {
+      Title: clean(options.title || placeholders.RISK_TITLE) || "Procjena rizika",
+      Author: "SafeNexus",
+      Subject: "Procjena rizika",
+    },
+  });
+  doc.registerFont("dejavu", PDF_FONTS.regular);
+  doc.registerFont("dejavu-bold", PDF_FONTS.bold);
+  doc.registerFont("dejavu-italic", PDF_FONTS.italic);
+  doc.font("dejavu");
+  const helpers = createPdfLayoutHelpers(doc);
+
+  renderRiskAssessmentNativePdfText(doc, helpers, placeholders.RISK_TITLE || "Procjena rizika", {
+    bold: true,
+    fontSize: 20,
+    align: "center",
+    spacingAfter: 8,
+  });
+  renderRiskAssessmentNativePdfText(doc, helpers, [
+    placeholders.RISK_COMPANY,
+    placeholders.RISK_NUMBER ? `Broj: ${placeholders.RISK_NUMBER}` : "",
+    placeholders.RISK_DATE ? `Datum: ${placeholders.RISK_DATE}` : "",
+  ].filter(Boolean).join("\n"), {
+    fontSize: 10,
+    align: "center",
+    spacingAfter: 18,
+  });
+
+  getRiskAssessmentNativePdfBlocks(placeholders).forEach((block) => renderRiskAssessmentNativePdfBlock(doc, helpers, block));
+  return await pdfBufferFromDocument(doc);
+}
+
 function resolvePdfSignatureFieldPositioning(spec = {}, rolePositioningSettings = {}) {
   const keys = [
     clean(spec.fieldName).toUpperCase(),
@@ -7625,6 +7866,9 @@ function createPdfLayoutHelpers(doc) {
   const helpers = {
     get pageNumber() {
       return currentPageIndex + 1;
+    },
+    get layout() {
+      return currentLayout;
     },
     get availableWidth() {
       return doc.page.width - doc.page.margins.left - doc.page.margins.right;

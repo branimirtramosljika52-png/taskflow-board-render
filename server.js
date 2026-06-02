@@ -31,6 +31,7 @@ import {
   buildPdfFromHtmlTemplateBuffer,
   buildPdfFromRenderModel,
   buildPdfFromTemplateBuffer,
+  buildRiskAssessmentNativePdfBuffer,
   buildDocxFromTemplateBuffer,
   convertHtmlToPdfBuffer,
   convertDocxBuffersToPdfBuffers,
@@ -10503,12 +10504,9 @@ async function handleApiRequest(request, response, url) {
         { fallback: "procjena-rizika", extension: isPdfExport ? "pdf" : "docx" },
       );
       const generatedDocument = isPdfExport
-        ? await buildPdfFromTemplateBuffer(referenceDocument.buffer, placeholders, {
+        ? await buildRiskAssessmentNativePdfBuffer(placeholders, {
           fileName,
           title: "Procjena rizika",
-          preferHtmlConversion: true,
-          preferWarmChromium: true,
-          disableHtmlPdfCliFallback: true,
         })
         : await buildDocxFromTemplateBuffer(referenceDocument.buffer, placeholders, {
           fileName,

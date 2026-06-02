@@ -14,6 +14,7 @@ import {
   buildOfferHtmlTemplate,
   buildOfferPdfBuffer,
   buildPdfFromRenderModel,
+  buildRiskAssessmentNativePdfBuffer,
   collectPdfSignatureFieldSpecsFromEntry,
   convertWordBufferToHtmlTemplate,
   readStoredDocumentBuffer,
@@ -257,6 +258,54 @@ test("docx export renders a multi-block table section placeholder", async () => 
   assert.match(fallbackHtml, /@page sn-word-landscape/);
   assert.match(fallbackHtml, /data-word-orientation="landscape"/);
   assert.ok((fallbackHtml.match(/<table/g) || []).length >= 2);
+});
+
+test("risk assessment native PDF keeps landscape tables isolated", async () => {
+  const pdfBuffer = await buildRiskAssessmentNativePdfBuffer({
+    RISK_TITLE: "Procjena rizika - test",
+    RISK_COMPANY: "Test d.o.o.",
+    RISK_JOBS: {
+      __docxBlockType: "blocks",
+      blocks: [
+        { type: "heading", text: "Analiza radnih mjesta", level: 2 },
+        {
+          __docxBlockType: "table",
+          pageOrientation: "landscape",
+          columns: [
+            { id: "hazard", label: "Identifikacija opasnosti", width: 300 },
+            { id: "probability", label: "Vjerojatnost", width: 120 },
+            { id: "risk", label: "Matrica procjene rizika", width: 140 },
+          ],
+          rows: [
+            {
+              id: "head",
+              header: true,
+              cells: [{ text: "Identifikacija opasnosti" }, { text: "Vjerojatnost" }, { text: "Matrica procjene rizika" }],
+            },
+            {
+              id: "row-1",
+              cells: [
+                { text: "Strojevi i oprema" },
+                { text: "Srednja vjerojatnost", format: { align: "center" } },
+                {
+                  text: "Veliki rizik (3)",
+                  format: { align: "center", bold: true, card: { fillColor: "#FEE2E2", borderColor: "#94A3B8" } },
+                },
+              ],
+            },
+          ],
+        },
+        { type: "paragraph", text: "Nakon tablice opet portrait sadržaj." },
+      ],
+    },
+  });
+
+  const pdf = await PDFDocument.load(pdfBuffer);
+  const sizes = pdf.getPages().map((page) => {
+    const { width, height } = page.getSize();
+    return `${Math.round(width)}x${Math.round(height)}`;
+  });
+  assert.deepEqual(sizes, ["595x842", "842x595", "595x842"]);
 });
 
 test("docx export renders signature group placeholders as visible signature blocks", async () => {
