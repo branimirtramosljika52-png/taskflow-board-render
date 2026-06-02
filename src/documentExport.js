@@ -2318,9 +2318,9 @@ function buildWordTableBlockXml(table = {}) {
     return tableXml;
   }
   return [
-    buildWordSectionBreakXml("portrait"),
-    tableXml,
     buildWordSectionBreakXml("landscape", { margin: 720 }),
+    tableXml,
+    buildWordSectionBreakXml("portrait"),
   ].join("");
 }
 
@@ -2351,10 +2351,10 @@ function buildWordParagraphBlockXml(block = {}) {
 
 function buildWordLandscapeHeadingTableGroupXml(heading = {}, table = {}) {
   return [
-    buildWordSectionBreakXml("portrait"),
+    buildWordSectionBreakXml("landscape", { margin: 720 }),
     buildWordHeadingBlockXml(heading),
     buildWordTableXml(table),
-    buildWordSectionBreakXml("landscape", { margin: 720 }),
+    buildWordSectionBreakXml("portrait"),
   ].join("");
 }
 
