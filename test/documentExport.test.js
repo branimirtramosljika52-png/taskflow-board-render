@@ -244,6 +244,8 @@ test("docx export renders a multi-block table section placeholder", async () => 
   assert.match(outputXml, /w:color="94A3B8"/);
   assert.equal((outputXml.match(/w:orient="landscape"/g) || []).length, 1);
   assert.equal((outputXml.match(/<w:tbl>/g) || []).length, 2);
+  assert.ok(outputXml.indexOf('w:orient="landscape"') < outputXml.indexOf("<w:tbl>"));
+  assert.ok(outputXml.lastIndexOf('<w:pgSz w:w="11906" w:h="16838"') > outputXml.lastIndexOf("</w:tbl>"));
 
   const fallbackHtml = (await convertWordBufferToHtmlTemplate(outputBuffer, {
     fileName: "procjena-rizika.docx",

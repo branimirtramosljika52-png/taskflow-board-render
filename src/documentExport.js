@@ -2314,9 +2314,9 @@ function buildWordTableBlockXml(table = {}) {
     return tableXml;
   }
   return [
-    buildWordSectionBreakXml("portrait"),
-    tableXml,
     buildWordSectionBreakXml("landscape", { margin: 720 }),
+    tableXml,
+    buildWordSectionBreakXml("portrait"),
   ].join("");
 }
 
