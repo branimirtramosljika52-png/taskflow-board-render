@@ -8,6 +8,9 @@ const STL_EC_PATTERN = /\b(?:E[CZ]\s*(?:broj|number|no\.?)?\s*[:\-]?\s*)?(\d{3}-
 const STL_REACH_PATTERN = /\b\d{2}-\d{10}-\d{2}-\d{4}\b/g;
 const STL_HAZARD_PATTERN = /\b(?:EUH\d{3}|H\d{3}[A-Z]?)\b[^.\n;]*(?:[.;][^\n]*)?/gi;
 const STL_PRECAUTION_PATTERN = /\bP\d{3}[A-Z]?\b[^.\n;]*(?:[.;][^\n]*)?/gi;
+const STL_CAS_NAME_ALIASES = new Map([
+  ["8006-61-9", "Benzin"],
+]);
 
 function normalizeStlText(value = "") {
   return String(value ?? "")
@@ -16,6 +19,13 @@ function normalizeStlText(value = "") {
     .replace(/\r\n?/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function normalizeStlSearchText(value = "") {
+  return normalizeStlText(value)
+    .toLocaleLowerCase("hr-HR")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
 }
 
 function uniqueStrings(values = [], limit = Number.POSITIVE_INFINITY) {
@@ -226,10 +236,10 @@ function findInlineValueAfterLabel(line = "", labels = []) {
 }
 
 function findValueAfterLabel(lines = [], labels = []) {
-  const normalizedLabels = labels.map((label) => String(label).toLowerCase());
+  const normalizedLabels = labels.map((label) => normalizeStlSearchText(label));
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
-    const normalizedLine = line.toLowerCase();
+    const normalizedLine = normalizeStlSearchText(line);
     const label = normalizedLabels.find((candidate) => normalizedLine.includes(candidate));
     if (!label) {
       continue;
@@ -237,7 +247,7 @@ function findValueAfterLabel(lines = [], labels = []) {
     const inlineParts = line.split(/[:\-–]\s+/);
     if (inlineParts.length > 1) {
       const value = inlineParts.slice(1).join(" - ").trim();
-      if (value && !normalizedLabels.some((candidate) => value.toLowerCase().includes(candidate))) {
+      if (value && !normalizedLabels.some((candidate) => normalizeStlSearchText(value).includes(candidate))) {
         return value;
       }
     }
@@ -411,12 +421,20 @@ function cleanStlChemicalNameCandidate(value = "") {
     .trim();
 }
 
+function isStlBoilerplateNameCandidate(value = "") {
+  const normalized = normalizeStlSearchText(value);
+  return /\b(?:sigurnosno\s*-?\s*tehnicki\s+list|safety\s+data\s+sheet|sukladno\s+uredbi|sukladan\s+uredbi|according\s+to\s+regulation|odjeljak|section|stranica|page)\b/i.test(normalized);
+}
+
 function isLikelyStlChemicalName(value = "") {
   const text = cleanStlChemicalNameCandidate(value);
   if (text.length < 2 || text.length > 90) {
     return false;
   }
   if (STL_CAS_STRICT_PATTERN.test(text) || /^[\d\s.,;:%/+()-]+$/.test(text)) {
+    return false;
+  }
+  if (isStlBoilerplateNameCandidate(text)) {
     return false;
   }
   if (/\b(?:odjeljak|section|sigurnosno|tehnički|tehnicki|safety data sheet|classification|klasifikacija|opasnost|upozorenje)\b/i.test(text)) {
@@ -454,6 +472,10 @@ function findStlChemicalNameNearCas(lines = [], casNumber = "") {
 function buildStlChemicalName(lines = []) {
   const nameLabels = [
     "naziv proizvoda",
+    "ime proizvoda",
+    "naziv tvari",
+    "ime tvari",
+    "trgovački naziv",
     "trgovacki naziv",
     "identifikacijska oznaka",
     "identifikacija tvari",
@@ -470,6 +492,10 @@ function buildStlChemicalName(lines = []) {
   }
   const value = findValueAfterLabel(lines, [
     "naziv proizvoda",
+    "ime proizvoda",
+    "naziv tvari",
+    "ime tvari",
+    "trgovački naziv",
     "trgovački naziv",
     "trgovacki naziv",
     "identifikacijska oznaka",
@@ -479,14 +505,24 @@ function buildStlChemicalName(lines = []) {
     "substance name",
   ]);
   if (value) {
-    return cleanStlChemicalNameCandidate(trimStlInlineFieldValue(value)) || value.replace(/^[:\-\s]+/, "").trim();
+    const candidate = cleanStlChemicalNameCandidate(trimStlInlineFieldValue(value)) || value.replace(/^[:\-\s]+/, "").trim();
+    return isLikelyStlChemicalName(candidate) ? candidate : "";
   }
   const titleLine = lines.find((line) => (
     !/sigurnosno[-\s]?tehnički|sigurnosno[-\s]?tehnicki|safety data sheet|odjeljak|section/i.test(line)
+    && !isStlBoilerplateNameCandidate(line)
     && line.length >= 3
     && line.length <= 90
   ));
   return titleLine || "";
+}
+
+function resolveStlChemicalNameFallback(chemical = {}, lines = []) {
+  const nearCasName = findStlChemicalNameNearCas(lines, chemical.casNumber);
+  if (nearCasName) {
+    return nearCasName;
+  }
+  return STL_CAS_NAME_ALIASES.get(normalizeCasNumber(chemical.casNumber)) || "";
 }
 
 export function extractStlChemicalDataFromText(text = "", metadata = {}) {
@@ -526,7 +562,10 @@ export function extractStlChemicalDataFromText(text = "", metadata = {}) {
     sourceFileName: String(metadata.fileName || ""),
     extractedAt: new Date().toISOString(),
   };
-  chemical.name = chemical.name || findStlChemicalNameNearCas(lines, chemical.casNumber);
+  if (!isLikelyStlChemicalName(chemical.name)) {
+    chemical.name = "";
+  }
+  chemical.name = chemical.name || resolveStlChemicalNameFallback(chemical, lines);
 
   return {
     ok: true,

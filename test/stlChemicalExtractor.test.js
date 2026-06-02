@@ -83,6 +83,17 @@ test("STL chemical extractor trims product name from single-line PDF text", () =
   assert.equal(payload.chemicals[0].casNumber, "71-43-2");
 });
 
+test("STL chemical extractor rejects SDS title as chemical name", () => {
+  const payload = extractStlChemicalDataFromText(
+    "Sigurnosno-tehnički list sukladno Uredbi (EZ) br. 1907/2006 Stranica 1 od 12 CAS broj: 8006-61-9 ODJELJAK 2 Identifikacija opasnosti GHS02 H224 P210",
+    { fileName: "SDB-27P5-HR-HR.pdf" },
+  );
+
+  assert.equal(payload.ok, true);
+  assert.equal(payload.chemicals[0].name, "Benzin");
+  assert.equal(payload.chemicals[0].casNumber, "8006-61-9");
+});
+
 test("legacy DOC extraction keeps readable STL identifiers", () => {
   const buffer = Buffer.from("SIGURNOSNO-TEHNICKI LIST\0Naziv proizvoda: Test\0CAS: 64-17-5", "utf16le");
   const text = extractTextFromStlDocBuffer(buffer);

@@ -122828,6 +122828,9 @@ const RISK_ASSESSMENT_OFFICIAL_SUBSTANCE_RENDER_LIMIT = 80;
 const RISK_ASSESSMENT_OFFICIAL_SUBSTANCE_BY_ID = new Map(
   RISK_CHEMICAL_SUBSTANCES_CATALOG.map((item) => [item.id, item]),
 );
+const RISK_ASSESSMENT_CAS_NAME_ALIASES = new Map([
+  ["8006-61-9", "Benzin"],
+]);
 
 function normalizeRiskAssessmentChemicalTextList(value = []) {
   const entries = Array.isArray(value)
@@ -122857,12 +122860,30 @@ function cleanRiskAssessmentChemicalName(value = "") {
     .toLocaleLowerCase("hr-HR")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
+  const isBoilerplate = /\b(?:sigurnosno\s*-?\s*tehnicki\s+list|safety\s+data\s+sheet|sukladno\s+uredbi|sukladan\s+uredbi|according\s+to\s+regulation)\b/i.test(normalized);
   if (!/(sigurnosno|safety data sheet|naziv proizvoda|product name|trade name|substance name)/i.test(normalized)) {
     return text;
   }
   const match = text.match(/\b(?:naziv\s+proizvoda|product\s+name|trade\s+name|substance\s+name)\s*:?\s*(.+)$/i);
+  if (!match && isBoilerplate) {
+    return "";
+  }
   const candidate = trimRiskAssessmentInlineChemicalName(match?.[1] || text);
-  return candidate && candidate.length <= 120 ? candidate : text;
+  if (!candidate || candidate.length > 120) {
+    return isBoilerplate ? "" : text;
+  }
+  const normalizedCandidate = candidate
+    .toLocaleLowerCase("hr-HR")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  return /\b(?:sigurnosno\s*-?\s*tehnicki\s+list|safety\s+data\s+sheet|sukladno\s+uredbi|sukladan\s+uredbi)\b/i.test(normalizedCandidate)
+    ? ""
+    : candidate;
+}
+
+function resolveRiskAssessmentChemicalNameFallback(initial = {}) {
+  const casNumber = String(initial.casNumber || initial.cas || initial.casNumbers?.[0] || "").replace(/\s+/g, "");
+  return RISK_ASSESSMENT_CAS_NAME_ALIASES.get(casNumber) || "";
 }
 
 function joinRiskAssessmentChemicalValues(value = []) {
@@ -122876,11 +122897,14 @@ function createRiskAssessmentChemicalDraft(initial = {}) {
   const pictograms = normalizeRiskAssessmentChemicalTextList(initial.pictograms);
   const probability = String(initial.probability || "mv");
   const consequence = String(initial.consequence || "mš");
+  const casNumber = String(initial.casNumber || initial.cas || initial.casNumbers?.[0] || "");
+  const name = cleanRiskAssessmentChemicalName(initial.name || initial.title || initial.pubChemName || "")
+    || resolveRiskAssessmentChemicalNameFallback({ ...initial, casNumber });
   return {
     id: String(initial.id || crypto.randomUUID()),
     order: initial.order || "",
-    name: cleanRiskAssessmentChemicalName(initial.name || initial.title || initial.pubChemName || ""),
-    casNumber: String(initial.casNumber || initial.cas || initial.casNumbers?.[0] || ""),
+    name,
+    casNumber,
     ecNumber: String(initial.ecNumber || initial.ec || initial.ecNumbers?.[0] || ""),
     reachNumber: String(initial.reachNumber || initial.reach || initial.reachNumbers?.[0] || ""),
     formula: String(initial.formula || initial.molecularFormula || ""),

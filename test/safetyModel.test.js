@@ -509,6 +509,32 @@ test("risk assessments keep chemical registry data from PubChem and STL", () => 
   assert.equal(filterRiskAssessments([assessment], { query: "biološki agensi" }).length, 1);
 });
 
+test("risk assessments clean STL title boilerplate from chemical names", () => {
+  const state = buildState();
+  const assessment = createRiskAssessment(
+    {
+      organizationId: "org-1",
+      companyId: "company-1",
+      locationId: "location-1",
+      title: "Procjena rizika - benzin",
+      chemicals: [
+        {
+          name: "Sigurnosno-tehnički list sukladno Uredbi",
+          casNumber: "8006-61-9",
+          source: "STL",
+          stlFileName: "SDB-27P5-HR-HR.pdf",
+        },
+      ],
+    },
+    state,
+    () => "risk-chemicals-boilerplate",
+    () => "2026-06-02T06:40:00.000Z",
+  );
+
+  assert.equal(assessment.chemicals[0].name, "Benzin");
+  assert.equal(filterRiskAssessments([assessment], { query: "Benzin" }).length, 1);
+});
+
 test("risk assessments keep report templates with section placeholders", () => {
   const state = buildState();
   const assessment = createRiskAssessment(

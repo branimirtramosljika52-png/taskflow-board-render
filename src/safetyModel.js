@@ -5379,6 +5379,30 @@ function normalizeRiskAssessmentChemicalTextList(value = []) {
     .slice(0, 80);
 }
 
+const RISK_ASSESSMENT_CAS_NAME_ALIASES = new Map([
+  ["8006-61-9", "Benzin"],
+]);
+
+function normalizeRiskAssessmentChemicalCasNumber(value = "") {
+  return normalizeText(value).replace(/\s+/g, "");
+}
+
+function isRiskAssessmentChemicalNameBoilerplate(value = "") {
+  const normalized = normalizeText(value)
+    .toLocaleLowerCase("hr-HR")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  return /\b(?:sigurnosno\s*-?\s*tehnicki\s+list|safety\s+data\s+sheet|sukladno\s+uredbi|sukladan\s+uredbi|according\s+to\s+regulation)\b/i.test(normalized);
+}
+
+function normalizeRiskAssessmentChemicalName(value = "", casNumber = "") {
+  const name = normalizeText(value);
+  if (!isRiskAssessmentChemicalNameBoilerplate(name)) {
+    return name;
+  }
+  return RISK_ASSESSMENT_CAS_NAME_ALIASES.get(normalizeRiskAssessmentChemicalCasNumber(casNumber)) || "";
+}
+
 function normalizeRiskAssessmentChemicals(items = []) {
   if (!Array.isArray(items)) {
     return [];
@@ -5387,7 +5411,7 @@ function normalizeRiskAssessmentChemicals(items = []) {
   return items.map((item, index) => ({
     id: normalizeId(item?.id) || crypto.randomUUID(),
     order: Number.isFinite(Number(item?.order)) ? Number(item.order) : index + 1,
-    name: normalizeText(item?.name),
+    name: normalizeRiskAssessmentChemicalName(item?.name, item?.casNumber ?? item?.cas),
     casNumber: normalizeText(item?.casNumber ?? item?.cas),
     ecNumber: normalizeText(item?.ecNumber ?? item?.ec),
     reachNumber: normalizeText(item?.reachNumber ?? item?.reach),
