@@ -2303,7 +2303,6 @@ function buildWordSectionBreakXml(orientation = "portrait", options = {}) {
     <w:p>
       <w:pPr>
         <w:sectPr>
-          <w:type w:val="nextPage"/>
           <w:pgSz w:w="${pageWidth}" w:h="${pageHeight}"${isLandscape ? ' w:orient="landscape"' : ""}/>
           <w:pgMar w:top="${margin}" w:right="${margin}" w:bottom="${margin}" w:left="${margin}" w:header="${headerFooterMargin}" w:footer="${headerFooterMargin}" w:gutter="0"/>
         </w:sectPr>
@@ -2318,9 +2317,9 @@ function buildWordTableBlockXml(table = {}) {
     return tableXml;
   }
   return [
-    buildWordSectionBreakXml("landscape", { margin: 720 }),
-    tableXml,
     buildWordSectionBreakXml("portrait"),
+    tableXml,
+    buildWordSectionBreakXml("landscape", { margin: 720 }),
   ].join("");
 }
 
@@ -2351,10 +2350,10 @@ function buildWordParagraphBlockXml(block = {}) {
 
 function buildWordLandscapeHeadingTableGroupXml(heading = {}, table = {}) {
   return [
-    buildWordSectionBreakXml("landscape", { margin: 720 }),
+    buildWordSectionBreakXml("portrait"),
     buildWordHeadingBlockXml(heading),
     buildWordTableXml(table),
-    buildWordSectionBreakXml("portrait"),
+    buildWordSectionBreakXml("landscape", { margin: 720 }),
   ].join("");
 }
 
