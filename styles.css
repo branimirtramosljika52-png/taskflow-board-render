@@ -57766,10 +57766,14 @@ button.work-order-editor-section-head:focus-visible {
   position: fixed;
   top: 14px;
   right: 14px;
-  bottom: 14px;
+  bottom: auto;
   left: 14px;
   z-index: 2190;
   width: auto;
+  height: calc(100vh - 28px);
+  height: calc(100dvh - 28px);
+  max-height: calc(100vh - 28px);
+  max-height: calc(100dvh - 28px);
   max-width: none;
   overflow: hidden;
 }
@@ -66159,8 +66163,12 @@ body.is-risk-stl-review-open {
   display: flex;
   align-items: center;
   gap: 8px;
+  position: relative;
+  z-index: 4;
+  flex-shrink: 0;
   min-width: 0;
-  padding: 9px 14px;
+  min-height: 64px;
+  padding: 9px 14px calc(9px + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid rgba(255, 255, 255, 0.16);
   background:
     linear-gradient(90deg, rgba(20, 18, 33, 0.98), rgba(25, 25, 42, 0.98));
@@ -66172,7 +66180,7 @@ body.is-risk-stl-review-open {
 .risk-assessment-dock button {
   display: grid;
   gap: 2px;
-  min-width: 116px;
+  min-width: 118px;
   padding: 8px 12px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 12px;
