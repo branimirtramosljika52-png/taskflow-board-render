@@ -16,6 +16,8 @@
   DOCUMENT_TEMPLATE_TYPE_OPTIONS,
   CONTRACT_STATUS_OPTIONS,
   CONTRACT_TEMPLATE_STATUS_OPTIONS,
+  CLIENT_PORTAL_RECORD_STATUS_OPTIONS,
+  CLIENT_PORTAL_RECORD_TYPE_OPTIONS,
   DRAWING_PROJECT_STATUS_OPTIONS,
   DRAWING_PROJECT_TYPE_OPTIONS,
   LEGAL_FRAMEWORK_STATUS_OPTIONS,
@@ -105,10 +107,12 @@
   sortWorkOrders,
   createLearningTest,
   filterContracts,
+  filterClientPortalRecords,
   filterContractTemplates,
   filterDrawingProjects,
   updateLearningTest,
   sortContracts,
+  sortClientPortalRecords,
   sortContractTemplates,
   createDrawingProject,
   sortDrawingProjects,
@@ -1890,6 +1894,7 @@ const state = {
   contracts: [],
   drawings: [],
   contractTemplates: [],
+  clientPortalRecords: [],
   vehicles: [],
   legalFrameworks: [],
   rulebooks: [],
@@ -2195,6 +2200,10 @@ const state = {
     status: "all",
   },
   clientPortalAccessModalOpen: false,
+  clientPortalRecordsUi: {
+    activeType: "worker",
+    editId: "",
+  },
   clientPortalPreviewCollapsed: {
     workOrders: false,
     documents: false,
@@ -4045,6 +4054,10 @@ const clientPortalPreviewScope = document.querySelector("#client-portal-preview-
 const clientPortalPreviewCompany = document.querySelector("#client-portal-preview-company");
 const clientPortalPreviewLocation = document.querySelector("#client-portal-preview-location");
 const clientPortalPreviewList = document.querySelector("#client-portal-preview-list");
+const clientPortalRegisterPanel = document.querySelector("#client-portal-register-panel");
+const clientPortalRecordsRoot = document.querySelector("#client-portal-records-root");
+const clientPortalRecordsCount = document.querySelector("#client-portal-records-count");
+const clientPortalRecordsFeedback = document.querySelector("#client-portal-records-feedback");
 const legalFrameworkModule = document.querySelector("#legal-framework-module");
 const legalFrameworkTotalCount = document.querySelector("#legal-framework-total-count");
 const legalFrameworkActiveCount = document.querySelector("#legal-framework-active-count");
@@ -8226,6 +8239,10 @@ function getCanManageClientPortal() {
   return hasAppPermissionClient("clientPortal.manage");
 }
 
+function getCanUseClientPortalRecords() {
+  return getCanManageClientPortal() || isClientPortalUser(state.user);
+}
+
 function getCommercialDocumentPermissionKey(contextKey = getActiveCommercialDocumentKey(), action = "view") {
   const normalizedContext = contextKey === "purchase-orders" ? "purchaseOrders" : "offers";
   return `${normalizedContext}.${action}`;
@@ -9237,6 +9254,7 @@ function applySnapshot(payload, options = {}) {
   state.contracts = payload.contracts ?? [];
   state.drawings = payload.drawings ?? [];
   state.contractTemplates = payload.contractTemplates ?? [];
+  state.clientPortalRecords = payload.clientPortalRecords ?? [];
   state.vehicles = payload.vehicles ?? [];
   state.legalFrameworks = payload.legalFrameworks ?? [];
   state.rulebooks = payload.rulebooks ?? [];
@@ -22064,7 +22082,7 @@ function activateSidebarItem(itemName, options = {}) {
     if (itemConfig.module === "contract" && !getCanViewContracts()) {
       return;
     }
-    if (itemConfig.module === "client-portal" && !getCanManageClientPortal()) {
+    if (itemConfig.module === "client-portal" && !getCanUseClientPortalRecords()) {
       return;
     }
     if (itemConfig.module === "jobs" && !getCanViewJobs()) {
@@ -80595,7 +80613,7 @@ function renderAuthState() {
       companyAddNavItem.hidden = !canCreateCompany;
     }
     if (companyClientPortalNavItem) {
-      companyClientPortalNavItem.hidden = !getCanManageClientPortal();
+      companyClientPortalNavItem.hidden = !getCanUseClientPortalRecords();
     }
     if (companyContractNavItem) {
       companyContractNavItem.hidden = !getCanViewContracts();
@@ -80623,7 +80641,7 @@ function renderAuthState() {
       state.activeSidebarItem = canViewCompanies ? "list-company" : "dashboard";
       state.activeSidebarGroup = canViewCompanies ? "company" : "home";
     }
-    if (!getCanManageClientPortal() && state.activeView === "module" && state.activeModuleItem === "client-portal") {
+    if (!getCanUseClientPortalRecords() && state.activeView === "module" && state.activeModuleItem === "client-portal") {
       state.activeView = "selfdash";
       state.activeModuleItem = "";
       state.activeSidebarItem = "dashboard";
@@ -83558,12 +83576,525 @@ function renderClientPortalPreview() {
   clientPortalPreviewList.replaceChildren(workOrdersSection, documentsSection, trainingsSection, riskAssessmentSection);
 }
 
+function getClientPortalRecordTypeLabel(type = "") {
+  return getOptionLabel(CLIENT_PORTAL_RECORD_TYPE_OPTIONS, type) || "Evidencija";
+}
+
+function getClientPortalRecordStatusLabel(status = "") {
+  return getOptionLabel(CLIENT_PORTAL_RECORD_STATUS_OPTIONS, status) || "Aktivno";
+}
+
+function normalizeClientPortalRecordUiType(type = "") {
+  const normalized = String(type || "").trim();
+  return CLIENT_PORTAL_RECORD_TYPE_OPTIONS.some((option) => option.value === normalized)
+    ? normalized
+    : "worker";
+}
+
+function getClientPortalRecordsCompanyId() {
+  if (getCanManageClientPortal()) {
+    return getClientPortalSelectedCompanyId();
+  }
+
+  return normalizeClientScopeIdsClient(state.user?.clientCompanyIds)[0]
+    || state.companies[0]?.id
+    || "";
+}
+
+function getClientPortalRecordLocationOptions(companyId = "") {
+  return (state.locations ?? []).filter((location) => String(location.companyId) === String(companyId));
+}
+
+function getClientPortalWorkerRecords(companyId = "") {
+  return sortClientPortalRecords(filterClientPortalRecords(state.clientPortalRecords ?? [], {
+    type: "worker",
+    companyId,
+  }));
+}
+
+function getClientPortalRecordDraft(record = null) {
+  return record
+    ? {
+      ...record,
+      details: { ...(record.details ?? {}) },
+    }
+    : {
+      id: "",
+      type: state.clientPortalRecordsUi.activeType || "worker",
+      status: "active",
+      locationId: "",
+      details: {},
+      note: "",
+    };
+}
+
+function createClientPortalRecordField({
+  name,
+  label,
+  value = "",
+  type = "text",
+  options = null,
+  textarea = false,
+  required = false,
+  placeholder = "",
+}) {
+  const wrapper = document.createElement("label");
+  wrapper.className = textarea ? "field client-portal-record-field is-wide" : "field client-portal-record-field";
+  const labelElement = document.createElement("span");
+  labelElement.textContent = label;
+  wrapper.append(labelElement);
+
+  if (textarea) {
+    const input = document.createElement("textarea");
+    input.name = name;
+    input.rows = 3;
+    input.value = value || "";
+    input.placeholder = placeholder;
+    input.required = required;
+    wrapper.append(input);
+    return wrapper;
+  }
+
+  if (Array.isArray(options)) {
+    const select = document.createElement("select");
+    select.name = name;
+    select.required = required;
+    select.replaceChildren(...options.map((option) => {
+      const element = new Option(option.label, option.value);
+      if (option.dataset && typeof option.dataset === "object") {
+        Object.entries(option.dataset).forEach(([key, datasetValue]) => {
+          element.dataset[key] = datasetValue;
+        });
+      }
+      return element;
+    }));
+    select.value = value || "";
+    wrapper.append(select);
+    return wrapper;
+  }
+
+  const input = document.createElement("input");
+  input.name = name;
+  input.type = type;
+  input.value = value || "";
+  input.placeholder = placeholder;
+  input.required = required;
+  wrapper.append(input);
+  return wrapper;
+}
+
+function getClientPortalRecordFormFields(type = "worker", record = null, companyId = "") {
+  const draft = getClientPortalRecordDraft(record);
+  const details = draft.details ?? {};
+  const locations = getClientPortalRecordLocationOptions(companyId);
+  const workers = getClientPortalWorkerRecords(companyId).filter((worker) => String(worker.id) !== String(record?.id || ""));
+  const workerOptions = [
+    { value: "", label: "Odaberi radnika" },
+    ...workers.map((worker) => ({
+      value: String(worker.id),
+      label: worker.title || worker.details?.fullName || "Radnik",
+      dataset: { workerName: worker.title || worker.details?.fullName || "" },
+    })),
+  ];
+  const locationOptions = [
+    { value: "", label: locations.length ? "Bez lokacije" : "Sve lokacije" },
+    ...locations.map((location) => ({ value: String(location.id), label: location.name || "Lokacija" })),
+  ];
+  const statusOptions = CLIENT_PORTAL_RECORD_STATUS_OPTIONS.map((option) => ({ value: option.value, label: option.label }));
+  const fields = [
+    createClientPortalRecordField({
+      name: "locationId",
+      label: "Lokacija",
+      value: draft.locationId || "",
+      options: locationOptions,
+    }),
+    createClientPortalRecordField({
+      name: "status",
+      label: "Status",
+      value: draft.status || "active",
+      options: statusOptions,
+    }),
+  ];
+
+  if (type === "worker") {
+    fields.push(
+      createClientPortalRecordField({ name: "fullName", label: "Ime i prezime", value: details.fullName, required: true }),
+      createClientPortalRecordField({ name: "jobTitle", label: "Radno mjesto", value: details.jobTitle }),
+      createClientPortalRecordField({ name: "email", label: "Email", value: details.email, type: "email" }),
+      createClientPortalRecordField({ name: "phone", label: "Telefon", value: details.phone }),
+      createClientPortalRecordField({ name: "oib", label: "OIB", value: details.oib, placeholder: "11 znamenki" }),
+      createClientPortalRecordField({ name: "note", label: "Napomena", value: details.note, textarea: true }),
+    );
+    return fields;
+  }
+
+  if (type === "vehicle") {
+    fields.push(
+      createClientPortalRecordField({ name: "vehicleName", label: "Vozilo", value: details.vehicleName, required: true }),
+      createClientPortalRecordField({ name: "plateNumber", label: "Registracija", value: details.plateNumber }),
+      createClientPortalRecordField({ name: "vehicleType", label: "Tip", value: details.vehicleType }),
+      createClientPortalRecordField({ name: "responsibleWorkerRecordId", label: "Zaduženi radnik", value: details.responsibleWorkerRecordId, options: workerOptions }),
+      createClientPortalRecordField({ name: "registrationDate", label: "Registracija vrijedi do", value: details.registrationDate, type: "date" }),
+      createClientPortalRecordField({ name: "insuranceDate", label: "Osiguranje vrijedi do", value: details.insuranceDate, type: "date" }),
+      createClientPortalRecordField({ name: "serviceDate", label: "Sljedeći servis", value: details.serviceDate, type: "date" }),
+      createClientPortalRecordField({ name: "note", label: "Napomena", value: details.note, textarea: true }),
+    );
+    return fields;
+  }
+
+  if (type === "fire_extinguisher") {
+    fields.push(
+      createClientPortalRecordField({ name: "code", label: "Oznaka aparata", value: details.code, required: true }),
+      createClientPortalRecordField({ name: "locationText", label: "Mjesto", value: details.locationText }),
+      createClientPortalRecordField({ name: "extinguisherType", label: "Tip aparata", value: details.extinguisherType }),
+      createClientPortalRecordField({ name: "lastServiceDate", label: "Zadnji servis", value: details.lastServiceDate, type: "date" }),
+      createClientPortalRecordField({ name: "nextServiceDate", label: "Sljedeći servis", value: details.nextServiceDate, type: "date" }),
+      createClientPortalRecordField({ name: "note", label: "Napomena", value: details.note, textarea: true }),
+    );
+    return fields;
+  }
+
+  if (type === "ppe_assignment") {
+    fields.push(
+      createClientPortalRecordField({ name: "workerRecordId", label: "Radnik", value: details.workerRecordId, options: workerOptions, required: true }),
+      createClientPortalRecordField({ name: "ppeName", label: "OZO / oprema", value: details.ppeName, required: true }),
+      createClientPortalRecordField({ name: "quantity", label: "Količina", value: details.quantity }),
+      createClientPortalRecordField({ name: "assignedDate", label: "Zaduženo", value: details.assignedDate, type: "date" }),
+      createClientPortalRecordField({ name: "dueDate", label: "Rok / zamjena", value: details.dueDate, type: "date" }),
+      createClientPortalRecordField({ name: "returnedDate", label: "Razduženo", value: details.returnedDate, type: "date" }),
+      createClientPortalRecordField({ name: "note", label: "Napomena", value: details.note, textarea: true }),
+    );
+    return fields;
+  }
+
+  fields.push(
+    createClientPortalRecordField({ name: "deadlineName", label: "Rok", value: details.deadlineName, required: true }),
+    createClientPortalRecordField({ name: "dueDate", label: "Datum", value: details.dueDate, type: "date", required: true }),
+    createClientPortalRecordField({ name: "ownerName", label: "Odgovorna osoba", value: details.ownerName }),
+    createClientPortalRecordField({ name: "description", label: "Opis", value: details.description, textarea: true }),
+  );
+  return fields;
+}
+
+function buildClientPortalRecordPayloadFromForm(form, type = "worker", companyId = "") {
+  const data = new FormData(form);
+  const getValue = (name) => String(data.get(name) || "").trim();
+  const details = {};
+
+  if (type === "worker") {
+    Object.assign(details, {
+      fullName: getValue("fullName"),
+      jobTitle: getValue("jobTitle"),
+      email: getValue("email"),
+      phone: getValue("phone"),
+      oib: getValue("oib"),
+      note: getValue("note"),
+    });
+  } else if (type === "vehicle") {
+    const workerRecordId = getValue("responsibleWorkerRecordId");
+    const worker = getClientPortalWorkerRecords(companyId).find((item) => String(item.id) === workerRecordId) ?? null;
+    Object.assign(details, {
+      vehicleName: getValue("vehicleName"),
+      plateNumber: getValue("plateNumber"),
+      vehicleType: getValue("vehicleType"),
+      responsibleWorkerRecordId: workerRecordId,
+      responsibleWorkerName: worker?.title || worker?.details?.fullName || "",
+      registrationDate: getValue("registrationDate"),
+      insuranceDate: getValue("insuranceDate"),
+      serviceDate: getValue("serviceDate"),
+      note: getValue("note"),
+    });
+  } else if (type === "fire_extinguisher") {
+    Object.assign(details, {
+      code: getValue("code"),
+      locationText: getValue("locationText"),
+      extinguisherType: getValue("extinguisherType"),
+      lastServiceDate: getValue("lastServiceDate"),
+      nextServiceDate: getValue("nextServiceDate"),
+      note: getValue("note"),
+    });
+  } else if (type === "ppe_assignment") {
+    const workerRecordId = getValue("workerRecordId");
+    const worker = getClientPortalWorkerRecords(companyId).find((item) => String(item.id) === workerRecordId) ?? null;
+    Object.assign(details, {
+      workerRecordId,
+      workerName: worker?.title || worker?.details?.fullName || "",
+      ppeName: getValue("ppeName"),
+      quantity: getValue("quantity"),
+      assignedDate: getValue("assignedDate"),
+      dueDate: getValue("dueDate"),
+      returnedDate: getValue("returnedDate"),
+      note: getValue("note"),
+    });
+  } else {
+    Object.assign(details, {
+      deadlineName: getValue("deadlineName"),
+      dueDate: getValue("dueDate"),
+      ownerName: getValue("ownerName"),
+      description: getValue("description"),
+    });
+  }
+
+  return {
+    companyId,
+    locationId: getValue("locationId"),
+    type,
+    status: getValue("status") || "active",
+    details,
+  };
+}
+
+function getClientPortalRecordDetailLines(record = {}) {
+  const details = record.details ?? {};
+  if (record.type === "worker") {
+    return [
+      details.jobTitle,
+      details.email,
+      details.phone,
+      details.oib ? `OIB ${details.oib}` : "",
+    ].filter(Boolean);
+  }
+  if (record.type === "vehicle") {
+    return [
+      details.vehicleType,
+      details.responsibleWorkerName ? `Zadužen: ${details.responsibleWorkerName}` : "",
+      details.registrationDate ? `Registracija: ${formatCompactDate(details.registrationDate)}` : "",
+      details.insuranceDate ? `Osiguranje: ${formatCompactDate(details.insuranceDate)}` : "",
+      details.serviceDate ? `Servis: ${formatCompactDate(details.serviceDate)}` : "",
+      details.note,
+    ].filter(Boolean);
+  }
+  if (record.type === "fire_extinguisher") {
+    return [
+      details.locationText,
+      details.extinguisherType,
+      details.lastServiceDate ? `Zadnji servis: ${formatCompactDate(details.lastServiceDate)}` : "",
+      details.nextServiceDate ? `Sljedeći servis: ${formatCompactDate(details.nextServiceDate)}` : "",
+      details.note,
+    ].filter(Boolean);
+  }
+  if (record.type === "ppe_assignment") {
+    return [
+      details.workerName ? `Radnik: ${details.workerName}` : "",
+      details.quantity ? `Količina: ${details.quantity}` : "",
+      details.assignedDate ? `Zaduženo: ${formatCompactDate(details.assignedDate)}` : "",
+      details.dueDate ? `Rok: ${formatCompactDate(details.dueDate)}` : "",
+      details.returnedDate ? `Razduženo: ${formatCompactDate(details.returnedDate)}` : "",
+      details.note,
+    ].filter(Boolean);
+  }
+  return [
+    details.dueDate ? `Datum: ${formatCompactDate(details.dueDate)}` : "",
+    details.ownerName ? `Odgovoran: ${details.ownerName}` : "",
+    details.description,
+  ].filter(Boolean);
+}
+
+function createClientPortalRecordCard(record = {}) {
+  const card = document.createElement("article");
+  card.className = `client-portal-record-card is-${record.type || "deadline"}`;
+
+  const head = document.createElement("div");
+  head.className = "client-portal-record-card-head";
+  const copy = document.createElement("div");
+  copy.className = "client-portal-record-card-copy";
+  const title = document.createElement("strong");
+  title.textContent = record.title || getClientPortalRecordTypeLabel(record.type);
+  const meta = document.createElement("span");
+  meta.textContent = [
+    getClientPortalRecordTypeLabel(record.type),
+    record.locationName || "",
+    record.dueDate ? `Rok ${formatCompactDate(record.dueDate)}` : "",
+    `Status: ${getClientPortalRecordStatusLabel(record.status)}`,
+  ].filter(Boolean).join(" · ");
+  copy.append(title, meta);
+
+  const actions = document.createElement("div");
+  actions.className = "client-portal-record-card-actions";
+  actions.append(
+    createActionButton("Uredi", "card-button card-button-light", () => {
+      state.clientPortalRecordsUi.activeType = normalizeClientPortalRecordUiType(record.type);
+      state.clientPortalRecordsUi.editId = String(record.id || "");
+      renderClientPortalRecordsPanel();
+    }),
+    createActionButton("Obriši", "card-button card-danger", () => {
+      void deleteClientPortalRecord(record.id);
+    }),
+  );
+  head.append(copy, actions);
+
+  const lines = document.createElement("div");
+  lines.className = "client-portal-record-lines";
+  const detailLines = getClientPortalRecordDetailLines(record);
+  if (detailLines.length > 0) {
+    lines.replaceChildren(...detailLines.map((line) => {
+      const element = document.createElement("span");
+      element.textContent = line;
+      return element;
+    }));
+  }
+
+  card.append(head, lines);
+  return card;
+}
+
+async function saveClientPortalRecordFromForm(form) {
+  const companyId = getClientPortalRecordsCompanyId();
+  const type = normalizeClientPortalRecordUiType(state.clientPortalRecordsUi.activeType);
+  if (!companyId) {
+    setInlineMessage(clientPortalRecordsFeedback, "Odaberi tvrtku za evidenciju.");
+    return false;
+  }
+
+  const payload = buildClientPortalRecordPayloadFromForm(form, type, companyId);
+  const editId = String(state.clientPortalRecordsUi.editId || "");
+  const path = editId
+    ? `/client-portal-records/${encodeURIComponent(editId)}`
+    : "/client-portal-records";
+  const method = editId ? "PATCH" : "POST";
+  const success = await runMutation(() => apiRequest(path, {
+    method,
+    body: payload,
+  }), clientPortalRecordsFeedback);
+
+  if (success) {
+    state.clientPortalRecordsUi.editId = "";
+    renderClientPortalModule();
+    setInlineMessage(clientPortalRecordsFeedback, "Evidencija je spremljena.", "success");
+  }
+  return success;
+}
+
+async function deleteClientPortalRecord(recordId = "") {
+  const normalizedId = String(recordId || "").trim();
+  if (!normalizedId) {
+    return false;
+  }
+  if (!window.confirm("Obrisati ovaj zapis iz klijentske evidencije?")) {
+    return false;
+  }
+
+  const success = await runMutation(() => apiRequest(`/client-portal-records/${encodeURIComponent(normalizedId)}`, {
+    method: "DELETE",
+  }), clientPortalRecordsFeedback);
+  if (success) {
+    if (String(state.clientPortalRecordsUi.editId || "") === normalizedId) {
+      state.clientPortalRecordsUi.editId = "";
+    }
+    renderClientPortalModule();
+    setInlineMessage(clientPortalRecordsFeedback, "Zapis je obrisan.", "success");
+  }
+  return success;
+}
+
+function renderClientPortalRecordsPanel() {
+  if (!clientPortalRegisterPanel || !clientPortalRecordsRoot) {
+    return;
+  }
+
+  const canUse = getCanUseClientPortalRecords();
+  clientPortalRegisterPanel.hidden = !canUse;
+  if (!canUse) {
+    clientPortalRecordsRoot.replaceChildren();
+    if (clientPortalRecordsCount) {
+      clientPortalRecordsCount.textContent = "0";
+    }
+    return;
+  }
+
+  state.clientPortalRecordsUi.activeType = normalizeClientPortalRecordUiType(state.clientPortalRecordsUi.activeType);
+  const activeType = state.clientPortalRecordsUi.activeType;
+  const companyId = getClientPortalRecordsCompanyId();
+  const company = getCompany(companyId);
+  const scopedRecords = sortClientPortalRecords(filterClientPortalRecords(state.clientPortalRecords ?? [], {
+    companyId,
+  }));
+  const visibleRecords = scopedRecords.filter((record) => String(record.type) === activeType);
+  const editingRecord = scopedRecords.find((record) => String(record.id) === String(state.clientPortalRecordsUi.editId)) ?? null;
+
+  if (clientPortalRecordsCount) {
+    clientPortalRecordsCount.textContent = String(scopedRecords.length);
+  }
+
+  const tabs = document.createElement("div");
+  tabs.className = "client-portal-record-tabs";
+  tabs.replaceChildren(...CLIENT_PORTAL_RECORD_TYPE_OPTIONS.map((option) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "client-portal-record-tab";
+    button.dataset.clientPortalRecordTab = option.value;
+    button.classList.toggle("is-active", option.value === activeType);
+    const count = scopedRecords.filter((record) => String(record.type) === option.value).length;
+    button.textContent = `${option.label} ${count}`;
+    return button;
+  }));
+
+  if (!company) {
+    const empty = document.createElement("p");
+    empty.className = "client-portal-record-empty";
+    empty.textContent = "Odaberi tvrtku za klijentske evidencije.";
+    clientPortalRecordsRoot.replaceChildren(tabs, empty);
+    return;
+  }
+
+  const form = document.createElement("form");
+  form.className = "client-portal-record-form";
+  form.dataset.clientPortalRecordForm = activeType;
+  const formHead = document.createElement("div");
+  formHead.className = "client-portal-record-form-head";
+  const formTitle = document.createElement("strong");
+  formTitle.textContent = editingRecord
+    ? `Uredi: ${editingRecord.title || getClientPortalRecordTypeLabel(activeType)}`
+    : `Novi zapis: ${getClientPortalRecordTypeLabel(activeType)}`;
+  const formMeta = document.createElement("span");
+  formMeta.textContent = company.name || "Klijentska tvrtka";
+  formHead.append(formTitle, formMeta);
+
+  const grid = document.createElement("div");
+  grid.className = "client-portal-record-form-grid";
+  grid.replaceChildren(...getClientPortalRecordFormFields(activeType, editingRecord, companyId));
+
+  const actions = document.createElement("div");
+  actions.className = "client-portal-record-form-actions";
+  const saveButton = document.createElement("button");
+  saveButton.type = "submit";
+  saveButton.className = "primary-button";
+  saveButton.textContent = editingRecord ? "Spremi promjene" : "Dodaj zapis";
+  const cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.className = "ghost-button";
+  cancelButton.dataset.clientPortalRecordCancel = "true";
+  cancelButton.textContent = editingRecord ? "Odustani" : "Očisti";
+  actions.append(saveButton, cancelButton);
+  form.append(formHead, grid, actions);
+
+  const list = document.createElement("div");
+  list.className = "client-portal-record-list";
+  if (visibleRecords.length > 0) {
+    list.replaceChildren(...visibleRecords.map(createClientPortalRecordCard));
+  } else {
+    const empty = document.createElement("p");
+    empty.className = "client-portal-record-empty";
+    empty.textContent = "Nema zapisa za ovaj tab.";
+    list.append(empty);
+  }
+
+  clientPortalRecordsRoot.replaceChildren(tabs, form, list);
+}
+
 function renderClientPortalModule() {
   if (!clientPortalModule) {
     return;
   }
 
-  if (!getCanManageClientPortal()) {
+  const canManagePortal = getCanManageClientPortal();
+  const canUseRecords = getCanUseClientPortalRecords();
+  const adminPanels = clientPortalModule.querySelectorAll(".client-portal-layout, .client-portal-preview-panel");
+  adminPanels.forEach((panel) => {
+    panel.hidden = !canManagePortal;
+  });
+
+  if (!canUseRecords) {
     if (clientPortalOpenAccessButton) {
       clientPortalOpenAccessButton.hidden = true;
       clientPortalOpenAccessButton.disabled = true;
@@ -83586,6 +84117,27 @@ function renderClientPortalModule() {
         }
       });
     closeClientPortalAccessModal();
+    renderClientPortalRecordsPanel();
+    return;
+  }
+
+  if (!canManagePortal) {
+    if (clientPortalOpenAccessButton) {
+      clientPortalOpenAccessButton.hidden = true;
+      clientPortalOpenAccessButton.disabled = true;
+    }
+    if (clientPortalCreateUserButton) {
+      clientPortalCreateUserButton.disabled = true;
+    }
+    if (clientPortalOpenCompanyButton) {
+      clientPortalOpenCompanyButton.disabled = true;
+    }
+    clientPortalUsersList?.replaceChildren();
+    if (clientPortalUsersEmpty) {
+      clientPortalUsersEmpty.hidden = true;
+    }
+    closeClientPortalAccessModal();
+    renderClientPortalRecordsPanel();
     return;
   }
 
@@ -83644,6 +84196,7 @@ function renderClientPortalModule() {
 
   syncClientPortalAccessModal();
   renderClientPortalPreview();
+  renderClientPortalRecordsPanel();
 }
 
 function getCompanyTemplateAssignmentServices() {
@@ -119324,8 +119877,10 @@ clientPortalCompanyInput?.addEventListener("change", () => {
   if (clientPortalLocationSearchInput) {
     clientPortalLocationSearchInput.value = "";
   }
+  state.clientPortalRecordsUi.editId = "";
   rebuildClientPortalLocationOptions([]);
   setInlineMessage(clientPortalFeedback, "");
+  setInlineMessage(clientPortalRecordsFeedback, "");
   renderClientPortalModule();
 });
 
@@ -119393,6 +119948,35 @@ clientPortalOpenCompanyButton?.addEventListener("click", () => {
   requestAnimationFrame(() => {
     hydrateCompanyForm(company);
   });
+});
+
+clientPortalRecordsRoot?.addEventListener("click", (event) => {
+  const target = event.target instanceof Element ? event.target : null;
+  const tabButton = target?.closest("[data-client-portal-record-tab]");
+  if (tabButton instanceof HTMLButtonElement && clientPortalRecordsRoot.contains(tabButton)) {
+    state.clientPortalRecordsUi.activeType = normalizeClientPortalRecordUiType(tabButton.dataset.clientPortalRecordTab || "");
+    state.clientPortalRecordsUi.editId = "";
+    setInlineMessage(clientPortalRecordsFeedback, "");
+    renderClientPortalRecordsPanel();
+    return;
+  }
+
+  const cancelButton = target?.closest("[data-client-portal-record-cancel]");
+  if (cancelButton instanceof HTMLButtonElement && clientPortalRecordsRoot.contains(cancelButton)) {
+    state.clientPortalRecordsUi.editId = "";
+    setInlineMessage(clientPortalRecordsFeedback, "");
+    renderClientPortalRecordsPanel();
+  }
+});
+
+clientPortalRecordsRoot?.addEventListener("submit", (event) => {
+  const form = event.target;
+  if (!(form instanceof HTMLFormElement) || !clientPortalRecordsRoot.contains(form)) {
+    return;
+  }
+
+  event.preventDefault();
+  void saveClientPortalRecordFromForm(form);
 });
 
 companyNameInput?.addEventListener("input", () => {
@@ -135112,6 +135696,11 @@ function resetAuthenticatedWorkspaceState() {
   state.safetyAuthorizations = [];
   state.documentTemplates = [];
   state.dashboardWidgets = [];
+  state.clientPortalRecords = [];
+  state.clientPortalRecordsUi = {
+    activeType: "worker",
+    editId: "",
+  };
   state.jobs = [];
   state.activeJobId = "";
   state.jobEditorOpen = false;

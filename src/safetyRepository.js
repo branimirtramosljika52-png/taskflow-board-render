@@ -16,6 +16,7 @@ import {
   createCompany,
   createContract,
   createContractTemplate,
+  createClientPortalRecord,
   createDrawingProject,
   createDashboardWidget,
   createDocumentTemplate,
@@ -52,6 +53,7 @@ import {
   updateCompany,
   updateContract,
   updateContractTemplate,
+  updateClientPortalRecord,
   updateDrawingProject,
   updateDashboardWidget,
   updateAbsenceBalanceEntry,
@@ -3897,6 +3899,47 @@ async function fetchSnapshotFromConnection(connection) {
     updatedAt: normalizeTimestamp(row.updated_at),
   }));
 
+  const [clientPortalRecordRows] = await connection.query(`
+    SELECT id, organization_id, company_id, location_id, record_type, title, status, due_date,
+           details_json, note, created_by_user_id, created_by_label, created_at, updated_at
+    FROM web_client_portal_records
+    ORDER BY
+      CASE status
+        WHEN 'attention' THEN 0
+        WHEN 'active' THEN 1
+        WHEN 'done' THEN 2
+        WHEN 'inactive' THEN 3
+        ELSE 9
+      END ASC,
+      due_date IS NULL ASC,
+      due_date ASC,
+      updated_at DESC,
+      id DESC
+  `);
+
+  const clientPortalRecords = clientPortalRecordRows.map((row) => {
+    const company = companiesById.get(String(row.company_id)) ?? null;
+    const location = row.location_id ? locationsById.get(String(row.location_id)) ?? null : null;
+    return {
+      id: String(row.id),
+      organizationId: dbString(row.organization_id),
+      companyId: dbString(row.company_id),
+      companyName: company?.name || "",
+      locationId: row.location_id == null ? "" : dbString(row.location_id),
+      locationName: location?.name || "",
+      type: row.record_type ?? "deadline",
+      title: row.title ?? "",
+      status: row.status ?? "active",
+      dueDate: normalizeDateOnly(row.due_date),
+      details: parseJsonObject(row.details_json),
+      note: row.note ?? "",
+      createdByUserId: dbString(row.created_by_user_id),
+      createdByLabel: row.created_by_label ?? "",
+      createdAt: normalizeTimestamp(row.created_at),
+      updatedAt: normalizeTimestamp(row.updated_at),
+    };
+  });
+
   const [legalFrameworkRows] = await connection.query(`
     SELECT id, organization_id, title, category, authority_name, reference_code, version_label,
            published_on, effective_from, review_date, status, tags_text, source_url, note, documents_json,
@@ -4542,6 +4585,7 @@ async function fetchSnapshotFromConnection(connection) {
     contracts,
     contractTemplates,
     drawings,
+    clientPortalRecords,
     vehicles,
     legalFrameworks,
     rulebooks,
@@ -4650,6 +4694,7 @@ export class InMemorySafetyRepository {
       contracts: [],
       contractTemplates: [],
       drawings: [],
+      clientPortalRecords: [],
       vehicles: [],
       legalFrameworks: [],
       rulebooks: [],
@@ -4861,6 +4906,10 @@ export class InMemorySafetyRepository {
           metadata: { ...(element.metadata ?? {}) },
         })),
         viewport: { ...(item.viewport ?? {}) },
+      })),
+      clientPortalRecords: this.snapshot.clientPortalRecords.map((item) => ({
+        ...item,
+        details: { ...(item.details ?? {}) },
       })),
       contractTemplates: this.snapshot.contractTemplates.map((item) => ({
         ...item,
@@ -5762,6 +5811,38 @@ export class InMemorySafetyRepository {
     const before = this.snapshot.riskAssessments.length;
     this.snapshot.riskAssessments = this.snapshot.riskAssessments.filter((item) => item.id !== id);
     return this.snapshot.riskAssessments.length !== before;
+  }
+
+  async createClientPortalRecord(input, actor = null) {
+    const item = createClientPortalRecord({
+      ...input,
+      createdByUserId: String(actor?.id ?? input.createdByUserId ?? ""),
+      createdByLabel: actor?.fullName || actor?.username || input.createdByLabel || "SafeNexus",
+    }, this.snapshot, () => crypto.randomUUID(), () => new Date().toISOString());
+    this.snapshot.clientPortalRecords = [item, ...this.snapshot.clientPortalRecords];
+    return item;
+  }
+
+  async updateClientPortalRecord(id, patch, actor = null) {
+    const current = this.snapshot.clientPortalRecords.find((item) => item.id === id);
+
+    if (!current) {
+      return null;
+    }
+
+    const next = updateClientPortalRecord(current, {
+      ...patch,
+      createdByUserId: current.createdByUserId || String(actor?.id ?? ""),
+      createdByLabel: current.createdByLabel || actor?.fullName || actor?.username || "SafeNexus",
+    }, this.snapshot, () => new Date().toISOString());
+    this.snapshot.clientPortalRecords = this.snapshot.clientPortalRecords.map((item) => (item.id === id ? next : item));
+    return next;
+  }
+
+  async deleteClientPortalRecord(id) {
+    const before = this.snapshot.clientPortalRecords.length;
+    this.snapshot.clientPortalRecords = this.snapshot.clientPortalRecords.filter((item) => item.id !== id);
+    return this.snapshot.clientPortalRecords.length !== before;
   }
 
   async createJob(input, actor = null) {
@@ -7549,6 +7630,28 @@ export class MySqlSafetyRepository {
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         UNIQUE KEY uniq_web_vehicles_org_plate (organization_id, plate_number),
         INDEX idx_web_vehicles_org_status (organization_id, status)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_client_portal_records (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        company_id INT NOT NULL,
+        location_id INT NULL,
+        record_type VARCHAR(40) NOT NULL,
+        title VARCHAR(220) NOT NULL,
+        status VARCHAR(32) NOT NULL DEFAULT 'active',
+        due_date DATE NULL,
+        details_json LONGTEXT NULL,
+        note TEXT NULL,
+        created_by_user_id INT NULL,
+        created_by_label VARCHAR(160) NOT NULL DEFAULT '',
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_web_client_portal_records_org_type (organization_id, record_type),
+        INDEX idx_web_client_portal_records_company (company_id),
+        INDEX idx_web_client_portal_records_location (location_id),
+        INDEX idx_web_client_portal_records_due_date (due_date)
       )
     `);
     await this.pool.query(`
@@ -11662,6 +11765,113 @@ export class MySqlSafetyRepository {
     } catch (error) {
       await connection.rollback();
       throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async createClientPortalRecord(input, actor = null) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const draft = createClientPortalRecord({
+        ...input,
+        createdByUserId: String(actor?.id ?? input.createdByUserId ?? ""),
+        createdByLabel: actor?.fullName || actor?.username || input.createdByLabel || "SafeNexus",
+      }, snapshot, () => "pending-client-portal-record", () => new Date().toISOString());
+      const [result] = await connection.query(
+        `
+          INSERT INTO web_client_portal_records
+            (organization_id, company_id, location_id, record_type, title, status, due_date, details_json,
+             note, created_by_user_id, created_by_label)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          Number(draft.organizationId),
+          Number(draft.companyId),
+          parseNullableInteger(draft.locationId),
+          draft.type,
+          draft.title,
+          draft.status,
+          draft.dueDate,
+          JSON.stringify(draft.details ?? {}),
+          draft.note,
+          parseNullableInteger(draft.createdByUserId),
+          draft.createdByLabel,
+        ],
+      );
+
+      await connection.commit();
+      return {
+        ...draft,
+        id: String(result.insertId),
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async updateClientPortalRecord(id, patch, actor = null) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const snapshot = await fetchSnapshotFromConnection(connection);
+      const current = snapshot.clientPortalRecords.find((item) => item.id === id);
+
+      if (!current) {
+        await connection.rollback();
+        return null;
+      }
+
+      const next = updateClientPortalRecord(current, {
+        ...patch,
+        createdByUserId: current.createdByUserId || String(actor?.id ?? ""),
+        createdByLabel: current.createdByLabel || actor?.fullName || actor?.username || "SafeNexus",
+      }, snapshot, () => new Date().toISOString());
+      await connection.query(
+        `
+          UPDATE web_client_portal_records
+          SET company_id = ?, location_id = ?, record_type = ?, title = ?, status = ?, due_date = ?,
+              details_json = ?, note = ?
+          WHERE id = ?
+        `,
+        [
+          Number(next.companyId),
+          parseNullableInteger(next.locationId),
+          next.type,
+          next.title,
+          next.status,
+          next.dueDate,
+          JSON.stringify(next.details ?? {}),
+          next.note,
+          Number(id),
+        ],
+      );
+
+      await connection.commit();
+      return next;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async deleteClientPortalRecord(id) {
+    const connection = await this.pool.getConnection();
+
+    try {
+      const [result] = await connection.query("DELETE FROM web_client_portal_records WHERE id = ?", [Number(id)]);
+      return result.affectedRows > 0;
     } finally {
       connection.release();
     }

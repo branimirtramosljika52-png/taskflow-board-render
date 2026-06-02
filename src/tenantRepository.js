@@ -2048,6 +2048,11 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
   const visibleWorkOrders = (rawSnapshot.workOrders ?? []).filter(isCompanyScopedItemVisible);
   const visibleWorkOrderIds = new Set(visibleWorkOrders.map((item) => String(item.id)));
   const visiblePeopleTrainingRecords = (rawSnapshot.peopleTrainingRecords ?? []).filter(isCompanyScopedItemVisible);
+  const visibleClientPortalRecords = (
+    actorIsClientPortal || hasAppPermission("clientPortal.manage")
+      ? (rawSnapshot.clientPortalRecords ?? [])
+      : []
+  ).filter(isCompanyScopedItemVisible);
   const visibleTrainingEmails = new Set(
     visiblePeopleTrainingRecords
       .map((item) => dbString(item.email).toLowerCase())
@@ -2121,6 +2126,10 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
     peopleTrainingRecords: visiblePeopleTrainingRecords.map((item) => ({
       ...item,
       trainingItems: (item.trainingItems ?? []).map((entry) => ({ ...entry })),
+    })),
+    clientPortalRecords: visibleClientPortalRecords.map((item) => ({
+      ...item,
+      details: { ...(item.details ?? {}) },
     })),
     reminders: (rawSnapshot.reminders ?? []).filter(isOrganizationOrCompanyItemVisible),
     todoTasks: (rawSnapshot.todoTasks ?? []).filter(isOrganizationOrCompanyItemVisible).map((item) => ({
@@ -3047,16 +3056,17 @@ export class MemoryTenantRepository {
     workOrders: [],
     reminders: [],
     todoTasks: [],
-      offers: [],
-      publicProcurements: [],
-      purchaseOrders: [],
-      jobs: [],
-      jobAiSettings: [],
-      riskPpeCatalog: [],
-      riskAssessments: [],
-      contracts: [],
-      drawings: [],
-      contractTemplates: [],
+    offers: [],
+    publicProcurements: [],
+    purchaseOrders: [],
+    jobs: [],
+    jobAiSettings: [],
+    riskPpeCatalog: [],
+    riskAssessments: [],
+    contracts: [],
+    drawings: [],
+    contractTemplates: [],
+    clientPortalRecords: [],
     vehicles: [],
     legalFrameworks: [],
     rulebooks: [],
@@ -4072,6 +4082,7 @@ export class MySqlTenantRepository {
       contracts: [],
       drawings: [],
       contractTemplates: [],
+      clientPortalRecords: [],
         vehicles: [],
         legalFrameworks: [],
         rulebooks: [],

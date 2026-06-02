@@ -6194,6 +6194,45 @@ function withClientPortalUserManagementPermission(actor = {}) {
   };
 }
 
+function canUseClientPortalRecords(user = {}, scopedSnapshot = {}) {
+  return isClientPortalUser(user) || canUseScopedSnapshotAppPermission(user, scopedSnapshot, "clientPortal.manage");
+}
+
+function assertClientPortalRecordPayloadInScope(scopedSnapshot, body = {}) {
+  const companyId = String(body.companyId ?? "").trim();
+  if (!companyId) {
+    const error = new Error("Odaberi tvrtku za klijentsku evidenciju.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const company = assertInScope(scopedSnapshot.companies ?? [], companyId, "Tvrtka nije dostupna za klijentsku evidenciju.");
+  const locationId = String(body.locationId ?? "").trim();
+  if (locationId) {
+    const location = assertInScope(scopedSnapshot.locations ?? [], locationId, "Lokacija nije dostupna za klijentsku evidenciju.");
+    if (String(location.companyId) !== String(company.id)) {
+      const error = new Error("Lokacija ne pripada odabranoj tvrtki.");
+      error.statusCode = 400;
+      throw error;
+    }
+  }
+
+  const type = String(body.type ?? "").trim();
+  const workerRecordId = String(body.details?.workerRecordId ?? "").trim();
+  if (type === "ppe_assignment" && workerRecordId) {
+    const worker = (scopedSnapshot.clientPortalRecords ?? []).find((item) => (
+      String(item.id) === workerRecordId
+      && String(item.companyId) === companyId
+      && String(item.type) === "worker"
+    ));
+    if (!worker) {
+      const error = new Error("Odabrani radnik nije dostupan za ovo OZO zaduzenje.");
+      error.statusCode = 400;
+      throw error;
+    }
+  }
+}
+
 function assertLocationObjectPayloadInScope(scopedSnapshot, body = {}) {
   if (!body.objectId) {
     return null;
@@ -8419,6 +8458,7 @@ async function handleApiRequest(request, response, url) {
     const purchaseOrderPdfExportMatch = url.pathname.match(/^\/api\/purchase-orders\/([^/]+)\/export-pdf$/);
     const purchaseOrderEmailMatch = url.pathname.match(/^\/api\/purchase-orders\/([^/]+)\/email$/);
     const riskAssessmentMatch = url.pathname.match(/^\/api\/risk-assessments\/([^/]+)$/);
+    const clientPortalRecordMatch = url.pathname.match(/^\/api\/client-portal-records\/([^/]+)$/);
     const jobMatch = url.pathname.match(/^\/api\/jobs\/([^/]+)$/);
     const contractTemplateMatch = url.pathname.match(/^\/api\/contract-templates\/([^/]+)$/);
     const contractMatch = url.pathname.match(/^\/api\/contracts\/([^/]+)$/);
@@ -9214,6 +9254,23 @@ async function handleApiRequest(request, response, url) {
         ...body,
         organizationId: scopedSnapshot.activeOrganizationId,
       });
+      await writeSnapshot(response, user, request, 201);
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/client-portal-records") {
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      if (!canUseClientPortalRecords(user, scopedSnapshot)) {
+        sendError(response, 403, "Nemate pravo upravljati klijentskim evidencijama.");
+        return true;
+      }
+
+      assertClientPortalRecordPayloadInScope(scopedSnapshot, body);
+      await domainRepository.createClientPortalRecord({
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      }, user);
       await writeSnapshot(response, user, request, 201);
       return true;
     }
@@ -11940,6 +11997,38 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (clientPortalRecordMatch && request.method === "PATCH") {
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      if (!canUseClientPortalRecords(user, scopedSnapshot)) {
+        sendError(response, 403, "Nemate pravo upravljati klijentskim evidencijama.");
+        return true;
+      }
+
+      const current = assertInScope(scopedSnapshot.clientPortalRecords ?? [], clientPortalRecordMatch[1], "Klijentski zapis nije pronađen.");
+      const nextPayload = {
+        ...current,
+        ...body,
+        details: {
+          ...(current.details ?? {}),
+          ...(body.details ?? {}),
+        },
+      };
+      assertClientPortalRecordPayloadInScope(scopedSnapshot, nextPayload);
+      const updated = await domainRepository.updateClientPortalRecord(clientPortalRecordMatch[1], {
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      }, user);
+
+      if (!updated) {
+        sendError(response, 404, "Klijentski zapis nije pronađen.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
     if (legalFrameworkMatch && request.method === "PATCH") {
       if (!(await canUseScopedAppPermission(user, request, "legalFramework.edit"))) {
         sendError(response, 403, "Nemate pravo upravljati propisima.");
@@ -12464,6 +12553,25 @@ async function handleApiRequest(request, response, url) {
 
       if (!deleted) {
         sendError(response, 404, "Vozilo nije pronađeno.");
+        return true;
+      }
+
+      await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (clientPortalRecordMatch && request.method === "DELETE") {
+      const { scopedSnapshot } = await getScopedState(user, request);
+      if (!canUseClientPortalRecords(user, scopedSnapshot)) {
+        sendError(response, 403, "Nemate pravo brisati klijentske evidencije.");
+        return true;
+      }
+
+      assertInScope(scopedSnapshot.clientPortalRecords ?? [], clientPortalRecordMatch[1], "Klijentski zapis nije pronađen.");
+      const deleted = await domainRepository.deleteClientPortalRecord(clientPortalRecordMatch[1]);
+
+      if (!deleted) {
+        sendError(response, 404, "Klijentski zapis nije pronađen.");
         return true;
       }
 

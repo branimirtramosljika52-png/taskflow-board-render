@@ -8546,6 +8546,155 @@ body.is-location-editor-open {
   font-size: 0.86rem;
 }
 
+.client-portal-register-panel {
+  display: grid;
+  gap: 14px;
+  background:
+    radial-gradient(circle at top left, rgba(220, 252, 231, 0.58), transparent 34%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.96));
+  border-color: rgba(52, 168, 119, 0.24);
+}
+
+.client-portal-records-root {
+  display: grid;
+  gap: 14px;
+}
+
+.client-portal-record-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.client-portal-record-tab {
+  min-height: 36px;
+  padding: 8px 12px;
+  border: 1px solid rgba(170, 190, 220, 0.82);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #233653;
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.client-portal-record-tab.is-active {
+  border-color: rgba(37, 99, 235, 0.62);
+  background: #2563eb;
+  color: #ffffff;
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.18);
+}
+
+.client-portal-record-form {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(190, 204, 232, 0.86);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.client-portal-record-form-head {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.client-portal-record-form-head strong {
+  color: #18233a;
+  font-size: 0.98rem;
+}
+
+.client-portal-record-form-head span {
+  color: #64728c;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.client-portal-record-form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.client-portal-record-field.is-wide {
+  grid-column: 1 / -1;
+}
+
+.client-portal-record-form-actions,
+.client-portal-record-card-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.client-portal-record-list {
+  display: grid;
+  gap: 10px;
+}
+
+.client-portal-record-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(190, 204, 232, 0.82);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 10px 24px rgba(31, 54, 102, 0.07);
+}
+
+.client-portal-record-card-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+}
+
+.client-portal-record-card-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.client-portal-record-card-copy strong,
+.client-portal-record-card-copy span {
+  overflow-wrap: anywhere;
+}
+
+.client-portal-record-card-copy strong {
+  color: #14213d;
+  font-size: 0.95rem;
+}
+
+.client-portal-record-card-copy span,
+.client-portal-record-lines span {
+  color: #62708a;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.client-portal-record-lines {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.client-portal-record-lines span {
+  padding: 5px 8px;
+  border: 1px solid rgba(196, 209, 232, 0.8);
+  border-radius: 999px;
+  background: rgba(248, 251, 255, 0.9);
+}
+
+.client-portal-record-empty {
+  margin: 0;
+  color: #66728c;
+  font-size: 0.86rem;
+}
+
 .entity-link-actions {
   display: flex;
   flex-wrap: wrap;
@@ -74089,5 +74238,26 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
 
   .risk-assessment-ppe-compact .ozo-worker-image-wrap {
     top: 118px;
+  }
+}
+
+@media (max-width: 720px) {
+  .client-portal-record-form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .client-portal-record-card-head {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .client-portal-record-form-actions,
+  .client-portal-record-card-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 520px) {
+  .client-portal-record-tab {
+    width: 100%;
   }
 }

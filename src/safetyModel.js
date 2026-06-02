@@ -107,6 +107,21 @@ export const VEHICLE_RESERVATION_STATUS_OPTIONS = [
   { value: "cancelled", label: "Otkazano" },
 ];
 
+export const CLIENT_PORTAL_RECORD_TYPE_OPTIONS = [
+  { value: "worker", label: "Radnici" },
+  { value: "vehicle", label: "Vozni park" },
+  { value: "fire_extinguisher", label: "Vatrogasni aparati" },
+  { value: "ppe_assignment", label: "OZO zaduzenja" },
+  { value: "deadline", label: "Ostali rokovi" },
+];
+
+export const CLIENT_PORTAL_RECORD_STATUS_OPTIONS = [
+  { value: "active", label: "Aktivno" },
+  { value: "attention", label: "Paznja" },
+  { value: "done", label: "Gotovo" },
+  { value: "inactive", label: "Neaktivno" },
+];
+
 export const LEGAL_FRAMEWORK_STATUS_OPTIONS = [
   { value: "active", label: "Aktivan" },
   { value: "inactive", label: "Neaktivan" },
@@ -515,6 +530,7 @@ const CONTRACT_STATUS_SET = new Set(CONTRACT_STATUS_OPTIONS.map((option) => opti
 const CONTRACT_TEMPLATE_STATUS_SET = new Set(CONTRACT_TEMPLATE_STATUS_OPTIONS.map((option) => option.value));
 const VEHICLE_STATUS_SET = new Set(VEHICLE_STATUS_OPTIONS.map((option) => option.value));
 const VEHICLE_RESERVATION_STATUS_SET = new Set(VEHICLE_RESERVATION_STATUS_OPTIONS.map((option) => option.value));
+const CLIENT_PORTAL_RECORD_STATUS_SET = new Set(CLIENT_PORTAL_RECORD_STATUS_OPTIONS.map((option) => option.value));
 const LEGAL_FRAMEWORK_STATUS_SET = new Set(LEGAL_FRAMEWORK_STATUS_OPTIONS.map((option) => option.value));
 const RULEBOOK_STATUS_SET = new Set(RULEBOOK_STATUS_OPTIONS.map((option) => option.value));
 const RULEBOOK_TYPE_SET = new Set(RULEBOOK_TYPE_OPTIONS.map((option) => option.value));
@@ -639,6 +655,13 @@ const VEHICLE_RESERVATION_STATUS_RANK = {
   reserved: 1,
   completed: 2,
   cancelled: 3,
+};
+const CLIENT_PORTAL_RECORD_TYPE_SET = new Set(CLIENT_PORTAL_RECORD_TYPE_OPTIONS.map((option) => option.value));
+const CLIENT_PORTAL_RECORD_STATUS_RANK = {
+  attention: 0,
+  active: 1,
+  done: 2,
+  inactive: 3,
 };
 const ABSENCE_STATUS_RANK = {
   pending: 0,
@@ -942,6 +965,19 @@ function normalizeVehicleStatus(value) {
 function normalizeVehicleReservationStatus(value) {
   const status = normalizeText(value).toLowerCase();
   return VEHICLE_RESERVATION_STATUS_SET.has(status) ? status : "reserved";
+}
+
+function normalizeClientPortalRecordType(value) {
+  const type = normalizeText(value).toLowerCase();
+  return CLIENT_PORTAL_RECORD_TYPE_SET.has(type) ? type : "deadline";
+}
+
+function normalizeClientPortalRecordStatus(value, fallback = "active") {
+  const status = normalizeText(value).toLowerCase();
+  if (CLIENT_PORTAL_RECORD_STATUS_SET.has(status)) {
+    return status;
+  }
+  return CLIENT_PORTAL_RECORD_STATUS_SET.has(fallback) ? fallback : "active";
 }
 
 function normalizeLegalFrameworkStatus(value) {
@@ -2991,6 +3027,191 @@ function assertVehicleReservationConflict(vehicle, candidate, excludeReservation
   if (hasConflict) {
     throw new Error("Vozilo je vec rezervirano u odabranom terminu.");
   }
+}
+
+function normalizeClientPortalRecordDetails(inputDetails = {}, type = "deadline") {
+  const details = inputDetails && typeof inputDetails === "object" ? inputDetails : {};
+  const text = (value, maxLength = 600) => normalizeText(value).slice(0, maxLength);
+  const date = (value) => normalizeOptionalDate(value);
+
+  if (type === "worker") {
+    return {
+      fullName: text(details.fullName ?? details.name, 180),
+      jobTitle: text(details.jobTitle ?? details.role, 180),
+      email: text(details.email, 180),
+      phone: text(details.phone, 80),
+      oib: text(details.oib, 32),
+      note: text(details.note, 1200),
+    };
+  }
+
+  if (type === "vehicle") {
+    return {
+      vehicleName: text(details.vehicleName ?? details.name, 180),
+      plateNumber: text(details.plateNumber ?? details.registration, 60).toUpperCase(),
+      vehicleType: text(details.vehicleType ?? details.category, 120),
+      responsibleWorkerRecordId: text(details.responsibleWorkerRecordId ?? details.workerRecordId, 80),
+      responsibleWorkerName: text(details.responsibleWorkerName ?? details.workerName, 180),
+      registrationDate: date(details.registrationDate ?? details.registrationExpiresOn),
+      insuranceDate: date(details.insuranceDate),
+      serviceDate: date(details.serviceDate ?? details.nextServiceDate),
+      note: text(details.note, 1200),
+    };
+  }
+
+  if (type === "fire_extinguisher") {
+    return {
+      code: text(details.code ?? details.inventoryCode, 120),
+      locationText: text(details.locationText ?? details.location, 180),
+      extinguisherType: text(details.extinguisherType ?? details.type, 120),
+      lastServiceDate: date(details.lastServiceDate),
+      nextServiceDate: date(details.nextServiceDate ?? details.dueDate),
+      note: text(details.note, 1200),
+    };
+  }
+
+  if (type === "ppe_assignment") {
+    return {
+      workerRecordId: text(details.workerRecordId, 80),
+      workerName: text(details.workerName, 180),
+      ppeName: text(details.ppeName ?? details.name, 180),
+      quantity: text(details.quantity, 80),
+      assignedDate: date(details.assignedDate),
+      dueDate: date(details.dueDate),
+      returnedDate: date(details.returnedDate),
+      note: text(details.note, 1200),
+    };
+  }
+
+  return {
+    deadlineName: text(details.deadlineName ?? details.name, 220),
+    dueDate: date(details.dueDate),
+    ownerName: text(details.ownerName ?? details.owner, 180),
+    description: text(details.description ?? details.note, 2000),
+  };
+}
+
+function resolveClientPortalRecordDueDate(type, details = {}, input = {}, current = null) {
+  const explicit = hasOwn(input, "dueDate") ? normalizeOptionalDate(input.dueDate) : null;
+  if (explicit) {
+    return explicit;
+  }
+
+  if (type === "vehicle") {
+    return details.serviceDate || details.registrationDate || details.insuranceDate || null;
+  }
+  if (type === "fire_extinguisher") {
+    return details.nextServiceDate || null;
+  }
+  if (type === "ppe_assignment") {
+    return details.dueDate || details.returnedDate || null;
+  }
+  if (type === "deadline") {
+    return details.dueDate || null;
+  }
+  return normalizeOptionalDate(current?.dueDate);
+}
+
+function buildClientPortalRecordTitle(type, details = {}, input = {}, current = null) {
+  const explicitTitle = hasOwn(input, "title") ? normalizeText(input.title) : normalizeText(current?.title);
+  if (explicitTitle) {
+    return explicitTitle.slice(0, 220);
+  }
+
+  if (type === "worker") {
+    return (details.fullName || "Radnik").slice(0, 220);
+  }
+  if (type === "vehicle") {
+    return [details.plateNumber, details.vehicleName].filter(Boolean).join(" - ").slice(0, 220) || "Vozilo";
+  }
+  if (type === "fire_extinguisher") {
+    return [details.code, details.extinguisherType].filter(Boolean).join(" - ").slice(0, 220) || "Vatrogasni aparat";
+  }
+  if (type === "ppe_assignment") {
+    return [details.ppeName, details.workerName].filter(Boolean).join(" - ").slice(0, 220) || "OZO zaduzenje";
+  }
+  return (details.deadlineName || "Rok").slice(0, 220);
+}
+
+function hydrateClientPortalRecordCore({
+  current = null,
+  state,
+  input,
+  timestamp,
+}) {
+  const type = hasOwn(input, "type")
+    ? normalizeClientPortalRecordType(input.type)
+    : normalizeClientPortalRecordType(current?.type);
+  const mergedDetails = {
+    ...(current?.details ?? {}),
+    ...(hasOwn(input, "details") && input.details && typeof input.details === "object" ? input.details : {}),
+  };
+  let details = normalizeClientPortalRecordDetails(mergedDetails, type);
+  const organizationId = hasOwn(input, "organizationId")
+    ? requireText(input.organizationId, "Organizacija")
+    : requireText(current?.organizationId, "Organizacija");
+  const companyId = hasOwn(input, "companyId")
+    ? requireText(input.companyId, "Tvrtka")
+    : requireText(current?.companyId, "Tvrtka");
+  const locationId = hasOwn(input, "locationId")
+    ? normalizeText(input.locationId)
+    : normalizeText(current?.locationId);
+  const company = (state.companies ?? []).find((item) => String(item.id) === String(companyId)) ?? null;
+  const location = locationId
+    ? (state.locations ?? []).find((item) => String(item.id) === String(locationId)) ?? null
+    : null;
+  if (type === "ppe_assignment" && details.workerRecordId && !details.workerName) {
+    const worker = (state.clientPortalRecords ?? []).find((item) => (
+      String(item.id) === String(details.workerRecordId)
+      && String(item.companyId) === String(companyId)
+      && String(item.type) === "worker"
+    ));
+    details = {
+      ...details,
+      workerName: worker?.title || worker?.details?.fullName || "",
+    };
+  }
+  if (type === "vehicle" && details.responsibleWorkerRecordId && !details.responsibleWorkerName) {
+    const worker = (state.clientPortalRecords ?? []).find((item) => (
+      String(item.id) === String(details.responsibleWorkerRecordId)
+      && String(item.companyId) === String(companyId)
+      && String(item.type) === "worker"
+    ));
+    details = {
+      ...details,
+      responsibleWorkerName: worker?.title || worker?.details?.fullName || "",
+    };
+  }
+  const title = buildClientPortalRecordTitle(type, details, input, current);
+
+  if (!title) {
+    throw new Error("Naziv zapisa je obavezan.");
+  }
+
+  return {
+    id: current?.id ?? "",
+    organizationId,
+    companyId,
+    companyName: company?.name || current?.companyName || "",
+    locationId,
+    locationName: location?.name || current?.locationName || "",
+    type,
+    title,
+    status: hasOwn(input, "status")
+      ? normalizeClientPortalRecordStatus(input.status)
+      : normalizeClientPortalRecordStatus(current?.status),
+    dueDate: resolveClientPortalRecordDueDate(type, details, input, current),
+    details,
+    note: hasOwn(input, "note") ? normalizeText(input.note).slice(0, 2000) : normalizeText(current?.note).slice(0, 2000),
+    createdByUserId: hasOwn(input, "createdByUserId")
+      ? normalizeText(input.createdByUserId)
+      : (current?.createdByUserId ?? ""),
+    createdByLabel: hasOwn(input, "createdByLabel")
+      ? normalizeText(input.createdByLabel)
+      : (current?.createdByLabel ?? ""),
+    createdAt: current?.createdAt ?? timestamp,
+    updatedAt: timestamp,
+  };
 }
 
 function hydrateVehicleCore({
@@ -9721,6 +9942,94 @@ export function getVehicleAvailabilityStatus(vehicle, nowValue = isoNow()) {
   }
 
   return getVehicleNextReservation(vehicle, nowValue) ? "reserved" : "available";
+}
+
+export function createClientPortalRecord(
+  input,
+  state,
+  createId = () => crypto.randomUUID(),
+  now = isoNow,
+) {
+  const timestamp = now();
+  const record = hydrateClientPortalRecordCore({
+    state,
+    input,
+    timestamp,
+  });
+
+  return {
+    ...record,
+    id: createId(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+export function updateClientPortalRecord(current, patch, state, now = isoNow) {
+  return hydrateClientPortalRecordCore({
+    current,
+    state,
+    input: patch,
+    timestamp: now(),
+  });
+}
+
+export function filterClientPortalRecords(
+  records,
+  { query = "", type = "all", companyId = "", locationId = "" } = {},
+) {
+  const normalizedQuery = normalizeText(query).toLowerCase();
+  const normalizedType = normalizeText(type);
+  const normalizedCompanyId = normalizeText(companyId);
+  const normalizedLocationId = normalizeText(locationId);
+
+  return (records ?? []).filter((record) => {
+    if (normalizedType && normalizedType !== "all" && normalizeClientPortalRecordType(record.type) !== normalizedType) {
+      return false;
+    }
+    if (normalizedCompanyId && String(record.companyId) !== normalizedCompanyId) {
+      return false;
+    }
+    if (normalizedLocationId && String(record.locationId || "") !== normalizedLocationId) {
+      return false;
+    }
+    if (!normalizedQuery) {
+      return true;
+    }
+
+    const details = record.details ?? {};
+    const haystack = [
+      record.title,
+      record.companyName,
+      record.locationName,
+      record.note,
+      ...Object.values(details),
+    ].join(" ").toLowerCase();
+
+    return haystack.includes(normalizedQuery);
+  });
+}
+
+export function sortClientPortalRecords(records) {
+  return [...(records ?? [])].sort((left, right) => {
+    const leftStatusRank = CLIENT_PORTAL_RECORD_STATUS_RANK[normalizeClientPortalRecordStatus(left?.status)] ?? Number.MAX_SAFE_INTEGER;
+    const rightStatusRank = CLIENT_PORTAL_RECORD_STATUS_RANK[normalizeClientPortalRecordStatus(right?.status)] ?? Number.MAX_SAFE_INTEGER;
+    if (leftStatusRank !== rightStatusRank) {
+      return leftStatusRank - rightStatusRank;
+    }
+
+    if (left?.dueDate && right?.dueDate && left.dueDate !== right.dueDate) {
+      return left.dueDate.localeCompare(right.dueDate);
+    }
+    if (left?.dueDate && !right?.dueDate) {
+      return -1;
+    }
+    if (!left?.dueDate && right?.dueDate) {
+      return 1;
+    }
+
+    return String(right?.updatedAt ?? "").localeCompare(String(left?.updatedAt ?? ""));
+  });
 }
 
 export function createVehicle(

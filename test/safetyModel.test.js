@@ -13,6 +13,7 @@ import {
   createAbsenceEntry,
   createCompany,
   createContract,
+  createClientPortalRecord,
   createDrawingProject,
   createContractTemplate,
   createDashboardWidget,
@@ -38,6 +39,7 @@ import {
   createWorkOrder,
   deriveOfferInitials,
   filterAbsenceEntries,
+  filterClientPortalRecords,
   filterContracts,
   filterDrawingProjects,
   filterContractTemplates,
@@ -74,6 +76,7 @@ import {
   normalizeWorkOrderMeasurementSheet,
   parseCoordinates,
   sortContracts,
+  sortClientPortalRecords,
   sortDrawingProjects,
   sortContractTemplates,
   sortReminders,
@@ -164,6 +167,7 @@ function buildState() {
     contracts: [],
     drawings: [],
     contractTemplates: [],
+    clientPortalRecords: [],
     vehicles: [],
     legalFrameworks: [],
     serviceCatalog: [],
@@ -3521,6 +3525,95 @@ test("drawing projects keep references, layers and CAD elements through create a
     sortDrawingProjects([archived, updated]).map((item) => item.id),
     ["drawing-1", "drawing-2"],
   );
+});
+
+test("client portal records keep simple registers and worker links", () => {
+  const state = buildState();
+  const worker = createClientPortalRecord(
+    {
+      organizationId: "org-1",
+      companyId: "company-1",
+      type: "worker",
+      status: "active",
+      details: {
+        fullName: "Test Radnik",
+        jobTitle: "Skladistar",
+      },
+    },
+    state,
+    () => "client-worker-1",
+    () => "2026-06-02T07:00:00.000Z",
+  );
+  state.clientPortalRecords = [worker];
+
+  const ppe = createClientPortalRecord(
+    {
+      organizationId: "org-1",
+      companyId: "company-1",
+      type: "ppe_assignment",
+      status: "active",
+      details: {
+        workerRecordId: worker.id,
+        ppeName: "Zastitne naocale",
+        quantity: "1",
+        dueDate: "2027-06-02",
+      },
+    },
+    state,
+    () => "client-ppe-1",
+    () => "2026-06-02T07:01:00.000Z",
+  );
+  state.clientPortalRecords = [ppe, worker];
+
+  const vehicle = createClientPortalRecord(
+    {
+      organizationId: "org-1",
+      companyId: "company-1",
+      type: "vehicle",
+      status: "active",
+      details: {
+        vehicleName: "Kombi",
+        plateNumber: "zg-1234-cd",
+        responsibleWorkerRecordId: worker.id,
+        serviceDate: "2026-12-01",
+      },
+    },
+    state,
+    () => "client-vehicle-1",
+    () => "2026-06-02T07:02:00.000Z",
+  );
+
+  const deadline = createClientPortalRecord(
+    {
+      organizationId: "org-1",
+      companyId: "company-1",
+      type: "deadline",
+      status: "active",
+      details: {
+        deadlineName: "Polica osiguranja",
+        dueDate: "2026-09-15",
+        description: "Provjeriti obnovu.",
+      },
+    },
+    state,
+    () => "client-deadline-1",
+    () => "2026-06-02T07:03:00.000Z",
+  );
+
+  assert.equal(ppe.details.workerName, "Test Radnik");
+  assert.equal(vehicle.details.responsibleWorkerName, "Test Radnik");
+  assert.equal(vehicle.details.plateNumber, "ZG-1234-CD");
+  assert.equal(deadline.dueDate, "2026-09-15");
+
+  const records = [ppe, worker, vehicle, deadline];
+  assert.deepEqual(
+    sortClientPortalRecords(records).map((item) => item.id),
+    ["client-deadline-1", "client-vehicle-1", "client-ppe-1", "client-worker-1"],
+  );
+  assert.equal(filterClientPortalRecords(records, {
+    type: "ppe_assignment",
+    query: "naocale",
+  })[0].id, ppe.id);
 });
 
 test("vehicles create reservations, block overlaps and derive availability", () => {
