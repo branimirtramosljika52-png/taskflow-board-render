@@ -216,10 +216,11 @@ test("docx export renders a multi-block table section placeholder", async () => 
       blocks: [
         { type: "heading", text: "Analiza radnih mjesta", level: 2 },
         { type: "paragraph", text: "Automatski izradene tablice procjene." },
-        { type: "heading", text: "Opasnosti, stetnosti, napori i mjere", level: 4 },
+        { type: "heading", text: "Opasnosti, stetnosti, napori i mjere", level: 4, pageBreakBefore: true },
         {
           __docxBlockType: "table",
           pageOrientation: "landscape",
+          keepRowsTogether: true,
           columns: [
             { id: "job", label: "Posao", width: 220 },
             { id: "risk", label: "Rizik", width: 120 },
@@ -259,6 +260,7 @@ test("docx export renders a multi-block table section placeholder", async () => 
   assert.match(outputXml, /w:orient="landscape"/);
   assert.match(outputXml, /w:fill="FEF3C7"/);
   assert.match(outputXml, /w:color="94A3B8"/);
+  assert.match(outputXml, /<w:cantSplit\/>/);
   assert.equal((outputXml.match(/w:orient="landscape"/g) || []).length, 1);
   assert.equal((outputXml.match(/<w:tbl>/g) || []).length, 2);
   assert.ok(outputXml.indexOf('<w:pgSz w:w="11906" w:h="16838"') < outputXml.indexOf("Opasnosti, stetnosti, napori i mjere"));
@@ -299,10 +301,11 @@ test("docx export preserves template landscape section around risk placeholder",
     RISK_JOBS: {
       __docxBlockType: "blocks",
       blocks: [
-        { type: "heading", text: "Opasnosti, stetnosti, napori i mjere", level: 4 },
+        { type: "heading", text: "Opasnosti, stetnosti, napori i mjere", level: 4, pageBreakBefore: true },
         {
           __docxBlockType: "table",
           pageOrientation: "landscape",
+          keepRowsTogether: true,
           columns: [
             { id: "risk", label: "Identifikacija opasnosti", width: 260 },
             { id: "probability", label: "Vjerojatnost", width: 120 },
@@ -310,7 +313,7 @@ test("docx export preserves template landscape section around risk placeholder",
           ],
           rows: [
             { id: "head", header: true, cells: [{ text: "Identifikacija opasnosti" }, { text: "Vjerojatnost" }, { text: "Matrica procjene rizika" }] },
-            { id: "row-1", cells: [{ text: "Strojevi i oprema" }, { text: "Srednja vjerojatnost" }, { text: "Veliki rizik (3)" }] },
+            { id: "row-1", cells: [{ text: "Strojevi i oprema" }, { text: "Srednja vjerojatnost" }, { text: "Veliki rizik" }] },
           ],
         },
       ],
@@ -322,6 +325,11 @@ test("docx export preserves template landscape section around risk placeholder",
   assert.match(outputXml, /Portrait dio/);
   assert.match(outputXml, /Opasnosti, stetnosti, napori i mjere/);
   assert.match(outputXml, /Strojevi i oprema/);
+  assert.match(outputXml, /Veliki rizik/);
+  assert.doesNotMatch(outputXml, /Veliki rizik \(3\)/);
+  assert.match(outputXml, /<w:pageBreakBefore\/>/);
+  assert.match(outputXml, /<w:keepNext\/>/);
+  assert.match(outputXml, /<w:cantSplit\/>/);
   assert.equal((outputXml.match(/<w:sectPr\b/g) || []).length, 2);
   assert.equal((outputXml.match(/w:orient="landscape"/g) || []).length, 1);
   assert.ok(outputXml.indexOf("Opasnosti, stetnosti, napori i mjere") > outputXml.indexOf('<w:pgSz w:w="11906" w:h="16838"'));

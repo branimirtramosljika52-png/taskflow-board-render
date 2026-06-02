@@ -9348,6 +9348,44 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
+    if (request.method === "GET" && url.pathname === "/api/risk-assessments/template-settings") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo pregledavati template procjene rizika.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const entry = await domainRepository.getRiskAssessmentTemplateSettings(scopedSnapshot.activeOrganizationId).catch(() => null);
+      sendJson(response, 200, {
+        item: entry?.reportTemplate ?? null,
+      });
+      return true;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/risk-assessments/template-settings") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo spremati template procjene rizika.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const reportTemplate = body?.reportTemplate ?? {};
+      const wordTemplate = reportTemplate?.wordTemplate ?? null;
+      if (wordTemplate && !isWordTemplateFile(wordTemplate)) {
+        sendError(response, 400, "Template procjene rizika mora biti .docx ili .dotx Word predlozak.");
+        return true;
+      }
+      const entry = await domainRepository.upsertRiskAssessmentTemplateSettings({
+        organizationId: scopedSnapshot.activeOrganizationId,
+        reportTemplate,
+      });
+      sendJson(response, 200, {
+        item: entry?.reportTemplate ?? null,
+      });
+      return true;
+    }
+
     if (request.method === "POST" && url.pathname === "/api/jobs") {
       if (!(await canUseScopedAppPermission(user, request, "jobs.manage"))) {
         sendError(response, 403, "Nemate pravo upravljati poslovima.");

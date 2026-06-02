@@ -6,6 +6,38 @@ import {
   mapStoredDocumentTemplateCustomField,
 } from "../src/safetyRepository.js";
 
+test("in-memory safety repository stores global risk assessment template settings", async () => {
+  const repository = new InMemorySafetyRepository();
+  await repository.init();
+
+  const saved = await repository.upsertRiskAssessmentTemplateSettings({
+    organizationId: "org-1",
+    reportTemplate: {
+      title: "Globalni template procjene",
+      wordTemplate: {
+        fileName: "procjena-rizika.docx",
+        fileType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        fileSize: 1234,
+        dataUrl: "data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,UEsDBA==",
+      },
+      sections: [
+        { key: "cover", title: "Naslovnica" },
+        { key: "jobs", title: "Analiza radnih mjesta", pageBreakBefore: true },
+      ],
+    },
+  });
+
+  assert.equal(saved.organizationId, "org-1");
+  assert.equal(saved.reportTemplate.title, "Globalni template procjene");
+  assert.equal(saved.reportTemplate.wordTemplate.fileName, "procjena-rizika.docx");
+  assert.equal(saved.reportTemplate.sections[1].key, "jobs");
+  assert.equal(saved.reportTemplate.sections[1].pageBreakBefore, true);
+
+  const snapshot = await repository.getSnapshot();
+  assert.equal(snapshot.riskAssessmentTemplateSettings.length, 1);
+  assert.equal(snapshot.riskAssessmentTemplateSettings[0].reportTemplate.wordTemplate.fileName, "procjena-rizika.docx");
+});
+
 test("in-memory safety repository stores document records without RN number and lists newest first", async () => {
   const repository = new InMemorySafetyRepository();
   await repository.init();

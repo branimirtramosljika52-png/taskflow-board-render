@@ -43,6 +43,7 @@ import {
   deleteVehicleReservation,
   deriveOfferInitials,
   normalizeJobAiInstructions,
+  normalizeRiskAssessmentReportTemplate,
   normalizeWorkOrderMeasurementSheet,
   getWorkOrderExecutors,
   getWorkOrderServiceItems,
@@ -1990,6 +1991,28 @@ function mapPurchaseOrderTemplateSettingsEntry(row = {}) {
       ...referenceDocument,
       updatedAt: normalizeTimestamp(referenceDocument.updatedAt) ?? normalizeTimestamp(row.updated_at),
     },
+    createdAt: normalizeTimestamp(row.created_at),
+    updatedAt: normalizeTimestamp(row.updated_at),
+  };
+}
+
+function mapRiskAssessmentTemplateSettingsEntry(row = {}) {
+  const organizationId = dbString(row.organization_id);
+  if (!organizationId) {
+    return null;
+  }
+
+  const rawTemplate = parseJsonObject(row.report_template_json);
+  const rawWordTemplate = mapStoredAttachmentDocument(rawTemplate.wordTemplate ?? rawTemplate.referenceDocument ?? {});
+  const reportTemplate = normalizeRiskAssessmentReportTemplate({
+    ...rawTemplate,
+    wordTemplate: rawWordTemplate.fileName && rawWordTemplate.dataUrl ? rawWordTemplate : rawTemplate.wordTemplate,
+    updatedAt: rawTemplate.updatedAt ?? row.updated_at,
+  });
+
+  return {
+    organizationId,
+    reportTemplate,
     createdAt: normalizeTimestamp(row.created_at),
     updatedAt: normalizeTimestamp(row.updated_at),
   };
@@ -4307,6 +4330,16 @@ async function fetchSnapshotFromConnection(connection) {
     .map((row) => mapPurchaseOrderTemplateSettingsEntry(row))
     .filter(Boolean);
 
+  const [riskAssessmentTemplateSettingsRows] = await connection.query(`
+    SELECT organization_id, report_template_json, created_at, updated_at
+    FROM web_risk_assessment_settings
+    ORDER BY organization_id ASC
+  `);
+
+  const riskAssessmentTemplateSettings = riskAssessmentTemplateSettingsRows
+    .map((row) => mapRiskAssessmentTemplateSettingsEntry(row))
+    .filter(Boolean);
+
   const [contractTemplateRows] = await connection.query(`
     SELECT id, organization_id, title, description, status, reference_document_json,
            created_by_user_id, created_by_label, created_at, updated_at
@@ -4578,6 +4611,7 @@ async function fetchSnapshotFromConnection(connection) {
     publicProcurements,
     purchaseOrders,
     purchaseOrderTemplateSettings,
+    riskAssessmentTemplateSettings,
     riskAssessments,
     jobs,
     jobAiSettings,
@@ -4706,6 +4740,7 @@ export class InMemorySafetyRepository {
       measurementEquipmentCardTemplates: [],
       offerTemplateSettings: [],
       purchaseOrderTemplateSettings: [],
+      riskAssessmentTemplateSettings: [],
       measurementEquipmentNotificationSettings: [],
       safetyAuthorizationNotificationSettings: [],
       absenceNotificationSettings: [],
@@ -4979,6 +5014,16 @@ export class InMemorySafetyRepository {
       purchaseOrderTemplateSettings: this.snapshot.purchaseOrderTemplateSettings.map((item) => ({
         ...item,
         referenceDocument: item.referenceDocument ? { ...item.referenceDocument } : null,
+      })),
+      riskAssessmentTemplateSettings: this.snapshot.riskAssessmentTemplateSettings.map((item) => ({
+        ...item,
+        reportTemplate: item.reportTemplate
+          ? {
+            ...item.reportTemplate,
+            wordTemplate: item.reportTemplate.wordTemplate ? { ...item.reportTemplate.wordTemplate } : null,
+            sections: (item.reportTemplate.sections ?? []).map((section) => ({ ...section })),
+          }
+          : null,
       })),
       measurementEquipmentNotificationSettings: this.snapshot.measurementEquipmentNotificationSettings.map((item) => ({
         ...item,
@@ -5998,6 +6043,62 @@ export class InMemorySafetyRepository {
     const before = this.snapshot.purchaseOrderTemplateSettings.length;
     this.snapshot.purchaseOrderTemplateSettings = this.snapshot.purchaseOrderTemplateSettings.filter((item) => String(item.organizationId) !== safeOrganizationId);
     return this.snapshot.purchaseOrderTemplateSettings.length !== before;
+  }
+
+  async getRiskAssessmentTemplateSettings(organizationId = "") {
+    const safeOrganizationId = dbString(organizationId);
+    if (!safeOrganizationId) {
+      return null;
+    }
+
+    const entry = this.snapshot.riskAssessmentTemplateSettings.find((item) => String(item.organizationId) === safeOrganizationId) ?? null;
+    return entry
+      ? {
+        ...entry,
+        reportTemplate: entry.reportTemplate
+          ? {
+            ...entry.reportTemplate,
+            wordTemplate: entry.reportTemplate.wordTemplate ? { ...entry.reportTemplate.wordTemplate } : null,
+            sections: (entry.reportTemplate.sections ?? []).map((section) => ({ ...section })),
+          }
+          : null,
+      }
+      : null;
+  }
+
+  async upsertRiskAssessmentTemplateSettings({ organizationId = "", reportTemplate = {} } = {}) {
+    const safeOrganizationId = dbString(organizationId);
+    if (!safeOrganizationId) {
+      throw new Error("Organizacija je obavezna za template procjene rizika.");
+    }
+
+    const timestamp = new Date().toISOString();
+    const normalizedTemplate = normalizeRiskAssessmentReportTemplate({
+      ...reportTemplate,
+      updatedAt: timestamp,
+    });
+    const nextEntry = {
+      organizationId: safeOrganizationId,
+      reportTemplate: normalizedTemplate,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    const currentIndex = this.snapshot.riskAssessmentTemplateSettings.findIndex((item) => (
+      String(item.organizationId) === safeOrganizationId
+    ));
+
+    if (currentIndex >= 0) {
+      const previous = this.snapshot.riskAssessmentTemplateSettings[currentIndex];
+      this.snapshot.riskAssessmentTemplateSettings[currentIndex] = {
+        ...previous,
+        ...nextEntry,
+        createdAt: previous.createdAt || nextEntry.createdAt,
+      };
+    } else {
+      this.snapshot.riskAssessmentTemplateSettings.push(nextEntry);
+    }
+
+    return this.getRiskAssessmentTemplateSettings(safeOrganizationId);
   }
 
   async createContractTemplate(input, actor = null) {
@@ -7777,6 +7878,16 @@ export class MySqlSafetyRepository {
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         UNIQUE KEY uniq_web_periodics_settings_org (organization_id)
+      )
+    `);
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS web_risk_assessment_settings (
+        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        organization_id INT NOT NULL,
+        report_template_json LONGTEXT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_web_risk_assessment_settings_org (organization_id)
       )
     `);
     await this.pool.query(`
@@ -11261,6 +11372,113 @@ export class MySqlSafetyRepository {
       await connection.commit();
       await cleanupStoredObjects(staleDocuments);
       return result.affectedRows > 0;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async getRiskAssessmentTemplateSettings(organizationId = "") {
+    const safeOrganizationId = Number(organizationId);
+    if (!Number.isFinite(safeOrganizationId) || safeOrganizationId <= 0) {
+      throw new Error("Organizacija je obavezna za template procjene rizika.");
+    }
+
+    const [rows] = await this.pool.query(
+      `
+        SELECT organization_id, report_template_json, created_at, updated_at
+        FROM web_risk_assessment_settings
+        WHERE organization_id = ?
+        LIMIT 1
+      `,
+      [safeOrganizationId],
+    );
+
+    return mapRiskAssessmentTemplateSettingsEntry(rows[0]) ?? null;
+  }
+
+  async upsertRiskAssessmentTemplateSettings({ organizationId = "", reportTemplate = {} } = {}) {
+    const safeOrganizationId = Number(organizationId);
+    if (!Number.isFinite(safeOrganizationId) || safeOrganizationId <= 0) {
+      throw new Error("Organizacija je obavezna za template procjene rizika.");
+    }
+
+    const normalizedTemplate = normalizeRiskAssessmentReportTemplate(reportTemplate ?? {});
+    const connection = await this.pool.getConnection();
+    let staleDocuments = [];
+
+    try {
+      await connection.beginTransaction();
+
+      const [existingRows] = await connection.query(
+        `
+          SELECT report_template_json
+          FROM web_risk_assessment_settings
+          WHERE organization_id = ?
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [safeOrganizationId],
+      );
+
+      const currentEntry = mapRiskAssessmentTemplateSettingsEntry({
+        organization_id: safeOrganizationId,
+        report_template_json: existingRows[0]?.report_template_json,
+      });
+      const templateDocumentId = "risk-assessment-report-template";
+      const currentWordTemplate = {
+        ...mapStoredAttachmentDocument(currentEntry?.reportTemplate?.wordTemplate ?? {}),
+        id: mapStoredAttachmentDocument(currentEntry?.reportTemplate?.wordTemplate ?? {}).id || templateDocumentId,
+      };
+      let nextWordTemplate = normalizedTemplate.wordTemplate
+        ? {
+          ...mapStoredAttachmentDocument(normalizedTemplate.wordTemplate),
+          id: mapStoredAttachmentDocument(normalizedTemplate.wordTemplate).id || currentWordTemplate.id || templateDocumentId,
+        }
+        : null;
+
+      if (nextWordTemplate?.fileName && nextWordTemplate?.dataUrl) {
+        const preparedTemplate = await prepareStoredAttachmentDocuments([nextWordTemplate], {
+          keyPrefix: `risk-assessments/${safeOrganizationId}/report-template`,
+          currentDocuments: currentWordTemplate.fileName && currentWordTemplate.dataUrl ? [currentWordTemplate] : [],
+        });
+        nextWordTemplate = preparedTemplate.nextDocuments[0] ?? null;
+        staleDocuments = preparedTemplate.staleDocuments ?? [];
+      } else {
+        staleDocuments = currentWordTemplate.storageKey ? [currentWordTemplate] : [];
+        nextWordTemplate = null;
+      }
+
+      const nextTemplate = normalizeRiskAssessmentReportTemplate({
+        ...normalizedTemplate,
+        wordTemplate: nextWordTemplate,
+        updatedAt: new Date().toISOString(),
+      });
+
+      await connection.query(
+        `
+          INSERT INTO web_risk_assessment_settings
+            (organization_id, report_template_json)
+          VALUES (?, ?)
+          ON DUPLICATE KEY UPDATE
+            report_template_json = VALUES(report_template_json),
+            updated_at = CURRENT_TIMESTAMP
+        `,
+        [
+          safeOrganizationId,
+          JSON.stringify(nextTemplate),
+        ],
+      );
+
+      await connection.commit();
+      await cleanupStoredObjects(staleDocuments);
+      return {
+        organizationId: String(safeOrganizationId),
+        reportTemplate: nextTemplate,
+        updatedAt: nextTemplate.updatedAt || new Date().toISOString(),
+      };
     } catch (error) {
       await connection.rollback();
       throw error;

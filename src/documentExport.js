@@ -1499,6 +1499,8 @@ function normalizeDocxSpecialPlaceholderValue(value) {
             id: clean(block.id) || `heading-${blockIndex + 1}`,
             text,
             level,
+            pageBreakBefore: Boolean(block.pageBreakBefore || block.__riskPageBreakBefore),
+            keepNext: block.keepNext === false ? false : true,
           } : null;
         }
 
@@ -1662,6 +1664,7 @@ function normalizeDocxSpecialPlaceholderValue(value) {
     merges,
     pageOrientation,
     pageBreakBefore,
+    keepRowsTogether: Boolean(value.keepRowsTogether || value.avoidRowBreaks || value.keepTogether),
   };
 }
 
@@ -1949,6 +1952,9 @@ function buildWordParagraphXml(text = "", {
   spacingAfter = 60,
   line = 0,
   lineRule = "auto",
+  pageBreakBefore = false,
+  keepNext = false,
+  keepLines = false,
 } = {}) {
   const safeText = clean(text);
   const runProperties = [
@@ -1958,9 +1964,12 @@ function buildWordParagraphXml(text = "", {
     size ? `<w:sz w:val="${size}"/><w:szCs w:val="${size}"/>` : "",
   ].filter(Boolean).join("");
   const paragraphProperties = [
+    pageBreakBefore ? "<w:pageBreakBefore/>" : "",
+    keepNext ? "<w:keepNext/>" : "",
+    keepLines ? "<w:keepLines/>" : "",
     `<w:jc w:val="${escapeWordXmlText(align)}"/>`,
     `<w:spacing w:before="${Math.max(0, spacingBefore)}" w:after="${Math.max(0, spacingAfter)}"${line ? ` w:line="${Math.max(1, Number(line) || 0)}" w:lineRule="${escapeWordXmlText(lineRule)}"` : ""}/>`,
-  ].join("");
+  ].filter(Boolean).join("");
 
   if (!safeText) {
     return `<w:p><w:pPr>${paragraphProperties}</w:pPr></w:p>`;
@@ -2220,6 +2229,9 @@ function buildWordTableXml(table = {}) {
   const rowsXml = rows.map((row, rowIndex) => {
     const cells = Array.isArray(row.cells) ? row.cells : [];
     const cellsXml = [];
+    const rowProperties = (table.keepRowsTogether || table.avoidRowBreaks || table.keepTogether)
+      ? "<w:trPr><w:cantSplit/></w:trPr>"
+      : "";
 
     for (let columnIndex = 0; columnIndex < columns.length; columnIndex += 1) {
       const cellKey = `${rowIndex}:${columnIndex}`;
@@ -2266,7 +2278,7 @@ function buildWordTableXml(table = {}) {
       `.replace(/\n\s+/g, ""));
     }
 
-    return `<w:tr>${cellsXml.join("")}</w:tr>`;
+    return `<w:tr>${rowProperties}${cellsXml.join("")}</w:tr>`;
   }).join("");
 
   const gridXml = columnWidths.map((width) => `<w:gridCol w:w="${width}"/>`).join("");
@@ -2323,14 +2335,18 @@ function buildWordTableBlockXml(table = {}, context = {}) {
   ].join("");
 }
 
-function buildWordHeadingBlockXml(block = {}) {
+function buildWordHeadingBlockXml(block = {}, options = {}) {
   const level = Math.max(1, Math.min(4, Number.parseInt(block.level, 10) || 2));
   const sizes = { 1: 32, 2: 28, 3: 24, 4: 22 };
+  const pageBreakBefore = options.pageBreakBefore ?? Boolean(block.pageBreakBefore);
+  const keepNext = options.keepNext ?? (block.keepNext === false ? false : true);
   return buildWordParagraphXml(block.text || "", {
     bold: true,
     size: sizes[level] || 24,
     spacingBefore: level <= 2 ? 180 : 120,
     spacingAfter: 80,
+    pageBreakBefore,
+    keepNext,
   });
 }
 
@@ -2349,15 +2365,18 @@ function buildWordParagraphBlockXml(block = {}) {
 }
 
 function buildWordLandscapeHeadingTableGroupXml(heading = {}, table = {}, context = {}) {
+  const headingOptions = context.currentSectionOrientation === "landscape"
+    ? {}
+    : { pageBreakBefore: false };
   if (context.currentSectionOrientation === "landscape") {
     return [
-      buildWordHeadingBlockXml(heading),
+      buildWordHeadingBlockXml(heading, headingOptions),
       buildWordTableXml(table),
     ].join("");
   }
   return [
     buildWordSectionBreakXml("portrait"),
-    buildWordHeadingBlockXml(heading),
+    buildWordHeadingBlockXml(heading, headingOptions),
     buildWordTableXml(table),
     buildWordSectionBreakXml("landscape", { margin: 720 }),
   ].join("");
@@ -4105,6 +4124,9 @@ function buildHtmlTemplateTablePlaceholder(table = {}) {
     const tagName = isHeader ? "th" : "td";
     const cells = Array.isArray(row.cells) ? row.cells : [];
     const cellHtml = [];
+    const rowStyle = (table.keepRowsTogether || table.avoidRowBreaks || table.keepTogether)
+      ? ' style="break-inside:avoid;page-break-inside:avoid"'
+      : "";
 
     for (let columnIndex = 0; columnIndex < columns.length; columnIndex += 1) {
       const cellKey = `${rowIndex}:${columnIndex}`;
@@ -4125,7 +4147,7 @@ function buildHtmlTemplateTablePlaceholder(table = {}) {
       cellHtml.push(`<${tagName}${attributes ? ` ${attributes}` : ""}>${buildHtmlTemplateCellCardContent(rawCell)}</${tagName}>`);
     }
 
-    return `<tr>${cellHtml.join("")}</tr>`;
+    return `<tr${rowStyle}>${cellHtml.join("")}</tr>`;
   }).join("");
 
   return `<table class="safe-nexus-template-table">${colgroup ? `<colgroup>${colgroup}</colgroup>` : ""}<tbody>${rowHtml}</tbody></table>`;
@@ -4296,7 +4318,8 @@ function buildHtmlTemplateBlocksPlaceholder(value = {}) {
       if (block.type === "heading") {
         const level = Math.max(1, Math.min(4, Number.parseInt(block.level, 10) || 2));
         const tagName = `h${level}`;
-        return `<${tagName}>${escapeTemplateHtml(block.text || "")}</${tagName}>`;
+        const style = block.pageBreakBefore ? ' style="break-before:page;page-break-before:always"' : "";
+        return `<${tagName}${style}>${escapeTemplateHtml(block.text || "")}</${tagName}>`;
       }
       if (block.type === "paragraph") {
         return `<p>${formatTemplateHtmlText(block.text || "")}</p>`;

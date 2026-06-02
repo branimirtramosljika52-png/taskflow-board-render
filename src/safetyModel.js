@@ -6087,23 +6087,29 @@ function normalizeRiskAssessmentReportTemplateSections(items = []) {
     .map((item, index) => ({ ...item, order: index + 1 }));
 }
 
-function normalizeRiskAssessmentReportWordTemplate(value = null) {
+export function normalizeRiskAssessmentReportWordTemplate(value = null) {
   const source = value && typeof value === "object" ? value : {};
   const fileName = normalizeText(source.fileName);
-  const dataUrl = normalizeText(source.dataUrl);
+  const dataUrl = normalizeText(source.dataUrl || source.storageUrl || source.url || source.inlineDataUrl);
   if (!fileName && !dataUrl) {
     return null;
   }
   return {
+    id: normalizeId(source.id),
     fileName,
     fileType: normalizeText(source.fileType) || "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     fileSize: Number.isFinite(Number(source.fileSize)) ? Number(source.fileSize) : 0,
     dataUrl,
+    inlineDataUrl: normalizeText(source.inlineDataUrl),
+    storageProvider: normalizeText(source.storageProvider),
+    storageBucket: normalizeText(source.storageBucket),
+    storageKey: normalizeText(source.storageKey),
+    storageUrl: normalizeText(source.storageUrl || source.url),
     uploadedAt: normalizeOptionalDateTime(source.uploadedAt ?? source.updatedAt) ?? isoNow(),
   };
 }
 
-function normalizeRiskAssessmentReportTemplate(value = {}) {
+export function normalizeRiskAssessmentReportTemplate(value = {}) {
   const source = value && typeof value === "object" ? value : {};
   const sections = normalizeRiskAssessmentReportTemplateSections(source.sections ?? source.placeholders ?? []);
   return {

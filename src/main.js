@@ -1892,6 +1892,7 @@ const state = {
   },
   riskPpeCatalog: [],
   riskAssessments: [],
+  riskAssessmentReportTemplate: null,
   contracts: [],
   drawings: [],
   contractTemplates: [],
@@ -2860,24 +2861,106 @@ function getRiskAssessmentTemplateStorageKey(scope = getRiskAssessmentTemplateSt
   return `${RISK_ASSESSMENT_TEMPLATE_STORAGE_PREFIX}:${scope}`;
 }
 
+function hasRiskAssessmentReportTemplateContent(template = null) {
+  return Boolean(
+    template?.wordTemplate?.dataUrl
+    || template?.wordTemplate?.fileName
+    || template?.title
+    || template?.description
+    || (Array.isArray(template?.sections) && template.sections.length > 0),
+  );
+}
+
 function loadRiskAssessmentModuleTemplate(force = false) {
   const nextScope = getRiskAssessmentTemplateStorageScope();
   if (!force && riskAssessmentTemplateStorageScope === nextScope && riskAssessmentModuleReportTemplateDraft) {
     return riskAssessmentModuleReportTemplateDraft;
   }
+  const globalTemplate = state.riskAssessmentReportTemplate
+    ? createRiskAssessmentReportTemplateDraft(state.riskAssessmentReportTemplate)
+    : null;
   const stored = readJsonFromLocalStorage(getRiskAssessmentTemplateStorageKey(nextScope), {});
+  const localTemplate = hasRiskAssessmentReportTemplateContent(stored)
+    ? createRiskAssessmentReportTemplateDraft(stored)
+    : null;
+  const shouldMigrateLocalTemplate = localTemplate
+    && !globalTemplate?.wordTemplate?.dataUrl
+    && !globalTemplate?.wordTemplate?.fileName
+    && getCanManageRiskAssessments();
+  const source = shouldMigrateLocalTemplate ? localTemplate : globalTemplate;
   riskAssessmentTemplateStorageScope = nextScope;
-  riskAssessmentModuleReportTemplateDraft = createRiskAssessmentReportTemplateDraft(stored);
+  riskAssessmentModuleReportTemplateDraft = createRiskAssessmentReportTemplateDraft(source || {});
+  if (shouldMigrateLocalTemplate) {
+    state.riskAssessmentReportTemplate = riskAssessmentModuleReportTemplateDraft;
+    persistRiskAssessmentModuleTemplate({ immediate: true, silent: true });
+  }
   return riskAssessmentModuleReportTemplateDraft;
 }
 
-function persistRiskAssessmentModuleTemplate() {
+function persistRiskAssessmentModuleTemplate({
+  immediate = false,
+  silent = true,
+} = {}) {
   if (!riskAssessmentTemplateStorageScope) {
     riskAssessmentTemplateStorageScope = getRiskAssessmentTemplateStorageScope();
   }
   const template = createRiskAssessmentReportTemplateDraft(riskAssessmentReportTemplateDraft || riskAssessmentModuleReportTemplateDraft || {});
   riskAssessmentModuleReportTemplateDraft = template;
-  writeJsonToLocalStorage(getRiskAssessmentTemplateStorageKey(riskAssessmentTemplateStorageScope), template);
+  state.riskAssessmentReportTemplate = template;
+
+  if (!immediate) {
+    if (riskAssessmentTemplatePersistTimerId) {
+      window.clearTimeout(riskAssessmentTemplatePersistTimerId);
+    }
+    riskAssessmentTemplatePersistTimerId = window.setTimeout(() => {
+      riskAssessmentTemplatePersistTimerId = null;
+      void persistRiskAssessmentModuleTemplate({ immediate: true, silent: true });
+    }, 900);
+    return Promise.resolve(template);
+  }
+
+  if (riskAssessmentTemplatePersistTimerId) {
+    window.clearTimeout(riskAssessmentTemplatePersistTimerId);
+    riskAssessmentTemplatePersistTimerId = null;
+  }
+
+  if (!state.user || !state.activeOrganizationId) {
+    writeJsonToLocalStorage(getRiskAssessmentTemplateStorageKey(riskAssessmentTemplateStorageScope), template);
+    return Promise.resolve(template);
+  }
+
+  if (riskAssessmentTemplatePersistInFlight) {
+    riskAssessmentTemplatePersistPending = true;
+    return Promise.resolve(template);
+  }
+
+  riskAssessmentTemplatePersistInFlight = true;
+  return apiRequest("/risk-assessments/template-settings", {
+    method: "POST",
+    body: { reportTemplate: template },
+  }).then((payload) => {
+    const savedTemplate = createRiskAssessmentReportTemplateDraft(payload.item || payload.reportTemplate || template);
+    state.riskAssessmentReportTemplate = savedTemplate;
+    riskAssessmentModuleReportTemplateDraft = savedTemplate;
+    if (!state.riskAssessmentEditorOpen) {
+      riskAssessmentReportTemplateDraft = savedTemplate;
+    }
+    window.localStorage?.removeItem(getRiskAssessmentTemplateStorageKey(riskAssessmentTemplateStorageScope));
+    syncRiskAssessmentDocumentExportControls();
+    return savedTemplate;
+  }).catch((error) => {
+    writeJsonToLocalStorage(getRiskAssessmentTemplateStorageKey(riskAssessmentTemplateStorageScope), template);
+    if (!silent) {
+      setInlineMessage(getRiskAssessmentTemplateFeedbackTarget(), error?.message || "Ne mogu spremiti globalni Word template.", "error");
+    }
+    return template;
+  }).finally(() => {
+    riskAssessmentTemplatePersistInFlight = false;
+    if (riskAssessmentTemplatePersistPending) {
+      riskAssessmentTemplatePersistPending = false;
+      void persistRiskAssessmentModuleTemplate({ immediate: true, silent: true });
+    }
+  });
 }
 
 function getRiskAssessmentModuleTemplateDraft() {
@@ -6323,6 +6406,9 @@ let riskAssessmentOfficialSubstanceType = "all";
 let riskAssessmentTemplateStorageScope = "";
 let riskAssessmentModuleReportTemplateDraft = null;
 let riskAssessmentReportTemplateDraft = null;
+let riskAssessmentTemplatePersistTimerId = null;
+let riskAssessmentTemplatePersistInFlight = false;
+let riskAssessmentTemplatePersistPending = false;
 let riskAssessmentWordExportBusy = false;
 let riskAssessmentDraftAutosaveTimer = null;
 let riskAssessmentServerAutosaveTimer = null;
@@ -9275,6 +9361,13 @@ function applySnapshot(payload, options = {}) {
   state.jobAiSettings = normalizeJobAiSettings(payload.jobAiSettings ?? {});
   state.riskPpeCatalog = normalizeRiskPpeCatalog(payload.riskPpeCatalog ?? []);
   state.riskAssessments = payload.riskAssessments ?? [];
+  state.riskAssessmentReportTemplate = payload.riskAssessmentReportTemplate
+    ? createRiskAssessmentReportTemplateDraft(payload.riskAssessmentReportTemplate)
+    : null;
+  riskAssessmentTemplateStorageScope = "";
+  riskAssessmentModuleReportTemplateDraft = state.riskAssessmentReportTemplate
+    ? createRiskAssessmentReportTemplateDraft(state.riskAssessmentReportTemplate)
+    : null;
   state.contracts = payload.contracts ?? [];
   state.drawings = payload.drawings ?? [];
   state.contractTemplates = payload.contractTemplates ?? [];
@@ -129345,15 +129438,21 @@ function createRiskAssessmentTemplateSectionDraft(initial = {}, index = 0) {
 function createRiskAssessmentReportWordTemplateDraft(initial = null) {
   const source = initial && typeof initial === "object" ? initial : {};
   const fileName = String(source.fileName || "").trim();
-  const dataUrl = String(source.dataUrl || "").trim();
+  const dataUrl = String(source.dataUrl || source.storageUrl || source.url || source.inlineDataUrl || "").trim();
   if (!fileName && !dataUrl) {
     return null;
   }
   return {
+    id: String(source.id || "").trim(),
     fileName,
     fileType: String(source.fileType || "application/vnd.openxmlformats-officedocument.wordprocessingml.document").trim(),
     fileSize: Number.isFinite(Number(source.fileSize)) ? Number(source.fileSize) : 0,
     dataUrl,
+    inlineDataUrl: String(source.inlineDataUrl || "").trim(),
+    storageProvider: String(source.storageProvider || "").trim(),
+    storageBucket: String(source.storageBucket || "").trim(),
+    storageKey: String(source.storageKey || "").trim(),
+    storageUrl: String(source.storageUrl || source.url || "").trim(),
     uploadedAt: source.uploadedAt || source.updatedAt || new Date().toISOString(),
   };
 }
@@ -129750,6 +129849,9 @@ function createRiskAssessmentExportTable(columns = [], rows = [], options = {}) 
   if (options.pageOrientation) {
     table.pageOrientation = options.pageOrientation;
   }
+  if (options.keepRowsTogether || options.avoidRowBreaks || options.keepTogether) {
+    table.keepRowsTogether = true;
+  }
   return table;
 }
 
@@ -129760,9 +129862,9 @@ function createRiskAssessmentExportBlocks(blocks = []) {
   };
 }
 
-function createRiskAssessmentExportHeading(text = "", level = 2) {
+function createRiskAssessmentExportHeading(text = "", level = 2, options = {}) {
   const safeText = normalizeRiskAssessmentExportText(text);
-  return safeText ? { type: "heading", text: safeText, level } : null;
+  return safeText ? { type: "heading", text: safeText, level, ...options } : null;
 }
 
 function createRiskAssessmentExportParagraph(text = "", options = {}) {
@@ -129778,18 +129880,8 @@ function formatRiskAssessmentExportYesNo(value = "", fallback = "-") {
   return fallback;
 }
 
-function getRiskAssessmentExportRiskLevelNumber(risk = {}) {
-  const level = getRiskAssessmentRiskDisplayLevel(risk).toLocaleLowerCase("hr-HR");
-  if (level.includes("mal")) return "1";
-  if (level.includes("sred")) return "2";
-  if (level.includes("velik")) return "3";
-  return "";
-}
-
 function getRiskAssessmentExportRiskLevelText(risk = {}) {
-  const level = getRiskAssessmentRiskDisplayLevel(risk);
-  const number = getRiskAssessmentExportRiskLevelNumber(risk);
-  return [level, number ? `(${number})` : ""].filter(Boolean).join(" ");
+  return getRiskAssessmentRiskDisplayLevel(risk);
 }
 
 function getRiskAssessmentExportRiskFill(risk = {}) {
@@ -129916,7 +130008,7 @@ function buildRiskAssessmentJobRiskExportTable(job = {}) {
           [risk.topCategory, risk.category, risk.group].filter(Boolean).join(" / "),
           [risk.code, risk.hazard].filter(Boolean).join(" "),
           risk.possibleConsequences,
-        ].filter(Boolean).join("\n"), { fontSize: 7, bold: true }),
+        ].filter(Boolean).join("\n"), { fontSize: 7 }),
         createRiskAssessmentExportCell(getRiskAssessmentOptionLabel(RISK_ASSESSMENT_PROBABILITY_OPTIONS, risk.probability, "-"), {
           fontSize: 7,
           align: "center",
@@ -129954,7 +130046,11 @@ function buildRiskAssessmentJobRiskExportTable(job = {}) {
     { rowId: "h1", columnId: "probability", colSpan: 3 },
     { rowId: "h1", columnId: "special", colSpan: 3 },
   ];
-  return createRiskAssessmentExportTable(columns, rows, { merges, pageOrientation: "landscape" });
+  return createRiskAssessmentExportTable(columns, rows, {
+    merges,
+    pageOrientation: "landscape",
+    keepRowsTogether: true,
+  });
 }
 
 function buildRiskAssessmentJobsExportBlocks() {
@@ -129971,7 +130067,7 @@ function buildRiskAssessmentJobsExportBlocks() {
       buildRiskAssessmentJobBasicExportTable(job, index),
       createRiskAssessmentExportHeading("Ograničenja rada", 4),
       buildRiskAssessmentJobEligibilityExportTable(job),
-      createRiskAssessmentExportHeading("Opasnosti, štetnosti, napori i mjere", 4),
+      createRiskAssessmentExportHeading("Opasnosti, štetnosti, napori i mjere", 4, { pageBreakBefore: true }),
       buildRiskAssessmentJobRiskExportTable(job),
     );
   });
@@ -130581,12 +130677,12 @@ async function uploadRiskAssessmentWordTemplateFile(file) {
       updatedAt: new Date().toISOString(),
     });
     renderRiskAssessmentTemplateBuilder();
-    persistRiskAssessmentModuleTemplate();
+    await persistRiskAssessmentModuleTemplate({ immediate: true, silent: false });
     if (state.riskAssessmentEditorOpen) {
       scheduleRiskAssessmentDraftAutosave();
     }
     renderRiskAssessmentOverview();
-    setInlineMessage(getRiskAssessmentTemplateFeedbackTarget(), `Word template "${file.name}" je postavljen kao zadani template modula.`, "success");
+    setInlineMessage(getRiskAssessmentTemplateFeedbackTarget(), `Word template "${file.name}" je postavljen kao globalni template modula.`, "success");
   } catch (error) {
     setInlineMessage(getRiskAssessmentTemplateFeedbackTarget(), error?.message || "Ne mogu učitati Word template.", "error");
   } finally {
@@ -130611,11 +130707,11 @@ function removeRiskAssessmentWordTemplate() {
     updatedAt: new Date().toISOString(),
   });
   renderRiskAssessmentTemplateBuilder();
-  persistRiskAssessmentModuleTemplate();
+  void persistRiskAssessmentModuleTemplate({ immediate: true, silent: false });
   if (state.riskAssessmentEditorOpen) {
     scheduleRiskAssessmentDraftAutosave();
   }
-  setInlineMessage(getRiskAssessmentTemplateFeedbackTarget(), "Word template je maknut iz zadanog templatea.", "success");
+  setInlineMessage(getRiskAssessmentTemplateFeedbackTarget(), "Word template je maknut iz globalnog templatea.", "success");
 }
 
 function getRiskAssessmentTemplateSectionIndex(element) {
@@ -130708,6 +130804,7 @@ function addRiskAssessmentTemplateSection() {
     ],
   });
   renderRiskAssessmentTemplateBuilder();
+  persistRiskAssessmentModuleTemplate();
   scheduleRiskAssessmentDraftAutosave();
 }
 
@@ -130747,6 +130844,7 @@ function updateRiskAssessmentTemplateSection(index, patch = {}) {
   });
   riskAssessmentReportTemplateDraft = createRiskAssessmentReportTemplateDraft({ ...template, sections: nextSections });
   renderRiskAssessmentTemplatePreview();
+  persistRiskAssessmentModuleTemplate();
   scheduleRiskAssessmentDraftAutosave();
 }
 
@@ -130760,6 +130858,7 @@ function moveRiskAssessmentTemplateSection(index, direction) {
   [nextSections[index], nextSections[target]] = [nextSections[target], nextSections[index]];
   riskAssessmentReportTemplateDraft = createRiskAssessmentReportTemplateDraft({ ...template, sections: nextSections });
   renderRiskAssessmentTemplateBuilder();
+  persistRiskAssessmentModuleTemplate();
   scheduleRiskAssessmentDraftAutosave();
 }
 
@@ -130770,6 +130869,7 @@ function removeRiskAssessmentTemplateSection(index) {
     sections: template.sections.filter((_, sectionIndex) => sectionIndex !== index),
   });
   renderRiskAssessmentTemplateBuilder();
+  persistRiskAssessmentModuleTemplate();
   scheduleRiskAssessmentDraftAutosave();
 }
 
@@ -138135,6 +138235,16 @@ function resetAuthenticatedWorkspaceState() {
   state.rulebooks = [];
   state.serviceCatalog = [];
   state.measurementEquipment = [];
+  state.riskAssessmentReportTemplate = null;
+  riskAssessmentTemplateStorageScope = "";
+  riskAssessmentModuleReportTemplateDraft = null;
+  riskAssessmentReportTemplateDraft = null;
+  if (riskAssessmentTemplatePersistTimerId) {
+    window.clearTimeout(riskAssessmentTemplatePersistTimerId);
+    riskAssessmentTemplatePersistTimerId = null;
+  }
+  riskAssessmentTemplatePersistInFlight = false;
+  riskAssessmentTemplatePersistPending = false;
   state.measurementEquipmentCardTemplate = null;
   state.measurementEquipmentNotificationSettings = {
     ...DEFAULT_MEASUREMENT_EQUIPMENT_NOTIFICATION_SETTINGS,

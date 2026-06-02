@@ -2203,6 +2203,19 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       attachments: (item.attachments ?? []).map((document) => ({ ...document })),
       comments: (item.comments ?? []).map((comment) => ({ ...comment })),
     })),
+    riskAssessmentReportTemplate: (() => {
+      const settingsEntry = (rawSnapshot.riskAssessmentTemplateSettings ?? []).find((item) => (
+        String(item.organizationId) === String(organizationId)
+      ));
+      const reportTemplate = settingsEntry?.reportTemplate;
+      return reportTemplate
+        ? {
+          ...reportTemplate,
+          wordTemplate: reportTemplate.wordTemplate ? { ...reportTemplate.wordTemplate } : null,
+          sections: (reportTemplate.sections ?? []).map((section) => ({ ...section })),
+        }
+        : null;
+    })(),
     contracts: (canViewContracts ? (rawSnapshot.contracts ?? []) : []).filter(isOrganizationOrCompanyItemVisible).map((item) => ({
       ...item,
       linkedOfferIds: [...(item.linkedOfferIds ?? [])],
