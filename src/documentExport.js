@@ -1474,6 +1474,57 @@ function normalizeDocxSpecialPlaceholderValue(value) {
       : { type: "optional_empty" };
   }
 
+  if (blockType === "blocks" || blockType === "section_blocks" || blockType === "document_blocks") {
+    const blocks = (Array.isArray(value.blocks) ? value.blocks : [])
+      .slice(0, 400)
+      .map((block, blockIndex) => {
+        if (!block || typeof block !== "object" || Array.isArray(block)) {
+          return null;
+        }
+
+        const nestedBlock = normalizeDocxSpecialPlaceholderValue(block);
+        if (nestedBlock && nestedBlock.type !== "optional_empty") {
+          return nestedBlock;
+        }
+
+        const nestedType = clean(block.__docxBlockType || block.type).toLowerCase();
+        if (nestedType === "heading" || nestedType === "title" || nestedType === "section_heading") {
+          const level = Math.max(1, Math.min(4, Number.parseInt(block.level, 10) || 2));
+          const text = clean(block.text || block.title || block.label);
+          return text ? {
+            type: "heading",
+            id: clean(block.id) || `heading-${blockIndex + 1}`,
+            text,
+            level,
+          } : null;
+        }
+
+        if (nestedType === "paragraph" || nestedType === "text" || nestedType === "note") {
+          const text = String(block.text ?? block.value ?? "").replace(/\r\n/g, "\n").trim();
+          return text ? {
+            type: "paragraph",
+            id: clean(block.id) || `paragraph-${blockIndex + 1}`,
+            text,
+            align: ["left", "center", "right"].includes(clean(block.align).toLowerCase()) ? clean(block.align).toLowerCase() : "left",
+            bold: Boolean(block.bold),
+            italic: Boolean(block.italic),
+          } : null;
+        }
+
+        if (nestedType === "page_break" || nestedType === "pagebreak" || nestedType === "page-break") {
+          return {
+            type: "page_break",
+            id: clean(block.id) || `page-break-${blockIndex + 1}`,
+          };
+        }
+
+        return null;
+      })
+      .filter(Boolean);
+
+    return blocks.length ? { type: "blocks", blocks } : { type: "optional_empty" };
+  }
+
   if (blockType !== "table") {
     return null;
   }
@@ -1526,7 +1577,7 @@ function normalizeDocxSpecialPlaceholderValue(value) {
                   ? clean(format.type).toLowerCase()
                   : "general",
                 fontFamily: clean(format.fontFamily).toLowerCase(),
-                fontSize: Number.isFinite(Number(format.fontSize)) ? Math.max(9, Math.min(40, Number(format.fontSize))) : 14,
+                fontSize: Number.isFinite(Number(format.fontSize)) ? Math.max(6, Math.min(40, Number(format.fontSize))) : 14,
                 bold: Boolean(format.bold),
                 italic: Boolean(format.italic),
                 underline: Boolean(format.underline),
@@ -1836,6 +1887,39 @@ function buildHandoverSpecificationFallbackText(value = {}) {
   return lines.filter(Boolean).join("\n");
 }
 
+function buildDocxBlocksFallbackText(value = {}) {
+  return (Array.isArray(value.blocks) ? value.blocks : [])
+    .map((block) => {
+      if (!block || typeof block !== "object") {
+        return "";
+      }
+      if (block.type === "heading" || block.type === "paragraph") {
+        return clean(block.text);
+      }
+      if (block.type === "table") {
+        return buildDocxTableFallbackText(block);
+      }
+      if (block.type === "handover_protocol") {
+        return buildHandoverProtocolFallbackText(block);
+      }
+      if (block.type === "handover_specification") {
+        return buildHandoverSpecificationFallbackText(block);
+      }
+      if (block.type === "system_description") {
+        return buildDocxSystemDescriptionFallbackText(block);
+      }
+      if (block.type === "signature_group") {
+        return buildDocxSignatureGroupFallbackText(block.items);
+      }
+      if (block.type === "rich_text") {
+        return clean(block.text || richTextHtmlToPlainText(block.html || ""));
+      }
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
 function buildWordParagraphXml(text = "", {
   align = "left",
   bold = false,
@@ -2114,6 +2198,48 @@ function buildWordTableXml(table = {}) {
 
 function buildWordPageBreakXml() {
   return '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
+}
+
+function buildWordBlocksXml(value = {}, zip = null, context = {}, xmlFileName = "word/document.xml") {
+  return (Array.isArray(value.blocks) ? value.blocks : [])
+    .map((block) => {
+      if (!block || typeof block !== "object") {
+        return "";
+      }
+
+      if (block.type === "heading") {
+        const level = Math.max(1, Math.min(4, Number.parseInt(block.level, 10) || 2));
+        const sizes = { 1: 32, 2: 28, 3: 24, 4: 22 };
+        return buildWordParagraphXml(block.text || "", {
+          bold: true,
+          size: sizes[level] || 24,
+          spacingBefore: level <= 2 ? 180 : 120,
+          spacingAfter: 80,
+        });
+      }
+
+      if (block.type === "paragraph") {
+        const paragraphs = String(block.text || "")
+          .split(/\n{2,}/)
+          .map((paragraph) => paragraph.trim())
+          .filter(Boolean);
+        return (paragraphs.length ? paragraphs : [""]).map((paragraph) => buildWordParagraphXml(paragraph, {
+          align: block.align || "left",
+          bold: Boolean(block.bold),
+          italic: Boolean(block.italic),
+          size: 20,
+          spacingAfter: 80,
+        })).join("");
+      }
+
+      if (block.type === "page_break") {
+        return buildWordPageBreakXml();
+      }
+
+      return buildDocxSpecialPlaceholderXml(block, zip, context, xmlFileName);
+    })
+    .filter(Boolean)
+    .join("");
 }
 
 function buildHandoverSpecificationTableModel(value = {}) {
@@ -2954,6 +3080,10 @@ function buildDocxSpecialPlaceholderXml(value, zip = null, context = {}, xmlFile
     return buildWordRichTextXml(value);
   }
 
+  if (value.type === "blocks") {
+    return buildWordBlocksXml(value, zip, context, xmlFileName);
+  }
+
   if (value.type === "optional_empty") {
     return "";
   }
@@ -3020,6 +3150,8 @@ function applyDocxSpecialPlaceholders(zip, specialPlaceholders = new Map()) {
             ? buildHandoverProtocolFallbackText(value)
             : value.type === "handover_specification"
               ? buildHandoverSpecificationFallbackText(value)
+              : value.type === "blocks"
+                ? buildDocxBlocksFallbackText(value)
           : value.type === "system_description"
             ? buildDocxSystemDescriptionFallbackText(value)
             : buildDocxSignatureGroupFallbackText(value.items),
@@ -3280,6 +3412,7 @@ export async function buildDocxFromTemplateBuffer(templateBuffer, placeholders =
             || specialValue.type === "system_description"
             || specialValue.type === "signature_group"
             || specialValue.type === "rich_text"
+            || specialValue.type === "blocks"
             || specialValue.type === "optional_empty"
           ) {
             const sentinel = `__TASKFLOW_DOCX_BLOCK_${index}_${Date.now()}__`;
@@ -3909,6 +4042,47 @@ function buildHtmlTemplateRichTextPlaceholder(value = {}) {
   return html ? `<div class="safe-nexus-template-rich-text">${html}</div>` : "";
 }
 
+function buildHtmlTemplateBlocksPlaceholder(value = {}) {
+  return (Array.isArray(value.blocks) ? value.blocks : [])
+    .map((block) => {
+      if (!block || typeof block !== "object") {
+        return "";
+      }
+      if (block.type === "heading") {
+        const level = Math.max(1, Math.min(4, Number.parseInt(block.level, 10) || 2));
+        const tagName = `h${level}`;
+        return `<${tagName}>${escapeTemplateHtml(block.text || "")}</${tagName}>`;
+      }
+      if (block.type === "paragraph") {
+        return `<p>${formatTemplateHtmlText(block.text || "")}</p>`;
+      }
+      if (block.type === "page_break") {
+        return `<div style="break-after:page"></div>`;
+      }
+      if (block.type === "table") {
+        return buildHtmlTemplateTablePlaceholder(block);
+      }
+      if (block.type === "handover_protocol") {
+        return buildHtmlTemplateHandoverProtocolPlaceholder(block);
+      }
+      if (block.type === "handover_specification") {
+        return buildHtmlTemplateHandoverSpecificationPlaceholder(block);
+      }
+      if (block.type === "signature_group") {
+        return buildHtmlTemplateSignatureGroupPlaceholder(block.items);
+      }
+      if (block.type === "system_description") {
+        return buildHtmlTemplateSystemDescriptionPlaceholder(block);
+      }
+      if (block.type === "rich_text") {
+        return buildHtmlTemplateRichTextPlaceholder(block);
+      }
+      return "";
+    })
+    .filter(Boolean)
+    .join("");
+}
+
 function buildHtmlTemplateSpecialPlaceholder(value) {
   const specialValue = normalizeDocxSpecialPlaceholderValue(value);
   if (!specialValue) {
@@ -3935,6 +4109,9 @@ function buildHtmlTemplateSpecialPlaceholder(value) {
   }
   if (specialValue.type === "rich_text") {
     return buildHtmlTemplateRichTextPlaceholder(specialValue);
+  }
+  if (specialValue.type === "blocks") {
+    return buildHtmlTemplateBlocksPlaceholder(specialValue);
   }
 
   return "";

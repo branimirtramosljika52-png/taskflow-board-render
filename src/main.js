@@ -126511,7 +126511,7 @@ function renderRiskAssessmentChemicalRegisterTable() {
             return `
               <tr>
                 <td class="is-index">${escapeHtml(String(index + 1))}.</td>
-                <td><strong>${escapeHtml(chemical.name || "Kemikalija")}</strong></td>
+                <td><strong>${escapeHtml(chemical.name || "-")}</strong></td>
                 <td>${renderRiskAssessmentChemicalTableCellLines(chemical.casNumber)}</td>
                 <td>${renderRiskAssessmentChemicalTableCellLines(getRiskAssessmentChemicalOfficialGviText(chemical))}</td>
                 <td>${renderRiskAssessmentChemicalTableCellLines(getRiskAssessmentChemicalOfficialKgviText(chemical))}</td>
@@ -129666,6 +129666,738 @@ function buildRiskAssessmentSectionExportHtml(section = {}, index = 0) {
   `;
 }
 
+function normalizeRiskAssessmentExportText(value = "") {
+  return String(value ?? "")
+    .replace(/\r\n/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .trim();
+}
+
+function normalizeRiskAssessmentExportLines(value = []) {
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => normalizeRiskAssessmentExportLines(entry));
+  }
+  return normalizeRiskAssessmentExportText(value)
+    .split(/\n+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function joinRiskAssessmentExportLines(value = [], fallback = "-") {
+  const lines = normalizeRiskAssessmentExportLines(value);
+  return lines.length ? lines.join("\n") : fallback;
+}
+
+function createRiskAssessmentExportCell(value = "", format = {}) {
+  const cellFormat = {
+    align: format.align || "left",
+    type: format.type || "text",
+    bold: Boolean(format.bold),
+    italic: Boolean(format.italic),
+  };
+  if (format.fillColor) {
+    cellFormat.fillColor = format.fillColor;
+  }
+  if (Number.isFinite(Number(format.fontSize))) {
+    cellFormat.fontSize = Number(format.fontSize);
+  }
+  return {
+    text: joinRiskAssessmentExportLines(value, format.fallback ?? "-"),
+    format: cellFormat,
+  };
+}
+
+function createRiskAssessmentExportHeaderCell(value = "", format = {}) {
+  return createRiskAssessmentExportCell(value, {
+    align: "center",
+    fillColor: "#E5E7EB",
+    fontSize: 8,
+    ...format,
+    bold: true,
+  });
+}
+
+function createRiskAssessmentExportRow(id = "", cells = [], header = false) {
+  return {
+    id,
+    header,
+    cells,
+  };
+}
+
+function createRiskAssessmentExportTable(columns = [], rows = [], options = {}) {
+  return {
+    __docxBlockType: "table",
+    columns,
+    rows,
+    headerRows: rows.filter((row) => row.header).map((row) => row.id),
+    merges: options.merges || [],
+  };
+}
+
+function createRiskAssessmentExportBlocks(blocks = []) {
+  return {
+    __docxBlockType: "blocks",
+    blocks: blocks.filter(Boolean),
+  };
+}
+
+function createRiskAssessmentExportHeading(text = "", level = 2) {
+  const safeText = normalizeRiskAssessmentExportText(text);
+  return safeText ? { type: "heading", text: safeText, level } : null;
+}
+
+function createRiskAssessmentExportParagraph(text = "", options = {}) {
+  const safeText = normalizeRiskAssessmentExportText(text);
+  return safeText ? { type: "paragraph", text: safeText, ...options } : null;
+}
+
+function formatRiskAssessmentExportYesNo(value = "", fallback = "-") {
+  const normalized = String(value || "").toLowerCase();
+  if (normalized === "da" || normalized === "yes" || normalized === "true") return "Da";
+  if (normalized === "ne" || normalized === "no" || normalized === "false") return "Ne";
+  if (normalized === "np" || normalized === "n/p") return "N/P";
+  return fallback;
+}
+
+function getRiskAssessmentExportRiskBandValue(risk = {}, band = "low") {
+  const level = getRiskAssessmentRiskDisplayLevel(risk).toLocaleLowerCase("hr-HR");
+  if (band === "low" && level.includes("mal")) return "1";
+  if (band === "medium" && level.includes("sred")) return "2";
+  if (band === "high" && level.includes("velik")) return "3";
+  return "";
+}
+
+function buildRiskAssessmentJobsOverviewExportTable() {
+  const columns = [
+    { id: "job", label: "POSLOVI", width: 180 },
+    { id: "workers", label: "Broj radnika", width: 70 },
+    { id: "places", label: "Mjesta obavljanja poslova", width: 170 },
+    { id: "equipment", label: "Popis radne opreme", width: 170 },
+    { id: "harmful", label: "Popis izvora fizikalnih, kemijskih i bioloških štetnosti", width: 190 },
+    { id: "organization", label: "Organizacija rada i raspored radnog vremena", width: 170 },
+  ];
+  const rows = [
+    createRiskAssessmentExportRow("head", columns.map((column) => createRiskAssessmentExportHeaderCell(column.label)), true),
+    ...riskAssessmentJobDrafts.map((job, index) => createRiskAssessmentExportRow(`job-${index + 1}`, [
+      createRiskAssessmentExportCell(job.jobTitle || `Radno mjesto ${index + 1}`, { fontSize: 8, bold: true }),
+      createRiskAssessmentExportCell(job.workerCount, { fontSize: 8, align: "center" }),
+      createRiskAssessmentExportCell(job.workplaces || job.workplace || job.workplaceDescription, { fontSize: 8 }),
+      createRiskAssessmentExportCell(joinUniqueRiskAssessmentTextBlocks([job.workEquipment, job.toolsAndMachines]), { fontSize: 8 }),
+      createRiskAssessmentExportCell(joinUniqueRiskAssessmentTextBlocks([job.harmfulSources, job.workSubstances, job.chemicalSubstances, job.biologicalHazards]), { fontSize: 8 }),
+      createRiskAssessmentExportCell(joinUniqueRiskAssessmentTextBlocks([job.workOrganization, job.workSchedule, job.organization]), { fontSize: 8 }),
+    ])),
+  ];
+  return createRiskAssessmentExportTable(columns, rows);
+}
+
+function buildRiskAssessmentJobBasicExportTable(job = {}, index = 0) {
+  const sourceJobs = (job.sourceJobIds ?? [])
+    .map((id) => (state.jobs ?? []).find((item) => String(item.id) === String(id))?.title)
+    .filter(Boolean);
+  const jobTasks = joinUniqueRiskAssessmentTextBlocks([job.tasks, sourceJobs.join("\n"), job.jobTitle]);
+  const columns = [
+    { id: "label", label: "Podatak", width: 190 },
+    { id: "value", label: "Opis", width: 520 },
+  ];
+  const rows = [
+    createRiskAssessmentExportRow("head", columns.map((column) => createRiskAssessmentExportHeaderCell(column.label, { fontSize: 9 })), true),
+    ["Radno mjesto", job.jobTitle || `Radno mjesto ${index + 1}`],
+    ["Poslovi", jobTasks],
+    ["Broj radnika", job.workerCount],
+    ["Obvezna stručna sprema ili osposobljenost", job.requiredQualification || job.qualifications],
+    ["Poslovi s posebnim uvjetima rada", formatRiskAssessmentExportYesNo(job.specialWorkConditions)],
+    ["Ako DA, zbog kojih okolnosti", job.specialWorkReason || job.specialConditions],
+    ["Organizacija rada i raspored radnog vremena", joinUniqueRiskAssessmentTextBlocks([job.workOrganization, job.workSchedule, job.organization])],
+    ["Opis poslova i aktivnosti", job.description || job.detailedDescription || job.shortDescription],
+    ["Popis radne opreme", joinUniqueRiskAssessmentTextBlocks([job.workEquipment, job.toolsAndMachines])],
+    ["Radne tvari", joinUniqueRiskAssessmentTextBlocks([job.workSubstances, job.chemicalSubstances])],
+    ["Mjesta rada gdje se poslovi obavljaju", job.workplaces || job.workplace || job.workplaceDescription],
+    ["Uređenje mjesta rada", job.workplaceArrangement],
+    ["Izvori fizikalnih, kemijskih i bioloških štetnosti", job.harmfulSources],
+  ].map((entry, rowIndex) => (Array.isArray(entry)
+    ? createRiskAssessmentExportRow(`basic-${rowIndex}`, [
+      createRiskAssessmentExportCell(entry[0], { fontSize: 8, bold: true, fillColor: "#F8FAFC" }),
+      createRiskAssessmentExportCell(entry[1], { fontSize: 8 }),
+    ])
+    : entry));
+  return createRiskAssessmentExportTable(columns, rows);
+}
+
+function buildRiskAssessmentJobEligibilityExportTable(job = {}) {
+  const columns = [
+    { id: "group", label: "Smiju li na tim poslovima raditi", width: 330 },
+    { id: "status", label: "Status", width: 90 },
+    { id: "note", label: "Napomena", width: 360 },
+  ];
+  const rows = [
+    createRiskAssessmentExportRow("head", columns.map((column) => createRiskAssessmentExportHeaderCell(column.label, { fontSize: 8 })), true),
+    ...RISK_ASSESSMENT_ELIGIBILITY_ROWS.map((row) => {
+      const entry = job.eligibility?.[row.key] ?? { allowed: "np", note: "" };
+      return createRiskAssessmentExportRow(`eligibility-${row.key}`, [
+        createRiskAssessmentExportCell(row.label, { fontSize: 8 }),
+        createRiskAssessmentExportCell(formatRiskAssessmentExportYesNo(entry.allowed || "np", "N/P"), { fontSize: 8, align: "center" }),
+        createRiskAssessmentExportCell(entry.note, { fontSize: 8 }),
+      ]);
+    }),
+  ];
+  return createRiskAssessmentExportTable(columns, rows);
+}
+
+function buildRiskAssessmentJobRiskExportTable(job = {}) {
+  const riskRows = (job.riskRows ?? []).filter((risk) => (
+    getRiskAssessmentRiskRowKey(risk) || risk.riskLevel || risk.existingMeasures || risk.measures || risk.workNote
+  ));
+  const columns = [
+    { id: "risk", label: "Identifikacija opasnosti, štetnosti i napora", width: 230 },
+    { id: "p-low", label: "Malo vjerojatno", width: 48 },
+    { id: "p-medium", label: "Vjerojatno", width: 48 },
+    { id: "p-high", label: "Vrlo vjerojatno", width: 48 },
+    { id: "c-low", label: "Malo štetno", width: 48 },
+    { id: "c-medium", label: "Srednje štetno", width: 48 },
+    { id: "c-high", label: "Izrazito štetno", width: 48 },
+    { id: "r-low", label: "Mali rizik (1)", width: 48 },
+    { id: "r-medium", label: "Srednji rizik (2)", width: 48 },
+    { id: "r-high", label: "Veliki rizik (3)", width: 48 },
+    { id: "special", label: "Posebni uvjeti rada", width: 70 },
+    { id: "note", label: "Objašnjenje / napomena", width: 210 },
+    { id: "measures", label: "Primijenjena pravila, mjere i postupci za smanjivanje razine rizika", width: 230 },
+  ];
+  const headerFormat = { fontSize: 7, align: "center" };
+  const rows = [
+    createRiskAssessmentExportRow("h1", [
+      createRiskAssessmentExportHeaderCell("Identifikacija opasnosti, štetnosti i napora", headerFormat),
+      createRiskAssessmentExportHeaderCell("Procjenjivanje opasnosti, štetnosti i napora", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("Analiza prikupljenih podataka", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+    ], true),
+    createRiskAssessmentExportRow("h2", [
+      createRiskAssessmentExportHeaderCell("Opasnosti / štetnosti / napori", headerFormat),
+      createRiskAssessmentExportHeaderCell("Vjerojatnost", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("Posljedice", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("Matrica procjene rizika", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("Poslovi s posebnim uvjetima rada (DA/NE)", headerFormat),
+      createRiskAssessmentExportHeaderCell("Objašnjenje / napomena", headerFormat),
+      createRiskAssessmentExportHeaderCell("Primijenjena pravila, mjere i postupci", headerFormat),
+    ], true),
+    createRiskAssessmentExportRow("h3", columns.map((column) => createRiskAssessmentExportHeaderCell(column.label, headerFormat)), true),
+    ...(riskRows.length ? riskRows.map((risk, riskIndex) => {
+      const probability = String(risk.probability || "").toLowerCase();
+      const consequence = String(risk.consequence || "").toLowerCase();
+      const measuresText = joinUniqueRiskAssessmentTextBlocks([risk.existingMeasures, risk.additionalMeasures, risk.measures]);
+      return createRiskAssessmentExportRow(`risk-${riskIndex + 1}`, [
+        createRiskAssessmentExportCell([
+          [risk.topCategory, risk.category, risk.group].filter(Boolean).join(" / "),
+          [risk.code, risk.hazard].filter(Boolean).join(" "),
+          risk.possibleConsequences,
+        ].filter(Boolean).join("\n"), { fontSize: 7, bold: true }),
+        createRiskAssessmentExportCell(probability === "mv" ? "X" : "", { fontSize: 7, align: "center" }),
+        createRiskAssessmentExportCell(probability === "v" ? "X" : "", { fontSize: 7, align: "center" }),
+        createRiskAssessmentExportCell(probability === "vv" ? "X" : "", { fontSize: 7, align: "center" }),
+        createRiskAssessmentExportCell(["mš", "ms"].includes(consequence) ? "X" : "", { fontSize: 7, align: "center" }),
+        createRiskAssessmentExportCell(["sš", "ss"].includes(consequence) ? "X" : "", { fontSize: 7, align: "center" }),
+        createRiskAssessmentExportCell(["iš", "is"].includes(consequence) ? "X" : "", { fontSize: 7, align: "center" }),
+        createRiskAssessmentExportCell(getRiskAssessmentExportRiskBandValue(risk, "low"), { fontSize: 7, align: "center" }),
+        createRiskAssessmentExportCell(getRiskAssessmentExportRiskBandValue(risk, "medium"), { fontSize: 7, align: "center" }),
+        createRiskAssessmentExportCell(getRiskAssessmentExportRiskBandValue(risk, "high"), { fontSize: 7, align: "center" }),
+        createRiskAssessmentExportCell(formatRiskAssessmentExportYesNo(job.specialWorkConditions, "Ne"), { fontSize: 7, align: "center" }),
+        createRiskAssessmentExportCell(joinUniqueRiskAssessmentTextBlocks([risk.workNote, risk.note, risk.source]), { fontSize: 7 }),
+        createRiskAssessmentExportCell(measuresText, { fontSize: 7 }),
+      ]);
+    }) : [
+      createRiskAssessmentExportRow("empty", [
+        createRiskAssessmentExportCell("Nema dodanih stavki rizika.", { fontSize: 8 }),
+        ...Array.from({ length: columns.length - 1 }, () => createRiskAssessmentExportCell("", { fontSize: 8 })),
+      ]),
+    ]),
+  ];
+  const merges = [
+    { rowId: "h1", columnId: "risk", rowSpan: 2 },
+    { rowId: "h1", columnId: "p-low", colSpan: 9 },
+    { rowId: "h1", columnId: "special", colSpan: 3 },
+    { rowId: "h2", columnId: "p-low", colSpan: 3 },
+    { rowId: "h2", columnId: "c-low", colSpan: 3 },
+    { rowId: "h2", columnId: "r-low", colSpan: 3 },
+    { rowId: "h2", columnId: "special", rowSpan: 2 },
+    { rowId: "h2", columnId: "note", rowSpan: 2 },
+    { rowId: "h2", columnId: "measures", rowSpan: 2 },
+  ];
+  return createRiskAssessmentExportTable(columns, rows, { merges });
+}
+
+function buildRiskAssessmentJobsExportBlocks() {
+  if (!riskAssessmentJobDrafts.length) {
+    return [createRiskAssessmentExportParagraph("Radna mjesta nisu dodana.")];
+  }
+  const blocks = [
+    createRiskAssessmentExportHeading("Pregled poslova", 3),
+    buildRiskAssessmentJobsOverviewExportTable(),
+  ];
+  riskAssessmentJobDrafts.forEach((job, index) => {
+    blocks.push(
+      createRiskAssessmentExportHeading(`Obrazac analize radnog mjesta: ${job.jobTitle || `Radno mjesto ${index + 1}`}`, 3),
+      buildRiskAssessmentJobBasicExportTable(job, index),
+      createRiskAssessmentExportHeading("Ograničenja rada", 4),
+      buildRiskAssessmentJobEligibilityExportTable(job),
+      createRiskAssessmentExportHeading("Opasnosti, štetnosti, napori i mjere", 4),
+      buildRiskAssessmentJobRiskExportTable(job),
+    );
+  });
+  return blocks;
+}
+
+function buildRiskAssessmentChemicalExportTable() {
+  const regulationTitle = "Pravilnik o zaštiti radnika od izloženosti opasnim kemikalijama na radu, graničnim vrijednostima izloženosti i biološkim graničnim vrijednostima (N.N. br. 91/18, 01/21, 148/23 i 135/25)";
+  const clpTitle = "Uredba EZ o razvrstavanju, označavanju i pakiranju tvari i smjesa br. 1272/08";
+  const columns = [
+    { id: "n", label: "Red. br.", width: 36 },
+    { id: "name", label: "Kemikalija", width: 138 },
+    { id: "cas", label: "CAS br.", width: 64 },
+    { id: "gvi", label: "GVI", width: 60 },
+    { id: "kgvi", label: "KGVI", width: 60 },
+    { id: "note", label: "Napomena", width: 78 },
+    { id: "prilog", label: "GVI prema Prilogu II", width: 92 },
+    { id: "harm", label: "Procjena veličina posljedica - štetnosti", width: 100 },
+    { id: "pictograms", label: "Piktogrami Oznake opasnosti", width: 88 },
+    { id: "h", label: "Oznake upozorenja", width: 84 },
+    { id: "euh", label: "Dodatne oznake upozorenja", width: 74 },
+    { id: "p", label: "Oznake obavijesti (P)", width: 90 },
+    { id: "probability", label: "Vjerojatnost", width: 52 },
+    { id: "consequence", label: "Posljedice", width: 52 },
+    { id: "risk", label: "Rizik", width: 48 },
+  ];
+  const headerFormat = { fontSize: 6.5, align: "center" };
+  const rows = [
+    createRiskAssessmentExportRow("h1", [
+      createRiskAssessmentExportHeaderCell("Red.\nbr.", headerFormat),
+      createRiskAssessmentExportHeaderCell("Kemikalija", headerFormat),
+      createRiskAssessmentExportHeaderCell("CAS\nbr.", headerFormat),
+      createRiskAssessmentExportHeaderCell(regulationTitle, headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell(clpTitle, headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("Oznake\nobavijesti\n(P)", headerFormat),
+      createRiskAssessmentExportHeaderCell("Procijenjeni rizik", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+    ], true),
+    createRiskAssessmentExportRow("h2", [
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("GVI", headerFormat),
+      createRiskAssessmentExportHeaderCell("KGVI", headerFormat),
+      createRiskAssessmentExportHeaderCell("Napomena", headerFormat),
+      createRiskAssessmentExportHeaderCell("GVI prema\nPrilogu II", headerFormat),
+      createRiskAssessmentExportHeaderCell("Procijenjena veličina posljedica - štetnosti", headerFormat),
+      createRiskAssessmentExportHeaderCell("Razvrstavanje i označavanje", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("vjerojatnost", headerFormat),
+      createRiskAssessmentExportHeaderCell("posljedice", headerFormat),
+      createRiskAssessmentExportHeaderCell("RIZIK", headerFormat),
+    ], true),
+    createRiskAssessmentExportRow("h3", [
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("Piktogrami\nOznake opasnosti", headerFormat),
+      createRiskAssessmentExportHeaderCell("Oznake\nupozorenja", headerFormat),
+      createRiskAssessmentExportHeaderCell("Dodatne oznake\nupozorenja", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+    ], true),
+    ...riskAssessmentChemicalDrafts.map((chemical, index) => {
+      const hCodes = extractRiskAssessmentChemicalCodes([chemical.hazardStatements, chemical.classification], /\bH\d{3}[A-Za-z]*\b/g);
+      const euhCodes = extractRiskAssessmentChemicalCodes([chemical.hazardStatements, chemical.classification], /\bEUH\d{3}[A-Za-z]*\b/g);
+      const pCodes = extractRiskAssessmentChemicalCodes(chemical.precautionaryStatements, /\bP\d{3}(?:\s*\+\s*\d{3})*/g);
+      const pictogramLines = [
+        ...normalizeRiskAssessmentChemicalTextList(chemical.pictograms),
+        ...normalizeRiskAssessmentChemicalTextList(chemical.signalWords),
+      ];
+      const probabilityLabel = getRiskAssessmentOptionLabel(RISK_ASSESSMENT_PROBABILITY_OPTIONS, chemical.probability, "-");
+      const consequenceLabel = getRiskAssessmentOptionLabel(RISK_ASSESSMENT_CONSEQUENCE_OPTIONS, chemical.consequence, "-");
+      const risk = getRiskAssessmentChemicalRiskDisplay(chemical);
+      const hasOfficialExposure = hasRiskAssessmentOfficialGviValues(chemical);
+      const officialNote = [chemical.officialLimitNote, chemical.officialDirective ? `Direktiva: ${chemical.officialDirective}` : ""].filter(Boolean);
+      return createRiskAssessmentExportRow(`chemical-${index + 1}`, [
+        createRiskAssessmentExportCell(`${index + 1}.`, { fontSize: 6.5, align: "center" }),
+        createRiskAssessmentExportCell(chemical.name || "-", { fontSize: 6.5, bold: Boolean(chemical.name) }),
+        createRiskAssessmentExportCell(chemical.casNumber, { fontSize: 6.5, align: "center" }),
+        createRiskAssessmentExportCell(getRiskAssessmentChemicalOfficialGviText(chemical), { fontSize: 6.5, align: "center" }),
+        createRiskAssessmentExportCell(getRiskAssessmentChemicalOfficialKgviText(chemical), { fontSize: 6.5, align: "center" }),
+        createRiskAssessmentExportCell(officialNote, { fontSize: 6.5 }),
+        createRiskAssessmentExportCell(getRiskAssessmentChemicalPrilogIiText(chemical), { fontSize: 6.5 }),
+        createRiskAssessmentExportCell(hasOfficialExposure ? "" : chemical.estimatedConsequenceSize, { fontSize: 6.5, align: "center" }),
+        createRiskAssessmentExportCell(pictogramLines, { fontSize: 6.5, align: "center" }),
+        createRiskAssessmentExportCell(hCodes, { fontSize: 6.5 }),
+        createRiskAssessmentExportCell(euhCodes, { fontSize: 6.5 }),
+        createRiskAssessmentExportCell(pCodes, { fontSize: 6.5 }),
+        createRiskAssessmentExportCell(`${probabilityLabel}\n${{ mv: 1, v: 2, vv: 3 }[chemical.probability] || ""}`, { fontSize: 6.5, align: "center" }),
+        createRiskAssessmentExportCell(`${consequenceLabel}\n${{ "mš": 1, "sš": 2, "iš": 3 }[chemical.consequence] || ""}`, { fontSize: 6.5, align: "center" }),
+        createRiskAssessmentExportCell(`${risk.score || "-"}\n${risk.riskLevel || "-"}`, { fontSize: 6.5, align: "center", bold: true }),
+      ]);
+    }),
+  ];
+  const merges = [
+    { rowId: "h1", columnId: "n", rowSpan: 3 },
+    { rowId: "h1", columnId: "name", rowSpan: 3 },
+    { rowId: "h1", columnId: "cas", rowSpan: 3 },
+    { rowId: "h1", columnId: "gvi", colSpan: 5 },
+    { rowId: "h1", columnId: "pictograms", colSpan: 3 },
+    { rowId: "h1", columnId: "p", rowSpan: 3 },
+    { rowId: "h1", columnId: "probability", colSpan: 3 },
+    { rowId: "h2", columnId: "gvi", rowSpan: 2 },
+    { rowId: "h2", columnId: "kgvi", rowSpan: 2 },
+    { rowId: "h2", columnId: "note", rowSpan: 2 },
+    { rowId: "h2", columnId: "prilog", rowSpan: 2 },
+    { rowId: "h2", columnId: "harm", rowSpan: 2 },
+    { rowId: "h2", columnId: "pictograms", colSpan: 3 },
+    { rowId: "h2", columnId: "probability", rowSpan: 2 },
+    { rowId: "h2", columnId: "consequence", rowSpan: 2 },
+    { rowId: "h2", columnId: "risk", rowSpan: 2 },
+  ];
+  return createRiskAssessmentExportTable(columns, rows, { merges });
+}
+
+function buildRiskAssessmentChemicalsExportBlocks() {
+  if (!riskAssessmentChemicalDrafts.length) {
+    return [createRiskAssessmentExportParagraph("Kemijske štetnosti nisu dodane.")];
+  }
+  return [
+    createRiskAssessmentExportParagraph("GVI/KGVI se upisuje iz Priloga I kada postoji; ako službene vrijednosti nema, primjenjuje se smjernica iz Priloga II/III."),
+    buildRiskAssessmentChemicalExportTable(),
+  ];
+}
+
+function buildRiskAssessmentPpeExportBlocks() {
+  const items = riskAssessmentJobDrafts.flatMap((job) => (
+    (job.ppeItems ?? []).map((ppe) => ({ ...ppe, jobTitle: job.jobTitle }))
+  ));
+  if (!items.length) {
+    return [createRiskAssessmentExportParagraph("Osobna zaštitna oprema nije odabrana na poslovima.")];
+  }
+  const columns = [
+    { id: "name", label: "Naziv OZO", width: 190 },
+    { id: "norm", label: "Norma", width: 120 },
+    { id: "job", label: "Posao", width: 160 },
+    { id: "required", label: "Obvezna", width: 70 },
+    { id: "note", label: "Napomena", width: 300 },
+  ];
+  const rows = [
+    createRiskAssessmentExportRow("head", columns.map((column) => createRiskAssessmentExportHeaderCell(column.label, { fontSize: 8 })), true),
+    ...items.map((ppe, index) => createRiskAssessmentExportRow(`ppe-${index + 1}`, [
+      createRiskAssessmentExportCell([ppe.name || "OZO", ppe.category, ppe.bodyPart].filter(Boolean).join("\n"), { fontSize: 8, bold: true }),
+      createRiskAssessmentExportCell(ppe.norm || ppe.standardCode, { fontSize: 8 }),
+      createRiskAssessmentExportCell(ppe.jobTitle, { fontSize: 8 }),
+      createRiskAssessmentExportCell(ppe.required === false || ppe.mandatory === false ? "Prema potrebi" : "Da", { fontSize: 8, align: "center" }),
+      createRiskAssessmentExportCell([ppe.description, ppe.hazardLinks, ppe.note].filter(Boolean).join("\n"), { fontSize: 8 }),
+    ])),
+  ];
+  return [createRiskAssessmentExportTable(columns, rows)];
+}
+
+function buildRiskAssessmentMeasuresExportBlocks() {
+  if (!riskAssessmentMeasureDrafts.length) {
+    return [createRiskAssessmentExportParagraph("Plan mjera nije dodan.")];
+  }
+  const columns = [
+    { id: "measure", label: "Mjera", width: 310 },
+    { id: "deadline", label: "Rok", width: 100 },
+    { id: "person", label: "Odgovorna osoba", width: 160 },
+    { id: "control", label: "Kontrola provedbe", width: 220 },
+  ];
+  const rows = [
+    createRiskAssessmentExportRow("head", columns.map((column) => createRiskAssessmentExportHeaderCell(column.label, { fontSize: 8 })), true),
+    ...riskAssessmentMeasureDrafts.map((measure, index) => createRiskAssessmentExportRow(`measure-${index + 1}`, [
+      createRiskAssessmentExportCell(measure.measure, { fontSize: 8 }),
+      createRiskAssessmentExportCell(measure.deadline, { fontSize: 8, align: "center" }),
+      createRiskAssessmentExportCell(measure.responsiblePerson, { fontSize: 8 }),
+      createRiskAssessmentExportCell(measure.controlMethod, { fontSize: 8 }),
+    ])),
+  ];
+  return [createRiskAssessmentExportTable(columns, rows)];
+}
+
+function buildRiskAssessmentStructureExportBlocks() {
+  if (!riskAssessmentOrganizationUnitDrafts.length) {
+    return [createRiskAssessmentExportParagraph("Organizacijske jedinice nisu dodane.")];
+  }
+  const columns = [
+    { id: "unit", label: "Organizacijska jedinica", width: 190 },
+    { id: "parent", label: "Nadređena jedinica", width: 150 },
+    { id: "type", label: "Tip", width: 120 },
+    { id: "workers", label: "Broj radnika", width: 80 },
+    { id: "responsible", label: "Odgovorna osoba", width: 140 },
+    { id: "jobs", label: "Povezana radna mjesta", width: 230 },
+  ];
+  const unitById = new Map(riskAssessmentOrganizationUnitDrafts.map((unit) => [String(unit.id), unit]));
+  const rows = [
+    createRiskAssessmentExportRow("head", columns.map((column) => createRiskAssessmentExportHeaderCell(column.label, { fontSize: 8 })), true),
+    ...riskAssessmentOrganizationUnitDrafts.map((unit, index) => {
+      const linkedJobs = riskAssessmentJobDrafts
+        .filter((job) => String(job.organizationUnitId || "") === String(unit.id || ""))
+        .map((job) => job.jobTitle)
+        .filter(Boolean);
+      return createRiskAssessmentExportRow(`unit-${index + 1}`, [
+        createRiskAssessmentExportCell(unit.name || "Organizacijska jedinica", { fontSize: 8, bold: true }),
+        createRiskAssessmentExportCell(unitById.get(String(unit.parentId || ""))?.name || "", { fontSize: 8 }),
+        createRiskAssessmentExportCell(getRiskAssessmentUnitTypeLabel(unit.type), { fontSize: 8 }),
+        createRiskAssessmentExportCell(unit.workerCount, { fontSize: 8, align: "center" }),
+        createRiskAssessmentExportCell(unit.responsiblePerson, { fontSize: 8 }),
+        createRiskAssessmentExportCell(linkedJobs, { fontSize: 8 }),
+      ]);
+    }),
+  ];
+  return [createRiskAssessmentExportTable(columns, rows)];
+}
+
+function buildRiskAssessmentManualResultScaleTable() {
+  const columns = [
+    { id: "level", label: "Razina rizika", width: 80 },
+    { id: "score", label: "Ukupno opterećenje", width: 130 },
+    { id: "description", label: "Obrazloženje utvrđenih vrijednosti", width: 520 },
+  ];
+  const rows = [
+    createRiskAssessmentExportRow("head", columns.map((column) => createRiskAssessmentExportHeaderCell(column.label, { fontSize: 8 })), true),
+    createRiskAssessmentExportRow("level-1", [
+      createRiskAssessmentExportCell("1", { fontSize: 8, align: "center" }),
+      createRiskAssessmentExportCell("< 10", { fontSize: 8, align: "center" }),
+      createRiskAssessmentExportCell("Nisko opterećenje: ne postoji rizik od fizičkog preopterećenja.", { fontSize: 8 }),
+    ]),
+    createRiskAssessmentExportRow("level-2", [
+      createRiskAssessmentExportCell("2", { fontSize: 8, align: "center" }),
+      createRiskAssessmentExportCell("10 do < 25", { fontSize: 8, align: "center" }),
+      createRiskAssessmentExportCell("Povećano opterećenje: prekomjerno opterećenje je moguće kod manje otpornih radnika; preporučuje se preoblikovanje rada.", { fontSize: 8 }),
+    ]),
+    createRiskAssessmentExportRow("level-3", [
+      createRiskAssessmentExportCell("3", { fontSize: 8, align: "center" }),
+      createRiskAssessmentExportCell("25 do < 50", { fontSize: 8, align: "center" }),
+      createRiskAssessmentExportCell("Veliko opterećenje: prekomjerno opterećenje je moguće kod svih radnika; preporučuje se preoblikovanje radnog mjesta.", { fontSize: 8 }),
+    ]),
+    createRiskAssessmentExportRow("level-4", [
+      createRiskAssessmentExportCell("4", { fontSize: 8, align: "center" }),
+      createRiskAssessmentExportCell("> 50", { fontSize: 8, align: "center" }),
+      createRiskAssessmentExportCell("Vrlo veliko opterećenje: velika mogućnost nastanka prekomjernog opterećenja; nužno je preoblikovanje mjesta rada.", { fontSize: 8 }),
+    ]),
+  ];
+  return createRiskAssessmentExportTable(columns, rows);
+}
+
+function buildRiskAssessmentManualScoreTable(entry = {}) {
+  const calculation = calculateRiskAssessmentManualHandling(entry);
+  const job = riskAssessmentJobDrafts.find((item) => String(item.id) === String(entry.jobId));
+  const columns = [
+    { id: "factor", label: "Element procjene", width: 220 },
+    { id: "value", label: "Unos / odabir", width: 260 },
+    { id: "points", label: "Bodovi", width: 90 },
+    { id: "note", label: "Napomena", width: 260 },
+  ];
+  const rows = [
+    createRiskAssessmentExportRow("head", columns.map((column) => createRiskAssessmentExportHeaderCell(column.label, { fontSize: 8 })), true),
+    createRiskAssessmentExportRow("activity", [
+      createRiskAssessmentExportCell("Aktivnost", { fontSize: 8, bold: true, fillColor: "#F8FAFC" }),
+      createRiskAssessmentExportCell([entry.activity || "Aktivnost", job?.jobTitle].filter(Boolean).join("\n"), { fontSize: 8 }),
+      createRiskAssessmentExportCell("", { fontSize: 8, align: "center" }),
+      createRiskAssessmentExportCell(entry.note, { fontSize: 8 }),
+    ]),
+    createRiskAssessmentExportRow("t1", [
+      createRiskAssessmentExportCell("T1 - vremensko opterećenje", { fontSize: 8, bold: true, fillColor: "#F8FAFC" }),
+      createRiskAssessmentExportCell([
+        calculation.operationLabel,
+        calculation.totalRepetitions ? `${calculation.totalRepetitions} ponavljanja` : "",
+        calculation.totalDistanceMeters ? `${calculation.totalDistanceMeters} m ukupno` : "",
+        entry.durationMinutes ? `${entry.durationMinutes} min` : "",
+      ].filter(Boolean).join("\n"), { fontSize: 8 }),
+      createRiskAssessmentExportCell(String(calculation.t1Points || 0), { fontSize: 8, align: "center", bold: true }),
+      createRiskAssessmentExportCell("T1 se utvrđuje prema broju ponavljanja, trajanju držanja ili udaljenosti prenošenja.", { fontSize: 8 }),
+    ]),
+    createRiskAssessmentExportRow("t2", [
+      createRiskAssessmentExportCell("T2 - efektivna težina tereta", { fontSize: 8, bold: true, fillColor: "#F8FAFC" }),
+      createRiskAssessmentExportCell([calculation.workerGenderLabel, calculation.mass ? `${calculation.mass} kg` : ""].filter(Boolean).join("\n"), { fontSize: 8 }),
+      createRiskAssessmentExportCell(String(calculation.t2Points || 0), { fontSize: 8, align: "center", bold: true }),
+      createRiskAssessmentExportCell("Bodovi ovise o spolu radnika i masi tereta.", { fontSize: 8 }),
+    ]),
+    createRiskAssessmentExportRow("t3", [
+      createRiskAssessmentExportCell("T3 - položaj tijela", { fontSize: 8, bold: true, fillColor: "#F8FAFC" }),
+      createRiskAssessmentExportCell(calculation.postureLabel, { fontSize: 8 }),
+      createRiskAssessmentExportCell(String(calculation.t3Points || 0), { fontSize: 8, align: "center", bold: true }),
+      createRiskAssessmentExportCell("Uzima se najnepovoljniji tipični položaj tijela tijekom rada.", { fontSize: 8 }),
+    ]),
+    createRiskAssessmentExportRow("t4", [
+      createRiskAssessmentExportCell("T4 - radni uvjeti", { fontSize: 8, bold: true, fillColor: "#F8FAFC" }),
+      createRiskAssessmentExportCell(calculation.workConditionLabel, { fontSize: 8 }),
+      createRiskAssessmentExportCell(String(calculation.t4Points || 0), { fontSize: 8, align: "center", bold: true }),
+      createRiskAssessmentExportCell("Ocjenjuju se uvjeti koji prevladavaju u vrijeme ocjenjivanja.", { fontSize: 8 }),
+    ]),
+    createRiskAssessmentExportRow("result", [
+      createRiskAssessmentExportCell("Rezultat", { fontSize: 8, bold: true, fillColor: "#E5E7EB" }),
+      createRiskAssessmentExportCell(`T1 x (T2 + T3 + T4) = ${calculation.t1Points} x (${calculation.t2Points} + ${calculation.t3Points} + ${calculation.t4Points})`, { fontSize: 8, bold: true }),
+      createRiskAssessmentExportCell(String(calculation.score || 0), { fontSize: 8, align: "center", bold: true }),
+      createRiskAssessmentExportCell(`${calculation.level}\n${entry.existingMeasures || calculation.recommendation}`, { fontSize: 8, bold: true }),
+    ]),
+  ];
+  return createRiskAssessmentExportTable(columns, rows);
+}
+
+function buildRiskAssessmentManualMethodTables() {
+  const t2Columns = [
+    { id: "male", label: "Efektivna težina tereta za muškarce", width: 210 },
+    { id: "malePoints", label: "Vrijednost u bodovima (T2)", width: 120 },
+    { id: "female", label: "Efektivna težina tereta za žene", width: 210 },
+    { id: "femalePoints", label: "Vrijednost u bodovima (T2)", width: 120 },
+  ];
+  const t2Rows = [
+    createRiskAssessmentExportRow("head", t2Columns.map((column) => createRiskAssessmentExportHeaderCell(column.label, { fontSize: 8 })), true),
+    ["< 10 kg", "1", "< 5 kg", "1"],
+    ["10 do < 20 kg", "2", "5 do < 10 kg", "2"],
+    ["20 do < 30 kg", "4", "10 do < 15 kg", "4"],
+    ["30 do < 40 kg", "7", "15 do < 25 kg", "7"],
+    ["≥ 40 kg", "25", "≥ 25 kg", "25"],
+  ].map((row, index) => (Array.isArray(row)
+    ? createRiskAssessmentExportRow(`t2-${index}`, row.map((cell, cellIndex) => createRiskAssessmentExportCell(cell, { fontSize: 8, align: cellIndex % 2 ? "center" : "left" })))
+    : row));
+
+  const t3Columns = [
+    { id: "posture", label: "Položaj tijela, pozicija tereta", width: 560 },
+    { id: "points", label: "Vrijednost u bodovima (T3)", width: 120 },
+  ];
+  const t3Rows = [
+    createRiskAssessmentExportRow("head", t3Columns.map((column) => createRiskAssessmentExportHeaderCell(column.label, { fontSize: 8 })), true),
+    ...RISK_ASSESSMENT_MANUAL_POSTURE_OPTIONS.map((option) => createRiskAssessmentExportRow(`t3-${option.value}`, [
+      createRiskAssessmentExportCell(option.label, { fontSize: 8 }),
+      createRiskAssessmentExportCell(String(option.points), { fontSize: 8, align: "center" }),
+    ])),
+  ];
+
+  const t4Columns = [
+    { id: "conditions", label: "Radni uvjeti", width: 560 },
+    { id: "points", label: "Vrijednost u bodovima (T4)", width: 120 },
+  ];
+  const t4Rows = [
+    createRiskAssessmentExportRow("head", t4Columns.map((column) => createRiskAssessmentExportHeaderCell(column.label, { fontSize: 8 })), true),
+    ...RISK_ASSESSMENT_MANUAL_WORK_CONDITION_OPTIONS.map((option) => createRiskAssessmentExportRow(`t4-${option.value}`, [
+      createRiskAssessmentExportCell(option.label, { fontSize: 8 }),
+      createRiskAssessmentExportCell(String(option.points), { fontSize: 8, align: "center" }),
+    ])),
+  ];
+
+  return [
+    createRiskAssessmentExportHeading("Metoda bodovanja", 4),
+    createRiskAssessmentExportTable(t2Columns, t2Rows),
+    createRiskAssessmentExportTable(t3Columns, t3Rows),
+    createRiskAssessmentExportTable(t4Columns, t4Rows),
+    createRiskAssessmentManualResultScaleTable(),
+  ];
+}
+
+function buildRiskAssessmentManualHandlingExportBlocks() {
+  if (!riskAssessmentManualHandlingDrafts.length) {
+    return [createRiskAssessmentExportParagraph("Izračuni ručnog prenošenja tereta nisu dodani.")];
+  }
+  const blocks = [];
+  riskAssessmentManualHandlingDrafts.forEach((entry, index) => {
+    blocks.push(
+      createRiskAssessmentExportHeading(`Procjena ručnog prenošenja tereta ${index + 1}: ${entry.activity || "Aktivnost"}`, 3),
+      buildRiskAssessmentManualScoreTable(entry),
+    );
+  });
+  blocks.push(...buildRiskAssessmentManualMethodTables());
+  return blocks;
+}
+
+function buildRiskAssessmentOverviewExportBlocks() {
+  const summary = getRiskAssessmentFinalSummaryData();
+  const columns = [
+    { id: "item", label: "Stavka", width: 260 },
+    { id: "value", label: "Vrijednost", width: 160 },
+    { id: "note", label: "Napomena", width: 360 },
+  ];
+  const rows = [
+    createRiskAssessmentExportRow("head", columns.map((column) => createRiskAssessmentExportHeaderCell(column.label, { fontSize: 8 })), true),
+    ["Tvrtka", summary.companyName || "-", summary.status || ""],
+    ["Datum procjene", summary.assessmentDate || "-", summary.completionDate ? `Završetak: ${summary.completionDate}` : ""],
+    ["Organizacijske jedinice", String(summary.units || 0), ""],
+    ["Radna mjesta", `${summary.readyJobs || 0}/${summary.jobs || 0}`, "Spremno / ukupno"],
+    ["Rizici", String(summary.totalRisks || 0), ""],
+    ["Kemijske štetnosti", String(summary.totalChemicals || 0), ""],
+    ["OZO stavke", String(summary.totalPpe || 0), ""],
+    ["Ručno prenošenje tereta", String(summary.totalManualHandling || 0), summary.highManualHandling ? `${summary.highManualHandling} visokih izračuna` : ""],
+    ["Lokacije", String(summary.workplaceCount || 0), ""],
+  ].map((entry, index) => (Array.isArray(entry)
+    ? createRiskAssessmentExportRow(`summary-${index}`, [
+      createRiskAssessmentExportCell(entry[0], { fontSize: 8, bold: true, fillColor: "#F8FAFC" }),
+      createRiskAssessmentExportCell(entry[1], { fontSize: 8, align: "center" }),
+      createRiskAssessmentExportCell(entry[2], { fontSize: 8 }),
+    ])
+    : entry));
+  return [createRiskAssessmentExportTable(columns, rows)];
+}
+
+function buildRiskAssessmentStructuredSectionExportBlocks(key = "") {
+  switch (key) {
+    case "structure":
+      return buildRiskAssessmentStructureExportBlocks();
+    case "measures":
+      return buildRiskAssessmentMeasuresExportBlocks();
+    case "jobs":
+      return buildRiskAssessmentJobsExportBlocks();
+    case "chemicals":
+      return buildRiskAssessmentChemicalsExportBlocks();
+    case "ppe":
+      return buildRiskAssessmentPpeExportBlocks();
+    case "manual_handling":
+      return buildRiskAssessmentManualHandlingExportBlocks();
+    case "overview":
+      return buildRiskAssessmentOverviewExportBlocks();
+    default:
+      return null;
+  }
+}
+
+function buildRiskAssessmentSectionExportBlockValue(section = {}, index = 0) {
+  const placeholder = getRiskAssessmentTemplatePlaceholder(section.key);
+  const title = section.title || placeholder.defaultTitle || placeholder.label;
+  const structuredBlocks = buildRiskAssessmentStructuredSectionExportBlocks(section.key);
+  if (Array.isArray(structuredBlocks)) {
+    return createRiskAssessmentExportBlocks([
+      section.key === "cover" ? null : createRiskAssessmentExportHeading(title, 2),
+      ...structuredBlocks,
+    ]);
+  }
+  return {
+    __docxBlockType: "rich_text",
+    html: buildRiskAssessmentSectionExportHtml(section, index),
+  };
+}
+
 function getRiskAssessmentExportSections() {
   const template = ensureRiskAssessmentTemplateSections(
     RISK_ASSESSMENT_TEMPLATE_PLACEHOLDERS.map((placeholder) => placeholder.key),
@@ -129713,10 +130445,7 @@ function buildRiskAssessmentExportPlaceholders() {
   sections.forEach((section, index) => {
     const placeholder = getRiskAssessmentTemplatePlaceholder(section.key);
     const blockValue = section.enabled
-      ? {
-        __docxBlockType: "rich_text",
-        html: buildRiskAssessmentSectionExportHtml(section, index),
-      }
+      ? buildRiskAssessmentSectionExportBlockValue(section, index)
       : { __docxBlockType: "optional_empty" };
     [
       placeholder.token,

@@ -186,6 +186,46 @@ test("docx export renders a ready-made specification table placeholder", async (
   assert.match(outputXml, /Broj mjernih mjesta/);
 });
 
+test("docx export renders a multi-block table section placeholder", async () => {
+  const templateBuffer = buildMinimalDocxBuffer(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:body>
+        <w:p><w:r><w:t>{{RISK_JOBS}}</w:t></w:r></w:p>
+        <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>
+      </w:body>
+    </w:document>`);
+
+  const outputBuffer = await buildDocxFromTemplateBuffer(templateBuffer, {
+    RISK_JOBS: {
+      __docxBlockType: "blocks",
+      blocks: [
+        { type: "heading", text: "Analiza radnih mjesta", level: 2 },
+        { type: "paragraph", text: "Automatski izradene tablice procjene." },
+        {
+          __docxBlockType: "table",
+          columns: [
+            { id: "job", label: "Posao", width: 220 },
+            { id: "risk", label: "Rizik", width: 120 },
+          ],
+          rows: [
+            { id: "head", header: true, cells: [{ text: "Posao" }, { text: "Rizik" }] },
+            { id: "row-1", cells: [{ text: "Laboratorij" }, { text: "Srednji rizik" }] },
+          ],
+        },
+      ],
+    },
+  });
+  const outputXml = new PizZip(outputBuffer).file("word/document.xml").asText();
+
+  assert.equal(outputXml.includes("{{RISK_JOBS}}"), false);
+  assert.equal(outputXml.includes("__TASKFLOW_DOCX_BLOCK"), false);
+  assert.match(outputXml, /Analiza radnih mjesta/);
+  assert.match(outputXml, /Automatski izradene tablice procjene\./);
+  assert.match(outputXml, /Laboratorij/);
+  assert.match(outputXml, /Srednji rizik/);
+  assert.equal((outputXml.match(/<w:tbl>/g) || []).length, 1);
+});
+
 test("docx export renders signature group placeholders as visible signature blocks", async () => {
   const templateBuffer = buildMinimalDocxBuffer(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
     <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
