@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import test from "node:test";
 import { inflateSync } from "node:zlib";
 
@@ -13,12 +14,25 @@ import {
   buildHtmlFromTemplateBuffer,
   buildOfferHtmlTemplate,
   buildOfferPdfBuffer,
+  buildPdfFromHtmlTemplateBuffer,
   buildPdfFromRenderModel,
   buildRiskAssessmentNativePdfBuffer,
   collectPdfSignatureFieldSpecsFromEntry,
   convertWordBufferToHtmlTemplate,
   readStoredDocumentBuffer,
 } from "../src/documentExport.js";
+
+function hasLocalChromiumForHtmlPdf() {
+  return [
+    process.env.CHROMIUM_PATH,
+    process.env.CHROME_PATH,
+    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/google-chrome",
+  ].filter(Boolean).some((candidate) => existsSync(candidate));
+}
 
 function buildMinimalDocxBuffer(documentXml = "", {
   relationshipsXml = "",
@@ -297,6 +311,57 @@ test("docx export honors risk section page break metadata", async () => {
   const secondSectionIndex = outputXml.indexOf("Drugi dio");
   assert.ok(pageBreakIndex > -1);
   assert.ok(pageBreakIndex < secondSectionIndex);
+});
+
+test("risk assessment Word HTML PDF keeps mixed page orientations", {
+  skip: hasLocalChromiumForHtmlPdf() ? false : "Chromium nije dostupan za lokalni HTML PDF test.",
+}, async () => {
+  const templateBuffer = buildMinimalDocxBuffer(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:body>
+        <w:p><w:r><w:t>Portrait prije</w:t></w:r></w:p>
+        <w:p><w:r><w:t>{{RISK_JOBS}}</w:t></w:r></w:p>
+        <w:p><w:r><w:t>Portrait poslije</w:t></w:r></w:p>
+        <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>
+      </w:body>
+    </w:document>`);
+  const outputBuffer = await buildDocxFromTemplateBuffer(templateBuffer, {
+    RISK_JOBS: {
+      __docxBlockType: "blocks",
+      blocks: [
+        { type: "heading", text: "Opasnosti, stetnosti, napori i mjere", level: 4 },
+        {
+          __docxBlockType: "table",
+          pageOrientation: "landscape",
+          columns: [
+            { id: "risk", label: "Identifikacija opasnosti", width: 260 },
+            { id: "probability", label: "Vjerojatnost", width: 120 },
+            { id: "consequence", label: "Posljedice", width: 120 },
+            { id: "matrix", label: "Matrica procjene rizika", width: 140 },
+          ],
+          rows: [
+            { id: "head", header: true, cells: [{ text: "Identifikacija opasnosti" }, { text: "Vjerojatnost" }, { text: "Posljedice" }, { text: "Matrica procjene rizika" }] },
+            { id: "row-1", cells: [{ text: "Strojevi i oprema" }, { text: "Srednja vjerojatnost" }, { text: "Velika posljedica" }, { text: "Veliki rizik (3)" }] },
+          ],
+        },
+      ],
+    },
+  });
+  const converted = await convertWordBufferToHtmlTemplate(outputBuffer, {
+    fileName: "procjena-rizika.docx",
+    allowLibreOfficeFallback: false,
+  });
+  const pdfBuffer = await buildPdfFromHtmlTemplateBuffer(Buffer.from(converted.html || "", "utf8"), {}, {
+    fileName: "procjena-rizika.html",
+    title: "Procjena rizika",
+  });
+  const pdf = await PDFDocument.load(pdfBuffer);
+  const sizes = pdf.getPages().map((page) => {
+    const { width, height } = page.getSize();
+    return `${Math.round(width)}x${Math.round(height)}`;
+  });
+
+  assert.deepEqual(sizes, ["595x842", "842x595", "595x842"]);
 });
 
 test("risk assessment native PDF keeps landscape tables isolated", async () => {
