@@ -94,6 +94,7 @@ import {
   sortServiceCatalogItems,
   sortVehicles,
   sortTodoTasks,
+  updateClientPortalRecord,
   updateVehicle,
   updateVehicleReservation,
   syncLocationFieldsFromWorkOrder,
@@ -3686,6 +3687,97 @@ test("client portal records keep simple registers and worker links", () => {
     type: "document",
     query: "evakuacije",
   })[0].id, document.id);
+});
+
+test("client portal records reject duplicate register entries", () => {
+  const state = buildState();
+  const worker = createClientPortalRecord(
+    {
+      organizationId: "org-1",
+      companyId: "company-1",
+      type: "worker",
+      status: "active",
+      details: {
+        fullName: "Ivan Horvat",
+        email: "ivan@example.com",
+        oib: "12345678901",
+      },
+    },
+    state,
+    () => "client-worker-1",
+    () => "2026-06-02T07:00:00.000Z",
+  );
+  state.clientPortalRecords = [worker];
+
+  assert.throws(
+    () => createClientPortalRecord(
+      {
+        organizationId: "org-1",
+        companyId: "company-1",
+        type: "worker",
+        status: "active",
+        details: {
+          fullName: "Ivan Horvat",
+          email: "drugi@example.com",
+          oib: "12345678901",
+        },
+      },
+      state,
+      () => "client-worker-duplicate",
+      () => "2026-06-02T07:01:00.000Z",
+    ),
+    /vec postoji/,
+  );
+
+  const vehicle = createClientPortalRecord(
+    {
+      organizationId: "org-1",
+      companyId: "company-1",
+      type: "vehicle",
+      status: "active",
+      details: {
+        vehicleName: "Kombi",
+        plateNumber: "zg 1234 ab",
+      },
+    },
+    state,
+    () => "client-vehicle-1",
+    () => "2026-06-02T07:02:00.000Z",
+  );
+  state.clientPortalRecords = [vehicle, worker];
+
+  assert.throws(
+    () => createClientPortalRecord(
+      {
+        organizationId: "org-1",
+        companyId: "company-1",
+        type: "vehicle",
+        status: "active",
+        details: {
+          vehicleName: "Drugi kombi",
+          plateNumber: "ZG-1234-AB",
+        },
+      },
+      state,
+      () => "client-vehicle-duplicate",
+      () => "2026-06-02T07:03:00.000Z",
+    ),
+    /vec postoji/,
+  );
+
+  const updated = updateClientPortalRecord(
+    vehicle,
+    {
+      status: "attention",
+      details: {
+        note: "Promjena statusa bez promjene identiteta.",
+      },
+    },
+    state,
+    () => "2026-06-02T07:04:00.000Z",
+  );
+  assert.equal(updated.id, vehicle.id);
+  assert.equal(updated.status, "attention");
 });
 
 test("vehicles create reservations, block overlaps and derive availability", () => {

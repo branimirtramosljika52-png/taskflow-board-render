@@ -9015,7 +9015,7 @@ body.is-location-editor-open {
 
 .client-portal-record-workspace {
   display: grid;
-  grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1.35fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
   align-items: start;
 }
@@ -9031,6 +9031,56 @@ body.is-location-editor-open {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.9),
     0 14px 32px rgba(15, 23, 42, 0.07);
+}
+
+.client-portal-record-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1180;
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.48), rgba(15, 23, 42, 0.62));
+  backdrop-filter: blur(8px);
+}
+
+.client-portal-record-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1181;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  pointer-events: none;
+}
+
+.client-portal-record-dialog {
+  width: min(980px, 100%);
+  max-height: min(86vh, 820px);
+  display: grid;
+  gap: 14px;
+  overflow: auto;
+  pointer-events: auto;
+  border-color: rgba(203, 213, 225, 0.72);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(248, 250, 252, 0.98));
+  box-shadow:
+    0 30px 80px rgba(15, 23, 42, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.94);
+}
+
+.client-portal-record-modal-head {
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.95);
+}
+
+.client-portal-record-modal .client-portal-record-form {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.client-portal-record-modal-feedback:empty {
+  display: none;
 }
 
 .client-portal-record-form-head {
@@ -9118,6 +9168,20 @@ body.is-location-editor-open {
   justify-content: space-between;
   padding-bottom: 10px;
   border-bottom: 1px solid rgba(226, 232, 240, 0.95);
+}
+
+.client-portal-record-list-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.client-portal-record-add-button {
+  min-height: 32px;
+  padding-inline: 12px;
+  white-space: nowrap;
 }
 
 .client-portal-record-list-head div {
@@ -74894,7 +74958,7 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
   }
 
   .client-portal-record-workspace {
-    grid-template-columns: minmax(280px, 0.95fr) minmax(0, 1.05fr);
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -74938,6 +75002,15 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .client-portal-record-modal {
+    padding: 14px;
+    place-items: end center;
+  }
+
+  .client-portal-record-dialog {
+    max-height: 92vh;
+  }
+
   .client-portal-record-card-head {
     grid-template-columns: auto minmax(0, 1fr);
   }
@@ -74978,6 +75051,19 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
   .client-portal-record-list-head {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .client-portal-record-list-actions,
+  .client-portal-record-add-button {
+    width: 100%;
+  }
+
+  .client-portal-record-modal {
+    padding: 10px;
+  }
+
+  .client-portal-record-modal-head {
+    align-items: flex-start;
   }
 
   .client-portal-record-form-actions .primary-button,

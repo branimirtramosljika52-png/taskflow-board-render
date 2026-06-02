@@ -2204,6 +2204,7 @@ const state = {
   clientPortalRecordsUi: {
     activeType: "worker",
     editId: "",
+    modalOpen: false,
   },
   clientPortalPreviewCollapsed: {
     workOrders: false,
@@ -82983,6 +82984,9 @@ function closeTransientNavigationOverlays() {
   if (state.clientPortalAccessModalOpen) {
     closeClientPortalAccessModal();
   }
+  if (state.clientPortalRecordsUi?.modalOpen) {
+    closeClientPortalRecordModal();
+  }
 
   const editorFlags = [
     "workOrderEditorOpen",
@@ -84448,9 +84452,7 @@ function createClientPortalRecordCard(record = {}) {
   actions.className = "client-portal-record-card-actions";
   actions.append(
     createIconActionButton("Uredi", "edit", "", () => {
-      state.clientPortalRecordsUi.activeType = normalizeClientPortalRecordUiType(record.type);
-      state.clientPortalRecordsUi.editId = String(record.id || "");
-      renderClientPortalRecordsPanel();
+      openClientPortalRecordModal(record.type, record.id);
     }),
     createIconActionButton("Obriši", "trash", "card-danger", () => {
       void deleteClientPortalRecord(record.id);
@@ -84553,12 +84555,128 @@ function createClientPortalRecordTabs(activeType = "worker", records = []) {
   return tabs;
 }
 
+function closeClientPortalRecordModal({ keepEdit = false } = {}) {
+  if (!state.clientPortalRecordsUi) {
+    return;
+  }
+  state.clientPortalRecordsUi.modalOpen = false;
+  if (!keepEdit) {
+    state.clientPortalRecordsUi.editId = "";
+  }
+  setInlineMessage(clientPortalRecordsFeedback, "");
+  renderClientPortalRecordsPanel();
+}
+
+function openClientPortalRecordModal(type = "worker", editId = "") {
+  state.clientPortalRecordsUi.activeType = normalizeClientPortalRecordUiType(type);
+  state.clientPortalRecordsUi.editId = String(editId || "");
+  state.clientPortalRecordsUi.modalOpen = true;
+  setInlineMessage(clientPortalRecordsFeedback, "");
+  renderClientPortalRecordsPanel();
+  requestAnimationFrame(() => {
+    const firstInput = clientPortalRecordsRoot?.querySelector(".client-portal-record-modal input, .client-portal-record-modal select, .client-portal-record-modal textarea");
+    if (firstInput instanceof HTMLElement) {
+      firstInput.focus();
+    }
+  });
+}
+
 function focusClientPortalRecordType(type = "worker") {
   state.clientPortalRecordsUi.activeType = normalizeClientPortalRecordUiType(type);
   state.clientPortalRecordsUi.editId = "";
+  state.clientPortalRecordsUi.modalOpen = false;
   setInlineMessage(clientPortalRecordsFeedback, "");
   renderClientPortalRecordsPanel();
   clientPortalRegisterPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function createClientPortalRecordForm(activeType = "worker", editingRecord = null, companyId = "", company = null) {
+  const form = document.createElement("form");
+  form.className = "client-portal-record-form";
+  form.dataset.clientPortalRecordForm = activeType;
+  const formHead = document.createElement("div");
+  formHead.className = "client-portal-record-form-head";
+  const formIcon = document.createElement("span");
+  formIcon.className = "client-portal-record-form-icon";
+  formIcon.innerHTML = getClientPortalRecordIconMarkup(activeType);
+  const formCopy = document.createElement("div");
+  formCopy.className = "client-portal-record-form-copy";
+  const formTitle = document.createElement("strong");
+  formTitle.textContent = editingRecord
+    ? `Uredi: ${editingRecord.title || getClientPortalRecordTypeLabel(activeType)}`
+    : `Novi zapis: ${getClientPortalRecordTypeLabel(activeType)}`;
+  const formMeta = document.createElement("span");
+  formMeta.textContent = [company?.name || "Klijentska tvrtka", getClientPortalRecordTypeMeta(activeType).eyebrow].filter(Boolean).join(" · ");
+  formCopy.append(formTitle, formMeta);
+  formHead.append(formIcon, formCopy);
+
+  const grid = document.createElement("div");
+  grid.className = "client-portal-record-form-grid";
+  grid.replaceChildren(...getClientPortalRecordFormFields(activeType, editingRecord, companyId));
+
+  const feedback = document.createElement("p");
+  feedback.className = "form-error client-portal-record-modal-feedback";
+  feedback.dataset.clientPortalRecordFormFeedback = "true";
+  feedback.setAttribute("aria-live", "polite");
+
+  const actions = document.createElement("div");
+  actions.className = "client-portal-record-form-actions";
+  const saveButton = document.createElement("button");
+  saveButton.type = "submit";
+  saveButton.className = "primary-button";
+  saveButton.textContent = editingRecord ? "Spremi promjene" : "Dodaj zapis";
+  const cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.className = "ghost-button";
+  cancelButton.dataset.clientPortalRecordCancel = "true";
+  cancelButton.textContent = "Zatvori";
+  actions.append(saveButton, cancelButton);
+  form.append(formHead, grid, feedback, actions);
+  return form;
+}
+
+function createClientPortalRecordModal(activeType = "worker", editingRecord = null, companyId = "", company = null) {
+  const fragment = document.createDocumentFragment();
+
+  const backdrop = document.createElement("div");
+  backdrop.className = "client-portal-record-modal-backdrop";
+  backdrop.dataset.clientPortalRecordModalBackdrop = "true";
+
+  const modal = document.createElement("section");
+  modal.className = "client-portal-record-modal";
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-modal", "true");
+  modal.setAttribute("aria-labelledby", "client-portal-record-modal-title");
+
+  const dialog = document.createElement("div");
+  dialog.className = "panel client-portal-record-dialog";
+
+  const head = document.createElement("div");
+  head.className = "section-heading offers-section-heading client-portal-record-modal-head";
+  const copy = document.createElement("div");
+  const kicker = document.createElement("p");
+  kicker.className = "section-kicker";
+  kicker.textContent = editingRecord ? "Uređivanje evidencije" : "Novi unos";
+  const title = document.createElement("h3");
+  title.id = "client-portal-record-modal-title";
+  title.textContent = editingRecord
+    ? (editingRecord.title || getClientPortalRecordTypeLabel(activeType))
+    : `Dodaj: ${getClientPortalRecordTypeLabel(activeType)}`;
+  const summary = document.createElement("p");
+  summary.className = "helper-copy";
+  summary.textContent = [company?.name || "Odabrana tvrtka", getClientPortalRecordTypeMeta(activeType).eyebrow].filter(Boolean).join(" · ");
+  copy.append(kicker, title, summary);
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.className = "ghost-button";
+  closeButton.dataset.clientPortalRecordCancel = "true";
+  closeButton.textContent = "Zatvori";
+  head.append(copy, closeButton);
+
+  dialog.append(head, createClientPortalRecordForm(activeType, editingRecord, companyId, company));
+  modal.append(dialog);
+  fragment.append(backdrop, modal);
+  return fragment;
 }
 
 function createClientPortalActionCard(type = "worker", label = "", description = "") {
@@ -84566,7 +84684,7 @@ function createClientPortalActionCard(type = "worker", label = "", description =
   const button = document.createElement("button");
   button.type = "button";
   button.className = `client-portal-action-card is-${typeMeta.accent}`;
-  button.addEventListener("click", () => focusClientPortalRecordType(type));
+  button.addEventListener("click", () => openClientPortalRecordModal(type));
   const icon = document.createElement("span");
   icon.className = "client-portal-action-icon";
   icon.innerHTML = getClientPortalRecordIconMarkup(type);
@@ -84606,9 +84724,7 @@ function createClientPortalDashboardRow(record = {}) {
   row.type = "button";
   row.className = `client-portal-dashboard-row is-${getClientPortalRecordTypeMeta(record.type).accent}`;
   row.addEventListener("click", () => {
-    state.clientPortalRecordsUi.activeType = normalizeClientPortalRecordUiType(record.type);
-    state.clientPortalRecordsUi.editId = String(record.id || "");
-    renderClientPortalRecordsPanel();
+    openClientPortalRecordModal(record.type, record.id);
   });
   const icon = document.createElement("span");
   icon.className = "client-portal-dashboard-row-icon";
@@ -84658,9 +84774,7 @@ function createClientPortalPpeTable(records = []) {
     row.type = "button";
     row.className = "client-portal-ppe-row";
     row.addEventListener("click", () => {
-      state.clientPortalRecordsUi.activeType = "ppe_assignment";
-      state.clientPortalRecordsUi.editId = String(record.id || "");
-      renderClientPortalRecordsPanel();
+      openClientPortalRecordModal("ppe_assignment", record.id);
     });
     [
       details.workerName || "-",
@@ -84690,9 +84804,7 @@ function createClientPortalDocumentStrip(records = []) {
     card.type = "button";
     card.className = "client-portal-document-tile";
     card.addEventListener("click", () => {
-      state.clientPortalRecordsUi.activeType = "document";
-      state.clientPortalRecordsUi.editId = String(record.id || "");
-      renderClientPortalRecordsPanel();
+      openClientPortalRecordModal("document", record.id);
     });
     const type = document.createElement("span");
     type.className = `client-portal-document-type is-${String(details.documentType || "DOC").toLowerCase()}`;
@@ -84773,11 +84885,14 @@ function createClientPortalRecordsDashboard(records = []) {
 async function saveClientPortalRecordFromForm(form) {
   const companyId = getClientPortalRecordsCompanyId();
   const type = normalizeClientPortalRecordUiType(state.clientPortalRecordsUi.activeType);
+  const feedbackTarget = form.querySelector("[data-client-portal-record-form-feedback]") || clientPortalRecordsFeedback;
   if (!companyId) {
-    setInlineMessage(clientPortalRecordsFeedback, "Odaberi tvrtku za evidenciju.");
+    setInlineMessage(feedbackTarget, "Odaberi tvrtku za evidenciju.");
     return false;
   }
 
+  setInlineMessage(feedbackTarget, "");
+  setInlineMessage(clientPortalRecordsFeedback, "");
   const payload = buildClientPortalRecordPayloadFromForm(form, type, companyId);
   const editId = String(state.clientPortalRecordsUi.editId || "");
   const path = editId
@@ -84787,10 +84902,11 @@ async function saveClientPortalRecordFromForm(form) {
   const success = await runMutation(() => apiRequest(path, {
     method,
     body: payload,
-  }), clientPortalRecordsFeedback);
+  }), feedbackTarget);
 
   if (success) {
     state.clientPortalRecordsUi.editId = "";
+    state.clientPortalRecordsUi.modalOpen = false;
     renderClientPortalModule();
     setInlineMessage(clientPortalRecordsFeedback, "Evidencija je spremljena.", "success");
   }
@@ -84812,6 +84928,7 @@ async function deleteClientPortalRecord(recordId = "") {
   if (success) {
     if (String(state.clientPortalRecordsUi.editId || "") === normalizedId) {
       state.clientPortalRecordsUi.editId = "";
+      state.clientPortalRecordsUi.modalOpen = false;
     }
     renderClientPortalModule();
     setInlineMessage(clientPortalRecordsFeedback, "Zapis je obrisan.", "success");
@@ -84860,43 +84977,6 @@ function renderClientPortalRecordsPanel() {
     return;
   }
 
-  const form = document.createElement("form");
-  form.className = "client-portal-record-form";
-  form.dataset.clientPortalRecordForm = activeType;
-  const formHead = document.createElement("div");
-  formHead.className = "client-portal-record-form-head";
-  const formIcon = document.createElement("span");
-  formIcon.className = "client-portal-record-form-icon";
-  formIcon.innerHTML = getClientPortalRecordIconMarkup(activeType);
-  const formCopy = document.createElement("div");
-  formCopy.className = "client-portal-record-form-copy";
-  const formTitle = document.createElement("strong");
-  formTitle.textContent = editingRecord
-    ? `Uredi: ${editingRecord.title || getClientPortalRecordTypeLabel(activeType)}`
-    : `Novi zapis: ${getClientPortalRecordTypeLabel(activeType)}`;
-  const formMeta = document.createElement("span");
-  formMeta.textContent = [company.name || "Klijentska tvrtka", getClientPortalRecordTypeMeta(activeType).eyebrow].filter(Boolean).join(" · ");
-  formCopy.append(formTitle, formMeta);
-  formHead.append(formIcon, formCopy);
-
-  const grid = document.createElement("div");
-  grid.className = "client-portal-record-form-grid";
-  grid.replaceChildren(...getClientPortalRecordFormFields(activeType, editingRecord, companyId));
-
-  const actions = document.createElement("div");
-  actions.className = "client-portal-record-form-actions";
-  const saveButton = document.createElement("button");
-  saveButton.type = "submit";
-  saveButton.className = "primary-button";
-  saveButton.textContent = editingRecord ? "Spremi promjene" : "Dodaj zapis";
-  const cancelButton = document.createElement("button");
-  cancelButton.type = "button";
-  cancelButton.className = "ghost-button";
-  cancelButton.dataset.clientPortalRecordCancel = "true";
-  cancelButton.textContent = editingRecord ? "Odustani" : "Očisti";
-  actions.append(saveButton, cancelButton);
-  form.append(formHead, grid, actions);
-
   const listSection = document.createElement("section");
   listSection.className = "client-portal-record-list-section";
   const listHead = document.createElement("div");
@@ -84913,7 +84993,15 @@ function renderClientPortalRecordsPanel() {
   const listPill = document.createElement("span");
   listPill.className = "client-portal-record-list-pill";
   listPill.textContent = `${visibleRecords.filter(isClientPortalRecordOpen).length} otvoreno`;
-  listHead.append(listCopy, listPill);
+  const addButton = document.createElement("button");
+  addButton.type = "button";
+  addButton.className = "primary-button client-portal-record-add-button";
+  addButton.dataset.clientPortalRecordAdd = activeType;
+  addButton.textContent = "+ Dodaj zapis";
+  const listActions = document.createElement("div");
+  listActions.className = "client-portal-record-list-actions";
+  listActions.append(listPill, addButton);
+  listHead.append(listCopy, listActions);
 
   const list = document.createElement("div");
   list.className = "client-portal-record-list";
@@ -84929,9 +85017,13 @@ function renderClientPortalRecordsPanel() {
 
   const workspace = document.createElement("div");
   workspace.className = "client-portal-record-workspace";
-  workspace.append(form, listSection);
+  workspace.append(listSection);
 
-  clientPortalRecordsRoot.replaceChildren(overview, dashboard, tabs, workspace);
+  const nodes = [overview, dashboard, tabs, workspace].filter(Boolean);
+  if (state.clientPortalRecordsUi.modalOpen) {
+    nodes.push(createClientPortalRecordModal(activeType, editingRecord, companyId, company));
+  }
+  clientPortalRecordsRoot.replaceChildren(...nodes);
 }
 
 function renderClientPortalModule() {
@@ -120730,6 +120822,7 @@ clientPortalCompanyInput?.addEventListener("change", () => {
     clientPortalLocationSearchInput.value = "";
   }
   state.clientPortalRecordsUi.editId = "";
+  state.clientPortalRecordsUi.modalOpen = false;
   rebuildClientPortalLocationOptions([]);
   setInlineMessage(clientPortalFeedback, "");
   setInlineMessage(clientPortalRecordsFeedback, "");
@@ -120775,6 +120868,8 @@ clientPortalAccessModalBackdrop?.addEventListener("click", () => {
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && state.clientPortalAccessModalOpen) {
     closeClientPortalAccessModal();
+  } else if (event.key === "Escape" && state.clientPortalRecordsUi?.modalOpen) {
+    closeClientPortalRecordModal();
   }
 });
 
@@ -120808,16 +120903,27 @@ clientPortalRecordsRoot?.addEventListener("click", (event) => {
   if (tabButton instanceof HTMLButtonElement && clientPortalRecordsRoot.contains(tabButton)) {
     state.clientPortalRecordsUi.activeType = normalizeClientPortalRecordUiType(tabButton.dataset.clientPortalRecordTab || "");
     state.clientPortalRecordsUi.editId = "";
+    state.clientPortalRecordsUi.modalOpen = false;
     setInlineMessage(clientPortalRecordsFeedback, "");
     renderClientPortalRecordsPanel();
     return;
   }
 
+  const addButton = target?.closest("[data-client-portal-record-add]");
+  if (addButton instanceof HTMLButtonElement && clientPortalRecordsRoot.contains(addButton)) {
+    openClientPortalRecordModal(addButton.dataset.clientPortalRecordAdd || state.clientPortalRecordsUi.activeType || "worker");
+    return;
+  }
+
   const cancelButton = target?.closest("[data-client-portal-record-cancel]");
   if (cancelButton instanceof HTMLButtonElement && clientPortalRecordsRoot.contains(cancelButton)) {
-    state.clientPortalRecordsUi.editId = "";
-    setInlineMessage(clientPortalRecordsFeedback, "");
-    renderClientPortalRecordsPanel();
+    closeClientPortalRecordModal();
+    return;
+  }
+
+  const modalBackdrop = target?.closest("[data-client-portal-record-modal-backdrop]");
+  if (modalBackdrop instanceof HTMLElement && clientPortalRecordsRoot.contains(modalBackdrop)) {
+    closeClientPortalRecordModal();
   }
 });
 
@@ -136553,6 +136659,7 @@ function resetAuthenticatedWorkspaceState() {
   state.clientPortalRecordsUi = {
     activeType: "worker",
     editId: "",
+    modalOpen: false,
   };
   state.jobs = [];
   state.activeJobId = "";

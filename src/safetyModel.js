@@ -3195,6 +3195,70 @@ function buildClientPortalRecordTitle(type, details = {}, input = {}, current = 
   return (details.deadlineName || "Rok").slice(0, 220);
 }
 
+function normalizeClientPortalDuplicateKeyPart(value = "") {
+  return normalizeText(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, "")
+    .toLowerCase();
+}
+
+function getClientPortalRecordDuplicateIdentity(record = {}) {
+  const type = normalizeClientPortalRecordType(record.type);
+  const details = normalizeClientPortalRecordDetails(record.details ?? {}, type);
+  const companyKey = normalizeClientPortalDuplicateKeyPart(record.companyId);
+  const locationKey = normalizeClientPortalDuplicateKeyPart(record.locationId);
+  const titleKey = normalizeClientPortalDuplicateKeyPart(record.title);
+  const detailKey = (...values) => values
+    .map((value) => normalizeClientPortalDuplicateKeyPart(value))
+    .find(Boolean) || "";
+  const compositeKey = (...values) => values
+    .map((value) => normalizeClientPortalDuplicateKeyPart(value))
+    .filter(Boolean)
+    .join(":");
+
+  let identity = "";
+  if (type === "worker") {
+    identity = detailKey(details.oib, details.email, details.fullName);
+  } else if (type === "vehicle") {
+    identity = detailKey(details.plateNumber, details.vehicleName);
+  } else if (type === "fire_extinguisher") {
+    identity = detailKey(details.code, compositeKey(details.locationText, details.extinguisherType));
+  } else if (type === "ppe_assignment") {
+    identity = compositeKey(details.workerRecordId || details.workerName, details.ppeName, details.assignedDate || details.dueDate);
+  } else if (type === "defect_report") {
+    identity = compositeKey(details.defectTitle || titleKey, details.locationText || locationKey, details.reportedDate);
+  } else if (type === "alcohol_test") {
+    identity = compositeKey(details.workerRecordId || details.workerName, details.testDate, details.result);
+  } else if (type === "document") {
+    identity = compositeKey(details.documentName || titleKey, details.fileName, details.documentDate || details.validUntil);
+  } else {
+    identity = compositeKey(details.deadlineName || titleKey, details.dueDate, details.ownerName);
+  }
+
+  if (!companyKey || !identity) {
+    return "";
+  }
+
+  return [companyKey, type, locationKey, identity].join("|");
+}
+
+function assertClientPortalRecordUnique(state, candidate, excludeId = "") {
+  const candidateKey = getClientPortalRecordDuplicateIdentity(candidate);
+  if (!candidateKey) {
+    return;
+  }
+
+  const hasDuplicate = (state.clientPortalRecords ?? []).some((item) => (
+    String(item?.id || "") !== String(excludeId || "")
+    && getClientPortalRecordDuplicateIdentity(item) === candidateKey
+  ));
+
+  if (hasDuplicate) {
+    throw new Error("Takav zapis vec postoji u klijentskoj evidenciji.");
+  }
+}
+
 function hydrateClientPortalRecordCore({
   current = null,
   state,
@@ -3261,7 +3325,7 @@ function hydrateClientPortalRecordCore({
     throw new Error("Naziv zapisa je obavezan.");
   }
 
-  return {
+  const record = {
     id: current?.id ?? "",
     organizationId,
     companyId,
@@ -3285,6 +3349,9 @@ function hydrateClientPortalRecordCore({
     createdAt: current?.createdAt ?? timestamp,
     updatedAt: timestamp,
   };
+
+  assertClientPortalRecordUnique(state, record, current?.id ?? "");
+  return record;
 }
 
 function hydrateVehicleCore({
