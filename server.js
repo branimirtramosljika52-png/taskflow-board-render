@@ -253,6 +253,10 @@ const GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY = "Zapisnik PDF";
 const GENERATED_DOCUMENT_TEMPLATE_DOCX_CATEGORY = "Zapisnik DOCX";
 const GENERATED_PEOPLE_TRAINING_CERTIFICATE_CATEGORY = "Automatsko uvjerenje";
 const GENERATED_PEOPLE_TRAINING_CERTIFICATE_SOURCE = "people-training-certificate";
+const RISK_ASSESSMENT_WORD_PDF_TIMEOUT_MS = Math.max(
+  5000,
+  Number(process.env.RISK_ASSESSMENT_WORD_PDF_TIMEOUT_MS || 25000) || 25000,
+);
 const OPENAI_DEFAULT_API_BASE_URL = "https://api.openai.com/v1";
 const OPENAI_RESPONSES_PATH = "/responses";
 const OPENAI_DEFAULT_MODEL_BY_TIER = Object.freeze({
@@ -10503,15 +10507,33 @@ async function handleApiRequest(request, response, url) {
         body.fileName || templateDocument.fileName || "procjena-rizika",
         { fallback: "procjena-rizika", extension: isPdfExport ? "pdf" : "docx" },
       );
-      const generatedDocument = isPdfExport
-        ? await buildRiskAssessmentNativePdfBuffer(placeholders, {
-          fileName,
-          title: "Procjena rizika",
-        })
-        : await buildDocxFromTemplateBuffer(referenceDocument.buffer, placeholders, {
-          fileName,
-          title: "Procjena rizika",
-        });
+      const wordFileName = sanitizeGeneratedDocumentFileName(
+        body.fileName || templateDocument.fileName || "procjena-rizika",
+        { fallback: "procjena-rizika", extension: "docx" },
+      );
+      const generatedWord = await buildDocxFromTemplateBuffer(referenceDocument.buffer, placeholders, {
+        fileName: wordFileName,
+        title: "Procjena rizika",
+      });
+      let generatedDocument = generatedWord;
+      if (isPdfExport) {
+        try {
+          [generatedDocument] = await withOperationTimeout(
+            convertDocxBuffersToPdfBuffers([{ buffer: generatedWord, fileName: wordFileName }]),
+            RISK_ASSESSMENT_WORD_PDF_TIMEOUT_MS,
+            "Word -> PDF procjene rizika nije zavrsio na vrijeme.",
+          );
+          if (!Buffer.isBuffer(generatedDocument) || generatedDocument.length === 0) {
+            throw new Error("LibreOffice je vratio prazan PDF procjene rizika.");
+          }
+        } catch (conversionError) {
+          console.warn("Risk assessment Word -> PDF conversion failed, using native PDF fallback.", conversionError);
+          generatedDocument = await buildRiskAssessmentNativePdfBuffer(placeholders, {
+            fileName,
+            title: "Procjena rizika",
+          });
+        }
+      }
 
       sendBinary(response, 200, generatedDocument, {
         contentType: isPdfExport

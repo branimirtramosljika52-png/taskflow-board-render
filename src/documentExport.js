@@ -1379,9 +1379,11 @@ function normalizeDocxSpecialPlaceholderValue(value) {
   }
 
   const blockType = clean(value.__docxBlockType || value.type).toLowerCase();
+  const pageBreakBefore = Boolean(value.__riskPageBreakBefore || value.pageBreakBefore);
   if (blockType === "optional_empty" || blockType === "optional_blank") {
     return {
       type: "optional_empty",
+      pageBreakBefore,
     };
   }
 
@@ -1470,6 +1472,7 @@ function normalizeDocxSpecialPlaceholderValue(value) {
         type: "rich_text",
         html,
         text: richTextHtmlToPlainText(html),
+        pageBreakBefore,
       }
       : { type: "optional_empty" };
   }
@@ -1522,7 +1525,7 @@ function normalizeDocxSpecialPlaceholderValue(value) {
       })
       .filter(Boolean);
 
-    return blocks.length ? { type: "blocks", blocks } : { type: "optional_empty" };
+    return blocks.length ? { type: "blocks", blocks, pageBreakBefore } : { type: "optional_empty", pageBreakBefore };
   }
 
   if (blockType !== "table") {
@@ -1658,6 +1661,7 @@ function normalizeDocxSpecialPlaceholderValue(value) {
     headerRows,
     merges,
     pageOrientation,
+    pageBreakBefore,
   };
 }
 
@@ -2320,46 +2324,73 @@ function buildWordTableBlockXml(table = {}) {
   ].join("");
 }
 
+function buildWordHeadingBlockXml(block = {}) {
+  const level = Math.max(1, Math.min(4, Number.parseInt(block.level, 10) || 2));
+  const sizes = { 1: 32, 2: 28, 3: 24, 4: 22 };
+  return buildWordParagraphXml(block.text || "", {
+    bold: true,
+    size: sizes[level] || 24,
+    spacingBefore: level <= 2 ? 180 : 120,
+    spacingAfter: 80,
+  });
+}
+
+function buildWordParagraphBlockXml(block = {}) {
+  const paragraphs = String(block.text || "")
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+  return (paragraphs.length ? paragraphs : [""]).map((paragraph) => buildWordParagraphXml(paragraph, {
+    align: block.align || "left",
+    bold: Boolean(block.bold),
+    italic: Boolean(block.italic),
+    size: 20,
+    spacingAfter: 80,
+  })).join("");
+}
+
+function buildWordLandscapeHeadingTableGroupXml(heading = {}, table = {}) {
+  return [
+    buildWordSectionBreakXml("portrait"),
+    buildWordHeadingBlockXml(heading),
+    buildWordTableXml(table),
+    buildWordSectionBreakXml("landscape", { margin: 720 }),
+  ].join("");
+}
+
 function buildWordBlocksXml(value = {}, zip = null, context = {}, xmlFileName = "word/document.xml") {
-  return (Array.isArray(value.blocks) ? value.blocks : [])
-    .map((block) => {
-      if (!block || typeof block !== "object") {
-        return "";
-      }
+  const blocks = Array.isArray(value.blocks) ? value.blocks : [];
+  const xmlParts = [];
+  for (let index = 0; index < blocks.length; index += 1) {
+    const block = blocks[index];
+    if (!block || typeof block !== "object") {
+      continue;
+    }
 
-      if (block.type === "heading") {
-        const level = Math.max(1, Math.min(4, Number.parseInt(block.level, 10) || 2));
-        const sizes = { 1: 32, 2: 28, 3: 24, 4: 22 };
-        return buildWordParagraphXml(block.text || "", {
-          bold: true,
-          size: sizes[level] || 24,
-          spacingBefore: level <= 2 ? 180 : 120,
-          spacingAfter: 80,
-        });
+    if (block.type === "heading") {
+      const nextBlock = blocks[index + 1];
+      if (nextBlock?.type === "table" && nextBlock.pageOrientation === "landscape") {
+        xmlParts.push(buildWordLandscapeHeadingTableGroupXml(block, nextBlock));
+        index += 1;
+        continue;
       }
+      xmlParts.push(buildWordHeadingBlockXml(block));
+      continue;
+    }
 
-      if (block.type === "paragraph") {
-        const paragraphs = String(block.text || "")
-          .split(/\n{2,}/)
-          .map((paragraph) => paragraph.trim())
-          .filter(Boolean);
-        return (paragraphs.length ? paragraphs : [""]).map((paragraph) => buildWordParagraphXml(paragraph, {
-          align: block.align || "left",
-          bold: Boolean(block.bold),
-          italic: Boolean(block.italic),
-          size: 20,
-          spacingAfter: 80,
-        })).join("");
-      }
+    if (block.type === "paragraph") {
+      xmlParts.push(buildWordParagraphBlockXml(block));
+      continue;
+    }
 
-      if (block.type === "page_break") {
-        return buildWordPageBreakXml();
-      }
+    if (block.type === "page_break") {
+      xmlParts.push(buildWordPageBreakXml());
+      continue;
+    }
 
-      return buildDocxSpecialPlaceholderXml(block, zip, context, xmlFileName);
-    })
-    .filter(Boolean)
-    .join("");
+    xmlParts.push(buildDocxSpecialPlaceholderXml(block, zip, context, xmlFileName));
+  }
+  return xmlParts.filter(Boolean).join("");
 }
 
 function buildHandoverSpecificationTableModel(value = {}) {
@@ -3176,32 +3207,41 @@ function buildDocxSpecialPlaceholderXml(value, zip = null, context = {}, xmlFile
     return "";
   }
 
+  const withConfiguredPageBreak = (xml = "") => {
+    if (!xml || !value.pageBreakBefore) {
+      return xml;
+    }
+    return /^<w:p><w:pPr><w:sectPr\b/i.test(xml)
+      ? xml
+      : `${buildWordPageBreakXml()}${xml}`;
+  };
+
   if (value.type === "system_description") {
-    return buildWordSystemDescriptionXml(value);
+    return withConfiguredPageBreak(buildWordSystemDescriptionXml(value));
   }
 
   if (value.type === "signature_group") {
-    return buildWordSignatureGroupXml(value.items, zip, context, xmlFileName);
+    return withConfiguredPageBreak(buildWordSignatureGroupXml(value.items, zip, context, xmlFileName));
   }
 
   if (value.type === "table") {
-    return buildWordTableBlockXml(value);
+    return withConfiguredPageBreak(buildWordTableBlockXml(value));
   }
 
   if (value.type === "handover_protocol") {
-    return buildWordHandoverProtocolXml(value);
+    return withConfiguredPageBreak(buildWordHandoverProtocolXml(value));
   }
 
   if (value.type === "handover_specification") {
-    return buildWordHandoverSpecificationXml(value);
+    return withConfiguredPageBreak(buildWordHandoverSpecificationXml(value));
   }
 
   if (value.type === "rich_text") {
-    return buildWordRichTextXml(value);
+    return withConfiguredPageBreak(buildWordRichTextXml(value));
   }
 
   if (value.type === "blocks") {
-    return buildWordBlocksXml(value, zip, context, xmlFileName);
+    return withConfiguredPageBreak(buildWordBlocksXml(value, zip, context, xmlFileName));
   }
 
   if (value.type === "optional_empty") {
@@ -6866,14 +6906,24 @@ function normalizeRiskAssessmentNativePdfText(value = "", fallback = "-") {
 
 function getRiskAssessmentNativePdfBlocks(placeholders = {}) {
   const blocks = [];
-  RISK_ASSESSMENT_NATIVE_PDF_PLACEHOLDER_KEYS.forEach((key) => {
+  RISK_ASSESSMENT_NATIVE_PDF_PLACEHOLDER_KEYS.forEach((key, fallbackOrder) => {
     const value = placeholders?.[key];
     if (!value || value.__docxBlockType === "optional_empty") {
       return;
     }
-    blocks.push(value);
+    blocks.push({ value, fallbackOrder });
   });
-  return blocks;
+  return blocks
+    .sort((left, right) => {
+      const leftOrder = Number.isFinite(Number(left.value.__riskSectionOrder))
+        ? Number(left.value.__riskSectionOrder)
+        : left.fallbackOrder;
+      const rightOrder = Number.isFinite(Number(right.value.__riskSectionOrder))
+        ? Number(right.value.__riskSectionOrder)
+        : right.fallbackOrder;
+      return leftOrder - rightOrder || left.fallbackOrder - right.fallbackOrder;
+    })
+    .map(({ value }) => value);
 }
 
 function getRiskAssessmentNativePdfCellText(cell = {}) {
@@ -6896,17 +6946,19 @@ function renderRiskAssessmentNativePdfText(doc, helpers, text = "", {
   color = "#1f2333",
   align = "left",
   spacingAfter = 6,
+  layout = "portrait",
 } = {}) {
   const safeText = normalizeRiskAssessmentNativePdfText(text, "");
   if (!safeText) {
     return;
   }
-  if (helpers.layout !== "portrait") {
-    helpers.setLayout("portrait", { forceNewPage: true });
+  const targetLayout = layout === "landscape" ? "landscape" : "portrait";
+  if (helpers.layout !== targetLayout) {
+    helpers.setLayout(targetLayout, { forceNewPage: true });
   }
   const width = helpers.availableWidth;
   const height = doc.heightOfString(safeText, { width, lineGap: 1 }) + spacingAfter;
-  helpers.ensureSpace(height, { layout: "portrait" });
+  helpers.ensureSpace(height, { layout: targetLayout });
   doc.font(bold ? "dejavu-bold" : "dejavu").fontSize(fontSize).fillColor(color).text(safeText, {
     width,
     align,
@@ -6933,6 +6985,82 @@ function drawRiskAssessmentNativePdfCellBackground(doc, x, y, width, height, for
   doc.restore();
 }
 
+function getRiskAssessmentNativePdfTableMerge(table = {}, row = {}, column = {}) {
+  return (Array.isArray(table.merges) ? table.merges : []).find((merge) => (
+    String(merge?.rowId || "") === String(row?.id || "")
+    && String(merge?.columnId || "") === String(column?.id || "")
+  )) || null;
+}
+
+function buildRiskAssessmentNativePdfTableCells(table = {}, columns = [], rows = []) {
+  const covered = new Set();
+  const renderedRows = rows.map((row, rowIndex) => {
+    const cells = Array.isArray(row.cells) ? row.cells : [];
+    const renderedCells = [];
+    columns.forEach((column, columnIndex) => {
+      const key = `${rowIndex}:${columnIndex}`;
+      if (covered.has(key)) {
+        return;
+      }
+      const merge = getRiskAssessmentNativePdfTableMerge(table, row, column);
+      const colSpan = Math.max(1, Math.min(columns.length - columnIndex, Number.parseInt(merge?.colSpan, 10) || 1));
+      const rowSpan = Math.max(1, Math.min(rows.length - rowIndex, Number.parseInt(merge?.rowSpan, 10) || 1));
+      for (let rowOffset = 0; rowOffset < rowSpan; rowOffset += 1) {
+        for (let columnOffset = 0; columnOffset < colSpan; columnOffset += 1) {
+          if (rowOffset || columnOffset) {
+            covered.add(`${rowIndex + rowOffset}:${columnIndex + columnOffset}`);
+          }
+        }
+      }
+      renderedCells.push({
+        cell: cells[columnIndex] ?? {},
+        columnIndex,
+        colSpan,
+        rowSpan,
+      });
+    });
+    return {
+      row,
+      cells: renderedCells,
+    };
+  });
+  return renderedRows;
+}
+
+function getRiskAssessmentNativePdfColumnOffset(columnWidths = [], columnIndex = 0) {
+  return columnWidths.slice(0, columnIndex).reduce((sum, width) => sum + width, 0);
+}
+
+function getRiskAssessmentNativePdfCellWidth(columnWidths = [], columnIndex = 0, colSpan = 1) {
+  return columnWidths
+    .slice(columnIndex, columnIndex + Math.max(1, colSpan))
+    .reduce((sum, width) => sum + width, 0);
+}
+
+function isRiskAssessmentNativePdfRiskMatrixTable(columns = []) {
+  const columnIds = new Set(columns.map((column) => String(column?.id || "")));
+  return columnIds.has("probability") && columnIds.has("consequence") && columnIds.has("matrix");
+}
+
+function getRiskAssessmentNativePdfCellFontSize(format = {}, row = {}, columnCount = 1, fallback = 8) {
+  const explicit = Number(format.fontSize);
+  const resolved = Number.isFinite(explicit) ? explicit : fallback;
+  const compactHeaderSize = row.header && columnCount > 6 ? 7.2 : 8.2;
+  return Math.max(5.5, Math.min(row.header ? compactHeaderSize : 10, resolved));
+}
+
+function getRiskAssessmentNativePdfCellTextHeight(doc, text = "", width = 120, {
+  font = "dejavu",
+  fontSize = 8,
+  lineGap = 0.8,
+} = {}) {
+  doc.font(font).fontSize(fontSize);
+  return doc.heightOfString(text || "-", {
+    width: Math.max(12, width),
+    lineGap,
+  });
+}
+
 function renderRiskAssessmentNativePdfTable(doc, helpers, table = {}) {
   const columns = Array.isArray(table.columns) ? table.columns : [];
   const rows = Array.isArray(table.rows) ? table.rows : [];
@@ -6946,69 +7074,105 @@ function renderRiskAssessmentNativePdfTable(doc, helpers, table = {}) {
   helpers.ensureSpace(72, { layout });
 
   const paddingX = columns.length > 10 ? 3 : 5;
-  const paddingY = columns.length > 10 ? 3 : 4;
+  const paddingY = columns.length > 10 ? 4 : 5;
   const baseFontSize = Math.max(5.8, Math.min(8.5, columns.length > 10 ? 6.2 : columns.length > 6 ? 7 : 8));
+  const isRiskMatrixTable = isRiskAssessmentNativePdfRiskMatrixTable(columns);
+  const minimumHeaderHeight = isRiskMatrixTable ? 34 : layout === "landscape" ? 30 : 28;
+  const minimumBodyHeight = isRiskMatrixTable ? 42 : layout === "landscape" ? 30 : 26;
   const rawWidths = columns.map((column) => Math.max(24, Number(column.width) || 100));
   const rawTotal = rawWidths.reduce((sum, width) => sum + width, 0) || columns.length;
   const columnWidths = rawWidths.map((width) => (helpers.availableWidth * width) / rawTotal);
+  const renderedRows = buildRiskAssessmentNativePdfTableCells(table, columns, rows);
+  const rowHeights = renderedRows.map(({ row }) => (row.header ? minimumHeaderHeight : minimumBodyHeight));
+  const spanCells = [];
 
-  rows.forEach((row) => {
-    const cells = Array.isArray(row.cells) ? row.cells : [];
-    const rowCells = columns.map((_, index) => cells[index] ?? {});
-    const cellHeights = rowCells.map((cell, index) => {
-      const format = getRiskAssessmentNativePdfCellFormat(cell, row);
-      const text = getRiskAssessmentNativePdfCellText(cell);
-      const fontSize = Number.isFinite(Number(format.fontSize)) ? Math.max(5.5, Math.min(10, Number(format.fontSize))) : baseFontSize;
-      doc.font(format.bold || row.header ? "dejavu-bold" : "dejavu").fontSize(fontSize);
-      return doc.heightOfString(text || "-", {
-        width: Math.max(12, columnWidths[index] - paddingX * 2),
-        lineGap: 0.4,
-      }) + paddingY * 2;
-    });
-    const rowHeight = Math.max(18, Math.min(132, ...cellHeights));
-    helpers.ensureSpace(rowHeight + 6, { layout });
-    const startX = doc.page.margins.left;
-    const startY = doc.y;
-    let x = startX;
-
-    rowCells.forEach((cell, index) => {
+  renderedRows.forEach(({ row, cells }, rowIndex) => {
+    cells.forEach(({ cell, columnIndex, colSpan, rowSpan }) => {
       const format = getRiskAssessmentNativePdfCellFormat(cell, row);
       const text = getRiskAssessmentNativePdfCellText(cell) || "-";
-      const width = columnWidths[index];
-      const fontSize = Number.isFinite(Number(format.fontSize)) ? Math.max(5.5, Math.min(10, Number(format.fontSize))) : baseFontSize;
-      drawRiskAssessmentNativePdfCellBackground(doc, x, startY, width, rowHeight, format, row.header);
+      const fontSize = getRiskAssessmentNativePdfCellFontSize(format, row, columns.length, baseFontSize);
+      const width = getRiskAssessmentNativePdfCellWidth(columnWidths, columnIndex, colSpan);
+      const cardInset = format.card ? 10 : 0;
+      const desiredHeight = getRiskAssessmentNativePdfCellTextHeight(doc, text, width - paddingX * 2 - cardInset, {
+        font: format.bold || row.header ? "dejavu-bold" : "dejavu",
+        fontSize,
+        lineGap: 0.8,
+      }) + paddingY * 2 + (format.card ? 12 : 2);
+      if (rowSpan > 1) {
+        spanCells.push({ rowIndex, rowSpan, desiredHeight });
+      } else {
+        rowHeights[rowIndex] = Math.max(rowHeights[rowIndex], desiredHeight);
+      }
+    });
+  });
+
+  spanCells.forEach(({ rowIndex, rowSpan, desiredHeight }) => {
+    const currentHeight = rowHeights.slice(rowIndex, rowIndex + rowSpan).reduce((sum, height) => sum + height, 0);
+    if (desiredHeight <= currentHeight) {
+      return;
+    }
+    const extraPerRow = (desiredHeight - currentHeight) / rowSpan;
+    for (let index = rowIndex; index < rowIndex + rowSpan; index += 1) {
+      rowHeights[index] += extraPerRow;
+    }
+  });
+
+  renderedRows.forEach(({ row, cells }, rowIndex) => {
+    const rowHeight = Math.max(18, rowHeights[rowIndex]);
+    const drawHeight = Math.max(
+      rowHeight,
+      ...cells.map(({ rowSpan }) => rowHeights
+        .slice(rowIndex, rowIndex + rowSpan)
+        .reduce((sum, value) => sum + value, 0)),
+    );
+    helpers.ensureSpace(drawHeight + 6, { layout });
+    const startX = doc.page.margins.left;
+    const startY = doc.y;
+
+    cells.forEach(({ cell, columnIndex, colSpan, rowSpan }) => {
+      const format = getRiskAssessmentNativePdfCellFormat(cell, row);
+      const text = getRiskAssessmentNativePdfCellText(cell) || "-";
+      const x = startX + getRiskAssessmentNativePdfColumnOffset(columnWidths, columnIndex);
+      const width = getRiskAssessmentNativePdfCellWidth(columnWidths, columnIndex, colSpan);
+      const height = rowHeights.slice(rowIndex, rowIndex + rowSpan).reduce((sum, value) => sum + value, 0);
+      const fontSize = getRiskAssessmentNativePdfCellFontSize(format, row, columns.length, baseFontSize);
+      drawRiskAssessmentNativePdfCellBackground(doc, x, startY, width, height, format, row.header);
       if (format.card) {
         const cardFill = format.card.fillColor || "#FFFFFF";
         const cardBorder = format.card.borderColor || "#94A3B8";
         doc.save();
-        doc.roundedRect(x + 4, startY + 4, Math.max(12, width - 8), Math.max(10, rowHeight - 8), 4)
+        doc.roundedRect(x + 4, startY + 4, Math.max(12, width - 8), Math.max(10, height - 8), 4)
           .fillAndStroke(cardFill, cardBorder);
         doc.restore();
       }
-      doc.font(format.bold || row.header ? "dejavu-bold" : "dejavu").fontSize(fontSize).fillColor(format.card?.textColor || "#111827").text(text, x + paddingX, startY + paddingY, {
-        width: Math.max(12, width - paddingX * 2),
+      const textInset = format.card ? 7 : 0;
+      doc.font(format.bold || row.header ? "dejavu-bold" : "dejavu").fontSize(fontSize).fillColor(format.card?.textColor || "#111827").text(text, x + paddingX + textInset, startY + paddingY + (format.card ? 3 : 0), {
+        width: Math.max(12, width - paddingX * 2 - textInset * 2),
         align: format.align === "center" || row.header ? "center" : format.align === "right" ? "right" : "left",
-        lineGap: 0.4,
-        height: Math.max(10, rowHeight - paddingY * 2),
-        ellipsis: true,
+        lineGap: 0.8,
       });
-      x += width;
     });
     doc.y = startY + rowHeight;
   });
 
   doc.moveDown(0.7);
-  if (layout === "landscape") {
-    helpers.setLayout("portrait", { forceNewPage: true });
-  }
 }
 
-function renderRiskAssessmentNativePdfBlock(doc, helpers, block = {}) {
+function renderRiskAssessmentNativePdfBlock(doc, helpers, block = {}, options = {}) {
   if (!block) {
     return;
   }
   if (block.__docxBlockType === "blocks") {
-    (Array.isArray(block.blocks) ? block.blocks : []).forEach((entry) => renderRiskAssessmentNativePdfBlock(doc, helpers, entry));
+    const entries = Array.isArray(block.blocks) ? block.blocks : [];
+    entries.forEach((entry, index) => {
+      const nextEntry = entries[index + 1];
+      const renderLayout = entry?.type === "heading"
+        && nextEntry?.__docxBlockType === "table"
+        && nextEntry?.pageOrientation === "landscape"
+        ? "landscape"
+        : undefined;
+      renderRiskAssessmentNativePdfBlock(doc, helpers, entry, { layout: renderLayout });
+    });
     return;
   }
   if (block.__docxBlockType === "table") {
@@ -7026,6 +7190,7 @@ function renderRiskAssessmentNativePdfBlock(doc, helpers, block = {}) {
       fontSize: level <= 1 ? 18 : level === 2 ? 14 : level === 3 ? 11.5 : 10,
       color: level <= 2 ? "#111827" : "#17233f",
       spacingAfter: level <= 2 ? 8 : 5,
+      layout: options.layout || "portrait",
     });
     return;
   }
@@ -7073,7 +7238,12 @@ export async function buildRiskAssessmentNativePdfBuffer(placeholders = {}, opti
     spacingAfter: 18,
   });
 
-  getRiskAssessmentNativePdfBlocks(placeholders).forEach((block) => renderRiskAssessmentNativePdfBlock(doc, helpers, block));
+  getRiskAssessmentNativePdfBlocks(placeholders).forEach((block, index) => {
+    if (index > 0 && block.__riskPageBreakBefore) {
+      helpers.setLayout("portrait", { forceNewPage: true });
+    }
+    renderRiskAssessmentNativePdfBlock(doc, helpers, block);
+  });
   return await pdfBufferFromDocument(doc);
 }
 

@@ -202,6 +202,7 @@ test("docx export renders a multi-block table section placeholder", async () => 
       blocks: [
         { type: "heading", text: "Analiza radnih mjesta", level: 2 },
         { type: "paragraph", text: "Automatski izradene tablice procjene." },
+        { type: "heading", text: "Opasnosti, stetnosti, napori i mjere", level: 4 },
         {
           __docxBlockType: "table",
           pageOrientation: "landscape",
@@ -237,6 +238,7 @@ test("docx export renders a multi-block table section placeholder", async () => 
   assert.equal(outputXml.includes("__TASKFLOW_DOCX_BLOCK"), false);
   assert.match(outputXml, /Analiza radnih mjesta/);
   assert.match(outputXml, /Automatski izradene tablice procjene\./);
+  assert.match(outputXml, /Opasnosti, stetnosti, napori i mjere/);
   assert.match(outputXml, /Laboratorij/);
   assert.match(outputXml, /Srednji rizik/);
   assert.match(outputXml, /Nakon tablice opet portrait sadrzaj\./);
@@ -258,6 +260,43 @@ test("docx export renders a multi-block table section placeholder", async () => 
   assert.match(fallbackHtml, /@page sn-word-landscape/);
   assert.match(fallbackHtml, /data-word-orientation="landscape"/);
   assert.ok((fallbackHtml.match(/<table/g) || []).length >= 2);
+
+  const headingIndex = outputXml.indexOf("Opasnosti, stetnosti, napori i mjere");
+  const tableTextIndex = outputXml.indexOf("Laboratorij");
+  const landscapeIndex = outputXml.indexOf('w:orient="landscape"');
+  const portraitSectionIndex = outputXml.lastIndexOf("w:pgSz", headingIndex);
+  assert.ok(portraitSectionIndex < headingIndex);
+  assert.ok(headingIndex < tableTextIndex);
+  assert.ok(tableTextIndex < landscapeIndex);
+});
+
+test("docx export honors risk section page break metadata", async () => {
+  const templateBuffer = buildMinimalDocxBuffer(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:body>
+        <w:p><w:r><w:t>{{RISK_INTRO}}</w:t></w:r></w:p>
+        <w:p><w:r><w:t>{{RISK_GENERAL}}</w:t></w:r></w:p>
+        <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>
+      </w:body>
+    </w:document>`);
+
+  const outputBuffer = await buildDocxFromTemplateBuffer(templateBuffer, {
+    RISK_INTRO: {
+      __docxBlockType: "rich_text",
+      html: "<p>Prvi dio</p>",
+    },
+    RISK_GENERAL: {
+      __docxBlockType: "rich_text",
+      __riskPageBreakBefore: true,
+      html: "<p>Drugi dio</p>",
+    },
+  });
+  const outputXml = new PizZip(outputBuffer).file("word/document.xml").asText();
+
+  const pageBreakIndex = outputXml.indexOf('<w:br w:type="page"/>');
+  const secondSectionIndex = outputXml.indexOf("Drugi dio");
+  assert.ok(pageBreakIndex > -1);
+  assert.ok(pageBreakIndex < secondSectionIndex);
 });
 
 test("risk assessment native PDF keeps landscape tables isolated", async () => {

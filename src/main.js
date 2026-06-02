@@ -130403,16 +130403,22 @@ function buildRiskAssessmentSectionExportBlockValue(section = {}, index = 0) {
   const placeholder = getRiskAssessmentTemplatePlaceholder(section.key);
   const title = section.title || placeholder.defaultTitle || placeholder.label;
   const structuredBlocks = buildRiskAssessmentStructuredSectionExportBlocks(section.key);
+  const attachSectionMeta = (value = {}) => ({
+    ...value,
+    __riskSectionKey: section.key || placeholder.key,
+    __riskSectionOrder: index,
+    __riskPageBreakBefore: Boolean(section.pageBreakBefore),
+  });
   if (Array.isArray(structuredBlocks)) {
-    return createRiskAssessmentExportBlocks([
+    return attachSectionMeta(createRiskAssessmentExportBlocks([
       section.key === "cover" ? null : createRiskAssessmentExportHeading(title, 2),
       ...structuredBlocks,
-    ]);
+    ]));
   }
-  return {
+  return attachSectionMeta({
     __docxBlockType: "rich_text",
     html: buildRiskAssessmentSectionExportHtml(section, index),
-  };
+  });
 }
 
 function getRiskAssessmentExportSections() {
