@@ -129698,6 +129698,13 @@ function createRiskAssessmentExportCell(value = "", format = {}) {
   if (format.fillColor) {
     cellFormat.fillColor = format.fillColor;
   }
+  if (format.card) {
+    cellFormat.card = {
+      fillColor: format.card.fillColor || "",
+      borderColor: format.card.borderColor || "",
+      textColor: format.card.textColor || "",
+    };
+  }
   if (Number.isFinite(Number(format.fontSize))) {
     cellFormat.fontSize = Number(format.fontSize);
   }
@@ -129776,22 +129783,6 @@ function getRiskAssessmentExportRiskLevelText(risk = {}) {
   const level = getRiskAssessmentRiskDisplayLevel(risk);
   const number = getRiskAssessmentExportRiskLevelNumber(risk);
   return [level, number ? `(${number})` : ""].filter(Boolean).join(" ");
-}
-
-function getRiskAssessmentExportProbabilityFill(value = "") {
-  const normalized = String(value || "").toLowerCase();
-  if (normalized === "vv") return "#FEE2E2";
-  if (normalized === "v") return "#FEF3C7";
-  if (normalized === "mv") return "#DCFCE7";
-  return "#F8FAFC";
-}
-
-function getRiskAssessmentExportConsequenceFill(value = "") {
-  const normalized = String(value || "").toLowerCase();
-  if (normalized === "iš" || normalized === "is") return "#FEE2E2";
-  if (normalized === "sš" || normalized === "ss") return "#FEF3C7";
-  if (normalized === "mš" || normalized === "ms") return "#DCFCE7";
-  return "#F8FAFC";
 }
 
 function getRiskAssessmentExportRiskFill(risk = {}) {
@@ -129923,19 +129914,22 @@ function buildRiskAssessmentJobRiskExportTable(job = {}) {
           fontSize: 7,
           align: "center",
           bold: true,
-          fillColor: getRiskAssessmentExportProbabilityFill(risk.probability),
+          card: { fillColor: "#FFFFFF", borderColor: "#CBD5E1" },
         }),
         createRiskAssessmentExportCell(getRiskAssessmentOptionLabel(RISK_ASSESSMENT_CONSEQUENCE_OPTIONS, risk.consequence, "-"), {
           fontSize: 7,
           align: "center",
           bold: true,
-          fillColor: getRiskAssessmentExportConsequenceFill(risk.consequence),
+          card: { fillColor: "#FFFFFF", borderColor: "#CBD5E1" },
         }),
         createRiskAssessmentExportCell(getRiskAssessmentExportRiskLevelText(risk), {
           fontSize: 7,
           align: "center",
           bold: true,
-          fillColor: getRiskAssessmentExportRiskFill(risk),
+          card: {
+            fillColor: getRiskAssessmentExportRiskFill(risk),
+            borderColor: "#94A3B8",
+          },
         }),
         createRiskAssessmentExportCell(formatRiskAssessmentExportYesNo(job.specialWorkConditions, "Ne"), { fontSize: 7, align: "center" }),
         createRiskAssessmentExportCell(joinUniqueRiskAssessmentTextBlocks([risk.workNote, risk.note, risk.source]), { fontSize: 7 }),

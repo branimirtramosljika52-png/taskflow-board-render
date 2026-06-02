@@ -210,9 +210,23 @@ test("docx export renders a multi-block table section placeholder", async () => 
           ],
           rows: [
             { id: "head", header: true, cells: [{ text: "Posao" }, { text: "Rizik" }] },
-            { id: "row-1", cells: [{ text: "Laboratorij" }, { text: "Srednji rizik" }] },
+            {
+              id: "row-1",
+              cells: [
+                { text: "Laboratorij" },
+                {
+                  text: "Srednji rizik",
+                  format: {
+                    align: "center",
+                    bold: true,
+                    card: { fillColor: "#FEF3C7", borderColor: "#94A3B8" },
+                  },
+                },
+              ],
+            },
           ],
         },
+        { type: "paragraph", text: "Nakon tablice opet portrait sadrzaj." },
       ],
     },
   });
@@ -224,8 +238,12 @@ test("docx export renders a multi-block table section placeholder", async () => 
   assert.match(outputXml, /Automatski izradene tablice procjene\./);
   assert.match(outputXml, /Laboratorij/);
   assert.match(outputXml, /Srednji rizik/);
+  assert.match(outputXml, /Nakon tablice opet portrait sadrzaj\./);
   assert.match(outputXml, /w:orient="landscape"/);
-  assert.equal((outputXml.match(/<w:tbl>/g) || []).length, 1);
+  assert.match(outputXml, /w:fill="FEF3C7"/);
+  assert.match(outputXml, /w:color="94A3B8"/);
+  assert.equal((outputXml.match(/w:orient="landscape"/g) || []).length, 1);
+  assert.equal((outputXml.match(/<w:tbl>/g) || []).length, 2);
 });
 
 test("docx export renders signature group placeholders as visible signature blocks", async () => {
@@ -454,7 +472,17 @@ test("HTML template export renders escaped placeholders and special table blocks
         },
         {
           id: "r1",
-          cells: [{ text: "Otpor" }, { text: "1,2 Ω" }],
+          cells: [
+            { text: "Otpor" },
+            {
+              text: "Srednji rizik",
+              format: {
+                align: "center",
+                bold: true,
+                card: { fillColor: "#FEF3C7", borderColor: "#94A3B8" },
+              },
+            },
+          ],
         },
       ],
     },
@@ -475,6 +503,7 @@ test("HTML template export renders escaped placeholders and special table blocks
   assert.match(html, /safe-nexus-template-table/);
   assert.match(html, /Zapisnik &lt;script&gt;alert\(1\)&lt;\/script&gt;/);
   assert.match(html, /Prvi red<br>Drugi red &amp; znak/);
+  assert.match(html, /<span style="[^"]*background:#FEF3C7[^"]*">Srednji rizik<\/span>/);
   assert.match(html, /Ana Ivić/);
   assert.doesNotMatch(html, /Ispitiva/);
   assert.doesNotMatch(html, new RegExp(["Scan", "potpisa"].join("\\s+"), "i"));

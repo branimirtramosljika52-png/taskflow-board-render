@@ -1567,6 +1567,16 @@ function normalizeDocxSpecialPlaceholderValue(value) {
             const format = cell.format && typeof cell.format === "object"
               ? cell.format
               : {};
+            const rawCard = format.card && typeof format.card === "object"
+              ? format.card
+              : (format.card ? {} : null);
+            const card = rawCard
+              ? {
+                fillColor: /^#[0-9a-f]{6}$/i.test(clean(rawCard.fillColor)) ? clean(rawCard.fillColor).toUpperCase() : "",
+                borderColor: /^#[0-9a-f]{6}$/i.test(clean(rawCard.borderColor)) ? clean(rawCard.borderColor).toUpperCase() : "#CBD5E1",
+                textColor: /^#[0-9a-f]{6}$/i.test(clean(rawCard.textColor)) ? clean(rawCard.textColor).toUpperCase() : "#1F2333",
+              }
+              : null;
             return {
               text: String(cell.text ?? cell.value ?? "").replace(/\r\n/g, "\n"),
               format: {
@@ -1582,6 +1592,7 @@ function normalizeDocxSpecialPlaceholderValue(value) {
                 italic: Boolean(format.italic),
                 underline: Boolean(format.underline),
                 fillColor: /^#[0-9a-f]{6}$/i.test(clean(format.fillColor)) ? clean(format.fillColor).toUpperCase() : "",
+                card,
                 border: {
                   top: Boolean(format.border?.top),
                   right: Boolean(format.border?.right),
@@ -2034,7 +2045,75 @@ function buildWordTableCellBordersXml(format = {}, { header = false } = {}) {
   `.replace(/\n\s+/g, "");
 }
 
-function buildWordTableCellParagraphsXml(text = "", format = {}, { header = false, columnCount = 1 } = {}) {
+function buildWordTableCellCardXml(text = "", format = {}, { header = false, columnCount = 1, cellWidth = 1200 } = {}) {
+  const card = format.card && typeof format.card === "object" ? format.card : {};
+  const safeText = String(text ?? "").replace(/\r\n/g, "\n");
+  const lines = safeText.length > 0 ? safeText.split("\n") : [""];
+  const fontSize = getWordTableCellFontSize(format, columnCount);
+  const align = getWordTableCellAlign(format);
+  const fontFamily = getWordFontFamilyValue(format.fontFamily);
+  const fillColor = normalizeWordHexColor(card.fillColor, "FFFFFF");
+  const borderColor = normalizeWordHexColor(card.borderColor, "CBD5E1");
+  const textColor = normalizeWordHexColor(card.textColor, "1F2333");
+  const cardWidth = Math.max(720, Math.min(Math.max(720, cellWidth - 120), Math.round(cellWidth * 0.88)));
+  const runProperties = [
+    `<w:rFonts w:ascii="${escapeWordXmlText(fontFamily)}" w:hAnsi="${escapeWordXmlText(fontFamily)}" w:cs="${escapeWordXmlText(fontFamily)}"/>`,
+    format.bold || header ? "<w:b/>" : "",
+    format.italic ? "<w:i/>" : "",
+    format.underline ? '<w:u w:val="single"/>' : "",
+    `<w:sz w:val="${fontSize}"/><w:szCs w:val="${fontSize}"/>`,
+    `<w:color w:val="${textColor}"/>`,
+  ].filter(Boolean).join("");
+  const textXml = lines.map((line, lineIndex) => {
+    const paragraphProperties = [
+      `<w:jc w:val="${escapeWordXmlText(align)}"/>`,
+      `<w:spacing w:before="0" w:after="${lineIndex === lines.length - 1 ? 0 : 18}"/>`,
+    ].join("");
+    return line
+      ? `<w:p><w:pPr>${paragraphProperties}</w:pPr><w:r><w:rPr>${runProperties}</w:rPr><w:t xml:space="preserve">${escapeWordXmlText(line)}</w:t></w:r></w:p>`
+      : `<w:p><w:pPr>${paragraphProperties}</w:pPr></w:p>`;
+  }).join("");
+
+  return `
+    <w:tbl>
+      <w:tblPr>
+        <w:tblW w:w="${cardWidth}" w:type="dxa"/>
+        <w:jc w:val="${escapeWordXmlText(align)}"/>
+        <w:tblLayout w:type="fixed"/>
+        <w:tblCellMar>
+          <w:top w:w="0" w:type="dxa"/><w:left w:w="0" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="0" w:type="dxa"/>
+        </w:tblCellMar>
+      </w:tblPr>
+      <w:tblGrid><w:gridCol w:w="${cardWidth}"/></w:tblGrid>
+      <w:tr>
+        <w:tc>
+          <w:tcPr>
+            <w:tcW w:w="${cardWidth}" w:type="dxa"/>
+            <w:vAlign w:val="center"/>
+            <w:tcMar>
+              <w:top w:w="70" w:type="dxa"/><w:left w:w="78" w:type="dxa"/><w:bottom w:w="70" w:type="dxa"/><w:right w:w="78" w:type="dxa"/>
+            </w:tcMar>
+            <w:shd w:val="clear" w:color="auto" w:fill="${fillColor}"/>
+            <w:tcBorders>
+              <w:top w:val="single" w:sz="6" w:space="0" w:color="${borderColor}"/>
+              <w:left w:val="single" w:sz="6" w:space="0" w:color="${borderColor}"/>
+              <w:bottom w:val="single" w:sz="6" w:space="0" w:color="${borderColor}"/>
+              <w:right w:val="single" w:sz="6" w:space="0" w:color="${borderColor}"/>
+            </w:tcBorders>
+          </w:tcPr>
+          ${textXml}
+        </w:tc>
+      </w:tr>
+    </w:tbl>
+    <w:p><w:pPr><w:spacing w:before="0" w:after="0"/></w:pPr></w:p>
+  `.replace(/\n\s+/g, "");
+}
+
+function buildWordTableCellParagraphsXml(text = "", format = {}, { header = false, columnCount = 1, cellWidth = 1200 } = {}) {
+  if (format.card) {
+    return buildWordTableCellCardXml(text, format, { header, columnCount, cellWidth });
+  }
+
   const safeText = String(text ?? "").replace(/\r\n/g, "\n");
   const lines = safeText.length > 0 ? safeText.split("\n") : [""];
   const fontSize = getWordTableCellFontSize(format, columnCount);
@@ -2159,7 +2238,11 @@ function buildWordTableXml(table = {}) {
       const bordersXml = buildWordTableCellBordersXml(format, { header: isHeader });
       const cellParagraphs = mergeContinuation
         ? buildWordParagraphXml("", { spacingAfter: 0 })
-        : buildWordTableCellParagraphsXml(rawCell.text || "", format, { header: isHeader, columnCount: columns.length });
+        : buildWordTableCellParagraphsXml(rawCell.text || "", format, {
+          header: isHeader,
+          columnCount: columns.length,
+          cellWidth: width,
+        });
 
       cellsXml.push(`
         <w:tc>
@@ -2204,17 +2287,21 @@ function buildWordPageBreakXml() {
   return '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
 }
 
-function buildWordSectionBreakXml(orientation = "portrait") {
+function buildWordSectionBreakXml(orientation = "portrait", options = {}) {
   const isLandscape = clean(orientation).toLowerCase() === "landscape";
   const pageWidth = isLandscape ? 16838 : 11906;
   const pageHeight = isLandscape ? 11906 : 16838;
+  const margin = Number.isFinite(Number(options.margin))
+    ? Math.max(360, Math.min(1800, Math.round(Number(options.margin))))
+    : (isLandscape ? 720 : 1440);
+  const headerFooterMargin = Math.max(240, Math.min(720, Math.round(margin / 2)));
   return `
     <w:p>
       <w:pPr>
         <w:sectPr>
           <w:type w:val="nextPage"/>
           <w:pgSz w:w="${pageWidth}" w:h="${pageHeight}"${isLandscape ? ' w:orient="landscape"' : ""}/>
-          <w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720" w:header="360" w:footer="360" w:gutter="0"/>
+          <w:pgMar w:top="${margin}" w:right="${margin}" w:bottom="${margin}" w:left="${margin}" w:header="${headerFooterMargin}" w:footer="${headerFooterMargin}" w:gutter="0"/>
         </w:sectPr>
       </w:pPr>
     </w:p>
@@ -2229,7 +2316,7 @@ function buildWordTableBlockXml(table = {}) {
   return [
     buildWordSectionBreakXml("portrait"),
     tableXml,
-    buildWordSectionBreakXml("landscape"),
+    buildWordSectionBreakXml("landscape", { margin: 720 }),
   ].join("");
 }
 
@@ -3839,6 +3926,32 @@ function buildHtmlTemplateCellStyle(format = {}, { header = false } = {}) {
   return styles.join(";");
 }
 
+function buildHtmlTemplateCellCardContent(rawCell = {}) {
+  const format = rawCell.format && typeof rawCell.format === "object" ? rawCell.format : {};
+  const card = format.card && typeof format.card === "object" ? format.card : null;
+  const content = formatTemplateHtmlText(rawCell.text || "");
+  if (!card) {
+    return content;
+  }
+  const fillColor = /^#[0-9a-f]{6}$/i.test(clean(card.fillColor)) ? clean(card.fillColor) : "#ffffff";
+  const borderColor = /^#[0-9a-f]{6}$/i.test(clean(card.borderColor)) ? clean(card.borderColor) : "#cbd5e1";
+  const textColor = /^#[0-9a-f]{6}$/i.test(clean(card.textColor)) ? clean(card.textColor) : "#1f2333";
+  const styles = [
+    "display:inline-block",
+    "min-width:64px",
+    "max-width:100%",
+    "box-sizing:border-box",
+    "padding:4px 6px",
+    "border-radius:6px",
+    `border:1px solid ${borderColor}`,
+    `background:${fillColor}`,
+    `color:${textColor}`,
+    "font-weight:700",
+    "line-height:1.12",
+  ];
+  return `<span style="${styles.join(";")}">${content}</span>`;
+}
+
 function buildHtmlTemplateTablePlaceholder(table = {}) {
   const columns = Array.isArray(table.columns) ? table.columns : [];
   const rows = Array.isArray(table.rows) ? table.rows : [];
@@ -3910,7 +4023,7 @@ function buildHtmlTemplateTablePlaceholder(table = {}) {
         mergeAnchor?.colSpan > 1 ? `colspan="${mergeAnchor.colSpan}"` : "",
         style ? `style="${style}"` : "",
       ].filter(Boolean).join(" ");
-      cellHtml.push(`<${tagName}${attributes ? ` ${attributes}` : ""}>${formatTemplateHtmlText(rawCell.text || "")}</${tagName}>`);
+      cellHtml.push(`<${tagName}${attributes ? ` ${attributes}` : ""}>${buildHtmlTemplateCellCardContent(rawCell)}</${tagName}>`);
     }
 
     return `<tr>${cellHtml.join("")}</tr>`;
