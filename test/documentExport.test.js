@@ -244,8 +244,8 @@ test("docx export renders a multi-block table section placeholder", async () => 
   assert.match(outputXml, /w:color="94A3B8"/);
   assert.equal((outputXml.match(/w:orient="landscape"/g) || []).length, 1);
   assert.equal((outputXml.match(/<w:tbl>/g) || []).length, 2);
-  assert.ok(outputXml.indexOf('w:orient="landscape"') < outputXml.indexOf("<w:tbl>"));
-  assert.ok(outputXml.lastIndexOf('<w:pgSz w:w="11906" w:h="16838"') > outputXml.lastIndexOf("</w:tbl>"));
+  assert.ok(outputXml.indexOf('<w:pgSz w:w="11906" w:h="16838"') < outputXml.indexOf("<w:tbl>"));
+  assert.ok(outputXml.indexOf('w:orient="landscape"') > outputXml.lastIndexOf("</w:tbl>"));
 
   const fallbackHtml = (await convertWordBufferToHtmlTemplate(outputBuffer, {
     fileName: "procjena-rizika.docx",
@@ -254,6 +254,8 @@ test("docx export renders a multi-block table section placeholder", async () => 
   assert.match(fallbackHtml, /Srednji rizik/);
   assert.match(fallbackHtml, /background-color:#FEF3C7/);
   assert.match(fallbackHtml, /border-top:0\.75pt solid #94A3B8/);
+  assert.match(fallbackHtml, /@page sn-word-landscape/);
+  assert.match(fallbackHtml, /data-word-orientation="landscape"/);
   assert.ok((fallbackHtml.match(/<table/g) || []).length >= 2);
 });
 

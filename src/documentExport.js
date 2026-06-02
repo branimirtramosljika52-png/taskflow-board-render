@@ -2155,7 +2155,7 @@ function buildWordTableXml(table = {}) {
     return buildWordParagraphXml("", { spacingAfter: 0 });
   }
 
-  const totalGridWidth = table.pageOrientation === "landscape" ? 13440 : 9360;
+  const totalGridWidth = table.pageOrientation === "landscape" ? 15360 : 9360;
   const rawWidths = columns.map((column) => Math.max(MEASUREMENT_COLUMN_MIN_WIDTH, Number(column.width) || 140));
   const rawTotalWidth = rawWidths.reduce((sum, value) => sum + value, 0) || (columns.length * 140);
   const columnWidths = rawWidths.map((value) => Math.max(240, Math.round((value / rawTotalWidth) * totalGridWidth)));
@@ -2314,9 +2314,9 @@ function buildWordTableBlockXml(table = {}) {
     return tableXml;
   }
   return [
-    buildWordSectionBreakXml("landscape", { margin: 720 }),
-    tableXml,
     buildWordSectionBreakXml("portrait"),
+    tableXml,
+    buildWordSectionBreakXml("landscape", { margin: 720 }),
   ].join("");
 }
 
@@ -3792,16 +3792,7 @@ export async function convertDocxBuffersToPdfBuffers(items = []) {
 
 export async function buildPdfFromTemplateBuffer(templateBuffer, placeholders = {}, options = {}) {
   const generatedWord = await buildDocxFromTemplateBuffer(templateBuffer, placeholders, options);
-  try {
-    return await addPdfDocumentStampToBuffer(
-      await convertDocxBufferToPdfBuffer(generatedWord, options),
-      options.documentStampSettings || options.stampSettings || options.pdfStampSettings,
-    );
-  } catch (error) {
-    if (options.disableHtmlFallback || options.strictWordPdf) {
-      throw error;
-    }
-    console.warn("Word -> PDF conversion failed, using HTML PDF fallback.", error);
+  const buildHtmlPdf = async () => {
     const converted = await convertWordBufferToHtmlTemplate(generatedWord, {
       fileName: options.fileName || "zapisnik.docx",
     });
@@ -3819,6 +3810,21 @@ export async function buildPdfFromTemplateBuffer(templateBuffer, placeholders = 
       }),
       options.documentStampSettings || options.stampSettings || options.pdfStampSettings,
     );
+  };
+  if (options.preferHtmlConversion || options.forceHtmlConversion) {
+    return await buildHtmlPdf();
+  }
+  try {
+    return await addPdfDocumentStampToBuffer(
+      await convertDocxBufferToPdfBuffer(generatedWord, options),
+      options.documentStampSettings || options.stampSettings || options.pdfStampSettings,
+    );
+  } catch (error) {
+    if (options.disableHtmlFallback || options.strictWordPdf) {
+      throw error;
+    }
+    console.warn("Word -> PDF conversion failed, using HTML PDF fallback.", error);
+    return await buildHtmlPdf();
   }
 }
 
@@ -5182,6 +5188,45 @@ function extractDocxBodyBlocks(bodyXml = "") {
   return blocks;
 }
 
+function getDocxSectionPageFromProperties(sectPr = "", fallbackPage = {}) {
+  const pgSz = getFirstXmlEmptyOrElement(sectPr, "w:pgSz");
+  const pgMar = getFirstXmlEmptyOrElement(sectPr, "w:pgMar");
+  const fallbackWidth = Number.isFinite(fallbackPage.widthPt) ? fallbackPage.widthPt : 595.28;
+  const fallbackHeight = Number.isFinite(fallbackPage.heightPt) ? fallbackPage.heightPt : 841.89;
+  const rawWidthPt = twipsToPt(getXmlAttribute(pgSz, "w:w"), fallbackWidth);
+  const rawHeightPt = twipsToPt(getXmlAttribute(pgSz, "w:h"), fallbackHeight);
+  const orient = clean(getXmlAttribute(pgSz, "w:orient") || fallbackPage.orientation || "portrait").toLowerCase();
+  const isLandscape = orient === "landscape" || rawWidthPt > rawHeightPt;
+  const defaultMargin = isLandscape ? 36 : 72;
+  return {
+    widthPt: isLandscape ? Math.max(rawWidthPt, rawHeightPt) : Math.min(rawWidthPt, rawHeightPt),
+    heightPt: isLandscape ? Math.min(rawWidthPt, rawHeightPt) : Math.max(rawWidthPt, rawHeightPt),
+    marginTopPt: twipsToPt(getXmlAttribute(pgMar, "w:top"), fallbackPage.marginTopPt ?? defaultMargin),
+    marginRightPt: twipsToPt(getXmlAttribute(pgMar, "w:right"), fallbackPage.marginRightPt ?? defaultMargin),
+    marginBottomPt: twipsToPt(getXmlAttribute(pgMar, "w:bottom"), fallbackPage.marginBottomPt ?? defaultMargin),
+    marginLeftPt: twipsToPt(getXmlAttribute(pgMar, "w:left"), fallbackPage.marginLeftPt ?? defaultMargin),
+    headerTopPt: twipsToPt(getXmlAttribute(pgMar, "w:header"), fallbackPage.headerTopPt ?? Math.max(18, defaultMargin / 2)),
+    footerBottomPt: twipsToPt(getXmlAttribute(pgMar, "w:footer"), fallbackPage.footerBottomPt ?? Math.max(18, defaultMargin / 2)),
+    orientation: isLandscape ? "landscape" : "portrait",
+  };
+}
+
+function getDocxFinalBodySectionProperties(bodyXml = "") {
+  const source = String(bodyXml || "");
+  const matches = getXmlElementsPreservingNested(source, "w:sectPr");
+  return matches[matches.length - 1] || "";
+}
+
+function getDocxParagraphSectionProperties(pXml = "") {
+  return getFirstXmlElement(getFirstXmlElement(pXml, "w:pPr"), "w:sectPr");
+}
+
+function docxParagraphHasVisibleContent(pXml = "") {
+  const withoutProperties = String(pXml || "").replace(/<w:pPr\b[\s\S]*?<\/w:pPr>/i, "");
+  return /<w:(?:t|br|tab|drawing|pict)\b/i.test(withoutProperties)
+    && clean(withoutProperties.replace(/<[^>]+>/g, "")).length > 0;
+}
+
 function getDocxParagraphListInfo(pPr = "") {
   const numPr = getFirstXmlElement(pPr, "w:numPr");
   if (!numPr) {
@@ -5778,6 +5823,96 @@ async function renderDocxBlocksHtml(xml = "", context = {}) {
   return htmlBlocks.join("\n");
 }
 
+function buildConvertedWordPageInlineStyle(page = {}, orientation = "portrait") {
+  const isLandscape = orientation === "landscape";
+  return cssListToStyleAttribute([
+    `page:${isLandscape ? "sn-word-landscape" : "sn-word-portrait"}`,
+    `--sn-word-page-width:${cssLengthPt(page.widthPt, isLandscape ? "841.9pt" : "595.3pt")}`,
+    `--sn-word-page-height:${cssLengthPt(page.heightPt, isLandscape ? "595.3pt" : "841.9pt")}`,
+    `--sn-word-page-margin-top:${cssLengthPt(page.marginTopPt, isLandscape ? "36pt" : "72pt")}`,
+    `--sn-word-page-margin-right:${cssLengthPt(page.marginRightPt, isLandscape ? "36pt" : "72pt")}`,
+    `--sn-word-page-margin-bottom:${cssLengthPt(page.marginBottomPt, isLandscape ? "36pt" : "72pt")}`,
+    `--sn-word-page-margin-left:${cssLengthPt(page.marginLeftPt, isLandscape ? "36pt" : "72pt")}`,
+    `--sn-word-page-header-top:${cssLengthPt(page.headerTopPt, isLandscape ? "18pt" : "36pt")}`,
+    `--sn-word-page-footer-bottom:${cssLengthPt(page.footerBottomPt, isLandscape ? "18pt" : "36pt")}`,
+  ]);
+}
+
+function buildConvertedWordPageHtml({
+  pageContent = "",
+  pageIndex = 1,
+  page = {},
+  metadata = {},
+} = {}) {
+  const orientation = page.orientation === "landscape" ? "landscape" : "portrait";
+  const headerHtml = clean(metadata?.headerHtml);
+  const footerHtml = clean(metadata?.footerHtml);
+  const floatingShapesHtml = clean(metadata?.bodyFloatingShapesHtml);
+  return `<section class="sn-word-page" data-page-index="${pageIndex}" data-word-orientation="${escapeTemplateHtml(orientation)}"${buildConvertedWordPageInlineStyle(page, orientation)}>
+${pageIndex === 1 && floatingShapesHtml ? `${floatingShapesHtml}\n` : ""}${headerHtml}
+<div class="sn-word-page-body">
+${pageContent || "<p>&nbsp;</p>"}
+</div>
+${footerHtml}
+</section>`;
+}
+
+async function renderDocxBodySectionsHtml(xml = "", context = {}) {
+  const blocks = extractDocxBodyBlocks(xml);
+  const hasExplicitSectionBreak = blocks.some(
+    (block) => block.type === "p" && getDocxParagraphSectionProperties(block.xml)
+  );
+  if (!hasExplicitSectionBreak) {
+    return await renderDocxBlocksHtml(xml, context);
+  }
+  const sections = [];
+  let currentHtml = [];
+  const flushSection = (sectPr = "") => {
+    const content = currentHtml.join("\n").trim();
+    if (!content) {
+      currentHtml = [];
+      return;
+    }
+    sections.push({
+      html: content,
+      page: getDocxSectionPageFromProperties(sectPr, context.metadata?.page || {}),
+    });
+    currentHtml = [];
+  };
+
+  for (const block of blocks) {
+    if (block.type === "p") {
+      const sectPr = getDocxParagraphSectionProperties(block.xml);
+      if (sectPr) {
+        if (docxParagraphHasVisibleContent(block.xml)) {
+          currentHtml.push(await renderDocxParagraphHtml(block.xml, context));
+        }
+        flushSection(sectPr);
+        continue;
+      }
+    }
+    currentHtml.push(block.type === "tbl"
+      ? await renderDocxTableHtml(block.xml, context)
+      : await renderDocxParagraphHtml(block.xml, context));
+  }
+
+  flushSection(getDocxFinalBodySectionProperties(xml));
+  if (sections.length === 0) {
+    return await renderDocxBlocksHtml(xml, context);
+  }
+
+  return `<main class="sn-word-pages" data-engine="ooxml">
+${sections.map((section, index) => buildConvertedWordPageHtml({
+    pageContent: `<section class="sn-word-document sn-word-ooxml" data-source="${escapeTemplateHtml(context.fileName || "word-template.docx")}">
+${section.html}
+</section>`,
+    pageIndex: index + 1,
+    page: section.page,
+    metadata: context.metadata || {},
+  })).join("\n")}
+</main>`;
+}
+
 function getDocxPartReferences(sectPr = "", tagName = "") {
   const safeTagName = String(tagName || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return Array.from(String(sectPr || "").matchAll(new RegExp(`<${safeTagName}\\b[^>]*(?:\\/>|>\\s*<\\/${safeTagName}>)`, "gi")))
@@ -5920,7 +6055,15 @@ async function convertWordBufferToHtmlWithDocxXml(buffer = Buffer.alloc(0), {
   };
   const chrome = await buildDocxPageChromeHtml(zip, documentXml, context);
   const bodyXml = getFirstXmlElement(documentXml, "w:body") || documentXml;
-  const bodyHtml = await renderDocxBlocksHtml(bodyXml, context);
+  const conversionMetadata = {
+    ...metadata,
+    ...chrome,
+  };
+  const bodyHtml = await renderDocxBodySectionsHtml(bodyXml, {
+    ...context,
+    fileName,
+    metadata: conversionMetadata,
+  });
   const messages = [
     ...(Array.isArray(extraMessages) ? extraMessages : []),
     {
@@ -5930,17 +6073,12 @@ async function convertWordBufferToHtmlWithDocxXml(buffer = Buffer.alloc(0), {
   ];
   return {
     html: ensureConvertedWordHtmlDocument(
-      `<section class="sn-word-document sn-word-ooxml" data-source="${escapeTemplateHtml(fileName)}">
-${bodyHtml || "<p>&nbsp;</p>"}
-</section>`,
+      bodyHtml || `<section class="sn-word-document sn-word-ooxml" data-source="${escapeTemplateHtml(fileName)}"><p>&nbsp;</p></section>`,
       {
         fileName,
         engine: "ooxml",
         messages,
-        metadata: {
-          ...metadata,
-          ...chrome,
-        },
+        metadata: conversionMetadata,
       },
     ),
     engine: "ooxml",
@@ -5953,6 +6091,12 @@ function buildConvertedWordLayoutStyles(engine = "", metadata = {}) {
   const pageSize = Number.isFinite(page.widthPt) && Number.isFinite(page.heightPt)
     ? `${cssLengthPt(page.widthPt)} ${cssLengthPt(page.heightPt)}`
     : "A4";
+  const portraitPageSize = Number.isFinite(page.widthPt) && Number.isFinite(page.heightPt)
+    ? `${cssLengthPt(Math.min(page.widthPt, page.heightPt))} ${cssLengthPt(Math.max(page.widthPt, page.heightPt))}`
+    : "595.3pt 841.9pt";
+  const landscapePageSize = Number.isFinite(page.widthPt) && Number.isFinite(page.heightPt)
+    ? `${cssLengthPt(Math.max(page.widthPt, page.heightPt))} ${cssLengthPt(Math.min(page.widthPt, page.heightPt))}`
+    : "841.9pt 595.3pt";
   const pageMargins = [page.marginTopPt, page.marginRightPt, page.marginBottomPt, page.marginLeftPt]
     .map((entry, index) => cssLengthPt(entry, index % 2 === 0 ? "16mm" : "16mm"))
     .join(" ");
@@ -5969,6 +6113,8 @@ function buildConvertedWordLayoutStyles(engine = "", metadata = {}) {
   return `
   <style data-safe-nexus-word-conversion>
     @page { size: ${pageSize}; margin: ${pageMargins}; }
+    @page sn-word-portrait { size: ${portraitPageSize}; margin: ${pageMargins}; }
+    @page sn-word-landscape { size: ${landscapePageSize}; margin: 36pt; }
     html { background: #f3f4f6; }
     body {
       background: #f3f4f6;

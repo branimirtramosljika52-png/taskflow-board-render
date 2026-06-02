@@ -10506,6 +10506,7 @@ async function handleApiRequest(request, response, url) {
         ? await buildPdfFromTemplateBuffer(referenceDocument.buffer, placeholders, {
           fileName,
           title: "Procjena rizika",
+          preferHtmlConversion: true,
         })
         : await buildDocxFromTemplateBuffer(referenceDocument.buffer, placeholders, {
           fileName,
