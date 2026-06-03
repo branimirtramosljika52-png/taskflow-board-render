@@ -2339,6 +2339,7 @@ function buildWordSectionBreakXml(orientation = "portrait", options = {}) {
     <w:p>
       <w:pPr>
         <w:sectPr>
+          <w:type w:val="nextPage"/>
           <w:pgSz w:w="${pageWidth}" w:h="${pageHeight}"${isLandscape ? ' w:orient="landscape"' : ""}/>
           <w:pgMar w:top="${margin}" w:right="${margin}" w:bottom="${margin}" w:left="${margin}" w:header="${headerFooterMargin}" w:footer="${headerFooterMargin}" w:gutter="0"/>
         </w:sectPr>
@@ -2388,24 +2389,6 @@ function buildWordParagraphBlockXml(block = {}) {
   })).join("");
 }
 
-function buildWordLandscapeHeadingTableGroupXml(heading = {}, table = {}, context = {}) {
-  const headingOptions = context.currentSectionOrientation === "landscape"
-    ? {}
-    : { pageBreakBefore: false };
-  if (context.currentSectionOrientation === "landscape") {
-    return [
-      buildWordHeadingBlockXml(heading, headingOptions),
-      buildWordTableXml(table),
-    ].join("");
-  }
-  return [
-    buildWordSectionBreakXml("portrait"),
-    buildWordHeadingBlockXml(heading, headingOptions),
-    buildWordTableXml(table),
-    buildWordSectionBreakXml("landscape", { margin: 720 }),
-  ].join("");
-}
-
 function buildWordBlocksXml(value = {}, zip = null, context = {}, xmlFileName = "word/document.xml") {
   const blocks = Array.isArray(value.blocks) ? value.blocks : [];
   const xmlParts = [];
@@ -2416,12 +2399,6 @@ function buildWordBlocksXml(value = {}, zip = null, context = {}, xmlFileName = 
     }
 
     if (block.type === "heading") {
-      const nextBlock = blocks[index + 1];
-      if (nextBlock?.type === "table" && nextBlock.pageOrientation === "landscape") {
-        xmlParts.push(buildWordLandscapeHeadingTableGroupXml(block, nextBlock, context));
-        index += 1;
-        continue;
-      }
       xmlParts.push(buildWordHeadingBlockXml(block));
       continue;
     }

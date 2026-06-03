@@ -270,7 +270,7 @@ test("docx export renders a multi-block table section placeholder", async () => 
   assert.match(outputXml, /<w:gridSpan w:val="2"\/>/);
   assert.equal((outputXml.match(/w:orient="landscape"/g) || []).length, 1);
   assert.equal((outputXml.match(/<w:tbl>/g) || []).length, 2);
-  assert.ok(outputXml.indexOf('<w:pgSz w:w="11906" w:h="16838"') < outputXml.indexOf("Opasnosti, stetnosti, napori i mjere"));
+  assert.match(outputXml, /<w:type w:val="nextPage"\/>/);
 
   const fallbackHtml = (await convertWordBufferToHtmlTemplate(outputBuffer, {
     fileName: "procjena-rizika.docx",
@@ -284,12 +284,14 @@ test("docx export renders a multi-block table section placeholder", async () => 
   assert.ok((fallbackHtml.match(/<table/g) || []).length >= 2);
 
   const headingIndex = outputXml.indexOf("Opasnosti, stetnosti, napori i mjere");
+  const repeatedTitleIndex = outputXml.indexOf("Ponavljajuci naslov tablice");
   const tableTextIndex = outputXml.indexOf("Laboratorij");
   const landscapeIndex = outputXml.indexOf('w:orient="landscape"');
-  const previousPortraitSectionIndex = outputXml.lastIndexOf('<w:pgSz w:w="11906" w:h="16838"', headingIndex);
+  const previousPortraitSectionIndex = outputXml.indexOf('<w:pgSz w:w="11906" w:h="16838"', headingIndex);
   assert.ok(previousPortraitSectionIndex > -1);
-  assert.ok(previousPortraitSectionIndex < headingIndex);
-  assert.ok(headingIndex < tableTextIndex);
+  assert.ok(headingIndex < previousPortraitSectionIndex);
+  assert.ok(previousPortraitSectionIndex < repeatedTitleIndex);
+  assert.ok(repeatedTitleIndex < tableTextIndex);
   assert.ok(tableTextIndex < landscapeIndex);
 });
 
