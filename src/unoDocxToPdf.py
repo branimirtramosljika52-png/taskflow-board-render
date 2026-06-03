@@ -42,6 +42,35 @@ def connect(host, port, timeout_seconds):
     raise RuntimeError("LibreOffice UNO is not ready: {0}".format(last_error))
 
 
+def update_document_fields(document):
+    try:
+        indexes = document.getDocumentIndexes()
+        for index in range(indexes.getCount()):
+            try:
+                indexes.getByIndex(index).update()
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    try:
+        fields = document.getTextFields()
+        enumeration = fields.createEnumeration()
+        while enumeration.hasMoreElements():
+            field = enumeration.nextElement()
+            try:
+                field.update()
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    try:
+        document.refresh()
+    except Exception:
+        pass
+
+
 def convert_one(desktop, input_path, output_path):
     document = None
     try:
@@ -52,12 +81,14 @@ def convert_one(desktop, input_path, output_path):
             (
                 prop("Hidden", True),
                 prop("ReadOnly", True),
-                prop("UpdateDocMode", 0),
+                prop("UpdateDocMode", 3),
                 prop("MacroExecutionMode", 0),
             ),
         )
         if document is None:
             raise RuntimeError("LibreOffice did not open DOCX.")
+
+        update_document_fields(document)
 
         document.storeToURL(
             file_url(output_path),

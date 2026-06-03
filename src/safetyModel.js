@@ -6081,7 +6081,7 @@ function normalizeRiskAssessmentReportTemplateSections(items = []) {
       placeholder: normalizeText(item?.placeholder) || `{{RISK_${key.toUpperCase()}}}`,
       title: normalizeText(item?.title),
       enabled: normalizeBoolean(item?.enabled, true),
-      pageBreakBefore: normalizeBoolean(item?.pageBreakBefore, index > 0 && ["contents", "work_equipment", "work_environment", "inspections", "jobs", "chemicals", "biological", "manual_handling", "overview", "signatures"].includes(key)),
+      pageBreakBefore: normalizeBoolean(item?.pageBreakBefore, false),
       includeInToc: normalizeBoolean(item?.includeInToc, !["cover", "contents"].includes(key)),
       note: normalizeText(item?.note),
       order: Number.isFinite(Number(item?.order)) ? Number(item.order) : index + 1,

@@ -1333,6 +1333,42 @@ function isDocxPageBreakOnlyParagraph(paragraphXml = "") {
   return !plainText && !hasEmbeddedObject;
 }
 
+function isDocxBlankParagraph(paragraphXml = "") {
+  const plainText = getDocxParagraphPlainText(paragraphXml).replace(/\s+/g, "");
+  const hasContent = /<(?:w:drawing|w:pict|w:object|w:fldChar|w:instrText|w:br|w:sectPr|w:tbl)\b/i.test(paragraphXml);
+  return !plainText && !hasContent;
+}
+
+function isDocxSectionBreakParagraph(paragraphXml = "") {
+  return /<w:sectPr\b/i.test(paragraphXml);
+}
+
+function hasDocxTemplateBreakBeforeOffset(xml = "", offset = 0) {
+  const ranges = getDocxParagraphRanges(xml);
+  if (ranges.length === 0) {
+    return false;
+  }
+  const safeOffset = Math.max(0, Number(offset) || 0);
+  const placeholderIndex = ranges.findIndex((range) => range.start <= safeOffset && safeOffset < range.end);
+  if (placeholderIndex < 0) {
+    return false;
+  }
+  if (/<w:pageBreakBefore\b[^>]*\/?>/i.test(ranges[placeholderIndex].xml)) {
+    return true;
+  }
+  for (let index = placeholderIndex - 1; index >= 0; index -= 1) {
+    const paragraphXml = ranges[index].xml;
+    if (isDocxPageBreakOnlyParagraph(paragraphXml) || isDocxSectionBreakParagraph(paragraphXml)) {
+      return true;
+    }
+    if (isDocxBlankParagraph(paragraphXml)) {
+      continue;
+    }
+    return false;
+  }
+  return false;
+}
+
 function removeDocxOptionalPlaceholderBlock(xml = "", sentinel = "") {
   if (!xml || !sentinel || !xml.includes(sentinel)) {
     return xml;
@@ -2132,7 +2168,7 @@ function buildWordTableCellCardXml(text = "", format = {}, { header = false, col
   const fillColor = normalizeWordHexColor(card.fillColor, "FFFFFF");
   const borderColor = normalizeWordHexColor(card.borderColor, "CBD5E1");
   const textColor = normalizeWordHexColor(card.textColor, "1F2333");
-  const cardWidth = Math.max(720, Math.min(Math.max(720, cellWidth - 120), Math.round(cellWidth * 0.88)));
+  const cardWidth = Math.max(720, Math.min(Math.max(720, cellWidth - 140), Math.round(cellWidth * 0.84)));
   const runProperties = [
     `<w:rFonts w:ascii="${escapeWordXmlText(fontFamily)}" w:hAnsi="${escapeWordXmlText(fontFamily)}" w:cs="${escapeWordXmlText(fontFamily)}"/>`,
     format.bold || header ? "<w:b/>" : "",
@@ -2172,10 +2208,10 @@ function buildWordTableCellCardXml(text = "", format = {}, { header = false, col
             </w:tcMar>
             <w:shd w:val="clear" w:color="auto" w:fill="${fillColor}"/>
             <w:tcBorders>
-              <w:top w:val="single" w:sz="6" w:space="0" w:color="${borderColor}"/>
-              <w:left w:val="single" w:sz="6" w:space="0" w:color="${borderColor}"/>
-              <w:bottom w:val="single" w:sz="6" w:space="0" w:color="${borderColor}"/>
-              <w:right w:val="single" w:sz="6" w:space="0" w:color="${borderColor}"/>
+              <w:top w:val="single" w:sz="4" w:space="0" w:color="${borderColor}"/>
+              <w:left w:val="single" w:sz="4" w:space="0" w:color="${borderColor}"/>
+              <w:bottom w:val="single" w:sz="4" w:space="0" w:color="${borderColor}"/>
+              <w:right w:val="single" w:sz="4" w:space="0" w:color="${borderColor}"/>
             </w:tcBorders>
           </w:tcPr>
           ${textXml}
@@ -3444,11 +3480,14 @@ function applyDocxSpecialPlaceholders(zip, specialPlaceholders = new Map()) {
 
       const buildReplacementXml = (offset = null) => {
         const previousOrientation = renderContext.currentSectionOrientation;
+        const renderValue = Number.isFinite(Number(offset)) && hasDocxTemplateBreakBeforeOffset(xml, Number(offset)) && value.pageBreakBefore
+          ? { ...value, pageBreakBefore: false }
+          : value;
         if (Number.isFinite(Number(offset))) {
           renderContext.currentSectionOrientation = getDocxSectionOrientationForOffset(xml, Number(offset));
         }
         try {
-          return buildDocxSpecialPlaceholderXml(value, zip, renderContext, fileName);
+          return buildDocxSpecialPlaceholderXml(renderValue, zip, renderContext, fileName);
         } finally {
           if (previousOrientation) {
             renderContext.currentSectionOrientation = previousOrientation;
@@ -7416,7 +7455,7 @@ function renderRiskAssessmentNativePdfTable(doc, helpers, table = {}) {
         const cardFill = format.card.fillColor || "#FFFFFF";
         const cardBorder = format.card.borderColor || "#94A3B8";
         doc.save();
-        doc.roundedRect(x + 4, startY + 4, Math.max(12, width - 8), Math.max(10, height - 8), 4)
+        doc.roundedRect(x + 4, startY + 4, Math.max(12, width - 8), Math.max(10, height - 8), 6)
           .fillAndStroke(cardFill, cardBorder);
         doc.restore();
       }

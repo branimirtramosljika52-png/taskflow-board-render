@@ -6459,6 +6459,9 @@ const RISK_ASSESSMENT_FIELD_PLACEHOLDERS = Object.freeze([
   { token: "{{TVRTKA}}", label: "Puni naziv tvrtke" },
   { token: "{{SJEDISTE}}", label: "Sjedište / adresa" },
   { token: "{{OIB}}", label: "OIB tvrtke" },
+  { token: "{{MBS}}", label: "MBS tvrtke" },
+  { token: "{{NKD}}", label: "NKD djelatnost" },
+  { token: "{{BROJ_ZAPOSLENIH}}", label: "Broj zaposlenih" },
   { token: "{{BROJ_ZAPISNIKA}}", label: "Broj zapisnika (RN + šifra usluge)" },
   { token: "{{DATUM_POCETKA_PROCJENE}}", label: "Datum početka rada na procjeni" },
   { token: "{{DATUM_ZAVRSETKA_PROCJENE}}", label: "Datum završetka rada na procjeni" },
@@ -129482,7 +129485,7 @@ function createRiskAssessmentTemplateSectionDraft(initial = {}, index = 0) {
     placeholder: String(initial.placeholder || placeholder.token),
     title: String(initial.title || placeholder.defaultTitle || placeholder.label),
     enabled: isAlwaysIncludedIntro ? true : initial.enabled !== false,
-    pageBreakBefore: isAlwaysIncludedIntro ? false : Boolean(initial.pageBreakBefore ?? (index > 0 && ["contents", "work_equipment", "work_environment", "inspections", "jobs", "chemicals", "biological", "manual_handling", "overview", "signatures"].includes(placeholder.key))),
+    pageBreakBefore: isAlwaysIncludedIntro ? false : Boolean(initial.pageBreakBefore),
     includeInToc: initial.includeInToc !== false && !["cover", "contents"].includes(placeholder.key),
     note: String(initial.note || ""),
     order: Number.isFinite(Number(initial.order)) ? Number(initial.order) : index + 1,
@@ -129592,7 +129595,7 @@ function setRiskAssessmentTemplateBlockMode(blockKey = "", modeValue = "include"
       ...section,
       enabled,
       pageBreakBefore: enabled && mode === "page-break",
-      includeInToc: enabled && section.key !== "cover",
+      includeInToc: enabled && !["cover", "contents"].includes(section.key),
     };
   });
   riskAssessmentReportTemplateDraft = createRiskAssessmentReportTemplateDraft({
@@ -130049,6 +130052,40 @@ function createRiskAssessmentBasicDataBox(title = "", lines = []) {
   return createRiskAssessmentExportTable(columns, rows, { keepRowsTogether: true });
 }
 
+function createRiskAssessmentEmployerDataTable(data = {}) {
+  const employer = data.employer || {};
+  const rowsData = [
+    ["Puni naziv tvrtke", data.companyName],
+    ["Sjedište / adresa", data.headquarters || data.companyAddress],
+    ["OIB", data.companyOib],
+    ["MBS", employer.mbs],
+    ["NKD djelatnost", employer.nkdActivity],
+    ["Broj zaposlenih", employer.employeeCount],
+    ["Broj zapisnika", data.recordNumber],
+    ["Datum početka rada na procjeni", data.assessmentStartDate],
+    ["Datum završetka procjene", data.assessmentCompletionDate],
+  ].map(([label, value]) => [label, joinRiskAssessmentExportLines(value, "")])
+    .filter(([, value]) => value);
+  const columns = [
+    { id: "label", label: "Podatak", width: 210 },
+    { id: "value", label: "Vrijednost", width: 510 },
+  ];
+  const rows = [
+    createRiskAssessmentExportRow("title", [
+      createRiskAssessmentExportCell("Podaci o poslodavcu:", { fontSize: 9, bold: true, fillColor: "#FFFFFF" }),
+      createRiskAssessmentExportCell("", { fontSize: 9, fillColor: "#FFFFFF" }),
+    ]),
+    ...rowsData.map(([label, value], index) => createRiskAssessmentExportRow(`employer-${index + 1}`, [
+      createRiskAssessmentExportCell(`${label}:`, { fontSize: 9, bold: true, fillColor: "#FFFFFF" }),
+      createRiskAssessmentExportCell(value, { fontSize: 9, fillColor: "#FFFFFF" }),
+    ])),
+  ];
+  return createRiskAssessmentExportTable(columns, rows, {
+    merges: [{ rowId: "title", columnId: "label", colSpan: 2 }],
+    keepRowsTogether: true,
+  });
+}
+
 function buildRiskAssessmentWorkingGroupExportTable() {
   const teamLead = readRiskAssessmentPeopleSelection(riskAssessmentTeamLeadInput);
   const members = readRiskAssessmentPeopleSelection(riskAssessmentMembersInput);
@@ -130100,8 +130137,7 @@ function buildRiskAssessmentBasicDataExportBlocks() {
     .filter(Boolean);
   const collaboratorSummary = getRiskAssessmentCompanyCollaboratorSummary();
   return [
-    createRiskAssessmentBasicDataBox("Puni naziv tvrtke:", [data.companyName, data.headquarters || data.companyAddress]),
-    createRiskAssessmentBasicDataBox("OIB:", [data.companyOib]),
+    createRiskAssessmentEmployerDataTable(data),
     createRiskAssessmentBasicDataBox("Objekti namijenjeni za rad (s naznakom lokacije):", [data.locationName || employer.detachedLocations]),
     createRiskAssessmentBasicDataBox("Stručnjaci zaštite na radu:", [employer.znrServiceMode, employer.znrExperts]),
     createRiskAssessmentBasicDataBox("Ovlaštenici za poslove zaštite na radu:", authorizedLines),
@@ -130109,8 +130145,6 @@ function buildRiskAssessmentBasicDataExportBlocks() {
     createRiskAssessmentBasicDataBox("Suradnici na izradi procjene rizika:", collaboratorLines.length ? collaboratorLines : collaboratorSummary),
     createRiskAssessmentBasicDataBox("Ovlašteno trgovačko društvo:", [employer.znrExperts || employer.znrServiceMode]),
     buildRiskAssessmentWorkingGroupExportTable(),
-    createRiskAssessmentBasicDataBox("Datum početka rada na procjeni rizika:", [data.assessmentStartDate]),
-    createRiskAssessmentBasicDataBox("Datum završetka procjene rizika:", [data.assessmentCompletionDate]),
   ];
 }
 
@@ -130357,7 +130391,7 @@ function buildRiskAssessmentJobRiskExportTable(job = {}) {
           bold: true,
           card: {
             fillColor: getRiskAssessmentExportRiskFill(risk),
-            borderColor: "#94A3B8",
+            borderColor: "#CBD5E1",
           },
         }),
         createRiskAssessmentExportCell(formatRiskAssessmentRiskSpecialWorkCell(risk), bodyCenterFormat),
@@ -130878,6 +130912,9 @@ function buildRiskAssessmentExportPlaceholders() {
     TVRTKA: companyName,
     SJEDISTE: companyData.headquarters || companyData.companyAddress,
     OIB: companyData.companyOib,
+    MBS: employer.mbs || "",
+    NKD: employer.nkdActivity || "",
+    BROJ_ZAPOSLENIH: employer.employeeCount || "",
     BROJ_ZAPISNIKA: companyData.recordNumber,
     DATUM_POCETKA_PROCJENE: companyData.assessmentStartDate,
     DATUM_ZAVRSETKA_PROCJENE: companyData.assessmentCompletionDate,
@@ -131355,6 +131392,9 @@ function renderRiskAssessmentTemplateBasicDataContent() {
       { label: "Tvrtka", value: data.companyName },
       { label: "Sjedište", value: data.headquarters || data.companyAddress },
       { label: "OIB", value: data.companyOib },
+      { label: "MBS", value: employer.mbs },
+      { label: "NKD", value: employer.nkdActivity },
+      { label: "Broj zaposlenih", value: employer.employeeCount },
       { label: "Broj zapisnika", value: data.recordNumber },
       { label: "Datum početka", value: data.assessmentStartDate },
       { label: "Datum završetka", value: data.assessmentCompletionDate },

@@ -281,7 +281,7 @@ test("docx export renders a multi-block table section placeholder", async () => 
   assert.match(fallbackHtml, /Srednji rizik/);
   assert.match(fallbackHtml, /background-color:#FEF3C7/);
   assert.match(fallbackHtml, /vertical-align:middle/);
-  assert.match(fallbackHtml, /border-top:0\.75pt solid #94A3B8/);
+  assert.match(fallbackHtml, /border-top:0\.5pt solid #94A3B8/);
   assert.match(fallbackHtml, /@page sn-word-landscape/);
   assert.match(fallbackHtml, /data-word-orientation="landscape"/);
   assert.ok((fallbackHtml.match(/<table/g) || []).length >= 2);
@@ -306,7 +306,14 @@ test("docx export renders a risk assessment contents placeholder", async () => {
         <w:p><w:r><w:t>{{RISK_JOBS}}</w:t></w:r></w:p>
         <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>
       </w:body>
-    </w:document>`);
+    </w:document>`, {
+    wordFiles: {
+      "settings.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+          <w:updateFields w:val="false"/>
+        </w:settings>`,
+    },
+  });
 
   const outputBuffer = await buildDocxFromTemplateBuffer(templateBuffer, {
     RISK_CONTENTS: {
@@ -336,6 +343,37 @@ test("docx export renders a risk assessment contents placeholder", async () => {
   assert.match(outputXml, /<w:fldChar w:fldCharType="begin"\/>/);
   assert.match(outputXml, /<w:fldChar w:fldCharType="end"\/>/);
   assert.match(outputXml, /<w:outlineLvl w:val="1"\/>/);
+  assert.match(new PizZip(outputBuffer).file("word/settings.xml").asText(), /<w:updateFields w:val="true"\/>/);
+});
+
+test("docx export skips generated page break when template already has one before placeholder", async () => {
+  const templateBuffer = buildMinimalDocxBuffer(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:body>
+        <w:p><w:r><w:t>Uvod</w:t></w:r></w:p>
+        <w:p><w:r><w:br w:type="page"/></w:r></w:p>
+        <w:p><w:r><w:t>{{RISK_JOBS}}</w:t></w:r></w:p>
+        <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>
+      </w:body>
+    </w:document>`);
+
+  const outputBuffer = await buildDocxFromTemplateBuffer(templateBuffer, {
+    RISK_JOBS: {
+      __docxBlockType: "blocks",
+      __riskPageBreakBefore: true,
+      blocks: [
+        { type: "heading", text: "Analiza radnih mjesta", level: 2 },
+        { type: "paragraph", text: "Nastavak bez duple prazne stranice." },
+      ],
+    },
+  });
+  const outputXml = new PizZip(outputBuffer).file("word/document.xml").asText();
+
+  assert.equal(outputXml.includes("{{RISK_JOBS}}"), false);
+  assert.match(outputXml, /Uvod/);
+  assert.match(outputXml, /Analiza radnih mjesta/);
+  assert.equal((outputXml.match(/<w:br\b[^>]*w:type=["']page["'][^>]*\/?>/g) || []).length, 1);
+  assert.equal((outputXml.match(/<w:pageBreakBefore\/>/g) || []).length, 0);
 });
 
 test("docx export preserves template landscape section around risk placeholder", async () => {
