@@ -133331,22 +133331,16 @@ function renderRiskAssessmentCatalogPicker(job = {}) {
   const catalogRows = sortRiskAssessmentRiskRowsByPrilogOrder(getRiskAssessmentFilteredCatalogRows(job));
   const sections = getRiskAssessmentCatalogSections(catalogRows);
   const selectedCount = selectedKeys.size;
-  const pendingSelection = new Set(Array.isArray(job.catalogSelection) ? job.catalogSelection.map(String) : []);
-  const pendingCount = Array.from(pendingSelection).filter((index) => {
-    const catalogRow = RISK_ASSESSMENT_CATALOG_ROWS[Number(index)];
-    return catalogRow && !selectedKeys.has(getRiskAssessmentRiskRowKey(catalogRow));
-  }).length;
 
   return `
     <div class="risk-assessment-catalog-picker">
       <div class="risk-assessment-catalog-intro">
         <div>
           <strong>Izbornik opasnosti, štetnosti i napora</strong>
-          <span>Stablo prema Prilogu III: pretraži, filtriraj i označi više stavki prije dodavanja.</span>
+          <span>Pregledan popis prema Prilogu III. Odaberi aktivno radno mjesto i dodaj stavku plus gumbom.</span>
         </div>
         <div class="risk-assessment-catalog-actions">
           <span class="soft-pill">${escapeHtml(String(selectedCount))} u poslu</span>
-          <button type="button" class="ghost-button" data-risk-catalog-add-selected>Dodaj odabrano (${escapeHtml(String(pendingCount))})</button>
         </div>
       </div>
       <div class="risk-assessment-catalog-controls">
@@ -133388,17 +133382,20 @@ function renderRiskAssessmentCatalogPicker(job = {}) {
                           <div class="risk-assessment-catalog-items">
                             ${subgroup.rows.map((catalogRow) => {
                               const isSelected = selectedKeys.has(getRiskAssessmentRiskRowKey(catalogRow));
-                              const isPending = pendingSelection.has(String(catalogRow.catalogIndex));
                               return `
-                                <label class="risk-assessment-catalog-item ${isSelected ? "is-selected" : ""}">
-                                  <input type="checkbox" data-risk-catalog-select="${catalogRow.catalogIndex}" ${isSelected ? "checked disabled" : isPending ? "checked" : ""} />
-                                  <span>
-                                    <strong>${escapeHtml(catalogRow.code || "-")} ${escapeHtml(catalogRow.hazard || "")}</strong>
-                                    <small>${escapeHtml(catalogRow.catalogSubgroup || catalogRow.group || "")}</small>
-                                  </span>
+                                <article class="risk-assessment-catalog-item ${isSelected ? "is-selected" : ""}">
+                                  <div class="risk-assessment-catalog-item-main">
+                                    <b class="risk-assessment-catalog-code">${escapeHtml(catalogRow.code || "-")}</b>
+                                    <span class="risk-assessment-catalog-item-text">
+                                      <strong>${escapeHtml(catalogRow.hazard || "")}</strong>
+                                      <small>${escapeHtml(catalogRow.catalogSubgroup || catalogRow.group || "")}</small>
+                                    </span>
+                                  </div>
                                   <em>${escapeHtml(catalogRow.riskLevel || "Odaberi")}</em>
-                                  <button type="button" class="icon-button" data-risk-catalog-row="${catalogRow.catalogIndex}" ${isSelected ? "disabled" : ""} aria-label="Dodaj stavku">+</button>
-                                </label>
+                                  ${isSelected
+                                    ? `<span class="risk-assessment-catalog-added">Dodano</span>`
+                                    : `<button type="button" class="icon-button" data-risk-catalog-row="${catalogRow.catalogIndex}" aria-label="Dodaj stavku">+</button>`}
+                                </article>
                               `;
                             }).join("")}
                           </div>

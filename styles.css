@@ -61601,7 +61601,7 @@ body.is-risk-stl-review-open {
 
 .risk-assessment-catalog-item {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 10px;
   width: 100%;
@@ -61612,7 +61612,7 @@ body.is-risk-stl-review-open {
   background: rgba(248, 250, 252, 0.94);
   color: #172033;
   text-align: left;
-  cursor: pointer;
+  cursor: default;
 }
 
 .risk-assessment-catalog-item:hover {
@@ -61626,7 +61626,30 @@ body.is-risk-stl-review-open {
   cursor: default;
 }
 
-.risk-assessment-catalog-item span {
+.risk-assessment-catalog-item-main {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.risk-assessment-catalog-code {
+  display: inline-grid;
+  min-width: 44px;
+  min-height: 28px;
+  place-items: center;
+  padding: 4px 7px;
+  border: 1px solid rgba(147, 197, 253, 0.78);
+  border-radius: 9px;
+  background: rgba(239, 246, 255, 0.92);
+  color: #1d4ed8;
+  font-size: 0.68rem;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.risk-assessment-catalog-item-text {
   display: grid;
   gap: 2px;
   min-width: 0;
@@ -61650,6 +61673,19 @@ body.is-risk-stl-review-open {
   font-size: 0.68rem;
   font-style: normal;
   font-weight: 850;
+  white-space: nowrap;
+}
+
+.risk-assessment-catalog-added {
+  display: inline-grid;
+  min-height: 28px;
+  place-items: center;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: rgba(187, 247, 208, 0.82);
+  color: #047857;
+  font-size: 0.68rem;
+  font-weight: 900;
   white-space: nowrap;
 }
 
@@ -63859,7 +63895,6 @@ body.is-risk-stl-review-open {
 }
 
 .risk-assessment-work-flags input,
-.risk-assessment-catalog-item input,
 .risk-assessment-ppe-option input,
 .risk-assessment-checkbox-line input {
   width: 16px;
@@ -64072,10 +64107,6 @@ body.is-risk-stl-review-open {
   font-size: 0.68rem;
   font-weight: 900;
   text-transform: uppercase;
-}
-
-.risk-assessment-catalog-item {
-  grid-template-columns: 18px minmax(0, 1fr) auto 34px;
 }
 
 .risk-assessment-catalog-item .icon-button {
