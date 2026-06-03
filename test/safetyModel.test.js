@@ -208,7 +208,7 @@ test("jobs keep environment, conditions and hazard catalog details", () => {
         bodyPositions: ["rad stojeći", "u pokretu"],
         importantFunctions: ["vid na daljinu"],
         workConditions: ["rad na visini"],
-        purPoints: ["17"],
+        purPoints: ["17", "19.1"],
         notes: {
           trainingRequired: "Potrebno osposobljavanje za siguran rad.",
         },
@@ -219,6 +219,10 @@ test("jobs keep environment, conditions and hazard catalog details", () => {
           mustInclude: "rad kod klijenta",
           avoid: "ne izmisljati opremu",
           style: "short",
+        },
+        "purPoint:19.1": {
+          instruction: "Odabrati za sigurnosno kriticne poslove u prometu.",
+          workNote: "Posebni propis trazi provjeru sposobnosti za prometne poslove.",
         },
         "riskRow:i opasnosti::2 opasnosti od padova::2.1.3::s visine": {
           probability: "v",
@@ -253,9 +257,10 @@ test("jobs keep environment, conditions and hazard catalog details", () => {
   assert.equal(job.conditions.safeWorkTrainingCertificate, true);
   assert.equal(job.conditions.medicalFitnessCertificate, true);
   assert.equal(job.conditions.visionCheck, true);
-  assert.deepEqual(job.conditions.purPoints, ["17"]);
+  assert.deepEqual(job.conditions.purPoints, ["17", "19.1"]);
   assert.equal(job.aiInstructions.description.style, "short");
   assert.equal(job.aiInstructions.description.mustInclude, "rad kod klijenta");
+  assert.equal(job.aiInstructions["purPoint:19.1"].workNote, "Posebni propis trazi provjeru sposobnosti za prometne poslove.");
   assert.equal(job.aiInstructions["riskRow:i opasnosti::2 opasnosti od padova::2.1.3::s visine"].consequence, "iš");
   assert.equal(job.aiInstructions["riskRow:i opasnosti::2 opasnosti od padova::2.1.3::s visine"].workNote, "Samo kada radnik stvarno radi na visini.");
   assert.equal(job.hazards[0].catalogLabel, "S visine");
@@ -308,7 +313,7 @@ test("risk assessments keep detailed ARMOR job rows and eligibility data", () =>
           toolsAndMachinesOptions: ["strojevi", "mjerna oprema"],
           chemicalSubstanceOptions: ["plinovi", "ulja i maziva"],
           biologicalHazardOptions: ["nema značajnih bioloških štetnosti"],
-          purPoints: ["18"],
+          purPoints: ["18", "19.5"],
           psychosocialRelevant: true,
           psychosocialLevel: "3",
           psychosocialText: "Povremeni pritisak rokova i smjenski rad.",
@@ -317,7 +322,7 @@ test("risk assessments keep detailed ARMOR job rows and eligibility data", () =>
             workerCount: "4",
             workSchedule: "dvije smjene",
             organizationOptions: ["u smjenama", "noćni rad"],
-            purPoints: ["10", "18"],
+            purPoints: ["10", "18", "19.5"],
             safeWorkTrainingRequired: true,
             medicalFitnessRequired: true,
             psychosocialRelevant: true,
@@ -344,7 +349,7 @@ test("risk assessments keep detailed ARMOR job rows and eligibility data", () =>
               probability: "vv",
               consequence: "sš",
               riskLevel: "Veliki rizik",
-              purPoints: ["10", "18"],
+              purPoints: ["10", "18", "19.5"],
               workNote: "Rad u blizini spremnika i instalacija.",
               measures: "Osigurati ventilaciju i nadzor atmosfere.",
             },
@@ -358,7 +363,7 @@ test("risk assessments keep detailed ARMOR job rows and eligibility data", () =>
   );
 
   assert.equal(assessment.jobs[0].specialWorkConditions, "da");
-  assert.deepEqual(assessment.jobs[0].purPoints, ["18"]);
+  assert.deepEqual(assessment.jobs[0].purPoints, ["18", "19.5"]);
   assert.equal(assessment.jobs[0].safeWorkTrainingRequired, true);
   assert.equal(assessment.jobs[0].medicalFitnessRequired, true);
   assert.equal(assessment.jobs[0].visionCheckRequired, true);
@@ -372,12 +377,12 @@ test("risk assessments keep detailed ARMOR job rows and eligibility data", () =>
   assert.deepEqual(assessment.jobs[0].hiddenBlocks, ["ppe"]);
   assert.equal(assessment.clientJobInputEnabled, true);
   assert.equal(assessment.jobs[0].clientInput.workSchedule, "dvije smjene");
-  assert.deepEqual(assessment.jobs[0].clientInput.purPoints, ["10", "18"]);
+  assert.deepEqual(assessment.jobs[0].clientInput.purPoints, ["10", "18", "19.5"]);
   assert.equal(assessment.jobs[0].clientInput.psychosocialLevel, "4");
   assert.equal(assessment.jobs[0].clientInput.armorNotes, "Klijent navodi dodatni rad na visini i buku.");
   assert.equal(assessment.jobs[0].eligibility.pregnantWorkers.allowed, "ne");
   assert.equal(assessment.jobs[0].riskRows[0].group, "1. Kemijske štetnosti");
-  assert.deepEqual(assessment.jobs[0].riskRows[0].purPoints, ["10", "18"]);
+  assert.deepEqual(assessment.jobs[0].riskRows[0].purPoints, ["10", "18", "19.5"]);
   assert.equal(assessment.jobs[0].riskRows[0].workNote, "Rad u blizini spremnika i instalacija.");
 
   const filtered = filterRiskAssessments([assessment], { query: "zagušljivci" });

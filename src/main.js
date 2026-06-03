@@ -127506,8 +127506,15 @@ const JOB_PUR_POINTS = Object.freeze([
   { value: "16", label: "Teško fizičko naprezanje", shortLabel: "16. Teški fizički rad", description: "Poslovi s teškim fizičkim naprezanjem, ručnim rukovanjem većim teretima, nefiziološkim ili prisilnim položajem tijela." },
   { value: "17", label: "Rad na visini većoj od 3 m", shortLabel: "17. Rad na visini", description: "Rad na visini većoj od 3 m kada se osnovnim pravilima zaštite na radu ne može spriječiti povećana opasnost od pada." },
   { value: "18", label: "Pretežna izloženost štetnostima", shortLabel: "18. Štetnosti", description: "Poslovi s pretežnom izloženošću fizikalnim, kemijskim ili biološkim štetnostima, uključujući mikroklimu, buku, vibracije, tlak, zračenja, prašine, metale, kiseline, lužine, plinove, pesticide i biološke agense." },
-  { value: "19", label: "Poslovi prema posebnim propisima", shortLabel: "19. Posebni propisi", description: "Poslovi određeni kao poslovi s posebnim uvjetima rada važećim posebnim propisima, npr. u željezničkom, zračnom i cestovnom prometu, zdravstvu, šumarstvu, građevinarstvu, industriji i drugim područjima; za ovu točku primjenjuju se uvjeti propisani tim posebnim propisom." },
+  { value: "19", label: "Poslovi prema posebnim propisima", shortLabel: "19. Posebni propisi", description: "Poslovi određeni kao poslovi s posebnim uvjetima rada važećim posebnim propisima; za ovu točku primjenjuju se uvjeti propisani tim posebnim propisom." },
+  { value: "19.1", parentValue: "19", label: "Željeznički, zračni i cestovni promet", shortLabel: "19.1 Promet", description: "Poslovi u prometu koji su posebnim propisima određeni kao poslovi s posebnim uvjetima rada, uključujući upravljanje, nadzor, sigurnosno-kritične prometne zadatke i poslove za koje se traži posebna zdravstvena sposobnost." },
+  { value: "19.2", parentValue: "19", label: "Zdravstvo", shortLabel: "19.2 Zdravstvo", description: "Poslovi u zdravstvu i povezanim djelatnostima koji su posebnim propisima određeni kao poslovi s posebnim uvjetima rada, osobito kada se zahtijeva zdravstvena sposobnost, posebna osposobljenost ili rad s izvorima povećane opasnosti." },
+  { value: "19.3", parentValue: "19", label: "Šumarstvo", shortLabel: "19.3 Šumarstvo", description: "Poslovi u šumarstvu koji su posebnim propisima određeni kao poslovi s posebnim uvjetima rada, uključujući rad u šumi, rad motornom pilom, strojeve i druge rizične šumarske aktivnosti." },
+  { value: "19.4", parentValue: "19", label: "Građevinarstvo", shortLabel: "19.4 Građevinarstvo", description: "Poslovi u građevinarstvu koji su posebnim propisima određeni kao poslovi s posebnim uvjetima rada, uključujući gradilišta, radnu opremu, radove na visini, skele, iskope i druge posebne građevinske okolnosti." },
+  { value: "19.5", parentValue: "19", label: "Industrija, energetika i postrojenja", shortLabel: "19.5 Industrija", description: "Industrijski, energetski i postrojenjski poslovi koji su posebnim propisima određeni kao poslovi s posebnim uvjetima rada, uključujući pogone, opasne tvari, tehnološke procese i održavanje." },
+  { value: "19.6", parentValue: "19", label: "Ostali posebni propisi", shortLabel: "19.6 Ostalo", description: "Ostali poslovi koje važeći posebni propisi izričito određuju kao poslove s posebnim uvjetima rada ili za koje propisuju posebnu zdravstvenu sposobnost, psihičku sposobnost, dob ili stručnu osposobljenost." },
 ]);
+const JOB_PUR_POINT_SELECTION_LIMIT = 40;
 
 const JOB_WORK_PROFILE_PRESETS = Object.freeze([
   {
@@ -128066,6 +128073,10 @@ function getJobAiFieldLabel(kind = "description") {
   if (key.startsWith("riskJob:")) {
     return getJobAiSettingsFieldDefinitions().find((field) => field.key === key)?.label || "Polje posla u procjeni";
   }
+  if (key.startsWith("purPoint:")) {
+    const point = getJobPurPoint(key.replace("purPoint:", ""));
+    return point ? `${point.value}. ${point.label}` : "Poslovi s posebnim uvjetima rada";
+  }
   if (key === "description") {
     return "Opis posla";
   }
@@ -128082,6 +128093,11 @@ function getJobAiSettings() {
 
 function getJobAiInstruction(kind = "description") {
   return normalizeJobAiInstructionConfig(getJobAiSettings().aiInstructions[String(kind || "").trim()] ?? {});
+}
+
+function getJobPurPointAiInstructionKey(value = "") {
+  const key = String(value || "").trim();
+  return key ? `purPoint:${key}` : "";
 }
 
 function getRiskAssessmentRowAiInstructionKey(row = {}) {
@@ -128117,6 +128133,17 @@ function getRiskAssessmentRowAiFieldDefinitions() {
       };
     })
     .filter(Boolean);
+}
+
+function getJobPurAiFieldDefinitions() {
+  return JOB_PUR_POINTS.map((point) => ({
+    key: getJobPurPointAiInstructionKey(point.value),
+    type: "purPoint",
+    group: point.parentValue ? "Posebni uvjeti rada · točka 19" : "Posebni uvjeti rada · točke 1-19",
+    label: point.shortLabel || `${point.value}. ${point.label}`,
+    meta: point.parentValue ? `Podtočka točke ${point.parentValue}` : "Pravilnik o poslovima s posebnim uvjetima rada",
+    point,
+  }));
 }
 
 function getJobAiSettingsFieldDefinitions() {
@@ -128165,6 +128192,7 @@ function getJobAiSettingsFieldDefinitions() {
       group: "Procjena rizika · posao",
       label: field.label,
     })),
+    ...getJobPurAiFieldDefinitions(),
     ...getRiskAssessmentRowAiFieldDefinitions(),
   ];
 }
@@ -128295,6 +128323,38 @@ function renderSettingsJobAiRiskRowCard(field = {}, config = {}, canManage = fal
   `;
 }
 
+function renderSettingsJobAiPurPointCard(field = {}, config = {}, canManage = false) {
+  const point = field.point || {};
+  return `
+    <div class="settings-job-ai-card-body settings-job-ai-card-body-pur">
+      <div class="settings-job-ai-row-defaults field-span-full">
+        <span>${escapeHtml(field.meta || "PUR")}</span>
+        <span>${escapeHtml(point.description || "Posebni uvjeti rada prema Pravilniku.")}</span>
+      </div>
+      <label class="field field-span-full">
+        <span>Kada AI smije odabrati ovu PUR točku</span>
+        <textarea data-settings-job-ai-field="instruction" rows="2" placeholder="npr. samo ako radnik upravlja dizalicom, radi na visini ili poseban propis traži zdravstvenu sposobnost" ${canManage ? "" : "disabled"}>${escapeHtml(config.instruction)}</textarea>
+      </label>
+      <label class="field">
+        <span>Mora uključiti</span>
+        <input data-settings-job-ai-field="mustInclude" value="${escapeHtml(config.mustInclude)}" placeholder="npr. oprema, propis, učestalost, pregled" ${canManage ? "" : "disabled"} />
+      </label>
+      <label class="field">
+        <span>Ne smije odabrati ako</span>
+        <input data-settings-job-ai-field="avoid" value="${escapeHtml(config.avoid)}" placeholder="npr. uredski posao, nema stvarne izloženosti" ${canManage ? "" : "disabled"} />
+      </label>
+      <label class="field field-span-full">
+        <span>AI opis / okolnosti za procjenu</span>
+        <textarea data-settings-job-ai-field="workNote" rows="3" placeholder="Tekst koji se upisuje u obrazloženje PUR-a za radno mjesto. Možeš koristiti {posao}, {opis_posla}, {pur_tocka}." ${canManage ? "" : "disabled"}>${escapeHtml(config.workNote)}</textarea>
+      </label>
+      <label class="field field-span-full">
+        <span>Napomena za uputnicu / provjeru</span>
+        <textarea data-settings-job-ai-field="note" rows="2" placeholder="npr. provjeriti poseban propis, rok pregleda ili posebnu stručnu osposobljenost" ${canManage ? "" : "disabled"}>${escapeHtml(config.note)}</textarea>
+      </label>
+    </div>
+  `;
+}
+
 function renderSettingsJobAiFields(settings = getJobAiSettings()) {
   if (!settingsJobAiFields) {
     return;
@@ -128318,14 +128378,16 @@ function renderSettingsJobAiFields(settings = getJobAiSettings()) {
       const configured = hasJobAiInstructionConfig(config);
       const meta = field.meta && field.type !== "riskRow" ? `<em>${escapeHtml(field.meta)}</em>` : "";
       return `
-        <details class="settings-job-ai-card ${field.type === "riskRow" ? "is-risk-row" : ""} ${configured ? "is-configured" : ""}" data-settings-job-ai-key="${escapeHtml(field.key)}">
+        <details class="settings-job-ai-card ${field.type === "riskRow" ? "is-risk-row" : ""} ${field.type === "purPoint" ? "is-pur-point" : ""} ${configured ? "is-configured" : ""}" data-settings-job-ai-key="${escapeHtml(field.key)}">
           <summary>
             <span>${escapeHtml(field.label)}${meta}</span>
             <small>${configured ? "Upute postavljene" : "Default NexAI"}</small>
           </summary>
           ${field.type === "riskRow"
             ? renderSettingsJobAiRiskRowCard(field, config, canManage)
-            : renderSettingsJobAiGeneralCard(field, config, canManage)}
+            : field.type === "purPoint"
+              ? renderSettingsJobAiPurPointCard(field, config, canManage)
+              : renderSettingsJobAiGeneralCard(field, config, canManage)}
         </details>
       `;
     }).join("");
@@ -128385,6 +128447,9 @@ function renderRiskAssessmentRowAiTemplateText(value = "", row = {}, job = {}, c
     skupina: row.group || "",
     kategorija: row.category || row.topCategory || "",
     mjere: row.measures || row.existingMeasures || "",
+    pur: row.shortLabel || row.label || row.hazard || row.catalogLabel || "",
+    pur_tocka: row.code || row.value || row.catalogCode || "",
+    posebni_uvjet: row.label || row.hazard || row.catalogLabel || "",
   };
   return text.replace(/\{([a-z0-9_]+)\}/gi, (match, token) => {
     const key = String(token || "").toLowerCase();
@@ -128535,7 +128600,7 @@ function mergeJobValues(...groups) {
 
 function normalizeJobPurPointValues(values = []) {
   const allowed = new Set(JOB_PUR_POINTS.map((point) => point.value));
-  return uniqueJobValues(values).filter((value) => allowed.has(value)).slice(0, 19);
+  return uniqueJobValues(values).filter((value) => allowed.has(value)).slice(0, JOB_PUR_POINT_SELECTION_LIMIT);
 }
 
 function getJobPurPoint(value = "") {
@@ -128552,22 +128617,80 @@ function getJobPurPointSummary(values = []) {
   return labels.length ? labels.join(", ") : "Nema odabranih PUR točaka";
 }
 
-function getJobPurPointFullLines(values = []) {
+function getJobPurPointDefaultReasonLine(value = "") {
+  const point = getJobPurPoint(value);
+  return point ? `${point.value}. ${point.label} - ${point.description}` : "";
+}
+
+function getJobPurPointAiReasonLine(value = "", options = {}) {
+  const point = getJobPurPoint(value);
+  if (!point) {
+    return "";
+  }
+  const config = getJobAiInstruction(getJobPurPointAiInstructionKey(point.value));
+  if (!hasJobAiInstructionConfig(config)) {
+    return "";
+  }
+  const job = options.job || {};
+  const context = options.context || getRiskAssessmentJobHazardContext(job);
+  const purRow = {
+    ...point,
+    code: point.value,
+    hazard: point.label,
+    category: "Poslovi s posebnim uvjetima rada",
+    group: point.parentValue ? `Točka ${point.parentValue}` : "Pravilnik o poslovima s posebnim uvjetima rada",
+  };
+  const configuredText = renderRiskAssessmentRowAiTemplateText(
+    config.workNote || config.instruction || config.note,
+    purRow,
+    job,
+    context,
+  );
+  return configuredText ? `${point.value}. ${point.label} - ${configuredText}` : "";
+}
+
+function getJobPurPointReasonLines(values = [], options = {}) {
+  return normalizeJobPurPointValues(values)
+    .map((value) => (
+      options.includeAi === false
+        ? getJobPurPointDefaultReasonLine(value)
+        : (getJobPurPointAiReasonLine(value, options) || getJobPurPointDefaultReasonLine(value))
+    ))
+    .filter(Boolean);
+}
+
+function getJobPurPointGeneratedReasonLines(values = [], options = {}) {
+  const generated = new Set();
+  normalizeJobPurPointValues(values).forEach((value) => {
+    [
+      getJobPurPointDefaultReasonLine(value),
+      getJobPurPointAiReasonLine(value, options),
+    ].filter(Boolean).forEach((line) => generated.add(line));
+  });
+  return Array.from(generated);
+}
+
+function getJobPurPointFullLines(values = [], options = {}) {
   return normalizeJobPurPointValues(values)
     .map((value) => {
       const point = getJobPurPoint(value);
-      return point ? `${point.value}. ${point.label} - ${point.description}` : "";
+      return point
+        ? (options.includeAi === false
+          ? getJobPurPointDefaultReasonLine(value)
+          : getJobPurPointAiReasonLine(value, options) || getJobPurPointDefaultReasonLine(value))
+        : "";
     })
     .filter(Boolean);
 }
 
-function getJobPurPointFullText(values = [], fallback = "Nema odabranih poslova s posebnim uvjetima rada.") {
-  const lines = getJobPurPointFullLines(values);
+function getJobPurPointFullText(values = [], fallback = "Nema odabranih poslova s posebnim uvjetima rada.", options = {}) {
+  const lines = getJobPurPointFullLines(values, options);
   return lines.length ? lines.join("\n") : fallback;
 }
 
-function getJobPurPointReasonText(values = []) {
-  return getJobPurPointFullText(values, "");
+function getJobPurPointReasonText(values = [], options = {}) {
+  const lines = getJobPurPointReasonLines(values, options);
+  return lines.length ? lines.join("\n") : "";
 }
 
 function renderJobPurPointPicker(selectedValues = [], dataAttribute = "data-job-pur-point") {
@@ -128587,7 +128710,7 @@ function renderJobPurPointPicker(selectedValues = [], dataAttribute = "data-job-
       <div class="job-pur-picker">
         ${JOB_PUR_POINTS.map((point) => `
           <button type="button"
-            class="job-pur-option ${selected.has(point.value) ? "is-selected" : ""}"
+            class="job-pur-option ${point.parentValue ? "is-subpoint" : "is-mainpoint"} ${selected.has(point.value) ? "is-selected" : ""}"
             ${dataAttribute}="${escapeHtml(point.value)}"
             title="${escapeHtml(point.description)}">
             <span>${escapeHtml(point.value)}</span>
@@ -130501,19 +130624,20 @@ function formatRiskAssessmentRiskSpecialWorkNote(risk = {}) {
   return `Poslovi s posebnim uvjetima rada: ${getJobPurPointSummary(purPoints)}.`;
 }
 
-function getRiskAssessmentManualSpecialWorkReason(existingText = "", previousPurPoints = []) {
+function getRiskAssessmentManualSpecialWorkReason(existingText = "", previousPurPoints = [], options = {}) {
   const previousPurLineKeys = new Set(
-    getJobPurPointFullLines(previousPurPoints).map((line) => normalizeRiskAssessmentIdentityComparable(line)),
+    getJobPurPointGeneratedReasonLines(previousPurPoints, options)
+      .map((line) => normalizeRiskAssessmentIdentityComparable(line)),
   );
   return splitRiskAssessmentTextLines(existingText)
     .filter((line) => !previousPurLineKeys.has(normalizeRiskAssessmentIdentityComparable(line)))
     .join("\n");
 }
 
-function mergeRiskAssessmentSpecialWorkReason(existingText = "", purPoints = [], previousPurPoints = []) {
+function mergeRiskAssessmentSpecialWorkReason(existingText = "", purPoints = [], previousPurPoints = [], options = {}) {
   return joinUniqueRiskAssessmentTextBlocks([
-    getJobPurPointReasonText(purPoints),
-    getRiskAssessmentManualSpecialWorkReason(existingText, previousPurPoints),
+    getJobPurPointReasonText(purPoints, options),
+    getRiskAssessmentManualSpecialWorkReason(existingText, previousPurPoints, options),
   ]);
 }
 
@@ -130663,11 +130787,12 @@ function buildRiskAssessmentJobBasicExportTable(job = {}, index = 0) {
     .map((id) => (state.jobs ?? []).find((item) => String(item.id) === String(id))?.title)
     .filter(Boolean);
   const jobTasks = joinUniqueRiskAssessmentTextBlocks([job.tasks, sourceJobs.join("\n"), job.jobTitle]);
-  const purText = getJobPurPointFullText(job.purPoints ?? []);
+  const purText = getJobPurPointFullText(job.purPoints ?? [], "Nema odabranih poslova s posebnim uvjetima rada.", { job });
   const specialWorkReasonText = mergeRiskAssessmentSpecialWorkReason(
     job.specialWorkReason || job.specialConditions,
     job.purPoints ?? [],
     job.purPoints ?? [],
+    { job },
   );
   const columns = [
     { id: "label", label: "Podatak", width: 190 },
@@ -132538,7 +132663,7 @@ function createRiskAssessmentJobDraftFromCatalogJob(job = {}) {
   ]);
   const ppeText = joinUniqueRiskAssessmentTextBlocks((job.hazards ?? []).map((hazard) => hazard.ppeText));
   const purPoints = normalizeJobPurPointValues(conditions.purPoints ?? []);
-  const purReasonText = getJobPurPointReasonText(purPoints);
+  const purReasonText = getJobPurPointReasonText(purPoints, { job });
   const specialWorkReasonText = joinUniqueRiskAssessmentTextBlocks([
     purReasonText,
     conditionNotes,
@@ -132628,6 +132753,7 @@ function mergeCatalogJobsIntoRiskAssessmentJob(jobs = []) {
   const mergedManualSpecialWorkReason = drafts.map((draft) => getRiskAssessmentManualSpecialWorkReason(
     draft.specialWorkReason,
     draft.purPoints ?? [],
+    { job: draft },
   ));
   const mergedSpecialWorkReason = joinUniqueRiskAssessmentTextBlocks([
     getJobPurPointReasonText(mergedPurPoints),
@@ -133435,8 +133561,8 @@ function sanitizeRiskAssessmentTransientJob(job = {}) {
   return persisted;
 }
 
-function buildRiskAssessmentPurReason(values = []) {
-  return getJobPurPointReasonText(values);
+function buildRiskAssessmentPurReason(values = [], options = {}) {
+  return getJobPurPointReasonText(values, options);
 }
 
 function buildRiskAssessmentSafeWorkTrainingText(job = {}) {
@@ -133499,8 +133625,8 @@ function applyRiskAssessmentJobWorkProfilePreset(jobIndex, key = "") {
     organization: current.organization || buildJobOrganizationSentences(presetEnvironment.organizationOptions ?? [], presetEnvironment),
     workplace: current.workplace || (presetEnvironment.workplaceOptions ?? []).join(", "),
     specialWorkConditions: nextPurPoints.length || current.specialWorkConditions === "da" ? "da" : current.specialWorkConditions,
-    specialWorkReason: mergeRiskAssessmentSpecialWorkReason(current.specialWorkReason || current.specialConditions, nextPurPoints, current.purPoints ?? []),
-    specialConditions: mergeRiskAssessmentSpecialWorkReason(current.specialConditions || current.specialWorkReason, nextPurPoints, current.purPoints ?? []),
+    specialWorkReason: mergeRiskAssessmentSpecialWorkReason(current.specialWorkReason || current.specialConditions, nextPurPoints, current.purPoints ?? [], { job: current }),
+    specialConditions: mergeRiskAssessmentSpecialWorkReason(current.specialConditions || current.specialWorkReason, nextPurPoints, current.purPoints ?? [], { job: current }),
     safeWorkTrainingRequired: Boolean(current.safeWorkTrainingRequired || presetConditions.safeWorkTrainingCertificate || presetConditions.trainingRequired),
     medicalFitnessRequired: Boolean(current.medicalFitnessRequired || presetConditions.medicalFitnessCertificate || nextPurPoints.length),
     visionCheckRequired: Boolean(current.visionCheckRequired || presetConditions.visionCheck),
@@ -134022,7 +134148,7 @@ function renderRiskAssessmentJobProfile(item = {}, index = 0) {
             <i aria-hidden="true">${renderRiskAssessmentRiskIcon("note")}</i>
             <strong>Napomena za PUR / zdravstvene uvjete</strong>
           </span>
-          <textarea data-risk-job-field="specialWorkReason" rows="2">${escapeHtml(item.specialWorkReason || item.specialConditions || buildRiskAssessmentPurReason(purPoints))}</textarea>
+          <textarea data-risk-job-field="specialWorkReason" rows="2">${escapeHtml(item.specialWorkReason || item.specialConditions || buildRiskAssessmentPurReason(purPoints, { job: item }))}</textarea>
         </label>
       </section>
 
@@ -134527,6 +134653,12 @@ function buildRiskAssessmentJobFullAiProposal(job = {}) {
   const ppeItems = buildRiskAssessmentAiPpeSuggestions(job, riskRows);
   const ppeText = syncRiskAssessmentPpeSummaryText(job, ppeItems)
     || "Obvezno koristiti osobnu zaštitnu opremu prema utvrđenim opasnostima, štetnostima i naporima za radno mjesto.";
+  const specialWorkReason = mergeRiskAssessmentSpecialWorkReason(
+    job.specialWorkReason || job.specialConditions,
+    job.purPoints ?? [],
+    job.purPoints ?? [],
+    { job },
+  );
   const patch = {
     shortDescription: applyRiskAssessmentJobAiInstruction(`${title} izvodi tipične radne zadatke u okviru ${unitName}, uz poštivanje uputa za siguran rad i propisanih mjera zaštite.`, "shortDescription"),
     detailedDescription: applyRiskAssessmentJobAiInstruction(`${title} obavlja poslove koji uključuju pripremu radnog mjesta, provjeru ispravnosti opreme, izvođenje radnih aktivnosti prema tehnologiji rada, komunikaciju s odgovornim osobama i prijavu uočenih nepravilnosti. Rad se provodi uz primjenu osnovnih i posebnih pravila zaštite na radu.`, "detailedDescription"),
@@ -134543,6 +134675,8 @@ function buildRiskAssessmentJobFullAiProposal(job = {}) {
     harmfulSources: buildRiskAssessmentJobTextSuggestion(job, "harmfulSources"),
     trainings: applyRiskAssessmentJobAiInstruction("Osposobljavanje za rad na siguran način, upoznavanje s uputama za rad, korištenje OZO, postupanje u slučaju nezgode te dodatna osposobljavanja propisana za posebnu radnu opremu ili radne tvari.", "trainings"),
     medicalExams: applyRiskAssessmentJobAiInstruction("Liječnički pregledi se utvrđuju prema posebnim uvjetima rada, izloženostima, radnoj opremi i zahtjevima radnog mjesta.", "medicalExams"),
+    specialWorkReason,
+    specialConditions: specialWorkReason,
     ppeText: applyRiskAssessmentJobAiInstruction(ppeText, "ppeText"),
   };
   return {
@@ -135126,6 +135260,7 @@ function renderRiskAssessmentJobDocumentPreview(job = {}, index = 0) {
     job.specialWorkReason || job.specialConditions,
     job.purPoints ?? [],
     job.purPoints ?? [],
+    { job },
   ) || "Nije utvrđeno.";
   const measuresText = (risk = {}) => joinUniqueRiskAssessmentTextBlocks([
     risk.existingMeasures,
@@ -137899,7 +138034,7 @@ function toggleRiskAssessmentClientJobInputPurPoint(jobIndex, value = "") {
   updateRiskAssessmentClientJobInput(jobIndex, {
     purPoints,
     medicalFitnessRequired: input.medicalFitnessRequired || purPoints.length > 0,
-    specialWorkReason: mergeRiskAssessmentSpecialWorkReason(input.specialWorkReason, purPoints, input.purPoints ?? []),
+    specialWorkReason: mergeRiskAssessmentSpecialWorkReason(input.specialWorkReason, purPoints, input.purPoints ?? [], { job: current }),
   }, { rerender: true });
 }
 
@@ -137933,7 +138068,7 @@ function applyRiskAssessmentClientJobPreset(jobIndex, key = "") {
     safeWorkTrainingRequired: Boolean(input.safeWorkTrainingRequired || presetConditions.safeWorkTrainingCertificate || presetConditions.trainingRequired),
     medicalFitnessRequired: Boolean(input.medicalFitnessRequired || presetConditions.medicalFitnessCertificate || nextPurPoints.length),
     visionCheckRequired: Boolean(input.visionCheckRequired || presetConditions.visionCheck),
-    specialWorkReason: mergeRiskAssessmentSpecialWorkReason(input.specialWorkReason, nextPurPoints, input.purPoints ?? []),
+    specialWorkReason: mergeRiskAssessmentSpecialWorkReason(input.specialWorkReason, nextPurPoints, input.purPoints ?? [], { job: current }),
   }, { rerender: true });
 }
 
@@ -138011,7 +138146,7 @@ function toggleRiskAssessmentRiskRowPurPoint(jobIndex, riskIndex, value = "") {
     specialWorkConditions: nextPurPoints.length ? "da" : current.specialWorkConditions,
     medicalFitnessRequired: current.medicalFitnessRequired || nextPurPoints.length > 0,
   };
-  nextJob.specialWorkReason = mergeRiskAssessmentSpecialWorkReason(current.specialWorkReason || current.specialConditions, nextPurPoints, current.purPoints ?? []);
+  nextJob.specialWorkReason = mergeRiskAssessmentSpecialWorkReason(current.specialWorkReason || current.specialConditions, nextPurPoints, current.purPoints ?? [], { job: current });
   nextJob.specialConditions = nextJob.specialWorkReason;
   if (nextJob.medicalFitnessRequired && !nextJob.medicalExams) {
     nextJob.medicalExams = buildRiskAssessmentMedicalText(nextJob);
@@ -138532,7 +138667,7 @@ function handleRiskAssessmentJobsListClick(event) {
         specialWorkConditions: purPoints.length ? "da" : current.specialWorkConditions,
         medicalFitnessRequired: current.medicalFitnessRequired || purPoints.length > 0,
       };
-      next.specialWorkReason = mergeRiskAssessmentSpecialWorkReason(current.specialWorkReason || current.specialConditions, purPoints, current.purPoints ?? []);
+      next.specialWorkReason = mergeRiskAssessmentSpecialWorkReason(current.specialWorkReason || current.specialConditions, purPoints, current.purPoints ?? [], { job: current });
       next.specialConditions = next.specialWorkReason;
       if (next.medicalFitnessRequired && !next.medicalExams) {
         next.medicalExams = buildRiskAssessmentMedicalText(next);

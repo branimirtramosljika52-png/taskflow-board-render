@@ -5505,6 +5505,8 @@ function normalizeRiskAssessmentOrganizationUnits(items = []) {
   ));
 }
 
+const JOB_PUR_POINT_SELECTION_LIMIT = 40;
+
 function normalizeRiskAssessmentRiskRows(items = []) {
   if (!Array.isArray(items)) {
     return [];
@@ -5525,7 +5527,7 @@ function normalizeRiskAssessmentRiskRows(items = []) {
     riskCode: normalizeText(item?.riskCode),
     riskLevel: normalizeText(item?.riskLevel),
     likelihoodConsequence: normalizeText(item?.likelihoodConsequence),
-    purPoints: normalizeJobOptionValues(item?.purPoints).slice(0, 19),
+    purPoints: normalizeJobOptionValues(item?.purPoints).slice(0, JOB_PUR_POINT_SELECTION_LIMIT),
     workNote: normalizeText(item?.workNote ?? item?.jobsNote ?? item?.posloviNote),
     note: normalizeText(item?.note),
     existingMeasures: normalizeText(item?.existingMeasures),
@@ -5638,7 +5640,7 @@ function normalizeRiskAssessmentClientJobInput(input = {}) {
     bodyPositions: normalizeJobOptionValues(source.bodyPositions),
     importantFunctions: normalizeJobOptionValues(source.importantFunctions),
     workConditions: normalizeJobOptionValues(source.workConditions),
-    purPoints: normalizeJobOptionValues(source.purPoints).slice(0, 19),
+    purPoints: normalizeJobOptionValues(source.purPoints).slice(0, JOB_PUR_POINT_SELECTION_LIMIT),
     safeWorkTrainingRequired: normalizeBoolean(source.safeWorkTrainingRequired, false),
     medicalFitnessRequired: normalizeBoolean(source.medicalFitnessRequired, false),
     visionCheckRequired: normalizeBoolean(source.visionCheckRequired, false),
@@ -5753,7 +5755,7 @@ function normalizeRiskAssessmentJobs(items = []) {
       toolsAndMachinesOptions: normalizeJobOptionValues(item?.toolsAndMachinesOptions),
       chemicalSubstanceOptions: normalizeJobOptionValues(item?.chemicalSubstanceOptions),
       biologicalHazardOptions: normalizeJobOptionValues(item?.biologicalHazardOptions),
-      purPoints: normalizeJobOptionValues(item?.purPoints).slice(0, 19),
+      purPoints: normalizeJobOptionValues(item?.purPoints).slice(0, JOB_PUR_POINT_SELECTION_LIMIT),
       workplaceArrangement: normalizeText(item?.workplaceArrangement),
       harmfulSources: normalizeText(item?.harmfulSources),
       shiftWork: normalizeBoolean(item?.shiftWork, false),
@@ -6236,7 +6238,7 @@ function normalizeJobConditions(value = {}) {
     bodyPositions: normalizeJobOptionValues(source.bodyPositions),
     importantFunctions: normalizeJobOptionValues(source.importantFunctions),
     workConditions: normalizeJobOptionValues(source.workConditions),
-    purPoints: normalizeJobOptionValues(source.purPoints).slice(0, 19),
+    purPoints: normalizeJobOptionValues(source.purPoints).slice(0, JOB_PUR_POINT_SELECTION_LIMIT),
     bodyText: normalizeText(source.bodyText),
     functionsText: normalizeText(source.functionsText),
     conditionsText: normalizeText(source.conditionsText),

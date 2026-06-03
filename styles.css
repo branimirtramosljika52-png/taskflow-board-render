@@ -5195,6 +5195,12 @@ body.is-profile-modal-open {
   border-color: rgba(180, 199, 228, 0.94);
 }
 
+.settings-job-ai-card.is-pur-point {
+  border-color: rgba(250, 204, 21, 0.42);
+  background:
+    linear-gradient(135deg, rgba(255, 251, 235, 0.96), rgba(255, 255, 255, 0.92));
+}
+
 .settings-job-ai-card summary {
   display: flex;
   align-items: center;
@@ -5249,6 +5255,10 @@ body.is-profile-modal-open {
 
 .settings-job-ai-card-body-risk textarea {
   min-height: 68px;
+}
+
+.settings-job-ai-card-body-pur textarea {
+  min-height: 70px;
 }
 
 .settings-job-ai-row-defaults {
@@ -56511,6 +56521,30 @@ button.work-order-editor-section-head:focus-visible {
   border-color: rgba(250, 204, 21, 0.9);
   background: linear-gradient(135deg, rgba(254, 249, 195, 0.98), rgba(255, 255, 255, 0.95));
   box-shadow: 0 14px 24px rgba(113, 63, 18, 0.12);
+}
+
+.job-pur-option.is-subpoint {
+  width: calc(100% - 18px);
+  margin-left: 18px;
+  border-style: dashed;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.92));
+}
+
+.job-pur-option.is-subpoint span {
+  background: rgba(120, 113, 108, 0.96);
+  font-size: 0.66rem;
+}
+
+.job-pur-option.is-subpoint strong::before {
+  content: "Točka 19 / ";
+  color: #64748b;
+  font-weight: 820;
+}
+
+.job-pur-option.is-subpoint.is-selected {
+  border-style: solid;
+  background: linear-gradient(135deg, rgba(254, 249, 195, 0.98), rgba(255, 255, 255, 0.95));
 }
 
 .job-organization-grid,

@@ -6086,7 +6086,7 @@ function normalizeClientPortalRiskAssessmentJobInput(input = {}, user = {}) {
     bodyPositions: normalizeClientPortalValueList(source.bodyPositions),
     importantFunctions: normalizeClientPortalValueList(source.importantFunctions),
     workConditions: normalizeClientPortalValueList(source.workConditions),
-    purPoints: normalizeClientPortalValueList(source.purPoints, 19),
+    purPoints: normalizeClientPortalValueList(source.purPoints, 40),
     safeWorkTrainingRequired: normalizeRequestBoolean(source.safeWorkTrainingRequired, false),
     medicalFitnessRequired: normalizeRequestBoolean(source.medicalFitnessRequired, false),
     visionCheckRequired: normalizeRequestBoolean(source.visionCheckRequired, false),
