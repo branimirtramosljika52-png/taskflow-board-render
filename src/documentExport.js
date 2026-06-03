@@ -1477,6 +1477,33 @@ function normalizeDocxSpecialPlaceholderValue(value) {
       : { type: "optional_empty" };
   }
 
+  if (blockType === "toc" || blockType === "contents" || blockType === "table_of_contents") {
+    const entries = (Array.isArray(value.entries) ? value.entries : [])
+      .map((entry, entryIndex) => {
+        if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+          return null;
+        }
+        const title = clean(entry.title || entry.text || entry.label);
+        if (!title) {
+          return null;
+        }
+        return {
+          id: clean(entry.id) || `toc-entry-${entryIndex + 1}`,
+          title,
+          level: Math.max(1, Math.min(4, Number.parseInt(entry.level, 10) || 1)),
+          page: clean(entry.page || entry.pageNumber || ""),
+        };
+      })
+      .filter(Boolean);
+    return {
+      type: "toc",
+      title: clean(value.title) || "Sadrzaj",
+      instruction: clean(value.instruction) || 'TOC \\o "1-2" \\h \\z \\u',
+      entries,
+      pageBreakBefore,
+    };
+  }
+
   if (blockType === "blocks" || blockType === "section_blocks" || blockType === "document_blocks") {
     const blocks = (Array.isArray(value.blocks) ? value.blocks : [])
       .slice(0, 400)
@@ -1694,6 +1721,18 @@ function buildDocxTableFallbackText(table = {}) {
     })
     .filter(Boolean)
     .join("\n");
+}
+
+function buildDocxTocFallbackText(value = {}) {
+  const entries = Array.isArray(value.entries) ? value.entries : [];
+  return [
+    clean(value.title) || "Sadrzaj",
+    ...entries.map((entry, index) => {
+      const prefix = `${index + 1}.`;
+      const page = clean(entry?.page);
+      return [prefix, clean(entry?.title), page ? `str. ${page}` : ""].filter(Boolean).join(" ");
+    }),
+  ].filter(Boolean).join("\n");
 }
 
 const HANDOVER_PROTOCOL_TITLE = "PRIMOPREDAJNI ZAPISNIK";
@@ -1959,6 +1998,7 @@ function buildWordParagraphXml(text = "", {
   pageBreakBefore = false,
   keepNext = false,
   keepLines = false,
+  outlineLevel = null,
 } = {}) {
   const safeText = clean(text);
   const runProperties = [
@@ -1971,6 +2011,9 @@ function buildWordParagraphXml(text = "", {
     pageBreakBefore ? "<w:pageBreakBefore/>" : "",
     keepNext ? "<w:keepNext/>" : "",
     keepLines ? "<w:keepLines/>" : "",
+    Number.isFinite(Number(outlineLevel))
+      ? `<w:outlineLvl w:val="${Math.max(0, Math.min(8, Math.round(Number(outlineLevel))))}"/>`
+      : "",
     `<w:jc w:val="${escapeWordXmlText(align)}"/>`,
     `<w:spacing w:before="${Math.max(0, spacingBefore)}" w:after="${Math.max(0, spacingAfter)}"${line ? ` w:line="${Math.max(1, Number(line) || 0)}" w:lineRule="${escapeWordXmlText(lineRule)}"` : ""}/>`,
   ].filter(Boolean).join("");
@@ -2380,7 +2423,53 @@ function buildWordHeadingBlockXml(block = {}, options = {}) {
     spacingAfter: 80,
     pageBreakBefore,
     keepNext,
+    outlineLevel: level - 1,
   });
+}
+
+function buildWordTocXml(value = {}) {
+  const entries = Array.isArray(value.entries) ? value.entries : [];
+  const instruction = clean(value.instruction) || 'TOC \\o "1-2" \\h \\z \\u';
+  const fallbackParagraphs = entries.length
+    ? entries.map((entry, index) => {
+      const indent = Math.max(0, Math.min(3, (Number(entry.level) || 1) - 1)) * 360;
+      return buildWordParagraphXml([
+        `${index + 1}.`,
+        entry.title || "",
+        entry.page ? `str. ${entry.page}` : "",
+      ].filter(Boolean).join(" "), {
+        size: 20,
+        spacingAfter: 36,
+        spacingBefore: 0,
+        keepNext: false,
+        line: 240,
+        lineRule: "auto",
+      }).replace("<w:pPr>", `<w:pPr><w:ind w:left="${indent}"/>`);
+    }).join("")
+    : buildWordParagraphXml("Desnom tipkom u Wordu odaberi Azuriraj polje za stvarne brojeve stranica.", {
+      italic: true,
+      size: 18,
+      spacingAfter: 40,
+    });
+
+  return [
+    buildWordParagraphXml(clean(value.title) || "Sadrzaj", {
+      bold: true,
+      size: 28,
+      spacingBefore: 120,
+      spacingAfter: 120,
+      keepNext: true,
+    }),
+    `
+      <w:p>
+        <w:r><w:fldChar w:fldCharType="begin"/></w:r>
+        <w:r><w:instrText xml:space="preserve">${escapeWordXmlText(instruction)}</w:instrText></w:r>
+        <w:r><w:fldChar w:fldCharType="separate"/></w:r>
+      </w:p>
+    `.replace(/\n\s+/g, ""),
+    fallbackParagraphs,
+    '<w:p><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>',
+  ].join("");
 }
 
 function buildWordParagraphBlockXml(block = {}) {
@@ -2418,6 +2507,11 @@ function buildWordBlocksXml(value = {}, zip = null, context = {}, xmlFileName = 
 
     if (block.type === "page_break") {
       xmlParts.push(buildWordPageBreakXml());
+      continue;
+    }
+
+    if (block.type === "toc") {
+      xmlParts.push(buildWordTocXml(block));
       continue;
     }
 
@@ -3273,6 +3367,10 @@ function buildDocxSpecialPlaceholderXml(value, zip = null, context = {}, xmlFile
     return withConfiguredPageBreak(buildWordRichTextXml(value));
   }
 
+  if (value.type === "toc") {
+    return withConfiguredPageBreak(buildWordTocXml(value));
+  }
+
   if (value.type === "blocks") {
     return withConfiguredPageBreak(buildWordBlocksXml(value, zip, context, xmlFileName));
   }
@@ -3387,6 +3485,8 @@ function applyDocxSpecialPlaceholders(zip, specialPlaceholders = new Map()) {
       const fallbackText = escapeWordXmlText(
         value.type === "table"
           ? buildDocxTableFallbackText(value)
+          : value.type === "toc"
+            ? buildDocxTocFallbackText(value)
           : value.type === "handover_protocol"
             ? buildHandoverProtocolFallbackText(value)
             : value.type === "handover_specification"
@@ -3406,6 +3506,26 @@ function applyDocxSpecialPlaceholders(zip, specialPlaceholders = new Map()) {
       zip.file(fileName, xml);
     }
   });
+}
+
+function ensureDocxUpdateFieldsSetting(zip) {
+  if (!(zip instanceof PizZip)) {
+    return;
+  }
+  const settingsPath = "word/settings.xml";
+  const settingsFile = zip.file(settingsPath);
+  if (!settingsFile) {
+    return;
+  }
+  let xml = settingsFile.asText();
+  if (/<w:updateFields\b/i.test(xml)) {
+    xml = xml.replace(/<w:updateFields\b[^>]*\/>/i, '<w:updateFields w:val="true"/>');
+  } else if (/<\/w:settings>/i.test(xml)) {
+    xml = xml.replace(/<\/w:settings>/i, '<w:updateFields w:val="true"/></w:settings>');
+  } else {
+    return;
+  }
+  zip.file(settingsPath, xml);
 }
 
 function formatDocxRenderError(error) {
@@ -3499,6 +3619,7 @@ function renderDocxTemplateZip(zip, normalizedPlaceholders = {}, specialPlacehol
 
   doc.render(normalizedPlaceholders);
   applyDocxSpecialPlaceholders(doc.getZip(), specialPlaceholders);
+  ensureDocxUpdateFieldsSetting(doc.getZip());
   return doc.getZip().generate({
     type: "nodebuffer",
     compression: "DEFLATE",
@@ -3654,6 +3775,7 @@ export async function buildDocxFromTemplateBuffer(templateBuffer, placeholders =
             || specialValue.type === "signature_group"
             || specialValue.type === "rich_text"
             || specialValue.type === "blocks"
+            || specialValue.type === "toc"
             || specialValue.type === "optional_empty"
           ) {
             const sentinel = `__TASKFLOW_DOCX_BLOCK_${index}_${Date.now()}__`;
@@ -4330,6 +4452,25 @@ function buildHtmlTemplateRichTextPlaceholder(value = {}) {
   return html ? `<div class="safe-nexus-template-rich-text">${html}</div>` : "";
 }
 
+function buildHtmlTemplateTocPlaceholder(value = {}) {
+  const entries = Array.isArray(value.entries) ? value.entries : [];
+  return `
+    <section class="safe-nexus-template-toc">
+      <h2>${escapeTemplateHtml(clean(value.title) || "Sadrzaj")}</h2>
+      ${entries.length ? `
+        <ol>
+          ${entries.map((entry) => `
+            <li style="margin-left:${Math.max(0, Math.min(3, (Number(entry.level) || 1) - 1)) * 18}px">
+              <span>${escapeTemplateHtml(entry.title || "")}</span>
+              ${entry.page ? `<em>${escapeTemplateHtml(entry.page)}</em>` : ""}
+            </li>
+          `).join("")}
+        </ol>
+      ` : "<p>Glavni naslovi generirat će se iz uključenih odjeljaka procjene.</p>"}
+    </section>
+  `;
+}
+
 function buildHtmlTemplateBlocksPlaceholder(value = {}) {
   return (Array.isArray(value.blocks) ? value.blocks : [])
     .map((block) => {
@@ -4347,6 +4488,9 @@ function buildHtmlTemplateBlocksPlaceholder(value = {}) {
       }
       if (block.type === "page_break") {
         return `<div style="break-after:page"></div>`;
+      }
+      if (block.type === "toc") {
+        return buildHtmlTemplateTocPlaceholder(block);
       }
       if (block.type === "table") {
         return buildHtmlTemplateTablePlaceholder(block);
@@ -4398,6 +4542,9 @@ function buildHtmlTemplateSpecialPlaceholder(value) {
   }
   if (specialValue.type === "rich_text") {
     return buildHtmlTemplateRichTextPlaceholder(specialValue);
+  }
+  if (specialValue.type === "toc") {
+    return buildHtmlTemplateTocPlaceholder(specialValue);
   }
   if (specialValue.type === "blocks") {
     return buildHtmlTemplateBlocksPlaceholder(specialValue);
@@ -6975,6 +7122,7 @@ function pdfBufferFromDocument(doc) {
 
 const RISK_ASSESSMENT_NATIVE_PDF_PLACEHOLDER_KEYS = Object.freeze([
   "RISK_COVER",
+  "RISK_CONTENTS",
   "RISK_EMPLOYER",
   "RISK_INTRO",
   "RISK_STRUCTURE",
@@ -7067,6 +7215,36 @@ function renderRiskAssessmentNativePdfText(doc, helpers, text = "", {
 function renderRiskAssessmentNativePdfRichText(doc, helpers, html = "") {
   const text = richTextHtmlToPlainText(String(html || ""));
   renderRiskAssessmentNativePdfText(doc, helpers, text, { fontSize: 9, spacingAfter: 8 });
+}
+
+function renderRiskAssessmentNativePdfToc(doc, helpers, value = {}) {
+  const entries = Array.isArray(value.entries) ? value.entries : [];
+  renderRiskAssessmentNativePdfText(doc, helpers, value.title || "Sadrzaj", {
+    bold: true,
+    fontSize: 15,
+    spacingAfter: 8,
+  });
+  if (!entries.length) {
+    renderRiskAssessmentNativePdfText(doc, helpers, "Glavni naslovi generiraju se iz ukljucenih odjeljaka procjene.", {
+      fontSize: 9,
+      spacingAfter: 6,
+    });
+    return;
+  }
+  entries.forEach((entry, index) => {
+    const indent = Math.max(0, Math.min(3, (Number(entry.level) || 1) - 1)) * 10;
+    renderRiskAssessmentNativePdfText(doc, helpers, [
+      `${index + 1}.`,
+      entry.title || "",
+      entry.page ? `str. ${entry.page}` : "",
+    ].filter(Boolean).join(" "), {
+      fontSize: 9,
+      spacingAfter: 3,
+    });
+    if (indent) {
+      doc.x = doc.page.margins.left;
+    }
+  });
 }
 
 function drawRiskAssessmentNativePdfCellBackground(doc, x, y, width, height, format = {}, header = false) {
@@ -7276,7 +7454,8 @@ function renderRiskAssessmentNativePdfBlock(doc, helpers, block = {}, options = 
   if (!block) {
     return;
   }
-  if (block.__docxBlockType === "blocks") {
+  const blockType = block.__docxBlockType || block.type || "";
+  if (blockType === "blocks") {
     const entries = Array.isArray(block.blocks) ? block.blocks : [];
     entries.forEach((entry, index) => {
       const nextEntry = entries[index + 1];
@@ -7289,12 +7468,16 @@ function renderRiskAssessmentNativePdfBlock(doc, helpers, block = {}, options = 
     });
     return;
   }
-  if (block.__docxBlockType === "table") {
+  if (blockType === "table") {
     renderRiskAssessmentNativePdfTable(doc, helpers, block);
     return;
   }
-  if (block.__docxBlockType === "rich_text") {
+  if (blockType === "rich_text") {
     renderRiskAssessmentNativePdfRichText(doc, helpers, block.html || "");
+    return;
+  }
+  if (blockType === "toc") {
+    renderRiskAssessmentNativePdfToc(doc, helpers, block);
     return;
   }
   if (block.type === "heading") {

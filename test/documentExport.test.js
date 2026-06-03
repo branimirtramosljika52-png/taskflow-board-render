@@ -298,6 +298,46 @@ test("docx export renders a multi-block table section placeholder", async () => 
   assert.ok(tableTextIndex < landscapeIndex);
 });
 
+test("docx export renders a risk assessment contents placeholder", async () => {
+  const templateBuffer = buildMinimalDocxBuffer(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:body>
+        <w:p><w:r><w:t>{{RISK_CONTENTS}}</w:t></w:r></w:p>
+        <w:p><w:r><w:t>{{RISK_JOBS}}</w:t></w:r></w:p>
+        <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>
+      </w:body>
+    </w:document>`);
+
+  const outputBuffer = await buildDocxFromTemplateBuffer(templateBuffer, {
+    RISK_CONTENTS: {
+      __docxBlockType: "toc",
+      title: "Sadrzaj",
+      entries: [
+        { title: "Osnovni podaci", level: 1 },
+        { title: "Analiza radnih mjesta", level: 1 },
+      ],
+    },
+    RISK_JOBS: {
+      __docxBlockType: "blocks",
+      blocks: [
+        { type: "heading", text: "Analiza radnih mjesta", level: 2 },
+        { type: "paragraph", text: "Automatski generirani odjeljak." },
+      ],
+    },
+  });
+  const outputXml = new PizZip(outputBuffer).file("word/document.xml").asText();
+
+  assert.equal(outputXml.includes("{{RISK_CONTENTS}}"), false);
+  assert.equal(outputXml.includes("{{RISK_JOBS}}"), false);
+  assert.match(outputXml, /Sadrzaj/);
+  assert.match(outputXml, /Osnovni podaci/);
+  assert.match(outputXml, /Analiza radnih mjesta/);
+  assert.match(outputXml, /TOC \\o &quot;1-2&quot; \\h \\z \\u/);
+  assert.match(outputXml, /<w:fldChar w:fldCharType="begin"\/>/);
+  assert.match(outputXml, /<w:fldChar w:fldCharType="end"\/>/);
+  assert.match(outputXml, /<w:outlineLvl w:val="1"\/>/);
+});
+
 test("docx export preserves template landscape section around risk placeholder", async () => {
   const templateBuffer = buildMinimalDocxBuffer(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
     <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">

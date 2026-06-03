@@ -6010,6 +6010,7 @@ function normalizeRiskAssessmentManualHandlingItems(items = []) {
 
 const RISK_ASSESSMENT_REPORT_TEMPLATE_SECTION_KEYS = new Set([
   "cover",
+  "contents",
   "employer",
   "intro",
   "process",
@@ -6033,6 +6034,7 @@ const RISK_ASSESSMENT_REPORT_TEMPLATE_SECTION_KEYS = new Set([
 
 const DEFAULT_RISK_ASSESSMENT_REPORT_TEMPLATE_SECTIONS = Object.freeze([
   "cover",
+  "contents",
   "employer",
   "intro",
   "process",
@@ -6079,8 +6081,8 @@ function normalizeRiskAssessmentReportTemplateSections(items = []) {
       placeholder: normalizeText(item?.placeholder) || `{{RISK_${key.toUpperCase()}}}`,
       title: normalizeText(item?.title),
       enabled: normalizeBoolean(item?.enabled, true),
-      pageBreakBefore: normalizeBoolean(item?.pageBreakBefore, index > 0 && ["work_equipment", "work_environment", "inspections", "jobs", "chemicals", "biological", "manual_handling", "overview", "signatures"].includes(key)),
-      includeInToc: normalizeBoolean(item?.includeInToc, key !== "cover"),
+      pageBreakBefore: normalizeBoolean(item?.pageBreakBefore, index > 0 && ["contents", "work_equipment", "work_environment", "inspections", "jobs", "chemicals", "biological", "manual_handling", "overview", "signatures"].includes(key)),
+      includeInToc: normalizeBoolean(item?.includeInToc, !["cover", "contents"].includes(key)),
       note: normalizeText(item?.note),
       order: Number.isFinite(Number(item?.order)) ? Number(item.order) : index + 1,
     };
