@@ -127203,7 +127203,7 @@ const RISK_ASSESSMENT_ARMOR_TEMPLATE_ROWS = Object.freeze([
   { category: "II. ŠTETNOSTI", group: "3. Fizikalne štetnosti", code: "3.5", hazard: "Neodgovarajuća osvijetljenost", probability: "mv", consequence: "sš", riskLevel: "Mali rizik", measures: "Osigurati dovoljnu i ravnomjernu rasvjetu te održavati rasvjetna tijela." },
   { category: "III. NAPORI", group: "1. Statodinamički napori", code: "1.1.1", hazard: "Dugotrajno sjedenje ili stajanje", probability: "v", consequence: "mš", riskLevel: "Mali rizik", measures: "Omogućiti promjenu položaja tijela, kratke pauze i ergonomsko uređenje mjesta rada." },
   { category: "III. NAPORI", group: "2. Psihofiziološki napori", code: "2.1", hazard: "Stres, odgovornost i radni ritam", probability: "v", consequence: "sš", riskLevel: "Srednji rizik", measures: "Jasno rasporediti odgovornosti, planirati opterećenje i omogućiti komunikaciju s nadređenima." },
-  { category: "III. NAPORI", group: "3. Napori vida i govora", code: "3.1", hazard: "Naprezanje vida pri radu s dokumentacijom/zaslonom", probability: "v", consequence: "mš", riskLevel: "Mali rizik", measures: "Osigurati odgovarajuću rasvjetu, pauze i ergonomski položaj zaslona." },
+  { category: "III. NAPORI", group: "3. Napori vida", code: "3.1", hazard: "Naprezanje vida pri radu s dokumentacijom/zaslonom", probability: "v", consequence: "mš", riskLevel: "Mali rizik", measures: "Osigurati odgovarajuću rasvjetu, pauze i ergonomski položaj zaslona." },
 ]);
 
 const RISK_ASSESSMENT_CATALOG_EXTRA_ROWS = Object.freeze([
@@ -127277,7 +127277,7 @@ const RISK_ASSESSMENT_CATALOG_EXTRA_ROWS = Object.freeze([
   { category: "III. NAPORI", group: "2.6 Otežan prijam informacija", code: "2.6.1", hazard: "Zvučni signali i znakovi", probability: "v", consequence: "mš", riskLevel: "Mali rizik", measures: "Osposobljavanje, zdravstveni pregled i stručna osposobljenost za poslove signalista gdje je primjenjivo." },
   { category: "III. NAPORI", group: "2.6 Otežan prijam informacija", code: "2.6.2", hazard: "Svjetlosni signali i znakovi", probability: "v", consequence: "mš", riskLevel: "Mali rizik", measures: "Osposobljavanje, zdravstveni pregled i stručna osposobljenost za poslove signalista gdje je primjenjivo." },
   { category: "III. NAPORI", group: "2.7 Radni zahtjevi", code: "2.7.3", hazard: "Zahtjev za visokom kvalitetom rada", probability: "v", consequence: "mš", riskLevel: "Mali rizik", measures: "Permanentna edukacija i visoka pažnja pri radu." },
-  { category: "III. NAPORI", group: "3. Napori vida i govora", code: "4", hazard: "Napori govora", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "4. Napori govora", code: "4", hazard: "Napori govora", riskLevel: "N/P" },
 ]);
 
 const RISK_ASSESSMENT_CATALOG_ROWS = Object.freeze([
@@ -129807,6 +129807,9 @@ function createRiskAssessmentExportCell(value = "", format = {}) {
   if (format.borderStyle) {
     cellFormat.borderStyle = format.borderStyle;
   }
+  if (format.verticalAlign) {
+    cellFormat.verticalAlign = format.verticalAlign;
+  }
   if (format.card) {
     cellFormat.card = {
       fillColor: format.card.fillColor || "",
@@ -129980,7 +129983,7 @@ function buildRiskAssessmentJobRiskExportTable(job = {}) {
     getRiskAssessmentRiskRowKey(risk) || risk.riskLevel || risk.existingMeasures || risk.measures || risk.workNote
   ));
   const columns = [
-    { id: "risk", label: "Identifikacija opasnosti, štetnosti i napora", width: 250 },
+    { id: "risk", label: "Opasnosti, štetnosti i napori (Prilog III.)", width: 250 },
     { id: "probability", label: "Vjerojatnost", width: 105 },
     { id: "consequence", label: "Posljedice", width: 105 },
     { id: "matrix", label: "Matrica procjene rizika", width: 115 },
@@ -129988,7 +129991,9 @@ function buildRiskAssessmentJobRiskExportTable(job = {}) {
     { id: "note", label: "Objašnjenje / napomena", width: 235 },
     { id: "measures", label: "Primijenjena pravila, mjere i postupci za smanjivanje razine rizika", width: 245 },
   ];
-  const headerFormat = { fontSize: 8, align: "center" };
+  const headerFormat = { fontSize: 8, align: "center", verticalAlign: "center" };
+  const bodyFormat = { fontSize: 7, verticalAlign: "center" };
+  const bodyCenterFormat = { ...bodyFormat, align: "center" };
   const rows = [
     createRiskAssessmentExportRow("title", [
       createRiskAssessmentExportCell("Opasnosti, štetnosti, napori i mjere", {
@@ -130005,7 +130010,7 @@ function buildRiskAssessmentJobRiskExportTable(job = {}) {
       })),
     ], true),
     createRiskAssessmentExportRow("h1", [
-      createRiskAssessmentExportHeaderCell("Identifikacija opasnosti, štetnosti i napora", headerFormat),
+      createRiskAssessmentExportHeaderCell("Opasnosti, štetnosti i napori (Prilog III.)", headerFormat),
       createRiskAssessmentExportHeaderCell("Procjenjivanje opasnosti, štetnosti i napora", headerFormat),
       createRiskAssessmentExportHeaderCell("", headerFormat),
       createRiskAssessmentExportHeaderCell("", headerFormat),
@@ -130025,35 +130030,28 @@ function buildRiskAssessmentJobRiskExportTable(job = {}) {
     ...(riskRows.length ? riskRows.map((risk, riskIndex) => {
       const measuresText = joinUniqueRiskAssessmentTextBlocks([risk.existingMeasures, risk.additionalMeasures, risk.measures]);
       return createRiskAssessmentExportRow(`risk-${riskIndex + 1}`, [
-        createRiskAssessmentExportCell([
-          [risk.topCategory, risk.category, risk.group].filter(Boolean).join(" / "),
-          [risk.code, risk.hazard].filter(Boolean).join(" "),
-          risk.possibleConsequences,
-        ].filter(Boolean).join("\n"), { fontSize: 7 }),
+        createRiskAssessmentExportCell(getRiskAssessmentRiskIdentityText(risk, { includeConsequences: true }), bodyFormat),
         createRiskAssessmentExportCell(getRiskAssessmentOptionLabel(RISK_ASSESSMENT_PROBABILITY_OPTIONS, risk.probability, "-"), {
-          fontSize: 7,
-          align: "center",
+          ...bodyCenterFormat,
           bold: true,
           card: { fillColor: "#FFFFFF", borderColor: "#CBD5E1" },
         }),
         createRiskAssessmentExportCell(getRiskAssessmentOptionLabel(RISK_ASSESSMENT_CONSEQUENCE_OPTIONS, risk.consequence, "-"), {
-          fontSize: 7,
-          align: "center",
+          ...bodyCenterFormat,
           bold: true,
           card: { fillColor: "#FFFFFF", borderColor: "#CBD5E1" },
         }),
         createRiskAssessmentExportCell(getRiskAssessmentExportRiskLevelText(risk), {
-          fontSize: 7,
-          align: "center",
+          ...bodyCenterFormat,
           bold: true,
           card: {
             fillColor: getRiskAssessmentExportRiskFill(risk),
             borderColor: "#94A3B8",
           },
         }),
-        createRiskAssessmentExportCell(formatRiskAssessmentExportYesNo(job.specialWorkConditions, "Ne"), { fontSize: 7, align: "center" }),
-        createRiskAssessmentExportCell(joinUniqueRiskAssessmentTextBlocks([risk.workNote, risk.note, risk.source]), { fontSize: 7 }),
-        createRiskAssessmentExportCell(measuresText, { fontSize: 7 }),
+        createRiskAssessmentExportCell(formatRiskAssessmentExportYesNo(job.specialWorkConditions, "Ne"), bodyCenterFormat),
+        createRiskAssessmentExportCell(joinUniqueRiskAssessmentTextBlocks([risk.workNote, risk.note, risk.source]), bodyFormat),
+        createRiskAssessmentExportCell(measuresText, bodyFormat),
       ]);
     }) : [
       createRiskAssessmentExportRow("empty", [
@@ -131726,7 +131724,7 @@ function getRiskAssessmentCatalogHierarchy(row = {}) {
     }
 
     if (groupLower.includes("pad") || code.startsWith("2.")) {
-      return { category, family: "2. OPASNOST OD PADOVA", subgroup: group };
+      return { category, family: "2. OPASNOSTI OD PADOVA", subgroup: group };
     }
     if (groupLower.includes("elektr") || code.startsWith("3.")) {
       return { category, family: "3. ELEKTRIČNA STRUJA", subgroup: group };
@@ -131758,12 +131756,104 @@ function getRiskAssessmentCatalogHierarchy(row = {}) {
     if (group.startsWith("2.") || group.startsWith("2 ")) {
       return { category, family: "2. PSIHOFIZIOLOŠKI NAPORI", subgroup: group };
     }
-    if (group.startsWith("3.") || group.startsWith("3 ") || code === "4") {
-      return { category, family: "3. NAPORI VIDA I GOVORA", subgroup: group };
+    if (code === "4" || code.startsWith("4.") || group.startsWith("4.") || group.startsWith("4 ")) {
+      return { category, family: "4. NAPORI GOVORA", subgroup: "4. napori govora" };
+    }
+    if (group.startsWith("3.") || group.startsWith("3 ") || code === "3" || code.startsWith("3.")) {
+      return { category, family: "3. NAPORI VIDA", subgroup: "3. napori vida" };
     }
   }
 
   return { category, family: group, subgroup: group };
+}
+
+function normalizeRiskAssessmentIdentityComparable(value = "") {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "d")
+    .toLocaleLowerCase("hr")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function stripRiskAssessmentLeadingCode(value = "") {
+  return String(value || "")
+    .trim()
+    .replace(/^\s*\d+(?:\.\d+)*\.?\s*/u, "")
+    .replace(/^\s*[ivx]+\.\s*/iu, "")
+    .trim();
+}
+
+function formatRiskAssessmentCodeAndLabel(code = "", label = "") {
+  const safeCode = String(code || "").trim().replace(/\.+$/, "");
+  const safeLabel = String(label || "").trim();
+  if (!safeCode) {
+    return safeLabel;
+  }
+  if (!safeLabel) {
+    return safeCode;
+  }
+  const normalizedLabel = normalizeRiskAssessmentIdentityComparable(safeLabel);
+  const normalizedCode = normalizeRiskAssessmentIdentityComparable(safeCode);
+  const normalizedCodeLabel = normalizeRiskAssessmentIdentityComparable(`${safeCode} ${stripRiskAssessmentLeadingCode(safeLabel)}`);
+  if (normalizedLabel === normalizedCodeLabel || normalizedLabel === normalizedCode || normalizedLabel.startsWith(`${normalizedCode} `)) {
+    return safeLabel;
+  }
+  return `${safeCode}. ${safeLabel}`;
+}
+
+function getRiskAssessmentRiskHierarchyParts(row = {}) {
+  const parts = [row.topCategory, row.category, row.group]
+    .map((part) => String(part || "").trim())
+    .filter(Boolean);
+  const seen = new Set();
+  return parts.filter((part) => {
+    const key = normalizeRiskAssessmentIdentityComparable(part);
+    if (!key || seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function isRiskAssessmentHazardLineDuplicatedByHierarchy(hazardLine = "", hierarchyParts = []) {
+  const safeHazard = String(hazardLine || "").trim();
+  if (!safeHazard || !hierarchyParts.length) {
+    return false;
+  }
+  const lastPart = hierarchyParts[hierarchyParts.length - 1] || "";
+  const hazardWithoutCode = stripRiskAssessmentLeadingCode(safeHazard);
+  const lastWithoutCode = stripRiskAssessmentLeadingCode(lastPart);
+  return normalizeRiskAssessmentIdentityComparable(safeHazard) === normalizeRiskAssessmentIdentityComparable(lastPart)
+    || (
+      hazardWithoutCode
+      && lastWithoutCode
+      && normalizeRiskAssessmentIdentityComparable(hazardWithoutCode) === normalizeRiskAssessmentIdentityComparable(lastWithoutCode)
+    );
+}
+
+function getRiskAssessmentRiskIdentityLines(row = {}, options = {}) {
+  const hierarchyParts = getRiskAssessmentRiskHierarchyParts(row);
+  const hierarchyLine = hierarchyParts.join(" / ");
+  const hazardLine = formatRiskAssessmentCodeAndLabel(row.code, row.hazard);
+  const lines = [];
+  if (hierarchyLine) {
+    lines.push(hierarchyLine);
+  }
+  if (hazardLine && !isRiskAssessmentHazardLineDuplicatedByHierarchy(hazardLine, hierarchyParts)) {
+    lines.push(hazardLine);
+  }
+  if (options.includeConsequences && String(row.possibleConsequences || "").trim()) {
+    lines.push(String(row.possibleConsequences || "").trim());
+  }
+  return lines.length ? lines : ["Stavka rizika"];
+}
+
+function getRiskAssessmentRiskIdentityText(row = {}, options = {}) {
+  return getRiskAssessmentRiskIdentityLines(row, options).join("\n");
 }
 
 function getRiskAssessmentCatalogSections(rows = RISK_ASSESSMENT_CATALOG_ROWS) {
@@ -133806,12 +133896,15 @@ function renderRiskAssessmentAiRiskPreview(riskRows = []) {
         const type = getRiskAssessmentRiskType(risk);
         const level = getRiskAssessmentRiskDisplayLevel(risk);
         const tone = getRiskAssessmentRiskDisplayTone(risk);
+        const identityLines = getRiskAssessmentRiskIdentityLines(createRiskAssessmentRiskRowDraft(risk));
+        const identityTitle = identityLines[0] || "Predložena stavka";
+        const identityMeta = identityLines.slice(1).join(" / ");
         return `
           <article class="is-${escapeHtml(tone)}">
             <div>
               <span class="risk-assessment-risk-type-pill is-${escapeHtml(type.value)}">${escapeHtml(type.label)}</span>
-              <strong>${escapeHtml([risk.code, risk.hazard].filter(Boolean).join(" ") || "Predložena stavka")}</strong>
-              <small>${escapeHtml([risk.category, risk.group].filter(Boolean).join(" / "))}</small>
+              <strong>${escapeHtml(identityTitle)}</strong>
+              ${identityMeta ? `<small>${escapeHtml(identityMeta)}</small>` : ""}
             </div>
             <dl>
               <div><dt>Vjerojatnost</dt><dd>${escapeHtml(getRiskAssessmentOptionLabel(RISK_ASSESSMENT_PROBABILITY_OPTIONS, risk.probability, "-"))}</dd></div>
@@ -134065,11 +134158,14 @@ function renderRiskAssessmentJobDocumentPreview(job = {}, index = 0) {
               const tone = getJobHazardRiskTone(riskLevel);
               const probabilityLabel = getRiskAssessmentOptionLabel(RISK_ASSESSMENT_PROBABILITY_OPTIONS, risk.probability, "-");
               const consequenceLabel = getRiskAssessmentOptionLabel(RISK_ASSESSMENT_CONSEQUENCE_OPTIONS, risk.consequence, "-");
+              const identityLines = getRiskAssessmentRiskIdentityLines(risk);
+              const identityTitle = identityLines[0] || "Stavka rizika";
+              const identityMeta = identityLines.slice(1).join(" / ");
               return `
                 <div>
                   <span>
-                    <strong>${escapeHtml([risk.code, risk.hazard].filter(Boolean).join(" · ") || "Stavka rizika")}</strong>
-                    <small>${escapeHtml([risk.topCategory, risk.category, risk.group].filter(Boolean).join(" / "))}</small>
+                    <strong>${escapeHtml(identityTitle)}</strong>
+                    ${identityMeta ? `<small>${escapeHtml(identityMeta)}</small>` : ""}
                   </span>
                   <span>
                     <small>${escapeHtml(probabilityLabel)} / ${escapeHtml(consequenceLabel)}</small>
@@ -137757,7 +137853,7 @@ function renderRiskAssessmentRiskCards(item = {}) {
         const riskShortLabel = getRiskAssessmentRiskShortLabel(riskLevel);
         const riskScore = getRiskAssessmentRiskScoreValue(risk);
         const riskType = getRiskAssessmentRiskType(risk);
-        const classificationText = [risk.topCategory, risk.category, risk.group].filter(Boolean).join(" / ");
+        const classificationText = getRiskAssessmentRiskHierarchyParts(risk).join(" / ");
         const workNoteValue = risk.workNote || risk.note || risk.possibleConsequences || "";
         const measuresValue = risk.existingMeasures || risk.measures || risk.additionalMeasures || "";
         return `

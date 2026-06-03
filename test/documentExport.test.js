@@ -231,12 +231,13 @@ test("docx export renders a multi-block table section placeholder", async () => 
             {
               id: "row-1",
               cells: [
-                { text: "Laboratorij" },
+                { text: "Laboratorij", format: { verticalAlign: "center" } },
                 {
                   text: "Srednji rizik",
                   format: {
                     align: "center",
                     bold: true,
+                    verticalAlign: "center",
                     card: { fillColor: "#FEF3C7", borderColor: "#94A3B8" },
                   },
                 },
@@ -265,6 +266,7 @@ test("docx export renders a multi-block table section placeholder", async () => 
   assert.match(outputXml, /w:orient="landscape"/);
   assert.match(outputXml, /w:fill="FEF3C7"/);
   assert.match(outputXml, /w:color="94A3B8"/);
+  assert.match(outputXml, /<w:vAlign w:val="center"\/>/);
   assert.match(outputXml, /<w:cantSplit\/>/);
   assert.ok((outputXml.match(/<w:tblHeader\/>/g) || []).length >= 2);
   assert.match(outputXml, /<w:gridSpan w:val="2"\/>/);
@@ -278,6 +280,7 @@ test("docx export renders a multi-block table section placeholder", async () => 
   })).html;
   assert.match(fallbackHtml, /Srednji rizik/);
   assert.match(fallbackHtml, /background-color:#FEF3C7/);
+  assert.match(fallbackHtml, /vertical-align:middle/);
   assert.match(fallbackHtml, /border-top:0\.75pt solid #94A3B8/);
   assert.match(fallbackHtml, /@page sn-word-landscape/);
   assert.match(fallbackHtml, /data-word-orientation="landscape"/);

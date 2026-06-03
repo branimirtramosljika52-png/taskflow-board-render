@@ -1598,6 +1598,7 @@ function normalizeDocxSpecialPlaceholderValue(value) {
                 underline: Boolean(format.underline),
                 fillColor: /^#[0-9a-f]{6}$/i.test(clean(format.fillColor)) ? clean(format.fillColor).toUpperCase() : "",
                 borderStyle: ["none", "bottom"].includes(clean(format.borderStyle).toLowerCase()) ? clean(format.borderStyle).toLowerCase() : "",
+                verticalAlign: ["top", "center", "middle", "bottom"].includes(clean(format.verticalAlign).toLowerCase()) ? clean(format.verticalAlign).toLowerCase() : "",
                 card,
                 border: {
                   top: Boolean(format.border?.top),
@@ -1621,6 +1622,7 @@ function normalizeDocxSpecialPlaceholderValue(value) {
               underline: false,
               fillColor: "",
               borderStyle: "",
+              verticalAlign: "",
               border: {
                 top: false,
                 right: false,
@@ -2276,6 +2278,12 @@ function buildWordTableXml(table = {}) {
       const width = sumColumnWidth(columnIndex, gridSpan);
       const fillColor = normalizeWordHexColor(format.fillColor, isHeader ? "F1F7F4" : "");
       const bordersXml = buildWordTableCellBordersXml(format, { header: isHeader });
+      const verticalAlign = clean(format.verticalAlign).toLowerCase();
+      const wordVerticalAlign = verticalAlign === "center" || verticalAlign === "middle"
+        ? "center"
+        : verticalAlign === "bottom"
+          ? "bottom"
+          : "top";
       const cellParagraphs = mergeContinuation
         ? buildWordParagraphXml("", { spacingAfter: 0 })
         : buildWordTableCellParagraphsXml(rawCell.text || "", format, {
@@ -2290,7 +2298,7 @@ function buildWordTableXml(table = {}) {
             <w:tcW w:w="${Math.max(480, width)}" w:type="dxa"/>
             ${gridSpan > 1 ? `<w:gridSpan w:val="${gridSpan}"/>` : ""}
             ${mergeAnchor?.rowSpan > 1 ? '<w:vMerge w:val="restart"/>' : mergeContinuation ? '<w:vMerge/>' : ""}
-            <w:vAlign w:val="top"/>
+            <w:vAlign w:val="${wordVerticalAlign}"/>
             <w:tcMar>
               <w:top w:w="72" w:type="dxa"/><w:left w:w="72" w:type="dxa"/><w:bottom w:w="72" w:type="dxa"/><w:right w:w="72" w:type="dxa"/>
             </w:tcMar>
@@ -4022,6 +4030,12 @@ function getHtmlTemplateCellAlign(format = {}) {
 
 function buildHtmlTemplateCellStyle(format = {}, { header = false } = {}) {
   const styles = [`text-align:${getHtmlTemplateCellAlign(format)}`];
+  const verticalAlign = clean(format.verticalAlign).toLowerCase();
+  if (verticalAlign === "center" || verticalAlign === "middle") {
+    styles.push("vertical-align:middle");
+  } else if (verticalAlign === "bottom") {
+    styles.push("vertical-align:bottom");
+  }
   const fontSize = Number(format.fontSize);
   if (Number.isFinite(fontSize)) {
     styles.push(`font-size:${Math.max(9, Math.min(40, fontSize))}px`);
@@ -7229,11 +7243,28 @@ function renderRiskAssessmentNativePdfTable(doc, helpers, table = {}) {
         doc.restore();
       }
       const textInset = format.card ? 7 : 0;
-      doc.font(format.bold || row.header ? "dejavu-bold" : "dejavu").fontSize(fontSize).fillColor(format.card?.textColor || "#111827").text(text, x + paddingX + textInset, startY + paddingY + (format.card ? 3 : 0), {
-        width: Math.max(12, width - paddingX * 2 - textInset * 2),
+      const textWidth = Math.max(12, width - paddingX * 2 - textInset * 2);
+      const textOptions = {
+        width: textWidth,
         align: format.align === "center" || row.header ? "center" : format.align === "right" ? "right" : "left",
         lineGap: 0.8,
+      };
+      const textHeight = getRiskAssessmentNativePdfCellTextHeight(doc, text, textWidth, {
+        font: format.bold || row.header ? "dejavu-bold" : "dejavu",
+        fontSize,
+        lineGap: 0.8,
       });
+      const verticalAlign = clean(format.verticalAlign).toLowerCase();
+      let textY = startY + paddingY + (format.card ? 3 : 0);
+      if (verticalAlign === "center" || verticalAlign === "middle") {
+        textY = startY + Math.max(paddingY, (height - textHeight) / 2);
+      } else if (verticalAlign === "bottom") {
+        textY = startY + Math.max(paddingY, height - paddingY - textHeight);
+      }
+      doc.font(format.bold || row.header ? "dejavu-bold" : "dejavu")
+        .fontSize(fontSize)
+        .fillColor(format.card?.textColor || "#111827")
+        .text(text, x + paddingX + textInset, textY, textOptions);
     });
     doc.y = startY + rowHeight;
   });

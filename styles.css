@@ -61349,6 +61349,7 @@ body.is-risk-stl-review-open {
 
 .risk-assessment-document-risk-table > div {
   grid-template-columns: minmax(220px, 1fr) minmax(130px, 0.45fr) minmax(180px, 0.8fr) minmax(240px, 1.1fr);
+  align-items: center;
 }
 
 .risk-assessment-document-ppe-table > div {
