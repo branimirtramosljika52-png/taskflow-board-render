@@ -61118,8 +61118,48 @@ body.is-risk-stl-review-open {
   min-width: 260px;
 }
 
-.risk-assessment-biological-risk-table .is-job-cell {
-  min-width: 170px;
+.risk-assessment-biological-risk-table td:not(.is-score-control):not(.is-risk) input,
+.risk-assessment-biological-risk-table td:not(.is-score-control):not(.is-risk) textarea,
+.risk-assessment-biological-risk-table td:not(.is-score-control):not(.is-risk) select {
+  min-height: 0;
+  margin: 0 0 3px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #0f172a;
+  font-size: 0.72rem;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
+.risk-assessment-biological-risk-table td:not(.is-score-control):not(.is-risk) textarea {
+  min-height: 0;
+  overflow: hidden;
+  resize: vertical;
+}
+
+.risk-assessment-biological-risk-table td:not(.is-score-control):not(.is-risk) select[multiple] {
+  min-height: 68px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.risk-assessment-biological-risk-table td:not(.is-score-control):not(.is-risk) input:focus,
+.risk-assessment-biological-risk-table td:not(.is-score-control):not(.is-risk) textarea:focus,
+.risk-assessment-biological-risk-table td:not(.is-score-control):not(.is-risk) select:focus {
+  border: 0;
+  background: rgba(240, 253, 244, 0.58);
+  box-shadow: inset 0 -1px 0 rgba(34, 197, 94, 0.46);
+  outline: none;
+}
+
+.risk-assessment-biological-risk-table td:not(.is-score-control):not(.is-risk) input::placeholder,
+.risk-assessment-biological-risk-table td:not(.is-score-control):not(.is-risk) textarea::placeholder {
+  color: #94a3b8;
+  font-weight: 650;
 }
 
 .risk-assessment-chemical-editor-table .is-limit-cell,
@@ -61227,6 +61267,144 @@ body.is-risk-stl-review-open {
   margin-bottom: 6px;
   padding: 6px 8px;
   font-size: 0.68rem;
+}
+
+.risk-assessment-substance-job-status {
+  margin: -2px 0 7px;
+  color: #94a3b8;
+  font-size: 0.63rem;
+  font-weight: 820;
+  line-height: 1.25;
+}
+
+.risk-assessment-substance-job-status.is-linked {
+  color: #047857;
+}
+
+.risk-assessment-substance-job-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.36);
+  backdrop-filter: blur(8px);
+}
+
+.risk-assessment-substance-job-picker-backdrop[hidden] {
+  display: none;
+}
+
+.risk-assessment-substance-job-picker-dialog {
+  display: grid;
+  gap: 14px;
+  width: min(720px, calc(100vw - 28px));
+  max-height: min(760px, calc(100vh - 32px));
+  padding: 18px;
+  overflow: hidden;
+  border: 1px solid rgba(191, 219, 254, 0.92);
+  border-radius: 22px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.99), rgba(248, 250, 252, 0.96));
+  box-shadow: 0 28px 76px rgba(15, 23, 42, 0.22);
+}
+
+.risk-assessment-substance-job-picker-head,
+.risk-assessment-substance-job-picker-actions,
+.risk-assessment-substance-job-picker-toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.risk-assessment-substance-job-picker-head > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.risk-assessment-substance-job-picker-head strong {
+  color: #0f172a;
+  font-size: 1.08rem;
+  font-weight: 950;
+}
+
+.risk-assessment-substance-job-picker-head small {
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 760;
+}
+
+.risk-assessment-substance-job-picker-toolbar {
+  justify-content: flex-start;
+}
+
+.risk-assessment-substance-job-picker-body {
+  display: grid;
+  gap: 8px;
+  max-height: min(460px, 52vh);
+  overflow: auto;
+  padding: 4px 3px 4px 0;
+}
+
+.risk-assessment-substance-job-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid rgba(203, 213, 225, 0.82);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.risk-assessment-substance-job-option:has(input:checked) {
+  border-color: rgba(34, 197, 94, 0.45);
+  background: rgba(240, 253, 244, 0.88);
+}
+
+.risk-assessment-substance-job-option input {
+  width: 16px;
+  height: 16px;
+  accent-color: #16a34a;
+}
+
+.risk-assessment-substance-job-option span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.risk-assessment-substance-job-option strong,
+.risk-assessment-substance-job-option small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.risk-assessment-substance-job-option strong {
+  color: #0f172a;
+  font-size: 0.84rem;
+  font-weight: 900;
+}
+
+.risk-assessment-substance-job-option small {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 740;
+}
+
+.risk-assessment-substance-job-picker-feedback:empty {
+  display: none;
+}
+
+.risk-assessment-substance-job-picker-actions {
+  align-items: center;
+  justify-content: flex-end;
+  padding-top: 4px;
+  border-top: 1px solid rgba(226, 232, 240, 0.86);
 }
 
 .risk-assessment-chemical-editor-table .is-empty-row {

@@ -6423,6 +6423,7 @@ let riskAssessmentOfficialSubstanceType = "all";
 let riskAssessmentBiologicalAgentQuery = "";
 let riskAssessmentBiologicalAgentCategory = "all";
 let riskAssessmentBiologicalAgentGroup = "all";
+let riskAssessmentSubstanceJobPickerState = null;
 let riskAssessmentTemplateStorageScope = "";
 let riskAssessmentModuleReportTemplateDraft = null;
 let riskAssessmentReportTemplateDraft = null;
@@ -119994,6 +119995,10 @@ riskAssessmentChemicalStlReviewCloseButton?.addEventListener("click", (event) =>
   setRiskAssessmentStlReviewOpen(false);
 });
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && riskAssessmentSubstanceJobPickerState) {
+    closeRiskAssessmentSubstanceJobPicker();
+    return;
+  }
   if (event.key === "Escape" && riskAssessmentStlReviewOpen) {
     setRiskAssessmentStlReviewOpen(false);
   }
@@ -125352,13 +125357,314 @@ function renderRiskAssessmentBiologicalScoreSelect({ field = "", value = "", opt
   `;
 }
 
-function renderRiskAssessmentBiologicalJobOptions(selectedValues = []) {
-  const selected = new Set((Array.isArray(selectedValues) ? selectedValues : []).map(String));
+function getRiskAssessmentJobDraftValue(job = {}, index = 0) {
+  return String(job.id || `job-${index + 1}`);
+}
+
+function getRiskAssessmentSubstanceDraft(kind = "", index = -1) {
+  if (kind === "biological") {
+    return riskAssessmentBiologicalRiskDrafts[index] || null;
+  }
+  if (kind === "chemical") {
+    return riskAssessmentChemicalDrafts[index] || null;
+  }
+  return null;
+}
+
+function setRiskAssessmentSubstanceDraftJobIds(kind = "", index = -1, jobIds = []) {
+  const normalizedIds = Array.from(new Set((jobIds ?? []).map(String).filter(Boolean)));
+  if (kind === "biological" && riskAssessmentBiologicalRiskDrafts[index]) {
+    riskAssessmentBiologicalRiskDrafts[index] = {
+      ...riskAssessmentBiologicalRiskDrafts[index],
+      usedInJobIds: normalizedIds,
+    };
+    return true;
+  }
+  if (kind === "chemical" && riskAssessmentChemicalDrafts[index]) {
+    riskAssessmentChemicalDrafts[index] = {
+      ...riskAssessmentChemicalDrafts[index],
+      usedInJobIds: normalizedIds,
+    };
+    return true;
+  }
+  return false;
+}
+
+function renderRiskAssessmentSubstanceDraftList(kind = "") {
+  if (kind === "biological") {
+    renderRiskAssessmentBiologicalRisks();
+    return;
+  }
+  if (kind === "chemical") {
+    renderRiskAssessmentChemicals();
+  }
+}
+
+function getRiskAssessmentSubstanceDisplayName(kind = "", entry = {}) {
+  if (kind === "biological") {
+    return entry.agentName || "Biološka štetnost";
+  }
+  return entry.name || "Kemikalija";
+}
+
+function getRiskAssessmentSubstanceKindTitle(kind = "") {
+  return kind === "biological" ? "Biološka štetnost" : "Kemijska štetnost";
+}
+
+function getRiskAssessmentSelectedSubstanceJobs(entry = {}) {
+  const selectedIds = new Set((entry.usedInJobIds ?? []).map(String).filter(Boolean));
+  if (!selectedIds.size) {
+    return [];
+  }
+  return riskAssessmentJobDrafts
+    .map((job, index) => ({ job, id: getRiskAssessmentJobDraftValue(job, index) }))
+    .filter(({ id }) => selectedIds.has(id))
+    .map(({ job }) => job);
+}
+
+function formatRiskAssessmentJobCount(count = 0) {
+  if (count === 1) {
+    return "1 posao";
+  }
+  if (count > 1 && count < 5) {
+    return `${count} posla`;
+  }
+  return `${count} poslova`;
+}
+
+function getRiskAssessmentSubstanceJobSummary(entry = {}) {
+  const selectedIds = (entry.usedInJobIds ?? []).map(String).filter(Boolean);
+  const jobs = getRiskAssessmentSelectedSubstanceJobs(entry);
+  if (!selectedIds.length) {
+    return {
+      count: 0,
+      buttonLabel: "Odaberi poslove",
+      detail: "Nije odabrano",
+    };
+  }
+  const count = jobs.length || selectedIds.length;
+  const names = jobs.map((job) => job.jobTitle).filter(Boolean);
+  return {
+    count,
+    buttonLabel: `Poslovi (${count})`,
+    detail: names.length
+      ? `${names.slice(0, 2).join(", ")}${names.length > 2 ? ` +${names.length - 2}` : ""}`
+      : formatRiskAssessmentJobCount(count),
+  };
+}
+
+function renderRiskAssessmentSubstanceJobAction(kind = "", index = -1, entry = {}) {
+  const summary = getRiskAssessmentSubstanceJobSummary(entry);
+  const attribute = kind === "biological" ? "data-risk-biological-risk-apply" : "data-risk-chemical-apply";
+  return `
+    <button type="button" class="ghost-button" ${attribute}="${escapeHtml(String(index))}">${escapeHtml(summary.buttonLabel)}</button>
+    <small class="risk-assessment-substance-job-status ${summary.count ? "is-linked" : ""}">${escapeHtml(summary.detail)}</small>
+  `;
+}
+
+function getRiskAssessmentSubstanceJobPickerElements() {
+  const backdrop = document.querySelector("[data-risk-substance-job-picker-backdrop]");
+  return {
+    backdrop,
+    title: backdrop?.querySelector?.("[data-risk-substance-job-picker-title]") || null,
+    summary: backdrop?.querySelector?.("[data-risk-substance-job-picker-summary]") || null,
+    body: backdrop?.querySelector?.("[data-risk-substance-job-picker-body]") || null,
+    feedback: backdrop?.querySelector?.("[data-risk-substance-job-picker-feedback]") || null,
+  };
+}
+
+function ensureRiskAssessmentSubstanceJobPickerDialog() {
+  const existing = getRiskAssessmentSubstanceJobPickerElements();
+  if (existing.backdrop) {
+    return existing;
+  }
+  const backdrop = document.createElement("div");
+  backdrop.className = "risk-assessment-substance-job-picker-backdrop";
+  backdrop.dataset.riskSubstanceJobPickerBackdrop = "";
+  backdrop.hidden = true;
+  backdrop.innerHTML = `
+    <section class="risk-assessment-substance-job-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="risk-assessment-substance-job-picker-title">
+      <header class="risk-assessment-substance-job-picker-head">
+        <div>
+          <span class="section-kicker">Radna mjesta</span>
+          <strong id="risk-assessment-substance-job-picker-title" data-risk-substance-job-picker-title>Odaberi poslove</strong>
+          <small data-risk-substance-job-picker-summary></small>
+        </div>
+        <button type="button" class="ghost-button" data-risk-substance-job-picker-close>Zatvori</button>
+      </header>
+      <div class="risk-assessment-substance-job-picker-toolbar">
+        <button type="button" class="ghost-button" data-risk-substance-job-picker-select-all>Označi sve</button>
+        <button type="button" class="ghost-button" data-risk-substance-job-picker-clear>Očisti</button>
+      </div>
+      <div class="risk-assessment-substance-job-picker-body" data-risk-substance-job-picker-body></div>
+      <p class="form-error risk-assessment-substance-job-picker-feedback" data-risk-substance-job-picker-feedback></p>
+      <footer class="risk-assessment-substance-job-picker-actions">
+        <button type="button" class="ghost-button" data-risk-substance-job-picker-save>Samo spremi odabir</button>
+        <button type="button" class="primary-button" data-risk-substance-job-picker-apply>Dodaj u odabrana radna mjesta</button>
+      </footer>
+    </section>
+  `;
+  backdrop.addEventListener("click", handleRiskAssessmentSubstanceJobPickerClick);
+  document.body.append(backdrop);
+  return getRiskAssessmentSubstanceJobPickerElements();
+}
+
+function renderRiskAssessmentSubstanceJobPickerOptions(kind = "", entry = {}) {
+  const selectedIds = new Set((entry.usedInJobIds ?? []).map(String).filter(Boolean));
+  if (!riskAssessmentJobDrafts.length) {
+    return `<p class="inline-help">Prvo dodaj radno mjesto u analizi radnih mjesta, pa se kemijska ili biološka štetnost može povezati s njim.</p>`;
+  }
   return riskAssessmentJobDrafts.map((job, index) => {
-    const value = String(job.id || `job-${index + 1}`);
-    const label = job.jobTitle || `Radno mjesto ${index + 1}`;
-    return `<option value="${escapeHtml(value)}"${selected.has(value) ? " selected" : ""}>${escapeHtml(label)}</option>`;
+    const value = getRiskAssessmentJobDraftValue(job, index);
+    const meta = [
+      job.organizationUnitName || job.organizationPath,
+      job.workerCount ? `${job.workerCount} radnika` : "",
+      job.completed ? "Dovršeno" : "",
+    ].filter(Boolean).join(" · ");
+    return `
+      <label class="risk-assessment-substance-job-option">
+        <input type="checkbox" data-risk-substance-job-picker-option value="${escapeHtml(value)}"${selectedIds.has(value) ? " checked" : ""}>
+        <span>
+          <strong>${escapeHtml(job.jobTitle || `Radno mjesto ${index + 1}`)}</strong>
+          <small>${escapeHtml(meta || "Radno mjesto u ovoj procjeni")}</small>
+        </span>
+      </label>
+    `;
   }).join("");
+}
+
+function renderRiskAssessmentSubstanceJobPickerDialog() {
+  const picker = ensureRiskAssessmentSubstanceJobPickerDialog();
+  const stateValue = riskAssessmentSubstanceJobPickerState || {};
+  const entry = getRiskAssessmentSubstanceDraft(stateValue.kind, stateValue.index);
+  if (!entry || !picker.backdrop) {
+    return;
+  }
+  if (picker.title) {
+    picker.title.textContent = `${getRiskAssessmentSubstanceKindTitle(stateValue.kind)} - poslovi`;
+  }
+  if (picker.summary) {
+    picker.summary.textContent = getRiskAssessmentSubstanceDisplayName(stateValue.kind, entry);
+  }
+  if (picker.body) {
+    picker.body.innerHTML = renderRiskAssessmentSubstanceJobPickerOptions(stateValue.kind, entry);
+  }
+  if (picker.feedback) {
+    picker.feedback.textContent = "";
+  }
+}
+
+function openRiskAssessmentSubstanceJobPicker(kind = "", index = -1) {
+  const entry = getRiskAssessmentSubstanceDraft(kind, index);
+  if (!entry) {
+    return;
+  }
+  riskAssessmentSubstanceJobPickerState = { kind, index };
+  const picker = ensureRiskAssessmentSubstanceJobPickerDialog();
+  renderRiskAssessmentSubstanceJobPickerDialog();
+  if (picker.backdrop) {
+    picker.backdrop.hidden = false;
+    document.body.classList.add("is-risk-substance-job-picker-open");
+    picker.backdrop.querySelector("[data-risk-substance-job-picker-option]")?.focus({ preventScroll: true });
+  }
+}
+
+function closeRiskAssessmentSubstanceJobPicker() {
+  const picker = getRiskAssessmentSubstanceJobPickerElements();
+  if (picker.backdrop) {
+    picker.backdrop.hidden = true;
+  }
+  document.body.classList.remove("is-risk-substance-job-picker-open");
+  riskAssessmentSubstanceJobPickerState = null;
+}
+
+function getRiskAssessmentSubstanceJobPickerSelectedIds() {
+  const picker = getRiskAssessmentSubstanceJobPickerElements();
+  return Array.from(picker.backdrop?.querySelectorAll("[data-risk-substance-job-picker-option]:checked") ?? [])
+    .map((input) => input.value)
+    .filter(Boolean);
+}
+
+function setRiskAssessmentSubstanceJobPickerFeedback(message = "", type = "error") {
+  const picker = getRiskAssessmentSubstanceJobPickerElements();
+  if (picker.feedback) {
+    picker.feedback.textContent = message;
+    picker.feedback.dataset.type = type;
+  }
+}
+
+function saveRiskAssessmentSubstanceJobPickerSelection({ close = false } = {}) {
+  const stateValue = riskAssessmentSubstanceJobPickerState || {};
+  if (!setRiskAssessmentSubstanceDraftJobIds(
+    stateValue.kind,
+    stateValue.index,
+    getRiskAssessmentSubstanceJobPickerSelectedIds(),
+  )) {
+    return false;
+  }
+  renderRiskAssessmentSubstanceDraftList(stateValue.kind);
+  scheduleRiskAssessmentDraftAutosave();
+  if (close) {
+    closeRiskAssessmentSubstanceJobPicker();
+  }
+  return true;
+}
+
+function applyRiskAssessmentSubstanceJobPickerSelection() {
+  const stateValue = riskAssessmentSubstanceJobPickerState || {};
+  const selectedIds = getRiskAssessmentSubstanceJobPickerSelectedIds();
+  if (!selectedIds.length) {
+    setRiskAssessmentSubstanceJobPickerFeedback("Odaberi barem jedno radno mjesto.", "error");
+    return;
+  }
+  if (!setRiskAssessmentSubstanceDraftJobIds(stateValue.kind, stateValue.index, selectedIds)) {
+    setRiskAssessmentSubstanceJobPickerFeedback("Nije pronađen redak za povezivanje.", "error");
+    return;
+  }
+  if (stateValue.kind === "biological") {
+    applyRiskAssessmentBiologicalRiskToJobs(stateValue.index);
+  } else {
+    applyRiskAssessmentChemicalToJobs(stateValue.index);
+  }
+  scheduleRiskAssessmentDraftAutosave();
+  closeRiskAssessmentSubstanceJobPicker();
+}
+
+function handleRiskAssessmentSubstanceJobPickerClick(event) {
+  const target = event.target;
+  if (!(target instanceof Element)) {
+    return;
+  }
+  if (target === event.currentTarget || target.closest("[data-risk-substance-job-picker-close]")) {
+    event.preventDefault();
+    closeRiskAssessmentSubstanceJobPicker();
+    return;
+  }
+  if (target.closest("[data-risk-substance-job-picker-select-all]")) {
+    event.preventDefault();
+    const picker = getRiskAssessmentSubstanceJobPickerElements();
+    picker.backdrop?.querySelectorAll("[data-risk-substance-job-picker-option]").forEach((input) => {
+      input.checked = true;
+    });
+    return;
+  }
+  if (target.closest("[data-risk-substance-job-picker-clear]")) {
+    event.preventDefault();
+    const picker = getRiskAssessmentSubstanceJobPickerElements();
+    picker.backdrop?.querySelectorAll("[data-risk-substance-job-picker-option]").forEach((input) => {
+      input.checked = false;
+    });
+    return;
+  }
+  if (target.closest("[data-risk-substance-job-picker-save]")) {
+    event.preventDefault();
+    saveRiskAssessmentSubstanceJobPickerSelection({ close: true });
+    return;
+  }
+  if (target.closest("[data-risk-substance-job-picker-apply]")) {
+    event.preventDefault();
+    applyRiskAssessmentSubstanceJobPickerSelection();
+  }
 }
 
 function getRiskAssessmentBiologicalRiskLinkedJobs(entry = {}) {
@@ -125366,7 +125672,7 @@ function getRiskAssessmentBiologicalRiskLinkedJobs(entry = {}) {
   if (!jobIds.size) {
     return [];
   }
-  return riskAssessmentJobDrafts.filter((job) => jobIds.has(String(job.id || "")));
+  return riskAssessmentJobDrafts.filter((job, index) => jobIds.has(getRiskAssessmentJobDraftValue(job, index)));
 }
 
 function getRiskAssessmentBiologicalRiskDisplay(entry = {}) {
@@ -125409,7 +125715,6 @@ function renderRiskAssessmentBiologicalRiskTable() {
             <th>Biološki agens / štetnost</th>
             <th>Prilog III</th>
             <th>Izvor izloženosti</th>
-            <th>Poslovi</th>
             <th>Posljedice / napomena</th>
             <th>Mjere</th>
             <th>Vjerojatnost</th>
@@ -125434,12 +125739,6 @@ function renderRiskAssessmentBiologicalRiskTable() {
                   ${renderRiskAssessmentBiologicalEditorTextInput("classification", entry.classification, "Skupina")}
                 </td>
                 <td>${renderRiskAssessmentBiologicalEditorTextarea("source", entry.source, 3, "Izvor, način prijenosa, trajanje...")}</td>
-                <td class="is-job-cell">
-                  <select data-risk-biological-risk-jobs multiple size="4">
-                    ${renderRiskAssessmentBiologicalJobOptions(entry.usedInJobIds)}
-                  </select>
-                  <small>Bez odabira znači primijeni na sve poslove.</small>
-                </td>
                 <td>
                   ${renderRiskAssessmentBiologicalEditorTextarea("possibleConsequences", entry.possibleConsequences, 2, "Moguće posljedice")}
                   ${renderRiskAssessmentBiologicalEditorTextarea("note", entry.note, 2, "Napomena")}
@@ -125469,14 +125768,14 @@ function renderRiskAssessmentBiologicalRiskTable() {
                   </output>
                 </td>
                 <td class="is-row-actions">
-                  <button type="button" class="ghost-button" data-risk-biological-risk-apply="${escapeHtml(String(index))}">Poslovi</button>
+                  ${renderRiskAssessmentSubstanceJobAction("biological", index, entry)}
                   <button type="button" class="ghost-button card-danger" data-risk-biological-risk-remove="${escapeHtml(String(index))}">Ukloni</button>
                 </td>
               </tr>
             `;
           }).join("") : `
             <tr>
-              <td colspan="11" class="is-empty-row">Nema redaka. Dodaj biološki agens ili izvor izloženosti za procjenu rizika.</td>
+              <td colspan="10" class="is-empty-row">Nema redaka. Dodaj biološki agens ili izvor izloženosti za procjenu rizika.</td>
             </tr>
           `}
         </tbody>
@@ -127027,7 +127326,7 @@ function renderRiskAssessmentChemicalEditorTable() {
                   </output>
                 </td>
                 <td class="is-row-actions">
-                  <button type="button" class="ghost-button" data-risk-chemical-apply="${escapeHtml(String(index))}">Poslovi</button>
+                  ${renderRiskAssessmentSubstanceJobAction("chemical", index, chemical)}
                   <button type="button" class="ghost-button card-danger" data-risk-chemical-remove="${escapeHtml(String(index))}">Ukloni</button>
                 </td>
               </tr>
@@ -127270,7 +127569,7 @@ function applyRiskAssessmentChemicalToJobs(index) {
   const selectedIds = new Set((chemical.usedInJobIds ?? []).map(String).filter(Boolean));
   const targetIndexes = riskAssessmentJobDrafts
     .map((job, jobIndex) => ({ job, jobIndex }))
-    .filter(({ job }) => selectedIds.size === 0 || selectedIds.has(String(job.id)))
+    .filter(({ job, jobIndex }) => selectedIds.size === 0 || selectedIds.has(getRiskAssessmentJobDraftValue(job, jobIndex)))
     .map(({ jobIndex }) => jobIndex);
   if (!targetIndexes.length) {
     setInlineMessage(riskAssessmentChemicalImportMessage || riskAssessmentError, "Dodaj barem jedan posao ili poveži kemikaliju s poslom.", "error");
@@ -127436,14 +127735,6 @@ function handleRiskAssessmentChemicalsInput(event) {
   if (index < 0) {
     return;
   }
-  if (target.matches("[data-risk-chemical-jobs]")) {
-    riskAssessmentChemicalDrafts[index] = {
-      ...riskAssessmentChemicalDrafts[index],
-      usedInJobIds: Array.from(target.selectedOptions ?? []).map((option) => option.value).filter(Boolean),
-    };
-    scheduleRiskAssessmentDraftAutosave();
-    return;
-  }
   if (target.dataset.riskChemicalListField) {
     updateRiskAssessmentChemicalListField(index, target.dataset.riskChemicalListField, target.value);
     return;
@@ -127506,7 +127797,7 @@ function handleRiskAssessmentChemicalsClick(event) {
   }
   if (button.matches("[data-risk-chemical-apply]")) {
     event.preventDefault();
-    applyRiskAssessmentChemicalToJobs(index);
+    openRiskAssessmentSubstanceJobPicker("chemical", index);
   }
 }
 
@@ -127576,7 +127867,7 @@ function applyRiskAssessmentBiologicalRiskToJobs(index) {
   const selectedIds = new Set((entry.usedInJobIds ?? []).map(String).filter(Boolean));
   const targetIndexes = riskAssessmentJobDrafts
     .map((job, jobIndex) => ({ job, jobIndex }))
-    .filter(({ job }) => selectedIds.size === 0 || selectedIds.has(String(job.id)))
+    .filter(({ job, jobIndex }) => selectedIds.size === 0 || selectedIds.has(getRiskAssessmentJobDraftValue(job, jobIndex)))
     .map(({ jobIndex }) => jobIndex);
   if (!targetIndexes.length) {
     setInlineMessage(riskAssessmentBiologicalRuleMessage || riskAssessmentError, "Dodaj barem jedan posao ili ostavi odabir prazan za primjenu na sve poslove.", "error");
@@ -127620,14 +127911,6 @@ function handleRiskAssessmentBiologicalRisksInput(event) {
   if (index < 0) {
     return;
   }
-  if (target.matches("[data-risk-biological-risk-jobs]")) {
-    riskAssessmentBiologicalRiskDrafts[index] = {
-      ...riskAssessmentBiologicalRiskDrafts[index],
-      usedInJobIds: Array.from(target.selectedOptions ?? []).map((option) => option.value).filter(Boolean),
-    };
-    scheduleRiskAssessmentDraftAutosave();
-    return;
-  }
   const field = target.dataset.riskBiologicalRiskField;
   if (!field) {
     return;
@@ -127663,7 +127946,7 @@ function handleRiskAssessmentBiologicalRisksClick(event) {
   }
   if (button.matches("[data-risk-biological-risk-apply]")) {
     event.preventDefault();
-    applyRiskAssessmentBiologicalRiskToJobs(index);
+    openRiskAssessmentSubstanceJobPicker("biological", index);
   }
 }
 
@@ -131903,7 +132186,7 @@ function getRiskAssessmentChemicalLinkedJobs(chemical = {}) {
   if (!jobIds.size) {
     return [];
   }
-  return riskAssessmentJobDrafts.filter((job) => jobIds.has(String(job.id || "")));
+  return riskAssessmentJobDrafts.filter((job, index) => jobIds.has(getRiskAssessmentJobDraftValue(job, index)));
 }
 
 function formatRiskAssessmentChemicalSpecialWorkCell(chemical = {}) {
