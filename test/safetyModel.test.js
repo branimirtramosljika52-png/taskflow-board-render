@@ -336,6 +336,7 @@ test("risk assessments keep detailed ARMOR job rows and eligibility data", () =>
               probability: "vv",
               consequence: "sš",
               riskLevel: "Veliki rizik",
+              purPoints: ["10", "18"],
               workNote: "Rad u blizini spremnika i instalacija.",
               measures: "Osigurati ventilaciju i nadzor atmosfere.",
             },
@@ -368,6 +369,7 @@ test("risk assessments keep detailed ARMOR job rows and eligibility data", () =>
   assert.equal(assessment.jobs[0].clientInput.armorNotes, "Klijent navodi dodatni rad na visini i buku.");
   assert.equal(assessment.jobs[0].eligibility.pregnantWorkers.allowed, "ne");
   assert.equal(assessment.jobs[0].riskRows[0].group, "1. Kemijske štetnosti");
+  assert.deepEqual(assessment.jobs[0].riskRows[0].purPoints, ["10", "18"]);
   assert.equal(assessment.jobs[0].riskRows[0].workNote, "Rad u blizini spremnika i instalacija.");
 
   const filtered = filterRiskAssessments([assessment], { query: "zagušljivci" });

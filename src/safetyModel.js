@@ -5525,6 +5525,7 @@ function normalizeRiskAssessmentRiskRows(items = []) {
     riskCode: normalizeText(item?.riskCode),
     riskLevel: normalizeText(item?.riskLevel),
     likelihoodConsequence: normalizeText(item?.likelihoodConsequence),
+    purPoints: normalizeJobOptionValues(item?.purPoints).slice(0, 19),
     workNote: normalizeText(item?.workNote ?? item?.jobsNote ?? item?.posloviNote),
     note: normalizeText(item?.note),
     existingMeasures: normalizeText(item?.existingMeasures),
@@ -5543,6 +5544,7 @@ function normalizeRiskAssessmentRiskRows(items = []) {
     || item.source
     || item.possibleConsequences
     || item.riskLevel
+    || item.purPoints.length > 0
     || item.workNote
     || item.note
     || item.existingMeasures

@@ -129930,6 +129930,25 @@ function formatRiskAssessmentSpecialWorkCell(job = {}) {
   ]);
 }
 
+function formatRiskAssessmentRiskSpecialWorkCell(risk = {}) {
+  const purPoints = normalizeJobPurPointValues(risk.purPoints ?? []);
+  if (!purPoints.length) {
+    return "Ne";
+  }
+  return joinUniqueRiskAssessmentTextBlocks([
+    "Da",
+    getJobPurPointSummary(purPoints),
+  ]);
+}
+
+function formatRiskAssessmentRiskSpecialWorkNote(risk = {}) {
+  const purPoints = normalizeJobPurPointValues(risk.purPoints ?? []);
+  if (!purPoints.length) {
+    return "";
+  }
+  return `Poslovi s posebnim uvjetima rada: ${getJobPurPointSummary(purPoints)}.`;
+}
+
 function getRiskAssessmentManualSpecialWorkReason(existingText = "", previousPurPoints = []) {
   const previousPurLineKeys = new Set(
     getJobPurPointFullLines(previousPurPoints).map((line) => normalizeRiskAssessmentIdentityComparable(line)),
@@ -130112,7 +130131,7 @@ function buildRiskAssessmentJobRiskExportTable(job = {}) {
             borderColor: "#94A3B8",
           },
         }),
-        createRiskAssessmentExportCell(formatRiskAssessmentSpecialWorkCell(job), bodyCenterFormat),
+        createRiskAssessmentExportCell(formatRiskAssessmentRiskSpecialWorkCell(risk), bodyCenterFormat),
         createRiskAssessmentExportCell(joinUniqueRiskAssessmentTextBlocks([risk.workNote, risk.note, risk.source]), bodyFormat),
         createRiskAssessmentExportCell(measuresText, bodyFormat),
       ]);
@@ -131855,10 +131874,16 @@ function normalizeRiskAssessmentIdentityComparable(value = "") {
     .trim();
 }
 
+function splitRiskAssessmentHierarchyParts(value = "") {
+  return String(value || "")
+    .split(/\s+\/\s+/u)
+    .map((part) => part.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+}
+
 function getRiskAssessmentPrilogOrder(row = {}) {
   const source = [row.topCategory, row.category, row.group, row.hazard]
-    .map((value) => String(value || "").trim())
-    .filter(Boolean);
+    .flatMap((value) => splitRiskAssessmentHierarchyParts(value));
   const explicitTop = source.find((value) => /^(I|II|III)\.\s/u.test(value));
   if (/^I\.\s/u.test(explicitTop || "")) return 1;
   if (/^II\.\s/u.test(explicitTop || "")) return 2;
@@ -131937,8 +131962,7 @@ function formatRiskAssessmentCodeAndLabel(code = "", label = "") {
 
 function getRiskAssessmentRiskHierarchyParts(row = {}) {
   const parts = [row.topCategory, row.category, row.group]
-    .map((part) => String(part || "").trim())
-    .filter(Boolean);
+    .flatMap((part) => splitRiskAssessmentHierarchyParts(part));
   const seen = new Set();
   return parts.filter((part) => {
     const key = normalizeRiskAssessmentIdentityComparable(part);
@@ -133296,7 +133320,7 @@ function clearRiskAssessmentDraftAutosave({ preserveStatus = false, clearServer 
 
 function renderRiskAssessmentCatalogPicker(job = {}) {
   const selectedKeys = new Set((job.riskRows ?? []).map((row) => getRiskAssessmentRiskRowKey(row)).filter(Boolean));
-  const catalogRows = getRiskAssessmentFilteredCatalogRows(job);
+  const catalogRows = sortRiskAssessmentRiskRowsByPrilogOrder(getRiskAssessmentFilteredCatalogRows(job));
   const sections = getRiskAssessmentCatalogSections(catalogRows);
   const selectedCount = selectedKeys.size;
   const pendingSelection = new Set(Array.isArray(job.catalogSelection) ? job.catalogSelection.map(String) : []);
@@ -134321,7 +134345,7 @@ function renderRiskAssessmentJobDocumentPreview(job = {}, index = 0) {
                     <small>${escapeHtml(probabilityLabel)} / ${escapeHtml(consequenceLabel)}</small>
                     <em class="risk-assessment-document-risk-pill is-${tone}">${escapeHtml(riskLevel)}</em>
                   </span>
-                  <div>${renderRiskAssessmentDocumentParagraphs(joinUniqueRiskAssessmentTextBlocks([risk.workNote, risk.note, risk.source]), "-")}</div>
+                  <div>${renderRiskAssessmentDocumentParagraphs(joinUniqueRiskAssessmentTextBlocks([risk.workNote, risk.note, risk.source, formatRiskAssessmentRiskSpecialWorkNote(risk)]), "-")}</div>
                   <div>${renderRiskAssessmentDocumentParagraphs(measuresText(risk), "-")}</div>
                 </div>
               `;
@@ -135519,6 +135543,7 @@ function createRiskAssessmentRiskRowDraft(initial = {}) {
     riskCode: String(initial.riskCode || ""),
     riskLevel: String(initial.riskLevel || calculateRiskAssessmentRiskLevel(probability, consequence) || ""),
     likelihoodConsequence: String(initial.likelihoodConsequence || ""),
+    purPoints: normalizeJobPurPointValues(initial.purPoints ?? []),
     workNote: String(initial.workNote || initial.jobsNote || initial.note || ""),
     note: String(initial.note || ""),
     existingMeasures: String(initial.existingMeasures || ""),
@@ -135553,6 +135578,7 @@ function createRiskAssessmentJobDraft(initial = {}) {
   const riskRows = Array.isArray(initial.riskRows)
     ? initial.riskRows.map((risk) => createRiskAssessmentRiskRowDraft(risk))
     : [];
+  const sortedRiskRows = sortRiskAssessmentRiskRowsByPrilogOrder(riskRows);
 
   return {
     id: String(initial.id || crypto.randomUUID()),
@@ -135629,7 +135655,7 @@ function createRiskAssessmentJobDraft(initial = {}) {
     hiddenBlocks: uniqueJobValues(initial.hiddenBlocks ?? []),
     clientInput: createRiskAssessmentClientJobInputDraft(initial.clientInput || {}),
     eligibility: createRiskAssessmentEligibilityDraft(initial.eligibility || {}),
-    riskRows: riskRows.length > 0 ? riskRows : [createRiskAssessmentRiskRowDraft()],
+    riskRows: sortedRiskRows.length > 0 ? sortedRiskRows : [createRiskAssessmentRiskRowDraft()],
   };
 }
 
@@ -135670,7 +135696,9 @@ function mergeRiskAssessmentRiskRows(currentRows = [], incomingRows = []) {
       }
     }
   });
-  return rows.filter((row, index) => index === 0 || getRiskAssessmentRiskRowKey(row) || row.measures || row.workNote);
+  return sortRiskAssessmentRiskRowsByPrilogOrder(
+    rows.filter((row, index) => index === 0 || getRiskAssessmentRiskRowKey(row) || row.measures || row.workNote),
+  );
 }
 
 function applyRiskAssessmentArmorTemplateRows(jobIndex) {
@@ -137040,6 +137068,32 @@ function updateRiskAssessmentRiskRowDraftField(jobIndex, riskIndex, field, value
   scheduleRiskAssessmentDraftAutosave();
 }
 
+function toggleRiskAssessmentRiskRowPurPoint(jobIndex, riskIndex, value = "") {
+  const current = riskAssessmentJobDrafts[jobIndex];
+  if (!current || !value || !Number.isInteger(riskIndex) || riskIndex < 0) {
+    return;
+  }
+  const riskRows = [...(current.riskRows ?? [])];
+  const row = createRiskAssessmentRiskRowDraft(riskRows[riskIndex] ?? {});
+  const selected = new Set(normalizeJobPurPointValues(row.purPoints ?? []));
+  if (selected.has(value)) {
+    selected.delete(value);
+  } else {
+    selected.add(value);
+  }
+  riskRows[riskIndex] = {
+    ...row,
+    purPoints: normalizeJobPurPointValues(Array.from(selected)),
+  };
+  riskAssessmentJobDrafts[jobIndex] = {
+    ...current,
+    riskRows,
+  };
+  renderRiskAssessmentJobs();
+  renderRiskAssessmentOverview();
+  scheduleRiskAssessmentDraftAutosave();
+}
+
 function updateRiskAssessmentEligibilityDraftField(jobIndex, key, field, value) {
   const current = riskAssessmentJobDrafts[jobIndex];
   if (!current || !key || !field) {
@@ -137563,6 +137617,16 @@ function handleRiskAssessmentJobsListClick(event) {
     return;
   }
 
+  if (button.matches("[data-risk-row-pur-point]")) {
+    event.preventDefault();
+    toggleRiskAssessmentRiskRowPurPoint(
+      jobIndex,
+      Number(button.dataset.riskRowIndex),
+      button.dataset.riskRowPurPoint || "",
+    );
+    return;
+  }
+
   if (button.matches("[data-risk-catalog-add-selected]")) {
     event.preventDefault();
     const currentJob = riskAssessmentJobDrafts[jobIndex];
@@ -137992,11 +138056,46 @@ function renderRiskAssessmentRiskScorePanel({
   `;
 }
 
+function renderRiskAssessmentRiskPurPicker(risk = {}, riskIndex = 0) {
+  const selected = new Set(normalizeJobPurPointValues(risk.purPoints ?? []));
+  const selectedCount = selected.size;
+  return `
+    <section class="risk-assessment-risk-pur-field">
+      <div class="risk-assessment-risk-pur-head">
+        <span class="risk-assessment-risk-panel-icon">${renderRiskAssessmentRiskIcon("shield")}</span>
+        <span>
+          <strong>Posebni uvjeti rada za ovu stavku</strong>
+          <small>Odaberi PUR točke koje se stvarno odnose na ovu opasnost, štetnost ili napor.</small>
+        </span>
+        <em>${escapeHtml(selectedCount ? `${selectedCount} odabrano` : "Ne")}</em>
+      </div>
+      <details class="risk-assessment-risk-pur-dropdown">
+        <summary>
+          <span>${escapeHtml(selectedCount ? getJobPurPointSummary(Array.from(selected)) : "Odaberi iz popisa prema Pravilniku")}</span>
+          <strong>Popis PUR</strong>
+        </summary>
+        <div class="risk-assessment-risk-pur-options">
+          ${JOB_PUR_POINTS.map((point) => `
+            <button type="button"
+              class="${selected.has(point.value) ? "is-selected" : ""}"
+              data-risk-row-index="${riskIndex}"
+              data-risk-row-pur-point="${escapeHtml(point.value)}"
+              title="${escapeHtml(point.description)}">
+              <span>${escapeHtml(point.value)}</span>
+              <strong>${escapeHtml(point.shortLabel || point.label)}</strong>
+              <small>${escapeHtml(point.description)}</small>
+            </button>
+          `).join("")}
+        </div>
+      </details>
+    </section>
+  `;
+}
+
 function renderRiskAssessmentRiskCards(item = {}) {
   return `
     <div class="risk-assessment-risk-cards">
-      ${sortRiskAssessmentRiskRowsByPrilogOrder((item.riskRows ?? []).map((risk, riskIndex) => ({ ...risk, riskIndex }))).map((risk) => {
-        const riskIndex = risk.riskIndex;
+      ${(item.riskRows ?? []).map((risk, riskIndex) => {
         const riskLevel = getRiskAssessmentRiskDisplayLevel(risk);
         const riskTone = getRiskAssessmentRiskDisplayTone(risk);
         const riskShortLabel = getRiskAssessmentRiskShortLabel(riskLevel);
@@ -138080,6 +138179,7 @@ function renderRiskAssessmentRiskCards(item = {}) {
                 <textarea data-risk-row-index="${riskIndex}" data-risk-row-field="existingMeasures" rows="4" placeholder="Unesite pravila, mjere i aktivnosti...">${escapeHtml(measuresValue)}</textarea>
                 <small class="risk-assessment-risk-character-count">${escapeHtml(String(getRiskAssessmentTextareaCount(measuresValue)))} / 1000</small>
               </section>
+              ${renderRiskAssessmentRiskPurPicker(risk, riskIndex)}
             </div>
           </div>
         </article>
@@ -138168,6 +138268,10 @@ function renderRiskAssessmentJobs() {
     renderRiskAssessmentOverview();
     return;
   }
+  riskAssessmentJobDrafts = riskAssessmentJobDrafts.map((job) => ({
+    ...job,
+    riskRows: sortRiskAssessmentRiskRowsByPrilogOrder(job.riskRows ?? []),
+  }));
 
   riskAssessmentJobsList.replaceChildren(...riskAssessmentJobDrafts.map((item, index) => {
     const row = document.createElement("div");
