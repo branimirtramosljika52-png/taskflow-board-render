@@ -119537,6 +119537,26 @@ riskAssessmentForm?.addEventListener("change", (event) => {
 });
 
 riskAssessmentForm?.addEventListener("click", (event) => {
+  const biologicalAddAgentButton = event.target?.closest?.("[data-risk-biological-add-agent]");
+  if (biologicalAddAgentButton) {
+    event.preventDefault();
+    const agent = RISK_ASSESSMENT_BIOLOGICAL_AGENT_BY_ID.get(biologicalAddAgentButton.dataset.riskBiologicalAddAgent || "");
+    if (agent) {
+      addRiskAssessmentBiologicalAgentToRiskTable(agent);
+    }
+    return;
+  }
+  const biologicalAddCurrentButton = event.target?.closest?.("[data-risk-biological-add-current]");
+  if (biologicalAddCurrentButton) {
+    event.preventDefault();
+    const firstAgent = getRiskAssessmentFilteredBiologicalAgents()[0] || null;
+    addRiskAssessmentBiologicalAgentToRiskTable(
+      riskAssessmentBiologicalAgentQuery.trim()
+        ? (findRiskAssessmentBiologicalCatalogAgent(riskAssessmentBiologicalAgentQuery) || riskAssessmentBiologicalAgentQuery)
+        : firstAgent,
+    );
+    return;
+  }
   const biologicalInsertButton = event.target?.closest?.("[data-risk-biological-insert]");
   if (biologicalInsertButton) {
     event.preventDefault();
@@ -125227,51 +125247,56 @@ function insertRiskAssessmentBiologicalRuleText(kind = "summary") {
   scheduleRiskAssessmentDraftAutosave();
 }
 
+function addRiskAssessmentBiologicalAgentToRiskTable(agentOrName = null) {
+  const agent = typeof agentOrName === "string"
+    ? findRiskAssessmentBiologicalCatalogAgent(agentOrName)
+    : agentOrName;
+  const typedName = typeof agentOrName === "string" ? agentOrName.trim() : "";
+  const draft = createRiskAssessmentBiologicalRiskDraft(agent
+    ? {
+      catalogId: agent.id,
+      agentName: agent.name,
+      category: agent.category,
+      group: agent.group,
+      classification: agent.classification,
+      limitedAirborneRisk: agent.limitedAirborneRisk,
+      noteCodes: agent.noteCodes,
+    }
+    : { agentName: typedName || "Biološka štetnost / izvor izloženosti" });
+  riskAssessmentBiologicalRiskDrafts.push(draft);
+  renderRiskAssessmentBiologicalRisks();
+  scheduleRiskAssessmentDraftAutosave();
+  setInlineMessage(
+    riskAssessmentBiologicalRuleMessage || riskAssessmentError,
+    `${agent ? "Agens" : "Redak"} je dodan u tablicu bioloških štetnosti.`,
+    "success",
+  );
+}
+
 function renderRiskAssessmentBiologicalRulePanel(options = {}) {
   if (!riskAssessmentBiologicalRuleContent) {
     return;
   }
   const { preserveSearchFocus = false } = options;
   const filteredAgents = getRiskAssessmentFilteredBiologicalAgents();
-  const visibleAgents = filteredAgents.slice(0, RISK_ASSESSMENT_BIOLOGICAL_AGENT_PREVIEW_LIMIT);
-  const agentRows = visibleAgents.map((agent) => `
-    <div class="risk-assessment-biological-agent-row">
-      <span class="risk-assessment-biological-agent-name">${escapeHtml(agent.name)}</span>
-      <span>${escapeHtml(agent.category)}</span>
-      <span class="risk-assessment-biological-group-pill">Skupina ${escapeHtml(agent.classification)}</span>
-      <span>${escapeHtml(formatRiskAssessmentBiologicalAgentNotes(agent))}</span>
-    </div>
+  const visibleAgents = filteredAgents.slice(0, 10);
+  const suggestionCards = visibleAgents.map((agent) => `
+    <article class="risk-assessment-biological-suggestion">
+      <div>
+        <strong>${escapeHtml(agent.name)}</strong>
+        <small>${escapeHtml(agent.category)} · Skupina ${escapeHtml(agent.classification)}${agent.noteCodes?.length ? ` · ${escapeHtml(agent.noteCodes.join(", "))}` : ""}</small>
+      </div>
+      <button type="button" class="ghost-button" data-risk-biological-add-agent="${escapeHtml(agent.id)}">Dodaj</button>
+    </article>
   `).join("");
-  const limitedMessage = filteredAgents.length > visibleAgents.length
-    ? `Prikazano prvih ${visibleAgents.length} od ${filteredAgents.length} agensa. Suzite pretragu za precizniji prikaz.`
-    : `${filteredAgents.length} agensa u prikazu.`;
+  const manualAddLabel = riskAssessmentBiologicalAgentQuery.trim()
+    ? `Dodaj "${riskAssessmentBiologicalAgentQuery.trim()}"`
+    : "Dodaj ručni redak";
   riskAssessmentBiologicalRuleContent.innerHTML = `
-    <div class="risk-assessment-biological-rule-kpis">
-      <article>
-        <span class="section-kicker">Prilog III</span>
-        <strong>${escapeHtml(String(RISK_ASSESSMENT_BIOLOGICAL_AGENT_STATS.total))} agensa</strong>
-        <small>${escapeHtml(RISK_ASSESSMENT_BIOLOGICAL_AGENT_CATEGORIES.join(" · "))}</small>
-      </article>
-      <article>
-        <span class="section-kicker">Skupine</span>
-        <strong>2: ${escapeHtml(String(RISK_ASSESSMENT_BIOLOGICAL_AGENT_STATS.byGroup?.["2"] || 0))} · 3: ${escapeHtml(String(RISK_ASSESSMENT_BIOLOGICAL_AGENT_STATS.byGroup?.["3"] || 0))} · 4: ${escapeHtml(String(RISK_ASSESSMENT_BIOLOGICAL_AGENT_STATS.byGroup?.["4"] || 0))}</strong>
-        <small>Razvrstavanje prema razini rizika od zaraze.</small>
-      </article>
-      <article>
-        <span class="section-kicker">Prilog I</span>
-        <strong>${escapeHtml(String(RISK_ASSESSMENT_BIOLOGICAL_ACTIVITY_EXAMPLES.length))} aktivnosti</strong>
-        <small>${escapeHtml(RISK_ASSESSMENT_BIOLOGICAL_ACTIVITY_EXAMPLES.slice(0, 3).join(" · "))}</small>
-      </article>
-      <article>
-        <span class="section-kicker">Prilog V / VI</span>
-        <strong>${escapeHtml(String(RISK_ASSESSMENT_BIOLOGICAL_LAB_ISOLATION_MEASURES.length + RISK_ASSESSMENT_BIOLOGICAL_INDUSTRIAL_ISOLATION_MEASURES.length))} mjera izolacije</strong>
-        <small>Laboratoriji, prostori za životinje i industrijski postupci.</small>
-      </article>
-    </div>
-    <div class="risk-assessment-biological-catalog-controls">
+    <div class="risk-assessment-biological-picker">
       <label class="field">
-        <span>Pretraga agensa</span>
-        <input type="search" data-risk-biological-search placeholder="npr. SARS, Salmonella, hepatitis..." value="${escapeHtml(riskAssessmentBiologicalAgentQuery)}">
+        <span>Pretraga / ručni unos</span>
+        <input type="search" data-risk-biological-search placeholder="npr. SARS, Salmonella, otpad, krv, životinje..." value="${escapeHtml(riskAssessmentBiologicalAgentQuery)}">
       </label>
       <label class="field">
         <span>Kategorija</span>
@@ -125281,20 +125306,14 @@ function renderRiskAssessmentBiologicalRulePanel(options = {}) {
         <span>Skupina</span>
         <select data-risk-biological-filter="group">${renderRiskAssessmentBiologicalGroupOptions()}</select>
       </label>
+      <button type="button" class="secondary-button" data-risk-biological-add-current>${escapeHtml(manualAddLabel)}</button>
     </div>
-    <section class="risk-assessment-biological-agent-table" aria-label="Katalog bioloških agensa">
-      <div class="risk-assessment-biological-agent-head">
-        <strong>Katalog agensa</strong>
-        <a href="${escapeHtml(RISK_ASSESSMENT_BIOLOGICAL_SOURCE_URL)}" target="_blank" rel="noopener">NN 129/2020</a>
+    <section class="risk-assessment-biological-suggestions" aria-label="Brzi odabir bioloških štetnosti">
+      <div class="risk-assessment-biological-suggestions-head">
+        <strong>Brzi prijedlozi</strong>
+        <span>${escapeHtml(String(filteredAgents.length))} mogućih odabira</span>
       </div>
-      <div class="risk-assessment-biological-agent-row is-header">
-        <span>Biološki agens</span>
-        <span>Kategorija</span>
-        <span>Klasifikacija</span>
-        <span>Napomene</span>
-      </div>
-      ${agentRows || `<p class="inline-help">Nema agensa za odabrane filtre.</p>`}
-      <p class="inline-help">${escapeHtml(limitedMessage)}</p>
+      ${suggestionCards || `<p class="inline-help">Nema prijedloga za odabrani filter. Dodaj ručni redak i upiši podatke u tablicu.</p>`}
     </section>
   `;
   if (preserveSearchFocus) {
