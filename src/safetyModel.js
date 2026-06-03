@@ -6194,6 +6194,7 @@ export function normalizeJobAiInstructions(value = {}) {
           mustInclude: normalizeText(data.mustInclude),
           avoid: normalizeText(data.avoid),
           style: normalizeText(data.style) || "professional",
+          textLength: normalizeText(data.textLength),
           probability: normalizeText(data.probability),
           consequence: normalizeText(data.consequence),
           possibleConsequences: normalizeText(data.possibleConsequences),
@@ -6209,6 +6210,7 @@ export function normalizeJobAiInstructions(value = {}) {
         || data.mustInclude
         || data.avoid
         || data.style !== "professional"
+        || data.textLength
         || data.probability
         || data.consequence
         || data.possibleConsequences

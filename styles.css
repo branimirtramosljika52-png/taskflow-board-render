@@ -5162,7 +5162,7 @@ body.is-profile-modal-open {
 }
 
 .settings-job-ai-group-head span,
-.settings-job-ai-card summary small {
+.settings-job-ai-card-open small {
   padding: 4px 8px;
   border-radius: 999px;
   background: rgba(91, 77, 255, 0.08);
@@ -5184,11 +5184,14 @@ body.is-profile-modal-open {
   background: rgba(255, 255, 255, 0.9);
   overflow: hidden;
   box-shadow: 0 10px 24px rgba(40, 55, 95, 0.05);
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease, transform 160ms ease;
 }
 
 .settings-job-ai-card.is-configured {
-  border-color: rgba(110, 86, 255, 0.42);
-  box-shadow: 0 14px 30px rgba(91, 77, 255, 0.12);
+  border-color: rgba(34, 197, 94, 0.6);
+  background:
+    linear-gradient(135deg, rgba(236, 253, 245, 0.98), rgba(255, 255, 255, 0.94));
+  box-shadow: 0 14px 30px rgba(21, 128, 61, 0.12);
 }
 
 .settings-job-ai-card.is-risk-row {
@@ -5201,22 +5204,28 @@ body.is-profile-modal-open {
     linear-gradient(135deg, rgba(255, 251, 235, 0.96), rgba(255, 255, 255, 0.92));
 }
 
-.settings-job-ai-card summary {
+.settings-job-ai-card-open {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  width: 100%;
   min-height: 44px;
   padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
   cursor: pointer;
-  list-style: none;
+  text-align: left;
 }
 
-.settings-job-ai-card summary::-webkit-details-marker {
-  display: none;
+.settings-job-ai-card-open:hover,
+.settings-job-ai-card-open:focus-visible {
+  outline: none;
+  transform: translateY(-1px);
 }
 
-.settings-job-ai-card summary span {
+.settings-job-ai-card-open span {
   display: grid;
   gap: 2px;
   min-width: 0;
@@ -5228,13 +5237,24 @@ body.is-profile-modal-open {
   white-space: nowrap;
 }
 
-.settings-job-ai-card summary span em {
+.settings-job-ai-card-open span em {
   overflow: hidden;
   color: #64748b;
   font-size: 0.68rem;
   font-style: normal;
   font-weight: 760;
   text-overflow: ellipsis;
+}
+
+.settings-job-ai-card.is-configured .settings-job-ai-card-status,
+.settings-job-ai-group-head span.has-progress {
+  background: rgba(34, 197, 94, 0.12);
+  color: #15803d;
+}
+
+.settings-job-ai-group-head span.is-complete {
+  background: rgba(22, 163, 74, 0.16);
+  color: #166534;
 }
 
 .settings-job-ai-card-body {
@@ -5284,6 +5304,84 @@ body.is-profile-modal-open {
   white-space: nowrap;
 }
 
+.settings-job-ai-modal-backdrop:not([hidden]) {
+  position: fixed;
+  inset: 0;
+  z-index: 2200;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  background: rgba(15, 23, 42, 0.36);
+  backdrop-filter: blur(8px);
+}
+
+.settings-job-ai-modal {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(920px, 100%);
+  max-height: min(88vh, 820px);
+  overflow: hidden;
+  border: 1px solid rgba(190, 204, 226, 0.92);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at top left, rgba(34, 197, 94, 0.10), transparent 30%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.99), rgba(248, 251, 255, 0.97));
+  box-shadow: 0 32px 90px rgba(15, 23, 42, 0.26);
+}
+
+.settings-job-ai-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid rgba(199, 210, 254, 0.72);
+}
+
+.settings-job-ai-modal-head > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.settings-job-ai-modal-head strong {
+  color: #0f172a;
+  font-size: 1.06rem;
+  font-weight: 950;
+}
+
+.settings-job-ai-modal-head small {
+  overflow: hidden;
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-job-ai-modal-body {
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 20px 18px;
+}
+
+.settings-job-ai-modal-body .settings-job-ai-card-body {
+  padding: 0;
+}
+
+.settings-job-ai-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px 18px;
+  border-top: 1px solid rgba(199, 210, 254, 0.72);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+body.is-settings-job-ai-modal-open {
+  overflow: hidden;
+}
+
 .settings-module-actions {
   display: flex;
   justify-content: flex-end;
@@ -5325,6 +5423,27 @@ body.is-profile-modal-open {
   .settings-job-ai-rulebook,
   .settings-job-ai-card-list,
   .settings-job-ai-card-body {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-job-ai-modal-backdrop:not([hidden]) {
+    padding: 10px;
+  }
+
+  .settings-job-ai-modal {
+    max-height: 94vh;
+    border-radius: 18px;
+  }
+
+  .settings-job-ai-modal-head,
+  .settings-job-ai-modal-body,
+  .settings-job-ai-modal-actions {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .settings-job-ai-modal-actions {
+    display: grid;
     grid-template-columns: 1fr;
   }
 

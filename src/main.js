@@ -3542,6 +3542,10 @@ const settingsWorkOrderServiceFactorsList = document.querySelector("#settings-wo
 const settingsJobAiFields = document.querySelector("#settings-job-ai-fields");
 const settingsJobAiSaveButton = document.querySelector("#settings-job-ai-save");
 const settingsJobAiFeedback = document.querySelector("#settings-job-ai-feedback");
+let settingsJobAiInstructionDrafts = {};
+let settingsJobAiDraftInitialized = false;
+let settingsJobAiActiveModalKey = "";
+let settingsJobAiModalElements = null;
 const settingsSaveAllButton = document.querySelector("#settings-save-all");
 const settingsOrganizationLogoDataUrlInput = document.querySelector("#settings-organization-logo-data-url");
 const settingsOrganizationLogoFileInput = document.querySelector("#settings-organization-logo-file");
@@ -122443,7 +122447,18 @@ settingsSaveAllButton?.addEventListener("click", () => {
 });
 
 settingsJobAiSaveButton?.addEventListener("click", () => {
+  syncSettingsJobAiActiveModalDraft();
   void saveSettingsJobAiSettings();
+});
+
+settingsJobAiFields?.addEventListener("click", (event) => {
+  const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+  const button = target?.closest("[data-settings-job-ai-open]");
+  if (!(button instanceof HTMLElement)) {
+    return;
+  }
+  event.preventDefault();
+  openSettingsJobAiModal(button.dataset.settingsJobAiOpen || "");
 });
 
 settingsOrganizationLogoUploadButton?.addEventListener("click", () => {
@@ -127786,6 +127801,7 @@ function normalizeJobAiInstructionConfig(config = {}) {
     mustInclude: String(source.mustInclude || "").trim(),
     avoid: String(source.avoid || "").trim(),
     style: JOB_AI_STYLE_LABELS[style] ? style : "professional",
+    textLength: String(source.textLength || "").trim(),
     probability: ["mv", "v", "vv"].includes(probability) ? probability : "",
     consequence,
     possibleConsequences: String(source.possibleConsequences || "").trim(),
@@ -127804,6 +127820,7 @@ function hasJobAiInstructionConfig(config = {}) {
     || normalized.mustInclude
     || normalized.avoid
     || normalized.style !== "professional"
+    || normalized.textLength
     || normalized.probability
     || normalized.consequence
     || normalized.possibleConsequences
@@ -128197,31 +128214,65 @@ function getJobAiSettingsFieldDefinitions() {
   ];
 }
 
+function getSettingsJobAiFieldDefinition(key = "") {
+  const normalizedKey = String(key || "").trim();
+  return getJobAiSettingsFieldDefinitions().find((field) => field.key === normalizedKey) ?? null;
+}
+
+function getSettingsJobAiDraftConfig(key = "") {
+  return normalizeJobAiInstructionConfig(settingsJobAiInstructionDrafts[String(key || "").trim()] ?? {});
+}
+
+function collectSettingsJobAiConfigFromContainer(container = null) {
+  if (!container) {
+    return normalizeJobAiInstructionConfig();
+  }
+  return normalizeJobAiInstructionConfig({
+    instruction: container.querySelector('[data-settings-job-ai-field="instruction"]')?.value || "",
+    mustInclude: container.querySelector('[data-settings-job-ai-field="mustInclude"]')?.value || "",
+    avoid: container.querySelector('[data-settings-job-ai-field="avoid"]')?.value || "",
+    style: container.querySelector('[data-settings-job-ai-field="style"]')?.value || "professional",
+    textLength: container.querySelector('[data-settings-job-ai-field="textLength"]')?.value || "",
+    probability: container.querySelector('[data-settings-job-ai-field="probability"]')?.value || "",
+    consequence: container.querySelector('[data-settings-job-ai-field="consequence"]')?.value || "",
+    possibleConsequences: container.querySelector('[data-settings-job-ai-field="possibleConsequences"]')?.value || "",
+    workNote: container.querySelector('[data-settings-job-ai-field="workNote"]')?.value || "",
+    note: container.querySelector('[data-settings-job-ai-field="note"]')?.value || "",
+    existingMeasures: container.querySelector('[data-settings-job-ai-field="existingMeasures"]')?.value || "",
+    additionalMeasures: container.querySelector('[data-settings-job-ai-field="additionalMeasures"]')?.value || "",
+    measures: container.querySelector('[data-settings-job-ai-field="measures"]')?.value || "",
+  });
+}
+
+function setSettingsJobAiDraftConfig(key = "", config = {}) {
+  const normalizedKey = String(key || "").trim();
+  if (!normalizedKey) {
+    return;
+  }
+  const normalizedConfig = normalizeJobAiInstructionConfig(config);
+  if (hasJobAiInstructionConfig(normalizedConfig)) {
+    settingsJobAiInstructionDrafts[normalizedKey] = normalizedConfig;
+  } else {
+    delete settingsJobAiInstructionDrafts[normalizedKey];
+  }
+}
+
+function syncSettingsJobAiActiveModalDraft() {
+  if (!settingsJobAiActiveModalKey || !settingsJobAiModalElements?.body) {
+    return;
+  }
+  setSettingsJobAiDraftConfig(
+    settingsJobAiActiveModalKey,
+    collectSettingsJobAiConfigFromContainer(settingsJobAiModalElements.body),
+  );
+}
+
 function collectSettingsJobAiInstructions() {
-  if (!settingsJobAiFields) {
+  if (!settingsJobAiFields || !settingsJobAiDraftInitialized) {
     return getJobAiSettings().aiInstructions;
   }
-  const entries = Array.from(settingsJobAiFields.querySelectorAll("[data-settings-job-ai-key]"))
-    .map((card) => {
-      const key = String(card.dataset.settingsJobAiKey || "").trim();
-      const config = normalizeJobAiInstructionConfig({
-        instruction: card.querySelector('[data-settings-job-ai-field="instruction"]')?.value || "",
-        mustInclude: card.querySelector('[data-settings-job-ai-field="mustInclude"]')?.value || "",
-        avoid: card.querySelector('[data-settings-job-ai-field="avoid"]')?.value || "",
-        style: card.querySelector('[data-settings-job-ai-field="style"]')?.value || "professional",
-        probability: card.querySelector('[data-settings-job-ai-field="probability"]')?.value || "",
-        consequence: card.querySelector('[data-settings-job-ai-field="consequence"]')?.value || "",
-        possibleConsequences: card.querySelector('[data-settings-job-ai-field="possibleConsequences"]')?.value || "",
-        workNote: card.querySelector('[data-settings-job-ai-field="workNote"]')?.value || "",
-        note: card.querySelector('[data-settings-job-ai-field="note"]')?.value || "",
-        existingMeasures: card.querySelector('[data-settings-job-ai-field="existingMeasures"]')?.value || "",
-        additionalMeasures: card.querySelector('[data-settings-job-ai-field="additionalMeasures"]')?.value || "",
-        measures: card.querySelector('[data-settings-job-ai-field="measures"]')?.value || "",
-      });
-      return [key, config];
-    })
-    .filter(([key, config]) => key && hasJobAiInstructionConfig(config));
-  return Object.fromEntries(entries);
+  syncSettingsJobAiActiveModalDraft();
+  return normalizeJobAiInstructionDrafts(settingsJobAiInstructionDrafts);
 }
 
 function renderSettingsJobAiSelectOptions(options = [], selectedValue = "", emptyLabel = "Default") {
@@ -128247,6 +128298,10 @@ function renderSettingsJobAiGeneralCard(field = {}, config = {}, canManage = fal
             `<option value="${escapeHtml(value)}"${value === config.style ? " selected" : ""}>${escapeHtml(label)}</option>`
           )).join("")}
         </select>
+      </label>
+      <label class="field">
+        <span>Duljina teksta</span>
+        <input data-settings-job-ai-field="textLength" value="${escapeHtml(config.textLength)}" placeholder="npr. 1-2 rečenice, do 400 znakova" ${canManage ? "" : "disabled"} />
       </label>
       <label class="field">
         <span>Mora uključiti</span>
@@ -128282,6 +128337,10 @@ function renderSettingsJobAiRiskRowCard(field = {}, config = {}, canManage = fal
         <select data-settings-job-ai-field="consequence" ${canManage ? "" : "disabled"}>
           ${renderSettingsJobAiSelectOptions(RISK_ASSESSMENT_CONSEQUENCE_OPTIONS, config.consequence, "Default")}
         </select>
+      </label>
+      <label class="field field-span-full">
+        <span>Duljina teksta</span>
+        <input data-settings-job-ai-field="textLength" value="${escapeHtml(config.textLength)}" placeholder="npr. kratko: 1 rečenica; standard: 3-5 rečenica; do 500 znakova" ${canManage ? "" : "disabled"} />
       </label>
       <label class="field field-span-full">
         <span>Kada AI smije odabrati ovu stavku</span>
@@ -128344,6 +128403,10 @@ function renderSettingsJobAiPurPointCard(field = {}, config = {}, canManage = fa
         <input data-settings-job-ai-field="avoid" value="${escapeHtml(config.avoid)}" placeholder="npr. uredski posao, nema stvarne izloženosti" ${canManage ? "" : "disabled"} />
       </label>
       <label class="field field-span-full">
+        <span>Duljina teksta</span>
+        <input data-settings-job-ai-field="textLength" value="${escapeHtml(config.textLength)}" placeholder="npr. jedna kratka rečenica, do 300 znakova" ${canManage ? "" : "disabled"} />
+      </label>
+      <label class="field field-span-full">
         <span>AI opis / okolnosti za procjenu</span>
         <textarea data-settings-job-ai-field="workNote" rows="3" placeholder="Tekst koji se upisuje u obrazloženje PUR-a za radno mjesto. Možeš koristiti {posao}, {opis_posla}, {pur_tocka}." ${canManage ? "" : "disabled"}>${escapeHtml(config.workNote)}</textarea>
       </label>
@@ -128361,7 +128424,9 @@ function renderSettingsJobAiFields(settings = getJobAiSettings()) {
   }
 
   const canManage = getCanManageJobNexAiSettings();
-  const instructions = normalizeJobAiInstructionDrafts(settings.aiInstructions ?? {});
+  settingsJobAiInstructionDrafts = normalizeJobAiInstructionDrafts(settings.aiInstructions ?? {});
+  settingsJobAiDraftInitialized = true;
+  const instructions = settingsJobAiInstructionDrafts;
   const groups = getJobAiSettingsFieldDefinitions().reduce((map, field) => {
     if (!map.has(field.group)) {
       map.set(field.group, []);
@@ -128377,24 +128442,20 @@ function renderSettingsJobAiFields(settings = getJobAiSettings()) {
       const config = normalizeJobAiInstructionConfig(instructions[field.key] ?? {});
       const configured = hasJobAiInstructionConfig(config);
       const meta = field.meta && field.type !== "riskRow" ? `<em>${escapeHtml(field.meta)}</em>` : "";
+      const lengthMeta = config.textLength ? `<em>Duljina: ${escapeHtml(config.textLength)}</em>` : "";
       return `
-        <details class="settings-job-ai-card ${field.type === "riskRow" ? "is-risk-row" : ""} ${field.type === "purPoint" ? "is-pur-point" : ""} ${configured ? "is-configured" : ""}" data-settings-job-ai-key="${escapeHtml(field.key)}">
-          <summary>
-            <span>${escapeHtml(field.label)}${meta}</span>
-            <small>${configured ? "Upute postavljene" : "Default NexAI"}</small>
-          </summary>
-          ${field.type === "riskRow"
-            ? renderSettingsJobAiRiskRowCard(field, config, canManage)
-            : field.type === "purPoint"
-              ? renderSettingsJobAiPurPointCard(field, config, canManage)
-              : renderSettingsJobAiGeneralCard(field, config, canManage)}
-        </details>
+        <article class="settings-job-ai-card ${field.type === "riskRow" ? "is-risk-row" : ""} ${field.type === "purPoint" ? "is-pur-point" : ""} ${configured ? "is-configured" : ""}" data-settings-job-ai-card="${escapeHtml(field.key)}">
+          <button type="button" class="settings-job-ai-card-open" data-settings-job-ai-open="${escapeHtml(field.key)}">
+            <span>${escapeHtml(field.label)}${meta}${lengthMeta}</span>
+            <small class="settings-job-ai-card-status">${configured ? "Odrađeno" : "Default NexAI"}</small>
+          </button>
+        </article>
       `;
     }).join("");
     section.innerHTML = `
-      <div class="settings-job-ai-group-head">
+      <div class="settings-job-ai-group-head" data-settings-job-ai-group-head>
         <strong>${escapeHtml(group)}</strong>
-        <span>${fields.filter((field) => hasJobAiInstructionConfig(instructions[field.key])).length}/${fields.length}</span>
+        <span data-settings-job-ai-group-count>${fields.filter((field) => hasJobAiInstructionConfig(instructions[field.key])).length}/${fields.length}</span>
       </div>
       <div class="settings-job-ai-card-list">${cards}</div>
     `;
@@ -128405,6 +128466,164 @@ function renderSettingsJobAiFields(settings = getJobAiSettings()) {
     settingsJobAiSaveButton.hidden = !canManage;
     settingsJobAiSaveButton.disabled = !canManage;
   }
+}
+
+function refreshSettingsJobAiCardStatuses() {
+  if (!settingsJobAiFields) {
+    return;
+  }
+  const instructions = normalizeJobAiInstructionDrafts(settingsJobAiInstructionDrafts);
+  settingsJobAiFields.querySelectorAll("[data-settings-job-ai-card]").forEach((card) => {
+    const key = String(card.dataset.settingsJobAiCard || "").trim();
+    const config = normalizeJobAiInstructionConfig(instructions[key] ?? {});
+    const configured = hasJobAiInstructionConfig(config);
+    card.classList.toggle("is-configured", configured);
+    const status = card.querySelector(".settings-job-ai-card-status");
+    if (status) {
+      status.textContent = configured ? "Odrađeno" : "Default NexAI";
+    }
+    const title = card.querySelector(".settings-job-ai-card-open > span");
+    const field = getSettingsJobAiFieldDefinition(key);
+    if (title && field) {
+      const meta = field.meta && field.type !== "riskRow" ? `<em>${escapeHtml(field.meta)}</em>` : "";
+      const lengthMeta = config.textLength ? `<em>Duljina: ${escapeHtml(config.textLength)}</em>` : "";
+      title.innerHTML = `${escapeHtml(field.label)}${meta}${lengthMeta}`;
+    }
+  });
+  settingsJobAiFields.querySelectorAll(".settings-job-ai-group").forEach((group) => {
+    const cards = Array.from(group.querySelectorAll("[data-settings-job-ai-card]"));
+    const configuredCount = cards.filter((card) => card.classList.contains("is-configured")).length;
+    const count = group.querySelector("[data-settings-job-ai-group-count]");
+    if (count) {
+      count.textContent = `${configuredCount}/${cards.length}`;
+      count.classList.toggle("is-complete", configuredCount === cards.length && cards.length > 0);
+      count.classList.toggle("has-progress", configuredCount > 0);
+    }
+  });
+}
+
+function ensureSettingsJobAiModal() {
+  if (settingsJobAiModalElements) {
+    return settingsJobAiModalElements;
+  }
+  const backdrop = document.createElement("div");
+  backdrop.className = "settings-job-ai-modal-backdrop";
+  backdrop.hidden = true;
+  backdrop.innerHTML = `
+    <section class="settings-job-ai-modal" role="dialog" aria-modal="true" aria-labelledby="settings-job-ai-modal-title">
+      <header class="settings-job-ai-modal-head">
+        <div>
+          <span class="section-kicker">Jobs · NexAI</span>
+          <strong id="settings-job-ai-modal-title">AI polje</strong>
+          <small data-settings-job-ai-modal-meta></small>
+        </div>
+        <button type="button" class="icon-button" data-settings-job-ai-modal-close aria-label="Zatvori">×</button>
+      </header>
+      <div class="settings-job-ai-modal-body" data-settings-job-ai-modal-body></div>
+      <footer class="settings-job-ai-modal-actions">
+        <button type="button" class="ghost-button" data-settings-job-ai-modal-clear>Očisti polje</button>
+        <button type="button" class="primary-button" data-settings-job-ai-modal-apply>Gotovo</button>
+      </footer>
+    </section>
+  `;
+  document.body.appendChild(backdrop);
+  settingsJobAiModalElements = {
+    backdrop,
+    title: backdrop.querySelector("#settings-job-ai-modal-title"),
+    meta: backdrop.querySelector("[data-settings-job-ai-modal-meta]"),
+    body: backdrop.querySelector("[data-settings-job-ai-modal-body]"),
+    closeButton: backdrop.querySelector("[data-settings-job-ai-modal-close]"),
+    clearButton: backdrop.querySelector("[data-settings-job-ai-modal-clear]"),
+    applyButton: backdrop.querySelector("[data-settings-job-ai-modal-apply]"),
+  };
+
+  const closeModal = () => closeSettingsJobAiModal();
+  settingsJobAiModalElements.closeButton?.addEventListener("click", closeModal);
+  settingsJobAiModalElements.applyButton?.addEventListener("click", closeModal);
+  settingsJobAiModalElements.clearButton?.addEventListener("click", () => {
+    if (!settingsJobAiActiveModalKey || !settingsJobAiModalElements?.body) {
+      return;
+    }
+    settingsJobAiModalElements.body.querySelectorAll("input, textarea").forEach((input) => {
+      input.value = "";
+    });
+    settingsJobAiModalElements.body.querySelectorAll("select").forEach((select) => {
+      select.value = select.querySelector("option")?.value || "";
+    });
+    setSettingsJobAiDraftConfig(settingsJobAiActiveModalKey, collectSettingsJobAiConfigFromContainer(settingsJobAiModalElements.body));
+    refreshSettingsJobAiCardStatuses();
+  });
+  settingsJobAiModalElements.body?.addEventListener("input", () => {
+    syncSettingsJobAiActiveModalDraft();
+    refreshSettingsJobAiCardStatuses();
+  });
+  settingsJobAiModalElements.body?.addEventListener("change", () => {
+    syncSettingsJobAiActiveModalDraft();
+    refreshSettingsJobAiCardStatuses();
+  });
+  backdrop.addEventListener("click", (event) => {
+    if (event.target === backdrop) {
+      closeSettingsJobAiModal();
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !backdrop.hidden && settingsJobAiActiveModalKey) {
+      closeSettingsJobAiModal();
+    }
+  });
+  return settingsJobAiModalElements;
+}
+
+function renderSettingsJobAiModalBody(field = {}, config = {}, canManage = false) {
+  if (field.type === "riskRow") {
+    return renderSettingsJobAiRiskRowCard(field, config, canManage);
+  }
+  if (field.type === "purPoint") {
+    return renderSettingsJobAiPurPointCard(field, config, canManage);
+  }
+  return renderSettingsJobAiGeneralCard(field, config, canManage);
+}
+
+function openSettingsJobAiModal(key = "") {
+  const normalizedKey = String(key || "").trim();
+  const field = getSettingsJobAiFieldDefinition(normalizedKey);
+  if (!field) {
+    return;
+  }
+  const modal = ensureSettingsJobAiModal();
+  const canManage = getCanManageJobNexAiSettings();
+  settingsJobAiActiveModalKey = normalizedKey;
+  const config = getSettingsJobAiDraftConfig(normalizedKey);
+  if (modal.title) {
+    modal.title.textContent = field.label || "AI polje";
+  }
+  if (modal.meta) {
+    modal.meta.textContent = [field.group, field.meta].filter(Boolean).join(" · ");
+  }
+  if (modal.body) {
+    modal.body.innerHTML = renderSettingsJobAiModalBody(field, config, canManage);
+  }
+  if (modal.clearButton) {
+    modal.clearButton.hidden = !canManage;
+  }
+  if (modal.applyButton) {
+    modal.applyButton.textContent = canManage ? "Gotovo" : "Zatvori";
+  }
+  modal.backdrop.hidden = false;
+  document.body.classList.add("is-settings-job-ai-modal-open");
+  requestAnimationFrame(() => {
+    modal.body?.querySelector("textarea, input, select")?.focus({ preventScroll: true });
+  });
+}
+
+function closeSettingsJobAiModal() {
+  syncSettingsJobAiActiveModalDraft();
+  refreshSettingsJobAiCardStatuses();
+  if (settingsJobAiModalElements?.backdrop) {
+    settingsJobAiModalElements.backdrop.hidden = true;
+  }
+  settingsJobAiActiveModalKey = "";
+  document.body.classList.remove("is-settings-job-ai-modal-open");
 }
 
 function applyJobAiInstructionToText(text = "", kind = "description") {
@@ -128428,6 +128647,9 @@ function applyJobAiInstructionToText(text = "", kind = "description") {
   }
   if (config.mustInclude) {
     additions.push(`Obavezno uključiti: ${config.mustInclude}.`);
+  }
+  if (config.textLength) {
+    additions.push(`Duljina teksta: ${config.textLength}.`);
   }
   return [output, ...additions].filter(Boolean).join(" ");
 }

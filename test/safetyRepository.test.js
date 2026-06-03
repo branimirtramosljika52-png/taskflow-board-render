@@ -520,6 +520,7 @@ test("in-memory safety repository stores Jobs NexAI settings per organization", 
         mustInclude: "rad kod klijenta",
         avoid: "ne izmisljati opremu",
         style: "short",
+        textLength: "do 400 znakova",
       },
       "purPoint:19.1": {
         instruction: "Koristi za prometne poslove prema posebnom propisu.",
@@ -535,6 +536,7 @@ test("in-memory safety repository stores Jobs NexAI settings per organization", 
   });
 
   assert.equal(saved.aiInstructions.description.style, "short");
+  assert.equal(saved.aiInstructions.description.textLength, "do 400 znakova");
   assert.equal(saved.aiInstructions["purPoint:19.1"].workNote, "Poseban propis trazi provjeru zdravstvene sposobnosti.");
   assert.equal(saved.aiInstructions["riskRow:i opasnosti::2 opasnosti od padova::2.1.3::s visine"].probability, "v");
   assert.equal(saved.aiInstructions["riskRow:i opasnosti::2 opasnosti od padova::2.1.3::s visine"].existingMeasures, "Koristiti zaštitu od pada.");
@@ -542,6 +544,7 @@ test("in-memory safety repository stores Jobs NexAI settings per organization", 
   const snapshot = await repository.getSnapshot();
   assert.equal(snapshot.jobAiSettings.length, 1);
   assert.equal(snapshot.jobAiSettings[0].aiInstructions.description.mustInclude, "rad kod klijenta");
+  assert.equal(snapshot.jobAiSettings[0].aiInstructions.description.textLength, "do 400 znakova");
   assert.equal(snapshot.jobAiSettings[0].aiInstructions["purPoint:19.1"].instruction, "Koristi za prometne poslove prema posebnom propisu.");
   assert.equal(snapshot.jobAiSettings[0].aiInstructions["riskRow:i opasnosti::2 opasnosti od padova::2.1.3::s visine"].workNote, "Popunjava se samo za stvarni rad na visini.");
 });

@@ -219,6 +219,7 @@ test("jobs keep environment, conditions and hazard catalog details", () => {
           mustInclude: "rad kod klijenta",
           avoid: "ne izmisljati opremu",
           style: "short",
+          textLength: "1-2 recenice",
         },
         "purPoint:19.1": {
           instruction: "Odabrati za sigurnosno kriticne poslove u prometu.",
@@ -260,6 +261,7 @@ test("jobs keep environment, conditions and hazard catalog details", () => {
   assert.deepEqual(job.conditions.purPoints, ["17", "19.1"]);
   assert.equal(job.aiInstructions.description.style, "short");
   assert.equal(job.aiInstructions.description.mustInclude, "rad kod klijenta");
+  assert.equal(job.aiInstructions.description.textLength, "1-2 recenice");
   assert.equal(job.aiInstructions["purPoint:19.1"].workNote, "Posebni propis trazi provjeru sposobnosti za prometne poslove.");
   assert.equal(job.aiInstructions["riskRow:i opasnosti::2 opasnosti od padova::2.1.3::s visine"].consequence, "iš");
   assert.equal(job.aiInstructions["riskRow:i opasnosti::2 opasnosti od padova::2.1.3::s visine"].workNote, "Samo kada radnik stvarno radi na visini.");
