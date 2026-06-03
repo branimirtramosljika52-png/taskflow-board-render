@@ -126508,6 +126508,17 @@ function renderRiskAssessmentChemicalEditorListTextarea(field, value = [], rows 
   return `<textarea data-risk-chemical-list-field="${escapeHtml(field)}" rows="${escapeHtml(String(rows))}" placeholder="${escapeHtml(placeholder)}">${escapeHtml(joinRiskAssessmentChemicalValues(value))}</textarea>`;
 }
 
+function renderRiskAssessmentChemicalScoreSelect({ field = "", value = "", options = [], tone = "unknown" } = {}) {
+  return `
+    <div class="risk-assessment-risk-select-shell risk-assessment-chemical-score-select-shell is-${escapeHtml(tone)}">
+      <i aria-hidden="true"></i>
+      <select data-risk-chemical-field="${escapeHtml(field)}">
+        ${renderRiskAssessmentCompactOptions(options, value || "")}
+      </select>
+    </div>
+  `;
+}
+
 function getRiskAssessmentChemicalSourceMeta(chemical = {}) {
   return [
     chemical.stlFileName || chemical.sourceFileName ? `STL: ${chemical.stlFileName || chemical.sourceFileName}` : "",
@@ -126586,15 +126597,28 @@ function renderRiskAssessmentChemicalEditorTable() {
                 <td>${renderRiskAssessmentChemicalEditorListTextarea("hazardStatements", chemical.hazardStatements, 3, "H225...")}</td>
                 <td>${renderRiskAssessmentChemicalEditorTextInput("classification", chemical.classification, "EUH/klasifikacija")}</td>
                 <td>${renderRiskAssessmentChemicalEditorListTextarea("precautionaryStatements", chemical.precautionaryStatements, 3, "P210...")}</td>
-                <td>
-                  <select data-risk-chemical-field="probability">${renderRiskAssessmentCompactOptions(RISK_ASSESSMENT_PROBABILITY_OPTIONS, chemical.probability || "")}</select>
+                <td class="is-score-control">
+                  ${renderRiskAssessmentChemicalScoreSelect({
+                    field: "probability",
+                    value: chemical.probability,
+                    options: RISK_ASSESSMENT_PROBABILITY_OPTIONS,
+                    tone: risk.tone,
+                  })}
                 </td>
-                <td>
-                  <select data-risk-chemical-field="consequence">${renderRiskAssessmentCompactOptions(RISK_ASSESSMENT_CONSEQUENCE_OPTIONS, chemical.consequence || "")}</select>
+                <td class="is-score-control">
+                  ${renderRiskAssessmentChemicalScoreSelect({
+                    field: "consequence",
+                    value: chemical.consequence,
+                    options: RISK_ASSESSMENT_CONSEQUENCE_OPTIONS,
+                    tone: risk.tone,
+                  })}
                 </td>
                 <td class="is-risk is-${escapeHtml(risk.tone)}">
-                  <strong>${escapeHtml(risk.score || "-")}</strong>
-                  <span>${escapeHtml(risk.riskLevel || "-")}</span>
+                  <output class="risk-assessment-risk-result risk-assessment-chemical-risk-result is-${escapeHtml(risk.tone)}">
+                    <i aria-hidden="true"></i>
+                    <strong>${escapeHtml(risk.riskLevel || "-")}</strong>
+                    ${risk.score ? `<em>${escapeHtml(risk.score)}</em>` : ""}
+                  </output>
                 </td>
                 <td class="is-row-actions">
                   <button type="button" class="ghost-button" data-risk-chemical-apply="${escapeHtml(String(index))}">Poslovi</button>
@@ -134769,7 +134793,7 @@ function renderRiskAssessmentOrganizationUnits() {
     const linkedJobs = linkedJobsByUnit.get(unit.id) || [];
     const children = childrenByParent.get(String(unit.id)) || [];
     const path = getRiskAssessmentUnitPath(unit);
-    row.className = `risk-assessment-org-card is-${type}`;
+    row.className = `risk-assessment-org-card is-${type} is-depth-${Math.min(depth, 6)}`;
     row.dataset.riskUnitIndex = String(index);
     row.dataset.riskUnitDrop = unit.id;
     row.style.setProperty("--org-depth", String(Math.min(depth, 6)));
