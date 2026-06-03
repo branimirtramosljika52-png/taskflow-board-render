@@ -129804,6 +129804,9 @@ function createRiskAssessmentExportCell(value = "", format = {}) {
   if (format.fillColor) {
     cellFormat.fillColor = format.fillColor;
   }
+  if (format.borderStyle) {
+    cellFormat.borderStyle = format.borderStyle;
+  }
   if (format.card) {
     cellFormat.card = {
       fillColor: format.card.fillColor || "",
@@ -129870,6 +129873,10 @@ function createRiskAssessmentExportHeading(text = "", level = 2, options = {}) {
 function createRiskAssessmentExportParagraph(text = "", options = {}) {
   const safeText = normalizeRiskAssessmentExportText(text);
   return safeText ? { type: "paragraph", text: safeText, ...options } : null;
+}
+
+function createRiskAssessmentExportPageBreak() {
+  return { type: "page_break" };
 }
 
 function formatRiskAssessmentExportYesNo(value = "", fallback = "-") {
@@ -129983,6 +129990,20 @@ function buildRiskAssessmentJobRiskExportTable(job = {}) {
   ];
   const headerFormat = { fontSize: 8, align: "center" };
   const rows = [
+    createRiskAssessmentExportRow("title", [
+      createRiskAssessmentExportCell("Opasnosti, štetnosti, napori i mjere", {
+        fontSize: 11,
+        bold: true,
+        align: "left",
+        fillColor: "#FFFFFF",
+        borderStyle: "none",
+      }),
+      ...Array.from({ length: columns.length - 1 }, () => createRiskAssessmentExportCell("", {
+        fontSize: 11,
+        fillColor: "#FFFFFF",
+        borderStyle: "none",
+      })),
+    ], true),
     createRiskAssessmentExportRow("h1", [
       createRiskAssessmentExportHeaderCell("Identifikacija opasnosti, štetnosti i napora", headerFormat),
       createRiskAssessmentExportHeaderCell("Procjenjivanje opasnosti, štetnosti i napora", headerFormat),
@@ -130042,6 +130063,7 @@ function buildRiskAssessmentJobRiskExportTable(job = {}) {
     ]),
   ];
   const merges = [
+    { rowId: "title", columnId: "risk", colSpan: columns.length },
     { rowId: "h1", columnId: "risk", rowSpan: 2 },
     { rowId: "h1", columnId: "probability", colSpan: 3 },
     { rowId: "h1", columnId: "special", colSpan: 3 },
@@ -130067,7 +130089,7 @@ function buildRiskAssessmentJobsExportBlocks() {
       buildRiskAssessmentJobBasicExportTable(job, index),
       createRiskAssessmentExportHeading("Ograničenja rada", 4),
       buildRiskAssessmentJobEligibilityExportTable(job),
-      createRiskAssessmentExportHeading("Opasnosti, štetnosti, napori i mjere", 4, { pageBreakBefore: true }),
+      createRiskAssessmentExportPageBreak(),
       buildRiskAssessmentJobRiskExportTable(job),
     );
   });

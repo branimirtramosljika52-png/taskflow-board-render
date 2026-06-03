@@ -1597,6 +1597,7 @@ function normalizeDocxSpecialPlaceholderValue(value) {
                 italic: Boolean(format.italic),
                 underline: Boolean(format.underline),
                 fillColor: /^#[0-9a-f]{6}$/i.test(clean(format.fillColor)) ? clean(format.fillColor).toUpperCase() : "",
+                borderStyle: ["none", "bottom"].includes(clean(format.borderStyle).toLowerCase()) ? clean(format.borderStyle).toLowerCase() : "",
                 card,
                 border: {
                   top: Boolean(format.border?.top),
@@ -1619,6 +1620,7 @@ function normalizeDocxSpecialPlaceholderValue(value) {
               italic: false,
               underline: false,
               fillColor: "",
+              borderStyle: "",
               border: {
                 top: false,
                 right: false,
@@ -2031,6 +2033,23 @@ function getWordTableCellFontSize(format = {}, columnCount = 1) {
 }
 
 function buildWordTableCellBordersXml(format = {}, { header = false } = {}) {
+  const borderStyle = clean(format.borderStyle).toLowerCase();
+  if (borderStyle === "none") {
+    return `
+      <w:top w:val="nil"/>
+      <w:left w:val="nil"/>
+      <w:bottom w:val="nil"/>
+      <w:right w:val="nil"/>
+    `.replace(/\n\s+/g, "");
+  }
+  if (borderStyle === "bottom") {
+    return `
+      <w:top w:val="nil"/>
+      <w:left w:val="nil"/>
+      <w:bottom w:val="single" w:sz="8" w:space="0" w:color="111111"/>
+      <w:right w:val="nil"/>
+    `.replace(/\n\s+/g, "");
+  }
   const border = format?.border && typeof format.border === "object"
     ? format.border
     : {};
@@ -2229,8 +2248,13 @@ function buildWordTableXml(table = {}) {
   const rowsXml = rows.map((row, rowIndex) => {
     const cells = Array.isArray(row.cells) ? row.cells : [];
     const cellsXml = [];
-    const rowProperties = (table.keepRowsTogether || table.avoidRowBreaks || table.keepTogether)
-      ? "<w:trPr><w:cantSplit/></w:trPr>"
+    const isTableHeaderRow = headerRowSet.has(clean(row.id)) || Boolean(row.header);
+    const rowPropertyItems = [
+      isTableHeaderRow ? "<w:tblHeader/>" : "",
+      (table.keepRowsTogether || table.avoidRowBreaks || table.keepTogether) ? "<w:cantSplit/>" : "",
+    ].filter(Boolean);
+    const rowProperties = rowPropertyItems.length
+      ? `<w:trPr>${rowPropertyItems.join("")}</w:trPr>`
       : "";
 
     for (let columnIndex = 0; columnIndex < columns.length; columnIndex += 1) {
@@ -2247,7 +2271,7 @@ function buildWordTableXml(table = {}) {
       const format = rawCell.format && typeof rawCell.format === "object"
         ? rawCell.format
         : {};
-      const isHeader = headerRowSet.has(clean(row.id));
+      const isHeader = isTableHeaderRow;
       const gridSpan = mergeAnchor?.colSpan || mergeContinuation?.colSpan || 1;
       const width = sumColumnWidth(columnIndex, gridSpan);
       const fillColor = normalizeWordHexColor(format.fillColor, isHeader ? "F1F7F4" : "");
@@ -4036,6 +4060,12 @@ function buildHtmlTemplateCellStyle(format = {}, { header = false } = {}) {
   }
   if (/^#[0-9a-f]{6}$/i.test(clean(format.fillColor))) {
     styles.push(`background:${clean(format.fillColor)}`);
+  }
+  const borderStyle = clean(format.borderStyle).toLowerCase();
+  if (borderStyle === "none") {
+    styles.push("border:none");
+  } else if (borderStyle === "bottom") {
+    styles.push("border-top:none;border-left:none;border-right:none;border-bottom:1px solid #111827");
   }
   const fontFamily = clean(format.fontFamily);
   if (fontFamily && fontFamily !== "default") {

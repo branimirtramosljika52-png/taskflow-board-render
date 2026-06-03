@@ -226,6 +226,7 @@ test("docx export renders a multi-block table section placeholder", async () => 
             { id: "risk", label: "Rizik", width: 120 },
           ],
           rows: [
+            { id: "title", header: true, cells: [{ text: "Ponavljajuci naslov tablice", format: { align: "left", fillColor: "#FFFFFF", borderStyle: "none" } }, { text: "", format: { fillColor: "#FFFFFF", borderStyle: "none" } }] },
             { id: "head", header: true, cells: [{ text: "Posao" }, { text: "Rizik" }] },
             {
               id: "row-1",
@@ -242,6 +243,9 @@ test("docx export renders a multi-block table section placeholder", async () => 
               ],
             },
           ],
+          merges: [
+            { rowId: "title", columnId: "job", colSpan: 2 },
+          ],
         },
         { type: "paragraph", text: "Nakon tablice opet portrait sadrzaj." },
       ],
@@ -254,6 +258,7 @@ test("docx export renders a multi-block table section placeholder", async () => 
   assert.match(outputXml, /Analiza radnih mjesta/);
   assert.match(outputXml, /Automatski izradene tablice procjene\./);
   assert.match(outputXml, /Opasnosti, stetnosti, napori i mjere/);
+  assert.match(outputXml, /Ponavljajuci naslov tablice/);
   assert.match(outputXml, /Laboratorij/);
   assert.match(outputXml, /Srednji rizik/);
   assert.match(outputXml, /Nakon tablice opet portrait sadrzaj\./);
@@ -261,6 +266,8 @@ test("docx export renders a multi-block table section placeholder", async () => 
   assert.match(outputXml, /w:fill="FEF3C7"/);
   assert.match(outputXml, /w:color="94A3B8"/);
   assert.match(outputXml, /<w:cantSplit\/>/);
+  assert.ok((outputXml.match(/<w:tblHeader\/>/g) || []).length >= 2);
+  assert.match(outputXml, /<w:gridSpan w:val="2"\/>/);
   assert.equal((outputXml.match(/w:orient="landscape"/g) || []).length, 1);
   assert.equal((outputXml.match(/<w:tbl>/g) || []).length, 2);
   assert.ok(outputXml.indexOf('<w:pgSz w:w="11906" w:h="16838"') < outputXml.indexOf("Opasnosti, stetnosti, napori i mjere"));
