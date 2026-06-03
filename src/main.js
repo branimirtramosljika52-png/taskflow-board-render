@@ -131874,6 +131874,18 @@ function getRiskAssessmentCatalogHierarchy(row = {}) {
   return { category, family: group, subgroup: group };
 }
 
+function compareRiskAssessmentCatalogLabels(a = "", b = "") {
+  const numberDiff = compareRiskAssessmentNumberParts(
+    getRiskAssessmentNumberParts(a),
+    getRiskAssessmentNumberParts(b),
+  );
+  if (numberDiff) {
+    return numberDiff;
+  }
+  return normalizeRiskAssessmentIdentityComparable(a)
+    .localeCompare(normalizeRiskAssessmentIdentityComparable(b), "hr", { numeric: true });
+}
+
 function normalizeRiskAssessmentIdentityComparable(value = "") {
   return String(value || "")
     .normalize("NFD")
@@ -132068,13 +132080,18 @@ function getRiskAssessmentCatalogSections(rows = RISK_ASSESSMENT_CATALOG_ROWS) {
     familyEntry.subgroupMap.get(subgroup).rows.push({ ...row, catalogFamily: family, catalogSubgroup: subgroup });
   });
 
-  return sections.map((section) => ({
-    category: section.category,
-    families: section.families.map((family) => ({
-      family: family.family,
-      subgroups: family.subgroups,
-    })),
-  }));
+  return sections
+    .sort((a, b) => getRiskAssessmentPrilogOrder({ category: a.category }) - getRiskAssessmentPrilogOrder({ category: b.category })
+      || compareRiskAssessmentCatalogLabels(a.category, b.category))
+    .map((section) => ({
+      category: section.category,
+      families: [...section.families]
+        .sort((a, b) => compareRiskAssessmentCatalogLabels(a.family, b.family))
+        .map((family) => ({
+          family: family.family,
+          subgroups: [...family.subgroups].sort((a, b) => compareRiskAssessmentCatalogLabels(a.subgroup, b.subgroup)),
+        })),
+    }));
 }
 
 function getRiskAssessmentCatalogType(category = "") {
@@ -133358,7 +133375,7 @@ function renderRiskAssessmentCatalogPicker(job = {}) {
         </label>
       </div>
       ${sections.map((section) => `
-        <details class="risk-assessment-catalog-section" ${section.category === "I. OPASNOSTI" ? "open" : ""}>
+        <details class="risk-assessment-catalog-section" open>
           <summary>
             <strong>${escapeHtml(section.category)}</strong>
             <span>${section.families.reduce((sum, family) => sum + family.subgroups.reduce((groupSum, subgroup) => groupSum + subgroup.rows.length, 0), 0)} stavki</span>
@@ -133366,9 +133383,8 @@ function renderRiskAssessmentCatalogPicker(job = {}) {
           <div class="risk-assessment-catalog-families">
             ${section.families.map((family) => {
               const familyKey = `${section.category}||${family.family}`;
-              const familyOpen = family.family.includes("MEHANIČKE") || section.category === "I. OPASNOSTI";
               return `
-                <details class="risk-assessment-catalog-family" ${familyOpen ? "open" : ""}>
+                <details class="risk-assessment-catalog-family" open>
                   <summary>
                     <strong>${escapeHtml(family.family)}</strong>
                     <button type="button" class="ghost-button" data-risk-catalog-family="${escapeHtml(familyKey)}">Dodaj naslov</button>
@@ -133376,9 +133392,8 @@ function renderRiskAssessmentCatalogPicker(job = {}) {
                   <div class="risk-assessment-catalog-groups">
                     ${family.subgroups.map((subgroup) => {
                       const groupKey = `${section.category}||${family.family}||${subgroup.subgroup}`;
-                      const groupOpen = subgroup.subgroup.includes("1.1") || subgroup.subgroup.includes("1.2") || subgroup.subgroup.includes("1.3") || subgroup.subgroup.includes("1.4");
                       return `
-                        <details class="risk-assessment-catalog-group" ${groupOpen ? "open" : ""}>
+                        <details class="risk-assessment-catalog-group" open>
                           <summary>
                             <strong>${escapeHtml(subgroup.subgroup)}</strong>
                             <button type="button" class="ghost-button" data-risk-catalog-group="${escapeHtml(groupKey)}">Dodaj podnaslov</button>
