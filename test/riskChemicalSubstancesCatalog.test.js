@@ -36,7 +36,7 @@ test("official Narodne novine chemical catalog includes GVI and BGV tables", () 
   assert.match(dimethylformamideBgv?.biologicalLimit || "", /12 mg\/g kreatinina/);
 });
 
-test("chemical GVI resolution uses Prilog I before Prilog II fallback", () => {
+test("chemical GVI resolution uses Prilog I before Prilog II/III fallback", () => {
   assert.equal(RISK_CHEMICAL_PRILOG_II_GUIDELINES.length, 5);
 
   const acetoneGvi = findRiskChemicalOfficialGvi({

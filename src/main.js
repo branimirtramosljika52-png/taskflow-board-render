@@ -125588,19 +125588,27 @@ function stripRiskAssessmentPrilogIiFallbackText(value = "") {
   return String(value || "")
     .split(/\n+/)
     .map((line) => line.trim())
-    .filter((line) => line && !/\bPrilog\s+II\b/i.test(line))
+    .filter((line) => line && !/\bPrilog(?:a|u)?\s+(?:II|III)\b/i.test(line))
     .join("\n");
 }
 
 function getRiskAssessmentChemicalEstimatedConsequence(guideline = {}) {
   const division = String(guideline?.division || "").toUpperCase();
-  if (division === "E" || division === "D") {
-    return { value: "iš", label: "Velika štetnost" };
+  if (division === "C" || division === "D" || division === "E") {
+    return { value: "iš", label: "Izrazita štetnost" };
   }
-  if (division === "C" || division === "B") {
+  if (division === "B") {
     return { value: "sš", label: "Srednja štetnost" };
   }
   return { value: "mš", label: "Mala štetnost" };
+}
+
+function formatRiskAssessmentPrilogIiiConsequence(guideline = {}) {
+  if (!guideline?.division) {
+    return "";
+  }
+  const consequence = getRiskAssessmentChemicalEstimatedConsequence(guideline);
+  return `Prilog III procjena veličine posljedica - štetnosti: ${consequence.label}.`;
 }
 
 function enrichRiskAssessmentChemicalWithOfficialExposure(chemical = {}) {
@@ -125608,15 +125616,15 @@ function enrichRiskAssessmentChemicalWithOfficialExposure(chemical = {}) {
   const guidelineForRisk = resolveRiskChemicalPrilogIiGuideline(draft);
   const estimatedConsequence = getRiskAssessmentChemicalEstimatedConsequence(guidelineForRisk);
   const probability = String(chemical.probability || draft.probability || "mv");
-  const consequence = String(chemical.consequence || estimatedConsequence.value || draft.consequence || "mš");
   const officialGvi = findRiskChemicalOfficialGvi(draft);
   if (officialGvi) {
     const officialExposure = formatRiskAssessmentOfficialExposure(officialGvi);
+    const consequence = String(chemical.consequence || draft.consequence || "mš");
     return createRiskAssessmentChemicalDraft({
       ...draft,
       probability,
       consequence,
-      riskLevel: chemical.riskLevel || calculateJobHazardRiskLevel(probability, consequence),
+      riskLevel: calculateJobHazardRiskLevel(probability, consequence) || "",
       officialGviPpm: officialGvi.gviPpm || "",
       officialGviMgM3: officialGvi.gviMgM3 || "",
       officialKgviPpm: officialGvi.kgviPpm || "",
@@ -125627,7 +125635,7 @@ function enrichRiskAssessmentChemicalWithOfficialExposure(chemical = {}) {
       prilogIiVaporGvi: "",
       prilogIiDustGvi: "",
       prilogIiHazardCodes: [],
-      estimatedConsequenceSize: draft.estimatedConsequenceSize || estimatedConsequence.label,
+      estimatedConsequenceSize: "",
       exposureLimits: joinUniqueRiskAssessmentTextBlocks([
         officialExposure ? `Službeni GVI/KGVI prema Prilogu I: ${officialExposure}` : "",
         stripRiskAssessmentPrilogIiFallbackText(draft.exposureLimits),
@@ -125643,11 +125651,13 @@ function enrichRiskAssessmentChemicalWithOfficialExposure(chemical = {}) {
   }
   const guideline = guidelineForRisk;
   const prilogIiExposure = formatRiskAssessmentPrilogIiExposure(guideline);
+  const prilogIiiConsequence = formatRiskAssessmentPrilogIiiConsequence(guideline);
+  const consequence = String(chemical.consequence || estimatedConsequence.value || draft.consequence || "mš");
   return createRiskAssessmentChemicalDraft({
     ...draft,
     probability,
     consequence,
-    riskLevel: chemical.riskLevel || calculateJobHazardRiskLevel(probability, consequence),
+    riskLevel: calculateJobHazardRiskLevel(probability, consequence) || "",
     prilogIiDivision: guideline.division || "",
     prilogIiVaporGvi: guideline.vaporGvi || "",
     prilogIiDustGvi: guideline.dustGvi || "",
@@ -125656,10 +125666,11 @@ function enrichRiskAssessmentChemicalWithOfficialExposure(chemical = {}) {
     exposureLimits: joinUniqueRiskAssessmentTextBlocks([
       draft.exposureLimits,
       prilogIiExposure,
+      prilogIiiConsequence,
     ]),
     note: joinUniqueRiskAssessmentTextBlocks([
       draft.note,
-      `Nije pronađen službeni GVI/KGVI u Prilogu I; primijenjena je smjernica iz Priloga II (${guideline.division}).`,
+      `Nije pronađen službeni GVI/KGVI u Prilogu I; primijenjene su smjernice iz Priloga II i Priloga III (podjela ${guideline.division}).`,
       guideline.description,
       `Izvor: ${RISK_CHEMICAL_SUBSTANCES_SOURCE_URL}`,
     ]),
@@ -126444,7 +126455,7 @@ function getRiskAssessmentChemicalOfficialKgviText(chemical = {}) {
 
 function getRiskAssessmentChemicalPrilogIiText(chemical = {}) {
   if (hasRiskAssessmentOfficialGviValues(chemical)) {
-    return "-";
+    return "";
   }
   if (chemical.prilogIiDivision) {
     return [
@@ -126455,7 +126466,7 @@ function getRiskAssessmentChemicalPrilogIiText(chemical = {}) {
   }
   const exposureText = String(chemical.exposureLimits || "");
   const match = exposureText.match(/Prilog II smjernica[^.\n]*(?:\.[^.\n]*){0,3}/i);
-  return match?.[0]?.trim() || "-";
+  return match?.[0]?.trim() || "";
 }
 
 function getRiskAssessmentChemicalRiskScore(chemical = {}) {
@@ -126510,7 +126521,7 @@ function renderRiskAssessmentChemicalEditorTable() {
             <th>GVI</th>
             <th>KGVI</th>
             <th>Napomena</th>
-            <th>Prilog II/III</th>
+            <th>Prilog II / III</th>
             <th>Štetnost</th>
             <th>GHS</th>
             <th>H oznake</th>
@@ -126526,6 +126537,7 @@ function renderRiskAssessmentChemicalEditorTable() {
           ${riskAssessmentChemicalDrafts.length ? riskAssessmentChemicalDrafts.map((chemical, index) => {
             const risk = getRiskAssessmentChemicalRiskDisplay(chemical);
             const sourceMeta = getRiskAssessmentChemicalSourceMeta(chemical);
+            const hasOfficialExposure = hasRiskAssessmentOfficialGviValues(chemical);
             return `
               <tr data-risk-chemical-index="${escapeHtml(String(index))}">
                 <td class="is-index">${escapeHtml(String(index + 1))}.</td>
@@ -126547,11 +126559,11 @@ function renderRiskAssessmentChemicalEditorTable() {
                   ${renderRiskAssessmentChemicalEditorTextInput("officialDirective", chemical.officialDirective, "Direktiva")}
                 </td>
                 <td class="is-prilog-cell">
-                  ${renderRiskAssessmentChemicalEditorTextInput("prilogIiDivision", chemical.prilogIiDivision, "A-E")}
-                  ${renderRiskAssessmentChemicalEditorTextInput("prilogIiVaporGvi", chemical.prilogIiVaporGvi, "pare")}
-                  ${renderRiskAssessmentChemicalEditorTextInput("prilogIiDustGvi", chemical.prilogIiDustGvi, "prašina")}
+                  ${renderRiskAssessmentChemicalEditorTextInput("prilogIiDivision", hasOfficialExposure ? "" : chemical.prilogIiDivision, "A-E")}
+                  ${renderRiskAssessmentChemicalEditorTextInput("prilogIiVaporGvi", hasOfficialExposure ? "" : chemical.prilogIiVaporGvi, "pare")}
+                  ${renderRiskAssessmentChemicalEditorTextInput("prilogIiDustGvi", hasOfficialExposure ? "" : chemical.prilogIiDustGvi, "prašina")}
                 </td>
-                <td>${renderRiskAssessmentChemicalEditorTextInput("estimatedConsequenceSize", chemical.estimatedConsequenceSize, "Mala/Srednja/Velika")}</td>
+                <td>${renderRiskAssessmentChemicalEditorTextInput("estimatedConsequenceSize", hasOfficialExposure ? "" : chemical.estimatedConsequenceSize, "Mala/Srednja/Izrazita")}</td>
                 <td class="is-list-cell">
                   ${renderRiskAssessmentChemicalEditorListTextarea("pictograms", chemical.pictograms, 2, "GHS02...")}
                   ${renderRiskAssessmentChemicalEditorListTextarea("signalWords", chemical.signalWords, 1, "Opasnost/Upozorenje")}
@@ -126594,7 +126606,7 @@ function renderRiskAssessmentChemicalRegisterTable() {
       <div>
         <span class="section-kicker">STL tablični pregled</span>
         <strong>Procjena kemijskih štetnosti</strong>
-        <small>GVI/KGVI se uzima iz Priloga I kada postoji, a ako ne postoji koristi se smjernica iz Priloga II.</small>
+        <small>GVI/KGVI se uzima iz Priloga I kada postoji; ako ga nema, Prilog II daje smjernicu GVI, a Prilog III veličinu štetnosti.</small>
       </div>
       <span>${escapeHtml(String(riskAssessmentChemicalDrafts.length))} kemikalija</span>
     </div>
@@ -126614,8 +126626,8 @@ function renderRiskAssessmentChemicalRegisterTable() {
             <th rowspan="2">GVI</th>
             <th rowspan="2">KGVI</th>
             <th rowspan="2">Napomena</th>
-            <th rowspan="2">GVI prema<br />Prilogu II</th>
-            <th rowspan="2">Procijenjena veličina posljedica - štetnosti</th>
+            <th rowspan="2">Prilog II<br />GVI smjernica</th>
+            <th rowspan="2">Prilog III<br />veličina štetnosti</th>
             <th colspan="3">Razvrstavanje i označavanje</th>
             <th rowspan="2" class="is-vertical">Vjerojatnost</th>
             <th rowspan="2" class="is-vertical">Posljedice</th>
@@ -126730,6 +126742,7 @@ function updateRiskAssessmentChemicalField(index, field, value) {
     nextChemical.prilogIiVaporGvi = "";
     nextChemical.prilogIiDustGvi = "";
     nextChemical.prilogIiHazardCodes = [];
+    nextChemical.estimatedConsequenceSize = "";
   }
   if (RISK_ASSESSMENT_PRILOG_LIMIT_FIELDS.has(field) && String(value || "").trim()) {
     nextChemical.officialGviPpm = "";
@@ -126738,6 +126751,13 @@ function updateRiskAssessmentChemicalField(index, field, value) {
     nextChemical.officialKgviMgM3 = "";
     nextChemical.officialLimitNote = "";
     nextChemical.officialDirective = "";
+    const division = field === "prilogIiDivision" ? value : nextChemical.prilogIiDivision;
+    if (String(division || "").trim()) {
+      const consequence = getRiskAssessmentChemicalEstimatedConsequence({ division });
+      nextChemical.estimatedConsequenceSize = consequence.label;
+      nextChemical.consequence = consequence.value;
+      nextChemical.riskLevel = calculateJobHazardRiskLevel(nextChemical.probability, nextChemical.consequence) || "";
+    }
   }
   if (field === "probability" || field === "consequence") {
     nextChemical.riskLevel = calculateJobHazardRiskLevel(nextChemical.probability, nextChemical.consequence) || "";
@@ -130555,8 +130575,8 @@ function buildRiskAssessmentChemicalExportTable() {
     { id: "gvi", label: "GVI", width: 60 },
     { id: "kgvi", label: "KGVI", width: 60 },
     { id: "note", label: "Napomena", width: 78 },
-    { id: "prilog", label: "GVI prema Prilogu II", width: 92 },
-    { id: "harm", label: "Procjena veličina posljedica - štetnosti", width: 100 },
+    { id: "prilog", label: "Prilog II GVI smjernica", width: 92 },
+    { id: "harm", label: "Prilog III veličina štetnosti", width: 100 },
     { id: "pictograms", label: "Piktogrami Oznake opasnosti", width: 88 },
     { id: "h", label: "Oznake upozorenja", width: 84 },
     { id: "euh", label: "Dodatne oznake upozorenja", width: 74 },
@@ -130591,8 +130611,8 @@ function buildRiskAssessmentChemicalExportTable() {
       createRiskAssessmentExportHeaderCell("GVI", headerFormat),
       createRiskAssessmentExportHeaderCell("KGVI", headerFormat),
       createRiskAssessmentExportHeaderCell("Napomena", headerFormat),
-      createRiskAssessmentExportHeaderCell("GVI prema\nPrilogu II", headerFormat),
-      createRiskAssessmentExportHeaderCell("Procijenjena veličina posljedica - štetnosti", headerFormat),
+      createRiskAssessmentExportHeaderCell("Prilog II\nGVI smjernica", headerFormat),
+      createRiskAssessmentExportHeaderCell("Prilog III\nveličina štetnosti", headerFormat),
       createRiskAssessmentExportHeaderCell("Razvrstavanje i označavanje", headerFormat),
       createRiskAssessmentExportHeaderCell("", headerFormat),
       createRiskAssessmentExportHeaderCell("", headerFormat),
@@ -130711,20 +130731,27 @@ function formatRiskAssessmentChemicalRiskNote(chemical = {}) {
   const linkedJobs = getRiskAssessmentChemicalLinkedJobs(chemical)
     .map((job) => job.jobTitle)
     .filter(Boolean);
+  const hasOfficialExposure = hasRiskAssessmentOfficialGviValues(chemical);
+  const officialGviText = hasOfficialExposure ? getRiskAssessmentChemicalOfficialGviText(chemical) : "";
+  const officialKgviText = hasOfficialExposure ? getRiskAssessmentChemicalOfficialKgviText(chemical) : "";
+  const prilogIiText = hasOfficialExposure ? "" : getRiskAssessmentChemicalPrilogIiText(chemical);
+  const prilogIiiText = hasOfficialExposure ? "" : chemical.estimatedConsequenceSize;
+  const note = hasOfficialExposure ? stripRiskAssessmentPrilogIiFallbackText(chemical.note) : chemical.note;
   return joinUniqueRiskAssessmentTextBlocks([
     getRiskAssessmentChemicalSourceMeta(chemical),
     linkedJobs.length ? `Radna mjesta: ${linkedJobs.join(", ")}` : "",
-    getRiskAssessmentChemicalOfficialGviText(chemical) ? `GVI: ${getRiskAssessmentChemicalOfficialGviText(chemical)}` : "",
-    getRiskAssessmentChemicalOfficialKgviText(chemical) ? `KGVI: ${getRiskAssessmentChemicalOfficialKgviText(chemical)}` : "",
+    hasOfficialExposure ? "Prilog I: službeni GVI/KGVI." : "",
+    officialGviText ? `GVI: ${officialGviText}` : "",
+    officialKgviText ? `KGVI: ${officialKgviText}` : "",
     chemical.officialLimitNote ? `Napomena GVI/KGVI: ${chemical.officialLimitNote}` : "",
     chemical.officialDirective ? `Direktiva: ${chemical.officialDirective}` : "",
-    getRiskAssessmentChemicalPrilogIiText(chemical) ? `Prilog II/III: ${getRiskAssessmentChemicalPrilogIiText(chemical)}` : "",
-    chemical.estimatedConsequenceSize ? `Procijenjena štetnost: ${chemical.estimatedConsequenceSize}` : "",
+    prilogIiText ? `Prilog II: ${prilogIiText}` : "",
+    prilogIiiText ? `Prilog III: ${prilogIiiText}` : "",
     pictogramLines.length ? `GHS / oznake opasnosti: ${pictogramLines.join(", ")}` : "",
     hCodes.length ? `H oznake: ${hCodes.join(", ")}` : "",
     euhCodes.length ? `EUH oznake: ${euhCodes.join(", ")}` : "",
     pCodes.length ? `P oznake: ${pCodes.join(", ")}` : "",
-    chemical.note,
+    note,
   ]);
 }
 
@@ -130762,7 +130789,7 @@ function buildRiskAssessmentChemicalsExportBlocks() {
     return [createRiskAssessmentExportParagraph("Kemijske štetnosti nisu dodane.")];
   }
   return [
-    createRiskAssessmentExportParagraph("GVI/KGVI se upisuje iz Priloga I kada postoji; ako službene vrijednosti nema, primjenjuje se smjernica iz Priloga II/III."),
+    createRiskAssessmentExportParagraph("GVI/KGVI se upisuje iz Priloga I kada postoji. Ako službene vrijednosti nema, Prilog II služi za GVI smjernicu, a Prilog III za procjenu veličine posljedica - štetnosti."),
     buildRiskAssessmentChemicalRiskExportTable(),
   ];
 }
