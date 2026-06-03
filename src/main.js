@@ -6327,7 +6327,7 @@ const riskAssessmentJobCatalogList = document.querySelector("#risk-assessment-jo
 const riskAssessmentJobCatalogStats = document.querySelector("#risk-assessment-job-catalog-stats");
 const riskAssessmentJobCatalogSelectVisibleButton = document.querySelector("#risk-assessment-job-catalog-select-visible");
 const riskAssessmentJobCatalogClearButton = document.querySelector("#risk-assessment-job-catalog-clear");
-const riskAssessmentJobCatalogGroupInput = document.querySelector("#risk-assessment-job-catalog-group");
+const riskAssessmentOpenNewJobButton = document.querySelector("#risk-assessment-open-new-job");
 const riskAssessmentImportJobsButton = document.querySelector("#risk-assessment-import-jobs");
 const riskAssessmentManualHandlingList = document.querySelector("#risk-assessment-manual-handling");
 const riskAssessmentAddManualHandlingButton = document.querySelector("#risk-assessment-add-manual-handling");
@@ -6419,6 +6419,7 @@ let riskAssessmentActiveBlock = "basic";
 let riskAssessmentActiveRichEditorKey = "";
 let riskAssessmentActiveJobIndex = 0;
 let riskAssessmentRichEditorSelection = null;
+let riskAssessmentJobAnalysisScrollFrame = 0;
 const RISK_ASSESSMENT_RICH_FIELD_KEYS = Object.freeze([
   "intro",
   "process",
@@ -119625,7 +119626,7 @@ riskAssessmentStructureDropzone?.addEventListener("drop", (event) => {
   setRiskAssessmentStructureInputFile(file || null);
 });
 
-riskAssessmentAddJobButton?.addEventListener("click", () => {
+function addRiskAssessmentBlankJob({ openJobsModule = false } = {}) {
   const nextIndex = riskAssessmentJobDrafts.length;
   riskAssessmentJobDrafts.push(createRiskAssessmentJobDraft({
     organizationUnitId: riskAssessmentOrganizationUnitDrafts[0]?.id || "",
@@ -119635,6 +119636,17 @@ riskAssessmentAddJobButton?.addEventListener("click", () => {
   renderRiskAssessmentJobs();
   renderRiskAssessmentOverview();
   scheduleRiskAssessmentDraftAutosave();
+  if (openJobsModule) {
+    openJobsModuleForRiskAssessmentJob(nextIndex);
+  }
+}
+
+riskAssessmentAddJobButton?.addEventListener("click", () => {
+  addRiskAssessmentBlankJob();
+});
+
+riskAssessmentOpenNewJobButton?.addEventListener("click", () => {
+  addRiskAssessmentBlankJob({ openJobsModule: true });
 });
 
 riskAssessmentArmorAllButton?.addEventListener("click", () => {
@@ -119902,6 +119914,8 @@ riskAssessmentJobsList?.addEventListener("input", handleRiskAssessmentJobsListIn
 riskAssessmentJobsList?.addEventListener("change", handleRiskAssessmentJobsListInput);
 riskAssessmentJobsList?.addEventListener("click", handleRiskAssessmentJobsListClick);
 riskAssessmentJobsList?.addEventListener("dragstart", handleRiskAssessmentJobsDragStart);
+riskAssessmentEditorBody?.addEventListener("scroll", scheduleRiskAssessmentJobAnalysisShellModeUpdate, { passive: true });
+window.addEventListener("resize", scheduleRiskAssessmentJobAnalysisShellModeUpdate);
 riskAssessmentJobTree?.addEventListener("input", handleRiskAssessmentJobsListInput);
 riskAssessmentJobTree?.addEventListener("change", handleRiskAssessmentJobsListInput);
 riskAssessmentJobTree?.addEventListener("click", (event) => {
@@ -124809,6 +124823,7 @@ function setRiskAssessmentActiveBlock(blockKey = "basic", { resetScroll = false 
   if (resetScroll && riskAssessmentEditorBody) {
     riskAssessmentEditorBody.scrollTo({ top: 0, behavior: "smooth" });
   }
+  scheduleRiskAssessmentJobAnalysisShellModeUpdate();
 }
 
 function getRiskAssessmentRichEditor(key = "") {
@@ -133358,7 +133373,7 @@ function renderRiskAssessmentCatalogPicker(job = {}) {
       <div class="risk-assessment-catalog-intro">
         <div>
           <strong>Izbornik opasnosti, štetnosti i napora</strong>
-          <span>Pregledan popis prema Prilogu III. Odaberi aktivno radno mjesto i dodaj stavku plus gumbom.</span>
+          <span>Pregledan popis prema Prilogu III. Dodaj pojedinu stavku plus gumbom ili cijelu granu jednim klikom.</span>
         </div>
         <div class="risk-assessment-catalog-actions">
           <span class="soft-pill">${escapeHtml(String(selectedCount))} u poslu</span>
@@ -133387,7 +133402,7 @@ function renderRiskAssessmentCatalogPicker(job = {}) {
                 <details class="risk-assessment-catalog-family" open>
                   <summary>
                     <strong>${escapeHtml(family.family)}</strong>
-                    <button type="button" class="ghost-button" data-risk-catalog-family="${escapeHtml(familyKey)}">Dodaj naslov</button>
+                    <button type="button" class="ghost-button" title="Dodaje sve stavke ispod ovog naslova" data-risk-catalog-family="${escapeHtml(familyKey)}">Dodaj granu</button>
                   </summary>
                   <div class="risk-assessment-catalog-groups">
                     ${family.subgroups.map((subgroup) => {
@@ -133396,7 +133411,7 @@ function renderRiskAssessmentCatalogPicker(job = {}) {
                         <details class="risk-assessment-catalog-group" open>
                           <summary>
                             <strong>${escapeHtml(subgroup.subgroup)}</strong>
-                            <button type="button" class="ghost-button" data-risk-catalog-group="${escapeHtml(groupKey)}">Dodaj podnaslov</button>
+                            <button type="button" class="ghost-button" title="Dodaje sve stavke ispod ovog podnaslova" data-risk-catalog-group="${escapeHtml(groupKey)}">Dodaj granu</button>
                           </summary>
                           <div class="risk-assessment-catalog-items">
                             ${subgroup.rows.map((catalogRow) => {
@@ -135827,9 +135842,6 @@ function renderRiskAssessmentJobCatalogPicker() {
   const jobs = sortJobs(state.jobs ?? []);
   const visibleJobs = getVisibleRiskAssessmentCatalogJobs();
   const selectedIds = getRiskAssessmentJobCatalogSelectedIds();
-  if (riskAssessmentJobCatalogGroupInput && selectedIds.size > 1) {
-    riskAssessmentJobCatalogGroupInput.checked = true;
-  }
   renderRiskAssessmentJobCatalogStats(jobs, visibleJobs, selectedIds);
 
   if (riskAssessmentJobCatalogSelectVisibleButton) {
@@ -135947,7 +135959,7 @@ function importSelectedJobsIntoRiskAssessment() {
     return;
   }
 
-  const shouldGroup = selectedJobs.length > 1 || riskAssessmentJobCatalogGroupInput?.checked !== false;
+  const shouldGroup = selectedJobs.length > 1;
   const incomingJobs = shouldGroup
     ? [mergeCatalogJobsIntoRiskAssessmentJob(selectedJobs)]
     : selectedJobs.map((job) => createRiskAssessmentJobDraftFromCatalogJob(job));
@@ -136103,8 +136115,9 @@ function syncRiskAssessmentEditorAccess() {
   if (riskAssessmentJobCatalogClearButton) {
     riskAssessmentJobCatalogClearButton.disabled = !canManage || getRiskAssessmentJobCatalogSelectedIds().size === 0;
   }
-  if (riskAssessmentJobCatalogGroupInput) {
-    riskAssessmentJobCatalogGroupInput.disabled = !canManage;
+  if (riskAssessmentOpenNewJobButton) {
+    riskAssessmentOpenNewJobButton.hidden = !canManage;
+    riskAssessmentOpenNewJobButton.disabled = !canManage;
   }
   if (riskAssessmentImportJobsButton) {
     riskAssessmentImportJobsButton.disabled = !canManage || getRiskAssessmentJobCatalogSelectedIds().size === 0;
@@ -138276,6 +138289,42 @@ function setRiskAssessmentActiveJobIndex(index = 0) {
   return safeIndex;
 }
 
+function getRiskAssessmentJobAnalysisShell() {
+  return riskAssessmentJobsList?.closest?.(".risk-assessment-job-analysis-shell") ?? null;
+}
+
+function updateRiskAssessmentJobAnalysisShellMode() {
+  const shell = getRiskAssessmentJobAnalysisShell();
+  if (!shell) {
+    return;
+  }
+  if (riskAssessmentActiveBlock !== "jobs" || !riskAssessmentJobDrafts.length) {
+    shell.classList.remove("is-armor-focus");
+    return;
+  }
+
+  const viewport = riskAssessmentEditorBody?.getBoundingClientRect?.() ?? {
+    top: 0,
+    bottom: window.innerHeight || document.documentElement.clientHeight || 0,
+  };
+  const armorCards = Array.from(shell.querySelectorAll(".risk-assessment-job-profile-card.is-armor"));
+  const armorInView = armorCards.some((card) => {
+    const rect = card.getBoundingClientRect();
+    return rect.top < viewport.bottom - 120 && rect.bottom > viewport.top + 120;
+  });
+  shell.classList.toggle("is-armor-focus", armorInView);
+}
+
+function scheduleRiskAssessmentJobAnalysisShellModeUpdate() {
+  if (riskAssessmentJobAnalysisScrollFrame) {
+    return;
+  }
+  riskAssessmentJobAnalysisScrollFrame = window.requestAnimationFrame(() => {
+    riskAssessmentJobAnalysisScrollFrame = 0;
+    updateRiskAssessmentJobAnalysisShellMode();
+  });
+}
+
 function renderRiskAssessmentJobTree() {
   if (!riskAssessmentJobTree) {
     return;
@@ -138346,6 +138395,7 @@ function renderRiskAssessmentJobs() {
     empty.className = "inline-help";
     empty.textContent = "Dodaj poslove/radna mjesta unutar organizacijskih jedinica.";
     riskAssessmentJobsList.replaceChildren(empty);
+    updateRiskAssessmentJobAnalysisShellMode();
     renderRiskAssessmentOverview();
     return;
   }
@@ -138402,6 +138452,7 @@ function renderRiskAssessmentJobs() {
   renderRiskAssessmentManualHandling();
   renderRiskAssessmentChemicals();
   renderRiskAssessmentOverview();
+  scheduleRiskAssessmentJobAnalysisShellModeUpdate();
 }
 
 function buildRiskAssessmentPayload() {
