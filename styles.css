@@ -59343,7 +59343,7 @@ button.work-order-editor-section-head:focus-visible {
 
 .risk-assessment-job-analysis-shell {
   display: grid;
-  grid-template-columns: minmax(188px, 0.24fr) minmax(0, 1fr);
+  grid-template-columns: minmax(320px, 0.34fr) minmax(0, 1fr);
   gap: 12px;
   align-items: start;
 }
@@ -59359,6 +59359,21 @@ button.work-order-editor-section-head:focus-visible {
   border: 1px solid rgba(203, 213, 225, 0.86);
   border-radius: 10px;
   background: rgba(248, 250, 252, 0.92);
+}
+
+.risk-assessment-job-tree-block {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.risk-assessment-job-tree-block + .risk-assessment-job-tree-block {
+  padding-top: 10px;
+  border-top: 1px solid rgba(203, 213, 225, 0.82);
+}
+
+.risk-assessment-job-tree-block.is-catalog {
+  gap: 10px;
 }
 
 .risk-assessment-job-tree-head,
@@ -59417,7 +59432,7 @@ button.work-order-editor-section-head:focus-visible {
   font-size: 0.66rem;
 }
 
-.risk-assessment-job-tree button {
+.risk-assessment-job-tree-button {
   display: grid;
   gap: 2px;
   width: 100%;
@@ -59431,13 +59446,19 @@ button.work-order-editor-section-head:focus-visible {
   cursor: pointer;
 }
 
-.risk-assessment-job-tree button:hover,
-.risk-assessment-job-tree button:focus-visible {
+.risk-assessment-job-tree-button:hover,
+.risk-assessment-job-tree-button:focus-visible {
   border-color: rgba(37, 99, 235, 0.38);
   box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
 }
 
-.risk-assessment-job-tree button span {
+.risk-assessment-job-tree-button.is-active {
+  border-color: rgba(37, 99, 235, 0.48);
+  background: linear-gradient(135deg, rgba(239, 246, 255, 0.98), rgba(255, 255, 255, 0.96));
+  box-shadow: inset 4px 0 0 rgba(37, 99, 235, 0.42);
+}
+
+.risk-assessment-job-tree-button span {
   overflow: hidden;
   font-size: 0.76rem;
   font-weight: 900;
@@ -59445,13 +59466,52 @@ button.work-order-editor-section-head:focus-visible {
   white-space: nowrap;
 }
 
-.risk-assessment-job-tree button small {
+.risk-assessment-job-tree-button small {
   overflow: hidden;
   color: #64748b;
   font-size: 0.65rem;
   font-weight: 760;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.risk-assessment-job-tree .risk-assessment-catalog-picker {
+  min-height: 0;
+  max-height: none;
+  overflow: visible;
+  padding: 10px;
+  border-radius: 12px;
+  contain: layout paint;
+}
+
+.risk-assessment-job-tree .risk-assessment-catalog-intro {
+  position: static;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  margin: -10px -10px 0;
+  padding: 10px;
+}
+
+.risk-assessment-job-tree .risk-assessment-catalog-actions,
+.risk-assessment-job-tree .risk-assessment-catalog-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 7px;
+}
+
+.risk-assessment-job-tree .risk-assessment-catalog-items {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.risk-assessment-job-tree .risk-assessment-catalog-section > summary,
+.risk-assessment-job-tree .risk-assessment-catalog-family > summary,
+.risk-assessment-job-tree .risk-assessment-catalog-group > summary {
+  gap: 8px;
+  padding: 9px 10px;
+}
+
+.risk-assessment-job-tree .risk-assessment-catalog-item {
+  min-height: 52px;
 }
 
 .risk-assessment-repeat-row.is-job {
@@ -62253,7 +62313,7 @@ body.is-risk-stl-review-open {
 
 .risk-assessment-armor-workbench {
   display: grid;
-  grid-template-columns: minmax(270px, 330px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   align-items: start;
   min-width: 0;
