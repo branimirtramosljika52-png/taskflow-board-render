@@ -130240,6 +130240,112 @@ function getRiskAssessmentExportRiskFill(risk = {}) {
   return "#F8FAFC";
 }
 
+function buildRiskAssessmentRiskMatrixExportTable({
+  title = "Procjena rizika",
+  firstHeader = "Opasnosti, štetnosti i napori",
+  firstSubHeader = "Stavka procjene",
+  rows = [],
+} = {}) {
+  const columns = [
+    { id: "risk", label: firstHeader, width: 250 },
+    { id: "probability", label: "Vjerojatnost", width: 105 },
+    { id: "consequence", label: "Posljedice", width: 105 },
+    { id: "matrix", label: "Matrica procjene rizika", width: 115 },
+    { id: "special", label: "Poslovi s posebnim uvjetima rada (DA/NE)", width: 95 },
+    { id: "note", label: "Objašnjenje / napomena", width: 235 },
+    { id: "measures", label: "Primijenjena pravila, mjere i postupci za smanjivanje razine rizika", width: 245 },
+  ];
+  const headerFormat = { fontSize: 8, align: "center", verticalAlign: "center" };
+  const bodyFormat = { fontSize: 7, verticalAlign: "center" };
+  const bodyCenterFormat = { ...bodyFormat, align: "center" };
+  const safeRows = Array.isArray(rows) && rows.length ? rows : [{
+    id: "empty",
+    subject: "Nema dodanih stavki procjene.",
+    probability: "",
+    consequence: "",
+    riskLevel: "N/P",
+    special: "Ne",
+    note: "-",
+    measures: "-",
+  }];
+  const tableRows = [
+    createRiskAssessmentExportRow("title", [
+      createRiskAssessmentExportCell(title, {
+        fontSize: 11,
+        bold: true,
+        align: "left",
+        fillColor: "#FFFFFF",
+        borderStyle: "none",
+      }),
+      ...Array.from({ length: columns.length - 1 }, () => createRiskAssessmentExportCell("", {
+        fontSize: 11,
+        fillColor: "#FFFFFF",
+        borderStyle: "none",
+      })),
+    ], true),
+    createRiskAssessmentExportRow("h1", [
+      createRiskAssessmentExportHeaderCell(firstHeader, headerFormat),
+      createRiskAssessmentExportHeaderCell("Procjenjivanje opasnosti, štetnosti i napora", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("Analiza prikupljenih podataka", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+      createRiskAssessmentExportHeaderCell("", headerFormat),
+    ], true),
+    createRiskAssessmentExportRow("h2", [
+      createRiskAssessmentExportHeaderCell(firstSubHeader, headerFormat),
+      createRiskAssessmentExportHeaderCell("Vjerojatnost", headerFormat),
+      createRiskAssessmentExportHeaderCell("Posljedice", headerFormat),
+      createRiskAssessmentExportHeaderCell("Matrica procjene rizika", headerFormat),
+      createRiskAssessmentExportHeaderCell("Poslovi s posebnim uvjetima rada (DA/NE)", headerFormat),
+      createRiskAssessmentExportHeaderCell("Objašnjenje / napomena", headerFormat),
+      createRiskAssessmentExportHeaderCell("Primijenjena pravila, mjere i postupci", headerFormat),
+    ], true),
+    ...safeRows.map((row, index) => {
+      const risk = {
+        probability: row.probability,
+        consequence: row.consequence,
+        riskLevel: row.riskLevel,
+      };
+      return createRiskAssessmentExportRow(row.id || `risk-matrix-${index + 1}`, [
+        createRiskAssessmentExportCell(row.subject, bodyFormat),
+        createRiskAssessmentExportCell(getRiskAssessmentOptionLabel(RISK_ASSESSMENT_PROBABILITY_OPTIONS, row.probability, "-"), {
+          ...bodyCenterFormat,
+          bold: true,
+          card: { fillColor: "#FFFFFF", borderColor: "#CBD5E1" },
+        }),
+        createRiskAssessmentExportCell(getRiskAssessmentOptionLabel(RISK_ASSESSMENT_CONSEQUENCE_OPTIONS, row.consequence, "-"), {
+          ...bodyCenterFormat,
+          bold: true,
+          card: { fillColor: "#FFFFFF", borderColor: "#CBD5E1" },
+        }),
+        createRiskAssessmentExportCell(getRiskAssessmentExportRiskLevelText(risk), {
+          ...bodyCenterFormat,
+          bold: true,
+          card: {
+            fillColor: getRiskAssessmentExportRiskFill(risk),
+            borderColor: "#CBD5E1",
+          },
+        }),
+        createRiskAssessmentExportCell(row.special || "Ne", bodyCenterFormat),
+        createRiskAssessmentExportCell(row.note, bodyFormat),
+        createRiskAssessmentExportCell(row.measures, bodyFormat),
+      ]);
+    }),
+  ];
+  const merges = [
+    { rowId: "title", columnId: "risk", colSpan: columns.length },
+    { rowId: "h1", columnId: "risk", rowSpan: 2 },
+    { rowId: "h1", columnId: "probability", colSpan: 3 },
+    { rowId: "h1", columnId: "special", colSpan: 3 },
+  ];
+  return createRiskAssessmentExportTable(columns, tableRows, {
+    merges,
+    pageOrientation: "landscape",
+    keepRowsTogether: true,
+  });
+}
+
 function buildRiskAssessmentJobsOverviewExportTable() {
   const columns = [
     { id: "job", label: "POSLOVI", width: 180 },
@@ -130565,13 +130671,190 @@ function buildRiskAssessmentChemicalExportTable() {
   return createRiskAssessmentExportTable(columns, rows, { merges });
 }
 
+function getRiskAssessmentChemicalLinkedJobs(chemical = {}) {
+  const jobIds = new Set(
+    (Array.isArray(chemical.usedInJobIds) ? chemical.usedInJobIds : [])
+      .map((id) => String(id || ""))
+      .filter(Boolean),
+  );
+  if (!jobIds.size) {
+    return [];
+  }
+  return riskAssessmentJobDrafts.filter((job) => jobIds.has(String(job.id || "")));
+}
+
+function formatRiskAssessmentChemicalSpecialWorkCell(chemical = {}) {
+  const purPoints = getRiskAssessmentChemicalLinkedJobs(chemical)
+    .flatMap((job) => normalizeJobPurPointValues(job.purPoints ?? []));
+  return purPoints.length
+    ? joinUniqueRiskAssessmentTextBlocks(["Da", getJobPurPointSummary(purPoints)])
+    : "Ne";
+}
+
+function formatRiskAssessmentChemicalRiskSubject(chemical = {}, index = 0) {
+  return joinUniqueRiskAssessmentTextBlocks([
+    "II. ŠTETNOSTI",
+    "1. Kemijske štetnosti",
+    `${index + 1}. ${chemical.name || "Kemikalija"}`,
+    chemical.casNumber ? `CAS ${chemical.casNumber}` : "",
+  ]);
+}
+
+function formatRiskAssessmentChemicalRiskNote(chemical = {}) {
+  const hCodes = extractRiskAssessmentChemicalCodes([chemical.hazardStatements, chemical.classification], /\bH\d{3}[A-Za-z]*\b/g);
+  const euhCodes = extractRiskAssessmentChemicalCodes([chemical.hazardStatements, chemical.classification], /\bEUH\d{3}[A-Za-z]*\b/g);
+  const pCodes = extractRiskAssessmentChemicalCodes(chemical.precautionaryStatements, /\bP\d{3}(?:\s*\+\s*\d{3})*/g);
+  const pictogramLines = [
+    ...normalizeRiskAssessmentChemicalTextList(chemical.pictograms),
+    ...normalizeRiskAssessmentChemicalTextList(chemical.signalWords),
+  ];
+  const linkedJobs = getRiskAssessmentChemicalLinkedJobs(chemical)
+    .map((job) => job.jobTitle)
+    .filter(Boolean);
+  return joinUniqueRiskAssessmentTextBlocks([
+    getRiskAssessmentChemicalSourceMeta(chemical),
+    linkedJobs.length ? `Radna mjesta: ${linkedJobs.join(", ")}` : "",
+    getRiskAssessmentChemicalOfficialGviText(chemical) ? `GVI: ${getRiskAssessmentChemicalOfficialGviText(chemical)}` : "",
+    getRiskAssessmentChemicalOfficialKgviText(chemical) ? `KGVI: ${getRiskAssessmentChemicalOfficialKgviText(chemical)}` : "",
+    chemical.officialLimitNote ? `Napomena GVI/KGVI: ${chemical.officialLimitNote}` : "",
+    chemical.officialDirective ? `Direktiva: ${chemical.officialDirective}` : "",
+    getRiskAssessmentChemicalPrilogIiText(chemical) ? `Prilog II/III: ${getRiskAssessmentChemicalPrilogIiText(chemical)}` : "",
+    chemical.estimatedConsequenceSize ? `Procijenjena štetnost: ${chemical.estimatedConsequenceSize}` : "",
+    pictogramLines.length ? `GHS / oznake opasnosti: ${pictogramLines.join(", ")}` : "",
+    hCodes.length ? `H oznake: ${hCodes.join(", ")}` : "",
+    euhCodes.length ? `EUH oznake: ${euhCodes.join(", ")}` : "",
+    pCodes.length ? `P oznake: ${pCodes.join(", ")}` : "",
+    chemical.note,
+  ]);
+}
+
+function formatRiskAssessmentChemicalRiskMeasures(chemical = {}) {
+  const text = joinUniqueRiskAssessmentTextBlocks([
+    chemical.ppe ? `OZO: ${chemical.ppe}` : "",
+    chemical.storage ? `Skladištenje: ${chemical.storage}` : "",
+    chemical.firstAid ? `Prva pomoć: ${chemical.firstAid}` : "",
+    chemical.fireMeasures ? `Požar: ${chemical.fireMeasures}` : "",
+    chemical.spillMeasures ? `Izlijevanje/prosipanje: ${chemical.spillMeasures}` : "",
+  ]);
+  return text || "Primjenjivati sigurnosno-tehnički list, označavanje spremnika, ventilaciju, higijenske mjere i odgovarajuću osobnu zaštitnu opremu.";
+}
+
+function buildRiskAssessmentChemicalRiskExportTable() {
+  return buildRiskAssessmentRiskMatrixExportTable({
+    title: "Kemijske štetnosti - procjena rizika",
+    firstHeader: "Kemijske štetnosti",
+    firstSubHeader: "Kemijska štetnost / tvar",
+    rows: riskAssessmentChemicalDrafts.map((chemical, index) => ({
+      id: `chemical-risk-${chemical.id || index + 1}`,
+      subject: formatRiskAssessmentChemicalRiskSubject(chemical, index),
+      probability: chemical.probability,
+      consequence: chemical.consequence,
+      riskLevel: chemical.riskLevel,
+      special: formatRiskAssessmentChemicalSpecialWorkCell(chemical),
+      note: formatRiskAssessmentChemicalRiskNote(chemical),
+      measures: formatRiskAssessmentChemicalRiskMeasures(chemical),
+    })),
+  });
+}
+
 function buildRiskAssessmentChemicalsExportBlocks() {
   if (!riskAssessmentChemicalDrafts.length) {
     return [createRiskAssessmentExportParagraph("Kemijske štetnosti nisu dodane.")];
   }
   return [
     createRiskAssessmentExportParagraph("GVI/KGVI se upisuje iz Priloga I kada postoji; ako službene vrijednosti nema, primjenjuje se smjernica iz Priloga II/III."),
-    buildRiskAssessmentChemicalExportTable(),
+    buildRiskAssessmentChemicalRiskExportTable(),
+  ];
+}
+
+function isRiskAssessmentBiologicalRiskRow(risk = {}) {
+  const normalized = normalizeRiskAssessmentIdentityComparable([
+    risk.topCategory,
+    risk.category,
+    risk.group,
+    risk.code,
+    risk.hazard,
+    risk.description,
+    risk.workNote,
+  ].filter(Boolean).join(" "));
+  return normalized.includes("biolos");
+}
+
+function getRiskAssessmentBiologicalFallbackMeasures() {
+  return "Primjenjivati higijenske mjere, čišćenje i dezinfekciju, pravilno postupanje s kontaminiranim materijalom, osposobljavanje radnika i odgovarajuću OZO prema izvoru izloženosti.";
+}
+
+function getRiskAssessmentBiologicalRiskExportRows() {
+  const rows = [];
+  riskAssessmentJobDrafts.forEach((job, jobIndex) => {
+    const biologicalRows = sortRiskAssessmentRiskRowsByPrilogOrder(job.riskRows ?? [])
+      .filter(isRiskAssessmentBiologicalRiskRow);
+    biologicalRows.forEach((risk, riskIndex) => {
+      rows.push({
+        id: `biological-risk-${job.id || jobIndex + 1}-${risk.id || riskIndex + 1}`,
+        subject: joinUniqueRiskAssessmentTextBlocks([
+          getRiskAssessmentRiskIdentityText(risk, { includeConsequences: true }),
+          job.jobTitle ? `Radno mjesto: ${job.jobTitle}` : "",
+        ]),
+        probability: risk.probability,
+        consequence: risk.consequence,
+        riskLevel: risk.riskLevel,
+        special: formatRiskAssessmentRiskSpecialWorkCell(risk),
+        note: joinUniqueRiskAssessmentTextBlocks([risk.workNote, risk.note, risk.source, job.biologicalHazards]),
+        measures: joinUniqueRiskAssessmentTextBlocks([risk.existingMeasures, risk.additionalMeasures, risk.measures]) || getRiskAssessmentBiologicalFallbackMeasures(),
+      });
+    });
+    if (!biologicalRows.length && (job.biologicalWork || String(job.biologicalHazards || "").trim() || (job.biologicalHazardOptions ?? []).length)) {
+      const probability = "mv";
+      const consequence = "sš";
+      rows.push({
+        id: `biological-job-${job.id || jobIndex + 1}`,
+        subject: joinUniqueRiskAssessmentTextBlocks([
+          "II. ŠTETNOSTI",
+          "2. Biološke štetnosti",
+          (job.biologicalHazardOptions ?? []).join(", ") || "Biološki agensi / izvori izloženosti",
+          job.jobTitle ? `Radno mjesto: ${job.jobTitle}` : "",
+        ]),
+        probability,
+        consequence,
+        riskLevel: calculateRiskAssessmentRiskLevel(probability, consequence),
+        special: "Ne",
+        note: job.biologicalHazards,
+        measures: getRiskAssessmentBiologicalFallbackMeasures(),
+      });
+    }
+  });
+  if (!rows.length) {
+    const biologicalText = richTextHtmlToPlainText(riskAssessmentBiologicalHazardsInput?.value || "").trim();
+    if (biologicalText) {
+      rows.push({
+        id: "biological-summary",
+        subject: "II. ŠTETNOSTI\n2. Biološke štetnosti\nOpća procjena",
+        probability: "",
+        consequence: "",
+        riskLevel: "N/P",
+        special: "Ne",
+        note: biologicalText,
+        measures: getRiskAssessmentBiologicalFallbackMeasures(),
+      });
+    }
+  }
+  return rows;
+}
+
+function buildRiskAssessmentBiologicalExportBlocks() {
+  const rows = getRiskAssessmentBiologicalRiskExportRows();
+  if (!rows.length) {
+    return [createRiskAssessmentExportParagraph("Biološke štetnosti nisu dodane.")];
+  }
+  return [
+    createRiskAssessmentExportParagraph("Procjena bioloških štetnosti povezuje izvore izloženosti, radno mjesto, vjerojatnost, posljedice i mjere zaštite."),
+    buildRiskAssessmentRiskMatrixExportTable({
+      title: "Biološke štetnosti - procjena rizika",
+      firstHeader: "Biološke štetnosti",
+      firstSubHeader: "Biološka štetnost / izvor izloženosti",
+      rows,
+    }),
   ];
 }
 
@@ -130853,6 +131136,8 @@ function buildRiskAssessmentStructuredSectionExportBlocks(key = "") {
       return buildRiskAssessmentJobsExportBlocks();
     case "chemicals":
       return buildRiskAssessmentChemicalsExportBlocks();
+    case "biological":
+      return buildRiskAssessmentBiologicalExportBlocks();
     case "ppe":
       return buildRiskAssessmentPpeExportBlocks();
     case "manual_handling":

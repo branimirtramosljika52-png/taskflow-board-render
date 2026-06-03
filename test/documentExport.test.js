@@ -376,6 +376,55 @@ test("docx export skips generated page break when template already has one befor
   assert.equal((outputXml.match(/<w:pageBreakBefore\/>/g) || []).length, 0);
 });
 
+test("docx export carries template header and footer references into generated landscape sections", async () => {
+  const templateBuffer = buildMinimalDocxBuffer(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+      <w:body>
+        <w:p><w:r><w:t>{{RISK_TABLE}}</w:t></w:r></w:p>
+        <w:sectPr>
+          <w:headerReference w:type="default" r:id="rIdHeader"/>
+          <w:footerReference w:type="default" r:id="rIdFooter"/>
+          <w:pgSz w:w="11906" w:h="16838"/>
+          <w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/>
+        </w:sectPr>
+      </w:body>
+    </w:document>`, {
+    relationshipsXml: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+      <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+        <Relationship Id="rIdHeader" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/>
+        <Relationship Id="rIdFooter" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>
+      </Relationships>`,
+    wordFiles: {
+      "header1.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:r><w:t>Header</w:t></w:r></w:p></w:hdr>`,
+      "footer1.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:r><w:t>Stranica </w:t></w:r><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p></w:ftr>`,
+    },
+  });
+
+  const outputBuffer = await buildDocxFromTemplateBuffer(templateBuffer, {
+    RISK_TABLE: {
+      __docxBlockType: "table",
+      pageOrientation: "landscape",
+      columns: [
+        { id: "item", label: "Stavka", width: 400 },
+        { id: "risk", label: "Rizik", width: 180 },
+      ],
+      rows: [
+        { id: "head", header: true, cells: [{ text: "Stavka" }, { text: "Rizik" }] },
+        { id: "row-1", cells: [{ text: "Kemijska stetnost" }, { text: "Srednji rizik" }] },
+      ],
+    },
+  });
+  const outputXml = new PizZip(outputBuffer).file("word/document.xml").asText();
+
+  assert.equal(outputXml.includes("{{RISK_TABLE}}"), false);
+  assert.equal((outputXml.match(/<w:headerReference\b/g) || []).length, 3);
+  assert.equal((outputXml.match(/<w:footerReference\b/g) || []).length, 3);
+  assert.equal((outputXml.match(/r:id="rIdFooter"/g) || []).length, 3);
+  assert.equal((outputXml.match(/w:orient="landscape"/g) || []).length, 1);
+});
+
 test("docx export preserves template landscape section around risk placeholder", async () => {
   const templateBuffer = buildMinimalDocxBuffer(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
     <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">

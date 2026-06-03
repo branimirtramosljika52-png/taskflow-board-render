@@ -2414,6 +2414,12 @@ function buildWordPageBreakXml() {
   return '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
 }
 
+function getDocxSectionHeaderFooterXml(sectPrXml = "") {
+  return Array.from(String(sectPrXml || "").matchAll(/<w:(?:headerReference|footerReference)\b[^>]*(?:\/>|>\s*<\/w:(?:headerReference|footerReference)>)/gi))
+    .map((match) => match[0])
+    .join("");
+}
+
 function buildWordSectionBreakXml(orientation = "portrait", options = {}) {
   const isLandscape = clean(orientation).toLowerCase() === "landscape";
   const pageWidth = isLandscape ? 16838 : 11906;
@@ -2422,10 +2428,12 @@ function buildWordSectionBreakXml(orientation = "portrait", options = {}) {
     ? Math.max(360, Math.min(1800, Math.round(Number(options.margin))))
     : (isLandscape ? 720 : 1440);
   const headerFooterMargin = Math.max(240, Math.min(720, Math.round(margin / 2)));
+  const headerFooterXml = getDocxSectionHeaderFooterXml(options.sectionProperties || options.sectPr || "");
   return `
     <w:p>
       <w:pPr>
         <w:sectPr>
+          ${headerFooterXml}
           <w:type w:val="nextPage"/>
           <w:pgSz w:w="${pageWidth}" w:h="${pageHeight}"${isLandscape ? ' w:orient="landscape"' : ""}/>
           <w:pgMar w:top="${margin}" w:right="${margin}" w:bottom="${margin}" w:left="${margin}" w:header="${headerFooterMargin}" w:footer="${headerFooterMargin}" w:gutter="0"/>
@@ -2440,10 +2448,11 @@ function buildWordTableBlockXml(table = {}, context = {}) {
   if (table.pageOrientation !== "landscape" || context.currentSectionOrientation === "landscape") {
     return tableXml;
   }
+  const sectionOptions = { sectionProperties: context.currentSectionProperties || "" };
   return [
-    buildWordSectionBreakXml("portrait"),
+    buildWordSectionBreakXml("portrait", sectionOptions),
     tableXml,
-    buildWordSectionBreakXml("landscape", { margin: 720 }),
+    buildWordSectionBreakXml("landscape", { ...sectionOptions, margin: 720 }),
   ].join("");
 }
 
@@ -3433,6 +3442,11 @@ function getDocxSectionOrientationFromPropertiesXml(sectPrXml = "") {
 }
 
 function getDocxSectionOrientationForOffset(xml = "", offset = 0) {
+  const sectionProperties = getDocxSectionPropertiesForOffset(xml, offset);
+  return sectionProperties ? getDocxSectionOrientationFromPropertiesXml(sectionProperties) : "";
+}
+
+function getDocxSectionPropertiesForOffset(xml = "", offset = 0) {
   const ranges = [];
   const sectionPattern = /<w:sectPr\b[\s\S]*?<\/w:sectPr>/gi;
   let match = null;
@@ -3448,7 +3462,7 @@ function getDocxSectionOrientationForOffset(xml = "", offset = 0) {
 
   const safeOffset = Math.max(0, Number(offset) || 0);
   const currentSection = ranges.find((range) => range.start >= safeOffset) || ranges[ranges.length - 1];
-  return getDocxSectionOrientationFromPropertiesXml(currentSection.xml);
+  return currentSection.xml;
 }
 
 function applyDocxSpecialPlaceholders(zip, specialPlaceholders = new Map()) {
@@ -3480,10 +3494,12 @@ function applyDocxSpecialPlaceholders(zip, specialPlaceholders = new Map()) {
 
       const buildReplacementXml = (offset = null) => {
         const previousOrientation = renderContext.currentSectionOrientation;
+        const previousSectionProperties = renderContext.currentSectionProperties;
         const renderValue = Number.isFinite(Number(offset)) && hasDocxTemplateBreakBeforeOffset(xml, Number(offset)) && value.pageBreakBefore
           ? { ...value, pageBreakBefore: false }
           : value;
         if (Number.isFinite(Number(offset))) {
+          renderContext.currentSectionProperties = getDocxSectionPropertiesForOffset(xml, Number(offset));
           renderContext.currentSectionOrientation = getDocxSectionOrientationForOffset(xml, Number(offset));
         }
         try {
@@ -3493,6 +3509,11 @@ function applyDocxSpecialPlaceholders(zip, specialPlaceholders = new Map()) {
             renderContext.currentSectionOrientation = previousOrientation;
           } else {
             delete renderContext.currentSectionOrientation;
+          }
+          if (previousSectionProperties) {
+            renderContext.currentSectionProperties = previousSectionProperties;
+          } else {
+            delete renderContext.currentSectionProperties;
           }
         }
       };
