@@ -61424,11 +61424,17 @@ body.is-risk-stl-review-open {
 
 .risk-assessment-biological-rule-content {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+
+.risk-assessment-biological-rule-kpis {
+  display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
 }
 
-.risk-assessment-biological-rule-content article {
+.risk-assessment-biological-rule-kpis article {
   display: grid;
   gap: 4px;
   min-height: 92px;
@@ -61438,16 +61444,100 @@ body.is-risk-stl-review-open {
   background: #ffffff;
 }
 
-.risk-assessment-biological-rule-content strong {
+.risk-assessment-biological-rule-kpis strong {
   color: #0f172a;
   font-size: 0.84rem;
 }
 
-.risk-assessment-biological-rule-content small {
+.risk-assessment-biological-rule-kpis small {
   color: #64748b;
   font-size: 0.7rem;
   font-weight: 760;
   line-height: 1.35;
+}
+
+.risk-assessment-biological-catalog-controls {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(180px, 0.48fr) minmax(130px, 0.32fr);
+  gap: 8px;
+  align-items: end;
+}
+
+.risk-assessment-biological-agent-table {
+  display: grid;
+  gap: 0;
+  max-height: 380px;
+  overflow: auto;
+  border: 1px solid rgba(148, 163, 184, 0.42);
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.risk-assessment-biological-agent-head,
+.risk-assessment-biological-agent-row {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.2fr) minmax(170px, 0.55fr) minmax(120px, 0.35fr) minmax(240px, 0.9fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.risk-assessment-biological-agent-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(203, 213, 225, 0.8);
+  background: #f8fafc;
+}
+
+.risk-assessment-biological-agent-head strong {
+  color: #0f172a;
+  font-size: 0.86rem;
+}
+
+.risk-assessment-biological-agent-head a {
+  justify-self: end;
+  color: #2563eb;
+  font-size: 0.72rem;
+  font-weight: 850;
+  text-decoration: none;
+}
+
+.risk-assessment-biological-agent-row {
+  padding: 9px 12px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.92);
+  color: #334155;
+  font-size: 0.72rem;
+  line-height: 1.3;
+}
+
+.risk-assessment-biological-agent-row.is-header {
+  position: sticky;
+  top: 42px;
+  z-index: 2;
+  background: #eef6ff;
+  color: #0f172a;
+  font-size: 0.66rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.risk-assessment-biological-agent-name {
+  color: #0f172a;
+  font-weight: 850;
+}
+
+.risk-assessment-biological-group-pill {
+  width: fit-content;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: #ecfdf5;
+  color: #047857;
+  font-weight: 900;
+}
+
+.risk-assessment-biological-agent-table > .inline-help {
+  padding: 9px 12px;
 }
 
 .risk-assessment-risk-line {
@@ -66935,6 +67025,10 @@ body.is-risk-stl-review-open {
   .risk-assessment-chemical-grid,
   .risk-assessment-biological-rule-head,
   .risk-assessment-biological-rule-content,
+  .risk-assessment-biological-rule-kpis,
+  .risk-assessment-biological-catalog-controls,
+  .risk-assessment-biological-agent-head,
+  .risk-assessment-biological-agent-row,
   .risk-assessment-structure-ai-panel,
   .risk-assessment-structure-upload,
   .risk-assessment-job-profile-top,
@@ -66965,6 +67059,14 @@ body.is-risk-stl-review-open {
 
   .risk-assessment-biological-rule-actions {
     justify-content: flex-start;
+  }
+
+  .risk-assessment-biological-agent-row.is-header {
+    top: 38px;
+  }
+
+  .risk-assessment-biological-agent-head a {
+    justify-self: start;
   }
 
   .risk-assessment-org-card {

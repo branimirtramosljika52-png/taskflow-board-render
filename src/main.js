@@ -188,6 +188,17 @@ import {
   RISK_CHEMICAL_SUBSTANCES_STATS,
   resolveRiskChemicalPrilogIiGuideline,
 } from "./riskChemicalSubstancesCatalog.js";
+import {
+  RISK_BIOLOGICAL_ACTIVITY_EXAMPLES,
+  RISK_BIOLOGICAL_AGENT_CATALOG,
+  RISK_BIOLOGICAL_AGENT_CATEGORIES,
+  RISK_BIOLOGICAL_AGENT_GROUPS,
+  RISK_BIOLOGICAL_AGENT_STATS,
+  RISK_BIOLOGICAL_AGENTS_SOURCE_URL,
+  RISK_BIOLOGICAL_INDUSTRIAL_ISOLATION_MEASURES,
+  RISK_BIOLOGICAL_LAB_ISOLATION_MEASURES,
+  RISK_BIOLOGICAL_NOTE_CODES,
+} from "./riskBiologicalAgentCatalog.js";
 
 const API_BASE = "/api";
 const WORK_ORDER_BATCH_SIZE = 60;
@@ -6407,6 +6418,9 @@ let riskAssessmentLastStlImportSummary = null;
 let riskAssessmentStlReviewOpen = false;
 let riskAssessmentOfficialSubstanceQuery = "";
 let riskAssessmentOfficialSubstanceType = "all";
+let riskAssessmentBiologicalAgentQuery = "";
+let riskAssessmentBiologicalAgentCategory = "all";
+let riskAssessmentBiologicalAgentGroup = "all";
 let riskAssessmentTemplateStorageScope = "";
 let riskAssessmentModuleReportTemplateDraft = null;
 let riskAssessmentReportTemplateDraft = null;
@@ -6472,49 +6486,16 @@ const RISK_ASSESSMENT_FIELD_PLACEHOLDERS = Object.freeze([
   { token: "{{RISK_BASIC_DATA}}", label: "Velika tablica osnovnih podataka" },
 ]);
 
-const RISK_ASSESSMENT_BIOLOGICAL_AGENT_GROUPS = Object.freeze([
-  { group: "Skupina 1", title: "Nije vjerojatno da uzrokuje bolest kod ljudi", detail: "Primjenjuju se opća pravila dobre prakse i higijene rada kada procjena ne pokaže zdravstveni rizik." },
-  { group: "Skupina 2", title: "Može uzrokovati bolest kod ljudi", detail: "Može biti opasan za radnike, ali nije vjerojatno širenje u okolinu; obično postoji profilaksa ili liječenje." },
-  { group: "Skupina 3", title: "Može uzrokovati tešku bolest", detail: "Ozbiljna opasnost za radnike i mogući rizik širenja; u pravilu postoji djelotvorna profilaksa ili liječenje." },
-  { group: "Skupina 4", title: "Uzrokuje tešku bolest", detail: "Ozbiljna opasnost za radnike i veliki rizik širenja; u pravilu nema djelotvorne profilakse ili liječenja." },
-]);
-
-const RISK_ASSESSMENT_BIOLOGICAL_ACTIVITY_EXAMPLES = Object.freeze([
-  "Rad u pogonima za proizvodnju hrane",
-  "Rad u poljoprivredi",
-  "Rad u kojem postoji doticaj sa životinjama ili proizvodima životinjskog podrijetla",
-  "Rad u zdravstvu, uključujući izolacijske jedinice i mrtvačnice",
-  "Rad u kliničkim, veterinarskim i dijagnostičkim laboratorijima",
-  "Rad u pogonima za odlaganje otpada",
-  "Rad u uređajima za pročišćavanje otpadnih voda",
-]);
-
-const RISK_ASSESSMENT_BIOLOGICAL_AGENT_CATALOG = Object.freeze([
-  { group: "Bakterije", examples: "Bacillus anthracis, Bordetella pertussis, Clostridium tetani, Escherichia coli sojevi, Leptospira spp., Salmonella spp.", note: "Razvrstavanje prema Prilogu III i stvarnoj izloženosti." },
-  { group: "Virusi", examples: "Virus hepatitisa B, virus hepatitisa C, SARS-CoV-2, virus influence, virus bjesnoće, HIV", note: "Provjeriti mogućnost cijepljenja, profilakse i posebnih mjera." },
-  { group: "Gljive", examples: "Aspergillus flavus, Aspergillus fumigatus, Candida albicans, Histoplasma capsulatum", note: "Napomena A u katalogu označava moguće alergijske učinke." },
-  { group: "Paraziti", examples: "Echinococcus spp., Toxoplasma gondii, Giardia lamblia, Plasmodium spp.", note: "Procijeniti izvor, način prijenosa i trajanje izloženosti." },
-]);
-
-const RISK_ASSESSMENT_BIOLOGICAL_NOTE_CODES = Object.freeze([
-  { code: "A", label: "Mogući alergijski učinci" },
-  { code: "D", label: "Evidencija izloženih radnika čuva se dulje zbog latentnih ili dugotrajnih posljedica" },
-  { code: "T", label: "Proizvodnja toksina" },
-  { code: "V", label: "Učinkovito cjepivo je dostupno" },
-]);
-
-const RISK_ASSESSMENT_BIOLOGICAL_ISOLATION_MEASURES = Object.freeze([
-  { area: "Mjesto rada", measure: "Odvojiti mjesto rada od drugih aktivnosti u istoj zgradi", level2: "ne", level3: "preporučljivo", level4: "da" },
-  { area: "Mjesto rada", measure: "Omogućiti hermetičko zatvaranje radi fumigacije", level2: "ne", level3: "preporučljivo", level4: "da" },
-  { area: "Objekti", measure: "Rukovati zaraženim materijalom u zaštitnom kabinetu, izolatoru ili drugom izoliranom prostoru", level2: "prema potrebi", level3: "da, kod prijenosa zrakom", level4: "da" },
-  { area: "Oprema", measure: "Filtrirati ulazni i izlazni zrak HEPA ili sličnim filtrom", level2: "ne", level3: "da, izlazni zrak", level4: "da, ulazni i izlazni zrak" },
-  { area: "Oprema", measure: "Održavati tlak niži od atmosferskog", level2: "ne", level3: "preporučljivo", level4: "da" },
-  { area: "Oprema", measure: "Osigurati površine nepropusne za vodu i lako perive", level2: "radni stol i pod", level3: "radni stol, pod i površine prema procjeni", level4: "radni stol, zidovi, pod i strop" },
-  { area: "Sustav rada", measure: "Dopustiti pristup samo ovlaštenim radnicima", level2: "da", level3: "da", level4: "da, kroz zračnu komoru" },
-  { area: "Sustav rada", measure: "Utvrditi postupke dezinfekcije i sigurno skladištenje biološkog agensa", level2: "da", level3: "da", level4: "da, zaštićeno skladištenje" },
-  { area: "Otpad", measure: "Primijeniti validirani postupak inaktivacije za sigurno zbrinjavanje životinjskih trupla", level2: "preporučljivo", level3: "da, na licu mjesta ili izvan njega", level4: "da, na licu mjesta" },
-  { area: "Druge mjere", measure: "Laboratorij mora imati vlastitu opremu i rješenje za promatranje osoba u prostoru", level2: "ne / preporučljivo", level3: "preporučljivo", level4: "da" },
-]);
+const RISK_ASSESSMENT_BIOLOGICAL_AGENT_GROUPS = RISK_BIOLOGICAL_AGENT_GROUPS;
+const RISK_ASSESSMENT_BIOLOGICAL_ACTIVITY_EXAMPLES = RISK_BIOLOGICAL_ACTIVITY_EXAMPLES;
+const RISK_ASSESSMENT_BIOLOGICAL_AGENT_CATALOG = RISK_BIOLOGICAL_AGENT_CATALOG;
+const RISK_ASSESSMENT_BIOLOGICAL_AGENT_CATEGORIES = RISK_BIOLOGICAL_AGENT_CATEGORIES;
+const RISK_ASSESSMENT_BIOLOGICAL_AGENT_STATS = RISK_BIOLOGICAL_AGENT_STATS;
+const RISK_ASSESSMENT_BIOLOGICAL_NOTE_CODES = RISK_BIOLOGICAL_NOTE_CODES;
+const RISK_ASSESSMENT_BIOLOGICAL_LAB_ISOLATION_MEASURES = RISK_BIOLOGICAL_LAB_ISOLATION_MEASURES;
+const RISK_ASSESSMENT_BIOLOGICAL_INDUSTRIAL_ISOLATION_MEASURES = RISK_BIOLOGICAL_INDUSTRIAL_ISOLATION_MEASURES;
+const RISK_ASSESSMENT_BIOLOGICAL_SOURCE_URL = RISK_BIOLOGICAL_AGENTS_SOURCE_URL;
+const RISK_ASSESSMENT_BIOLOGICAL_AGENT_PREVIEW_LIMIT = 120;
 const RISK_ASSESSMENT_TEMPLATE_PLACEHOLDER_BY_KEY = new Map(
   RISK_ASSESSMENT_TEMPLATE_PLACEHOLDERS.map((entry) => [entry.key, entry]),
 );
@@ -119531,6 +119512,17 @@ riskAssessmentForm?.addEventListener("change", (event) => {
     richTemplateSelect.value = "";
     return;
   }
+  const biologicalFilter = event.target?.closest?.("[data-risk-biological-filter]");
+  if (biologicalFilter) {
+    const filterType = biologicalFilter.dataset.riskBiologicalFilter || "";
+    if (filterType === "category") {
+      riskAssessmentBiologicalAgentCategory = biologicalFilter.value || "all";
+    } else if (filterType === "group") {
+      riskAssessmentBiologicalAgentGroup = biologicalFilter.value || "all";
+    }
+    renderRiskAssessmentBiologicalRulePanel();
+    return;
+  }
   const select = event.target?.closest?.("[data-risk-basic-template-select]");
   if (!select) {
     return;
@@ -119981,6 +119973,10 @@ document.addEventListener("keydown", (event) => {
 riskAssessmentForm?.addEventListener("input", (event) => {
   if (event.target?.matches?.("[data-risk-people-search]")) {
     renderRiskAssessmentPeoplePickers();
+  }
+  if (event.target?.matches?.("[data-risk-biological-search]")) {
+    riskAssessmentBiologicalAgentQuery = event.target.value || "";
+    renderRiskAssessmentBiologicalRulePanel({ preserveSearchFocus: true });
   }
 });
 riskAssessmentForm?.addEventListener("input", handleRiskAssessmentRichEditorInput);
@@ -125050,9 +125046,110 @@ function insertRiskAssessmentRichHtml(key = "", html = "") {
   syncRiskAssessmentRichValue(editor.dataset.riskRichEditor || key);
 }
 
+function normalizeRiskAssessmentBiologicalSearchText(value = "") {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("hr-HR")
+    .trim();
+}
+
+function getRiskAssessmentBiologicalNoteLabel(code = "") {
+  return RISK_ASSESSMENT_BIOLOGICAL_NOTE_CODES.find((item) => item.code === code)?.label || "";
+}
+
+function formatRiskAssessmentBiologicalAgentNotes(agent = {}) {
+  const labels = (agent.noteCodes || [])
+    .map((code) => {
+      const label = getRiskAssessmentBiologicalNoteLabel(code);
+      return label ? `${code} - ${label}` : code;
+    })
+    .filter(Boolean);
+  if (agent.limitedAirborneRisk) {
+    labels.unshift("(**) ograničen rizik od zaraze prijenosom zrakom");
+  }
+  return labels.join("; ") || "-";
+}
+
+function getRiskAssessmentFilteredBiologicalAgents() {
+  const query = normalizeRiskAssessmentBiologicalSearchText(riskAssessmentBiologicalAgentQuery);
+  return RISK_ASSESSMENT_BIOLOGICAL_AGENT_CATALOG.filter((agent) => {
+    if (riskAssessmentBiologicalAgentCategory !== "all" && agent.category !== riskAssessmentBiologicalAgentCategory) {
+      return false;
+    }
+    if (riskAssessmentBiologicalAgentGroup !== "all" && agent.group !== riskAssessmentBiologicalAgentGroup) {
+      return false;
+    }
+    if (!query) {
+      return true;
+    }
+    const haystack = normalizeRiskAssessmentBiologicalSearchText([
+      agent.name,
+      agent.category,
+      agent.group,
+      agent.classification,
+      agent.noteRaw,
+      formatRiskAssessmentBiologicalAgentNotes(agent),
+    ].join(" "));
+    return haystack.includes(query);
+  });
+}
+
+function renderRiskAssessmentBiologicalCategoryOptions() {
+  return [
+    `<option value="all">Sve kategorije (${escapeHtml(String(RISK_ASSESSMENT_BIOLOGICAL_AGENT_STATS.total))})</option>`,
+    ...RISK_ASSESSMENT_BIOLOGICAL_AGENT_CATEGORIES.map((category) => {
+      const count = RISK_ASSESSMENT_BIOLOGICAL_AGENT_STATS.byCategory?.[category] || 0;
+      return `<option value="${escapeHtml(category)}"${riskAssessmentBiologicalAgentCategory === category ? " selected" : ""}>${escapeHtml(category)} (${escapeHtml(String(count))})</option>`;
+    }),
+  ].join("");
+}
+
+function renderRiskAssessmentBiologicalGroupOptions() {
+  return [
+    `<option value="all">Sve skupine</option>`,
+    ...["2", "3", "4"].map((group) => {
+      const count = RISK_ASSESSMENT_BIOLOGICAL_AGENT_STATS.byGroup?.[group] || 0;
+      return `<option value="${escapeHtml(group)}"${riskAssessmentBiologicalAgentGroup === group ? " selected" : ""}>Skupina ${escapeHtml(group)} (${escapeHtml(String(count))})</option>`;
+    }),
+  ].join("");
+}
+
+function renderRiskAssessmentBiologicalMeasureTable(items = [], caption = "") {
+  const rows = items.map((item) => `
+    <tr>
+      <td>${escapeHtml(item.area)}</td>
+      <td>${escapeHtml(item.measure)}</td>
+      <td>${escapeHtml(item.level2)}</td>
+      <td>${escapeHtml(item.level3)}</td>
+      <td>${escapeHtml(item.level4)}</td>
+    </tr>
+  `).join("");
+  return `
+    <table>
+      <thead>
+        <tr>
+          <th>${escapeHtml(caption || "Mjera")}</th>
+          <th>Opis mjere</th>
+          <th>Razina 2</th>
+          <th>Razina 3</th>
+          <th>Razina 4</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
 function buildRiskAssessmentBiologicalSummaryHtml() {
   const groups = RISK_ASSESSMENT_BIOLOGICAL_AGENT_GROUPS
-    .map((item) => `<li><strong>${escapeHtml(item.group)}:</strong> ${escapeHtml(item.title)} - ${escapeHtml(item.detail)}</li>`)
+    .map((item) => `
+      <tr>
+        <td><strong>${escapeHtml(item.group)}</strong></td>
+        <td>${escapeHtml(item.title)}</td>
+        <td>${escapeHtml(item.detail)}</td>
+      </tr>
+    `)
     .join("");
   const activities = RISK_ASSESSMENT_BIOLOGICAL_ACTIVITY_EXAMPLES
     .map((item) => `<li>${escapeHtml(item)}</li>`)
@@ -125060,37 +125157,51 @@ function buildRiskAssessmentBiologicalSummaryHtml() {
   const notes = RISK_ASSESSMENT_BIOLOGICAL_NOTE_CODES
     .map((item) => `<li><strong>${escapeHtml(item.code)}</strong> - ${escapeHtml(item.label)}</li>`)
     .join("");
-  const measures = RISK_ASSESSMENT_BIOLOGICAL_ISOLATION_MEASURES
-    .slice(0, 8)
-    .map((item) => `<li><strong>${escapeHtml(item.area)}:</strong> ${escapeHtml(item.measure)} (razina 2: ${escapeHtml(item.level2)}, razina 3: ${escapeHtml(item.level3)}, razina 4: ${escapeHtml(item.level4)})</li>`)
-    .join("");
   return `
     <h3>Biološke štetnosti prema NN 129/2020</h3>
-    <p>Procjena bioloških štetnosti provodi se utvrđivanjem prirode, stupnja i trajanja izloženosti radnika, razvrstavanjem mogućih bioloških agensa i određivanjem mjera za sprječavanje ili smanjivanje izloženosti.</p>
+    <p>Procjena bioloških štetnosti provodi se utvrđivanjem prirode, stupnja i trajanja izloženosti radnika, razvrstavanjem mogućih bioloških agensa i određivanjem mjera za sprječavanje ili smanjivanje izloženosti. Izvor: <a href="${escapeHtml(RISK_ASSESSMENT_BIOLOGICAL_SOURCE_URL)}">Narodne novine NN 129/2020</a>.</p>
     <h4>Skupine bioloških agensa</h4>
-    <ul>${groups}</ul>
+    <table>
+      <thead><tr><th>Skupina</th><th>Opis</th><th>Procjena</th></tr></thead>
+      <tbody>${groups}</tbody>
+    </table>
     <h4>Aktivnosti kod kojih je moguća nenamjerna izloženost</h4>
     <ul>${activities}</ul>
     <h4>Oznake u katalogu agensa</h4>
     <ul>${notes}</ul>
-    <h4>Mjere izolacije</h4>
-    <ul>${measures}</ul>
+    <h4>Mjere izolacije za laboratorije i prostore za životinje</h4>
+    ${renderRiskAssessmentBiologicalMeasureTable(RISK_ASSESSMENT_BIOLOGICAL_LAB_ISOLATION_MEASURES, "Područje")}
+    <h4>Mjere izolacije za industrijske postupke</h4>
+    ${renderRiskAssessmentBiologicalMeasureTable(RISK_ASSESSMENT_BIOLOGICAL_INDUSTRIAL_ISOLATION_MEASURES, "Područje")}
   `;
 }
 
 function buildRiskAssessmentBiologicalCatalogHtml() {
-  const catalog = RISK_ASSESSMENT_BIOLOGICAL_AGENT_CATALOG
-    .map((item) => `
-      <li>
-        <strong>${escapeHtml(item.group)}:</strong> ${escapeHtml(item.examples)}
-        <br><em>${escapeHtml(item.note)}</em>
-      </li>
-    `)
+  const sections = RISK_ASSESSMENT_BIOLOGICAL_AGENT_CATEGORIES
+    .map((category) => {
+      const rows = RISK_ASSESSMENT_BIOLOGICAL_AGENT_CATALOG
+        .filter((agent) => agent.category === category)
+        .map((agent) => `
+          <tr>
+            <td>${escapeHtml(agent.name)}</td>
+            <td>${escapeHtml(agent.classification)}</td>
+            <td>${escapeHtml(formatRiskAssessmentBiologicalAgentNotes(agent))}</td>
+          </tr>
+        `)
+        .join("");
+      return `
+        <h4>${escapeHtml(category)}</h4>
+        <table>
+          <thead><tr><th>Biološki agens</th><th>Klasifikacija</th><th>Napomene</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+    })
     .join("");
   return `
-    <h3>Osnovni katalog bioloških agensa za provjeru procjene</h3>
-    <p>Katalog služi za stručnu provjeru mogućih izvora izloženosti. Konačno razvrstavanje i mjere treba uskladiti sa stvarnim radnim procesom, dostupnom dokumentacijom, nalazima i Prilogom III pravilnika.</p>
-    <ul>${catalog}</ul>
+    <h3>Katalog bioloških agensa prema Prilogu III</h3>
+    <p>U katalogu je ${escapeHtml(String(RISK_ASSESSMENT_BIOLOGICAL_AGENT_STATS.total))} klasificiranih bioloških agensa iz Priloga III pravilnika. Katalog služi za stručnu provjeru mogućih izvora izloženosti; konačno razvrstavanje i mjere usklađuju se sa stvarnim radnim procesom, nalazima i dokumentacijom.</p>
+    ${sections}
   `;
 }
 
@@ -125108,32 +125219,81 @@ function insertRiskAssessmentBiologicalRuleText(kind = "summary") {
   scheduleRiskAssessmentDraftAutosave();
 }
 
-function renderRiskAssessmentBiologicalRulePanel() {
+function renderRiskAssessmentBiologicalRulePanel(options = {}) {
   if (!riskAssessmentBiologicalRuleContent) {
     return;
   }
+  const { preserveSearchFocus = false } = options;
+  const filteredAgents = getRiskAssessmentFilteredBiologicalAgents();
+  const visibleAgents = filteredAgents.slice(0, RISK_ASSESSMENT_BIOLOGICAL_AGENT_PREVIEW_LIMIT);
+  const agentRows = visibleAgents.map((agent) => `
+    <div class="risk-assessment-biological-agent-row">
+      <span class="risk-assessment-biological-agent-name">${escapeHtml(agent.name)}</span>
+      <span>${escapeHtml(agent.category)}</span>
+      <span class="risk-assessment-biological-group-pill">Skupina ${escapeHtml(agent.classification)}</span>
+      <span>${escapeHtml(formatRiskAssessmentBiologicalAgentNotes(agent))}</span>
+    </div>
+  `).join("");
+  const limitedMessage = filteredAgents.length > visibleAgents.length
+    ? `Prikazano prvih ${visibleAgents.length} od ${filteredAgents.length} agensa. Suzite pretragu za precizniji prikaz.`
+    : `${filteredAgents.length} agensa u prikazu.`;
   riskAssessmentBiologicalRuleContent.innerHTML = `
-    <article>
-      <span class="section-kicker">Skupine</span>
-      <strong>4 skupine agensa</strong>
-      <small>${escapeHtml(RISK_ASSESSMENT_BIOLOGICAL_AGENT_GROUPS.map((item) => item.group.replace("Skupina ", "")).join(", "))}</small>
-    </article>
-    <article>
-      <span class="section-kicker">Prilog I</span>
-      <strong>${escapeHtml(String(RISK_ASSESSMENT_BIOLOGICAL_ACTIVITY_EXAMPLES.length))} tipičnih aktivnosti</strong>
-      <small>${escapeHtml(RISK_ASSESSMENT_BIOLOGICAL_ACTIVITY_EXAMPLES.slice(0, 3).join(" · "))}</small>
-    </article>
-    <article>
-      <span class="section-kicker">Prilog V</span>
-      <strong>Mjere izolacije</strong>
-      <small>Razina izolacije 2, 3 i 4 za mjesto rada, opremu, sustav rada i otpad.</small>
-    </article>
-    <article>
-      <span class="section-kicker">Oznake</span>
-      <strong>A, D, T, V</strong>
-      <small>Alergija, dugotrajna evidencija, toksin i dostupno cjepivo.</small>
-    </article>
+    <div class="risk-assessment-biological-rule-kpis">
+      <article>
+        <span class="section-kicker">Prilog III</span>
+        <strong>${escapeHtml(String(RISK_ASSESSMENT_BIOLOGICAL_AGENT_STATS.total))} agensa</strong>
+        <small>${escapeHtml(RISK_ASSESSMENT_BIOLOGICAL_AGENT_CATEGORIES.join(" · "))}</small>
+      </article>
+      <article>
+        <span class="section-kicker">Skupine</span>
+        <strong>2: ${escapeHtml(String(RISK_ASSESSMENT_BIOLOGICAL_AGENT_STATS.byGroup?.["2"] || 0))} · 3: ${escapeHtml(String(RISK_ASSESSMENT_BIOLOGICAL_AGENT_STATS.byGroup?.["3"] || 0))} · 4: ${escapeHtml(String(RISK_ASSESSMENT_BIOLOGICAL_AGENT_STATS.byGroup?.["4"] || 0))}</strong>
+        <small>Razvrstavanje prema razini rizika od zaraze.</small>
+      </article>
+      <article>
+        <span class="section-kicker">Prilog I</span>
+        <strong>${escapeHtml(String(RISK_ASSESSMENT_BIOLOGICAL_ACTIVITY_EXAMPLES.length))} aktivnosti</strong>
+        <small>${escapeHtml(RISK_ASSESSMENT_BIOLOGICAL_ACTIVITY_EXAMPLES.slice(0, 3).join(" · "))}</small>
+      </article>
+      <article>
+        <span class="section-kicker">Prilog V / VI</span>
+        <strong>${escapeHtml(String(RISK_ASSESSMENT_BIOLOGICAL_LAB_ISOLATION_MEASURES.length + RISK_ASSESSMENT_BIOLOGICAL_INDUSTRIAL_ISOLATION_MEASURES.length))} mjera izolacije</strong>
+        <small>Laboratoriji, prostori za životinje i industrijski postupci.</small>
+      </article>
+    </div>
+    <div class="risk-assessment-biological-catalog-controls">
+      <label class="field">
+        <span>Pretraga agensa</span>
+        <input type="search" data-risk-biological-search placeholder="npr. SARS, Salmonella, hepatitis..." value="${escapeHtml(riskAssessmentBiologicalAgentQuery)}">
+      </label>
+      <label class="field">
+        <span>Kategorija</span>
+        <select data-risk-biological-filter="category">${renderRiskAssessmentBiologicalCategoryOptions()}</select>
+      </label>
+      <label class="field">
+        <span>Skupina</span>
+        <select data-risk-biological-filter="group">${renderRiskAssessmentBiologicalGroupOptions()}</select>
+      </label>
+    </div>
+    <section class="risk-assessment-biological-agent-table" aria-label="Katalog bioloških agensa">
+      <div class="risk-assessment-biological-agent-head">
+        <strong>Katalog agensa</strong>
+        <a href="${escapeHtml(RISK_ASSESSMENT_BIOLOGICAL_SOURCE_URL)}" target="_blank" rel="noopener">NN 129/2020</a>
+      </div>
+      <div class="risk-assessment-biological-agent-row is-header">
+        <span>Biološki agens</span>
+        <span>Kategorija</span>
+        <span>Klasifikacija</span>
+        <span>Napomene</span>
+      </div>
+      ${agentRows || `<p class="inline-help">Nema agensa za odabrane filtre.</p>`}
+      <p class="inline-help">${escapeHtml(limitedMessage)}</p>
+    </section>
   `;
+  if (preserveSearchFocus) {
+    const searchInput = riskAssessmentBiologicalRuleContent.querySelector("[data-risk-biological-search]");
+    searchInput?.focus?.({ preventScroll: true });
+    searchInput?.setSelectionRange?.(searchInput.value.length, searchInput.value.length);
+  }
 }
 
 function handleRiskAssessmentRichEditorPaste(event) {
