@@ -128224,6 +128224,24 @@ function getJobPurPointSummary(values = []) {
   return labels.length ? labels.join(", ") : "Nema odabranih PUR točaka";
 }
 
+function getJobPurPointFullLines(values = []) {
+  return normalizeJobPurPointValues(values)
+    .map((value) => {
+      const point = getJobPurPoint(value);
+      return point ? `${point.value}. ${point.label} - ${point.description}` : "";
+    })
+    .filter(Boolean);
+}
+
+function getJobPurPointFullText(values = [], fallback = "Nema odabranih poslova s posebnim uvjetima rada.") {
+  const lines = getJobPurPointFullLines(values);
+  return lines.length ? lines.join("\n") : fallback;
+}
+
+function getJobPurPointReasonText(values = []) {
+  return getJobPurPointFullText(values, "");
+}
+
 function renderJobPurPointPicker(selectedValues = [], dataAttribute = "data-job-pur-point") {
   const selected = new Set(normalizeJobPurPointValues(selectedValues));
   const selectedCount = selected.size;
@@ -128232,8 +128250,8 @@ function renderJobPurPointPicker(selectedValues = [], dataAttribute = "data-job-
     <details class="job-pur-dropdown" ${selectedCount ? "open" : ""}>
       <summary>
         <span>
-          <strong>Odaberi PUR točke</strong>
-          <small>Višestruki odabir, svaka točka ostaje jasno odvojena.</small>
+          <strong>Odaberi PUR točke prema Pravilniku</strong>
+          <small>Pravilnik o poslovima s posebnim uvjetima rada; višestruki odabir se spaja po radnom mjestu.</small>
         </span>
         <em data-job-pur-dropdown-count>${escapeHtml(selectedCount ? `${selectedCount} odabrano` : "Otvori popis")}</em>
       </summary>
@@ -128919,7 +128937,7 @@ function renderJobConditionSections(conditions = {}) {
       <div class="job-pur-panel-head">
         <div>
           <strong>Posebni uvjeti rada (PUR)</strong>
-          <small>Točke iz članka 3. pravilnika. Odabir se prenosi u procjenu rizika i uputnicu.</small>
+          <small>Točke prema Pravilniku o poslovima s posebnim uvjetima rada. Odabir se prenosi u procjenu rizika i uputnicu.</small>
         </div>
         <span>${escapeHtml(getJobPurPointSummary(conditions.purPoints ?? []))}</span>
       </div>
@@ -129890,6 +129908,44 @@ function formatRiskAssessmentExportYesNo(value = "", fallback = "-") {
   return fallback;
 }
 
+function hasRiskAssessmentSpecialWorkConditions(job = {}) {
+  return String(job.specialWorkConditions || "").trim().toLocaleLowerCase("hr") === "da"
+    || normalizeJobPurPointValues(job.purPoints ?? []).length > 0;
+}
+
+function formatRiskAssessmentSpecialWorkValue(job = {}, fallback = "ne") {
+  return hasRiskAssessmentSpecialWorkConditions(job)
+    ? "da"
+    : (String(job.specialWorkConditions || "").trim() || fallback);
+}
+
+function formatRiskAssessmentSpecialWorkCell(job = {}) {
+  if (!hasRiskAssessmentSpecialWorkConditions(job)) {
+    return "Ne";
+  }
+  const purSummary = getJobPurPointSummary(job.purPoints ?? []);
+  return joinUniqueRiskAssessmentTextBlocks([
+    "Da",
+    normalizeJobPurPointValues(job.purPoints ?? []).length ? purSummary : "",
+  ]);
+}
+
+function getRiskAssessmentManualSpecialWorkReason(existingText = "", previousPurPoints = []) {
+  const previousPurLineKeys = new Set(
+    getJobPurPointFullLines(previousPurPoints).map((line) => normalizeRiskAssessmentIdentityComparable(line)),
+  );
+  return splitRiskAssessmentTextLines(existingText)
+    .filter((line) => !previousPurLineKeys.has(normalizeRiskAssessmentIdentityComparable(line)))
+    .join("\n");
+}
+
+function mergeRiskAssessmentSpecialWorkReason(existingText = "", purPoints = [], previousPurPoints = []) {
+  return joinUniqueRiskAssessmentTextBlocks([
+    getJobPurPointReasonText(purPoints),
+    getRiskAssessmentManualSpecialWorkReason(existingText, previousPurPoints),
+  ]);
+}
+
 function getRiskAssessmentExportRiskLevelText(risk = {}) {
   return getRiskAssessmentRiskDisplayLevel(risk);
 }
@@ -129930,6 +129986,12 @@ function buildRiskAssessmentJobBasicExportTable(job = {}, index = 0) {
     .map((id) => (state.jobs ?? []).find((item) => String(item.id) === String(id))?.title)
     .filter(Boolean);
   const jobTasks = joinUniqueRiskAssessmentTextBlocks([job.tasks, sourceJobs.join("\n"), job.jobTitle]);
+  const purText = getJobPurPointFullText(job.purPoints ?? []);
+  const specialWorkReasonText = mergeRiskAssessmentSpecialWorkReason(
+    job.specialWorkReason || job.specialConditions,
+    job.purPoints ?? [],
+    job.purPoints ?? [],
+  );
   const columns = [
     { id: "label", label: "Podatak", width: 190 },
     { id: "value", label: "Opis", width: 520 },
@@ -129940,8 +130002,9 @@ function buildRiskAssessmentJobBasicExportTable(job = {}, index = 0) {
     ["Poslovi", jobTasks],
     ["Broj radnika", job.workerCount],
     ["Obvezna stručna sprema ili osposobljenost", job.requiredQualification || job.qualifications],
-    ["Poslovi s posebnim uvjetima rada", formatRiskAssessmentExportYesNo(job.specialWorkConditions)],
-    ["Ako DA, zbog kojih okolnosti", job.specialWorkReason || job.specialConditions],
+    ["Poslovi s posebnim uvjetima rada", formatRiskAssessmentExportYesNo(formatRiskAssessmentSpecialWorkValue(job))],
+    ["Točke PUR prema Pravilniku o poslovima s posebnim uvjetima rada", purText],
+    ["Ako DA, zbog kojih okolnosti", specialWorkReasonText],
     ["Organizacija rada i raspored radnog vremena", joinUniqueRiskAssessmentTextBlocks([job.workOrganization, job.workSchedule, job.organization])],
     ["Opis poslova i aktivnosti", job.description || job.detailedDescription || job.shortDescription],
     ["Popis radne opreme", joinUniqueRiskAssessmentTextBlocks([job.workEquipment, job.toolsAndMachines])],
@@ -129979,9 +130042,9 @@ function buildRiskAssessmentJobEligibilityExportTable(job = {}) {
 }
 
 function buildRiskAssessmentJobRiskExportTable(job = {}) {
-  const riskRows = (job.riskRows ?? []).filter((risk) => (
+  const riskRows = sortRiskAssessmentRiskRowsByPrilogOrder((job.riskRows ?? []).filter((risk) => (
     getRiskAssessmentRiskRowKey(risk) || risk.riskLevel || risk.existingMeasures || risk.measures || risk.workNote
-  ));
+  )));
   const columns = [
     { id: "risk", label: "Opasnosti, štetnosti i napori (Prilog III.)", width: 250 },
     { id: "probability", label: "Vjerojatnost", width: 105 },
@@ -130019,7 +130082,7 @@ function buildRiskAssessmentJobRiskExportTable(job = {}) {
       createRiskAssessmentExportHeaderCell("", headerFormat),
     ], true),
     createRiskAssessmentExportRow("h2", [
-      createRiskAssessmentExportHeaderCell("Opasnosti / štetnosti / napori", headerFormat),
+      createRiskAssessmentExportHeaderCell("Opasnosti\nštetnosti\nnapori", headerFormat),
       createRiskAssessmentExportHeaderCell("Vjerojatnost", headerFormat),
       createRiskAssessmentExportHeaderCell("Posljedice", headerFormat),
       createRiskAssessmentExportHeaderCell("Matrica procjene rizika", headerFormat),
@@ -130049,7 +130112,7 @@ function buildRiskAssessmentJobRiskExportTable(job = {}) {
             borderColor: "#94A3B8",
           },
         }),
-        createRiskAssessmentExportCell(formatRiskAssessmentExportYesNo(job.specialWorkConditions, "Ne"), bodyCenterFormat),
+        createRiskAssessmentExportCell(formatRiskAssessmentSpecialWorkCell(job), bodyCenterFormat),
         createRiskAssessmentExportCell(joinUniqueRiskAssessmentTextBlocks([risk.workNote, risk.note, risk.source]), bodyFormat),
         createRiskAssessmentExportCell(measuresText, bodyFormat),
       ]);
@@ -131557,6 +131620,11 @@ function createRiskAssessmentJobDraftFromCatalogJob(job = {}) {
   ]);
   const ppeText = joinUniqueRiskAssessmentTextBlocks((job.hazards ?? []).map((hazard) => hazard.ppeText));
   const purPoints = normalizeJobPurPointValues(conditions.purPoints ?? []);
+  const purReasonText = getJobPurPointReasonText(purPoints);
+  const specialWorkReasonText = joinUniqueRiskAssessmentTextBlocks([
+    purReasonText,
+    conditionNotes,
+  ]);
   const visionCheckRequired = Boolean(conditions.visionCheck || (conditions.importantFunctions ?? []).some((value) => String(value || "").toLocaleLowerCase("hr").includes("vid")));
   const safeWorkTrainingRequired = Boolean(conditions.safeWorkTrainingCertificate || conditions.trainingRequired);
   const medicalFitnessRequired = Boolean(conditions.medicalFitnessCertificate || purPoints.length > 0);
@@ -131607,8 +131675,8 @@ function createRiskAssessmentJobDraftFromCatalogJob(job = {}) {
       ? "Moguće biološke štetnosti procjenjuju se prema stvarnom mjestu rada, kontaktima i radnim tvarima."
       : "",
     specialWorkConditions: hasSpecialWorkConditions ? "da" : "",
-    specialWorkReason: joinUniqueRiskAssessmentTextBlocks(conditionNotes),
-    specialConditions: joinUniqueRiskAssessmentTextBlocks(conditionNotes),
+    specialWorkReason: specialWorkReasonText,
+    specialConditions: specialWorkReasonText,
     increasedInsurance: conditions.increasedInsurance ? "da" : "ne",
     requiredQualification: qualificationText,
     qualifications: qualificationText,
@@ -131638,6 +131706,15 @@ function mergeCatalogJobsIntoRiskAssessmentJob(jobs = []) {
   const drafts = jobs.map((job) => createRiskAssessmentJobDraftFromCatalogJob(job));
   const titles = jobs.map((job) => job.title || "").filter(Boolean);
   const riskRows = drafts.reduce((rows, draft) => mergeRiskAssessmentRiskRows(rows, draft.riskRows ?? []), []);
+  const mergedPurPoints = normalizeJobPurPointValues(drafts.map((draft) => draft.purPoints ?? []));
+  const mergedManualSpecialWorkReason = drafts.map((draft) => getRiskAssessmentManualSpecialWorkReason(
+    draft.specialWorkReason,
+    draft.purPoints ?? [],
+  ));
+  const mergedSpecialWorkReason = joinUniqueRiskAssessmentTextBlocks([
+    getJobPurPointReasonText(mergedPurPoints),
+    mergedManualSpecialWorkReason,
+  ]);
   const groupedDescription = drafts.length === 1
     ? drafts[0].description
     : drafts.map((draft, index) => {
@@ -131664,7 +131741,7 @@ function mergeCatalogJobsIntoRiskAssessmentJob(jobs = []) {
     workConditions: mergeJobValues(drafts.map((draft) => draft.workConditions ?? [])),
     chemicalSubstanceOptions: mergeJobValues(drafts.map((draft) => draft.chemicalSubstanceOptions ?? [])),
     biologicalHazardOptions: mergeJobValues(drafts.map((draft) => draft.biologicalHazardOptions ?? [])),
-    purPoints: normalizeJobPurPointValues(drafts.map((draft) => draft.purPoints ?? [])),
+    purPoints: mergedPurPoints,
     workOrganization: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.workOrganization)),
     organization: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.workOrganization)),
     workSubstances: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.workSubstances)),
@@ -131676,8 +131753,8 @@ function mergeCatalogJobsIntoRiskAssessmentJob(jobs = []) {
     harmfulSources: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.harmfulSources)),
     biologicalHazards: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.biologicalHazards)),
     specialWorkConditions: drafts.some((draft) => draft.specialWorkConditions === "da") ? "da" : "",
-    specialWorkReason: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.specialWorkReason)),
-    specialConditions: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.specialWorkReason)),
+    specialWorkReason: mergedSpecialWorkReason,
+    specialConditions: mergedSpecialWorkReason,
     increasedInsurance: drafts.some((draft) => draft.increasedInsurance === "da") ? "da" : "ne",
     requiredQualification: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.requiredQualification)),
     qualifications: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.requiredQualification)),
@@ -131778,6 +131855,60 @@ function normalizeRiskAssessmentIdentityComparable(value = "") {
     .trim();
 }
 
+function getRiskAssessmentPrilogOrder(row = {}) {
+  const source = [row.topCategory, row.category, row.group, row.hazard]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  const explicitTop = source.find((value) => /^(I|II|III)\.\s/u.test(value));
+  if (/^I\.\s/u.test(explicitTop || "")) return 1;
+  if (/^II\.\s/u.test(explicitTop || "")) return 2;
+  if (/^III\.\s/u.test(explicitTop || "")) return 3;
+  const normalized = normalizeRiskAssessmentIdentityComparable(source.join(" "));
+  if (normalized.includes("opasnost")) return 1;
+  if (normalized.includes("stetnost")) return 2;
+  if (normalized.includes("napor")) return 3;
+  return 99;
+}
+
+function getRiskAssessmentNumberParts(value = "") {
+  const match = String(value || "").trim().match(/^(\d+(?:\.\d+)*)/u);
+  return match ? match[1].split(".").map((part) => Number(part) || 0) : [];
+}
+
+function compareRiskAssessmentNumberParts(aParts = [], bParts = []) {
+  if (!aParts.length && !bParts.length) return 0;
+  if (!aParts.length) return 1;
+  if (!bParts.length) return -1;
+  const length = Math.max(aParts.length, bParts.length);
+  for (let index = 0; index < length; index += 1) {
+    const aValue = aParts[index] ?? 0;
+    const bValue = bParts[index] ?? 0;
+    if (aValue !== bValue) {
+      return aValue - bValue;
+    }
+  }
+  return 0;
+}
+
+function compareRiskAssessmentRowsByPrilogOrder(a = {}, b = {}) {
+  const topDiff = getRiskAssessmentPrilogOrder(a) - getRiskAssessmentPrilogOrder(b);
+  if (topDiff) return topDiff;
+  const fields = ["category", "group", "code"];
+  for (const field of fields) {
+    const diff = compareRiskAssessmentNumberParts(
+      getRiskAssessmentNumberParts(a[field]),
+      getRiskAssessmentNumberParts(b[field]),
+    );
+    if (diff) return diff;
+  }
+  return normalizeRiskAssessmentIdentityComparable([a.category, a.group, a.code, a.hazard].join(" "))
+    .localeCompare(normalizeRiskAssessmentIdentityComparable([b.category, b.group, b.code, b.hazard].join(" ")), "hr", { numeric: true });
+}
+
+function sortRiskAssessmentRiskRowsByPrilogOrder(rows = []) {
+  return [...(Array.isArray(rows) ? rows : [])].sort(compareRiskAssessmentRowsByPrilogOrder);
+}
+
 function stripRiskAssessmentLeadingCode(value = "") {
   return String(value || "")
     .trim()
@@ -131835,19 +131966,39 @@ function isRiskAssessmentHazardLineDuplicatedByHierarchy(hazardLine = "", hierar
     );
 }
 
+function isRiskAssessmentIdentityLineDuplicate(line = "", existingLines = []) {
+  const safeLine = String(line || "").trim();
+  if (!safeLine) {
+    return true;
+  }
+  const normalizedLine = normalizeRiskAssessmentIdentityComparable(safeLine);
+  const strippedLine = normalizeRiskAssessmentIdentityComparable(stripRiskAssessmentLeadingCode(safeLine));
+  return existingLines.some((existing) => {
+    const normalizedExisting = normalizeRiskAssessmentIdentityComparable(existing);
+    const strippedExisting = normalizeRiskAssessmentIdentityComparable(stripRiskAssessmentLeadingCode(existing));
+    return normalizedLine === normalizedExisting
+      || Boolean(strippedLine && strippedExisting && strippedLine === strippedExisting);
+  });
+}
+
+function appendRiskAssessmentIdentityLine(lines = [], line = "") {
+  const safeLine = String(line || "").trim();
+  if (!safeLine || isRiskAssessmentIdentityLineDuplicate(safeLine, lines)) {
+    return;
+  }
+  lines.push(safeLine);
+}
+
 function getRiskAssessmentRiskIdentityLines(row = {}, options = {}) {
   const hierarchyParts = getRiskAssessmentRiskHierarchyParts(row);
-  const hierarchyLine = hierarchyParts.join(" / ");
   const hazardLine = formatRiskAssessmentCodeAndLabel(row.code, row.hazard);
   const lines = [];
-  if (hierarchyLine) {
-    lines.push(hierarchyLine);
-  }
+  hierarchyParts.forEach((part) => appendRiskAssessmentIdentityLine(lines, part));
   if (hazardLine && !isRiskAssessmentHazardLineDuplicatedByHierarchy(hazardLine, hierarchyParts)) {
-    lines.push(hazardLine);
+    appendRiskAssessmentIdentityLine(lines, hazardLine);
   }
   if (options.includeConsequences && String(row.possibleConsequences || "").trim()) {
-    lines.push(String(row.possibleConsequences || "").trim());
+    appendRiskAssessmentIdentityLine(lines, row.possibleConsequences);
   }
   return lines.length ? lines : ["Stavka rizika"];
 }
@@ -132341,13 +132492,7 @@ function sanitizeRiskAssessmentTransientJob(job = {}) {
 }
 
 function buildRiskAssessmentPurReason(values = []) {
-  return normalizeJobPurPointValues(values)
-    .map((value) => {
-      const point = getJobPurPoint(value);
-      return point ? `${point.value}. ${point.label} - ${point.description}` : "";
-    })
-    .filter(Boolean)
-    .join("\n");
+  return getJobPurPointReasonText(values);
 }
 
 function buildRiskAssessmentSafeWorkTrainingText(job = {}) {
@@ -132410,8 +132555,8 @@ function applyRiskAssessmentJobWorkProfilePreset(jobIndex, key = "") {
     organization: current.organization || buildJobOrganizationSentences(presetEnvironment.organizationOptions ?? [], presetEnvironment),
     workplace: current.workplace || (presetEnvironment.workplaceOptions ?? []).join(", "),
     specialWorkConditions: nextPurPoints.length || current.specialWorkConditions === "da" ? "da" : current.specialWorkConditions,
-    specialWorkReason: current.specialWorkReason || buildRiskAssessmentPurReason(nextPurPoints),
-    specialConditions: current.specialConditions || buildRiskAssessmentPurReason(nextPurPoints),
+    specialWorkReason: mergeRiskAssessmentSpecialWorkReason(current.specialWorkReason || current.specialConditions, nextPurPoints, current.purPoints ?? []),
+    specialConditions: mergeRiskAssessmentSpecialWorkReason(current.specialConditions || current.specialWorkReason, nextPurPoints, current.purPoints ?? []),
     safeWorkTrainingRequired: Boolean(current.safeWorkTrainingRequired || presetConditions.safeWorkTrainingCertificate || presetConditions.trainingRequired),
     medicalFitnessRequired: Boolean(current.medicalFitnessRequired || presetConditions.medicalFitnessCertificate || nextPurPoints.length),
     visionCheckRequired: Boolean(current.visionCheckRequired || presetConditions.visionCheck),
@@ -132737,7 +132882,7 @@ function renderRiskAssessmentClientPortalJobInput(job = {}) {
       <div class="risk-assessment-client-input-grid">
         <section class="risk-assessment-client-input-section field-span-full">
           <div class="risk-assessment-job-pur-head">
-            <strong>Točke posebnih uvjeta rada</strong>
+            <strong>Točke posebnih uvjeta rada prema Pravilniku</strong>
             <span>${escapeHtml(getJobPurPointSummary(purPoints))}</span>
           </div>
           ${renderJobPurPointPicker(purPoints, "data-risk-client-pur-point")}
@@ -132904,7 +133049,7 @@ function renderRiskAssessmentJobProfile(item = {}, index = 0) {
           <div>
             <span class="section-kicker">Korak 4</span>
             <strong>PUR i obvezne evidencije</strong>
-            <small>Odaberi točke posebnih uvjeta rada te označi osposobljavanje, zdravstvenu sposobnost i pregled vida.</small>
+            <small>Odaberi točke prema Pravilniku o poslovima s posebnim uvjetima rada, zatim označi osposobljavanje, zdravstvenu sposobnost i pregled vida.</small>
           </div>
         </div>
         <div class="risk-assessment-job-referral-toggles">
@@ -132923,7 +133068,7 @@ function renderRiskAssessmentJobProfile(item = {}, index = 0) {
         </div>
         <div class="risk-assessment-job-pur">
           <div class="risk-assessment-job-pur-head">
-            <strong>Točke posebnih uvjeta rada</strong>
+            <strong>Točke posebnih uvjeta rada prema Pravilniku</strong>
             <span>${escapeHtml(getJobPurPointSummary(purPoints))}</span>
           </div>
           ${renderJobPurPointPicker(purPoints, "data-risk-job-pur-point")}
@@ -133886,7 +134031,7 @@ function setRiskAssessmentJobAiProposal(jobIndex, action = "description") {
 }
 
 function renderRiskAssessmentAiRiskPreview(riskRows = []) {
-  const rows = (riskRows ?? []).slice(0, 14);
+  const rows = sortRiskAssessmentRiskRowsByPrilogOrder(riskRows ?? []).slice(0, 14);
   if (!rows.length) {
     return `<p class="inline-help">NexAI nije pronašao dovoljno povezanih stavki. Dopuni opis posla, opremu ili uvjete rada pa pokušaj ponovno.</p>`;
   }
@@ -133898,13 +134043,13 @@ function renderRiskAssessmentAiRiskPreview(riskRows = []) {
         const tone = getRiskAssessmentRiskDisplayTone(risk);
         const identityLines = getRiskAssessmentRiskIdentityLines(createRiskAssessmentRiskRowDraft(risk));
         const identityTitle = identityLines[0] || "Predložena stavka";
-        const identityMeta = identityLines.slice(1).join(" / ");
+        const identityMetaLines = identityLines.slice(1);
         return `
           <article class="is-${escapeHtml(tone)}">
             <div>
               <span class="risk-assessment-risk-type-pill is-${escapeHtml(type.value)}">${escapeHtml(type.label)}</span>
               <strong>${escapeHtml(identityTitle)}</strong>
-              ${identityMeta ? `<small>${escapeHtml(identityMeta)}</small>` : ""}
+              ${identityMetaLines.map((line) => `<small>${escapeHtml(line)}</small>`).join("")}
             </div>
             <dl>
               <div><dt>Vjerojatnost</dt><dd>${escapeHtml(getRiskAssessmentOptionLabel(RISK_ASSESSMENT_PROBABILITY_OPTIONS, risk.probability, "-"))}</dd></div>
@@ -134030,12 +134175,17 @@ function renderRiskAssessmentDocumentPpeSection(job = {}) {
 }
 
 function renderRiskAssessmentJobDocumentPreview(job = {}, index = 0) {
-  const riskRows = (job.riskRows ?? []).filter((risk) => getRiskAssessmentRiskRowKey(risk) || risk.riskLevel || risk.existingMeasures || risk.measures);
+  const riskRows = sortRiskAssessmentRiskRowsByPrilogOrder((job.riskRows ?? []).filter((risk) => getRiskAssessmentRiskRowKey(risk) || risk.riskLevel || risk.existingMeasures || risk.measures));
   const sourceJobs = (job.sourceJobIds ?? [])
     .map((id) => (state.jobs ?? []).find((item) => String(item.id) === String(id))?.title)
     .filter(Boolean);
   const jobTasks = job.tasks || sourceJobs.join("\n") || job.jobTitle;
   const equipment = joinUniqueRiskAssessmentTextBlocks([job.workEquipment, job.toolsAndMachines]);
+  const specialWorkDocumentText = mergeRiskAssessmentSpecialWorkReason(
+    job.specialWorkReason || job.specialConditions,
+    job.purPoints ?? [],
+    job.purPoints ?? [],
+  ) || "Nije utvrđeno.";
   const measuresText = (risk = {}) => joinUniqueRiskAssessmentTextBlocks([
     risk.existingMeasures,
     risk.additionalMeasures,
@@ -134067,7 +134217,7 @@ function renderRiskAssessmentJobDocumentPreview(job = {}, index = 0) {
             <div><span>Radno mjesto</span><strong>${escapeHtml(job.jobTitle || "-")}</strong></div>
             <div><span>Broj radnika</span><strong>${escapeHtml(job.workerCount || "-")}</strong></div>
             <div><span>Alkohol u krvi</span><strong>${escapeHtml(job.alcoholLimit || "0 %")}</strong></div>
-            <div><span>Posebni uvjeti rada</span>${renderRiskAssessmentYesNoPill(job.specialWorkConditions)}</div>
+            <div><span>Posebni uvjeti rada</span>${renderRiskAssessmentYesNoPill(formatRiskAssessmentSpecialWorkValue(job, "np"))}</div>
             <div><span>Povećani staž</span>${renderRiskAssessmentYesNoPill(job.increasedInsurance)}</div>
           </div>
         </section>
@@ -134088,8 +134238,8 @@ function renderRiskAssessmentJobDocumentPreview(job = {}, index = 0) {
             ${renderRiskAssessmentDocumentParagraphs(job.requiredQualification || job.qualifications)}
           </article>
           <article>
-            <span>Ako DA, zbog kojih okolnosti</span>
-            ${renderRiskAssessmentDocumentParagraphs(job.specialWorkReason || job.specialConditions)}
+            <span>Poslovi s posebnim uvjetima rada prema Pravilniku</span>
+            ${renderRiskAssessmentDocumentParagraphs(specialWorkDocumentText)}
           </article>
           <article>
             <span>Organizacija rada i raspored radnog vremena</span>
@@ -134160,12 +134310,12 @@ function renderRiskAssessmentJobDocumentPreview(job = {}, index = 0) {
               const consequenceLabel = getRiskAssessmentOptionLabel(RISK_ASSESSMENT_CONSEQUENCE_OPTIONS, risk.consequence, "-");
               const identityLines = getRiskAssessmentRiskIdentityLines(risk);
               const identityTitle = identityLines[0] || "Stavka rizika";
-              const identityMeta = identityLines.slice(1).join(" / ");
+              const identityMetaLines = identityLines.slice(1);
               return `
                 <div>
                   <span>
                     <strong>${escapeHtml(identityTitle)}</strong>
-                    ${identityMeta ? `<small>${escapeHtml(identityMeta)}</small>` : ""}
+                    ${identityMetaLines.map((line) => `<small>${escapeHtml(line)}</small>`).join("")}
                   </span>
                   <span>
                     <small>${escapeHtml(probabilityLabel)} / ${escapeHtml(consequenceLabel)}</small>
@@ -136806,7 +136956,7 @@ function toggleRiskAssessmentClientJobInputPurPoint(jobIndex, value = "") {
   updateRiskAssessmentClientJobInput(jobIndex, {
     purPoints,
     medicalFitnessRequired: input.medicalFitnessRequired || purPoints.length > 0,
-    specialWorkReason: input.specialWorkReason || buildRiskAssessmentPurReason(purPoints),
+    specialWorkReason: mergeRiskAssessmentSpecialWorkReason(input.specialWorkReason, purPoints, input.purPoints ?? []),
   }, { rerender: true });
 }
 
@@ -136840,7 +136990,7 @@ function applyRiskAssessmentClientJobPreset(jobIndex, key = "") {
     safeWorkTrainingRequired: Boolean(input.safeWorkTrainingRequired || presetConditions.safeWorkTrainingCertificate || presetConditions.trainingRequired),
     medicalFitnessRequired: Boolean(input.medicalFitnessRequired || presetConditions.medicalFitnessCertificate || nextPurPoints.length),
     visionCheckRequired: Boolean(input.visionCheckRequired || presetConditions.visionCheck),
-    specialWorkReason: input.specialWorkReason || buildRiskAssessmentPurReason(nextPurPoints),
+    specialWorkReason: mergeRiskAssessmentSpecialWorkReason(input.specialWorkReason, nextPurPoints, input.purPoints ?? []),
   }, { rerender: true });
 }
 
@@ -137400,10 +137550,8 @@ function handleRiskAssessmentJobsListClick(event) {
         specialWorkConditions: purPoints.length ? "da" : current.specialWorkConditions,
         medicalFitnessRequired: current.medicalFitnessRequired || purPoints.length > 0,
       };
-      if (purPoints.length && !next.specialWorkReason) {
-        next.specialWorkReason = buildRiskAssessmentPurReason(purPoints);
-        next.specialConditions = next.specialWorkReason;
-      }
+      next.specialWorkReason = mergeRiskAssessmentSpecialWorkReason(current.specialWorkReason || current.specialConditions, purPoints, current.purPoints ?? []);
+      next.specialConditions = next.specialWorkReason;
       if (next.medicalFitnessRequired && !next.medicalExams) {
         next.medicalExams = buildRiskAssessmentMedicalText(next);
       }
@@ -137847,13 +137995,14 @@ function renderRiskAssessmentRiskScorePanel({
 function renderRiskAssessmentRiskCards(item = {}) {
   return `
     <div class="risk-assessment-risk-cards">
-      ${(item.riskRows ?? []).map((risk, riskIndex) => {
+      ${sortRiskAssessmentRiskRowsByPrilogOrder((item.riskRows ?? []).map((risk, riskIndex) => ({ ...risk, riskIndex }))).map((risk) => {
+        const riskIndex = risk.riskIndex;
         const riskLevel = getRiskAssessmentRiskDisplayLevel(risk);
         const riskTone = getRiskAssessmentRiskDisplayTone(risk);
         const riskShortLabel = getRiskAssessmentRiskShortLabel(riskLevel);
         const riskScore = getRiskAssessmentRiskScoreValue(risk);
         const riskType = getRiskAssessmentRiskType(risk);
-        const classificationText = getRiskAssessmentRiskHierarchyParts(risk).join(" / ");
+        const classificationText = getRiskAssessmentRiskHierarchyParts(risk).join("\n");
         const workNoteValue = risk.workNote || risk.note || risk.possibleConsequences || "";
         const measuresValue = risk.existingMeasures || risk.measures || risk.additionalMeasures || "";
         return `

@@ -64254,7 +64254,9 @@ body.is-risk-stl-review-open {
   font-size: 0.68rem;
   font-weight: 850;
   letter-spacing: 0.015em;
+  line-height: 1.35;
   text-transform: uppercase;
+  white-space: pre-line;
 }
 
 .risk-assessment-risk-score-grid {
