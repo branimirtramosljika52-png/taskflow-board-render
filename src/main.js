@@ -132515,6 +132515,10 @@ function getRiskAssessmentJobCompletion(job = {}) {
   return Math.round((done / required.length) * 100);
 }
 
+function isRiskAssessmentJobRequiredComplete(job = {}) {
+  return getRiskAssessmentJobCompletion(job) >= 100;
+}
+
 function getRiskAssessmentJobStatusOption(status = "") {
   const normalized = String(status || "draft");
   return RISK_ASSESSMENT_JOB_STATUS_OPTIONS.find((option) => option.value === normalized)
@@ -138287,10 +138291,14 @@ function renderRiskAssessmentJobTree() {
           </div>
           ${group.jobs.map(({ job, index }) => {
             const completion = getRiskAssessmentJobCompletion(job);
+            const requiredComplete = isRiskAssessmentJobRequiredComplete(job);
             const status = getRiskAssessmentJobStatusOption(job.status);
             return `
-              <button type="button" class="risk-assessment-job-tree-button ${index === activeIndex ? "is-active" : ""}" data-risk-job-tree-index="${escapeHtml(String(index))}">
-                <span>${escapeHtml(job.jobTitle || `Radno mjesto ${index + 1}`)}</span>
+              <button type="button" class="risk-assessment-job-tree-button ${index === activeIndex ? "is-active" : ""} ${requiredComplete ? "is-required-complete" : ""}" data-risk-job-tree-index="${escapeHtml(String(index))}">
+                <div class="risk-assessment-job-tree-title">
+                  <span>${escapeHtml(job.jobTitle || `Radno mjesto ${index + 1}`)}</span>
+                  ${requiredComplete ? `<b aria-label="Obavezna polja popunjena">&#10003;</b>` : ""}
+                </div>
                 <small>${escapeHtml(`${status.label} · ${completion}% · ${getRiskAssessmentFilledRiskRowCount(job)} ARMOR`)}</small>
               </button>
             `;
@@ -138340,17 +138348,22 @@ function renderRiskAssessmentJobs() {
     const riskCount = getRiskAssessmentFilledRiskRowCount(item);
     const selectedJobTitle = item.jobTitle || `Radno mjesto ${index + 1}`;
     const completion = getRiskAssessmentJobCompletion(item);
+    const requiredComplete = isRiskAssessmentJobRequiredComplete(item);
     const status = getRiskAssessmentJobStatusOption(item.status);
     const isClientPortalActor = isClientPortalUser(state.user);
     const clientJobInputEnabled = getRiskAssessmentClientJobInputEnabled();
     const showClientInput = (isClientPortalActor && clientJobInputEnabled)
       || (!isClientPortalActor && hasRiskAssessmentClientJobInput(item.clientInput));
     const showClientLockedNotice = isClientPortalActor && !clientJobInputEnabled;
+    row.classList.toggle("is-required-complete", requiredComplete);
     row.innerHTML = `
       <div class="risk-assessment-job-head">
         <div>
           <span class="section-kicker">${escapeHtml(getRiskAssessmentUnitName(item.organizationUnitId) || "Bez jedinice")}</span>
-          <strong>${escapeHtml(selectedJobTitle)}</strong>
+          <div class="risk-assessment-job-title-row">
+            <strong>${escapeHtml(selectedJobTitle)}</strong>
+            ${requiredComplete ? `<span class="risk-assessment-job-complete-badge"><span aria-hidden="true">&#10003;</span> Obavezno popunjeno</span>` : ""}
+          </div>
           <small>${escapeHtml(`${status.label} · ${completion}% popunjeno · ${riskCount} ARMOR stavki`)}</small>
         </div>
         <div class="risk-assessment-job-tools">
