@@ -6342,6 +6342,10 @@ const riskAssessmentJobCatalogList = document.querySelector("#risk-assessment-jo
 const riskAssessmentJobCatalogStats = document.querySelector("#risk-assessment-job-catalog-stats");
 const riskAssessmentJobCatalogSelectVisibleButton = document.querySelector("#risk-assessment-job-catalog-select-visible");
 const riskAssessmentJobCatalogClearButton = document.querySelector("#risk-assessment-job-catalog-clear");
+const riskAssessmentJobCatalogAiDescriptionInput = document.querySelector("#risk-assessment-job-catalog-ai-description");
+const riskAssessmentJobCatalogAiSuggestButton = document.querySelector("#risk-assessment-job-catalog-ai-suggest");
+const riskAssessmentJobCatalogAiImportButton = document.querySelector("#risk-assessment-job-catalog-ai-import");
+const riskAssessmentJobCatalogAiFeedback = document.querySelector("#risk-assessment-job-catalog-ai-feedback");
 const riskAssessmentOpenNewJobButton = document.querySelector("#risk-assessment-open-new-job");
 const riskAssessmentImportJobsButton = document.querySelector("#risk-assessment-import-jobs");
 const riskAssessmentManualHandlingList = document.querySelector("#risk-assessment-manual-handling");
@@ -6430,6 +6434,7 @@ let riskAssessmentReportTemplateDraft = null;
 let riskAssessmentTemplatePersistTimerId = null;
 let riskAssessmentTemplatePersistInFlight = false;
 let riskAssessmentTemplatePersistPending = false;
+let riskAssessmentJobCatalogAiSuggestions = [];
 let riskAssessmentWordExportBusy = false;
 let riskAssessmentDraftAutosaveTimer = null;
 let riskAssessmentServerAutosaveTimer = null;
@@ -119696,6 +119701,16 @@ riskAssessmentImportJobsButton?.addEventListener("click", (event) => {
   importSelectedJobsIntoRiskAssessment();
 });
 
+riskAssessmentJobCatalogAiSuggestButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  runRiskAssessmentJobCatalogAiSelection();
+});
+
+riskAssessmentJobCatalogAiImportButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  runRiskAssessmentJobCatalogAiSelection({ importNow: true });
+});
+
 riskAssessmentJobCatalogSearchInput?.addEventListener("input", () => {
   renderRiskAssessmentJobCatalogPicker();
 });
@@ -119736,6 +119751,8 @@ riskAssessmentJobCatalogClearButton?.addEventListener("click", () => {
   Array.from(riskAssessmentJobCatalogSelect?.options ?? []).forEach((option) => {
     option.selected = false;
   });
+  riskAssessmentJobCatalogAiSuggestions = [];
+  setInlineMessage(riskAssessmentJobCatalogAiFeedback, "");
   renderRiskAssessmentJobCatalogPicker();
 });
 
@@ -129047,6 +129064,7 @@ function getJobAiSettingsFieldDefinitions() {
       label: item.label,
     })),
     ...[
+      { key: "catalogSelectionRules", label: "Odabir poslova iz Jobs kataloga" },
       { key: "riskDiscoveryRules", label: "Što je opasnost, štetnost ili napor" },
       { key: "riskDiscoveryAvoid", label: "Što ne smije ući u procjenu" },
       { key: "riskScoringRules", label: "Pravila za vjerojatnost i posljedicu" },
@@ -137926,6 +137944,197 @@ function applyRiskAssessmentArmorTemplateRowsToJobs(indexes = null) {
   setInlineMessage(riskAssessmentError, `ARMOR retci dodani su na ${targetIndexes.length} radnih mjesta.`, "success");
 }
 
+function getRiskAssessmentJobCatalogAiConfig() {
+  return getJobAiInstruction("riskJob:catalogSelectionRules");
+}
+
+function getRiskAssessmentJobCatalogAiQuery() {
+  return String(
+    riskAssessmentJobCatalogAiDescriptionInput?.value
+    || riskAssessmentJobCatalogSearchInput?.value
+    || "",
+  ).trim();
+}
+
+function getRiskAssessmentJobCatalogAiCorpus(job = {}) {
+  const environment = job.environment ?? {};
+  const conditions = job.conditions ?? {};
+  const environmentText = JOB_ENVIRONMENT_SECTIONS.flatMap((section) => [
+    section.title,
+    ...(environment[`${section.key}Options`] ?? []),
+    getJobCatalogEnvironmentText(job, section.key),
+  ]);
+  const conditionText = JOB_CONDITION_TOGGLES.flatMap((toggle) => [
+    toggle.label,
+    conditions[toggle.key] ? buildJobConditionToggleSentence(toggle.key) : "",
+    getJobCatalogConditionNote(job, toggle.key),
+  ]);
+  const hazardText = (job.hazards ?? []).flatMap((hazard) => [
+    hazard.catalogCode,
+    hazard.catalogLabel,
+    hazard.category,
+    hazard.group,
+    hazard.unwantedEvent,
+    hazard.measures,
+    hazard.ppeText,
+  ]);
+  return [
+    job.title,
+    job.description,
+    getJobStatusOption(job.status).label,
+    ...environmentText,
+    ...conditionText,
+    ...(conditions.workConditions ?? []),
+    ...(conditions.bodyPositions ?? []),
+    ...(conditions.importantFunctions ?? []),
+    ...(conditions.purPoints ?? []).map((value) => getJobPurPointLabel(value)),
+    ...hazardText,
+  ].filter(Boolean).join(" ");
+}
+
+function getRiskAssessmentJobCatalogAiTokens(value = "") {
+  const stopWords = new Set([
+    "koji",
+    "koja",
+    "koje",
+    "kada",
+    "radi",
+    "rada",
+    "radnik",
+    "radnici",
+    "posao",
+    "posla",
+    "mjesto",
+    "radno",
+    "obavlja",
+    "obavljaju",
+    "koristi",
+    "koriste",
+    "povremeno",
+    "stalno",
+    "prema",
+    "npr",
+  ]);
+  return Array.from(new Set(
+    normalizeRiskAssessmentAiText(value)
+      .split(/\s+/)
+      .map((token) => token.trim())
+      .filter((token) => token.length >= 3 && !stopWords.has(token)),
+  ));
+}
+
+function scoreRiskAssessmentJobCatalogAiMatch(job = {}, query = "", config = {}) {
+  const normalizedQuery = normalizeRiskAssessmentAiText(query);
+  const corpus = getRiskAssessmentJobCatalogAiCorpus(job);
+  const normalizedCorpus = normalizeRiskAssessmentAiText(corpus);
+  const normalizedTitle = normalizeRiskAssessmentAiText(job.title || "");
+  if (!normalizedQuery || !normalizedCorpus) {
+    return null;
+  }
+
+  const avoidTerms = splitRiskAssessmentAiTerms(config.avoid);
+  if (avoidTerms.some((term) => term && normalizedCorpus.includes(term) && !normalizedQuery.includes(term))) {
+    return null;
+  }
+
+  const tokens = getRiskAssessmentJobCatalogAiTokens(query);
+  const titleHits = tokens.filter((token) => normalizedTitle.includes(token));
+  const corpusHits = tokens.filter((token) => normalizedCorpus.includes(token));
+  const mustTerms = splitRiskAssessmentAiTerms(config.mustInclude);
+  const instructionTerms = splitRiskAssessmentAiTerms(config.instruction);
+  const positiveTerms = [...mustTerms, ...instructionTerms].filter((term) => term.length >= 4);
+  const positiveHits = positiveTerms.filter((term) => normalizedCorpus.includes(term) || normalizedQuery.includes(term));
+  const hazardHits = (job.hazards ?? []).filter((hazard) => (
+    getRiskAssessmentJobCatalogAiTokens([
+      hazard.catalogCode,
+      hazard.catalogLabel,
+      hazard.category,
+      hazard.group,
+      hazard.unwantedEvent,
+    ].join(" ")).some((token) => normalizedQuery.includes(token))
+  ));
+  const exactTitleBoost = normalizedTitle && (
+    normalizedQuery.includes(normalizedTitle)
+    || normalizedTitle.includes(normalizedQuery)
+  ) ? 32 : 0;
+  const statusBoost = String(job.status || "") === "active" ? 4 : 0;
+  const hazardBoost = Math.min(24, hazardHits.length * 8);
+  const score = exactTitleBoost
+    + (titleHits.length * 16)
+    + (corpusHits.length * 7)
+    + (positiveHits.length * 5)
+    + hazardBoost
+    + statusBoost
+    + Math.min(8, (job.hazards ?? []).length);
+
+  if (score < 18 || corpusHits.length === 0) {
+    return null;
+  }
+
+  const reasons = [
+    titleHits.length ? `naziv: ${titleHits.slice(0, 3).join(", ")}` : "",
+    corpusHits.length ? `opis/oprema: ${corpusHits.slice(0, 4).join(", ")}` : "",
+    hazardHits.length ? `${hazardHits.length} povezanih opasnosti` : "",
+    positiveHits.length ? "Settings upute" : "",
+  ].filter(Boolean);
+  return {
+    id: String(job.id || ""),
+    job,
+    score,
+    confidence: Math.max(32, Math.min(98, Math.round(score * 1.7))),
+    reasons,
+  };
+}
+
+function getRiskAssessmentJobCatalogAiSuggestions(query = getRiskAssessmentJobCatalogAiQuery()) {
+  const config = getRiskAssessmentJobCatalogAiConfig();
+  return sortJobs(state.jobs ?? [])
+    .map((job) => scoreRiskAssessmentJobCatalogAiMatch(job, query, config))
+    .filter(Boolean)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 6);
+}
+
+function setRiskAssessmentJobCatalogSelectedIds(ids = []) {
+  const selectedIds = new Set((ids ?? []).map(String).filter(Boolean));
+  Array.from(riskAssessmentJobCatalogSelect?.options ?? []).forEach((option) => {
+    option.selected = selectedIds.has(String(option.value || ""));
+  });
+}
+
+function runRiskAssessmentJobCatalogAiSelection({ importNow = false } = {}) {
+  if (!getCanManageRiskAssessments()) {
+    setInlineMessage(riskAssessmentJobCatalogAiFeedback || riskAssessmentError, "Nemate pravo upravljati procjenama rizika.", "error");
+    return;
+  }
+  if (!getCanUseJobNexAi()) {
+    setInlineMessage(riskAssessmentJobCatalogAiFeedback || riskAssessmentError, "Nemate pravo koristiti Jobs NexAI prijedloge.", "error");
+    return;
+  }
+  const query = getRiskAssessmentJobCatalogAiQuery();
+  if (normalizeRiskAssessmentAiText(query).length < 12) {
+    setInlineMessage(riskAssessmentJobCatalogAiFeedback || riskAssessmentError, "Upiši malo konkretniji opis posla za NexAI odabir.", "error");
+    return;
+  }
+  const suggestions = getRiskAssessmentJobCatalogAiSuggestions(query);
+  riskAssessmentJobCatalogAiSuggestions = suggestions;
+  if (!suggestions.length) {
+    setRiskAssessmentJobCatalogSelectedIds([]);
+    renderRiskAssessmentJobCatalogPicker();
+    setInlineMessage(riskAssessmentJobCatalogAiFeedback || riskAssessmentError, "NexAI nije pronašao dovoljno dobro poklapanje u Jobs katalogu.", "error");
+    return;
+  }
+  setRiskAssessmentJobCatalogSelectedIds(suggestions.map((entry) => entry.id));
+  renderRiskAssessmentJobCatalogPicker();
+  const summary = suggestions
+    .map((entry) => `${entry.job.title || "Posao"} (${entry.confidence}%)`)
+    .join(", ");
+  setInlineMessage(riskAssessmentJobCatalogAiFeedback || riskAssessmentError, `NexAI je odabrao: ${summary}.`, "success");
+  if (importNow) {
+    importSelectedJobsIntoRiskAssessment({ source: "ai", messageTarget: riskAssessmentJobCatalogAiFeedback });
+  }
+}
+
 function getRiskAssessmentJobCatalogSelectedIds() {
   return new Set(
     Array.from(riskAssessmentJobCatalogSelect?.selectedOptions ?? [])
@@ -137991,9 +138200,11 @@ function renderRiskAssessmentJobCatalogPicker() {
     return;
   }
   const canManage = getCanManageRiskAssessments();
+  const canUseNexAi = getCanUseJobNexAi();
   const jobs = sortJobs(state.jobs ?? []);
   const visibleJobs = getVisibleRiskAssessmentCatalogJobs();
   const selectedIds = getRiskAssessmentJobCatalogSelectedIds();
+  const aiSuggestionsById = new Map((riskAssessmentJobCatalogAiSuggestions ?? []).map((entry) => [String(entry.id || ""), entry]));
   renderRiskAssessmentJobCatalogStats(jobs, visibleJobs, selectedIds);
 
   if (riskAssessmentJobCatalogSelectVisibleButton) {
@@ -138007,6 +138218,12 @@ function renderRiskAssessmentJobCatalogPicker() {
     riskAssessmentImportJobsButton.textContent = selectedIds.size
       ? `Dodaj odabrano (${selectedIds.size})`
       : "Dodaj odabrane poslove";
+  }
+  if (riskAssessmentJobCatalogAiSuggestButton) {
+    riskAssessmentJobCatalogAiSuggestButton.disabled = !canManage || !canUseNexAi || jobs.length === 0;
+  }
+  if (riskAssessmentJobCatalogAiImportButton) {
+    riskAssessmentJobCatalogAiImportButton.disabled = !canManage || !canUseNexAi || jobs.length === 0;
   }
 
   if (jobs.length === 0) {
@@ -138033,6 +138250,7 @@ function renderRiskAssessmentJobCatalogPicker() {
     const card = document.createElement("button");
     const id = String(job.id || "");
     const selected = selectedIds.has(id);
+    const aiSuggestion = aiSuggestionsById.get(id);
     const status = getJobStatusOption(job.status);
     const metrics = getRiskAssessmentCatalogJobMetrics(job);
     const firstHazards = (job.hazards ?? [])
@@ -138040,7 +138258,7 @@ function renderRiskAssessmentJobCatalogPicker() {
       .filter(Boolean)
       .slice(0, 3);
     card.type = "button";
-    card.className = `risk-assessment-job-catalog-card${selected ? " is-selected" : ""}`;
+    card.className = `risk-assessment-job-catalog-card${selected ? " is-selected" : ""}${aiSuggestion ? " is-ai-suggested" : ""}`;
     card.dataset.riskJobCatalogToggle = id;
     card.setAttribute("aria-pressed", selected ? "true" : "false");
     card.disabled = !canManage;
@@ -138056,7 +138274,9 @@ function renderRiskAssessmentJobCatalogPicker() {
           <span>${escapeHtml(String(metrics.hazardCount))} opasnosti</span>
           <span>${escapeHtml(String(metrics.environmentCount))} okruženja</span>
           <span>${escapeHtml(String(metrics.conditionCount))} uvjeta</span>
+          ${aiSuggestion ? `<span class="is-ai-score">NexAI ${escapeHtml(String(aiSuggestion.confidence))}%</span>` : ""}
         </span>
+        ${aiSuggestion?.reasons?.length ? `<span class="risk-assessment-job-catalog-ai-reason">${escapeHtml(aiSuggestion.reasons.join(" · "))}</span>` : ""}
         ${firstHazards.length ? `
           <span class="risk-assessment-job-catalog-hazards">
             ${firstHazards.map((label) => `<small>${escapeHtml(label)}</small>`).join("")}
@@ -138095,9 +138315,10 @@ function syncRiskAssessmentJobCatalogOptions() {
   renderRiskAssessmentJobCatalogPicker();
 }
 
-function importSelectedJobsIntoRiskAssessment() {
+function importSelectedJobsIntoRiskAssessment(options = {}) {
+  const messageTarget = options.messageTarget || riskAssessmentError;
   if (!getCanManageRiskAssessments()) {
-    setInlineMessage(riskAssessmentError, "Nemate pravo upravljati procjenama rizika.", "error");
+    setInlineMessage(messageTarget, "Nemate pravo upravljati procjenama rizika.", "error");
     return;
   }
   const selectedIds = Array.from(riskAssessmentJobCatalogSelect?.selectedOptions ?? [])
@@ -138107,7 +138328,7 @@ function importSelectedJobsIntoRiskAssessment() {
     .map((id) => (state.jobs ?? []).find((job) => String(job.id) === id))
     .filter(Boolean);
   if (selectedJobs.length === 0) {
-    setInlineMessage(riskAssessmentError, "Odaberi barem jedan posao iz Jobs kataloga.", "error");
+    setInlineMessage(messageTarget, "Odaberi barem jedan posao iz Jobs kataloga.", "error");
     return;
   }
 
@@ -138119,11 +138340,13 @@ function importSelectedJobsIntoRiskAssessment() {
   Array.from(riskAssessmentJobCatalogSelect?.options ?? []).forEach((option) => {
     option.selected = false;
   });
+  riskAssessmentJobCatalogAiSuggestions = [];
   renderRiskAssessmentJobs();
   renderRiskAssessmentOrganizationUnits();
   renderRiskAssessmentOverview();
   scheduleRiskAssessmentDraftAutosave();
-  setInlineMessage(riskAssessmentError, "");
+  const sourceText = options.source === "ai" ? "NexAI je dodao" : "Dodano";
+  setInlineMessage(messageTarget, `${sourceText} ${selectedJobs.length} ${selectedJobs.length === 1 ? "posao" : "poslova"} iz Jobs kataloga u procjenu.`, "success");
 }
 
 function applyRiskAssessmentSourceJob(jobIndex, sourceJobId = "") {
@@ -138260,6 +138483,15 @@ function syncRiskAssessmentEditorAccess() {
   }
   if (riskAssessmentJobCatalogSearchInput) {
     riskAssessmentJobCatalogSearchInput.disabled = !canManage || (state.jobs ?? []).length === 0;
+  }
+  if (riskAssessmentJobCatalogAiDescriptionInput) {
+    riskAssessmentJobCatalogAiDescriptionInput.disabled = !canManage || !canUseJobNexAi || (state.jobs ?? []).length === 0;
+  }
+  if (riskAssessmentJobCatalogAiSuggestButton) {
+    riskAssessmentJobCatalogAiSuggestButton.disabled = !canManage || !canUseJobNexAi || (state.jobs ?? []).length === 0;
+  }
+  if (riskAssessmentJobCatalogAiImportButton) {
+    riskAssessmentJobCatalogAiImportButton.disabled = !canManage || !canUseJobNexAi || (state.jobs ?? []).length === 0;
   }
   if (riskAssessmentJobCatalogSelectVisibleButton) {
     riskAssessmentJobCatalogSelectVisibleButton.disabled = !canManage || (state.jobs ?? []).length === 0;
