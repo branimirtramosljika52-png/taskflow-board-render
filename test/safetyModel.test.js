@@ -220,6 +220,12 @@ test("jobs keep environment, conditions and hazard catalog details", () => {
           avoid: "ne izmisljati opremu",
           style: "short",
         },
+        "riskRow:i opasnosti::2 opasnosti od padova::2.1.3::s visine": {
+          probability: "v",
+          consequence: "iš",
+          workNote: "Samo kada radnik stvarno radi na visini.",
+          existingMeasures: "Koristiti ispravne ljestve i zaštitu od pada.",
+        },
       },
       hazards: [
         {
@@ -250,6 +256,8 @@ test("jobs keep environment, conditions and hazard catalog details", () => {
   assert.deepEqual(job.conditions.purPoints, ["17"]);
   assert.equal(job.aiInstructions.description.style, "short");
   assert.equal(job.aiInstructions.description.mustInclude, "rad kod klijenta");
+  assert.equal(job.aiInstructions["riskRow:i opasnosti::2 opasnosti od padova::2.1.3::s visine"].consequence, "iš");
+  assert.equal(job.aiInstructions["riskRow:i opasnosti::2 opasnosti od padova::2.1.3::s visine"].workNote, "Samo kada radnik stvarno radi na visini.");
   assert.equal(job.hazards[0].catalogLabel, "S visine");
 
   const updated = updateJob(

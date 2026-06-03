@@ -6192,9 +6192,30 @@ export function normalizeJobAiInstructions(value = {}) {
           mustInclude: normalizeText(data.mustInclude),
           avoid: normalizeText(data.avoid),
           style: normalizeText(data.style) || "professional",
+          probability: normalizeText(data.probability),
+          consequence: normalizeText(data.consequence),
+          possibleConsequences: normalizeText(data.possibleConsequences),
+          workNote: normalizeText(data.workNote),
+          note: normalizeText(data.note),
+          existingMeasures: normalizeText(data.existingMeasures),
+          additionalMeasures: normalizeText(data.additionalMeasures),
+          measures: normalizeText(data.measures),
         }];
       })
-      .filter(([, data]) => data.instruction || data.mustInclude || data.avoid || data.style !== "professional"),
+      .filter(([, data]) => (
+        data.instruction
+        || data.mustInclude
+        || data.avoid
+        || data.style !== "professional"
+        || data.probability
+        || data.consequence
+        || data.possibleConsequences
+        || data.workNote
+        || data.note
+        || data.existingMeasures
+        || data.additionalMeasures
+        || data.measures
+      )),
   );
 }
 

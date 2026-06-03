@@ -5191,6 +5191,10 @@ body.is-profile-modal-open {
   box-shadow: 0 14px 30px rgba(91, 77, 255, 0.12);
 }
 
+.settings-job-ai-card.is-risk-row {
+  border-color: rgba(180, 199, 228, 0.94);
+}
+
 .settings-job-ai-card summary {
   display: flex;
   align-items: center;
@@ -5207,6 +5211,8 @@ body.is-profile-modal-open {
 }
 
 .settings-job-ai-card summary span {
+  display: grid;
+  gap: 2px;
   min-width: 0;
   overflow: hidden;
   color: #13213f;
@@ -5214,6 +5220,15 @@ body.is-profile-modal-open {
   font-weight: 850;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.settings-job-ai-card summary span em {
+  overflow: hidden;
+  color: #64748b;
+  font-size: 0.68rem;
+  font-style: normal;
+  font-weight: 760;
+  text-overflow: ellipsis;
 }
 
 .settings-job-ai-card-body {
@@ -5230,6 +5245,27 @@ body.is-profile-modal-open {
 
 .settings-job-ai-card-body .field-span-full {
   grid-column: 1 / -1;
+}
+
+.settings-job-ai-card-body-risk textarea {
+  min-height: 68px;
+}
+
+.settings-job-ai-row-defaults {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(203, 213, 225, 0.86);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.92);
+}
+
+.settings-job-ai-row-defaults span {
+  color: #475569;
+  font-size: 0.72rem;
+  font-weight: 820;
 }
 
 #settings-job-ai-save {

@@ -127749,7 +127749,7 @@ function createJobHazardDraft(row = {}, options = {}) {
     Object.prototype.hasOwnProperty.call(row, "measures")
     || Object.prototype.hasOwnProperty.call(row, "existingMeasures")
   );
-  return {
+  const draft = {
     id: crypto.randomUUID(),
     catalogCode: String(row.catalogCode ?? row.code ?? "").trim(),
     catalogLabel: String(row.catalogLabel ?? row.hazard ?? "").trim(),
@@ -127764,22 +127764,48 @@ function createJobHazardDraft(row = {}, options = {}) {
     ppeText: String(row.ppeText ?? "").trim(),
     note: String(row.note ?? "").trim(),
   };
+  return options.applyAiSettings || options.useContextDefaults
+    ? applyRiskAssessmentRowAiSettingsToJobHazard(draft, row, options)
+    : draft;
 }
 
 function normalizeJobAiInstructionConfig(config = {}) {
   const source = config && typeof config === "object" ? config : {};
   const style = String(source.style || "professional").trim();
+  const probability = String(source.probability || "").trim().toLowerCase();
+  const consequence = normalizeRiskAssessmentConsequenceKey(source.consequence || "");
   return {
     instruction: String(source.instruction || "").trim(),
     mustInclude: String(source.mustInclude || "").trim(),
     avoid: String(source.avoid || "").trim(),
     style: JOB_AI_STYLE_LABELS[style] ? style : "professional",
+    probability: ["mv", "v", "vv"].includes(probability) ? probability : "",
+    consequence,
+    possibleConsequences: String(source.possibleConsequences || "").trim(),
+    workNote: String(source.workNote || "").trim(),
+    note: String(source.note || "").trim(),
+    existingMeasures: String(source.existingMeasures || "").trim(),
+    additionalMeasures: String(source.additionalMeasures || "").trim(),
+    measures: String(source.measures || "").trim(),
   };
 }
 
 function hasJobAiInstructionConfig(config = {}) {
   const normalized = normalizeJobAiInstructionConfig(config);
-  return Boolean(normalized.instruction || normalized.mustInclude || normalized.avoid || normalized.style !== "professional");
+  return Boolean(
+    normalized.instruction
+    || normalized.mustInclude
+    || normalized.avoid
+    || normalized.style !== "professional"
+    || normalized.probability
+    || normalized.consequence
+    || normalized.possibleConsequences
+    || normalized.workNote
+    || normalized.note
+    || normalized.existingMeasures
+    || normalized.additionalMeasures
+    || normalized.measures
+  );
 }
 
 function normalizeJobAiInstructionDrafts(value = {}) {
@@ -128058,6 +128084,41 @@ function getJobAiInstruction(kind = "description") {
   return normalizeJobAiInstructionConfig(getJobAiSettings().aiInstructions[String(kind || "").trim()] ?? {});
 }
 
+function getRiskAssessmentRowAiInstructionKey(row = {}) {
+  const key = getRiskAssessmentRiskRowKey(row);
+  if (key) {
+    return `riskRow:${key}`;
+  }
+  return `riskRow:${[
+    row.category,
+    row.group,
+    row.code,
+    row.hazard,
+  ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean).join("::")}`;
+}
+
+function getRiskAssessmentRowAiFieldDefinitions() {
+  const seen = new Set();
+  return sortRiskAssessmentRiskRowsByPrilogOrder(RISK_ASSESSMENT_CATALOG_ROWS)
+    .map((row) => {
+      const key = getRiskAssessmentRowAiInstructionKey(row);
+      if (!key || seen.has(key)) {
+        return null;
+      }
+      seen.add(key);
+      const hierarchy = getRiskAssessmentCatalogHierarchy(row);
+      return {
+        key,
+        type: "riskRow",
+        group: `Prilog III · ${hierarchy.category}`,
+        label: formatRiskAssessmentCodeAndLabel(row.code, row.hazard || row.group || "Stavka"),
+        meta: [hierarchy.family, hierarchy.subgroup].filter(Boolean).join(" / "),
+        row,
+      };
+    })
+    .filter(Boolean);
+}
+
 function getJobAiSettingsFieldDefinitions() {
   return [
     { key: "description", group: "Osnovni podaci", label: "Opis posla" },
@@ -128104,6 +128165,7 @@ function getJobAiSettingsFieldDefinitions() {
       group: "Procjena rizika · posao",
       label: field.label,
     })),
+    ...getRiskAssessmentRowAiFieldDefinitions(),
   ];
 }
 
@@ -128119,11 +128181,118 @@ function collectSettingsJobAiInstructions() {
         mustInclude: card.querySelector('[data-settings-job-ai-field="mustInclude"]')?.value || "",
         avoid: card.querySelector('[data-settings-job-ai-field="avoid"]')?.value || "",
         style: card.querySelector('[data-settings-job-ai-field="style"]')?.value || "professional",
+        probability: card.querySelector('[data-settings-job-ai-field="probability"]')?.value || "",
+        consequence: card.querySelector('[data-settings-job-ai-field="consequence"]')?.value || "",
+        possibleConsequences: card.querySelector('[data-settings-job-ai-field="possibleConsequences"]')?.value || "",
+        workNote: card.querySelector('[data-settings-job-ai-field="workNote"]')?.value || "",
+        note: card.querySelector('[data-settings-job-ai-field="note"]')?.value || "",
+        existingMeasures: card.querySelector('[data-settings-job-ai-field="existingMeasures"]')?.value || "",
+        additionalMeasures: card.querySelector('[data-settings-job-ai-field="additionalMeasures"]')?.value || "",
+        measures: card.querySelector('[data-settings-job-ai-field="measures"]')?.value || "",
       });
       return [key, config];
     })
     .filter(([key, config]) => key && hasJobAiInstructionConfig(config));
   return Object.fromEntries(entries);
+}
+
+function renderSettingsJobAiSelectOptions(options = [], selectedValue = "", emptyLabel = "Default") {
+  return [
+    `<option value="">${escapeHtml(emptyLabel)}</option>`,
+    ...options
+      .filter((option) => option.value)
+      .map((option) => `<option value="${escapeHtml(option.value)}"${String(option.value) === String(selectedValue ?? "") ? " selected" : ""}>${escapeHtml(option.label)}</option>`),
+  ].join("");
+}
+
+function renderSettingsJobAiGeneralCard(field = {}, config = {}, canManage = false) {
+  return `
+    <div class="settings-job-ai-card-body">
+      <label class="field field-span-full">
+        <span>Uputa za NexAI</span>
+        <textarea data-settings-job-ai-field="instruction" rows="3" placeholder="Kako NexAI treba popuniti ovo polje..." ${canManage ? "" : "disabled"}>${escapeHtml(config.instruction)}</textarea>
+      </label>
+      <label class="field">
+        <span>Stil odgovora</span>
+        <select data-settings-job-ai-field="style" ${canManage ? "" : "disabled"}>
+          ${Object.entries(JOB_AI_STYLE_LABELS).map(([value, label]) => (
+            `<option value="${escapeHtml(value)}"${value === config.style ? " selected" : ""}>${escapeHtml(label)}</option>`
+          )).join("")}
+        </select>
+      </label>
+      <label class="field">
+        <span>Mora uključiti</span>
+        <input data-settings-job-ai-field="mustInclude" value="${escapeHtml(config.mustInclude)}" placeholder="Npr. mjere zaštite, učestalost, OZO..." ${canManage ? "" : "disabled"} />
+      </label>
+      <label class="field field-span-full">
+        <span>NexAI ne smije</span>
+        <input data-settings-job-ai-field="avoid" value="${escapeHtml(config.avoid)}" placeholder="Npr. ne izmišljati opremu ili zakone..." ${canManage ? "" : "disabled"} />
+      </label>
+    </div>
+  `;
+}
+
+function renderSettingsJobAiRiskRowCard(field = {}, config = {}, canManage = false) {
+  const row = field.row || {};
+  const defaultProbability = getRiskAssessmentOptionLabel(RISK_ASSESSMENT_PROBABILITY_OPTIONS, row.probability, "nije zadano");
+  const defaultConsequence = getRiskAssessmentOptionLabel(RISK_ASSESSMENT_CONSEQUENCE_OPTIONS, row.consequence, "nije zadano");
+  const defaultRisk = row.riskLevel || calculateRiskAssessmentRiskLevel(row.probability, row.consequence) || "N/P";
+  return `
+    <div class="settings-job-ai-card-body settings-job-ai-card-body-risk">
+      <div class="settings-job-ai-row-defaults field-span-full">
+        <span>${escapeHtml(field.meta || "Prilog III")}</span>
+        <span>Default: ${escapeHtml(defaultProbability)} · ${escapeHtml(defaultConsequence)} · ${escapeHtml(defaultRisk)}</span>
+      </div>
+      <label class="field">
+        <span>Vjerojatnost</span>
+        <select data-settings-job-ai-field="probability" ${canManage ? "" : "disabled"}>
+          ${renderSettingsJobAiSelectOptions(RISK_ASSESSMENT_PROBABILITY_OPTIONS, config.probability, "Default")}
+        </select>
+      </label>
+      <label class="field">
+        <span>Posljedice</span>
+        <select data-settings-job-ai-field="consequence" ${canManage ? "" : "disabled"}>
+          ${renderSettingsJobAiSelectOptions(RISK_ASSESSMENT_CONSEQUENCE_OPTIONS, config.consequence, "Default")}
+        </select>
+      </label>
+      <label class="field field-span-full">
+        <span>Kada AI smije odabrati ovu stavku</span>
+        <textarea data-settings-job-ai-field="instruction" rows="2" placeholder="npr. samo ako radnik rukuje viličarom ili radi u zoni transporta" ${canManage ? "" : "disabled"}>${escapeHtml(config.instruction)}</textarea>
+      </label>
+      <label class="field">
+        <span>Mora uključiti</span>
+        <input data-settings-job-ai-field="mustInclude" value="${escapeHtml(config.mustInclude)}" placeholder="npr. konkretna oprema, učestalost, OZO" ${canManage ? "" : "disabled"} />
+      </label>
+      <label class="field">
+        <span>Ne smije odabrati ako</span>
+        <input data-settings-job-ai-field="avoid" value="${escapeHtml(config.avoid)}" placeholder="npr. uredski posao, nema izloženosti" ${canManage ? "" : "disabled"} />
+      </label>
+      <label class="field field-span-full">
+        <span>Objašnjenje / napomena</span>
+        <textarea data-settings-job-ai-field="workNote" rows="2" placeholder="Tekst koji ide u objašnjenje/napomenu ARMOR retka" ${canManage ? "" : "disabled"}>${escapeHtml(config.workNote)}</textarea>
+      </label>
+      <label class="field field-span-full">
+        <span>Moguće posljedice</span>
+        <textarea data-settings-job-ai-field="possibleConsequences" rows="2" placeholder="npr. ozljeda, pad, udar, oštećenje zdravlja..." ${canManage ? "" : "disabled"}>${escapeHtml(config.possibleConsequences)}</textarea>
+      </label>
+      <label class="field field-span-full">
+        <span>Postojeće mjere</span>
+        <textarea data-settings-job-ai-field="existingMeasures" rows="2" placeholder="Mjere koje AI upisuje kao primijenjena pravila i postupke" ${canManage ? "" : "disabled"}>${escapeHtml(config.existingMeasures)}</textarea>
+      </label>
+      <label class="field field-span-full">
+        <span>Dodatne mjere</span>
+        <textarea data-settings-job-ai-field="additionalMeasures" rows="2" placeholder="Ako treba, dodatne mjere ili rokovi" ${canManage ? "" : "disabled"}>${escapeHtml(config.additionalMeasures)}</textarea>
+      </label>
+      <label class="field field-span-full">
+        <span>Mjere / zaključak</span>
+        <textarea data-settings-job-ai-field="measures" rows="2" placeholder="Završne mjere koje se spajaju u procjenu" ${canManage ? "" : "disabled"}>${escapeHtml(config.measures)}</textarea>
+      </label>
+      <label class="field field-span-full">
+        <span>Interna napomena</span>
+        <textarea data-settings-job-ai-field="note" rows="2" placeholder="Dodatna napomena za provjeru prije završetka" ${canManage ? "" : "disabled"}>${escapeHtml(config.note)}</textarea>
+      </label>
+    </div>
+  `;
 }
 
 function renderSettingsJobAiFields(settings = getJobAiSettings()) {
@@ -128147,34 +128316,16 @@ function renderSettingsJobAiFields(settings = getJobAiSettings()) {
     const cards = fields.map((field) => {
       const config = normalizeJobAiInstructionConfig(instructions[field.key] ?? {});
       const configured = hasJobAiInstructionConfig(config);
+      const meta = field.meta && field.type !== "riskRow" ? `<em>${escapeHtml(field.meta)}</em>` : "";
       return `
-        <details class="settings-job-ai-card ${configured ? "is-configured" : ""}" data-settings-job-ai-key="${escapeHtml(field.key)}">
+        <details class="settings-job-ai-card ${field.type === "riskRow" ? "is-risk-row" : ""} ${configured ? "is-configured" : ""}" data-settings-job-ai-key="${escapeHtml(field.key)}">
           <summary>
-            <span>${escapeHtml(field.label)}</span>
+            <span>${escapeHtml(field.label)}${meta}</span>
             <small>${configured ? "Upute postavljene" : "Default NexAI"}</small>
           </summary>
-          <div class="settings-job-ai-card-body">
-            <label class="field field-span-full">
-              <span>Uputa za NexAI</span>
-              <textarea data-settings-job-ai-field="instruction" rows="3" placeholder="Kako NexAI treba popuniti ovo polje..." ${canManage ? "" : "disabled"}>${escapeHtml(config.instruction)}</textarea>
-            </label>
-            <label class="field">
-              <span>Stil odgovora</span>
-              <select data-settings-job-ai-field="style" ${canManage ? "" : "disabled"}>
-                ${Object.entries(JOB_AI_STYLE_LABELS).map(([value, label]) => (
-                  `<option value="${escapeHtml(value)}"${value === config.style ? " selected" : ""}>${escapeHtml(label)}</option>`
-                )).join("")}
-              </select>
-            </label>
-            <label class="field">
-              <span>Mora uključiti</span>
-              <input data-settings-job-ai-field="mustInclude" value="${escapeHtml(config.mustInclude)}" placeholder="Npr. mjere zaštite, učestalost, OZO..." ${canManage ? "" : "disabled"} />
-            </label>
-            <label class="field field-span-full">
-              <span>NexAI ne smije</span>
-              <input data-settings-job-ai-field="avoid" value="${escapeHtml(config.avoid)}" placeholder="Npr. ne izmišljati opremu ili zakone..." ${canManage ? "" : "disabled"} />
-            </label>
-          </div>
+          ${field.type === "riskRow"
+            ? renderSettingsJobAiRiskRowCard(field, config, canManage)
+            : renderSettingsJobAiGeneralCard(field, config, canManage)}
         </details>
       `;
     }).join("");
@@ -128217,6 +128368,124 @@ function applyJobAiInstructionToText(text = "", kind = "description") {
     additions.push(`Obavezno uključiti: ${config.mustInclude}.`);
   }
   return [output, ...additions].filter(Boolean).join(" ");
+}
+
+function renderRiskAssessmentRowAiTemplateText(value = "", row = {}, job = {}, context = {}) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return "";
+  }
+  const replacements = {
+    radno_mjesto: context.title || job.jobTitle || job.title || "",
+    posao: context.title || job.jobTitle || job.title || "",
+    opis_posla: compactJobContextText(context.description || job.description || job.tasks || "", 360),
+    stavka: row.hazard || row.catalogLabel || "",
+    opasnost: row.hazard || row.catalogLabel || "",
+    sifra: row.code || row.catalogCode || "",
+    skupina: row.group || "",
+    kategorija: row.category || row.topCategory || "",
+    mjere: row.measures || row.existingMeasures || "",
+  };
+  return text.replace(/\{([a-z0-9_]+)\}/gi, (match, token) => {
+    const key = String(token || "").toLowerCase();
+    return Object.prototype.hasOwnProperty.call(replacements, key) ? replacements[key] : match;
+  });
+}
+
+function splitRiskAssessmentAiTerms(value = "") {
+  return String(value || "")
+    .split(/[,\n;]+/)
+    .map((term) => normalizeRiskAssessmentAiText(term).trim())
+    .filter((term) => term.length >= 3);
+}
+
+function shouldSkipRiskAssessmentRowByAiInstruction(row = {}, context = {}, config = {}) {
+  const avoidTerms = splitRiskAssessmentAiTerms(config.avoid);
+  if (!avoidTerms.length) {
+    return false;
+  }
+  const haystack = normalizeRiskAssessmentAiText([
+    context.text,
+    context.description,
+    context.title,
+    row.category,
+    row.group,
+    row.code,
+    row.hazard,
+  ].filter(Boolean).join(" "));
+  return avoidTerms.some((term) => haystack.includes(term));
+}
+
+function applyRiskAssessmentRowAiSettings(row = {}, job = {}, context = getRiskAssessmentJobHazardContext(job)) {
+  const config = getJobAiInstruction(getRiskAssessmentRowAiInstructionKey(row));
+  if (!hasJobAiInstructionConfig(config)) {
+    return row;
+  }
+
+  const next = { ...row };
+  if (config.probability) {
+    next.probability = config.probability;
+  }
+  if (config.consequence) {
+    next.consequence = config.consequence;
+  }
+  if (config.probability || config.consequence) {
+    next.riskLevel = calculateRiskAssessmentRiskLevel(next.probability, next.consequence) || next.riskLevel || "";
+  }
+
+  [
+    "possibleConsequences",
+    "workNote",
+    "note",
+    "existingMeasures",
+    "additionalMeasures",
+    "measures",
+  ].forEach((field) => {
+    if (config[field]) {
+      next[field] = renderRiskAssessmentRowAiTemplateText(config[field], row, job, context);
+    }
+  });
+
+  const extraNotes = [];
+  if (config.instruction) {
+    extraNotes.push(`AI kriterij: ${renderRiskAssessmentRowAiTemplateText(config.instruction, row, job, context)}`);
+  }
+  if (config.mustInclude) {
+    extraNotes.push(`Obavezno provjeriti: ${renderRiskAssessmentRowAiTemplateText(config.mustInclude, row, job, context)}`);
+  }
+  if (extraNotes.length) {
+    next.workNote = joinUniqueRiskAssessmentTextBlocks([next.workNote, ...extraNotes]);
+  }
+
+  return next;
+}
+
+function applyRiskAssessmentRowAiSettingsToJobHazard(hazard = {}, sourceRow = {}, options = {}) {
+  const config = getJobAiInstruction(getRiskAssessmentRowAiInstructionKey(sourceRow));
+  if (!hasJobAiInstructionConfig(config)) {
+    return hazard;
+  }
+  const context = options.context || getJobHazardContextFromForm();
+  const next = { ...hazard };
+  if (config.probability) {
+    next.probability = config.probability;
+  }
+  if (config.consequence) {
+    next.consequence = config.consequence;
+  }
+  if (config.probability || config.consequence) {
+    next.riskLevel = calculateJobHazardRiskLevel(next.probability, next.consequence) || next.riskLevel || "";
+  }
+  if (config.workNote) {
+    next.unwantedEvent = renderRiskAssessmentRowAiTemplateText(config.workNote, sourceRow, {}, context);
+  }
+  if (config.existingMeasures || config.measures) {
+    next.measures = renderRiskAssessmentRowAiTemplateText(config.existingMeasures || config.measures, sourceRow, {}, context);
+  }
+  if (config.note) {
+    next.note = renderRiskAssessmentRowAiTemplateText(config.note, sourceRow, {}, context);
+  }
+  return next;
 }
 
 function formatJobSentenceList(values = [], fallback = "") {
@@ -134486,11 +134755,16 @@ function getRiskAssessmentAiScoredCandidates(job = {}) {
       if (!rowHits) {
         return;
       }
+      const rowAiConfig = getJobAiInstruction(getRiskAssessmentRowAiInstructionKey(row));
+      if (shouldSkipRiskAssessmentRowByAiInstruction(row, context, rowAiConfig)) {
+        return;
+      }
       if (avoidTerms.some((term) => term && rowText.includes(term))) {
         return;
       }
       const rowKey = `${row.category || ""}::${row.code || ""}`;
-      const score = (contextHits * 12) + (rowHits * 7) + (String(row.riskLevel || "").includes("N/P") ? -2 : 3);
+      const configuredBoost = hasJobAiInstructionConfig(rowAiConfig) ? 4 : 0;
+      const score = (contextHits * 12) + (rowHits * 7) + (String(row.riskLevel || "").includes("N/P") ? -2 : 3) + configuredBoost;
       const previous = candidates.get(rowKey);
       if (!previous || score > previous.score) {
         candidates.set(rowKey, { row, rule, score, contextHits, rowHits });
@@ -134561,7 +134835,7 @@ function buildRiskAssessmentAiWorkNote(row = {}, job = {}, context = {}, rule = 
     ? `Stavka je predložena jer se u opisu posla pojavljuje: ${activity}.`
     : `Stavka je predložena kao oprezni početni rizik za radno mjesto "${context.title}".`;
   const ruleText = `Kriterij: ${rule.label || "povezanost s opisom posla"}.`;
-  return applyRiskAssessmentJobAiInstruction(`${base} ${ruleText} Provjeriti stvarnu izloženost radnika prije završnog spremanja procjene.`, "riskJob:riskRows");
+  return applyRiskAssessmentJobAiInstruction(`${base} ${ruleText} Provjeriti stvarnu izloženost radnika prije završnog spremanja procjene.`, "riskRows");
 }
 
 function buildRiskAssessmentAiMeasures(row = {}, job = {}, context = {}) {
@@ -134572,14 +134846,14 @@ function buildRiskAssessmentAiMeasures(row = {}, job = {}, context = {}) {
     ? ` Procjena vjerojatnosti i posljedice usklađena je s pravilima iz Settingsa.`
     : "";
   const linked = ` Mjere povezati s opisom posla "${context.title}", osposobljavanjem za rad na siguran način, nadzorom rada i OZO kada je potrebna.`;
-  return applyRiskAssessmentJobAiInstruction(`${base}${linked}${scoringText}`, "riskJob:riskRows");
+  return applyRiskAssessmentJobAiInstruction(`${base}${linked}${scoringText}`, "riskRows");
 }
 
 function buildRiskAssessmentAiRiskSuggestions(job = {}) {
   return getRiskAssessmentAiScoredCandidates(job).map(({ row, rule, score, context }) => {
     const probability = chooseRiskAssessmentAiProbability(row, context, rule);
     const consequence = chooseRiskAssessmentAiConsequence(row, context, rule);
-    return {
+    return applyRiskAssessmentRowAiSettings({
       ...row,
       probability,
       consequence,
@@ -134589,7 +134863,7 @@ function buildRiskAssessmentAiRiskSuggestions(job = {}) {
       existingMeasures: buildRiskAssessmentAiMeasures(row, job, context),
       additionalMeasures: "",
       measures: "",
-    };
+    }, job, context);
   });
 }
 
@@ -136200,7 +136474,7 @@ function createRiskAssessmentRiskRowDraft(initial = {}) {
 
 function prepareRiskAssessmentCatalogRowForJob(row = {}, job = {}) {
   const context = getRiskAssessmentJobHazardContext(job);
-  return {
+  return applyRiskAssessmentRowAiSettings({
     ...row,
     possibleConsequences: "",
     workNote: buildContextualHazardEvent(row, context),
@@ -136208,7 +136482,7 @@ function prepareRiskAssessmentCatalogRowForJob(row = {}, job = {}) {
     existingMeasures: buildContextualHazardMeasures(row, context),
     additionalMeasures: "",
     measures: "",
-  };
+  }, job, context);
 }
 
 function prepareRiskAssessmentCatalogRowsForJob(job = {}, rows = []) {
@@ -136351,7 +136625,7 @@ function applyRiskAssessmentArmorTemplateRows(jobIndex) {
   }
   riskAssessmentJobDrafts[jobIndex] = {
     ...job,
-    riskRows: mergeRiskAssessmentRiskRows(job.riskRows, RISK_ASSESSMENT_CATALOG_ROWS),
+    riskRows: mergeRiskAssessmentRiskRows(job.riskRows, prepareRiskAssessmentCatalogRowsForJob(job, RISK_ASSESSMENT_CATALOG_ROWS)),
   };
   renderRiskAssessmentJobs();
   renderRiskAssessmentOverview();
@@ -136369,7 +136643,7 @@ function applyRiskAssessmentArmorTemplateRowsToJobs(indexes = null) {
   const targetSet = new Set(targetIndexes);
   riskAssessmentJobDrafts = riskAssessmentJobDrafts.map((job, index) => (
     targetSet.has(index)
-      ? { ...job, riskRows: mergeRiskAssessmentRiskRows(job.riskRows, RISK_ASSESSMENT_CATALOG_ROWS) }
+      ? { ...job, riskRows: mergeRiskAssessmentRiskRows(job.riskRows, prepareRiskAssessmentCatalogRowsForJob(job, RISK_ASSESSMENT_CATALOG_ROWS)) }
       : job
   ));
   renderRiskAssessmentJobs();

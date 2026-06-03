@@ -521,14 +521,23 @@ test("in-memory safety repository stores Jobs NexAI settings per organization", 
         avoid: "ne izmisljati opremu",
         style: "short",
       },
+      "riskRow:i opasnosti::2 opasnosti od padova::2.1.3::s visine": {
+        probability: "v",
+        consequence: "iš",
+        workNote: "Popunjava se samo za stvarni rad na visini.",
+        existingMeasures: "Koristiti zaštitu od pada.",
+      },
     },
   });
 
   assert.equal(saved.aiInstructions.description.style, "short");
+  assert.equal(saved.aiInstructions["riskRow:i opasnosti::2 opasnosti od padova::2.1.3::s visine"].probability, "v");
+  assert.equal(saved.aiInstructions["riskRow:i opasnosti::2 opasnosti od padova::2.1.3::s visine"].existingMeasures, "Koristiti zaštitu od pada.");
 
   const snapshot = await repository.getSnapshot();
   assert.equal(snapshot.jobAiSettings.length, 1);
   assert.equal(snapshot.jobAiSettings[0].aiInstructions.description.mustInclude, "rad kod klijenta");
+  assert.equal(snapshot.jobAiSettings[0].aiInstructions["riskRow:i opasnosti::2 opasnosti od padova::2.1.3::s visine"].workNote, "Popunjava se samo za stvarni rad na visini.");
 });
 
 test("learning test scoring supports single, multiple and ordered answers", async () => {
