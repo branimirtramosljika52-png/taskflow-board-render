@@ -6365,6 +6365,7 @@ const riskAssessmentChemicalStlReviewSummary = document.querySelector("#risk-ass
 const riskAssessmentChemicalStlReviewBody = document.querySelector("#risk-assessment-stl-review-body");
 const riskAssessmentBiologicalRuleContent = document.querySelector("#risk-assessment-biological-rule-content");
 const riskAssessmentBiologicalRuleMessage = document.querySelector("#risk-assessment-biological-rule-message");
+const riskAssessmentBiologicalRisksList = document.querySelector("#risk-assessment-biological-risks");
 const riskAssessmentOfficialSubstanceSearchInput = document.querySelector("#risk-assessment-official-substance-search");
 const riskAssessmentOfficialSubstanceTypeSelect = document.querySelector("#risk-assessment-official-substance-type");
 const riskAssessmentOfficialSubstancesSummary = document.querySelector("#risk-assessment-official-substances-summary");
@@ -6411,6 +6412,7 @@ let riskAssessmentJobDrafts = [];
 let riskAssessmentRiskTemplateDrafts = [];
 let riskAssessmentManualHandlingDrafts = [];
 let riskAssessmentChemicalDrafts = [];
+let riskAssessmentBiologicalRiskDrafts = [];
 let riskAssessmentChemicalSearchResultsDraft = [];
 let riskAssessmentChemicalSearchBusy = false;
 let riskAssessmentChemicalImportBusy = false;
@@ -6496,6 +6498,9 @@ const RISK_ASSESSMENT_BIOLOGICAL_LAB_ISOLATION_MEASURES = RISK_BIOLOGICAL_LAB_IS
 const RISK_ASSESSMENT_BIOLOGICAL_INDUSTRIAL_ISOLATION_MEASURES = RISK_BIOLOGICAL_INDUSTRIAL_ISOLATION_MEASURES;
 const RISK_ASSESSMENT_BIOLOGICAL_SOURCE_URL = RISK_BIOLOGICAL_AGENTS_SOURCE_URL;
 const RISK_ASSESSMENT_BIOLOGICAL_AGENT_PREVIEW_LIMIT = 120;
+const RISK_ASSESSMENT_BIOLOGICAL_AGENT_BY_ID = new Map(
+  RISK_ASSESSMENT_BIOLOGICAL_AGENT_CATALOG.map((agent) => [String(agent.id || ""), agent]),
+);
 const RISK_ASSESSMENT_TEMPLATE_PLACEHOLDER_BY_KEY = new Map(
   RISK_ASSESSMENT_TEMPLATE_PLACEHOLDERS.map((entry) => [entry.key, entry]),
 );
@@ -119955,6 +119960,9 @@ riskAssessmentManualHandlingList?.addEventListener("click", handleRiskAssessment
 riskAssessmentChemicalsList?.addEventListener("input", handleRiskAssessmentChemicalsInput);
 riskAssessmentChemicalsList?.addEventListener("change", handleRiskAssessmentChemicalsInput);
 riskAssessmentChemicalsList?.addEventListener("click", handleRiskAssessmentChemicalsClick);
+riskAssessmentBiologicalRisksList?.addEventListener("input", handleRiskAssessmentBiologicalRisksInput);
+riskAssessmentBiologicalRisksList?.addEventListener("change", handleRiskAssessmentBiologicalRisksInput);
+riskAssessmentBiologicalRisksList?.addEventListener("click", handleRiskAssessmentBiologicalRisksClick);
 riskAssessmentChemicalResults?.addEventListener("click", handleRiskAssessmentChemicalsClick);
 riskAssessmentChemicalStlPreview?.addEventListener("click", handleRiskAssessmentChemicalsClick);
 riskAssessmentOfficialSubstancesList?.addEventListener("click", handleRiskAssessmentChemicalsClick);
@@ -125296,6 +125304,176 @@ function renderRiskAssessmentBiologicalRulePanel(options = {}) {
   }
 }
 
+function renderRiskAssessmentBiologicalAgentDatalist() {
+  return `
+    <datalist id="risk-assessment-biological-agent-options">
+      ${RISK_ASSESSMENT_BIOLOGICAL_AGENT_CATALOG.map((agent) => (
+        `<option value="${escapeHtml(agent.name)}">${escapeHtml(`${agent.category} · Skupina ${agent.classification}`)}</option>`
+      )).join("")}
+    </datalist>
+  `;
+}
+
+function renderRiskAssessmentBiologicalEditorTextInput(field, value = "", placeholder = "", extraAttributes = "") {
+  return `<input data-risk-biological-risk-field="${escapeHtml(field)}" value="${escapeHtml(value || "")}" placeholder="${escapeHtml(placeholder)}"${extraAttributes ? ` ${extraAttributes}` : ""} />`;
+}
+
+function renderRiskAssessmentBiologicalEditorTextarea(field, value = "", rows = 2, placeholder = "") {
+  return `<textarea data-risk-biological-risk-field="${escapeHtml(field)}" rows="${escapeHtml(String(rows))}" placeholder="${escapeHtml(placeholder)}">${escapeHtml(value || "")}</textarea>`;
+}
+
+function renderRiskAssessmentBiologicalScoreSelect({ field = "", value = "", options = [], tone = "neutral" } = {}) {
+  return `
+    <div class="risk-assessment-risk-select-shell risk-assessment-chemical-score-select-shell is-${escapeHtml(tone)}">
+      <i aria-hidden="true"></i>
+      <select data-risk-biological-risk-field="${escapeHtml(field)}">
+        ${renderRiskAssessmentCompactOptions(options, value || "")}
+      </select>
+    </div>
+  `;
+}
+
+function renderRiskAssessmentBiologicalJobOptions(selectedValues = []) {
+  const selected = new Set((Array.isArray(selectedValues) ? selectedValues : []).map(String));
+  return riskAssessmentJobDrafts.map((job, index) => {
+    const value = String(job.id || `job-${index + 1}`);
+    const label = job.jobTitle || `Radno mjesto ${index + 1}`;
+    return `<option value="${escapeHtml(value)}"${selected.has(value) ? " selected" : ""}>${escapeHtml(label)}</option>`;
+  }).join("");
+}
+
+function getRiskAssessmentBiologicalRiskLinkedJobs(entry = {}) {
+  const jobIds = new Set((entry.usedInJobIds ?? []).map(String).filter(Boolean));
+  if (!jobIds.size) {
+    return [];
+  }
+  return riskAssessmentJobDrafts.filter((job) => jobIds.has(String(job.id || "")));
+}
+
+function getRiskAssessmentBiologicalRiskDisplay(entry = {}) {
+  const riskLevel = calculateJobHazardRiskLevel(entry.probability, entry.consequence) || entry.riskLevel || "";
+  const score = getRiskAssessmentChemicalRiskScore(entry);
+  return { riskLevel, score, tone: getJobHazardRiskTone(riskLevel) };
+}
+
+function getRiskAssessmentBiologicalRiskMeta(entry = {}) {
+  const notes = formatRiskAssessmentBiologicalAgentNotes({
+    limitedAirborneRisk: entry.limitedAirborneRisk,
+    noteCodes: entry.noteCodes,
+  });
+  return [
+    entry.category,
+    entry.classification ? `Skupina ${entry.classification}` : "",
+    notes !== "-" ? notes : "",
+  ].filter(Boolean).join(" · ");
+}
+
+function renderRiskAssessmentBiologicalRiskTable() {
+  return `
+    <div class="risk-assessment-chemical-register-head">
+      <div>
+        <span class="section-kicker">Uređiva tablica</span>
+        <strong>Procjena bioloških štetnosti</strong>
+        <small>Skupina agensa preuzima se iz Priloga III. Vjerojatnost, posljedica i rizik procjenjuju se zasebno prema stvarnoj izloženosti na radu.</small>
+      </div>
+      <div class="risk-assessment-biological-risk-actions">
+        <span>${escapeHtml(String(riskAssessmentBiologicalRiskDrafts.length))} redaka</span>
+        <button type="button" class="secondary-button" data-risk-biological-risk-add>+ Novi redak</button>
+      </div>
+    </div>
+    ${renderRiskAssessmentBiologicalAgentDatalist()}
+    <div class="risk-assessment-chemical-register-scroll">
+      <table class="risk-assessment-chemical-register-table risk-assessment-chemical-editor-table risk-assessment-biological-risk-table">
+        <thead>
+          <tr>
+            <th>Red.</th>
+            <th>Biološki agens / štetnost</th>
+            <th>Prilog III</th>
+            <th>Izvor izloženosti</th>
+            <th>Poslovi</th>
+            <th>Posljedice / napomena</th>
+            <th>Mjere</th>
+            <th>Vjerojatnost</th>
+            <th>Posljedice</th>
+            <th>Rizik</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${riskAssessmentBiologicalRiskDrafts.length ? riskAssessmentBiologicalRiskDrafts.map((entry, index) => {
+            const risk = getRiskAssessmentBiologicalRiskDisplay(entry);
+            const meta = getRiskAssessmentBiologicalRiskMeta(entry);
+            return `
+              <tr data-risk-biological-risk-index="${escapeHtml(String(index))}">
+                <td class="is-index">${escapeHtml(String(index + 1))}.</td>
+                <td class="is-biological-name">
+                  ${renderRiskAssessmentBiologicalEditorTextInput("agentName", entry.agentName, "npr. SARS-CoV-2, Salmonella...", `list="risk-assessment-biological-agent-options"`)}
+                  ${meta ? `<small>${escapeHtml(meta)}</small>` : `<small>Odaberi agens iz kataloga ili upiši izvor štetnosti.</small>`}
+                </td>
+                <td class="is-prilog-cell">
+                  ${renderRiskAssessmentBiologicalEditorTextInput("category", entry.category, "Kategorija")}
+                  ${renderRiskAssessmentBiologicalEditorTextInput("classification", entry.classification, "Skupina")}
+                </td>
+                <td>${renderRiskAssessmentBiologicalEditorTextarea("source", entry.source, 3, "Izvor, način prijenosa, trajanje...")}</td>
+                <td class="is-job-cell">
+                  <select data-risk-biological-risk-jobs multiple size="4">
+                    ${renderRiskAssessmentBiologicalJobOptions(entry.usedInJobIds)}
+                  </select>
+                  <small>Bez odabira znači primijeni na sve poslove.</small>
+                </td>
+                <td>
+                  ${renderRiskAssessmentBiologicalEditorTextarea("possibleConsequences", entry.possibleConsequences, 2, "Moguće posljedice")}
+                  ${renderRiskAssessmentBiologicalEditorTextarea("note", entry.note, 2, "Napomena")}
+                </td>
+                <td>${renderRiskAssessmentBiologicalEditorTextarea("existingMeasures", entry.existingMeasures, 4, "Postojeće i dodatne mjere")}</td>
+                <td class="is-score-control">
+                  ${renderRiskAssessmentBiologicalScoreSelect({
+                    field: "probability",
+                    value: entry.probability,
+                    options: RISK_ASSESSMENT_PROBABILITY_OPTIONS,
+                    tone: risk.tone,
+                  })}
+                </td>
+                <td class="is-score-control">
+                  ${renderRiskAssessmentBiologicalScoreSelect({
+                    field: "consequence",
+                    value: entry.consequence,
+                    options: RISK_ASSESSMENT_CONSEQUENCE_OPTIONS,
+                    tone: risk.tone,
+                  })}
+                </td>
+                <td class="is-risk is-${escapeHtml(risk.tone)}">
+                  <output class="risk-assessment-risk-result risk-assessment-chemical-risk-result is-${escapeHtml(risk.tone)}">
+                    <i aria-hidden="true"></i>
+                    <strong>${escapeHtml(risk.riskLevel || "-")}</strong>
+                    ${risk.score ? `<em>${escapeHtml(risk.score)}</em>` : ""}
+                  </output>
+                </td>
+                <td class="is-row-actions">
+                  <button type="button" class="ghost-button" data-risk-biological-risk-apply="${escapeHtml(String(index))}">Poslovi</button>
+                  <button type="button" class="ghost-button card-danger" data-risk-biological-risk-remove="${escapeHtml(String(index))}">Ukloni</button>
+                </td>
+              </tr>
+            `;
+          }).join("") : `
+            <tr>
+              <td colspan="11" class="is-empty-row">Nema redaka. Dodaj biološki agens ili izvor izloženosti za procjenu rizika.</td>
+            </tr>
+          `}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderRiskAssessmentBiologicalRisks() {
+  if (!riskAssessmentBiologicalRisksList) {
+    return;
+  }
+  riskAssessmentBiologicalRisksList.innerHTML = renderRiskAssessmentBiologicalRiskTable();
+  renderRiskAssessmentOverview();
+}
+
 function handleRiskAssessmentRichEditorPaste(event) {
   const editor = event.target?.closest?.("[data-risk-rich-editor]");
   if (!editor || !event.clipboardData) {
@@ -125445,6 +125623,7 @@ function resetRiskAssessmentForm() {
   riskAssessmentRiskTemplateDrafts = [];
   riskAssessmentManualHandlingDrafts = [];
   riskAssessmentChemicalDrafts = [];
+  riskAssessmentBiologicalRiskDrafts = [];
   riskAssessmentChemicalSearchResultsDraft = [];
   riskAssessmentLastStlImportSummary = null;
   riskAssessmentOfficialSubstanceQuery = "";
@@ -125504,6 +125683,7 @@ function resetRiskAssessmentForm() {
   renderRiskAssessmentJobs();
   renderRiskAssessmentManualHandling();
   renderRiskAssessmentChemicals();
+  renderRiskAssessmentBiologicalRisks();
   renderRiskAssessmentBiologicalRulePanel();
   renderRiskAssessmentTemplateBuilder();
   renderRiskAssessmentOverview();
@@ -125559,6 +125739,7 @@ function hydrateRiskAssessmentForm(item = {}) {
     ppeItems: (entry.ppeItems ?? []).map((ppe) => createRiskAssessmentPpeDraft(ppe)),
   }));
   riskAssessmentChemicalDrafts = (item.chemicals ?? []).map((entry) => createRiskAssessmentChemicalDraft(entry));
+  riskAssessmentBiologicalRiskDrafts = (item.biologicalRisks ?? []).map((entry) => createRiskAssessmentBiologicalRiskDraft(entry));
   riskAssessmentManualHandlingDrafts = (item.manualHandling ?? item.manualHandlingItems ?? []).map((entry) => createRiskAssessmentManualHandlingDraft(entry));
   riskAssessmentChemicalSearchResultsDraft = [];
   riskAssessmentLastStlImportSummary = null;
@@ -125591,6 +125772,7 @@ function hydrateRiskAssessmentForm(item = {}) {
   renderRiskAssessmentJobs();
   renderRiskAssessmentManualHandling();
   renderRiskAssessmentChemicals();
+  renderRiskAssessmentBiologicalRisks();
   renderRiskAssessmentBiologicalRulePanel();
   renderRiskAssessmentTemplateBuilder();
   renderRiskAssessmentOverview();
@@ -125742,6 +125924,51 @@ function createRiskAssessmentChemicalDraft(initial = {}) {
 
 function sanitizeRiskAssessmentTransientChemical(chemical = {}) {
   return createRiskAssessmentChemicalDraft(chemical);
+}
+
+function findRiskAssessmentBiologicalCatalogAgent(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return null;
+  }
+  const byId = RISK_ASSESSMENT_BIOLOGICAL_AGENT_BY_ID.get(raw);
+  if (byId) {
+    return byId;
+  }
+  const normalized = normalizeRiskAssessmentBiologicalSearchText(raw);
+  return RISK_ASSESSMENT_BIOLOGICAL_AGENT_CATALOG.find((agent) => (
+    normalizeRiskAssessmentBiologicalSearchText(agent.name) === normalized
+  )) || null;
+}
+
+function createRiskAssessmentBiologicalRiskDraft(initial = {}) {
+  const catalogAgent = findRiskAssessmentBiologicalCatalogAgent(initial.catalogId || initial.agentName || initial.name || initial.hazard);
+  const probability = String(initial.probability || "mv");
+  const consequence = String(initial.consequence || "mš");
+  const noteCodes = normalizeRiskAssessmentChemicalTextList(initial.noteCodes ?? catalogAgent?.noteCodes ?? []);
+  return {
+    id: String(initial.id || crypto.randomUUID()),
+    order: initial.order || "",
+    catalogId: String(initial.catalogId || catalogAgent?.id || ""),
+    agentName: String(initial.agentName || initial.name || initial.hazard || catalogAgent?.name || ""),
+    category: String(initial.category || catalogAgent?.category || "Biološke štetnosti"),
+    group: String(initial.group || catalogAgent?.group || ""),
+    classification: String(initial.classification || catalogAgent?.classification || ""),
+    limitedAirborneRisk: Boolean(initial.limitedAirborneRisk ?? catalogAgent?.limitedAirborneRisk ?? false),
+    noteCodes,
+    source: String(initial.source || initial.exposureSource || ""),
+    possibleConsequences: String(initial.possibleConsequences || initial.consequences || ""),
+    probability,
+    consequence,
+    riskLevel: String(initial.riskLevel || calculateJobHazardRiskLevel(probability, consequence) || ""),
+    note: String(initial.note || ""),
+    existingMeasures: String(initial.existingMeasures || initial.measures || getRiskAssessmentBiologicalFallbackMeasures()),
+    usedInJobIds: Array.isArray(initial.usedInJobIds) ? initial.usedInJobIds.map(String).filter(Boolean) : [],
+  };
+}
+
+function sanitizeRiskAssessmentTransientBiologicalRisk(entry = {}) {
+  return createRiskAssessmentBiologicalRiskDraft(entry);
 }
 
 function formatRiskAssessmentPrilogIiExposure(guideline = {}) {
@@ -127261,6 +127488,163 @@ function handleRiskAssessmentChemicalsClick(event) {
   if (button.matches("[data-risk-chemical-apply]")) {
     event.preventDefault();
     applyRiskAssessmentChemicalToJobs(index);
+  }
+}
+
+function updateRiskAssessmentBiologicalRiskField(index, field, value, { hydrateCatalog = false } = {}) {
+  if (!riskAssessmentBiologicalRiskDrafts[index]) {
+    return;
+  }
+  const nextEntry = {
+    ...riskAssessmentBiologicalRiskDrafts[index],
+    [field]: value,
+  };
+  if (field === "agentName" && hydrateCatalog) {
+    const agent = findRiskAssessmentBiologicalCatalogAgent(value);
+    if (agent) {
+      nextEntry.catalogId = agent.id;
+      nextEntry.agentName = agent.name;
+      nextEntry.category = agent.category;
+      nextEntry.group = agent.group;
+      nextEntry.classification = agent.classification;
+      nextEntry.limitedAirborneRisk = Boolean(agent.limitedAirborneRisk);
+      nextEntry.noteCodes = normalizeRiskAssessmentChemicalTextList(agent.noteCodes);
+    }
+  }
+  if (field === "probability" || field === "consequence") {
+    nextEntry.riskLevel = calculateJobHazardRiskLevel(nextEntry.probability, nextEntry.consequence) || "";
+  }
+  riskAssessmentBiologicalRiskDrafts[index] = nextEntry;
+  if (field === "probability" || field === "consequence" || (field === "agentName" && hydrateCatalog)) {
+    renderRiskAssessmentBiologicalRisks();
+    scheduleRiskAssessmentDraftAutosave();
+    return;
+  }
+  renderRiskAssessmentOverview();
+  scheduleRiskAssessmentDraftAutosave();
+}
+
+function getRiskAssessmentBiologicalRiskIndexFromElement(element) {
+  const row = element?.closest?.("[data-risk-biological-risk-index]");
+  const index = Number(row?.dataset?.riskBiologicalRiskIndex);
+  return Number.isInteger(index) && index >= 0 ? index : -1;
+}
+
+function buildRiskAssessmentBiologicalRiskRow(entry = {}) {
+  const probability = entry.probability || "mv";
+  const consequence = entry.consequence || "mš";
+  return createRiskAssessmentRiskRowDraft({
+    category: "II. ŠTETNOSTI",
+    group: "2. Biološke štetnosti",
+    code: "2.1",
+    hazard: entry.agentName || "Biološki agens / izvor izloženosti",
+    description: getRiskAssessmentBiologicalRiskMeta(entry),
+    source: entry.source,
+    possibleConsequences: entry.possibleConsequences || "Moguće zarazne, alergijske ili toksične posljedice ovisno o agensu i izloženosti.",
+    probability,
+    consequence,
+    riskLevel: calculateJobHazardRiskLevel(probability, consequence) || entry.riskLevel || "",
+    workNote: entry.note,
+    existingMeasures: entry.existingMeasures || getRiskAssessmentBiologicalFallbackMeasures(),
+  });
+}
+
+function applyRiskAssessmentBiologicalRiskToJobs(index) {
+  const entry = riskAssessmentBiologicalRiskDrafts[index];
+  if (!entry) {
+    return;
+  }
+  const selectedIds = new Set((entry.usedInJobIds ?? []).map(String).filter(Boolean));
+  const targetIndexes = riskAssessmentJobDrafts
+    .map((job, jobIndex) => ({ job, jobIndex }))
+    .filter(({ job }) => selectedIds.size === 0 || selectedIds.has(String(job.id)))
+    .map(({ jobIndex }) => jobIndex);
+  if (!targetIndexes.length) {
+    setInlineMessage(riskAssessmentBiologicalRuleMessage || riskAssessmentError, "Dodaj barem jedan posao ili ostavi odabir prazan za primjenu na sve poslove.", "error");
+    return;
+  }
+  const riskRow = buildRiskAssessmentBiologicalRiskRow(entry);
+  const sourceLine = joinUniqueRiskAssessmentTextBlocks([
+    entry.agentName || "Biološki agens / izvor izloženosti",
+    entry.classification ? `Skupina ${entry.classification}` : "",
+    entry.source,
+  ]);
+  targetIndexes.forEach((jobIndex) => {
+    const job = riskAssessmentJobDrafts[jobIndex];
+    riskAssessmentJobDrafts[jobIndex] = {
+      ...job,
+      biologicalWork: true,
+      biologicalHazards: joinUniqueRiskAssessmentTextBlocks([job.biologicalHazards, sourceLine, entry.note]),
+      harmfulSources: joinUniqueRiskAssessmentTextBlocks([
+        job.harmfulSources,
+        `Biološke štetnosti: ${entry.agentName || "biološki agens / izvor izloženosti"}.`,
+      ]),
+      riskRows: mergeRiskAssessmentRiskRows(job.riskRows ?? [], [riskRow]),
+    };
+  });
+  renderRiskAssessmentJobs();
+  renderRiskAssessmentBiologicalRisks();
+  scheduleRiskAssessmentDraftAutosave();
+  setInlineMessage(riskAssessmentBiologicalRuleMessage || riskAssessmentError, `Biološka štetnost "${entry.agentName || "redak"}" dodana je u radna mjesta.`, "success");
+}
+
+function handleRiskAssessmentBiologicalRisksInput(event) {
+  const target = event.target;
+  if (!(
+    target instanceof HTMLInputElement
+    || target instanceof HTMLTextAreaElement
+    || target instanceof HTMLSelectElement
+  )) {
+    return;
+  }
+  const index = getRiskAssessmentBiologicalRiskIndexFromElement(target);
+  if (index < 0) {
+    return;
+  }
+  if (target.matches("[data-risk-biological-risk-jobs]")) {
+    riskAssessmentBiologicalRiskDrafts[index] = {
+      ...riskAssessmentBiologicalRiskDrafts[index],
+      usedInJobIds: Array.from(target.selectedOptions ?? []).map((option) => option.value).filter(Boolean),
+    };
+    scheduleRiskAssessmentDraftAutosave();
+    return;
+  }
+  const field = target.dataset.riskBiologicalRiskField;
+  if (!field) {
+    return;
+  }
+  updateRiskAssessmentBiologicalRiskField(index, field, target.value, {
+    hydrateCatalog: event.type === "change" && field === "agentName",
+  });
+}
+
+function handleRiskAssessmentBiologicalRisksClick(event) {
+  const addButton = event.target?.closest?.("[data-risk-biological-risk-add]");
+  if (addButton) {
+    event.preventDefault();
+    riskAssessmentBiologicalRiskDrafts.push(createRiskAssessmentBiologicalRiskDraft());
+    renderRiskAssessmentBiologicalRisks();
+    scheduleRiskAssessmentDraftAutosave();
+    return;
+  }
+  const button = event.target?.closest?.("button");
+  if (!(button instanceof HTMLButtonElement)) {
+    return;
+  }
+  const index = getRiskAssessmentBiologicalRiskIndexFromElement(button);
+  if (index < 0) {
+    return;
+  }
+  if (button.matches("[data-risk-biological-risk-remove]")) {
+    event.preventDefault();
+    riskAssessmentBiologicalRiskDrafts.splice(index, 1);
+    renderRiskAssessmentBiologicalRisks();
+    scheduleRiskAssessmentDraftAutosave();
+    return;
+  }
+  if (button.matches("[data-risk-biological-risk-apply]")) {
+    event.preventDefault();
+    applyRiskAssessmentBiologicalRiskToJobs(index);
   }
 }
 
@@ -131611,7 +131995,54 @@ function getRiskAssessmentBiologicalFallbackMeasures() {
   return "Primjenjivati higijenske mjere, čišćenje i dezinfekciju, pravilno postupanje s kontaminiranim materijalom, osposobljavanje radnika i odgovarajuću OZO prema izvoru izloženosti.";
 }
 
+function formatRiskAssessmentBiologicalRiskSpecialWorkCell(entry = {}) {
+  const purPoints = getRiskAssessmentBiologicalRiskLinkedJobs(entry)
+    .flatMap((job) => normalizeJobPurPointValues(job.purPoints ?? []));
+  return purPoints.length
+    ? joinUniqueRiskAssessmentTextBlocks(["Da", getJobPurPointSummary(purPoints)])
+    : "Ne";
+}
+
+function formatRiskAssessmentBiologicalRiskSubject(entry = {}, index = 0) {
+  return joinUniqueRiskAssessmentTextBlocks([
+    "II. ŠTETNOSTI",
+    "2. Biološke štetnosti",
+    `${index + 1}. ${entry.agentName || "Biološki agens / izvor izloženosti"}`,
+    entry.classification ? `Skupina ${entry.classification}` : "",
+  ]);
+}
+
+function formatRiskAssessmentBiologicalRiskNote(entry = {}) {
+  const linkedJobs = getRiskAssessmentBiologicalRiskLinkedJobs(entry)
+    .map((job) => job.jobTitle)
+    .filter(Boolean);
+  return joinUniqueRiskAssessmentTextBlocks([
+    entry.category ? `Kategorija Priloga III: ${entry.category}` : "",
+    entry.classification ? `Klasifikacija: skupina ${entry.classification}` : "",
+    formatRiskAssessmentBiologicalAgentNotes({
+      limitedAirborneRisk: entry.limitedAirborneRisk,
+      noteCodes: entry.noteCodes,
+    }),
+    linkedJobs.length ? `Radna mjesta: ${linkedJobs.join(", ")}` : "",
+    entry.source ? `Izvor izloženosti: ${entry.source}` : "",
+    entry.possibleConsequences ? `Moguće posljedice: ${entry.possibleConsequences}` : "",
+    entry.note,
+  ]);
+}
+
 function getRiskAssessmentBiologicalRiskExportRows() {
+  if (riskAssessmentBiologicalRiskDrafts.length) {
+    return riskAssessmentBiologicalRiskDrafts.map((entry, index) => ({
+      id: `biological-table-${entry.id || index + 1}`,
+      subject: formatRiskAssessmentBiologicalRiskSubject(entry, index),
+      probability: entry.probability,
+      consequence: entry.consequence,
+      riskLevel: entry.riskLevel || calculateJobHazardRiskLevel(entry.probability, entry.consequence),
+      special: formatRiskAssessmentBiologicalRiskSpecialWorkCell(entry),
+      note: formatRiskAssessmentBiologicalRiskNote(entry),
+      measures: entry.existingMeasures || getRiskAssessmentBiologicalFallbackMeasures(),
+    }));
+  }
   const rows = [];
   riskAssessmentJobDrafts.forEach((job, jobIndex) => {
     const biologicalRows = sortRiskAssessmentRiskRowsByPrilogOrder(job.riskRows ?? [])
@@ -139870,6 +140301,7 @@ function renderRiskAssessmentJobs() {
   renderRiskAssessmentJobTree();
   renderRiskAssessmentManualHandling();
   renderRiskAssessmentChemicals();
+  renderRiskAssessmentBiologicalRisks();
   renderRiskAssessmentOverview();
   scheduleRiskAssessmentJobAnalysisShellModeUpdate();
 }
@@ -139935,6 +140367,7 @@ function buildRiskAssessmentPayload() {
     riskTemplates: riskAssessmentRiskTemplateDrafts,
     manualHandling: riskAssessmentManualHandlingDrafts.map((entry) => sanitizeRiskAssessmentManualHandlingDraft(entry)),
     chemicals: riskAssessmentChemicalDrafts.map((chemical) => sanitizeRiskAssessmentTransientChemical(chemical)),
+    biologicalRisks: riskAssessmentBiologicalRiskDrafts.map((entry) => sanitizeRiskAssessmentTransientBiologicalRisk(entry)),
     reportTemplate: sanitizeRiskAssessmentReportTemplateDraft(riskAssessmentReportTemplateDraft || {}),
   };
 }

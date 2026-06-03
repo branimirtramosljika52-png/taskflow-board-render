@@ -531,6 +531,45 @@ test("risk assessments keep chemical registry data from PubChem and STL", () => 
   assert.equal(filterRiskAssessments([assessment], { query: "biološki agensi" }).length, 1);
 });
 
+test("risk assessments keep biological risk table rows", () => {
+  const state = buildState();
+  const assessment = createRiskAssessment(
+    {
+      organizationId: "org-1",
+      companyId: "company-1",
+      locationId: "location-1",
+      title: "Procjena rizika - biologija",
+      biologicalRisks: [
+        {
+          agentName: "Koronavirus 2 povezan s teskim akutnim respiratornim sindromom (SARS-CoV-2) (i)",
+          category: "Virusi",
+          group: "3",
+          classification: "3",
+          source: "Kontakt s radnicima i strankama, kapljicni prijenos.",
+          possibleConsequences: "Respiratorna infekcija.",
+          probability: "mv",
+          consequence: "sš",
+          riskLevel: "Mali rizik",
+          noteCodes: ["V"],
+          existingMeasures: "Higijena ruku, provjetravanje i postupanje prema internim uputama.",
+          usedInJobIds: ["job-1"],
+        },
+      ],
+    },
+    state,
+    () => "risk-bio-1",
+    () => "2026-05-02T08:00:00.000Z",
+  );
+
+  assert.equal(assessment.biologicalRisks.length, 1);
+  assert.equal(assessment.biologicalRisks[0].agentName.includes("SARS-CoV-2"), true);
+  assert.equal(assessment.biologicalRisks[0].classification, "3");
+  assert.deepEqual(assessment.biologicalRisks[0].noteCodes, ["V"]);
+  assert.equal(assessment.biologicalRisks[0].usedInJobIds[0], "job-1");
+  assert.equal(filterRiskAssessments([assessment], { query: "SARS-CoV-2" }).length, 1);
+  assert.equal(filterRiskAssessments([assessment], { query: "kapljicni" }).length, 1);
+});
+
 test("risk assessments clean STL title boilerplate from chemical names", () => {
   const state = buildState();
   const assessment = createRiskAssessment(

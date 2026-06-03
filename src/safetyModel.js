@@ -5962,6 +5962,49 @@ function normalizeRiskAssessmentChemicals(items = []) {
   ));
 }
 
+function normalizeRiskAssessmentBiologicalRisks(items = []) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items.map((item, index) => {
+    const probability = normalizeText(item?.probability || "mv");
+    const consequence = normalizeText(item?.consequence || "mš");
+    return {
+      id: normalizeId(item?.id) || crypto.randomUUID(),
+      order: Number.isFinite(Number(item?.order)) ? Number(item.order) : index + 1,
+      catalogId: normalizeId(item?.catalogId),
+      agentName: normalizeText(item?.agentName ?? item?.name ?? item?.hazard).slice(0, 260),
+      category: normalizeText(item?.category).slice(0, 160),
+      group: normalizeText(item?.group).slice(0, 40),
+      classification: normalizeText(item?.classification).slice(0, 40),
+      limitedAirborneRisk: normalizeBoolean(item?.limitedAirborneRisk, false),
+      noteCodes: normalizeRiskAssessmentChemicalTextList(item?.noteCodes).slice(0, 8),
+      source: normalizeText(item?.source ?? item?.exposureSource).slice(0, 1200),
+      possibleConsequences: normalizeText(item?.possibleConsequences ?? item?.consequences).slice(0, 1200),
+      probability,
+      consequence,
+      riskLevel: normalizeText(item?.riskLevel).slice(0, 80),
+      note: normalizeText(item?.note).slice(0, 1600),
+      existingMeasures: normalizeText(item?.existingMeasures ?? item?.measures).slice(0, 1800),
+      usedInJobIds: Array.from(new Set(
+        (Array.isArray(item?.usedInJobIds) ? item.usedInJobIds : [])
+          .map((value) => normalizeId(value))
+          .filter(Boolean),
+      )),
+    };
+  }).filter((item) => (
+    item.agentName
+    || item.category
+    || item.classification
+    || item.source
+    || item.possibleConsequences
+    || item.note
+    || item.existingMeasures
+    || item.usedInJobIds.length > 0
+  ));
+}
+
 function normalizeRiskAssessmentManualPosture(value = "") {
   const normalized = normalizeText(value);
   if (normalized === "bent" || normalized === "twist") {
@@ -6611,6 +6654,9 @@ function hydrateRiskAssessmentCore({
     chemicals: hasOwn(input, "chemicals")
       ? normalizeRiskAssessmentChemicals(input.chemicals)
       : normalizeRiskAssessmentChemicals(current?.chemicals ?? []),
+    biologicalRisks: hasOwn(input, "biologicalRisks")
+      ? normalizeRiskAssessmentBiologicalRisks(input.biologicalRisks)
+      : normalizeRiskAssessmentBiologicalRisks(current?.biologicalRisks ?? []),
     reportTemplate: hasOwn(input, "reportTemplate")
       ? normalizeRiskAssessmentReportTemplate(input.reportTemplate)
       : normalizeRiskAssessmentReportTemplate(current?.reportTemplate ?? {}),
@@ -9633,6 +9679,18 @@ export function filterRiskAssessments(
       item.clientNote,
       item.clientJobInputEnabled ? "klijentski unos omogucen portal radna mjesta" : "",
       ...(item.measures ?? []).flatMap((entry) => [entry.measure, entry.responsiblePerson, entry.deadline]),
+      ...(item.biologicalRisks ?? []).flatMap((entry) => [
+        entry.agentName,
+        entry.category,
+        entry.group,
+        entry.classification,
+        ...(entry.noteCodes ?? []),
+        entry.source,
+        entry.possibleConsequences,
+        entry.note,
+        entry.existingMeasures,
+        ...(entry.usedInJobIds ?? []),
+      ]),
       ...(item.organizationUnits ?? []).flatMap((entry) => [
         entry.name,
         entry.shortDescription,
