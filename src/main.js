@@ -9152,15 +9152,16 @@ async function apiRequest(path, options = {}, retryOnAuthFailure = true) {
   const organizationHeader = state.activeOrganizationId
     ? { "X-Organization-Id": state.activeOrganizationId }
     : {};
+  const { headers: optionHeaders = {}, body: optionBody, ...fetchOptions } = options;
   const response = await fetch(`${API_BASE}${path}`, {
+    credentials: "same-origin",
+    ...fetchOptions,
     headers: {
       "Content-Type": "application/json",
       ...organizationHeader,
-      ...(options.headers ?? {}),
+      ...optionHeaders,
     },
-    credentials: "same-origin",
-    ...options,
-    body: options.body ? JSON.stringify(options.body) : undefined,
+    body: optionBody ? JSON.stringify(optionBody) : undefined,
   });
 
   if (response.status === 401 && retryOnAuthFailure && !AUTH_RETRY_EXCLUDED_PATHS.has(path)) {
@@ -9316,15 +9317,16 @@ async function apiBinaryRequest(path, options = {}, retryOnAuthFailure = true) {
   const organizationHeader = state.activeOrganizationId
     ? { "X-Organization-Id": state.activeOrganizationId }
     : {};
+  const { headers: optionHeaders = {}, body: optionBody, ...fetchOptions } = options;
   const response = await fetch(`${API_BASE}${path}`, {
+    credentials: "same-origin",
+    ...fetchOptions,
     headers: {
       "Content-Type": "application/json",
       ...organizationHeader,
-      ...(options.headers ?? {}),
+      ...optionHeaders,
     },
-    credentials: "same-origin",
-    ...options,
-    body: options.body ? JSON.stringify(options.body) : undefined,
+    body: optionBody ? JSON.stringify(optionBody) : undefined,
   });
 
   if (response.status === 401 && retryOnAuthFailure && !AUTH_RETRY_EXCLUDED_PATHS.has(path)) {
