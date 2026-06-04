@@ -58696,15 +58696,20 @@ button.work-order-editor-section-head:focus-visible {
 }
 
 .risk-assessment-linked-table.is-equipment > div {
-  grid-template-columns: 0.95fr 1.2fr 0.58fr 1.35fr 0.76fr;
+  grid-template-columns: 0.42fr 0.95fr 1.2fr 0.58fr 1.35fr 0.76fr;
 }
 
 .risk-assessment-linked-table.is-inspections > div {
-  grid-template-columns: 0.9fr 0.72fr 1.18fr 1.1fr 1.05fr;
+  grid-template-columns: 0.42fr 0.9fr 0.72fr 1.18fr 1.1fr 1.05fr;
 }
 
 .risk-assessment-linked-table.is-work-environment > div {
   grid-template-columns: 1fr 0.86fr 1fr 1.2fr 1.05fr;
+}
+
+.risk-assessment-linked-table.is-ppe-by-job > div {
+  grid-template-columns: 1.05fr 0.95fr 0.42fr 1.5fr 1.05fr 1.3fr;
+  min-width: 920px;
 }
 
 .risk-assessment-linked-table span {
@@ -58714,6 +58719,7 @@ button.work-order-editor-section-head:focus-visible {
   font-size: 0.74rem;
   font-weight: 760;
   line-height: 1.35;
+  white-space: pre-line;
   overflow-wrap: anywhere;
 }
 
@@ -58730,6 +58736,36 @@ button.work-order-editor-section-head:focus-visible {
   font-weight: 950;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+.risk-assessment-linked-table .is-missing-ppe span:nth-child(4) {
+  color: #b45309;
+  font-style: italic;
+}
+
+.risk-assessment-linked-table .has-ppe span:nth-child(4) {
+  color: #0f5132;
+  font-weight: 850;
+}
+
+.risk-assessment-overview-table-section {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  min-width: 0;
+}
+
+.risk-assessment-overview-section-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.risk-assessment-overview-section-head strong {
+  color: #0f172a;
+  font-size: 0.96rem;
+  font-weight: 950;
 }
 
 .risk-assessment-people-field {
@@ -64683,6 +64719,18 @@ body.is-risk-stl-review-open {
   border-bottom: 1px solid rgba(226, 232, 240, 0.9);
 }
 
+.risk-assessment-template-table.is-ppe-by-job > div {
+  grid-template-columns: 1.04fr 0.94fr 0.38fr 1.42fr 1.04fr 1.25fr;
+}
+
+.risk-assessment-template-table.is-equipment-list > div {
+  grid-template-columns: 0.42fr 1.15fr 0.92fr 0.55fr 1.45fr;
+}
+
+.risk-assessment-template-table.is-inspection-list > div {
+  grid-template-columns: 0.42fr 1.12fr 0.85fr 0.8fr 1fr 1.05fr;
+}
+
 .risk-assessment-template-table > div:last-child {
   border-bottom: 0;
 }
@@ -64692,6 +64740,9 @@ body.is-risk-stl-review-open {
   color: #334155;
   font-size: 0.75rem;
   font-weight: 720;
+  line-height: 1.35;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
 }
 
 .risk-assessment-template-table .is-head span {
@@ -64700,6 +64751,16 @@ body.is-risk-stl-review-open {
   font-size: 0.68rem;
   font-weight: 900;
   text-transform: uppercase;
+}
+
+.risk-assessment-template-table.is-ppe-by-job .is-missing-ppe span:nth-child(4) {
+  color: #b45309;
+  font-style: italic;
+}
+
+.risk-assessment-template-table.is-ppe-by-job .has-ppe span:nth-child(4) {
+  color: #0f5132;
+  font-weight: 850;
 }
 
 .risk-assessment-work-flags label {

@@ -124969,6 +124969,47 @@ function getRiskAssessmentLinkedAppendixData() {
   };
 }
 
+function formatRiskAssessmentPpeRequiredLabel(ppe = {}) {
+  return ppe.required === false || ppe.mandatory === false ? "prema potrebi" : "obvezna";
+}
+
+function getRiskAssessmentPpeRowsByJob({ includeEmptyJobs = true } = {}) {
+  return riskAssessmentJobDrafts
+    .map((job, index) => {
+      const unit = riskAssessmentOrganizationUnitDrafts.find((entry) => (
+        String(entry.id || "") === String(job.organizationUnitId || "")
+      ));
+      const ppeItems = (job.ppeItems ?? [])
+        .map((item) => normalizeRiskPpeCatalogItem(item))
+        .filter((item) => item.name || item.norm || item.category || item.description || item.note);
+      const ppeLines = ppeItems.map((ppe) => [
+        ppe.name || "OZO",
+        formatRiskAssessmentPpeRequiredLabel(ppe),
+      ].filter(Boolean).join(" - "));
+      const normLines = ppeItems.map((ppe) => [
+        ppe.norm || ppe.standardCode,
+        ppe.category || getRiskAssessmentPpeBodyPartLabel(ppe.bodyPart),
+      ].filter(Boolean).join(" - ")).filter(Boolean);
+      const noteLines = ppeItems.map((ppe) => [
+        ppe.description,
+        ppe.hazardLinks ? `Opasnosti: ${ppe.hazardLinks}` : "",
+        ppe.note,
+      ].filter(Boolean).join(" - ")).filter(Boolean);
+
+      return {
+        id: String(job.id || `job-${index + 1}`),
+        unit: unit ? getRiskAssessmentUnitPath(unit) : getRiskAssessmentUnitName(job.organizationUnitId) || "Bez organizacijske jedinice",
+        jobTitle: job.jobTitle || `Radno mjesto ${index + 1}`,
+        workerCount: job.workerCount || job.clientInput?.workerCount || "",
+        ppeText: ppeLines.length ? ppeLines.join("\n") : "Nije odabrana OZO",
+        normText: normLines.length ? Array.from(new Set(normLines)).join("\n") : "-",
+        noteText: noteLines.length ? noteLines.join("\n") : (job.ppeText || "-"),
+        ppeCount: ppeItems.length,
+      };
+    })
+    .filter((row) => includeEmptyJobs || row.ppeCount > 0);
+}
+
 function renderRiskAssessmentLinkedAppendixRows(headers = [], rows = [], emptyText = "", modifier = "") {
   if (!rows.length) {
     return `<p class="inline-help">${escapeHtml(emptyText || "Nema podataka za odabrani opseg.")}</p>`;
@@ -124978,6 +125019,38 @@ function renderRiskAssessmentLinkedAppendixRows(headers = [], rows = [], emptyTe
       <div class="is-head">${headers.map((header) => `<span>${escapeHtml(header)}</span>`).join("")}</div>
       ${rows.map((row) => `
         <div>${row.map((cell) => `<span>${escapeHtml(cell || "-")}</span>`).join("")}</div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderRiskAssessmentPpeByJobTable({ template = false } = {}) {
+  const rows = getRiskAssessmentPpeRowsByJob({ includeEmptyJobs: true });
+  if (!rows.length) {
+    return `<p class="${template ? "is-muted" : "inline-help"}">Dodaj radna mjesta i odaberi osobnu zaštitnu opremu.</p>`;
+  }
+  const tableClass = template
+    ? "risk-assessment-template-table risk-assessment-template-table--appendix is-ppe-by-job"
+    : "risk-assessment-linked-table is-ppe-by-job";
+  return `
+    <div class="${tableClass}">
+      <div class="is-head">
+        <span>Organizacijska jedinica</span>
+        <span>Radno mjesto</span>
+        <span>Radnika</span>
+        <span>Osobna zaštitna oprema</span>
+        <span>Norma / kategorija</span>
+        <span>Primjena / napomena</span>
+      </div>
+      ${rows.map((row) => `
+        <div class="${row.ppeCount ? "has-ppe" : "is-missing-ppe"}">
+          <span>${escapeHtml(row.unit || "-")}</span>
+          <span>${escapeHtml(row.jobTitle || "-")}</span>
+          <span>${escapeHtml(row.workerCount || "-")}</span>
+          <span>${escapeHtml(row.ppeText || "-")}</span>
+          <span>${escapeHtml(row.normText || "-")}</span>
+          <span>${escapeHtml(row.noteText || "-")}</span>
+        </div>
       `).join("")}
     </div>
   `;
@@ -125059,8 +125132,8 @@ function renderRiskAssessmentLinkedAppendix() {
     description: scope.companyId
       ? `${scope.company?.name || "Tvrtka"} · ${getRiskAssessmentAppendixScopeLabel(scope)}`
       : "Odaberi tvrtku i lokacije da se popis radne opreme poveže s objektima, lokacijama i analizom radnih mjesta.",
-    headers: ["Lokacija", "Radna oprema", "Oznaka", "Opis", "Izvor"],
-    rows: equipmentItems.map((item) => [item.locationName, item.name, item.code, item.description || item.status, item.source]),
+    headers: ["Red. br.", "Lokacija", "Radna oprema", "Oznaka", "Opis / status", "Izvor"],
+    rows: equipmentItems.map((item, index) => [`${index + 1}.`, item.locationName, item.name, item.code, item.description || item.status, item.source]),
     emptyText: "Nema radne opreme/objekata za odabranu tvrtku i lokacije. Ako nije unesena u sustav, može se povući iz analize radnog mjesta.",
     modifier: "is-equipment",
     counterLabel: "stavki opreme",
@@ -125085,8 +125158,8 @@ function renderRiskAssessmentLinkedAppendix() {
     description: scope.companyId
       ? `${scope.company?.name || "Tvrtka"} · ${getRiskAssessmentAppendixScopeLabel(scope)}`
       : "Odaberi tvrtku i lokacije da se popis ispitivanja poveže s periodikom i radnim nalozima.",
-    headers: ["Lokacija", "Objekt", "Ispitivanje", "RN / zapisnik", "Rok / status"],
-    rows: inspectionItems.map((item) => [item.locationName, item.objectName, item.inspectionName, item.reference || item.source, item.status]),
+    headers: ["Red. br.", "Lokacija", "Objekt", "Ispitivanje", "RN / zapisnik", "Rok / status"],
+    rows: inspectionItems.map((item, index) => [`${index + 1}.`, item.locationName, item.objectName, item.inspectionName, item.reference || item.source, item.status]),
     emptyText: "Nema povezanih ispitivanja za odabranu tvrtku i lokacije.",
     modifier: "is-inspections",
     counterLabel: "ispitivanja",
@@ -132943,31 +133016,85 @@ function buildRiskAssessmentBiologicalExportBlocks() {
   ];
 }
 
-function buildRiskAssessmentPpeExportBlocks() {
-  const items = riskAssessmentJobDrafts.flatMap((job) => (
-    (job.ppeItems ?? []).map((ppe) => ({ ...ppe, jobTitle: job.jobTitle }))
-  ));
+function buildRiskAssessmentWorkEquipmentExportBlocks() {
+  const items = getRiskAssessmentScopedWorkEquipmentItems();
   if (!items.length) {
-    return [createRiskAssessmentExportParagraph("Osobna zaštitna oprema nije odabrana na poslovima.")];
+    return [createRiskAssessmentExportParagraph("Nema povezane radne opreme za odabranu tvrtku i lokacije.")];
   }
   const columns = [
-    { id: "name", label: "Naziv OZO", width: 190 },
-    { id: "norm", label: "Norma", width: 120 },
-    { id: "job", label: "Posao", width: 160 },
-    { id: "required", label: "Obvezna", width: 70 },
-    { id: "note", label: "Napomena", width: 300 },
+    { id: "ordinal", label: "Red. br.", width: 55 },
+    { id: "location", label: "Lokacija", width: 145 },
+    { id: "equipment", label: "Radna oprema", width: 190 },
+    { id: "code", label: "Oznaka", width: 90 },
+    { id: "description", label: "Opis / status", width: 230 },
+    { id: "source", label: "Izvor", width: 120 },
   ];
   const rows = [
     createRiskAssessmentExportRow("head", columns.map((column) => createRiskAssessmentExportHeaderCell(column.label, { fontSize: 8 })), true),
-    ...items.map((ppe, index) => createRiskAssessmentExportRow(`ppe-${index + 1}`, [
-      createRiskAssessmentExportCell([ppe.name || "OZO", ppe.category, ppe.bodyPart].filter(Boolean).join("\n"), { fontSize: 8, bold: true }),
-      createRiskAssessmentExportCell(ppe.norm || ppe.standardCode, { fontSize: 8 }),
-      createRiskAssessmentExportCell(ppe.jobTitle, { fontSize: 8 }),
-      createRiskAssessmentExportCell(ppe.required === false || ppe.mandatory === false ? "Prema potrebi" : "Da", { fontSize: 8, align: "center" }),
-      createRiskAssessmentExportCell([ppe.description, ppe.hazardLinks, ppe.note].filter(Boolean).join("\n"), { fontSize: 8 }),
+    ...items.map((item, index) => createRiskAssessmentExportRow(`equipment-${index + 1}`, [
+      createRiskAssessmentExportCell(`${index + 1}.`, { fontSize: 8, align: "center" }),
+      createRiskAssessmentExportCell(item.locationName, { fontSize: 8 }),
+      createRiskAssessmentExportCell(item.name || "Radna oprema", { fontSize: 8, bold: true }),
+      createRiskAssessmentExportCell(item.code, { fontSize: 8, align: "center" }),
+      createRiskAssessmentExportCell([item.description, item.status].filter(Boolean).join("\n"), { fontSize: 8 }),
+      createRiskAssessmentExportCell(item.source, { fontSize: 8 }),
     ])),
   ];
-  return [createRiskAssessmentExportTable(columns, rows)];
+  return [createRiskAssessmentExportTable(columns, rows, { keepRowsTogether: true })];
+}
+
+function buildRiskAssessmentInspectionsExportBlocks() {
+  const items = getRiskAssessmentScopedInspectionItems();
+  if (!items.length) {
+    return [createRiskAssessmentExportParagraph("Nema povezanih ispitivanja za odabranu tvrtku i lokacije.")];
+  }
+  const columns = [
+    { id: "ordinal", label: "Red. br.", width: 55 },
+    { id: "location", label: "Lokacija", width: 135 },
+    { id: "object", label: "Objekt / oprema", width: 135 },
+    { id: "inspection", label: "Ispitivanje", width: 200 },
+    { id: "reference", label: "RN / zapisnik", width: 180 },
+    { id: "status", label: "Rok / status", width: 165 },
+  ];
+  const rows = [
+    createRiskAssessmentExportRow("head", columns.map((column) => createRiskAssessmentExportHeaderCell(column.label, { fontSize: 8 })), true),
+    ...items.map((item, index) => createRiskAssessmentExportRow(`inspection-${index + 1}`, [
+      createRiskAssessmentExportCell(`${index + 1}.`, { fontSize: 8, align: "center" }),
+      createRiskAssessmentExportCell(item.locationName, { fontSize: 8 }),
+      createRiskAssessmentExportCell(item.objectName, { fontSize: 8 }),
+      createRiskAssessmentExportCell(item.inspectionName || "Ispitivanje", { fontSize: 8, bold: true }),
+      createRiskAssessmentExportCell(item.reference || item.source, { fontSize: 8 }),
+      createRiskAssessmentExportCell(item.status, { fontSize: 8 }),
+    ])),
+  ];
+  return [createRiskAssessmentExportTable(columns, rows, { keepRowsTogether: true })];
+}
+
+function buildRiskAssessmentPpeExportBlocks() {
+  const rowsByJob = getRiskAssessmentPpeRowsByJob({ includeEmptyJobs: true });
+  if (!rowsByJob.length) {
+    return [createRiskAssessmentExportParagraph("Radna mjesta i osobna zaštitna oprema nisu dodani.")];
+  }
+  const columns = [
+    { id: "unit", label: "Organizacijska jedinica", width: 140 },
+    { id: "job", label: "Radno mjesto", width: 140 },
+    { id: "workers", label: "Radnika", width: 60 },
+    { id: "ppe", label: "Osobna zaštitna oprema", width: 260 },
+    { id: "norm", label: "Norma / kategorija", width: 170 },
+    { id: "note", label: "Primjena / napomena", width: 230 },
+  ];
+  const rows = [
+    createRiskAssessmentExportRow("head", columns.map((column) => createRiskAssessmentExportHeaderCell(column.label, { fontSize: 8 })), true),
+    ...rowsByJob.map((row, index) => createRiskAssessmentExportRow(`ppe-job-${index + 1}`, [
+      createRiskAssessmentExportCell(row.unit, { fontSize: 7.5 }),
+      createRiskAssessmentExportCell(row.jobTitle, { fontSize: 8, bold: true }),
+      createRiskAssessmentExportCell(row.workerCount, { fontSize: 8, align: "center" }),
+      createRiskAssessmentExportCell(row.ppeText, { fontSize: 8, bold: row.ppeCount > 0 }),
+      createRiskAssessmentExportCell(row.normText, { fontSize: 7.5 }),
+      createRiskAssessmentExportCell(row.noteText, { fontSize: 7.5 }),
+    ])),
+  ];
+  return [createRiskAssessmentExportTable(columns, rows, { keepRowsTogether: true })];
 }
 
 function buildRiskAssessmentMeasuresExportBlocks() {
@@ -133223,6 +133350,10 @@ function buildRiskAssessmentStructuredSectionExportBlocks(key = "") {
       return buildRiskAssessmentChemicalsExportBlocks();
     case "biological":
       return buildRiskAssessmentBiologicalExportBlocks();
+    case "work_equipment":
+      return buildRiskAssessmentWorkEquipmentExportBlocks();
+    case "inspections":
+      return buildRiskAssessmentInspectionsExportBlocks();
     case "ppe":
       return buildRiskAssessmentPpeExportBlocks();
     case "manual_handling":
@@ -133832,25 +133963,7 @@ function renderRiskAssessmentTemplateChemicalsContent() {
 }
 
 function renderRiskAssessmentTemplatePpeContent() {
-  const items = riskAssessmentJobDrafts.flatMap((job) => (
-    (job.ppeItems ?? []).map((ppe) => ({ ...ppe, jobTitle: job.jobTitle }))
-  ));
-  if (!items.length) {
-    return `<p class="is-muted">OZO nije odabrana na poslovima.</p>`;
-  }
-  return `
-    <div class="risk-assessment-template-table">
-      <div class="is-head"><span>Naziv i norma</span><span>Posao</span><span>Obvezna</span><span>Napomena</span></div>
-      ${items.map((ppe) => `
-        <div>
-          <span>${escapeHtml([ppe.name || "OZO", ppe.norm].filter(Boolean).join(" · "))}</span>
-          <span>${escapeHtml(ppe.jobTitle || "-")}</span>
-          <span>${ppe.required === false ? "Ne" : "Da"}</span>
-          <span>${escapeHtml([ppe.description, ppe.note].filter(Boolean).join(" · ") || "-")}</span>
-        </div>
-      `).join("")}
-    </div>
-  `;
+  return renderRiskAssessmentPpeByJobTable({ template: true });
 }
 
 function renderRiskAssessmentTemplateManualHandlingContent() {
@@ -134060,10 +134173,11 @@ function renderRiskAssessmentTemplateWorkEquipmentAppendixContent() {
     return `<p class="is-muted">Nema povezane radne opreme za odabranu tvrtku i lokacije.</p>`;
   }
   return `
-    <div class="risk-assessment-template-table risk-assessment-template-table--appendix">
-      <div class="is-head"><span>Radna oprema</span><span>Lokacija</span><span>Oznaka</span><span>Opis / izvor</span></div>
-      ${items.map((item) => `
+    <div class="risk-assessment-template-table risk-assessment-template-table--appendix is-equipment-list">
+      <div class="is-head"><span>Red. br.</span><span>Radna oprema</span><span>Lokacija</span><span>Oznaka</span><span>Opis / izvor</span></div>
+      ${items.map((item, index) => `
         <div>
+          <span>${escapeHtml(`${index + 1}.`)}</span>
           <span>${escapeHtml(item.name || "-")}</span>
           <span>${escapeHtml(item.locationName || "-")}</span>
           <span>${escapeHtml(item.code || "-")}</span>
@@ -134080,12 +134194,14 @@ function renderRiskAssessmentTemplateInspectionAppendixContent() {
     return `<p class="is-muted">Nema povezanih ispitivanja za odabranu tvrtku i lokacije.</p>`;
   }
   return `
-    <div class="risk-assessment-template-table risk-assessment-template-table--appendix">
-      <div class="is-head"><span>Ispitivanje</span><span>Lokacija</span><span>RN / zapisnik</span><span>Rok / status</span></div>
-      ${items.map((item) => `
+    <div class="risk-assessment-template-table risk-assessment-template-table--appendix is-inspection-list">
+      <div class="is-head"><span>Red. br.</span><span>Ispitivanje</span><span>Lokacija</span><span>Objekt</span><span>RN / zapisnik</span><span>Rok / status</span></div>
+      ${items.map((item, index) => `
         <div>
-          <span>${escapeHtml([item.inspectionName, item.objectName].filter(Boolean).join(" · ") || "-")}</span>
+          <span>${escapeHtml(`${index + 1}.`)}</span>
+          <span>${escapeHtml(item.inspectionName || "-")}</span>
           <span>${escapeHtml(item.locationName || "-")}</span>
+          <span>${escapeHtml(item.objectName || "-")}</span>
           <span>${escapeHtml(item.reference || item.source || "-")}</span>
           <span>${escapeHtml(item.status || "-")}</span>
         </div>
@@ -139545,6 +139661,17 @@ function renderRiskAssessmentOverview() {
       </div>
     `
     : "";
+  const ppeByJobHtml = riskAssessmentJobDrafts.length
+    ? `
+      <section class="risk-assessment-overview-table-section">
+        <div class="risk-assessment-overview-section-head">
+          <span class="section-kicker">OZO po radnim mjestima</span>
+          <strong>Pregled osobne zaštitne opreme</strong>
+        </div>
+        ${renderRiskAssessmentPpeByJobTable()}
+      </section>
+    `
+    : "";
 
   riskAssessmentOverview.innerHTML = `
     <section class="risk-assessment-overview-hero">
@@ -139599,6 +139726,7 @@ function renderRiskAssessmentOverview() {
       <span><strong>${escapeHtml(String(summary.totalPpe))}</strong> OZO</span>
     </div>
     <div class="risk-assessment-overview-grid">${unitsHtml}</div>
+    ${ppeByJobHtml}
     ${chemicalsHtml}
   `;
   renderRiskAssessmentLinkedAppendix();
