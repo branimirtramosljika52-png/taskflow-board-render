@@ -752,6 +752,8 @@ function getOpenWeatherDailyForecastItems(payload = {}) {
     const representative = pickOpenWeatherDailyRepresentative(items, timezoneSeconds);
     const mapped = mapOpenWeatherForecastItem(representative);
     const temperatures = items.map((item) => Number(item.main?.temp)).filter(Number.isFinite);
+    const humidities = items.map((item) => Number(item.main?.humidity)).filter(Number.isFinite);
+    const pressures = items.map((item) => Number(item.main?.pressure)).filter(Number.isFinite);
     const windSpeeds = items.map((item) => Number(item.wind?.speed ?? 0)).filter(Number.isFinite);
     const windGusts = items.map((item) => Number(item.wind?.gust ?? 0)).filter(Number.isFinite);
     const rainMm = items.reduce((sum, item) => sum + Number(item.rain?.["3h"] ?? item.rain?.["1h"] ?? 0), 0);
@@ -767,6 +769,12 @@ function getOpenWeatherDailyForecastItems(payload = {}) {
       afternoonTemp: afternoonTemp ?? (temperatures.length ? Math.max(...temperatures) : mapped.temp),
       tempMin: temperatures.length ? Math.min(...temperatures) : mapped.temp,
       tempMax: temperatures.length ? Math.max(...temperatures) : mapped.temp,
+      humidityMin: humidities.length ? Math.min(...humidities) : mapped.humidity,
+      humidityMax: humidities.length ? Math.max(...humidities) : mapped.humidity,
+      pressureMin: pressures.length ? Math.min(...pressures) : 0,
+      pressureMax: pressures.length ? Math.max(...pressures) : 0,
+      windSpeedMin: windSpeeds.length ? Math.min(...windSpeeds) : mapped.windSpeed,
+      windSpeedMax: windSpeeds.length ? Math.max(...windSpeeds) : mapped.windSpeed,
       windSpeed: windSpeeds.length ? Math.max(...windSpeeds) : mapped.windSpeed,
       windGust: windGusts.length ? Math.max(...windGusts) : mapped.windGust,
       rainMm,

@@ -73781,6 +73781,33 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
   box-shadow: 0 0 0 4px rgba(124, 92, 255, 0.12);
 }
 
+.work-order-document-weather-hint {
+  display: block;
+  min-height: 16px;
+  margin-top: 5px;
+  color: #5b6680;
+  font-size: 0.66rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.work-order-document-weather-hint[data-weather-hint-status="ready"] {
+  color: #0f766e;
+}
+
+.work-order-document-weather-hint[data-weather-hint-status="loading"] {
+  color: #7c3aed;
+}
+
+.work-order-document-weather-hint[data-weather-hint-status="error"],
+.work-order-document-weather-hint[data-weather-hint-status="empty"] {
+  color: #9a3412;
+}
+
+.work-order-document-weather-hint[data-weather-hint-status="mixed"] {
+  color: #4f46e5;
+}
+
 .work-order-document-wizard-control-slot {
   min-height: 38px;
 }
