@@ -58289,7 +58289,6 @@ const WORK_ORDER_DOCUMENT_WEATHER_HINT_FIELDS = new Set([
   "airflowSpeed",
   "weather",
   "groundCondition",
-  "groundResistance",
 ]);
 const WORK_ORDER_DOCUMENT_WEATHER_HINT_CACHE_TTL_MS = 10 * 60 * 1000;
 const WORK_ORDER_DOCUMENT_WEATHER_HINT_ERROR_TTL_MS = 2 * 60 * 1000;
@@ -58587,7 +58586,7 @@ function buildWorkOrderDocumentWeatherHintSummary(weatherItem = {}, dateKey = ""
     scope,
     exact: selected.exact,
     dateKey: selected.dateKey,
-    tempRange: formatWorkOrderWeatherHintRange(tempMin, tempMax, "°C", 0),
+    tempRange: formatWorkOrderWeatherHintRange(tempMin, tempMax, "stupnjeva", 1),
     humidityRange: formatWorkOrderWeatherHintRange(humidityMin, humidityMax, "%", 0),
     windRange: formatWorkOrderWeatherHintRange(windMin, windMax, "m/s", 1),
     windKmhRange: formatWorkOrderWeatherHintRange(Number(windMin) * 3.6, Number(windMax) * 3.6, "km/h", 0),
@@ -58604,24 +58603,21 @@ function getWorkOrderDocumentWeatherHintText(fieldName = "", summary = null) {
     return "";
   }
 
-  const scopePrefix = summary.scope ? `${summary.scope}: ` : "";
   switch (fieldName) {
     case "outsideTemperature":
-      return summary.tempRange ? `${scopePrefix}${summary.tempRange}.` : "";
+      return summary.tempRange || "";
     case "relativeHumidity":
-      return summary.humidityRange ? `${scopePrefix}${summary.humidityRange}.` : "";
+      return summary.humidityRange || "";
     case "airflowSpeed":
-      return summary.windRange
-        ? `${scopePrefix}vjetar ${summary.windRange}${summary.windKmhRange ? ` (${summary.windKmhRange})` : ""}.`
-        : "";
+      return summary.windRange || "";
     case "weather":
-      return [scopePrefix ? scopePrefix.trimEnd() : "", summary.weatherText, summary.precipitationText]
+      return [summary.weatherText, summary.precipitationText]
         .filter(Boolean)
         .join(" · ");
     case "groundCondition":
-      return `${scopePrefix}${summary.groundCondition}; ${summary.precipitationText}.`;
+      return summary.groundCondition || "";
     case "groundResistance":
-      return `${scopePrefix}otpor tla se mjeri na lokaciji; ${summary.groundCondition} može utjecati na rezultat.`;
+      return "";
     default:
       return "";
   }
@@ -58630,12 +58626,12 @@ function getWorkOrderDocumentWeatherHintText(fieldName = "", summary = null) {
 function buildWorkOrderDocumentWeatherHintState(workOrder = {}, dateKey = "", { autoLoad = false, onLoaded = null } = {}) {
   const normalizedDateKey = normalizeDateInputValue(dateKey);
   if (!normalizedDateKey) {
-    return { status: "empty", message: "Odaberi datum ispitivanja." };
+    return { status: "empty", message: "datum?" };
   }
 
   const location = resolveWorkOrderDocumentWeatherLocation(workOrder);
   if (!location?.query) {
-    return { status: "empty", message: "Odaberi lokaciju RN-a." };
+    return { status: "empty", message: "lokacija?" };
   }
 
   const cached = getWorkOrderDocumentWeatherHintCacheEntry(location.query);
@@ -58658,7 +58654,7 @@ function buildWorkOrderDocumentWeatherHintState(workOrder = {}, dateKey = "", { 
     });
   }
 
-  return { status: "loading", location, message: "Učitavam raspon iz vremena..." };
+  return { status: "loading", location, message: "učitavam..." };
 }
 
 function setWorkOrderDocumentWeatherHintNode(node, text = "", status = "") {
@@ -58682,7 +58678,7 @@ function renderWorkOrderDocumentWizardCommonWeatherHints(workOrders = getAllSele
     .filter((item) => item && typeof item === "object");
   const dateKey = normalizeDateInputValue(state.workOrderDocumentWizard.common?.inspectionDate ?? "");
   if (!dateKey) {
-    nodes.forEach((node) => setWorkOrderDocumentWeatherHintNode(node, "Odaberi datum ispitivanja za raspon iz vremena.", "empty"));
+    nodes.forEach((node) => setWorkOrderDocumentWeatherHintNode(node, "datum?", "empty"));
     return;
   }
 
@@ -58693,19 +58689,14 @@ function renderWorkOrderDocumentWizardCommonWeatherHints(workOrders = getAllSele
     }))
     .filter((item) => item.location?.query);
   if (!contexts.length) {
-    nodes.forEach((node) => setWorkOrderDocumentWeatherHintNode(node, "Odaberi lokaciju RN-a za vremensku napomenu.", "empty"));
+    nodes.forEach((node) => setWorkOrderDocumentWeatherHintNode(node, "lokacija?", "empty"));
     return;
   }
 
   const uniqueLocationKeys = new Set(contexts.map((item) => getWeatherCityKey(item.location.query)));
   if (uniqueLocationKeys.size > 1) {
     nodes.forEach((node) => {
-      const fieldName = String(node.dataset.workOrderWeatherHint || "").trim();
-      if (fieldName === "groundResistance") {
-        setWorkOrderDocumentWeatherHintNode(node, "Više lokacija; otpor tla ostaje mjerenje na svakoj lokaciji.", "mixed");
-      } else {
-        setWorkOrderDocumentWeatherHintNode(node, "Više lokacija u odabiru; detaljni raspon je prikazan na pojedinom RN-u.", "mixed");
-      }
+      setWorkOrderDocumentWeatherHintNode(node, "po RN-u", "mixed");
     });
     return;
   }
@@ -109794,13 +109785,18 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
     input.dataset.batchField = fieldName;
     input.dataset.batchWorkOrderId = String(workOrder.id);
 
-    field.append(labelNode, input);
+    field.append(labelNode);
     if (hintText) {
+      const inputWrap = document.createElement("div");
+      inputWrap.className = "work-order-document-field-with-hint";
       const hint = document.createElement("small");
       hint.className = "work-order-document-weather-hint";
       hint.dataset.weatherHintStatus = hintStatus || "";
       hint.textContent = hintText;
-      field.append(hint);
+      inputWrap.append(input, hint);
+      field.append(inputWrap);
+    } else {
+      field.append(input);
     }
     if (required) {
       markWorkOrderDocumentWizardRequiredField(
@@ -110099,6 +110095,12 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
     },
   );
   const getWeatherHintOptions = (fieldName) => {
+    if (!WORK_ORDER_DOCUMENT_WEATHER_HINT_FIELDS.has(String(fieldName || "").trim())) {
+      return {
+        hintText: "",
+        hintStatus: "",
+      };
+    }
     if (workOrderWeatherHintState.status === "ready") {
       return {
         hintText: getWorkOrderDocumentWeatherHintText(fieldName, workOrderWeatherHintState.summary),

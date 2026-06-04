@@ -73781,31 +73781,71 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
   box-shadow: 0 0 0 4px rgba(124, 92, 255, 0.12);
 }
 
+.work-order-document-field-with-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.work-order-document-field-with-hint input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .work-order-document-weather-hint {
-  display: block;
-  min-height: 16px;
-  margin-top: 5px;
-  color: #5b6680;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  max-width: 46%;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px solid rgba(203, 213, 225, 0.92);
+  border-radius: 999px;
+  background: rgba(248, 250, 252, 0.96);
+  color: #475569;
   font-size: 0.66rem;
-  font-weight: 700;
-  line-height: 1.35;
+  font-weight: 850;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .work-order-document-weather-hint[data-weather-hint-status="ready"] {
+  border-color: rgba(20, 184, 166, 0.32);
+  background: rgba(240, 253, 250, 0.96);
   color: #0f766e;
 }
 
 .work-order-document-weather-hint[data-weather-hint-status="loading"] {
+  border-color: rgba(124, 58, 237, 0.24);
+  background: rgba(245, 243, 255, 0.94);
   color: #7c3aed;
 }
 
 .work-order-document-weather-hint[data-weather-hint-status="error"],
 .work-order-document-weather-hint[data-weather-hint-status="empty"] {
+  border-color: rgba(234, 88, 12, 0.22);
+  background: rgba(255, 247, 237, 0.95);
   color: #9a3412;
 }
 
 .work-order-document-weather-hint[data-weather-hint-status="mixed"] {
+  border-color: rgba(79, 70, 229, 0.24);
+  background: rgba(238, 242, 255, 0.95);
   color: #4f46e5;
+}
+
+@media (max-width: 760px) {
+  .work-order-document-field-with-hint {
+    flex-wrap: wrap;
+  }
+
+  .work-order-document-weather-hint {
+    max-width: 100%;
+  }
 }
 
 .work-order-document-wizard-control-slot {
