@@ -135400,6 +135400,23 @@ function updateRiskAssessmentEditorIdentityFromSaved(item = null) {
   }
 }
 
+function upsertSavedRiskAssessmentItem(item = null) {
+  if (!item || typeof item !== "object" || !item.id) {
+    return null;
+  }
+  const itemId = String(item.id);
+  const currentItems = Array.isArray(state.riskAssessments) ? state.riskAssessments : [];
+  const currentIndex = currentItems.findIndex((entry) => String(entry?.id || "") === itemId);
+  const nextItem = {
+    ...(currentIndex >= 0 ? currentItems[currentIndex] : {}),
+    ...item,
+  };
+  state.riskAssessments = currentIndex >= 0
+    ? currentItems.map((entry, index) => (index === currentIndex ? nextItem : entry))
+    : [nextItem, ...currentItems];
+  return nextItem;
+}
+
 function scheduleRiskAssessmentServerAutosave({ immediate = false } = {}) {
   if (!riskAssessmentForm || !state.riskAssessmentEditorOpen || !getCanAutosaveRiskAssessmentToServer()) {
     return;
@@ -135443,15 +135460,27 @@ async function saveRiskAssessmentEditorAutosave() {
   try {
     const responsePayload = await apiRequest(id ? `/risk-assessments/${encodeURIComponent(id)}` : "/risk-assessments", {
       method: id ? "PATCH" : "POST",
+      headers: {
+        "X-SafeNexus-Autosave": "1",
+        Prefer: "return=minimal",
+      },
       body: payload,
     });
-    if (responsePayload && typeof responsePayload === "object" && Object.prototype.hasOwnProperty.call(responsePayload, "storage")) {
+    const savedItem = responsePayload?.item
+      ? upsertSavedRiskAssessmentItem(responsePayload.item)
+      : null;
+    if (savedItem) {
+      if (responsePayload.storage) {
+        state.storage = responsePayload.storage;
+      }
+      updateRiskAssessmentEditorIdentityFromSaved(savedItem);
+    } else if (responsePayload && typeof responsePayload === "object" && Object.prototype.hasOwnProperty.call(responsePayload, "storage")) {
       applySnapshot(responsePayload);
-      const savedItem = findSavedRiskAssessmentFromPayload(responsePayload, {
+      const snapshotSavedItem = findSavedRiskAssessmentFromPayload(responsePayload, {
         id,
         assessmentNumber: payload.assessmentNumber,
       });
-      updateRiskAssessmentEditorIdentityFromSaved(savedItem);
+      updateRiskAssessmentEditorIdentityFromSaved(snapshotSavedItem);
     }
     riskAssessmentServerAutosaveSignature = JSON.stringify({
       id: riskAssessmentIdInput?.value || id,

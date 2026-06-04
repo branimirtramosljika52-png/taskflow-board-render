@@ -7900,6 +7900,31 @@ async function writeSnapshot(response, user, request, statusCode = 200) {
   });
 }
 
+function isRiskAssessmentMinimalSaveRequest(request) {
+  const autosaveHeader = String(request.headers["x-safenexus-autosave"] ?? "").trim().toLowerCase();
+  const preferHeader = String(request.headers.prefer ?? "").trim().toLowerCase();
+  return autosaveHeader === "1"
+    || autosaveHeader === "true"
+    || preferHeader.split(",").map((part) => part.trim()).includes("return=minimal");
+}
+
+function writeRiskAssessmentSaveResponse(response, user, request, item, statusCode = 200) {
+  if (!isSnapshotCacheableRequest(request)) {
+    invalidateSnapshotCaches();
+  }
+
+  if (isRiskAssessmentMinimalSaveRequest(request)) {
+    sendJson(response, statusCode, {
+      storage: domainRepository.kind,
+      user,
+      item,
+    });
+    return;
+  }
+
+  return writeSnapshot(response, user, request, statusCode);
+}
+
 function buildChatUsers(users = []) {
   return (users ?? []).map((entry) => ({
     id: String(entry.id ?? ""),
@@ -9340,11 +9365,11 @@ async function handleApiRequest(request, response, url) {
       const { scopedSnapshot } = await getScopedState(user, request);
       assertCompanyPayloadInScope(scopedSnapshot, body);
       assertLocationPayloadInScope(scopedSnapshot, body);
-      await domainRepository.createRiskAssessment({
+      const created = await domainRepository.createRiskAssessment({
         ...body,
         organizationId: scopedSnapshot.activeOrganizationId,
       }, user);
-      await writeSnapshot(response, user, request, 201);
+      await writeRiskAssessmentSaveResponse(response, user, request, created, 201);
       return true;
     }
 
@@ -11645,7 +11670,7 @@ async function handleApiRequest(request, response, url) {
         return true;
       }
 
-      await writeSnapshot(response, user, request);
+      await writeRiskAssessmentSaveResponse(response, user, request, updated);
       return true;
     }
 
@@ -12826,6 +12851,7 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
   } catch (error) {
+    console.error(`[api] ${request.method} ${url.pathname} failed.`, error);
     sendError(response, error.statusCode ?? 400, error.message || "Request failed.");
     return true;
   }
