@@ -5629,10 +5629,17 @@ function isPasswordChangeRequiredRequestAllowed(url, request) {
   );
 }
 
-async function readRequestBodyText(request) {
+async function readRequestBodyText(request, { maxBytes = 0 } = {}) {
   const chunks = [];
+  let totalBytes = 0;
 
   for await (const chunk of request) {
+    totalBytes += chunk.length;
+    if (maxBytes > 0 && totalBytes > maxBytes) {
+      const error = new Error(`Zahtjev je prevelik (${Math.round(maxBytes / 1024 / 1024)} MB max).`);
+      error.statusCode = 413;
+      throw error;
+    }
     chunks.push(chunk);
   }
 
@@ -5643,8 +5650,8 @@ async function readRequestBodyText(request) {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-async function readJsonBody(request) {
-  const body = await readRequestBodyText(request);
+async function readJsonBody(request, options = {}) {
+  const body = await readRequestBodyText(request, options);
 
   if (!body) {
     return {};
@@ -8299,7 +8306,12 @@ async function handleApiRequest(request, response, url) {
       }
 
       try {
-        const body = await readJsonBody(request);
+        const body = await readJsonBody(request, { maxBytes: 16 * 1024 * 1024 });
+        console.info("[risk-assessment-stl] extract request", JSON.stringify({
+          fileName: body.fileName || body.name || "",
+          fileType: body.fileType || body.mimeType || body.type || "",
+          dataUrlBytes: String(body.dataUrl || body.fileDataUrl || "").length,
+        }));
         const extracted = await extractStlChemicalDataFromFile({
           fileName: body.fileName || body.name || "stl-dokument",
           mimeType: body.fileType || body.mimeType || body.type || "",

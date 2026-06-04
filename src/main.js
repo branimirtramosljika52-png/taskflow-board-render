@@ -6441,6 +6441,8 @@ let riskAssessmentServerAutosaveTimer = null;
 let riskAssessmentServerAutosaveBusy = false;
 let riskAssessmentServerAutosaveQueued = false;
 let riskAssessmentServerAutosaveSignature = "";
+let riskAssessmentServerAutosaveRetryTimer = null;
+let riskAssessmentServerAutosaveRetryCount = 0;
 let riskAssessmentActiveBlock = "basic";
 let riskAssessmentActiveRichEditorKey = "";
 let riskAssessmentActiveJobIndex = 0;
@@ -9184,6 +9186,36 @@ async function apiRequest(path, options = {}, retryOnAuthFailure = true) {
 
   const payload = await response.json().catch(() => ({}));
   return payload;
+}
+
+function isTransientApiError(error = null) {
+  const statusCode = Number(error?.statusCode);
+  const message = String(error?.message || "");
+  return [502, 503, 504].includes(statusCode)
+    || /no_healthy_upstream|upstream_reset|connection_termination|failed to forward|networkerror|failed to fetch/i.test(message);
+}
+
+async function apiRequestWithTransientRetry(path, options = {}, retryOptions = {}) {
+  const delays = Array.isArray(retryOptions.delays) && retryOptions.delays.length
+    ? retryOptions.delays
+    : [2000, 4000, 7000, 10000];
+  const maxAttempts = Math.max(1, Number(retryOptions.maxAttempts) || delays.length + 1);
+  for (let attemptIndex = 0; attemptIndex < maxAttempts; attemptIndex += 1) {
+    try {
+      return await apiRequest(path, options);
+    } catch (error) {
+      if (!isTransientApiError(error) || attemptIndex >= maxAttempts - 1) {
+        throw error;
+      }
+      if (typeof retryOptions.onRetry === "function") {
+        retryOptions.onRetry(error, attemptIndex + 1, maxAttempts);
+      }
+      await new Promise((resolve) => {
+        window.setTimeout(resolve, delays[Math.min(attemptIndex, delays.length - 1)]);
+      });
+    }
+  }
+  throw new Error("Zahtjev nije uspio nakon ponovnih pokušaja.");
 }
 
 function getOpenAiIntegrationStatusLabel() {
@@ -126607,6 +126639,7 @@ function getRiskAssessmentChemicalPreviewSnippet(value = "", maxLength = 130) {
 }
 
 const RISK_ASSESSMENT_STL_IMPORT_STEPS = ["idle", "reading", "review", "complete"];
+const RISK_ASSESSMENT_STL_MAX_FILE_BYTES = 10 * 1024 * 1024;
 
 function isSupportedRiskAssessmentStlFile(file) {
   if (!file) {
@@ -127672,13 +127705,30 @@ async function importRiskAssessmentChemicalStlFile() {
     for (const [index, file] of files.entries()) {
       setInlineMessage(riskAssessmentChemicalImportMessage, `Obrađujem ${index + 1}/${files.length}: ${file.name}`, "loading");
       try {
+        if (Number(file.size || 0) > RISK_ASSESSMENT_STL_MAX_FILE_BYTES) {
+          failures.push({
+            fileName: file.name,
+            message: `STL je prevelik za stabilan upload (${formatFileSize(file.size)}). Smanji PDF ili ga podijeli na manji dokument.`,
+          });
+          continue;
+        }
         const dataUrl = await readFileAsDataUrl(file, `Ne mogu učitati STL ${file.name}.`);
-        const payload = await apiRequest("/risk-assessments/chemicals/extract-stl", {
+        const payload = await apiRequestWithTransientRetry("/risk-assessments/chemicals/extract-stl", {
           method: "POST",
           body: {
             fileName: file.name,
             fileType: file.type,
             dataUrl,
+          },
+        }, {
+          maxAttempts: 4,
+          delays: [2500, 5000, 9000],
+          onRetry(_error, attempt, total) {
+            setInlineMessage(
+              riskAssessmentChemicalImportMessage,
+              `Server se vraća online, ponovno obrađujem ${file.name} (${attempt + 1}/${total})...`,
+              "loading",
+            );
           },
         });
         const chemicals = (Array.isArray(payload.chemicals) ? payload.chemicals : [])
@@ -127734,6 +127784,9 @@ async function importRiskAssessmentChemicalStlFile() {
     setInlineMessage(riskAssessmentChemicalImportMessage, error?.message || "Ne mogu izvući podatke iz STL dokumenta.", "error");
   } finally {
     riskAssessmentChemicalImportBusy = false;
+    if (riskAssessmentServerAutosaveQueued) {
+      scheduleRiskAssessmentServerAutosave({ immediate: true });
+    }
     if (riskAssessmentChemicalStlButton) {
       riskAssessmentChemicalStlButton.disabled = false;
       riskAssessmentChemicalStlButton.textContent = "Pokreni STL ekstrakciju";
@@ -135374,6 +135427,37 @@ function getRiskAssessmentDraftAutosaveKey(id = riskAssessmentIdInput?.value || 
   return `safeNexus:riskAssessmentDraft:${state.activeOrganizationId || "org"}:${id || "new"}`;
 }
 
+function isRiskAssessmentServerAutosaveDeferred() {
+  return Boolean(riskAssessmentChemicalImportBusy || riskAssessmentWordExportBusy);
+}
+
+function clearRiskAssessmentServerAutosaveRetry() {
+  if (riskAssessmentServerAutosaveRetryTimer) {
+    window.clearTimeout(riskAssessmentServerAutosaveRetryTimer);
+    riskAssessmentServerAutosaveRetryTimer = null;
+  }
+  riskAssessmentServerAutosaveRetryCount = 0;
+}
+
+function scheduleRiskAssessmentServerAutosaveRetry() {
+  const retryDelays = [2500, 5000, 9000, 14000, 20000];
+  if (riskAssessmentServerAutosaveRetryCount >= retryDelays.length) {
+    return false;
+  }
+  if (riskAssessmentServerAutosaveRetryTimer) {
+    return true;
+  }
+  const attemptNumber = riskAssessmentServerAutosaveRetryCount + 1;
+  const delay = retryDelays[Math.min(riskAssessmentServerAutosaveRetryCount, retryDelays.length - 1)];
+  riskAssessmentServerAutosaveRetryCount = attemptNumber;
+  setRiskAssessmentAutosaveStatus(`Server se vraća online, spremanje pokušavam ponovno (${attemptNumber}/${retryDelays.length})...`, "saving");
+  riskAssessmentServerAutosaveRetryTimer = window.setTimeout(() => {
+    riskAssessmentServerAutosaveRetryTimer = null;
+    scheduleRiskAssessmentServerAutosave({ immediate: true });
+  }, delay);
+  return true;
+}
+
 function findSavedRiskAssessmentFromPayload(payload = {}, { id = "", assessmentNumber = "" } = {}) {
   const items = Array.isArray(payload?.riskAssessments) ? payload.riskAssessments : [];
   return items.find((item) => String(item.id || "") === String(id || "")) ?? (
@@ -135421,6 +135505,10 @@ function upsertSavedRiskAssessmentItem(item = null) {
 
 function scheduleRiskAssessmentServerAutosave({ immediate = false } = {}) {
   if (!riskAssessmentForm || !state.riskAssessmentEditorOpen || !getCanAutosaveRiskAssessmentToServer()) {
+    return;
+  }
+  if (isRiskAssessmentServerAutosaveDeferred()) {
+    riskAssessmentServerAutosaveQueued = true;
     return;
   }
   window.clearTimeout(riskAssessmentServerAutosaveTimer);
@@ -135489,6 +135577,7 @@ async function saveRiskAssessmentEditorAutosave() {
       payload: buildRiskAssessmentPayload(),
     });
     clearRiskAssessmentDraftAutosave({ preserveStatus: true, clearServer: false });
+    clearRiskAssessmentServerAutosaveRetry();
     renderRiskAssessmentModule();
     renderRiskAssessmentOverview();
     setRiskAssessmentAutosaveStatus(`Spremljeno ${new Date().toLocaleTimeString("hr-HR", { hour: "2-digit", minute: "2-digit" })}.`, "saved");
@@ -135500,11 +135589,15 @@ async function saveRiskAssessmentEditorAutosave() {
       setSyncError("");
       return false;
     }
+    if (isTransientApiError(error) && scheduleRiskAssessmentServerAutosaveRetry()) {
+      riskAssessmentServerAutosaveQueued = false;
+      return false;
+    }
     setRiskAssessmentAutosaveStatus(error?.message ? `Nije spremljeno: ${error.message}` : "Automatsko spremanje trenutno nije uspjelo.", "error");
     return false;
   } finally {
     riskAssessmentServerAutosaveBusy = false;
-    if (riskAssessmentServerAutosaveQueued) {
+    if (riskAssessmentServerAutosaveQueued && !riskAssessmentServerAutosaveRetryTimer) {
       scheduleRiskAssessmentServerAutosave({ immediate: true });
     }
   }
@@ -135545,6 +135638,7 @@ function clearRiskAssessmentDraftAutosave({ preserveStatus = false, clearServer 
   }
   if (!preserveStatus) {
     riskAssessmentServerAutosaveSignature = "";
+    clearRiskAssessmentServerAutosaveRetry();
     setRiskAssessmentAutosaveStatus("Automatsko spremanje spremno.", "idle");
   }
 }

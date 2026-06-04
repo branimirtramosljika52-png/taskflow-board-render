@@ -3664,23 +3664,27 @@ function createDocxZipWithEscapedStrayDelimiters(templateBuffer) {
 
 function findDocxPlaceholderTokenMatches(text = "", placeholderKeys = []) {
   const source = String(text ?? "");
-  const tokens = Array.from(new Set(
-    (placeholderKeys ?? [])
-      .map((key) => clean(key))
-      .filter(Boolean)
-      .map((key) => `{{${key}}}`),
-  )).sort((left, right) => right.length - left.length);
+  const tokens = Array.from(new Set((placeholderKeys ?? []).map((key) => clean(key)).filter(Boolean)))
+    .flatMap((key) => {
+      const canonical = `{{${key}}}`;
+      return [
+        { pattern: canonical, token: canonical },
+        { pattern: `{${key}}}`, token: canonical },
+        { pattern: `{{${key}}`, token: canonical },
+      ];
+    })
+    .sort((left, right) => right.pattern.length - left.pattern.length);
   const matches = [];
 
-  tokens.forEach((token) => {
-    let index = source.indexOf(token);
+  tokens.forEach(({ pattern, token }) => {
+    let index = source.indexOf(pattern);
     while (index !== -1) {
       matches.push({
         start: index,
-        end: index + token.length,
+        end: index + pattern.length,
         token,
       });
-      index = source.indexOf(token, index + token.length);
+      index = source.indexOf(pattern, index + pattern.length);
     }
   });
 
