@@ -3266,7 +3266,6 @@ let weatherCitySearchTimerId = 0;
 let weatherCitySearchRequestId = 0;
 const workOrderDocumentWeatherHintCache = new Map();
 const workOrderDocumentWeatherHintInFlight = new Map();
-let workOrderDocumentWeatherHintRequestId = 0;
 let topbarHelpMenuOpen = false;
 let topbarHelpMenuSignature = "";
 let chatPollTimerId = null;
@@ -58626,12 +58625,12 @@ function getWorkOrderDocumentWeatherHintText(fieldName = "", summary = null) {
 function buildWorkOrderDocumentWeatherHintState(workOrder = {}, dateKey = "", { autoLoad = false, onLoaded = null } = {}) {
   const normalizedDateKey = normalizeDateInputValue(dateKey);
   if (!normalizedDateKey) {
-    return { status: "empty", message: "datum?" };
+    return { status: "empty", message: "" };
   }
 
   const location = resolveWorkOrderDocumentWeatherLocation(workOrder);
   if (!location?.query) {
-    return { status: "empty", message: "lokacija?" };
+    return { status: "empty", message: "" };
   }
 
   const cached = getWorkOrderDocumentWeatherHintCacheEntry(location.query);
@@ -58655,80 +58654,6 @@ function buildWorkOrderDocumentWeatherHintState(workOrder = {}, dateKey = "", { 
   }
 
   return { status: "loading", location, message: "učitavam..." };
-}
-
-function setWorkOrderDocumentWeatherHintNode(node, text = "", status = "") {
-  if (!(node instanceof HTMLElement)) {
-    return;
-  }
-
-  const normalizedText = String(text || "").trim();
-  node.hidden = !normalizedText;
-  node.textContent = normalizedText;
-  node.dataset.weatherHintStatus = status || "";
-}
-
-function renderWorkOrderDocumentWizardCommonWeatherHints(workOrders = getAllSelectedWorkOrdersForDocumentWizard()) {
-  const nodes = Array.from(document.querySelectorAll("[data-work-order-weather-hint]"));
-  if (!nodes.length) {
-    return;
-  }
-
-  const selectedWorkOrders = (Array.isArray(workOrders) ? workOrders : [])
-    .filter((item) => item && typeof item === "object");
-  const dateKey = normalizeDateInputValue(state.workOrderDocumentWizard.common?.inspectionDate ?? "");
-  if (!dateKey) {
-    nodes.forEach((node) => setWorkOrderDocumentWeatherHintNode(node, "datum?", "empty"));
-    return;
-  }
-
-  const contexts = selectedWorkOrders
-    .map((workOrder) => ({
-      workOrder,
-      location: resolveWorkOrderDocumentWeatherLocation(workOrder),
-    }))
-    .filter((item) => item.location?.query);
-  if (!contexts.length) {
-    nodes.forEach((node) => setWorkOrderDocumentWeatherHintNode(node, "lokacija?", "empty"));
-    return;
-  }
-
-  const uniqueLocationKeys = new Set(contexts.map((item) => getWeatherCityKey(item.location.query)));
-  if (uniqueLocationKeys.size > 1) {
-    nodes.forEach((node) => {
-      setWorkOrderDocumentWeatherHintNode(node, "po RN-u", "mixed");
-    });
-    return;
-  }
-
-  const firstContext = contexts[0];
-  const requestId = ++workOrderDocumentWeatherHintRequestId;
-  const stateForContext = buildWorkOrderDocumentWeatherHintState(firstContext.workOrder, dateKey, {
-    autoLoad: true,
-    onLoaded: () => {
-      if (requestId === workOrderDocumentWeatherHintRequestId && state.workOrderDocumentWizard.open) {
-        renderWorkOrderDocumentWizardCommonWeatherHints(workOrders);
-      }
-    },
-  });
-
-  nodes.forEach((node) => {
-    const fieldName = String(node.dataset.workOrderWeatherHint || "").trim();
-    if (!WORK_ORDER_DOCUMENT_WEATHER_HINT_FIELDS.has(fieldName)) {
-      return;
-    }
-
-    if (stateForContext.status === "ready") {
-      setWorkOrderDocumentWeatherHintNode(
-        node,
-        getWorkOrderDocumentWeatherHintText(fieldName, stateForContext.summary),
-        "ready",
-      );
-      return;
-    }
-
-    setWorkOrderDocumentWeatherHintNode(node, stateForContext.message || "", stateForContext.status);
-  });
 }
 
 function getStableStringHash(value = "") {
@@ -106850,7 +106775,6 @@ function syncWorkOrderDocumentWizardCommonInputs() {
   if (workOrderDocumentCommonRandomizeEnvironmentInput) {
     workOrderDocumentCommonRandomizeEnvironmentInput.checked = Boolean(state.workOrderDocumentWizard.common.randomizeEnvironment);
   }
-  renderWorkOrderDocumentWizardCommonWeatherHints(selectedWorkOrders);
   renderWorkOrderDocumentServiceValidityFields(selectedWorkOrders);
 
   const relevantAreaSet = new Set(getWorkOrderDocumentWizardRelevantAreasForBatch(selectedWorkOrders));
@@ -107416,6 +107340,28 @@ function getWorkOrderDocumentWizardSourceValue(workOrderId, fieldName) {
     return applyDeterministicEnvironmentVariance(commonValue, `${workOrderId}:${fieldName}`, fieldName);
   }
   return commonValue;
+}
+
+function getWorkOrderDocumentWizardWeatherDate(workOrder = {}) {
+  const workOrderId = String(workOrder?.id || "").trim();
+  const candidates = [
+    workOrderId ? getWorkOrderDocumentWizardSourceValue(workOrderId, "inspectionDate") : "",
+    state.workOrderDocumentWizard.common?.inspectionDate,
+    workOrder?.inspectionDate,
+    workOrder?.inspection_date,
+    workOrder?.serviceDate,
+    workOrder?.scheduledDate,
+    workOrder?.dueDate,
+  ];
+
+  for (const candidate of candidates) {
+    const normalizedDate = normalizeDateInputValue(candidate);
+    if (normalizedDate) {
+      return normalizedDate;
+    }
+  }
+
+  return "";
 }
 
 function getWorkOrderDocumentWizardSourceValues(workOrderId, fieldName) {
@@ -110084,7 +110030,7 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
 
   const workOrderWeatherHintState = buildWorkOrderDocumentWeatherHintState(
     workOrder,
-    getWorkOrderDocumentWizardSourceValue(workOrder.id, "inspectionDate"),
+    getWorkOrderDocumentWizardWeatherDate(workOrder),
     {
       autoLoad: true,
       onLoaded: () => {
@@ -116493,9 +116439,6 @@ workOrderDocumentWizardNextButton?.addEventListener("click", (event) => {
     syncWorkOrderDocumentWizardCommonSummaryText();
     if (isDateField) {
       markWorkOrderDocumentWizardRequiredField(input, !normalizeDateInputValue(input.value));
-      if (fieldName === "inspectionDate") {
-        renderWorkOrderDocumentWizardCommonWeatherHints(getAllSelectedWorkOrdersForDocumentWizard());
-      }
     }
   });
   input?.addEventListener("change", () => {
@@ -116508,9 +116451,6 @@ workOrderDocumentWizardNextButton?.addEventListener("click", (event) => {
     renderWorkOrderDocumentWizardWorkOrders(getAllSelectedWorkOrdersForDocumentWizard());
     if (state.workOrderDocumentWizard.step === "templates") {
       renderWorkOrderDocumentWizardTemplates(getAllSelectedWorkOrdersForDocumentWizard());
-    }
-    if (fieldName === "inspectionDate") {
-      renderWorkOrderDocumentWizardCommonWeatherHints(getAllSelectedWorkOrdersForDocumentWizard());
     }
   });
 });
