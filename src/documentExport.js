@@ -3662,6 +3662,129 @@ function createDocxZipWithEscapedStrayDelimiters(templateBuffer) {
   return zip;
 }
 
+function findDocxPlaceholderTokenMatches(text = "", placeholderKeys = []) {
+  const source = String(text ?? "");
+  const tokens = Array.from(new Set(
+    (placeholderKeys ?? [])
+      .map((key) => clean(key))
+      .filter(Boolean)
+      .map((key) => `{{${key}}}`),
+  )).sort((left, right) => right.length - left.length);
+  const matches = [];
+
+  tokens.forEach((token) => {
+    let index = source.indexOf(token);
+    while (index !== -1) {
+      matches.push({
+        start: index,
+        end: index + token.length,
+        token,
+      });
+      index = source.indexOf(token, index + token.length);
+    }
+  });
+
+  return matches
+    .sort((left, right) => left.start - right.start || right.end - left.end)
+    .filter((match, index, all) => index === 0 || match.start >= all[index - 1].end);
+}
+
+function normalizeDocxPlaceholderRunsInXml(xml = "", placeholderKeys = []) {
+  const source = String(xml ?? "");
+  const textNodePattern = /<w:t\b[^>]*>([\s\S]*?)<\/w:t>/gi;
+  const nodes = [];
+  let match = null;
+  let combinedText = "";
+
+  while ((match = textNodePattern.exec(source)) !== null) {
+    const content = match[1] ?? "";
+    const contentOffset = match[0].indexOf(">") + 1;
+    nodes.push({
+      content,
+      contentStart: match.index + contentOffset,
+      contentEnd: match.index + contentOffset + content.length,
+      textStart: combinedText.length,
+      textEnd: combinedText.length + content.length,
+    });
+    combinedText += content;
+  }
+
+  if (nodes.length === 0 || !combinedText.includes("{{")) {
+    return source;
+  }
+
+  const matches = findDocxPlaceholderTokenMatches(combinedText, placeholderKeys);
+  if (matches.length === 0) {
+    return source;
+  }
+
+  const findMatchAt = (position) => matches.find((item) => item.start === position) ?? null;
+  const findContainingMatch = (position) => matches.find((item) => item.start < position && position < item.end) ?? null;
+  const replacements = nodes.map((node) => {
+    let output = "";
+    let position = node.textStart;
+
+    while (position < node.textEnd) {
+      const exactMatch = findMatchAt(position);
+      if (exactMatch) {
+        output += exactMatch.token;
+        position = exactMatch.end;
+        continue;
+      }
+
+      const containingMatch = findContainingMatch(position);
+      if (containingMatch) {
+        position = Math.min(containingMatch.end, node.textEnd);
+        continue;
+      }
+
+      output += combinedText[position] ?? "";
+      position += 1;
+    }
+
+    return {
+      ...node,
+      output,
+    };
+  });
+
+  let result = "";
+  let cursor = 0;
+  replacements.forEach((node) => {
+    result += source.slice(cursor, node.contentStart);
+    result += node.output;
+    cursor = node.contentEnd;
+  });
+  result += source.slice(cursor);
+
+  return result;
+}
+
+function createDocxZipWithNormalizedPlaceholderRuns(templateBuffer, placeholderKeys = []) {
+  const zip = new PizZip(templateBuffer);
+  const keys = (placeholderKeys ?? []).map((key) => clean(key)).filter(Boolean);
+  if (keys.length === 0) {
+    return zip;
+  }
+
+  Object.keys(zip.files)
+    .filter((name) => /^word\/.+\.xml$/i.test(name))
+    .forEach((name) => {
+      const file = zip.files[name];
+      if (!file || file.dir) {
+        return;
+      }
+
+      const content = file.asText();
+      const nextContent = normalizeDocxPlaceholderRunsInXml(content, keys);
+      if (nextContent !== content) {
+        zip.file(name, nextContent);
+      }
+    });
+
+  return zip;
+}
+
 function renderDocxTemplateZip(zip, normalizedPlaceholders = {}, specialPlaceholders = new Map(), options = {}) {
   const delimiters = options.delimiters ?? {
     start: "{{",
@@ -3854,8 +3977,9 @@ export async function buildDocxFromTemplateBuffer(templateBuffer, placeholders =
 
   await hydrateDocxSpecialPlaceholderImages(specialPlaceholders);
 
+  const placeholderKeys = Object.keys(normalizedPlaceholders);
   const renderWithCurlyDelimiters = (sourceBuffer) => renderDocxTemplateZip(
-    new PizZip(sourceBuffer),
+    createDocxZipWithNormalizedPlaceholderRuns(sourceBuffer, placeholderKeys),
     normalizedPlaceholders,
     specialPlaceholders,
   );
@@ -3885,7 +4009,12 @@ export async function buildDocxFromTemplateBuffer(templateBuffer, placeholders =
     if (shouldRetryDocxRenderWithEscapedDelimiters(error)) {
       try {
         const renderedBuffer = renderDocxTemplateZip(
-          createDocxZipWithEscapedStrayDelimiters(safeBuffer),
+          createDocxZipWithEscapedStrayDelimiters(
+            createDocxZipWithNormalizedPlaceholderRuns(safeBuffer, placeholderKeys).generate({
+              type: "nodebuffer",
+              compression: "DEFLATE",
+            }),
+          ),
           normalizedPlaceholders,
           specialPlaceholders,
         );
