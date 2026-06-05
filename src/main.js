@@ -6459,6 +6459,7 @@ let riskAssessmentJobAnalysisScrollFrame = 0;
 let riskAssessmentJobTreeRenderTimer = null;
 let riskAssessmentJobCatalogPickerRenderTimer = null;
 let riskAssessmentOverviewRenderTimer = null;
+let riskAssessmentJobTreeQuickAddState = null;
 const riskAssessmentJobDocumentPreviewTimers = new Map();
 const riskAssessmentCatalogPickerRefreshTimers = new Map();
 const RISK_ASSESSMENT_AUTOSAVE_DELAY_MS = 10 * 60 * 1000;
@@ -120568,13 +120569,51 @@ window.addEventListener("resize", scheduleRiskAssessmentJobAnalysisShellModeUpda
 riskAssessmentJobTree?.addEventListener("input", handleRiskAssessmentJobsListInput);
 riskAssessmentJobTree?.addEventListener("change", handleRiskAssessmentJobsListInput);
 riskAssessmentJobTree?.addEventListener("click", (event) => {
+  const quickAddButton = event.target?.closest?.("[data-risk-job-tree-quick-add]");
+  if (quickAddButton) {
+    event.preventDefault();
+    if (!getCanManageRiskAssessments()) {
+      return;
+    }
+    riskAssessmentJobTreeQuickAddState = {
+      parentId: quickAddButton.dataset.riskJobTreeQuickAdd || "",
+      type: quickAddButton.dataset.riskChildType || "workplace",
+    };
+    renderRiskAssessmentJobTree();
+    window.requestAnimationFrame(() => {
+      riskAssessmentJobTree?.querySelector?.("[data-risk-job-tree-quick-name]")?.focus?.();
+    });
+    return;
+  }
+  const quickSaveButton = event.target?.closest?.("[data-risk-job-tree-quick-save]");
+  if (quickSaveButton) {
+    event.preventDefault();
+    const form = quickSaveButton.closest("[data-risk-job-tree-quick-form]");
+    const name = form?.querySelector?.("[data-risk-job-tree-quick-name]")?.value || "";
+    addRiskAssessmentQuickTreeUnit(form?.dataset.riskParentId || "", form?.dataset.riskChildType || "workplace", name);
+    return;
+  }
+  const quickCancelButton = event.target?.closest?.("[data-risk-job-tree-quick-cancel]");
+  if (quickCancelButton) {
+    event.preventDefault();
+    riskAssessmentJobTreeQuickAddState = null;
+    renderRiskAssessmentJobTree();
+    return;
+  }
   const addWorkplaceButton = event.target?.closest?.("[data-risk-job-tree-add-workplace]");
   if (addWorkplaceButton) {
     event.preventDefault();
     if (!getCanManageRiskAssessments()) {
       return;
     }
-    addRiskAssessmentBlankJob();
+    riskAssessmentJobTreeQuickAddState = {
+      parentId: "",
+      type: "workplace",
+    };
+    renderRiskAssessmentJobTree();
+    window.requestAnimationFrame(() => {
+      riskAssessmentJobTree?.querySelector?.("[data-risk-job-tree-quick-name]")?.focus?.();
+    });
     return;
   }
   const button = event.target?.closest?.("[data-risk-workplace-job-index]");
@@ -129352,14 +129391,37 @@ const JOB_PUR_POINTS = Object.freeze([
   { value: "15", label: "Čuvanje ljudi i imovine vatrenim oružjem", shortLabel: "15. Oružje", description: "Čuvanje ljudi i imovine vatrenim oružjem." },
   { value: "16", label: "Teško fizičko naprezanje", shortLabel: "16. Teški fizički rad", description: "Poslovi s teškim fizičkim naprezanjem, ručnim rukovanjem većim teretima, nefiziološkim ili prisilnim položajem tijela." },
   { value: "17", label: "Rad na visini većoj od 3 m", shortLabel: "17. Rad na visini", description: "Rad na visini većoj od 3 m kada se osnovnim pravilima zaštite na radu ne može spriječiti povećana opasnost od pada." },
-  { value: "18", label: "Pretežna izloženost štetnostima", shortLabel: "18. Štetnosti", description: "Poslovi s pretežnom izloženošću fizikalnim, kemijskim ili biološkim štetnostima, uključujući mikroklimu, buku, vibracije, tlak, zračenja, prašine, metale, kiseline, lužine, plinove, pesticide i biološke agense." },
-  { value: "19", label: "Poslovi prema posebnim propisima", shortLabel: "19. Posebni propisi", description: "Poslovi određeni kao poslovi s posebnim uvjetima rada važećim posebnim propisima; za ovu točku primjenjuju se uvjeti propisani tim posebnim propisom." },
-  { value: "19.1", parentValue: "19", label: "Željeznički, zračni i cestovni promet", shortLabel: "19.1 Promet", description: "Poslovi u prometu koji su posebnim propisima određeni kao poslovi s posebnim uvjetima rada, uključujući upravljanje, nadzor, sigurnosno-kritične prometne zadatke i poslove za koje se traži posebna zdravstvena sposobnost." },
-  { value: "19.2", parentValue: "19", label: "Zdravstvo", shortLabel: "19.2 Zdravstvo", description: "Poslovi u zdravstvu i povezanim djelatnostima koji su posebnim propisima određeni kao poslovi s posebnim uvjetima rada, osobito kada se zahtijeva zdravstvena sposobnost, posebna osposobljenost ili rad s izvorima povećane opasnosti." },
-  { value: "19.3", parentValue: "19", label: "Šumarstvo", shortLabel: "19.3 Šumarstvo", description: "Poslovi u šumarstvu koji su posebnim propisima određeni kao poslovi s posebnim uvjetima rada, uključujući rad u šumi, rad motornom pilom, strojeve i druge rizične šumarske aktivnosti." },
-  { value: "19.4", parentValue: "19", label: "Građevinarstvo", shortLabel: "19.4 Građevinarstvo", description: "Poslovi u građevinarstvu koji su posebnim propisima određeni kao poslovi s posebnim uvjetima rada, uključujući gradilišta, radnu opremu, radove na visini, skele, iskope i druge posebne građevinske okolnosti." },
-  { value: "19.5", parentValue: "19", label: "Industrija, energetika i postrojenja", shortLabel: "19.5 Industrija", description: "Industrijski, energetski i postrojenjski poslovi koji su posebnim propisima određeni kao poslovi s posebnim uvjetima rada, uključujući pogone, opasne tvari, tehnološke procese i održavanje." },
-  { value: "19.6", parentValue: "19", label: "Ostali posebni propisi", shortLabel: "19.6 Ostalo", description: "Ostali poslovi koje važeći posebni propisi izričito određuju kao poslove s posebnim uvjetima rada ili za koje propisuju posebnu zdravstvenu sposobnost, psihičku sposobnost, dob ili stručnu osposobljenost." },
+  { value: "18", label: "Pretežna izloženost fizikalnim, kemijskim ili biološkim štetnostima", shortLabel: "18. Štetnosti", description: "Poslovi kod kojih je radnik tijekom pretežnog dijela punog radnog vremena izložen fizikalnim, kemijskim ili biološkim štetnostima iz točke 18. Pravilnika." },
+  { value: "18.1", parentValue: "18", label: "Nepovoljna mikroklima", shortLabel: "18.1 Mikroklima", description: "Pretežna izloženost nepovoljnoj mikroklimi." },
+  { value: "18.2", parentValue: "18", label: "Buka", shortLabel: "18.2 Buka", description: "Pretežna izloženost buci." },
+  { value: "18.3", parentValue: "18", label: "Vibracije i potresanja", shortLabel: "18.3 Vibracije", description: "Pretežna izloženost vibracijama i potresanjima." },
+  { value: "18.4", parentValue: "18", label: "Povišeni atmosferski tlak", shortLabel: "18.4 Tlak", description: "Pretežna izloženost povišenom atmosferskom tlaku." },
+  { value: "18.5", parentValue: "18", label: "Ionizacijsko zračenje", shortLabel: "18.5 Ionizacijsko zračenje", description: "Pretežna izloženost ionizacijskom zračenju." },
+  { value: "18.6", parentValue: "18", label: "Neionizacijsko zračenje", shortLabel: "18.6 Neionizacijsko zračenje", description: "Pretežna izloženost neionizacijskom zračenju." },
+  { value: "18.7", parentValue: "18", label: "Nefibrogene prašine", shortLabel: "18.7 Nefibrogene prašine", description: "Pretežna izloženost nefibrogenim prašinama." },
+  { value: "18.8", parentValue: "18", label: "Fibrogene prašine", shortLabel: "18.8 Fibrogene prašine", description: "Pretežna izloženost fibrogenim prašinama." },
+  { value: "18.9", parentValue: "18", label: "Organske prašine", shortLabel: "18.9 Organske prašine", description: "Pretežna izloženost organskim prašinama." },
+  { value: "18.10", parentValue: "18", label: "Olovo, tetraetil olovo i živa", shortLabel: "18.10 Olovo / živa", description: "Pretežna izloženost parama, dimovima ili prašinama olova, tetraetil olova i žive." },
+  { value: "18.11", parentValue: "18", label: "Krom, nikal i mangan", shortLabel: "18.11 Krom / nikal", description: "Pretežna izloženost kromu, niklu i manganu." },
+  { value: "18.12", parentValue: "18", label: "Kadmij, vanadij, selen, platina, uran i tvrdi metal", shortLabel: "18.12 Metali", description: "Pretežna izloženost kadmiju, vanadiju, selenu, platini, uranu i tvrdome metalu." },
+  { value: "18.13", parentValue: "18", label: "Berilij, arsen i fosfor", shortLabel: "18.13 Berilij / arsen / fosfor", description: "Pretežna izloženost beriliju, arsenu i fosforu." },
+  { value: "18.14", parentValue: "18", label: "Kiseline ili lužine", shortLabel: "18.14 Kiseline / lužine", description: "Pretežna izloženost kiselinama ili lužinama." },
+  { value: "18.15", parentValue: "18", label: "Plinoviti nadražljivci", shortLabel: "18.15 Plinoviti nadražljivci", description: "Pretežna izloženost plinovitim nadražljivcima." },
+  { value: "18.16", parentValue: "18", label: "Fluor", shortLabel: "18.16 Fluor", description: "Pretežna izloženost fluoru." },
+  { value: "18.17", parentValue: "18", label: "Ugljični monoksid", shortLabel: "18.17 CO", description: "Pretežna izloženost ugljičnom monoksidu." },
+  { value: "18.18", parentValue: "18", label: "Cijanovodik", shortLabel: "18.18 Cijanovodik", description: "Pretežna izloženost cijanovodiku." },
+  { value: "18.19", parentValue: "18", label: "Ugljični disulfid", shortLabel: "18.19 Ugljični disulfid", description: "Pretežna izloženost ugljičnom disulfidu." },
+  { value: "18.20", parentValue: "18", label: "Glikoli", shortLabel: "18.20 Glikoli", description: "Pretežna izloženost glikolima." },
+  { value: "18.21", parentValue: "18", label: "Pare nafte i derivata nafte", shortLabel: "18.21 Nafta i derivati", description: "Pretežna izloženost parama nafte i derivata nafte." },
+  { value: "18.22", parentValue: "18", label: "Halogeni derivati ugljikovodika", shortLabel: "18.22 Halogeni derivati", description: "Pretežna izloženost halogenim derivatima ugljikovodika." },
+  { value: "18.23", parentValue: "18", label: "Vinilklorid monomer", shortLabel: "18.23 Vinilklorid", description: "Pretežna izloženost vinilklorid monomeru." },
+  { value: "18.24", parentValue: "18", label: "Benzen i homolozi", shortLabel: "18.24 Benzen", description: "Pretežna izloženost benzenu i homolozima." },
+  { value: "18.25", parentValue: "18", label: "Nitro i amino derivati benzena", shortLabel: "18.25 Nitro / amino benzen", description: "Pretežna izloženost nitro i amino derivatima benzena." },
+  { value: "18.26", parentValue: "18", label: "Umjetne smole i plastične mase", shortLabel: "18.26 Smole / plastika", description: "Pretežna izloženost umjetnim smolama i plastičnim masama." },
+  { value: "18.27", parentValue: "18", label: "Organofosforni, karbamatni i drugi pesticidi", shortLabel: "18.27 Pesticidi", description: "Pretežna izloženost organofosfornim, karbamatnim i drugim pesticidima." },
+  { value: "18.28", parentValue: "18", label: "Umjetna gnojiva", shortLabel: "18.28 Umjetna gnojiva", description: "Pretežna izloženost umjetnim gnojivima." },
+  { value: "18.29", parentValue: "18", label: "Biološki agensi", shortLabel: "18.29 Biološki agensi", description: "Pretežna izloženost biološkim agensima." },
+  { value: "19", label: "Poslovi prema posebnim propisima", shortLabel: "19. Posebni propisi", description: "Poslovi određeni kao poslovi s posebnim uvjetima rada važećim odredbama posebnih propisa; za ovu točku primjenjuju se uvjeti propisani tim posebnim propisom." },
 ]);
 const JOB_PUR_POINT_SELECTION_LIMIT = 40;
 
@@ -130748,31 +130810,66 @@ function getJobPurPointReasonText(values = [], options = {}) {
   return lines.length ? lines.join("\n") : "";
 }
 
+function getJobPurPointGroups() {
+  return JOB_PUR_POINTS
+    .filter((point) => !point.parentValue)
+    .map((point) => ({
+      point,
+      children: JOB_PUR_POINTS.filter((entry) => String(entry.parentValue || "") === String(point.value)),
+    }));
+}
+
+function renderJobPurPointButton(point = {}, selected = new Set(), dataAttribute = "data-job-pur-point", extraAttributes = "") {
+  const isSelected = selected.has(point.value);
+  return `
+    <button type="button"
+      class="job-pur-option ${point.parentValue ? "is-subpoint" : "is-mainpoint"} ${isSelected ? "is-selected" : ""}"
+      ${dataAttribute}="${escapeHtml(point.value)}"
+      ${extraAttributes}
+      title="${escapeHtml(point.description)}">
+      <span>${escapeHtml(point.value)}</span>
+      <strong>${escapeHtml(point.shortLabel || point.label)}</strong>
+      <small>${escapeHtml(point.description)}</small>
+    </button>
+  `;
+}
+
+function renderJobPurPointGroups(selected = new Set(), dataAttribute = "data-job-pur-point", extraAttributes = "") {
+  return getJobPurPointGroups().map(({ point, children }) => {
+    const selectedChildren = children.filter((child) => selected.has(child.value));
+    const hasSelection = selected.has(point.value) || selectedChildren.length > 0;
+    return `
+      <section class="job-pur-group ${children.length ? "has-children" : ""} ${hasSelection ? "is-selected" : ""}">
+        <div class="job-pur-group-head">
+          ${renderJobPurPointButton(point, selected, dataAttribute, extraAttributes)}
+          ${children.length ? `<em>${escapeHtml(`${selectedChildren.length}/${children.length} razrada`)}</em>` : ""}
+        </div>
+        ${children.length ? `
+          <div class="job-pur-subgrid" aria-label="${escapeHtml(`Razrada točke ${point.value}`)}">
+            ${children.map((child) => renderJobPurPointButton(child, selected, dataAttribute, extraAttributes)).join("")}
+          </div>
+        ` : ""}
+      </section>
+    `;
+  }).join("");
+}
+
 function renderJobPurPointPicker(selectedValues = [], dataAttribute = "data-job-pur-point") {
   const selected = new Set(normalizeJobPurPointValues(selectedValues));
   const selectedCount = selected.size;
   const selectedSummary = getJobPurPointSummary(selectedValues);
   return `
-    <details class="job-pur-dropdown" ${selectedCount ? "open" : ""}>
+    <details class="job-pur-dropdown job-pur-multiselect" ${selectedCount ? "open" : ""}>
       <summary>
         <span>
           <strong>Odaberi PUR točke prema Pravilniku</strong>
-          <small>Pravilnik o poslovima s posebnim uvjetima rada; višestruki odabir se spaja po radnom mjestu.</small>
+          <small>Višestruki odabir. Točka 18 je razrađena po izloženostima, točka 19 ostaje po posebnom propisu.</small>
         </span>
         <em data-job-pur-dropdown-count>${escapeHtml(selectedCount ? `${selectedCount} odabrano` : "Otvori popis")}</em>
       </summary>
       <div class="job-pur-selected-summary" data-job-pur-dropdown-summary>${escapeHtml(selectedSummary)}</div>
       <div class="job-pur-picker">
-        ${JOB_PUR_POINTS.map((point) => `
-          <button type="button"
-            class="job-pur-option ${point.parentValue ? "is-subpoint" : "is-mainpoint"} ${selected.has(point.value) ? "is-selected" : ""}"
-            ${dataAttribute}="${escapeHtml(point.value)}"
-            title="${escapeHtml(point.description)}">
-            <span>${escapeHtml(point.value)}</span>
-            <strong>${escapeHtml(point.shortLabel || point.label)}</strong>
-            <small>${escapeHtml(point.description)}</small>
-          </button>
-        `).join("")}
+        ${renderJobPurPointGroups(selected, dataAttribute)}
       </div>
     </details>
   `;
@@ -138350,137 +138447,278 @@ function renderRiskAssessmentPpeWorkerPreview(job = {}) {
   `;
 }
 
-function renderRiskAssessmentPpeCompactPicker(job = {}, jobIndex = 0) {
+function OzoStepHeader(job = {}, jobIndex = 0) {
+  const newFormOpen = Boolean(job.ppeNewOpen);
+  return `
+    <header class="ozo-step-header">
+      <span class="ozo-step-icon" aria-hidden="true">${renderRiskAssessmentRiskIcon("shield")}</span>
+      <div>
+        <span>Korak 5 / OZO</span>
+        <strong>Osobna zaštitna oprema (OZO)</strong>
+        <small>Odaberi opremu iz kataloga ili dodaj novu stavku. OZO se sprema uz ovo radno mjesto i ulazi u procjenu.</small>
+      </div>
+      <button type="button" class="ozo-primary-action" data-risk-ppe-new-toggle>${newFormOpen ? "Zatvori unos" : "+ Nova OZO"}</button>
+    </header>
+  `;
+}
+
+function OzoWorkerPreview(job = {}) {
+  const selectedItems = job.ppeItems ?? [];
+  const gearItems = getRiskAssessmentPpeWorkerGearItems(selectedItems);
+  const workerVariant = getRiskAssessmentPpeWorkerVariant(gearItems);
+  const activeParts = Array.from(new Set(gearItems.map((gear) => gear.part || "other")));
+  const selectedCount = selectedItems.length;
+  const zoneLabel = activeParts.length
+    ? activeParts.map((part) => getRiskAssessmentPpeBodyPartLabel(part)).join(", ")
+    : "Nije odabrano";
+
+  return `
+    <aside class="ozo-worker-card" aria-label="AI realistic worker preview">
+      <div class="ozo-worker-card-head">
+        <span>AI realistic worker preview</span>
+        <strong>Radnici i oprema</strong>
+        <small>Prikaz radnika s odabranom OZO</small>
+        <em>${escapeHtml(selectedCount ? `${selectedCount} odabrano` : "Bez odabrane OZO")}</em>
+      </div>
+      <div class="ozo-worker-visual" data-ozo-worker-variant="${escapeHtml(workerVariant.id)}">
+        <img src="${escapeHtml(workerVariant.src)}" alt="Industrijski radnici s osobnom zaštitnom opremom" loading="eager" />
+      </div>
+      <dl class="ozo-worker-status">
+        <div>
+          <dt>OZO status</dt>
+          <dd>${escapeHtml(selectedCount ? `${selectedCount} stavki` : "Bez OZO")}</dd>
+        </div>
+        <div>
+          <dt>Prikaz radnika</dt>
+          <dd>${escapeHtml(workerVariant.label)}</dd>
+        </div>
+        <div>
+          <dt>Zone zaštite</dt>
+          <dd>${escapeHtml(zoneLabel)}</dd>
+        </div>
+      </dl>
+      <article class="ozo-system-advice">
+        <span aria-hidden="true">${renderRiskAssessmentRiskIcon("shield")}</span>
+        <strong>Savjet sustava</strong>
+        <p>Odaberi opremu koja odgovara identificiranim opasnostima na radnom mjestu za potpunu zaštitu.</p>
+      </article>
+    </aside>
+  `;
+}
+
+function OzoCategoryFilters(job = {}, catalog = []) {
+  const activeFilter = String(job.ppeFilter || "all");
+  const searchValue = String(job.ppeSearch || "");
+  const countByBodyPart = RISK_ASSESSMENT_PPE_BODY_FILTERS.reduce((accumulator, filter) => {
+    accumulator[filter.value] = filter.value === "all"
+      ? catalog.length
+      : catalog.filter((item) => item.bodyPart === filter.value).length;
+    return accumulator;
+  }, {});
+  return `
+    <section class="ozo-filter-shell">
+      <div class="ozo-category-filters" aria-label="Filter OZO kategorija">
+        ${RISK_ASSESSMENT_PPE_BODY_FILTERS.map((filter) => `
+          <button type="button"
+            class="ozo-category-chip ${activeFilter === filter.value ? "is-active" : ""}"
+            data-risk-ppe-filter="${escapeHtml(filter.value)}">
+            <span>${escapeHtml(filter.label)}</span>
+            <small>${escapeHtml(String(countByBodyPart[filter.value] || 0))}</small>
+          </button>
+        `).join("")}
+      </div>
+      <label class="ozo-search-field">
+        <span>Pretraži katalog</span>
+        <input data-risk-ppe-search value="${escapeHtml(searchValue)}" placeholder="Pretraži katalog..." />
+        <i aria-hidden="true">${renderRiskAssessmentRiskIcon("note")}</i>
+      </label>
+    </section>
+  `;
+}
+
+function OzoNewItemForm(job = {}) {
+  const newDraft = getRiskAssessmentPpeNewDraft(job);
+  const newFormOpen = Boolean(job.ppeNewOpen);
+  return `
+    <section class="ozo-new-form" ${newFormOpen ? "" : "hidden"}>
+      <label><span>Naziv</span><input data-risk-ppe-new-field="name" value="${escapeHtml(newDraft.name)}" placeholder="npr. Štitnik za koljena" /></label>
+      <label><span>Norma</span><input data-risk-ppe-new-field="norm" value="${escapeHtml(newDraft.norm)}" placeholder="npr. HRN EN 14404" /></label>
+      <label><span>Kategorija</span><input data-risk-ppe-new-field="category" value="${escapeHtml(newDraft.category)}" placeholder="npr. Zaštita nogu" /></label>
+      <label><span>Dio tijela</span><select data-risk-ppe-new-field="bodyPart">${renderRiskAssessmentPpeBodyPartOptions(newDraft.bodyPart)}</select></label>
+      <label><span>EN norma</span><input data-risk-ppe-new-field="standardCode" value="${escapeHtml(newDraft.standardCode)}" placeholder="npr. EN 14404" /></label>
+      <label><span>URL slike</span><input data-risk-ppe-new-field="imageUrl" value="${escapeHtml(newDraft.imageUrl)}" placeholder="https://..." /></label>
+      <label class="field-span-full"><span>Opis primjene</span><textarea data-risk-ppe-new-field="description" rows="2">${escapeHtml(newDraft.description)}</textarea></label>
+      <div class="ozo-new-form-actions">
+        <span>Spremi u bazu i odmah dodaj na ovo radno mjesto.</span>
+        <button type="button" class="ozo-primary-action" data-risk-ppe-new-save>Spremi OZO</button>
+      </div>
+    </section>
+  `;
+}
+
+function OzoCatalogList(job = {}, jobIndex = 0, catalog = []) {
   const selectedSet = getRiskAssessmentSelectedPpeSet(job);
   const activeFilter = String(job.ppeFilter || "all");
   const searchValue = String(job.ppeSearch || "");
-  const catalog = getRiskAssessmentPpeCatalog();
   const visibleCatalogItems = filterRiskAssessmentPpeCatalogItems(catalog, activeFilter, searchValue);
   const visibleCatalogIds = new Set(visibleCatalogItems.map((item) => String(item.id)));
-  const countByBodyPart = catalog.reduce((accumulator, item) => {
-    accumulator[item.bodyPart] = (accumulator[item.bodyPart] || 0) + 1;
-    return accumulator;
-  }, { all: catalog.length });
+  return `
+    <section class="ozo-catalog-card">
+      <div class="ozo-card-head">
+        <div>
+          <strong>Katalog OZO</strong>
+          <small><b data-risk-ppe-match-count>${visibleCatalogItems.length}</b> prikazanih stavki</small>
+        </div>
+        <div class="ozo-card-actions">
+          <a href="${escapeHtml(RISK_PPE_SOURCE_URL)}" target="_blank" rel="noopener noreferrer">NN 110/2009</a>
+          <select aria-label="Sortiranje OZO kataloga">
+            <option>Najnovije</option>
+            <option>Naziv A-Z</option>
+            <option>Kategorija</option>
+          </select>
+        </div>
+      </div>
+      <div class="ozo-catalog-list">
+        ${catalog.map((ppe) => {
+          const searchText = normalizeRiskAssessmentPpeSearchValue([
+            ppe.name,
+            ppe.category,
+            ppe.norm,
+            ppe.standardCode,
+            ppe.description,
+            ppe.sourceRef,
+          ].join(" "));
+          const isVisible = visibleCatalogIds.has(String(ppe.id));
+          const isSelected = selectedSet.has(ppe.id);
+          const iconUrl = ppe.iconUrl || RISK_PPE_CATEGORY_ICONS[ppe.bodyPart] || RISK_PPE_CATEGORY_ICONS.other || "";
+          const norm = ppe.norm || ppe.standardCode || "Norma nije upisana";
+          return `
+            <label class="ozo-catalog-item ${isSelected ? "is-selected" : ""}" data-risk-ppe-option-card data-risk-ppe-option-body-part="${escapeHtml(ppe.bodyPart)}" data-risk-ppe-option-search="${escapeHtml(searchText)}" title="${escapeHtml([ppe.name, norm, ppe.category].filter(Boolean).join(" · "))}" ${isVisible ? "" : "hidden"}>
+              <input type="checkbox" data-risk-ppe-toggle="${escapeHtml(ppe.id)}" ${isSelected ? "checked" : ""} />
+              <span class="ozo-catalog-icon"><img src="${escapeHtml(iconUrl)}" alt="" loading="lazy" /></span>
+              <span class="ozo-catalog-copy">
+                <strong>${escapeHtml(ppe.name)}</strong>
+                <small>${escapeHtml(norm)}</small>
+                <em>${escapeHtml(ppe.category || "OZO")}</em>
+              </span>
+              <span class="ozo-catalog-chevron" aria-hidden="true">&rsaquo;</span>
+            </label>
+          `;
+        }).join("")}
+      </div>
+      <p class="inline-help risk-assessment-ppe-empty" ${visibleCatalogItems.length ? "hidden" : ""}>Nema OZO stavki za odabrani filter ili pretragu.</p>
+    </section>
+  `;
+}
+
+function getOzoQuickSummaryMetrics(job = {}) {
+  const selectedItems = job.ppeItems ?? [];
+  const selectedBodyParts = getRiskAssessmentPpeBodyParts(selectedItems);
+  const standards = new Set(selectedItems.map((item) => item.norm || item.standardCode).filter(Boolean));
+  const riskLinks = new Set(
+    selectedItems
+      .flatMap((item) => String(item.hazardLinks || item.description || "").split(/[,;\n]+/))
+      .map((item) => item.trim())
+      .filter(Boolean),
+  );
+  return [
+    { label: "odabrane stavke", value: selectedItems.length },
+    { label: "zona zaštite pokriveno", value: selectedBodyParts.size },
+    { label: "standarda primijenjeno", value: standards.size },
+    { label: "rizika adresirano", value: riskLinks.size },
+  ];
+}
+
+function OzoQuickSummary(job = {}) {
+  const metrics = getOzoQuickSummaryMetrics(job);
+  return `
+    <section class="ozo-quick-summary">
+      <strong>Brzi pregled</strong>
+      <dl>
+        ${metrics.map((metric) => `
+          <div>
+            <dt>${renderRiskAssessmentRiskIcon("shield")}</dt>
+            <dd><b>${escapeHtml(String(metric.value))}</b> ${escapeHtml(metric.label)}</dd>
+          </div>
+        `).join("")}
+      </dl>
+    </section>
+  `;
+}
+
+function OzoSelectedPanel(job = {}) {
   const selectedItems = job.ppeItems ?? [];
   const selectedCount = selectedItems.length;
-  const newDraft = getRiskAssessmentPpeNewDraft(job);
-  const newFormOpen = Boolean(job.ppeNewOpen);
   const selectedBodyPartLabels = Array.from(getRiskAssessmentPpeBodyParts(selectedItems))
     .map((part) => RISK_ASSESSMENT_PPE_BODY_FILTERS.find((filter) => filter.value === part)?.label || part)
     .filter(Boolean);
-
   return `
-    <div class="risk-assessment-ppe-compact" data-risk-ppe-panel="${jobIndex}">
-      <div class="risk-assessment-ppe-compact-layout">
-        <aside class="risk-assessment-ppe-worker-column">
-          ${renderRiskAssessmentPpeWorkerPreview(job)}
-        </aside>
-        <div class="risk-assessment-ppe-picker-column">
-          <div class="risk-assessment-ppe-compact-toolbar">
-            <label class="risk-assessment-ppe-search">
-              <span>Pretraga OZO kataloga</span>
-              <input data-risk-ppe-search value="${escapeHtml(searchValue)}" placeholder="npr. kaciga, rukavice, HRN EN 397..." />
-            </label>
-            <div class="risk-assessment-ppe-compact-actions">
-              <button type="button" class="secondary-button" data-risk-ppe-new-toggle>${newFormOpen ? "Zatvori unos" : "+ Nova OZO"}</button>
-            </div>
+    <aside class="ozo-selected-column">
+      <section class="ozo-selected-card ${selectedCount ? "has-items" : "is-empty"}">
+        <div class="ozo-card-head">
+          <div>
+            <strong>Odabrana OZO</strong>
+            <small>${escapeHtml(selectedCount ? `${selectedCount} stavki · ${selectedBodyPartLabels.join(", ") || "bez kategorije"}` : "Odaberi OZO iz kataloga")}</small>
           </div>
-
-          <div class="risk-assessment-ppe-filters">
-            ${RISK_ASSESSMENT_PPE_BODY_FILTERS.map((filter) => `
-              <button type="button" class="${activeFilter === filter.value ? "is-active" : ""}" data-risk-ppe-filter="${escapeHtml(filter.value)}">
-                <span>${escapeHtml(filter.label)}</span>
-                <small>${countByBodyPart[filter.value] || 0}</small>
-              </button>
-            `).join("")}
-          </div>
-
-          <div class="risk-assessment-ppe-new-form is-compact" ${newFormOpen ? "" : "hidden"}>
-            <label><span>Naziv</span><input data-risk-ppe-new-field="name" value="${escapeHtml(newDraft.name)}" placeholder="npr. Štitnik za koljena" /></label>
-            <label><span>Norma</span><input data-risk-ppe-new-field="norm" value="${escapeHtml(newDraft.norm)}" placeholder="npr. HRN EN 14404" /></label>
-            <label><span>Kategorija</span><input data-risk-ppe-new-field="category" value="${escapeHtml(newDraft.category)}" placeholder="npr. Zaštita nogu" /></label>
-            <label><span>Dio tijela</span><select data-risk-ppe-new-field="bodyPart">${renderRiskAssessmentPpeBodyPartOptions(newDraft.bodyPart)}</select></label>
-            <label><span>EN norma</span><input data-risk-ppe-new-field="standardCode" value="${escapeHtml(newDraft.standardCode)}" placeholder="npr. EN 14404" /></label>
-            <label><span>URL slike</span><input data-risk-ppe-new-field="imageUrl" value="${escapeHtml(newDraft.imageUrl)}" placeholder="https://..." /></label>
-            <label class="field-span-full"><span>Opis primjene</span><textarea data-risk-ppe-new-field="description" rows="2">${escapeHtml(newDraft.description)}</textarea></label>
-            <div class="risk-assessment-ppe-new-actions">
-              <span>Spremi u bazu i odmah dodaj na ovo radno mjesto.</span>
-              <button type="button" class="primary-button" data-risk-ppe-new-save>Spremi OZO</button>
-            </div>
-          </div>
-
-          <div class="risk-assessment-ppe-compact-body">
-            <section class="risk-assessment-ppe-compact-pane">
-              <div class="risk-assessment-ppe-compact-pane-head">
-                <div>
-                  <strong>Katalog OZO</strong>
-                  <small><b data-risk-ppe-match-count>${visibleCatalogItems.length}</b> prikazanih stavki</small>
-                </div>
-                <a href="${escapeHtml(RISK_PPE_SOURCE_URL)}" target="_blank" rel="noopener noreferrer">NN 110/2009</a>
-              </div>
-              <div class="risk-assessment-ppe-compact-list">
-                ${catalog.map((ppe) => {
-              const searchText = normalizeRiskAssessmentPpeSearchValue([
-                ppe.name,
-                ppe.category,
-                ppe.norm,
-                ppe.standardCode,
-                ppe.description,
-                ppe.sourceRef,
-              ].join(" "));
-              const isVisible = visibleCatalogIds.has(String(ppe.id));
-              const isSelected = selectedSet.has(ppe.id);
-              const iconUrl = ppe.iconUrl || RISK_PPE_CATEGORY_ICONS[ppe.bodyPart] || RISK_PPE_CATEGORY_ICONS.other || "";
-              const norm = ppe.norm || ppe.standardCode || "Norma nije upisana";
-              return `
-                <label class="risk-assessment-ppe-compact-option ${isSelected ? "is-selected" : ""}" data-risk-ppe-option-card data-risk-ppe-option-body-part="${escapeHtml(ppe.bodyPart)}" data-risk-ppe-option-search="${escapeHtml(searchText)}" title="${escapeHtml([ppe.name, norm, ppe.category].filter(Boolean).join(" · "))}" ${isVisible ? "" : "hidden"}>
-                  <input type="checkbox" data-risk-ppe-toggle="${escapeHtml(ppe.id)}" ${isSelected ? "checked" : ""} />
-                  <span class="risk-assessment-ppe-compact-icon"><img src="${escapeHtml(iconUrl)}" alt="" loading="lazy" /></span>
-                  <span class="risk-assessment-ppe-compact-copy">
-                    <strong>${escapeHtml(ppe.name)}</strong>
-                    <small>${escapeHtml(norm)}</small>
-                    <em>${escapeHtml(ppe.category || "OZO")}</em>
-                  </span>
-                </label>
-              `;
-                }).join("")}
-              </div>
-              <p class="inline-help risk-assessment-ppe-empty" ${visibleCatalogItems.length ? "hidden" : ""}>Nema OZO stavki za odabrani filter ili pretragu.</p>
-            </section>
-
-            <section class="risk-assessment-ppe-compact-pane is-selected">
-              <div class="risk-assessment-ppe-compact-pane-head">
-                <div>
-                  <strong>Odabrana OZO</strong>
-                  <small>${escapeHtml(selectedCount ? `${selectedCount} stavki · ${selectedBodyPartLabels.join(", ") || "bez kategorije"}` : "Odaberi OZO iz kataloga")}</small>
-                </div>
-                <span>${escapeHtml(String(selectedCount))}</span>
-              </div>
-              <div class="risk-assessment-ppe-selected-compact-list">
-                ${selectedItems.length ? selectedItems.map((ppe, ppeIndex) => {
+          <span class="ozo-selected-count">${escapeHtml(String(selectedCount))}</span>
+        </div>
+        ${selectedItems.length ? `
+          <div class="ozo-selected-list">
+            ${selectedItems.map((ppe, ppeIndex) => {
               const normalized = normalizeRiskPpeCatalogItem(ppe);
               const iconUrl = normalized.iconUrl || RISK_PPE_CATEGORY_ICONS[normalized.bodyPart] || RISK_PPE_CATEGORY_ICONS.other || "";
               return `
-                <article class="risk-assessment-ppe-selected-compact-row">
-                  <span class="risk-assessment-ppe-selected-compact-icon"><img src="${escapeHtml(iconUrl)}" alt="" loading="lazy" /></span>
-                  <div class="risk-assessment-ppe-selected-compact-grid">
-                    <label class="risk-assessment-ppe-name-norm">
-                      <span>Naziv i norma</span>
-                      <div class="risk-assessment-ppe-name-norm-fields">
-                        <input data-risk-ppe-index="${ppeIndex}" data-risk-ppe-field="name" value="${escapeHtml(ppe.name || "")}" placeholder="Naziv opreme" />
-                        <input data-risk-ppe-index="${ppeIndex}" data-risk-ppe-field="norm" value="${escapeHtml(ppe.norm || "")}" placeholder="Norma" />
-                      </div>
+                <article class="ozo-selected-item">
+                  <span class="ozo-selected-icon"><img src="${escapeHtml(iconUrl)}" alt="" loading="lazy" /></span>
+                  <div class="ozo-selected-fields">
+                    <label>
+                      <span>Naziv</span>
+                      <input data-risk-ppe-index="${ppeIndex}" data-risk-ppe-field="name" value="${escapeHtml(ppe.name || "")}" placeholder="Naziv opreme" />
                     </label>
-                    <label class="risk-assessment-checkbox-line"><input type="checkbox" data-risk-ppe-index="${ppeIndex}" data-risk-ppe-field="required" ${ppe.required === false ? "" : "checked"} /><span>Obvezna</span></label>
+                    <label>
+                      <span>Norma</span>
+                      <input data-risk-ppe-index="${ppeIndex}" data-risk-ppe-field="norm" value="${escapeHtml(ppe.norm || "")}" placeholder="Norma" />
+                    </label>
+                    <label class="field-span-full">
+                      <span>Primjena</span>
+                      <input data-risk-ppe-index="${ppeIndex}" data-risk-ppe-field="description" value="${escapeHtml(ppe.description || "")}" placeholder="Primjena i povezana opasnost" />
+                    </label>
+                    <label class="ozo-selected-required">
+                      <input type="checkbox" data-risk-ppe-index="${ppeIndex}" data-risk-ppe-field="required" ${ppe.required === false ? "" : "checked"} />
+                      <span>Obvezna</span>
+                    </label>
                   </div>
-                  <button type="button" class="ghost-button card-danger" data-risk-ppe-remove="${ppeIndex}">Ukloni</button>
+                  <button type="button" class="ghost-button card-danger" data-risk-ppe-remove="${ppeIndex}" aria-label="Ukloni OZO">Ukloni</button>
                 </article>
               `;
-                }).join("") : `<p class="inline-help">Ovdje će se prikazati odabrana oprema s normom i primjenom.</p>`}
-              </div>
-            </section>
+            }).join("")}
           </div>
-        </div>
+        ` : `
+          <div class="ozo-empty-state">
+            <span aria-hidden="true">${renderRiskAssessmentRiskIcon("shield")}</span>
+            <strong>Ovdje će se prikazati odabrana oprema s normom i primjenom.</strong>
+          </div>
+        `}
+      </section>
+      ${OzoQuickSummary(job)}
+      <button type="button" class="ozo-save-continue" data-risk-ppe-save-continue>Spremi i nastavi</button>
+    </aside>
+  `;
+}
+
+function renderRiskAssessmentPpeCompactPicker(job = {}, jobIndex = 0) {
+  const catalog = getRiskAssessmentPpeCatalog();
+  return `
+    <div class="risk-assessment-ppe-compact ozo-premium-step" data-risk-ppe-panel="${jobIndex}">
+      ${OzoStepHeader(job, jobIndex)}
+      ${OzoNewItemForm(job)}
+      <div class="ozo-premium-grid">
+        ${OzoWorkerPreview(job)}
+        <main class="ozo-main-column">
+          ${OzoCategoryFilters(job, catalog)}
+          ${OzoCatalogList(job, jobIndex, catalog)}
+        </main>
+        ${OzoSelectedPanel(job)}
       </div>
     </div>
   `;
@@ -142111,6 +142349,18 @@ function handleRiskAssessmentJobsListClick(event) {
     return;
   }
 
+  if (button.matches("[data-risk-ppe-save-continue]")) {
+    event.preventDefault();
+    scheduleRiskAssessmentDraftAutosave();
+    void saveRiskAssessmentEditorAutosave({ manual: true });
+    window.setTimeout(() => {
+      riskAssessmentJobsList
+        ?.querySelector?.(`[data-risk-job-index="${jobIndex}"] .risk-assessment-job-profile-card.is-armor`)
+        ?.scrollIntoView?.({ block: "start", behavior: "smooth" });
+    }, 80);
+    return;
+  }
+
   if (button.matches("[data-risk-ppe-remove]")) {
     event.preventDefault();
     removeRiskAssessmentPpeItem(jobIndex, Number(button.dataset.riskPpeRemove));
@@ -142437,23 +142687,13 @@ function renderRiskAssessmentRiskPurPicker(risk = {}, riskIndex = 0) {
         </span>
         <em>${escapeHtml(selectedCount ? `${selectedCount} odabrano` : "Ne")}</em>
       </div>
-      <details class="risk-assessment-risk-pur-dropdown">
+      <details class="risk-assessment-risk-pur-dropdown job-pur-multiselect">
         <summary>
           <span>${escapeHtml(selectedCount ? getJobPurPointSummary(Array.from(selected)) : "Odaberi iz popisa prema Pravilniku")}</span>
           <strong>Popis PUR</strong>
         </summary>
-        <div class="risk-assessment-risk-pur-options">
-          ${JOB_PUR_POINTS.map((point) => `
-            <button type="button"
-              class="${selected.has(point.value) ? "is-selected" : ""}"
-              data-risk-row-index="${riskIndex}"
-              data-risk-row-pur-point="${escapeHtml(point.value)}"
-              title="${escapeHtml(point.description)}">
-              <span>${escapeHtml(point.value)}</span>
-              <strong>${escapeHtml(point.shortLabel || point.label)}</strong>
-              <small>${escapeHtml(point.description)}</small>
-            </button>
-          `).join("")}
+        <div class="risk-assessment-risk-pur-options job-pur-picker">
+          ${renderJobPurPointGroups(selected, "data-risk-row-pur-point", `data-risk-row-index="${riskIndex}"`)}
         </div>
       </details>
     </section>
@@ -142822,6 +143062,61 @@ function scheduleRiskAssessmentJobAnalysisShellModeUpdate() {
   });
 }
 
+function renderRiskAssessmentJobTreeQuickAddForm(parentId = "", type = "workplace") {
+  const normalizedType = normalizeRiskAssessmentUnitType(type);
+  const isWorkplace = normalizedType === "workplace";
+  return `
+    <div class="risk-assessment-job-tree-quick-form"
+      data-risk-job-tree-quick-form
+      data-risk-parent-id="${escapeHtml(parentId)}"
+      data-risk-child-type="${escapeHtml(normalizedType)}">
+      <label>
+        <span>${escapeHtml(isWorkplace ? "Novo radno mjesto" : "Nova podorganizacija")}</span>
+        <input data-risk-job-tree-quick-name
+          placeholder="${escapeHtml(isWorkplace ? "npr. Serviser automobila" : "npr. Servis")}"
+          autocomplete="off" />
+      </label>
+      <div>
+        <button type="button" class="primary-button" data-risk-job-tree-quick-save>${escapeHtml(isWorkplace ? "Dodaj radno mjesto" : "Dodaj podorganizaciju")}</button>
+        <button type="button" class="ghost-button" data-risk-job-tree-quick-cancel>Odustani</button>
+      </div>
+    </div>
+  `;
+}
+
+function addRiskAssessmentQuickTreeUnit(parentId = "", type = "workplace", name = "") {
+  if (!getCanManageRiskAssessments()) {
+    return;
+  }
+  const normalizedType = normalizeRiskAssessmentUnitType(type);
+  const parent = parentId
+    ? riskAssessmentOrganizationUnitDrafts.find((unit) => String(unit.id || "") === String(parentId))
+    : null;
+  if (parentId && !parent) {
+    return;
+  }
+  const trimmedName = String(name || "").trim();
+  const child = createRiskAssessmentOrganizationUnitDraft({
+    parentId: parent?.id || "",
+    type: normalizedType,
+    name: trimmedName || (normalizedType === "workplace" ? "Novo radno mjesto" : "Nova podorganizacija"),
+  });
+  riskAssessmentOrganizationUnitDrafts.push(child);
+  if (parent?.id) {
+    riskAssessmentOpenOrganizationUnitIds.add(String(parent.id));
+  }
+  riskAssessmentOpenOrganizationUnitIds.add(String(child.id || ""));
+  riskAssessmentJobTreeQuickAddState = null;
+  if (normalizedType === "workplace") {
+    addRiskAssessmentJobFromUnit(child.id);
+    return;
+  }
+  renderRiskAssessmentOrganizationUnits();
+  renderRiskAssessmentJobs();
+  renderRiskAssessmentOverview();
+  scheduleRiskAssessmentDraftAutosave();
+}
+
 function renderRiskAssessmentJobTreeNode(unit = {}, childrenByParent = new Map(), activeIndex = -1, depth = 0) {
   const unitId = String(unit.id || "");
   const type = normalizeRiskAssessmentUnitType(unit.type || "");
@@ -142858,11 +143153,28 @@ function renderRiskAssessmentJobTreeNode(unit = {}, childrenByParent = new Map()
           <strong>${escapeHtml(label)}</strong>
           <small>${escapeHtml(typeLabel)}</small>
         </span>
+        <span class="risk-assessment-job-tree-actions" aria-label="Dodaj u ${escapeHtml(label)}">
+          <button type="button"
+            data-risk-job-tree-quick-add="${escapeHtml(unitId)}"
+            data-risk-child-type="subunit"
+            title="Dodaj podorganizaciju"
+            aria-label="Dodaj podorganizaciju">${renderRiskAssessmentRiskIcon("building")}${renderRiskAssessmentRiskIcon("plus")}</button>
+          <button type="button"
+            data-risk-job-tree-quick-add="${escapeHtml(unitId)}"
+            data-risk-child-type="workplace"
+            title="Dodaj radno mjesto"
+            aria-label="Dodaj radno mjesto">${renderRiskAssessmentRiskIcon("briefcase")}${renderRiskAssessmentRiskIcon("plus")}</button>
+        </span>
       </div>
     `;
+  const quickState = riskAssessmentJobTreeQuickAddState;
+  const quickForm = quickState && String(quickState.parentId || "") === unitId
+    ? renderRiskAssessmentJobTreeQuickAddForm(unitId, quickState.type || "workplace")
+    : "";
   return `
     <div class="${escapeHtml(nodeClass)}" style="--unit-depth: ${escapeHtml(String(Math.min(depth, 6)))}">
       ${row}
+      ${quickForm}
       ${children.length ? `<div class="risk-assessment-job-tree-children">${children.map((child) => renderRiskAssessmentJobTreeNode(child, childrenByParent, activeIndex, depth + 1)).join("")}</div>` : ""}
     </div>
   `;
@@ -142897,11 +143209,12 @@ function renderRiskAssessmentJobTree() {
   if (!riskAssessmentJobDrafts.length && !riskAssessmentOrganizationUnitDrafts.length) {
     riskAssessmentJobTree.innerHTML = `
       <section class="risk-assessment-job-tree-block is-jobs">
-        ${renderRiskAssessmentJobTreeHead(0, 0)}
-        <div class="risk-assessment-job-tree-empty">
-          <strong>Nema radnih mjesta</strong>
-          <span>Klikni + za brzo dodavanje prvog radnog mjesta.</span>
-        </div>
+      ${renderRiskAssessmentJobTreeHead(0, 0)}
+      ${riskAssessmentJobTreeQuickAddState && !riskAssessmentJobTreeQuickAddState.parentId ? renderRiskAssessmentJobTreeQuickAddForm("", riskAssessmentJobTreeQuickAddState.type || "workplace") : ""}
+      <div class="risk-assessment-job-tree-empty">
+        <strong>Nema radnih mjesta</strong>
+        <span>Klikni + za brzo dodavanje prvog radnog mjesta.</span>
+      </div>
       </section>
     `;
     return;
@@ -142919,6 +143232,7 @@ function renderRiskAssessmentJobTree() {
   riskAssessmentJobTree.innerHTML = `
     <section class="risk-assessment-job-tree-block is-jobs">
       ${renderRiskAssessmentJobTreeHead(completedCount, workplaceUnits.length)}
+      ${riskAssessmentJobTreeQuickAddState && !riskAssessmentJobTreeQuickAddState.parentId ? renderRiskAssessmentJobTreeQuickAddForm("", riskAssessmentJobTreeQuickAddState.type || "workplace") : ""}
       ${roots.length ? `<div class="risk-assessment-job-tree-nodes">${roots.map((unit) => renderRiskAssessmentJobTreeNode(unit, childrenByParent, activeIndex)).join("")}</div>` : `
         <div class="risk-assessment-job-tree-empty">
           <strong>Nema strukture</strong>

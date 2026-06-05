@@ -56612,6 +56612,51 @@ button.work-order-editor-section-head:focus-visible {
   padding-right: 3px;
 }
 
+.job-pur-multiselect .job-pur-picker {
+  gap: 10px;
+}
+
+.job-pur-group {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid rgba(226, 232, 240, 0.82);
+  border-radius: 14px;
+  background: rgba(248, 250, 252, 0.72);
+}
+
+.job-pur-group.is-selected {
+  border-color: rgba(250, 204, 21, 0.64);
+  background: linear-gradient(135deg, rgba(254, 249, 195, 0.58), rgba(255, 255, 255, 0.88));
+}
+
+.job-pur-group-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.job-pur-group-head > em {
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #64748b;
+  font-size: 0.66rem;
+  font-style: normal;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.job-pur-subgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 7px;
+  padding-left: 10px;
+  border-left: 2px solid rgba(250, 204, 21, 0.34);
+}
+
 .job-pur-option {
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr);
@@ -56669,8 +56714,6 @@ button.work-order-editor-section-head:focus-visible {
 }
 
 .job-pur-option.is-subpoint {
-  width: calc(100% - 18px);
-  margin-left: 18px;
   border-style: dashed;
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.92));
@@ -56682,7 +56725,7 @@ button.work-order-editor-section-head:focus-visible {
 }
 
 .job-pur-option.is-subpoint strong::before {
-  content: "Točka 19 / ";
+  content: "Razrada / ";
   color: #64748b;
   font-weight: 820;
 }
@@ -56690,6 +56733,10 @@ button.work-order-editor-section-head:focus-visible {
 .job-pur-option.is-subpoint.is-selected {
   border-style: solid;
   background: linear-gradient(135deg, rgba(254, 249, 195, 0.98), rgba(255, 255, 255, 0.95));
+}
+
+.job-pur-option.is-subpoint strong::before {
+  content: "Razrada / ";
 }
 
 .job-organization-grid,
@@ -60212,7 +60259,7 @@ button.work-order-editor-section-head:focus-visible {
 .risk-assessment-job-tree-row {
   position: relative;
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) 22px;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
   width: 100%;
@@ -60224,6 +60271,94 @@ button.work-order-editor-section-head:focus-visible {
   color: #0f172a;
   font: inherit;
   text-align: left;
+}
+
+.risk-assessment-job-tree-actions {
+  display: inline-flex;
+  gap: 4px;
+  justify-content: flex-end;
+  opacity: 0;
+  transform: translateX(4px);
+  transition: opacity 140ms ease, transform 140ms ease;
+  pointer-events: none;
+}
+
+.risk-assessment-job-tree-node.is-folder > .risk-assessment-job-tree-row:hover .risk-assessment-job-tree-actions,
+.risk-assessment-job-tree-node.is-folder > .risk-assessment-job-tree-row:focus-within .risk-assessment-job-tree-actions {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+.risk-assessment-job-tree-actions button {
+  display: inline-grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(191, 219, 254, 0.9);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #2563eb;
+  cursor: pointer;
+  box-shadow: 0 6px 14px rgba(37, 99, 235, 0.08);
+}
+
+.risk-assessment-job-tree-actions button:hover,
+.risk-assessment-job-tree-actions button:focus-visible {
+  border-color: rgba(37, 99, 235, 0.62);
+  background: #eff6ff;
+  outline: none;
+}
+
+.risk-assessment-job-tree-actions .risk-assessment-risk-icon {
+  width: 11px;
+  height: 11px;
+}
+
+.risk-assessment-job-tree-quick-form {
+  display: grid;
+  gap: 7px;
+  margin: 2px 0 6px calc(30px + var(--unit-depth, 0) * 12px);
+  padding: 9px;
+  border: 1px solid rgba(147, 197, 253, 0.82);
+  border-radius: 12px;
+  background:
+    linear-gradient(135deg, rgba(239, 246, 255, 0.98), rgba(255, 255, 255, 0.94));
+  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.08);
+}
+
+.risk-assessment-job-tree-quick-form label {
+  display: grid;
+  gap: 5px;
+}
+
+.risk-assessment-job-tree-quick-form label span {
+  color: #2563eb;
+  font-size: 0.62rem;
+  font-weight: 950;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.risk-assessment-job-tree-quick-form input {
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 9px;
+}
+
+.risk-assessment-job-tree-quick-form > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.risk-assessment-job-tree-quick-form button {
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 9px;
+  font-size: 0.68rem;
 }
 
 button.risk-assessment-job-tree-row {
@@ -64488,6 +64623,736 @@ button.risk-assessment-armor-tree-row:focus-visible,
   min-height: 68px;
 }
 
+.ozo-premium-step {
+  padding: 18px;
+  border: 1px solid #e5eaf3;
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(49, 91, 255, 0.08), transparent 30%),
+    linear-gradient(135deg, rgba(248, 251, 255, 0.98), rgba(255, 255, 255, 0.94));
+  box-shadow: 0 22px 54px rgba(16, 24, 40, 0.08);
+}
+
+.ozo-step-header {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.ozo-step-icon,
+.ozo-catalog-icon,
+.ozo-selected-icon,
+.ozo-empty-state > span {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #eef2ff, #ffffff);
+  color: #315bff;
+}
+
+.ozo-step-icon {
+  width: 56px;
+  height: 56px;
+  border: 1px solid rgba(199, 210, 254, 0.72);
+  box-shadow: 0 12px 26px rgba(49, 91, 255, 0.12);
+}
+
+.ozo-step-icon .risk-assessment-risk-icon {
+  width: 24px;
+  height: 24px;
+}
+
+.ozo-step-header div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ozo-step-header div > span,
+.ozo-worker-card-head > span {
+  color: #315bff;
+  font-size: 0.74rem;
+  font-weight: 950;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.ozo-step-header strong {
+  color: #101828;
+  font-size: 1.52rem;
+  font-weight: 950;
+  line-height: 1.08;
+}
+
+.ozo-step-header small,
+.ozo-worker-card-head small,
+.ozo-card-head small,
+.ozo-system-advice p {
+  color: #667085;
+  font-size: 0.82rem;
+  font-weight: 740;
+  line-height: 1.45;
+}
+
+.ozo-primary-action,
+.ozo-save-continue {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  padding: 0 18px;
+  border: 1px solid rgba(49, 91, 255, 0.72);
+  border-radius: 14px;
+  background: linear-gradient(135deg, #315bff, #4f46e5);
+  color: #ffffff;
+  font-weight: 950;
+  box-shadow: 0 16px 30px rgba(49, 91, 255, 0.22);
+  cursor: pointer;
+  transition: transform 150ms ease, box-shadow 150ms ease, filter 150ms ease;
+}
+
+.ozo-primary-action:hover,
+.ozo-primary-action:focus-visible,
+.ozo-save-continue:hover,
+.ozo-save-continue:focus-visible {
+  transform: translateY(-1px);
+  filter: saturate(1.05);
+  outline: none;
+  box-shadow: 0 20px 38px rgba(49, 91, 255, 0.28);
+}
+
+.ozo-new-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 14px;
+  border: 1px solid rgba(191, 219, 254, 0.84);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 18px 36px rgba(49, 91, 255, 0.08);
+}
+
+.ozo-new-form[hidden] {
+  display: none;
+}
+
+.ozo-new-form label,
+.ozo-selected-fields label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.ozo-new-form label > span,
+.ozo-selected-fields label > span {
+  color: #667085;
+  font-size: 0.66rem;
+  font-weight: 950;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.ozo-new-form input,
+.ozo-new-form select,
+.ozo-new-form textarea,
+.ozo-selected-fields input {
+  min-height: 38px;
+  border-color: #d7deea;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.ozo-new-form-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: flex-end;
+  grid-column: 1 / -1;
+}
+
+.ozo-new-form-actions span {
+  color: #667085;
+  font-size: 0.76rem;
+  font-weight: 780;
+}
+
+.ozo-premium-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.33fr) minmax(420px, 1fr) minmax(300px, 0.36fr);
+  gap: 16px;
+  align-items: start;
+  min-width: 0;
+}
+
+.ozo-worker-card,
+.ozo-filter-shell,
+.ozo-catalog-card,
+.ozo-selected-card,
+.ozo-quick-summary,
+.ozo-system-advice {
+  border: 1px solid #e5eaf3;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 18px 40px rgba(16, 24, 40, 0.07);
+}
+
+.ozo-worker-card,
+.ozo-selected-column {
+  position: sticky;
+  top: 14px;
+}
+
+.ozo-worker-card {
+  display: grid;
+  overflow: hidden;
+}
+
+.ozo-worker-card-head {
+  display: grid;
+  gap: 5px;
+  padding: 18px 18px 14px;
+}
+
+.ozo-worker-card-head strong {
+  color: #101828;
+  font-size: 1.08rem;
+  font-weight: 950;
+}
+
+.ozo-worker-card-head em {
+  justify-self: start;
+  margin-top: 5px;
+  padding: 7px 11px;
+  border: 1px solid rgba(199, 210, 254, 0.72);
+  border-radius: 999px;
+  background: rgba(248, 250, 255, 0.94);
+  color: #101828;
+  font-size: 0.74rem;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.ozo-worker-visual {
+  min-height: 220px;
+  background:
+    linear-gradient(180deg, rgba(239, 246, 255, 0.58), rgba(241, 245, 249, 0.9)),
+    #f8fbff;
+}
+
+.ozo-worker-visual img {
+  display: block;
+  width: 100%;
+  height: 260px;
+  object-fit: cover;
+  object-position: center bottom;
+}
+
+.ozo-worker-status {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px;
+  padding: 14px;
+  border: 1px solid #e5eaf3;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.ozo-worker-status div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ozo-worker-status dt,
+.ozo-worker-status dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.ozo-worker-status dt {
+  color: #7b8aa5;
+  font-size: 0.64rem;
+  font-weight: 950;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.ozo-worker-status dd {
+  color: #101828;
+  font-size: 0.78rem;
+  font-weight: 950;
+  line-height: 1.25;
+}
+
+.ozo-system-advice {
+  display: grid;
+  gap: 10px;
+  margin: 0 12px 12px;
+  padding: 16px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(79, 70, 229, 0.1), transparent 32%),
+    rgba(255, 255, 255, 0.92);
+}
+
+.ozo-system-advice > span {
+  display: inline-grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 12px;
+  background: #eef2ff;
+  color: #4f46e5;
+}
+
+.ozo-system-advice strong {
+  color: #101828;
+  font-size: 0.94rem;
+  font-weight: 950;
+}
+
+.ozo-system-advice p {
+  margin: 0;
+}
+
+.ozo-main-column {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.ozo-filter-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(230px, 0.32fr);
+  gap: 12px;
+  align-items: center;
+  padding: 16px;
+}
+
+.ozo-category-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ozo-category-chip {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid #e5eaf3;
+  border-radius: 999px;
+  background: rgba(248, 250, 252, 0.96);
+  color: #344054;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 0 10px 20px rgba(16, 24, 40, 0.04);
+  transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
+}
+
+.ozo-category-chip small {
+  display: inline-grid;
+  min-width: 24px;
+  height: 24px;
+  place-items: center;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: #eef2f7;
+  color: #667085;
+  font-size: 0.72rem;
+  font-weight: 950;
+}
+
+.ozo-category-chip:hover,
+.ozo-category-chip:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(49, 91, 255, 0.42);
+  outline: none;
+  box-shadow: 0 14px 26px rgba(49, 91, 255, 0.1);
+}
+
+.ozo-category-chip.is-active {
+  border-color: rgba(49, 91, 255, 0.8);
+  background: linear-gradient(135deg, #315bff, #4f46e5);
+  color: #ffffff;
+  box-shadow: 0 18px 34px rgba(49, 91, 255, 0.24);
+}
+
+.ozo-category-chip.is-active small {
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+}
+
+.ozo-search-field {
+  position: relative;
+  display: grid;
+  gap: 6px;
+}
+
+.ozo-search-field span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+
+.ozo-search-field input {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 44px 0 16px;
+  border: 1px solid #e5eaf3;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #101828;
+  box-shadow: 0 12px 26px rgba(16, 24, 40, 0.04);
+}
+
+.ozo-search-field i {
+  position: absolute;
+  right: 14px;
+  bottom: 13px;
+  color: #667085;
+}
+
+.ozo-catalog-card,
+.ozo-selected-card,
+.ozo-quick-summary {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.ozo-card-head {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.ozo-card-head > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ozo-card-head strong,
+.ozo-quick-summary > strong {
+  color: #101828;
+  font-size: 1rem;
+  font-weight: 950;
+}
+
+.ozo-card-head b {
+  font-weight: 950;
+}
+
+.ozo-card-actions {
+  display: inline-flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.ozo-card-actions a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid rgba(16, 185, 129, 0.22);
+  border-radius: 999px;
+  background: rgba(236, 253, 245, 0.92);
+  color: #047857;
+  font-size: 0.74rem;
+  font-weight: 950;
+  text-decoration: none;
+}
+
+.ozo-card-actions select {
+  min-height: 36px;
+  padding: 0 30px 0 12px;
+  border-radius: 12px;
+  border-color: #e5eaf3;
+  color: #344054;
+  font-weight: 850;
+}
+
+.ozo-catalog-list {
+  display: grid;
+  gap: 10px;
+  max-height: 520px;
+  overflow: auto;
+  padding: 2px 5px 2px 0;
+  scrollbar-gutter: stable;
+}
+
+.ozo-catalog-item {
+  display: grid;
+  grid-template-columns: 20px 48px minmax(0, 1fr) 20px;
+  gap: 12px;
+  align-items: center;
+  min-height: 72px;
+  padding: 12px 14px;
+  border: 1px solid #e5eaf3;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #101828;
+  cursor: pointer;
+  box-shadow: 0 10px 22px rgba(16, 24, 40, 0.04);
+  transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
+}
+
+.ozo-catalog-item:hover,
+.ozo-catalog-item:focus-within {
+  transform: translateY(-2px);
+  border-color: rgba(49, 91, 255, 0.38);
+  background: #ffffff;
+  box-shadow: 0 18px 36px rgba(16, 24, 40, 0.09);
+}
+
+.ozo-catalog-item.is-selected,
+.ozo-catalog-item:has(input:checked) {
+  border-color: rgba(49, 91, 255, 0.54);
+  background: linear-gradient(135deg, rgba(239, 246, 255, 0.98), #ffffff);
+  box-shadow: inset 4px 0 0 #315bff, 0 18px 34px rgba(49, 91, 255, 0.1);
+}
+
+.ozo-catalog-item input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: #315bff;
+}
+
+.ozo-catalog-icon,
+.ozo-selected-icon {
+  width: 44px;
+  height: 44px;
+  border: 1px solid rgba(191, 219, 254, 0.82);
+  background: linear-gradient(135deg, #42a5f5, #315bff);
+}
+
+.ozo-catalog-icon img,
+.ozo-selected-icon img {
+  width: 25px;
+  height: 25px;
+  object-fit: contain;
+  filter: brightness(0) invert(1);
+}
+
+.ozo-catalog-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.ozo-catalog-copy strong {
+  overflow: hidden;
+  color: #101828;
+  font-size: 0.84rem;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ozo-catalog-copy small {
+  color: #315bff;
+  font-size: 0.74rem;
+  font-weight: 950;
+}
+
+.ozo-catalog-copy em {
+  overflow: hidden;
+  color: #667085;
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 820;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.ozo-catalog-chevron {
+  color: #667085;
+  font-size: 1.4rem;
+  font-weight: 500;
+}
+
+.ozo-load-more {
+  display: flex;
+  justify-content: center;
+}
+
+.ozo-load-more .ghost-button {
+  min-height: 42px;
+  border-radius: 14px;
+}
+
+.ozo-selected-column {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.ozo-selected-card.is-empty {
+  min-height: 280px;
+  border-color: rgba(250, 204, 21, 0.38);
+  background:
+    radial-gradient(circle at 50% 34%, rgba(250, 204, 21, 0.18), transparent 34%),
+    rgba(255, 251, 235, 0.72);
+}
+
+.ozo-selected-count {
+  display: inline-grid;
+  min-width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid rgba(250, 204, 21, 0.46);
+  border-radius: 999px;
+  background: #fde68a;
+  color: #854d0e;
+  font-size: 0.86rem;
+  font-weight: 950;
+}
+
+.ozo-empty-state {
+  display: grid;
+  place-items: center;
+  gap: 14px;
+  min-height: 190px;
+  text-align: center;
+}
+
+.ozo-empty-state > span {
+  width: 72px;
+  height: 72px;
+  border: 1px solid rgba(250, 204, 21, 0.4);
+  background: rgba(255, 255, 255, 0.74);
+  color: #d97706;
+}
+
+.ozo-empty-state strong {
+  max-width: 260px;
+  color: #667085;
+  font-size: 0.88rem;
+  font-weight: 850;
+  line-height: 1.45;
+}
+
+.ozo-selected-list {
+  display: grid;
+  gap: 10px;
+  max-height: 360px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.ozo-selected-item {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #e5eaf3;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.ozo-selected-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 14px;
+}
+
+.ozo-selected-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(96px, 0.6fr);
+  gap: 8px;
+  min-width: 0;
+}
+
+.ozo-selected-item > button {
+  grid-column: 2;
+  justify-self: start;
+  min-height: 32px;
+  border-radius: 10px;
+}
+
+.ozo-selected-required {
+  display: inline-flex !important;
+  flex-direction: row;
+  gap: 8px;
+  align-items: center;
+  align-self: end;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid #e5eaf3;
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.9);
+}
+
+.ozo-selected-required input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #315bff;
+}
+
+.ozo-selected-fields .ozo-selected-required span {
+  color: #344054;
+  font-size: 0.72rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.ozo-quick-summary dl {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+
+.ozo-quick-summary dl div {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.ozo-quick-summary dt,
+.ozo-quick-summary dd {
+  margin: 0;
+}
+
+.ozo-quick-summary dt {
+  color: #344054;
+}
+
+.ozo-quick-summary dd {
+  color: #344054;
+  font-size: 0.84rem;
+  font-weight: 820;
+}
+
+.ozo-quick-summary dd b {
+  color: #101828;
+  font-weight: 950;
+}
+
+.ozo-save-continue {
+  position: sticky;
+  bottom: 12px;
+  width: 100%;
+  min-height: 52px;
+  border-radius: 16px;
+}
+
 @media (max-width: 980px) {
   .risk-assessment-armor-workbench,
   .risk-assessment-armor-workspace-head,
@@ -64497,11 +65362,19 @@ button.risk-assessment-armor-tree-row:focus-visible,
   .risk-assessment-ppe-selected-compact-row,
   .risk-assessment-ppe-selected-compact-grid,
   .risk-assessment-ppe-name-norm-fields,
-  .risk-assessment-load-weight-grid {
+  .risk-assessment-load-weight-grid,
+  .ozo-step-header,
+  .ozo-new-form,
+  .ozo-premium-grid,
+  .ozo-filter-shell,
+  .ozo-selected-fields {
     grid-template-columns: 1fr;
   }
 
-  .risk-assessment-ppe-worker-column {
+  .risk-assessment-ppe-worker-column,
+  .ozo-worker-card,
+  .ozo-selected-column,
+  .ozo-save-continue {
     position: static;
   }
 
@@ -64515,6 +65388,36 @@ button.risk-assessment-armor-tree-row:focus-visible,
 
   .risk-assessment-ppe-selected-compact-row > button {
     justify-self: start;
+  }
+
+  .ozo-step-header {
+    align-items: start;
+  }
+
+  .ozo-primary-action {
+    justify-self: start;
+  }
+
+  .ozo-worker-visual img {
+    height: 220px;
+  }
+
+  .ozo-worker-status {
+    grid-template-columns: 1fr;
+  }
+
+  .ozo-card-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ozo-card-actions {
+    justify-content: flex-start;
+  }
+
+  .ozo-catalog-list,
+  .ozo-selected-list {
+    max-height: 420px;
   }
 }
 
@@ -66498,6 +67401,58 @@ button.risk-assessment-armor-tree-row:focus-visible,
 .risk-assessment-risk-pur-options button.is-selected {
   border-color: rgba(37, 99, 235, 0.46);
   background: rgba(219, 234, 254, 0.92);
+}
+
+.risk-assessment-risk-pur-options.job-pur-picker {
+  gap: 8px;
+  max-height: 320px;
+  padding-right: 4px;
+}
+
+.risk-assessment-risk-pur-options .job-pur-group {
+  padding: 6px;
+  border-radius: 12px;
+}
+
+.risk-assessment-risk-pur-options .job-pur-subgrid {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.risk-assessment-risk-pur-options .job-pur-option {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 6px 8px;
+  min-height: 40px;
+  padding: 7px 8px;
+  border-radius: 11px;
+}
+
+.risk-assessment-risk-pur-options .job-pur-option span {
+  grid-row: span 2;
+  width: 26px;
+  height: 26px;
+  border-radius: 9px;
+  background: rgba(15, 23, 42, 0.94);
+  color: #ffffff;
+}
+
+.risk-assessment-risk-pur-options .job-pur-option strong {
+  overflow: visible;
+  font-size: 0.68rem;
+  white-space: normal;
+}
+
+.risk-assessment-risk-pur-options .job-pur-option small {
+  grid-column: 2;
+  overflow: visible;
+  font-size: 0.58rem;
+  line-height: 1.28;
+  white-space: normal;
+}
+
+.risk-assessment-risk-pur-options .job-pur-option.is-selected {
+  border-color: rgba(250, 204, 21, 0.9);
+  background: linear-gradient(135deg, rgba(254, 249, 195, 0.98), rgba(255, 255, 255, 0.95));
 }
 
 .risk-assessment-ppe-selected-row label span {
