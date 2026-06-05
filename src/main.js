@@ -135717,7 +135717,7 @@ function getRiskAssessmentJobStatusOption(status = "") {
 }
 
 function sanitizeRiskAssessmentTransientJob(job = {}) {
-  const { catalogOpen, catalogSelection, aiProposal, ppeFilter, ppeSearch, ppeNewOpen, ppeNewDraft, ...persisted } = job;
+  const { catalogOpen, catalogSelection, aiProposal, ppeFilter, ppeSearch, ppeNewOpen, ppeNewDraft, activeRiskRowId, ...persisted } = job;
   return persisted;
 }
 
@@ -136348,10 +136348,13 @@ function renderRiskAssessmentJobProfile(item = {}, index = 0) {
           </div>
         </div>
         <div class="risk-assessment-armor-workbench">
+          <aside class="risk-assessment-armor-sidebar">
+            ${renderRiskAssessmentArmorExplorer(item, index)}
+          </aside>
           <div class="risk-assessment-armor-workspace">
             <div class="risk-assessment-armor-workspace-head">
               <div>
-                <strong>ARMOR stavke radnog mjesta</strong>
+                <strong>Uredi odabranu ARMOR stavku</strong>
                 <small>${escapeHtml(`${getRiskAssessmentFilledRiskRowCount(item)} stavki · ${item.jobTitle || "radno mjesto"}`)}</small>
               </div>
               <div>
@@ -140857,6 +140860,43 @@ function updateRiskAssessmentRiskRowPurVisualState(jobIndex, riskIndex) {
   });
 }
 
+function updateRiskAssessmentArmorExplorerVisualState(jobIndex, riskIndex) {
+  const risk = riskAssessmentJobDrafts[jobIndex]?.riskRows?.[riskIndex];
+  if (!risk) {
+    return;
+  }
+  const row = riskAssessmentJobsList?.querySelector(`[data-risk-job-index="${jobIndex}"]`);
+  const item = row?.querySelector?.(`[data-risk-row-select="${riskIndex}"]`)?.closest(".risk-assessment-armor-tree-node.is-item");
+  if (!(item instanceof HTMLElement)) {
+    return;
+  }
+  const riskTone = getRiskAssessmentRiskDisplayTone(risk);
+  const riskLevel = getRiskAssessmentRiskDisplayLevel(risk);
+  const complete = isRiskAssessmentRiskRowComplete(risk);
+  const title = getRiskAssessmentRiskRowDisplayTitle(risk, riskIndex);
+  const code = String(risk.code || "").trim();
+  const dot = item.querySelector(".risk-assessment-armor-risk-dot");
+  if (dot instanceof HTMLElement) {
+    dot.classList.remove("is-low", "is-medium", "is-high", "is-unknown");
+    dot.classList.add(`is-${riskTone}`);
+  }
+  const titleNode = item.querySelector(".risk-assessment-job-tree-copy strong");
+  if (titleNode) {
+    titleNode.textContent = code ? `${code} ${title}` : title;
+  }
+  const levelNode = item.querySelector(".risk-assessment-job-tree-copy small");
+  if (levelNode) {
+    levelNode.textContent = riskLevel || "N/P";
+  }
+  item.classList.toggle("is-complete", complete);
+  const stateNode = item.querySelector(".risk-assessment-job-tree-state");
+  if (stateNode) {
+    stateNode.classList.toggle("is-done", complete);
+    stateNode.textContent = complete ? "✓" : "";
+    stateNode.setAttribute("aria-label", complete ? "Stavka popunjena" : "Nedovršeno");
+  }
+}
+
 function toggleRiskAssessmentRiskRowPurPoint(jobIndex, riskIndex, value = "", { rerender = true } = {}) {
   const current = riskAssessmentJobDrafts[jobIndex];
   if (!current || !value || !Number.isInteger(riskIndex) || riskIndex < 0) {
@@ -141237,6 +141277,7 @@ function handleRiskAssessmentJobsListInput(event) {
         counter.textContent = `${getRiskAssessmentTextareaCount(target.value)} / 1000`;
       }
     }
+    updateRiskAssessmentArmorExplorerVisualState(jobIndex, riskIndex);
     if (["probability", "consequence"].includes(field)) {
       updateRiskAssessmentRiskRowVisualState(jobIndex, riskIndex);
       renderRiskAssessmentJobTree();
@@ -141291,6 +141332,15 @@ function handleRiskAssessmentJobsListClick(event) {
 
   const jobIndex = getRiskAssessmentJobIndexFromElement(button);
   if (jobIndex < 0) {
+    return;
+  }
+
+  if (button.matches("[data-risk-row-select]")) {
+    event.preventDefault();
+    const riskIndex = Number(button.dataset.riskRowSelect);
+    if (setRiskAssessmentActiveRiskRowIndex(jobIndex, riskIndex)) {
+      renderRiskAssessmentJobs();
+    }
     return;
   }
 
@@ -141665,12 +141715,14 @@ function handleRiskAssessmentJobsListClick(event) {
 
   if (button.matches("[data-risk-row-add]")) {
     event.preventDefault();
+    const nextRiskRow = createRiskAssessmentRiskRowDraft();
     riskAssessmentJobDrafts[jobIndex] = {
       ...riskAssessmentJobDrafts[jobIndex],
       riskRows: [
         ...(riskAssessmentJobDrafts[jobIndex].riskRows ?? []),
-        createRiskAssessmentRiskRowDraft(),
+        nextRiskRow,
       ],
+      activeRiskRowId: nextRiskRow.id,
     };
     renderRiskAssessmentJobs();
     renderRiskAssessmentOverview();
@@ -141770,9 +141822,12 @@ function handleRiskAssessmentJobsListClick(event) {
     const riskIndex = Number(button.dataset.riskRowRemove);
     const riskRows = [...(riskAssessmentJobDrafts[jobIndex].riskRows ?? [])];
     riskRows.splice(riskIndex, 1);
+    const fallbackRiskRows = riskRows.length > 0 ? riskRows : [createRiskAssessmentRiskRowDraft()];
+    const nextActiveRisk = fallbackRiskRows[Math.min(riskIndex, fallbackRiskRows.length - 1)] || fallbackRiskRows[0];
     riskAssessmentJobDrafts[jobIndex] = {
       ...riskAssessmentJobDrafts[jobIndex],
-      riskRows: riskRows.length > 0 ? riskRows : [createRiskAssessmentRiskRowDraft()],
+      riskRows: fallbackRiskRows,
+      activeRiskRowId: nextActiveRisk?.id || "",
     };
     renderRiskAssessmentJobs();
     renderRiskAssessmentOverview();
@@ -141974,10 +142029,151 @@ function renderRiskAssessmentRiskPurPicker(risk = {}, riskIndex = 0) {
   `;
 }
 
+function getRiskAssessmentRiskRowDisplayTitle(risk = {}, index = 0) {
+  return String(risk.hazard || risk.group || risk.category || risk.code || `ARMOR stavka ${index + 1}`).trim();
+}
+
+function isRiskAssessmentRiskRowComplete(risk = {}) {
+  return Boolean(
+    String(risk.hazard || "").trim()
+    && String(risk.probability || "").trim()
+    && String(risk.consequence || "").trim()
+    && String(risk.existingMeasures || risk.measures || "").trim()
+  );
+}
+
+function getRiskAssessmentActiveRiskRowIndex(job = {}) {
+  const riskRows = job.riskRows ?? [];
+  if (!riskRows.length) {
+    return -1;
+  }
+  const activeId = String(job.activeRiskRowId || "");
+  if (activeId) {
+    const activeIndex = riskRows.findIndex((risk) => String(risk.id || "") === activeId);
+    if (activeIndex >= 0) {
+      return activeIndex;
+    }
+  }
+  return 0;
+}
+
+function setRiskAssessmentActiveRiskRowIndex(jobIndex, riskIndex) {
+  const job = riskAssessmentJobDrafts[jobIndex];
+  const risk = job?.riskRows?.[riskIndex];
+  if (!job || !risk) {
+    return false;
+  }
+  riskAssessmentJobDrafts[jobIndex] = {
+    ...job,
+    activeRiskRowId: String(risk.id || ""),
+  };
+  return true;
+}
+
+function getRiskAssessmentArmorTreeGroupLabels(risk = {}) {
+  const riskType = getRiskAssessmentRiskType(risk);
+  const topLabel = String(risk.topCategory || riskType.label || "ARMOR").trim();
+  const subLabel = String(risk.category || risk.group || "Stavke").trim();
+  return {
+    top: topLabel || "ARMOR",
+    sub: subLabel || "Stavke",
+  };
+}
+
+function renderRiskAssessmentArmorExplorer(item = {}, jobIndex = 0) {
+  const riskRows = item.riskRows ?? [];
+  const activeIndex = getRiskAssessmentActiveRiskRowIndex(item);
+  const sections = [];
+  const sectionMap = new Map();
+  riskRows.forEach((risk, riskIndex) => {
+    const labels = getRiskAssessmentArmorTreeGroupLabels(risk);
+    const sectionKey = labels.top;
+    let section = sectionMap.get(sectionKey);
+    if (!section) {
+      section = { label: labels.top, groups: [], groupMap: new Map() };
+      sectionMap.set(sectionKey, section);
+      sections.push(section);
+    }
+    let group = section.groupMap.get(labels.sub);
+    if (!group) {
+      group = { label: labels.sub, rows: [] };
+      section.groupMap.set(labels.sub, group);
+      section.groups.push(group);
+    }
+    group.rows.push({ risk, riskIndex });
+  });
+
+  return `
+    <section class="risk-assessment-armor-explorer">
+      <div class="risk-assessment-armor-explorer-head">
+        <strong>ARMOR explorer</strong>
+        <span>${escapeHtml(`${riskRows.length} stavki`)}</span>
+      </div>
+      <div class="risk-assessment-armor-tree-nodes">
+        ${sections.length ? sections.map((section) => `
+          <div class="risk-assessment-armor-tree-node is-folder" style="--unit-depth: 0">
+            <div class="risk-assessment-armor-tree-row">
+              <span class="risk-assessment-job-tree-icon" aria-hidden="true">${renderRiskAssessmentRiskIcon("activity")}</span>
+              <span class="risk-assessment-job-tree-copy">
+                <strong>${escapeHtml(section.label)}</strong>
+                <small>${escapeHtml(`${section.groups.reduce((sum, group) => sum + group.rows.length, 0)} stavki`)}</small>
+              </span>
+            </div>
+            <div class="risk-assessment-armor-tree-children">
+              ${section.groups.map((group) => `
+                <div class="risk-assessment-armor-tree-node is-folder" style="--unit-depth: 1">
+                  <div class="risk-assessment-armor-tree-row">
+                    <span class="risk-assessment-job-tree-icon" aria-hidden="true">${renderRiskAssessmentRiskIcon("note")}</span>
+                    <span class="risk-assessment-job-tree-copy">
+                      <strong>${escapeHtml(group.label)}</strong>
+                      <small>${escapeHtml(`${group.rows.length} stavki`)}</small>
+                    </span>
+                  </div>
+                  <div class="risk-assessment-armor-tree-children">
+                    ${group.rows.map(({ risk, riskIndex }) => {
+                      const riskLevel = getRiskAssessmentRiskDisplayLevel(risk);
+                      const riskTone = getRiskAssessmentRiskDisplayTone(risk);
+                      const complete = isRiskAssessmentRiskRowComplete(risk);
+                      const title = getRiskAssessmentRiskRowDisplayTitle(risk, riskIndex);
+                      const code = String(risk.code || "").trim();
+                      return `
+                        <div class="risk-assessment-armor-tree-node is-item ${riskIndex === activeIndex ? "is-active" : ""} ${complete ? "is-complete" : ""}" style="--unit-depth: 2">
+                          <button type="button" class="risk-assessment-armor-tree-row" data-risk-row-select="${escapeHtml(String(riskIndex))}" data-risk-job-index="${escapeHtml(String(jobIndex))}">
+                            <span class="risk-assessment-armor-risk-dot is-${escapeHtml(riskTone)}" aria-hidden="true"></span>
+                            <span class="risk-assessment-job-tree-copy">
+                              <strong>${escapeHtml(code ? `${code} ${title}` : title)}</strong>
+                              <small>${escapeHtml(riskLevel || "N/P")}</small>
+                            </span>
+                            <span class="risk-assessment-job-tree-state ${complete ? "is-done" : ""}" aria-label="${escapeHtml(complete ? "Stavka popunjena" : "Nedovršeno")}">${complete ? "✓" : ""}</span>
+                          </button>
+                        </div>
+                      `;
+                    }).join("")}
+                  </div>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+        `).join("") : `
+          <div class="risk-assessment-job-tree-empty">
+            <strong>Nema ARMOR stavki</strong>
+            <span>Dodaj stavku ili cijeli popis iz Priloga III.</span>
+          </div>
+        `}
+      </div>
+    </section>
+  `;
+}
+
 function renderRiskAssessmentRiskCards(item = {}) {
+  const riskRows = item.riskRows ?? [];
+  const activeIndex = getRiskAssessmentActiveRiskRowIndex(item);
+  const visibleRows = activeIndex >= 0 && riskRows[activeIndex]
+    ? [{ risk: riskRows[activeIndex], riskIndex: activeIndex }]
+    : [];
   return `
     <div class="risk-assessment-risk-cards">
-      ${(item.riskRows ?? []).map((risk, riskIndex) => {
+      ${visibleRows.length ? visibleRows.map(({ risk, riskIndex }) => {
         const riskLevel = getRiskAssessmentRiskDisplayLevel(risk);
         const riskTone = getRiskAssessmentRiskDisplayTone(risk);
         const riskShortLabel = getRiskAssessmentRiskShortLabel(riskLevel);
@@ -142066,7 +142262,12 @@ function renderRiskAssessmentRiskCards(item = {}) {
           </div>
         </article>
       `;
-      }).join("")}
+      }).join("") : `
+        <div class="risk-assessment-job-tree-empty">
+          <strong>Nema odabrane ARMOR stavke</strong>
+          <span>Odaberi stavku u exploreru ili dodaj novu.</span>
+        </div>
+      `}
     </div>
   `;
 }

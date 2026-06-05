@@ -63884,7 +63884,7 @@ body.is-risk-stl-review-open {
 
 .risk-assessment-armor-workbench {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(250px, 0.28fr) minmax(0, 1fr);
   gap: 12px;
   align-items: start;
   min-width: 0;
@@ -63893,10 +63893,132 @@ body.is-risk-stl-review-open {
 .risk-assessment-armor-sidebar {
   position: sticky;
   top: 12px;
+  display: grid;
+  gap: 8px;
   min-width: 0;
   max-height: min(760px, calc(100vh - 150px));
   overflow: auto;
   scrollbar-gutter: stable;
+}
+
+.risk-assessment-armor-explorer {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(191, 219, 254, 0.9);
+  border-radius: 14px;
+  background:
+    linear-gradient(135deg, rgba(248, 250, 252, 0.96), rgba(255, 255, 255, 0.94));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.88), 0 12px 28px rgba(15, 23, 42, 0.045);
+}
+
+.risk-assessment-armor-explorer-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.82);
+}
+
+.risk-assessment-armor-explorer-head strong {
+  overflow: hidden;
+  color: #172033;
+  font-size: 0.78rem;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.risk-assessment-armor-explorer-head span {
+  color: #64748b;
+  font-size: 0.64rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.risk-assessment-armor-tree-nodes,
+.risk-assessment-armor-tree-node,
+.risk-assessment-armor-tree-children {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.risk-assessment-armor-tree-children {
+  position: relative;
+}
+
+.risk-assessment-armor-tree-children::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 4px;
+  left: calc(18px + var(--unit-depth, 0) * 12px);
+  border-left: 1px solid rgba(203, 213, 225, 0.82);
+  pointer-events: none;
+}
+
+.risk-assessment-armor-tree-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 22px;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 7px 6px calc(7px + var(--unit-depth, 0) * 12px);
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: #0f172a;
+  font: inherit;
+  text-align: left;
+}
+
+button.risk-assessment-armor-tree-row {
+  cursor: pointer;
+}
+
+button.risk-assessment-armor-tree-row:hover,
+button.risk-assessment-armor-tree-row:focus-visible,
+.risk-assessment-armor-tree-node.is-active > button.risk-assessment-armor-tree-row {
+  border-color: rgba(37, 99, 235, 0.42);
+  background: rgba(239, 246, 255, 0.96);
+  outline: none;
+  box-shadow: inset 3px 0 0 rgba(37, 99, 235, 0.5);
+}
+
+.risk-assessment-armor-tree-node.is-complete > button.risk-assessment-armor-tree-row {
+  border-color: rgba(16, 185, 129, 0.34);
+  background: rgba(236, 253, 245, 0.7);
+}
+
+.risk-assessment-armor-risk-dot {
+  display: inline-grid;
+  width: 13px;
+  height: 13px;
+  place-self: center;
+  border-radius: 999px;
+  background: #94a3b8;
+  box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.12);
+}
+
+.risk-assessment-armor-risk-dot.is-low {
+  background: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.14);
+}
+
+.risk-assessment-armor-risk-dot.is-medium {
+  background: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15);
+}
+
+.risk-assessment-armor-risk-dot.is-high {
+  background: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.14);
 }
 
 .risk-assessment-armor-sidebar .risk-assessment-catalog-picker {
