@@ -133648,6 +133648,41 @@ function syncRiskAssessmentDocumentExportControls() {
   });
 }
 
+function getRiskAssessmentPdfLoadingPhases() {
+  return [
+    {
+      label: "Podaci",
+      detail: "Provjeravam podatke procjene",
+      progress: 10,
+    },
+    {
+      label: "Placeholderi",
+      detail: "Punim Word tokene podacima procjene",
+      progress: 28,
+    },
+    {
+      label: "Word",
+      detail: "Pripremam Word template za izvoz",
+      progress: 46,
+    },
+    {
+      label: "PDF engine",
+      detail: "Pretvaram procjenu u PDF",
+      progress: 74,
+    },
+    {
+      label: "Preuzimanje",
+      detail: "Pripremam PDF datoteku za preuzimanje",
+      progress: 92,
+    },
+    {
+      label: "Gotovo",
+      detail: "PDF procjene rizika je spreman",
+      progress: 100,
+    },
+  ];
+}
+
 async function exportRiskAssessmentDocument(format = "docx") {
   if (!state.riskAssessmentEditorOpen && !riskAssessmentIdInput?.value && !riskAssessmentCompanyInput?.value) {
     throw new Error("Otvori procjenu koju želiš izvesti pa generiraj DOCX ili PDF.");
@@ -133660,6 +133695,12 @@ async function exportRiskAssessmentDocument(format = "docx") {
     ? "/risk-assessments/export-pdf"
     : "/risk-assessments/export-word";
   const feedbackTarget = getRiskAssessmentExportFeedbackTarget();
+  const loading = safeFormat === "pdf"
+    ? createGlobalLoadingController({
+      message: "Izrađujem PDF procjene rizika...",
+      phases: getRiskAssessmentPdfLoadingPhases(),
+    })
+    : null;
 
   riskAssessmentWordExportBusy = true;
   setInlineMessage(
@@ -133669,15 +133710,21 @@ async function exportRiskAssessmentDocument(format = "docx") {
   );
   syncRiskAssessmentDocumentExportControls();
   try {
+    loading?.setPhase(1, { message: "Punim Word placeholdere podacima iz procjene..." });
+    const placeholders = buildRiskAssessmentExportPlaceholders();
+    loading?.setPhase(2, { message: "Pripremam Word template i raspored odjeljaka..." });
+    loading?.setPhase(3, { message: "PDF engine radi dokument, ovo može potrajati par sekundi..." });
     const response = await apiBinaryRequest(endpoint, {
       method: "POST",
       body: {
         templateDocument,
-        placeholders: buildRiskAssessmentExportPlaceholders(),
+        placeholders,
         fileName,
       },
     });
+    loading?.setPhase(4, { message: "PDF je izrađen, pripremam preuzimanje..." });
     triggerBlobDownload(response.blob, response.fileName || fileName);
+    loading?.complete({ message: "PDF procjene rizika je spreman." });
     setInlineMessage(
       feedbackTarget,
       `${safeFormat.toUpperCase()} procjene rizika je generiran.`,
@@ -133686,6 +133733,11 @@ async function exportRiskAssessmentDocument(format = "docx") {
   } finally {
     riskAssessmentWordExportBusy = false;
     syncRiskAssessmentDocumentExportControls();
+    if (loading) {
+      window.setTimeout(() => {
+        loading.close();
+      }, 340);
+    }
   }
 }
 
