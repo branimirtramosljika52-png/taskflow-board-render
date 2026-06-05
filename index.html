@@ -5307,17 +5307,26 @@
                         </div>
                         <div id="risk-assessment-job-catalog-stats" class="risk-assessment-job-catalog-stats" aria-live="polite"></div>
                       </div>
-                      <div class="risk-assessment-job-catalog-toolbar">
-                        <label class="risk-assessment-job-catalog-search">
-                          <span>Pretraga poslova</span>
-                          <input id="risk-assessment-job-catalog-search" type="search" placeholder="Naziv posla, opis, opasnost..." autocomplete="off" />
-                        </label>
-                        <select id="risk-assessment-job-catalog-select" class="sr-only" multiple size="5" aria-label="Jobs stavke"></select>
-                        <div class="risk-assessment-job-catalog-quick-actions">
-                          <button id="risk-assessment-job-catalog-select-visible" type="button" class="ghost-button">Odaberi prikazano</button>
-                          <button id="risk-assessment-job-catalog-clear" type="button" class="ghost-button">Očisti odabir</button>
+                      <details class="risk-assessment-job-catalog-dropdown">
+                        <summary>
+                          <span>Poslovi iz Jobs kataloga</span>
+                          <strong id="risk-assessment-job-catalog-dropdown-count">0 odabrano</strong>
+                        </summary>
+                        <div class="risk-assessment-job-catalog-dropdown-body">
+                          <div class="risk-assessment-job-catalog-toolbar">
+                            <label class="risk-assessment-job-catalog-search">
+                              <span>Pretraga poslova</span>
+                              <input id="risk-assessment-job-catalog-search" type="search" placeholder="Naziv posla, opis, opasnost..." autocomplete="off" />
+                            </label>
+                            <select id="risk-assessment-job-catalog-select" class="sr-only" multiple size="5" aria-label="Jobs stavke"></select>
+                            <div class="risk-assessment-job-catalog-quick-actions">
+                              <button id="risk-assessment-job-catalog-select-visible" type="button" class="ghost-button">Odaberi prikazano</button>
+                              <button id="risk-assessment-job-catalog-clear" type="button" class="ghost-button">Očisti odabir</button>
+                            </div>
+                          </div>
+                          <div id="risk-assessment-job-catalog-list" class="risk-assessment-job-catalog-list" aria-live="polite"></div>
                         </div>
-                      </div>
+                      </details>
                       <div class="risk-assessment-job-catalog-ai">
                         <label>
                           <span>Opis radnog mjesta za NexAI odabir poslova</span>
@@ -5329,7 +5338,6 @@
                         </div>
                         <p id="risk-assessment-job-catalog-ai-feedback" class="inline-help" aria-live="polite"></p>
                       </div>
-                      <div id="risk-assessment-job-catalog-list" class="risk-assessment-job-catalog-list" aria-live="polite"></div>
                       <div class="risk-assessment-job-import-actions">
                         <button id="risk-assessment-open-new-job" type="button" class="ghost-button">+ Novi posao u Jobs</button>
                         <button id="risk-assessment-import-jobs" type="button" class="primary-button">Dodaj u radno mjesto</button>

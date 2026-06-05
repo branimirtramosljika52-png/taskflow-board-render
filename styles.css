@@ -59587,6 +59587,54 @@ button.work-order-editor-section-head:focus-visible {
   align-items: end;
 }
 
+.risk-assessment-job-catalog-dropdown {
+  border: 1px solid rgba(191, 219, 254, 0.86);
+  border-radius: 14px;
+  background: rgba(248, 251, 255, 0.88);
+  overflow: hidden;
+}
+
+.risk-assessment-job-catalog-dropdown > summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-height: 42px;
+  padding: 8px 10px;
+  color: #172033;
+  cursor: pointer;
+  list-style: none;
+}
+
+.risk-assessment-job-catalog-dropdown > summary::-webkit-details-marker {
+  display: none;
+}
+
+.risk-assessment-job-catalog-dropdown > summary span {
+  font-size: 0.82rem;
+  font-weight: 920;
+}
+
+.risk-assessment-job-catalog-dropdown > summary strong {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  padding: 4px 8px;
+  border: 1px solid rgba(191, 219, 254, 0.8);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #2563eb;
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.risk-assessment-job-catalog-dropdown-body {
+  display: grid;
+  gap: 9px;
+  padding: 0 10px 10px;
+  border-top: 1px solid rgba(219, 234, 254, 0.86);
+}
+
 .risk-assessment-job-catalog-search {
   display: grid;
   gap: 6px;
@@ -59633,9 +59681,9 @@ button.work-order-editor-section-head:focus-visible {
 .risk-assessment-job-catalog-ai {
   display: grid;
   grid-template-columns: minmax(280px, 1fr) auto;
-  gap: 12px;
+  gap: 10px;
   align-items: end;
-  padding: 12px;
+  padding: 10px;
   border: 1px solid rgba(191, 219, 254, 0.82);
   border-radius: 16px;
   background:
@@ -59657,8 +59705,8 @@ button.work-order-editor-section-head:focus-visible {
 }
 
 .risk-assessment-job-catalog-ai textarea {
-  min-height: 78px;
-  padding: 10px 12px;
+  min-height: 52px;
+  padding: 8px 10px;
   border: 1px solid rgba(147, 197, 253, 0.88);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.94);
@@ -59677,8 +59725,8 @@ button.work-order-editor-section-head:focus-visible {
 
 .risk-assessment-job-catalog-ai-actions {
   display: grid;
-  gap: 8px;
-  min-width: 190px;
+  gap: 7px;
+  min-width: 170px;
 }
 
 .risk-assessment-job-catalog-ai-actions .ghost-button,
@@ -59694,9 +59742,9 @@ button.work-order-editor-section-head:focus-visible {
 
 .risk-assessment-job-catalog-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 10px;
-  max-height: 340px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  max-height: 190px;
   overflow: auto;
   padding: 2px 4px 4px 2px;
   scrollbar-gutter: stable;
@@ -59704,14 +59752,14 @@ button.work-order-editor-section-head:focus-visible {
 
 .risk-assessment-job-catalog-card {
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr);
-  gap: 11px;
-  align-items: start;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
   min-width: 0;
-  min-height: 132px;
-  padding: 12px;
+  min-height: 58px;
+  padding: 8px;
   border: 1px solid rgba(226, 232, 240, 0.94);
-  border-radius: 14px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.88);
   color: #0f172a;
   font: inherit;
@@ -59752,10 +59800,10 @@ button.work-order-editor-section-head:focus-visible {
 .risk-assessment-job-catalog-check {
   display: inline-grid;
   place-items: center;
-  width: 38px;
-  height: 38px;
+  width: 30px;
+  height: 30px;
   border: 1px solid rgba(191, 219, 254, 0.74);
-  border-radius: 12px;
+  border-radius: 9px;
   background: rgba(239, 246, 255, 0.92);
   color: #2563eb;
 }
@@ -59767,13 +59815,13 @@ button.work-order-editor-section-head:focus-visible {
 }
 
 .risk-assessment-job-catalog-check .risk-assessment-risk-icon {
-  width: 18px;
-  height: 18px;
+  width: 15px;
+  height: 15px;
 }
 
 .risk-assessment-job-catalog-main {
   display: grid;
-  gap: 7px;
+  gap: 5px;
   min-width: 0;
 }
 
@@ -59788,7 +59836,7 @@ button.work-order-editor-section-head:focus-visible {
 .risk-assessment-job-catalog-title-row strong {
   overflow: hidden;
   color: #0f172a;
-  font-size: 0.92rem;
+  font-size: 0.8rem;
   font-weight: 950;
   line-height: 1.2;
   text-overflow: ellipsis;
@@ -59798,13 +59846,13 @@ button.work-order-editor-section-head:focus-visible {
 .risk-assessment-job-catalog-title-row em {
   display: inline-flex;
   align-items: center;
-  min-height: 22px;
-  padding: 4px 8px;
+  min-height: 20px;
+  padding: 3px 6px;
   border: 1px solid rgba(203, 213, 225, 0.84);
   border-radius: 999px;
   background: rgba(248, 250, 252, 0.92);
   color: #475569;
-  font-size: 0.66rem;
+  font-size: 0.62rem;
   font-style: normal;
   font-weight: 900;
   white-space: nowrap;
@@ -59832,10 +59880,10 @@ button.work-order-editor-section-head:focus-visible {
 .risk-assessment-job-catalog-hazards small {
   display: inline-flex;
   align-items: center;
-  min-height: 22px;
-  padding: 4px 7px;
+  min-height: 20px;
+  padding: 3px 6px;
   border-radius: 999px;
-  font-size: 0.66rem;
+  font-size: 0.62rem;
   font-weight: 900;
   line-height: 1;
 }
@@ -59925,26 +59973,28 @@ button.work-order-editor-section-head:focus-visible {
 
 .risk-assessment-job-analysis-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(260px, 0.28fr) minmax(0, 1fr);
   gap: 12px;
   align-items: start;
 }
 
 .risk-assessment-job-analysis-shell.is-armor-focus {
-  grid-template-columns: minmax(320px, 0.34fr) minmax(0, 1fr);
+  grid-template-columns: minmax(260px, 0.28fr) minmax(0, 1fr);
 }
 
 .risk-assessment-job-tree {
   position: sticky;
   top: 10px;
-  display: none;
+  display: grid;
   gap: 8px;
   max-height: min(72vh, 760px);
   overflow: auto;
-  padding: 10px;
-  border: 1px solid rgba(203, 213, 225, 0.86);
-  border-radius: 10px;
-  background: rgba(248, 250, 252, 0.92);
+  padding: 12px;
+  border: 1px solid rgba(191, 219, 254, 0.9);
+  border-radius: 14px;
+  background:
+    linear-gradient(135deg, rgba(248, 250, 252, 0.96), rgba(255, 255, 255, 0.94));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.88), 0 12px 28px rgba(15, 23, 42, 0.045);
 }
 
 .risk-assessment-job-analysis-shell.is-armor-focus .risk-assessment-job-tree {
@@ -60111,6 +60161,147 @@ button.work-order-editor-section-head:focus-visible {
   font-weight: 760;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.risk-assessment-job-tree-nodes {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.risk-assessment-job-tree-node {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.risk-assessment-job-tree-node.is-folder > .risk-assessment-job-tree-row {
+  color: #475569;
+  cursor: default;
+}
+
+.risk-assessment-job-tree-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 22px;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 7px 6px calc(7px + var(--unit-depth, 0) * 12px);
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: #0f172a;
+  font: inherit;
+  text-align: left;
+}
+
+button.risk-assessment-job-tree-row {
+  cursor: pointer;
+}
+
+button.risk-assessment-job-tree-row:hover,
+button.risk-assessment-job-tree-row:focus-visible,
+.risk-assessment-job-tree-node.is-active > button.risk-assessment-job-tree-row {
+  border-color: rgba(37, 99, 235, 0.42);
+  background: rgba(239, 246, 255, 0.96);
+  outline: none;
+  box-shadow: inset 3px 0 0 rgba(37, 99, 235, 0.5);
+}
+
+.risk-assessment-job-tree-node.is-complete > button.risk-assessment-job-tree-row {
+  border-color: rgba(16, 185, 129, 0.34);
+  background: rgba(236, 253, 245, 0.7);
+}
+
+.risk-assessment-job-tree-node.is-active.is-complete > button.risk-assessment-job-tree-row {
+  border-color: rgba(16, 185, 129, 0.52);
+  box-shadow: inset 3px 0 0 rgba(16, 185, 129, 0.66);
+}
+
+.risk-assessment-job-tree-icon {
+  display: inline-grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 7px;
+  background: rgba(226, 232, 240, 0.76);
+  color: #475569;
+}
+
+.risk-assessment-job-tree-node.is-workplace .risk-assessment-job-tree-icon {
+  background: rgba(219, 234, 254, 0.9);
+  color: #2563eb;
+}
+
+.risk-assessment-job-tree-node.is-complete .risk-assessment-job-tree-icon {
+  background: rgba(209, 250, 229, 0.96);
+  color: #059669;
+}
+
+.risk-assessment-job-tree-icon .risk-assessment-risk-icon {
+  width: 13px;
+  height: 13px;
+}
+
+.risk-assessment-job-tree-copy {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.risk-assessment-job-tree-copy strong,
+.risk-assessment-job-tree-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.risk-assessment-job-tree-copy strong {
+  color: #172033;
+  font-size: 0.74rem;
+  font-weight: 900;
+}
+
+.risk-assessment-job-tree-copy small {
+  color: #64748b;
+  font-size: 0.62rem;
+  font-weight: 780;
+}
+
+.risk-assessment-job-tree-state {
+  display: inline-grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border: 1px solid rgba(203, 213, 225, 0.82);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #ffffff;
+  font-size: 0.62rem;
+  font-weight: 950;
+}
+
+.risk-assessment-job-tree-state.is-done {
+  border-color: rgba(16, 185, 129, 0.34);
+  background: #10b981;
+}
+
+.risk-assessment-job-tree-children {
+  position: relative;
+  display: grid;
+  gap: 2px;
+}
+
+.risk-assessment-job-tree-children::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 4px;
+  left: calc(18px + var(--unit-depth, 0) * 12px);
+  border-left: 1px solid rgba(203, 213, 225, 0.82);
+  pointer-events: none;
 }
 
 .risk-assessment-job-tree .risk-assessment-catalog-picker {
@@ -63497,6 +63688,39 @@ body.is-risk-stl-review-open {
   resize: vertical;
 }
 
+.risk-assessment-required-field {
+  position: relative;
+  padding: 7px;
+  border: 1px solid rgba(251, 191, 36, 0.42);
+  border-radius: 12px;
+  background: rgba(255, 251, 235, 0.52);
+}
+
+.risk-assessment-required-field.is-filled {
+  border-color: rgba(16, 185, 129, 0.34);
+  background: rgba(236, 253, 245, 0.48);
+}
+
+.risk-assessment-required-field > span::after {
+  content: "obavezno";
+  display: inline-flex;
+  margin-left: 6px;
+  padding: 2px 5px;
+  border-radius: 999px;
+  background: rgba(251, 191, 36, 0.18);
+  color: #92400e;
+  font-size: 0.56rem;
+  font-weight: 950;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.risk-assessment-required-field.is-filled > span::after {
+  content: "OK";
+  background: rgba(16, 185, 129, 0.14);
+  color: #047857;
+}
+
 .risk-assessment-short-description-field textarea {
   min-height: 54px;
   border-color: rgba(191, 219, 254, 0.92);
@@ -63557,25 +63781,29 @@ body.is-risk-stl-review-open {
   gap: 10px;
   padding: 11px;
   border: 1px solid rgba(203, 213, 225, 0.68);
+  border-left-width: 4px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.9);
-  box-shadow: none;
+  box-shadow: 0 12px 26px rgba(15, 23, 42, 0.045);
 }
 
 .risk-assessment-job-profile-card.is-basic {
   border-color: rgba(148, 163, 184, 0.42);
+  border-left-color: #64748b;
   background:
     linear-gradient(135deg, rgba(248, 250, 252, 0.92), rgba(255, 255, 255, 0.96));
 }
 
 .risk-assessment-job-profile-card.is-referral {
   border-color: rgba(250, 204, 21, 0.42);
+  border-left-color: #facc15;
   background:
     linear-gradient(135deg, rgba(255, 251, 235, 0.82), rgba(255, 255, 255, 0.92));
 }
 
 .risk-assessment-job-profile-card.is-uputnica {
   border-color: rgba(37, 99, 235, 0.26);
+  border-left-color: #2563eb;
   background:
     linear-gradient(135deg, rgba(239, 246, 255, 0.9), rgba(255, 255, 255, 0.96));
   box-shadow: none;
@@ -63583,6 +63811,7 @@ body.is-risk-stl-review-open {
 
 .risk-assessment-job-profile-card.is-resources {
   border-color: rgba(16, 185, 129, 0.26);
+  border-left-color: #10b981;
   background:
     linear-gradient(135deg, rgba(240, 253, 250, 0.78), rgba(255, 255, 255, 0.96));
   box-shadow: none;
@@ -63590,6 +63819,7 @@ body.is-risk-stl-review-open {
 
 .risk-assessment-job-profile-card.is-ppe {
   border-color: rgba(14, 165, 233, 0.32);
+  border-left-color: #0ea5e9;
   background:
     linear-gradient(135deg, rgba(240, 249, 255, 0.86), rgba(255, 255, 255, 0.96));
   box-shadow: none;
@@ -63597,6 +63827,7 @@ body.is-risk-stl-review-open {
 
 .risk-assessment-job-profile-card.is-psychosocial {
   border-color: rgba(124, 58, 237, 0.3);
+  border-left-color: #7c3aed;
   background:
     linear-gradient(135deg, rgba(245, 243, 255, 0.84), rgba(255, 255, 255, 0.96));
   box-shadow: none;
@@ -63604,6 +63835,7 @@ body.is-risk-stl-review-open {
 
 .risk-assessment-job-profile-card.is-armor {
   border-color: rgba(244, 63, 94, 0.3);
+  border-left-color: #f43f5e;
   background:
     linear-gradient(135deg, rgba(255, 241, 242, 0.7), rgba(255, 255, 255, 0.96));
   box-shadow: none;
