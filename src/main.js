@@ -6405,6 +6405,7 @@ const riskAssessmentClientJobInputEnabledInput = document.querySelector("#risk-a
 const riskAssessmentError = document.querySelector("#risk-assessment-error");
 const riskAssessmentExportStatus = document.querySelector("#risk-assessment-export-status");
 const riskAssessmentAutosaveStatus = document.querySelector("#risk-assessment-autosave-status");
+const riskAssessmentSaveButton = document.querySelector("#risk-assessment-save");
 const riskAssessmentResetButton = document.querySelector("#risk-assessment-reset");
 const riskAssessmentDeleteButton = document.querySelector("#risk-assessment-delete");
 const riskAssessmentExportDocxButton = document.querySelector("#risk-assessment-export-docx");
@@ -6445,6 +6446,7 @@ let riskAssessmentDraftAutosaveTimer = null;
 let riskAssessmentServerAutosaveTimer = null;
 let riskAssessmentServerAutosaveBusy = false;
 let riskAssessmentServerAutosaveQueued = false;
+let riskAssessmentServerAutosaveDirty = false;
 let riskAssessmentServerAutosaveSignature = "";
 let riskAssessmentServerAutosaveRetryTimer = null;
 let riskAssessmentServerAutosaveRetryCount = 0;
@@ -6453,6 +6455,7 @@ let riskAssessmentActiveRichEditorKey = "";
 let riskAssessmentActiveJobIndex = 0;
 let riskAssessmentRichEditorSelection = null;
 let riskAssessmentJobAnalysisScrollFrame = 0;
+const RISK_ASSESSMENT_AUTOSAVE_DELAY_MS = 10 * 60 * 1000;
 const RISK_ASSESSMENT_RICH_FIELD_KEYS = Object.freeze([
   "intro",
   "process",
@@ -120498,6 +120501,7 @@ riskAssessmentOrganizationUnitsList?.addEventListener("drop", handleRiskAssessme
 riskAssessmentJobsList?.addEventListener("input", handleRiskAssessmentJobsListInput);
 riskAssessmentJobsList?.addEventListener("change", handleRiskAssessmentJobsListInput);
 riskAssessmentJobsList?.addEventListener("click", handleRiskAssessmentJobsListClick);
+riskAssessmentJobsList?.addEventListener("keydown", handleRiskAssessmentJobsListKeydown);
 riskAssessmentJobsList?.addEventListener("dragstart", handleRiskAssessmentJobsDragStart);
 riskAssessmentEditorBody?.addEventListener("scroll", scheduleRiskAssessmentJobAnalysisShellModeUpdate, { passive: true });
 window.addEventListener("resize", scheduleRiskAssessmentJobAnalysisShellModeUpdate);
@@ -120604,7 +120608,7 @@ riskAssessmentDeleteButton?.addEventListener("click", () => {
 
 riskAssessmentForm?.addEventListener("submit", (event) => {
   event.preventDefault();
-  void saveRiskAssessmentEditorAutosave();
+  void saveRiskAssessmentEditorAutosave({ manual: true });
 });
 
 learningTestOpenFormButton?.addEventListener("click", () => {
@@ -128457,7 +128461,7 @@ async function importRiskAssessmentChemicalStlFile() {
   } finally {
     riskAssessmentChemicalImportBusy = false;
     if (riskAssessmentServerAutosaveQueued) {
-      scheduleRiskAssessmentServerAutosave({ immediate: true });
+      scheduleRiskAssessmentServerAutosave({ immediate: false });
     }
     if (riskAssessmentChemicalStlButton) {
       riskAssessmentChemicalStlButton.disabled = false;
@@ -136271,7 +136275,7 @@ function setRiskAssessmentAutosaveStatus(message = "", tone = "idle") {
   if (!riskAssessmentAutosaveStatus) {
     return;
   }
-  riskAssessmentAutosaveStatus.textContent = message || "Automatsko spremanje spremno.";
+  riskAssessmentAutosaveStatus.textContent = message || "Automatsko spremanje svakih 10 min.";
   riskAssessmentAutosaveStatus.dataset.tone = tone || "idle";
 }
 
@@ -136368,13 +136372,23 @@ function scheduleRiskAssessmentServerAutosave({ immediate = false } = {}) {
     riskAssessmentServerAutosaveQueued = true;
     return;
   }
-  window.clearTimeout(riskAssessmentServerAutosaveTimer);
+  if (!immediate && !riskAssessmentServerAutosaveDirty) {
+    return;
+  }
+  if (!immediate && riskAssessmentServerAutosaveTimer) {
+    return;
+  }
+  if (immediate && riskAssessmentServerAutosaveTimer) {
+    window.clearTimeout(riskAssessmentServerAutosaveTimer);
+    riskAssessmentServerAutosaveTimer = null;
+  }
   riskAssessmentServerAutosaveTimer = window.setTimeout(() => {
-    void saveRiskAssessmentEditorAutosave();
-  }, immediate ? 0 : 1200);
+    riskAssessmentServerAutosaveTimer = null;
+    void saveRiskAssessmentEditorAutosave({ manual: false });
+  }, immediate ? 0 : RISK_ASSESSMENT_AUTOSAVE_DELAY_MS);
 }
 
-async function saveRiskAssessmentEditorAutosave() {
+async function saveRiskAssessmentEditorAutosave({ manual = false } = {}) {
   if (!riskAssessmentForm || !state.riskAssessmentEditorOpen || !getCanAutosaveRiskAssessmentToServer()) {
     return false;
   }
@@ -136398,12 +136412,24 @@ async function saveRiskAssessmentEditorAutosave() {
 
   const signature = JSON.stringify({ id, payload });
   if (signature === riskAssessmentServerAutosaveSignature) {
+    riskAssessmentServerAutosaveDirty = false;
+    if (riskAssessmentServerAutosaveTimer) {
+      window.clearTimeout(riskAssessmentServerAutosaveTimer);
+      riskAssessmentServerAutosaveTimer = null;
+    }
+    if (manual) {
+      setRiskAssessmentAutosaveStatus("Nema novih promjena za spremanje.", "saved");
+    }
     return true;
   }
 
   riskAssessmentServerAutosaveBusy = true;
   riskAssessmentServerAutosaveQueued = false;
   setRiskAssessmentAutosaveStatus("Spremam promjene...", "saving");
+  if (riskAssessmentSaveButton) {
+    riskAssessmentSaveButton.disabled = true;
+    riskAssessmentSaveButton.textContent = "Spremam...";
+  }
   try {
     const responsePayload = await apiRequest(id ? `/risk-assessments/${encodeURIComponent(id)}` : "/risk-assessments", {
       method: id ? "PATCH" : "POST",
@@ -136433,6 +136459,7 @@ async function saveRiskAssessmentEditorAutosave() {
       id: riskAssessmentIdInput?.value || id,
       payload: buildRiskAssessmentPayload(),
     });
+    riskAssessmentServerAutosaveDirty = false;
     clearRiskAssessmentDraftAutosave({ preserveStatus: true, clearServer: false });
     clearRiskAssessmentServerAutosaveRetry();
     renderRiskAssessmentModule();
@@ -136454,8 +136481,12 @@ async function saveRiskAssessmentEditorAutosave() {
     return false;
   } finally {
     riskAssessmentServerAutosaveBusy = false;
+    if (riskAssessmentSaveButton) {
+      riskAssessmentSaveButton.textContent = "Spremi";
+      riskAssessmentSaveButton.disabled = !getCanAutosaveRiskAssessmentToServer();
+    }
     if (riskAssessmentServerAutosaveQueued && !riskAssessmentServerAutosaveRetryTimer) {
-      scheduleRiskAssessmentServerAutosave({ immediate: true });
+      scheduleRiskAssessmentServerAutosave({ immediate: false });
     }
   }
 }
@@ -136464,8 +136495,14 @@ function scheduleRiskAssessmentDraftAutosave() {
   if (!riskAssessmentForm || !(getCanManageRiskAssessments() || isClientPortalUser(state.user))) {
     return;
   }
-  window.clearTimeout(riskAssessmentDraftAutosaveTimer);
+  riskAssessmentServerAutosaveDirty = true;
+  setRiskAssessmentAutosaveStatus("Nespremljene promjene. Automatski za 10 min ili klikni Spremi.", "warning");
+  if (riskAssessmentDraftAutosaveTimer) {
+    scheduleRiskAssessmentServerAutosave();
+    return;
+  }
   riskAssessmentDraftAutosaveTimer = window.setTimeout(() => {
+    riskAssessmentDraftAutosaveTimer = null;
     try {
       const id = riskAssessmentIdInput?.value || "new";
       const key = getRiskAssessmentDraftAutosaveKey(id);
@@ -136476,15 +136513,18 @@ function scheduleRiskAssessmentDraftAutosave() {
     } catch {
       // Autosave is a convenience; failed local storage must not block editing.
     }
-  }, 700);
+  }, RISK_ASSESSMENT_AUTOSAVE_DELAY_MS);
   scheduleRiskAssessmentServerAutosave();
 }
 
 function clearRiskAssessmentDraftAutosave({ preserveStatus = false, clearServer = true } = {}) {
   window.clearTimeout(riskAssessmentDraftAutosaveTimer);
+  riskAssessmentDraftAutosaveTimer = null;
   if (clearServer) {
     window.clearTimeout(riskAssessmentServerAutosaveTimer);
+    riskAssessmentServerAutosaveTimer = null;
     riskAssessmentServerAutosaveQueued = false;
+    riskAssessmentServerAutosaveDirty = false;
   }
   try {
     const id = riskAssessmentIdInput?.value || "new";
@@ -136496,7 +136536,7 @@ function clearRiskAssessmentDraftAutosave({ preserveStatus = false, clearServer 
   if (!preserveStatus) {
     riskAssessmentServerAutosaveSignature = "";
     clearRiskAssessmentServerAutosaveRetry();
-    setRiskAssessmentAutosaveStatus("Automatsko spremanje spremno.", "idle");
+    setRiskAssessmentAutosaveStatus("Automatsko spremanje svakih 10 min.", "idle");
   }
 }
 
@@ -138862,6 +138902,7 @@ function createRiskAssessmentJobDraft(initial = {}) {
     ppeFilter: String(initial.ppeFilter || "all"),
     aiProposal: initial.aiProposal || null,
     hiddenBlocks: uniqueJobValues(initial.hiddenBlocks ?? []),
+    collapsed: Boolean(initial.collapsed),
     clientInput: createRiskAssessmentClientJobInputDraft(initial.clientInput || {}),
     eligibility: createRiskAssessmentEligibilityDraft(initial.eligibility || {}),
     riskRows: sortedRiskRows.length > 0 ? sortedRiskRows : [createRiskAssessmentRiskRowDraft()],
@@ -139570,6 +139611,11 @@ function syncRiskAssessmentEditorAccess() {
 
     control.disabled = !canManage;
   });
+  if (riskAssessmentSaveButton) {
+    riskAssessmentSaveButton.hidden = !(canManage || canComment);
+    riskAssessmentSaveButton.disabled = !getCanAutosaveRiskAssessmentToServer() || riskAssessmentServerAutosaveBusy;
+    riskAssessmentSaveButton.textContent = riskAssessmentServerAutosaveBusy ? "Spremam..." : "Spremi";
+  }
   if (riskAssessmentResetButton) {
     riskAssessmentResetButton.hidden = !canManage;
   }
@@ -141031,6 +141077,35 @@ function handleRiskAssessmentJobsListInput(event) {
 
 function handleRiskAssessmentJobsListClick(event) {
   const button = event.target?.closest?.("button");
+  if (button?.matches?.("[data-risk-jobs-collapse]")) {
+    event.preventDefault();
+    const collapse = button.dataset.riskJobsCollapse === "collapse";
+    riskAssessmentJobDrafts = riskAssessmentJobDrafts.map((job) => ({
+      ...job,
+      collapsed: collapse,
+    }));
+    renderRiskAssessmentJobs();
+    scheduleRiskAssessmentDraftAutosave();
+    return;
+  }
+
+  const toggleTarget = event.target?.closest?.("[data-risk-job-toggle-head]")
+    || event.target?.closest?.(".risk-assessment-repeat-row.is-job.is-collapsed");
+  if (!button && toggleTarget) {
+    const jobIndex = getRiskAssessmentJobIndexFromElement(toggleTarget);
+    const current = riskAssessmentJobDrafts[jobIndex];
+    if (current) {
+      riskAssessmentJobDrafts[jobIndex] = {
+        ...current,
+        collapsed: !current.collapsed,
+      };
+      setRiskAssessmentActiveJobIndex(jobIndex);
+      renderRiskAssessmentJobs();
+      scheduleRiskAssessmentDraftAutosave();
+    }
+    return;
+  }
+
   if (!(button instanceof HTMLButtonElement)) {
     return;
   }
@@ -141522,6 +141597,32 @@ function handleRiskAssessmentJobsListClick(event) {
   }
 }
 
+function handleRiskAssessmentJobsListKeydown(event) {
+  if (!["Enter", " "].includes(event.key)) {
+    return;
+  }
+  if (event.target?.closest?.("button, input, select, textarea")) {
+    return;
+  }
+  const toggleHead = event.target?.closest?.("[data-risk-job-toggle-head]");
+  if (!toggleHead) {
+    return;
+  }
+  const jobIndex = getRiskAssessmentJobIndexFromElement(toggleHead);
+  const current = riskAssessmentJobDrafts[jobIndex];
+  if (!current) {
+    return;
+  }
+  event.preventDefault();
+  riskAssessmentJobDrafts[jobIndex] = {
+    ...current,
+    collapsed: !current.collapsed,
+  };
+  setRiskAssessmentActiveJobIndex(jobIndex);
+  renderRiskAssessmentJobs();
+  scheduleRiskAssessmentDraftAutosave();
+}
+
 function handleRiskAssessmentJobsDragStart(event) {
   const row = event.target?.closest?.("[data-risk-job-index]");
   if (!row || !event.dataTransfer) {
@@ -141964,7 +142065,21 @@ function renderRiskAssessmentJobs() {
     riskRows: sortRiskAssessmentRiskRowsByPrilogOrder(job.riskRows ?? []),
   }));
 
-  riskAssessmentJobsList.replaceChildren(...riskAssessmentJobDrafts.map((item, index) => {
+  const collapsedCount = riskAssessmentJobDrafts.filter((job) => job.collapsed).length;
+  const toolbar = document.createElement("div");
+  toolbar.className = "risk-assessment-jobs-collapse-toolbar";
+  toolbar.innerHTML = `
+    <div>
+      <strong>Radna mjesta</strong>
+      <span>${escapeHtml(`${riskAssessmentJobDrafts.length} ukupno · ${collapsedCount} sažeto`)}</span>
+    </div>
+    <div>
+      <button type="button" class="ghost-button" data-risk-jobs-collapse="collapse">Sažmi sva</button>
+      <button type="button" class="ghost-button" data-risk-jobs-collapse="expand">Prikaži sva</button>
+    </div>
+  `;
+
+  riskAssessmentJobsList.replaceChildren(toolbar, ...riskAssessmentJobDrafts.map((item, index) => {
     const row = document.createElement("div");
     row.className = "risk-assessment-repeat-row is-job";
     row.dataset.riskJobIndex = String(index);
@@ -141980,9 +142095,11 @@ function renderRiskAssessmentJobs() {
     const showClientInput = (isClientPortalActor && clientJobInputEnabled)
       || (!isClientPortalActor && hasRiskAssessmentClientJobInput(item.clientInput));
     const showClientLockedNotice = isClientPortalActor && !clientJobInputEnabled;
+    const isCollapsed = Boolean(item.collapsed);
     row.classList.toggle("is-required-complete", requiredComplete);
+    row.classList.toggle("is-collapsed", isCollapsed);
     row.innerHTML = `
-      <div class="risk-assessment-job-head">
+      <div class="risk-assessment-job-head" data-risk-job-toggle-head role="button" tabindex="0" aria-expanded="${isCollapsed ? "false" : "true"}" title="${escapeHtml(isCollapsed ? "Klikni za prikaz detalja radnog mjesta" : "Klikni za sažimanje radnog mjesta")}">
         <div>
           <span class="section-kicker">${escapeHtml(getRiskAssessmentUnitName(item.organizationUnitId) || "Bez jedinice")}</span>
           <div class="risk-assessment-job-title-row">
@@ -141992,17 +142109,26 @@ function renderRiskAssessmentJobs() {
           <small>${escapeHtml(`${status.label} · ${completion}% popunjeno · ${riskCount} ARMOR stavki`)}</small>
         </div>
         <div class="risk-assessment-job-tools">
+          <span class="risk-assessment-job-collapse-marker" aria-hidden="true">${isCollapsed ? "+" : "&minus;"}</span>
           <button type="button" class="ghost-button" data-risk-job-copy="${index}">Kopiraj</button>
           <button type="button" class="ghost-button card-danger" data-risk-job-remove="${index}">Ukloni</button>
         </div>
       </div>
 
-      ${renderRiskAssessmentJobAiProposal(item, index)}
+      ${isCollapsed ? `
+        <div class="risk-assessment-job-collapsed-summary">
+          <span>${escapeHtml(getRiskAssessmentUnitPath(riskAssessmentOrganizationUnitDrafts.find((unit) => String(unit.id || "") === String(item.organizationUnitId || "")) || {}) || "Bez organizacijske jedinice")}</span>
+          <span>${escapeHtml(item.workerCount || "Bez broja radnika")}</span>
+          <span>${escapeHtml(`${riskCount} ARMOR stavki`)}</span>
+        </div>
+      ` : `
+        ${renderRiskAssessmentJobAiProposal(item, index)}
 
-      ${hiddenBlocks.has("profile") ? "" : renderRiskAssessmentJobProfile(item, index)}
+        ${hiddenBlocks.has("profile") ? "" : renderRiskAssessmentJobProfile(item, index)}
 
-      ${showClientInput ? renderRiskAssessmentClientPortalJobInput(item, index) : ""}
-      ${showClientLockedNotice ? renderRiskAssessmentClientPortalLockedNotice() : ""}
+        ${showClientInput ? renderRiskAssessmentClientPortalJobInput(item, index) : ""}
+        ${showClientLockedNotice ? renderRiskAssessmentClientPortalLockedNotice() : ""}
+      `}
     `;
     return row;
   }));
