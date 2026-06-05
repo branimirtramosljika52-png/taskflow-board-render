@@ -6439,6 +6439,7 @@ let riskAssessmentTemplatePersistTimerId = null;
 let riskAssessmentTemplatePersistInFlight = false;
 let riskAssessmentTemplatePersistPending = false;
 let riskAssessmentJobCatalogAiSuggestions = [];
+let riskAssessmentOpenOrganizationUnitIds = new Set();
 let riskAssessmentWordExportBusy = false;
 let riskAssessmentDraftAutosaveTimer = null;
 let riskAssessmentServerAutosaveTimer = null;
@@ -120221,6 +120222,23 @@ riskAssessmentJobCatalogAiSuggestButton?.addEventListener("click", (event) => {
   runRiskAssessmentJobCatalogAiSelection();
 });
 
+riskAssessmentJobCatalogAiDescriptionInput?.addEventListener("input", () => {
+  const activeIndex = getRiskAssessmentActiveJobIndex();
+  const activeJob = activeIndex >= 0 ? riskAssessmentJobDrafts[activeIndex] : null;
+  if (!activeJob) {
+    return;
+  }
+  const description = String(riskAssessmentJobCatalogAiDescriptionInput.value || "");
+  riskAssessmentJobDrafts[activeIndex] = {
+    ...activeJob,
+    description,
+    shortDescription: activeJob.shortDescription || compactJobContextText(description, 220),
+  };
+  renderRiskAssessmentJobTree();
+  renderRiskAssessmentOverview();
+  scheduleRiskAssessmentDraftAutosave();
+});
+
 riskAssessmentJobCatalogAiImportButton?.addEventListener("click", (event) => {
   event.preventDefault();
   runRiskAssessmentJobCatalogAiSelection({ importNow: true });
@@ -120500,6 +120518,7 @@ riskAssessmentJobTree?.addEventListener("click", (event) => {
     }
     setRiskAssessmentActiveJobIndex(index);
     renderRiskAssessmentJobTree();
+    syncRiskAssessmentJobCatalogAiDescriptionFromActiveJob({ force: true });
     const row = riskAssessmentJobsList?.querySelector(`[data-risk-job-index="${index}"]`);
     if (row instanceof HTMLElement) {
       row.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -126568,6 +126587,8 @@ function resetRiskAssessmentForm() {
   riskAssessmentMeasureDrafts = [];
   riskAssessmentOrganizationUnitDrafts = [];
   riskAssessmentJobDrafts = [];
+  riskAssessmentOpenOrganizationUnitIds = new Set();
+  riskAssessmentJobCatalogAiSuggestions = [];
   riskAssessmentRiskTemplateDrafts = [];
   riskAssessmentManualHandlingDrafts = [];
   riskAssessmentChemicalDrafts = [];
@@ -126588,6 +126609,9 @@ function resetRiskAssessmentForm() {
   }
   if (riskAssessmentOfficialSubstanceTypeSelect) {
     riskAssessmentOfficialSubstanceTypeSelect.value = "all";
+  }
+  if (riskAssessmentJobCatalogAiDescriptionInput) {
+    riskAssessmentJobCatalogAiDescriptionInput.value = "";
   }
   replaceSelectOptions(riskAssessmentCompanyInput, buildRiskAssessmentCompanyOptions(false), "");
   replaceSelectOptions(riskAssessmentLocationInput, buildRiskAssessmentLocationOptions(""), "");
@@ -126681,6 +126705,8 @@ function hydrateRiskAssessmentForm(item = {}) {
   riskAssessmentMeasureDrafts = (item.measures ?? []).map((entry) => ({ ...entry }));
   riskAssessmentOrganizationUnitDrafts = (item.organizationUnits ?? []).map((entry) => createRiskAssessmentOrganizationUnitDraft(entry));
   riskAssessmentJobDrafts = (item.jobs ?? []).map((entry) => createRiskAssessmentJobDraft(entry));
+  riskAssessmentOpenOrganizationUnitIds = new Set();
+  riskAssessmentJobCatalogAiSuggestions = [];
   riskAssessmentRiskTemplateDrafts = (item.riskTemplates ?? []).map((entry) => ({
     ...entry,
     riskRows: (entry.riskRows ?? []).map((risk) => createRiskAssessmentRiskRowDraft(risk)),
@@ -126708,6 +126734,9 @@ function hydrateRiskAssessmentForm(item = {}) {
   }
   if (riskAssessmentOfficialSubstanceTypeSelect) {
     riskAssessmentOfficialSubstanceTypeSelect.value = "all";
+  }
+  if (riskAssessmentJobCatalogAiDescriptionInput) {
+    riskAssessmentJobCatalogAiDescriptionInput.value = "";
   }
   if (riskAssessmentEditorTitle) {
     riskAssessmentEditorTitle.textContent = item.title || "Procjena rizika";
@@ -135337,11 +135366,13 @@ function addRiskAssessmentChildUnit(parentIndex = -1, type = "subunit") {
     return;
   }
   const normalizedType = normalizeRiskAssessmentUnitType(type);
-  riskAssessmentOrganizationUnitDrafts.push(createRiskAssessmentOrganizationUnitDraft({
+  const child = createRiskAssessmentOrganizationUnitDraft({
     parentId: parent.id,
     type: normalizedType,
     name: normalizedType === "workplace" ? "Novo radno mjesto" : "Nova podorganizacija",
-  }));
+  });
+  riskAssessmentOrganizationUnitDrafts.push(child);
+  riskAssessmentOpenOrganizationUnitIds.add(String(child.id || ""));
   renderRiskAssessmentOrganizationUnits();
   renderRiskAssessmentJobs();
   renderRiskAssessmentOverview();
@@ -136528,8 +136559,11 @@ function renderRiskAssessmentOrganizationUnits() {
     const pathSegments = path
       ? path.split(/\s*\/\s*/).map((entry) => entry.trim()).filter(Boolean)
       : [displayName];
+    const parentPath = pathSegments.slice(0, -1).join(" / ");
+    const isEditorOpen = riskAssessmentOpenOrganizationUnitIds.has(String(unit.id || ""));
     row.className = `risk-assessment-org-card is-${type} is-depth-${Math.min(depth, 6)}`;
     row.classList.toggle("is-required-complete", hasCompleteJob);
+    row.classList.toggle("is-editor-open", isEditorOpen);
     row.dataset.riskUnitIndex = String(index);
     row.dataset.riskUnitDrop = unit.id;
     row.style.setProperty("--org-depth", String(Math.min(depth, 6)));
@@ -136537,32 +136571,26 @@ function renderRiskAssessmentOrganizationUnits() {
       <div class="risk-assessment-org-card-head">
         <span class="risk-assessment-org-node-icon" aria-hidden="true">${renderRiskAssessmentRiskIcon(type === "workplace" ? "briefcase" : "building")}</span>
         <div class="risk-assessment-org-mainline">
-          <span class="section-kicker">${escapeHtml(typeLabel)}</span>
+          <span class="risk-assessment-org-type-badge">${escapeHtml(typeLabel)}</span>
           <strong>${escapeHtml(displayName)}</strong>
-          <div class="risk-assessment-org-lineage" aria-label="Hijerarhija">
-            ${pathSegments.map((segment, segmentIndex) => `
-              <span class="${segmentIndex === pathSegments.length - 1 ? "is-current" : ""}">${escapeHtml(segment)}</span>
-            `).join("")}
-          </div>
+          <small>${escapeHtml(parentPath || (depth === 0 ? "Glavna razina" : "Bez nadređene stavke"))}</small>
         </div>
         <div class="risk-assessment-org-summary">
-          ${unit.responsiblePerson ? `<span>${renderRiskAssessmentRiskIcon("shield")} ${escapeHtml(unit.responsiblePerson)}</span>` : ""}
-          ${unit.workerCount ? `<span>${renderRiskAssessmentRiskIcon("activity")} ${escapeHtml(unit.workerCount)} radnika</span>` : ""}
+          ${unit.responsiblePerson ? `<span title="Odgovorna osoba">${renderRiskAssessmentRiskIcon("shield")} ${escapeHtml(unit.responsiblePerson)}</span>` : ""}
+          ${unit.workerCount ? `<span title="Broj radnika">${renderRiskAssessmentRiskIcon("activity")} ${escapeHtml(unit.workerCount)} radnika</span>` : ""}
           ${hasCompleteJob ? `<span class="is-complete">&#10003; spremno</span>` : ""}
-          <span>${renderRiskAssessmentRiskIcon("briefcase")} ${escapeHtml(String(linkedJobs.length))} poslova</span>
-          <span>${renderRiskAssessmentRiskIcon("building")} ${escapeHtml(String(children.length))} podstavki</span>
+          <span title="Analize povezane s ovom stavkom">${renderRiskAssessmentRiskIcon("briefcase")} ${escapeHtml(String(linkedJobs.length))}</span>
+          <span title="Podstavke">${renderRiskAssessmentRiskIcon("building")} ${escapeHtml(String(children.length))}</span>
         </div>
         <div class="risk-assessment-org-actions">
-          <button type="button" class="ghost-button" data-risk-unit-add-child="${index}" data-risk-unit-child-type="subunit">+ Podorganizacija</button>
-          <button type="button" class="ghost-button" data-risk-unit-add-child="${index}" data-risk-unit-child-type="workplace">+ Radno mjesto</button>
-          <button type="button" class="ghost-button card-danger" data-risk-unit-remove="${index}" aria-label="Ukloni organizacijsku stavku">${renderRiskAssessmentRiskIcon("close")}</button>
+          <button type="button" class="ghost-button risk-assessment-icon-button" data-risk-unit-add-child="${index}" data-risk-unit-child-type="subunit" title="Dodaj podorganizaciju" aria-label="Dodaj podorganizaciju">${renderRiskAssessmentRiskIcon("building")}${renderRiskAssessmentRiskIcon("plus")}</button>
+          <button type="button" class="ghost-button risk-assessment-icon-button" data-risk-unit-add-child="${index}" data-risk-unit-child-type="workplace" title="Dodaj radno mjesto" aria-label="Dodaj radno mjesto">${renderRiskAssessmentRiskIcon("briefcase")}${renderRiskAssessmentRiskIcon("plus")}</button>
+          <button type="button" class="ghost-button risk-assessment-icon-button ${isEditorOpen ? "is-active" : ""}" data-risk-unit-toggle-edit="${index}" title="${isEditorOpen ? "Sakrij uređivanje" : "Uredi podatke"}" aria-label="${isEditorOpen ? "Sakrij uređivanje" : "Uredi podatke"}">${renderRiskAssessmentRiskIcon("edit")}</button>
+          <button type="button" class="ghost-button card-danger risk-assessment-icon-button" data-risk-unit-remove="${index}" title="Ukloni" aria-label="Ukloni organizacijsku stavku">${renderRiskAssessmentRiskIcon("close")}</button>
         </div>
       </div>
-      <details class="risk-assessment-org-inline-editor">
-        <summary>
-          <span>Uredi podatke</span>
-          <small>${escapeHtml([typeLabel, linkedJobs.length ? `${linkedJobs.length} analiza` : "", children.length ? `${children.length} podstavki` : ""].filter(Boolean).join(" · "))}</small>
-        </summary>
+      ${isEditorOpen ? `
+      <div class="risk-assessment-org-inline-editor">
         <div class="risk-assessment-detail-grid is-structure">
           <label><span>Naziv</span><input data-risk-unit-field="name" value="${escapeHtml(unit.name || "")}" placeholder="${type === "workplace" ? "npr. Tajnica" : "npr. Uprava"}" /></label>
           <label><span>Vrsta</span><select data-risk-unit-field="type">${renderRiskAssessmentUnitTypeOptions(type)}</select></label>
@@ -136594,7 +136622,8 @@ function renderRiskAssessmentOrganizationUnits() {
             ? linkedJobs.map((job) => `<span>${escapeHtml(job.jobTitle || "Radno mjesto")}</span>`).join("")
             : `<span class="is-empty">Nema povezanih poslova.</span>`}
         </div>
-      </details>
+      </div>
+      ` : ""}
     `;
     return [row, ...children
       .filter((child) => !nextVisited.has(String(child.id || "")))
@@ -138787,6 +138816,7 @@ function getRiskAssessmentJobCatalogAiConfig() {
 function getRiskAssessmentJobCatalogAiQuery() {
   return String(
     riskAssessmentJobCatalogAiDescriptionInput?.value
+    || getRiskAssessmentJobCatalogDescriptionSource()
     || riskAssessmentJobCatalogSearchInput?.value
     || "",
   ).trim();
@@ -139051,9 +139081,10 @@ function renderRiskAssessmentJobCatalogPicker() {
   }
   if (riskAssessmentImportJobsButton) {
     riskAssessmentImportJobsButton.disabled = !canManage || selectedIds.size === 0;
+    const activeJob = getRiskAssessmentActiveJobDraft();
     riskAssessmentImportJobsButton.textContent = selectedIds.size
-      ? `Dodaj odabrano (${selectedIds.size})`
-      : "Dodaj odabrane poslove";
+      ? (activeJob ? `Dodaj u radno mjesto (${selectedIds.size})` : `Dodaj odabrano (${selectedIds.size})`)
+      : (activeJob ? "Dodaj odabrane poslove u radno mjesto" : "Dodaj odabrane poslove");
   }
   if (riskAssessmentJobCatalogAiSuggestButton) {
     riskAssessmentJobCatalogAiSuggestButton.disabled = !canManage || !canUseNexAi || jobs.length === 0;
@@ -139151,6 +139182,114 @@ function syncRiskAssessmentJobCatalogOptions() {
   renderRiskAssessmentJobCatalogPicker();
 }
 
+function getRiskAssessmentActiveJobDraft() {
+  const index = getRiskAssessmentActiveJobIndex();
+  return index >= 0 ? riskAssessmentJobDrafts[index] : null;
+}
+
+function getRiskAssessmentJobCatalogTargetUnit(job = getRiskAssessmentActiveJobDraft()) {
+  const unitId = String(job?.organizationUnitId || "").trim();
+  if (!unitId) {
+    return null;
+  }
+  return riskAssessmentOrganizationUnitDrafts.find((unit) => String(unit.id || "") === unitId) || null;
+}
+
+function getRiskAssessmentJobCatalogDescriptionSource(job = getRiskAssessmentActiveJobDraft()) {
+  const unit = getRiskAssessmentJobCatalogTargetUnit(job);
+  return String(
+    job?.description
+    || unit?.description
+    || unit?.shortDescription
+    || job?.shortDescription
+    || job?.tasks
+    || "",
+  ).trim();
+}
+
+function syncRiskAssessmentJobCatalogAiDescriptionFromActiveJob({ force = false } = {}) {
+  if (!(riskAssessmentJobCatalogAiDescriptionInput instanceof HTMLTextAreaElement)) {
+    return;
+  }
+  if (!force && document.activeElement === riskAssessmentJobCatalogAiDescriptionInput) {
+    return;
+  }
+  const description = getRiskAssessmentJobCatalogDescriptionSource();
+  if (force || !riskAssessmentJobCatalogAiDescriptionInput.value.trim()) {
+    riskAssessmentJobCatalogAiDescriptionInput.value = description;
+  }
+}
+
+function mergeCatalogJobsIntoExistingRiskAssessmentJob(current = {}, selectedJobs = []) {
+  const imported = selectedJobs.length > 1
+    ? mergeCatalogJobsIntoRiskAssessmentJob(selectedJobs)
+    : createRiskAssessmentJobDraftFromCatalogJob(selectedJobs[0] || {});
+  const unit = getRiskAssessmentJobCatalogTargetUnit(current);
+  const unitType = normalizeRiskAssessmentUnitType(unit?.type || "");
+  const descriptionFromAiBox = String(riskAssessmentJobCatalogAiDescriptionInput?.value || "").trim();
+  const workplaceTitle = unitType === "workplace" ? String(unit?.name || "").trim() : "";
+  const sourceJobIds = uniqueJobValues([
+    ...(current.sourceJobIds ?? []),
+    ...(imported.sourceJobIds ?? []),
+    ...selectedJobs.map((job) => job.id),
+  ]);
+  const preferCurrent = (field) => String(current[field] || "").trim() || String(imported[field] || "").trim();
+  const mergeText = (field) => joinUniqueRiskAssessmentTextBlocks([current[field], imported[field]]);
+  const mergeOptions = (field) => mergeJobValues([current[field] ?? [], imported[field] ?? []]);
+
+  return createRiskAssessmentJobDraft({
+    ...sanitizeRiskAssessmentTransientJob(current),
+    sourceJobIds,
+    organizationUnitId: current.organizationUnitId || imported.organizationUnitId,
+    status: current.status || imported.status || "draft",
+    jobTitle: workplaceTitle || current.jobTitle || imported.jobTitle,
+    shortDescription: current.shortDescription || unit?.shortDescription || imported.shortDescription,
+    description: descriptionFromAiBox || current.description || unit?.description || imported.description,
+    detailedDescription: current.detailedDescription || unit?.detailedDescription || imported.detailedDescription,
+    workplaceDescription: current.workplaceDescription || unit?.note || imported.workplaceDescription,
+    workerCount: current.workerCount || unit?.workerCount || imported.workerCount,
+    tasks: mergeText("tasks"),
+    workEnvironment: mergeText("workEnvironment"),
+    workplace: mergeText("workplace"),
+    workplaces: mergeText("workplaces"),
+    workOrganization: mergeText("workOrganization"),
+    organization: mergeText("organization"),
+    workSubstances: mergeText("workSubstances"),
+    chemicalSubstances: mergeText("chemicalSubstances"),
+    biologicalHazards: mergeText("biologicalHazards"),
+    workEquipment: mergeText("workEquipment"),
+    toolsAndMachines: mergeText("toolsAndMachines"),
+    workplaceArrangement: mergeText("workplaceArrangement"),
+    harmfulSources: mergeText("harmfulSources"),
+    specialWorkReason: mergeText("specialWorkReason"),
+    specialConditions: mergeText("specialConditions"),
+    requiredQualification: mergeText("requiredQualification"),
+    qualifications: mergeText("qualifications"),
+    trainings: mergeText("trainings"),
+    medicalExams: mergeText("medicalExams"),
+    ppeText: mergeText("ppeText"),
+    workplaceOptions: mergeOptions("workplaceOptions"),
+    organizationOptions: mergeOptions("organizationOptions"),
+    bodyPositions: mergeOptions("bodyPositions"),
+    importantFunctions: mergeOptions("importantFunctions"),
+    workConditions: mergeOptions("workConditions"),
+    toolsAndMachinesOptions: mergeOptions("toolsAndMachinesOptions"),
+    chemicalSubstanceOptions: mergeOptions("chemicalSubstanceOptions"),
+    biologicalHazardOptions: mergeOptions("biologicalHazardOptions"),
+    purPoints: normalizeJobPurPointValues([...(current.purPoints ?? []), ...(imported.purPoints ?? [])]),
+    safeWorkTrainingRequired: Boolean(current.safeWorkTrainingRequired || imported.safeWorkTrainingRequired),
+    medicalFitnessRequired: Boolean(current.medicalFitnessRequired || imported.medicalFitnessRequired),
+    visionCheckRequired: Boolean(current.visionCheckRequired || imported.visionCheckRequired),
+    psychosocialRelevant: Boolean(current.psychosocialRelevant || imported.psychosocialRelevant),
+    increasedInsurance: current.increasedInsurance || imported.increasedInsurance,
+    alcoholLimit: preferCurrent("alcoholLimit"),
+    riskRows: mergeRiskAssessmentRiskRows(current.riskRows ?? [], imported.riskRows ?? []),
+    ppeItems: current.ppeItems?.length ? current.ppeItems : (imported.ppeItems ?? []),
+    hiddenBlocks: current.hiddenBlocks ?? imported.hiddenBlocks,
+    clientInput: current.clientInput,
+  });
+}
+
 function importSelectedJobsIntoRiskAssessment(options = {}) {
   const messageTarget = options.messageTarget || riskAssessmentError;
   if (!getCanManageRiskAssessments()) {
@@ -139165,6 +139304,24 @@ function importSelectedJobsIntoRiskAssessment(options = {}) {
     .filter(Boolean);
   if (selectedJobs.length === 0) {
     setInlineMessage(messageTarget, "Odaberi barem jedan posao iz Jobs kataloga.", "error");
+    return;
+  }
+
+  const activeIndex = getRiskAssessmentActiveJobIndex();
+  const activeJob = activeIndex >= 0 ? riskAssessmentJobDrafts[activeIndex] : null;
+  if (activeJob && options.appendNew !== true) {
+    riskAssessmentJobDrafts[activeIndex] = mergeCatalogJobsIntoExistingRiskAssessmentJob(activeJob, selectedJobs);
+    Array.from(riskAssessmentJobCatalogSelect?.options ?? []).forEach((option) => {
+      option.selected = false;
+    });
+    riskAssessmentJobCatalogAiSuggestions = [];
+    renderRiskAssessmentJobs();
+    renderRiskAssessmentOrganizationUnits();
+    renderRiskAssessmentOverview();
+    scheduleRiskAssessmentDraftAutosave();
+    const sourceText = options.source === "ai" ? "NexAI je dodao" : "Dodano";
+    const targetTitle = riskAssessmentJobDrafts[activeIndex]?.jobTitle || "aktivno radno mjesto";
+    setInlineMessage(messageTarget, `${sourceText} ${selectedJobs.length} ${selectedJobs.length === 1 ? "posao" : "poslova"} u ${targetTitle}.`, "success");
     return;
   }
 
@@ -140006,6 +140163,21 @@ function handleRiskAssessmentOrganizationUnitsClick(event) {
     addRiskAssessmentChildUnit(unitIndex, button.dataset.riskUnitChildType || "subunit");
     return;
   }
+  if (button.matches("[data-risk-unit-toggle-edit]")) {
+    event.preventDefault();
+    const unit = riskAssessmentOrganizationUnitDrafts[unitIndex];
+    const unitId = String(unit?.id || "");
+    if (!unitId) {
+      return;
+    }
+    if (riskAssessmentOpenOrganizationUnitIds.has(unitId)) {
+      riskAssessmentOpenOrganizationUnitIds.delete(unitId);
+    } else {
+      riskAssessmentOpenOrganizationUnitIds.add(unitId);
+    }
+    renderRiskAssessmentOrganizationUnits();
+    return;
+  }
   if (button.matches("[data-risk-unit-ai]")) {
     event.preventDefault();
     setRiskAssessmentUnitAiProposal(unitIndex, button.dataset.riskUnitAiAction || "generate");
@@ -140039,6 +140211,7 @@ function handleRiskAssessmentOrganizationUnitsClick(event) {
   if (button.matches("[data-risk-unit-remove]")) {
     event.preventDefault();
     const unit = riskAssessmentOrganizationUnitDrafts[unitIndex];
+    riskAssessmentOpenOrganizationUnitIds.delete(String(unit?.id || ""));
     riskAssessmentOrganizationUnitDrafts.splice(unitIndex, 1);
     riskAssessmentJobDrafts = riskAssessmentJobDrafts.map((job) => (
       String(job.organizationUnitId) === String(unit?.id)
@@ -140677,6 +140850,9 @@ function handleRiskAssessmentJobsListInput(event) {
   if (target.dataset.riskJobField) {
     const field = target.dataset.riskJobField;
     updateRiskAssessmentJobDraftField(jobIndex, field, target.value);
+    if (field === "description" && jobIndex === getRiskAssessmentActiveJobIndex()) {
+      syncRiskAssessmentJobCatalogAiDescriptionFromActiveJob({ force: true });
+    }
     if (["description", "tasks", "detailedDescription"].includes(field)) {
       const shortField = riskAssessmentJobsList?.querySelector(`[data-risk-job-index="${jobIndex}"] [data-risk-job-field="shortDescription"]`);
       if (shortField instanceof HTMLTextAreaElement && shortField !== target) {
@@ -141290,6 +141466,8 @@ function renderRiskAssessmentRiskIcon(name = "note") {
     briefcase: '<path d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /><rect width="20" height="14" x="2" y="6" rx="2" /><path d="M2 13h20" />',
     map: '<path d="M9 18 3 21V6l6-3 6 3 6-3v15l-6 3-6-3Z" /><path d="M9 3v15" /><path d="M15 6v15" />',
     activity: '<path d="M22 12h-4l-3 8L9 4l-3 8H2" />',
+    plus: '<path d="M12 5v14" /><path d="M5 12h14" />',
+    edit: '<path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />',
     eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" />',
     thermometer: '<path d="M14 14.8V5a2 2 0 0 0-4 0v9.8a4 4 0 1 0 4 0Z" />',
     tools: '<path d="M14.7 6.3a4 4 0 0 0-5.6 5.6L3 18l3 3 6.1-6.1a4 4 0 0 0 5.6-5.6l-2.8 2.8-2-2 2.8-2.8Z" />',
@@ -141532,8 +141710,12 @@ function updateRiskAssessmentJobAnalysisShellMode() {
   if (!shell) {
     return;
   }
-  if (riskAssessmentActiveBlock !== "jobs" || !riskAssessmentJobDrafts.length) {
+  if (riskAssessmentActiveBlock !== "jobs") {
     shell.classList.remove("is-armor-focus");
+    return;
+  }
+  if (!riskAssessmentJobDrafts.length) {
+    shell.classList.toggle("is-armor-focus", riskAssessmentOrganizationUnitDrafts.length > 0);
     return;
   }
 
@@ -141563,7 +141745,7 @@ function renderRiskAssessmentJobTree() {
   if (!riskAssessmentJobTree) {
     return;
   }
-  if (!riskAssessmentJobDrafts.length) {
+  if (!riskAssessmentJobDrafts.length && !riskAssessmentOrganizationUnitDrafts.length) {
     riskAssessmentJobTree.innerHTML = `
       <div class="risk-assessment-job-tree-empty">
         <strong>Nema radnih mjesta</strong>
@@ -141631,6 +141813,7 @@ function renderRiskAssessmentJobs() {
   syncRiskAssessmentJobCatalogOptions();
   disposeRiskAssessmentPpeScenes();
   renderRiskAssessmentJobTree();
+  syncRiskAssessmentJobCatalogAiDescriptionFromActiveJob();
 
   if (riskAssessmentJobDrafts.length === 0) {
     const empty = document.createElement("p");
