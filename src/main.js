@@ -120571,6 +120571,7 @@ riskAssessmentForm?.addEventListener("input", (event) => {
 });
 riskAssessmentForm?.addEventListener("input", handleRiskAssessmentRichEditorInput);
 riskAssessmentForm?.addEventListener("paste", handleRiskAssessmentRichEditorPaste);
+riskAssessmentForm?.addEventListener("mousedown", handleRiskAssessmentRichToolbarMouseDown);
 riskAssessmentForm?.addEventListener("click", handleRiskAssessmentRichEditorClick);
 riskAssessmentForm?.addEventListener("change", handleRiskAssessmentRichEditorFileChange);
 riskAssessmentForm?.addEventListener("input", scheduleRiskAssessmentDraftAutosave);
@@ -125079,6 +125080,42 @@ function renderRiskAssessmentLinkedAppendixRows(headers = [], rows = [], emptyTe
   `;
 }
 
+function renderRiskAssessmentInspectionLocationGroups(items = [], emptyText = "") {
+  if (!items.length) {
+    return `<p class="inline-help">${escapeHtml(emptyText || "Nema povezanih ispitivanja za odabranu tvrtku i lokacije.")}</p>`;
+  }
+  const groups = new Map();
+  items.forEach((item) => {
+    const locationName = String(item.locationName || "Bez lokacije").trim() || "Bez lokacije";
+    const list = groups.get(locationName) || [];
+    list.push(item);
+    groups.set(locationName, list);
+  });
+  return `
+    <div class="risk-assessment-inspection-location-groups">
+      ${Array.from(groups.entries()).map(([locationName, groupItems]) => `
+        <article class="risk-assessment-inspection-location-group">
+          <header>
+            <strong>${escapeHtml(locationName)}</strong>
+            <span>${escapeHtml(String(groupItems.length))} ispitivanja</span>
+          </header>
+          <div class="risk-assessment-linked-table is-inspections is-grouped">
+            <div class="is-head"><span>Objekt</span><span>Ispitivanje</span><span>RN / zapisnik</span><span>Rok / status</span></div>
+            ${groupItems.map((item) => `
+              <div>
+                <span>${escapeHtml(item.objectName || "-")}</span>
+                <span>${escapeHtml(item.inspectionName || "Ispitivanje")}</span>
+                <span>${escapeHtml(item.reference || item.source || "-")}</span>
+                <span>${escapeHtml(item.status || "-")}</span>
+              </div>
+            `).join("")}
+          </div>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
 function renderRiskAssessmentPpeByJobTable({ template = false } = {}) {
   const rows = getRiskAssessmentPpeRowsByJob({ includeEmptyJobs: true });
   if (!rows.length) {
@@ -125166,7 +125203,7 @@ function renderRiskAssessmentSystemSheet(target, config = {}) {
           <em><b>${escapeHtml(String(rows.length))}</b> ${escapeHtml(config.counterLabel || "stavki")}</em>
         </div>
       </div>
-      ${renderRiskAssessmentLinkedAppendixRows(
+      ${config.bodyHtml || renderRiskAssessmentLinkedAppendixRows(
         config.headers || [],
         rows,
         config.emptyText || "Nema podataka za odabrani opseg.",
@@ -125215,6 +125252,10 @@ function renderRiskAssessmentLinkedAppendix() {
       : "Odaberi tvrtku i lokacije da se popis ispitivanja poveže s periodikom i radnim nalozima.",
     headers: ["Red. br.", "Lokacija", "Objekt", "Ispitivanje", "RN / zapisnik", "Rok / status"],
     rows: inspectionItems.map((item, index) => [`${index + 1}.`, item.locationName, item.objectName, item.inspectionName, item.reference || item.source, item.status]),
+    bodyHtml: renderRiskAssessmentInspectionLocationGroups(
+      inspectionItems,
+      "Nema povezanih ispitivanja za odabranu tvrtku i lokacije.",
+    ),
     emptyText: "Nema povezanih ispitivanja za odabranu tvrtku i lokacije.",
     modifier: "is-inspections",
     counterLabel: "ispitivanja",
@@ -125709,10 +125750,17 @@ function restoreRiskAssessmentRichEditorSelection(key = "") {
     return null;
   }
   editor.focus({ preventScroll: true });
+  const selection = window.getSelection?.();
   if (riskAssessmentRichEditorSelection && editor.contains(riskAssessmentRichEditorSelection.commonAncestorContainer)) {
-    const selection = window.getSelection?.();
     selection?.removeAllRanges();
     selection?.addRange(riskAssessmentRichEditorSelection);
+  } else if (selection) {
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(false);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    riskAssessmentRichEditorSelection = range.cloneRange();
   }
   return editor;
 }
@@ -126470,6 +126518,22 @@ function handleRiskAssessmentRichEditorSelectionChange(event) {
   if (editor) {
     rememberRiskAssessmentRichEditorSelection(editor);
   }
+}
+
+function handleRiskAssessmentRichToolbarMouseDown(event) {
+  const toolbarControl = event.target?.closest?.(
+    "[data-risk-rich-command], [data-risk-rich-preset], [data-risk-rich-image], [data-risk-rich-template-save]",
+  );
+  if (!toolbarControl) {
+    return;
+  }
+  const toolbar = toolbarControl.closest("[data-risk-rich-toolbar]");
+  const key = toolbar?.dataset.riskRichToolbar || riskAssessmentActiveRichEditorKey || "intro";
+  const editor = getRiskAssessmentRichEditor(key);
+  if (editor) {
+    rememberRiskAssessmentRichEditorSelection(editor);
+  }
+  event.preventDefault();
 }
 
 function handleRiskAssessmentRichEditorClick(event) {
