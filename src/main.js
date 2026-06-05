@@ -5580,6 +5580,7 @@ const companyClientLocationSearchInput = document.querySelector("#company-client
 const companyClientLocationList = document.querySelector("#company-client-location-list");
 const companyClientLocationIdsInput = document.querySelector("#company-client-location-ids");
 const companyClientAllLocationsInput = document.querySelector("#company-client-all-locations");
+const companyClientRiskJobInputEnabledInput = document.querySelector("#company-client-risk-job-input-enabled");
 const companyClientCreateUserButton = document.querySelector("#company-client-create-user");
 const companyClientClearUserButton = document.querySelector("#company-client-clear-user");
 const companyClientUsersList = document.querySelector("#company-client-users-list");
@@ -6302,6 +6303,7 @@ const riskAssessmentZnrAuthorizationFileInput = document.querySelector("#risk-as
 const riskAssessmentZnrAuthorizationUploadButton = document.querySelector("#risk-assessment-znr-authorization-upload");
 const riskAssessmentZnrAuthorizationRemoveButton = document.querySelector("#risk-assessment-znr-authorization-remove");
 const riskAssessmentZnrAuthorizationFileMeta = document.querySelector("#risk-assessment-znr-authorization-file-meta");
+const riskAssessmentZnrAuthorizationCompanyDetailsInput = document.querySelector("#risk-assessment-znr-authorization-company-details");
 const riskAssessmentCompanyCollaboratorsList = document.querySelector("#risk-assessment-company-collaborators");
 const riskAssessmentAddCompanyCollaboratorButton = document.querySelector("#risk-assessment-add-company-collaborator");
 const riskAssessmentIntroInput = document.querySelector("#risk-assessment-intro");
@@ -82509,6 +82511,7 @@ function getCompanyOverviewSummarySource(companyId = companyIdInput?.value || ""
     mbs: companyMbsInput?.value ?? persistedCompany.mbs ?? "",
     nkdActivity: companyNkdActivityInput?.value ?? persistedCompany.nkdActivity ?? "",
     employeeSize: companyEmployeeSizeInput?.value ?? persistedCompany.employeeSize ?? "",
+    riskAssessmentClientJobInputEnabled: Boolean(companyClientRiskJobInputEnabledInput?.checked ?? persistedCompany.riskAssessmentClientJobInputEnabled ?? false),
     managerUserIds: managerUserIds.length ? managerUserIds : (persistedCompany.managerUserIds || []),
     managerUserLabels: managerUserIds.length
       ? getCompanyManagerSelectedUserLabels(managerUserIds)
@@ -86577,6 +86580,7 @@ function buildCompanyPayload() {
     contractMonthlyPrice: companyContractMonthlyPriceInput?.value || "",
     contractPriceList: collectCompanyContractPriceList(),
     employeeSize: normalizeCompanyEmployeeSize(companyEmployeeSizeInput?.value || ""),
+    riskAssessmentClientJobInputEnabled: Boolean(companyClientRiskJobInputEnabledInput?.checked),
     managerUserIds,
     managerUserLabels: getCompanyManagerSelectedUserLabels(managerUserIds),
     templateAssignments: collectCompanyTemplateAssignments(),
@@ -88340,6 +88344,9 @@ function hydrateCompanyForm(company) {
   setCompanyContractPriceListDraft(company.contractPriceList || []);
   syncCompanyContractValidityControls();
   syncCompanyEmployeeSizeInput(company.employeeSize || "");
+  if (companyClientRiskJobInputEnabledInput) {
+    companyClientRiskJobInputEnabledInput.checked = Boolean(company.riskAssessmentClientJobInputEnabled);
+  }
   rebuildCompanyManagerUserOptions(Array.isArray(company.managerUserIds) ? company.managerUserIds : []);
   renderCompanyTemplateAssignments(company.templateAssignments ?? []);
   companyPeriodInput.value = company.period;
@@ -119835,6 +119842,7 @@ riskAssessmentClientJobInputEnabledInput?.addEventListener("change", () => {
   riskAssessmentZnrRepresentativesInput,
   riskAssessmentZnrCommitteeParticipationInput,
   riskAssessmentZnrAuthorizationInput,
+  riskAssessmentZnrAuthorizationCompanyDetailsInput,
   riskAssessmentAppendixChemicalRiskInput,
   riskAssessmentAppendixWorkerParticipationInput,
 ].forEach((input) => {
@@ -120167,6 +120175,27 @@ function addRiskAssessmentBlankJob({ openJobsModule = false } = {}) {
   }
 }
 
+function addRiskAssessmentJobFromUnit(unitId = "") {
+  const unit = riskAssessmentOrganizationUnitDrafts.find((entry) => String(entry.id || "") === String(unitId || ""));
+  if (!unit) {
+    return;
+  }
+  const nextIndex = riskAssessmentJobDrafts.length;
+  riskAssessmentJobDrafts.push(createRiskAssessmentJobDraft({
+    organizationUnitId: unit.id,
+    jobTitle: unit.name || "Radno mjesto",
+    workerCount: unit.workerCount || "",
+    description: unit.description || unit.shortDescription || "",
+    workplaceDescription: unit.note || "",
+    status: "draft",
+  }));
+  setRiskAssessmentActiveJobIndex(nextIndex);
+  renderRiskAssessmentOrganizationUnits();
+  renderRiskAssessmentJobs();
+  renderRiskAssessmentOverview();
+  scheduleRiskAssessmentDraftAutosave();
+}
+
 riskAssessmentAddJobButton?.addEventListener("click", () => {
   addRiskAssessmentBlankJob();
 });
@@ -120457,6 +120486,12 @@ window.addEventListener("resize", scheduleRiskAssessmentJobAnalysisShellModeUpda
 riskAssessmentJobTree?.addEventListener("input", handleRiskAssessmentJobsListInput);
 riskAssessmentJobTree?.addEventListener("change", handleRiskAssessmentJobsListInput);
 riskAssessmentJobTree?.addEventListener("click", (event) => {
+  const addFromUnitButton = event.target?.closest?.("[data-risk-job-add-from-unit]");
+  if (addFromUnitButton) {
+    event.preventDefault();
+    addRiskAssessmentJobFromUnit(addFromUnitButton.dataset.riskJobAddFromUnit || "");
+    return;
+  }
   const button = event.target?.closest?.("[data-risk-job-tree-index]");
   if (button) {
     const index = Number(button.dataset.riskJobTreeIndex);
@@ -122229,6 +122264,10 @@ companyLogoFileInput?.addEventListener("change", () => {
 
 companyClientAllLocationsInput?.addEventListener("change", () => {
   rebuildCompanyClientLocationOptions(getSelectedMultiSelectValues(companyClientLocationIdsInput));
+});
+
+companyClientRiskJobInputEnabledInput?.addEventListener("change", () => {
+  syncCompanyEditorChrome();
 });
 
 companyClientLocationSearchInput?.addEventListener("input", () => {
@@ -124020,7 +124059,6 @@ function renderRiskAssessmentLocationPicker() {
       <span class="risk-assessment-location-chip-icon" aria-hidden="true">${renderRiskAssessmentRiskIcon("map")}</span>
       <span class="risk-assessment-location-chip-copy">
         <strong>${escapeHtml(location.name || "Lokacija")}</strong>
-        <small>${escapeHtml(location.region || location.address || "Izdvojena lokacija")}</small>
       </span>
       <span class="risk-assessment-location-chip-check" aria-hidden="true">${isSelected ? "✓" : "+"}</span>
     `;
@@ -124570,10 +124608,8 @@ function getRiskAssessmentSafetyAuthorizationSource() {
 
 function syncRiskAssessmentSafetyAuthorizationDocument() {
   const source = getRiskAssessmentSafetyAuthorizationSource();
-  riskAssessmentZnrAuthorizationDocumentDraft = source?.document ?? null;
-  if (riskAssessmentZnrAuthorizationInput) {
-    riskAssessmentZnrAuthorizationInput.checked = Boolean(source?.document);
-    riskAssessmentZnrAuthorizationInput.disabled = true;
+  if (!riskAssessmentZnrAuthorizationDocumentDraft && source?.document) {
+    riskAssessmentZnrAuthorizationDocumentDraft = source.document;
   }
 }
 
@@ -124730,7 +124766,7 @@ function getRiskAssessmentCompanyLocations(companyId = riskAssessmentCompanyInpu
 }
 
 function formatRiskAssessmentLocationLine(location = {}) {
-  return [location.name, location.region].filter(Boolean).join(", ");
+  return String(location.name || location.address || location.city || "").trim();
 }
 
 function getRiskAssessmentLocationScope(companyId = riskAssessmentCompanyInput?.value || "") {
@@ -125194,6 +125230,7 @@ function buildRiskAssessmentDefaultEmployerData(companyId = riskAssessmentCompan
     znrRepresentatives: "",
     znrCommitteeParticipation: "",
     hasZnrAuthorization: false,
+    znrAuthorizationCompanyDetails: getRiskAssessmentDefaultAuthorizationCompanyDetails(),
     znrAuthorizationDocument: null,
     assessmentMembers: "",
     assessmentMemberUserIds: [],
@@ -125219,6 +125256,7 @@ function getRiskAssessmentEmployerDataInputs() {
     znrExperts: riskAssessmentZnrExpertsInput,
     znrRepresentatives: riskAssessmentZnrRepresentativesInput,
     znrCommitteeParticipation: riskAssessmentZnrCommitteeParticipationInput,
+    znrAuthorizationCompanyDetails: riskAssessmentZnrAuthorizationCompanyDetailsInput,
     appendixChemicalRisk: riskAssessmentAppendixChemicalRiskInput,
     appendixWorkerParticipation: riskAssessmentAppendixWorkerParticipationInput,
   };
@@ -125457,6 +125495,22 @@ function setRiskAssessmentActiveBlock(blockKey = "basic", { resetScroll = false 
     riskAssessmentEditorBody.scrollTo({ top: 0, behavior: "smooth" });
   }
   scheduleRiskAssessmentJobAnalysisShellModeUpdate();
+}
+
+function getRiskAssessmentDefaultAuthorizationCompanyDetails() {
+  const organization = getActiveOrganization?.();
+  if (!organization) {
+    return "";
+  }
+  const address = [
+    organization.address,
+    [organization.postalCode, organization.city].filter(Boolean).join(" "),
+  ].filter(Boolean).join(", ");
+  return [
+    organization.name,
+    organization.oib ? `OIB: ${organization.oib}` : "",
+    address ? `sjedište: ${address}` : "",
+  ].filter(Boolean).join(", ");
 }
 
 function getRiskAssessmentRichEditor(key = "") {
@@ -132151,7 +132205,7 @@ function getRiskAssessmentCompanyExportData() {
   const assessmentNumber = riskAssessmentNumberInput?.value?.trim() || refreshRiskAssessmentAutoNumber("");
   const assessmentStartDate = formatDateInputDisplayValue(riskAssessmentDateInput?.value || "");
   const assessmentCompletionDate = formatDateInputDisplayValue(riskAssessmentCompletionDateInput?.value || "");
-  const locationName = getRiskAssessmentSelectedLocationLines(riskAssessmentCompanyInput?.value || "").join("\n")
+  const locationName = getRiskAssessmentSelectedLocationLines(riskAssessmentCompanyInput?.value || "").join("; ")
     || riskAssessmentLocationInput?.selectedOptions?.[0]?.textContent?.trim()
     || employer.detachedLocations
     || "";
@@ -132185,8 +132239,10 @@ function formatRiskAssessmentPersonExportLine(item = {}) {
   ].map((value) => String(value || "").trim()).filter(Boolean).join(", ");
 }
 
-function createRiskAssessmentBasicDataBox(title = "", lines = []) {
-  const safeLines = splitRiskAssessmentExportValueLines(lines, "-");
+function createRiskAssessmentBasicDataBox(title = "", lines = [], options = {}) {
+  const safeLines = options.splitItems === false
+    ? [normalizeRiskAssessmentExportLines(lines).join("; ") || "-"]
+    : splitRiskAssessmentExportValueLines(lines, "-");
   const columns = [{ id: "value", label: title, width: 720 }];
   const rows = [
     createRiskAssessmentExportRow("title", [
@@ -132197,6 +132253,19 @@ function createRiskAssessmentBasicDataBox(title = "", lines = []) {
     ])),
   ];
   return createRiskAssessmentExportTable(columns, rows, { keepRowsTogether: true });
+}
+
+function createRiskAssessmentAuthorizationExportBox(employer = {}) {
+  if (!employer.hasZnrAuthorization) {
+    return null;
+  }
+  const details = employer.znrAuthorizationCompanyDetails
+    || employer.znrExperts
+    || "Ovlaštenje izrađivača procjene rizika je dodano u prilogu procjene.";
+  return createRiskAssessmentBasicDataBox("Ovlaštenje izrađivača procjene rizika:", [
+    "Prilog: ovlaštenje za obavljanje poslova zaštite na radu.",
+    details,
+  ], { splitItems: false });
 }
 
 function createRiskAssessmentEmployerDataTable(data = {}) {
@@ -132285,14 +132354,15 @@ function buildRiskAssessmentBasicDataExportBlocks() {
   const collaboratorSummary = getRiskAssessmentCompanyCollaboratorSummary();
   return [
     createRiskAssessmentEmployerDataTable(data),
-    createRiskAssessmentBasicDataBox("Objekti namijenjeni za rad (s naznakom lokacije):", [data.locationName || employer.detachedLocations]),
+    createRiskAssessmentAuthorizationExportBox(employer),
+    createRiskAssessmentBasicDataBox("Objekti namijenjeni za rad (s naznakom lokacije):", [data.locationName || employer.detachedLocations], { splitItems: false }),
     createRiskAssessmentBasicDataBox("Stručnjaci zaštite na radu:", [employer.znrServiceMode, employer.znrExperts]),
     createRiskAssessmentBasicDataBox("Ovlaštenici za poslove zaštite na radu:", authorizedLines),
     createRiskAssessmentBasicDataBox("Povjerenici radnika za zaštitu na radu:", representativeLines.length ? representativeLines : ["Nisu izabrani."]),
     createRiskAssessmentBasicDataBox("Suradnici na izradi procjene rizika:", collaboratorLines.length ? collaboratorLines : collaboratorSummary),
     createRiskAssessmentBasicDataBox("Ovlašteno trgovačko društvo:", [employer.znrExperts || employer.znrServiceMode]),
     buildRiskAssessmentWorkingGroupExportTable(),
-  ];
+  ].filter(Boolean);
 }
 
 function buildRiskAssessmentContentsExportBlocks() {
@@ -133482,6 +133552,8 @@ function buildRiskAssessmentExportPlaceholders() {
     RISK_EMPLOYER_MBS: employer.mbs || "",
     RISK_EMPLOYER_NKD: employer.nkdActivity || "",
     RISK_EMPLOYEE_COUNT: employer.employeeCount || "",
+    RISK_ZNR_AUTHORIZATION: employer.hasZnrAuthorization ? "Da" : "Ne",
+    RISK_ZNR_AUTHORIZATION_COMPANY_DETAILS: employer.znrAuthorizationCompanyDetails || "",
     RISK_LOCATION: locationName,
     RISK_WORK_ORDER: riskAssessmentWorkOrderInput?.selectedOptions?.[0]?.textContent?.trim() || "",
     RISK_STATUS: riskAssessmentStatusInput?.selectedOptions?.[0]?.textContent?.trim() || "",
@@ -133952,6 +134024,7 @@ function renderRiskAssessmentTemplateBasicDataContent() {
       { label: "Datum početka", value: data.assessmentStartDate },
       { label: "Datum završetka", value: data.assessmentCompletionDate },
       { label: "Objekti / lokacije", value: data.locationName || employer.detachedLocations },
+      { label: "Ovlaštenje izrađivača", value: employer.hasZnrAuthorization ? (employer.znrAuthorizationCompanyDetails || "Dodano u prilogu procjene.") : "" },
       { label: "Stručnjaci ZNR", value: joinUniqueRiskAssessmentTextBlocks([employer.znrServiceMode, employer.znrExperts]) },
       { label: "Ovlaštenici ZNR", value: employer.znrAuthorizedDescription },
       { label: "Povjerenici ZNR", value: employer.znrRepresentatives || "Nisu izabrani." },
@@ -136448,22 +136521,34 @@ function renderRiskAssessmentOrganizationUnits() {
     const type = normalizeRiskAssessmentUnitType(unit.type);
     const linkedJobs = linkedJobsByUnit.get(unit.id) || [];
     const children = childrenByParent.get(String(unit.id)) || [];
+    const hasCompleteJob = linkedJobs.some((job) => isRiskAssessmentJobRequiredComplete(job));
     const path = getRiskAssessmentUnitPath(unit);
+    const typeLabel = getRiskAssessmentUnitTypeLabel(type);
+    const displayName = unit.name || (type === "workplace" ? "Radno mjesto" : `Jedinica ${index + 1}`);
+    const pathSegments = path
+      ? path.split(/\s*\/\s*/).map((entry) => entry.trim()).filter(Boolean)
+      : [displayName];
     row.className = `risk-assessment-org-card is-${type} is-depth-${Math.min(depth, 6)}`;
+    row.classList.toggle("is-required-complete", hasCompleteJob);
     row.dataset.riskUnitIndex = String(index);
     row.dataset.riskUnitDrop = unit.id;
     row.style.setProperty("--org-depth", String(Math.min(depth, 6)));
     row.innerHTML = `
       <div class="risk-assessment-org-card-head">
         <span class="risk-assessment-org-node-icon" aria-hidden="true">${renderRiskAssessmentRiskIcon(type === "workplace" ? "briefcase" : "building")}</span>
-        <div>
-          <span class="section-kicker">${escapeHtml(getRiskAssessmentUnitTypeLabel(type))}</span>
-          <strong>${escapeHtml(unit.name || (type === "workplace" ? "Radno mjesto" : `Jedinica ${index + 1}`))}</strong>
-          <small>${escapeHtml(path || "Vrh organizacije")}</small>
+        <div class="risk-assessment-org-mainline">
+          <span class="section-kicker">${escapeHtml(typeLabel)}</span>
+          <strong>${escapeHtml(displayName)}</strong>
+          <div class="risk-assessment-org-lineage" aria-label="Hijerarhija">
+            ${pathSegments.map((segment, segmentIndex) => `
+              <span class="${segmentIndex === pathSegments.length - 1 ? "is-current" : ""}">${escapeHtml(segment)}</span>
+            `).join("")}
+          </div>
         </div>
         <div class="risk-assessment-org-summary">
           ${unit.responsiblePerson ? `<span>${renderRiskAssessmentRiskIcon("shield")} ${escapeHtml(unit.responsiblePerson)}</span>` : ""}
           ${unit.workerCount ? `<span>${renderRiskAssessmentRiskIcon("activity")} ${escapeHtml(unit.workerCount)} radnika</span>` : ""}
+          ${hasCompleteJob ? `<span class="is-complete">&#10003; spremno</span>` : ""}
           <span>${renderRiskAssessmentRiskIcon("briefcase")} ${escapeHtml(String(linkedJobs.length))} poslova</span>
           <span>${renderRiskAssessmentRiskIcon("building")} ${escapeHtml(String(children.length))} podstavki</span>
         </div>
@@ -136473,14 +136558,19 @@ function renderRiskAssessmentOrganizationUnits() {
           <button type="button" class="ghost-button card-danger" data-risk-unit-remove="${index}" aria-label="Ukloni organizacijsku stavku">${renderRiskAssessmentRiskIcon("close")}</button>
         </div>
       </div>
-      <div class="risk-assessment-detail-grid is-structure">
-        <label><span>Naziv</span><input data-risk-unit-field="name" value="${escapeHtml(unit.name || "")}" placeholder="${type === "workplace" ? "npr. Tajnica" : "npr. Uprava"}" /></label>
-        <label><span>Vrsta</span><select data-risk-unit-field="type">${renderRiskAssessmentUnitTypeOptions(type)}</select></label>
-        <label><span>Pod čime je</span><select data-risk-unit-field="parentId">${renderRiskAssessmentUnitOptions(unit.parentId, unit.id)}</select></label>
-        <label><span>Odgovorna osoba</span><input data-risk-unit-field="responsiblePerson" value="${escapeHtml(unit.responsiblePerson || "")}" placeholder="Ime i prezime" /></label>
-        <label><span>Broj radnika</span><input data-risk-unit-field="workerCount" value="${escapeHtml(unit.workerCount || "")}" inputmode="numeric" placeholder="npr. 4" /></label>
-      </div>
-      <details class="risk-assessment-org-advanced">
+      <details class="risk-assessment-org-inline-editor">
+        <summary>
+          <span>Uredi podatke</span>
+          <small>${escapeHtml([typeLabel, linkedJobs.length ? `${linkedJobs.length} analiza` : "", children.length ? `${children.length} podstavki` : ""].filter(Boolean).join(" · "))}</small>
+        </summary>
+        <div class="risk-assessment-detail-grid is-structure">
+          <label><span>Naziv</span><input data-risk-unit-field="name" value="${escapeHtml(unit.name || "")}" placeholder="${type === "workplace" ? "npr. Tajnica" : "npr. Uprava"}" /></label>
+          <label><span>Vrsta</span><select data-risk-unit-field="type">${renderRiskAssessmentUnitTypeOptions(type)}</select></label>
+          <label><span>Pod čime je</span><select data-risk-unit-field="parentId">${renderRiskAssessmentUnitOptions(unit.parentId, unit.id)}</select></label>
+          <label><span>Odgovorna osoba</span><input data-risk-unit-field="responsiblePerson" value="${escapeHtml(unit.responsiblePerson || "")}" placeholder="Ime i prezime" /></label>
+          <label><span>Broj radnika</span><input data-risk-unit-field="workerCount" value="${escapeHtml(unit.workerCount || "")}" inputmode="numeric" placeholder="npr. 4" /></label>
+        </div>
+        <details class="risk-assessment-org-advanced">
         <summary>
           <span>Opisi, AI i napomene</span>
           <small>${escapeHtml(unit.shortDescription || unit.description ? "Opisi su uneseni" : "Skriveno dok ne treba")}</small>
@@ -136498,12 +136588,13 @@ function renderRiskAssessmentOrganizationUnits() {
           <label class="field-span-full"><span>Detaljni opis</span><textarea data-risk-unit-field="detailedDescription" rows="4">${escapeHtml(unit.detailedDescription || "")}</textarea></label>
           <label class="field-span-full"><span>Napomena</span><textarea data-risk-unit-field="note" rows="2">${escapeHtml(unit.note || "")}</textarea></label>
         </div>
+        </details>
+        <div class="risk-assessment-linked-jobs">
+          ${linkedJobs.length
+            ? linkedJobs.map((job) => `<span>${escapeHtml(job.jobTitle || "Radno mjesto")}</span>`).join("")
+            : `<span class="is-empty">Nema povezanih poslova.</span>`}
+        </div>
       </details>
-      <div class="risk-assessment-linked-jobs">
-        ${linkedJobs.length
-          ? linkedJobs.map((job) => `<span>${escapeHtml(job.jobTitle || "Radno mjesto")}</span>`).join("")
-          : `<span class="is-empty">Nema povezanih poslova.</span>`}
-      </div>
     `;
     return [row, ...children
       .filter((child) => !nextVisited.has(String(child.id || "")))
@@ -139159,7 +139250,8 @@ function getCanManageRiskAssessments() {
 }
 
 function getRiskAssessmentClientJobInputEnabled() {
-  return Boolean(riskAssessmentClientJobInputEnabledInput?.checked);
+  const company = getRiskAssessmentCompany(riskAssessmentCompanyInput?.value || "");
+  return Boolean(company?.riskAssessmentClientJobInputEnabled);
 }
 
 function syncRiskAssessmentEditorAccess() {
@@ -141388,6 +141480,7 @@ function getRiskAssessmentJobTreeGroups() {
     label: unit.name || "Organizacijska jedinica",
     type: unit.type || "unit",
     depth: getRiskAssessmentUnitDepth(unit),
+    path: getRiskAssessmentUnitPath(unit),
     jobs: [],
   }));
   const groupById = new Map(unitGroups.map((group) => [group.id, group]));
@@ -141490,24 +141583,32 @@ function renderRiskAssessmentJobTree() {
       </div>
       ${groups.map((group) => `
         <section class="risk-assessment-job-tree-section" style="--unit-depth: ${escapeHtml(String(Math.min(group.depth || 0, 4)))}">
-          <div>
-            <strong>${escapeHtml(group.label)}</strong>
-            <span>${escapeHtml(String(group.jobs.length))}</span>
+          <div class="risk-assessment-job-tree-group-head">
+            <strong>${escapeHtml(group.path || group.label)}</strong>
+            <span>${escapeHtml(group.type === "workplace" && group.jobs.length === 0 ? "0" : String(group.jobs.length))}</span>
           </div>
-          ${group.jobs.map(({ job, index }) => {
+          ${group.jobs.length ? group.jobs.map(({ job, index }) => {
             const completion = getRiskAssessmentJobCompletion(job);
             const requiredComplete = isRiskAssessmentJobRequiredComplete(job);
             const status = getRiskAssessmentJobStatusOption(job.status);
+            const unitPath = getRiskAssessmentUnitPath(riskAssessmentOrganizationUnitDrafts.find((unit) => String(unit.id || "") === String(job.organizationUnitId || "")) || {});
             return `
               <button type="button" class="risk-assessment-job-tree-button ${index === activeIndex ? "is-active" : ""} ${requiredComplete ? "is-required-complete" : ""}" data-risk-job-tree-index="${escapeHtml(String(index))}">
                 <div class="risk-assessment-job-tree-title">
                   <span>${escapeHtml(job.jobTitle || `Radno mjesto ${index + 1}`)}</span>
                   ${requiredComplete ? `<b aria-label="Obavezna polja popunjena">&#10003;</b>` : ""}
                 </div>
-                <small>${escapeHtml(`${status.label} · ${completion}% · ${getRiskAssessmentFilledRiskRowCount(job)} ARMOR`)}</small>
+                <small>${escapeHtml([status.label, `${completion}%`, `${getRiskAssessmentFilledRiskRowCount(job)} ARMOR`, unitPath].filter(Boolean).join(" · "))}</small>
               </button>
             `;
-          }).join("")}
+          }).join("") : `
+            <button type="button" class="risk-assessment-job-tree-button is-empty-workplace" data-risk-job-add-from-unit="${escapeHtml(group.id)}" ${group.type === "workplace" ? "" : "disabled"}>
+              <div class="risk-assessment-job-tree-title">
+                <span>${escapeHtml(group.type === "workplace" ? "Nema analize radnog mjesta" : "Nema radnih mjesta u ovoj jedinici")}</span>
+              </div>
+              <small>${escapeHtml(group.type === "workplace" ? "Dodaj analizu iz ove stavke strukture" : "Dodaj radno mjesto u strukturi ili ga poveži s poslom")}</small>
+            </button>
+          `}
         </section>
       `).join("")}
     </section>

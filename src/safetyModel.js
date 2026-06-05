@@ -4405,6 +4405,7 @@ export function createCompany(input, existingCompanies = [], createId = () => cr
     contractMonthlyPrice: normalizeText(input.contractMonthlyPrice),
     contractPriceList: normalizeCompanyContractPriceList(input.contractPriceList),
     employeeSize: normalizeCompanyEmployeeSize(input.employeeSize),
+    riskAssessmentClientJobInputEnabled: normalizeBoolean(input.riskAssessmentClientJobInputEnabled ?? input.clientJobInputEnabled, false),
     managerUserIds: normalizeIdList(input.managerUserIds).slice(0, 24),
     managerUserLabels: normalizeCompanyManagerLabels(input.managerUserLabels),
     templateAssignments: normalizeCompanyTemplateAssignments(input.templateAssignments ?? input.serviceTemplateAssignments),
@@ -4462,6 +4463,9 @@ export function updateCompany(current, patch, existingCompanies = [], now = isoN
     employeeSize: hasOwn(patch, "employeeSize")
       ? normalizeCompanyEmployeeSize(patch.employeeSize)
       : normalizeCompanyEmployeeSize(current.employeeSize),
+    riskAssessmentClientJobInputEnabled: hasOwn(patch, "riskAssessmentClientJobInputEnabled") || hasOwn(patch, "clientJobInputEnabled")
+      ? normalizeBoolean(patch.riskAssessmentClientJobInputEnabled ?? patch.clientJobInputEnabled, current.riskAssessmentClientJobInputEnabled)
+      : normalizeBoolean(current.riskAssessmentClientJobInputEnabled, false),
     managerUserIds: hasOwn(patch, "managerUserIds")
       ? normalizeIdList(patch.managerUserIds).slice(0, 24)
       : normalizeIdList(current.managerUserIds).slice(0, 24),
@@ -6436,6 +6440,7 @@ function normalizeRiskAssessmentEmployerData(input = {}, current = {}) {
     znrRepresentatives: normalizeText(source.znrRepresentatives ?? fallback.znrRepresentatives).slice(0, 2000),
     znrCommitteeParticipation: normalizeText(source.znrCommitteeParticipation ?? fallback.znrCommitteeParticipation).slice(0, 3000),
     hasZnrAuthorization: normalizeBoolean(source.hasZnrAuthorization ?? fallback.hasZnrAuthorization, false),
+    znrAuthorizationCompanyDetails: normalizeText(source.znrAuthorizationCompanyDetails ?? fallback.znrAuthorizationCompanyDetails).slice(0, 2000),
     znrAuthorizationDocument: normalizePdfDocument(source.znrAuthorizationDocument ?? fallback.znrAuthorizationDocument ?? null),
     assessmentMembers: normalizeText(source.assessmentMembers ?? fallback.assessmentMembers).slice(0, 2000),
     assessmentMemberUserIds: normalizeIdList(source.assessmentMemberUserIds ?? fallback.assessmentMemberUserIds ?? []).slice(0, 48),

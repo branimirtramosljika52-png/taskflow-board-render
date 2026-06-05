@@ -3471,6 +3471,13 @@
                                   <input id="company-client-email" type="email" maxlength="180" autocomplete="email" />
                                 </label>
                               </div>
+                              <label class="risk-assessment-checkbox-line is-portal-toggle company-client-risk-toggle">
+                                <input id="company-client-risk-job-input-enabled" type="checkbox" />
+                                <span>
+                                  <strong>Omogući klijentu unos po radnim mjestima</strong>
+                                  <small>Klijent može dopuniti organizaciju posla, RA-1 odabire, PUR, OZO i ARMOR napomene za procjenu rizika ove tvrtke.</small>
+                                </span>
+                              </label>
                             </div>
 
                             <div class="company-client-location-panel">
@@ -4856,15 +4863,6 @@
                             </label>
                           </label>
                         </div>
-                        <div class="risk-assessment-client-portal-permission is-company-setting">
-                          <label class="risk-assessment-checkbox-line is-portal-toggle">
-                            <input id="risk-assessment-client-job-input-enabled" type="checkbox" />
-                            <span>
-                              <strong>Omogući klijentu unos po radnim mjestima</strong>
-                              <small>Postavka je vezana uz tvrtku/procjenu: klijent može dopuniti organizaciju posla, RA-1 odabire, PUR, OZO i ARMOR napomene.</small>
-                            </span>
-                          </label>
-                        </div>
                       </section>
 
                       <section class="risk-assessment-basic-card is-znr">
@@ -4948,14 +4946,12 @@
                         <div class="risk-assessment-authorization-panel">
                           <label class="risk-assessment-checkbox-line">
                             <input id="risk-assessment-znr-authorization" type="checkbox" />
-                            <span>Izrađivač ima ovlaštenja za obavljanje poslova zaštite na radu</span>
+                            <span>Dodaj ovlaštenje izrađivača procjene</span>
                           </label>
-                          <div class="risk-assessment-file-control">
-                            <input id="risk-assessment-znr-authorization-file" type="file" accept="application/pdf,.pdf" hidden />
-                            <button id="risk-assessment-znr-authorization-upload" type="button" class="ghost-button">Dodaj PDF ovlaštenja</button>
-                            <button id="risk-assessment-znr-authorization-remove" type="button" class="ghost-button" hidden>Ukloni PDF</button>
-                            <span id="risk-assessment-znr-authorization-file-meta">PDF ovlaštenja nije dodan.</span>
-                          </div>
+                          <label class="field field-span-full risk-assessment-authorization-company-field">
+                            <span>Podaci ovlaštene firme</span>
+                            <textarea id="risk-assessment-znr-authorization-company-details" rows="3" data-risk-autogrow placeholder="npr. ADRIA GRUPA d.o.o., OIB: 06637660960, sjedište: Heinzelova 53a, 10000 Zagreb"></textarea>
+                          </label>
                         </div>
                         <div class="risk-assessment-team-picker-grid">
                           <label class="field risk-assessment-people-field">

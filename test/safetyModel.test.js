@@ -722,6 +722,7 @@ test("risk assessments link only matching risk assessment work orders and keep e
         znrRepresentatives: "Povjerenik radnika",
         znrCommitteeParticipation: "Odbor sudjeluje pregledom prijedloga mjera.",
         hasZnrAuthorization: true,
+        znrAuthorizationCompanyDetails: "ADRIA GRUPA d.o.o., OIB: 06637660960, Heinzelova 53a, Zagreb",
         znrAuthorizationDocument: {
           fileName: "ovlastenje.pdf",
           fileType: "application/pdf",
@@ -769,6 +770,7 @@ test("risk assessments link only matching risk assessment work orders and keep e
   assert.deepEqual(assessment.employerData.selectedLocationIds, ["location-1"]);
   assert.equal(assessment.employerData.authorizedPersons[0].jobTitle, "Direktor proizvodnje");
   assert.equal(assessment.employerData.hasZnrAuthorization, true);
+  assert.equal(assessment.employerData.znrAuthorizationCompanyDetails, "ADRIA GRUPA d.o.o., OIB: 06637660960, Heinzelova 53a, Zagreb");
   assert.equal(assessment.employerData.znrAuthorizationDocument.fileName, "ovlastenje.pdf");
   assert.deepEqual(assessment.employerData.assessmentMemberUserIds, ["user-3"]);
   assert.equal(assessment.employerData.companyCollaborators[0].title, "direktor");
@@ -834,6 +836,7 @@ test("companies keep uploaded logo data through create and update", () => {
       nkdActivity: "62.01 Računalno programiranje",
       logoDataUrl: "data:image/png;base64,AAA",
       employeeSize: "Do 49 zaposlenih",
+      riskAssessmentClientJobInputEnabled: true,
       contractValidFrom: "2026-01-01",
       contractValidTo: "2026-12-31",
       managerUserIds: ["user-1", "user-2", "user-1"],
@@ -851,6 +854,7 @@ test("companies keep uploaded logo data through create and update", () => {
   assert.equal(company.mbs, "081521195");
   assert.equal(company.nkdActivity, "62.01 Računalno programiranje");
   assert.equal(company.employeeSize, "do-49");
+  assert.equal(company.riskAssessmentClientJobInputEnabled, true);
   assert.equal(company.contractValidFrom, "2026-01-01");
   assert.equal(company.contractValidTo, "2026-12-31");
   assert.deepEqual(company.managerUserIds, ["user-1", "user-2"]);
@@ -869,6 +873,7 @@ test("companies keep uploaded logo data through create and update", () => {
       managerUserIds: ["user-2", "user-3"],
       managerUserLabels: ["Marko Juric", "Ivana Horvat"],
       representativeRole: "Clan uprave",
+      riskAssessmentClientJobInputEnabled: false,
       nkdActivity: "71.20 Tehničko ispitivanje i analiza",
     },
     [company],
@@ -878,6 +883,7 @@ test("companies keep uploaded logo data through create and update", () => {
   assert.equal(updated.logoDataUrl, "data:image/png;base64,BBB");
   assert.equal(updated.isActive, false);
   assert.equal(updated.employeeSize, "preko-50");
+  assert.equal(updated.riskAssessmentClientJobInputEnabled, false);
   assert.equal(updated.contractValidFrom, "2026-01-01");
   assert.equal(updated.contractValidTo, "2027-12-31");
   assert.deepEqual(updated.managerUserIds, ["user-2", "user-3"]);
