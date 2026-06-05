@@ -120203,20 +120203,46 @@ function addRiskAssessmentJobFromUnit(unitId = "") {
     return;
   }
   const nextIndex = riskAssessmentJobDrafts.length;
-  riskAssessmentJobDrafts.push(createRiskAssessmentJobDraft({
-    organizationUnitId: unit.id,
-    jobTitle: unit.name || "Radno mjesto",
-    workerCount: unit.workerCount || "",
-    description: unit.description || unit.shortDescription || "",
-    workplaceDescription: unit.note || "",
-    status: "draft",
-  }));
+  riskAssessmentJobDrafts.push(createRiskAssessmentJobDraftFromWorkplaceUnit(unit));
   setRiskAssessmentActiveJobIndex(nextIndex);
   renderRiskAssessmentOrganizationUnits();
   renderRiskAssessmentJobs();
   renderRiskAssessmentOverview();
   scheduleRiskAssessmentDraftAutosave();
   return nextIndex;
+}
+
+function createRiskAssessmentJobDraftFromWorkplaceUnit(unit = {}) {
+  return createRiskAssessmentJobDraft({
+    organizationUnitId: unit.id,
+    jobTitle: unit.name || "Radno mjesto",
+    workerCount: unit.workerCount || "",
+    description: unit.description || unit.shortDescription || "",
+    shortDescription: unit.shortDescription || unit.description || "",
+    workplaceDescription: unit.note || "",
+    status: "draft",
+  });
+}
+
+function ensureRiskAssessmentJobsFromWorkplaceUnits() {
+  const workplaceUnits = riskAssessmentOrganizationUnitDrafts.filter((unit) => normalizeRiskAssessmentUnitType(unit.type) === "workplace");
+  if (!workplaceUnits.length) {
+    return false;
+  }
+  const existingUnitIds = new Set(riskAssessmentJobDrafts.map((job) => String(job.organizationUnitId || "")).filter(Boolean));
+  const missingUnits = workplaceUnits.filter((unit) => !existingUnitIds.has(String(unit.id || "")));
+  if (!missingUnits.length) {
+    return false;
+  }
+  const hadJobs = riskAssessmentJobDrafts.length > 0;
+  riskAssessmentJobDrafts = [
+    ...riskAssessmentJobDrafts,
+    ...missingUnits.map((unit) => createRiskAssessmentJobDraftFromWorkplaceUnit(unit)),
+  ];
+  if (!hadJobs) {
+    setRiskAssessmentActiveJobIndex(0);
+  }
+  return true;
 }
 
 riskAssessmentAddJobButton?.addEventListener("click", () => {
@@ -131897,7 +131923,7 @@ function renderRiskAssessmentDocumentRoutingControls() {
     if (!head) {
       return;
     }
-    if (block.block === "intro") {
+    if (["intro", "jobs"].includes(block.block)) {
       head.querySelector(`[data-risk-template-routing="${block.block}"]`)?.remove();
       return;
     }
@@ -139260,19 +139286,13 @@ function renderRiskAssessmentJobCatalogStats(jobs = [], visibleJobs = [], select
   if (!riskAssessmentJobCatalogStats) {
     return;
   }
-  const selectedJobs = jobs.filter((job) => selectedIds.has(String(job.id || "")));
-  const selectedHazards = selectedJobs.reduce((sum, job) => sum + (job.hazards ?? []).length, 0);
   const activeJob = getRiskAssessmentActiveJobDraft();
   const activeUnit = getRiskAssessmentJobCatalogTargetUnit(activeJob);
   const targetLabel = activeJob
     ? (activeJob.jobTitle || activeUnit?.name || "Aktivno radno mjesto")
     : "Odaberi radno mjesto";
   riskAssessmentJobCatalogStats.innerHTML = `
-    <span class="is-target ${activeJob ? "is-active" : "is-missing"}"><strong>${escapeHtml(targetLabel)}</strong><small>cilj dodavanja</small></span>
-    <span><strong>${escapeHtml(String(jobs.length))}</strong><small>u katalogu</small></span>
-    <span><strong>${escapeHtml(String(visibleJobs.length))}</strong><small>prikazano</small></span>
-    <span class="${selectedIds.size ? "is-active" : ""}"><strong>${escapeHtml(String(selectedIds.size))}</strong><small>odabrano</small></span>
-    <span><strong>${escapeHtml(String(selectedHazards))}</strong><small>rizika</small></span>
+    <span class="is-target ${activeJob ? "is-active" : "is-missing"}"><strong>${escapeHtml(targetLabel)}</strong><small>radno mjesto</small></span>
   `;
 }
 
@@ -142060,6 +142080,7 @@ function renderRiskAssessmentJobs() {
   if (!riskAssessmentJobsList) {
     return;
   }
+  ensureRiskAssessmentJobsFromWorkplaceUnits();
   syncRiskAssessmentJobCatalogOptions();
   disposeRiskAssessmentPpeScenes();
   renderRiskAssessmentJobTree();
