@@ -120218,7 +120218,7 @@ function addRiskAssessmentJobFromUnit(unitId = "") {
 }
 
 function createRiskAssessmentJobDraftFromWorkplaceUnit(unit = {}) {
-  return createRiskAssessmentJobDraft({
+  return seedRiskAssessmentArmorCatalogRowsForJob(createRiskAssessmentJobDraft({
     organizationUnitId: unit.id,
     jobTitle: unit.name || "Radno mjesto",
     workerCount: unit.workerCount || "",
@@ -120226,7 +120226,7 @@ function createRiskAssessmentJobDraftFromWorkplaceUnit(unit = {}) {
     shortDescription: unit.shortDescription || unit.description || "",
     workplaceDescription: unit.note || "",
     status: "draft",
-  });
+  }));
 }
 
 function ensureRiskAssessmentJobsFromWorkplaceUnits() {
@@ -120565,6 +120565,15 @@ window.addEventListener("resize", scheduleRiskAssessmentJobAnalysisShellModeUpda
 riskAssessmentJobTree?.addEventListener("input", handleRiskAssessmentJobsListInput);
 riskAssessmentJobTree?.addEventListener("change", handleRiskAssessmentJobsListInput);
 riskAssessmentJobTree?.addEventListener("click", (event) => {
+  const addWorkplaceButton = event.target?.closest?.("[data-risk-job-tree-add-workplace]");
+  if (addWorkplaceButton) {
+    event.preventDefault();
+    if (!getCanManageRiskAssessments()) {
+      return;
+    }
+    addRiskAssessmentBlankJob();
+    return;
+  }
   const button = event.target?.closest?.("[data-risk-workplace-job-index]");
   if (button) {
     const index = Number(button.dataset.riskWorkplaceJobIndex);
@@ -139006,6 +139015,7 @@ function createRiskAssessmentJobDraft(initial = {}) {
     aiProposal: initial.aiProposal || null,
     hiddenBlocks: uniqueJobValues(initial.hiddenBlocks ?? []),
     collapsed: Boolean(initial.collapsed),
+    armorCatalogSeeded: Boolean(initial.armorCatalogSeeded),
     clientInput: createRiskAssessmentClientJobInputDraft(initial.clientInput || {}),
     eligibility: createRiskAssessmentEligibilityDraft(initial.eligibility || {}),
     riskRows: sortedRiskRows.length > 0 ? sortedRiskRows : [createRiskAssessmentRiskRowDraft()],
@@ -139054,15 +139064,35 @@ function mergeRiskAssessmentRiskRows(currentRows = [], incomingRows = []) {
   );
 }
 
+function seedRiskAssessmentArmorCatalogRowsForJob(job = {}) {
+  return {
+    ...job,
+    armorCatalogSeeded: true,
+    riskRows: mergeRiskAssessmentRiskRows(
+      job.riskRows ?? [],
+      prepareRiskAssessmentCatalogRowsForJob(job, RISK_ASSESSMENT_CATALOG_ROWS),
+    ),
+  };
+}
+
+function ensureRiskAssessmentArmorCatalogRowsForWorkplaceJobs() {
+  let changed = false;
+  riskAssessmentJobDrafts = riskAssessmentJobDrafts.map((job) => {
+    if (!isRiskAssessmentWorkplaceJob(job) || job.armorCatalogSeeded) {
+      return job;
+    }
+    changed = true;
+    return seedRiskAssessmentArmorCatalogRowsForJob(job);
+  });
+  return changed;
+}
+
 function applyRiskAssessmentArmorTemplateRows(jobIndex) {
   const job = riskAssessmentJobDrafts[jobIndex];
   if (!job) {
     return;
   }
-  riskAssessmentJobDrafts[jobIndex] = {
-    ...job,
-    riskRows: mergeRiskAssessmentRiskRows(job.riskRows, prepareRiskAssessmentCatalogRowsForJob(job, RISK_ASSESSMENT_CATALOG_ROWS)),
-  };
+  riskAssessmentJobDrafts[jobIndex] = seedRiskAssessmentArmorCatalogRowsForJob(job);
   renderRiskAssessmentJobs();
   renderRiskAssessmentOverview();
   scheduleRiskAssessmentDraftAutosave();
@@ -139079,7 +139109,7 @@ function applyRiskAssessmentArmorTemplateRowsToJobs(indexes = null) {
   const targetSet = new Set(targetIndexes);
   riskAssessmentJobDrafts = riskAssessmentJobDrafts.map((job, index) => (
     targetSet.has(index)
-      ? { ...job, riskRows: mergeRiskAssessmentRiskRows(job.riskRows, prepareRiskAssessmentCatalogRowsForJob(job, RISK_ASSESSMENT_CATALOG_ROWS)) }
+      ? seedRiskAssessmentArmorCatalogRowsForJob(job)
       : job
   ));
   renderRiskAssessmentJobs();
@@ -142385,16 +142415,37 @@ function renderRiskAssessmentJobTreeNode(unit = {}, childrenByParent = new Map()
   `;
 }
 
+function renderRiskAssessmentJobTreeHead(completedCount = 0, workplaceCount = 0) {
+  const disabled = !getCanManageRiskAssessments();
+  return `
+    <div class="risk-assessment-job-tree-head">
+      <div>
+        <strong>Stablo radnih mjesta</strong>
+        <span>${escapeHtml(`${completedCount}/${workplaceCount} obrađeno`)}</span>
+      </div>
+      <button type="button"
+        class="ghost-button risk-assessment-icon-button risk-assessment-job-tree-add"
+        data-risk-job-tree-add-workplace
+        title="Dodaj radno mjesto"
+        aria-label="Dodaj radno mjesto"
+        ${disabled ? "disabled" : ""}>${renderRiskAssessmentRiskIcon("plus")}</button>
+    </div>
+  `;
+}
+
 function renderRiskAssessmentJobTree() {
   if (!riskAssessmentJobTree) {
     return;
   }
   if (!riskAssessmentJobDrafts.length && !riskAssessmentOrganizationUnitDrafts.length) {
     riskAssessmentJobTree.innerHTML = `
-      <div class="risk-assessment-job-tree-empty">
-        <strong>Nema radnih mjesta</strong>
-        <span>Dodaj posao za analizu.</span>
-      </div>
+      <section class="risk-assessment-job-tree-block is-jobs">
+        ${renderRiskAssessmentJobTreeHead(0, 0)}
+        <div class="risk-assessment-job-tree-empty">
+          <strong>Nema radnih mjesta</strong>
+          <span>Klikni + za brzo dodavanje prvog radnog mjesta.</span>
+        </div>
+      </section>
     `;
     return;
   }
@@ -142410,10 +142461,7 @@ function renderRiskAssessmentJobTree() {
     : null;
   riskAssessmentJobTree.innerHTML = `
     <section class="risk-assessment-job-tree-block is-jobs">
-      <div class="risk-assessment-job-tree-head">
-        <strong>Stablo radnih mjesta</strong>
-        <span>${escapeHtml(`${completedCount}/${workplaceUnits.length} obrađeno`)}</span>
-      </div>
+      ${renderRiskAssessmentJobTreeHead(completedCount, workplaceUnits.length)}
       ${roots.length ? `<div class="risk-assessment-job-tree-nodes">${roots.map((unit) => renderRiskAssessmentJobTreeNode(unit, childrenByParent, activeIndex)).join("")}</div>` : `
         <div class="risk-assessment-job-tree-empty">
           <strong>Nema strukture</strong>
@@ -142434,6 +142482,7 @@ function renderRiskAssessmentJobs() {
     return;
   }
   ensureRiskAssessmentJobsFromWorkplaceUnits();
+  const armorCatalogSeeded = ensureRiskAssessmentArmorCatalogRowsForWorkplaceJobs();
   const activeWorkplaceIndex = getRiskAssessmentActiveWorkplaceJobIndex();
   syncRiskAssessmentJobCatalogOptions();
   disposeRiskAssessmentPpeScenes();
@@ -142521,6 +142570,9 @@ function renderRiskAssessmentJobs() {
   renderRiskAssessmentChemicals();
   renderRiskAssessmentBiologicalRisks();
   renderRiskAssessmentOverview();
+  if (armorCatalogSeeded) {
+    scheduleRiskAssessmentDraftAutosave();
+  }
   scheduleRiskAssessmentJobAnalysisShellModeUpdate();
 }
 

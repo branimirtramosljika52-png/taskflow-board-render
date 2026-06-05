@@ -60024,6 +60024,29 @@ button.work-order-editor-section-head:focus-visible {
   border-bottom: 1px solid rgba(226, 232, 240, 0.9);
 }
 
+.risk-assessment-job-tree-head {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.risk-assessment-job-tree-head > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.risk-assessment-job-tree-add {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 10px;
+}
+
+.risk-assessment-job-tree-add .risk-assessment-risk-icon {
+  width: 14px;
+  height: 14px;
+}
+
 .risk-assessment-job-tree-head strong,
 .risk-assessment-job-tree-empty strong {
   color: #0f172a;
