@@ -5499,20 +5499,90 @@
                 </form>
               </div>
               <nav id="risk-assessment-dock" class="risk-assessment-dock" aria-label="Navigacija procjene rizika">
-                <button type="button" class="is-active" data-risk-assessment-jump="basic"><strong>Osnovni podaci</strong><span>Tvrtka i datumi</span></button>
-                <button type="button" data-risk-assessment-jump="intro"><strong>Uvod</strong><span>Pravna osnova</span></button>
-                <button type="button" data-risk-assessment-jump="structure"><strong>Org. struktura</strong><span>Jedinice</span></button>
-                <button type="button" data-risk-assessment-jump="process"><strong>Mjesta rada</strong><span>Podaci prikupljeni</span></button>
-                <button type="button" data-risk-assessment-jump="findings"><strong>Štetnosti</strong><span>Podaci</span></button>
-                <button type="button" data-risk-assessment-jump="work-equipment"><strong>Oprema</strong><span>Radna</span></button>
-                <button type="button" data-risk-assessment-jump="work-environment"><strong>Okoliš</strong><span>Radni</span></button>
-                <button type="button" data-risk-assessment-jump="inspections"><strong>Ispitivanja</strong><span>Popis</span></button>
-                <button type="button" data-risk-assessment-jump="measures"><strong>Mjere</strong><span>Plan mjera</span></button>
-                <button type="button" data-risk-assessment-jump="jobs"><strong>Analiza</strong><span>Radna mjesta</span></button>
-                <button type="button" data-risk-assessment-jump="chemicals"><strong>Kemijske štetnosti</strong><span>STL i GHS</span></button>
-                <button type="button" data-risk-assessment-jump="biological"><strong>Biološke štetnosti</strong><span>NN 129/2020</span></button>
-                <button type="button" data-risk-assessment-jump="manual-handling"><strong>Teret</strong><span>Ručno prenošenje</span></button>
-                <button type="button" data-risk-assessment-jump="overview"><strong>Pregled</strong><span>Izvoz</span></button>
+                <button type="button" class="is-active" data-risk-assessment-jump="basic">
+                  <span class="risk-assessment-dock-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="3"></rect><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path></svg>
+                  </span>
+                  <span class="risk-assessment-dock-copy"><strong>Osnovni podaci</strong><span>Tvrtka i datumi</span></span>
+                </button>
+                <button type="button" data-risk-assessment-jump="intro">
+                  <span class="risk-assessment-dock-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5Z"></path><path d="M8 7h8"></path><path d="M8 11h7"></path></svg>
+                  </span>
+                  <span class="risk-assessment-dock-copy"><strong>Uvod</strong><span>Pravna osnova</span></span>
+                </button>
+                <button type="button" data-risk-assessment-jump="structure">
+                  <span class="risk-assessment-dock-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="5" rx="1.5"></rect><rect x="3" y="16" width="6" height="5" rx="1.5"></rect><rect x="15" y="16" width="6" height="5" rx="1.5"></rect><path d="M12 8v4"></path><path d="M6 16v-4h12v4"></path></svg>
+                  </span>
+                  <span class="risk-assessment-dock-copy"><strong>Org. struktura</strong><span>Jedinice</span></span>
+                </button>
+                <button type="button" data-risk-assessment-jump="process">
+                  <span class="risk-assessment-dock-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><path d="M4 6h6"></path><path d="M14 6h6"></path><path d="M4 18h6"></path><path d="M14 18h6"></path><path d="M7 6v12"></path><path d="M17 6v12"></path><circle cx="7" cy="6" r="2"></circle><circle cx="17" cy="18" r="2"></circle></svg>
+                  </span>
+                  <span class="risk-assessment-dock-copy"><strong>Mjesta rada</strong><span>Podaci prikupljeni</span></span>
+                </button>
+                <button type="button" data-risk-assessment-jump="findings">
+                  <span class="risk-assessment-dock-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><path d="M12 3 22 20H2Z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
+                  </span>
+                  <span class="risk-assessment-dock-copy"><strong>Štetnosti</strong><span>Podaci</span></span>
+                </button>
+                <button type="button" data-risk-assessment-jump="work-equipment">
+                  <span class="risk-assessment-dock-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5 5L4 17v3h3l5.7-5.7a4 4 0 0 0 5-5l-2.6 2.6-3-3Z"></path></svg>
+                  </span>
+                  <span class="risk-assessment-dock-copy"><strong>Oprema</strong><span>Radna</span></span>
+                </button>
+                <button type="button" data-risk-assessment-jump="work-environment">
+                  <span class="risk-assessment-dock-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><path d="M4 13c4-7 10-9 16-9 0 8-4 14-12 16"></path><path d="M4 20c3-5 7-8 13-10"></path></svg>
+                  </span>
+                  <span class="risk-assessment-dock-copy"><strong>Okoliš</strong><span>Radni</span></span>
+                </button>
+                <button type="button" data-risk-assessment-jump="inspections">
+                  <span class="risk-assessment-dock-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="m8 12 3 3 5-6"></path></svg>
+                  </span>
+                  <span class="risk-assessment-dock-copy"><strong>Ispitivanja</strong><span>Popis</span></span>
+                </button>
+                <button type="button" data-risk-assessment-jump="measures">
+                  <span class="risk-assessment-dock-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><path d="M9 6h11"></path><path d="M9 12h11"></path><path d="M9 18h11"></path><path d="m4 6 1 1 2-2"></path><path d="m4 12 1 1 2-2"></path><path d="m4 18 1 1 2-2"></path></svg>
+                  </span>
+                  <span class="risk-assessment-dock-copy"><strong>Mjere</strong><span>Plan mjera</span></span>
+                </button>
+                <button type="button" data-risk-assessment-jump="jobs">
+                  <span class="risk-assessment-dock-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="3"></rect><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path><path d="M3 12h18"></path></svg>
+                  </span>
+                  <span class="risk-assessment-dock-copy"><strong>Analiza</strong><span>Radna mjesta</span></span>
+                </button>
+                <button type="button" data-risk-assessment-jump="chemicals">
+                  <span class="risk-assessment-dock-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><path d="M10 3h4"></path><path d="M11 3v6l-5 8a3 3 0 0 0 2.6 4.5h6.8A3 3 0 0 0 18 17l-5-8V3"></path><path d="M8 17h8"></path></svg>
+                  </span>
+                  <span class="risk-assessment-dock-copy"><strong>Kemijske štetnosti</strong><span>STL i GHS</span></span>
+                </button>
+                <button type="button" data-risk-assessment-jump="biological">
+                  <span class="risk-assessment-dock-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v3"></path><path d="M12 19v3"></path><path d="m4.9 4.9 2.1 2.1"></path><path d="m17 17 2.1 2.1"></path><path d="M2 12h3"></path><path d="M19 12h3"></path><path d="m4.9 19.1 2.1-2.1"></path><path d="m17 7 2.1-2.1"></path></svg>
+                  </span>
+                  <span class="risk-assessment-dock-copy"><strong>Biološke štetnosti</strong><span>NN 129/2020</span></span>
+                </button>
+                <button type="button" data-risk-assessment-jump="manual-handling">
+                  <span class="risk-assessment-dock-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><path d="M4 9h16v10H4Z"></path><path d="m4 9 3-4h10l3 4"></path><path d="M9 13h6"></path></svg>
+                  </span>
+                  <span class="risk-assessment-dock-copy"><strong>Teret</strong><span>Ručno prenošenje</span></span>
+                </button>
+                <button type="button" data-risk-assessment-jump="overview">
+                  <span class="risk-assessment-dock-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><path d="M5 3h10l4 4v14H5Z"></path><path d="M15 3v5h4"></path><path d="m8 15 2.2 2.2L16 11"></path></svg>
+                  </span>
+                  <span class="risk-assessment-dock-copy"><strong>Pregled</strong><span>Izvoz</span></span>
+                </button>
               </nav>
             </section>
 

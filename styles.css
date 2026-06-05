@@ -67499,9 +67499,11 @@ body.is-risk-stl-review-open {
 
 .risk-assessment-dock button {
   display: grid;
-  gap: 2px;
-  min-width: 118px;
-  padding: 8px 12px;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 148px;
+  padding: 8px 11px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.06);
@@ -67520,15 +67522,54 @@ body.is-risk-stl-review-open {
   transform: translateY(-1px);
 }
 
+.risk-assessment-dock-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(191, 219, 254, 0.96);
+}
+
+.risk-assessment-dock button:hover .risk-assessment-dock-icon,
+.risk-assessment-dock button.is-active .risk-assessment-dock-icon {
+  border-color: rgba(255, 255, 255, 0.34);
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+
+.risk-assessment-dock-icon svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.risk-assessment-dock-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
 .risk-assessment-dock strong {
   font-size: 0.78rem;
   line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.risk-assessment-dock span {
+.risk-assessment-dock-copy > span {
   color: rgba(255, 255, 255, 0.66);
   font-size: 0.64rem;
   font-weight: 750;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
