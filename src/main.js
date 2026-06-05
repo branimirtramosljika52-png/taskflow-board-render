@@ -6456,6 +6456,8 @@ let riskAssessmentActiveRichEditorKey = "";
 let riskAssessmentActiveJobIndex = 0;
 let riskAssessmentRichEditorSelection = null;
 let riskAssessmentJobAnalysisScrollFrame = 0;
+let riskAssessmentOverviewRenderTimer = null;
+const riskAssessmentJobDocumentPreviewTimers = new Map();
 const RISK_ASSESSMENT_AUTOSAVE_DELAY_MS = 10 * 60 * 1000;
 const RISK_ASSESSMENT_RICH_FIELD_KEYS = Object.freeze([
   "intro",
@@ -140357,6 +140359,31 @@ function refreshRiskAssessmentJobDocumentPreview(jobIndex) {
   }
 }
 
+function scheduleRiskAssessmentJobDocumentPreviewRefresh(jobIndex) {
+  if (!Number.isInteger(jobIndex) || jobIndex < 0) {
+    return;
+  }
+  const existingTimer = riskAssessmentJobDocumentPreviewTimers.get(jobIndex);
+  if (existingTimer) {
+    window.clearTimeout(existingTimer);
+  }
+  const timer = window.setTimeout(() => {
+    riskAssessmentJobDocumentPreviewTimers.delete(jobIndex);
+    refreshRiskAssessmentJobDocumentPreview(jobIndex);
+  }, 180);
+  riskAssessmentJobDocumentPreviewTimers.set(jobIndex, timer);
+}
+
+function scheduleRiskAssessmentOverviewRender() {
+  if (riskAssessmentOverviewRenderTimer) {
+    window.clearTimeout(riskAssessmentOverviewRenderTimer);
+  }
+  riskAssessmentOverviewRenderTimer = window.setTimeout(() => {
+    riskAssessmentOverviewRenderTimer = null;
+    renderRiskAssessmentOverview();
+  }, 180);
+}
+
 function handleRiskAssessmentOrganizationUnitsInput(event) {
   const target = event.target;
   if (!(
@@ -140763,12 +140790,74 @@ function updateRiskAssessmentRiskRowDraftField(jobIndex, riskIndex, field, value
     ...current,
     riskRows,
   };
-  refreshRiskAssessmentJobDocumentPreview(jobIndex);
-  renderRiskAssessmentOverview();
+  scheduleRiskAssessmentJobDocumentPreviewRefresh(jobIndex);
+  scheduleRiskAssessmentOverviewRender();
   scheduleRiskAssessmentDraftAutosave();
 }
 
-function toggleRiskAssessmentRiskRowPurPoint(jobIndex, riskIndex, value = "") {
+function updateRiskAssessmentRiskRowVisualState(jobIndex, riskIndex) {
+  const risk = riskAssessmentJobDrafts[jobIndex]?.riskRows?.[riskIndex];
+  if (!risk) {
+    return;
+  }
+  const riskLevel = getRiskAssessmentRiskDisplayLevel(risk);
+  const riskTone = getRiskAssessmentRiskDisplayTone(risk);
+  const riskShortLabel = getRiskAssessmentRiskShortLabel(riskLevel);
+  const riskScore = getRiskAssessmentRiskScoreValue(risk);
+  const row = riskAssessmentJobsList?.querySelector(`[data-risk-job-index="${jobIndex}"]`);
+  const output = row?.querySelector?.(`[data-risk-row-output="${riskIndex}"]`);
+  if (!(output instanceof HTMLElement)) {
+    return;
+  }
+  const toneClasses = ["is-low", "is-medium", "is-high", "is-unknown"];
+  output.classList.remove(...toneClasses);
+  output.classList.add(`is-${riskTone}`);
+  output.innerHTML = `
+    <i aria-hidden="true"></i>
+    <strong>${escapeHtml(riskLevel || `${riskShortLabel} rizik`)}</strong>
+    ${riskScore ? `<em>${escapeHtml(riskScore)}</em>` : ""}
+  `;
+  const card = output.closest(".risk-assessment-risk-card");
+  if (card instanceof HTMLElement) {
+    card.classList.remove(...toneClasses);
+    card.classList.add(`is-${riskTone}`);
+    card.querySelectorAll(`[data-risk-row-index="${riskIndex}"]`).forEach((control) => {
+      const shell = control.closest(".risk-assessment-risk-select-shell");
+      if (shell instanceof HTMLElement) {
+        shell.classList.remove(...toneClasses);
+        shell.classList.add(`is-${riskTone}`);
+      }
+    });
+  }
+}
+
+function updateRiskAssessmentRiskRowPurVisualState(jobIndex, riskIndex) {
+  const risk = riskAssessmentJobDrafts[jobIndex]?.riskRows?.[riskIndex];
+  if (!risk) {
+    return;
+  }
+  const selected = new Set(normalizeJobPurPointValues(risk.purPoints ?? []));
+  const row = riskAssessmentJobsList?.querySelector(`[data-risk-job-index="${jobIndex}"]`);
+  const purField = row?.querySelector?.(`[data-risk-row-pur-point][data-risk-row-index="${riskIndex}"]`)?.closest(".risk-assessment-risk-pur-field");
+  if (!(purField instanceof HTMLElement)) {
+    return;
+  }
+  const countLabel = selected.size ? `${selected.size} odabrano` : "Ne";
+  const countPill = purField.querySelector(".risk-assessment-risk-pur-head em");
+  if (countPill) {
+    countPill.textContent = countLabel;
+  }
+  const summary = purField.querySelector(".risk-assessment-risk-pur-dropdown summary span");
+  if (summary) {
+    summary.textContent = selected.size ? getJobPurPointSummary(Array.from(selected)) : "Odaberi iz popisa prema Pravilniku";
+  }
+  purField.querySelectorAll("[data-risk-row-pur-point]").forEach((control) => {
+    const value = String(control.dataset.riskRowPurPoint || "").trim();
+    control.classList.toggle("is-selected", selected.has(value));
+  });
+}
+
+function toggleRiskAssessmentRiskRowPurPoint(jobIndex, riskIndex, value = "", { rerender = true } = {}) {
   const current = riskAssessmentJobDrafts[jobIndex];
   if (!current || !value || !Number.isInteger(riskIndex) || riskIndex < 0) {
     return;
@@ -140802,8 +140891,13 @@ function toggleRiskAssessmentRiskRowPurPoint(jobIndex, riskIndex, value = "") {
     nextJob.medicalExams = buildRiskAssessmentMedicalText(nextJob);
   }
   riskAssessmentJobDrafts[jobIndex] = nextJob;
-  renderRiskAssessmentJobs();
-  renderRiskAssessmentOverview();
+  scheduleRiskAssessmentJobDocumentPreviewRefresh(jobIndex);
+  if (rerender) {
+    renderRiskAssessmentJobs();
+    renderRiskAssessmentOverview();
+  } else {
+    scheduleRiskAssessmentOverviewRender();
+  }
   scheduleRiskAssessmentDraftAutosave();
 }
 
@@ -141129,20 +141223,23 @@ function handleRiskAssessmentJobsListInput(event) {
   }
 
   if (target.dataset.riskRowField) {
+    const riskIndex = Number(target.dataset.riskRowIndex);
+    const field = target.dataset.riskRowField;
     updateRiskAssessmentRiskRowDraftField(
       jobIndex,
-      Number(target.dataset.riskRowIndex),
-      target.dataset.riskRowField,
+      riskIndex,
+      field,
       target.value,
     );
-    if (target instanceof HTMLTextAreaElement && ["workNote", "existingMeasures"].includes(target.dataset.riskRowField)) {
+    if (target instanceof HTMLTextAreaElement && ["workNote", "existingMeasures"].includes(field)) {
       const counter = target.closest(".risk-assessment-risk-large-field")?.querySelector(".risk-assessment-risk-character-count");
       if (counter) {
         counter.textContent = `${getRiskAssessmentTextareaCount(target.value)} / 1000`;
       }
     }
-    if (["probability", "consequence"].includes(target.dataset.riskRowField)) {
-      renderRiskAssessmentJobs();
+    if (["probability", "consequence"].includes(field)) {
+      updateRiskAssessmentRiskRowVisualState(jobIndex, riskIndex);
+      renderRiskAssessmentJobTree();
     }
     return;
   }
@@ -141370,11 +141467,15 @@ function handleRiskAssessmentJobsListClick(event) {
 
   if (button.matches("[data-risk-row-pur-point]")) {
     event.preventDefault();
+    const riskIndex = Number(button.dataset.riskRowIndex);
     toggleRiskAssessmentRiskRowPurPoint(
       jobIndex,
-      Number(button.dataset.riskRowIndex),
+      riskIndex,
       button.dataset.riskRowPurPoint || "",
+      { rerender: false },
     );
+    updateRiskAssessmentRiskRowPurVisualState(jobIndex, riskIndex);
+    renderRiskAssessmentJobTree();
     return;
   }
 
@@ -141936,6 +142037,7 @@ function renderRiskAssessmentRiskCards(item = {}) {
                   </output>
                 </section>
               </div>
+              ${renderRiskAssessmentRiskPurPicker(risk, riskIndex)}
             </section>
             <div class="risk-assessment-risk-detail-grid">
               <section class="risk-assessment-risk-large-field">
@@ -141946,7 +142048,7 @@ function renderRiskAssessmentRiskCards(item = {}) {
                     <small>Upiši kod kojeg zadatka se stavka pojavljuje i koga obuhvaća.</small>
                   </span>
                 </div>
-                <textarea data-risk-row-index="${riskIndex}" data-risk-row-field="workNote" rows="4" placeholder="Unesite poslove i dodatne napomene...">${escapeHtml(workNoteValue)}</textarea>
+                <textarea data-risk-row-index="${riskIndex}" data-risk-row-field="workNote" rows="2" placeholder="Unesite poslove i dodatne napomene...">${escapeHtml(workNoteValue)}</textarea>
                 <small class="risk-assessment-risk-character-count">${escapeHtml(String(getRiskAssessmentTextareaCount(workNoteValue)))} / 1000</small>
               </section>
               <section class="risk-assessment-risk-large-field">
@@ -141957,10 +142059,9 @@ function renderRiskAssessmentRiskCards(item = {}) {
                     <small>Uključi postupak rada, opremu, OZO, osposobljavanje, preglede i nadzor.</small>
                   </span>
                 </div>
-                <textarea data-risk-row-index="${riskIndex}" data-risk-row-field="existingMeasures" rows="4" placeholder="Unesite pravila, mjere i aktivnosti...">${escapeHtml(measuresValue)}</textarea>
+                <textarea data-risk-row-index="${riskIndex}" data-risk-row-field="existingMeasures" rows="2" placeholder="Unesite pravila, mjere i aktivnosti...">${escapeHtml(measuresValue)}</textarea>
                 <small class="risk-assessment-risk-character-count">${escapeHtml(String(getRiskAssessmentTextareaCount(measuresValue)))} / 1000</small>
               </section>
-              ${renderRiskAssessmentRiskPurPicker(risk, riskIndex)}
             </div>
           </div>
         </article>
