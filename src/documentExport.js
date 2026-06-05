@@ -1557,11 +1557,14 @@ function normalizeDocxSpecialPlaceholderValue(value) {
         if (nestedType === "heading" || nestedType === "title" || nestedType === "section_heading") {
           const level = Math.max(1, Math.min(4, Number.parseInt(block.level, 10) || 2));
           const text = clean(block.text || block.title || block.label);
+          const fontSize = Number(block.fontSize);
           return text ? {
             type: "heading",
             id: clean(block.id) || `heading-${blockIndex + 1}`,
             text,
             level,
+            fontFamily: clean(block.fontFamily || block.font || "") || "arial",
+            ...(Number.isFinite(fontSize) ? { fontSize: Math.max(6, Math.min(44, fontSize)) } : {}),
             pageBreakBefore: Boolean(block.pageBreakBefore || block.__riskPageBreakBefore),
             keepNext: block.keepNext === false ? false : true,
           } : null;
@@ -2027,6 +2030,7 @@ function buildWordParagraphXml(text = "", {
   italic = false,
   color = "",
   size = 20,
+  fontFamily = "default",
   spacingBefore = 0,
   spacingAfter = 60,
   line = 0,
@@ -2037,7 +2041,9 @@ function buildWordParagraphXml(text = "", {
   outlineLevel = null,
 } = {}) {
   const safeText = clean(text);
+  const resolvedFontFamily = getWordFontFamilyValue(fontFamily);
   const runProperties = [
+    `<w:rFonts w:ascii="${escapeWordXmlText(resolvedFontFamily)}" w:hAnsi="${escapeWordXmlText(resolvedFontFamily)}" w:cs="${escapeWordXmlText(resolvedFontFamily)}"/>`,
     bold ? "<w:b/>" : "",
     italic ? "<w:i/>" : "",
     color ? `<w:color w:val="${escapeWordXmlText(color)}"/>` : "",
@@ -2459,11 +2465,17 @@ function buildWordTableBlockXml(table = {}, context = {}) {
 function buildWordHeadingBlockXml(block = {}, options = {}) {
   const level = Math.max(1, Math.min(4, Number.parseInt(block.level, 10) || 2));
   const sizes = { 1: 32, 2: 28, 3: 24, 4: 22 };
+  const explicitFontSize = Number(block.fontSize);
+  const hasExplicitFontSize = block.fontSize !== null && block.fontSize !== undefined && block.fontSize !== "";
+  const size = hasExplicitFontSize && Number.isFinite(explicitFontSize)
+    ? Math.max(12, Math.min(88, Math.round(explicitFontSize * 2)))
+    : (sizes[level] || 24);
   const pageBreakBefore = options.pageBreakBefore ?? Boolean(block.pageBreakBefore);
   const keepNext = options.keepNext ?? (block.keepNext === false ? false : true);
   return buildWordParagraphXml(block.text || "", {
     bold: true,
-    size: sizes[level] || 24,
+    fontFamily: block.fontFamily || "arial",
+    size,
     spacingBefore: level <= 2 ? 180 : 120,
     spacingAfter: 80,
     pageBreakBefore,
@@ -4673,7 +4685,14 @@ function buildHtmlTemplateBlocksPlaceholder(value = {}) {
       if (block.type === "heading") {
         const level = Math.max(1, Math.min(4, Number.parseInt(block.level, 10) || 2));
         const tagName = `h${level}`;
-        const style = block.pageBreakBefore ? ' style="break-before:page;page-break-before:always"' : "";
+        const fontSize = Number(block.fontSize);
+        const styleParts = [
+          block.pageBreakBefore ? "break-before:page;page-break-before:always" : "",
+          `font-family:${escapeTemplateHtml(block.fontFamily || "Arial")}, Arial, sans-serif`,
+          Number.isFinite(fontSize) ? `font-size:${Math.max(6, Math.min(44, fontSize))}pt` : "",
+          "font-weight:700",
+        ].filter(Boolean);
+        const style = styleParts.length ? ` style="${styleParts.join(";")}"` : "";
         return `<${tagName}${style}>${escapeTemplateHtml(block.text || "")}</${tagName}>`;
       }
       if (block.type === "paragraph") {
@@ -7675,9 +7694,10 @@ function renderRiskAssessmentNativePdfBlock(doc, helpers, block = {}, options = 
   }
   if (block.type === "heading") {
     const level = Math.max(1, Math.min(4, Number(block.level) || 2));
+    const explicitFontSize = Number(block.fontSize);
     renderRiskAssessmentNativePdfText(doc, helpers, block.text, {
       bold: true,
-      fontSize: level <= 1 ? 18 : level === 2 ? 14 : level === 3 ? 11.5 : 10,
+      fontSize: Number.isFinite(explicitFontSize) ? explicitFontSize : level <= 1 ? 18 : level === 2 ? 14 : level === 3 ? 11.5 : 10,
       color: level <= 2 ? "#111827" : "#17233f",
       spacingAfter: level <= 2 ? 8 : 5,
       layout: options.layout || "portrait",

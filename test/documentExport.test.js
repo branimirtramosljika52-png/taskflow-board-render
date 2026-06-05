@@ -343,6 +343,7 @@ test("docx export renders a risk assessment contents placeholder", async () => {
   assert.match(outputXml, /<w:fldChar w:fldCharType="begin"\/>/);
   assert.match(outputXml, /<w:fldChar w:fldCharType="end"\/>/);
   assert.match(outputXml, /<w:outlineLvl w:val="1"\/>/);
+  assert.match(outputXml, /<w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"\/><w:b\/><w:sz w:val="28"\/><w:szCs w:val="28"\/><\/w:rPr><w:t xml:space="preserve">Analiza radnih mjesta<\/w:t>/);
   assert.match(new PizZip(outputBuffer).file("word/settings.xml").asText(), /<w:updateFields w:val="true"\/>/);
 });
 

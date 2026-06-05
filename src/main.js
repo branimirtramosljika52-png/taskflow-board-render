@@ -131930,7 +131930,7 @@ function getRiskAssessmentExportFileBaseName() {
 function buildRiskAssessmentSectionExportHtml(section = {}, index = 0) {
   const placeholder = getRiskAssessmentTemplatePlaceholder(section.key);
   const title = section.title || placeholder.defaultTitle || placeholder.label;
-  const body = renderRiskAssessmentTemplateSectionContent(section.key, index + 1);
+  const body = renderRiskAssessmentTemplateSectionBodyContent(section, index + 1);
   if (section.key === "cover") {
     return body;
   }
@@ -131940,6 +131940,51 @@ function buildRiskAssessmentSectionExportHtml(section = {}, index = 0) {
       ${body}
     </section>
   `;
+}
+
+function isRiskAssessmentDuplicateSectionTitleText(value = "", title = "") {
+  const normalizedValue = normalizeRiskAssessmentIdentityComparable(value)
+    .replace(/^\d+\s+/, "")
+    .trim();
+  const normalizedTitle = normalizeRiskAssessmentIdentityComparable(title);
+  return Boolean(normalizedValue && normalizedTitle && normalizedValue === normalizedTitle);
+}
+
+function stripRiskAssessmentDuplicateLeadingTitleFromHtml(html = "", title = "") {
+  const source = String(html || "").trim();
+  if (!source || !title || typeof document === "undefined") {
+    return source;
+  }
+  const template = document.createElement("template");
+  template.innerHTML = source;
+  const getNextContentNode = () => Array.from(template.content.childNodes)
+    .find((node) => String(node.textContent || "").trim());
+  const firstNode = getNextContentNode();
+  if (!firstNode) {
+    return template.innerHTML;
+  }
+  const firstText = String(firstNode.textContent || "").replace(/\s+/g, " ").trim();
+  if (isRiskAssessmentDuplicateSectionTitleText(firstText, title)) {
+    firstNode.remove();
+  }
+  return template.innerHTML.trim();
+}
+
+function renderRiskAssessmentTemplateSectionBodyContent(section = {}, sectionNumber = 1) {
+  const placeholder = getRiskAssessmentTemplatePlaceholder(section.key);
+  const title = section.title || placeholder.defaultTitle || placeholder.label;
+  return stripRiskAssessmentDuplicateLeadingTitleFromHtml(
+    renderRiskAssessmentTemplateSectionContent(section.key, sectionNumber),
+    title,
+  );
+}
+
+function createRiskAssessmentExportSectionHeading(title = "", level = 2, options = {}) {
+  return createRiskAssessmentExportHeading(title, level, {
+    fontFamily: "arial",
+    fontSize: 14,
+    ...options,
+  });
 }
 
 function normalizeRiskAssessmentExportText(value = "") {
@@ -133376,10 +133421,17 @@ function buildRiskAssessmentSectionExportBlockValue(section = {}, index = 0) {
     __riskPageBreakBefore: Boolean(section.pageBreakBefore),
   });
   if (Array.isArray(structuredBlocks)) {
-    const shouldRenderHeading = !["cover", "contents", "employer"].includes(section.key);
+    const shouldRenderHeading = !["cover", "contents"].includes(section.key);
     return attachSectionMeta(createRiskAssessmentExportBlocks([
-      shouldRenderHeading ? createRiskAssessmentExportHeading(title, 2) : null,
+      shouldRenderHeading ? createRiskAssessmentExportSectionHeading(title, 2) : null,
       ...structuredBlocks,
+    ]));
+  }
+  if (section.key !== "cover") {
+    const body = renderRiskAssessmentTemplateSectionBodyContent(section, index + 1);
+    return attachSectionMeta(createRiskAssessmentExportBlocks([
+      createRiskAssessmentExportSectionHeading(title, 2),
+      body ? { __docxBlockType: "rich_text", html: body } : null,
     ]));
   }
   return attachSectionMeta({
@@ -134362,7 +134414,7 @@ function renderRiskAssessmentTemplatePreview() {
           </div>
           <div class="risk-assessment-template-token">${escapeHtml(section.placeholder || getRiskAssessmentTemplatePlaceholder(section.key).token)}</div>
           <div class="risk-assessment-template-section-body">
-            ${renderRiskAssessmentTemplateSectionContent(section.key, index + 1)}
+            ${renderRiskAssessmentTemplateSectionBodyContent(section, index + 1)}
           </div>
         </section>
       `).join("")}
