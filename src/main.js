@@ -120164,7 +120164,24 @@ riskAssessmentStructureDropzone?.addEventListener("drop", (event) => {
   setRiskAssessmentStructureInputFile(file || null);
 });
 
+function getFirstUnanalysedRiskAssessmentWorkplaceUnit() {
+  const analysedUnitIds = new Set(riskAssessmentJobDrafts.map((job) => String(job.organizationUnitId || "")).filter(Boolean));
+  return riskAssessmentOrganizationUnitDrafts.find((unit) => (
+    normalizeRiskAssessmentUnitType(unit.type) === "workplace"
+    && !analysedUnitIds.has(String(unit.id || ""))
+  )) || null;
+}
+
 function addRiskAssessmentBlankJob({ openJobsModule = false } = {}) {
+  const preferredUnit = getFirstUnanalysedRiskAssessmentWorkplaceUnit();
+  if (preferredUnit) {
+    const nextIndex = addRiskAssessmentJobFromUnit(preferredUnit.id);
+    if (openJobsModule && nextIndex >= 0) {
+      openJobsModuleForRiskAssessmentJob(nextIndex);
+    }
+    return nextIndex;
+  }
+
   const nextIndex = riskAssessmentJobDrafts.length;
   riskAssessmentJobDrafts.push(createRiskAssessmentJobDraft({
     organizationUnitId: riskAssessmentOrganizationUnitDrafts[0]?.id || "",
@@ -120177,6 +120194,7 @@ function addRiskAssessmentBlankJob({ openJobsModule = false } = {}) {
   if (openJobsModule) {
     openJobsModuleForRiskAssessmentJob(nextIndex);
   }
+  return nextIndex;
 }
 
 function addRiskAssessmentJobFromUnit(unitId = "") {
@@ -120198,6 +120216,7 @@ function addRiskAssessmentJobFromUnit(unitId = "") {
   renderRiskAssessmentJobs();
   renderRiskAssessmentOverview();
   scheduleRiskAssessmentDraftAutosave();
+  return nextIndex;
 }
 
 riskAssessmentAddJobButton?.addEventListener("click", () => {
@@ -120205,6 +120224,11 @@ riskAssessmentAddJobButton?.addEventListener("click", () => {
 });
 
 riskAssessmentOpenNewJobButton?.addEventListener("click", () => {
+  const activeIndex = getRiskAssessmentActiveJobIndex();
+  if (activeIndex >= 0) {
+    openJobsModuleForRiskAssessmentJob(activeIndex);
+    return;
+  }
   addRiskAssessmentBlankJob({ openJobsModule: true });
 });
 
@@ -135517,14 +135541,13 @@ function addRiskAssessmentChildUnit(parentIndex = -1, type = "subunit") {
 }
 
 function renderRiskAssessmentJobSourceOptions(item = {}) {
-  const selectedValue = String(item.sourceJobIds?.[0] || "");
   return renderRiskAssessmentOptions([
-    { value: "", label: "Odaberi posao iz Jobs baze" },
+    { value: "", label: "Dodaj posao iz Jobs baze" },
     ...sortJobs(state.jobs ?? []).map((job) => ({
       value: job.id,
       label: job.title || "Posao bez naziva",
     })),
-  ], selectedValue);
+  ], "");
 }
 
 function createRiskAssessmentPpeDraft(initial = {}) {
@@ -136120,7 +136143,9 @@ function renderRiskAssessmentJobVisibilityControls(job = {}) {
 
 function renderRiskAssessmentJobProfile(item = {}, index = 0) {
   const purPoints = normalizeJobPurPointValues(item.purPoints ?? []);
-  const selectedSourceJob = (state.jobs ?? []).find((job) => String(job.id) === String(item.sourceJobIds?.[0] || ""));
+  const sourceJobs = (item.sourceJobIds ?? [])
+    .map((id) => (state.jobs ?? []).find((job) => String(job.id || "") === String(id)))
+    .filter(Boolean);
   return `
     <div class="risk-assessment-job-profile is-compact">
       <section class="risk-assessment-job-start-card">
@@ -136128,17 +136153,25 @@ function renderRiskAssessmentJobProfile(item = {}, index = 0) {
           <span>${renderRiskAssessmentRiskIcon("briefcase")}</span>
           <div>
             <span class="section-kicker">Korak 1</span>
-            <strong>Radno mjesto iz strukture i posao</strong>
-            <small>Prvo odaberi radno mjesto iz Organizacijske strukture, zatim povuci posao iz baze ili otvori novi posao u Jobs modulu.</small>
+            <strong>Radno mjesto i povezani poslovi</strong>
+            <small>Radno mjesto ostaje glavni obrazac. U njega možeš dodati više poslova iz Jobs kataloga.</small>
           </div>
         </div>
         <div class="risk-assessment-job-start-grid">
           <label><span>Radno mjesto iz strukture</span><select data-risk-job-field="organizationUnitId">${renderRiskAssessmentJobWorkplaceUnitOptions(item.organizationUnitId || "")}</select></label>
-          <label><span>Posao iz baze</span><select data-risk-job-source-select>${renderRiskAssessmentJobSourceOptions(item)}</select></label>
+          <label><span>Dodaj posao u ovo radno mjesto</span><select data-risk-job-source-select>${renderRiskAssessmentJobSourceOptions(item)}</select></label>
           <button type="button" class="ghost-button" data-risk-job-open-job-module>+ Novi posao u Jobs</button>
           <button type="button" class="primary-button risk-assessment-nexai-button" data-risk-job-ai="full">NexAI popuni</button>
         </div>
-        <p class="inline-help">${escapeHtml(selectedSourceJob ? `Povezano s Jobs stavkom: ${selectedSourceJob.title || "posao"}.` : "Ako posao već postoji u Jobs bazi, odabir automatski povlači opis, RA-1 odabire, PUR i početne ARMOR stavke.")}</p>
+        <div class="risk-assessment-linked-source-jobs">
+          <span>Povezani poslovi</span>
+          <div>
+            ${sourceJobs.length
+              ? sourceJobs.map((job) => `<b>${escapeHtml(job.title || "Posao bez naziva")}</b>`).join("")
+              : `<em>Još nema povezanih poslova iz Jobs kataloga.</em>`}
+          </div>
+        </div>
+        <p class="inline-help">Odabir povlači opis, RA-1 odabire, PUR i početne ARMOR stavke u ovo radno mjesto. Možeš dodati više poslova redom.</p>
       </section>
 
       <section class="risk-assessment-job-profile-card is-basic">
@@ -139229,7 +139262,13 @@ function renderRiskAssessmentJobCatalogStats(jobs = [], visibleJobs = [], select
   }
   const selectedJobs = jobs.filter((job) => selectedIds.has(String(job.id || "")));
   const selectedHazards = selectedJobs.reduce((sum, job) => sum + (job.hazards ?? []).length, 0);
+  const activeJob = getRiskAssessmentActiveJobDraft();
+  const activeUnit = getRiskAssessmentJobCatalogTargetUnit(activeJob);
+  const targetLabel = activeJob
+    ? (activeJob.jobTitle || activeUnit?.name || "Aktivno radno mjesto")
+    : "Odaberi radno mjesto";
   riskAssessmentJobCatalogStats.innerHTML = `
+    <span class="is-target ${activeJob ? "is-active" : "is-missing"}"><strong>${escapeHtml(targetLabel)}</strong><small>cilj dodavanja</small></span>
     <span><strong>${escapeHtml(String(jobs.length))}</strong><small>u katalogu</small></span>
     <span><strong>${escapeHtml(String(visibleJobs.length))}</strong><small>prikazano</small></span>
     <span class="${selectedIds.size ? "is-active" : ""}"><strong>${escapeHtml(String(selectedIds.size))}</strong><small>odabrano</small></span>
@@ -139256,17 +139295,17 @@ function renderRiskAssessmentJobCatalogPicker() {
     riskAssessmentJobCatalogClearButton.disabled = !canManage || selectedIds.size === 0;
   }
   if (riskAssessmentImportJobsButton) {
-    riskAssessmentImportJobsButton.disabled = !canManage || selectedIds.size === 0;
     const activeJob = getRiskAssessmentActiveJobDraft();
+    riskAssessmentImportJobsButton.disabled = !canManage || selectedIds.size === 0 || !activeJob;
     riskAssessmentImportJobsButton.textContent = selectedIds.size
-      ? (activeJob ? `Dodaj u radno mjesto (${selectedIds.size})` : `Dodaj odabrano (${selectedIds.size})`)
+      ? (activeJob ? `Dodaj u radno mjesto (${selectedIds.size})` : "Prvo odaberi radno mjesto")
       : (activeJob ? "Dodaj odabrane poslove u radno mjesto" : "Dodaj odabrane poslove");
   }
   if (riskAssessmentJobCatalogAiSuggestButton) {
     riskAssessmentJobCatalogAiSuggestButton.disabled = !canManage || !canUseNexAi || jobs.length === 0;
   }
   if (riskAssessmentJobCatalogAiImportButton) {
-    riskAssessmentJobCatalogAiImportButton.disabled = !canManage || !canUseNexAi || jobs.length === 0;
+    riskAssessmentJobCatalogAiImportButton.disabled = !canManage || !canUseNexAi || jobs.length === 0 || !getRiskAssessmentActiveJobDraft();
   }
 
   if (jobs.length === 0) {
@@ -139485,27 +139524,12 @@ function importSelectedJobsIntoRiskAssessment(options = {}) {
 
   const activeIndex = getRiskAssessmentActiveJobIndex();
   const activeJob = activeIndex >= 0 ? riskAssessmentJobDrafts[activeIndex] : null;
-  if (activeJob && options.appendNew !== true) {
-    riskAssessmentJobDrafts[activeIndex] = mergeCatalogJobsIntoExistingRiskAssessmentJob(activeJob, selectedJobs);
-    Array.from(riskAssessmentJobCatalogSelect?.options ?? []).forEach((option) => {
-      option.selected = false;
-    });
-    riskAssessmentJobCatalogAiSuggestions = [];
-    renderRiskAssessmentJobs();
-    renderRiskAssessmentOrganizationUnits();
-    renderRiskAssessmentOverview();
-    scheduleRiskAssessmentDraftAutosave();
-    const sourceText = options.source === "ai" ? "NexAI je dodao" : "Dodano";
-    const targetTitle = riskAssessmentJobDrafts[activeIndex]?.jobTitle || "aktivno radno mjesto";
-    setInlineMessage(messageTarget, `${sourceText} ${selectedJobs.length} ${selectedJobs.length === 1 ? "posao" : "poslova"} u ${targetTitle}.`, "success");
+  if (!activeJob) {
+    setInlineMessage(messageTarget, "Prvo odaberi ili dodaj radno mjesto iz organizacijske strukture, zatim u njega dodaj poslove iz Jobs kataloga.", "error");
     return;
   }
 
-  const shouldGroup = selectedJobs.length > 1;
-  const incomingJobs = shouldGroup
-    ? [mergeCatalogJobsIntoRiskAssessmentJob(selectedJobs)]
-    : selectedJobs.map((job) => createRiskAssessmentJobDraftFromCatalogJob(job));
-  riskAssessmentJobDrafts = [...riskAssessmentJobDrafts, ...incomingJobs];
+  riskAssessmentJobDrafts[activeIndex] = mergeCatalogJobsIntoExistingRiskAssessmentJob(activeJob, selectedJobs);
   Array.from(riskAssessmentJobCatalogSelect?.options ?? []).forEach((option) => {
     option.selected = false;
   });
@@ -139515,7 +139539,8 @@ function importSelectedJobsIntoRiskAssessment(options = {}) {
   renderRiskAssessmentOverview();
   scheduleRiskAssessmentDraftAutosave();
   const sourceText = options.source === "ai" ? "NexAI je dodao" : "Dodano";
-  setInlineMessage(messageTarget, `${sourceText} ${selectedJobs.length} ${selectedJobs.length === 1 ? "posao" : "poslova"} iz Jobs kataloga u procjenu.`, "success");
+  const targetTitle = riskAssessmentJobDrafts[activeIndex]?.jobTitle || "aktivno radno mjesto";
+  setInlineMessage(messageTarget, `${sourceText} ${selectedJobs.length} ${selectedJobs.length === 1 ? "posao" : "poslova"} u radno mjesto: ${targetTitle}.`, "success");
 }
 
 function applyRiskAssessmentSourceJob(jobIndex, sourceJobId = "") {
@@ -139525,18 +139550,7 @@ function applyRiskAssessmentSourceJob(jobIndex, sourceJobId = "") {
     return;
   }
 
-  const imported = createRiskAssessmentJobDraftFromCatalogJob(source);
-  riskAssessmentJobDrafts[jobIndex] = createRiskAssessmentJobDraft({
-    ...sanitizeRiskAssessmentTransientJob(imported),
-    id: current.id,
-    order: current.order,
-    organizationUnitId: current.organizationUnitId || imported.organizationUnitId,
-    status: current.status || imported.status || "draft",
-    workerCount: current.workerCount || imported.workerCount,
-    alcoholLimit: current.alcoholLimit || imported.alcoholLimit,
-    hiddenBlocks: current.hiddenBlocks ?? imported.hiddenBlocks,
-    clientInput: current.clientInput,
-  });
+  riskAssessmentJobDrafts[jobIndex] = mergeCatalogJobsIntoExistingRiskAssessmentJob(current, [source]);
   renderRiskAssessmentOrganizationUnits();
   renderRiskAssessmentJobs();
   renderRiskAssessmentOverview();

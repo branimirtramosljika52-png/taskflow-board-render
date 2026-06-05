@@ -15280,6 +15280,32 @@ button:hover {
   font-weight: 850;
 }
 
+.risk-assessment-editor-panel .vehicles-panel-head-actions .risk-assessment-autosave-status {
+  min-height: 30px;
+  padding: 5px 9px;
+  border-color: rgba(203, 213, 225, 0.72);
+  background: rgba(248, 250, 252, 0.86);
+  box-shadow: none;
+  color: #64748b;
+  font-size: 0.68rem;
+}
+
+.risk-assessment-save-button {
+  min-height: 30px;
+  padding: 6px 10px;
+  border-color: rgba(147, 197, 253, 0.58);
+  background: rgba(239, 246, 255, 0.76);
+  box-shadow: none;
+  color: #1d4ed8;
+  font-size: 0.74rem;
+  font-weight: 900;
+}
+
+.risk-assessment-save-button:disabled {
+  cursor: wait;
+  opacity: 0.64;
+}
+
 .risk-assessment-autosave-status[data-tone="saving"] {
   border-color: rgba(37, 99, 235, 0.32);
   background: #eff6ff;
@@ -59490,6 +59516,26 @@ button.work-order-editor-section-head:focus-visible {
   background: linear-gradient(135deg, rgba(254, 249, 195, 0.96), rgba(255, 255, 255, 0.86));
 }
 
+.risk-assessment-job-catalog-stats span.is-target {
+  grid-column: 1 / -1;
+  min-height: 44px;
+  border-color: rgba(96, 165, 250, 0.44);
+  background: linear-gradient(135deg, rgba(239, 246, 255, 0.94), rgba(255, 255, 255, 0.88));
+}
+
+.risk-assessment-job-catalog-stats span.is-target.is-missing {
+  border-color: rgba(251, 146, 60, 0.46);
+  background: linear-gradient(135deg, rgba(255, 247, 237, 0.96), rgba(255, 255, 255, 0.88));
+}
+
+.risk-assessment-job-catalog-stats span.is-target strong {
+  overflow: hidden;
+  font-size: 0.9rem;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .risk-assessment-job-catalog-stats strong {
   color: #0f172a;
   font-size: 1.08rem;
@@ -63301,6 +63347,55 @@ body.is-risk-stl-review-open {
   font-weight: 950;
   letter-spacing: 0.03em;
   text-transform: uppercase;
+}
+
+.risk-assessment-linked-source-jobs {
+  display: grid;
+  gap: 7px;
+  padding: 8px 10px;
+  border: 1px solid rgba(191, 219, 254, 0.72);
+  border-radius: 12px;
+  background: rgba(239, 246, 255, 0.58);
+}
+
+.risk-assessment-linked-source-jobs > span {
+  color: #2563eb;
+  font-size: 0.66rem;
+  font-weight: 950;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.risk-assessment-linked-source-jobs > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.risk-assessment-linked-source-jobs b,
+.risk-assessment-linked-source-jobs em {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+.risk-assessment-linked-source-jobs b {
+  border: 1px solid rgba(37, 99, 235, 0.24);
+  background: rgba(255, 255, 255, 0.86);
+  color: #1e40af;
+  font-weight: 900;
+}
+
+.risk-assessment-linked-source-jobs em {
+  border: 1px dashed rgba(148, 163, 184, 0.48);
+  background: rgba(248, 250, 252, 0.82);
+  color: #64748b;
+  font-style: normal;
+  font-weight: 780;
 }
 
 .risk-assessment-job-profile-top {

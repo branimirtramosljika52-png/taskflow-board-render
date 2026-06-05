@@ -4789,6 +4789,8 @@
                     <h3 id="risk-assessment-editor-title">Nova procjena</h3>
                   </div>
                   <div class="vehicles-panel-head-actions">
+                    <span id="risk-assessment-autosave-status" class="risk-assessment-autosave-status" aria-live="polite">Automatsko spremanje svakih 10 min.</span>
+                    <button id="risk-assessment-save" type="submit" form="risk-assessment-form" class="ghost-button risk-assessment-save-button">Spremi</button>
                     <button id="risk-assessment-export-docx" type="button" class="secondary-button">DOCX</button>
                     <button id="risk-assessment-export-pdf" type="button" class="ghost-button">PDF</button>
                     <button id="risk-assessment-close" type="button" class="ghost-button">Zatvori</button>
@@ -5292,20 +5294,20 @@
                     </div>
                     <div class="offers-items-head">
                       <div>
-                        <strong>Obrada po poslovima</strong>
-                        <p class="inline-help">Svaki posao je vezan uz organizacijsku jedinicu i nosi vlastite rizike, mjere i osobnu zaštitnu opremu.</p>
+                        <strong>Obrada po radnim mjestima</strong>
+                        <p class="inline-help">Odaberi radno mjesto, zatim u njega dodaj jedan ili više poslova iz Jobs kataloga.</p>
                       </div>
                       <div class="risk-assessment-jobs-head-actions">
                         <button id="risk-assessment-armor-all" type="button" class="ghost-button">Dodaj cijeli ARMOR svima</button>
-                        <button id="risk-assessment-add-job" type="button" class="ghost-button risk-assessment-toolbar-icon-button" title="Dodaj novi posao za analizu" aria-label="Dodaj novi posao za analizu"><span aria-hidden="true">+</span></button>
+                        <button id="risk-assessment-add-job" type="button" class="ghost-button risk-assessment-toolbar-icon-button" title="Dodaj analizu sljedećeg radnog mjesta" aria-label="Dodaj analizu sljedećeg radnog mjesta"><span aria-hidden="true">+</span></button>
                       </div>
                     </div>
                     <div class="risk-assessment-job-import-panel">
                       <div class="risk-assessment-job-import-head">
                         <div>
                           <span class="section-kicker">Jobs katalog</span>
-                          <strong>Odaberi postojeće poslove</strong>
-                          <p class="inline-help">Pretraži katalog, označi poslove i dodaj ih u analizu radnih mjesta. Kod više odabira sustav ih spaja u jedan zajednički obrazac.</p>
+                          <strong>Dodaj poslove u odabrano radno mjesto</strong>
+                          <p class="inline-help">Prvo klikni radno mjesto u lijevom popisu ili u listi ispod, zatim označi 1 ili više poslova iz Jobs kataloga i dodaj ih u taj isti obrazac.</p>
                         </div>
                         <div id="risk-assessment-job-catalog-stats" class="risk-assessment-job-catalog-stats" aria-live="polite"></div>
                       </div>
@@ -5334,7 +5336,7 @@
                       <div id="risk-assessment-job-catalog-list" class="risk-assessment-job-catalog-list" aria-live="polite"></div>
                       <div class="risk-assessment-job-import-actions">
                         <button id="risk-assessment-open-new-job" type="button" class="ghost-button">+ Novi posao u Jobs</button>
-                        <button id="risk-assessment-import-jobs" type="button" class="primary-button">Dodaj odabrane poslove</button>
+                        <button id="risk-assessment-import-jobs" type="button" class="primary-button">Dodaj u radno mjesto</button>
                       </div>
                     </div>
                     <div class="risk-assessment-job-analysis-shell">
@@ -5472,8 +5474,6 @@
 
                   <p id="risk-assessment-error" class="form-error" aria-live="polite"></p>
                   <div class="form-actions">
-                    <span id="risk-assessment-autosave-status" class="risk-assessment-autosave-status" aria-live="polite">Automatsko spremanje svakih 10 min.</span>
-                    <button id="risk-assessment-save" type="submit" class="primary-button">Spremi</button>
                     <button id="risk-assessment-reset" type="button" class="ghost-button">Nova procjena</button>
                     <button id="risk-assessment-delete" type="button" class="card-button card-danger" hidden>Obriši</button>
                   </div>
