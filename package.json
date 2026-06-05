@@ -35,6 +35,12 @@
     "dev": "node server.js",
     "signer:sync-config": "node scripts/sync-pdf-signer-config.mjs",
     "start": "node server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:ui": "playwright test --ui"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0"
   }
 }
