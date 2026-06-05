@@ -120282,7 +120282,9 @@ riskAssessmentJobCatalogAiSuggestButton?.addEventListener("click", (event) => {
 
 riskAssessmentJobCatalogAiDescriptionInput?.addEventListener("input", () => {
   const activeIndex = getRiskAssessmentActiveWorkplaceJobIndex();
-  const activeJob = activeIndex >= 0 ? riskAssessmentJobDrafts[activeIndex] : null;
+  const activeJob = activeIndex >= 0 && isRiskAssessmentWorkplaceJob(riskAssessmentJobDrafts[activeIndex])
+    ? riskAssessmentJobDrafts[activeIndex]
+    : null;
   if (!activeJob) {
     return;
   }
@@ -136348,9 +136350,6 @@ function renderRiskAssessmentJobProfile(item = {}, index = 0) {
           </div>
         </div>
         <div class="risk-assessment-armor-workbench">
-          <aside class="risk-assessment-armor-sidebar">
-            ${renderRiskAssessmentArmorExplorer(item, index)}
-          </aside>
           <div class="risk-assessment-armor-workspace">
             <div class="risk-assessment-armor-workspace-head">
               <div>
@@ -139590,7 +139589,9 @@ function importSelectedJobsIntoRiskAssessment(options = {}) {
   }
 
   const activeIndex = getRiskAssessmentActiveJobIndex();
-  const activeJob = activeIndex >= 0 ? riskAssessmentJobDrafts[activeIndex] : null;
+  const activeJob = activeIndex >= 0 && isRiskAssessmentWorkplaceJob(riskAssessmentJobDrafts[activeIndex])
+    ? riskAssessmentJobDrafts[activeIndex]
+    : null;
   if (!activeJob) {
     setInlineMessage(messageTarget, "Prvo odaberi ili dodaj radno mjesto iz organizacijske strukture, zatim u njega dodaj poslove iz Jobs kataloga.", "error");
     return;
@@ -140865,8 +140866,9 @@ function updateRiskAssessmentArmorExplorerVisualState(jobIndex, riskIndex) {
   if (!risk) {
     return;
   }
-  const row = riskAssessmentJobsList?.querySelector(`[data-risk-job-index="${jobIndex}"]`);
-  const item = row?.querySelector?.(`[data-risk-row-select="${riskIndex}"]`)?.closest(".risk-assessment-armor-tree-node.is-item");
+  const item = riskAssessmentJobTree
+    ?.querySelector?.(`[data-risk-row-select="${riskIndex}"][data-risk-job-index="${jobIndex}"]`)
+    ?.closest(".risk-assessment-armor-tree-node.is-item");
   if (!(item instanceof HTMLElement)) {
     return;
   }
@@ -142403,6 +142405,9 @@ function renderRiskAssessmentJobTree() {
   const completedCount = getRiskAssessmentProcessableJobIndexes()
     .filter((index) => isRiskAssessmentJobRequiredComplete(riskAssessmentJobDrafts[index]))
     .length;
+  const activeJob = activeIndex >= 0 && isRiskAssessmentWorkplaceJob(riskAssessmentJobDrafts[activeIndex])
+    ? riskAssessmentJobDrafts[activeIndex]
+    : null;
   riskAssessmentJobTree.innerHTML = `
     <section class="risk-assessment-job-tree-block is-jobs">
       <div class="risk-assessment-job-tree-head">
@@ -142416,6 +142421,11 @@ function renderRiskAssessmentJobTree() {
         </div>
       `}
     </section>
+    ${activeJob ? `
+      <section class="risk-assessment-job-tree-block is-armor">
+        ${renderRiskAssessmentArmorExplorer(activeJob, activeIndex)}
+      </section>
+    ` : ""}
   `;
 }
 
