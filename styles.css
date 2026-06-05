@@ -62939,7 +62939,7 @@ body.is-risk-stl-review-open {
 }
 
 .risk-assessment-detail-grid.is-structure {
-  grid-template-columns: minmax(180px, 1.35fr) minmax(116px, 0.58fr) minmax(150px, 0.9fr) minmax(140px, 0.72fr) minmax(76px, 0.36fr);
+  grid-template-columns: minmax(180px, 1.35fr) minmax(112px, 0.55fr) minmax(150px, 0.9fr) minmax(132px, 0.68fr) minmax(76px, 0.36fr) minmax(62px, 0.28fr) minmax(62px, 0.28fr);
   gap: 6px;
 }
 

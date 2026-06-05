@@ -406,6 +406,8 @@ test("risk assessments keep organization units and PPE details", () => {
           description: "Organizacijska jedinica pogona.",
           responsiblePerson: "Voditelj pogona",
           workerCount: "12",
+          maleWorkerCount: "8",
+          femaleWorkerCount: "4",
         },
       ],
       jobs: [
@@ -456,6 +458,8 @@ test("risk assessments keep organization units and PPE details", () => {
   );
 
   assert.equal(assessment.organizationUnits[0].name, "Proizvodnja");
+  assert.equal(assessment.organizationUnits[0].maleWorkerCount, "8");
+  assert.equal(assessment.organizationUnits[0].femaleWorkerCount, "4");
   assert.equal(assessment.jobs[0].organizationUnitId, "unit-production");
   assert.equal(assessment.jobs[0].shiftWork, true);
   assert.equal(assessment.jobs[0].ppeItems[0].norm, "HRN EN ISO 20345");

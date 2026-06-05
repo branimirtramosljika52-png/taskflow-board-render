@@ -5482,6 +5482,7 @@ function normalizeRiskAssessmentOrganizationUnits(items = []) {
     return {
       id,
       parentId: normalizeId(item?.parentId),
+      type: normalizeText(item?.type || item?.unitType || item?.kind || "unit"),
       order: Number.isFinite(Number(item?.order)) ? Number(item.order) : index + 1,
       name: normalizeText(item?.name),
       shortDescription: normalizeText(item?.shortDescription),
@@ -5489,6 +5490,8 @@ function normalizeRiskAssessmentOrganizationUnits(items = []) {
       detailedDescription: normalizeText(item?.detailedDescription),
       responsiblePerson: normalizeText(item?.responsiblePerson),
       workerCount: normalizeText(item?.workerCount),
+      maleWorkerCount: normalizeText(item?.maleWorkerCount),
+      femaleWorkerCount: normalizeText(item?.femaleWorkerCount),
       linkedJobIds: Array.from(new Set(
         (Array.isArray(item?.linkedJobIds) ? item.linkedJobIds : [])
           .map((value) => normalizeId(value))
@@ -5504,6 +5507,8 @@ function normalizeRiskAssessmentOrganizationUnits(items = []) {
     || item.detailedDescription
     || item.responsiblePerson
     || item.workerCount
+    || item.maleWorkerCount
+    || item.femaleWorkerCount
     || item.linkedJobIds.length > 0
     || item.note
   ));
@@ -9703,6 +9708,8 @@ export function filterRiskAssessments(
         entry.detailedDescription,
         entry.responsiblePerson,
         entry.workerCount,
+        entry.maleWorkerCount,
+        entry.femaleWorkerCount,
         entry.note,
       ]),
       ...(item.jobs ?? []).flatMap((entry) => [

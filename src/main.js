@@ -133287,7 +133287,7 @@ function buildRiskAssessmentStructureExportBlocks() {
         createRiskAssessmentExportCell(unit.name || "Organizacijska jedinica", { fontSize: 8, bold: true }),
         createRiskAssessmentExportCell(unitById.get(String(unit.parentId || ""))?.name || "", { fontSize: 8 }),
         createRiskAssessmentExportCell(getRiskAssessmentUnitTypeLabel(unit.type), { fontSize: 8 }),
-        createRiskAssessmentExportCell(unit.workerCount, { fontSize: 8, align: "center" }),
+        createRiskAssessmentExportCell(formatRiskAssessmentWorkerCount(unit), { fontSize: 8, align: "center" }),
         createRiskAssessmentExportCell(unit.responsiblePerson, { fontSize: 8 }),
         createRiskAssessmentExportCell(linkedJobs, { fontSize: 8 }),
       ]);
@@ -134076,7 +134076,7 @@ function renderRiskAssessmentTemplateStructureContent() {
           <article>
             <span>${escapeHtml(unit.responsiblePerson || "Bez odgovorne osobe")}</span>
             <strong>${escapeHtml(unit.name || "Organizacijska jedinica")}</strong>
-            <small>${escapeHtml(unit.workerCount ? `${unit.workerCount} radnika` : "Broj radnika nije unesen")}</small>
+            <small>${escapeHtml(formatRiskAssessmentWorkerCount(unit, { includeLabel: true, fallback: "Broj radnika nije unesen" }))}</small>
             ${unit.description || unit.shortDescription ? `<p>${escapeHtml(unit.description || unit.shortDescription)}</p>` : ""}
             <div>${linkedJobs.map((job) => `<em>${escapeHtml(job.jobTitle || "Radno mjesto")}</em>`).join("") || "<em>Nema povezanih poslova</em>"}</div>
           </article>
@@ -135137,11 +135137,28 @@ function createRiskAssessmentOrganizationUnitDraft(initial = {}) {
     detailedDescription: String(initial.detailedDescription || ""),
     responsiblePerson: String(initial.responsiblePerson || ""),
     workerCount: String(initial.workerCount || ""),
+    maleWorkerCount: String(initial.maleWorkerCount || ""),
+    femaleWorkerCount: String(initial.femaleWorkerCount || ""),
     linkedJobIds: Array.isArray(initial.linkedJobIds) ? initial.linkedJobIds.map(String) : [],
     note: String(initial.note || ""),
     collapsed: Boolean(initial.collapsed),
     aiProposal: initial.aiProposal || null,
   };
+}
+
+function formatRiskAssessmentWorkerCount(item = {}, { includeLabel = false, fallback = "" } = {}) {
+  const total = String(item.workerCount || "").trim();
+  const male = String(item.maleWorkerCount || "").trim();
+  const female = String(item.femaleWorkerCount || "").trim();
+  const gender = [
+    male ? `M: ${male}` : "",
+    female ? `Ž: ${female}` : "",
+  ].filter(Boolean).join(", ");
+  const totalText = total ? (includeLabel ? `${total} radnika` : total) : "";
+  if (totalText && gender) {
+    return `${totalText} (${gender})`;
+  }
+  return totalText || gender || fallback;
 }
 
 function getRiskAssessmentUnitName(unitId = "") {
@@ -136577,7 +136594,7 @@ function renderRiskAssessmentOrganizationUnits() {
         </div>
         <div class="risk-assessment-org-summary">
           ${unit.responsiblePerson ? `<span title="Odgovorna osoba">${renderRiskAssessmentRiskIcon("shield")} ${escapeHtml(unit.responsiblePerson)}</span>` : ""}
-          ${unit.workerCount ? `<span title="Broj radnika">${renderRiskAssessmentRiskIcon("activity")} ${escapeHtml(unit.workerCount)} radnika</span>` : ""}
+          ${formatRiskAssessmentWorkerCount(unit) ? `<span title="Broj radnika">${renderRiskAssessmentRiskIcon("activity")} ${escapeHtml(formatRiskAssessmentWorkerCount(unit, { includeLabel: true }))}</span>` : ""}
           ${hasCompleteJob ? `<span class="is-complete">&#10003; spremno</span>` : ""}
           <span title="Analize povezane s ovom stavkom">${renderRiskAssessmentRiskIcon("briefcase")} ${escapeHtml(String(linkedJobs.length))}</span>
           <span title="Podstavke">${renderRiskAssessmentRiskIcon("building")} ${escapeHtml(String(children.length))}</span>
@@ -136597,6 +136614,8 @@ function renderRiskAssessmentOrganizationUnits() {
           <label><span>Pod čime je</span><select data-risk-unit-field="parentId">${renderRiskAssessmentUnitOptions(unit.parentId, unit.id)}</select></label>
           <label><span>Odgovorna osoba</span><input data-risk-unit-field="responsiblePerson" value="${escapeHtml(unit.responsiblePerson || "")}" placeholder="Ime i prezime" /></label>
           <label><span>Broj radnika</span><input data-risk-unit-field="workerCount" value="${escapeHtml(unit.workerCount || "")}" inputmode="numeric" placeholder="npr. 4" /></label>
+          <label><span>Muškarci</span><input data-risk-unit-field="maleWorkerCount" value="${escapeHtml(unit.maleWorkerCount || "")}" inputmode="numeric" placeholder="M" /></label>
+          <label><span>Žene</span><input data-risk-unit-field="femaleWorkerCount" value="${escapeHtml(unit.femaleWorkerCount || "")}" inputmode="numeric" placeholder="Ž" /></label>
         </div>
         <details class="risk-assessment-org-advanced">
         <summary>
@@ -139943,7 +139962,7 @@ function renderRiskAssessmentOverview() {
         <article class="risk-assessment-overview-card">
           <span class="section-kicker">${escapeHtml(unit.responsiblePerson || "Bez odgovorne osobe")}</span>
           <strong>${escapeHtml(unit.name || "Organizacijska jedinica")}</strong>
-          <small>${escapeHtml(unit.workerCount ? `${unit.workerCount} radnika` : "Broj radnika nije unesen")}</small>
+          <small>${escapeHtml(formatRiskAssessmentWorkerCount(unit, { includeLabel: true, fallback: "Broj radnika nije unesen" }))}</small>
           <div>${unitJobs.map((job) => `<span>${escapeHtml(job.jobTitle || "Radno mjesto")} · ${getRiskAssessmentJobCompletion(job)}%</span>`).join("") || "<span>Nema povezanih poslova</span>"}</div>
         </article>
       `;
