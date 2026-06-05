@@ -63989,6 +63989,84 @@ body.is-risk-stl-review-open {
   text-align: left;
 }
 
+.risk-assessment-armor-tree-node.is-hazards {
+  --armor-accent: #ef4444;
+  --armor-accent-soft: rgba(254, 226, 226, 0.86);
+  --armor-accent-border: rgba(248, 113, 113, 0.44);
+  --armor-accent-text: #7f1d1d;
+}
+
+.risk-assessment-armor-tree-node.is-harms {
+  --armor-accent: #d97706;
+  --armor-accent-soft: rgba(254, 243, 199, 0.9);
+  --armor-accent-border: rgba(245, 158, 11, 0.46);
+  --armor-accent-text: #78350f;
+}
+
+.risk-assessment-armor-tree-node.is-efforts {
+  --armor-accent: #4f46e5;
+  --armor-accent-soft: rgba(238, 242, 255, 0.92);
+  --armor-accent-border: rgba(129, 140, 248, 0.46);
+  --armor-accent-text: #312e81;
+}
+
+.risk-assessment-armor-tree-node.is-neutral {
+  --armor-accent: #64748b;
+  --armor-accent-soft: rgba(241, 245, 249, 0.92);
+  --armor-accent-border: rgba(148, 163, 184, 0.42);
+  --armor-accent-text: #334155;
+}
+
+.risk-assessment-armor-tree-row.is-title {
+  cursor: default;
+  user-select: none;
+}
+
+.risk-assessment-armor-tree-row.is-section-title {
+  min-height: 34px;
+  border-color: var(--armor-accent-border);
+  background: linear-gradient(135deg, var(--armor-accent-soft), rgba(255, 255, 255, 0.96));
+  box-shadow: inset 3px 0 0 var(--armor-accent);
+}
+
+.risk-assessment-armor-tree-row.is-section-title .risk-assessment-job-tree-icon {
+  background: var(--armor-accent);
+  color: #ffffff;
+}
+
+.risk-assessment-armor-tree-row.is-section-title .risk-assessment-job-tree-copy strong {
+  color: var(--armor-accent-text);
+  font-size: 0.75rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.risk-assessment-armor-tree-row.is-family-title {
+  min-height: 32px;
+  border-color: rgba(203, 213, 225, 0.72);
+  background: rgba(248, 250, 252, 0.98);
+  box-shadow: inset 2px 0 0 var(--armor-accent-border);
+}
+
+.risk-assessment-armor-tree-row.is-family-title .risk-assessment-job-tree-copy strong {
+  color: #172033;
+  font-size: 0.7rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.risk-assessment-armor-tree-row.is-subgroup-title {
+  min-height: 30px;
+  border-color: rgba(226, 232, 240, 0.92);
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.risk-assessment-armor-tree-row.is-subgroup-title .risk-assessment-job-tree-copy strong {
+  color: var(--armor-accent-text);
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
 button.risk-assessment-armor-tree-row {
   cursor: pointer;
 }

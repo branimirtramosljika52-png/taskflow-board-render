@@ -128932,6 +128932,153 @@ const RISK_ASSESSMENT_PPE_CATALOG = DEFAULT_RISK_PPE_CATALOG;
 
 const RISK_ASSESSMENT_PPE_THREE_MODULE_URL = "/assets/vendor/three.module.js?v=20260527-risk-ppe-3d-v2";
 
+const RISK_ASSESSMENT_PRILOG_III_OFFICIAL_ROWS = Object.freeze([
+  { category: "I. OPASNOSTI", group: "1. MEHANIČKE OPASNOSTI", code: "1.1", hazard: "alati", riskLevel: "N/P" },
+  { category: "I. OPASNOSTI", group: "1.1. alati", code: "1.1.1", hazard: "ručni", riskLevel: "N/P" },
+  { category: "I. OPASNOSTI", group: "1.1. alati", code: "1.1.2", hazard: "mehanizirani", riskLevel: "N/P" },
+  { category: "I. OPASNOSTI", group: "1. MEHANIČKE OPASNOSTI", code: "1.2", hazard: "strojevi i oprema", riskLevel: "N/P" },
+  { category: "I. OPASNOSTI", group: "1. MEHANIČKE OPASNOSTI", code: "1.3", hazard: "sredstva za horizontalni prijenos", riskLevel: "N/P" },
+  { category: "I. OPASNOSTI", group: "1.3. sredstva za horizontalni prijenos", code: "1.3.1", hazard: "prijevozna vozila: automobili, kamioni i dr.", riskLevel: "N/P" },
+  { category: "I. OPASNOSTI", group: "1.3. sredstva za horizontalni prijenos", code: "1.3.2", hazard: "prijenosna sredstva: viličari", riskLevel: "N/P" },
+  { category: "I. OPASNOSTI", group: "1.3. sredstva za horizontalni prijenos", code: "1.3.3", hazard: "samohodni strojevi: bageri, buldožeri i dr.", riskLevel: "N/P" },
+  { category: "I. OPASNOSTI", group: "1. MEHANIČKE OPASNOSTI", code: "1.4", hazard: "sredstva za vertikalni prijenos", riskLevel: "N/P" },
+  { category: "I. OPASNOSTI", group: "1.4. sredstva za vertikalni prijenos", code: "1.4.1", hazard: "dizalice", riskLevel: "N/P" },
+  { category: "I. OPASNOSTI", group: "1.4. sredstva za vertikalni prijenos", code: "1.4.2", hazard: "transporteri", riskLevel: "N/P" },
+  { category: "I. OPASNOSTI", group: "1. MEHANIČKE OPASNOSTI", code: "1.5", hazard: "rukovanje predmetima", riskLevel: "N/P" },
+  { category: "I. OPASNOSTI", group: "1. MEHANIČKE OPASNOSTI", code: "1.6", hazard: "ostale mehaničke opasnosti", riskLevel: "N/P" },
+  { category: "I. OPASNOSTI", group: "2. OPASNOSTI OD PADOVA", code: "2.1", hazard: "pad radnika i drugih osoba", riskLevel: "N/P" },
+  { category: "I. OPASNOSTI", group: "2.1. pad radnika i drugih osoba", code: "2.1.1", hazard: "na istoj razini", riskLevel: "N/P" },
+  { category: "I. OPASNOSTI", group: "2.1. pad radnika i drugih osoba", code: "2.1.2", hazard: "u dubinu", riskLevel: "N/P" },
+  { category: "I. OPASNOSTI", group: "2.1. pad radnika i drugih osoba", code: "2.1.3", hazard: "s visine", riskLevel: "N/P" },
+  { category: "I. OPASNOSTI", group: "2.1. pad radnika i drugih osoba", code: "2.1.4", hazard: "s visine iznad 3 metra", riskLevel: "N/P" },
+  { category: "I. OPASNOSTI", group: "2. OPASNOSTI OD PADOVA", code: "2.2", hazard: "pad predmeta", riskLevel: "N/P" },
+  { category: "I. OPASNOSTI", group: "3. ELEKTRIČNA STRUJA", code: "3.1", hazard: "otvoreni električni krug", riskLevel: "N/P" },
+  { category: "I. OPASNOSTI", group: "3. ELEKTRIČNA STRUJA", code: "3.2", hazard: "ostale električne opasnosti", riskLevel: "N/P" },
+  { category: "I. OPASNOSTI", group: "4. POŽAR I EKSPLOZIJA", code: "4.1", hazard: "eksplozivne tvari", riskLevel: "N/P" },
+  { category: "I. OPASNOSTI", group: "4. POŽAR I EKSPLOZIJA", code: "4.2", hazard: "zapaljive tvari", riskLevel: "N/P" },
+  { category: "I. OPASNOSTI", group: "5. TERMIČKE OPASNOSTI", code: "5.1", hazard: "vruće tvari", riskLevel: "N/P" },
+  { category: "I. OPASNOSTI", group: "5. TERMIČKE OPASNOSTI", code: "5.2", hazard: "hladne tvari", riskLevel: "N/P" },
+
+  { category: "II. ŠTETNOSTI", group: "1. KEMIJSKE ŠTETNOSTI", code: "1.1", hazard: "otrovi", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "1.1. otrovi", code: "1.1.1", hazard: "metali", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "1.1. otrovi", code: "1.1.2", hazard: "nemetali", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "1.1. otrovi", code: "1.1.3", hazard: "organski spojevi", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "1. KEMIJSKE ŠTETNOSTI", code: "1.2", hazard: "korozivi", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "1.2. korozivi", code: "1.2.1", hazard: "kiseline", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "1.2. korozivi", code: "1.2.2", hazard: "lužine", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "1.2. korozivi", code: "1.2.3", hazard: "drugi korozivi", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "1. KEMIJSKE ŠTETNOSTI", code: "1.3", hazard: "nadražljivci", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "1.3. nadražljivci", code: "1.3.1", hazard: "lako topivi u vodi", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "1.3. nadražljivci", code: "1.3.2", hazard: "slabo topivi u vodi", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "1.3. nadražljivci", code: "1.3.3", hazard: "odmašćivači", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "1.3. nadražljivci", code: "1.3.4", hazard: "drugi nadražljivci", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "1. KEMIJSKE ŠTETNOSTI", code: "1.4", hazard: "zagušljivci", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "1.4. zagušljivci", code: "1.4.1", hazard: "inertni", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "1.4. zagušljivci", code: "1.4.2", hazard: "kemijski", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "1. KEMIJSKE ŠTETNOSTI", code: "1.5", hazard: "senzibilizatori", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "1.5. senzibilizatori", code: "1.5.1", hazard: "organske prašine biljnog porijekla", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "1.5. senzibilizatori", code: "1.5.2", hazard: "organske prašine životinjskog porijekla", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "1.5. senzibilizatori", code: "1.5.3", hazard: "kemijski spojevi alergogenog potencijala", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "1.5. senzibilizatori", code: "1.5.4", hazard: "termofilne aktinomicete", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "1.5. senzibilizatori", code: "1.5.5", hazard: "ostali senzibilizatori", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "1. KEMIJSKE ŠTETNOSTI", code: "1.6", hazard: "fibrogeni", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "1.6. fibrogeni", code: "1.6.1", hazard: "azbest", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "1.6. fibrogeni", code: "1.6.2", hazard: "silicijev dioksid", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "1.6. fibrogeni", code: "1.6.3", hazard: "ostali fibrogeni", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "1. KEMIJSKE ŠTETNOSTI", code: "1.7", hazard: "mutageni", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "1. KEMIJSKE ŠTETNOSTI", code: "1.8", hazard: "karcinogeni", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "1. KEMIJSKE ŠTETNOSTI", code: "1.9", hazard: "teratogeni", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "2. BIOLOŠKE ŠTETNOSTI", code: "2.1", hazard: "zarazni materijal", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "2. BIOLOŠKE ŠTETNOSTI", code: "2.2", hazard: "zaraženi ljudi", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "2. BIOLOŠKE ŠTETNOSTI", code: "2.3", hazard: "zaražene životinje", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "2. BIOLOŠKE ŠTETNOSTI", code: "2.4", hazard: "opasne biljke", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "2. BIOLOŠKE ŠTETNOSTI", code: "2.5", hazard: "opasne životinje", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "3. FIZIKALNE ŠTETNOSTI", code: "3.1", hazard: "buka", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "3.1. buka", code: "3.1.1", hazard: "kontinuirana buka", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "3.1. buka", code: "3.1.2", hazard: "diskontinuirana buka", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "3.1. buka", code: "3.1.3", hazard: "impulsna buka", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "3.1. buka", code: "3.1.4", hazard: "ometajuća", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "3. FIZIKALNE ŠTETNOSTI", code: "3.2", hazard: "vibracije", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "3.2. vibracije", code: "3.2.1", hazard: "vibracije koje se prenose na ruke", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "3.2. vibracije", code: "3.2.2", hazard: "vibracije koje se prenose na cijelo tijelo", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "3.2. vibracije", code: "3.2.3", hazard: "potresanja", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "3. FIZIKALNE ŠTETNOSTI", code: "3.3", hazard: "promijenjeni tlak", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "3.3. promijenjeni tlak", code: "3.3.1", hazard: "povišeni tlak", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "3.3. promijenjeni tlak", code: "3.3.2", hazard: "sniženi tlak", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "3.3. promijenjeni tlak", code: "3.3.3", hazard: "promjene tlaka", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "3. FIZIKALNE ŠTETNOSTI", code: "3.4", hazard: "nepovoljni klimatski i mikroklimatski uvjeti", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "3.4. nepovoljni klimatski i mikroklimatski uvjeti", code: "3.4.1", hazard: "rad na otvorenom", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "3.4. nepovoljni klimatski i mikroklimatski uvjeti", code: "3.4.2", hazard: "vrući okoliš", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "3.4. nepovoljni klimatski i mikroklimatski uvjeti", code: "3.4.3", hazard: "visoka vlažnost", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "3.4. nepovoljni klimatski i mikroklimatski uvjeti", code: "3.4.4", hazard: "pojačano strujanje zraka", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "3.4. nepovoljni klimatski i mikroklimatski uvjeti", code: "3.4.5", hazard: "hladan okoliš", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "3.4. nepovoljni klimatski i mikroklimatski uvjeti", code: "3.4.6", hazard: "česte promjene temperature", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "3.4. nepovoljni klimatski i mikroklimatski uvjeti", code: "3.4.7", hazard: "nepovoljni učinci umjetne ventilacije", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "3. FIZIKALNE ŠTETNOSTI", code: "3.5", hazard: "ionizirajuće zračenje", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "3.5. ionizirajuće zračenje", code: "3.5.1", hazard: "rendgensko zračenje", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "3.5. ionizirajuće zračenje", code: "3.5.2", hazard: "otvoreni radioaktivni elementi", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "3.5. ionizirajuće zračenje", code: "3.5.3", hazard: "zatvoreni radioaktivni elementi", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "3. FIZIKALNE ŠTETNOSTI", code: "3.6", hazard: "neionizirajuće zračenje", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "3.6. neionizirajuće zračenje", code: "3.6.1", hazard: "UV zračenje (A, B, C)", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "3.6. neionizirajuće zračenje", code: "3.6.2", hazard: "toplinsko zračenje", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "3.6. neionizirajuće zračenje", code: "3.6.3", hazard: "mikrovalno zračenje", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "3.6. neionizirajuće zračenje", code: "3.6.4", hazard: "lasersko zračenje", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "3.6. neionizirajuće zračenje", code: "3.6.5", hazard: "elektromagnetsko polje vrlo niskih frekvencija", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "3. FIZIKALNE ŠTETNOSTI", code: "3.7", hazard: "osvijetljenost", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "3.7. osvijetljenost", code: "3.7.1", hazard: "nedovoljna osvijetljenost", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "3.7. osvijetljenost", code: "3.7.2", hazard: "blještanje", riskLevel: "N/P" },
+  { category: "II. ŠTETNOSTI", group: "3. FIZIKALNE ŠTETNOSTI", code: "3.8", hazard: "ostale fizikalne štetnosti", riskLevel: "N/P" },
+
+  { category: "III. NAPORI", group: "1. STATODINAMIČKI NAPORI", code: "1.1", hazard: "statički: prisilan položaj tijela pri radu", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "1.1. statički: prisilan položaj tijela pri radu", code: "1.1.1", hazard: "stalno sjedenje", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "1.1. statički: prisilan položaj tijela pri radu", code: "1.1.2", hazard: "stalno stajanje", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "1.1. statički: prisilan položaj tijela pri radu", code: "1.1.3", hazard: "pognut položaj tijela", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "1.1. statički: prisilan položaj tijela pri radu", code: "1.1.4", hazard: "čučanje, klečanje", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "1.1. statički: prisilan položaj tijela pri radu", code: "1.1.5", hazard: "rad u skučenom prostoru", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "1.1. statički: prisilan položaj tijela pri radu", code: "1.1.6", hazard: "ruke iznad glave", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "1.1. statički: prisilan položaj tijela pri radu", code: "1.1.7", hazard: "ostali statički napori", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "1. STATODINAMIČKI NAPORI", code: "1.2", hazard: "dinamički: fizički rad", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "1.2. dinamički: fizički rad", code: "1.2.1", hazard: "ponavljajući pokreti sa i bez primjene sile", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "1.2. dinamički: fizički rad", code: "1.2.2", hazard: "brzi rad", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "1.2. dinamički: fizički rad", code: "1.2.3", hazard: "dizanje i nošenje tereta", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "1.2. dinamički: fizički rad", code: "1.2.4", hazard: "guranje i vučenje tereta", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "1.2. dinamički: fizički rad", code: "1.2.5", hazard: "težak fizički rad", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "1.2. dinamički: fizički rad", code: "1.2.6", hazard: "ostali dinamički napori", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "2. PSIHOFIZIOLOŠKI NAPORI", code: "2.1", hazard: "nepovoljan ritam rada", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "2.1. nepovoljan ritam rada", code: "2.1.1", hazard: "rad na normu", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "2.1. nepovoljan ritam rada", code: "2.1.2", hazard: "ritam uvjetovan radnim procesom", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "2.1. nepovoljan ritam rada", code: "2.1.3", hazard: "neujednačen ritam", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "2. PSIHOFIZIOLOŠKI NAPORI", code: "2.2", hazard: "poremećen bioritam", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "2.2. poremećen bioritam", code: "2.2.2", hazard: "noćni rad", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "2.2. poremećen bioritam", code: "2.2.3", hazard: "produljeni rad", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "2. PSIHOFIZIOLOŠKI NAPORI", code: "2.3", hazard: "remećenje socijalnih potreba", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "2.3. remećenje socijalnih potreba", code: "2.3.1", hazard: "terenski rad", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "2.3. remećenje socijalnih potreba", code: "2.3.2", hazard: "rad na daljinu", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "2. PSIHOFIZIOLOŠKI NAPORI", code: "2.4", hazard: "odgovornost za živote ljudi i materijalna dobra", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "2.4. odgovornost za živote ljudi i materijalna dobra", code: "2.4.1", hazard: "rukovođenje", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "2.4. odgovornost za živote ljudi i materijalna dobra", code: "2.4.2", hazard: "upravljanje prijevoznim sredstvima", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "2. PSIHOFIZIOLOŠKI NAPORI", code: "2.5", hazard: "visoka vjerojatnost izvanrednih događaja", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "2. PSIHOFIZIOLOŠKI NAPORI", code: "2.6", hazard: "otežan prijam informacija", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "2.6. otežan prijam informacija", code: "2.6.1", hazard: "zvučni signali i znakovi", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "2.6. otežan prijam informacija", code: "2.6.2", hazard: "svjetlosni signali i znakovi", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "2.6. otežan prijam informacija", code: "2.6.3", hazard: "buka", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "2.6. otežan prijam informacija", code: "2.6.4", hazard: "nedovoljna osvijetljenost", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "2. PSIHOFIZIOLOŠKI NAPORI", code: "2.7", hazard: "radni zahtjevi", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "2.7. radni zahtjevi", code: "2.7.1", hazard: "neodgovarajući kvantitativni zahtjevi (premalo ili previše rada)", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "2.7. radni zahtjevi", code: "2.7.2", hazard: "premali utjecaj na rad", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "2.7. radni zahtjevi", code: "2.7.3", hazard: "zahtjev za visokom kvalitetom rada", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "2.7. radni zahtjevi", code: "2.7.4", hazard: "izolirani rad", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "2.7. radni zahtjevi", code: "2.7.5", hazard: "monotoni rad", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "2.7. radni zahtjevi", code: "2.7.6", hazard: "komunikacija s osobama", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "2. PSIHOFIZIOLOŠKI NAPORI", code: "2.8", hazard: "maltretiranje", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "2.8. maltretiranje", code: "2.8.1", hazard: "mobing", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "2.8. maltretiranje", code: "2.8.2", hazard: "bulling", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "2. PSIHOFIZIOLOŠKI NAPORI", code: "2.9", hazard: "burnout", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "2. PSIHOFIZIOLOŠKI NAPORI", code: "2.10", hazard: "ostali psihofiziološki napori", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "3. NAPORI VIDA", code: "3", hazard: "napori vida", riskLevel: "N/P" },
+  { category: "III. NAPORI", group: "4. NAPORI GOVORA", code: "4", hazard: "napori govora", riskLevel: "N/P" },
+]);
+
 const RISK_ASSESSMENT_ARMOR_TEMPLATE_ROWS = Object.freeze([
   { category: "I. OPASNOSTI", group: "1. Mehaničke opasnosti", code: "1.1.1", hazard: "Ručni alati", probability: "mv", consequence: "sš", riskLevel: "Mali rizik", measures: "Koristiti ispravan alat, osposobiti radnike za rad na siguran način i po potrebi koristiti propisanu osobnu zaštitnu opremu." },
   { category: "I. OPASNOSTI", group: "1. Mehaničke opasnosti", code: "1.1.2", hazard: "Mehanizirani alati", probability: "v", consequence: "sš", riskLevel: "Srednji rizik", measures: "Provjeravati ispravnost alata, koristiti ga prema uputama proizvođača i zabraniti rad neosposobljenim osobama." },
@@ -129034,8 +129181,11 @@ const RISK_ASSESSMENT_CATALOG_EXTRA_ROWS = Object.freeze([
 ]);
 
 const RISK_ASSESSMENT_CATALOG_ROWS = Object.freeze([
-  ...RISK_ASSESSMENT_ARMOR_TEMPLATE_ROWS,
-  ...RISK_ASSESSMENT_CATALOG_EXTRA_ROWS,
+  ...mergeRiskAssessmentCatalogRowsByPrilogIdentity([
+    ...RISK_ASSESSMENT_PRILOG_III_OFFICIAL_ROWS,
+    ...RISK_ASSESSMENT_ARMOR_TEMPLATE_ROWS,
+    ...RISK_ASSESSMENT_CATALOG_EXTRA_ROWS,
+  ]),
 ]);
 
 const JOB_ENVIRONMENT_SECTIONS = Object.freeze([
@@ -134938,59 +135088,120 @@ function getRiskAssessmentCatalogHierarchy(row = {}) {
   const category = String(row.category || "Ostalo").trim() || "Ostalo";
   const group = String(row.group || "Općenito").trim() || "Općenito";
   const code = String(row.code || "").trim();
+  const codeGroup = getRiskAssessmentCodeGroup(code);
   const groupLower = group.toLocaleLowerCase("hr");
 
   if (category === "I. OPASNOSTI") {
     if (groupLower.includes("mehani") || group.startsWith("1.") || code.startsWith("1.")) {
       let subgroup = "1. MEHANIČKE OPASNOSTI";
-      if (code.startsWith("1.1.")) {
+      if (codeGroup === "1.1") {
         subgroup = "1.1. alati";
-      } else if (code === "1.2" || code.startsWith("1.2.")) {
+      } else if (codeGroup === "1.2") {
         subgroup = "1.2. strojevi i oprema";
-      } else if (group.startsWith("1.3") || code.startsWith("1.3.")) {
+      } else if (codeGroup === "1.3" || group.startsWith("1.3")) {
         subgroup = "1.3. sredstva za horizontalni prijenos";
-      } else if (group.startsWith("1.4") || code.startsWith("1.4.")) {
+      } else if (codeGroup === "1.4" || group.startsWith("1.4")) {
         subgroup = "1.4. sredstva za vertikalni prijenos";
-      } else if (code === "1.5" || code.startsWith("1.5.")) {
+      } else if (codeGroup === "1.5") {
         subgroup = "1.5. rukovanje predmetima";
-      } else if (code === "1.6" || code.startsWith("1.6.")) {
+      } else if (codeGroup === "1.6") {
         subgroup = "1.6. ostale mehaničke opasnosti";
       }
       return { category, family: "1. MEHANIČKE OPASNOSTI", subgroup };
     }
 
     if (groupLower.includes("pad") || code.startsWith("2.")) {
-      return { category, family: "2. OPASNOSTI OD PADOVA", subgroup: group };
+      const subgroup = {
+        "2.1": "2.1. pad radnika i drugih osoba",
+        "2.2": "2.2. pad predmeta",
+      }[codeGroup] || group;
+      return { category, family: "2. OPASNOSTI OD PADOVA", subgroup };
     }
     if (groupLower.includes("elektr") || code.startsWith("3.")) {
-      return { category, family: "3. ELEKTRIČNA STRUJA", subgroup: group };
+      const subgroup = {
+        "3.1": "3.1. otvoreni električni krug",
+        "3.2": "3.2. ostale električne opasnosti",
+      }[codeGroup] || group;
+      return { category, family: "3. ELEKTRIČNA STRUJA", subgroup };
     }
     if (groupLower.includes("požar") || groupLower.includes("eksploz") || code.startsWith("4.")) {
-      return { category, family: "4. POŽAR I EKSPLOZIJA", subgroup: group };
+      const subgroup = {
+        "4.1": "4.1. eksplozivne tvari",
+        "4.2": "4.2. zapaljive tvari",
+      }[codeGroup] || group;
+      return { category, family: "4. POŽAR I EKSPLOZIJA", subgroup };
     }
     if (groupLower.includes("termi") || code.startsWith("5.")) {
-      return { category, family: "5. TERMIČKE OPASNOSTI", subgroup: group };
+      const subgroup = {
+        "5.1": "5.1. vruće tvari",
+        "5.2": "5.2. hladne tvari",
+      }[codeGroup] || group;
+      return { category, family: "5. TERMIČKE OPASNOSTI", subgroup };
     }
   }
 
   if (category === "II. ŠTETNOSTI") {
     if (group.startsWith("1.") || group.startsWith("1 ")) {
-      return { category, family: "1. KEMIJSKE ŠTETNOSTI", subgroup: group };
+      const subgroup = {
+        "1.1": "1.1. otrovi",
+        "1.2": "1.2. korozivi",
+        "1.3": "1.3. nadražljivci",
+        "1.4": "1.4. zagušljivci",
+        "1.5": "1.5. senzibilizatori",
+        "1.6": "1.6. fibrogeni",
+        "1.7": "1.7. mutageni",
+        "1.8": "1.8. karcinogeni",
+        "1.9": "1.9. teratogeni",
+      }[codeGroup] || group;
+      return { category, family: "1. KEMIJSKE ŠTETNOSTI", subgroup };
     }
     if (group.startsWith("2.") || group.startsWith("2 ")) {
-      return { category, family: "2. BIOLOŠKE ŠTETNOSTI", subgroup: group };
+      const subgroup = {
+        "2.1": "2.1. zarazni materijal",
+        "2.2": "2.2. zaraženi ljudi",
+        "2.3": "2.3. zaražene životinje",
+        "2.4": "2.4. opasne biljke",
+        "2.5": "2.5. opasne životinje",
+      }[codeGroup] || group;
+      return { category, family: "2. BIOLOŠKE ŠTETNOSTI", subgroup };
     }
     if (group.startsWith("3.") || group.startsWith("3 ")) {
-      return { category, family: "3. FIZIKALNE ŠTETNOSTI", subgroup: group };
+      const subgroup = {
+        "3.1": "3.1. buka",
+        "3.2": "3.2. vibracije",
+        "3.3": "3.3. promijenjeni tlak",
+        "3.4": "3.4. nepovoljni klimatski i mikroklimatski uvjeti",
+        "3.5": "3.5. ionizirajuće zračenje",
+        "3.6": "3.6. neionizirajuće zračenje",
+        "3.7": "3.7. osvijetljenost",
+        "3.8": "3.8. ostale fizikalne štetnosti",
+      }[codeGroup] || group;
+      return { category, family: "3. FIZIKALNE ŠTETNOSTI", subgroup };
     }
   }
 
   if (category === "III. NAPORI") {
     if (group.startsWith("1.") || group.startsWith("1 ")) {
-      return { category, family: "1. STATODINAMIČKI NAPORI", subgroup: group };
+      const subgroup = {
+        "1.1": "1.1. statički: prisilan položaj tijela pri radu",
+        "1.2": "1.2. dinamički: fizički rad",
+      }[codeGroup] || group;
+      return { category, family: "1. STATODINAMIČKI NAPORI", subgroup };
     }
     if (group.startsWith("2.") || group.startsWith("2 ")) {
-      return { category, family: "2. PSIHOFIZIOLOŠKI NAPORI", subgroup: group };
+      const subgroup = {
+        "2.1": "2.1. nepovoljan ritam rada",
+        "2.2": "2.2. poremećen bioritam",
+        "2.3": "2.3. remećenje socijalnih potreba",
+        "2.4": "2.4. odgovornost za živote ljudi i materijalna dobra",
+        "2.5": "2.5. visoka vjerojatnost izvanrednih događaja",
+        "2.6": "2.6. otežan prijam informacija",
+        "2.7": "2.7. radni zahtjevi",
+        "2.8": "2.8. maltretiranje",
+        "2.9": "2.9. burnout",
+        "2.10": "2.10. ostali psihofiziološki napori",
+      }[codeGroup] || group;
+      return { category, family: "2. PSIHOFIZIOLOŠKI NAPORI", subgroup };
     }
     if (code === "4" || code.startsWith("4.") || group.startsWith("4.") || group.startsWith("4 ")) {
       return { category, family: "4. NAPORI GOVORA", subgroup: "4. napori govora" };
@@ -135001,6 +135212,14 @@ function getRiskAssessmentCatalogHierarchy(row = {}) {
   }
 
   return { category, family: group, subgroup: group };
+}
+
+function getRiskAssessmentCodeGroup(code = "") {
+  const parts = String(code || "").trim().split(".").filter(Boolean);
+  if (!parts.length) {
+    return "";
+  }
+  return parts.length === 1 ? parts[0] : `${parts[0]}.${parts[1]}`;
 }
 
 function compareRiskAssessmentCatalogLabels(a = "", b = "") {
@@ -135234,6 +135453,44 @@ function getRiskAssessmentCatalogType(category = "") {
     return "efforts";
   }
   return "all";
+}
+
+function getRiskAssessmentCatalogIdentityKey(row = {}) {
+  const category = String(row.category || row.topCategory || "").trim();
+  const code = String(row.code || "").trim();
+  if (category && code) {
+    return `${category}::${code}`;
+  }
+  return [
+    category,
+    row.group,
+    row.hazard,
+  ].map((value) => normalizeRiskAssessmentIdentityComparable(value)).filter(Boolean).join("::");
+}
+
+function mergeRiskAssessmentCatalogRowsByPrilogIdentity(rows = []) {
+  const map = new Map();
+  rows.filter(Boolean).forEach((row) => {
+    const key = getRiskAssessmentCatalogIdentityKey(row);
+    if (!key || !map.has(key)) {
+      map.set(key, { ...row });
+      return;
+    }
+    const official = map.get(key);
+    map.set(key, {
+      ...official,
+      ...row,
+      category: official.category || row.category,
+      group: official.group || row.group,
+      code: official.code || row.code,
+      hazard: official.hazard || row.hazard,
+      displayCategory: official.displayCategory || row.displayCategory,
+      displayGroup: official.displayGroup || row.displayGroup,
+      family: official.family || row.family,
+      subgroup: official.subgroup || row.subgroup,
+    });
+  });
+  return sortRiskAssessmentRiskRowsByPrilogOrder(Array.from(map.values()));
 }
 
 function getRiskAssessmentFilteredCatalogRows(job = {}) {
@@ -142112,27 +142369,68 @@ function getRiskAssessmentArmorTreeGroupLabels(risk = {}) {
   };
 }
 
+function getRiskAssessmentArmorSectionTone(label = "") {
+  const normalized = String(label || "").trim();
+  if (normalized.startsWith("I.")) {
+    return "hazards";
+  }
+  if (normalized.startsWith("II.")) {
+    return "harms";
+  }
+  if (normalized.startsWith("III.")) {
+    return "efforts";
+  }
+  return "neutral";
+}
+
+function getRiskAssessmentArmorHierarchy(risk = {}) {
+  if (risk.topCategory) {
+    return getRiskAssessmentCatalogHierarchy({
+      ...risk,
+      category: risk.topCategory,
+      group: risk.group || risk.category,
+    });
+  }
+  const hierarchy = getRiskAssessmentCatalogHierarchy(risk);
+  return {
+    category: hierarchy.category || risk.topCategory || "ARMOR",
+    family: hierarchy.family || risk.category || "Stavke",
+    subgroup: hierarchy.subgroup || risk.group || hierarchy.family || "Stavke",
+  };
+}
+
 function renderRiskAssessmentArmorExplorer(item = {}, jobIndex = 0) {
   const riskRows = item.riskRows ?? [];
   const activeIndex = getRiskAssessmentActiveRiskRowIndex(item);
   const sections = [];
   const sectionMap = new Map();
   riskRows.forEach((risk, riskIndex) => {
-    const labels = getRiskAssessmentArmorTreeGroupLabels(risk);
-    const sectionKey = labels.top;
+    const hierarchy = getRiskAssessmentArmorHierarchy(risk);
+    const sectionKey = hierarchy.category;
     let section = sectionMap.get(sectionKey);
     if (!section) {
-      section = { label: labels.top, groups: [], groupMap: new Map() };
+      section = {
+        label: hierarchy.category,
+        tone: getRiskAssessmentArmorSectionTone(hierarchy.category),
+        families: [],
+        familyMap: new Map(),
+      };
       sectionMap.set(sectionKey, section);
       sections.push(section);
     }
-    let group = section.groupMap.get(labels.sub);
-    if (!group) {
-      group = { label: labels.sub, rows: [] };
-      section.groupMap.set(labels.sub, group);
-      section.groups.push(group);
+    let family = section.familyMap.get(hierarchy.family);
+    if (!family) {
+      family = { label: hierarchy.family, subgroups: [], subgroupMap: new Map() };
+      section.familyMap.set(hierarchy.family, family);
+      section.families.push(family);
     }
-    group.rows.push({ risk, riskIndex });
+    let subgroup = family.subgroupMap.get(hierarchy.subgroup);
+    if (!subgroup) {
+      subgroup = { label: hierarchy.subgroup, rows: [] };
+      family.subgroupMap.set(hierarchy.subgroup, subgroup);
+      family.subgroups.push(subgroup);
+    }
+    subgroup.rows.push({ risk, riskIndex });
   });
 
   return `
@@ -142143,44 +142441,57 @@ function renderRiskAssessmentArmorExplorer(item = {}, jobIndex = 0) {
       </div>
       <div class="risk-assessment-armor-tree-nodes">
         ${sections.length ? sections.map((section) => `
-          <div class="risk-assessment-armor-tree-node is-folder" style="--unit-depth: 0">
-            <div class="risk-assessment-armor-tree-row">
+          <div class="risk-assessment-armor-tree-node is-folder is-section is-${escapeHtml(section.tone)}" style="--unit-depth: 0">
+            <div class="risk-assessment-armor-tree-row is-title is-section-title">
               <span class="risk-assessment-job-tree-icon" aria-hidden="true">${renderRiskAssessmentRiskIcon("activity")}</span>
               <span class="risk-assessment-job-tree-copy">
                 <strong>${escapeHtml(section.label)}</strong>
-                <small>${escapeHtml(`${section.groups.reduce((sum, group) => sum + group.rows.length, 0)} stavki`)}</small>
+                <small>${escapeHtml(`${section.families.reduce((sum, family) => sum + family.subgroups.reduce((subSum, subgroup) => subSum + subgroup.rows.length, 0), 0)} stavki`)}</small>
               </span>
             </div>
             <div class="risk-assessment-armor-tree-children">
-              ${section.groups.map((group) => `
-                <div class="risk-assessment-armor-tree-node is-folder" style="--unit-depth: 1">
-                  <div class="risk-assessment-armor-tree-row">
+              ${section.families.map((family) => `
+                <div class="risk-assessment-armor-tree-node is-folder is-family is-${escapeHtml(section.tone)}" style="--unit-depth: 1">
+                  <div class="risk-assessment-armor-tree-row is-title is-family-title">
                     <span class="risk-assessment-job-tree-icon" aria-hidden="true">${renderRiskAssessmentRiskIcon("note")}</span>
                     <span class="risk-assessment-job-tree-copy">
-                      <strong>${escapeHtml(group.label)}</strong>
-                      <small>${escapeHtml(`${group.rows.length} stavki`)}</small>
+                      <strong>${escapeHtml(family.label)}</strong>
+                      <small>${escapeHtml(`${family.subgroups.reduce((sum, subgroup) => sum + subgroup.rows.length, 0)} stavki`)}</small>
                     </span>
                   </div>
                   <div class="risk-assessment-armor-tree-children">
-                    ${group.rows.map(({ risk, riskIndex }) => {
-                      const riskLevel = getRiskAssessmentRiskDisplayLevel(risk);
-                      const riskTone = getRiskAssessmentRiskDisplayTone(risk);
-                      const complete = isRiskAssessmentRiskRowComplete(risk);
-                      const title = getRiskAssessmentRiskRowDisplayTitle(risk, riskIndex);
-                      const code = String(risk.code || "").trim();
-                      return `
-                        <div class="risk-assessment-armor-tree-node is-item ${riskIndex === activeIndex ? "is-active" : ""} ${complete ? "is-complete" : ""}" style="--unit-depth: 2">
-                          <button type="button" class="risk-assessment-armor-tree-row" data-risk-row-select="${escapeHtml(String(riskIndex))}" data-risk-job-index="${escapeHtml(String(jobIndex))}">
-                            <span class="risk-assessment-armor-risk-dot is-${escapeHtml(riskTone)}" aria-hidden="true"></span>
-                            <span class="risk-assessment-job-tree-copy">
-                              <strong>${escapeHtml(code ? `${code} ${title}` : title)}</strong>
-                              <small>${escapeHtml(riskLevel || "N/P")}</small>
-                            </span>
-                            <span class="risk-assessment-job-tree-state ${complete ? "is-done" : ""}" aria-label="${escapeHtml(complete ? "Stavka popunjena" : "Nedovršeno")}">${complete ? "✓" : ""}</span>
-                          </button>
+                    ${family.subgroups.map((subgroup) => `
+                      <div class="risk-assessment-armor-tree-node is-folder is-subgroup is-${escapeHtml(section.tone)}" style="--unit-depth: 2">
+                        <div class="risk-assessment-armor-tree-row is-title is-subgroup-title">
+                          <span class="risk-assessment-job-tree-icon" aria-hidden="true">${renderRiskAssessmentRiskIcon("note")}</span>
+                          <span class="risk-assessment-job-tree-copy">
+                            <strong>${escapeHtml(subgroup.label)}</strong>
+                            <small>${escapeHtml(`${subgroup.rows.length} stavki`)}</small>
+                          </span>
                         </div>
-                      `;
-                    }).join("")}
+                        <div class="risk-assessment-armor-tree-children">
+                          ${subgroup.rows.map(({ risk, riskIndex }) => {
+                            const riskLevel = getRiskAssessmentRiskDisplayLevel(risk);
+                            const riskTone = getRiskAssessmentRiskDisplayTone(risk);
+                            const complete = isRiskAssessmentRiskRowComplete(risk);
+                            const title = getRiskAssessmentRiskRowDisplayTitle(risk, riskIndex);
+                            const code = String(risk.code || "").trim();
+                            return `
+                              <div class="risk-assessment-armor-tree-node is-item ${riskIndex === activeIndex ? "is-active" : ""} ${complete ? "is-complete" : ""}" style="--unit-depth: 3">
+                                <button type="button" class="risk-assessment-armor-tree-row" data-risk-row-select="${escapeHtml(String(riskIndex))}" data-risk-job-index="${escapeHtml(String(jobIndex))}">
+                                  <span class="risk-assessment-armor-risk-dot is-${escapeHtml(riskTone)}" aria-hidden="true"></span>
+                                  <span class="risk-assessment-job-tree-copy">
+                                    <strong>${escapeHtml(code ? `${code} ${title}` : title)}</strong>
+                                    <small>${escapeHtml(riskLevel || "N/P")}</small>
+                                  </span>
+                                  <span class="risk-assessment-job-tree-state ${complete ? "is-done" : ""}" aria-label="${escapeHtml(complete ? "Stavka popunjena" : "Nedovršeno")}">${complete ? "✓" : ""}</span>
+                                </button>
+                              </div>
+                            `;
+                          }).join("")}
+                        </div>
+                      </div>
+                    `).join("")}
                   </div>
                 </div>
               `).join("")}
