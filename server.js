@@ -249,6 +249,11 @@ function withOperationTimeout(promise, timeoutMs = 0, message = "Operacija je is
 const canonicalAppHost = canonicalAppOrigin ? new URL(canonicalAppOrigin).host.toLowerCase() : "";
 const GENERATED_WORK_ORDER_PDF_CATEGORY = "Radni nalog PDF";
 const GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY = "Zapisnik PDF";
+const GENERATED_RISK_ASSESSMENT_PDF_CATEGORY = "Procjena rizika PDF";
+const SIGNATURE_PDF_DOCUMENT_CATEGORIES = Object.freeze([
+  GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY,
+  GENERATED_RISK_ASSESSMENT_PDF_CATEGORY,
+]);
 const GENERATED_DOCUMENT_TEMPLATE_DOCX_CATEGORY = "Zapisnik DOCX";
 const GENERATED_PEOPLE_TRAINING_CERTIFICATE_CATEGORY = "Automatsko uvjerenje";
 const GENERATED_PEOPLE_TRAINING_CERTIFICATE_SOURCE = "people-training-certificate";
@@ -2849,6 +2854,82 @@ async function finalizeGeneratedTemplatePdfBuffer(pdfBuffer = Buffer.alloc(0), e
   return await addGeneratedTemplateDigitalSignatureFields(stampedPdfBuffer, entry, options.signatureSettings);
 }
 
+async function buildRiskAssessmentGeneratedDocumentFromBody(body = {}, {
+  pdf = false,
+  signatureSettings = {},
+  documentStampSettings = {},
+} = {}) {
+  const templateDocument = body?.templateDocument && typeof body.templateDocument === "object"
+    ? body.templateDocument
+    : null;
+
+  if (!templateDocument) {
+    throw new Error("Prvo učitaj Word template procjene (.docx/.dotx).");
+  }
+
+  if (!isWordTemplateFile(templateDocument)) {
+    throw new Error("Template procjene mora biti .docx ili .dotx datoteka.");
+  }
+
+  const placeholders = body?.placeholders && typeof body.placeholders === "object" && !Array.isArray(body.placeholders)
+    ? body.placeholders
+    : {};
+  const fileName = sanitizeGeneratedDocumentFileName(
+    body.fileName || templateDocument.fileName || "procjena-rizika",
+    { fallback: "procjena-rizika", extension: pdf ? "pdf" : "docx" },
+  );
+  const wordFileName = sanitizeGeneratedDocumentFileName(
+    body.fileName || templateDocument.fileName || "procjena-rizika",
+    { fallback: "procjena-rizika", extension: "docx" },
+  );
+  const referenceDocument = await readStoredDocumentBuffer(templateDocument);
+  const generatedWord = await buildDocxFromTemplateBuffer(referenceDocument.buffer, placeholders, {
+    fileName: wordFileName,
+    title: "Procjena rizika",
+  });
+
+  if (!pdf) {
+    return {
+      buffer: generatedWord,
+      fileName,
+      entry: {
+        templateReferenceKind: "word",
+        placeholders,
+      },
+    };
+  }
+
+  let generatedPdf = null;
+  try {
+    [generatedPdf] = await withOperationTimeout(
+      convertDocxBuffersToPdfBuffers([{ buffer: generatedWord, fileName: wordFileName }]),
+      RISK_ASSESSMENT_WORD_PDF_TIMEOUT_MS,
+      "Word -> PDF procjene rizika nije završio na vrijeme.",
+    );
+    if (!Buffer.isBuffer(generatedPdf) || generatedPdf.length === 0) {
+      throw new Error("LibreOffice je vratio prazan PDF procjene rizika.");
+    }
+  } catch (conversionError) {
+    console.warn("Risk assessment Word -> PDF conversion failed.", conversionError);
+    const error = new Error("PDF iz Word templatea nije uspio. Generiraj DOCX ili provjeri Word template pa pokušaj ponovno.");
+    error.statusCode = 503;
+    throw error;
+  }
+
+  const entry = {
+    templateReferenceKind: "word",
+    placeholders,
+  };
+  return {
+    buffer: await finalizeGeneratedTemplatePdfBuffer(generatedPdf, entry, {
+      signatureSettings,
+      documentStampSettings,
+    }),
+    fileName,
+    entry,
+  };
+}
+
 async function generateTemplateDocumentFilesForEntries(entries = [], scopedSnapshot = {}, options = {}) {
   const startedAt = Date.now();
   const documentTemplates = scopedSnapshot.documentTemplates ?? [];
@@ -3809,6 +3890,10 @@ function getWorkOrderDocumentZipKind(document = {}, exportKind = "") {
     return "Zapisnici";
   }
 
+  if (category === GENERATED_RISK_ASSESSMENT_PDF_CATEGORY) {
+    return "Procjene rizika";
+  }
+
   return category || "Dokumenti";
 }
 
@@ -4744,14 +4829,13 @@ async function buildSignatureBridgeCandidateDocuments(scopedSnapshot = {}, reque
   );
   const allDocuments = typeof domainRepository.listWorkOrderDocuments === "function"
     ? await domainRepository.listWorkOrderDocuments(workOrderIds, {
-      documentCategory: GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY,
       sourceType: "pdf",
       limit: 5000,
     })
     : (await Promise.all(workOrderIds.map((workOrderId) => domainRepository.getWorkOrderDocuments(workOrderId))))
       .flat()
       .filter((document) => (
-        String(document?.documentCategory || "") === GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY
+        SIGNATURE_PDF_DOCUMENT_CATEGORIES.includes(String(document?.documentCategory || "").trim())
         && String(document?.sourceType || "").toLowerCase() === "pdf"
       ));
 
@@ -4759,6 +4843,7 @@ async function buildSignatureBridgeCandidateDocuments(scopedSnapshot = {}, reque
     .filter((document) => (
       String(document?.id || "").trim()
       && String(document?.workOrderId || "").trim()
+      && SIGNATURE_PDF_DOCUMENT_CATEGORIES.includes(String(document?.documentCategory || "").trim())
       && (!requestedIds.size || requestedIds.has(String(document.id)))
       && !isSignatureBridgeDocumentSigned(document)
       && !isSignatureBridgeDocumentRejected(document)
@@ -9368,6 +9453,7 @@ async function handleApiRequest(request, response, url) {
     const measurementEquipmentPdfExportMatch = url.pathname === "/api/measurement-equipment/export-pdf";
     const riskAssessmentWordExportMatch = url.pathname === "/api/risk-assessments/export-word";
     const riskAssessmentPdfExportMatch = url.pathname === "/api/risk-assessments/export-pdf";
+    const riskAssessmentPdfSaveMatch = url.pathname === "/api/risk-assessments/save-pdf";
     const documentTemplateMatch = url.pathname.match(/^\/api\/document-templates\/([^/]+)$/);
     const documentTemplatePdfExportMatch = url.pathname.match(/^\/api\/document-templates\/([^/]+)\/export-pdf$/);
     const documentTemplateBatchPdfExportMatch = url.pathname === "/api/document-templates/export-pdf-batch";
@@ -9512,7 +9598,7 @@ async function handleApiRequest(request, response, url) {
         : (body?.documentIds ?? []);
       const documents = await buildSignatureBridgeCandidateDocuments(scopedSnapshot, requestedDocumentIds);
       if (documents.length === 0) {
-        sendError(response, 400, "Nema nepotpisanih PDF zapisnika za lokalni potpis.");
+        sendError(response, 400, "Nema nepotpisanih PDF dokumenata za lokalni potpis.");
         return true;
       }
 
@@ -11524,6 +11610,15 @@ async function handleApiRequest(request, response, url) {
           if (!Buffer.isBuffer(generatedDocument) || generatedDocument.length === 0) {
             throw new Error("LibreOffice je vratio prazan PDF procjene rizika.");
           }
+          generatedDocument = await finalizeGeneratedTemplatePdfBuffer(generatedDocument, {
+            templateReferenceKind: "word",
+            placeholders,
+          }, {
+            signatureSettings: normalizeSignatureExportSettings(body.signatureSettings || body.pdfSignatureSettings),
+            documentStampSettings: normalizeDocumentStampExportSettings(
+              body.documentStampSettings || body.pdfStampSettings || body.stampSettings,
+            ),
+          });
         } catch (conversionError) {
           console.warn("Risk assessment Word -> PDF conversion failed.", conversionError);
           sendError(response, 503, "PDF iz Word templatea nije uspio. Generiraj DOCX ili provjeri Word template pa pokušaj ponovno.");
@@ -11536,6 +11631,49 @@ async function handleApiRequest(request, response, url) {
           ? "application/pdf"
           : "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         fileName,
+      });
+      return true;
+    }
+
+    if (riskAssessmentPdfSaveMatch && request.method === "POST") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo spremati procjenu rizika za potpis.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const workOrderId = String(body?.workOrderId || "").trim();
+      const workOrder = assertInScope(scopedSnapshot.workOrders ?? [], workOrderId, "Povezani RN nije pronađen.");
+      let generated;
+      try {
+        generated = await buildRiskAssessmentGeneratedDocumentFromBody(body, {
+          pdf: true,
+          signatureSettings: normalizeSignatureExportSettings(body.signatureSettings || body.pdfSignatureSettings),
+          documentStampSettings: normalizeDocumentStampExportSettings(
+            body.documentStampSettings || body.pdfStampSettings || body.stampSettings,
+          ),
+        });
+      } catch (error) {
+        sendError(response, error.statusCode || 400, error.message || "Procjena rizika nije generirana.");
+        return true;
+      }
+
+      const signatureMetadata = resolveGeneratedDocumentTemplateSignatureMetadata(generated.entry);
+      const assessmentLabel = String(body?.assessmentNumber || body?.assessmentId || "").trim();
+      const item = await domainRepository.upsertWorkOrderGeneratedPdfDocument(workOrder.id, {
+        fileName: generated.fileName,
+        fileType: "application/pdf",
+        fileSize: generated.buffer.length,
+        documentCategory: GENERATED_RISK_ASSESSMENT_PDF_CATEGORY,
+        description: `Procjena rizika${assessmentLabel ? ` ${assessmentLabel}` : ""} za RN ${workOrder.workOrderNumber || workOrder.id}.`,
+        sourceType: "pdf",
+        ...signatureMetadata,
+        dataUrl: `data:application/pdf;base64,${generated.buffer.toString("base64")}`,
+      }, user);
+
+      sendJson(response, 200, {
+        item: stripStoredDocumentPayloadForResponse(item),
       });
       return true;
     }
@@ -12138,6 +12276,7 @@ async function handleApiRequest(request, response, url) {
               || String(document?.fileName || "").toLowerCase().endsWith(".pdf");
             return isPdf && [
               GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY,
+              GENERATED_RISK_ASSESSMENT_PDF_CATEGORY,
               GENERATED_WORK_ORDER_PDF_CATEGORY,
             ].includes(String(document?.documentCategory || "").trim());
           })

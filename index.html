@@ -15,7 +15,7 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
     <link rel="stylesheet" href="/assets/ozo-tailwind.css?v=20260602-risk-export-card-matrix-v1" />
-    <link rel="stylesheet" href="/styles.css?v=20260606-client-foundation-docs-v1" />
+    <link rel="stylesheet" href="/styles.css?v=20260606-risk-signature-foundation-v1" />
     <link rel="stylesheet" href="/src/styles/variables.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/reset.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/builder.css?v=20260509e" />
@@ -4826,6 +4826,7 @@
                     <button id="risk-assessment-save" type="submit" form="risk-assessment-form" class="ghost-button risk-assessment-save-button">Spremi</button>
                     <button id="risk-assessment-export-docx" type="button" class="secondary-button">DOCX</button>
                     <button id="risk-assessment-export-pdf" type="button" class="ghost-button">PDF</button>
+                    <button id="risk-assessment-send-signature" type="button" class="ghost-button">Pošalji na potpis</button>
                     <button id="risk-assessment-close" type="button" class="ghost-button">Zatvori</button>
                   </div>
                 </div>
@@ -8423,8 +8424,9 @@
                         <select id="rulebook-type"></select>
                       </label>
                       <label class="field">
-                        <span>Status</span>
+                        <span>Status / klijentski portal</span>
                         <select id="rulebook-status"></select>
+                        <small>Klijent vidi dokument tek kada je status Aktivan.</small>
                       </label>
                       <label class="field">
                         <span>Datum primjene</span>
@@ -9916,7 +9918,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260606-client-foundation-docs-v1"></script>
+    <script type="module" src="/src/main.js?v=20260606-risk-signature-foundation-v1"></script>
     <script type="module" src="/assets/ozo-panel.js?v=20260602-risk-export-card-matrix-v1"></script>
   </body>
 </html>

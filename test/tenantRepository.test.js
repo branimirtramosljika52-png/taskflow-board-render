@@ -377,6 +377,14 @@ test("memory tenant repository scopes client portal users to assigned company lo
         status: "draft",
         documents: [{ id: "doc-2", fileName: "draft.pdf", dataUrl: "data:application/pdf;base64,BBBB" }],
       },
+      {
+        id: "rulebook-3",
+        organizationId: organization.id,
+        title: "Pravilnik u pregledu",
+        rulebookType: "fire",
+        status: "review",
+        documents: [{ id: "doc-3", fileName: "review.pdf", dataUrl: "data:application/pdf;base64,CCCC" }],
+      },
     ],
   });
 

@@ -257,6 +257,11 @@ const DEFAULT_WORK_ORDER_DOCUMENT_CATEGORY = WORK_ORDER_DOCUMENT_CATEGORY_OPTION
 const VERIFIED_WORK_ORDER_DOCUMENT_CATEGORY = "Ovjereni Radni nalog";
 const GENERATED_WORK_ORDER_PDF_CATEGORY = "Radni nalog PDF";
 const GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY = "Zapisnik PDF";
+const GENERATED_RISK_ASSESSMENT_PDF_CATEGORY = "Procjena rizika PDF";
+const SIGNATURE_PDF_DOCUMENT_CATEGORIES = Object.freeze([
+  GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY,
+  GENERATED_RISK_ASSESSMENT_PDF_CATEGORY,
+]);
 const WORK_ORDER_REGION_OPTIONS = Object.freeze([
   "Zagreb - Centar",
   "Zagreb - Zapad",
@@ -6430,6 +6435,7 @@ const riskAssessmentResetButton = document.querySelector("#risk-assessment-reset
 const riskAssessmentDeleteButton = document.querySelector("#risk-assessment-delete");
 const riskAssessmentExportDocxButton = document.querySelector("#risk-assessment-export-docx");
 const riskAssessmentExportPdfButton = document.querySelector("#risk-assessment-export-pdf");
+const riskAssessmentSendSignatureButton = document.querySelector("#risk-assessment-send-signature");
 let jobHazardDrafts = [];
 let jobPpeDrafts = [];
 let riskAssessmentAuthorizedPersonDrafts = [];
@@ -30447,14 +30453,17 @@ function createDocumentLibraryRecordEntry({
 }
 
 function getDocumentsExplorerWorkOrderDocuments({ documentCategory = "" } = {}) {
-  const categoryFilter = String(documentCategory || "").trim();
+  const categoryValues = (Array.isArray(documentCategory) ? documentCategory : [documentCategory])
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  const categorySet = new Set(categoryValues);
   return (Array.isArray(state.documentsExplorer.workOrderDocuments)
     ? state.documentsExplorer.workOrderDocuments
     : [])
     .filter((documentItem) => (
       String(documentItem?.id || "").trim()
       && String(documentItem?.workOrderId || "").trim()
-      && (!categoryFilter || String(documentItem?.documentCategory || "").trim() === categoryFilter)
+      && (!categorySet.size || categorySet.has(String(documentItem?.documentCategory || "").trim()))
     ));
 }
 
@@ -30897,7 +30906,7 @@ function buildDocumentRecordLibraryFolders(records = state.documentsExplorer.rec
     // Zapisnički record ostaje interan za periodiku i lookup; Documents prikazuje samo stvarno spremljene datoteke.
   });
 
-  getDocumentsExplorerWorkOrderDocuments({ documentCategory: GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY })
+  getDocumentsExplorerWorkOrderDocuments({ documentCategory: SIGNATURE_PDF_DOCUMENT_CATEGORIES })
     .forEach((documentItem, documentIndex) => {
       const context = getWorkOrderDocumentLibraryContext(documentItem, documentIndex);
       const folderKey = context.linkedWorkOrder?.id
@@ -30997,7 +31006,7 @@ function buildWorkOrderDocumentLibraryFolders(records = state.documentsExplorer.
     );
   });
 
-  getDocumentsExplorerWorkOrderDocuments({ documentCategory: GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY })
+  getDocumentsExplorerWorkOrderDocuments({ documentCategory: SIGNATURE_PDF_DOCUMENT_CATEGORIES })
     .forEach((documentItem, documentIndex) => {
       const context = getWorkOrderDocumentLibraryContext(documentItem, documentIndex);
       const folder = ensureWorkOrderFolder(context.linkedWorkOrder, {
@@ -31102,7 +31111,7 @@ function buildCompanyDocumentLibraryFolders(records = state.documentsExplorer.re
     folder.documents.push(createDocumentRecordLibraryEntryFromContext(record, context, `company-record:${folder.id}`));
   });
 
-  getDocumentsExplorerWorkOrderDocuments({ documentCategory: GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY })
+  getDocumentsExplorerWorkOrderDocuments({ documentCategory: SIGNATURE_PDF_DOCUMENT_CATEGORIES })
     .forEach((documentItem, documentIndex) => {
       const context = getWorkOrderDocumentLibraryContext(documentItem, documentIndex);
       const company = context.company || companyById.get(String(context.linkedWorkOrder?.companyId || "")) || null;
@@ -33473,7 +33482,7 @@ async function loadDocumentsExplorerRecords({ force = false, renderSignatures = 
   try {
     const [recordsResponse, workOrderDocumentsResponse] = await Promise.all([
       apiRequest(`/document-records?limit=${DOCUMENTS_EXPLORER_MAX_RECORDS}`),
-      apiRequest(`/work-order-documents?category=${encodeURIComponent(GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY)}&sourceType=pdf&limit=5000`),
+      apiRequest("/work-order-documents?sourceType=pdf&limit=5000"),
     ]);
     state.documentsExplorer.records = Array.isArray(recordsResponse?.items) ? recordsResponse.items : [];
     state.documentsExplorer.workOrderDocuments = Array.isArray(workOrderDocumentsResponse?.items)
@@ -33501,7 +33510,7 @@ async function loadDocumentsExplorerRecords({ force = false, renderSignatures = 
 }
 
 function buildSignatureModuleDocumentEntries() {
-  return getDocumentsExplorerWorkOrderDocuments({ documentCategory: GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY })
+  return getDocumentsExplorerWorkOrderDocuments({ documentCategory: SIGNATURE_PDF_DOCUMENT_CATEGORIES })
     .map((documentItem, index) => {
       const context = getWorkOrderDocumentLibraryContext(documentItem, index);
       const entry = createSavedWorkOrderDocumentLibraryEntry(documentItem, context, "signature-document");
@@ -33883,8 +33892,8 @@ function renderSignaturesModule() {
     signaturesOpenLocalSignerButton.title = hasApprovedReview
       ? "Potpiši samo stavke označene kao OK."
       : pendingEntries.length > 0
-        ? `Prvo pripremi review za ${pendingEntries.length} nepotpisanih PDF zapisnika.`
-        : "Nema nepotpisanih PDF zapisnika za lokalni potpis.";
+        ? `Prvo pripremi review za ${pendingEntries.length} nepotpisanih PDF dokumenata.`
+        : "Nema nepotpisanih PDF dokumenata za lokalni potpis.";
   }
   if (signaturesReviewStartButton) {
     signaturesReviewStartButton.disabled = pendingEntries.length === 0 || state.documentsExplorer.loading;
@@ -34100,7 +34109,7 @@ function mapSignatureBridgeDocuments(payload = {}) {
 
 async function createSignatureBridgeJobForPendingEntries(entries = getPendingSignatureBridgeEntries(), options = {}) {
   if (entries.length === 0) {
-    throw new Error("Nema nepotpisanih PDF zapisnika za test.");
+    throw new Error("Nema nepotpisanih PDF dokumenata za test.");
   }
 
   const signatureRequests = Array.isArray(options.signatureRequests)
@@ -35496,7 +35505,7 @@ async function openSignatureReviewFlow(options = {}) {
     ? allPendingEntries.filter((entry) => String(entry.documentItem?.id || "") === focusDocumentId)
     : allPendingEntries;
   if (pendingEntries.length === 0) {
-    setSignaturesBridgeStatus("Nema nepotpisanih PDF zapisnika za pregled.", "warning");
+    setSignaturesBridgeStatus("Nema nepotpisanih PDF dokumenata za pregled.", "warning");
     return;
   }
 
@@ -36659,7 +36668,7 @@ async function openLocalSignatureBridge(entriesOverride = null, options = {}) {
     ? entriesOverride
     : getPendingSignatureBridgeEntries();
   if (pendingEntries.length === 0) {
-    setSignaturesBridgeStatus("Nema nepotpisanih PDF zapisnika za potpis.", "warning");
+    setSignaturesBridgeStatus("Nema nepotpisanih PDF dokumenata za potpis.", "warning");
     return;
   }
 
@@ -85745,7 +85754,7 @@ function createClientPortalRiskAssessmentPreviewRow(item = {}) {
 function getClientPortalFoundationalDocumentItems() {
   const presetTypes = new Set(RULEBOOK_PRESETS.map((preset) => preset.type));
   const visibleRulebooks = sortRulebooks(state.rulebooks ?? [])
-    .filter((item) => String(item.status || "draft") !== "archived");
+    .filter((item) => String(item.status || "draft") === "active");
   const rulebooksByType = new Map();
   visibleRulebooks.forEach((item) => {
     const type = String(item.rulebookType || "custom");
@@ -85880,7 +85889,7 @@ function createClientPortalFoundationPreviewRow(item = {}) {
 
   const badge = document.createElement("span");
   badge.className = "client-portal-preview-row-badge is-foundation-document";
-  badge.textContent = "Temeljno";
+  badge.textContent = rulebook ? "Vidljivo klijentu" : "Nije objavljeno";
 
   row.append(main, copy, meta, badge);
   return row;
@@ -122293,6 +122302,10 @@ riskAssessmentExportPdfButton?.addEventListener("click", (event) => {
   event.preventDefault();
   void runMutation(() => exportRiskAssessmentDocument("pdf"), getRiskAssessmentExportFeedbackTarget());
 });
+riskAssessmentSendSignatureButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  void runMutation(() => queueRiskAssessmentForDigitalSignature(), getRiskAssessmentExportFeedbackTarget());
+});
 riskAssessmentOverview?.addEventListener("click", (event) => {
   const exportButton = event.target?.closest?.("[data-risk-overview-export]");
   if (!exportButton) {
@@ -136070,6 +136083,8 @@ function buildRiskAssessmentStructuredSectionExportBlocks(key = "") {
       return buildRiskAssessmentManualHandlingExportBlocks();
     case "overview":
       return buildRiskAssessmentOverviewExportBlocks();
+    case "signatures":
+      return [buildRiskAssessmentSignatureExportBlock()];
     default:
       return null;
   }
@@ -136112,6 +136127,120 @@ function getRiskAssessmentExportSections() {
   return template.sections
     .slice()
     .sort((left, right) => left.order - right.order);
+}
+
+function normalizeRiskAssessmentSignatureOib(value = "") {
+  return String(value || "").replace(/\D/g, "").slice(0, 11);
+}
+
+function getRiskAssessmentSignatureUser(userId = "") {
+  const normalizedUserId = String(userId || "").trim();
+  return normalizedUserId
+    ? (state.users ?? []).find((user) => String(user?.id || "") === normalizedUserId) ?? null
+    : null;
+}
+
+function getRiskAssessmentSignatureUserName(user = null, fallback = "") {
+  return String(
+    getUserDocumentDisplayName(user)
+    || fallback
+    || [user?.firstName, user?.lastName].filter(Boolean).join(" ")
+    || user?.fullName
+    || user?.username
+    || user?.email
+    || "",
+  ).replace(/\s+/g, " ").trim();
+}
+
+function createRiskAssessmentDigitalSignatureItem({
+  name = "",
+  role = "Izrađivač procjene",
+  oib = "",
+  user = null,
+} = {}) {
+  const signerOib = normalizeRiskAssessmentSignatureOib(oib || user?.oib);
+  const signerName = getRiskAssessmentSignatureUserName(user, name);
+  if (!signerName || !signerOib) {
+    return null;
+  }
+
+  const signerTitle = getUserDocumentTitle(user);
+  const signerOrganization = getUserDocumentOrganizationName(user);
+  return {
+    role,
+    roleLabel: role,
+    name: signerName,
+    label: signerName,
+    metaLines: [
+      signerTitle,
+      `OIB ${signerOib}`,
+      signerOrganization,
+    ].filter(Boolean),
+    signatureMode: "digital",
+    signerUserId: String(user?.id || "").trim(),
+    signerEmail: String(user?.email || "").trim(),
+    signerTitle,
+    signerOrganization,
+    signerOib,
+    signatureFieldRole: "PROCJENA_RIZIKA",
+    signatureFieldOib: signerOib,
+    digitalAnchor: signerOib,
+  };
+}
+
+function buildRiskAssessmentDigitalSignatureItems() {
+  const leadSelection = readRiskAssessmentPeopleSelection(riskAssessmentTeamLeadInput);
+  const memberSelection = readRiskAssessmentPeopleSelection(riskAssessmentMembersInput);
+  const employer = readRiskAssessmentEmployerData();
+  const items = [];
+  const used = new Set();
+
+  const pushItem = (candidate = {}) => {
+    const item = createRiskAssessmentDigitalSignatureItem(candidate);
+    if (!item) {
+      return;
+    }
+    const key = item.signerOib || normalizeLooseName(item.name);
+    if (!key || used.has(key)) {
+      return;
+    }
+    used.add(key);
+    items.push(item);
+  };
+
+  leadSelection.userIds.forEach((userId) => {
+    pushItem({
+      user: getRiskAssessmentSignatureUser(userId),
+      role: "Voditelj izrade procjene rizika",
+    });
+  });
+  memberSelection.userIds.forEach((userId) => {
+    pushItem({
+      user: getRiskAssessmentSignatureUser(userId),
+      role: "Član radne skupine",
+    });
+  });
+  (employer.companyCollaborators ?? []).forEach((person) => {
+    pushItem({
+      name: person.fullName || "",
+      role: person.title || person.jobTitle || "Suradnik poslodavca",
+      oib: person.oib || "",
+    });
+  });
+
+  return items;
+}
+
+function buildRiskAssessmentSignatureExportBlock() {
+  const items = buildRiskAssessmentDigitalSignatureItems();
+  if (items.length === 0) {
+    return createRiskAssessmentExportParagraph("Nema odabranih potpisnika s upisanim OIB-om za digitalni potpis.");
+  }
+  return {
+    __docxBlockType: "signature_group",
+    title: "Digitalni potpisi procjene rizika",
+    items,
+  };
 }
 
 function buildRiskAssessmentExportPlaceholders() {
@@ -136163,6 +136292,7 @@ function buildRiskAssessmentExportPlaceholders() {
     RISK_COLLABORATORS: collaborators,
     RISK_CONTENTS: createRiskAssessmentExportBlocks(contentsBlocks),
     RISK_BASIC_DATA: createRiskAssessmentExportBlocks(basicDataBlocks),
+    RISK_SIGNATURES: buildRiskAssessmentSignatureExportBlock(),
     RISK_GENERATED_AT: formatCompactDateTime(new Date().toISOString()),
   };
 
@@ -136204,6 +136334,7 @@ function syncRiskAssessmentDocumentExportControls() {
     riskAssessmentTemplatePdfGenerateButton,
     riskAssessmentExportDocxButton,
     riskAssessmentExportPdfButton,
+    riskAssessmentSendSignatureButton,
     ...document.querySelectorAll("[data-risk-overview-export]"),
   ].forEach((button) => {
     if (!button) {
@@ -136286,6 +136417,7 @@ async function exportRiskAssessmentDocument(format = "docx") {
         templateDocument,
         placeholders,
         fileName,
+        ...(safeFormat === "pdf" ? { signatureSettings: getPdfSignatureExportSettings() } : {}),
       },
     });
     loading?.setPhase(4, { message: "PDF je izrađen, pripremam preuzimanje..." });
@@ -136305,6 +136437,63 @@ async function exportRiskAssessmentDocument(format = "docx") {
       }, 340);
     }
   }
+}
+
+async function queueRiskAssessmentForDigitalSignature() {
+  if (!state.riskAssessmentEditorOpen && !riskAssessmentIdInput?.value && !riskAssessmentCompanyInput?.value) {
+    throw new Error("Otvori procjenu koju želiš poslati na digitalni potpis.");
+  }
+
+  const workOrderId = String(riskAssessmentWorkOrderInput?.value || "").trim();
+  if (!workOrderId) {
+    throw new Error("Procjena mora biti povezana s RN-om da bi ušla u postojeći Signatures red.");
+  }
+
+  const signatureItems = buildRiskAssessmentDigitalSignatureItems();
+  if (signatureItems.length === 0) {
+    throw new Error("Odaberi voditelja/člana iz People modula ili suradnika s upisanim OIB-om za digitalni potpis.");
+  }
+
+  const saved = await saveRiskAssessmentEditorAutosave({ manual: true });
+  if (!saved && !riskAssessmentIdInput?.value) {
+    throw new Error("Procjena nije spremljena, zato je ne mogu poslati na potpis.");
+  }
+
+  const templateDocument = getRiskAssessmentTemplateDocumentForExport();
+  const fileName = `${getRiskAssessmentExportFileBaseName()}.pdf`;
+  const placeholders = buildRiskAssessmentExportPlaceholders();
+  setInlineMessage(getRiskAssessmentExportFeedbackTarget(), "Pripremam PDF procjene za digitalni potpis...", "success");
+
+  const payload = await apiRequest("/risk-assessments/save-pdf", {
+    method: "POST",
+    body: {
+      templateDocument,
+      placeholders,
+      fileName,
+      workOrderId,
+      assessmentId: riskAssessmentIdInput?.value || "",
+      assessmentNumber: riskAssessmentNumberInput?.value || "",
+      signatureSettings: getPdfSignatureExportSettings(),
+    },
+  });
+
+  if (payload?.item) {
+    upsertDocumentsExplorerWorkOrderDocuments([payload.item]);
+  }
+  state.documentsExplorer.loaded = true;
+  renderNotifications();
+  if (state.activeView === "module" && state.activeModuleItem === "signatures") {
+    renderSignaturesModule();
+  }
+
+  const signerLabel = signatureItems
+    .map((item) => [item.name, item.role].filter(Boolean).join(" · "))
+    .join(", ");
+  setInlineMessage(
+    getRiskAssessmentExportFeedbackTarget(),
+    `Procjena je spremljena u RN Documents i čeka digitalni potpis. Potpisnici: ${signerLabel}.`,
+    "success",
+  );
 }
 
 async function uploadRiskAssessmentWordTemplateFile(file) {

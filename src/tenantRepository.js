@@ -2264,7 +2264,7 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
         : []
     ).filter((item) => (
       String(item.organizationId) === String(organizationId)
-      && (!actorIsClientPortal || ["active", "review"].includes(String(item.status || "draft")))
+      && (!actorIsClientPortal || String(item.status || "draft") === "active")
     )).map((item) => ({
       ...item,
       documents: (item.documents ?? []).map((document) => ({ ...document })),
