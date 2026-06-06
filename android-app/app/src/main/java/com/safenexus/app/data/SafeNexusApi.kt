@@ -16,6 +16,8 @@ import java.net.URL
 class SafeNexusApi(
     private val baseUrl: String = BuildConfig.SAFE_NEXUS_BASE_URL.trimEnd('/'),
 ) {
+    private var authCookieHeader: String = ""
+
     init {
         if (CookieHandler.getDefault() == null) {
             CookieHandler.setDefault(CookieManager(null, CookiePolicy.ACCEPT_ALL))
@@ -59,6 +61,7 @@ class SafeNexusApi(
     suspend fun logout(): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             request("/api/auth/logout", method = "POST", body = "{}")
+            authCookieHeader = ""
             Unit
         }
     }
@@ -70,6 +73,9 @@ class SafeNexusApi(
             readTimeout = 24_000
             setRequestProperty("Accept", "application/json")
             setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            if (authCookieHeader.isNotBlank()) {
+                setRequestProperty("Cookie", authCookieHeader)
+            }
             if (body != null) {
                 doOutput = true
                 outputStream.use { stream ->
@@ -79,12 +85,50 @@ class SafeNexusApi(
         }
 
         val responseText = readResponse(connection)
+        rememberAuthCookies(connection)
         if (connection.responseCode !in 200..299) {
             throw IllegalStateException(extractErrorMessage(responseText).ifBlank {
                 "SafeNexus API trenutno nije dostupan (${connection.responseCode})."
             })
         }
         return responseText
+    }
+
+    private fun rememberAuthCookies(connection: HttpURLConnection) {
+        val setCookieHeaders = connection.headerFields
+            .filterKeys { key -> key.equals("Set-Cookie", ignoreCase = true) }
+            .values
+            .flatten()
+
+        if (setCookieHeaders.isEmpty()) return
+
+        val current = authCookieHeader
+            .split(";")
+            .mapNotNull { part ->
+                val trimmed = part.trim()
+                val separator = trimmed.indexOf("=")
+                if (separator <= 0) null else trimmed.take(separator) to trimmed.drop(separator + 1)
+            }
+            .toMap()
+            .toMutableMap()
+
+        setCookieHeaders.forEach { header ->
+            val cookiePart = header.substringBefore(";").trim()
+            val separator = cookiePart.indexOf("=")
+            if (separator <= 0) return@forEach
+
+            val name = cookiePart.take(separator)
+            val value = cookiePart.drop(separator + 1)
+            if (name == "safety360_access" || name == "safety360_refresh") {
+                if (value.isBlank()) {
+                    current.remove(name)
+                } else {
+                    current[name] = value
+                }
+            }
+        }
+
+        authCookieHeader = current.entries.joinToString("; ") { (name, value) -> "$name=$value" }
     }
 
     private fun readResponse(connection: HttpURLConnection): String {
