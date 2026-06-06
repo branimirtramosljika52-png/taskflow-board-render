@@ -7466,6 +7466,7 @@ function buildPeopleTrainingBuiltInTemplateHtml(kind = "") {
         <table>
           <tr><th>Broj uputnice</th><td>{{BrojUputniceRA1}}</td></tr>
           <tr><th>Datum uputnice</th><td>{{DatumUputniceRA1}}</td></tr>
+          <tr><th>Uputnica vrijedi do</th><td>{{UputnicaRA1VrijediDo}}</td></tr>
           <tr><th>Vrsta pregleda</th><td>{{VrstaPregledaRA1}}</td></tr>
           <tr><th>Razlog pregleda</th><td>{{RazlogPregledaRA1}}</td></tr>
           <tr><th>Radno mjesto</th><td>{{RadnoMjestoRA1}}</td></tr>
@@ -7496,6 +7497,7 @@ function buildPeopleTrainingBuiltInTemplateHtml(kind = "") {
           <tr><th>Datum pregleda</th><td>{{DatumPregledaZdravstvena}}</td></tr>
           <tr><th>Datum izdavanja</th><td>{{DatumUvjerenjaZdravstvena}}</td></tr>
           <tr><th>Vrijedi do</th><td>{{VrijediDoZdravstvena}}</td></tr>
+          <tr><th>Psihološka provjera do</th><td>{{RokPsiholoskeProvjere}}</td></tr>
           <tr><th>Ustanova</th><td>{{USTANOVA}}</td></tr>
           <tr><th>Ocjena sposobnosti</th><td>{{OcjenaZdravstvena}}</td></tr>
           <tr><th>Ograničenja / uvjeti</th><td>{{OgranicenjaZdravstvena}}</td></tr>
@@ -7583,6 +7585,12 @@ function buildPeopleTrainingZnrTemplatePlaceholders(record = {}, item = {}, serv
     || medicalExamDetails.medicalHazards
     || medicalCertificateDetails.medicalHazards
     || "";
+  const referralValidUntil = medicalExamDetails.referralValidUntil || "";
+  const medicalCertificateValidUntil = medicalCertificateItem?.validForever ? "" : (medicalCertificateItem?.validUntil || "");
+  const psychologicalCheckUntil = medicalCertificateDetails.psychologicalCheckUntil
+    || medicalExamDetails.psychologicalCheckUntil
+    || visionDetails.psychologicalCheckUntil
+    || "";
   const medicalProvider = medicalExamItem?.provider
     || medicalCertificateItem?.provider
     || provider
@@ -7626,6 +7634,7 @@ function buildPeopleTrainingZnrTemplatePlaceholders(record = {}, item = {}, serv
     OpisPoslova: itemDetails.jobDescription || record.jobDescription || record.note || "",
     BrojUputniceRA1: medicalExamItem?.recordNumber || medicalExamDetails.referralNumber || "",
     DatumUputniceRA1: formatPeopleTrainingTemplateDate(medicalExamItem?.issuedOn || ""),
+    UputnicaRA1VrijediDo: formatPeopleTrainingTemplateDate(referralValidUntil),
     DatumPregledaRA1: formatPeopleTrainingTemplateDate(medicalExamItem?.passedOn || ""),
     VrstaPregledaRA1: medicalExamDetails.examType || medicalExamItem?.examMode || "",
     RazlogPregledaRA1: medicalExamDetails.examReason || "",
@@ -7637,9 +7646,11 @@ function buildPeopleTrainingZnrTemplatePlaceholders(record = {}, item = {}, serv
     BrojUvjerenjaZdravstvena: medicalCertificateItem?.certificateNumber || medicalCertificateItem?.recordNumber || "",
     DatumUvjerenjaZdravstvena: formatPeopleTrainingTemplateDate(medicalCertificateItem?.issuedOn || medicalCertificateItem?.passedOn || ""),
     DatumPregledaZdravstvena: formatPeopleTrainingTemplateDate(medicalCertificateItem?.passedOn || ""),
-    VrijediDoZdravstvena: medicalCertificateItem?.validForever ? "" : formatPeopleTrainingTemplateDate(medicalCertificateItem?.validUntil || ""),
+    VrijediDoZdravstvena: formatPeopleTrainingTemplateDate(medicalCertificateValidUntil),
+    UvjerenjeVrijediDo: formatPeopleTrainingTemplateDate(medicalCertificateValidUntil),
     OcjenaZdravstvena: medicalCertificateDetails.fitnessResult || medicalCertificateItem?.certificateStatus || "",
     OgranicenjaZdravstvena: medicalCertificateDetails.fitnessRestrictions || "",
+    RokPsiholoskeProvjere: formatPeopleTrainingTemplateDate(psychologicalCheckUntil),
     PregledVidaBroj: visionItem?.recordNumber || visionItem?.certificateNumber || "",
     PregledVidaDatum: formatPeopleTrainingTemplateDate(visionItem?.passedOn || visionItem?.issuedOn || ""),
     PregledVidaVrijediDo: visionItem?.validForever ? "" : formatPeopleTrainingTemplateDate(visionItem?.validUntil || ""),
@@ -7651,6 +7662,7 @@ function buildPeopleTrainingZnrTemplatePlaceholders(record = {}, item = {}, serv
     PregledVidaNapomena: visionItem?.note || visionDetails.visionReason || "",
     RA1_BROJ: medicalExamItem?.recordNumber || medicalExamDetails.referralNumber || "",
     RA1_DATUM: formatPeopleTrainingTemplateDate(medicalExamItem?.issuedOn || ""),
+    RA1_VRIJEDI_DO: formatPeopleTrainingTemplateDate(referralValidUntil),
     RA1_DATUM_PREGLEDA: formatPeopleTrainingTemplateDate(medicalExamItem?.passedOn || ""),
     RA1_VRSTA_PREGLEDA: medicalExamDetails.examType || medicalExamItem?.examMode || "",
     RA1_RAZLOG: medicalExamDetails.examReason || "",
@@ -7661,9 +7673,11 @@ function buildPeopleTrainingZnrTemplatePlaceholders(record = {}, item = {}, serv
     RA1_NAPOMENA: medicalExamItem?.note || "",
     LIJECNICKI_UVJERENJE_BROJ: medicalCertificateItem?.certificateNumber || medicalCertificateItem?.recordNumber || "",
     LIJECNICKI_UVJERENJE_DATUM: formatPeopleTrainingTemplateDate(medicalCertificateItem?.issuedOn || medicalCertificateItem?.passedOn || ""),
-    LIJECNICKI_UVJERENJE_VRIJEDI_DO: medicalCertificateItem?.validForever ? "" : formatPeopleTrainingTemplateDate(medicalCertificateItem?.validUntil || ""),
+    LIJECNICKI_UVJERENJE_VRIJEDI_DO: formatPeopleTrainingTemplateDate(medicalCertificateValidUntil),
     LIJECNICKI_UVJERENJE_OCJENA: medicalCertificateDetails.fitnessResult || "",
     LIJECNICKI_UVJERENJE_OGRANICENJA: medicalCertificateDetails.fitnessRestrictions || "",
+    PSIHOLOSKA_PROVJERA_ROK: formatPeopleTrainingTemplateDate(psychologicalCheckUntil),
+    PSIHOLOSKA_PROVJERA_VRIJEDI_DO: formatPeopleTrainingTemplateDate(psychologicalCheckUntil),
     PREGLED_VIDA_BROJ: visionItem?.recordNumber || visionItem?.certificateNumber || "",
     PREGLED_VIDA_DATUM: formatPeopleTrainingTemplateDate(visionItem?.passedOn || visionItem?.issuedOn || ""),
     PREGLED_VIDA_VRIJEDI_DO: visionItem?.validForever ? "" : formatPeopleTrainingTemplateDate(visionItem?.validUntil || ""),

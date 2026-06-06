@@ -46936,6 +46936,56 @@ body.is-global-loading {
   box-shadow: none;
 }
 
+.people-training-section-upload {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px dashed rgba(134, 164, 216, 0.86);
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(247, 251, 255, 0.96), rgba(255, 255, 255, 0.92)),
+    radial-gradient(circle at top right, rgba(57, 173, 114, 0.1), transparent 36%);
+}
+
+.people-training-section-upload.is-drag-over {
+  border-color: rgba(47, 111, 237, 0.9);
+  background: rgba(239, 246, 255, 0.95);
+  box-shadow: inset 0 0 0 1px rgba(47, 111, 237, 0.22);
+}
+
+.people-training-section-upload-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.people-training-section-upload-copy strong {
+  color: #172743;
+  font-size: 0.9rem;
+}
+
+.people-training-section-upload-copy span {
+  color: #657891;
+  font-size: 0.78rem;
+  font-weight: 760;
+}
+
+.people-training-health-upload-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  white-space: nowrap;
+}
+
+.people-training-health-upload-button svg {
+  width: 15px;
+  height: 15px;
+}
+
 .people-training-editor-panel .people-training-dossier {
   background: linear-gradient(135deg, rgba(247, 252, 249, 0.96), rgba(255, 255, 255, 0.96));
 }
