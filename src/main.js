@@ -11042,22 +11042,70 @@ function getPeopleTrainingSafeWorkDetails(record = {}) {
   return safeWorkItem?.details ?? {};
 }
 
-function refreshPeopleTrainingRiskWorkplaceOptions(record = {}) {
-  if (!(peopleTrainingRiskWorkplaceInput instanceof HTMLSelectElement)) {
+function getPeopleTrainingCurrentSafeWorkFieldValue(field = "") {
+  const input = peopleTrainingFormTrainingGrid?.querySelector(`[data-training-field="${field}"]`);
+  if (input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement || input instanceof HTMLSelectElement) {
+    return input.value || "";
+  }
+  return "";
+}
+
+function getPeopleTrainingRiskWorkplaceSelectedOption(record = {}, details = {}, companyId = "") {
+  const selectedKey = String(details.riskWorkplaceKey || "").trim();
+  if (selectedKey) {
+    const selectedOption = getRiskAssessmentWorkplaceOptionByValue(selectedKey, companyId);
+    if (selectedOption) {
+      return selectedOption;
+    }
+  }
+  return findRiskAssessmentWorkplaceOptionByTitle(
+    details.jobTitle || getPeopleTrainingCurrentSafeWorkFieldValue("details.jobTitle") || record.jobTitle || "",
+    companyId,
+  );
+}
+
+function populatePeopleTrainingRiskWorkplaceSelect(select, record = {}, details = {}) {
+  if (!(select instanceof HTMLSelectElement)) {
     return;
   }
   const sourceRecord = record && typeof record === "object" ? record : {};
   const companyId = peopleTrainingCompanyInput?.value || sourceRecord.companyId || "";
-  const details = getPeopleTrainingSafeWorkDetails(sourceRecord);
-  const selectedOption = details.riskWorkplaceKey
-    ? getRiskAssessmentWorkplaceOptionByValue(details.riskWorkplaceKey, companyId)
-    : findRiskAssessmentWorkplaceOptionByTitle(details.jobTitle || sourceRecord.jobTitle || "", companyId);
+  const selectedOption = getPeopleTrainingRiskWorkplaceSelectedOption(sourceRecord, details, companyId);
   replaceSelectOptions(
-    peopleTrainingRiskWorkplaceInput,
+    select,
     getRiskAssessmentWorkplaceOptionsForCompany(companyId),
     selectedOption?.value || "",
   );
-  peopleTrainingRiskWorkplaceInput.disabled = !companyId || peopleTrainingRiskWorkplaceInput.options.length <= 1;
+  select.disabled = !companyId || select.options.length <= 1;
+}
+
+function refreshPeopleTrainingRiskWorkplaceOptions(record = {}) {
+  const sourceRecord = record && typeof record === "object" ? record : {};
+  const savedDetails = getPeopleTrainingSafeWorkDetails(sourceRecord);
+  const currentDetails = {
+    ...savedDetails,
+    riskWorkplaceKey: peopleTrainingRiskWorkplaceInput?.value
+      || getPeopleTrainingCurrentSafeWorkFieldValue("details.riskWorkplaceKey")
+      || savedDetails.riskWorkplaceKey
+      || "",
+    jobTitle: getPeopleTrainingCurrentSafeWorkFieldValue("details.jobTitle")
+      || savedDetails.jobTitle
+      || sourceRecord.jobTitle
+      || "",
+  };
+  if (peopleTrainingRiskWorkplaceInput instanceof HTMLSelectElement) {
+    populatePeopleTrainingRiskWorkplaceSelect(peopleTrainingRiskWorkplaceInput, sourceRecord, currentDetails);
+  }
+  const detailSelects = Array.from(
+    peopleTrainingFormTrainingGrid?.querySelectorAll('select[data-training-field="details.riskWorkplaceKey"]') ?? [],
+  );
+  detailSelects.forEach((select) => {
+    const details = {
+      ...currentDetails,
+      riskWorkplaceKey: select.value || currentDetails.riskWorkplaceKey || "",
+    };
+    populatePeopleTrainingRiskWorkplaceSelect(select, sourceRecord, details);
+  });
 }
 
 function setPeopleTrainingSafeWorkFieldValue(field = "", value = "") {
@@ -11073,7 +11121,13 @@ function applyPeopleTrainingRiskWorkplaceSelection(value = peopleTrainingRiskWor
   const option = getRiskAssessmentWorkplaceOptionByValue(value, peopleTrainingCompanyInput?.value || "");
   if (!option?.data) {
     setPeopleTrainingSafeWorkFieldValue("details.riskWorkplaceKey", "");
+    if (peopleTrainingRiskWorkplaceInput instanceof HTMLSelectElement) {
+      peopleTrainingRiskWorkplaceInput.value = "";
+    }
     return;
+  }
+  if (peopleTrainingRiskWorkplaceInput instanceof HTMLSelectElement) {
+    peopleTrainingRiskWorkplaceInput.value = option.value;
   }
   setPeopleTrainingSafeWorkFieldValue("details.riskWorkplaceKey", option.value);
   setPeopleTrainingSafeWorkFieldValue("details.jobTitle", option.data.jobTitle || "");
@@ -12197,6 +12251,22 @@ function createPeopleTrainingHiddenDetailField(field = "", value = "") {
   return input;
 }
 
+function createPeopleTrainingRiskWorkplaceSelectField(record = {}, details = {}) {
+  const fieldLabel = document.createElement("label");
+  fieldLabel.classList.add("is-wide");
+  const labelText = document.createElement("span");
+  labelText.textContent = "Radno mjesto iz procjene rizika";
+  const select = document.createElement("select");
+  select.dataset.trainingField = "details.riskWorkplaceKey";
+  populatePeopleTrainingRiskWorkplaceSelect(select, record, details);
+  select.addEventListener("change", () => {
+    applyPeopleTrainingRiskWorkplaceSelection(select.value);
+  });
+
+  fieldLabel.append(labelText, select);
+  return fieldLabel;
+}
+
 function createPeopleTrainingTypeCardActions(record = {}, item = {}) {
   const actions = document.createElement("div");
   actions.className = "people-training-type-actions";
@@ -12293,7 +12363,7 @@ function createPeopleTrainingTypeCard(item = {}, record = {}) {
 
   if (sectionKey === "safe-work") {
     fields.append(
-      createPeopleTrainingHiddenDetailField("details.riskWorkplaceKey", details.riskWorkplaceKey || ""),
+      createPeopleTrainingRiskWorkplaceSelectField(personRecord, details),
       createPeopleTrainingDetailField({ label: "Broj zapisnika", field: "recordNumber", value: recordNumber, readOnly: true }),
       createPeopleTrainingDetailField({ label: "Naziv radnog mjesta", field: "details.jobTitle", value: details.jobTitle || personRecord.jobTitle || "" }),
       createPeopleTrainingDetailField({
