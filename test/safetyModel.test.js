@@ -242,6 +242,15 @@ test("jobs keep environment, conditions and hazard catalog details", () => {
           measures: "Koristiti ispravne ljestve i zaštitu od pada.",
         },
       ],
+      ppeItems: [
+        {
+          name: "Zastitna kaciga",
+          norm: "HRN EN 397",
+          category: "Zastita glave",
+          bodyPart: "head",
+          description: "Za terenski obilazak i rad uz opremu.",
+        },
+      ],
     },
     state,
     () => "job-1",
@@ -266,12 +275,16 @@ test("jobs keep environment, conditions and hazard catalog details", () => {
   assert.equal(job.aiInstructions["riskRow:i opasnosti::2 opasnosti od padova::2.1.3::s visine"].consequence, "iš");
   assert.equal(job.aiInstructions["riskRow:i opasnosti::2 opasnosti od padova::2.1.3::s visine"].workNote, "Samo kada radnik stvarno radi na visini.");
   assert.equal(job.hazards[0].catalogLabel, "S visine");
+  assert.equal(job.ppeItems[0].name, "Zastitna kaciga");
+  assert.equal(job.ppeItems[0].norm, "HRN EN 397");
+  assert.equal(filterJobs([job], { query: "397" }).length, 1);
 
   const updated = updateJob(
     job,
     {
       status: "archived",
       hazards: [...job.hazards, { catalogCode: "3.1", catalogLabel: "Buka" }],
+      ppeItems: [...job.ppeItems, { name: "Cepici za usi", norm: "HRN EN 352", bodyPart: "ears" }],
     },
     { ...state, jobs: [job] },
     () => "2026-05-26T09:00:00.000Z",
@@ -279,7 +292,9 @@ test("jobs keep environment, conditions and hazard catalog details", () => {
 
   assert.equal(updated.status, "archived");
   assert.equal(updated.hazards.length, 2);
+  assert.equal(updated.ppeItems.length, 2);
   assert.equal(filterJobs([updated], { query: "buka" }).length, 1);
+  assert.equal(filterJobs([updated], { query: "352" }).length, 1);
   assert.equal(filterJobs([updated], { status: "active" }).length, 0);
   assert.equal(sortJobs([updated, job])[0].id, "job-1");
 });

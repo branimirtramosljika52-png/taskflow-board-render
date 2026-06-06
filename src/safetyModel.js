@@ -6388,6 +6388,9 @@ function hydrateJobCore({
     hazards: hasOwn(input, "hazards")
       ? normalizeJobHazards(input.hazards)
       : normalizeJobHazards(current?.hazards ?? []),
+    ppeItems: hasOwn(input, "ppeItems")
+      ? normalizeRiskAssessmentPpeItems(input.ppeItems)
+      : normalizeRiskAssessmentPpeItems(current?.ppeItems ?? []),
     createdByUserId: hasOwn(input, "createdByUserId")
       ? normalizeId(input.createdByUserId)
       : normalizeId(current?.createdByUserId),
@@ -10004,6 +10007,16 @@ export function filterJobs(
         hazard.purPoint,
         hazard.ppeText,
         hazard.note,
+      ]),
+      ...(item.ppeItems ?? []).flatMap((ppe) => [
+        ppe.name,
+        ppe.category,
+        ppe.bodyPart,
+        ppe.norm,
+        ppe.standardCode,
+        ppe.description,
+        ppe.hazardLinks,
+        ppe.note,
       ]),
       item.createdByLabel,
     ].join(" ").toLowerCase();

@@ -2099,6 +2099,7 @@ function mapJobEntry(row = {}) {
     conditions: parseJsonObject(row.conditions_json),
     aiInstructions: parseJsonObject(row.ai_instructions_json),
     hazards: parseJsonArray(row.hazards_json),
+    ppeItems: parseJsonArray(row.ppe_items_json),
     createdByUserId: dbString(row.created_by_user_id),
     createdByLabel: dbString(row.created_by_label),
     createdAt: normalizeTimestamp(row.created_at),
@@ -3798,7 +3799,7 @@ async function fetchSnapshotFromConnection(connection) {
     .filter(Boolean);
 
   const [jobRows] = await connection.query(`
-    SELECT id, organization_id, title, status, description_text, environment_json, conditions_json, ai_instructions_json, hazards_json,
+    SELECT id, organization_id, title, status, description_text, environment_json, conditions_json, ai_instructions_json, hazards_json, ppe_items_json,
            created_by_user_id, created_by_label, created_at, updated_at
     FROM web_jobs
     ORDER BY
@@ -4917,6 +4918,7 @@ export class InMemorySafetyRepository {
           Object.entries(item.aiInstructions ?? {}).map(([key, config]) => [key, { ...(config ?? {}) }]),
         ),
         hazards: (item.hazards ?? []).map((hazard) => ({ ...hazard })),
+        ppeItems: (item.ppeItems ?? []).map((ppe) => ({ ...ppe })),
       })),
       jobAiSettings: this.snapshot.jobAiSettings.map((item) => ({
         ...item,
@@ -7571,6 +7573,7 @@ export class MySqlSafetyRepository {
         conditions_json LONGTEXT NULL,
         ai_instructions_json LONGTEXT NULL,
         hazards_json LONGTEXT NULL,
+        ppe_items_json LONGTEXT NULL,
         created_by_user_id INT NULL,
         created_by_label VARCHAR(160) NOT NULL DEFAULT '',
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -7580,6 +7583,7 @@ export class MySqlSafetyRepository {
       )
     `);
     await ensureColumnExists(this.pool, "web_jobs", "ai_instructions_json", "LONGTEXT NULL AFTER conditions_json");
+    await ensureColumnExists(this.pool, "web_jobs", "ppe_items_json", "LONGTEXT NULL AFTER hazards_json");
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS web_job_ai_settings (
         id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -11087,9 +11091,9 @@ export class MySqlSafetyRepository {
       const [result] = await connection.query(
         `
           INSERT INTO web_jobs
-            (organization_id, title, status, description_text, environment_json, conditions_json, ai_instructions_json, hazards_json,
+            (organization_id, title, status, description_text, environment_json, conditions_json, ai_instructions_json, hazards_json, ppe_items_json,
              created_by_user_id, created_by_label)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           Number(draft.organizationId),
@@ -11100,6 +11104,7 @@ export class MySqlSafetyRepository {
           JSON.stringify(draft.conditions ?? {}),
           JSON.stringify(draft.aiInstructions ?? {}),
           JSON.stringify(draft.hazards ?? []),
+          JSON.stringify(draft.ppeItems ?? []),
           parseNullableInteger(draft.createdByUserId),
           draft.createdByLabel,
         ],
@@ -11141,7 +11146,7 @@ export class MySqlSafetyRepository {
       await connection.query(
         `
           UPDATE web_jobs
-          SET title = ?, status = ?, description_text = ?, environment_json = ?, conditions_json = ?, ai_instructions_json = ?, hazards_json = ?
+          SET title = ?, status = ?, description_text = ?, environment_json = ?, conditions_json = ?, ai_instructions_json = ?, hazards_json = ?, ppe_items_json = ?
           WHERE id = ?
         `,
         [
@@ -11152,6 +11157,7 @@ export class MySqlSafetyRepository {
           JSON.stringify(next.conditions ?? {}),
           JSON.stringify(next.aiInstructions ?? {}),
           JSON.stringify(next.hazards ?? []),
+          JSON.stringify(next.ppeItems ?? []),
           Number(id),
         ],
       );

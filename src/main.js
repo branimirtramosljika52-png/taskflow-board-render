@@ -6247,6 +6247,10 @@ const jobHazardCatalogSearch = document.querySelector("#job-hazard-catalog-searc
 const jobHazardCatalog = document.querySelector("#job-hazard-catalog");
 const jobSelectedHazards = document.querySelector("#job-selected-hazards");
 const jobSelectedHazardCount = document.querySelector("#job-selected-hazard-count");
+const jobPpeSearchInput = document.querySelector("#job-ppe-search");
+const jobPpeCatalog = document.querySelector("#job-ppe-catalog");
+const jobSelectedPpe = document.querySelector("#job-selected-ppe");
+const jobSelectedPpeCount = document.querySelector("#job-selected-ppe-count");
 const jobFormFeedback = document.querySelector("#job-form-feedback");
 const jobSubmitButton = document.querySelector("#job-submit");
 const jobResetButton = document.querySelector("#job-reset");
@@ -6416,6 +6420,7 @@ const riskAssessmentDeleteButton = document.querySelector("#risk-assessment-dele
 const riskAssessmentExportDocxButton = document.querySelector("#risk-assessment-export-docx");
 const riskAssessmentExportPdfButton = document.querySelector("#risk-assessment-export-pdf");
 let jobHazardDrafts = [];
+let jobPpeDrafts = [];
 let riskAssessmentAuthorizedPersonDrafts = [];
 let riskAssessmentCompanyCollaboratorDrafts = [];
 let riskAssessmentZnrAuthorizationDocumentDraft = null;
@@ -121178,6 +121183,56 @@ jobSelectedHazards?.addEventListener("click", (event) => {
   }
 });
 
+jobPpeSearchInput?.addEventListener("input", renderJobPpeCatalog);
+
+jobPpeCatalog?.addEventListener("click", (event) => {
+  const button = event.target instanceof Element ? event.target.closest("[data-job-ppe-add]") : null;
+  if (!(button instanceof HTMLElement)) {
+    return;
+  }
+  addJobPpeFromCatalog(button.dataset.jobPpeAdd || "");
+});
+
+jobSelectedPpe?.addEventListener("input", (event) => {
+  const target = event.target instanceof Element ? event.target : null;
+  const field = target?.closest("[data-job-ppe-field]");
+  const card = target?.closest("[data-job-ppe-index]");
+  if (!(field instanceof HTMLElement) || !(card instanceof HTMLElement)) {
+    return;
+  }
+  const index = Number(card.dataset.jobPpeIndex);
+  updateJobPpeDraft(index, field.dataset.jobPpeField || "", "value" in field ? field.value : "");
+});
+
+jobSelectedPpe?.addEventListener("change", (event) => {
+  const target = event.target instanceof Element ? event.target : null;
+  const field = target?.closest("[data-job-ppe-field]");
+  const card = target?.closest("[data-job-ppe-index]");
+  if (!(field instanceof HTMLElement) || !(card instanceof HTMLElement)) {
+    return;
+  }
+  const index = Number(card.dataset.jobPpeIndex);
+  const value = field instanceof HTMLInputElement && field.type === "checkbox"
+    ? field.checked
+    : ("value" in field ? field.value : "");
+  updateJobPpeDraft(index, field.dataset.jobPpeField || "", value);
+});
+
+jobSelectedPpe?.addEventListener("click", (event) => {
+  const button = event.target instanceof Element ? event.target.closest("[data-job-ppe-remove]") : null;
+  if (!(button instanceof HTMLElement)) {
+    return;
+  }
+  const index = Number(button.dataset.jobPpeRemove);
+  if (!Number.isInteger(index)) {
+    return;
+  }
+  jobPpeDrafts.splice(index, 1);
+  renderJobPpeCatalog();
+  renderJobSelectedPpe();
+  syncJobFormAccess();
+});
+
 jobResetButton?.addEventListener("click", () => {
   if (!getCanManageJobs()) {
     return;
@@ -131301,7 +131356,7 @@ const JOB_AI_STYLE_LABELS = Object.freeze({
 
 function normalizeJobSheet(value = "basic") {
   const normalized = String(value || "").trim();
-  return ["basic", "environment", "conditions", "hazards"].includes(normalized) ? normalized : "basic";
+  return ["basic", "environment", "conditions", "hazards", "ppe"].includes(normalized) ? normalized : "basic";
 }
 
 function getJobStatusOption(value = "draft") {
@@ -133514,6 +133569,149 @@ function renderJobSelectedHazards() {
   }));
 }
 
+function getJobPpeCatalogSearchText(item = {}) {
+  return normalizeRiskAssessmentPpeSearchValue([
+    item.name,
+    item.category,
+    item.bodyPart,
+    item.norm,
+    item.standardCode,
+    item.description,
+    item.sourceRef,
+  ].join(" "));
+}
+
+function getJobSelectedPpeCatalogKeys() {
+  return new Set((jobPpeDrafts ?? [])
+    .map((item) => getRiskAssessmentPpeCatalogKey(item))
+    .filter(Boolean));
+}
+
+function renderJobPpeCatalog() {
+  if (!jobPpeCatalog) {
+    return;
+  }
+  const query = normalizeRiskAssessmentPpeSearchValue(jobPpeSearchInput?.value || "");
+  const selectedKeys = getJobSelectedPpeCatalogKeys();
+  const items = getRiskAssessmentPpeCatalog()
+    .filter((item) => !query || getJobPpeCatalogSearchText(item).includes(query))
+    .slice(0, 140);
+
+  if (items.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "inline-help";
+    empty.textContent = "Nema OZO stavki za odabranu pretragu.";
+    jobPpeCatalog.replaceChildren(empty);
+    return;
+  }
+
+  jobPpeCatalog.replaceChildren(...items.map((item) => {
+    const button = document.createElement("button");
+    const key = getRiskAssessmentPpeCatalogKey(item);
+    const isSelected = selectedKeys.has(key);
+    const iconUrl = item.iconUrl || RISK_PPE_CATEGORY_ICONS[item.bodyPart] || RISK_PPE_CATEGORY_ICONS.other || "";
+    button.type = "button";
+    button.className = `job-ppe-catalog-item${isSelected ? " is-selected" : ""}`;
+    button.dataset.jobPpeAdd = String(item.id || "");
+    button.setAttribute("aria-pressed", isSelected ? "true" : "false");
+    button.innerHTML = `
+      <span class="job-ppe-catalog-icon"><img src="${escapeHtml(iconUrl)}" alt="" loading="lazy" /></span>
+      <span class="job-ppe-catalog-copy">
+        <strong>${escapeHtml(item.name || "OZO")}</strong>
+        <small>${escapeHtml(item.norm || item.standardCode || "Norma nije upisana")}</small>
+        <em>${escapeHtml(item.category || "OZO")}</em>
+      </span>
+      <b>${isSelected ? "Dodano" : "+"}</b>
+    `;
+    return button;
+  }));
+}
+
+function renderJobSelectedPpe() {
+  if (!jobSelectedPpe) {
+    return;
+  }
+  if (jobSelectedPpeCount) {
+    jobSelectedPpeCount.textContent = `${jobPpeDrafts.length} ${jobPpeDrafts.length === 1 ? "stavka" : "stavki"}`;
+  }
+
+  if (!jobPpeDrafts.length) {
+    const empty = document.createElement("p");
+    empty.className = "inline-help";
+    empty.textContent = "Odaberi OZO iz kataloga lijevo. Stavke se spremaju u Jobs i preuzimaju u procjenu rizika.";
+    jobSelectedPpe.replaceChildren(empty);
+    return;
+  }
+
+  jobSelectedPpe.replaceChildren(...jobPpeDrafts.map((ppe, index) => {
+    const normalized = normalizeRiskPpeCatalogItem(ppe);
+    const iconUrl = normalized.iconUrl || RISK_PPE_CATEGORY_ICONS[normalized.bodyPart] || RISK_PPE_CATEGORY_ICONS.other || "";
+    const article = document.createElement("article");
+    article.className = "job-selected-ppe-card";
+    article.dataset.jobPpeIndex = String(index);
+    article.innerHTML = `
+      <span class="job-selected-ppe-icon"><img src="${escapeHtml(iconUrl)}" alt="" loading="lazy" /></span>
+      <div class="job-selected-ppe-fields">
+        <label>
+          <span>Naziv</span>
+          <input data-job-ppe-field="name" value="${escapeHtml(ppe.name || "")}" placeholder="Naziv OZO" />
+        </label>
+        <label>
+          <span>Norma</span>
+          <input data-job-ppe-field="norm" value="${escapeHtml(ppe.norm || "")}" placeholder="HRN EN..." />
+        </label>
+        <label class="field-span-full">
+          <span>Primjena</span>
+          <textarea data-job-ppe-field="description" rows="2" placeholder="Za koju opasnost, aktivnost ili radno mjesto se koristi.">${escapeHtml(ppe.description || "")}</textarea>
+        </label>
+        <label class="job-selected-ppe-required">
+          <input type="checkbox" data-job-ppe-field="required" ${ppe.required === false ? "" : "checked"} />
+          <span>Obvezna OZO</span>
+        </label>
+      </div>
+      <button type="button" class="job-ppe-remove-button" data-job-ppe-remove="${index}" aria-label="Ukloni OZO">${renderRiskAssessmentRiskIcon("close")}</button>
+    `;
+    return article;
+  }));
+}
+
+function addJobPpeFromCatalog(catalogId = "") {
+  const source = getRiskAssessmentPpeCatalogItem(catalogId);
+  if (!source) {
+    return;
+  }
+  const candidate = createRiskAssessmentPpeDraft({
+    ...source,
+    catalogId: source.id,
+    id: crypto.randomUUID(),
+    required: true,
+  });
+  const key = getRiskAssessmentPpeCatalogKey(candidate);
+  const selected = getJobSelectedPpeCatalogKeys();
+  if (key && selected.has(key)) {
+    return;
+  }
+  jobPpeDrafts = [...jobPpeDrafts, candidate];
+  renderJobPpeCatalog();
+  renderJobSelectedPpe();
+  syncJobFormAccess();
+}
+
+function updateJobPpeDraft(index = -1, field = "", value = "") {
+  if (!Number.isInteger(index) || index < 0 || !jobPpeDrafts[index]) {
+    return;
+  }
+  const next = [...jobPpeDrafts];
+  next[index] = {
+    ...next[index],
+    [field]: field === "required" ? Boolean(value) : String(value || ""),
+  };
+  if (field === "required") {
+    next[index].mandatory = Boolean(value);
+  }
+  jobPpeDrafts = next;
+}
+
 function getJobEnvironmentDraftFromForm() {
   const environment = {};
   JOB_ENVIRONMENT_SECTIONS.forEach((section) => {
@@ -133590,6 +133788,7 @@ function buildJobPayload() {
     conditions: getJobConditionsDraftFromForm(),
     aiInstructions: getJobAiInstructionsDraft(),
     hazards: jobHazardDrafts,
+    ppeItems: jobPpeDrafts.map((item) => createRiskAssessmentPpeDraft(item)),
   };
 }
 
@@ -133599,7 +133798,7 @@ function syncJobFormAccess() {
   jobForm?.querySelectorAll("input, textarea, select").forEach((field) => {
     field.disabled = !canManage;
   });
-  jobForm?.querySelectorAll("[data-job-env-suggestion], [data-job-work-preset], [data-job-psychosocial-level], [data-job-condition-choice], [data-job-pur-point], [data-job-hazard-add], [data-job-hazard-remove]").forEach((button) => {
+  jobForm?.querySelectorAll("[data-job-env-suggestion], [data-job-work-preset], [data-job-psychosocial-level], [data-job-condition-choice], [data-job-pur-point], [data-job-hazard-add], [data-job-hazard-remove], [data-job-ppe-add], [data-job-ppe-remove]").forEach((button) => {
     button.disabled = !canManage;
   });
   jobForm?.querySelectorAll(".jobs-nexai-button").forEach((button) => {
@@ -133622,17 +133821,24 @@ function hydrateJobForm(item = {}) {
   if (jobStatusInput) replaceSelectOptionsIfChanged(jobStatusInput, JOB_STATUS_OPTIONS, draft.status || "draft");
   if (jobDescriptionInput) jobDescriptionInput.value = draft.description || "";
   jobHazardDrafts = (draft.hazards ?? []).map((hazard) => createJobHazardDraft(hazard));
+  jobPpeDrafts = (draft.ppeItems ?? []).map((item) => createRiskAssessmentPpeDraft(item));
+  if (jobPpeSearchInput) {
+    jobPpeSearchInput.value = "";
+  }
   renderJobEnvironmentSections(draft.environment ?? {});
   renderJobConditionSections(draft.conditions ?? {});
   renderJobHazardCatalog();
   renderJobSelectedHazards();
+  renderJobPpeCatalog();
+  renderJobSelectedPpe();
   syncJobCopySourceOptions(draft.id || "");
   if (jobEditorTitle) {
     jobEditorTitle.textContent = draft.id ? (draft.title || "Uredi posao") : "Novi posao";
   }
   if (jobEditorMeta) {
     const hazardText = `${jobHazardDrafts.length} opasnosti`;
-    jobEditorMeta.textContent = draft.id ? `${getJobStatusOption(draft.status).label} · ${hazardText}` : "Osnovni podaci, radno okruženje, uvjeti rada i opasnosti.";
+    const ppeText = `${jobPpeDrafts.length} OZO`;
+    jobEditorMeta.textContent = draft.id ? `${getJobStatusOption(draft.status).label} · ${hazardText} · ${ppeText}` : "Osnovni podaci, radno okruženje, uvjeti rada, opasnosti i OZO.";
   }
   if (jobDeleteButton) {
     jobDeleteButton.hidden = !draft.id || !getCanManageJobs();
@@ -133649,6 +133855,7 @@ function resetJobForm() {
     environment: {},
     conditions: {},
     hazards: [],
+    ppeItems: [],
   });
 }
 
@@ -133678,6 +133885,7 @@ function renderJobCard(item = {}) {
   const conditions = item.conditions ?? {};
   const enabledEnvironmentCount = JOB_ENVIRONMENT_SECTIONS.filter((section) => environment[`${section.key}Enabled`]).length;
   const selectedConditions = JOB_CONDITION_TOGGLES.filter((entry) => Boolean(conditions[entry.key])).length;
+  const ppeCount = (item.ppeItems ?? []).length;
   card.innerHTML = `
     <div class="job-card-status-dot"></div>
     <div class="job-card-main">
@@ -133689,6 +133897,7 @@ function renderJobCard(item = {}) {
       <span>${enabledEnvironmentCount}/4 okruženje</span>
       <span>${selectedConditions} uvjeta</span>
       <span>${(item.hazards ?? []).length} opasnosti</span>
+      <span>${ppeCount} OZO</span>
     </div>
   `;
   card.addEventListener("click", () => openJobEditor(item));
@@ -136794,7 +137003,11 @@ function createRiskAssessmentJobDraftFromCatalogJob(job = {}) {
     conditions.conditionsText,
     ...(conditions.workConditions ?? []).map((value) => `Mogući uvjet rada: ${value}.`),
   ]);
-  const ppeText = joinUniqueRiskAssessmentTextBlocks((job.hazards ?? []).map((hazard) => hazard.ppeText));
+  const jobPpeItems = (job.ppeItems ?? []).map((item) => createRiskAssessmentPpeDraft(item));
+  const ppeText = joinUniqueRiskAssessmentTextBlocks([
+    (job.hazards ?? []).map((hazard) => hazard.ppeText),
+    jobPpeItems.map((item) => buildRiskAssessmentPpeSummary([item])),
+  ]);
   const purPoints = normalizeJobPurPointValues(conditions.purPoints ?? []);
   const purReasonText = getJobPurPointReasonText(purPoints, { job });
   const specialWorkReasonText = joinUniqueRiskAssessmentTextBlocks([
@@ -136874,6 +137087,7 @@ function createRiskAssessmentJobDraftFromCatalogJob(job = {}) {
       getJobCatalogConditionNote(job, "visionCheck"),
     ]),
     ppeText,
+    ppeItems: jobPpeItems,
     riskRows: createRiskAssessmentRiskRowsFromCatalogJob(job),
   });
 }
@@ -136882,6 +137096,7 @@ function mergeCatalogJobsIntoRiskAssessmentJob(jobs = []) {
   const drafts = jobs.map((job) => createRiskAssessmentJobDraftFromCatalogJob(job));
   const titles = jobs.map((job) => job.title || "").filter(Boolean);
   const riskRows = drafts.reduce((rows, draft) => mergeRiskAssessmentRiskRows(rows, draft.riskRows ?? []), []);
+  const ppeItems = mergeRiskAssessmentPpeItems([], drafts.flatMap((draft) => draft.ppeItems ?? []));
   const mergedPurPoints = normalizeJobPurPointValues(drafts.map((draft) => draft.purPoints ?? []));
   const mergedManualSpecialWorkReason = drafts.map((draft) => getRiskAssessmentManualSpecialWorkReason(
     draft.specialWorkReason,
@@ -136944,6 +137159,7 @@ function mergeCatalogJobsIntoRiskAssessmentJob(jobs = []) {
     trainings: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.trainings)),
     medicalExams: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.medicalExams)),
     ppeText: joinUniqueRiskAssessmentTextBlocks(drafts.map((draft) => draft.ppeText)),
+    ppeItems,
     riskRows,
   });
 }
@@ -137815,6 +138031,21 @@ function buildRiskAssessmentPpeSummary(ppeItems = []) {
     })
     .filter(Boolean);
   return lines.join("; ");
+}
+
+function mergeRiskAssessmentPpeItems(currentItems = [], incomingItems = []) {
+  const merged = [];
+  const seen = new Set();
+  [...(currentItems ?? []), ...(incomingItems ?? [])].forEach((item) => {
+    const draft = createRiskAssessmentPpeDraft(item);
+    const key = getRiskAssessmentPpeCatalogKey(draft) || normalizeRiskAssessmentPpeSearchValue(draft.name);
+    if (!key || seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    merged.push(draft);
+  });
+  return merged;
 }
 
 function syncRiskAssessmentPpeSummaryText(job = {}, nextPpeItems = []) {
@@ -141490,6 +141721,14 @@ function getRiskAssessmentJobCatalogAiCorpus(job = {}) {
     hazard.measures,
     hazard.ppeText,
   ]);
+  const ppeText = (job.ppeItems ?? []).flatMap((ppe) => [
+    ppe.name,
+    ppe.category,
+    ppe.bodyPart,
+    ppe.norm,
+    ppe.standardCode,
+    ppe.description,
+  ]);
   return [
     job.title,
     job.description,
@@ -141501,6 +141740,7 @@ function getRiskAssessmentJobCatalogAiCorpus(job = {}) {
     ...(conditions.importantFunctions ?? []),
     ...(conditions.purPoints ?? []).map((value) => getJobPurPointLabel(value)),
     ...hazardText,
+    ...ppeText,
   ].filter(Boolean).join(" ");
 }
 
@@ -141667,6 +141907,14 @@ function getRiskAssessmentCatalogJobSearchText(job = {}) {
       hazard.group,
       hazard.measures,
     ]),
+    ...(job.ppeItems ?? []).flatMap((ppe) => [
+      ppe.name,
+      ppe.category,
+      ppe.bodyPart,
+      ppe.norm,
+      ppe.standardCode,
+      ppe.description,
+    ]),
   ].join(" ").toLocaleLowerCase("hr");
 }
 
@@ -141690,6 +141938,7 @@ function getRiskAssessmentCatalogJobMetrics(job = {}) {
     environmentCount,
     conditionCount,
     hazardCount: (job.hazards ?? []).length,
+    ppeCount: (job.ppeItems ?? []).length,
   };
 }
 
@@ -141793,6 +142042,7 @@ function renderRiskAssessmentJobCatalogPicker() {
         </span>
         <span class="risk-assessment-job-catalog-metrics">
           <span>${escapeHtml(String(metrics.hazardCount))} opasnosti</span>
+          <span>${escapeHtml(String(metrics.ppeCount))} OZO</span>
           ${aiSuggestion ? `<span class="is-ai-score">NexAI ${escapeHtml(String(aiSuggestion.confidence))}%</span>` : ""}
         </span>
         ${aiSuggestion?.reasons?.length ? `<span class="risk-assessment-job-catalog-ai-reason">${escapeHtml(aiSuggestion.reasons.join(" · "))}</span>` : ""}
@@ -141816,7 +142066,7 @@ function syncRiskAssessmentJobCatalogOptions() {
   const currentSelectedIds = getRiskAssessmentJobCatalogSelectedIds();
   const options = jobs.map((job) => ({
     value: job.id,
-    label: `${job.title || "Bez naziva"} · ${(job.hazards ?? []).length} opasnosti`,
+    label: `${job.title || "Bez naziva"} · ${(job.hazards ?? []).length} opasnosti · ${(job.ppeItems ?? []).length} OZO`,
   }));
   const signature = getSelectOptionsSignature(options);
   if (riskAssessmentJobCatalogSelect.dataset.optionsSignature !== signature) {
@@ -141936,7 +142186,7 @@ function mergeCatalogJobsIntoExistingRiskAssessmentJob(current = {}, selectedJob
     increasedInsurance: current.increasedInsurance || imported.increasedInsurance,
     alcoholLimit: preferCurrent("alcoholLimit"),
     riskRows: mergeRiskAssessmentRiskRows(current.riskRows ?? [], imported.riskRows ?? []),
-    ppeItems: current.ppeItems?.length ? current.ppeItems : (imported.ppeItems ?? []),
+    ppeItems: mergeRiskAssessmentPpeItems(current.ppeItems ?? [], imported.ppeItems ?? []),
     hiddenBlocks: current.hiddenBlocks ?? imported.hiddenBlocks,
     clientInput: current.clientInput,
   });
@@ -142028,6 +142278,7 @@ function openJobsModuleForRiskAssessmentJob(jobIndex) {
       conditionsText: current.biologicalHazards || current.harmfulSources || "",
     },
     hazards: [],
+    ppeItems: current.ppeItems ?? [],
   });
 }
 
