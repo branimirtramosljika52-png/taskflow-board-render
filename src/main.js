@@ -127025,7 +127025,11 @@ function getRiskAssessmentEditorBlocks() {
 function setRiskAssessmentDockActive(blockKey = "basic") {
   const buttons = Array.from(riskAssessmentDock?.querySelectorAll("[data-risk-assessment-jump]") ?? []);
   buttons.forEach((button) => {
-    button.classList.toggle("is-active", button.dataset.riskAssessmentJump === blockKey);
+    const isActive = button.dataset.riskAssessmentJump === blockKey;
+    button.classList.toggle("is-active", isActive);
+    if (isActive) {
+      button.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+    }
   });
 }
 
@@ -127054,7 +127058,10 @@ function setRiskAssessmentActiveBlock(blockKey = "basic", { resetScroll = false 
     setInlineMessage(riskAssessmentError, "");
   }
   if (resetScroll && riskAssessmentEditorBody) {
-    riskAssessmentEditorBody.scrollTo({ top: 0, behavior: "smooth" });
+    riskAssessmentEditorBody.scrollTo({ top: 0, behavior: "auto" });
+    requestAnimationFrame(() => {
+      riskAssessmentEditorBody.scrollTop = 0;
+    });
   }
   scheduleRiskAssessmentJobAnalysisShellModeUpdate();
 }
