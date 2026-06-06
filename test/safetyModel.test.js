@@ -1087,6 +1087,14 @@ test("people training records normalize certificates, statuses and filters", () 
         {
           type: "medical_exam",
           validUntil: "2026-01-01",
+          details: {
+            referralNumber: "RA-1-2026-001",
+            examType: "periodični",
+            examReason: "Poslovi s posebnim uvjetima rada",
+            medicalJobTitle: "Skladištar",
+            medicalJobDescription: "Utovar robe i rad s paletnim viličarom",
+            medicalHazards: "Rad s viličarom i napori vida",
+          },
         },
       ],
     },
@@ -1111,6 +1119,8 @@ test("people training records normalize certificates, statuses and filters", () 
   assert.equal(record.trainingItems.find((item) => item.type === "safe_work").status, "valid");
   assert.equal(record.trainingItems.find((item) => item.type === "adr").status, "expired");
   assert.equal(record.trainingItems.find((item) => item.type === "medical_exam").status, "missing");
+  assert.equal(record.trainingItems.find((item) => item.type === "medical_exam").details.referralNumber, "RA-1-2026-001");
+  assert.equal(record.trainingItems.find((item) => item.type === "medical_exam").details.medicalHazards, "Rad s viličarom i napori vida");
 
   const updated = updatePersonTrainingRecord(
     record,

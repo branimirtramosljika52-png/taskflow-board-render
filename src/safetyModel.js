@@ -7866,6 +7866,20 @@ function normalizePersonTrainingItemDetails(input = {}) {
     practicalPlace: normalizeText(source.practicalPlace ?? source.practicalTrainingPlace).slice(0, 180),
     safeWorkPeriodFrom: normalizeOptionalDate(source.safeWorkPeriodFrom ?? source.monitoringPeriodFrom),
     safeWorkPeriodTo: normalizeOptionalDate(source.safeWorkPeriodTo ?? source.monitoringPeriodTo),
+    referralNumber: normalizeText(source.referralNumber ?? source.ra1Number ?? source.medicalReferralNumber).slice(0, 120),
+    examType: normalizeText(source.examType ?? source.medicalExamType).slice(0, 180),
+    examReason: normalizeText(source.examReason ?? source.medicalExamReason).slice(0, 1000),
+    medicalJobTitle: normalizeText(source.medicalJobTitle ?? source.ra1JobTitle ?? source.jobTitle).slice(0, 180),
+    medicalJobDescription: normalizeText(source.medicalJobDescription ?? source.ra1JobDescription ?? source.jobDescription ?? source.workDescription).slice(0, 4000),
+    medicalHazards: normalizeText(source.medicalHazards ?? source.medicalExams ?? source.specialWorkReason ?? source.specialConditions).slice(0, 4000),
+    fitnessResult: normalizeText(source.fitnessResult ?? source.healthFitnessResult ?? source.medicalFitnessResult).slice(0, 180),
+    fitnessRestrictions: normalizeText(source.fitnessRestrictions ?? source.healthFitnessRestrictions ?? source.medicalRestrictions).slice(0, 2000),
+    visionJobTitle: normalizeText(source.visionJobTitle ?? source.medicalJobTitle ?? source.jobTitle).slice(0, 180),
+    visionJobDescription: normalizeText(source.visionJobDescription ?? source.medicalJobDescription ?? source.jobDescription ?? source.workDescription).slice(0, 4000),
+    visionReason: normalizeText(source.visionReason ?? source.visionExamReason).slice(0, 1000),
+    visionResult: normalizeText(source.visionResult ?? source.visionExamResult).slice(0, 180),
+    visionCorrection: normalizeText(source.visionCorrection ?? source.eyeCorrection).slice(0, 180),
+    computerWork: normalizeText(source.computerWork ?? source.screenWork ?? source.displayScreenWork).slice(0, 1000),
   };
 }
 

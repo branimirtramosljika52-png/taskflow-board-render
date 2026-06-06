@@ -7385,6 +7385,158 @@ function findPeopleTrainingTemplateItem(record = {}, hints = []) {
   }) ?? null;
 }
 
+function getPeopleTrainingTemplateItemDetails(item = {}) {
+  return item?.details && typeof item.details === "object" && !Array.isArray(item.details)
+    ? item.details
+    : {};
+}
+
+function getPeopleTrainingBuiltInTemplateKind(item = {}, service = {}) {
+  const lookup = [
+    item.type,
+    item.label,
+    item.shortLabel,
+    item.serviceCode,
+    item.serviceName,
+    service.serviceCode,
+    service.name,
+  ].map((value) => normalizeLookupKey(value)).filter(Boolean).join(" ");
+  if (lookup.includes("medicalexam") || lookup.includes("ra1") || lookup.includes("uputnica") || lookup.includes("lijecnickipregled")) {
+    return "ra1";
+  }
+  if (lookup.includes("medicalfitnesscertificate") || lookup.includes("zdravstvenasposobnost") || lookup.includes("uvjerenjezdravstven")) {
+    return "medical-certificate";
+  }
+  if (lookup.includes("visionexam") || lookup.includes("pregledvida") || /\bvid\b/.test(lookup)) {
+    return "vision";
+  }
+  return "";
+}
+
+function getPeopleTrainingGeneratedDocumentPrefix(item = {}, service = {}, builtInTemplateKind = "") {
+  const kind = builtInTemplateKind || getPeopleTrainingBuiltInTemplateKind(item, service);
+  if (kind === "ra1") {
+    return "uputnica-ra1";
+  }
+  if (kind === "medical-certificate") {
+    return "uvjerenje-zdravstvena-sposobnost";
+  }
+  if (kind === "vision") {
+    return "pregled-vida";
+  }
+  return "uvjerenje";
+}
+
+function buildPeopleTrainingBuiltInTemplateHtml(kind = "") {
+  const style = `
+    <style>
+      body { font-family: Arial, sans-serif; color: #172033; font-size: 11pt; }
+      .document { max-width: 760px; margin: 0 auto; }
+      h1 { margin: 0 0 8px; font-size: 18pt; text-align: center; text-transform: uppercase; }
+      h2 { margin: 18px 0 8px; font-size: 12pt; text-transform: uppercase; border-bottom: 1px solid #94a3b8; padding-bottom: 4px; }
+      p { margin: 6px 0; line-height: 1.4; }
+      table { width: 100%; border-collapse: collapse; margin: 8px 0 14px; }
+      td, th { border: 1px solid #cbd5e1; padding: 7px 8px; vertical-align: top; }
+      th { width: 32%; text-align: left; background: #f1f5f9; }
+      .muted { color: #64748b; font-size: 9pt; }
+      .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 36px; margin-top: 42px; }
+      .signature-line { border-top: 1px solid #172033; padding-top: 6px; text-align: center; min-height: 34px; }
+    </style>
+  `;
+  if (kind === "ra1") {
+    return `<!doctype html><html><head><meta charset="utf-8">${style}</head><body>
+      <section class="document">
+        <h1>Uputnica za utvrđivanje zdravstvene sposobnosti radnika (RA-1)</h1>
+        <p class="muted">Ugrađeni SafeNexus predložak. Po potrebi zamijeni ga Word predloškom u List of services.</p>
+        <h2>Podaci o poslodavcu</h2>
+        <table>
+          <tr><th>Poslodavac</th><td>{{Tvrtka}}</td></tr>
+          <tr><th>Sjedište</th><td>{{Sjediste}}</td></tr>
+          <tr><th>OIB</th><td>{{OIBTvrtka}}</td></tr>
+          <tr><th>Odgovorna osoba</th><td>{{OdgovornaOsobaTvrtka}}</td></tr>
+        </table>
+        <h2>Podaci o radniku</h2>
+        <table>
+          <tr><th>Ime i prezime</th><td>{{ImePrezime}}</td></tr>
+          <tr><th>OIB</th><td>{{OIB}}</td></tr>
+          <tr><th>Datum rođenja</th><td>{{DatumRodenja}}</td></tr>
+          <tr><th>Mjesto rada</th><td>{{Mjestorada}}</td></tr>
+        </table>
+        <h2>Podaci za pregled</h2>
+        <table>
+          <tr><th>Broj uputnice</th><td>{{BrojUputniceRA1}}</td></tr>
+          <tr><th>Datum uputnice</th><td>{{DatumUputniceRA1}}</td></tr>
+          <tr><th>Vrsta pregleda</th><td>{{VrstaPregledaRA1}}</td></tr>
+          <tr><th>Razlog pregleda</th><td>{{RazlogPregledaRA1}}</td></tr>
+          <tr><th>Radno mjesto</th><td>{{RadnoMjestoRA1}}</td></tr>
+          <tr><th>Opis poslova i aktivnosti</th><td>{{OpisPoslovaRA1}}</td></tr>
+          <tr><th>Posebni uvjeti, štetnosti i napori</th><td>{{PosebniUvjetiRA1}}</td></tr>
+          <tr><th>Ustanova medicine rada</th><td>{{UstanovaMedicineRadaRA1}}</td></tr>
+          <tr><th>Napomena</th><td>{{NapomenaRA1}}</td></tr>
+        </table>
+        <div class="signatures">
+          <div class="signature-line">Poslodavac / ovlaštena osoba</div>
+          <div class="signature-line">Radnik</div>
+        </div>
+      </section>
+    </body></html>`;
+  }
+  if (kind === "medical-certificate") {
+    return `<!doctype html><html><head><meta charset="utf-8">${style}</head><body>
+      <section class="document">
+        <h1>Uvjerenje o zdravstvenoj sposobnosti za rad</h1>
+        <p class="muted">Ugrađeni SafeNexus predložak za evidenciju zdravstvenog uvjerenja.</p>
+        <table>
+          <tr><th>Radnik</th><td>{{ImePrezime}}</td></tr>
+          <tr><th>OIB</th><td>{{OIB}}</td></tr>
+          <tr><th>Poslodavac</th><td>{{Tvrtka}}</td></tr>
+          <tr><th>Radno mjesto</th><td>{{RadnoMjestoRA1}}</td></tr>
+          <tr><th>Opis poslova</th><td>{{OpisPoslovaRA1}}</td></tr>
+          <tr><th>Broj uvjerenja</th><td>{{BrojUvjerenjaZdravstvena}}</td></tr>
+          <tr><th>Datum pregleda</th><td>{{DatumPregledaZdravstvena}}</td></tr>
+          <tr><th>Datum izdavanja</th><td>{{DatumUvjerenjaZdravstvena}}</td></tr>
+          <tr><th>Vrijedi do</th><td>{{VrijediDoZdravstvena}}</td></tr>
+          <tr><th>Ustanova</th><td>{{USTANOVA}}</td></tr>
+          <tr><th>Ocjena sposobnosti</th><td>{{OcjenaZdravstvena}}</td></tr>
+          <tr><th>Ograničenja / uvjeti</th><td>{{OgranicenjaZdravstvena}}</td></tr>
+          <tr><th>Napomena</th><td>{{NAPOMENA}}</td></tr>
+        </table>
+        <div class="signatures">
+          <div class="signature-line">Ustanova / specijalist</div>
+          <div class="signature-line">Evidentirao</div>
+        </div>
+      </section>
+    </body></html>`;
+  }
+  if (kind === "vision") {
+    return `<!doctype html><html><head><meta charset="utf-8">${style}</head><body>
+      <section class="document">
+        <h1>Pregled vida</h1>
+        <p class="muted">Ugrađeni SafeNexus predložak za evidenciju pregleda vida.</p>
+        <table>
+          <tr><th>Radnik</th><td>{{ImePrezime}}</td></tr>
+          <tr><th>OIB</th><td>{{OIB}}</td></tr>
+          <tr><th>Poslodavac</th><td>{{Tvrtka}}</td></tr>
+          <tr><th>Radno mjesto</th><td>{{PregledVidaRadnoMjesto}}</td></tr>
+          <tr><th>Opis poslova</th><td>{{PregledVidaOpisPoslova}}</td></tr>
+          <tr><th>Broj uputnice / nalaza</th><td>{{PregledVidaBroj}}</td></tr>
+          <tr><th>Datum pregleda</th><td>{{PregledVidaDatum}}</td></tr>
+          <tr><th>Vrijedi do</th><td>{{PregledVidaVrijediDo}}</td></tr>
+          <tr><th>Ustanova</th><td>{{PregledVidaUstanova}}</td></tr>
+          <tr><th>Nalaz / rezultat</th><td>{{PregledVidaNalaz}}</td></tr>
+          <tr><th>Korekcija / pomagala</th><td>{{PregledVidaKorekcija}}</td></tr>
+          <tr><th>Napomena</th><td>{{PregledVidaNapomena}}</td></tr>
+        </table>
+        <div class="signatures">
+          <div class="signature-line">Ustanova / specijalist</div>
+          <div class="signature-line">Evidentirao</div>
+        </div>
+      </section>
+    </body></html>`;
+  }
+  return "";
+}
+
 function buildPeopleTrainingZnrTemplatePlaceholders(record = {}, item = {}, service = {}, scopedSnapshot = {}) {
   const company = findPeopleTrainingTemplateCompany(record, scopedSnapshot) ?? {};
   const location = findPeopleTrainingTemplateLocation(record, scopedSnapshot) ?? {};
@@ -7404,6 +7556,40 @@ function buildPeopleTrainingZnrTemplatePlaceholders(record = {}, item = {}, serv
   const adrItem = findPeopleTrainingTemplateItem(record, ["adr"]);
   const pgpItem = findPeopleTrainingTemplateItem(record, ["fire_initial", "pozar", "pocetno gasenje", "ppz", "pgp"]);
   const spztpItem = findPeopleTrainingTemplateItem(record, ["flammable_storage", "zapaljiv", "skladistenje", "spztp"]);
+  const safeWorkItem = findPeopleTrainingTemplateItem(record, ["safe_work", "znr", "zos", "rad na siguran"]);
+  const medicalExamItem = findPeopleTrainingTemplateItem(record, ["medical_exam", "ra1", "uputnica", "lijecnicki pregled"]);
+  const medicalCertificateItem = findPeopleTrainingTemplateItem(record, ["medical_fitness_certificate", "zdravstvena sposobnost", "uvjerenje zdravstvena"]);
+  const visionItem = findPeopleTrainingTemplateItem(record, ["vision_exam", "pregled vida", "vid"]);
+  const safeWorkDetails = getPeopleTrainingTemplateItemDetails(safeWorkItem ?? {});
+  const medicalExamDetails = getPeopleTrainingTemplateItemDetails(medicalExamItem ?? {});
+  const medicalCertificateDetails = getPeopleTrainingTemplateItemDetails(medicalCertificateItem ?? {});
+  const visionDetails = getPeopleTrainingTemplateItemDetails(visionItem ?? {});
+  const medicalWorkTitle = itemDetails.medicalJobTitle
+    || medicalExamDetails.medicalJobTitle
+    || medicalCertificateDetails.medicalJobTitle
+    || safeWorkDetails.jobTitle
+    || itemDetails.jobTitle
+    || record.jobTitle
+    || "";
+  const medicalWorkDescription = itemDetails.medicalJobDescription
+    || medicalExamDetails.medicalJobDescription
+    || medicalCertificateDetails.medicalJobDescription
+    || safeWorkDetails.jobDescription
+    || itemDetails.jobDescription
+    || record.jobDescription
+    || record.note
+    || "";
+  const medicalHazards = itemDetails.medicalHazards
+    || medicalExamDetails.medicalHazards
+    || medicalCertificateDetails.medicalHazards
+    || "";
+  const medicalProvider = medicalExamItem?.provider
+    || medicalCertificateItem?.provider
+    || provider
+    || "";
+  const visionWorkTitle = visionDetails.visionJobTitle || medicalWorkTitle;
+  const visionWorkDescription = visionDetails.visionJobDescription || medicalWorkDescription;
+  const visionProvider = visionItem?.provider || medicalProvider || "";
 
   const fillTrainingSet = (prefix, trainingItem = {}) => {
     const passedOn = getPeopleTrainingTemplateItemDate(trainingItem);
@@ -7438,6 +7624,52 @@ function buildPeopleTrainingZnrTemplatePlaceholders(record = {}, item = {}, serv
     BrojZapisnikaZNR: itemRecordNumber,
     NazivRadnogMjesta: itemDetails.jobTitle || record.jobTitle || "",
     OpisPoslova: itemDetails.jobDescription || record.jobDescription || record.note || "",
+    BrojUputniceRA1: medicalExamItem?.recordNumber || medicalExamDetails.referralNumber || "",
+    DatumUputniceRA1: formatPeopleTrainingTemplateDate(medicalExamItem?.issuedOn || ""),
+    DatumPregledaRA1: formatPeopleTrainingTemplateDate(medicalExamItem?.passedOn || ""),
+    VrstaPregledaRA1: medicalExamDetails.examType || medicalExamItem?.examMode || "",
+    RazlogPregledaRA1: medicalExamDetails.examReason || "",
+    RadnoMjestoRA1: medicalWorkTitle,
+    OpisPoslovaRA1: medicalWorkDescription,
+    PosebniUvjetiRA1: medicalHazards,
+    UstanovaMedicineRadaRA1: medicalProvider,
+    NapomenaRA1: medicalExamItem?.note || "",
+    BrojUvjerenjaZdravstvena: medicalCertificateItem?.certificateNumber || medicalCertificateItem?.recordNumber || "",
+    DatumUvjerenjaZdravstvena: formatPeopleTrainingTemplateDate(medicalCertificateItem?.issuedOn || medicalCertificateItem?.passedOn || ""),
+    DatumPregledaZdravstvena: formatPeopleTrainingTemplateDate(medicalCertificateItem?.passedOn || ""),
+    VrijediDoZdravstvena: medicalCertificateItem?.validForever ? "" : formatPeopleTrainingTemplateDate(medicalCertificateItem?.validUntil || ""),
+    OcjenaZdravstvena: medicalCertificateDetails.fitnessResult || medicalCertificateItem?.certificateStatus || "",
+    OgranicenjaZdravstvena: medicalCertificateDetails.fitnessRestrictions || "",
+    PregledVidaBroj: visionItem?.recordNumber || visionItem?.certificateNumber || "",
+    PregledVidaDatum: formatPeopleTrainingTemplateDate(visionItem?.passedOn || visionItem?.issuedOn || ""),
+    PregledVidaVrijediDo: visionItem?.validForever ? "" : formatPeopleTrainingTemplateDate(visionItem?.validUntil || ""),
+    PregledVidaUstanova: visionProvider,
+    PregledVidaNalaz: visionDetails.visionResult || visionItem?.certificateStatus || "",
+    PregledVidaKorekcija: visionDetails.visionCorrection || "",
+    PregledVidaRadnoMjesto: visionWorkTitle,
+    PregledVidaOpisPoslova: visionWorkDescription,
+    PregledVidaNapomena: visionItem?.note || visionDetails.visionReason || "",
+    RA1_BROJ: medicalExamItem?.recordNumber || medicalExamDetails.referralNumber || "",
+    RA1_DATUM: formatPeopleTrainingTemplateDate(medicalExamItem?.issuedOn || ""),
+    RA1_DATUM_PREGLEDA: formatPeopleTrainingTemplateDate(medicalExamItem?.passedOn || ""),
+    RA1_VRSTA_PREGLEDA: medicalExamDetails.examType || medicalExamItem?.examMode || "",
+    RA1_RAZLOG: medicalExamDetails.examReason || "",
+    RA1_RADNO_MJESTO: medicalWorkTitle,
+    RA1_OPIS_POSLOVA: medicalWorkDescription,
+    RA1_POSEBNI_UVJETI: medicalHazards,
+    RA1_USTANOVA: medicalProvider,
+    RA1_NAPOMENA: medicalExamItem?.note || "",
+    LIJECNICKI_UVJERENJE_BROJ: medicalCertificateItem?.certificateNumber || medicalCertificateItem?.recordNumber || "",
+    LIJECNICKI_UVJERENJE_DATUM: formatPeopleTrainingTemplateDate(medicalCertificateItem?.issuedOn || medicalCertificateItem?.passedOn || ""),
+    LIJECNICKI_UVJERENJE_VRIJEDI_DO: medicalCertificateItem?.validForever ? "" : formatPeopleTrainingTemplateDate(medicalCertificateItem?.validUntil || ""),
+    LIJECNICKI_UVJERENJE_OCJENA: medicalCertificateDetails.fitnessResult || "",
+    LIJECNICKI_UVJERENJE_OGRANICENJA: medicalCertificateDetails.fitnessRestrictions || "",
+    PREGLED_VIDA_BROJ: visionItem?.recordNumber || visionItem?.certificateNumber || "",
+    PREGLED_VIDA_DATUM: formatPeopleTrainingTemplateDate(visionItem?.passedOn || visionItem?.issuedOn || ""),
+    PREGLED_VIDA_VRIJEDI_DO: visionItem?.validForever ? "" : formatPeopleTrainingTemplateDate(visionItem?.validUntil || ""),
+    PREGLED_VIDA_USTANOVA: visionProvider,
+    PREGLED_VIDA_NALAZ: visionDetails.visionResult || visionItem?.certificateStatus || "",
+    PREGLED_VIDA_KOREKCIJA: visionDetails.visionCorrection || "",
     VrstaIspita: serviceName || serviceCode,
     MjestoOsposobljavanjaTeorija: itemDetails.theoryPlace || workPlace,
     DatumTeorija: formatPeopleTrainingTemplateDate(itemDate),
@@ -7499,6 +7731,9 @@ function buildPeopleTrainingZnrTemplatePlaceholders(record = {}, item = {}, serv
 
 function getPeopleTrainingCertificatePlaceholderPayload(record = {}, item = {}, service = {}, scopedSnapshot = {}) {
   const passedOrIssued = item.passedOn || item.issuedOn || "";
+  const itemDetails = getPeopleTrainingTemplateItemDetails(item);
+  const itemWorkTitle = itemDetails.medicalJobTitle || itemDetails.visionJobTitle || itemDetails.jobTitle || record.jobTitle || "";
+  const itemWorkDescription = itemDetails.medicalJobDescription || itemDetails.visionJobDescription || itemDetails.jobDescription || record.jobDescription || record.note || "";
   const sourceText = item.workOrderNumber
     ? `RN ${item.workOrderNumber}`
     : (item.learningTestTitle || item.provider || item.examMode || "");
@@ -7508,7 +7743,8 @@ function getPeopleTrainingCertificatePlaceholderPayload(record = {}, item = {}, 
     PREZIME: record.lastName || "",
     IME_PREZIME: record.fullName || [record.firstName, record.lastName].filter(Boolean).join(" "),
     OIB: record.oib || "",
-    RADNO_MJESTO: record.jobTitle || "",
+    RADNO_MJESTO: itemWorkTitle,
+    OPIS_POSLOVA: itemWorkDescription,
     EMAIL: record.email || "",
     MOBITEL: record.phone || "",
     TVRTKA: record.companyName || "",
@@ -7553,6 +7789,10 @@ function getPeopleTrainingGeneratedDocumentFingerprint(record = {}, item = {}, s
     item.passedOn || "",
     item.validUntil || "",
     item.validForever ? "forever" : "",
+    item.provider || "",
+    item.examMode || "",
+    item.note || "",
+    JSON.stringify(item.details ?? {}),
     record.oib || "",
   ].map((value) => normalizeInputValue(value)).join("|");
 }
@@ -7659,7 +7899,9 @@ async function generatePeopleTrainingCertificateAttachments(record = {}, scopedS
 
     const service = findPeopleTrainingServiceForItem(item, scopedSnapshot) ?? {};
     const template = resolvePeopleTrainingCertificateTemplate(record, item, service, scopedSnapshot);
-    if (!template || !isWordTemplateFile(template)) {
+    const hasWordTemplate = Boolean(template && isWordTemplateFile(template));
+    const builtInTemplateKind = getPeopleTrainingBuiltInTemplateKind(item, service);
+    if (!hasWordTemplate && !builtInTemplateKind) {
       continue;
     }
 
@@ -7668,22 +7910,29 @@ async function generatePeopleTrainingCertificateAttachments(record = {}, scopedS
     }
 
     try {
-      const referenceDocument = await readStoredDocumentBuffer(template);
       const generatedDocumentKey = getPeopleTrainingGeneratedDocumentKey(item, service);
       const documentFingerprint = getPeopleTrainingGeneratedDocumentFingerprint(record, item, service);
+      const documentPrefix = getPeopleTrainingGeneratedDocumentPrefix(item, service, builtInTemplateKind);
       const baseName = sanitizeGeneratedDocumentFileName(
         [
-          "uvjerenje",
+          documentPrefix,
           record.fullName || "osoba",
           item.serviceCode || service.serviceCode || item.shortLabel || "osposobljavanje",
         ].filter(Boolean).join("-"),
-        { fallback: "uvjerenje", extension: "docx" },
+        { fallback: documentPrefix, extension: hasWordTemplate ? "docx" : "html" },
       );
-      const pdfBuffer = await buildPdfFromTemplateBuffer(
-        referenceDocument.buffer,
-        getPeopleTrainingCertificatePlaceholderPayload(record, item, service, scopedSnapshot),
-        { fileName: baseName },
-      );
+      const placeholders = getPeopleTrainingCertificatePlaceholderPayload(record, item, service, scopedSnapshot);
+      const pdfBuffer = hasWordTemplate
+        ? await buildPdfFromTemplateBuffer(
+          (await readStoredDocumentBuffer(template)).buffer,
+          placeholders,
+          { fileName: baseName },
+        )
+        : await buildPdfFromHtmlTemplateBuffer(
+          Buffer.from(buildPeopleTrainingBuiltInTemplateHtml(builtInTemplateKind), "utf8"),
+          placeholders,
+          { fileName: baseName, title: documentPrefix },
+        );
       const nowIso = new Date().toISOString();
       nextAttachments = nextAttachments.map((attachment) => {
         if (!peopleTrainingGeneratedDocumentMatchesItem(attachment, item, service) || !isPeopleTrainingGeneratedDocumentActive(attachment)) {
