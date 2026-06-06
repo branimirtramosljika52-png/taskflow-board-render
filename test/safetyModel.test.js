@@ -1457,6 +1457,17 @@ test("rulebooks create, update, filter and sort as a separate HSE register", () 
     () => "rulebook-3",
     () => "2026-05-31T12:00:00.000Z",
   );
+  const chemicals = createRulebook(
+    {
+      organizationId: "org-1",
+      title: "Pravilnik o korištenju kemikalija",
+      rulebookType: "chemicals",
+      status: "active",
+      summary: "Skladištenje, označavanje i korištenje kemikalija prema STL dokumentaciji.",
+    },
+    () => "rulebook-4",
+    () => "2026-05-31T13:00:00.000Z",
+  );
   const filtered = filterRulebooks([znr, updatedFire], {
     query: "evakuacija",
     status: "review",
@@ -1466,14 +1477,21 @@ test("rulebooks create, update, filter and sort as a separate HSE register", () 
     query: "provjera znanja",
     rulebookType: "training_program",
   });
+  const chemicalsFiltered = filterRulebooks([znr, updatedFire, trainingProgram, chemicals], {
+    query: "STL",
+    rulebookType: "chemicals",
+  });
 
   assert.equal(znr.documents.length, 1);
   assert.equal(znr.effectiveFrom, "2026-06-01");
   assert.equal(trainingProgram.rulebookType, "training_program");
+  assert.equal(chemicals.rulebookType, "chemicals");
   assert.equal(filtered.length, 1);
   assert.equal(filtered[0].id, "rulebook-2");
   assert.equal(trainingFiltered.length, 1);
   assert.equal(trainingFiltered[0].id, "rulebook-3");
+  assert.equal(chemicalsFiltered.length, 1);
+  assert.equal(chemicalsFiltered[0].id, "rulebook-4");
   assert.equal(sortRulebooks([updatedFire, znr])[0].id, "rulebook-1");
 });
 
