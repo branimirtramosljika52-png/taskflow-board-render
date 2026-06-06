@@ -257,6 +257,86 @@ const SIGNATURE_PDF_DOCUMENT_CATEGORIES = Object.freeze([
 const GENERATED_DOCUMENT_TEMPLATE_DOCX_CATEGORY = "Zapisnik DOCX";
 const GENERATED_PEOPLE_TRAINING_CERTIFICATE_CATEGORY = "Automatsko uvjerenje";
 const GENERATED_PEOPLE_TRAINING_CERTIFICATE_SOURCE = "people-training-certificate";
+const STANDARD_SERVICE_CATALOG_ITEMS = Object.freeze([
+  Object.freeze({
+    name: "Osposobljavanje za rad na siguran način",
+    serviceCode: "ZOS-001",
+    serviceType: "znr",
+    note: "Standardna usluga za ZOS zapisnik, RN i evidenciju osposobljavanja.",
+  }),
+  Object.freeze({
+    name: "Osposobljavanje ovlaštenika i povjerenika radnika za zaštitu na radu",
+    serviceCode: "OVL-001",
+    serviceType: "znr",
+    note: "Standardna usluga za ovlaštenike poslodavca i povjerenike radnika.",
+  }),
+  Object.freeze({
+    name: "Osposobljavanje za evakuaciju i spašavanje",
+    serviceCode: "EVAK-001",
+    serviceType: "znr",
+    note: "Standardna usluga za evidenciju evakuacije i spašavanja.",
+  }),
+  Object.freeze({
+    name: "Početno gašenje požara",
+    serviceCode: "PGP-001",
+    serviceType: "znr",
+    note: "Standardna usluga za početno gašenje požara.",
+  }),
+  Object.freeze({
+    name: "Skladištenje zapaljivih tekućina i plinova",
+    serviceCode: "SPZTP-001",
+    serviceType: "znr",
+    note: "Standardna usluga za zapaljive tekućine i plinove.",
+  }),
+  Object.freeze({
+    name: "ADR osposobljavanje",
+    serviceCode: "ADR-001",
+    serviceType: "znr",
+    note: "Standardna usluga za ADR evidenciju i rokove.",
+  }),
+  Object.freeze({
+    name: "Uputnica za liječnički pregled RA-1",
+    serviceCode: "RA1-001",
+    serviceType: "znr",
+    note: "Standardna usluga za RA-1 uputnicu i podatke medicine rada.",
+  }),
+  Object.freeze({
+    name: "Uvjerenje o zdravstvenoj sposobnosti za rad",
+    serviceCode: "ZDR-001",
+    serviceType: "znr",
+    note: "Standardna usluga za uvjerenje zdravstvene sposobnosti i psihološku provjeru.",
+  }),
+  Object.freeze({
+    name: "Pregled vida",
+    serviceCode: "VID-001",
+    serviceType: "znr",
+    note: "Standardna usluga za uputnicu i uvjerenje pregleda vida.",
+  }),
+  Object.freeze({
+    name: "Pravilnik o zaštiti na radu",
+    serviceCode: "PR-ZNR",
+    serviceType: "other",
+    note: "Standardna usluga za temeljnu dokumentaciju i pravilnike.",
+  }),
+  Object.freeze({
+    name: "Pravilnik o zaštiti od požara",
+    serviceCode: "PR-POZAR",
+    serviceType: "other",
+    note: "Standardna usluga za temeljnu dokumentaciju zaštite od požara.",
+  }),
+  Object.freeze({
+    name: "Pravilnik o korištenju alkohola i opojnih sredstava",
+    serviceCode: "PR-ALK",
+    serviceType: "other",
+    note: "Standardna usluga za temeljnu dokumentaciju zabrane alkohola i opojnih sredstava.",
+  }),
+  Object.freeze({
+    name: "Pravilnik o korištenju kemikalija",
+    serviceCode: "PR-KEM",
+    serviceType: "other",
+    note: "Standardna usluga za temeljnu dokumentaciju i rad s kemikalijama.",
+  }),
+]);
 const RISK_ASSESSMENT_WORD_PDF_TIMEOUT_MS = Math.max(
   5000,
   Number(process.env.RISK_ASSESSMENT_WORD_PDF_TIMEOUT_MS || 25000) || 25000,
@@ -6103,6 +6183,85 @@ async function getScopedState(user, request) {
   };
 }
 
+function normalizeStandardServiceCatalogCode(value = "") {
+  return String(value || "")
+    .trim()
+    .toLocaleLowerCase("hr")
+    .replace(/\s+/g, "");
+}
+
+function normalizeStandardServiceCatalogName(value = "") {
+  return String(value || "")
+    .trim()
+    .toLocaleLowerCase("hr")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+async function ensureStandardServiceCatalogItemsForRequest(user, request) {
+  const { scopedSnapshot } = await getScopedState(user, request);
+  if (!canUseScopedSnapshotAppPermission(user, scopedSnapshot, "serviceCatalog.create")) {
+    return 0;
+  }
+
+  const organizationId = String(scopedSnapshot.activeOrganizationId || "").trim();
+  if (!organizationId) {
+    return 0;
+  }
+
+  const existingCodes = new Set(
+    (scopedSnapshot.serviceCatalog ?? [])
+      .filter((item) => !item.organizationId || String(item.organizationId) === organizationId)
+      .map((item) => normalizeStandardServiceCatalogCode(item.serviceCode))
+      .filter(Boolean),
+  );
+  const existingNames = new Set(
+    (scopedSnapshot.serviceCatalog ?? [])
+      .filter((item) => !item.organizationId || String(item.organizationId) === organizationId)
+      .map((item) => normalizeStandardServiceCatalogName(item.name))
+      .filter(Boolean),
+  );
+  let createdCount = 0;
+
+  for (const seed of STANDARD_SERVICE_CATALOG_ITEMS) {
+    const code = normalizeStandardServiceCatalogCode(seed.serviceCode);
+    const name = normalizeStandardServiceCatalogName(seed.name);
+    if ((!code && !name) || existingCodes.has(code) || existingNames.has(name)) {
+      continue;
+    }
+
+    try {
+      await domainRepository.createServiceCatalogItem({
+        ...seed,
+        organizationId,
+        status: "active",
+        isTraining: seed.serviceType === "znr",
+        validityMonths: "",
+        linkedTemplateIds: [],
+        linkedLearningTestIds: [],
+        linkedQualificationKeys: [],
+      });
+      existingCodes.add(code);
+      existingNames.add(name);
+      createdCount += 1;
+    } catch (error) {
+      if (!/postoji|duplicate|uniq/i.test(String(error?.message || ""))) {
+        throw error;
+      }
+      existingCodes.add(code);
+      existingNames.add(name);
+    }
+  }
+
+  if (createdCount > 0) {
+    invalidateSnapshotCaches();
+  }
+
+  return createdCount;
+}
+
 const REPORT_SCHEDULE_TIME_ZONE = "Europe/Zagreb";
 const REPORT_SCHEDULE_POLL_MS = 60_000;
 const REPORT_SCHEDULE_GRACE_MINUTES = 10;
@@ -9150,6 +9309,7 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (request.method === "GET" && url.pathname === "/api/bootstrap") {
+      await ensureStandardServiceCatalogItemsForRequest(user, request);
       await writeSnapshot(response, user, request);
       return true;
     }

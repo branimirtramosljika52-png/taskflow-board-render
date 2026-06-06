@@ -47795,6 +47795,50 @@ body.is-global-loading {
   grid-column: 1 / -1;
 }
 
+.people-training-ra1-choice-block {
+  grid-column: 1 / -1;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 15px;
+  box-shadow: 0 10px 22px rgba(25, 45, 86, 0.045);
+}
+
+.people-training-ra1-choice-block .risk-assessment-job-choice-block-head {
+  align-items: start;
+  gap: 8px;
+}
+
+.people-training-ra1-choice-block .risk-assessment-job-choice-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+}
+
+.people-training-ra1-choice-block .risk-assessment-job-choice-block-head strong {
+  font-size: 0.78rem;
+}
+
+.people-training-ra1-choice-block .risk-assessment-job-choice-block-head small {
+  font-size: 0.68rem;
+}
+
+.people-training-ra1-choice-block > div {
+  gap: 6px;
+}
+
+.people-training-ra1-choice-block .risk-assessment-job-choice-block button,
+.people-training-ra1-choice-block button {
+  min-height: 29px;
+  padding: 6px 9px;
+  font-size: 0.7rem;
+}
+
+.people-training-inline-load-weight {
+  width: 92px;
+  min-height: 28px;
+  font-size: 0.68rem;
+}
+
 .people-training-mini-grid textarea {
   min-height: 112px;
   resize: vertical;
@@ -58664,6 +58708,8 @@ button.work-order-editor-section-head:focus-visible {
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
   align-content: stretch;
+  gap: 0;
+  min-height: 0;
   padding: 0;
   contain: layout paint;
   isolation: isolate;
@@ -58693,8 +58739,10 @@ button.work-order-editor-section-head:focus-visible {
   inset: 14px;
   z-index: 2190;
   width: auto;
-  height: auto;
-  max-height: none;
+  height: calc(100vh - 28px);
+  height: calc(100dvh - 28px);
+  max-height: calc(100vh - 28px);
+  max-height: calc(100dvh - 28px);
   max-width: none;
   overflow: hidden;
   border-radius: 22px;
@@ -58704,14 +58752,18 @@ button.work-order-editor-section-head:focus-visible {
 
 .risk-assessment-editor-body {
   min-height: 0;
-  height: auto;
-  overflow: auto;
+  height: 100%;
+  overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior: contain;
   padding: 16px 20px 20px;
   scrollbar-gutter: stable;
   transform: translateZ(0);
   will-change: scroll-position;
+}
+
+.risk-assessment-editor-body > .entity-form {
+  min-height: max-content;
 }
 
 .risk-assessment-export-status {
@@ -70581,6 +70633,16 @@ button.risk-assessment-armor-tree-row:focus-visible,
 }
 
 @media (max-width: 620px) {
+  .risk-assessment-editor-panel.is-modal-open,
+  .risk-assessment-editor-panel:not([hidden]) {
+    inset: 8px;
+    height: calc(100vh - 16px);
+    height: calc(100dvh - 16px);
+    max-height: calc(100vh - 16px);
+    max-height: calc(100dvh - 16px);
+    border-radius: 20px;
+  }
+
   .risk-assessment-editor-body {
     padding-inline: 12px;
   }

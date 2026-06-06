@@ -11382,6 +11382,7 @@ function applyPeopleTrainingRiskWorkplaceSelection(value = peopleTrainingRiskWor
     "medicalPpe",
   ].forEach((key) => {
     setPeopleTrainingSafeWorkFieldValue(`details.${key}`, option.data[key] || "");
+    syncPeopleTrainingRa1ChoiceBlocks(`details.${key}`);
   });
   setPeopleTrainingSafeWorkFieldValue(
     "details.examReason",
@@ -12455,6 +12456,17 @@ function createPeopleTrainingSectionSummary({ number = "", title = "", brief = "
   return summary;
 }
 
+function isPeopleTrainingRa1DetailField(field = "") {
+  return [
+    "details.medicalWorkplace",
+    "details.medicalWorkOrganization",
+    "details.medicalBodyPositions",
+    "details.medicalLoadWeights",
+    "details.medicalImportantFunctions",
+    "details.medicalWorkConditions",
+  ].includes(String(field || ""));
+}
+
 function createPeopleTrainingDetailField({
   label = "",
   field = "",
@@ -12494,6 +12506,17 @@ function createPeopleTrainingDetailField({
       input.value = formatDateInputDisplayValue(normalizePeopleTrainingDate(input.value));
     });
   }
+  if (isPeopleTrainingRa1DetailField(field)) {
+    input.addEventListener("input", () => {
+      const inputs = Array.from(peopleTrainingFormTrainingGrid?.querySelectorAll(`[data-training-field="${field}"]`) ?? []);
+      inputs.forEach((otherInput) => {
+        if (otherInput !== input && (otherInput instanceof HTMLInputElement || otherInput instanceof HTMLTextAreaElement)) {
+          otherInput.value = input.value;
+        }
+      });
+      syncPeopleTrainingRa1ChoiceBlocks(field);
+    });
+  }
   fieldLabel.append(labelText, input);
   return fieldLabel;
 }
@@ -12520,6 +12543,286 @@ function createPeopleTrainingRiskWorkplaceSelectField(record = {}, details = {})
 
   fieldLabel.append(labelText, select);
   return fieldLabel;
+}
+
+function normalizePeopleTrainingChoiceText(value = "") {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("hr")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+function splitPeopleTrainingChoiceText(value = "") {
+  return String(value || "")
+    .split(/\n|;|,/)
+    .map((entry) => entry.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+}
+
+function hasPeopleTrainingChoiceTextValue(value = "", option = "") {
+  const optionKey = normalizePeopleTrainingChoiceText(option);
+  if (!optionKey) {
+    return false;
+  }
+  return splitPeopleTrainingChoiceText(value).some((entry) => {
+    const entryKey = normalizePeopleTrainingChoiceText(entry);
+    return entryKey === optionKey || entryKey.startsWith(`${optionKey} `) || entryKey.includes(optionKey);
+  });
+}
+
+function formatPeopleTrainingChoiceText(tokens = []) {
+  return Array.from(new Set(
+    (tokens ?? [])
+      .map((entry) => String(entry || "").replace(/\s+/g, " ").trim())
+      .filter(Boolean),
+  )).join(", ");
+}
+
+function updatePeopleTrainingChoiceTextValue(value = "", option = "", selected = true) {
+  const optionKey = normalizePeopleTrainingChoiceText(option);
+  const tokens = splitPeopleTrainingChoiceText(value)
+    .filter((entry) => {
+      const entryKey = normalizePeopleTrainingChoiceText(entry);
+      return !(entryKey === optionKey || entryKey.startsWith(`${optionKey} `) || entryKey.includes(optionKey));
+    });
+  if (selected) {
+    tokens.push(option);
+  }
+  return formatPeopleTrainingChoiceText(tokens);
+}
+
+function getPeopleTrainingChoiceFieldValue(field = "", root = null) {
+  const selector = `[data-training-field="${field}"]`;
+  const scopedInput = root?.querySelector?.(selector);
+  if (
+    scopedInput instanceof HTMLInputElement
+    || scopedInput instanceof HTMLTextAreaElement
+    || scopedInput instanceof HTMLSelectElement
+  ) {
+    return scopedInput.value || "";
+  }
+  const inputs = Array.from(peopleTrainingFormTrainingGrid?.querySelectorAll(selector) ?? [])
+    .filter((input) => (
+      input instanceof HTMLInputElement
+      || input instanceof HTMLTextAreaElement
+      || input instanceof HTMLSelectElement
+    ));
+  return inputs.find((input) => String(input.value || "").trim())?.value || inputs[0]?.value || "";
+}
+
+function getPeopleTrainingLoadWeightValue(value = "", option = "") {
+  const optionKey = normalizePeopleTrainingChoiceText(option);
+  const token = splitPeopleTrainingChoiceText(value).find((entry) => {
+    const entryKey = normalizePeopleTrainingChoiceText(entry);
+    return entryKey === optionKey || entryKey.startsWith(`${optionKey} `) || entryKey.includes(optionKey);
+  });
+  if (!token || !/[:=-]/.test(token)) {
+    return "";
+  }
+  return token.split(/[:=-]/).slice(1).join("-").trim();
+}
+
+function updatePeopleTrainingLoadWeightValue(value = "", option = "", weight = "") {
+  const selectedValue = weight ? `${option}: ${weight}` : option;
+  const withoutOption = updatePeopleTrainingChoiceTextValue(value, option, false);
+  return updatePeopleTrainingChoiceTextValue(withoutOption, selectedValue, true);
+}
+
+function syncPeopleTrainingRa1ChoiceBlocks(field = "") {
+  const blocks = Array.from(peopleTrainingFormTrainingGrid?.querySelectorAll(`[data-people-training-choice-field="${field}"]`) ?? []);
+  blocks.forEach((block) => {
+    const card = block.closest("[data-training-type]");
+    const value = getPeopleTrainingChoiceFieldValue(field, card);
+    block.querySelectorAll("[data-people-training-choice-option]").forEach((button) => {
+      const option = button.dataset.peopleTrainingChoiceOption || "";
+      const selected = hasPeopleTrainingChoiceTextValue(value, option);
+      button.classList.toggle("is-selected", selected);
+      button.closest(".risk-assessment-choice-option")?.classList.toggle("is-selected", selected);
+      const select = button.parentElement?.querySelector("[data-people-training-load-weight]");
+      if (select instanceof HTMLSelectElement) {
+        select.value = getPeopleTrainingLoadWeightValue(value, option);
+        select.hidden = !selected;
+      }
+    });
+  });
+}
+
+function setPeopleTrainingChoiceFieldValue(field = "", value = "") {
+  setPeopleTrainingSafeWorkFieldValue(field, value);
+  syncPeopleTrainingRa1ChoiceBlocks(field);
+}
+
+function getPeopleTrainingRa1ChoiceGroups() {
+  return [
+    {
+      title: "Mjesto rada",
+      helper: "RA-1 kućice: unutra, vani, visina, jama, voda i mokro.",
+      key: "medicalWorkplace",
+      field: "details.medicalWorkplace",
+      options: RISK_ASSESSMENT_WORKPLACE_OPTIONS,
+      icon: "location",
+      tone: "sky",
+    },
+    {
+      title: "Organizacija rada",
+      helper: "Smjene, noćni rad, teren, samostalno, grupa, stranke, traka i tempo.",
+      key: "medicalWorkOrganization",
+      field: "details.medicalWorkOrganization",
+      options: RISK_ASSESSMENT_ORGANIZATION_OPTIONS,
+      icon: "team",
+      tone: "indigo",
+    },
+    {
+      title: "Položaj tijela i aktivnosti",
+      helper: "Označi položaje i aktivnosti koje se ponavljaju na poslu.",
+      key: "medicalBodyPositions",
+      field: "details.medicalBodyPositions",
+      options: JOB_BODY_POSITION_OPTIONS,
+      icon: "activity",
+      tone: "violet",
+    },
+    {
+      title: "Teret / ručno rukovanje",
+      helper: "Odaberi vrstu rukovanja teretom i po potrebi kg raspon.",
+      key: "medicalLoadWeights",
+      field: "details.medicalLoadWeights",
+      options: RISK_ASSESSMENT_LOAD_WEIGHT_FIELDS.map((item) => item.option),
+      icon: "activity",
+      tone: "amber",
+      loadWeights: true,
+    },
+    {
+      title: "U poslu je važno",
+      helper: "Funkcije koje se povlače u RA-1 i pregled vida.",
+      key: "medicalImportantFunctions",
+      field: "details.medicalImportantFunctions",
+      options: JOB_IMPORTANT_FUNCTION_OPTIONS,
+      icon: "eye",
+      tone: "emerald",
+    },
+    {
+      title: "Uvjeti rada",
+      helper: "Mikroklima, buka, vibracije, tlak, ozljede, zračenja i prašina.",
+      key: "medicalWorkConditions",
+      field: "details.medicalWorkConditions",
+      options: JOB_WORK_CONDITION_OPTIONS,
+      icon: "thermometer",
+      tone: "amber",
+    },
+  ];
+}
+
+function createPeopleTrainingRa1ChoiceBlock({
+  title = "",
+  helper = "",
+  field = "",
+  value = "",
+  options = [],
+  icon = "note",
+  tone = "slate",
+  loadWeights = false,
+} = {}) {
+  const block = document.createElement("section");
+  block.className = `people-training-ra1-choice-block risk-assessment-job-choice-block is-${tone}`;
+  block.dataset.peopleTrainingChoiceField = field;
+
+  const head = document.createElement("div");
+  head.className = "risk-assessment-job-choice-block-head";
+  const iconNode = document.createElement("span");
+  iconNode.className = "risk-assessment-job-choice-icon";
+  iconNode.setAttribute("aria-hidden", "true");
+  iconNode.innerHTML = renderRiskAssessmentRiskIcon(icon);
+  const copy = document.createElement("div");
+  const titleNode = document.createElement("strong");
+  titleNode.textContent = title;
+  copy.append(titleNode);
+  if (helper) {
+    const helperNode = document.createElement("small");
+    helperNode.textContent = helper;
+    copy.append(helperNode);
+  }
+  head.append(iconNode, copy);
+
+  const choices = document.createElement("div");
+  (options ?? []).forEach((option) => {
+    const selected = hasPeopleTrainingChoiceTextValue(value, option);
+    const wrap = document.createElement("span");
+    wrap.className = `risk-assessment-choice-option${selected ? " is-selected" : ""}${loadWeights && selected ? " has-inline-weight" : ""}`;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = selected ? "is-selected" : "";
+    button.dataset.peopleTrainingChoiceOption = option;
+    button.textContent = option;
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const card = button.closest("[data-training-type]");
+      const currentValue = getPeopleTrainingChoiceFieldValue(field, card);
+      const nextSelected = !hasPeopleTrainingChoiceTextValue(currentValue, option);
+      setPeopleTrainingChoiceFieldValue(field, updatePeopleTrainingChoiceTextValue(currentValue, option, nextSelected));
+    });
+    wrap.append(button);
+
+    if (loadWeights) {
+      const select = document.createElement("select");
+      select.className = "risk-assessment-inline-load-weight people-training-inline-load-weight";
+      select.dataset.peopleTrainingLoadWeight = option;
+      select.hidden = !selected;
+      select.setAttribute("aria-label", `${option} u kg`);
+      select.append(
+        ...[
+          { value: "", label: "kg" },
+          ...RISK_ASSESSMENT_LOAD_WEIGHT_OPTIONS.map((weight) => ({ value: weight, label: weight })),
+        ].map((weightOption) => {
+          const node = document.createElement("option");
+          node.value = weightOption.value;
+          node.textContent = weightOption.label;
+          return node;
+        }),
+      );
+      select.value = getPeopleTrainingLoadWeightValue(value, option);
+      select.addEventListener("change", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const card = select.closest("[data-training-type]");
+        const currentValue = getPeopleTrainingChoiceFieldValue(field, card);
+        setPeopleTrainingChoiceFieldValue(field, updatePeopleTrainingLoadWeightValue(currentValue, option, select.value));
+      });
+      wrap.append(select);
+    }
+    choices.append(wrap);
+  });
+
+  block.append(head, choices);
+  return block;
+}
+
+function createPeopleTrainingRa1ChoiceBlocks(values = {}) {
+  return getPeopleTrainingRa1ChoiceGroups().map((group) => createPeopleTrainingRa1ChoiceBlock({
+    ...group,
+    value: values[group.key] || "",
+  }));
+}
+
+function createPeopleTrainingRa1ManualFields(values = {}) {
+  return [
+    createPeopleTrainingDetailField({ label: "Mjesto rada (RA-1)", field: "details.medicalWorkplace", value: values.medicalWorkplace || "", placeholder: "u zatvorenom, na otvorenom, na visini..." }),
+    createPeopleTrainingDetailField({ label: "Organizacija rada (RA-1)", field: "details.medicalWorkOrganization", value: values.medicalWorkOrganization || "", placeholder: "smjene, noćni rad, terenski rad..." }),
+    createPeopleTrainingDetailField({ label: "Položaji i aktivnosti (RA-1)", field: "details.medicalBodyPositions", value: values.medicalBodyPositions || "", placeholder: "stajanje, sagibanje, sjedenje..." }),
+    createPeopleTrainingDetailField({ label: "Teret / ručno rukovanje (RA-1)", field: "details.medicalLoadWeights", value: values.medicalLoadWeights || "", placeholder: "npr. dizanje tereta: 10-15 kg" }),
+    createPeopleTrainingDetailField({ label: "Važne funkcije (RA-1)", field: "details.medicalImportantFunctions", value: values.medicalImportantFunctions || "", placeholder: "vid na blizinu, vid na daljinu, sluh..." }),
+    createPeopleTrainingDetailField({
+      label: "Radni uvjeti i mikroklima (RA-1)",
+      field: "details.medicalWorkConditions",
+      value: values.medicalWorkConditions || "",
+      placeholder: "buka, temperatura, vlaga, vibracije, prašina...",
+      wide: true,
+      multiline: true,
+      rows: 3,
+    }),
+  ];
 }
 
 function createPeopleTrainingTypeCardActions(record = {}, item = {}) {
@@ -12617,6 +12920,14 @@ function createPeopleTrainingTypeCard(item = {}, record = {}) {
   fields.className = "people-training-mini-grid is-structured";
 
   if (sectionKey === "safe-work") {
+    const safeWorkRa1Values = {
+      medicalWorkplace: details.medicalWorkplace || safeWorkDetails.medicalWorkplace || "",
+      medicalWorkOrganization: details.medicalWorkOrganization || safeWorkDetails.medicalWorkOrganization || "",
+      medicalBodyPositions: details.medicalBodyPositions || safeWorkDetails.medicalBodyPositions || "",
+      medicalLoadWeights: details.medicalLoadWeights || safeWorkDetails.medicalLoadWeights || "",
+      medicalImportantFunctions: details.medicalImportantFunctions || safeWorkDetails.medicalImportantFunctions || "",
+      medicalWorkConditions: details.medicalWorkConditions || safeWorkDetails.medicalWorkConditions || "",
+    };
     fields.append(
       createPeopleTrainingRiskWorkplaceSelectField(personRecord, details),
       createPeopleTrainingDetailField({ label: "Broj zapisnika", field: "recordNumber", value: recordNumber, readOnly: true }),
@@ -12630,6 +12941,8 @@ function createPeopleTrainingTypeCard(item = {}, record = {}) {
         multiline: true,
         rows: 4,
       }),
+      ...createPeopleTrainingRa1ChoiceBlocks(safeWorkRa1Values),
+      ...createPeopleTrainingRa1ManualFields(safeWorkRa1Values),
       createPeopleTrainingDetailField({ label: "Mjesto teorijskog osposobljavanja", field: "details.theoryPlace", value: details.theoryPlace || personRecord.workPlace || personRecord.locationName || "" }),
       createPeopleTrainingDetailField({ label: "Datum teorijski dio", field: "details.theoryDate", value: details.theoryDate || item.issuedOn || item.passedOn || "", isDate: true }),
       createPeopleTrainingDetailField({ label: "Način provođenja teorijskog dijela", field: "details.theoryMethod", value: details.theoryMethod || item.examMode || "" }),
@@ -12913,6 +13226,14 @@ function createPeopleTrainingMedicalCombinedCard(items = [], record = {}) {
     || referralData[key]
     || ""
   );
+  const ra1ChoiceValues = {
+    medicalWorkplace: getReferralValue("medicalWorkplace"),
+    medicalWorkOrganization: getReferralValue("medicalWorkOrganization"),
+    medicalBodyPositions: getReferralValue("medicalBodyPositions"),
+    medicalLoadWeights: getReferralValue("medicalLoadWeights"),
+    medicalImportantFunctions: getReferralValue("medicalImportantFunctions"),
+    medicalWorkConditions: getReferralValue("medicalWorkConditions"),
+  };
   const medicalJobTitle = medicalExamDetails.medicalJobTitle || safeWorkDetails.jobTitle || personRecord.jobTitle || "";
   const medicalJobDescription = medicalExamDetails.medicalJobDescription || safeWorkDetails.jobDescription || personRecord.jobDescription || personRecord.note || "";
   const medicalProvider = medicalExamItem.provider || certificateItem.provider || visionItem.provider || "";
@@ -12958,20 +13279,8 @@ function createPeopleTrainingMedicalCombinedCard(items = [], record = {}) {
         multiline: true,
         rows: 4,
       }),
-      createPeopleTrainingDetailField({ label: "Mjesto rada (unutra/vani)", field: "details.medicalWorkplace", value: getReferralValue("medicalWorkplace"), placeholder: "u zatvorenom, na otvorenom, na visini..." }),
-      createPeopleTrainingDetailField({ label: "Organizacija rada", field: "details.medicalWorkOrganization", value: getReferralValue("medicalWorkOrganization"), placeholder: "smjene, noćni rad, terenski rad..." }),
-      createPeopleTrainingDetailField({ label: "Položaji i aktivnosti", field: "details.medicalBodyPositions", value: getReferralValue("medicalBodyPositions"), placeholder: "stajanje, sagibanje, sjedenje..." }),
-      createPeopleTrainingDetailField({ label: "Teret / ručno rukovanje", field: "details.medicalLoadWeights", value: getReferralValue("medicalLoadWeights"), placeholder: "npr. dizanje tereta: 10-15 kg" }),
-      createPeopleTrainingDetailField({ label: "Važne funkcije", field: "details.medicalImportantFunctions", value: getReferralValue("medicalImportantFunctions"), placeholder: "vid na blizinu, vid na daljinu, sluh..." }),
-      createPeopleTrainingDetailField({
-        label: "Radni uvjeti i mikroklima",
-        field: "details.medicalWorkConditions",
-        value: getReferralValue("medicalWorkConditions"),
-        placeholder: "buka, temperatura, vlaga, vibracije, prašina...",
-        wide: true,
-        multiline: true,
-        rows: 3,
-      }),
+      ...createPeopleTrainingRa1ChoiceBlocks(ra1ChoiceValues),
+      ...createPeopleTrainingRa1ManualFields(ra1ChoiceValues),
       createPeopleTrainingDetailField({
         label: "Radna oprema, strojevi i alati",
         field: "details.medicalEquipment",
