@@ -15,7 +15,7 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
     <link rel="stylesheet" href="/assets/ozo-tailwind.css?v=20260602-risk-export-card-matrix-v1" />
-    <link rel="stylesheet" href="/styles.css?v=20260606-risk-rich-textbox-v1" />
+    <link rel="stylesheet" href="/styles.css?v=20260606-risk-ux-zos-workplace-v1" />
     <link rel="stylesheet" href="/src/styles/variables.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/reset.css?v=20260507a" />
     <link rel="stylesheet" href="/src/styles/builder.css?v=20260509e" />
@@ -4475,6 +4475,10 @@
                         <input id="people-training-arrival-date" type="date" />
                       </label>
                       <label>
+                        <span>Radno mjesto iz procjene</span>
+                        <select id="people-training-risk-workplace"></select>
+                      </label>
+                      <label>
                         <span>Mjesto rada</span>
                         <input id="people-training-work-place" type="text" />
                       </label>
@@ -4884,7 +4888,7 @@
                         </div>
                         <div id="risk-assessment-authorized-persons" class="risk-assessment-compact-list"></div>
                         <div class="risk-assessment-basic-stack">
-                          <label class="field">
+                          <label class="field risk-assessment-basic-textbox is-znr-third is-znr-authorized">
                             <div class="risk-assessment-field-head">
                               <span>Ovlaštenici za zaštitu na radu</span>
                               <div class="risk-assessment-template-inline">
@@ -4894,7 +4898,7 @@
                             </div>
                             <textarea id="risk-assessment-znr-authorized-description" rows="3" data-risk-autogrow></textarea>
                           </label>
-                          <label class="field">
+                          <label class="field risk-assessment-basic-textbox is-znr-half is-znr-service">
                             <div class="risk-assessment-field-head">
                               <span>Način obavljanja poslova zaštite na radu</span>
                               <div class="risk-assessment-template-inline">
@@ -4904,7 +4908,7 @@
                             </div>
                             <textarea id="risk-assessment-znr-service-mode" rows="3" data-risk-autogrow placeholder="npr. poslovi zaštite na radu obavljaju se putem ugovorenog stručnjaka / ovlaštene osobe..."></textarea>
                           </label>
-                          <label class="field">
+                          <label class="field risk-assessment-basic-textbox is-znr-half is-znr-experts">
                             <div class="risk-assessment-field-head">
                               <span>Stručnjaci zaštite na radu</span>
                               <div class="risk-assessment-template-inline">
@@ -4914,7 +4918,7 @@
                             </div>
                             <textarea id="risk-assessment-znr-experts" rows="3" data-risk-autogrow></textarea>
                           </label>
-                          <label class="field">
+                          <label class="field risk-assessment-basic-textbox is-znr-third is-znr-representatives">
                             <div class="risk-assessment-field-head">
                               <span>Povjerenici za zaštitu na radu</span>
                               <div class="risk-assessment-template-inline">
@@ -4924,7 +4928,7 @@
                             </div>
                             <textarea id="risk-assessment-znr-representatives" rows="3" data-risk-autogrow></textarea>
                           </label>
-                          <label class="field">
+                          <label class="field risk-assessment-basic-textbox is-znr-third is-znr-committee">
                             <div class="risk-assessment-field-head">
                               <span>Način sudjelovanja odbora zaštite na radu</span>
                               <div class="risk-assessment-template-inline">
@@ -9869,7 +9873,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260606-risk-rich-textbox-v1"></script>
+    <script type="module" src="/src/main.js?v=20260606-risk-ux-zos-workplace-v1"></script>
     <script type="module" src="/assets/ozo-panel.js?v=20260602-risk-export-card-matrix-v1"></script>
   </body>
 </html>

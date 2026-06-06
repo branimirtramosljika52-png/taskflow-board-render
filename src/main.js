@@ -6202,6 +6202,7 @@ const peopleTrainingBirthDateInput = document.querySelector("#people-training-bi
 const peopleTrainingBirthCountryInput = document.querySelector("#people-training-birth-country");
 const peopleTrainingBirthPlaceInput = document.querySelector("#people-training-birth-place");
 const peopleTrainingArrivalDateInput = document.querySelector("#people-training-arrival-date");
+const peopleTrainingRiskWorkplaceInput = document.querySelector("#people-training-risk-workplace");
 const peopleTrainingWorkPlaceInput = document.querySelector("#people-training-work-place");
 const peopleTrainingActivityStatusInput = document.querySelector("#people-training-activity-status");
 const peopleTrainingEmailInput = document.querySelector("#people-training-email");
@@ -10757,6 +10758,241 @@ function syncPeopleTrainingSelectOptions() {
   }
 }
 
+function normalizeRiskAssessmentWorkplaceOptionText(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "";
+  }
+  const text = /<[^>]+>/.test(raw) ? richTextHtmlToPlainText(raw) : raw;
+  return text
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
+function buildRiskAssessmentWorkplaceTrainingDescription(job = {}, assessment = {}) {
+  const risks = (job.riskRows ?? [])
+    .map((risk) => normalizeRiskAssessmentWorkplaceOptionText(joinUniqueRiskAssessmentTextBlocks([
+      risk.workNote,
+      risk.description,
+      risk.hazard,
+    ])))
+    .filter(Boolean)
+    .slice(0, 10);
+  const riskText = risks.length
+    ? `Poslovi, aktivnosti i izloženosti:\n${risks.map((line) => `- ${line}`).join("\n")}`
+    : "";
+  return joinUniqueRiskAssessmentTextBlocks([
+    normalizeRiskAssessmentWorkplaceOptionText(job.description),
+    normalizeRiskAssessmentWorkplaceOptionText(job.tasks),
+    normalizeRiskAssessmentWorkplaceOptionText(job.detailedDescription),
+    normalizeRiskAssessmentWorkplaceOptionText(job.shortDescription),
+    normalizeRiskAssessmentWorkplaceOptionText(job.workplaceDescription),
+    normalizeRiskAssessmentWorkplaceOptionText(job.workOrganization || job.organization),
+    normalizeRiskAssessmentWorkplaceOptionText(job.workEquipment || job.toolsAndMachines),
+    normalizeRiskAssessmentWorkplaceOptionText(job.workSubstances || job.chemicalSubstances),
+    normalizeRiskAssessmentWorkplaceOptionText(job.harmfulSources),
+    normalizeRiskAssessmentWorkplaceOptionText(job.trainings),
+    riskText,
+    assessment.assessmentNumber ? `Izvor: procjena rizika ${assessment.assessmentNumber}` : "",
+  ]);
+}
+
+function createRiskAssessmentWorkplaceOption({
+  assessment = {},
+  source = "job",
+  sourceId = "",
+  index = 0,
+  title = "",
+  description = "",
+  meta = "",
+} = {}) {
+  const jobTitle = normalizeRiskAssessmentWorkplaceOptionText(title);
+  if (!jobTitle) {
+    return null;
+  }
+  const normalizedDescription = normalizeRiskAssessmentWorkplaceOptionText(description);
+  const sourceKey = [assessment.id || assessment.assessmentNumber || "assessment", source, sourceId || index].join("::");
+  return {
+    value: sourceKey,
+    label: jobTitle,
+    meta,
+    data: {
+      jobTitle,
+      jobDescription: normalizedDescription,
+      assessmentId: assessment.id || "",
+      assessmentNumber: assessment.assessmentNumber || "",
+    },
+  };
+}
+
+function getRiskAssessmentWorkplaceOptionsForCompany(companyId = "", { includeEmpty = true } = {}) {
+  const normalizedCompanyId = String(companyId || "").trim();
+  const sourceAssessments = sortRiskAssessments((state.riskAssessments ?? [])
+    .filter((assessment) => !normalizedCompanyId || String(assessment.companyId || "") === normalizedCompanyId));
+  const seenTitles = new Set();
+  const options = [];
+
+  sourceAssessments.forEach((assessment) => {
+    const sourceMeta = [assessment.assessmentNumber, assessment.companyName].filter(Boolean).join(" · ");
+    (assessment.jobs ?? []).forEach((rawJob, index) => {
+      const job = createRiskAssessmentJobDraft(rawJob);
+      const option = createRiskAssessmentWorkplaceOption({
+        assessment,
+        source: "job",
+        sourceId: job.id,
+        index,
+        title: job.jobTitle,
+        description: buildRiskAssessmentWorkplaceTrainingDescription(job, assessment),
+        meta: sourceMeta || "Analiza radnog mjesta",
+      });
+      if (!option) {
+        return;
+      }
+      const titleKey = option.data.jobTitle.toLocaleLowerCase("hr");
+      if (seenTitles.has(titleKey)) {
+        return;
+      }
+      seenTitles.add(titleKey);
+      options.push(option);
+    });
+
+    (assessment.organizationUnits ?? []).forEach((unit, index) => {
+      if (normalizeRiskAssessmentUnitType(unit.type) !== "workplace") {
+        return;
+      }
+      const option = createRiskAssessmentWorkplaceOption({
+        assessment,
+        source: "unit",
+        sourceId: unit.id,
+        index,
+        title: unit.name,
+        description: joinUniqueRiskAssessmentTextBlocks([
+          normalizeRiskAssessmentWorkplaceOptionText(unit.description),
+          normalizeRiskAssessmentWorkplaceOptionText(unit.shortDescription),
+          normalizeRiskAssessmentWorkplaceOptionText(unit.note),
+        ]),
+        meta: sourceMeta || "Struktura procjene",
+      });
+      if (!option) {
+        return;
+      }
+      const titleKey = option.data.jobTitle.toLocaleLowerCase("hr");
+      if (seenTitles.has(titleKey)) {
+        return;
+      }
+      seenTitles.add(titleKey);
+      options.push(option);
+    });
+
+    (assessment.employerData?.workplaceJobs ?? []).forEach((row, index) => {
+      const countText = [row.maleCount ? `muški ${row.maleCount}` : "", row.femaleCount ? `žene ${row.femaleCount}` : ""]
+        .filter(Boolean)
+        .join(", ");
+      const option = createRiskAssessmentWorkplaceOption({
+        assessment,
+        source: "workplace-table",
+        sourceId: row.id,
+        index,
+        title: row.jobTitle,
+        description: joinUniqueRiskAssessmentTextBlocks([
+          normalizeRiskAssessmentWorkplaceOptionText(row.note),
+          countText ? `Broj radnika: ${countText}` : "",
+        ]),
+        meta: sourceMeta || "Tablični popis poslova",
+      });
+      if (!option) {
+        return;
+      }
+      const titleKey = option.data.jobTitle.toLocaleLowerCase("hr");
+      if (seenTitles.has(titleKey)) {
+        return;
+      }
+      seenTitles.add(titleKey);
+      options.push(option);
+    });
+  });
+
+  const decoratedOptions = options.map((option) => ({
+    value: option.value,
+    label: option.meta ? `${option.label} · ${option.meta}` : option.label,
+    data: option.data,
+  }));
+  if (!includeEmpty) {
+    return decoratedOptions;
+  }
+  return [
+    { value: "", label: decoratedOptions.length ? "Ručno / bez veze s procjenom" : "Nema radnih mjesta iz procjene" },
+    ...decoratedOptions,
+  ];
+}
+
+function getRiskAssessmentWorkplaceOptionByValue(value = "", companyId = "") {
+  const normalizedValue = String(value || "").trim();
+  if (!normalizedValue) {
+    return null;
+  }
+  return getRiskAssessmentWorkplaceOptionsForCompany(companyId, { includeEmpty: false })
+    .find((option) => String(option.value) === normalizedValue) ?? null;
+}
+
+function findRiskAssessmentWorkplaceOptionByTitle(title = "", companyId = "") {
+  const normalizedTitle = normalizeRiskAssessmentWorkplaceOptionText(title).toLocaleLowerCase("hr");
+  if (!normalizedTitle) {
+    return null;
+  }
+  return getRiskAssessmentWorkplaceOptionsForCompany(companyId, { includeEmpty: false })
+    .find((option) => String(option.data?.jobTitle || "").toLocaleLowerCase("hr") === normalizedTitle) ?? null;
+}
+
+function getPeopleTrainingSafeWorkDetails(record = {}) {
+  const safeWorkItem = normalizePeopleTrainingItemsForUi(record.trainingItems ?? [])
+    .find((item) => getPeopleTrainingFormSectionKey(item) === "safe-work");
+  return safeWorkItem?.details ?? {};
+}
+
+function refreshPeopleTrainingRiskWorkplaceOptions(record = {}) {
+  if (!(peopleTrainingRiskWorkplaceInput instanceof HTMLSelectElement)) {
+    return;
+  }
+  const sourceRecord = record && typeof record === "object" ? record : {};
+  const companyId = peopleTrainingCompanyInput?.value || sourceRecord.companyId || "";
+  const details = getPeopleTrainingSafeWorkDetails(sourceRecord);
+  const selectedOption = details.riskWorkplaceKey
+    ? getRiskAssessmentWorkplaceOptionByValue(details.riskWorkplaceKey, companyId)
+    : findRiskAssessmentWorkplaceOptionByTitle(details.jobTitle || sourceRecord.jobTitle || "", companyId);
+  replaceSelectOptions(
+    peopleTrainingRiskWorkplaceInput,
+    getRiskAssessmentWorkplaceOptionsForCompany(companyId),
+    selectedOption?.value || "",
+  );
+  peopleTrainingRiskWorkplaceInput.disabled = !companyId || peopleTrainingRiskWorkplaceInput.options.length <= 1;
+}
+
+function setPeopleTrainingSafeWorkFieldValue(field = "", value = "") {
+  const input = peopleTrainingFormTrainingGrid?.querySelector(`[data-training-field="${field}"]`);
+  if (input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement || input instanceof HTMLSelectElement) {
+    input.value = String(value || "");
+  }
+}
+
+function applyPeopleTrainingRiskWorkplaceSelection(value = peopleTrainingRiskWorkplaceInput?.value || "") {
+  const option = getRiskAssessmentWorkplaceOptionByValue(value, peopleTrainingCompanyInput?.value || "");
+  if (!option?.data) {
+    setPeopleTrainingSafeWorkFieldValue("details.riskWorkplaceKey", "");
+    return;
+  }
+  setPeopleTrainingSafeWorkFieldValue("details.riskWorkplaceKey", option.value);
+  setPeopleTrainingSafeWorkFieldValue("details.jobTitle", option.data.jobTitle || "");
+  setPeopleTrainingSafeWorkFieldValue("details.jobDescription", option.data.jobDescription || "");
+  if (peopleTrainingJobTitleInput) {
+    peopleTrainingJobTitleInput.value = option.data.jobTitle || "";
+  }
+  syncPeopleTrainingPersonalSummary();
+}
+
 function getSelectedOptionLabel(select, fallback = "") {
   if (!(select instanceof HTMLSelectElement)) {
     return fallback;
@@ -11808,6 +12044,14 @@ function createPeopleTrainingDetailField({
   return fieldLabel;
 }
 
+function createPeopleTrainingHiddenDetailField(field = "", value = "") {
+  const input = document.createElement("input");
+  input.type = "hidden";
+  input.dataset.trainingField = field;
+  input.value = String(value || "");
+  return input;
+}
+
 function createPeopleTrainingTypeCardActions(record = {}, item = {}) {
   const actions = document.createElement("div");
   actions.className = "people-training-type-actions";
@@ -11896,6 +12140,7 @@ function createPeopleTrainingTypeCard(item = {}, record = {}) {
 
   if (sectionKey === "safe-work") {
     fields.append(
+      createPeopleTrainingHiddenDetailField("details.riskWorkplaceKey", details.riskWorkplaceKey || ""),
       createPeopleTrainingDetailField({ label: "Broj zapisnika", field: "recordNumber", value: recordNumber, readOnly: true }),
       createPeopleTrainingDetailField({ label: "Naziv radnog mjesta", field: "details.jobTitle", value: details.jobTitle || personRecord.jobTitle || "" }),
       createPeopleTrainingDetailField({
@@ -12021,6 +12266,7 @@ function resetPeopleTrainingForm() {
   }
   syncPeopleTrainingPersonalSummary();
   renderPeopleTrainingGrid(null);
+  refreshPeopleTrainingRiskWorkplaceOptions(null);
   renderPeopleTrainingDossier(null);
   setPeopleTrainingFeedback("");
 }
@@ -12095,6 +12341,7 @@ function populatePeopleTrainingForm(record = {}) {
   }
   syncPeopleTrainingPersonalSummary();
   renderPeopleTrainingGrid(record);
+  refreshPeopleTrainingRiskWorkplaceOptions(record);
   renderPeopleTrainingDossier(record);
   setPeopleTrainingFeedback("");
 }
@@ -12172,6 +12419,7 @@ function readPeopleTrainingGridItems() {
     const typeOption = getPeopleTrainingTypeOption(type, activeRecord?.trainingItems ?? []);
     const details = { ...(existing.details ?? {}) };
     [
+      "riskWorkplaceKey",
       "jobTitle",
       "jobDescription",
       "theoryPlace",
@@ -84901,8 +85149,17 @@ function getClientPortalRecordFormFields(type = "worker", record = null, company
   ];
 
   if (type === "worker") {
+    const selectedRiskWorkplace = details.riskWorkplaceKey
+      ? getRiskAssessmentWorkplaceOptionByValue(details.riskWorkplaceKey, companyId)
+      : findRiskAssessmentWorkplaceOptionByTitle(details.jobTitle || "", companyId);
     fields.push(
       createClientPortalRecordField({ name: "fullName", label: "Ime i prezime", value: details.fullName, required: true }),
+      createClientPortalRecordField({
+        name: "riskWorkplaceKey",
+        label: "Radno mjesto iz procjene",
+        value: selectedRiskWorkplace?.value || "",
+        options: getRiskAssessmentWorkplaceOptionsForCompany(companyId),
+      }),
       createClientPortalRecordField({ name: "jobTitle", label: "Radno mjesto", value: details.jobTitle }),
       createClientPortalRecordField({ name: "email", label: "Email", value: details.email, type: "email" }),
       createClientPortalRecordField({ name: "phone", label: "Telefon", value: details.phone }),
@@ -85029,9 +85286,13 @@ function buildClientPortalRecordPayloadFromForm(form, type = "worker", companyId
   const details = {};
 
   if (type === "worker") {
+    const riskWorkplaceKey = getValue("riskWorkplaceKey");
+    const riskWorkplace = getRiskAssessmentWorkplaceOptionByValue(riskWorkplaceKey, companyId);
     Object.assign(details, {
       fullName: getValue("fullName"),
-      jobTitle: getValue("jobTitle"),
+      riskWorkplaceKey,
+      jobTitle: getValue("jobTitle") || riskWorkplace?.data?.jobTitle || "",
+      jobDescription: riskWorkplace?.data?.jobDescription || "",
       email: getValue("email"),
       phone: getValue("phone"),
       oib: getValue("oib"),
@@ -122578,6 +122839,20 @@ clientPortalRecordsRoot?.addEventListener("click", (event) => {
   }
 });
 
+clientPortalRecordsRoot?.addEventListener("change", (event) => {
+  const target = event.target instanceof Element ? event.target : null;
+  const select = target?.closest?.('select[name="riskWorkplaceKey"]');
+  if (!(select instanceof HTMLSelectElement) || !clientPortalRecordsRoot.contains(select)) {
+    return;
+  }
+  const form = select.closest("form");
+  const option = getRiskAssessmentWorkplaceOptionByValue(select.value, getClientPortalRecordsCompanyId());
+  const jobTitleInput = form?.querySelector('input[name="jobTitle"]');
+  if (jobTitleInput instanceof HTMLInputElement && option?.data?.jobTitle) {
+    jobTitleInput.value = option.data.jobTitle;
+  }
+});
+
 clientPortalRecordsRoot?.addEventListener("submit", (event) => {
   const form = event.target;
   if (!(form instanceof HTMLFormElement) || !clientPortalRecordsRoot.contains(form)) {
@@ -126992,12 +127267,20 @@ function setRiskAssessmentEditorOpen(open) {
   }
   if (open) {
     ensureRiskAssessmentModuleInModuleView();
+    riskAssessmentActiveBlock = "basic";
+    riskAssessmentEditorPanel?.scrollTo?.({ top: 0, left: 0, behavior: "auto" });
+    if (riskAssessmentEditorBody) {
+      riskAssessmentEditorBody.scrollTop = 0;
+      riskAssessmentEditorBody.scrollLeft = 0;
+    }
+    setRiskAssessmentActiveBlock("basic");
     requestAnimationFrame(() => {
       if (riskAssessmentEditorBody) {
         riskAssessmentEditorBody.scrollTop = 0;
+        riskAssessmentEditorBody.scrollLeft = 0;
       }
       riskAssessmentEditorBody?.focus({ preventScroll: true });
-      setRiskAssessmentActiveBlock(riskAssessmentActiveBlock || "basic");
+      setRiskAssessmentActiveBlock("basic");
     });
   } else {
     riskAssessmentReportTemplateDraft = getRiskAssessmentModuleTemplateDraft();
@@ -144362,7 +144645,12 @@ peopleTrainingCompanyInput?.addEventListener("change", () => {
       "",
     );
   }
+  refreshPeopleTrainingRiskWorkplaceOptions(null);
   syncPeopleTrainingPersonalSummary();
+});
+
+peopleTrainingRiskWorkplaceInput?.addEventListener("change", () => {
+  applyPeopleTrainingRiskWorkplaceSelection();
 });
 
 [
@@ -144376,6 +144664,7 @@ peopleTrainingCompanyInput?.addEventListener("change", () => {
   peopleTrainingBirthCountryInput,
   peopleTrainingBirthPlaceInput,
   peopleTrainingArrivalDateInput,
+  peopleTrainingRiskWorkplaceInput,
   peopleTrainingWorkPlaceInput,
   peopleTrainingActivityStatusInput,
   peopleTrainingEmailInput,
