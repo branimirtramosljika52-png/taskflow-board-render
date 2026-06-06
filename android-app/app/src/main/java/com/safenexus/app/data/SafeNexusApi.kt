@@ -47,6 +47,15 @@ class SafeNexusApi(
         }
     }
 
+    suspend fun workOrders(): Result<BootstrapData> = withContext(Dispatchers.IO) {
+        runCatching {
+            val json = JSONObject(request("/api/mobile/work-orders"))
+            BootstrapData(
+                workOrders = json.optJSONArray("workOrders").toWorkOrders(),
+            )
+        }
+    }
+
     suspend fun logout(): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             request("/api/auth/logout", method = "POST", body = "{}")

@@ -139,7 +139,7 @@ class SafeNexusViewModel(
     fun refresh() {
         state = state.copy(isLoading = true, error = "")
         viewModelScope.launch {
-            api.bootstrap()
+            api.workOrders()
                 .onSuccess { data ->
                     state = state.copy(workOrders = data.workOrders, isLoading = false, error = "")
                 }

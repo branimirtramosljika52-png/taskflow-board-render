@@ -1976,12 +1976,77 @@ function clientPortalItemIsVisible(clientScope, item = {}) {
   return clientPortalItemHasLocationAccess(clientScope, item);
 }
 
+function normalizeWorkOrderAssignmentText(value = "") {
+  return dbString(value)
+    .toLocaleLowerCase("hr")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\p{L}\p{N}@._+-]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function collectActorAssignmentTerms(actor = {}) {
+  const fullName = dbString(actor.fullName || [actor.firstName, actor.lastName].filter(Boolean).join(" "));
+  return Array.from(new Set([
+    fullName,
+    actor.displayName,
+    actor.email,
+    actor.username,
+    actor.legacyUsername,
+  ]
+    .map(normalizeWorkOrderAssignmentText)
+    .filter((value) => value.length >= 3)));
+}
+
+function collectWorkOrderAssignmentTerms(workOrder = {}) {
+  const executorValues = [
+    ...(Array.isArray(workOrder.executors) ? workOrder.executors : []),
+    workOrder.executor1,
+    workOrder.executor2,
+    workOrder.completedBy,
+  ];
+
+  return executorValues
+    .flatMap((value) => {
+      if (value && typeof value === "object") {
+        return [
+          value.fullName,
+          value.name,
+          value.displayName,
+          value.label,
+          value.email,
+          value.username,
+        ];
+      }
+      return [value];
+    })
+    .map(normalizeWorkOrderAssignmentText)
+    .filter((value) => value.length >= 3);
+}
+
+function isWorkOrderAssignedToActor(workOrder = {}, actor = {}) {
+  const actorTerms = collectActorAssignmentTerms(actor);
+  if (actorTerms.length === 0) {
+    return false;
+  }
+
+  return collectWorkOrderAssignmentTerms(workOrder).some((executorTerm) => (
+    actorTerms.some((actorTerm) => (
+      executorTerm === actorTerm
+      || (actorTerm.length >= 5 && executorTerm.includes(actorTerm))
+      || (executorTerm.length >= 5 && actorTerm.includes(executorTerm))
+    ))
+  ));
+}
+
 function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], actor = null) {
   const assignedCompanyIds = Array.from(new Set(
     assignments
       .filter((assignment) => String(assignment.organizationId) === String(organizationId))
       .map((assignment) => String(assignment.companyId)),
   ));
+  const assignedCompanyIdSet = new Set(assignedCompanyIds);
   const actorRole = normalizeRole(actor?.role);
   const canViewSensitiveAbsenceData = actorRole === ROLE_ADMIN || actorRole === ROLE_SUPER_ADMIN;
   const actorId = String(actor?.id ?? "");
@@ -2045,7 +2110,14 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
         || (item.companyId && visibleCompanyIds.has(String(item.companyId)))
       )
   );
-  const visibleWorkOrders = (rawSnapshot.workOrders ?? []).filter(isCompanyScopedItemVisible);
+  const isExecutorScopedWorkOrderVisible = (item = {}) => (
+    !clientPortalScope.isClientPortal
+    && assignedCompanyIdSet.has(String(item.companyId))
+    && isWorkOrderAssignedToActor(item, actor)
+  );
+  const visibleWorkOrders = (rawSnapshot.workOrders ?? []).filter((item) => (
+    isCompanyScopedItemVisible(item) || isExecutorScopedWorkOrderVisible(item)
+  ));
   const visibleWorkOrderIds = new Set(visibleWorkOrders.map((item) => String(item.id)));
   const visiblePeopleTrainingRecords = (rawSnapshot.peopleTrainingRecords ?? []).filter(isCompanyScopedItemVisible);
   const visibleClientPortalRecords = (

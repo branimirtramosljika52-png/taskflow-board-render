@@ -186,6 +186,56 @@ test("memory tenant repository resolves company permissions by profile role", as
   assert.equal(scoped.companies[0].id, "company-77");
 });
 
+test("memory tenant repository shows executor assigned work orders without company list access", async () => {
+  const repository = new MemoryTenantRepository();
+  await repository.init();
+
+  const superAdmin = await repository.authenticateUser("admin@local.test", "admin");
+  const organization = await repository.createOrganization(superAdmin, { name: "Mobile RN Org" });
+  await repository.assignCompanyToOrganization(organization.id, "company-mobile");
+
+  const worker = await repository.createUser(superAdmin, {
+    organizationId: organization.id,
+    firstName: "Field",
+    lastName: "Worker",
+    email: "field-worker@example.com",
+    password: "Secret123",
+    role: "user",
+    profileRole: "junior_user",
+  });
+
+  const scoped = await repository.getSnapshot(worker, organization.id, {
+    companies: [{ id: "company-mobile", name: "Alpha" }],
+    companyRolePermissions: [
+      {
+        organizationId: organization.id,
+        profileRole: "junior_user",
+        canView: false,
+        canCreate: false,
+        canEdit: false,
+        canDelete: false,
+      },
+    ],
+    workOrders: [
+      {
+        id: "wo-assigned",
+        companyId: "company-mobile",
+        workOrderNumber: "RN-1",
+        executors: ["Field Worker"],
+      },
+      {
+        id: "wo-other",
+        companyId: "company-mobile",
+        workOrderNumber: "RN-2",
+        executors: ["Someone Else"],
+      },
+    ],
+  });
+
+  assert.equal(scoped.companies.length, 0);
+  assert.deepEqual(scoped.workOrders.map((item) => item.id), ["wo-assigned"]);
+});
+
 test("memory tenant repository scopes module data by app role permissions", async () => {
   const repository = new MemoryTenantRepository();
   await repository.init();

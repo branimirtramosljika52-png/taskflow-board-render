@@ -8996,6 +8996,67 @@ async function writeSnapshot(response, user, request, statusCode = 200) {
   });
 }
 
+function buildMobileWorkOrderItem(item = {}) {
+  const serviceItems = Array.isArray(item.serviceItems)
+    ? item.serviceItems.map((entry) => (
+      entry && typeof entry === "object"
+        ? {
+          name: normalizeInputValue(entry.name),
+          serviceCode: normalizeInputValue(entry.serviceCode),
+          serviceStatus: normalizeInputValue(entry.serviceStatus),
+          isCompleted: Boolean(entry.isCompleted),
+        }
+        : normalizeInputValue(entry)
+    ))
+    : [];
+
+  return {
+    id: normalizeInputValue(item.id),
+    workOrderNumber: normalizeInputValue(item.workOrderNumber),
+    number: normalizeInputValue(item.workOrderNumber || item.number),
+    status: normalizeInputValue(item.status || "Otvoreni RN"),
+    companyId: normalizeInputValue(item.companyId),
+    companyName: normalizeInputValue(item.companyName),
+    companyOib: normalizeInputValue(item.companyOib),
+    locationId: normalizeInputValue(item.locationId),
+    locationName: normalizeInputValue(item.locationName),
+    serviceLine: normalizeInputValue(item.serviceLine),
+    serviceItems,
+    openedDate: normalizeInputValue(item.openedDate || item.createdAt),
+    dueDate: normalizeInputValue(item.dueDate),
+    executionDate: normalizeInputValue(item.executionDate),
+    priority: normalizeInputValue(item.priority || "Normal"),
+    contactName: normalizeInputValue(item.contactName),
+    contactPhone: normalizeInputValue(item.contactPhone),
+    contactEmail: normalizeInputValue(item.contactEmail),
+    description: normalizeInputValue(item.description),
+    executors: Array.isArray(item.executors)
+      ? item.executors.map(normalizeInputValue).filter(Boolean)
+      : [item.executor1, item.executor2].map(normalizeInputValue).filter(Boolean),
+    executor1: normalizeInputValue(item.executor1),
+    executor2: normalizeInputValue(item.executor2),
+    teamLabel: normalizeInputValue(item.teamLabel),
+    tagText: normalizeInputValue(item.tagText),
+    coordinates: normalizeInputValue(item.coordinates),
+    region: normalizeInputValue(item.region),
+    updatedAt: normalizeInputValue(item.updatedAt),
+  };
+}
+
+async function writeMobileWorkOrders(response, user, request) {
+  const { scopedSnapshot } = await getScopedState(user, request);
+  const workOrders = (scopedSnapshot.workOrders ?? [])
+    .map(buildMobileWorkOrderItem)
+    .filter((item) => item.id);
+
+  sendJson(response, 200, {
+    ok: true,
+    user,
+    workOrders,
+    total: workOrders.length,
+  });
+}
+
 function isRiskAssessmentMinimalSaveRequest(request) {
   const autosaveHeader = String(request.headers["x-safenexus-autosave"] ?? "").trim().toLowerCase();
   const preferHeader = String(request.headers.prefer ?? "").trim().toLowerCase();
@@ -9312,6 +9373,11 @@ async function handleApiRequest(request, response, url) {
     if (request.method === "GET" && url.pathname === "/api/bootstrap") {
       await ensureStandardServiceCatalogItemsForRequest(user, request);
       await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/mobile/work-orders") {
+      await writeMobileWorkOrders(response, user, request);
       return true;
     }
 
