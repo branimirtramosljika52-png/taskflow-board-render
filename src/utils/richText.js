@@ -3,6 +3,15 @@ const INLINE_TAGS = new Set(["br", "strong", "b", "em", "i", "u", "span", "sup",
 const ALLOWED_TAGS = new Set([...BLOCK_TAGS, ...INLINE_TAGS]);
 const VOID_TAGS = new Set(["br", "hr", "img", "col"]);
 const TABLE_ATTRIBUTES = new Set(["colspan", "rowspan"]);
+const LEGACY_FONT_SIZE_MAP = Object.freeze({
+  1: "8pt",
+  2: "10pt",
+  3: "12pt",
+  4: "14pt",
+  5: "18pt",
+  6: "24pt",
+  7: "36pt",
+});
 const SAFE_STYLE_PROPERTIES = new Set([
   "background-color",
   "border",
@@ -123,6 +132,13 @@ function isSafeCssLength(value = "", { allowUnitless = false } = {}) {
   if (/^(auto|normal|inherit|initial|unset)$/i.test(source)) return true;
   if (allowUnitless && /^-?\d+(?:\.\d+)?$/i.test(source)) return true;
   return /^-?\d+(?:\.\d+)?(?:px|pt|pc|em|rem|%|cm|mm|in)$/i.test(source);
+}
+
+function readLegacyFontSize(value = "") {
+  const source = String(value || "").trim();
+  if (!source) return "";
+  if (LEGACY_FONT_SIZE_MAP[source]) return LEGACY_FONT_SIZE_MAP[source];
+  return isSafeCssLength(source) ? source : "";
 }
 
 function isSafeCssLengthList(value = "") {
@@ -250,6 +266,7 @@ function getLegacyElementStyle(sourceElement) {
   const bgcolor = String(sourceElement.getAttribute("bgcolor") || "").trim();
   const color = String(sourceElement.getAttribute("color") || "").trim();
   const face = String(sourceElement.getAttribute("face") || "").trim();
+  const size = readLegacyFontSize(sourceElement.getAttribute("size") || "");
   const width = readSafeDimensionAttribute(sourceElement.getAttribute("width") || "");
   const height = readSafeDimensionAttribute(sourceElement.getAttribute("height") || "");
 
@@ -258,6 +275,7 @@ function getLegacyElementStyle(sourceElement) {
   if (isSafeCssColor(bgcolor)) styles.push(`background-color:${bgcolor}`);
   if (isSafeCssColor(color)) styles.push(`color:${color}`);
   if (/^[\w\s"',.-]+$/i.test(face)) styles.push(`font-family:${face}`);
+  if (size) styles.push(`font-size:${size}`);
   if (width) styles.push(`width:${width}`);
   if (height) styles.push(`height:${height}`);
 
@@ -375,6 +393,7 @@ function buildSafeStyleAttribute(attrs = "") {
   const bgcolor = readAttribute(attrs, "bgcolor").trim();
   const color = readAttribute(attrs, "color").trim();
   const face = readAttribute(attrs, "face").trim();
+  const size = readLegacyFontSize(readAttribute(attrs, "size"));
   const width = readSafeDimensionAttribute(readAttribute(attrs, "width"));
   const height = readSafeDimensionAttribute(readAttribute(attrs, "height"));
 
@@ -383,6 +402,7 @@ function buildSafeStyleAttribute(attrs = "") {
   if (isSafeCssColor(bgcolor)) legacyStyles.push(`background-color:${bgcolor}`);
   if (isSafeCssColor(color)) legacyStyles.push(`color:${color}`);
   if (/^[\w\s"',.-]+$/i.test(face)) legacyStyles.push(`font-family:${face}`);
+  if (size) legacyStyles.push(`font-size:${size}`);
   if (width) legacyStyles.push(`width:${width}`);
   if (height) legacyStyles.push(`height:${height}`);
 

@@ -6623,6 +6623,49 @@ const RISK_ASSESSMENT_RICH_TEMPLATE_FIELDS = Object.freeze({
     ],
   },
 });
+const RISK_ASSESSMENT_RICH_TOOLBAR_SELECTS = Object.freeze([
+  {
+    command: "formatBlock",
+    label: "Stil",
+    options: [
+      { value: "p", label: "Normalno" },
+      { value: "h3", label: "Naslov" },
+      { value: "h4", label: "Podnaslov" },
+      { value: "blockquote", label: "Citat" },
+    ],
+  },
+  {
+    command: "fontName",
+    label: "Font",
+    options: [
+      { value: "Aptos, Calibri, Arial, sans-serif", label: "Aptos" },
+      { value: "Calibri, Arial, sans-serif", label: "Calibri" },
+      { value: "Arial, sans-serif", label: "Arial" },
+      { value: "Times New Roman, serif", label: "Times" },
+    ],
+  },
+  {
+    command: "fontSize",
+    label: "Velicina",
+    options: [
+      { value: "2", label: "10 pt" },
+      { value: "3", label: "12 pt" },
+      { value: "4", label: "14 pt" },
+      { value: "5", label: "18 pt" },
+    ],
+  },
+]);
+const RISK_ASSESSMENT_RICH_COLOR_SWATCHES = Object.freeze([
+  { label: "Crna", value: "#111827" },
+  { label: "Plava", value: "#1d4ed8" },
+  { label: "Zelena", value: "#047857" },
+  { label: "Crvena", value: "#b91c1c" },
+]);
+const RISK_ASSESSMENT_RICH_HIGHLIGHT_SWATCHES = Object.freeze([
+  { label: "Zuto", value: "#fef08a" },
+  { label: "Plavo", value: "#bfdbfe" },
+  { label: "Zeleno", value: "#bbf7d0" },
+]);
 const RISK_ASSESSMENT_BASIC_TEXT_TEMPLATE_STORAGE_KEY = "safe-nexus-risk-assessment-basic-text-templates-v1";
 const RISK_ASSESSMENT_BASIC_TEXT_TEMPLATE_FIELDS = Object.freeze({
   znrAuthorizedDescription: {
@@ -120680,6 +120723,7 @@ riskAssessmentForm?.addEventListener("input", handleRiskAssessmentRichEditorInpu
 riskAssessmentForm?.addEventListener("paste", handleRiskAssessmentRichEditorPaste);
 riskAssessmentForm?.addEventListener("mousedown", handleRiskAssessmentRichToolbarMouseDown);
 riskAssessmentForm?.addEventListener("click", handleRiskAssessmentRichEditorClick);
+riskAssessmentForm?.addEventListener("change", handleRiskAssessmentRichEditorControlChange);
 riskAssessmentForm?.addEventListener("change", handleRiskAssessmentRichEditorFileChange);
 riskAssessmentForm?.addEventListener("input", scheduleRiskAssessmentDraftAutosave);
 riskAssessmentForm?.addEventListener("change", scheduleRiskAssessmentDraftAutosave);
@@ -125786,6 +125830,7 @@ function writeRiskAssessmentRichTemplates(nextTemplates = {}) {
 }
 
 function renderRiskAssessmentRichTemplateControls() {
+  enhanceRiskAssessmentRichToolbars();
   const templates = readRiskAssessmentRichTemplates();
   riskAssessmentForm?.querySelectorAll?.("[data-risk-rich-template-select]").forEach((select) => {
     const fieldKey = select.dataset.riskRichTemplateSelect || "";
@@ -125797,6 +125842,89 @@ function renderRiskAssessmentRichTemplateControls() {
       })),
     ];
     replaceSelectOptions(select, options, "");
+  });
+}
+
+function renderRiskAssessmentRichSelectEnhancement(config = {}) {
+  const command = String(config.command || "").trim();
+  if (!command) {
+    return "";
+  }
+  const options = (config.options ?? [])
+    .map((option) => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`)
+    .join("");
+  return `
+    <select data-risk-rich-select-command="${escapeHtml(command)}" aria-label="${escapeHtml(config.label || "Uredi")}">
+      <option value="">${escapeHtml(config.label || "Uredi")}</option>
+      ${options}
+    </select>
+  `;
+}
+
+function renderRiskAssessmentRichColorEnhancements(command = "foreColor", swatches = [], label = "Boja") {
+  return swatches.map((swatch) => `
+    <button
+      type="button"
+      class="risk-assessment-rich-swatch"
+      data-risk-rich-command="${escapeHtml(command)}"
+      data-risk-rich-value="${escapeHtml(swatch.value)}"
+      title="${escapeHtml(`${label}: ${swatch.label}`)}"
+      aria-label="${escapeHtml(`${label}: ${swatch.label}`)}"
+      style="--risk-rich-swatch:${escapeHtml(swatch.value)}"
+    ></button>
+  `).join("");
+}
+
+function getRiskAssessmentRichToolbarEnhancementHtml() {
+  return `
+    <div class="risk-assessment-rich-toolbar-group is-style">
+      ${RISK_ASSESSMENT_RICH_TOOLBAR_SELECTS.map(renderRiskAssessmentRichSelectEnhancement).join("")}
+    </div>
+    <div class="risk-assessment-rich-toolbar-group is-history" aria-label="Povijest uređivanja">
+      <button type="button" data-risk-rich-command="undo" title="Poništi" aria-label="Poništi">↶</button>
+      <button type="button" data-risk-rich-command="redo" title="Vrati" aria-label="Vrati">↷</button>
+    </div>
+    <div class="risk-assessment-rich-toolbar-group is-align" aria-label="Poravnanje">
+      <button type="button" data-risk-rich-command="justifyLeft" title="Lijevo" aria-label="Lijevo">L</button>
+      <button type="button" data-risk-rich-command="justifyCenter" title="Sredina" aria-label="Sredina">C</button>
+      <button type="button" data-risk-rich-command="justifyRight" title="Desno" aria-label="Desno">R</button>
+      <button type="button" data-risk-rich-command="justifyFull" title="Obostrano" aria-label="Obostrano">J</button>
+      <button type="button" data-risk-rich-command="outdent" title="Smanji uvlaku" aria-label="Smanji uvlaku">‹</button>
+      <button type="button" data-risk-rich-command="indent" title="Povećaj uvlaku" aria-label="Povećaj uvlaku">›</button>
+    </div>
+    <div class="risk-assessment-rich-toolbar-group is-color" aria-label="Boje">
+      ${renderRiskAssessmentRichColorEnhancements("foreColor", RISK_ASSESSMENT_RICH_COLOR_SWATCHES, "Boja teksta")}
+      <span class="risk-assessment-rich-toolbar-separator" aria-hidden="true"></span>
+      ${renderRiskAssessmentRichColorEnhancements("hiliteColor", RISK_ASSESSMENT_RICH_HIGHLIGHT_SWATCHES, "Marker")}
+    </div>
+    <div class="risk-assessment-rich-toolbar-group is-insert" aria-label="Umetanje">
+      <button type="button" data-risk-rich-link title="Poveznica" aria-label="Poveznica">Link</button>
+      <button type="button" data-risk-rich-insert-table title="Tablica" aria-label="Tablica">Tablica</button>
+      <button type="button" data-risk-rich-command="insertHorizontalRule" title="Vodoravna crta" aria-label="Vodoravna crta">Linija</button>
+      <button type="button" data-risk-rich-clear title="Očisti format" aria-label="Očisti format">Clear</button>
+      <button type="button" data-risk-rich-toggle-focus title="Fokus prikaz" aria-label="Fokus prikaz">Fokus</button>
+    </div>
+  `;
+}
+
+function enhanceRiskAssessmentRichToolbars() {
+  riskAssessmentForm?.querySelectorAll?.("[data-risk-rich-toolbar]").forEach((toolbar) => {
+    if (!(toolbar instanceof HTMLElement) || toolbar.dataset.riskRichEnhanced === "true") {
+      return;
+    }
+    toolbar.dataset.riskRichEnhanced = "true";
+    toolbar.insertAdjacentHTML("afterbegin", getRiskAssessmentRichToolbarEnhancementHtml());
+    const editorShell = toolbar.closest(".risk-assessment-rich-editor");
+    const surface = editorShell?.querySelector?.("[data-risk-rich-editor]");
+    if (editorShell instanceof HTMLElement && surface instanceof HTMLElement) {
+      editorShell.classList.add("is-word-enhanced");
+      if (!editorShell.querySelector(".risk-assessment-rich-ruler")) {
+        const ruler = document.createElement("div");
+        ruler.className = "risk-assessment-rich-ruler";
+        ruler.setAttribute("aria-hidden", "true");
+        editorShell.insertBefore(ruler, surface);
+      }
+    }
   });
 }
 
@@ -125881,6 +126009,98 @@ function insertRiskAssessmentRichHtml(key = "", html = "") {
   document.execCommand("insertHTML", false, safeHtml);
   rememberRiskAssessmentRichEditorSelection(editor);
   syncRiskAssessmentRichValue(editor.dataset.riskRichEditor || key);
+}
+
+function applyRiskAssessmentRichCommand(key = "", command = "", value = null) {
+  const editor = restoreRiskAssessmentRichEditorSelection(key);
+  const normalizedCommand = String(command || "").trim();
+  if (!editor || !normalizedCommand) {
+    return false;
+  }
+  let applied = false;
+  try {
+    applied = document.execCommand(normalizedCommand, false, value);
+    if (!applied && normalizedCommand === "hiliteColor") {
+      applied = document.execCommand("backColor", false, value);
+    }
+  } catch {
+    applied = false;
+  }
+  rememberRiskAssessmentRichEditorSelection(editor);
+  syncRiskAssessmentRichValue(editor.dataset.riskRichEditor || key);
+  scheduleRiskAssessmentDraftAutosave();
+  return applied;
+}
+
+function normalizeRiskAssessmentRichLinkHref(value = "") {
+  const source = String(value || "").trim();
+  if (!source) {
+    return "";
+  }
+  if (/^(https?:|mailto:|tel:|#)/i.test(source)) {
+    return source;
+  }
+  if (/^[a-z0-9][a-z0-9.-]+\.[a-z]{2,}(?:[/?#].*)?$/i.test(source)) {
+    return `https://${source}`;
+  }
+  return "";
+}
+
+function buildRiskAssessmentRichTableHtml(rows = 3, columns = 3) {
+  const safeRows = Math.min(8, Math.max(1, Number.parseInt(rows, 10) || 3));
+  const safeColumns = Math.min(8, Math.max(1, Number.parseInt(columns, 10) || 3));
+  const cells = Array.from({ length: safeColumns }, () => "<td>&nbsp;</td>").join("");
+  const body = Array.from({ length: safeRows }, () => `<tr>${cells}</tr>`).join("");
+  const headings = Array.from({ length: safeColumns }, (_, index) => `<th>Stupac ${index + 1}</th>`).join("");
+  return `<table><thead><tr>${headings}</tr></thead><tbody>${body}</tbody></table><p></p>`;
+}
+
+function promptRiskAssessmentRichTableHtml() {
+  const rowInput = window.prompt("Broj redaka", "3");
+  if (rowInput === null) {
+    return "";
+  }
+  const rowCount = Number.parseInt(rowInput || "3", 10);
+  if (!Number.isFinite(rowCount)) {
+    return "";
+  }
+  const columnInput = window.prompt("Broj stupaca", "3");
+  if (columnInput === null) {
+    return "";
+  }
+  const columnCount = Number.parseInt(columnInput || "3", 10);
+  if (!Number.isFinite(columnCount)) {
+    return "";
+  }
+  return buildRiskAssessmentRichTableHtml(rowCount, columnCount);
+}
+
+function insertRiskAssessmentRichLink(key = "") {
+  const editor = restoreRiskAssessmentRichEditorSelection(key);
+  if (!editor) {
+    return;
+  }
+  const selection = window.getSelection?.();
+  const selectedText = String(selection?.toString?.() || "").trim();
+  const href = normalizeRiskAssessmentRichLinkHref(window.prompt("URL poveznice", selectedText.match(/^https?:\/\//i) ? selectedText : "https://") || "");
+  if (!href) {
+    setInlineMessage(riskAssessmentError, "Unesi ispravan URL poveznice.", "error");
+    return;
+  }
+  if (selection && selection.rangeCount > 0 && !selection.isCollapsed && editor.contains(selection.anchorNode)) {
+    document.execCommand("createLink", false, href);
+  } else {
+    insertRiskAssessmentRichHtml(key, `<a href="${escapeHtml(href)}">${escapeHtml(href)}</a>`);
+    return;
+  }
+  rememberRiskAssessmentRichEditorSelection(editor);
+  syncRiskAssessmentRichValue(editor.dataset.riskRichEditor || key);
+  scheduleRiskAssessmentDraftAutosave();
+}
+
+function clearRiskAssessmentRichFormatting(key = "") {
+  applyRiskAssessmentRichCommand(key, "removeFormat");
+  applyRiskAssessmentRichCommand(key, "formatBlock", "p");
 }
 
 function normalizeRiskAssessmentBiologicalSearchText(value = "") {
@@ -126629,7 +126849,7 @@ function handleRiskAssessmentRichEditorSelectionChange(event) {
 
 function handleRiskAssessmentRichToolbarMouseDown(event) {
   const toolbarControl = event.target?.closest?.(
-    "[data-risk-rich-command], [data-risk-rich-preset], [data-risk-rich-image], [data-risk-rich-template-save]",
+    "[data-risk-rich-command], [data-risk-rich-preset], [data-risk-rich-image], [data-risk-rich-template-save], [data-risk-rich-link], [data-risk-rich-insert-table], [data-risk-rich-clear], [data-risk-rich-toggle-focus]",
   );
   if (!toolbarControl) {
     return;
@@ -126649,15 +126869,46 @@ function handleRiskAssessmentRichEditorClick(event) {
     event.preventDefault();
     const toolbar = commandButton.closest("[data-risk-rich-toolbar]");
     const key = toolbar?.dataset.riskRichToolbar || riskAssessmentActiveRichEditorKey || "intro";
-    const editor = restoreRiskAssessmentRichEditorSelection(key);
-    if (!editor) {
-      return;
-    }
     const command = commandButton.dataset.riskRichCommand || "";
     const value = commandButton.dataset.riskRichValue || null;
-    document.execCommand(command, false, value);
-    rememberRiskAssessmentRichEditorSelection(editor);
-    syncRiskAssessmentRichValue(key);
+    applyRiskAssessmentRichCommand(key, command, value);
+    return;
+  }
+
+  const clearButton = event.target?.closest?.("[data-risk-rich-clear]");
+  if (clearButton) {
+    event.preventDefault();
+    const toolbar = clearButton.closest("[data-risk-rich-toolbar]");
+    clearRiskAssessmentRichFormatting(toolbar?.dataset.riskRichToolbar || riskAssessmentActiveRichEditorKey || "intro");
+    return;
+  }
+
+  const linkButton = event.target?.closest?.("[data-risk-rich-link]");
+  if (linkButton) {
+    event.preventDefault();
+    const toolbar = linkButton.closest("[data-risk-rich-toolbar]");
+    insertRiskAssessmentRichLink(toolbar?.dataset.riskRichToolbar || riskAssessmentActiveRichEditorKey || "intro");
+    return;
+  }
+
+  const tableButton = event.target?.closest?.("[data-risk-rich-insert-table]");
+  if (tableButton) {
+    event.preventDefault();
+    const toolbar = tableButton.closest("[data-risk-rich-toolbar]");
+    const key = toolbar?.dataset.riskRichToolbar || riskAssessmentActiveRichEditorKey || "intro";
+    const tableHtml = promptRiskAssessmentRichTableHtml();
+    if (tableHtml) {
+      insertRiskAssessmentRichHtml(key, tableHtml);
+      scheduleRiskAssessmentDraftAutosave();
+    }
+    return;
+  }
+
+  const focusButton = event.target?.closest?.("[data-risk-rich-toggle-focus]");
+  if (focusButton) {
+    event.preventDefault();
+    const shell = focusButton.closest(".risk-assessment-rich-editor");
+    shell?.classList.toggle("is-focus-mode");
     return;
   }
 
@@ -126691,6 +126942,21 @@ function handleRiskAssessmentRichEditorClick(event) {
   if (src) {
     insertRiskAssessmentRichHtml(key, `<img src="${escapeHtml(src)}" alt="Slika procjene rizika">`);
   }
+}
+
+function handleRiskAssessmentRichEditorControlChange(event) {
+  const select = event.target?.closest?.("[data-risk-rich-select-command]");
+  if (!select) {
+    return;
+  }
+  const value = select.value || "";
+  if (!value) {
+    return;
+  }
+  const toolbar = select.closest("[data-risk-rich-toolbar]");
+  const key = toolbar?.dataset.riskRichToolbar || riskAssessmentActiveRichEditorKey || "intro";
+  applyRiskAssessmentRichCommand(key, select.dataset.riskRichSelectCommand || "", value);
+  select.value = "";
 }
 
 async function handleRiskAssessmentRichEditorFileChange(event) {
@@ -144848,6 +145114,7 @@ resetOrganizationForm();
 resetUserForm();
 resetPeopleTrainingForm();
 resetLoginContentForm();
+renderRiskAssessmentRichTemplateControls();
 renderActiveView();
 renderAuthState();
 scheduleWeatherRefresh();

@@ -39,6 +39,7 @@ test("rich text sanitizer preserves Word-style tables, inline styles, links and 
       </tr>
     </table>
     <a href="https://safe-nexus.org" onclick="bad()">Safe Nexus</a>
+    <font size="4" face="Calibri" color="#b91c1c">Velicina</font>
     <img src="data:image/png;base64,iVBORw0KGgo=" width="120" alt="Logo" onerror="bad()" />
     <img src="javascript:alert(1)" />
     <!--EndFragment-->
@@ -51,6 +52,7 @@ test("rich text sanitizer preserves Word-style tables, inline styles, links and 
   assert.match(html, /<table style="border-collapse:collapse;width:320pt">/);
   assert.match(html, /<td style="border:1pt solid #000;padding:4pt;background-color:#f8fafc;width:160px">A<\/td>/);
   assert.match(html, /href="https:\/\/safe-nexus\.org" target="_blank" rel="noopener noreferrer"/);
+  assert.match(html, /<span style="color:#b91c1c;font-family:Calibri;font-size:14pt">Velicina<\/span>/);
   assert.match(html, /<img src="data:image\/png;base64,iVBORw0KGgo=" alt="Logo" loading="lazy" style="width:120px">/);
   assert.doesNotMatch(html, /MsoNormal|mso-list|onclick|onerror|javascript/i);
 });
