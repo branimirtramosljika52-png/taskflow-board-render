@@ -46978,6 +46978,14 @@ body.is-global-loading {
   box-shadow: inset 0 0 0 1px rgba(47, 111, 237, 0.22);
 }
 
+.people-training-section-upload.is-in-medical-card {
+  margin-top: -2px;
+  border-color: rgba(190, 204, 232, 0.88);
+  background:
+    linear-gradient(135deg, rgba(247, 251, 255, 0.84), rgba(255, 255, 255, 0.9)),
+    radial-gradient(circle at top right, rgba(47, 111, 237, 0.08), transparent 38%);
+}
+
 .people-training-section-upload-copy {
   display: grid;
   gap: 3px;
@@ -47418,6 +47426,72 @@ body.is-global-loading {
 .people-training-type-card.is-expired,
 .people-training-type-card.is-missing {
   border-left-color: #d75064;
+}
+
+.people-training-medical-combined-card {
+  gap: 14px;
+  border-left-color: #2f6fed;
+}
+
+.people-training-medical-combined-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.people-training-medical-combined-head > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.people-training-medical-combined-head small {
+  color: #657891;
+  font-size: 0.76rem;
+  font-weight: 760;
+}
+
+.people-training-medical-panels {
+  display: grid;
+  gap: 12px;
+}
+
+.people-training-medical-panel {
+  display: grid;
+  gap: 11px;
+  padding: 14px 0 0;
+  border-top: 1px solid rgba(190, 204, 232, 0.74);
+}
+
+.people-training-medical-panel:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.people-training-medical-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.people-training-medical-panel-head > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.people-training-medical-panel-head strong {
+  color: #172743;
+  font-size: 0.86rem;
+}
+
+.people-training-medical-panel-head span:not(.people-training-status-chip) {
+  color: #657891;
+  font-size: 0.72rem;
+  font-weight: 760;
 }
 
 .people-training-type-head strong {

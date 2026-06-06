@@ -7472,6 +7472,15 @@ function buildPeopleTrainingBuiltInTemplateHtml(kind = "") {
           <tr><th>Radno mjesto</th><td>{{RadnoMjestoRA1}}</td></tr>
           <tr><th>Opis poslova i aktivnosti</th><td>{{OpisPoslovaRA1}}</td></tr>
           <tr><th>Posebni uvjeti, štetnosti i napori</th><td>{{PosebniUvjetiRA1}}</td></tr>
+          <tr><th>Mjesto rada</th><td>{{MjestoRadaRA1}}</td></tr>
+          <tr><th>Organizacija rada</th><td>{{OrganizacijaRadaRA1}}</td></tr>
+          <tr><th>Polozaji i aktivnosti</th><td>{{PolozajiAktivnostiRA1}}</td></tr>
+          <tr><th>Teret / rucno rukovanje</th><td>{{TeretRA1}}</td></tr>
+          <tr><th>Radni uvjeti i mikroklima</th><td>{{RadniUvjetiRA1}}</td></tr>
+          <tr><th>Vazne funkcije</th><td>{{VazneFunkcijeRA1}}</td></tr>
+          <tr><th>Radna oprema i alati</th><td>{{RadnaOpremaRA1}}</td></tr>
+          <tr><th>Stetnosti, kemikalije i biologija</th><td>{{RadneStetnostiRA1}}</td></tr>
+          <tr><th>OZO</th><td>{{OzoRA1}}</td></tr>
           <tr><th>Ustanova medicine rada</th><td>{{UstanovaMedicineRadaRA1}}</td></tr>
           <tr><th>Napomena</th><td>{{NapomenaRA1}}</td></tr>
         </table>
@@ -7587,6 +7596,15 @@ function buildPeopleTrainingZnrTemplatePlaceholders(record = {}, item = {}, serv
     || medicalExamDetails.medicalHazards
     || medicalCertificateDetails.medicalHazards
     || "";
+  const medicalWorkplace = itemDetails.medicalWorkplace || medicalExamDetails.medicalWorkplace || "";
+  const medicalWorkOrganization = itemDetails.medicalWorkOrganization || medicalExamDetails.medicalWorkOrganization || "";
+  const medicalBodyPositions = itemDetails.medicalBodyPositions || medicalExamDetails.medicalBodyPositions || "";
+  const medicalLoadWeights = itemDetails.medicalLoadWeights || medicalExamDetails.medicalLoadWeights || "";
+  const medicalWorkConditions = itemDetails.medicalWorkConditions || medicalExamDetails.medicalWorkConditions || "";
+  const medicalImportantFunctions = itemDetails.medicalImportantFunctions || medicalExamDetails.medicalImportantFunctions || "";
+  const medicalEquipment = itemDetails.medicalEquipment || medicalExamDetails.medicalEquipment || "";
+  const medicalSubstances = itemDetails.medicalSubstances || medicalExamDetails.medicalSubstances || "";
+  const medicalPpe = itemDetails.medicalPpe || medicalExamDetails.medicalPpe || "";
   const referralValidUntil = medicalExamDetails.referralValidUntil || "";
   const medicalCertificateValidUntil = medicalCertificateItem?.validForever ? "" : (medicalCertificateItem?.validUntil || "");
   const psychologicalCheckUntil = medicalCertificateDetails.psychologicalCheckUntil
@@ -7647,6 +7665,15 @@ function buildPeopleTrainingZnrTemplatePlaceholders(record = {}, item = {}, serv
     RadnoMjestoRA1: medicalWorkTitle,
     OpisPoslovaRA1: medicalWorkDescription,
     PosebniUvjetiRA1: medicalHazards,
+    MjestoRadaRA1: medicalWorkplace,
+    OrganizacijaRadaRA1: medicalWorkOrganization,
+    PolozajiAktivnostiRA1: medicalBodyPositions,
+    TeretRA1: medicalLoadWeights,
+    RadniUvjetiRA1: medicalWorkConditions,
+    VazneFunkcijeRA1: medicalImportantFunctions,
+    RadnaOpremaRA1: medicalEquipment,
+    RadneStetnostiRA1: medicalSubstances,
+    OzoRA1: medicalPpe,
     UstanovaMedicineRadaRA1: medicalProvider,
     NapomenaRA1: medicalExamItem?.note || "",
     BrojUvjerenjaZdravstvena: medicalCertificateItem?.certificateNumber || medicalCertificateItem?.recordNumber || "",
@@ -7678,6 +7705,15 @@ function buildPeopleTrainingZnrTemplatePlaceholders(record = {}, item = {}, serv
     RA1_RADNO_MJESTO: medicalWorkTitle,
     RA1_OPIS_POSLOVA: medicalWorkDescription,
     RA1_POSEBNI_UVJETI: medicalHazards,
+    RA1_MJESTO_RADA: medicalWorkplace,
+    RA1_ORGANIZACIJA_RADA: medicalWorkOrganization,
+    RA1_POLOZAJI_AKTIVNOSTI: medicalBodyPositions,
+    RA1_TERET: medicalLoadWeights,
+    RA1_RADNI_UVJETI: medicalWorkConditions,
+    RA1_VAZNE_FUNKCIJE: medicalImportantFunctions,
+    RA1_RADNA_OPREMA: medicalEquipment,
+    RA1_STETNOSTI: medicalSubstances,
+    RA1_OZO: medicalPpe,
     RA1_USTANOVA: medicalProvider,
     RA1_NAPOMENA: medicalExamItem?.note || "",
     LIJECNICKI_UVJERENJE_BROJ: medicalCertificateItem?.certificateNumber || medicalCertificateItem?.recordNumber || "",

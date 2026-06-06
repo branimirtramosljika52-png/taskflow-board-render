@@ -9983,9 +9983,27 @@ const PEOPLE_TRAINING_CERTIFICATE_PLACEHOLDERS = [
   createPeopleTrainingZnrPlaceholder("RadnoMjestoRA1", "Radno mjesto za RA-1", "Skladištar"),
   createPeopleTrainingZnrPlaceholder("OpisPoslovaRA1", "Opis poslova za RA-1", "Utovar robe i rad s viličarom"),
   createPeopleTrainingZnrPlaceholder("PosebniUvjetiRA1", "Posebni uvjeti, štetnosti i napori za RA-1", "Buka, rad s viličarom, napori vida"),
+  createPeopleTrainingZnrPlaceholder("MjestoRadaRA1", "Mjesto rada za RA-1", "u zatvorenom, na otvorenom"),
+  createPeopleTrainingZnrPlaceholder("OrganizacijaRadaRA1", "Organizacija rada za RA-1", "u smjenama, terenski rad"),
+  createPeopleTrainingZnrPlaceholder("PolozajiAktivnostiRA1", "Položaji i aktivnosti za RA-1", "stajanje, sagibanje, dizanje tereta"),
+  createPeopleTrainingZnrPlaceholder("TeretRA1", "Teret i ručno rukovanje za RA-1", "Dizanje tereta: 10-15 kg"),
+  createPeopleTrainingZnrPlaceholder("RadniUvjetiRA1", "Radni uvjeti i mikroklima za RA-1", "buka, prašina, visoka temperatura"),
+  createPeopleTrainingZnrPlaceholder("VazneFunkcijeRA1", "Važne funkcije za RA-1", "vid na blizinu, dobar sluh"),
+  createPeopleTrainingZnrPlaceholder("RadnaOpremaRA1", "Radna oprema i alati za RA-1", "viličar, ručni alat"),
+  createPeopleTrainingZnrPlaceholder("RadneStetnostiRA1", "Štetnosti, kemikalije i biologija za RA-1", "prašina, ulja i maziva"),
+  createPeopleTrainingZnrPlaceholder("OzoRA1", "OZO za RA-1", "zaštitne naočale, rukavice"),
   createPeopleTrainingZnrPlaceholder("UstanovaMedicineRadaRA1", "Ustanova medicine rada za RA-1", "Medicina rada Zagreb"),
   createPeopleTrainingZnrPlaceholder("NapomenaRA1", "Napomena za RA-1", ""),
   createPeopleTrainingZnrPlaceholder("RA1_VRIJEDI_DO", "RA-1 uputnica vrijedi do", "30.05.2026"),
+  createPeopleTrainingZnrPlaceholder("RA1_MJESTO_RADA", "Mjesto rada za RA-1", "u zatvorenom, na otvorenom"),
+  createPeopleTrainingZnrPlaceholder("RA1_ORGANIZACIJA_RADA", "Organizacija rada za RA-1", "u smjenama, terenski rad"),
+  createPeopleTrainingZnrPlaceholder("RA1_POLOZAJI_AKTIVNOSTI", "Položaji i aktivnosti za RA-1", "stajanje, sagibanje, dizanje tereta"),
+  createPeopleTrainingZnrPlaceholder("RA1_TERET", "Teret i ručno rukovanje za RA-1", "Dizanje tereta: 10-15 kg"),
+  createPeopleTrainingZnrPlaceholder("RA1_RADNI_UVJETI", "Radni uvjeti i mikroklima za RA-1", "buka, prašina, visoka temperatura"),
+  createPeopleTrainingZnrPlaceholder("RA1_VAZNE_FUNKCIJE", "Važne funkcije za RA-1", "vid na blizinu, dobar sluh"),
+  createPeopleTrainingZnrPlaceholder("RA1_RADNA_OPREMA", "Radna oprema i alati za RA-1", "viličar, ručni alat"),
+  createPeopleTrainingZnrPlaceholder("RA1_STETNOSTI", "Štetnosti, kemikalije i biologija za RA-1", "prašina, ulja i maziva"),
+  createPeopleTrainingZnrPlaceholder("RA1_OZO", "OZO za RA-1", "zaštitne naočale, rukavice"),
   createPeopleTrainingZnrPlaceholder("BrojUvjerenjaZdravstvena", "Broj zdravstvenog uvjerenja", "UZS-2026-15"),
   createPeopleTrainingZnrPlaceholder("DatumUvjerenjaZdravstvena", "Datum izdavanja zdravstvenog uvjerenja", "30.04.2026"),
   createPeopleTrainingZnrPlaceholder("DatumPregledaZdravstvena", "Datum pregleda za zdravstveno uvjerenje", "30.04.2026"),
@@ -10888,11 +10906,58 @@ function buildRiskAssessmentWorkplaceMedicalSummary(job = {}) {
   ]);
 }
 
+function formatRiskAssessmentReferralList(values = []) {
+  const source = Array.isArray(values) ? values : String(values || "").split(/\n+|,+|;+/);
+  return source
+    .map((value) => normalizeRiskAssessmentWorkplaceOptionText(value))
+    .filter(Boolean)
+    .join(", ");
+}
+
+function formatRiskAssessmentReferralLoadWeights(loadWeights = {}) {
+  const weights = normalizeRiskAssessmentLoadWeights(loadWeights || {});
+  return RISK_ASSESSMENT_LOAD_WEIGHT_FIELDS
+    .map((item) => (weights[item.key] ? `${item.label}: ${weights[item.key]}` : ""))
+    .filter(Boolean)
+    .join("; ");
+}
+
+function buildRiskAssessmentWorkplaceReferralData(job = {}) {
+  const workplace = formatRiskAssessmentReferralList(job.workplaceOptions ?? [])
+    || normalizeRiskAssessmentWorkplaceOptionText(job.workplace || job.workplaces);
+  const organization = formatRiskAssessmentReferralList(job.organizationOptions ?? [])
+    || normalizeRiskAssessmentWorkplaceOptionText(job.workOrganization || job.organization);
+  const bodyPositions = formatRiskAssessmentReferralList(job.bodyPositions ?? []);
+  const loadWeights = formatRiskAssessmentReferralLoadWeights(job.loadWeights || {});
+  const workConditions = formatRiskAssessmentReferralList(job.workConditions ?? [])
+    || normalizeRiskAssessmentWorkplaceOptionText(job.workEnvironment);
+  const importantFunctions = formatRiskAssessmentReferralList(job.importantFunctions ?? []);
+  const equipment = normalizeRiskAssessmentWorkplaceOptionText(job.toolsAndMachines || job.workEquipment);
+  const substances = joinUniqueRiskAssessmentTextBlocks([
+    normalizeRiskAssessmentWorkplaceOptionText(job.workSubstances || job.chemicalSubstances),
+    normalizeRiskAssessmentWorkplaceOptionText(job.harmfulSources),
+    normalizeRiskAssessmentWorkplaceOptionText(job.biologicalHazards),
+  ]);
+
+  return {
+    medicalWorkplace: workplace,
+    medicalWorkOrganization: organization,
+    medicalBodyPositions: bodyPositions,
+    medicalLoadWeights: loadWeights || (/(teret|dizanje|prenošenje|guranje)/i.test(bodyPositions) ? "Ručna manipulacija teretom prema procjeni rizika." : ""),
+    medicalWorkConditions: workConditions,
+    medicalImportantFunctions: importantFunctions,
+    medicalEquipment: equipment,
+    medicalSubstances: substances,
+    medicalPpe: normalizeRiskAssessmentWorkplaceOptionText(job.ppeText),
+  };
+}
+
 function createRiskAssessmentWorkplaceOption({
   assessment = {},
   source = "job",
   sourceId = "",
   index = 0,
+  job = {},
   title = "",
   description = "",
   meta = "",
@@ -10908,6 +10973,7 @@ function createRiskAssessmentWorkplaceOption({
   const normalizedDescription = normalizeRiskAssessmentWorkplaceOptionText(description);
   const normalizedMedicalExams = normalizeRiskAssessmentWorkplaceOptionText(medicalExams);
   const normalizedSpecialWorkReason = normalizeRiskAssessmentWorkplaceOptionText(specialWorkReason);
+  const referralData = buildRiskAssessmentWorkplaceReferralData(job);
   const sourceKey = [assessment.id || assessment.assessmentNumber || "assessment", source, sourceId || index].join("::");
   return {
     value: sourceKey,
@@ -10922,6 +10988,7 @@ function createRiskAssessmentWorkplaceOption({
       visionCheckRequired: Boolean(visionCheckRequired),
       medicalExams: normalizedMedicalExams,
       specialWorkReason: normalizedSpecialWorkReason,
+      ...referralData,
     },
   };
 }
@@ -10942,6 +11009,7 @@ function getRiskAssessmentWorkplaceOptionsForCompany(companyId = "", { includeEm
         source: "job",
         sourceId: job.id,
         index,
+        job,
         title: job.jobTitle,
         description: buildRiskAssessmentWorkplaceTrainingDescription(job, assessment),
         meta: sourceMeta || "Analiza radnog mjesta",
@@ -11151,6 +11219,19 @@ function applyPeopleTrainingRiskWorkplaceSelection(value = peopleTrainingRiskWor
     option.data.medicalExams,
     option.data.specialWorkReason,
   ]));
+  [
+    "medicalWorkplace",
+    "medicalWorkOrganization",
+    "medicalBodyPositions",
+    "medicalLoadWeights",
+    "medicalWorkConditions",
+    "medicalImportantFunctions",
+    "medicalEquipment",
+    "medicalSubstances",
+    "medicalPpe",
+  ].forEach((key) => {
+    setPeopleTrainingSafeWorkFieldValue(`details.${key}`, option.data[key] || "");
+  });
   setPeopleTrainingSafeWorkFieldValue(
     "details.examReason",
     option.data.medicalFitnessRequired
@@ -12600,6 +12681,270 @@ function createPeopleTrainingTypeCard(item = {}, record = {}) {
   return card;
 }
 
+function getPeopleTrainingSectionItemsWithFallbacks(config = {}, items = [], record = {}) {
+  const fallbackItems = getPeopleTrainingFallbackItemsForSection(config, record);
+  if (!(config.fallbackTypes ?? []).length) {
+    return items.length ? items : fallbackItems;
+  }
+  const byType = new Map(fallbackItems.map((item) => [String(item.type || "").trim().toLowerCase(), item]));
+  items.forEach((item) => {
+    const key = String(item.type || "").trim().toLowerCase();
+    if (key) {
+      byType.set(key, item);
+    }
+  });
+  const ordered = (config.fallbackTypes ?? [])
+    .map((type) => byType.get(String(type || "").trim().toLowerCase()))
+    .filter(Boolean);
+  items.forEach((item) => {
+    if (!ordered.some((entry) => String(entry.type) === String(item.type))) {
+      ordered.push(item);
+    }
+  });
+  return ordered;
+}
+
+function getPeopleTrainingMedicalItem(items = [], type = "") {
+  const normalizedType = String(type || "").trim().toLowerCase();
+  return items.find((item) => String(item.type || "").trim().toLowerCase() === normalizedType) ?? {};
+}
+
+function createPeopleTrainingMedicalPanel(title = "", description = "", item = {}, record = {}, fields = []) {
+  const panel = document.createElement("section");
+  panel.className = "people-training-medical-panel";
+  panel.dataset.trainingType = item.type || "";
+
+  const head = document.createElement("div");
+  head.className = "people-training-medical-panel-head";
+  const copy = document.createElement("div");
+  const titleNode = document.createElement("strong");
+  titleNode.textContent = title;
+  const descriptionNode = document.createElement("span");
+  descriptionNode.textContent = description;
+  copy.append(titleNode, descriptionNode);
+  const chip = document.createElement("span");
+  chip.className = `people-training-status-chip ${getPeopleTrainingStatusClass(item.status)}`.trim();
+  chip.textContent = getPeopleTrainingStatusLabel(item.status);
+  head.append(copy, chip);
+
+  const grid = document.createElement("div");
+  grid.className = "people-training-mini-grid is-structured";
+  grid.append(...fields);
+
+  panel.append(head, grid, createPeopleTrainingTypeCardActions(record, item));
+  return panel;
+}
+
+function createPeopleTrainingMedicalCombinedCard(items = [], record = {}) {
+  const personRecord = record && typeof record === "object" ? record : {};
+  const medicalExamItem = getPeopleTrainingMedicalItem(items, "medical_exam");
+  const certificateItem = getPeopleTrainingMedicalItem(items, "medical_fitness_certificate");
+  const visionItem = getPeopleTrainingMedicalItem(items, "vision_exam");
+  const medicalExamDetails = medicalExamItem.details && typeof medicalExamItem.details === "object" ? medicalExamItem.details : {};
+  const certificateDetails = certificateItem.details && typeof certificateItem.details === "object" ? certificateItem.details : {};
+  const visionDetails = visionItem.details && typeof visionItem.details === "object" ? visionItem.details : {};
+  const safeWorkDetails = getPeopleTrainingSafeWorkDetails(personRecord);
+  const companyId = peopleTrainingCompanyInput?.value || personRecord.companyId || "";
+  const selectedRiskWorkplace = getPeopleTrainingRiskWorkplaceSelectedOption(personRecord, {
+    ...safeWorkDetails,
+    ...medicalExamDetails,
+    jobTitle: medicalExamDetails.medicalJobTitle || safeWorkDetails.jobTitle || personRecord.jobTitle || "",
+    riskWorkplaceKey: medicalExamDetails.riskWorkplaceKey || safeWorkDetails.riskWorkplaceKey || "",
+  }, companyId);
+  const referralData = selectedRiskWorkplace?.data ?? {};
+  const medicalJobTitle = medicalExamDetails.medicalJobTitle || safeWorkDetails.jobTitle || personRecord.jobTitle || "";
+  const medicalJobDescription = medicalExamDetails.medicalJobDescription || safeWorkDetails.jobDescription || personRecord.jobDescription || personRecord.note || "";
+  const medicalProvider = medicalExamItem.provider || certificateItem.provider || visionItem.provider || "";
+  const recordNumber = medicalExamItem.recordNumber || medicalExamDetails.referralNumber || buildPeopleTrainingRecordNumberForUi(personRecord, getPeopleTrainingTypeOption(medicalExamItem.type, personRecord.trainingItems ?? []), medicalExamItem);
+  const visionRecordNumber = visionItem.recordNumber || buildPeopleTrainingRecordNumberForUi(personRecord, getPeopleTrainingTypeOption(visionItem.type, personRecord.trainingItems ?? []), visionItem);
+  const statusClass = getPeopleTrainingFormSectionStatusClass(items);
+
+  const card = document.createElement("article");
+  card.className = `people-training-medical-combined-card people-training-type-card ${statusClass}`.trim();
+
+  const head = document.createElement("div");
+  head.className = "people-training-type-head people-training-medical-combined-head";
+  const copy = document.createElement("div");
+  const title = document.createElement("strong");
+  title.textContent = "Jedan blok: uputnice, zdravstveno uvjerenje i vid";
+  const meta = document.createElement("small");
+  meta.textContent = "RA-1, osnovni pregled, pregled vida, psihološka provjera i svi podaci za uputnicu.";
+  copy.append(title, meta);
+  const chip = document.createElement("span");
+  chip.className = `people-training-status-chip ${statusClass}`.trim();
+  chip.textContent = getPeopleTrainingStatusLabel(statusClass.replace(/^is-/, "") || "missing");
+  head.append(copy, chip);
+
+  const panels = document.createElement("div");
+  panels.className = "people-training-medical-panels";
+  panels.append(
+    createPeopleTrainingMedicalPanel("RA-1 uputnica i podaci radnog mjesta", "Ovdje su svi podaci koji trebaju ići u uputnicu liječniku medicine rada.", medicalExamItem, personRecord, [
+      createPeopleTrainingRiskWorkplaceSelectField(personRecord, { ...safeWorkDetails, ...medicalExamDetails }),
+      createPeopleTrainingDetailField({ label: "Broj uputnice RA-1", field: "recordNumber", value: recordNumber, placeholder: "npr. RA-1-2026-001" }),
+      createPeopleTrainingDetailField({ label: "Datum uputnice", field: "issuedOn", value: medicalExamItem.issuedOn || "", isDate: true }),
+      createPeopleTrainingDetailField({ label: "Uputnica vrijedi do", field: "details.referralValidUntil", value: medicalExamDetails.referralValidUntil || "", isDate: true }),
+      createPeopleTrainingDetailField({ label: "Datum pregleda", field: "passedOn", value: medicalExamItem.passedOn || "", isDate: true }),
+      createPeopleTrainingDetailField({ label: "Vrsta pregleda", field: "details.examType", value: medicalExamDetails.examType || "", placeholder: "prethodni / periodični / izvanredni" }),
+      createPeopleTrainingDetailField({ label: "Ustanova medicine rada", field: "provider", value: medicalProvider }),
+      createPeopleTrainingDetailField({ label: "Radno mjesto", field: "details.medicalJobTitle", value: medicalJobTitle }),
+      createPeopleTrainingDetailField({
+        label: "Opis poslova i aktivnosti",
+        field: "details.medicalJobDescription",
+        value: medicalJobDescription,
+        placeholder: "Opis poslova, aktivnosti, opreme i uvjeta rada koji idu u RA-1...",
+        wide: true,
+        multiline: true,
+        rows: 4,
+      }),
+      createPeopleTrainingDetailField({ label: "Mjesto rada (unutra/vani)", field: "details.medicalWorkplace", value: medicalExamDetails.medicalWorkplace || referralData.medicalWorkplace || "", placeholder: "u zatvorenom, na otvorenom, na visini..." }),
+      createPeopleTrainingDetailField({ label: "Organizacija rada", field: "details.medicalWorkOrganization", value: medicalExamDetails.medicalWorkOrganization || referralData.medicalWorkOrganization || "", placeholder: "smjene, noćni rad, terenski rad..." }),
+      createPeopleTrainingDetailField({ label: "Položaji i aktivnosti", field: "details.medicalBodyPositions", value: medicalExamDetails.medicalBodyPositions || referralData.medicalBodyPositions || "", placeholder: "stajanje, sagibanje, sjedenje..." }),
+      createPeopleTrainingDetailField({ label: "Teret / ručno rukovanje", field: "details.medicalLoadWeights", value: medicalExamDetails.medicalLoadWeights || referralData.medicalLoadWeights || "", placeholder: "npr. dizanje tereta: 10-15 kg" }),
+      createPeopleTrainingDetailField({ label: "Važne funkcije", field: "details.medicalImportantFunctions", value: medicalExamDetails.medicalImportantFunctions || referralData.medicalImportantFunctions || "", placeholder: "vid na blizinu, vid na daljinu, sluh..." }),
+      createPeopleTrainingDetailField({
+        label: "Radni uvjeti i mikroklima",
+        field: "details.medicalWorkConditions",
+        value: medicalExamDetails.medicalWorkConditions || referralData.medicalWorkConditions || "",
+        placeholder: "buka, temperatura, vlaga, vibracije, prašina...",
+        wide: true,
+        multiline: true,
+        rows: 3,
+      }),
+      createPeopleTrainingDetailField({
+        label: "Radna oprema, strojevi i alati",
+        field: "details.medicalEquipment",
+        value: medicalExamDetails.medicalEquipment || referralData.medicalEquipment || "",
+        placeholder: "strojevi, alati, računalo, viličar, vozilo...",
+        wide: true,
+        multiline: true,
+        rows: 3,
+      }),
+      createPeopleTrainingDetailField({
+        label: "Štetnosti, kemikalije i biologija",
+        field: "details.medicalSubstances",
+        value: medicalExamDetails.medicalSubstances || referralData.medicalSubstances || "",
+        placeholder: "kemikalije, prašina, biološke štetnosti, izvori opasnosti...",
+        wide: true,
+        multiline: true,
+        rows: 3,
+      }),
+      createPeopleTrainingDetailField({
+        label: "Posebni uvjeti, štetnosti, napori i napomena za uputnicu",
+        field: "details.medicalHazards",
+        value: medicalExamDetails.medicalHazards || joinUniqueRiskAssessmentTextBlocks([referralData.medicalExams, referralData.specialWorkReason]) || "",
+        placeholder: "PUR točke, rad na visini, buka, kemikalije, napori vida, noćni rad...",
+        wide: true,
+        multiline: true,
+        rows: 4,
+      }),
+      createPeopleTrainingDetailField({
+        label: "OZO / dodatne napomene",
+        field: "details.medicalPpe",
+        value: medicalExamDetails.medicalPpe || referralData.medicalPpe || "",
+        placeholder: "Zaštitne naočale, rukavice, zaštita sluha, obuća...",
+        wide: true,
+        multiline: true,
+        rows: 2,
+      }),
+      createPeopleTrainingDetailField({
+        label: "Razlog pregleda",
+        field: "details.examReason",
+        value: medicalExamDetails.examReason || "",
+        placeholder: "npr. poslovi s posebnim uvjetima rada, radna oprema, procjena rizika...",
+        wide: true,
+        multiline: true,
+        rows: 2,
+      }),
+      createPeopleTrainingDetailField({
+        label: "Napomena RA-1",
+        field: "note",
+        value: medicalExamItem.note || "",
+        wide: true,
+        multiline: true,
+        rows: 2,
+      }),
+    ]),
+    createPeopleTrainingMedicalPanel("Uvjerenje zdravstvene sposobnosti", "Osnovni liječnički pregled, uvjerenje i rok psihološke provjere.", certificateItem, personRecord, [
+      createPeopleTrainingDetailField({ label: "Broj uvjerenja", field: "certificateNumber", value: certificateItem.certificateNumber || "", placeholder: "Broj uvjerenja medicine rada" }),
+      createPeopleTrainingDetailField({ label: "Datum izdavanja", field: "issuedOn", value: certificateItem.issuedOn || certificateItem.passedOn || "", isDate: true }),
+      createPeopleTrainingDetailField({ label: "Datum pregleda", field: "passedOn", value: certificateItem.passedOn || "", isDate: true }),
+      createPeopleTrainingDetailField({ label: "Uvjerenje vrijedi do", field: "validUntil", value: certificateItem.validUntil || "", isDate: true }),
+      createPeopleTrainingDetailField({ label: "Rok za psihološku provjeru", field: "details.psychologicalCheckUntil", value: certificateDetails.psychologicalCheckUntil || "", isDate: true }),
+      createPeopleTrainingDetailField({ label: "Ustanova / specijalist", field: "provider", value: certificateItem.provider || medicalProvider }),
+      createPeopleTrainingDetailField({ label: "Ocjena sposobnosti", field: "details.fitnessResult", value: certificateDetails.fitnessResult || "", placeholder: "sposoban / sposoban uz ograničenja / nije sposoban" }),
+      createPeopleTrainingDetailField({
+        label: "Ograničenja i uvjeti rada",
+        field: "details.fitnessRestrictions",
+        value: certificateDetails.fitnessRestrictions || "",
+        placeholder: "Upiši ograničenja, zabrane, obvezna pomagala ili uvjete rada...",
+        wide: true,
+        multiline: true,
+        rows: 3,
+      }),
+      createPeopleTrainingDetailField({
+        label: "Napomena uz uvjerenje",
+        field: "note",
+        value: certificateItem.note || "",
+        wide: true,
+        multiline: true,
+        rows: 2,
+      }),
+    ]),
+    createPeopleTrainingMedicalPanel("Pregled vida: uputnica i uvjerenje", "Vid ima svoju uputnicu, svoje uvjerenje i svoj rok važenja.", visionItem, personRecord, [
+      createPeopleTrainingDetailField({ label: "Broj uputnice za vid", field: "recordNumber", value: visionRecordNumber, placeholder: "npr. VID-UP-2026-001" }),
+      createPeopleTrainingDetailField({ label: "Uputnica za vid vrijedi do", field: "details.visionReferralValidUntil", value: visionDetails.visionReferralValidUntil || "", isDate: true }),
+      createPeopleTrainingDetailField({ label: "Broj uvjerenja vida", field: "certificateNumber", value: visionItem.certificateNumber || "", placeholder: "npr. VID-UV-2026-001" }),
+      createPeopleTrainingDetailField({ label: "Datum pregleda vida", field: "passedOn", value: visionItem.passedOn || visionItem.issuedOn || "", isDate: true }),
+      createPeopleTrainingDetailField({ label: "Uvjerenje vida vrijedi do", field: "validUntil", value: visionItem.validUntil || "", isDate: true }),
+      createPeopleTrainingDetailField({ label: "Ustanova / specijalist", field: "provider", value: visionItem.provider || medicalProvider }),
+      createPeopleTrainingDetailField({ label: "Radno mjesto", field: "details.visionJobTitle", value: visionDetails.visionJobTitle || medicalJobTitle }),
+      createPeopleTrainingDetailField({
+        label: "Opis poslova i aktivnosti za vid",
+        field: "details.visionJobDescription",
+        value: visionDetails.visionJobDescription || medicalJobDescription,
+        placeholder: "Opis rada s računalom, zaslonima, dokumentacijom ili drugim zahtjevima vida...",
+        wide: true,
+        multiline: true,
+        rows: 3,
+      }),
+      createPeopleTrainingDetailField({
+        label: "Razlog pregleda vida",
+        field: "details.visionReason",
+        value: visionDetails.visionReason || "",
+        placeholder: "npr. rad sa zaslonom, napori vida, raspoznavanje boja...",
+        wide: true,
+        multiline: true,
+        rows: 2,
+      }),
+      createPeopleTrainingDetailField({ label: "Nalaz / rezultat", field: "details.visionResult", value: visionDetails.visionResult || "" }),
+      createPeopleTrainingDetailField({ label: "Korekcija / pomagala", field: "details.visionCorrection", value: visionDetails.visionCorrection || "" }),
+      createPeopleTrainingDetailField({
+        label: "Rad s računalom / zaslonom",
+        field: "details.computerWork",
+        value: visionDetails.computerWork || "",
+        placeholder: "Napomena o radu sa zaslonom, dokumentacijom i učestalosti...",
+        wide: true,
+        multiline: true,
+        rows: 2,
+      }),
+      createPeopleTrainingDetailField({
+        label: "Napomena uz vid",
+        field: "note",
+        value: visionItem.note || "",
+        wide: true,
+        multiline: true,
+        rows: 2,
+      }),
+    ]),
+  );
+
+  const uploadControl = createPeopleTrainingHealthUploadControl(personRecord);
+  uploadControl.classList.add("is-in-medical-card");
+
+  card.append(head, uploadControl, panels);
+  return card;
+}
+
 function createPeopleTrainingHealthUploadControl(record = {}) {
   const wrap = document.createElement("div");
   wrap.className = "people-training-section-upload";
@@ -12676,7 +13021,7 @@ function createPeopleTrainingHealthUploadControl(record = {}) {
 
 function createPeopleTrainingFormSection(config = {}, items = [], index = 0, record = {}) {
   const details = document.createElement("details");
-  const effectiveItems = items.length ? items : getPeopleTrainingFallbackItemsForSection(config, record);
+  const effectiveItems = getPeopleTrainingSectionItemsWithFallbacks(config, items, record);
   const statusClass = getPeopleTrainingFormSectionStatusClass(effectiveItems);
   details.className = `people-training-editor-section people-training-training-section ${statusClass}`;
   details.open = index === 0;
@@ -12692,9 +13037,8 @@ function createPeopleTrainingFormSection(config = {}, items = [], index = 0, rec
   const body = document.createElement("div");
   body.className = "people-training-section-body";
   if (config.key === "medical") {
-    body.append(createPeopleTrainingHealthUploadControl(record));
-  }
-  if (effectiveItems.length) {
+    body.append(createPeopleTrainingMedicalCombinedCard(effectiveItems, record));
+  } else if (effectiveItems.length) {
     body.append(...effectiveItems.map((item) => createPeopleTrainingTypeCard(item, record)));
   } else {
     const empty = document.createElement("p");
@@ -12930,6 +13274,15 @@ function readPeopleTrainingGridItems() {
       "medicalJobTitle",
       "medicalJobDescription",
       "medicalHazards",
+      "medicalWorkplace",
+      "medicalWorkOrganization",
+      "medicalBodyPositions",
+      "medicalLoadWeights",
+      "medicalWorkConditions",
+      "medicalImportantFunctions",
+      "medicalEquipment",
+      "medicalSubstances",
+      "medicalPpe",
       "fitnessResult",
       "fitnessRestrictions",
       "psychologicalCheckUntil",
@@ -85687,6 +86040,7 @@ function getClientPortalRecordFormFields(type = "worker", record = null, company
     const selectedRiskWorkplace = details.riskWorkplaceKey
       ? getRiskAssessmentWorkplaceOptionByValue(details.riskWorkplaceKey, companyId)
       : findRiskAssessmentWorkplaceOptionByTitle(details.jobTitle || "", companyId);
+    const selectedRiskData = selectedRiskWorkplace?.data ?? {};
     fields.push(
       createClientPortalRecordField({ name: "fullName", label: "Ime i prezime", value: details.fullName, required: true }),
       createClientPortalRecordField({
@@ -85709,6 +86063,13 @@ function getClientPortalRecordFormFields(type = "worker", record = null, company
       createClientPortalRecordField({ name: "visionCertificateNumber", label: "Uvjerenje vida", value: details.visionCertificateNumber, placeholder: "Broj uvjerenja vida" }),
       createClientPortalRecordField({ name: "visionCertificateValidUntil", label: "Uvjerenje vida vrijedi do", value: details.visionCertificateValidUntil, type: "date" }),
       createClientPortalRecordField({ name: "psychologicalCheckUntil", label: "Psihološka provjera vrijedi do", value: details.psychologicalCheckUntil, type: "date" }),
+      createClientPortalRecordField({ name: "medicalWorkplace", label: "Mjesto rada (unutra/vani)", value: details.medicalWorkplace || selectedRiskData.medicalWorkplace || "", placeholder: "u zatvorenom, na otvorenom, na visini..." }),
+      createClientPortalRecordField({ name: "medicalLoadWeights", label: "Teret / ručno rukovanje", value: details.medicalLoadWeights || selectedRiskData.medicalLoadWeights || "", placeholder: "npr. dizanje tereta: 10-15 kg" }),
+      createClientPortalRecordField({ name: "medicalWorkOrganization", label: "Organizacija rada", value: details.medicalWorkOrganization || selectedRiskData.medicalWorkOrganization || "", placeholder: "smjene, noćni rad, terenski rad..." }),
+      createClientPortalRecordField({ name: "medicalBodyPositions", label: "Položaji i aktivnosti", value: details.medicalBodyPositions || selectedRiskData.medicalBodyPositions || "", placeholder: "stajanje, sagibanje, sjedenje..." }),
+      createClientPortalRecordField({ name: "medicalWorkConditions", label: "Radni uvjeti i mikroklima", value: details.medicalWorkConditions || selectedRiskData.medicalWorkConditions || "", textarea: true, placeholder: "buka, temperatura, vlaga, vibracije, prašina..." }),
+      createClientPortalRecordField({ name: "medicalEquipment", label: "Radna oprema, strojevi i alati", value: details.medicalEquipment || selectedRiskData.medicalEquipment || "", textarea: true, placeholder: "strojevi, alati, računalo, viličar, vozilo..." }),
+      createClientPortalRecordField({ name: "medicalSubstances", label: "Štetnosti, kemikalije i biologija", value: details.medicalSubstances || selectedRiskData.medicalSubstances || "", textarea: true, placeholder: "kemikalije, prašina, biološke štetnosti, izvori opasnosti..." }),
       createClientPortalRecordField({ name: "note", label: "Napomena", value: details.note, textarea: true }),
     );
     return appendClientPortalAttachmentFields(fields, details, {
@@ -85853,6 +86214,13 @@ function buildClientPortalRecordPayloadFromForm(form, type = "worker", companyId
       visionCertificateNumber: getValue("visionCertificateNumber"),
       visionCertificateValidUntil: getValue("visionCertificateValidUntil"),
       psychologicalCheckUntil: getValue("psychologicalCheckUntil"),
+      medicalWorkplace: getValue("medicalWorkplace") || riskWorkplace?.data?.medicalWorkplace || "",
+      medicalLoadWeights: getValue("medicalLoadWeights") || riskWorkplace?.data?.medicalLoadWeights || "",
+      medicalWorkOrganization: getValue("medicalWorkOrganization") || riskWorkplace?.data?.medicalWorkOrganization || "",
+      medicalBodyPositions: getValue("medicalBodyPositions") || riskWorkplace?.data?.medicalBodyPositions || "",
+      medicalWorkConditions: getValue("medicalWorkConditions") || riskWorkplace?.data?.medicalWorkConditions || "",
+      medicalEquipment: getValue("medicalEquipment") || riskWorkplace?.data?.medicalEquipment || "",
+      medicalSubstances: getValue("medicalSubstances") || riskWorkplace?.data?.medicalSubstances || "",
       note: getValue("note"),
     });
   } else if (type === "vehicle") {
@@ -86293,6 +86661,8 @@ function getClientPortalRecordDetailLines(record = {}) {
       healthLine("Vid uputnica", details.visionReferralNumber, details.visionReferralValidUntil),
       healthLine("Vid uvjerenje", details.visionCertificateNumber, details.visionCertificateValidUntil),
       details.psychologicalCheckUntil ? `Psihološka provjera: do ${formatCompactDate(details.psychologicalCheckUntil)}` : "",
+      details.medicalWorkplace ? `Mjesto rada: ${details.medicalWorkplace}` : "",
+      details.medicalLoadWeights ? `Teret: ${details.medicalLoadWeights}` : "",
       getClientPortalTrainingSummaryLine(trainingSummary.counts),
     ].filter(Boolean);
   }
