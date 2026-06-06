@@ -2227,6 +2227,7 @@ const state = {
   },
   clientPortalPreviewCollapsed: {
     workOrders: false,
+    foundationDocuments: false,
     documents: false,
     trainings: false,
     riskAssessments: false,
@@ -4187,6 +4188,9 @@ const clientPortalPreviewScope = document.querySelector("#client-portal-preview-
 const clientPortalPreviewCompany = document.querySelector("#client-portal-preview-company");
 const clientPortalPreviewLocation = document.querySelector("#client-portal-preview-location");
 const clientPortalPreviewList = document.querySelector("#client-portal-preview-list");
+const clientPortalFoundationPanel = document.querySelector("#client-portal-foundation-panel");
+const clientPortalFoundationRoot = document.querySelector("#client-portal-foundation-root");
+const clientPortalFoundationCount = document.querySelector("#client-portal-foundation-count");
 const clientPortalRegisterPanel = document.querySelector("#client-portal-register-panel");
 const clientPortalRecordsRoot = document.querySelector("#client-portal-records-root");
 const clientPortalRecordsCount = document.querySelector("#client-portal-records-count");
@@ -85738,6 +85742,150 @@ function createClientPortalRiskAssessmentPreviewRow(item = {}) {
   return row;
 }
 
+function getClientPortalFoundationalDocumentItems() {
+  const presetTypes = new Set(RULEBOOK_PRESETS.map((preset) => preset.type));
+  const visibleRulebooks = sortRulebooks(state.rulebooks ?? [])
+    .filter((item) => String(item.status || "draft") !== "archived");
+  const rulebooksByType = new Map();
+  visibleRulebooks.forEach((item) => {
+    const type = String(item.rulebookType || "custom");
+    if (!rulebooksByType.has(type)) {
+      rulebooksByType.set(type, item);
+    }
+  });
+
+  const presetItems = RULEBOOK_PRESETS.map((preset) => ({
+    key: `preset:${preset.type}`,
+    type: preset.type,
+    preset,
+    rulebook: rulebooksByType.get(preset.type) ?? null,
+  }));
+  const customItems = visibleRulebooks
+    .filter((item) => !presetTypes.has(String(item.rulebookType || "")))
+    .map((item) => ({
+      key: `rulebook:${item.id || item.title || item.rulebookType}`,
+      type: item.rulebookType || "custom",
+      preset: getRulebookPreset(item.rulebookType) ?? null,
+      rulebook: item,
+    }));
+
+  return [...presetItems, ...customItems];
+}
+
+function getClientPortalFoundationDocumentCount(items = getClientPortalFoundationalDocumentItems()) {
+  return items.reduce((total, item) => total + ((item.rulebook?.documents ?? []).length > 0 ? 1 : 0), 0);
+}
+
+function createClientPortalFoundationDocumentCard(item = {}) {
+  const rulebook = item.rulebook ?? null;
+  const preset = item.preset ?? getRulebookPreset(item.type) ?? {};
+  const type = String(rulebook?.rulebookType || preset.type || item.type || "custom");
+  const documents = (rulebook?.documents ?? [])
+    .map((document) => createModuleAttachmentDraft(document))
+    .filter((document) => document.fileName && (document.dataUrl || document.storageUrl));
+  const article = document.createElement("article");
+  article.className = `client-portal-foundation-card is-${slugifyValue(type || "custom")}${rulebook ? " has-rulebook" : " is-placeholder"}`;
+
+  const icon = document.createElement("span");
+  icon.className = "client-portal-foundation-icon";
+  icon.innerHTML = renderRulebookIcon(getRulebookIconName(type));
+
+  const copy = document.createElement("div");
+  copy.className = "client-portal-foundation-copy";
+  const title = document.createElement("strong");
+  title.textContent = rulebook?.title || preset.title || getRulebookTypeLabel(type);
+  const summary = document.createElement("span");
+  summary.textContent = rulebook?.summary || preset.summary || "Temeljni interni dokument za klijentski portal.";
+  copy.append(title, summary);
+
+  const status = document.createElement("span");
+  status.className = `client-portal-foundation-status is-${slugifyValue(rulebook?.status || "pending")}`;
+  status.textContent = rulebook ? getRulebookStatusLabel(rulebook.status) : "U pripremi";
+
+  const meta = document.createElement("div");
+  meta.className = "client-portal-foundation-meta";
+  [
+    getRulebookTypeLabel(type),
+    documents.length ? `${documents.length} dok.` : "Bez dokumenta",
+    rulebook?.reviewDate ? `Revizija ${formatCompactDate(rulebook.reviewDate)}` : "",
+    rulebook?.owner || "",
+  ].filter(Boolean).forEach((label) => {
+    const chip = document.createElement("span");
+    chip.textContent = label;
+    meta.append(chip);
+  });
+
+  const actions = document.createElement("div");
+  actions.className = "client-portal-foundation-actions";
+  if (documents.length > 0) {
+    documents.slice(0, 3).forEach((document) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "client-portal-foundation-document-button";
+      button.textContent = document.fileName || "Preuzmi dokument";
+      button.title = document.fileName || "Preuzmi dokument";
+      button.addEventListener("click", () => {
+        triggerModuleAttachmentDownload(document);
+      });
+      actions.append(button);
+    });
+    if (documents.length > 3) {
+      const more = document.createElement("span");
+      more.className = "client-portal-foundation-more";
+      more.textContent = `+${documents.length - 3}`;
+      actions.append(more);
+    }
+  } else {
+    const empty = document.createElement("span");
+    empty.className = "client-portal-foundation-empty";
+    empty.textContent = "Dokument još nije dodan.";
+    actions.append(empty);
+  }
+
+  article.append(icon, copy, status, meta, actions);
+  return article;
+}
+
+function createClientPortalFoundationPreviewRow(item = {}) {
+  const rulebook = item.rulebook ?? null;
+  const preset = item.preset ?? getRulebookPreset(item.type) ?? {};
+  const type = String(rulebook?.rulebookType || preset.type || item.type || "custom");
+  const documents = (rulebook?.documents ?? []).filter((document) => String(document?.storageUrl || document?.dataUrl || "").trim());
+  const row = document.createElement("article");
+  row.className = "client-portal-preview-row is-foundation-document";
+
+  const main = document.createElement("div");
+  main.className = "client-portal-preview-row-main";
+  const title = document.createElement("strong");
+  title.textContent = rulebook?.title || preset.title || getRulebookTypeLabel(type);
+  const status = document.createElement("span");
+  status.textContent = rulebook ? getRulebookStatusLabel(rulebook.status) : "U pripremi";
+  main.append(title, status);
+
+  const copy = document.createElement("div");
+  copy.className = "client-portal-preview-row-copy";
+  const typeLabel = document.createElement("strong");
+  typeLabel.textContent = getRulebookTypeLabel(type);
+  const summary = document.createElement("span");
+  summary.textContent = rulebook?.summary || preset.summary || "Temeljni dokument.";
+  copy.append(typeLabel, summary);
+
+  const meta = document.createElement("div");
+  meta.className = "client-portal-preview-row-meta";
+  const documentCount = document.createElement("span");
+  documentCount.textContent = documents.length ? `${documents.length} dokumenata` : "Bez dokumenta";
+  const review = document.createElement("span");
+  review.textContent = rulebook?.reviewDate ? `Revizija ${formatCompactDate(rulebook.reviewDate)}` : "Bez revizije";
+  meta.append(documentCount, review);
+
+  const badge = document.createElement("span");
+  badge.className = "client-portal-preview-row-badge is-foundation-document";
+  badge.textContent = "Temeljno";
+
+  row.append(main, copy, meta, badge);
+  return row;
+}
+
 function renderClientPortalPreview() {
   const companyId = getClientPortalSelectedCompanyId();
   const company = getCompany(companyId);
@@ -85782,6 +85930,7 @@ function renderClientPortalPreview() {
   ));
 
   const workOrderRows = scopedWorkOrders.map(createClientPortalWorkOrderPreviewRow);
+  const foundationRows = getClientPortalFoundationalDocumentItems().map(createClientPortalFoundationPreviewRow);
   const documentRows = scopedDocumentRecords.map(createClientPortalDocumentPreviewRow);
   const trainingRows = scopedTrainingRecords.map(createClientPortalTrainingPreviewRow);
   const riskAssessmentRows = scopedRiskAssessments.map(createClientPortalRiskAssessmentPreviewRow);
@@ -85796,6 +85945,13 @@ function renderClientPortalPreview() {
     subtitle: "Klijent vidi RN pregled prema odabranoj tvrtki i lokacijama.",
     rows: workOrderRows,
     emptyMessage: companyId ? "Nema radnih naloga za odabranu tvrtku i lokacije." : "Odaberi tvrtku za preview radnih naloga.",
+  });
+  const foundationSection = createClientPortalPreviewSection({
+    key: "foundationDocuments",
+    title: "Temeljna dokumentacija",
+    subtitle: "Osnovni pravilnici i akti koji se prikazuju klijentu u portalu.",
+    rows: foundationRows,
+    emptyMessage: "Nema temeljne dokumentacije za prikaz.",
   });
   const documentsSection = createClientPortalPreviewSection({
     key: "documents",
@@ -85819,7 +85975,7 @@ function renderClientPortalPreview() {
     emptyMessage: companyId ? "Nema procjena rizika za odabrani opseg." : "Odaberi tvrtku za preview procjena rizika.",
   });
 
-  clientPortalPreviewList.replaceChildren(workOrdersSection, documentsSection, trainingsSection, riskAssessmentSection);
+  clientPortalPreviewList.replaceChildren(workOrdersSection, foundationSection, documentsSection, trainingsSection, riskAssessmentSection);
 }
 
 function getClientPortalRecordTypeLabel(type = "") {
@@ -87701,6 +87857,47 @@ async function deleteClientPortalRecord(recordId = "") {
   return success;
 }
 
+function renderClientPortalFoundationPanel() {
+  if (!clientPortalFoundationPanel || !clientPortalFoundationRoot) {
+    return;
+  }
+
+  const canUse = getCanUseClientPortalRecords();
+  clientPortalFoundationPanel.hidden = !canUse;
+  if (!canUse) {
+    clientPortalFoundationRoot.replaceChildren();
+    if (clientPortalFoundationCount) {
+      clientPortalFoundationCount.textContent = "0";
+    }
+    return;
+  }
+
+  const items = getClientPortalFoundationalDocumentItems();
+  const publishedCount = getClientPortalFoundationDocumentCount(items);
+  if (clientPortalFoundationCount) {
+    clientPortalFoundationCount.textContent = `${publishedCount}/${items.length}`;
+  }
+
+  const lead = document.createElement("div");
+  lead.className = "client-portal-foundation-lead";
+  const leadCopy = document.createElement("div");
+  const title = document.createElement("strong");
+  title.textContent = "Osnovni dokumenti na jednom mjestu";
+  const copy = document.createElement("span");
+  copy.textContent = "Klijent ovdje vidi pravilnike i temeljne akte koji vrijede za suradnju, radnike i lokacije.";
+  leadCopy.append(title, copy);
+  const metric = document.createElement("span");
+  metric.className = "client-portal-foundation-metric";
+  metric.textContent = `${publishedCount} objavljeno`;
+  lead.append(leadCopy, metric);
+
+  const grid = document.createElement("div");
+  grid.className = "client-portal-foundation-grid";
+  grid.replaceChildren(...items.map(createClientPortalFoundationDocumentCard));
+
+  clientPortalFoundationRoot.replaceChildren(lead, grid);
+}
+
 function renderClientPortalRecordsPanel() {
   if (!clientPortalRegisterPanel || !clientPortalRecordsRoot) {
     return;
@@ -87847,6 +88044,7 @@ function renderClientPortalModule() {
         }
       });
     closeClientPortalAccessModal();
+    renderClientPortalFoundationPanel();
     renderClientPortalRecordsPanel();
     return;
   }
@@ -87873,6 +88071,7 @@ function renderClientPortalModule() {
       clientPortalUsersEmpty.hidden = true;
     }
     closeClientPortalAccessModal();
+    renderClientPortalFoundationPanel();
     renderClientPortalRecordsPanel();
     return;
   }
@@ -87938,6 +88137,7 @@ function renderClientPortalModule() {
 
   syncClientPortalAccessModal();
   renderClientPortalPreview();
+  renderClientPortalFoundationPanel();
   renderClientPortalRecordsPanel();
 }
 
@@ -145735,6 +145935,13 @@ function resetAuthenticatedWorkspaceState() {
     activeType: "worker",
     editId: "",
     modalOpen: false,
+  };
+  state.clientPortalPreviewCollapsed = {
+    workOrders: false,
+    foundationDocuments: false,
+    documents: false,
+    trainings: false,
+    riskAssessments: false,
   };
   state.jobs = [];
   state.activeJobId = "";

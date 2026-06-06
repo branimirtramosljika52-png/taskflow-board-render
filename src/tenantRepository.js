@@ -2258,8 +2258,13 @@ function buildScopedSnapshot(rawSnapshot, organizationId, assignments = [], acto
       linkedTemplateIds: [...(item.linkedTemplateIds ?? [])],
       linkedTemplateTitles: [...(item.linkedTemplateTitles ?? [])],
     })),
-    rulebooks: (["rulebooks.view", "rulebooks.manage"].some((permissionKey) => hasAppPermission(permissionKey)) ? (rawSnapshot.rulebooks ?? []) : []).filter((item) => (
+    rulebooks: (
+      actorIsClientPortal || ["rulebooks.view", "rulebooks.manage"].some((permissionKey) => hasAppPermission(permissionKey))
+        ? (rawSnapshot.rulebooks ?? [])
+        : []
+    ).filter((item) => (
       String(item.organizationId) === String(organizationId)
+      && (!actorIsClientPortal || ["active", "review"].includes(String(item.status || "draft")))
     )).map((item) => ({
       ...item,
       documents: (item.documents ?? []).map((document) => ({ ...document })),

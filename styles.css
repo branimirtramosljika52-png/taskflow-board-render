@@ -8675,6 +8675,12 @@ body.is-location-editor-open {
     linear-gradient(135deg, rgba(247, 253, 249, 0.96), rgba(255, 255, 255, 0.86));
 }
 
+.client-portal-preview-row.is-foundation-document {
+  border-color: rgba(99, 102, 241, 0.32);
+  background:
+    linear-gradient(135deg, rgba(246, 247, 255, 0.96), rgba(255, 255, 255, 0.88));
+}
+
 .client-portal-preview-row-main,
 .client-portal-preview-row-copy,
 .client-portal-preview-row-meta {
@@ -8723,6 +8729,12 @@ body.is-location-editor-open {
   color: #20623e;
 }
 
+.client-portal-preview-row-badge.is-foundation-document {
+  border-color: rgba(99, 102, 241, 0.42);
+  background: rgba(238, 242, 255, 0.94);
+  color: #3730a3;
+}
+
 .client-portal-preview-empty {
   padding: 14px;
   border: 1px dashed rgba(154, 178, 220, 0.7);
@@ -8730,6 +8742,211 @@ body.is-location-editor-open {
   background: rgba(248, 251, 255, 0.72);
   color: #66728c;
   font-size: 0.86rem;
+}
+
+.client-portal-foundation-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.client-portal-foundation-panel[hidden] {
+  display: none;
+}
+
+.client-portal-foundation-root {
+  display: grid;
+  gap: 12px;
+}
+
+.client-portal-foundation-lead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(190, 204, 232, 0.78);
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 255, 0.9));
+}
+
+.client-portal-foundation-lead div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.client-portal-foundation-lead strong {
+  color: #1d2b4f;
+  font-size: 0.98rem;
+}
+
+.client-portal-foundation-lead span {
+  color: #64728c;
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
+.client-portal-foundation-metric {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid rgba(99, 102, 241, 0.26);
+  border-radius: 999px;
+  background: rgba(238, 242, 255, 0.9);
+  color: #3730a3 !important;
+  font-size: 0.78rem !important;
+  font-weight: 900;
+}
+
+.client-portal-foundation-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.client-portal-foundation-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  min-height: 156px;
+  padding: 14px;
+  border: 1px solid rgba(190, 204, 232, 0.82);
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 255, 0.9));
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
+}
+
+.client-portal-foundation-card.is-placeholder {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(246, 248, 252, 0.82));
+}
+
+.client-portal-foundation-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid rgba(147, 197, 253, 0.54);
+  border-radius: 15px;
+  background: rgba(239, 246, 255, 0.92);
+  color: #2563eb;
+}
+
+.client-portal-foundation-icon .icon-svg {
+  width: 22px;
+  height: 22px;
+}
+
+.client-portal-foundation-copy {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.client-portal-foundation-copy strong {
+  display: -webkit-box;
+  max-height: 2.45rem;
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 0.95rem;
+  font-weight: 950;
+  line-height: 1.25;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.client-portal-foundation-copy span {
+  display: -webkit-box;
+  max-height: 3.25rem;
+  overflow: hidden;
+  color: #64748b;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.client-portal-foundation-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 5px 9px;
+  border: 1px solid rgba(148, 163, 184, 0.38);
+  border-radius: 999px;
+  background: rgba(248, 250, 252, 0.92);
+  color: #475569;
+  font-size: 0.7rem;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.client-portal-foundation-status.is-active {
+  border-color: rgba(34, 197, 94, 0.34);
+  background: rgba(240, 253, 244, 0.92);
+  color: #166534;
+}
+
+.client-portal-foundation-status.is-review {
+  border-color: rgba(245, 158, 11, 0.34);
+  background: rgba(255, 251, 235, 0.94);
+  color: #92400e;
+}
+
+.client-portal-foundation-meta,
+.client-portal-foundation-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.client-portal-foundation-meta span,
+.client-portal-foundation-empty,
+.client-portal-foundation-more {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 4px 8px;
+  border: 1px solid rgba(203, 213, 225, 0.72);
+  border-radius: 999px;
+  background: rgba(248, 250, 252, 0.9);
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.client-portal-foundation-document-button {
+  min-width: 0;
+  max-width: 210px;
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 1px solid rgba(37, 99, 235, 0.24);
+  border-radius: 999px;
+  background: rgba(239, 246, 255, 0.92);
+  color: #1d4ed8;
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 900;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.client-portal-foundation-document-button:hover,
+.client-portal-foundation-document-button:focus-visible {
+  border-color: rgba(37, 99, 235, 0.42);
+  background: rgba(219, 234, 254, 0.96);
+  outline: none;
 }
 
 .client-portal-register-panel {
@@ -11098,6 +11315,10 @@ body.is-location-editor-open {
     border-top: 1px solid #edf0f6;
     padding-left: 20px;
   }
+
+  .client-portal-foundation-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 920px) {
@@ -11284,6 +11505,24 @@ body.is-location-editor-open {
 
   .client-portal-preview-row {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .client-portal-foundation-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .client-portal-foundation-card {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .client-portal-foundation-status {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .client-portal-foundation-lead {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .company-client-portal-head,

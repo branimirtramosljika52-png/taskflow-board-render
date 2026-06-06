@@ -360,6 +360,24 @@ test("memory tenant repository scopes client portal users to assigned company lo
       { id: "offer-2", organizationId: organization.id, companyId: "company-1", selectedLocationIds: ["location-2"], items: [] },
       { id: "offer-3", organizationId: organization.id, companyId: "company-2", selectedLocationIds: ["location-3"], items: [] },
     ],
+    rulebooks: [
+      {
+        id: "rulebook-1",
+        organizationId: organization.id,
+        title: "Pravilnik o zaštiti na radu",
+        rulebookType: "znr",
+        status: "active",
+        documents: [{ id: "doc-1", fileName: "pravilnik-znr.pdf", dataUrl: "data:application/pdf;base64,AAAA" }],
+      },
+      {
+        id: "rulebook-2",
+        organizationId: organization.id,
+        title: "Radna verzija pravilnika",
+        rulebookType: "custom",
+        status: "draft",
+        documents: [{ id: "doc-2", fileName: "draft.pdf", dataUrl: "data:application/pdf;base64,BBBB" }],
+      },
+    ],
   });
 
   assert.deepEqual(scoped.companyPermissions, {
@@ -372,6 +390,8 @@ test("memory tenant repository scopes client portal users to assigned company lo
   assert.deepEqual(scoped.locations.map((item) => item.id), ["location-1"]);
   assert.deepEqual(scoped.workOrders.map((item) => item.id), ["wo-1"]);
   assert.deepEqual(scoped.offers.map((item) => item.id), ["offer-1"]);
+  assert.deepEqual(scoped.rulebooks.map((item) => item.id), ["rulebook-1"]);
+  assert.equal(scoped.rulebooks[0].documents[0].fileName, "pravilnik-znr.pdf");
 });
 
 test("memory tenant repository lets admins create users only inside their organization", async () => {
