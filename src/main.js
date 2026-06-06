@@ -4166,6 +4166,9 @@ const clientPortalClearUserButton = document.querySelector("#client-portal-clear
 const clientPortalSearchInput = document.querySelector("#client-portal-search");
 const clientPortalRefreshButton = document.querySelector("#client-portal-refresh");
 const clientPortalOpenCompanyButton = document.querySelector("#client-portal-open-company");
+const clientPortalDownloadAccessExcelButton = document.querySelector("#client-portal-download-access-excel");
+const clientPortalImportAccessExcelButton = document.querySelector("#client-portal-import-access-excel");
+const clientPortalImportAccessInput = document.querySelector("#client-portal-import-access-input");
 const clientPortalTotalUsers = document.querySelector("#client-portal-total-users");
 const clientPortalCompanyCount = document.querySelector("#client-portal-company-count");
 const clientPortalLocationScopedCount = document.querySelector("#client-portal-location-scoped-count");
@@ -16375,6 +16378,23 @@ async function importPeopleTrainingExcel(file) {
   } finally {
     peopleTrainingImportDraft.busy = false;
     renderPeopleTrainingImportDialog();
+  }
+}
+
+async function downloadPeopleTrainingImportTemplateExcel() {
+  if (peopleTrainingDownloadTemplateButton) {
+    peopleTrainingDownloadTemplateButton.disabled = true;
+  }
+  try {
+    const { blob, fileName } = await apiBinaryRequest("/people-training-records/import-template");
+    triggerBlobDownload(blob, fileName || "osposobljavanja-podaci.xlsx");
+    setPeopleTrainingFeedback("Excel s osposobljavanjima je preuzet.", "success");
+  } catch (error) {
+    setPeopleTrainingFeedback(error?.message || "Ne mogu preuzeti Excel s osposobljavanjima.", "error");
+  } finally {
+    if (peopleTrainingDownloadTemplateButton) {
+      peopleTrainingDownloadTemplateButton.disabled = false;
+    }
   }
 }
 
@@ -85197,6 +85217,73 @@ async function createClientPortalUserFromModule() {
   return success;
 }
 
+function setClientPortalExcelBusy(isBusy = false) {
+  const companyId = getClientPortalSelectedCompanyId();
+  const canUseExcel = Boolean(getCanManageClientPortal() && companyId && getCanEditCompany(companyId));
+  [clientPortalDownloadAccessExcelButton, clientPortalImportAccessExcelButton].forEach((button) => {
+    if (button) {
+      button.disabled = isBusy || !canUseExcel;
+    }
+  });
+}
+
+async function downloadClientPortalAccessExcel() {
+  const companyId = getClientPortalSelectedCompanyId();
+  if (!getCanManageClientPortal() || !companyId || !getCanEditCompany(companyId)) {
+    setInlineMessage(clientPortalFeedback, "Odaberi tvrtku za Excel klijentskih pristupa.");
+    return;
+  }
+
+  setClientPortalExcelBusy(true);
+  setInlineMessage(clientPortalFeedback, "");
+  try {
+    const query = `?companyId=${encodeURIComponent(companyId)}`;
+    const { blob, fileName } = await apiBinaryRequest(`/client-portal/access-import-template${query}`);
+    triggerBlobDownload(blob, fileName || "klijentski-pristupi.xlsx");
+    setInlineMessage(clientPortalFeedback, "Excel s klijentskim pristupima je preuzet.", "success");
+  } catch (error) {
+    setInlineMessage(clientPortalFeedback, error?.message || "Ne mogu preuzeti Excel za klijentske pristupe.");
+  } finally {
+    setClientPortalExcelBusy(false);
+  }
+}
+
+async function importClientPortalAccessExcel(file) {
+  if (!file) {
+    return;
+  }
+
+  const companyId = getClientPortalSelectedCompanyId();
+  if (!getCanManageClientPortal() || !companyId || !getCanEditCompany(companyId)) {
+    setInlineMessage(clientPortalFeedback, "Odaberi tvrtku za import klijentskih pristupa.");
+    return;
+  }
+
+  setClientPortalExcelBusy(true);
+  setInlineMessage(clientPortalFeedback, "");
+  try {
+    const dataUrl = await readFileAsDataUrl(file, "Ne mogu učitati Excel za klijentske pristupe.");
+    const payload = await apiRequest("/client-portal/access-import", {
+      method: "POST",
+      body: {
+        companyId,
+        fileName: file.name,
+        dataUrl,
+      },
+    });
+    if (payload && typeof payload === "object" && Object.prototype.hasOwnProperty.call(payload, "storage")) {
+      applySnapshot(payload);
+    }
+    renderClientPortalModule();
+    renderCompanyClientPortalPanel();
+    setInlineMessage(clientPortalFeedback, "Excel import klijentskih pristupa je završen.", "success");
+  } catch (error) {
+    setInlineMessage(clientPortalFeedback, error?.message || "Ne mogu importati Excel klijentskih pristupa.");
+  } finally {
+    setClientPortalExcelBusy(false);
+  }
+}
+
 function getClientPortalUserSearchText(user = {}) {
   const companyNames = normalizeClientScopeIdsClient(user.clientCompanyIds)
     .map((companyId) => getCompany(companyId)?.name || "")
@@ -87727,6 +87814,12 @@ function renderClientPortalModule() {
     if (clientPortalOpenCompanyButton) {
       clientPortalOpenCompanyButton.disabled = true;
     }
+    [clientPortalDownloadAccessExcelButton, clientPortalImportAccessExcelButton].forEach((button) => {
+      if (button) {
+        button.hidden = true;
+        button.disabled = true;
+      }
+    });
     clientPortalUsersList?.replaceChildren();
     if (clientPortalUsersEmpty) {
       clientPortalUsersEmpty.hidden = false;
@@ -87754,6 +87847,12 @@ function renderClientPortalModule() {
     if (clientPortalOpenCompanyButton) {
       clientPortalOpenCompanyButton.disabled = true;
     }
+    [clientPortalDownloadAccessExcelButton, clientPortalImportAccessExcelButton].forEach((button) => {
+      if (button) {
+        button.hidden = true;
+        button.disabled = true;
+      }
+    });
     clientPortalUsersList?.replaceChildren();
     if (clientPortalUsersEmpty) {
       clientPortalUsersEmpty.hidden = true;
@@ -87766,6 +87865,11 @@ function renderClientPortalModule() {
   if (clientPortalOpenAccessButton) {
     clientPortalOpenAccessButton.hidden = false;
   }
+  [clientPortalDownloadAccessExcelButton, clientPortalImportAccessExcelButton].forEach((button) => {
+    if (button) {
+      button.hidden = false;
+    }
+  });
 
   const companyId = rebuildClientPortalCompanyOptions();
   rebuildClientPortalLocationOptions(getSelectedMultiSelectValues(clientPortalLocationIdsInput));
@@ -87815,6 +87919,7 @@ function renderClientPortalModule() {
   if (clientPortalOpenCompanyButton) {
     clientPortalOpenCompanyButton.disabled = !companyId || !getCompany(companyId);
   }
+  setClientPortalExcelBusy(false);
 
   syncClientPortalAccessModal();
   renderClientPortalPreview();
@@ -123873,6 +123978,27 @@ clientPortalRefreshButton?.addEventListener("click", () => {
   renderClientPortalModule();
 });
 
+clientPortalDownloadAccessExcelButton?.addEventListener("click", () => {
+  void downloadClientPortalAccessExcel();
+});
+
+clientPortalImportAccessExcelButton?.addEventListener("click", () => {
+  if (clientPortalImportAccessInput instanceof HTMLInputElement) {
+    clientPortalImportAccessInput.value = "";
+    clientPortalImportAccessInput.click();
+  }
+});
+
+clientPortalImportAccessInput?.addEventListener("change", () => {
+  const [file] = Array.from(clientPortalImportAccessInput.files ?? []);
+  if (!file) {
+    return;
+  }
+  void importClientPortalAccessExcel(file).finally(() => {
+    clientPortalImportAccessInput.value = "";
+  });
+});
+
 clientPortalOpenCompanyButton?.addEventListener("click", () => {
   const company = getCompany(getClientPortalSelectedCompanyId());
   if (!company) {
@@ -145549,7 +145675,7 @@ peopleTrainingImportButton?.addEventListener("click", () => {
 });
 
 peopleTrainingDownloadTemplateButton?.addEventListener("click", () => {
-  window.location.href = "/api/people-training-records/import-template";
+  void downloadPeopleTrainingImportTemplateExcel();
 });
 
 peopleTrainingOpenTemplateButton?.addEventListener("click", () => {

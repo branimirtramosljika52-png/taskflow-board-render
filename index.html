@@ -4376,7 +4376,7 @@
                 <h3>Osposobljavanja ljudi</h3>
               </div>
               <div class="vehicles-panel-head-actions">
-                <button id="people-training-download-template-button" type="button" class="ghost-button">Download Excel</button>
+                <button id="people-training-download-template-button" type="button" class="ghost-button">Excel s podacima</button>
                 <button id="people-training-import-button" type="button" class="ghost-button">Import Excel</button>
                 <button id="people-training-open-template-button" type="button" class="ghost-button">Word template uvjerenja</button>
                 <button id="people-training-new-button" type="button" class="primary-button" data-people-training-command="new">+ Nova osoba</button>
@@ -7534,8 +7534,11 @@
                     </label>
                     <div class="client-portal-toolbar-actions">
                       <button id="client-portal-open-access" type="button" class="primary-button">+ Novi pristup</button>
+                      <button id="client-portal-download-access-excel" type="button" class="ghost-button">Excel s podacima</button>
+                      <button id="client-portal-import-access-excel" type="button" class="ghost-button">Import Excel</button>
                       <button id="client-portal-open-company" type="button" class="ghost-button">Otvori tvrtku</button>
                       <button id="client-portal-refresh" type="button" class="ghost-button">Osvježi</button>
+                      <input id="client-portal-import-access-input" type="file" accept=".xlsx,.xls,.csv" hidden />
                     </div>
                   </div>
                 </section>
@@ -9873,7 +9876,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/src/auth-transitions.js?v=20260422a"></script>
-    <script type="module" src="/src/main.js?v=20260606-risk-toolbar-scroll-v1"></script>
+    <script type="module" src="/src/main.js?v=20260606-client-training-bulk-import-v1"></script>
     <script type="module" src="/assets/ozo-panel.js?v=20260602-risk-export-card-matrix-v1"></script>
   </body>
 </html>
