@@ -17,6 +17,7 @@ class SafeNexusApi(
     private val baseUrl: String = BuildConfig.SAFE_NEXUS_BASE_URL.trimEnd('/'),
 ) {
     private var authCookieHeader: String = ""
+    private var accessToken: String = ""
 
     init {
         if (CookieHandler.getDefault() == null) {
@@ -32,6 +33,7 @@ class SafeNexusApi(
                 .toString()
             val response = request("/api/auth/login", method = "POST", body = payload)
             val json = JSONObject(response)
+            accessToken = json.optString("mobileAccessToken", "").trim()
             val user = json.optJSONObject("user") ?: JSONObject()
             SafeNexusUser(
                 displayName = user.firstClean("fullName", "displayName", "username", "email").ifBlank { "SafeNexus" },
@@ -62,6 +64,7 @@ class SafeNexusApi(
         runCatching {
             request("/api/auth/logout", method = "POST", body = "{}")
             authCookieHeader = ""
+            accessToken = ""
             Unit
         }
     }
@@ -73,6 +76,10 @@ class SafeNexusApi(
             readTimeout = 24_000
             setRequestProperty("Accept", "application/json")
             setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            setRequestProperty("X-SafeNexus-Client", "android")
+            if (accessToken.isNotBlank()) {
+                setRequestProperty("Authorization", "Bearer $accessToken")
+            }
             if (authCookieHeader.isNotBlank()) {
                 setRequestProperty("Cookie", authCookieHeader)
             }

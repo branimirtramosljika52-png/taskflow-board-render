@@ -75,6 +75,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   5000,
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
+const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
@@ -5846,6 +5847,12 @@ function buildUserFromTokenPayload(payload) {
   };
 }
 
+function getBearerAuthToken(request) {
+  const headerValue = String(request.headers.authorization ?? "").trim();
+  const match = headerValue.match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() || "";
+}
+
 async function hydrateRequestUser(userLike) {
   if (!userLike?.id || typeof tenantRepository.getUserById !== "function") {
     return userLike ?? null;
@@ -5916,6 +5923,16 @@ async function tryRefreshAuth(request, response, cookies) {
 async function getRequestUser(request, response) {
   if (Object.prototype.hasOwnProperty.call(request, requestUserSymbol)) {
     return request[requestUserSymbol];
+  }
+
+  const bearerToken = getBearerAuthToken(request);
+  if (bearerToken) {
+    const bearerVerification = verifyToken(bearerToken, jwtSecret, { expectedType: "access" });
+    if (bearerVerification.ok) {
+      const user = await hydrateRequestUser(buildUserFromTokenPayload(bearerVerification.payload));
+      request[requestUserSymbol] = user;
+      return user;
+    }
   }
 
   const cookies = parseCookies(request.headers.cookie ?? "");
@@ -9177,10 +9194,15 @@ async function handleApiRequest(request, response, url) {
         domain: resolveAuthCookieDomain(request),
       }));
 
-      sendJson(response, 200, {
+      const loginPayload = {
         authenticated: true,
         user,
-      });
+      };
+      if (String(request.headers["x-safenexus-client"] || "").trim().toLowerCase() === "android") {
+        loginPayload.mobileAccessToken = createAccessToken(user, jwtSecret, MOBILE_ACCESS_TOKEN_MAX_AGE_MS);
+      }
+
+      sendJson(response, 200, loginPayload);
       return true;
     }
 
