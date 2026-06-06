@@ -9992,6 +9992,69 @@ const PEOPLE_TRAINING_CERTIFICATE_PLACEHOLDERS = [
   createPeopleTrainingZnrPlaceholder("RadnaOpremaRA1", "Radna oprema i alati za RA-1", "viličar, ručni alat"),
   createPeopleTrainingZnrPlaceholder("RadneStetnostiRA1", "Štetnosti, kemikalije i biologija za RA-1", "prašina, ulja i maziva"),
   createPeopleTrainingZnrPlaceholder("OzoRA1", "OZO za RA-1", "zaštitne naočale, rukavice"),
+  createPeopleTrainingZnrPlaceholder("RA1_POSLODAVAC", "RA-1 poslodavac / tvrtka", "Safe Nexus d.o.o."),
+  createPeopleTrainingZnrPlaceholder("RA1_POSLODAVAC_OIB", "RA-1 OIB poslodavca", "12345678903"),
+  createPeopleTrainingZnrPlaceholder("RA1_POSLODAVAC_SJEDISTE", "RA-1 sjedište poslodavca", "Zagreb"),
+  createPeopleTrainingZnrPlaceholder("RA1_RADNIK_IME_PREZIME", "RA-1 ime i prezime radnika", "Ana Horvat"),
+  createPeopleTrainingZnrPlaceholder("RA1_RADNIK_OIB", "RA-1 OIB radnika", "98765432109"),
+  createPeopleTrainingZnrPlaceholder("RA1_RADNIK_DATUM_RODENJA", "RA-1 datum rođenja radnika", "12.03.1990"),
+  createPeopleTrainingZnrPlaceholder("RA1_RADNIK_MJESTO_RODENJA", "RA-1 mjesto rođenja radnika", "Zagreb"),
+  createPeopleTrainingZnrPlaceholder("RA1_RADNIK_ZANIMANJE", "RA-1 zanimanje/radno mjesto", "Skladištar"),
+  createPeopleTrainingZnrPlaceholder("RA1_STROJEVI_ALATI_APARATI", "RA-1 strojevi, alati i aparati", "viličar, ručna kolica"),
+  createPeopleTrainingZnrPlaceholder("RA1_PREDMET_RADA", "RA-1 predmet rada / radne tvari", "ambalaža, roba, sredstva za čišćenje"),
+  createPeopleTrainingZnrPlaceholder("RA1_KEMIJSKE_TVARI", "RA-1 kemijske tvari", "sredstva za čišćenje"),
+  createPeopleTrainingZnrPlaceholder("RA1_BIOLOSKE_STETNOSTI", "RA-1 biološke štetnosti", "nema"),
+  createPeopleTrainingZnrPlaceholder("RA1_PREGLED_PRETHODNI", "X za prethodni zdravstveni pregled", "X"),
+  createPeopleTrainingZnrPlaceholder("RA1_PREGLED_PERIODICKI", "X za periodički zdravstveni pregled", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_PREGLED_IZVANREDNI", "X za izvanredni zdravstveni pregled", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_MJESTO_RADA_UNUTRA", "X mjesto rada: u zatvorenom", "X"),
+  createPeopleTrainingZnrPlaceholder("RA1_MJESTO_RADA_OTVORENO", "X mjesto rada: na otvorenom", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_MJESTO_RADA_VISINA", "X mjesto rada: na visini", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_MJESTO_RADA_JAMA", "X mjesto rada: u jami", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_MJESTO_RADA_VODA", "X mjesto rada: u vodi", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_MJESTO_RADA_POD_VODOM", "X mjesto rada: pod vodom", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_MJESTO_RADA_MOKRO", "X mjesto rada: u mokrom", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_ORGANIZACIJA_SMJENE", "X organizacija: u smjenama", "X"),
+  createPeopleTrainingZnrPlaceholder("RA1_ORGANIZACIJA_NOCNI_RAD", "X organizacija: noćni rad", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_ORGANIZACIJA_TEREN", "X organizacija: terenski rad", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_ORGANIZACIJA_RADI_SAM", "X organizacija: radi sam", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_ORGANIZACIJA_GRUPA", "X organizacija: radi s grupom", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_ORGANIZACIJA_STRANKE", "X organizacija: radi sa strankama", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_ORGANIZACIJA_TRAKA", "X organizacija: radi na traci", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_ORGANIZACIJA_BRZI_TEMPO", "X organizacija: brzi tempo rada", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_ORGANIZACIJA_RITAM", "X organizacija: ritam određen", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_ORGANIZACIJA_MONOTONIJA", "X organizacija: monotonija", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_POLOZAJ_STOJECI", "X položaj: rad stojeći", "X"),
+  createPeopleTrainingZnrPlaceholder("RA1_POLOZAJ_SAGIBANJE", "X položaj: učestalo sagibanje", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_POLOZAJ_PODVLACENJE", "X položaj: podvlačenje", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_POLOZAJ_SJEDECI", "X položaj: rad sjedeći", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_POLOZAJ_ZAKRETANJE", "X položaj: zakretanje trupa", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_POLOZAJ_BALANSIRANJE", "X položaj: balansiranje", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_POLOZAJ_U_POKRETU", "X položaj: u pokretu", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_POLOZAJ_KLECANJE", "X položaj: klečanje", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_POLOZAJ_LJESTVE", "X položaj: uspinjanje ljestvama", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_POLOZAJ_KOMBINIRANO", "X položaj: kombinirano", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_POLOZAJ_CUCANJE", "X položaj: čučanje", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_POLOZAJ_STEPENICE", "X položaj: uspinjanje stepenicama", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_TERET_DIZANJE_X", "X teret: dizanje tereta", "X"),
+  createPeopleTrainingZnrPlaceholder("RA1_TERET_PRENOSENJE_X", "X teret: prenošenje tereta", "X"),
+  createPeopleTrainingZnrPlaceholder("RA1_TERET_GURANJE_X", "X teret: guranje tereta", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_FUNKCIJA_VID_DALJINA", "X funkcija: vid na daljinu", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_FUNKCIJA_VID_BLIZINA", "X funkcija: vid na blizinu", "X"),
+  createPeopleTrainingZnrPlaceholder("RA1_FUNKCIJA_BOJE", "X funkcija: raspoznavanje boja", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_FUNKCIJA_SLUH", "X funkcija: dobar sluh", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_FUNKCIJA_GOVOR", "X funkcija: jasan govor", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_UVJETI_VISOKA_TEMP", "X uvjeti: visoka temperatura", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_UVJETI_VISOKA_VLAZNOST", "X uvjeti: visoka vlažnost", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_UVJETI_NISKA_TEMP", "X uvjeti: niska temperatura", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_UVJETI_BUKA", "X uvjeti: buka", "X"),
+  createPeopleTrainingZnrPlaceholder("RA1_UVJETI_VIBRACIJE_STROJA", "X uvjeti: vibracije stroja ili alata", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_UVJETI_VIBRACIJE_PODA", "X uvjeti: vibracije poda", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_UVJETI_TLAK", "X uvjeti: povišeni atmosferski tlak", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_UVJETI_OZLJEDE", "X uvjeti: povećana izloženost ozljedama", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_UVJETI_IONIZIRAJUCE", "X uvjeti: ionizirajuća zračenja", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_UVJETI_NEIONIZIRAJUCE", "X uvjeti: neionizirajuća zračenja", ""),
+  createPeopleTrainingZnrPlaceholder("RA1_UVJETI_PRASINA", "X uvjeti: prašina", ""),
   createPeopleTrainingZnrPlaceholder("UstanovaMedicineRadaRA1", "Ustanova medicine rada za RA-1", "Medicina rada Zagreb"),
   createPeopleTrainingZnrPlaceholder("NapomenaRA1", "Napomena za RA-1", ""),
   createPeopleTrainingZnrPlaceholder("RA1_VRIJEDI_DO", "RA-1 uputnica vrijedi do", "30.05.2026"),
@@ -10112,18 +10175,25 @@ function getPeopleTrainingServiceTypeOptions() {
     return peopleTrainingUiCache.serviceOptions;
   }
 
-  peopleTrainingUiCache.serviceOptions = sortServiceCatalogItems(state.serviceCatalog ?? [])
+  const byValue = new Map();
+  sortServiceCatalogItems(state.serviceCatalog ?? [])
     .filter((item) => (
       Boolean(item.isTraining)
       && normalizeServiceCatalogTypeUi(item.serviceType, "inspection") === "znr"
     ))
-    .map((item) => {
+    .forEach((item) => {
       const label = String(item.name || item.serviceCode || "Usluga osposobljavanja").trim();
       const serviceCode = String(item.serviceCode || "").trim();
-      return {
-        value: `service:${item.id}`.toLowerCase(),
+      const isSafeWork = isPeopleTrainingSafeWorkTypeCandidate({
         label,
-        shortLabel: serviceCode || buildPeopleTrainingShortLabel(label, "ZNR"),
+        serviceName: label,
+        serviceCode,
+        shortLabel: serviceCode,
+      });
+      const option = {
+        value: isSafeWork ? "safe_work" : `service:${item.id}`.toLowerCase(),
+        label,
+        shortLabel: serviceCode || buildPeopleTrainingShortLabel(label, isSafeWork ? "ZNR" : "OS"),
         serviceId: String(item.id || ""),
         serviceName: label,
         serviceCode,
@@ -10132,9 +10202,64 @@ function getPeopleTrainingServiceTypeOptions() {
         linkedLearningTestIds: Array.isArray(item.linkedLearningTestIds) ? item.linkedLearningTestIds.map(String) : [],
         linkedLearningTestTitles: Array.isArray(item.linkedLearningTestTitles) ? item.linkedLearningTestTitles.map(String).filter(Boolean) : [],
       };
+      const existing = byValue.get(option.value);
+      if (!existing || getPeopleTrainingSourceItemEvidenceScore(option) > getPeopleTrainingSourceItemEvidenceScore(existing)) {
+        byValue.set(option.value, option);
+      }
     });
+  peopleTrainingUiCache.serviceOptions = [...byValue.values()];
   peopleTrainingUiCache.serviceOptionsSignature = signature;
   return peopleTrainingUiCache.serviceOptions;
+}
+
+function isPeopleTrainingSafeWorkTypeCandidate(item = {}) {
+  const code = normalizeLooseName([
+    item.serviceCode,
+    item.shortLabel,
+  ].filter(Boolean).join(" "));
+  const text = normalizeLooseName([
+    item.type,
+    item.label,
+    item.serviceName,
+    item.serviceCode,
+    item.shortLabel,
+  ].filter(Boolean).join(" "));
+  return /\b(znr|zos)\b/.test(code)
+    || /\b(znr|zos)\b/.test(text)
+    || /(rad na siguran nacin|siguran nacin|zastita na radu|zaštita na radu)/.test(text);
+}
+
+function getPeopleTrainingSourceItemEvidenceScore(item = {}) {
+  if (!item || typeof item !== "object") {
+    return 0;
+  }
+  const details = item.details && typeof item.details === "object" && !Array.isArray(item.details) ? item.details : {};
+  return [
+    item.recordNumber,
+    item.certificateNumber,
+    item.documentNumber,
+    item.number,
+    item.workOrderNumber,
+    item.issuedOn,
+    item.issuedDate,
+    item.passedOn,
+    item.passedDate,
+    item.validUntil,
+    item.validTo,
+    item.expiresOn,
+    item.serviceId,
+    item.serviceCatalogId,
+    item.provider,
+    item.note,
+    ...Object.values(details),
+  ].reduce((score, value) => score + (String(value ?? "").trim() ? 1 : 0), 0);
+}
+
+function pickPeopleTrainingSourceItem(...items) {
+  return items
+    .filter((item) => item && typeof item === "object" && Object.keys(item).length)
+    .sort((left, right) => getPeopleTrainingSourceItemEvidenceScore(right) - getPeopleTrainingSourceItemEvidenceScore(left))[0]
+    ?? {};
 }
 
 function normalizePeopleTrainingSourceItems(items = []) {
@@ -10459,10 +10584,11 @@ function normalizePeopleTrainingItemsForUi(items = []) {
   });
 
   const normalized = getPeopleTrainingTypeOptions(source).map((typeOption) => {
-    const sourceItem = byType.get(String(typeOption.value || "").trim().toLowerCase())
-      ?? byServiceId.get(String(typeOption.serviceId || "").trim())
-      ?? byServiceCode.get(String(typeOption.serviceCode || typeOption.shortLabel || "").trim().toLowerCase())
-      ?? {};
+    const sourceItem = pickPeopleTrainingSourceItem(
+      byType.get(String(typeOption.value || "").trim().toLowerCase()),
+      byServiceId.get(String(typeOption.serviceId || "").trim()),
+      byServiceCode.get(String(typeOption.serviceCode || typeOption.shortLabel || "").trim().toLowerCase()),
+    );
     const validForever = sourceItem?.validForever === true || String(sourceItem?.validForever) === "true";
     const passedOn = normalizePeopleTrainingDate(sourceItem?.passedOn ?? sourceItem?.passedDate);
     const issuedOn = normalizePeopleTrainingDate(sourceItem?.issuedOn ?? sourceItem?.issuedDate) || passedOn;
@@ -12208,9 +12334,12 @@ function getPeopleTrainingFormSectionBrief(items = []) {
 function getPeopleTrainingRawSourceItemForType(record = {}, typeOption = {}) {
   const normalizedType = String(typeOption.value || "").trim().toLowerCase();
   const normalizedCode = String(typeOption.serviceCode || typeOption.shortLabel || "").trim().toLowerCase();
-  return normalizePeopleTrainingSourceItems(record?.trainingItems ?? []).find((item) => {
+  const candidates = normalizePeopleTrainingSourceItems(record?.trainingItems ?? []).filter((item) => {
     const sourceType = String(item?.type || "").trim().toLowerCase();
     if (sourceType && sourceType === normalizedType) {
+      return true;
+    }
+    if (normalizedType === "safe_work" && isPeopleTrainingSafeWorkTypeCandidate(item)) {
       return true;
     }
     const sourceCodes = [
@@ -12220,7 +12349,8 @@ function getPeopleTrainingRawSourceItemForType(record = {}, typeOption = {}) {
       item?.serviceName,
     ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
     return normalizedCode && sourceCodes.includes(normalizedCode);
-  }) ?? {};
+  });
+  return pickPeopleTrainingSourceItem(...candidates);
 }
 
 function createPeopleTrainingFallbackItemForSection(typeValue = "", record = {}) {
@@ -12752,11 +12882,18 @@ function createPeopleTrainingMedicalCombinedCard(items = [], record = {}) {
     riskWorkplaceKey: medicalExamDetails.riskWorkplaceKey || safeWorkDetails.riskWorkplaceKey || "",
   }, companyId);
   const referralData = selectedRiskWorkplace?.data ?? {};
+  const getReferralValue = (key) => (
+    medicalExamDetails[key]
+    || safeWorkDetails[key]
+    || referralData[key]
+    || ""
+  );
   const medicalJobTitle = medicalExamDetails.medicalJobTitle || safeWorkDetails.jobTitle || personRecord.jobTitle || "";
   const medicalJobDescription = medicalExamDetails.medicalJobDescription || safeWorkDetails.jobDescription || personRecord.jobDescription || personRecord.note || "";
   const medicalProvider = medicalExamItem.provider || certificateItem.provider || visionItem.provider || "";
   const recordNumber = medicalExamItem.recordNumber || medicalExamDetails.referralNumber || buildPeopleTrainingRecordNumberForUi(personRecord, getPeopleTrainingTypeOption(medicalExamItem.type, personRecord.trainingItems ?? []), medicalExamItem);
   const visionRecordNumber = visionItem.recordNumber || buildPeopleTrainingRecordNumberForUi(personRecord, getPeopleTrainingTypeOption(visionItem.type, personRecord.trainingItems ?? []), visionItem);
+  const medicalExamType = medicalExamDetails.examType || medicalExamItem.examMode || "prethodni";
   const statusClass = getPeopleTrainingFormSectionStatusClass(items);
 
   const card = document.createElement("article");
@@ -12784,7 +12921,7 @@ function createPeopleTrainingMedicalCombinedCard(items = [], record = {}) {
       createPeopleTrainingDetailField({ label: "Datum uputnice", field: "issuedOn", value: medicalExamItem.issuedOn || "", isDate: true }),
       createPeopleTrainingDetailField({ label: "Uputnica vrijedi do", field: "details.referralValidUntil", value: medicalExamDetails.referralValidUntil || "", isDate: true }),
       createPeopleTrainingDetailField({ label: "Datum pregleda", field: "passedOn", value: medicalExamItem.passedOn || "", isDate: true }),
-      createPeopleTrainingDetailField({ label: "Vrsta pregleda", field: "details.examType", value: medicalExamDetails.examType || "", placeholder: "prethodni / periodični / izvanredni" }),
+      createPeopleTrainingDetailField({ label: "Vrsta pregleda", field: "details.examType", value: medicalExamType, placeholder: "prethodni / periodični / izvanredni" }),
       createPeopleTrainingDetailField({ label: "Ustanova medicine rada", field: "provider", value: medicalProvider }),
       createPeopleTrainingDetailField({ label: "Radno mjesto", field: "details.medicalJobTitle", value: medicalJobTitle }),
       createPeopleTrainingDetailField({
@@ -12796,15 +12933,15 @@ function createPeopleTrainingMedicalCombinedCard(items = [], record = {}) {
         multiline: true,
         rows: 4,
       }),
-      createPeopleTrainingDetailField({ label: "Mjesto rada (unutra/vani)", field: "details.medicalWorkplace", value: medicalExamDetails.medicalWorkplace || referralData.medicalWorkplace || "", placeholder: "u zatvorenom, na otvorenom, na visini..." }),
-      createPeopleTrainingDetailField({ label: "Organizacija rada", field: "details.medicalWorkOrganization", value: medicalExamDetails.medicalWorkOrganization || referralData.medicalWorkOrganization || "", placeholder: "smjene, noćni rad, terenski rad..." }),
-      createPeopleTrainingDetailField({ label: "Položaji i aktivnosti", field: "details.medicalBodyPositions", value: medicalExamDetails.medicalBodyPositions || referralData.medicalBodyPositions || "", placeholder: "stajanje, sagibanje, sjedenje..." }),
-      createPeopleTrainingDetailField({ label: "Teret / ručno rukovanje", field: "details.medicalLoadWeights", value: medicalExamDetails.medicalLoadWeights || referralData.medicalLoadWeights || "", placeholder: "npr. dizanje tereta: 10-15 kg" }),
-      createPeopleTrainingDetailField({ label: "Važne funkcije", field: "details.medicalImportantFunctions", value: medicalExamDetails.medicalImportantFunctions || referralData.medicalImportantFunctions || "", placeholder: "vid na blizinu, vid na daljinu, sluh..." }),
+      createPeopleTrainingDetailField({ label: "Mjesto rada (unutra/vani)", field: "details.medicalWorkplace", value: getReferralValue("medicalWorkplace"), placeholder: "u zatvorenom, na otvorenom, na visini..." }),
+      createPeopleTrainingDetailField({ label: "Organizacija rada", field: "details.medicalWorkOrganization", value: getReferralValue("medicalWorkOrganization"), placeholder: "smjene, noćni rad, terenski rad..." }),
+      createPeopleTrainingDetailField({ label: "Položaji i aktivnosti", field: "details.medicalBodyPositions", value: getReferralValue("medicalBodyPositions"), placeholder: "stajanje, sagibanje, sjedenje..." }),
+      createPeopleTrainingDetailField({ label: "Teret / ručno rukovanje", field: "details.medicalLoadWeights", value: getReferralValue("medicalLoadWeights"), placeholder: "npr. dizanje tereta: 10-15 kg" }),
+      createPeopleTrainingDetailField({ label: "Važne funkcije", field: "details.medicalImportantFunctions", value: getReferralValue("medicalImportantFunctions"), placeholder: "vid na blizinu, vid na daljinu, sluh..." }),
       createPeopleTrainingDetailField({
         label: "Radni uvjeti i mikroklima",
         field: "details.medicalWorkConditions",
-        value: medicalExamDetails.medicalWorkConditions || referralData.medicalWorkConditions || "",
+        value: getReferralValue("medicalWorkConditions"),
         placeholder: "buka, temperatura, vlaga, vibracije, prašina...",
         wide: true,
         multiline: true,
@@ -12813,7 +12950,7 @@ function createPeopleTrainingMedicalCombinedCard(items = [], record = {}) {
       createPeopleTrainingDetailField({
         label: "Radna oprema, strojevi i alati",
         field: "details.medicalEquipment",
-        value: medicalExamDetails.medicalEquipment || referralData.medicalEquipment || "",
+        value: getReferralValue("medicalEquipment"),
         placeholder: "strojevi, alati, računalo, viličar, vozilo...",
         wide: true,
         multiline: true,
@@ -12822,7 +12959,7 @@ function createPeopleTrainingMedicalCombinedCard(items = [], record = {}) {
       createPeopleTrainingDetailField({
         label: "Štetnosti, kemikalije i biologija",
         field: "details.medicalSubstances",
-        value: medicalExamDetails.medicalSubstances || referralData.medicalSubstances || "",
+        value: getReferralValue("medicalSubstances"),
         placeholder: "kemikalije, prašina, biološke štetnosti, izvori opasnosti...",
         wide: true,
         multiline: true,
@@ -12831,7 +12968,7 @@ function createPeopleTrainingMedicalCombinedCard(items = [], record = {}) {
       createPeopleTrainingDetailField({
         label: "Posebni uvjeti, štetnosti, napori i napomena za uputnicu",
         field: "details.medicalHazards",
-        value: medicalExamDetails.medicalHazards || joinUniqueRiskAssessmentTextBlocks([referralData.medicalExams, referralData.specialWorkReason]) || "",
+        value: medicalExamDetails.medicalHazards || safeWorkDetails.medicalHazards || joinUniqueRiskAssessmentTextBlocks([referralData.medicalExams, referralData.specialWorkReason]) || "",
         placeholder: "PUR točke, rad na visini, buka, kemikalije, napori vida, noćni rad...",
         wide: true,
         multiline: true,
@@ -12840,7 +12977,7 @@ function createPeopleTrainingMedicalCombinedCard(items = [], record = {}) {
       createPeopleTrainingDetailField({
         label: "OZO / dodatne napomene",
         field: "details.medicalPpe",
-        value: medicalExamDetails.medicalPpe || referralData.medicalPpe || "",
+        value: getReferralValue("medicalPpe"),
         placeholder: "Zaštitne naočale, rukavice, zaštita sluha, obuća...",
         wide: true,
         multiline: true,
@@ -12849,7 +12986,7 @@ function createPeopleTrainingMedicalCombinedCard(items = [], record = {}) {
       createPeopleTrainingDetailField({
         label: "Razlog pregleda",
         field: "details.examReason",
-        value: medicalExamDetails.examReason || "",
+        value: medicalExamDetails.examReason || safeWorkDetails.examReason || referralData.specialWorkReason || referralData.medicalExams || "",
         placeholder: "npr. poslovi s posebnim uvjetima rada, radna oprema, procjena rizika...",
         wide: true,
         multiline: true,

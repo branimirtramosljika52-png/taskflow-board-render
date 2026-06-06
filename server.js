@@ -7391,6 +7391,97 @@ function getPeopleTrainingTemplateItemDetails(item = {}) {
     : {};
 }
 
+function normalizePeopleTrainingRa1OptionText(value = "") {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function hasPeopleTrainingRa1Option(value = "", aliases = []) {
+  const source = normalizePeopleTrainingRa1OptionText(value);
+  if (!source) {
+    return false;
+  }
+  return aliases.some((alias) => {
+    const normalizedAlias = normalizePeopleTrainingRa1OptionText(alias);
+    return normalizedAlias && source.includes(normalizedAlias);
+  });
+}
+
+function peopleTrainingRa1Check(value = "", aliases = []) {
+  return hasPeopleTrainingRa1Option(value, aliases) ? "X" : "";
+}
+
+function buildPeopleTrainingRa1CheckPlaceholders({
+  examType = "",
+  workplace = "",
+  organization = "",
+  bodyPositions = "",
+  loadWeights = "",
+  importantFunctions = "",
+  workConditions = "",
+} = {}) {
+  const loadSource = [bodyPositions, loadWeights].filter(Boolean).join(" ");
+  return {
+    RA1_PREGLED_PRETHODNI: peopleTrainingRa1Check(examType, ["prethodni"]),
+    RA1_PREGLED_PERIODICKI: peopleTrainingRa1Check(examType, ["periodicki", "periodicni"]),
+    RA1_PREGLED_IZVANREDNI: peopleTrainingRa1Check(examType, ["izvanredni"]),
+    RA1_MJESTO_RADA_UNUTRA: peopleTrainingRa1Check(workplace, ["u zatvorenom", "zatvorenom", "unutra"]),
+    RA1_MJESTO_RADA_OTVORENO: peopleTrainingRa1Check(workplace, ["na otvorenom", "otvorenom", "vani"]),
+    RA1_MJESTO_RADA_VISINA: peopleTrainingRa1Check(workplace, ["na visini", "visini"]),
+    RA1_MJESTO_RADA_JAMA: peopleTrainingRa1Check(workplace, ["u jami", "jami"]),
+    RA1_MJESTO_RADA_VODA: peopleTrainingRa1Check(workplace, ["u vodi"]),
+    RA1_MJESTO_RADA_POD_VODOM: peopleTrainingRa1Check(workplace, ["pod vodom"]),
+    RA1_MJESTO_RADA_MOKRO: peopleTrainingRa1Check(workplace, ["u mokrom", "mokrom"]),
+    RA1_ORGANIZACIJA_SMJENE: peopleTrainingRa1Check(organization, ["u smjenama", "smjena", "smjenama"]),
+    RA1_ORGANIZACIJA_NOCNI_RAD: peopleTrainingRa1Check(organization, ["nocni rad", "noćni rad"]),
+    RA1_ORGANIZACIJA_TEREN: peopleTrainingRa1Check(organization, ["terenski rad", "teren"]),
+    RA1_ORGANIZACIJA_RADI_SAM: peopleTrainingRa1Check(organization, ["radi sam", "samostalan rad"]),
+    RA1_ORGANIZACIJA_GRUPA: peopleTrainingRa1Check(organization, ["radi s grupom", "rad u grupi", "grupa"]),
+    RA1_ORGANIZACIJA_STRANKE: peopleTrainingRa1Check(organization, ["radi sa strankama", "stranke"]),
+    RA1_ORGANIZACIJA_TRAKA: peopleTrainingRa1Check(organization, ["radi na traci", "traka"]),
+    RA1_ORGANIZACIJA_BRZI_TEMPO: peopleTrainingRa1Check(organization, ["brzi tempo rada", "brzi tempo"]),
+    RA1_ORGANIZACIJA_RITAM: peopleTrainingRa1Check(organization, ["ritam odreden", "ritam određen"]),
+    RA1_ORGANIZACIJA_MONOTONIJA: peopleTrainingRa1Check(organization, ["monotonija", "monotoni"]),
+    RA1_POLOZAJ_STOJECI: peopleTrainingRa1Check(bodyPositions, ["rad stojeci", "rad stojeći", "stajanje", "stojeci", "stojeći"]),
+    RA1_POLOZAJ_SAGIBANJE: peopleTrainingRa1Check(bodyPositions, ["ucestalo sagibanje", "učestalo sagibanje", "sagibanje"]),
+    RA1_POLOZAJ_PODVLACENJE: peopleTrainingRa1Check(bodyPositions, ["podvlacenje", "podvlačenje"]),
+    RA1_POLOZAJ_SJEDECI: peopleTrainingRa1Check(bodyPositions, ["rad sjedeci", "rad sjedeći", "sjedenje", "sjedeci", "sjedeći"]),
+    RA1_POLOZAJ_ZAKRETANJE: peopleTrainingRa1Check(bodyPositions, ["zakretanje trupa", "zakretanje"]),
+    RA1_POLOZAJ_BALANSIRANJE: peopleTrainingRa1Check(bodyPositions, ["balansiranje"]),
+    RA1_POLOZAJ_U_POKRETU: peopleTrainingRa1Check(bodyPositions, ["u pokretu", "hodanje", "kretanje"]),
+    RA1_POLOZAJ_KLECANJE: peopleTrainingRa1Check(bodyPositions, ["klecanje", "klečanje"]),
+    RA1_POLOZAJ_LJESTVE: peopleTrainingRa1Check(bodyPositions, ["uspinjanje ljestvama", "ljestve", "ljestvama"]),
+    RA1_POLOZAJ_KOMBINIRANO: peopleTrainingRa1Check(bodyPositions, ["kombinirano"]),
+    RA1_POLOZAJ_CUCANJE: peopleTrainingRa1Check(bodyPositions, ["cucanje", "čučanje"]),
+    RA1_POLOZAJ_STEPENICE: peopleTrainingRa1Check(bodyPositions, ["uspinjanje stepenicama", "stepenice", "stepenicama"]),
+    RA1_TERET_DIZANJE_X: peopleTrainingRa1Check(loadSource, ["dizanje tereta", "dizanje"]),
+    RA1_TERET_PRENOSENJE_X: peopleTrainingRa1Check(loadSource, ["prenosenje tereta", "prenošenje tereta", "prenosen", "prenošen"]),
+    RA1_TERET_GURANJE_X: peopleTrainingRa1Check(loadSource, ["guranje tereta", "guranje"]),
+    RA1_FUNKCIJA_VID_DALJINA: peopleTrainingRa1Check(importantFunctions, ["vid na daljinu", "daljinu"]),
+    RA1_FUNKCIJA_VID_BLIZINA: peopleTrainingRa1Check(importantFunctions, ["vid na blizinu", "blizinu"]),
+    RA1_FUNKCIJA_BOJE: peopleTrainingRa1Check(importantFunctions, ["raspoznavanje boja", "boja"]),
+    RA1_FUNKCIJA_SLUH: peopleTrainingRa1Check(importantFunctions, ["dobar sluh", "sluh"]),
+    RA1_FUNKCIJA_GOVOR: peopleTrainingRa1Check(importantFunctions, ["jasan govor", "govor"]),
+    RA1_UVJETI_VISOKA_TEMP: peopleTrainingRa1Check(workConditions, ["visoka temperatura"]),
+    RA1_UVJETI_VISOKA_VLAZNOST: peopleTrainingRa1Check(workConditions, ["visoka vlaznost", "visoka vlažnost", "vlaznost", "vlažnost"]),
+    RA1_UVJETI_NISKA_TEMP: peopleTrainingRa1Check(workConditions, ["niska temperatura"]),
+    RA1_UVJETI_BUKA: peopleTrainingRa1Check(workConditions, ["buka"]),
+    RA1_UVJETI_VIBRACIJE_STROJA: peopleTrainingRa1Check(workConditions, ["vibracije stroja", "vibracije alata", "vibracije stroja ili alata"]),
+    RA1_UVJETI_VIBRACIJE_PODA: peopleTrainingRa1Check(workConditions, ["vibracije poda"]),
+    RA1_UVJETI_TLAK: peopleTrainingRa1Check(workConditions, ["poviseni atmosferski tlak", "povišeni atmosferski tlak", "atmosferski tlak"]),
+    RA1_UVJETI_OZLJEDE: peopleTrainingRa1Check(workConditions, ["povecana izlozenost ozljedama", "povećana izloženost ozljedama", "ozljedama"]),
+    RA1_UVJETI_IONIZIRAJUCE: peopleTrainingRa1Check(workConditions, ["ionizirajuca zracenja", "ionizirajuća zračenja"]),
+    RA1_UVJETI_NEIONIZIRAJUCE: peopleTrainingRa1Check(workConditions, ["neionizirajuca zracenja", "neionizirajuća zračenja"]),
+    RA1_UVJETI_PRASINA: peopleTrainingRa1Check(workConditions, ["prasina", "prašina"]),
+  };
+}
+
 function getPeopleTrainingBuiltInTemplateKind(item = {}, service = {}) {
   const lookup = [
     item.type,
@@ -7468,18 +7559,29 @@ function buildPeopleTrainingBuiltInTemplateHtml(kind = "") {
           <tr><th>Datum uputnice</th><td>{{DatumUputniceRA1}}</td></tr>
           <tr><th>Uputnica vrijedi do</th><td>{{UputnicaRA1VrijediDo}}</td></tr>
           <tr><th>Vrsta pregleda</th><td>{{VrstaPregledaRA1}}</td></tr>
+          <tr><th>Pregled - X</th><td>prethodni {{RA1_PREGLED_PRETHODNI}} | periodicki {{RA1_PREGLED_PERIODICKI}} | izvanredni {{RA1_PREGLED_IZVANREDNI}}</td></tr>
           <tr><th>Razlog pregleda</th><td>{{RazlogPregledaRA1}}</td></tr>
           <tr><th>Radno mjesto</th><td>{{RadnoMjestoRA1}}</td></tr>
           <tr><th>Opis poslova i aktivnosti</th><td>{{OpisPoslovaRA1}}</td></tr>
           <tr><th>Posebni uvjeti, štetnosti i napori</th><td>{{PosebniUvjetiRA1}}</td></tr>
           <tr><th>Mjesto rada</th><td>{{MjestoRadaRA1}}</td></tr>
+          <tr><th>Mjesto rada - X</th><td>zatvoreno {{RA1_MJESTO_RADA_UNUTRA}} | otvoreno {{RA1_MJESTO_RADA_OTVORENO}} | visina {{RA1_MJESTO_RADA_VISINA}} | jama {{RA1_MJESTO_RADA_JAMA}} | voda {{RA1_MJESTO_RADA_VODA}} | pod vodom {{RA1_MJESTO_RADA_POD_VODOM}} | mokro {{RA1_MJESTO_RADA_MOKRO}}</td></tr>
           <tr><th>Organizacija rada</th><td>{{OrganizacijaRadaRA1}}</td></tr>
+          <tr><th>Organizacija - X</th><td>smjene {{RA1_ORGANIZACIJA_SMJENE}} | nocni rad {{RA1_ORGANIZACIJA_NOCNI_RAD}} | teren {{RA1_ORGANIZACIJA_TEREN}} | radi sam {{RA1_ORGANIZACIJA_RADI_SAM}} | grupa {{RA1_ORGANIZACIJA_GRUPA}} | stranke {{RA1_ORGANIZACIJA_STRANKE}} | traka {{RA1_ORGANIZACIJA_TRAKA}} | brzi tempo {{RA1_ORGANIZACIJA_BRZI_TEMPO}} | ritam {{RA1_ORGANIZACIJA_RITAM}} | monotonija {{RA1_ORGANIZACIJA_MONOTONIJA}}</td></tr>
           <tr><th>Polozaji i aktivnosti</th><td>{{PolozajiAktivnostiRA1}}</td></tr>
+          <tr><th>Polozaji/aktivnosti - X</th><td>stojeci {{RA1_POLOZAJ_STOJECI}} | sagibanje {{RA1_POLOZAJ_SAGIBANJE}} | podvlacenje {{RA1_POLOZAJ_PODVLACENJE}} | sjedeci {{RA1_POLOZAJ_SJEDECI}} | zakretanje {{RA1_POLOZAJ_ZAKRETANJE}} | balansiranje {{RA1_POLOZAJ_BALANSIRANJE}} | u pokretu {{RA1_POLOZAJ_U_POKRETU}} | klecanje {{RA1_POLOZAJ_KLECANJE}} | ljestve {{RA1_POLOZAJ_LJESTVE}} | kombinirano {{RA1_POLOZAJ_KOMBINIRANO}} | cucanje {{RA1_POLOZAJ_CUCANJE}} | stepenice {{RA1_POLOZAJ_STEPENICE}}</td></tr>
           <tr><th>Teret / rucno rukovanje</th><td>{{TeretRA1}}</td></tr>
+          <tr><th>Teret - X</th><td>dizanje {{RA1_TERET_DIZANJE_X}} | prenosenje {{RA1_TERET_PRENOSENJE_X}} | guranje {{RA1_TERET_GURANJE_X}}</td></tr>
           <tr><th>Radni uvjeti i mikroklima</th><td>{{RadniUvjetiRA1}}</td></tr>
+          <tr><th>Uvjeti - X</th><td>visoka temp. {{RA1_UVJETI_VISOKA_TEMP}} | visoka vlaznost {{RA1_UVJETI_VISOKA_VLAZNOST}} | niska temp. {{RA1_UVJETI_NISKA_TEMP}} | buka {{RA1_UVJETI_BUKA}} | vibracije stroja/alata {{RA1_UVJETI_VIBRACIJE_STROJA}} | vibracije poda {{RA1_UVJETI_VIBRACIJE_PODA}} | tlak {{RA1_UVJETI_TLAK}} | ozljede {{RA1_UVJETI_OZLJEDE}} | ionizirajuce {{RA1_UVJETI_IONIZIRAJUCE}} | neionizirajuce {{RA1_UVJETI_NEIONIZIRAJUCE}} | prasina {{RA1_UVJETI_PRASINA}}</td></tr>
           <tr><th>Vazne funkcije</th><td>{{VazneFunkcijeRA1}}</td></tr>
+          <tr><th>Vazne funkcije - X</th><td>vid daljina {{RA1_FUNKCIJA_VID_DALJINA}} | vid blizina {{RA1_FUNKCIJA_VID_BLIZINA}} | boje {{RA1_FUNKCIJA_BOJE}} | sluh {{RA1_FUNKCIJA_SLUH}} | govor {{RA1_FUNKCIJA_GOVOR}}</td></tr>
           <tr><th>Radna oprema i alati</th><td>{{RadnaOpremaRA1}}</td></tr>
+          <tr><th>Strojevi, alati, aparati</th><td>{{RA1_STROJEVI_ALATI_APARATI}}</td></tr>
+          <tr><th>Predmet rada</th><td>{{RA1_PREDMET_RADA}}</td></tr>
           <tr><th>Stetnosti, kemikalije i biologija</th><td>{{RadneStetnostiRA1}}</td></tr>
+          <tr><th>Kemijske tvari</th><td>{{RA1_KEMIJSKE_TVARI}}</td></tr>
+          <tr><th>Bioloske stetnosti</th><td>{{RA1_BIOLOSKE_STETNOSTI}}</td></tr>
           <tr><th>OZO</th><td>{{OzoRA1}}</td></tr>
           <tr><th>Ustanova medicine rada</th><td>{{UstanovaMedicineRadaRA1}}</td></tr>
           <tr><th>Napomena</th><td>{{NapomenaRA1}}</td></tr>
@@ -7595,16 +7697,17 @@ function buildPeopleTrainingZnrTemplatePlaceholders(record = {}, item = {}, serv
   const medicalHazards = itemDetails.medicalHazards
     || medicalExamDetails.medicalHazards
     || medicalCertificateDetails.medicalHazards
+    || safeWorkDetails.medicalHazards
     || "";
-  const medicalWorkplace = itemDetails.medicalWorkplace || medicalExamDetails.medicalWorkplace || "";
-  const medicalWorkOrganization = itemDetails.medicalWorkOrganization || medicalExamDetails.medicalWorkOrganization || "";
-  const medicalBodyPositions = itemDetails.medicalBodyPositions || medicalExamDetails.medicalBodyPositions || "";
-  const medicalLoadWeights = itemDetails.medicalLoadWeights || medicalExamDetails.medicalLoadWeights || "";
-  const medicalWorkConditions = itemDetails.medicalWorkConditions || medicalExamDetails.medicalWorkConditions || "";
-  const medicalImportantFunctions = itemDetails.medicalImportantFunctions || medicalExamDetails.medicalImportantFunctions || "";
-  const medicalEquipment = itemDetails.medicalEquipment || medicalExamDetails.medicalEquipment || "";
-  const medicalSubstances = itemDetails.medicalSubstances || medicalExamDetails.medicalSubstances || "";
-  const medicalPpe = itemDetails.medicalPpe || medicalExamDetails.medicalPpe || "";
+  const medicalWorkplace = itemDetails.medicalWorkplace || medicalExamDetails.medicalWorkplace || safeWorkDetails.medicalWorkplace || "";
+  const medicalWorkOrganization = itemDetails.medicalWorkOrganization || medicalExamDetails.medicalWorkOrganization || safeWorkDetails.medicalWorkOrganization || "";
+  const medicalBodyPositions = itemDetails.medicalBodyPositions || medicalExamDetails.medicalBodyPositions || safeWorkDetails.medicalBodyPositions || "";
+  const medicalLoadWeights = itemDetails.medicalLoadWeights || medicalExamDetails.medicalLoadWeights || safeWorkDetails.medicalLoadWeights || "";
+  const medicalWorkConditions = itemDetails.medicalWorkConditions || medicalExamDetails.medicalWorkConditions || safeWorkDetails.medicalWorkConditions || "";
+  const medicalImportantFunctions = itemDetails.medicalImportantFunctions || medicalExamDetails.medicalImportantFunctions || safeWorkDetails.medicalImportantFunctions || "";
+  const medicalEquipment = itemDetails.medicalEquipment || medicalExamDetails.medicalEquipment || safeWorkDetails.medicalEquipment || "";
+  const medicalSubstances = itemDetails.medicalSubstances || medicalExamDetails.medicalSubstances || safeWorkDetails.medicalSubstances || "";
+  const medicalPpe = itemDetails.medicalPpe || medicalExamDetails.medicalPpe || safeWorkDetails.medicalPpe || "";
   const referralValidUntil = medicalExamDetails.referralValidUntil || "";
   const medicalCertificateValidUntil = medicalCertificateItem?.validForever ? "" : (medicalCertificateItem?.validUntil || "");
   const psychologicalCheckUntil = medicalCertificateDetails.psychologicalCheckUntil
@@ -7622,6 +7725,16 @@ function buildPeopleTrainingZnrTemplatePlaceholders(record = {}, item = {}, serv
   const visionCertificateValidUntil = visionItem?.validForever ? "" : (visionItem?.validUntil || "");
   const visionReferralNumber = visionItem?.recordNumber || "";
   const visionCertificateNumber = visionItem?.certificateNumber || (!visionReferralNumber ? visionItem?.recordNumber : "");
+  const ra1ExamType = medicalExamDetails.examType || medicalExamItem?.examMode || "prethodni";
+  const ra1CheckPlaceholders = buildPeopleTrainingRa1CheckPlaceholders({
+    examType: ra1ExamType,
+    workplace: medicalWorkplace,
+    organization: medicalWorkOrganization,
+    bodyPositions: medicalBodyPositions,
+    loadWeights: medicalLoadWeights,
+    importantFunctions: medicalImportantFunctions,
+    workConditions: medicalWorkConditions,
+  });
 
   const fillTrainingSet = (prefix, trainingItem = {}) => {
     const passedOn = getPeopleTrainingTemplateItemDate(trainingItem);
@@ -7653,6 +7766,18 @@ function buildPeopleTrainingZnrTemplatePlaceholders(record = {}, item = {}, serv
     MjestoRadaNew: workPlace,
     DodatnoMjesto: location.note || location.region || "",
     Aktivnost: record.activityStatus || serviceName || serviceCode,
+    RA1_POSLODAVAC: companyName,
+    RA1_POSLODAVAC_OIB: companyOib,
+    RA1_POSLODAVAC_SJEDISTE: company.headquarters || "",
+    RA1_RADNIK_IME_PREZIME: record.fullName || [record.firstName, record.lastName].filter(Boolean).join(" "),
+    RA1_RADNIK_OIB: record.oib || "",
+    RA1_RADNIK_DATUM_RODENJA: formatPeopleTrainingTemplateDate(record.birthDate),
+    RA1_RADNIK_MJESTO_RODENJA: record.birthPlace || "",
+    RA1_RADNIK_ZANIMANJE: medicalWorkTitle || record.jobTitle || "",
+    RA1_STROJEVI_ALATI_APARATI: medicalEquipment,
+    RA1_PREDMET_RADA: medicalSubstances,
+    RA1_KEMIJSKE_TVARI: medicalSubstances,
+    RA1_BIOLOSKE_STETNOSTI: medicalSubstances,
     BrojZapisnikaZNR: itemRecordNumber,
     NazivRadnogMjesta: itemDetails.jobTitle || record.jobTitle || "",
     OpisPoslova: itemDetails.jobDescription || record.jobDescription || record.note || "",
@@ -7660,8 +7785,8 @@ function buildPeopleTrainingZnrTemplatePlaceholders(record = {}, item = {}, serv
     DatumUputniceRA1: formatPeopleTrainingTemplateDate(medicalExamItem?.issuedOn || ""),
     UputnicaRA1VrijediDo: formatPeopleTrainingTemplateDate(referralValidUntil),
     DatumPregledaRA1: formatPeopleTrainingTemplateDate(medicalExamItem?.passedOn || ""),
-    VrstaPregledaRA1: medicalExamDetails.examType || medicalExamItem?.examMode || "",
-    RazlogPregledaRA1: medicalExamDetails.examReason || "",
+    VrstaPregledaRA1: ra1ExamType,
+    RazlogPregledaRA1: medicalExamDetails.examReason || safeWorkDetails.examReason || "",
     RadnoMjestoRA1: medicalWorkTitle,
     OpisPoslovaRA1: medicalWorkDescription,
     PosebniUvjetiRA1: medicalHazards,
@@ -7700,8 +7825,8 @@ function buildPeopleTrainingZnrTemplatePlaceholders(record = {}, item = {}, serv
     RA1_DATUM: formatPeopleTrainingTemplateDate(medicalExamItem?.issuedOn || ""),
     RA1_VRIJEDI_DO: formatPeopleTrainingTemplateDate(referralValidUntil),
     RA1_DATUM_PREGLEDA: formatPeopleTrainingTemplateDate(medicalExamItem?.passedOn || ""),
-    RA1_VRSTA_PREGLEDA: medicalExamDetails.examType || medicalExamItem?.examMode || "",
-    RA1_RAZLOG: medicalExamDetails.examReason || "",
+    RA1_VRSTA_PREGLEDA: ra1ExamType,
+    RA1_RAZLOG: medicalExamDetails.examReason || safeWorkDetails.examReason || "",
     RA1_RADNO_MJESTO: medicalWorkTitle,
     RA1_OPIS_POSLOVA: medicalWorkDescription,
     RA1_POSEBNI_UVJETI: medicalHazards,
@@ -7716,6 +7841,7 @@ function buildPeopleTrainingZnrTemplatePlaceholders(record = {}, item = {}, serv
     RA1_OZO: medicalPpe,
     RA1_USTANOVA: medicalProvider,
     RA1_NAPOMENA: medicalExamItem?.note || "",
+    ...ra1CheckPlaceholders,
     LIJECNICKI_UVJERENJE_BROJ: medicalCertificateItem?.certificateNumber || medicalCertificateItem?.recordNumber || "",
     LIJECNICKI_UVJERENJE_DATUM: formatPeopleTrainingTemplateDate(medicalCertificateItem?.issuedOn || medicalCertificateItem?.passedOn || ""),
     LIJECNICKI_UVJERENJE_VRIJEDI_DO: formatPeopleTrainingTemplateDate(medicalCertificateValidUntil),
