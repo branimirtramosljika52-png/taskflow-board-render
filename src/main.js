@@ -125918,12 +125918,6 @@ function enhanceRiskAssessmentRichToolbars() {
     const surface = editorShell?.querySelector?.("[data-risk-rich-editor]");
     if (editorShell instanceof HTMLElement && surface instanceof HTMLElement) {
       editorShell.classList.add("is-word-enhanced");
-      if (!editorShell.querySelector(".risk-assessment-rich-ruler")) {
-        const ruler = document.createElement("div");
-        ruler.className = "risk-assessment-rich-ruler";
-        ruler.setAttribute("aria-hidden", "true");
-        editorShell.insertBefore(ruler, surface);
-      }
     }
   });
 }
