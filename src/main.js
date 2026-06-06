@@ -138484,23 +138484,11 @@ function renderRiskAssessmentJobProfile(item = {}, index = 0) {
         </label>
       </section>
 
-      <section class="risk-assessment-job-profile-card is-ppe">
-        <div class="risk-assessment-job-profile-card-head">
-          <span>${renderRiskAssessmentRiskIcon("shield")}</span>
-          <div>
-            <span class="section-kicker">Korak 5</span>
-            <strong>Osobna zaštitna oprema (OZO)</strong>
-            <small>Odaberi opremu iz kataloga ili dodaj novu stavku. OZO se sprema uz ovo radno mjesto i ulazi u procjenu.</small>
-          </div>
-        </div>
-        ${renderRiskAssessmentPpeCompactPicker(item, index)}
-      </section>
-
       <section class="risk-assessment-job-profile-card is-armor">
         <div class="risk-assessment-job-profile-card-head">
           <span>${renderRiskAssessmentRiskIcon("activity")}</span>
           <div>
-            <span class="section-kicker">Korak 6</span>
+            <span class="section-kicker">Korak 5</span>
             <strong>ARMOR - opasnosti, štetnosti, napori i mjere</strong>
             <small>Katalog Priloga III nalazi se u lijevom izborniku ispod hijerarhije radnih mjesta. Ovdje uređuješ ARMOR kartice odabranog radnog mjesta.</small>
           </div>
@@ -138520,6 +138508,18 @@ function renderRiskAssessmentJobProfile(item = {}, index = 0) {
             ${renderRiskAssessmentRiskCards(item)}
           </div>
         </div>
+      </section>
+
+      <section class="risk-assessment-job-profile-card is-ppe is-final-step">
+        <div class="risk-assessment-job-profile-card-head">
+          <span>${renderRiskAssessmentRiskIcon("shield")}</span>
+          <div>
+            <span class="section-kicker">Završni korak</span>
+            <strong>Osobna zaštitna oprema (OZO)</strong>
+            <small>Zaključi odabir opreme nakon opasnosti, štetnosti, napora i mjera. OZO se sprema uz ovo radno mjesto i ulazi u procjenu.</small>
+          </div>
+        </div>
+        ${renderRiskAssessmentPpeCompactPicker(item, index)}
       </section>
     </div>
   `;
@@ -140205,9 +140205,9 @@ function OzoStepHeader(job = {}, jobIndex = 0) {
     <header class="ozo-step-header">
       <span class="ozo-step-icon" aria-hidden="true">${renderRiskAssessmentRiskIcon("shield")}</span>
       <div>
-        <span>Korak 5 / OZO</span>
+        <span>Završni korak / OZO</span>
         <strong>Osobna zaštitna oprema (OZO)</strong>
-        <small>Odaberi opremu iz kataloga ili dodaj novu stavku. OZO se sprema uz ovo radno mjesto i ulazi u procjenu.</small>
+        <small>Odaberi opremu iz kataloga ili dodaj novu stavku. Ovaj blok završava obradu radnog mjesta u procjeni.</small>
       </div>
       <button type="button" class="ozo-primary-action" data-risk-ppe-new-toggle>${newFormOpen ? "Zatvori unos" : "+ Nova OZO"}</button>
     </header>
@@ -140453,7 +140453,7 @@ function OzoSelectedPanel(job = {}) {
         `}
       </section>
       ${OzoQuickSummary(job)}
-      <button type="button" class="ozo-save-continue" data-risk-ppe-save-continue>Spremi i nastavi</button>
+      <button type="button" class="ozo-save-continue" data-risk-ppe-save-continue>Spremi OZO</button>
     </aside>
   `;
 }
@@ -144105,11 +144105,6 @@ function handleRiskAssessmentJobsListClick(event) {
     event.preventDefault();
     scheduleRiskAssessmentDraftAutosave();
     void saveRiskAssessmentEditorAutosave({ manual: true });
-    window.setTimeout(() => {
-      riskAssessmentJobsList
-        ?.querySelector?.(`[data-risk-job-index="${jobIndex}"] .risk-assessment-job-profile-card.is-armor`)
-        ?.scrollIntoView?.({ block: "start", behavior: "smooth" });
-    }, 80);
     return;
   }
 

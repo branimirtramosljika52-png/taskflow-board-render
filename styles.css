@@ -64233,11 +64233,29 @@ body.is-risk-stl-review-open {
 }
 
 .risk-assessment-job-profile-card.is-ppe {
-  border-color: rgba(14, 165, 233, 0.32);
-  border-left-color: #0ea5e9;
+  gap: 12px;
+  margin-top: 4px;
+  padding: 12px;
+  border-color: rgba(14, 165, 233, 0.42);
+  border-left-color: #0284c7;
   background:
-    linear-gradient(135deg, rgba(240, 249, 255, 0.86), rgba(255, 255, 255, 0.96));
-  box-shadow: none;
+    linear-gradient(180deg, rgba(240, 249, 255, 0.98), rgba(255, 255, 255, 0.98) 42%),
+    linear-gradient(135deg, rgba(14, 165, 233, 0.1), rgba(16, 185, 129, 0.08));
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.065);
+}
+
+.risk-assessment-job-profile-card.is-ppe.is-final-step {
+  border-top-color: rgba(14, 165, 233, 0.58);
+}
+
+.risk-assessment-job-profile-card.is-ppe .risk-assessment-job-profile-card-head {
+  align-items: center;
+}
+
+.risk-assessment-job-profile-card.is-ppe .risk-assessment-job-profile-card-head > span {
+  background: linear-gradient(135deg, #e0f2fe, #ffffff);
+  color: #0284c7;
+  box-shadow: inset 0 0 0 1px rgba(14, 165, 233, 0.18);
 }
 
 .risk-assessment-job-profile-card.is-psychosocial {
@@ -65021,21 +65039,21 @@ button.risk-assessment-armor-tree-row:focus-visible,
 }
 
 .ozo-premium-step {
-  padding: 18px;
-  border: 1px solid #e5eaf3;
-  border-radius: 24px;
+  padding: 16px;
+  border: 1px solid rgba(203, 213, 225, 0.86);
+  border-radius: 18px;
   background:
-    radial-gradient(circle at 12% 0%, rgba(49, 91, 255, 0.08), transparent 30%),
-    linear-gradient(135deg, rgba(248, 251, 255, 0.98), rgba(255, 255, 255, 0.94));
-  box-shadow: 0 22px 54px rgba(16, 24, 40, 0.08);
+    radial-gradient(circle at 12% 0%, rgba(14, 165, 233, 0.1), transparent 31%),
+    linear-gradient(135deg, rgba(248, 251, 255, 0.98), rgba(255, 255, 255, 0.96));
+  box-shadow: 0 18px 42px rgba(16, 24, 40, 0.072);
 }
 
 .ozo-step-header {
   display: grid;
-  grid-template-columns: 56px minmax(0, 1fr) auto;
-  gap: 14px;
+  grid-template-columns: 50px minmax(0, 1fr) auto;
+  gap: 13px;
   align-items: center;
-  margin-bottom: 18px;
+  margin-bottom: 16px;
 }
 
 .ozo-step-icon,
@@ -65051,8 +65069,8 @@ button.risk-assessment-armor-tree-row:focus-visible,
 }
 
 .ozo-step-icon {
-  width: 56px;
-  height: 56px;
+  width: 50px;
+  height: 50px;
   border: 1px solid rgba(199, 210, 254, 0.72);
   box-shadow: 0 12px 26px rgba(49, 91, 255, 0.12);
 }
@@ -65079,7 +65097,7 @@ button.risk-assessment-armor-tree-row:focus-visible,
 
 .ozo-step-header strong {
   color: #101828;
-  font-size: 1.52rem;
+  font-size: 1.36rem;
   font-weight: 950;
   line-height: 1.08;
 }
@@ -65179,8 +65197,8 @@ button.risk-assessment-armor-tree-row:focus-visible,
 
 .ozo-premium-grid {
   display: grid;
-  grid-template-columns: minmax(260px, 0.33fr) minmax(420px, 1fr) minmax(300px, 0.36fr);
-  gap: 16px;
+  grid-template-columns: minmax(240px, 0.32fr) minmax(410px, 1fr) minmax(290px, 0.34fr);
+  gap: 14px;
   align-items: start;
   min-width: 0;
 }
@@ -65746,7 +65764,7 @@ button.risk-assessment-armor-tree-row:focus-visible,
   position: sticky;
   bottom: 12px;
   width: 100%;
-  min-height: 52px;
+  min-height: 48px;
   border-radius: 16px;
 }
 
