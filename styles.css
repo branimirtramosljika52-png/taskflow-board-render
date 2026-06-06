@@ -58156,11 +58156,23 @@ button.work-order-editor-section-head:focus-visible {
 
 .risk-assessment-editor-panel {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto minmax(0, 1fr);
   align-content: stretch;
   padding: 0;
   contain: layout paint;
   isolation: isolate;
+}
+
+.risk-assessment-editor-panel > .offers-editor-fixed-head {
+  grid-row: 1;
+}
+
+.risk-assessment-editor-panel > .risk-assessment-dock {
+  grid-row: 2;
+}
+
+.risk-assessment-editor-panel > .risk-assessment-editor-body {
+  grid-row: 3;
 }
 
 #risk-assessment-editor-backdrop.offer-editor-backdrop {
@@ -69571,16 +69583,16 @@ button.risk-assessment-armor-tree-row:focus-visible,
   position: relative;
   z-index: 4;
   flex-shrink: 0;
-  width: min(calc(100% - 28px), 1320px);
+  width: min(calc(100% - 40px), 1320px);
   min-width: 0;
   min-height: 42px;
-  margin: 0 auto 10px;
-  padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+  margin: 8px auto 10px;
+  padding: 6px 8px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 16px;
   background:
     linear-gradient(90deg, rgba(20, 18, 33, 0.98), rgba(25, 25, 42, 0.98));
-  box-shadow: 0 -10px 24px rgba(15, 23, 42, 0.14);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
   overflow-x: auto;
   overflow-y: visible;
   overscroll-behavior-inline: contain;
