@@ -9416,6 +9416,28 @@ body.is-location-editor-open {
   grid-column: 1 / -1;
 }
 
+.client-portal-record-section-break {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 1px solid rgba(191, 219, 254, 0.74);
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(239, 246, 255, 0.92), rgba(248, 250, 252, 0.92));
+}
+
+.client-portal-record-section-break span {
+  color: #172033;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.client-portal-record-section-break small {
+  color: #667085;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
 .client-portal-record-attachment-field {
   display: grid;
   gap: 10px;

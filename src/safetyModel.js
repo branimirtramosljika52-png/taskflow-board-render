@@ -3108,10 +3108,21 @@ function normalizeClientPortalRecordDetails(inputDetails = {}, type = "deadline"
   if (type === "worker") {
     return withClientPortalRecordAttachments(details, {
       fullName: text(details.fullName ?? details.name, 180),
+      riskWorkplaceKey: text(details.riskWorkplaceKey, 180),
       jobTitle: text(details.jobTitle ?? details.role, 180),
+      jobDescription: text(details.jobDescription ?? details.workDescription, 4000),
       email: text(details.email, 180),
       phone: text(details.phone, 80),
       oib: text(details.oib, 32),
+      medicalReferralNumber: text(details.medicalReferralNumber ?? details.ra1Number, 120),
+      medicalReferralValidUntil: date(details.medicalReferralValidUntil ?? details.ra1ValidUntil),
+      medicalCertificateNumber: text(details.medicalCertificateNumber ?? details.healthCertificateNumber, 120),
+      medicalCertificateValidUntil: date(details.medicalCertificateValidUntil ?? details.healthCertificateValidUntil),
+      visionReferralNumber: text(details.visionReferralNumber, 120),
+      visionReferralValidUntil: date(details.visionReferralValidUntil),
+      visionCertificateNumber: text(details.visionCertificateNumber, 120),
+      visionCertificateValidUntil: date(details.visionCertificateValidUntil),
+      psychologicalCheckUntil: date(details.psychologicalCheckUntil ?? details.psychologicalValidUntil),
       note: text(details.note, 1200),
     });
   }
@@ -3237,6 +3248,15 @@ function resolveClientPortalRecordDueDate(type, details = {}, input = {}, curren
     return explicit;
   }
 
+  if (type === "worker") {
+    return getEarliestOptionalDate(
+      details.medicalCertificateValidUntil,
+      details.visionCertificateValidUntil,
+      details.psychologicalCheckUntil,
+      details.medicalReferralValidUntil,
+      details.visionReferralValidUntil,
+    );
+  }
   if (type === "vehicle") {
     return details.serviceDate || details.registrationDate || details.insuranceDate || null;
   }
@@ -7878,6 +7898,7 @@ function normalizePersonTrainingItemDetails(input = {}) {
     psychologicalCheckUntil: normalizeOptionalDate(source.psychologicalCheckUntil ?? source.psychologicalCheckDueDate ?? source.psychologicalValidUntil ?? source.psychologyValidUntil),
     visionJobTitle: normalizeText(source.visionJobTitle ?? source.medicalJobTitle ?? source.jobTitle).slice(0, 180),
     visionJobDescription: normalizeText(source.visionJobDescription ?? source.medicalJobDescription ?? source.jobDescription ?? source.workDescription).slice(0, 4000),
+    visionReferralValidUntil: normalizeOptionalDate(source.visionReferralValidUntil ?? source.visionReferralExpiresOn),
     visionReason: normalizeText(source.visionReason ?? source.visionExamReason).slice(0, 1000),
     visionResult: normalizeText(source.visionResult ?? source.visionExamResult).slice(0, 180),
     visionCorrection: normalizeText(source.visionCorrection ?? source.eyeCorrection).slice(0, 180),

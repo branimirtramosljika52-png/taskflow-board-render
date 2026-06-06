@@ -7521,9 +7521,11 @@ function buildPeopleTrainingBuiltInTemplateHtml(kind = "") {
           <tr><th>Poslodavac</th><td>{{Tvrtka}}</td></tr>
           <tr><th>Radno mjesto</th><td>{{PregledVidaRadnoMjesto}}</td></tr>
           <tr><th>Opis poslova</th><td>{{PregledVidaOpisPoslova}}</td></tr>
-          <tr><th>Broj uputnice / nalaza</th><td>{{PregledVidaBroj}}</td></tr>
+          <tr><th>Broj uputnice za vid</th><td>{{PregledVidaBroj}}</td></tr>
+          <tr><th>Uputnica za vid vrijedi do</th><td>{{PregledVidaUputnicaVrijediDo}}</td></tr>
+          <tr><th>Broj uvjerenja vida</th><td>{{PregledVidaBrojUvjerenja}}</td></tr>
           <tr><th>Datum pregleda</th><td>{{PregledVidaDatum}}</td></tr>
-          <tr><th>Vrijedi do</th><td>{{PregledVidaVrijediDo}}</td></tr>
+          <tr><th>Uvjerenje vida vrijedi do</th><td>{{PregledVidaVrijediDo}}</td></tr>
           <tr><th>Ustanova</th><td>{{PregledVidaUstanova}}</td></tr>
           <tr><th>Nalaz / rezultat</th><td>{{PregledVidaNalaz}}</td></tr>
           <tr><th>Korekcija / pomagala</th><td>{{PregledVidaKorekcija}}</td></tr>
@@ -7598,6 +7600,10 @@ function buildPeopleTrainingZnrTemplatePlaceholders(record = {}, item = {}, serv
   const visionWorkTitle = visionDetails.visionJobTitle || medicalWorkTitle;
   const visionWorkDescription = visionDetails.visionJobDescription || medicalWorkDescription;
   const visionProvider = visionItem?.provider || medicalProvider || "";
+  const visionReferralValidUntil = visionDetails.visionReferralValidUntil || "";
+  const visionCertificateValidUntil = visionItem?.validForever ? "" : (visionItem?.validUntil || "");
+  const visionReferralNumber = visionItem?.recordNumber || "";
+  const visionCertificateNumber = visionItem?.certificateNumber || (!visionReferralNumber ? visionItem?.recordNumber : "");
 
   const fillTrainingSet = (prefix, trainingItem = {}) => {
     const passedOn = getPeopleTrainingTemplateItemDate(trainingItem);
@@ -7651,9 +7657,12 @@ function buildPeopleTrainingZnrTemplatePlaceholders(record = {}, item = {}, serv
     OcjenaZdravstvena: medicalCertificateDetails.fitnessResult || medicalCertificateItem?.certificateStatus || "",
     OgranicenjaZdravstvena: medicalCertificateDetails.fitnessRestrictions || "",
     RokPsiholoskeProvjere: formatPeopleTrainingTemplateDate(psychologicalCheckUntil),
-    PregledVidaBroj: visionItem?.recordNumber || visionItem?.certificateNumber || "",
+    PregledVidaBroj: visionReferralNumber || visionCertificateNumber,
+    PregledVidaUputnicaVrijediDo: formatPeopleTrainingTemplateDate(visionReferralValidUntil),
+    PregledVidaBrojUvjerenja: visionCertificateNumber,
     PregledVidaDatum: formatPeopleTrainingTemplateDate(visionItem?.passedOn || visionItem?.issuedOn || ""),
-    PregledVidaVrijediDo: visionItem?.validForever ? "" : formatPeopleTrainingTemplateDate(visionItem?.validUntil || ""),
+    PregledVidaVrijediDo: formatPeopleTrainingTemplateDate(visionCertificateValidUntil),
+    PregledVidaUvjerenjeVrijediDo: formatPeopleTrainingTemplateDate(visionCertificateValidUntil),
     PregledVidaUstanova: visionProvider,
     PregledVidaNalaz: visionDetails.visionResult || visionItem?.certificateStatus || "",
     PregledVidaKorekcija: visionDetails.visionCorrection || "",
@@ -7678,9 +7687,12 @@ function buildPeopleTrainingZnrTemplatePlaceholders(record = {}, item = {}, serv
     LIJECNICKI_UVJERENJE_OGRANICENJA: medicalCertificateDetails.fitnessRestrictions || "",
     PSIHOLOSKA_PROVJERA_ROK: formatPeopleTrainingTemplateDate(psychologicalCheckUntil),
     PSIHOLOSKA_PROVJERA_VRIJEDI_DO: formatPeopleTrainingTemplateDate(psychologicalCheckUntil),
-    PREGLED_VIDA_BROJ: visionItem?.recordNumber || visionItem?.certificateNumber || "",
+    PREGLED_VIDA_BROJ: visionReferralNumber || visionCertificateNumber,
+    PREGLED_VIDA_UPUTNICA_VRIJEDI_DO: formatPeopleTrainingTemplateDate(visionReferralValidUntil),
+    PREGLED_VIDA_UVJERENJE_BROJ: visionCertificateNumber,
     PREGLED_VIDA_DATUM: formatPeopleTrainingTemplateDate(visionItem?.passedOn || visionItem?.issuedOn || ""),
-    PREGLED_VIDA_VRIJEDI_DO: visionItem?.validForever ? "" : formatPeopleTrainingTemplateDate(visionItem?.validUntil || ""),
+    PREGLED_VIDA_VRIJEDI_DO: formatPeopleTrainingTemplateDate(visionCertificateValidUntil),
+    PREGLED_VIDA_UVJERENJE_VRIJEDI_DO: formatPeopleTrainingTemplateDate(visionCertificateValidUntil),
     PREGLED_VIDA_USTANOVA: visionProvider,
     PREGLED_VIDA_NALAZ: visionDetails.visionResult || visionItem?.certificateStatus || "",
     PREGLED_VIDA_KOREKCIJA: visionDetails.visionCorrection || "",

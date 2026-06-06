@@ -9996,15 +9996,21 @@ const PEOPLE_TRAINING_CERTIFICATE_PLACEHOLDERS = [
   createPeopleTrainingZnrPlaceholder("RokPsiholoskeProvjere", "Rok za psihološku provjeru", "30.04.2028"),
   createPeopleTrainingZnrPlaceholder("PSIHOLOSKA_PROVJERA_ROK", "Rok za psihološku provjeru", "30.04.2028"),
   createPeopleTrainingZnrPlaceholder("PSIHOLOSKA_PROVJERA_VRIJEDI_DO", "Psihološka provjera vrijedi do", "30.04.2028"),
-  createPeopleTrainingZnrPlaceholder("PregledVidaBroj", "Broj nalaza pregleda vida", "VID-2026-15"),
+  createPeopleTrainingZnrPlaceholder("PregledVidaBroj", "Broj uputnice pregleda vida", "VID-UP-2026-15"),
+  createPeopleTrainingZnrPlaceholder("PregledVidaUputnicaVrijediDo", "Uputnica za pregled vida vrijedi do", "30.05.2026"),
+  createPeopleTrainingZnrPlaceholder("PregledVidaBrojUvjerenja", "Broj uvjerenja pregleda vida", "VID-UV-2026-15"),
   createPeopleTrainingZnrPlaceholder("PregledVidaDatum", "Datum pregleda vida", "30.04.2026"),
-  createPeopleTrainingZnrPlaceholder("PregledVidaVrijediDo", "Pregled vida vrijedi do", "30.04.2028"),
+  createPeopleTrainingZnrPlaceholder("PregledVidaVrijediDo", "Uvjerenje vida vrijedi do", "30.04.2028"),
+  createPeopleTrainingZnrPlaceholder("PregledVidaUvjerenjeVrijediDo", "Uvjerenje vida vrijedi do", "30.04.2028"),
   createPeopleTrainingZnrPlaceholder("PregledVidaUstanova", "Ustanova za pregled vida", "Medicina rada Zagreb"),
   createPeopleTrainingZnrPlaceholder("PregledVidaNalaz", "Nalaz pregleda vida", "uredan"),
   createPeopleTrainingZnrPlaceholder("PregledVidaKorekcija", "Korekcija ili pomagala za vid", "naočale za rad sa zaslonom"),
   createPeopleTrainingZnrPlaceholder("PregledVidaRadnoMjesto", "Radno mjesto za pregled vida", "Administrativni radnik"),
   createPeopleTrainingZnrPlaceholder("PregledVidaOpisPoslova", "Opis poslova za pregled vida", "Rad sa zaslonom i dokumentacijom"),
   createPeopleTrainingZnrPlaceholder("PregledVidaNapomena", "Napomena za pregled vida", ""),
+  createPeopleTrainingZnrPlaceholder("PREGLED_VIDA_UPUTNICA_VRIJEDI_DO", "Uputnica za pregled vida vrijedi do", "30.05.2026"),
+  createPeopleTrainingZnrPlaceholder("PREGLED_VIDA_UVJERENJE_BROJ", "Broj uvjerenja pregleda vida", "VID-UV-2026-15"),
+  createPeopleTrainingZnrPlaceholder("PREGLED_VIDA_UVJERENJE_VRIJEDI_DO", "Uvjerenje vida vrijedi do", "30.04.2028"),
   createPeopleTrainingZnrPlaceholder("VrstaIspita", "Vrsta ispita", "Rad na siguran način"),
   createPeopleTrainingZnrPlaceholder("MjestoOsposobljavanjaTeorija", "Mjesto teorijskog osposobljavanja", "Zagreb"),
   createPeopleTrainingZnrPlaceholder("DatumTeorija", "Datum teorije", "29.04.2026"),
@@ -12084,7 +12090,8 @@ function getPeopleTrainingFormItemBrief(item = {}) {
       item.passedOn || item.issuedOn ? `Datum ${formatCompactDate(item.passedOn || item.issuedOn)}` : "",
       item.provider ? `Ustanova ${item.provider}` : "",
       details.referralValidUntil ? `Uputnica do ${formatCompactDate(details.referralValidUntil)}` : "",
-      item.validUntil ? `${isVision ? "Vid" : "Uvjerenje"} do ${formatCompactDate(item.validUntil)}` : "",
+      isVision && details.visionReferralValidUntil ? `Uputnica vida do ${formatCompactDate(details.visionReferralValidUntil)}` : "",
+      item.validUntil ? `${isVision ? "Uvjerenje vida" : "Uvjerenje"} do ${formatCompactDate(item.validUntil)}` : "",
       details.psychologicalCheckUntil ? `Psihološka do ${formatCompactDate(details.psychologicalCheckUntil)}` : "",
     ].filter(Boolean);
   } else if (sectionKey === "vision") {
@@ -12460,10 +12467,11 @@ function createPeopleTrainingTypeCard(item = {}, record = {}) {
       );
     } else if (isVision) {
       fields.append(
-        createPeopleTrainingDetailField({ label: "Broj uputnice / nalaza", field: "recordNumber", value: item.recordNumber || recordNumber, placeholder: "npr. VID-2026-001" }),
-        createPeopleTrainingDetailField({ label: "Broj uvjerenja / nalaza", field: "certificateNumber", value: item.certificateNumber || "" }),
+        createPeopleTrainingDetailField({ label: "Broj uputnice za vid", field: "recordNumber", value: item.recordNumber || recordNumber, placeholder: "npr. VID-UP-2026-001" }),
+        createPeopleTrainingDetailField({ label: "Uputnica za vid vrijedi do", field: "details.visionReferralValidUntil", value: details.visionReferralValidUntil || "", isDate: true }),
+        createPeopleTrainingDetailField({ label: "Broj uvjerenja vida", field: "certificateNumber", value: item.certificateNumber || "", placeholder: "npr. VID-UV-2026-001" }),
         createPeopleTrainingDetailField({ label: "Datum pregleda vida", field: "passedOn", value: item.passedOn || item.issuedOn || "", isDate: true }),
-        createPeopleTrainingDetailField({ label: "Pregled vida vrijedi do", field: "validUntil", value: item.validUntil || "", isDate: true }),
+        createPeopleTrainingDetailField({ label: "Uvjerenje vida vrijedi do", field: "validUntil", value: item.validUntil || "", isDate: true }),
         createPeopleTrainingDetailField({ label: "Ustanova / specijalist", field: "provider", value: item.provider || "" }),
         createPeopleTrainingDetailField({ label: "Radno mjesto", field: "details.visionJobTitle", value: relatedJobTitle }),
         createPeopleTrainingDetailField({
@@ -12535,10 +12543,11 @@ function createPeopleTrainingTypeCard(item = {}, record = {}) {
     }
   } else if (sectionKey === "vision") {
     fields.append(
-      createPeopleTrainingDetailField({ label: "Broj uputnice / nalaza", field: "recordNumber", value: item.recordNumber || recordNumber, placeholder: "npr. VID-2026-001" }),
-      createPeopleTrainingDetailField({ label: "Broj uvjerenja / nalaza", field: "certificateNumber", value: item.certificateNumber || "" }),
+      createPeopleTrainingDetailField({ label: "Broj uputnice za vid", field: "recordNumber", value: item.recordNumber || recordNumber, placeholder: "npr. VID-UP-2026-001" }),
+      createPeopleTrainingDetailField({ label: "Uputnica za vid vrijedi do", field: "details.visionReferralValidUntil", value: details.visionReferralValidUntil || "", isDate: true }),
+      createPeopleTrainingDetailField({ label: "Broj uvjerenja vida", field: "certificateNumber", value: item.certificateNumber || "", placeholder: "npr. VID-UV-2026-001" }),
       createPeopleTrainingDetailField({ label: "Datum pregleda vida", field: "passedOn", value: item.passedOn || item.issuedOn || "", isDate: true }),
-      createPeopleTrainingDetailField({ label: "Vrijedi do", field: "validUntil", value: item.validUntil || "", isDate: true }),
+      createPeopleTrainingDetailField({ label: "Uvjerenje vida vrijedi do", field: "validUntil", value: item.validUntil || "", isDate: true }),
       createPeopleTrainingDetailField({ label: "Ustanova / specijalist", field: "provider", value: item.provider || "" }),
       createPeopleTrainingDetailField({ label: "Radno mjesto", field: "details.visionJobTitle", value: relatedJobTitle }),
       createPeopleTrainingDetailField({
@@ -12926,6 +12935,7 @@ function readPeopleTrainingGridItems() {
       "psychologicalCheckUntil",
       "visionJobTitle",
       "visionJobDescription",
+      "visionReferralValidUntil",
       "visionReason",
       "visionResult",
       "visionCorrection",
@@ -85468,6 +85478,20 @@ function createClientPortalRecordField({
   return wrapper;
 }
 
+function createClientPortalRecordSectionBreak(title = "", description = "") {
+  const section = document.createElement("div");
+  section.className = "client-portal-record-section-break";
+  const titleNode = document.createElement("span");
+  titleNode.textContent = title;
+  section.append(titleNode);
+  if (description) {
+    const meta = document.createElement("small");
+    meta.textContent = description;
+    section.append(meta);
+  }
+  return section;
+}
+
 function getClientPortalRecordAttachmentKey(attachment = {}, index = 0) {
   return String(attachment.id
     || [attachment.fileName, attachment.fileUrl, String(attachment.dataUrl || "").slice(0, 120), index].filter(Boolean).join("::")
@@ -85482,16 +85506,16 @@ function getClientPortalRecordAttachmentHref(attachment = {}) {
   return String(attachment.dataUrl || attachment.fileUrl || attachment.url || "").trim();
 }
 
-function createClientPortalRecordAttachmentSection(attachments = []) {
+function createClientPortalRecordAttachmentSection(attachments = [], options = {}) {
   const section = document.createElement("div");
   section.className = "client-portal-record-attachment-field client-portal-record-field is-wide";
 
   const head = document.createElement("div");
   head.className = "client-portal-record-attachment-head";
   const title = document.createElement("span");
-  title.textContent = "Prilozi";
+  title.textContent = options.title || "Prilozi";
   const meta = document.createElement("small");
-  meta.textContent = "Dodaj datoteku ili link uz ovaj zapis.";
+  meta.textContent = options.meta || "Dodaj datoteku ili link uz ovaj zapis.";
   head.append(title, meta);
   section.append(head);
 
@@ -85579,8 +85603,8 @@ function createClientPortalRecordAttachmentSection(attachments = []) {
   return section;
 }
 
-function appendClientPortalAttachmentFields(fields = [], details = {}) {
-  fields.push(createClientPortalRecordAttachmentSection(details.attachments));
+function appendClientPortalAttachmentFields(fields = [], details = {}, options = {}) {
+  fields.push(createClientPortalRecordAttachmentSection(details.attachments, options));
   return fields;
 }
 
@@ -85675,9 +85699,22 @@ function getClientPortalRecordFormFields(type = "worker", record = null, company
       createClientPortalRecordField({ name: "email", label: "Email", value: details.email, type: "email" }),
       createClientPortalRecordField({ name: "phone", label: "Telefon", value: details.phone }),
       createClientPortalRecordField({ name: "oib", label: "OIB", value: details.oib, placeholder: "11 znamenki" }),
+      createClientPortalRecordSectionBreak("Zdravstveni pregled i vid", "RA-1, zdravstveno uvjerenje, pregled vida i psihološka provjera."),
+      createClientPortalRecordField({ name: "medicalReferralNumber", label: "Uputnica RA-1", value: details.medicalReferralNumber, placeholder: "npr. RA-1-2026-001" }),
+      createClientPortalRecordField({ name: "medicalReferralValidUntil", label: "Uputnica RA-1 vrijedi do", value: details.medicalReferralValidUntil, type: "date" }),
+      createClientPortalRecordField({ name: "medicalCertificateNumber", label: "Uvjerenje zdravstvene sposobnosti", value: details.medicalCertificateNumber, placeholder: "Broj uvjerenja" }),
+      createClientPortalRecordField({ name: "medicalCertificateValidUntil", label: "Uvjerenje vrijedi do", value: details.medicalCertificateValidUntil, type: "date" }),
+      createClientPortalRecordField({ name: "visionReferralNumber", label: "Uputnica za vid", value: details.visionReferralNumber, placeholder: "npr. VID-UP-2026-001" }),
+      createClientPortalRecordField({ name: "visionReferralValidUntil", label: "Uputnica za vid vrijedi do", value: details.visionReferralValidUntil, type: "date" }),
+      createClientPortalRecordField({ name: "visionCertificateNumber", label: "Uvjerenje vida", value: details.visionCertificateNumber, placeholder: "Broj uvjerenja vida" }),
+      createClientPortalRecordField({ name: "visionCertificateValidUntil", label: "Uvjerenje vida vrijedi do", value: details.visionCertificateValidUntil, type: "date" }),
+      createClientPortalRecordField({ name: "psychologicalCheckUntil", label: "Psihološka provjera vrijedi do", value: details.psychologicalCheckUntil, type: "date" }),
       createClientPortalRecordField({ name: "note", label: "Napomena", value: details.note, textarea: true }),
     );
-    return appendClientPortalAttachmentFields(fields, details);
+    return appendClientPortalAttachmentFields(fields, details, {
+      title: "Uvjerenja i prilozi",
+      meta: "Dodaj zdravstveno uvjerenje, nalaz vida, uputnicu, psihološku provjeru ili link.",
+    });
   }
 
   if (type === "vehicle") {
@@ -85807,6 +85844,15 @@ function buildClientPortalRecordPayloadFromForm(form, type = "worker", companyId
       email: getValue("email"),
       phone: getValue("phone"),
       oib: getValue("oib"),
+      medicalReferralNumber: getValue("medicalReferralNumber"),
+      medicalReferralValidUntil: getValue("medicalReferralValidUntil"),
+      medicalCertificateNumber: getValue("medicalCertificateNumber"),
+      medicalCertificateValidUntil: getValue("medicalCertificateValidUntil"),
+      visionReferralNumber: getValue("visionReferralNumber"),
+      visionReferralValidUntil: getValue("visionReferralValidUntil"),
+      visionCertificateNumber: getValue("visionCertificateNumber"),
+      visionCertificateValidUntil: getValue("visionCertificateValidUntil"),
+      psychologicalCheckUntil: getValue("psychologicalCheckUntil"),
       note: getValue("note"),
     });
   } else if (type === "vehicle") {
@@ -86230,11 +86276,23 @@ function getClientPortalRecordDetailLines(record = {}) {
   const details = record.details ?? {};
   if (record.type === "worker") {
     const trainingSummary = getClientPortalWorkerTrainingSummary(record);
+    const healthLine = (label, number = "", validUntil = "") => {
+      const parts = [
+        number,
+        validUntil ? `do ${formatCompactDate(validUntil)}` : "",
+      ].filter(Boolean).join(" · ");
+      return parts ? `${label}: ${parts}` : "";
+    };
     return [
       details.jobTitle,
       details.email,
       details.phone,
       details.oib ? `OIB ${details.oib}` : "",
+      healthLine("RA-1 uputnica", details.medicalReferralNumber, details.medicalReferralValidUntil),
+      healthLine("Uvjerenje", details.medicalCertificateNumber, details.medicalCertificateValidUntil),
+      healthLine("Vid uputnica", details.visionReferralNumber, details.visionReferralValidUntil),
+      healthLine("Vid uvjerenje", details.visionCertificateNumber, details.visionCertificateValidUntil),
+      details.psychologicalCheckUntil ? `Psihološka provjera: do ${formatCompactDate(details.psychologicalCheckUntil)}` : "",
       getClientPortalTrainingSummaryLine(trainingSummary.counts),
     ].filter(Boolean);
   }
