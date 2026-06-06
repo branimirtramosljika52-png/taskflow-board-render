@@ -8,3 +8,7 @@ node_modules
 playwright-report
 test-results
 blob-report
+android-app/.gradle
+android-app/**/build
+android-app/local.properties
+android-app/captures
