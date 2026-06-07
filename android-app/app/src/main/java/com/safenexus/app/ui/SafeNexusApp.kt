@@ -832,6 +832,7 @@ private fun WorkOrdersScreen(
     val filteredVehicles = remember(state.data.vehicles, normalizedQuery) {
         state.data.vehicles.filter { record -> record.matchesSearch(normalizedQuery) }
     }
+    var quickActionsExpanded by remember(state.section) { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -869,13 +870,28 @@ private fun WorkOrdersScreen(
         },
         floatingActionButton = {
             if (state.section == AppSection.WorkOrders) {
-                FloatingActionButton(
-                    onClick = onNewWorkOrder,
-                    containerColor = Color(0xFF0B63E5),
-                    contentColor = Color.White,
-                ) {
-                    Icon(Icons.Rounded.Add, contentDescription = "Novi nalog")
-                }
+                WorkOrderQuickActionsFab(
+                    expanded = quickActionsExpanded,
+                    filter = state.filter,
+                    viewMode = state.viewMode,
+                    onToggle = { quickActionsExpanded = !quickActionsExpanded },
+                    onNewWorkOrder = {
+                        quickActionsExpanded = false
+                        onNewWorkOrder()
+                    },
+                    onRefresh = {
+                        quickActionsExpanded = false
+                        onRefresh()
+                    },
+                    onViewModeChange = { value ->
+                        quickActionsExpanded = false
+                        onViewModeChange(value)
+                    },
+                    onFilterChange = { value ->
+                        quickActionsExpanded = false
+                        onFilterChange(value)
+                    },
+                )
             }
         },
         bottomBar = {
@@ -1182,6 +1198,141 @@ private fun WorkOrderTabs(
             }
         }
     }
+}
+
+@Composable
+private fun WorkOrderQuickActionsFab(
+    expanded: Boolean,
+    filter: WorkOrderFilter,
+    viewMode: WorkOrderViewMode,
+    onToggle: () -> Unit,
+    onNewWorkOrder: () -> Unit,
+    onRefresh: () -> Unit,
+    onViewModeChange: (WorkOrderViewMode) -> Unit,
+    onFilterChange: (WorkOrderFilter) -> Unit,
+) {
+    Column(
+        horizontalAlignment = Alignment.End,
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        AnimatedVisibility(expanded) {
+            Card(
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+            ) {
+                Column(
+                    modifier = Modifier.padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    QuickActionButton(
+                        label = "Novi nalog",
+                        icon = Icons.Rounded.Add,
+                        isPrimary = true,
+                        onClick = onNewWorkOrder,
+                    )
+                    QuickActionButton(
+                        label = if (viewMode == WorkOrderViewMode.Map) "Prikaži listu" else "Prikaži kartu",
+                        icon = if (viewMode == WorkOrderViewMode.Map) Icons.Rounded.Work else Icons.Rounded.Map,
+                        onClick = {
+                            onViewModeChange(
+                                if (viewMode == WorkOrderViewMode.Map) WorkOrderViewMode.List else WorkOrderViewMode.Map,
+                            )
+                        },
+                    )
+                    QuickActionButton(
+                        label = "Osvježi RN",
+                        icon = Icons.Rounded.Refresh,
+                        onClick = onRefresh,
+                    )
+                    QuickActionDivider()
+                    QuickFilterAction("Svi RN", WorkOrderFilter.All, filter, onFilterChange)
+                    QuickFilterAction("Otvoreni", WorkOrderFilter.Active, filter, onFilterChange)
+                    QuickFilterAction("U tijeku", WorkOrderFilter.Overdue, filter, onFilterChange)
+                    QuickFilterAction("Završeni", WorkOrderFilter.Closed, filter, onFilterChange)
+                }
+            }
+        }
+
+        FloatingActionButton(
+            onClick = onToggle,
+            containerColor = Color(0xFF0B63E5),
+            contentColor = Color.White,
+        ) {
+            Icon(
+                if (expanded) Icons.Rounded.ArrowBack else Icons.Rounded.Add,
+                contentDescription = if (expanded) "Zatvori brze akcije" else "Brze akcije",
+            )
+        }
+    }
+}
+
+@Composable
+private fun QuickFilterAction(
+    label: String,
+    value: WorkOrderFilter,
+    selected: WorkOrderFilter,
+    onFilterChange: (WorkOrderFilter) -> Unit,
+) {
+    QuickActionButton(
+        label = label,
+        icon = if (selected == value) Icons.Rounded.CheckCircle else Icons.Rounded.FilterList,
+        isSelected = selected == value,
+        onClick = { onFilterChange(value) },
+    )
+}
+
+@Composable
+private fun QuickActionButton(
+    label: String,
+    icon: ImageVector,
+    isPrimary: Boolean = false,
+    isSelected: Boolean = false,
+    onClick: () -> Unit,
+) {
+    val background = when {
+        isPrimary -> Color(0xFF0B63E5)
+        isSelected -> Color(0xFFEAF2FF)
+        else -> Color(0xFFF8FAFC)
+    }
+    val contentColor = when {
+        isPrimary -> Color.White
+        isSelected -> Color(0xFF0B63E5)
+        else -> Color(0xFF0F172A)
+    }
+
+    Surface(
+        modifier = Modifier
+            .width(190.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(14.dp),
+        color = background,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(19.dp), tint = contentColor)
+            Spacer(Modifier.width(10.dp))
+            Text(
+                label,
+                color = contentColor,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+@Composable
+private fun QuickActionDivider() {
+    Box(
+        modifier = Modifier
+            .width(190.dp)
+            .height(1.dp)
+            .background(Color(0xFFE2E8F0)),
+    )
 }
 
 @Composable
