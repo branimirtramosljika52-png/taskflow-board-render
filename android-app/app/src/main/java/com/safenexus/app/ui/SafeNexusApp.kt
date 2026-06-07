@@ -2,13 +2,11 @@
 
 package com.safenexus.app.ui
 
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -78,8 +76,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -87,7 +87,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewModelScope
@@ -97,8 +96,8 @@ import com.safenexus.app.data.SafeNexusUser
 import com.safenexus.app.data.WorkOrder
 import com.safenexus.app.data.parseDateOrNull
 import kotlinx.coroutines.launch
-import org.json.JSONObject
 import java.time.format.DateTimeFormatter
+import kotlin.math.ln
 
 enum class WorkOrderFilter(val label: String) {
     All("Svi"),
@@ -542,121 +541,124 @@ private fun WorkOrderMapPanel(points: List<WorkOrderMapPoint>, totalWorkOrders: 
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                 )
             }
-            WorkOrderMapWebView(points)
+            WorkOrderMapCanvas(points)
         }
     }
 }
 
-@Composable
-private fun WorkOrderMapWebView(points: List<WorkOrderMapPoint>) {
-    val html = remember(points) { buildWorkOrderMapHtml(points) }
+private data class WorkOrderMapCluster(
+    val point: CoordinatePoint,
+    val count: Int,
+)
 
-    AndroidView(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(420.dp)
-            .clip(RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp)),
-        factory = { context ->
-            WebView(context).apply {
-                webViewClient = WebViewClient()
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
-                settings.cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
-                setBackgroundColor(android.graphics.Color.TRANSPARENT)
-            }
-        },
-        update = { webView ->
-            if (webView.tag != html) {
-                webView.tag = html
-                webView.loadDataWithBaseURL(
-                    "https://taskflow-board-do-cai56.ondigitalocean.app/",
-                    html,
-                    "text/html",
-                    "UTF-8",
-                    null,
-                )
-            }
-        },
+private data class WorkOrderMapBounds(
+    val minLatitude: Double,
+    val maxLatitude: Double,
+    val minLongitude: Double,
+    val maxLongitude: Double,
+)
+
+private fun buildWorkOrderMapClusters(points: List<WorkOrderMapPoint>): List<WorkOrderMapCluster> {
+    return points
+        .groupBy { entry -> "${entry.point.latitude}:${entry.point.longitude}" }
+        .values
+        .map { entries -> WorkOrderMapCluster(entries.first().point, entries.size) }
+}
+
+private fun buildWorkOrderMapBounds(clusters: List<WorkOrderMapCluster>): WorkOrderMapBounds {
+    if (clusters.isEmpty()) {
+        return WorkOrderMapBounds(45.75, 45.87, 15.88, 16.08)
+    }
+
+    val minLatitude = clusters.minOf { it.point.latitude }
+    val maxLatitude = clusters.maxOf { it.point.latitude }
+    val minLongitude = clusters.minOf { it.point.longitude }
+    val maxLongitude = clusters.maxOf { it.point.longitude }
+    val latitudePadding = ((maxLatitude - minLatitude) * 0.12).coerceAtLeast(0.01)
+    val longitudePadding = ((maxLongitude - minLongitude) * 0.12).coerceAtLeast(0.01)
+
+    return WorkOrderMapBounds(
+        minLatitude = minLatitude - latitudePadding,
+        maxLatitude = maxLatitude + latitudePadding,
+        minLongitude = minLongitude - longitudePadding,
+        maxLongitude = maxLongitude + longitudePadding,
     )
 }
 
-private fun buildWorkOrderMapHtml(points: List<WorkOrderMapPoint>): String {
-    val markersJson = points.joinToString(prefix = "[", postfix = "]") { entry ->
-        val workOrder = entry.workOrder
-        """
-        {
-          "number": ${JSONObject.quote(workOrder.displayNumber)},
-          "company": ${JSONObject.quote(workOrder.companyName.ifBlank { "Bez tvrtke" })},
-          "location": ${JSONObject.quote(workOrder.locationName.ifBlank { "Bez lokacije" })},
-          "status": ${JSONObject.quote(workOrder.status)},
-          "service": ${JSONObject.quote(workOrder.displayService)},
-          "lat": ${entry.point.latitude},
-          "lng": ${entry.point.longitude}
+@Composable
+private fun WorkOrderMapCanvas(points: List<WorkOrderMapPoint>) {
+    val clusters = remember(points) { buildWorkOrderMapClusters(points) }
+    val bounds = remember(clusters) { buildWorkOrderMapBounds(clusters) }
+    val gridColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+    val lineColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+    val markerColor = MaterialTheme.colorScheme.primary
+    val clusterColor = Color(0xFF0F766E)
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(420.dp)
+            .clip(RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp))
+            .background(
+                Brush.linearGradient(
+                    listOf(Color(0xFFEFF6FF), Color(0xFFE0F2FE), Color(0xFFF8FAFC)),
+                ),
+            ),
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val padding = 28.dp.toPx()
+            val mapWidth = (size.width - padding * 2).coerceAtLeast(1f)
+            val mapHeight = (size.height - padding * 2).coerceAtLeast(1f)
+            val latitudeRange = (bounds.maxLatitude - bounds.minLatitude).coerceAtLeast(0.0001)
+            val longitudeRange = (bounds.maxLongitude - bounds.minLongitude).coerceAtLeast(0.0001)
+
+            repeat(5) { index ->
+                val fraction = (index + 1) / 6f
+                val x = padding + mapWidth * fraction
+                val y = padding + mapHeight * fraction
+                drawLine(gridColor, Offset(x, padding), Offset(x, padding + mapHeight), strokeWidth = 1.dp.toPx())
+                drawLine(gridColor, Offset(padding, y), Offset(padding + mapWidth, y), strokeWidth = 1.dp.toPx())
+            }
+
+            drawLine(lineColor, Offset(padding, padding), Offset(padding + mapWidth, padding), strokeWidth = 1.2.dp.toPx())
+            drawLine(lineColor, Offset(padding + mapWidth, padding), Offset(padding + mapWidth, padding + mapHeight), strokeWidth = 1.2.dp.toPx())
+            drawLine(lineColor, Offset(padding + mapWidth, padding + mapHeight), Offset(padding, padding + mapHeight), strokeWidth = 1.2.dp.toPx())
+            drawLine(lineColor, Offset(padding, padding + mapHeight), Offset(padding, padding), strokeWidth = 1.2.dp.toPx())
+
+            clusters.forEach { cluster ->
+                val xFraction = ((cluster.point.longitude - bounds.minLongitude) / longitudeRange).toFloat().coerceIn(0f, 1f)
+                val yFraction = ((cluster.point.latitude - bounds.minLatitude) / latitudeRange).toFloat().coerceIn(0f, 1f)
+                val center = Offset(
+                    x = padding + mapWidth * xFraction,
+                    y = padding + mapHeight * (1f - yFraction),
+                )
+                val radius = (5f + ln(cluster.count + 1.0).toFloat() * 3.2f).coerceIn(6f, 28f)
+                val fill = if (cluster.count > 1) clusterColor else markerColor
+
+                drawCircle(Color.White.copy(alpha = 0.84f), radius = radius + 4.dp.toPx(), center = center)
+                drawCircle(fill.copy(alpha = 0.18f), radius = radius + 8.dp.toPx(), center = center)
+                drawCircle(fill, radius = radius, center = center)
+                drawCircle(Color.White.copy(alpha = 0.92f), radius = radius, center = center, style = Stroke(width = 1.4.dp.toPx()))
+            }
         }
-        """.trimIndent()
+
+        Surface(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(14.dp),
+            shape = RoundedCornerShape(999.dp),
+            color = Color.White.copy(alpha = 0.88f),
+            tonalElevation = 2.dp,
+        ) {
+            Text(
+                text = "${clusters.size} lokacija · ${points.size} RN",
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
+                fontWeight = FontWeight.Bold,
+            )
+        }
     }
-
-    return """
-        <!doctype html>
-        <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-          <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-          <style>
-            html, body, #map { height: 100%; margin: 0; width: 100%; }
-            body { background: #eef4ff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-            .leaflet-popup-content-wrapper { border-radius: 14px; box-shadow: 0 16px 32px rgba(15, 23, 42, 0.18); }
-            .sn-popup { min-width: 190px; }
-            .sn-number { color: #1d4ed8; font-size: 14px; font-weight: 800; margin-bottom: 4px; }
-            .sn-company { color: #0f172a; font-size: 13px; font-weight: 700; margin-bottom: 3px; }
-            .sn-meta { color: #475569; font-size: 12px; line-height: 1.35; }
-            .sn-status { display: inline-block; margin-top: 8px; padding: 4px 8px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; font-size: 11px; font-weight: 800; }
-          </style>
-        </head>
-        <body>
-          <div id="map"></div>
-          <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-          <script>
-            const markers = $markersJson;
-            const fallbackCenter = [45.815, 15.9819];
-            const initialCenter = markers.length ? [markers[0].lat, markers[0].lng] : fallbackCenter;
-            const map = L.map("map", { zoomControl: true }).setView(initialCenter, markers.length > 1 ? 8 : 13);
-
-            L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-              maxZoom: 19,
-              attribution: "&copy; OpenStreetMap"
-            }).addTo(map);
-
-            function esc(value) {
-              return String(value || "").replace(/[&<>"']/g, function (char) {
-                return { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;" }[char];
-              });
-            }
-
-            const bounds = [];
-            markers.forEach(function(marker) {
-              const point = [marker.lat, marker.lng];
-              bounds.push(point);
-              const popup = [
-                "<div class='sn-popup'>",
-                "<div class='sn-number'>" + esc(marker.number) + "</div>",
-                "<div class='sn-company'>" + esc(marker.company) + "</div>",
-                "<div class='sn-meta'>" + esc(marker.location) + "</div>",
-                "<div class='sn-meta'>" + esc(marker.service) + "</div>",
-                "<span class='sn-status'>" + esc(marker.status) + "</span>",
-                "</div>"
-              ].join("");
-              L.marker(point).addTo(map).bindPopup(popup);
-            });
-
-            if (bounds.length > 1) {
-              map.fitBounds(bounds, { padding: [34, 34], maxZoom: 15 });
-            }
-          </script>
-        </body>
-        </html>
-    """.trimIndent()
 }
 
 @Composable
