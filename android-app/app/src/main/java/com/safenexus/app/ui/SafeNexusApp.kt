@@ -6,6 +6,8 @@ import android.annotation.SuppressLint
 import android.app.Application
 import android.content.Context
 import android.content.ContextWrapper
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -13,6 +15,8 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.compose.animation.AnimatedContent
@@ -50,6 +54,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Business
+import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.CheckCircle
@@ -70,12 +75,15 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -103,6 +111,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -113,9 +122,14 @@ import com.safenexus.app.data.SafeNexusAuthStore
 import com.safenexus.app.data.SafeNexusUser
 import com.safenexus.app.data.WorkOrder
 import com.safenexus.app.data.parseDateOrNull
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
 enum class WorkOrderFilter(val label: String) {
@@ -133,6 +147,14 @@ enum class WorkOrderViewMode(val label: String) {
 private val biometricAuthenticators =
     BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
 
+private val workOrderStatusOptions = listOf(
+    "Otvoreni RN",
+    "Gotov RN",
+    "Ovjeren RN",
+    "Fakturiran RN",
+    "Storno RN",
+)
+
 data class AppState(
     val user: SafeNexusUser? = null,
     val rememberedUser: SafeNexusUser? = null,
@@ -143,6 +165,7 @@ data class AppState(
     val viewMode: WorkOrderViewMode = WorkOrderViewMode.List,
     val isLoading: Boolean = false,
     val error: String = "",
+    val notice: String = "",
 )
 
 class SafeNexusViewModel(application: Application) : AndroidViewModel(application) {
@@ -205,7 +228,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun refresh() {
-        state = state.copy(isLoading = true, error = "")
+        state = state.copy(isLoading = true, error = "", notice = "")
         viewModelScope.launch {
             api.workOrders()
                 .onSuccess { data ->
@@ -253,11 +276,88 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
     fun selectWorkOrder(value: WorkOrder?) {
         state = state.copy(selectedWorkOrder = value)
     }
+
+    fun updateWorkOrderStatus(workOrder: WorkOrder, status: String) {
+        if (workOrder.id.isBlank() || status.isBlank() || status == workOrder.status) return
+
+        state = state.copy(isLoading = true, error = "", notice = "")
+        viewModelScope.launch {
+            api.updateWorkOrderStatus(workOrder.id, status)
+                .onSuccess {
+                    val updatedOrders = state.workOrders.map { item ->
+                        if (item.id == workOrder.id) item.copy(status = status) else item
+                    }
+                    val updatedSelected = state.selectedWorkOrder?.let { selected ->
+                        if (selected.id == workOrder.id) selected.copy(status = status) else selected
+                    }
+                    state = state.copy(
+                        workOrders = updatedOrders,
+                        selectedWorkOrder = updatedSelected,
+                        isLoading = false,
+                        notice = "Status RN-a je spremljen.",
+                    )
+                    refresh()
+                }
+                .onFailure { error ->
+                    state = state.copy(
+                        isLoading = false,
+                        error = error.message ?: "Ne mogu spremiti status RN-a.",
+                    )
+                }
+        }
+    }
+
+    fun uploadVerifiedWorkOrderScan(context: Context, workOrder: WorkOrder, uri: Uri) {
+        if (workOrder.id.isBlank()) {
+            state = state.copy(error = "RN nema ispravan ID za dodavanje skena.")
+            return
+        }
+
+        state = state.copy(isLoading = true, error = "", notice = "")
+        viewModelScope.launch {
+            runCatching {
+                val bytes = readCompressedScanBytes(context, uri)
+                api.uploadVerifiedWorkOrderScan(
+                    workOrderId = workOrder.id,
+                    fileName = buildVerifiedScanFileName(workOrder),
+                    fileType = "image/jpeg",
+                    bytes = bytes,
+                ).getOrThrow()
+            }
+                .onSuccess {
+                    state = state.copy(
+                        isLoading = false,
+                        notice = "Sken ovjerenog RN-a je spremljen.",
+                    )
+                }
+                .onFailure { error ->
+                    state = state.copy(
+                        isLoading = false,
+                        error = error.message ?: "Ne mogu spremiti sken ovjerenog RN-a.",
+                    )
+                }
+        }
+    }
 }
 
 @Composable
 fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
     val state = viewModel.state
+    val context = LocalContext.current
+    var pendingScan by remember { mutableStateOf<Pair<WorkOrder, Uri>?>(null) }
+    val scanLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+        val scan = pendingScan
+        pendingScan = null
+        if (success && scan != null) {
+            viewModel.uploadVerifiedWorkOrderScan(context.applicationContext, scan.first, scan.second)
+        }
+    }
+    val startVerifiedScan: (WorkOrder) -> Unit = { workOrder ->
+        val uri = createWorkOrderScanUri(context, workOrder)
+        pendingScan = workOrder to uri
+        scanLauncher.launch(uri)
+    }
+
     AnimatedContent(targetState = state.user != null, label = "auth") { isSignedIn ->
         if (isSignedIn) {
             val selected = state.selectedWorkOrder
@@ -270,11 +370,18 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                     onRefresh = viewModel::refresh,
                     onLogout = viewModel::logout,
                     onOpenWorkOrder = viewModel::selectWorkOrder,
+                    onStatusChange = viewModel::updateWorkOrderStatus,
+                    onScanVerifiedWorkOrder = startVerifiedScan,
                 )
             } else {
                 WorkOrderDetailScreen(
                     workOrder = selected,
+                    isLoading = state.isLoading,
+                    error = state.error,
+                    notice = state.notice,
                     onBack = { viewModel.selectWorkOrder(null) },
+                    onStatusChange = viewModel::updateWorkOrderStatus,
+                    onScanVerifiedWorkOrder = startVerifiedScan,
                 )
             }
         } else {
@@ -633,6 +740,8 @@ private fun WorkOrdersScreen(
     onRefresh: () -> Unit,
     onLogout: () -> Unit,
     onOpenWorkOrder: (WorkOrder) -> Unit,
+    onStatusChange: (WorkOrder, String) -> Unit,
+    onScanVerifiedWorkOrder: (WorkOrder) -> Unit,
 ) {
     val normalizedQuery = remember(state.query) { state.query.trim().lowercase() }
     val filtered = remember(state.workOrders, normalizedQuery, state.filter) {
@@ -740,6 +849,9 @@ private fun WorkOrdersScreen(
                 AnimatedVisibility(state.error.isNotBlank()) {
                     MessageCard(text = state.error, isError = true)
                 }
+                AnimatedVisibility(state.notice.isNotBlank()) {
+                    MessageCard(text = state.notice, isError = false)
+                }
             }
             if (state.viewMode == WorkOrderViewMode.Map) {
                 if (filtered.isEmpty() && !state.isLoading) {
@@ -761,7 +873,10 @@ private fun WorkOrdersScreen(
                     items(mapPoints, key = { "map-${it.workOrder.id}" }) { entry ->
                         WorkOrderCard(
                             workOrder = entry.workOrder,
+                            isLoading = state.isLoading,
                             onClick = { onOpenWorkOrder(entry.workOrder) },
+                            onStatusChange = { status -> onStatusChange(entry.workOrder, status) },
+                            onScanVerifiedWorkOrder = { onScanVerifiedWorkOrder(entry.workOrder) },
                         )
                     }
                 }
@@ -773,7 +888,10 @@ private fun WorkOrdersScreen(
                 items(filtered, key = { it.id }) { workOrder ->
                     WorkOrderCard(
                         workOrder = workOrder,
+                        isLoading = state.isLoading,
                         onClick = { onOpenWorkOrder(workOrder) },
+                        onStatusChange = { status -> onStatusChange(workOrder, status) },
+                        onScanVerifiedWorkOrder = { onScanVerifiedWorkOrder(workOrder) },
                     )
                 }
             }
@@ -1178,7 +1296,13 @@ private fun RowScope.MetricCard(label: String, value: String, color: Color) {
 }
 
 @Composable
-private fun WorkOrderCard(workOrder: WorkOrder, onClick: () -> Unit) {
+private fun WorkOrderCard(
+    workOrder: WorkOrder,
+    isLoading: Boolean,
+    onClick: () -> Unit,
+    onStatusChange: (String) -> Unit,
+    onScanVerifiedWorkOrder: () -> Unit,
+) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -1221,13 +1345,37 @@ private fun WorkOrderCard(workOrder: WorkOrder, onClick: () -> Unit) {
                     InfoPill(Icons.Rounded.Map, "Na karti")
                 }
             }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                WorkOrderStatusMenu(
+                    currentStatus = workOrder.status,
+                    enabled = !isLoading,
+                    onStatusSelected = onStatusChange,
+                )
+                OutlinedButton(
+                    onClick = onScanVerifiedWorkOrder,
+                    enabled = !isLoading,
+                    shape = RoundedCornerShape(14.dp),
+                ) {
+                    Icon(Icons.Rounded.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Sken ovjerenog")
+                }
+            }
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun WorkOrderDetailScreen(workOrder: WorkOrder, onBack: () -> Unit) {
+private fun WorkOrderDetailScreen(
+    workOrder: WorkOrder,
+    isLoading: Boolean,
+    error: String,
+    notice: String,
+    onBack: () -> Unit,
+    onStatusChange: (WorkOrder, String) -> Unit,
+    onScanVerifiedWorkOrder: (WorkOrder) -> Unit,
+) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -1271,6 +1419,45 @@ private fun WorkOrderDetailScreen(workOrder: WorkOrder, onBack: () -> Unit) {
                         fontWeight = FontWeight.Black,
                     )
                     Text(workOrder.displayService, style = MaterialTheme.typography.bodyLarge)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        WorkOrderStatusMenu(
+                            currentStatus = workOrder.status,
+                            enabled = !isLoading,
+                            onStatusSelected = { status -> onStatusChange(workOrder, status) },
+                        )
+                        OutlinedButton(
+                            onClick = { onScanVerifiedWorkOrder(workOrder) },
+                            enabled = !isLoading,
+                            shape = RoundedCornerShape(14.dp),
+                        ) {
+                            Icon(Icons.Rounded.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Skeniraj ovjereni RN")
+                        }
+                    }
+                }
+            }
+
+            AnimatedVisibility(isLoading) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+            AnimatedVisibility(error.isNotBlank()) {
+                MessageCard(text = error, isError = true)
+            }
+            AnimatedVisibility(notice.isNotBlank()) {
+                MessageCard(text = notice, isError = false)
+            }
+
+            DetailSection("Ovjereni nalog") {
+                DetailRow(Icons.Rounded.CameraAlt, "Sken", "Fotografija se sprema kao dokument: Ovjereni Radni nalog")
+                OutlinedButton(
+                    onClick = { onScanVerifiedWorkOrder(workOrder) },
+                    enabled = !isLoading,
+                    shape = RoundedCornerShape(16.dp),
+                ) {
+                    Icon(Icons.Rounded.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Dodaj sken ovjerenog naloga")
                 }
             }
 
@@ -1343,6 +1530,43 @@ private fun DetailRow(icon: ImageVector, label: String, value: String) {
         Column {
             Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f))
             Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+@Composable
+private fun WorkOrderStatusMenu(
+    currentStatus: String,
+    enabled: Boolean,
+    onStatusSelected: (String) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        OutlinedButton(
+            onClick = { expanded = true },
+            enabled = enabled,
+            shape = RoundedCornerShape(14.dp),
+        ) {
+            Icon(Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Status")
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            workOrderStatusOptions.forEach { status ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = status,
+                            fontWeight = if (status == currentStatus) FontWeight.Bold else FontWeight.Normal,
+                        )
+                    },
+                    enabled = enabled && status != currentStatus,
+                    onClick = {
+                        expanded = false
+                        onStatusSelected(status)
+                    },
+                )
+            }
         }
     }
 }
@@ -1440,4 +1664,57 @@ private fun BrandMark() {
 private fun formatDateLabel(value: String): String {
     val date = parseDateOrNull(value) ?: return ""
     return date.format(DateTimeFormatter.ofPattern("dd.MM.yyyy."))
+}
+
+private fun createWorkOrderScanUri(context: Context, workOrder: WorkOrder): Uri {
+    val directory = File(context.cacheDir, "work-order-scans").apply { mkdirs() }
+    val fileName = buildVerifiedScanFileName(workOrder)
+    val file = File(directory, fileName)
+    return FileProvider.getUriForFile(
+        context,
+        "${context.packageName}.fileprovider",
+        file,
+    )
+}
+
+private suspend fun readCompressedScanBytes(context: Context, uri: Uri): ByteArray = withContext(Dispatchers.IO) {
+    val resolver = context.contentResolver
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    resolver.openInputStream(uri)?.use { input ->
+        BitmapFactory.decodeStream(input, null, bounds)
+    }
+
+    var sampleSize = 1
+    val maxDimension = 1800
+    while ((bounds.outWidth / sampleSize) > maxDimension || (bounds.outHeight / sampleSize) > maxDimension) {
+        sampleSize *= 2
+    }
+
+    val bitmap = resolver.openInputStream(uri)?.use { input ->
+        BitmapFactory.decodeStream(
+            input,
+            null,
+            BitmapFactory.Options().apply { inSampleSize = sampleSize },
+        )
+    }
+
+    if (bitmap != null) {
+        val output = ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 84, output)
+        bitmap.recycle()
+        return@withContext output.toByteArray()
+    }
+
+    resolver.openInputStream(uri)?.use { input ->
+        input.readBytes()
+    } ?: error("Ne mogu učitati fotografiju skena.")
+}
+
+private fun buildVerifiedScanFileName(workOrder: WorkOrder): String {
+    val number = workOrder.displayNumber
+        .replace(Regex("[^A-Za-z0-9_-]+"), "-")
+        .trim('-')
+        .ifBlank { "RN" }
+    val stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))
+    return "ovjereni-rn-$number-$stamp.jpg"
 }

@@ -11,7 +11,9 @@ import java.net.CookieHandler
 import java.net.CookieManager
 import java.net.CookiePolicy
 import java.net.HttpURLConnection
+import java.net.URLEncoder
 import java.net.URL
+import java.util.Base64
 import java.util.zip.GZIPInputStream
 
 class SafeNexusApi(
@@ -72,6 +74,40 @@ class SafeNexusApi(
             BootstrapData(
                 workOrders = json.optJSONArray("workOrders").toWorkOrders(),
             )
+        }
+    }
+
+    suspend fun updateWorkOrderStatus(workOrderId: String, status: String): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val payload = JSONObject()
+                .put("status", status)
+                .toString()
+            request("/api/work-orders/${workOrderId.pathSegment()}", method = "PATCH", body = payload)
+            Unit
+        }
+    }
+
+    suspend fun uploadVerifiedWorkOrderScan(
+        workOrderId: String,
+        fileName: String,
+        fileType: String,
+        bytes: ByteArray,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val dataUrl = "data:$fileType;base64,${Base64.getEncoder().encodeToString(bytes)}"
+            val file = JSONObject()
+                .put("fileName", fileName)
+                .put("fileType", fileType)
+                .put("fileSize", bytes.size)
+                .put("documentCategory", VERIFIED_WORK_ORDER_DOCUMENT_CATEGORY)
+                .put("description", "Sken ovjerenog radnog naloga iz SafeNexus Android aplikacije.")
+                .put("dataUrl", dataUrl)
+            val payload = JSONObject()
+                .put("sourceType", "editor")
+                .put("files", JSONArray().put(file))
+                .toString()
+            request("/api/work-orders/${workOrderId.pathSegment()}/documents", method = "POST", body = payload)
+            Unit
         }
     }
 
@@ -174,6 +210,11 @@ class SafeNexusApi(
         json.firstClean("message", "error")
     }.getOrDefault("")
 }
+
+private const val VERIFIED_WORK_ORDER_DOCUMENT_CATEGORY = "Ovjereni Radni nalog"
+
+private fun String.pathSegment(): String =
+    URLEncoder.encode(this, Charsets.UTF_8.name()).replace("+", "%20")
 
 private fun JSONObject.firstClean(vararg keys: String): String {
     for (key in keys) {
