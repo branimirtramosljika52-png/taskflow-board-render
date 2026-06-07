@@ -31,6 +31,12 @@ data class WorkOrder(
     val description: String,
     val executors: List<String>,
 ) {
+    val parsedDueDate: LocalDate? = parseDateOrNull(dueDate)
+
+    val parsedOpenedDate: LocalDate? = parseDateOrNull(openedDate)
+
+    val coordinatePoint: CoordinatePoint? = parseCoordinatePoint(coordinates)
+
     val displayNumber: String
         get() = number.ifBlank { "RN" }
 
@@ -38,7 +44,7 @@ data class WorkOrder(
         get() = serviceLine.ifBlank { serviceItems.joinToString(" · ") }.ifBlank { "Bez upisane usluge" }
 
     val hasCoordinates: Boolean
-        get() = parseCoordinatePoint(coordinates) != null
+        get() = coordinatePoint != null
 
     val isClosed: Boolean
         get() = status.equals("Fakturiran RN", ignoreCase = true) ||
@@ -46,7 +52,7 @@ data class WorkOrder(
             status.equals("Storniran RN", ignoreCase = true)
 
     val isOverdue: Boolean
-        get() = !isClosed && parseDateOrNull(dueDate)?.isBefore(LocalDate.now()) == true
+        get() = !isClosed && parsedDueDate?.isBefore(LocalDate.now()) == true
 }
 
 fun parseDateOrNull(value: String): LocalDate? = runCatching {

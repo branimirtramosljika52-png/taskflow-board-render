@@ -12,6 +12,7 @@ import java.net.CookieManager
 import java.net.CookiePolicy
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.zip.GZIPInputStream
 
 class SafeNexusApi(
     private val baseUrl: String = BuildConfig.SAFE_NEXUS_BASE_URL.trimEnd('/'),
@@ -75,6 +76,7 @@ class SafeNexusApi(
             connectTimeout = 18_000
             readTimeout = 24_000
             setRequestProperty("Accept", "application/json")
+            setRequestProperty("Accept-Encoding", "gzip")
             setRequestProperty("Content-Type", "application/json; charset=utf-8")
             setRequestProperty("X-SafeNexus-Client", "android")
             if (accessToken.isNotBlank()) {
@@ -144,7 +146,12 @@ class SafeNexusApi(
         } else {
             connection.errorStream ?: connection.inputStream
         }
-        return BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).use { reader ->
+        val decodedStream = if (connection.getHeaderField("Content-Encoding").equals("gzip", ignoreCase = true)) {
+            GZIPInputStream(stream)
+        } else {
+            stream
+        }
+        return BufferedReader(InputStreamReader(decodedStream, Charsets.UTF_8)).use { reader ->
             reader.readText()
         }
     }
@@ -209,7 +216,7 @@ private fun JSONArray?.toWorkOrders(): List<WorkOrder> {
             )
         }
     }.sortedWith(
-        compareByDescending<WorkOrder> { parseDateOrNull(it.dueDate) ?: parseDateOrNull(it.openedDate) }
+        compareByDescending<WorkOrder> { it.parsedDueDate ?: it.parsedOpenedDate }
             .thenBy { it.number },
     )
 }

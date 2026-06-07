@@ -58,7 +58,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -72,7 +71,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -97,7 +95,6 @@ import com.safenexus.app.data.CoordinatePoint
 import com.safenexus.app.data.SafeNexusApi
 import com.safenexus.app.data.SafeNexusUser
 import com.safenexus.app.data.WorkOrder
-import com.safenexus.app.data.parseCoordinatePoint
 import com.safenexus.app.data.parseDateOrNull
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -337,7 +334,8 @@ private fun WorkOrdersScreen(
     onLogout: () -> Unit,
     onOpenWorkOrder: (WorkOrder) -> Unit,
 ) {
-    val filtered = remember(state.workOrders, state.query, state.filter) {
+    val normalizedQuery = remember(state.query) { state.query.trim().lowercase() }
+    val filtered = remember(state.workOrders, normalizedQuery, state.filter) {
         state.workOrders
             .filter { workOrder ->
                 when (state.filter) {
@@ -347,20 +345,9 @@ private fun WorkOrdersScreen(
                     WorkOrderFilter.Closed -> workOrder.isClosed
                 }
             }
-            .filter { workOrder ->
-                val query = state.query.trim().lowercase()
-                query.isBlank() || listOf(
-                    workOrder.number,
-                    workOrder.status,
-                    workOrder.companyName,
-                    workOrder.locationName,
-                    workOrder.coordinates,
-                    workOrder.region,
-                    workOrder.serviceLine,
-                    workOrder.description,
-                ).any { it.lowercase().contains(query) }
-            }
+            .filter { workOrder -> normalizedQuery.isBlank() || workOrder.matchesSearch(normalizedQuery) }
     }
+    val mapPoints = remember(filtered) { buildWorkOrderMapPoints(filtered) }
 
     Scaffold(
         topBar = {
@@ -455,11 +442,27 @@ private fun WorkOrdersScreen(
                 }
             }
             if (state.viewMode == WorkOrderViewMode.Map) {
-                item {
-                    WorkOrderMapPanel(
-                        workOrders = filtered,
-                        onOpenWorkOrder = onOpenWorkOrder,
-                    )
+                if (filtered.isEmpty() && !state.isLoading) {
+                    item {
+                        EmptyWorkOrders()
+                    }
+                } else if (mapPoints.isEmpty() && !state.isLoading) {
+                    item {
+                        NoCoordinateWorkOrders()
+                    }
+                } else {
+                    item {
+                        WorkOrderMapPanel(
+                            points = mapPoints,
+                            totalWorkOrders = filtered.size,
+                        )
+                    }
+                    items(mapPoints, key = { "map-${it.workOrder.id}" }) { entry ->
+                        WorkOrderCard(
+                            workOrder = entry.workOrder,
+                            onClick = { onOpenWorkOrder(entry.workOrder) },
+                        )
+                    }
                 }
             } else if (filtered.isEmpty() && !state.isLoading) {
                 item {
@@ -482,70 +485,64 @@ private data class WorkOrderMapPoint(
     val point: CoordinatePoint,
 )
 
-@Composable
-private fun WorkOrderMapPanel(
-    workOrders: List<WorkOrder>,
-    onOpenWorkOrder: (WorkOrder) -> Unit,
-) {
-    val points = remember(workOrders) {
-        workOrders.mapNotNull { workOrder ->
-            parseCoordinatePoint(workOrder.coordinates)?.let { point ->
-                WorkOrderMapPoint(workOrder, point)
-            }
+private fun WorkOrder.matchesSearch(query: String): Boolean {
+    return number.contains(query, ignoreCase = true) ||
+        status.contains(query, ignoreCase = true) ||
+        companyName.contains(query, ignoreCase = true) ||
+        locationName.contains(query, ignoreCase = true) ||
+        coordinates.contains(query, ignoreCase = true) ||
+        region.contains(query, ignoreCase = true) ||
+        serviceLine.contains(query, ignoreCase = true) ||
+        description.contains(query, ignoreCase = true)
+}
+
+private fun buildWorkOrderMapPoints(workOrders: List<WorkOrder>): List<WorkOrderMapPoint> {
+    return workOrders.mapNotNull { workOrder ->
+        workOrder.coordinatePoint?.let { point ->
+            WorkOrderMapPoint(workOrder, point)
         }
     }
+}
 
-    if (workOrders.isEmpty()) {
-        EmptyWorkOrders()
-        return
-    }
-
-    if (points.isEmpty()) {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(22.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+@Composable
+private fun NoCoordinateWorkOrders() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Column(
-                modifier = Modifier.padding(18.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Icon(Icons.Rounded.Map, contentDescription = null, modifier = Modifier.size(38.dp), tint = MaterialTheme.colorScheme.primary)
-                Text("Nema RN-ova s koordinatama", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Icon(Icons.Rounded.Map, contentDescription = null, modifier = Modifier.size(38.dp), tint = MaterialTheme.colorScheme.primary)
+            Text("Nema RN-ova s koordinatama", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(
+                "Upisi koordinate na lokaciji ili radnom nalogu pa ce se marker pojaviti ovdje.",
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun WorkOrderMapPanel(points: List<WorkOrderMapPoint>, totalWorkOrders: Int) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp)) {
+                Text("Karta radnih naloga", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text(
-                    "Upisi koordinate na lokaciji ili radnom nalogu pa ce se marker pojaviti ovdje.",
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+                    "${points.size} od $totalWorkOrders RN ima koordinate.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                 )
             }
-        }
-        return
-    }
-
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Column(modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp)) {
-                    Text("Karta radnih naloga", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text(
-                        "${points.size} od ${workOrders.size} RN ima koordinate.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                    )
-                }
-                WorkOrderMapWebView(points)
-            }
-        }
-
-        points.forEach { entry ->
-            WorkOrderCard(
-                workOrder = entry.workOrder,
-                onClick = { onOpenWorkOrder(entry.workOrder) },
-            )
+            WorkOrderMapWebView(points)
         }
     }
 }
@@ -564,18 +561,21 @@ private fun WorkOrderMapWebView(points: List<WorkOrderMapPoint>) {
                 webViewClient = WebViewClient()
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
-                settings.cacheMode = WebSettings.LOAD_DEFAULT
+                settings.cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
                 setBackgroundColor(android.graphics.Color.TRANSPARENT)
             }
         },
         update = { webView ->
-            webView.loadDataWithBaseURL(
-                "https://taskflow-board-do-cai56.ondigitalocean.app/",
-                html,
-                "text/html",
-                "UTF-8",
-                null,
-            )
+            if (webView.tag != html) {
+                webView.tag = html
+                webView.loadDataWithBaseURL(
+                    "https://taskflow-board-do-cai56.ondigitalocean.app/",
+                    html,
+                    "text/html",
+                    "UTF-8",
+                    null,
+                )
+            }
         },
     )
 }
