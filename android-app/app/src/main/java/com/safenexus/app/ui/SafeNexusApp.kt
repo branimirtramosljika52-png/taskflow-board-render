@@ -97,6 +97,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -483,6 +484,20 @@ private fun LoginScreen(
     var biometricError by remember { mutableStateOf("") }
     val context = LocalContext.current
     val displayedError = error.ifBlank { biometricError }
+    val requestSavedLogin = {
+        biometricError = ""
+        requestBiometricLogin(
+            context = context,
+            onSuccess = onUnlockRememberedSession,
+            onError = { biometricError = it },
+        )
+    }
+
+    LaunchedEffect(rememberedUser?.email) {
+        if (rememberedUser != null && !isLoading) {
+            requestSavedLogin()
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -569,14 +584,7 @@ private fun LoginScreen(
                         RememberedSessionCard(
                             user = rememberedUser,
                             isLoading = isLoading,
-                            onBiometricLogin = {
-                                biometricError = ""
-                                requestBiometricLogin(
-                                    context = context,
-                                    onSuccess = onUnlockRememberedSession,
-                                    onError = { biometricError = it },
-                                )
-                            },
+                            onBiometricLogin = requestSavedLogin,
                         )
                     }
                     OutlinedTextField(
