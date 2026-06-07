@@ -2,6 +2,9 @@
 
 package com.safenexus.app.ui
 
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -45,6 +48,7 @@ import androidx.compose.material.icons.rounded.FilterList
 import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Mail
+import androidx.compose.material.icons.rounded.Map
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Work
@@ -85,14 +89,18 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewModelScope
+import com.safenexus.app.data.CoordinatePoint
 import com.safenexus.app.data.SafeNexusApi
 import com.safenexus.app.data.SafeNexusUser
 import com.safenexus.app.data.WorkOrder
+import com.safenexus.app.data.parseCoordinatePoint
 import com.safenexus.app.data.parseDateOrNull
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 import java.time.format.DateTimeFormatter
 
 enum class WorkOrderFilter(val label: String) {
@@ -102,12 +110,18 @@ enum class WorkOrderFilter(val label: String) {
     Closed("Zatvoreni"),
 }
 
+enum class WorkOrderViewMode(val label: String) {
+    List("Lista"),
+    Map("Karta"),
+}
+
 data class AppState(
     val user: SafeNexusUser? = null,
     val workOrders: List<WorkOrder> = emptyList(),
     val selectedWorkOrder: WorkOrder? = null,
     val query: String = "",
     val filter: WorkOrderFilter = WorkOrderFilter.Active,
+    val viewMode: WorkOrderViewMode = WorkOrderViewMode.List,
     val isLoading: Boolean = false,
     val error: String = "",
 )
@@ -162,6 +176,10 @@ class SafeNexusViewModel(
         state = state.copy(filter = value)
     }
 
+    fun updateViewMode(value: WorkOrderViewMode) {
+        state = state.copy(viewMode = value)
+    }
+
     fun selectWorkOrder(value: WorkOrder?) {
         state = state.copy(selectedWorkOrder = value)
     }
@@ -178,6 +196,7 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                     state = state,
                     onQueryChange = viewModel::updateQuery,
                     onFilterChange = viewModel::updateFilter,
+                    onViewModeChange = viewModel::updateViewMode,
                     onRefresh = viewModel::refresh,
                     onLogout = viewModel::logout,
                     onOpenWorkOrder = viewModel::selectWorkOrder,
@@ -313,6 +332,7 @@ private fun WorkOrdersScreen(
     state: AppState,
     onQueryChange: (String) -> Unit,
     onFilterChange: (WorkOrderFilter) -> Unit,
+    onViewModeChange: (WorkOrderViewMode) -> Unit,
     onRefresh: () -> Unit,
     onLogout: () -> Unit,
     onOpenWorkOrder: (WorkOrder) -> Unit,
@@ -334,6 +354,8 @@ private fun WorkOrdersScreen(
                     workOrder.status,
                     workOrder.companyName,
                     workOrder.locationName,
+                    workOrder.coordinates,
+                    workOrder.region,
                     workOrder.serviceLine,
                     workOrder.description,
                 ).any { it.lowercase().contains(query) }
@@ -403,6 +425,28 @@ private fun WorkOrdersScreen(
                 }
             }
             item {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    WorkOrderViewMode.entries.forEach { mode ->
+                        FilterChip(
+                            selected = state.viewMode == mode,
+                            onClick = { onViewModeChange(mode) },
+                            label = { Text(mode.label) },
+                            leadingIcon = if (state.viewMode == mode) {
+                                {
+                                    Icon(
+                                        if (mode == WorkOrderViewMode.Map) Icons.Rounded.Map else Icons.Rounded.Work,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                }
+                            } else {
+                                null
+                            },
+                        )
+                    }
+                }
+            }
+            item {
                 AnimatedVisibility(state.isLoading) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 }
@@ -410,7 +454,14 @@ private fun WorkOrdersScreen(
                     MessageCard(text = state.error, isError = true)
                 }
             }
-            if (filtered.isEmpty() && !state.isLoading) {
+            if (state.viewMode == WorkOrderViewMode.Map) {
+                item {
+                    WorkOrderMapPanel(
+                        workOrders = filtered,
+                        onOpenWorkOrder = onOpenWorkOrder,
+                    )
+                }
+            } else if (filtered.isEmpty() && !state.isLoading) {
                 item {
                     EmptyWorkOrders()
                 }
@@ -424,6 +475,188 @@ private fun WorkOrdersScreen(
             }
         }
     }
+}
+
+private data class WorkOrderMapPoint(
+    val workOrder: WorkOrder,
+    val point: CoordinatePoint,
+)
+
+@Composable
+private fun WorkOrderMapPanel(
+    workOrders: List<WorkOrder>,
+    onOpenWorkOrder: (WorkOrder) -> Unit,
+) {
+    val points = remember(workOrders) {
+        workOrders.mapNotNull { workOrder ->
+            parseCoordinatePoint(workOrder.coordinates)?.let { point ->
+                WorkOrderMapPoint(workOrder, point)
+            }
+        }
+    }
+
+    if (workOrders.isEmpty()) {
+        EmptyWorkOrders()
+        return
+    }
+
+    if (points.isEmpty()) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        ) {
+            Column(
+                modifier = Modifier.padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Icon(Icons.Rounded.Map, contentDescription = null, modifier = Modifier.size(38.dp), tint = MaterialTheme.colorScheme.primary)
+                Text("Nema RN-ova s koordinatama", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    "Upisi koordinate na lokaciji ili radnom nalogu pa ce se marker pojaviti ovdje.",
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+                )
+            }
+        }
+        return
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp)) {
+                    Text("Karta radnih naloga", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        "${points.size} od ${workOrders.size} RN ima koordinate.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                }
+                WorkOrderMapWebView(points)
+            }
+        }
+
+        points.forEach { entry ->
+            WorkOrderCard(
+                workOrder = entry.workOrder,
+                onClick = { onOpenWorkOrder(entry.workOrder) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun WorkOrderMapWebView(points: List<WorkOrderMapPoint>) {
+    val html = remember(points) { buildWorkOrderMapHtml(points) }
+
+    AndroidView(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(420.dp)
+            .clip(RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp)),
+        factory = { context ->
+            WebView(context).apply {
+                webViewClient = WebViewClient()
+                settings.javaScriptEnabled = true
+                settings.domStorageEnabled = true
+                settings.cacheMode = WebSettings.LOAD_DEFAULT
+                setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            }
+        },
+        update = { webView ->
+            webView.loadDataWithBaseURL(
+                "https://taskflow-board-do-cai56.ondigitalocean.app/",
+                html,
+                "text/html",
+                "UTF-8",
+                null,
+            )
+        },
+    )
+}
+
+private fun buildWorkOrderMapHtml(points: List<WorkOrderMapPoint>): String {
+    val markersJson = points.joinToString(prefix = "[", postfix = "]") { entry ->
+        val workOrder = entry.workOrder
+        """
+        {
+          "number": ${JSONObject.quote(workOrder.displayNumber)},
+          "company": ${JSONObject.quote(workOrder.companyName.ifBlank { "Bez tvrtke" })},
+          "location": ${JSONObject.quote(workOrder.locationName.ifBlank { "Bez lokacije" })},
+          "status": ${JSONObject.quote(workOrder.status)},
+          "service": ${JSONObject.quote(workOrder.displayService)},
+          "lat": ${entry.point.latitude},
+          "lng": ${entry.point.longitude}
+        }
+        """.trimIndent()
+    }
+
+    return """
+        <!doctype html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+          <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+          <style>
+            html, body, #map { height: 100%; margin: 0; width: 100%; }
+            body { background: #eef4ff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+            .leaflet-popup-content-wrapper { border-radius: 14px; box-shadow: 0 16px 32px rgba(15, 23, 42, 0.18); }
+            .sn-popup { min-width: 190px; }
+            .sn-number { color: #1d4ed8; font-size: 14px; font-weight: 800; margin-bottom: 4px; }
+            .sn-company { color: #0f172a; font-size: 13px; font-weight: 700; margin-bottom: 3px; }
+            .sn-meta { color: #475569; font-size: 12px; line-height: 1.35; }
+            .sn-status { display: inline-block; margin-top: 8px; padding: 4px 8px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; font-size: 11px; font-weight: 800; }
+          </style>
+        </head>
+        <body>
+          <div id="map"></div>
+          <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+          <script>
+            const markers = $markersJson;
+            const fallbackCenter = [45.815, 15.9819];
+            const initialCenter = markers.length ? [markers[0].lat, markers[0].lng] : fallbackCenter;
+            const map = L.map("map", { zoomControl: true }).setView(initialCenter, markers.length > 1 ? 8 : 13);
+
+            L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+              maxZoom: 19,
+              attribution: "&copy; OpenStreetMap"
+            }).addTo(map);
+
+            function esc(value) {
+              return String(value || "").replace(/[&<>"']/g, function (char) {
+                return { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;" }[char];
+              });
+            }
+
+            const bounds = [];
+            markers.forEach(function(marker) {
+              const point = [marker.lat, marker.lng];
+              bounds.push(point);
+              const popup = [
+                "<div class='sn-popup'>",
+                "<div class='sn-number'>" + esc(marker.number) + "</div>",
+                "<div class='sn-company'>" + esc(marker.company) + "</div>",
+                "<div class='sn-meta'>" + esc(marker.location) + "</div>",
+                "<div class='sn-meta'>" + esc(marker.service) + "</div>",
+                "<span class='sn-status'>" + esc(marker.status) + "</span>",
+                "</div>"
+              ].join("");
+              L.marker(point).addTo(map).bindPopup(popup);
+            });
+
+            if (bounds.length > 1) {
+              map.fitBounds(bounds, { padding: [34, 34], maxZoom: 15 });
+            }
+          </script>
+        </body>
+        </html>
+    """.trimIndent()
 }
 
 @Composable
@@ -537,6 +770,9 @@ private fun WorkOrderCard(workOrder: WorkOrder, onClick: () -> Unit) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 InfoPill(Icons.Rounded.LocationOn, workOrder.locationName.ifBlank { "Lokacija nije upisana" })
                 InfoPill(Icons.Rounded.CalendarMonth, formatDateLabel(workOrder.dueDate).ifBlank { "Bez roka" })
+                if (workOrder.hasCoordinates) {
+                    InfoPill(Icons.Rounded.Map, "Na karti")
+                }
             }
         }
     }
@@ -593,6 +829,9 @@ private fun WorkOrderDetailScreen(workOrder: WorkOrder, onBack: () -> Unit) {
 
             DetailSection("Lokacija i kontakt") {
                 DetailRow(Icons.Rounded.LocationOn, "Lokacija", workOrder.locationName.ifBlank { "Nije upisano" })
+                if (workOrder.coordinates.isNotBlank()) {
+                    DetailRow(Icons.Rounded.Map, "Koordinate", workOrder.coordinates)
+                }
                 DetailRow(Icons.Rounded.Business, "Kontakt", workOrder.contactName.ifBlank { "Nije upisano" })
                 DetailRow(Icons.Rounded.Call, "Telefon", workOrder.contactPhone.ifBlank { "Nije upisano" })
                 DetailRow(Icons.Rounded.Mail, "Email", workOrder.contactEmail.ifBlank { "Nije upisano" })

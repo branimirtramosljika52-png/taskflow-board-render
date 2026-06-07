@@ -192,6 +192,8 @@ private fun JSONArray?.toWorkOrders(): List<WorkOrder> {
                     status = item.firstClean("status").ifBlank { "Otvoreni RN" },
                     companyName = item.firstClean("companyName", "company"),
                     locationName = item.firstClean("locationName", "location"),
+                    coordinates = item.firstClean("coordinates"),
+                    region = item.firstClean("region"),
                     serviceLine = item.firstClean("serviceLine"),
                     serviceItems = serviceItems,
                     openedDate = item.firstClean("openedDate", "createdAt"),
