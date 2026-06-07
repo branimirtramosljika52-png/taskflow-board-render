@@ -167,6 +167,12 @@ await cp(resolve(rootDir, "assets", "safenexus-mark.png"), resolve(distDir, "ass
 await copyOptionalDirectory(resolve(rootDir, "assets", "mobile"), resolve(distDir, "assets", "mobile"));
 await copyOptionalDirectory(resolve(rootDir, "assets", "ozo"), resolve(distDir, "assets", "ozo"));
 await cp(resolve(rootDir, "node_modules", "three", "build", "three.module.js"), resolve(distDir, "assets", "vendor", "three.module.js"));
+await cp(resolve(rootDir, "node_modules", "leaflet", "dist", "leaflet.js"), resolve(distDir, "assets", "vendor", "leaflet.js"));
+await cp(resolve(rootDir, "node_modules", "leaflet", "dist", "leaflet.css"), resolve(distDir, "assets", "vendor", "leaflet.css"));
+await cp(resolve(rootDir, "node_modules", "leaflet", "dist", "images"), resolve(distDir, "assets", "vendor", "images"), { recursive: true });
+await cp(resolve(rootDir, "node_modules", "leaflet.markercluster", "dist", "leaflet.markercluster.js"), resolve(distDir, "assets", "vendor", "leaflet.markercluster.js"));
+await cp(resolve(rootDir, "node_modules", "leaflet.markercluster", "dist", "MarkerCluster.css"), resolve(distDir, "assets", "vendor", "MarkerCluster.css"));
+await cp(resolve(rootDir, "node_modules", "leaflet.markercluster", "dist", "MarkerCluster.Default.css"), resolve(distDir, "assets", "vendor", "MarkerCluster.Default.css"));
 const cadviewCoreSource = await readFile(resolve(rootDir, "node_modules", "@cadview", "core", "dist", "index.js"), "utf8");
 await writeFile(
   resolve(distDir, "assets", "vendor", "cadview-core.js"),

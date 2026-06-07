@@ -23956,8 +23956,8 @@ body.is-document-template-editor-open .chat-dock {
 
 .work-order-map-stage {
   position: relative;
-  min-height: calc(100vh - 360px);
-  height: min(76vh, 860px);
+  min-height: 500px;
+  height: 500px;
   overflow: hidden;
   border-radius: 22px;
   border: 1px solid #e8eaf4;
@@ -23975,6 +23975,20 @@ body.is-document-template-editor-open .chat-dock {
   height: 100%;
   font: inherit;
   background: #dfe8f4;
+}
+
+.work-order-map-empty-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 550;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(246, 249, 255, 0.88);
+  color: #526078;
+  font-weight: 800;
+  text-align: center;
+  pointer-events: none;
 }
 
 .leaflet-work-order-popup {
@@ -30921,7 +30935,8 @@ body.is-resizing-companies-column .companies-column-resize-handle::before {
   }
 
   .work-order-map-stage {
-    min-height: 420px;
+    min-height: 400px;
+    height: 400px;
   }
 }
 

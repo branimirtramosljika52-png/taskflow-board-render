@@ -104541,6 +104541,28 @@ function refreshWorkOrderLeafletMarkerSelection() {
   });
 }
 
+function setWorkOrderMapEmptyOverlay(isVisible) {
+  if (!workOrderMapStage) {
+    return;
+  }
+
+  const existing = workOrderMapStage.querySelector("[data-work-order-map-empty]");
+  if (!isVisible) {
+    existing?.remove();
+    return;
+  }
+
+  if (existing) {
+    return;
+  }
+
+  const overlay = document.createElement("div");
+  overlay.className = "work-order-map-empty-overlay";
+  overlay.dataset.workOrderMapEmpty = "true";
+  overlay.textContent = "Nema dostupnih lokacija za prikaz na karti.";
+  workOrderMapStage.append(overlay);
+}
+
 function ensureWorkOrderLeafletMap() {
   if (!workOrderMapCanvas || !window.L) {
     return null;
@@ -104554,7 +104576,7 @@ function ensureWorkOrderLeafletMap() {
       maxZoom: 18,
     });
 
-    window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    window.L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
       attribution: "&copy; OpenStreetMap",
     }).addTo(workOrderLeafletMap);
@@ -104626,11 +104648,13 @@ function syncWorkOrderLeafletMarkers(markers) {
     workOrderLeafletMarkers.set(String(marker.workOrderId), leafletMarker);
   });
 
-  if (markers.length > 0 && shouldReframe) {
+  if (markers.length === 1 && shouldReframe) {
+    map.setView([markers[0].latitude, markers[0].longitude], 14, { animate: false });
+  } else if (markers.length > 1 && shouldReframe) {
     const bounds = window.L.latLngBounds(markers.map((marker) => [marker.latitude, marker.longitude]));
     map.fitBounds(bounds.pad(0.2), {
       animate: false,
-      maxZoom: markers.length === 1 ? 14 : 12,
+      maxZoom: 12,
     });
   } else if (markers.length === 0) {
     map.setView([45.3, 15.7], 7, { animate: false });
@@ -104761,16 +104785,19 @@ function renderWorkOrderMapView() {
     state.workOrderMap.selectedWorkOrderId = "";
     state.workOrderMap.popupWorkOrderId = "";
     renderWorkOrderMapSelectionCard(null);
+    setWorkOrderMapEmptyOverlay(true);
     syncWorkOrderLeafletMarkers([]);
 
     if (workOrderMapList) {
       const empty = document.createElement("p");
       empty.className = "work-order-map-selection-empty";
-      empty.textContent = "Za trenutni filter nema RN s koordinatama.";
+      empty.textContent = "Nema dostupnih lokacija za prikaz na karti.";
       workOrderMapList.append(empty);
     }
     return;
   }
+
+  setWorkOrderMapEmptyOverlay(false);
 
   if (!markers.some((item) => String(item.workOrderId) === String(state.workOrderMap.selectedWorkOrderId))) {
     state.workOrderMap.selectedWorkOrderId = markers[0].workOrderId;
@@ -105503,9 +105530,12 @@ function renderWorkOrderCroatiaMapView() {
   if (markers.length === 0) {
     state.workOrderMap.selectedWorkOrderId = "";
     state.workOrderMap.popupWorkOrderId = "";
+    setWorkOrderMapEmptyOverlay(true);
     syncWorkOrderLeafletMarkers([]);
     return;
   }
+
+  setWorkOrderMapEmptyOverlay(false);
 
   if (!markers.some((item) => String(item.workOrderId) === String(state.workOrderMap.selectedWorkOrderId))) {
     state.workOrderMap.selectedWorkOrderId = markers[0].workOrderId;
