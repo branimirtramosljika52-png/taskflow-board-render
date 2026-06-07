@@ -3,6 +3,7 @@
 package com.safenexus.app.ui
 
 import android.annotation.SuppressLint
+import android.app.Application
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -59,8 +60,10 @@ import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Work
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -93,11 +96,12 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewModelScope
 import com.safenexus.app.data.CoordinatePoint
 import com.safenexus.app.data.SafeNexusApi
+import com.safenexus.app.data.SafeNexusAuthStore
 import com.safenexus.app.data.SafeNexusUser
 import com.safenexus.app.data.WorkOrder
 import com.safenexus.app.data.parseDateOrNull
@@ -129,21 +133,41 @@ data class AppState(
     val error: String = "",
 )
 
-class SafeNexusViewModel(
-    private val api: SafeNexusApi = SafeNexusApi(),
-) : ViewModel() {
+class SafeNexusViewModel(application: Application) : AndroidViewModel(application) {
+    private val api = SafeNexusApi()
+    private val authStore = SafeNexusAuthStore(application)
+    private var shouldRememberSession = false
+
     var state by mutableStateOf(AppState())
         private set
 
-    fun login(email: String, password: String) {
+    init {
+        restoreStoredSession()
+    }
+
+    private fun restoreStoredSession() {
+        val storedSession = authStore.load() ?: return
+        shouldRememberSession = true
+        api.restoreSession(storedSession.accessToken, storedSession.cookieHeader)
+        state = state.copy(user = storedSession.user, isLoading = true, error = "")
+        refresh()
+    }
+
+    fun login(email: String, password: String, rememberSession: Boolean) {
         if (email.isBlank() || password.isBlank()) {
-            state = state.copy(error = "UpiĹˇi email i lozinku.")
+            state = state.copy(error = "Upisi email i lozinku.")
             return
         }
         state = state.copy(isLoading = true, error = "")
         viewModelScope.launch {
             api.login(email, password)
                 .onSuccess { user ->
+                    shouldRememberSession = rememberSession
+                    if (rememberSession) {
+                        authStore.save(user, api.currentAccessToken(), api.currentAuthCookieHeader())
+                    } else {
+                        authStore.clear()
+                    }
                     state = state.copy(user = user, isLoading = false, error = "")
                     refresh()
                 }
@@ -158,16 +182,32 @@ class SafeNexusViewModel(
         viewModelScope.launch {
             api.workOrders()
                 .onSuccess { data ->
+                    if (shouldRememberSession) {
+                        state.user?.let { user ->
+                            authStore.save(user, api.currentAccessToken(), api.currentAuthCookieHeader())
+                        }
+                    }
                     state = state.copy(workOrders = data.workOrders, isLoading = false, error = "")
                 }
                 .onFailure { error ->
-                    state = state.copy(isLoading = false, error = error.message ?: "Ne mogu uÄŤitati radne naloge.")
+                    val message = error.message ?: "Ne mogu ucitati radne naloge."
+                    if (message.contains("(401)")) {
+                        api.clearSession()
+                        authStore.clear()
+                        shouldRememberSession = false
+                        state = AppState(error = "Sesija je istekla. Prijavi se ponovno.")
+                    } else {
+                        state = state.copy(isLoading = false, error = message)
+                    }
                 }
         }
     }
 
     fun logout() {
         viewModelScope.launch { api.logout() }
+        api.clearSession()
+        authStore.clear()
+        shouldRememberSession = false
         state = AppState()
     }
 
@@ -224,32 +264,51 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
 private fun LoginScreen(
     isLoading: Boolean,
     error: String,
-    onLogin: (String, String) -> Unit,
+    onLogin: (String, String, Boolean) -> Unit,
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var rememberSession by remember { mutableStateOf(true) }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
-                    listOf(Color(0xFF08111F), Color(0xFF102A4C), Color(0xFFF7FAFF)),
+                    listOf(Color(0xFF061121), Color(0xFF0C2340), Color(0xFFEFF6FF)),
                     startY = 0f,
-                    endY = 1800f,
+                    endY = 1500f,
                 ),
             )
             .padding(WindowInsets.safeDrawing.asPaddingValues())
-            .padding(22.dp),
+            .padding(horizontal = 22.dp, vertical = 18.dp),
     ) {
         Column(
             modifier = Modifier
                 .align(Alignment.Center)
                 .fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(18.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                BrandMark()
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    BrandMark()
+                    Surface(
+                        shape = RoundedCornerShape(999.dp),
+                        color = Color.White.copy(alpha = 0.12f),
+                    ) {
+                        Text(
+                            text = "MOBILE",
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Color(0xFFD7E8FF),
+                            fontWeight = FontWeight.Black,
+                        )
+                    }
+                }
                 Text(
                     text = "SafeNexus",
                     style = MaterialTheme.typography.displaySmall,
@@ -257,26 +316,40 @@ private fun LoginScreen(
                     fontWeight = FontWeight.Black,
                 )
                 Text(
-                    text = "Terenski pregled radnih naloga, klijenata i rokova.",
+                    text = "Radni nalozi, lokacije i rokovi spremni za teren.",
                     style = MaterialTheme.typography.titleMedium,
-                    color = Color(0xFFBFDBFE),
+                    color = Color(0xFFC7D8EF),
                 )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LoginMetricPill("RN")
+                    LoginMetricPill("Karta")
+                    LoginMetricPill("Sigurna sesija")
+                }
             }
 
             Card(
-                shape = RoundedCornerShape(28.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.96f)),
-                elevation = CardDefaults.cardElevation(defaultElevation = 10.dp),
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(30.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.98f)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 16.dp),
             ) {
                 Column(
-                    modifier = Modifier.padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    modifier = Modifier.padding(22.dp),
+                    verticalArrangement = Arrangement.spacedBy(15.dp),
                 ) {
-                    Text(
-                        text = "Prijava",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = "Prijava",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Black,
+                            color = Color(0xFF0F172A),
+                        )
+                        Text(
+                            text = "Nastavi tamo gdje si stao.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color(0xFF64748B),
+                        )
+                    }
                     OutlinedTextField(
                         value = email,
                         onValueChange = { email = it },
@@ -284,6 +357,7 @@ private fun LoginScreen(
                         leadingIcon = { Icon(Icons.Rounded.Mail, contentDescription = null) },
                         label = { Text("Email") },
                         singleLine = true,
+                        shape = RoundedCornerShape(18.dp),
                         keyboardOptions = KeyboardOptions(
                             keyboardType = KeyboardType.Email,
                             imeAction = ImeAction.Next,
@@ -296,22 +370,46 @@ private fun LoginScreen(
                         leadingIcon = { Icon(Icons.Rounded.Lock, contentDescription = null) },
                         label = { Text("Lozinka") },
                         singleLine = true,
+                        shape = RoundedCornerShape(18.dp),
                         visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(
                             keyboardType = KeyboardType.Password,
                             imeAction = ImeAction.Done,
                         ),
                     )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(enabled = !isLoading) { rememberSession = !rememberSession }
+                            .padding(vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(
+                            checked = rememberSession,
+                            onCheckedChange = { rememberSession = it },
+                            enabled = !isLoading,
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Column {
+                            Text("Zapamti prijavu", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                            Text(
+                                "Automatski otvori RN-ove pri sljedecem ulasku.",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = Color(0xFF64748B),
+                            )
+                        }
+                    }
                     AnimatedVisibility(error.isNotBlank(), enter = fadeIn(), exit = fadeOut()) {
                         MessageCard(text = error, isError = true)
                     }
                     Button(
-                        onClick = { onLogin(email, password) },
+                        onClick = { onLogin(email, password, rememberSession) },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(52.dp),
+                            .height(56.dp),
                         enabled = !isLoading,
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(18.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
                     ) {
                         if (isLoading) {
                             CircularProgressIndicator(
@@ -320,12 +418,28 @@ private fun LoginScreen(
                                 color = Color.White,
                             )
                         } else {
-                            Text("UÄ‘i u SafeNexus", fontWeight = FontWeight.Bold)
+                            Text("Uđi u SafeNexus", fontWeight = FontWeight.Black)
                         }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun LoginMetricPill(text: String) {
+    Surface(
+        shape = RoundedCornerShape(999.dp),
+        color = Color.White.copy(alpha = 0.12f),
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
+            style = MaterialTheme.typography.labelMedium,
+            color = Color(0xFFD7E8FF),
+            fontWeight = FontWeight.Bold,
+        )
     }
 }
 

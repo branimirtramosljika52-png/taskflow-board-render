@@ -26,6 +26,20 @@ class SafeNexusApi(
         }
     }
 
+    fun restoreSession(storedAccessToken: String, storedCookieHeader: String) {
+        accessToken = storedAccessToken.trim()
+        authCookieHeader = storedCookieHeader.trim()
+    }
+
+    fun clearSession() {
+        accessToken = ""
+        authCookieHeader = ""
+    }
+
+    fun currentAccessToken(): String = accessToken
+
+    fun currentAuthCookieHeader(): String = authCookieHeader
+
     suspend fun login(email: String, password: String): Result<SafeNexusUser> = withContext(Dispatchers.IO) {
         runCatching {
             val payload = JSONObject()
@@ -64,8 +78,7 @@ class SafeNexusApi(
     suspend fun logout(): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             request("/api/auth/logout", method = "POST", body = "{}")
-            authCookieHeader = ""
-            accessToken = ""
+            clearSession()
             Unit
         }
     }
