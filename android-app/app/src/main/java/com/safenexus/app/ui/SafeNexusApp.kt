@@ -167,6 +167,13 @@ enum class CalendarViewMode(val label: String) {
     Month("Mjesec"),
 }
 
+private data class MainMenuShortcut(
+    val label: String,
+    val description: String,
+    val section: AppSection,
+    val icon: ImageVector,
+)
+
 private val biometricAuthenticators =
     BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
 
@@ -833,38 +840,43 @@ private fun WorkOrdersScreen(
         state.data.vehicles.filter { record -> record.matchesSearch(normalizedQuery) }
     }
     var quickActionsExpanded by remember(state.section) { mutableStateOf(false) }
+    var mainMenuExpanded by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
             if (state.section == AppSection.WorkOrders) {
                 WorkOrdersTopBar(
+                    currentSection = state.section,
                     viewMode = state.viewMode,
+                    mainMenuExpanded = mainMenuExpanded,
+                    onMainMenuExpandedChange = { mainMenuExpanded = it },
+                    onSectionChange = { section ->
+                        mainMenuExpanded = false
+                        onSectionChange(section)
+                    },
                     onViewModeChange = onViewModeChange,
                     onRefresh = onRefresh,
-                    onLogout = onLogout,
+                    onLogout = {
+                        mainMenuExpanded = false
+                        onLogout()
+                    },
                     onNewWorkOrder = onNewWorkOrder,
                 )
             } else {
-                TopAppBar(
-                    title = {
-                        Column {
-                            Text(state.section.label, fontWeight = FontWeight.Bold)
-                            Text(
-                                text = state.user?.displayName.orEmpty(),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                            )
-                        }
+                MainAppTopBar(
+                    currentSection = state.section,
+                    displayName = state.user?.displayName.orEmpty(),
+                    mainMenuExpanded = mainMenuExpanded,
+                    onMainMenuExpandedChange = { mainMenuExpanded = it },
+                    onSectionChange = { section ->
+                        mainMenuExpanded = false
+                        onSectionChange(section)
                     },
-                    actions = {
-                        IconButton(onClick = onRefresh) {
-                            Icon(Icons.Rounded.Refresh, contentDescription = "Osvježi")
-                        }
-                        TextButton(onClick = onLogout) {
-                            Text("Odjava")
-                        }
+                    onRefresh = onRefresh,
+                    onLogout = {
+                        mainMenuExpanded = false
+                        onLogout()
                     },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
                 )
             }
         },
@@ -1047,19 +1059,71 @@ private fun WorkOrdersScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+private fun MainAppTopBar(
+    currentSection: AppSection,
+    displayName: String,
+    mainMenuExpanded: Boolean,
+    onMainMenuExpandedChange: (Boolean) -> Unit,
+    onSectionChange: (AppSection) -> Unit,
+    onRefresh: () -> Unit,
+    onLogout: () -> Unit,
+) {
+    TopAppBar(
+        navigationIcon = {
+            MainMenuButton(
+                currentSection = currentSection,
+                expanded = mainMenuExpanded,
+                onExpandedChange = onMainMenuExpandedChange,
+                onSectionChange = onSectionChange,
+                onLogout = onLogout,
+            )
+        },
+        title = {
+            Column {
+                Text(currentSection.label, fontWeight = FontWeight.Bold)
+                Text(
+                    text = displayName,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        },
+        actions = {
+            IconButton(onClick = onRefresh) {
+                Icon(Icons.Rounded.Refresh, contentDescription = "Osvježi")
+            }
+        },
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 private fun WorkOrdersTopBar(
+    currentSection: AppSection,
     viewMode: WorkOrderViewMode,
+    mainMenuExpanded: Boolean,
+    onMainMenuExpandedChange: (Boolean) -> Unit,
+    onSectionChange: (AppSection) -> Unit,
     onViewModeChange: (WorkOrderViewMode) -> Unit,
     onRefresh: () -> Unit,
     onLogout: () -> Unit,
     onNewWorkOrder: () -> Unit,
 ) {
     TopAppBar(
+        navigationIcon = {
+            MainMenuButton(
+                currentSection = currentSection,
+                expanded = mainMenuExpanded,
+                onExpandedChange = onMainMenuExpandedChange,
+                onSectionChange = onSectionChange,
+                onLogout = onLogout,
+            )
+        },
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onLogout) {
-                    Icon(Icons.Rounded.Menu, contentDescription = "Izbornik")
-                }
                 Surface(
                     shape = RoundedCornerShape(10.dp),
                     color = Color(0xFFEAF2FF),
@@ -1113,6 +1177,129 @@ private fun WorkOrdersTopBar(
         },
         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFFFAFCFF)),
     )
+}
+
+@Composable
+private fun MainMenuButton(
+    currentSection: AppSection,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    onSectionChange: (AppSection) -> Unit,
+    onLogout: () -> Unit,
+) {
+    Box {
+        IconButton(onClick = { onExpandedChange(true) }) {
+            Icon(Icons.Rounded.Menu, contentDescription = "Glavni izbornik")
+        }
+        MainMenuDropdown(
+            expanded = expanded,
+            currentSection = currentSection,
+            onDismiss = { onExpandedChange(false) },
+            onSectionChange = onSectionChange,
+            onLogout = onLogout,
+        )
+    }
+}
+
+@Composable
+private fun MainMenuDropdown(
+    expanded: Boolean,
+    currentSection: AppSection,
+    onDismiss: () -> Unit,
+    onSectionChange: (AppSection) -> Unit,
+    onLogout: () -> Unit,
+) {
+    val shortcuts = remember {
+        listOf(
+            MainMenuShortcut("Operativa", "Pregled terena, rokova i prioriteta", AppSection.Operations, Icons.Rounded.Work),
+            MainMenuShortcut("Radni nalozi", "Lista, karta, statusi i skeniranje RN-a", AppSection.WorkOrders, Icons.Rounded.CheckCircle),
+            MainMenuShortcut("Kalendar", "Dnevni, tjedni i mjesečni raspored", AppSection.Calendar, Icons.Rounded.CalendarMonth),
+            MainMenuShortcut("Vozila", "Pregled vozila, servisa i rezervacija", AppSection.Vehicles, Icons.Rounded.Business),
+            MainMenuShortcut("Svi moduli", "Dokumenti, periodika, portal i pravilnici", AppSection.More, Icons.Rounded.Map),
+            MainMenuShortcut("Dokumenti", "PDF dokumenti, pravilnici i zapisnici", AppSection.More, Icons.Rounded.Mail),
+            MainMenuShortcut("Zapisnici", "Pregled, statusi i potpisani zapisi", AppSection.More, Icons.Rounded.CheckCircle),
+            MainMenuShortcut("Periodika", "Rokovi, pregledi i isteci", AppSection.More, Icons.Rounded.CalendarMonth),
+            MainMenuShortcut("Osposobljavanja", "ZOS, liječnički pregledi i uvjerenja", AppSection.More, Icons.Rounded.Fingerprint),
+            MainMenuShortcut("Klijentski portal", "Dokumentacija i klijentski pregled", AppSection.More, Icons.Rounded.Map),
+            MainMenuShortcut("Tvrtke", "Klijenti, kontakti i povezani podaci", AppSection.More, Icons.Rounded.Business),
+            MainMenuShortcut("Lokacije", "Lokacije tvrtki i radnih naloga", AppSection.More, Icons.Rounded.LocationOn),
+            MainMenuShortcut("Pravilnici", "Temeljna dokumentacija i aktivni pravilnici", AppSection.More, Icons.Rounded.Lock),
+        )
+    }
+
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismiss,
+        modifier = Modifier.width(318.dp),
+    ) {
+        shortcuts.forEach { shortcut ->
+            val selected = when (shortcut.label) {
+                "Operativa" -> currentSection == AppSection.Operations
+                "Radni nalozi" -> currentSection == AppSection.WorkOrders
+                "Kalendar" -> currentSection == AppSection.Calendar
+                "Vozila" -> currentSection == AppSection.Vehicles
+                "Svi moduli" -> currentSection == AppSection.More
+                else -> false
+            }
+            DropdownMenuItem(
+                text = {
+                    Column {
+                        Text(
+                            shortcut.label,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            shortcut.description,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                },
+                leadingIcon = {
+                    Icon(
+                        shortcut.icon,
+                        contentDescription = null,
+                        tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+                trailingIcon = {
+                    if (selected) {
+                        Text(
+                            "Aktivno",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                },
+                onClick = {
+                    onSectionChange(shortcut.section)
+                    onDismiss()
+                },
+            )
+        }
+        DropdownMenuItem(
+            text = {
+                Column {
+                    Text("Odjava", fontWeight = FontWeight.Bold)
+                    Text(
+                        "Zatvori trenutnu prijavu",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                    )
+                }
+            },
+            leadingIcon = { Icon(Icons.Rounded.Lock, contentDescription = null) },
+            onClick = {
+                onDismiss()
+                onLogout()
+            },
+        )
+    }
 }
 
 @Composable
