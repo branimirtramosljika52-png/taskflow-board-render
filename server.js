@@ -82,7 +82,8 @@ const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
 
 function buildAndroidDownloadPage() {
-  const apkUrl = "/api/mobile/android-apk";
+  const apkUrl = `/assets/mobile/${MOBILE_ANDROID_APK_FILE_NAME}`;
+  const apiApkUrl = "/api/mobile/android-apk";
   return `<!doctype html>
 <html lang="hr">
 <head>
@@ -192,6 +193,7 @@ function buildAndroidDownloadPage() {
     <div class="actions">
       <a class="button" href="${apkUrl}" download="${MOBILE_ANDROID_APK_FILE_NAME}">Preuzmi APK</a>
       <a class="copy" href="${apkUrl}" download="${MOBILE_ANDROID_APK_FILE_NAME}">https://taskflow-board-do-cai56.ondigitalocean.app${apkUrl}</a>
+      <a class="copy" href="${apiApkUrl}" download="${MOBILE_ANDROID_APK_FILE_NAME}">Rezervni link: https://taskflow-board-do-cai56.ondigitalocean.app${apiApkUrl}</a>
     </div>
     <p class="note">Ako mobitel pita za dopuštenje instalacije iz preglednika, uključi ga za taj preglednik i ponovi instalaciju.</p>
   </main>
@@ -1784,7 +1786,8 @@ function writeBufferResponse(response, statusCode, body, {
     }
   });
 
-  response.end(payload);
+  const request = response[responseRequestSymbol];
+  response.end(request?.method === "HEAD" ? undefined : payload);
 }
 
 function sendJson(response, statusCode, payload) {
