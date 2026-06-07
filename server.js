@@ -9162,9 +9162,20 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
-    if (request.method === "GET" && url.pathname === "/api/mobile/android-apk") {
+    if ((request.method === "GET" || request.method === "HEAD") && url.pathname === "/api/mobile/android-apk") {
       const apkPath = resolve(staticRoot, "assets", "mobile", MOBILE_ANDROID_APK_FILE_NAME);
       const apkBuffer = await readFile(apkPath);
+      if (request.method === "HEAD") {
+        response.statusCode = 200;
+        response.setHeader("Content-Type", "application/vnd.android.package-archive");
+        response.setHeader("Content-Length", String(apkBuffer.length));
+        response.setHeader("Content-Disposition", `attachment; filename="${MOBILE_ANDROID_APK_FILE_NAME}"`);
+        Object.entries(NO_STORE_HEADERS).forEach(([headerName, headerValue]) => {
+          response.setHeader(headerName, headerValue);
+        });
+        response.end();
+        return true;
+      }
       sendBinary(response, 200, apkBuffer, {
         contentType: "application/vnd.android.package-archive",
         fileName: MOBILE_ANDROID_APK_FILE_NAME,
