@@ -83,7 +83,9 @@ const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDi
 
 function buildAndroidDownloadPage() {
   const apkUrl = `/assets/mobile/${MOBILE_ANDROID_APK_FILE_NAME}`;
+  const directApkUrl = "/apk";
   const apiApkUrl = "/api/mobile/android-apk";
+  const plainPageUrl = "/mobile/plain";
   return `<!doctype html>
 <html lang="hr">
 <head>
@@ -191,14 +193,52 @@ function buildAndroidDownloadPage() {
     <h1>Preuzmi aplikaciju</h1>
     <p>Ovo je instalacijska datoteka za Safe Nexus Android aplikaciju.</p>
     <div class="actions">
-      <a class="button" href="${apkUrl}" download="${MOBILE_ANDROID_APK_FILE_NAME}">Preuzmi APK</a>
-      <a class="copy" href="${apkUrl}" download="${MOBILE_ANDROID_APK_FILE_NAME}">https://taskflow-board-do-cai56.ondigitalocean.app${apkUrl}</a>
-      <a class="copy" href="${apiApkUrl}" download="${MOBILE_ANDROID_APK_FILE_NAME}">Rezervni link: https://taskflow-board-do-cai56.ondigitalocean.app${apiApkUrl}</a>
+      <a class="button" href="${directApkUrl}">Direktno skidanje APK-a</a>
+      <a class="copy" href="${directApkUrl}">Kratki link: https://taskflow-board-do-cai56.ondigitalocean.app${directApkUrl}</a>
+      <a class="copy" href="${plainPageUrl}">Jednostavna stranica: https://taskflow-board-do-cai56.ondigitalocean.app${plainPageUrl}</a>
+      <a class="copy" href="${apkUrl}">Stari direktni link: https://taskflow-board-do-cai56.ondigitalocean.app${apkUrl}</a>
+      <a class="copy" href="${apiApkUrl}">API download: https://taskflow-board-do-cai56.ondigitalocean.app${apiApkUrl}</a>
     </div>
     <p class="note">Ako mobitel pita za dopuštenje instalacije iz preglednika, uključi ga za taj preglednik i ponovi instalaciju.</p>
   </main>
 </body>
 </html>`;
+}
+
+function buildAndroidPlainDownloadPage() {
+  const directApkUrl = "/apk";
+  const backupApkUrl = "/download-apk";
+  const apiApkUrl = "/api/mobile/android-apk";
+  const assetApkUrl = `/assets/mobile/${MOBILE_ANDROID_APK_FILE_NAME}`;
+  return `<!doctype html>
+<html lang="hr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SafeNexus APK</title>
+</head>
+<body>
+  <h1>SafeNexus Android ${MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "")}</h1>
+  <p>Ako jedan link zapne, vrati se ovdje i probaj sljedeci.</p>
+  <p><a href="${directApkUrl}">1. Direktno skidanje</a></p>
+  <p><a href="${backupApkUrl}">2. Rezervno direktno skidanje</a></p>
+  <p><a href="${apiApkUrl}">3. API download</a></p>
+  <p><a href="${assetApkUrl}">4. Static APK link</a></p>
+  <p>Datoteka: ${MOBILE_ANDROID_APK_FILE_NAME}</p>
+</body>
+</html>`;
+}
+
+async function writeAndroidApkDownload(response, {
+  contentType = "application/octet-stream",
+} = {}) {
+  const apkPath = resolve(staticRoot, "assets", "mobile", MOBILE_ANDROID_APK_FILE_NAME);
+  const apkBuffer = await readFile(apkPath);
+  writeBufferResponse(response, 200, apkBuffer, {
+    contentType,
+    fileName: MOBILE_ANDROID_APK_FILE_NAME,
+    headers: NO_STORE_HEADERS,
+  });
 }
 
 function normalizeRiskStructureText(value = "") {
@@ -1822,10 +1862,12 @@ function sendError(response, statusCode, message) {
 function sendBinary(response, statusCode, body, {
   contentType = "application/octet-stream",
   fileName = "",
+  headers = {},
 } = {}) {
   writeBufferResponse(response, statusCode, body, {
     contentType,
     fileName,
+    headers,
   });
 }
 
@@ -9574,23 +9616,8 @@ async function handleApiRequest(request, response, url) {
     }
 
     if ((request.method === "GET" || request.method === "HEAD") && url.pathname === "/api/mobile/android-apk") {
-      const apkPath = resolve(staticRoot, "assets", "mobile", MOBILE_ANDROID_APK_FILE_NAME);
-      const apkBuffer = await readFile(apkPath);
-      if (request.method === "HEAD") {
-        response.statusCode = 200;
-        response.setHeader("Content-Type", "application/vnd.android.package-archive");
-        response.setHeader("Content-Length", String(apkBuffer.length));
-        response.setHeader("Content-Disposition", `attachment; filename="${MOBILE_ANDROID_APK_FILE_NAME}"`);
-        Object.entries(NO_STORE_HEADERS).forEach(([headerName, headerValue]) => {
-          response.setHeader(headerName, headerValue);
-        });
-        response.end();
-        return true;
-      }
-      sendBinary(response, 200, apkBuffer, {
+      await writeAndroidApkDownload(response, {
         contentType: "application/vnd.android.package-archive",
-        fileName: MOBILE_ANDROID_APK_FILE_NAME,
-        headers: NO_STORE_HEADERS,
       });
       return true;
     }
@@ -14819,7 +14846,35 @@ const server = createServer(async (request, response) => {
   }
 
   if ((request.method === "GET" || request.method === "HEAD")
-    && ["/mobile", "/apk", "/android", "/mobile/android"].includes(url.pathname)) {
+    && ["/apk", "/download-apk", "/mobile/apk", "/android.apk"].includes(url.pathname)) {
+    await writeAndroidApkDownload(response);
+    return;
+  }
+
+  if ((request.method === "GET" || request.method === "HEAD")
+    && ["/mobile/plain", "/apk-help"].includes(url.pathname)) {
+    const body = buildAndroidPlainDownloadPage();
+    if (request.method === "HEAD") {
+      const payload = Buffer.from(body, "utf8");
+      response.statusCode = 200;
+      response.setHeader("Content-Type", "text/html; charset=utf-8");
+      response.setHeader("Content-Length", String(payload.length));
+      Object.entries(NO_STORE_HEADERS).forEach(([headerName, headerValue]) => {
+        response.setHeader(headerName, headerValue);
+      });
+      response.end();
+      return;
+    }
+
+    writeBufferResponse(response, 200, body, {
+      contentType: "text/html; charset=utf-8",
+      headers: NO_STORE_HEADERS,
+    });
+    return;
+  }
+
+  if ((request.method === "GET" || request.method === "HEAD")
+    && ["/mobile", "/android", "/mobile/android"].includes(url.pathname)) {
     const body = buildAndroidDownloadPage();
     if (request.method === "HEAD") {
       const payload = Buffer.from(body, "utf8");
