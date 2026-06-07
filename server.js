@@ -81,6 +81,121 @@ const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
 
+function buildAndroidDownloadPage() {
+  const apkUrl = "/api/mobile/android-apk";
+  return `<!doctype html>
+<html lang="hr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Safe Nexus Android</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f7fb;
+      --card: #ffffff;
+      --text: #111827;
+      --muted: #64748b;
+      --line: #dbe7ff;
+      --blue: #2563eb;
+      --blue-dark: #1d4ed8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(circle at 20% 15%, #e0f2fe 0, transparent 34%), var(--bg);
+      color: var(--text);
+    }
+    main {
+      width: min(100%, 560px);
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 28px;
+      box-shadow: 0 24px 80px rgba(15, 23, 42, 0.12);
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 12px;
+      border-radius: 999px;
+      background: #eff6ff;
+      color: #1e40af;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: .02em;
+    }
+    h1 {
+      margin: 18px 0 8px;
+      font-size: clamp(30px, 8vw, 44px);
+      line-height: 1.02;
+      letter-spacing: 0;
+    }
+    p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 17px;
+      line-height: 1.55;
+    }
+    .actions {
+      display: grid;
+      gap: 12px;
+      margin-top: 26px;
+    }
+    a.button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 58px;
+      padding: 14px 18px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, var(--blue), #06b6d4);
+      color: white;
+      text-decoration: none;
+      font-weight: 800;
+      font-size: 17px;
+      box-shadow: 0 16px 34px rgba(37, 99, 235, 0.28);
+    }
+    a.button:active { transform: translateY(1px); }
+    .copy {
+      display: block;
+      overflow-wrap: anywhere;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #f8fafc;
+      color: #334155;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .note {
+      margin-top: 18px;
+      font-size: 14px;
+      color: #475569;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <span class="badge">Safe Nexus Android ${MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "")}</span>
+    <h1>Preuzmi aplikaciju</h1>
+    <p>Ovo je instalacijska datoteka za Safe Nexus Android aplikaciju.</p>
+    <div class="actions">
+      <a class="button" href="${apkUrl}" download="${MOBILE_ANDROID_APK_FILE_NAME}">Preuzmi APK</a>
+      <span class="copy">https://taskflow-board-do-cai56.ondigitalocean.app${apkUrl}</span>
+    </div>
+    <p class="note">Ako mobitel pita za dopuštenje instalacije iz preglednika, uključi ga za taj preglednik i ponovi instalaciju.</p>
+  </main>
+</body>
+</html>`;
+}
+
 function normalizeRiskStructureText(value = "") {
   return String(value ?? "")
     .replace(/\u00a0/g, " ")
@@ -14400,6 +14515,28 @@ const server = createServer(async (request, response) => {
       redirect(response, "/?loginError=server");
       return;
     }
+  }
+
+  if ((request.method === "GET" || request.method === "HEAD")
+    && ["/mobile", "/apk", "/android", "/mobile/android"].includes(url.pathname)) {
+    const body = buildAndroidDownloadPage();
+    if (request.method === "HEAD") {
+      const payload = Buffer.from(body, "utf8");
+      response.statusCode = 200;
+      response.setHeader("Content-Type", "text/html; charset=utf-8");
+      response.setHeader("Content-Length", String(payload.length));
+      Object.entries(NO_STORE_HEADERS).forEach(([headerName, headerValue]) => {
+        response.setHeader(headerName, headerValue);
+      });
+      response.end();
+      return;
+    }
+
+    writeBufferResponse(response, 200, body, {
+      contentType: "text/html; charset=utf-8",
+      headers: NO_STORE_HEADERS,
+    });
+    return;
   }
 
   if (url.pathname.startsWith("/api/")) {
