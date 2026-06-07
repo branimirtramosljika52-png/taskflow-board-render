@@ -134,6 +134,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
@@ -157,6 +158,12 @@ enum class AppSection(val label: String) {
     More("Više"),
 }
 
+enum class CalendarViewMode(val label: String) {
+    Day("Dan"),
+    Week("Tjedan"),
+    Month("Mjesec"),
+}
+
 private val biometricAuthenticators =
     BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
 
@@ -174,6 +181,7 @@ data class AppState(
     val data: BootstrapData = BootstrapData(),
     val workOrders: List<WorkOrder> = emptyList(),
     val selectedWorkOrder: WorkOrder? = null,
+    val selectedRecord: MobileRecord? = null,
     val section: AppSection = AppSection.Operations,
     val query: String = "",
     val filter: WorkOrderFilter = WorkOrderFilter.Active,
@@ -289,11 +297,15 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun updateSection(value: AppSection) {
-        state = state.copy(section = value)
+        state = state.copy(section = value, selectedRecord = null)
     }
 
     fun selectWorkOrder(value: WorkOrder?) {
-        state = state.copy(selectedWorkOrder = value)
+        state = state.copy(selectedWorkOrder = value, selectedRecord = null)
+    }
+
+    fun selectRecord(value: MobileRecord?) {
+        state = state.copy(selectedRecord = value, selectedWorkOrder = null)
     }
 
     fun updateWorkOrderStatus(workOrder: WorkOrder, status: String) {
@@ -377,23 +389,45 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
         pendingScan = workOrder to uri
         scanLauncher.launch(uri)
     }
+    val openMobileRecord: (MobileRecord) -> Unit = { record ->
+        val linkedWorkOrder = state.workOrders.firstOrNull { workOrder ->
+            record.kind == "work_order" && (
+                workOrder.id == record.relatedId ||
+                    workOrder.id == record.id.removePrefix("work-order:")
+                )
+        }
+        if (linkedWorkOrder != null) {
+            viewModel.selectWorkOrder(linkedWorkOrder)
+        } else {
+            viewModel.selectRecord(record)
+        }
+    }
 
     AnimatedContent(targetState = state.user != null, label = "auth") { isSignedIn ->
         if (isSignedIn) {
             val selected = state.selectedWorkOrder
             if (selected == null) {
-                WorkOrdersScreen(
-                    state = state,
-                    onQueryChange = viewModel::updateQuery,
-                    onFilterChange = viewModel::updateFilter,
-                    onViewModeChange = viewModel::updateViewMode,
-                    onSectionChange = viewModel::updateSection,
-                    onRefresh = viewModel::refresh,
-                    onLogout = viewModel::logout,
-                    onOpenWorkOrder = viewModel::selectWorkOrder,
-                    onStatusChange = viewModel::updateWorkOrderStatus,
-                    onScanVerifiedWorkOrder = startVerifiedScan,
-                )
+                val selectedRecord = state.selectedRecord
+                if (selectedRecord == null) {
+                    WorkOrdersScreen(
+                        state = state,
+                        onQueryChange = viewModel::updateQuery,
+                        onFilterChange = viewModel::updateFilter,
+                        onViewModeChange = viewModel::updateViewMode,
+                        onSectionChange = viewModel::updateSection,
+                        onRefresh = viewModel::refresh,
+                        onLogout = viewModel::logout,
+                        onOpenWorkOrder = viewModel::selectWorkOrder,
+                        onOpenRecord = openMobileRecord,
+                        onStatusChange = viewModel::updateWorkOrderStatus,
+                        onScanVerifiedWorkOrder = startVerifiedScan,
+                    )
+                } else {
+                    MobileRecordDetailScreen(
+                        record = selectedRecord,
+                        onBack = { viewModel.selectRecord(null) },
+                    )
+                }
             } else {
                 WorkOrderDetailScreen(
                     workOrder = selected,
@@ -762,6 +796,7 @@ private fun WorkOrdersScreen(
     onRefresh: () -> Unit,
     onLogout: () -> Unit,
     onOpenWorkOrder: (WorkOrder) -> Unit,
+    onOpenRecord: (MobileRecord) -> Unit,
     onStatusChange: (WorkOrder, String) -> Unit,
     onScanVerifiedWorkOrder: (WorkOrder) -> Unit,
 ) {
@@ -852,11 +887,9 @@ private fun WorkOrdersScreen(
                     )
                 }
                 item {
-                    RecordsContent(
-                        title = "Kalendar",
+                    CalendarContent(
                         records = filteredCalendar,
-                        emptyText = "Nema događaja za prikaz.",
-                        icon = Icons.Rounded.CalendarMonth,
+                        onOpenRecord = onOpenRecord,
                     )
                 }
             } else if (state.section == AppSection.Vehicles) {
@@ -873,6 +906,7 @@ private fun WorkOrdersScreen(
                         records = filteredVehicles,
                         emptyText = "Nema vozila za prikaz.",
                         icon = Icons.Rounded.Business,
+                        onOpenRecord = onOpenRecord,
                     )
                 }
             } else if (state.section == AppSection.More) {
@@ -887,6 +921,7 @@ private fun WorkOrdersScreen(
                     MoreContent(
                         data = state.data,
                         query = normalizedQuery,
+                        onOpenRecord = onOpenRecord,
                     )
                 }
             } else {
@@ -1165,11 +1200,130 @@ private fun ModuleSearchField(
 }
 
 @Composable
+private fun CalendarContent(
+    records: List<MobileRecord>,
+    onOpenRecord: (MobileRecord) -> Unit,
+) {
+    var mode by remember { mutableStateOf(CalendarViewMode.Week) }
+    val today = remember { LocalDate.now() }
+    val visibleRecords = remember(records, mode, today) {
+        records.filter { record ->
+            val date = record.parsedDate ?: return@filter false
+            when (mode) {
+                CalendarViewMode.Day -> date == today
+                CalendarViewMode.Week -> !date.isBefore(today) && date.isBefore(today.plusDays(7))
+                CalendarViewMode.Month -> date.year == today.year && date.month == today.month
+            }
+        }
+    }
+    val fallbackRecords = remember(records, visibleRecords) {
+        if (visibleRecords.isNotEmpty()) {
+            emptyList()
+        } else {
+            records.filter { record -> record.parsedDate != null }.take(12)
+        }
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+                    Icon(
+                        Icons.Rounded.CalendarMonth,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .padding(10.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Kalendar", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                    Text(
+                        "${records.size} događaja iz RN-ova, vozila, periodike i osposobljavanja",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                }
+            }
+
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                CalendarViewMode.entries.forEach { entry ->
+                    FilterChip(
+                        selected = mode == entry,
+                        onClick = { mode = entry },
+                        label = { Text(entry.label) },
+                    )
+                }
+            }
+
+            CalendarRecordList(
+                records = visibleRecords,
+                emptyText = when (mode) {
+                    CalendarViewMode.Day -> "Danas nema događaja."
+                    CalendarViewMode.Week -> "Nema događaja u idućih 7 dana."
+                    CalendarViewMode.Month -> "Nema događaja u ovom mjesecu."
+                },
+                onOpenRecord = onOpenRecord,
+            )
+
+            if (fallbackRecords.isNotEmpty()) {
+                Text(
+                    "Nadolazeće",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Black,
+                )
+                CalendarRecordList(
+                    records = fallbackRecords,
+                    emptyText = "",
+                    onOpenRecord = onOpenRecord,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CalendarRecordList(
+    records: List<MobileRecord>,
+    emptyText: String,
+    onOpenRecord: (MobileRecord) -> Unit,
+) {
+    if (records.isEmpty()) {
+        if (emptyText.isNotBlank()) {
+            Text(emptyText, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f))
+        }
+        return
+    }
+
+    records.take(80).forEach { record ->
+        RecordLine(
+            title = record.title,
+            subtitle = record.subtitle.ifBlank { recordKindLabel(record.kind) },
+            status = record.status,
+            date = record.date,
+            icon = recordIcon(record),
+            onClick = { onOpenRecord(record) },
+        )
+    }
+}
+
+@Composable
 private fun RecordsContent(
     title: String,
     records: List<MobileRecord>,
     emptyText: String,
     icon: ImageVector,
+    onOpenRecord: ((MobileRecord) -> Unit)? = null,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -1212,7 +1366,10 @@ private fun RecordsContent(
                         subtitle = record.subtitle,
                         status = record.status,
                         date = record.date,
-                        icon = icon,
+                        icon = recordIcon(record, icon),
+                        onClick = if (onOpenRecord == null) null else {
+                            { onOpenRecord(record) }
+                        },
                     )
                 }
                 if (records.size > 80) {
@@ -1231,14 +1388,15 @@ private fun RecordsContent(
 private fun MoreContent(
     data: BootstrapData,
     query: String,
+    onOpenRecord: (MobileRecord) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        ModuleGroup("Dokumenti i zapisnici", data.documentRecords, Icons.Rounded.Mail, query)
-        ModuleGroup("Osposobljavanja", data.peopleTrainingRecords, Icons.Rounded.Fingerprint, query)
-        ModuleGroup("Klijentski portal", data.clientPortalRecords, Icons.Rounded.Map, query)
-        ModuleGroup("Tvrtke", data.companies, Icons.Rounded.Business, query)
-        ModuleGroup("Lokacije", data.locations, Icons.Rounded.LocationOn, query)
-        ModuleGroup("Pravilnici", data.rulebooks, Icons.Rounded.Lock, query)
+        ModuleGroup("Dokumenti i zapisnici", data.documentRecords, Icons.Rounded.Mail, query, onOpenRecord)
+        ModuleGroup("Osposobljavanja", data.peopleTrainingRecords, Icons.Rounded.Fingerprint, query, onOpenRecord)
+        ModuleGroup("Klijentski portal", data.clientPortalRecords, Icons.Rounded.Map, query, onOpenRecord)
+        ModuleGroup("Tvrtke", data.companies, Icons.Rounded.Business, query, onOpenRecord)
+        ModuleGroup("Lokacije", data.locations, Icons.Rounded.LocationOn, query, onOpenRecord)
+        ModuleGroup("Pravilnici", data.rulebooks, Icons.Rounded.Lock, query, onOpenRecord)
     }
 }
 
@@ -1248,6 +1406,7 @@ private fun ModuleGroup(
     records: List<MobileRecord>,
     icon: ImageVector,
     query: String,
+    onOpenRecord: (MobileRecord) -> Unit,
 ) {
     val filtered = remember(records, query) { records.filter { record -> record.matchesSearch(query) } }
 
@@ -1256,6 +1415,7 @@ private fun ModuleGroup(
         records = filtered,
         emptyText = "Nema zapisa za prikaz.",
         icon = icon,
+        onOpenRecord = onOpenRecord,
     )
 }
 
@@ -1266,9 +1426,13 @@ private fun RecordLine(
     status: String,
     date: String,
     icon: ImageVector,
+    onClick: (() -> Unit)? = null,
 ) {
+    val clickableModifier = if (onClick == null) Modifier else Modifier.clickable(onClick = onClick)
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(clickableModifier),
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.62f),
     ) {
@@ -1319,6 +1483,41 @@ private fun RecordLine(
                 }
             }
         }
+    }
+}
+
+private fun recordIcon(record: MobileRecord, fallback: ImageVector = Icons.Rounded.Work): ImageVector = when (record.kind) {
+    "work_order" -> Icons.Rounded.Work
+    "vehicle", "vehicle_reservation" -> Icons.Rounded.Business
+    "document" -> Icons.Rounded.Mail
+    "training" -> Icons.Rounded.Fingerprint
+    "company" -> Icons.Rounded.Business
+    "location" -> Icons.Rounded.LocationOn
+    "rulebook" -> Icons.Rounded.Lock
+    "client_portal" -> Icons.Rounded.Map
+    else -> fallback
+}
+
+private fun recordKindLabel(kind: String): String = when (kind) {
+    "work_order" -> "Radni nalog"
+    "vehicle" -> "Vozilo"
+    "vehicle_reservation" -> "Rezervacija vozila"
+    "document" -> "Dokument"
+    "training" -> "Osposobljavanje"
+    "company" -> "Tvrtka"
+    "location" -> "Lokacija"
+    "rulebook" -> "Pravilnik"
+    "client_portal" -> "Klijentski portal"
+    else -> "Zapis"
+}
+
+private fun formatRecordMetaLabel(key: String): String {
+    val normalized = key
+        .replace(Regex("([a-z])([A-Z])"), "\$1 \$2")
+        .replace('_', ' ')
+        .trim()
+    return normalized.replaceFirstChar { char ->
+        if (char.isLowerCase()) char.titlecase() else char.toString()
     }
 }
 
@@ -1782,6 +1981,114 @@ private fun WorkOrderCard(
                     Icon(Icons.Rounded.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
                     Text("Sken ovjerenog")
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MobileRecordDetailScreen(
+    record: MobileRecord,
+    onBack: () -> Unit,
+) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Rounded.ArrowBack, contentDescription = "Natrag")
+                    }
+                },
+                title = {
+                    Column {
+                        Text(recordKindLabel(record.kind), fontWeight = FontWeight.Bold)
+                        Text(
+                            record.status.ifBlank { "Mobilni zapis" },
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+            )
+        },
+        containerColor = MaterialTheme.colorScheme.background,
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .padding(padding)
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(28.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+            ) {
+                Column(
+                    modifier = Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f)) {
+                        Icon(
+                            recordIcon(record),
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(50.dp)
+                                .padding(13.dp),
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    Text(
+                        record.title.ifBlank { "Zapis" },
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Black,
+                    )
+                    if (record.subtitle.isNotBlank()) {
+                        Text(record.subtitle, style = MaterialTheme.typography.bodyLarge)
+                    }
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (record.status.isNotBlank()) {
+                            AssistChip(onClick = {}, label = { Text(record.status) })
+                        }
+                        if (record.date.isNotBlank()) {
+                            AssistChip(
+                                onClick = {},
+                                leadingIcon = { Icon(Icons.Rounded.CalendarMonth, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                label = { Text(formatDateLabel(record.date).ifBlank { record.date.take(10) }) },
+                            )
+                        }
+                    }
+                }
+            }
+
+            DetailSection("Osnovno") {
+                DetailRow(recordIcon(record), "Vrsta", recordKindLabel(record.kind))
+                DetailRow(Icons.Rounded.CheckCircle, "Status", record.status.ifBlank { "Nije upisano" })
+                DetailRow(Icons.Rounded.CalendarMonth, "Datum", formatDateLabel(record.date).ifBlank { record.date.ifBlank { "Nije upisano" } })
+                if (record.relatedId.isNotBlank()) {
+                    DetailRow(Icons.Rounded.Work, "Povezani zapis", record.relatedId)
+                }
+                if (record.coordinates.isNotBlank()) {
+                    DetailRow(Icons.Rounded.Map, "Koordinate", record.coordinates)
+                }
+            }
+
+            if (record.meta.isNotEmpty()) {
+                DetailSection("Podaci") {
+                    record.meta.entries
+                        .sortedBy { entry -> entry.key }
+                        .forEach { entry ->
+                            DetailRow(
+                                Icons.Rounded.Business,
+                                formatRecordMetaLabel(entry.key),
+                                entry.value.ifBlank { "Nije upisano" },
+                            )
+                        }
                 }
             }
         }
