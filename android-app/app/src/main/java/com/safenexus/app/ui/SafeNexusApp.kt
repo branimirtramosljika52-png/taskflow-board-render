@@ -53,6 +53,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Business
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.CalendarMonth
@@ -65,6 +66,7 @@ import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Mail
 import androidx.compose.material.icons.rounded.Map
+import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Work
@@ -79,6 +81,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -139,10 +142,10 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
 enum class WorkOrderFilter(val label: String) {
-    All("Svi"),
-    Active("Aktivni"),
-    Overdue("Kasne"),
-    Closed("Zatvoreni"),
+    All("SVE"),
+    Active("OTVORENI"),
+    Overdue("U TIJEKU"),
+    Closed("ZAVRŠENI"),
 }
 
 enum class WorkOrderViewMode(val label: String) {
@@ -184,7 +187,7 @@ data class AppState(
     val selectedRecord: MobileRecord? = null,
     val section: AppSection = AppSection.Operations,
     val query: String = "",
-    val filter: WorkOrderFilter = WorkOrderFilter.Active,
+    val filter: WorkOrderFilter = WorkOrderFilter.All,
     val viewMode: WorkOrderViewMode = WorkOrderViewMode.List,
     val isLoading: Boolean = false,
     val error: String = "",
@@ -308,6 +311,13 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         state = state.copy(selectedRecord = value, selectedWorkOrder = null)
     }
 
+    fun showNewWorkOrderNotice() {
+        state = state.copy(
+            notice = "Novi radni nalog za sada dodaj kroz web aplikaciju. Mobilni unos RN-a ide u sljedećoj fazi.",
+            error = "",
+        )
+    }
+
     fun updateWorkOrderStatus(workOrder: WorkOrder, status: String) {
         if (workOrder.id.isBlank() || status.isBlank() || status == workOrder.status) return
 
@@ -419,6 +429,7 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                         onLogout = viewModel::logout,
                         onOpenWorkOrder = viewModel::selectWorkOrder,
                         onOpenRecord = openMobileRecord,
+                        onNewWorkOrder = viewModel::showNewWorkOrderNotice,
                         onStatusChange = viewModel::updateWorkOrderStatus,
                         onScanVerifiedWorkOrder = startVerifiedScan,
                     )
@@ -797,6 +808,7 @@ private fun WorkOrdersScreen(
     onLogout: () -> Unit,
     onOpenWorkOrder: (WorkOrder) -> Unit,
     onOpenRecord: (MobileRecord) -> Unit,
+    onNewWorkOrder: () -> Unit,
     onStatusChange: (WorkOrder, String) -> Unit,
     onScanVerifiedWorkOrder: (WorkOrder) -> Unit,
 ) {
@@ -806,8 +818,8 @@ private fun WorkOrdersScreen(
             .filter { workOrder ->
                 when (state.filter) {
                     WorkOrderFilter.All -> true
-                    WorkOrderFilter.Active -> !workOrder.isClosed
-                    WorkOrderFilter.Overdue -> workOrder.isOverdue
+                    WorkOrderFilter.Active -> workOrder.isOpenRnStatus()
+                    WorkOrderFilter.Overdue -> workOrder.isInProgressRnStatus()
                     WorkOrderFilter.Closed -> workOrder.isClosed
                 }
             }
@@ -823,27 +835,48 @@ private fun WorkOrdersScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(state.section.label, fontWeight = FontWeight.Bold)
-                        Text(
-                            text = state.user?.displayName.orEmpty(),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(onClick = onRefresh) {
-                        Icon(Icons.Rounded.Refresh, contentDescription = "OsvjeĹľi")
-                    }
-                    TextButton(onClick = onLogout) {
-                        Text("Odjava")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
-            )
+            if (state.section == AppSection.WorkOrders) {
+                WorkOrdersTopBar(
+                    viewMode = state.viewMode,
+                    onViewModeChange = onViewModeChange,
+                    onRefresh = onRefresh,
+                    onLogout = onLogout,
+                    onNewWorkOrder = onNewWorkOrder,
+                )
+            } else {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text(state.section.label, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = state.user?.displayName.orEmpty(),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                            )
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = onRefresh) {
+                            Icon(Icons.Rounded.Refresh, contentDescription = "Osvježi")
+                        }
+                        TextButton(onClick = onLogout) {
+                            Text("Odjava")
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+                )
+            }
+        },
+        floatingActionButton = {
+            if (state.section == AppSection.WorkOrders) {
+                FloatingActionButton(
+                    onClick = onNewWorkOrder,
+                    containerColor = Color(0xFF0B63E5),
+                    contentColor = Color.White,
+                ) {
+                    Icon(Icons.Rounded.Add, contentDescription = "Novi nalog")
+                }
+            }
         },
         bottomBar = {
             MainBottomBar(
@@ -926,55 +959,17 @@ private fun WorkOrdersScreen(
                 }
             } else {
             item {
-                WorkOrderHero(state.workOrders)
-            }
-            item {
-                OutlinedTextField(
-                    value = state.query,
-                    onValueChange = onQueryChange,
-                    modifier = Modifier.fillMaxWidth(),
-                    leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
-                    label = { Text("Pretraga RN, klijent, lokacija, usluga") },
-                    singleLine = true,
+                WorkOrdersListSummary(
+                    total = state.workOrders.size,
+                    query = state.query,
+                    onQueryChange = onQueryChange,
                 )
             }
             item {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    WorkOrderFilter.entries.forEach { filter ->
-                        FilterChip(
-                            selected = state.filter == filter,
-                            onClick = { onFilterChange(filter) },
-                            label = { Text(filter.label) },
-                            leadingIcon = if (state.filter == filter) {
-                                { Icon(Icons.Rounded.FilterList, contentDescription = null, modifier = Modifier.size(18.dp)) }
-                            } else {
-                                null
-                            },
-                        )
-                    }
-                }
-            }
-            item {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    WorkOrderViewMode.entries.forEach { mode ->
-                        FilterChip(
-                            selected = state.viewMode == mode,
-                            onClick = { onViewModeChange(mode) },
-                            label = { Text(mode.label) },
-                            leadingIcon = if (state.viewMode == mode) {
-                                {
-                                    Icon(
-                                        if (mode == WorkOrderViewMode.Map) Icons.Rounded.Map else Icons.Rounded.Work,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(18.dp),
-                                    )
-                                }
-                            } else {
-                                null
-                            },
-                        )
-                    }
-                }
+                WorkOrderTabs(
+                    selected = state.filter,
+                    onFilterChange = onFilterChange,
+                )
             }
             item {
                 AnimatedVisibility(state.isLoading) {
@@ -1005,10 +1000,10 @@ private fun WorkOrdersScreen(
                         )
                     }
                     items(mapPoints, key = { "map-${it.workOrder.id}" }) { entry ->
-                        WorkOrderCard(
-                            workOrder = entry.workOrder,
-                            isLoading = state.isLoading,
-                            onClick = { onOpenWorkOrder(entry.workOrder) },
+                    WorkOrderCard(
+                        workOrder = entry.workOrder,
+                        isLoading = state.isLoading,
+                        onClick = { onOpenWorkOrder(entry.workOrder) },
                             onStatusChange = { status -> onStatusChange(entry.workOrder, status) },
                             onScanVerifiedWorkOrder = { onScanVerifiedWorkOrder(entry.workOrder) },
                         )
@@ -1029,6 +1024,161 @@ private fun WorkOrdersScreen(
                     )
                 }
             }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun WorkOrdersTopBar(
+    viewMode: WorkOrderViewMode,
+    onViewModeChange: (WorkOrderViewMode) -> Unit,
+    onRefresh: () -> Unit,
+    onLogout: () -> Unit,
+    onNewWorkOrder: () -> Unit,
+) {
+    TopAppBar(
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onLogout) {
+                    Icon(Icons.Rounded.Menu, contentDescription = "Izbornik")
+                }
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFFEAF2FF),
+                ) {
+                    Icon(
+                        Icons.Rounded.Work,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .padding(8.dp),
+                        tint = Color(0xFF0B63E5),
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    "Radni nalozi",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Black,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        },
+        actions = {
+            IconButton(onClick = onRefresh) {
+                Icon(Icons.Rounded.Search, contentDescription = "Osvježi")
+            }
+            IconButton(
+                onClick = {
+                    onViewModeChange(
+                        if (viewMode == WorkOrderViewMode.Map) WorkOrderViewMode.List else WorkOrderViewMode.Map,
+                    )
+                },
+            ) {
+                Icon(
+                    Icons.Rounded.FilterList,
+                    contentDescription = if (viewMode == WorkOrderViewMode.Map) "Prikaži listu" else "Prikaži kartu",
+                )
+            }
+            Button(
+                onClick = onNewWorkOrder,
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0B63E5)),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+            ) {
+                Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Novi nalog", fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.width(8.dp))
+        },
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFFFAFCFF)),
+    )
+}
+
+@Composable
+private fun WorkOrdersListSummary(
+    total: Int,
+    query: String,
+    onQueryChange: (String) -> Unit,
+) {
+    var showSearch by remember { mutableStateOf(query.isNotBlank()) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "Ukupno:",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color(0xFF334155),
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.width(5.dp))
+            Text(
+                total.toString(),
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color(0xFF0B63E5),
+                fontWeight = FontWeight.Black,
+            )
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = { showSearch = !showSearch }) {
+                Icon(Icons.Rounded.Search, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(if (showSearch) "Sakrij" else "Traži")
+            }
+        }
+
+        AnimatedVisibility(showSearch) {
+            OutlinedTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                modifier = Modifier.fillMaxWidth(),
+                leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                label = { Text("Pretraga RN, klijent, lokacija, usluga") },
+                singleLine = true,
+            )
+        }
+    }
+}
+
+@Composable
+private fun WorkOrderTabs(
+    selected: WorkOrderFilter,
+    onFilterChange: (WorkOrderFilter) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        WorkOrderFilter.entries.forEach { filter ->
+            val isSelected = selected == filter
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable { onFilterChange(filter) }
+                    .padding(top = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    filter.label,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Black,
+                    color = if (isSelected) Color(0xFF0B63E5) else Color(0xFF475569),
+                    maxLines = 1,
+                )
+                Spacer(Modifier.height(12.dp))
+                Box(
+                    modifier = Modifier
+                        .height(3.dp)
+                        .fillMaxWidth()
+                        .background(if (isSelected) Color(0xFF0B63E5) else Color.Transparent),
+                )
             }
         }
     }
@@ -1537,6 +1687,37 @@ private fun WorkOrder.matchesSearch(query: String): Boolean {
         description.contains(query, ignoreCase = true)
 }
 
+private fun WorkOrder.isOpenRnStatus(): Boolean {
+    val normalized = status
+        .lowercase()
+        .replace("š", "s")
+        .replace("ž", "z")
+    return normalized.contains("otvoren")
+}
+
+private fun WorkOrder.isInProgressRnStatus(): Boolean {
+    val normalized = status
+        .lowercase()
+        .replace("š", "s")
+        .replace("ž", "z")
+    return (!isClosed && !isOpenRnStatus()) || normalized.contains("tijek")
+}
+
+private fun WorkOrder.primaryExecutorLabel(): String =
+    executors.firstOrNull()?.ifBlank { null } ?: "Nije dodijeljen"
+
+private fun WorkOrder.serviceBulletItems(): List<String> {
+    val items = serviceItems
+        .map { item -> item.trim() }
+        .filter { item -> item.isNotBlank() }
+    if (items.isNotEmpty()) return items
+    return serviceLine
+        .split(" - ", "·", ",")
+        .map { item -> item.trim() }
+        .filter { item -> item.isNotBlank() }
+        .ifEmpty { listOf("Bez upisane usluge") }
+}
+
 private fun buildWorkOrderMapPoints(workOrders: List<WorkOrder>): List<WorkOrderMapPoint> {
     return workOrders.mapNotNull { workOrder ->
         workOrder.coordinatePoint?.let { point ->
@@ -1917,6 +2098,185 @@ private fun RowScope.MetricCard(label: String, value: String, color: Color) {
     }
 }
 
+private data class RnStatusStyle(
+    val label: String,
+    val accent: Color,
+    val background: Color,
+)
+
+private fun rnStatusStyle(workOrder: WorkOrder): RnStatusStyle {
+    return when {
+        workOrder.isClosed -> RnStatusStyle("ZAVRŠENI", Color(0xFF7C3AED), Color(0xFFF3E8FF))
+        workOrder.isInProgressRnStatus() -> RnStatusStyle("U TIJEKU", Color(0xFF2E7D32), Color(0xFFE8F5E9))
+        else -> RnStatusStyle("OTVORENI", Color(0xFF0B63E5), Color(0xFFEAF2FF))
+    }
+}
+
+@Composable
+private fun RnStatusMenuChip(
+    currentStatus: String,
+    enabled: Boolean,
+    onStatusSelected: (String) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val pseudoOrder = WorkOrder(
+        id = "",
+        number = "",
+        status = currentStatus,
+        companyName = "",
+        locationName = "",
+        coordinates = "",
+        region = "",
+        serviceLine = "",
+        serviceItems = emptyList(),
+        openedDate = "",
+        dueDate = "",
+        executionDate = "",
+        priority = "",
+        contactName = "",
+        contactPhone = "",
+        contactEmail = "",
+        description = "",
+        executors = emptyList(),
+    )
+    val style = rnStatusStyle(pseudoOrder)
+
+    Box {
+        Surface(
+            modifier = Modifier.clickable(enabled = enabled) { expanded = true },
+            shape = RoundedCornerShape(7.dp),
+            color = style.background,
+        ) {
+            Text(
+                text = style.label,
+                modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp),
+                color = style.accent,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Black,
+                maxLines = 1,
+            )
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            workOrderStatusOptions.forEach { status ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            status,
+                            fontWeight = if (status == currentStatus) FontWeight.Bold else FontWeight.Normal,
+                        )
+                    },
+                    enabled = enabled && status != currentStatus,
+                    onClick = {
+                        expanded = false
+                        onStatusSelected(status)
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RnVerticalDivider() {
+    Box(
+        modifier = Modifier
+            .padding(horizontal = 12.dp)
+            .width(1.dp)
+            .height(48.dp)
+            .background(Color(0xFFE5E7EB)),
+    )
+}
+
+@Composable
+private fun RnNumberBlock(workOrder: WorkOrder, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Surface(shape = RoundedCornerShape(8.dp), color = rnStatusStyle(workOrder).background) {
+            Text(
+                "#",
+                modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp),
+                color = rnStatusStyle(workOrder).accent,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Black,
+            )
+        }
+        Spacer(Modifier.width(9.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(
+                "Broj radnog naloga",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color(0xFF64748B),
+                maxLines = 1,
+            )
+            Text(
+                workOrder.displayNumber,
+                style = MaterialTheme.typography.bodyLarge,
+                color = Color(0xFF0F172A),
+                fontWeight = FontWeight.Black,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun RnCompanyBlock(workOrder: WorkOrder, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Rounded.Business,
+            contentDescription = null,
+            modifier = Modifier.size(22.dp),
+            tint = rnStatusStyle(workOrder).accent,
+        )
+        Spacer(Modifier.width(8.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text("Tvrtka", style = MaterialTheme.typography.labelSmall, color = Color(0xFF64748B), maxLines = 1)
+            Text(
+                workOrder.companyName.ifBlank { "Bez tvrtke" },
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color(0xFF0F172A),
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun RnInfoBlock(
+    icon: ImageVector,
+    label: String,
+    value: String,
+    tint: Color,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(24.dp), tint = tint)
+        Spacer(Modifier.width(10.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(label, style = MaterialTheme.typography.labelSmall, color = Color(0xFF64748B))
+            Text(
+                value,
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color(0xFF0F172A),
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
 @Composable
 private fun WorkOrderCard(
     workOrder: WorkOrder,
@@ -1929,58 +2289,91 @@ private fun WorkOrderCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+        shape = RoundedCornerShape(10.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Row(verticalAlignment = Alignment.Top) {
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Text(
-                        workOrder.displayNumber,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Black,
-                    )
-                    Text(
-                        workOrder.companyName.ifBlank { "Bez tvrtke" },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                StatusChip(workOrder)
-            }
-            Text(
-                workOrder.displayService,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                InfoPill(Icons.Rounded.LocationOn, workOrder.locationName.ifBlank { "Lokacija nije upisana" })
-                InfoPill(Icons.Rounded.CalendarMonth, formatDateLabel(workOrder.dueDate).ifBlank { "Bez roka" })
-                if (workOrder.hasCoordinates) {
-                    InfoPill(Icons.Rounded.Map, "Na karti")
-                }
-            }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                WorkOrderStatusMenu(
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RnStatusMenuChip(
                     currentStatus = workOrder.status,
                     enabled = !isLoading,
                     onStatusSelected = onStatusChange,
                 )
-                OutlinedButton(
-                    onClick = onScanVerifiedWorkOrder,
-                    enabled = !isLoading,
-                    shape = RoundedCornerShape(14.dp),
-                ) {
-                    Icon(Icons.Rounded.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Sken ovjerenog")
+                RnVerticalDivider()
+                RnNumberBlock(workOrder, modifier = Modifier.weight(1.2f))
+                RnVerticalDivider()
+                RnCompanyBlock(workOrder, modifier = Modifier.weight(1f))
+                Text(
+                    "›",
+                    modifier = Modifier.padding(start = 10.dp),
+                    color = Color(0xFF334155),
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Light,
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top,
+            ) {
+                RnInfoBlock(
+                    icon = Icons.Rounded.LocationOn,
+                    label = "Lokacija",
+                    value = workOrder.locationName.ifBlank { "Lokacija nije upisana" },
+                    tint = rnStatusStyle(workOrder).accent,
+                    modifier = Modifier.weight(1f),
+                )
+                RnVerticalDivider()
+                RnInfoBlock(
+                    icon = Icons.Rounded.Business,
+                    label = "Izvršitelj",
+                    value = workOrder.primaryExecutorLabel(),
+                    tint = rnStatusStyle(workOrder).accent,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    "Usluge",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFF64748B),
+                    fontWeight = FontWeight.SemiBold,
+                )
+                val services = workOrder.serviceBulletItems()
+                services.take(3).forEach { service ->
+                    Row(verticalAlignment = Alignment.Top) {
+                        Text("•", color = Color(0xFF0F172A), modifier = Modifier.padding(end = 7.dp))
+                        Text(
+                            service,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFF0F172A),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                if (services.size > 3) {
+                    Text(
+                        "+${services.size - 3} stavke",
+                        color = Color(0xFF0B63E5),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Black,
+                    )
+                }
+                if (!isLoading) {
+                    TextButton(onClick = onScanVerifiedWorkOrder) {
+                        Icon(Icons.Rounded.CameraAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(5.dp))
+                        Text("Sken ovjerenog", fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
         }
