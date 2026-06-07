@@ -83,6 +83,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -116,7 +118,10 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewModelScope
+import com.safenexus.app.data.BootstrapData
 import com.safenexus.app.data.CoordinatePoint
+import com.safenexus.app.data.DashboardStats
+import com.safenexus.app.data.MobileRecord
 import com.safenexus.app.data.SafeNexusApi
 import com.safenexus.app.data.SafeNexusAuthStore
 import com.safenexus.app.data.SafeNexusUser
@@ -144,6 +149,14 @@ enum class WorkOrderViewMode(val label: String) {
     Map("Karta"),
 }
 
+enum class AppSection(val label: String) {
+    Operations("Operativa"),
+    WorkOrders("RN"),
+    Calendar("Kalendar"),
+    Vehicles("Vozila"),
+    More("Više"),
+}
+
 private val biometricAuthenticators =
     BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
 
@@ -158,8 +171,10 @@ private val workOrderStatusOptions = listOf(
 data class AppState(
     val user: SafeNexusUser? = null,
     val rememberedUser: SafeNexusUser? = null,
+    val data: BootstrapData = BootstrapData(),
     val workOrders: List<WorkOrder> = emptyList(),
     val selectedWorkOrder: WorkOrder? = null,
+    val section: AppSection = AppSection.Operations,
     val query: String = "",
     val filter: WorkOrderFilter = WorkOrderFilter.Active,
     val viewMode: WorkOrderViewMode = WorkOrderViewMode.List,
@@ -230,17 +245,17 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
     fun refresh() {
         state = state.copy(isLoading = true, error = "", notice = "")
         viewModelScope.launch {
-            api.workOrders()
+            api.bootstrap()
                 .onSuccess { data ->
                     if (shouldRememberSession) {
                         state.user?.let { user ->
                             authStore.save(user, api.currentAccessToken(), api.currentAuthCookieHeader())
                         }
                     }
-                    state = state.copy(workOrders = data.workOrders, isLoading = false, error = "")
+                    state = state.copy(data = data, workOrders = data.workOrders, isLoading = false, error = "")
                 }
                 .onFailure { error ->
-                    val message = error.message ?: "Ne mogu ucitati radne naloge."
+                    val message = error.message ?: "Ne mogu učitati mobilne podatke."
                     if (message.contains("(401)")) {
                         api.clearSession()
                         authStore.clear()
@@ -273,6 +288,10 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         state = state.copy(viewMode = value)
     }
 
+    fun updateSection(value: AppSection) {
+        state = state.copy(section = value)
+    }
+
     fun selectWorkOrder(value: WorkOrder?) {
         state = state.copy(selectedWorkOrder = value)
     }
@@ -291,6 +310,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                         if (selected.id == workOrder.id) selected.copy(status = status) else selected
                     }
                     state = state.copy(
+                        data = state.data.copy(workOrders = updatedOrders),
                         workOrders = updatedOrders,
                         selectedWorkOrder = updatedSelected,
                         isLoading = false,
@@ -367,6 +387,7 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                     onQueryChange = viewModel::updateQuery,
                     onFilterChange = viewModel::updateFilter,
                     onViewModeChange = viewModel::updateViewMode,
+                    onSectionChange = viewModel::updateSection,
                     onRefresh = viewModel::refresh,
                     onLogout = viewModel::logout,
                     onOpenWorkOrder = viewModel::selectWorkOrder,
@@ -737,6 +758,7 @@ private fun WorkOrdersScreen(
     onQueryChange: (String) -> Unit,
     onFilterChange: (WorkOrderFilter) -> Unit,
     onViewModeChange: (WorkOrderViewMode) -> Unit,
+    onSectionChange: (AppSection) -> Unit,
     onRefresh: () -> Unit,
     onLogout: () -> Unit,
     onOpenWorkOrder: (WorkOrder) -> Unit,
@@ -757,13 +779,19 @@ private fun WorkOrdersScreen(
             .filter { workOrder -> normalizedQuery.isBlank() || workOrder.matchesSearch(normalizedQuery) }
     }
     val mapPoints = remember(filtered) { buildWorkOrderMapPoints(filtered) }
+    val filteredCalendar = remember(state.data.calendarEvents, normalizedQuery) {
+        state.data.calendarEvents.filter { record -> record.matchesSearch(normalizedQuery) }
+    }
+    val filteredVehicles = remember(state.data.vehicles, normalizedQuery) {
+        state.data.vehicles.filter { record -> record.matchesSearch(normalizedQuery) }
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Column {
-                        Text("Radni nalozi", fontWeight = FontWeight.Bold)
+                        Text(state.section.label, fontWeight = FontWeight.Bold)
                         Text(
                             text = state.user?.displayName.orEmpty(),
                             style = MaterialTheme.typography.labelMedium,
@@ -782,6 +810,12 @@ private fun WorkOrdersScreen(
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
             )
         },
+        bottomBar = {
+            MainBottomBar(
+                selected = state.section,
+                onSectionChange = onSectionChange,
+            )
+        },
         containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
         LazyColumn(
@@ -791,6 +825,71 @@ private fun WorkOrdersScreen(
             contentPadding = PaddingValues(horizontal = 18.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            if (state.section == AppSection.Operations) {
+                item {
+                    OperationsContent(
+                        stats = state.data.dashboard,
+                        workOrders = state.workOrders,
+                    )
+                }
+                item {
+                    AnimatedVisibility(state.isLoading) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
+                    AnimatedVisibility(state.error.isNotBlank()) {
+                        MessageCard(text = state.error, isError = true)
+                    }
+                    AnimatedVisibility(state.notice.isNotBlank()) {
+                        MessageCard(text = state.notice, isError = false)
+                    }
+                }
+            } else if (state.section == AppSection.Calendar) {
+                item {
+                    ModuleSearchField(
+                        query = state.query,
+                        onQueryChange = onQueryChange,
+                        label = "Pretraga događaja, tvrtke, statusa",
+                    )
+                }
+                item {
+                    RecordsContent(
+                        title = "Kalendar",
+                        records = filteredCalendar,
+                        emptyText = "Nema događaja za prikaz.",
+                        icon = Icons.Rounded.CalendarMonth,
+                    )
+                }
+            } else if (state.section == AppSection.Vehicles) {
+                item {
+                    ModuleSearchField(
+                        query = state.query,
+                        onQueryChange = onQueryChange,
+                        label = "Pretraga vozila, registracije, statusa",
+                    )
+                }
+                item {
+                    RecordsContent(
+                        title = "Vozila",
+                        records = filteredVehicles,
+                        emptyText = "Nema vozila za prikaz.",
+                        icon = Icons.Rounded.Business,
+                    )
+                }
+            } else if (state.section == AppSection.More) {
+                item {
+                    ModuleSearchField(
+                        query = state.query,
+                        onQueryChange = onQueryChange,
+                        label = "Pretraga dokumentacije i modula",
+                    )
+                }
+                item {
+                    MoreContent(
+                        data = state.data,
+                        query = normalizedQuery,
+                    )
+                }
+            } else {
             item {
                 WorkOrderHero(state.workOrders)
             }
@@ -892,6 +991,330 @@ private fun WorkOrdersScreen(
                         onClick = { onOpenWorkOrder(workOrder) },
                         onStatusChange = { status -> onStatusChange(workOrder, status) },
                         onScanVerifiedWorkOrder = { onScanVerifiedWorkOrder(workOrder) },
+                    )
+                }
+            }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MainBottomBar(
+    selected: AppSection,
+    onSectionChange: (AppSection) -> Unit,
+) {
+    NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+        AppSection.entries.forEach { section ->
+            NavigationBarItem(
+                selected = selected == section,
+                onClick = { onSectionChange(section) },
+                icon = {
+                    Icon(
+                        imageVector = section.icon(),
+                        contentDescription = section.label,
+                    )
+                },
+                label = { Text(section.label) },
+            )
+        }
+    }
+}
+
+private fun AppSection.icon(): ImageVector = when (this) {
+    AppSection.Operations -> Icons.Rounded.Work
+    AppSection.WorkOrders -> Icons.Rounded.CheckCircle
+    AppSection.Calendar -> Icons.Rounded.CalendarMonth
+    AppSection.Vehicles -> Icons.Rounded.Business
+    AppSection.More -> Icons.Rounded.Map
+}
+
+@Composable
+private fun OperationsContent(
+    stats: DashboardStats,
+    workOrders: List<WorkOrder>,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        WorkOrderHero(workOrders)
+        DashboardMetricGrid(stats)
+        PriorityWorkOrders(workOrders)
+    }
+}
+
+@Composable
+private fun DashboardMetricGrid(stats: DashboardStats) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+            text = "Pregled sustava",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Black,
+        )
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            DashboardMetricTile("RN ukupno", stats.workOrdersTotal.toString(), Icons.Rounded.Work)
+            DashboardMetricTile("Aktivni RN", stats.activeWorkOrders.toString(), Icons.Rounded.CheckCircle)
+            DashboardMetricTile("Kasne", stats.overdueWorkOrders.toString(), Icons.Rounded.ErrorOutline)
+            DashboardMetricTile("Vozila", stats.vehiclesTotal.toString(), Icons.Rounded.Business)
+            DashboardMetricTile("Dokumenti", stats.documentsTotal.toString(), Icons.Rounded.Mail)
+            DashboardMetricTile("Osposobljavanja", stats.trainingsTotal.toString(), Icons.Rounded.Fingerprint)
+            DashboardMetricTile("Klijentski portal", stats.clientPortalTotal.toString(), Icons.Rounded.Map)
+            DashboardMetricTile("Pravilnici", stats.rulebooksTotal.toString(), Icons.Rounded.Lock)
+        }
+    }
+}
+
+@Composable
+private fun DashboardMetricTile(
+    label: String,
+    value: String,
+    icon: ImageVector,
+) {
+    Surface(
+        modifier = Modifier.width(156.dp),
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
+        shadowElevation = 2.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(38.dp)
+                        .padding(9.dp),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+            Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
+            Text(
+                label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PriorityWorkOrders(workOrders: List<WorkOrder>) {
+    val priority = remember(workOrders) {
+        workOrders
+            .filter { workOrder -> !workOrder.isClosed }
+            .sortedWith(
+                compareByDescending<WorkOrder> { it.isOverdue }
+                    .thenBy { it.parsedDueDate ?: it.parsedOpenedDate },
+            )
+            .take(4)
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("Prioritet za teren", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+            if (priority.isEmpty()) {
+                Text(
+                    "Nema aktivnih radnih naloga za brzi pregled.",
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                )
+            } else {
+                priority.forEach { workOrder ->
+                    RecordLine(
+                        title = workOrder.displayNumber,
+                        subtitle = listOf(workOrder.companyName, workOrder.locationName).filter { it.isNotBlank() }.joinToString(" - "),
+                        status = workOrder.status,
+                        date = workOrder.dueDate,
+                        icon = Icons.Rounded.Work,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ModuleSearchField(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    label: String,
+) {
+    OutlinedTextField(
+        value = query,
+        onValueChange = onQueryChange,
+        modifier = Modifier.fillMaxWidth(),
+        leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+        label = { Text(label) },
+        singleLine = true,
+    )
+}
+
+@Composable
+private fun RecordsContent(
+    title: String,
+    records: List<MobileRecord>,
+    emptyText: String,
+    icon: ImageVector,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+                    Icon(
+                        icon,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .padding(10.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                    Text(
+                        "${records.size} zapisa",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                }
+            }
+
+            if (records.isEmpty()) {
+                Text(emptyText, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f))
+            } else {
+                records.take(80).forEach { record ->
+                    RecordLine(
+                        title = record.title,
+                        subtitle = record.subtitle,
+                        status = record.status,
+                        date = record.date,
+                        icon = icon,
+                    )
+                }
+                if (records.size > 80) {
+                    Text(
+                        "Prikazano je prvih 80 zapisa. Koristi pretragu za sužavanje.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MoreContent(
+    data: BootstrapData,
+    query: String,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        ModuleGroup("Dokumenti i zapisnici", data.documentRecords, Icons.Rounded.Mail, query)
+        ModuleGroup("Osposobljavanja", data.peopleTrainingRecords, Icons.Rounded.Fingerprint, query)
+        ModuleGroup("Klijentski portal", data.clientPortalRecords, Icons.Rounded.Map, query)
+        ModuleGroup("Tvrtke", data.companies, Icons.Rounded.Business, query)
+        ModuleGroup("Lokacije", data.locations, Icons.Rounded.LocationOn, query)
+        ModuleGroup("Pravilnici", data.rulebooks, Icons.Rounded.Lock, query)
+    }
+}
+
+@Composable
+private fun ModuleGroup(
+    title: String,
+    records: List<MobileRecord>,
+    icon: ImageVector,
+    query: String,
+) {
+    val filtered = remember(records, query) { records.filter { record -> record.matchesSearch(query) } }
+
+    RecordsContent(
+        title = title,
+        records = filtered,
+        emptyText = "Nema zapisa za prikaz.",
+        icon = icon,
+    )
+}
+
+@Composable
+private fun RecordLine(
+    title: String,
+    subtitle: String,
+    status: String,
+    date: String,
+    icon: ImageVector,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.62f),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                modifier = Modifier.size(22.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(
+                    title.ifBlank { "Zapis" },
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                val secondary = listOf(subtitle, formatDateLabel(date)).filter { it.isNotBlank() }.joinToString(" - ")
+                if (secondary.isNotBlank()) {
+                    Text(
+                        secondary,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            if (status.isNotBlank()) {
+                Spacer(Modifier.width(8.dp))
+                Surface(
+                    shape = RoundedCornerShape(999.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                ) {
+                    Text(
+                        status,
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
                     )
                 }
             }

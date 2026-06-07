@@ -8,8 +8,54 @@ data class SafeNexusUser(
 )
 
 data class BootstrapData(
-    val workOrders: List<WorkOrder>,
+    val workOrders: List<WorkOrder> = emptyList(),
+    val companies: List<MobileRecord> = emptyList(),
+    val locations: List<MobileRecord> = emptyList(),
+    val vehicles: List<MobileRecord> = emptyList(),
+    val documentRecords: List<MobileRecord> = emptyList(),
+    val peopleTrainingRecords: List<MobileRecord> = emptyList(),
+    val clientPortalRecords: List<MobileRecord> = emptyList(),
+    val rulebooks: List<MobileRecord> = emptyList(),
+    val calendarEvents: List<MobileRecord> = emptyList(),
+    val dashboard: DashboardStats = DashboardStats(),
 )
+
+data class DashboardStats(
+    val workOrdersTotal: Int = 0,
+    val activeWorkOrders: Int = 0,
+    val overdueWorkOrders: Int = 0,
+    val closedWorkOrders: Int = 0,
+    val vehiclesTotal: Int = 0,
+    val reservationsTotal: Int = 0,
+    val documentsTotal: Int = 0,
+    val trainingsTotal: Int = 0,
+    val clientPortalTotal: Int = 0,
+    val rulebooksTotal: Int = 0,
+)
+
+data class MobileRecord(
+    val id: String,
+    val title: String,
+    val subtitle: String,
+    val status: String,
+    val kind: String,
+    val date: String,
+    val relatedId: String,
+    val coordinates: String,
+    val meta: Map<String, String> = emptyMap(),
+) {
+    val parsedDate: LocalDate? = parseDateOrNull(date)
+
+    fun matchesSearch(query: String): Boolean {
+        if (query.isBlank()) return true
+        return title.contains(query, ignoreCase = true) ||
+            subtitle.contains(query, ignoreCase = true) ||
+            status.contains(query, ignoreCase = true) ||
+            kind.contains(query, ignoreCase = true) ||
+            date.contains(query, ignoreCase = true) ||
+            meta.values.any { value -> value.contains(query, ignoreCase = true) }
+    }
+}
 
 data class WorkOrder(
     val id: String,
@@ -41,14 +87,16 @@ data class WorkOrder(
         get() = number.ifBlank { "RN" }
 
     val displayService: String
-        get() = serviceLine.ifBlank { serviceItems.joinToString(" · ") }.ifBlank { "Bez upisane usluge" }
+        get() = serviceLine.ifBlank { serviceItems.joinToString(" - ") }.ifBlank { "Bez upisane usluge" }
 
     val hasCoordinates: Boolean
         get() = coordinatePoint != null
 
     val isClosed: Boolean
-        get() = status.equals("Fakturiran RN", ignoreCase = true) ||
-            status.equals("Završen RN", ignoreCase = true) ||
+        get() = status.equals("Gotov RN", ignoreCase = true) ||
+            status.equals("Ovjeren RN", ignoreCase = true) ||
+            status.equals("Fakturiran RN", ignoreCase = true) ||
+            status.equals("Storno RN", ignoreCase = true) ||
             status.equals("Storniran RN", ignoreCase = true)
 
     val isOverdue: Boolean

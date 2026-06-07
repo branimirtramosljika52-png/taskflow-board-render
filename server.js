@@ -76,7 +76,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.8.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.9.apk";
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
@@ -9193,6 +9193,296 @@ async function writeMobileWorkOrders(response, user, request) {
   });
 }
 
+const MOBILE_BOOTSTRAP_RECORD_LIMIT = 350;
+
+function firstMobileRecordValue(item = {}, keys = []) {
+  for (const key of keys) {
+    const value = normalizeInputValue(item?.[key]);
+    if (value) {
+      return value;
+    }
+  }
+  return "";
+}
+
+function buildMobileRecordItem(item = {}, options = {}) {
+  const {
+    kind = "record",
+    titleKeys = ["title", "name", "fullName", "companyName", "locationName", "plateNumber", "workOrderNumber", "number"],
+    subtitleKeys = ["subtitle", "companyName", "locationName", "description", "summary", "note"],
+    statusKeys = ["status", "activityStatus", "employmentStatus"],
+    dateKeys = ["dueDate", "expirationDate", "validUntil", "reviewDate", "serviceDueDate", "registrationExpiresOn", "updatedAt", "createdAt"],
+    relatedIdKeys = ["relatedId", "workOrderId", "companyId", "locationId", "vehicleId"],
+    coordinateKeys = ["coordinates"],
+    metaKeys = [],
+    fallbackTitle = "Zapis",
+  } = options;
+
+  const meta = {};
+  metaKeys.forEach((key) => {
+    const value = normalizeInputValue(item?.[key]);
+    if (value) {
+      meta[key] = value;
+    }
+  });
+
+  return {
+    id: firstMobileRecordValue(item, ["id", ...relatedIdKeys]),
+    title: firstMobileRecordValue(item, titleKeys) || fallbackTitle,
+    subtitle: firstMobileRecordValue(item, subtitleKeys),
+    status: firstMobileRecordValue(item, statusKeys),
+    kind,
+    date: firstMobileRecordValue(item, dateKeys),
+    relatedId: firstMobileRecordValue(item, relatedIdKeys),
+    coordinates: firstMobileRecordValue(item, coordinateKeys),
+    meta,
+  };
+}
+
+function limitMobileRecords(records = [], limit = MOBILE_BOOTSTRAP_RECORD_LIMIT) {
+  return records
+    .filter((item) => item && (item.id || item.title))
+    .slice(0, limit);
+}
+
+function isMobileClosedWorkOrderStatus(status = "") {
+  const normalized = normalizeInputValue(status)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  return normalized === "gotov rn"
+    || normalized === "ovjeren rn"
+    || normalized === "fakturiran rn"
+    || normalized === "storno rn"
+    || normalized === "storniran rn"
+    || normalized === "zavrsen rn";
+}
+
+function buildMobileVehicleRecord(item = {}) {
+  return buildMobileRecordItem(item, {
+    kind: "vehicle",
+    titleKeys: ["plateNumber", "name", "vinNumber"],
+    subtitleKeys: ["name", "make", "model", "category"],
+    statusKeys: ["status"],
+    dateKeys: ["serviceDueDate", "registrationExpiresOn", "updatedAt"],
+    metaKeys: ["make", "model", "category", "odometerKm", "registrationExpiresOn", "serviceDueDate"],
+    fallbackTitle: "Vozilo",
+  });
+}
+
+function buildMobileCalendarEvents(scopedSnapshot = {}, workOrders = []) {
+  const events = [];
+
+  workOrders.forEach((workOrder) => {
+    const date = firstMobileRecordValue(workOrder, ["executionDate", "dueDate", "openedDate"]);
+    if (!date) return;
+    events.push({
+      id: `work-order:${workOrder.id}`,
+      title: workOrder.workOrderNumber || workOrder.number || "Radni nalog",
+      subtitle: [workOrder.companyName, workOrder.locationName].filter(Boolean).join(" - "),
+      status: workOrder.status,
+      kind: "work_order",
+      date,
+      relatedId: workOrder.id,
+      coordinates: workOrder.coordinates,
+      meta: {
+        companyName: workOrder.companyName,
+        locationName: workOrder.locationName,
+      },
+    });
+  });
+
+  (scopedSnapshot.vehicles ?? []).forEach((vehicle) => {
+    (vehicle.reservations ?? []).forEach((reservation) => {
+      const date = firstMobileRecordValue(reservation, ["startAt", "createdAt"]);
+      if (!date) return;
+      events.push({
+        id: `vehicle-reservation:${vehicle.id}:${reservation.id || date}`,
+        title: vehicle.plateNumber || vehicle.name || "Rezervacija vozila",
+        subtitle: [reservation.reservedForLabel, reservation.destination, reservation.purpose].filter(Boolean).join(" - "),
+        status: reservation.status || "reserved",
+        kind: "vehicle_reservation",
+        date,
+        relatedId: normalizeInputValue(vehicle.id),
+        coordinates: "",
+        meta: {
+          vehicleName: vehicle.name || "",
+          endAt: reservation.endAt || "",
+        },
+      });
+    });
+  });
+
+  (scopedSnapshot.documentRecords ?? []).forEach((record) => {
+    const date = firstMobileRecordValue(record, ["expirationDate", "validUntil", "inspectionDate", "issuedDate", "updatedAt"]);
+    if (!date) return;
+    events.push({
+      id: `document:${record.id}`,
+      title: record.title || record.documentTitle || record.templateTitle || "Dokument",
+      subtitle: [record.companyName, record.locationName].filter(Boolean).join(" - "),
+      status: record.status || "",
+      kind: "document",
+      date,
+      relatedId: normalizeInputValue(record.id),
+      coordinates: "",
+      meta: {},
+    });
+  });
+
+  (scopedSnapshot.peopleTrainingRecords ?? []).forEach((record) => {
+    const trainingItems = Array.isArray(record.trainingItems) ? record.trainingItems : [];
+    if (trainingItems.length === 0) {
+      const date = firstMobileRecordValue(record, ["arrivalDate", "updatedAt", "createdAt"]);
+      if (!date) return;
+      events.push({
+        id: `training:${record.id}`,
+        title: record.fullName || "Osposobljavanje",
+        subtitle: [record.companyName, record.jobTitle || record.workPlace].filter(Boolean).join(" - "),
+        status: record.activityStatus || record.employmentStatus || "",
+        kind: "training",
+        date,
+        relatedId: normalizeInputValue(record.id),
+        coordinates: "",
+        meta: {},
+      });
+      return;
+    }
+
+    trainingItems.forEach((item, index) => {
+      const date = firstMobileRecordValue(item, ["validUntil", "certificateValidUntil", "date", "trainingDate", "createdAt"]);
+      if (!date) return;
+      events.push({
+        id: `training:${record.id}:${item.id || index}`,
+        title: item.label || item.serviceName || item.shortLabel || "Osposobljavanje",
+        subtitle: [record.fullName, record.companyName, record.jobTitle || record.workPlace].filter(Boolean).join(" - "),
+        status: item.status || record.activityStatus || "",
+        kind: "training",
+        date,
+        relatedId: normalizeInputValue(record.id),
+        coordinates: "",
+        meta: {},
+      });
+    });
+  });
+
+  return events
+    .sort((left, right) => String(left.date || "").localeCompare(String(right.date || "")))
+    .slice(0, MOBILE_BOOTSTRAP_RECORD_LIMIT);
+}
+
+function buildMobileDashboard(scopedSnapshot = {}, workOrders = []) {
+  const today = new Date().toISOString().slice(0, 10);
+  const closedWorkOrders = workOrders.filter((item) => isMobileClosedWorkOrderStatus(item.status)).length;
+  const overdueWorkOrders = workOrders.filter((item) => (
+    !isMobileClosedWorkOrderStatus(item.status)
+    && normalizeInputValue(item.dueDate).slice(0, 10) < today
+    && normalizeInputValue(item.dueDate)
+  )).length;
+
+  return {
+    workOrdersTotal: workOrders.length,
+    activeWorkOrders: Math.max(0, workOrders.length - closedWorkOrders),
+    overdueWorkOrders,
+    closedWorkOrders,
+    vehiclesTotal: (scopedSnapshot.vehicles ?? []).length,
+    reservationsTotal: (scopedSnapshot.vehicles ?? []).reduce((total, vehicle) => (
+      total + (Array.isArray(vehicle.reservations) ? vehicle.reservations.length : 0)
+    ), 0),
+    documentsTotal: (scopedSnapshot.documentRecords ?? []).length,
+    trainingsTotal: (scopedSnapshot.peopleTrainingRecords ?? []).length,
+    clientPortalTotal: (scopedSnapshot.clientPortalRecords ?? []).length,
+    rulebooksTotal: (scopedSnapshot.rulebooks ?? []).length,
+  };
+}
+
+async function writeMobileBootstrap(response, user, request) {
+  const { scopedSnapshot } = await getScopedState(user, request);
+  const workOrders = (scopedSnapshot.workOrders ?? [])
+    .map(buildMobileWorkOrderItem)
+    .filter((item) => item.id);
+
+  const companies = limitMobileRecords((scopedSnapshot.companies ?? []).map((item) => buildMobileRecordItem(item, {
+    kind: "company",
+    titleKeys: ["name"],
+    subtitleKeys: ["headquarters", "oib", "contactEmail", "contactPhone"],
+    statusKeys: ["isActive"],
+    dateKeys: ["updatedAt", "createdAt"],
+    metaKeys: ["oib", "headquarters", "contactPhone", "contactEmail"],
+    fallbackTitle: "Tvrtka",
+  })));
+
+  const locations = limitMobileRecords((scopedSnapshot.locations ?? []).map((item) => buildMobileRecordItem(item, {
+    kind: "location",
+    titleKeys: ["name", "locationName"],
+    subtitleKeys: ["companyName", "region", "contactName1", "contactPhone1"],
+    statusKeys: ["isActive"],
+    dateKeys: ["updatedAt", "createdAt"],
+    metaKeys: ["companyName", "region", "contactName1", "contactPhone1", "contactEmail1"],
+    fallbackTitle: "Lokacija",
+  })));
+
+  const vehicles = limitMobileRecords((scopedSnapshot.vehicles ?? []).map(buildMobileVehicleRecord));
+
+  const documentRecords = limitMobileRecords((scopedSnapshot.documentRecords ?? []).map((item) => buildMobileRecordItem(item, {
+    kind: "document",
+    titleKeys: ["title", "documentTitle", "templateTitle", "recordNumber"],
+    subtitleKeys: ["companyName", "locationName", "objectName", "note"],
+    statusKeys: ["status"],
+    dateKeys: ["expirationDate", "validUntil", "inspectionDate", "issuedDate", "updatedAt", "createdAt"],
+    metaKeys: ["companyName", "locationName", "objectName", "expirationDate", "inspectionDate"],
+    fallbackTitle: "Dokument",
+  })));
+
+  const peopleTrainingRecords = limitMobileRecords((scopedSnapshot.peopleTrainingRecords ?? []).map((item) => buildMobileRecordItem(item, {
+    kind: "training",
+    titleKeys: ["fullName", "lastName", "firstName"],
+    subtitleKeys: ["companyName", "jobTitle", "workPlace", "locationName"],
+    statusKeys: ["activityStatus", "employmentStatus"],
+    dateKeys: ["arrivalDate", "updatedAt", "createdAt"],
+    metaKeys: ["companyName", "jobTitle", "workPlace", "oib", "email", "phone"],
+    fallbackTitle: "Osoba",
+  })));
+
+  const clientPortalRecords = limitMobileRecords((scopedSnapshot.clientPortalRecords ?? []).map((item) => buildMobileRecordItem(item, {
+    kind: "client_portal",
+    titleKeys: ["title"],
+    subtitleKeys: ["companyName", "locationName", "note"],
+    statusKeys: ["status"],
+    dateKeys: ["dueDate", "updatedAt", "createdAt"],
+    metaKeys: ["companyName", "locationName", "type", "dueDate"],
+    fallbackTitle: "Klijentski zapis",
+  })));
+
+  const rulebooks = limitMobileRecords((scopedSnapshot.rulebooks ?? []).map((item) => buildMobileRecordItem(item, {
+    kind: "rulebook",
+    titleKeys: ["title"],
+    subtitleKeys: ["summary", "scope", "owner", "rulebookType"],
+    statusKeys: ["status"],
+    dateKeys: ["reviewDate", "effectiveFrom", "updatedAt", "createdAt"],
+    metaKeys: ["rulebookType", "owner", "reviewDate", "effectiveFrom"],
+    fallbackTitle: "Pravilnik",
+  })));
+
+  sendJson(response, 200, {
+    ok: true,
+    user,
+    options: {
+      workOrderStatuses: WORK_ORDER_STATUS_OPTIONS,
+    },
+    dashboard: buildMobileDashboard(scopedSnapshot, workOrders),
+    workOrders,
+    companies,
+    locations,
+    vehicles,
+    documentRecords,
+    peopleTrainingRecords,
+    clientPortalRecords,
+    rulebooks,
+    calendarEvents: buildMobileCalendarEvents(scopedSnapshot, workOrders),
+    total: workOrders.length,
+  });
+}
+
 function isRiskAssessmentMinimalSaveRequest(request) {
   const autosaveHeader = String(request.headers["x-safenexus-autosave"] ?? "").trim().toLowerCase();
   const preferHeader = String(request.headers.prefer ?? "").trim().toLowerCase();
@@ -9536,6 +9826,11 @@ async function handleApiRequest(request, response, url) {
     if (request.method === "GET" && url.pathname === "/api/bootstrap") {
       await ensureStandardServiceCatalogItemsForRequest(user, request);
       await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/mobile/bootstrap") {
+      await writeMobileBootstrap(response, user, request);
       return true;
     }
 

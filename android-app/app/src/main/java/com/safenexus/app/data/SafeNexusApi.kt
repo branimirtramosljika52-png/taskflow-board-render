@@ -61,9 +61,18 @@ class SafeNexusApi(
 
     suspend fun bootstrap(): Result<BootstrapData> = withContext(Dispatchers.IO) {
         runCatching {
-            val json = JSONObject(request("/api/bootstrap"))
+            val json = JSONObject(request("/api/mobile/bootstrap"))
             BootstrapData(
                 workOrders = json.optJSONArray("workOrders").toWorkOrders(),
+                companies = json.optJSONArray("companies").toRecords(),
+                locations = json.optJSONArray("locations").toRecords(),
+                vehicles = json.optJSONArray("vehicles").toRecords(),
+                documentRecords = json.optJSONArray("documentRecords").toRecords(),
+                peopleTrainingRecords = json.optJSONArray("peopleTrainingRecords").toRecords(),
+                clientPortalRecords = json.optJSONArray("clientPortalRecords").toRecords(),
+                rulebooks = json.optJSONArray("rulebooks").toRecords(),
+                calendarEvents = json.optJSONArray("calendarEvents").toRecords(),
+                dashboard = json.optJSONObject("dashboard").toDashboardStats(),
             )
         }
     }
@@ -238,6 +247,63 @@ private fun JSONArray?.toStringList(vararg keys: String): List<String> {
             if (value.isNotBlank()) add(value)
         }
     }.distinct()
+}
+
+private fun JSONObject?.toDashboardStats(): DashboardStats {
+    if (this == null) return DashboardStats()
+    return DashboardStats(
+        workOrdersTotal = optInt("workOrdersTotal", 0),
+        activeWorkOrders = optInt("activeWorkOrders", 0),
+        overdueWorkOrders = optInt("overdueWorkOrders", 0),
+        closedWorkOrders = optInt("closedWorkOrders", 0),
+        vehiclesTotal = optInt("vehiclesTotal", 0),
+        reservationsTotal = optInt("reservationsTotal", 0),
+        documentsTotal = optInt("documentsTotal", 0),
+        trainingsTotal = optInt("trainingsTotal", 0),
+        clientPortalTotal = optInt("clientPortalTotal", 0),
+        rulebooksTotal = optInt("rulebooksTotal", 0),
+    )
+}
+
+private fun JSONObject?.toStringMap(): Map<String, String> {
+    if (this == null) return emptyMap()
+    return buildMap {
+        keys().forEach { key ->
+            val value = opt(key)
+            if (value != null && value != JSONObject.NULL) {
+                val text = value.toString().trim()
+                if (text.isNotBlank() && text != "null") {
+                    put(key, text)
+                }
+            }
+        }
+    }
+}
+
+private fun JSONArray?.toRecords(): List<MobileRecord> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            val item = optJSONObject(index) ?: continue
+            add(
+                MobileRecord(
+                    id = item.firstClean("id"),
+                    title = item.firstClean("title").ifBlank { "Zapis" },
+                    subtitle = item.firstClean("subtitle"),
+                    status = item.firstClean("status"),
+                    kind = item.firstClean("kind"),
+                    date = item.firstClean("date"),
+                    relatedId = item.firstClean("relatedId"),
+                    coordinates = item.firstClean("coordinates"),
+                    meta = item.optJSONObject("meta").toStringMap(),
+                ),
+            )
+        }
+    }.sortedWith(
+        compareBy<MobileRecord> { if (it.parsedDate == null) 1 else 0 }
+            .thenBy { it.parsedDate }
+            .thenBy { it.title.lowercase() },
+    )
 }
 
 private fun JSONArray?.toWorkOrders(): List<WorkOrder> {
