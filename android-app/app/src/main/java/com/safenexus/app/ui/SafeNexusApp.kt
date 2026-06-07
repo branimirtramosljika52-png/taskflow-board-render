@@ -4,6 +4,8 @@ package com.safenexus.app.ui
 
 import android.annotation.SuppressLint
 import android.app.Application
+import android.content.Context
+import android.content.ContextWrapper
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -11,6 +13,8 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -51,6 +55,7 @@ import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.FilterList
+import androidx.compose.material.icons.rounded.Fingerprint
 import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Mail
@@ -89,6 +94,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -96,6 +102,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewModelScope
@@ -122,8 +130,12 @@ enum class WorkOrderViewMode(val label: String) {
     Map("Karta"),
 }
 
+private val biometricAuthenticators =
+    BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
+
 data class AppState(
     val user: SafeNexusUser? = null,
+    val rememberedUser: SafeNexusUser? = null,
     val workOrders: List<WorkOrder> = emptyList(),
     val selectedWorkOrder: WorkOrder? = null,
     val query: String = "",
@@ -142,14 +154,24 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         private set
 
     init {
-        restoreStoredSession()
+        loadRememberedSession()
     }
 
-    private fun restoreStoredSession() {
-        val storedSession = authStore.load() ?: return
+    private fun loadRememberedSession() {
+        val storedSession = authStore.load()
+        state = state.copy(rememberedUser = storedSession?.user)
+    }
+
+    fun unlockRememberedSession() {
+        val storedSession = authStore.load()
+        if (storedSession == null) {
+            shouldRememberSession = false
+            state = state.copy(rememberedUser = null, error = "Nema spremljene prijave. Prijavi se emailom i lozinkom.")
+            return
+        }
         shouldRememberSession = true
         api.restoreSession(storedSession.accessToken, storedSession.cookieHeader)
-        state = state.copy(user = storedSession.user, isLoading = true, error = "")
+        state = state.copy(user = storedSession.user, rememberedUser = storedSession.user, isLoading = true, error = "")
         refresh()
     }
 
@@ -168,7 +190,12 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                     } else {
                         authStore.clear()
                     }
-                    state = state.copy(user = user, isLoading = false, error = "")
+                    state = state.copy(
+                        user = user,
+                        rememberedUser = if (rememberSession) user else null,
+                        isLoading = false,
+                        error = "",
+                    )
                     refresh()
                 }
                 .onFailure { error ->
@@ -254,7 +281,9 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
             LoginScreen(
                 isLoading = state.isLoading,
                 error = state.error,
+                rememberedUser = state.rememberedUser,
                 onLogin = viewModel::login,
+                onUnlockRememberedSession = viewModel::unlockRememberedSession,
             )
         }
     }
@@ -264,13 +293,18 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
 private fun LoginScreen(
     isLoading: Boolean,
     error: String,
+    rememberedUser: SafeNexusUser?,
     onLogin: (String, String, Boolean) -> Unit,
+    onUnlockRememberedSession: () -> Unit,
 ) {
-    var email by remember { mutableStateOf("") }
+    var email by remember(rememberedUser?.email) { mutableStateOf(rememberedUser?.email.orEmpty()) }
     var password by remember { mutableStateOf("") }
     var rememberSession by remember { mutableStateOf(true) }
+    var biometricError by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    val displayedError = error.ifBlank { biometricError }
 
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxSize()
             .background(
@@ -281,11 +315,12 @@ private fun LoginScreen(
                 ),
             )
             .padding(WindowInsets.safeDrawing.asPaddingValues())
-            .padding(horizontal = 22.dp, vertical = 18.dp),
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 22.dp, vertical = 22.dp),
+        verticalArrangement = Arrangement.Center,
     ) {
         Column(
             modifier = Modifier
-                .align(Alignment.Center)
                 .fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
@@ -350,6 +385,20 @@ private fun LoginScreen(
                             color = Color(0xFF64748B),
                         )
                     }
+                    if (rememberedUser != null) {
+                        RememberedSessionCard(
+                            user = rememberedUser,
+                            isLoading = isLoading,
+                            onBiometricLogin = {
+                                biometricError = ""
+                                requestBiometricLogin(
+                                    context = context,
+                                    onSuccess = onUnlockRememberedSession,
+                                    onError = { biometricError = it },
+                                )
+                            },
+                        )
+                    }
                     OutlinedTextField(
                         value = email,
                         onValueChange = { email = it },
@@ -399,11 +448,14 @@ private fun LoginScreen(
                             )
                         }
                     }
-                    AnimatedVisibility(error.isNotBlank(), enter = fadeIn(), exit = fadeOut()) {
-                        MessageCard(text = error, isError = true)
+                    AnimatedVisibility(displayedError.isNotBlank(), enter = fadeIn(), exit = fadeOut()) {
+                        MessageCard(text = displayedError, isError = true)
                     }
                     Button(
-                        onClick = { onLogin(email, password, rememberSession) },
+                        onClick = {
+                            biometricError = ""
+                            onLogin(email, password, rememberSession)
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(56.dp),
@@ -441,6 +493,134 @@ private fun LoginMetricPill(text: String) {
             fontWeight = FontWeight.Bold,
         )
     }
+}
+
+@Composable
+private fun RememberedSessionCard(
+    user: SafeNexusUser,
+    isLoading: Boolean,
+    onBiometricLogin: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        color = Color(0xFFEFF6FF),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Spremljena prijava",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = Color(0xFF1D4ED8),
+                        fontWeight = FontWeight.Black,
+                    )
+                    Text(
+                        text = user.displayName.ifBlank { user.email },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color(0xFF0F172A),
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Icon(
+                    imageVector = Icons.Rounded.Fingerprint,
+                    contentDescription = null,
+                    tint = Color(0xFF2563EB),
+                    modifier = Modifier.size(34.dp),
+                )
+            }
+            Button(
+                onClick = onBiometricLogin,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp),
+                enabled = !isLoading,
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F172A)),
+            ) {
+                Icon(Icons.Rounded.Fingerprint, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Otključaj otiskom", fontWeight = FontWeight.Black)
+            }
+        }
+    }
+}
+
+private fun requestBiometricLogin(
+    context: Context,
+    onSuccess: () -> Unit,
+    onError: (String) -> Unit,
+) {
+    val activity = context.findFragmentActivity()
+    if (activity == null) {
+        onError("Biometrijska prijava nije dostupna u ovom prikazu.")
+        return
+    }
+
+    val biometricManager = BiometricManager.from(context)
+    val availability = biometricManager.canAuthenticate(biometricAuthenticators)
+    if (availability != BiometricManager.BIOMETRIC_SUCCESS) {
+        onError(biometricAvailabilityMessage(availability))
+        return
+    }
+
+    val prompt = BiometricPrompt(
+        activity,
+        ContextCompat.getMainExecutor(context),
+        object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                onSuccess()
+            }
+
+            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                if (
+                    errorCode == BiometricPrompt.ERROR_CANCELED ||
+                    errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON ||
+                    errorCode == BiometricPrompt.ERROR_USER_CANCELED
+                ) {
+                    return
+                }
+                onError(errString.toString().ifBlank { "Biometrijska prijava nije uspjela." })
+            }
+
+            override fun onAuthenticationFailed() {
+                onError("Otisak nije prepoznat. Pokusaj ponovno.")
+            }
+        },
+    )
+
+    val promptInfo = BiometricPrompt.PromptInfo.Builder()
+        .setTitle("Otključaj SafeNexus")
+        .setSubtitle("Potvrdi identitet za spremljenu prijavu.")
+        .setAllowedAuthenticators(biometricAuthenticators)
+        .build()
+
+    prompt.authenticate(promptInfo)
+}
+
+private tailrec fun Context.findFragmentActivity(): FragmentActivity? = when (this) {
+    is FragmentActivity -> this
+    is ContextWrapper -> baseContext.findFragmentActivity()
+    else -> null
+}
+
+private fun biometricAvailabilityMessage(status: Int): String = when (status) {
+    BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE -> "Senzor otiska trenutno nije dostupan."
+    BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED -> "Na mobitelu prvo dodaj otisak prsta ili zaključavanje zaslona."
+    BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE -> "Ovaj mobitel nema podržanu biometrijsku prijavu."
+    BiometricManager.BIOMETRIC_ERROR_SECURITY_UPDATE_REQUIRED -> "Mobitel treba sigurnosno ažuriranje za biometrijsku prijavu."
+    BiometricManager.BIOMETRIC_ERROR_UNSUPPORTED -> "Ova verzija uređaja ne podržava traženi način biometrijske prijave."
+    BiometricManager.BIOMETRIC_STATUS_UNKNOWN -> "Ne mogu provjeriti biometrijsku prijavu na ovom uređaju."
+    else -> "Biometrijska prijava nije dostupna."
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

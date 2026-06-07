@@ -76,7 +76,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.6.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.7.apk";
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
@@ -99,6 +99,7 @@ function buildAndroidDownloadPage() {
       --line: #dbe7ff;
       --blue: #2563eb;
       --blue-dark: #1d4ed8;
+      --cyan: #06b6d4;
     }
     * { box-sizing: border-box; }
     body {
@@ -155,7 +156,7 @@ function buildAndroidDownloadPage() {
       min-height: 58px;
       padding: 14px 18px;
       border-radius: 16px;
-      background: linear-gradient(135deg, var(--blue), #06b6d4);
+      background: linear-gradient(135deg, var(--blue), var(--cyan));
       color: white;
       text-decoration: none;
       font-weight: 800;
@@ -163,16 +164,18 @@ function buildAndroidDownloadPage() {
       box-shadow: 0 16px 34px rgba(37, 99, 235, 0.28);
     }
     a.button:active { transform: translateY(1px); }
-    .copy {
+    a.copy {
       display: block;
       overflow-wrap: anywhere;
       padding: 12px 14px;
       border: 1px solid var(--line);
       border-radius: 14px;
       background: #f8fafc;
-      color: #334155;
+      color: var(--blue-dark);
       font-size: 13px;
       line-height: 1.45;
+      text-decoration: underline;
+      text-underline-offset: 3px;
     }
     .note {
       margin-top: 18px;
@@ -188,7 +191,7 @@ function buildAndroidDownloadPage() {
     <p>Ovo je instalacijska datoteka za Safe Nexus Android aplikaciju.</p>
     <div class="actions">
       <a class="button" href="${apkUrl}" download="${MOBILE_ANDROID_APK_FILE_NAME}">Preuzmi APK</a>
-      <span class="copy">https://taskflow-board-do-cai56.ondigitalocean.app${apkUrl}</span>
+      <a class="copy" href="${apkUrl}" download="${MOBILE_ANDROID_APK_FILE_NAME}">https://taskflow-board-do-cai56.ondigitalocean.app${apkUrl}</a>
     </div>
     <p class="note">Ako mobitel pita za dopuštenje instalacije iz preglednika, uključi ga za taj preglednik i ponovi instalaciju.</p>
   </main>
