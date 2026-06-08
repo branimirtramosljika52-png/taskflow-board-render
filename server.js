@@ -4406,11 +4406,11 @@ async function addFingerSignatureToWorkOrderPdf(pdfBuffer = Buffer.alloc(0), sig
     : await pdfDoc.embedPng(signatureBuffer);
 
   const { width: pageWidth } = page.getSize();
-  const boxWidth = Math.min(320, Math.max(220, pageWidth - 84));
-  const boxHeight = 150;
-  const x = Math.max(36, pageWidth - boxWidth - 42);
-  const y = 42;
-  const padding = 12;
+  const boxWidth = Math.min(232, Math.max(190, pageWidth - 84));
+  const boxHeight = 104;
+  const x = Math.max(34, pageWidth - boxWidth - 34);
+  const y = 36;
+  const padding = 8;
   const label = normalizePdfStampText(options.label || "Potpis narucitelja", 70);
   const includeSignerName = options.includeSignerName !== false;
   const includeSignedAt = options.includeSignedAt !== false;
@@ -4418,10 +4418,9 @@ async function addFingerSignatureToWorkOrderPdf(pdfBuffer = Buffer.alloc(0), sig
   const signerName = includeSignerName ? normalizePdfStampText(options.signerName || "", 74) : "";
   const signedAt = includeSignedAt ? normalizePdfStampText(formatWorkOrderSignatureTimestamp(options.signedAt), 58) : "";
   const rawSignatureLocation = includeSignatureLocation ? String(options.signatureLocation || "").trim() : "";
-  const signatureLocation = normalizePdfStampText(rawSignatureLocation, 92);
   const googleMapsUrl = includeSignatureLocation ? getGoogleMapsUrlForSignatureLocation(rawSignatureLocation) : "";
   const imageMaxWidth = boxWidth - (padding * 2);
-  const imageMaxHeight = 44;
+  const imageMaxHeight = 32;
   const scale = Math.min(
     imageMaxWidth / Math.max(1, signatureImage.width),
     imageMaxHeight / Math.max(1, signatureImage.height),
@@ -4430,7 +4429,7 @@ async function addFingerSignatureToWorkOrderPdf(pdfBuffer = Buffer.alloc(0), sig
   const imageWidth = Math.max(1, signatureImage.width * scale);
   const imageHeight = Math.max(1, signatureImage.height * scale);
   const imageX = x + padding + Math.max(0, (imageMaxWidth - imageWidth) / 2);
-  const imageY = y + 76;
+  const imageY = y + 58;
 
   page.drawRectangle({
     x,
@@ -4438,14 +4437,14 @@ async function addFingerSignatureToWorkOrderPdf(pdfBuffer = Buffer.alloc(0), sig
     width: boxWidth,
     height: boxHeight,
     color: rgb(1, 1, 1),
-    opacity: 0.92,
+    opacity: 0.86,
     borderColor: rgb(0.71, 0.78, 0.88),
-    borderWidth: 0.8,
+    borderWidth: 0.55,
   });
   page.drawText(label, {
     x: x + padding,
-    y: y + boxHeight - 20,
-    size: 8,
+    y: y + boxHeight - 14,
+    size: 6.4,
     color: rgb(0.17, 0.24, 0.39),
   });
   page.drawImage(signatureImage, {
@@ -4455,49 +4454,45 @@ async function addFingerSignatureToWorkOrderPdf(pdfBuffer = Buffer.alloc(0), sig
     height: imageHeight,
   });
   page.drawLine({
-    start: { x: x + padding, y: y + 68 },
-    end: { x: x + boxWidth - padding, y: y + 68 },
-    thickness: 0.8,
+    start: { x: x + padding, y: y + 51 },
+    end: { x: x + boxWidth - padding, y: y + 51 },
+    thickness: 0.65,
     color: rgb(0.27, 0.35, 0.49),
   });
 
+  const signatureLocationText = googleMapsUrl
+    ? "Lokacija: Google Maps"
+    : normalizePdfStampText(rawSignatureLocation ? `Lokacija: ${rawSignatureLocation}` : "", 58);
   const metadataLines = [
-    signerName ? `Ime i prezime: ${signerName}` : "",
-    signedAt ? `Datum i vrijeme: ${signedAt}` : "",
-    signatureLocation ? `Lokacija: ${signatureLocation}` : "",
+    signerName ? { text: `Potpisnik: ${signerName}` } : null,
+    signedAt ? { text: `Vrijeme: ${signedAt}` } : null,
+    signatureLocationText ? { text: signatureLocationText, url: googleMapsUrl } : null,
   ].filter(Boolean);
   metadataLines.forEach((line, index) => {
-    page.drawText(normalizePdfStampText(line, 92), {
+    const lineY = y + 40 - (index * 9);
+    const isLink = Boolean(line.url);
+    page.drawText(normalizePdfStampText(line.text, 62), {
       x: x + padding,
-      y: y + 51 - (index * 12),
-      size: 7,
-      color: rgb(0.30, 0.38, 0.52),
+      y: lineY,
+      size: 5.8,
+      color: isLink ? rgb(0.05, 0.32, 0.78) : rgb(0.30, 0.38, 0.52),
     });
+    if (isLink) {
+      page.drawLine({
+        start: { x: x + padding, y: lineY - 1.4 },
+        end: { x: x + padding + 64, y: lineY - 1.4 },
+        thickness: 0.4,
+        color: rgb(0.05, 0.32, 0.78),
+      });
+      addPdfLinkAnnotation(pdfDoc, page, {
+        x: x + padding,
+        y: lineY - 2,
+        width: 72,
+        height: 8,
+        url: line.url,
+      });
+    }
   });
-
-  if (googleMapsUrl) {
-    const linkText = "Google Maps lokacija";
-    const linkY = y + 51 - (metadataLines.length * 12);
-    page.drawText(linkText, {
-      x: x + padding,
-      y: linkY,
-      size: 7,
-      color: rgb(0.05, 0.32, 0.78),
-    });
-    page.drawLine({
-      start: { x: x + padding, y: linkY - 2 },
-      end: { x: x + padding + 72, y: linkY - 2 },
-      thickness: 0.5,
-      color: rgb(0.05, 0.32, 0.78),
-    });
-    addPdfLinkAnnotation(pdfDoc, page, {
-      x: x + padding,
-      y: linkY - 2,
-      width: 82,
-      height: 10,
-      url: googleMapsUrl,
-    });
-  }
 
   return Buffer.from(await pdfDoc.save());
 }
