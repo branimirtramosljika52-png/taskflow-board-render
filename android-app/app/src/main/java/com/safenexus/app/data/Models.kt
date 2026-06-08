@@ -11,6 +11,12 @@ data class BootstrapData(
     val workOrders: List<WorkOrder> = emptyList(),
     val companies: List<MobileRecord> = emptyList(),
     val locations: List<MobileRecord> = emptyList(),
+    val workOrderStatuses: List<OptionItem> = emptyList(),
+    val priorities: List<OptionItem> = emptyList(),
+    val workOrderCompanies: List<WorkOrderCompanyOption> = emptyList(),
+    val workOrderLocations: List<WorkOrderLocationOption> = emptyList(),
+    val workOrderUsers: List<WorkOrderUserOption> = emptyList(),
+    val workOrderServices: List<WorkOrderServiceOption> = emptyList(),
     val vehicles: List<MobileRecord> = emptyList(),
     val documentRecords: List<MobileRecord> = emptyList(),
     val peopleTrainingRecords: List<MobileRecord> = emptyList(),
@@ -18,6 +24,77 @@ data class BootstrapData(
     val rulebooks: List<MobileRecord> = emptyList(),
     val calendarEvents: List<MobileRecord> = emptyList(),
     val dashboard: DashboardStats = DashboardStats(),
+)
+
+data class OptionItem(
+    val value: String,
+    val label: String,
+)
+
+data class WorkOrderCompanyOption(
+    val id: String,
+    val name: String,
+    val oib: String,
+    val headquarters: String,
+    val contractType: String,
+    val contactPhone: String,
+    val contactEmail: String,
+)
+
+data class WorkOrderLocationOption(
+    val id: String,
+    val companyId: String,
+    val name: String,
+    val coordinates: String,
+    val region: String,
+    val contactName1: String,
+    val contactPhone1: String,
+    val contactEmail1: String,
+    val contactName2: String,
+    val contactPhone2: String,
+    val contactEmail2: String,
+    val contactName3: String,
+    val contactPhone3: String,
+    val contactEmail3: String,
+)
+
+data class WorkOrderUserOption(
+    val id: String,
+    val label: String,
+    val fullName: String,
+    val email: String,
+)
+
+data class WorkOrderServiceOption(
+    val id: String,
+    val name: String,
+    val serviceCode: String,
+    val type: String,
+    val validityMonths: String,
+    val note: String,
+)
+
+data class WorkOrderCreateDraft(
+    val companyId: String,
+    val locationId: String,
+    val status: String,
+    val openedDate: String,
+    val dueDate: String,
+    val executionDate: String,
+    val priority: String,
+    val serviceLine: String,
+    val serviceIds: List<String>,
+    val description: String,
+    val executors: List<String>,
+    val completedBy: String,
+    val teamLabel: String,
+    val contactName: String,
+    val contactPhone: String,
+    val contactEmail: String,
+    val tagText: String,
+    val invoiceNote: String,
+    val linkReference: String,
+    val department: String,
 )
 
 data class DashboardStats(

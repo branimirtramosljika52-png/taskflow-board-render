@@ -66,6 +66,7 @@ import {
 } from "./src/webAuth.js";
 import {
   PERSON_TRAINING_TYPE_OPTIONS,
+  PRIORITY_OPTIONS,
   WORK_ORDER_STATUS_OPTIONS,
   doesAbsenceTypeRequireApproval,
 } from "./src/safetyModel.js";
@@ -76,7 +77,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.18.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.19.apk";
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
@@ -9440,6 +9441,78 @@ function buildMobileDashboard(scopedSnapshot = {}, workOrders = []) {
   };
 }
 
+function buildMobileWorkOrderCompanyOptions(companies = []) {
+  return (companies ?? [])
+    .map((company) => ({
+      id: normalizeInputValue(company.id),
+      name: normalizeInputValue(company.name),
+      oib: normalizeInputValue(company.oib),
+      headquarters: normalizeInputValue(company.headquarters),
+      contractType: normalizeInputValue(company.contractType),
+      contactPhone: normalizeInputValue(company.contactPhone),
+      contactEmail: normalizeInputValue(company.contactEmail),
+      isActive: company.isActive !== false,
+    }))
+    .filter((company) => company.id && company.name)
+    .sort((left, right) => left.name.localeCompare(right.name, "hr"));
+}
+
+function buildMobileWorkOrderLocationOptions(locations = []) {
+  return (locations ?? [])
+    .map((location) => ({
+      id: normalizeInputValue(location.id),
+      companyId: normalizeInputValue(location.companyId),
+      name: normalizeInputValue(location.name || location.locationName),
+      coordinates: normalizeInputValue(location.coordinates),
+      region: normalizeInputValue(location.region),
+      contactName1: normalizeInputValue(location.contactName1),
+      contactPhone1: normalizeInputValue(location.contactPhone1),
+      contactEmail1: normalizeInputValue(location.contactEmail1),
+      contactName2: normalizeInputValue(location.contactName2),
+      contactPhone2: normalizeInputValue(location.contactPhone2),
+      contactEmail2: normalizeInputValue(location.contactEmail2),
+      contactName3: normalizeInputValue(location.contactName3),
+      contactPhone3: normalizeInputValue(location.contactPhone3),
+      contactEmail3: normalizeInputValue(location.contactEmail3),
+      isActive: location.isActive !== false,
+    }))
+    .filter((location) => location.id && location.companyId && location.name)
+    .sort((left, right) => left.name.localeCompare(right.name, "hr"));
+}
+
+function buildMobileWorkOrderUserOptions(users = []) {
+  return (users ?? [])
+    .filter((user) => user?.isActive !== false)
+    .map((user) => {
+      const fullName = normalizeInputValue(user.fullName || [user.firstName, user.lastName].filter(Boolean).join(" "));
+      const email = normalizeInputValue(user.email);
+      const label = fullName || email || normalizeInputValue(user.username);
+      return {
+        id: normalizeInputValue(user.id),
+        label,
+        fullName,
+        email,
+      };
+    })
+    .filter((user) => user.label)
+    .sort((left, right) => left.label.localeCompare(right.label, "hr"));
+}
+
+function buildMobileWorkOrderServiceOptions(serviceCatalog = []) {
+  return (serviceCatalog ?? [])
+    .filter((service) => normalizeInputValue(service.status || "active").toLowerCase() !== "inactive")
+    .map((service) => ({
+      id: normalizeInputValue(service.id),
+      name: normalizeInputValue(service.name),
+      serviceCode: normalizeInputValue(service.serviceCode || service.code),
+      type: normalizeInputValue(service.type || "inspection"),
+      validityMonths: normalizeInputValue(service.validityMonths),
+      note: normalizeInputValue(service.note),
+    }))
+    .filter((service) => service.id && (service.name || service.serviceCode))
+    .sort((left, right) => (left.name || left.serviceCode).localeCompare(right.name || right.serviceCode, "hr"));
+}
+
 async function writeMobileBootstrap(response, user, request) {
   const { scopedSnapshot } = await getScopedState(user, request);
   const workOrders = (scopedSnapshot.workOrders ?? [])
@@ -9513,6 +9586,11 @@ async function writeMobileBootstrap(response, user, request) {
     user,
     options: {
       workOrderStatuses: WORK_ORDER_STATUS_OPTIONS,
+      priorities: PRIORITY_OPTIONS,
+      workOrderCompanies: buildMobileWorkOrderCompanyOptions(scopedSnapshot.companies),
+      workOrderLocations: buildMobileWorkOrderLocationOptions(scopedSnapshot.locations),
+      workOrderUsers: buildMobileWorkOrderUserOptions(scopedSnapshot.users),
+      workOrderServices: buildMobileWorkOrderServiceOptions(scopedSnapshot.serviceCatalog),
     },
     dashboard: buildMobileDashboard(scopedSnapshot, workOrders),
     workOrders,

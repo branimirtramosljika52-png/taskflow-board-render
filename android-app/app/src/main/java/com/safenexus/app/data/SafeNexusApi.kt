@@ -66,6 +66,12 @@ class SafeNexusApi(
                 workOrders = json.optJSONArray("workOrders").toWorkOrders(),
                 companies = json.optJSONArray("companies").toRecords(),
                 locations = json.optJSONArray("locations").toRecords(),
+                workOrderStatuses = json.optJSONObject("options")?.optJSONArray("workOrderStatuses").toOptions(),
+                priorities = json.optJSONObject("options")?.optJSONArray("priorities").toOptions(),
+                workOrderCompanies = json.optJSONObject("options")?.optJSONArray("workOrderCompanies").toWorkOrderCompanies(),
+                workOrderLocations = json.optJSONObject("options")?.optJSONArray("workOrderLocations").toWorkOrderLocations(),
+                workOrderUsers = json.optJSONObject("options")?.optJSONArray("workOrderUsers").toWorkOrderUsers(),
+                workOrderServices = json.optJSONObject("options")?.optJSONArray("workOrderServices").toWorkOrderServices(),
                 vehicles = json.optJSONArray("vehicles").toRecords(),
                 documentRecords = json.optJSONArray("documentRecords").toRecords(),
                 peopleTrainingRecords = json.optJSONArray("peopleTrainingRecords").toRecords(),
@@ -74,6 +80,41 @@ class SafeNexusApi(
                 calendarEvents = json.optJSONArray("calendarEvents").toRecords(),
                 dashboard = json.optJSONObject("dashboard").toDashboardStats(),
             )
+        }
+    }
+
+    suspend fun createWorkOrder(draft: WorkOrderCreateDraft): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val serviceItems = JSONArray()
+            draft.serviceIds.forEach { serviceId ->
+                serviceItems.put(JSONObject().put("serviceId", serviceId))
+            }
+            val payload = JSONObject()
+                .put("companyId", draft.companyId)
+                .put("locationId", draft.locationId)
+                .put("status", draft.status)
+                .put("openedDate", draft.openedDate)
+                .put("dueDate", draft.dueDate)
+                .put("executionDate", draft.executionDate)
+                .put("priority", draft.priority)
+                .put("serviceLine", draft.serviceLine)
+                .put("serviceItems", serviceItems)
+                .put("description", draft.description)
+                .put("executors", JSONArray(draft.executors))
+                .put("executor1", draft.executors.getOrNull(0).orEmpty())
+                .put("executor2", draft.executors.getOrNull(1).orEmpty())
+                .put("completedBy", draft.completedBy)
+                .put("teamLabel", draft.teamLabel)
+                .put("contactName", draft.contactName)
+                .put("contactPhone", draft.contactPhone)
+                .put("contactEmail", draft.contactEmail)
+                .put("tagText", draft.tagText)
+                .put("invoiceNote", draft.invoiceNote)
+                .put("linkReference", draft.linkReference)
+                .put("department", draft.department)
+                .toString()
+            request("/api/work-orders", method = "POST", body = payload)
+            Unit
         }
     }
 
@@ -367,6 +408,101 @@ private fun JSONArray?.toRecords(): List<MobileRecord> {
             .thenBy { it.parsedDate }
             .thenBy { it.title.lowercase() },
     )
+}
+
+private fun JSONArray?.toOptions(): List<OptionItem> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            val item = optJSONObject(index) ?: continue
+            val value = item.firstClean("value")
+            val label = item.firstClean("label").ifBlank { value }
+            if (value.isNotBlank()) add(OptionItem(value, label))
+        }
+    }
+}
+
+private fun JSONArray?.toWorkOrderCompanies(): List<WorkOrderCompanyOption> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            val item = optJSONObject(index) ?: continue
+            add(
+                WorkOrderCompanyOption(
+                    id = item.firstClean("id"),
+                    name = item.firstClean("name"),
+                    oib = item.firstClean("oib"),
+                    headquarters = item.firstClean("headquarters"),
+                    contractType = item.firstClean("contractType"),
+                    contactPhone = item.firstClean("contactPhone"),
+                    contactEmail = item.firstClean("contactEmail"),
+                ),
+            )
+        }
+    }.filter { it.id.isNotBlank() && it.name.isNotBlank() }
+}
+
+private fun JSONArray?.toWorkOrderLocations(): List<WorkOrderLocationOption> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            val item = optJSONObject(index) ?: continue
+            add(
+                WorkOrderLocationOption(
+                    id = item.firstClean("id"),
+                    companyId = item.firstClean("companyId"),
+                    name = item.firstClean("name"),
+                    coordinates = item.firstClean("coordinates"),
+                    region = item.firstClean("region"),
+                    contactName1 = item.firstClean("contactName1"),
+                    contactPhone1 = item.firstClean("contactPhone1"),
+                    contactEmail1 = item.firstClean("contactEmail1"),
+                    contactName2 = item.firstClean("contactName2"),
+                    contactPhone2 = item.firstClean("contactPhone2"),
+                    contactEmail2 = item.firstClean("contactEmail2"),
+                    contactName3 = item.firstClean("contactName3"),
+                    contactPhone3 = item.firstClean("contactPhone3"),
+                    contactEmail3 = item.firstClean("contactEmail3"),
+                ),
+            )
+        }
+    }.filter { it.id.isNotBlank() && it.companyId.isNotBlank() && it.name.isNotBlank() }
+}
+
+private fun JSONArray?.toWorkOrderUsers(): List<WorkOrderUserOption> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            val item = optJSONObject(index) ?: continue
+            add(
+                WorkOrderUserOption(
+                    id = item.firstClean("id"),
+                    label = item.firstClean("label"),
+                    fullName = item.firstClean("fullName"),
+                    email = item.firstClean("email"),
+                ),
+            )
+        }
+    }.filter { it.label.isNotBlank() }
+}
+
+private fun JSONArray?.toWorkOrderServices(): List<WorkOrderServiceOption> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            val item = optJSONObject(index) ?: continue
+            add(
+                WorkOrderServiceOption(
+                    id = item.firstClean("id"),
+                    name = item.firstClean("name"),
+                    serviceCode = item.firstClean("serviceCode"),
+                    type = item.firstClean("type"),
+                    validityMonths = item.firstClean("validityMonths"),
+                    note = item.firstClean("note"),
+                ),
+            )
+        }
+    }.filter { it.id.isNotBlank() && (it.name.isNotBlank() || it.serviceCode.isNotBlank()) }
 }
 
 private fun JSONArray?.toWorkOrderDocuments(): List<WorkOrderDocument> {

@@ -48,6 +48,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -149,8 +150,13 @@ import com.safenexus.app.data.SafeNexusApi
 import com.safenexus.app.data.SafeNexusAuthStore
 import com.safenexus.app.data.SafeNexusUser
 import com.safenexus.app.data.WorkOrder
+import com.safenexus.app.data.WorkOrderCompanyOption
+import com.safenexus.app.data.WorkOrderCreateDraft
 import com.safenexus.app.data.WorkOrderDocument
+import com.safenexus.app.data.WorkOrderLocationOption
+import com.safenexus.app.data.WorkOrderServiceOption
 import com.safenexus.app.data.WorkOrderUploadFile
+import com.safenexus.app.data.WorkOrderUserOption
 import com.safenexus.app.data.parseDateOrNull
 import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
@@ -281,6 +287,7 @@ data class AppState(
     val workOrders: List<WorkOrder> = emptyList(),
     val selectedWorkOrder: WorkOrder? = null,
     val selectedRecord: MobileRecord? = null,
+    val isCreatingWorkOrder: Boolean = false,
     val section: AppSection = AppSection.Operations,
     val query: String = "",
     val filter: WorkOrderFilter = WorkOrderFilter.All,
@@ -399,13 +406,14 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun updateSection(value: AppSection) {
-        state = state.copy(section = value, selectedRecord = null)
+        state = state.copy(section = value, selectedRecord = null, isCreatingWorkOrder = false)
     }
 
     fun selectWorkOrder(value: WorkOrder?) {
         state = state.copy(
             selectedWorkOrder = value,
             selectedRecord = null,
+            isCreatingWorkOrder = false,
             workOrderDocumentsWorkOrderId = value?.id.orEmpty(),
             workOrderDocuments = emptyList(),
             workOrderDocumentsLoading = value != null,
@@ -416,14 +424,49 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun selectRecord(value: MobileRecord?) {
-        state = state.copy(selectedRecord = value, selectedWorkOrder = null)
+        state = state.copy(selectedRecord = value, selectedWorkOrder = null, isCreatingWorkOrder = false)
     }
 
-    fun showNewWorkOrderNotice() {
+    fun openWorkOrderCreate() {
         state = state.copy(
-            notice = "Novi radni nalog za sada dodaj kroz web aplikaciju. Mobilni unos RN-a ide u sljedećoj fazi.",
+            section = AppSection.WorkOrders,
+            selectedWorkOrder = null,
+            selectedRecord = null,
+            isCreatingWorkOrder = true,
             error = "",
+            notice = "",
         )
+    }
+
+    fun closeWorkOrderCreate() {
+        state = state.copy(isCreatingWorkOrder = false, error = "", notice = "")
+    }
+
+    fun createWorkOrder(draft: WorkOrderCreateDraft) {
+        if (draft.companyId.isBlank()) {
+            state = state.copy(error = "Odaberi naručitelja.")
+            return
+        }
+
+        state = state.copy(isLoading = true, error = "", notice = "")
+        viewModelScope.launch {
+            api.createWorkOrder(draft)
+                .onSuccess {
+                    state = state.copy(
+                        isLoading = false,
+                        isCreatingWorkOrder = false,
+                        section = AppSection.WorkOrders,
+                        notice = "Novi radni nalog je otvoren.",
+                    )
+                    refresh()
+                }
+                .onFailure { error ->
+                    state = state.copy(
+                        isLoading = false,
+                        error = error.message ?: "Ne mogu otvoriti radni nalog.",
+                    )
+                }
+        }
     }
 
     fun showError(message: String) {
@@ -724,6 +767,15 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
 
     AnimatedContent(targetState = state.user != null, label = "auth") { isSignedIn ->
         if (isSignedIn) {
+            if (state.isCreatingWorkOrder) {
+                WorkOrderCreateScreen(
+                    data = state.data,
+                    isLoading = state.isLoading,
+                    error = state.error,
+                    onBack = viewModel::closeWorkOrderCreate,
+                    onSave = viewModel::createWorkOrder,
+                )
+            } else {
             val selected = state.selectedWorkOrder
             if (selected == null) {
                 val selectedRecord = state.selectedRecord
@@ -738,7 +790,7 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                         onLogout = viewModel::logout,
                         onOpenWorkOrder = viewModel::selectWorkOrder,
                         onOpenRecord = openMobileRecord,
-                        onNewWorkOrder = viewModel::showNewWorkOrderNotice,
+                        onNewWorkOrder = viewModel::openWorkOrderCreate,
                         onStatusChange = viewModel::updateWorkOrderStatus,
                         onAddDocumentation = openDocumentationActions,
                     )
@@ -756,6 +808,7 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                     notice = state.notice,
                     documents = state.workOrderDocuments,
                     documentsLoading = state.workOrderDocumentsLoading,
+                    statusOptions = state.data.workOrderStatuses.map { it.value }.ifEmpty { workOrderStatusOptions },
                     onBack = { viewModel.selectWorkOrder(null) },
                     onStatusChange = viewModel::updateWorkOrderStatus,
                     onAddDocumentation = openDocumentationActions,
@@ -764,6 +817,7 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                     onDeleteDocument = viewModel::deleteWorkOrderDocument,
                     onRefreshDocuments = viewModel::refreshWorkOrderDocuments,
                 )
+            }
             }
         } else {
             LoginScreen(
@@ -1066,6 +1120,449 @@ private fun RememberedSessionCard(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun WorkOrderCreateScreen(
+    data: BootstrapData,
+    isLoading: Boolean,
+    error: String,
+    onBack: () -> Unit,
+    onSave: (WorkOrderCreateDraft) -> Unit,
+) {
+    var companyId by remember { mutableStateOf("") }
+    var locationId by remember { mutableStateOf("") }
+    var status by remember(data.workOrderStatuses) { mutableStateOf(data.workOrderStatuses.firstOrNull()?.value ?: "Otvoreni RN") }
+    var openedDate by remember { mutableStateOf(LocalDate.now().toString()) }
+    var dueDate by remember { mutableStateOf("") }
+    var executionDate by remember { mutableStateOf("") }
+    var priority by remember(data.priorities) { mutableStateOf(data.priorities.firstOrNull { it.value == "Normal" }?.value ?: "Normal") }
+    var serviceLine by remember { mutableStateOf("") }
+    var selectedServiceIds by remember { mutableStateOf(emptyList<String>()) }
+    var description by remember { mutableStateOf("") }
+    var selectedExecutors by remember { mutableStateOf(emptyList<String>()) }
+    var completedBy by remember { mutableStateOf("") }
+    var teamLabel by remember { mutableStateOf("") }
+    var contactName by remember { mutableStateOf("") }
+    var contactPhone by remember { mutableStateOf("") }
+    var contactEmail by remember { mutableStateOf("") }
+    var tagText by remember { mutableStateOf("") }
+    var invoiceNote by remember { mutableStateOf("") }
+    var linkReference by remember { mutableStateOf("") }
+    var department by remember { mutableStateOf("") }
+    val company = data.workOrderCompanies.firstOrNull { it.id == companyId }
+    val availableLocations = remember(companyId, data.workOrderLocations) {
+        data.workOrderLocations.filter { location -> companyId.isBlank() || location.companyId == companyId }
+    }
+    val selectedLocation = availableLocations.firstOrNull { it.id == locationId }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Rounded.ArrowBack, contentDescription = "Natrag")
+                    }
+                },
+                title = {
+                    Column {
+                        Text("Novi radni nalog", fontWeight = FontWeight.Bold)
+                        Text("Broj RN-a dodjeljuje se automatski", style = MaterialTheme.typography.labelMedium)
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+            )
+        },
+        containerColor = MaterialTheme.colorScheme.background,
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier
+                .padding(padding)
+                .fillMaxSize(),
+            contentPadding = PaddingValues(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            item {
+                Card(
+                    shape = RoundedCornerShape(26.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                ) {
+                    Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("Osnovni podaci", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+                        DetailRow(Icons.Rounded.Work, "Broj radnog naloga", "Automatski nakon spremanja")
+                        WorkOrderSelectField(
+                            label = "Naručitelj",
+                            value = companyId,
+                            valueLabel = company?.name.orEmpty(),
+                            options = data.workOrderCompanies.map { it.id to it.name },
+                            enabled = !isLoading,
+                            onSelect = { next ->
+                                companyId = next
+                                locationId = ""
+                                contactName = ""
+                                contactPhone = ""
+                                contactEmail = ""
+                            },
+                        )
+                        WorkOrderSelectField(
+                            label = "Lokacija",
+                            value = locationId,
+                            valueLabel = selectedLocation?.name.orEmpty(),
+                            options = availableLocations.map { it.id to it.name },
+                            enabled = !isLoading && companyId.isNotBlank(),
+                            onSelect = { next ->
+                                locationId = next
+                                availableLocations.firstOrNull { it.id == next }?.let { location ->
+                                    contactName = location.contactName1
+                                    contactPhone = location.contactPhone1
+                                    contactEmail = location.contactEmail1
+                                }
+                            },
+                        )
+                        if (company != null || selectedLocation != null) {
+                            Text(
+                                listOfNotNull(
+                                    company?.oib?.takeIf { it.isNotBlank() }?.let { "OIB $it" },
+                                    company?.headquarters?.takeIf { it.isNotBlank() },
+                                    selectedLocation?.region?.takeIf { it.isNotBlank() },
+                                ).joinToString(" · "),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            OutlinedTextField(
+                                value = openedDate,
+                                onValueChange = { openedDate = it },
+                                modifier = Modifier.weight(1f),
+                                label = { Text("Datum") },
+                                singleLine = true,
+                                enabled = !isLoading,
+                                shape = RoundedCornerShape(16.dp),
+                            )
+                            OutlinedTextField(
+                                value = dueDate,
+                                onValueChange = { dueDate = it },
+                                modifier = Modifier.weight(1f),
+                                label = { Text("Rok") },
+                                singleLine = true,
+                                enabled = !isLoading,
+                                shape = RoundedCornerShape(16.dp),
+                            )
+                        }
+                        WorkOrderSelectField(
+                            label = "Status",
+                            value = status,
+                            valueLabel = data.workOrderStatuses.firstOrNull { it.value == status }?.label ?: status,
+                            options = (data.workOrderStatuses.ifEmpty {
+                                listOf(
+                                    com.safenexus.app.data.OptionItem("Otvoreni RN", "Otvoreni RN"),
+                                    com.safenexus.app.data.OptionItem("Gotov RN", "Gotov RN"),
+                                    com.safenexus.app.data.OptionItem("Ovjeren RN", "Ovjeren RN"),
+                                )
+                            }).map { it.value to it.label },
+                            enabled = !isLoading,
+                            onSelect = { status = it },
+                        )
+                    }
+                }
+            }
+
+            item {
+                ExpandableFormSection(
+                    title = "Izvršitelji",
+                    summary = if (selectedExecutors.isEmpty()) "Nije dodijeljeno" else selectedExecutors.joinToString(", "),
+                    initiallyExpanded = true,
+                ) {
+                    WorkOrderMultiSelectChips(
+                        options = data.workOrderUsers.map { it.label to it.label },
+                        selected = selectedExecutors,
+                        enabled = !isLoading,
+                        emptyText = "Nema aktivnih korisnika za odabir.",
+                        onToggle = { value ->
+                            selectedExecutors = selectedExecutors.toggleValue(value)
+                        },
+                    )
+                    WorkOrderTextField("Odgovorna osoba", completedBy, { completedBy = it }, enabled = !isLoading)
+                    WorkOrderTextField("Tim / grupa", teamLabel, { teamLabel = it }, enabled = !isLoading)
+                }
+            }
+
+            item {
+                ExpandableFormSection(
+                    title = "Radovi",
+                    summary = serviceLine.ifBlank { "${selectedServiceIds.size} usluga" },
+                    initiallyExpanded = true,
+                ) {
+                    WorkOrderTextField("Naziv / usluga", serviceLine, { serviceLine = it }, enabled = !isLoading)
+                    WorkOrderMultiSelectChips(
+                        options = data.workOrderServices.map { service ->
+                            service.id to listOf(service.serviceCode, service.name).filter { it.isNotBlank() }.joinToString(" · ")
+                        },
+                        selected = selectedServiceIds,
+                        enabled = !isLoading,
+                        emptyText = "Katalog usluga nije dostupan.",
+                        onToggle = { value ->
+                            selectedServiceIds = selectedServiceIds.toggleValue(value)
+                            val selectedNames = data.workOrderServices
+                                .filter { service -> service.id in selectedServiceIds }
+                                .map { service -> service.name.ifBlank { service.serviceCode } }
+                                .filter { it.isNotBlank() }
+                            if (selectedNames.isNotEmpty()) {
+                                serviceLine = selectedNames.joinToString(" · ")
+                            }
+                        },
+                    )
+                    OutlinedTextField(
+                        value = description,
+                        onValueChange = { description = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(118.dp),
+                        label = { Text("Opis radova") },
+                        enabled = !isLoading,
+                        shape = RoundedCornerShape(16.dp),
+                    )
+                }
+            }
+
+            item {
+                ExpandableFormSection(
+                    title = "Kontakt i dodatni podaci",
+                    summary = listOf(contactName, priority, tagText).filter { it.isNotBlank() }.joinToString(" · ").ifBlank { "Opcionalno" },
+                    initiallyExpanded = false,
+                ) {
+                    WorkOrderSelectField(
+                        label = "Prioritet",
+                        value = priority,
+                        valueLabel = data.priorities.firstOrNull { it.value == priority }?.label ?: priority,
+                        options = (data.priorities.ifEmpty {
+                            listOf(
+                                com.safenexus.app.data.OptionItem("Urgent", "Urgent"),
+                                com.safenexus.app.data.OptionItem("High", "High"),
+                                com.safenexus.app.data.OptionItem("Normal", "Normal"),
+                                com.safenexus.app.data.OptionItem("Niski prioritet", "Niski prioritet"),
+                                com.safenexus.app.data.OptionItem("Bez prioriteta", "Bez prioriteta"),
+                            )
+                        }).map { it.value to it.label },
+                        enabled = !isLoading,
+                        onSelect = { priority = it },
+                    )
+                    WorkOrderTextField("Kontakt osoba", contactName, { contactName = it }, enabled = !isLoading)
+                    WorkOrderTextField("Kontakt telefon", contactPhone, { contactPhone = it }, enabled = !isLoading)
+                    WorkOrderTextField("Kontakt email", contactEmail, { contactEmail = it }, enabled = !isLoading)
+                    WorkOrderTextField("Datum izvršenja", executionDate, { executionDate = it }, enabled = !isLoading)
+                    WorkOrderTextField("Odjel", department, { department = it }, enabled = !isLoading)
+                    WorkOrderTextField("Tagovi", tagText, { tagText = it }, enabled = !isLoading)
+                    WorkOrderTextField("Veza RN", linkReference, { linkReference = it }, enabled = !isLoading)
+                    WorkOrderTextField("Interna napomena / faktura", invoiceNote, { invoiceNote = it }, enabled = !isLoading)
+                }
+            }
+
+            item {
+                ExpandableFormSection(
+                    title = "Dokumentacija",
+                    summary = "Dodaje se nakon spremanja RN-a",
+                    initiallyExpanded = false,
+                ) {
+                    DetailRow(Icons.Rounded.Description, "Dokumentacija", "Spremi radni nalog, zatim ga otvori i dodaj sken, PDF, fotografije ili datoteke.")
+                }
+            }
+
+            item {
+                AnimatedVisibility(error.isNotBlank()) {
+                    MessageCard(text = error, isError = true)
+                }
+            }
+            item {
+                Button(
+                    onClick = {
+                        onSave(
+                            WorkOrderCreateDraft(
+                                companyId = companyId,
+                                locationId = locationId,
+                                status = status,
+                                openedDate = openedDate,
+                                dueDate = dueDate,
+                                executionDate = executionDate,
+                                priority = priority,
+                                serviceLine = serviceLine,
+                                serviceIds = selectedServiceIds,
+                                description = description,
+                                executors = selectedExecutors,
+                                completedBy = completedBy,
+                                teamLabel = teamLabel,
+                                contactName = contactName,
+                                contactPhone = contactPhone,
+                                contactEmail = contactEmail,
+                                tagText = tagText,
+                                invoiceNote = invoiceNote,
+                                linkReference = linkReference,
+                                department = department,
+                            ),
+                        )
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    enabled = !isLoading && companyId.isNotBlank(),
+                    shape = RoundedCornerShape(18.dp),
+                ) {
+                    if (isLoading) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text("Otvori radni nalog", fontWeight = FontWeight.Black)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExpandableFormSection(
+    title: String,
+    summary: String,
+    initiallyExpanded: Boolean,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    var expanded by remember { mutableStateOf(initiallyExpanded) }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(modifier = Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded },
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                    Text(
+                        summary.ifBlank { "Opcionalno" },
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant) {
+                    Text(
+                        text = if (expanded) "-" else "+",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        fontWeight = FontWeight.Black,
+                    )
+                }
+            }
+            AnimatedVisibility(expanded) {
+                Column(verticalArrangement = Arrangement.spacedBy(11.dp), content = content)
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorkOrderTextField(
+    label: String,
+    value: String,
+    onChange: (String) -> Unit,
+    enabled: Boolean,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onChange,
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text(label) },
+        singleLine = true,
+        enabled = enabled,
+        shape = RoundedCornerShape(16.dp),
+    )
+}
+
+@Composable
+private fun WorkOrderSelectField(
+    label: String,
+    value: String,
+    valueLabel: String,
+    options: List<Pair<String, String>>,
+    enabled: Boolean,
+    onSelect: (String) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        OutlinedButton(
+            onClick = { expanded = true },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = enabled && options.isNotEmpty(),
+            shape = RoundedCornerShape(16.dp),
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 13.dp),
+        ) {
+            Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
+                Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
+                Text(
+                    valueLabel.ifBlank { "Odaberi" },
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.heightIn(max = 360.dp),
+        ) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            option.second,
+                            fontWeight = if (option.first == value) FontWeight.Black else FontWeight.Normal,
+                        )
+                    },
+                    onClick = {
+                        expanded = false
+                        onSelect(option.first)
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorkOrderMultiSelectChips(
+    options: List<Pair<String, String>>,
+    selected: List<String>,
+    enabled: Boolean,
+    emptyText: String,
+    onToggle: (String) -> Unit,
+) {
+    if (options.isEmpty()) {
+        Text(emptyText, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f))
+        return
+    }
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        options.take(80).forEach { option ->
+            FilterChip(
+                selected = option.first in selected,
+                onClick = { onToggle(option.first) },
+                enabled = enabled,
+                label = {
+                    Text(option.second, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                },
+            )
+        }
+    }
+}
+
+private fun List<String>.toggleValue(value: String): List<String> =
+    if (value in this) filterNot { it == value } else this + value
+
 private fun requestBiometricLogin(
     context: Context,
     onSuccess: () -> Unit,
@@ -1362,7 +1859,8 @@ private fun WorkOrdersScreen(
                     WorkOrderCard(
                         workOrder = entry.workOrder,
                         isLoading = state.isLoading,
-                            onClick = { onOpenWorkOrder(entry.workOrder) },
+                        statusOptions = state.data.workOrderStatuses.map { it.value }.ifEmpty { workOrderStatusOptions },
+                        onClick = { onOpenWorkOrder(entry.workOrder) },
                             onStatusChange = { status -> onStatusChange(entry.workOrder, status) },
                             onAddDocumentation = { onAddDocumentation(entry.workOrder) },
                         )
@@ -1377,6 +1875,7 @@ private fun WorkOrdersScreen(
                     WorkOrderCard(
                         workOrder = workOrder,
                         isLoading = state.isLoading,
+                        statusOptions = state.data.workOrderStatuses.map { it.value }.ifEmpty { workOrderStatusOptions },
                         onClick = { onOpenWorkOrder(workOrder) },
                         onStatusChange = { status -> onStatusChange(workOrder, status) },
                         onAddDocumentation = { onAddDocumentation(workOrder) },
@@ -3172,6 +3671,7 @@ private fun rnStatusStyle(workOrder: WorkOrder): RnStatusStyle {
 @Composable
 private fun RnStatusMenuChip(
     currentStatus: String,
+    statusOptions: List<String>,
     enabled: Boolean,
     onStatusSelected: (String) -> Unit,
 ) {
@@ -3214,7 +3714,7 @@ private fun RnStatusMenuChip(
             )
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            workOrderStatusOptions.forEach { status ->
+            statusOptions.ifEmpty { workOrderStatusOptions }.forEach { status ->
                 DropdownMenuItem(
                     text = {
                         Text(
@@ -3341,6 +3841,7 @@ private fun RnInfoBlock(
 private fun WorkOrderCard(
     workOrder: WorkOrder,
     isLoading: Boolean,
+    statusOptions: List<String>,
     onClick: () -> Unit,
     onStatusChange: (String) -> Unit,
     onAddDocumentation: () -> Unit,
@@ -3363,6 +3864,7 @@ private fun WorkOrderCard(
             ) {
                 RnStatusMenuChip(
                     currentStatus = workOrder.status,
+                    statusOptions = statusOptions,
                     enabled = !isLoading,
                     onStatusSelected = onStatusChange,
                 )
@@ -3614,6 +4116,7 @@ private fun WorkOrderDetailScreen(
     notice: String,
     documents: List<WorkOrderDocument>,
     documentsLoading: Boolean,
+    statusOptions: List<String>,
     onBack: () -> Unit,
     onStatusChange: (WorkOrder, String) -> Unit,
     onAddDocumentation: (WorkOrder) -> Unit,
@@ -3668,6 +4171,7 @@ private fun WorkOrderDetailScreen(
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         WorkOrderStatusMenu(
                             currentStatus = workOrder.status,
+                            statusOptions = statusOptions,
                             enabled = !isLoading,
                             onStatusSelected = { status -> onStatusChange(workOrder, status) },
                         )
@@ -4042,6 +4546,7 @@ private fun DetailRow(icon: ImageVector, label: String, value: String) {
 @Composable
 private fun WorkOrderStatusMenu(
     currentStatus: String,
+    statusOptions: List<String>,
     enabled: Boolean,
     onStatusSelected: (String) -> Unit,
 ) {
@@ -4057,7 +4562,7 @@ private fun WorkOrderStatusMenu(
             Text("Status")
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            workOrderStatusOptions.forEach { status ->
+            statusOptions.ifEmpty { workOrderStatusOptions }.forEach { status ->
                 DropdownMenuItem(
                     text = {
                         Text(
