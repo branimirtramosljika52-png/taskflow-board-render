@@ -13,6 +13,7 @@ import java.net.CookiePolicy
 import java.net.HttpURLConnection
 import java.net.URLEncoder
 import java.net.URL
+import java.time.LocalDate
 import java.util.Base64
 import java.util.zip.GZIPInputStream
 
@@ -555,6 +556,29 @@ private fun JSONArray?.toWorkOrderDocuments(): List<WorkOrderDocument> {
     }.sortedByDescending { it.createdAt }
 }
 
+private val workOrderNumberPartPattern = Regex("""\d+""")
+
+private fun workOrderNumberSortParts(value: String): List<Long> =
+    workOrderNumberPartPattern.findAll(value)
+        .mapNotNull { match -> match.value.toLongOrNull() }
+        .toList()
+
+private fun compareWorkOrdersByNumberDescending(left: WorkOrder, right: WorkOrder): Int {
+    val leftParts = workOrderNumberSortParts(left.number)
+    val rightParts = workOrderNumberSortParts(right.number)
+    val maxParts = maxOf(leftParts.size, rightParts.size)
+
+    for (index in 0 until maxParts) {
+        val leftPart = leftParts.getOrNull(index) ?: Long.MIN_VALUE
+        val rightPart = rightParts.getOrNull(index) ?: Long.MIN_VALUE
+        if (leftPart != rightPart) {
+            return rightPart.compareTo(leftPart)
+        }
+    }
+
+    return right.number.compareTo(left.number, ignoreCase = true)
+}
+
 private fun JSONArray?.toWorkOrders(): List<WorkOrder> {
     if (this == null) return emptyList()
     return buildList {
@@ -585,7 +609,9 @@ private fun JSONArray?.toWorkOrders(): List<WorkOrder> {
             )
         }
     }.sortedWith(
-        compareByDescending<WorkOrder> { it.parsedDueDate ?: it.parsedOpenedDate }
-            .thenBy { it.number },
+        Comparator { left, right ->
+            compareWorkOrdersByNumberDescending(left, right).takeIf { it != 0 }
+                ?: compareValuesBy(right, left) { it.parsedOpenedDate ?: it.parsedDueDate ?: LocalDate.MIN }
+        },
     )
 }

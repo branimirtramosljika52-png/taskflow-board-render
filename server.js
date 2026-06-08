@@ -77,7 +77,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.20.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.21.apk";
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
@@ -9388,6 +9388,35 @@ function buildMobileWorkOrderItem(item = {}) {
   };
 }
 
+function getWorkOrderNumberSortParts(value = "") {
+  return [...String(value || "").matchAll(/\d+/g)]
+    .map((match) => Number(match[0]))
+    .filter(Number.isFinite);
+}
+
+function compareWorkOrderNumberDescending(left = {}, right = {}) {
+  const leftNumber = normalizeInputValue(left.workOrderNumber || left.number);
+  const rightNumber = normalizeInputValue(right.workOrderNumber || right.number);
+  const leftParts = getWorkOrderNumberSortParts(leftNumber);
+  const rightParts = getWorkOrderNumberSortParts(rightNumber);
+  const maxParts = Math.max(leftParts.length, rightParts.length);
+
+  for (let index = 0; index < maxParts; index += 1) {
+    const leftPart = leftParts[index] ?? Number.NEGATIVE_INFINITY;
+    const rightPart = rightParts[index] ?? Number.NEGATIVE_INFINITY;
+    if (leftPart !== rightPart) {
+      return rightPart - leftPart;
+    }
+  }
+
+  return rightNumber.localeCompare(leftNumber, "hr", { numeric: true, sensitivity: "base" })
+    || String(right.openedDate || right.createdAt || "").localeCompare(String(left.openedDate || left.createdAt || ""));
+}
+
+function sortMobileWorkOrdersByNumber(workOrders = []) {
+  return [...workOrders].sort(compareWorkOrderNumberDescending);
+}
+
 function normalizePushLookupKey(value = "") {
   return normalizeInputValue(value)
     .normalize("NFD")
@@ -9555,9 +9584,9 @@ function queueWorkOrderUpdatedPush(currentWorkOrder = {}, nextWorkOrder = {}, sc
 
 async function writeMobileWorkOrders(response, user, request) {
   const { scopedSnapshot } = await getScopedState(user, request);
-  const workOrders = (scopedSnapshot.workOrders ?? [])
+  const workOrders = sortMobileWorkOrdersByNumber((scopedSnapshot.workOrders ?? [])
     .map(buildMobileWorkOrderItem)
-    .filter((item) => item.id);
+    .filter((item) => item.id));
 
   sendJson(response, 200, {
     ok: true,
@@ -9843,9 +9872,9 @@ function buildMobileWorkOrderServiceOptions(serviceCatalog = []) {
 
 async function writeMobileBootstrap(response, user, request) {
   const { scopedSnapshot } = await getScopedState(user, request);
-  const workOrders = (scopedSnapshot.workOrders ?? [])
+  const workOrders = sortMobileWorkOrdersByNumber((scopedSnapshot.workOrders ?? [])
     .map(buildMobileWorkOrderItem)
-    .filter((item) => item.id);
+    .filter((item) => item.id));
 
   const companies = limitMobileRecords((scopedSnapshot.companies ?? []).map((item) => buildMobileRecordItem(item, {
     kind: "company",
