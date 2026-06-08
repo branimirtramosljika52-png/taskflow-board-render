@@ -1700,24 +1700,32 @@ private fun CalendarContent(
     records: List<MobileRecord>,
     onOpenRecord: (MobileRecord) -> Unit,
 ) {
-    var mode by remember { mutableStateOf(CalendarViewMode.Week) }
+    var mode by remember { mutableStateOf(CalendarViewMode.Month) }
     val today = remember { LocalDate.now() }
-    val visibleRecords = remember(records, mode, today) {
-        records.filter { record ->
-            val date = record.parsedDate ?: return@filter false
-            when (mode) {
-                CalendarViewMode.Day -> date == today
-                CalendarViewMode.Week -> !date.isBefore(today) && date.isBefore(today.plusDays(7))
-                CalendarViewMode.Month -> date.year == today.year && date.month == today.month
+    var selectedDate by remember { mutableStateOf(today) }
+    val recordsByDate = remember(records) {
+        records
+            .mapNotNull { record -> record.parsedDate?.let { date -> date to record } }
+            .groupBy({ it.first }, { it.second })
+            .mapValues { (_, entries) ->
+                entries.sortedWith(compareBy<MobileRecord> { recordKindLabel(it.kind) }.thenBy { it.title })
             }
+    }
+    val selectedRecords = remember(recordsByDate, selectedDate) {
+        recordsByDate[selectedDate].orEmpty()
+    }
+    val datedRecordsCount = remember(recordsByDate) {
+        recordsByDate.values.sumOf { it.size }
+    }
+    val changePeriod = { delta: Long ->
+        selectedDate = when (mode) {
+            CalendarViewMode.Day -> selectedDate.plusDays(delta)
+            CalendarViewMode.Week -> selectedDate.plusWeeks(delta)
+            CalendarViewMode.Month -> selectedDate.plusMonths(delta)
         }
     }
-    val fallbackRecords = remember(records, visibleRecords) {
-        if (visibleRecords.isNotEmpty()) {
-            emptyList()
-        } else {
-            records.filter { record -> record.parsedDate != null }.take(12)
-        }
+    val goToday = {
+        selectedDate = today
     }
 
     Card(
@@ -1745,42 +1753,50 @@ private fun CalendarContent(
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Kalendar", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
                     Text(
-                        "${records.size} događaja iz RN-ova, vozila, periodike i osposobljavanja",
+                        "$datedRecordsCount događaja iz RN-ova, vozila, periodike i osposobljavanja",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                     )
                 }
             }
 
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                CalendarViewMode.entries.forEach { entry ->
-                    FilterChip(
-                        selected = mode == entry,
-                        onClick = { mode = entry },
-                        label = { Text(entry.label) },
-                    )
-                }
-            }
-
-            CalendarRecordList(
-                records = visibleRecords,
-                emptyText = when (mode) {
-                    CalendarViewMode.Day -> "Danas nema događaja."
-                    CalendarViewMode.Week -> "Nema događaja u idućih 7 dana."
-                    CalendarViewMode.Month -> "Nema događaja u ovom mjesecu."
-                },
-                onOpenRecord = onOpenRecord,
+            CalendarModePicker(
+                mode = mode,
+                onModeChange = { mode = it },
             )
 
-            if (fallbackRecords.isNotEmpty()) {
-                Text(
-                    "Nadolazeće",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Black,
+            CalendarNavigation(
+                title = calendarPeriodTitle(mode, selectedDate),
+                onPrevious = { changePeriod(-1) },
+                onToday = goToday,
+                onNext = { changePeriod(1) },
+            )
+
+            when (mode) {
+                CalendarViewMode.Day -> DayCalendarView(
+                    date = selectedDate,
+                    records = selectedRecords,
+                    onOpenRecord = onOpenRecord,
                 )
-                CalendarRecordList(
-                    records = fallbackRecords,
-                    emptyText = "",
+                CalendarViewMode.Week -> WeekCalendarView(
+                    selectedDate = selectedDate,
+                    today = today,
+                    recordsByDate = recordsByDate,
+                    onDateSelected = { selectedDate = it },
+                )
+                CalendarViewMode.Month -> MonthCalendarView(
+                    selectedDate = selectedDate,
+                    today = today,
+                    recordsByDate = recordsByDate,
+                    onDateSelected = { selectedDate = it },
+                )
+            }
+
+            if (mode != CalendarViewMode.Day) {
+                CalendarAgenda(
+                    title = "Događaji za ${formatCalendarDate(selectedDate)}",
+                    records = selectedRecords,
+                    emptyText = "Nema događaja za odabrani datum.",
                     onOpenRecord = onOpenRecord,
                 )
             }
@@ -1789,28 +1805,400 @@ private fun CalendarContent(
 }
 
 @Composable
-private fun CalendarRecordList(
+private fun CalendarModePicker(
+    mode: CalendarViewMode,
+    onModeChange: (CalendarViewMode) -> Unit,
+) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        CalendarViewMode.entries.forEach { entry ->
+            FilterChip(
+                selected = mode == entry,
+                onClick = { onModeChange(entry) },
+                label = { Text(entry.label) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun CalendarNavigation(
+    title: String,
+    onPrevious: () -> Unit,
+    onToday: () -> Unit,
+    onNext: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextButton(onClick = onPrevious) {
+                Text("<", fontWeight = FontWeight.Black)
+            }
+            Text(
+                title,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Black,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            TextButton(onClick = onToday) {
+                Text("Danas")
+            }
+            TextButton(onClick = onNext) {
+                Text(">", fontWeight = FontWeight.Black)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DayCalendarView(
+    date: LocalDate,
+    records: List<MobileRecord>,
+    onOpenRecord: (MobileRecord) -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.58f),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                calendarDayTitle(date),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Black,
+            )
+            CalendarAgenda(
+                title = "Raspored dana",
+                records = records,
+                emptyText = "Za ovaj dan nema događaja.",
+                onOpenRecord = onOpenRecord,
+                compact = true,
+            )
+        }
+    }
+}
+
+@Composable
+private fun WeekCalendarView(
+    selectedDate: LocalDate,
+    today: LocalDate,
+    recordsByDate: Map<LocalDate, List<MobileRecord>>,
+    onDateSelected: (LocalDate) -> Unit,
+) {
+    val weekStart = remember(selectedDate) { startOfCalendarWeek(selectedDate) }
+    val days = remember(weekStart, recordsByDate, today) {
+        (0 until 7).map { index ->
+            val date = weekStart.plusDays(index.toLong())
+            CalendarDayCell(
+                date = date,
+                inCurrentMonth = true,
+                isToday = date == today,
+                records = recordsByDate[date].orEmpty(),
+            )
+        }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            days.forEach { day ->
+                CalendarWeekDay(
+                    day = day,
+                    selected = day.date == selectedDate,
+                    onClick = { onDateSelected(day.date) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MonthCalendarView(
+    selectedDate: LocalDate,
+    today: LocalDate,
+    recordsByDate: Map<LocalDate, List<MobileRecord>>,
+    onDateSelected: (LocalDate) -> Unit,
+) {
+    val days = remember(selectedDate.year, selectedDate.monthValue, recordsByDate, today) {
+        buildCalendarMonthDays(selectedDate, recordsByDate, today)
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            calendarWeekdayLabels.forEach { label ->
+                Text(
+                    label,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                    fontWeight = FontWeight.Black,
+                    maxLines = 1,
+                )
+            }
+        }
+        days.chunked(7).forEach { week ->
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                week.forEach { day ->
+                    CalendarMonthDay(
+                        day = day,
+                        selected = day.date == selectedDate,
+                        onClick = { onDateSelected(day.date) },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CalendarWeekDay(
+    day: CalendarDayCell,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val containerColor = when {
+        selected -> MaterialTheme.colorScheme.primary
+        day.isToday -> MaterialTheme.colorScheme.primaryContainer
+        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.66f)
+    }
+    val textColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+
+    Surface(
+        modifier = modifier
+            .height(96.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
+        color = containerColor,
+    ) {
+        Column(
+            modifier = Modifier.padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                calendarWeekdayLabels[day.date.dayOfWeek.value - 1],
+                style = MaterialTheme.typography.labelSmall,
+                color = textColor.copy(alpha = 0.72f),
+                maxLines = 1,
+            )
+            Text(
+                day.date.dayOfMonth.toString(),
+                style = MaterialTheme.typography.titleMedium,
+                color = textColor,
+                fontWeight = FontWeight.Black,
+            )
+            CalendarCountPill(count = day.records.size, selected = selected)
+        }
+    }
+}
+
+@Composable
+private fun CalendarMonthDay(
+    day: CalendarDayCell,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val muted = !day.inCurrentMonth
+    val containerColor = when {
+        selected -> MaterialTheme.colorScheme.primary
+        day.isToday -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.86f)
+        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (muted) 0.28f else 0.62f)
+    }
+    val textColor = if (selected) {
+        MaterialTheme.colorScheme.onPrimary
+    } else {
+        MaterialTheme.colorScheme.onSurface.copy(alpha = if (muted) 0.42f else 0.92f)
+    }
+
+    Surface(
+        modifier = modifier
+            .height(88.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        color = containerColor,
+    ) {
+        Column(
+            modifier = Modifier.padding(7.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    day.date.dayOfMonth.toString(),
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = textColor,
+                    fontWeight = FontWeight.Black,
+                    maxLines = 1,
+                )
+                if (day.records.isNotEmpty()) {
+                    CalendarCountPill(count = day.records.size, selected = selected)
+                }
+            }
+            day.records.take(2).forEach { record ->
+                Surface(
+                    shape = RoundedCornerShape(999.dp),
+                    color = if (selected) Color.White.copy(alpha = 0.18f) else calendarRecordColor(record.kind).copy(alpha = 0.16f),
+                ) {
+                    Text(
+                        record.title.ifBlank { recordKindLabel(record.kind) },
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (selected) MaterialTheme.colorScheme.onPrimary else calendarRecordColor(record.kind),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CalendarCountPill(
+    count: Int,
+    selected: Boolean,
+) {
+    if (count <= 0) {
+        Spacer(Modifier.height(18.dp))
+        return
+    }
+    Surface(
+        shape = RoundedCornerShape(999.dp),
+        color = if (selected) Color.White.copy(alpha = 0.2f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+    ) {
+        Text(
+            count.toString(),
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Black,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun CalendarAgenda(
+    title: String,
     records: List<MobileRecord>,
     emptyText: String,
     onOpenRecord: (MobileRecord) -> Unit,
+    compact: Boolean = false,
 ) {
-    if (records.isEmpty()) {
-        if (emptyText.isNotBlank()) {
-            Text(emptyText, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f))
+    Column(verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 10.dp)) {
+        Text(
+            title,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Black,
+        )
+        if (records.isEmpty()) {
+            if (emptyText.isNotBlank()) {
+                Text(emptyText, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f))
+            }
+        } else {
+            records.take(80).forEach { record ->
+                RecordLine(
+                    title = record.title,
+                    subtitle = record.subtitle.ifBlank { recordKindLabel(record.kind) },
+                    status = record.status,
+                    date = record.date,
+                    icon = recordIcon(record),
+                    onClick = { onOpenRecord(record) },
+                )
+            }
+            if (records.size > 80) {
+                Text(
+                    "Prikazano je prvih 80 događaja za odabrani datum.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                )
+            }
         }
-        return
     }
+}
 
-    records.take(80).forEach { record ->
-        RecordLine(
-            title = record.title,
-            subtitle = record.subtitle.ifBlank { recordKindLabel(record.kind) },
-            status = record.status,
-            date = record.date,
-            icon = recordIcon(record),
-            onClick = { onOpenRecord(record) },
+private data class CalendarDayCell(
+    val date: LocalDate,
+    val inCurrentMonth: Boolean,
+    val isToday: Boolean,
+    val records: List<MobileRecord>,
+)
+
+private val calendarWeekdayLabels = listOf("Pon", "Uto", "Sri", "Cet", "Pet", "Sub", "Ned")
+
+private fun buildCalendarMonthDays(
+    selectedDate: LocalDate,
+    recordsByDate: Map<LocalDate, List<MobileRecord>>,
+    today: LocalDate,
+): List<CalendarDayCell> {
+    val firstDayOfMonth = selectedDate.withDayOfMonth(1)
+    val gridStart = startOfCalendarWeek(firstDayOfMonth)
+    return (0 until 42).map { index ->
+        val date = gridStart.plusDays(index.toLong())
+        CalendarDayCell(
+            date = date,
+            inCurrentMonth = date.month == selectedDate.month && date.year == selectedDate.year,
+            isToday = date == today,
+            records = recordsByDate[date].orEmpty(),
         )
     }
+}
+
+private fun startOfCalendarWeek(date: LocalDate): LocalDate =
+    date.minusDays((date.dayOfWeek.value - 1).toLong())
+
+private fun calendarPeriodTitle(mode: CalendarViewMode, selectedDate: LocalDate): String = when (mode) {
+    CalendarViewMode.Day -> calendarDayTitle(selectedDate)
+    CalendarViewMode.Week -> {
+        val start = startOfCalendarWeek(selectedDate)
+        val end = start.plusDays(6)
+        "${formatCalendarDate(start)} - ${formatCalendarDate(end)}"
+    }
+    CalendarViewMode.Month -> "${calendarMonthName(selectedDate.monthValue)} ${selectedDate.year}."
+}
+
+private fun calendarDayTitle(date: LocalDate): String =
+    "${calendarWeekdayLabels[date.dayOfWeek.value - 1]}, ${formatCalendarDate(date)}"
+
+private fun formatCalendarDate(date: LocalDate): String =
+    "${date.dayOfMonth.toString().padStart(2, '0')}.${date.monthValue.toString().padStart(2, '0')}.${date.year}."
+
+private fun calendarMonthName(month: Int): String = when (month) {
+    1 -> "Sijecanj"
+    2 -> "Veljaca"
+    3 -> "Ozujak"
+    4 -> "Travanj"
+    5 -> "Svibanj"
+    6 -> "Lipanj"
+    7 -> "Srpanj"
+    8 -> "Kolovoz"
+    9 -> "Rujan"
+    10 -> "Listopad"
+    11 -> "Studeni"
+    12 -> "Prosinac"
+    else -> ""
+}
+
+private fun calendarRecordColor(kind: String): Color = when (kind) {
+    "work_order" -> Color(0xFF2563EB)
+    "vehicle", "vehicle_reservation" -> Color(0xFF059669)
+    "document" -> Color(0xFF7C3AED)
+    "training" -> Color(0xFFDC2626)
+    "rulebook" -> Color(0xFFB45309)
+    else -> Color(0xFF475569)
 }
 
 @Composable
