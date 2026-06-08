@@ -8,6 +8,11 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.pdf.PdfDocument
+import android.media.ExifInterface
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -141,6 +146,8 @@ import java.io.File
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import kotlin.math.min
+import kotlin.math.roundToInt
 
 enum class WorkOrderFilter(val label: String) {
     All("SVE"),
@@ -366,18 +373,18 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         state = state.copy(isLoading = true, error = "", notice = "")
         viewModelScope.launch {
             runCatching {
-                val bytes = readCompressedScanBytes(context, uri)
+                val bytes = readScannedWorkOrderPdfBytes(context, uri)
                 api.uploadVerifiedWorkOrderScan(
                     workOrderId = workOrder.id,
-                    fileName = buildVerifiedScanFileName(workOrder),
-                    fileType = "image/jpeg",
+                    fileName = buildVerifiedScanPdfFileName(workOrder),
+                    fileType = "application/pdf",
                     bytes = bytes,
                 ).getOrThrow()
             }
                 .onSuccess {
                     state = state.copy(
                         isLoading = false,
-                        notice = "Sken ovjerenog RN-a je spremljen.",
+                        notice = "PDF sken ovjerenog RN-a je spremljen.",
                     )
                 }
                 .onFailure { error ->
@@ -3167,7 +3174,7 @@ private fun WorkOrderCard(
                 ) {
                     Icon(Icons.Rounded.CameraAlt, contentDescription = null, modifier = Modifier.size(17.dp))
                     Spacer(Modifier.width(7.dp))
-                    Text("Sken ovjerenog naloga", fontWeight = FontWeight.Bold)
+                    Text("PDF sken ovjerenog naloga", fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -3349,7 +3356,7 @@ private fun WorkOrderDetailScreen(
                         ) {
                             Icon(Icons.Rounded.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("Skeniraj ovjereni RN")
+                            Text("PDF sken RN-a")
                         }
                     }
                 }
@@ -3366,7 +3373,7 @@ private fun WorkOrderDetailScreen(
             }
 
             DetailSection("Ovjereni nalog") {
-                DetailRow(Icons.Rounded.CameraAlt, "Sken", "Fotografija se sprema kao dokument: Ovjereni Radni nalog")
+                DetailRow(Icons.Rounded.CameraAlt, "PDF sken", "Fotografija se obrađuje kao pravi sken i sprema kao PDF dokument.")
                 OutlinedButton(
                     onClick = { onScanVerifiedWorkOrder(workOrder) },
                     enabled = !isLoading,
@@ -3374,7 +3381,7 @@ private fun WorkOrderDetailScreen(
                 ) {
                     Icon(Icons.Rounded.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("Dodaj sken ovjerenog naloga")
+                    Text("Dodaj PDF sken naloga")
                 }
             }
 
@@ -3585,7 +3592,7 @@ private fun formatDateLabel(value: String): String {
 
 private fun createWorkOrderScanUri(context: Context, workOrder: WorkOrder): Uri {
     val directory = File(context.cacheDir, "work-order-scans").apply { mkdirs() }
-    val fileName = buildVerifiedScanFileName(workOrder)
+    val fileName = buildVerifiedScanPhotoFileName(workOrder)
     val file = File(directory, fileName)
     return FileProvider.getUriForFile(
         context,
@@ -3594,15 +3601,31 @@ private fun createWorkOrderScanUri(context: Context, workOrder: WorkOrder): Uri 
     )
 }
 
-private suspend fun readCompressedScanBytes(context: Context, uri: Uri): ByteArray = withContext(Dispatchers.IO) {
+private suspend fun readScannedWorkOrderPdfBytes(context: Context, uri: Uri): ByteArray = withContext(Dispatchers.IO) {
+    val sourceBitmap = decodeScanBitmap(context, uri)
+    val enhancedBitmap = enhanceScanBitmap(sourceBitmap)
+    if (enhancedBitmap !== sourceBitmap) {
+        sourceBitmap.recycle()
+    }
+    try {
+        renderScanPdfBytes(enhancedBitmap)
+    } finally {
+        enhancedBitmap.recycle()
+    }
+}
+
+private fun decodeScanBitmap(context: Context, uri: Uri): Bitmap {
     val resolver = context.contentResolver
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     resolver.openInputStream(uri)?.use { input ->
         BitmapFactory.decodeStream(input, null, bounds)
     }
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+        error("Ne mogu učitati fotografiju skena.")
+    }
 
     var sampleSize = 1
-    val maxDimension = 1800
+    val maxDimension = 2200
     while ((bounds.outWidth / sampleSize) > maxDimension || (bounds.outHeight / sampleSize) > maxDimension) {
         sampleSize *= 2
     }
@@ -3615,23 +3638,106 @@ private suspend fun readCompressedScanBytes(context: Context, uri: Uri): ByteArr
         )
     }
 
-    if (bitmap != null) {
-        val output = ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 84, output)
-        bitmap.recycle()
-        return@withContext output.toByteArray()
-    }
-
-    resolver.openInputStream(uri)?.use { input ->
-        input.readBytes()
-    } ?: error("Ne mogu učitati fotografiju skena.")
+    return applyScanOrientation(context, uri, bitmap ?: error("Ne mogu učitati fotografiju skena."))
 }
 
-private fun buildVerifiedScanFileName(workOrder: WorkOrder): String {
+private fun applyScanOrientation(context: Context, uri: Uri, bitmap: Bitmap): Bitmap {
+    val orientation = context.contentResolver.openInputStream(uri)?.use { input ->
+        ExifInterface(input).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+    } ?: ExifInterface.ORIENTATION_NORMAL
+    val matrix = Matrix()
+    when (orientation) {
+        ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+        ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+        ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+        ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.preScale(-1f, 1f)
+        ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.preScale(1f, -1f)
+        ExifInterface.ORIENTATION_TRANSPOSE -> {
+            matrix.postRotate(90f)
+            matrix.preScale(-1f, 1f)
+        }
+        ExifInterface.ORIENTATION_TRANSVERSE -> {
+            matrix.postRotate(270f)
+            matrix.preScale(-1f, 1f)
+        }
+    }
+    if (matrix.isIdentity) return bitmap
+    val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+    bitmap.recycle()
+    return rotated
+}
+
+private fun enhanceScanBitmap(source: Bitmap): Bitmap {
+    val bitmap = if (source.config == Bitmap.Config.ARGB_8888) {
+        source
+    } else {
+        source.copy(Bitmap.Config.ARGB_8888, false)
+    }
+    val output = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
+    val row = IntArray(bitmap.width)
+    for (y in 0 until bitmap.height) {
+        bitmap.getPixels(row, 0, bitmap.width, 0, y, bitmap.width, 1)
+        for (x in row.indices) {
+            val pixel = row[x]
+            val red = (pixel shr 16) and 0xff
+            val green = (pixel shr 8) and 0xff
+            val blue = pixel and 0xff
+            var gray = (red * 0.30f + green * 0.59f + blue * 0.11f).roundToInt()
+            gray = ((gray - 128) * 1.32f + 146).roundToInt().coerceIn(0, 255)
+            gray = when {
+                gray > 238 -> 255
+                gray < 28 -> 0
+                else -> gray
+            }
+            row[x] = (0xff shl 24) or (gray shl 16) or (gray shl 8) or gray
+        }
+        output.setPixels(row, 0, bitmap.width, 0, y, bitmap.width, 1)
+    }
+    if (bitmap !== source) {
+        bitmap.recycle()
+    }
+    return output
+}
+
+private fun renderScanPdfBytes(bitmap: Bitmap): ByteArray {
+    val document = PdfDocument()
+    val pageWidth = 595
+    val pageHeight = 842
+    val margin = 18f
+    val pageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, 1).create()
+    val page = document.startPage(pageInfo)
+    val canvas = page.canvas
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG or Paint.DITHER_FLAG)
+    canvas.drawColor(android.graphics.Color.WHITE)
+
+    val availableWidth = pageWidth - margin * 2
+    val availableHeight = pageHeight - margin * 2
+    val scale = min(availableWidth / bitmap.width, availableHeight / bitmap.height)
+    val targetWidth = bitmap.width * scale
+    val targetHeight = bitmap.height * scale
+    val left = (pageWidth - targetWidth) / 2f
+    val top = (pageHeight - targetHeight) / 2f
+    canvas.drawBitmap(bitmap, null, RectF(left, top, left + targetWidth, top + targetHeight), paint)
+
+    document.finishPage(page)
+    return ByteArrayOutputStream().use { output ->
+        document.writeTo(output)
+        document.close()
+        output.toByteArray()
+    }
+}
+
+private fun buildVerifiedScanPhotoFileName(workOrder: WorkOrder): String =
+    "${buildVerifiedScanBaseName(workOrder)}.jpg"
+
+private fun buildVerifiedScanPdfFileName(workOrder: WorkOrder): String =
+    "${buildVerifiedScanBaseName(workOrder)}.pdf"
+
+private fun buildVerifiedScanBaseName(workOrder: WorkOrder): String {
     val number = workOrder.displayNumber
         .replace(Regex("[^A-Za-z0-9_-]+"), "-")
         .trim('-')
         .ifBlank { "RN" }
     val stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))
-    return "ovjereni-rn-$number-$stamp.jpg"
+    return "ovjereni-rn-$number-$stamp"
 }
