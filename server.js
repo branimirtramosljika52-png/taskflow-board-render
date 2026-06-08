@@ -77,7 +77,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.21.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.22.apk";
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
@@ -9490,8 +9490,12 @@ function resolveAddedExecutorPushUserIds(currentWorkOrder = {}, nextWorkOrder = 
 
 async function sendPushToUserIds(userIds = [], payload = {}) {
   const ids = [...new Set((Array.isArray(userIds) ? userIds : []).map((id) => String(id)).filter(Boolean))];
-  if (ids.length === 0 || typeof tenantRepository.listPushTokensForUserIds !== "function") {
-    return { sent: 0, skipped: true };
+  if (ids.length === 0) {
+    return { sent: 0, skipped: true, reason: "no-recipients" };
+  }
+
+  if (typeof tenantRepository.listPushTokensForUserIds !== "function") {
+    return { sent: 0, skipped: true, reason: "token-store-unavailable" };
   }
 
   if (!(await isFirebasePushConfigured())) {
@@ -9518,15 +9522,25 @@ async function sendPushToUserIds(userIds = [], payload = {}) {
 }
 
 function queuePushToUserIds(userIds = [], payload = {}) {
-  void sendPushToUserIds(userIds, payload).catch((error) => {
-    console.warn("[push] Ne mogu poslati push poruku:", error.message);
-  });
+  void sendPushToUserIds(userIds, payload)
+    .then((result) => {
+      if (result?.skipped) {
+        console.info("[push] preskoceno", JSON.stringify({
+          reason: result.reason || "unknown",
+          recipients: Array.isArray(userIds) ? userIds.length : 0,
+          type: payload?.data?.type || "",
+          workOrderId: payload?.data?.workOrderId || "",
+          workOrderNumber: payload?.data?.workOrderNumber || "",
+        }));
+      }
+    })
+    .catch((error) => {
+      console.warn("[push] Ne mogu poslati push poruku:", error.message);
+    });
 }
 
 function queueWorkOrderCreatedPush(workOrder = {}, scopedSnapshot = {}) {
   const recipientIds = resolveWorkOrderPushUserIds(workOrder, scopedSnapshot);
-  if (recipientIds.length === 0) return;
-
   const workOrderNumber = getWorkOrderPushNumber(workOrder);
   queuePushToUserIds(recipientIds, {
     title: "Novi radni nalog",
@@ -9565,7 +9579,6 @@ function queueWorkOrderUpdatedPush(currentWorkOrder = {}, nextWorkOrder = {}, sc
   }
 
   const recipientIds = resolveWorkOrderPushUserIds(nextWorkOrder, scopedSnapshot);
-  if (recipientIds.length === 0) return;
 
   const isClosed = isMobileClosedWorkOrderStatus(nextStatus);
   queuePushToUserIds(recipientIds, {
@@ -10316,10 +10329,41 @@ async function handleApiRequest(request, response, url) {
         deviceId: body.deviceId,
         userAgent: request.headers["user-agent"] ?? "",
       });
+      console.info("[push] token registriran", JSON.stringify({
+        userId: user.id,
+        platform: body.platform || "android",
+        hasToken: Boolean(item),
+      }));
       sendJson(response, 200, {
         ok: Boolean(item),
         firebaseConfigured: await isFirebasePushConfigured(),
       });
+      return true;
+    }
+
+    if (url.pathname === "/api/mobile/push-status" && request.method === "GET") {
+      const tokens = typeof tenantRepository.listPushTokensForUserIds === "function"
+        ? await tenantRepository.listPushTokensForUserIds([String(user.id)])
+        : [];
+      sendJson(response, 200, {
+        ok: true,
+        firebaseConfigured: await isFirebasePushConfigured(),
+        tokenStoreAvailable: typeof tenantRepository.listPushTokensForUserIds === "function",
+        registeredTokens: Array.isArray(tokens) ? tokens.filter((item) => item?.token).length : 0,
+      });
+      return true;
+    }
+
+    if (url.pathname === "/api/mobile/push-test" && request.method === "POST") {
+      const body = await readJsonBody(request).catch(() => ({}));
+      const result = await sendPushToUserIds([String(user.id)], {
+        title: "SafeNexus test",
+        body: normalizeInputValue(body?.message) || "Test push obavijest iz SafeNexus aplikacije.",
+        data: {
+          type: "push_test",
+        },
+      });
+      sendJson(response, 200, { ok: true, result });
       return true;
     }
 
@@ -13325,11 +13369,6 @@ async function handleApiRequest(request, response, url) {
     }
 
     if (workOrderPdfExportMatch && request.method === "POST") {
-      if (!canManageWorkOrders(user) && !isClientPortalUser(user)) {
-        sendError(response, 403, "Nemate pravo generirati PDF radnog naloga.");
-        return true;
-      }
-
       const body = await readJsonBody(request);
       const { scopedSnapshot } = await getScopedState(user, request);
       const workOrder = assertInScope(scopedSnapshot.workOrders, workOrderPdfExportMatch[1], "Radni nalog nije pronaden.");

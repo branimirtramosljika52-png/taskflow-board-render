@@ -688,6 +688,53 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    fun downloadWorkOrderPdf(context: Context, workOrder: WorkOrder, openAfterDownload: Boolean = false) {
+        if (workOrder.id.isBlank()) {
+            state = state.copy(error = "Radni nalog nema ispravan ID za PDF.")
+            return
+        }
+
+        val fallbackFileName = "${workOrder.displayNumber.ifBlank { "radni-nalog" }}.pdf"
+        state = state.copy(isLoading = true, error = "", notice = "")
+        viewModelScope.launch {
+            api.downloadWorkOrderPdf(workOrder.id, fallbackFileName)
+                .onSuccess { downloaded ->
+                    if (openAfterDownload) {
+                        val uri = runCatching { cacheDownloadedDocument(context, downloaded) }.getOrElse { error ->
+                            state = state.copy(
+                                isLoading = false,
+                                error = error.message ?: "Ne mogu spremiti PDF za pregled.",
+                            )
+                            return@onSuccess
+                        }
+                        val opened = openCachedDocument(context, uri, downloaded.fileType)
+                        state = state.copy(
+                            isLoading = false,
+                            notice = if (opened) "PDF radnog naloga je otvoren." else "PDF je preuzet u privremenu mapu aplikacije.",
+                            error = if (opened) "" else "Na uređaju nema aplikacije za otvaranje PDF-a.",
+                        )
+                    } else {
+                        runCatching { saveDownloadedDocument(context, downloaded) }
+                            .onSuccess {
+                                state = state.copy(isLoading = false, notice = "PDF radnog naloga je spremljen u Preuzimanja / SafeNexus.")
+                            }
+                            .onFailure { error ->
+                                state = state.copy(
+                                    isLoading = false,
+                                    error = error.message ?: "Ne mogu spremiti PDF radnog naloga.",
+                                )
+                            }
+                    }
+                }
+                .onFailure { error ->
+                    state = state.copy(
+                        isLoading = false,
+                        error = error.message ?: "Ne mogu preuzeti PDF radnog naloga.",
+                    )
+                }
+        }
+    }
+
     private fun androidDeviceId(): String =
         Settings.Secure.getString(getApplication<Application>().contentResolver, Settings.Secure.ANDROID_ID).orEmpty()
 }
@@ -859,6 +906,7 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                     onBack = { viewModel.selectWorkOrder(null) },
                     onStatusChange = viewModel::updateWorkOrderStatus,
                     onAddDocumentation = openDocumentationActions,
+                    onDownloadPdf = { workOrder -> viewModel.downloadWorkOrderPdf(context.applicationContext, workOrder) },
                     onOpenDocument = { document -> viewModel.openWorkOrderDocument(context.applicationContext, document) },
                     onDownloadDocument = { document -> viewModel.downloadWorkOrderDocument(context.applicationContext, document) },
                     onDeleteDocument = viewModel::deleteWorkOrderDocument,
@@ -4167,6 +4215,7 @@ private fun WorkOrderDetailScreen(
     onBack: () -> Unit,
     onStatusChange: (WorkOrder, String) -> Unit,
     onAddDocumentation: (WorkOrder) -> Unit,
+    onDownloadPdf: (WorkOrder) -> Unit,
     onOpenDocument: (WorkOrderDocument) -> Unit,
     onDownloadDocument: (WorkOrderDocument) -> Unit,
     onDeleteDocument: (WorkOrderDocument) -> Unit,
@@ -4230,6 +4279,15 @@ private fun WorkOrderDetailScreen(
                             Icon(Icons.Rounded.Description, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
                             Text("Dokumentacija")
+                        }
+                        OutlinedButton(
+                            onClick = { onDownloadPdf(workOrder) },
+                            enabled = !isLoading,
+                            shape = RoundedCornerShape(14.dp),
+                        ) {
+                            Icon(Icons.Rounded.PictureAsPdf, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Preuzmi PDF RN")
                         }
                     }
                 }

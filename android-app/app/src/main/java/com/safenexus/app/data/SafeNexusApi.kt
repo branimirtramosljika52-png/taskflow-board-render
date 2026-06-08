@@ -236,6 +236,29 @@ class SafeNexusApi(
         }
     }
 
+    suspend fun downloadWorkOrderPdf(workOrderId: String, fallbackFileName: String): Result<DownloadedDocument> = withContext(Dispatchers.IO) {
+        runCatching {
+            val path = "/api/work-orders/${workOrderId.pathSegment()}/export-pdf"
+            val connection = openConnection(path, method = "POST", body = "{}", accept = "application/pdf")
+            val bytes = readBinaryResponse(connection)
+            rememberAuthCookies(connection)
+            if (connection.responseCode !in 200..299) {
+                val text = bytes.toString(Charsets.UTF_8)
+                throw IllegalStateException(extractErrorMessage(text).ifBlank {
+                    "Ne mogu preuzeti PDF radnog naloga (${connection.responseCode})."
+                })
+            }
+            DownloadedDocument(
+                fileName = parseContentDispositionFileName(connection.getHeaderField("Content-Disposition"))
+                    .ifBlank { fallbackFileName.ifBlank { "radni-nalog.pdf" } },
+                fileType = connection.getHeaderField("Content-Type")?.substringBefore(";")?.trim()
+                    ?.ifBlank { "application/pdf" }
+                    ?: "application/pdf",
+                bytes = bytes,
+            )
+        }
+    }
+
     suspend fun logout(): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             request("/api/auth/logout", method = "POST", body = "{}")
@@ -357,6 +380,18 @@ class SafeNexusApi(
 
 private fun String.pathSegment(): String =
     URLEncoder.encode(this, Charsets.UTF_8.name()).replace("+", "%20")
+
+private fun parseContentDispositionFileName(value: String?): String {
+    if (value.isNullOrBlank()) return ""
+    val encodedMatch = Regex("""filename\*=UTF-8''([^;]+)""", RegexOption.IGNORE_CASE).find(value)
+    if (encodedMatch != null) {
+        return runCatching {
+            java.net.URLDecoder.decode(encodedMatch.groupValues[1], Charsets.UTF_8.name())
+        }.getOrDefault("")
+    }
+    val plainMatch = Regex("""filename="?([^";]+)"?""", RegexOption.IGNORE_CASE).find(value)
+    return plainMatch?.groupValues?.getOrNull(1)?.trim().orEmpty()
+}
 
 private fun JSONObject.firstClean(vararg keys: String): String {
     for (key in keys) {
