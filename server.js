@@ -78,7 +78,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.23.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.24.apk";
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
@@ -4330,9 +4330,12 @@ async function addFingerSignatureToWorkOrderPdf(pdfBuffer = Buffer.alloc(0), sig
   const y = 42;
   const padding = 12;
   const label = normalizePdfStampText(options.label || "Potpis narucitelja", 70);
-  const signerName = normalizePdfStampText(options.signerName || "", 74);
-  const signedAt = normalizePdfStampText(formatWorkOrderSignatureTimestamp(options.signedAt), 58);
-  const signatureLocation = normalizePdfStampText(options.signatureLocation || "", 88);
+  const includeSignerName = options.includeSignerName !== false;
+  const includeSignedAt = options.includeSignedAt !== false;
+  const includeSignatureLocation = options.includeSignatureLocation !== false;
+  const signerName = includeSignerName ? normalizePdfStampText(options.signerName || "", 74) : "";
+  const signedAt = includeSignedAt ? normalizePdfStampText(formatWorkOrderSignatureTimestamp(options.signedAt), 58) : "";
+  const signatureLocation = includeSignatureLocation ? normalizePdfStampText(options.signatureLocation || "", 88) : "";
   const imageMaxWidth = boxWidth - (padding * 2);
   const imageMaxHeight = 44;
   const scale = Math.min(
@@ -4393,9 +4396,9 @@ async function addFingerSignatureToWorkOrderPdf(pdfBuffer = Buffer.alloc(0), sig
 
 function buildSignedWorkOrderPdfDocumentPayload(workOrder = {}, pdfBuffer = Buffer.alloc(0), fileName = "", metadata = {}) {
   const safeBuffer = Buffer.isBuffer(pdfBuffer) ? pdfBuffer : Buffer.from(pdfBuffer ?? []);
-  const signerName = cleanSignatureExportText(metadata.signerName || "");
-  const signedAt = formatWorkOrderSignatureTimestamp(metadata.signedAt);
-  const signatureLocation = cleanSignatureExportText(metadata.signatureLocation || "");
+  const signerName = metadata.includeSignerName === false ? "" : cleanSignatureExportText(metadata.signerName || "");
+  const signedAt = metadata.includeSignedAt === false ? "" : formatWorkOrderSignatureTimestamp(metadata.signedAt);
+  const signatureLocation = metadata.includeSignatureLocation === false ? "" : cleanSignatureExportText(metadata.signatureLocation || "");
   return {
     fileName: fileName || getSignedWorkOrderPdfFileName(workOrder),
     fileType: "application/pdf",
@@ -13594,20 +13597,29 @@ async function handleApiRequest(request, response, url) {
       const { scopedSnapshot } = await getScopedState(user, request);
       const workOrder = assertInScope(scopedSnapshot.workOrders, workOrderPdfSignatureMatch[1], "Radni nalog nije pronaden.");
       const templateId = String(body?.templateId ?? "").trim();
-      const signerName = String(body?.signerName || user?.fullName || user?.username || "").trim();
-      const signatureLocation = String(body?.signatureLocation || body?.location || "").trim();
+      const includeSignerName = body?.includeSignerName !== false;
+      const includeSignedAt = body?.includeSignedAt !== false;
+      const includeSignatureLocation = body?.includeSignatureLocation !== false;
+      const signerName = includeSignerName ? String(body?.signerName || user?.fullName || user?.username || "").trim() : "";
+      const signatureLocation = includeSignatureLocation ? String(body?.signatureLocation || body?.location || "").trim() : "";
       const signedAt = String(body?.signedAt || "").trim();
       const { pdfBuffer } = await buildWorkOrderPdfExportPayload(workOrder, scopedSnapshot, templateId);
       const signedPdfBuffer = await addFingerSignatureToWorkOrderPdf(pdfBuffer, signatureDataUrl, {
         signerName,
         signatureLocation,
         signedAt,
+        includeSignerName,
+        includeSignedAt,
+        includeSignatureLocation,
       });
       const fileName = getSignedWorkOrderPdfFileName(workOrder);
       const filePayload = buildSignedWorkOrderPdfDocumentPayload(workOrder, signedPdfBuffer, fileName, {
         signerName,
         signatureLocation,
         signedAt,
+        includeSignerName,
+        includeSignedAt,
+        includeSignatureLocation,
       });
       const items = await domainRepository.addWorkOrderDocuments(
         workOrderPdfSignatureMatch[1],

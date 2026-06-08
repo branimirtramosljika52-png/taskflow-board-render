@@ -13,6 +13,9 @@ import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -186,8 +189,10 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.ByteArrayOutputStream
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -749,6 +754,9 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         signaturePngBytes: ByteArray,
         signerName: String,
         signatureLocation: String,
+        includeSignerName: Boolean,
+        includeSignedAt: Boolean,
+        includeSignatureLocation: Boolean,
     ) {
         if (workOrder.id.isBlank()) {
             state = state.copy(error = "Radni nalog nema ispravan ID za potpis.")
@@ -770,6 +778,9 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                 signerName = resolvedSignerName,
                 signatureLocation = signatureLocation.trim(),
                 signedAt = signedAt,
+                includeSignerName = includeSignerName,
+                includeSignedAt = includeSignedAt,
+                includeSignatureLocation = includeSignatureLocation,
                 fallbackFileName = fallbackFileName,
             )
                 .onSuccess { downloaded ->
@@ -1009,7 +1020,7 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
             defaultSignerName = state.user?.displayName.orEmpty(),
             isLoading = state.isLoading,
             onDismiss = { signatureActionTarget = null },
-            onConfirm = { signatureBytes, signerName, signatureLocation ->
+            onConfirm = { signatureBytes, signerName, signatureLocation, includeSignerName, includeSignedAt, includeSignatureLocation ->
                 signatureActionTarget = null
                 viewModel.signWorkOrderPdf(
                     context = context.applicationContext,
@@ -1017,6 +1028,9 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                     signaturePngBytes = signatureBytes,
                     signerName = signerName,
                     signatureLocation = signatureLocation,
+                    includeSignerName = includeSignerName,
+                    includeSignedAt = includeSignedAt,
+                    includeSignatureLocation = includeSignatureLocation,
                 )
             },
         )
@@ -1037,12 +1051,15 @@ private fun WorkOrderFingerSignatureDialog(
     defaultSignerName: String,
     isLoading: Boolean,
     onDismiss: () -> Unit,
-    onConfirm: (ByteArray, String, String) -> Unit,
+    onConfirm: (ByteArray, String, String, Boolean, Boolean, Boolean) -> Unit,
 ) {
     val strokes = remember(workOrder.id) { mutableStateListOf<List<Offset>>() }
     var currentStroke by remember(workOrder.id) { mutableStateOf<List<Offset>>(emptyList()) }
     var canvasSize by remember(workOrder.id) { mutableStateOf(IntSize.Zero) }
     var signerName by remember(workOrder.id, defaultSignerName) { mutableStateOf(defaultSignerName) }
+    var includeSignerName by remember(workOrder.id) { mutableStateOf(true) }
+    var includeSignedAt by remember(workOrder.id) { mutableStateOf(true) }
+    var includeSignatureLocation by remember(workOrder.id) { mutableStateOf(true) }
     var signatureLocation by remember(workOrder.id) {
         mutableStateOf(
             listOf(workOrder.locationName, workOrder.coordinates)
@@ -1050,6 +1067,36 @@ private fun WorkOrderFingerSignatureDialog(
                 .filter { it.isNotBlank() }
                 .joinToString(" · "),
         )
+    }
+    var gpsMessage by remember(workOrder.id) { mutableStateOf("") }
+    var gpsLoading by remember(workOrder.id) { mutableStateOf(false) }
+    val context = LocalContext.current
+    val captureGpsLocation = {
+        gpsLoading = true
+        gpsMessage = "Dohvaćam GPS lokaciju..."
+        requestSignatureGpsLocation(
+            context = context.applicationContext,
+            onResult = { locationText ->
+                signatureLocation = locationText
+                gpsMessage = "GPS lokacija je dodana u potpis."
+                gpsLoading = false
+            },
+            onError = { message ->
+                gpsMessage = message
+                gpsLoading = false
+            },
+        )
+    }
+    val gpsPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { permissions ->
+        val granted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+            permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (granted) {
+            captureGpsLocation()
+        } else {
+            gpsMessage = "Bez dozvole za lokaciju GPS se ne može upisati u potpis."
+        }
     }
     val hasSignature = strokes.any { it.isNotEmpty() }
     val inkColor = MaterialTheme.colorScheme.primary
@@ -1068,11 +1115,31 @@ private fun WorkOrderFingerSignatureDialog(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
                 )
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    SignatureMetadataCheckbox(
+                        checked = includeSignerName,
+                        enabled = !isLoading,
+                        label = "Dodaj ime i prezime",
+                        onCheckedChange = { includeSignerName = it },
+                    )
+                    SignatureMetadataCheckbox(
+                        checked = includeSignedAt,
+                        enabled = !isLoading,
+                        label = "Dodaj datum i vrijeme",
+                        onCheckedChange = { includeSignedAt = it },
+                    )
+                    SignatureMetadataCheckbox(
+                        checked = includeSignatureLocation,
+                        enabled = !isLoading,
+                        label = "Dodaj GPS lokaciju",
+                        onCheckedChange = { includeSignatureLocation = it },
+                    )
+                }
                 OutlinedTextField(
                     value = signerName,
                     onValueChange = { signerName = it },
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = !isLoading,
+                    enabled = !isLoading && includeSignerName,
                     singleLine = true,
                     label = { Text("Ime i prezime potpisnika") },
                 )
@@ -1080,11 +1147,53 @@ private fun WorkOrderFingerSignatureDialog(
                     value = signatureLocation,
                     onValueChange = { signatureLocation = it },
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = !isLoading,
+                    enabled = !isLoading && includeSignatureLocation,
                     singleLine = true,
                     label = { Text("Lokacija potpisa") },
-                    placeholder = { Text("npr. Zagreb, lokacija naručitelja") },
+                    placeholder = { Text("GPS koordinate potpisa") },
                 )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = if (!includeSignatureLocation) {
+                            "GPS lokacija neće biti dodana u PDF."
+                        } else {
+                            gpsMessage.ifBlank { "GPS lokacija se upisuje u PDF uz potpis." }
+                        },
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    OutlinedButton(
+                        onClick = {
+                            if (hasSignatureLocationPermission(context)) {
+                                captureGpsLocation()
+                            } else {
+                                gpsMessage = "Dopusti lokaciju za GPS potpis."
+                                gpsPermissionLauncher.launch(
+                                    arrayOf(
+                                        Manifest.permission.ACCESS_FINE_LOCATION,
+                                        Manifest.permission.ACCESS_COARSE_LOCATION,
+                                    ),
+                                )
+                            }
+                        },
+                        enabled = !isLoading && !gpsLoading && includeSignatureLocation,
+                        shape = RoundedCornerShape(14.dp),
+                    ) {
+                        if (gpsLoading) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        } else {
+                            Icon(Icons.Rounded.LocationOn, contentDescription = null, modifier = Modifier.size(18.dp))
+                        }
+                        Spacer(Modifier.width(6.dp))
+                        Text("Dohvati GPS")
+                    }
+                }
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(18.dp),
@@ -1185,6 +1294,9 @@ private fun WorkOrderFingerSignatureDialog(
                         ),
                         signerName.trim(),
                         signatureLocation.trim(),
+                        includeSignerName,
+                        includeSignedAt,
+                        includeSignatureLocation,
                     )
                 },
                 enabled = !isLoading && hasSignature && canvasSize.width > 0 && canvasSize.height > 0,
@@ -1198,6 +1310,34 @@ private fun WorkOrderFingerSignatureDialog(
             }
         },
     )
+}
+
+@Composable
+private fun SignatureMetadataCheckbox(
+    checked: Boolean,
+    enabled: Boolean,
+    label: String,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(enabled = enabled) { onCheckedChange(!checked) }
+            .padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Checkbox(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled,
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 0.86f else 0.42f),
+        )
+    }
 }
 
 private fun renderSignaturePng(
@@ -1242,6 +1382,144 @@ private fun renderSignaturePng(
         bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
         output.toByteArray()
     }
+}
+
+private fun hasSignatureLocationPermission(context: Context): Boolean =
+    ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+@SuppressLint("MissingPermission")
+private fun requestSignatureGpsLocation(
+    context: Context,
+    onResult: (String) -> Unit,
+    onError: (String) -> Unit,
+) {
+    if (!hasSignatureLocationPermission(context)) {
+        onError("Nema dozvole za GPS lokaciju potpisa.")
+        return
+    }
+
+    val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+    if (locationManager == null) {
+        onError("GPS lokacija nije dostupna na ovom uređaju.")
+        return
+    }
+
+    val hasFinePermission = ContextCompat.checkSelfPermission(
+        context,
+        Manifest.permission.ACCESS_FINE_LOCATION,
+    ) == PackageManager.PERMISSION_GRANTED
+    val candidateProviders = buildList {
+        if (hasFinePermission) add(LocationManager.GPS_PROVIDER)
+        add(LocationManager.NETWORK_PROVIDER)
+        add(LocationManager.PASSIVE_PROVIDER)
+    }.distinct()
+    val enabledProviders = candidateProviders.filter { provider ->
+        provider == LocationManager.PASSIVE_PROVIDER ||
+            runCatching { locationManager.isProviderEnabled(provider) }.getOrDefault(false)
+    }
+
+    if (enabledProviders.isEmpty()) {
+        onError("Uključi lokaciju na mobitelu pa ponovno dohvati GPS.")
+        return
+    }
+
+    fun bestLocation(locations: List<Location>): Location? =
+        locations
+            .filter { it.latitude in -90.0..90.0 && it.longitude in -180.0..180.0 }
+            .maxWithOrNull(
+                compareBy<Location> { if (it.provider == LocationManager.GPS_PROVIDER) 2 else 1 }
+                    .thenBy { if (it.hasAccuracy()) -it.accuracy else Float.NEGATIVE_INFINITY }
+                    .thenBy { it.time },
+            )
+
+    val lastKnownLocations = enabledProviders.mapNotNull { provider ->
+        runCatching { locationManager.getLastKnownLocation(provider) }.getOrNull()
+    }
+    val lastKnown = bestLocation(lastKnownLocations)
+    val now = System.currentTimeMillis()
+    if (
+        lastKnown != null &&
+        now - lastKnown.time <= 120_000L &&
+        (!lastKnown.hasAccuracy() || lastKnown.accuracy <= 35f)
+    ) {
+        onResult(formatSignatureGpsLocation(lastKnown))
+        return
+    }
+
+    val handler = Handler(Looper.getMainLooper())
+    var completed = false
+    var bestFreshLocation: Location? = lastKnown
+    var timeoutRunnable: Runnable? = null
+    lateinit var listener: LocationListener
+
+    fun completeWith(location: Location?) {
+        if (completed) return
+        completed = true
+        runCatching { locationManager.removeUpdates(listener) }
+        timeoutRunnable?.let { handler.removeCallbacks(it) }
+        if (location != null) {
+            onResult(formatSignatureGpsLocation(location))
+        } else {
+            onError("GPS lokacija nije pronađena. Provjeri da je lokacija uključena.")
+        }
+    }
+
+    listener = LocationListener { location ->
+        bestFreshLocation = bestLocation(listOfNotNull(bestFreshLocation, location))
+        val isPreciseGps = location.provider == LocationManager.GPS_PROVIDER &&
+            (!location.hasAccuracy() || location.accuracy <= 50f)
+        val isGoodEnough = location.hasAccuracy() && location.accuracy <= 35f
+        if (isPreciseGps || isGoodEnough) {
+            completeWith(location)
+        }
+    }
+
+    var requestedAnyProvider = false
+    enabledProviders
+        .filter { it != LocationManager.PASSIVE_PROVIDER }
+        .forEach { provider ->
+            runCatching {
+                locationManager.requestLocationUpdates(
+                    provider,
+                    1000L,
+                    0f,
+                    listener,
+                    Looper.getMainLooper(),
+                )
+                requestedAnyProvider = true
+            }
+        }
+
+    if (!requestedAnyProvider) {
+        completeWith(lastKnown)
+        return
+    }
+
+    val timeout = Runnable {
+        completeWith(bestFreshLocation)
+    }
+    timeoutRunnable = timeout
+    handler.postDelayed(timeout, 12_000L)
+}
+
+private fun formatSignatureGpsLocation(location: Location): String {
+    val latitude = String.format(Locale.US, "%.6f", location.latitude)
+    val longitude = String.format(Locale.US, "%.6f", location.longitude)
+    val accuracy = if (location.hasAccuracy()) "±${Math.round(location.accuracy)} m" else "točnost nepoznata"
+    val provider = when (location.provider) {
+        LocationManager.GPS_PROVIDER -> "GPS"
+        LocationManager.NETWORK_PROVIDER -> "mreža"
+        LocationManager.PASSIVE_PROVIDER -> "zadnja lokacija"
+        else -> location.provider.orEmpty().ifBlank { "lokacija" }
+    }
+    val timestamp = runCatching {
+        LocalDateTime.ofInstant(
+            Instant.ofEpochMilli(location.time.takeIf { it > 0L } ?: System.currentTimeMillis()),
+            ZoneId.systemDefault(),
+        ).format(DateTimeFormatter.ofPattern("dd.MM.yyyy. HH:mm"))
+    }.getOrDefault(LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd.MM.yyyy. HH:mm")))
+    return "$provider: $latitude, $longitude · $accuracy · dohvaćeno $timestamp"
 }
 
 @Composable

@@ -265,6 +265,9 @@ class SafeNexusApi(
         signerName: String,
         signatureLocation: String,
         signedAt: String,
+        includeSignerName: Boolean,
+        includeSignedAt: Boolean,
+        includeSignatureLocation: Boolean,
         fallbackFileName: String,
     ): Result<DownloadedDocument> = withContext(Dispatchers.IO) {
         runCatching {
@@ -274,6 +277,9 @@ class SafeNexusApi(
                 .put("signerName", signerName)
                 .put("signatureLocation", signatureLocation)
                 .put("signedAt", signedAt)
+                .put("includeSignerName", includeSignerName)
+                .put("includeSignedAt", includeSignedAt)
+                .put("includeSignatureLocation", includeSignatureLocation)
                 .toString()
             val json = JSONObject(
                 request(
