@@ -9826,6 +9826,9 @@ async function runMutation(callback, errorTarget, options = {}) {
     if (payload && typeof payload === "object" && Object.prototype.hasOwnProperty.call(payload, "storage")) {
       applySnapshot(payload, options);
     }
+    if (typeof options.onSuccessPayload === "function") {
+      options.onSuccessPayload(payload);
+    }
     return true;
   } catch (error) {
     if (error.statusCode === 401) {
@@ -15319,16 +15322,21 @@ async function createPeopleTrainingWorkOrdersForRecords(records = [], selection 
   for (const group of groups) {
     const payload = buildPeopleTrainingWorkOrderPayload(group, selection);
     const previousIds = new Set(state.workOrders.map((item) => String(item.id)));
+    let createdFromResponse = null;
     const success = await runMutation(() => apiRequest("/work-orders", {
       method: "POST",
       body: payload,
-    }), peopleTrainingFormFeedback);
+    }), peopleTrainingFormFeedback, {
+      onSuccessPayload: (response) => {
+        createdFromResponse = applyCreatedWorkOrderResponse(response, payload, { refresh: false });
+      },
+    });
 
     if (!success) {
       return createdWorkOrders;
     }
 
-    const created = findCreatedWorkOrderMatch(previousIds, payload);
+    const created = createdFromResponse || findCreatedWorkOrderMatch(previousIds, payload);
     if (created) {
       createdWorkOrders.push(created);
       const linked = await linkPeopleTrainingEntriesToWorkOrder(group.entries, created, options);
@@ -15343,6 +15351,10 @@ async function createPeopleTrainingWorkOrdersForRecords(records = [], selection 
       }
       queueGeneratedWorkOrderPdfSave(created.id);
     }
+  }
+
+  if (createdWorkOrders.length > 0) {
+    void refreshSnapshot().catch(() => {});
   }
 
   return createdWorkOrders;
@@ -27187,6 +27199,26 @@ function findCreatedWorkOrderMatch(previousIds, payload) {
   )) ?? null;
 }
 
+function applyCreatedWorkOrderResponse(response = {}, fallbackPayload = {}, options = {}) {
+  const item = response?.item || response?.workOrder || null;
+  if (!item?.id) {
+    return null;
+  }
+
+  const created = {
+    ...fallbackPayload,
+    ...item,
+  };
+  state.workOrders = sortWorkOrders([
+    created,
+    ...state.workOrders.filter((entry) => String(entry.id) !== String(created.id)),
+  ]);
+  if (options.refresh !== false) {
+    void refreshSnapshot().catch(() => {});
+  }
+  return created;
+}
+
 async function persistWorkOrderAutoSave({ immediate = false } = {}) {
   clearWorkOrderAutoSaveTimer();
 
@@ -27238,10 +27270,17 @@ async function persistWorkOrderAutoSave({ immediate = false } = {}) {
   const path = isEditing ? `/work-orders/${editingId}` : "/work-orders";
   const method = isEditing ? "PATCH" : "POST";
   const previousIds = new Set(state.workOrders.map((item) => String(item.id)));
+  let createdFromResponse = null;
   const success = await runMutation(() => apiRequest(path, {
     method,
     body: payload,
-  }), workOrderError);
+  }), workOrderError, {
+    onSuccessPayload: (response) => {
+      if (!isEditing) {
+        createdFromResponse = applyCreatedWorkOrderResponse(response, payload);
+      }
+    },
+  });
 
   state.workOrderAutoSave.saving = false;
 
@@ -27259,11 +27298,12 @@ async function persistWorkOrderAutoSave({ immediate = false } = {}) {
     void loadWorkOrderActivity(editingId);
     queueGeneratedWorkOrderPdfSave(editingId);
   } else {
-    const created = findCreatedWorkOrderMatch(previousIds, payload);
+    const created = createdFromResponse || findCreatedWorkOrderMatch(previousIds, payload);
 
     if (created) {
       workOrderIdInput.value = created.id;
       renderWorkOrderEditorSummary();
+      renderWorkOrderWorkspace();
       void loadWorkOrderActivity(created.id);
       void loadWorkOrderDocuments(created.id);
       queueGeneratedWorkOrderPdfSave(created.id);
@@ -113926,14 +113966,20 @@ function createWorkOrderQuickCreateRow(columnLayout = [], isExpanded = false) {
       submitButton.textContent = "Spremam...";
     }
     const previousIds = new Set(state.workOrders.map((item) => String(item.id)));
+    let createdFromResponse = null;
     const success = await runMutation(() => apiRequest("/work-orders", {
       method: "POST",
       body: payload,
-    }), error);
+    }), error, {
+      onSuccessPayload: (response) => {
+        createdFromResponse = applyCreatedWorkOrderResponse(response, payload);
+      },
+    });
 
     if (success) {
-      const created = findCreatedWorkOrderMatch(previousIds, payload);
+      const created = createdFromResponse || findCreatedWorkOrderMatch(previousIds, payload);
       if (created?.id) {
+        renderWorkOrderWorkspace();
         queueGeneratedWorkOrderPdfSave(created.id);
       }
       window.setTimeout(() => {

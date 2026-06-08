@@ -11362,7 +11362,7 @@ async function handleApiRequest(request, response, url) {
         organizationId: scopedSnapshot.activeOrganizationId,
       }, user);
       queueWorkOrderCreatedPush(createdWorkOrder, scopedSnapshot);
-      await writeSnapshot(response, user, request, 201);
+      sendJson(response, 201, { ok: true, item: createdWorkOrder });
       return true;
     }
 
