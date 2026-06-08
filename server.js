@@ -9439,6 +9439,16 @@ function getWorkOrderPushExecutorLabels(workOrder = {}) {
 
 function buildPushUserLookup(scopedSnapshot = {}) {
   const lookup = new Map();
+  const addCandidate = (candidate, userId) => {
+    const key = normalizePushLookupKey(candidate);
+    const id = normalizeInputValue(userId);
+    if (!key || !id) return;
+    if (!lookup.has(key)) {
+      lookup.set(key, new Set());
+    }
+    lookup.get(key).add(id);
+  };
+
   (scopedSnapshot.users ?? []).forEach((user) => {
     if (user?.isActive === false) return;
     const fullName = normalizeInputValue(user.fullName || [user.firstName, user.lastName].filter(Boolean).join(" "));
@@ -9452,10 +9462,7 @@ function buildPushUserLookup(scopedSnapshot = {}) {
       [user.firstName, user.lastName].filter(Boolean).join(" "),
     ];
     candidates.forEach((candidate) => {
-      const key = normalizePushLookupKey(candidate);
-      if (key) {
-        lookup.set(key, String(user.id));
-      }
+      addCandidate(candidate, user.id);
     });
   });
   return lookup;
@@ -9465,12 +9472,23 @@ function resolveWorkOrderPushUserIds(workOrder = {}, scopedSnapshot = {}) {
   const lookup = buildPushUserLookup(scopedSnapshot);
   const ids = new Set();
   getWorkOrderPushExecutorLabels(workOrder).forEach((executorLabel) => {
-    const id = lookup.get(normalizePushLookupKey(executorLabel));
-    if (id) {
-      ids.add(id);
+    const matchingIds = lookup.get(normalizePushLookupKey(executorLabel));
+    if (matchingIds instanceof Set) {
+      matchingIds.forEach((id) => ids.add(id));
+    } else if (matchingIds) {
+      ids.add(matchingIds);
     }
   });
   return [...ids];
+}
+
+function addLookupIdsToSet(lookup, key, ids) {
+  const matchingIds = lookup.get(key);
+  if (matchingIds instanceof Set) {
+    matchingIds.forEach((id) => ids.add(id));
+  } else if (matchingIds) {
+    ids.add(matchingIds);
+  }
 }
 
 function resolveAddedExecutorPushUserIds(currentWorkOrder = {}, nextWorkOrder = {}, scopedSnapshot = {}) {
@@ -9480,10 +9498,7 @@ function resolveAddedExecutorPushUserIds(currentWorkOrder = {}, nextWorkOrder = 
   getWorkOrderPushExecutorLabels(nextWorkOrder).forEach((executorLabel) => {
     const key = normalizePushLookupKey(executorLabel);
     if (!key || currentKeys.has(key)) return;
-    const id = lookup.get(key);
-    if (id) {
-      ids.add(id);
-    }
+    addLookupIdsToSet(lookup, key, ids);
   });
   return [...ids];
 }
@@ -9527,6 +9542,15 @@ function queuePushToUserIds(userIds = [], payload = {}) {
       if (result?.skipped) {
         console.info("[push] preskoceno", JSON.stringify({
           reason: result.reason || "unknown",
+          recipients: Array.isArray(userIds) ? userIds.length : 0,
+          type: payload?.data?.type || "",
+          workOrderId: payload?.data?.workOrderId || "",
+          workOrderNumber: payload?.data?.workOrderNumber || "",
+        }));
+      } else if (result?.sent || result?.failed) {
+        console.info("[push] poslano", JSON.stringify({
+          sent: result.sent || 0,
+          failed: result.failed || 0,
           recipients: Array.isArray(userIds) ? userIds.length : 0,
           type: payload?.data?.type || "",
           workOrderId: payload?.data?.workOrderId || "",
