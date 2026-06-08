@@ -4406,11 +4406,11 @@ async function addFingerSignatureToWorkOrderPdf(pdfBuffer = Buffer.alloc(0), sig
     : await pdfDoc.embedPng(signatureBuffer);
 
   const { width: pageWidth } = page.getSize();
-  const boxWidth = Math.min(232, Math.max(190, pageWidth - 84));
-  const boxHeight = 104;
+  const boxWidth = Math.min(266, Math.max(218, pageWidth - 84));
+  const boxHeight = 58;
   const x = Math.max(34, pageWidth - boxWidth - 34);
-  const y = 36;
-  const padding = 8;
+  const y = 41;
+  const padding = 7;
   const label = normalizePdfStampText(options.label || "Potpis narucitelja", 70);
   const includeSignerName = options.includeSignerName !== false;
   const includeSignedAt = options.includeSignedAt !== false;
@@ -4419,8 +4419,10 @@ async function addFingerSignatureToWorkOrderPdf(pdfBuffer = Buffer.alloc(0), sig
   const signedAt = includeSignedAt ? normalizePdfStampText(formatWorkOrderSignatureTimestamp(options.signedAt), 58) : "";
   const rawSignatureLocation = includeSignatureLocation ? String(options.signatureLocation || "").trim() : "";
   const googleMapsUrl = includeSignatureLocation ? getGoogleMapsUrlForSignatureLocation(rawSignatureLocation) : "";
-  const imageMaxWidth = boxWidth - (padding * 2);
-  const imageMaxHeight = 32;
+  const signatureColumnWidth = Math.min(106, Math.max(88, Math.round(boxWidth * 0.42)));
+  const metadataX = x + padding + signatureColumnWidth + 8;
+  const imageMaxWidth = signatureColumnWidth - 10;
+  const imageMaxHeight = 23;
   const scale = Math.min(
     imageMaxWidth / Math.max(1, signatureImage.width),
     imageMaxHeight / Math.max(1, signatureImage.height),
@@ -4429,7 +4431,7 @@ async function addFingerSignatureToWorkOrderPdf(pdfBuffer = Buffer.alloc(0), sig
   const imageWidth = Math.max(1, signatureImage.width * scale);
   const imageHeight = Math.max(1, signatureImage.height * scale);
   const imageX = x + padding + Math.max(0, (imageMaxWidth - imageWidth) / 2);
-  const imageY = y + 58;
+  const imageY = y + 18;
 
   page.drawRectangle({
     x,
@@ -4437,14 +4439,14 @@ async function addFingerSignatureToWorkOrderPdf(pdfBuffer = Buffer.alloc(0), sig
     width: boxWidth,
     height: boxHeight,
     color: rgb(1, 1, 1),
-    opacity: 0.86,
+    opacity: 0.80,
     borderColor: rgb(0.71, 0.78, 0.88),
-    borderWidth: 0.55,
+    borderWidth: 0.45,
   });
   page.drawText(label, {
     x: x + padding,
-    y: y + boxHeight - 14,
-    size: 6.4,
+    y: y + boxHeight - 9,
+    size: 5.8,
     color: rgb(0.17, 0.24, 0.39),
   });
   page.drawImage(signatureImage, {
@@ -4454,9 +4456,9 @@ async function addFingerSignatureToWorkOrderPdf(pdfBuffer = Buffer.alloc(0), sig
     height: imageHeight,
   });
   page.drawLine({
-    start: { x: x + padding, y: y + 51 },
-    end: { x: x + boxWidth - padding, y: y + 51 },
-    thickness: 0.65,
+    start: { x: x + padding, y: y + 15 },
+    end: { x: x + padding + signatureColumnWidth - 10, y: y + 15 },
+    thickness: 0.55,
     color: rgb(0.27, 0.35, 0.49),
   });
 
@@ -4469,23 +4471,23 @@ async function addFingerSignatureToWorkOrderPdf(pdfBuffer = Buffer.alloc(0), sig
     signatureLocationText ? { text: signatureLocationText, url: googleMapsUrl } : null,
   ].filter(Boolean);
   metadataLines.forEach((line, index) => {
-    const lineY = y + 40 - (index * 9);
+    const lineY = y + 38 - (index * 9.5);
     const isLink = Boolean(line.url);
     page.drawText(normalizePdfStampText(line.text, 62), {
-      x: x + padding,
+      x: metadataX,
       y: lineY,
-      size: 5.8,
+      size: 5.6,
       color: isLink ? rgb(0.05, 0.32, 0.78) : rgb(0.30, 0.38, 0.52),
     });
     if (isLink) {
       page.drawLine({
-        start: { x: x + padding, y: lineY - 1.4 },
-        end: { x: x + padding + 64, y: lineY - 1.4 },
+        start: { x: metadataX, y: lineY - 1.4 },
+        end: { x: metadataX + 64, y: lineY - 1.4 },
         thickness: 0.4,
         color: rgb(0.05, 0.32, 0.78),
       });
       addPdfLinkAnnotation(pdfDoc, page, {
-        x: x + padding,
+        x: metadataX,
         y: lineY - 2,
         width: 72,
         height: 8,
