@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
 import { gzipSync } from "node:zlib";
 import JSZip from "jszip";
+import { PDFDocument, rgb } from "pdf-lib";
 import * as XLSX from "xlsx";
 
 import {
@@ -77,7 +78,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.22.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.23.apk";
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
@@ -573,6 +574,7 @@ function withOperationTimeout(promise, timeoutMs = 0, message = "Operacija je is
     });
 }
 const canonicalAppHost = canonicalAppOrigin ? new URL(canonicalAppOrigin).host.toLowerCase() : "";
+const VERIFIED_WORK_ORDER_DOCUMENT_CATEGORY = "Ovjereni Radni nalog";
 const GENERATED_WORK_ORDER_PDF_CATEGORY = "Radni nalog PDF";
 const GENERATED_DOCUMENT_TEMPLATE_PDF_CATEGORY = "Zapisnik PDF";
 const GENERATED_RISK_ASSESSMENT_PDF_CATEGORY = "Procjena rizika PDF";
@@ -4253,6 +4255,161 @@ async function buildWorkOrderPdfExportPayload(workOrder = {}, scopedSnapshot = {
 
   const pdfBuffer = await buildWorkOrderPdfBuffer(workOrder);
   return { pdfBuffer, fileName };
+}
+
+function decodeBase64DataUrl(dataUrl = "", allowedMimeTypes = []) {
+  const meta = getOpenAiDataUrlMeta(dataUrl);
+  if (!meta || !meta.isBase64) {
+    throw new Error("Datoteka nije ispravno poslana.");
+  }
+
+  const mimeType = String(meta.mimeType || "application/octet-stream").toLowerCase();
+  const allowed = Array.isArray(allowedMimeTypes)
+    ? allowedMimeTypes.map((value) => String(value || "").toLowerCase()).filter(Boolean)
+    : [];
+
+  if (allowed.length > 0 && !allowed.includes(mimeType)) {
+    throw new Error("Vrsta datoteke nije podrzana.");
+  }
+
+  return {
+    mimeType,
+    buffer: Buffer.from(String(meta.payload || "").replace(/\s+/g, ""), "base64"),
+  };
+}
+
+function getSignedWorkOrderPdfFileName(workOrder = {}) {
+  const baseName = getWorkOrderPdfExportFileName(workOrder).replace(/\.pdf$/i, "");
+  return sanitizeGeneratedDocumentFileName(`${baseName}-potpisano`, {
+    fallback: "radni-nalog-potpisano",
+    extension: "pdf",
+  });
+}
+
+function normalizePdfStampText(value = "", maxLength = 110) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\x20-\x7E]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function formatWorkOrderSignatureTimestamp(value = "") {
+  const date = value ? new Date(value) : new Date();
+  const safeDate = Number.isFinite(date.getTime()) ? date : new Date();
+  return new Intl.DateTimeFormat("hr-HR", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Europe/Zagreb",
+  }).format(safeDate);
+}
+
+async function addFingerSignatureToWorkOrderPdf(pdfBuffer = Buffer.alloc(0), signatureDataUrl = "", options = {}) {
+  const { mimeType, buffer: signatureBuffer } = decodeBase64DataUrl(signatureDataUrl, ["image/png", "image/jpeg", "image/jpg"]);
+  if (signatureBuffer.length === 0) {
+    throw new Error("Potpis je prazan.");
+  }
+
+  const pdfDoc = await PDFDocument.load(Buffer.isBuffer(pdfBuffer) ? pdfBuffer : Buffer.from(pdfBuffer ?? []));
+  const pages = pdfDoc.getPages();
+  const page = pages[pages.length - 1];
+  if (!page) {
+    throw new Error("PDF radnog naloga nema stranicu za potpis.");
+  }
+
+  const signatureImage = mimeType === "image/jpeg" || mimeType === "image/jpg"
+    ? await pdfDoc.embedJpg(signatureBuffer)
+    : await pdfDoc.embedPng(signatureBuffer);
+
+  const { width: pageWidth } = page.getSize();
+  const boxWidth = Math.min(210, Math.max(140, pageWidth - 84));
+  const boxHeight = 132;
+  const x = Math.max(36, pageWidth - boxWidth - 42);
+  const y = 42;
+  const padding = 12;
+  const label = normalizePdfStampText(options.label || "Potpis narucitelja", 70);
+  const signerName = normalizePdfStampText(options.signerName || "", 74);
+  const signedAt = normalizePdfStampText(formatWorkOrderSignatureTimestamp(options.signedAt), 58);
+  const signatureLocation = normalizePdfStampText(options.signatureLocation || "", 88);
+  const imageMaxWidth = boxWidth - (padding * 2);
+  const imageMaxHeight = 44;
+  const scale = Math.min(
+    imageMaxWidth / Math.max(1, signatureImage.width),
+    imageMaxHeight / Math.max(1, signatureImage.height),
+    1,
+  );
+  const imageWidth = Math.max(1, signatureImage.width * scale);
+  const imageHeight = Math.max(1, signatureImage.height * scale);
+  const imageX = x + padding + Math.max(0, (imageMaxWidth - imageWidth) / 2);
+  const imageY = y + 61;
+
+  page.drawRectangle({
+    x,
+    y,
+    width: boxWidth,
+    height: boxHeight,
+    color: rgb(1, 1, 1),
+    opacity: 0.92,
+    borderColor: rgb(0.71, 0.78, 0.88),
+    borderWidth: 0.8,
+  });
+  page.drawText(label, {
+    x: x + padding,
+    y: y + boxHeight - 20,
+    size: 8,
+    color: rgb(0.17, 0.24, 0.39),
+  });
+  page.drawImage(signatureImage, {
+    x: imageX,
+    y: imageY,
+    width: imageWidth,
+    height: imageHeight,
+  });
+  page.drawLine({
+    start: { x: x + padding, y: y + 56 },
+    end: { x: x + boxWidth - padding, y: y + 56 },
+    thickness: 0.8,
+    color: rgb(0.27, 0.35, 0.49),
+  });
+
+  const metadataLines = [
+    signerName ? `Ime i prezime: ${signerName}` : "",
+    signedAt ? `Datum i vrijeme: ${signedAt}` : "",
+    signatureLocation ? `Lokacija: ${signatureLocation}` : "",
+  ].filter(Boolean);
+  metadataLines.forEach((line, index) => {
+    page.drawText(normalizePdfStampText(line, 92), {
+      x: x + padding,
+      y: y + 39 - (index * 12),
+      size: 7,
+      color: rgb(0.30, 0.38, 0.52),
+    });
+  });
+
+  return Buffer.from(await pdfDoc.save());
+}
+
+function buildSignedWorkOrderPdfDocumentPayload(workOrder = {}, pdfBuffer = Buffer.alloc(0), fileName = "", metadata = {}) {
+  const safeBuffer = Buffer.isBuffer(pdfBuffer) ? pdfBuffer : Buffer.from(pdfBuffer ?? []);
+  const signerName = cleanSignatureExportText(metadata.signerName || "");
+  const signedAt = formatWorkOrderSignatureTimestamp(metadata.signedAt);
+  const signatureLocation = cleanSignatureExportText(metadata.signatureLocation || "");
+  return {
+    fileName: fileName || getSignedWorkOrderPdfFileName(workOrder),
+    fileType: "application/pdf",
+    fileSize: safeBuffer.length,
+    documentCategory: VERIFIED_WORK_ORDER_DOCUMENT_CATEGORY,
+    description: [
+      `RN ${workOrder.workOrderNumber || "bez broja"} potpisan prstom u SafeNexus Android aplikaciji.`,
+      signerName ? `Potpisnik: ${signerName}.` : "",
+      signedAt ? `Datum/vrijeme: ${signedAt}.` : "",
+      signatureLocation ? `Lokacija: ${signatureLocation}.` : "",
+    ].filter(Boolean).join(" "),
+    sourceType: "editor",
+    dataUrl: `data:application/pdf;base64,${safeBuffer.toString("base64")}`,
+  };
 }
 
 function buildGeneratedWorkOrderPdfDocumentPayload(workOrder = {}, pdfBuffer = Buffer.alloc(0), fileName = "") {
@@ -10721,6 +10878,7 @@ async function handleApiRequest(request, response, url) {
     const chatConversationClearHistoryMatch = url.pathname.match(/^\/api\/chat\/conversations\/([^/]+)\/clear-history$/);
     const workOrderPdfExportMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/export-pdf$/);
     const workOrderPdfSaveMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/save-pdf$/);
+    const workOrderPdfSignatureMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/signature-pdf$/);
     const workOrderPdfDownloadMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/pdf$/);
     const workOrderActivityMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/activity$/);
     const workOrderDocumentsCollectionMatch = url.pathname === "/api/work-order-documents";
@@ -13417,6 +13575,53 @@ async function handleApiRequest(request, response, url) {
       const templateId = String(body?.templateId ?? "").trim();
       const item = await saveGeneratedWorkOrderPdfDocument(workOrderPdfSaveMatch[1], workOrder, scopedSnapshot, user, templateId);
       sendJson(response, 200, { item });
+      return true;
+    }
+
+    if (workOrderPdfSignatureMatch && request.method === "POST") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo potpisivati PDF radnog naloga.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const signatureDataUrl = String(body?.signatureDataUrl || body?.signature || "").trim();
+      if (!signatureDataUrl) {
+        sendError(response, 400, "Potpis nije poslan.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const workOrder = assertInScope(scopedSnapshot.workOrders, workOrderPdfSignatureMatch[1], "Radni nalog nije pronaden.");
+      const templateId = String(body?.templateId ?? "").trim();
+      const signerName = String(body?.signerName || user?.fullName || user?.username || "").trim();
+      const signatureLocation = String(body?.signatureLocation || body?.location || "").trim();
+      const signedAt = String(body?.signedAt || "").trim();
+      const { pdfBuffer } = await buildWorkOrderPdfExportPayload(workOrder, scopedSnapshot, templateId);
+      const signedPdfBuffer = await addFingerSignatureToWorkOrderPdf(pdfBuffer, signatureDataUrl, {
+        signerName,
+        signatureLocation,
+        signedAt,
+      });
+      const fileName = getSignedWorkOrderPdfFileName(workOrder);
+      const filePayload = buildSignedWorkOrderPdfDocumentPayload(workOrder, signedPdfBuffer, fileName, {
+        signerName,
+        signatureLocation,
+        signedAt,
+      });
+      const items = await domainRepository.addWorkOrderDocuments(
+        workOrderPdfSignatureMatch[1],
+        [filePayload],
+        user,
+        { sourceType: "editor" },
+      );
+
+      sendJson(response, 200, {
+        item: stripStoredDocumentPayloadForResponse(items[0] ?? null),
+        fileName,
+        fileType: "application/pdf",
+        fileContentBase64: signedPdfBuffer.toString("base64"),
+      });
       return true;
     }
 

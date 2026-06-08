@@ -25210,6 +25210,8 @@ function createWorkOrderEditorMenuControl({
   emptyLabel = "Nema opcija.",
   ariaLabel = "Odabir",
   searchPlaceholder = "",
+  maxInitialOptions = 90,
+  maxSearchOptions = 160,
   disabled = false,
   getOptionValue = (option) => option?.value ?? "",
   getOptionLabel = (option) => option?.label ?? "",
@@ -25346,7 +25348,12 @@ function createWorkOrderEditorMenuControl({
         return;
       }
 
-      visibleOptions.forEach((option) => {
+      const safeInitialLimit = Math.max(1, Number(maxInitialOptions) || 90);
+      const safeSearchLimit = Math.max(1, Number(maxSearchOptions) || 160);
+      const visibleLimit = normalizedQuery ? safeSearchLimit : safeInitialLimit;
+      const renderedOptions = visibleOptions.slice(0, visibleLimit);
+
+      renderedOptions.forEach((option) => {
         const optionValue = String(getOptionValue(option) ?? "").trim();
         const isSelected = optionValue === normalizedValue;
         const optionButton = document.createElement("button");
@@ -25383,6 +25390,13 @@ function createWorkOrderEditorMenuControl({
 
         optionList.append(optionButton);
       });
+
+      if (visibleOptions.length > renderedOptions.length) {
+        const more = document.createElement("p");
+        more.className = "work-order-editor-field-empty work-order-editor-field-limit-hint";
+        more.textContent = `Prikazano ${renderedOptions.length} od ${visibleOptions.length}. Nastavi tipkati za uzi odabir.`;
+        optionList.append(more);
+      }
     };
 
     if (searchInput) {
@@ -25721,6 +25735,8 @@ function createWorkOrderEditorCompanyControl() {
     emptyLabel: "Nema tvrtki za ovaj pojam.",
     ariaLabel: "Odaberi tvrtku",
     searchPlaceholder: "Traži tvrtku, sjedište ili OIB",
+    maxInitialOptions: 45,
+    maxSearchOptions: 140,
     getOptionValue: (option) => option.value,
     getOptionLabel: (option) => option.label,
     getOptionMeta: (option) => option.meta,

@@ -12,6 +12,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -25,6 +26,10 @@ import android.webkit.MimeTypeMap
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.graphics.Canvas as AndroidCanvas
+import android.graphics.Color as AndroidColor
+import android.graphics.Paint as AndroidPaint
+import android.graphics.Path as AndroidPath
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -34,8 +39,10 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
@@ -121,21 +128,28 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -171,6 +185,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.ByteArrayOutputStream
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -688,7 +703,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun downloadWorkOrderPdf(context: Context, workOrder: WorkOrder, openAfterDownload: Boolean = false) {
+    fun downloadWorkOrderPdf(context: Context, workOrder: WorkOrder) {
         if (workOrder.id.isBlank()) {
             state = state.copy(error = "Radni nalog nema ispravan ID za PDF.")
             return
@@ -699,37 +714,91 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             api.downloadWorkOrderPdf(workOrder.id, fallbackFileName)
                 .onSuccess { downloaded ->
-                    if (openAfterDownload) {
-                        val uri = runCatching { cacheDownloadedDocument(context, downloaded) }.getOrElse { error ->
+                    runCatching { saveDownloadedDocument(context, downloaded) }
+                        .onSuccess { uri ->
+                            val opened = openCachedDocument(context, uri, downloaded.fileType)
                             state = state.copy(
                                 isLoading = false,
-                                error = error.message ?: "Ne mogu spremiti PDF za pregled.",
+                                notice = if (opened) {
+                                    "PDF radnog naloga je spremljen u Preuzimanja / SafeNexus i otvoren."
+                                } else {
+                                    "PDF radnog naloga je spremljen u Preuzimanja / SafeNexus."
+                                },
+                                error = if (opened) "" else "Na uređaju nema aplikacije za otvaranje PDF-a.",
                             )
-                            return@onSuccess
                         }
-                        val opened = openCachedDocument(context, uri, downloaded.fileType)
-                        state = state.copy(
-                            isLoading = false,
-                            notice = if (opened) "PDF radnog naloga je otvoren." else "PDF je preuzet u privremenu mapu aplikacije.",
-                            error = if (opened) "" else "Na uređaju nema aplikacije za otvaranje PDF-a.",
-                        )
-                    } else {
-                        runCatching { saveDownloadedDocument(context, downloaded) }
-                            .onSuccess {
-                                state = state.copy(isLoading = false, notice = "PDF radnog naloga je spremljen u Preuzimanja / SafeNexus.")
-                            }
-                            .onFailure { error ->
-                                state = state.copy(
-                                    isLoading = false,
-                                    error = error.message ?: "Ne mogu spremiti PDF radnog naloga.",
-                                )
-                            }
-                    }
+                        .onFailure { error ->
+                            state = state.copy(
+                                isLoading = false,
+                                error = error.message ?: "Ne mogu spremiti PDF radnog naloga.",
+                            )
+                        }
                 }
                 .onFailure { error ->
                     state = state.copy(
                         isLoading = false,
                         error = error.message ?: "Ne mogu preuzeti PDF radnog naloga.",
+                    )
+                }
+        }
+    }
+
+    fun signWorkOrderPdf(
+        context: Context,
+        workOrder: WorkOrder,
+        signaturePngBytes: ByteArray,
+        signerName: String,
+        signatureLocation: String,
+    ) {
+        if (workOrder.id.isBlank()) {
+            state = state.copy(error = "Radni nalog nema ispravan ID za potpis.")
+            return
+        }
+        if (signaturePngBytes.isEmpty()) {
+            state = state.copy(error = "Potpis je prazan.")
+            return
+        }
+
+        val fallbackFileName = "${workOrder.displayNumber.ifBlank { "radni-nalog" }}-potpisano.pdf"
+        val resolvedSignerName = signerName.trim().ifBlank { state.user?.displayName.orEmpty() }
+        val signedAt = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+        state = state.copy(isLoading = true, error = "", notice = "")
+        viewModelScope.launch {
+            api.signWorkOrderPdf(
+                workOrderId = workOrder.id,
+                signaturePngBytes = signaturePngBytes,
+                signerName = resolvedSignerName,
+                signatureLocation = signatureLocation.trim(),
+                signedAt = signedAt,
+                fallbackFileName = fallbackFileName,
+            )
+                .onSuccess { downloaded ->
+                    runCatching { saveDownloadedDocument(context, downloaded) }
+                        .onSuccess { uri ->
+                            val opened = openCachedDocument(context, uri, downloaded.fileType)
+                            state = state.copy(
+                                isLoading = false,
+                                notice = if (opened) {
+                                    "Potpisani RN je spremljen, dodan u dokumentaciju i otvoren."
+                                } else {
+                                    "Potpisani RN je spremljen i dodan u dokumentaciju."
+                                },
+                                error = if (opened) "" else "Na uređaju nema aplikacije za otvaranje PDF-a.",
+                            )
+                            loadWorkOrderDocuments(workOrder.id)
+                        }
+                        .onFailure { error ->
+                            state = state.copy(
+                                isLoading = false,
+                                error = error.message ?: "Ne mogu spremiti potpisani RN na mobitel.",
+                            )
+                            loadWorkOrderDocuments(workOrder.id)
+                        }
+                }
+                .onFailure { error ->
+                    state = state.copy(
+                        isLoading = false,
+                        error = error.message ?: "Ne mogu potpisati radni nalog.",
                     )
                 }
         }
@@ -747,6 +816,7 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
         viewModel.registerPushToken()
     }
     var documentationActionTarget by remember { mutableStateOf<WorkOrder?>(null) }
+    var signatureActionTarget by remember { mutableStateOf<WorkOrder?>(null) }
     var pendingPicker by remember { mutableStateOf<Pair<WorkOrder, WorkOrderDocumentInputMode>?>(null) }
     var pendingSelection by remember { mutableStateOf<PendingDocumentSelection?>(null) }
     val confirmDocumentSelection: (WorkOrderDocumentCategory) -> Unit = { category ->
@@ -907,6 +977,7 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                     onStatusChange = viewModel::updateWorkOrderStatus,
                     onAddDocumentation = openDocumentationActions,
                     onDownloadPdf = { workOrder -> viewModel.downloadWorkOrderPdf(context.applicationContext, workOrder) },
+                    onSignWorkOrder = { workOrder -> signatureActionTarget = workOrder },
                     onOpenDocument = { document -> viewModel.openWorkOrderDocument(context.applicationContext, document) },
                     onDownloadDocument = { document -> viewModel.downloadWorkOrderDocument(context.applicationContext, document) },
                     onDeleteDocument = viewModel::deleteWorkOrderDocument,
@@ -932,6 +1003,24 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
             onSelect = { mode -> startDocumentationFlow(workOrder, mode) },
         )
     }
+    signatureActionTarget?.let { workOrder ->
+        WorkOrderFingerSignatureDialog(
+            workOrder = workOrder,
+            defaultSignerName = state.user?.displayName.orEmpty(),
+            isLoading = state.isLoading,
+            onDismiss = { signatureActionTarget = null },
+            onConfirm = { signatureBytes, signerName, signatureLocation ->
+                signatureActionTarget = null
+                viewModel.signWorkOrderPdf(
+                    context = context.applicationContext,
+                    workOrder = workOrder,
+                    signaturePngBytes = signatureBytes,
+                    signerName = signerName,
+                    signatureLocation = signatureLocation,
+                )
+            },
+        )
+    }
     pendingSelection?.let { selection ->
         WorkOrderDocumentCategoryDialog(
             selection = selection,
@@ -939,6 +1028,219 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
             onDismiss = { pendingSelection = null },
             onConfirm = confirmDocumentSelection,
         )
+    }
+}
+
+@Composable
+private fun WorkOrderFingerSignatureDialog(
+    workOrder: WorkOrder,
+    defaultSignerName: String,
+    isLoading: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (ByteArray, String, String) -> Unit,
+) {
+    val strokes = remember(workOrder.id) { mutableStateListOf<List<Offset>>() }
+    var currentStroke by remember(workOrder.id) { mutableStateOf<List<Offset>>(emptyList()) }
+    var canvasSize by remember(workOrder.id) { mutableStateOf(IntSize.Zero) }
+    var signerName by remember(workOrder.id, defaultSignerName) { mutableStateOf(defaultSignerName) }
+    var signatureLocation by remember(workOrder.id) {
+        mutableStateOf(
+            listOf(workOrder.locationName, workOrder.coordinates)
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .joinToString(" · "),
+        )
+    }
+    val hasSignature = strokes.any { it.isNotEmpty() }
+    val inkColor = MaterialTheme.colorScheme.primary
+
+    AlertDialog(
+        onDismissRequest = {
+            if (!isLoading) onDismiss()
+        },
+        title = {
+            Text("Potpiši radni nalog")
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "Potpiši prstom u polje. Potpis se utiskuje dolje desno na PDF radnog naloga.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
+                )
+                OutlinedTextField(
+                    value = signerName,
+                    onValueChange = { signerName = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isLoading,
+                    singleLine = true,
+                    label = { Text("Ime i prezime potpisnika") },
+                )
+                OutlinedTextField(
+                    value = signatureLocation,
+                    onValueChange = { signatureLocation = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isLoading,
+                    singleLine = true,
+                    label = { Text("Lokacija potpisa") },
+                    placeholder = { Text("npr. Zagreb, lokacija naručitelja") },
+                )
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    tonalElevation = 1.dp,
+                    color = Color.White,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(220.dp)
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(Color.White)
+                            .onSizeChanged { canvasSize = it }
+                            .pointerInput(isLoading) {
+                                if (!isLoading) {
+                                    detectDragGestures(
+                                        onDragStart = { offset ->
+                                            currentStroke = listOf(offset)
+                                            strokes.add(currentStroke)
+                                        },
+                                        onDrag = { change, _ ->
+                                            change.consume()
+                                            val nextStroke = currentStroke + change.position
+                                            currentStroke = nextStroke
+                                            if (strokes.isNotEmpty()) {
+                                                strokes[strokes.lastIndex] = nextStroke
+                                            }
+                                        },
+                                        onDragEnd = { currentStroke = emptyList() },
+                                        onDragCancel = { currentStroke = emptyList() },
+                                    )
+                                }
+                            },
+                    ) {
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            strokes.forEach { points ->
+                                when {
+                                    points.size == 1 -> drawCircle(
+                                        color = inkColor,
+                                        radius = 3.5f,
+                                        center = points.first(),
+                                    )
+                                    points.size > 1 -> {
+                                        val path = Path().apply {
+                                            moveTo(points.first().x, points.first().y)
+                                            points.drop(1).forEach { point -> lineTo(point.x, point.y) }
+                                        }
+                                        drawPath(
+                                            path = path,
+                                            color = inkColor,
+                                            style = Stroke(width = 5.5f),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        if (!hasSignature) {
+                            Text(
+                                text = "Potpis",
+                                modifier = Modifier.align(Alignment.Center),
+                                style = MaterialTheme.typography.headlineSmall,
+                                color = Color(0xFF94A3B8),
+                            )
+                        }
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = workOrder.displayNumber,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    TextButton(
+                        onClick = {
+                            strokes.clear()
+                            currentStroke = emptyList()
+                        },
+                        enabled = !isLoading && hasSignature,
+                    ) {
+                        Text("Obriši")
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onConfirm(
+                        renderSignaturePng(
+                            strokes = strokes.map { it.toList() },
+                            widthPx = canvasSize.width,
+                            heightPx = canvasSize.height,
+                        ),
+                        signerName.trim(),
+                        signatureLocation.trim(),
+                    )
+                },
+                enabled = !isLoading && hasSignature && canvasSize.width > 0 && canvasSize.height > 0,
+            ) {
+                Text("Potpiši i otvori PDF")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isLoading) {
+                Text("Odustani")
+            }
+        },
+    )
+}
+
+private fun renderSignaturePng(
+    strokes: List<List<Offset>>,
+    widthPx: Int,
+    heightPx: Int,
+): ByteArray {
+    val safeWidth = widthPx.coerceAtLeast(480)
+    val safeHeight = heightPx.coerceAtLeast(220)
+    val scaleX = safeWidth / widthPx.coerceAtLeast(1).toFloat()
+    val scaleY = safeHeight / heightPx.coerceAtLeast(1).toFloat()
+    val bitmap = Bitmap.createBitmap(safeWidth, safeHeight, Bitmap.Config.ARGB_8888)
+    bitmap.eraseColor(AndroidColor.TRANSPARENT)
+    val canvas = AndroidCanvas(bitmap)
+    val paint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+        color = AndroidColor.BLACK
+        style = AndroidPaint.Style.STROKE
+        strokeWidth = (safeWidth / 92f).coerceIn(4f, 8f)
+        strokeCap = AndroidPaint.Cap.ROUND
+        strokeJoin = AndroidPaint.Join.ROUND
+    }
+    val dotPaint = AndroidPaint(paint).apply {
+        style = AndroidPaint.Style.FILL
+    }
+
+    strokes.filter { it.isNotEmpty() }.forEach { points ->
+        if (points.size == 1) {
+            val point = points.first()
+            canvas.drawCircle(point.x * scaleX, point.y * scaleY, paint.strokeWidth / 2f, dotPaint)
+        } else {
+            val path = AndroidPath().apply {
+                moveTo(points.first().x * scaleX, points.first().y * scaleY)
+                points.drop(1).forEach { point ->
+                    lineTo(point.x * scaleX, point.y * scaleY)
+                }
+            }
+            canvas.drawPath(path, paint)
+        }
+    }
+
+    return ByteArrayOutputStream().use { output ->
+        bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+        output.toByteArray()
     }
 }
 
@@ -4216,6 +4518,7 @@ private fun WorkOrderDetailScreen(
     onStatusChange: (WorkOrder, String) -> Unit,
     onAddDocumentation: (WorkOrder) -> Unit,
     onDownloadPdf: (WorkOrder) -> Unit,
+    onSignWorkOrder: (WorkOrder) -> Unit,
     onOpenDocument: (WorkOrderDocument) -> Unit,
     onDownloadDocument: (WorkOrderDocument) -> Unit,
     onDeleteDocument: (WorkOrderDocument) -> Unit,
@@ -4288,6 +4591,15 @@ private fun WorkOrderDetailScreen(
                             Icon(Icons.Rounded.PictureAsPdf, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
                             Text("Preuzmi PDF RN")
+                        }
+                        Button(
+                            onClick = { onSignWorkOrder(workOrder) },
+                            enabled = !isLoading,
+                            shape = RoundedCornerShape(14.dp),
+                        ) {
+                            Icon(Icons.Rounded.Fingerprint, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Potpiši RN")
                         }
                     }
                 }

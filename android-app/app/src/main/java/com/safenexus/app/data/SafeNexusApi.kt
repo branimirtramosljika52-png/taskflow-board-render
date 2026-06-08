@@ -259,6 +259,41 @@ class SafeNexusApi(
         }
     }
 
+    suspend fun signWorkOrderPdf(
+        workOrderId: String,
+        signaturePngBytes: ByteArray,
+        signerName: String,
+        signatureLocation: String,
+        signedAt: String,
+        fallbackFileName: String,
+    ): Result<DownloadedDocument> = withContext(Dispatchers.IO) {
+        runCatching {
+            val signatureDataUrl = "data:image/png;base64,${Base64.getEncoder().encodeToString(signaturePngBytes)}"
+            val payload = JSONObject()
+                .put("signatureDataUrl", signatureDataUrl)
+                .put("signerName", signerName)
+                .put("signatureLocation", signatureLocation)
+                .put("signedAt", signedAt)
+                .toString()
+            val json = JSONObject(
+                request(
+                    "/api/work-orders/${workOrderId.pathSegment()}/signature-pdf",
+                    method = "POST",
+                    body = payload,
+                ),
+            )
+            val fileContentBase64 = json.firstClean("fileContentBase64", "bytesBase64", "contentBase64")
+            if (fileContentBase64.isBlank()) {
+                throw IllegalStateException("Potpisani PDF nije vraćen s poslužitelja.")
+            }
+            DownloadedDocument(
+                fileName = json.firstClean("fileName").ifBlank { fallbackFileName.ifBlank { "radni-nalog-potpisano.pdf" } },
+                fileType = json.firstClean("fileType").ifBlank { "application/pdf" },
+                bytes = Base64.getDecoder().decode(fileContentBase64),
+            )
+        }
+    }
+
     suspend fun logout(): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             request("/api/auth/logout", method = "POST", body = "{}")
