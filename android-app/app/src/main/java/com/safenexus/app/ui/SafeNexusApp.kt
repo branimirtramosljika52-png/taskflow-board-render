@@ -2,21 +2,24 @@
 
 package com.safenexus.app.ui
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
-import android.content.ActivityNotFoundException
 import android.app.Application
+import android.content.ActivityNotFoundException
 import android.content.ContentValues
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
-import android.os.Environment
 import android.provider.OpenableColumns
 import android.provider.MediaStore
+import android.provider.Settings
 import android.webkit.JavascriptInterface
 import android.webkit.MimeTypeMap
 import android.webkit.WebResourceRequest
@@ -158,6 +161,7 @@ import com.safenexus.app.data.WorkOrderServiceOption
 import com.safenexus.app.data.WorkOrderUploadFile
 import com.safenexus.app.data.WorkOrderUserOption
 import com.safenexus.app.data.parseDateOrNull
+import com.google.firebase.messaging.FirebaseMessaging
 import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
@@ -327,6 +331,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         shouldRememberSession = true
         api.restoreSession(storedSession.accessToken, storedSession.cookieHeader)
         state = state.copy(user = storedSession.user, rememberedUser = storedSession.user, isLoading = true, error = "")
+        registerPushToken()
         refresh()
     }
 
@@ -351,12 +356,28 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                         isLoading = false,
                         error = "",
                     )
+                    registerPushToken()
                     refresh()
                 }
                 .onFailure { error ->
                     state = state.copy(isLoading = false, error = error.message ?: "Prijava nije uspjela.")
                 }
         }
+    }
+
+    fun registerPushToken() {
+        if (state.user == null) return
+        FirebaseMessaging.getInstance().token
+            .addOnSuccessListener { token ->
+                if (token.isBlank()) return@addOnSuccessListener
+                viewModelScope.launch {
+                    api.registerPushToken(
+                        token = token,
+                        platform = "android",
+                        deviceId = androidDeviceId(),
+                    )
+                }
+            }
     }
 
     fun refresh() {
@@ -386,6 +407,12 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun logout() {
+        FirebaseMessaging.getInstance().token
+            .addOnSuccessListener { token ->
+                if (token.isNotBlank()) {
+                    viewModelScope.launch { api.unregisterPushToken(token) }
+                }
+            }
         viewModelScope.launch { api.logout() }
         api.clearSession()
         authStore.clear()
@@ -660,12 +687,18 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                 }
         }
     }
+
+    private fun androidDeviceId(): String =
+        Settings.Secure.getString(getApplication<Application>().contentResolver, Settings.Secure.ANDROID_ID).orEmpty()
 }
 
 @Composable
 fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
     val state = viewModel.state
     val context = LocalContext.current
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        viewModel.registerPushToken()
+    }
     var documentationActionTarget by remember { mutableStateOf<WorkOrder?>(null) }
     var pendingPicker by remember { mutableStateOf<Pair<WorkOrder, WorkOrderDocumentInputMode>?>(null) }
     var pendingSelection by remember { mutableStateOf<PendingDocumentSelection?>(null) }
@@ -762,6 +795,20 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
             viewModel.selectWorkOrder(linkedWorkOrder)
         } else {
             viewModel.selectRecord(record)
+        }
+    }
+
+    LaunchedEffect(state.user?.email) {
+        if (state.user == null) return@LaunchedEffect
+        viewModel.registerPushToken()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val hasPermission = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!hasPermission) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
         }
     }
 

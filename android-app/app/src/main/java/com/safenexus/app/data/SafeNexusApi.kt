@@ -137,6 +137,34 @@ class SafeNexusApi(
         }
     }
 
+    suspend fun registerPushToken(
+        token: String,
+        platform: String = "android",
+        deviceId: String = "",
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            if (token.isBlank()) return@runCatching
+            val payload = JSONObject()
+                .put("token", token)
+                .put("platform", platform)
+                .put("deviceId", deviceId)
+                .toString()
+            request("/api/mobile/push-token", method = "POST", body = payload)
+            Unit
+        }
+    }
+
+    suspend fun unregisterPushToken(token: String): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            if (token.isBlank()) return@runCatching
+            val payload = JSONObject()
+                .put("token", token)
+                .toString()
+            request("/api/mobile/push-token", method = "DELETE", body = payload)
+            Unit
+        }
+    }
+
     suspend fun listWorkOrderDocuments(workOrderId: String): Result<List<WorkOrderDocument>> = withContext(Dispatchers.IO) {
         runCatching {
             val json = JSONObject(request("/api/work-orders/${workOrderId.pathSegment()}/documents"))

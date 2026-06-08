@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, createSign, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
@@ -77,10 +77,173 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.19.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.20.apk";
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
+const FIREBASE_MESSAGING_SCOPE = "https://www.googleapis.com/auth/firebase.messaging";
+const FIREBASE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
+let firebaseServiceAccountCache = null;
+let firebaseAccessTokenCache = null;
+
+function base64UrlEncode(value) {
+  const buffer = Buffer.isBuffer(value) ? value : Buffer.from(String(value));
+  return buffer
+    .toString("base64")
+    .replace(/=/g, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
+}
+
+function parseFirebaseServiceAccountJson(rawValue = "") {
+  const normalized = String(rawValue || "").trim();
+  if (!normalized) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(normalized);
+    if (parsed?.private_key && parsed?.client_email) {
+      return parsed;
+    }
+  } catch {}
+
+  try {
+    const parsed = JSON.parse(Buffer.from(normalized, "base64").toString("utf8"));
+    if (parsed?.private_key && parsed?.client_email) {
+      return parsed;
+    }
+  } catch {}
+
+  return null;
+}
+
+async function getFirebaseServiceAccount() {
+  if (firebaseServiceAccountCache !== null) {
+    return firebaseServiceAccountCache;
+  }
+
+  const inlineAccount = parseFirebaseServiceAccountJson(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)
+    || parseFirebaseServiceAccountJson(process.env.FIREBASE_SERVICE_ACCOUNT_BASE64);
+  if (inlineAccount) {
+    firebaseServiceAccountCache = inlineAccount;
+    return firebaseServiceAccountCache;
+  }
+
+  const accountPath = String(process.env.FIREBASE_SERVICE_ACCOUNT_PATH || "").trim();
+  if (accountPath) {
+    try {
+      firebaseServiceAccountCache = parseFirebaseServiceAccountJson(await readFile(accountPath, "utf8"));
+      return firebaseServiceAccountCache;
+    } catch (error) {
+      console.warn("[push] Firebase service account path cannot be read:", error.message);
+    }
+  }
+
+  firebaseServiceAccountCache = null;
+  return null;
+}
+
+async function isFirebasePushConfigured() {
+  return Boolean(await getFirebaseServiceAccount());
+}
+
+function normalizeFirebasePrivateKey(privateKey = "") {
+  return String(privateKey || "").replace(/\\n/g, "\n");
+}
+
+async function getFirebaseAccessToken() {
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  if (firebaseAccessTokenCache?.accessToken && firebaseAccessTokenCache.expiresAtSeconds > nowSeconds + 60) {
+    return firebaseAccessTokenCache.accessToken;
+  }
+
+  const account = await getFirebaseServiceAccount();
+  if (!account?.client_email || !account?.private_key) {
+    return "";
+  }
+
+  const header = base64UrlEncode(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  const claim = base64UrlEncode(JSON.stringify({
+    iss: account.client_email,
+    scope: FIREBASE_MESSAGING_SCOPE,
+    aud: FIREBASE_OAUTH_TOKEN_URL,
+    iat: nowSeconds,
+    exp: nowSeconds + 3600,
+  }));
+  const unsignedToken = `${header}.${claim}`;
+  const signer = createSign("RSA-SHA256");
+  signer.update(unsignedToken);
+  signer.end();
+  const signature = base64UrlEncode(signer.sign(normalizeFirebasePrivateKey(account.private_key)));
+  const assertion = `${unsignedToken}.${signature}`;
+
+  const tokenResponse = await fetch(FIREBASE_OAUTH_TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion,
+    }),
+  });
+  const payload = await tokenResponse.json().catch(() => ({}));
+  if (!tokenResponse.ok || !payload.access_token) {
+    throw new Error(payload.error_description || payload.error || "Firebase pristupni token nije dostupan.");
+  }
+
+  firebaseAccessTokenCache = {
+    accessToken: payload.access_token,
+    expiresAtSeconds: nowSeconds + Number(payload.expires_in || 3600),
+  };
+  return firebaseAccessTokenCache.accessToken;
+}
+
+function sanitizePushData(data = {}) {
+  return Object.fromEntries(
+    Object.entries(data || {})
+      .map(([key, value]) => [String(key), String(value ?? "")])
+      .filter(([key, value]) => key && value.length <= 2048),
+  );
+}
+
+async function sendFirebasePushMessage(token, payload = {}) {
+  const account = await getFirebaseServiceAccount();
+  const projectId = String(process.env.FIREBASE_PROJECT_ID || account?.project_id || "").trim();
+  if (!account || !projectId || !token) {
+    return { skipped: true };
+  }
+
+  const accessToken = await getFirebaseAccessToken();
+  const response = await fetch(`https://fcm.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/messages:send`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json; charset=utf-8",
+    },
+    body: JSON.stringify({
+      message: {
+        token,
+        notification: {
+          title: String(payload.title || "SafeNexus"),
+          body: String(payload.body || ""),
+        },
+        data: sanitizePushData(payload.data),
+        android: {
+          priority: "HIGH",
+          notification: {
+            channel_id: "safe_nexus_work_orders",
+            click_action: "OPEN_WORK_ORDER",
+          },
+        },
+      },
+    }),
+  });
+  const responsePayload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(responsePayload?.error?.message || "Firebase push slanje nije uspjelo.");
+  }
+  return responsePayload;
+}
 
 function buildAndroidDownloadPage() {
   const apkUrl = `/assets/mobile/${MOBILE_ANDROID_APK_FILE_NAME}`;
@@ -9225,6 +9388,171 @@ function buildMobileWorkOrderItem(item = {}) {
   };
 }
 
+function normalizePushLookupKey(value = "") {
+  return normalizeInputValue(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function getWorkOrderPushNumber(workOrder = {}) {
+  return normalizeInputValue(workOrder.workOrderNumber || workOrder.number || workOrder.id || "RN");
+}
+
+function getWorkOrderPushExecutorLabels(workOrder = {}) {
+  const source = Array.isArray(workOrder.executors)
+    ? workOrder.executors
+    : [workOrder.executor1, workOrder.executor2];
+  return [...new Set(source.map(normalizeInputValue).filter(Boolean))];
+}
+
+function buildPushUserLookup(scopedSnapshot = {}) {
+  const lookup = new Map();
+  (scopedSnapshot.users ?? []).forEach((user) => {
+    if (user?.isActive === false) return;
+    const fullName = normalizeInputValue(user.fullName || [user.firstName, user.lastName].filter(Boolean).join(" "));
+    const candidates = [
+      user.id,
+      user.email,
+      user.username,
+      user.legacyUsername,
+      user.displayName,
+      fullName,
+      [user.firstName, user.lastName].filter(Boolean).join(" "),
+    ];
+    candidates.forEach((candidate) => {
+      const key = normalizePushLookupKey(candidate);
+      if (key) {
+        lookup.set(key, String(user.id));
+      }
+    });
+  });
+  return lookup;
+}
+
+function resolveWorkOrderPushUserIds(workOrder = {}, scopedSnapshot = {}) {
+  const lookup = buildPushUserLookup(scopedSnapshot);
+  const ids = new Set();
+  getWorkOrderPushExecutorLabels(workOrder).forEach((executorLabel) => {
+    const id = lookup.get(normalizePushLookupKey(executorLabel));
+    if (id) {
+      ids.add(id);
+    }
+  });
+  return [...ids];
+}
+
+function resolveAddedExecutorPushUserIds(currentWorkOrder = {}, nextWorkOrder = {}, scopedSnapshot = {}) {
+  const lookup = buildPushUserLookup(scopedSnapshot);
+  const currentKeys = new Set(getWorkOrderPushExecutorLabels(currentWorkOrder).map(normalizePushLookupKey));
+  const ids = new Set();
+  getWorkOrderPushExecutorLabels(nextWorkOrder).forEach((executorLabel) => {
+    const key = normalizePushLookupKey(executorLabel);
+    if (!key || currentKeys.has(key)) return;
+    const id = lookup.get(key);
+    if (id) {
+      ids.add(id);
+    }
+  });
+  return [...ids];
+}
+
+async function sendPushToUserIds(userIds = [], payload = {}) {
+  const ids = [...new Set((Array.isArray(userIds) ? userIds : []).map((id) => String(id)).filter(Boolean))];
+  if (ids.length === 0 || typeof tenantRepository.listPushTokensForUserIds !== "function") {
+    return { sent: 0, skipped: true };
+  }
+
+  if (!(await isFirebasePushConfigured())) {
+    return { sent: 0, skipped: true, reason: "firebase-not-configured" };
+  }
+
+  const tokens = await tenantRepository.listPushTokensForUserIds(ids);
+  const uniqueTokens = [...new Map(tokens.map((item) => [item.token, item])).values()].filter((item) => item.token);
+  if (uniqueTokens.length === 0) {
+    return { sent: 0, skipped: true, reason: "no-tokens" };
+  }
+
+  const results = await Promise.allSettled(
+    uniqueTokens.map((item) => sendFirebasePushMessage(item.token, payload)),
+  );
+  const failed = results.filter((result) => result.status === "rejected");
+  failed.slice(0, 3).forEach((result) => {
+    console.warn("[push] Slanje push poruke nije uspjelo:", result.reason?.message || result.reason);
+  });
+  return {
+    sent: results.filter((result) => result.status === "fulfilled").length,
+    failed: failed.length,
+  };
+}
+
+function queuePushToUserIds(userIds = [], payload = {}) {
+  void sendPushToUserIds(userIds, payload).catch((error) => {
+    console.warn("[push] Ne mogu poslati push poruku:", error.message);
+  });
+}
+
+function queueWorkOrderCreatedPush(workOrder = {}, scopedSnapshot = {}) {
+  const recipientIds = resolveWorkOrderPushUserIds(workOrder, scopedSnapshot);
+  if (recipientIds.length === 0) return;
+
+  const workOrderNumber = getWorkOrderPushNumber(workOrder);
+  queuePushToUserIds(recipientIds, {
+    title: "Novi radni nalog",
+    body: `Dodijeljen vam je novi radni nalog ${workOrderNumber}`,
+    data: {
+      type: "work_order_assigned",
+      workOrderId: normalizeInputValue(workOrder.id),
+      workOrderNumber,
+      status: normalizeInputValue(workOrder.status),
+      companyName: normalizeInputValue(workOrder.companyName),
+      locationName: normalizeInputValue(workOrder.locationName),
+    },
+  });
+}
+
+function queueWorkOrderUpdatedPush(currentWorkOrder = {}, nextWorkOrder = {}, scopedSnapshot = {}) {
+  const workOrderNumber = getWorkOrderPushNumber(nextWorkOrder);
+  const addedExecutorIds = resolveAddedExecutorPushUserIds(currentWorkOrder, nextWorkOrder, scopedSnapshot);
+  if (addedExecutorIds.length > 0) {
+    queuePushToUserIds(addedExecutorIds, {
+      title: "Dodani ste na radni nalog",
+      body: `Dodani ste kao izvršitelj na radni nalog ${workOrderNumber}`,
+      data: {
+        type: "work_order_executor_added",
+        workOrderId: normalizeInputValue(nextWorkOrder.id),
+        workOrderNumber,
+        status: normalizeInputValue(nextWorkOrder.status),
+      },
+    });
+  }
+
+  const currentStatus = normalizeInputValue(currentWorkOrder.status);
+  const nextStatus = normalizeInputValue(nextWorkOrder.status);
+  if (!nextStatus || normalizePushLookupKey(currentStatus) === normalizePushLookupKey(nextStatus)) {
+    return;
+  }
+
+  const recipientIds = resolveWorkOrderPushUserIds(nextWorkOrder, scopedSnapshot);
+  if (recipientIds.length === 0) return;
+
+  const isClosed = isMobileClosedWorkOrderStatus(nextStatus);
+  queuePushToUserIds(recipientIds, {
+    title: isClosed ? "Radni nalog završen" : "Promjena statusa RN-a",
+    body: isClosed
+      ? `Radni nalog ${workOrderNumber} je završen`
+      : `Radni nalog ${workOrderNumber} promijenio je status u ${nextStatus}`,
+    data: {
+      type: isClosed ? "work_order_closed" : "work_order_status_changed",
+      workOrderId: normalizeInputValue(nextWorkOrder.id),
+      workOrderNumber,
+      status: nextStatus,
+    },
+  });
+}
+
 async function writeMobileWorkOrders(response, user, request) {
   const { scopedSnapshot } = await getScopedState(user, request);
   const workOrders = (scopedSnapshot.workOrders ?? [])
@@ -9944,6 +10272,36 @@ async function handleApiRequest(request, response, url) {
 
     if (request.method === "GET" && url.pathname === "/api/mobile/work-orders") {
       await writeMobileWorkOrders(response, user, request);
+      return true;
+    }
+
+    if (url.pathname === "/api/mobile/push-token" && request.method === "POST") {
+      if (typeof tenantRepository.upsertPushToken !== "function") {
+        sendError(response, 501, "Push notifikacije nisu podrzane u ovom spremistu.");
+        return true;
+      }
+      const body = await readJsonBody(request);
+      const item = await tenantRepository.upsertPushToken(user, {
+        token: body.token,
+        platform: body.platform || "android",
+        deviceId: body.deviceId,
+        userAgent: request.headers["user-agent"] ?? "",
+      });
+      sendJson(response, 200, {
+        ok: Boolean(item),
+        firebaseConfigured: await isFirebasePushConfigured(),
+      });
+      return true;
+    }
+
+    if (url.pathname === "/api/mobile/push-token" && request.method === "DELETE") {
+      if (typeof tenantRepository.deletePushToken !== "function") {
+        sendJson(response, 200, { ok: true });
+        return true;
+      }
+      const body = await readJsonBody(request).catch(() => ({}));
+      const deleted = await tenantRepository.deletePushToken(user, { token: body.token });
+      sendJson(response, 200, { ok: true, deleted: Boolean(deleted) });
       return true;
     }
 
@@ -10902,10 +11260,11 @@ async function handleApiRequest(request, response, url) {
       assertCompanyPayloadInScope(scopedSnapshot, body);
       assertLocationPayloadInScope(scopedSnapshot, body);
       assertServiceCatalogIdsPayloadInScope(scopedSnapshot, body);
-      await domainRepository.createWorkOrder({
+      const createdWorkOrder = await domainRepository.createWorkOrder({
         ...body,
         organizationId: scopedSnapshot.activeOrganizationId,
       }, user);
+      queueWorkOrderCreatedPush(createdWorkOrder, scopedSnapshot);
       await writeSnapshot(response, user, request, 201);
       return true;
     }
@@ -13321,10 +13680,13 @@ async function handleApiRequest(request, response, url) {
         assertCompanyPayloadInScope(scopedSnapshot, patch);
         assertLocationPayloadInScope(scopedSnapshot, patch);
         assertServiceCatalogIdsPayloadInScope(scopedSnapshot, patch);
-        await domainRepository.updateWorkOrder(workOrderId, {
+        const updatedWorkOrder = await domainRepository.updateWorkOrder(workOrderId, {
           ...patch,
           organizationId: scopedSnapshot.activeOrganizationId,
         }, user);
+        if (updatedWorkOrder) {
+          queueWorkOrderUpdatedPush(currentWorkOrder, updatedWorkOrder, scopedSnapshot);
+        }
       }
 
       await writeSnapshot(response, user, request);
@@ -13486,6 +13848,7 @@ async function handleApiRequest(request, response, url) {
         return true;
       }
 
+      queueWorkOrderUpdatedPush(currentWorkOrder, updated, scopedSnapshot);
       await writeSnapshot(response, user, request);
       return true;
     }

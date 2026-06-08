@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "469131644193",
+    "project_id": "safenexus-e180f",
+    "storage_bucket": "safenexus-e180f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:469131644193:android:bda5b7987629b8c4c98260",
+        "android_client_info": {
+          "package_name": "com.safenexus.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBteff0hVzFjijT2B_yfOeyYnw3b9SlPk4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

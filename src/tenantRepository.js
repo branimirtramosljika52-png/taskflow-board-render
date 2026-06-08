@@ -1601,6 +1601,23 @@ async function ensureSchema(connection) {
   `);
 
   await connection.query(`
+    CREATE TABLE IF NOT EXISTS app_push_tokens (
+      id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      user_id INT NOT NULL,
+      token VARCHAR(512) NOT NULL,
+      platform VARCHAR(32) NOT NULL DEFAULT 'android',
+      device_id VARCHAR(160) NOT NULL DEFAULT '',
+      user_agent VARCHAR(255) NOT NULL DEFAULT '',
+      last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_app_push_tokens_token (token),
+      KEY idx_app_push_tokens_user_id (user_id),
+      KEY idx_app_push_tokens_platform (platform)
+    )
+  `);
+
+  await connection.query(`
     CREATE TABLE IF NOT EXISTS signup_requests (
       id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
       organization_name VARCHAR(255) NOT NULL,
@@ -2985,6 +3002,7 @@ export class MemoryTenantRepository {
     ];
     this.companyAssignments = new Map();
     this.refreshTokens = new Map();
+    this.pushTokens = new Map();
     this.signupRequests = [];
   }
 
@@ -3137,6 +3155,49 @@ export class MemoryTenantRepository {
       }
     }
     return deleted;
+  }
+
+  async upsertPushToken(user, input = {}) {
+    const token = dbString(input.token).slice(0, 512);
+    if (!token || !user?.id) {
+      return null;
+    }
+
+    const item = {
+      id: token,
+      userId: String(user.id),
+      token,
+      platform: dbString(input.platform || "android").slice(0, 32) || "android",
+      deviceId: dbString(input.deviceId).slice(0, 160),
+      userAgent: dbString(input.userAgent).slice(0, 255),
+      lastSeenAt: new Date().toISOString(),
+      createdAt: this.pushTokens.get(token)?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    this.pushTokens.set(token, item);
+    return { ...item };
+  }
+
+  async deletePushToken(user, input = {}) {
+    const token = dbString(input.token).slice(0, 512);
+    if (!token || !user?.id) {
+      return false;
+    }
+    const current = this.pushTokens.get(token);
+    if (!current || String(current.userId) !== String(user.id)) {
+      return false;
+    }
+    return this.pushTokens.delete(token);
+  }
+
+  async listPushTokensForUserIds(userIds = []) {
+    const allowedIds = new Set((Array.isArray(userIds) ? userIds : []).map((id) => String(id)).filter(Boolean));
+    if (allowedIds.size === 0) {
+      return [];
+    }
+    return [...this.pushTokens.values()]
+      .filter((item) => allowedIds.has(String(item.userId)) && item.token)
+      .map((item) => ({ ...item }));
   }
 
   async getSnapshot(actor, requestedOrganizationId, rawSnapshot = {
@@ -4092,6 +4153,112 @@ export class MySqlTenantRepository {
       if (!connectionOverride) {
         connection.release();
       }
+    }
+  }
+
+  async upsertPushToken(user, input = {}) {
+    const token = dbString(input.token).slice(0, 512);
+    if (!token || !user?.id) {
+      return null;
+    }
+
+    const connection = await this.pool.getConnection();
+    try {
+      await connection.query(
+        `
+          INSERT INTO app_push_tokens (user_id, token, platform, device_id, user_agent, last_seen_at)
+          VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+          ON DUPLICATE KEY UPDATE
+            user_id = VALUES(user_id),
+            platform = VALUES(platform),
+            device_id = VALUES(device_id),
+            user_agent = VALUES(user_agent),
+            last_seen_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
+        `,
+        [
+          Number(user.id),
+          token,
+          dbString(input.platform || "android").slice(0, 32) || "android",
+          dbString(input.deviceId).slice(0, 160),
+          dbString(input.userAgent).slice(0, 255),
+        ],
+      );
+
+      const [[row]] = await connection.query(
+        `
+          SELECT id, user_id, token, platform, device_id, user_agent, last_seen_at, created_at, updated_at
+          FROM app_push_tokens
+          WHERE token = ?
+          LIMIT 1
+        `,
+        [token],
+      );
+      return row ? {
+        id: String(row.id),
+        userId: String(row.user_id),
+        token: row.token,
+        platform: row.platform,
+        deviceId: row.device_id ?? "",
+        userAgent: row.user_agent ?? "",
+        lastSeenAt: normalizeTimestamp(row.last_seen_at),
+        createdAt: normalizeTimestamp(row.created_at),
+        updatedAt: normalizeTimestamp(row.updated_at),
+      } : null;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async deletePushToken(user, input = {}) {
+    const token = dbString(input.token).slice(0, 512);
+    if (!token || !user?.id) {
+      return false;
+    }
+
+    const connection = await this.pool.getConnection();
+    try {
+      const [result] = await connection.query(
+        "DELETE FROM app_push_tokens WHERE token = ? AND user_id = ?",
+        [token, Number(user.id)],
+      );
+      return result.affectedRows > 0;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async listPushTokensForUserIds(userIds = []) {
+    const ids = [...new Set((Array.isArray(userIds) ? userIds : []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))];
+    if (ids.length === 0) {
+      return [];
+    }
+
+    const connection = await this.pool.getConnection();
+    try {
+      const [rows] = await connection.query(
+        `
+          SELECT id, user_id, token, platform, device_id, user_agent, last_seen_at, created_at, updated_at
+          FROM app_push_tokens
+          WHERE user_id IN (?)
+        `,
+        [ids],
+      );
+      return rows
+        .map((row) => ({
+          id: String(row.id),
+          userId: String(row.user_id),
+          token: row.token,
+          platform: row.platform,
+          deviceId: row.device_id ?? "",
+          userAgent: row.user_agent ?? "",
+          lastSeenAt: normalizeTimestamp(row.last_seen_at),
+          createdAt: normalizeTimestamp(row.created_at),
+          updatedAt: normalizeTimestamp(row.updated_at),
+        }))
+        .filter((item) => item.token);
+    } finally {
+      connection.release();
     }
   }
 
