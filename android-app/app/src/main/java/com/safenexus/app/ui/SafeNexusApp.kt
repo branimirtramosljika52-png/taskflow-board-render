@@ -768,8 +768,8 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         }
 
         val fallbackFileName = "${workOrder.displayNumber.ifBlank { "radni-nalog" }}-potpisano.pdf"
-        val resolvedSignerName = signerName.trim().ifBlank { state.user?.displayName.orEmpty() }
-        val signedAt = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+        val resolvedSignerName = signerName.trim()
+        val signedAt = java.time.ZonedDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
         state = state.copy(isLoading = true, error = "", notice = "")
         viewModelScope.launch {
             api.signWorkOrderPdf(
@@ -1017,7 +1017,7 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
     signatureActionTarget?.let { workOrder ->
         WorkOrderFingerSignatureDialog(
             workOrder = workOrder,
-            defaultSignerName = state.user?.displayName.orEmpty(),
+            defaultSignerName = "",
             isLoading = state.isLoading,
             onDismiss = { signatureActionTarget = null },
             onConfirm = { signatureBytes, signerName, signatureLocation, includeSignerName, includeSignedAt, includeSignatureLocation ->
@@ -1070,6 +1070,7 @@ private fun WorkOrderFingerSignatureDialog(
     }
     var gpsMessage by remember(workOrder.id) { mutableStateOf("") }
     var gpsLoading by remember(workOrder.id) { mutableStateOf(false) }
+    var gpsRequestNonce by remember(workOrder.id) { mutableStateOf(0) }
     val context = LocalContext.current
     val captureGpsLocation = {
         gpsLoading = true
@@ -1096,6 +1097,23 @@ private fun WorkOrderFingerSignatureDialog(
             captureGpsLocation()
         } else {
             gpsMessage = "Bez dozvole za lokaciju GPS se ne može upisati u potpis."
+        }
+    }
+    LaunchedEffect(includeSignatureLocation, gpsRequestNonce) {
+        if (!includeSignatureLocation || isLoading) {
+            return@LaunchedEffect
+        }
+
+        if (hasSignatureLocationPermission(context)) {
+            captureGpsLocation()
+        } else {
+            gpsMessage = "Dopusti lokaciju za GPS potpis."
+            gpsPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                ),
+            )
         }
     }
     val hasSignature = strokes.any { it.isNotEmpty() }
@@ -1132,7 +1150,12 @@ private fun WorkOrderFingerSignatureDialog(
                         checked = includeSignatureLocation,
                         enabled = !isLoading,
                         label = "Dodaj GPS lokaciju",
-                        onCheckedChange = { includeSignatureLocation = it },
+                        onCheckedChange = {
+                            includeSignatureLocation = it
+                            if (it) {
+                                gpsRequestNonce += 1
+                            }
+                        },
                     )
                 }
                 OutlinedTextField(
@@ -1154,45 +1177,29 @@ private fun WorkOrderFingerSignatureDialog(
                 )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    if (gpsLoading && includeSignatureLocation) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(
+                            Icons.Rounded.LocationOn,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                     Text(
                         text = if (!includeSignatureLocation) {
                             "GPS lokacija neće biti dodana u PDF."
                         } else {
-                            gpsMessage.ifBlank { "GPS lokacija se upisuje u PDF uz potpis." }
+                            gpsMessage.ifBlank { "GPS lokacija se automatski dodaje u PDF uz potpis." }
                         },
                         modifier = Modifier.weight(1f),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
                     )
-                    Spacer(Modifier.width(10.dp))
-                    OutlinedButton(
-                        onClick = {
-                            if (hasSignatureLocationPermission(context)) {
-                                captureGpsLocation()
-                            } else {
-                                gpsMessage = "Dopusti lokaciju za GPS potpis."
-                                gpsPermissionLauncher.launch(
-                                    arrayOf(
-                                        Manifest.permission.ACCESS_FINE_LOCATION,
-                                        Manifest.permission.ACCESS_COARSE_LOCATION,
-                                    ),
-                                )
-                            }
-                        },
-                        enabled = !isLoading && !gpsLoading && includeSignatureLocation,
-                        shape = RoundedCornerShape(14.dp),
-                    ) {
-                        if (gpsLoading) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                        } else {
-                            Icon(Icons.Rounded.LocationOn, contentDescription = null, modifier = Modifier.size(18.dp))
-                        }
-                        Spacer(Modifier.width(6.dp))
-                        Text("Dohvati GPS")
-                    }
                 }
                 Surface(
                     modifier = Modifier.fillMaxWidth(),

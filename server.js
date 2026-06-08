@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
 import { gzipSync } from "node:zlib";
 import JSZip from "jszip";
-import { PDFDocument, rgb } from "pdf-lib";
+import { PDFDocument, PDFName, PDFString, rgb } from "pdf-lib";
 import * as XLSX from "xlsx";
 
 import {
@@ -78,7 +78,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.24.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.25.apk";
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
@@ -4218,8 +4218,38 @@ function getWorkOrderPdfExportFileName(workOrder = {}) {
   );
 }
 
+function isWorkOrderRnTemplate(template = {}) {
+  const documentType = String(template?.documentType || "").trim().toLowerCase();
+  const title = String(template?.title || "").trim().toLowerCase();
+  const status = String(template?.status || "active").trim().toLowerCase();
+  return status !== "inactive"
+    && status !== "archived"
+    && isWordTemplateFile(template?.referenceDocument)
+    && (
+      documentType === "radni nalog"
+      || title.startsWith("rn template")
+      || title.includes("radni nalog")
+    );
+}
+
+function getTemplateTimestampValue(template = {}) {
+  return Math.max(
+    Date.parse(template?.updatedAt || "") || 0,
+    Date.parse(template?.createdAt || "") || 0,
+    Date.parse(template?.referenceDocument?.updatedAt || "") || 0,
+  );
+}
+
+function findPreferredWorkOrderPdfTemplate(scopedSnapshot = {}) {
+  return (Array.isArray(scopedSnapshot.documentTemplates) ? scopedSnapshot.documentTemplates : [])
+    .filter(isWorkOrderRnTemplate)
+    .sort((left, right) => getTemplateTimestampValue(right) - getTemplateTimestampValue(left))
+    .at(0) ?? null;
+}
+
 async function buildWorkOrderPdfExportPayload(workOrder = {}, scopedSnapshot = {}, templateId = "") {
-  const normalizedTemplateId = String(templateId || "").trim();
+  const fallbackTemplate = templateId ? null : findPreferredWorkOrderPdfTemplate(scopedSnapshot);
+  const normalizedTemplateId = String(templateId || fallbackTemplate?.id || "").trim();
   const fileName = getWorkOrderPdfExportFileName(workOrder);
 
   if (normalizedTemplateId) {
@@ -4297,13 +4327,65 @@ function normalizePdfStampText(value = "", maxLength = 110) {
 }
 
 function formatWorkOrderSignatureTimestamp(value = "") {
-  const date = value ? new Date(value) : new Date();
+  const rawValue = String(value || "").trim();
+  const isoWithoutTimezone = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(rawValue)
+    && !/(?:z|[+-]\d{2}:?\d{2})$/i.test(rawValue);
+  const date = rawValue
+    ? new Date(isoWithoutTimezone ? `${rawValue}Z` : rawValue)
+    : new Date();
   const safeDate = Number.isFinite(date.getTime()) ? date : new Date();
   return new Intl.DateTimeFormat("hr-HR", {
     dateStyle: "medium",
     timeStyle: "short",
-    timeZone: "Europe/Zagreb",
+    timeZone: isoWithoutTimezone ? "UTC" : "Europe/Zagreb",
   }).format(safeDate);
+}
+
+function parseSignatureLocationCoordinates(value = "") {
+  const numbers = String(value || "")
+    .replace(/,/g, " ")
+    .match(/[-+]?\d{1,3}(?:\.\d+)?/g)
+    ?.map((entry) => Number(entry))
+    .filter(Number.isFinite) ?? [];
+
+  for (let index = 0; index < numbers.length - 1; index += 1) {
+    const latitude = numbers[index];
+    const longitude = numbers[index + 1];
+    if (latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180) {
+      return { latitude, longitude };
+    }
+  }
+
+  return null;
+}
+
+function getGoogleMapsUrlForSignatureLocation(value = "") {
+  const coordinates = parseSignatureLocationCoordinates(value);
+  if (!coordinates) {
+    return "";
+  }
+
+  return `https://www.google.com/maps?q=${coordinates.latitude.toFixed(6)},${coordinates.longitude.toFixed(6)}`;
+}
+
+function addPdfLinkAnnotation(pdfDoc, page, { x, y, width, height, url }) {
+  const safeUrl = String(url || "").trim();
+  if (!safeUrl) {
+    return;
+  }
+
+  const linkAnnotation = pdfDoc.context.obj({
+    Type: PDFName.of("Annot"),
+    Subtype: PDFName.of("Link"),
+    Rect: [x, y, x + width, y + height],
+    Border: [0, 0, 0],
+    A: {
+      Type: PDFName.of("Action"),
+      S: PDFName.of("URI"),
+      URI: PDFString.of(safeUrl),
+    },
+  });
+  page.node.addAnnot(linkAnnotation);
 }
 
 async function addFingerSignatureToWorkOrderPdf(pdfBuffer = Buffer.alloc(0), signatureDataUrl = "", options = {}) {
@@ -4324,8 +4406,8 @@ async function addFingerSignatureToWorkOrderPdf(pdfBuffer = Buffer.alloc(0), sig
     : await pdfDoc.embedPng(signatureBuffer);
 
   const { width: pageWidth } = page.getSize();
-  const boxWidth = Math.min(210, Math.max(140, pageWidth - 84));
-  const boxHeight = 132;
+  const boxWidth = Math.min(320, Math.max(220, pageWidth - 84));
+  const boxHeight = 150;
   const x = Math.max(36, pageWidth - boxWidth - 42);
   const y = 42;
   const padding = 12;
@@ -4335,7 +4417,9 @@ async function addFingerSignatureToWorkOrderPdf(pdfBuffer = Buffer.alloc(0), sig
   const includeSignatureLocation = options.includeSignatureLocation !== false;
   const signerName = includeSignerName ? normalizePdfStampText(options.signerName || "", 74) : "";
   const signedAt = includeSignedAt ? normalizePdfStampText(formatWorkOrderSignatureTimestamp(options.signedAt), 58) : "";
-  const signatureLocation = includeSignatureLocation ? normalizePdfStampText(options.signatureLocation || "", 88) : "";
+  const rawSignatureLocation = includeSignatureLocation ? String(options.signatureLocation || "").trim() : "";
+  const signatureLocation = normalizePdfStampText(rawSignatureLocation, 92);
+  const googleMapsUrl = includeSignatureLocation ? getGoogleMapsUrlForSignatureLocation(rawSignatureLocation) : "";
   const imageMaxWidth = boxWidth - (padding * 2);
   const imageMaxHeight = 44;
   const scale = Math.min(
@@ -4346,7 +4430,7 @@ async function addFingerSignatureToWorkOrderPdf(pdfBuffer = Buffer.alloc(0), sig
   const imageWidth = Math.max(1, signatureImage.width * scale);
   const imageHeight = Math.max(1, signatureImage.height * scale);
   const imageX = x + padding + Math.max(0, (imageMaxWidth - imageWidth) / 2);
-  const imageY = y + 61;
+  const imageY = y + 76;
 
   page.drawRectangle({
     x,
@@ -4371,8 +4455,8 @@ async function addFingerSignatureToWorkOrderPdf(pdfBuffer = Buffer.alloc(0), sig
     height: imageHeight,
   });
   page.drawLine({
-    start: { x: x + padding, y: y + 56 },
-    end: { x: x + boxWidth - padding, y: y + 56 },
+    start: { x: x + padding, y: y + 68 },
+    end: { x: x + boxWidth - padding, y: y + 68 },
     thickness: 0.8,
     color: rgb(0.27, 0.35, 0.49),
   });
@@ -4385,11 +4469,35 @@ async function addFingerSignatureToWorkOrderPdf(pdfBuffer = Buffer.alloc(0), sig
   metadataLines.forEach((line, index) => {
     page.drawText(normalizePdfStampText(line, 92), {
       x: x + padding,
-      y: y + 39 - (index * 12),
+      y: y + 51 - (index * 12),
       size: 7,
       color: rgb(0.30, 0.38, 0.52),
     });
   });
+
+  if (googleMapsUrl) {
+    const linkText = "Google Maps lokacija";
+    const linkY = y + 51 - (metadataLines.length * 12);
+    page.drawText(linkText, {
+      x: x + padding,
+      y: linkY,
+      size: 7,
+      color: rgb(0.05, 0.32, 0.78),
+    });
+    page.drawLine({
+      start: { x: x + padding, y: linkY - 2 },
+      end: { x: x + padding + 72, y: linkY - 2 },
+      thickness: 0.5,
+      color: rgb(0.05, 0.32, 0.78),
+    });
+    addPdfLinkAnnotation(pdfDoc, page, {
+      x: x + padding,
+      y: linkY - 2,
+      width: 82,
+      height: 10,
+      url: googleMapsUrl,
+    });
+  }
 
   return Buffer.from(await pdfDoc.save());
 }
@@ -13600,7 +13708,7 @@ async function handleApiRequest(request, response, url) {
       const includeSignerName = body?.includeSignerName !== false;
       const includeSignedAt = body?.includeSignedAt !== false;
       const includeSignatureLocation = body?.includeSignatureLocation !== false;
-      const signerName = includeSignerName ? String(body?.signerName || user?.fullName || user?.username || "").trim() : "";
+      const signerName = includeSignerName ? String(body?.signerName || "").trim() : "";
       const signatureLocation = includeSignatureLocation ? String(body?.signatureLocation || body?.location || "").trim() : "";
       const signedAt = String(body?.signedAt || "").trim();
       const { pdfBuffer } = await buildWorkOrderPdfExportPayload(workOrder, scopedSnapshot, templateId);
