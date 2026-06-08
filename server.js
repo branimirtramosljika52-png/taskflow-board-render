@@ -4407,9 +4407,9 @@ async function addFingerSignatureToWorkOrderPdf(pdfBuffer = Buffer.alloc(0), sig
 
   const { width: pageWidth } = page.getSize();
   const boxWidth = Math.min(266, Math.max(218, pageWidth - 84));
-  const boxHeight = 58;
+  const boxHeight = 62;
   const x = Math.max(34, pageWidth - boxWidth - 34);
-  const y = 41;
+  const y = 54;
   const padding = 7;
   const label = normalizePdfStampText(options.label || "Potpis narucitelja", 70);
   const includeSignerName = options.includeSignerName !== false;
@@ -4419,19 +4419,19 @@ async function addFingerSignatureToWorkOrderPdf(pdfBuffer = Buffer.alloc(0), sig
   const signedAt = includeSignedAt ? normalizePdfStampText(formatWorkOrderSignatureTimestamp(options.signedAt), 58) : "";
   const rawSignatureLocation = includeSignatureLocation ? String(options.signatureLocation || "").trim() : "";
   const googleMapsUrl = includeSignatureLocation ? getGoogleMapsUrlForSignatureLocation(rawSignatureLocation) : "";
-  const signatureColumnWidth = Math.min(106, Math.max(88, Math.round(boxWidth * 0.42)));
+  const signatureColumnWidth = Math.min(120, Math.max(102, Math.round(boxWidth * 0.45)));
   const metadataX = x + padding + signatureColumnWidth + 8;
-  const imageMaxWidth = signatureColumnWidth - 10;
-  const imageMaxHeight = 23;
+  const imageMaxWidth = signatureColumnWidth - 8;
+  const imageMaxHeight = 31;
   const scale = Math.min(
     imageMaxWidth / Math.max(1, signatureImage.width),
     imageMaxHeight / Math.max(1, signatureImage.height),
-    1,
+    1.55,
   );
   const imageWidth = Math.max(1, signatureImage.width * scale);
   const imageHeight = Math.max(1, signatureImage.height * scale);
   const imageX = x + padding + Math.max(0, (imageMaxWidth - imageWidth) / 2);
-  const imageY = y + 18;
+  const imageY = y + 16;
 
   page.drawRectangle({
     x,
@@ -4456,8 +4456,8 @@ async function addFingerSignatureToWorkOrderPdf(pdfBuffer = Buffer.alloc(0), sig
     height: imageHeight,
   });
   page.drawLine({
-    start: { x: x + padding, y: y + 15 },
-    end: { x: x + padding + signatureColumnWidth - 10, y: y + 15 },
+    start: { x: x + padding, y: y + 13 },
+    end: { x: x + padding + signatureColumnWidth - 8, y: y + 13 },
     thickness: 0.55,
     color: rgb(0.27, 0.35, 0.49),
   });
@@ -4471,7 +4471,7 @@ async function addFingerSignatureToWorkOrderPdf(pdfBuffer = Buffer.alloc(0), sig
     signatureLocationText ? { text: signatureLocationText, url: googleMapsUrl } : null,
   ].filter(Boolean);
   metadataLines.forEach((line, index) => {
-    const lineY = y + 38 - (index * 9.5);
+    const lineY = y + 42 - (index * 9.5);
     const isLink = Boolean(line.url);
     page.drawText(normalizePdfStampText(line.text, 62), {
       x: metadataX,
