@@ -78,7 +78,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.25.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.26.apk";
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
@@ -9682,6 +9682,177 @@ function sortMobileWorkOrdersByNumber(workOrders = []) {
   return [...workOrders].sort(compareWorkOrderNumberDescending);
 }
 
+function normalizeMobileTemplateLookupKey(value = "") {
+  return String(value ?? "")
+    .trim()
+    .toLocaleLowerCase("hr")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+function collectMobileLinkedTemplateIds(...values) {
+  const ids = new Set();
+  values.forEach((value) => {
+    if (Array.isArray(value)) {
+      value.forEach((entry) => collectMobileLinkedTemplateIds(entry).forEach((id) => ids.add(id)));
+      return;
+    }
+    const normalized = String(value ?? "").trim();
+    if (normalized) {
+      ids.add(normalized);
+    }
+  });
+  return [...ids];
+}
+
+function findMobileServiceCatalogItemForWorkOrderService(service = {}, scopedSnapshot = {}) {
+  const serviceCatalog = Array.isArray(scopedSnapshot.serviceCatalog) ? scopedSnapshot.serviceCatalog : [];
+  const candidateIds = [
+    service.serviceId,
+    service.serviceCatalogId,
+    service.catalogServiceId,
+    service.id,
+  ].map((value) => String(value ?? "").trim()).filter(Boolean);
+  const byId = candidateIds.length > 0
+    ? serviceCatalog.find((item) => candidateIds.includes(String(item?.id ?? "")))
+    : null;
+  if (byId) {
+    return byId;
+  }
+
+  const candidateKeys = [
+    service.serviceCode,
+    service.code,
+    service.name,
+    service.serviceName,
+    service.title,
+  ].map(normalizeMobileTemplateLookupKey).filter(Boolean);
+  if (candidateKeys.length === 0) {
+    return null;
+  }
+
+  return serviceCatalog.find((item) => {
+    const keys = [
+      item?.serviceCode,
+      item?.code,
+      item?.name,
+      item?.title,
+    ].map(normalizeMobileTemplateLookupKey).filter(Boolean);
+    return candidateKeys.some((candidate) => keys.includes(candidate));
+  }) ?? null;
+}
+
+function getMobileWorkOrderServiceTemplateIds(service = {}, scopedSnapshot = {}) {
+  const catalogItem = findMobileServiceCatalogItemForWorkOrderService(service, scopedSnapshot);
+  const templateIds = collectMobileLinkedTemplateIds(
+    service.linkedTemplateIds,
+    service.documentTemplateIds,
+    service.templateIds,
+    service.recordTemplateIds,
+    service.linkedTemplateId,
+    service.documentTemplateId,
+    service.templateId,
+    catalogItem?.linkedTemplateIds,
+    catalogItem?.documentTemplateIds,
+    catalogItem?.templateIds,
+    catalogItem?.linkedTemplateId,
+    catalogItem?.documentTemplateId,
+    catalogItem?.templateId,
+  );
+
+  if (templateIds.length > 0) {
+    return templateIds;
+  }
+
+  const titleKeys = collectMobileLinkedTemplateIds(
+    service.linkedTemplateTitles,
+    service.templateTitles,
+    catalogItem?.linkedTemplateTitles,
+    catalogItem?.templateTitles,
+  ).map(normalizeMobileTemplateLookupKey).filter(Boolean);
+  if (titleKeys.length === 0) {
+    return [];
+  }
+
+  return (scopedSnapshot.documentTemplates ?? [])
+    .filter((template) => titleKeys.includes(normalizeMobileTemplateLookupKey(template?.title || template?.documentType)))
+    .map((template) => String(template.id || "").trim())
+    .filter(Boolean);
+}
+
+function buildMobileGeneratedDocumentPlaceholders(workOrder = {}, service = {}, scopedSnapshot = {}) {
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayLabel = formatOfferDocumentDate(todayIso);
+  const basePlaceholders = buildWorkOrderTemplatePlaceholderPayload({
+    ...workOrder,
+    issuedDate: todayIso,
+    inspectionDate: todayIso,
+  }, scopedSnapshot);
+  const serviceName = normalizeInputValue(service?.name || service?.serviceName || service?.title || service?.serviceCode);
+  const serviceCode = normalizeInputValue(service?.serviceCode || service?.code || service?.shortCode);
+  const serviceLabel = serviceName || serviceCode || normalizeInputValue(workOrder.serviceLine);
+
+  return {
+    ...basePlaceholders,
+    WORK_ORDER_INSPECTION_DATE: todayLabel,
+    DATUM_ISPITIVANJA: todayLabel,
+    INSPECTION_DATE: todayLabel,
+    WORK_ORDER_ISSUED_DATE: todayLabel,
+    DATUM_IZDAVANJA: todayLabel,
+    ISSUED_DATE: todayLabel,
+    SERVICE_SUMMARY: serviceLabel,
+    USLUGA: serviceLabel,
+    NAZIV_USLUGE: serviceLabel,
+    SERVICE_CODE: serviceCode,
+    SIFRA_USLUGE: serviceCode,
+  };
+}
+
+function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnapshot = {}) {
+  const documentTemplates = Array.isArray(scopedSnapshot.documentTemplates) ? scopedSnapshot.documentTemplates : [];
+  const templateById = new Map(documentTemplates.map((template) => [String(template.id), template]));
+  const services = Array.isArray(workOrder.serviceItems) && workOrder.serviceItems.length > 0
+    ? workOrder.serviceItems.map((item) => (item && typeof item === "object" ? item : { name: item }))
+    : [{ name: workOrder.serviceLine || "" }];
+  const entries = [];
+  const seenPairs = new Set();
+
+  services.forEach((service) => {
+    getMobileWorkOrderServiceTemplateIds(service, scopedSnapshot).forEach((templateId) => {
+      const template = templateById.get(String(templateId));
+      if (!template || String(template.status || "active").toLowerCase() === "archived") {
+        return;
+      }
+      const pairKey = `${String(workOrder.id)}::${String(template.id)}`;
+      if (seenPairs.has(pairKey)) {
+        return;
+      }
+      seenPairs.add(pairKey);
+      const placeholders = buildMobileGeneratedDocumentPlaceholders(workOrder, service, scopedSnapshot);
+      entries.push({
+        templateId: String(template.id),
+        workOrderId: String(workOrder.id),
+        templateTitle: normalizeInputValue(template.title || template.documentType || "Zapisnik"),
+        workOrderNumber: normalizeInputValue(workOrder.workOrderNumber || workOrder.number),
+        companyName: normalizeInputValue(workOrder.companyName),
+        locationName: normalizeInputValue(workOrder.locationName),
+        placeholders,
+        documentRecord: {
+          templateTitle: normalizeInputValue(template.title || template.documentType || "Zapisnik"),
+          workOrderNumber: normalizeInputValue(workOrder.workOrderNumber || workOrder.number),
+          inspectionDate: new Date().toISOString().slice(0, 10),
+          issuedDate: new Date().toISOString().slice(0, 10),
+          fieldValues: placeholders,
+        },
+      });
+    });
+  });
+
+  return entries.sort((left, right) => left.templateTitle.localeCompare(right.templateTitle, "hr"));
+}
+
 function normalizePushLookupKey(value = "") {
   return normalizeInputValue(value)
     .normalize("NFD")
@@ -10603,6 +10774,40 @@ async function handleApiRequest(request, response, url) {
 
     if (request.method === "GET" && url.pathname === "/api/mobile/work-orders") {
       await writeMobileWorkOrders(response, user, request);
+      return true;
+    }
+
+    const mobileWorkOrderGenerateDocumentsMatch = url.pathname.match(/^\/api\/mobile\/work-orders\/([^/]+)\/generate-documents$/);
+    if (mobileWorkOrderGenerateDocumentsMatch && request.method === "POST") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo izrađivati dokumentaciju RN-a.");
+        return true;
+      }
+
+      await readJsonBody(request).catch(() => ({}));
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const workOrder = assertInScope(
+        scopedSnapshot.workOrders ?? [],
+        mobileWorkOrderGenerateDocumentsMatch[1],
+        "Radni nalog nije pronađen.",
+      );
+      const entries = buildMobileWorkOrderGeneratedDocumentEntries(workOrder, scopedSnapshot);
+      if (entries.length === 0) {
+        sendError(response, 400, "Ovaj RN nema uslugu s povezanim templateom za izradu dokumentacije.");
+        return true;
+      }
+
+      const items = await saveGeneratedDocumentTemplatePdfDocuments(entries, scopedSnapshot, user, {});
+      if (items.length === 0) {
+        sendError(response, 400, "Nijedan zapisnik nije spremljen u dokumentaciju RN-a.");
+        return true;
+      }
+
+      sendJson(response, 200, {
+        ok: true,
+        generatedCount: items.length,
+        items,
+      });
       return true;
     }
 

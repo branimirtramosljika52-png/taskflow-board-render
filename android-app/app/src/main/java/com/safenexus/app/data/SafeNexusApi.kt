@@ -201,6 +201,19 @@ class SafeNexusApi(
         }
     }
 
+    suspend fun generateWorkOrderDocumentation(workOrderId: String): Result<List<WorkOrderDocument>> = withContext(Dispatchers.IO) {
+        runCatching {
+            val json = JSONObject(
+                request(
+                    "/api/mobile/work-orders/${workOrderId.pathSegment()}/generate-documents",
+                    method = "POST",
+                    body = "{}",
+                ),
+            )
+            json.optJSONArray("items").toWorkOrderDocuments()
+        }
+    }
+
     suspend fun deleteWorkOrderDocument(workOrderId: String, documentId: String): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             request(

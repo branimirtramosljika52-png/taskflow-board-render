@@ -586,6 +586,35 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         loadWorkOrderDocuments(workOrderId)
     }
 
+    fun generateWorkOrderDocumentation(workOrder: WorkOrder) {
+        if (workOrder.id.isBlank()) {
+            state = state.copy(error = "RN nema ispravan ID za izradu dokumentacije.")
+            return
+        }
+
+        state = state.copy(isLoading = true, error = "", notice = "")
+        viewModelScope.launch {
+            api.generateWorkOrderDocumentation(workOrder.id)
+                .onSuccess { documents ->
+                    state = state.copy(
+                        isLoading = false,
+                        notice = if (documents.isNotEmpty()) {
+                            "Dokumentacija je izrađena i spremljena uz RN."
+                        } else {
+                            "Izrada dokumentacije je završena."
+                        },
+                    )
+                    loadWorkOrderDocuments(workOrder.id)
+                }
+                .onFailure { error ->
+                    state = state.copy(
+                        isLoading = false,
+                        error = error.message ?: "Ne mogu izraditi dokumentaciju RN-a.",
+                    )
+                }
+        }
+    }
+
     fun uploadWorkOrderDocuments(
         context: Context,
         workOrder: WorkOrder,
@@ -986,6 +1015,7 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                     statusOptions = state.data.workOrderStatuses.map { it.value }.ifEmpty { workOrderStatusOptions },
                     onBack = { viewModel.selectWorkOrder(null) },
                     onStatusChange = viewModel::updateWorkOrderStatus,
+                    onGenerateDocumentation = viewModel::generateWorkOrderDocumentation,
                     onAddDocumentation = openDocumentationActions,
                     onDownloadPdf = { workOrder -> viewModel.downloadWorkOrderPdf(context.applicationContext, workOrder) },
                     onSignWorkOrder = { workOrder -> signatureActionTarget = workOrder },
@@ -4801,6 +4831,7 @@ private fun WorkOrderDetailScreen(
     statusOptions: List<String>,
     onBack: () -> Unit,
     onStatusChange: (WorkOrder, String) -> Unit,
+    onGenerateDocumentation: (WorkOrder) -> Unit,
     onAddDocumentation: (WorkOrder) -> Unit,
     onDownloadPdf: (WorkOrder) -> Unit,
     onSignWorkOrder: (WorkOrder) -> Unit,
@@ -4860,6 +4891,15 @@ private fun WorkOrderDetailScreen(
                             onStatusSelected = { status -> onStatusChange(workOrder, status) },
                         )
                         OutlinedButton(
+                            onClick = { onGenerateDocumentation(workOrder) },
+                            enabled = !isLoading,
+                            shape = RoundedCornerShape(14.dp),
+                        ) {
+                            Icon(Icons.Rounded.Description, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Izradi dokumentaciju")
+                        }
+                        OutlinedButton(
                             onClick = { onAddDocumentation(workOrder) },
                             enabled = !isLoading,
                             shape = RoundedCornerShape(14.dp),
@@ -4904,6 +4944,7 @@ private fun WorkOrderDetailScreen(
                 documents = documents,
                 loading = documentsLoading,
                 isBusy = isLoading,
+                onGenerateDocumentation = { onGenerateDocumentation(workOrder) },
                 onAddDocumentation = { onAddDocumentation(workOrder) },
                 onOpenDocument = onOpenDocument,
                 onDownloadDocument = onDownloadDocument,
@@ -4951,6 +4992,7 @@ private fun WorkOrderDocumentationSection(
     documents: List<WorkOrderDocument>,
     loading: Boolean,
     isBusy: Boolean,
+    onGenerateDocumentation: () -> Unit,
     onAddDocumentation: () -> Unit,
     onOpenDocument: (WorkOrderDocument) -> Unit,
     onDownloadDocument: (WorkOrderDocument) -> Unit,
@@ -4963,6 +5005,16 @@ private fun WorkOrderDocumentationSection(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            Button(
+                onClick = onGenerateDocumentation,
+                modifier = Modifier.weight(1f),
+                enabled = !isBusy,
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Icon(Icons.Rounded.Description, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Izradi", fontWeight = FontWeight.Black)
+            }
             Button(
                 onClick = onAddDocumentation,
                 modifier = Modifier.weight(1f),
