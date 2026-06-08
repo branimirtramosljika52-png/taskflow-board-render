@@ -1145,10 +1145,10 @@ private fun WorkOrdersTopBar(
                         tint = Color(0xFF0B63E5),
                     )
                 }
-                Spacer(Modifier.width(10.dp))
+                Spacer(Modifier.width(8.dp))
                 Text(
                     "Radni nalozi",
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Black,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -1175,13 +1175,13 @@ private fun WorkOrdersTopBar(
                 onClick = onNewWorkOrder,
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0B63E5)),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
             ) {
-                Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(17.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("Novi nalog", fontWeight = FontWeight.Bold)
+                Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(3.dp))
+                Text("Novi", fontWeight = FontWeight.Bold, maxLines = 1)
             }
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(4.dp))
         },
         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFFFAFCFF)),
     )
@@ -2997,7 +2997,10 @@ private fun RnInfoBlock(
     ) {
         Icon(icon, contentDescription = null, modifier = Modifier.size(24.dp), tint = tint)
         Spacer(Modifier.width(10.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
             Text(label, style = MaterialTheme.typography.labelSmall, color = Color(0xFF64748B))
             Text(
                 value,
@@ -3023,13 +3026,13 @@ private fun WorkOrderCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFFBFDFF)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
     ) {
         Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier.padding(15.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -3040,56 +3043,106 @@ private fun WorkOrderCard(
                     enabled = !isLoading,
                     onStatusSelected = onStatusChange,
                 )
-                RnVerticalDivider()
-                RnNumberBlock(workOrder, modifier = Modifier.weight(1.2f))
-                RnVerticalDivider()
-                RnCompanyBlock(workOrder, modifier = Modifier.weight(1f))
+                Spacer(Modifier.width(10.dp))
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text(
+                        "Broj RN",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFF64748B),
+                        maxLines = 1,
+                    )
+                    Text(
+                        workOrder.displayNumber,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color(0xFF0F172A),
+                        fontWeight = FontWeight.Black,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 Text(
                     "›",
-                    modifier = Modifier.padding(start = 10.dp),
-                    color = Color(0xFF334155),
-                    style = MaterialTheme.typography.headlineMedium,
+                    modifier = Modifier.padding(start = 6.dp),
+                    color = Color(0xFF64748B),
+                    style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Light,
                 )
             }
 
-            Row(
+            Surface(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Top,
+                shape = RoundedCornerShape(15.dp),
+                color = Color(0xFFEAF2FF).copy(alpha = 0.72f),
             ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Rounded.Business,
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp),
+                        tint = rnStatusStyle(workOrder).accent,
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text("Tvrtka", style = MaterialTheme.typography.labelSmall, color = Color(0xFF64748B))
+                        Text(
+                            workOrder.companyName.ifBlank { "Bez tvrtke" },
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = Color(0xFF0F172A),
+                            fontWeight = FontWeight.Black,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 RnInfoBlock(
                     icon = Icons.Rounded.LocationOn,
                     label = "Lokacija",
                     value = workOrder.locationName.ifBlank { "Lokacija nije upisana" },
                     tint = rnStatusStyle(workOrder).accent,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxWidth(),
                 )
-                RnVerticalDivider()
                 RnInfoBlock(
                     icon = Icons.Rounded.Business,
                     label = "Izvršitelj",
                     value = workOrder.primaryExecutorLabel(),
                     tint = rnStatusStyle(workOrder).accent,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
 
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(15.dp),
+                color = Color(0xFFF8FAFC),
+            ) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
                 Text(
                     "Usluge",
                     style = MaterialTheme.typography.labelSmall,
                     color = Color(0xFF64748B),
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Black,
                 )
                 val services = workOrder.serviceBulletItems()
                 services.take(3).forEach { service ->
                     Row(verticalAlignment = Alignment.Top) {
-                        Text("•", color = Color(0xFF0F172A), modifier = Modifier.padding(end = 7.dp))
+                        Text("•", color = rnStatusStyle(workOrder).accent, modifier = Modifier.padding(end = 7.dp))
                         Text(
                             service,
                             style = MaterialTheme.typography.bodySmall,
                             color = Color(0xFF0F172A),
-                            maxLines = 2,
+                            maxLines = 3,
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
@@ -3102,12 +3155,19 @@ private fun WorkOrderCard(
                         fontWeight = FontWeight.Black,
                     )
                 }
-                if (!isLoading) {
-                    TextButton(onClick = onScanVerifiedWorkOrder) {
-                        Icon(Icons.Rounded.CameraAlt, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(5.dp))
-                        Text("Sken ovjerenog", fontWeight = FontWeight.SemiBold)
-                    }
+                }
+            }
+
+            if (!isLoading) {
+                OutlinedButton(
+                    onClick = onScanVerifiedWorkOrder,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                ) {
+                    Icon(Icons.Rounded.CameraAlt, contentDescription = null, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(7.dp))
+                    Text("Sken ovjerenog naloga", fontWeight = FontWeight.Bold)
                 }
             }
         }
