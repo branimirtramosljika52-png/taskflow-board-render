@@ -249,9 +249,15 @@ const RULEBOOK_PRESETS = Object.freeze([
   }),
 ]);
 const WORK_ORDER_DOCUMENT_CATEGORY_OPTIONS = Object.freeze([
-  { value: "Ovjereni Radni nalog", label: "Ovjereni Radni nalog" },
+  { value: "Ovjereni Radni nalog", label: "Ovjereni radni nalog" },
+  { value: "Zapisnik", label: "Zapisnik" },
+  { value: "Projekt", label: "Projekt" },
+  { value: "Jednopolna shema", label: "Jednopolna shema" },
+  { value: "Fotografije", label: "Fotografije" },
+  { value: "Elaborat", label: "Elaborat" },
   { value: "Radni listovi", label: "Radni listovi" },
   { value: "Projektna dokumentacija", label: "Projektna dokumentacija" },
+  { value: "Ostalo", label: "Ostalo" },
 ]);
 const DEFAULT_WORK_ORDER_DOCUMENT_CATEGORY = WORK_ORDER_DOCUMENT_CATEGORY_OPTIONS[0]?.value ?? "";
 const VERIFIED_WORK_ORDER_DOCUMENT_CATEGORY = "Ovjereni Radni nalog";

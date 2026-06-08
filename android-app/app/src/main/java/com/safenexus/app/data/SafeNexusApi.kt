@@ -96,27 +96,73 @@ class SafeNexusApi(
         }
     }
 
-    suspend fun uploadVerifiedWorkOrderScan(
-        workOrderId: String,
-        fileName: String,
-        fileType: String,
-        bytes: ByteArray,
-    ): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun listWorkOrderDocuments(workOrderId: String): Result<List<WorkOrderDocument>> = withContext(Dispatchers.IO) {
         runCatching {
-            val dataUrl = "data:$fileType;base64,${Base64.getEncoder().encodeToString(bytes)}"
-            val file = JSONObject()
-                .put("fileName", fileName)
-                .put("fileType", fileType)
-                .put("fileSize", bytes.size)
-                .put("documentCategory", VERIFIED_WORK_ORDER_DOCUMENT_CATEGORY)
-                .put("description", "Sken ovjerenog radnog naloga iz SafeNexus Android aplikacije.")
-                .put("dataUrl", dataUrl)
+            val json = JSONObject(request("/api/work-orders/${workOrderId.pathSegment()}/documents"))
+            json.optJSONArray("items").toWorkOrderDocuments()
+        }
+    }
+
+    suspend fun uploadWorkOrderDocuments(
+        workOrderId: String,
+        files: List<WorkOrderUploadFile>,
+        sourceType: String = "editor",
+    ): Result<List<WorkOrderDocument>> = withContext(Dispatchers.IO) {
+        runCatching {
+            val payloadFiles = JSONArray()
+            files.forEach { upload ->
+                val dataUrl = "data:${upload.fileType};base64,${Base64.getEncoder().encodeToString(upload.bytes)}"
+                payloadFiles.put(
+                    JSONObject()
+                        .put("fileName", upload.fileName)
+                        .put("fileType", upload.fileType)
+                        .put("fileSize", upload.fileSize)
+                        .put("documentCategory", upload.documentCategory)
+                        .put("description", upload.description)
+                        .put("dataUrl", dataUrl),
+                )
+            }
             val payload = JSONObject()
-                .put("sourceType", "editor")
-                .put("files", JSONArray().put(file))
+                .put("sourceType", sourceType)
+                .put("files", payloadFiles)
                 .toString()
-            request("/api/work-orders/${workOrderId.pathSegment()}/documents", method = "POST", body = payload)
+            val json = JSONObject(request("/api/work-orders/${workOrderId.pathSegment()}/documents", method = "POST", body = payload))
+            json.optJSONArray("items").toWorkOrderDocuments()
+        }
+    }
+
+    suspend fun deleteWorkOrderDocument(workOrderId: String, documentId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            request(
+                "/api/work-orders/${workOrderId.pathSegment()}/documents/${documentId.pathSegment()}",
+                method = "DELETE",
+            )
             Unit
+        }
+    }
+
+    suspend fun downloadWorkOrderDocument(
+        workOrderId: String,
+        document: WorkOrderDocument,
+    ): Result<DownloadedDocument> = withContext(Dispatchers.IO) {
+        runCatching {
+            val path = "/api/work-orders/${workOrderId.pathSegment()}/documents/${document.id.pathSegment()}/download"
+            val connection = openConnection(path, method = "GET", body = null, accept = "*/*")
+            val bytes = readBinaryResponse(connection)
+            rememberAuthCookies(connection)
+            if (connection.responseCode !in 200..299) {
+                val text = bytes.toString(Charsets.UTF_8)
+                throw IllegalStateException(extractErrorMessage(text).ifBlank {
+                    "Ne mogu preuzeti dokument (${connection.responseCode})."
+                })
+            }
+            DownloadedDocument(
+                fileName = document.fileName.ifBlank { "dokument" },
+                fileType = connection.getHeaderField("Content-Type")?.substringBefore(";")?.trim()
+                    ?.ifBlank { document.fileType }
+                    ?: document.fileType.ifBlank { "application/octet-stream" },
+                bytes = bytes,
+            )
         }
     }
 
@@ -128,13 +174,20 @@ class SafeNexusApi(
         }
     }
 
-    private fun request(path: String, method: String = "GET", body: String? = null): String {
-        val connection = (URL("$baseUrl$path").openConnection() as HttpURLConnection).apply {
+    private fun openConnection(
+        path: String,
+        method: String = "GET",
+        body: String? = null,
+        accept: String = "application/json",
+    ): HttpURLConnection {
+        return (URL("$baseUrl$path").openConnection() as HttpURLConnection).apply {
             requestMethod = method
             connectTimeout = 18_000
             readTimeout = 24_000
-            setRequestProperty("Accept", "application/json")
-            setRequestProperty("Accept-Encoding", "gzip")
+            setRequestProperty("Accept", accept)
+            if (accept == "application/json") {
+                setRequestProperty("Accept-Encoding", "gzip")
+            }
             setRequestProperty("Content-Type", "application/json; charset=utf-8")
             setRequestProperty("X-SafeNexus-Client", "android")
             if (accessToken.isNotBlank()) {
@@ -150,7 +203,10 @@ class SafeNexusApi(
                 }
             }
         }
+    }
 
+    private fun request(path: String, method: String = "GET", body: String? = null): String {
+        val connection = openConnection(path, method, body)
         val responseText = readResponse(connection)
         rememberAuthCookies(connection)
         if (connection.responseCode !in 200..299) {
@@ -214,13 +270,20 @@ class SafeNexusApi(
         }
     }
 
+    private fun readBinaryResponse(connection: HttpURLConnection): ByteArray {
+        val stream = if (connection.responseCode in 200..299) {
+            connection.inputStream
+        } else {
+            connection.errorStream ?: connection.inputStream
+        }
+        return stream.use { it.readBytes() }
+    }
+
     private fun extractErrorMessage(responseText: String): String = runCatching {
         val json = JSONObject(responseText)
         json.firstClean("message", "error")
     }.getOrDefault("")
 }
-
-private const val VERIFIED_WORK_ORDER_DOCUMENT_CATEGORY = "Ovjereni Radni nalog"
 
 private fun String.pathSegment(): String =
     URLEncoder.encode(this, Charsets.UTF_8.name()).replace("+", "%20")
@@ -304,6 +367,28 @@ private fun JSONArray?.toRecords(): List<MobileRecord> {
             .thenBy { it.parsedDate }
             .thenBy { it.title.lowercase() },
     )
+}
+
+private fun JSONArray?.toWorkOrderDocuments(): List<WorkOrderDocument> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            val item = optJSONObject(index) ?: continue
+            add(
+                WorkOrderDocument(
+                    id = item.firstClean("id"),
+                    workOrderId = item.firstClean("workOrderId"),
+                    fileName = item.firstClean("fileName", "name").ifBlank { "Dokument" },
+                    fileType = item.firstClean("fileType", "mimeType"),
+                    fileSize = item.optLong("fileSize", item.optLong("size", 0L)),
+                    documentCategory = item.firstClean("documentCategory", "category").ifBlank { "Ostalo" },
+                    description = item.firstClean("description"),
+                    sourceType = item.firstClean("sourceType").ifBlank { "editor" },
+                    createdAt = item.firstClean("createdAt", "updatedAt"),
+                ),
+            )
+        }
+    }.sortedByDescending { it.createdAt }
 }
 
 private fun JSONArray?.toWorkOrders(): List<WorkOrder> {

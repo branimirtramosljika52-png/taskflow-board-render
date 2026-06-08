@@ -3,23 +3,26 @@
 package com.safenexus.app.ui
 
 import android.annotation.SuppressLint
+import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.app.Application
+import android.content.ContentValues
 import android.content.Context
 import android.content.ContextWrapper
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Matrix
-import android.graphics.Paint
-import android.graphics.RectF
-import android.graphics.pdf.PdfDocument
-import android.media.ExifInterface
+import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.Environment
+import android.provider.OpenableColumns
+import android.provider.MediaStore
 import android.webkit.JavascriptInterface
+import android.webkit.MimeTypeMap
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.biometric.BiometricManager
@@ -64,17 +67,26 @@ import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.FilterList
 import androidx.compose.material.icons.rounded.Fingerprint
+import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Mail
 import androidx.compose.material.icons.rounded.Map
 import androidx.compose.material.icons.rounded.Menu
+import androidx.compose.material.icons.rounded.PictureAsPdf
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.Work
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -95,6 +107,7 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -130,24 +143,28 @@ import androidx.lifecycle.viewModelScope
 import com.safenexus.app.data.BootstrapData
 import com.safenexus.app.data.CoordinatePoint
 import com.safenexus.app.data.DashboardStats
+import com.safenexus.app.data.DownloadedDocument
 import com.safenexus.app.data.MobileRecord
 import com.safenexus.app.data.SafeNexusApi
 import com.safenexus.app.data.SafeNexusAuthStore
 import com.safenexus.app.data.SafeNexusUser
 import com.safenexus.app.data.WorkOrder
+import com.safenexus.app.data.WorkOrderDocument
+import com.safenexus.app.data.WorkOrderUploadFile
 import com.safenexus.app.data.parseDateOrNull
+import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-import kotlin.math.min
-import kotlin.math.roundToInt
+import java.util.Locale
 
 enum class WorkOrderFilter(val label: String) {
     All("SVE"),
@@ -182,6 +199,70 @@ private data class MainMenuShortcut(
     val icon: ImageVector,
 )
 
+enum class WorkOrderDocumentInputMode(
+    val label: String,
+    val description: String,
+    val icon: ImageVector,
+    val defaultCategory: WorkOrderDocumentCategory,
+) {
+    Scan(
+        "Skeniraj dokument",
+        "Rubovi, perspektiva, više stranica i jedan PDF.",
+        Icons.Rounded.CameraAlt,
+        WorkOrderDocumentCategory.VerifiedWorkOrder,
+    ),
+    Photos(
+        "Dodaj fotografije",
+        "Priloži jednu ili više fotografija s uređaja.",
+        Icons.Rounded.Image,
+        WorkOrderDocumentCategory.Photos,
+    ),
+    Pdf(
+        "Odaberi PDF",
+        "Priloži gotov PDF dokument.",
+        Icons.Rounded.PictureAsPdf,
+        WorkOrderDocumentCategory.Report,
+    ),
+    File(
+        "Odaberi datoteku",
+        "PDF, Word, Excel, slike i ostali prilozi.",
+        Icons.Rounded.Folder,
+        WorkOrderDocumentCategory.Other,
+    ),
+}
+
+enum class WorkOrderDocumentCategory(val value: String, val label: String) {
+    VerifiedWorkOrder("Ovjereni Radni nalog", "Ovjereni radni nalog"),
+    Report("Zapisnik", "Zapisnik"),
+    Project("Projekt", "Projekt"),
+    SingleLineDiagram("Jednopolna shema", "Jednopolna shema"),
+    Photos("Fotografije", "Fotografije"),
+    Elaborate("Elaborat", "Elaborat"),
+    Other("Ostalo", "Ostalo"),
+}
+
+private const val WORK_ORDER_DOCUMENT_MAX_SIZE_BYTES = 12L * 1024L * 1024L
+
+private val workOrderDocumentAllowedMimeTypes = arrayOf(
+    "application/pdf",
+    "image/*",
+    "message/rfc822",
+    "application/vnd.ms-outlook",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.template",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "text/csv",
+    "text/plain",
+)
+
+private data class PendingDocumentSelection(
+    val workOrder: WorkOrder,
+    val uris: List<Uri>,
+    val mode: WorkOrderDocumentInputMode,
+)
+
 private val biometricAuthenticators =
     BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
 
@@ -204,6 +285,9 @@ data class AppState(
     val query: String = "",
     val filter: WorkOrderFilter = WorkOrderFilter.All,
     val viewMode: WorkOrderViewMode = WorkOrderViewMode.List,
+    val workOrderDocumentsWorkOrderId: String = "",
+    val workOrderDocuments: List<WorkOrderDocument> = emptyList(),
+    val workOrderDocumentsLoading: Boolean = false,
     val isLoading: Boolean = false,
     val error: String = "",
     val notice: String = "",
@@ -319,7 +403,16 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun selectWorkOrder(value: WorkOrder?) {
-        state = state.copy(selectedWorkOrder = value, selectedRecord = null)
+        state = state.copy(
+            selectedWorkOrder = value,
+            selectedRecord = null,
+            workOrderDocumentsWorkOrderId = value?.id.orEmpty(),
+            workOrderDocuments = emptyList(),
+            workOrderDocumentsLoading = value != null,
+            error = "",
+            notice = "",
+        )
+        value?.id?.takeIf { it.isNotBlank() }?.let(::loadWorkOrderDocuments)
     }
 
     fun selectRecord(value: MobileRecord?) {
@@ -331,6 +424,10 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
             notice = "Novi radni nalog za sada dodaj kroz web aplikaciju. Mobilni unos RN-a ide u sljedećoj fazi.",
             error = "",
         )
+    }
+
+    fun showError(message: String) {
+        state = state.copy(isLoading = false, workOrderDocumentsLoading = false, error = message, notice = "")
     }
 
     fun updateWorkOrderStatus(workOrder: WorkOrder, status: String) {
@@ -364,33 +461,158 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun uploadVerifiedWorkOrderScan(context: Context, workOrder: WorkOrder, uri: Uri) {
+    private fun loadWorkOrderDocuments(workOrderId: String) {
+        if (workOrderId.isBlank()) return
+
+        state = state.copy(
+            workOrderDocumentsWorkOrderId = workOrderId,
+            workOrderDocumentsLoading = true,
+            error = "",
+        )
+        viewModelScope.launch {
+            api.listWorkOrderDocuments(workOrderId)
+                .onSuccess { documents ->
+                    if (state.workOrderDocumentsWorkOrderId == workOrderId) {
+                        state = state.copy(
+                            workOrderDocuments = documents,
+                            workOrderDocumentsLoading = false,
+                            error = "",
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    if (state.workOrderDocumentsWorkOrderId == workOrderId) {
+                        state = state.copy(
+                            workOrderDocumentsLoading = false,
+                            error = error.message ?: "Ne mogu učitati dokumentaciju RN-a.",
+                        )
+                    }
+                }
+        }
+    }
+
+    fun refreshWorkOrderDocuments() {
+        val workOrderId = state.selectedWorkOrder?.id ?: return
+        loadWorkOrderDocuments(workOrderId)
+    }
+
+    fun uploadWorkOrderDocuments(
+        context: Context,
+        workOrder: WorkOrder,
+        uris: List<Uri>,
+        category: WorkOrderDocumentCategory,
+        mode: WorkOrderDocumentInputMode,
+    ) {
         if (workOrder.id.isBlank()) {
-            state = state.copy(error = "RN nema ispravan ID za dodavanje skena.")
+            state = state.copy(error = "RN nema ispravan ID za dodavanje dokumentacije.")
+            return
+        }
+        if (uris.isEmpty()) {
+            state = state.copy(error = "Odaberi barem jedan dokument.")
             return
         }
 
         state = state.copy(isLoading = true, error = "", notice = "")
         viewModelScope.launch {
             runCatching {
-                val bytes = readScannedWorkOrderPdfBytes(context, uri)
-                api.uploadVerifiedWorkOrderScan(
+                val uploads = buildWorkOrderDocumentUploadFiles(
+                    context = context,
+                    workOrder = workOrder,
+                    uris = uris,
+                    category = category,
+                    mode = mode,
+                )
+                api.uploadWorkOrderDocuments(
                     workOrderId = workOrder.id,
-                    fileName = buildVerifiedScanPdfFileName(workOrder),
-                    fileType = "application/pdf",
-                    bytes = bytes,
+                    files = uploads,
+                    sourceType = "editor",
                 ).getOrThrow()
             }
                 .onSuccess {
                     state = state.copy(
                         isLoading = false,
-                        notice = "PDF sken ovjerenog RN-a je spremljen.",
+                        notice = "Dokumentacija je spremljena.",
                     )
+                    loadWorkOrderDocuments(workOrder.id)
                 }
                 .onFailure { error ->
                     state = state.copy(
                         isLoading = false,
-                        error = error.message ?: "Ne mogu spremiti sken ovjerenog RN-a.",
+                        error = error.message ?: "Ne mogu spremiti dokumentaciju RN-a.",
+                    )
+                }
+        }
+    }
+
+    fun deleteWorkOrderDocument(document: WorkOrderDocument) {
+        val workOrderId = state.selectedWorkOrder?.id ?: document.workOrderId
+        if (workOrderId.isBlank() || document.id.isBlank()) {
+            state = state.copy(error = "Dokument nema ispravan ID za brisanje.")
+            return
+        }
+
+        state = state.copy(isLoading = true, error = "", notice = "")
+        viewModelScope.launch {
+            api.deleteWorkOrderDocument(workOrderId, document.id)
+                .onSuccess {
+                    state = state.copy(isLoading = false, notice = "Dokument je obrisan.")
+                    loadWorkOrderDocuments(workOrderId)
+                }
+                .onFailure { error ->
+                    state = state.copy(
+                        isLoading = false,
+                        error = error.message ?: "Ne mogu obrisati dokument.",
+                    )
+                }
+        }
+    }
+
+    fun openWorkOrderDocument(context: Context, document: WorkOrderDocument) {
+        downloadWorkOrderDocument(context, document, openAfterDownload = true)
+    }
+
+    fun downloadWorkOrderDocument(context: Context, document: WorkOrderDocument, openAfterDownload: Boolean = false) {
+        val workOrderId = state.selectedWorkOrder?.id ?: document.workOrderId
+        if (workOrderId.isBlank() || document.id.isBlank()) {
+            state = state.copy(error = "Dokument nije moguće preuzeti.")
+            return
+        }
+
+        state = state.copy(isLoading = true, error = "", notice = "")
+        viewModelScope.launch {
+            api.downloadWorkOrderDocument(workOrderId, document)
+                .onSuccess { downloaded ->
+                    if (openAfterDownload) {
+                        val uri = runCatching { cacheDownloadedDocument(context, downloaded) }.getOrElse { error ->
+                            state = state.copy(
+                                isLoading = false,
+                                error = error.message ?: "Ne mogu spremiti dokument za pregled.",
+                            )
+                            return@onSuccess
+                        }
+                        val opened = openCachedDocument(context, uri, downloaded.fileType)
+                        state = state.copy(
+                            isLoading = false,
+                            notice = if (opened) "Dokument je otvoren." else "Dokument je preuzet u privremenu mapu aplikacije.",
+                            error = if (opened) "" else "Na uređaju nema aplikacije za otvaranje ove vrste dokumenta.",
+                        )
+                    } else {
+                        runCatching { saveDownloadedDocument(context, downloaded) }
+                            .onSuccess {
+                                state = state.copy(isLoading = false, notice = "Dokument je spremljen u Preuzimanja / SafeNexus.")
+                            }
+                            .onFailure { error ->
+                                state = state.copy(
+                                    isLoading = false,
+                                    error = error.message ?: "Ne mogu spremiti dokument u Preuzimanja.",
+                                )
+                            }
+                    }
+                }
+                .onFailure { error ->
+                    state = state.copy(
+                        isLoading = false,
+                        error = error.message ?: "Ne mogu preuzeti dokument.",
                     )
                 }
         }
@@ -401,18 +623,90 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
 fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
     val state = viewModel.state
     val context = LocalContext.current
-    var pendingScan by remember { mutableStateOf<Pair<WorkOrder, Uri>?>(null) }
-    val scanLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
-        val scan = pendingScan
-        pendingScan = null
-        if (success && scan != null) {
-            viewModel.uploadVerifiedWorkOrderScan(context.applicationContext, scan.first, scan.second)
+    var documentationActionTarget by remember { mutableStateOf<WorkOrder?>(null) }
+    var pendingPicker by remember { mutableStateOf<Pair<WorkOrder, WorkOrderDocumentInputMode>?>(null) }
+    var pendingSelection by remember { mutableStateOf<PendingDocumentSelection?>(null) }
+    val confirmDocumentSelection: (WorkOrderDocumentCategory) -> Unit = { category ->
+        val selection = pendingSelection
+        pendingSelection = null
+        if (selection != null) {
+            viewModel.uploadWorkOrderDocuments(
+                context = context.applicationContext,
+                workOrder = selection.workOrder,
+                uris = selection.uris,
+                category = category,
+                mode = selection.mode,
+            )
         }
     }
-    val startVerifiedScan: (WorkOrder) -> Unit = { workOrder ->
-        val uri = createWorkOrderScanUri(context, workOrder)
-        pendingScan = workOrder to uri
-        scanLauncher.launch(uri)
+    val photoLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        val target = pendingPicker
+        pendingPicker = null
+        if (target != null && uris.isNotEmpty()) {
+            pendingSelection = PendingDocumentSelection(target.first, uris, target.second)
+        }
+    }
+    val pdfLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        val target = pendingPicker
+        pendingPicker = null
+        if (target != null && uris.isNotEmpty()) {
+            pendingSelection = PendingDocumentSelection(target.first, uris, target.second)
+        }
+    }
+    val fileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        val target = pendingPicker
+        pendingPicker = null
+        if (target != null && uris.isNotEmpty()) {
+            pendingSelection = PendingDocumentSelection(target.first, uris, target.second)
+        }
+    }
+    val documentScannerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+        val target = pendingPicker
+        pendingPicker = null
+        if (result.resultCode == Activity.RESULT_OK && target != null) {
+            val scanResult = GmsDocumentScanningResult.fromActivityResultIntent(result.data)
+            val pdfUri = scanResult?.pdf?.uri
+            if (pdfUri != null) {
+                pendingSelection = PendingDocumentSelection(target.first, listOf(pdfUri), target.second)
+            } else {
+                viewModel.showError("Sken nije vratio PDF dokument.")
+            }
+        }
+    }
+    val startDocumentationFlow: (WorkOrder, WorkOrderDocumentInputMode) -> Unit = { workOrder, mode ->
+        documentationActionTarget = null
+        pendingPicker = workOrder to mode
+        when (mode) {
+            WorkOrderDocumentInputMode.Scan -> {
+                val activity = context.findFragmentActivity()
+                if (activity == null) {
+                    pendingPicker = null
+                    viewModel.showError("Skeniranje dokumenta nije dostupno u ovom prikazu.")
+                } else {
+                    val options = GmsDocumentScannerOptions.Builder()
+                        .setGalleryImportAllowed(true)
+                        .setPageLimit(30)
+                        .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_PDF)
+                        .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL)
+                        .build()
+                    GmsDocumentScanning.getClient(options)
+                        .getStartScanIntent(activity)
+                        .addOnSuccessListener { intentSender ->
+                            documentScannerLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
+                        }
+                        .addOnFailureListener { error ->
+                            pendingPicker = null
+                            viewModel.showError(error.message ?: "Ne mogu pokrenuti skeniranje dokumenta.")
+                        }
+                }
+            }
+            WorkOrderDocumentInputMode.Photos -> photoLauncher.launch("image/*")
+            WorkOrderDocumentInputMode.Pdf -> pdfLauncher.launch(arrayOf("application/pdf"))
+            WorkOrderDocumentInputMode.File -> fileLauncher.launch(workOrderDocumentAllowedMimeTypes)
+        }
+    }
+    val openDocumentationActions: (WorkOrder) -> Unit = { workOrder ->
+        documentationActionTarget = workOrder
     }
     val openMobileRecord: (MobileRecord) -> Unit = { record ->
         val linkedWorkOrder = state.workOrders.firstOrNull { workOrder ->
@@ -446,7 +740,7 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                         onOpenRecord = openMobileRecord,
                         onNewWorkOrder = viewModel::showNewWorkOrderNotice,
                         onStatusChange = viewModel::updateWorkOrderStatus,
-                        onScanVerifiedWorkOrder = startVerifiedScan,
+                        onAddDocumentation = openDocumentationActions,
                     )
                 } else {
                     MobileRecordDetailScreen(
@@ -460,9 +754,15 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                     isLoading = state.isLoading,
                     error = state.error,
                     notice = state.notice,
+                    documents = state.workOrderDocuments,
+                    documentsLoading = state.workOrderDocumentsLoading,
                     onBack = { viewModel.selectWorkOrder(null) },
                     onStatusChange = viewModel::updateWorkOrderStatus,
-                    onScanVerifiedWorkOrder = startVerifiedScan,
+                    onAddDocumentation = openDocumentationActions,
+                    onOpenDocument = { document -> viewModel.openWorkOrderDocument(context.applicationContext, document) },
+                    onDownloadDocument = { document -> viewModel.downloadWorkOrderDocument(context.applicationContext, document) },
+                    onDeleteDocument = viewModel::deleteWorkOrderDocument,
+                    onRefreshDocuments = viewModel::refreshWorkOrderDocuments,
                 )
             }
         } else {
@@ -474,6 +774,22 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                 onUnlockRememberedSession = viewModel::unlockRememberedSession,
             )
         }
+    }
+
+    documentationActionTarget?.let { workOrder ->
+        WorkOrderDocumentationActionDialog(
+            workOrder = workOrder,
+            onDismiss = { documentationActionTarget = null },
+            onSelect = { mode -> startDocumentationFlow(workOrder, mode) },
+        )
+    }
+    pendingSelection?.let { selection ->
+        WorkOrderDocumentCategoryDialog(
+            selection = selection,
+            isLoading = state.isLoading,
+            onDismiss = { pendingSelection = null },
+            onConfirm = confirmDocumentSelection,
+        )
     }
 }
 
@@ -832,7 +1148,7 @@ private fun WorkOrdersScreen(
     onOpenRecord: (MobileRecord) -> Unit,
     onNewWorkOrder: () -> Unit,
     onStatusChange: (WorkOrder, String) -> Unit,
-    onScanVerifiedWorkOrder: (WorkOrder) -> Unit,
+    onAddDocumentation: (WorkOrder) -> Unit,
 ) {
     val normalizedQuery = remember(state.query) { state.query.trim().lowercase() }
     val filtered = remember(state.workOrders, normalizedQuery, state.filter) {
@@ -1046,9 +1362,9 @@ private fun WorkOrdersScreen(
                     WorkOrderCard(
                         workOrder = entry.workOrder,
                         isLoading = state.isLoading,
-                        onClick = { onOpenWorkOrder(entry.workOrder) },
+                            onClick = { onOpenWorkOrder(entry.workOrder) },
                             onStatusChange = { status -> onStatusChange(entry.workOrder, status) },
-                            onScanVerifiedWorkOrder = { onScanVerifiedWorkOrder(entry.workOrder) },
+                            onAddDocumentation = { onAddDocumentation(entry.workOrder) },
                         )
                     }
                 }
@@ -1063,7 +1379,7 @@ private fun WorkOrdersScreen(
                         isLoading = state.isLoading,
                         onClick = { onOpenWorkOrder(workOrder) },
                         onStatusChange = { status -> onStatusChange(workOrder, status) },
-                        onScanVerifiedWorkOrder = { onScanVerifiedWorkOrder(workOrder) },
+                        onAddDocumentation = { onAddDocumentation(workOrder) },
                     )
                 }
             }
@@ -3027,7 +3343,7 @@ private fun WorkOrderCard(
     isLoading: Boolean,
     onClick: () -> Unit,
     onStatusChange: (String) -> Unit,
-    onScanVerifiedWorkOrder: () -> Unit,
+    onAddDocumentation: () -> Unit,
 ) {
     Card(
         modifier = Modifier
@@ -3167,14 +3483,14 @@ private fun WorkOrderCard(
 
             if (!isLoading) {
                 OutlinedButton(
-                    onClick = onScanVerifiedWorkOrder,
+                    onClick = onAddDocumentation,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                 ) {
-                    Icon(Icons.Rounded.CameraAlt, contentDescription = null, modifier = Modifier.size(17.dp))
+                    Icon(Icons.Rounded.Description, contentDescription = null, modifier = Modifier.size(17.dp))
                     Spacer(Modifier.width(7.dp))
-                    Text("PDF sken ovjerenog naloga", fontWeight = FontWeight.Bold)
+                    Text("Dodaj dokumentaciju", fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -3296,9 +3612,15 @@ private fun WorkOrderDetailScreen(
     isLoading: Boolean,
     error: String,
     notice: String,
+    documents: List<WorkOrderDocument>,
+    documentsLoading: Boolean,
     onBack: () -> Unit,
     onStatusChange: (WorkOrder, String) -> Unit,
-    onScanVerifiedWorkOrder: (WorkOrder) -> Unit,
+    onAddDocumentation: (WorkOrder) -> Unit,
+    onOpenDocument: (WorkOrderDocument) -> Unit,
+    onDownloadDocument: (WorkOrderDocument) -> Unit,
+    onDeleteDocument: (WorkOrderDocument) -> Unit,
+    onRefreshDocuments: () -> Unit,
 ) {
     Scaffold(
         topBar = {
@@ -3350,13 +3672,13 @@ private fun WorkOrderDetailScreen(
                             onStatusSelected = { status -> onStatusChange(workOrder, status) },
                         )
                         OutlinedButton(
-                            onClick = { onScanVerifiedWorkOrder(workOrder) },
+                            onClick = { onAddDocumentation(workOrder) },
                             enabled = !isLoading,
                             shape = RoundedCornerShape(14.dp),
                         ) {
-                            Icon(Icons.Rounded.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Rounded.Description, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("PDF sken RN-a")
+                            Text("Dokumentacija")
                         }
                     }
                 }
@@ -3372,18 +3694,16 @@ private fun WorkOrderDetailScreen(
                 MessageCard(text = notice, isError = false)
             }
 
-            DetailSection("Ovjereni nalog") {
-                DetailRow(Icons.Rounded.CameraAlt, "PDF sken", "Fotografija se obrađuje kao pravi sken i sprema kao PDF dokument.")
-                OutlinedButton(
-                    onClick = { onScanVerifiedWorkOrder(workOrder) },
-                    enabled = !isLoading,
-                    shape = RoundedCornerShape(16.dp),
-                ) {
-                    Icon(Icons.Rounded.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Dodaj PDF sken naloga")
-                }
-            }
+            WorkOrderDocumentationSection(
+                documents = documents,
+                loading = documentsLoading,
+                isBusy = isLoading,
+                onAddDocumentation = { onAddDocumentation(workOrder) },
+                onOpenDocument = onOpenDocument,
+                onDownloadDocument = onDownloadDocument,
+                onDeleteDocument = onDeleteDocument,
+                onRefreshDocuments = onRefreshDocuments,
+            )
 
             DetailSection("Lokacija i kontakt") {
                 DetailRow(Icons.Rounded.LocationOn, "Lokacija", workOrder.locationName.ifBlank { "Nije upisano" })
@@ -3418,6 +3738,267 @@ private fun WorkOrderDetailScreen(
             }
         }
     }
+}
+
+@Composable
+private fun WorkOrderDocumentationSection(
+    documents: List<WorkOrderDocument>,
+    loading: Boolean,
+    isBusy: Boolean,
+    onAddDocumentation: () -> Unit,
+    onOpenDocument: (WorkOrderDocument) -> Unit,
+    onDownloadDocument: (WorkOrderDocument) -> Unit,
+    onDeleteDocument: (WorkOrderDocument) -> Unit,
+    onRefreshDocuments: () -> Unit,
+) {
+    DetailSection("Dokumentacija") {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Button(
+                onClick = onAddDocumentation,
+                modifier = Modifier.weight(1f),
+                enabled = !isBusy,
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Dodaj dokumentaciju", fontWeight = FontWeight.Black)
+            }
+            IconButton(onClick = onRefreshDocuments, enabled = !loading && !isBusy) {
+                Icon(Icons.Rounded.Refresh, contentDescription = "Osvježi dokumentaciju")
+            }
+        }
+
+        AnimatedVisibility(loading) {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        }
+
+        if (!loading && documents.isEmpty()) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.62f),
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Rounded.InsertDriveFile, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Text("Još nema dokumentacije", fontWeight = FontWeight.Bold)
+                        Text(
+                            "Dodaj sken, PDF, fotografije ili drugu datoteku.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        )
+                    }
+                }
+            }
+        }
+
+        documents.forEach { document ->
+            WorkOrderDocumentCard(
+                document = document,
+                enabled = !isBusy,
+                onOpen = { onOpenDocument(document) },
+                onDownload = { onDownloadDocument(document) },
+                onDelete = { onDeleteDocument(document) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun WorkOrderDocumentCard(
+    document: WorkOrderDocument,
+    enabled: Boolean,
+    onOpen: () -> Unit,
+    onDownload: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.48f),
+    ) {
+        Column(
+            modifier = Modifier.padding(13.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = RoundedCornerShape(14.dp), color = workOrderDocumentAccent(document).copy(alpha = 0.13f)) {
+                    Icon(
+                        imageVector = workOrderDocumentIcon(document),
+                        contentDescription = null,
+                        tint = workOrderDocumentAccent(document),
+                        modifier = Modifier
+                            .size(42.dp)
+                            .padding(10.dp),
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = document.displayName,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Black,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = listOf(
+                            document.documentCategory,
+                            formatFileSizeLabel(document.fileSize),
+                            formatDateLabel(document.createdAt),
+                        ).filter { it.isNotBlank() }.joinToString(" · "),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onOpen, enabled = enabled, shape = RoundedCornerShape(14.dp)) {
+                    Icon(Icons.Rounded.Visibility, contentDescription = null, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Pregled")
+                }
+                OutlinedButton(onClick = onDownload, enabled = enabled, shape = RoundedCornerShape(14.dp)) {
+                    Icon(Icons.Rounded.Download, contentDescription = null, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Preuzmi")
+                }
+                OutlinedButton(onClick = onDelete, enabled = enabled, shape = RoundedCornerShape(14.dp)) {
+                    Icon(Icons.Rounded.Delete, contentDescription = null, modifier = Modifier.size(17.dp), tint = Color(0xFFDC2626))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Briši", color = Color(0xFFDC2626))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorkOrderDocumentationActionDialog(
+    workOrder: WorkOrder,
+    onDismiss: () -> Unit,
+    onSelect: (WorkOrderDocumentInputMode) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text("Dodaj dokumentaciju", fontWeight = FontWeight.Black)
+                Text(
+                    text = workOrder.displayNumber,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                )
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                WorkOrderDocumentInputMode.entries.forEach { mode ->
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(mode) },
+                        shape = RoundedCornerShape(18.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.52f),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(13.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(mode.icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(12.dp))
+                            Column {
+                                Text(mode.label, fontWeight = FontWeight.Black)
+                                Text(
+                                    mode.description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Odustani")
+            }
+        },
+    )
+}
+
+@Composable
+private fun WorkOrderDocumentCategoryDialog(
+    selection: PendingDocumentSelection,
+    isLoading: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (WorkOrderDocumentCategory) -> Unit,
+) {
+    var selectedCategory by remember(selection) { mutableStateOf(selection.mode.defaultCategory) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Vrsta dokumentacije", fontWeight = FontWeight.Black) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "${selection.uris.size} ${if (selection.uris.size == 1) "datoteka" else "datoteka"} za RN ${selection.workOrder.displayNumber}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(330.dp)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    WorkOrderDocumentCategory.entries.forEach { category ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .clickable(enabled = !isLoading) { selectedCategory = category }
+                                .padding(vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(
+                                selected = selectedCategory == category,
+                                onClick = { selectedCategory = category },
+                                enabled = !isLoading,
+                            )
+                            Text(category.label, fontWeight = if (selectedCategory == category) FontWeight.Black else FontWeight.SemiBold)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirm(selectedCategory) },
+                enabled = !isLoading,
+                shape = RoundedCornerShape(14.dp),
+            ) {
+                Text("Spremi")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isLoading) {
+                Text("Odustani")
+            }
+        },
+    )
 }
 
 @Composable
@@ -3536,6 +4117,31 @@ private fun InfoPill(icon: ImageVector, text: String) {
     }
 }
 
+private fun workOrderDocumentIcon(document: WorkOrderDocument): ImageVector = when {
+    document.isPdf -> Icons.Rounded.PictureAsPdf
+    document.isImage -> Icons.Rounded.Image
+    document.fileName.endsWith(".doc", ignoreCase = true) || document.fileName.endsWith(".docx", ignoreCase = true) -> Icons.Rounded.Description
+    else -> Icons.Rounded.InsertDriveFile
+}
+
+private fun workOrderDocumentAccent(document: WorkOrderDocument): Color = when {
+    document.isPdf -> Color(0xFFDC2626)
+    document.isImage -> Color(0xFF0F766E)
+    document.documentCategory.equals(WorkOrderDocumentCategory.SingleLineDiagram.value, ignoreCase = true) -> Color(0xFF7C3AED)
+    document.documentCategory.equals(WorkOrderDocumentCategory.Project.value, ignoreCase = true) -> Color(0xFF2563EB)
+    else -> Color(0xFF475569)
+}
+
+private fun formatFileSizeLabel(bytes: Long): String {
+    if (bytes <= 0L) return ""
+    val megabytes = bytes.toDouble() / (1024.0 * 1024.0)
+    if (megabytes >= 1.0) {
+        return String.format(Locale.US, if (megabytes >= 10.0) "%.0f MB" else "%.1f MB", megabytes)
+    }
+    val kilobytes = (bytes + 1023L) / 1024L
+    return "$kilobytes KB"
+}
+
 @Composable
 private fun MessageCard(text: String, isError: Boolean) {
     Surface(
@@ -3590,154 +4196,152 @@ private fun formatDateLabel(value: String): String {
     return date.format(DateTimeFormatter.ofPattern("dd.MM.yyyy."))
 }
 
-private fun createWorkOrderScanUri(context: Context, workOrder: WorkOrder): Uri {
-    val directory = File(context.cacheDir, "work-order-scans").apply { mkdirs() }
-    val fileName = buildVerifiedScanPhotoFileName(workOrder)
-    val file = File(directory, fileName)
-    return FileProvider.getUriForFile(
-        context,
-        "${context.packageName}.fileprovider",
-        file,
-    )
-}
-
-private suspend fun readScannedWorkOrderPdfBytes(context: Context, uri: Uri): ByteArray = withContext(Dispatchers.IO) {
-    val sourceBitmap = decodeScanBitmap(context, uri)
-    val enhancedBitmap = enhanceScanBitmap(sourceBitmap)
-    if (enhancedBitmap !== sourceBitmap) {
-        sourceBitmap.recycle()
-    }
-    try {
-        renderScanPdfBytes(enhancedBitmap)
-    } finally {
-        enhancedBitmap.recycle()
-    }
-}
-
-private fun decodeScanBitmap(context: Context, uri: Uri): Bitmap {
-    val resolver = context.contentResolver
-    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    resolver.openInputStream(uri)?.use { input ->
-        BitmapFactory.decodeStream(input, null, bounds)
-    }
-    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
-        error("Ne mogu učitati fotografiju skena.")
-    }
-
-    var sampleSize = 1
-    val maxDimension = 2200
-    while ((bounds.outWidth / sampleSize) > maxDimension || (bounds.outHeight / sampleSize) > maxDimension) {
-        sampleSize *= 2
-    }
-
-    val bitmap = resolver.openInputStream(uri)?.use { input ->
-        BitmapFactory.decodeStream(
-            input,
-            null,
-            BitmapFactory.Options().apply { inSampleSize = sampleSize },
+private suspend fun buildWorkOrderDocumentUploadFiles(
+    context: Context,
+    workOrder: WorkOrder,
+    uris: List<Uri>,
+    category: WorkOrderDocumentCategory,
+    mode: WorkOrderDocumentInputMode,
+): List<WorkOrderUploadFile> = withContext(Dispatchers.IO) {
+    uris.mapIndexed { index, uri ->
+        val bytes = readUriBytes(context, uri)
+        if (bytes.size.toLong() > WORK_ORDER_DOCUMENT_MAX_SIZE_BYTES) {
+            error("Datoteka ${resolveUriDisplayName(context, uri, index, mode)} mora biti manja od 12 MB.")
+        }
+        val mimeType = when (mode) {
+            WorkOrderDocumentInputMode.Scan -> "application/pdf"
+            else -> resolveUriMimeType(context, uri, "")
+        }.ifBlank { "application/octet-stream" }
+        val fileName = when (mode) {
+            WorkOrderDocumentInputMode.Scan -> buildWorkOrderDocumentFileName(workOrder, category, "pdf")
+            else -> resolveUriDisplayName(context, uri, index, mode).withFallbackExtension(mimeType)
+        }
+        WorkOrderUploadFile(
+            fileName = fileName,
+            fileType = mimeType,
+            fileSize = bytes.size.toLong(),
+            documentCategory = category.value,
+            description = buildWorkOrderDocumentDescription(mode),
+            bytes = bytes,
         )
     }
-
-    return applyScanOrientation(context, uri, bitmap ?: error("Ne mogu učitati fotografiju skena."))
 }
 
-private fun applyScanOrientation(context: Context, uri: Uri, bitmap: Bitmap): Bitmap {
-    val orientation = context.contentResolver.openInputStream(uri)?.use { input ->
-        ExifInterface(input).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
-    } ?: ExifInterface.ORIENTATION_NORMAL
-    val matrix = Matrix()
-    when (orientation) {
-        ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
-        ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
-        ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
-        ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.preScale(-1f, 1f)
-        ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.preScale(1f, -1f)
-        ExifInterface.ORIENTATION_TRANSPOSE -> {
-            matrix.postRotate(90f)
-            matrix.preScale(-1f, 1f)
-        }
-        ExifInterface.ORIENTATION_TRANSVERSE -> {
-            matrix.postRotate(270f)
-            matrix.preScale(-1f, 1f)
-        }
+private fun readUriBytes(context: Context, uri: Uri): ByteArray =
+    context.contentResolver.openInputStream(uri)?.use { input -> input.readBytes() }
+        ?: error("Ne mogu učitati odabrani dokument.")
+
+private fun resolveUriDisplayName(
+    context: Context,
+    uri: Uri,
+    index: Int,
+    mode: WorkOrderDocumentInputMode,
+): String {
+    val resolver = context.contentResolver
+    val queried = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+        val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+        if (cursor.moveToFirst() && nameIndex >= 0) cursor.getString(nameIndex) else ""
+    }.orEmpty().trim()
+    if (queried.isNotBlank()) return queried
+
+    val fallback = when (mode) {
+        WorkOrderDocumentInputMode.Photos -> "fotografija-${index + 1}.jpg"
+        WorkOrderDocumentInputMode.Pdf -> "dokument-${index + 1}.pdf"
+        WorkOrderDocumentInputMode.Scan -> "sken-${index + 1}.pdf"
+        WorkOrderDocumentInputMode.File -> "dokument-${index + 1}"
     }
-    if (matrix.isIdentity) return bitmap
-    val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-    bitmap.recycle()
-    return rotated
+    return fallback
 }
 
-private fun enhanceScanBitmap(source: Bitmap): Bitmap {
-    val bitmap = if (source.config == Bitmap.Config.ARGB_8888) {
-        source
-    } else {
-        source.copy(Bitmap.Config.ARGB_8888, false)
-    }
-    val output = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
-    val row = IntArray(bitmap.width)
-    for (y in 0 until bitmap.height) {
-        bitmap.getPixels(row, 0, bitmap.width, 0, y, bitmap.width, 1)
-        for (x in row.indices) {
-            val pixel = row[x]
-            val red = (pixel shr 16) and 0xff
-            val green = (pixel shr 8) and 0xff
-            val blue = pixel and 0xff
-            var gray = (red * 0.30f + green * 0.59f + blue * 0.11f).roundToInt()
-            gray = ((gray - 128) * 1.32f + 146).roundToInt().coerceIn(0, 255)
-            gray = when {
-                gray > 238 -> 255
-                gray < 28 -> 0
-                else -> gray
-            }
-            row[x] = (0xff shl 24) or (gray shl 16) or (gray shl 8) or gray
-        }
-        output.setPixels(row, 0, bitmap.width, 0, y, bitmap.width, 1)
-    }
-    if (bitmap !== source) {
-        bitmap.recycle()
-    }
-    return output
+private fun resolveUriMimeType(context: Context, uri: Uri, fallbackName: String): String {
+    val resolverType = context.contentResolver.getType(uri).orEmpty().trim()
+    if (resolverType.isNotBlank()) return resolverType
+
+    val extension = fallbackName.substringAfterLast('.', "")
+        .ifBlank { uri.toString().substringAfterLast('.', "") }
+        .lowercase()
+    return MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension).orEmpty()
 }
 
-private fun renderScanPdfBytes(bitmap: Bitmap): ByteArray {
-    val document = PdfDocument()
-    val pageWidth = 595
-    val pageHeight = 842
-    val margin = 18f
-    val pageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, 1).create()
-    val page = document.startPage(pageInfo)
-    val canvas = page.canvas
-    val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG or Paint.DITHER_FLAG)
-    canvas.drawColor(android.graphics.Color.WHITE)
-
-    val availableWidth = pageWidth - margin * 2
-    val availableHeight = pageHeight - margin * 2
-    val scale = min(availableWidth / bitmap.width, availableHeight / bitmap.height)
-    val targetWidth = bitmap.width * scale
-    val targetHeight = bitmap.height * scale
-    val left = (pageWidth - targetWidth) / 2f
-    val top = (pageHeight - targetHeight) / 2f
-    canvas.drawBitmap(bitmap, null, RectF(left, top, left + targetWidth, top + targetHeight), paint)
-
-    document.finishPage(page)
-    return ByteArrayOutputStream().use { output ->
-        document.writeTo(output)
-        document.close()
-        output.toByteArray()
-    }
+private fun String.withFallbackExtension(mimeType: String): String {
+    if (contains(".") || mimeType.isBlank()) return this
+    val extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType).orEmpty()
+    return if (extension.isBlank()) this else "$this.$extension"
 }
 
-private fun buildVerifiedScanPhotoFileName(workOrder: WorkOrder): String =
-    "${buildVerifiedScanBaseName(workOrder)}.jpg"
-
-private fun buildVerifiedScanPdfFileName(workOrder: WorkOrder): String =
-    "${buildVerifiedScanBaseName(workOrder)}.pdf"
-
-private fun buildVerifiedScanBaseName(workOrder: WorkOrder): String {
+private fun buildWorkOrderDocumentFileName(
+    workOrder: WorkOrder,
+    category: WorkOrderDocumentCategory,
+    extension: String,
+): String {
     val number = workOrder.displayNumber
         .replace(Regex("[^A-Za-z0-9_-]+"), "-")
         .trim('-')
         .ifBlank { "RN" }
+    val categorySlug = category.value
+        .lowercase()
+        .replace(Regex("[^a-z0-9]+"), "-")
+        .trim('-')
+        .ifBlank { "dokument" }
     val stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))
-    return "ovjereni-rn-$number-$stamp"
+    return "$categorySlug-$number-$stamp.$extension"
+}
+
+private fun buildWorkOrderDocumentDescription(mode: WorkOrderDocumentInputMode): String = when (mode) {
+    WorkOrderDocumentInputMode.Scan -> "Skenirani dokument iz SafeNexus Android aplikacije."
+    WorkOrderDocumentInputMode.Photos -> "Fotografija dodana iz SafeNexus Android aplikacije."
+    WorkOrderDocumentInputMode.Pdf -> "PDF dokument dodan iz SafeNexus Android aplikacije."
+    WorkOrderDocumentInputMode.File -> "Datoteka dodana iz SafeNexus Android aplikacije."
+}
+
+private fun cacheDownloadedDocument(context: Context, document: DownloadedDocument): Uri {
+    val directory = File(context.cacheDir, "work-order-documents").apply { mkdirs() }
+    val safeName = document.fileName
+        .replace(Regex("""[\\/:*?"<>|]+"""), "-")
+        .trim()
+        .ifBlank { "dokument" }
+    val file = File(directory, safeName)
+    file.writeBytes(document.bytes)
+    return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+}
+
+private fun saveDownloadedDocument(context: Context, document: DownloadedDocument): Uri {
+    val safeName = document.fileName
+        .replace(Regex("""[\\/:*?"<>|]+"""), "-")
+        .trim()
+        .ifBlank { "dokument" }
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        val resolver = context.contentResolver
+        val values = ContentValues().apply {
+            put(MediaStore.Downloads.DISPLAY_NAME, safeName)
+            put(MediaStore.Downloads.MIME_TYPE, document.fileType.ifBlank { "application/octet-stream" })
+            put(MediaStore.Downloads.RELATIVE_PATH, "${Environment.DIRECTORY_DOWNLOADS}/SafeNexus")
+            put(MediaStore.Downloads.IS_PENDING, 1)
+        }
+        val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+            ?: error("Ne mogu otvoriti Android Downloads mapu.")
+        resolver.openOutputStream(uri)?.use { output -> output.write(document.bytes) }
+            ?: error("Ne mogu zapisati dokument.")
+        values.clear()
+        values.put(MediaStore.Downloads.IS_PENDING, 0)
+        resolver.update(uri, values, null, null)
+        return uri
+    }
+
+    return cacheDownloadedDocument(context, document)
+}
+
+private fun openCachedDocument(context: Context, uri: Uri, mimeType: String): Boolean {
+    val intent = Intent(Intent.ACTION_VIEW).apply {
+        setDataAndType(uri, mimeType.ifBlank { "application/octet-stream" })
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    return try {
+        context.startActivity(Intent.createChooser(intent, "Otvori dokument").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        true
+    } catch (_: ActivityNotFoundException) {
+        false
+    }
 }

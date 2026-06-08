@@ -103,6 +103,44 @@ data class WorkOrder(
         get() = !isClosed && parsedDueDate?.isBefore(LocalDate.now()) == true
 }
 
+data class WorkOrderDocument(
+    val id: String,
+    val workOrderId: String,
+    val fileName: String,
+    val fileType: String,
+    val fileSize: Long,
+    val documentCategory: String,
+    val description: String,
+    val sourceType: String,
+    val createdAt: String,
+) {
+    val displayName: String
+        get() = fileName.ifBlank { documentCategory.ifBlank { "Dokument" } }
+
+    val isImage: Boolean
+        get() = fileType.startsWith("image/", ignoreCase = true) ||
+            fileName.substringAfterLast('.', "").lowercase() in setOf("jpg", "jpeg", "png", "webp")
+
+    val isPdf: Boolean
+        get() = fileType.equals("application/pdf", ignoreCase = true) ||
+            fileName.endsWith(".pdf", ignoreCase = true)
+}
+
+data class WorkOrderUploadFile(
+    val fileName: String,
+    val fileType: String,
+    val fileSize: Long,
+    val documentCategory: String,
+    val description: String,
+    val bytes: ByteArray,
+)
+
+data class DownloadedDocument(
+    val fileName: String,
+    val fileType: String,
+    val bytes: ByteArray,
+)
+
 fun parseDateOrNull(value: String): LocalDate? = runCatching {
     if (value.isBlank()) null else LocalDate.parse(value.take(10))
 }.getOrNull()
