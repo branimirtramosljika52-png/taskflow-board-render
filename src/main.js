@@ -2307,6 +2307,7 @@ const state = {
   },
   workOrderDocumentWizard: {
     open: false,
+    launchSource: "",
     mode: "",
     step: "details",
     selectedIds: new Set(),
@@ -5000,6 +5001,7 @@ const workOrderNumberPreview = document.querySelector("#work-order-number-previe
 const workOrderSaveState = document.querySelector("#work-order-save-state");
 const workOrderDownloadPdfButton = document.querySelector("#work-order-download-pdf");
 const workOrderOpenDocumentationButton = document.querySelector("#work-order-open-documentation");
+const workOrderCreateDocumentationButton = document.querySelector("#work-order-create-documentation");
 const workOrderActivityList = document.querySelector("#work-order-activity-list");
 const workOrderActivityEmpty = document.querySelector("#work-order-activity-empty");
 const workOrderActivityLoading = document.querySelector("#work-order-activity-loading");
@@ -27085,15 +27087,22 @@ function syncWorkOrderPdfAndRequiredFields(payload = buildWorkOrderPayload()) {
       : `Popuni: ${readiness.missing.map((entry) => entry.label).join(", ")}`;
   }
 
+  const hasWorkOrderIdForDocumentation = Boolean(String(workOrderIdInput?.value || "").trim());
+  const documentationTitle = readiness.ready
+    ? (hasWorkOrderIdForDocumentation ? "Otvori izradu dokumentacije za ovaj RN." : "Spremi RN i otvori izradu dokumentacije.")
+    : `Popuni: ${readiness.missing.map((entry) => entry.label).join(", ")}`;
+
   if (workOrderOpenDocumentationButton) {
-    const hasWorkOrderId = Boolean(String(workOrderIdInput?.value || "").trim());
-    workOrderOpenDocumentationButton.hidden = !(readiness.ready || hasWorkOrderId);
+    workOrderOpenDocumentationButton.hidden = !(readiness.ready || hasWorkOrderIdForDocumentation);
     workOrderOpenDocumentationButton.disabled = !readiness.ready;
-    workOrderOpenDocumentationButton.innerHTML = getWorkOrderIconMarkup("document");
+    workOrderOpenDocumentationButton.innerHTML = `${getWorkOrderIconMarkup("document")}<span>Izradi dokumentaciju</span>`;
     workOrderOpenDocumentationButton.setAttribute("aria-label", "Izrada dokumentacije");
-    workOrderOpenDocumentationButton.title = readiness.ready
-      ? (hasWorkOrderId ? "Otvori izradu dokumentacije za ovaj RN." : "Spremi RN i otvori izradu dokumentacije.")
-      : `Popuni: ${readiness.missing.map((entry) => entry.label).join(", ")}`;
+    workOrderOpenDocumentationButton.title = documentationTitle;
+  }
+
+  if (workOrderCreateDocumentationButton) {
+    workOrderCreateDocumentationButton.disabled = !readiness.ready;
+    workOrderCreateDocumentationButton.title = documentationTitle;
   }
 
   return readiness;
@@ -106384,10 +106393,42 @@ function getSelectedWorkOrdersForDocumentWizard() {
   return getFilteredWorkOrders().filter((item) => selectedIdSet.has(String(item.id)));
 }
 
+function buildActiveWorkOrderDocumentWizardFallback(workOrderId = "") {
+  const normalizedId = String(workOrderId || workOrderIdInput?.value || "").trim();
+  if (!normalizedId || String(workOrderIdInput?.value || "").trim() !== normalizedId) {
+    return null;
+  }
+
+  const payload = buildWorkOrderPayload();
+  const company = getCompany(payload.companyId) ?? {};
+  const location = getLocation(payload.locationId) ?? {};
+  const previewNumber = String(workOrderNumberPreview?.textContent || "").replace(/^RN\s+/i, "").trim();
+  return {
+    ...payload,
+    id: normalizedId,
+    workOrderNumber: previewNumber && !/^broj rn/i.test(previewNumber) ? previewNumber : "",
+    companyName: company.name || payload.companyName || "",
+    companyOib: company.oib || payload.companyOib || "",
+    locationName: location.name || payload.locationName || "",
+    locationAddress: location.address || payload.locationAddress || "",
+  };
+}
+
 function getAllSelectedWorkOrdersForDocumentWizard() {
   const selectedIds = state.workOrderDocumentWizard.selectedIds ?? new Set();
   const selectedIdSet = new Set([...selectedIds].map((value) => String(value)));
-  return sortWorkOrders((state.workOrders ?? []).filter((item) => selectedIdSet.has(String(item.id))));
+  const selectedWorkOrders = (state.workOrders ?? []).filter((item) => selectedIdSet.has(String(item.id)));
+  if (state.workOrderDocumentWizard.launchSource === "editor") {
+    [...selectedIdSet].forEach((selectedId) => {
+      if (!selectedWorkOrders.some((item) => String(item.id) === selectedId)) {
+        const fallback = buildActiveWorkOrderDocumentWizardFallback(selectedId);
+        if (fallback) {
+          selectedWorkOrders.push(fallback);
+        }
+      }
+    });
+  }
+  return sortWorkOrders(selectedWorkOrders);
 }
 
 function formatWorkOrderSelectionCountLabel(count = 0) {
@@ -107114,19 +107155,20 @@ function openWorkOrderRowMenu(workOrder = {}, pointerX = 0, pointerY = 0) {
       hydrateWorkOrderForm(workOrder);
       workOrderExecutorsPicker?.scrollIntoView?.({ block: "center", behavior: "smooth" });
     }),
-    createShortcutButton("Dokumenti", () => {
+    createShortcutButton("Prilozi", () => {
       closeWorkOrderRowMenu();
       hydrateWorkOrderForm(workOrder);
-      void openActiveWorkOrderDocumentationFromEditor();
+      document.querySelector("[data-work-order-section='documents']")?.scrollIntoView?.({ block: "start", behavior: "smooth" });
     }),
     createShortcutButton("Otvori PDF", () => {
       void downloadVerifiedWorkOrderDocument(workOrder);
     }),
-    createShortcutButton("Izrada zapisnika", () => {
+    createShortcutButton("Izradi dokumentaciju", () => {
       closeWorkOrderRowMenu();
       clearWorkOrderDocumentSelection({ closeWizard: false });
+      state.workOrderDocumentWizard.launchSource = "editor";
       state.workOrderDocumentWizard.selectedIds = new Set([String(workOrder.id || "")].filter(Boolean));
-      openWorkOrderDocumentWizard(getWorkOrderSelectionModeFromWorkOrders([workOrder]));
+      openWorkOrderDocumentWizard(getWorkOrderSelectionModeFromWorkOrders([workOrder]), { launchSource: "editor" });
     }),
     createShortcutButton("Export PDF", () => {
       void downloadWorkOrderPdf(workOrder);
@@ -108544,13 +108586,14 @@ async function openActiveWorkOrderDocumentationFromEditor() {
     }
 
     clearWorkOrderDocumentSelection({ closeWizard: false });
+    state.workOrderDocumentWizard.launchSource = "editor";
     state.workOrderDocumentWizard.selectedIds = new Set([workOrderId]);
     const workOrder = state.workOrders.find((item) => String(item.id) === workOrderId);
     const mode = getWorkOrderSelectionModeFromWorkOrders(workOrder ? [workOrder] : [{
       ...buildWorkOrderPayload(),
       id: workOrderId,
     }]);
-    openWorkOrderDocumentWizard(mode);
+    openWorkOrderDocumentWizard(mode, { launchSource: "editor" });
     workOrderError.textContent = "";
   } catch (error) {
     workOrderError.textContent = error?.message || "Ne mogu otvoriti izradu dokumentacije.";
@@ -108658,6 +108701,7 @@ async function downloadActiveWorkOrderPdfFromEditor() {
 function clearWorkOrderDocumentSelection({ closeWizard = true } = {}) {
   state.workOrderDocumentWizard.selectedIds = new Set();
   state.workOrderDocumentWizard.overrides = {};
+  state.workOrderDocumentWizard.launchSource = "";
   state.workOrderDocumentWizard.mode = "";
   state.workOrderDocumentWizard.step = "details";
   state.workOrderDocumentWizard.commonCollapsed = false;
@@ -108681,6 +108725,7 @@ function clearWorkOrderDocumentSelection({ closeWizard = true } = {}) {
     groundCondition: "",
     groundResistance: "",
     randomizeEnvironment: false,
+    measurementEquipmentGroup: "",
     signatureMode: "digital",
     validityMonths: "12",
     electricalValidityMonths: "12",
@@ -109259,7 +109304,10 @@ function setWorkOrderDocumentWizardStep(step = "details", { render = true } = {}
   }
 }
 
-function openWorkOrderDocumentWizard(requestedMode = "") {
+function openWorkOrderDocumentWizard(requestedMode = "", options = {}) {
+  const launchSource = String(options.launchSource || "list").trim() || "list";
+  const isEditorLaunch = launchSource === "editor";
+  state.workOrderDocumentWizard.launchSource = launchSource;
   const selectedWorkOrders = getAllSelectedWorkOrdersForDocumentWizard();
   const selectionState = getWorkOrderDocumentSelectionState(selectedWorkOrders);
   const mode = normalizeServiceCatalogTypeUi(requestedMode || selectionState.mode || "", selectionState.mode || "inspection");
@@ -109268,23 +109316,29 @@ function openWorkOrderDocumentWizard(requestedMode = "") {
     if (workOrderDocumentWizardError) {
       workOrderDocumentWizardError.textContent = nextMessage;
     }
-    state.workOrderBatch.message = nextMessage;
-    state.workOrderBatch.tone = nextMessage ? "error" : "";
-    renderWorkOrderBatchBar();
+    if (isEditorLaunch) {
+      if (workOrderError) {
+        workOrderError.textContent = nextMessage;
+      }
+    } else {
+      state.workOrderBatch.message = nextMessage;
+      state.workOrderBatch.tone = nextMessage ? "error" : "";
+      renderWorkOrderBatchBar();
+    }
   };
 
   if (state.workOrderDocumentWizard.selectedIds.size === 0) {
-    failOpen("Odaberi barem jedan RN u listi.");
+    failOpen(isEditorLaunch ? "RN nije odabran za izradu dokumentacije." : "Odaberi barem jedan RN u listi.");
     return;
   }
 
   if (selectionState.hasMixedTypes) {
-    failOpen("Odabrani RN-ovi imaju različite vrste usluga. Otvori Ispitivanje i ZNR zasebno.");
+    failOpen(isEditorLaunch ? "Ovaj RN ima različite vrste usluga. Otvori Ispitivanje i ZNR zasebno." : "Odabrani RN-ovi imaju različite vrste usluga. Otvori Ispitivanje i ZNR zasebno.");
     return;
   }
 
   if (!selectionState.hasServices) {
-    failOpen("Odabrani RN-ovi nemaju uslugu s definiranom vrstom.");
+    failOpen(isEditorLaunch ? "Ovaj RN nema uslugu s definiranom vrstom za izradu dokumentacije." : "Odabrani RN-ovi nemaju uslugu s definiranom vrstom.");
     return;
   }
 
@@ -109294,6 +109348,7 @@ function openWorkOrderDocumentWizard(requestedMode = "") {
   }
 
   state.workOrderDocumentWizard.open = true;
+  state.workOrderDocumentWizard.launchSource = launchSource;
   state.workOrderDocumentWizard.mode = mode;
   state.workOrderDocumentWizard.step = "details";
   syncWorkOrderDocumentWizardValidityFromServices(selectedWorkOrders);
@@ -109319,6 +109374,7 @@ function closeWorkOrderDocumentWizard() {
   state.workOrderDocumentWizard.open = false;
   state.workOrderDocumentWizard.step = "details";
   state.workOrderDocumentWizard.mode = "";
+  state.workOrderDocumentWizard.launchSource = "";
   syncWorkOrderDocumentWizardModal();
 }
 
@@ -111449,11 +111505,19 @@ function renderWorkOrderDocumentWizardSelectionSummary(workOrders = []) {
   const templateCount = getWorkOrderDocumentTemplateRecommendations(workOrders).recommendations.length;
   const learningTestCount = getWorkOrderLearningTestRecommendations(workOrders).recommendations.length;
   const mode = state.workOrderDocumentWizard.mode || getSelectedWorkOrderDocumentMode() || "inspection";
-  const summaryPills = [
-    `${workOrders.length} RN`,
-    `${companyCount} tvrtki`,
-    mode === "znr" ? `${learningTestCount} ispita` : `${templateCount} zapisnika`,
-  ];
+  const isSingleWorkOrderFlow = state.workOrderDocumentWizard.launchSource === "editor" && workOrders.length === 1;
+  const workOrder = isSingleWorkOrderFlow ? workOrders[0] : null;
+  const summaryPills = isSingleWorkOrderFlow
+    ? [
+      workOrder?.workOrderNumber ? `RN ${workOrder.workOrderNumber}` : "Jedan RN",
+      workOrder?.companyName || "Tvrtka nije odabrana",
+      mode === "znr" ? `${learningTestCount} ispita` : `${templateCount} zapisnika`,
+    ]
+    : [
+      `${workOrders.length} RN`,
+      `${companyCount} tvrtki`,
+      mode === "znr" ? `${learningTestCount} ispita` : `${templateCount} zapisnika`,
+    ];
 
   workOrderDocumentWizardSelectionSummary.replaceChildren(...summaryPills.map((text) => {
     const pill = document.createElement("span");
@@ -112827,6 +112891,7 @@ function renderWorkOrderDocumentWizard() {
   const mode = state.workOrderDocumentWizard.mode || getSelectedWorkOrderDocumentMode() || "inspection";
   const copy = getWorkOrderDocumentActionCopy(mode);
   const isInspectionMode = mode === "inspection";
+  const isSingleWorkOrderFlow = state.workOrderDocumentWizard.launchSource === "editor" && workOrders.length === 1;
   const { recommendations } = isInspectionMode
     ? getWorkOrderDocumentTemplateRecommendations(workOrders)
     : { recommendations: [] };
@@ -112836,17 +112901,23 @@ function renderWorkOrderDocumentWizard() {
     workOrderDocumentWizardPanel.classList.toggle("is-templates-step", state.workOrderDocumentWizard.step === "templates");
     workOrderDocumentWizardPanel.classList.toggle("is-inspection-mode", mode === "inspection");
     workOrderDocumentWizardPanel.classList.toggle("is-znr-mode", mode === "znr");
+    workOrderDocumentWizardPanel.classList.toggle("is-single-work-order-flow", isSingleWorkOrderFlow);
   }
   if (isInspectionMode) {
     ensureWorkOrderDocumentWizardPersonDefaults(workOrders);
   }
 
   if (workOrderDocumentWizardTitle) {
-    workOrderDocumentWizardTitle.textContent = copy.title;
+    workOrderDocumentWizardTitle.textContent = isSingleWorkOrderFlow
+      ? (isInspectionMode ? "Izrada dokumentacije RN" : "Izrada ZNR dokumentacije RN")
+      : copy.title;
   }
   if (workOrderDocumentWizardHelper) {
-    workOrderDocumentWizardHelper.textContent = copy.wizardHelper || "";
-    workOrderDocumentWizardHelper.hidden = !copy.wizardHelper;
+    const helperText = isSingleWorkOrderFlow
+      ? "Prikazani su samo templatei povezani s uslugama na ovom RN-u. Nema masovne izrade."
+      : (copy.wizardHelper || "");
+    workOrderDocumentWizardHelper.textContent = helperText;
+    workOrderDocumentWizardHelper.hidden = !helperText;
   }
   syncWorkOrderDocumentWizardCommonInputs();
   renderWorkOrderDocumentWizardCommonSection();
@@ -118274,6 +118345,9 @@ workOrderOpenDocumentsButton?.addEventListener("click", () => {
   openWorkOrderDocumentWizard(getSelectedWorkOrderDocumentMode());
 });
 workOrderOpenDocumentationButton?.addEventListener("click", () => {
+  void openActiveWorkOrderDocumentationFromEditor();
+});
+workOrderCreateDocumentationButton?.addEventListener("click", () => {
   void openActiveWorkOrderDocumentationFromEditor();
 });
 workOrderDownloadPdfButton?.addEventListener("click", () => {

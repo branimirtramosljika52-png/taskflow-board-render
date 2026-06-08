@@ -1170,7 +1170,9 @@
                       <div class="work-order-editor-heading-actions">
                         <p id="work-order-number-preview" class="helper-copy">Broj RN se generira pri spremanju.</p>
                         <span id="work-order-save-state" class="work-order-save-state" data-state="idle">Automatsko spremanje je spremno.</span>
-                        <button id="work-order-open-documentation" type="button" class="ghost-button work-order-open-documentation" hidden aria-label="Izrada dokumentacije" title="Izrada dokumentacije">DOC</button>
+                        <button id="work-order-open-documentation" type="button" class="ghost-button work-order-open-documentation" hidden aria-label="Izrada dokumentacije" title="Izrada dokumentacije">
+                          <span>Izradi dokumentaciju</span>
+                        </button>
                         <button id="work-order-download-pdf" type="button" class="ghost-button work-order-download-pdf" hidden aria-label="Preuzmi PDF" title="Preuzmi PDF">PDF</button>
                       </div>
                       <div id="work-order-editor-top-actions" class="work-order-editor-top-actions" aria-label="Brze radnje radnog naloga"></div>
@@ -1488,6 +1490,15 @@
                           hidden
                           accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.bmp,.svg,.tif,.tiff,.heic,.eml,.msg,.doc,.docx,.xls,.xlsx,.xlsm,.csv,.ods,.odt,.rtf,.txt,.zip,.rar,.7z,.xml,message/rfc822,application/vnd.ms-outlook,application/pdf,image/*,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain,application/rtf,application/vnd.oasis.opendocument.spreadsheet,application/vnd.oasis.opendocument.text"
                         />
+                        <div class="work-order-document-create-panel">
+                          <div class="work-order-document-create-copy">
+                            <strong>Izrada dokumentacije iz RN-a</strong>
+                            <span>Otvori zapisnike povezane s uslugama na ovom radnom nalogu i popuni polja prije spremanja.</span>
+                          </div>
+                          <button id="work-order-create-documentation" type="button" class="primary-button work-order-create-documentation">
+                            Izradi dokumentaciju
+                          </button>
+                        </div>
                         <button id="work-order-document-dropzone" type="button" class="work-order-document-dropzone">
                           <span class="work-order-document-dropzone-mark" aria-hidden="true">+</span>
                           <span class="work-order-document-dropzone-copy">
