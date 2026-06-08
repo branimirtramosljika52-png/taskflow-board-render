@@ -4408,8 +4408,8 @@ async function addFingerSignatureToWorkOrderPdf(pdfBuffer = Buffer.alloc(0), sig
   const { width: pageWidth } = page.getSize();
   const boxWidth = Math.min(266, Math.max(218, pageWidth - 84));
   const boxHeight = 62;
-  const x = Math.max(34, pageWidth - boxWidth - 34);
-  const y = 54;
+  const x = Math.max(34, pageWidth - boxWidth - 52);
+  const y = 64;
   const padding = 7;
   const label = normalizePdfStampText(options.label || "Potpis narucitelja", 70);
   const includeSignerName = options.includeSignerName !== false;
