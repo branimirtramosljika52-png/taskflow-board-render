@@ -172,7 +172,10 @@ import com.safenexus.app.data.SafeNexusUser
 import com.safenexus.app.data.WorkOrder
 import com.safenexus.app.data.WorkOrderCompanyOption
 import com.safenexus.app.data.WorkOrderCreateDraft
+import com.safenexus.app.data.WorkOrderDocumentationContext
 import com.safenexus.app.data.WorkOrderDocumentationDraft
+import com.safenexus.app.data.WorkOrderDocumentationField
+import com.safenexus.app.data.WorkOrderDocumentationTemplate
 import com.safenexus.app.data.WorkOrderDocument
 import com.safenexus.app.data.WorkOrderLocationOption
 import com.safenexus.app.data.WorkOrderServiceOption
@@ -320,6 +323,9 @@ data class AppState(
     val workOrderDocumentsWorkOrderId: String = "",
     val workOrderDocuments: List<WorkOrderDocument> = emptyList(),
     val workOrderDocumentsLoading: Boolean = false,
+    val documentationContextWorkOrderId: String = "",
+    val documentationContext: WorkOrderDocumentationContext = WorkOrderDocumentationContext(),
+    val documentationContextLoading: Boolean = false,
     val isLoading: Boolean = false,
     val error: String = "",
     val notice: String = "",
@@ -585,6 +591,42 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
     fun refreshWorkOrderDocuments() {
         val workOrderId = state.selectedWorkOrder?.id ?: return
         loadWorkOrderDocuments(workOrderId)
+    }
+
+    fun loadWorkOrderDocumentationContext(workOrder: WorkOrder) {
+        val workOrderId = workOrder.id.trim()
+        if (workOrderId.isBlank()) {
+            state = state.copy(error = "RN nema ispravan ID za izradu dokumentacije.")
+            return
+        }
+
+        state = state.copy(
+            documentationContextWorkOrderId = workOrderId,
+            documentationContext = WorkOrderDocumentationContext(workOrderId = workOrderId, workOrderNumber = workOrder.displayNumber),
+            documentationContextLoading = true,
+            error = "",
+            notice = "",
+        )
+        viewModelScope.launch {
+            api.workOrderDocumentationContext(workOrderId)
+                .onSuccess { context ->
+                    if (state.documentationContextWorkOrderId == workOrderId) {
+                        state = state.copy(
+                            documentationContext = context,
+                            documentationContextLoading = false,
+                            error = "",
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    if (state.documentationContextWorkOrderId == workOrderId) {
+                        state = state.copy(
+                            documentationContextLoading = false,
+                            error = error.message ?: "Ne mogu učitati polja predloška za RN.",
+                        )
+                    }
+                }
+        }
     }
 
     fun generateWorkOrderDocumentation(workOrder: WorkOrder, draft: WorkOrderDocumentationDraft) {
@@ -1017,7 +1059,10 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
                     statusOptions = state.data.workOrderStatuses.map { it.value }.ifEmpty { workOrderStatusOptions },
                     onBack = { viewModel.selectWorkOrder(null) },
                     onStatusChange = viewModel::updateWorkOrderStatus,
-                    onGenerateDocumentation = { workOrder -> documentationWizardTarget = workOrder },
+                    onGenerateDocumentation = { workOrder ->
+                        documentationWizardTarget = workOrder
+                        viewModel.loadWorkOrderDocumentationContext(workOrder)
+                    },
                     onAddDocumentation = openDocumentationActions,
                     onDownloadPdf = { workOrder -> viewModel.downloadWorkOrderPdf(context.applicationContext, workOrder) },
                     onSignWorkOrder = { workOrder -> signatureActionTarget = workOrder },
@@ -1051,6 +1096,12 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
             workOrder = workOrder,
             users = state.data.workOrderUsers,
             services = state.data.workOrderServices,
+            context = if (state.documentationContextWorkOrderId == workOrder.id) {
+                state.documentationContext
+            } else {
+                WorkOrderDocumentationContext(workOrderId = workOrder.id, workOrderNumber = workOrder.displayNumber)
+            },
+            contextLoading = state.documentationContextLoading && state.documentationContextWorkOrderId == workOrder.id,
             isLoading = state.isLoading,
             onDismiss = { documentationWizardTarget = null },
             onConfirm = { draft ->
@@ -5218,6 +5269,8 @@ private fun WorkOrderDocumentationWizardDialog(
     workOrder: WorkOrder,
     users: List<WorkOrderUserOption>,
     services: List<WorkOrderServiceOption>,
+    context: WorkOrderDocumentationContext,
+    contextLoading: Boolean,
     isLoading: Boolean,
     onDismiss: () -> Unit,
     onConfirm: (WorkOrderDocumentationDraft) -> Unit,
@@ -5268,6 +5321,20 @@ private fun WorkOrderDocumentationWizardDialog(
     var electricalAuthorizationHolderUserId by remember(workOrder.id) { mutableStateOf("") }
     var tipkaloInspectorUserId by remember(workOrder.id) { mutableStateOf("") }
     var tipkaloAuthorizationHolderUserId by remember(workOrder.id) { mutableStateOf("") }
+    val promptTemplates = remember(context) {
+        context.templates
+            .map { template -> template.copy(fields = template.fields.filter { it.label.isNotBlank() }) }
+            .filter { it.fields.isNotEmpty() }
+    }
+    val templateDefaultsKey = remember(context) {
+        context.templates.joinToString("|") { template ->
+            "${template.id}:${template.fields.joinToString(",") { field -> "${field.id}:${field.defaultValue}" }}"
+        }
+    }
+    var templateFieldValues by remember(workOrder.id, templateDefaultsKey) {
+        mutableStateOf(defaultTemplateFieldValues(promptTemplates))
+    }
+    val formLoading = isLoading || contextLoading
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -5292,15 +5359,15 @@ private fun WorkOrderDocumentationWizardDialog(
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 WizardSection(title = "Osnovni podaci", icon = Icons.Rounded.Description) {
-                    WorkOrderTextField("Datum ispitivanja", inspectionDate, { inspectionDate = it }, !isLoading)
-                    WorkOrderTextField("Datum izdavanja", issuedDate, { issuedDate = it }, !isLoading)
-                    WorkOrderTextField("Mjesto izdavanja", issuedPlace, { issuedPlace = it }, !isLoading)
+                    WorkOrderTextField("Datum ispitivanja", inspectionDate, { inspectionDate = it }, !formLoading)
+                    WorkOrderTextField("Datum izdavanja", issuedDate, { issuedDate = it }, !formLoading)
+                    WorkOrderTextField("Mjesto izdavanja", issuedPlace, { issuedPlace = it }, !formLoading)
                     WorkOrderSelectField(
                         label = "Vrsta ispitivanja",
                         value = inspectionType,
                         valueLabel = inspectionType.ifBlank { "Odaberi vrstu ispitivanja" },
                         options = inspectionOptions,
-                        enabled = !isLoading,
+                        enabled = !formLoading,
                         onSelect = { inspectionType = it },
                     )
                     OutlinedTextField(
@@ -5310,18 +5377,49 @@ private fun WorkOrderDocumentationWizardDialog(
                         label = { Text("Napomena za zapisnik") },
                         minLines = 2,
                         maxLines = 4,
-                        enabled = !isLoading,
+                        enabled = !formLoading,
                         shape = RoundedCornerShape(16.dp),
                     )
                 }
 
+                WizardSection(title = "Polja iz predloška", icon = Icons.Rounded.InsertDriveFile) {
+                    when {
+                        contextLoading -> Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                            Text("Učitavam polja iz web predložaka...")
+                        }
+                        !context.hasTemplates -> Text(
+                            "Za ovaj RN nije pronađen povezani template.",
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+                        )
+                        promptTemplates.isEmpty() -> Text(
+                            "Povezani predlošci nemaju dodatnih ručnih polja.",
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+                        )
+                        else -> promptTemplates.forEach { template ->
+                            TemplateFieldGroup(
+                                template = template,
+                                values = templateFieldValues,
+                                enabled = !formLoading,
+                                onChange = { field, value ->
+                                    templateFieldValues = templateFieldValues + (templateFieldStateKey(template, field) to value)
+                                },
+                            )
+                        }
+                    }
+                }
+
                 WizardSection(title = "Uvjeti mjerenja", icon = Icons.Rounded.Map) {
-                    WorkOrderTextField("Vanjska temperatura", outsideTemperature, { outsideTemperature = it }, !isLoading)
-                    WorkOrderTextField("Relativna vlažnost", relativeHumidity, { relativeHumidity = it }, !isLoading)
-                    WorkOrderTextField("Brzina strujanja", airflowSpeed, { airflowSpeed = it }, !isLoading)
-                    WorkOrderTextField("Vrijeme", weather, { weather = it }, !isLoading)
-                    WorkOrderTextField("Stanje tla", groundCondition, { groundCondition = it }, !isLoading)
-                    WorkOrderTextField("Otpor tla", groundResistance, { groundResistance = it }, !isLoading)
+                    WorkOrderTextField("Vanjska temperatura", outsideTemperature, { outsideTemperature = it }, !formLoading)
+                    WorkOrderTextField("Relativna vlažnost", relativeHumidity, { relativeHumidity = it }, !formLoading)
+                    WorkOrderTextField("Brzina strujanja", airflowSpeed, { airflowSpeed = it }, !formLoading)
+                    WorkOrderTextField("Vrijeme", weather, { weather = it }, !formLoading)
+                    WorkOrderTextField("Stanje tla", groundCondition, { groundCondition = it }, !formLoading)
+                    WorkOrderTextField("Otpor tla", groundResistance, { groundResistance = it }, !formLoading)
                 }
 
                 WizardSection(title = "Osobe i potpis", icon = Icons.Rounded.Fingerprint) {
@@ -5330,7 +5428,7 @@ private fun WorkOrderDocumentationWizardDialog(
                         value = inspectorUserId,
                         valueLabel = userOptions.firstOrNull { it.first == inspectorUserId }?.second.orEmpty(),
                         options = userOptions,
-                        enabled = !isLoading,
+                        enabled = !formLoading,
                         onSelect = { inspectorUserId = it },
                     )
                     WorkOrderSelectField(
@@ -5338,7 +5436,7 @@ private fun WorkOrderDocumentationWizardDialog(
                         value = authorizationHolderUserId,
                         valueLabel = userOptions.firstOrNull { it.first == authorizationHolderUserId }?.second.orEmpty(),
                         options = userOptions,
-                        enabled = !isLoading,
+                        enabled = !formLoading,
                         onSelect = { authorizationHolderUserId = it },
                     )
                     WorkOrderSelectField(
@@ -5346,7 +5444,7 @@ private fun WorkOrderDocumentationWizardDialog(
                         value = electricalInspectorUserId,
                         valueLabel = userOptions.firstOrNull { it.first == electricalInspectorUserId }?.second.orEmpty(),
                         options = userOptions,
-                        enabled = !isLoading,
+                        enabled = !formLoading,
                         onSelect = { electricalInspectorUserId = it },
                     )
                     WorkOrderSelectField(
@@ -5354,7 +5452,7 @@ private fun WorkOrderDocumentationWizardDialog(
                         value = electricalAuthorizationHolderUserId,
                         valueLabel = userOptions.firstOrNull { it.first == electricalAuthorizationHolderUserId }?.second.orEmpty(),
                         options = userOptions,
-                        enabled = !isLoading,
+                        enabled = !formLoading,
                         onSelect = { electricalAuthorizationHolderUserId = it },
                     )
                     WorkOrderSelectField(
@@ -5362,7 +5460,7 @@ private fun WorkOrderDocumentationWizardDialog(
                         value = tipkaloInspectorUserId,
                         valueLabel = userOptions.firstOrNull { it.first == tipkaloInspectorUserId }?.second.orEmpty(),
                         options = userOptions,
-                        enabled = !isLoading,
+                        enabled = !formLoading,
                         onSelect = { tipkaloInspectorUserId = it },
                     )
                     WorkOrderSelectField(
@@ -5370,26 +5468,26 @@ private fun WorkOrderDocumentationWizardDialog(
                         value = tipkaloAuthorizationHolderUserId,
                         valueLabel = userOptions.firstOrNull { it.first == tipkaloAuthorizationHolderUserId }?.second.orEmpty(),
                         options = userOptions,
-                        enabled = !isLoading,
+                        enabled = !formLoading,
                         onSelect = { tipkaloAuthorizationHolderUserId = it },
                     )
                     Text("Način potpisa", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SignatureModeChip("digital", "Digitalni", signatureMode, !isLoading) { signatureMode = it }
-                        SignatureModeChip("scan", "Sken", signatureMode, !isLoading) { signatureMode = it }
-                        SignatureModeChip("manual", "Ručni", signatureMode, !isLoading) { signatureMode = it }
+                        SignatureModeChip("digital", "Digitalni", signatureMode, !formLoading) { signatureMode = it }
+                        SignatureModeChip("scan", "Sken", signatureMode, !formLoading) { signatureMode = it }
+                        SignatureModeChip("manual", "Ručni", signatureMode, !formLoading) { signatureMode = it }
                     }
                 }
 
                 WizardSection(title = "Rokovi i mjerenja", icon = Icons.Rounded.CalendarMonth) {
-                    NumberTextField("Vrijedi mjeseci", validityMonths, { validityMonths = it }, !isLoading)
-                    NumberTextField("Panik rasvjeta vrijedi mjeseci", electricalValidityMonths, { electricalValidityMonths = it }, !isLoading)
-                    NumberTextField("Tipkalo vrijedi mjeseci", tipkaloValidityMonths, { tipkaloValidityMonths = it }, !isLoading)
+                    NumberTextField("Vrijedi mjeseci", validityMonths, { validityMonths = it }, !formLoading)
+                    NumberTextField("Panik rasvjeta vrijedi mjeseci", electricalValidityMonths, { electricalValidityMonths = it }, !formLoading)
+                    NumberTextField("Tipkalo vrijedi mjeseci", tipkaloValidityMonths, { tipkaloValidityMonths = it }, !formLoading)
                     WorkOrderTextField(
                         "Grupa mjerne opreme",
                         measurementEquipmentGroup,
                         { measurementEquipmentGroup = it },
-                        !isLoading,
+                        !formLoading,
                     )
                 }
             }
@@ -5397,6 +5495,7 @@ private fun WorkOrderDocumentationWizardDialog(
         confirmButton = {
             Button(
                 onClick = {
+                    val templatePayload = buildTemplateFieldPayload(promptTemplates, templateFieldValues)
                     val draft = WorkOrderDocumentationDraft(
                         inspectionDate = inspectionDate.trim(),
                         issuedDate = issuedDate.trim(),
@@ -5423,13 +5522,15 @@ private fun WorkOrderDocumentationWizardDialog(
                         tipkaloInspectorUserIds = listOf(tipkaloInspectorUserId).filter { it.isNotBlank() },
                         tipkaloInspectorUserId = tipkaloInspectorUserId,
                         tipkaloAuthorizationHolderUserId = tipkaloAuthorizationHolderUserId,
+                        fieldValues = templatePayload.first,
+                        templateFieldValues = templatePayload.second,
                     )
                     onConfirm(draft)
                 },
-                enabled = !isLoading,
+                enabled = !formLoading,
                 shape = RoundedCornerShape(16.dp),
             ) {
-                if (isLoading) {
+                if (formLoading) {
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                     Spacer(Modifier.width(8.dp))
                 }
@@ -5437,11 +5538,186 @@ private fun WorkOrderDocumentationWizardDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !isLoading) {
+            TextButton(onClick = onDismiss, enabled = !formLoading) {
                 Text("Odustani")
             }
         },
     )
+}
+
+private fun templateFieldPayloadKey(field: WorkOrderDocumentationField): String =
+    field.id.ifBlank { field.key.ifBlank { field.tokenKey } }.trim()
+
+private fun templateFieldStateKey(
+    template: WorkOrderDocumentationTemplate,
+    field: WorkOrderDocumentationField,
+): String = "${template.id}::${templateFieldPayloadKey(field)}"
+
+private fun defaultTemplateFieldValues(templates: List<WorkOrderDocumentationTemplate>): Map<String, String> =
+    buildMap {
+        templates.forEach { template ->
+            template.fields.forEach { field ->
+                val key = templateFieldStateKey(template, field)
+                if (field.defaultValue.isNotBlank()) {
+                    put(key, field.defaultValue)
+                } else if (field.type.equals("checkbox", ignoreCase = true) || field.type.equals("toggle", ignoreCase = true)) {
+                    put(key, "false")
+                }
+            }
+        }
+    }
+
+private fun buildTemplateFieldPayload(
+    templates: List<WorkOrderDocumentationTemplate>,
+    values: Map<String, String>,
+): Pair<Map<String, String>, Map<String, Map<String, String>>> {
+    val flatValues = mutableMapOf<String, String>()
+    val templateValues = mutableMapOf<String, MutableMap<String, String>>()
+
+    templates.forEach { template ->
+        template.fields.forEach { field ->
+            val stateKey = templateFieldStateKey(template, field)
+            val value = values[stateKey]?.trim().orEmpty()
+            val isBooleanField = field.type.equals("checkbox", ignoreCase = true) || field.type.equals("toggle", ignoreCase = true)
+            if (value.isNotBlank() || isBooleanField) {
+                val payloadValue = if (isBooleanField) {
+                    if (value.equals("true", ignoreCase = true) || value == "1" || value.equals("da", ignoreCase = true)) "true" else "false"
+                } else {
+                    value
+                }
+                listOf(field.id, field.key, field.tokenKey)
+                    .map { it.trim() }
+                    .filter { it.isNotBlank() }
+                    .forEach { key -> flatValues[key] = payloadValue }
+
+                val payloadKey = templateFieldPayloadKey(field)
+                if (payloadKey.isNotBlank()) {
+                    templateValues.getOrPut(template.id) { mutableMapOf() }[payloadKey] = payloadValue
+                    if (field.key.isNotBlank()) templateValues.getOrPut(template.id) { mutableMapOf() }[field.key] = payloadValue
+                    if (field.tokenKey.isNotBlank()) templateValues.getOrPut(template.id) { mutableMapOf() }[field.tokenKey] = payloadValue
+                }
+            }
+        }
+    }
+
+    return flatValues to templateValues.mapValues { it.value.toMap() }
+}
+
+@Composable
+private fun TemplateFieldGroup(
+    template: WorkOrderDocumentationTemplate,
+    values: Map<String, String>,
+    enabled: Boolean,
+    onChange: (WorkOrderDocumentationField, String) -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.86f),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(template.title, fontWeight = FontWeight.Black)
+                val subtitle = listOf(template.serviceName, template.documentType)
+                    .filter { it.isNotBlank() }
+                    .distinct()
+                    .joinToString(" - ")
+                if (subtitle.isNotBlank()) {
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                    )
+                }
+            }
+            template.fields.forEach { field ->
+                TemplateFieldInput(
+                    field = field,
+                    value = values[templateFieldStateKey(template, field)].orEmpty(),
+                    enabled = enabled,
+                    onChange = { onChange(field, it) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TemplateFieldInput(
+    field: WorkOrderDocumentationField,
+    value: String,
+    enabled: Boolean,
+    onChange: (String) -> Unit,
+) {
+    val label = if (field.required) "${field.label} *" else field.label
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        when (field.type.lowercase(Locale.getDefault())) {
+            "dropdown" -> WorkOrderSelectField(
+                label = label,
+                value = value,
+                valueLabel = field.options.firstOrNull { it.value == value }?.label ?: value.ifBlank { "Odaberi" },
+                options = listOf("" to "Nije odabrano") + field.options.map { it.value to it.label },
+                enabled = enabled,
+                onSelect = onChange,
+            )
+            "checkbox", "toggle" -> {
+                val checked = value.equals("true", ignoreCase = true) || value == "1" || value.equals("da", ignoreCase = true)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable(enabled = enabled) { onChange((!checked).toString()) }
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(
+                        checked = checked,
+                        onCheckedChange = { onChange(it.toString()) },
+                        enabled = enabled,
+                    )
+                    Column {
+                        Text(label, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            if (checked) "Da" else "Ne",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                        )
+                    }
+                }
+            }
+            "longtext" -> OutlinedTextField(
+                value = value,
+                onValueChange = onChange,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(label) },
+                minLines = 3,
+                maxLines = 7,
+                enabled = enabled,
+                shape = RoundedCornerShape(16.dp),
+            )
+            "number" -> OutlinedTextField(
+                value = value,
+                onValueChange = onChange,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(label) },
+                singleLine = true,
+                enabled = enabled,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                shape = RoundedCornerShape(16.dp),
+            )
+            else -> WorkOrderTextField(label, value, onChange, enabled)
+        }
+        if (field.helpText.isNotBlank()) {
+            Text(
+                field.helpText,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+            )
+        }
+    }
 }
 
 @Composable

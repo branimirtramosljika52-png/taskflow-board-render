@@ -79,7 +79,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.27.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.28.apk";
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
@@ -9836,6 +9836,26 @@ function normalizeMobileWorkOrderDocumentWizardInput(input = {}) {
   const inspectorUserIds = normalizeMobileDocumentWizardArray(source.inspectorUserIds);
   const electricalInspectorUserIds = normalizeMobileDocumentWizardArray(source.electricalInspectorUserIds);
   const tipkaloInspectorUserIds = normalizeMobileDocumentWizardArray(source.tipkaloInspectorUserIds);
+  const fieldValues = source.fieldValues && typeof source.fieldValues === "object" && !Array.isArray(source.fieldValues)
+    ? Object.fromEntries(Object.entries(source.fieldValues)
+      .map(([key, value]) => [normalizeInputValue(key), value])
+      .filter(([key]) => key))
+    : {};
+  const templateFieldValues = source.templateFieldValues
+    && typeof source.templateFieldValues === "object"
+    && !Array.isArray(source.templateFieldValues)
+    ? Object.fromEntries(Object.entries(source.templateFieldValues)
+      .map(([templateId, values]) => {
+        if (!values || typeof values !== "object" || Array.isArray(values)) {
+          return null;
+        }
+        const normalizedValues = Object.fromEntries(Object.entries(values)
+          .map(([key, value]) => [normalizeInputValue(key), value])
+          .filter(([key]) => key));
+        return [normalizeInputValue(templateId), normalizedValues];
+      })
+      .filter(Boolean))
+    : {};
   return {
     inspectionDate: normalizeDateOnlyValue(source.inspectionDate) || todayIso,
     issuedDate: normalizeDateOnlyValue(source.issuedDate) || normalizeDateOnlyValue(source.inspectionDate) || todayIso,
@@ -9867,6 +9887,8 @@ function normalizeMobileWorkOrderDocumentWizardInput(input = {}) {
     tipkaloInspectorUserIds,
     tipkaloInspectorUserId: normalizeInputValue(source.tipkaloInspectorUserId) || tipkaloInspectorUserIds[0] || "",
     tipkaloAuthorizationHolderUserId: normalizeInputValue(source.tipkaloAuthorizationHolderUserId),
+    fieldValues,
+    templateFieldValues,
   };
 }
 
@@ -10157,6 +10179,218 @@ function buildMobileDocumentTemplateMeasurementPlaceholders(template = {}, field
   return placeholders;
 }
 
+const MOBILE_DOCUMENT_TEMPLATE_PROMPT_FIELD_TYPES = new Set([
+  "text",
+  "longtext",
+  "number",
+  "date",
+  "dropdown",
+  "checkbox",
+  "toggle",
+]);
+
+function isMobileDocumentTemplatePromptField(field = {}) {
+  if (!field || typeof field !== "object") {
+    return false;
+  }
+  const type = normalizeInputValue(field?.type || "text").toLowerCase();
+  if (!MOBILE_DOCUMENT_TEMPLATE_PROMPT_FIELD_TYPES.has(type)) {
+    return false;
+  }
+  if (field.hidden === true || field.mobileHidden === true || field.excludeFromMobile === true) {
+    return false;
+  }
+  return true;
+}
+
+function buildMobileDocumentTemplateFieldOptions(field = {}) {
+  const candidates = [
+    field?.options,
+    field?.choices,
+    field?.items,
+    field?.values,
+    field?.dropdownOptions,
+  ].find((value) => Array.isArray(value));
+
+  return (Array.isArray(candidates) ? candidates : [])
+    .map((option) => {
+      if (option && typeof option === "object" && !Array.isArray(option)) {
+        const value = normalizeInputValue(option.value || option.id || option.key || option.label || option.name || option.title);
+        const label = normalizeInputValue(option.label || option.name || option.title || option.value || option.id || option.key);
+        return value || label ? { value: value || label, label: label || value } : null;
+      }
+      const value = normalizeInputValue(option);
+      return value ? { value, label: value } : null;
+    })
+    .filter(Boolean);
+}
+
+function getMobileDocumentTemplateFieldDefaultValue(field = {}) {
+  const candidate = field?.defaultValue
+    ?? field?.value
+    ?? field?.initialValue
+    ?? field?.placeholderValue
+    ?? "";
+  if (typeof candidate === "boolean") {
+    return candidate ? "true" : "false";
+  }
+  return normalizeInputValue(candidate);
+}
+
+function buildMobileDocumentTemplatePromptFields(template = {}) {
+  return (Array.isArray(template?.customFields) ? template.customFields : [])
+    .map((field, index) => {
+      if (!isMobileDocumentTemplatePromptField(field)) {
+        return null;
+      }
+      const tokenKey = getMobileDocumentTemplateFieldTokenKey(field, index);
+      const id = normalizeInputValue(field?.id || field?.key || tokenKey);
+      const key = normalizeInputValue(field?.key);
+      const label = normalizeInputValue(field?.label || field?.wordLabel || key || tokenKey);
+      if (!id || !label) {
+        return null;
+      }
+      return {
+        id,
+        key,
+        tokenKey,
+        label,
+        type: normalizeInputValue(field?.type || "text").toLowerCase(),
+        required: Boolean(field?.required || field?.isRequired),
+        helpText: normalizeInputValue(field?.helpText || field?.description || field?.hint),
+        defaultValue: getMobileDocumentTemplateFieldDefaultValue(field),
+        options: buildMobileDocumentTemplateFieldOptions(field),
+      };
+    })
+    .filter(Boolean);
+}
+
+function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot = {}) {
+  const documentTemplates = Array.isArray(scopedSnapshot.documentTemplates) ? scopedSnapshot.documentTemplates : [];
+  const templateById = new Map(documentTemplates.map((template) => [String(template.id), template]));
+  const services = Array.isArray(workOrder.serviceItems) && workOrder.serviceItems.length > 0
+    ? workOrder.serviceItems.map((item) => (item && typeof item === "object" ? item : { name: item }))
+    : [{ name: workOrder.serviceLine || "" }];
+  const templates = [];
+  const seenTemplateIds = new Set();
+
+  services.forEach((service) => {
+    getMobileWorkOrderServiceTemplateIds(service, scopedSnapshot).forEach((templateId) => {
+      const template = templateById.get(String(templateId));
+      if (!template || String(template.status || "active").toLowerCase() === "archived") {
+        return;
+      }
+      const normalizedTemplateId = normalizeInputValue(template.id);
+      if (!normalizedTemplateId || seenTemplateIds.has(normalizedTemplateId)) {
+        return;
+      }
+      seenTemplateIds.add(normalizedTemplateId);
+      templates.push({
+        id: normalizedTemplateId,
+        title: normalizeInputValue(template.title || template.documentType || "Zapisnik"),
+        documentType: normalizeInputValue(template.documentType || "Zapisnik"),
+        serviceName: normalizeInputValue(service?.name || service?.serviceName || service?.title || service?.serviceCode),
+        fields: buildMobileDocumentTemplatePromptFields(template),
+      });
+    });
+  });
+
+  templates.sort((left, right) => left.title.localeCompare(right.title, "hr"));
+
+  return {
+    workOrderId: normalizeInputValue(workOrder?.id),
+    workOrderNumber: normalizeInputValue(workOrder?.workOrderNumber || workOrder?.number),
+    templates,
+    hasTemplates: templates.length > 0,
+    fieldCount: templates.reduce((sum, template) => sum + (template.fields?.length || 0), 0),
+  };
+}
+
+function coerceMobileTemplateFieldDocumentValue(value, field = {}) {
+  const type = normalizeInputValue(field?.type || "text").toLowerCase();
+  if (type === "checkbox" || type === "toggle") {
+    if (typeof value === "boolean") {
+      return value;
+    }
+    const normalized = normalizeInputValue(value).toLowerCase();
+    return normalized === "true" || normalized === "1" || normalized === "da" || normalized === "yes";
+  }
+  if (type === "date") {
+    return normalizeDateOnlyValue(value) || normalizeInputValue(value);
+  }
+  return normalizeInputValue(value);
+}
+
+function formatMobileTemplateFieldPlaceholderValue(value, field = {}) {
+  const type = normalizeInputValue(field?.type || "text").toLowerCase();
+  if (type === "checkbox" || type === "toggle") {
+    return coerceMobileTemplateFieldDocumentValue(value, field) ? "Da" : "Ne";
+  }
+  if (type === "date") {
+    const normalizedDate = normalizeDateOnlyValue(value);
+    return formatOfferDocumentDate(normalizedDate) || normalizeInputValue(value);
+  }
+  return normalizeInputValue(value);
+}
+
+function getMobileDocumentTemplateSubmittedFieldValue(field = {}, template = {}, common = {}, index = 0) {
+  const templateId = normalizeInputValue(template?.id);
+  const templateValues = templateId && common.templateFieldValues?.[templateId]
+    ? common.templateFieldValues[templateId]
+    : {};
+  const tokenKey = getMobileDocumentTemplateFieldTokenKey(field, index);
+  const keys = [
+    field?.id,
+    field?.key,
+    field?.wordLabel,
+    field?.label,
+    tokenKey,
+  ].map(normalizeInputValue).filter(Boolean);
+
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(templateValues, key)) {
+      return templateValues[key];
+    }
+  }
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(common.fieldValues || {}, key)) {
+      return common.fieldValues[key];
+    }
+  }
+  return undefined;
+}
+
+function buildMobileDocumentTemplateCustomFieldPayload(template = {}, common = {}) {
+  const placeholders = {};
+  const fieldValues = {};
+
+  (Array.isArray(template?.customFields) ? template.customFields : []).forEach((field, index) => {
+    if (!isMobileDocumentTemplatePromptField(field)) {
+      return;
+    }
+    const submittedValue = getMobileDocumentTemplateSubmittedFieldValue(field, template, common, index);
+    const value = submittedValue !== undefined
+      ? submittedValue
+      : getMobileDocumentTemplateFieldDefaultValue(field);
+    const placeholderValue = formatMobileTemplateFieldPlaceholderValue(value, field);
+    const documentValue = coerceMobileTemplateFieldDocumentValue(value, field);
+    const tokenKey = getMobileDocumentTemplateFieldTokenKey(field, index);
+    const recordKey = normalizeInputValue(field?.key || field?.id || tokenKey);
+    [
+      tokenKey,
+      normalizeInputValue(field?.key),
+      normalizeInputValue(field?.id),
+    ].filter(Boolean).forEach((key) => {
+      placeholders[key] = placeholderValue;
+    });
+    if (recordKey && documentValue !== "" && documentValue !== undefined && documentValue !== null) {
+      fieldValues[recordKey] = documentValue;
+    }
+  });
+
+  return { placeholders, fieldValues };
+}
+
 function buildMobileGeneratedDocumentPlaceholders(workOrder = {}, service = {}, scopedSnapshot = {}, common = {}) {
   const todayIso = new Date().toISOString().slice(0, 10);
   const inspectionDateIso = normalizeDateOnlyValue(common.inspectionDate) || todayIso;
@@ -10259,8 +10493,10 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
       const basePlaceholders = buildMobileGeneratedDocumentPlaceholders(workOrder, service, scopedSnapshot, common);
       const fieldSheets = buildMobileDocumentTemplateFieldSheets(template, workOrder, service, scopedSnapshot);
       const measurementPlaceholders = buildMobileDocumentTemplateMeasurementPlaceholders(template, fieldSheets);
+      const customFieldPayload = buildMobileDocumentTemplateCustomFieldPayload(template, common);
       const placeholders = {
         ...basePlaceholders,
+        ...customFieldPayload.placeholders,
         ...measurementPlaceholders,
       };
       const validityMonths = resolveMobileServiceValidityMonths(service, scopedSnapshot, common);
@@ -10275,6 +10511,7 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
         : [];
       const fieldValues = {
         ...placeholders,
+        ...customFieldPayload.fieldValues,
         ...(trackedDates.length > 0 ? { [GENERATED_DOCUMENT_PERIODICS_TRACKED_DATES_KEY]: trackedDates } : {}),
       };
       entries.push({
@@ -11226,6 +11463,23 @@ async function handleApiRequest(request, response, url) {
 
     if (request.method === "GET" && url.pathname === "/api/mobile/work-orders") {
       await writeMobileWorkOrders(response, user, request);
+      return true;
+    }
+
+    const mobileWorkOrderDocumentationContextMatch = url.pathname.match(/^\/api\/mobile\/work-orders\/([^/]+)\/documentation-context$/);
+    if (mobileWorkOrderDocumentationContextMatch && request.method === "GET") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo izradivati dokumentaciju RN-a.");
+        return true;
+      }
+
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const workOrder = assertInScope(
+        scopedSnapshot.workOrders ?? [],
+        mobileWorkOrderDocumentationContextMatch[1],
+        "Radni nalog nije pronađen.",
+      );
+      sendJson(response, 200, buildMobileWorkOrderDocumentationContext(workOrder, scopedSnapshot));
       return true;
     }
 

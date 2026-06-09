@@ -238,6 +238,8 @@ class SafeNexusApi(
                 .put("tipkaloInspectorUserIds", tipkaloInspectorIds)
                 .put("tipkaloInspectorUserId", draft.tipkaloInspectorUserId)
                 .put("tipkaloAuthorizationHolderUserId", draft.tipkaloAuthorizationHolderUserId)
+                .put("fieldValues", draft.fieldValues.toJsonObject())
+                .put("templateFieldValues", draft.templateFieldValues.toNestedJsonObject())
                 .toString()
             val json = JSONObject(
                 request(
@@ -247,6 +249,13 @@ class SafeNexusApi(
                 ),
             )
             json.optJSONArray("items").toWorkOrderDocuments()
+        }
+    }
+
+    suspend fun workOrderDocumentationContext(workOrderId: String): Result<WorkOrderDocumentationContext> = withContext(Dispatchers.IO) {
+        runCatching {
+            val json = JSONObject(request("/api/mobile/work-orders/${workOrderId.pathSegment()}/documentation-context"))
+            json.toWorkOrderDocumentationContext()
         }
     }
 
@@ -537,6 +546,88 @@ private fun JSONObject?.toStringMap(): Map<String, String> {
         }
     }
 }
+
+private fun Map<String, String>.toJsonObject(): JSONObject {
+    val json = JSONObject()
+    forEach { (key, value) -> json.put(key, value) }
+    return json
+}
+
+private fun Map<String, Map<String, String>>.toNestedJsonObject(): JSONObject {
+    val json = JSONObject()
+    forEach { (key, values) -> json.put(key, values.toJsonObject()) }
+    return json
+}
+
+private fun JSONArray?.toDocumentationFieldOptions(): List<OptionItem> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            val item = opt(index)
+            if (item is JSONObject) {
+                val value = item.firstClean("value", "id", "key", "label")
+                val label = item.firstClean("label", "name", "title", "value").ifBlank { value }
+                if (value.isNotBlank() || label.isNotBlank()) {
+                    add(OptionItem(value.ifBlank { label }, label.ifBlank { value }))
+                }
+            } else {
+                val value = item?.toString()?.trim().orEmpty()
+                if (value.isNotBlank() && value != "null") {
+                    add(OptionItem(value, value))
+                }
+            }
+        }
+    }.distinctBy { it.value }
+}
+
+private fun JSONArray?.toWorkOrderDocumentationFields(): List<WorkOrderDocumentationField> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            val item = optJSONObject(index) ?: continue
+            add(
+                WorkOrderDocumentationField(
+                    id = item.firstClean("id"),
+                    key = item.firstClean("key"),
+                    tokenKey = item.firstClean("tokenKey"),
+                    label = item.firstClean("label").ifBlank { "Polje" },
+                    type = item.firstClean("type").ifBlank { "text" },
+                    required = item.optBoolean("required", false),
+                    helpText = item.firstClean("helpText"),
+                    defaultValue = item.firstClean("defaultValue"),
+                    options = item.optJSONArray("options").toDocumentationFieldOptions(),
+                ),
+            )
+        }
+    }.filter { it.id.isNotBlank() || it.key.isNotBlank() || it.tokenKey.isNotBlank() }
+}
+
+private fun JSONArray?.toWorkOrderDocumentationTemplates(): List<WorkOrderDocumentationTemplate> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            val item = optJSONObject(index) ?: continue
+            add(
+                WorkOrderDocumentationTemplate(
+                    id = item.firstClean("id"),
+                    title = item.firstClean("title").ifBlank { "Zapisnik" },
+                    documentType = item.firstClean("documentType"),
+                    serviceName = item.firstClean("serviceName"),
+                    fields = item.optJSONArray("fields").toWorkOrderDocumentationFields(),
+                ),
+            )
+        }
+    }.filter { it.id.isNotBlank() }
+}
+
+private fun JSONObject.toWorkOrderDocumentationContext(): WorkOrderDocumentationContext =
+    WorkOrderDocumentationContext(
+        workOrderId = firstClean("workOrderId"),
+        workOrderNumber = firstClean("workOrderNumber"),
+        templates = optJSONArray("templates").toWorkOrderDocumentationTemplates(),
+        hasTemplates = optBoolean("hasTemplates", false),
+        fieldCount = optInt("fieldCount", 0),
+    )
 
 private fun JSONArray?.toRecords(): List<MobileRecord> {
     if (this == null) return emptyList()

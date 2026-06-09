@@ -123,6 +123,36 @@ data class WorkOrderDocumentationDraft(
     val tipkaloInspectorUserIds: List<String>,
     val tipkaloInspectorUserId: String,
     val tipkaloAuthorizationHolderUserId: String,
+    val fieldValues: Map<String, String> = emptyMap(),
+    val templateFieldValues: Map<String, Map<String, String>> = emptyMap(),
+)
+
+data class WorkOrderDocumentationContext(
+    val workOrderId: String = "",
+    val workOrderNumber: String = "",
+    val templates: List<WorkOrderDocumentationTemplate> = emptyList(),
+    val hasTemplates: Boolean = false,
+    val fieldCount: Int = 0,
+)
+
+data class WorkOrderDocumentationTemplate(
+    val id: String,
+    val title: String,
+    val documentType: String,
+    val serviceName: String,
+    val fields: List<WorkOrderDocumentationField>,
+)
+
+data class WorkOrderDocumentationField(
+    val id: String,
+    val key: String,
+    val tokenKey: String,
+    val label: String,
+    val type: String,
+    val required: Boolean,
+    val helpText: String,
+    val defaultValue: String,
+    val options: List<OptionItem>,
 )
 
 data class DashboardStats(
