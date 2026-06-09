@@ -198,6 +198,7 @@ import com.safenexus.app.data.WorkOrderLocationOption
 import com.safenexus.app.data.WorkOrderMeasurementColumn
 import com.safenexus.app.data.WorkOrderMeasurementSheet
 import com.safenexus.app.data.WorkOrderMeasurementTable
+import com.safenexus.app.data.WorkOrderServiceItem
 import com.safenexus.app.data.WorkOrderServiceOption
 import com.safenexus.app.data.WorkOrderUploadFile
 import com.safenexus.app.data.WorkOrderUserOption
@@ -207,6 +208,7 @@ import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -355,6 +357,7 @@ data class AppState(
 class SafeNexusViewModel(application: Application) : AndroidViewModel(application) {
     private val api = SafeNexusApi()
     private val authStore = SafeNexusAuthStore(application)
+    private val workOrderMutationVersions = mutableMapOf<String, Int>()
     private var shouldRememberSession = false
 
     var state by mutableStateOf(AppState())
@@ -555,33 +558,77 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         state = state.copy(isLoading = false, workOrderDocumentsLoading = false, error = message, notice = "")
     }
 
+    private fun beginWorkOrderMutation(workOrderId: String): Int {
+        val nextVersion = (workOrderMutationVersions[workOrderId] ?: 0) + 1
+        workOrderMutationVersions[workOrderId] = nextVersion
+        return nextVersion
+    }
+
+    private fun isCurrentWorkOrderMutation(workOrderId: String, version: Int): Boolean =
+        workOrderMutationVersions[workOrderId] == version
+
+    private fun replaceWorkOrderInState(updatedWorkOrder: WorkOrder, notice: String = "") {
+        val updatedOrders = state.workOrders.map { item ->
+            if (item.id == updatedWorkOrder.id) updatedWorkOrder else item
+        }
+        val nextOrders = if (updatedOrders.any { it.id == updatedWorkOrder.id }) {
+            updatedOrders
+        } else {
+            listOf(updatedWorkOrder) + state.workOrders
+        }
+        val updatedSelected = state.selectedWorkOrder?.let { selected ->
+            if (selected.id == updatedWorkOrder.id) updatedWorkOrder else selected
+        }
+        state = state.copy(
+            data = state.data.copy(workOrders = nextOrders),
+            workOrders = nextOrders,
+            selectedWorkOrder = updatedSelected,
+            isLoading = false,
+            error = "",
+            notice = notice,
+        )
+    }
+
+    private fun buildOptimisticServiceWorkOrder(workOrder: WorkOrder, selectedServiceIds: List<String>): WorkOrder {
+        val serviceLookup = state.data.workOrderServices.associateBy { it.id }
+        val serviceDetails = selectedServiceIds.map { serviceId ->
+            val service = serviceLookup[serviceId]
+            WorkOrderServiceItem(
+                serviceId = serviceId,
+                name = service?.name ?: serviceId,
+                serviceCode = service?.serviceCode.orEmpty(),
+                serviceStatus = "",
+                quantity = "1",
+            )
+        }
+        val serviceLabels = serviceDetails
+            .map { service -> service.name.ifBlank { service.serviceCode.ifBlank { service.serviceId } } }
+            .filter { it.isNotBlank() }
+        return workOrder.copy(
+            serviceLine = serviceLabels.joinToString(" · "),
+            serviceItems = serviceLabels,
+            serviceDetails = serviceDetails,
+        )
+    }
+
     fun updateWorkOrderStatus(workOrder: WorkOrder, status: String) {
         if (workOrder.id.isBlank() || status.isBlank() || status == workOrder.status) return
 
-        state = state.copy(isLoading = true, error = "", notice = "")
+        val mutationVersion = beginWorkOrderMutation(workOrder.id)
+        val previousWorkOrder = state.workOrders.firstOrNull { it.id == workOrder.id } ?: workOrder
+        replaceWorkOrderInState(workOrder.copy(status = status))
         viewModelScope.launch {
             api.updateWorkOrderStatus(workOrder.id, status)
-                .onSuccess {
-                    val updatedOrders = state.workOrders.map { item ->
-                        if (item.id == workOrder.id) item.copy(status = status) else item
+                .onSuccess { updatedWorkOrder ->
+                    if (isCurrentWorkOrderMutation(workOrder.id, mutationVersion)) {
+                        replaceWorkOrderInState(updatedWorkOrder, "Status RN-a je spremljen.")
                     }
-                    val updatedSelected = state.selectedWorkOrder?.let { selected ->
-                        if (selected.id == workOrder.id) selected.copy(status = status) else selected
-                    }
-                    state = state.copy(
-                        data = state.data.copy(workOrders = updatedOrders),
-                        workOrders = updatedOrders,
-                        selectedWorkOrder = updatedSelected,
-                        isLoading = false,
-                        notice = "Status RN-a je spremljen.",
-                    )
-                    refresh()
                 }
                 .onFailure { error ->
-                    state = state.copy(
-                        isLoading = false,
-                        error = error.message ?: "Ne mogu spremiti status RN-a.",
-                    )
+                    if (isCurrentWorkOrderMutation(workOrder.id, mutationVersion)) {
+                        replaceWorkOrderInState(previousWorkOrder)
+                        state = state.copy(error = error.message ?: "Ne mogu spremiti status RN-a.", notice = "")
+                    }
                 }
         }
     }
@@ -592,21 +639,21 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
             return
         }
         val normalizedIds = selectedServiceIds.map { it.trim() }.filter { it.isNotBlank() }.distinct()
-        state = state.copy(isLoading = true, error = "", notice = "")
+        val mutationVersion = beginWorkOrderMutation(workOrder.id)
+        val previousWorkOrder = state.workOrders.firstOrNull { it.id == workOrder.id } ?: workOrder
+        replaceWorkOrderInState(buildOptimisticServiceWorkOrder(workOrder, normalizedIds))
         viewModelScope.launch {
             api.updateWorkOrderServices(workOrder.id, normalizedIds)
-                .onSuccess {
-                    state = state.copy(
-                        isLoading = false,
-                        notice = "Usluge RN-a su spremljene.",
-                    )
-                    refresh()
+                .onSuccess { updatedWorkOrder ->
+                    if (isCurrentWorkOrderMutation(workOrder.id, mutationVersion)) {
+                        replaceWorkOrderInState(updatedWorkOrder, "Usluge RN-a su spremljene.")
+                    }
                 }
                 .onFailure { error ->
-                    state = state.copy(
-                        isLoading = false,
-                        error = error.message ?: "Ne mogu spremiti usluge RN-a.",
-                    )
+                    if (isCurrentWorkOrderMutation(workOrder.id, mutationVersion)) {
+                        replaceWorkOrderInState(previousWorkOrder)
+                        state = state.copy(error = error.message ?: "Ne mogu spremiti usluge RN-a.", notice = "")
+                    }
                 }
         }
     }
@@ -688,34 +735,21 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
             return
         }
         val normalized = executors.map { it.trim() }.filter { it.isNotBlank() }.distinct()
-        state = state.copy(isLoading = true, error = "", notice = "")
+        val mutationVersion = beginWorkOrderMutation(workOrder.id)
+        val previousWorkOrder = state.workOrders.firstOrNull { it.id == workOrder.id } ?: workOrder
+        replaceWorkOrderInState(workOrder.copy(executors = normalized))
         viewModelScope.launch {
             api.updateWorkOrderExecutors(workOrder.id, normalized)
-                .onSuccess {
-                    val updatedOrders = state.workOrders.map { item ->
-                        if (item.id == workOrder.id) {
-                            item.copy(executors = normalized)
-                        } else {
-                            item
-                        }
+                .onSuccess { updatedWorkOrder ->
+                    if (isCurrentWorkOrderMutation(workOrder.id, mutationVersion)) {
+                        replaceWorkOrderInState(updatedWorkOrder, "Izvršitelji RN-a su spremljeni.")
                     }
-                    val updatedSelected = state.selectedWorkOrder?.let { selected ->
-                        if (selected.id == workOrder.id) selected.copy(executors = normalized) else selected
-                    }
-                    state = state.copy(
-                        data = state.data.copy(workOrders = updatedOrders),
-                        workOrders = updatedOrders,
-                        selectedWorkOrder = updatedSelected,
-                        isLoading = false,
-                        notice = "Izvršitelji RN-a su spremljeni.",
-                    )
-                    refresh()
                 }
                 .onFailure { error ->
-                    state = state.copy(
-                        isLoading = false,
-                        error = error.message ?: "Ne mogu spremiti izvršitelje RN-a.",
-                    )
+                    if (isCurrentWorkOrderMutation(workOrder.id, mutationVersion)) {
+                        replaceWorkOrderInState(previousWorkOrder)
+                        state = state.copy(error = error.message ?: "Ne mogu spremiti izvršitelje RN-a.", notice = "")
+                    }
                 }
         }
     }
@@ -1279,8 +1313,7 @@ fun SafeNexusApp(viewModel: SafeNexusViewModel = viewModel()) {
             services = state.data.workOrderServices,
             isLoading = state.isLoading,
             onDismiss = { serviceManagementTarget = null },
-            onConfirm = { selectedServiceIds ->
-                serviceManagementTarget = null
+            onSelectionChange = { selectedServiceIds ->
                 viewModel.updateWorkOrderServices(workOrder, selectedServiceIds)
             },
         )
@@ -5781,20 +5814,30 @@ private fun WorkOrderServiceManagementDialog(
     services: List<WorkOrderServiceOption>,
     isLoading: Boolean,
     onDismiss: () -> Unit,
-    onConfirm: (List<String>) -> Unit,
+    onSelectionChange: (List<String>) -> Unit,
 ) {
     var query by remember(workOrder.id) { mutableStateOf("") }
     var selectedIds by remember(workOrder.id, workOrder.serviceDetails, services) {
         mutableStateOf(resolveWorkOrderSelectedServiceIds(workOrder, services).toSet())
     }
-    val filteredServices = remember(services, query) {
+    var didInitializeAutoSave by remember(workOrder.id) { mutableStateOf(false) }
+    var lastAutoSavedIds by remember(workOrder.id) { mutableStateOf(selectedIds) }
+    var saveStatus by remember(workOrder.id) { mutableStateOf("Spremljeno") }
+    val serviceSearchIndex = remember(services) {
+        services.associate { service ->
+            service.id to normalizeServiceMatch(
+                listOf(service.name, service.serviceCode, service.type, service.note)
+                    .joinToString(" "),
+            )
+        }
+    }
+    val filteredServices = remember(services, serviceSearchIndex, query) {
         val normalizedQuery = normalizeServiceMatch(query)
         if (normalizedQuery.isBlank()) {
             services
         } else {
             services.filter { service ->
-                listOf(service.name, service.serviceCode, service.type, service.note)
-                    .any { value -> normalizeServiceMatch(value).contains(normalizedQuery) }
+                serviceSearchIndex[service.id]?.contains(normalizedQuery) == true
             }
         }
     }
@@ -5802,6 +5845,22 @@ private fun WorkOrderServiceManagementDialog(
         filteredServices
             .groupBy { service -> service.type.ifBlank { "Bez odjela" } }
             .toSortedMap(compareBy<String> { it == "Bez odjela" }.thenBy { it.lowercase(Locale.getDefault()) })
+    }
+    LaunchedEffect(selectedIds) {
+        if (!didInitializeAutoSave) {
+            didInitializeAutoSave = true
+            lastAutoSavedIds = selectedIds
+            return@LaunchedEffect
+        }
+        if (selectedIds == lastAutoSavedIds) {
+            saveStatus = "Spremljeno"
+            return@LaunchedEffect
+        }
+        saveStatus = "Sprema se..."
+        delay(320)
+        onSelectionChange(selectedIds.toList())
+        lastAutoSavedIds = selectedIds
+        saveStatus = "Spremljeno"
     }
 
     AlertDialog(
@@ -5816,10 +5875,23 @@ private fun WorkOrderServiceManagementDialog(
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                 )
+                Text(
+                    saveStatus,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (saveStatus.startsWith("Sprema")) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.54f)
+                    },
+                    fontWeight = FontWeight.Bold,
+                )
             }
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                AnimatedVisibility(saveStatus.startsWith("Sprema")) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it },
@@ -5920,16 +5992,11 @@ private fun WorkOrderServiceManagementDialog(
         },
         confirmButton = {
             Button(
-                onClick = { onConfirm(selectedIds.toList()) },
+                onClick = onDismiss,
                 enabled = !isLoading,
                 shape = RoundedCornerShape(16.dp),
             ) {
-                Text("Spremi usluge", fontWeight = FontWeight.Black)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !isLoading) {
-                Text("Odustani")
+                Text("Zatvori", fontWeight = FontWeight.Black)
             }
         },
     )

@@ -88,7 +88,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.55.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.56.apk";
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
@@ -13962,6 +13962,7 @@ async function handleApiRequest(request, response, url) {
     const workOrderDocumentsMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/documents$/);
     const workOrderDocumentDownloadMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/documents\/([^/]+)\/download$/);
     const workOrderDocumentMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)\/documents\/([^/]+)$/);
+    const mobileWorkOrderMatch = url.pathname.match(/^\/api\/mobile\/work-orders\/([^/]+)$/);
     const workOrderMatch = url.pathname.match(/^\/api\/work-orders\/([^/]+)$/);
     const signatureBridgeReleaseLocksMatch = url.pathname.match(/^\/api\/signature-bridge\/jobs\/([^/]+)\/release-locks$/);
 
@@ -17082,6 +17083,45 @@ async function handleApiRequest(request, response, url) {
       }
 
       await writeSnapshot(response, user, request);
+      return true;
+    }
+
+    if (mobileWorkOrderMatch && request.method === "PATCH") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo upravljati radnim nalozima.");
+        return true;
+      }
+
+      const body = await readJsonBody(request);
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const currentWorkOrder = assertInScope(scopedSnapshot.workOrders, mobileWorkOrderMatch[1], "Radni nalog nije pronađen.");
+      const requestedStatus = bodyHasOwnField(body, "status")
+        ? normalizeWorkOrderStatusForPermission(body.status)
+        : normalizeWorkOrderStatusForPermission(currentWorkOrder.status);
+      const missingPermissions = getMissingScopedSnapshotAppPermissions(user, scopedSnapshot, [
+        ...getWorkOrderStatusPermissionKeys(currentWorkOrder.status, requestedStatus),
+        ...getWorkOrderBillingPermissionKeys(currentWorkOrder, body),
+      ]);
+      if (missingPermissions.length > 0) {
+        sendError(response, 403, "Nemate ovlastenje za trazenu promjenu radnog naloga.");
+        return true;
+      }
+      assertCompanyPayloadInScope(scopedSnapshot, body);
+      assertLocationPayloadInScope(scopedSnapshot, body);
+      assertServiceCatalogIdsPayloadInScope(scopedSnapshot, body);
+      const updated = await domainRepository.updateWorkOrder(mobileWorkOrderMatch[1], {
+        ...body,
+        organizationId: scopedSnapshot.activeOrganizationId,
+      }, user);
+
+      if (!updated) {
+        sendError(response, 404, "Radni nalog nije pronađen.");
+        return true;
+      }
+
+      queueWorkOrderUpdatedPush(currentWorkOrder, updated, scopedSnapshot);
+      invalidateSnapshotCaches();
+      sendJson(response, 200, { ok: true, item: buildMobileWorkOrderItem(updated) });
       return true;
     }
 

@@ -129,17 +129,17 @@ class SafeNexusApi(
         }
     }
 
-    suspend fun updateWorkOrderStatus(workOrderId: String, status: String): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun updateWorkOrderStatus(workOrderId: String, status: String): Result<WorkOrder> = withContext(Dispatchers.IO) {
         runCatching {
             val payload = JSONObject()
                 .put("status", status)
                 .toString()
-            request("/api/work-orders/${workOrderId.pathSegment()}", method = "PATCH", body = payload)
-            Unit
+            val json = JSONObject(request("/api/mobile/work-orders/${workOrderId.pathSegment()}", method = "PATCH", body = payload))
+            (json.optJSONObject("item") ?: JSONObject()).toWorkOrder()
         }
     }
 
-    suspend fun updateWorkOrderServices(workOrderId: String, serviceIds: List<String>): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun updateWorkOrderServices(workOrderId: String, serviceIds: List<String>): Result<WorkOrder> = withContext(Dispatchers.IO) {
         runCatching {
             val serviceItems = JSONArray()
             serviceIds.distinct().forEach { serviceId ->
@@ -148,12 +148,12 @@ class SafeNexusApi(
             val payload = JSONObject()
                 .put("serviceItems", serviceItems)
                 .toString()
-            request("/api/work-orders/${workOrderId.pathSegment()}", method = "PATCH", body = payload)
-            Unit
+            val json = JSONObject(request("/api/mobile/work-orders/${workOrderId.pathSegment()}", method = "PATCH", body = payload))
+            (json.optJSONObject("item") ?: JSONObject()).toWorkOrder()
         }
     }
 
-    suspend fun updateWorkOrderExecutors(workOrderId: String, executors: List<String>): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun updateWorkOrderExecutors(workOrderId: String, executors: List<String>): Result<WorkOrder> = withContext(Dispatchers.IO) {
         runCatching {
             val normalized = executors.map { it.trim() }.filter { it.isNotBlank() }.distinct()
             val payload = JSONObject()
@@ -161,8 +161,8 @@ class SafeNexusApi(
                 .put("executor1", normalized.getOrNull(0).orEmpty())
                 .put("executor2", normalized.getOrNull(1).orEmpty())
                 .toString()
-            request("/api/work-orders/${workOrderId.pathSegment()}", method = "PATCH", body = payload)
-            Unit
+            val json = JSONObject(request("/api/mobile/work-orders/${workOrderId.pathSegment()}", method = "PATCH", body = payload))
+            (json.optJSONObject("item") ?: JSONObject()).toWorkOrder()
         }
     }
 
@@ -1240,46 +1240,49 @@ private fun JSONArray?.toWorkOrders(): List<WorkOrder> {
     return buildList {
         for (index in 0 until length()) {
             val item = optJSONObject(index) ?: continue
-            val serviceDetails = item.optJSONArray("serviceItems").toWorkOrderServiceDetails()
-            val serviceItems = serviceDetails
-                .map { service -> service.name.ifBlank { service.serviceCode.ifBlank { service.serviceId } } }
-                .filter { it.isNotBlank() }
-                .ifEmpty { item.optJSONArray("serviceItems").toStringList("name", "serviceCode") }
-            add(
-                WorkOrder(
-                    id = item.firstClean("id"),
-                    number = item.firstClean("workOrderNumber", "number"),
-                    status = item.firstClean("status").ifBlank { "Otvoreni RN" },
-                    companyId = item.firstClean("companyId"),
-                    companyName = item.firstClean("companyName", "company"),
-                    companyOib = item.firstClean("companyOib", "oib"),
-                    headquarters = item.firstClean("headquarters", "companyHeadquarters"),
-                    locationId = item.firstClean("locationId"),
-                    locationName = item.firstClean("locationName", "location"),
-                    objectId = item.firstClean("objectId", "locationObjectId"),
-                    objectName = item.firstClean("objectName", "locationObjectName"),
-                    coordinates = item.firstClean("coordinates"),
-                    region = item.firstClean("region"),
-                    serviceLine = item.firstClean("serviceLine"),
-                    serviceItems = serviceItems,
-                    serviceDetails = serviceDetails,
-                    openedDate = item.firstClean("openedDate", "createdAt"),
-                    dueDate = item.firstClean("dueDate"),
-                    executionDate = item.firstClean("executionDate"),
-                    priority = item.firstClean("priority").ifBlank { "Normal" },
-                    contactName = item.firstClean("contactName"),
-                    contactPhone = item.firstClean("contactPhone"),
-                    contactEmail = item.firstClean("contactEmail"),
-                    description = item.firstClean("description", "note"),
-                    executors = item.optJSONArray("executors").toStringList("fullName", "name", "label", "email"),
-                    completedBy = item.firstClean("completedBy", "completedByLabel", "createdByLabel"),
-                ),
-            )
+            add(item.toWorkOrder())
         }
     }.sortedWith(
         Comparator { left, right ->
             compareWorkOrdersByNumberDescending(left, right).takeIf { it != 0 }
                 ?: compareValuesBy(right, left) { it.parsedOpenedDate ?: it.parsedDueDate ?: LocalDate.MIN }
         },
+    )
+}
+
+private fun JSONObject.toWorkOrder(): WorkOrder {
+    val serviceDetails = optJSONArray("serviceItems").toWorkOrderServiceDetails()
+    val serviceItems = serviceDetails
+        .map { service -> service.name.ifBlank { service.serviceCode.ifBlank { service.serviceId } } }
+        .filter { it.isNotBlank() }
+        .ifEmpty { optJSONArray("serviceItems").toStringList("name", "serviceCode") }
+
+    return WorkOrder(
+        id = firstClean("id"),
+        number = firstClean("workOrderNumber", "number"),
+        status = firstClean("status").ifBlank { "Otvoreni RN" },
+        companyId = firstClean("companyId"),
+        companyName = firstClean("companyName", "company"),
+        companyOib = firstClean("companyOib", "oib"),
+        headquarters = firstClean("headquarters", "companyHeadquarters"),
+        locationId = firstClean("locationId"),
+        locationName = firstClean("locationName", "location"),
+        objectId = firstClean("objectId", "locationObjectId"),
+        objectName = firstClean("objectName", "locationObjectName"),
+        coordinates = firstClean("coordinates"),
+        region = firstClean("region"),
+        serviceLine = firstClean("serviceLine"),
+        serviceItems = serviceItems,
+        serviceDetails = serviceDetails,
+        openedDate = firstClean("openedDate", "createdAt"),
+        dueDate = firstClean("dueDate"),
+        executionDate = firstClean("executionDate"),
+        priority = firstClean("priority").ifBlank { "Normal" },
+        contactName = firstClean("contactName"),
+        contactPhone = firstClean("contactPhone"),
+        contactEmail = firstClean("contactEmail"),
+        description = firstClean("description", "note"),
+        executors = optJSONArray("executors").toStringList("fullName", "name", "label", "email"),
+        completedBy = firstClean("completedBy", "completedByLabel", "createdByLabel"),
     )
 }
