@@ -5444,6 +5444,8 @@ private data class DocumentationServiceFlowItem(
     val templateCount: Int,
 )
 
+private const val DOCUMENTATION_SUMMARY_FLOW_KEY = "__summary__"
+
 private fun WorkOrderDocumentationTemplate.documentationServiceKey(): String {
     val indexKey = serviceIndex.takeIf { it >= 0 }?.let { "service-$it" }.orEmpty()
     val fallback = listOf(serviceCode, serviceName, documentType, title)
@@ -5560,12 +5562,20 @@ private fun WorkOrderDocumentationWizardDialog(
     var selectedFlowService by remember(workOrder.id, serviceFlowItems) {
         mutableStateOf(serviceFlowItems.firstOrNull()?.serviceKey.orEmpty())
     }
+    val summaryFlowSelected = selectedFlowService == DOCUMENTATION_SUMMARY_FLOW_KEY
     val selectedFlowItem = remember(serviceFlowItems, selectedFlowService) {
-        serviceFlowItems.firstOrNull { item ->
-            item.serviceKey.equals(selectedFlowService, ignoreCase = true)
-        } ?: serviceFlowItems.firstOrNull()
+        if (selectedFlowService == DOCUMENTATION_SUMMARY_FLOW_KEY) {
+            null
+        } else {
+            serviceFlowItems.firstOrNull { item ->
+                item.serviceKey.equals(selectedFlowService, ignoreCase = true)
+            } ?: serviceFlowItems.firstOrNull()
+        }
     }
-    val activeTemplates = remember(context.templates, selectedFlowItem?.serviceKey) {
+    val activeTemplates = remember(context.templates, selectedFlowItem?.serviceKey, summaryFlowSelected) {
+        if (summaryFlowSelected) {
+            return@remember emptyList()
+        }
         val serviceKey = selectedFlowItem?.serviceKey.orEmpty()
         if (serviceKey.isBlank() || serviceKey == "fallback") {
             context.templates
@@ -5661,6 +5671,20 @@ private fun WorkOrderDocumentationWizardDialog(
     val currentDocumentNumber = selectedFlowItem?.documentNumbers?.firstOrNull()
         ?: activeTemplates.firstOrNull()?.documentNumber
         ?: workOrder.displayNumber
+    val summaryDocumentNumbers = remember(serviceFlowItems, workOrder.displayNumber) {
+        serviceFlowItems
+            .flatMap { item -> item.documentNumbers }
+            .distinct()
+            .joinToString(", ")
+            .ifBlank { workOrder.displayNumber }
+    }
+    val summaryServiceLabel = remember(serviceFlowItems, workOrder.displayService) {
+        if (serviceFlowItems.size > 1) {
+            serviceFlowItems.joinToString(", ") { item -> item.serviceCode }
+        } else {
+            serviceFlowItems.firstOrNull()?.serviceName ?: workOrder.displayService
+        }
+    }
     var signatureMode by remember(workOrder.id, defaults.signatureMode) { mutableStateOf(defaults.signatureMode.ifBlank { "digital" }) }
     var validityMonths by remember(workOrder.id, defaults.validityMonths) { mutableStateOf(defaults.validityMonths.ifBlank { "12" }) }
     var electricalValidityMonths by remember(workOrder.id, defaults.electricalValidityMonths) {
@@ -5738,7 +5762,7 @@ private fun WorkOrderDocumentationWizardDialog(
                     .fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                if (serviceFlowItems.size > 1) {
+                if (serviceFlowItems.isNotEmpty()) {
                     DocumentationProcessToolbar(
                         flowItems = serviceFlowItems,
                         selectedService = selectedFlowService,
@@ -5749,11 +5773,12 @@ private fun WorkOrderDocumentationWizardDialog(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = if (serviceFlowItems.size > 1) 540.dp else 660.dp)
+                        .heightIn(max = if (serviceFlowItems.isNotEmpty()) 540.dp else 660.dp)
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
 
+                if (!summaryFlowSelected) {
                 if (blockTemplates.isEmpty()) {
                     WizardSection(title = "Osnovni podaci", icon = Icons.Rounded.Description) {
                         DocumentationNumberPreview(
@@ -5939,6 +5964,8 @@ private fun WorkOrderDocumentationWizardDialog(
                     }
                 }
 
+                }
+                if (summaryFlowSelected) {
                 WizardSection(title = "Osobe i potpis", icon = Icons.Rounded.Fingerprint) {
                     WorkOrderSelectField(
                         label = "Ispitivao",
@@ -5999,8 +6026,8 @@ private fun WorkOrderDocumentationWizardDialog(
                 DocumentationSummarySection(
                     workOrder = workOrder,
                     flowItems = serviceFlowItems,
-                    selectedService = selectedFlowItem?.serviceName ?: inspectionType,
-                    documentNumber = currentDocumentNumber,
+                    selectedService = summaryServiceLabel,
+                    documentNumber = summaryDocumentNumbers,
                     inspectionDate = inspectionDate,
                     issuedDate = issuedDate,
                     testingLocation = testingLocation,
@@ -6011,6 +6038,7 @@ private fun WorkOrderDocumentationWizardDialog(
                     enabled = !formLoading,
                     onSignatureMode = { signatureMode = it },
                 )
+                }
                 }
             }
         },
@@ -6937,6 +6965,18 @@ private fun DocumentationProcessToolbar(
                         },
                     )
                 }
+                FilterChip(
+                    selected = selectedService == DOCUMENTATION_SUMMARY_FLOW_KEY,
+                    onClick = { onSelectService(DOCUMENTATION_SUMMARY_FLOW_KEY) },
+                    enabled = enabled,
+                    label = {
+                        Text(
+                            "Sažetak",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                )
             }
         }
     }
