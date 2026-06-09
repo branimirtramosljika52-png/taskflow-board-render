@@ -10887,36 +10887,47 @@ function buildMobileDocumentTemplateMeasurementTables(template = {}, workOrder =
     .filter(Boolean);
 }
 
+function getMobileWorkOrderLocationObjectId(workOrder = {}) {
+  const locationObject = workOrder?.locationObject && typeof workOrder.locationObject === "object" && !Array.isArray(workOrder.locationObject)
+    ? workOrder.locationObject
+    : {};
+  const object = workOrder?.object && typeof workOrder.object === "object" && !Array.isArray(workOrder.object)
+    ? workOrder.object
+    : {};
+  return normalizeInputValue(
+    workOrder?.objectId
+    || workOrder?.locationObjectId
+    || workOrder?.selectedObjectId
+    || locationObject?.id
+    || locationObject?.objectId
+    || object?.id,
+  );
+}
+
 function findLatestMobileDocumentRecordForTemplate(template = {}, workOrder = {}, scopedSnapshot = {}) {
   const templateId = normalizeInputValue(template?.id);
-  const workOrderNumber = normalizeInputValue(workOrder?.workOrderNumber || workOrder?.number);
   if (!templateId) {
     return null;
   }
   const companyId = normalizeInputValue(workOrder?.companyId);
   const locationId = normalizeInputValue(workOrder?.locationId);
-  const objectId = normalizeInputValue(workOrder?.objectId || workOrder?.locationObjectId);
+  const objectId = getMobileWorkOrderLocationObjectId(workOrder);
+  if (!locationId) {
+    return null;
+  }
   const records = Array.isArray(scopedSnapshot.documentRecords) ? scopedSnapshot.documentRecords : [];
   return records
     .filter((record) => {
+      const recordObjectId = normalizeInputValue(record?.objectId || record?.locationObjectId);
       return (
         normalizeInputValue(record?.templateId) === templateId
         && (!companyId || normalizeInputValue(record?.companyId) === companyId)
-        && (!locationId || normalizeInputValue(record?.locationId) === locationId)
-        && (!objectId || normalizeInputValue(record?.objectId) === objectId)
+        && normalizeInputValue(record?.locationId) === locationId
+        && (objectId ? recordObjectId === objectId : !recordObjectId)
       );
     })
-    .sort((left, right) => {
-      const leftWorkOrderNumber = getGeneratedDocumentRecordWorkOrderNumber(left, {});
-      const rightWorkOrderNumber = getGeneratedDocumentRecordWorkOrderNumber(right, {});
-      const leftSameWorkOrder = workOrderNumber && leftWorkOrderNumber === workOrderNumber ? 1 : 0;
-      const rightSameWorkOrder = workOrderNumber && rightWorkOrderNumber === workOrderNumber ? 1 : 0;
-      if (leftSameWorkOrder !== rightSameWorkOrder) {
-        return rightSameWorkOrder - leftSameWorkOrder;
-      }
-      return String(right.updatedAt || right.inspectionDate || right.issuedDate || right.createdAt || "")
-        .localeCompare(String(left.updatedAt || left.inspectionDate || left.issuedDate || left.createdAt || ""));
-    })
+    .sort((left, right) => String(right.updatedAt || right.inspectionDate || right.issuedDate || right.createdAt || "")
+      .localeCompare(String(left.updatedAt || left.inspectionDate || left.issuedDate || left.createdAt || "")))
     [0] || null;
 }
 
