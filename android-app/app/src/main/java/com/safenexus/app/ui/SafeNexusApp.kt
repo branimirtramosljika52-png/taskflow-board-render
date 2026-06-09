@@ -7482,22 +7482,6 @@ private fun TemplateBlockSectionCard(
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
                     )
                 }
-                Surface(shape = RoundedCornerShape(999.dp), color = MaterialTheme.colorScheme.surface.copy(alpha = 0.84f)) {
-                    Text(
-                        if (expanded) "sažmi" else "detalji",
-                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
-                    )
-                }
-            }
-            if (!expanded) {
-                Text(
-                    if (canExpand) "Dodirni karticu ili Raširi blok za unos i detalje." else "Template nema dodatnih polja u ovom poglavlju.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
-                )
             }
             if (expanded) {
                 val header = section.header
@@ -7569,13 +7553,6 @@ private fun TemplateBlockSectionCard(
                         )
                     }
                 }
-            }
-            TextButton(
-                onClick = { if (canExpand) expanded = !expanded },
-                enabled = canExpand,
-                modifier = Modifier.align(Alignment.End),
-            ) {
-                Text(if (expanded) "Sažmi blok" else "Raširi blok")
             }
         }
     }
@@ -7885,27 +7862,6 @@ private fun TemplateBlockRow(
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
                         )
                     }
-                    if (block.editable) {
-                        Surface(shape = RoundedCornerShape(999.dp), color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.74f)) {
-                            Text(
-                                if (expanded) "zatvori" else "unos",
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
-                    } else {
-                        Surface(shape = RoundedCornerShape(999.dp), color = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f)) {
-                            Text(
-                                if (expanded) "manje" else "detalji",
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
-                    }
                 }
                 if (block.summary.isNotBlank() && !expanded) {
                     Text(
@@ -7969,13 +7925,6 @@ private fun TemplateBlockRow(
                             AssistChip(onClick = {}, label = { Text("+${block.options.size - 5}") })
                         }
                     }
-                }
-                TextButton(
-                    onClick = { expanded = !expanded },
-                    enabled = enabled || !block.editable,
-                    modifier = Modifier.align(Alignment.End),
-                ) {
-                    Text(if (expanded) "Sažmi blok" else "Raširi blok")
                 }
             }
         }
