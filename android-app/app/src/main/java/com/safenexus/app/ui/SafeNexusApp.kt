@@ -5656,110 +5656,133 @@ private fun WorkOrderDocumentationWizardDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                WizardSection(title = "Traka zapisnika", icon = Icons.Rounded.Work) {
-                    DocumentationRuntimeActionBar(
-                        workOrder = workOrder,
+                if (serviceFlowItems.size > 1) {
+                    DocumentationProcessToolbar(
                         flowItems = serviceFlowItems,
                         selectedService = selectedFlowService,
-                        templateCount = context.templates.size,
-                        measurementCount = context.measurementTableCount,
-                        equipmentCount = context.measurementEquipmentOptions.size,
-                        legalFrameworkCount = context.legalFrameworkOptions.size,
-                        rulebookCount = context.rulebookOptions.size,
-                        signatureMode = signatureMode,
                         enabled = !formLoading,
                         onSelectService = { selectedFlowService = it },
-                        onSignatureMode = { signatureMode = it },
                     )
                 }
 
-                WizardSection(title = "Osnovni podaci", icon = Icons.Rounded.Description) {
-                    DocumentationNumberPreview(
-                        documentNumber = currentDocumentNumber,
-                        serviceName = selectedFlowItem?.serviceName ?: inspectionType,
-                    )
-                    WorkOrderDatePickerField("Datum ispitivanja", inspectionDate, { inspectionDate = it }, !formLoading)
-                    WorkOrderDatePickerField("Datum izdavanja", issuedDate, { issuedDate = it }, !formLoading)
-                    WorkOrderSelectField(
-                        label = "Vrsta ispitivanja",
-                        value = inspectionType,
-                        valueLabel = inspectionType.ifBlank {
-                            if (inspectionOptions.isEmpty()) "Nema opcija u templateu" else "Odaberi vrstu ispitivanja"
-                        },
-                        options = inspectionOptions,
-                        enabled = !formLoading,
-                        onSelect = { inspectionType = it },
-                    )
-                    WorkOrderTextField("Mjesto ispitivanja", testingLocation, { testingLocation = it }, !formLoading)
-                }
-
-                WizardSection(title = "Blokovi web predloška", icon = Icons.Rounded.Folder) {
-                    when {
-                        contextLoading -> Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                            Text("Učitavam blokove iz templatea...")
-                        }
-                        !context.hasTemplates -> Text(
-                            "Za ovaj RN nije pronađen povezani template.",
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+                if (blockTemplates.isEmpty()) {
+                    WizardSection(title = "Osnovni podaci", icon = Icons.Rounded.Description) {
+                        DocumentationNumberPreview(
+                            documentNumber = currentDocumentNumber,
+                            serviceName = selectedFlowItem?.serviceName ?: inspectionType,
                         )
-                        blockTemplates.isEmpty() -> Text(
-                            "Template nema dodatnih blokova za mobilni prikaz.",
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+                        WorkOrderDatePickerField("Datum ispitivanja", inspectionDate, { inspectionDate = it }, !formLoading)
+                        WorkOrderDatePickerField("Datum izdavanja", issuedDate, { issuedDate = it }, !formLoading)
+                        WorkOrderSelectField(
+                            label = "Vrsta ispitivanja",
+                            value = inspectionType,
+                            valueLabel = inspectionType.ifBlank {
+                                if (inspectionOptions.isEmpty()) "Nema opcija u templateu" else "Odaberi vrstu ispitivanja"
+                            },
+                            options = inspectionOptions,
+                            enabled = !formLoading,
+                            onSelect = { inspectionType = it },
                         )
-                        else -> blockTemplates.forEach { template ->
-                            TemplateBlockOverview(
-                                template = template,
-                                values = templateFieldValues,
-                                enabled = !formLoading,
-                                onChange = { field, value ->
-                                    templateFieldValues = templateFieldValues + (templateFieldStateKey(template, field) to value)
-                                },
-                            )
-                        }
+                        WorkOrderTextField("Mjesto ispitivanja", testingLocation, { testingLocation = it }, !formLoading)
                     }
                 }
 
-                WizardSection(title = "Mjerna i ispitna oprema", icon = Icons.Rounded.Work) {
-                    WorkOrderSelectField(
-                        label = "Grupa mjerne opreme",
-                        value = measurementEquipmentGroup,
-                        valueLabel = measurementEquipmentGroup.ifBlank { "Bez odabira" },
-                        options = measurementEquipmentGroupOptions,
-                        enabled = !formLoading,
-                        onSelect = { measurementEquipmentGroup = it },
+                val templateControls = DocumentationTemplateStandardControls(
+                    documentNumber = currentDocumentNumber,
+                    serviceName = selectedFlowItem?.serviceName ?: inspectionType,
+                    inspectionDate = inspectionDate,
+                    onInspectionDateChange = { inspectionDate = it },
+                    issuedDate = issuedDate,
+                    onIssuedDateChange = { issuedDate = it },
+                    inspectionType = inspectionType,
+                    inspectionOptions = inspectionOptions,
+                    onInspectionTypeChange = { inspectionType = it },
+                    testingLocation = testingLocation,
+                    onTestingLocationChange = { testingLocation = it },
+                    measurementEquipmentGroup = measurementEquipmentGroup,
+                    measurementEquipmentGroupOptions = measurementEquipmentGroupOptions,
+                    onMeasurementEquipmentGroupChange = { measurementEquipmentGroup = it },
+                    measurementEquipmentOptions = visibleMeasurementEquipmentOptions,
+                    selectedEquipmentIds = selectedEquipmentIds,
+                    onSelectedEquipmentIdsChange = { selectedEquipmentIds = it },
+                    legalFrameworkOptions = context.legalFrameworkOptions,
+                    selectedLegalFrameworkIds = selectedLegalFrameworkIds,
+                    onSelectedLegalFrameworkIdsChange = { selectedLegalFrameworkIds = it },
+                    rulebookOptions = context.rulebookOptions,
+                    selectedRulebookIds = selectedRulebookIds,
+                    onSelectedRulebookIdsChange = { selectedRulebookIds = it },
+                    measurementSheets = measurementSheets,
+                    onMeasurementSheetChange = { key, sheet -> measurementSheets = measurementSheets + (key to sheet) },
+                    enabled = !formLoading,
+                )
+
+                when {
+                    contextLoading -> Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Text("Učitavam blokove iz templatea...")
+                    }
+                    !context.hasTemplates -> Text(
+                        "Za ovaj RN nije pronađen povezani template.",
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
                     )
-                    DocumentationMultiSelectField(
-                        label = "Uređaji za zapisnik",
-                        options = visibleMeasurementEquipmentOptions,
-                        selectedIds = selectedEquipmentIds,
-                        enabled = !formLoading,
-                        emptyText = "Nema upisane mjerne i ispitne opreme za ovu organizaciju.",
-                        onChange = { selectedEquipmentIds = it },
+                    blockTemplates.isEmpty() -> Text(
+                        "Template nema dodatnih blokova za mobilni prikaz.",
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
                     )
+                    else -> blockTemplates.forEach { template ->
+                        TemplateBlockOverview(
+                            template = template,
+                            values = templateFieldValues,
+                            standardControls = templateControls,
+                            onChange = { field, value ->
+                                templateFieldValues = templateFieldValues + (templateFieldStateKey(template, field) to value)
+                            },
+                        )
+                    }
                 }
 
-                WizardSection(title = "Pravilnici i propisi", icon = Icons.Rounded.Lock) {
-                    DocumentationMultiSelectField(
-                        label = "Propisi iz web predloška",
-                        options = context.legalFrameworkOptions,
-                        selectedIds = selectedLegalFrameworkIds,
-                        enabled = !formLoading,
-                        emptyText = "Nema propisa povezanih s predlošcima.",
-                        onChange = { selectedLegalFrameworkIds = it },
-                    )
-                    DocumentationMultiSelectField(
-                        label = "Interni pravilnici",
-                        options = context.rulebookOptions,
-                        selectedIds = selectedRulebookIds,
-                        enabled = !formLoading,
-                        emptyText = "Nema pravilnika za ovu organizaciju.",
-                        onChange = { selectedRulebookIds = it },
-                    )
+                if (blockTemplates.isEmpty()) {
+                    WizardSection(title = "Mjerna i ispitna oprema", icon = Icons.Rounded.Work) {
+                        WorkOrderSelectField(
+                            label = "Grupa mjerne opreme",
+                            value = measurementEquipmentGroup,
+                            valueLabel = measurementEquipmentGroup.ifBlank { "Bez odabira" },
+                            options = measurementEquipmentGroupOptions,
+                            enabled = !formLoading,
+                            onSelect = { measurementEquipmentGroup = it },
+                        )
+                        DocumentationMultiSelectField(
+                            label = "Uređaji za zapisnik",
+                            options = visibleMeasurementEquipmentOptions,
+                            selectedIds = selectedEquipmentIds,
+                            enabled = !formLoading,
+                            emptyText = "Nema upisane mjerne i ispitne opreme za ovu organizaciju.",
+                            onChange = { selectedEquipmentIds = it },
+                        )
+                    }
+
+                    WizardSection(title = "Pravilnici i propisi", icon = Icons.Rounded.Lock) {
+                        DocumentationMultiSelectField(
+                            label = "Propisi iz web predloška",
+                            options = context.legalFrameworkOptions,
+                            selectedIds = selectedLegalFrameworkIds,
+                            enabled = !formLoading,
+                            emptyText = "Nema propisa povezanih s predlošcima.",
+                            onChange = { selectedLegalFrameworkIds = it },
+                        )
+                        DocumentationMultiSelectField(
+                            label = "Interni pravilnici",
+                            options = context.rulebookOptions,
+                            selectedIds = selectedRulebookIds,
+                            enabled = !formLoading,
+                            emptyText = "Nema pravilnika za ovu organizaciju.",
+                            onChange = { selectedRulebookIds = it },
+                        )
+                    }
                 }
 
                 if (blockTemplates.isEmpty()) {
@@ -5795,31 +5818,33 @@ private fun WorkOrderDocumentationWizardDialog(
                     }
                 }
 
-                WizardSection(title = "Excel / mjerenja", icon = Icons.Rounded.Description) {
-                    when {
-                        contextLoading -> Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                            Text("Učitavam Excel tablice...")
-                        }
-                        measurementTemplates.isEmpty() -> Text(
-                            "Povezani predlošci nemaju Excel tablicu za mjerenja.",
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
-                        )
-                        else -> measurementTemplates.forEach { template ->
-                            template.measurementTables.forEach { table ->
-                                MeasurementTableEditor(
-                                    template = template,
-                                    table = table,
-                                    sheet = measurementSheets[measurementSheetStateKey(template, table)] ?: table.sheet,
-                                    enabled = !formLoading,
-                                    onSheetChange = { nextSheet ->
-                                        measurementSheets = measurementSheets + (measurementSheetStateKey(template, table) to nextSheet)
-                                    },
-                                )
+                if (blockTemplates.isEmpty()) {
+                    WizardSection(title = "Excel / mjerenja", icon = Icons.Rounded.Description) {
+                        when {
+                            contextLoading -> Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                Text("Učitavam Excel tablice...")
+                            }
+                            measurementTemplates.isEmpty() -> Text(
+                                "Povezani predlošci nemaju Excel tablicu za mjerenja.",
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+                            )
+                            else -> measurementTemplates.forEach { template ->
+                                template.measurementTables.forEach { table ->
+                                    MeasurementTableEditor(
+                                        template = template,
+                                        table = table,
+                                        sheet = measurementSheets[measurementSheetStateKey(template, table)] ?: table.sheet,
+                                        enabled = !formLoading,
+                                        onSheetChange = { nextSheet ->
+                                            measurementSheets = measurementSheets + (measurementSheetStateKey(template, table) to nextSheet)
+                                        },
+                                    )
+                                }
                             }
                         }
                     }
@@ -6793,6 +6818,46 @@ private fun DocumentationSummaryRow(
 }
 
 @Composable
+private fun DocumentationProcessToolbar(
+    flowItems: List<DocumentationServiceFlowItem>,
+    selectedService: String,
+    enabled: Boolean,
+    onSelectService: (String) -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.48f),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Rounded.Work, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                Text("Proces izrade", fontWeight = FontWeight.Black)
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                flowItems.forEachIndexed { index, item ->
+                    FilterChip(
+                        selected = item.serviceName.equals(selectedService, ignoreCase = true),
+                        onClick = { onSelectService(item.serviceName) },
+                        enabled = enabled,
+                        label = {
+                            Text(
+                                "${index + 1}. ${item.serviceName}",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun DocumentationRuntimeActionBar(
     workOrder: WorkOrder,
     flowItems: List<DocumentationServiceFlowItem>,
@@ -7146,7 +7211,7 @@ private fun MeasurementGridCell(
 private fun TemplateBlockOverview(
     template: WorkOrderDocumentationTemplate,
     values: Map<String, String>,
-    enabled: Boolean,
+    standardControls: DocumentationTemplateStandardControls,
     onChange: (WorkOrderDocumentationField, String) -> Unit,
 ) {
     val sections = remember(template.fieldBlocks) {
@@ -7178,13 +7243,42 @@ private fun TemplateBlockOverview(
                     template = template,
                     section = section,
                     values = values,
-                    enabled = enabled,
+                    standardControls = standardControls,
                     onChange = onChange,
                 )
             }
         }
     }
 }
+
+private data class DocumentationTemplateStandardControls(
+    val documentNumber: String,
+    val serviceName: String,
+    val inspectionDate: String,
+    val onInspectionDateChange: (String) -> Unit,
+    val issuedDate: String,
+    val onIssuedDateChange: (String) -> Unit,
+    val inspectionType: String,
+    val inspectionOptions: List<Pair<String, String>>,
+    val onInspectionTypeChange: (String) -> Unit,
+    val testingLocation: String,
+    val onTestingLocationChange: (String) -> Unit,
+    val measurementEquipmentGroup: String,
+    val measurementEquipmentGroupOptions: List<Pair<String, String>>,
+    val onMeasurementEquipmentGroupChange: (String) -> Unit,
+    val measurementEquipmentOptions: List<WorkOrderDocumentationOption>,
+    val selectedEquipmentIds: Set<String>,
+    val onSelectedEquipmentIdsChange: (Set<String>) -> Unit,
+    val legalFrameworkOptions: List<WorkOrderDocumentationOption>,
+    val selectedLegalFrameworkIds: Set<String>,
+    val onSelectedLegalFrameworkIdsChange: (Set<String>) -> Unit,
+    val rulebookOptions: List<WorkOrderDocumentationOption>,
+    val selectedRulebookIds: Set<String>,
+    val onSelectedRulebookIdsChange: (Set<String>) -> Unit,
+    val measurementSheets: Map<String, WorkOrderMeasurementSheet>,
+    val onMeasurementSheetChange: (String, WorkOrderMeasurementSheet) -> Unit,
+    val enabled: Boolean,
+)
 
 private data class TemplateBlockSection(
     val id: String,
@@ -7240,11 +7334,26 @@ private fun TemplateBlockSectionCard(
     template: WorkOrderDocumentationTemplate,
     section: TemplateBlockSection,
     values: Map<String, String>,
-    enabled: Boolean,
+    standardControls: DocumentationTemplateStandardControls,
     onChange: (WorkOrderDocumentationField, String) -> Unit,
 ) {
-    var expanded by remember(template.id, section.id) { mutableStateOf(false) }
-    val canExpand = section.blocks.isNotEmpty() || section.header?.summary?.isNotBlank() == true || section.header?.helpText?.isNotBlank() == true
+    var expanded by remember(template.id, section.id) { mutableStateOf(isBasicTemplateSection(section)) }
+    val includeBasics = isBasicTemplateSection(section)
+    val includeEquipment = isEquipmentTemplateSection(section)
+    val includeLegal = isLegalTemplateSection(section)
+    val includeMeasurements = isMeasurementTemplateSection(section)
+    val handledTypes = setOf("equipment_list", "legal_list", "measurement_table")
+    val detailBlocks = section.blocks.filterNot { block ->
+        handledTypes.contains(block.type.lowercase(Locale.getDefault())) ||
+            (includeBasics && isBasicStandardTemplateBlock(block))
+    }
+    val canExpand = includeBasics ||
+        includeEquipment ||
+        includeLegal ||
+        includeMeasurements ||
+        detailBlocks.isNotEmpty() ||
+        section.header?.summary?.isNotBlank() == true ||
+        section.header?.helpText?.isNotBlank() == true
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -7322,20 +7431,55 @@ private fun TemplateBlockSectionCard(
                     )
                 }
                 if (section.blocks.isEmpty()) {
-                    Text(
-                        "Nema dodatnih polja u ovom poglavlju.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
-                    )
-                } else {
-                    section.blocks.forEach { block ->
+                    if (!includeBasics && !includeEquipment && !includeLegal && !includeMeasurements) {
+                        Text(
+                            "Nema dodatnih polja u ovom poglavlju.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                        )
+                    }
+                }
+                if (includeBasics) {
+                    TemplateBasicControls(standardControls)
+                }
+                if (includeEquipment) {
+                    TemplateEquipmentControls(standardControls)
+                }
+                if (includeLegal) {
+                    TemplateLegalControls(standardControls)
+                }
+                if (includeMeasurements) {
+                    val tables = getMeasurementTablesForSection(template, section)
+                    if (tables.isEmpty()) {
+                        Text(
+                            "Ovaj blok nema povezanu Excel tablicu.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                        )
+                    } else {
+                        tables.forEach { table ->
+                            val stateKey = measurementSheetStateKey(template, table)
+                            MeasurementTableEditor(
+                                template = template,
+                                table = table,
+                                sheet = standardControls.measurementSheets[stateKey] ?: table.sheet,
+                                enabled = standardControls.enabled,
+                                onSheetChange = { nextSheet ->
+                                    standardControls.onMeasurementSheetChange(stateKey, nextSheet)
+                                },
+                            )
+                        }
+                    }
+                }
+                if (detailBlocks.isNotEmpty()) {
+                    detailBlocks.forEach { block ->
                         val editableField = findTemplateFieldForBlock(template, block)
                         TemplateBlockDetailRow(
                             template = template,
                             block = block,
                             editableField = editableField,
                             value = editableField?.let { values[templateFieldStateKey(template, it)] }.orEmpty(),
-                            enabled = enabled,
+                            enabled = standardControls.enabled,
                             onChange = onChange,
                         )
                     }
@@ -7350,6 +7494,159 @@ private fun TemplateBlockSectionCard(
             }
         }
     }
+}
+
+@Composable
+private fun TemplateBasicControls(controls: DocumentationTemplateStandardControls) {
+    DocumentationNumberPreview(
+        documentNumber = controls.documentNumber,
+        serviceName = controls.serviceName,
+    )
+    WorkOrderDatePickerField(
+        "Datum ispitivanja",
+        controls.inspectionDate,
+        controls.onInspectionDateChange,
+        controls.enabled,
+    )
+    WorkOrderDatePickerField(
+        "Datum izdavanja",
+        controls.issuedDate,
+        controls.onIssuedDateChange,
+        controls.enabled,
+    )
+    WorkOrderSelectField(
+        label = "Vrsta ispitivanja",
+        value = controls.inspectionType,
+        valueLabel = controls.inspectionType.ifBlank {
+            if (controls.inspectionOptions.isEmpty()) "Nema opcija u templateu" else "Odaberi vrstu ispitivanja"
+        },
+        options = controls.inspectionOptions,
+        enabled = controls.enabled,
+        onSelect = controls.onInspectionTypeChange,
+    )
+    WorkOrderTextField(
+        "Mjesto ispitivanja",
+        controls.testingLocation,
+        controls.onTestingLocationChange,
+        controls.enabled,
+    )
+}
+
+@Composable
+private fun TemplateEquipmentControls(controls: DocumentationTemplateStandardControls) {
+    WorkOrderSelectField(
+        label = "Grupa mjerne opreme",
+        value = controls.measurementEquipmentGroup,
+        valueLabel = controls.measurementEquipmentGroup.ifBlank { "Bez odabira" },
+        options = controls.measurementEquipmentGroupOptions,
+        enabled = controls.enabled,
+        onSelect = controls.onMeasurementEquipmentGroupChange,
+    )
+    DocumentationMultiSelectField(
+        label = "Uređaji za zapisnik",
+        options = controls.measurementEquipmentOptions,
+        selectedIds = controls.selectedEquipmentIds,
+        enabled = controls.enabled,
+        emptyText = "Nema upisane mjerne i ispitne opreme za ovu organizaciju.",
+        onChange = controls.onSelectedEquipmentIdsChange,
+    )
+}
+
+@Composable
+private fun TemplateLegalControls(controls: DocumentationTemplateStandardControls) {
+    DocumentationMultiSelectField(
+        label = "Propisi iz web predloška",
+        options = controls.legalFrameworkOptions,
+        selectedIds = controls.selectedLegalFrameworkIds,
+        enabled = controls.enabled,
+        emptyText = "Nema propisa povezanih s predlošcima.",
+        onChange = controls.onSelectedLegalFrameworkIdsChange,
+    )
+    DocumentationMultiSelectField(
+        label = "Interni pravilnici",
+        options = controls.rulebookOptions,
+        selectedIds = controls.selectedRulebookIds,
+        enabled = controls.enabled,
+        emptyText = "Nema pravilnika za ovu organizaciju.",
+        onChange = controls.onSelectedRulebookIdsChange,
+    )
+}
+
+private fun normalizeTemplateSectionLookup(value: String): String =
+    value.trim()
+        .lowercase(Locale.getDefault())
+        .replace("č", "c")
+        .replace("ć", "c")
+        .replace("ž", "z")
+        .replace("š", "s")
+        .replace("đ", "d")
+        .replace(Regex("\\s+"), " ")
+
+private fun TemplateBlockSection.lookupText(): String =
+    normalizeTemplateSectionLookup(
+        listOf(
+            title,
+            subtitle,
+            header?.label.orEmpty(),
+            header?.summary.orEmpty(),
+            blocks.joinToString(" ") { "${it.group} ${it.label} ${it.typeLabel}" },
+        ).joinToString(" "),
+    )
+
+private fun isBasicTemplateSection(section: TemplateBlockSection): Boolean {
+    val lookup = section.lookupText()
+    return lookup.contains("osnovn") || lookup.contains("opci podaci")
+}
+
+private fun isEquipmentTemplateSection(section: TemplateBlockSection): Boolean {
+    val lookup = section.lookupText()
+    return section.blocks.any { it.type.equals("equipment_list", ignoreCase = true) } ||
+        lookup.contains("mjerna") ||
+        lookup.contains("ispitna oprema")
+}
+
+private fun isLegalTemplateSection(section: TemplateBlockSection): Boolean {
+    val lookup = section.lookupText()
+    return section.blocks.any { it.type.equals("legal_list", ignoreCase = true) } ||
+        lookup.contains("propis") ||
+        lookup.contains("pravilnik")
+}
+
+private fun isMeasurementTemplateSection(section: TemplateBlockSection): Boolean {
+    val lookup = section.lookupText()
+    return section.blocks.any { it.type.equals("measurement_table", ignoreCase = true) } ||
+        lookup.contains("rezultat") ||
+        lookup.contains("mjerenj") ||
+        lookup.contains("excel")
+}
+
+private fun isBasicStandardTemplateBlock(block: WorkOrderDocumentationTemplateBlock): Boolean {
+    val lookup = normalizeTemplateSectionLookup("${block.label} ${block.key} ${block.tokenKey}")
+    return lookup.contains("broj zapisnika") ||
+        lookup.contains("datum ispitivanja") ||
+        lookup.contains("datum izdavanja") ||
+        lookup.contains("vrsta ispitivanja") ||
+        lookup.contains("mjesto ispitivanja")
+}
+
+private fun getMeasurementTablesForSection(
+    template: WorkOrderDocumentationTemplate,
+    section: TemplateBlockSection,
+): List<WorkOrderMeasurementTable> {
+    val measurementBlocks = section.blocks.filter { it.type.equals("measurement_table", ignoreCase = true) }
+    if (measurementBlocks.isEmpty()) {
+        return if (isMeasurementTemplateSection(section)) template.measurementTables else emptyList()
+    }
+    val blockKeys = measurementBlocks
+        .flatMap { block -> listOf(block.id, block.key, block.tokenKey, block.label) }
+        .map(::normalizeTemplateSectionLookup)
+        .filter { it.isNotBlank() }
+        .toSet()
+    return template.measurementTables.filter { table ->
+        listOf(table.id, table.key, table.tokenKey, table.label)
+            .map(::normalizeTemplateSectionLookup)
+            .any { it.isNotBlank() && blockKeys.contains(it) }
+    }.ifEmpty { template.measurementTables }
 }
 
 @Composable

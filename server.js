@@ -88,7 +88,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.39.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.40.apk";
 const rootDir = resolve(process.cwd());
 const distDir = resolve(rootDir, "dist");
 const staticRoot = existsSync(resolve(distDir, "index.html")) ? distDir : rootDir;
@@ -11132,7 +11132,7 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
     ? workOrder.serviceItems.map((item) => (item && typeof item === "object" ? item : { name: item }))
     : [{ name: workOrder.serviceLine || "" }];
   const templates = [];
-  const seenTemplateIds = new Set();
+  const seenTemplateKeys = new Set();
   let primaryDefaults = null;
 
   services.forEach((service, serviceIndex) => {
@@ -11142,10 +11142,11 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
         return;
       }
       const normalizedTemplateId = normalizeInputValue(template.id);
-      if (!normalizedTemplateId || seenTemplateIds.has(normalizedTemplateId)) {
+      const templateServiceKey = `${serviceIndex}::${normalizedTemplateId}`;
+      if (!normalizedTemplateId || seenTemplateKeys.has(templateServiceKey)) {
         return;
       }
-      seenTemplateIds.add(normalizedTemplateId);
+      seenTemplateKeys.add(templateServiceKey);
       const latestRecord = findLatestMobileDocumentRecordForTemplate(template, workOrder, scopedSnapshot);
       const recordDefaults = buildMobileDocumentRecordWizardDefaults(latestRecord, workOrder);
       if (!primaryDefaults && Object.keys(recordDefaults).length > 0) {
@@ -11669,7 +11670,7 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
       if (!template || String(template.status || "active").toLowerCase() === "archived") {
         return;
       }
-      const pairKey = `${String(workOrder.id)}::${String(template.id)}`;
+      const pairKey = `${String(workOrder.id)}::${serviceIndex}::${String(template.id)}`;
       if (seenPairs.has(pairKey)) {
         return;
       }
