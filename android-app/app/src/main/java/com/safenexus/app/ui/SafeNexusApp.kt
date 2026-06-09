@@ -5805,6 +5805,7 @@ private data class DocumentationServiceFlowItem(
     val templateCount: Int,
 )
 
+private const val DOCUMENTATION_BASICS_FLOW_KEY = "__basics__"
 private const val DOCUMENTATION_SUMMARY_FLOW_KEY = "__summary__"
 
 private fun WorkOrderDocumentationTemplate.documentationServiceKey(): String {
@@ -6090,12 +6091,15 @@ private fun WorkOrderDocumentationWizardDialog(
         buildDocumentationServiceFlowItems(context.templates, workOrder)
     }
     var selectedFlowService by remember(workOrder.id, serviceFlowItems) {
-        mutableStateOf(serviceFlowItems.firstOrNull()?.serviceKey.orEmpty())
+        mutableStateOf(DOCUMENTATION_BASICS_FLOW_KEY)
     }
+    val basicsFlowSelected = selectedFlowService == DOCUMENTATION_BASICS_FLOW_KEY
     val summaryFlowSelected = selectedFlowService == DOCUMENTATION_SUMMARY_FLOW_KEY
     val selectedFlowItem = remember(serviceFlowItems, selectedFlowService) {
         if (selectedFlowService == DOCUMENTATION_SUMMARY_FLOW_KEY) {
             null
+        } else if (selectedFlowService == DOCUMENTATION_BASICS_FLOW_KEY) {
+            serviceFlowItems.firstOrNull()
         } else {
             serviceFlowItems.firstOrNull { item ->
                 item.serviceKey.equals(selectedFlowService, ignoreCase = true)
@@ -6408,8 +6412,18 @@ private fun WorkOrderDocumentationWizardDialog(
                     DocumentationProcessToolbar(
                         flowItems = serviceFlowItems,
                         selectedService = selectedFlowService,
+                        documentNumber = currentDocumentNumber,
+                        serviceName = selectedFlowItem?.serviceName ?: inspectionType,
+                        inspectionDate = inspectionDate,
+                        issuedDate = issuedDate,
+                        inspectionType = inspectionType,
+                        testingLocation = testingLocation,
+                        measurementEquipmentGroup = measurementEquipmentGroup,
+                        outsideTemperature = outsideTemperature,
+                        relativeHumidity = relativeHumidity,
                         enabled = !formLoading,
                         onSelectService = { selectedFlowService = it },
+                        onOpenBasics = { basicsSheetOpen = true },
                     )
                 }
                 if (requiredWarning.isNotBlank()) {
@@ -6423,19 +6437,7 @@ private fun WorkOrderDocumentationWizardDialog(
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
 
-                if (!summaryFlowSelected) {
-                DocumentationCoreBasicsLauncherCard(
-                    documentNumber = currentDocumentNumber,
-                    serviceName = selectedFlowItem?.serviceName ?: inspectionType,
-                    inspectionDate = inspectionDate,
-                    issuedDate = issuedDate,
-                    inspectionType = inspectionType,
-                    testingLocation = testingLocation,
-                    measurementEquipmentGroup = measurementEquipmentGroup,
-                    outsideTemperature = outsideTemperature,
-                    relativeHumidity = relativeHumidity,
-                    onOpen = { basicsSheetOpen = true },
-                )
+                if (!summaryFlowSelected && !basicsFlowSelected) {
                 WizardSection(title = "Objekt zapisnika", icon = Icons.Rounded.Business) {
                     WorkOrderSelectField(
                         label = "Objekt / oprema",
@@ -6663,7 +6665,7 @@ private fun WorkOrderDocumentationWizardDialog(
                 onClick = {
                     if (missingRequiredFields.isNotEmpty()) {
                         requiredWarning = "Popuni obavezno: ${missingRequiredFields.take(5).joinToString(", ")}${if (missingRequiredFields.size > 5) "..." else ""}."
-                        selectedFlowService = serviceFlowItems.firstOrNull()?.serviceKey.orEmpty()
+                        selectedFlowService = DOCUMENTATION_BASICS_FLOW_KEY
                         return@Button
                     }
                     requiredWarning = ""
@@ -7668,8 +7670,18 @@ private fun DocumentationSummaryRow(
 private fun DocumentationProcessToolbar(
     flowItems: List<DocumentationServiceFlowItem>,
     selectedService: String,
+    documentNumber: String,
+    serviceName: String,
+    inspectionDate: String,
+    issuedDate: String,
+    inspectionType: String,
+    testingLocation: String,
+    measurementEquipmentGroup: String,
+    outsideTemperature: String,
+    relativeHumidity: String,
     enabled: Boolean,
     onSelectService: (String) -> Unit,
+    onOpenBasics: () -> Unit,
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -7685,6 +7697,18 @@ private fun DocumentationProcessToolbar(
                 Text("Proces izrade", fontWeight = FontWeight.Black)
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = selectedService == DOCUMENTATION_BASICS_FLOW_KEY,
+                    onClick = { onSelectService(DOCUMENTATION_BASICS_FLOW_KEY) },
+                    enabled = enabled,
+                    label = {
+                        Text(
+                            "Osnovno",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                )
                 flowItems.forEachIndexed { index, item ->
                     FilterChip(
                         selected = item.serviceKey.equals(selectedService, ignoreCase = true),
@@ -7710,6 +7734,20 @@ private fun DocumentationProcessToolbar(
                             overflow = TextOverflow.Ellipsis,
                         )
                     },
+                )
+            }
+            if (selectedService == DOCUMENTATION_BASICS_FLOW_KEY) {
+                DocumentationCoreBasicsLauncherCard(
+                    documentNumber = documentNumber,
+                    serviceName = serviceName,
+                    inspectionDate = inspectionDate,
+                    issuedDate = issuedDate,
+                    inspectionType = inspectionType,
+                    testingLocation = testingLocation,
+                    measurementEquipmentGroup = measurementEquipmentGroup,
+                    outsideTemperature = outsideTemperature,
+                    relativeHumidity = relativeHumidity,
+                    onOpen = onOpenBasics,
                 )
             }
         }
