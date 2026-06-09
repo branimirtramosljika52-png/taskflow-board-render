@@ -5435,11 +5435,39 @@ private fun WorkOrderDocumentationActionDialog(
 }
 
 private data class DocumentationServiceFlowItem(
+    val serviceKey: String,
     val serviceName: String,
+    val serviceCode: String,
+    val serviceIndex: Int,
     val documentNumbers: List<String>,
     val documentNames: List<String>,
     val templateCount: Int,
 )
+
+private fun WorkOrderDocumentationTemplate.documentationServiceKey(): String {
+    val indexKey = serviceIndex.takeIf { it >= 0 }?.let { "service-$it" }.orEmpty()
+    val fallback = listOf(serviceCode, serviceName, documentType, title)
+        .firstOrNull { it.isNotBlank() }
+        .orEmpty()
+        .lowercase(Locale.getDefault())
+    return indexKey.ifBlank { fallback.ifBlank { id } }
+}
+
+private fun documentationServiceShortCode(
+    serviceCode: String,
+    serviceName: String,
+    serviceIndex: Int,
+): String {
+    val explicitCode = serviceCode.trim()
+    if (explicitCode.isNotBlank() && explicitCode.length <= 18) return explicitCode.uppercase(Locale.getDefault())
+    val source = explicitCode.ifBlank { serviceName }
+    val acronym = source
+        .split(Regex("[^\\p{L}\\p{N}]+"))
+        .mapNotNull { part -> part.firstOrNull()?.uppercaseChar()?.toString() }
+        .joinToString("")
+        .take(8)
+    return acronym.ifBlank { "USL-${serviceIndex + 1}" }
+}
 
 private fun buildDocumentationServiceFlowItems(
     templates: List<WorkOrderDocumentationTemplate>,
@@ -5449,7 +5477,10 @@ private fun buildDocumentationServiceFlowItems(
         val fallbackService = workOrder.displayService.takeIf { it != "Bez upisane usluge" }.orEmpty()
         return listOf(
             DocumentationServiceFlowItem(
+                serviceKey = "fallback",
                 serviceName = fallbackService.ifBlank { "Usluga" },
+                serviceCode = "USL-1",
+                serviceIndex = 0,
                 documentNumbers = listOf(workOrder.displayNumber).filter { it.isNotBlank() },
                 documentNames = emptyList(),
                 templateCount = 0,
@@ -5457,16 +5488,53 @@ private fun buildDocumentationServiceFlowItems(
         )
     }
     return templates
-        .groupBy { template -> template.serviceName.ifBlank { template.documentType.ifBlank { template.title } }.ifBlank { "Usluga" } }
-        .map { (serviceName, serviceTemplates) ->
+        .groupBy { template -> template.documentationServiceKey() }
+        .map { (serviceKey, serviceTemplates) ->
+            val firstTemplate = serviceTemplates.minWithOrNull(
+                compareBy<WorkOrderDocumentationTemplate> { it.serviceIndex.takeIf { index -> index >= 0 } ?: Int.MAX_VALUE }
+                    .thenBy { it.serviceName.lowercase(Locale.getDefault()) }
+            )
+            val serviceName = firstTemplate?.serviceName
+                ?.ifBlank { firstTemplate.documentType.ifBlank { firstTemplate.title } }
+                ?.ifBlank { "Usluga" }
+                ?: "Usluga"
+            val serviceIndex = firstTemplate?.serviceIndex ?: Int.MAX_VALUE
+            val serviceCode = documentationServiceShortCode(firstTemplate?.serviceCode.orEmpty(), serviceName, serviceIndex.takeIf { it != Int.MAX_VALUE } ?: 0)
             DocumentationServiceFlowItem(
+                serviceKey = serviceKey,
                 serviceName = serviceName,
+                serviceCode = serviceCode,
+                serviceIndex = serviceIndex,
                 documentNumbers = serviceTemplates.mapNotNull { template -> template.documentNumber.ifBlank { null } }.distinct(),
                 documentNames = serviceTemplates.mapNotNull { template -> template.documentName.ifBlank { null } }.distinct(),
                 templateCount = serviceTemplates.size,
             )
         }
-        .sortedBy { it.serviceName.lowercase(Locale.getDefault()) }
+        .sortedWith(compareBy<DocumentationServiceFlowItem> { it.serviceIndex }.thenBy { it.serviceName.lowercase(Locale.getDefault()) })
+}
+
+private fun inspectionTypeMatchesOptions(value: String, options: List<Pair<String, String>>): Boolean {
+    val trimmed = value.trim()
+    if (trimmed.isBlank()) return false
+    return options.any { option ->
+        option.first.equals(trimmed, ignoreCase = true) || option.second.equals(trimmed, ignoreCase = true)
+    }
+}
+
+private fun chooseInspectionTypeValue(
+    savedValue: String,
+    options: List<Pair<String, String>>,
+    fallbackValue: String,
+): String {
+    val saved = savedValue.trim()
+    if (saved.isNotBlank() && (options.isEmpty() || inspectionTypeMatchesOptions(saved, options))) {
+        return saved
+    }
+    val fallback = fallbackValue.trim()
+    if (fallback.isNotBlank() && (options.isEmpty() || inspectionTypeMatchesOptions(fallback, options))) {
+        return fallback
+    }
+    return options.firstOrNull()?.first.orEmpty()
 }
 
 @Composable
@@ -5486,15 +5554,36 @@ private fun WorkOrderDocumentationWizardDialog(
             user.id to user.label.ifBlank { user.fullName.ifBlank { user.email } }
         }
     }
-    val templateInspectionOptions = remember(context) {
-        buildTemplateInspectionTypeOptions(context.templates)
+    val serviceFlowItems = remember(context.templates, workOrder.displayNumber, workOrder.displayService) {
+        buildDocumentationServiceFlowItems(context.templates, workOrder)
     }
-    val templateInspectionDefault = remember(context) {
-        getTemplateInspectionTypeDefault(context.templates)
+    var selectedFlowService by remember(workOrder.id, serviceFlowItems) {
+        mutableStateOf(serviceFlowItems.firstOrNull()?.serviceKey.orEmpty())
+    }
+    val selectedFlowItem = remember(serviceFlowItems, selectedFlowService) {
+        serviceFlowItems.firstOrNull { item ->
+            item.serviceKey.equals(selectedFlowService, ignoreCase = true)
+        } ?: serviceFlowItems.firstOrNull()
+    }
+    val activeTemplates = remember(context.templates, selectedFlowItem?.serviceKey) {
+        val serviceKey = selectedFlowItem?.serviceKey.orEmpty()
+        if (serviceKey.isBlank() || serviceKey == "fallback") {
+            context.templates
+        } else {
+            context.templates.filter { template ->
+                template.documentationServiceKey().equals(serviceKey, ignoreCase = true)
+            }.ifEmpty { context.templates }
+        }
+    }
+    val templateInspectionOptions = remember(activeTemplates) {
+        buildTemplateInspectionTypeOptions(activeTemplates)
+    }
+    val templateInspectionDefault = remember(activeTemplates) {
+        getTemplateInspectionTypeDefault(activeTemplates)
     }
     val inspectionOptions = templateInspectionOptions
-    val defaultInspectionType = remember(templateInspectionDefault) {
-        templateInspectionDefault
+    val defaultInspectionType = remember(templateInspectionDefault, inspectionOptions) {
+        chooseInspectionTypeValue(templateInspectionDefault, inspectionOptions, "")
     }
     val defaults = context.defaults
     var inspectionDate by remember(workOrder.id, defaults.inspectionDate) { mutableStateOf(defaults.inspectionDate.ifBlank { today }) }
@@ -5503,17 +5592,13 @@ private fun WorkOrderDocumentationWizardDialog(
         mutableStateOf(defaults.testingLocation.ifBlank { workOrder.locationName })
     }
     val initialInspectionType = remember(defaults.inspectionType, defaultInspectionType, inspectionOptions) {
-        val saved = defaults.inspectionType.trim()
-        if (saved.isNotBlank() && (inspectionOptions.isEmpty() || inspectionOptions.any {
-                it.first.equals(saved, ignoreCase = true) || it.second.equals(saved, ignoreCase = true)
-            })) {
-            saved
-        } else {
-            defaultInspectionType
-        }
+        chooseInspectionTypeValue(defaults.inspectionType, inspectionOptions, defaultInspectionType)
     }
     var inspectionType by remember(workOrder.id, initialInspectionType) {
         mutableStateOf(initialInspectionType)
+    }
+    LaunchedEffect(selectedFlowService, defaultInspectionType, inspectionOptions) {
+        inspectionType = chooseInspectionTypeValue(inspectionType, inspectionOptions, defaultInspectionType)
     }
     var outsideTemperature by remember(workOrder.id, defaults.outsideTemperature) { mutableStateOf(defaults.outsideTemperature) }
     var relativeHumidity by remember(workOrder.id, defaults.relativeHumidity) { mutableStateOf(defaults.relativeHumidity) }
@@ -5573,19 +5658,8 @@ private fun WorkOrderDocumentationWizardDialog(
             }.ifEmpty { context.measurementEquipmentOptions }
         }
     }
-    val serviceFlowItems = remember(context.templates, workOrder.displayNumber, workOrder.displayService) {
-        buildDocumentationServiceFlowItems(context.templates, workOrder)
-    }
-    var selectedFlowService by remember(workOrder.id, serviceFlowItems) {
-        mutableStateOf(serviceFlowItems.firstOrNull()?.serviceName.orEmpty())
-    }
-    val selectedFlowItem = remember(serviceFlowItems, selectedFlowService) {
-        serviceFlowItems.firstOrNull { item ->
-            item.serviceName.equals(selectedFlowService, ignoreCase = true)
-        } ?: serviceFlowItems.firstOrNull()
-    }
     val currentDocumentNumber = selectedFlowItem?.documentNumbers?.firstOrNull()
-        ?: context.templates.firstOrNull()?.documentNumber
+        ?: activeTemplates.firstOrNull()?.documentNumber
         ?: workOrder.displayNumber
     var signatureMode by remember(workOrder.id, defaults.signatureMode) { mutableStateOf(defaults.signatureMode.ifBlank { "digital" }) }
     var validityMonths by remember(workOrder.id, defaults.validityMonths) { mutableStateOf(defaults.validityMonths.ifBlank { "12" }) }
@@ -5601,13 +5675,18 @@ private fun WorkOrderDocumentationWizardDialog(
     var electricalAuthorizationHolderUserId by remember(workOrder.id) { mutableStateOf("") }
     var tipkaloInspectorUserId by remember(workOrder.id) { mutableStateOf("") }
     var tipkaloAuthorizationHolderUserId by remember(workOrder.id) { mutableStateOf("") }
-    val promptTemplates = remember(context) {
+    val allPromptTemplates = remember(context) {
         context.templates
             .map { template -> template.copy(fields = template.fields.filter { it.label.isNotBlank() }) }
             .filter { it.fields.isNotEmpty() }
     }
-    val blockTemplates = remember(context) {
-        context.templates.filter { template -> template.fieldBlocks.isNotEmpty() }
+    val promptTemplates = remember(activeTemplates) {
+        activeTemplates
+            .map { template -> template.copy(fields = template.fields.filter { it.label.isNotBlank() }) }
+            .filter { it.fields.isNotEmpty() }
+    }
+    val blockTemplates = remember(activeTemplates) {
+        activeTemplates.filter { template -> template.fieldBlocks.isNotEmpty() }
     }
     val templateDefaultsKey = remember(context) {
         context.templates.joinToString("|") { template ->
@@ -5615,10 +5694,15 @@ private fun WorkOrderDocumentationWizardDialog(
         }
     }
     var templateFieldValues by remember(workOrder.id, templateDefaultsKey) {
-        mutableStateOf(defaultTemplateFieldValues(promptTemplates))
+        mutableStateOf(defaultTemplateFieldValues(allPromptTemplates))
     }
-    val measurementTemplates = remember(context) {
+    val allMeasurementTemplates = remember(context) {
         context.templates
+            .map { template -> template.copy(measurementTables = template.measurementTables.filter { it.sheet.columns.isNotEmpty() }) }
+            .filter { it.measurementTables.isNotEmpty() }
+    }
+    val measurementTemplates = remember(activeTemplates) {
+        activeTemplates
             .map { template -> template.copy(measurementTables = template.measurementTables.filter { it.sheet.columns.isNotEmpty() }) }
             .filter { it.measurementTables.isNotEmpty() }
     }
@@ -5628,7 +5712,7 @@ private fun WorkOrderDocumentationWizardDialog(
         }
     }
     var measurementSheets by remember(workOrder.id, measurementDefaultsKey) {
-        mutableStateOf(defaultMeasurementSheetValues(measurementTemplates))
+        mutableStateOf(defaultMeasurementSheetValues(allMeasurementTemplates))
     }
     val formLoading = isLoading || contextLoading
 
@@ -5651,9 +5735,7 @@ private fun WorkOrderDocumentationWizardDialog(
         text = {
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 660.dp)
-                    .verticalScroll(rememberScrollState()),
+                    .fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 if (serviceFlowItems.size > 1) {
@@ -5664,6 +5746,13 @@ private fun WorkOrderDocumentationWizardDialog(
                         onSelectService = { selectedFlowService = it },
                     )
                 }
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = if (serviceFlowItems.size > 1) 540.dp else 660.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
 
                 if (blockTemplates.isEmpty()) {
                     WizardSection(title = "Osnovni podaci", icon = Icons.Rounded.Description) {
@@ -5850,15 +5939,6 @@ private fun WorkOrderDocumentationWizardDialog(
                     }
                 }
 
-                WizardSection(title = "Uvjeti mjerenja", icon = Icons.Rounded.Map) {
-                    WorkOrderTextField("Vanjska temperatura", outsideTemperature, { outsideTemperature = it }, !formLoading)
-                    WorkOrderTextField("Relativna vlažnost", relativeHumidity, { relativeHumidity = it }, !formLoading)
-                    WorkOrderTextField("Brzina strujanja", airflowSpeed, { airflowSpeed = it }, !formLoading)
-                    WorkOrderTextField("Vrijeme", weather, { weather = it }, !formLoading)
-                    WorkOrderTextField("Stanje tla", groundCondition, { groundCondition = it }, !formLoading)
-                    WorkOrderTextField("Otpor tla", groundResistance, { groundResistance = it }, !formLoading)
-                }
-
                 WizardSection(title = "Osobe i potpis", icon = Icons.Rounded.Fingerprint) {
                     WorkOrderSelectField(
                         label = "Ispitivao",
@@ -5908,12 +5988,6 @@ private fun WorkOrderDocumentationWizardDialog(
                         enabled = !formLoading,
                         onSelect = { tipkaloAuthorizationHolderUserId = it },
                     )
-                    Text("Način potpisa", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SignatureModeChip("digital", "Digitalni", signatureMode, !formLoading) { signatureMode = it }
-                        SignatureModeChip("scan", "Sken", signatureMode, !formLoading) { signatureMode = it }
-                        SignatureModeChip("manual", "Ručni", signatureMode, !formLoading) { signatureMode = it }
-                    }
                 }
 
                 WizardSection(title = "Rokovi i mjerenja", icon = Icons.Rounded.CalendarMonth) {
@@ -5934,14 +6008,17 @@ private fun WorkOrderDocumentationWizardDialog(
                     selectedLegalCount = selectedLegalFrameworkIds.size,
                     selectedRulebookCount = selectedRulebookIds.size,
                     signatureMode = signatureMode,
+                    enabled = !formLoading,
+                    onSignatureMode = { signatureMode = it },
                 )
+                }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    val templatePayload = buildTemplateFieldPayload(promptTemplates, templateFieldValues)
-                    val sheetPayload = buildMeasurementSheetPayload(measurementTemplates, measurementSheets)
+                    val templatePayload = buildTemplateFieldPayload(allPromptTemplates, templateFieldValues)
+                    val sheetPayload = buildMeasurementSheetPayload(allMeasurementTemplates, measurementSheets)
                     val draft = WorkOrderDocumentationDraft(
                         inspectionDate = inspectionDate.trim(),
                         issuedDate = issuedDate.trim(),
@@ -6754,6 +6831,8 @@ private fun DocumentationSummarySection(
     selectedLegalCount: Int,
     selectedRulebookCount: Int,
     signatureMode: String,
+    enabled: Boolean,
+    onSignatureMode: (String) -> Unit,
 ) {
     WizardSection(title = "Sažetak", icon = Icons.Rounded.CheckCircle) {
         DocumentationSummaryRow("RN", workOrder.displayNumber)
@@ -6779,6 +6858,12 @@ private fun DocumentationSummarySection(
                 else -> signatureMode.ifBlank { "Digitalni" }
             },
         )
+        Text("Način potpisa", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            SignatureModeChip("digital", "Digitalni", signatureMode, enabled, onSignatureMode)
+            SignatureModeChip("scan", "Sken", signatureMode, enabled, onSignatureMode)
+            SignatureModeChip("manual", "Ručni", signatureMode, enabled, onSignatureMode)
+        }
         if (flowItems.size > 1) {
             Text(
                 "Izradit će se zapisnici za ${flowItems.size} usluge.",
@@ -6840,12 +6925,12 @@ private fun DocumentationProcessToolbar(
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 flowItems.forEachIndexed { index, item ->
                     FilterChip(
-                        selected = item.serviceName.equals(selectedService, ignoreCase = true),
-                        onClick = { onSelectService(item.serviceName) },
+                        selected = item.serviceKey.equals(selectedService, ignoreCase = true),
+                        onClick = { onSelectService(item.serviceKey) },
                         enabled = enabled,
                         label = {
                             Text(
-                                "${index + 1}. ${item.serviceName}",
+                                "${index + 1}. ${item.serviceCode}",
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
