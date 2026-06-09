@@ -44,6 +44,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
@@ -5294,7 +5295,7 @@ private fun WorkOrderDocumentationActionDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        modifier = Modifier.fillMaxWidth(0.96f),
+        modifier = Modifier.fillMaxWidth(0.98f),
         properties = DialogProperties(usePlatformDefaultWidth = false),
         title = {
             Column {
@@ -5488,7 +5489,7 @@ private fun WorkOrderDocumentationWizardDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 560.dp)
+                    .heightIn(max = 660.dp)
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
@@ -6087,6 +6088,7 @@ private class MobileMeasurementFormulaParser(
                 MobileFormulaValue.scalar(values.maxOrNull() ?: 0.0)
             }
             "COUNT" -> MobileFormulaValue.scalar(numericValues().size.toDouble())
+            "ROW" -> MobileFormulaValue.scalar(evaluateRowFunction(args))
             "ROWS" -> MobileFormulaValue.scalar(evaluateRowsFunction(args))
             "RANDBETWEEN" -> {
                 if (args.size != 2) error("RANDBETWEEN trazi 2 argumenta.")
@@ -6097,6 +6099,14 @@ private class MobileMeasurementFormulaParser(
             }
             else -> error("Nepodržana funkcija: $name")
         }
+    }
+
+    private fun evaluateRowFunction(args: List<String>): Double {
+        if (args.isEmpty()) return (currentRowIndex + 1).toDouble()
+        if (args.size != 1) error("ROW trazi 0 ili 1 argument.")
+        val cell = parseMeasurementCellReferenceMobile(args[0].trim())
+        if (cell != null) return (cell.rowIndex + 1).toDouble()
+        return (currentRowIndex + 1).toDouble()
     }
 
     private fun evaluateRowsFunction(args: List<String>): Double {
@@ -6520,13 +6530,15 @@ private fun MeasurementTableEditor(
     val selectedRaw = selectedRow?.cells?.get(selectedColumn?.id.orEmpty()).orEmpty()
     val selectedEditable = selectedColumn != null && selectedColumn.computed.isBlank() && !selectedColumn.readonly
     val selectedDisplay = sheet.measurementCellDisplay(selectedCell.rowIndex, selectedCell.columnIndex)
+    val gridLine = MaterialTheme.colorScheme.outline.copy(alpha = 0.34f)
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier.padding(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -6549,13 +6561,32 @@ private fun MeasurementTableEditor(
             } else {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Surface(
-                        modifier = Modifier.width(58.dp).height(56.dp),
-                        shape = RoundedCornerShape(14.dp),
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                        modifier = Modifier
+                            .width(64.dp)
+                            .height(46.dp)
+                            .border(1.dp, gridLine, RoundedCornerShape(6.dp)),
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.48f),
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                measurementCellReference(selectedCell.rowIndex, selectedCell.columnIndex),
+                                fontWeight = FontWeight.Black,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+                    Surface(
+                        modifier = Modifier
+                            .width(42.dp)
+                            .height(46.dp)
+                            .border(1.dp, gridLine, RoundedCornerShape(6.dp)),
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Text("fx", fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary)
@@ -6571,40 +6602,36 @@ private fun MeasurementTableEditor(
                             }
                         },
                         modifier = Modifier.weight(1f),
-                        label = {
-                            Text(
-                                "${measurementCellReference(selectedCell.rowIndex, selectedCell.columnIndex)}" +
-                                    if (selectedDisplay.isNotBlank()) " = $selectedDisplay" else "",
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        },
+                        placeholder = { Text(if (selectedDisplay.isNotBlank()) selectedDisplay else "Vrijednost ili formula") },
                         singleLine = true,
                         enabled = enabled && selectedEditable,
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(6.dp),
                     )
                 }
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                        .horizontalScroll(rememberScrollState())
+                        .border(1.dp, gridLine, RoundedCornerShape(6.dp))
+                        .clip(RoundedCornerShape(6.dp)),
                 ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        MeasurementHeaderCell("", 54, subtle = true)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        MeasurementHeaderCell("", 46, subtle = true)
                         visibleColumns.forEachIndexed { columnIndex, column ->
-                            MeasurementHeaderCell("${measurementColumnLabel(columnIndex)} · ${column.label}", column.width)
+                            MeasurementHeaderCell(measurementColumnLabel(columnIndex), column.width)
                         }
                     }
                     visibleRows.forEachIndexed { rowIndex, row ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Surface(
-                                modifier = Modifier.width(54.dp).height(56.dp),
-                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .width(46.dp)
+                                    .height(44.dp)
+                                    .border(0.6.dp, gridLine),
                                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
-                                    Text("${rowIndex + 1}", fontWeight = FontWeight.Bold)
+                                    Text("${rowIndex + 1}", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                                 }
                             }
                             visibleColumns.forEachIndexed { columnIndex, column ->
@@ -6632,18 +6659,23 @@ private fun MeasurementTableEditor(
 
 @Composable
 private fun MeasurementHeaderCell(label: String, width: Int, subtle: Boolean = false) {
-    Surface(
-        modifier = Modifier.width(width.coerceIn(54, 220).dp).height(44.dp),
-        shape = RoundedCornerShape(12.dp),
-        color = if (subtle) {
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
-        } else {
-            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.62f)
-        },
+    val gridLine = MaterialTheme.colorScheme.outline.copy(alpha = 0.34f)
+    Box(
+        modifier = Modifier
+            .width(width.coerceIn(46, 260).dp)
+            .height(34.dp)
+            .border(0.6.dp, gridLine)
+            .background(
+                if (subtle) {
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f)
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.76f)
+                },
+            )
+            .padding(horizontal = 6.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        Box(modifier = Modifier.padding(horizontal = 8.dp), contentAlignment = Alignment.CenterStart) {
-            Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Black, maxLines = 2)
-        }
+        Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Black, maxLines = 1)
     }
 }
 
@@ -6658,63 +6690,55 @@ private fun MeasurementGridCell(
     onChange: (String) -> Unit,
 ) {
     val editable = column.computed.isBlank() && !column.readonly
-    val value = displayValue.ifBlank { if (rawValue.trim().startsWith("=")) "#ERROR" else rawValue }
+    val isFormula = rawValue.trim().startsWith("=")
+    val value = if (isFormula) displayValue else displayValue.ifBlank { rawValue }
+    val hasError = value == "#ERROR"
+    val gridLine = MaterialTheme.colorScheme.outline.copy(alpha = 0.34f)
+    val cellWidth = column.width.coerceIn(120, 260).dp
     if (selected && editable) {
         OutlinedTextField(
             value = rawValue,
             onValueChange = onChange,
             modifier = Modifier
-                .width(column.width.coerceIn(110, 220).dp)
-                .height(56.dp),
+                .width(cellWidth)
+                .height(44.dp),
             singleLine = true,
             enabled = enabled,
             textStyle = MaterialTheme.typography.bodySmall,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(2.dp),
         )
         return
     }
-    Surface(
+    Box(
         modifier = Modifier
-            .width(column.width.coerceIn(110, 220).dp)
-            .height(56.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .clickable(enabled = enabled) { onClick() },
-        shape = RoundedCornerShape(12.dp),
-        color = when {
-            selected -> MaterialTheme.colorScheme.primaryContainer
-            !editable -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
-            rawValue.trim().startsWith("=") -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f)
-            else -> MaterialTheme.colorScheme.surface
-        },
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Text(
-                value.ifBlank { column.placeholder.ifBlank { column.label } },
-                style = MaterialTheme.typography.bodySmall,
-                fontWeight = if (selected) FontWeight.Black else FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                color = if (value.isBlank()) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.48f) else MaterialTheme.colorScheme.onSurface,
+            .width(cellWidth)
+            .height(44.dp)
+            .border(if (selected) 2.dp else 0.6.dp, if (selected) MaterialTheme.colorScheme.primary else gridLine)
+            .background(
+                when {
+                    hasError -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.58f)
+                    selected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.52f)
+                    !editable -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.46f)
+                    else -> MaterialTheme.colorScheme.surface
+                },
             )
-            val meta = when {
-                column.computed.isNotBlank() -> "auto"
-                rawValue.trim().startsWith("=") -> "formula"
-                !editable -> "readonly"
-                else -> ""
-            }
-            if (meta.isNotBlank()) {
-                Text(
-                    meta,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    maxLines = 1,
-                )
-            }
-        }
+            .clickable(enabled = enabled) { onClick() },
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Text(
+            value.ifBlank { if (isFormula) "" else column.placeholder },
+            modifier = Modifier.padding(horizontal = 8.dp),
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            color = when {
+                hasError -> MaterialTheme.colorScheme.onErrorContainer
+                value.isBlank() -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.42f)
+                else -> MaterialTheme.colorScheme.onSurface
+            },
+        )
     }
 }
 
