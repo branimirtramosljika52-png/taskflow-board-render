@@ -10912,7 +10912,7 @@ function findLatestMobileDocumentRecordForTemplate(template = {}, workOrder = {}
   const companyId = normalizeInputValue(workOrder?.companyId);
   const locationId = normalizeInputValue(workOrder?.locationId);
   const objectId = getMobileWorkOrderLocationObjectId(workOrder);
-  if (!locationId || !objectId) {
+  if (!locationId) {
     return null;
   }
   const records = Array.isArray(scopedSnapshot.documentRecords) ? scopedSnapshot.documentRecords : [];
@@ -10923,7 +10923,7 @@ function findLatestMobileDocumentRecordForTemplate(template = {}, workOrder = {}
         normalizeInputValue(record?.templateId) === templateId
         && (!companyId || normalizeInputValue(record?.companyId) === companyId)
         && normalizeInputValue(record?.locationId) === locationId
-        && recordObjectId === objectId
+        && (objectId ? recordObjectId === objectId : !recordObjectId)
       );
     })
     .sort((left, right) => String(right.updatedAt || right.inspectionDate || right.issuedDate || right.createdAt || "")
